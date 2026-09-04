@@ -195,7 +195,7 @@
 
     <!-- Functietabs: rolafhankelijk. Milan (ZZP) ziet Uren; Ben (uitvoerder) ziet Projecten + Te keuren. -->
     <div class="functabs" id="tabsZzp">
-      <div class="functab actief" onclick="toon('zzpProjecten', this)">⏱ Mijn projecten</div>
+      <div class="functab actief" onclick="toon('zzpProjecten', this)">⏱ Mijn weken</div>
       <div class="functab" onclick="toon('historie', this)">✓ Ingediend</div>
     </div>
     <div class="functabs" id="tabsUitv" style="display:none">
@@ -208,51 +208,67 @@
 
     <div class="content">
 
-      <!-- ============ ZZP · BEGINSCHERM: MIJN PROJECTEN ============ -->
+      <!-- ============ ZZP · BEGINSCHERM: MIJN WEKEN (planning-gestuurd, opdracht 04-09 blok A) ============
+           A2: alleen weken mét planning + deze week; een oudere week mét een staat in concept/corrigeren
+           blijft staan tot hij is afgehandeld. Vervangt "Mijn projecten" (21-08) als beginscherm. -->
       <div class="view active" id="zzpProjecten">
-        <div class="seclabel">Mijn projecten (3)</div>
+        <div class="seclabel">Mijn weken</div>
         <div class="card klik" onclick="toon('zzpProject')">
-          <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">steigerbouw · laatste invoer: wo wk 34</div></div>
-          <div style="text-align:right"><span class="chip open">2 weken open</span></div>
-        </div>
-        <div class="card klik" onclick="toon('zzpProject')">
-          <div><div class="tt">26021 Tilburg (Heijmans)</div><div class="meta">demontage · laatste invoer: wo wk 34</div></div>
-          <div style="text-align:right"><span class="chip open">1 week open</span></div>
+          <div><div class="tt">Week 36 <small style="color:var(--muted);font-weight:500">31 aug – 6 sep · deze week</small></div>
+            <div class="meta">2 projecten gepland · 2 nog invullen</div></div>
+          <span class="chip open">2 nog invullen</span>
         </div>
         <div class="card klik" onclick="toon('zzpProject')">
-          <div><div class="tt">26008 Nijmegen (Dura Vermeer)</div><div class="meta">afgerond wk 31 · alles ingediend</div></div>
-          <div style="text-align:right"><span class="chip akkoord">bij</span></div>
-        </div>
-      </div>
-
-      <!-- ============ ZZP · PROJECT: OPENSTAANDE WEKEN ============ -->
-      <div class="view" id="zzpProject">
-        <button class="terug" onclick="toon('zzpProjecten')">‹ Mijn projecten</button>
-        <div class="seclabel">26014 Eindhoven (BAM) · weken<span class="namens"> · namens Milan K.</span></div>
-        <div class="card klik" onclick="toon('weekstaat')">
-          <div><div class="tt">Week 34 <small style="color:var(--muted);font-weight:500">17 – 23 aug</small></div>
-            <div class="meta">3 van 5 dagen ingevuld · 22,5 u · 215 m²</div></div>
-          <span class="chip open">nog invullen</span>
-        </div>
-        <div class="card klik" onclick="toon('weekstaat')">
-          <div><div class="tt">Week 33 <small style="color:var(--muted);font-weight:500">10 – 16 aug</small></div>
-            <div class="meta">0 van 5 dagen ingevuld (vakantie? meld 0-uren)</div></div>
-          <span class="chip open">nog invullen</span>
+          <div><div class="tt">Week 35 <small style="color:var(--muted);font-weight:500">24 – 30 aug</small></div>
+            <div class="meta">1 project gepland · ingediend · 38,0 u · 340 m²</div></div>
+          <span class="chip ingediend">ingediend</span>
         </div>
         <div class="card klik" onclick="toon('afgekeurd')">
-          <div><div class="tt">Week 32</div><div class="meta">week afgekeurd door Ben v. Dijk — tik voor toelichting</div></div>
-          <span class="chip afgekeurd">corrigeren</span>
+          <div><div class="tt">Week 32 <small style="color:var(--muted);font-weight:500">3 – 9 aug</small></div>
+            <div class="meta">1 nog invullen · week afgekeurd door Ben v. Dijk</div></div>
+          <span class="chip open">nog invullen</span>
         </div>
-        <div class="card klik">
-          <div><div class="tt">Week 31</div><div class="meta">goedgekeurd 3 aug · 40,0 u · 380 m²</div></div>
-          <span class="chip akkoord">goedgekeurd</span>
+        <div class="notitie"><span>📅</span><span>Je ziet de weken waarin je <b>ingepland</b> bent (plus deze week). Uren op een ander project? Open de week en kies <b>+ ander project</b>.</span></div>
+      </div>
+
+      <!-- ============ ZZP · WEEK: PROJECTEN IN DIE WEEK (A1) + uitwijk "+ ander project" ============ -->
+      <div class="view" id="zzpProject">
+        <button class="terug" onclick="toon('zzpProjecten')">‹ Mijn weken</button>
+        <div class="seclabel">Week 36 · 31 aug – 6 sep<span class="namens"> · namens Milan K.</span></div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">26014 Eindhoven (BAM)</div>
+            <div class="meta">gepland 3 dagen · 2 dagen ingevuld · 16,0 u · 215 m²</div></div>
+          <span class="chip open">nog invullen</span>
         </div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">26021 Tilburg (Heijmans)</div>
+            <div class="meta">gepland 2 dagen · nog niets ingevuld</div></div>
+          <span class="chip open">nog invullen</span>
+        </div>
+        <div class="actionbar" style="position:static;margin-top:12px">
+          <button class="btn stil" onclick="toon('anderProject')">+ ander project</button>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>Uren buiten de planning blijven invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b> (oranje, geen blokkade).</span></div>
+      </div>
+
+      <!-- ============ ZZP · "+ ANDER PROJECT": volledige lijst, doorzoekbaar (C1: koppeling ontstaat bij de eerste dagregel) ============ -->
+      <div class="view" id="anderProject">
+        <button class="terug" onclick="toon('zzpProject')">‹ Week 36</button>
+        <div class="seclabel">Ander project · week 36<span class="namens"> · namens Milan K.</span></div>
+        <div class="card">
+          <div class="veld"><label>Zoek project</label><input type="search" placeholder="nummer, plaats of opdrachtgever" value="venlo"></div>
+        </div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">26030 Venlo (Dura Vermeer)</div><div class="meta">steigerbouw · Universal Steigerbouw</div></div>
+          <span class="arrow">›</span>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>Dit project staat niet in de planning voor week 36. De uren blijven gewoon invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b>.</span></div>
       </div>
 
       <!-- ============ ZZP · WEEKSTAAT (per project, per week) ============ -->
       <div class="view" id="weekstaat">
-        <button class="terug" onclick="toon('zzpProject')">‹ 26014 Eindhoven</button>
-        <div class="seclabel">Week 34 · 17 – 23 aug<span class="namens"> · namens Milan K.</span></div>
+        <button class="terug" onclick="toon('zzpProject')">‹ Week 34</button>
+        <div class="seclabel">26014 Eindhoven (BAM) · week 34 · 17 – 23 aug<span class="namens"> · namens Milan K.</span></div>
         <div class="card">
           <div class="dagrij">
             <span class="dag">ma</span>
@@ -338,38 +354,41 @@
         </div>
       </div>
 
-      <!-- ============ DETACHEERDER · MIJN ZZP'ERS ============ -->
+      <!-- ============ DETACHEERDER · MIJN ZZP'ERS = WERKLIJST (A3, 04-09): alleen handelingen ============ -->
       <div class="view" id="detaZzpers">
-        <div class="seclabel">Mijn ZZP'ers (3)</div>
+        <div class="seclabel">Mijn ZZP'ers · 2 met werk</div>
         <div class="card klik" onclick="toon('detaWeken')">
-          <div><div class="tt">Milan K.</div><div class="meta">2 projecten · laatste invoer wo wk 34</div></div>
+          <div><div class="tt">Milan K.</div><div class="meta">2 projecten · laatste invoer wo wk 35</div></div>
           <span class="chip open">2 weken open</span>
         </div>
         <div class="card klik" onclick="toon('detaWeken')">
-          <div><div class="tt">Stefan B.</div><div class="meta">1 project · laatste invoer vr wk 34</div></div>
+          <div><div class="tt">Stefan B.</div><div class="meta">1 project · laatste invoer vr wk 35</div></div>
           <span class="chip open">1 week open</span>
         </div>
-        <div class="card klik" onclick="toon('detaWeken')">
-          <div><div class="tt">Ali D.</div><div class="meta">1 project · alles ingediend</div></div>
-          <span class="chip akkoord">bij</span>
+        <div class="card klik">
+          <div><div class="tt">Ook zonder werk</div><div class="meta">1 ZZP'er · alles bij — uren buiten de planning invullen kan hier</div></div>
+          <span class="arrow">›</span>
         </div>
         <div class="notitie"><span>🔒</span><span>Je vult weekstaten in <b>namens</b> gekoppelde ZZP'ers; projectinhoud blijft onzichtbaar.</span></div>
+        <div class="notitie"><span>✓</span><span>Niets te doen voor niemand = lege staat <b>"✓ Alles is bij"</b> mét verversknop (zelfde patroon als de accordeur-administratiekaarten); wie bij is verdwijnt uit de lijst en blijft bereikbaar onder "Ook zonder werk".</span></div>
       </div>
 
-      <!-- ============ DETACHEERDER · NA ZZP'ER-KEUZE: EXACT DE ZZP-SCHERMEN ============ -->
+      <!-- ============ DETACHEERDER · NA ZZP'ER-KEUZE: EXACT DE ZZP-SCHERMEN (weken-eerst) ============ -->
       <div class="view" id="detaWeken">
         <button class="terug" onclick="toon('detaZzpers')">‹ Mijn ZZP'ers</button>
         <div class="notitie" style="margin:0 0 12px"><span>✍️</span><span>Je werkt nu <b>namens Milan K.</b> — elke invoer wordt zo vastgelegd (zichtbaar bij de keuring).</span></div>
-        <div class="seclabel">Milan K. · projecten</div>
+        <div class="seclabel">Milan K. · weken</div>
         <div class="card klik" onclick="toon('zzpProject')">
-          <div><div class="tt">26014 Eindhoven (BAM)</div><div class="meta">steigerbouw · laatste invoer: wo wk 34</div></div>
-          <span class="chip open">2 weken open</span>
+          <div><div class="tt">Week 36 <small style="color:var(--muted);font-weight:500">31 aug – 6 sep · deze week</small></div>
+            <div class="meta">2 projecten gepland · 2 nog invullen</div></div>
+          <span class="chip open">2 nog invullen</span>
         </div>
         <div class="card klik" onclick="toon('zzpProject')">
-          <div><div class="tt">26021 Tilburg (Heijmans)</div><div class="meta">demontage · alles ingediend</div></div>
-          <span class="chip akkoord">bij</span>
+          <div><div class="tt">Week 35 <small style="color:var(--muted);font-weight:500">24 – 30 aug</small></div>
+            <div class="meta">1 project gepland · goedgekeurd · 40,0 u</div></div>
+          <span class="chip akkoord">goedgekeurd</span>
         </div>
-        <div class="notitie"><span>▶</span><span>Demo: tik een project — je landt in dezelfde weken-/weekstaat-schermen als bij de ZZP-rol.</span></div>
+        <div class="notitie"><span>▶</span><span>Demo: tik een week — je landt in dezelfde projecten-/weekstaat-schermen als bij de ZZP-rol.</span></div>
       </div>
 
       <!-- ============ UITVOERDER · PROJECTENLIJST ============ -->

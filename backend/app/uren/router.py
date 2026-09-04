@@ -228,6 +228,72 @@ def zzp_weken(
     return [schemas.WeekKaartDto(**k.__dict__) for k in kaarten]
 
 
+@router.get("/zzp/weken-overzicht", response_model=list[schemas.WeekOverzichtKaartDto])
+def zzp_weken_overzicht(
+    namens: uuid.UUID | None = None, actor: CurrentGebruiker = Depends(vereis_veldrol)
+) -> list[schemas.WeekOverzichtKaartDto]:
+    """Planning-gestuurd beginscherm (A2 04-09): huidige week + weken mét planning + weken mét
+    een staat die nog om een handeling vraagt."""
+    try:
+        kaarten = overzichten.weken_zzp(zzper_id=namens or actor.id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.WeekOverzichtKaartDto(**k.__dict__) for k in kaarten]
+
+
+@router.get("/zzp/week-projecten", response_model=list[schemas.WeekProjectKaartDto])
+def zzp_week_projecten(
+    jaar: int,
+    weeknummer: int,
+    namens: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> list[schemas.WeekProjectKaartDto]:
+    """Projecten in één week (A1 04-09): ingepland én/of met een bestaande staat."""
+    try:
+        kaarten = overzichten.week_projecten_zzp(
+            zzper_id=namens or actor.id, actor_id=actor.id, jaar=jaar, weeknummer=weeknummer
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.WeekProjectKaartDto(**k.__dict__) for k in kaarten]
+
+
+@router.get("/zzp/projecten-keuze", response_model=list[schemas.ProjectKeuzeDto])
+def zzp_projecten_keuze(
+    namens: uuid.UUID | None = None, actor: CurrentGebruiker = Depends(vereis_veldrol)
+) -> list[schemas.ProjectKeuzeDto]:
+    """Uitwijk "+ ander project" (A1): alle actieve projecten in de scope."""
+    try:
+        keuzes = overzichten.projecten_keuze_zzp(zzper_id=namens or actor.id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [schemas.ProjectKeuzeDto(**k.__dict__) for k in keuzes]
+
+
+@router.get("/zzp/weekstaat", response_model=schemas.WeekstaatZoekDto)
+def zzp_weekstaat_zoeken(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    jaar: int,
+    weeknummer: int,
+    namens: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(vereis_veldrol),
+) -> schemas.WeekstaatZoekDto:
+    """Lookup van de staat voor (ZZP'er, project, week) — null zolang er nog geen dagregel is."""
+    try:
+        data = overzichten.weekstaat_zoeken(
+            administratie_id=administratie_id,
+            zzper_id=namens or actor.id,
+            project_id=project_id,
+            jaar=jaar,
+            weeknummer=weeknummer,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.WeekstaatZoekDto(weekstaat=_weekstaat_response(data) if data is not None else None)
+
+
 @router.get("/zzp/ingediend", response_model=list[schemas.IngediendeWeekDto])
 def zzp_ingediend(
     namens: uuid.UUID | None = None, actor: CurrentGebruiker = Depends(vereis_veldrol)
@@ -1274,21 +1340,10 @@ def beheer_dossier_documenttypen_zetten(
     )
 
 
-@router.post("/beheer/projectkoppelingen", status_code=status.HTTP_204_NO_CONTENT)
-def beheer_projectkoppeling_toevoegen(
-    payload: schemas.ProjectKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
-) -> None:
-    try:
-        service.koppel_project(
-            administratie_id=payload.administratie_id,
-            gebruiker_id=payload.gebruiker_id,
-            project_id=payload.project_id,
-            actor_id=actor.id,
-        )
-    except service.UrenFout as exc:
-        raise _vertaal(exc) from exc
-
-
+# C1 (addendum Peter 04-09): de handmatige projectkoppeling via de kantoor-UI is VERVALLEN — koppelingen
+# ontstaan uitsluitend automatisch (planning, bron 'planning'; uren buiten planning via "+ ander project",
+# bron 'weekstaat'). De toevoeg-route bestaat daarom niet meer; bestaande koppelingen blijven staan.
+# Ontkoppelen blijft als Beheerder-only noodroute zonder UI (nooit stil, altijd geauditeerd).
 @router.post("/beheer/projectkoppelingen/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_projectkoppeling_verwijderen(
     payload: schemas.ProjectKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)

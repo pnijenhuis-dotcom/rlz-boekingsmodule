@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Uren-app: je planning bepaalt wat je ziet
+
+- **Weken in plaats van projecten als startpunt.** De uren-app (ZZP'er én detacheerder-namens) opent nu met je weken: deze week plus de weken waarin je ingepland staat. Een oudere week met een half ingevulde of afgekeurde staat blijft staan tot hij is afgehandeld; de rest van de historie staat onder "Ingediend".
+- **Per week alleen de projecten waar je die week gepland bent.** Open een week en je ziet precies de projecten uit de planning van het kantoor, met het aantal geplande dagen en wat er nog te doen is. Werkte je ergens anders? Kies "+ ander project": de volledige lijst, doorzoekbaar op nummer, plaats of opdrachtgever. Die uren blijven gewoon invoerbaar en krijgen bij de keuring de markering "buiten planning" (oranje, nooit een blokkade).
+- **Werklijst detacheerder toont alleen wie nog iets te doen heeft.** Een ZZP'er verdwijnt uit de lijst zodra alle geplande weken zijn ingevuld of ingediend en er geen afgekeurde staat meer wacht. Is er voor niemand iets te doen, dan zie je "✓ Alles is bij" met een verversknop. Wie bij is blijft bereikbaar onder "Ook zonder werk", zodat je ook voor hem uren buiten de planning kunt invullen.
+- **Projecttoegang volgt de planning.** Het kantoor koppelt ZZP'ers en uitvoerders niet meer met de hand aan projecten: de toegang ontstaat vanzelf zodra iemand wordt ingepland (of uren buiten de planning invult via "+ ander project"). Op de pagina Gebruikers & toegang zie je per veldwerker "actief op N projecten (via planning)" met een uitklap per project. Bestaande koppelingen blijven staan; rechten en scope zijn niet gewijzigd.
+
 ## 2026-09-04 — Duplicaten automatisch afgevoerd, slimmer splitsen, projectverdeling pro rato, grootboek per regel, btw-standaard en kortingsregels
 
 - **Duplicaten verdwijnen automatisch uit je werklijst (per administratie aan te zetten).** Komt dezelfde inkoopfactuur twee keer binnen — zelfde leverancier, zelfde factuurnummer, zelfde bedrag — en is het origineel al geboekt of staat het al in de werkvoorraad, dan zet het systeem de kopie zelf op "Afgewezen" met de reden "Duplicaat van …" en een link naar het origineel. Er verdwijnt niets: je vindt de kopie terug in de afgewezen-lijst en haalt 'm met "Heropenen" zo weer terug. Een beheerder zet dit aan op de administratie-pagina, tab "Boeken & AI" ("Duplicaten automatisch afvoeren").

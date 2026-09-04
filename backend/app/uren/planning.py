@@ -35,7 +35,6 @@ from app.uren.models import (
     PlanningDagdeel,
     PlanningToewijzing,
     ProjectSpecificatie,
-    UrenProjectToewijzing,
     Weekstaat,
     WeekstaatDag,
 )
@@ -46,9 +45,9 @@ from app.uren.service import (
     OngeldigeInvoer,
     _administratie_met_opt_in,
     _gebruiker,
-    _heeft_toewijzing,
     _vereis_meerwerk_recht,
     week_grenzen,
+    zorg_voor_projectkoppeling,
 )
 
 DUBBELE_DAG_VENSTER_DAGEN = 30  # teller-venster (mockup: "3× / 30 dgn")
@@ -194,33 +193,15 @@ def _zorg_voor_projectkoppeling(
     session, *, administratie_id: uuid.UUID, gebruiker: Gebruiker, project_id: uuid.UUID, actor_id: uuid.UUID
 ) -> None:
     """Besluit A (22-08): slepen/toewijzen maakt de ZZP↔project-koppeling automatisch aan als
-    die nog niet bestaat — planning ís de koppeling. Geaudit mét bron 'planning' (zelfde
-    audit-actie als het Beheerder-beheer, zodat de koppelingshistorie één spoor blijft)."""
-    if _heeft_toewijzing(session, administratie_id, gebruiker.id, project_id):
-        return
-    session.add(
-        UrenProjectToewijzing(
-            administratie_id=administratie_id,
-            gebruiker_id=gebruiker.id,
-            project_id=project_id,
-            toegevoegd_door=actor_id,
-        )
-    )
-    record_audit_event(
+    die nog niet bestaat — planning ís de koppeling. Geaudit mét bron 'planning' (één helper mét
+    het weekstaat-pad, addendum 04-09: `service.zorg_voor_projectkoppeling`)."""
+    zorg_voor_projectkoppeling(
         session,
-        actor_id=actor_id,
-        module=MODULE,
-        tabel="uren_project_toewijzing",
-        record_id=gebruiker.id,
-        actie="uren_project_gekoppeld",
-        correlatie_id=project_id,
-        nieuwe_waarde={
-            "gebruiker_id": str(gebruiker.id),
-            "project_id": str(project_id),
-            "rol": gebruiker.rol,
-            "bron": "planning",
-        },
         administratie_id=administratie_id,
+        gebruiker=gebruiker,
+        project_id=project_id,
+        actor_id=actor_id,
+        bron="planning",
     )
 
 

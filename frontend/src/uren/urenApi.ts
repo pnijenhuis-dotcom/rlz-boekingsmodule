@@ -113,6 +113,51 @@ export interface ZzperKaartDto {
   aantal_projecten: number
   open_weken: number
   laatste_invoer: string | null
+  // A3 (04-09): handelingen — 0 = niets te doen → niet in de werklijst (wel onder "Ook zonder werk").
+  te_doen: number
+}
+
+/* --- planning-gestuurde veld-flow (opdracht 04-09 blok A): weken → projecten per week → weekstaat --- */
+
+export interface WeekOverzichtKaartDto {
+  jaar: number
+  weeknummer: number
+  maandag: string
+  zondag: string
+  is_huidige: boolean
+  geplande_projecten: number
+  te_doen: number
+  status: 'open' | 'ingediend' | 'goedgekeurd' | 'nieuw'
+  totaal_uren: string
+  totaal_m2: string
+}
+
+export interface WeekProjectKaartDto {
+  administratie_id: string
+  administratie_naam: string | null
+  project_id: string
+  project_naam: string | null
+  soort_werk: string | null
+  gepland: boolean
+  geplande_dagen: number
+  status: 'nieuw' | 'concept' | 'ingediend' | 'goedgekeurd' | 'corrigeren'
+  te_doen: boolean
+  weekstaat_id: string | null
+  dagen_ingevuld: number
+  totaal_uren: string
+  totaal_m2: string
+  ingediend_op: string | null
+  goedgekeurd_door_naam: string | null
+  afgekeurd_door_naam: string | null
+  afkeur_reden: string | null
+}
+
+export interface ProjectKeuzeDto {
+  administratie_id: string
+  administratie_naam: string | null
+  project_id: string
+  project_naam: string | null
+  soort_werk: string | null
 }
 
 export interface TeKeurenItemDto {
@@ -206,17 +251,34 @@ function namensParam(namens: string | null): string {
 
 /* --- ZZP (en detacheerder via namens) --------------------------------------------------------- */
 
-export function haalZzpProjecten(namens: string | null): Promise<ProjectKaartDto[]> {
-  return apiJson(`/uren/zzp/projecten${namensParam(namens)}`)
+/** Planning-gestuurd beginscherm (A2, 04-09): huidige week + weken mét planning + weken die nog om
+ * een handeling vragen. Vervangt de projecten-eerst-lijst (mockup 21-08) — de weekstaat zelf is ongewijzigd. */
+export function haalZzpWekenOverzicht(namens: string | null): Promise<WeekOverzichtKaartDto[]> {
+  return apiJson(`/uren/zzp/weken-overzicht${namensParam(namens)}`)
 }
 
-export function haalZzpWeken(
-  administratieId: string,
-  projectId: string,
-  namens: string | null,
-): Promise<WeekKaartDto[]> {
-  const basis = `/uren/zzp/weken?administratie_id=${administratieId}&project_id=${projectId}`
+/** Projecten in één week (A1): ingepland én/of met een bestaande staat. */
+export function haalWeekProjecten(jaar: number, weeknummer: number, namens: string | null): Promise<WeekProjectKaartDto[]> {
+  const basis = `/uren/zzp/week-projecten?jaar=${jaar}&weeknummer=${weeknummer}`
   return apiJson(namens ? `${basis}&namens=${namens}` : basis)
+}
+
+/** Uitwijk "+ ander project": alle actieve projecten in de scope — filteren gebeurt in de app. */
+export function haalProjectenKeuze(namens: string | null): Promise<ProjectKeuzeDto[]> {
+  return apiJson(`/uren/zzp/projecten-keuze${namensParam(namens)}`)
+}
+
+/** Lookup van de staat voor (project, week) — null zolang er nog geen dagregel is; vereist geen koppeling. */
+export async function zoekWeekstaat(ctx: {
+  administratieId: string
+  projectId: string
+  jaar: number
+  weeknummer: number
+  namens: string | null
+}): Promise<WeekstaatDto | null> {
+  const basis = `/uren/zzp/weekstaat?administratie_id=${ctx.administratieId}&project_id=${ctx.projectId}&jaar=${ctx.jaar}&weeknummer=${ctx.weeknummer}`
+  const data = await apiJson<{ weekstaat: WeekstaatDto | null }>(ctx.namens ? `${basis}&namens=${ctx.namens}` : basis)
+  return data.weekstaat
 }
 
 export function haalIngediend(namens: string | null): Promise<IngediendeWeekDto[]> {

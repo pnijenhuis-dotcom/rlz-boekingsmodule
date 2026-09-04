@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, apiJson } from '../api/client'
-import type { AdministratieDto, ProjectLijstDto } from '../api/types'
+import type { AdministratieDto } from '../api/types'
 import {
   haalVeldgebruikers,
   koppelDetacheerder,
-  koppelProject,
   koppelVeldwerkerCrediteur,
   ontkoppelDetacheerder,
-  ontkoppelProject,
   ontkoppelVeldwerkerCrediteur,
   zetDetacheerderTarief,
   zetVeldwerkerAutoboeken,
@@ -34,9 +32,12 @@ import {
   formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
 
 /* Veldwerkers-paneel (Gebruikers & toegang, fase 3 uren & meerwerk — mockup meerwerk-kantoor
- * "Gebruikers & toegang" + bouwopdracht 21-08): kantoor beheert hier de koppelingen
- * uitvoerder↔project (keurrecht) en detacheerder↔zzp'er — Beheerder-only, elke wijziging in
- * het audit_event. ZZP'ers krijgen hier ook hun project-toewijzing (schrijfrecht weekstaten). */
+ * "Gebruikers & toegang" + bouwopdracht 21-08): kantoor beheert hier de koppeling detacheerder↔zzp'er,
+ * crediteur + tarieven — Beheerder-only, elke wijziging in het audit_event. De projecttoegang van
+ * ZZP'ers/uitvoerders is sinds het addendum Peter 04-09 (C1/C2) volledig PLANNING-GESTUURD: de
+ * koppeling ontstaat bij plannen (bron 'planning') of bij uren buiten planning ("+ ander project",
+ * bron 'weekstaat'); het paneel toont die afgeleide toegang alleen-lezen ("actief op N projecten
+ * (via planning)" mét uitklap). Bestaande handmatige koppelingen blijven staan, er komen geen nieuwe bij. */
 
 export function VeldwerkersPanel({
   gebruikers,
@@ -54,7 +55,7 @@ export function VeldwerkersPanel({
   const { meld } = useToastOptioneel()
   const [veld, setVeld] = useState<VeldgebruikerDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
-  const [projectModal, setProjectModal] = useState<VeldgebruikerDto | null>(null)
+  const [projectenUitgeklapt, setProjectenUitgeklapt] = useState<Set<string>>(() => new Set())
   const [zzperModal, setZzperModal] = useState<VeldgebruikerDto | null>(null)
   const [crediteurModal, setCrediteurModal] = useState<VeldgebruikerDto | null>(null)
   const [tarievenModal, setTarievenModal] = useState<VeldgebruikerDto | null>(null)
@@ -114,24 +115,20 @@ export function VeldwerkersPanel({
                       <Badge variant="paars">{rolLabel(g.rol)}</Badge>
                     </td>
                     <td>
-                      {g.rol !== 'detacheerder' && (
-                        <>
-                          {(info?.projecten ?? []).map((t) => (
-                            <span key={`${t.administratie_id}-${t.project_id}`}>
-                              <Badge variant="info">{t.project_naam ?? t.project_id}</Badge>{' '}
-                            </span>
-                          ))}
-                          {info !== undefined && (
-                            <Button variant="ghost" maat="klein" onClick={() => setProjectModal(info)}>
-                              {info.projecten.length === 0 ? 'projecten koppelen' : 'wijzig'}
-                            </Button>
-                          )}
-                          {info !== undefined && info.projecten.length === 0 && (
-                            <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}>
-                              zonder projectkoppeling ziet deze {g.rol === 'zzper' ? "ZZP'er" : 'uitvoerder'} niets
-                            </div>
-                          )}
-                        </>
+                      {g.rol !== 'detacheerder' && info !== undefined && (
+                        <ProjectToegang
+                          info={info}
+                          rol={g.rol}
+                          uitgeklapt={projectenUitgeklapt.has(g.id)}
+                          toggle={() =>
+                            setProjectenUitgeklapt((huidig) => {
+                              const volgende = new Set(huidig)
+                              if (volgende.has(g.id)) volgende.delete(g.id)
+                              else volgende.add(g.id)
+                              return volgende
+                            })
+                          }
+                        />
                       )}
                       {g.rol === 'detacheerder' && (
                         <>
@@ -234,18 +231,6 @@ export function VeldwerkersPanel({
           </table>
         </div>
       )}
-
-      {projectModal && (
-        <ProjectKoppelModal
-          veldwerker={projectModal}
-          administraties={administraties}
-          onSluiten={() => setProjectModal(null)}
-          onGewijzigd={() => {
-            meld('Projectkoppelingen bijgewerkt — geauditeerd.')
-            laad()
-          }}
-        />
-      )}
       {zzperModal && (
         <DetacheerderKoppelModal
           detacheerder={zzperModal}
@@ -294,104 +279,49 @@ function tariefLabel(uurtarief: string): string {
   return `€ ${Number(uurtarief).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/u`
 }
 
-/** Projecten koppelen per administratie: kies de administratie (alleen relevante), laad haar
- * projecten en beheer de set met een zoekbare MultiSelect (patroon ScopeModal). */
-function ProjectKoppelModal({
-  veldwerker,
-  administraties,
-  onSluiten,
-  onGewijzigd,
+const BRON_LABEL: Record<string, string> = { planning: 'via planning', weekstaat: 'via uren buiten planning', handmatig: 'handmatig (vóór 04-09)' }
+
+/** Afgeleide projecttoegang, alleen-lezen (C2 04-09): "actief op N projecten (via planning)" mét uitklap
+ * per project + herkomst. Geen selectie-UI meer — koppelingen ontstaan uitsluitend via de planning
+ * (of uren buiten planning); bestaande handmatige koppelingen blijven zichtbaar en staan. */
+function ProjectToegang({
+  info,
+  rol,
+  uitgeklapt,
+  toggle,
 }: {
-  veldwerker: VeldgebruikerDto
-  administraties: AdministratieDto[]
-  onSluiten: () => void
-  onGewijzigd: () => void
+  info: VeldgebruikerDto
+  rol: string
+  uitgeklapt: boolean
+  toggle: () => void
 }) {
-  const [administratieId, setAdministratieId] = useState(administraties[0]?.id ?? '')
-  const [projecten, setProjecten] = useState<{ id: string; naam: string | null }[] | null>(null)
-  const [selectie, setSelectie] = useState<string[]>([])
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<string | null>(null)
-
-  const huidige = veldwerker.projecten.filter((t) => t.administratie_id === administratieId).map((t) => t.project_id)
-
-  useEffect(() => {
-    if (!administratieId) return
-    setProjecten(null)
-    setSelectie(veldwerker.projecten.filter((t) => t.administratie_id === administratieId).map((t) => t.project_id))
-    apiJson<ProjectLijstDto>(`/administraties/${administratieId}/projecten`)
-      .then((data) => setProjecten(data.projecten))
-      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Projecten laden mislukt'))
-    // veldwerker verandert niet tijdens een open modal
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [administratieId])
-
-  const erbij = selectie.filter((id) => !huidige.includes(id))
-  const eraf = huidige.filter((id) => !selectie.includes(id))
-
-  async function opslaan() {
-    setBezig(true)
-    setFout(null)
-    try {
-      for (const projectId of erbij) {
-        await koppelProject({ administratie_id: administratieId, gebruiker_id: veldwerker.gebruiker_id, project_id: projectId })
-      }
-      for (const projectId of eraf) {
-        await ontkoppelProject({ administratie_id: administratieId, gebruiker_id: veldwerker.gebruiker_id, project_id: projectId })
-      }
-      onGewijzigd()
-      onSluiten()
-    } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Koppelen mislukt.')
-      onGewijzigd()
-    } finally {
-      setBezig(false)
-    }
+  const aantal = info.projecten.length
+  const viaPlanning = info.projecten.filter((t) => t.bron === 'planning').length
+  if (aantal === 0) {
+    return (
+      <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+        nog geen projecten — toegang ontstaat zodra deze {rol === 'zzper' ? "ZZP'er" : 'uitvoerder'} in de planning staat
+      </div>
+    )
   }
-
   return (
-    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
-      <DialogContent>
-        <DialogTitle>Projecten van {veldwerker.naam}</DialogTitle>
-        <DialogDescription>
-          {veldwerker.rol === 'uitvoerder'
-            ? 'Een uitvoerder keurt de weekstaten van zijn gekoppelde projecten (keurrecht) en ziet daar de projectinhoud (specs, contract, meerwerk).'
-            : "Een ZZP'er schrijft weekstaten op zijn gekoppelde projecten — zonder koppeling ziet hij niets."}{' '}
-          Elke wijziging wordt geauditeerd; bestaande weekstaten en meerwerk blijven altijd staan.
-        </DialogDescription>
-        <AdministratieCombobox
-          label="Administratie"
-          administraties={administraties}
-          waarde={administratieId}
-          onWijzig={setAdministratieId}
-        />
-        {projecten === null && !fout && <p className="hint">Projecten laden…</p>}
-        {projecten !== null && (
-          <MultiSelect
-            opties={projecten.map((p) => ({ waarde: p.id, label: p.naam ?? p.id }))}
-            waarden={selectie}
-            onChange={setSelectie}
-            zoekPlaceholder="Zoek project… (typ om te filteren)"
-          />
-        )}
-        {(erbij.length > 0 || eraf.length > 0) && (
-          <p className="hint">
-            {erbij.length > 0 && `${erbij.length} erbij`}
-            {erbij.length > 0 && eraf.length > 0 && ' · '}
-            {eraf.length > 0 && `${eraf.length} eraf`}
-          </p>
-        )}
-        {fout && <div className="fout">{fout}</div>}
-        <DialogFooter>
-          <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
-            Annuleren
-          </Button>
-          <Button onClick={() => void opslaan()} disabled={bezig || (erbij.length === 0 && eraf.length === 0)}>
-            {bezig ? 'Bezig…' : 'Koppelingen opslaan'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div>
+      <button type="button" className="linkbtn" onClick={toggle} aria-expanded={uitgeklapt} data-testid="projecttoegang">
+        actief op {aantal} {aantal === 1 ? 'project' : 'projecten'}
+        {viaPlanning === aantal ? ' (via planning)' : viaPlanning > 0 ? ` (${viaPlanning} via planning)` : ''} {uitgeklapt ? '▾' : '▸'}
+      </button>
+      {uitgeklapt && (
+        <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 12 }}>
+          {info.projecten.map((t) => (
+            <li key={`${t.administratie_id}-${t.project_id}`}>
+              {t.project_naam ?? t.project_id}
+              {t.administratie_naam ? ` · ${t.administratie_naam}` : ''}{' '}
+              <Badge variant="stil">{BRON_LABEL[t.bron] ?? t.bron}</Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

@@ -72,9 +72,20 @@ class TestInvullen:
         with pytest.raises(service.OngeldigeInvoer):
             _zet_dag(administratie_id, gekoppelde_zzper, project_id, uren="-1")
 
-    def test_zonder_projectkoppeling_geen_toegang(self, administratie_id, project_id, zzper):
-        with pytest.raises(service.GeenToegang, match="niet aan dit project gekoppeld"):
-            _zet_dag(administratie_id, zzper, project_id)
+    def test_zonder_projectkoppeling_ontstaat_de_koppeling(self, admin_engine, administratie_id, project_id, zzper):
+        """C1 (addendum Peter 04-09): uren buiten de planning maken de koppeling in dezelfde gang aan
+        (bron 'weekstaat'); vóór 04-09 was dit een GeenToegang. Alleen op een actief project."""
+        staat = _zet_dag(administratie_id, zzper, project_id)
+        assert staat.status == "concept"
+        with admin_engine.begin() as conn:
+            aantal = conn.scalar(
+                text(
+                    "SELECT count(*) FROM boekhouding.uren_project_toewijzing "
+                    "WHERE administratie_id = :a AND gebruiker_id = :g AND project_id = :p"
+                ),
+                {"a": administratie_id, "g": zzper, "p": project_id},
+            )
+        assert aantal == 1
 
     def test_opt_in_uit_blokkeert(self, admin_engine, administratie_zonder_opt_in, zzper):
         project = maak_project(admin_engine, administratie_zonder_opt_in, "26099 Elders")

@@ -280,6 +280,49 @@ def _heeft_toewijzing(session, administratie_id: uuid.UUID, gebruiker_id: uuid.U
     return session.get(UrenProjectToewijzing, (administratie_id, gebruiker_id, project_id)) is not None
 
 
+def zorg_voor_projectkoppeling(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker: Gebruiker,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    bron: str,
+) -> bool:
+    """Projecttoegang is planning-gestuurd (besluit A 22-08 + addendum Peter 04-09): de koppeling
+    gebruiker↔project ontstaat uitsluitend automatisch — bij plannen (bron 'planning') en bij uren
+    buiten de planning via "+ ander project" (bron 'weekstaat'). Idempotent; élke aanmaak geauditeerd
+    met dezelfde actie als het historische Beheerder-beheer zodat de koppelingshistorie één spoor
+    blijft. Geeft True terug als er een koppeling is aangemaakt."""
+    if _heeft_toewijzing(session, administratie_id, gebruiker.id, project_id):
+        return False
+    session.add(
+        UrenProjectToewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker.id,
+            project_id=project_id,
+            toegevoegd_door=actor_id,
+        )
+    )
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module=MODULE,
+        tabel="uren_project_toewijzing",
+        record_id=gebruiker.id,
+        actie="uren_project_gekoppeld",
+        correlatie_id=project_id,
+        nieuwe_waarde={
+            "gebruiker_id": str(gebruiker.id),
+            "project_id": str(project_id),
+            "rol": gebruiker.rol,
+            "bron": bron,
+        },
+        administratie_id=administratie_id,
+    )
+    return True
+
+
 def _vereis_invuller(session, *, zzper: Gebruiker, actor_id: uuid.UUID) -> Gebruiker:
     """De actor mag de weekstaat van `zzper` bewerken/indienen: de ZZP'er zelf, of een
     detacheerder die door het kantoor aan deze ZZP'er gekoppeld is (besluit 21-08)."""
@@ -602,11 +645,23 @@ def zet_dag(
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
-        _project(session, administratie_id, project_id)
+        project = _project(session, administratie_id, project_id)
         zzper = _gebruiker(session, zzper_id)
         _vereis_invuller(session, zzper=zzper, actor_id=actor_id)
         if not _heeft_toewijzing(session, administratie_id, zzper_id, project_id):
-            raise GeenToegang("Deze ZZP'er is niet aan dit project gekoppeld")
+            # Uren buiten de planning ("+ ander project", addendum 04-09 C1): de koppeling ontstaat in
+            # dezelfde gang — alleen op een actief project; de buiten_planning-vlag bij de keuring
+            # vangt de uren. Nooit op een afgerond/verdwenen project (planning-norm).
+            if project.is_actief is not True or project.verdwenen_uit_bron_op is not None:
+                raise GeenToegang("Dit project is niet (meer) actief — uren kunnen alleen op een actief project")
+            zorg_voor_projectkoppeling(
+                session,
+                administratie_id=administratie_id,
+                gebruiker=zzper,
+                project_id=project_id,
+                actor_id=actor_id,
+                bron="weekstaat",
+            )
 
         staat = _haal_of_maak_weekstaat(
             session,

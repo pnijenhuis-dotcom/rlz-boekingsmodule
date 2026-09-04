@@ -161,6 +161,61 @@ class ZzperKaartDto(BaseModel):
     aantal_projecten: int
     open_weken: int
     laatste_invoer: date | None = None
+    # A3 (04-09): handelingen — 0 = niets te doen, de app toont de ZZP'er dan niet in de werklijst.
+    te_doen: int = 0
+
+
+class WeekOverzichtKaartDto(BaseModel):
+    """Planning-gestuurd beginscherm (A2, 04-09): de weken die er toe doen voor deze ZZP'er."""
+
+    jaar: int
+    weeknummer: int
+    maandag: date
+    zondag: date
+    is_huidige: bool
+    geplande_projecten: int
+    te_doen: int
+    status: str  # open | ingediend | goedgekeurd | nieuw
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+
+
+class WeekProjectKaartDto(BaseModel):
+    """Projecten in één week (A1, 04-09): ingepland én/of met een bestaande staat."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    soort_werk: str | None = None
+    gepland: bool
+    geplande_dagen: int
+    status: str  # nieuw | concept | ingediend | goedgekeurd | corrigeren
+    te_doen: bool
+    weekstaat_id: uuid.UUID | None = None
+    dagen_ingevuld: int
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    ingediend_op: datetime | None = None
+    goedgekeurd_door_naam: str | None = None
+    afgekeurd_door_naam: str | None = None
+    afkeur_reden: str | None = None
+
+
+class ProjectKeuzeDto(BaseModel):
+    """Uitwijk "+ ander project" (A1): actieve projecten in de scope, doorzoekbaar in de app."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str | None = None
+    project_id: uuid.UUID
+    project_naam: str | None = None
+    soort_werk: str | None = None
+
+
+class WeekstaatZoekDto(BaseModel):
+    """Lookup (ZZP'er, project, week) → de staat of null als die nog niet bestaat."""
+
+    weekstaat: WeekstaatDto | None = None
 
 
 class TeKeurenItemDto(BaseModel):
@@ -334,6 +389,9 @@ class ToewijzingDto(BaseModel):
     administratie_naam: str | None = None
     project_id: uuid.UUID
     project_naam: str | None = None
+    # Afgeleide herkomst (C2 04-09, geen kolom): 'planning' = er bestaat een planningstoewijzing,
+    # 'weekstaat' = alleen uren, 'handmatig' = historische Beheerder-koppeling (blijft staan).
+    bron: str = "handmatig"
 
 
 class GekoppeldeZzperDto(BaseModel):

@@ -28,6 +28,7 @@ from app.uren import service
 from app.uren.models import (
     Meerwerk,
     MeerwerkStatus,
+    PlanningToewijzing,
     ProjectDocument,
     ProjectSpecificatie,
     UrenProjectToewijzing,
@@ -113,6 +114,9 @@ class ZzperKaart:
     aantal_projecten: int
     open_weken: int
     laatste_invoer: date | None
+    # A3 (04-09): handelingen = geplande project-weken zonder (ingediende) staat + staten in
+    # concept/corrigeren; 0 = niets te doen → de app toont de ZZP'er niet in de werklijst.
+    te_doen: int = 0
 
 
 @dataclass(frozen=True)
@@ -460,12 +464,314 @@ def weekstaat_detail_voor(
         return _weekstaat_data(session, staat)
 
 
+# --- planning-gestuurd (detacheerder-filters, opdracht Peter 04-09 blok A) ----------------------
+#
+# De veld-app toont sinds 04-09 WEKEN → PROJECTEN-IN-DIE-WEEK → weekstaat. Wat je ziet stuurt de
+# bestaande weekplanning (planning_toewijzing): per week alleen de projecten waar de ZZP'er die week
+# is ingepland (A1), alleen weken mét planning plus de huidige week (A2) — een oudere week mét een
+# staat in concept/corrigeren blijft zichtbaar tot hij is afgehandeld. "Te doen" (A3) is
+# deterministisch: een gepland project zonder staat of met een staat in concept/corrigeren, óf een
+# staat in concept/corrigeren op een niet-gepland project. Uitwijk: "+ ander project" (volledige
+# lijst actieve projecten) — uren buiten de planning blijven invoerbaar, de buiten_planning-vlag
+# bij de keuring vangt ze. Dit is filtergedrag, géén rechtenwijziging: scope + koppelingen blijven
+# exact de RLS-waarheid (A4).
+
+TE_DOEN_STATUSSEN = OPEN_STATUSSEN
+
+
+@dataclass(frozen=True)
+class WeekOverzichtKaart:
+    jaar: int
+    weeknummer: int
+    maandag: date
+    zondag: date
+    is_huidige: bool
+    geplande_projecten: int
+    te_doen: int
+    status: str  # open | ingediend | goedgekeurd | nieuw
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+
+
+@dataclass(frozen=True)
+class WeekProjectKaart:
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    project_id: uuid.UUID
+    project_naam: str | None
+    soort_werk: str | None
+    gepland: bool
+    geplande_dagen: int
+    status: str  # nieuw | concept | ingediend | goedgekeurd | corrigeren
+    te_doen: bool
+    weekstaat_id: uuid.UUID | None
+    dagen_ingevuld: int
+    totaal_uren: Decimal
+    totaal_m2: Decimal
+    ingediend_op: object | None
+    goedgekeurd_door_naam: str | None
+    afgekeurd_door_naam: str | None
+    afkeur_reden: str | None
+
+
+@dataclass(frozen=True)
+class ProjectKeuze:
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    project_id: uuid.UUID
+    project_naam: str | None
+    soort_werk: str | None
+
+
+@dataclass
+class _WeekItem:
+    administratie_id: uuid.UUID
+    administratie_naam: str | None
+    project_id: uuid.UUID
+    project_naam: str | None
+    soort_werk: str | None
+    geplande_dagen: int = 0
+    status: str = "nieuw"
+    weekstaat_id: uuid.UUID | None = None
+    dagen_ingevuld: int = 0
+    totaal_uren: Decimal = Decimal("0")
+    totaal_m2: Decimal = Decimal("0")
+    laatste_dag: date | None = None
+    ingediend_op: object | None = None
+    goedgekeurd_door_naam: str | None = None
+    afgekeurd_door_naam: str | None = None
+    afkeur_reden: str | None = None
+
+    @property
+    def gepland(self) -> bool:
+        return self.geplande_dagen > 0
+
+    @property
+    def te_doen(self) -> bool:
+        if self.status in TE_DOEN_STATUSSEN:
+            return True
+        return self.gepland and self.weekstaat_id is None
+
+
+def _planning_stand(
+    zzper_id: uuid.UUID, administraties: list[Administratie], *, van: date, tot: date
+) -> dict[tuple[int, int], dict[tuple[uuid.UUID, uuid.UUID], _WeekItem]]:
+    """Per (jaar, week) de planning (alleen datums in [van, tot]) en ÁLLE weekstaten van de ZZP'er,
+    per (administratie, project) samengevoegd — over de administraties mét opt-in in de scope."""
+    stand: dict[tuple[int, int], dict[tuple[uuid.UUID, uuid.UUID], _WeekItem]] = {}
+
+    def item(session, administratie: Administratie, week: tuple[int, int], project_id: uuid.UUID) -> _WeekItem:
+        per_week = stand.setdefault(week, {})
+        sleutel = (administratie.id, project_id)
+        if sleutel not in per_week:
+            project = session.get(ProjectCache, (project_id, administratie.id))
+            spec = session.get(ProjectSpecificatie, (project_id, administratie.id))
+            per_week[sleutel] = _WeekItem(
+                administratie_id=administratie.id,
+                administratie_naam=administratie.naam,
+                project_id=project_id,
+                project_naam=project.naam if project else None,
+                soort_werk=spec.soort_werk if spec else None,
+            )
+        return per_week[sleutel]
+
+    for administratie in administraties:
+        with scoped_session(administratie.id) as session:
+            planning = session.execute(
+                select(PlanningToewijzing.project_id, PlanningToewijzing.datum).where(
+                    PlanningToewijzing.administratie_id == administratie.id,
+                    PlanningToewijzing.gebruiker_id == zzper_id,
+                    PlanningToewijzing.datum >= van,
+                    PlanningToewijzing.datum <= tot,
+                )
+            ).all()
+            for project_id, datum in planning:
+                item(session, administratie, _week_sleutel(datum), project_id).geplande_dagen += 1
+
+            staten = list(
+                session.scalars(
+                    select(Weekstaat).where(
+                        Weekstaat.administratie_id == administratie.id, Weekstaat.gebruiker_id == zzper_id
+                    )
+                )
+            )
+            sommen = _dag_sommen(session, [s.id for s in staten])
+            namen = service._namen(session, {s.goedgekeurd_door for s in staten} | {s.afgekeurd_door for s in staten})
+            for staat in staten:
+                it = item(session, administratie, (staat.jaar, staat.weeknummer), staat.project_id)
+                aantal, uren, m2, laatste = sommen.get(staat.id, (0, Decimal("0"), Decimal("0"), None))
+                it.status = staat.status
+                it.weekstaat_id = staat.id
+                it.dagen_ingevuld = aantal
+                it.totaal_uren = uren
+                it.totaal_m2 = m2
+                it.laatste_dag = laatste
+                it.ingediend_op = staat.ingediend_op
+                it.goedgekeurd_door_naam = namen.get(staat.goedgekeurd_door) if staat.goedgekeurd_door else None
+                it.afgekeurd_door_naam = namen.get(staat.afgekeurd_door) if staat.afgekeurd_door else None
+                it.afkeur_reden = staat.afkeur_reden if staat.status == WeekstaatStatus.CORRIGEREN.value else None
+    return stand
+
+
+def _zichtbare_weken(
+    stand: dict[tuple[int, int], dict[tuple[uuid.UUID, uuid.UUID], _WeekItem]], vandaag: date
+) -> list[tuple[int, int]]:
+    """A2: huidige week + weken mét planning in het venster + weken mét een staat in concept/corrigeren
+    (hoe oud ook); ingediende/goedgekeurde weken buiten de planning staan op het Ingediend-tabblad."""
+    venster = set(_weken_terug(vandaag, OPEN_WEKEN_VENSTER))
+    huidige = _week_sleutel(vandaag)
+    weken = {huidige}
+    for week, items in stand.items():
+        if week in venster and any(it.gepland for it in items.values()):
+            weken.add(week)
+        if any(it.status in TE_DOEN_STATUSSEN for it in items.values()):
+            weken.add(week)
+    return sorted(weken, reverse=True)
+
+
+def _week_kaart(week: tuple[int, int], items: list[_WeekItem], vandaag: date) -> WeekOverzichtKaart:
+    maandag, zondag = service.week_grenzen(*week)
+    te_doen = sum(1 for it in items if it.te_doen)
+    if te_doen > 0:
+        status = "open"
+    elif items and all(it.status == WeekstaatStatus.GOEDGEKEURD.value for it in items):
+        status = "goedgekeurd"
+    elif any(it.status == WeekstaatStatus.INGEDIEND.value for it in items):
+        status = "ingediend"
+    elif any(it.status == WeekstaatStatus.GOEDGEKEURD.value for it in items):
+        status = "goedgekeurd"
+    else:
+        status = "nieuw"
+    return WeekOverzichtKaart(
+        jaar=week[0],
+        weeknummer=week[1],
+        maandag=maandag,
+        zondag=zondag,
+        is_huidige=week == _week_sleutel(vandaag),
+        geplande_projecten=sum(1 for it in items if it.gepland),
+        te_doen=te_doen,
+        status=status,
+        totaal_uren=sum((it.totaal_uren for it in items), Decimal("0")),
+        totaal_m2=sum((it.totaal_m2 for it in items), Decimal("0")),
+    )
+
+
+def _weken_kaarten(zzper_id: uuid.UUID, administraties: list[Administratie], vandaag: date) -> list[WeekOverzichtKaart]:
+    venster = _weken_terug(vandaag, OPEN_WEKEN_VENSTER)
+    van = service.week_grenzen(*venster[-1])[0]
+    tot = service.week_grenzen(*venster[0])[1]
+    stand = _planning_stand(zzper_id, administraties, van=van, tot=tot)
+    return [_week_kaart(week, list(stand.get(week, {}).values()), vandaag) for week in _zichtbare_weken(stand, vandaag)]
+
+
+def weken_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID, vandaag: date | None = None) -> list[WeekOverzichtKaart]:
+    """Beginscherm ZZP'er / detacheerder-namens: de weken die er toe doen (A2), nieuwste eerst."""
+    vandaag = vandaag or date.today()
+    rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
+    return _weken_kaarten(zzper_id, _administraties_met_opt_in(scope_actor, rol), vandaag)
+
+
+def week_projecten_zzp(
+    *, zzper_id: uuid.UUID, actor_id: uuid.UUID, jaar: int, weeknummer: int
+) -> list[WeekProjectKaart]:
+    """Eén week: de projecten waar de ZZP'er die week is ingepland (A1) plus de projecten waarop die
+    week al een staat bestaat; te doen bovenaan, dan op naam."""
+    rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
+    maandag, zondag = service.week_grenzen(jaar, weeknummer)
+    stand = _planning_stand(zzper_id, _administraties_met_opt_in(scope_actor, rol), van=maandag, tot=zondag)
+    items = list(stand.get((jaar, weeknummer), {}).values())
+    kaarten = [
+        WeekProjectKaart(
+            administratie_id=it.administratie_id,
+            administratie_naam=it.administratie_naam,
+            project_id=it.project_id,
+            project_naam=it.project_naam,
+            soort_werk=it.soort_werk,
+            gepland=it.gepland,
+            geplande_dagen=it.geplande_dagen,
+            status=it.status,
+            te_doen=it.te_doen,
+            weekstaat_id=it.weekstaat_id,
+            dagen_ingevuld=it.dagen_ingevuld,
+            totaal_uren=it.totaal_uren,
+            totaal_m2=it.totaal_m2,
+            ingediend_op=it.ingediend_op,
+            goedgekeurd_door_naam=it.goedgekeurd_door_naam,
+            afgekeurd_door_naam=it.afgekeurd_door_naam,
+            afkeur_reden=it.afkeur_reden,
+        )
+        for it in items
+    ]
+    kaarten.sort(key=lambda k: (not k.te_doen, not k.gepland, k.project_naam or ""))
+    return kaarten
+
+
+def projecten_keuze_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID) -> list[ProjectKeuze]:
+    """Uitwijk "+ ander project" (A1): álle actieve projecten van de administraties mét opt-in in de
+    scope — doorzoekbaar in de app. De koppeling ontstaat pas bij de eerste dagregel (C1)."""
+    rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
+    keuzes: list[ProjectKeuze] = []
+    for administratie in _administraties_met_opt_in(scope_actor, rol):
+        with scoped_session(administratie.id) as session:
+            projecten = session.scalars(
+                select(ProjectCache).where(
+                    ProjectCache.administratie_id == administratie.id,
+                    ProjectCache.is_actief.is_(True),
+                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                )
+            ).all()
+            for project in projecten:
+                spec = session.get(ProjectSpecificatie, (project.id, administratie.id))
+                keuzes.append(
+                    ProjectKeuze(
+                        administratie_id=administratie.id,
+                        administratie_naam=administratie.naam,
+                        project_id=project.id,
+                        project_naam=project.naam,
+                        soort_werk=spec.soort_werk if spec else None,
+                    )
+                )
+    keuzes.sort(key=lambda k: (k.project_naam or "", k.administratie_naam or ""))
+    return keuzes
+
+
+def weekstaat_zoeken(
+    *,
+    administratie_id: uuid.UUID,
+    zzper_id: uuid.UUID,
+    project_id: uuid.UUID,
+    jaar: int,
+    weeknummer: int,
+    actor_id: uuid.UUID,
+) -> WeekstaatData | None:
+    """De weekstaat van (ZZP'er, project, week) of None als die nog niet bestaat — géén koppeling
+    vereist (die ontstaat pas bij de eerste dagregel, C1); wél opt-in + invuller-guard."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        service._administratie_met_opt_in(session, administratie_id)
+        zzper = _gebruiker(session, zzper_id)
+        _vereis_invuller(session, zzper=zzper, actor_id=actor_id)
+        service._project(session, administratie_id, project_id)
+        staat = session.scalars(
+            select(Weekstaat).where(
+                Weekstaat.administratie_id == administratie_id,
+                Weekstaat.gebruiker_id == zzper_id,
+                Weekstaat.project_id == project_id,
+                Weekstaat.jaar == jaar,
+                Weekstaat.weeknummer == weeknummer,
+            )
+        ).one_or_none()
+        return _weekstaat_data(session, staat) if staat is not None else None
+
+
 # --- detacheerder ------------------------------------------------------------------------------
 
 
 def mijn_zzpers(*, detacheerder_id: uuid.UUID, vandaag: date | None = None) -> list[ZzperKaart]:
-    """Mijn-ZZP'ers-lijst (mockup detaZzpers): gekoppelde ZZP'ers met project-/open-tellers,
-    berekend binnen de administratie-scope van de detacheerder."""
+    """Werklijst detacheerder (mockup detaZzpers; A3 04-09 = alleen handelingen): gekoppelde ZZP'ers
+    mét de planning-gestuurde tellers — te_doen (project-weken die om een handeling vragen),
+    open_weken (weken mét ≥ 1 handeling), aantal_projecten (projecten in de zichtbare weken) —
+    binnen de administratie-scope van de detacheerder. De app filtert op te_doen > 0; wie niets te
+    doen heeft blijft bereikbaar via "Ook zonder werk" (uren buiten planning blijven invoerbaar)."""
     vandaag = vandaag or date.today()
     with scoped_session(None, actor_id=detacheerder_id) as session:
         actor = _gebruiker(session, detacheerder_id)
@@ -485,46 +791,36 @@ def mijn_zzpers(*, detacheerder_id: uuid.UUID, vandaag: date | None = None) -> l
 
     kaarten: list[ZzperKaart] = []
     administraties = _administraties_met_opt_in(detacheerder_id, GebruikerRol.DETACHEERDER)
+    venster = _weken_terug(vandaag, OPEN_WEKEN_VENSTER)
+    van = service.week_grenzen(*venster[-1])[0]
+    tot = service.week_grenzen(*venster[0])[1]
     for zzper_id in zzper_ids:
-        aantal_projecten = 0
+        stand = _planning_stand(zzper_id, administraties, van=van, tot=tot)
+        weken = _zichtbare_weken(stand, vandaag)
+        te_doen = 0
         open_weken = 0
-        laatste: date | None = None
-        for administratie in administraties:
-            with scoped_session(administratie.id) as session:
-                toewijzingen = list(
-                    session.scalars(
-                        select(UrenProjectToewijzing).where(
-                            UrenProjectToewijzing.administratie_id == administratie.id,
-                            UrenProjectToewijzing.gebruiker_id == zzper_id,
-                        )
-                    )
-                )
-                aantal_projecten += len(toewijzingen)
-                for toewijzing in toewijzingen:
-                    staten = list(
-                        session.scalars(
-                            select(Weekstaat).where(
-                                Weekstaat.administratie_id == administratie.id,
-                                Weekstaat.gebruiker_id == zzper_id,
-                                Weekstaat.project_id == toewijzing.project_id,
-                            )
-                        )
-                    )
-                    open_weken += _open_weken_voor(staten, toewijzing.aangemaakt_op.date(), vandaag)
-                    sommen = _dag_sommen(session, [s.id for s in staten])
-                    week_laatste = max((v[3] for v in sommen.values() if v[3] is not None), default=None)
-                    if week_laatste is not None and (laatste is None or week_laatste > laatste):
-                        laatste = week_laatste
+        projecten: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for week in weken:
+            items = list(stand.get(week, {}).values())
+            aantal = sum(1 for it in items if it.te_doen)
+            te_doen += aantal
+            open_weken += 1 if aantal > 0 else 0
+            projecten |= {(it.administratie_id, it.project_id) for it in items}
+        laatste = max(
+            (it.laatste_dag for items in stand.values() for it in items.values() if it.laatste_dag is not None),
+            default=None,
+        )
         kaarten.append(
             ZzperKaart(
                 gebruiker_id=zzper_id,
                 naam=namen.get(zzper_id, "?"),
-                aantal_projecten=aantal_projecten,
+                aantal_projecten=len(projecten),
                 open_weken=open_weken,
                 laatste_invoer=laatste,
+                te_doen=te_doen,
             )
         )
-    kaarten.sort(key=lambda k: (-(k.open_weken), k.naam))
+    kaarten.sort(key=lambda k: (-(k.te_doen), k.naam))
     return kaarten
 
 
@@ -710,6 +1006,8 @@ class ToewijzingKaart:
     administratie_naam: str | None
     project_id: uuid.UUID
     project_naam: str | None
+    # C2 (04-09): afgeleide herkomst — planning > weekstaat > handmatig (historisch).
+    bron: str = "handmatig"
 
 
 @dataclass(frozen=True)
@@ -798,14 +1096,32 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                     select(UrenProjectToewijzing).where(UrenProjectToewijzing.administratie_id == administratie.id)
                 )
             )
+            # C2 (04-09): herkomst afleiden — planning ís de koppeling; anders uren; anders historisch.
+            gepland = set(
+                session.execute(
+                    select(PlanningToewijzing.gebruiker_id, PlanningToewijzing.project_id)
+                    .where(PlanningToewijzing.administratie_id == administratie.id)
+                    .distinct()
+                ).all()
+            )
+            met_uren = set(
+                session.execute(
+                    select(Weekstaat.gebruiker_id, Weekstaat.project_id)
+                    .where(Weekstaat.administratie_id == administratie.id)
+                    .distinct()
+                ).all()
+            )
             for rij in rijen:
                 project = session.get(ProjectCache, (rij.project_id, administratie.id))
+                sleutel = (rij.gebruiker_id, rij.project_id)
+                bron = "planning" if sleutel in gepland else "weekstaat" if sleutel in met_uren else "handmatig"
                 toewijzingen_per_gebruiker.setdefault(rij.gebruiker_id, []).append(
                     ToewijzingKaart(
                         administratie_id=administratie.id,
                         administratie_naam=administratie.naam,
                         project_id=rij.project_id,
                         project_naam=project.naam if project else None,
+                        bron=bron,
                     )
                 )
             # Delta per registratie: ingediend − goedgekeurd zodra de week definitief is

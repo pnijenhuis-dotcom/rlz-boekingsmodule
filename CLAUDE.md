@@ -1223,6 +1223,20 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   de planning-GET levert alles (incl. specs-metadata, gebatcht) in één request — vlot bij 68
   actieve projecten (Universal). Veld-app-planningtab ongewijzigd. BESLISSINGEN
   "PLANNING-AGENDA" (rij GRID V3) is canoniek.
+  **Detacheerder-filters veld-app — planning stuurt wat je ziet (opdracht Peter 04-09 blok A +
+  addendum C, GEBOUWD + GETEST 04-09, geen migratie — BESLISSINGEN "DETACHEERDER-FILTERS VELD-APP"
+  is canoniek):** de ZZP-/namens-flow is WEEK-EERST: mijn weken (huidige week + weken mét planning in
+  het 6-weken-venster + élke week met een staat in concept/corrigeren) → projecten in die week (alleen
+  waar ingepland, plus projecten met een bestaande staat) → weekstaat; uitwijk "+ ander project" =
+  volledige doorzoekbare lijst actieve projecten, de `buiten_planning`-vlag vangt die uren bij de
+  keuring. Werklijst detacheerder = alleen ZZP'ers mét een handeling (`te_doen`), niets = "✓ Alles is
+  bij" + ↻, wie bij is onder "Ook zonder werk". **Projecttoegang is volledig planning-gestuurd:** de
+  koppeling `uren_project_toewijzing` ontstaat uitsluitend automatisch via één helper
+  `service.zorg_voor_projectkoppeling(bron=)` — bij plannen ('planning') én bij de eerste dagregel op
+  een ongekoppeld actief project ('weekstaat'); de handmatige koppelroute/-UI is vervallen, bestaande
+  koppelingen blijven staan, het veldwerkers-paneel toont "actief op N projecten (via planning)"
+  alleen-lezen mét herkomst. Filtergedrag, geen rechtenwijziging: scope + koppeltabel + RLS ongewijzigd.
+  Mockup `uren-uitvoerder.html` 1-op-1 mee bijgewerkt.
   Meerwerk-kantoorkant: gemeld → goedgekeurd-nog-doorbelasten → doorbelast/afgewezen(eigen
   rekening, verplichte reden); contract-toets stelt prijs voor uit de offerte-staffel, mens
   bevestigt (nooit auto-boeken); goedgekeurd + 2 weken niet op een verkoopfactuur =

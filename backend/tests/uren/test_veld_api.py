@@ -188,6 +188,16 @@ class TestDetacheerder:
         uren_service.koppel_detacheerder(
             detacheerder_id=detacheerder, zzper_id=zzper_met_scope, actor_id=beheerder_id
         )
+        # Sinds 04-09 (blok A) zijn de tellers planning-gestuurd: de ZZP'er staat deze week ingepland.
+        from app.uren import planning
+
+        planning.plan_toewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=zzper_met_scope,
+            project_id=project_id,
+            datum=MAANDAG,
+            actor_id=beheerder_id,
+        )
         headers = _bearer(detacheerder, rol="detacheerder")
 
         resp = client.get("/uren/detacheerder/zzpers", headers=headers)
@@ -195,6 +205,7 @@ class TestDetacheerder:
         (kaart,) = resp.json()
         assert kaart["naam"] == "Milan K."
         assert kaart["aantal_projecten"] == 1
+        assert kaart["te_doen"] == 1
 
         # namens: projecten van de ZZP'er + dag zetten + indienen
         resp = client.get("/uren/zzp/projecten", params={"namens": str(zzper_met_scope)}, headers=headers)

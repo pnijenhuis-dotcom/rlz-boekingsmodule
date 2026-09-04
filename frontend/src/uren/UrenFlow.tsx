@@ -1,12 +1,15 @@
 // Uren & meerwerk — veldkant in de bestaande app (fase 4, mockup/uren-uitvoerder.html 1-op-1,
 // BOUW GO Peter 2026-08-21). Drie rollen, rolafhankelijke functietabs:
-//  - ZZP'er: mijn projecten → open weken → weekstaat (dagen: uren + optionele m²) → indienen
-//    per week; "Ingediend" toont de statussen over alle projecten heen.
+//  - ZZP'er (sinds 04-09 planning-gestuurd, opdracht Peter blok A): mijn weken (alleen weken mét
+//    planning + deze week) → projecten in die week (alleen waar ingepland; uitwijk "+ ander project")
+//    → weekstaat (dagen: uren + optionele m²) → indienen per week; "Ingediend" toont de statussen
+//    over alle projecten heen.
 //  - Uitvoerder: projecten (specs, contract/offerte alleen-lezen, meerwerk melden zonder
 //    prijzen) én "Te keuren" — keuring op WEEKNIVEAU: week akkoord óf week afkeuren met
 //    verplichte reden (hele week terug naar de ZZP'er als "corrigeren").
-//  - Detacheerder: mijn ZZP'ers → daarna exact dezelfde schermen als de ZZP'er zelf, mét
-//    "· namens <ZZP'er>" in de kopregel; geen projectinhoud.
+//  - Detacheerder: mijn ZZP'ers (werklijst = alleen wie nog iets te doen heeft; niets = "✓ Alles is
+//    bij") → daarna exact dezelfde schermen als de ZZP'er zelf, mét "· namens <ZZP'er>" in de
+//    kopregel; geen projectinhoud.
 // Dit bestand hoort bij de accordeur-chunk: geen kantoor-imports (performance-budget).
 
 import { useCallback, useEffect, useState } from 'react'
@@ -28,11 +31,12 @@ import {
   haalMijnZzpers,
   haalProjectDetail,
   haalProjectDocumentBlob,
+  haalProjectenKeuze,
   haalTeKeuren,
   haalUitvoerderProjecten,
+  haalWeekProjecten,
   haalWeekstaat,
-  haalZzpProjecten,
-  haalZzpWeken,
+  haalZzpWekenOverzicht,
   heeftVoorstel,
   isoWeekVan,
   keurWeekAf,
@@ -50,12 +54,15 @@ import {
   type MijnPlanningDagDto,
   type ProjectDetailDto,
   type ProjectDocumentKaartDto,
-  type ProjectKaartDto,
+  type ProjectKeuzeDto,
   type TeKeurenItemDto,
   type UitvoerderProjectKaartDto,
   type WeekKaartDto,
+  type WeekOverzichtKaartDto,
+  type WeekProjectKaartDto,
   type WeekstaatDto,
   type ZzperKaartDto,
+  zoekWeekstaat,
   dossierStatusLabel,
   haalMijnDossier,
   isDossierGeblokkeerd,
@@ -77,11 +84,14 @@ interface WeekContext {
   projectNaam: string | null
   jaar: number
   weeknummer: number
+  /** Label van de terugknop boven de weekstaat (week N / Ingediend). */
+  terugLabel: string
 }
 
 type Scherm =
-  | { s: 'zzpProjecten' }
-  | { s: 'zzpWeken'; project: ProjectKaartDto }
+  | { s: 'zzpWeken' }
+  | { s: 'weekProjecten'; week: WeekOverzichtKaartDto }
+  | { s: 'anderProject'; week: WeekOverzichtKaartDto }
   | { s: 'weekstaat'; ctx: WeekContext; terug: Scherm }
   | { s: 'daginvoer'; ctx: WeekContext; datum: string; dagNaam: string; bestaand: WeekstaatDto['dagen'][number] | null; terug: Scherm }
   | { s: 'ingediend' }
@@ -137,7 +147,7 @@ export function UrenFlow({
   const { rol } = useAuth()
   const veldrol = rol as Veldrol
   const [scherm, setScherm] = useState<Scherm>(() =>
-    veldrol === 'uitvoerder' ? { s: 'uitvProjecten' } : veldrol === 'detacheerder' ? { s: 'detaZzpers' } : { s: 'zzpProjecten' },
+    veldrol === 'uitvoerder' ? { s: 'uitvProjecten' } : veldrol === 'detacheerder' ? { s: 'detaZzpers' } : { s: 'zzpWeken' },
   )
   // Detacheerder-namens-context (besluit 21-08): ná de ZZP'er-keuze exact de ZZP-schermen,
   // elk scherm draagt "· namens <ZZP'er>" en elke invoer wordt als "X namens Y" vastgelegd.
@@ -222,9 +232,9 @@ export function UrenFlow({
     <div className="acc-functabs">
       <button
         className={`acc-functab${scherm.s !== 'ingediend' && scherm.s !== 'planning' ? ' actief' : ''}`}
-        onClick={() => setScherm({ s: 'zzpProjecten' })}
+        onClick={() => setScherm({ s: 'zzpWeken' })}
       >
-        ⏱ Mijn projecten
+        ⏱ Mijn weken
       </button>
       <button
         className={`acc-functab${scherm.s === 'planning' ? ' actief' : ''}`}
@@ -299,12 +309,12 @@ export function UrenFlow({
       {veldrol === 'detacheerder' && detaTabs}
 
       <div className="acc-content">
-        {scherm.s === 'zzpProjecten' && (
-          <ZzpProjectenView
+        {scherm.s === 'zzpWeken' && (
+          <WekenOverzichtView
             namens={namens}
             vangFout={vangFout}
             terugNaarZzpers={veldrol === 'detacheerder' ? () => { setNamens(null); setScherm({ s: 'detaZzpers' }) } : null}
-            openProject={(project) => setScherm({ s: 'zzpWeken', project })}
+            openWeek={(week) => setScherm({ s: 'weekProjecten', week })}
             openPlanning={veldrol === 'detacheerder' ? () => setScherm({ s: 'planning' }) : null}
             dossierKaart={
               <DossierKaart
@@ -313,6 +323,53 @@ export function UrenFlow({
                 vangFout={vangFout}
                 open={() => setScherm({ s: 'dossier', terug: scherm })}
               />
+            }
+          />
+        )}
+        {scherm.s === 'weekProjecten' && (
+          <WeekProjectenView
+            week={scherm.week}
+            namens={namens}
+            namensSuffix={namensSuffix}
+            vangFout={vangFout}
+            terug={() => setScherm({ s: 'zzpWeken' })}
+            anderProject={() => setScherm({ s: 'anderProject', week: scherm.week })}
+            openWeekstaat={(project) =>
+              setScherm({
+                s: 'weekstaat',
+                ctx: {
+                  administratieId: project.administratie_id,
+                  projectId: project.project_id,
+                  projectNaam: project.project_naam,
+                  jaar: scherm.week.jaar,
+                  weeknummer: scherm.week.weeknummer,
+                  terugLabel: `Week ${scherm.week.weeknummer}`,
+                },
+                terug: scherm,
+              })
+            }
+          />
+        )}
+        {scherm.s === 'anderProject' && (
+          <AnderProjectView
+            week={scherm.week}
+            namens={namens}
+            namensSuffix={namensSuffix}
+            vangFout={vangFout}
+            terug={() => setScherm({ s: 'weekProjecten', week: scherm.week })}
+            kies={(project) =>
+              setScherm({
+                s: 'weekstaat',
+                ctx: {
+                  administratieId: project.administratie_id,
+                  projectId: project.project_id,
+                  projectNaam: project.project_naam,
+                  jaar: scherm.week.jaar,
+                  weeknummer: scherm.week.weeknummer,
+                  terugLabel: `Week ${scherm.week.weeknummer}`,
+                },
+                terug: { s: 'weekProjecten', week: scherm.week },
+              })
             }
           />
         )}
@@ -331,29 +388,7 @@ export function UrenFlow({
             namens={namens}
             namensSuffix={namensSuffix}
             vangFout={vangFout}
-            terug={veldrol === 'detacheerder' ? () => setScherm({ s: 'zzpProjecten' }) : null}
-          />
-        )}
-        {scherm.s === 'zzpWeken' && (
-          <ZzpWekenView
-            project={scherm.project}
-            namens={namens}
-            namensSuffix={namensSuffix}
-            vangFout={vangFout}
-            terug={() => setScherm({ s: 'zzpProjecten' })}
-            openWeek={(week) =>
-              setScherm({
-                s: 'weekstaat',
-                ctx: {
-                  administratieId: scherm.project.administratie_id,
-                  projectId: scherm.project.project_id,
-                  projectNaam: scherm.project.project_naam,
-                  jaar: week.jaar,
-                  weeknummer: week.weeknummer,
-                },
-                terug: scherm,
-              })
-            }
+            terug={veldrol === 'detacheerder' ? () => setScherm({ s: 'zzpWeken' }) : null}
           />
         )}
         {scherm.s === 'weekstaat' && (
@@ -399,6 +434,7 @@ export function UrenFlow({
                   projectNaam: item.project_naam,
                   jaar: item.jaar,
                   weeknummer: item.weeknummer,
+                  terugLabel: 'Ingediend',
                 },
                 terug: { s: 'ingediend' },
               })
@@ -410,7 +446,7 @@ export function UrenFlow({
             vangFout={vangFout}
             kies={(zzper) => {
               setNamens({ id: zzper.gebruiker_id, naam: zzper.naam })
-              setScherm({ s: 'zzpProjecten' })
+              setScherm({ s: 'zzpWeken' })
             }}
           />
         )}
@@ -769,29 +805,54 @@ function FoutRegel({ tekst, onOpnieuw }: { tekst: string; onOpnieuw?: () => void
 
 /* ============ ZZP (en detacheerder-namens) ============ */
 
-function ZzpProjectenView({
+function weekOverzichtMeta(week: WeekOverzichtKaartDto): string {
+  const delen: string[] = []
+  if (week.geplande_projecten > 0) {
+    delen.push(`${week.geplande_projecten} ${week.geplande_projecten === 1 ? 'project' : 'projecten'} gepland`)
+  }
+  if (week.te_doen > 0) delen.push(`${week.te_doen} nog invullen`)
+  if (Number(week.totaal_uren) > 0) delen.push(weekTotaalLabel(week.totaal_uren, week.totaal_m2))
+  if (delen.length === 0) return 'geen planning deze week — uren via + ander project'
+  return delen.join(' · ')
+}
+
+function weekOverzichtChip(week: WeekOverzichtKaartDto): { klasse: string; label: string } {
+  if (week.te_doen > 0) return { klasse: 'open', label: week.te_doen === 1 ? 'nog invullen' : `${week.te_doen} nog invullen` }
+  switch (week.status) {
+    case 'ingediend':
+      return { klasse: 'ingediend', label: 'ingediend' }
+    case 'goedgekeurd':
+      return { klasse: 'akkoord', label: 'goedgekeurd' }
+    default:
+      return { klasse: 'wacht', label: 'geen planning' }
+  }
+}
+
+/** Beginscherm ZZP'er / detacheerder-namens (planning-gestuurd, 04-09 A2): alleen weken mét planning
+ * plus deze week; een oudere week mét een staat in concept/corrigeren blijft staan tot hij is afgehandeld. */
+function WekenOverzichtView({
   namens,
   vangFout,
   terugNaarZzpers,
-  openProject,
+  openWeek,
   openPlanning,
   dossierKaart,
 }: {
   namens: { id: string; naam: string } | null
   vangFout: (err: unknown) => string
   terugNaarZzpers: (() => void) | null
-  openProject: (project: ProjectKaartDto) => void
+  openWeek: (week: WeekOverzichtKaartDto) => void
   /** Detacheerder-namens-flow: de planning van de gekozen ZZP'er (alleen-lezen, besluit B). */
   openPlanning: (() => void) | null
   /** ZZP-dossier (A1): statuskaart + ingang naar upload (ook namens door de detacheerder). */
   dossierKaart?: React.ReactNode
 }) {
-  const [projecten, setProjecten] = useState<ProjectKaartDto[] | null>(null)
+  const [weken, setWeken] = useState<WeekOverzichtKaartDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const laad = useCallback(() => {
     setFout(null)
-    haalZzpProjecten(namens?.id ?? null)
-      .then(setProjecten)
+    haalZzpWekenOverzicht(namens?.id ?? null)
+      .then(setWeken)
       .catch((err) => setFout(vangFout(err) || null))
   }, [namens, vangFout])
   useEffect(() => {
@@ -821,85 +882,11 @@ function ZzpProjectenView({
         </button>
       )}
       {dossierKaart}
-      <div className="acc-seclabel">
-        {namens ? `${namens.naam} · projecten` : `Mijn projecten${projecten ? ` (${projecten.length})` : ''}`}
-      </div>
-      {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
-      {projecten === null && !fout && <Leeg tekst="Laden…" />}
-      {projecten !== null && projecten.length === 0 && (
-        <Leeg tekst="Nog geen projecten gekoppeld — het kantoor koppelt je aan een project." />
-      )}
-      {(projecten ?? []).map((p) => (
-        <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => openProject(p)}>
-          <span>
-            <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
-            <span className="acc-meta" style={{ display: 'block' }}>
-              {p.soort_werk ?? 'steigerbouw'} · laatste invoer: {datumMetWeek(p.laatste_invoer)}
-            </span>
-          </span>
-          {p.open_weken > 0 ? (
-            <span className="acc-chip open">{p.open_weken === 1 ? '1 week open' : `${p.open_weken} weken open`}</span>
-          ) : (
-            <span className="acc-chip akkoord">bij</span>
-          )}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function ZzpWekenView({
-  project,
-  namens,
-  namensSuffix,
-  vangFout,
-  terug,
-  openWeek,
-}: {
-  project: ProjectKaartDto
-  namens: { id: string; naam: string } | null
-  namensSuffix: React.ReactNode
-  vangFout: (err: unknown) => string
-  terug: () => void
-  openWeek: (week: WeekKaartDto) => void
-}) {
-  const [weken, setWeken] = useState<WeekKaartDto[] | null>(null)
-  const [fout, setFout] = useState<string | null>(null)
-  const laad = useCallback(() => {
-    setFout(null)
-    haalZzpWeken(project.administratie_id, project.project_id, namens?.id ?? null)
-      .then(setWeken)
-      .catch((err) => setFout(vangFout(err) || null))
-  }, [project, namens, vangFout])
-  useEffect(() => {
-    laad()
-  }, [laad])
-
-  function meta(week: WeekKaartDto): string {
-    switch (week.status) {
-      case 'nieuw':
-        return '0 dagen ingevuld (vakantie? meld 0-uren)'
-      case 'concept':
-        return `${week.dagen_ingevuld} ${week.dagen_ingevuld === 1 ? 'dag' : 'dagen'} ingevuld · ${weekTotaalLabel(week.totaal_uren, week.totaal_m2)}`
-      case 'ingediend':
-        return `ingediend ${datumMetTijd(week.ingediend_op)} · wacht op de uitvoerder`
-      case 'goedgekeurd':
-        return `goedgekeurd${week.goedgekeurd_door_naam ? ` door ${week.goedgekeurd_door_naam}` : ''} · ${weekTotaalLabel(week.totaal_uren, week.totaal_m2)}`
-      case 'corrigeren':
-        return `week afgekeurd${week.afgekeurd_door_naam ? ` door ${week.afgekeurd_door_naam}` : ''} — tik voor toelichting`
-    }
-  }
-
-  return (
-    <div>
-      <Terug label={namens ? `${namens.naam} · projecten` : 'Mijn projecten'} onClick={terug} />
-      <div className="acc-seclabel">
-        {project.project_naam ?? 'Project'} · weken{namensSuffix}
-      </div>
+      <div className="acc-seclabel">{namens ? `${namens.naam} · weken` : 'Mijn weken'}</div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {weken === null && !fout && <Leeg tekst="Laden…" />}
       {(weken ?? []).map((week) => {
-        const chip = chipVoorWeekStatus(week.status)
+        const chip = weekOverzichtChip(week)
         return (
           <button key={`${week.jaar}-${week.weeknummer}`} className="acc-card klik" onClick={() => openWeek(week)}>
             <span>
@@ -907,16 +894,202 @@ function ZzpWekenView({
                 Week {week.weeknummer}{' '}
                 <small style={{ color: 'var(--acc-muted)', fontWeight: 500 }}>
                   {datumKort(week.maandag)} – {datumKort(week.zondag)}
+                  {week.is_huidige ? ' · deze week' : ''}
                 </small>
               </span>
               <span className="acc-meta" style={{ display: 'block' }}>
-                {meta(week)}
+                {weekOverzichtMeta(week)}
               </span>
             </span>
             <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>
           </button>
         )
       })}
+      {weken !== null && (
+        <div className="acc-notitie">
+          <span>📅</span>
+          <span>
+            Je ziet de weken waarin {namens ? namens.naam.split(' ')[0] : 'je'} <b>ingepland</b> {namens ? 'is' : 'bent'} (plus deze
+            week). Uren op een ander project? Open de week en kies <b>+ ander project</b>.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function weekProjectMeta(p: WeekProjectKaartDto): string {
+  const planning = p.gepland ? `gepland ${p.geplande_dagen} ${p.geplande_dagen === 1 ? 'dag' : 'dagen'}` : 'buiten planning'
+  switch (p.status) {
+    case 'nieuw':
+      return `${planning} · nog niets ingevuld`
+    case 'concept':
+      return `${planning} · ${p.dagen_ingevuld} ${p.dagen_ingevuld === 1 ? 'dag' : 'dagen'} ingevuld · ${weekTotaalLabel(p.totaal_uren, p.totaal_m2)}`
+    case 'ingediend':
+      return `${planning} · ingediend ${datumMetTijd(p.ingediend_op)} · wacht op de uitvoerder`
+    case 'goedgekeurd':
+      return `${planning} · goedgekeurd${p.goedgekeurd_door_naam ? ` door ${p.goedgekeurd_door_naam}` : ''} · ${weekTotaalLabel(p.totaal_uren, p.totaal_m2)}`
+    case 'corrigeren':
+      return `${planning} · week afgekeurd${p.afgekeurd_door_naam ? ` door ${p.afgekeurd_door_naam}` : ''} — tik voor toelichting`
+  }
+}
+
+/** Projecten in één week (04-09 A1): alleen waar de ZZP'er die week is ingepland, plus projecten met een
+ * bestaande staat; "+ ander project" is de verplichte uitwijk (uren buiten planning blijven invoerbaar). */
+function WeekProjectenView({
+  week,
+  namens,
+  namensSuffix,
+  vangFout,
+  terug,
+  openWeekstaat,
+  anderProject,
+}: {
+  week: WeekOverzichtKaartDto
+  namens: { id: string; naam: string } | null
+  namensSuffix: React.ReactNode
+  vangFout: (err: unknown) => string
+  terug: () => void
+  openWeekstaat: (project: WeekProjectKaartDto) => void
+  anderProject: () => void
+}) {
+  const [projecten, setProjecten] = useState<WeekProjectKaartDto[] | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  const laad = useCallback(() => {
+    setFout(null)
+    haalWeekProjecten(week.jaar, week.weeknummer, namens?.id ?? null)
+      .then(setProjecten)
+      .catch((err) => setFout(vangFout(err) || null))
+  }, [week, namens, vangFout])
+  useEffect(() => {
+    laad()
+  }, [laad])
+
+  return (
+    <div>
+      <Terug label={namens ? `${namens.naam} · weken` : 'Mijn weken'} onClick={terug} />
+      <div className="acc-seclabel">
+        Week {week.weeknummer} · {datumKort(week.maandag)} – {datumKort(week.zondag)}
+        {namensSuffix}
+      </div>
+      {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
+      {projecten === null && !fout && <Leeg tekst="Laden…" />}
+      {projecten !== null && projecten.length === 0 && (
+        <Leeg tekst="Geen planning voor deze week — kies hieronder een project om toch uren in te vullen." />
+      )}
+      {(projecten ?? []).map((p) => {
+        const chip = chipVoorWeekStatus(p.status)
+        return (
+          <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => openWeekstaat(p)}>
+            <span>
+              <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
+              <span className="acc-meta" style={{ display: 'block' }}>
+                {weekProjectMeta(p)}
+              </span>
+            </span>
+            <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>
+          </button>
+        )
+      })}
+      {projecten !== null && (
+        <div className="acc-actionbar" style={{ position: 'static', marginTop: 12 }}>
+          <button className="acc-btn secundair" onClick={anderProject} data-testid="ander-project">
+            + ander project
+          </button>
+        </div>
+      )}
+      <div className="acc-notitie">
+        <span>ℹ️</span>
+        <span>
+          Uren buiten de planning blijven invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b> (oranje,
+          geen blokkade).
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** Uitwijk "+ ander project" (04-09 A1): de volledige lijst actieve projecten, doorzoekbaar; de koppeling
+ * ontstaat pas bij de eerste dagregel (addendum C1, bron 'weekstaat'). */
+function AnderProjectView({
+  week,
+  namens,
+  namensSuffix,
+  vangFout,
+  terug,
+  kies,
+}: {
+  week: WeekOverzichtKaartDto
+  namens: { id: string; naam: string } | null
+  namensSuffix: React.ReactNode
+  vangFout: (err: unknown) => string
+  terug: () => void
+  kies: (project: ProjectKeuzeDto) => void
+}) {
+  const [projecten, setProjecten] = useState<ProjectKeuzeDto[] | null>(null)
+  const [fout, setFout] = useState<string | null>(null)
+  const [zoek, setZoek] = useState('')
+  const laad = useCallback(() => {
+    setFout(null)
+    haalProjectenKeuze(namens?.id ?? null)
+      .then(setProjecten)
+      .catch((err) => setFout(vangFout(err) || null))
+  }, [namens, vangFout])
+  useEffect(() => {
+    laad()
+  }, [laad])
+
+  const term = zoek.trim().toLowerCase()
+  const zichtbaar = (projecten ?? []).filter(
+    (p) =>
+      term === '' ||
+      (p.project_naam ?? '').toLowerCase().includes(term) ||
+      (p.administratie_naam ?? '').toLowerCase().includes(term) ||
+      (p.soort_werk ?? '').toLowerCase().includes(term),
+  )
+
+  return (
+    <div>
+      <Terug label={`Week ${week.weeknummer}`} onClick={terug} />
+      <div className="acc-seclabel">
+        Ander project · week {week.weeknummer}
+        {namensSuffix}
+      </div>
+      <div className="acc-card">
+        <label className="acc-form">
+          Zoek project
+          <input
+            type="search"
+            autoFocus
+            placeholder="nummer, plaats of opdrachtgever"
+            value={zoek}
+            onChange={(e) => setZoek(e.target.value)}
+            aria-label="Zoek project"
+          />
+        </label>
+      </div>
+      {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
+      {projecten === null && !fout && <Leeg tekst="Laden…" />}
+      {projecten !== null && zichtbaar.length === 0 && <Leeg tekst="Geen project gevonden." />}
+      {zichtbaar.map((p) => (
+        <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => kies(p)}>
+          <span>
+            <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
+            <span className="acc-meta" style={{ display: 'block' }}>
+              {p.soort_werk ?? 'steigerbouw'}
+              {p.administratie_naam ? ` · ${p.administratie_naam}` : ''}
+            </span>
+          </span>
+          <span className="acc-arrow">›</span>
+        </button>
+      ))}
+      <div className="acc-notitie">
+        <span>ℹ️</span>
+        <span>
+          Dit project staat niet in de planning voor week {week.weeknummer}. De uren blijven gewoon invoerbaar; bij de keuring
+          krijgen ze de markering <b>buiten planning</b>.
+        </span>
+      </div>
     </div>
   )
 }
@@ -948,16 +1121,16 @@ function WeekstaatView({
 
   const laad = useCallback(() => {
     setFout(null)
-    // De weekstaat bestaat pas ná de eerste daginvoer — zoek 'm via het wekenoverzicht.
-    haalZzpWeken(ctx.administratieId, ctx.projectId, namens?.id ?? null)
-      .then(async (weken) => {
-        const week = weken.find((w) => w.jaar === ctx.jaar && w.weeknummer === ctx.weeknummer)
-        if (!week || week.weekstaat_id === null) {
-          setStaat('nieuw')
-          return
-        }
-        setStaat(await haalWeekstaat(ctx.administratieId, week.weekstaat_id))
-      })
+    // De weekstaat bestaat pas ná de eerste daginvoer — de lookup vereist geen koppeling (die
+    // ontstaat bij "+ ander project" pas mét de eerste dagregel, addendum 04-09).
+    zoekWeekstaat({
+      administratieId: ctx.administratieId,
+      projectId: ctx.projectId,
+      jaar: ctx.jaar,
+      weeknummer: ctx.weeknummer,
+      namens: namens?.id ?? null,
+    })
+      .then((gevonden) => setStaat(gevonden ?? 'nieuw'))
       .catch((err) => setFout(vangFout(err) || null))
   }, [ctx, namens, vangFout])
   useEffect(() => {
@@ -995,7 +1168,7 @@ function WeekstaatView({
 
   return (
     <div>
-      <Terug label={ctx.projectNaam ?? 'Project'} onClick={terug} />
+      <Terug label={ctx.terugLabel} onClick={terug} />
       {geblokkeerd && (
         <div className="acc-afwijs">
           <b>🔒 Indienen geblokkeerd — dossier incompleet.</b> {geblokkeerd}
@@ -1008,7 +1181,7 @@ function WeekstaatView({
         </div>
       )}
       <div className="acc-seclabel">
-        Week {ctx.weeknummer} · {datumKort(dagen[0].datum)} – {datumKort(dagen[6].datum)}
+        {ctx.projectNaam ?? 'Project'} · week {ctx.weeknummer} · {datumKort(dagen[0].datum)} – {datumKort(dagen[6].datum)}
         {namensSuffix}
       </div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
@@ -1434,9 +1607,34 @@ function StempelsVandaag({ vangFout }: { vangFout: (err: unknown) => string }) {
 
 /* ============ detacheerder ============ */
 
+function zzperKaart(zzper: ZzperKaartDto, kies: (zzper: ZzperKaartDto) => void) {
+  return (
+    <button key={zzper.gebruiker_id} className="acc-card klik" onClick={() => kies(zzper)}>
+      <span>
+        <span className="acc-tt">{zzper.naam}</span>
+        <span className="acc-meta" style={{ display: 'block' }}>
+          {zzper.aantal_projecten} {zzper.aantal_projecten === 1 ? 'project' : 'projecten'} · laatste invoer{' '}
+          {datumKort(zzper.laatste_invoer)}
+        </span>
+      </span>
+      {zzper.te_doen > 0 ? (
+        <span className="acc-chip open">
+          {zzper.open_weken === 1 ? '1 week open' : `${zzper.open_weken} weken open`}
+        </span>
+      ) : (
+        <span className="acc-chip akkoord">bij</span>
+      )}
+    </button>
+  )
+}
+
+/** Werklijst detacheerder (04-09 A3): alleen ZZP'ers met een handeling (gepland zonder staat, of een staat
+ * die op correctie wacht); niets te doen voor niemand = "✓ Alles is bij" mét verversknop (accordeur-patroon).
+ * Wie niets te doen heeft blijft bereikbaar onder "Ook zonder werk" — uren buiten planning blijven invoerbaar. */
 function DetaZzpersView({ vangFout, kies }: { vangFout: (err: unknown) => string; kies: (zzper: ZzperKaartDto) => void }) {
   const [zzpers, setZzpers] = useState<ZzperKaartDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
+  const [toonZonderWerk, setToonZonderWerk] = useState(false)
   const laad = useCallback(() => {
     setFout(null)
     haalMijnZzpers()
@@ -1447,32 +1645,50 @@ function DetaZzpersView({ vangFout, kies }: { vangFout: (err: unknown) => string
     laad()
   }, [laad])
 
+  const metWerk = (zzpers ?? []).filter((z) => z.te_doen > 0)
+  const zonderWerk = (zzpers ?? []).filter((z) => z.te_doen === 0)
+
   return (
     <div>
-      <div className="acc-seclabel">Mijn ZZP'ers{zzpers ? ` (${zzpers.length})` : ''}</div>
+      <div className="acc-seclabel">Mijn ZZP'ers{zzpers ? ` · ${metWerk.length} met werk` : ''}</div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {zzpers === null && !fout && <Leeg tekst="Laden…" />}
       {zzpers !== null && zzpers.length === 0 && (
         <Leeg tekst="Nog geen ZZP'ers gekoppeld — het kantoor beheert de koppelingen." />
       )}
-      {(zzpers ?? []).map((zzper) => (
-        <button key={zzper.gebruiker_id} className="acc-card klik" onClick={() => kies(zzper)}>
-          <span>
-            <span className="acc-tt">{zzper.naam}</span>
-            <span className="acc-meta" style={{ display: 'block' }}>
-              {zzper.aantal_projecten} {zzper.aantal_projecten === 1 ? 'project' : 'projecten'} · laatste invoer{' '}
-              {datumKort(zzper.laatste_invoer)}
+      {metWerk.map((zzper) => zzperKaart(zzper, kies))}
+      {zzpers !== null && zzpers.length > 0 && metWerk.length === 0 && (
+        <div className="acc-leeg" data-testid="alles-bij">
+          <div className="acc-big">✓</div>
+          <b>Alles is bij</b>
+          Alle geplande weken zijn ingevuld of ingediend en er wacht geen afgekeurde staat — of ververs hier.
+          <div style={{ marginTop: 16 }}>
+            <button className="acc-btn klein secundair" onClick={laad}>
+              ↻ Verversen
+            </button>
+          </div>
+        </div>
+      )}
+      {zonderWerk.length > 0 && (
+        <>
+          <button
+            className="acc-card klik"
+            onClick={() => setToonZonderWerk((v) => !v)}
+            aria-expanded={toonZonderWerk}
+            data-testid="ook-zonder-werk"
+          >
+            <span>
+              <span className="acc-tt">Ook zonder werk</span>
+              <span className="acc-meta" style={{ display: 'block' }}>
+                {zonderWerk.length} {zonderWerk.length === 1 ? "ZZP'er" : "ZZP'ers"} · alles bij — uren buiten de planning invullen kan
+                hier
+              </span>
             </span>
-          </span>
-          {zzper.open_weken > 0 ? (
-            <span className="acc-chip open">
-              {zzper.open_weken === 1 ? '1 week open' : `${zzper.open_weken} weken open`}
-            </span>
-          ) : (
-            <span className="acc-chip akkoord">bij</span>
-          )}
-        </button>
-      ))}
+            <span className="acc-arrow">{toonZonderWerk ? '▾' : '›'}</span>
+          </button>
+          {toonZonderWerk && zonderWerk.map((zzper) => zzperKaart(zzper, kies))}
+        </>
+      )}
       <div className="acc-notitie">
         <span>🔒</span>
         <span>

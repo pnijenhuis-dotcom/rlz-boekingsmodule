@@ -192,16 +192,19 @@ class TestBeheerKoppelingen:
         self, admin_engine: Engine, administratie_id, project_id, zzper, detacheerder, beheerder_id
     ):
         headers = _bearer(beheerder_id, rol="beheerder")
-        resp = client.post(
-            "/uren/beheer/projectkoppelingen",
-            json={
-                "administratie_id": str(administratie_id),
-                "gebruiker_id": str(zzper),
-                "project_id": str(project_id),
-            },
-            headers=headers,
+        # C1 (04-09): de handmatige koppelroute is vervallen — de koppeling ontstaat via de planning
+        # (besluit A) en het overzicht toont de herkomst.
+        from datetime import date
+
+        from app.uren import planning
+
+        planning.plan_toewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=zzper,
+            project_id=project_id,
+            datum=date(2026, 8, 17),
+            actor_id=beheerder_id,
         )
-        assert resp.status_code == 204, resp.text
         resp = client.post(
             "/uren/beheer/detacheerderkoppelingen",
             json={"detacheerder_id": str(detacheerder), "zzper_id": str(zzper)},
@@ -213,6 +216,7 @@ class TestBeheerKoppelingen:
         assert resp.status_code == 200
         per_naam = {g["naam"]: g for g in resp.json()}
         assert per_naam["Milan K."]["projecten"][0]["project_naam"] == "26014 Eindhoven (BAM)"
+        assert per_naam["Milan K."]["projecten"][0]["bron"] == "planning"
         assert per_naam["Karin S."]["zzpers"][0]["naam"] == "Milan K."
 
         # ontkoppelen (Beheerder-only) — idempotent

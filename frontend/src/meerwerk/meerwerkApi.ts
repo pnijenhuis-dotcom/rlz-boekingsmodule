@@ -114,6 +114,9 @@ export interface ToewijzingDto {
   administratie_naam: string | null
   project_id: string
   project_naam: string | null
+  // Afgeleide herkomst (C2 04-09): 'planning' = ontstaan via de weekplanning, 'weekstaat' = via uren
+  // buiten planning ("+ ander project"), 'handmatig' = historische Beheerder-koppeling (blijft staan).
+  bron: 'planning' | 'weekstaat' | 'handmatig'
 }
 
 export interface CrediteurKoppelingDto {
@@ -316,21 +319,9 @@ export function haalVeldgebruikers(): Promise<VeldgebruikerDto[]> {
   return apiJson<VeldgebruikerDto[]>('/uren/beheer/veldgebruikers')
 }
 
-export async function koppelProject(payload: {
-  administratie_id: string
-  gebruiker_id: string
-  project_id: string
-}): Promise<void> {
-  await apiPostJson('/uren/beheer/projectkoppelingen', payload)
-}
-
-export async function ontkoppelProject(payload: {
-  administratie_id: string
-  gebruiker_id: string
-  project_id: string
-}): Promise<void> {
-  await apiPostJson('/uren/beheer/projectkoppelingen/verwijderen', payload)
-}
+// C1 (addendum Peter 04-09): handmatig projecten koppelen is als beheer-UI vervallen — de koppeling
+// ontstaat uitsluitend automatisch (planning, bron 'planning'; uren buiten planning, bron 'weekstaat').
+// De toevoeg-route bestaat server-side niet meer; het paneel toont de afgeleide toegang alleen-lezen.
 
 export async function koppelDetacheerder(detacheerderIid: string, zzperId: string): Promise<void> {
   await apiPostJson('/uren/beheer/detacheerderkoppelingen', { detacheerder_id: detacheerderIid, zzper_id: zzperId })
