@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnkerPopup, Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/basis'
 import { PdfEerstePagina } from '../ui/PdfEerstePagina'
 import { haalUblSamenvatting, haalVerzamelbakBestandBlob, type UblSamenvattingDto, type VerzamelbakBestand } from './intakeApi'
+import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
 const HOVER_VERTRAGING_MS = 200
 const PREVIEW_BREEDTE = 300
@@ -151,7 +152,7 @@ export function VerzamelbakPreview({
           {fout && <div className="fout">{fout}</div>}
           {!bestand && !samenvatting && !fout && <p className="hint">Bestand laden…</p>}
           {bestand && isPdf && (
-            <object data={bestand.url} type="application/pdf" aria-label="Documentweergave" style={{ width: '100%', height: '70vh' }}>
+            <object data={metViewerOpties(bestand.url)} type="application/pdf" aria-label="Documentweergave" style={{ width: '100%', height: '70vh' }}>
               <p className="hint">Geen inline PDF-weergave beschikbaar in deze browser.</p>
             </object>
           )}

@@ -18,6 +18,7 @@ import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
 import { SkeletonPaneel } from '../ui/basis'
+import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
 /** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. */
 interface RegelStaat {
@@ -325,7 +326,7 @@ export function OmzetReviewScreen() {
             <div className="bijlage-inhoud">
               {!bijlageUrl && <p className="hint">Bijlage laden…</p>}
               {bijlageUrl && (
-                <object data={bijlageUrl} type="application/pdf">
+                <object data={metViewerOpties(bijlageUrl)} type="application/pdf">
                   <p className="hint">
                     PDF-weergave niet beschikbaar —{' '}
                     <a href={bijlageUrl} download={detail.bestandsnaam}>

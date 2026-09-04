@@ -1067,6 +1067,10 @@ describe('DocumentDetailScreen — lijstcontext reist mee (punt 1b/1c)', () => {
     const eerste = await screen.findByTestId('bijlage-pdf')
     const eersteUrl = eerste.getAttribute('data')
     expect(eersteUrl).toMatch(/^blob:/)
+    // Fix C2 (04-09): de viewer opent zónder miniaturen-zijbalk (openingsstand in het
+    // URL-fragment); nooit toolbar=0 — de gebruiker moet de zijbalk via ☰ kunnen openen.
+    expect(eersteUrl).toContain('#pagemode=none&navpanes=0&view=FitH')
+    expect(eersteUrl).not.toContain('toolbar=0')
 
     await gebruiker.click(screen.getByRole('button', { name: 'Volgende document in de lijst' }))
     await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${K2_ID}`))

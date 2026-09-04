@@ -29,6 +29,7 @@ import { DoorbelastenSectie } from '../doorbelasting/DoorbelastenSectie'
 import { ProjectverdelingBlok } from './ProjectverdelingBlok'
 import { TegenboekSectie } from './TegenboekSectie'
 import { AfwijsModal } from './AfwijsModal'
+import { metViewerOpties } from './pdfWeergaveUrl'
 import { DuplicaatAfvoerSectie } from './DuplicaatAfvoer'
 import { VerplaatsModal } from './VerplaatsModal'
 import { redenNietVerplaatsbaar } from './verplaatsen'
@@ -831,7 +832,7 @@ export function DocumentDetailScreen() {
             <div className="bijlage-inhoud">
               {!bijlage && <SkeletonBlok />}
               {bijlage?.contentType.includes('pdf') && (
-                <object key={bijlage.url} data={bijlage.url} type="application/pdf" data-testid="bijlage-pdf">
+                <object key={bijlage.url} data={metViewerOpties(bijlage.url)} type="application/pdf" data-testid="bijlage-pdf">
                   <p className="hint">
                     Geen inline PDF-weergave in deze browser —{' '}
                     <a href={bijlage.url} download={detail.bestandsnaam}>
