@@ -384,6 +384,30 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   Crediteuren = dubbel-signalering per administratie (btw/KvK/IBAN/genormaliseerde naam) mét
   KvK-controle (hergebruik A3-client) — samenvoegen blijft RLZ-mensenwerk, wij verwijderen niets.
   `app/documenten/crediteur_kenmerk.py`; BESLISSINGEN "OPRUIMRUN 28-08" punt 14.
+- **Medewerker-wensen 04-09 (besluiten Peter 04-09; mockup `projectverdeling-en-regelvoorstellen.html` = norm
+  voor C/D/E incl. notities ①–⑨; migraties 0105–0108 — BESLISSINGEN "MEDEWERKER-WENSEN 04-09" is canoniek per blok):**
+  (A) **Duplicaat-auto-afvoer** — harde match (crediteur op btw-nummer + referentie + bedrag; origineel geboekt óf
+  ouder in de werkvoorraad) → automatisch "Afgewezen — duplicaat van …" mét kruisverwijzing beide kanten, audit,
+  tijdlijn; opt-in per administratie `duplicaat_autoafvoer_ingeschakeld` (Beheerder, default UIT) + volumerem 20/dag;
+  één-klik "Afvoeren als duplicaat" (rijmenu + controlescherm) altijd; zachte signalen voeren nooit af; terughalen =
+  heropenen (`app/documenten/duplicaat_afvoer.py`). (B) **Splitsing bijlage-bewust** (schemaveld `fp` = integer,
+  code rekent bijlagepagina's; "factuur + N bijlagepagina's" in het voorstel) + **"nooit splitsen" per afzender**
+  (`intake_splitsing_uitsluiting`, geleerd via "Is één factuur" mét vink, kantoorbrede match vóór de AI-call, beheer
+  op de detailpagina tab Algemeen "Intake-regels"; `app/intake/splitsing_uitsluiting.py`). (C) **Projectverdeling
+  pro rato omzet** BINNEN de administratie (`app/projectverdeling/`): vaste regels + restant naar rato van de geboekte
+  verkoopomzet van de vorige maand (projectcijfers-cache; omzetloos/OVH uit; grootste-rest-centen; omzetstanden
+  bevroren bij boeken), per-leverancier-opt-in `projectverdeling_pro_rato`, harde check "Projectverdeling", RLZ =
+  regels splitsen / Odoo = `analytic_distribution`, maandelijkse hercontrole in `sync-alles` (drempel
+  `projectverdeling_drempel_pct` 5 %) mét actie "Herverdelen…" (= bestaand tegenboek-én-opnieuw-boeken, mens
+  bevestigt); flankerend "inkoop zonder omzet" pas ná `inkoop_zonder_omzet_wachtweken` (4). (D) **Regel-niveau
+  GB-voorstel**: regel-geheugen op (crediteur-kenmerk, genormaliseerde omschrijving) uit `boeking_observatie` (groen
+  "uit geheugen"; seed-only oranje) → AI-classificatie uitsluitend uit de historische GB's van de leverancier (≥ 2
+  kandidaten, achter AI-gate + kostenmeter, persistent in `regel_gb_classificatie`, oranje "AI-voorstel — bevestig")
+  → leeg; autoboek-slot wordt er nooit groen van (`app/geheugen/regel_gb.py`, `documenten/regel_prefill.py`).
+  (E) **Btw-default per administratie** `standaard_taxrate_id` (Beheerder, default UIT): factuur → geheugen →
+  default (chip "standaard administratie") → leeg. (F) **Bugfix Huvanco**: kortingsregels als negatieve regel (prompt +
+  UBL `AllowanceCharge`), regeltelling via één gedeelde beslisboom `documenten/regelsom.py` (netto-vs-excl,
+  netto+btw-vs-incl, nooit stil excl-vs-incl; lege btw = 0 alleen op een gesynct 0%-tarief).
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
@@ -391,7 +415,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   die waarde maakt 'm groen (`app_bevestigd` per veld in engine + voorstel-response).**
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
-  check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling,
+  check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** Kort: duplicaat, regeltelling (sinds 04-09 basis-expliciet, `regelsom.py`),
   verplichte velden, IBAN-wissel, duplicaat-bij-andere-crediteur (btw-nummer + referentie + bedrag,
   28-08 — Reference+bedrag zonder btw-match = oranje signaal), vraag-blokkeert-boeken,
   afwijzen-met-verplichte-reden en

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0104
+-- Migratie-head bij deze dump: 0108
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -494,6 +494,10 @@ CREATE TABLE boekhouding.afwijzing (
     status text DEFAULT 'open'::text NOT NULL,
     heropend_door uuid,
     heropend_op timestamp with time zone,
+    duplicaat_van_document_id uuid,
+    duplicaat_van_rlz_document_id uuid,
+    duplicaat_van_referentie text,
+    automatisch boolean DEFAULT false NOT NULL,
     CONSTRAINT afwijzing_herkomst_herstelbaar CHECK ((status_voor_afwijzing = ANY (ARRAY['te_controleren'::text, 'handmatig_afmaken'::text, 'klaar_om_te_boeken'::text]))),
     CONSTRAINT afwijzing_heropening_consistent CHECK ((((status = 'open'::text) AND (heropend_door IS NULL) AND (heropend_op IS NULL)) OR ((status = 'heropend'::text) AND (heropend_door IS NOT NULL) AND (heropend_op IS NOT NULL)))),
     CONSTRAINT afwijzing_reden_niet_leeg CHECK ((btrim(reden) <> ''::text)),
@@ -1373,6 +1377,26 @@ ALTER TABLE ONLY boekhouding.intake_splitsing FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: intake_splitsing_uitsluiting; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.intake_splitsing_uitsluiting (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    afzender_adres text NOT NULL,
+    leverancier_naam text,
+    reden text,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    verwijderd_op timestamp with time zone,
+    verwijderd_door uuid
+);
+
+ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: intercompany_tegenpartij; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1434,7 +1458,8 @@ CREATE TABLE boekhouding.leverancier_voorkeur (
     vendor_id uuid NOT NULL,
     regels_samenvoegen boolean NOT NULL,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
-    autoboeken_ingeschakeld boolean DEFAULT false NOT NULL
+    autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
+    projectverdeling_pro_rato boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY boekhouding.leverancier_voorkeur FORCE ROW LEVEL SECURITY;
@@ -2138,6 +2163,33 @@ ALTER TABLE ONLY boekhouding.projectaanvraag FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: projectverdeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.projectverdeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    vaste_regels jsonb DEFAULT '[]'::jsonb NOT NULL,
+    pro_rato_periode date,
+    pro_rato_bedrag numeric(14,2),
+    verdeling jsonb DEFAULT '[]'::jsonb NOT NULL,
+    omzetstanden jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'voorstel'::text NOT NULL,
+    geboekt_op timestamp with time zone,
+    boek_cyclus integer,
+    hercontrole_op timestamp with time zone,
+    hercontrole_afwijking_pct numeric(7,2),
+    hercontrole_verdeling jsonb,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_projectverdeling_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'geboekt'::text, 'vervallen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.projectverdeling FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: reconciliatie_acceptatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2160,6 +2212,25 @@ CREATE TABLE boekhouding.reconciliatie_acceptatie (
 );
 
 ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: regel_gb_classificatie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.regel_gb_classificatie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    document_id uuid NOT NULL,
+    regel_volgnummer integer NOT NULL,
+    regel_sleutel text,
+    ledger_id uuid,
+    kandidaten_n integer NOT NULL,
+    model text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.regel_gb_classificatie FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2936,6 +3007,10 @@ CREATE TABLE platform.administratie (
     verkoopmodule_afwezig boolean DEFAULT false NOT NULL,
     omzet_autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
     boekhoud_backend character varying(16) DEFAULT 'rlz'::character varying NOT NULL,
+    duplicaat_autoafvoer_ingeschakeld boolean DEFAULT false NOT NULL,
+    projectverdeling_drempel_pct numeric(5,2) DEFAULT 5.00 NOT NULL,
+    inkoop_zonder_omzet_wachtweken integer DEFAULT 4 NOT NULL,
+    standaard_taxrate_id uuid,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
@@ -3761,6 +3836,14 @@ ALTER TABLE ONLY boekhouding.intake_splitsing
 
 
 --
+-- Name: intake_splitsing_uitsluiting intake_splitsing_uitsluiting_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
+    ADD CONSTRAINT intake_splitsing_uitsluiting_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: intercompany_tegenpartij intercompany_tegenpartij_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4041,11 +4124,27 @@ ALTER TABLE ONLY boekhouding.projectaanvraag
 
 
 --
+-- Name: projectverdeling projectverdeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectverdeling
+    ADD CONSTRAINT projectverdeling_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: reconciliatie_acceptatie reconciliatie_acceptatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
 ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
     ADD CONSTRAINT reconciliatie_acceptatie_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: regel_gb_classificatie regel_gb_classificatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.regel_gb_classificatie
+    ADD CONSTRAINT regel_gb_classificatie_pkey PRIMARY KEY (id);
 
 
 --
@@ -4206,6 +4305,22 @@ ALTER TABLE ONLY boekhouding.odoo_document_koppeling
 
 ALTER TABLE ONLY boekhouding.odoo_id_koppeling
     ADD CONSTRAINT uq_odoo_id_koppeling_lokaal UNIQUE (administratie_id, lokaal_id);
+
+
+--
+-- Name: projectverdeling uq_projectverdeling_document; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectverdeling
+    ADD CONSTRAINT uq_projectverdeling_document UNIQUE (document_id);
+
+
+--
+-- Name: regel_gb_classificatie uq_regel_gb_classificatie_document_regel; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.regel_gb_classificatie
+    ADD CONSTRAINT uq_regel_gb_classificatie_document_regel UNIQUE (document_id, regel_volgnummer);
 
 
 --
@@ -4817,6 +4932,13 @@ ALTER TABLE ONLY public.alembic_version
 
 
 --
+-- Name: afwijzing_duplicaat_van_document_idx; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX afwijzing_duplicaat_van_document_idx ON boekhouding.afwijzing USING btree (duplicaat_van_document_id) WHERE (duplicaat_van_document_id IS NOT NULL);
+
+
+--
 -- Name: afwijzing_een_open_per_document; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5132,6 +5254,13 @@ CREATE INDEX ix_factuurmatch_staat_weekstaat_id ON boekhouding.factuurmatch_staa
 
 
 --
+-- Name: ix_intake_splitsing_uitsluiting_afzender_actief; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_intake_splitsing_uitsluiting_afzender_actief ON boekhouding.intake_splitsing_uitsluiting USING btree (afzender_adres) WHERE actief;
+
+
+--
 -- Name: ix_leverancier_werknummer_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5402,6 +5531,27 @@ CREATE INDEX ix_project_staffel_administratie_id ON boekhouding.project_staffel 
 --
 
 CREATE INDEX ix_project_staffel_project ON boekhouding.project_staffel USING btree (administratie_id, project_id);
+
+
+--
+-- Name: ix_projectverdeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_projectverdeling_administratie_id ON boekhouding.projectverdeling USING btree (administratie_id);
+
+
+--
+-- Name: ix_projectverdeling_hercontrole_signaal; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_projectverdeling_hercontrole_signaal ON boekhouding.projectverdeling USING btree (administratie_id, hercontrole_afwijking_pct) WHERE ((status = 'geboekt'::text) AND (hercontrole_afwijking_pct IS NOT NULL));
+
+
+--
+-- Name: ix_regel_gb_classificatie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_regel_gb_classificatie_administratie_id ON boekhouding.regel_gb_classificatie USING btree (administratie_id);
 
 
 --
@@ -5703,6 +5853,13 @@ CREATE UNIQUE INDEX ux_intake_bericht_message_id ON boekhouding.intake_bericht U
 --
 
 CREATE UNIQUE INDEX ux_intake_splitsing_open_per_document ON boekhouding.intake_splitsing USING btree (bron_document_id) WHERE (status = 'voorgesteld'::text);
+
+
+--
+-- Name: ux_intake_splitsing_uitsluiting_actief; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_intake_splitsing_uitsluiting_actief ON boekhouding.intake_splitsing_uitsluiting USING btree (administratie_id, afzender_adres) WHERE actief;
 
 
 --
@@ -6090,6 +6247,14 @@ ALTER TABLE ONLY boekhouding.afwijzing
 
 ALTER TABLE ONLY boekhouding.afwijzing
     ADD CONSTRAINT afwijzing_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: afwijzing afwijzing_duplicaat_van_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.afwijzing
+    ADD CONSTRAINT afwijzing_duplicaat_van_document_id_fkey FOREIGN KEY (duplicaat_van_document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -7005,6 +7170,30 @@ ALTER TABLE ONLY boekhouding.intake_splitsing
 
 
 --
+-- Name: intake_splitsing_uitsluiting intake_splitsing_uitsluiting_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
+    ADD CONSTRAINT intake_splitsing_uitsluiting_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: intake_splitsing_uitsluiting intake_splitsing_uitsluiting_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
+    ADD CONSTRAINT intake_splitsing_uitsluiting_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: intake_splitsing_uitsluiting intake_splitsing_uitsluiting_verwijderd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
+    ADD CONSTRAINT intake_splitsing_uitsluiting_verwijderd_door_fkey FOREIGN KEY (verwijderd_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: intercompany_tegenpartij intercompany_tegenpartij_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7605,6 +7794,22 @@ ALTER TABLE ONLY boekhouding.projectaanvraag
 
 
 --
+-- Name: projectverdeling projectverdeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectverdeling
+    ADD CONSTRAINT projectverdeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: projectverdeling projectverdeling_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.projectverdeling
+    ADD CONSTRAINT projectverdeling_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: reconciliatie_acceptatie reconciliatie_acceptatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7626,6 +7831,22 @@ ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
 
 ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
     ADD CONSTRAINT reconciliatie_acceptatie_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: regel_gb_classificatie regel_gb_classificatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.regel_gb_classificatie
+    ADD CONSTRAINT regel_gb_classificatie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: regel_gb_classificatie regel_gb_classificatie_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.regel_gb_classificatie
+    ADD CONSTRAINT regel_gb_classificatie_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -9175,6 +9396,19 @@ CREATE POLICY intake_splitsing_scope ON boekhouding.intake_splitsing USING (true
 
 
 --
+-- Name: intake_splitsing_uitsluiting; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.intake_splitsing_uitsluiting ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: intake_splitsing_uitsluiting intake_splitsing_uitsluiting_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intake_splitsing_uitsluiting_scope ON boekhouding.intake_splitsing_uitsluiting USING (true) WITH CHECK (true);
+
+
+--
 -- Name: intercompany_tegenpartij; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -9612,6 +9846,19 @@ CREATE POLICY projectaanvraag_scope ON boekhouding.projectaanvraag USING ((admin
 
 
 --
+-- Name: projectverdeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.projectverdeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: projectverdeling projectverdeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY projectverdeling_scope ON boekhouding.projectverdeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: reconciliatie_acceptatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -9622,6 +9869,19 @@ ALTER TABLE boekhouding.reconciliatie_acceptatie ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY reconciliatie_acceptatie_scope ON boekhouding.reconciliatie_acceptatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: regel_gb_classificatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.regel_gb_classificatie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: regel_gb_classificatie regel_gb_classificatie_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY regel_gb_classificatie_scope ON boekhouding.regel_gb_classificatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --
