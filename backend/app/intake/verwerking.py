@@ -76,6 +76,7 @@ from app.documenten.ubl import (
     parseer_ubl_factuur,
 )
 from app.extractie import splitsing as splitsing_extractie
+from app.intake import splitsing_uitsluiting
 from app.intake.bundeling import BijlagePaar, BundelItem, bundel_bijlagen
 from app.intake.eml import GeenGeldigeEml, IntakeBijlage, IntakeMail, parse_eml
 from app.intake.models import IntakeBericht, IntakeSplitsing
@@ -130,9 +131,16 @@ def _wijs_toe_of_verzamelbak(
     body_hint: str | None = None,
     bron_bestand: BronBestand | None = None,
     kanaal: DocumentBron = DocumentBron.EMAIL,
+    suggestie_terugval: tuple[uuid.UUID, str] | None = None,
 ) -> BijlageResultaat:
+    """`suggestie_terugval` (blok B 04-09): (administratie_id, bron) die als verzamelbak-SUGGESTIE
+    meegaat als de toewijzing zelf géén suggestie oplevert — bv. de enige administratie met een
+    'nooit splitsen'-regel voor deze afzender. Nooit een automatische toewijzing."""
     with scoped_session(None) as session:
         besluit = bepaal_toewijzing(session, tenaamstelling=tenaamstelling, afzender=afzender, body_hint=body_hint)
+    suggestie_id, suggestie_bron = besluit.suggestie_administratie_id, besluit.suggestie_bron
+    if suggestie_id is None and suggestie_terugval is not None:
+        suggestie_id, suggestie_bron = suggestie_terugval
 
     if besluit.administratie_id is not None:
         resultaat = documenten_service.upload_document(
@@ -167,8 +175,8 @@ def _wijs_toe_of_verzamelbak(
         afzender_hint=afzender,
         tenaamstelling=tenaamstelling,
         gesplitst_uit_id=gesplitst_uit_id,
-        suggestie_administratie_id=besluit.suggestie_administratie_id,
-        suggestie_bron=besluit.suggestie_bron,
+        suggestie_administratie_id=suggestie_id,
+        suggestie_bron=suggestie_bron,
         bron_bestand=bron_bestand,
         bron=kanaal,
     )
@@ -468,6 +476,37 @@ def _verwerk_pdf(
     bron_bestand: BronBestand | None = None,
     kanaal: DocumentBron = DocumentBron.EMAIL,
 ) -> BijlageResultaat:
+    uitsluiting = splitsing_uitsluiting.vind_uitsluiting(afzender)
+    if uitsluiting is not None:
+        # "Nooit splitsen"-regel voor deze afzender (blok B 04-09, cases Universal Nederland/Delta): de
+        # splitsings-AI wordt overgeslagen — géén AI-call, kostenmeter onaangeroerd — en het document
+        # gaat als één geheel door de bestaande keten. Bewust VÓÓR de AI-gate: deze route heeft geen AI
+        # nodig, dus gate/limiet mogen 'm niet in de weg staan. Zonder AI is er geen gelezen
+        # tenaamstelling; de toewijzing loopt op het afzender-geheugen/de mail-body (deterministisch),
+        # anders verzamelbak mét zichtbare reden en — bij precies één regel-administratie — die als
+        # suggestie. Nooit auto-toewijzen bij twijfel.
+        logger.info(
+            "Splitsingsdetectie overgeslagen voor %s: 'nooit splitsen'-regel voor %s",
+            bijlage.bestandsnaam,
+            uitsluiting.afzender_adres,
+        )
+        enige = uitsluiting.enige_administratie_id
+        return _wijs_toe_of_verzamelbak(
+            bijlage_naam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            soort=DocumentSoort.INKOOPFACTUUR,
+            tenaamstelling=None,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+            verzamelbak_reden=f"{splitsing_uitsluiting.REDEN_PREFIX} {uitsluiting.afzender_adres}",
+            body_hint=body_hint,
+            bron_bestand=bron_bestand,
+            kanaal=kanaal,
+            suggestie_terugval=(enige, "nooit_splitsen_regel") if enige is not None else None,
+        )
+
     if not beheer_service.intake_ai_effectief_ingeschakeld() or not settings.anthropic_api_key:
         # AVG-gate intake (platform-breed, default UIT): zonder opt-in geen intake-byte naar de
         # Claude API — het document valt zichtbaar in de verzamelbak, een mens wijst toe.

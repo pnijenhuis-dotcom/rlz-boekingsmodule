@@ -248,6 +248,9 @@ export function AdministratieDetailPagina({
           {toggle('is_vastgoed', a.is_vastgoed, 'Vastgoed-koppeling (Vastly)', 'Events, projectaanvragen en verkoop-autoboeken volgen deze schakelaar.')}
           {toggle('uren_meerwerk', a.uren_meerwerk_ingeschakeld, 'Uren & meerwerk (steigerbouw-tak)', 'Weekstaten, meerwerk, planning en materiaal — instellingen op de tab "Uren & materiaal" zodra aan.')}
           {toggle('voorraad', a.voorraad_ingeschakeld, 'Voorraad bijhouden', 'Controle-laag (mi-schema): instroom uit inkoopregels, uitstroom uit verkoopregels — nooit geboekt.')}
+          {/* Blok "Intake-regels" (blok B 04-09): 'nooit splitsen'-regels per afzender — beheer per administratie,
+              aanmaak uitsluitend via "Is één factuur" in de verzamelbak. */}
+          <IntakeRegels administratieId={a.id} />
         </div>
       )}
 
@@ -264,6 +267,13 @@ export function AdministratieDetailPagina({
               'Omzet-autoboeken (kassarapporten)',
               'Boekt een omzetrapport automatisch zodra álles groen is: harde checks (incl. memoriaal-saldo-0 en marge-plausibiliteit), categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen vraag of afwijzing. Anders gewoon werkvoorraad; volumerem 20/dag; chip "automatisch" + audit.',
             )}
+            {toggle(
+              'duplicaat_autoafvoer',
+              Boolean(a.duplicaat_autoafvoer_ingeschakeld),
+              'Duplicaten automatisch afvoeren',
+              'Bij een harde match — zelfde crediteur (btw-nummer), zelfde referentie én zelfde totaalbedrag, origineel al geboekt óf ouder in de werkvoorraad — gaat het duplicaat automatisch naar Afgewezen met reden "Duplicaat van …" en kruisverwijzing naar het origineel. Nooit verwijderd; terughalen via Heropenen. Volumerem 20/dag; audit + tijdlijn. Zonder deze schakelaar blijft de één-klik "Afvoeren als duplicaat" gewoon beschikbaar.',
+            )}
+            <BtwDefaultRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
             {a.afdelingen_ingeschakeld && (
               <div style={{ padding: '4px 16px 12px' }}>
                 <AfdelingenBeheer administratieId={a.id} naam={a.naam} />

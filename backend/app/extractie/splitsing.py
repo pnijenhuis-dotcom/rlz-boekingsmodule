@@ -48,8 +48,11 @@ SPLITSING_SCHEMA: dict[str, Any] = {
                     "lev": _STRING_OF_NULL,
                     "nr": _STRING_OF_NULL,
                     "z": {"type": "number"},
+                    # Bijlage-bewust (blok B 04-09): aantal pagina's dat de FACTUUR zelf beslaat; 0 = onbekend.
+                    # Bewust een kale integer (sentinel-patroon, geen union) — de unionlimiet blijft 3.
+                    "fp": {"type": "integer"},
                 },
-                "required": ["sp", "ep", "ten", "lev", "nr", "z"],
+                "required": ["sp", "ep", "ten", "lev", "nr", "z", "fp"],
                 "additionalProperties": False,
             },
         }
@@ -68,17 +71,28 @@ Identificeer elke afzonderlijke factuur in het document. Per factuur geef je:
 - lev: de naam van de leverancier/afzender van de factuur. Onbekend = null.
 - nr: het factuurnummer. Onbekend = null.
 - z: één zekerheidsscore tussen 0 en 1 voor deze factuur (grens + velden samen).
+- fp: het aantal pagina's dat de FACTUUR ZELF beslaat (de pagina's met factuurkop, regels en totalen),
+  zónder de bijlagen. Weet je het niet: 0.
 
-Regels: pagina's staan in documentvolgorde; een vervolgpagina (regelbijlage, specificatie) hoort bij
-de factuur ervóór. Reken niets uit en gok niet: bij twijfel een lagere z. Eén factuur = één item met
-sp=1 en ep=laatste pagina.
+BIJLAGEN HOREN BIJ DE FACTUUR: een factuur bestaat uit de factuurpagina's PLUS haar bijbehorende
+bijlagen — werkbonnen, urenstaten, specificaties, pakbonnen, weekstaten, mandagenregisters,
+leverbonnen. Zulke vervolgpagina's hebben géén eigen factuurkop en géén eigen factuurnummer en horen
+ALTIJD bij de factuur ervóór; ze zijn nooit een nieuwe factuur, ook niet als ze een ander lettertype,
+logo van een onderaannemer of eigen paginanummering dragen. Een NIEUWE factuur begint uitsluitend bij een
+nieuwe factuurkop: eigen factuurnummer én factuurdatum én geadresseerde. Twijfel = géén nieuwe factuur
+(dan liever één factuur met een lagere z).
+
+Regels: pagina's staan in documentvolgorde. Reken niets uit en gok niet: bij twijfel een lagere z.
+Eén factuur = één item met sp=1 en ep=laatste pagina.
 
 HARDE PRIVACYREGEL (AVG): neem nooit een burgerservicenummer (BSN) of ander persoonsnummer op in je
 antwoord; vervang zulke nummers door "[BSN weggelaten]"."""
 
 OPDRACHT = (
     "Identificeer alle afzonderlijke facturen in deze PDF volgens het schema — paginabereik, "
-    "tenaamstelling (geadresseerde), leverancier en factuurnummer per factuur."
+    "tenaamstelling (geadresseerde), leverancier en factuurnummer per factuur. Bijlagen (werkbonnen, "
+    "urenstaten, specificaties, pakbonnen) horen bij de factuur ervóór; geef per factuur in fp het aantal "
+    "pagina's van de factuur zelf (0 = onbekend)."
 )
 
 
@@ -112,10 +126,22 @@ class FactuurSegment:
     #: doorstaat (proportionele validatie 02-09): het deel gaat als "ongeldig — mens beslist" mee
     #: in het splitsingsvoorstel; de overige delen en de gelezen tenaamstellingen blijven staan.
     ongeldig_reden: str | None = None
+    #: Bijlage-bewust (blok B 04-09): het aantal pagina's dat de FACTUUR zelf beslaat volgens het
+    #: model (`fp`; 0/afwezig = None = onbekend). Puur informatief — de bereik-toets rekent er
+    #: nooit mee; `bijlage_paginas` leidt code er deterministisch uit af.
+    factuur_paginas: int | None = None
 
     @property
     def geldig(self) -> bool:
         return self.ongeldig_reden is None
+
+    @property
+    def bijlage_paginas(self) -> int | None:
+        """Aantal bijlagepagina's = (ep − sp + 1) − fp, door code berekend; None = onbekend
+        (geen fp, fp buiten het bereik = onbetrouwbaar). Nooit negatief."""
+        return bereken_bijlage_paginas(
+            start_pagina=self.start_pagina, eind_pagina=self.eind_pagina, factuur_paginas=self.factuur_paginas
+        )
 
     def als_dict(self) -> dict:
         return {
@@ -126,7 +152,20 @@ class FactuurSegment:
             "factuurnummer": self.factuurnummer,
             "zekerheid": self.zekerheid,
             "ongeldig_reden": self.ongeldig_reden,
+            "factuur_paginas": self.factuur_paginas,
+            "bijlage_paginas": self.bijlage_paginas,
         }
+
+
+def bereken_bijlage_paginas(*, start_pagina: int, eind_pagina: int, factuur_paginas: int | None) -> int | None:
+    """Deterministisch (code, geen AI): bijlagepagina's = bereik − factuurpagina's. Onbekend (None/0),
+    een omgekeerd bereik of fp buiten het bereik (fp > bereik = onbetrouwbaar antwoord) → None."""
+    if factuur_paginas is None or factuur_paginas < 1:
+        return None
+    bereik = eind_pagina - start_pagina + 1
+    if bereik < 1 or factuur_paginas > bereik:
+        return None
+    return bereik - factuur_paginas
 
 
 # Begeleidende mailtekst als hint in de opdracht (punt 1c): begrensd én door het BSN-filter,
@@ -231,6 +270,7 @@ def beoordeel_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> Beo
             leverancier=enige.leverancier,
             factuurnummer=enige.factuurnummer,
             zekerheid=enige.zekerheid,
+            factuur_paginas=enige.factuur_paginas,
         )
         return BeoordeeldeSegmenten(
             segmenten=[genormaliseerd],
@@ -262,6 +302,7 @@ def beoordeel_segmenten(segmenten: list[FactuurSegment], *, paginas: int) -> Beo
                     factuurnummer=segment.factuurnummer,
                     zekerheid=segment.zekerheid,
                     ongeldig_reden=reden,
+                    factuur_paginas=segment.factuur_paginas,
                 )
             )
     return BeoordeeldeSegmenten(segmenten=beoordeeld, normalisaties=[])
@@ -304,6 +345,11 @@ def detecteer_facturen(
         except (TypeError, ValueError):
             raise AiExtractieFout("Splitsingsvoorstel bevat een onleesbaar paginabereik.") from None
         zekerheid = float(ruw.get("z")) if isinstance(ruw.get("z"), int | float) else 0.0
+        # fp (bijlage-bewust, 04-09): sentinel 0/afwezig/onleesbaar = onbekend — nooit een fout, alleen
+        # informatief; de bereik-toets rekent er niet mee.
+        fp_ruw = ruw.get("fp")
+        fp_bruikbaar = isinstance(fp_ruw, int) and not isinstance(fp_ruw, bool) and fp_ruw > 0
+        factuur_paginas = int(fp_ruw) if fp_bruikbaar else None
         segmenten.append(
             FactuurSegment(
                 start_pagina=start,
@@ -312,6 +358,7 @@ def detecteer_facturen(
                 leverancier=leverancier,
                 factuurnummer=factuurnummer,
                 zekerheid=min(max(zekerheid, 0.0), 1.0),
+                factuur_paginas=factuur_paginas,
             )
         )
 

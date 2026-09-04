@@ -157,3 +157,79 @@ class TestHardePoortOngewijzigd:
 
     def test_geldig(self) -> None:
         assert valideer_segmenten([_seg(1, 2), _seg(3, 3)], paginas=3) is None
+
+
+class TestBijlageBewust:
+    """Blok B 04-09: `fp` = pagina's van de factuur zelf (AI, informatief); code berekent de
+    bijlagepagina's deterministisch. De bereik-toets rekent nergens met fp."""
+
+    def test_schema_draagt_fp_als_kale_integer_zonder_union(self) -> None:
+        props = splitsing.SPLITSING_SCHEMA["properties"]["facturen"]["items"]["properties"]
+        assert props["fp"] == {"type": "integer"}
+        assert "fp" in splitsing.SPLITSING_SCHEMA["properties"]["facturen"]["items"]["required"]
+
+    def test_prompt_benoemt_bijlagen_en_factuurkop(self) -> None:
+        assert "werkbonnen" in splitsing.SYSTEM_PROMPT.lower()
+        assert "factuurkop" in splitsing.SYSTEM_PROMPT.lower()
+        assert "fp" in splitsing.OPDRACHT
+
+    @pytest.mark.parametrize(
+        ("sp", "ep", "fp", "verwacht"),
+        [
+            (1, 5, 1, 4),  # factuur 1 pagina + 4 bijlagen
+            (1, 5, 5, 0),  # alles factuur
+            (3, 3, 1, 0),  # één pagina
+            (1, 5, 0, None),  # 0 = onbekend
+            (1, 5, None, None),
+            (1, 2, 3, None),  # fp > bereik = onbetrouwbaar → onbekend, nooit negatief
+            (4, 2, 1, None),  # omgekeerd bereik → onbekend
+        ],
+    )
+    def test_bereken_bijlage_paginas(self, sp: int, ep: int, fp: int | None, verwacht: int | None) -> None:
+        assert splitsing.bereken_bijlage_paginas(start_pagina=sp, eind_pagina=ep, factuur_paginas=fp) == verwacht
+
+    def test_parse_fp_en_als_dict(self) -> None:
+        client = _NepClient([{**_kempen(1, 4), "fp": 1}, {**_kempen(5, 6), "fp": 0}])
+        segmenten = detecteer_facturen(b"%PDF", paginas=6, client=client)
+        assert [(s.factuur_paginas, s.bijlage_paginas) for s in segmenten] == [(1, 3), (None, None)]
+        d = segmenten[0].als_dict()
+        assert (d["factuur_paginas"], d["bijlage_paginas"]) == (1, 3)
+
+    def test_onleesbare_fp_is_onbekend_geen_fout(self) -> None:
+        client = _NepClient([{**_kempen(1, 2), "fp": "twee"}, {**_kempen(3, 3), "fp": True}])
+        segmenten = detecteer_facturen(b"%PDF", paginas=3, client=client)
+        assert [s.factuur_paginas for s in segmenten] == [None, None]
+
+    def test_normalisatie_een_factuur_herrekent_bijlagen(self) -> None:
+        # AI zei p.1–2 mét fp=1 op een 5-pagina-document → hele document, bijlagen = 5 − 1 = 4.
+        client = _NepClient([{**_kempen(1, 2), "fp": 1}])
+        (enige,) = detecteer_facturen(b"%PDF", paginas=5, client=client)
+        assert (enige.start_pagina, enige.eind_pagina, enige.factuur_paginas, enige.bijlage_paginas) == (1, 5, 1, 4)
+
+    def test_ongeldig_deel_behoudt_fp(self) -> None:
+        uitkomst = beoordeel_segmenten(
+            [
+                FactuurSegment(1, 2, "A", None, None, 0.9, factuur_paginas=1),
+                FactuurSegment(3, 9, "B", None, None, 0.9, factuur_paginas=2),
+            ],
+            paginas=4,
+        )
+        assert uitkomst.segmenten[1].ongeldig_reden and uitkomst.segmenten[1].factuur_paginas == 2
+        assert uitkomst.segmenten[1].bijlage_paginas == 5  # informatief; het deel is sowieso ongeldig
+
+    def test_oud_voorstel_zonder_fp_blijft_leesbaar(self) -> None:
+        from app.intake.schemas import SplitsSegmentDto
+
+        oud = {
+            "start_pagina": 1,
+            "eind_pagina": 2,
+            "tenaamstelling": "X",
+            "leverancier": None,
+            "factuurnummer": None,
+            "zekerheid": 0.9,
+            "ongeldig_reden": None,
+        }
+        dto = SplitsSegmentDto(**oud)
+        assert (dto.factuur_paginas, dto.bijlage_paginas) == (None, None)
+        # Positionele constructie (bestaande tests/aanroepers) blijft werken: fp default None.
+        assert FactuurSegment(1, 2, "X", None, None, 0.9).bijlage_paginas is None

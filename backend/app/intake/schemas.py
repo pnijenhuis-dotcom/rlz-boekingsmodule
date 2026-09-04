@@ -31,6 +31,10 @@ class SplitsSegmentDto(BaseModel):
     zekerheid: float = 0.0
     # Proportionele validatie (02-09): dít deel doorstond de paginabereik-toets niet — mens beslist.
     ongeldig_reden: str | None = None
+    # Bijlage-bewust (blok B 04-09): pagina's van de factuur zelf (AI, informatief) + door code afgeleide
+    # bijlagepagina's; None = onbekend (óók voor voorstellen van vóór 04-09).
+    factuur_paginas: int | None = None
+    bijlage_paginas: int | None = None
 
 
 class VerzamelbakItemDto(BaseModel):
@@ -85,6 +89,30 @@ class SplitsingBevestigenInput(StrikteInvoer):
 
 class SplitsingAfwijzenInput(StrikteInvoer):
     reden: str | None = None
+    # Blok B 04-09: "Onthoud: mails van ‹afzender› voor ‹administratie› nooit splitsen" — vink default UIT;
+    # mét vink is administratie_id verplicht (422 zonder).
+    onthoud_niet_splitsen: bool = False
+    administratie_id: uuid.UUID | None = None
+
+
+class SplitsingAfwijzenResponse(BaseModel):
+    splitsing_id: uuid.UUID
+    nooit_splitsen_regel_id: uuid.UUID | None = None
+
+
+class SplitsingUitsluitingDto(BaseModel):
+    id: uuid.UUID
+    administratie_id: uuid.UUID
+    afzender_adres: str
+    leverancier_naam: str | None = None
+    reden: str | None = None
+    aangemaakt_op: datetime
+    aangemaakt_door: uuid.UUID
+    aangemaakt_door_naam: str | None = None
+
+
+class SplitsingUitsluitingLijstResponse(BaseModel):
+    regels: list[SplitsingUitsluitingDto]
 
 
 class SplitsDeelResultaatDto(BaseModel):

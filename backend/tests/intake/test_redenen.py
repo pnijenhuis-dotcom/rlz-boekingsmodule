@@ -35,6 +35,15 @@ class TestOmschrijfIntakeReden:
         )
         assert label == "AI-lezing mislukt: Claude API-fout: 529 overloaded"
 
+    def test_nooit_splitsen_regel_benoemt_de_afzender_en_is_geen_verwerping(self) -> None:
+        """Blok B 04-09: de AI is bewust overgeslagen — geen "geen tenaamstelling gelezen", geen
+        verworpen poging voor de bewaking."""
+        reden = "splitsing_overgeslagen_nooit_splitsen: administratie@bouwmaat.nl"
+        assert omschrijf_intake_reden(reden, tenaamstelling=None) == (
+            "splitsing overgeslagen: regel 'nooit splitsen' voor administratie@bouwmaat.nl — handmatig toewijzen"
+        )
+        assert is_verworpen_intake_reden(reden) is False
+
     def test_niet_eenduidig_met_en_zonder_tenaamstelling(self) -> None:
         assert (
             omschrijf_intake_reden("tenaamstelling_niet_eenduidig", tenaamstelling="Belastingbutler B.V.")

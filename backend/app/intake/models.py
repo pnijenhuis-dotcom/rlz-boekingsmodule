@@ -116,3 +116,46 @@ class IntakeSplitsing(Base):
     )
     besloten_op: Mapped[datetime | None] = mapped_column(default=None)
     besluit_detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+
+class IntakeSplitsingUitsluiting(Base):
+    """"Nooit splitsen" per afzender (migratie 0106, blok B 04-09 — cases Universal Nederland/Delta:
+    één factuur MÉT bijlagen die de splitsings-AI toch in delen wil knippen). De ADMINISTRATIE is
+    de beheerplek (detailpagina, tab Algemeen); de AFZENDER is de sleutel bij de intake — dáár is de
+    administratie nog onbekend, dus de intake toetst kantoorbreed op `afzender_adres`. Geleerd uit
+    de handmatige correctie ("Is één factuur" mét vink). Deactiveren = `actief=false` +
+    `verwijderd_*`, nooit hard verwijderen (historie + audit blijven)."""
+
+    __tablename__ = "intake_splitsing_uitsluiting"
+    __table_args__ = (
+        Index(
+            "ux_intake_splitsing_uitsluiting_actief",
+            "administratie_id",
+            "afzender_adres",
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        Index(
+            "ix_intake_splitsing_uitsluiting_afzender_actief",
+            "afzender_adres",
+            postgresql_where=text("actief"),
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    #: Genormaliseerd (lowercase, gestript) afzenderadres — `toewijzing.normaliseer_afzender`.
+    afzender_adres: Mapped[str]
+    #: Informatief: leverancier uit het splitsingsvoorstel/de tenaamstelling op het moment van leren.
+    leverancier_naam: Mapped[str | None] = mapped_column(default=None)
+    reden: Mapped[str | None] = mapped_column(default=None)
+    actief: Mapped[bool] = mapped_column(default=True)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verwijderd_op: Mapped[datetime | None] = mapped_column(default=None)
+    verwijderd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )

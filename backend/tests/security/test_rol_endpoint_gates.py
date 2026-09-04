@@ -123,6 +123,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/verzamelbak/{DUMMY_ID}/toewijzen"),  # verzamelbak-actie (idempotent sinds 26-08)
         ("POST", "/verzamelbak/bulk-toewijzen"),  # bulk-toewijzen (blok B 02-09)
         ("POST", "/verzamelbak/bulk-hoort-niet-bij-ons"),  # bulk hoort-niet-bij-ons (blok B 02-09)
+        ("GET", f"/administraties/{aid}/intake/splitsing-uitsluitingen"),  # 'nooit splitsen'-regels (blok B 04-09)
+        ("DELETE", f"/administraties/{aid}/intake/splitsing-uitsluitingen/{DUMMY_ID}"),  # deactiveren (blok B)
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplaats"),  # verplaatsen (27-08 punt 5)
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/afvoeren-als-duplicaat"),  # duplicaat-afvoer één-klik (blok A 04-09)
         ("POST", f"/administraties/{aid}/accordering/documenten/bulk-aanbieden"),  # bulk aanbieden (27/28-08 punt 2b)

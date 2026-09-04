@@ -15,6 +15,9 @@ from __future__ import annotations
 _SPLITSING_MISLUKT = "splitsingsdetectie_mislukt:"
 _HERLEZEN_MISLUKT = "intake_herlezen_mislukt:"
 _VOORSTEL_ONGELDIG = "Splitsingsvoorstel ongeldig:"
+# Blok B 04-09 — gelijk aan `app/intake/splitsing_uitsluiting.REDEN_PREFIX` (hier letterlijk, geen import:
+# redenen.py blijft afhankelijkheidsvrij voor de bewaking).
+_NOOIT_SPLITSEN = "splitsing_overgeslagen_nooit_splitsen:"
 _MAX_DETAIL = 140
 
 
@@ -60,6 +63,11 @@ def omschrijf_intake_reden(reden: str | None, *, tenaamstelling: str | None) -> 
         if tenaamstelling:
             return "tenaamstelling matcht geen administratie of geleerde regel"
         return "geen tenaamstelling gelezen"
+    if reden.startswith(_NOOIT_SPLITSEN):
+        # Blok B 04-09: de AI is bewust overgeslagen — er is dus niets "gelezen"; de mens wijst toe
+        # (of het afzender-geheugen deed het al, dan staat de rij niet in de bak).
+        afzender = reden[len(_NOOIT_SPLITSEN) :].strip() or "deze afzender"
+        return f"splitsing overgeslagen: regel 'nooit splitsen' voor {_kort(afzender)} — handmatig toewijzen"
     if reden.startswith("ubl_invalide"):
         return f"UBL ongeldig: {_kort(reden.split(':', 1)[1]) if ':' in reden else 'niet te lezen'}"
     if reden.startswith("vastly_nlcius_invalide"):

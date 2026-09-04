@@ -22,6 +22,7 @@ from app.documenten.pdf import tel_paginas
 from app.documenten.service import _schrijf_overgang, _standaard_opslag
 from app.documenten.storage import DocumentOpslag
 from app.extractie.splitsing import FactuurSegment, valideer_segmenten
+from app.intake import splitsing_uitsluiting
 from app.intake.models import IntakeBericht, IntakeSplitsing, IntakeSplitsingStatus
 from app.intake.toewijzing import bepaal_toewijzing
 
@@ -216,15 +217,50 @@ def bevestig_splitsing(
     return resultaten
 
 
-def wijs_splitsing_af(*, splitsing_id: uuid.UUID, actor_id: uuid.UUID, reden: str | None = None) -> None:
+def wijs_splitsing_af(
+    *,
+    splitsing_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    reden: str | None = None,
+    onthoud_niet_splitsen: bool = False,
+    administratie_id: uuid.UUID | None = None,
+) -> uuid.UUID | None:
     """Wijst het splitsingsvoorstel af — het bron-document blijft als één geheel in de
-    verzamelbak (kan alsnog handmatig aan één administratie toegewezen worden)."""
+    verzamelbak (kan alsnog handmatig aan één administratie toegewezen worden).
+
+    `onthoud_niet_splitsen` (blok B 04-09): legt daarnaast de regel "mails van ‹afzender van het
+    intake-bericht› voor ‹administratie_id› nooit splitsen" vast (`splitsing_uitsluiting.maak_regel`,
+    idempotent, geauditeerd) — de leverancier uit het voorstel gaat informatief mee. Geen afzender
+    (upload), uitgesloten domein of ontbrekende administratie = fout VÓÓR het afwijzen (alles-of-niets,
+    de mens ziet waarom). Geeft het regel-id terug (None zonder vink)."""
     with scoped_session(None, actor_id=actor_id) as session:
         splitsing = _open_splitsing(session, splitsing_id)
+        regel_id: uuid.UUID | None = None
+        if onthoud_niet_splitsen:
+            bron_document = session.get(Document, splitsing.bron_document_id)
+            assert bron_document is not None
+            leveranciers = [
+                s.get("leverancier")
+                for s in (splitsing.voorstel or {}).get("facturen", [])
+                if isinstance(s, dict) and s.get("leverancier")
+            ]
+            regel = splitsing_uitsluiting.maak_regel(
+                session,
+                administratie_id=administratie_id,
+                afzender=bron_document.afzender_hint,
+                leverancier_naam=leveranciers[0] if leveranciers else None,
+                reden=reden,
+                actor_id=actor_id,
+                bron_splitsing_id=splitsing_id,
+            )
+            regel_id = regel.id
         splitsing.status = IntakeSplitsingStatus.AFGEWEZEN.value
         splitsing.besloten_door = actor_id
         splitsing.besloten_op = datetime.now(UTC)
-        splitsing.besluit_detail = {"reden": reden.strip() if reden and reden.strip() else None}
+        splitsing.besluit_detail = {
+            "reden": reden.strip() if reden and reden.strip() else None,
+            "nooit_splitsen_regel_id": str(regel_id) if regel_id else None,
+        }
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -236,3 +272,4 @@ def wijs_splitsing_af(*, splitsing_id: uuid.UUID, actor_id: uuid.UUID, reden: st
             nieuwe_waarde=splitsing.besluit_detail,
             administratie_id=None,
         )
+        return regel_id

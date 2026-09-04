@@ -175,6 +175,68 @@ describe('VerzamelbakPaneel', () => {
     expect(aanroepen).toHaveLength(0)
   })
 
+  function splitsItem(overrides: Record<string, unknown> = {}) {
+    return item({
+      bestandsnaam: 'factuur-met-werkbonnen.pdf',
+      afzender_hint: 'facturen@universal-nederland.nl',
+      tenaamstelling: null,
+      suggestie_administratie_id: ADMIN_A,
+      suggestie_bron: 'afzender_regel_maar_onbekende_tenaamstelling',
+      splitsing_id: SPLITSING_ID,
+      splitsing_voorstel: [
+        { start_pagina: 1, eind_pagina: 4, tenaamstelling: 'BLOW B.V.', leverancier: 'Universal', factuurnummer: 'F-1', zekerheid: 0.9, factuur_paginas: 1, bijlage_paginas: 3 },
+        { start_pagina: 5, eind_pagina: 5, tenaamstelling: 'BLOW B.V.', leverancier: 'Universal', factuurnummer: 'F-2', zekerheid: 0.6, factuur_paginas: 1, bijlage_paginas: 0 },
+      ],
+      ...overrides,
+    })
+  }
+
+  it('bijlage-bewust (blok B 04-09): het voorstel benoemt factuur + bijlagepagina\'s per deel', async () => {
+    installFetchMock({ items: [splitsItem()] })
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    expect(await screen.findByText(/p\.1-4 BLOW B\.V\. \(factuur \+ 3 bijlagepagina's\)/)).toBeInTheDocument()
+    expect(screen.getByText(/p\.5-5 BLOW B\.V\. \(factuur, 1 pagina\)/)).toBeInTheDocument()
+  })
+
+  it('"Is één factuur" opent een dialoog; zonder vink wijst hij alleen af (geen regel)', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ items: [splitsItem()], aanroepen })
+    const gebruiker = userEvent.setup()
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await gebruiker.click(await screen.findByRole('button', { name: 'Is één factuur' }))
+    const dialoog = await screen.findByTestId('nooit-splitsen-dialoog')
+    expect(dialoog).toHaveTextContent('Onthoud: mails van facturen@universal-nederland.nl voor BLOW B.V. nooit splitsen')
+    expect(aanroepen).toHaveLength(0)
+    await gebruiker.click(screen.getByRole('button', { name: 'Is één factuur' }))
+    await waitFor(() => expect(aanroepen).toHaveLength(1))
+    expect(aanroepen[0].url).toContain(`/intake/splitsingen/${SPLITSING_ID}/afwijzen`)
+    expect(aanroepen[0].body).toEqual({ reden: null, onthoud_niet_splitsen: false, administratie_id: null })
+  })
+
+  it('mét vink "Onthoud …" gaat de gekozen administratie mee (vooringevuld op de suggestie)', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ items: [splitsItem()], aanroepen })
+    const gebruiker = userEvent.setup()
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await gebruiker.click(await screen.findByRole('button', { name: 'Is één factuur' }))
+    await gebruiker.click(screen.getByRole('checkbox', { name: /Onthoud: mails van/ }))
+    // De administratie-kiezer verschijnt, vooringevuld op de suggestie van de rij; kies bewust de andere.
+    await gebruiker.click(screen.getByLabelText('Administratie voor de regel'))
+    await gebruiker.click(await screen.findByRole('option', { name: 'Kempen Groep B.V.' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Afwijzen en onthouden' }))
+    await waitFor(() => expect(aanroepen).toHaveLength(1))
+    expect(aanroepen[0].body).toEqual({ reden: null, onthoud_niet_splitsen: true, administratie_id: ADMIN_B })
+  })
+
+  it('zonder afzender (upload) is de vink er niet, mét uitleg', async () => {
+    installFetchMock({ items: [splitsItem({ afzender_hint: null, bron: 'upload' })] })
+    const gebruiker = userEvent.setup()
+    render(<VerzamelbakPaneel administraties={ADMINISTRATIES} />)
+    await gebruiker.click(await screen.findByRole('button', { name: 'Is één factuur' }))
+    expect(await screen.findByTestId('nooit-splitsen-geen-afzender')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /Onthoud: mails van/ })).not.toBeInTheDocument()
+  })
+
   it('preview (D1, besluit 25-08): niets vooraf opgehaald; hover laadt het bestand één keer en toont de popup', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const bestandAanroepen: string[] = []

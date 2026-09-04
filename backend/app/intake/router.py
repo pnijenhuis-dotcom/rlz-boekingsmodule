@@ -5,9 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from app.auth import service as auth_service
-from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
+from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.documenten.service import DocumentNietGevonden
-from app.intake import nabundelen, schemas, splitsing, verwerking, verzamelbak
+from app.intake import nabundelen, schemas, splitsing, splitsing_uitsluiting, verwerking, verzamelbak
 
 # De lokale vereis_kantoorrol is bij de rollen-gate-fix (2026-08-21) verhuisd naar
 # app/auth/deps.py — één bron voor de kantoor-console-poort; de per-endpoint-Depends hieronder
@@ -324,15 +324,81 @@ def splitsing_bevestigen(
     )
 
 
-@router.post("/intake/splitsingen/{splitsing_id}/afwijzen", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/intake/splitsingen/{splitsing_id}/afwijzen", response_model=schemas.SplitsingAfwijzenResponse)
 def splitsing_afwijzen(
     splitsing_id: uuid.UUID,
     invoer: schemas.SplitsingAfwijzenInput,
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
-) -> None:
+) -> schemas.SplitsingAfwijzenResponse:
+    """"Is één factuur". Mét `onthoud_niet_splitsen` (blok B 04-09) legt de route óók de 'nooit
+    splitsen'-regel vast voor de afzender × administratie — 422 mét leesbare reden als dat niet kan
+    (geen afzender, uitgesloten kantoor-/doorstuurdomein, geen administratie gekozen); dan wordt er
+    níéts afgewezen (alles-of-niets)."""
+    if invoer.onthoud_niet_splitsen and invoer.administratie_id is not None:
+        # Scope-toets op de gekozen administratie (Beheerder platform-breed, anderen alleen eigen scope).
+        vereis_administratie_scope(invoer.administratie_id, actor)
     try:
-        splitsing.wijs_splitsing_af(splitsing_id=splitsing_id, actor_id=actor.id, reden=invoer.reden)
+        regel_id = splitsing.wijs_splitsing_af(
+            splitsing_id=splitsing_id,
+            actor_id=actor.id,
+            reden=invoer.reden,
+            onthoud_niet_splitsen=invoer.onthoud_niet_splitsen,
+            administratie_id=invoer.administratie_id,
+        )
     except splitsing.SplitsingNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except splitsing.SplitsingNietOpen as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (
+        splitsing_uitsluiting.GeenAfzenderBekend,
+        splitsing_uitsluiting.AfzenderDomeinUitgesloten,
+        splitsing_uitsluiting.AdministratieVerplicht,
+        splitsing_uitsluiting.OnbekendeAdministratie,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return schemas.SplitsingAfwijzenResponse(splitsing_id=splitsing_id, nooit_splitsen_regel_id=regel_id)
+
+
+def _uitsluiting_dto(r: splitsing_uitsluiting.RegelRij) -> schemas.SplitsingUitsluitingDto:
+    return schemas.SplitsingUitsluitingDto(
+        id=r.id,
+        administratie_id=r.administratie_id,
+        afzender_adres=r.afzender_adres,
+        leverancier_naam=r.leverancier_naam,
+        reden=r.reden,
+        aangemaakt_op=r.aangemaakt_op,
+        aangemaakt_door=r.aangemaakt_door,
+        aangemaakt_door_naam=r.aangemaakt_door_naam,
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/intake/splitsing-uitsluitingen",
+    response_model=schemas.SplitsingUitsluitingLijstResponse,
+)
+def splitsing_uitsluitingen_lijst(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.SplitsingUitsluitingLijstResponse:
+    """Beheer "Intake-regels" op de administratie-detailpagina (blok B 04-09): de actieve 'nooit
+    splitsen'-regels van déze administratie. Aanmaken loopt uitsluitend via de afwijs-route."""
+    rijen = splitsing_uitsluiting.lijst_regels(administratie_id=administratie_id, actor_id=actor.id)
+    return schemas.SplitsingUitsluitingLijstResponse(regels=[_uitsluiting_dto(r) for r in rijen])
+
+
+@router.delete(
+    "/administraties/{administratie_id}/intake/splitsing-uitsluitingen/{regel_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def splitsing_uitsluiting_verwijderen(
+    administratie_id: uuid.UUID,
+    regel_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    """"Verwijderen" = deactiveren mét audit — de rij blijft (nooit hard verwijderen)."""
+    try:
+        splitsing_uitsluiting.deactiveer_regel(administratie_id=administratie_id, regel_id=regel_id, actor_id=actor.id)
+    except splitsing_uitsluiting.RegelNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

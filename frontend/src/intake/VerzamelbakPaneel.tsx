@@ -10,12 +10,12 @@ import {
   haalVerzamelbakOp,
   hoortNietBijOns,
   maakSamenvoegenOngedaan,
-  wijsSplitsingAf,
   wijsToe,
   type BulkVerzamelbakResponseDto,
   type VerzamelbakActieResultaatDto,
   type VerzamelbakItemDto,
 } from './intakeApi'
+import { bijlageOmschrijving, NooitSplitsenDialog } from './NooitSplitsenDialog'
 import { SamenvoegDialog } from './SamenvoegDialog'
 import { VerzamelbakPreview } from './VerzamelbakPreview'
 
@@ -48,6 +48,8 @@ export function VerzamelbakPaneel({
   const [keuze, setKeuze] = useState<Record<string, string>>({})
   const [bezig, setBezig] = useState<string | null>(null)
   const [redenVoor, setRedenVoor] = useState<VerzamelbakItemDto | null>(null)
+  // "Is één factuur" (blok B 04-09): bevestigingsdialoog mét optionele vink "nooit splitsen" voor deze afzender.
+  const [nooitSplitsenVoor, setNooitSplitsenVoor] = useState<VerzamelbakItemDto | null>(null)
   const [reden, setReden] = useState('')
   // Optimistisch toewijzen / hoort-niet-bij-ons (besluit Peter 26-08, casus collega): de rij
   // verdwijnt per direct, het request loopt op de achtergrond; mislukt → rij LUID terug mét reden.
@@ -458,12 +460,12 @@ export function VerzamelbakPaneel({
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
                         Splitsingsvoorstel: {item.splitsing_voorstel.length} facturen —{' '}
                         {item.splitsing_voorstel
-                          .map(
-                            (s) =>
-                              `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}${
-                                s.ongeldig_reden ? ` ⚠ ongeldig (${s.ongeldig_reden})` : ''
-                              }`,
-                          )
+                          .map((s) => {
+                            const bijlagen = bijlageOmschrijving(s)
+                            return `p.${s.start_pagina}-${s.eind_pagina} ${s.tenaamstelling ?? '?'}${
+                              bijlagen ? ` (${bijlagen})` : ''
+                            }${s.ongeldig_reden ? ` ⚠ ongeldig (${s.ongeldig_reden})` : ''}`
+                          })
                           .join(' · ')}
                       </div>
                     )}
@@ -537,9 +539,7 @@ export function VerzamelbakPaneel({
                           className="btn secondary"
                           style={{ padding: '5px 12px' }}
                           disabled={bezig === item.document_id}
-                          onClick={() =>
-                            void actie(item.document_id, () => wijsSplitsingAf(item.splitsing_id!, null))
-                          }
+                          onClick={() => setNooitSplitsenVoor(item)}
                         >
                           Is één factuur
                         </button>
@@ -585,6 +585,18 @@ export function VerzamelbakPaneel({
         wijzen of als &ldquo;hoort niet bij ons&rdquo; af te handelen.
       </div>
 
+      {nooitSplitsenVoor && (
+        <NooitSplitsenDialog
+          item={nooitSplitsenVoor}
+          administraties={administraties}
+          onSluit={() => setNooitSplitsenVoor(null)}
+          onGereed={() => {
+            setNooitSplitsenVoor(null)
+            laad()
+            onGewijzigd?.()
+          }}
+        />
+      )}
       {samenvoegOpen && geselecteerd.length === 2 && (() => {
         const a = items.find((i) => i.document_id === geselecteerd[0])
         const b = items.find((i) => i.document_id === geselecteerd[1])

@@ -9,6 +9,10 @@ export interface SplitsSegmentDto {
   zekerheid: number
   /** Proportionele validatie (02-09): dít deel doorstond de paginabereik-toets niet — mens beslist. */
   ongeldig_reden?: string | null
+  /** Bijlage-bewust (blok B 04-09): pagina's van de factuur zelf (AI, informatief) en de door code afgeleide
+   * bijlagepagina's; null/afwezig = onbekend (óók voor voorstellen van vóór 04-09). */
+  factuur_paginas?: number | null
+  bijlage_paginas?: number | null
 }
 
 export interface VerzamelbakItemDto {
@@ -116,8 +120,44 @@ export function bevestigSplitsing(
   return apiPostJson(`/intake/splitsingen/${splitsingId}/bevestigen`, { delen })
 }
 
-export function wijsSplitsingAf(splitsingId: string, reden: string | null): Promise<unknown> {
-  return apiPostJson(`/intake/splitsingen/${splitsingId}/afwijzen`, { reden })
+export interface SplitsingAfwijzenResultaatDto {
+  splitsing_id: string
+  nooit_splitsen_regel_id: string | null
+}
+
+/** "Is één factuur". Mét `onthoudNietSplitsen` (blok B 04-09) legt de server óók de regel "mails van deze
+ * afzender voor `administratieId` nooit splitsen" vast — 422 mét leesbare reden als dat niet kan. */
+export function wijsSplitsingAf(
+  splitsingId: string,
+  reden: string | null,
+  opties: { onthoudNietSplitsen?: boolean; administratieId?: string | null } = {},
+): Promise<SplitsingAfwijzenResultaatDto> {
+  return apiPostJson<SplitsingAfwijzenResultaatDto>(`/intake/splitsingen/${splitsingId}/afwijzen`, {
+    reden,
+    onthoud_niet_splitsen: opties.onthoudNietSplitsen ?? false,
+    administratie_id: opties.onthoudNietSplitsen ? (opties.administratieId ?? null) : null,
+  })
+}
+
+/** 'Nooit splitsen'-regel (blok B 04-09): beheer per administratie op de detailpagina (tab Algemeen). */
+export interface SplitsingUitsluitingDto {
+  id: string
+  administratie_id: string
+  afzender_adres: string
+  leverancier_naam: string | null
+  reden: string | null
+  aangemaakt_op: string
+  aangemaakt_door: string
+  aangemaakt_door_naam: string | null
+}
+
+export function haalSplitsingUitsluitingenOp(administratieId: string): Promise<{ regels: SplitsingUitsluitingDto[] }> {
+  return apiJson(`/administraties/${administratieId}/intake/splitsing-uitsluitingen`)
+}
+
+/** "Verwijderen" = deactiveren mét audit; de server bewaart de rij (nooit hard verwijderen). */
+export function verwijderSplitsingUitsluiting(administratieId: string, regelId: string): Promise<void> {
+  return apiJson<void>(`/administraties/${administratieId}/intake/splitsing-uitsluitingen/${regelId}`, { method: 'DELETE' })
 }
 
 /** Leesbare kaart voor een losse UBL zonder beeld (02-09). */
