@@ -15,6 +15,9 @@ export interface MijnToegangDto {
   // de rolvlag voor "+ Project aanmaken"/leverancierbeheer (Beheerder óf B+P).
   heeft_veldwerkerbeheer_recht: boolean
   is_beheerder_of_bp: boolean
+  // 04-09 (0.2): "+ Project aanmaken" volgt de aanmaak-rolpoort (óók Boekhouding) — server-side bron,
+  // spiegel van `auth/rollen.ts::magProjectAanmaken`. Optioneel voor oudere responses (fail-closed).
+  mag_project_aanmaken?: boolean
 }
 
 let cache: { waarde: MijnToegangDto | null; tijd: number } | null = null

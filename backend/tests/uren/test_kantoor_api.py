@@ -536,13 +536,15 @@ class TestMijnToegang:
         assert resp.status_code == 200
         body = resp.json()
         assert body["heeft_meerwerk_recht"] is False and body["is_beheerder"] is False
+        # 0.2 (04-09): Boekhouding mag projecten aanmaken (zelfde poort als de combobox-ingang), maar is geen B+P.
+        assert body["mag_project_aanmaken"] is True and body["is_beheerder_of_bp"] is False
         assert body["aantal_administraties_in_scope"] == 2
         assert body["administraties_met_opt_in"] == [str(administratie_id)]
         uren_service.zet_meerwerk_recht(gebruiker_id=medewerker, ingeschakeld=True, actor_id=beheerder_id)
         assert client.get("/uren/kantoor/mijn-toegang", headers=_bearer(medewerker, rol="boekhouding")).json()["heeft_meerwerk_recht"] is True
         # Beheerder: platform-breed, recht altijd.
         b = client.get("/uren/kantoor/mijn-toegang", headers=_bearer(beheerder_id, rol="beheerder")).json()
-        assert b["is_beheerder"] and b["heeft_meerwerk_recht"]
+        assert b["is_beheerder"] and b["heeft_meerwerk_recht"] and b["mag_project_aanmaken"]
         # Veldrol: kantoor-endpoint → 403.
         zzper = maak_gebruiker(admin_engine, "zzper", "Milan")
         assert client.get("/uren/kantoor/mijn-toegang", headers=_bearer(zzper, rol="zzper")).status_code == 403

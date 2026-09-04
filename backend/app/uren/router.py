@@ -1100,6 +1100,7 @@ def kantoor_mijn_toegang(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -
     opt-in-administraties binnen de eigen scope. Alleen kantoorrollen; geen mutatie."""
     from app.auth import service as auth_service
     from app.db.models import GebruikerRol
+    from app.projecten.kantoor import _AANMAAK_ROLLEN
 
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     return schemas.MijnToegangDto(
@@ -1109,6 +1110,7 @@ def kantoor_mijn_toegang(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -
         is_beheerder=actor.rol == GebruikerRol.BEHEERDER,
         heeft_veldwerkerbeheer_recht=service.heeft_veldwerkerbeheer_recht(gebruiker_id=actor.id, rol=actor.rol),
         is_beheerder_of_bp=actor.rol in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN),
+        mag_project_aanmaken=actor.rol in _AANMAAK_ROLLEN,
     )
 
 

@@ -808,3 +808,6 @@ class MijnToegangDto(BaseModel):
     # en de rolvlag voor "+ Project aanmaken"/leverancierbeheer (Beheerder óf B+P).
     heeft_veldwerkerbeheer_recht: bool = False
     is_beheerder_of_bp: bool = False
+    # 04-09 (mee-lift-punt 0.2, besluit Peter): "+ Project aanmaken" op /planning volgt dezelfde
+    # rolpoort als de combobox-ingang — óók Boekhouding (spiegel van `projecten.kantoor._AANMAAK_ROLLEN`).
+    mag_project_aanmaken: bool = False

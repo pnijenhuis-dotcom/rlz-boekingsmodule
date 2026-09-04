@@ -102,6 +102,7 @@ function installMock(opties: MockOpties = {}) {
           is_beheerder: true,
           heeft_veldwerkerbeheer_recht: true,
           is_beheerder_of_bp: true,
+          mag_project_aanmaken: true,
         }),
       )
     if (url.includes('/uren/kantoor/werkopdrachten'))

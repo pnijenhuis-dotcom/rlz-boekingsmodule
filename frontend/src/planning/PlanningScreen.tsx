@@ -1008,9 +1008,10 @@ export function PlanningScreen() {
           >
             Vandaag
           </Button>
-          {/* 31-08 blok C: "+ Project aanmaken" terug op /planning voor B+P — bestaande
-              projectmotor (naamconventie + RLZ-PUT), geen nieuw pad. */}
-          {toegang?.is_beheerder_of_bp === true && (
+          {/* 31-08 blok C: "+ Project aanmaken" terug op /planning — bestaande projectmotor
+              (naamconventie + RLZ-PUT), geen nieuw pad. 04-09 (0.2, besluit Peter): dezelfde
+              rolpoort als de combobox-ingang, dus óók Boekhouding (`mag_project_aanmaken`). */}
+          {toegang?.mag_project_aanmaken === true && (
             <Button maat="klein" title="Via de projectmotor — wordt óók in RLZ aangemaakt" onClick={() => setNieuwProjectOpen(true)}>
               + Project aanmaken
             </Button>
