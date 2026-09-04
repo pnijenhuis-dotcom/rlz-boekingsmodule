@@ -88,6 +88,12 @@ class BoekvoorstelRegelData:
     # van de mens. Alleen gevuld op prefill-regels; `gb_voorstel_detail` = tooltip-tekst.
     gb_bron: str | None = None
     gb_voorstel_detail: str | None = None
+    # Blok A3 04-09 (besluit Peter): heeft de scan het btw-veld BEWUST leeg gelaten — 0 % is ambigu
+    # (verlegd/vrijgesteld/0 %-tarief), meerduidige tariefmatch of een btw-bedrag dat op geen tarief past —
+    # dan mag de administratie-default (blok E) 'm níét vullen: de default vult uitsluitend velden waarvoor
+    # scan én geheugen niets hadden. Alleen op prefill-regels; komt uit `btw_afleiding_reden` van de
+    # extractie (app/extractie/controle.py::leid_btw_af). Intern veld, niet in de DTO.
+    btw_bewust_leeg: bool = False
 
 
 @dataclass(frozen=True)
@@ -241,6 +247,7 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             btw_bedrag=_als_decimal(regel.get("btw_bedrag")),
             omschrijving=regel.get("omschrijving"),
             btw_bron=_btw_bron(regel),
+            btw_bewust_leeg=_btw_bewust_leeg(regel),
         )
         for regel in ai_regels
         if isinstance(regel, dict)
@@ -250,6 +257,16 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
 def _btw_bron(regel: dict) -> str | None:
     """Alleen "factuur" als de regel ook écht een afgeleide btw-code draagt."""
     return "factuur" if regel.get("btw_bron") == "factuur" and _als_uuid(regel.get("taxrate_id")) else None
+
+
+# Redenen uit `leid_btw_af` waarbij de scan het btw-veld BEWUST leeg liet (de scan hád informatie, maar die
+# is ambigu of past op geen tarief) — blok A3 04-09. "onbepaalbaar" (netto/btw niet gelezen) hoort er niet
+# bij: dan had de scan niets, en mag de administratie-default wél vullen.
+_BTW_BEWUST_LEEG_REDENEN = frozenset({"btw_nul", "meerduidig", "geen_match"})
+
+
+def _btw_bewust_leeg(regel: dict) -> bool:
+    return _als_uuid(regel.get("taxrate_id")) is None and regel.get("btw_afleiding_reden") in _BTW_BEWUST_LEEG_REDENEN
 
 
 def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
@@ -282,6 +299,9 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
     taxrate_ids = {r.get("taxrate_id") for r in regels}
     taxrate_id = _als_uuid(next(iter(taxrate_ids))) if len(taxrate_ids) == 1 else None
     btw_bron = "factuur" if taxrate_id is not None and all(_btw_bron(r) == "factuur" for r in regels) else None
+    # Blok A3: liet de scan op ook maar één regel de btw bewust leeg, dan is de samengevoegde regel dat óók —
+    # de administratie-default mag 'm dan niet vullen.
+    btw_bewust_leeg = taxrate_id is None and any(_btw_bewust_leeg(r) for r in regels)
 
     omschrijving = None
     if regels:
@@ -300,6 +320,7 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
         btw_bedrag=btw,
         omschrijving=omschrijving,
         btw_bron=btw_bron,
+        btw_bewust_leeg=btw_bewust_leeg,
     )
 
 

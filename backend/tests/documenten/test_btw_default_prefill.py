@@ -136,7 +136,7 @@ def _upload(administratie_id: uuid.UUID, actor_id: uuid.UUID, opslag: LokaleBest
     ).document_id
 
 
-def test_factuur_wint_default_vult_alleen_wat_leeg_bleef(
+def test_factuur_wint_en_bewust_leeg_gelaten_0pct_regel_blijft_leeg(
     gescoopte_gebruiker: uuid.UUID,
     administratie_id: uuid.UUID,
     opslag: LokaleBestandsopslag,
@@ -144,16 +144,49 @@ def test_factuur_wint_default_vult_alleen_wat_leeg_bleef(
     fake_extraheer: None,
     default_verlegd: None,
 ) -> None:
+    """Blok A3 04-09 (besluit Peter): een door de scan BEWUST leeg gelaten 0 %-/ambigu-veld wordt níét door de
+    administratie-default gevuld — de default vult uitsluitend velden waarvoor scan én geheugen niets hadden."""
     document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
     data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     diesel, huur = data.regels
     assert diesel.taxrate_id == HOOG_ID and diesel.btw_bron == "factuur"
-    # De scan liet 0 % bewust leeg (ambigu) — zonder leverancier-geheugen vult de administratie-default 'm,
-    # mét chip; de harde checks blijven de poort (beslispunt Peter, BESLISSINGEN blok E).
-    assert huur.taxrate_id == VERLEGD_ID and huur.btw_bron == "standaard"
-    # Samengevoegde regel: btw-codes verschillen per regel → geen factuur-code → default.
+    # De scan liet 0 % bewust leeg (ambigu: verlegd/vrijgesteld/0 %) → blijft leeg voor de mens, geen default.
+    assert huur.taxrate_id is None and huur.btw_bron is None and huur.btw_bewust_leeg is True
+    # Samengevoegde regel: één regel bewust leeg → de samengevoegde regel óók niet gevuld.
     assert data.samengevoegde_regel is not None
-    assert data.samengevoegde_regel.taxrate_id == VERLEGD_ID and data.samengevoegde_regel.btw_bron == "standaard"
+    assert data.samengevoegde_regel.taxrate_id is None and data.samengevoegde_regel.btw_bron is None
+
+
+def test_default_vult_regel_waar_de_scan_geen_btw_las(
+    gescoopte_gebruiker: uuid.UUID,
+    administratie_id: uuid.UUID,
+    opslag: LokaleBestandsopslag,
+    ai_gate_aan: None,
+    default_verlegd: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tegenhanger van A3: heeft de scan het btw-bedrag níét gelezen ("onbepaalbaar" — scan had niets), dan
+    vult de default wél, mét chip "standaard administratie"."""
+
+    def _fake(pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None) -> AiFactuurExtractie:
+        e = _fake_extractie()
+        return AiFactuurExtractie(
+            kop=e.kop,
+            regels=[
+                e.regels[0],
+                AiRegel(omschrijving="Transport", netto_bedrag="1000.00", btw_bedrag=None, hoeveelheid="1", zekerheid=0.6),
+            ],
+            bsn_verwijderd=0,
+            volledig=True,
+        )
+
+    monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _fake)
+    document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
+    data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+    diesel, transport = data.regels
+    assert diesel.taxrate_id == HOOG_ID and diesel.btw_bron == "factuur"
+    assert transport.btw_bewust_leeg is False
+    assert transport.taxrate_id == VERLEGD_ID and transport.btw_bron == "standaard"
 
 
 def test_leverancier_geheugen_wint_van_default(

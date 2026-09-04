@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Duplicaten standaard automatisch afgevoerd, ook bij de klant of met een open vraag
+
+- **Duplicaten automatisch afvoeren staat nu voor alle administraties aan.** De schakelaar per administratie is weg. Een harde duplicaat (zelfde leverancier, factuurnummer én bedrag, origineel al geboekt of ouder in de werkvoorraad) gaat vanzelf naar Afgewezen met een link naar het origineel. Er verdwijnt niets; Heropenen haalt de kopie terug. Blijkt het mis te gaan, dan zet een beheerder de noodrem om op Instellingen › Boeken platformbreed ("Duplicaten automatisch afvoeren" uit) — dan blijven duplicaten overal als signaal staan en werkt alleen nog de knop "Afvoeren als duplicaat".
+- **Ook een duplicaat dat bij de klant ligt of een open vraag heeft, wordt afgevoerd.** Ligt de kopie ter accordering, dan wordt die ronde beëindigd met de reden "afgevoerd als duplicaat van …"; de klant hoeft er niets meer mee te doen. Staat er een open vraag op de kopie, dan sluit die met dezelfde reden en zie je dat als laatste bericht in de vraag. Alleen een factuur waarvan de boeking al is gestart (of die al geboekt is) wordt nooit automatisch afgevoerd. Alles staat in de tijdlijn en het logboek.
+- **De btw-standaard vult geen bewust leeg gelaten veld meer.** Laat de scan het btw-veld van een regel leeg omdat het onduidelijk is (0 % kan verlegd, vrijgesteld of nul-tarief zijn, of het bedrag past op geen enkele code), dan blijft die regel leeg en kies je zelf. De standaard-btw van de administratie vult alleen nog regels waarvoor de scan én het leveranciersgeheugen niets hadden.
+
 ## 2026-09-04 — Nieuwe gebruiker krijgt altijd de rol van de tab
 
 - **"+ Veldwerker uitnodigen" maakt weer een veldwerker aan.** Op de pagina Gebruikers & toegang kon de knop op de tab Veldwerkers een kantoormedewerker aanmaken, omdat de rol uit een eerder geopende dialoog bleef staan. De dialoog start nu bij elke tab opnieuw met de juiste rolgroep en toont die expliciet bovenaan ("Rolgroep: Veldwerker …", "Kantoormedewerker …", "Klant-accordeur"). Ook de server weigert sindsdien een rol die niet bij de gebruikte tab past, en legt in het logboek vast vanaf welke tab of knop een account is aangemaakt.

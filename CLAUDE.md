@@ -388,9 +388,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   voor C/D/E incl. notities ①–⑨; migraties 0105–0108 — BESLISSINGEN "MEDEWERKER-WENSEN 04-09" is canoniek per blok):**
   (A) **Duplicaat-auto-afvoer** — harde match (crediteur op btw-nummer + referentie + bedrag; origineel geboekt óf
   ouder in de werkvoorraad) → automatisch "Afgewezen — duplicaat van …" mét kruisverwijzing beide kanten, audit,
-  tijdlijn; opt-in per administratie `duplicaat_autoafvoer_ingeschakeld` (Beheerder, default UIT) + volumerem 20/dag;
-  één-klik "Afvoeren als duplicaat" (rijmenu + controlescherm) altijd; zachte signalen voeren nooit af; terughalen =
-  heropenen (`app/documenten/duplicaat_afvoer.py`). (B) **Splitsing bijlage-bewust** (schemaveld `fp` = integer,
+  tijdlijn; **sinds blok A1 04-09 (besluit Peter, migratie 0109) STANDAARD AAN voor de hele module achter één
+  platformbrede noodrem** `platform.duplicaat_afvoer_instelling` (Instellingen › Boeken, `make duplicaat-autoafvoer-uit
+  BEHEERDER_ID=`; de per-administratie-toggle van 0105 is vervallen, kolom blijft) + volumerem 20/dag; **blok A2: een hard
+  duplicaat bij de klant-accordeur of met een open vraag wordt óók afgevoerd — ronde vervalt en vraag sluit mét reden
+  "afgevoerd als duplicaat van ‹ref›" (slotbericht in de thread, buiten de configuratie-banner), alleen geboekt/
+  boeken_mislukt/wacht_op_iban nooit;** één-klik "Afvoeren als duplicaat" (rijmenu + controlescherm) altijd; zachte
+  signalen voeren nooit af; terughalen = heropenen (`app/documenten/duplicaat_afvoer.py`). (B) **Splitsing bijlage-bewust** (schemaveld `fp` = integer,
   code rekent bijlagepagina's; "factuur + N bijlagepagina's" in het voorstel) + **"nooit splitsen" per afzender**
   (`intake_splitsing_uitsluiting`, geleerd via "Is één factuur" mét vink, kantoorbrede match vóór de AI-call, beheer
   op de detailpagina tab Algemeen "Intake-regels"; `app/intake/splitsing_uitsluiting.py`). (C) **Projectverdeling
@@ -408,7 +412,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   kandidaten, achter AI-gate + kostenmeter, persistent in `regel_gb_classificatie`, oranje "AI-voorstel — bevestig")
   → leeg; autoboek-slot wordt er nooit groen van (`app/geheugen/regel_gb.py`, `documenten/regel_prefill.py`).
   (E) **Btw-default per administratie** `standaard_taxrate_id` (Beheerder, default UIT): factuur → geheugen →
-  default (chip "standaard administratie") → leeg. (F) **Bugfix Huvanco**: kortingsregels als negatieve regel (prompt +
+  default (chip "standaard administratie") → leeg — **blok A3 04-09 (besluit Peter): een door de scan BEWUST leeg
+  gelaten 0 %-/ambigu-veld (`btw_afleiding_reden` btw_nul/meerduidig/geen_match → `btw_bewust_leeg`) wordt níét door de
+  default gevuld; de default vult uitsluitend velden waarvoor scan én geheugen niets hadden.** (F) **Bugfix Huvanco**: kortingsregels als negatieve regel (prompt +
   UBL `AllowanceCharge`), regeltelling via één gedeelde beslisboom `documenten/regelsom.py` (netto-vs-excl,
   netto+btw-vs-incl, nooit stil excl-vs-incl; lege btw = 0 alleen op een gesynct 0%-tarief).
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default

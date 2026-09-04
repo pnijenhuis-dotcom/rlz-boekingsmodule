@@ -12,9 +12,11 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   `_regels_prefill`) → leverancier-geheugen (de engine-btw die de UI via `/boekingsgeheugen/voorstel`
   invult — hier alleen GETOETST: heeft de engine een btw-waarde, dan blijft het veld leeg voor de UI) →
   administratie-default (`btw_bron='standaard'`, chip "standaard administratie") → leeg. De default vult
-  ALLEEN wat anders leeg bleef — óók een regel die de scan bewust leeg liet (0%/onbepaalbaar/meerduidig);
-  de harde checks blijven onverkort de poort en het buitenland-signaal blijft staan (beslispunt Peter,
-  zie BESLISSINGEN). Geldt ook voor de samengevoegde regel (leverancier-niveau-engine).
+  UITSLUITEND velden waarvoor scan én geheugen niets hadden (besluit Peter 04-09, blok A3): een regel die de
+  scan BEWUST leeg liet — 0 % is ambigu (verlegd/vrijgesteld/0 %), meerduidige tariefmatch of een btw-bedrag
+  dat op geen tarief past (`BoekvoorstelRegelData.btw_bewust_leeg`) — blijft leeg voor de mens, mét de
+  bestaande hint-chips. De harde checks blijven onverkort de poort en het buitenland-signaal blijft staan.
+  Geldt ook voor de samengevoegde regel (leverancier-niveau-engine; één bewust-lege regel = bewust leeg).
 
 Opgeslagen keuzes van de mens worden hier nooit geraakt: de aanroeper roept dit uitsluitend op het
 prefill-pad aan (zelfde regel als de btw-chip "uit factuur").
@@ -80,6 +82,8 @@ def _met_btw_default(
 ) -> BoekvoorstelRegelData:
     if standaard_taxrate_id is None or regel.taxrate_id is not None:
         return regel
+    if regel.btw_bewust_leeg:
+        return regel  # de scan liet 'm bewust leeg (0 %/ambigu) — de mens kiest, de default zwijgt (A3)
     if _engine_heeft_btw(engine_observaties, regel_sleutel=regel_sleutel):
         return regel  # leverancier-geheugen wint: de UI vult 'm mét geheugen-chip
     return replace(regel, taxrate_id=standaard_taxrate_id, btw_bron=BTW_BRON_STANDAARD)
