@@ -413,6 +413,12 @@ export function DocumentDetailScreen() {
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
   // B1 (04-09): "Verdelen over projecten…" vanuit de lege project-kolom opent het Projectverdeling-blok.
   const [verdeelVerzoek, setVerdeelVerzoek] = useState(0)
+  // B3-dekking (bugfix 04-09, casus Kader Consultancy): ná élke opslag van de verdeling draait het boekvoorstel-
+  // paneel de checks opnieuw; de dekkingsstand voedt de hint onder de boekingsregels.
+  const [checksHerrunVersie, setChecksHerrunVersie] = useState(0)
+  const [verdelingDektRegels, setVerdelingDektRegels] = useState(false)
+  const onVerdelingOpgeslagen = useCallback(() => setChecksHerrunVersie((v) => v + 1), [])
+  const onVerdelingStand = useCallback((stand: { dekt: boolean }) => setVerdelingDektRegels(stand.dekt), [])
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
   // ⋯-actiemenu in de topbar (addendum 27-08 punt 5): "Verplaats naar andere administratie…".
@@ -1128,6 +1134,8 @@ export function DocumentDetailScreen() {
               onActies={onActies}
               onOnopgeslagenWijzigingen={onOnopgeslagenWijzigingen}
               onVerdelenGevraagd={() => setVerdeelVerzoek((v) => v + 1)}
+              checksHerrunVersie={checksHerrunVersie}
+              verdelingDektRegels={verdelingDektRegels}
             />
           )}
 
@@ -1142,6 +1150,8 @@ export function DocumentDetailScreen() {
             soort={detail.soort}
             boekvoorstelVersie={boekvoorstelVersie}
             onGewijzigd={laadDetail}
+            onOpgeslagen={onVerdelingOpgeslagen}
+            onStand={onVerdelingStand}
             openVerzoek={verdeelVerzoek}
           />
 

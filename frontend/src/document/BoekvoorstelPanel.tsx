@@ -392,6 +392,13 @@ interface Props {
   /** B1 (04-09): lege stand van de project-kolom = actie "Verdelen over projecten…" — opent het
    * Projectverdeling-blok (vaste regels en/of pro rato omzet) voor de regels zonder project. */
   onVerdelenGevraagd?: () => void
+  /** B3-dekking (bugfix 04-09): telt op ná élke opslag van de projectverdeling — het paneel draait dan de
+   * read-only checks opnieuw (POST …/boekvoorstel/checks, zonder het voorstel te schrijven), zodat "Verplichte
+   * velden" en "Projectverdeling" de opgeslagen verdeling direct weerspiegelen. 0 = niets. */
+  checksHerrunVersie?: number
+  /** B3-dekking: true = de opgeslagen verdeling is geldig en dekt de regels zonder kolom-project — de hint onder de
+   * boekingsregels toont dan "gedekt door de projectverdeling" in plaats van de actie. */
+  verdelingDektRegels?: boolean
   /** Doel-element voor de inklapregel "Controles (n groen)" — onderaan de werk-kolom (v2 ①).
    * undefined = inline (tests); null = doel nog niet gemonteerd. */
   inklapDoel?: HTMLElement | null
@@ -425,6 +432,8 @@ export function BoekvoorstelPanel({
   onChecksStand,
   inklapDoel,
   onVerdelenGevraagd,
+  checksHerrunVersie = 0,
+  verdelingDektRegels = false,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -1070,6 +1079,17 @@ export function BoekvoorstelPanel({
     [regels, totaalAlsGetal, gelezenExcl, gelezenBtw],
   )
 
+  // B3-dekking (bugfix 04-09): ná een opslag van de projectverdeling de read-only checks herdraaien — zonder
+  // schrijven, zodat een lopende debounce-wijziging niet overschreven wordt (de versie-guard in checksBijOpenen
+  // laat een intussen verouderd resultaat vallen).
+  const checksBijOpenenRef = useRef(checksBijOpenen)
+  checksBijOpenenRef.current = checksBijOpenen
+  useEffect(() => {
+    if (checksHerrunVersie === 0 || laden || ladenFout !== null || isReadOnly) return
+    setChecksActueel(false)
+    void checksBijOpenenRef.current().catch(() => undefined)
+  }, [checksHerrunVersie, laden, ladenFout, isReadOnly])
+
   // Blok B 2026-08-10: checks draaien automatisch — bij openen (read-only) en gedebounced na
   // elke wijziging (opslaan + checks via de bestaande PUT). Geen "Controleren"-knop meer.
   const { checksBezig } = useAutoChecks({
@@ -1694,10 +1714,17 @@ export function BoekvoorstelPanel({
             {regels.filter((r) => r.projectId === null).length === 1
               ? '1 regel zonder project'
               : `${regels.filter((r) => r.projectId === null).length} regels zonder project`}{' '}
-            — kies per regel een project óf{' '}
-            <button type="button" className="linkbtn" onClick={onVerdelenGevraagd}>
-              Verdelen over projecten…
-            </button>
+            {verdelingDektRegels ? (
+              // B3-dekking: de opgeslagen verdeling geeft deze regels hun project(en) — geen actie meer nodig.
+              <>— gedekt door de projectverdeling ✓</>
+            ) : (
+              <>
+                — kies per regel een project óf{' '}
+                <button type="button" className="linkbtn" onClick={onVerdelenGevraagd}>
+                  Verdelen over projecten…
+                </button>
+              </>
+            )}
           </div>
         )}
         {!isReadOnly && (

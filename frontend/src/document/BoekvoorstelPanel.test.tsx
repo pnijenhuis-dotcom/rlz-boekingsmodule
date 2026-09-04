@@ -211,6 +211,77 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.getByRole('button', { name: 'Boeken in RLZ ✓' })).toBeDisabled()
   })
 
+  it('B3-dekking (bugfix 04-09): checksHerrunVersie draait de read-only checks opnieuw zonder het voorstel te schrijven', async () => {
+    const checksAanroepen: string[] = []
+    const putBodies: unknown[] = []
+    installFetchMock({
+      checksAanroepen,
+      putBodies,
+      checksResponse: {
+        geblokkeerd: true,
+        resultaten: [{ naam: 'Verplichte velden', ok: false, melding: 'Ontbrekend: project (regel 1)' }],
+      },
+    })
+    const props = {
+      administratieId: ADMINISTRATIE_ID,
+      documentId: DOCUMENT_ID,
+      status: 'te_controleren',
+      onGeboekt: () => {},
+      onHersteld: () => {},
+    }
+    const { rerender } = render(<BoekvoorstelPanel {...props} checksHerrunVersie={0} />)
+    await waitFor(() => expect(checksAanroepen).toHaveLength(1))
+    expect(screen.getByText('Blokkerend')).toBeInTheDocument()
+
+    // De projectverdeling is opgeslagen → het scherm telt op; het paneel herdraait de open-run (POST checks).
+    installFetchMock({
+      checksAanroepen,
+      putBodies,
+      checksResponse: {
+        geblokkeerd: false,
+        resultaten: [
+          { naam: 'Verplichte velden', ok: true, melding: 'Alle verplichte velden zijn ingevuld' },
+          { naam: 'Projectverdeling', ok: true, melding: 'Verdeeld: € 630,00 over 8 projecten, pro rato omzet augustus 2026' },
+        ],
+      },
+    })
+    rerender(<BoekvoorstelPanel {...props} checksHerrunVersie={1} />)
+    await waitFor(() => expect(checksAanroepen).toHaveLength(2))
+    expect(await screen.findByText(/Verdeeld: € 630,00 over 8 projecten/)).toBeInTheDocument()
+    expect(screen.queryByText('Blokkerend')).not.toBeInTheDocument()
+    // Nooit een PUT: de herrun schrijft het voorstel niet (een lopende debounce-wijziging blijft van de mens).
+    expect(putBodies).toHaveLength(0)
+  })
+
+  it('B3-dekking: mét een geldige verdeling zegt de hint "gedekt door de projectverdeling" i.p.v. de actie aan te bieden', async () => {
+    installFetchMock({
+      projectVerplicht: true,
+      projecten: [{ id: 'dddddddd-0000-0000-0000-000000000001', naam: '26127 Tilburg (Heijmans)' }],
+      boekvoorstel: {
+        ...LEEG_BOEKVOORSTEL,
+        opgeslagen: true,
+        vendor_id: VENDOR_ID,
+        regels: [
+          { ledger_id: LEDGER_ID, taxrate_id: TAXRATE_ID, project_id: null, netto_bedrag: '630.00', btw_bedrag: '132.30', omschrijving: null },
+        ],
+      },
+    })
+    const props = {
+      administratieId: ADMINISTRATIE_ID,
+      documentId: DOCUMENT_ID,
+      status: 'te_controleren',
+      onGeboekt: () => {},
+      onHersteld: () => {},
+      onVerdelenGevraagd: () => {},
+    }
+    const { rerender } = render(<BoekvoorstelPanel {...props} verdelingDektRegels={false} />)
+    const hint = await screen.findByTestId('project-leeg-actie')
+    expect(within(hint).getByRole('button', { name: 'Verdelen over projecten…' })).toBeInTheDocument()
+    rerender(<BoekvoorstelPanel {...props} verdelingDektRegels />)
+    await waitFor(() => expect(screen.getByTestId('project-leeg-actie')).toHaveTextContent('1 regel zonder project — gedekt door de projectverdeling ✓'))
+    expect(within(screen.getByTestId('project-leeg-actie')).queryByRole('button')).not.toBeInTheDocument()
+  })
+
   it('toont het boekstuknummer na een geslaagde boeking', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({

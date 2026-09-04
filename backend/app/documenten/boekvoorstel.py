@@ -146,12 +146,19 @@ def _met_projectverdeling(
 
 
 def _project_verplicht_per_regel(project_verplicht: bool, voorstel: BoekvoorstelData) -> bool:
-    """Draagt het document een ACTIEVE projectverdeling, dan toetst "Verplichte velden" het project niet meer per
-    regel — de aanvullende check "Projectverdeling" (blokkeert tot de verdeling exact sluit) is dan de poort.
-    Nooit een verzwakking: zonder verdeling geldt de projectplicht per regel onverkort."""
-    if voorstel.projectverdeling is not None and voorstel.projectverdeling.actief:
+    """Draagt het document een GELDIGE opgeslagen projectverdeling (actief én compleet: vaste regels + evt.
+    pro-rato-restant sluiten exact op het te verdelen bedrag), dan telt élke regel zonder kolom-project als gedekt en
+    toetst "Verplichte velden" het project niet meer per regel. Een onvolledige/ongeldige verdeling dekt níéts: de
+    projectplicht per regel blijft blokkeren (mét de verwijzing naar "Verdelen over projecten…") én de check
+    "Projectverdeling" benoemt de blokkade. Nooit een verzwakking; onafhankelijk van de leverancier-opt-in
+    (B3-dekking, bugfix 04-09). Dezelfde functie voedt het controlescherm én de boekmotor-poort (voer_checks_uit)."""
+    if voorstel.projectverdeling is not None and voorstel.projectverdeling.dekt_regels_zonder_project:
         return False
     return project_verplicht
+
+
+def _regels_zonder_project(voorstel: BoekvoorstelData) -> int:
+    return sum(1 for r in voorstel.regels if r.project_id is None)
 
 
 def _als_decimal(waarde: str | None) -> Decimal | None:
@@ -791,7 +798,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
             ),
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
-            _projectverdeling_check(voorstel),
+            _projectverdeling_check(voorstel, project_verplicht=project_verplicht),
             check_regeltelling(
                 totaalbedrag=voorstel.totaalbedrag,
                 regels=regels,
@@ -810,12 +817,17 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     )
 
 
-def _projectverdeling_check(voorstel: BoekvoorstelData) -> CheckResultaat:
-    """Blok C 04-09: lokale check op de projectverdeling (app/projectverdeling/service.py::check) — géén
-    verdeling = niet van toepassing (ok); actieve verdeling die niet sluit = blokkerend mét de blokkade-zin."""
+def _projectverdeling_check(voorstel: BoekvoorstelData, *, project_verplicht: bool) -> CheckResultaat:
+    """Blok C 04-09: lokale check op de OPGESLAGEN projectverdeling (app/projectverdeling/service.py::check) —
+    geldig = ok mét samenvatting, ongeldig = blokkerend mét de blokkade-zin, afwezig = niet van toepassing tenzij er
+    onder projectplicht regels zonder project zijn (dan benoemt de check de actie)."""
     from app.projectverdeling import service as projectverdeling_service
 
-    return projectverdeling_service.check(voorstel.projectverdeling)
+    return projectverdeling_service.check(
+        voorstel.projectverdeling,
+        regels_zonder_project=_regels_zonder_project(voorstel),
+        project_verplicht=project_verplicht,
+    )
 
 
 def _afdeling_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> CheckResultaat:
@@ -942,7 +954,7 @@ def voer_checks_uit(
         resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
         # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
         # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
-        resultaten.insert(2, _projectverdeling_check(voorstel))
+        resultaten.insert(2, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
         return CheckRapport(tuple(resultaten))
     finally:
         if eigen_client and eigen_port is not None:

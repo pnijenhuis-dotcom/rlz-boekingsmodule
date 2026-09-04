@@ -260,6 +260,42 @@ describe('ProjectverdelingBlok', () => {
     expect((posts[0].body as { reden: string }).reden).toMatch(/omzet juli 2026 gewijzigd/)
   })
 
+  it('B3-dekking (bugfix 04-09): ná een geslaagde opslag vuurt onOpgeslagen en meldt onStand dekt=true (compleet) resp. false (blokkade)', async () => {
+    const puts: unknown[] = []
+    const opgeslagen = vi.fn()
+    const standen: { dekt: boolean }[] = []
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true }, puts, putAntwoord: MET_VAST })
+    render(
+      <ProjectverdelingBlok
+        administratieId={ADM}
+        documentId={DOC}
+        status="te_controleren"
+        soort="inkoopfactuur"
+        boekvoorstelVersie={0}
+        onOpgeslagen={opgeslagen}
+        onStand={(stand) => standen.push(stand)}
+      />,
+    )
+    const knop = await screen.findByRole('button', { name: 'Verdelen over projecten…' })
+    // Lege stand ('geen') = niets gedekt.
+    await waitFor(() => expect(standen.at(-1)).toEqual({ dekt: false }))
+    await userEvent.click(knop)
+    await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
+    await waitFor(() => expect(opgeslagen).toHaveBeenCalledTimes(1))
+    // Het serverantwoord is compleet → de regels zonder kolom-project zijn gedekt.
+    await waitFor(() => expect(standen.at(-1)).toEqual({ dekt: true }))
+  })
+
+  it('B3-dekking: een onvolledige verdeling (blokkade) meldt dekt=false', async () => {
+    const standen: { dekt: boolean }[] = []
+    installFetchMock({ get: TE_VEEL_VAST })
+    render(
+      <ProjectverdelingBlok administratieId={ADM} documentId={DOC} status="te_controleren" soort="inkoopfactuur" boekvoorstelVersie={0} onStand={(stand) => standen.push(stand)} />,
+    )
+    await screen.findByText(/meer vast verdeeld/)
+    await waitFor(() => expect(standen.at(-1)).toEqual({ dekt: false }))
+  })
+
   it('geen inkoopfactuur = geen blok', () => {
     installFetchMock({ get: PREFILL })
     const { container } = render(

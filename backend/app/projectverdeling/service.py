@@ -266,17 +266,47 @@ def verrijk_boekvoorstel(
     return replace(data, projectverdeling=verdeling)
 
 
-def check(data: pv.ProjectverdelingData | None) -> CheckResultaat:
-    """Aanvullende harde check (naast "Verplichte velden"): blokkeert zolang een actieve verdeling niet op
-    exact 100 % sluit. Geen verdeling = niet van toepassing (ok)."""
+def _euro(bedrag: Decimal | None) -> str:
+    return f"€ {bedrag or Decimal(0):.2f}".replace(".", ",")
+
+
+def samenvatting(data: pv.ProjectverdelingData) -> str:
+    """Eén leesbare regel over een COMPLETE verdeling: "€ 630,00 over 8 projecten, pro rato omzet augustus 2026"
+    (mét vaste regels: "… vast + pro rato omzet …"; alleen vaste regels: "… vaste regels")."""
+    projecten = len({d.project_id for d in data.delen})
+    if data.pro_rato and data.pro_rato_periode is not None and (data.pro_rato_bedrag or Decimal(0)) != 0:
+        wijze = f"pro rato omzet {pv.periode_label(data.pro_rato_periode)}"
+        if data.vaste_regels:
+            wijze = f"vast + {wijze}"
+    else:
+        wijze = "vaste regels"
+    meervoud = "project" if projecten == 1 else "projecten"
+    return f"{_euro(data.basisbedrag)} over {projecten} {meervoud}, {wijze}"
+
+
+def check(
+    data: pv.ProjectverdelingData | None, *, regels_zonder_project: int = 0, project_verplicht: bool = False
+) -> CheckResultaat:
+    """Harde check op de OPGESLAGEN verdeling van het document — onafhankelijk van de per-leverancier-opt-in
+    (B3-dekking, bugfix 04-09 casus Kader Consultancy): aanwezig + geldig = ok mét samenvatting; aanwezig + ongeldig
+    (sluit niet op 100 %) = blokkerend mét de blokkade-zin; afwezig = "niet van toepassing", behalve als er onder
+    projectplicht regels zonder project zijn — dan benoemt de check de actie (oranje signaal; "Verplichte velden" is
+    dáár al de blokkerende poort, zodat één oorzaak niet twee rode rijen geeft)."""
     if data is None or not data.actief:
+        if project_verplicht and regels_zonder_project > 0:
+            n = regels_zonder_project
+            regels = "1 regel" if n == 1 else f"{n} regels"
+            return CheckResultaat(
+                CHECK_NAAM,
+                True,
+                f"Geen projectverdeling — {regels} zonder project: kies per regel een project óf gebruik "
+                '"Verdelen over projecten…" onder de boekingsregels',
+                signaal=True,
+            )
         return CheckResultaat(CHECK_NAAM, True, "Geen projectverdeling van toepassing")
     if not data.compleet:
         return CheckResultaat(CHECK_NAAM, False, data.blokkade or "De projectverdeling sluit niet op 100 %")
-    projecten = len({d.project_id for d in data.delen})
-    return CheckResultaat(
-        CHECK_NAAM, True, f"Verdeeld over {projecten} project(en) — som exact € {data.basisbedrag:.2f}"
-    )
+    return CheckResultaat(CHECK_NAAM, True, f"Verdeeld: {samenvatting(data)}")
 
 
 # --- opslaan / vervallen ----------------------------------------------------------------------------------

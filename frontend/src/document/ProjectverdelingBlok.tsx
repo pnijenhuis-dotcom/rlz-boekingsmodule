@@ -32,6 +32,13 @@ interface Props {
   boekvoorstelVersie: number
   /** Ná "Herverdelen…" (document terug naar te_controleren) herlaadt de aanroeper het detail. */
   onGewijzigd?: () => void
+  /** B3-dekking (bugfix 04-09): ná élke geslaagde opslag van de verdeling — de aanroeper laat de harde checks
+   * opnieuw draaien (de check-laag toetst de opgeslagen verdeling; zonder herrun bleven de rode rijen van vóór het
+   * verdelen staan — casus Kader Consultancy). */
+  onOpgeslagen?: () => void
+  /** B3-dekking: meldt of de huidige verdeling de regels zonder kolom-project dekt (actief én compleet) — de
+   * boekingsregels-hint zegt dan "gedekt door de projectverdeling" i.p.v. de actie aan te bieden. */
+  onStand?: (stand: { dekt: boolean }) => void
   /** B1 (04-09): telt op als de lege project-kolom "Verdelen over projecten…" aanbiedt — het blok opent (pro rato,
    * vorige maand) en scrollt in beeld. */
   openVerzoek?: number
@@ -164,7 +171,7 @@ function RestantBalk({ dto }: { dto: ProjectverdelingDto }) {
  * verdeling als voorstel; mens bevestigt, nooit stil herboeken). Beschikbaar op élk inkoopdocument van een
  * administratie mét projectplicht/actieve projecten (B1 04-09): vooringevuld bij de leverancier-opt-in (prefill, B2),
  * anders via de tekstknop "Verdelen over projecten…" of de gelijknamige actie in de lege project-kolom (openVerzoek). */
-export function ProjectverdelingBlok({ administratieId, documentId, status, soort, boekvoorstelVersie, onGewijzigd, openVerzoek = 0 }: Props) {
+export function ProjectverdelingBlok({ administratieId, documentId, status, soort, boekvoorstelVersie, onGewijzigd, onOpgeslagen, onStand, openVerzoek = 0 }: Props) {
   const relevant = soort === 'inkoopfactuur' && (BEWERKBAAR.has(status) || status === 'ter_accordering' || status === 'geboekt')
   const [dto, setDto] = useState<ProjectverdelingDto | null | undefined>(undefined)
   const [fout, setFout] = useState<string | null>(null)
@@ -228,14 +235,23 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
       try {
         const data = await slaProjectverdelingOp(administratieId, documentId, invoer)
         setDto(data)
+        onOpgeslagen?.()
       } catch (err) {
         setFout(err instanceof ApiError ? err.message : 'Opslaan van de verdeling mislukt.')
       } finally {
         setOpslaanBezig(false)
       }
     },
-    [administratieId, documentId],
+    [administratieId, documentId, onOpgeslagen],
   )
+
+  // B3-dekking: de stand naar buiten — dekt = de verdeling is actief (voorstel/geboekt mét vaste regels en/of pro
+  // rato) én compleet; spiegel van `ProjectverdelingData.dekt_regels_zonder_project` (app/projectverdeling/data.py).
+  useEffect(() => {
+    if (!onStand) return
+    const actief = Boolean(dto && (dto.status === 'voorstel' || dto.status === 'geboekt') && ((dto.vaste_regels?.length ?? 0) > 0 || dto.pro_rato))
+    onStand({ dekt: actief && Boolean(dto?.compleet) })
+  }, [dto, onStand])
 
   // Auto-opslaan: alleen als élke vaste regel volledig is (project + bedrag) — de server rekent restant/blokkade.
   useEffect(() => {

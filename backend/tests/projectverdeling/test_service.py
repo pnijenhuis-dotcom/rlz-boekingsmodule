@@ -471,3 +471,174 @@ class TestLeverancierOptIn:
                 .all()
             )
         assert "leverancier_projectverdeling_pro_rato_gewijzigd" in acties
+
+
+def _checks(administratie_id: uuid.UUID, document_id: uuid.UUID) -> dict[str, object]:
+    rapport = boekvoorstel.voer_checks_uit(
+        administratie_id=administratie_id, document_id=document_id, client=FakeBoekClient()
+    )
+    return {r.naam: r for r in rapport.resultaten}
+
+
+class TestB3DekkingOpgeslagenVerdeling:
+    """Bugfix 04-09 (casus Kader Consultancy F212604921, Universal Steigerbouw): de checks toetsen de OPGESLAGEN
+    verdeling van het document — niet de leverancier-opt-in. Zelfde functie (voer_checks_uit) voedt het
+    controlescherm én de boekmotor-poort, dus melding en boekweigering kunnen nooit verschillen."""
+
+    @pytest.fixture(autouse=True)
+    def _projectplicht(self, administratie_id, admin_engine) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET project_verplicht = true WHERE id = :id"),
+                {"id": administratie_id},
+            )
+
+    def test_a_een_regel_zonder_kolomproject_met_geldige_verdeling_boekt(
+        self, administratie_id, gescoopte_gebruiker, beheerder_id, document_zonder_project, projecten, admin_engine, monkeypatch
+    ) -> None:
+        # Vóór de verdeling: blokkade mét handelingsperspectief; "Projectverdeling" zegt niet vals "niet van toepassing".
+        voor = _checks(administratie_id, document_zonder_project)
+        assert not voor["Verplichte velden"].ok and "project (regel 1)" in voor["Verplichte velden"].melding
+        assert voor["Projectverdeling"].ok and voor["Projectverdeling"].signaal
+        assert "1 regel zonder project" in voor["Projectverdeling"].melding
+        assert "Verdelen over projecten…" in voor["Projectverdeling"].melding
+
+        # Geen leverancier-opt-in — de mens slaat een pro-rato-verdeling op (juli: 3 projecten mét omzet).
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[],
+            pro_rato_periode=PERIODE,
+        )
+        na = _checks(administratie_id, document_zonder_project)
+        assert na["Verplichte velden"].ok, na["Verplichte velden"].melding
+        assert na["Projectverdeling"].ok and not na["Projectverdeling"].signaal
+        assert na["Projectverdeling"].melding == "Verdeeld: € 2000,00 over 3 projecten, pro rato omzet juli 2026"
+
+        # Boekmotor-poort: dezelfde dekking — boeken kan.
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        boeken.boek_document(
+            administratie_id=administratie_id, document_id=document_zonder_project, actor_id=gescoopte_gebruiker
+        )
+        assert _status(admin_engine, document_zonder_project) == DocumentStatus.GEBOEKT.value
+        assert len(fake.puts) == 1 and len(fake.puts[0]["lines"]) == 3  # regel gesplitst per project
+
+    def test_b_verdeling_weggehaald_geeft_de_blokkade_terug(
+        self, administratie_id, gescoopte_gebruiker, beheerder_id, document_zonder_project, projecten, monkeypatch
+    ) -> None:
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[],
+            pro_rato_periode=PERIODE,
+        )
+        assert _checks(administratie_id, document_zonder_project)["Verplichte velden"].ok
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[],
+            pro_rato_periode=None,
+            vervallen=True,
+        )
+        terug = _checks(administratie_id, document_zonder_project)
+        assert not terug["Verplichte velden"].ok
+        assert "project (regel 1)" in terug["Verplichte velden"].melding
+        assert 'gebruik "Verdelen over projecten…"' in terug["Verplichte velden"].melding
+        assert terug["Projectverdeling"].signaal and "Geen projectverdeling — 1 regel zonder project" in terug["Projectverdeling"].melding
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        with pytest.raises(boeken.BoekenGeblokkeerdDoorChecks) as exc:
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=document_zonder_project, actor_id=gescoopte_gebruiker
+            )
+        assert not {r.naam: r for r in exc.value.rapport.resultaten}["Verplichte velden"].ok
+
+    def test_b2_onvolledige_verdeling_dekt_niets(
+        self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten
+    ) -> None:
+        """€ 600 vast, pro rato uit → € 1.400 onverdeeld: beide checks benoemen het (spec: onvolledig = blokkade blijft)."""
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[pv.VasteRegel(project_id=projecten["tilburg"], bedrag=Decimal("600.00"))],
+            pro_rato_periode=None,
+        )
+        per_naam = _checks(administratie_id, document_zonder_project)
+        assert not per_naam["Verplichte velden"].ok and "project (regel 1)" in per_naam["Verplichte velden"].melding
+        assert not per_naam["Projectverdeling"].ok and "nog niet verdeeld" in per_naam["Projectverdeling"].melding
+
+    def test_c_mengvorm_kolomproject_op_regel_1_verdeling_voor_regel_2(
+        self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, vendor_id
+    ) -> None:
+        from tests.projectverdeling.conftest import regel
+
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=vendor_id,
+            referentie="FB-2026-0731",
+            factuurdatum=date(2026, 7, 31),
+            totaalbedrag=Decimal("2420.00"),
+            regels=[
+                regel(project_id=projecten["tilburg"], netto_bedrag=Decimal("500.00"), btw_bedrag=Decimal("105.00")),
+                regel(netto_bedrag=Decimal("1500.00"), btw_bedrag=Decimal("315.00")),
+            ],
+        )
+        voor = _checks(administratie_id, document_zonder_project)
+        assert "project (regel 2)" in voor["Verplichte velden"].melding
+        assert "project (regel 1)" not in voor["Verplichte velden"].melding
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[],
+            pro_rato_periode=PERIODE,
+        )
+        na = _checks(administratie_id, document_zonder_project)
+        assert na["Verplichte velden"].ok
+        # Alleen regel 2 (€ 1.500) is het te verdelen bedrag; regel 1 houdt zijn kolom-project.
+        assert na["Projectverdeling"].melding == "Verdeeld: € 1500,00 over 3 projecten, pro rato omzet juli 2026"
+
+    def test_d_opt_in_en_niet_opt_in_leverancier_gedragen_zich_identiek(
+        self, administratie_id, gescoopte_gebruiker, beheerder_id, document_zonder_project, projecten, vendor_id
+    ) -> None:
+        service.sla_op(
+            administratie_id=administratie_id,
+            document_id=document_zonder_project,
+            actor_id=gescoopte_gebruiker,
+            vaste_regels=[pv.VasteRegel(project_id=projecten["tilburg"], bedrag=Decimal("600.00"))],
+            pro_rato_periode=PERIODE,
+        )
+        zonder = _checks(administratie_id, document_zonder_project)
+        service.zet_leverancier_pro_rato(
+            administratie_id=administratie_id, vendor_id=vendor_id, actor_id=beheerder_id, ingeschakeld=True
+        )
+        met = _checks(administratie_id, document_zonder_project)
+        for naam in ("Verplichte velden", "Projectverdeling"):
+            assert (zonder[naam].ok, zonder[naam].signaal, zonder[naam].melding) == (
+                met[naam].ok,
+                met[naam].signaal,
+                met[naam].melding,
+            )
+        assert met["Verplichte velden"].ok
+        assert met["Projectverdeling"].melding == "Verdeeld: € 2000,00 over 3 projecten, vast + pro rato omzet juli 2026"
+
+    def test_zonder_projectplicht_blijft_geen_verdeling_niet_van_toepassing(
+        self, administratie_id, document_zonder_project, projecten, admin_engine
+    ) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET project_verplicht = false WHERE id = :id"),
+                {"id": administratie_id},
+            )
+        per_naam = _checks(administratie_id, document_zonder_project)
+        assert per_naam["Verplichte velden"].ok
+        assert per_naam["Projectverdeling"].ok and not per_naam["Projectverdeling"].signaal
+        assert per_naam["Projectverdeling"].melding == "Geen projectverdeling van toepassing"

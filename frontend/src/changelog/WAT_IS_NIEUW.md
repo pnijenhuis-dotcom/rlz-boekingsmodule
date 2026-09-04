@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Controles volgen de opgeslagen projectverdeling direct
+
+- **De controles zien je verdeling meteen.** Sloeg je een projectverdeling op, dan bleven "Verplichte velden" en "Projectverdeling" tot nu toe op de oude stand staan tot je iets in het boekvoorstel wijzigde. Nu draaien de controles direct opnieuw zodra de verdeling is opgeslagen — een geldige verdeling maakt beide controles groen, ook zonder dat de leverancier op "vooringevuld" staat.
+- **De controle "Projectverdeling" vat samen wat er staat.** Bij een geldige verdeling lees je bijvoorbeeld "Verdeeld: € 630,00 over 8 projecten, pro rato omzet augustus 2026". Sluit de verdeling niet, dan blijft de controle rood met de reden. Ontbreekt een verdeling terwijl er regels zonder project zijn, dan zegt de controle dat ook (oranje) in plaats van "niet van toepassing".
+- **Alleen een complete verdeling telt als dekking.** Een half ingevulde verdeling (restant nog niet verdeeld) maakt de projectplicht per regel niet groen; de melding blijft je naar "Verdelen over projecten…" wijzen. De regel onder de boekingsregels zegt bij een geldige verdeling "gedekt door de projectverdeling ✓" in plaats van de actie aan te bieden.
+
 ## 2026-09-04 — Verdelen over projecten op elke inkoopfactuur
 
 - **Een factuur zonder eenduidig project kun je altijd verdelen.** Op elk inkoopdocument van een administratie met projectplicht (of met actieve projecten) staat het blok "Projectverdeling" klaar: een deel vast op een project en/of de rest pro rato de omzet van de vorige maand. Dat werkte al voor leveranciers met de instelling aan; nu is het blok op élke factuur bruikbaar, ook als het leeg begint.
