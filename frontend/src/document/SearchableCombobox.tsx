@@ -30,6 +30,11 @@ interface Props {
    * is — design-pass taak 2: "dubbele labels weg"). De tekst blijft wel als aria-label op de
    * input staan, voor screenreaders die geen kolomkop-context hebben. */
   toonLabel?: boolean
+  /** Vaste onderste rij ónder de opties — buiten het virtualisatievenster, altijd zichtbaar
+   * (fix C3 04-09: "+ Nieuw project aanmaken…" in de projectkolom). Toetsenbord: pijl-omlaag
+   * voorbij de laatste optie landt erop, Enter activeert. Géén optie: kiest niets, maar opent
+   * een dialoog bij de aanroeper — daarom een knop, geen listbox-optie. */
+  voetActie?: { label: string; onKies: () => void }
 }
 
 // Sync-caches kunnen honderden tot duizenden opties bevatten (bv. Universal: 145 projecten) —
@@ -85,6 +90,7 @@ export function SearchableCombobox({
   vereist,
   fout,
   toonLabel = true,
+  voetActie,
 }: Props) {
   const reactId = useId()
   const inputId = `${reactId}-input`
@@ -212,6 +218,18 @@ export function SearchableCombobox({
     [onWijzig],
   )
 
+  // De voet-actie is een virtuele extra rij áchter de laatste optie: pijl-omlaag landt erop
+  // (ook bij nul zoekresultaten — dán is het de enige bereikbare rij) en Enter activeert 'm.
+  const voetIndex = voetActie ? gefilterd.length : -1
+  const hoogsteIndex = voetActie ? gefilterd.length : gefilterd.length - 1
+
+  const kiesVoet = useCallback(() => {
+    if (!voetActie) return
+    setZoekterm('')
+    setOpen(false)
+    voetActie.onKies()
+  }, [voetActie])
+
   const opToetsenbord = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -219,13 +237,15 @@ export function SearchableCombobox({
         setOpen(true)
         return
       }
-      setActieveIndex((i) => Math.min(i + 1, gefilterd.length - 1))
+      setActieveIndex((i) => Math.min(i + 1, hoogsteIndex))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActieveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (open && gefilterd[actieveIndex]) kiesOptie(gefilterd[actieveIndex])
+      if (!open) return
+      if (actieveIndex === voetIndex) kiesVoet()
+      else if (gefilterd[actieveIndex]) kiesOptie(gefilterd[actieveIndex])
     } else if (e.key === 'Escape') {
       setOpen(false)
     }
@@ -252,7 +272,11 @@ export function SearchableCombobox({
   }, [actieveIndex, open, zichtbareRijen])
 
   const actieveOptieId =
-    open && gefilterd[actieveIndex] ? `${listboxId}-${gefilterd[actieveIndex].id}` : undefined
+    open && actieveIndex === voetIndex
+      ? `${listboxId}-voetactie`
+      : open && gefilterd[actieveIndex]
+        ? `${listboxId}-${gefilterd[actieveIndex].id}`
+        : undefined
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
@@ -342,6 +366,23 @@ export function SearchableCombobox({
               })}
               {gefilterd.length === 0 && <div className="combobox-leeg">Geen resultaten</div>}
             </div>
+            {voetActie && (
+              <button
+                type="button"
+                id={`${listboxId}-voetactie`}
+                className={`linkbtn combobox-voet${actieveIndex === voetIndex ? ' actief' : ''}`}
+                // mousedown i.p.v. click: de klik-buiten-handler sluit de lijst op mousedown,
+                // waardoor een click-handler op deze knop nooit zou vuren (zelfde reden als bij
+                // de optierijen hierboven).
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  kiesVoet()
+                }}
+                onMouseEnter={() => setActieveIndex(voetIndex)}
+              >
+                {voetActie.label}
+              </button>
+            )}
           </div>,
           document.body,
         )}

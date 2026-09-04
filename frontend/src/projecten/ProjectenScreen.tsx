@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ApiError } from '../api/client'
 import { Badge, Button, SkeletonRegels } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
-import {
-  haalProjecten,
-  haalVolgendNummer,
-  maakProject,
-  type ProjectenLijstDto,
-  type ProjectLijstRijDto,
-} from './projectenApi'
+import { NieuwProjectModal } from './NieuwProjectModal'
+import { haalProjecten, type ProjectenLijstDto, type ProjectLijstRijDto } from './projectenApi'
 
 /* Projectenlijst (mockup projecten-invoer.html view 1, akkoord Peter 22-08): sync-projecten
  * mét compleetheids-badges (specs/contract/staffels) en m²-voortgang uit de goedgekeurde
@@ -197,115 +191,3 @@ export function ProjectenScreen() {
   )
 }
 
-// Geëxporteerd sinds 31-08: "+ Project aanmaken" staat óók op /planning (topbar, B+P) —
-// zelfde dialoog, zelfde projectmotor (naamconventie + RLZ-PUT), geen tweede pad.
-export function NieuwProjectModal({
-  administratieId,
-  onKlaar,
-  onAnnuleren,
-}: {
-  administratieId: string
-  onKlaar: (projectId: string) => void
-  onAnnuleren: () => void
-}) {
-  const [nummer, setNummer] = useState('')
-  const [plaats, setPlaats] = useState('')
-  const [opdrachtgever, setOpdrachtgever] = useState('')
-  const [startdatum, setStartdatum] = useState('')
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<string | null>(null)
-
-  useEffect(() => {
-    haalVolgendNummer(administratieId)
-      .then((r) => setNummer((huidig) => huidig || r.projectnummer))
-      .catch(() => undefined) // voorstel is verrijking — handmatig invullen kan altijd
-  }, [administratieId])
-
-  const naam = nummer && plaats && opdrachtgever ? `${nummer.trim()} ${plaats.trim()} (${opdrachtgever.trim()})` : null
-
-  const aanmaken = async () => {
-    setBezig(true)
-    setFout(null)
-    try {
-      const resultaat = await maakProject(administratieId, {
-        projectnummer: nummer.trim(),
-        plaats: plaats.trim(),
-        opdrachtgever: opdrachtgever.trim(),
-        startdatum: startdatum || null,
-      })
-      onKlaar(resultaat.rlz_project_id)
-    } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
-    } finally {
-      setBezig(false)
-    }
-  }
-
-  const veldStijl = {
-    background: 'var(--panel-2)',
-    border: '1px solid var(--border)',
-    borderRadius: 9,
-    color: 'var(--text)',
-    font: 'inherit',
-    padding: '8px 11px',
-    width: '100%',
-  } as const
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Nieuw project"
-      style={{ background: 'rgba(10,16,15,.45)', display: 'grid', inset: 0, placeItems: 'center', position: 'fixed', zIndex: 50 }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !bezig) onAnnuleren()
-      }}
-    >
-      <div className="panel" style={{ margin: 0, width: 'min(520px, 92vw)' }}>
-        <h2>Nieuw project</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Wordt volgens de naamconventie aangemaakt in RLZ (projectmotor, idempotent) en daarna hierheen gesynct —
-          één bron van waarheid.
-        </p>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
-            Projectnummer
-            <input value={nummer} onChange={(e) => setNummer(e.target.value)} placeholder="26xxx" style={veldStijl} />
-            <span style={{ color: 'var(--faint)', fontSize: 11, fontWeight: 400 }}>volgende vrije nummer voorgesteld</span>
-          </label>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
-            Plaats
-            <input value={plaats} onChange={(e) => setPlaats(e.target.value)} placeholder="bijv. Tilburg" style={veldStijl} />
-          </label>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
-            Opdrachtgever
-            <input
-              value={opdrachtgever}
-              onChange={(e) => setOpdrachtgever(e.target.value)}
-              placeholder="bijv. Heijmans"
-              style={veldStijl}
-            />
-          </label>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
-            Startdatum
-            <input type="date" value={startdatum} onChange={(e) => setStartdatum(e.target.value)} style={veldStijl} />
-          </label>
-        </div>
-        {naam && (
-          <p className="hint" style={{ background: 'var(--info-bg)', borderRadius: 8, color: 'var(--info)', marginTop: 12, padding: '10px 13px' }}>
-            Naam wordt: <b>{naam}</b> — conform de naamconventie, max 50 tekens (RLZ-grens).
-          </p>
-        )}
-        {fout && <div className="fout" style={{ marginTop: 8 }}>{fout}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          <Button variant="secundair" maat="klein" onClick={onAnnuleren} disabled={bezig}>
-            Annuleren
-          </Button>
-          <Button maat="klein" onClick={() => void aanmaken()} disabled={bezig || !naam}>
-            {bezig ? 'Bezig…' : 'Aanmaken in RLZ'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}

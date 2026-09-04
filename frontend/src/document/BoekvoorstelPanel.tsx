@@ -46,6 +46,9 @@ import {
   useVendorOpties,
 } from './useSyncOpties'
 import { useAutoChecks } from './useAutoChecks'
+import { useAuthOptioneel } from '../auth/AuthContext'
+import { magProjectAanmaken } from '../auth/rollen'
+import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
 
 /** Statische weergave van een gekozen optie (design-pass: read-only bij geboekt/verwijderd) —
  * zelfde code+omschrijving-vorm als de combobox zelf toont, alleen niet interactief. */
@@ -442,6 +445,16 @@ export function BoekvoorstelPanel({
   // "Btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels zonder code.
   const [verlegdVermelding, setVerlegdVermelding] = useState<string | null>(null)
   const [cacheVersie, setCacheVersie] = useState(0)
+  // Fix C3 (04-09, besluit Peter): de projectkolom biedt onderaan "+ Nieuw project aanmaken…"
+  // aan — je hoeft het controlescherm niet te verlaten voor een project dat nog niet bestaat.
+  // Zichtbaar voor álle kantoorrollen (incl. Boekhouding, spiegel van de backend-poort); ná
+  // aanmaken herlaadt de projectcache en staat het nieuwe project direct in díe regel.
+  // useAuthOptioneel: dit is franje op een tabelcel — zónder AuthProvider (visuele
+  // harnassen, losse component-tests) verschijnt de actie simpelweg niet i.p.v. te crashen.
+  // Fail-closed, en de backend-poort blijft de waarheid.
+  const rol = useAuthOptioneel()?.rol ?? null
+  const magProject = magProjectAanmaken(rol)
+  const [nieuwProjectVoorRegel, setNieuwProjectVoorRegel] = useState<string | null>(null)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
   const percentageMap = useMemo(() => {
@@ -1598,6 +1611,14 @@ export function BoekvoorstelPanel({
                           vereist
                           toonLabel={false}
                           fout={checkRapport?.geblokkeerd && regel.projectId === null}
+                          voetActie={
+                            magProject
+                              ? {
+                                  label: '+ Nieuw project aanmaken…',
+                                  onKies: () => setNieuwProjectVoorRegel(regel.key),
+                                }
+                              : undefined
+                          }
                         />
                         {regel.geheugen && (
                           <GeheugenChipBlok
@@ -1925,6 +1946,18 @@ export function BoekvoorstelPanel({
             void boeken(true)
           }}
           onSluiten={() => setPopupMatch(null)}
+        />
+      )}
+      {nieuwProjectVoorRegel !== null && (
+        <NieuwProjectModal
+          administratieId={administratieId}
+          onKlaar={(projectId) => {
+            // Nieuw project = nieuwe sync-cache-inhoud: herladen én direct in díe regel zetten.
+            setCacheVersie((v) => v + 1)
+            wijzigRegel(nieuwProjectVoorRegel, 'projectId', projectId)
+            setNieuwProjectVoorRegel(null)
+          }}
+          onAnnuleren={() => setNieuwProjectVoorRegel(null)}
         />
       )}
       {popupMateriaal && (

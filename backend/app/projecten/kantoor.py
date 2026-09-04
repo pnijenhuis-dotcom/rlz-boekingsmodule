@@ -44,6 +44,11 @@ from app.uren.models import (
 from app.uren.overzichten import _gebouwd_m2
 
 _SCHRIJF_ROLLEN = (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN)
+# Fix C3 (besluit Peter 04-09): AANMAKEN mag élke kantoorrol — wie een inkoopfactuur op een
+# nog niet bestaand project moet boeken, moet dat project vanaf het controlescherm kunnen
+# aanmaken zonder een collega te vragen. Uitsluitend het aanmaken: specificatie, staffels,
+# prijsafspraken en documenten blijven op _SCHRIJF_ROLLEN (mockup-keuze 4).
+_AANMAAK_ROLLEN = (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN, GebruikerRol.BOEKHOUDING)
 
 _DOCUMENT_SOORTEN = ("contract", "offerte")
 _EENHEDEN = tuple(e.value for e in MeerwerkEenheid)
@@ -80,6 +85,16 @@ def _vereis_schrijfrol(session: Session, actor_id: uuid.UUID) -> None:
     actor = session.get(Gebruiker, actor_id)
     if actor is None or actor.rol not in _SCHRIJF_ROLLEN:
         raise GeenSchrijfrecht("Projectgegevens wijzigen is voorbehouden aan Beheerder en Boekhouding+Projecten")
+
+
+def _vereis_aanmaakrol(session: Session, actor_id: uuid.UUID) -> None:
+    """Poort voor het aanmaken van een project (ruimer dan _vereis_schrijfrol, fix C3 04-09)."""
+    actor = session.get(Gebruiker, actor_id)
+    if actor is None or actor.rol not in _AANMAAK_ROLLEN:
+        raise GeenSchrijfrecht(
+            "Projecten aanmaken is voorbehouden aan kantoorrollen "
+            "(Beheerder, Boekhouding+Projecten, Boekhouding)"
+        )
 
 
 def _vereis_project(session: Session, *, administratie_id: uuid.UUID, project_id: uuid.UUID) -> ProjectCache:
@@ -877,7 +892,7 @@ def maak_project_aan(
         raise OngeldigeInvoer(str(exc)) from exc
 
     with scoped_session(administratie_id) as session:
-        _vereis_schrijfrol(session, actor_id)
+        _vereis_aanmaakrol(session, actor_id)
 
     project_id = rlz_steiger_project_id(administratie_id, nummer)
     eigen_client = client is None

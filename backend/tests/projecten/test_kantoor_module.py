@@ -378,6 +378,32 @@ class TestNieuwProject:
         assert tweede.bestond_al is True
         assert fake.put_project_aanroepen == 1
 
+    def test_aanmaakrol_ruimer_dan_schrijfrol(
+        self, admin_engine: Engine, administratie_id: uuid.UUID
+    ) -> None:
+        """Fix C3 (besluit Peter 04-09): Boekhouding mág een project aanmaken (de projectkolom op
+        het controlescherm biedt "+ Nieuw project aanmaken…" aan), maar géén projectgegevens
+        wijzigen — dáár blijft de schrijfrol-poort onverkort staan."""
+        boekhouder = maak_gebruiker(admin_engine, "boekhouding", "Barbara B.")
+        resultaat = kantoor.maak_project_aan(
+            administratie_id=administratie_id, actor_id=boekhouder,
+            projectnummer="26129", plaats="Breda", opdrachtgever="Moeskops", client=FakeProjectClient(),
+        )
+        assert resultaat.projectnaam == "26129 Breda (Moeskops)"
+        with pytest.raises(kantoor.GeenSchrijfrecht):
+            kantoor.zet_specificatie(
+                administratie_id=administratie_id, project_id=resultaat.rlz_project_id, actor_id=boekhouder,
+                opdrachtgever="Mag niet",
+            )
+        # Een externe app-rol komt er ook via de servicelaag niet in (de router weigert al op
+        # rolniveau; dit is het tweede slot).
+        accordeur = maak_gebruiker(admin_engine, "klant_accordeur", "Klant K.")
+        with pytest.raises(kantoor.GeenSchrijfrecht, match="kantoorrollen"):
+            kantoor.maak_project_aan(
+                administratie_id=administratie_id, actor_id=accordeur,
+                projectnummer="26130", plaats="Breda", opdrachtgever="Moeskops", client=FakeProjectClient(),
+            )
+
     def test_naamconventie_poorten(self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID) -> None:
         with pytest.raises(kantoor.OngeldigeInvoer, match="cijfers"):
             kantoor.maak_project_aan(

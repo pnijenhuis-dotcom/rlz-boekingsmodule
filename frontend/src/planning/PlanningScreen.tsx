@@ -7,7 +7,7 @@ import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { useMijnToegang } from '../auth/useMijnToegang'
 import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogTitle, FormField, Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
-import { NieuwProjectModal } from '../projecten/ProjectenScreen'
+import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
 import { archiveerGebruiker, haalOpenWerkOp, nodigUit } from '../gebruikers/gebruikersApi'
 import { TransportTab } from './TransportTab'
 import {

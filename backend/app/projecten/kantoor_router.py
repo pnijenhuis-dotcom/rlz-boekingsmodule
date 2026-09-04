@@ -2,7 +2,10 @@
 
 Toegang: router-breed `vereis_kantoorrol` (rollen-gate-patroon 2026-08-21) + per endpoint
 `vereis_administratie_scope`; wijzigen is dáárbovenop server-side beperkt tot Beheerder en
-Boekhouding+Projecten (app/projecten/kantoor.py::_vereis_schrijfrol — mockup-keuze 4)."""
+Boekhouding+Projecten (app/projecten/kantoor.py::_vereis_schrijfrol — mockup-keuze 4).
+Uitzondering sinds 04-09 (fix C3, besluit Peter): een project AANMAKEN mag élke kantoorrol,
+óók Boekhouding (_vereis_aanmaakrol) — de projectkolom op het controlescherm biedt daarom
+"+ Nieuw project aanmaken…" aan. De overige projectmutaties blijven onveranderd."""
 
 from __future__ import annotations
 

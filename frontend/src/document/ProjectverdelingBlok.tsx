@@ -15,6 +15,9 @@ import {
   startProjectcijfersSync,
 } from './projectverdelingApi'
 import { useProjectOpties } from './useSyncOpties'
+import { useAuthOptioneel } from '../auth/AuthContext'
+import { magProjectAanmaken } from '../auth/rollen'
+import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
 
 /** Debounce van het automatisch opslaan — zelfde cadans als de doorbelasting-VerdelingEditor. */
 export const AUTO_OPSLAAN_MS = 600
@@ -190,7 +193,17 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   const laatsteVerzonden = useRef<string>('')
   const blokRef = useRef<HTMLDivElement | null>(null)
   const bewerkbaar = BEWERKBAAR.has(status)
-  const projecten = useProjectOpties(administratieId)
+  // Fix C3 (04-09): de projectkiezer van een vaste regel biedt onderaan "+ Nieuw project
+  // aanmaken…" aan (zelfde voet-actie als de projectkolom van het boekvoorstel). Ná aanmaken
+  // herlaadt de projectcache (sleutel omhoog) en staat het nieuwe project direct in díe regel.
+  const [projectCacheVersie, setProjectCacheVersie] = useState(0)
+  const projecten = useProjectOpties(administratieId, projectCacheVersie)
+  // useAuthOptioneel: dit is franje op een tabelcel — zónder AuthProvider (visuele
+  // harnassen, losse component-tests) verschijnt de actie simpelweg niet i.p.v. te crashen.
+  // Fail-closed, en de backend-poort blijft de waarheid.
+  const rol = useAuthOptioneel()?.rol ?? null
+  const magProject = magProjectAanmaken(rol)
+  const [nieuwProjectVoorRij, setNieuwProjectVoorRij] = useState<string | null>(null)
 
   // B1 (04-09): de lege stand van de project-kolom biedt "Verdelen over projecten…" aan — zelfde actie als de
   // tekstknop hieronder (pro rato vorige maand als startpunt), plus in beeld scrollen.
@@ -373,6 +386,11 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
                         onWijzig={(id) => wijzigRij(rij.sleutel, { projectId: id })}
                         placeholder="— kies project —"
                         vereist
+                        voetActie={
+                          magProject
+                            ? { label: '+ Nieuw project aanmaken…', onKies: () => setNieuwProjectVoorRij(rij.sleutel) }
+                            : undefined
+                        }
                       />
                     )}
                   </td>
@@ -508,6 +526,17 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
             Herverdelen…
           </button>
         </div>
+      )}
+      {nieuwProjectVoorRij !== null && (
+        <NieuwProjectModal
+          administratieId={administratieId}
+          onKlaar={(projectId) => {
+            setProjectCacheVersie((v) => v + 1)
+            wijzigRij(nieuwProjectVoorRij, { projectId })
+            setNieuwProjectVoorRij(null)
+          }}
+          onAnnuleren={() => setNieuwProjectVoorRij(null)}
+        />
       )}
       {herverdeelOpen && hercontrole && (
         <Dialog open onOpenChange={(open) => !open && !herverdeelBezig && setHerverdeelOpen(false)}>

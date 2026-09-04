@@ -800,6 +800,30 @@ tr.subrij .eerste-sync-rij ul {
   flex-shrink: 0;
 }
 
+/* Vaste voet-actie ónder de opties (fix C3 04-09: "+ Nieuw project aanmaken…") — buiten het
+ * virtualisatievenster, dus altijd zichtbaar, ook bij 145 projecten of nul zoekresultaten.
+ * Tekstactie = linkbtn (teal = actie); een scheidingslijn zet 'm apart van de opties. */
+.combobox-voet {
+  position: sticky;
+  bottom: -4px;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 10px;
+  text-align: left;
+  white-space: nowrap;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+}
+
+.combobox-voet.actief,
+.combobox-voet:hover {
+  background: var(--blue-bg);
+  text-decoration: none;
+}
+
 .combobox-leeg {
   padding: 8px 10px;
   font-size: 12.5px;

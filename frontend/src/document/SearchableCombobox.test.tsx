@@ -297,4 +297,84 @@ describe('SearchableCombobox', () => {
     expect(screen.getAllByRole('option')).toHaveLength(3)
     expect(screen.getByRole('option', { name: /Kort/ }).style.position).toBe('absolute')
   })
+
+  describe('voetActie (fix C3 04-09: "+ Nieuw project aanmaken…")', () => {
+    it('staat als vaste onderste rij buiten het virtualisatievenster en is met de muis te activeren', async () => {
+      const gebruiker = userEvent.setup()
+      const onKies = vi.fn()
+      render(
+        <SearchableCombobox
+          label="Project"
+          opties={OPTIES}
+          waarde={null}
+          onWijzig={() => {}}
+          voetActie={{ label: '+ Nieuw project aanmaken…', onKies }}
+        />,
+      )
+
+      await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+      const voet = screen.getByRole('button', { name: '+ Nieuw project aanmaken…' })
+      // Geen listbox-optie: de rij kiest geen waarde maar opent een dialoog.
+      expect(screen.getAllByRole('option')).toHaveLength(3)
+
+      fireEvent.mouseDown(voet)
+      expect(onKies).toHaveBeenCalledTimes(1)
+      // De lijst sluit; er is niets gekozen.
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+
+    it('is met het toetsenbord bereikbaar: pijl-omlaag voorbij de laatste optie, Enter activeert', async () => {
+      const gebruiker = userEvent.setup()
+      const onKies = vi.fn()
+      const onWijzig = vi.fn()
+      render(
+        <SearchableCombobox
+          label="Project"
+          opties={OPTIES}
+          waarde={null}
+          onWijzig={onWijzig}
+          voetActie={{ label: '+ Nieuw project aanmaken…', onKies }}
+        />,
+      )
+
+      const veld = screen.getByRole('combobox', { name: 'Project' })
+      await gebruiker.click(veld)
+      await gebruiker.keyboard('{ArrowDown}{ArrowDown}') // index 0 (Aap) → 1 → 2 (laatste optie)
+      expect(screen.getByRole('option', { name: 'Cavia' })).toHaveAttribute('aria-selected', 'true')
+      await gebruiker.keyboard('{ArrowDown}') // voorbij de laatste optie → de voet-actie
+      expect(screen.getByRole('button', { name: '+ Nieuw project aanmaken…' })).toHaveClass('actief')
+      await gebruiker.keyboard('{Enter}')
+      expect(onKies).toHaveBeenCalledTimes(1)
+      expect(onWijzig).not.toHaveBeenCalled()
+    })
+
+    it('blijft bereikbaar bij nul zoekresultaten', async () => {
+      const gebruiker = userEvent.setup()
+      const onKies = vi.fn()
+      render(
+        <SearchableCombobox
+          label="Project"
+          opties={OPTIES}
+          waarde={null}
+          onWijzig={() => {}}
+          voetActie={{ label: '+ Nieuw project aanmaken…', onKies }}
+        />,
+      )
+
+      const veld = screen.getByRole('combobox', { name: 'Project' })
+      await gebruiker.click(veld)
+      await gebruiker.type(veld, 'bestaat niet')
+      await screen.findByText('Geen resultaten')
+      const voet = screen.getByRole('button', { name: '+ Nieuw project aanmaken…' })
+      fireEvent.mouseDown(voet)
+      expect(onKies).toHaveBeenCalledTimes(1)
+    })
+
+    it('rendert geen voet-rij zonder de prop (bestaand gedrag ongewijzigd)', async () => {
+      const gebruiker = userEvent.setup()
+      render(<SearchableCombobox label="Project" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+      await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+      expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    })
+  })
 })

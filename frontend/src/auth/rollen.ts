@@ -13,3 +13,16 @@ export function isKantoorRol(rol: string | null): boolean {
 export function isVeldRol(rol: string | null): boolean {
   return rol !== null && (VELD_ROLLEN as readonly string[]).includes(rol)
 }
+
+/** Mag deze rol een nieuw project aanmaken? Sinds 04-09 (besluit Peter) álle drie de
+ * kantoorrollen — óók Boekhouding: wie een inkoopfactuur op een nog niet bestaand project moet
+ * boeken, moet dat project vanaf het controlescherm kunnen aanmaken zonder een collega te
+ * moeten vragen. Spiegel van backend `app/projecten/kantoor.py::_AANMAAK_ROLLEN`; de overige
+ * projectmutaties (specificatie, staffels, prijsafspraken, documenten) blijven Beheerder +
+ * Boekhouding+Projecten (`_SCHRIJF_ROLLEN`). Allowlist, nooit een complement: een onbekende
+ * of nieuwe rol krijgt de actie niet te zien. De backend blijft de waarheid (403). */
+export const PROJECT_AANMAAK_ROLLEN = ['beheerder', 'boekhouding_projecten', 'boekhouding'] as const
+
+export function magProjectAanmaken(rol: string | null): boolean {
+  return rol !== null && (PROJECT_AANMAAK_ROLLEN as readonly string[]).includes(rol)
+}

@@ -1472,6 +1472,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   toevoegen"; `.linkbtn` heeft sinds 03-09 een BASISSTIJL (tekstactie in teal) — daarvóór viel élke linkbtn
   buiten `.userbox`/`.rijmenu` terug op de grijze browser-default. Een tekstknop = `linkbtn`, een echte knop =
   `btn`/`btn secondary`; nooit een kale `<button>`. BESLISSINGEN "MINI-RUN 03-09 (2)" rij D.**
+  **Aanvulling 04-09 (blok C, besluiten Peter): (C1) een "kies één van twee/drie"-stap in een wizard = `KeuzeKaarten` (hele kaart klikvlak,
+  geselecteerd = teal rand + accent-vulling, native radio blijft erin); radio's erven sinds 04-09 nergens meer de `input{width:100%}`-regel.
+  (C2) PDF-`<object>`-viewers openen via `document/pdfWeergaveUrl.ts::metViewerOpties` (`#pagemode=none&navpanes=0&view=FitH`) zónder
+  miniaturen-zijbalk, ☰ blijft; nooit `toolbar=0`. (C3) `SearchableCombobox` kent een `voetActie` (vaste onderste rij buiten het
+  virtualisatievenster); de project-kolom en de projectverdeling dragen "+ Nieuw project aanmaken…" → `projecten/NieuwProjectModal` (bestaande
+  RLZ-projectmotor; ná aanmaken direct geselecteerd); projecten AANMAKEN mag élke kantoorrol incl. Boekhouding (`app/projecten/kantoor.py::
+  _vereis_aanmaakrol`, frontend-spiegel `auth/rollen.ts::magProjectAanmaken`), overige projectmutaties blijven Beheerder + B+P. BESLISSINGEN
+  "UI-FIXES 04-09 BLOK C".**
 - `mockup/tegenboek-mockup.html` — definitief goedgekeurde mockup tegenboek-pad (Peter
   2026-08-22, suppletie-signaal geschrapt; GEBOUWD 2026-08-22) — de bouwnorm
 - `mockup/projecten-invoer.html` — definitief goedgekeurde mockup kantoor-projectenmodule

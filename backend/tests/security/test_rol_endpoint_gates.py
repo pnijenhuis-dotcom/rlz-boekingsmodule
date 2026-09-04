@@ -119,6 +119,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/auth/gebruikers/{DUMMY_ID}/open-werk"),  # open-werk-telling vóór archiveren
         ("GET", f"/uren/kantoor/stand?administratie_id={aid}"),  # uren kantoorkant
         ("GET", f"/projecten/{aid}"),  # projectenmodule kantoor (22-08)
+        ("GET", f"/projecten/{aid}/volgend-nummer"),  # nummervoorstel nieuw project (fix C3 04-09)
+        ("POST", f"/projecten/{aid}"),  # project aanmaken — élke kantoorrol, óók Boekhouding (fix C3 04-09)
         ("PATCH", f"/administraties/{aid}/is-vastgoed"),  # vastgoed-toggle (avondrun 26-08, beheerder-only)
         ("POST", f"/verzamelbak/{DUMMY_ID}/toewijzen"),  # verzamelbak-actie (idempotent sinds 26-08)
         ("POST", "/verzamelbak/bulk-toewijzen"),  # bulk-toewijzen (blok B 02-09)

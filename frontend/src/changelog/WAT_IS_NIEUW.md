@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Keuzekaarten in de wizard, factuurbeeld op volle breedte en projecten aanmaken vanuit de regel
+
+- **De keuze tussen Reeleezee en Odoo staat nu op twee klikbare kaarten.** Bij het toevoegen van een administratie (en bij het koppelen van Odoo aan een bestaande) kies je het pakket door op de kaart te klikken; de gekozen kaart licht op. Ook alle andere keuzerondjes in de app staan weer netjes op hun eigen formaat.
+- **Het factuurbeeld opent meteen op volle breedte, zonder de strook met paginaminiaturen ernaast.** Je ziet de factuur nu direct zo groot mogelijk in het paneel. Heb je de miniaturen toch nodig, dan zet je ze met het menuknopje in de PDF-balk zelf weer aan.
+- **Een project dat nog niet bestaat, maak je nu aan zonder het controlescherm te verlaten.** Onderaan de projectkeuze staat "+ Nieuw project aanmaken…": je vult nummer, plaats en opdrachtgever in, en het nieuwe project staat direct in de regel waar je mee bezig was. Dit mag vanaf nu iedereen op kantoor, ook met de rol Boekhouding — het aanpassen van projectgegevens blijft voorbehouden aan Beheerder en Boekhouding+Projecten.
+
 ## 2026-09-04 — Duplicaten standaard automatisch afgevoerd, ook bij de klant of met een open vraag
 
 - **Duplicaten automatisch afvoeren staat nu voor alle administraties aan.** De schakelaar per administratie is weg. Een harde duplicaat (zelfde leverancier, factuurnummer én bedrag, origineel al geboekt of ouder in de werkvoorraad) gaat vanzelf naar Afgewezen met een link naar het origineel. Er verdwijnt niets; Heropenen haalt de kopie terug. Blijkt het mis te gaan, dan zet een beheerder de noodrem om op Instellingen › Boeken platformbreed ("Duplicaten automatisch afvoeren" uit) — dan blijven duplicaten overal als signaal staan en werkt alleen nog de knop "Afvoeren als duplicaat".
