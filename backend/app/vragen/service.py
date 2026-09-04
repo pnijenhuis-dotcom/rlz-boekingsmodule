@@ -19,8 +19,10 @@ per definitie een werkvoorraad, geen archief).
 werkstuk — niet verwijderd, gesplitst of samengevoegd (`_DOCUMENT_WEG`). GEBOEKT telt hier — anders dan bij
 de werkvoorraad-tellers — bewust NIET als terminaal: sinds blok B5 (26-08) laat een vraag aan de
 klant-accordeur op een document dat bij de klant ligt of al geboekt is de documentstatus staan, en die vraag
-wacht wél op antwoord. Daarmee is deze lijst breder dan de klantenlijst-kolom "Vragen" (= documenten in
-status `vraag_open`); `blokkeert_boeken` (document in `vraag_open`) blijft als aparte teller zichtbaar.
+wacht wél op antwoord. Sinds G1 (03-09) telt de klantenlijst-kolom "Vragen" (`WerkvoorraadKlant.vragen`,
+`app/documenten/service.py`) DEZELFDE definitie via `tel_open_vragen` — één bron (`_open_vraag_voorwaarden`),
+KPI-kaart en kolom kunnen niet meer uiteenlopen; `blokkeert_boeken` (document in `vraag_open`) blijft als
+aparte teller zichtbaar.
 """
 
 from __future__ import annotations
@@ -30,7 +32,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
+from sqlalchemy.orm import Session
 
 from app.auth import service as auth_service
 from app.db.models import Gebruiker, GebruikerRol
@@ -45,6 +48,33 @@ WACHT_ORANJE_VANAF_DAGEN = 7
 #: Documenten die als werkstuk verdwenen zijn — een open vraag daarop is geen werk meer. Geboekt
 #: hoort hier bewust NIET bij (zie moduledocstring, blok B5).
 _DOCUMENT_WEG = (DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST, DocumentStatus.SAMENGEVOEGD)
+
+
+def _open_vraag_voorwaarden(administratie_id: uuid.UUID) -> tuple:
+    """DE definitie "open vraag" als where-voorwaarden (B2.3/G1): `vraag`-rij met status open op een document
+    van deze administratie dat nog bestaat als werkstuk. Vereist een join Vraag → Document. Zowel de
+    kantoorbrede lijst/KPI als de klantenlijst-kolom "Vragen" lezen hier — nooit een tweede formulering."""
+    return (
+        Vraag.administratie_id == administratie_id,
+        Vraag.status == VraagStatus.OPEN.value,
+        Document.status.notin_(_DOCUMENT_WEG),
+    )
+
+
+def tel_open_vragen(session: Session, administratie_id: uuid.UUID) -> int:
+    """Aantal open vragen van één administratie volgens de KPI-definitie (G1, 03-09) — pure leesquery in de
+    door de aanroeper geopende `scoped_session(administratie_id, …)` (RLS op `vraag` toetst uitsluitend de
+    administratie, geen actor nodig). Gebruikt door `werkvoorraad_overzicht` voor `WerkvoorraadKlant.vragen`,
+    zodat de klantenlijst-kolom hetzelfde telt als de kaart "Open vragen"."""
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(Vraag)
+            .join(Document, Vraag.document_id == Document.id)
+            .where(*_open_vraag_voorwaarden(administratie_id))
+        )
+        or 0
+    )
 
 
 class OpenVragenFout(Exception):
@@ -127,11 +157,7 @@ def _alle_open_vragen(*, actor_id: uuid.UUID, rol: GebruikerRol, nu: datetime) -
                         VendorCache,
                         and_(VendorCache.id == Boekvoorstel.vendor_id, VendorCache.administratie_id == aid),
                     )
-                    .where(
-                        Vraag.administratie_id == aid,
-                        Vraag.status == VraagStatus.OPEN.value,
-                        Document.status.notin_(_DOCUMENT_WEG),
-                    )
+                    .where(*_open_vraag_voorwaarden(aid))
                     .order_by(Vraag.gesteld_op, Vraag.id)
                 ).all()
             )

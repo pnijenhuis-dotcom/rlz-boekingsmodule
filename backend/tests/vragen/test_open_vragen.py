@@ -356,7 +356,7 @@ class TestDefinitieKpi:
     ) -> None:
         """Blok B5 (26-08): een vraag op een document dat bij de klant ligt/geboekt is laat de documentstatus
         staan. Zo'n vraag wacht wél op antwoord → in de lijst en in `open`, niet in `blokkeert_boeken`.
-        Dit is het bewuste verschil met de klantenlijst-kolom "Vragen" (documenten in `vraag_open`)."""
+        Sinds G1 (03-09) telt de klantenlijst-kolom "Vragen" dezelfde definitie (zie test_tellers_gelijk.py)."""
         doc = _document(administratie_id, gescoopte_gebruiker, opslag, "geboekt-met-vraag.pdf")
         with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
             document = session.get(Document, doc)

@@ -48,6 +48,7 @@ from app.extractie import service as extractie_service
 from app.extractie import template_service
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache, VendorCache
+from app.vragen import service as vragen_kpi
 
 logger = logging.getLogger(__name__)
 
@@ -1395,6 +1396,13 @@ class WerkvoorraadKlant:
     naam: str
     te_controleren: int
     klaar_om_te_boeken: int
+    # vragen = OPEN VRAAG-RIJEN volgens de KPI-definitie (blok B2 + mee-lift-fix G1, 03-09;
+    # `app.vragen.service.tel_open_vragen`): een `vraag` met status open op een document dat nog bestaat
+    # als werkstuk (niet verwijderd/gesplitst/samengevoegd — GEBOEKT telt wél, blok B5: een vraag aan de
+    # klant-accordeur laat de documentstatus staan). NIET "documenten in status vraag_open" — dat is het
+    # filter van de documentenlijst-tab "Vragen" (`blokkeert_boeken`), geen teller. Zo telt de kolom
+    # "Vragen" per klant exact hetzelfde als de kaart "Open vragen". Een open vraag is werk: telt mee in
+    # heeft_openstaand_werk.
     vragen: int
     afgewezen: int
     bij_klant: int
@@ -1495,13 +1503,16 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
             from app.voorraad import service as voorraad_service  # lokaal: houdt de importgraaf klein
 
             voorraad_verschillen = voorraad_service.tel_verschillen(session, administratie_id)
+            # Open vragen (G1 03-09): de KPI-definitie uit app.vragen.service — één bron met de kaart
+            # "Open vragen"; dezelfde gescoopte sessie als de overige tellers (RLS op vraag = administratie).
+            vragen = vragen_kpi.tel_open_vragen(session, administratie_id)
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
                 naam=naam,
                 te_controleren=sum(per_status.get(s, 0) for s in _TE_CONTROLEREN_STATUSSEN),
                 klaar_om_te_boeken=per_status.get(DocumentStatus.KLAAR_OM_TE_BOEKEN, 0),
-                vragen=per_status.get(DocumentStatus.VRAAG_OPEN, 0),
+                vragen=vragen,
                 afgewezen=per_status.get(DocumentStatus.AFGEWEZEN, 0),
                 # Klant-accordering (migratie 0033): "Bij klant" = documenten die op één of
                 # meer accorderingslagen wachten.

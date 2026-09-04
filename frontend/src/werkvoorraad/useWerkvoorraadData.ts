@@ -11,7 +11,8 @@ import { haalWerkvoorraadOverzichtOp } from './werkvoorraadApi'
  * faalvriendelijk patroon uit de oude Klantenlijst). De KPI-kaart "Open vragen" leest sinds de
  * design-ronde 03-09 (blok B2) de stand van GET /vragen/stand — één definitie mét de kantoorbrede
  * lijst (open vraag-rij op een niet-verdwenen document, óók vragen aan de klant-accordeur op
- * documenten bij de klant/geboekt) i.p.v. de som van de klantenlijst-kolom (documenten in vraag_open). */
+ * documenten bij de klant/geboekt). Sinds G1 (03-09) telt de klantenlijst-kolom "Vragen"
+ * (`WerkvoorraadKlant.vragen`, server-side) diezelfde definitie — kaart en kolom lopen niet meer uiteen. */
 export interface KlantRij extends WerkvoorraadKlantDto {
   bank_open: number | null
   spiegel_taken: number | null
