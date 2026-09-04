@@ -119,10 +119,22 @@ twee verschillende dingen die nooit impliciet in elkaar overlopen; de leesbron-v
 Universal-Verkoop-pad (knipdatum, migratie 0102). ⑥ <b>Foutvertaling</b>: lock-date-, rechten- en company-fouten in
 leesbare taal mét handelingsperspectief, conform vertaal_rlz_boekfout-patroon. ⑦ Controlescherm en werkvoorraad blijven
 identiek aan het RLZ-pad — de gebruiker merkt het backend-verschil alleen aan de chip en het boekstuknummer-formaat.
+⑧ <b>(aanvulling 04-09, gebouwd in de afrondingsrun)</b> Ingang B draagt een verplichte MAPPING-STAP vóór het afronden:
+tabel RLZ-grootboek → Odoo-account (voorstel op rekeningcode, "code + 00" = oranje voorstel) + RLZ-btw → Odoo-tax
+(vertaalregels verlegd/0%), mens bevestigt de hele tabel; append-only mét correctie per rij. Het boekingsgeheugen
+vertaalt zijn voorstellen via deze mapping zodat app-bevestigde voorstellen en autoboek-opt-ins de overstap overleven.
 ⑧ <b>Keuzekaarten i.p.v. radio's</b> (besluit Peter 04-09, kliktest): een "kies één van twee"-stap in een wizard staat op
 klikbare kaarten — de hele kaart is het klikvlak, de gekozen kaart krijgt een teal rand + accent-vulling, hover geeft een
 lift. Aanleiding: een kale radio in een label erfde de globale invoerveld-stijl en rendeerde als uitgerekt vlak met een
 radiootje linksboven. Native radio-semantiek blijft eronder staan (toetsenbord + screenreader ongewijzigd); geldt voor de
-backend-keuze én de koppelvorm.</p>
+backend-keuze én de koppelvorm.
+⑨ <b>(aanvulling slotstuk 04-09, gebouwd)</b> De mapping-stap draagt een derde, OPTIONEEL blok <i>Projecten</i> (RLZ-project →
+Odoo-analytic-account: voorstel op projectnummer = groen, op naam = oranje "bevestig", anders kiezen of leeg laten = "project
+vervalt"; optie "Aanmaken in Odoo" bij een projectnummer; lege projectrij houdt het opslaan nooit tegen). De overgangsdatum heet
+"Overgangsdatum (kanteldatum)" en is géén poort meer: nakomers van vóór de datum boeken óók in Odoo, wat al in Reeleezee stond
+wordt als duplicaat afgevoerd; wijzigen kan altijd (de 409 is vervallen). Ná de overstap toont het resultaat "N projecten aangemaakt"
++ overgeslagen mét reden en "N open boekvoorstellen hervertaald"; op het controlescherm dragen die regels per veld de oranje chip
+"vertaald bij overstap" resp. de rode chip "niet vertaalbaar bij overstap — kies". Bij "Geboekt in Odoo" kan de chip "boekdatum
+verschoven" staan (factuurdatum in een in Odoo afgesloten periode → boekdatum = eerste dag ná de lock date, zichtbaar).</p>
 </body>
 </html>

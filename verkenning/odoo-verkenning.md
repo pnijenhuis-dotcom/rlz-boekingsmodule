@@ -489,7 +489,7 @@ Bevindingen: (1) één RLZ-verkoopfactuur gedateerd 01-09-2026 valt met de exact
 welke dat is en of Odoo 'm dekt; anders knip → 02-09; (2) 5 Odoo-concepten tellen pas ná posten; (3) cloud-code en -DB stonden
 op 0110 — de UI toont de leesbron direct (chip "Odoo · leesbron", rij Leesbron voorraad).
 
-### 8.2 Blok C2 — overstap-generale ingang B: VOORBEREID, niet gedraaid (04-09)
+### 8.2 Blok C2 — overstap-generale ingang B: VOORBEREID (04-09 middag) → GEDRAAID + LIVE BEWEZEN 04-09 avond, zie §9.3 (het script is voor blok A/B/C1 herzien)
 
 Testcase = de RLZ-testadministratie in de dev-DB (`faae29c5-…`, RLZ `8dbfb856-…`): 903 geheugen-observaties (2 app-bevestigd op
 leverancier Action), 38 grootboekrekeningen + 11 btw-tarieven in gebruik, 4-cijferige RLZ-codes (4304 Brandstof auto, 4510, 4306, 4405 …)
@@ -526,3 +526,82 @@ with scoped_session(None, actor_id=BEHEERDER) as s:
 Odoo-sentinel; een pre-datum-document wordt door de adapter-poort leesbaar geweigerd (beslispunt 3 blok E) en kan vanuit de app niet meer
 in RLZ geboekt worden. Datum-ROUTER (boeken via `rlz_admin_id_voor_overstap`) = aparte bouwopdracht; zie BESLISSINGEN blok C2.
 
+
+## §9 Odoo-slotstuk 04-09 — lock-date-gedrag (A2), knipcheck Universal Verkoop (C3) en de overstap-generale (blok D)
+
+### 9.1 A2 — wat doet Odoo met een inkoopfactuur gedateerd in een afgesloten (aangegeven) periode? LIVE, company 1 (04-09 20:11)
+
+Company 1 draagt `fiscalyear_lock_date = tax_lock_date = 2025-12-31` (purchase/hard lock leeg). Twee TEST-facturen (partner 165
+"TEST-ODOO-A2 Lockdate-leverancier", € 100 + 21 %, rechtstreeks via de client — geen app-pad; log
+`verkenning/output/odoo_a2_lockdate_2026-09-04.jsonl`):
+
+| # | Ingestuurd | Odoo ná `action_post` | Btw-regel gedateerd |
+|---|---|---|---|
+| A | `invoice_date = date = 2025-12-15` (≤ beide lock dates) | **niet geweigerd** — `date` STIL verschoven naar **2026-01-31** (het maandEINDE ná de lock date, niet lock + 1), `invoice_date` blijft 15-12-2025 → `BILL/2026/01/0001` | 31-01-2026 |
+| B | `invoice_date = 2025-12-15`, `date = 2026-01-01` expliciet | geaccepteerd zoals ingestuurd → `BILL/2026/01/0002` | 01-01-2026 |
+
+Opruiming: beide gereversed via de `account.move.reversal`-wizard (`RBILL/2026/09/0004` ↔ 0001, `RBILL/2026/09/0005` ↔ 0002,
+origineel `payment_state reversed`, restant 0); partner 165 gearchiveerd. Niets verwijderd. NB `_reverse_moves` is een private
+methode (403 via JSON-2) — de wizard is de enige route (zoals de adapter al doet).
+
+**Conclusie + ontwerpbesluit (opdracht A2: "btw nooit stil in een al aangegeven periode; zelfde semantiek als RLZ's
+TaxSource-verschuiving"):** Odoo doet het WEL automatisch, maar (a) stil en (b) naar het maandeinde ná de lock — voor een
+lock op 31-12 landt de btw dus op 31-01 i.p.v. op de eerste open dag. Daarom bepaalt de adapter de boekdatum zelf,
+deterministisch (`app/odoo/fouten.py::bepaal_boekdatum`): factuurdatum ≤ een lock date → `date` = hoogste geraakte lock date
++ 1 dag (= eerste dag van de eerstvolgende open periode, RLZ-semantiek), `invoice_date` blijft de factuurdatum, en de
+verschuiving is ZICHTBAAR (tijdlijn-detail `boekdatum_verschoven`, regel op "Geboekt in Odoo", chip). Post-write leest de
+adapter `date` terug — een afwijking is een waarschuwing op de boeking (de boeking stáát). De tegenboeking (reversal, boekdatum
+vandaag) houdt de bestaande lock-date-WEIGERING. Accountants-nuance voor de Universal-overstap: zet in Odoo de
+`tax_lock_date` op de laatste periode die vanuit RLZ is aangegeven — dan landt de btw van élke nakomer automatisch en zichtbaar
+in de eerstvolgende open Odoo-periode (klikpunt Peter).
+
+### 9.2 C3 — knipfactuur-check Universal Verkoop (cloud, strikt read-only, 04-09 20:22)
+
+Recept: Auth Proxy 5434 + `cloud_env.sh MET_ODOO=1`, RLZ `GET SalesInvoices` mét `$filter=Date ge 2026-09-01T00:00:00Z and Date lt
+2026-09-02T00:00:00Z` op de administratie Universal Verkoop (`0d66ff75-…`, leesbron company 3, knip 01-09-2026), Odoo read-only client.
+
+| Bron | Uitkomst |
+|---|---|
+| RLZ, Date = 01-09-2026 | precies één: **50212299** (Bots Bouwgroep B.V., Date = BookDate 01-09, Status 2, € 3.257,93 excl.); ná 01-09: 0 |
+| Odoo company 3, 25-08 t/m 02-09 | F/2026/00002 (27-08, SMA BV), F/2026/00003 (31-08, Berghege), **vijf op 01-09**: F/2026/00004 (Bots Bouwgroep, € 465,00 excl., S00041) t/m 00008, daarna 02-09 e.v. |
+| Match 50212299 ↔ Odoo | geen: de enige Bots-Bouwgroep-factuur in Odoo is F/2026/00004 met een ander bedrag → **50212299 staat alleen in RLZ** |
+
+**Bevinding:** de premisse van de opdracht ("óf in Odoo, óf alleen in RLZ → knip 02-09") houdt niet — op 01-09 hebben BEIDE
+systemen echte facturen. Knip → 02-09 zou de RLZ-factuur binnenhalen maar de vijf Odoo-facturen van 01-09 uit de
+voorraad-aansluiting stoten (de Odoo-route leest ≥ knip); de huidige knip 01-09 mist de ene RLZ-factuur. De knip is daarom
+NIET gewijzigd. Voorstel (beslispunt Peter, BESLISSINGEN "ODOO-SLOTSTUK 04-09" blok C3): de Odoo-leesroute knip-onafhankelijk
+naar beneden (alle geposte Odoo-verkoopfacturen tellen — ander systeem; de referentie-dedup tegen RLZ blijft) en de knip alleen
+als RLZ-bovengrens → knip 02-09 + `voorraad-rlz-sync --volledig`. Dan tellen óók F/2026/00002 (27-08) en 00003 (31-08) mee —
+vraag: zijn die twee echt en níét óók in RLZ geboekt?
+
+### 9.3 Blok D — overstap-generale ingang B: LIVE BEWEZEN (dev-omgeving, 04-09 20:52–20:59)
+
+Draaiboek `verkenning/odoo_overstap_generale.py` (herzien voor blok A/B/C1: 9 stappen, stop-op-fout, `--vanaf-stap`/`--ref-rlz`/
+`--vendor-odoo` voor een hervatting) via de eigen HTTP-API (uvicorn :8011, dev-DB ná migratie 0113, Beheerder-token). Log
+`verkenning/output/odoo_overstap_generale_2026-09-04.jsonl` (gitignored; API-key geredigeerd). Vooraf (dev-hygiëne, niets verwijderd):
+company 1 vrijgemaakt (dev-administratie `fa3f83ae` gearchiveerd + sentinel/URL onherkenbaar), klant-accordering van de testadministratie
+UIT gezet via de API (3 lopende TEST-rondes zichtbaar vervallen — anders weigert stap 2 "bied ter accordering aan") en de Beheerder als
+eigenaar gezet (anders weigert de auto-afvoer zichtbaar met "Deze administratie heeft geen eigenaar" — audit `duplicaat_afvoer_geweigerd`).
+Testcase: RLZ-testadministratie `faae29c5-…` (RLZ `8dbfb856-…`), leverancier Action mét 2 app-bevestigde observaties.
+
+| # | Stap | Uitkomst |
+|---|---|---|
+| 0 | voorwaarden | `/health` 200; `verbinding-testen`: company 1 `al_gekoppeld: false` |
+| 1 | nulmeting geheugen Action | gb `4104 Energiekosten (gas/elektra)` (RLZ-UUID, `app_bevestigd: true`, gesplitste stem), btw `NL, Hoog Tarief` 21 % |
+| 2 | RLZ-leg VÓÓR de overstap | TEST-PDF mét btw-nummer `NL812345678B01` + RLZ-project → boekvoorstel op het geheugen-gb → **geboekt in RLZ `RLZ-04-00002044`** (`22e3ad56-…`) → storno actie 19 = 204, Status 1 (opruiming; app-status blijft geboekt = de historie voor stap 7b) |
+| 3 | `voorbereiden` | telling grootboek 38 (12 mét voorstel: 4 `zelfde_code`… en `code_verlengd`), btw 11 (3 `tarief`), **project 1 (0 voorstel — geen nummer in "TEST-ROUTE-A Pand Dorpsstraat 1")**; 355 Odoo-rekeningen, 17 taxen; generale-keuzes gelogd (26 gb handmatig = dichtstbijzijnde code×100, 8 btw handmatig, project → "Test Thomas" handmatig) |
+| 4 | `overstap` (kanteldatum 01-09-2026, mapping gb/btw/project) | **201**; sync ledgers 355 / taxrates 17 / vendors 6 / projects 3 (RLZ-rijen verdwenen 342/22/209/1); stand: company 1, `rlz_admin_id_voor_overstap = 8dbfb856-…`; **hervertaling: 6 open documenten / 6 regels, grootboek 6 · btw 6 · project 1 vertaald, 0 leeg**; `projecten_aangemaakt 0` |
+| 5 | geheugen Action NÁ | gb = **`411000 Property rental`** (de gemapte Odoo-rekening, `app_bevestigd: true` ongewijzigd), btw = Odoo `21%`, **project = Odoo "Test Thomas"** (mapping v1 handmatig) — assert ok; 5b: 6 regels dragen `overstap_vertaling` (bv. `4104 → 411000`, `NL, Hoog Tarief → 21%`) |
+| 6 | Odoo-leg (factuurdatum 03-09) | **eerste twee pogingen 502** "account.tax ade43b00-… is niet bekend in de Odoo-koppeling" — adapterbug: `_verlegde_taxrates` nam de VERDWENEN RLZ-verlegd-tarieven mee (dragen geen Odoo-id); gefixt (alleen niet-verdwenen rijen, regressietest `test_basis.py::TestVerlegdeTaxratesNaOverstap`); daarna **`BILL/2026/09/0002`** posted (date = invoice_date 03-09) → tegenboeken → **`RBILL/2026/09/0006`**, app "Reversal · RBILL/2026/09/0006 ↔ BILL/2026/09/0002" |
+| 7a | nakomer factuurdatum 20-08 (< kanteldatum) | **boekt gewoon in Odoo: `BILL/2026/08/0002`** (date 20-08) → reversal `RBILL/2026/09/0007` — geen poort meer (blok A) |
+| 7b | nakomer = de RLZ-leg (zelfde btw-nummer/referentie/bedrag, Odoo-crediteur) | **Duplicaatcheck rood: "1 factuur … al geboekt in Reeleezee vóór de overstap (boekstuk RLZ-04-00002044)"** (uit de eigen DB-historie, geen RLZ-call); ná het zetten van de eigenaar **automatisch afgevoerd bij binnenkomst**: status `afgewezen`, reden "Duplicaat van TEST-GENERALE-RLZ-… (boekstuk RLZ-04-00002044 / document test-generale-rlz.pdf van 2026-09-04, al geboekt)", systeem-actor |
+| 7c | nakomer factuurdatum 15-12-2025 (≤ tax_lock_date 31-12-2025) | **`BILL/2026/01/0003` mét `date 2026-01-01`, `invoice_date 2025-12-15`**; app "boekdatum 01-01-2026 · factuurdatum 15-12-2025 valt in een in Odoo afgesloten periode" → reversal `RBILL/2026/09/0008` |
+| 8 | kanteldatum 01-09 → 01-10 → 01-09 | **200 / 200** (geen 409 meer; audit oud→nieuw 2×) |
+| 9 | opruimen | TEST-crediteur (partner 168) gearchiveerd; de crediteuren van de twee gestrande runs (166, 167) achteraf óók; twee gestrande stap-6-documenten staan in de dev-testadministratie op `boeken_mislukt` mét de leesbare 502-reden (dev-data) |
+
+**Conclusie:** de overstap-keten ingang B is live bewezen — mapping gb/btw/project → kanteldatum → hervertaling open voorstellen →
+geheugen draagt gemapte rekening én project → Odoo-boeking ná én vóór de kanteldatum → dedup over de backend-grens mét auto-afvoer →
+boekdatum-verschuiving bij een afgesloten periode → kanteldatum vrij te wijzigen. Eén adapterbug gevonden en gefixt in de run (stap 6).
+TEST-paren op company 1 (norm: blijven staan): BILL/2026/09/0002 ↔ RBILL/2026/09/0006, BILL/2026/08/0002 ↔ RBILL/2026/09/0007,
+BILL/2026/01/0003 ↔ RBILL/2026/09/0008 (+ de A2-paren uit §9.1). De dev-testadministratie draait sindsdien op Odoo (company 1).
+De echte Universal-Steigerbouw-overstap volgt uitsluitend op een expliciete GO van Peter.
