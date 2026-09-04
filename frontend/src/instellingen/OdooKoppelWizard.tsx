@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
 import { EersteSyncStatus } from './AdministratieWizard'
+import { KeuzeKaarten } from './KeuzeKaarten'
 import {
   koppelOdooLeesbron,
   koppelOdooNieuw,
@@ -150,26 +151,29 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
 
       {stap === 'koppelvorm' && (
         <div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '0 0 10px' }}>
-            <input type="radio" name="odoo-koppelvorm" value="volledig" checked={vorm === 'volledig'} onChange={() => setVorm('volledig')} aria-label="Volledige backend" />
-            <span>
-              <b>Volledige backend</b>
-              <br />
-              <span className="hint" style={{ margin: 0 }}>
-                Boeken in Odoo vanaf een overgangsdatum — het migratiescenario van een bestaande Reeleezee-administratie.
-              </span>
-            </span>
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: 0 }}>
-            <input type="radio" name="odoo-koppelvorm" value="leesbron" checked={vorm === 'leesbron'} onChange={() => setVorm('leesbron')} aria-label="Alleen-lezen leesbron" />
-            <span>
-              <b>Alleen-lezen leesbron</b>
-              <br />
-              <span className="hint" style={{ margin: 0 }}>
-                Voorraad-uitstroom uit Odoo vanaf een knipdatum; de backend blijft Reeleezee. Er wordt nooit in Odoo geschreven.
-              </span>
-            </span>
-          </label>
+          {/* Fix C1 (04-09): zelfde keuzekaarten als de backend-keuze in "+ Administratie
+              toevoegen" — één patroon voor "kies één van twee" in een wizard. */}
+          <KeuzeKaarten
+            naam="odoo-koppelvorm"
+            waarde={vorm}
+            onKies={setVorm}
+            opties={[
+              {
+                waarde: 'volledig',
+                ariaLabel: 'Volledige backend',
+                kop: <b>Volledige backend</b>,
+                uitleg:
+                  'Boeken in Odoo vanaf een overgangsdatum — het migratiescenario van een bestaande Reeleezee-administratie.',
+              },
+              {
+                waarde: 'leesbron',
+                ariaLabel: 'Alleen-lezen leesbron',
+                kop: <b>Alleen-lezen leesbron</b>,
+                uitleg:
+                  'Voorraad-uitstroom uit Odoo vanaf een knipdatum; de backend blijft Reeleezee. Er wordt nooit in Odoo geschreven.',
+              },
+            ]}
+          />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onSluiten} disabled={bezig}>
               Annuleren

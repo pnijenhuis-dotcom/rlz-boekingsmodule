@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
+import { KeuzeKaarten } from './KeuzeKaarten'
 import { OdooKoppelWizard } from './OdooKoppelWizard'
 import { odooProbeSamenvatting } from './odooProbe'
 import {
@@ -294,26 +295,28 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
 
         {stap === 1 && (
           <div>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '0 0 10px' }}>
-              <input type="radio" name="wizard-backend" value="rlz" checked={backend === 'rlz'} onChange={() => setBackend('rlz')} aria-label="Reeleezee" />
-              <span>
-                <Badge variant="paars">Reeleezee</Badge>
-                <br />
-                <span className="hint" style={{ margin: 0 }}>
-                  Webservice-login → rechten-probe → keuze uit de administraties van die login.
-                </span>
-              </span>
-            </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: 0 }}>
-              <input type="radio" name="wizard-backend" value="odoo" checked={backend === 'odoo'} onChange={() => setBackend('odoo')} aria-label="Odoo" />
-              <span>
-                <Badge variant="paars">Odoo</Badge>
-                <br />
-                <span className="hint" style={{ margin: 0 }}>
-                  URL + API-sleutel → rechten-probe → keuze uit de companies van die database.
-                </span>
-              </span>
-            </label>
+            {/* Fix C1 (04-09): keuzekaarten i.p.v. losse radio's — de radio erfde de globale
+                input-stijl en rendeerde als uitgerekt vlak. Semantiek ongewijzigd (native radio
+                in de kaart, zelfde aria-labels). */}
+            <KeuzeKaarten
+              naam="wizard-backend"
+              waarde={backend}
+              onKies={setBackend}
+              opties={[
+                {
+                  waarde: 'rlz',
+                  ariaLabel: 'Reeleezee',
+                  kop: <Badge variant="paars">Reeleezee</Badge>,
+                  uitleg: 'Webservice-login → rechten-probe → keuze uit de administraties van die login.',
+                },
+                {
+                  waarde: 'odoo',
+                  ariaLabel: 'Odoo',
+                  kop: <Badge variant="paars">Odoo</Badge>,
+                  uitleg: 'URL + API-sleutel → rechten-probe → keuze uit de companies van die database.',
+                },
+              ]}
+            />
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={sluit} disabled={bezig}>
                 Annuleren

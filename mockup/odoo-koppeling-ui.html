@@ -77,12 +77,13 @@ gescheiden: volledige backend vs alleen-lezen leesbron.</p>
 <div class="blok">
   <h2>2 · Wizard — één component, twee ingangen (besluit Peter 03-09)</h2>
   <p class="hint" style="margin-bottom:10px"><b style="color:var(--text)">Ingang A (nieuw):</b> de bestaande knop
-  "+ Administratie toevoegen" krijgt als éérste stap de backend-keuze ◉ Reeleezee ○ Odoo — daarna vraagt de wizard de
+  "+ Administratie toevoegen" krijgt als éérste stap de backend-keuze: twee keuzekaarten (hele kaart klikbaar,
+  geselecteerd = teal rand + accent-vulling) Reeleezee / Odoo — daarna vraagt de wizard de
   bijpassende specs (RLZ: webservice-login; Odoo: onderstaande stappen). Géén tweede knop.
   <b style="color:var(--text)">Ingang B (bestaand, detailpagina):</b> "Odoo koppelen…" voor de overstap van een
   bestaande RLZ-administratie (mét overgangsdatum — het Universal-migratiescenario) en voor de alleen-lezen leesbron
   (Universal Verkoop) — beide zijn geen "toevoegen".</p>
-  <div class="stap"><span class="nr ok">✓</span><div><b>Koppelvorm</b> (alleen bij ingang B)<br><span style="color:var(--muted)">◉ Volledige backend (boeken in Odoo, mét overgangsdatum) &nbsp; ○ Alleen-lezen leesbron (voorraad-uitstroom, backend blijft Reeleezee)</span>
+  <div class="stap"><span class="nr ok">✓</span><div><b>Koppelvorm</b> (alleen bij ingang B)<br><span style="color:var(--muted)">twee keuzekaarten (hele kaart klikbaar, geselecteerd = teal rand): Volledige backend (boeken in Odoo, mét overgangsdatum) &nbsp;·&nbsp; Alleen-lezen leesbron (voorraad-uitstroom, backend blijft Reeleezee)</span>
   <p class="hint">Bij ingang A (nieuwe administratie via "+ Administratie toevoegen") is de backend-keuze al stap 1 en vervalt deze stap.</p></div></div>
   <div class="stap"><span class="nr ok">✓</span><div><b>Verbinding</b><br><span class="veld placeholder">URL · database · API-sleutel</span>
   <div class="probe">✓ Verbonden als n-module@… · Odoo 19 · JSON-2</div></div></div>
@@ -117,6 +118,11 @@ company-mismatch kunnen zíén. ⑤ <b>Koppelvorm is expliciet</b> (stap 1): vol
 twee verschillende dingen die nooit impliciet in elkaar overlopen; de leesbron-variant bedient het bestaande
 Universal-Verkoop-pad (knipdatum, migratie 0102). ⑥ <b>Foutvertaling</b>: lock-date-, rechten- en company-fouten in
 leesbare taal mét handelingsperspectief, conform vertaal_rlz_boekfout-patroon. ⑦ Controlescherm en werkvoorraad blijven
-identiek aan het RLZ-pad — de gebruiker merkt het backend-verschil alleen aan de chip en het boekstuknummer-formaat.</p>
+identiek aan het RLZ-pad — de gebruiker merkt het backend-verschil alleen aan de chip en het boekstuknummer-formaat.
+⑧ <b>Keuzekaarten i.p.v. radio's</b> (besluit Peter 04-09, kliktest): een "kies één van twee"-stap in een wizard staat op
+klikbare kaarten — de hele kaart is het klikvlak, de gekozen kaart krijgt een teal rand + accent-vulling, hover geeft een
+lift. Aanleiding: een kale radio in een label erfde de globale invoerveld-stijl en rendeerde als uitgerekt vlak met een
+radiootje linksboven. Native radio-semantiek blijft eronder staan (toetsenbord + screenreader ongewijzigd); geldt voor de
+backend-keuze én de koppelvorm.</p>
 </body>
 </html>

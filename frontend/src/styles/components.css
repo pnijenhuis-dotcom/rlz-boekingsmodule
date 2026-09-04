@@ -353,6 +353,87 @@ input[type='checkbox']:not(.cb):not(.switch) {
   padding: 0;
 }
 
+/* Zelfde specificiteitsbotsing als bij de checkbox hierboven, maar voor RADIO's — die stonden
+ * tot 04-09 wél onder `width: 100% + padding + border` en rendeerden daardoor als een
+ * uitgerekt invoervlak met een radiootje linksboven (kliktest Peter, wizard "Administratie
+ * toevoegen"). Native radio's krijgen hun eigen browser-vorm terug; de selectiekleur volgt de
+ * teal actie-kleur. */
+input[type='radio']:not(.cb):not(.switch) {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--primary);
+}
+
+/* Keuzekaarten (fix C1 04-09): een "kies één van twee"-stap in een wizard staat op klikbare
+ * kaarten — hele kaart = klikvlak, geselecteerd = teal rand + accent-vulling (zelfde
+ * designpass-v2-taal als .bulk-balk / .pv-periode: teal = actie), hover = lift, focus-within =
+ * ring. De native radio zit in de kaart (visueel verborgen, wél focusbaar). */
+.keuze-kaarten {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.keuze-kaart {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.12s ease;
+}
+
+.keuze-kaart:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+.keuze-kaart.gekozen {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  background: var(--accent-bg);
+}
+
+.keuze-kaart:focus-within {
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* Visueel verborgen, maar wél in de tabvolgorde en wél aan het label gekoppeld — géén
+ * display:none/visibility:hidden (dat haalt de radio uit de focusvolgorde). */
+.keuze-kaart-radio {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.keuze-kaart-kop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.keuze-kaart .keuze-kaart-uitleg {
+  margin: 0;
+}
+
 /* Vinkje + kort label op één regel: korte UI-labels breken nooit (white-space: nowrap), het
  * label krimpt niet mee met een lange hint ernaast (flex-shrink: 0) — de hint wikkelt eronder. */
 .vink-label {
@@ -370,7 +451,10 @@ input[type='checkbox']:not(.cb):not(.switch) {
 
 /* .cb/.switch uitgezonderd (zelfde specificiteitsbotsing als hierboven): die hebben hun eigen
  * focus-visible-ring in controls.css en horen bij een muisklik geen accent-rand te krijgen. */
-input:focus:not(.cb):not(.switch),
+/* Radio's ook uitgezonderd (04-09): de accent-rand + 3px-box tekende zich rond het uitgerekte
+ * invoervlak i.p.v. rond het bolletje. Native radio's houden hun eigen focus-indicatie; een
+ * keuzekaart tekent de ring op de kaart (.keuze-kaart:focus-within). */
+input:focus:not(.cb):not(.switch):not([type='radio']),
 select:focus,
 textarea:focus {
   outline: none;

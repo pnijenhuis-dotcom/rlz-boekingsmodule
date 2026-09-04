@@ -163,7 +163,14 @@ describe('AdministratieWizard', () => {
     expect(screen.getByLabelText('Webservice-gebruiker')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '← Terug' }))
     expect(screen.getByText('Administratie toevoegen — stap 1 van 4')).toBeInTheDocument()
+    // Fix C1 (04-09): de keuze staat op keuzekaarten — hele kaart is het klikvlak, de
+    // geselecteerde kaart draagt de klasse `gekozen` (teal rand + accent-vulling); de native
+    // radio-semantiek eronder is ongewijzigd (aria-label + :checked).
+    expect(screen.getByTestId('keuze-kaart-rlz')).toHaveClass('gekozen')
+    expect(screen.getByTestId('keuze-kaart-odoo')).not.toHaveClass('gekozen')
     fireEvent.click(screen.getByLabelText('Odoo'))
+    expect(screen.getByTestId('keuze-kaart-odoo')).toHaveClass('gekozen')
+    expect(screen.getByTestId('keuze-kaart-rlz')).not.toHaveClass('gekozen')
     fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
     expect(screen.getByText('Administratie toevoegen — stap 2 van 4')).toBeInTheDocument()
     expect(screen.getByLabelText('Odoo-URL')).toBeInTheDocument()
