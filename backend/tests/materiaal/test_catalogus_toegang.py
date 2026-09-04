@@ -3,7 +3,12 @@
 de CATALOGUS (leveranciers, categorieën, producten, seed) is open zodra een administratie de uren-opt-in ÓF een
 Odoo-backend ÓF een Odoo-leesbron-koppeling heeft; bestellingen, transport, materiaalstand blijven uren-gated.
 RLZ zonder beide: 409 mét de leesbare reden. `mijn-toegang` levert `administraties_met_catalogus` náást de
-ongewijzigde `administraties_met_opt_in`. Echte niet-Beheerder MÉT scope voor het RLS-pad (les 25-08)."""
+ongewijzigde `administraties_met_opt_in`. Echte niet-Beheerder MÉT scope voor het RLS-pad (les 25-08).
+
+Rolpoort catalogus (Odoo-slotstuk C2, besluit Peter 04-09 — sloot beslispunt 2 van blok B): de drie LEESROUTES
+(`/leveranciers`, `/leveranciers/{lid}/catalogus`, `/producten`) dragen dezelfde poort als de PUT-kant —
+Beheerder óf B+P (`require_beheerder_of_bp` in de router + `_vereis_beheerder` in de motor), zónder het
+module-recht 'Meerwerk & urenstaten'; Boekhouding mét dat recht krijgt 403, B+P zónder dat recht 200."""
 
 from __future__ import annotations
 
@@ -182,24 +187,59 @@ class TestCatalogusPoort:
         items, totaal = materiaal.bestellingen_overzicht(administratie_id=administratie_id, actor_id=beheerder_id)
         assert (items, totaal) == ([], 0)
 
-    def test_niet_beheerder_met_scope_leest_catalogus_van_odoo_administratie(
+    def test_catalogus_lezen_is_beheerder_of_bp_boekhouding_met_meerwerk_recht_403(
         self, administratie_odoo, beheerder_id, admin_engine
     ):
+        """Besluit Peter 04-09 (C2): lezen = schrijven. Boekhouding MÉT scope én mét het module-recht 'Meerwerk &
+        urenstaten' krijgt op de drie leesroutes 403 (router én motor) — precies zoals op de PUT-kant."""
+        aid = administratie_odoo
         boekhouder = maak_gebruiker(admin_engine, "boekhouding", "Rob T.")
-        auth_service.voeg_scope_toe(
-            actor_id=beheerder_id, doel_gebruiker_id=boekhouder, administratie_id=administratie_odoo
-        )
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=boekhouder, administratie_id=aid)
         uren_service.zet_meerwerk_recht(gebruiker_id=boekhouder, ingeschakeld=True, actor_id=beheerder_id)
-        materiaal.seed_universal(administratie_id=administratie_odoo, actor_id=beheerder_id)
-        levs = materiaal.leveranciers_overzicht(administratie_id=administratie_odoo, actor_id=boekhouder)
-        assert len(levs) == 1
+        lid = materiaal.seed_universal(administratie_id=aid, actor_id=beheerder_id).leverancier_id
+        with pytest.raises(uren_service.GeenToegang):
+            materiaal.leveranciers_overzicht(administratie_id=aid, actor_id=boekhouder)
+        with pytest.raises(uren_service.GeenToegang):
+            materiaal.catalogus(administratie_id=aid, leverancier_id=lid, actor_id=boekhouder)
+        with pytest.raises(uren_service.GeenToegang):
+            materiaal.producten_overzicht(
+                administratie_id=aid, actor_id=boekhouder, leverancier_id=None, zoek="", pagina=1, per_pagina=5
+            )
         h = _bearer(boekhouder, rol="boekhouding")
-        assert client.get(f"/materiaal/{administratie_odoo}/leveranciers", headers=h).status_code == 200
-        # Schrijven blijft Beheerder/B+P (rolpoort ongewijzigd).
-        assert (
-            client.put(f"/materiaal/{administratie_odoo}/leveranciers", json={"naam": "X"}, headers=h).status_code
-            == 403
+        assert client.get(f"/materiaal/{aid}/leveranciers", headers=h).status_code == 403
+        assert client.get(f"/materiaal/{aid}/leveranciers/{lid}/catalogus", headers=h).status_code == 403
+        assert client.get(f"/materiaal/{aid}/producten?zoek=ladder", headers=h).status_code == 403
+        assert client.put(f"/materiaal/{aid}/leveranciers", json={"naam": "X"}, headers=h).status_code == 403
+
+    def test_bp_zonder_meerwerk_recht_met_scope_leest_en_schrijft_catalogus(
+        self, administratie_odoo, beheerder_id, admin_engine
+    ):
+        """De asymmetrie van vóór 04-09 (B+P zónder meerwerk-recht kon producten zetten maar de lijst niet lezen)
+        is weg: B+P MÉT scope, ZONDER module-recht leest de drie routes (RLS-pad, echte niet-Beheerder) én schrijft.
+        Zonder scope blijft alles 403 — de administratie-scope is geen rolpoort maar blijft wél gelden."""
+        aid = administratie_odoo
+        bp = maak_gebruiker(admin_engine, "boekhouding_projecten", "Haci Y.")
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=bp, administratie_id=aid)
+        assert not uren_service.heeft_meerwerk_urenstaten_recht(gebruiker_id=bp, rol="boekhouding_projecten")
+        lid = materiaal.seed_universal(administratie_id=aid, actor_id=beheerder_id).leverancier_id
+        levs = materiaal.leveranciers_overzicht(administratie_id=aid, actor_id=bp)
+        assert len(levs) == 1 and levs[0].aantal_producten == 53
+        assert len(materiaal.catalogus(administratie_id=aid, leverancier_id=lid, actor_id=bp)) == 13
+        _, totaal = materiaal.producten_overzicht(
+            administratie_id=aid, actor_id=bp, leverancier_id=None, zoek="tubelock", pagina=1, per_pagina=3
         )
+        assert totaal == 8
+        h = _bearer(bp, rol="boekhouding_projecten")
+        assert client.get(f"/materiaal/{aid}/leveranciers", headers=h).status_code == 200
+        assert client.get(f"/materiaal/{aid}/leveranciers/{lid}/catalogus", headers=h).status_code == 200
+        resp = client.get(f"/materiaal/{aid}/producten?zoek=ladder&per_pagina=10", headers=h)
+        assert resp.status_code == 200 and resp.json()["totaal"] == 2
+        assert client.put(f"/materiaal/{aid}/leveranciers", json={"naam": "Floor Liften"}, headers=h).status_code == 200
+        # Zonder scope: B+P op een andere administratie → 403 (scope-poort blijft náást de rolpoort).
+        bp_zonder_scope = maak_gebruiker(admin_engine, "boekhouding_projecten", "Zonder scope")
+        h2 = _bearer(bp_zonder_scope, rol="boekhouding_projecten")
+        assert client.get(f"/materiaal/{aid}/leveranciers", headers=h2).status_code == 403
+        assert client.get(f"/materiaal/{aid}/producten", headers=h2).status_code == 403
 
 
 class TestMijnToegang:

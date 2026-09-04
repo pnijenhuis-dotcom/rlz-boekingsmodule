@@ -62,6 +62,10 @@ def _transport_dto(t: materiaal.TransportData) -> schemas.TransportDto:
 
 
 # --- catalogus ---------------------------------------------------------------------------------------
+# Rolpoort catalogus-LEESROUTES = de PUT-kant (besluit Peter 04-09, Odoo-slotstuk C2; sloot beslispunt 2 van
+# "ODOO-AFRONDINGSRUN 04-09 blok B"): `require_beheerder_of_bp` náást de administratie-scope, fail-closed —
+# géén module-recht 'Meerwerk & urenstaten' meer op lezen. Bestellingen/transport/stand/match hieronder blijven
+# achter `require_meerwerk_urenstaten_recht` (steigerbouw-tak). Motor spiegelt dit (`_vereis_beheerder`).
 
 
 @router.get("/{administratie_id}/leveranciers", response_model=list[schemas.LeverancierDto])
@@ -69,7 +73,7 @@ def leveranciers(
     administratie_id: uuid.UUID,
     zoek: str = "",
     alleen_actief: bool = True,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.LeverancierDto]:
     try:
@@ -113,7 +117,7 @@ def catalogus(
     administratie_id: uuid.UUID,
     leverancier_id: uuid.UUID,
     alleen_actief: bool = True,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.CategorieDto]:
     try:
@@ -145,7 +149,7 @@ def producten(
     zoek: str = "",
     pagina: int = 1,
     per_pagina: int = 25,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.ProductenPaginaDto:
     try:

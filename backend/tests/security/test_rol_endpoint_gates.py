@@ -27,6 +27,7 @@ from app.auth import service as auth_service
 from app.auth import voorwaarden
 from app.main import app
 from app.security.tokens import create_access_token
+from app.uren import service as uren_service
 from tests.uren.conftest import maak_gebruiker
 
 client = TestClient(app)
@@ -43,10 +44,7 @@ def administratie_id(admin_engine: Engine) -> uuid.UUID:
     aid = uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
-            text(
-                "INSERT INTO platform.administratie (id, naam, rlz_admin_id) "
-                "VALUES (:id, 'Matrix (test)', :rlz)"
-            ),
+            text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Matrix (test)', :rlz)"),
             {"id": aid, "rlz": f"rlz-{aid}"},
         )
     return aid
@@ -59,9 +57,7 @@ def _extern_met_scope(
     mét voorwaarden-akkoord — de rolpoort moet het verschil maken, niet een toevallig lege
     scope of ontbrekend akkoord."""
     gid = maak_gebruiker(admin_engine, rol, f"Extern {rol}")
-    auth_service.voeg_scope_toe(
-        actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id
-    )
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
     voorwaarden.leg_akkoord_vast(gebruiker_id=gid)
     return gid
 
@@ -89,9 +85,7 @@ def accordeur(admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID
 @pytest.fixture
 def boekhouder(admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID:
     gid = maak_gebruiker(admin_engine, "boekhouding", "Kantoor B.")
-    auth_service.voeg_scope_toe(
-        actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id
-    )
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
     return gid
 
 
@@ -128,7 +122,10 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/intake/splitsing-uitsluitingen"),  # 'nooit splitsen'-regels (blok B 04-09)
         ("DELETE", f"/administraties/{aid}/intake/splitsing-uitsluitingen/{DUMMY_ID}"),  # deactiveren (blok B)
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplaats"),  # verplaatsen (27-08 punt 5)
-        ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/afvoeren-als-duplicaat"),  # duplicaat-afvoer één-klik (blok A 04-09)
+        (
+            "POST",
+            f"/administraties/{aid}/documenten/{DUMMY_ID}/afvoeren-als-duplicaat",
+        ),  # duplicaat-afvoer één-klik (blok A 04-09)
         ("POST", f"/administraties/{aid}/accordering/documenten/bulk-aanbieden"),  # bulk aanbieden (27/28-08 punt 2b)
         ("GET", f"/administraties/{aid}/accordering/vervallen-meldingen"),  # vervallen-melding (27/28-08 punt 2a)
         ("GET", "/vragen"),  # open vragen kantoorbreed (blok B2 03-09)
@@ -159,7 +156,10 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/odoo/sync"),  # stamgegevens opnieuw syncen (beheerder-only)
         ("POST", "/instellingen/odoo/verbinding-testen"),  # Odoo-wizard stap a (beheerder-only)
         ("POST", "/instellingen/odoo/koppelen"),  # Odoo-wizard stap b+c+d (beheerder-only)
-        ("GET", "/instellingen/duplicaat-autoafvoer"),  # platformbrede noodrem duplicaat-afvoer (blok A1 04-09, beheerder-only)
+        (
+            "GET",
+            "/instellingen/duplicaat-autoafvoer",
+        ),  # platformbrede noodrem duplicaat-afvoer (blok A1 04-09, beheerder-only)
         ("PUT", "/instellingen/duplicaat-autoafvoer"),
         ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
@@ -171,7 +171,23 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match"),
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match/koppel"),
         ("GET", "/verplichtingen"),  # kantoorbrede Inzicht-lijst (⑦)
+        # Materiaalcatalogus (Odoo-slotstuk C2 04-09, besluit Peter): LEZEN = SCHRIJVEN = Beheerder/B+P
+        # (`require_beheerder_of_bp` + scope), géén module-recht 'Meerwerk & urenstaten' — zie CATALOGUS_PADEN.
+        ("GET", f"/materiaal/{aid}/leveranciers"),
+        ("GET", f"/materiaal/{aid}/leveranciers/{DUMMY_ID}/catalogus"),
+        ("GET", f"/materiaal/{aid}/producten"),
+        ("PUT", f"/materiaal/{aid}/leveranciers"),  # de PUT-kant (31-08) waar de GET's nu aan spiegelen
+        ("GET", f"/materiaal/{aid}/bestellingen"),  # steigerbouw-tak: kantoorrol + module-recht (ongewijzigd)
     ]
+
+
+CATALOGUS_PADEN = re.compile(r"^/materiaal/[^/]+/(leveranciers|producten)(/[^/]+/catalogus)?(\?|$)")
+
+
+def _is_catalogus_pad(pad: str) -> bool:
+    """De drie catalogus-leesroutes + de leveranciers-PUT: Beheerder/B+P-only (C2 04-09). Bewust een
+    precieze match — bestellingen/transport/stand/match onder /materiaal blijven kantoorrol + module-recht."""
+    return CATALOGUS_PADEN.match(pad) is not None
 
 
 class TestExterneRollenGeweigerd:
@@ -254,10 +270,13 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/projectverdeling-instelling")
                 or pad.endswith("/projectverdeling-instellingen")
                 or "/odoo" in pad
+                or _is_catalogus_pad(pad)
+                or pad.endswith("/bestellingen")
             ):
-                # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling) resp. module-recht
-                # 'Meerwerk & urenstaten': 403 voor een boekhouder zónder dat recht is correct bestaand
-                # gedrag, geen rolpoort-regressie.
+                # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
+                # (materiaalcatalogus lezen+schrijven, C2 04-09) resp. module-recht 'Meerwerk & urenstaten'
+                # (bestellingen): 403 voor een boekhouder zónder dat recht is correct bestaand gedrag, geen
+                # rolpoort-regressie. De positieve/negatieve catalogus-poort staat in TestCatalogusRolpoort.
                 continue
             resp = client.request(methode, pad, headers=_bearer(boekhouder, rol="boekhouding"))
             assert resp.status_code != 403, f"boekhouding {methode} {pad}: onterecht 403"
@@ -270,6 +289,49 @@ class TestKantoorBlijftWerken:
     def test_kantoorrol_geen_veld_endpoints(self, boekhouder):
         resp = client.get("/uren/zzp/projecten", headers=_bearer(boekhouder, rol="boekhouding"))
         assert resp.status_code == 403
+
+
+class TestCatalogusRolpoort:
+    """Materiaalcatalogus lezen = schrijven (besluit Peter 04-09, Odoo-slotstuk C2): de drie leesroutes dragen
+    `require_beheerder_of_bp`. B+P mét scope wordt door de rólpoort niet geweigerd (de Matrix-administratie heeft
+    geen catalogus-toegang → 409 uit de motor, dat is géén rolweigering); Boekhouding mét scope én mét het
+    module-recht 'Meerwerk & urenstaten' krijgt 403 — dat recht opent de catalogus niet meer. Bestellingen
+    (steigerbouw-tak) blijven voor Boekhouding mét dat recht wél open (geen 403)."""
+
+    @pytest.fixture
+    def bp(self, admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID:
+        gid = maak_gebruiker(admin_engine, "boekhouding_projecten", "Kantoor B+P.")
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
+        return gid
+
+    @pytest.fixture
+    def boekhouder_met_meerwerk_recht(self, boekhouder, beheerder_id) -> uuid.UUID:
+        uren_service.zet_meerwerk_recht(gebruiker_id=boekhouder, ingeschakeld=True, actor_id=beheerder_id)
+        return boekhouder
+
+    def test_matrix_bevat_de_drie_leesroutes(self, administratie_id):
+        catalogus = [pad for _, pad in _kantoor_endpoints(administratie_id) if _is_catalogus_pad(pad)]
+        assert len(catalogus) == 4  # drie GET's + de leveranciers-PUT
+        assert not _is_catalogus_pad(f"/materiaal/{administratie_id}/bestellingen")
+        assert not _is_catalogus_pad(f"/materiaal/{administratie_id}/transport?jaar=2026&weeknummer=36")
+
+    def test_bp_met_scope_geen_rolweigering(self, bp, administratie_id):
+        for methode, pad in _kantoor_endpoints(administratie_id):
+            if not _is_catalogus_pad(pad):
+                continue
+            resp = client.request(methode, pad, headers=_bearer(bp, rol="boekhouding_projecten"))
+            assert resp.status_code not in (401, 403), f"B+P {methode} {pad}: onterecht {resp.status_code}"
+
+    def test_boekhouding_met_meerwerk_recht_403_op_catalogus_maar_niet_op_bestellingen(
+        self, boekhouder_met_meerwerk_recht, administratie_id
+    ):
+        h = _bearer(boekhouder_met_meerwerk_recht, rol="boekhouding")
+        for methode, pad in _kantoor_endpoints(administratie_id):
+            if _is_catalogus_pad(pad):
+                resp = client.request(methode, pad, headers=h)
+                assert resp.status_code == 403, f"boekhouding {methode} {pad}: verwacht 403, kreeg {resp.status_code}"
+        resp = client.get(f"/materiaal/{administratie_id}/bestellingen", headers=h)
+        assert resp.status_code not in (401, 403), f"bestellingen: onterecht {resp.status_code}"
 
 
 # --- Laag 2: fail-closed sweep over álle routes -------------------------------------------------
