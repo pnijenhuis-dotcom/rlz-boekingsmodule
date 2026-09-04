@@ -17,21 +17,28 @@ uitgesloten) — óf (b) een ANDER app-document van dezelfde administratie met d
 `duplicaat_signaal`-kop, d.w.z. de kop zoals hij bij extractie/veldopslag getoetst is).
 
 Wie is het origineel binnen zo'n groep? Deterministisch: eerst een in de app GEBOEKT document (oudste),
-dan een RLZ-/Odoo-treffer zónder app-document, dan het document dat het verst in de flow staat
-(ter_accordering / vraag_open / boeken_mislukt / wacht_op_iban_accordering), dan het OUDSTE
-(`aangemaakt_op`, daarna id). Alle andere groepsleden in een afvoerbare status (te_controleren /
-handmatig_afmaken / klaar_om_te_boeken) zijn duplicaten. Een document dat verder in de flow staat
-(ter_accordering, geboekt, vraag_open, …) wordt NOOIT automatisch afgevoerd — beslispunt Peter.
+dan een RLZ-/Odoo-treffer zónder app-document, dan het document waarop al een boekpoging liep
+(boeken_mislukt / wacht_op_iban_accordering), dan het document bij de klant-accordeur (ter_accordering),
+dan het document met een open vraag (vraag_open), dan het OUDSTE (`aangemaakt_op`, daarna id). Alle
+andere groepsleden in een afvoerbare status zijn duplicaten — SINDS BLOK A2 04-09 (besluit Peter "geen
+dubbeling") óók een document dat bij de klant-accordeur ligt of een open vraag draagt: de lopende
+accorderingsronde wordt dan INGETROKKEN mét reden "afgevoerd als duplicaat van ‹ref›" (bestaand
+vervallen-patroon, `accordering.service.laat_ronde_vervallen_bij_duplicaat`) en élke open vraag wordt
+zichtbaar GESLOTEN met dezelfde reden als slotbericht in de thread (`vragen.sluit_vraag_wegens_duplicaat`),
+alles in tijdlijn + audit — nooit stil. Alleen boeken_mislukt / wacht_op_iban_accordering (er liep al een
+boekpoging) en geboekt worden nooit automatisch afgevoerd.
 
 ZACHTE signalen voeren nooit af: referentie + bedrag bij een andere crediteur zónder btw-match
 (`checks.check_duplicaat_over_crediteuren`, oranje) en de eigen herboek-/tegenboek-keten.
 
 Twee ingangen, één motor (`_voer_af`):
-- automatisch (`verwerk_na_signaal_stil`, post-commit ná `bereken_duplicaatsignaal`): alléén bij de
-  opt-in `administratie.duplicaat_autoafvoer_ingeschakeld`, systeem-actor, volumerem
+- automatisch (`verwerk_na_signaal_stil`, post-commit ná `bereken_duplicaatsignaal`): STANDAARD AAN voor
+  de hele module (blok A1 04-09) achter één platformbrede noodrem `platform.duplicaat_afvoer_instelling`
+  (Beheerder, Instellingen › Boeken, `make duplicaat-autoafvoer-uit`); systeem-actor, volumerem
   `max_duplicaat_afvoer_per_dag_per_administratie`, elke poging geauditeerd
-  (`duplicaat_afgevoerd` / `duplicaat_afvoer_geweigerd` + reden);
-- één-klik (`voer_af_als_duplicaat`, altijd — ook zonder opt-in): actor = de mens, `automatisch=False`,
+  (`duplicaat_afgevoerd` / `duplicaat_afvoer_geweigerd` + reden). De per-administratie-opt-in van 0105 is
+  vervallen (kolom blijft staan, wordt niet meer gelezen);
+- één-klik (`voer_af_als_duplicaat`, altijd — ook mét de noodrem aan): actor = de mens, `automatisch=False`,
   idempotent (al afgevoerd = zelfde data terug), 409 zonder harde match of bij een status die het niet
   toelaat.
 """
@@ -49,7 +56,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.audit import record_audit_event
-from app.db.models import Administratie
+from app.db.models import DuplicaatAfvoerInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen
@@ -67,15 +74,24 @@ from app.documenten.models import (
 )
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.statusmachine import OngeldigeStatusovergang
+from app.documenten import vragen
 from app.documenten.vragen import GeenToewijzingMogelijk, ToegewezeneBuitenScope
 
 logger = logging.getLogger(__name__)
 
-# Statussen waaruit een duplicaat automatisch óf met één klik afgevoerd mag worden — exact de
-# herstelbare herkomsten van afwijzen.py (heropenen keert er naar terug). Nooit ter_accordering,
-# geboekt of vraag_open (beslispunt Peter voor ter_accordering; wij bouwen dat niet).
+# Statussen waaruit een duplicaat automatisch óf met één klik afgevoerd mag worden. De drie herstelbare
+# herkomsten van afwijzen.py (heropenen keert er naar terug) plús — blok A2 04-09, besluit Peter "geen
+# dubbeling" — ter_accordering en vraag_open: die worden vóór de afwijzing netjes afgewikkeld (ronde
+# ingetrokken, vraag gesloten, beide mét reden) zodat de herkomst-status voor heropenen weer een van de drie
+# is. Nooit geboekt, boeken_mislukt of wacht_op_iban_accordering (er liep al een boekpoging).
 AFVOERBARE_STATUSSEN = frozenset(
-    {DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN, DocumentStatus.KLAAR_OM_TE_BOEKEN}
+    {
+        DocumentStatus.TE_CONTROLEREN,
+        DocumentStatus.HANDMATIG_AFMAKEN,
+        DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        DocumentStatus.TER_ACCORDERING,
+        DocumentStatus.VRAAG_OPEN,
+    }
 )
 
 # Statussen die een app-document uitsluiten als origineel én als duplicaat: het bestaat niet (meer) als
@@ -91,15 +107,18 @@ _UITGESLOTEN_STATUSSEN = frozenset(
     }
 )
 
-# Rangorde "wie is het origineel": lager = eerder origineel. Geboekt wint altijd; daarna het document
-# dat al in een verwerkingsstap zit (mens of klant heeft er al iets mee gedaan); dan de rest op leeftijd.
+# Rangorde "wie is het origineel": lager = eerder origineel. Geboekt wint altijd; daarna het document waarop
+# al een boekpoging liep; dan het document bij de klant-accordeur (ronde intrekken is duurder dan een
+# te_controleren-exemplaar afvoeren); dan het document met een open vraag; dan de rest op leeftijd. Binnen
+# één rang wint het oudste. Sinds blok A2 zijn rang 2 en 3 wél afvoerbaar als er een hoger origineel is.
 _STATUS_RANG: dict[DocumentStatus, int] = {
     DocumentStatus.GEBOEKT: 0,
-    DocumentStatus.TER_ACCORDERING: 1,
     DocumentStatus.BOEKEN_MISLUKT: 1,
     DocumentStatus.WACHT_OP_IBAN_ACCORDERING: 1,
-    DocumentStatus.VRAAG_OPEN: 1,
+    DocumentStatus.TER_ACCORDERING: 2,
+    DocumentStatus.VRAAG_OPEN: 3,
 }
+_RANG_OVERIG = 4
 
 _REFERENTIE_MAX = 30  # RLZ kapt Reference op 30 tekens
 
@@ -260,7 +279,7 @@ def _groepeer(leden: list[_Lid], btw: dict[str, str]) -> dict[tuple[str, str, De
 
 
 def _rang(lid: _Lid) -> tuple[int, datetime, str]:
-    return (_STATUS_RANG.get(lid.status, 2), lid.aangemaakt_op, str(lid.document_id))
+    return (_STATUS_RANG.get(lid.status, _RANG_OVERIG), lid.aangemaakt_op, str(lid.document_id))
 
 
 def _rlz_treffers(session: Session, document_id: uuid.UUID) -> list[dict]:
@@ -457,10 +476,49 @@ def stand_voor_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID) 
 # ----------------------------------------------------------------------------- afvoeren
 
 
+def afwikkel_reden(origineel: Origineel) -> str:
+    """Reden op de ingetrokken ronde / gesloten vraag — de kortere vorm van `Origineel.reden()`."""
+    return f"afgevoerd als duplicaat van {origineel.referentie}"
+
+
+def _wikkel_af_voor_afvoer(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, origineel: Origineel
+) -> None:
+    """Blok A2 04-09: een duplicaat dat bij de klant-accordeur ligt of een open vraag draagt wordt vóór de
+    afwijzing netjes afgewikkeld — nooit stil. (1) élke open vraag op het document zichtbaar gesloten mét
+    de reden als slotbericht in de thread (vraagsteller ziet 'm; document op vraag_open keert terug naar
+    zijn herkomst); (2) de lopende accorderingsronde ingetrokken/vervallen mét dezelfde reden (bestaand
+    vervallen-patroon, document terug naar klaar_om_te_boeken). Daarna is de status weer een herstelbare
+    herkomst voor `afwijzen.wijs_af` (heropenen keert er naar terug). Elke stap = eigen transactie, tijdlijn +
+    audit; een fout stopt de afvoer vóór de afwijzing."""
+    from app.accordering import service as accordering_service
+
+    reden = afwikkel_reden(origineel)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        status = document.status if document is not None else None
+    if status is None:
+        return
+    if status in (DocumentStatus.VRAAG_OPEN, DocumentStatus.TER_ACCORDERING):
+        for vraag_id in vragen.open_vraag_ids_van_document(administratie_id=administratie_id, document_id=document_id):
+            vragen.sluit_vraag_wegens_duplicaat(
+                administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor_id, reden=reden
+            )
+    if status == DocumentStatus.TER_ACCORDERING:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            accordering_service.laat_ronde_vervallen_bij_duplicaat(
+                session, administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, reden=reden
+            )
+
+
 def _voer_af(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, origineel: Origineel, automatisch: bool
 ) -> afwijzen.AfwijzingData:
-    """Eén motor voor beide ingangen: de bestaande afwijs-route mét kruisverwijzing."""
+    """Eén motor voor beide ingangen: eerst de afwikkeling van ronde/vraag (A2), dan de bestaande afwijs-route
+    mét kruisverwijzing."""
+    _wikkel_af_voor_afvoer(
+        administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, origineel=origineel
+    )
     return afwijzen.wijs_af(
         administratie_id=administratie_id,
         document_id=document_id,
@@ -511,7 +569,8 @@ def voer_af_als_duplicaat(
         if document.status not in AFVOERBARE_STATUSSEN:
             raise AfvoerNietMogelijk(
                 f"Vanuit status {document.status.value} kan een document niet als duplicaat afgevoerd worden — "
-                "alleen vanuit te controleren, handmatig afmaken of klaar om te boeken"
+                "alleen vanuit te controleren, handmatig afmaken, klaar om te boeken, ter accordering of met een "
+                "open vraag"
             )
         groep = bepaal_groep(session, administratie_id=administratie_id, document_id=document_id)
         if groep is None:
@@ -568,13 +627,19 @@ def _audit(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actie: str, w
         )
 
 
+def platformbreed_ingeschakeld(session: Session) -> bool:
+    """De platformbrede noodrem (blok A1 04-09, migratie 0109): standaard AAN. Ontbreekt de rij dan
+    fail-closed UIT (zelfde lijn als de boeken-noodstop)."""
+    instelling = session.get(DuplicaatAfvoerInstelling, True)
+    return instelling is not None and instelling.platformbreed_ingeschakeld
+
+
 def verwerk_na_signaal(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[uuid.UUID]:
-    """Automatisch pad, post-commit ná de duplicaatsignaal-berekening (extractie én veldopslag). Alleen
-    bij de opt-in; systeem-actor; volumerem; elke poging geauditeerd. Geeft de afgevoerde document-id's
-    terug (test-/log-doel). Zonder opt-in bewust géén audit-ruis (dat is de default voor alles)."""
+    """Automatisch pad, post-commit ná de duplicaatsignaal-berekening (extractie én veldopslag). Standaard
+    AAN (blok A1) achter de platformbrede noodrem; systeem-actor; volumerem; elke poging geauditeerd. Geeft
+    de afgevoerde document-id's terug (test-/log-doel). Mét de noodrem UIT bewust géén audit-ruis."""
     with scoped_session(administratie_id) as session:
-        administratie = session.get(Administratie, administratie_id)
-        if administratie is None or not administratie.duplicaat_autoafvoer_ingeschakeld:
+        if not platformbreed_ingeschakeld(session):
             return []
         groep = bepaal_groep(session, administratie_id=administratie_id, document_id=document_id)
         if groep is None or not groep.duplicaten:
@@ -608,7 +673,13 @@ def verwerk_na_signaal(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -
                 origineel=origineel,
                 automatisch=True,
             )
-        except (GeenToewijzingMogelijk, ToegewezeneBuitenScope, OngeldigeStatusovergang, afwijzen.AfwijzingFout) as exc:
+        except (
+            GeenToewijzingMogelijk,
+            ToegewezeneBuitenScope,
+            OngeldigeStatusovergang,
+            afwijzen.AfwijzingFout,
+            vragen.VraagFout,
+        ) as exc:
             _audit(
                 administratie_id=administratie_id,
                 document_id=lid.document_id,

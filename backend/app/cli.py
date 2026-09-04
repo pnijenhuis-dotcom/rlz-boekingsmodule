@@ -1362,22 +1362,21 @@ def _zet_bank_autoboeken(args: argparse.Namespace, *, ingeschakeld: bool) -> int
 
 
 def _zet_duplicaat_autoafvoer(args: argparse.Namespace, *, ingeschakeld: bool) -> int:
-    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105) — make-terugval voor de
-    UI-toggle; Beheerder als audit_event-actor, default UIT."""
+    """Platformbrede noodrem duplicaat-auto-afvoer (besluit Peter 04-09 blok A1, migratie 0109) — standaard
+    AAN voor de hele module; make-terugval voor de UI-switch op Instellingen › Boeken. Beheerder als
+    audit_event-actor."""
     try:
-        administratie_id = uuid.UUID(args.administratie_id)
         beheerder_id = uuid.UUID(args.beheerder_id)
     except ValueError as exc:
         print(f"FOUT: ongeldige UUID ({exc})", file=sys.stderr)
         return 1
     try:
-        resultaat = beheer_service.zet_duplicaat_autoafvoer_ingeschakeld(
-            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=ingeschakeld
-        )
+        resultaat = beheer_service.zet_duplicaat_autoafvoer_platform(actor_id=beheerder_id, ingeschakeld=ingeschakeld)
     except beheer_service.BeheerFout as exc:
         print(f"FOUT: {exc}", file=sys.stderr)
         return 1
-    print(f"duplicaat_autoafvoer_ingeschakeld={resultaat} voor administratie {administratie_id}")
+    stand = "AAN — harde duplicaten worden automatisch afgevoerd" if resultaat else "UIT — noodrem actief, alleen nog de één-klik"
+    print(f"duplicaat_autoafvoer_platformbreed={resultaat} ({stand})")
     return 0
 
 
@@ -2058,8 +2057,6 @@ def main(argv: list[str] | None = None) -> int:
         ("verkoop-autoboeken-uit", "Zet de verkoop-autoboek-toggle UIT."),
         ("omzet-autoboeken-aan", "Zet de omzet-autoboek-opt-in (kassarapporten automatisch boeken, GO 01-09) AAN."),
         ("omzet-autoboeken-uit", "Zet de omzet-autoboek-opt-in UIT."),
-        ("duplicaat-autoafvoer-aan", "Zet de opt-in duplicaat-auto-afvoer (harde duplicaten automatisch afvoeren, 04-09) AAN."),
-        ("duplicaat-autoafvoer-uit", "Zet de opt-in duplicaat-auto-afvoer UIT."),
         ("afgeletterd-event-aan", "Zet de tier-vlag voor het factuur_afgeletterd-event AAN (§3 v1.11)."),
         ("afgeletterd-event-uit", "Zet de tier-vlag voor het factuur_afgeletterd-event UIT."),
         ("uren-meerwerk-aan", "Zet de uren-&-meerwerk-opt-in (steigerbouw-tak, migratie 0056) AAN."),
@@ -2072,6 +2069,21 @@ def main(argv: list[str] | None = None) -> int:
         bank_auto_parser = subparsers.add_parser(naam, help=hulp)
         bank_auto_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
         bank_auto_parser.add_argument(
+            "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
+        )
+
+    for naam, hulp in (
+        (
+            "duplicaat-autoafvoer-aan",
+            "Zet de platformbrede duplicaat-auto-afvoer (standaard AAN, blok A1 04-09) weer AAN.",
+        ),
+        (
+            "duplicaat-autoafvoer-uit",
+            "NOODREM: zet de platformbrede duplicaat-auto-afvoer UIT (één-klik 'Afvoeren als duplicaat' blijft).",
+        ),
+    ):
+        noodrem_parser = subparsers.add_parser(naam, help=hulp)
+        noodrem_parser.add_argument(
             "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
         )
 

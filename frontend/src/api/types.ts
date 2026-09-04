@@ -817,8 +817,6 @@ export interface AdministratieInstellingenDto {
   doorbelasting_doel?: boolean
   /** Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles groen is. */
   omzet_autoboeken_ingeschakeld?: boolean
-  /** Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): harde duplicaten automatisch naar Afgewezen. */
-  duplicaat_autoafvoer_ingeschakeld?: boolean
   bank_autoboeken_ingeschakeld?: boolean
   accordering_ingeschakeld?: boolean
   laatste_sync_op?: string | null

@@ -147,11 +147,10 @@ class Administratie(Base):
     # Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles
     # groen is — opt-in per administratie, default UIT, Beheerder-only (app/omzet/autoboeken.py).
     omzet_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
-    # Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): bij een HARDE duplicaat-match (zelfde
-    # crediteur op btw-nummer + referentie + totaalbedrag, origineel geboekt óf ouder in de werkvoorraad)
-    # voert het systeem het document automatisch af naar Afgewezen mét kruisverwijzing — opt-in per
-    # administratie, default UIT, Beheerder-only (app/documenten/duplicaat_afvoer.py). De één-klik-
-    # variant "Afvoeren als duplicaat" werkt altijd.
+    # Duplicaat-auto-afvoer (migratie 0105) — VERVALLEN als gedrag sinds blok A1 04-09 (besluit Peter:
+    # standaard AAN voor de hele module, één platformbrede noodrem `DuplicaatAfvoerInstelling`, migratie
+    # 0109). De kolom blijft staan (geen drop, geen backfill) maar wordt door het automatische pad, de UI,
+    # de API en de CLI niet meer gelezen of geschreven.
     duplicaat_autoafvoer_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Btw-default per administratie (blok E medewerker-wensen 04-09, migratie 0108, mockup
     # `projectverdeling-en-regelvoorstellen.html` blok 3 + notitie ⑧): standaard-btw-voorstel dat in de
@@ -599,6 +598,22 @@ class WebhookInstelling(Base):
 
     singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
     aflevering_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class DuplicaatAfvoerInstelling(Base):
+    """Platformbrede noodrem duplicaat-auto-afvoer (blok A1 04-09, migratie 0109): Beheerder-only
+    singleton, zelfde patroon als BoekenInstelling/IntakeInstelling — default AAN ("standaard aan voor de
+    hele module"). UIT = géén automatische afvoer meer, waar ook; de één-klik "Afvoeren als duplicaat" en de
+    volumerem staan hier los van. Gelezen door app/documenten/duplicaat_afvoer.py::verwerk_na_signaal."""
+
+    __tablename__ = "duplicaat_afvoer_instelling"
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    platformbreed_ingeschakeld: Mapped[bool] = mapped_column(default=True, server_default="true")
     gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

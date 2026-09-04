@@ -38,19 +38,20 @@ import {
   haalAiKostenStatusOp,
   haalAutoboekStandOp,
   haalBoekenKillSwitchOp,
+  haalDuplicaatAutoafvoerOp,
   haalInstellingenAdministratiesOp,
   haalIntakeAiInstellingOp,
   zetAiExtractieInstelling,
   zetAiKostenLimiet,
   zetBoekenInstelling,
   zetBoekenKillSwitch,
+  zetDuplicaatAutoafvoer,
   zetEigenaar,
   zetIntakeAiInstelling,
   zetAfdelingenInstelling,
   zetProjectInstelling,
   zetVoorraadInstelling,
   zetOmzetAutoboekenInstelling,
-  zetDuplicaatAutoafvoerInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
   zetIsVastgoed,
@@ -70,7 +71,7 @@ type WijzigingType =
   | 'afdelingen'
   | 'voorraad'
   | 'omzet_autoboeken'
-  | 'duplicaat_autoafvoer'
+  | 'duplicaat_noodrem'
   | 'eigenaar'
   | 'iban_accordeurs'
   | 'ai_kosten_limiet'
@@ -129,10 +130,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Omzet-autoboeken gaat AAN voor "${pending.naam}": een kassarapport boekt ná extractie automatisch (verkoopfactuur + kostprijsmemoriaal als één transactie) uitsluitend als álles groen is — harde checks incl. memoriaal-saldo-0 en marge-plausibiliteit, categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen open vraag of afwijzing. Elk ander geval blijft gewoon in de werkvoorraad; volumerem 20/dag; elke automatische boeking is gemarkeerd en geauditeerd en een half-geboekt-geval geeft een alert.`
         : `Omzet-autoboeken gaat UIT voor "${pending.naam}" — elk kassarapport wacht weer op de boek-klik van een medewerker.`
-    case 'duplicaat_autoafvoer':
+    case 'duplicaat_noodrem':
       return pending.nieuweWaarde
-        ? `Duplicaten automatisch afvoeren gaat AAN voor "${pending.naam}": bij een harde match — zelfde crediteur (btw-nummer), zelfde referentie én zelfde totaalbedrag, origineel al geboekt óf ouder in de werkvoorraad — zet het systeem het duplicaat direct op Afgewezen met reden "Duplicaat van …" en een kruisverwijzing naar het origineel (beide kanten zichtbaar). Niets wordt verwijderd; terughalen kan via Heropenen. Documenten bij de klant, met een open vraag of al geboekt worden nooit automatisch afgevoerd; volumerem 20 per dag; alles in audit en tijdlijn.`
-        : `Duplicaten automatisch afvoeren gaat UIT voor "${pending.naam}" — duplicaten blijven als signaal staan; de knop "Afvoeren als duplicaat" blijft beschikbaar.`
+        ? 'Duplicaten automatisch afvoeren gaat platformbreed AAN (de standaard): bij een harde match — zelfde crediteur (btw-nummer), zelfde referentie én zelfde totaalbedrag, origineel al geboekt óf ouder in de werkvoorraad — zet het systeem het duplicaat direct op Afgewezen met reden "Duplicaat van …" en een kruisverwijzing naar het origineel; ligt het duplicaat bij de klant of draagt het een open vraag, dan worden ronde en vraag met dezelfde reden gesloten. Niets wordt verwijderd; terughalen kan via Heropenen. Volumerem 20 per dag per administratie; alles in audit en tijdlijn.'
+        : 'NOODREM: duplicaten automatisch afvoeren gaat platformbreed UIT — voor álle administraties blijven duplicaten als signaal staan; de knop "Afvoeren als duplicaat" blijft beschikbaar.'
     case 'uren_meerwerk':
       return pending.nieuweWaarde
         ? `Uren & meerwerk (steigerbouw-tak) wordt ingeschakeld voor "${pending.naam}": ZZP'ers/uitvoerders/detacheerders kunnen er weekstaten en meerwerk op werken en het kantoor ziet de standen (module-recht vereist).`
@@ -205,8 +206,8 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
     await zetOmzetAutoboekenInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
-  if (pending.type === 'duplicaat_autoafvoer') {
-    await zetDuplicaatAutoafvoerInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+  if (pending.type === 'duplicaat_noodrem') {
+    await zetDuplicaatAutoafvoer(pending.nieuweWaarde)
     return
   }
   if (pending.type === 'eigenaar') {
@@ -259,6 +260,8 @@ export function InstellingenScreen() {
   const [administraties, setAdministraties] = useState<AdministratieInstellingenDto[] | null>(null)
   const [accordeursVersie, setAccordeursVersie] = useState(0)
   const [killSwitch, setKillSwitch] = useState<boolean | null>(null)
+  // Blok A1 04-09: platformbrede noodrem duplicaat-auto-afvoer (standaard AAN).
+  const [duplicaatNoodrem, setDuplicaatNoodrem] = useState<boolean | null>(null)
   const [intakeAi, setIntakeAi] = useState<boolean | null>(null)
   const [aiKosten, setAiKosten] = useState<AiKostenStatusDto | null>(null)
   // Blok B (01-09): autoboek-kandidaten-teller voor de nav-stand-chip (oranje zolang > 0).
@@ -298,10 +301,12 @@ export function InstellingenScreen() {
       haalBoekenKillSwitchOp(),
       haalIntakeAiInstellingOp(),
       haalAiKostenStatusOp(),
+      haalDuplicaatAutoafvoerOp(),
     ])
-      .then(([lijst, switchDto, intakeAiDto, aiKostenDto]) => {
+      .then(([lijst, switchDto, intakeAiDto, aiKostenDto, duplicaatDto]) => {
         setAdministraties(lijst.administraties)
         setKillSwitch(switchDto.ingeschakeld)
+        setDuplicaatNoodrem(duplicaatDto.ingeschakeld)
         setIntakeAi(intakeAiDto.ingeschakeld)
         setAiKosten(aiKostenDto)
         setLimietInvoer(aiKostenDto.limiet_eur)
@@ -425,6 +430,8 @@ export function InstellingenScreen() {
       await voerWijzigingUit(pending)
       if (pending.type === 'kill_switch') {
         setKillSwitch(pending.nieuweWaarde)
+      } else if (pending.type === 'duplicaat_noodrem') {
+        setDuplicaatNoodrem(pending.nieuweWaarde)
       } else if (pending.type === 'intake_ai') {
         setIntakeAi(pending.nieuweWaarde)
       } else if (pending.type === 'ai_kosten_limiet') {
@@ -466,8 +473,6 @@ export function InstellingenScreen() {
                                     ? { uren_meerwerk_ingeschakeld: pending.nieuweWaarde }
                                     : pending.type === 'omzet_autoboeken'
                                       ? { omzet_autoboeken_ingeschakeld: pending.nieuweWaarde }
-                                      : pending.type === 'duplicaat_autoafvoer'
-                                        ? { duplicaat_autoafvoer_ingeschakeld: pending.nieuweWaarde }
                                     : { project_verplicht: pending.nieuweWaarde }),
                   }
                 : a,
@@ -534,6 +539,34 @@ export function InstellingenScreen() {
                     }
                   />
                   {killSwitch ? 'aan — boeken kan' : 'uit — boeken staat plat'}
+                </label>
+              )}
+            </div>
+            {/* Blok A1 04-09 (besluit Peter): duplicaat-auto-afvoer is STANDAARD AAN voor de hele module; dit is
+                de enige schakelaar — een platformbrede noodrem, geen toggle per administratie meer. */}
+            <div
+              data-testid="duplicaat-noodrem"
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}
+            >
+              <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+                <h2 style={{ margin: 0 }}>Duplicaten automatisch afvoeren</h2>
+                <p className="hint" style={{ marginTop: 4, marginBottom: 0 }}>
+                  Standaard <b>aan</b> voor álle administraties: een harde duplicaat (zelfde leverancier, factuurnummer én
+                  bedrag) gaat vanzelf naar Afgewezen met een link naar het origineel — ook als het bij de klant ligt of
+                  een open vraag draagt (ronde en vraag worden met die reden gesloten). Niets verdwijnt; Heropenen haalt
+                  terug. <b>Uit</b> = de noodrem: nergens meer automatisch, alleen de knop &quot;Afvoeren als duplicaat&quot;.
+                </p>
+              </div>
+              {duplicaatNoodrem !== null && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
+                  <Switch
+                    aria-label="Duplicaten automatisch afvoeren"
+                    checked={duplicaatNoodrem}
+                    onChange={(e) =>
+                      setPending({ type: 'duplicaat_noodrem', naam: 'duplicaten automatisch afvoeren', nieuweWaarde: e.target.checked })
+                    }
+                  />
+                  {duplicaatNoodrem ? 'aan — duplicaten worden afgevoerd' : 'uit — noodrem actief'}
                 </label>
               )}
             </div>

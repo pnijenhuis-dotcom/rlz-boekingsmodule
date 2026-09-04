@@ -87,6 +87,29 @@ class TestBoekenAanUit:
         assert "'Boeken platformbreed' staat UIT" in uit.out
 
 
+class TestDuplicaatNoodrem:
+    """Blok A1 04-09: de platformbrede noodrem duplicaat-auto-afvoer — standaard AAN, -uit = noodrem, audit."""
+
+    def test_uit_en_weer_aan_met_audit(self, beheerder_id: uuid.UUID, capsys: pytest.CaptureFixture[str]) -> None:
+        assert service.haal_duplicaat_autoafvoer_platform_op() is True
+        exitcode = cli.main(["duplicaat-autoafvoer-uit", "--beheerder-id", str(beheerder_id)])
+        uit = capsys.readouterr()
+        assert exitcode == 0
+        assert "duplicaat_autoafvoer_platformbreed=False" in uit.out and "noodrem" in uit.out
+        assert service.haal_duplicaat_autoafvoer_platform_op() is False
+
+        exitcode = cli.main(["duplicaat-autoafvoer-aan", "--beheerder-id", str(beheerder_id)])
+        uit = capsys.readouterr()
+        assert exitcode == 0
+        assert "duplicaat_autoafvoer_platformbreed=True" in uit.out
+        assert service.haal_duplicaat_autoafvoer_platform_op() is True
+
+    def test_ongeldige_uuid_geeft_fout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exitcode = cli.main(["duplicaat-autoafvoer-uit", "--beheerder-id", "geen-uuid"])
+        uit = capsys.readouterr()
+        assert exitcode == 1 and "FOUT" in uit.err
+
+
 class TestBoekenStatus:
     def test_toont_globale_kill_switch_en_per_administratie_toggle(
         self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, capsys: pytest.CaptureFixture[str]

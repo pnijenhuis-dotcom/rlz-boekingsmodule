@@ -154,6 +154,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/odoo/sync"),  # stamgegevens opnieuw syncen (beheerder-only)
         ("POST", "/instellingen/odoo/verbinding-testen"),  # Odoo-wizard stap a (beheerder-only)
         ("POST", "/instellingen/odoo/koppelen"),  # Odoo-wizard stap b+c+d (beheerder-only)
+        ("GET", "/instellingen/duplicaat-autoafvoer"),  # platformbrede noodrem duplicaat-afvoer (blok A1 04-09, beheerder-only)
+        ("PUT", "/instellingen/duplicaat-autoafvoer"),
         ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
     ]
@@ -234,6 +236,7 @@ class TestKantoorBlijftWerken:
                 or pad.startswith("/uren/kantoor")
                 or pad.endswith("/is-vastgoed")
                 or pad.endswith("/btw-default")
+                or pad.endswith("/duplicaat-autoafvoer")
                 or pad.endswith("/leveranciers-projectverdeling")
                 or pad.endswith("/projectverdeling-instelling")
                 or pad.endswith("/projectverdeling-instellingen")

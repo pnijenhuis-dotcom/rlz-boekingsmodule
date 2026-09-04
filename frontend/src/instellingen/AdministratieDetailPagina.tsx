@@ -57,8 +57,6 @@ export function ariaLabelVoor(type: ToggleType): string {
       return 'Voorraad bijhouden voor'
     case 'omzet_autoboeken':
       return 'Omzet-autoboeken voor'
-    case 'duplicaat_autoafvoer':
-      return 'Duplicaat-afvoer automatisch voor'
   }
 }
 
@@ -269,12 +267,6 @@ export function AdministratieDetailPagina({
               Boolean(a.omzet_autoboeken_ingeschakeld),
               'Omzet-autoboeken (kassarapporten)',
               'Boekt een omzetrapport automatisch zodra álles groen is: harde checks (incl. memoriaal-saldo-0 en marge-plausibiliteit), categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen vraag of afwijzing. Anders gewoon werkvoorraad; volumerem 20/dag; chip "automatisch" + audit.',
-            )}
-            {toggle(
-              'duplicaat_autoafvoer',
-              Boolean(a.duplicaat_autoafvoer_ingeschakeld),
-              'Duplicaten automatisch afvoeren',
-              'Bij een harde match — zelfde crediteur (btw-nummer), zelfde referentie én zelfde totaalbedrag, origineel al geboekt óf ouder in de werkvoorraad — gaat het duplicaat automatisch naar Afgewezen met reden "Duplicaat van …" en kruisverwijzing naar het origineel. Nooit verwijderd; terughalen via Heropenen. Volumerem 20/dag; audit + tijdlijn. Zonder deze schakelaar blijft de één-klik "Afvoeren als duplicaat" gewoon beschikbaar.',
             )}
             <BtwDefaultRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
             {a.afdelingen_ingeschakeld && (

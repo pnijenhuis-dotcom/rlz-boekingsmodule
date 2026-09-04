@@ -626,6 +626,7 @@ def _laat_open_rondes_vervallen(
     afdeling_ids: set[uuid.UUID | None] | None = None,
     document_ids: set[uuid.UUID] | None = None,
     reden: str = VERVALLEN_REDEN,
+    detail_extra: dict | None = None,
 ) -> int:
     """OPEN rondes → `vervallen`; document → klaar_om_te_boeken mét tijdlijn-detail (reden +
     batch_id) en audit per ronde. Eén batch_id per configuratiewijziging zodat de
@@ -662,6 +663,7 @@ def _laat_open_rondes_vervallen(
                 "accordering_vervallen": True,
                 "reden": reden,
                 "batch_id": str(batch_id),
+                **(detail_extra or {}),
             },
         )
         record_audit_event(
@@ -685,6 +687,44 @@ def _laat_open_rondes_vervallen(
 
 # Blok A 28-08: afdeling gewijzigd ná aanbieden — zelfde regel als een configuratiewijziging.
 AFDELING_GEWIJZIGD_REDEN = "afdeling gewijzigd — opnieuw aanbieden vereist"
+
+
+def laat_ronde_vervallen_bij_duplicaat(
+    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+) -> int:
+    """Blok A2 04-09 (besluit Peter "geen dubbeling"): het document wordt als duplicaat afgevoerd terwijl het
+    bij de klant-accordeur ligt — de lopende ronde vervalt mét reden "afgevoerd als duplicaat van ‹ref›"
+    (bestaand vervallen-patroon: ronde → vervallen, document → klaar_om_te_boeken, tijdlijn + audit), maar
+    gemarkeerd `accordering_vervallen_duplicaat` zodat de werkvoorraad-banner "accorderingsconfiguratie
+    gewijzigd — opnieuw aanbieden" 'm níét als herstelwerk telt. Ligt er geen OPEN ronde meer (klant-akkoord
+    al compleet, boeking mislukt = `boek_fout`) dan gaat het document alsnog terug naar klaar_om_te_boeken
+    mét dezelfde reden op de tijdlijn — nooit stil vast op ter_accordering."""
+    aantal = _laat_open_rondes_vervallen(
+        session,
+        administratie_id=administratie_id,
+        actor_id=actor_id,
+        nu=datetime.now(UTC),
+        document_ids={document_id},
+        reden=reden,
+        detail_extra={"accordering_vervallen_duplicaat": True},
+    )
+    if aantal:
+        return aantal
+    document = session.get(Document, document_id)
+    if document is not None and document.status == DocumentStatus.TER_ACCORDERING:
+        laatste = _laatste_accordering(session, document_id)
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            actor_id=actor_id,
+            detail={
+                "accordering_id": str(laatste.id) if laatste is not None else None,
+                "accordering_vervallen_duplicaat": True,
+                "reden": reden,
+            },
+        )
+    return 0
 
 
 def laat_ronde_vervallen_bij_afdelingwijziging(
@@ -742,6 +782,9 @@ def vervallen_meldingen(*, administratie_id: uuid.UUID) -> list[VervallenMelding
                 Document.administratie_id == administratie_id,
                 DocumentGebeurtenis.tijdstip >= grens,
                 DocumentGebeurtenis.detail["accordering_vervallen"].astext == "true",
+                # Blok A2 04-09: een ronde die verviel omdat het document als duplicaat is afgevoerd is géén
+                # herstelwerk ("opnieuw aanbieden") — die batches blijven buiten deze melding.
+                DocumentGebeurtenis.detail["accordering_vervallen_duplicaat"].astext.is_(None),
                 batch_expr.isnot(None),
             )
             .group_by(batch_expr)

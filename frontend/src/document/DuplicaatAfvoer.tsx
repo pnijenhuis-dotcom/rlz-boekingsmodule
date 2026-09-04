@@ -18,8 +18,9 @@ import { formatDatumKort } from '../werkvoorraad/format'
  * afgevoerd-kant ("Duplicaat van … → open origineel") en origineel-kant ("N duplicaten afgevoerd").
  * Nooit verwijderen — terughalen via de bestaande Heropenen-knop. */
 
-/** Spiegel van app/documenten/duplicaat_afvoer.py::AFVOERBARE_STATUSSEN. */
-export const DUPLICAAT_AFVOERBARE_STATUSSEN = ['te_controleren', 'handmatig_afmaken', 'klaar_om_te_boeken']
+/** Spiegel van app/documenten/duplicaat_afvoer.py::AFVOERBARE_STATUSSEN — sinds blok A2 04-09 óók ter_accordering en
+ * vraag_open (ronde/vraag worden vóór de afvoer mét reden gesloten). */
+export const DUPLICAAT_AFVOERBARE_STATUSSEN = ['te_controleren', 'handmatig_afmaken', 'klaar_om_te_boeken', 'ter_accordering', 'vraag_open']
 
 /** Rijmenu-regel: alleen zichtbaar bij een harde-match-signaal (gecachete RLZ-/Odoo-treffer óf een
  * werkvoorraad-origineel) én een status die afvoeren toelaat. */

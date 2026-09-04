@@ -1,8 +1,10 @@
-"""Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): bij een HARDE match (crediteur op
-btw-nummer + referentie + totaalbedrag; origineel geboekt in RLZ/Odoo óf een ouder/verder app-document)
-gaat het duplicaat automatisch naar Afgewezen mét kruisverwijzing beide kanten, audit en tijdlijn —
-alleen bij de opt-in, systeem-actor, volumerem. De één-klik-variant werkt altijd; heropenen haalt terug.
-Zachte signalen (andere crediteur zonder btw-match) voeren nooit af."""
+"""Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105; blok A1/A2 04-09, migratie 0109): bij een
+HARDE match (crediteur op btw-nummer + referentie + totaalbedrag; origineel geboekt in RLZ/Odoo óf een
+ouder/verder app-document) gaat het duplicaat automatisch naar Afgewezen mét kruisverwijzing beide kanten,
+audit en tijdlijn — STANDAARD AAN achter één platformbrede noodrem, systeem-actor, volumerem. Sinds A2 óók
+een duplicaat bij de klant-accordeur of met een open vraag (ronde/vraag mét reden gesloten). De één-klik-
+variant werkt altijd; heropenen haalt terug. Zachte signalen (andere crediteur zonder btw-match) voeren
+nooit af."""
 
 from __future__ import annotations
 
@@ -17,13 +19,15 @@ from sqlalchemy import Engine, text
 from app.beheer import service as beheer_service
 from app.config import settings
 from app.db.session import scoped_session
-from app.documenten import afwijzen, boekvoorstel, duplicaat_afvoer, duplicaatsignaal, service
+from app.accordering import service as accordering_service
+from app.documenten import afwijzen, boekvoorstel, duplicaat_afvoer, duplicaatsignaal, service, vragen
 from app.documenten.models import AfwijzingStatus, CrediteurKenmerk, Document, DocumentStatus
 from app.documenten.service import _schrijf_overgang
 from app.documenten.storage import LokaleBestandsopslag
 from app.main import app
 from app.security.tokens import create_access_token
 from tests.documenten.fake_rlz_client import FakeBoekClient
+from tests.accordering.conftest import maak_accordeur, zet_schema
 from tests.documenten.test_vragen import _extra_gebruiker, _status
 
 client = TestClient(app)
@@ -134,11 +138,56 @@ def eigenaar_id(admin_engine: Engine, administratie_id: uuid.UUID, beheerder_id:
 
 
 @pytest.fixture
-def opt_in_aan(beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
-    assert beheer_service.haal_duplicaat_autoafvoer_ingeschakeld_op(administratie_id=administratie_id) is False
-    beheer_service.zet_duplicaat_autoafvoer_ingeschakeld(
-        actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
+def standaard_aan() -> None:
+    """Blok A1: de platformbrede noodrem staat standaard AAN — geen opt-in meer nodig."""
+    assert beheer_service.haal_duplicaat_autoafvoer_platform_op() is True
+
+
+@pytest.fixture
+def noodrem_uit(beheerder_id: uuid.UUID) -> None:
+    beheer_service.zet_duplicaat_autoafvoer_platform(actor_id=beheerder_id, ingeschakeld=False)
+
+
+def _noodrem_aan(beheerder_id: uuid.UUID) -> None:
+    beheer_service.zet_duplicaat_autoafvoer_platform(actor_id=beheerder_id, ingeschakeld=True)
+
+
+def _rlz_treffer(administratie_id: uuid.UUID, document_id: uuid.UUID) -> uuid.UUID:
+    """Berekent het duplicaatsignaal mét een geboekte RLZ-treffer (origineel buiten de app) — de hook
+    daarachter draait het automatische afvoerpad."""
+    rlz_id = uuid.uuid4()
+    duplicaatsignaal.bereken_duplicaatsignaal(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        client=FakeBoekClient(duplicaten=[{"id": str(rlz_id), "Reference": REF, "InvoiceNumber": "INK-77"}]),
     )
+    duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=document_id)
+    return rlz_id
+
+
+def _ronde_status(admin_engine: Engine, document_id: uuid.UUID) -> list[str]:
+    with admin_engine.connect() as conn:
+        return (
+            conn.execute(
+                text(
+                    "SELECT status FROM boekhouding.document_accordering WHERE document_id = :id ORDER BY aangeboden_op"
+                ),
+                {"id": document_id},
+            )
+            .scalars()
+            .all()
+        )
+
+
+def _tijdlijn_alle(admin_engine: Engine, document_id: uuid.UUID) -> list[dict]:
+    with admin_engine.connect() as conn:
+        return [
+            dict(d) if d else {}
+            for d in conn.execute(
+                text("SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :id ORDER BY tijdstip"),
+                {"id": document_id},
+            ).scalars()
+        ]
 
 
 class TestAutomatischPad:
@@ -148,7 +197,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         vendor_id = uuid.uuid4()
@@ -196,7 +245,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         vendor_id = uuid.uuid4()
@@ -238,7 +287,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         v1, v2 = uuid.uuid4(), uuid.uuid4()
@@ -259,7 +308,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         v1, v2 = uuid.uuid4(), uuid.uuid4()
@@ -286,7 +335,7 @@ class TestAutomatischPad:
             duplicaat_afvoer.werkvoorraad_matches_bulk(administratie_id=administratie_id, document_ids=[a, b, c]) == {}
         )
 
-    def test_verder_in_de_flow_wint_als_origineel_en_wordt_zelf_nooit_afgevoerd(
+    def test_vraag_open_wint_van_een_ouder_te_controleren_exemplaar(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -294,10 +343,12 @@ class TestAutomatischPad:
         eigenaar_id: uuid.UUID,
         admin_engine: Engine,
         beheerder_id: uuid.UUID,
+        noodrem_uit: None,
     ) -> None:
-        """Opt-in pas ná de uploads: A (oudste, te_controleren) en B (jonger, vraag_open). B staat verder in de
-        flow en is het origineel; A gaat als duplicaat af, B blijft — een vraag_open-document wordt nooit
-        automatisch afgevoerd."""
+        """Noodrem UIT tijdens de uploads (anders voert de opslag-hook B direct af): A (oudste, te_controleren)
+        en B (jonger, vraag_open). Rangorde: een document met een open vraag staat vóór een kaal
+        te_controleren-exemplaar → B is het origineel, A gaat af. (Sinds A2 is vraag_open zelf óók afvoerbaar
+        zodra er een hoger origineel is — zie TestAfwikkeling.)"""
         vendor_id = uuid.uuid4()
         a = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
@@ -309,9 +360,7 @@ class TestAutomatischPad:
             document = session.get(Document, b)
             assert document is not None
             _schrijf_overgang(session, document=document, naar=DocumentStatus.VRAAG_OPEN, actor_id=gescoopte_gebruiker)
-        beheer_service.zet_duplicaat_autoafvoer_ingeschakeld(
-            actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True
-        )
+        _noodrem_aan(beheerder_id)
         afgevoerd = duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=b)
         assert afgevoerd == [a]
         assert _status(admin_engine, b) == DocumentStatus.VRAAG_OPEN.value
@@ -324,7 +373,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -363,7 +412,7 @@ class TestAutomatischPad:
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         vendor_id = uuid.uuid4()
@@ -382,7 +431,7 @@ class TestAutomatischPad:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
-        opt_in_aan: None,
+        standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
         vendor_id = uuid.uuid4()
@@ -404,14 +453,153 @@ class TestAutomatischPad:
         assert stand_b.kandidaat is not None and stand_b.kandidaat.document_id == a  # knop weer beschikbaar
 
 
-class TestEenKlik:
-    def test_opt_in_uit_niets_automatisch_maar_een_klik_werkt_en_is_idempotent(
+class TestAfwikkeling:
+    """Blok A2 04-09 (besluit Peter "geen dubbeling"): een hard duplicaat bij de klant-accordeur of met een open
+    vraag wordt óók automatisch afgevoerd — ronde ingetrokken/vervallen en vraag gesloten, beide mét reden,
+    tijdlijn + audit; heropenen keert terug naar een herstelbare herkomst."""
+
+    def test_ter_accordering_duplicaat_afgevoerd_ronde_vervalt_met_reden_buiten_de_configuratie_banner(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        eigenaar_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        noodrem_uit: None,
+    ) -> None:
+        accordeur = maak_accordeur(admin_engine, beheerder_id, administratie_id, "Accordeur A")
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[accordering_service.LaagInput(volgnummer=1, accordeur_gebruiker_id=accordeur, bedrag_drempel=None)],
+        )
+        vendor_id = uuid.uuid4()
+        b = _upload_met_kop(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
+        )
+        with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
+            document = session.get(Document, b)
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=gescoopte_gebruiker
+            )
+        accordering_service.bied_ter_accordering_aan(
+            administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
+        )
+        assert _status(admin_engine, b) == DocumentStatus.TER_ACCORDERING.value
+        assert _ronde_status(admin_engine, b) == ["open"]
+
+        _noodrem_aan(beheerder_id)
+        rlz_id = _rlz_treffer(administratie_id, b)  # origineel al geboekt in RLZ → B is het duplicaat
+        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _ronde_status(admin_engine, b) == ["vervallen"]
+        rij = _afwijzing_rij(admin_engine, b)
+        assert rij is not None and rij["automatisch"] is True and rij["duplicaat_van_rlz_document_id"] == rlz_id
+
+        details = _tijdlijn_alle(admin_engine, b)
+        vervallen = [d for d in details if d.get("accordering_vervallen_duplicaat")]
+        assert len(vervallen) == 1
+        assert vervallen[0]["reden"] == f"afgevoerd als duplicaat van {REF}"
+        assert vervallen[0]["accordering_vervallen"] is True
+        # Geen herstelwerk: de "configuratie gewijzigd — opnieuw aanbieden"-banner telt deze batch niet.
+        assert accordering_service.vervallen_meldingen(administratie_id=administratie_id) == []
+        assert "accordering_vervallen" in _audit_acties(
+            admin_engine, tabel="document_accordering", record_id=uuid.UUID(vervallen[0]["accordering_id"])
+        )
+        # Heropenen keert terug naar de herkomst ná de afwikkeling (klaar_om_te_boeken), nooit naar ter_accordering.
+        afwijzen.heropen(administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker)
+        assert _status(admin_engine, b) == DocumentStatus.KLAAR_OM_TE_BOEKEN.value
+
+    def test_vraag_open_duplicaat_afgevoerd_vraag_gesloten_met_slotbericht(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        eigenaar_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        noodrem_uit: None,
+    ) -> None:
+        vendor_id = uuid.uuid4()
+        b = _upload_met_kop(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
+        )
+        vraag = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=b,
+            actor_id=gescoopte_gebruiker,
+            vraag_tekst="Is dit de juiste leverancier?",
+        )
+        assert _status(admin_engine, b) == DocumentStatus.VRAAG_OPEN.value
+
+        _noodrem_aan(beheerder_id)
+        _rlz_treffer(administratie_id, b)
+        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        with admin_engine.connect() as conn:
+            status, reden = conn.execute(
+                text("SELECT status, ingetrokken_reden FROM boekhouding.vraag WHERE id = :id"), {"id": vraag.id}
+            ).one()
+            berichten = (
+                conn.execute(
+                    text("SELECT tekst FROM boekhouding.vraag_bericht WHERE vraag_id = :id ORDER BY geplaatst_op"),
+                    {"id": vraag.id},
+                )
+                .scalars()
+                .all()
+            )
+        assert status == "ingetrokken" and reden == f"afgevoerd als duplicaat van {REF}"
+        assert berichten[-1] == f"Vraag gesloten: document afgevoerd als duplicaat van {REF}."
+        assert "vraag_gesloten_wegens_duplicaat" in _audit_acties(admin_engine, tabel="vraag", record_id=vraag.id)
+        tijdlijn = _tijdlijn_alle(admin_engine, b)
+        assert any(d.get("vraag_gesloten_wegens_duplicaat") for d in tijdlijn)
+        # Heropenen → de herkomst van vóór de vraag (te_controleren), niet vraag_open.
+        afwijzen.heropen(administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker)
+        assert _status(admin_engine, b) == DocumentStatus.TE_CONTROLEREN.value
+
+    def test_een_klik_op_ter_accordering_en_vraag_open_werkt(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
         admin_engine: Engine,
+        noodrem_uit: None,
+    ) -> None:
+        vendor_id = uuid.uuid4()
+        a = _upload_met_kop(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
+        )
+        b = _upload_met_kop(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
+        )
+        # A (ouder) krijgt een open vraag en is daarmee het origineel; B (jonger, te_controleren) het duplicaat.
+        vragen.stel_vraag(administratie_id=administratie_id, document_id=a, actor_id=gescoopte_gebruiker, vraag_tekst="?")
+        stand_b = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=b)
+        assert stand_b.kandidaat is not None and stand_b.kandidaat.document_id == a
+        # De één-klik op het vraag_open-origineel zelf weigert leesbaar (het ís het origineel).
+        with pytest.raises(duplicaat_afvoer.GeenHardeMatch):
+            duplicaat_afvoer.voer_af_als_duplicaat(
+                administratie_id=administratie_id, document_id=a, actor_id=gescoopte_gebruiker
+            )
+        # Zet B vooruit naar vraag_open: A blijft (ouder binnen dezelfde rang) het origineel, B is afvoerbaar.
+        vragen.stel_vraag(administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker, vraag_tekst="?")
+        resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
+            administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker
+        )
+        assert resultaat.al_afgevoerd is False and resultaat.origineel.document_id == a
+        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, a) == DocumentStatus.VRAAG_OPEN.value
+
+
+class TestEenKlik:
+    def test_noodrem_uit_niets_automatisch_maar_een_klik_werkt_en_is_idempotent(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        eigenaar_id: uuid.UUID,
+        admin_engine: Engine,
+        noodrem_uit: None,
     ) -> None:
         vendor_id = uuid.uuid4()
         a = _upload_met_kop(
@@ -454,6 +642,7 @@ class TestEenKlik:
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
         admin_engine: Engine,
+        noodrem_uit: None,
     ) -> None:
         vendor_id = uuid.uuid4()
         _upload_met_kop(
@@ -462,11 +651,17 @@ class TestEenKlik:
         b = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
+        # Sinds A2 is vraag_open afvoerbaar; boeken_mislukt (er liep al een boekpoging) niet.
         with scoped_session(administratie_id, actor_id=gescoopte_gebruiker) as session:
             document = session.get(Document, b)
             assert document is not None
-            _schrijf_overgang(session, document=document, naar=DocumentStatus.VRAAG_OPEN, actor_id=gescoopte_gebruiker)
-        with pytest.raises(duplicaat_afvoer.AfvoerNietMogelijk, match="vraag_open"):
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.KLAAR_OM_TE_BOEKEN, actor_id=gescoopte_gebruiker
+            )
+            _schrijf_overgang(
+                session, document=document, naar=DocumentStatus.BOEKEN_MISLUKT, actor_id=gescoopte_gebruiker
+            )
+        with pytest.raises(duplicaat_afvoer.AfvoerNietMogelijk, match="boeken_mislukt"):
             duplicaat_afvoer.voer_af_als_duplicaat(
                 administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker
             )
@@ -506,6 +701,7 @@ class TestRouter:
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         eigenaar_id: uuid.UUID,
+        noodrem_uit: None,
     ) -> None:
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         vendor_id = uuid.uuid4()
@@ -571,35 +767,32 @@ class TestRouter:
         )
         assert resp.status_code == 404
 
-    def test_instelling_beheerder_only_met_audit(
-        self, beheerder_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    def test_noodrem_beheerder_only_met_audit_default_aan(
+        self, beheerder_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, admin_engine: Engine
     ) -> None:
-        pad = f"/administraties/{administratie_id}/duplicaat-autoafvoer-instelling"
+        pad = "/instellingen/duplicaat-autoafvoer"
         assert client.get(pad, headers=_bearer(gescoopte_gebruiker, rol="boekhouding")).status_code == 403
         assert (
-            client.put(
-                pad, json={"ingeschakeld": True}, headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
-            ).status_code
+            client.put(pad, json={"ingeschakeld": False}, headers=_bearer(gescoopte_gebruiker, rol="boekhouding")).status_code
             == 403
         )
         beheerder = _bearer(beheerder_id, rol="beheerder")
+        assert client.get(pad, headers=beheerder).json() == {"ingeschakeld": True}  # standaard AAN (A1)
+        assert client.put(pad, json={"ingeschakeld": False}, headers=beheerder).json() == {"ingeschakeld": False}
         assert client.get(pad, headers=beheerder).json() == {"ingeschakeld": False}
-        assert client.put(pad, json={"ingeschakeld": True}, headers=beheerder).json() == {"ingeschakeld": True}
-        assert client.get(pad, headers=beheerder).json() == {"ingeschakeld": True}
+        # De per-administratie-toggle van 0105 is weg: geen route, geen veld in het overzicht.
         overzicht = client.get("/instellingen/administraties", headers=beheerder)
         assert overzicht.status_code == 200
-        rij = next(r for r in overzicht.json()["administraties"] if r["id"] == str(administratie_id))
-        assert rij["duplicaat_autoafvoer_ingeschakeld"] is True
+        assert all("duplicaat_autoafvoer_ingeschakeld" not in r for r in overzicht.json()["administraties"])
         with admin_engine.connect() as conn:
             acties = (
                 conn.execute(
                     text(
-                        "SELECT actie FROM platform.audit_event WHERE tabel = 'administratie' AND record_id = :id "
-                        "AND actie = 'duplicaat_autoafvoer_ingeschakeld_gewijzigd'"
-                    ),
-                    {"id": administratie_id},
+                        "SELECT actie FROM platform.audit_event WHERE tabel = 'duplicaat_afvoer_instelling' "
+                        "AND actie = 'duplicaat_autoafvoer_platform_gewijzigd'"
+                    )
                 )
                 .scalars()
                 .all()
             )
-        assert acties == ["duplicaat_autoafvoer_ingeschakeld_gewijzigd"]
+        assert acties == ["duplicaat_autoafvoer_platform_gewijzigd"]

@@ -17,7 +17,7 @@ import { dearchiveerAdministratie } from './instellingenApi'
 import { koppelFoutTekst, ProbeRapport } from './KoppelingDialogen'
 import { detailPad } from './instellingenRegistry'
 
-export type ToggleType = 'boeken' | 'project' | 'ai_extractie' | 'is_vastgoed' | 'uren_meerwerk' | 'afdelingen' | 'voorraad' | 'omzet_autoboeken' | 'duplicaat_autoafvoer'
+export type ToggleType = 'boeken' | 'project' | 'ai_extractie' | 'is_vastgoed' | 'uren_meerwerk' | 'afdelingen' | 'voorraad' | 'omzet_autoboeken'
 
 /** Toggle-verzoek vanuit de detailpagina (v3) — InstellingenScreen bevestigt (dialoog) en schrijft. */
 
@@ -77,7 +77,6 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   if (a.project_verplicht) chips.push({ tekst: 'Project verplicht', variant: 'info' })
   if (a.bank_autoboeken_ingeschakeld) chips.push({ tekst: 'Bank-autoboeken', variant: 'info' })
   if (a.omzet_autoboeken_ingeschakeld) chips.push({ tekst: 'Omzet-autoboeken', variant: 'info', titel: 'Kassarapporten boeken automatisch zodra álles groen is (GO 01-09)' })
-  if (a.duplicaat_autoafvoer_ingeschakeld) chips.push({ tekst: 'Duplicaat-afvoer', variant: 'info', titel: 'Harde duplicaten (crediteur + referentie + bedrag) gaan automatisch naar Afgewezen mét kruisverwijzing (04-09)' })
   if (a.accordering_ingeschakeld) chips.push({ tekst: 'Klant-accordering', variant: 'info' })
   if (a.verkoopmodule_afwezig)
     chips.push({

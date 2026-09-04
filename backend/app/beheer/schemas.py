@@ -80,8 +80,8 @@ class OmzetAutoboekenDto(StrikteInvoer):
 
 
 class DuplicaatAutoafvoerDto(StrikteInvoer):
-    """Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): harde duplicaten automatisch
-    naar Afgewezen mét kruisverwijzing. Beheerder-only, default UIT."""
+    """Platformbrede noodrem duplicaat-auto-afvoer (blok A1 04-09, migratie 0109): harde duplicaten gaan
+    standaard automatisch naar Afgewezen mét kruisverwijzing; UIT = noodrem. Beheerder-only, default AAN."""
 
     ingeschakeld: bool
 
@@ -156,7 +156,6 @@ class AdministratieInstellingenDto(BaseModel):
     # Omzet-autoboeken (GO 01-09, migratie 0096): opt-in per administratie, default UIT.
     omzet_autoboeken_ingeschakeld: bool = False
     # Duplicaat-auto-afvoer (04-09, migratie 0105): opt-in per administratie, default UIT.
-    duplicaat_autoafvoer_ingeschakeld: bool = False
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None

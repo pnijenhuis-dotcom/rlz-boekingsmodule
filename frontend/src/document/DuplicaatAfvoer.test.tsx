@@ -60,7 +60,11 @@ describe('toonAfvoerenAlsDuplicaat (rijmenu-regel)', () => {
     expect(toonAfvoerenAlsDuplicaat(rij({ duplicaatsignaal: { uitkomst: 'geen', aantal_treffers: 0, berekend_op: '2026-09-02T09:00:00Z' } }))).toBe(false)
     // Zacht/andere signalen tellen niet: het sha256-bestandsduplicaat is geen harde kop-match.
     expect(toonAfvoerenAlsDuplicaat(rij({ mogelijk_duplicaat_van: { document_id: ORIGINEEL_ID, bestandsnaam: 'x.pdf', aangemaakt_op: '2026-09-01T09:00:00Z' } }))).toBe(false)
-    for (const status of ['ter_accordering', 'geboekt', 'vraag_open', 'afgewezen']) {
+    // Blok A2 04-09: bij de klant of met een open vraag is óók afvoerbaar (ronde/vraag worden mét reden gesloten).
+    for (const status of ['ter_accordering', 'vraag_open']) {
+      expect(toonAfvoerenAlsDuplicaat(rij({ status, duplicaat_werkvoorraad_van: origineel() }))).toBe(true)
+    }
+    for (const status of ['geboekt', 'afgewezen', 'boeken_mislukt']) {
       expect(toonAfvoerenAlsDuplicaat(rij({ status, duplicaat_werkvoorraad_van: origineel() }))).toBe(false)
     }
     expect(toonAfvoerenAlsDuplicaat(rij({ soort: 'kassarapport', duplicaat_werkvoorraad_van: origineel() }))).toBe(false)

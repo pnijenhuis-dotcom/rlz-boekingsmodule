@@ -207,13 +207,14 @@ omzet-autoboeken-aan: check-versions
 omzet-autoboeken-uit: check-versions
 	.venv/bin/python -m app.cli omzet-autoboeken-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
 
-# Opt-in duplicaat-auto-afvoer (harde duplicaten automatisch naar Afgewezen mét kruisverwijzing; besluit
-# Peter 04-09, migratie 0105), default UIT. Voorbeeld: make duplicaat-autoafvoer-aan ADMIN_ID=<uuid> BEHEERDER_ID=<uuid>
+# Duplicaat-auto-afvoer (harde duplicaten automatisch naar Afgewezen mét kruisverwijzing; besluit Peter 04-09)
+# is STANDAARD AAN voor de hele module (blok A1, migratie 0109); -uit = de platformbrede noodrem.
+# Voorbeeld: make duplicaat-autoafvoer-uit BEHEERDER_ID=<uuid>
 duplicaat-autoafvoer-aan: check-versions
-	.venv/bin/python -m app.cli duplicaat-autoafvoer-aan --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+	.venv/bin/python -m app.cli duplicaat-autoafvoer-aan --beheerder-id "$(BEHEERDER_ID)"
 
 duplicaat-autoafvoer-uit: check-versions
-	.venv/bin/python -m app.cli duplicaat-autoafvoer-uit --administratie-id "$(ADMIN_ID)" --beheerder-id "$(BEHEERDER_ID)"
+	.venv/bin/python -m app.cli duplicaat-autoafvoer-uit --beheerder-id "$(BEHEERDER_ID)"
 
 # Nazorg intake-splitsingsbug (02-09): verzamelbak-PDF's sinds SINDS opnieuw lezen met de gefixte keten.
 # DRY_RUN=1 telt alleen. Tegen de cloud: scripts/cloud_cli.py intake-herlezen --sinds 2026-08-25 (zie docstring).

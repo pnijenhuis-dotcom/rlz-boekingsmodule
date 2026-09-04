@@ -58,6 +58,19 @@ export function zetBoekenKillSwitch(ingeschakeld: boolean): Promise<BoekenIngesc
   })
 }
 
+/** Platformbrede noodrem duplicaat-auto-afvoer (blok A1 04-09, migratie 0109) — Beheerder-only, standaard
+ * AAN; zelfde patroon als "Boeken platformbreed". Vervangt de per-administratie-toggle van 0105. */
+export function haalDuplicaatAutoafvoerOp(): Promise<BoekenIngeschakeldDto> {
+  return apiJson<BoekenIngeschakeldDto>('/instellingen/duplicaat-autoafvoer')
+}
+
+export function zetDuplicaatAutoafvoer(ingeschakeld: boolean): Promise<BoekenIngeschakeldDto> {
+  return apiJson<BoekenIngeschakeldDto>('/instellingen/duplicaat-autoafvoer', {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function haalIntakeAiInstellingOp(): Promise<BoekenIngeschakeldDto> {
   return apiJson<BoekenIngeschakeldDto>('/instellingen/intake-ai')
 }
@@ -148,14 +161,6 @@ export function zetUrenDagmaxInstelling(administratieId: string, dagmaxUren: str
 /** Opt-in omzet-autoboeken (kassarapporten; GO Peter 01-09, migratie 0096) — Beheerder-only, default UIT. */
 export function zetOmzetAutoboekenInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/omzet-autoboeken-instelling`, {
-    ...PUT_JSON,
-    body: JSON.stringify({ ingeschakeld }),
-  })
-}
-
-/** Opt-in duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105) — Beheerder-only, default UIT. */
-export function zetDuplicaatAutoafvoerInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
-  return apiJson(`/administraties/${administratieId}/duplicaat-autoafvoer-instelling`, {
     ...PUT_JSON,
     body: JSON.stringify({ ingeschakeld }),
   })

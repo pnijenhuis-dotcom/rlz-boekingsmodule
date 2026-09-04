@@ -52,6 +52,7 @@ function installFetchMock(opties: {
   rol: string
   administraties?: unknown[]
   killSwitch?: boolean
+  duplicaatNoodrem?: boolean
   intakeAi?: boolean
   ibanAccordeurs?: string[]
   putAanroepen?: { url: string; body: unknown }[]
@@ -60,6 +61,7 @@ function installFetchMock(opties: {
 }) {
   const administraties = opties.administraties ?? [administratie()]
   let killSwitch = opties.killSwitch ?? true
+  let duplicaatNoodrem = opties.duplicaatNoodrem ?? true
   let intakeAi = opties.intakeAi ?? false
   vi.stubGlobal(
     'fetch',
@@ -110,6 +112,15 @@ function installFetchMock(opties: {
       }
       if (url === '/instellingen/boeken-kill-switch' && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ ingeschakeld: killSwitch }))
+      }
+      if (url === '/instellingen/duplicaat-autoafvoer' && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse({ ingeschakeld: duplicaatNoodrem }))
+      }
+      if (url === '/instellingen/duplicaat-autoafvoer' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as { ingeschakeld: boolean }
+        duplicaatNoodrem = body.ingeschakeld
+        opties.putAanroepen?.push({ url, body })
+        return Promise.resolve(jsonResponse({ ingeschakeld: duplicaatNoodrem }))
       }
       if (url === '/instellingen/intake-ai' && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ ingeschakeld: intakeAi }))
@@ -557,6 +568,30 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     expect(screen.queryByText(/Project wordt verplicht bij boeken/)).not.toBeInTheDocument()
     expect(putAanroepen).toHaveLength(0)
     expect(projectToggle).not.toBeChecked()
+  })
+
+  it('"Duplicaten automatisch afvoeren" is een platformbrede noodrem op Instellingen › Boeken (blok A1 04-09): standaard aan, uit = bevestiging + PUT', async () => {
+    const gebruiker = userEvent.setup()
+    const putAanroepen: { url: string; body: unknown }[] = []
+    installFetchMock({ rol: 'beheerder', duplicaatNoodrem: true, putAanroepen })
+    renderScherm('/instellingen/boeken')
+    const noodrem = await screen.findByRole('checkbox', { name: 'Duplicaten automatisch afvoeren' })
+    expect(noodrem).toBeChecked()
+    expect(screen.getByText('aan — duplicaten worden afgevoerd')).toBeInTheDocument()
+    await gebruiker.click(noodrem)
+    expect(screen.getByText(/NOODREM: duplicaten automatisch afvoeren gaat platformbreed UIT/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(putAanroepen).toHaveLength(1))
+    expect(putAanroepen[0].url).toBe('/instellingen/duplicaat-autoafvoer')
+    expect(putAanroepen[0].body).toEqual({ ingeschakeld: false })
+    expect(await screen.findByText('uit — noodrem actief')).toBeInTheDocument()
+  })
+
+  it('de administratie-detailpagina heeft geen toggle "Duplicaten automatisch afvoeren" meer (per-administratie-opt-in vervallen)', async () => {
+    installFetchMock({ rol: 'beheerder', administraties: [administratie({ naam: 'BLOW B.V.' })] })
+    renderScherm()
+    await openDetail('BLOW B.V.', 'Boeken & AI')
+    expect(screen.queryByRole('checkbox', { name: /Duplicaat-afvoer automatisch voor/ })).not.toBeInTheDocument()
   })
 
   it('"Boeken platformbreed" (D4: aan = boeken kan, uit = boeken staat plat) vraagt ook een bevestiging', async () => {

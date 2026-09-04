@@ -552,6 +552,84 @@ def handel_vraag_af(
         return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
 
 
+def open_vraag_ids_van_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[uuid.UUID]:
+    """Alle OPEN vragen op een document (de één-open-vraag-regel geldt per document, maar de lezer blijft
+    een lijst — fail-safe als die regel ooit versoepelt)."""
+    with scoped_session(administratie_id) as session:
+        return list(
+            session.scalars(
+                select(Vraag.id).where(
+                    Vraag.administratie_id == administratie_id,
+                    Vraag.document_id == document_id,
+                    Vraag.status == VraagStatus.OPEN.value,
+                )
+            ).all()
+        )
+
+
+def sluit_vraag_wegens_duplicaat(
+    *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+) -> VraagData:
+    """Blok A2 04-09 (besluit Peter "geen dubbeling"): het document waarop deze vraag staat wordt als duplicaat
+    afgevoerd — de vraag gaat zichtbaar DICHT (status ingetrokken mét reden), én de reden staat als slotbericht
+    in de thread zodat de vraagsteller het ziet (append-only `vraag_bericht`, auteur = de afvoerende actor —
+    systeem óf mens). Géén "aan de beurt"-wissel en géén accordeur-push: er is niets meer te beantwoorden.
+    Document op vraag_open keert terug naar zijn herkomst-status (daarna volgt de afwijzing)."""
+    tekst = reden.strip()
+    if not tekst:
+        raise AntwoordTekstVerplicht("Een sluitreden zonder tekst is niet toegestaan")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        vraag, document = _open_vraag_met_document(session, administratie_id=administratie_id, vraag_id=vraag_id)
+        nu = datetime.now(UTC)
+        session.add(
+            VraagBericht(
+                id=uuid.uuid4(),
+                administratie_id=administratie_id,
+                vraag_id=vraag.id,
+                auteur_id=actor_id,
+                tekst=f"Vraag gesloten: document {tekst}.",
+                geplaatst_op=nu,
+            )
+        )
+        vraag.status = VraagStatus.INGETROKKEN.value
+        vraag.ingetrokken_door = actor_id
+        vraag.ingetrokken_op = nu
+        vraag.ingetrokken_reden = tekst
+        _herstel_document_na_sluiten(
+            session,
+            vraag=vraag,
+            document=document,
+            actor_id=actor_id,
+            detail={
+                "vraag_id": str(vraag.id),
+                "vraag_ingetrokken": True,
+                "vraag_gesloten_wegens_duplicaat": True,
+                "reden": tekst,
+            },
+        )
+        document.toegewezen_aan = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="vraag",
+            record_id=vraag.id,
+            actie="vraag_gesloten_wegens_duplicaat",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": VraagStatus.OPEN.value},
+            nieuwe_waarde={
+                "status": VraagStatus.INGETROKKEN.value,
+                "reden": tekst,
+                "ingetrokken_door": str(actor_id),
+                "document_hersteld_naar": vraag.status_voor_vraag,
+            },
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+        return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+
+
 def trek_vraag_in(
     *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, reden: str | None = None
 ) -> VraagData:

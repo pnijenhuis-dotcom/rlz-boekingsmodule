@@ -160,6 +160,13 @@ def _clean_tables() -> Generator[None, None, None]:
                 "ON CONFLICT (singleton) DO NOTHING"
             )
         )
+        # En voor de duplicaat-afvoer-noodrem (migratie 0109) — default AAN, zoals de migratie-seed.
+        conn.execute(
+            text(
+                "INSERT INTO platform.duplicaat_afvoer_instelling (singleton, platformbreed_ingeschakeld) "
+                "VALUES (true, true) ON CONFLICT (singleton) DO NOTHING"
+            )
+        )
         # En voor de AI-kosten-singleton (migratie 0047) — default € 100, zoals de migratie-seed.
         conn.execute(
             text(

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0108
+-- Migratie-head bij deze dump: 0109
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3165,6 +3165,19 @@ CREATE TABLE platform.detacheerder_koppeling (
 
 
 --
+-- Name: duplicaat_afvoer_instelling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.duplicaat_afvoer_instelling (
+    singleton boolean DEFAULT true NOT NULL,
+    platformbreed_ingeschakeld boolean DEFAULT true NOT NULL,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT duplicaat_afvoer_instelling_singleton CHECK (singleton)
+);
+
+
+--
 -- Name: gebruiker; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -4713,6 +4726,14 @@ ALTER TABLE ONLY platform.boeken_instelling
 
 ALTER TABLE ONLY platform.detacheerder_koppeling
     ADD CONSTRAINT detacheerder_koppeling_pkey PRIMARY KEY (detacheerder_gebruiker_id, zzper_gebruiker_id);
+
+
+--
+-- Name: duplicaat_afvoer_instelling duplicaat_afvoer_instelling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.duplicaat_afvoer_instelling
+    ADD CONSTRAINT duplicaat_afvoer_instelling_pkey PRIMARY KEY (singleton);
 
 
 --
@@ -8615,6 +8636,14 @@ ALTER TABLE ONLY platform.detacheerder_koppeling
 
 ALTER TABLE ONLY platform.detacheerder_koppeling
     ADD CONSTRAINT detacheerder_koppeling_zzper_gebruiker_id_fkey FOREIGN KEY (zzper_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: duplicaat_afvoer_instelling duplicaat_afvoer_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.duplicaat_afvoer_instelling
+    ADD CONSTRAINT duplicaat_afvoer_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
 
 
 --
