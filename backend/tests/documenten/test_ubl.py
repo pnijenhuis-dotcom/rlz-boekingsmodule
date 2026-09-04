@@ -101,3 +101,55 @@ def test_registrationname_wint_van_partyname() -> None:
         b"<cac:Contact><cbc:Name>J. Jansen</cbc:Name></cac:Contact>",
     )
     assert parseer_ubl_factuur(alleen_contact).leverancier_naam is None
+
+
+_KORTING_UBL = _VOORBEELD_UBL.replace(
+    b"  <cac:LegalMonetaryTotal>",
+    b"""  <cac:AllowanceCharge>
+    <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
+    <cbc:AllowanceChargeReason>Korting 10%</cbc:AllowanceChargeReason>
+    <cbc:Amount currencyID="EUR">56.44</cbc:Amount>
+    <cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>21.00</cbc:Percent></cac:TaxCategory>
+  </cac:AllowanceCharge>
+  <cac:AllowanceCharge>
+    <cbc:ChargeIndicator>true</cbc:ChargeIndicator>
+    <cbc:Amount currencyID="EUR">12.50</cbc:Amount>
+  </cac:AllowanceCharge>
+  <cac:LegalMonetaryTotal>""",
+)
+
+
+def test_document_korting_wordt_negatieve_regel_en_toeslag_positief() -> None:
+    """Bugfix 04-09 (Huvanco): een korting op documentniveau (cac:AllowanceCharge, ChargeIndicator
+    false) is een eigen regel met negatief netto; een toeslag (true) een positieve regel."""
+    voorstel = parseer_ubl_factuur(_KORTING_UBL)
+    assert voorstel.regelaantal == 4
+    korting, toeslag = voorstel.ubl_regels[2], voorstel.ubl_regels[3]
+    assert korting["volgnummer"] == 3 and korting["soort"] == "korting"
+    assert korting["omschrijving"] == "Korting 10%" and korting["netto_bedrag"] == "-56.44"
+    assert korting["btw_categorie"] == "S" and korting["btw_percentage"] == "21.00"
+    assert toeslag["volgnummer"] == 4 and toeslag["soort"] == "toeslag"
+    assert toeslag["omschrijving"] == "Toeslag" and toeslag["netto_bedrag"] == "12.50"
+    # Gewone regels blijven soort None (geen gedragsverandering voor bestaande consumenten).
+    assert voorstel.ubl_regels[0]["soort"] is None
+
+
+def test_regelniveau_korting_wordt_niet_dubbel_geteld() -> None:
+    """LineExtensionAmount is per UBL-definitie al netto ná regelkorting — een AllowanceCharge bínnen
+    een InvoiceLine mag dus nooit een extra regel worden (de RLZ-export-fixture heeft er zo één)."""
+    from pathlib import Path
+
+    inhoud = (Path(__file__).parents[1] / "intake" / "fixtures" / "rlz_export_ubl.xml").read_bytes()
+    voorstel = parseer_ubl_factuur(inhoud)
+    assert voorstel.regelaantal == 1
+    assert all(r["soort"] is None for r in voorstel.ubl_regels)
+
+
+def test_allowance_charge_zonder_bedrag_of_indicator_geeft_geen_regel() -> None:
+    kapot = _VOORBEELD_UBL.replace(
+        b"  <cac:LegalMonetaryTotal>",
+        b"<cac:AllowanceCharge><cbc:ChargeIndicator>false</cbc:ChargeIndicator></cac:AllowanceCharge>"
+        b"<cac:AllowanceCharge><cbc:Amount>5.00</cbc:Amount></cac:AllowanceCharge>"
+        b"  <cac:LegalMonetaryTotal>",
+    )
+    assert parseer_ubl_factuur(kapot).regelaantal == 2

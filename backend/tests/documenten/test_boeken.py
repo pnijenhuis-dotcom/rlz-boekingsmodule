@@ -195,6 +195,23 @@ class TestBoekDocumentRegelZonderBtw:
         onderliggende oorzaak stond nog open — dit is de fix + regressietest daarvoor."""
         fake_client = FakeBoekClient()
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
+        # Regelsom-bugfix 04-09 (Huvanco): een LEGE btw telt alleen nog als "0, bekend" op een gesynct
+        # 0%-/verlegd-tarief; op een niet-gesynct tarief is leeg = niet gelezen (netto-vs-netto-toets).
+        # De verlegd-casus van deze test draagt daarom — zoals in de praktijk — een gesynct verlegd-tarief.
+        from app.db.session import scoped_session
+        from app.sync.models import TaxRateCache
+
+        verlegd_id = uuid.uuid4()
+        with scoped_session(administratie_id) as sessie:
+            sessie.add(
+                TaxRateCache(
+                    id=verlegd_id,
+                    administratie_id=administratie_id,
+                    naam="NL, BTW verlegd (hoog)",
+                    percentage=Decimal("0"),
+                    brondata={},
+                )
+            )
 
         resultaat_upload = service.upload_document(
             administratie_id=administratie_id,
@@ -211,7 +228,7 @@ class TestBoekDocumentRegelZonderBtw:
             referentie=f"F-{resultaat_upload.document_id}",
             factuurdatum=date(2026, 7, 1),
             totaalbedrag=Decimal("23.23"),
-            regels=[_regel(netto_bedrag=Decimal("23.23"), btw_bedrag=None)],
+            regels=[_regel(netto_bedrag=Decimal("23.23"), btw_bedrag=None, taxrate_id=verlegd_id)],
         )
 
         resultaat = boeken.boek_document(

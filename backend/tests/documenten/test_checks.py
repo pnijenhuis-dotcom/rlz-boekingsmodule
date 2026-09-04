@@ -333,3 +333,92 @@ class TestIbanWissel:
         resultaat = check_iban_wissel(factuur_iban=None, vertrouwde_ibans={self._VERTROUWD})
         assert resultaat.ok
         assert "Geen (geldig) IBAN" in resultaat.melding
+
+
+class TestRegeltellingBasis:
+    """Bugfix 04-09 (Huvanco-casus, mockup-notitie ⑨): de check vergeleek Σ(netto+btw) met het INCL-
+    totaal terwijl de btw per regel ontbrak (feitelijk Σnetto = excl) → vals "wijkt € 117,95 af". Nu
+    dezelfde beslisboom als de veldvoorstel-badge (app/documenten/regelsom.py) en altijd expliciet
+    welke basis vergeleken is."""
+
+    # Huvanco-vorm: regels zonder btw per regel + kortingsregel negatief; alleen incl gelezen als totaal.
+    _REGELS = [
+        _regel(netto_bedrag=Decimal("400.00"), btw_bedrag=None),
+        _regel(netto_bedrag=Decimal("164.40"), btw_bedrag=None),
+        _regel(netto_bedrag=Decimal("-56.44"), btw_bedrag=None),  # "Korting 10% −56,44"
+    ]
+    _INCL = Decimal("614.63")  # 507,96 + 21 % = 106,67 → 614,63
+    _EXCL = Decimal("507.96")
+    _BTW = Decimal("106.67")
+
+    def test_oude_vorm_zou_vals_afwijken_nieuwe_code_toetst_netto_vs_excl(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=self._INCL, regels=self._REGELS, totaal_excl=self._EXCL)
+        assert resultaat.ok
+        assert "netto € 507.96" in resultaat.melding and "totaal excl." in resultaat.melding
+
+    def test_met_factuur_btw_toetst_netto_plus_factuur_btw_vs_incl(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=self._INCL, regels=self._REGELS, factuur_btw=self._BTW)
+        assert resultaat.ok
+        assert "factuur-btw € 106.67" in resultaat.melding and "totaal incl." in resultaat.melding
+
+    def test_zonder_excl_en_zonder_factuur_btw_is_een_expliciete_melding_nooit_excl_vs_incl(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=self._INCL, regels=self._REGELS)
+        assert not resultaat.ok
+        assert "Btw per regel ontbreekt (regel 1, 2, 3)" in resultaat.melding
+        assert "geen totaal excl. btw gelezen" in resultaat.melding
+        assert "netto € 507.96" in resultaat.melding and "614.63" in resultaat.melding
+        # De oude, foute vergelijking (verschil 106,67) mag nérgens meer in de melding staan.
+        assert "106.67" not in resultaat.melding and "wijkt" not in resultaat.melding
+
+    def test_echte_afwijking_op_excl_basis_benoemt_de_basis(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=self._INCL, regels=self._REGELS, totaal_excl=Decimal("600.00"))
+        assert not resultaat.ok
+        assert "netto € 507.96" in resultaat.melding and "wijkt € 92.04 af" in resultaat.melding
+        assert "totaal excl. (€ 600.00)" in resultaat.melding
+
+    def test_btw_per_regel_compleet_blijft_netto_plus_btw_vs_incl_ook_met_excl_bekend(self) -> None:
+        regels = [
+            _regel(netto_bedrag=Decimal("100.00"), btw_bedrag=Decimal("21.00")),
+            _regel(netto_bedrag=Decimal("-10.00"), btw_bedrag=Decimal("-2.10")),  # kortingsregel mét btw
+        ]
+        resultaat = check_regeltelling(totaalbedrag=Decimal("108.90"), regels=regels, totaal_excl=Decimal("90.00"))
+        assert resultaat.ok
+        assert "netto + btw € 108.90" in resultaat.melding and "totaal incl." in resultaat.melding
+
+    def test_negatieve_regel_komt_door_de_regeltelling(self) -> None:
+        """Motoren accepteren negatieve regels al (creditnota-lijn) — de check ook: korting verlaagt de som."""
+        regels = [_regel(netto_bedrag=Decimal("100.00"), btw_bedrag=Decimal("21.00")), _regel(
+            netto_bedrag=Decimal("-56.44"), btw_bedrag=Decimal("-11.85")
+        )]
+        assert check_regeltelling(totaalbedrag=Decimal("52.71"), regels=regels).ok
+
+    def test_alleen_excl_zonder_incl_toetst_netto_vs_excl(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=None, regels=self._REGELS, totaal_excl=self._EXCL)
+        assert resultaat.ok  # verplichte-velden blokkeert het ontbrekende incl-totaal apart
+
+    def test_netto_ontbreekt_op_een_regel_is_niet_toetsbaar(self) -> None:
+        resultaat = check_regeltelling(
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel(netto_bedrag=None, btw_bedrag=None)],
+            totaal_excl=Decimal("100.00"),
+        )
+        assert not resultaat.ok and "Netto bedrag ontbreekt" in resultaat.melding
+
+    def test_geen_regels_blokkeert_leesbaar(self) -> None:
+        resultaat = check_regeltelling(totaalbedrag=Decimal("121.00"), regels=[])
+        assert not resultaat.ok and "Geen boekingsregels" in resultaat.melding
+
+    def test_voer_harde_checks_uit_geeft_de_gelezen_totalen_door(self) -> None:
+        client = _NepRlzClient(gevonden=[])
+        rapport = voer_harde_checks_uit(
+            client=client,
+            vendor_id=uuid.uuid4(),
+            referentie="HUV-1",
+            factuurdatum=date.today(),
+            totaalbedrag=self._INCL,
+            regels=self._REGELS,
+            eigen_rlz_document_id=uuid.uuid4(),
+            totaal_excl=self._EXCL,
+        )
+        regeltelling = next(r for r in rapport.resultaten if r.naam == "Regeltelling vs totaal")
+        assert regeltelling.ok and "totaal excl." in regeltelling.melding

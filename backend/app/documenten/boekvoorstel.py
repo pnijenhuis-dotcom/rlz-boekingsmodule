@@ -269,6 +269,20 @@ def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
     return waarde if isinstance(waarde, str) and waarde else None
 
 
+def _gelezen_totalen(veldvoorstel: dict | None) -> tuple[Decimal | None, Decimal | None]:
+    """(totaal excl., factuur-btw-bedrag) zoals GELEZEN in het laatste veldvoorstel — voor de
+    regeltelling-check (bugfix 04-09, Huvanco). Het boekvoorstel zelf draagt alleen het incl-totaal
+    (mens-veld, blijft leidend voor de incl-kant); de excl-/btw-kant komt uit de extractie: AI-/
+    template-voorstel `totaal_excl` + `btw_bedrag`, UBL `totaal_excl` + `totaal_btw`. Geen
+    veldvoorstel = (None, None) → de check valt terug op de incl-vergelijking of meldt expliciet dat
+    er niets te toetsen is (nooit stil excl-vs-incl)."""
+    if not veldvoorstel:
+        return None, None
+    totaal_excl = _als_decimal(veldvoorstel.get("totaal_excl"))
+    factuur_btw = _als_decimal(veldvoorstel.get("btw_bedrag")) or _als_decimal(veldvoorstel.get("totaal_btw"))
+    return totaal_excl, factuur_btw
+
+
 def _rlz_leesclient(administratie_id: uuid.UUID) -> RlzClient:
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
     return client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
@@ -643,17 +657,49 @@ def _onthoud_voorkeur_samenvoegen(
     )
 
 
-def _naar_check_regels(voorstel: BoekvoorstelData) -> list[CheckRegel]:
+def _naar_check_regels(
+    voorstel: BoekvoorstelData, taxrate_percentages: dict[uuid.UUID, Decimal | None] | None = None
+) -> list[CheckRegel]:
+    """Boekvoorstelregels → CheckRegel. Een LEGE btw op een opgeslagen regel is in het boekvoorstel
+    van oudsher "geen btw" (verlegd/vrijgesteld — de motoren boeken TaxAmount 0, zie
+    tests/documenten/test_boeken.py::TestBoekDocumentRegelZonderBtw); pas sinds de regelsom-bugfix
+    04-09 (Huvanco) telt een lege btw als ONBEKEND. Beide kloppen, afhankelijk van het tarief: bij een
+    gesynct 0%-/verlegd-tarief (percentage 0 of zonder percentage in de cache) is leeg = 0 (bekend);
+    bij een tarief mét percentage > 0, een niet-gesynct tarief óf géén tarief is leeg = niet gelezen —
+    de regeltelling toetst dan netto-vs-netto (tak 2) of meldt expliciet wat ontbreekt (tak 4), nooit
+    stil Σnetto tegen een incl-totaal. `taxrate_percentages` = de gesyncte cache (id → percentage)."""
+    percentages = taxrate_percentages or {}
+
+    def btw_van(r: BoekvoorstelRegelData) -> Decimal | None:
+        if r.btw_bedrag is not None:
+            return r.btw_bedrag
+        if r.taxrate_id is None or r.taxrate_id not in percentages:
+            return None
+        pct = percentages[r.taxrate_id]
+        return Decimal(0) if pct is None or pct == 0 else None
+
     return [
         CheckRegel(
             ledger_id=r.ledger_id,
             taxrate_id=r.taxrate_id,
             project_id=r.project_id,
             netto_bedrag=r.netto_bedrag,
-            btw_bedrag=r.btw_bedrag,
+            btw_bedrag=btw_van(r),
         )
         for r in voorstel.regels
     ]
+
+
+def _taxrate_percentages(administratie_id: uuid.UUID) -> dict[uuid.UUID, Decimal | None]:
+    """Tariefpercentages uit de gesyncte taxrate_cache (lokaal, geen RLZ-call) — voor de
+    lege-btw-interpretatie in `_naar_check_regels`."""
+    from app.sync.models import TaxRateCache
+
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(TaxRateCache.id, TaxRateCache.percentage).where(TaxRateCache.administratie_id == administratie_id)
+        ).all()
+    return {r.id: r.percentage for r in rijen}
 
 
 def _taxrate_namen(administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
@@ -676,6 +722,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     factuur_iban: str | None,
     factuur_btw_nummer: str | None,
     reden: str,
+    gelezen_totalen: tuple[Decimal | None, Decimal | None] = (None, None),
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
@@ -683,7 +730,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     inclusief de IBAN-wissel-check tegen de al opgeslagen vertrouwde set (zonder RLZ-seed of
     baseline — die vergen een werkende verbinding); alleen de duplicaatcheck wordt een blokkerend,
     herkenbaar checkresultaat — nooit een kale 500 bij de gebruiker."""
-    regels = _naar_check_regels(voorstel)
+    regels = _naar_check_regels(voorstel, _taxrate_percentages(administratie_id))
     vertrouwd: set[str] = set()
     if voorstel.vendor_id is not None:
         vertrouwd = leverancier_iban.vertrouwde_ibans(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
@@ -761,6 +808,8 @@ def voer_checks_uit(
     # heeft 'm al mod-97-gevalideerd (app/extractie/controle.py) — oudere veldvoorstellen zonder
     # iban-sleutel geven None: geen wisselcontrole mogelijk, nooit een blok op ontbrekende data.
     factuur_iban = veldvoorstel.get("iban") if veldvoorstel else None
+    # Bugfix 04-09 (Huvanco): gelezen excl-totaal + factuur-btw voor een expliciete regeltelling-basis.
+    gelezen_totalen = _gelezen_totalen(veldvoorstel)
 
     voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     with scoped_session(None) as session:
@@ -785,6 +834,7 @@ def voer_checks_uit(
                 factuur_iban=factuur_iban,
                 factuur_btw_nummer=factuur_btw_nummer,
                 reden=str(exc),
+                gelezen_totalen=gelezen_totalen,
             )
     try:
         vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
@@ -812,7 +862,7 @@ def voer_checks_uit(
             factuurdatum=voorstel.factuurdatum,
             vervaldatum=voorstel.vervaldatum,
             totaalbedrag=voorstel.totaalbedrag,
-            regels=_naar_check_regels(voorstel),
+            regels=_naar_check_regels(voorstel, _taxrate_percentages(administratie_id)),
             eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
             uitgezonderde_rlz_document_ids=keten,
             project_verplicht=project_verplicht,
@@ -823,6 +873,8 @@ def voer_checks_uit(
             eigen_btw_nummer=factuur_btw_nummer,
             btw_per_vendor=btw_map,
             taxrate_namen=_taxrate_namen(administratie_id),
+            totaal_excl=gelezen_totalen[0],
+            factuur_btw=gelezen_totalen[1],
         )
         # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
         # storings-tak), vóór de RLZ-afhankelijke checks.

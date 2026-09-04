@@ -15,6 +15,7 @@ import type {
 import { alsAiVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { crediteurSuggesties } from './crediteurSuggesties'
+import { toetsRegelsom } from './regelsom'
 import {
   bepaalGeheugenChip,
   bepaalPrefill,
@@ -177,6 +178,12 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
 
 function formatEuro(bedrag: number): string {
   return bedrag.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Gelezen bedrag uit het veldvoorstel-dict (backend levert punt-decimaal strings); null = niet gelezen. */
+function veldvoorstelBedrag(veldvoorstel: Record<string, unknown> | null | undefined, sleutel: string): number | null {
+  const waarde = veldvoorstel?.[sleutel]
+  return typeof waarde === 'string' && waarde ? bedragAlsGetal(waarde) : null
 }
 
 interface LegeCacheBannerProps {
@@ -1025,12 +1032,23 @@ export function BoekvoorstelPanel({
   }
 
   const totaalAlsGetal = useMemo(() => bedragAlsGetal(totaalbedrag), [totaalbedrag])
-  const somRegels = useMemo(
-    () => regels.reduce((acc, r) => acc + (bedragAlsGetal(r.netto) ?? 0) + (bedragAlsGetal(r.btw) ?? 0), 0),
-    [regels],
+  // Bugfix 04-09 (Huvanco): de aansluit-badge volgt EXACT de backend-beslisboom (document/regelsom.ts ↔
+  // backend regelsom.py): ontbreekt de btw per regel, dan netto-vs-netto tegen het GELEZEN excl-totaal
+  // (AI/template `totaal_excl`, UBL idem) of Σnetto + gelezen factuur-btw (`btw_bedrag` / UBL `totaal_btw`)
+  // tegen incl — nooit meer stil Σnetto (excl) tegen het incl-totaal.
+  const gelezenExcl = veldvoorstelBedrag(veldvoorstel, 'totaal_excl')
+  const gelezenBtw = veldvoorstelBedrag(veldvoorstel, 'btw_bedrag') ?? veldvoorstelBedrag(veldvoorstel, 'totaal_btw')
+  const regelsomToets = useMemo(
+    () =>
+      toetsRegelsom({
+        netto: regels.map((r) => bedragAlsGetal(r.netto)),
+        btw: regels.map((r) => bedragAlsGetal(r.btw)),
+        totaalIncl: totaalAlsGetal,
+        totaalExcl: gelezenExcl,
+        factuurBtw: gelezenBtw,
+      }),
+    [regels, totaalAlsGetal, gelezenExcl, gelezenBtw],
   )
-  const aansluitVerschil = totaalAlsGetal === null ? null : somRegels - totaalAlsGetal
-  const aansluit = aansluitVerschil === null ? null : Math.abs(aansluitVerschil) <= 0.01
 
   // Blok B 2026-08-10: checks draaien automatisch — bij openen (read-only) en gedebounced na
   // elke wijziging (opslaan + checks via de bestaande PUT). Geen "Controleren"-knop meer.
@@ -1610,11 +1628,17 @@ export function BoekvoorstelPanel({
             <button type="button" className="btn secondary" onClick={voegRegelToe}>
               + Regel toevoegen
             </button>
-            {aansluit !== null && aansluitVerschil !== null && (
-              <span className={`chip ${aansluit ? 'ok' : 'afwijking'}`}>
-                {aansluit
-                  ? `Aansluitend — € ${formatEuro(somRegels)}`
-                  : `Afwijking € ${formatEuro(Math.abs(aansluitVerschil))} (som € ${formatEuro(somRegels)} vs totaal € ${formatEuro(totaalAlsGetal ?? 0)})`}
+            {regelsomToets.basis !== null && regelsomToets.sluitAan !== null && (
+              <span className={`chip ${regelsomToets.sluitAan ? 'ok' : 'afwijking'}`}>
+                {regelsomToets.sluitAan
+                  ? `Aansluitend — ${regelsomToets.basis === 'excl' ? 'netto' : 'netto + btw'} € ${formatEuro(regelsomToets.som ?? 0)} vs totaal ${regelsomToets.basis === 'excl' ? 'excl.' : 'incl.'}`
+                  : `Afwijking € ${formatEuro(regelsomToets.verschil ?? 0)} (${regelsomToets.basis === 'excl' ? 'netto' : 'netto + btw'} € ${formatEuro(regelsomToets.som ?? 0)} vs totaal ${regelsomToets.basis === 'excl' ? 'excl.' : 'incl.'} € ${formatEuro(regelsomToets.vergelijk ?? 0)})`}
+              </span>
+            )}
+            {regelsomToets.reden === 'btw_per_regel_ontbreekt' && (
+              <span className="chip afwijking">
+                Btw per regel ontbreekt (regel {regelsomToets.regelsZonderBtw.join(', ')}) en er is geen totaal excl. gelezen —
+                netto € {formatEuro(regelsomToets.nettoSom ?? 0)} is niet tegen het totaal incl. te toetsen
               </span>
             )}
           </div>

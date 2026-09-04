@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import asdict, dataclass, field
+from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
 _NS = {
@@ -39,6 +40,9 @@ class UblRegel:
     aantal: str | None = None
     eenheid: str | None = None
     prijs: str | None = None
+    # Bugfix 04-09 (kortingsregels): "korting" / "toeslag" voor een regel die uit een document-niveau
+    # cac:AllowanceCharge komt (BG-20/BG-21); None = gewone factuurregel (InvoiceLine/CreditNoteLine).
+    soort: str | None = None
 
     def als_dict(self) -> dict[str, str | int | None]:
         return asdict(self)
@@ -116,6 +120,13 @@ def _partijnaam(root: ET.Element, partij: str) -> str | None:
 
 
 def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str | None) -> tuple[dict, ...]:
+    """Regels uit InvoiceLine/CreditNoteLine PLUS de document-niveau kortingen/toeslagen
+    (bugfix 04-09, Huvanco-casus): een korting die de leverancier als eigen regel op de factuur zet,
+    komt in de UBL als `cac:AllowanceCharge` op documentniveau (BG-20 korting / BG-21 toeslag) —
+    zonder die regel telt Σregels niet op tot het totaal. REGEL-niveau AllowanceCharge (binnen een
+    InvoiceLine, BG-27/BG-28) wordt bewust NIET als aparte regel opgenomen: per UBL-/EN 16931-
+    definitie is `cbc:LineExtensionAmount` (BT-131) al het nettobedrag NÁ regelkorting/-toeslag —
+    nog eens aftrekken zou dubbel tellen (de RLZ-export-fixture draagt zo'n regelkorting van 0)."""
     regels: list[dict] = []
     for i, lijn in enumerate(root.findall(regel_element, _NS), start=1):
         # Invoice-regels dragen cbc:InvoicedQuantity, CreditNote-regels cbc:CreditedQuantity (BT-129).
@@ -140,7 +151,43 @@ def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str
                 prijs=_element_tekst(lijn, "cac:Price/cbc:PriceAmount"),
             ).als_dict()
         )
+    # Document-niveau kortingen/toeslagen als eigen regel — `findall("cac:AllowanceCharge")` matcht
+    # uitsluitend DIRECTE kinderen van de root, dus nooit de regel-niveau varianten (zie docstring).
+    for ac in root.findall("cac:AllowanceCharge", _NS):
+        regel = _allowance_charge_als_regel(ac, volgnummer=len(regels) + 1, document_gb_code=document_gb_code)
+        if regel is not None:
+            regels.append(regel.als_dict())
     return tuple(regels)
+
+
+def _allowance_charge_als_regel(ac: ET.Element, *, volgnummer: int, document_gb_code: str | None) -> UblRegel | None:
+    """Eén document-niveau cac:AllowanceCharge → UblRegel: ChargeIndicator false = korting (netto
+    NEGATIEF), true = toeslag (positief). Bedrag = cbc:Amount (per UBL non-negatief; een al negatief
+    bedrag wordt niet nog eens omgekeerd — |Amount| met het teken van de soort). Omschrijving =
+    cbc:AllowanceChargeReason, anders "Korting"/"Toeslag"; btw-categorie/-percentage uit
+    cac:TaxCategory (zelfde vorm als ClassifiedTaxCategory op een regel). Zonder leesbaar bedrag of
+    zonder ChargeIndicator: géén regel (niets gokken)."""
+    indicator = (_element_tekst(ac, "cbc:ChargeIndicator") or "").strip().lower()
+    if indicator not in {"true", "false"}:
+        return None
+    bedrag_tekst = _element_tekst(ac, "cbc:Amount")
+    if not bedrag_tekst:
+        return None
+    try:
+        bedrag = abs(Decimal(bedrag_tekst))
+    except InvalidOperation:
+        return None
+    is_korting = indicator == "false"
+    netto = -bedrag if is_korting else bedrag
+    return UblRegel(
+        volgnummer=volgnummer,
+        omschrijving=_element_tekst(ac, "cbc:AllowanceChargeReason") or ("Korting" if is_korting else "Toeslag"),
+        netto_bedrag=str(netto),
+        btw_percentage=_element_tekst(ac, "cac:TaxCategory/cbc:Percent"),
+        btw_categorie=_element_tekst(ac, "cac:TaxCategory/cbc:ID"),
+        gb_code=document_gb_code,
+        soort="korting" if is_korting else "toeslag",
+    )
 
 
 def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:

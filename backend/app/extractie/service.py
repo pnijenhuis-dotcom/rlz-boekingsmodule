@@ -148,9 +148,17 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   vermeld — nooit zelf uitrekenen), a=artikelcode/artikelnummer van de leverancier zoals op de regel vermeld
   (eigen kolom "Art.nr"/"Code" of tussen haakjes; "" als er geen code staat — nooit verzinnen), z=één
   zekerheidsscore voor de hele regel.
+  Kortings- en andere NEGATIEVE regels zijn óók factuurregels: een kortingsregel, rabat, creditregel,
+  retour of een verrekende aanbetaling die als eigen regel op de factuur staat, neem je op als eigen
+  regel met een NEGATIEF nettobedrag (bijv. "Korting 10%" met n="-56.44") en, als de factuur er een
+  btw-bedrag bij vermeldt, een negatief btw-bedrag; staat er geen btw bij, dan b="". Laat zo'n regel
+  nooit weg en verreken hem nooit stil in andere regels. Subtotaal-, btw- en totaalregels zijn GEEN
+  factuurregels — die horen in de kopvelden excl/btw/incl.
 
 Notatie: bedragen als string met punt-decimaal zonder duizendtalscheiding en zonder valutateken (bijv.
-"1234.56", credit negatief "-25.00"); datums als ISO 8601 (YYYY-MM-DD); valuta als ISO-code (bijv. "EUR").
+"1234.56", korting/credit negatief "-25.00" — een minteken dat op de factuur achter het bedrag of als
+"−" staat, geef je als gewoon voorgeplaatst "-"); datums als ISO 8601 (YYYY-MM-DD); valuta als
+ISO-code (bijv. "EUR").
 Elk tekstveld is altijd een string: onbekend, afwezig of onleesbaar = lege string "" (nooit iets anders).
 
 Wees zuinig: echo nooit overige documenttekst (adresblokken, betalingsvoorwaarden, voetteksten,
@@ -162,7 +170,8 @@ urenstaat). Laat zulke nummers volledig weg; vervang ze in omschrijvingen door "
 
 OPDRACHT = (
     "Extraheer de kopgegevens (kop + kz) en ALLE factuurregels (regels) van deze inkoopfactuur "
-    'volgens het schema. Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
+    "volgens het schema — inclusief kortings-/rabat-/creditregels als eigen regel met negatief bedrag. "
+    'Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
 )
 
 OPDRACHT_KOP = (
@@ -175,8 +184,8 @@ OPDRACHT_KOP = (
 OPDRACHT_REGELS = (
     "Geef uitsluitend factuurregels {start} tot en met {eind} van deze inkoopfactuur (1-gebaseerd, "
     "documentvolgorde) volgens het schema. Bestaat regel {start} niet, geef dan een lege lijst; zijn er "
-    "minder regels dan {eind}, geef dan alleen de resterende. Sla geen regels over en herhaal geen "
-    "eerdere regels."
+    "minder regels dan {eind}, geef dan alleen de resterende. Sla geen regels over (ook kortings-/"
+    "creditregels tellen als regel, met negatief bedrag) en herhaal geen eerdere regels."
 )
 
 # Adaptieve chunking: startblokgrootte en ondergrens (halveren bij afkap van een regel-call), plus

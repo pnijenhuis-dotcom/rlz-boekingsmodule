@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
+from app.documenten.regelsom import REDEN_GEEN_REGELS, toets_regelsom
 from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
 from app.extractie.service import AiFactuurExtractie, AiVeld
@@ -70,7 +71,13 @@ def parse_bedrag(waarde: str | None) -> Decimal | None:
     app/documenten/schemas.py). Alles wat daarbuiten valt is None — nooit gokken."""
     if not waarde:
         return None
-    schoon = waarde.strip().replace("€", "").replace(" ", "")
+    schoon = waarde.strip().replace("€", "").replace(" ", "").replace(" ", "")
+    # Kortings-/creditregels (bugfix 04-09, Huvanco "Korting 10% −56,44"): Unicode-minteken (U+2212)
+    # en en-dash (U+2013) → gewoon minteken; achtergeplaatst minteken ("56,44-", NL-boekhoudnotatie)
+    # → voorgeplaatst. Deterministisch, geen gok: één minteken, anders valt Decimal() hieronder uit.
+    schoon = schoon.replace("−", "-").replace("–", "-")
+    if schoon.endswith("-") and not schoon.startswith("-"):
+        schoon = "-" + schoon[:-1]
     if "," in schoon:
         schoon = schoon.replace(".", "").replace(",", ".")
     try:
@@ -366,10 +373,10 @@ def bouw_veldvoorstel(
 
     regels: list[dict] = []
     regel_zekerheid: list[float] = []
-    netto_som = Decimal(0)
-    btw_som = Decimal(0)
-    regelsom_compleet = True
-    btw_per_regel_compleet = True
+    # Geparste bedragen per regel (None = niet gelezen/onparseerbaar) — voeding voor de gedeelde
+    # regelsom-beslisboom hieronder. Kortings-/creditregels zijn gewoon negatieve bedragen.
+    netto_per_regel: list[Decimal | None] = []
+    btw_per_regel: list[Decimal | None] = []
     for index, regel in enumerate(extractie.regels, start=1):
         netto = parse_bedrag(regel.netto_bedrag)
         btw = parse_bedrag(regel.btw_bedrag)
@@ -377,12 +384,8 @@ def bouw_veldvoorstel(
             onparseerbaar.append(f"netto_bedrag (regel {index})")
         if regel.btw_bedrag is not None and btw is None:
             onparseerbaar.append(f"btw_bedrag (regel {index})")
-        if netto is None:
-            regelsom_compleet = False
-        if btw is None:
-            btw_per_regel_compleet = False
-        netto_som += netto or Decimal(0)
-        btw_som += btw or Decimal(0)
+        netto_per_regel.append(netto)
+        btw_per_regel.append(btw)
         afleiding = leid_btw_af(netto, btw, taxrates)
         regels.append(
             {
@@ -411,20 +414,23 @@ def bouw_veldvoorstel(
     # zonder btw per regel telde eerder alleen netto op en riep vals "wijkt af" tegen het
     # incl-totaal. Nu: (1) btw per regel bekend → Σnetto+Σbtw vs incl; (2) anders Σnetto vs het
     # excl-totaal; (3) anders Σnetto + factuur-btw vs incl; (4) niets te toetsen → geen badge.
-    regelsom: Decimal | None = None
-    regelsom_basis: str | None = None
-    regelsom_wijkt_af: bool | None = None
-    if regels and regelsom_compleet:
-        if btw_per_regel_compleet and totaal_incl is not None:
-            regelsom, regelsom_basis, vergelijk = netto_som + btw_som, "incl", totaal_incl
-        elif totaal_excl is not None:
-            regelsom, regelsom_basis, vergelijk = netto_som, "excl", totaal_excl
-        elif btw_bedrag is not None and totaal_incl is not None:
-            regelsom, regelsom_basis, vergelijk = netto_som + btw_bedrag, "incl", totaal_incl
-        else:
-            vergelijk = None
-        if regelsom is not None and vergelijk is not None:
-            regelsom_wijkt_af = abs(regelsom - vergelijk) > _ROND_TOLERANTIE
+    # Sinds 04-09 (Huvanco-bugfix) ÉÉN gedeelde beslisboom met de harde check "Regeltelling vs
+    # totaal" (app/documenten/regelsom.py) — twee bomen liepen uit de pas. Kortings-/creditregels
+    # tellen als negatieve regel gewoon mee in netto_som/btw_som.
+    toets = toets_regelsom(
+        netto=netto_per_regel,
+        btw=btw_per_regel,
+        totaal_incl=totaal_incl,
+        totaal_excl=totaal_excl,
+        factuur_btw=btw_bedrag,
+        tolerantie=_ROND_TOLERANTIE,
+    )
+    regelsom = toets.regelsom
+    regelsom_basis = toets.basis
+    regelsom_wijkt_af = toets.wijkt_af
+    # Reden waarom er níét getoetst is (bv. btw per regel ontbreekt + alleen incl gelezen) — zichtbaar
+    # i.p.v. stil geen badge; None zolang er wél getoetst is of er simpelweg geen regels zijn.
+    regelsom_reden = toets.reden if toets.reden != REDEN_GEEN_REGELS else None
 
     return {
         "bron": "ai",
@@ -461,6 +467,7 @@ def bouw_veldvoorstel(
             "regelsom": _bedrag_str(regelsom) if regelsom is not None else None,
             "regelsom_basis": regelsom_basis,
             "regelsom_wijkt_af": regelsom_wijkt_af,
+            "regelsom_reden": regelsom_reden,
             "onparseerbaar": onparseerbaar,
             "lage_zekerheid": lage_zekerheid,
             "bsn_verwijderd": extractie.bsn_verwijderd,

@@ -1345,3 +1345,58 @@ describe('BoekvoorstelPanel — afdeling (blok A 28-08)', () => {
     expect(screen.queryByText(/vorige keuze/)).toBeNull()
   })
 })
+
+describe('BoekvoorstelPanel — regelsom-badge volgt de backend-beslisboom (bugfix 04-09, Huvanco)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // Huvanco-vorm: regels zonder btw per regel + kortingsregel negatief; incl-totaal ingevuld.
+  const HUVANCO_BOEKVOORSTEL = {
+    ...LEEG_BOEKVOORSTEL,
+    opgeslagen: true,
+    totaalbedrag: '614.63',
+    regels: [
+      { ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '400.00', btw_bedrag: null, omschrijving: 'Materiaal' },
+      { ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '164.40', btw_bedrag: null, omschrijving: 'Transport' },
+      { ledger_id: null, taxrate_id: null, project_id: null, netto_bedrag: '-56.44', btw_bedrag: null, omschrijving: 'Korting 10%' },
+    ],
+  }
+
+  it('zonder btw per regel maar mét gelezen excl-totaal: netto-vs-netto = aansluitend (oude badge riep vals afwijking)', async () => {
+    installFetchMock({ boekvoorstel: HUVANCO_BOEKVOORSTEL })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={{ bron: 'ai', totaal_excl: '507.96', totaal_incl: '614.63', btw_bedrag: '', regels: [], regel_zekerheid: [], zekerheid: {}, controle: {} }}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText(/Aansluitend/)).toBeInTheDocument())
+    expect(screen.getByText(/Aansluitend/).textContent).toContain('netto € 507,96 vs totaal excl.')
+    expect(screen.queryByText(/Afwijking/)).not.toBeInTheDocument()
+  })
+
+  it('zonder excl en zonder factuur-btw: expliciete melding, nooit een stille excl-vs-incl-afwijking', async () => {
+    installFetchMock({ boekvoorstel: HUVANCO_BOEKVOORSTEL })
+    render(
+      <BoekvoorstelPanel
+        administratieId={ADMINISTRATIE_ID}
+        documentId={DOCUMENT_ID}
+        status="te_controleren"
+        veldvoorstel={null}
+        onGeboekt={() => {}}
+        onHersteld={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText(/Btw per regel ontbreekt \(regel 1, 2, 3\)/)).toBeInTheDocument())
+    expect(screen.queryByText(/Afwijking/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Aansluitend/)).not.toBeInTheDocument()
+  })
+})

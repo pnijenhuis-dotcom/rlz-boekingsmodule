@@ -407,6 +407,105 @@ class TestVoerChecksUit:
             boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=resultaat.document_id)
 
 
+class TestRegeltellingBasisKeten:
+    """Bugfix 04-09 (Huvanco): voer_checks_uit geeft de GELEZEN excl-/btw-totalen uit het laatste
+    veldvoorstel door aan de regeltelling — in de RLZ-tak én in de storings-tak. Het UBL-fixture leest
+    excl 1526,20 / incl 1846,70 zonder btw-totaal."""
+
+    def _sla_op(self, administratie_id, document_id, actor_id, regels, totaalbedrag=Decimal("1846.70")) -> None:
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            vendor_id=uuid.uuid4(),
+            referentie="HUV-2026-1",
+            factuurdatum=date(2026, 9, 1),
+            totaalbedrag=totaalbedrag,
+            regels=regels,
+        )
+
+    @staticmethod
+    def _regeltelling(rapport):
+        return next(r for r in rapport.resultaten if r.naam == "Regeltelling vs totaal")
+
+    def test_regels_zonder_btw_toetsen_netto_tegen_het_gelezen_excl_totaal(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="huvanco.xml",
+            inhoud=_VOORBEELD_UBL,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        # Oude code: Σnetto 1526,20 vs incl 1846,70 → vals "wijkt € 320,50 af".
+        regels = [
+            _regel(netto_bedrag=Decimal("1000.00"), btw_bedrag=None),
+            _regel(netto_bedrag=Decimal("526.20"), btw_bedrag=None),
+        ]
+        self._sla_op(administratie_id, resultaat.document_id, gescoopte_gebruiker, regels)
+
+        met_client = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=resultaat.document_id, client=FakeRlzClient({})
+        )
+        regeltelling = self._regeltelling(met_client)
+        assert regeltelling.ok, regeltelling.melding
+        assert "netto € 1526.20" in regeltelling.melding and "totaal excl." in regeltelling.melding
+
+        # Storings-tak (geen credentials → eigen rapport) gebruikt dezelfde gelezen totalen.
+        zonder_client = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=resultaat.document_id
+        )
+        assert self._regeltelling(zonder_client).ok
+
+    def test_zonder_veldvoorstel_en_zonder_btw_per_regel_is_de_melding_expliciet(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="huvanco.pdf",
+            inhoud=b"%PDF-1.4 huvanco zonder extractie",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        regels = [_regel(netto_bedrag=Decimal("1526.20"), btw_bedrag=None)]
+        self._sla_op(administratie_id, resultaat.document_id, gescoopte_gebruiker, regels)
+        rapport = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=resultaat.document_id, client=FakeRlzClient({})
+        )
+        regeltelling = self._regeltelling(rapport)
+        assert not regeltelling.ok
+        assert "Btw per regel ontbreekt (regel 1)" in regeltelling.melding
+        assert "wijkt" not in regeltelling.melding  # nooit meer de stille excl-vs-incl-afwijking
+
+    def test_negatieve_kortingsregel_komt_door_naar_check_regels_en_regeltelling(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+    ) -> None:
+        resultaat = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="huvanco-korting.xml",
+            inhoud=_VOORBEELD_UBL,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        regels = [
+            _regel(netto_bedrag=Decimal("1600.00"), btw_bedrag=Decimal("336.00"), omschrijving="Materiaal"),
+            _regel(netto_bedrag=Decimal("-73.80"), btw_bedrag=Decimal("-15.50"), omschrijving="Korting"),
+        ]
+        self._sla_op(administratie_id, resultaat.document_id, gescoopte_gebruiker, regels)
+        voorstel = boekvoorstel.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=resultaat.document_id
+        )
+        check_regels = boekvoorstel._naar_check_regels(voorstel)
+        assert [r.netto_bedrag for r in check_regels] == [Decimal("1600.00"), Decimal("-73.80")]
+        rapport = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=resultaat.document_id, client=FakeRlzClient({})
+        )
+        regeltelling = self._regeltelling(rapport)
+        assert regeltelling.ok, regeltelling.melding
+        assert "netto + btw € 1846.70" in regeltelling.melding
+
+
 class TestSamengevoegdeRegel:
     """Fix 3 (2026-07-10): de deterministisch berekende één-regel-variant. Pure functie op het
     veldvoorstel-dict — geld = code, dus elk rekenpad expliciet getest."""

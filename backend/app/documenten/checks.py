@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app.documenten.regelsom import (
+    REDEN_BTW_PER_REGEL_ONTBREEKT,
+    REDEN_GEEN_REGELS,
+    REDEN_NETTO_ONTBREEKT,
+    toets_regelsom,
+)
 from app.extractie.iban import masker_iban
 from app.rlz.client import RlzApiError, RlzClient
 
@@ -184,18 +190,69 @@ def check_buitenland_tarief_crediteurkaart(
     )
 
 
-def check_regeltelling(*, totaalbedrag: Decimal | None, regels: list[CheckRegel]) -> CheckResultaat:
-    if totaalbedrag is None:
-        return CheckResultaat("Regeltelling vs totaal", False, "Geen factuurtotaal ingevuld om tegen te controleren")
-    som = sum((r.netto_bedrag or Decimal(0)) + (r.btw_bedrag or Decimal(0)) for r in regels)
-    verschil = abs(som - totaalbedrag)
-    if verschil > _ROND_TOLERANTIE:
+def check_regeltelling(
+    *,
+    totaalbedrag: Decimal | None,
+    regels: list[CheckRegel],
+    totaal_excl: Decimal | None = None,
+    factuur_btw: Decimal | None = None,
+) -> CheckResultaat:
+    """Regeltelling vs totaal — sinds 04-09 (Huvanco-casus) EXPLICIET over welke basis vergeleken
+    wordt, via dezelfde beslisboom als de veldvoorstel-badge (app/documenten/regelsom.py):
+    btw per regel compleet → Σ(netto+btw) vs `totaalbedrag` (incl); anders Σnetto vs `totaal_excl`;
+    anders Σnetto + `factuur_btw` vs incl; anders een leesbare blokkade — nooit meer stil Σnetto
+    (feitelijk exclusief) tegen een inclusief totaal.
+
+    `totaalbedrag` is het boekvoorstel-veld "Totaalbedrag (incl. btw)" — dat vult/wijzigt de mens en
+    blijft leidend voor de incl-kant. `totaal_excl`/`factuur_btw` zijn de GELEZEN totalen uit het
+    laatste veldvoorstel (het boekvoorstel draagt geen excl-veld; de aanroeper in boekvoorstel.py
+    levert ze aan). Negatieve regels (korting/rabat/credit) tellen gewoon mee."""
+    naam = "Regeltelling vs totaal"
+    if totaalbedrag is None and totaal_excl is None:
+        return CheckResultaat(naam, False, "Geen factuurtotaal ingevuld om tegen te controleren")
+    toets = toets_regelsom(
+        netto=[r.netto_bedrag for r in regels],
+        btw=[r.btw_bedrag for r in regels],
+        totaal_incl=totaalbedrag,
+        totaal_excl=totaal_excl,
+        factuur_btw=factuur_btw,
+        tolerantie=_ROND_TOLERANTIE,
+    )
+    if toets.reden == REDEN_GEEN_REGELS:
+        return CheckResultaat(naam, False, "Geen boekingsregels om tegen het factuurtotaal te tellen")
+    if toets.reden == REDEN_NETTO_ONTBREEKT:
+        return CheckResultaat(naam, False, "Netto bedrag ontbreekt op een regel — regeltelling niet toetsbaar")
+    if toets.reden == REDEN_BTW_PER_REGEL_ONTBREEKT:
+        regelnrs = ", ".join(str(n) for n in toets.regels_zonder_btw)
         return CheckResultaat(
-            "Regeltelling vs totaal",
+            naam,
             False,
-            f"Som van de regels (€ {som}) wijkt € {verschil} af van het factuurtotaal (€ {totaalbedrag})",
+            f"Btw per regel ontbreekt (regel {regelnrs}) en er is geen totaal excl. btw gelezen — vul de btw "
+            f"per regel of het totaal excl. in; de regels (netto € {toets.netto_som}) zijn niet tegen het "
+            f"totaal incl. (€ {totaalbedrag}) te toetsen",
         )
-    return CheckResultaat("Regeltelling vs totaal", True, f"Som van de regels (€ {som}) komt overeen met het totaal")
+    if not toets.toetsbaar:
+        return CheckResultaat(naam, False, "Geen factuurtotaal ingevuld om tegen te controleren")
+
+    # De melding benoemt altijd welke basis vergeleken is (netto-vs-excl, netto+btw-vs-incl of
+    # netto+factuur-btw-vs-incl) — de controleur ziet zo direct wat er opgeteld is.
+    basis_tekst = "totaal incl." if toets.basis == "incl" else "totaal excl."
+    btw_per_regel_compleet = all(r.btw_bedrag is not None for r in regels)
+    if toets.basis == "excl":
+        som_tekst = f"netto € {toets.regelsom}"
+    elif btw_per_regel_compleet:
+        som_tekst = f"netto + btw € {toets.regelsom}"
+    else:
+        som_tekst = f"netto € {toets.netto_som} + factuur-btw € {toets.btw_bijgeteld} = € {toets.regelsom}"
+    if toets.wijkt_af:
+        return CheckResultaat(
+            naam,
+            False,
+            f"Som van de regels ({som_tekst}) wijkt € {toets.verschil} af van het {basis_tekst} (€ {toets.vergelijk})",
+        )
+    return CheckResultaat(
+        naam, True, f"Som van de regels ({som_tekst}) komt overeen met het {basis_tekst} (€ {toets.vergelijk})"
+    )
 
 
 def check_duplicaat(
@@ -320,6 +377,8 @@ def voer_harde_checks_uit(
     btw_per_vendor: dict[str, str] | None = None,
     vervaldatum: date | None = None,
     taxrate_namen: dict[uuid.UUID, str] | None = None,
+    totaal_excl: Decimal | None = None,
+    factuur_btw: Decimal | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -339,7 +398,9 @@ def voer_harde_checks_uit(
                 regels=regels,
                 project_verplicht=project_verplicht,
             ),
-            check_regeltelling(totaalbedrag=totaalbedrag, regels=regels),
+            check_regeltelling(
+                totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw
+            ),
             check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),
             check_buitenland_tarief_crediteurkaart(
                 regels=regels,

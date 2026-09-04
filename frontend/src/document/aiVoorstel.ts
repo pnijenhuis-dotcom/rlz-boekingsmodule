@@ -18,6 +18,9 @@ export interface AiControle {
    * netto+btw=incl-logica van de boekingsregels-toets; null = niets te toetsen. */
   regelsom_basis?: 'incl' | 'excl' | null
   regelsom_wijkt_af: boolean | null
+  /** Bugfix 04-09 (Huvanco): waarom er níét getoetst is — 'btw_per_regel_ontbreekt' (alleen incl gelezen,
+   * btw per regel leeg: nooit stil Σnetto vs incl), 'netto_ontbreekt', 'geen_totaal'; null = wél getoetst. */
+  regelsom_reden?: 'btw_per_regel_ontbreekt' | 'netto_ontbreekt' | 'geen_totaal' | null
   onparseerbaar: string[]
   lage_zekerheid: string[]
   bsn_verwijderd: number

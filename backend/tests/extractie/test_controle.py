@@ -363,3 +363,59 @@ class TestKvkMismatchGuard:
             "Wola B.V.", [kandidaat], btw_nummer="NL999999999B01"
         )
         assert vendor_id is None and waarschuwing is not None and waarschuwing.reden == "btw_afwijkend"
+
+
+class TestKortingsregels:
+    """Bugfix 04-09 (Huvanco "Korting 10% −56,44"): negatieve regels parsen in álle voorkomende
+    notaties en tellen gewoon mee in de regelsom; de badge volgt de gedeelde beslisboom."""
+
+    def test_parse_bedrag_unicode_minteken(self) -> None:
+        assert parse_bedrag("−56,44") == Decimal("-56.44")  # U+2212
+        assert parse_bedrag("–56.44") == Decimal("-56.44")  # U+2013 en-dash
+        assert parse_bedrag("€ −56,44") == Decimal("-56.44")
+
+    def test_parse_bedrag_achtergeplaatst_minteken(self) -> None:
+        assert parse_bedrag("56,44-") == Decimal("-56.44")
+        assert parse_bedrag("56.44-") == Decimal("-56.44")
+        assert parse_bedrag("1.234,56-") == Decimal("-1234.56")
+
+    def test_parse_bedrag_punt_notatie_negatief_en_rommel(self) -> None:
+        assert parse_bedrag("-56.44") == Decimal("-56.44")
+        assert parse_bedrag("-€ 56,44") == Decimal("-56.44")
+        assert parse_bedrag("--56.44") is None  # dubbel minteken = leesfout, geen gok
+        assert parse_bedrag("-") is None
+
+    def test_kortingsregel_telt_negatief_mee_in_de_regelsom(self) -> None:
+        # Huvanco-vorm: btw per regel niet gelezen, korting als eigen regel, excl + incl + btw gelezen.
+        extractie = _extractie(
+            {"totaal_excl": _veld("507.96"), "totaal_incl": _veld("614.63"), "btw_bedrag": _veld("106.67")},
+            regels=[
+                _regel("Steigermateriaal", "400.00", None),
+                _regel("Transport", "164.40", None),
+                _regel("Korting 10%", "−56.44", None),
+            ],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=[], zekerheid_drempel=0.8)
+        assert voorstel["regels"][2]["netto_bedrag"] == "-56.44"
+        c = voorstel["controle"]
+        assert c["regelsom"] == "507.96" and c["regelsom_basis"] == "excl" and c["regelsom_wijkt_af"] is False
+        assert c["regelsom_reden"] is None
+
+    def test_zonder_excl_en_zonder_factuur_btw_benoemt_de_badge_de_reden(self) -> None:
+        extractie = _extractie(
+            {"totaal_excl": _veld(None), "totaal_incl": _veld("614.63"), "btw_bedrag": _veld(None)},
+            regels=[_regel("A", "400.00", None), _regel("Korting", "-56.44", None)],
+        )
+        c = bouw_veldvoorstel(extractie, vendors=[], taxrates=[], zekerheid_drempel=0.8)["controle"]
+        assert c["regelsom"] is None and c["regelsom_wijkt_af"] is None
+        assert c["regelsom_reden"] == "btw_per_regel_ontbreekt"
+
+    def test_kortingsregel_met_btw_leidt_hetzelfde_tarief_af(self) -> None:
+        hoog = TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"))
+        extractie = _extractie(
+            {"totaal_excl": _veld("43.56"), "totaal_incl": _veld("52.71"), "btw_bedrag": _veld("9.15")},
+            regels=[_regel("Materiaal", "100.00", "21.00"), _regel("Korting", "−56.44", "−11.85")],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=[hoog], zekerheid_drempel=0.8)
+        assert [r["taxrate_id"] for r in voorstel["regels"]] == [str(hoog.id), str(hoog.id)]
+        assert voorstel["controle"]["regelsom"] == "52.71" and voorstel["controle"]["regelsom_wijkt_af"] is False
