@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AdministratieDto } from '../api/types'
 import { ApiError } from '../api/client'
 import {
@@ -13,10 +13,44 @@ import {
   MultiSelect,
   Select,
 } from '../ui/basis'
-import { nodigUit, type UitnodigingResultaatDto } from './gebruikersApi'
+import { nodigUit, type UitnodigingBron, type UitnodigingResultaatDto } from './gebruikersApi'
+
+type Soort = 'medewerker' | 'accordeur' | 'veldwerker'
+
+/** Rolgroep per ingang (bugfix 04-09): de soort van de dialoog bepaalt welke rollen überhaupt verstuurd kunnen
+ * worden — nooit een stille kantoor-default over tabs heen. Spiegel van `toets_rolgroep_bij_bron` (backend). */
+export const ROLGROEPEN: Record<Soort, { rollen: readonly string[]; standaard: string; bron: UitnodigingBron; label: string }> = {
+  medewerker: {
+    rollen: ['boekhouding', 'boekhouding_projecten', 'beheerder'],
+    standaard: 'boekhouding',
+    bron: 'kantoor',
+    label: 'Kantoormedewerker (Boekhouding · Boekhouding + Projecten · Beheerder)',
+  },
+  veldwerker: {
+    rollen: ['zzper', 'uitvoerder', 'detacheerder'],
+    standaard: 'zzper',
+    bron: 'veldwerkers',
+    label: "Veldwerker (ZZP'er · Uitvoerder · Detacheerder) — mobiele app",
+  },
+  accordeur: {
+    rollen: ['klant_accordeur'],
+    standaard: 'klant_accordeur',
+    bron: 'klant_accordeurs',
+    label: 'Klant-accordeur — mobiele app',
+  },
+}
+
+/** Fail-safe vóór verzenden: een rol buiten de rolgroep van de ingang valt terug op de standaard van die groep. */
+export function rolBinnenGroep(soort: Soort, rol: string): string {
+  const groep = ROLGROEPEN[soort]
+  return groep.rollen.includes(rol) ? rol : groep.standaard
+}
 
 /* Uitnodig-modal (mockup #modal medewerker/accordeur, fase 3 15-08) — op de bestaande
- * uitnodigingsflow (POST /auth/uitnodigingen, mailt al; fail-zichtbaar bij een mailfout). */
+ * uitnodigingsflow (POST /auth/uitnodigingen, mailt al; fail-zichtbaar bij een mailfout).
+ * Bugfix 04-09 (casus Peter: "+ Veldwerker uitnodigen" maakte een kantoormedewerker aan): de rol volgt de
+ * SOORT van de ingang — reset bij elke soortwissel, rolgroep expliciet in de dialoog, fail-safe bij verzenden
+ * én `bron` naar de server (die weigert een mismatch met 422). */
 export function UitnodigModal({
   soort,
   administraties,
@@ -24,7 +58,7 @@ export function UitnodigModal({
   onSluiten,
   onUitgenodigd,
 }: {
-  soort: 'medewerker' | 'accordeur' | 'veldwerker'
+  soort: Soort
   administraties: AdministratieDto[]
   open: boolean
   onSluiten: () => void
@@ -32,9 +66,12 @@ export function UitnodigModal({
 }) {
   const [naam, setNaam] = useState('')
   const [eMail, setEMail] = useState('')
-  const [rol, setRol] = useState(
-    soort === 'accordeur' ? 'klant_accordeur' : soort === 'veldwerker' ? 'zzper' : 'boekhouding',
-  )
+  const [rol, setRol] = useState(ROLGROEPEN[soort].standaard)
+  // De useState-initializer draait maar één keer — wisselt de ingang (tab) terwijl de dialoog gemount blijft,
+  // dan moet de rol de nieuwe rolgroep volgen (dát was de bug: 'boekhouding' bleef staan onder "Veldwerker").
+  useEffect(() => {
+    setRol(ROLGROEPEN[soort].standaard)
+  }, [soort])
   const [scope, setScope] = useState<string[]>([])
   // A4 (25-08): veldwerker aanmaken zónder mail — account op 'uitgenodigd', alsnog mailen via
   // de bestaande "Opnieuw mailen"-knop op Gebruikers & toegang.
@@ -53,9 +90,10 @@ export function UitnodigModal({
       const resultaat = await nodigUit({
         naam: naam.trim(),
         e_mail: eMail.trim(),
-        rol: isAccordeur ? 'klant_accordeur' : rol,
+        rol: rolBinnenGroep(soort, rol),
         administratie_ids: scope,
         uitnodiging_later: isVeldwerker && uitnodigingLater,
+        bron: ROLGROEPEN[soort].bron,
       })
       onUitgenodigd(resultaat)
       setNaam('')
@@ -85,6 +123,9 @@ export function UitnodigModal({
               ? "Veldwerkers (uren & meerwerk) gebruiken dezelfde mobiele app en passkey-flow als de accordeurs. Ná activatie koppel je projecten (ZZP'er/uitvoerder) of ZZP'ers (detacheerder) in dit scherm."
               : 'De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + tweede factor.'}
         </DialogDescription>
+        <p className="hint" data-testid="uitnodig-rolgroep" style={{ marginTop: 0 }}>
+          <b>Rolgroep:</b> {ROLGROEPEN[soort].label}
+        </p>
         <FormField label="Naam" htmlFor="uitnodig-naam">
           <input
             id="uitnodig-naam"

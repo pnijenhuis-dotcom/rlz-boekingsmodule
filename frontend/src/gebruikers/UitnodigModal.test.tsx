@@ -65,3 +65,69 @@ describe('UitnodigModal — veldwerker zonder mail (steigerbouw-run A4, 25-08)',
     expect(onUitgenodigd).toHaveBeenCalledWith(expect.objectContaining({ mail_uitgesteld: true, mail_verzonden: false }))
   })
 })
+
+describe('UitnodigModal — rolgroep volgt de ingang (bugfix 04-09, casus "+ Veldwerker" maakte een kantoormedewerker)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  function fetchMetVangnet(bodies: Record<string, unknown>[]) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/auth/uitnodigingen')) {
+        bodies.push(JSON.parse(String(init?.body)))
+        return new Response(
+          JSON.stringify({
+            uitnodiging_id: 'u1', gebruiker_id: 'g1', token: 't', verloopt_op: '2026-09-01T00:00:00Z',
+            mail_verzonden: true, mail_fout: null, mail_uitgesteld: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  }
+
+  it('productiepad: gemount als medewerker, daarna soort → veldwerker: rol wordt een veldrol, bron = veldwerkers, rolgroep zichtbaar', async () => {
+    const gebruiker = userEvent.setup()
+    const bodies: Record<string, unknown>[] = []
+    fetchMetVangnet(bodies)
+    const props = { administraties: ADMINISTRATIES, open: true, onSluiten: () => {}, onUitgenodigd: () => {} }
+    const { rerender } = render(<UitnodigModal soort="medewerker" {...props} />)
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent('Rolgroep: Kantoormedewerker')
+    // Kruis-case: op de kantoor-ingang eerst "Beheerder" kiezen …
+    await gebruiker.selectOptions(screen.getByLabelText('Rol'), 'beheerder')
+    // … dan wisselt de ingang naar veldwerker terwijl de component gemount blijft (de bug van 21-08).
+    rerender(<UitnodigModal soort="veldwerker" {...props} />)
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent("Rolgroep: Veldwerker (ZZP'er · Uitvoerder · Detacheerder)")
+    expect((screen.getByLabelText('Rol') as HTMLSelectElement).value).toBe('zzper')
+    await gebruiker.type(screen.getByLabelText('Naam'), 'Stefan B.')
+    await gebruiker.type(screen.getByLabelText('E-mailadres'), 'stefan@test.local')
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verstuur uitnodiging' }))
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]).toMatchObject({ rol: 'zzper', bron: 'veldwerkers' })
+  })
+
+  it('kantoor-ingang stuurt bron=kantoor, accordeur-ingang bron=klant_accordeurs mét rol klant_accordeur', async () => {
+    const gebruiker = userEvent.setup()
+    const bodies: Record<string, unknown>[] = []
+    fetchMetVangnet(bodies)
+    const props = { administraties: ADMINISTRATIES, open: true, onSluiten: () => {}, onUitgenodigd: () => {} }
+    const { unmount } = render(<UitnodigModal soort="medewerker" {...props} />)
+    await gebruiker.selectOptions(screen.getByLabelText('Rol'), 'boekhouding_projecten')
+    await gebruiker.type(screen.getByLabelText('Naam'), 'Demi')
+    await gebruiker.type(screen.getByLabelText('E-mailadres'), 'demi@ak-nijenhuis.nl')
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verstuur uitnodiging' }))
+    expect(bodies.at(-1)).toMatchObject({ rol: 'boekhouding_projecten', bron: 'kantoor' })
+    unmount()
+
+    render(<UitnodigModal soort="accordeur" {...props} />)
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent('Rolgroep: Klant-accordeur')
+    await gebruiker.type(screen.getByLabelText('Naam'), 'R. de Groot')
+    await gebruiker.type(screen.getByLabelText('E-mailadres'), 'r@klant.nl')
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))
+    await gebruiker.click(screen.getByRole('button', { name: 'Verstuur uitnodiging' }))
+    expect(bodies.at(-1)).toMatchObject({ rol: 'klant_accordeur', bron: 'klant_accordeurs' })
+  })
+})

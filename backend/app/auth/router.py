@@ -99,6 +99,11 @@ def uitnodiging_aanmaken(
     actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> schemas.UitnodigingAanmakenResponse:
     try:
+        # Bugfix 04-09: de rolgroep moet bij de aanroepende ingang passen (óók voor een Beheerder) — 422.
+        service.toets_rolgroep_bij_bron(bron=payload.bron, rol=payload.rol)
+    except service.RolgroepPastNietBijIngang as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    try:
         # 31-08: een niet-Beheerder mét veldwerkerbeheer-recht maakt uitsluitend veldwerkers
         # aan binnen de eigen scope (server-side begrenzing; Beheerder = ongewijzigd).
         service.toets_veldwerkerbeheer_uitnodiging(
@@ -114,6 +119,7 @@ def uitnodiging_aanmaken(
             rol=payload.rol,
             administratie_ids=payload.administratie_ids,
             uitnodiging_later=payload.uitnodiging_later,
+            bron=payload.bron,
         )
     except service.EMailAlInGebruik as exc:
         # Punt 22 (28-08, casus 9ba50485-…): leesbare 409 i.p.v. UniqueViolation → generieke 500.

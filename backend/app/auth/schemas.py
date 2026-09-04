@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_serializer
 
 from app.db.models import GebruikerRol
 from app.schemas_basis import StrikteInvoer
+
+
+# Bugfix 04-09 (casus "+ Veldwerker" maakte een kantoormedewerker aan): de aanroepende INGANG reist mee,
+# zodat de server een rolgroep die niet bij de ingang past weigert (422) én de audit de ingang draagt.
+# None = onbekend (oudere client/scripts) — dan alleen de bestaande poorten.
+UitnodigingBron = Literal["kantoor", "veldwerkers", "klant_accordeurs", "planning"]
 
 
 class UitnodigingAanmakenRequest(StrikteInvoer):
@@ -17,6 +24,7 @@ class UitnodigingAanmakenRequest(StrikteInvoer):
     # A4 (steigerbouw-run 25-08): account aanmaken zónder mail — status 'uitgenodigd', de
     # uitnodiging wordt later verstuurd via de bestaande "Opnieuw mailen"-knop.
     uitnodiging_later: bool = False
+    bron: UitnodigingBron | None = None
 
 
 class DigestVoorkeurDto(BaseModel):

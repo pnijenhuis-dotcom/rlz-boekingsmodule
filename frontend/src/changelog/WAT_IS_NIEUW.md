@@ -6,6 +6,11 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Nieuwe gebruiker krijgt altijd de rol van de tab
+
+- **"+ Veldwerker uitnodigen" maakt weer een veldwerker aan.** Op de pagina Gebruikers & toegang kon de knop op de tab Veldwerkers een kantoormedewerker aanmaken, omdat de rol uit een eerder geopende dialoog bleef staan. De dialoog start nu bij elke tab opnieuw met de juiste rolgroep en toont die expliciet bovenaan ("Rolgroep: Veldwerker …", "Kantoormedewerker …", "Klant-accordeur"). Ook de server weigert sindsdien een rol die niet bij de gebruikte tab past, en legt in het logboek vast vanaf welke tab of knop een account is aangemaakt.
+- **Al fout aangemaakte accounts herstel je door te archiveren en opnieuw aan te maken.** Een rol wijzigen bestaat bewust niet. Archiveer het verkeerde account (🗑), wijzig zo nodig eerst het e-mailadres van dat account, en maak de veldwerker opnieuw aan via de tab Veldwerkers.
+
 ## 2026-09-04 — Controles volgen de opgeslagen projectverdeling direct
 
 - **De controles zien je verdeling meteen.** Sloeg je een projectverdeling op, dan bleven "Verplichte velden" en "Projectverdeling" tot nu toe op de oude stand staan tot je iets in het boekvoorstel wijzigde. Nu draaien de controles direct opnieuw zodra de verdeling is opgeslagen — een geldige verdeling maakt beide controles groen, ook zonder dat de leverancier op "vooringevuld" staat.

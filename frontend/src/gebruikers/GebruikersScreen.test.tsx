@@ -47,6 +47,7 @@ function installMock(opties: {
   mailVerzonden?: boolean
   apparaten?: unknown[]
   openWerk?: unknown
+  uitnodigBodies?: Record<string, unknown>[]
 }) {
   vi.stubGlobal(
     'fetch',
@@ -59,6 +60,21 @@ function installMock(opties: {
       }
       if (url === '/auth/administraties') {
         return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Molenhof Beheer B.V.' }] }))
+      }
+      if (url === '/auth/uitnodigingen' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        opties.uitnodigBodies?.push(body)
+        return Promise.resolve(
+          jsonResponse({
+            uitnodiging_id: 'u-nieuw',
+            gebruiker_id: 'eeeeeeee-0000-0000-0000-00000000000e',
+            token: 'token-nieuw',
+            verloopt_op: new Date(Date.now() + 72 * 3600e3).toISOString(),
+            mail_verzonden: true,
+            mail_fout: null,
+            mail_uitgesteld: body.uitnodiging_later === true,
+          }),
+        )
       }
       if (url.endsWith('/uitnodiging-opnieuw') && init?.method === 'POST') {
         opties.postAanroepen?.push(url)
@@ -359,6 +375,60 @@ describe('GebruikersScreen', () => {
 
     renderScherm('/gebruikers#accordeurs')
     await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+  })
+
+  it('bugfix 04-09: de "+"-knop van élke tab maakt de rolgroep van díe tab aan — ook ná een kantoor-dialoog met "Beheerder"', async () => {
+    const uitnodigBodies: Record<string, unknown>[] = []
+    installMock({
+      uitnodigBodies,
+      gebruikers: [
+        gebruiker({ id: ANDER_ID, naam: 'Demi de Vries' }),
+        gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur' }),
+        gebruiker({ id: 'ffffffff-0000-0000-0000-00000000000f', naam: 'Z. Zzp', rol: 'zzper' }),
+      ],
+    })
+    const gebruikerEvent = userEvent.setup()
+    renderScherm()
+    await waitFor(() => expect(screen.getByText('Demi de Vries')).toBeInTheDocument())
+
+    async function vulEnVerstuur(naam: string, eMail: string) {
+      await gebruikerEvent.type(screen.getByLabelText('Naam'), naam)
+      await gebruikerEvent.type(screen.getByLabelText('E-mailadres'), eMail)
+      await gebruikerEvent.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))
+      await gebruikerEvent.click(screen.getByRole('button', { name: 'Verstuur uitnodiging' }))
+    }
+
+    // Tab Kantoor: dialoog openen, "Beheerder" kiezen en ANNULEREN (de kruis-case uit de casus).
+    await gebruikerEvent.click(screen.getByRole('button', { name: '+ Medewerker uitnodigen' }))
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent('Rolgroep: Kantoormedewerker')
+    await gebruikerEvent.selectOptions(screen.getByLabelText('Rol'), 'beheerder')
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
+    await waitFor(() => expect(screen.queryByTestId('uitnodig-rolgroep')).not.toBeInTheDocument())
+
+    // Tab Veldwerkers: de "+"-knop in het paneel → rolgroep veldwerker, rol standaard ZZP'er, bron veldwerkers.
+    await gebruikerEvent.click(screen.getByRole('tab', { name: 'Veldwerkers (1)' }))
+    await gebruikerEvent.click(await screen.findByRole('button', { name: '+ Veldwerker uitnodigen' }))
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent("Rolgroep: Veldwerker (ZZP'er · Uitvoerder · Detacheerder)")
+    expect((screen.getByLabelText('Rol') as HTMLSelectElement).value).toBe('zzper')
+    await vulEnVerstuur('Stefan B.', 'stefan@test.local')
+    await waitFor(() => expect(uitnodigBodies).toHaveLength(1))
+    expect(uitnodigBodies[0]).toMatchObject({ rol: 'zzper', bron: 'veldwerkers' })
+
+    // Tab Klant-accordeurs → klant_accordeur.
+    await gebruikerEvent.click(screen.getByRole('tab', { name: 'Klant-accordeurs (1)' }))
+    await gebruikerEvent.click(await screen.findByRole('button', { name: '+ Accordeur uitnodigen' }))
+    expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent('Rolgroep: Klant-accordeur')
+    await vulEnVerstuur('R. Nieuw', 'nieuw@klant.nl')
+    await waitFor(() => expect(uitnodigBodies).toHaveLength(2))
+    expect(uitnodigBodies[1]).toMatchObject({ rol: 'klant_accordeur', bron: 'klant_accordeurs' })
+
+    // Tab Kantoor → kantoorrol (default Boekhouding), bron kantoor.
+    await gebruikerEvent.click(screen.getByRole('tab', { name: 'Kantoor (1)' }))
+    await gebruikerEvent.click(await screen.findByRole('button', { name: '+ Medewerker uitnodigen' }))
+    expect((screen.getByLabelText('Rol') as HTMLSelectElement).value).toBe('boekhouding')
+    await vulEnVerstuur('Nieuwe Collega', 'collega@ak-nijenhuis.nl')
+    await waitFor(() => expect(uitnodigBodies).toHaveLength(3))
+    expect(uitnodigBodies[2]).toMatchObject({ rol: 'boekhouding', bron: 'kantoor' })
   })
 
   it('zoekveld filtert op naam/e-mail/administratie en paginering houdt 25 rijen per pagina', async () => {

@@ -166,3 +166,63 @@ class TestArchiveren:
         # Veldwerker zónder enige scope → fail-closed 403.
         los = maak_gebruiker(admin_engine, "zzper", "Zonder Scope")
         assert client.post(f"/auth/gebruikers/{los}/archiveren", headers=headers).status_code == 403
+
+
+class TestRolgroepBijIngang:
+    """Bugfix 04-09 (casus Peter): "+ Veldwerker uitnodigen" op /gebruikers maakte een KANTOORmedewerker aan — de
+    rol-state van de dialoog werd maar éénmalig geïnitialiseerd. De server dwingt nu de rolgroep van de aanroepende
+    ingang (`bron`) af, óók voor een Beheerder; de audit draagt de ingang."""
+
+    def _post(self, beheerder_id, rol: str, bron: str | None, administratie_ids):
+        body = _uitnodiging(rol, administratie_ids)
+        if bron is not None:
+            body["bron"] = bron
+        return client.post("/auth/uitnodigingen", json=body, headers=_bearer(beheerder_id, rol="beheerder"))
+
+    def test_veldwerkers_ingang_weigert_kantoorrol_ook_voor_beheerder(self, beheerder_id, administratie_id):  # noqa: F811
+        for rol in ("boekhouding", "boekhouding_projecten", "beheerder"):
+            resp = self._post(beheerder_id, rol, "veldwerkers", [administratie_id])
+            assert resp.status_code == 422, resp.text
+            assert "veldwerkers-ingang" in resp.json()["detail"]
+            assert "tab Kantoor" in resp.json()["detail"]
+        resp = self._post(beheerder_id, "klant_accordeur", "planning", [administratie_id])
+        assert resp.status_code == 422
+
+    def test_kantoor_ingang_weigert_veldrol_en_accordeur(self, beheerder_id, administratie_id):  # noqa: F811
+        for rol in ("zzper", "uitvoerder", "detacheerder", "klant_accordeur"):
+            resp = self._post(beheerder_id, rol, "kantoor", [administratie_id])
+            assert resp.status_code == 422, resp.text
+        resp = self._post(beheerder_id, "boekhouding", "klant_accordeurs", [administratie_id])
+        assert resp.status_code == 422
+
+    def test_passende_rolgroep_per_ingang_en_audit_draagt_bron(
+        self, beheerder_id, administratie_id, admin_engine: Engine  # noqa: F811
+    ):
+        gevallen = [
+            ("veldwerkers", "zzper"),
+            ("veldwerkers", "detacheerder"),
+            ("planning", "uitvoerder"),
+            ("kantoor", "boekhouding"),
+            ("kantoor", "beheerder"),
+            ("klant_accordeurs", "klant_accordeur"),
+        ]
+        for bron, rol in gevallen:
+            resp = self._post(beheerder_id, rol, bron, [administratie_id])
+            assert resp.status_code == 200, (bron, rol, resp.text)
+            gebruiker_id = resp.json()["gebruiker_id"]
+            with admin_engine.connect() as conn:
+                rij = conn.execute(
+                    text(
+                        "SELECT nieuwe_waarde FROM platform.audit_event WHERE actie = 'gebruiker_uitgenodigd' "
+                        "AND correlatie_id = :g"
+                    ),
+                    {"g": gebruiker_id},
+                ).scalar_one()
+            assert rij["rol"] == rol and rij["bron"] == bron
+
+    def test_zonder_bron_blijven_de_bestaande_poorten_gelden(self, beheerder_id, administratie_id):  # noqa: F811
+        """Oudere client/scripts zonder `bron`: geen uitspraak over de ingang (audit bron=null)."""
+        resp = self._post(beheerder_id, "boekhouding", None, [administratie_id])
+        assert resp.status_code == 200, resp.text
+        resp = self._post(beheerder_id, "zzper", None, [administratie_id])
+        assert resp.status_code == 200, resp.text

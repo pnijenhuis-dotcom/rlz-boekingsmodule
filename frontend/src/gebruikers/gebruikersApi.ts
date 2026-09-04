@@ -109,12 +109,17 @@ export function haalGebruikersOp(): Promise<GebruikersLijstDto> {
   return apiJson<GebruikersLijstDto>('/auth/gebruikers?inclusief_gearchiveerd=true')
 }
 
+/** Bugfix 04-09: de aanroepende ingang reist mee — de server weigert een rolgroep die er niet bij past (422)
+ * en de audit legt vast welke tab/knop het account maakte. */
+export type UitnodigingBron = 'kantoor' | 'veldwerkers' | 'klant_accordeurs' | 'planning'
+
 export function nodigUit(payload: {
   naam: string
   e_mail: string
   rol: string
   administratie_ids: string[]
   uitnodiging_later?: boolean
+  bron: UitnodigingBron
 }): Promise<UitnodigingResultaatDto> {
   return apiPostJson<UitnodigingResultaatDto>('/auth/uitnodigingen', payload)
 }

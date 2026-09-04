@@ -1029,9 +1029,13 @@ export function GebruikersScreen() {
         </div>
       )}
 
+      {/* Bugfix 04-09: de dialoog wordt PER SOORT gemount (key + conditioneel) — verse rol-state per ingang, zoals de
+          "+ ZZP'er"-dialoog in de planning-zijbalk al deed; nooit meer een kantoor-default die blijft hangen. */}
+      {uitnodigSoort !== null && (
       <UitnodigModal
-        soort={uitnodigSoort ?? 'medewerker'}
-        open={uitnodigSoort !== null}
+        key={uitnodigSoort}
+        soort={uitnodigSoort}
+        open
         administraties={administraties ?? []}
         onSluiten={() => setUitnodigSoort(null)}
         onUitgenodigd={(resultaat) => {
@@ -1050,6 +1054,7 @@ export function GebruikersScreen() {
           laad()
         }}
       />
+      )}
 
       {scopeVoor && (
         <ScopeModal

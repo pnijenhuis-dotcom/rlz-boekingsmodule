@@ -86,6 +86,40 @@ class VeldwerkerbeheerBegrenzing(AuthError):
     """Buiten de begrenzing van het fijnmazige veldwerkerbeheer-recht (31-08) — router → 403."""
 
 
+class RolgroepPastNietBijIngang(Exception):
+    """Bugfix 04-09: de gevraagde rol hoort niet bij de rolgroep van de aanroepende ingang — router → 422."""
+
+
+def toets_rolgroep_bij_bron(*, bron: str | None, rol: GebruikerRol) -> None:
+    """Bugfix 04-09 (casus Peter: "+ Veldwerker uitnodigen" op /gebruikers maakte een KANTOORmedewerker aan —
+    de rol-state van de dialoog werd maar éénmalig geïnitialiseerd): de aanroepende ingang bepaalt de rolgroep en
+    de server dwingt dat af, óók voor een Beheerder. `veldwerkers`/`planning` = uitsluitend veldrollen
+    (ZZP'er/uitvoerder/detacheerder), `kantoor` = uitsluitend kantoorrollen, `klant_accordeurs` = uitsluitend
+    klant-accordeur. Zonder bron (oudere client/scripts) geen uitspraak — de bestaande poorten blijven gelden."""
+    from app.auth.rollen import is_kantoorrol, is_veldrol
+
+    if bron is None:
+        return
+    if bron in ("veldwerkers", "planning"):
+        if not is_veldrol(rol):
+            raise RolgroepPastNietBijIngang(
+                f"Vanuit de veldwerkers-ingang kun je alleen een ZZP'er, uitvoerder of detacheerder aanmaken — "
+                f"niet de rol '{rol.value}'. Kantoormedewerkers nodig je uit op de tab Kantoor."
+            )
+        return
+    if bron == "klant_accordeurs":
+        if rol != GebruikerRol.KLANT_ACCORDEUR:
+            raise RolgroepPastNietBijIngang(
+                f"Vanuit de tab Klant-accordeurs kun je alleen een klant-accordeur uitnodigen — niet de rol '{rol.value}'."
+            )
+        return
+    if bron == "kantoor" and not is_kantoorrol(rol):
+        raise RolgroepPastNietBijIngang(
+            f"Vanuit de tab Kantoor kun je alleen kantoorrollen uitnodigen — niet de rol '{rol.value}'. "
+            "Veldwerkers maak je aan op de tab Veldwerkers, accordeurs op de tab Klant-accordeurs."
+        )
+
+
 def toets_veldwerkerbeheer_uitnodiging(
     *, actor_id: uuid.UUID, actor_rol: GebruikerRol, rol: GebruikerRol, administratie_ids: list[uuid.UUID]
 ) -> None:
@@ -135,6 +169,7 @@ def maak_uitnodiging(
     rol: GebruikerRol,
     administratie_ids: list[uuid.UUID],
     uitnodiging_later: bool = False,
+    bron: str | None = None,
 ) -> UitnodigingResultaat:
     """Beheerder-only (afgedwongen door de router-dependency, niet hier — zie deps.require_beheerder),
     sinds 31-08 mét de veldwerkerbeheer-uitzondering (router toetst toets_veldwerkerbeheer_uitnodiging).
@@ -197,6 +232,9 @@ def maak_uitnodiging(
                 "naam": naam,
                 "e_mail": e_mail,
                 "rol": rol.value,
+                # Bugfix 04-09: de aanroepende ingang (kantoor/veldwerkers/klant_accordeurs/planning; None = onbekend)
+                # — forensisch herleidbaar welke tab/knop het account maakte.
+                "bron": bron,
                 "administratie_ids": [str(a) for a in administratie_ids],
                 "status": GebruikerStatus.UITGENODIGD.value,
                 "mail_uitgesteld": uitnodiging_later,

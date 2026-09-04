@@ -340,6 +340,7 @@ function NieuweVeldwerkerDialog({
         rol,
         administratie_ids: [administratieId],
         uitnodiging_later: uitnodigingLater,
+        bron: 'planning',
       })
       onKlaar()
       setQrLink(`${window.location.origin}/activeren?token=${encodeURIComponent(resultaat.token)}`)
