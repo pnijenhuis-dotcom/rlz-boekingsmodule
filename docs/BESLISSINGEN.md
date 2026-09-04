@@ -1514,7 +1514,7 @@ Canoniek voor de bouwstatus van de tweede boekhoud-backend. Feitenbasis: `verken
 
 **Beslispunten STAP-0 → besluiten Peter 02-09 (verwerkt):** (2) storno = reversal, `button_draft` uit; (3) `date` = factuurdatum expliciet; (4) partners groepsgedeeld; (5) 0 %-inkoop = géén tax_ids (synthetische cache-rij); (7) cent-override ± € 0,02 mét chip; (8) `ref` = factuurnummer, `payment_reference` = betalingskenmerk uit de extractie; (9) Universal Verkoop: leesroute eerst (blok D). Niet in fase 1 (capability-contract, zichtbaar `NietOndersteund`/`GeenRlzCredentials`): verkoop/omzet/bank/doorbelasting/projectaanmaak voor Odoo-administraties, kasomzet-debiteur (beslispunt 6), rechtsgeldige PDF (§2.4 open), `account.tax` fixed/group-tarieven, `TaxDeclarations`-poort (Odoo = lock dates).
 
-**Klikpunten Peter:** (1) ~~TEST-boeking + tegenboeking via de adapter op company 1~~ **UITGEVOERD 04-09 — zie sectie "ODOO-ADAPTER BLOK E + LIVE KETEN-CYCLUS 04-09" en odoo-verkenning §7**; (2) Universal Verkoop als leesbron koppelen in de cloud (`make odoo-leesbron` mét `$ODOO_API_KEY`, knip = de dag waarop de facturatie naar Odoo ging) + `voorraad-rlz-sync --volledig`; (3) API-key "N-Module" zonder vervaldatum bewust? — rotatiebeleid; (4) ~~UX-ronde blok E~~ akkoord 03-09, gebouwd.
+**Klikpunten Peter:** (1) ~~TEST-boeking + tegenboeking via de adapter op company 1~~ **UITGEVOERD 04-09 — zie sectie "ODOO-ADAPTER BLOK E + LIVE KETEN-CYCLUS 04-09" en odoo-verkenning §7**; (2) ~~Universal Verkoop als leesbron koppelen in de cloud~~ **UITGEVOERD 04-09 (knip 01-09-2026, 30 Odoo-facturen/83 regels, 0 dubbel) — zie sectie "ODOO-AFRONDINGSRUN 04-09 — BLOK D"**; (3) API-key "N-Module" zonder vervaldatum bewust? — rotatiebeleid; (4) ~~UX-ronde blok E~~ akkoord 03-09, gebouwd.
 
 **Tests 03-09 (avond):** `tests/odoo` 44 (pure/client/blok D) + `tests/voorraad/test_rlz_uitstroom.py` 7 groen; volledige backend-suite `pytest tests` 3059 passed / 1 failed (8:50) — de ene rode was de herversleutel-guard `test_geen_onbekende_envelope_tabellen`: `platform.odoo_koppeling` draagt een `wrapped_data_key` maar stond niet in `app/security/herversleutel.py::ENVELOPE_TABELLEN` (KMS-sleutelrotatie zou de Odoo-API-key stil overslaan) → toegevoegd + testrij, hertest groen (52). Frontend vitest 908 groen, `tsc -b` groen. `alembic check` op dev: migratie 0101 vóór het committen van `sa.String()` naar `sa.Text()` gezet (Mapped[str] = Text); de resterende VARCHAR/Text-drift (9 kolommen in `terugkerend_herbereken_run`, `crediteur_archiveer_werklijst`, `crediteur_dubbel_afmelding`) komt uit de eerdere migraties 0099/0100 van 03-09 — opruimpunt (losse `ALTER TYPE text`-migratie), niet in deze run gedaan. Migraties 0101 + 0102 gedraaid op de dev-DB (`Running upgrade 0100 -> 0101`, `0101 -> 0102`), live 200 op `GET /instellingen/administraties` (16 rijen mét `boekhoud_backend`/Odoo-stand; `GET …/odoo` zonder koppeling = 404, zonder token = 401) op de gemigreerde dev-DB via een eigen uvicorn op 8011, schema-referentiedump ververst (head 0102).
 
@@ -2169,7 +2169,7 @@ triage: kantoorrol + precies één administratie + status `uitgenodigd` (nooit g
 
 ## ODOO-AFRONDINGSRUN 04-09 — BLOK 0: MEE-LIFT-PUNTEN (besluiten Peter 04-09; vier kleine losse commits; geen migratie)
 
-Aanloop naar de Universal-Steigerbouw-overstap (blokken A–D in de secties hieronder). Blok 0 = vier losse punten uit de
+Aanloop naar de Universal-Steigerbouw-overstap (blokken A/C1, B, C2, D in de secties direct hieronder — blok A + B + C1 GEBOUWD + GETEST, D UITGEVOERD in de cloud, C2 VOORBEREID mét klikpunt). Blok 0 = vier losse punten uit de
 beslispunten-lijsten van 04-09 (verplichtingen ③, UI-fixes blok C3, rol-matrix) — elk klein, elk eerst.
 
 | # | Punt | Uitkomst | Status | Vindplaats |
@@ -2178,6 +2178,170 @@ beslispunten-lijsten van 04-09 (verplichtingen ③, UI-fixes blok C3, rol-matrix
 | 0.2 | "+ Project aanmaken" op /planning óók voor Boekhouding | `MijnToegangDto.mag_project_aanmaken` (server-side uit `projecten.kantoor._AANMAAK_ROLLEN` — één bron met het aanmaak-endpoint en de combobox-ingang C3); `PlanningScreen` toont de knop op die vlag i.p.v. `is_beheerder_of_bp` (die vlag blijft voor leverancierbeheer). Rol-matrix: `POST /projecten/{aid}` stond al buiten de skip-lijst (C3) = de bewijsvoering dat Boekhouding het endpoint mag; `TestMijnToegang` toetst nu Boekhouding → `mag_project_aanmaken=true`, `is_beheerder_of_bp=false` | GEBOUWD + GETEST 04-09 | `app/uren/{schemas,router}.py`; `frontend/src/auth/useMijnToegang.ts`, `planning/PlanningScreen.tsx`; `tests/uren/test_kantoor_api.py::TestMijnToegang` |
 | 0.3 | `GET /projecten/{aid}/volgend-nummer` kantoorrol-poort | **Al gedekt, bewezen:** de projecten-kantoorrouter draagt router-breed `vereis_kantoorrol` (rollen-gate-fix 21-08) én het pad staat sinds C3 04-09 in `_kantoor_endpoints` van de rol-matrix — `TestExterneRollenGeweigerd` bewijst 403 voor accordeur/veldrollen, `TestKantoorBlijftWerken` geen rolweigering voor Boekhouding (6 tests groen 04-09). Geen codewijziging nodig; capture zodat het punt niet opnieuw opkomt | GEDEKT (capture 04-09) | `app/projecten/kantoor_router.py` (router-dependency); `tests/security/test_rol_endpoint_gates.py` regel "volgend-nummer" |
 | 0.4 | Keuzekaarten = hét UX-patroon voor wizard-keuzes | Rij toegevoegd aan "UX-PATRONEN ALS NORM" (norm + referentie-implementatie + mockup-verwijzing `odoo-koppeling-ui.html` blok 2/⑧) | VASTGELEGD 04-09 | sectie "UX-PATRONEN ALS NORM" |
+
+## ODOO-AFRONDINGSRUN 04-09 — BLOK A + C1: BOEKINGSGEHEUGEN-MAPPING RLZ → ODOO BIJ EEN OVERSTAP + OVERGANGSDATUM WIJZIGEN (besluiten Peter 04-09, beslispunten 1 + 5/7 van "ODOO-ADAPTER BLOK E"; migratie 0111; parallelle bouw backend/frontend op CONTRACT_A; GEBOUWD + GETEST 04-09)
+
+Besluit Peter 04-09 (beslispunt 1 van "ODOO-ADAPTER BLOK E"): een overstap (ingang B, volledige backend) krijgt een
+VERPLICHTE mapping-stap RLZ-grootboek → Odoo-account op rekeningcode en RLZ-btw-tarief → Odoo-tax; deterministisch
+voorstel, de mens bevestigt de hele tabel vóór de overstap doorgaat; het boekingsgeheugen (en daarmee de autoboek-
+opt-ins) blijft werken doordat de observaties VÓÓR de engine vertaald worden — `app_bevestigd` blijft (de mens
+bevestigde het bóékgedrag, niet het rekeningnummer). Migratie 0111 (schema-only, RLS ENABLE+FORCE, GRANT zonder
+UPDATE/DELETE = append-only).
+
+| Wat | Status | Vindplaats |
+|---|---|---|
+| Tabel `boekhouding.odoo_rekening_mapping` (soort grootboek/btw, rlz_id, rlz_code/naam, odoo_lokaal_id, odoo_id (0 = synthetisch geen-btw), bron zelfde_code/code_verlengd/tarief/handmatig, versie, bevestigd_door/op; UNIQUE (administratie, soort, rlz_id, versie); geldend = hoogste versie) | GEBOUWD, dev-DB gemigreerd 0110→0111, `alembic check` schoon, guard groen | `migrations/versions/0111_odoo_rekening_mapping.py`, `app/odoo/models.py::OdooRekeningMapping` |
+| In-gebruik-bepaling: RLZ-grootboek-ids = `boeking_observatie.gb_id` ∪ `boekvoorstel_regel.ledger_id` van documenten in een niet-terminale status (niet geboekt/afgewezen/verwijderd/gesplitst/samengevoegd/geaccordeerd); idem btw; óók rijen die niet meer in de cache staan (code/naam null, tóch te mappen); tellingen per rij | GEBOUWD + GETEST | `app/odoo/mapping.py::rlz_in_gebruik`, `TERMINALE_STATUSSEN` |
+| Deterministisch voorstel grootboek: (1) exact gelijke code = `zelfde_code` (groen), (2) RLZ-code + "00" == Odoo-code = `code_verlengd` (oranje, bevestig); méér dan één Odoo-rekening met die code = geen voorstel | GEBOUWD + GETEST (puur) | `mapping.py::bepaal_grootboek_voorstel` |
+| Deterministisch voorstel btw (`tarief`): verlegd → Odoo-verlegd-tarieven (bij meerdere: percentage uit de RLZ-naam), 0 %/vrijgesteld → synthetisch "Geen btw (0%)" (= géén tax_ids), anders exact gelijk percentage; telkens precies één kandidaat, favoriet weegt niet mee | GEBOUWD + GETEST (puur) | `mapping.py::bepaal_btw_voorstel` |
+| `POST /administraties/{id}/odoo/overstap/voorbereiden` (Beheerder-only): voorvalidaties = overstap + probe groen (anders 422 mét rapport) → live read-only Odoo-grootboek/-btw (losse `_Vertaler`, niets in de DB) → in-gebruik-rijen → voorstel + Odoo-keuzelijsten + telling | GEBOUWD + GETEST | `mapping.py::voorbereid_overstap`, `lees_live_odoo_stamgegevens` (test-seam), `router.py::odoo_overstap_voorbereiden`, `schemas.OdooOverstapVoorbereidingDto` |
+| `POST …/odoo/overstap` mét VERPLICHT `mapping {grootboek[], btw[]}` (rlz_id → odoo_id): live lijsten opnieuw gelezen, `valideer_mapping` (élke in-gebruik-rij moet een bestaande Odoo-tegenhanger hebben — anders 422 "Rekening-mapping onvolledig: N … en M … — niets opgeslagen"; onbekende rlz_id = 422), rijen versie 1 ín dezelfde transactie als de koppeling, bron = voorstel-reden als de mens het voorstel volgde, anders `handmatig`; audit `odoo_rekening_mapping_vastgelegd` (tellingen per soort/bron + compacte rijen, nooit de key). Lege administratie mag met lege mapping | GEBOUWD + GETEST (bestaande overstap-tests aangepast: `mapping` in de body) | `service.py::koppel_overstap` (schrijftransactie nu `scoped_session(administratie_id, …)` i.v.m. RLS), `toets_overstap_voorwaarden` (gedeeld), `mapping.py::valideer_mapping/schrijf_mapping` |
+| Geheugen-wiring — één vertaalpunt per lader: `geheugen/service.py::laad_engine_observaties` (gebruikt door `voorstel_voor` = controlescherm + autoboek-poorten én door `documenten/regel_prefill._engine_observaties`), `regel_gb.laad_observaties`; `geldende_mapping` per aanroep (geen module-cache), `vertaal_observaties`: gb vertaald, btw via mapping (niet vertaalbaar → None), `project_id = None`; gb ∉ mapping = ongewijzigd; bron/bron_datum/regel_sleutel intact → app_bevestigd blijft, RLZ- en Odoo-stemmen op dezelfde rekening splitsen niet | GEBOUWD + GETEST (puur + DB: voorstel_voor, regel_gb, prefill-lader, geen split) | `app/geheugen/service.py`, `app/geheugen/regel_gb.py`, `app/documenten/regel_prefill.py`, `mapping.py::vertaal_observaties/vertaal_regel_observaties` |
+| `GET …/odoo/mapping` (Beheerder-only): geldende rijen mét naam bevestiger + Odoo-keuzelijsten uit de gesyncte cache (niet-verdwenen rijen mét `odoo_id_koppeling`) + laatst bevestigd; 404 zonder koppeling, leeg = lege lijsten | GEBOUWD + GETEST | `mapping.py::mapping_stand`, `router.py::odoo_mapping_stand`, `schemas.OdooMappingStandDto` |
+| `PUT …/odoo/mapping/{soort}/{rlz_id}` `{odoo_id}` (Beheerder-only): toets tegen `odoo_id_koppeling` (0 alleen bij btw), nieuwe rij versie+1 bron `handmatig`, audit `odoo_rekening_mapping_gecorrigeerd` oud→nieuw; 422 onbekende soort/odoo_id, 404 zonder koppeling; additief: nog geen rij = versie 1 | GEBOUWD + GETEST | `mapping.py::corrigeer_rij`, `router.py::odoo_mapping_corrigeren` |
+| C1: `PUT …/odoo/overgangsdatum` weigert met `OvergangsdatumGeblokkeerd` → 409 `{"bericht"}` als een Odoo-boeking (soort 'boeking', state ≠ 'cancel') bestaat van een document mét factuurdatum < nieuwe datum; melding noemt aantal + oudste boekstuk ("BILL/2026/06/0001 op 05-06-2026 is al in Odoo geboekt — kies een datum op of vóór 05-06-2026 of boek die factuur tegen"); datum gelijk aan de oudste factuurdatum mag; audit ongewijzigd, niets gewijzigd bij 409 | GEBOUWD + GETEST | `service.py::_toets_overgangsdatum_tegen_odoo_boekingen`, `OvergangsdatumGeblokkeerd`, `router.py::_koppel_fout` |
+| Rol-matrix +3 (voorbereiden, GET mapping, PUT mapping) — Beheerder-only volgt de `/odoo`-skip | GEBOUWD, sweep groen | `tests/security/test_rol_endpoint_gates.py::_kantoor_endpoints` |
+| Tests | 41 in `tests/odoo/test_mapping.py` + 5 in `tests/geheugen/test_odoo_mapping_vertaling.py`; bestaande `tests/odoo/test_router.py` aangepast (`probe_groen` patcht óók de live-lees; `_overstap` stuurt een lege mapping) | zie bestanden |
+| Migratie-routine | (1) `make -C backend migrate` dev-DB: "Running upgrade 0110 -> 0111" GEDAAN; (2) live-200 op de nieuwe routes = coördinator; (3) schema-dump = coördinator | — |
+
+### Beslispunten Peter (blok A, backend)
+1. **Regel 2 "code + 00"** (RLZ 4808 ↔ Odoo 480800 = oranje voorstel "bevestig"): akkoord als deterministische voorstelregel? Alternatief: alleen exacte code (levert bij Universal bijna niets op) of een extra regel op NAAM-gelijkheid (bewust niet gebouwd: naam-matching is fuzzy, geen "code voor cijfers").
+2. **Projectmapping**: een vertaalde observatie krijgt `project_id = None` — RLZ-projecten en Odoo-analytic-accounts zijn verschillende registers; het project-geheugen begint dus leeg ná de overstap (harde projectplicht-check blijft onverkort). Wil je een tweede mapping-soort 'project' (RLZ-project ↔ analytic account, op naam/code) in een volgende ronde?
+3. **Open boekvoorstellen mét RLZ-GB's ná de overstap**: de mapping vertaalt het GEHEUGEN, niet de opgeslagen `boekvoorstel_regel.ledger_id/taxrate_id` van documenten die nog open stonden (ze tellen wél mee als "in gebruik", zodat de rij gemapt is). De adapter faalt op zo'n regel fail-loud (`OnbekendeOdooId`) — voorstel: (a) een eenmalige, expliciete nazorgstap "open voorstellen hervertalen via de mapping" (nieuwe versie van het voorstel, audit; mens ziet chip), óf (b) de controleur kiest opnieuw per document. Niet gebouwd — jouw keuze.
+4. **Verlegd-tarief mét meerdere Odoo-verlegd-codes** (bv. "21% R" én "9% R"): het voorstel leest het percentage uit de RLZ-naam ("… verlegd (hoog)" bevat geen getal → geen voorstel, mens kiest). Acceptabel, of wil je "hoog"/"laag" als synoniemen voor 21/9 %?
+5. **Correctie zonder bestaande rij** (`PUT` op een rlz_id dat pas ná de overstap in gebruik bleek) schrijft nu versie 1 — additief gedrag, bewust niet geweigerd. Akkoord?
+6. **Bestaande overgestapte administraties zonder mapping** (company 1 dev-keten 04-09): geen backfill — het geheugen blijft daar ongevertaald tot een mapping bestaat. Er is géén endpoint om een mapping ACHTERAF voor een al overgestapte administratie aan te maken (de wizard-stap zit vóór de overstap); wél kan het per rij via de correctie-PUT (versie 1). Wil je een aparte "mapping alsnog vastleggen"-route?
+
+### Frontend (agent A-frontend)
+
+Besluit Peter 04-09 (beslispunt 1 van "ODOO-ADAPTER BLOK E"): de volledige overstap krijgt een VERPLICHTE mapping-stap
+RLZ-grootboek → Odoo-account en RLZ-btw → Odoo-tax; deterministisch voorstel, mens bevestigt de hele tabel; correctie per
+rij ná de overstap (append-only). Frontend gebouwd tegen CONTRACT_A.md; types lokaal in `instellingenApi.ts` (niet in
+`api/types.ts` — parallelle-run-afspraak).
+
+| Wat | Vindplaats | Status |
+|---|---|---|
+| **API-laag**: `voorbereidOdooOverstap` (POST …/odoo/overstap/voorbereiden), `odooOverstap` mét verplichte `mapping`, `haalOdooMappingOp` (404 → null), `corrigeerOdooMapping` (PUT …/odoo/mapping/{soort}/{rlz_id}); DTO-types 1-op-1 met het contract (Decimal = string; `percentage`/`rlz_percentage` = canonieke FRACTIE 0.21 — overgenomen uit de backend-schema's) | `frontend/src/instellingen/instellingenApi.ts` (sectie "Rekening-mapping RLZ → Odoo") | GEBOUWD |
+| **Herbruikbaar component `OdooMappingTabel`** — twee blokken "Grootboek (N)" / "Btw-tarieven (M)"; per rij RLZ-code · naam (btw: naam · percentage · verlegd), regel "in gebruik: a× geheugen · b open regels", `SearchableCombobox` (grootboek-opties code + naam "480800 · Huur materieel"; btw-opties percentage + naam, verlegd benoemd, synthetische rij "Geen btw (0%) — geen btw-code in Odoo" = odoo_id 0), herkomst-chip (groen `zelfde code` / oranje `code + 00 — bevestig` / oranje `tarief` / neutraal `handmatig` / rood `kies`), kop-teller als restant-balk ("N van M gekoppeld", open = teal "nog K te kiezen", compleet = groen "✓ alles gekoppeld"), filter "alleen nog te kiezen" (alleen in kies-modus; leeg geworden blok = "Alles in dit blok is gekoppeld."), lege in-gebruik-lijst = één zin "Geen boekingsgeheugen of open regels om te vertalen — mapping niet nodig." Corrigeer-modus: versie-badge `vN` bij versie > 1, rij toont "Opslaan…" tijdens de PUT. Pure helpers (getest): `rijenUitVoorbereiding`, `rijenUitStand`, `mappingInvoer`, `mappingTelling`, `mappingCompleet`, `bronChip`, `btwOpties`, `grootboekOpties`, `percentageTekst` | `frontend/src/instellingen/OdooMappingTabel.tsx`; CSS additief `.odoo-mapping-tabel td/th` (compacte padding) in `styles/components.css` | GEBOUWD + GETEST (10) |
+| **Wizard ingang B volledig** = 5 stappen `koppelvorm → verbinding → company → mapping → resultaat`. Company-stap: knop "Koppeling opslaan" vervangen door "Verder →" (disabled zonder company/overgangsdatum) → `voorbereidOdooOverstap`; 422 = rapport rood op de company-stap, niets opgeslagen. Mapping-stap: kopregel "✓ Rechten-probe groen · company · overgang per … · N Odoo-rekeningen · M Odoo-taxen", tabel mét voorstel vooringevuld, "Koppeling opslaan →" disabled tot compleet (hint benoemt waarom), POST …/odoo/overstap mét `mapping`; 422 (mapping onvolledig) = bericht + "Niets is opgeslagen". Kiest de mens iets anders dan het voorstel → chip `handmatig`; terug op het voorstel → de voorstel-chip terug (spiegelt de server-`bron`). Ingang A en de leesbron-variant ongewijzigd (leesbron blijft 5 stappen mét knip) | `frontend/src/instellingen/OdooKoppelWizard.tsx` | GEBOUWD + GETEST (wizard-suite 7) |
+| **Backend-blok rij "Rekening-mapping"** (onder Stamgegevens, alleen `boekhoud_backend === 'odoo'` — de leesbron-rij kent 'm niet): "N grootboek · M btw · bevestigd dd-mm HH:MM door <naam>" óf "geen mapping — nieuwe Odoo-administratie zonder RLZ-verleden" (dan géén knop: er is niets te corrigeren); knop "Mapping bekijken/corrigeren…" → Radix-`Dialog` (breed, zónder auto-focus — anders klapt de eerste combobox direct open) mét `OdooMappingTabel` in corrigeer-modus: keuze = PUT → stand vervangen door de server-response, toast "Mapping gecorrigeerd (v2) — 4808 → 424000", 422 = rode regel onder de tabel, rij houdt oude waarde; leegmaken van een rij kan niet (de overstap eiste een tegenhanger) | `frontend/src/instellingen/OdooBackend.tsx` (`useOdooMapping`, `OdooMappingDialog`) | GEBOUWD + GETEST |
+| **C1 "Overgangsdatum wijzigen…"** — `linkbtn` achter "overgestapt per …" (alleen bij een overstap = overgangsdatum aanwezig; niet bij gearchiveerd) → dialoog mét datumveld (huidig vooringevuld, hint "Huidig: …"), uitleg "Facturen mét factuurdatum vóór deze datum boeken in Reeleezee …", opslaan disabled zolang de datum gelijk is; `zetOdooOvergangsdatum`; 409 = servertekst rood (aantal + oudste boekstuk) + hint "Niets gewijzigd — kies een datum op of vóór dat boekstuk, of boek die factuur eerst tegen." — dialoog blijft open; 200 = toast + stand herladen + lijst herladen | `OdooBackend.tsx` (`OvergangsdatumDialog`) | GEBOUWD + GETEST |
+| **Tests** | `OdooMappingTabel.test.tsx` (10: helpers puur + weergave/keuze/filter/leeg/corrigeer-modus), `OdooKoppelWizard.test.tsx` (7, +2: volledig mét mapping-stap + POST-body mét mapping; voorbereiden-422; lege lijst = direct opslaan), `InstellingenScreen.test.tsx` (+3: mapping-rij + dialoog + correctie-PUT → v2; overgangsdatum 409 blijft open → 200 dicht; leesbron toont géén mapping-rij/knop; bestaande Odoo-test + "geen mapping"-assert; stap-telling 4 → 5). Suite `src/instellingen`: 16 bestanden / 138 tests groen (incl. blok-B-tests van de andere agent); `npx tsc -b` schoon | — | GROEN |
+
+#### Interpretaties / afwijkingen frontend (beslispunten Peter)
+
+1. **Kop-teller als restant-balk** (contract: "kop-teller N van M gekoppeld"): uitgevoerd als de bestaande `.restant-balk`
+   (UX-patroon "één voortgangsbalk als enige waarheid": open = teal, compleet = groen ✓). Geen nieuwe CSS.
+2. **Chip `handmatig`** (niet in het contract): kiest de mens iets anders dan het voorstel, dan is de oranje/groene
+   voorstel-chip niet meer waar — de rij krijgt de neutrale chip `handmatig` (bestaande `.chip.handmatig`), exact de `bron`
+   die de server vastlegt. Terug op het voorstel = voorstel-chip terug.
+3. **Percentage = fractie**: de backend-schema's leveren `percentage`/`rlz_percentage` als canonieke fractie (0.21) en zetten
+   het RLZ-verlegd-percentage op 0 (RLZ-conventie). Weergave ×100 ("21%"); bij een verlegd RLZ-tarief wordt géén "0%" getoond
+   maar alleen het label "verlegd". Contract-tekst zei "Decimal" zonder eenheid — dit is de interpretatie die met de
+   backend klopt (geverifieerd op `app/odoo/schemas.py`).
+4. **"Mapping bekijken/corrigeren…" verborgen bij een lege mapping** (Odoo-administratie zonder RLZ-verleden): er is niets
+   te corrigeren, dus alleen de tekst. Wil Peter de knop tóch (bv. om de lege stand te tonen), is dat één regel.
+5. **Rij leegmaken in corrigeer-modus kan niet**: de overstap eiste een tegenhanger per in-gebruik-rij en het geheugen
+   vertaalt erlangs; een lege rij zou een stil gat in de vertaling zijn. De combobox meldt `null` wel, de dialoog negeert 'm.
+6. **Geen auto-focus in de mapping-dialoog**: Radix zet focus op het eerste focusbare element = de eerste combobox, die
+   daardoor direct zijn lijst uitklapt. `onOpenAutoFocus` geblokkeerd; focus-trap/Escape blijven werken.
+7. **C1 alleen zichtbaar bij een overstap**: een via ingang A aangemaakte Odoo-administratie heeft geen overgangsdatum en
+   dus geen knop (conform contract "alleen bij volledige backend" — geïnterpreteerd als "mét overgangsdatum").
+8. **Mockup**: `odoo-koppeling-ui.html` §2 kent de mapping-stap nog niet (stap 4 = "Opslaan + eerste sync"). De gebouwde
+   vorm volgt de UX-patronen-norm (voorstel-kaart-chips, restant-balk, lege stand = zin). Mockup-aanvulling = klikpunt
+   coördinator/Peter, niet door deze agent gedaan (hot-file-regel geldt niet voor de mockup, maar de norm is "mockup =
+   akkoord Peter" — dus eerst akkoord).
+9. **Regel 2 (code + "00")** wordt in de UI expliciet als oranje "bevestig" getoond — het beslispunt over die regel zelf
+   ligt bij de backend-agent/Peter (CONTRACT_A "Vermeld regel 2 als beslispunt").
+
+#### Coördinatie-notitie
+`InstellingenScreen.test.tsx` is door de blok-B-agent gelijktijdig bewerkt (optie `mijnToegang` + mock `/uren/kantoor/mijn-toegang`
++ 2 tests); één tussentijdse accolade-botsing is door die agent zelf hersteld. Eindstand van het bestand is groen; bij het
+committen per blok de hunks splitsen (mijn hunks: `odooMapping`-optie, de drie `/odoo/mapping`-/`/odoo/overgangsdatum`-routes,
+`stap 1 van 5`, de "geen mapping"-asserts in de bestaande Odoo-test en de describe "rekening-mapping + overgangsdatum").
+
+## ODOO-AFRONDINGSRUN 04-09 — BLOK B: MATERIAALCATALOGUS LOS VAN DE UREN-OPT-IN (besluit Peter 04-09, beslispunt 9 van "ODOO-ADAPTER BLOK E"; geen migratie; GEBOUWD + GETEST 04-09)
+
+**Aanleiding.** Live keten 04-09 stap 5: de product.product-brug (`app/odoo/producten.py::leg_brug`) strandde omdat élke
+materiaal-functie achter `uren/service.py::_administratie_met_opt_in` (`uren_meerwerk_ingeschakeld`) zat — een Odoo-administratie
+zónder steigerbouw-tak kon geen catalogus vullen, dus ook geen brug leggen ("uren_meerwerk moest AAN").
+
+**Besluit.** De CATALOGUS (leveranciers, categorieën, producten, seed) en de product.product-BRUG zijn beschikbaar zodra een
+administratie (a) de uren-&-meerwerk-opt-in heeft ÓF (b) op de Odoo-backend draait (`boekhoud_backend == 'odoo'`) ÓF (c) een
+Odoo-leesbron-koppeling heeft (`platform.odoo_koppeling` aanwezig, óók `alleen_lezen`). Bestellingen, transport, materiaalstand,
+materiaalmatch en alles wat planning/weekstaten raakt BLIJFT uren-gated (steigerbouw-tak). Bestaande Universal-administraties
+ongewijzigd.
+
+| Wat | Status | Vindplaats |
+|---|---|---|
+| Catalogus-poort `_administratie_met_catalogus_toegang` (één functie; `heeft_catalogus_toegang` = pure regel a ∨ b ∨ c; 404 onbekend, 409 `ModuleUitgeschakeld` "Materiaalcatalogus vereist Uren & meerwerk óf een Odoo-koppeling voor deze administratie") | GEBOUWD + GETEST | `backend/app/materiaal/service.py` (`CATALOGUS_VEREIST_TEKST`, `heeft_catalogus_toegang`, `_administratie_met_catalogus_toegang`) |
+| Poort UITSLUITEND op de 7 catalogus-functies: `leveranciers_overzicht`, `zet_leverancier`, `catalogus`, `producten_overzicht`, `zet_categorie`, `zet_product`, `seed_universal`; de 19 overige call-sites (bestellingen, transport, stand, week) houden `_administratie_met_opt_in` | GEBOUWD + GETEST | `backend/app/materiaal/service.py` |
+| Rolpoorten ongewijzigd: schrijvers `_vereis_beheerder` (Beheerder/B+P), router-dependencies (`require_beheerder_of_bp` op PUT/seed, `require_meerwerk_urenstaten_recht` + scope op GET) | ONGEWIJZIGD (zie beslispunt 2) | `backend/app/materiaal/router.py` |
+| `mijn-toegang` levert additief `administraties_met_catalogus` (uren-opt-in ∨ Odoo-backend ∨ leesbron, binnen de eigen scope; één query op de koppeltabel, geen N+1); `administraties_met_opt_in` blijft puur de steigerbouw-opt-in (planning/landing/menu ongewijzigd) | GEBOUWD + GETEST | `backend/app/uren/router.py::kantoor_mijn_toegang`, `backend/app/uren/schemas.py::MijnToegangDto`, `materiaal/service.py::administraties_met_catalogus_toegang` |
+| Brug `leg_brug`: GEEN extra toets — `koppeling_voor` (Odoo-backend óf leesbron) is de enige poort en dekt exact de gevallen b en c; keuze vastgelegd in de docstring. Nieuw vangnet: `OdooAlleenLezen` bij aanmaak (leesbron = read-only client) → per product zichtbaar `overgeslagen` "alleen-lezen Odoo-koppeling — niet aangemaakt", lookup/koppelen blijft werken; vóór blok B was dit een onafgevangen exceptie (500) | GEBOUWD + GETEST | `backend/app/odoo/producten.py::leg_brug` |
+| Frontend administratie-kiezer `/instellingen/materiaal`: Beheerder filtert op `heeftCatalogusToegang(a)` (`uren_meerwerk_ingeschakeld ∨ boekhoud_backend==='odoo' ∨ odoo_alleen_lezen`), B+P op `administraties_met_catalogus` uit mijn-toegang (fail-closed terugval op de opt-in-lijst bij een oudere response); lege stand mét uitleg; 409-tekst herschreven ("… Uren & meerwerk óf een Odoo-koppeling — beide staan uit …"); intro-tekst benoemt de productbrug | GEBOUWD + GETEST | `frontend/src/instellingen/MateriaalCatalogusBeheer.tsx` (`heeftCatalogusToegang`, `CATALOGUS_UIT_TEKST`, `CATALOGUS_GEEN_ADMINISTRATIE_TEKST`), `InstellingenScreen.tsx`, `auth/useMijnToegang.ts::catalogusAdministraties` |
+| Detailpagina: toggle-uitleg "Uren & meerwerk" claimt materiaal niet meer exclusief ("… bestellingen en transport …; de materiaalcatalogus zelf is óók beschikbaar via een Odoo-koppeling"); tab Algemeen toont voor een Odoo-administratie (backend óf leesbron) ZONDER uren-opt-in de rij "Materiaalcatalogus" + link ónder het backend-blok (mét opt-in staat de link al op de tab Uren & materiaal). Niet in `OdooBackend.tsx` | GEBOUWD + GETEST | `frontend/src/instellingen/AdministratieDetailPagina.tsx` (`data-testid="odoo-materiaalcatalogus-link"`) |
+| Registry: nav-item 'materiaal' uitleg ("… bij Uren & meerwerk óf een Odoo-koppeling (productbrug)") + synoniemen odoo/product/producten/productbrug; tab-zichtbaarheid 'uren-materiaal' bewust NIET verruimd (blijft uren-specifiek) | GEBOUWD | `frontend/src/instellingen/instellingenRegistry.ts` |
+| Tests backend: `tests/materiaal/test_catalogus_toegang.py` (9: Odoo én leesbron zonder uren → catalogus 200/steigerbouw 409 via motor + API; RLZ zonder beide 409 mét reden; onbekend 404; uren-opt-in ongewijzigd; echte niet-Beheerder mét scope leest, schrijft niet; mijn-toegang Beheerder + scope-gebonden B+P; pure helper) + `tests/odoo/test_producten_brug.py` (4: brug zonder uren-opt-in idempotent + audit; lookup op default_code; RLZ zonder Odoo fail-loud; leesbron = lookup mag, aanmaak overgeslagen) | GROEN | zie bestanden |
+| Tests frontend: `MateriaalCatalogusBeheer.test.tsx` +3, `InstellingenScreen.test.tsx` +5 (kiezer Beheerder incl. Odoo + leesbron, lege stand, B+P via catalogus-lijst + terugval, detailpagina-rij), `useMijnToegang.test.ts` +1 | GROEN | zie bestanden |
+
+**Beslispunten Peter**
+1. **Leesbron-koppeling + brug.** Een alleen-lezen koppeling geeft nu catalogus-toegang (besluit c) én laat `leg_brug` door — maar de
+   client is read-only, dus alleen BESTAANDE Odoo-producten worden gekoppeld; aanmaak is zichtbaar "overgeslagen". Voor een
+   leesbron-administratie (boekt in RLZ) heeft de brug geen boekfunctie. Voorstel: laten zoals gebouwd (niets stil, geen crash);
+   alternatief = de brug-knop in de UI verbergen bij `odoo_alleen_lezen` (ligt in `OdooBackend.tsx`, andere agent).
+2. **GET-catalogus achter het module-recht "Meerwerk & urenstaten".** De leesroutes (`/materiaal/{id}/leveranciers`, `/producten`,
+   `/catalogus`) dragen `require_meerwerk_urenstaten_recht` (+ `_vereis_meerwerk_recht` in de motor); de schrijfroutes
+   `require_beheerder_of_bp` zónder dat recht. Een B+P'er ZONDER meerwerk-recht kan dus op een Odoo-administratie wél producten
+   zetten maar de lijst niet lezen (bestaande asymmetrie sinds 31-08, nu zichtbaarder omdat de catalogus niet meer steigerbouw-exclusief
+   is). Niet gewijzigd (rol-matrix-impact + niet in de opdracht). Voorstel: leesroutes voor de catalogus naar kantoorrol + scope, of het
+   meerwerk-recht óók op de schrijfroutes — beslissing Peter.
+3. **Lijstvoeding.** `administraties_met_opt_in` is bewust ongewijzigd (voedt planning-menu en slimme landing); alleen de catalogus-kiezer
+   leest de nieuwe lijst. Akkoord?
+
+## ODOO-AFRONDINGSRUN 04-09 — BLOK C2: OVERSTAP-GENERALE INGANG B (VOORBEREID — NIET GEDRAAID; één klikpunt Peter)
+
+Doel (opdracht 04-09): de VOLLEDIGE overstap-cyclus één keer live op een testcase, zodat de echte Universal-Steigerbouw-overstap
+alleen nog een klik mét GO is. Voorbereid als herhaalbaar draaiboek-script mét stop-op-fout en JSONL-log; **niet gedraaid** omdat
+de enige TEST-company (company 1) in de dev-DB nog aan de dev-Odoo-administratie van het ketenbewijs (`fa3f83ae-…`) hangt en het
+vrijmaken daarvan (archiveren + sentinel/URL onherkenbaar maken, niets verwijderen — zelfde handeling als de halve-stand-rij van 03-09)
+een dev-DB-mutatie is die de permissie-classifier van deze sessie tweemaal weigerde. De hygiënestap staat klaar als script.
+
+| Onderdeel | Stand | Vindplaats |
+|---|---|---|
+| Testcase | RLZ-testadministratie `faae29c5-…` (RLZ `8dbfb856-…`, credential in de store, reconciliatie-uitgesloten): 903 geheugen-observaties (2 app-bevestigd op leverancier Action, 901 rlz_seed over 95 leveranciers), 38 grootboekrekeningen + 11 btw-tarieven in gebruik, 16 documenten (5 geboekt), 14 open regels, 4-cijferige RLZ-codes (4304 Brandstof, 4510, 4306, …) — dus de "code + 00"-regel wordt hier écht getoetst | dev-DB, `scratchpad/dev_testadmin_docs.py` |
+| Company 1 vrijmaken (dev-hygiëne) | **KLIKPUNT PETER:** `! "/Users/mr.x/Claude/Projects/Rlz boekings module/backend/.venv/bin/python" "<scratchpad>/dev_company1_vrijmaken.py"` — archiveert `fa3f83ae` (naam + suffix, `actief=false`, `gearchiveerd_op/door`), sentinel → `…:1:generale-04-09-vrijgemaakt`, koppeling-URL → `vrijgemaakt-generale-04-09.invalid`; rijen + het Odoo-ketenbewijs blijven bestaan. Zonder deze stap antwoordt de overstap 422 "company 1 is al gekoppeld" (bewust ontwerp: bug (a) van 04-09) | scratchpad (sessie 2535b58d) — kopie van de inhoud staat in `verkenning/odoo-verkenning.md` §8 |
+| Draaiboek-script | `verkenning/odoo_overstap_generale.py` — via de eigen HTTP-API op :8011 (Beheerder-token), 9 stappen: 0 voorwaarden (company 1 vrij) → 1 nulmeting geheugen Action (RLZ-UUID's) → 2 RLZ-leg VÓÓR de overstap (TEST-PDF → voorstel op het geheugen-gb → boeken in de RLZ-TESTadministratie mét TEST-referentie → storno actie 19) → 3 `voorbereiden` + mapping (voorstel; rijen zonder voorstel = expliciet gelogde generale-keuze) → 4 `overstap` (overgangsdatum 01-09-2026) → 5 geheugen Action NÁ = gemapte Odoo-rekening, `app_bevestigd` gelijk (harde assert) → 6 Odoo-leg (TEST-crediteur, factuurdatum 03-09, boeken → BILL company 1 → tegenboeken → RBILL) → 7 document vóór de overgangsdatum → leesbare weigering (poort; assert) → 8 C1 live (overgangsdatum 01-10 → 409, terug → 200) → 9 opruimen (partner archiveren, nooit unlink). Log `verkenning/output/odoo_overstap_generale_<datum>.jsonl` (gitignored, key geredigeerd) | `verkenning/odoo_overstap_generale.py` (py_compile groen; `--tot-stap N` voor deelruns) |
+| Ná de generale | uitkomst per stap in `odoo-verkenning.md` §8 + deze rij → "LIVE BEWEZEN"; de dev-testadministratie draait daarna op Odoo (terug-overstappen bestaat niet — beslispunt 4 blok E; herstel = dev-DB) | — |
+
+**Beslispunt Peter (blokkerend voor de opdrachtformulering):** de opdracht zegt "verifieer: document vóór de datum boekt RLZ". Onder het
+huidige ontwerp (beslispunt 3 blok E, nog niet door Peter beantwoord) is de overgangsdatum een inkoop-POORT: ná de overstap is
+`rlz_admin_id` het Odoo-sentinel, dus een document mét factuurdatum vóór de overgangsdatum wordt leesbaar GEWEIGERD ("hoort nog in
+Reeleezee") en kan vanuit de app nergens meer in RLZ geboekt worden. Het script bewijst daarom de RLZ-leg VÓÓR de overstap en de
+weigering ERNA. Wil Peter een echte DATUM-ROUTER (pre-datum-documenten boeken via `rlz_admin_id_voor_overstap` in RLZ — RLZ-credential
+staat er nog), dan is dat een aparte bouwopdracht mét consequenties: de boekvoorstellen van die documenten dragen RLZ-UUID's terwijl
+de caches Odoo tonen (controlescherm-combobox), en de Universal-werkvoorraad bevat ná 02-09 honderden pre-datum IC-facturen. Aanbeveling:
+router bouwen vóór de echte overstap, óf de Universal-backlog eerst in RLZ wegwerken en dan pas overstappen.
+
+## ODOO-AFRONDINGSRUN 04-09 — BLOK D: UNIVERSAL VERKOOP ALS ALLEEN-LEZEN LEESBRON IN DE CLOUD (uitgevoerd 04-09; klikpunt (2) van "ODOO-ADAPTER FASE 1" afgevinkt; geen code, geen migratie)
+
+Uitgevoerd vanaf de Mac via het cloud_cli-recept (Auth Proxy 5434, KMS-unwrap met de gcloud-gebruikerstoken, secrets alleen in de
+procesomgeving), met de BESTAANDE CLI `odoo-leesbron` (= dezelfde motor als de Beheerder-endpoints, systeem-actor in de audit).
+Strikt GET op company 3; geen enkele write in Odoo of RLZ. Cloud-DB stond op migratie 0110 (= repo-head vóór 0111).
+
+| Stap | Uitkomst | Bewijs |
+|---|---|---|
+| Voorstand (read-only) | Universal Verkoop (`0d66ff75-…`, RLZ `2d69fcfd-…`, voorraad-opt-in AAN, geen Odoo-koppeling): feitenlaag `rlz_verkoop` 3.498 regels / 1.300 facturen (02-01 t/m 01-09-2026), waarvan **1 factuur gedateerd 01-09-2026** | `scratchpad/cloud_voorraad_stand.py` |
+| Koppelen leesbron | `odoo-leesbron --company-id 3 --knip 2026-09-01 --api-gebruiker N-Module` → `OK leesbron gekoppeld: company 3 (Universal Verkoop B.V.), knip 2026-09-01`; **leesprobe 8/8 groen** (verbinding, company, lezen res.company/account.move/account.move.line/product.product/res.partner, verkoopfacturen: ok — 33 geposte verkoopfacturen) | audit `odoo_koppeling_aangemaakt` (bron leesbron), `platform.odoo_koppeling` rij `alleen_lezen=true`, `voorraad_knip_datum=2026-09-01` |
+| Volledige voorraad-sync | `voorraad-rlz-sync --administratie-id … --volledig` (MET_AI=1 = productie-AI-key, kostenmeter klopt): **RLZ** vanaf 01-01 — 1.304 gelezen, 1.299 verwerkt (3.497 regels), 4 concept, **1 ná de knip (opgeruimd)**; **Odoo company 3** vanaf 01-09 — 35 gelezen, **30 verwerkt (83 regels)**, 5 niet geboekt (concept), 0 weg na annulering, **0 dubbel met RLZ** | `scratchpad/voorraad_sync_uv.log`; audit `voorraad_odoo_uitstroom_gesynct` |
+| Verificatie feitenlaag | `odoo_verkoop`: 83 regels / 30 facturen, alle ≥ knip (01-09 t/m 04-09), referenties `F/2026/000nn`; `rlz_verkoop`: 3.497 / 1.299, alle ≤ 31-08; **overlap referenties 0**; RLZ-regels ≥ knip: 0. Normalisatie van de Odoo-regels: 66 genormaliseerd (18 artikel, 31 dienst, 17 transport) + 17 onzeker (artikel), 35 regels mét artikelgroep, artikelcodes uit de Odoo-omschrijving herkend (`[560366] Duw- en trekschoren …` → code 560366) | `scratchpad/cloud_voorraad_norm.py` |
+| Herkomst in het aansluitscherm | `RegelDto.bron = 'odoo_verkoop'` + `rlz_referentie = F/2026/000nn`; `voorraadApi.ts::bronLabel` toont de bron per regel (zie regel hieronder) | `frontend/src/voorraad/VoorraadScreen.tsx` drill-down |
+
+**Bevindingen / beslispunten Peter:**
+1. **Eén RLZ-verkoopfactuur gedateerd 01-09-2026 valt nu buiten beide bronnen** (knip = 01-09 exact; RLZ-regel opgeruimd, geen Odoo-tegenhanger op referentie). Controleer in RLZ welke factuur dat is (Universal Verkoop, factuurdatum 01-09) en of Odoo 'm dekt onder een F/2026-nummer; anders knip op 02-09 zetten (`odoo-leesbron --knip 2026-09-02` of de detailpagina) — de RLZ-route registreert 'm dan weer bij de volgende sync.
+2. 5 Odoo-verkoopfacturen staan op concept (niet geboekt) — normaal Odoo-gedrag; ze tellen pas ná posten.
+3. 17 van 83 Odoo-regels zijn "onzeker" genormaliseerd — zichtbaar in het aansluitscherm (dienst-inzage/correctie), geen actie vereist.
+4. De cloud-UI toont de leesbron op Instellingen › Administraties (chip "Odoo · leesbron", rij Leesbron voorraad mét knip) zodra de pagina herlaadt — geen deploy nodig (cloud-DB en -code op 0110).
 
 ## Onderhoud
 

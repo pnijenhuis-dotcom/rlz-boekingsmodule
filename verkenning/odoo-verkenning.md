@@ -1,6 +1,6 @@
 # Odoo STAP-0-verkenning — universal-steigers.odoo.com (02-09-2026)
 
-**Status: UITGEVOERD — feitenbasis voor het adapter-bouwplan (besluit 0016). Adapter fase 1 GEBOUWD 03-09 (blokken 0–E) en de keten LIVE BEWEZEN 04-09 op company 1 — zie §7.**
+**Status: UITGEVOERD — feitenbasis voor het adapter-bouwplan (besluit 0016). Adapter fase 1 GEBOUWD 03-09 (blokken 0–E) en de keten LIVE BEWEZEN 04-09 op company 1 — zie §7. Afrondingsrun 04-09: Universal Verkoop (company 3) LIVE als alleen-lezen leesbron in de cloud, overstap-generale VOORBEREID (script) — zie §8.**
 Opdracht Peter 02-09: alleen verkennen naar het RLZ-patroon (`api-verkenning.md`); schrijven beperkt tot exact
 twee bewijs-cycli mét `TEST-`-prefix, tegengeboekt via Odoo's eigen reversal, niets verwijderd, geen Odoo-
 instellingen gewijzigd. Scripts: `verkenning/odoo_stap0_client.py` (JSON-2-client, audit-log, kill-switch
@@ -9,7 +9,7 @@ instellingen gewijzigd. Scripts: `verkenning/odoo_stap0_client.py` (JSON-2-clien
 mét reden) in `verkenning/output/odoo_stap0_*.{json,log,jsonl}` (gitignored). Secrets zijn nergens gelogd.
 
 Leeswijzer: §0 samenvatting · §1 verbinding & inventaris · §2 veld-voor-veld-mapping · §3 semantiekverschillen ·
-§4 bewijs-cycli A/B · §5 conclusie, beslispunten, klikpunten.
+§4 bewijs-cycli A/B · §5 conclusie, beslispunten, klikpunten · §6 product-semantiek · §7 keten-cyclus · §8 afrondingsrun 04-09 (leesbron cloud + overstap-generale).
 
 ---
 
@@ -470,3 +470,59 @@ Odoo; géén writes op company 3; géén RLZ-writes.
 inclusief BookDate = factuurdatum, cent-exacte totalen, product-regels via de catalogus-brug en `analytic_distribution`
 op regelniveau. De vier gevonden gebreken (sentinel-500, gearchiveerde analytic accounts in de sync, stale concept bij
 hergebruik, eigen concept in de duplicaatcheck, jongste-overgang bij tegenboeking) zijn in dezelfde run gefixt en getest.
+
+## §8 Afrondingsrun 04-09 — Universal Verkoop als leesbron in de CLOUD (blok D, uitgevoerd) + overstap-generale (blok C2, voorbereid)
+
+### 8.1 Blok D — company 3 als alleen-lezen leesbron (cloud-DB rlz-sql2, 04-09 19:20–19:35, strikt GET)
+
+Via het cloud_cli-recept (Auth Proxy 5434, KMS-unwrap met de gcloud-gebruikerstoken; secrets alleen in de procesomgeving) en de
+BESTAANDE CLI `odoo-leesbron` (= de motor van de Beheerder-endpoints, systeem-actor). Geen enkele write in Odoo of RLZ.
+
+| Stap | Uitkomst |
+|---|---|
+| Voorstand | Universal Verkoop `0d66ff75-…` (voorraad-opt-in AAN, geen Odoo-koppeling): feitenlaag `rlz_verkoop` 3.498 regels / 1.300 facturen (02-01 t/m 01-09-2026), waarvan 1 factuur gedateerd 01-09 |
+| `odoo-leesbron --company-id 3 --knip 2026-09-01` | `OK leesbron gekoppeld: company 3 (Universal Verkoop B.V.), knip 2026-09-01`; leesprobe 8/8 groen: verbinding, company, lezen res.company / account.move / account.move.line / product.product / res.partner, verkoopfacturen ok (33 geposte verkoopfacturen) |
+| `voorraad-rlz-sync --volledig` (MET_AI) | RLZ vanaf 01-01: 1.304 gelezen, 1.299 verwerkt (3.497 regels), 4 concept, **1 ná de knip → opgeruimd**; Odoo company 3 vanaf 01-09: 35 gelezen, **30 verwerkt (83 regels)**, 5 niet geboekt (concept), 0 weg na annulering, **0 dubbel met RLZ** |
+| Verificatie | `odoo_verkoop` 83 regels / 30 facturen, alle ≥ knip (01-09 t/m 04-09), referenties `F/2026/000nn`; `rlz_verkoop` 3.497 / 1.299, alle ≤ 31-08; overlap referenties 0; RLZ-regels ≥ knip 0. Normalisatie Odoo-regels: 66 genormaliseerd (18 artikel / 31 dienst / 17 transport) + 17 onzeker, 35 mét artikelgroep; artikelcode uit de omschrijving herkend (`[560366] Duw- en trekschoren …`). Aansluitscherm toont per regel "Odoo-verkoopfactuur F/2026/…" (`voorraadApi.ts::bronLabel`). Audit `voorraad_odoo_uitstroom_gesynct` |
+
+Bevindingen: (1) één RLZ-verkoopfactuur gedateerd 01-09-2026 valt met de exacte knip buiten beide bronnen — Peter checkt in RLZ
+welke dat is en of Odoo 'm dekt; anders knip → 02-09; (2) 5 Odoo-concepten tellen pas ná posten; (3) cloud-code en -DB stonden
+op 0110 — de UI toont de leesbron direct (chip "Odoo · leesbron", rij Leesbron voorraad).
+
+### 8.2 Blok C2 — overstap-generale ingang B: VOORBEREID, niet gedraaid (04-09)
+
+Testcase = de RLZ-testadministratie in de dev-DB (`faae29c5-…`, RLZ `8dbfb856-…`): 903 geheugen-observaties (2 app-bevestigd op
+leverancier Action), 38 grootboekrekeningen + 11 btw-tarieven in gebruik, 4-cijferige RLZ-codes (4304 Brandstof auto, 4510, 4306, 4405 …)
+tegenover Odoo's 6-cijferige codes op company 1 — de mapping-regel "code + 00" wordt daar écht getoetst. Draaiboek =
+`verkenning/odoo_overstap_generale.py` (9 stappen, stop-op-fout, log `output/odoo_overstap_generale_<datum>.jsonl`, key geredigeerd):
+
+0 voorwaarden → 1 nulmeting geheugen Action (RLZ-UUID's) → 2 RLZ-leg VÓÓR de overstap (TEST-PDF, voorstel op het geheugen-gb, boeken in de
+RLZ-TESTadministratie mét TEST-referentie, storno actie 19) → 3 `POST …/odoo/overstap/voorbereiden` + mapping (voorstel; rijen zonder
+voorstel = gelogde generale-keuze) → 4 `POST …/odoo/overstap` (overgangsdatum 01-09-2026) → 5 geheugen Action NÁ = gemapte Odoo-rekening,
+`app_bevestigd` gelijk (assert) → 6 Odoo-leg (TEST-crediteur, factuurdatum 03-09, BILL op company 1, tegenboeken → RBILL) → 7 document
+vóór de overgangsdatum → leesbare weigering (adapter-poort; assert) → 8 C1 live (01-10 → 409, terug → 200) → 9 opruimen (partner
+archiveren, nooit unlink).
+
+**Blokkade:** company 1 hangt in de dev-DB aan de dev-Odoo-administratie van het ketenbewijs (`fa3f83ae-…`); `_gekoppelde_companies`
+telt koppeling-rijen én sentinel-dragers (bewust, bug (a) 04-09) → overstap = 422 "company 1 is al gekoppeld". Vrijmaken = dev-hygiëne
+(archiveren + sentinel `…:1:generale-04-09-vrijgemaakt` + koppeling-URL `vrijgemaakt-generale-04-09.invalid`; rijen blijven bestaan) —
+deze dev-DB-mutatie weigerde de permissie-classifier van de sessie tweemaal → **klikpunt Peter**: het script staat in de scratchpad
+(`dev_company1_vrijmaken.py`, inhoud hieronder), daarna `cd backend && .venv/bin/python ../verkenning/odoo_overstap_generale.py` met
+uvicorn op :8011 (dev-DB ≥ 0111).
+
+```python
+# dev_company1_vrijmaken.py — dev-DB `boekhouding`, NIET de cloud; niets verwijderd
+AID = uuid.UUID("fa3f83ae-979c-4e84-851c-62b980390fe0"); BEHEERDER = uuid.UUID("2f2262cd-0423-4910-b7b5-335ba37a6ef5")
+with scoped_session(None, actor_id=BEHEERDER) as s:
+    a = s.get(Administratie, AID); k = s.get(OdooKoppeling, AID)
+    if a.rlz_admin_id == "odoo:universal-steigers.odoo.com:1":
+        a.rlz_admin_id = "odoo:universal-steigers.odoo.com:1:generale-04-09-vrijgemaakt"
+        a.naam += " — gearchiveerd 04-09 (company 1 vrijgemaakt voor de overstap-generale)"
+        a.actief = False; a.gearchiveerd_op = datetime.now(UTC); a.gearchiveerd_door = BEHEERDER
+        if k is not None: k.odoo_url = "https://vrijgemaakt-generale-04-09.invalid"
+```
+
+**Open beslispunt (raakt de opdrachtformulering "document vóór de datum boekt RLZ"):** ná de overstap draagt `rlz_admin_id` het
+Odoo-sentinel; een pre-datum-document wordt door de adapter-poort leesbaar geweigerd (beslispunt 3 blok E) en kan vanuit de app niet meer
+in RLZ geboekt worden. Datum-ROUTER (boeken via `rlz_admin_id_voor_overstap`) = aparte bouwopdracht; zie BESLISSINGEN blok C2.
+
