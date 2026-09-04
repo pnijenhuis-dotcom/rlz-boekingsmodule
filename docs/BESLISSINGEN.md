@@ -1636,7 +1636,7 @@ dev-DB gearchiveerd en van het sentinel ontdaan; company 1 hangt nu aan de nieuw
 | F | Bugfix kortingsregels + regeltelling netto-vs-netto (Huvanco) — los gecommit, géén migratie | GEBOUWD + GETEST 04-09 | "BUGFIX 04-09 — KORTINGSREGELS + REGELTELLING" |
 | A | Duplicaten automatisch uit de werklijst (opt-in per administratie + één-klik) — migratie 0105 | GEBOUWD + GETEST 04-09 | "BLOK A: DUPLICAAT-AUTO-AFVOER" |
 | B | Splitsing bijlage-bewust + per-afzender "nooit splitsen" — migratie 0106 | GEBOUWD + GETEST 04-09 | "BLOK B: SPLITSING BIJLAGE-BEWUST + NOOIT SPLITSEN" |
-| C | Projectverdeling pro rato omzet + hercontrole + flankerend signaal — migratie 0107 | GEBOUWD + GETEST 04-09 (Inzicht-tabel hercontrole = parkeerpost) | "BLOK C: PROJECTVERDELING PRO RATO OMZET" |
+| C | Projectverdeling pro rato omzet + hercontrole + flankerend signaal — migratie 0107; **addendum 04-09 blok B: beschikbaar op élk inkoopdocument, opt-in = prefill** | GEBOUWD + GETEST 04-09 (Inzicht-tabel hercontrole = parkeerpost) | "BLOK C: PROJECTVERDELING PRO RATO OMZET" + addendum onderaan die sectie |
 | D+E | Regel-niveau GB-voorstel (geheugen > AI > leeg) + btw-default per administratie — migratie 0108 | GEBOUWD + GETEST 04-09 | "BLOK D: REGEL-GB-VOORSTEL + BLOK E: BTW-DEFAULT" |
 
 **Coördinator-afsluiting 04-09:** kruisblok-fix lege btw op een boekvoorstelregel — leeg = "0, bekend" uitsluitend op een
@@ -1779,6 +1779,33 @@ stap + rapportregel in `sync-alles` (exit 1 bij een kapotte administratie).
 `tests/unit/test_migratie_metadata_guard.py`, `tests/unit/test_proxy_prefixes_dump.py` groen ná het toevoegen van
 de check "Projectverdeling" aan drie bestaande verwachtingslijsten. Frontend: `npx tsc -b` groen; vitest
 `src/document`, `src/instellingen`, `src/werkvoorraad`, `src/styles`, `src/doorbelasting`, `api/proxyDekking` groen.
+
+### Addendum 04-09 (opdracht Peter blok B): projectverdeling beschikbaar op élk inkoopdocument — GEBOUWD + GETEST 04-09, geen migratie
+
+**Aanleiding:** het inboeken van facturen zonder eenduidig project viel stil omdat het verdeel-blok als "achter de
+per-leverancier-opt-in" werd ervaren. **Bevinding bron-vs-realiteit:** de tekstknop "Projectverdeling…" bestond al
+zonder opt-in (`GET …/projectverdeling` antwoordde `status: geen` en de PUT werkte), maar (a) onzichtbaar onderaan het
+scherm, (b) de check "Verplichte velden" wees er niet naar en (c) de lege project-kolom bood niets aan. Beschikbaarheid
+is nu expliciet ontkoppeld van de automatiek. **UX-review:** geen nieuw scherm — UX-norm "lege stand = actie" toegepast
+op de project-kolom; mockup-notitie ④ herzien.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **B1 Beschikbaar op élk inkoopdocument** | `ProjectverdelingDto.beschikbaar` (default true) = `service.is_beschikbaar`: administratie mét `project_verplicht` óf actieve niet-verdwenen projecten; `status: geen` + beschikbaar = leeg-maar-bruikbaar blok (tekstknop hernoemd naar "Verdelen over projecten…"), beschikbaar=false = geen blok. Onder de boekingsregels toont het paneel bij ≥ 1 regel zonder project "N regel(s) zonder project — kies per regel een project óf **Verdelen over projecten…**" (`linkbtn`, alleen bij projectplicht en bewerkbaar); klik = `openVerzoek`-teller → het blok opent als voorstel pro rato (vorige maand) en scrollt in beeld — exact dezelfde actie als de tekstknop. Eén project blijft gewoon de kolom; motor/mockup-blok 1 ongewijzigd (vaste regels en/of pro rato, grootste-rest-centen, omzetstanden bevroren, RLZ = splitsen / Odoo = analytic_distribution) | GEBOUWD + GETEST | `app/projectverdeling/service.py::is_beschikbaar`, `router.py::naar_dto/_lees`, `schemas.py`; `frontend/src/document/BoekvoorstelPanel.tsx` (prop `onVerdelenGevraagd`, `data-testid="project-leeg-actie"`), `ProjectverdelingBlok.tsx` (prop `openVerzoek`, `blokRef`), `DocumentDetailScreen.tsx` (`verdeelVerzoek`) |
+| **B2 Opt-in = PREFILL-trigger, geen poort** | Gedrag van `service.lees` was al zo (opt-in → `prefill=True`; geen opt-in → None/geen); de UI-teksten op Instellingen › Boeken & AI zijn herschreven ("Vooringevuld: pro rato omzet"; uit = leeg maar bruikbaar blok). Hercontrole/signalen ongewijzigd | GEBOUWD | `frontend/src/instellingen/ProjectverdelingInstellingen.tsx` |
+| **B3 Check "Project verplicht" groen via kolom óf verdeling + handelingsperspectief** | Groen-zijn bestond al (`_project_verplicht_per_regel`: actieve verdeling → per-regel-toets uit, check "Projectverdeling" = poort tot de som exact sluit). Nieuw: de melding van "Verplichte velden" eindigt bij een ontbrekend project op `— kies per regel een project óf gebruik "Verdelen over projecten…" onder de boekingsregels` | GEBOUWD + GETEST | `app/documenten/checks.py::check_verplichte_velden`; `tests/documenten/test_checks.py::TestVerplichteVeldenProjectHint` |
+
+**Tests B:** `tests/documenten/test_checks.py` (+2), `tests/projectverdeling/test_router.py` (beschikbaar op GET),
+`tests/projectverdeling/test_service.py::test_beschikbaar_volgt_projectplicht_of_actieve_projecten`; frontend
+`ProjectverdelingBlok.test.tsx` (+2: beschikbaar=false = geen blok; openVerzoek opent = PUT pro rato), label-update van
+de bestaande tekstknop-test; `npx tsc -b` schoon.
+
+**Beslispunten Peter (blok B):**
+1. **Plaats van de actie:** één regel ónder de boekingsregels-tabel ("N regels zonder project — … Verdelen over
+   projecten…") i.p.v. een knop in élke lege projectcel (bij 10 regels 10 knoppen). Akkoord?
+2. **Startstand bij openen = pro rato vorige maand** (zelfde als de tekstknop). Wil je liever een leeg blok (alleen
+   vaste regels) als startpunt, zodat pro rato een bewuste klik is?
+3. **Zonder projectplicht én zonder actieve projecten** blijft het blok weg (beslispunt 6 van 04-09 ongewijzigd).
 
 **Beslispunten Peter:**
 1. **OVH-herkenning** — er bestaat geen markering in de RLZ-projectdata; nu deterministisch op de NAAM (eerste token

@@ -92,6 +92,48 @@ class TestVerplichteVelden:
             assert verwacht in resultaat.melding
 
 
+class TestVerplichteVeldenProjectHint:
+    def test_ontbrekend_project_benoemt_de_verdeel_actie(self) -> None:
+        """B3 (04-09): de melding draagt het handelingsperspectief — project per regel óf verdelen."""
+        resultaat = check_verplichte_velden(
+            vendor_id=uuid.uuid4(),
+            referentie="F-1",
+            factuurdatum=date(2026, 9, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[
+                CheckRegel(
+                    ledger_id=uuid.uuid4(),
+                    taxrate_id=uuid.uuid4(),
+                    netto_bedrag=Decimal("100"),
+                    btw_bedrag=Decimal("21"),
+                    project_id=None,
+                )
+            ],
+            project_verplicht=True,
+        )
+        assert not resultaat.ok
+        assert "project (regel 1)" in resultaat.melding
+        assert 'gebruik "Verdelen over projecten…"' in resultaat.melding
+
+    def test_zonder_projectplicht_geen_hint(self) -> None:
+        resultaat = check_verplichte_velden(
+            vendor_id=None,
+            referentie="F-1",
+            factuurdatum=date(2026, 9, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[
+                CheckRegel(
+                    ledger_id=uuid.uuid4(),
+                    taxrate_id=uuid.uuid4(),
+                    netto_bedrag=Decimal("100"),
+                    btw_bedrag=Decimal("21"),
+                    project_id=None,
+                )
+            ],
+        )
+        assert resultaat.melding == "Ontbrekend: crediteur"
+
+
 class TestRegeltelling:
     def test_som_gelijk_aan_totaal_is_ok(self) -> None:
         resultaat = check_regeltelling(totaalbedrag=Decimal("121.00"), regels=[_regel()])

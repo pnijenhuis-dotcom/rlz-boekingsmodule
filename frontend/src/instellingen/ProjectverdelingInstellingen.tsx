@@ -68,9 +68,11 @@ export function LeverancierProjectverdeling({ administratieId }: { administratie
     <div className="panel" style={{ marginTop: 16 }} data-testid="leverancier-projectverdeling">
       <h2>Projectverdeling pro rato omzet per leverancier</h2>
       <p className="hint" style={{ marginTop: 4 }}>
-        Aan = elke inkoopfactuur van deze leverancier krijgt op het controlescherm automatisch een verdeelvoorstel: het
-        bedrag excl. wordt pro rato de omzet van de vorige maand over de actieve projecten verdeeld (vaste regels
-        kunnen vooraf). De controleur ziet en bevestigt de verdeling vóór het boeken.
+        Verdelen over projecten kan op élk inkoopdocument van deze administratie ("Verdelen over projecten…" op het
+        controlescherm). Deze instelling is alleen een <b>vooringevuld voorstel</b>: aan = elke inkoopfactuur van deze
+        leverancier komt met het verdeelvoorstel klaar (bedrag excl. pro rato de omzet van de vorige maand over de actieve
+        projecten; vaste regels kunnen vooraf). Uit = het blok is leeg maar bruikbaar. De controleur ziet en bevestigt de
+        verdeling vóór het boeken.
       </p>
       {laadFout && (
         <FoutMelding melding="De leveranciers konden niet geladen worden." detail={laadFout} onOpnieuw={() => setLaadVersie((v) => v + 1)} />
@@ -85,7 +87,7 @@ export function LeverancierProjectverdeling({ administratieId }: { administratie
             <tbody>
               <tr>
                 <th>Leverancier</th>
-                <th>Verdelen: pro rato omzet</th>
+                <th>Vooringevuld: pro rato omzet</th>
               </tr>
               {leveranciers.map((l) => {
                 const naam = l.naam ?? l.vendor_id
@@ -115,7 +117,7 @@ export function LeverancierProjectverdeling({ administratieId }: { administratie
           bericht={
             pending.nieuweWaarde
               ? `Facturen van ${pending.naam} krijgen voortaan automatisch een verdeelvoorstel pro rato omzet over de actieve projecten. De controleur bevestigt vóór het boeken; de harde checks blijven blokkerend.`
-              : `Het automatische verdeelvoorstel wordt uitgeschakeld voor ${pending.naam} — verdelen blijft mogelijk via "Projectverdeling…" op het document.`
+              : `Het vooringevulde verdeelvoorstel wordt uitgeschakeld voor ${pending.naam} — verdelen blijft op elk document mogelijk via "Verdelen over projecten…".`
           }
           bezig={bezig}
           fout={wijzigenFout}

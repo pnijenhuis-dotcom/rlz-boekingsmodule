@@ -79,6 +79,25 @@ class TestVoorstelEnPrefill:
         )
         assert voorstel.projectverdeling is None
 
+    def test_beschikbaar_volgt_projectplicht_of_actieve_projecten(
+        self, admin_engine, administratie_id, projecten
+    ) -> None:
+        """B1 (04-09): beschikbaar op élk inkoopdocument zodra de administratie projectplicht heeft óf actieve
+        projecten kent; een administratie zonder beide krijgt geen blok (beslispunt 6 van 04-09 ongewijzigd)."""
+        assert service.is_beschikbaar(administratie_id=administratie_id) is True
+        kaal = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Kaal (test)', :rlz)"),
+                {"id": kaal, "rlz": f"rlz-{kaal}"},
+            )
+        assert service.is_beschikbaar(administratie_id=kaal) is False
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.administratie SET project_verplicht = true WHERE id = :id"), {"id": kaal}
+            )
+        assert service.is_beschikbaar(administratie_id=kaal) is True
+
     def test_opt_in_geeft_prefill_met_alleen_restant(
         self, administratie_id, beheerder_id, vendor_id, document_zonder_project, projecten, monkeypatch
     ) -> None:

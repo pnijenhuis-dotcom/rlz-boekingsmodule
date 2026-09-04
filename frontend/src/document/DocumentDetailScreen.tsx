@@ -411,6 +411,8 @@ export function DocumentDetailScreen() {
   const onChecksStand = useCallback((stand: ChecksStand | null) => setChecksStand(stand), [])
   const [opmerkingenOpen, setOpmerkingenOpen] = useState(false)
   const [boekvoorstelVersie, setBoekvoorstelVersie] = useState(0)
+  // B1 (04-09): "Verdelen over projecten…" vanuit de lege project-kolom opent het Projectverdeling-blok.
+  const [verdeelVerzoek, setVerdeelVerzoek] = useState(0)
   const onVoorstelOpgeslagen = useCallback(() => setBoekvoorstelVersie((v) => v + 1), [])
   const [afwijsModalOpen, setAfwijsModalOpen] = useState(false)
   // ⋯-actiemenu in de topbar (addendum 27-08 punt 5): "Verplaats naar andere administratie…".
@@ -1125,6 +1127,7 @@ export function DocumentDetailScreen() {
               onChecksStand={onChecksStand}
               onActies={onActies}
               onOnopgeslagenWijzigingen={onOnopgeslagenWijzigingen}
+              onVerdelenGevraagd={() => setVerdeelVerzoek((v) => v + 1)}
             />
           )}
 
@@ -1139,6 +1142,7 @@ export function DocumentDetailScreen() {
             soort={detail.soort}
             boekvoorstelVersie={boekvoorstelVersie}
             onGewijzigd={laadDetail}
+            openVerzoek={verdeelVerzoek}
           />
 
           {/* Doorbelasten ná boeken (besluit Peter 25-08, herziet 13-08): optioneel blok op een NOG

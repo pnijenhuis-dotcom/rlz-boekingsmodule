@@ -389,6 +389,9 @@ interface Props {
   /** Controlescherm v2 (02-09): stand van de harde checks naar buiten (topbar-chip "alle controles
    * groen ✓"); de inklapregel "Controles" en de afwijkingen-banner rendert het paneel zelf. */
   onChecksStand?: (stand: ChecksStand | null) => void
+  /** B1 (04-09): lege stand van de project-kolom = actie "Verdelen over projecten…" — opent het
+   * Projectverdeling-blok (vaste regels en/of pro rato omzet) voor de regels zonder project. */
+  onVerdelenGevraagd?: () => void
   /** Doel-element voor de inklapregel "Controles (n groen)" — onderaan de werk-kolom (v2 ①).
    * undefined = inline (tests); null = doel nog niet gemonteerd. */
   inklapDoel?: HTMLElement | null
@@ -421,6 +424,7 @@ export function BoekvoorstelPanel({
   onOnopgeslagenWijzigingen,
   onChecksStand,
   inklapDoel,
+  onVerdelenGevraagd,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
@@ -1681,6 +1685,19 @@ export function BoekvoorstelPanel({
                 netto € {formatEuro(regelsomToets.nettoSom ?? 0)} is niet tegen het totaal incl. te toetsen
               </span>
             )}
+          </div>
+        )}
+        {/* B1 (04-09, UX-norm "lege stand = actie"): regels zonder project bieden de verdeling aan — één project blijft
+            gewoon de kolom, het blok is voor de meerdere-projecten-gevallen. */}
+        {!isReadOnly && projectVerplicht && onVerdelenGevraagd && regels.some((r) => r.projectId === null) && (
+          <div className="hint" data-testid="project-leeg-actie" style={{ marginTop: 6 }}>
+            {regels.filter((r) => r.projectId === null).length === 1
+              ? '1 regel zonder project'
+              : `${regels.filter((r) => r.projectId === null).length} regels zonder project`}{' '}
+            — kies per regel een project óf{' '}
+            <button type="button" className="linkbtn" onClick={onVerdelenGevraagd}>
+              Verdelen over projecten…
+            </button>
           </div>
         )}
         {!isReadOnly && (

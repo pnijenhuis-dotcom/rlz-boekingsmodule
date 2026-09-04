@@ -26,7 +26,9 @@ class TestDocumentEndpoints:
     ) -> None:
         pad = f"/administraties/{administratie_id}/documenten/{document_zonder_project}/projectverdeling"
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
-        assert client.get(pad, headers=headers).json()["status"] == "geen"
+        leeg = client.get(pad, headers=headers).json()
+        # B1/B2 (04-09): zonder opt-in is het blok leeg maar BESCHIKBAAR (actieve projecten) — geen poort meer.
+        assert leeg["status"] == "geen" and leeg["beschikbaar"] is True
 
         antwoord = client.put(
             pad,

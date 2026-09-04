@@ -189,11 +189,34 @@ describe('ProjectverdelingBlok', () => {
     expect(await screen.findByRole('button', { name: /Projectcijfers verversen/ })).toBeInTheDocument()
   })
 
-  it('zonder opt-in: alleen de tekstknop "Projectverdeling…"; klik = voorstel pro rato (vorige maand) opgeslagen', async () => {
+  it('B1: geen projectplicht én geen actieve projecten (beschikbaar=false) = geen blok', async () => {
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: false } })
+    renderBlok()
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByTestId('projectverdeling-blok')).not.toBeInTheDocument()
+  })
+
+  it('B1: openVerzoek vanuit de lege project-kolom opent het blok als voorstel pro rato (zelfde actie als de tekstknop)', async () => {
+    const puts: unknown[] = []
+    installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false, beschikbaar: true }, puts, putAntwoord: PREFILL })
+    const { rerender } = render(
+      <ProjectverdelingBlok administratieId={ADM} documentId={DOC} status="te_controleren" soort="inkoopfactuur" boekvoorstelVersie={0} openVerzoek={0} />,
+    )
+    await screen.findByRole('button', { name: 'Verdelen over projecten…' })
+    rerender(
+      <ProjectverdelingBlok administratieId={ADM} documentId={DOC} status="te_controleren" soort="inkoopfactuur" boekvoorstelVersie={0} openVerzoek={1} />,
+    )
+    await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })
+    expect(puts[0]).toEqual({ vaste_regels: [], pro_rato_periode: defaultPeriode() })
+    expect(await screen.findByText(/Restant — pro rato omzet/)).toBeInTheDocument()
+  })
+
+  it('zonder opt-in: alleen de tekstknop "Verdelen over projecten…"; klik = voorstel pro rato (vorige maand) opgeslagen', async () => {
     const puts: unknown[] = []
     installFetchMock({ get: { document_id: DOC, status: 'geen', opgeslagen: false }, puts, putAntwoord: PREFILL })
     renderBlok()
-    const knop = await screen.findByRole('button', { name: 'Projectverdeling…' })
+    const knop = await screen.findByRole('button', { name: 'Verdelen over projecten…' })
     expect(knop).toHaveClass('linkbtn')
     await userEvent.click(knop)
     await waitFor(() => expect(puts.length).toBe(1), { timeout: 3000 })

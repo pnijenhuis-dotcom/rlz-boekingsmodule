@@ -28,14 +28,19 @@ def _deel(d: pv.VerdeelDeel) -> schemas.VerdeelDeelDto:
     )
 
 
-def naar_dto(document_id: uuid.UUID, data: pv.ProjectverdelingData | None) -> schemas.ProjectverdelingDto:
+def naar_dto(
+    document_id: uuid.UUID, data: pv.ProjectverdelingData | None, *, beschikbaar: bool = True
+) -> schemas.ProjectverdelingDto:
     if data is None:
-        return schemas.ProjectverdelingDto(document_id=document_id, status="geen", opgeslagen=False)
+        return schemas.ProjectverdelingDto(
+            document_id=document_id, status="geen", opgeslagen=False, beschikbaar=beschikbaar
+        )
     return schemas.ProjectverdelingDto(
         document_id=document_id,
         status=data.status,
         opgeslagen=data.opgeslagen,
         prefill=data.prefill,
+        beschikbaar=beschikbaar,
         basisbedrag=data.basisbedrag,
         vaste_regels=[
             schemas.VasteRegelDto(project_id=r.project_id, bedrag=r.bedrag, hint=r.hint, project_naam=r.project_naam)
@@ -77,7 +82,10 @@ def _lees(administratie_id: uuid.UUID, document_id: uuid.UUID) -> schemas.Projec
         voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     except DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return naar_dto(document_id, voorstel.projectverdeling)
+    # B1/B2 (04-09): 'geen' + beschikbaar=True = leeg maar bruikbaar blok (opt-in = alleen prefill).
+    return naar_dto(
+        document_id, voorstel.projectverdeling, beschikbaar=service.is_beschikbaar(administratie_id=administratie_id)
+    )
 
 
 @router.get(

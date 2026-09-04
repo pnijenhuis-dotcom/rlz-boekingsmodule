@@ -49,6 +49,9 @@ class ProjectverdelingDto(BaseModel):
     status: str  # voorstel | geboekt | vervallen | geen
     opgeslagen: bool
     prefill: bool = False
+    #: B1 (04-09): het blok is op élk inkoopdocument bruikbaar zodra de administratie projectplicht heeft óf
+    #: actieve projecten kent — onafhankelijk van de per-leverancier-opt-in (die is alleen nog een prefill-trigger).
+    beschikbaar: bool = True
     basisbedrag: Decimal | None = None
     vaste_regels: list[VasteRegelDto] = []
     pro_rato: bool = False

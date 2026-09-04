@@ -70,6 +70,17 @@ def _heeft_actieve_projecten(session: Session, administratie_id: uuid.UUID) -> b
     )
 
 
+def is_beschikbaar(*, administratie_id: uuid.UUID) -> bool:
+    """B1 (04-09): projectverdeling is op élk inkoopdocument beschikbaar in een administratie mét
+    `project_verplicht` óf met actieve projecten — de per-leverancier-opt-in is sinds 04-09 uitsluitend een
+    PREFILL-trigger (B2), geen poort. Zonder projecten heeft het blok geen zin (blijft het beslispunt 6 van 04-09)."""
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is not None and administratie.project_verplicht:
+            return True
+        return _heeft_actieve_projecten(session, administratie_id)
+
+
 def _met_namen(
     session: Session,
     administratie_id: uuid.UUID,

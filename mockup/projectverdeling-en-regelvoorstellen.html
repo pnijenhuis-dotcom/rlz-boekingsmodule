@@ -119,8 +119,11 @@ harde checks blijven de poort. Donkere controlescherm-v2-stijl.</p>
 vorige afgesloten kalendermaand; de gebruikte omzetstanden worden bij het boeken vastgelegd (audit + herleidbaarheid).
 ② <b>Weging</b>: alleen projecten mét omzet in de periode; OVH-project uitgesloten; grootste-rest-centen server-side.
 ③ <b>Mengvorm</b>: vaste regels eerst, het pro-rato-restant sluit de balk op exact 100% — zelfde restant-balk-patroon
-als doorbelasten-v2. ④ <b>Aanzetten per leverancier</b> (instelling "verdelen: pro rato omzet", Beheerder), daarna
-vooringevuld voorstel op élk document van die leverancier; dit is projectverdeling BINNEN de administratie — géén
+als doorbelasten-v2. ④ <b>Beschikbaar op élk inkoopdocument</b> van een administratie mét projectplicht of actieve
+projecten (herzien 04-09, opdracht blok B): de lege stand van de project-kolom biedt "Verdelen over projecten…" aan; de
+per-leverancier-instelling (Beheerder) is uitsluitend een PREFILL-trigger — aan = vooringevuld voorstel pro rato op élk
+document van die leverancier, uit = leeg maar bruikbaar blok. De check "Project verplicht" is groen zodra élke regel via
+kolom óf verdeling een project draagt en benoemt de verdeel-actie. Dit is projectverdeling BINNEN de administratie — géén
 Kempen-doorbelasting, wel dezelfde verdeelmotor-bouwstenen. ⑤ <b>Uitvoering</b>: RLZ = regels splitsen (Project per
 regel), Odoo = één analytic_distribution met percentages — zelfde voorstel, backend bepaalt de vorm. ⑥ <b>Hercontrole</b>:
 maandelijkse job herrekent geboekte pro-rato-verdelingen tegen de actuele omzetstand van dezelfde maand; afwijking

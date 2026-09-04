@@ -83,7 +83,12 @@ def check_verplichte_velden(
             ontbrekend.append(f"project (regel {i})")
 
     if ontbrekend:
-        return CheckResultaat("Verplichte velden", False, f"Ontbrekend: {', '.join(ontbrekend)}")
+        melding = f"Ontbrekend: {', '.join(ontbrekend)}"
+        if any(o.startswith("project (regel") for o in ontbrekend):
+            # B3 (04-09): handelingsperspectief — één project per regel óf de projectverdeling
+            # (vaste regels en/of pro rato omzet) die élke regel zonder project een project geeft.
+            melding += ' — kies per regel een project óf gebruik "Verdelen over projecten…" onder de boekingsregels'
+        return CheckResultaat("Verplichte velden", False, melding)
     return CheckResultaat("Verplichte velden", True, "Alle verplichte velden zijn ingevuld")
 
 

@@ -335,6 +335,9 @@ export interface ProjectverdelingDto {
   status: 'geen' | 'voorstel' | 'geboekt' | 'vervallen'
   opgeslagen: boolean
   prefill?: boolean
+  /** B1 (04-09): blok bruikbaar op élk inkoopdocument van een administratie mét projectplicht of actieve projecten;
+   * false = geen projecten → geen blok. Ontbreekt bij oudere antwoorden = true. */
+  beschikbaar?: boolean
   basisbedrag?: string | null
   vaste_regels?: ProjectverdelingVasteRegelDto[]
   pro_rato?: boolean

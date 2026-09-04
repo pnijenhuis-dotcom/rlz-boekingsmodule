@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-04 — Verdelen over projecten op elke inkoopfactuur
+
+- **Een factuur zonder eenduidig project kun je altijd verdelen.** Op elk inkoopdocument van een administratie met projectplicht (of met actieve projecten) staat het blok "Projectverdeling" klaar: een deel vast op een project en/of de rest pro rato de omzet van de vorige maand. Dat werkte al voor leveranciers met de instelling aan; nu is het blok op élke factuur bruikbaar, ook als het leeg begint.
+- **De lege project-kolom wijst je de weg.** Staan er regels zonder project, dan zie je onder de boekingsregels "N regels zonder project — kies per regel een project óf Verdelen over projecten…". Eén klik opent het verdeelblok en zet het in beeld. Eén project blijft gewoon de kolom invullen; het blok is er voor de gevallen met meerdere projecten.
+- **De controle "Project verplicht" zegt nu wat je kunt doen.** Ontbreekt een project op een regel, dan noemt de melding beide routes: een project per regel kiezen of het bedrag verdelen. Zodra elke regel via de kolom óf via de verdeling een project heeft, is de controle groen.
+- **De instelling per leverancier is alleen nog een vooringevuld voorstel.** "Vooringevuld: pro rato omzet" aan betekent dat facturen van die leverancier met de verdeling klaarstaan; uit betekent een leeg maar bruikbaar blok. De maandelijkse hercontrole en het signaal "verdeling wijkt x% af" zijn ongewijzigd.
+
 ## 2026-09-04 — Uren-app: je planning bepaalt wat je ziet
 
 - **Weken in plaats van projecten als startpunt.** De uren-app (ZZP'er én detacheerder-namens) opent nu met je weken: deze week plus de weken waarin je ingepland staat. Een oudere week met een half ingevulde of afgekeurde staat blijft staan tot hij is afgehandeld; de rest van de historie staat onder "Ingediend".

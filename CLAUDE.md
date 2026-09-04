@@ -396,7 +396,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   op de detailpagina tab Algemeen "Intake-regels"; `app/intake/splitsing_uitsluiting.py`). (C) **Projectverdeling
   pro rato omzet** BINNEN de administratie (`app/projectverdeling/`): vaste regels + restant naar rato van de geboekte
   verkoopomzet van de vorige maand (projectcijfers-cache; omzetloos/OVH uit; grootste-rest-centen; omzetstanden
-  bevroren bij boeken), per-leverancier-opt-in `projectverdeling_pro_rato`, harde check "Projectverdeling", RLZ =
+  bevroren bij boeken), **beschikbaar op élk inkoopdocument van een administratie mét projectplicht/actieve projecten
+  (addendum 04-09 blok B: lege project-kolom biedt "Verdelen over projecten…" aan, `openVerzoek`; de check
+  "Verplichte velden" benoemt de actie)**, per-leverancier-opt-in `projectverdeling_pro_rato` = uitsluitend
+  PREFILL-trigger (geen poort), harde check "Projectverdeling", RLZ =
   regels splitsen / Odoo = `analytic_distribution`, maandelijkse hercontrole in `sync-alles` (drempel
   `projectverdeling_drempel_pct` 5 %) mét actie "Herverdelen…" (= bestaand tegenboek-én-opnieuw-boeken, mens
   bevestigt); flankerend "inkoop zonder omzet" pas ná `inkoop_zonder_omzet_wachtweken` (4). (D) **Regel-niveau

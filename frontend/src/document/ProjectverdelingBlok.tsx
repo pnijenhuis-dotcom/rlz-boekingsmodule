@@ -32,6 +32,9 @@ interface Props {
   boekvoorstelVersie: number
   /** Ná "Herverdelen…" (document terug naar te_controleren) herlaadt de aanroeper het detail. */
   onGewijzigd?: () => void
+  /** B1 (04-09): telt op als de lege project-kolom "Verdelen over projecten…" aanbiedt — het blok opent (pro rato,
+   * vorige maand) en scrollt in beeld. */
+  openVerzoek?: number
 }
 
 interface VasteRij {
@@ -158,9 +161,10 @@ function RestantBalk({ dto }: { dto: ProjectverdelingDto }) {
  * tonen ▸", restant-balk, blokkade in één zin, lege omzetstand = actie (⟳ projectcijfers). Auto-opslaan 600 ms
  * — de server berekent de centen bindend. Ná boeken alleen-lezen mét chip "omzetstanden vastgelegd" en, bij een
  * hercontrole-afwijking boven de drempel, de `.signaal`-banner mét "Herverdelen…" (tegenboeken + nieuwe
- * verdeling als voorstel; mens bevestigt, nooit stil herboeken). Zichtbaar bij opt-in (prefill) of via de
- * tekstknop "Projectverdeling…". */
-export function ProjectverdelingBlok({ administratieId, documentId, status, soort, boekvoorstelVersie, onGewijzigd }: Props) {
+ * verdeling als voorstel; mens bevestigt, nooit stil herboeken). Beschikbaar op élk inkoopdocument van een
+ * administratie mét projectplicht/actieve projecten (B1 04-09): vooringevuld bij de leverancier-opt-in (prefill, B2),
+ * anders via de tekstknop "Verdelen over projecten…" of de gelijknamige actie in de lege project-kolom (openVerzoek). */
+export function ProjectverdelingBlok({ administratieId, documentId, status, soort, boekvoorstelVersie, onGewijzigd, openVerzoek = 0 }: Props) {
   const relevant = soort === 'inkoopfactuur' && (BEWERKBAAR.has(status) || status === 'ter_accordering' || status === 'geboekt')
   const [dto, setDto] = useState<ProjectverdelingDto | null | undefined>(undefined)
   const [fout, setFout] = useState<string | null>(null)
@@ -177,8 +181,19 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   const [herverdeelFout, setHerverdeelFout] = useState<string | null>(null)
   const timer = useRef<number | null>(null)
   const laatsteVerzonden = useRef<string>('')
+  const blokRef = useRef<HTMLDivElement | null>(null)
   const bewerkbaar = BEWERKBAAR.has(status)
   const projecten = useProjectOpties(administratieId)
+
+  // B1 (04-09): de lege stand van de project-kolom biedt "Verdelen over projecten…" aan — zelfde actie als de
+  // tekstknop hieronder (pro rato vorige maand als startpunt), plus in beeld scrollen.
+  useEffect(() => {
+    if (openVerzoek === 0 || !bewerkbaar) return
+    setGeopend(true)
+    setProRato(true)
+    setPeriode(defaultPeriode())
+    blokRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }, [openVerzoek, bewerkbaar])
 
   // Laden (+ herladen bij elke boekvoorstel-opslag: het restant volgt de regels).
   useEffect(() => {
@@ -239,12 +254,14 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
 
   if (!relevant || dto === undefined) return null
   if (dto === null) return null
+  // B1: zonder projectplicht én zonder actieve projecten heeft verdelen geen zin — geen blok.
+  if (dto.beschikbaar === false && dto.status === 'geen') return null
 
   const zichtbaar = geopend || dto.status === 'voorstel' || dto.status === 'geboekt'
   if (!zichtbaar) {
     if (!bewerkbaar) return null
     return (
-      <div className="projectverdeling-blok" data-testid="projectverdeling-blok">
+      <div className="projectverdeling-blok" data-testid="projectverdeling-blok" ref={blokRef}>
         <button
           type="button"
           className="linkbtn"
@@ -254,7 +271,7 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
             setPeriode(defaultPeriode())
           }}
         >
-          Projectverdeling…
+          Verdelen over projecten…
         </button>
       </div>
     )
@@ -308,7 +325,7 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   }
 
   return (
-    <div className="panel projectverdeling-blok" data-testid="projectverdeling-blok">
+    <div className="panel projectverdeling-blok" data-testid="projectverdeling-blok" ref={blokRef}>
       <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         Projectverdeling
         {dto.prefill && !dto.opgeslagen && <span className="chip geheugen">voorstel — pro rato per leverancier aan</span>}
