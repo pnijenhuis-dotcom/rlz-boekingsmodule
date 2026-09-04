@@ -6,7 +6,8 @@
   sentinel in `rlz_admin_id`, oud RLZ-id bewaard, RLZ-credential blijft staan, audit `odoo_overstap`, koppeling
   mét overgangsdatum, eerste sync als zichtbare run; probe rood → 422 mét rapport en NIETS opgeslagen;
   al-Odoo / alleen-lezen-koppeling / company elders gekoppeld / gearchiveerd → 422 leesbaar;
-- `PUT …/odoo/overgangsdatum`: audit oud→nieuw, alleen-lezen → 422;
+- `PUT …/odoo/overgangsdatum`: audit oud→nieuw, alleen-lezen → 422 (kanteldatum, geen poort — slotstuk 04-09; het
+  adapter-bewijs "factuurdatum < kanteldatum boekt óók in Odoo" staat in tests/odoo/test_basis.py);
 - `GET …/odoo`: stamgegevens-tellers (niet-verdwenen cache-rijen), probe-rapport, jongste sync-tijd;
 - `GET /instellingen/administraties` draagt de additieve odoo_*-velden;
 - eerste-sync-herstart vanuit de gedeelde UI-component draait voor een Odoo-administratie synchroon.
@@ -24,16 +25,13 @@ from sqlalchemy import Engine, text
 
 from app.auth import service as auth_service
 from app.auth import voorwaarden
-from app.backends.port import BackendBoekFout
 from app.db.models import Grootboekrekening, RlzCredential
 from app.db.session import scoped_session
 from app.main import app
 from app.odoo import mapping as odoo_mapping
 from app.odoo import service as odoo_service
 from app.odoo import sync as odoo_sync
-from app.odoo.credentials import OdooVerbinding
 from app.odoo.ids import odoo_admin_sentinel
-from app.odoo.inkoop import OdooInkoopPort
 from app.odoo.models import OdooKoppeling
 from app.odoo.probe import ProbeUitkomst
 from app.security.envelope import wrap_secret
@@ -88,7 +86,8 @@ def probe_groen(monkeypatch: pytest.MonkeyPatch) -> ProbeUitkomst:
     mapping-tests in tests/odoo/test_mapping.py overschrijven `lees_live_odoo_stamgegevens` mét inhoud."""
     p = _groene_probe()
     monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: p)
-    monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: ([], []))
+    # Slotstuk 04-09: de seam levert (grootboek, btw, projecten); `live_odoo_lijsten` tolereert ook een 2-tuple.
+    monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: ([], [], []))
     return p
 
 
@@ -453,39 +452,6 @@ class TestStand:
         # De lijst leest de stand zonder de tellers (lichtgewicht) maar mét dezelfde sync-tijd-bron.
         stand = odoo_service.koppelstand([administratie_id], met_details=False)[administratie_id]
         assert stand.stamgegevens is None and stand.laatste_sync_op is None and stand.overgangsdatum == OVERGANG
-
-
-class TestAdapterPoort:
-    def test_factuurdatum_voor_overgangsdatum_wordt_leesbaar_geweigerd(self) -> None:
-        verbinding = OdooVerbinding(
-            administratie_id=uuid.uuid4(),
-            odoo_url=URL,
-            company_id=COMPANY,
-            company_naam="Universal Steigerbouw",
-            journal_purchase_id=7,
-            journal_general_id=8,
-            journal_sale_id=9,
-            analytic_plan_id=2,
-            overgangsdatum=OVERGANG,
-        )
-        port = OdooInkoopPort(verbinding.administratie_id, verbinding, client=object())  # type: ignore[arg-type]
-        with pytest.raises(BackendBoekFout, match="hoort nog in Reeleezee"):
-            port._toets_overgangsdatum(date(2026, 8, 31))
-        port._toets_overgangsdatum(OVERGANG)  # op de dag zelf mag
-        # Zonder overgangsdatum (bestaande koppelingen) geen poort.
-        zonder = OdooVerbinding(
-            administratie_id=verbinding.administratie_id,
-            odoo_url=URL,
-            company_id=COMPANY,
-            company_naam=None,
-            journal_purchase_id=7,
-            journal_general_id=None,
-            journal_sale_id=None,
-            analytic_plan_id=None,
-        )
-        OdooInkoopPort(zonder.administratie_id, zonder, client=object())._toets_overgangsdatum(  # type: ignore[arg-type]
-            date(2020, 1, 1)
-        )
 
 
 class TestKoppelenSentinelConflict:

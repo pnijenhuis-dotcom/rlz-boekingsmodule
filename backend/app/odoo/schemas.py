@@ -40,6 +40,13 @@ class GekoppeldeAdministratieDto(BaseModel):
     probe: dict[str, str]
     sync_run_id: uuid.UUID | None
     sync: dict[str, dict] = Field(default_factory=dict)
+    #: Slotstuk 04-09 (alleen bij een overstap mét projectmapping "aanmaken in Odoo"): aantal in Odoo nieuw
+    #: aangemaakte analytic accounts en de zichtbaar overgeslagen projecten mét reden (nooit stil).
+    projecten_aangemaakt: int = 0
+    projecten_overgeslagen: list[str] = Field(default_factory=list)
+    #: Slotstuk 04-09 blok C1 (alleen overstap): tellingen van de hervertaling van open boekvoorstellen
+    #: {documenten, regels, vertaald{grootboek,btw,project}, leeg{…}}; None bij ingang A.
+    hervertaling: dict | None = None
 
 
 class OdooGekoppeldDto(BaseModel):
@@ -88,6 +95,8 @@ class OdooStandDto(BaseModel):
     probe_rapport: dict[str, str] | None = None
     stamgegevens: OdooStamgegevensDto | None = None
     laatste_sync_op: datetime | None = None
+    #: Kanteldatum van een overstap (vanaf wanneer de administratie Odoo is; géén poort op documenten — slotstuk
+    #: 04-09) + het oude RLZ-administratie-id.
     overgangsdatum: date | None = None
     rlz_admin_id_voor_overstap: str | None = None
 
@@ -103,15 +112,26 @@ class OdooMappingRijInvoerDto(StrikteInvoer):
     odoo_id: int = Field(ge=0)
 
 
+class OdooProjectMappingRijInvoerDto(StrikteInvoer):
+    """Projectrij (slotstuk 04-09): `odoo_id` = gekozen analytic account, `aanmaken` = in Odoo aanmaken (alleen
+    als `kan_aanmaken`); beide leeg = het project vervalt bewust (geen mapping-rij, geen fout)."""
+
+    rlz_id: uuid.UUID
+    odoo_id: int | None = Field(default=None, gt=0)
+    aanmaken: bool = False
+
+
 class OdooMappingInvoerDto(StrikteInvoer):
     grootboek: list[OdooMappingRijInvoerDto] = Field(default_factory=list)
     btw: list[OdooMappingRijInvoerDto] = Field(default_factory=list)
+    project: list[OdooProjectMappingRijInvoerDto] = Field(default_factory=list)
 
 
 class OdooOverstapDto(OdooGegevensDto):
     """Blok E, ingang B: een bestaande RLZ-administratie stapt over op Odoo (volledige backend) — company uit
-    de lijst + verplichte overgangsdatum (vanaf die factuurdatum boekt de administratie in Odoo) + de door de
-    mens bevestigde rekening-mapping (blok A 04-09; leeg mag alleen als er niets in gebruik is)."""
+    de lijst + verplichte overgangsdatum (KANTELDATUM: vanaf wanneer de administratie Odoo is; géén poort op
+    documenten) + de door de mens bevestigde rekening-mapping (blok A 04-09; leeg mag alleen als er niets in
+    gebruik is; projectrijen optioneel)."""
 
     company_id: int = Field(gt=0)
     overgangsdatum: date
@@ -167,11 +187,38 @@ class BtwMappingVoorstelRijDto(BaseModel):
     reden: str | None
 
 
+class OdooProjectDto(BaseModel):
+    """Een Odoo-analytic-account uit het plan van de koppeling; `naam` zónder de "[code] "-prefix."""
+
+    odoo_id: int
+    lokaal_id: uuid.UUID
+    naam: str
+    code: str | None
+
+
+class ProjectMappingVoorstelRijDto(BaseModel):
+    """Projectrij (slotstuk 04-09). `rlz_nummer` = leidende cijfers van de RLZ-naam; `kan_aanmaken` = nummer
+    aanwezig én analytic plan bekend; `reden` = 'projectnummer' (groen) | 'projectnaam' (oranje) | None."""
+
+    rlz_id: uuid.UUID
+    rlz_naam: str | None
+    rlz_nummer: str | None
+    actief: bool | None
+    in_gebruik_observaties: int
+    in_gebruik_open_regels: int
+    voorstel_odoo_id: int | None
+    voorstel_odoo_naam: str | None
+    reden: str | None
+    kan_aanmaken: bool
+
+
 class OdooMappingTellingDto(BaseModel):
     grootboek_totaal: int
     grootboek_met_voorstel: int
     btw_totaal: int
     btw_met_voorstel: int
+    project_totaal: int = 0
+    project_met_voorstel: int = 0
 
 
 class OdooOverstapVoorbereidingDto(BaseModel):
@@ -182,6 +229,8 @@ class OdooOverstapVoorbereidingDto(BaseModel):
     odoo_grootboek: list[OdooRekeningDto]
     odoo_btw: list[OdooTariefDto]
     telling: OdooMappingTellingDto
+    project: list[ProjectMappingVoorstelRijDto] = Field(default_factory=list)
+    odoo_projecten: list[OdooProjectDto] = Field(default_factory=list)
 
 
 class MappingRijDto(BaseModel):
@@ -205,13 +254,20 @@ class OdooMappingStandDto(BaseModel):
     odoo_btw: list[OdooTariefDto]
     laatst_bevestigd_op: datetime | None
     laatst_bevestigd_door_naam: str | None
+    #: Slotstuk 04-09: projectrijen (soort 'project', rlz_code = projectnummer) + Odoo-projecten uit de cache.
+    project: list[MappingRijDto] = Field(default_factory=list)
+    odoo_projecten: list[OdooProjectDto] = Field(default_factory=list)
 
 
 class OdooMappingCorrectieDto(StrikteInvoer):
+    """`odoo_id` 0 = synthetisch geen-btw (alleen soort btw); grootboek/project vereisen een echt Odoo-id."""
+
     odoo_id: int = Field(ge=0)
 
 
 class OdooOvergangsdatumDto(StrikteInvoer):
+    """Kanteldatum wijzigen — altijd toegestaan (geen poort meer, slotstuk 04-09); audit oud→nieuw."""
+
     overgangsdatum: date
 
 

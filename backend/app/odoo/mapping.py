@@ -15,9 +15,19 @@ autoboek-opt-in, stil dood. Daarom is de mapping een VERPLICHTE stap van de over
 3. Runtime: `geldende_mapping` + `vertaal_observaties` vertalen de observaties VÓÓR de engine weegt —
    anders zouden oude RLZ-stemmen en nieuwe Odoo-stemmen voor dezelfde rekening de stem splitsen.
    `app_bevestigd`/bron/bron_datum blijven ongewijzigd: de mens bevestigde het bóékgedrag, niet het
-   rekeningnummer. `project_id` wordt op een vertaalde observatie None (RLZ-projecten ≠ Odoo-analytic-
-   accounts; projectmapping = beslispunt Peter).
+   rekeningnummer. `project_id` vertaalt via de derde mapping-soort 'project' (RLZ-project → Odoo-analytic-
+   account, slotstuk 04-09, migratie 0113) — ongemapt project = None ("projectdata verliest nooit zijn
+   koppeling" zolang de mens 'm koppelt; niet gekoppeld = het project vervalt zichtbaar).
 4. Correctie per rij = nieuwe versie (`corrigeer_rij`, append-only, audit oud→nieuw).
+
+Projectmapping (slotstuk 04-09, besluit Peter): projectrijen zijn NIET verplicht (projectplicht is een aparte
+boek-check; ongemapt = geheugen-project None, open regel leeg mét reden via de hervertaling). Voorstel
+(`bepaal_project_voorstel`): het projectnummer = de leidende cijfers van de RLZ-naam ("26127 Tilburg (Heijmans)"
+→ 26127); precies één Odoo-analytic-account met `code == nummer` óf met dezelfde leidende cijfers in de naam
+= `projectnummer` (groen); anders genormaliseerde naamgelijkheid = `projectnaam` (oranje, bevestig); anders geen
+voorstel (mens kiest, mag leeg blijven). Optie "aanmaken in Odoo" (`aanmaken=True`, alleen mét nummer én plan):
+lookup-vóór-create op (code, plan) → hergebruik of `account.analytic.account.create`; mislukt = rij zichtbaar
+overgeslagen mét reden, nooit unlink; bron `aangemaakt`.
 
 Voorstelregels grootboek (RLZ 4-cijferig, Odoo 6-cijferig — een letterlijke match levert bij Universal
 weinig op): (1) exact gelijke code = `zelfde_code` (groen); (2) RLZ-code + "00" == Odoo-code
@@ -51,19 +61,30 @@ from app.odoo import sync as odoo_sync
 from app.odoo.credentials import GeenOdooKoppeling
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
 from app.odoo.models import OdooIdKoppeling, OdooKoppeling, OdooRekeningMapping
+from app.projectverdeling.models import Projectverdeling
 from app.sync.btw import taxrate_vlaggen
-from app.sync.models import TaxRateCache
+from app.sync.models import ProjectCache, TaxRateCache
 
 logger = logging.getLogger(__name__)
 
 SOORT_GROOTBOEK = "grootboek"
 SOORT_BTW = "btw"
-SOORTEN: tuple[str, ...] = (SOORT_GROOTBOEK, SOORT_BTW)
+SOORT_PROJECT = "project"
+SOORTEN: tuple[str, ...] = (SOORT_GROOTBOEK, SOORT_BTW, SOORT_PROJECT)
 
 BRON_ZELFDE_CODE = "zelfde_code"
 BRON_CODE_VERLENGD = "code_verlengd"
 BRON_TARIEF = "tarief"
 BRON_HANDMATIG = "handmatig"
+#: Project (slotstuk 04-09): nummer-match (groen), naam-match (oranje), in Odoo aangemaakt/gevonden bij de overstap.
+BRON_PROJECTNUMMER = "projectnummer"
+BRON_PROJECTNAAM = "projectnaam"
+BRON_AANGEMAAKT = "aangemaakt"
+
+#: Projectnummer = de leidende 4–6 cijfers van de RLZ-projectnaam (naamconventie "26127 Tilburg (Heijmans)").
+_PROJECTNUMMER = re.compile(r"^\s*(\d{4,6})\b")
+#: Odoo toont een analytic account als "[code] name" — voor naam-vergelijking gaat die prefix eraf.
+_CODE_PREFIX = re.compile(r"^\s*\[[^\]]*\]\s*")
 
 #: Documentstatussen waarin een boekvoorstel-regel NIET meer "open" is: geboekt (het geheugen heeft 'm al),
 #: afgewezen/verwijderd/gesplitst/samengevoegd/geaccordeerd (er volgt geen boeking meer). Alle overige
@@ -124,6 +145,29 @@ class OdooTarief:
 
 
 @dataclass(frozen=True)
+class RlzProject:
+    """Een RLZ-project dat in gebruik is (geheugen ∪ open regels ∪ open projectverdelingen). `nummer` = de
+    leidende cijfers van de naam (None = geen naamconventie-nummer → aanmaken in Odoo niet mogelijk)."""
+
+    rlz_id: uuid.UUID
+    naam: str | None
+    nummer: str | None
+    actief: bool | None
+    in_gebruik_observaties: int
+    in_gebruik_open_regels: int
+
+
+@dataclass(frozen=True)
+class OdooProject:
+    """Een Odoo-analytic-account uit het plan van de koppeling; `naam` zonder de "[code] "-prefix."""
+
+    odoo_id: int
+    lokaal_id: uuid.UUID
+    naam: str
+    code: str | None
+
+
+@dataclass(frozen=True)
 class MappingVoorstelRij:
     rlz: RlzRekening
     voorstel: OdooRekening | None
@@ -138,6 +182,13 @@ class BtwMappingVoorstelRij:
 
 
 @dataclass(frozen=True)
+class ProjectMappingVoorstelRij:
+    rlz: RlzProject
+    voorstel: OdooProject | None
+    reden: str | None  # 'projectnummer' | 'projectnaam' | None
+
+
+@dataclass(frozen=True)
 class OverstapVoorbereiding:
     company_naam: str | None
     probe: dict[str, str]
@@ -145,6 +196,10 @@ class OverstapVoorbereiding:
     btw: list[BtwMappingVoorstelRij]
     odoo_grootboek: list[OdooRekening]
     odoo_btw: list[OdooTarief]
+    project: list[ProjectMappingVoorstelRij] = field(default_factory=list)
+    odoo_projecten: list[OdooProject] = field(default_factory=list)
+    #: Het analytic plan uit de probe — zonder plan is "aanmaken in Odoo" niet mogelijk (`kan_aanmaken`).
+    analytic_plan_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -156,9 +211,20 @@ class MappingRijInvoer:
 
 
 @dataclass(frozen=True)
+class ProjectMappingRijInvoer:
+    """Projectrij: `odoo_id` = gekozen analytic account, `aanmaken` = in Odoo aanmaken (lookup-vóór-create);
+    beide leeg = het project vervalt bewust (geen mapping-rij)."""
+
+    rlz_id: uuid.UUID
+    odoo_id: int | None = None
+    aanmaken: bool = False
+
+
+@dataclass(frozen=True)
 class MappingInvoer:
     grootboek: list[MappingRijInvoer] = field(default_factory=list)
     btw: list[MappingRijInvoer] = field(default_factory=list)
+    project: list[ProjectMappingRijInvoer] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -186,10 +252,11 @@ class RekeningMapping:
 
     grootboek: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
     btw: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
+    project: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
     @property
     def leeg(self) -> bool:
-        return not self.grootboek and not self.btw
+        return not self.grootboek and not self.btw and not self.project
 
 
 @dataclass(frozen=True)
@@ -200,6 +267,21 @@ class MappingStand:
     odoo_btw: list[OdooTarief]
     laatst_bevestigd_op: datetime | None
     laatst_bevestigd_door_naam: str | None
+    project: list[MappingRij] = field(default_factory=list)
+    odoo_projecten: list[OdooProject] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ProjectAanmaakUitkomst:
+    """Uitkomst van "aanmaken in Odoo" bij de overstap: de mapping-rijen (bron `aangemaakt`) voor gevonden én
+    nieuw aangemaakte analytic accounts, de accounts zelf (voor id-koppeling + project-cache), tellingen en de
+    zichtbaar overgeslagen rijen mét reden (nooit stil, nooit unlink)."""
+
+    rijen: list[MappingRij] = field(default_factory=list)
+    accounts: list[OdooProject] = field(default_factory=list)
+    aangemaakt: int = 0
+    gevonden: int = 0
+    overgeslagen: list[str] = field(default_factory=list)
 
 
 # ----------------------------------------------------------------------------- Odoo-lijsten
@@ -256,26 +338,69 @@ def odoo_tarieven_uit_sync(records: list[dict[str, Any]]) -> list[OdooTarief]:
     return uit
 
 
+def zonder_code_prefix(naam: str | None) -> str:
+    """ "[26127] Tilburg (Heijmans)" → "Tilburg (Heijmans)" (Odoo's weergavenaam van een analytic account)."""
+    return _CODE_PREFIX.sub("", naam or "", count=1).strip()
+
+
+def projectnummer_uit_naam(naam: str | None) -> str | None:
+    """De leidende 4–6 cijfers van een projectnaam (RLZ-naamconventie "26127 Tilburg (Heijmans)"); None als de
+    naam er niet mee begint — dan is er geen deterministische sleutel en kan het project niet aangemaakt worden."""
+    m = _PROJECTNUMMER.match(naam or "")
+    return m.group(1) if m else None
+
+
+def odoo_projecten_uit_sync(records: list[dict[str, Any]]) -> list[OdooProject]:
+    """`odoo_sync.lees_projecten`-records (`Name` = "[code] name") → dataclasses mét de naam zónder prefix."""
+    return [
+        OdooProject(
+            odoo_id=int(r["odoo_id"]),
+            lokaal_id=uuid.UUID(str(r["id"])),
+            naam=zonder_code_prefix(str(r["Name"])),
+            code=(str(r["code"]).strip() if r.get("code") else None),
+        )
+        for r in records
+    ]
+
+
 def lees_live_odoo_stamgegevens(
-    *, odoo_url: str, api_key: str, company_id: int
-) -> tuple[list[OdooRekening], list[OdooTarief]]:
-    """LIVE, read-only: het Odoo-grootboek + de inkooptarieven van deze company met een losse `_Vertaler`
-    (niets in de DB — de lokale UUID's zijn deterministisch, dus vóór de sync al te berekenen). Test-seam."""
+    *, odoo_url: str, api_key: str, company_id: int, analytic_plan_id: int | None = None
+) -> tuple[list[OdooRekening], list[OdooTarief], list[OdooProject]]:
+    """LIVE, read-only: het Odoo-grootboek + de inkooptarieven + (slotstuk 04-09) de actieve analytic accounts
+    van het plan van deze company met een losse `_Vertaler` (niets in de DB — de lokale UUID's zijn
+    deterministisch, dus vóór de sync al te berekenen). Zonder plan = geen projecten. Test-seam."""
     from app.odoo import service  # lokaal: service importeert deze module in koppel_overstap
 
     vertaler = odoo_sync._Vertaler(int(company_id))  # noqa: SLF001 — bewust dezelfde id-afleiding als de sync
     with service._client(odoo_url, api_key, int(company_id)) as client:  # noqa: SLF001
         grootboek = odoo_sync.lees_grootboek(client, vertaler)
         btw = odoo_sync.lees_btw(client, vertaler)
-    return odoo_rekeningen_uit_sync(grootboek), odoo_tarieven_uit_sync(btw)
+        projecten = odoo_sync.lees_projecten(client, vertaler, plan_id=analytic_plan_id)
+    return odoo_rekeningen_uit_sync(grootboek), odoo_tarieven_uit_sync(btw), odoo_projecten_uit_sync(projecten)
+
+
+def live_odoo_lijsten(
+    *, odoo_url: str, api_key: str, company_id: int, analytic_plan_id: int | None
+) -> tuple[list[OdooRekening], list[OdooTarief], list[OdooProject]]:
+    """Eén aanroeppunt voor `voorbereid_overstap` + `koppel_overstap`. Tolerant voor een seam die nog de oude
+    2-tuple (grootboek, btw) teruggeeft — de projectenlijst is dan leeg (parallelle-bouw-vangnet, slotstuk 04-09:
+    testfixtures buiten deze module patchen `lees_live_odoo_stamgegevens`)."""
+    uit = lees_live_odoo_stamgegevens(
+        odoo_url=odoo_url, api_key=api_key, company_id=company_id, analytic_plan_id=analytic_plan_id
+    )
+    gb, btw, *rest = uit
+    return list(gb), list(btw), (list(rest[0]) if rest else [])
 
 
 # ----------------------------------------------------------------------------- RLZ in gebruik
 
 
-def rlz_in_gebruik(session: Session, administratie_id: uuid.UUID) -> tuple[list[RlzRekening], list[RlzTarief]]:
+def rlz_in_gebruik(
+    session: Session, administratie_id: uuid.UUID
+) -> tuple[list[RlzRekening], list[RlzTarief], list[RlzProject]]:
     """De rijen die de mens moet mappen: RLZ-grootboek-ids uit `boeking_observatie.gb_id` ∪ de `ledger_id`'s
-    van boekvoorstel-regels van documenten in een NIET-terminale status (idem btw: `btw_id` ∪ `taxrate_id`).
+    van boekvoorstel-regels van documenten in een NIET-terminale status (idem btw: `btw_id` ∪ `taxrate_id`;
+    idem project: `project_id` ∪ `project_id` ∪ de project-refs in open projectverdelingen — slotstuk 04-09).
     Code/naam uit de cache — óók verdwenen rijen (de Odoo-sync markeert ze ná de overstap); staat een id
     niet (meer) in de cache, dan code/naam None ("onbekende RLZ-rekening"), tóch te mappen."""
     obs_gb = dict(
@@ -312,9 +437,39 @@ def rlz_in_gebruik(session: Session, administratie_id: uuid.UUID) -> tuple[list[
             .group_by(BoekvoorstelRegel.taxrate_id)
         ).all()
     )
+    obs_project = dict(
+        session.execute(
+            select(BoekingObservatie.project_id, func.count())
+            .where(BoekingObservatie.administratie_id == administratie_id, BoekingObservatie.project_id.is_not(None))
+            .group_by(BoekingObservatie.project_id)
+        ).all()
+    )
+    open_project: dict[uuid.UUID, int] = dict(
+        session.execute(
+            open_basis.with_only_columns(BoekvoorstelRegel.project_id, func.count())
+            .where(BoekvoorstelRegel.project_id.is_not(None))
+            .group_by(BoekvoorstelRegel.project_id)
+        ).all()
+    )
+    # Open projectverdelingen (blok C 04-09) dragen project-refs in JSON (vaste regels + berekende delen) — één
+    # query, telling per project bij de open regels (het zijn regels-in-wording van hetzelfde open document).
+    for vaste_regels, verdeling in session.execute(
+        select(Projectverdeling.vaste_regels, Projectverdeling.verdeling)
+        .join(Document, Document.id == Projectverdeling.document_id)
+        .where(
+            Projectverdeling.administratie_id == administratie_id,
+            Projectverdeling.status == "voorstel",
+            Document.status.not_in(list(TERMINALE_STATUSSEN)),
+        )
+    ).all():
+        for deel in [*(vaste_regels or []), *(verdeling or [])]:
+            pid = _uuid_of_none((deel or {}).get("project_id"))
+            if pid is not None:
+                open_project[pid] = open_project.get(pid, 0) + 1
 
     gb_ids = sorted(set(obs_gb) | set(open_gb), key=str)
     btw_ids = sorted(set(obs_btw) | set(open_btw), key=str)
+    project_ids = sorted(set(obs_project) | set(open_project), key=str)
     gb_cache: dict[uuid.UUID, Grootboekrekening] = {}
     if gb_ids:
         gb_cache = {
@@ -365,7 +520,40 @@ def rlz_in_gebruik(session: Session, administratie_id: uuid.UUID) -> tuple[list[
             )
         )
     tarieven.sort(key=lambda t: (t.naam is None, t.naam or "", str(t.rlz_id)))
-    return rekeningen, tarieven
+
+    project_cache: dict[uuid.UUID, ProjectCache] = {}
+    if project_ids:
+        project_cache = {
+            p.id: p
+            for p in session.scalars(
+                select(ProjectCache).where(
+                    ProjectCache.administratie_id == administratie_id, ProjectCache.id.in_(project_ids)
+                )
+            )
+        }
+    projecten = [
+        RlzProject(
+            rlz_id=i,
+            naam=(project_cache[i].naam if i in project_cache else None),
+            nummer=projectnummer_uit_naam(project_cache[i].naam) if i in project_cache else None,
+            actief=(project_cache[i].is_actief if i in project_cache else None),
+            in_gebruik_observaties=int(obs_project.get(i, 0)),
+            in_gebruik_open_regels=int(open_project.get(i, 0)),
+        )
+        for i in project_ids
+    ]
+    # Op nummer; zonder nummer op naam erachter; onbekende (niet meer in de cache) helemaal achteraan.
+    projecten.sort(key=lambda p: (p.nummer is None, p.nummer or "", p.naam is None, p.naam or "", str(p.rlz_id)))
+    return rekeningen, tarieven, projecten
+
+
+def _uuid_of_none(waarde: Any) -> uuid.UUID | None:
+    if waarde is None:
+        return None
+    try:
+        return uuid.UUID(str(waarde))
+    except ValueError:
+        return None
 
 
 # ----------------------------------------------------------------------------- pure voorstellen
@@ -434,6 +622,49 @@ def bepaal_btw_voorstel(rlz: list[RlzTarief], odoo: list[OdooTarief]) -> list[Bt
     return uit
 
 
+def _norm_naam(naam: str | None) -> str:
+    return " ".join(zonder_code_prefix(naam).casefold().split())
+
+
+def bepaal_project_voorstel(rlz: list[RlzProject], odoo: list[OdooProject]) -> list[ProjectMappingVoorstelRij]:
+    """Deterministisch per RLZ-project (slotstuk 04-09): (1) het projectnummer (leidende cijfers van de RLZ-naam)
+    == Odoo-`code` óf == de leidende cijfers van de Odoo-naam → precies één kandidaat = `projectnummer` (groen);
+    (2) anders genormaliseerde naamgelijkheid (casefold, whitespace, zonder "[code] ") → precies één = `projectnaam`
+    (oranje, bevestig); (3) anders None — mens kiest, mag leeg blijven. Méér dan één kandidaat = nooit gokken."""
+    per_nummer: dict[str, list[OdooProject]] = {}
+    per_naam: dict[str, list[OdooProject]] = {}
+    for o in odoo:
+        sleutels = set()
+        if o.code and o.code.strip():
+            sleutels.add(o.code.strip())
+        nummer_in_naam = projectnummer_uit_naam(o.naam)
+        if nummer_in_naam:
+            sleutels.add(nummer_in_naam)
+        for s in sleutels:
+            per_nummer.setdefault(s, []).append(o)
+        per_naam.setdefault(_norm_naam(o.naam), []).append(o)
+
+    uit: list[ProjectMappingVoorstelRij] = []
+    for p in rlz:
+        voorstel: OdooProject | None = None
+        reden: str | None = None
+        if p.nummer:
+            kandidaten = per_nummer.get(p.nummer, [])
+            if len(kandidaten) == 1:
+                voorstel, reden = kandidaten[0], BRON_PROJECTNUMMER
+        if voorstel is None and p.naam:
+            kandidaten = per_naam.get(_norm_naam(p.naam), [])
+            if len(kandidaten) == 1:
+                voorstel, reden = kandidaten[0], BRON_PROJECTNAAM
+        uit.append(ProjectMappingVoorstelRij(rlz=p, voorstel=voorstel, reden=reden))
+    return uit
+
+
+def kan_project_aanmaken(rij: RlzProject, analytic_plan_id: int | None) -> bool:
+    """ "Aanmaken in Odoo" vergt een deterministische sleutel (projectnummer) én een analytic plan."""
+    return bool(rij.nummer) and analytic_plan_id is not None
+
+
 # ----------------------------------------------------------------------------- validatie + schrijven
 
 
@@ -444,25 +675,39 @@ def valideer_mapping(
     odoo_grootboek: list[OdooRekening],
     odoo_btw: list[OdooTarief],
     invoer: MappingInvoer | None,
+    project: list[ProjectMappingVoorstelRij] | None = None,
+    odoo_projecten: list[OdooProject] | None = None,
+    analytic_plan_id: int | None = None,
 ) -> list[MappingRij]:
     """Élke in-gebruik-rij MOET een odoo_id hebben dat in de live Odoo-lijst voorkomt (btw: incl. 0 =
     synthetisch geen-btw); ontbrekend/onbekend → `OdooKoppelFout` "Rekening-mapping onvolledig … niets
     opgeslagen". Bron per rij = de voorstel-reden als de mens het voorstel volgde, anders 'handmatig'.
-    Een invoer-rij voor een RLZ-id dat niet in gebruik is, wordt geweigerd (de tabel is wat de mens zag)."""
+    Een invoer-rij voor een RLZ-id dat niet in gebruik is, wordt geweigerd (de tabel is wat de mens zag).
+
+    Projectrijen (slotstuk 04-09) zijn NIET verplicht: geen odoo_id en geen `aanmaken` = het project vervalt
+    (geen rij). Wél 422: onbekende rlz_id, odoo_id niet in de live lijst, odoo_id én aanmaken tegelijk, of
+    aanmaken zonder projectnummer/plan. Rijen mét `aanmaken=True` komen hier NIET uit — die levert
+    `project_aanmaak_verzoeken` en schrijft `maak_odoo_projecten_aan` ná de Odoo-write."""
     from app.odoo.service import OdooKoppelFout  # lokaal: service importeert deze module
 
     inv = invoer or MappingInvoer()
+    project = project or []
+    odoo_projecten = odoo_projecten or []
     gekozen_gb = {r.rlz_id: int(r.odoo_id) for r in inv.grootboek}
     gekozen_btw = {r.rlz_id: int(r.odoo_id) for r in inv.btw}
+    gekozen_project = {r.rlz_id: r for r in inv.project}
     odoo_gb_per_id = {o.odoo_id: o for o in odoo_grootboek}
     odoo_btw_per_id = {o.odoo_id: o for o in odoo_btw}
+    odoo_project_per_id = {o.odoo_id: o for o in odoo_projecten}
 
     onbekend_gb = sorted(set(gekozen_gb) - {r.rlz.rlz_id for r in grootboek}, key=str)
     onbekend_btw = sorted(set(gekozen_btw) - {r.rlz.rlz_id for r in btw}, key=str)
-    if onbekend_gb or onbekend_btw:
+    onbekend_project = sorted(set(gekozen_project) - {r.rlz.rlz_id for r in project}, key=str)
+    if onbekend_gb or onbekend_btw or onbekend_project:
         raise OdooKoppelFout(
-            f"Rekening-mapping bevat {len(onbekend_gb)} grootboekrekening(en) en {len(onbekend_btw)} btw-tarief(en) "
-            "die niet in gebruik zijn bij deze administratie — herlaad het voorstel; niets opgeslagen"
+            f"Rekening-mapping bevat {len(onbekend_gb)} grootboekrekening(en), {len(onbekend_btw)} btw-tarief(en) en "
+            f"{len(onbekend_project)} project(en) die niet in gebruik zijn bij deze administratie — herlaad het "
+            "voorstel; niets opgeslagen"
         )
 
     rijen: list[MappingRij] = []
@@ -513,7 +758,197 @@ def valideer_mapping(
             f"Rekening-mapping onvolledig: {mist_gb} grootboekrekening(en) en {mist_btw} btw-tarief(en) zonder "
             "Odoo-tegenhanger — niets opgeslagen"
         )
+
+    for prij in project:
+        keuze = gekozen_project.get(prij.rlz.rlz_id)
+        if keuze is None or (keuze.odoo_id is None and not keuze.aanmaken):
+            continue  # project vervalt bewust — geen rij, geen fout
+        label = prij.rlz.naam or str(prij.rlz.rlz_id)
+        if keuze.aanmaken:
+            if keuze.odoo_id is not None:
+                raise OdooKoppelFout(
+                    f"Project '{label}': kies óf een bestaand Odoo-project óf 'aanmaken in Odoo', niet beide — "
+                    "niets opgeslagen"
+                )
+            if not kan_project_aanmaken(prij.rlz, analytic_plan_id):
+                reden = "geen projectnummer in de naam" if not prij.rlz.nummer else "geen analytic plan in de koppeling"
+                raise OdooKoppelFout(
+                    f"Project '{label}' kan niet in Odoo aangemaakt worden ({reden}) — kies een bestaand Odoo-project "
+                    "of laat de rij leeg; niets opgeslagen"
+                )
+            continue  # aanmaak-verzoek: pas ná de Odoo-write een rij (maak_odoo_projecten_aan)
+        pdoel = odoo_project_per_id.get(int(keuze.odoo_id))  # type: ignore[arg-type]
+        if pdoel is None:
+            raise OdooKoppelFout(
+                f"Project '{label}': Odoo-project {keuze.odoo_id} staat niet (meer) in het analytic plan van deze "
+                "company — herlaad het voorstel; niets opgeslagen"
+            )
+        bron = prij.reden if (prij.voorstel is not None and prij.voorstel.odoo_id == pdoel.odoo_id) else BRON_HANDMATIG
+        rijen.append(_project_rij(prij.rlz, pdoel, bron or BRON_HANDMATIG))
     return rijen
+
+
+def _project_rij(rlz: RlzProject, doel: OdooProject, bron: str) -> MappingRij:
+    return MappingRij(
+        soort=SOORT_PROJECT,
+        rlz_id=rlz.rlz_id,
+        rlz_code=rlz.nummer,
+        rlz_naam=rlz.naam,
+        odoo_lokaal_id=doel.lokaal_id,
+        odoo_id=doel.odoo_id,
+        odoo_code=doel.code,
+        odoo_naam=doel.naam,
+        bron=bron,
+    )
+
+
+def project_aanmaak_verzoeken(
+    project: list[ProjectMappingVoorstelRij], invoer: MappingInvoer | None
+) -> list[RlzProject]:
+    """De RLZ-projecten waarvoor de mens 'aanmaken in Odoo' koos (ná `valideer_mapping`, dus geldig)."""
+    inv = invoer or MappingInvoer()
+    gewenst = {r.rlz_id for r in inv.project if r.aanmaken and r.odoo_id is None}
+    return [p.rlz for p in project if p.rlz.rlz_id in gewenst]
+
+
+def maak_odoo_projecten_aan(
+    client: Any, *, verzoeken: list[RlzProject], analytic_plan_id: int, company_id: int
+) -> ProjectAanmaakUitkomst:
+    """Per verzoek: lookup-vóór-create op (`code` == projectnummer, plan) — precies één ACTIEF account =
+    hergebruik; géén → `account.analytic.account.create({name: volledige RLZ-naam, code, plan_id, company_id})`
+    mét post-write-verificatie (terug-lezen: bestaat + company klopt); meerdere actieve óf uitsluitend een
+    GEARCHIVEERD account (Odoo weigert posten daarop — les §7 stap 8) óf een Odoo-fout = rij zichtbaar
+    OVERGESLAGEN mét reden — niets stil, nooit unlink. Odoo-writes vóór de DB-transactie: een mislukte overstap
+    laat hooguit een leeg analytic account achter (zichtbaar in `overgeslagen`/log, geen boeking)."""
+    from app.odoo.fouten import vertaal_odoo_fout
+
+    uitkomst_rijen: list[MappingRij] = []
+    accounts: list[OdooProject] = []
+    overgeslagen: list[str] = []
+    aangemaakt = 0
+    gevonden = 0
+    velden = ["id", "name", "code", "active", "company_id"]
+    for rlz in verzoeken:
+        label = rlz.naam or str(rlz.rlz_id)
+        if not rlz.nummer:
+            overgeslagen.append(f"{label}: geen projectnummer in de naam — niet aangemaakt")
+            continue
+        try:
+            bestaand = client.search_read(
+                odoo_sync.MODEL_ANALYTIC,
+                [
+                    ["code", "=", rlz.nummer],
+                    ["plan_id", "=", int(analytic_plan_id)],
+                    ["company_id", "in", [int(company_id), False]],
+                    ["active", "in", [True, False]],
+                ],
+                velden,
+                limit=5,
+            )
+            actief = [r for r in bestaand if r.get("active", True)]
+            if len(actief) > 1:
+                overgeslagen.append(
+                    f"{label}: {len(actief)} actieve Odoo-projecten dragen code {rlz.nummer} — kies handmatig"
+                )
+                continue
+            if actief:
+                rec = actief[0]
+                gevonden += 1
+            elif bestaand:
+                overgeslagen.append(
+                    f"{label}: code {rlz.nummer} bestaat in Odoo als GEARCHIVEERD project — heractiveer 'm in Odoo "
+                    "of kies handmatig (Odoo weigert boekingen op een gearchiveerd project)"
+                )
+                continue
+            else:
+                nieuw_id = client.create(
+                    odoo_sync.MODEL_ANALYTIC,
+                    {
+                        "name": (rlz.naam or "").strip() or rlz.nummer,
+                        "code": rlz.nummer,
+                        "plan_id": int(analytic_plan_id),
+                        "company_id": int(company_id),
+                    },
+                )
+                rec = client.read_een(odoo_sync.MODEL_ANALYTIC, int(nieuw_id), velden)
+                if rec is None:
+                    overgeslagen.append(
+                        f"{label}: aangemaakt als {nieuw_id} maar niet terug te lezen — controleer in Odoo"
+                    )
+                    continue
+                rec_company = odoo_sync._id(rec.get("company_id"))  # noqa: SLF001 — zelfde m2o-lezer als de sync
+                if rec_company not in (None, int(company_id)):
+                    overgeslagen.append(
+                        f"{label}: aangemaakt als {nieuw_id} maar Odoo zette company {rec_company} i.p.v. {company_id} "
+                        "— niet gekoppeld, controleer in Odoo"
+                    )
+                    logger.warning(
+                        "Odoo analytic account %s kreeg company %s i.p.v. %s", nieuw_id, rec_company, company_id
+                    )
+                    continue
+                aangemaakt += 1
+        except Exception as exc:  # noqa: BLE001 — leesbaar overgeslagen, nooit een halve overstap
+            overgeslagen.append(f"{label}: Odoo-fout bij aanmaken — {vertaal_odoo_fout(exc)}")
+            logger.warning("Odoo-project aanmaken mislukt voor %s: %s", label, exc)
+            continue
+        odoo_id = int(rec["id"])
+        code = (str(rec.get("code")).strip() if rec.get("code") else None) or rlz.nummer
+        account = OdooProject(
+            odoo_id=odoo_id,
+            lokaal_id=odoo_uuid(int(company_id), odoo_sync.MODEL_ANALYTIC, odoo_id),
+            naam=zonder_code_prefix(str(rec.get("name") or "")),
+            code=code,
+        )
+        accounts.append(account)
+        uitkomst_rijen.append(_project_rij(rlz, account, BRON_AANGEMAAKT))
+    return ProjectAanmaakUitkomst(
+        rijen=uitkomst_rijen, accounts=accounts, aangemaakt=aangemaakt, gevonden=gevonden, overgeslagen=overgeslagen
+    )
+
+
+def registreer_odoo_projecten(
+    session: Session, *, administratie_id: uuid.UUID, company_id: int, accounts: list[OdooProject], now: datetime
+) -> None:
+    """Gevonden/aangemaakte analytic accounts direct vertaalbaar + zichtbaar maken (id-koppeling + project-cache
+    upsert, naam "[code] name" zoals de sync, `is_actief` True, brondata mét backend odoo) — de eerste sync
+    herbevestigt ze daarna. In de hoofdtransactie van de overstap."""
+    for a in accounts:
+        weergave = f"[{a.code}] {a.naam}" if a.code else a.naam
+        odoo_sync.registreer_id_koppeling(
+            session,
+            administratie_id=administratie_id,
+            company_id=company_id,
+            model=odoo_sync.MODEL_ANALYTIC,
+            odoo_id=a.odoo_id,
+            naam=weergave,
+        )
+        brondata = {
+            "id": str(a.lokaal_id),
+            "Name": weergave,
+            "IsActive": True,
+            "odoo_id": a.odoo_id,
+            "code": a.code,
+            "backend": "odoo",
+            "bron": "overstap_aangemaakt",
+        }
+        rij = session.get(ProjectCache, (a.lokaal_id, administratie_id))
+        if rij is None:
+            session.add(
+                ProjectCache(
+                    id=a.lokaal_id,
+                    administratie_id=administratie_id,
+                    naam=weergave,
+                    is_actief=True,
+                    brondata=brondata,
+                    laatst_gesynchroniseerd=now,
+                )
+            )
+        else:
+            rij.naam = weergave
+            rij.is_actief = True
+            rij.brondata = brondata
+            rij.laatst_gesynchroniseerd = now
+            rij.verdwenen_uit_bron_op = None
 
 
 def _compact(rijen: list[MappingRij]) -> list[str]:
@@ -569,6 +1004,7 @@ def schrijf_mapping(
             "versie": versie,
             "grootboek": sum(1 for r in rijen if r.soort == SOORT_GROOTBOEK),
             "btw": sum(1 for r in rijen if r.soort == SOORT_BTW),
+            "project": sum(1 for r in rijen if r.soort == SOORT_PROJECT),
             "per_bron": per_bron,
             "rijen": _compact(rijen),
         },
@@ -594,18 +1030,19 @@ def _geldende_rijen(session: Session, administratie_id: uuid.UUID) -> list[OdooR
 
 
 def geldende_mapping(session: Session, administratie_id: uuid.UUID) -> RekeningMapping:
-    grootboek: dict[uuid.UUID, uuid.UUID] = {}
-    btw: dict[uuid.UUID, uuid.UUID] = {}
+    per_soort: dict[str, dict[uuid.UUID, uuid.UUID]] = {SOORT_GROOTBOEK: {}, SOORT_BTW: {}, SOORT_PROJECT: {}}
     for r in _geldende_rijen(session, administratie_id):
-        (grootboek if r.soort == SOORT_GROOTBOEK else btw)[r.rlz_id] = r.odoo_lokaal_id
-    return RekeningMapping(grootboek=grootboek, btw=btw)
+        per_soort.setdefault(r.soort, {})[r.rlz_id] = r.odoo_lokaal_id
+    return RekeningMapping(
+        grootboek=per_soort[SOORT_GROOTBOEK], btw=per_soort[SOORT_BTW], project=per_soort[SOORT_PROJECT]
+    )
 
 
 def vertaal_observaties(observaties: list[Observatie], mapping: RekeningMapping) -> list[Observatie]:
-    """Puur: gb_id ∈ mapping.grootboek → vertaald; die observatie krijgt btw_id via mapping.btw (niet
-    vertaalbaar → None) en project_id None (RLZ-project ≠ Odoo-analytic-account). gb_id ∉ mapping =
-    ongewijzigd (Odoo-era-observatie). bron/bron_datum/regel_sleutel — en daarmee `app_bevestigd` in de
-    engine — blijven exact wat ze waren."""
+    """Puur: gb_id ∈ mapping.grootboek → vertaald; die observatie krijgt btw_id via mapping.btw en project_id
+    via mapping.project (niet vertaalbaar → None: een ongemapt RLZ-project vervalt, nooit een RLZ-UUID in een
+    Odoo-voorstel). gb_id ∉ mapping = ongewijzigd (Odoo-era-observatie). bron/bron_datum/regel_sleutel — en
+    daarmee `app_bevestigd` in de engine — blijven exact wat ze waren."""
     if mapping.leeg:
         return observaties
     uit: list[Observatie] = []
@@ -619,7 +1056,7 @@ def vertaal_observaties(observaties: list[Observatie], mapping: RekeningMapping)
                 o,
                 gb_id=doel,
                 btw_id=mapping.btw.get(o.btw_id) if o.btw_id is not None else None,
-                project_id=None,
+                project_id=mapping.project.get(o.project_id) if o.project_id is not None else None,
             )
         )
     return uit
@@ -634,14 +1071,14 @@ def vertaal_regel_observaties(observaties: list[RegelObservatie], mapping: Reken
 
 def _odoo_lijsten_uit_cache(
     session: Session, administratie_id: uuid.UUID
-) -> tuple[list[OdooRekening], list[OdooTarief]]:
+) -> tuple[list[OdooRekening], list[OdooTarief], list[OdooProject]]:
     """De Odoo-keuzelijsten uit de gesyncte cache (niet-verdwenen rijen mét een `odoo_id_koppeling`)."""
     koppelingen = {
         (k.model, k.lokaal_id): k
         for k in session.scalars(
             select(OdooIdKoppeling).where(
                 OdooIdKoppeling.administratie_id == administratie_id,
-                OdooIdKoppeling.model.in_([odoo_sync.MODEL_ACCOUNT, odoo_sync.MODEL_TAX]),
+                OdooIdKoppeling.model.in_([odoo_sync.MODEL_ACCOUNT, odoo_sync.MODEL_TAX, odoo_sync.MODEL_ANALYTIC]),
             )
         )
     }
@@ -687,7 +1124,25 @@ def _odoo_lijsten_uit_cache(
                 synthetisch=synthetisch,
             )
         )
-    return rekeningen, tarieven
+    projecten: list[OdooProject] = []
+    for p in session.scalars(
+        select(ProjectCache)
+        .where(ProjectCache.administratie_id == administratie_id, ProjectCache.verdwenen_uit_bron_op.is_(None))
+        .order_by(ProjectCache.naam)
+    ):
+        k = koppelingen.get((odoo_sync.MODEL_ANALYTIC, p.id))
+        if k is None:
+            continue  # RLZ-project (nog niet verdwenen gemarkeerd) — geen Odoo-analytic-account
+        code = (p.brondata or {}).get("code")
+        projecten.append(
+            OdooProject(
+                odoo_id=k.odoo_id,
+                lokaal_id=p.id,
+                naam=zonder_code_prefix(p.naam),
+                code=(str(code).strip() if code else None),
+            )
+        )
+    return rekeningen, tarieven, projecten
 
 
 def _namen(session: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -722,13 +1177,17 @@ def mapping_stand(administratie_id: uuid.UUID) -> MappingStand:
             )
             for r in geldend
         ]
-        odoo_gb, odoo_btw = _odoo_lijsten_uit_cache(session, administratie_id)
+        odoo_gb, odoo_btw, odoo_projecten = _odoo_lijsten_uit_cache(session, administratie_id)
         laatste = max(geldend, key=lambda r: r.bevestigd_op) if geldend else None
     grootboek = sorted(
         (r for r in rijen if r.soort == SOORT_GROOTBOEK),
         key=lambda r: (r.rlz_code is None, r.rlz_code or "", str(r.rlz_id)),
     )
     btw = sorted((r for r in rijen if r.soort == SOORT_BTW), key=lambda r: (r.rlz_naam or "", str(r.rlz_id)))
+    project = sorted(
+        (r for r in rijen if r.soort == SOORT_PROJECT),
+        key=lambda r: (r.rlz_code is None, r.rlz_code or "", r.rlz_naam or "", str(r.rlz_id)),
+    )
     return MappingStand(
         grootboek=grootboek,
         btw=btw,
@@ -736,6 +1195,8 @@ def mapping_stand(administratie_id: uuid.UUID) -> MappingStand:
         odoo_btw=odoo_btw,
         laatst_bevestigd_op=laatste.bevestigd_op if laatste else None,
         laatst_bevestigd_door_naam=namen.get(laatste.bevestigd_door) if laatste else None,
+        project=project,
+        odoo_projecten=odoo_projecten,
     )
 
 
@@ -759,9 +1220,11 @@ def voorbereid_overstap(
             f"{p.rode_regels()}",
             rapport=p.rapport,
         )
-    odoo_gb, odoo_btw = lees_live_odoo_stamgegevens(odoo_url=url, api_key=api_key, company_id=int(company_id))
+    odoo_gb, odoo_btw, odoo_projecten = live_odoo_lijsten(
+        odoo_url=url, api_key=api_key, company_id=int(company_id), analytic_plan_id=p.analytic_plan_id
+    )
     with scoped_session(administratie_id, actor_id=actor_id) as session:
-        rlz_gb, rlz_btw = rlz_in_gebruik(session, administratie_id)
+        rlz_gb, rlz_btw, rlz_projecten = rlz_in_gebruik(session, administratie_id)
     return OverstapVoorbereiding(
         company_naam=p.company_naam,
         probe=p.rapport,
@@ -769,6 +1232,9 @@ def voorbereid_overstap(
         btw=bepaal_btw_voorstel(rlz_btw, odoo_btw),
         odoo_grootboek=odoo_gb,
         odoo_btw=odoo_btw,
+        project=bepaal_project_voorstel(rlz_projecten, odoo_projecten),
+        odoo_projecten=odoo_projecten,
+        analytic_plan_id=p.analytic_plan_id,
     )
 
 
@@ -779,33 +1245,43 @@ def corrigeer_rij(
     *, actor_id: uuid.UUID, administratie_id: uuid.UUID, soort: str, rlz_id: uuid.UUID, odoo_id: int
 ) -> MappingStand:
     """Correctie ná de overstap: toetst `odoo_id` tegen de gesyncte `odoo_id_koppeling` (account.account /
-    account.tax van déze administratie; 0 = synthetisch geen-btw, alleen bij soort btw), schrijft een nieuwe
-    rij versie+1 mét bron 'handmatig' en audit `odoo_rekening_mapping_gecorrigeerd` oud→nieuw. Bestaat er
-    nog geen rij voor (soort, rlz_id) — een RLZ-rekening die pas ná de overstap in gebruik bleek — dan
-    wordt versie 1 geschreven (additief; nooit stil)."""
+    account.tax / account.analytic.account van déze administratie; 0 = synthetisch geen-btw, alleen bij soort
+    btw), schrijft een nieuwe rij versie+1 mét bron 'handmatig' en audit `odoo_rekening_mapping_gecorrigeerd`
+    oud→nieuw. Bestaat er nog geen rij voor (soort, rlz_id) — een RLZ-rekening/-project die pas ná de overstap
+    in gebruik bleek, of een project dat bij de overstap bewust leeg bleef — dan wordt versie 1 geschreven
+    (additief; nooit stil)."""
     from app.odoo.service import OdooKoppelFout  # lokaal
 
     if soort not in SOORTEN:
-        raise OdooKoppelFout(f"Onbekende mapping-soort '{soort}' — kies 'grootboek' of 'btw'")
+        raise OdooKoppelFout(f"Onbekende mapping-soort '{soort}' — kies 'grootboek', 'btw' of 'project'")
     odoo_id = int(odoo_id)
+    modellen = {
+        SOORT_GROOTBOEK: odoo_sync.MODEL_ACCOUNT,
+        SOORT_BTW: odoo_sync.MODEL_TAX,
+        SOORT_PROJECT: odoo_sync.MODEL_ANALYTIC,
+    }
+    labels = {SOORT_GROOTBOEK: "rekening", SOORT_BTW: "btw-code", SOORT_PROJECT: "project"}
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         koppeling = session.get(OdooKoppeling, administratie_id)
         if koppeling is None:
             raise GeenOdooKoppeling("Deze administratie heeft geen Odoo-koppeling")
-        model = odoo_sync.MODEL_ACCOUNT if soort == SOORT_GROOTBOEK else odoo_sync.MODEL_TAX
+        model = modellen[soort]
         odoo_code: str | None = None
         odoo_naam: str | None
         if odoo_id == GEEN_BTW_ODOO_ID:
             if soort != SOORT_BTW:
-                raise OdooKoppelFout("Odoo-id 0 (geen btw) bestaat alleen voor btw-tarieven, niet voor grootboek")
+                raise OdooKoppelFout(
+                    f"Odoo-id 0 (geen btw) bestaat alleen voor btw-tarieven, niet voor {labels[soort]}"
+                    + (" — een project loskoppelen kan niet via een correctie" if soort == SOORT_PROJECT else "")
+                )
             lokaal = odoo_uuid(koppeling.company_id, model, GEEN_BTW_ODOO_ID)
             odoo_naam = "Geen btw (0%)"
         else:
             idk = session.get(OdooIdKoppeling, (administratie_id, model, odoo_id))
             if idk is None:
                 raise OdooKoppelFout(
-                    f"Odoo-{'rekening' if soort == SOORT_GROOTBOEK else 'btw-code'} {odoo_id} is niet bekend in de "
-                    "gesyncte stamgegevens van deze administratie — sync de stamgegevens eerst"
+                    f"Odoo-{labels[soort]} {odoo_id} is niet bekend in de gesyncte stamgegevens van deze "
+                    "administratie — sync de stamgegevens eerst"
                 )
             lokaal = idk.lokaal_id
             odoo_naam = idk.naam
@@ -813,10 +1289,18 @@ def corrigeer_rij(
                 g = session.get(Grootboekrekening, (lokaal, administratie_id))
                 if g is not None:
                     odoo_code, odoo_naam = g.code, g.naam
-            else:
+            elif soort == SOORT_BTW:
                 t = session.get(TaxRateCache, (lokaal, administratie_id))
                 if t is not None and t.naam:
                     odoo_naam = t.naam
+            else:
+                pc = session.get(ProjectCache, (lokaal, administratie_id))
+                if pc is not None:
+                    code = (pc.brondata or {}).get("code")
+                    odoo_code = str(code).strip() if code else None
+                    odoo_naam = zonder_code_prefix(pc.naam) or odoo_naam
+                else:
+                    odoo_naam = zonder_code_prefix(odoo_naam) or odoo_naam
 
         huidig = next(
             (r for r in _geldende_rijen(session, administratie_id) if r.soort == soort and r.rlz_id == rlz_id), None
@@ -828,10 +1312,15 @@ def corrigeer_rij(
                 g_rlz = session.get(Grootboekrekening, (rlz_id, administratie_id))
                 if g_rlz is not None:
                     rlz_code, rlz_naam = g_rlz.code, g_rlz.naam
-            else:
+            elif soort == SOORT_BTW:
                 t_rlz = session.get(TaxRateCache, (rlz_id, administratie_id))
                 if t_rlz is not None:
                     rlz_naam = t_rlz.naam
+            else:
+                p_rlz = session.get(ProjectCache, (rlz_id, administratie_id))
+                if p_rlz is not None:
+                    rlz_naam = p_rlz.naam
+                    rlz_code = projectnummer_uit_naam(p_rlz.naam)
         versie = (huidig.versie + 1) if huidig is not None else 1
         session.add(
             OdooRekeningMapping(

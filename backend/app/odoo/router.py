@@ -16,9 +16,6 @@ router = APIRouter(tags=["odoo"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _koppel_fout(exc: Exception) -> HTTPException:
-    if isinstance(exc, service.OvergangsdatumGeblokkeerd):
-        # C1: de nieuwe overgangsdatum botst met al in Odoo geboekte facturen — conflict, geen invoerfout.
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"bericht": str(exc)})
     if isinstance(exc, service.OdooKoppelFout):
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -96,8 +93,9 @@ def odoo_overstap(
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.GekoppeldeAdministratieDto:
     """Blok E, ingang B (volledige backend): een bestaande RLZ-administratie stapt over op Odoo — probe verplicht
-    groen (anders 422 mét rapport, niets opgeslagen) → backend 'odoo' + sentinel + koppeling mét overgangsdatum +
-    audit in één transactie → eerste stamgegevens-sync mét zichtbare run."""
+    groen (anders 422 mét rapport, niets opgeslagen) → backend 'odoo' + sentinel + koppeling mét kanteldatum +
+    mapping (incl. optionele projectmapping, "aanmaken in Odoo" = de enige Odoo-write) + audit in één transactie →
+    eerste stamgegevens-sync mét zichtbare run. Response: additief `projecten_aangemaakt`/`projecten_overgeslagen`."""
     try:
         r = service.koppel_overstap(
             actor_id=actor.id,
@@ -112,7 +110,15 @@ def odoo_overstap(
     except service.OdooKoppelFout as exc:
         raise _koppel_fout(exc) from exc
     return schemas.GekoppeldeAdministratieDto(
-        id=r.id, naam=r.naam, company_id=r.company_id, probe=r.probe, sync_run_id=r.sync_run_id, sync=r.sync
+        id=r.id,
+        naam=r.naam,
+        company_id=r.company_id,
+        probe=r.probe,
+        sync_run_id=r.sync_run_id,
+        sync=r.sync,
+        projecten_aangemaakt=r.projecten_aangemaakt,
+        projecten_overgeslagen=list(r.projecten_overgeslagen),
+        hervertaling=r.hervertaling,
     )
 
 
@@ -123,7 +129,15 @@ def _mapping_invoer(dto: schemas.OdooMappingInvoerDto) -> odoo_mapping.MappingIn
     return odoo_mapping.MappingInvoer(
         grootboek=[odoo_mapping.MappingRijInvoer(rlz_id=r.rlz_id, odoo_id=r.odoo_id) for r in dto.grootboek],
         btw=[odoo_mapping.MappingRijInvoer(rlz_id=r.rlz_id, odoo_id=r.odoo_id) for r in dto.btw],
+        project=[
+            odoo_mapping.ProjectMappingRijInvoer(rlz_id=r.rlz_id, odoo_id=r.odoo_id, aanmaken=r.aanmaken)
+            for r in dto.project
+        ],
     )
+
+
+def _project_dto(o: odoo_mapping.OdooProject) -> schemas.OdooProjectDto:
+    return schemas.OdooProjectDto(odoo_id=o.odoo_id, lokaal_id=o.lokaal_id, naam=o.naam, code=o.code)
 
 
 def _rekening_dto(o: odoo_mapping.OdooRekening) -> schemas.OdooRekeningDto:
@@ -165,6 +179,8 @@ def _stand_dto(stand: odoo_mapping.MappingStand) -> schemas.OdooMappingStandDto:
         odoo_btw=[_tarief_dto(o) for o in stand.odoo_btw],
         laatst_bevestigd_op=stand.laatst_bevestigd_op,
         laatst_bevestigd_door_naam=stand.laatst_bevestigd_door_naam,
+        project=[rij(r) for r in stand.project],
+        odoo_projecten=[_project_dto(o) for o in stand.odoo_projecten],
     )
 
 
@@ -229,7 +245,25 @@ def odoo_overstap_voorbereiden(
             grootboek_met_voorstel=sum(1 for r in v.grootboek if r.voorstel is not None),
             btw_totaal=len(v.btw),
             btw_met_voorstel=sum(1 for b in v.btw if b.voorstel is not None),
+            project_totaal=len(v.project),
+            project_met_voorstel=sum(1 for pr in v.project if pr.voorstel is not None),
         ),
+        project=[
+            schemas.ProjectMappingVoorstelRijDto(
+                rlz_id=pr.rlz.rlz_id,
+                rlz_naam=pr.rlz.naam,
+                rlz_nummer=pr.rlz.nummer,
+                actief=pr.rlz.actief,
+                in_gebruik_observaties=pr.rlz.in_gebruik_observaties,
+                in_gebruik_open_regels=pr.rlz.in_gebruik_open_regels,
+                voorstel_odoo_id=pr.voorstel.odoo_id if pr.voorstel else None,
+                voorstel_odoo_naam=pr.voorstel.naam if pr.voorstel else None,
+                reden=pr.reden,
+                kan_aanmaken=odoo_mapping.kan_project_aanmaken(pr.rlz, v.analytic_plan_id),
+            )
+            for pr in v.project
+        ],
+        odoo_projecten=[_project_dto(o) for o in v.odoo_projecten],
     )
 
 
@@ -256,8 +290,9 @@ def odoo_mapping_corrigeren(
     invoer: schemas.OdooMappingCorrectieDto,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.OdooMappingStandDto:
-    """Correctie per rij ná de overstap: nieuwe versie (append-only, bron 'handmatig', audit oud→nieuw);
-    422 bij een onbekende soort of een odoo_id dat niet in de gesyncte stamgegevens staat."""
+    """Correctie per rij ná de overstap (soort grootboek/btw/project): nieuwe versie (append-only, bron 'handmatig',
+    audit oud→nieuw); 422 bij een onbekende soort, een odoo_id dat niet in de gesyncte stamgegevens staat of 0 op
+    grootboek/project (0 = synthetisch geen-btw, alleen btw)."""
     try:
         stand = odoo_mapping.corrigeer_rij(
             actor_id=actor.id, administratie_id=administratie_id, soort=soort, rlz_id=rlz_id, odoo_id=invoer.odoo_id
@@ -273,7 +308,8 @@ def odoo_overgangsdatum(
     invoer: schemas.OdooOvergangsdatumDto,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.OdooStandDto:
-    """De overgangsdatum van een schrijvende Odoo-koppeling zetten/verschuiven (audit oud→nieuw; alleen-lezen = 422)."""
+    """De KANTELDATUM van een schrijvende Odoo-koppeling zetten/verschuiven — altijd 200 mét audit oud→nieuw (de
+    C1-409 is vervallen, slotstuk 04-09: géén poort op documenten meer); alleen-lezen/geen koppeling = 422."""
     try:
         stand = service.wijzig_overgangsdatum(
             actor_id=actor.id, administratie_id=administratie_id, overgangsdatum=invoer.overgangsdatum

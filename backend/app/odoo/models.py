@@ -44,9 +44,10 @@ class OdooKoppeling(Base):
     alleen_lezen: Mapped[bool] = mapped_column(default=False, server_default="false")
     #: Vanaf deze factuurdatum is Odoo de bron van de verkoop-uitstroom (RLZ-facturen ≥ knip tellen niet meer).
     voorraad_knip_datum: Mapped[date | None] = mapped_column(default=None)
-    #: Blok E (migratie 0104): overstap van een bestaande RLZ-administratie — vanaf deze factuurdatum boekt de
-    #: administratie in Odoo (adapter-poort: factuurdatum < overgangsdatum = leesbare weigering, hoort nog in
-    #: RLZ). NULL = geen poort (nieuwe Odoo-administratie zonder RLZ-verleden, of alleen-lezen-koppeling).
+    #: Blok E (migratie 0104), herzien slotstuk 04-09 (besluit Peter "geen blokkade"): de KANTELDATUM van een
+    #: overstap — vanaf wanneer de administratie Odoo is. Géén poort op documenten: nakomers mét een factuurdatum
+    #: vóór deze datum boeken óók in Odoo (de duplicaat-afhandeling filtert wat al in RLZ geboekt was). Vrij te
+    #: wijzigen (audit oud→nieuw). NULL = nieuwe Odoo-administratie zonder RLZ-verleden, of alleen-lezen-koppeling.
     overgangsdatum: Mapped[date | None] = mapped_column(default=None)
     #: Het oude RLZ-administratie-id vóór de overstap (`administratie.rlz_admin_id` draagt daarna de sentinel).
     rlz_admin_id_voor_overstap: Mapped[str | None] = mapped_column(default=None)
@@ -133,23 +134,29 @@ class OdooProductKoppeling(Base):
 
 
 class OdooRekeningMapping(Base):
-    """Door de MENS bevestigde vertaling RLZ-grootboek/-btw → Odoo-account/-tax per administratie
-    (migratie 0111, blok A Odoo-afrondingsrun 04-09). Het boekingsgeheugen draagt RLZ-UUID's van vóór de
-    overstap; `app/odoo/mapping.py::vertaal_observaties` vertaalt ze mét deze tabel VÓÓR de engine weegt,
-    zodat `app_bevestigd` behouden blijft (de mens bevestigde het bóékgedrag, niet het rekeningnummer).
+    """Door de MENS bevestigde vertaling RLZ-grootboek/-btw/-project → Odoo-account/-tax/-analytic-account per
+    administratie (migratie 0111, blok A Odoo-afrondingsrun 04-09; soort 'project' sinds het slotstuk 04-09,
+    migratie 0113). Het boekingsgeheugen draagt RLZ-UUID's van vóór de overstap;
+    `app/odoo/mapping.py::vertaal_observaties` vertaalt ze mét deze tabel VÓÓR de engine weegt, zodat
+    `app_bevestigd` behouden blijft (de mens bevestigde het bóékgedrag, niet het rekeningnummer).
 
     APPEND-ONLY (GRANT zonder UPDATE/DELETE): een correctie is een nieuwe rij met `versie + 1`; de
     geldende rij is de hoogste versie per (administratie, soort, rlz_id). `odoo_id` 0 = de synthetische
     "Geen btw (0%)" (alleen soort 'btw'). `bron` = hoe de rij tot stand kwam: `zelfde_code` (groen
     voorstel, exact gelijke code), `code_verlengd` (RLZ-code + "00", oranje — bevestigd), `tarief`
-    (btw op percentage/verlegd/vrijgesteld) of `handmatig` (mens koos zelf)."""
+    (btw op percentage/verlegd/vrijgesteld), `projectnummer` (groen: leidende cijfers RLZ-naam == Odoo-code),
+    `projectnaam` (oranje: genormaliseerde naamgelijkheid), `aangemaakt` (analytic account bij de overstap in
+    Odoo aangemaakt/gevonden op code+plan) of `handmatig` (mens koos zelf). Voor soort 'project' draagt
+    `rlz_code` het projectnummer en `odoo_code` de Odoo-`code`."""
 
     __tablename__ = "odoo_rekening_mapping"
     __table_args__ = (
         UniqueConstraint("administratie_id", "soort", "rlz_id", "versie", name="uq_odoo_rekening_mapping_versie"),
-        CheckConstraint("soort IN ('grootboek', 'btw')", name="ck_odoo_rekening_mapping_soort"),
+        CheckConstraint("soort IN ('grootboek', 'btw', 'project')", name="ck_odoo_rekening_mapping_soort"),
         CheckConstraint(
-            "bron IN ('zelfde_code', 'code_verlengd', 'tarief', 'handmatig')", name="ck_odoo_rekening_mapping_bron"
+            "bron IN ('zelfde_code', 'code_verlengd', 'tarief', 'handmatig', 'projectnummer', 'projectnaam', "
+            "'aangemaakt')",
+            name="ck_odoo_rekening_mapping_bron",
         ),
         CheckConstraint("versie >= 1", name="ck_odoo_rekening_mapping_versie"),
         CheckConstraint("odoo_id >= 0", name="ck_odoo_rekening_mapping_odoo_id"),

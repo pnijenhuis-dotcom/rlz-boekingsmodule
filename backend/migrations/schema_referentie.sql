@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0111
+-- Migratie-head bij deze dump: 0113
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -833,7 +833,8 @@ CREATE TABLE boekhouding.boekvoorstel_regel (
     project_id uuid,
     netto_bedrag numeric(14,2),
     btw_bedrag numeric(14,2),
-    omschrijving text
+    omschrijving text,
+    overstap_vertaling jsonb
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel FORCE ROW LEVEL SECURITY;
@@ -1788,9 +1789,9 @@ CREATE TABLE boekhouding.odoo_rekening_mapping (
     versie integer NOT NULL,
     bevestigd_door uuid NOT NULL,
     bevestigd_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_odoo_rekening_mapping_bron CHECK (((bron)::text = ANY ((ARRAY['zelfde_code'::character varying, 'code_verlengd'::character varying, 'tarief'::character varying, 'handmatig'::character varying])::text[]))),
+    CONSTRAINT ck_odoo_rekening_mapping_bron CHECK (((bron)::text = ANY ((ARRAY['zelfde_code'::character varying, 'code_verlengd'::character varying, 'tarief'::character varying, 'handmatig'::character varying, 'projectnummer'::character varying, 'projectnaam'::character varying, 'aangemaakt'::character varying])::text[]))),
     CONSTRAINT ck_odoo_rekening_mapping_odoo_id CHECK ((odoo_id >= 0)),
-    CONSTRAINT ck_odoo_rekening_mapping_soort CHECK (((soort)::text = ANY ((ARRAY['grootboek'::character varying, 'btw'::character varying])::text[]))),
+    CONSTRAINT ck_odoo_rekening_mapping_soort CHECK (((soort)::text = ANY ((ARRAY['grootboek'::character varying, 'btw'::character varying, 'project'::character varying])::text[]))),
     CONSTRAINT ck_odoo_rekening_mapping_versie CHECK ((versie >= 1))
 );
 

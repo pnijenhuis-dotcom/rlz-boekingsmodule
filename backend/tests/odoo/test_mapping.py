@@ -1,15 +1,16 @@
 # ruff: noqa: F811 — pytest-fixtures als parameters (patroon tests/odoo/test_router.py)
 """Boekingsgeheugen-mapping RLZ → Odoo bij een overstap (blok A Odoo-afrondingsrun 04-09, migratie 0111,
-`app/odoo/mapping.py`) + C1 "Overgangsdatum wijzigen" geblokkeerd door Odoo-boekingen:
+`app/odoo/mapping.py`) + "Overgangsdatum wijzigen" als KANTELDATUM (slotstuk 04-09: de C1-409 is vervallen):
 
 - pure voorstelregels grootboek (zelfde_code / code_verlengd / dubbel = geen voorstel) en btw (percentage /
   verlegd / 0 %-vrijgesteld → synthetisch geen-btw / meerdere = geen gok);
-- vertaal_observaties: gb + btw vertaald, project None, bron/datum intact → engine: app_bevestigd blijft, geen
-  gesplitste stem tussen oude RLZ- en nieuwe Odoo-observaties op dezelfde rekening;
+- vertaal_observaties: gb + btw vertaald, ongemapt project None, bron/datum intact → engine: app_bevestigd blijft,
+  geen gesplitste stem tussen oude RLZ- en nieuwe Odoo-observaties op dezelfde rekening;
 - valideer_mapping: onvolledig/onbekend = OdooKoppelFout, bron = voorstel-reden of 'handmatig';
 - endpoints (Beheerder-only): voorbereiden 200 + 422, overstap zonder mapping bij in-gebruik-rijen 422 (niets
   opgeslagen), overstap mét mapping → rijen + audit + vertaald geheugen, GET mapping, PUT correctie versie 2 +
-  audit, overgangsdatum 409.
+  audit, overgangsdatum altijd 200 mét audit (ook vóórbij al in Odoo geboekte facturen).
+De projectmapping (soort 'project') heeft een eigen bestand: tests/odoo/test_projectmapping.py.
 Probe + stamgegevenssync + live Odoo-lees gemonkeypatcht — geen netwerk, geen Odoo-writes."""
 
 from __future__ import annotations
@@ -194,7 +195,7 @@ MAPPING = odoo_mapping.RekeningMapping(grootboek={RLZ_GB_4808: ODOO_GB_LOKAAL}, 
 
 
 class TestVertaalObservaties:
-    def test_vertaalt_gb_en_btw_project_wordt_none_rest_intact(self) -> None:
+    def test_vertaalt_gb_en_btw_ongemapt_project_wordt_none_rest_intact(self) -> None:
         o = _obs(RLZ_GB_4808, btw=RLZ_BTW_21, bron="app", dag=3, sleutel="diesel")
         [v] = odoo_mapping.vertaal_observaties([o], MAPPING)
         assert v.gb_id == ODOO_GB_LOKAAL and v.btw_id == ODOO_BTW_LOKAAL and v.project_id is None
@@ -328,8 +329,8 @@ def _bearer(gebruiker_id: uuid.UUID, *, rol: str = "beheerder") -> dict[str, str
 
 @pytest.fixture
 def odoo_live(monkeypatch: pytest.MonkeyPatch, probe_groen) -> None:
-    """Live Odoo-lijsten (grootboek + btw) zoals `lees_live_odoo_stamgegevens` ze zou teruggeven."""
-    monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: (list(ODOO_GB), list(ODOO_BTW)))
+    """Live Odoo-lijsten (grootboek + btw, geen projecten) zoals `lees_live_odoo_stamgegevens` ze zou teruggeven."""
+    monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: (list(ODOO_GB), list(ODOO_BTW), []))
 
 
 @pytest.fixture
@@ -517,7 +518,10 @@ class TestVoorbereiden:
             "grootboek_met_voorstel": 2,
             "btw_totaal": 2,
             "btw_met_voorstel": 2,
+            "project_totaal": 0,
+            "project_met_voorstel": 0,
         }
+        assert body["project"] == [] and body["odoo_projecten"] == []  # additief (slotstuk 04-09), hier leeg
         # Niets persistent: geen koppeling, geen mapping-rijen, backend nog rlz.
         assert _mapping_rijen(administratie_id) == []
 
@@ -774,8 +778,13 @@ class TestMappingStandEnCorrectie:
             f"/administraties/{administratie_id}/odoo/mapping/grootboek/{RLZ_GB_4000}", json={"odoo_id": 0}, headers=h
         )
         assert r.status_code == 422 and "alleen voor btw" in r.text
+        # 'project' is sinds het slotstuk 04-09 een geldige soort — maar odoo_id 12 is een account, geen analytic.
         r = client.put(
             f"/administraties/{administratie_id}/odoo/mapping/project/{RLZ_GB_4000}", json={"odoo_id": 12}, headers=h
+        )
+        assert r.status_code == 422 and "Odoo-project 12 is niet bekend" in r.text
+        r = client.put(
+            f"/administraties/{administratie_id}/odoo/mapping/relatie/{RLZ_GB_4000}", json={"odoo_id": 12}, headers=h
         )
         assert r.status_code == 422 and "Onbekende mapping-soort" in r.text
         r = client.put(f"/administraties/{administratie_id}/odoo/mapping/grootboek/{RLZ_GB_4000}", json={}, headers=h)
@@ -792,8 +801,10 @@ class TestMappingStandEnCorrectie:
         assert r.status_code == 404
 
 
-class TestOvergangsdatumGeblokkeerd:
-    """C1: een verschuiving vóórbij al in Odoo geboekte facturen is een 409 mét aantal + oudste boekstuk."""
+class TestOvergangsdatumKanteldatum:
+    """Slotstuk 04-09 (besluit Peter "geen blokkade"): de overgangsdatum is een KANTELDATUM — wijzigen is altijd
+    200 mét audit oud→nieuw, óók vóórbij al in Odoo geboekte facturen (de C1-409 én de adapter-poort die 'm
+    beschermde zijn vervallen; terugzetten = één toets-functie in `service.wijzig_overgangsdatum`)."""
 
     def _odoo_boeking(self, aid: uuid.UUID, document_id: uuid.UUID, *, naam: str, state: str = "posted") -> None:
         with scoped_session(aid) as session:
@@ -811,44 +822,34 @@ class TestOvergangsdatumGeblokkeerd:
                 )
             )
 
-    def test_409_noemt_aantal_en_oudste_boekstuk_en_wijzigt_niets(
+    def test_verschuiven_voorbij_odoo_boeking_is_200_met_audit(
         self, administratie_id, beheerder_id, odoo_live, rlz_in_gebruik, sync_gefaked, admin_engine: Engine
     ) -> None:
         assert _overstap(administratie_id, beheerder_id, mapping=_volledige_mapping()).status_code == 201
-        # rlz_in_gebruik = het document mét factuurdatum 05-06-2026; nu "geboekt in Odoo".
+        # rlz_in_gebruik = het document mét factuurdatum 05-06-2026; nu "geboekt in Odoo" — vóór het slotstuk een 409.
         self._odoo_boeking(administratie_id, rlz_in_gebruik, naam="BILL/2026/06/0001")
         r = client.put(
             f"/administraties/{administratie_id}/odoo/overgangsdatum",
             json={"overgangsdatum": "2026-07-01"},
             headers=_bearer(beheerder_id),
         )
-        assert r.status_code == 409, r.text
-        bericht = r.json()["detail"]["bericht"]
-        assert "1 factuur" in bericht and "BILL/2026/06/0001 op 05-06-2026 is al in Odoo geboekt" in bericht
-        assert "kies een datum op of vóór 05-06-2026 of boek die factuur tegen" in bericht
+        assert r.status_code == 200, r.text
+        assert r.json()["overgangsdatum"] == "2026-07-01"
         with scoped_session(None) as session:
             from app.odoo.models import OdooKoppeling
 
-            assert session.get(OdooKoppeling, administratie_id).overgangsdatum == OVERGANG  # ongewijzigd
-        assert _audit(admin_engine, "odoo_overgangsdatum_gewijzigd", administratie_id) == []
-
-        # Op de factuurdatum zelf mag (adapter-poort: factuurdatum ≥ overgangsdatum), én eerder.
+            assert session.get(OdooKoppeling, administratie_id).overgangsdatum == date(2026, 7, 1)
+        audit = _audit(admin_engine, "odoo_overgangsdatum_gewijzigd", administratie_id)
+        assert len(audit) == 1 and OVERGANG.isoformat() in audit[0][0] and "2026-07-01" in audit[0][1]
+        # En weer terug — geen poort in welke richting ook.
         r = client.put(
             f"/administraties/{administratie_id}/odoo/overgangsdatum",
             json={"overgangsdatum": "2026-06-05"},
             headers=_bearer(beheerder_id),
         )
         assert r.status_code == 200, r.text
-        assert r.json()["overgangsdatum"] == "2026-06-05"
+        assert len(_audit(admin_engine, "odoo_overgangsdatum_gewijzigd", administratie_id)) == 2
 
-    def test_gecancelde_odoo_boeking_blokkeert_niet(
-        self, administratie_id, beheerder_id, odoo_live, rlz_in_gebruik, sync_gefaked
-    ) -> None:
-        assert _overstap(administratie_id, beheerder_id, mapping=_volledige_mapping()).status_code == 201
-        self._odoo_boeking(administratie_id, rlz_in_gebruik, naam="BILL/2026/06/0002", state="cancel")
-        r = client.put(
-            f"/administraties/{administratie_id}/odoo/overgangsdatum",
-            json={"overgangsdatum": "2026-10-01"},
-            headers=_bearer(beheerder_id),
-        )
-        assert r.status_code == 200, r.text
+    def test_service_kent_geen_blokkade_meer(self) -> None:
+        assert not hasattr(odoo_service, "OvergangsdatumGeblokkeerd")
+        assert not hasattr(odoo_service, "_toets_overgangsdatum_tegen_odoo_boekingen")

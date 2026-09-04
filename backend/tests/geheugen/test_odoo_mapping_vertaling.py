@@ -23,12 +23,14 @@ from tests.documenten.conftest import gescoopte_gebruiker  # noqa: F401
 VENDOR = uuid.UUID("cccccccc-0000-0000-0000-000000000077")
 RLZ_GB = uuid.UUID("aaaaaaaa-0000-0000-0000-000000004808")
 RLZ_BTW = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000021")
+RLZ_PROJECT = uuid.UUID("dddddddd-0000-0000-0000-000000026127")
 ODOO_GB = odoo_uuid(1, "account.account", 11)
 ODOO_BTW = odoo_uuid(1, "account.tax", 21)
+ODOO_PROJECT = odoo_uuid(1, "account.analytic.account", 847)
 SLEUTEL = normaliseer_regel_sleutel("Diesel NEN590")
 
 
-def _seed(aid: uuid.UUID, *, met_mapping: bool, beheerder: uuid.UUID) -> None:
+def _seed(aid: uuid.UUID, *, met_mapping: bool, beheerder: uuid.UUID, met_projectmapping: bool = False) -> None:
     with scoped_session(aid, actor_id=beheerder) as session:
         session.add(
             BoekingObservatie(
@@ -38,11 +40,28 @@ def _seed(aid: uuid.UUID, *, met_mapping: bool, beheerder: uuid.UUID) -> None:
                 regel_sleutel=SLEUTEL,
                 gb_id=RLZ_GB,
                 btw_id=RLZ_BTW,
-                project_id=uuid.uuid4(),
+                project_id=RLZ_PROJECT,
                 bron="app",
                 bron_datum=date(2026, 8, 1),
             )
         )
+        if met_projectmapping:
+            session.add(
+                OdooRekeningMapping(
+                    administratie_id=aid,
+                    soort="project",
+                    rlz_id=RLZ_PROJECT,
+                    rlz_code="26127",
+                    rlz_naam="26127 Tilburg (Heijmans)",
+                    odoo_lokaal_id=ODOO_PROJECT,
+                    odoo_id=847,
+                    odoo_code="26127",
+                    odoo_naam="Tilburg (Heijmans)",
+                    bron="projectnummer",
+                    versie=1,
+                    bevestigd_door=beheerder,
+                )
+            )
         if met_mapping:
             for soort, rlz, odoo, odoo_id in (("grootboek", RLZ_GB, ODOO_GB, 11), ("btw", RLZ_BTW, ODOO_BTW, 21)):
                 session.add(
@@ -74,7 +93,15 @@ class TestVoorstelVoor:
         v = geheugen_service.voorstel_voor(administratie_id=administratie_id, vendor_id=VENDOR)
         assert v.gb.waarde == ODOO_GB and v.gb.app_bevestigd and not v.gb.oranje and v.gb.confidence == 1.0
         assert v.btw.waarde == ODOO_BTW and v.btw.app_bevestigd
-        assert v.project.waarde is None  # RLZ-project ≠ Odoo-analytic-account: nooit meegenomen
+        assert v.project.waarde is None  # géén projectmapping-rij: het RLZ-project vervalt (nooit een RLZ-UUID)
+
+    def test_met_projectmapping_vertaalt_project_naar_analytic_account(self, administratie_id, beheerder_id) -> None:
+        """Slotstuk 04-09: "projectdata verliest nooit zijn koppeling" — mét een 'project'-rij vertaalt het geheugen
+        het RLZ-project naar de Odoo-analytic-account-UUID, app-bevestigd blijft."""
+        _seed(administratie_id, met_mapping=True, beheerder=beheerder_id, met_projectmapping=True)
+        v = geheugen_service.voorstel_voor(administratie_id=administratie_id, vendor_id=VENDOR)
+        assert v.gb.waarde == ODOO_GB and v.gb.app_bevestigd
+        assert v.project.waarde == ODOO_PROJECT and v.project.app_bevestigd and not v.project.oranje
 
     def test_nieuwe_odoo_observatie_telt_bij_dezelfde_stem(self, administratie_id, beheerder_id) -> None:
         _seed(administratie_id, met_mapping=True, beheerder=beheerder_id)
