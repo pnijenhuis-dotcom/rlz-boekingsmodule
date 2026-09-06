@@ -64,6 +64,9 @@ export function Shell() {
           {/* Verplichtingen (blok B 04-09, ⑦): goedgekeurde offertes/opdrachtbevestigingen mét
               verbruiksstand — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
           <NavItem to="/verplichtingen">Verplichtingen</NavItem>
+          {/* Reconciliatie (opdracht 06-09 blok C): de nachtelijke controle van onze eigen boekingen
+              tegen de werkelijke stand in Reeleezee — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
+          <NavItem to="/reconciliatie">Reconciliatie</NavItem>
           {/* Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie, voor élke kantoorrol binnen de eigen
               scope (backend vereis_kantoorrol) — de Beheerder-gate van v3 verviel met de administratie-picker. */}
           <NavItem to="/crediteuren">Crediteuren</NavItem>

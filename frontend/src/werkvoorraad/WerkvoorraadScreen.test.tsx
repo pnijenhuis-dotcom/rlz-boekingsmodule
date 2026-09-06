@@ -1057,3 +1057,102 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
     expect(leveranciers()).toEqual(['TU', 'Eneco'])
   })
 })
+
+describe('KPI-kaart Reconciliatie (opdracht 06-09 blok C)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** Toon-regel signaal-tellers: de kaart bestaat alleen bij teller > 0; een fout op /reconciliatie/stand
+   * mag de werkvoorraad nooit blokkeren (best-effort verrijking). */
+  function installReconciliatieMock(stand: unknown | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Testklant' }] }))
+        }
+        if (url.endsWith('/werkvoorraad/overzicht')) {
+          return Promise.resolve(
+            jsonResponse({
+              klanten: [
+                {
+                  administratie_id: ADMINISTRATIE_ID,
+                  naam: 'Testklant',
+                  te_controleren: 1,
+                  klaar_om_te_boeken: 0,
+                  vragen: 0,
+                  afgewezen: 0,
+                  bij_klant: 0,
+                  iban_wachtend: 0,
+                },
+              ],
+            }),
+          )
+        }
+        if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse({ klanten: [] }))
+        if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse({ items: [] }))
+        if (url === '/reconciliatie/stand') {
+          return stand === null ? Promise.resolve(new Response(null, { status: 500 })) : Promise.resolve(jsonResponse(stand))
+        }
+        if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
+        if (url.includes('/documenten')) return Promise.resolve(jsonResponse({ documenten: [] }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+  }
+
+  function renderIngang() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WerkvoorraadScreen />} />
+          <Route path="/reconciliatie" element={<div>Reconciliatie-scherm</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('verschijnt bij teller > 0 mét de laatste-run-subregel en opent Inzicht › Reconciliatie', async () => {
+    const gebruiker = userEvent.setup()
+    installReconciliatieMock({
+      teller: 5,
+      afwijkingen: 3,
+      let_op: 1,
+      fouten: 1,
+      laatste_run: {
+        run_id: 'cccccccc-0000-0000-0000-000000000003',
+        status: 'klaar',
+        bron: 'scheduler',
+        aangevraagd_op: '2026-09-06T04:00:00Z',
+        gestart_op: '2026-09-06T04:00:05Z',
+        afgerond_op: '2026-09-06T04:12:00Z',
+        exit_code: 1,
+        samenvatting: null,
+        fout_reden: null,
+        mail_status: 'verzonden',
+        mail_detail: null,
+      },
+    })
+    renderIngang()
+
+    const kaart = await screen.findByRole('button', { name: /Reconciliatie/ })
+    expect(within(kaart).getByText('5')).toBeInTheDocument()
+    expect(within(kaart).getByText(/laatste run .* · exit 1/)).toBeInTheDocument()
+    await gebruiker.click(kaart)
+    await waitFor(() => expect(screen.getByText('Reconciliatie-scherm')).toBeInTheDocument())
+  })
+
+  it('blijft weg bij teller 0 en ook als de stand niet op te halen is', async () => {
+    installReconciliatieMock({ teller: 0, afwijkingen: 0, let_op: 0, fouten: 0, laatste_run: null })
+    const { unmount } = renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Reconciliatie/ })).toBeNull()
+    unmount()
+
+    installReconciliatieMock(null)
+    renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Reconciliatie/ })).toBeNull()
+  })
+})

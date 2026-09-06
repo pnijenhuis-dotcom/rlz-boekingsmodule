@@ -6,6 +6,7 @@ import { haalDubbelenStandOp } from '../crediteuren/api'
 import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/instellingenApi'
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
+import { haalStand as haalReconciliatieStand, type StandDto as ReconciliatieStandDto } from '../reconciliatie/reconciliatieApi'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Lichtbaan } from '../ui/Lichtbaan'
 import { VragenScreen } from '../vragen/VragenScreen'
@@ -128,6 +129,18 @@ function WerkvoorraadIngang({
       actueel = false
     }
   }, [])
+  // Reconciliatie (opdracht 06-09 blok C): kantoorbrede teller uit dezelfde bron als Inzicht ›
+  // Reconciliatie — alleen getoond bij N > 0 (teller-conventie); een fout hier blokkeert niets.
+  const [reconciliatie, setReconciliatie] = useState<ReconciliatieStandDto | null>(null)
+  useEffect(() => {
+    let actueel = true
+    haalReconciliatieStand()
+      .then((s) => actueel && setReconciliatie(s))
+      .catch(() => actueel && setReconciliatie(null))
+    return () => {
+      actueel = false
+    }
+  }, [])
 
   // Kantoorbrede dwarsdoorsnede (klikbare KPI-kaart) — zelfde databron als de lijst.
   if (filter === 'te_verwerken' || filter === 'vragen' || filter === 'bank' || filter === 'bij_klant') {
@@ -211,6 +224,25 @@ function WerkvoorraadIngang({
                   stipKleur: 'warn' as const,
                   delta: 'voorkeur kiezen, rest archiveren',
                   onClick: () => navigate('/crediteuren'),
+                },
+              ]
+            : []),
+          ...(reconciliatie !== null && reconciliatie.teller > 0
+            ? [
+                {
+                  label: 'Reconciliatie',
+                  waarde: reconciliatie.teller,
+                  stipKleur: (reconciliatie.afwijkingen > 0 ? 'danger' : 'warn') as 'danger' | 'warn',
+                  delta: reconciliatie.laatste_run?.afgerond_op
+                    ? `laatste run ${new Date(reconciliatie.laatste_run.afgerond_op).toLocaleString('nl-NL', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })} · exit ${reconciliatie.laatste_run.exit_code ?? 0}`
+                    : undefined,
+                  deltaWarn: reconciliatie.afwijkingen > 0,
+                  onClick: () => navigate('/reconciliatie'),
                 },
               ]
             : []),

@@ -36,6 +36,11 @@ const DoorbelastingReviewScreen = lazy(() =>
 const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
+// Reconciliatie (opdracht 06-09 blok C): kantoorbrede uitkomst van de nachtelijke
+// reconciliatie-alles-run — lazy, want alleen relevant als er iets te reconciliëren valt.
+const ReconciliatieScreen = lazy(() =>
+  import('./reconciliatie/ReconciliatieScreen').then((m) => ({ default: m.ReconciliatieScreen })),
+)
 // Verplichtingen (blok B 04-09): kantoorbreed overzicht + reviewscherm — lazy, want alleen
 // relevant voor administraties die offertes/opdrachtbevestigingen laten accorderen.
 const VerplichtingenScreen = lazy(() =>
@@ -136,6 +141,14 @@ function BeschermdeRoutes() {
           element={
             <Suspense fallback={<SkeletonPaneel />}>
               <TerugkerendScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reconciliatie"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <ReconciliatieScreen />
             </Suspense>
           }
         />
