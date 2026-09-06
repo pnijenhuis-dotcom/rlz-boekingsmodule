@@ -642,6 +642,20 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   in deploy.yml (health + gepoorte route moet 401 geven + one-off `rlz-smoketest`-job met de
   CLI `deploy-smoketest`) — een kapotte deploy is per direct luid rood. Zie BESLISSINGEN
   "SYNTHETISCHE BEWAKING + ALERTING".
+- **Reconciliatie-melding + Inzicht › Reconciliatie (opdracht 06-09, migratie 0114 — BESLISSINGEN
+  "RECONCILIATIE-MELDING + INZICHT" is canoniek):** `reconciliatie-alles` (job `rlz-reconciliatie`,
+  06:30 — blijft vóór de sync: alle vier blokken toetsen LIVE tegen RLZ) legt élke run vast
+  (`boekhouding.reconciliatie_run` + `reconciliatie_bevinding`, ook bij een blokcrash; CLI-uitvoer
+  identiek + RUN-slotregel), bepaalt de delta t.o.v. de vorige afgeronde run en mailt via het
+  bewakingskanaal ALLEEN als er iets te melden is (nieuwe afwijkingen/LET-OP's/geaccepteerd/fouten,
+  omgevallen blok, verdwenen afwijking = herstelregel; ongewijzigde LET-OP-set = geen mail; mailfout
+  maakt de job nooit rood → bewakingsprobe `reconciliatie_mail`; exit 1 blijft exit 1, F3.2 blijft
+  het vangnet). Kantoor-UI: KPI-kaart "Reconciliatie" (alleen bij teller > 0) → `/reconciliatie`
+  (Inzicht-kantoorbreed lijstpatroon, RLS-scope): afwijking → "Accepteren…"/"Intrekken" (bestaande
+  schrijver, Beheerder), LET-OP → "Gezien" (snooze mét reden, vervalt ná `gezien_dagen` = 90) +
+  deeplink, "Nu draaien" (Beheerder, 202 + poll, on-demand job — klikpunt f3_jobs.sh stap 11).
+  Opruimlijst dedupliceert per RLZ-concept (blok D). De lokale dagelijkse `make reconciliatie-alles`
+  is per 06-09 vervallen als vangnet (GCP_UITROL §F3.7). `app/reconciliatie/{run,kantoorbreed}.py`.
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,

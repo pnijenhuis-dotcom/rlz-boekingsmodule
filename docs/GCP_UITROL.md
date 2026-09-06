@@ -478,7 +478,7 @@ alleen verpakking.
 | Job | Commando | Cadans (voorstel) |
 |---|---|---|
 | Nachtelijke sync | `python -m app.cli sync-alles` | dagelijks 03:00 → **07:00 sinds tranche 2 (22-08, live verzet; f3_jobs.sh gelijkgetrokken)** |
-| Reconciliaties (documenten + bank + omzet) | `python -m app.cli reconciliatie-alles` | dagelijks 06:30 |
+| Reconciliaties (documenten + bank + omzet + doorbelasting) | `python -m app.cli reconciliatie-alles` | dagelijks 06:30 — **blijft vóór rlz-sync 07:00 (nagegaan 06-09, §F3.7): alle vier blokken toetsen LIVE tegen RLZ, geen cache-afhankelijkheid**; sinds 06-09 óók on-demand ("Nu draaien") |
 | Webhook-afleveraar | `python -m app.cli webhook-afleveren` | elke 5 min |
 | E-mail-intake (IMAP-fetch) | intake-CLI op de seam `app/intake/postvak.py` | elke 10 min |
 | Accordeur-herinneringen (push/mail, toegevoegd 2026-08-15 — zie §F3.5) | `python -m app.cli accordeur-herinneringen` | dagelijks 09:00 |
@@ -504,8 +504,11 @@ alleen verpakking.
    activering: **AVG-checklist D (DPA provider) afronden** — tot die check rond is blijft de
    .eml-upload gewoon het werkende kanaal, er valt niets om. *(Code activeert ná de
    DPA-check)*
-5. **De lokale dagelijkse run vervalt** zodra de scheduler-jobs draaien en de alerting staat —
-   niet eerder (geen gat tussen oud en nieuw vangnet).
+5. ~~**De lokale dagelijkse run vervalt** zodra de scheduler-jobs draaien en de alerting staat —
+   niet eerder (geen gat tussen oud en nieuw vangnet).~~ **VERVALLEN per 2026-09-06 (§F3.7):** de job
+   legt élke run vast, mailt de delta alleen als er iets te melden is en de bevindingen staan mét
+   handeling op Inzicht › Reconciliatie — `make reconciliatie-alles` lokaal is vanaf de eerste
+   cloud-run mét run-rij niet meer het vangnet (blijft beschikbaar als losse controle).
 
 **Verificatie F3:** elke job één keer handmatig getriggerd met zichtbaar resultaat in de logs;
 een geforceerde failure (verkeerde env) levert daadwerkelijk een alertmail op.
@@ -564,8 +567,62 @@ te wachten (`F3_IMAGE_OVERRIDE`; de volgende deploy-run trekt de beelden weer ge
   `tests/reconciliatie/test_rapportage_teller_cli.py` (4, incl. de voorheen ongedekte
   uitgesloten-tak). **De cutover-voorwaarde uit punt 3 is daarmee dicht.**
   ~~Punt 4 (IMAP-activatie ná DPA)~~ — **UITGEVOERD 2026-08-15, zie §F3.4-uitvoering.**
-  Nog open: punt 5 (lokale dagelijkse run blijft het echte vangnet tot cutover F1.6
-  stap 7, ná F5 — jobs draaien tot tranche 2 als infrastructuurbewijs/no-op).
+  ~~Nog open: punt 5 (lokale dagelijkse run blijft het echte vangnet tot cutover F1.6
+  stap 7, ná F5 — jobs draaien tot tranche 2 als infrastructuurbewijs/no-op).~~ **Punt 5
+  afgevinkt 2026-09-06 — zie §F3.7.**
+
+### F3.7 — reconciliatie-melding + Inzicht › Reconciliatie (2026-09-06; BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT")
+
+Aanleiding: `rlz-reconciliatie` meldde alleen via de F3.2-policy op exit ≠ 0. Alles wat exit 0 gaf
+maar aandacht vroeg (LET-OP-regels over achtergebleven RLZ-concepten, nieuwe GEACCEPTEERD-regels,
+blokken die op een RLZ-leesfout deels overgeslagen zijn) was onzichtbaar, een failure-mail zei
+alleen "job failed", en Peter draaide daarom nog dagelijks lokaal `make reconciliatie-alles`.
+
+- **Wat de job nu doet (commando ongewijzigd):** `reconciliatie-alles` legt élke run vast in
+  `boekhouding.reconciliatie_run` + `reconciliatie_bevinding` (migratie 0114; ook bij een
+  blokcrash — het blok staat dan op `fout`), bepaalt de delta t.o.v. de vorige afgeronde run en
+  mailt via het bewakingskanaal (SMTP facturen@ak-nijenhuis.nl, Reply-To
+  p.nijenhuis@kempengroep.nl → `bewaking_alert_ontvanger`) uitsluitend als er iets te melden is:
+  nieuwe afwijkingen, nieuwe LET-OP's (niet "gezien"), nieuwe GEACCEPTEERD-regels, nieuwe fouten,
+  omgevallen blokken, verdwenen afwijkingen (herstelregel). Ongewijzigde LET-OP-set = géén mail.
+  Onderwerp "RLZ reconciliatie <datum>: N afwijking(en) · M nieuwe aandachtspunt(en)"; body = per
+  blok status + de bevindingen letterlijk (CLI-regel mét administratienaam náást het GUID) + per
+  soort het handelingsperspectief. Hooguit één mail per run; **een mailfout maakt de job NIET
+  rood** (`mail_status='mislukt'` + audit; de kwartier-bewaking pikt dat op als storing
+  `reconciliatie_mail`). **Exit 1 blijft exit 1** — de F3.2-policy blijft het vangnet voor "job
+  draait niet / crasht".
+- **Cadans (punt 11 van de opdracht) — 06:30 BLIJFT, vóór rlz-sync 07:00.** Nagegaan per blok:
+  bank (`GET BankMutationDirectBookings/{id}` + `GET PaymentTransactions/{id}` → OpenAmount),
+  documenten (`GET PurchaseInvoices/{id}` + storno-detectie idem), omzet (`GET SalesInvoices/…` +
+  `ManualJournals/…`), doorbelasting (`GET SalesInvoices/…` + `PurchaseInvoices/…` beide kanten;
+  opruimlijst idem) toetsen álle LIVE tegen RLZ per document/mutatie. Geen enkel blok leest uit
+  `payment_item_cache`, `project_regel_cache` of een andere sync-cache — verschuiven naar ná de
+  sync zou niets winnen en een half uur later melden. Vastgelegd in `scripts/gcp/f3_jobs.sh`
+  (commentaar bij de JOBS-lijst) en hier.
+- **deploy.yml:** job-commando ongewijzigd; ná de lus krijgt `rlz-reconciliatie` de
+  `BERICHTEN_*`-envs + `BERICHTEN_SMTP_WACHTWOORD` + `APP_BASIS_URL` (link in de mail; het
+  alertadres blijft de code-default). De sérvice krijgt `RECONCILIATIE_JOB_RESOURCE` voor de knop
+  **"Nu draaien"** (Beheerder, Inzicht › Reconciliatie): wachtrij-rij bron `handmatig` + één
+  on-demand job-uitvoering (bank-sync-patroon; de job-CLI claimt de wachtende rij, anders maakt
+  hij zijn eigen rij bron `scheduler`). **KLIKPUNT (eenmalig, owner): `scripts/gcp/f3_jobs.sh`
+  herdraaien → stap 11 zet `roles/run.invoker` voor run-backend@ op de job** — tot dan faalt
+  "Nu draaien" zichtbaar (502 "Achtergrondrun starten mislukt"); de 06:30-run werkt sowieso.
+- **Zichtbaar mét handeling (kernprincipe 7):** KPI-kaart "Reconciliatie" op de werkvoorraad
+  (alleen bij teller > 0; teller = open afwijkingen + fouten + open LET-OP's; subregel laatste
+  run + exit) → `/reconciliatie` (kantoorbreed lijstpatroon, RLS-scope, facetten soort/
+  administratie, 25/pagina): afwijking → "Accepteren…" (bestaande schrijver, Beheerder) /
+  "Intrekken"; LET-OP → "Gezien" (snooze mét reden, vervalt ná Beheerder-instelling
+  `gezien_dagen` = 90, komt terug bij een andere reden) + deeplink naar het doorbelasting-
+  run-detail; uitgesloten alleen onder het facet. De opruimlijst blijft informatief — opruimen is
+  klikwerk in de RLZ-UI (kernprincipe 3).
+- **Rapportagefout doorbelasting-opruimlijst (punt 10) GEFIXT:** `verzamel_opruimlijst`
+  dedupliceert op (kant, concept-administratie, rlz_id) — meerdere gestorneerde boekingen/
+  vervallen runs op één document wijzen naar hetzelfde deterministische RLZ-concept (run 05-09:
+  11 regels voor ±6 concepten); referenties samengevoegd.
+- **Post-deploy (klikpunt na de eerstvolgende deploy):** `gcloud run jobs execute
+  rlz-reconciliatie --region europe-west4 --wait` → run-rij zichtbaar op `/reconciliatie`
+  ("laatste run …"); is er iets te melden dan komt de mail op p.nijenhuis@kempengroep.nl.
+  Daarna f3_jobs.sh herdraaien (stap 11) en "Nu draaien" één keer aanklikken.
 
 ### F3.4-uitvoering — live IMAP-intake geactiveerd (2026-08-15)
 

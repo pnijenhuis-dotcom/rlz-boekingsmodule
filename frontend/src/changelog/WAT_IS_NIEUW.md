@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-06 — Dagelijkse controle tegen Reeleezee meldt zichzelf en staat in de app
+
+- **U hoeft de dagelijkse controle niet meer zelf te draaien.** Elke ochtend vergelijkt het systeem de eigen boekingen, bankboekingen, omzetboekingen en doorbelastingen met de werkelijke stand in Reeleezee. De uitkomst wordt nu bewaard, en u krijgt alleen een e-mail als er iets nieuws is: een nieuwe afwijking, een nieuw aandachtspunt (bijvoorbeeld een concept dat na een storno in Reeleezee is blijven staan), iets dat nieuw als "beoordeeld" is gemarkeerd, een onderdeel dat niet gecontroleerd kon worden, of juist een afwijking die is opgelost. Staat alles gelijk aan gisteren, dan komt er geen mail. In de mail staat per onderdeel de stand, per bevinding de administratie bij naam en in één zin wat u ermee kunt doen.
+- **Nieuw scherm Inzicht › Reconciliatie.** Alle bevindingen van de laatste controle over al uw administraties in één lijst, de dringendste bovenaan, met filters op administratie en soort en een zoekveld. Per regel staat de handeling erbij: een afwijking kunt u (als Beheerder) met een reden als "beoordeeld en blijvend" accepteren of die acceptatie weer intrekken; een achtergebleven Reeleezee-concept kunt u met een reden op "Gezien" zetten zodat het uit de teller en de mail verdwijnt (het komt na 90 dagen — of zodra de situatie verandert — vanzelf terug; de Beheerder kan die termijn aanpassen) en u springt met één klik naar de bijbehorende doorbelasting. Opruimen van zo'n concept blijft handwerk in Reeleezee — de app verwijdert daar nooit iets.
+- **Teller op de werkvoorraad.** Zodra er iets openstaat, verschijnt de kaart "Reconciliatie" bovenaan de werkvoorraad met het aantal en het tijdstip van de laatste controle; klik erop voor de lijst. Is alles schoon, dan ziet u de kaart niet.
+- **"Nu draaien".** De Beheerder kan de controle direct starten vanuit het scherm en ziet de voortgang en het resultaat; de nachtelijke ronde blijft gewoon doorgaan.
+- **Duidelijker opruimlijst.** Een Reeleezee-concept dat via meerdere gestorneerde boekingen op dezelfde factuur werd gevonden, stond meerdere keren in de lijst; het staat nu één keer, met alle bijbehorende verkoopnummers erbij.
+
 ## 2026-09-04 — Odoo-overstap afgerond: nakomers boeken gewoon, projecten gaan mee, openstaande facturen vertaald
 
 - **De overgangsdatum blokkeert niets meer.** Een factuur die ná de overstap binnenkomt maar een factuurdatum van vóór de overstap heeft, wordt gewoon in Odoo geboekt. Stond diezelfde factuur al in Reeleezee geboekt, dan ziet u dat direct: de duplicaatcontrole wordt rood mét het Reeleezee-boekstuknummer en het systeem voert de dubbele factuur automatisch af als duplicaat, met verwijzing naar het origineel. De datum heet nu "Overgangsdatum (kanteldatum)": hij zegt vanaf wanneer de administratie op Odoo werkt en kan altijd worden gewijzigd — de eerdere weigering bij het verschuiven is vervallen.
