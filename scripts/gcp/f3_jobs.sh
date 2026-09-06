@@ -38,8 +38,11 @@ CLOUD_SQL="rlz-boekhouding:europe-west4:rlz-sql2"   # F5/besluit 0021: CMEK-herb
 
 # Job → CLI-commando → scheduler-cadans (draaiboektabel §F3). De cadansen: sync 07:00
 # (live verzet bij tranche 2, 2026-08-22 — was 03:00; hier gelijkgetrokken zodat een
-# her-run niets terugzet), reconciliaties 06:30 (Europe/Amsterdam), afleveraar elke
-# 5 min, intake elke 10 min.
+# her-run niets terugzet), reconciliaties 06:30 (Europe/Amsterdam) — BEWUST vóór de sync:
+# alle vier blokken (bank/documenten/omzet/doorbelasting incl. opruimlijst en storno-detectie)
+# toetsen LIVE tegen RLZ (GET per document/mutatie), geen enkel blok leest uit
+# payment_item_cache/project_regel_cache e.d. (nagegaan 06-09) — afleveraar elke 5 min,
+# intake elke 10 min.
 JOBS=(
   "rlz-sync|sync-alles|3600|0 7 * * *"
   "rlz-reconciliatie|reconciliatie-alles|3600|30 6 * * *"
@@ -340,3 +343,19 @@ echo "  gcloud run jobs execute rlz-webhook-afleveraar  --region=${REGION} --wai
 echo "  gcloud run jobs execute rlz-intake-imap         --region=${REGION} --wait   # groen (live sinds F3.4)"
 echo "NB de oude geforceerde-failure-test (intake-seam faalde bewust) bestaat niet meer —"
 echo "de alertketen is op de F3-run 2026-08-14 bewezen (policy '${POLICY_NAAM}' → ${ALERT_EMAIL})."
+
+echo "== 11. rlz-reconciliatie: óók on-demand (\"Nu draaien\" op Inzicht › Reconciliatie, 06-09) =="
+# De scheduler-cadans (06:30) blijft; daarnaast triggert de service één uitvoering als een Beheerder op
+# "Nu draaien" klikt (RECONCILIATIE_JOB_RESOURCE in deploy.yml, wachtrij-rij bron 'handmatig' = de
+# opdracht; de job-CLI claimt die rij). Hier alleen de IAM-binding — zelfde patroon als stap 6/7.
+if gcloud run jobs describe rlz-reconciliatie --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-reconciliatie \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-backend@ mag rlz-reconciliatie uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-reconciliatie bestaat nog niet — draai dit script na de eerste deploy opnieuw,"
+  echo "   anders faalt 'Nu draaien' zichtbaar met 'Achtergrondrun starten mislukt' (403); de 06:30-run werkt wel."
+fi
