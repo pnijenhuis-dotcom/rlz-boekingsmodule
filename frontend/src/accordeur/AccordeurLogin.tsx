@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { appSlotBeschikbaar, bewaarCredentialId } from '../api/appSlot'
 import type { TokenPaarResponseDto } from '../api/types'
+import { ActivatieHulp } from './ActivatieHulp'
 import {
   accordeurLogin,
   accordeurPasskeyLoginOpties,
@@ -35,6 +36,10 @@ export function AccordeurLogin({ naIngelogd }: Props) {
   // (een pincode-geactiveerd account hééft geen wachtwoord). De wachtwoordvorm blijft als
   // expliciete terugval bereikbaar voor legacy accounts.
   const [zonderWachtwoord, setZonderWachtwoord] = useState(() => appSlotBeschikbaar())
+  // Activatie-hulp (blok E2 06-09): generiek uitlegblok — uitgevouwen ná élke mislukte login
+  // (409 geen passkey / 401 wachtwoord zijn bewust niet te onderscheiden van "niet geactiveerd"),
+  // anders als tekstlink "Nog niet geactiveerd?".
+  const [toonHulp, setToonHulp] = useState(false)
 
   useEffect(() => {
     haalWebauthnConfig()
@@ -62,6 +67,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
       }
       naIngelogd(paar)
     } catch (err) {
+      setToonHulp(true)
       if (err instanceof ApiError && err.status === 409) {
         setFout(err.message)
         return
@@ -104,6 +110,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
         <button className="acc-btn secundair" onClick={() => setZonderWachtwoord(false)}>
           Inloggen met wachtwoord
         </button>
+        <ActivatieHulp open={toonHulp} onToggle={() => setToonHulp((v) => !v)} />
       </div>
     )
   }
@@ -151,6 +158,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
       }
       naIngelogd(paar)
     } catch (err) {
+      setToonHulp(true)
       setFout(err instanceof Error ? err.message : 'Inloggen mislukt.')
     } finally {
       setBezig(false)
@@ -197,6 +205,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
           {bezig ? 'Bezig…' : 'Inloggen'}
         </button>
       </form>
+      <ActivatieHulp open={toonHulp} onToggle={() => setToonHulp((v) => !v)} />
     </div>
   )
 }
