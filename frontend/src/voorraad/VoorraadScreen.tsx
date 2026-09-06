@@ -428,15 +428,32 @@ export function VoorraadAdministratieDetail({ administratieId }: { administratie
                 <tbody>
                   {data.groepen.map((g) => {
                     const s = signaalTekst(g)
+                    // Mini-voorraad (06-09, F5): virtuele groep "Speciale producten" — stand uit het voorraadlog,
+                    // informatief, géén telling-invoer en géén tolerantie (⑧: telverschillen blijven signaal).
+                    const mini = g.bron === 'mini_voorraad'
                     return (
-                      <tr key={g.artikelgroep_id}>
+                      <tr key={g.artikelgroep_id} data-testid={mini ? 'aansluiting-rij-mini-voorraad' : undefined}>
                         <td>
-                          <button type="button" className="linkbtn" onClick={() => kiesGroep(g)}>
-                            <b>{g.naam}</b>
-                          </button>
+                          {mini ? (
+                            <>
+                              <b>{g.naam}</b> <Badge variant="info">mini-voorraad</Badge>
+                            </>
+                          ) : (
+                            <button type="button" className="linkbtn" onClick={() => kiesGroep(g)}>
+                              <b>{g.naam}</b>
+                            </button>
+                          )}
                           <div className="hint" style={{ fontSize: 11 }}>
-                            {g.eenheid} · tolerantie {aantal(g.tolerantie_pct, 2)}%
-                            {Number(g.onzeker_pct) > 0 && ` · ${aantal(g.onzeker_pct, 0)}% onzeker genormaliseerd`}
+                            {mini ? (
+                              <>
+                                {g.eenheid} · standen uit het voorraadlog (Instellingen › Materiaalcatalogus › Mini-voorraad) · geen telling
+                              </>
+                            ) : (
+                              <>
+                                {g.eenheid} · tolerantie {aantal(g.tolerantie_pct, 2)}%
+                                {Number(g.onzeker_pct) > 0 && ` · ${aantal(g.onzeker_pct, 0)}% onzeker genormaliseerd`}
+                              </>
+                            )}
                           </div>
                         </td>
                         <td className="amount">{aantal(g.begin)}</td>
@@ -475,16 +492,24 @@ export function VoorraadAdministratieDetail({ administratieId }: { administratie
                           )}
                         </td>
                         <td className="acties" style={{ whiteSpace: 'nowrap' }}>
-                          <Button
-                            variant="secundair"
-                            maat="klein"
-                            onClick={() => setTellingVoor({ groep: g, datum: isoVandaag(), aantal: '' })}
-                          >
-                            Telling…
-                          </Button>{' '}
-                          <Button variant="ghost" maat="klein" onClick={() => tolerantieWijzigen(g)}>
-                            Tolerantie
-                          </Button>
+                          {mini ? (
+                            <span className="hint" style={{ margin: 0 }}>
+                              informatief — niet muteerbaar
+                            </span>
+                          ) : (
+                            <>
+                              <Button
+                                variant="secundair"
+                                maat="klein"
+                                onClick={() => setTellingVoor({ groep: g, datum: isoVandaag(), aantal: '' })}
+                              >
+                                Telling…
+                              </Button>{' '}
+                              <Button variant="ghost" maat="klein" onClick={() => tolerantieWijzigen(g)}>
+                                Tolerantie
+                              </Button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )

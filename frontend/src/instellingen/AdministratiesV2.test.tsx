@@ -19,6 +19,7 @@ function administratie(overrides: Partial<AdministratieInstellingenDto> = {}): A
     uren_dagmax_uren: '12',
     afdelingen_ingeschakeld: false,
     voorraad_ingeschakeld: false,
+    mini_voorraad_ingeschakeld: false,
     ...overrides,
   }
 }

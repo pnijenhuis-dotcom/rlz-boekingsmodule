@@ -22,6 +22,7 @@ from app.documenten.rlz_ids import rlz_herboeking_id  # noqa: F401 — re-export
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
 from app.geheugen.leerlus import leg_boeking_vast
+from app.mini_voorraad import instroom as mini_voorraad_instroom
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.rlz.fouten import vertaal_rlz_boekfout  # noqa: F401 — re-export (accordering-herstel-CLI, tests)
@@ -102,6 +103,9 @@ class BoekResultaat:
     status: DocumentStatus
     rlz_document_id: uuid.UUID
     rlz_boekstuknummer: str | None
+    # Mini-voorraad speciale producten (blok F 06-09): instroom-resultaat uit de GEBOEKT-transactie — None als de
+    # opt-in uit staat (of het geen inkoopfactuur is). Additief: de router zet 'm op BoekenResponse.mini_voorraad.
+    mini_voorraad: mini_voorraad_instroom.InstroomResultaat | None = None
 
 
 def _is_boeken_toegestaan(session: Session, *, administratie_id: uuid.UUID) -> bool:
@@ -522,6 +526,18 @@ def boek_document(
             boek_cyclus=voorstel.boek_cyclus,
             actor_id=actor_id,
         )
+        # Mini-voorraad speciale producten (blok F 06-09, mockup ②): productregels uit het veldvoorstel bijtellen
+        # ÍN de GEBOEKT-transactie — samen met de statusovergang, of samen niet; tegenboeken/storno spiegelt
+        # (mini_voorraad_instroom.registreer_storno). Opt-in uit = None, niets geschreven.
+        mini_voorraad_resultaat = mini_voorraad_instroom.registreer_bij_boeking(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            boek_cyclus=voorstel.boek_cyclus,
+            actor_id=actor_id,
+            regels=voorstel.regels,
+            vendor_id=voorstel.vendor_id,
+        )
         # Offerte-matching (wens Peter 04-09, ③): het verbruik van de gematchte verplichting
         # bijschrijven ÍN deze transactie — samen met de GEBOEKT-overgang, of samen niet. Alleen
         # geboekte facturen tellen mee in de cumulatieve stand; tegenboeken draait het terug.
@@ -587,4 +603,5 @@ def boek_document(
         status=DocumentStatus.GEBOEKT,
         rlz_document_id=rlz_document_id,
         rlz_boekstuknummer=rlz_boekstuknummer,
+        mini_voorraad=mini_voorraad_resultaat,
     )

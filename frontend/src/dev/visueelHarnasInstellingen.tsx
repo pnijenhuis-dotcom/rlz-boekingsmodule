@@ -47,6 +47,7 @@ const ADMINISTRATIES = [
     uren_meerwerk_ingeschakeld: true,
     uren_dagmax_uren: '12',
     voorraad_ingeschakeld: true,
+    mini_voorraad_ingeschakeld: true,
     afdelingen_ingeschakeld: true,
     accordering_ingeschakeld: true,
     doorbelasting_ingeschakeld: true,

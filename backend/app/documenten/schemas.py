@@ -567,6 +567,16 @@ class BoekvoorstelMetChecksResponse(BaseModel):
     materiaalmatch: dict | None = None
 
 
+class MiniVoorraadBoekDto(BaseModel):
+    """Mini-voorraad speciale producten (blok F 06-09): wat de instroom ín de boek-transactie deed — voedt de toast
+    "Mini-voorraad bijgewerkt — N regels" op het controlescherm. `overgeslagen` = leesbare redenen per regel."""
+
+    regels: int
+    nieuwe_producten: list[str] = []
+    bestaande: int = 0
+    overgeslagen: list[str] = []
+
+
 class BoekenResponse(BaseModel):
     document_id: uuid.UUID
     status: str
@@ -578,6 +588,8 @@ class BoekenResponse(BaseModel):
     doorbelasting_run_id: uuid.UUID | None = None
     doorbelasting: dict[str, str] | None = None
     doorbelasting_fout: str | None = None
+    # Mini-voorraad (blok F 06-09): None als de opt-in uit staat.
+    mini_voorraad: MiniVoorraadBoekDto | None = None
 
 
 class VraagStellenInput(StrikteInvoer):

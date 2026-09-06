@@ -15,6 +15,8 @@ import {
 } from '../planning/transportApi'
 import { Badge, Button, Checkbox, Paginering, Select, useToastOptioneel } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
+import { MiniVoorraadTab } from '../materiaal/MiniVoorraadTab'
+import { haalStand as haalMiniStand, type StandDto as MiniStandDto } from '../materiaal/miniVoorraadApi'
 
 /* Materiaalcatalogus per leverancier (steigerbouw-run D2; leverancier-beheer sinds 31-08 óók
  * voor Boekhouding + Projecten — server-side open, geen frontend-gate): leveranciers (bestel-
@@ -72,6 +74,25 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
   const [bewerkProd, setBewerkProd] = useState<Partial<ProductDto> | null>(null)
   const [nieuweCat, setNieuweCat] = useState('')
   const [vendors, setVendors] = useState<{ id: string; naam: string }[]>([])
+  // Mini-voorraad (06-09): tab-stand per administratie — best-effort (opt-in uit / geen route = geen tab).
+  const [tab, setTab] = useState<'catalogus' | 'mini'>('catalogus')
+  const [miniStand, setMiniStand] = useState<MiniStandDto | null>(null)
+  useEffect(() => {
+    if (!administratieId) return
+    let actueel = true
+    setMiniStand(null)
+    setTab('catalogus')
+    haalMiniStand(administratieId)
+      .then((s) => {
+        if (actueel) setMiniStand(s)
+      })
+      .catch(() => {
+        if (actueel) setMiniStand(null)
+      })
+    return () => {
+      actueel = false
+    }
+  }, [administratieId])
 
   const laadLeveranciers = useCallback(() => {
     if (!administratieId) return
@@ -175,6 +196,27 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
         basis voor de productbrug naar Odoo); bestellingen en transport horen bij Uren &amp; meerwerk.
       </p>
       {administraties.length === 0 && <p className="hint" data-testid="materiaal-geen-administratie">{CATALOGUS_GEEN_ADMINISTRATIE_TEKST}</p>}
+      {/* Mini-voorraad (opdracht 06-09, mockup mini-voorraad.html blok 2): tweede tab náást de catalogus, alleen bij
+          de opt-in van de gekozen administratie (stand-leesroute); volle breedte, zelfde paneel. */}
+      {miniStand?.ingeschakeld && (
+        <div className="segment inst-tabs" role="tablist" aria-label="Materiaalcatalogus-onderdelen" style={{ margin: '8px 0' }}>
+          <button type="button" role="tab" aria-selected={tab === 'catalogus'} className={tab === 'catalogus' ? 'actief' : undefined} onClick={() => setTab('catalogus')}>
+            Catalogus
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'mini'} className={tab === 'mini' ? 'actief' : undefined} onClick={() => setTab('mini')} data-testid="tab-mini-voorraad">
+            Mini-voorraad
+            {miniStand.nieuw_controleren > 0 && (
+              <>
+                {' '}
+                <Badge variant="warn">{miniStand.nieuw_controleren} nieuw — controleer</Badge>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+      {tab === 'mini' && miniStand?.ingeschakeld && <MiniVoorraadTab administratieId={administratieId} />}
+      {tab === 'catalogus' && (
+      <>
       {fout && <div className="fout">{fout}</div>}
       {leveranciers !== null && leveranciers.length === 0 && !fout && <p className="hint">Nog geen leveranciers — laad de standaardcatalogus of voeg een leverancier toe.</p>}
       {werklijst.length > 0 && (
@@ -286,6 +328,8 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
           )}
           {producten && <Paginering pagina={pagina} totaal={producten.totaal} onPagina={setPagina} label="producten" />}
         </>
+      )}
+      </>
       )}
 
       {bewerkLev && (

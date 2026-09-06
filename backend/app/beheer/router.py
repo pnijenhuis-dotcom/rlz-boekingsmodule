@@ -41,6 +41,7 @@ def administratie_instellingen_lijst(
                 uren_dagmax_uren=r.uren_dagmax_uren,
                 afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
                 voorraad_ingeschakeld=r.voorraad_ingeschakeld,
+                mini_voorraad_ingeschakeld=r.mini_voorraad_ingeschakeld,
                 rlz_admin_id=r.rlz_admin_id,
                 webservice_username=r.webservice_username,
                 probe_groen=r.probe_groen,
@@ -432,6 +433,26 @@ def voorraad_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.VoorraadInstellingDto(ingeschakeld=ingeschakeld)
+
+
+@router.patch(
+    "/administraties/{administratie_id}/mini-voorraad",
+    response_model=schemas.MiniVoorraadInstellingDto,
+)
+def mini_voorraad_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.MiniVoorraadInstellingDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.MiniVoorraadInstellingDto:
+    """Opt-in "Mini-voorraad speciale producten" (blok F 06-09, migratie 0116) — Beheerder-only, default UIT;
+    exact het patroon van de voorraad-toggle (audit oud→nieuw)."""
+    try:
+        ingeschakeld = service.zet_mini_voorraad_ingeschakeld(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.MiniVoorraadInstellingDto(ingeschakeld=ingeschakeld)
 
 
 @router.get(

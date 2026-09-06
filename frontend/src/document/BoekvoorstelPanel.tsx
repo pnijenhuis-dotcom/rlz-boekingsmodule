@@ -379,6 +379,8 @@ export interface GeboektInfo {
   referentie: string | null
   boekstuknummer: string | null
   waarschuwing?: string
+  /** Mini-voorraad (06-09): instroom uit de boek-response — null/afwezig zonder opt-in. */
+  miniVoorraad?: BoekenResponseDto['mini_voorraad']
 }
 
 /** Imperatieve brug voor een van buiten aangeleverde regel (aanbetaling-verrekenregel, deel 4
@@ -1064,6 +1066,7 @@ export function BoekvoorstelPanel({
           waarschuwing: resultaat.doorbelasting_fout
             ? `doorbelasting (deels) mislukt: ${resultaat.doorbelasting_fout}`
             : undefined,
+          miniVoorraad: resultaat.mini_voorraad ?? null,
         })
         return
       }

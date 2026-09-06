@@ -55,6 +55,8 @@ export function ariaLabelVoor(type: ToggleType): string {
       return 'Afdelingen van toepassing voor'
     case 'voorraad':
       return 'Voorraad bijhouden voor'
+    case 'mini_voorraad':
+      return 'Mini-voorraad speciale producten voor'
     case 'omzet_autoboeken':
       return 'Omzet-autoboeken voor'
   }
@@ -267,6 +269,21 @@ export function AdministratieDetailPagina({
             'Weekstaten, meerwerk, planning, bestellingen en transport — instellingen op de tab "Uren & materiaal" zodra aan. De materiaalcatalogus zelf is óók beschikbaar via een Odoo-koppeling.',
           )}
           {toggle('voorraad', a.voorraad_ingeschakeld, 'Voorraad bijhouden', 'Controle-laag (mi-schema): instroom uit inkoopregels, uitstroom uit verkoopregels — nooit geboekt.')}
+          {/* Mini-voorraad speciale producten (opdracht 06-09, mockup mini-voorraad.html ③): opt-in náást de
+              voorraad-controle-laag; de producten staan op Instellingen › Materiaalcatalogus, tab "Mini-voorraad". */}
+          {toggle(
+            'mini_voorraad',
+            Boolean(a.mini_voorraad_ingeschakeld),
+            'Mini-voorraad speciale producten',
+            <>
+              Bij het boeken van een inkoopfactuur worden productregels (omschrijving × aantal) automatisch producten in de
+              materiaalcatalogus, mét herkomst; standen zijn uitsluitend een afgeleide van boekingen en gemelde beschadigingen — niemand
+              kan ze corrigeren.{' '}
+              <Link to="/instellingen/materiaal" className="text-primary no-underline hover:underline">
+                materiaalcatalogus › Mini-voorraad →
+              </Link>
+            </>,
+          )}
           {/* Blok "Intake-regels" (blok B 04-09): 'nooit splitsen'-regels per afzender — beheer per administratie,
               aanmaak uitsluitend via "Is één factuur" in de verzamelbak. */}
           <IntakeRegels administratieId={a.id} />

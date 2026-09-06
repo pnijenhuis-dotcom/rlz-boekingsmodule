@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0114
+-- Migratie-head bij deze dump: 0116
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1961,6 +1961,38 @@ ALTER TABLE ONLY boekhouding.payment_item_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: planning_signaal_afhandeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.planning_signaal_afhandeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    jaar smallint NOT NULL,
+    weeknummer smallint NOT NULL,
+    soort text NOT NULL,
+    reden text,
+    datum date,
+    status text,
+    kanaal text,
+    detail jsonb,
+    door uuid NOT NULL,
+    op timestamp with time zone DEFAULT now() NOT NULL,
+    verzonden_op timestamp with time zone,
+    ingetrokken_door uuid,
+    ingetrokken_op timestamp with time zone,
+    CONSTRAINT ck_planning_signaal_afhandeling_afgemeld_reden CHECK (((soort <> 'afgemeld'::text) OR ((reden IS NOT NULL) AND (length(btrim(reden)) >= 5)))),
+    CONSTRAINT ck_planning_signaal_afhandeling_herinnerd_velden CHECK (((soort <> 'herinnerd'::text) OR ((datum IS NOT NULL) AND (status = ANY (ARRAY['bezig'::text, 'verzonden'::text, 'mislukt'::text, 'overgeslagen'::text]))))),
+    CONSTRAINT ck_planning_signaal_afhandeling_ingetrokken_samen CHECK (((ingetrokken_op IS NULL) = (ingetrokken_door IS NULL))),
+    CONSTRAINT ck_planning_signaal_afhandeling_soort CHECK ((soort = ANY (ARRAY['afgemeld'::text, 'herinnerd'::text]))),
+    CONSTRAINT ck_planning_signaal_afhandeling_weeknummer CHECK (((weeknummer >= 1) AND (weeknummer <= 53)))
+);
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: planning_toewijzing; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -3012,6 +3044,62 @@ ALTER TABLE ONLY mi.artikelgroep FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: mini_product; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.mini_product (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    leverancier_naam text,
+    artikelcode text,
+    omschrijving text NOT NULL,
+    omschrijving_norm text NOT NULL,
+    weergavenaam text,
+    eenheid text,
+    nieuw_controleren boolean DEFAULT true NOT NULL,
+    naam_bevestigd_op timestamp with time zone,
+    naam_bevestigd_door uuid,
+    gearchiveerd boolean DEFAULT false NOT NULL,
+    gearchiveerd_op timestamp with time zone,
+    gearchiveerd_door uuid,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bron_document_id uuid,
+    CONSTRAINT ck_mini_product_omschrijving CHECK ((length(btrim(omschrijving)) > 0)),
+    CONSTRAINT ck_mini_product_omschrijving_norm CHECK ((length(btrim(omschrijving_norm)) > 0))
+);
+
+ALTER TABLE ONLY mi.mini_product FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: mini_voorraad_mutatie; Type: TABLE; Schema: mi; Owner: -
+--
+
+CREATE TABLE mi.mini_voorraad_mutatie (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    soort text NOT NULL,
+    aantal numeric(12,3) NOT NULL,
+    datum date NOT NULL,
+    document_id uuid,
+    regel_volgnummer integer,
+    boek_cyclus integer,
+    project_id uuid,
+    gemeld_door uuid,
+    toelichting text,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    CONSTRAINT ck_mini_voorraad_mutatie_aantal CHECK ((aantal <> (0)::numeric)),
+    CONSTRAINT ck_mini_voorraad_mutatie_beschadiging_project CHECK (((soort <> 'beschadiging'::text) OR (project_id IS NOT NULL))),
+    CONSTRAINT ck_mini_voorraad_mutatie_soort CHECK ((soort = ANY (ARRAY['instroom'::text, 'storno'::text, 'uitstroom'::text, 'beschadiging'::text])))
+);
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: normalisatie_regel; Type: TABLE; Schema: mi; Owner: -
 --
 
@@ -3176,6 +3264,7 @@ CREATE TABLE platform.administratie (
     projectverdeling_drempel_pct numeric(5,2) DEFAULT 5.00 NOT NULL,
     inkoop_zonder_omzet_wachtweken integer DEFAULT 4 NOT NULL,
     standaard_taxrate_id uuid,
+    mini_voorraad_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
@@ -4222,6 +4311,14 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT planning_signaal_afhandeling_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: planning_toewijzing planning_toewijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4790,6 +4887,22 @@ ALTER TABLE ONLY mi.artikelgroep
 
 
 --
+-- Name: mini_product mini_product_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT mini_product_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: normalisatie_regel normalisatie_regel_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
 --
 
@@ -4803,6 +4916,14 @@ ALTER TABLE ONLY mi.normalisatie_regel
 
 ALTER TABLE ONLY mi.artikelcode_koppeling
     ADD CONSTRAINT uq_artikelcode_koppeling UNIQUE (administratie_id, richting, vendor_id, code);
+
+
+--
+-- Name: mini_product uq_mini_product_sleutel; Type: CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT uq_mini_product_sleutel UNIQUE (administratie_id, vendor_id, omschrijving_norm);
 
 
 --
@@ -5672,6 +5793,20 @@ CREATE INDEX ix_payment_item_cache_administratie_id ON boekhouding.payment_item_
 
 
 --
+-- Name: ix_planning_signaal_afhandeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_signaal_afhandeling_administratie_id ON boekhouding.planning_signaal_afhandeling USING btree (administratie_id);
+
+
+--
+-- Name: ix_planning_signaal_afhandeling_combinatie; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_signaal_afhandeling_combinatie ON boekhouding.planning_signaal_afhandeling USING btree (administratie_id, gebruiker_id, project_id, jaar, weeknummer);
+
+
+--
 -- Name: ix_planning_toewijzing_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6078,6 +6213,20 @@ CREATE INDEX ix_werkstempel_gebruiker_tijdstip ON boekhouding.werkstempel USING 
 
 
 --
+-- Name: planning_signaal_afgemeld_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX planning_signaal_afgemeld_actief_uniek ON boekhouding.planning_signaal_afhandeling USING btree (administratie_id, gebruiker_id, project_id, jaar, weeknummer) WHERE ((soort = 'afgemeld'::text) AND (ingetrokken_op IS NULL));
+
+
+--
+-- Name: planning_signaal_herinnerd_dag_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX planning_signaal_herinnerd_dag_uniek ON boekhouding.planning_signaal_afhandeling USING btree (administratie_id, gebruiker_id, project_id, jaar, weeknummer, datum) WHERE (soort = 'herinnerd'::text);
+
+
+--
 -- Name: reconciliatie_acceptatie_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6222,6 +6371,34 @@ CREATE INDEX ix_artikelcode_koppeling_administratie_id ON mi.artikelcode_koppeli
 --
 
 CREATE INDEX ix_artikelgroep_administratie_id ON mi.artikelgroep USING btree (administratie_id);
+
+
+--
+-- Name: ix_mini_product_administratie_id; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_mini_product_administratie_id ON mi.mini_product USING btree (administratie_id);
+
+
+--
+-- Name: ix_mini_product_artikelcode; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_mini_product_artikelcode ON mi.mini_product USING btree (administratie_id, vendor_id, artikelcode);
+
+
+--
+-- Name: ix_mini_voorraad_mutatie_document; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_mini_voorraad_mutatie_document ON mi.mini_voorraad_mutatie USING btree (administratie_id, document_id);
+
+
+--
+-- Name: ix_mini_voorraad_mutatie_product; Type: INDEX; Schema: mi; Owner: -
+--
+
+CREATE INDEX ix_mini_voorraad_mutatie_product ON mi.mini_voorraad_mutatie USING btree (product_id, aangemaakt_op);
 
 
 --
@@ -7331,6 +7508,14 @@ ALTER TABLE ONLY boekhouding.meerwerk
 
 
 --
+-- Name: planning_signaal_afhandeling fk_planning_signaal_afhandeling_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT fk_planning_signaal_afhandeling_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: planning_toewijzing fk_planning_toewijzing_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7952,6 +8137,38 @@ ALTER TABLE ONLY boekhouding.payment_account_cache
 
 ALTER TABLE ONLY boekhouding.payment_item_cache
     ADD CONSTRAINT payment_item_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT planning_signaal_afhandeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT planning_signaal_afhandeling_door_fkey FOREIGN KEY (door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT planning_signaal_afhandeling_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
+    ADD CONSTRAINT planning_signaal_afhandeling_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -8848,6 +9065,78 @@ ALTER TABLE ONLY mi.artikelgroep
 
 ALTER TABLE ONLY mi.artikelgroep
     ADD CONSTRAINT artikelgroep_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: mini_product mini_product_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT mini_product_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: mini_product mini_product_bron_document_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT mini_product_bron_document_id_fkey FOREIGN KEY (bron_document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: mini_product mini_product_gearchiveerd_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT mini_product_gearchiveerd_door_fkey FOREIGN KEY (gearchiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: mini_product mini_product_naam_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_product
+    ADD CONSTRAINT mini_product_naam_bevestigd_door_fkey FOREIGN KEY (naam_bevestigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_document_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_gemeld_door_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_gemeld_door_fkey FOREIGN KEY (gemeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_product_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
+--
+
+ALTER TABLE ONLY mi.mini_voorraad_mutatie
+    ADD CONSTRAINT mini_voorraad_mutatie_product_id_fkey FOREIGN KEY (product_id) REFERENCES mi.mini_product(id);
 
 
 --
@@ -10162,6 +10451,19 @@ CREATE POLICY payment_item_cache_scope ON boekhouding.payment_item_cache USING (
 
 
 --
+-- Name: planning_signaal_afhandeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.planning_signaal_afhandeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: planning_signaal_afhandeling planning_signaal_afhandeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY planning_signaal_afhandeling_scope ON boekhouding.planning_signaal_afhandeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: planning_toewijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10717,6 +11019,32 @@ ALTER TABLE mi.artikelgroep ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY artikelgroep_scope ON mi.artikelgroep USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: mini_product; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.mini_product ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: mini_product mini_product_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY mini_product_scope ON mi.mini_product USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: mini_voorraad_mutatie; Type: ROW SECURITY; Schema: mi; Owner: -
+--
+
+ALTER TABLE mi.mini_voorraad_mutatie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: mini_voorraad_mutatie mini_voorraad_mutatie_scope; Type: POLICY; Schema: mi; Owner: -
+--
+
+CREATE POLICY mini_voorraad_mutatie_scope ON mi.mini_voorraad_mutatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

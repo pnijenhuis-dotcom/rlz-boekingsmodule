@@ -33,6 +33,9 @@ export interface ProductDto {
   volgorde: number
   actief: boolean
   nummer: string
+  /** Mini-voorraad (06-09, F5): alleen op items van de categorie "Speciale producten (mini-voorraad)" — de
+   * actuele stand (Decimal-string). Aanwezig = read-only mini-product, afwezig = gewoon catalogusproduct. */
+  mini_voorraad_stand?: string | null
 }
 
 export interface CategorieDto {

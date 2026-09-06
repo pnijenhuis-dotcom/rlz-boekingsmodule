@@ -413,6 +413,9 @@ class GroepAansluiting:
     onzeker_pct: Decimal
     regels_in: int
     regels_uit: int
+    # F5 (blok F 06-09): 'artikelgroep' = echte groep (telling mogelijk) | 'mini_voorraad' = virtuele groep uit de
+    # append-only mini-voorraad-mutaties (geen telling-invoer, signaal 'informatief', nooit muteerbaar).
+    bron: str = "artikelgroep"
 
 
 @dataclass(frozen=True)
@@ -447,6 +450,10 @@ class Aansluiting:
             "diensten": (
                 "dienst-/transportregels (soort-label: regex, AI of correctie) — tellen niet in de "
                 "aansluiting, blijven bewaard als omzet-/dienstinformatie"
+            ),
+            "mini_voorraad": (
+                "speciale producten: Σ append-only mutaties (instroom = geboekte inkoopfacturen; uit = "
+                "verkoopfactuur, beschadigingsmelding mét project, storno) — geen telling, nooit gecorrigeerd"
             ),
         }
     )
@@ -580,6 +587,34 @@ def aansluiting(*, administratie_id: uuid.UUID, van: date, tot: date) -> Aanslui
                 onzeker_pct=onzeker_pct,
                 regels_in=int(g["n_in"]),
                 regels_uit=int(g["n_uit"]),
+            )
+        )
+    # F5 (blok F 06-09): de mini-voorraad als virtuele artikelgroep — Σ append-only mutaties, geen telling-invoer,
+    # signaal 'informatief' (⑧: nooit muteerbaar; een telverschil blijft zichtbaar en wordt nooit gecorrigeerd).
+    from app.mini_voorraad import service as mini_voorraad_service  # lazy: eigen module, kleine importgraaf
+
+    with scoped_session(administratie_id) as session:
+        virtueel = mini_voorraad_service.virtuele_groep(session, administratie_id=administratie_id, van=van, tot=tot)
+    if virtueel is not None:
+        uit.append(
+            GroepAansluiting(
+                artikelgroep_id=virtueel.artikelgroep_id,
+                naam=virtueel.naam,
+                eenheid="st",
+                tolerantie_pct=Decimal(0),
+                begin=virtueel.begin,
+                inkoop=virtueel.inkoop,
+                verkoop=virtueel.verkoop,
+                theoretisch=virtueel.theoretisch,
+                systeemstand=None,
+                telling_datum=None,
+                verschil=None,
+                verschil_pct=None,
+                signaal="informatief",
+                onzeker_pct=Decimal(0),
+                regels_in=virtueel.regels_in,
+                regels_uit=virtueel.regels_uit,
+                bron="mini_voorraad",
             )
         )
     return Aansluiting(

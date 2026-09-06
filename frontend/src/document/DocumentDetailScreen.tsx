@@ -45,6 +45,7 @@ import { OfferteMatchMelding } from './OfferteMatchMelding'
 import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
+import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -649,6 +650,11 @@ export function DocumentDetailScreen() {
       return
     }
     meld(info.waarschuwing ? `${tekst} — ${info.waarschuwing}` : tekst, info.waarschuwing ? 'warn' : 'ok')
+    // Mini-voorraad (06-09, mockup mini-voorraad.html blok 1): instroom ín de boek-transactie → eigen groene
+    // melding náást de boek-toast; nieuwe producten worden benoemd (vlag op de tab Mini-voorraad).
+    // Niets verwerkt (alle regels overgeslagen) = geen melding — de redenen staan in de tijdlijn.
+    if (info.uitkomst !== 'afgewezen' && info.miniVoorraad && (info.miniVoorraad.regels > 0 || info.miniVoorraad.nieuwe_producten.length > 0))
+      meld(miniVoorraadMelding(info.miniVoorraad), 'ok')
     // Punt 1b: mét lijstcontext blijft de doorloop BINNEN het actieve filter (vanuit "Klaar om te
     // boeken" → het volgende klaar-om-te-boeken-document); filter leeg → terug naar de lijst mét
     // dat filter. Zonder context: het bestaande gedrag (zelfde klant, zelfde soort eerst).
@@ -1326,6 +1332,12 @@ export function DocumentDetailScreen() {
                             </div>
                           )}
                         </>
+                      )}
+                      {/* Mini-voorraad (06-09): notitie mini_voorraad_bijgewerkt, geschreven ín de boek-transactie. */}
+                      {g.detail && isMiniVoorraadNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-mini-voorraad">
+                          {miniVoorraadTijdlijnTekst(g.detail)}
+                        </div>
                       )}
                       {g.detail && 'extractie_wachtrij' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>

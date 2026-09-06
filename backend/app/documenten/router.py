@@ -936,6 +936,19 @@ def document_boeken(
         doorbelasting_run_id=gecombineerd.doorbelasting_run_id,
         doorbelasting=gecombineerd.doorbelasting,
         doorbelasting_fout=gecombineerd.doorbelasting_fout,
+        mini_voorraad=_mini_voorraad_dto(resultaat.mini_voorraad),
+    )
+
+
+def _mini_voorraad_dto(resultaat) -> schemas.MiniVoorraadBoekDto | None:
+    """Blok F 06-09: het instroom-resultaat uit de boek-transactie (None = opt-in uit)."""
+    if resultaat is None:
+        return None
+    return schemas.MiniVoorraadBoekDto(
+        regels=resultaat.regels,
+        nieuwe_producten=list(resultaat.nieuwe_producten),
+        bestaande=resultaat.bestaande,
+        overgeslagen=list(resultaat.overgeslagen),
     )
 
 

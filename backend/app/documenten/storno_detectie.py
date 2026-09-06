@@ -138,6 +138,20 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
                     actor_id=SYSTEEM_ACTOR_ID,
                     reden="storno gedetecteerd in de RLZ-UI (actie 19)",
                 )
+                # Mini-voorraad speciale producten (blok F 06-09): de instroom van deze boekcyclus spiegelen als
+                # storno — zelfde idempotentie (al gespiegeld = no-op). NB dit pad dekt alleen vastgoed-
+                # administraties (zie moduledocstring); voor de overige is de RLZ-UI-storno alleen een
+                # reconciliatie-afwijking — beslispunt Peter, BESLISSINGEN blok F.
+                from app.mini_voorraad import instroom as mini_voorraad_instroom
+
+                mini_voorraad_instroom.registreer_storno(
+                    session,
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    boek_cyclus=boek_cyclus,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    reden="storno gedetecteerd in de RLZ-UI (actie 19)",
+                )
                 record_audit_event(
                     session,
                     actor_id=SYSTEEM_ACTOR_ID,

@@ -3,6 +3,7 @@ import { ApiError } from '../api/client'
 import { Badge, Button, Select, useToastOptioneel, SkeletonRegels } from '../ui/basis'
 import { BestellingPopup } from './BestellingPopup'
 import { MateriaalstandPaneel } from './MateriaalstandPaneel'
+import { aantalTekst as miniStandTekst, haalMateriaallijst as haalMiniMateriaallijst, type MateriaallijstItemDto } from '../materiaal/miniVoorraadApi'
 import {
   bevestigTransport,
   haalBestellingen,
@@ -144,7 +145,16 @@ export function TransportTab({
     laad()
   }, [laad])
   useEffect(() => {
-    haalLeveranciers(administratieId).then(setLeveranciers).catch(() => setLeveranciers([]))
+    setLeveranciersFout(null)
+    haalLeveranciers(administratieId)
+      .then((l) => {
+        setLeveranciers(l)
+        setLeveranciersFout(null)
+      })
+      .catch((err: unknown) => {
+        setLeveranciers([])
+        setLeveranciersFout(laadFoutTekst('Leveranciers', err))
+      })
   }, [administratieId])
 
   const term = filterTerm.trim().toLowerCase()
@@ -878,11 +888,31 @@ function MateriaallijstDialog({
   const [bezig, setBezig] = useState(false)
   const [foutBericht, setFoutBericht] = useState<string | null>(null)
   useEffect(() => {
-    haalCatalogus(administratieId, t.leverancier_id).then(setCatalogus).catch(() => setCatalogus([]))
+    setCatalogusFout(null)
+    haalCatalogus(administratieId, t.leverancier_id)
+      .then(setCatalogus)
+      .catch((err: unknown) => {
+        setCatalogus([])
+        setCatalogusFout(laadFoutTekst('Catalogus', err))
+      })
   }, [administratieId, t.leverancier_id])
   const productenMap = useMemo(() => new Map<string, ProductDto>(catalogus.flatMap((c) => c.producten).map((p) => [p.id, p])), [catalogus])
   const m2 = schatM2(regels, productenMap)
   const term = zoek.trim().toLowerCase()
+  // Mini-voorraad (06-09, F5): speciale producten uit geboekte inkoopregels mét stand — als eigen, alleen-lezen
+  // sectie. Bron: de categorie in de catalogus (items mét `mini_voorraad_stand`) óf — terugval — de eigen
+  // leesroute; best-effort, een fout (opt-in uit = 409) blokkeert niets. Opnemen op de transportlijst is fase 2
+  // (uitstroom, mockup ⑤) — daarom hier geen aantal-invoer.
+  const [miniTerugval, setMiniTerugval] = useState<MateriaallijstItemDto[]>([])
+  useEffect(() => {
+    haalMiniMateriaallijst(administratieId).then(setMiniTerugval).catch(() => setMiniTerugval([]))
+  }, [administratieId])
+  const isMiniCategorie = (c: CategorieDto) => c.producten.length > 0 && c.producten.every((p) => p.mini_voorraad_stand !== undefined)
+  const miniUitCatalogus: MateriaallijstItemDto[] = catalogus
+    .filter(isMiniCategorie)
+    .flatMap((c) => c.producten)
+    .map((p) => ({ id: p.id, naam: p.naam, eenheid: p.eenheid, mini_voorraad_stand: p.mini_voorraad_stand ?? null }))
+  const miniItems = (miniUitCatalogus.length > 0 ? miniUitCatalogus : miniTerugval).filter((p) => !term || p.naam.toLowerCase().includes(term))
   const contact = leverancier?.materiaal_contact_naam ?? 'materiaal-contact'
 
   async function versturen() {
@@ -954,6 +984,26 @@ function MateriaallijstDialog({
               </div>
             )
           })}
+          {miniItems.length > 0 && (
+            <div data-testid="materiaallijst-mini-voorraad">
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--faint)', fontWeight: 700, margin: '10px 0 4px', display: 'flex', gap: 6, alignItems: 'center' }}>
+                Speciale producten (mini-voorraad) <Badge variant="info">stand uit boekingen</Badge>
+              </div>
+              {miniItems.map((p) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 12.5 }}>
+                  <span style={{ flex: 1 }}>{p.naam}</span>
+                  <span className="hint" style={{ margin: 0, minWidth: 80, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    stand {miniStandTekst(p.mini_voorraad_stand)}
+                    {p.eenheid ? ` ${p.eenheid}` : ''}
+                  </span>
+                </div>
+              ))}
+              <p className="hint" style={{ fontSize: 11, margin: '4px 0 0' }}>
+                Alleen-lezen: standen volgen uit geboekte inkoopfacturen en gemelde beschadigingen; opnemen op de transportlijst volgt met
+                de uitstroom-koppeling.
+              </p>
+            </div>
+          )}
         </div>
         <p className="hint" style={{ fontSize: 11 }}>
           Σ ≈ {m2.toLocaleString('nl-NL')} m² (aantal × lengte ÷ 4,6 — de server rekent bindend) · aantallen invullen is selecteren.
@@ -1054,7 +1104,13 @@ function TransportWijzigDialog({
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   useEffect(() => {
-    haalCatalogus(administratieId, bestaand.leverancier_id).then(setCatalogus).catch(() => setCatalogus([]))
+    setCatalogusFout(null)
+    haalCatalogus(administratieId, bestaand.leverancier_id)
+      .then(setCatalogus)
+      .catch((err: unknown) => {
+        setCatalogus([])
+        setCatalogusFout(laadFoutTekst('Catalogus', err))
+      })
   }, [administratieId, bestaand.leverancier_id])
   const producten = catalogus.flatMap((c) => c.producten)
   const term = zoek.trim().toLowerCase()

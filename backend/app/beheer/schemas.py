@@ -69,6 +69,10 @@ class VoorraadInstellingDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class MiniVoorraadInstellingDto(StrikteInvoer):
+    ingeschakeld: bool
+
+
 class VerkoopAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
@@ -121,6 +125,8 @@ class AdministratieInstellingenDto(BaseModel):
     afdelingen_ingeschakeld: bool = False
     # Voorraad bijhouden (blok D 28-08, migratie 0086) — opt-in controle-laag mi-schema.
     voorraad_ingeschakeld: bool = False
+    # Mini-voorraad speciale producten (blok F 06-09, migratie 0116) — opt-in, instroom ín de boek-transactie.
+    mini_voorraad_ingeschakeld: bool = False
     # Koppelstand (wizard 26-08 punt 5): RLZ-administratie-id, webservice-gebruiker (None = geen
     # credential in de store — nooit het wachtwoord) en of de laatste rechten-probe groen was.
     rlz_admin_id: str | None = None

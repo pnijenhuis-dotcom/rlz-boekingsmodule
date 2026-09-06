@@ -154,6 +154,8 @@ class AdministratieInstellingen:
     uren_dagmax_uren: Decimal = Decimal("12")
     afdelingen_ingeschakeld: bool = False
     voorraad_ingeschakeld: bool = False
+    # Mini-voorraad speciale producten (migratie 0116, blok F 06-09).
+    mini_voorraad_ingeschakeld: bool = False
     rlz_admin_id: str | None = None
     webservice_username: str | None = None
     probe_groen: bool | None = None
@@ -297,6 +299,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             uren_dagmax_uren=r.uren_dagmax_uren,
             afdelingen_ingeschakeld=r.afdelingen_ingeschakeld,
             voorraad_ingeschakeld=r.voorraad_ingeschakeld,
+            mini_voorraad_ingeschakeld=r.mini_voorraad_ingeschakeld,
             rlz_admin_id=r.rlz_admin_id,
             webservice_username=stand.get(r.id, (None, None))[0],
             probe_groen=stand.get(r.id, (None, None))[1],
@@ -461,6 +464,29 @@ def zet_voorraad_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUI
             correlatie_id=uuid.uuid4(),
             oude_waarde={"voorraad_ingeschakeld": oud},
             nieuwe_waarde={"voorraad_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
+def zet_mini_voorraad_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Opt-in "Mini-voorraad speciale producten" (migratie 0116, blok F 06-09) — Beheerder-only (router), audit
+    oud→nieuw als de andere toggles. Geen backfill: alleen boekingen ná het aanzetten tellen (beslispunt Peter)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.mini_voorraad_ingeschakeld
+        administratie.mini_voorraad_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="mini_voorraad_ingeschakeld_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"mini_voorraad_ingeschakeld": oud},
+            nieuwe_waarde={"mini_voorraad_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
 

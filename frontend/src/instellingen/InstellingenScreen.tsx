@@ -51,6 +51,7 @@ import {
   zetAfdelingenInstelling,
   zetProjectInstelling,
   zetVoorraadInstelling,
+  zetMiniVoorraadInstelling,
   zetOmzetAutoboekenInstelling,
   zetUrenDagmaxInstelling,
   zetUrenMeerwerkInstelling,
@@ -70,6 +71,7 @@ type WijzigingType =
   | 'uren_meerwerk'
   | 'afdelingen'
   | 'voorraad'
+  | 'mini_voorraad'
   | 'omzet_autoboeken'
   | 'duplicaat_noodrem'
   | 'eigenaar'
@@ -126,6 +128,10 @@ function berichtVoor(pending: PendingWijziging): string {
       return pending.nieuweWaarde
         ? `Voorraad bijhouden gaat AAN voor "${pending.naam}": regel-niveau feiten uit gescande inkoopfacturen en verkoopfactuurregels worden bijgehouden in de controle-laag (mi-schema), artikelteksten worden volautomatisch genormaliseerd (AI achter de bestaande gates, onzeker telt mee mét vlag) en het aansluitscherm vergelijkt de theoretische stand met tellingen. Niets wordt geboekt; er gaat nooit iets naar Reeleezee.`
         : `Voorraad bijhouden gaat UIT voor "${pending.naam}" — de feitenlaag en tellingen blijven bewaard, er komen geen nieuwe regels bij.`
+    case 'mini_voorraad':
+      return pending.nieuweWaarde
+        ? `Mini-voorraad speciale producten gaat AAN voor "${pending.naam}": bij het boeken van een inkoopfactuur worden productregels (omschrijving × aantal) automatisch producten in de materiaalcatalogus (tab Mini-voorraad), mét herkomst; een onbekende omschrijving wordt een nieuw product met de vlag "nieuw — controleer naam"; dienst- en transportregels tellen niet mee; storno of tegenboeken draait de instroom automatisch terug. Standen zijn uitsluitend een afgeleide van boekingen en gemelde beschadigingen (verplicht aan een project) — niemand kan ze corrigeren of samenvoegen. Er gaat nooit iets naar Reeleezee of Odoo.`
+        : `Mini-voorraad speciale producten gaat UIT voor "${pending.naam}" — producten, standen en voorraadlog blijven bewaard; nieuwe boekingen voegen niets meer toe.`
     case 'omzet_autoboeken':
       return pending.nieuweWaarde
         ? `Omzet-autoboeken gaat AAN voor "${pending.naam}": een kassarapport boekt ná extractie automatisch (verkoopfactuur + kostprijsmemoriaal als één transactie) uitsluitend als álles groen is — harde checks incl. memoriaal-saldo-0 en marge-plausibiliteit, categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen open vraag of afwijzing. Elk ander geval blijft gewoon in de werkvoorraad; volumerem 20/dag; elke automatische boeking is gemarkeerd en geauditeerd en een half-geboekt-geval geeft een alert.`
@@ -200,6 +206,10 @@ async function voerWijzigingUit(pending: PendingWijziging): Promise<void> {
   }
   if (pending.type === 'voorraad') {
     await zetVoorraadInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
+    return
+  }
+  if (pending.type === 'mini_voorraad') {
+    await zetMiniVoorraadInstelling(pending.administratieId ?? '', pending.nieuweWaarde)
     return
   }
   if (pending.type === 'omzet_autoboeken') {
@@ -469,6 +479,8 @@ export function InstellingenScreen() {
                                 ? { afdelingen_ingeschakeld: pending.nieuweWaarde }
                                 : pending.type === 'voorraad'
                                   ? { voorraad_ingeschakeld: pending.nieuweWaarde }
+                                  : pending.type === 'mini_voorraad'
+                                    ? { mini_voorraad_ingeschakeld: pending.nieuweWaarde }
                                   : pending.type === 'uren_meerwerk'
                                     ? { uren_meerwerk_ingeschakeld: pending.nieuweWaarde }
                                     : pending.type === 'omzet_autoboeken'

@@ -134,6 +134,16 @@ export function zetVoorraadInstelling(administratieId: string, ingeschakeld: boo
   })
 }
 
+/** Opt-in "Mini-voorraad speciale producten" (opdracht 06-09, migratie 0116) — Beheerder-only, default UIT;
+ * patroon van de voorraad-instelling (audit oud→nieuw server-side). */
+export function zetMiniVoorraadInstelling(administratieId: string, ingeschakeld: boolean): Promise<unknown> {
+  return apiJson(`/administraties/${administratieId}/mini-voorraad`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
 export function zetProjectInstelling(administratieId: string, verplicht: boolean): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/project-instelling`, {
     ...PUT_JSON,

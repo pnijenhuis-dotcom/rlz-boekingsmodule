@@ -197,6 +197,11 @@ class Administratie(Base):
     # (controle-laag in het mi-schema; nooit RLZ-writes). Beheerder-only, default UIT — aan voor
     # Universal Verkoop pas op Peters klik.
     voorraad_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Mini-voorraad speciale producten (migratie 0116, blok F mini-run 06-09): opt-in — bij het boeken van een
+    # inkoopfactuur worden productregels (omschrijving × aantal) ín de boek-transactie bijgeteld in mi.mini_product /
+    # mi.mini_voorraad_mutatie (append-only, mens-manipulatie onmogelijk). Beheerder-only, default UIT — aan voor
+    # Universal Steigerbouw pas op Peters klik.
+    mini_voorraad_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Signaal >N uur per dag (steigerbouw-run blok A6, migratie 0072): som van de ingediende uren
     # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
     # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.

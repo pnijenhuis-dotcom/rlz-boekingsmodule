@@ -27,6 +27,8 @@ class GroepAansluitingDto(BaseModel):
     onzeker_pct: Decimal
     regels_in: int
     regels_uit: int
+    # F5 (blok F 06-09): 'artikelgroep' | 'mini_voorraad' (virtuele groep — chip, geen telling-invoer).
+    bron: str = "artikelgroep"
 
 
 class AansluitingDto(BaseModel):

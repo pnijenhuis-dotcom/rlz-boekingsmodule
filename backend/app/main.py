@@ -41,6 +41,7 @@ from app.verplichting.router import router as verplichting_router
 from app.autoboek_kandidaten.router import router as autoboek_kandidaten_router
 from app.uren.router import router as uren_router
 from app.materiaal.router import router as materiaal_router
+from app.mini_voorraad.router import router as mini_voorraad_router
 from app.verkoop.router import router as verkoop_router
 from app.voorraad.router import router as voorraad_router
 from app.vragen.router import router as vragen_router
@@ -182,6 +183,7 @@ app.include_router(geheugen_router)
 app.include_router(omzet_router)
 app.include_router(verkoop_router)
 app.include_router(voorraad_router)
+app.include_router(mini_voorraad_router)
 app.include_router(terugkerend_router)
 app.include_router(reconciliatie_router)
 app.include_router(projectverdeling_router)

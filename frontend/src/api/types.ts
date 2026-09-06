@@ -787,6 +787,18 @@ export interface BoekenResponseDto {
   doorbelasting?: Record<string, string> | null
   /** Zichtbare fout als de doorbelasting ná de geslaagde inkoopboeking (deels) mislukte. */
   doorbelasting_fout?: string | null
+  /** Mini-voorraad (06-09): instroom die ín de boek-transactie is geregistreerd — null zonder opt-in. */
+  mini_voorraad?: MiniVoorraadInstroomDto | null
+}
+
+/** Instroom-melding ná boeken (mockup mini-voorraad.html blok 1): "Mini-voorraad bijgewerkt — N regels",
+ * nieuwe producten benoemd (vlag "nieuw — controleer" op de tab). */
+export interface MiniVoorraadInstroomDto {
+  regels: number
+  nieuwe_producten: string[]
+  bestaande?: number
+  /** Leesbare redenen per overgeslagen regel (bv. geen aantal). */
+  overgeslagen?: string[]
 }
 
 export interface ProjectVerplichtDto {
@@ -836,6 +848,9 @@ export interface AdministratieInstellingenDto {
   afdelingen_ingeschakeld: boolean
   /** Voorraad bijhouden (blok D 28-08, migratie 0086): opt-in controle-laag mi-schema. */
   voorraad_ingeschakeld: boolean
+  /** Mini-voorraad speciale producten (opdracht 06-09, migratie 0116): opt-in — inkoopregels van een
+   * geboekte factuur worden automatisch producten in de materiaalcatalogus (tab Mini-voorraad). */
+  mini_voorraad_ingeschakeld: boolean
   /** Koppelstand (wizard 26-08 punt 5): RLZ-id, webservice-gebruiker (null = geen credential —
    * nooit het wachtwoord) en of de laatste rechten-probe groen was (null = nog nooit). */
   rlz_admin_id?: string | null

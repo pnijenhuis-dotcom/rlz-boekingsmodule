@@ -185,8 +185,19 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/materiaal/{aid}/leveranciers"),
         ("GET", f"/materiaal/{aid}/leveranciers/{DUMMY_ID}/catalogus"),
         ("GET", f"/materiaal/{aid}/producten"),
-        ("PUT", f"/materiaal/{aid}/leveranciers"),  # de PUT-kant (31-08) waar de GET's nu aan spiegelen
+        ("PUT", f"/materiaal/{aid}/leveranciers"),  # de PUT-kant (31-08): Beheerder/B+P-only, ongewijzigd
         ("GET", f"/materiaal/{aid}/bestellingen"),  # steigerbouw-tak: kantoorrol + module-recht (ongewijzigd)
+        # Mini-voorraad speciale producten (blok F 06-09): router-breed vereis_kantoorrol + scope per route;
+        # archiveren/dearchiveren Beheerder-only. GEEN mutatie-endpoint op standen (⑧) — zie tests/mini_voorraad.
+        ("GET", f"/mini-voorraad/{aid}/producten"),
+        ("GET", f"/mini-voorraad/{aid}/stand"),
+        ("GET", f"/mini-voorraad/{aid}/materiaallijst"),
+        ("GET", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/log"),
+        ("POST", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/naam-bevestigen"),
+        ("POST", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/archiveren"),  # beheerder-only
+        ("POST", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/dearchiveren"),  # beheerder-only
+        ("POST", f"/mini-voorraad/{aid}/beschadigingen"),
+        ("PATCH", f"/administraties/{aid}/mini-voorraad"),  # opt-in-toggle (beheerder-only)
     ]
 
 
@@ -288,6 +299,8 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/bestellingen")
                 or pad.endswith("/accepteren")
                 or pad == "/reconciliatie/run"
+                or pad.endswith("/mini-voorraad")
+                or ("/mini-voorraad/" in pad and pad.endswith(("/archiveren", "/dearchiveren")))
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
                 # (materiaalcatalogus schrijven; lezen sinds 06-09 óók mét meerwerk-recht) resp. module-recht
@@ -344,6 +357,7 @@ class TestCatalogusRolpoort:
     def test_boekhouding_met_meerwerk_recht_leest_catalogus_maar_schrijft_niet(
         self, boekhouder_met_meerwerk_recht, administratie_id
     ):
+        """Smalle leesroute (06-09): de drie GET's geen rolweigering, de leveranciers-PUT 403, bestellingen open."""
         h = _bearer(boekhouder_met_meerwerk_recht, rol="boekhouding")
         gezien = 0
         for methode, pad in _kantoor_endpoints(administratie_id):

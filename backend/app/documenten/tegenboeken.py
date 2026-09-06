@@ -555,6 +555,18 @@ def voer_tegenboeking_uit(
             actor_id=actor_id,
             reden=f"tegengeboekt ({soort}): {reden.strip()}",
         )
+        # Mini-voorraad speciale producten (blok F 06-09, ②): de instroom van deze boekcyclus spiegelen als
+        # storno-mutaties (−aantal) — ín de tegenboek-transactie, idempotent per (document, cyclus). Lazy import.
+        from app.mini_voorraad import instroom as mini_voorraad_instroom
+
+        mini_voorraad_instroom.registreer_storno(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            boek_cyclus=voorstel.boek_cyclus,
+            actor_id=actor_id,
+            reden=f"tegengeboekt ({soort}): {reden.strip()}",
+        )
         _sla_tegenboek_webhook_op(
             session,
             administratie_id=administratie_id,

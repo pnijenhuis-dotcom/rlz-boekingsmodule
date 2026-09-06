@@ -32,6 +32,7 @@ function administratie(overrides: Record<string, unknown> = {}) {
     uren_dagmax_uren: '12',
     afdelingen_ingeschakeld: false,
     voorraad_ingeschakeld: false,
+    mini_voorraad_ingeschakeld: false,
     eigenaar_gebruiker_id: null,
     gearchiveerd_op: null,
     ...overrides,

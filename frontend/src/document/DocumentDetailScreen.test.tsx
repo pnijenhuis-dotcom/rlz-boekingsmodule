@@ -1333,3 +1333,39 @@ describe('DocumentDetailScreen — tijdlijn bugfix-run 28-08: elke ⚙-systeemov
     expect(screen.queryByText(/Reden: boeken ná het laatste klant-akkoord/)).not.toBeInTheDocument()
   })
 })
+
+describe('DocumentDetailScreen — mini-voorraad tijdlijnregel (opdracht 06-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('toont de notitie mini_voorraad_bijgewerkt als regel ("Status blijft Geboekt" + tekst mét nieuwe producten)', async () => {
+    installFetchMock({
+      id: DOCUMENT_ID,
+      administratie_id: ADMINISTRATIE_ID,
+      bestandsnaam: 'huvanco-260630.pdf',
+      status: 'geboekt',
+      bron: 'upload',
+      mogelijk_duplicaat_van: null,
+      toegewezen_aan: null,
+      aangemaakt_op: '2026-09-04T10:00:00Z',
+      laatst_gewijzigd_op: '2026-09-04T10:05:00Z',
+      veldvoorstel: null,
+      tijdlijn: [
+        { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-09-04T10:00:00Z' },
+        { van_status: 'klaar_om_te_boeken', naar_status: 'geboekt', actor_id: 'x', actor_is_systeem: false, detail: { rlz_boekstuknummer: 'RLZ-04-00002001' }, tijdstip: '2026-09-04T10:05:00Z' },
+        {
+          van_status: 'geboekt',
+          naar_status: 'geboekt',
+          actor_id: 'x',
+          actor_is_systeem: true,
+          detail: { soort: 'mini_voorraad_bijgewerkt', regels: 3, nieuwe_producten: ['Kanaalplaatvork speciaal'] },
+          tijdstip: '2026-09-04T10:05:01Z',
+        },
+      ],
+    })
+    renderScherm()
+    const regel = await screen.findByTestId('tijdlijn-mini-voorraad')
+    expect(regel).toHaveTextContent('Mini-voorraad bijgewerkt — 3 regels · nieuw — controleer naam: Kanaalplaatvork speciaal')
+  })
+})

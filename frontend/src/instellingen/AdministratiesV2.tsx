@@ -17,7 +17,7 @@ import { dearchiveerAdministratie } from './instellingenApi'
 import { koppelFoutTekst, ProbeRapport } from './KoppelingDialogen'
 import { detailPad } from './instellingenRegistry'
 
-export type ToggleType = 'boeken' | 'project' | 'ai_extractie' | 'is_vastgoed' | 'uren_meerwerk' | 'afdelingen' | 'voorraad' | 'omzet_autoboeken'
+export type ToggleType = 'boeken' | 'project' | 'ai_extractie' | 'is_vastgoed' | 'uren_meerwerk' | 'afdelingen' | 'voorraad' | 'mini_voorraad' | 'omzet_autoboeken'
 
 /** Toggle-verzoek vanuit de detailpagina (v3) — InstellingenScreen bevestigt (dialoog) en schrijft. */
 
@@ -74,6 +74,7 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   if (a.uren_meerwerk_ingeschakeld) chips.push({ tekst: `Uren & meerwerk · ${Number(a.uren_dagmax_uren).toLocaleString('nl-NL')}u-max`, variant: 'info' })
   if (a.afdelingen_ingeschakeld) chips.push({ tekst: 'Afdelingen', variant: 'info' })
   if (a.voorraad_ingeschakeld) chips.push({ tekst: 'Voorraad', variant: 'info' })
+  if (a.mini_voorraad_ingeschakeld) chips.push({ tekst: 'Mini-voorraad', variant: 'info', titel: 'Speciale producten uit geboekte inkoopregels → materiaalcatalogus (tab Mini-voorraad)' })
   if (a.project_verplicht) chips.push({ tekst: 'Project verplicht', variant: 'info' })
   if (a.bank_autoboeken_ingeschakeld) chips.push({ tekst: 'Bank-autoboeken', variant: 'info' })
   if (a.omzet_autoboeken_ingeschakeld) chips.push({ tekst: 'Omzet-autoboeken', variant: 'info', titel: 'Kassarapporten boeken automatisch zodra álles groen is (GO 01-09)' })

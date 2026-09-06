@@ -20,10 +20,14 @@ export interface GroepAansluitingDto {
   telling_datum: string | null
   verschil: string | null
   verschil_pct: string | null
-  signaal: 'binnen_tolerantie' | 'onderzoeken' | 'geen_telling'
+  /** 'informatief' = virtuele mini-voorraad-groep (06-09): geen telling mogelijk, geen signaal. */
+  signaal: 'binnen_tolerantie' | 'onderzoeken' | 'geen_telling' | 'informatief'
   onzeker_pct: string
   regels_in: number
   regels_uit: number
+  /** Herkomst van de groep (mini-voorraad 06-09, F5): 'mini_voorraad' = virtuele groep "Speciale producten"
+   * uit de mini-voorraad-mutaties — informatief, geen telling-invoer, nooit muteerbaar. Afwezig = artikelgroep. */
+  bron?: 'artikelgroep' | 'mini_voorraad'
 }
 
 export interface AansluitingDto {
@@ -316,6 +320,8 @@ export function detailPad(r: Pick<VoorraadVerschilRijDto, 'administratie_id' | '
 
 /** Signaaltekst conform mockup: "✓ binnen tolerantie" / "⚑ −8,8% — onderzoeken" / "— nog geen telling". */
 export function signaalTekst(g: GroepAansluitingDto): { tekst: string; soort: 'ok' | 'vlag' | 'geen' } {
+  // Virtuele mini-voorraad-groep (06-09): stand uit het voorraadlog, geen telling — puur informatief.
+  if (g.signaal === 'informatief' || g.bron === 'mini_voorraad') return { tekst: 'informatief', soort: 'geen' }
   if (g.signaal === 'geen_telling') return { tekst: 'nog geen telling', soort: 'geen' }
   if (g.signaal === 'binnen_tolerantie') return { tekst: 'binnen tolerantie', soort: 'ok' }
   const pct = g.verschil_pct !== null ? `${Number(g.verschil_pct) > 0 ? '+' : ''}${aantal(g.verschil_pct, 1)}%` : aantal(g.verschil, 0)
