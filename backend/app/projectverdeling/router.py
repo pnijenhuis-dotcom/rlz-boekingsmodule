@@ -245,13 +245,42 @@ def instellingen_zetten(
 
 @router.get("/projectverdeling/hercontrole-signalen", response_model=schemas.SignaalLijstDto)
 def hercontrole_signalen_kantoorbreed(
-    pagina: int = Query(1, ge=1), actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+    pagina: int = Query(1, ge=1),
+    administratie_id: uuid.UUID | None = Query(None),
+    q: str = Query(""),
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.SignaalLijstDto:
-    lijst = service.hercontrole_signalen(actor_id=actor.id, rol=actor.rol, pagina=pagina)
+    """Inzicht › Projectverdeling (blok B 06-09): facet `administratie_id` + zoekterm `q` zijn additief; scope en
+    sortering (zwaarste afwijking eerst) blijven server-side."""
+    lijst = service.hercontrole_signalen(
+        actor_id=actor.id, rol=actor.rol, pagina=pagina, administratie_id=administratie_id, q=q
+    )
     return schemas.SignaalLijstDto(
-        rijen=[schemas.SignaalRijDto(**r.__dict__) for r in lijst.rijen],
+        rijen=[
+            schemas.SignaalRijDto(
+                administratie_id=r.administratie_id,
+                administratie_naam=r.administratie_naam,
+                document_id=r.document_id,
+                bestandsnaam=r.bestandsnaam,
+                leverancier=r.leverancier,
+                referentie=r.referentie,
+                pro_rato_periode=r.pro_rato_periode,
+                pro_rato_bedrag=r.pro_rato_bedrag,
+                afwijking_pct=r.afwijking_pct,
+                drempel_pct=r.drempel_pct,
+                hercontrole_op=r.hercontrole_op,
+                totaalbedrag=r.totaalbedrag,
+                geboekt_op=r.geboekt_op,
+                delen_oud=[_deel(d) for d in r.delen_oud],
+                delen_nieuw=[_deel(d) for d in r.delen_nieuw],
+            )
+            for r in lijst.rijen
+        ],
         totaal=lijst.totaal,
         pagina=lijst.pagina,
         per_pagina=lijst.per_pagina,
         administraties=lijst.administraties,
+        tellers=schemas.SignaalTellersDto(
+            signalen=lijst.tellers.signalen, administraties=lijst.tellers.administraties
+        ),
     )

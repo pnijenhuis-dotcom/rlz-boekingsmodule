@@ -69,8 +69,17 @@ export function zetProjectverdelingInstellingen(
   })
 }
 
-export function haalHercontroleSignalenOp(pagina = 1): Promise<ProjectverdelingSignaalLijstDto> {
-  return apiJson<ProjectverdelingSignaalLijstDto>(`/projectverdeling/hercontrole-signalen?pagina=${pagina}`)
+/** Kantoorbrede hercontrole-signalen (Inzicht › Projectverdeling, blok B 06-09): facet `administratieId` en
+ * zoekterm `q` zijn server-side filters — sortering (zwaarste afwijking eerst), paginering en tellers komen van de
+ * server; de client formatteert alleen. */
+export function haalHercontroleSignalenOp(
+  params: { pagina?: number; administratieId?: string | null; q?: string } = {},
+): Promise<ProjectverdelingSignaalLijstDto> {
+  const p = new URLSearchParams()
+  p.set('pagina', String(params.pagina ?? 1))
+  if (params.administratieId) p.set('administratie_id', params.administratieId)
+  if (params.q) p.set('q', params.q)
+  return apiJson<ProjectverdelingSignaalLijstDto>(`/projectverdeling/hercontrole-signalen?${p.toString()}`)
 }
 
 /** Lege omzetstand = actie (UX-norm): de bestaande projectcijfers-sync van de administratie starten. */

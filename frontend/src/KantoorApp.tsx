@@ -153,6 +153,14 @@ function BeschermdeRoutes() {
           }
         />
         <Route
+          path="/projectverdeling"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <HercontroleScreen />
+            </Suspense>
+          }
+        />
+        <Route
           path="/verplichtingen"
           element={
             <Suspense fallback={<SkeletonPaneel />}>

@@ -1156,3 +1156,83 @@ describe('KPI-kaart Reconciliatie (opdracht 06-09 blok C)', () => {
     expect(screen.queryByRole('button', { name: /Reconciliatie/ })).toBeNull()
   })
 })
+
+describe('KPI-kaart Projectverdeling (opdracht 06-09 blok B)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** Zelfde toon-regel als Reconciliatie: de kaart bestaat alleen bij ≥ 1 hercontrole-signaal; de bron is de
+   * eerste pagina van het kantoorbrede signalen-endpoint (geen aparte stand-route); een fout blokkeert niets. */
+  function installProjectverdelingMock(lijst: unknown | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith('/auth/administraties')) {
+          return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Testklant' }] }))
+        }
+        if (url.endsWith('/werkvoorraad/overzicht')) {
+          return Promise.resolve(
+            jsonResponse({
+              klanten: [
+                {
+                  administratie_id: ADMINISTRATIE_ID,
+                  naam: 'Testklant',
+                  te_controleren: 1,
+                  klaar_om_te_boeken: 0,
+                  vragen: 0,
+                  afgewezen: 0,
+                  bij_klant: 0,
+                  iban_wachtend: 0,
+                },
+              ],
+            }),
+          )
+        }
+        if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse({ klanten: [] }))
+        if (url.endsWith('/verzamelbak')) return Promise.resolve(jsonResponse({ items: [] }))
+        if (url.startsWith('/projectverdeling/hercontrole-signalen?')) {
+          return lijst === null ? Promise.resolve(new Response(null, { status: 500 })) : Promise.resolve(jsonResponse(lijst))
+        }
+        if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
+        if (url.includes('/documenten')) return Promise.resolve(jsonResponse({ documenten: [] }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+  }
+
+  function renderIngang() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WerkvoorraadScreen />} />
+          <Route path="/projectverdeling" element={<div>Projectverdeling-scherm</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('verschijnt bij ≥ 1 signaal mét de administraties-subregel en opent Inzicht › Projectverdeling', async () => {
+    const gebruiker = userEvent.setup()
+    installProjectverdelingMock({ rijen: [], totaal: 3, pagina: 1, per_pagina: 25, administraties: 2, tellers: { signalen: 3, administraties: 2 } })
+    renderIngang()
+    const kaart = await screen.findByRole('button', { name: /Projectverdeling/ })
+    expect(within(kaart).getByText('3')).toBeInTheDocument()
+    expect(within(kaart).getByText(/verdeling wijkt af · 2 administraties/)).toBeInTheDocument()
+    await gebruiker.click(kaart)
+    await waitFor(() => expect(screen.getByText('Projectverdeling-scherm')).toBeInTheDocument())
+  })
+
+  it('blijft weg zonder signalen en ook als het endpoint faalt', async () => {
+    installProjectverdelingMock({ rijen: [], totaal: 0, pagina: 1, per_pagina: 25, administraties: 0, tellers: { signalen: 0, administraties: 0 } })
+    const { unmount } = renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Projectverdeling/ })).toBeNull()
+    unmount()
+
+    installProjectverdelingMock(null)
+    renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Projectverdeling/ })).toBeNull()
+  })
+})

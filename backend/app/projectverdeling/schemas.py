@@ -129,11 +129,27 @@ class SignaalRijDto(BaseModel):
     afwijking_pct: Decimal
     drempel_pct: Decimal
     hercontrole_op: datetime
+    #: Inzicht › Projectverdeling (blok B 06-09): totaal van de factuur, boekmoment en de bevroren (oude) versus
+    #: herrekende (nieuwe) delen mét projectnaam — voedt de kolom "Verdeling oud → nieuw" én de bestaande
+    #: Herverdelen-dialoog zonder extra detail-call.
+    totaalbedrag: Decimal | None = None
+    geboekt_op: datetime | None = None
+    delen_oud: list[VerdeelDeelDto] = []
+    delen_nieuw: list[VerdeelDeelDto] = []
+
+
+class SignaalTellersDto(BaseModel):
+    """Kantoorbrede stand ongeacht facet/zoekterm — kopchips "N signalen · over M administraties"."""
+
+    signalen: int
+    administraties: int
 
 
 class SignaalLijstDto(BaseModel):
     rijen: list[SignaalRijDto]
+    #: binnen de selectie (facet administratie + zoekterm)
     totaal: int
     pagina: int
     per_pagina: int
     administraties: int
+    tellers: SignaalTellersDto = SignaalTellersDto(signalen=0, administraties=0)

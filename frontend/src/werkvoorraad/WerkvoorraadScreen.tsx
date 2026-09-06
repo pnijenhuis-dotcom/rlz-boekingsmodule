@@ -7,6 +7,8 @@ import { haalAiKostenStatusOp, type AiKostenStatusDto } from '../instellingen/in
 import { VerzamelbakPaneel } from '../intake/VerzamelbakPaneel'
 import { verwerkEml, verwerkLosBestand } from '../intake/intakeApi'
 import { haalStand as haalReconciliatieStand, type StandDto as ReconciliatieStandDto } from '../reconciliatie/reconciliatieApi'
+import { haalHercontroleSignalenOp } from '../document/projectverdelingApi'
+import type { ProjectverdelingSignaalLijstDto } from '../api/types'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Lichtbaan } from '../ui/Lichtbaan'
 import { VragenScreen } from '../vragen/VragenScreen'
@@ -141,6 +143,20 @@ function WerkvoorraadIngang({
       actueel = false
     }
   }, [])
+  // Projectverdeling-hercontrole (opdracht 06-09 blok B): kantoorbrede teller uit dezelfde bron als Inzicht ›
+  // Projectverdeling (eerste pagina van het signalen-endpoint, geen aparte stand-route) — alleen bij N > 0.
+  const [projectverdeling, setProjectverdeling] = useState<ProjectverdelingSignaalLijstDto | null>(null)
+  useEffect(() => {
+    let actueel = true
+    haalHercontroleSignalenOp({ pagina: 1 })
+      .then((s) => actueel && setProjectverdeling(s))
+      .catch(() => actueel && setProjectverdeling(null))
+    return () => {
+      actueel = false
+    }
+  }, [])
+  const projectverdelingTeller = projectverdeling?.tellers?.signalen ?? projectverdeling?.totaal ?? 0
+  const projectverdelingAdministraties = projectverdeling?.tellers?.administraties ?? projectverdeling?.administraties ?? 0
 
   // Kantoorbrede dwarsdoorsnede (klikbare KPI-kaart) — zelfde databron als de lijst.
   if (filter === 'te_verwerken' || filter === 'vragen' || filter === 'bank' || filter === 'bij_klant') {

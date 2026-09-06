@@ -6,14 +6,10 @@ import type {
   ProjectverdelingInputDto,
   ProjectverdelingVasteRegelDto,
 } from '../api/types'
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
 import { SearchableCombobox } from './SearchableCombobox'
-import {
-  haalProjectverdelingOp,
-  herverdeelProjectverdeling,
-  slaProjectverdelingOp,
-  startProjectcijfersSync,
-} from './projectverdelingApi'
+// Herverdelen-dialoog + formatters: één bron, gedeeld met Inzicht › Projectverdeling (blok B 06-09).
+import { HerverdeelDialoog, euro, periodeLabel } from './HerverdeelDialoog'
+import { haalProjectverdelingOp, slaProjectverdelingOp, startProjectcijfersSync } from './projectverdelingApi'
 import { useProjectOpties } from './useSyncOpties'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { magProjectAanmaken } from '../auth/rollen'
@@ -54,24 +50,9 @@ interface VasteRij {
   hint: string
 }
 
-const MAANDEN = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december']
-
-function euro(bedrag: string | number | null | undefined): string {
-  if (bedrag === null || bedrag === undefined || bedrag === '') return '—'
-  const n = Number(bedrag)
-  if (Number.isNaN(n)) return '—'
-  return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })
-}
-
 function pct(aandeel: string | null | undefined): string {
   if (!aandeel) return ''
   return `${(Number(aandeel) * 100).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-}
-
-function periodeLabel(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const [jaar, maand] = iso.split('-').map(Number)
-  return `${MAANDEN[(maand ?? 1) - 1]} ${jaar}`
 }
 
 /** Vorige afgesloten kalendermaand (client-side default vóór de eerste server-ronde; de server rekent bindend). */
@@ -186,9 +167,6 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
   const [opslaanBezig, setOpslaanBezig] = useState(false)
   const [syncBezig, setSyncBezig] = useState(false)
   const [herverdeelOpen, setHerverdeelOpen] = useState(false)
-  const [herverdeelReden, setHerverdeelReden] = useState('')
-  const [herverdeelBezig, setHerverdeelBezig] = useState(false)
-  const [herverdeelFout, setHerverdeelFout] = useState<string | null>(null)
   const timer = useRef<number | null>(null)
   const laatsteVerzonden = useRef<string>('')
   const blokRef = useRef<HTMLDivElement | null>(null)
@@ -336,20 +314,6 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
       setFout(err instanceof ApiError ? err.message : 'Cijfers-sync starten mislukt.')
     } finally {
       setSyncBezig(false)
-    }
-  }
-
-  const herverdelen = async (reden: string) => {
-    setHerverdeelBezig(true)
-    setHerverdeelFout(null)
-    try {
-      await herverdeelProjectverdeling(administratieId, documentId, reden)
-      setHerverdeelOpen(false)
-      onGewijzigd?.()
-    } catch (err) {
-      setHerverdeelFout(err instanceof ApiError ? err.message : 'Herverdelen mislukt.')
-    } finally {
-      setHerverdeelBezig(false)
     }
   }
 
@@ -539,68 +503,19 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
         />
       )}
       {herverdeelOpen && hercontrole && (
-        <Dialog open onOpenChange={(open) => !open && !herverdeelBezig && setHerverdeelOpen(false)}>
-          <DialogContent breed data-testid="pv-herverdeel-dialoog">
-            <DialogTitle>Herverdelen — tegenboeken en opnieuw boeken</DialogTitle>
-            <DialogDescription>
-              De boeking wordt tegengeboekt en komt terug op &ldquo;te controleren&rdquo; mét de nieuwe verdeling als voorstel; u boekt
-              daarna opnieuw. Niets gebeurt stil — de btw-aangifte-poort geldt onverkort.
-            </DialogDescription>
-            <div className="tabel-scroll">
-              <table className="pv-vergelijk">
-                <thead>
-                  <tr>
-                    <th>Project</th>
-                    <th style={{ textAlign: 'right' }}>Oud</th>
-                    <th style={{ textAlign: 'right' }}>Nieuw</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vergelijk(delen, hercontrole.nieuwe_verdeling).map((r) => (
-                    <tr key={r.project_id}>
-                      <td>{r.naam}</td>
-                      <td className={`pv-euro ${r.oud !== r.nieuw ? 'oud' : ''}`}>{euro(r.oud)}</td>
-                      <td className="pv-euro">
-                        <b>{euro(r.nieuw)}</b>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <label style={{ display: 'block', marginTop: 12 }}>
-              Reden (verplicht)
-              <textarea
-                className="veld"
-                aria-label="Reden herverdelen"
-                value={herverdeelReden}
-                onChange={(e) => setHerverdeelReden(e.target.value)}
-                placeholder={`omzet ${periodeLabel(hercontrole.periode)} gewijzigd ná het boeken — verdeling wijkt ${hercontrole.afwijking_pct}% af`}
-                rows={2}
-                style={{ width: '100%', marginTop: 4 }}
-              />
-            </label>
-            {herverdeelFout && <div className="fout">{herverdeelFout}</div>}
-            <DialogFooter>
-              <Button type="button" variant="secundair" onClick={() => setHerverdeelOpen(false)} disabled={herverdeelBezig}>
-                Annuleren
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  // Reden vooringevuld (opdracht): leeg gelaten = de standaardtekst gaat mee (verplicht, ≥ 5 tekens).
-                  const standaard = `omzet ${periodeLabel(hercontrole.periode)} gewijzigd ná het boeken — verdeling wijkt ${hercontrole.afwijking_pct}% af`
-                  const reden = herverdeelReden.trim().length >= 5 ? herverdeelReden.trim() : standaard
-                  if (reden !== herverdeelReden) setHerverdeelReden(reden)
-                  void herverdelen(reden)
-                }}
-                disabled={herverdeelBezig}
-              >
-                {herverdeelBezig ? 'Bezig…' : 'Tegenboeken en herverdelen'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <HerverdeelDialoog
+          administratieId={administratieId}
+          documentId={documentId}
+          delenOud={delen}
+          delenNieuw={hercontrole.nieuwe_verdeling}
+          periode={hercontrole.periode}
+          afwijkingPct={hercontrole.afwijking_pct}
+          onSluiten={() => setHerverdeelOpen(false)}
+          onGelukt={() => {
+            setHerverdeelOpen(false)
+            onGewijzigd?.()
+          }}
+        />
       )}
     </div>
   )
@@ -613,19 +528,4 @@ function uitgaand(rijen: VasteRij[], proRato: boolean, periode: string): Project
       .map((r) => ({ project_id: r.projectId as string, bedrag: naarBedragString(r.bedrag) ?? '0.00', hint: r.hint.trim() || null })),
     pro_rato_periode: proRato ? periode : null,
   }
-}
-
-function vergelijk(oud: ProjectverdelingDeelDto[], nieuw: ProjectverdelingDeelDto[]) {
-  const per = new Map<string, { project_id: string; naam: string; oud: string; nieuw: string }>()
-  const tel = (lijst: ProjectverdelingDeelDto[], kant: 'oud' | 'nieuw') => {
-    for (const d of lijst) {
-      const rij = per.get(d.project_id) ?? { project_id: d.project_id, naam: d.project_naam ?? d.project_id, oud: '0.00', nieuw: '0.00' }
-      rij[kant] = (Number(rij[kant]) + Number(d.bedrag)).toFixed(2)
-      if (d.project_naam) rij.naam = d.project_naam
-      per.set(d.project_id, rij)
-    }
-  }
-  tel(oud, 'oud')
-  tel(nieuw, 'nieuw')
-  return [...per.values()].sort((a, b) => Number(b.nieuw) - Number(a.nieuw))
 }

@@ -8,7 +8,7 @@ Administratie-instellingen in `scoped_session(None)` zoals app/beheer/service.py
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -642,24 +642,52 @@ class SignaalRij:
     afwijking_pct: Decimal
     drempel_pct: Decimal
     hercontrole_op: datetime
+    #: Inzicht › Projectverdeling (blok B 06-09): wat het kantoorbrede scherm per rij nodig heeft — totaal van de
+    #: factuur, wanneer geboekt, en de bevroren (oude) versus herrekende (nieuwe) delen mét projectnaam, zodat de
+    #: bestaande Herverdelen-dialoog (oud vs nieuw) zonder extra detail-call kan openen.
+    totaalbedrag: Decimal | None = None
+    geboekt_op: datetime | None = None
+    delen_oud: list[pv.VerdeelDeel] = field(default_factory=list)
+    delen_nieuw: list[pv.VerdeelDeel] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SignaalTellers:
+    """Kantoorbrede stand ONGEACHT facet/zoekterm (kopchips "N signalen · over M administraties")."""
+
+    signalen: int
+    administraties: int
 
 
 @dataclass(frozen=True)
 class SignaalLijst:
     rijen: list[SignaalRij]
+    #: tellers binnen de selectie (facet + zoekterm)
     totaal: int
     pagina: int
     per_pagina: int
     administraties: int
+    tellers: SignaalTellers = field(default_factory=lambda: SignaalTellers(signalen=0, administraties=0))
 
 
 PER_PAGINA = 25
 
 
-def hercontrole_signalen(*, actor_id: uuid.UUID, rol, pagina: int = 1) -> SignaalLijst:
+def _zoek_treffer(rij: SignaalRij, term: str) -> bool:
+    if not term:
+        return True
+    velden = (rij.leverancier, rij.referentie, rij.bestandsnaam, rij.administratie_naam)
+    return any(term in (v or "").lower() for v in velden)
+
+
+def hercontrole_signalen(
+    *, actor_id: uuid.UUID, rol, pagina: int = 1, administratie_id: uuid.UUID | None = None, q: str = ""
+) -> SignaalLijst:
     """Kantoorbreed (principe 7 regel 1: administratie = filter, geen poort): alle geboekte pro-rato-verdelingen
     mét een hercontrole-signaal over de administraties in scope van de actor, urgentste (hoogste %) bovenaan,
-    server-side gepagineerd. Per administratie gelezen in een gescoopte sessie (RLS blijft de scope-waarheid)."""
+    server-side gepagineerd. Per administratie gelezen in een gescoopte sessie (RLS blijft de scope-waarheid).
+    `administratie_id` (facet) en `q` (leverancier/referentie/bestandsnaam/administratie) versmallen de selectie;
+    de `tellers` blijven de kantoorbrede stand (Inzicht-lijstpatroon ①, blok B 06-09)."""
     from app.auth import service as auth_service
     from app.documenten.models import Boekvoorstel
 
@@ -688,7 +716,13 @@ def hercontrole_signalen(*, actor_id: uuid.UUID, rol, pagina: int = 1) -> Signaa
                         )
                     ).all()
                 )
-            for row, document, boekvoorstel in resultaten:
+            delen_per_rij = [
+                (pv.delen_uit_json(row.verdeling), pv.delen_uit_json(row.hercontrole_verdeling))
+                for row, _, _ in resultaten
+            ]
+            project_ids = {d.project_id for oud, nieuw in delen_per_rij for d in [*oud, *nieuw]}
+            projectnaam = projectnamen(session, administratie_id=administratie.id, project_ids=project_ids)
+            for (row, document, boekvoorstel), (oud, nieuw) in zip(resultaten, delen_per_rij, strict=True):
                 rijen.append(
                     SignaalRij(
                         administratie_id=administratie.id,
@@ -704,16 +738,28 @@ def hercontrole_signalen(*, actor_id: uuid.UUID, rol, pagina: int = 1) -> Signaa
                         afwijking_pct=row.hercontrole_afwijking_pct or Decimal("0"),
                         drempel_pct=administratie.projectverdeling_drempel_pct,
                         hercontrole_op=row.hercontrole_op or datetime.now(UTC),
+                        totaalbedrag=boekvoorstel.totaalbedrag if boekvoorstel else None,
+                        geboekt_op=row.geboekt_op,
+                        delen_oud=[replace(d, project_naam=projectnaam.get(d.project_id)) for d in oud],
+                        delen_nieuw=[replace(d, project_naam=projectnaam.get(d.project_id)) for d in nieuw],
                     )
                 )
-    rijen.sort(key=lambda r: (-r.afwijking_pct, r.administratie_naam, r.bestandsnaam))
+    tellers = SignaalTellers(signalen=len(rijen), administraties=len({r.administratie_id for r in rijen}))
+    term = q.strip().lower()
+    selectie = [
+        r
+        for r in rijen
+        if (administratie_id is None or r.administratie_id == administratie_id) and _zoek_treffer(r, term)
+    ]
+    selectie.sort(key=lambda r: (-r.afwijking_pct, r.administratie_naam, r.bestandsnaam))
     start = (pagina - 1) * PER_PAGINA
     return SignaalLijst(
-        rijen=rijen[start : start + PER_PAGINA],
-        totaal=len(rijen),
+        rijen=selectie[start : start + PER_PAGINA],
+        totaal=len(selectie),
         pagina=pagina,
         per_pagina=PER_PAGINA,
-        administraties=len({r.administratie_id for r in rijen}),
+        administraties=len({r.administratie_id for r in selectie}),
+        tellers=tellers,
     )
 
 

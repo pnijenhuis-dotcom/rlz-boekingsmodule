@@ -405,14 +405,29 @@ export interface ProjectverdelingSignaalRijDto {
   afwijking_pct: string
   drempel_pct: string
   hercontrole_op: string
+  /** Inzicht › Projectverdeling (blok B 06-09): totaal van de factuur, boekmoment en de bevroren (oude) versus
+   * herrekende (nieuwe) delen mét projectnaam — voedt de kolom "Verdeling oud → nieuw" en de Herverdelen-dialoog.
+   * Optioneel voor oudere antwoorden. */
+  totaalbedrag?: string | null
+  geboekt_op?: string | null
+  delen_oud?: ProjectverdelingDeelDto[]
+  delen_nieuw?: ProjectverdelingDeelDto[]
+}
+
+/** Kantoorbrede stand ongeacht facet/zoekterm — kopchips "N signalen · over M administraties". */
+export interface ProjectverdelingSignaalTellersDto {
+  signalen: number
+  administraties: number
 }
 
 export interface ProjectverdelingSignaalLijstDto {
   rijen: ProjectverdelingSignaalRijDto[]
+  /** binnen de selectie (facet administratie + zoekterm) */
   totaal: number
   pagina: number
   per_pagina: number
   administraties: number
+  tellers?: ProjectverdelingSignaalTellersDto
 }
 
 /** Autoboek-kandidaten (blok B 01-09, mockup autoboek-kandidaten.html, migratie 0095): één rij per
