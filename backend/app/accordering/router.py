@@ -8,9 +8,10 @@ stap-eigenaar getoetst, kantoor-acties weigeren de rol klant-accordeur."""
 
 from __future__ import annotations
 
+import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.accordering import herinnering, schemas, service
 from app.auth import service as auth_service
@@ -557,8 +558,18 @@ def _naar_accordeur_vraag(
     )
 
 
+def _zet_server_timing(response: Response, naam: str, t0: float) -> None:
+    """Koude-start-meting accordeur-app (blok D1 06-09): de server-duur van de leesroute als
+    `Server-Timing`-header, zodat de client de wachttijd kan splitsen in netwerk vs. server
+    (`frontend/src/accordeur/koudeStart.ts`). Additief, geen inhoud — alleen een duur in ms;
+    CORS stelt de header bloot (`expose_headers` in main.py)."""
+    response.headers["Server-Timing"] = f"{naam};dur={(time.perf_counter() - t0) * 1000:.1f}"
+
+
 @router.get("/accordering/vragen", response_model=schemas.VragenAanMijResponse)
-def vragen_aan_mij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.VragenAanMijResponse:
+def vragen_aan_mij(
+    response: Response, actor: CurrentGebruiker = Depends(get_current_gebruiker)
+) -> schemas.VragenAanMijResponse:
     """ "Vragen aan u" (blok B5 26-08, mockup accordeur-vragen.html): alle open vragen die expliciet
     aan de ingelogde accordeur gericht zijn — óók over al goedgekeurde/geboekte facturen. Vragen
     op een document dat nu in zijn wachtrij staat reizen mee op de wachtrij-kaart; de app toont
@@ -566,8 +577,10 @@ def vragen_aan_mij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> 
     if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs")
     _vereis_voorwaarden_akkoord(actor)
+    t0 = time.perf_counter()
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     items = vragen.vragen_aan_accordeur(actor_id=actor.id, administratie_ids=[a.id for a in administraties])
+    _zet_server_timing(response, "vragen", t0)
     return schemas.VragenAanMijResponse(
         items=[
             _naar_accordeur_vraag(
@@ -622,7 +635,7 @@ def vraag_beantwoorden_als_accordeur(
 
 
 @router.get("/accordering/wachtrij", response_model=schemas.WachtrijResponse)
-def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.WachtrijResponse:
+def wachtrij(response: Response, actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.WachtrijResponse:
     """De accordeer-wachtrij van de ingelogde gebruiker (PWA-endpoint, scope-aanscherping
     2026-08-08: uitsluitend de wachtrij). Administraties komen uit de eigen scope-bron —
     geen scope = geen data, RLS dwingt dat op DB-niveau nogmaals af. Rolniveau-poort
@@ -632,8 +645,10 @@ def wachtrij(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schema
     if actor.rol != GebruikerRol.KLANT_ACCORDEUR:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen voor klant-accordeurs")
     _vereis_voorwaarden_akkoord(actor)
+    t0 = time.perf_counter()
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     items = service.wachtrij_voor_accordeur(actor_id=actor.id, administratie_ids=[a.id for a in administraties])
+    _zet_server_timing(response, "wachtrij", t0)
     return schemas.WachtrijResponse(
         items=[
             schemas.WachtrijItemResponse(

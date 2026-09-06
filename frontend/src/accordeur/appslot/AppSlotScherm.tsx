@@ -15,6 +15,7 @@ import {
 } from '../../api/appSlot'
 import { BackendOnbereikbaarError, kaleAuthFetch } from '../../api/client'
 import type { TokenPaarResponseDto } from '../../api/types'
+import { markeer } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 
 interface Props {
@@ -52,6 +53,8 @@ export function AppSlotScherm({ naOntgrendeld, naarLogin }: Props) {
 
   const haalSessie = useCallback(async () => {
     setFase('sessie')
+    // Koude-start-meting (D1 06-09): slot open → hier begint pas de stille refresh (native).
+    markeer('slot-ontgrendeld')
     try {
       let resp = await kaleAuthFetch('/auth/token/vernieuwen', { method: 'POST' })
       if (resp.status === 409) {

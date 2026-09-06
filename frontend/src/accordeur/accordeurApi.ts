@@ -2,8 +2,30 @@
 // backend/app/accordering/schemas.py + app/auth/schemas.py — bedragen als string (Decimal),
 // nooit berekend in de client.
 
-import { apiFetch, ApiError, apiJson, apiPostJson } from '../api/client'
+import { apiFetch, ApiError, apiJson, apiPostJson, GEEN_JSON_MELDING } from '../api/client'
 import type { BesluitResultaatDto, AccorderingDto, StaandeRegelDto } from '../accordering/accorderingApi'
+import { markeer, noteerServerTiming } from './koudeStart'
+
+/** Als apiJson, maar mét koude-start-marks en de Server-Timing-header van de leesroute
+ * (blok D1 06-09) — zelfde foutvertaling: `detail`-string letterlijk (de 403
+ * `voorwaarden_akkoord_vereist` wordt door isVoorwaardenVereist op de tekst herkend). */
+async function leesMetTiming<T>(pad: string, route: 'wachtrij' | 'vragen'): Promise<T> {
+  markeer(`${route}-start`)
+  const resp = await apiFetch(pad)
+  if (!resp.ok) {
+    let detail: unknown
+    try {
+      detail = ((await resp.json()) as { detail?: unknown }).detail
+    } catch {
+      detail = undefined
+    }
+    throw new ApiError(resp.status, typeof detail === 'string' ? detail : resp.statusText || `Fout (${resp.status})`, detail)
+  }
+  noteerServerTiming(route, resp.headers.get('server-timing'))
+  markeer(`${route}-klaar`)
+  if (!(resp.headers.get('content-type') ?? '').includes('json')) throw new ApiError(resp.status, GEEN_JSON_MELDING)
+  return (await resp.json()) as T
+}
 
 export interface WachtrijItemDto {
   document_id: string
@@ -84,7 +106,7 @@ export interface AccordeurVraagDto {
 }
 
 export function haalVragenAanMij(): Promise<{ items: AccordeurVraagDto[] }> {
-  return apiJson('/accordering/vragen')
+  return leesMetTiming('/accordering/vragen', 'vragen')
 }
 
 /** Antwoord in de thread (append-only). Afgehandeld verklaren kan alleen de vraagsteller (kantoor). */
@@ -102,7 +124,7 @@ export interface WachtrijDoorbelastingRegelDto {
 export const VOORWAARDEN_AKKOORD_VEREIST = 'voorwaarden_akkoord_vereist'
 
 export function haalWachtrij(): Promise<{ items: WachtrijItemDto[] }> {
-  return apiJson('/accordering/wachtrij')
+  return leesMetTiming('/accordering/wachtrij', 'wachtrij')
 }
 
 export function geefAkkoord(

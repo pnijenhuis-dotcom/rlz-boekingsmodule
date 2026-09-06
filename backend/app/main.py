@@ -168,6 +168,9 @@ app.add_middleware(
     # regressietest (tests/unit/test_cors_foutantwoorden.py) toetst élke methode hieronder.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Koude-start-meting accordeur-app (blok D1 06-09): de native schil draait cross-origin
+    # (capacitor://localhost → app-domein) en mag de Server-Timing-duur van de wachtrij lezen.
+    expose_headers=["Server-Timing"],
 )
 app.include_router(auth_router)
 app.include_router(wellknown_router)

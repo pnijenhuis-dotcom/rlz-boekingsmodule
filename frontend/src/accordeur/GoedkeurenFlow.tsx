@@ -45,8 +45,6 @@ import {
   eurWeergave,
   haalMijnAdministraties,
   haalStaandeRegels,
-  haalVragenAanMij,
-  haalWachtrij,
   isVoorwaardenVereist,
   trekStaandeRegelIn,
   type AccordeurVraagDto,
@@ -68,6 +66,9 @@ import {
 import { PullToRefresh } from './PullToRefresh'
 import { useVerversBijVoorgrond } from './verversen'
 import { UitlogIcoon } from './UitlogIcoon'
+import { bewaarStand, leesStand, verversTekst } from './standCache'
+import { laadVerseStand, neemVoorgeladenStand, type VerseStand } from './voorlader'
+import { markeer } from './koudeStart'
 
 type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 
@@ -428,13 +429,23 @@ interface Props {
 export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const { gebruikerId } = useAuth()
   const [weergave, setWeergave] = useState<Weergave>('wachtrij')
-  const [items, setItems] = useState<WachtrijItem[]>([])
+  // CACHE-FIRST (blok D2 06-09, bankscherm-patroon): de laatst bekende stand van DEZE gebruiker
+  // staat er direct; de verse stand komt stil op de achtergrond en vervangt 'm zonder flikkeren.
+  // Zonder cache (eerste keer / andere gebruiker / ná uitloggen) = de gewone laadstate.
+  const [startCache] = useState(() => leesStand(gebruikerId))
+  const [items, setItems] = useState<WachtrijItem[]>(
+    () => startCache?.items.filter((i) => !besluitVerzender.isOnderweg(i.document_id)) ?? [],
+  )
+  // Tijdstip van de getoonde stand ("laatst ververst HH:MM") en of die nog uit de cache komt —
+  // zolang `uitCache` waar is, staan de geldknoppen op slot (besluiten alleen op de verse stand).
+  const [standTijdstip, setStandTijdstip] = useState<string | null>(() => startCache?.tijdstip ?? null)
+  const [uitCache, setUitCache] = useState(() => startCache !== null)
   // BV-openingsscherm (besluit Peter 27-08): de expliciet gekozen administratie; wélke de
   // wachtrij toont volgt uit kiesActieveAdministratie (precies één met werk = automatisch die).
   const [bvKeuze, setBvKeuze] = useState<string | null>(null)
   // Verwerkt binnen de huidige BV-stapel ("N van M" in de review) — reset bij een BV-wissel.
   const [verwerkt, setVerwerkt] = useState(0)
-  const [laden, setLaden] = useState(true)
+  const [laden, setLaden] = useState(() => startCache === null)
   const [fout, setFout] = useState<string | null>(null)
   const [voorwaardenNodig, setVoorwaardenNodig] = useState(false)
   const [huidige, setHuidige] = useState<WachtrijItem | null>(null)
@@ -447,7 +458,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   // Vragen van het kantoor aan déze accordeur (blok B5, mockup accordeur-vragen.html): alle open
   // threads; op de wachtrij-kaart als hij bij een te accorderen document hoort, anders in de
   // sectie "Vragen aan u". `vraagOpen` = de losse thread die nu open staat.
-  const [vragen, setVragen] = useState<AccordeurVraagDto[]>([])
+  const [vragen, setVragen] = useState<AccordeurVraagDto[]>(() => startCache?.vragen ?? [])
   const [vraagOpen, setVraagOpen] = useState<AccordeurVraagDto | null>(null)
   const [doorbelastOpen, setDoorbelastOpen] = useState(false)
   const [factuurLos, setFactuurLos] = useState(false)
@@ -479,18 +490,29 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
    * staan tijdens het laden en een fout wordt een toast i.p.v. een leeg scherm; de teller
    * "verwerkt" blijft staan. Niet-stil (eerste keer, "Opnieuw"): volledige laadstate. */
   const laadWachtrij = useCallback(
-    async (opties: { stil?: boolean } = {}) => {
+    async (opties: { stil?: boolean; voorgeladen?: Promise<VerseStand> | null } = {}) => {
       const stil = opties.stil === true
       if (!stil) {
         setLaden(true)
         setFout(null)
       }
       try {
-        const { items: nieuw } = await haalWachtrij()
+        // D3 (06-09): wachtrij én vragen parallel; een al lopende voorlader-fetch (gestart terwijl
+        // het ontgrendelscherm nog stond) wordt overgenomen i.p.v. opnieuw gedaan.
+        const { items: nieuw, vragen: verseVragen } = await (opties.voorgeladen ?? laadVerseStand())
         // Besluiten die nog onderweg zijn naar de server (optimistisch verwerkt) horen niet
         // terug in de lijst — komen ze definitief niet aan, dan zet de mislukt-melding ze terug.
         const zichtbaar = nieuw.filter((i) => !besluitVerzender.isOnderweg(i.document_id))
         setItems(zichtbaar)
+        // Vragen aan mij: tolerant — een fout hier mag de wachtrij nooit blokkeren.
+        const vragenNu = verseVragen ?? []
+        setVragen(vragenNu)
+        // D2: verse stand = de nieuwe cache van deze gebruiker + "laatst ververst"; de geldknoppen
+        // gaan van het slot.
+        const tijdstip = bewaarStand(gebruikerId, zichtbaar, vragenNu) ?? new Date().toISOString()
+        setStandTijdstip(tijdstip)
+        setUitCache(false)
+        markeer('kaarten-render')
         if (!stil) setVerwerkt(0)
         setFout(null)
         setVoorwaardenNodig(false)
@@ -502,10 +524,6 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
           setWeergave('wachtrij')
           toon('Deze factuur is intussen afgehandeld of ingetrokken')
         }
-        // Vragen aan mij: tolerant — een fout hier mag de wachtrij nooit blokkeren.
-        haalVragenAanMij()
-          .then(({ items: v }) => setVragen(v))
-          .catch(() => setVragen([]))
       } catch (err) {
         if (isVoorwaardenVereist(err)) {
           setVoorwaardenNodig(true)
@@ -518,7 +536,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
         if (!stil) setLaden(false)
       }
     },
-    [toon],
+    [toon, gebruikerId],
   )
 
   // App-icoon-badge (D4, 01-09): volgt het aantal openstaande accorderingen — reset bij openen en ná
@@ -528,11 +546,13 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   }, [items.length])
 
   useEffect(() => {
-    void laadWachtrij()
+    // Mét cache: stil verversen (de kaarten staan al, geen skeleton); zonder: volledige laadstate.
+    if (startCache) markeer('cache-render')
+    void laadWachtrij({ stil: startCache !== null, voorgeladen: neemVoorgeladenStand() })
     haalMeldingenStatus()
       .then(setMeldingen)
       .catch(() => setMeldingen(null))
-  }, [laadWachtrij])
+  }, [laadWachtrij, startCache])
 
   // Automatisch verversen zodra de app naar de voorgrond komt (27-08) — stil, de lijst blijft
   // staan; nooit meer een app-herstart nodig voor nieuwe boekingen.
@@ -727,7 +747,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const binnenOvergangsGuard = () => Date.now() - laatsteOvergang.current < OVERGANGS_GUARD_MS
 
   const akkoord = (staandeRegelAanmaken: boolean) => {
-    if (!huidige || besluitVerzender.isOnderweg(huidige.document_id)) return
+    // D2: nooit een geldbesluit op een item dat alleen uit de cache komt — de verse stand
+    // bepaalt of het document nog van deze accordeur is.
+    if (!huidige || uitCache || besluitVerzender.isOnderweg(huidige.document_id)) return
     const { verzend_fout: _weg, ...schoon } = huidige
     besluitVerzender.verstuur({ item: schoon, soort: 'akkoord', staandeRegelAanmaken, reden: null })
     naVerwerking(staandeRegelAanmaken ? 'Akkoord ✓ · staande goedkeuring ingesteld' : 'Akkoord ✓', huidige)
@@ -742,7 +764,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   }
 
   const afwijzen = (reden: string) => {
-    if (!huidige || besluitVerzender.isOnderweg(huidige.document_id)) return
+    if (!huidige || uitCache || besluitVerzender.isOnderweg(huidige.document_id)) return
     setAfwijsOpen(false)
     const { verzend_fout: _weg, ...schoon } = huidige
     besluitVerzender.verstuur({ item: schoon, soort: 'afwijzen', staandeRegelAanmaken: false, reden })
@@ -915,6 +937,16 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                 <button className="acc-btn klein secundair" onClick={() => void laadWachtrij()}>
                   Opnieuw
                 </button>
+              </div>
+            )}
+
+            {/* D2 (06-09, bankscherm-patroon): versheid van de getoonde stand — uit de cache tot de
+                verse stand binnen is, daarna "laatst ververst HH:MM". Klein en grijs, geen ruis. */}
+            {!laden && !fout && standTijdstip && (
+              <div className="acc-versheid" data-testid="acc-versheid">
+                {uitCache
+                  ? `stand van ${verversTekst(standTijdstip).replace('laatst ververst ', '')} · verversen…`
+                  : verversTekst(standTijdstip)}
               </div>
             )}
 
@@ -1297,16 +1329,19 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
 
       {weergave === 'review' && huidige && (
         <div className="acc-actionbar">
+          {/* D2 (06-09): lezen mag direct (ook uit de cache), het geldbesluit wacht op de verse
+              stand — de knoppen staan tot dan op slot met "verversen…" (in de praktijk < 1 s). */}
           <button
             className="acc-btn afwijs"
+            disabled={uitCache}
             onClick={() => {
-              if (!binnenOvergangsGuard()) setAfwijsOpen(true)
+              if (!uitCache && !binnenOvergangsGuard()) setAfwijsOpen(true)
             }}
           >
-            Afwijzen
+            {uitCache ? 'verversen…' : 'Afwijzen'}
           </button>
-          <button className="acc-btn primair" onClick={akkoordKnop}>
-            Akkoord ✓
+          <button className="acc-btn primair" disabled={uitCache} onClick={akkoordKnop}>
+            {uitCache ? 'verversen…' : 'Akkoord ✓'}
           </button>
         </div>
       )}

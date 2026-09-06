@@ -8,6 +8,7 @@ Alle WebAuthn-verkeer met échte crypto (SoftWebauthnApparaat), geen mocks."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -151,6 +152,12 @@ def test_wachtrij_vereist_voorwaarden_akkoord(beheerder_id: uuid.UUID) -> None:
     assert resp.json()["akkoord_gegeven"] is True
     resp = client.get("/accordering/wachtrij", headers=headers)
     assert resp.status_code == 200, resp.text
+    # Koude-start-meting (blok D1 06-09): de leesroutes dragen hun server-duur als Server-Timing
+    # (alleen een duur in ms, geen inhoud) zodat de app netwerk- en servertijd kan scheiden.
+    assert re.fullmatch(r"wachtrij;dur=\d+\.\d", resp.headers["server-timing"]), resp.headers
+    resp = client.get("/accordering/vragen", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert re.fullmatch(r"vragen;dur=\d+\.\d", resp.headers["server-timing"]), resp.headers
 
 
 def test_staande_regels_vereisen_voorwaarden_akkoord(beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:

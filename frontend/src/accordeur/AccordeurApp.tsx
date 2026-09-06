@@ -28,6 +28,9 @@ import {
 import { AppSlotScherm } from './appslot/AppSlotScherm'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
 import { ToegangInstellingen } from './appslot/ToegangInstellingen'
+import { markeer } from './koudeStart'
+import { wisAlleStanden } from './standCache'
+import { voorlaadStand } from './voorlader'
 
 const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
 const THEMA_SLEUTEL = 'accordeur-thema'
@@ -126,9 +129,10 @@ export default function AccordeurApp() {
 
   useEffect(() => {
     if (!nativeSlot) return
-    void isAppSlotIngesteld().then((ingesteld) =>
-      setSlotStatus(ingesteld ? (isOntgrendeld() ? 'ontgrendeld' : 'vergrendeld') : 'geen'),
-    )
+    void isAppSlotIngesteld().then((ingesteld) => {
+      setSlotStatus(ingesteld ? (isOntgrendeld() ? 'ontgrendeld' : 'vergrendeld') : 'geen')
+      markeer('slot-status')
+    })
   }, [nativeSlot])
 
   // Vergrendelen bij achtergrond: "direct vergrendelen" aan = meteen bij het verlaten, uit =
@@ -171,9 +175,29 @@ export default function AccordeurApp() {
     }
   }, [status, ontgrendelingNodig, ontgrendeld])
 
+  // Koude-start-meting (D1 06-09): het moment waarop er een access-token is.
+  useEffect(() => {
+    if (status === 'ingelogd') markeer('sessie')
+  }, [status])
+
+  // D3 (06-09, web): staat het ontgrendelscherm nog (24-uurs-cadans) terwijl de stille refresh al
+  // een geldig access-token gaf, dan loopt de wachtrij-/vragen-fetch alvast — GoedkeurenFlow
+  // neemt 'm over bij het monteren. Alleen fetchen, niets tonen: de ontgrendeling blijft de poort.
+  // Native niet: daar zit het refresh-token achter het app-slot, de sessie komt pas ná ontgrendelen.
+  useEffect(() => {
+    if (status === 'ingelogd' && !ontgrendeld && !nativeSlot && !forceerLogin && !isVeldRol(rol)) voorlaadStand()
+  }, [status, ontgrendeld, nativeSlot, forceerLogin, rol])
+
+  // D2 (06-09): sterft de sessie terwijl de app open stond (kill-switch, 7-dagen-TTL → login),
+  // dan gaat de lokale stand-cache mee weg — hij leeft nooit langer dan zijn sessie.
+  useEffect(() => {
+    if (status === 'uitgelogd' && ontgrendeld) wisAlleStanden()
+  }, [status, ontgrendeld])
+
   // Native schil (fase 3): melding-tap → /accordeur-deep-link. No-op buiten de schil;
   // de auth-cadans blijft de poort (de app opent gewoon op ontgrendelen/login).
   useEffect(() => {
+    markeer('app-render')
     installeerNativeTapAfhandeling()
     // Universal links (31-08): een activatie-/accordeur-mail-link die de app opent.
     installeerNativeUrlAfhandeling()
@@ -209,6 +233,9 @@ export default function AccordeurApp() {
     await uitloggen()
     sessionStorage.removeItem(ONTGRENDELD_VLAG)
     setOntgrendeld(false)
+    // D2: de lokale stand-cache hoort bij de sessie — mee weg (nooit iets van een vorige
+    // gebruiker op dit toestel).
+    wisAlleStanden()
   }, [uitloggen])
 
   // App-lock-handlers (native): ontgrendeld = verse sessie uit de stille refresh; naar login =
@@ -221,6 +248,8 @@ export default function AccordeurApp() {
     [naIngelogd],
   )
   const naSlotNaarLogin = useCallback(() => {
+    // Sessie server-side dood (kill-switch/verlopen) → login; de stand-cache gaat mee weg (D2).
+    wisAlleStanden()
     setSlotStatus('geen')
     setForceerLogin(true)
   }, [])
@@ -252,9 +281,15 @@ export default function AccordeurApp() {
   // op de status-branches. Eén duidelijke actie: opnieuw inloggen; de nieuwe-apparaat-route
   // (AccordeurLogin → passkey_setup_token) vangt de registratie daarna gewoon op.
   const naarLoginNaVerlopenSessie = useCallback(() => {
+    wisAlleStanden()
     setForceerLogin(true)
     void navigate('/accordeur', { replace: true })
   }, [navigate])
+  // Ontgrendel-nooduitgang (web) / verlopen sessie: naar het login-scherm mét gewiste stand-cache.
+  const naarLoginVanOntgrendel = useCallback(() => {
+    wisAlleStanden()
+    setForceerLogin(true)
+  }, [])
 
   const veldrol = isVeldRol(rol)
   if (status === 'ingelogd' && isKantoorRol(rol)) {
@@ -349,7 +384,7 @@ export default function AccordeurApp() {
       />
     )
   } else if (!ontgrendeld && !nativeSlot) {
-    inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={() => setForceerLogin(true)} />
+    inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={naarLoginVanOntgrendel} />
   } else if (toegangOpen && nativeSlot) {
     inhoud = <ToegangInstellingen sluit={() => setToegangOpen(false)} uitloggen={uitloggenVanToegang} />
   } else if (veldrol) {
