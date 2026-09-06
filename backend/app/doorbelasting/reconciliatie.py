@@ -173,6 +173,43 @@ def _rlz_status(client: RlzClient, pad: str, rlz_id: uuid.UUID) -> int | None:
     return doc.get("Status")
 
 
+_TeControleren = tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID | None, str | None, str, str]
+
+
+def _dedupliceer_te_controleren(items: list[_TeControleren]) -> list[_TeControleren]:
+    """Eén regel per RLZ-concept (blok D, 06-09): sleutel = (verkoop_rlz_id, spiegel_rlz_id,
+    doel_administratie_id). Referenties worden uniek samengevoegd ("24713188, 24713193"), redenen
+    gesorteerd met '+' ("gestorneerd+vervallen_run"), details met '; '. Volgorde van eerste
+    voorkomen blijft behouden zodat de CLI-uitvoer stabiel is."""
+    samengevoegd: dict[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None], dict] = {}
+    for document_id, verkoop_id, spiegel_id, doel_id, referentie, reden, detail in items:
+        sleutel = (verkoop_id, spiegel_id, doel_id)
+        groep = samengevoegd.get(sleutel)
+        if groep is None:
+            groep = {"document_id": document_id, "referenties": [], "redenen": [], "details": []}
+            samengevoegd[sleutel] = groep
+        if referentie and referentie not in groep["referenties"]:
+            groep["referenties"].append(referentie)
+        if reden not in groep["redenen"]:
+            groep["redenen"].append(reden)
+        if detail not in groep["details"]:
+            groep["details"].append(detail)
+    uit: list[_TeControleren] = []
+    for (verkoop_id, spiegel_id, doel_id), groep in samengevoegd.items():
+        uit.append(
+            (
+                groep["document_id"],
+                verkoop_id,
+                spiegel_id,
+                doel_id,
+                ", ".join(groep["referenties"]) or None,
+                "+".join(sorted(groep["redenen"])),
+                "; ".join(groep["details"]),
+            )
+        )
+    return uit
+
+
 def verzamel_opruimlijst(administratie_id: uuid.UUID) -> OpruimlijstResultaat:
     """Achtergebleven RLZ-concepten (Status 1) van gestorneerde boekingen en vervallen
     (gefaalde) runs, beide kanten. Alleen rapporteren — verwijderen is mensenwerk in de
@@ -250,6 +287,13 @@ def verzamel_opruimlijst(administratie_id: uuid.UUID) -> OpruimlijstResultaat:
                     f"gefaalde boekpoging (run {run.id}, doel {mapping.doelentiteit_naam})",
                 )
             )
+
+    # Blok D (reconciliatie-melding 06-09): verkoop_rlz_id en spiegel_rlz_id zijn DETERMINISTISCH per
+    # (document, doel-customer-GUID) — meerdere gestorneerde boekingen en/of vervallen runs op hetzelfde
+    # document wijzen dus naar HETZELFDE RLZ-concept. Vóór de fix gaf dat één LET-OP-regel per boeking
+    # (run 05-09: 11 regels voor ±6 concepten). Hier dedupliceren op (verkoop_rlz_id, spiegel_rlz_id,
+    # doel) zodat elk concept één controle en één regel krijgt; referenties/redenen/details samengevoegd.
+    te_controleren = _dedupliceer_te_controleren(te_controleren)
 
     if not te_controleren:
         return OpruimlijstResultaat(kandidaten=[], fouten=[])

@@ -157,3 +157,74 @@ def test_doel_zonder_credentials_geeft_zichtbare_fout(
 
     assert [k.kant for k in resultaat.kandidaten] == ["verkoop_bron"]
     assert len(resultaat.fouten) == 1 and "geen credentials" in resultaat.fouten[0]
+
+
+def _tweede_gestorneerde_boeking(
+    opzet: DoorbelastingOpzet, referentie: str
+) -> DoorbelastingBoeking:
+    """Nog een gestorneerde boeking op HETZELFDE document + mapping → dezelfde deterministische
+    RLZ-GUID's (rlz_ids.py) maar een ander verkoopnummer."""
+    verkoop_id = rlz_doorbelasting_verkoop_id(opzet.document_id, opzet.mapping.doel_customer_guid)
+    spiegel_id = rlz_doorbelasting_spiegel_id(opzet.document_id, opzet.mapping.doel_customer_guid)
+    with scoped_session(opzet.administratie_id) as session:
+        boeking = DoorbelastingBoeking(
+            run_id=opzet.run.id,
+            administratie_id=opzet.administratie_id,
+            document_id=opzet.document_id,
+            mapping_id=opzet.mapping.id,
+            doel_administratie_id=opzet.doel_administratie_id,
+            status=DoorbelastingBoekingStatus.GESTORNEERD.value,
+            netto_totaal=Decimal("100.00"),
+            provisie_bedrag=Decimal("5.00"),
+            btw_bedrag=Decimal("22.05"),
+            verkoop_rlz_id=verkoop_id,
+            verkoop_referentie=referentie,
+            spiegel_rlz_id=spiegel_id,
+            storno_reden="tweede storno",
+            geboekt_door=opzet.run.aangemaakt_door,
+        )
+        session.add(boeking)
+        session.flush()
+        session.expunge(boeking)
+    return boeking
+
+
+def test_twee_gestorneerde_boekingen_op_een_document_geven_een_kandidaat_per_kant(
+    onboarded_opzet: DoorbelastingOpzet, gestorneerde_boeking: DoorbelastingBoeking, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blok D (reconciliatie-melding 06-09): verkoop-/spiegel-GUID zijn deterministisch per
+    (document, doel) — de run van 05-09 toonde GUID 437cda03… twee keer (refs 24713188/24713193).
+    Eén concept = één LET-OP-regel, referenties samengevoegd."""
+    _tweede_gestorneerde_boeking(onboarded_opzet, "V26-0002")
+    _patch_rlz(
+        monkeypatch,
+        _FakeRlz({gestorneerde_boeking.verkoop_rlz_id: 1, gestorneerde_boeking.spiegel_rlz_id: 1}),
+    )
+
+    resultaat = reconciliatie.verzamel_opruimlijst(gestorneerde_boeking.administratie_id)
+
+    assert resultaat.fouten == []
+    assert len(resultaat.kandidaten) == 2
+    assert len({(k.kant, k.concept_administratie_id, k.rlz_id) for k in resultaat.kandidaten}) == 2
+    verkoop = next(k for k in resultaat.kandidaten if k.kant == "verkoop_bron")
+    assert verkoop.referentie == "V26-0001, V26-0002"
+    assert verkoop.reden == "gestorneerd"
+    assert "kliktest" in verkoop.detail and "tweede storno" in verkoop.detail
+
+
+def test_gestorneerd_en_vervallen_run_op_zelfde_concept_worden_samengevoegd(
+    onboarded_opzet: DoorbelastingOpzet, gestorneerde_boeking: DoorbelastingBoeking, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.doorbelasting.models import DoorbelastingRun
+
+    opzet = onboarded_opzet
+    with scoped_session(opzet.administratie_id) as session:
+        run = session.get(DoorbelastingRun, opzet.run.id)
+        run.laatste_fout = {str(opzet.mapping.id): "actie 17 faalde (test)"}
+    _patch_rlz(monkeypatch, _FakeRlz({gestorneerde_boeking.verkoop_rlz_id: 1}))
+
+    resultaat = reconciliatie.verzamel_opruimlijst(opzet.administratie_id)
+
+    assert [k.kant for k in resultaat.kandidaten] == ["verkoop_bron"]
+    assert resultaat.kandidaten[0].reden == "gestorneerd+vervallen_run"
+    assert resultaat.kandidaten[0].referentie == "V26-0001"
