@@ -1517,6 +1517,10 @@ class WerkvoorraadKlant:
     # — zelfde signaal-patroon als de duplicaat-/matchtellers (de documenten zelf zitten al in een
     # status-teller hierboven), telt daarom niet mee in heeft_openstaand_werk.
     buiten_offerte: int = 0
+    # Geplande week zonder weekstaat (blok A 06-09): (veldwerker, project, week) gepland maar niet
+    # ingediend, ouder dan het app-venster — alleen berekend bij de uren-opt-in (anders 0); zelfde
+    # signaal-patroon, geen document erachter, telt niet mee in heeft_openstaand_werk.
+    planning_signalen: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1610,6 +1614,11 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
             from app.verplichting import match_pipeline as verplichting_match  # lokaal: geen kring
 
             buiten_offerte = verplichting_match.tel_buiten_offerte(session, administratie_id)
+            # Geplande week zonder weekstaat (blok A 06-09): één definitie mét de kantoorbrede lijst
+            # (/uren/kantoor/planning-signalen); 0 zonder de uren-opt-in.
+            from app.uren import planning_signaal  # lokaal: houdt de importgraaf klein
+
+            planning_signalen = planning_signaal.tel_signalen(session, administratie_id)
         klanten.append(
             WerkvoorraadKlant(
                 administratie_id=administratie_id,
@@ -1627,6 +1636,7 @@ def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, 
                 terugkerend_signalen=terugkerend_signalen,
                 voorraad_verschillen=voorraad_verschillen,
                 buiten_offerte=buiten_offerte,
+                planning_signalen=planning_signalen,
             )
         )
     return klanten

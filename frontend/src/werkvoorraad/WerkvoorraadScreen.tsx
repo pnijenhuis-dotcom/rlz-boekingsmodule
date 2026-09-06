@@ -262,6 +262,32 @@ function WerkvoorraadIngang({
                 },
               ]
             : []),
+          // Weekstaten ontbreken (mini-run 06-09 blok A): som van de klantenlijst-teller (zelfde bron als de
+          // kolom); toon-regel signaal-tellers — kaart alleen bij > 0, klik = kantoorbrede lijst mét actie.
+          ...((somOver(klanten, (k) => k.planning_signalen ?? 0) ?? 0) > 0
+            ? [
+                {
+                  label: 'Weekstaten ontbreken',
+                  waarde: somOver(klanten, (k) => k.planning_signalen ?? 0),
+                  stipKleur: 'warn' as const,
+                  delta: 'gepland, geen weekstaat ingediend',
+                  deltaWarn: true,
+                  onClick: () => navigate('/meerwerk/planning-signalen'),
+                },
+              ]
+            : []),
+          ...(projectverdelingTeller > 0
+            ? [
+                {
+                  label: 'Projectverdeling',
+                  waarde: projectverdelingTeller,
+                  stipKleur: 'warn' as const,
+                  delta: `verdeling wijkt af · ${projectverdelingAdministraties} ${projectverdelingAdministraties === 1 ? 'administratie' : 'administraties'}`,
+                  deltaWarn: true,
+                  onClick: () => navigate('/projectverdeling'),
+                },
+              ]
+            : []),
         ]}
       />
 

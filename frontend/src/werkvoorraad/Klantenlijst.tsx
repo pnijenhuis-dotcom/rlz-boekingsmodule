@@ -58,6 +58,9 @@ export function Klantenlijst({
   // Buiten offerte (blok B 04-09, ⑤): open inkoopdocumenten die buiten de goedgekeurde offerte
   // vallen (of geen treffer hebben) — zelfde toon-regel, klik = documentenlijst voorgefilterd.
   const toonBuitenOfferte = (klanten ?? []).some((k) => (k.buiten_offerte ?? 0) > 0)
+  // Weekstaten ontbreken (blok A 06-09): geplande weken zonder ingediende weekstaat buiten het venster van de
+  // veld-app — alleen bij de uren-opt-in berekend; zelfde toon-regel, klik = kantoorbrede lijst gefilterd op de klant.
+  const toonPlanningSignalen = (klanten ?? []).some((k) => (k.planning_signalen ?? 0) > 0)
 
   return (
     <div className="panel">
@@ -85,6 +88,7 @@ export function Klantenlijst({
                 {toonTerugkerend && <th>Verwachte facturen</th>}
                 {toonVoorraad && <th>Voorraadverschil</th>}
                 {toonBuitenOfferte && <th>Buiten offerte</th>}
+                {toonPlanningSignalen && <th>Weekstaten ontbreken</th>}
               </tr>
               {klanten === null && <SkeletonRijen kolommen={7} rijen={4} />}
               {zichtbaar.map((k) => (
@@ -194,6 +198,18 @@ export function Klantenlijst({
                       onClick={naarStatus(k, STATUSFILTER_BUITEN_OFFERTE, k.buiten_offerte ?? 0)}
                     >
                       <Teller waarde={k.buiten_offerte ?? 0} chipKlasse="afwijking" />
+                    </td>
+                  )}
+                  {toonPlanningSignalen && (
+                    <td
+                      title="Geplande weken zonder ingediende weekstaat, ouder dan het venster van de veld-app — signaal, geen blokkade"
+                      onClick={(e) => {
+                        if ((k.planning_signalen ?? 0) === 0) return
+                        e.stopPropagation()
+                        navigate(`/meerwerk/planning-signalen?administratie_id=${k.administratie_id}`)
+                      }}
+                    >
+                      <Teller waarde={k.planning_signalen ?? 0} chipKlasse="afwijking" />
                     </td>
                   )}
                 </tr>

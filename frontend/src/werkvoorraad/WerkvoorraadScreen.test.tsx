@@ -463,6 +463,37 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
     await waitFor(() => expect(screen.getByText(/Voorraad-landing/)).toBeInTheDocument())
   })
 
+  it('weekstaten-ontbreken-teller (blok A 06-09): kolom + KPI-kaart alleen bij > 0, klik opent de kantoorbrede lijst', async () => {
+    const gebruiker = userEvent.setup()
+    // Toon-regel signaal-tellers: zonder een enkele klant mét signaal bestaan kolom én kaart niet.
+    installOverzichtMock([klant({ te_controleren: 1, planning_signalen: 0 })])
+    const { unmount } = renderIngang()
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    expect(screen.queryByText('Weekstaten ontbreken')).toBeNull()
+    unmount()
+    installOverzichtMock([
+      klant({ te_controleren: 1, planning_signalen: 3 }),
+      klant({ administratie_id: TWEEDE_ADMINISTRATIE_ID, naam: 'Klant Zonder Signaal', klaar_om_te_boeken: 1, planning_signalen: 0 }),
+    ])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WerkvoorraadScreen />} />
+          <Route path="/meerwerk/planning-signalen" element={<div>Signalen-landing {window.location.search}</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
+    // Kolomkop én KPI-kaart dragen hetzelfde label; de kaart toont de som (3) mét de delta-regel.
+    expect(screen.getAllByText('Weekstaten ontbreken').length).toBe(2)
+    expect(screen.getByText('gepland, geen weekstaat ingediend')).toBeInTheDocument()
+    const rij = screen.getByText('Testklant').closest('tr')!
+    const teller = within(rij).getByText('3')
+    expect(teller).toHaveClass('chip')
+    await gebruiker.click(teller)
+    await waitFor(() => expect(screen.getByText(/Signalen-landing/)).toBeInTheDocument())
+  })
+
   it('de KPI-kaarten zijn klikbaar en openen de kantoorbrede dwarsdoorsnede', async () => {
     const gebruiker = userEvent.setup()
     installOverzichtMock([klant({ te_controleren: 2, vragen: 1 })])

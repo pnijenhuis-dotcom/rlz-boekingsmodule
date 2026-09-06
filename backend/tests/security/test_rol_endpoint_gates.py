@@ -112,6 +112,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/auth/gebruikers/{DUMMY_ID}/archiveren"),  # archiveren (26-08 punt 1, beheerder-only)
         ("GET", f"/auth/gebruikers/{DUMMY_ID}/open-werk"),  # open-werk-telling vóór archiveren
         ("GET", f"/uren/kantoor/stand?administratie_id={aid}"),  # uren kantoorkant
+        ("GET", "/uren/kantoor/planning-signalen"),  # geplande week zonder weekstaat, kantoorbreed (blok A 06-09)
+        ("POST", "/uren/kantoor/planning-signalen/afmelden"),  # afmelden mét reden (module-recht)
         ("GET", f"/projecten/{aid}"),  # projectenmodule kantoor (22-08)
         ("GET", f"/projecten/{aid}/volgend-nummer"),  # nummervoorstel nieuw project (fix C3 04-09)
         ("POST", f"/projecten/{aid}"),  # project aanmaken — élke kantoorrol, óók Boekhouding (fix C3 04-09)

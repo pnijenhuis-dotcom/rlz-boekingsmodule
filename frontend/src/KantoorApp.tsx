@@ -41,6 +41,16 @@ const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').t
 const ReconciliatieScreen = lazy(() =>
   import('./reconciliatie/ReconciliatieScreen').then((m) => ({ default: m.ReconciliatieScreen })),
 )
+// Weekstaten ontbreken (mini-run 06-09 blok A): geplande weken zonder ingediende weekstaat buiten het
+// app-venster — kantoorbreed lijstpatroon, alleen relevant mét de uren-&-meerwerk-tak (lazy).
+const PlanningSignalenScreen = lazy(() =>
+  import('./meerwerk/PlanningSignalenScreen').then((m) => ({ default: m.PlanningSignalenScreen })),
+)
+// Projectverdeling-hercontrole (opdracht 06-09 blok B): kantoorbrede lijst van geboekte pro-rato-verdelingen die
+// ná het boeken zijn gaan afwijken — lazy, alleen relevant voor administraties mét projectverdeling.
+const HercontroleScreen = lazy(() =>
+  import('./projectverdeling/HercontroleScreen').then((m) => ({ default: m.HercontroleScreen })),
+)
 // Verplichtingen (blok B 04-09): kantoorbreed overzicht + reviewscherm — lazy, want alleen
 // relevant voor administraties die offertes/opdrachtbevestigingen laten accorderen.
 const VerplichtingenScreen = lazy(() =>
@@ -190,6 +200,14 @@ function BeschermdeRoutes() {
           }
         />
         <Route path="/meerwerk" element={<MeerwerkScreen />} />
+        <Route
+          path="/meerwerk/planning-signalen"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <PlanningSignalenScreen />
+            </Suspense>
+          }
+        />
         <Route path="/planning" element={<PlanningScreen />} />
         <Route
           path="/projecten"

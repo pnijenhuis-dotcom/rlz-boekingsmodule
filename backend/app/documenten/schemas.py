@@ -409,6 +409,9 @@ class WerkvoorraadKlantResponse(BaseModel):
     # Offerte-matching (⑤, 04-09): open inkoopdocumenten `buiten` óf `geen_match` — kolom/chip
     # "Buiten offerte" op de klantenlijst; signaal-teller (geen status).
     buiten_offerte: int = 0
+    # Geplande week zonder weekstaat (blok A 06-09): gepland maar niet ingediend, ouder dan het
+    # app-venster; 0 zonder de uren-opt-in. Kolom/KPI "Weekstaten ontbreken" — signaal, geen status.
+    planning_signalen: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

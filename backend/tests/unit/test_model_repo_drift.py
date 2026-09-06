@@ -31,6 +31,8 @@ from app.documenten import schemas as documenten_schemas
 from app.documenten import service as documenten_service
 from app.sync import schemas as sync_schemas
 from app.sync import service as sync_service
+from app.uren import planning_signaal as planning_signaal_service
+from app.uren import schemas as uren_schemas
 
 _APP_ROOT = Path(__file__).resolve().parents[2] / "app"
 
@@ -44,6 +46,10 @@ CONTRACTEN: list[tuple[type[BaseModel], Callable]] = [
     (sync_schemas.NieuweCrediteurInput, sync_service.maak_crediteur_aan),
     (documenten_schemas.BoekvoorstelInput, boekvoorstel_service.sla_boekvoorstel_op),
     (documenten_schemas.VerwijderenInput, documenten_service.verwijder_document),
+    # Planning-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A): sleutel-model ↔ service.
+    (uren_schemas.PlanningSignaalSleutelRequest, planning_signaal_service.stuur_herinnering),
+    (uren_schemas.PlanningSignaalAfmeldenRequest, planning_signaal_service.meld_af),
+    (uren_schemas.PlanningSignaalSleutelRequest, planning_signaal_service.afmelding_intrekken),
 ]
 
 # Doelfuncties met **kwargs: de subsettoets kan daar niets bewijzen. Bewust leeg — een functie

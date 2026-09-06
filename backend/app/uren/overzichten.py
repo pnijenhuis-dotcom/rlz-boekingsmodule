@@ -541,6 +541,8 @@ class _WeekItem:
     goedgekeurd_door_naam: str | None = None
     afgekeurd_door_naam: str | None = None
     afkeur_reden: str | None = None
+    # Kantoor-signaal blok A 06-09: geplande week buiten het venster waarvoor een herinnering is verzonden.
+    herinnerd: bool = False
 
     @property
     def gepland(self) -> bool:
@@ -575,8 +577,17 @@ def _planning_stand(
             )
         return per_week[sleutel]
 
+    # Kantoor-signaal blok A 06-09: een week buiten het venster waarvoor het kantoor een herinnering
+    # heeft VERZONDEN wordt weer geladen (planning + staat) zodat de herinnering "open de app" een
+    # reikbaar doel heeft; `herinnerd` markeert die weken voor _zichtbare_weken. Lazy import: de
+    # signaal-module leunt op dit module (OPEN_WEKEN_VENSTER, _weken_terug).
+    from app.uren import planning_signaal
+
     for administratie in administraties:
         with scoped_session(administratie.id) as session:
+            herinnerd = planning_signaal.herinnerde_weken_buiten_venster(
+                session, administratie_id=administratie.id, gebruiker_id=zzper_id, grens_week=_week_sleutel(van)
+            )
             planning = session.execute(
                 select(PlanningToewijzing.project_id, PlanningToewijzing.datum).where(
                     PlanningToewijzing.administratie_id == administratie.id,
@@ -585,8 +596,26 @@ def _planning_stand(
                     PlanningToewijzing.datum <= tot,
                 )
             ).all()
+            if herinnerd:
+                oudste = min(service.week_grenzen(*w)[0] for w in herinnerd)
+                planning = list(planning) + [
+                    r
+                    for r in session.execute(
+                        select(PlanningToewijzing.project_id, PlanningToewijzing.datum).where(
+                            PlanningToewijzing.administratie_id == administratie.id,
+                            PlanningToewijzing.gebruiker_id == zzper_id,
+                            PlanningToewijzing.datum >= oudste,
+                            PlanningToewijzing.datum < van,
+                        )
+                    ).all()
+                    if _week_sleutel(r[1]) in herinnerd
+                ]
             for project_id, datum in planning:
-                item(session, administratie, _week_sleutel(datum), project_id).geplande_dagen += 1
+                week = _week_sleutel(datum)
+                it = item(session, administratie, week, project_id)
+                it.geplande_dagen += 1
+                if week in herinnerd:
+                    it.herinnerd = True
 
             staten = list(
                 session.scalars(
@@ -625,6 +654,11 @@ def _zichtbare_weken(
         if week in venster and any(it.gepland for it in items.values()):
             weken.add(week)
         if any(it.status in TE_DOEN_STATUSSEN for it in items.values()):
+            weken.add(week)
+        # Blok A 06-09: een herinnerde geplande week buiten het venster blijft zichtbaar tot hij is
+        # ingediend (de herinnering "open de app" moet een reikbaar doel hebben); het venster-besluit
+        # zelf blijft — niet-herinnerde oude weken tonen niet.
+        if any(it.herinnerd and it.te_doen for it in items.values()):
             weken.add(week)
     return sorted(weken, reverse=True)
 

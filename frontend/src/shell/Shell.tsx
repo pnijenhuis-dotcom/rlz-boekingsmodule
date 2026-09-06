@@ -67,6 +67,13 @@ export function Shell() {
           {/* Reconciliatie (opdracht 06-09 blok C): de nachtelijke controle van onze eigen boekingen
               tegen de werkelijke stand in Reeleezee — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
           <NavItem to="/reconciliatie">Reconciliatie</NavItem>
+          {/* Weekstaten ontbreken (mini-run 06-09 blok A): geplande weken zonder ingediende weekstaat buiten
+              het venster van de veld-app — kantoorbreed, alleen mét module-recht + uren-opt-in (zelfde poort
+              als Planning; backend require_meerwerk_urenstaten_recht). */}
+          {planningPad && <NavItem to="/meerwerk/planning-signalen">Weekstaten ontbreken</NavItem>}
+          {/* Projectverdeling-hercontrole (opdracht 06-09 blok B): geboekte pro-rato-verdelingen die ná het boeken
+              zijn gaan afwijken — kantoorbreed lijstpatroon mét de bestaande actie "Herverdelen…". */}
+          <NavItem to="/projectverdeling">Projectverdeling</NavItem>
           {/* Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie, voor élke kantoorrol binnen de eigen
               scope (backend vereis_kantoorrol) — de Beheerder-gate van v3 verviel met de administratie-picker. */}
           <NavItem to="/crediteuren">Crediteuren</NavItem>

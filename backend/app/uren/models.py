@@ -42,6 +42,7 @@ from sqlalchemy import (
     SmallInteger,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -931,3 +932,97 @@ class ProjectPrijsafspraak(Base):
         if self.geldig_vanaf_jaar is not None and sleutel < (self.geldig_vanaf_jaar, self.geldig_vanaf_week or 1):
             return False
         return not (self.geldig_tm_jaar is not None and sleutel > (self.geldig_tm_jaar, self.geldig_tm_week or 53))
+
+
+# --- kantoor-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A, migratie 0115) --------
+
+
+class PlanningSignaalSoort(enum.StrEnum):
+    AFGEMELD = "afgemeld"
+    HERINNERD = "herinnerd"
+
+
+class PlanningSignaalAfhandeling(Base):
+    """Afhandeling van het kantoor-signaal "geplande week zonder weekstaat" (blok A 06-09). Het signaal
+    zelf is AFGELEID (planning_toewijzing × weekstaat, ouder dan het app-venster
+    `overzichten.OPEN_WEKEN_VENSTER`) — deze tabel legt uitsluitend vast wat het kantoor ermee deed:
+
+    - `herinnerd`: append-only, één rij per (combinatie, dag) = de dagrem (dossier_herinnering-
+      patroon: claim vóór verzenden, status bezig/verzonden/mislukt/overgeslagen, kanaal push/mail).
+    - `afgemeld`: één ACTUELE afmelding per combinatie (partial unique op ingetrokken_op IS NULL),
+      reden verplicht (≥ 5 tekens, CHECK), intrekken = kolom — nooit delete."""
+
+    __tablename__ = "planning_signaal_afhandeling"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_planning_signaal_afhandeling_project_cache",
+        ),
+        CheckConstraint("soort IN ('afgemeld', 'herinnerd')", name="ck_planning_signaal_afhandeling_soort"),
+        CheckConstraint("weeknummer BETWEEN 1 AND 53", name="ck_planning_signaal_afhandeling_weeknummer"),
+        CheckConstraint(
+            "soort != 'afgemeld' OR (reden IS NOT NULL AND length(btrim(reden)) >= 5)",
+            name="ck_planning_signaal_afhandeling_afgemeld_reden",
+        ),
+        CheckConstraint(
+            "soort != 'herinnerd' OR "
+            "(datum IS NOT NULL AND status IN ('bezig', 'verzonden', 'mislukt', 'overgeslagen'))",
+            name="ck_planning_signaal_afhandeling_herinnerd_velden",
+        ),
+        CheckConstraint(
+            "(ingetrokken_op IS NULL) = (ingetrokken_door IS NULL)",
+            name="ck_planning_signaal_afhandeling_ingetrokken_samen",
+        ),
+        Index("ix_planning_signaal_afhandeling_administratie_id", "administratie_id"),
+        Index(
+            "ix_planning_signaal_afhandeling_combinatie",
+            "administratie_id",
+            "gebruiker_id",
+            "project_id",
+            "jaar",
+            "weeknummer",
+        ),
+        Index(
+            "planning_signaal_afgemeld_actief_uniek",
+            "administratie_id",
+            "gebruiker_id",
+            "project_id",
+            "jaar",
+            "weeknummer",
+            unique=True,
+            postgresql_where=text("soort = 'afgemeld' AND ingetrokken_op IS NULL"),
+        ),
+        Index(
+            "planning_signaal_herinnerd_dag_uniek",
+            "administratie_id",
+            "gebruiker_id",
+            "project_id",
+            "jaar",
+            "weeknummer",
+            "datum",
+            unique=True,
+            postgresql_where=text("soort = 'herinnerd'"),
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    jaar: Mapped[int] = mapped_column(SmallInteger)
+    weeknummer: Mapped[int] = mapped_column(SmallInteger)
+    soort: Mapped[str]
+    reden: Mapped[str | None] = mapped_column(default=None)
+    datum: Mapped[date | None] = mapped_column(default=None)
+    status: Mapped[str | None] = mapped_column(default=None)
+    kanaal: Mapped[str | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    op: Mapped[datetime] = mapped_column(server_default=func.now())
+    verzonden_op: Mapped[datetime | None] = mapped_column(default=None)
+    ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)

@@ -816,3 +816,90 @@ class MijnToegangDto(BaseModel):
     # administratie-kiezer op /instellingen/materiaal). `administraties_met_opt_in` blijft puur de
     # steigerbouw-opt-in (planning, weekstaten, bestellingen, transport).
     administraties_met_catalogus: list[uuid.UUID] = []
+
+
+# --- kantoor-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A) ------------------------
+
+
+class PlanningSignaalHerinneringDto(BaseModel):
+    op: datetime
+    kanaal: str | None
+    door_naam: str | None
+
+
+class PlanningSignaalAfmeldingDto(BaseModel):
+    reden: str
+    op: datetime
+    door_naam: str | None
+
+
+class PlanningSignaalDto(BaseModel):
+    """Eén signaal = (administratie, veldwerker, project, ISO-week) gepland zonder ingediende weekstaat,
+    ouder dan het app-venster. `soort` = geen_staat | concept (staat bestaat maar is niet ingediend);
+    `status` = open | afgemeld. Sleutel voor de acties = de vijf id-/weekvelden."""
+
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    gebruiker_id: uuid.UUID
+    gebruiker_naam: str
+    gebruiker_actief: bool
+    project_id: uuid.UUID
+    project_naam: str | None
+    jaar: int
+    weeknummer: int
+    maandag: date
+    zondag: date
+    geplande_dagen: Decimal
+    soort: Literal["geen_staat", "concept"]
+    weekstaat_status: str | None
+    status: Literal["open", "afgemeld"]
+    herinneringen: int
+    laatste_herinnering: PlanningSignaalHerinneringDto | None
+    herinnerd_vandaag: bool
+    afmelding: PlanningSignaalAfmeldingDto | None
+
+
+class PlanningSignaalFacetDto(BaseModel):
+    administratie_id: uuid.UUID
+    naam: str
+    aantal: int
+
+
+class PlanningSignaalTellersDto(BaseModel):
+    open: int
+    afgemeld: int
+    administraties: int
+
+
+class PlanningSignalenLijstDto(BaseModel):
+    rijen: list[PlanningSignaalDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    administraties_in_selectie: int
+    tellers: PlanningSignaalTellersDto
+    facet_administraties: list[PlanningSignaalFacetDto]
+    venster_weken: int
+
+
+class PlanningSignaalSleutelRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    jaar: int = Field(ge=2000, le=2100)
+    weeknummer: int = Field(ge=1, le=53)
+
+
+class PlanningSignaalAfmeldenRequest(PlanningSignaalSleutelRequest):
+    reden: str = Field(min_length=1, max_length=1000)
+
+
+class PlanningSignaalHerinneringResultaatDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    kanaal: str
+    verzonden_op: datetime
+    herinneringen: int
+
+
+class PlanningSignaalAfhandelingDto(BaseModel):
+    id: uuid.UUID

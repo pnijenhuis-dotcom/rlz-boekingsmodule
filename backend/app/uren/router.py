@@ -32,6 +32,7 @@ from app.auth.deps import (
 from app.auth.rollen import is_veldrol
 from app.uren import dossier as dossier_service
 from app.uren import overzichten, planning, schemas, service
+from app.uren import planning_signaal as planning_signaal_service
 from app.uren import werkopdracht as werkopdracht_service
 
 router = APIRouter(prefix="/uren", tags=["uren"])
@@ -1219,6 +1220,117 @@ def kantoor_dossier_herinneren(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return schemas.DossierHerinneringResultaatDto(**r.__dict__)
+
+
+# --- kantoor-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A) ------------------------
+
+
+def _planning_signaal_response(s: planning_signaal_service.Signaal) -> schemas.PlanningSignaalDto:
+    laatste = s.laatste_herinnering
+    return schemas.PlanningSignaalDto(
+        administratie_id=s.administratie_id,
+        administratie_naam=s.administratie_naam,
+        gebruiker_id=s.gebruiker_id,
+        gebruiker_naam=s.gebruiker_naam,
+        gebruiker_actief=s.gebruiker_actief,
+        project_id=s.project_id,
+        project_naam=s.project_naam,
+        jaar=s.jaar,
+        weeknummer=s.weeknummer,
+        maandag=s.maandag,
+        zondag=s.zondag,
+        geplande_dagen=s.geplande_dagen,
+        soort=s.soort,  # type: ignore[arg-type]
+        weekstaat_status=s.weekstaat_status,
+        status=s.status,  # type: ignore[arg-type]
+        herinneringen=s.herinneringen,
+        laatste_herinnering=schemas.PlanningSignaalHerinneringDto(
+            op=laatste.op, kanaal=laatste.kanaal, door_naam=laatste.door_naam
+        )
+        if laatste
+        else None,
+        herinnerd_vandaag=s.herinnerd_vandaag,
+        afmelding=schemas.PlanningSignaalAfmeldingDto(
+            reden=s.afmelding.reden, op=s.afmelding.op, door_naam=s.afmelding.door_naam
+        )
+        if s.afmelding
+        else None,
+    )
+
+
+@router.get("/kantoor/planning-signalen", response_model=schemas.PlanningSignalenLijstDto)
+def kantoor_planning_signalen(
+    administratie_id: uuid.UUID | None = None,
+    filter: str = "open",
+    pagina: int = 1,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+) -> schemas.PlanningSignalenLijstDto:
+    """Kantoorbreed (kernprincipe 7): geplande weken zonder ingediende weekstaat, ouder dan het
+    app-venster — over alle administraties mét opt-in in de scope; administratie = filter, geen poort.
+    Oudste week eerst, 25/pagina, tellers "N signalen over M administraties"."""
+    try:
+        p = planning_signaal_service.signalen_kantoorbreed(
+            actor_id=actor.id, administratie_id=administratie_id, filter=filter, pagina=pagina
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningSignalenLijstDto(
+        rijen=[_planning_signaal_response(s) for s in p.rijen],
+        totaal=p.totaal,
+        pagina=p.pagina,
+        per_pagina=p.per_pagina,
+        administraties_in_selectie=p.administraties_in_selectie,
+        tellers=schemas.PlanningSignaalTellersDto(open=p.open, afgemeld=p.afgemeld, administraties=p.administraties),
+        facet_administraties=[
+            schemas.PlanningSignaalFacetDto(administratie_id=aid, naam=naam, aantal=n)
+            for aid, naam, n in p.facet_administraties
+        ],
+        venster_weken=p.venster_weken,
+    )
+
+
+@router.post(
+    "/kantoor/planning-signalen/herinneren",
+    response_model=schemas.PlanningSignaalHerinneringResultaatDto,
+)
+def kantoor_planning_signaal_herinneren(
+    payload: schemas.PlanningSignaalSleutelRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+) -> schemas.PlanningSignaalHerinneringResultaatDto:
+    """Herinnering aan de veldwerker via push-anders-mail (dossier-patroon); max 1/dag per combinatie
+    (409); niet bezorgd = 502 (zichtbaar, opnieuw proberen mag). Klantscope in de service."""
+    try:
+        r = planning_signaal_service.stuur_herinnering(**payload.model_dump(), actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningSignaalHerinneringResultaatDto(**r.__dict__)
+
+
+@router.post("/kantoor/planning-signalen/afmelden", response_model=schemas.PlanningSignaalAfhandelingDto)
+def kantoor_planning_signaal_afmelden(
+    payload: schemas.PlanningSignaalAfmeldenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+) -> schemas.PlanningSignaalAfhandelingDto:
+    """Afmelden mét verplichte reden (≥ 5 tekens, 422): telt niet meer mee, blijft zichtbaar onder
+    'afgemeld', geaudit; al afgemeld = 409."""
+    try:
+        rij_id = planning_signaal_service.meld_af(**payload.model_dump(), actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningSignaalAfhandelingDto(id=rij_id)
+
+
+@router.post("/kantoor/planning-signalen/afmelden-intrekken", response_model=schemas.PlanningSignaalAfhandelingDto)
+def kantoor_planning_signaal_afmelden_intrekken(
+    payload: schemas.PlanningSignaalSleutelRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+) -> schemas.PlanningSignaalAfhandelingDto:
+    """"Toch tonen": afmelding intrekken (kolom, nooit delete), geaudit; niet afgemeld = 409."""
+    try:
+        rij_id = planning_signaal_service.afmelding_intrekken(**payload.model_dump(), actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningSignaalAfhandelingDto(id=rij_id)
 
 
 @router.get("/kantoor/kvk/{kvk_nummer}", response_model=schemas.KvkLookupDto)

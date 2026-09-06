@@ -328,6 +328,7 @@ def werkvoorraad_overzicht(
                 terugkerend_signalen=k.terugkerend_signalen,
                 voorraad_verschillen=k.voorraad_verschillen,
                 buiten_offerte=k.buiten_offerte,
+                planning_signalen=k.planning_signalen,
             )
             for k in klanten
         ]

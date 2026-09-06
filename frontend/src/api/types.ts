@@ -516,6 +516,9 @@ export interface WerkvoorraadKlantDto {
   /** Buiten offerte (blok B 04-09, ⑤): open inkoopdocumenten waarvan de offerte-match `buiten` of
    * `geen_match` is — signaal-teller in het duplicaat-patroon, nooit een blokkade. */
   buiten_offerte?: number
+  /** Weekstaten ontbreken (blok A 06-09): geplande (veldwerker, project, week) zonder ingediende
+   * weekstaat, ouder dan het venster van de veld-app; 0 zonder de uren-opt-in. Signaal, geen status. */
+  planning_signalen?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
