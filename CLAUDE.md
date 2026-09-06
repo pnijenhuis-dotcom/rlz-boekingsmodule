@@ -656,6 +656,47 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   deeplink, "Nu draaien" (Beheerder, 202 + poll, on-demand job — klikpunt f3_jobs.sh stap 11).
   Opruimlijst dedupliceert per RLZ-concept (blok D). De lokale dagelijkse `make reconciliatie-alles`
   is per 06-09 vervallen als vangnet (GCP_UITROL §F3.7). `app/reconciliatie/{run,kantoorbreed}.py`.
+- **Mini-voorraad speciale producten (mini-run 06-09 blok F, besluiten Peter 04/05-09, mockup `mini-voorraad.html`
+  ①–⑧ = norm, migratie 0116, mi-schema — BESLISSINGEN "MINI-VOORRAAD SPECIALE PRODUCTEN" (+ "— FRONTEND") is canoniek):**
+  opt-in per administratie `mini_voorraad_ingeschakeld` (Beheerder, default UIT; Universal Steigerbouw activeert Peter
+  zelf). Instroom ín de GEBOEKT-transactie (`app/mini_voorraad/instroom.py::registreer_bij_boeking`, ná
+  `bevries_bij_boeking`): per productregel deterministisch artikelcode (`a`) → exacte `omschrijving_norm` per leverancier
+  (bestaande mi-normalisatie-sleutels) → anders NIEUW product mét vlag "nieuw — controleer naam" (de stroom stopt nooit);
+  dienst-/transportregels uit via `classificeer_soort`; omschrijving = LETTERLIJK de factuurtekst (= sleutel), "Naam
+  bevestigen" wijzigt alleen de weergavenaam; tegenboeken/storno spiegelt automatisch (`registreer_storno`, ook in het
+  vastgoed-storno-detectiepad). **MENS-MANIPULATIE ONMOGELIJK (kernbesluit Peter 05-09):** de stand = Σ van de append-only
+  `mi.mini_voorraad_mutatie` (instroom/storno/uitstroom/beschadiging); geen corrigeer-/samenvoeg-/stand-endpoint bestaat
+  (testsweep bewaakt de routerlijst); de enige mens-ingang is de beschadigingsmelding VERPLICHT mét project (wie/waar/
+  wanneer — gebeurtenis, geen correctie); producten archiveren, nooit verwijderen; telverschillen blijven signaal in de
+  voorraad-aansluiting (virtuele groep "Speciale producten (mini-voorraad)", informatief) en de materiaallijst-dialoog
+  toont de stand alleen-lezen. UI: tab "Mini-voorraad" in Instellingen › Materiaalcatalogus (volle breedte, kolommen
+  product · stand · acties, Voorraadlog ▸ = append-only uitklap mét bron-link), toast + tijdlijnregel ná boeken.
+  Uitstroom via verkoopfacturen = fase 2 (datamodel klaar). Router `/mini-voorraad/{aid}/…` kantoorrol + scope.
+- **Kantoor-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A, migratie 0115 — BESLISSINGEN
+  "PLANNING-SIGNAAL 'GEPLANDE WEEK ZONDER WEEKSTAAT'"):** `app/uren/planning_signaal.py` — deterministisch per
+  (veldwerker, project, ISO-week): gepland (`planning_toewijzing`) én ouder dan het veld-app-venster
+  (`overzichten.OPEN_WEKEN_VENSTER`, één bron) én geen weekstaat óf alleen concept/corrigeren → kantoorbrede lijst
+  `/meerwerk/planning-signalen` (inzicht-lijstpatroon, module-recht + scope) mét per rij "Herinnering sturen"
+  (push-anders-mail, max 1/dag, dagrij-claim; de herinnerde week komt in de veld-app terug tot ingediend) of "Afmelden…"
+  mét reden (`boekhouding.planning_signaal_afhandeling`, audit); KPI-kaart + klantenlijst-kolom "Weekstaten ontbreken"
+  (`planning_signalen`, alleen > 0). Geen blokkade.
+- **Inzicht › Projectverdeling (mini-run 06-09 blok B):** `/projectverdeling` = kantoorbrede hercontrole-tabel op het
+  bestaande endpoint (`?administratie_id=&q=` additief, tellers), zwaarste afwijking eerst, "Herverdelen…" = de
+  uitgelichte `document/HerverdeelDialoog.tsx` (één bron met het controlescherm), KPI-kaart "Projectverdeling" alleen > 0.
+- **Catalogus-leesroute smal (mini-run 06-09 blok C, herziet C2 04-09):** de drie catalogus-GET's dragen
+  `require_catalogus_lezer` (Beheerder ÓF B+P ÓF kantoorrol mét module-recht 'Meerwerk & urenstaten'; motor-spiegel
+  `_vereis_catalogus_lezer`), muteren blijft `require_beheerder_of_bp`; Transport-tab/catalogusbeheer tonen een laadfout
+  als rode melding mét server-detail — nooit meer een valse lege lijst.
+- **Accordeur-app koude start + niet-geactiveerd account (mini-run 06-09 blokken D/E — BESLISSINGEN "KOUDE START
+  ACCORDEUR-APP" + "NATIVE APP — EERSTE LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT"):** cache-first stand per gebruiker
+  (`accordeur/standCache.ts`, localStorage `accordeur-stand:<sub>`, gewist bij uitloggen/dode sessie), regel "laatst
+  ververst HH:MM", wachtrij + vragen parallel (`voorlader.ts`), besluit-knoppen pas actief op de verse stand; timing-log
+  `koudeStart.ts` (`window.__koudeStart`, dev/native) + `Server-Timing`-header op de twee accordeur-leesroutes.
+  E1-wortel casus 04-09: `@capacitor/app` ontbrak in `native/` — het `appUrlOpen`-event kwam nooit, de universal link
+  opende de app op het login-scherm; fix = plugin + `getLaunchUrl`-vangnet (store-build versionCode 3 = klikpunt).
+  Login toont ná élke mislukte poging het generieke uitlegblok "Nog niet geactiveerd?" (mail-app openen, link plakken
+  door dezelfde token-poort) — bewust GEEN server-detectie per e-mail (enumeratie, 0022-lijn); kantoor stuurt een verse
+  link via "Opnieuw mailen".
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,

@@ -297,6 +297,11 @@ opt-in per administratie én module-recht "Meerwerk & urenstaten".
 
 | Onderwerp | Status | Canonieke vindplaats |
 |---|---|---|
+| **Kantoor-signaal "geplande week zonder weekstaat" (mini-run 06-09 blok A, migratie 0115):** per (veldwerker, project, week) gepland-maar-geen-staat (óf concept) ouder dan het app-venster → kantoorbrede lijst `/meerwerk/planning-signalen` mét herinnering (push-anders-mail, max 1/dag) of afmelden mét reden; KPI-kaart + klantenlijst-kolom "Weekstaten ontbreken" (alleen > 0); geen blokkade | **gebouwd + getest (06-09)** — beslispunten Peter (herinnerde week terug in de veld-app, wie mag afmelden) open | sectie "PLANNING-SIGNAAL 'GEPLANDE WEEK ZONDER WEEKSTAAT'" onderaan dit register; `app/uren/planning_signaal.py` |
+| **Inzicht › Projectverdeling (mini-run 06-09 blok B):** kantoorbrede hercontrole-tabel op `/projectverdeling` (facet administratie + zoek in de URL, zwaarste afwijking eerst, 25/pagina, "Herverdelen…" = de bestaande dialoog, KPI-kaart alleen > 0) — beslispunt 5 van blok C 04-09 uitgevoerd | **gebouwd + getest (06-09)** | sectie "MINI-RUN 06-09 — BLOK B"; `frontend/src/projectverdeling/HercontroleScreen.tsx` |
+| **Catalogus-leesroute smal (mini-run 06-09 blok C, herziet C2 04-09 "lezen = schrijven"):** de drie catalogus-GET's = Beheerder ÓF B+P ÓF kantoorrol mét module-recht 'Meerwerk & urenstaten' (`require_catalogus_lezer`), muteren blijft Beheerder/B+P; Transport-tab + catalogusbeheer melden laadfouten eerlijk i.p.v. een lege lijst | **gebouwd + getest (06-09)** | sectie "MINI-RUN 06-09 — BLOK C"; `app/auth/deps.py::require_catalogus_lezer` |
+| **Mini-voorraad speciale producten (mini-run 06-09 blok F, migratie 0116, mi-schema, mockup `mini-voorraad.html` ①–⑧):** opt-in per administratie; instroom ín de boek-transactie (code → omschrijving_norm per leverancier → nieuw product mét vlag), storno/tegenboeken spiegelt automatisch; MENS-MANIPULATIE ONMOGELIJK (stand = Σ append-only mutaties, alleen naam-bevestigen/archiveren/beschadigingsmelding-mét-project); tab in de materiaalcatalogus + voorraadlog; virtuele groep in de aansluiting + alleen-lezen sectie in de materiaallijst; uitstroom verkoop = fase 2 (datamodel klaar) | **gebouwd + getest (06-09)** — Universal Steigerbouw activeert Peter zelf | secties "MINI-VOORRAAD SPECIALE PRODUCTEN" (+ "— FRONTEND"); `app/mini_voorraad/`; `frontend/src/materiaal/` |
+| **Accordeur-app koude start + eerste login niet-geactiveerd (mini-run 06-09 blokken D/E):** timing-log (`koudeStart.ts`, `Server-Timing` op wachtrij/vragen), cache-first stand per gebruiker mét "laatst ververst HH:MM" (acties pas op de verse stand), wachtrij + vragen parallel; E1-wortel = ontbrekende `@capacitor/app` (universal link kwam nooit als `appUrlOpen` binnen) + `getLaunchUrl`-vangnet, uitlegblok "Nog niet geactiveerd?" mét mail-app/link-plakken op het generieke 409/401-pad (geen enumeratie-endpoint) | **gebouwd + getest (06-09)** — native: `npm install` + `cap sync` + store-build versionCode 3 = klikpunt Peter | sectie "KOUDE START ACCORDEUR-APP" + "NATIVE APP — EERSTE LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT" |
 | **Planning stuurt de veld-app (04-09):** A1/A2/A3-filters + "+ ander project" (koppeling bron 'weekstaat'); handmatige projectkoppeling als beheer-UI vervallen (addendum C) | **gebouwd + getest (04-09)** | sectie "DETACHEERDER-FILTERS VELD-APP" |
 | **Bugfix 04-09 "+ Veldwerker uitnodigen" maakte een KANTOORmedewerker aan (casus Peter):** rol volgt sinds de fix de ingang (dialoog per soort gemount + reset + fail-safe + expliciete rolgroep), server toetst `bron` ↔ rolgroep (422, óók Beheerder) en audit draagt de ingang; regressie uit `0dfc6ca` (21-08, uren fase 3b) | **gefikst + getest (04-09)** — audit-query op productie = klikpunt Peter (gcloud-tokens verlopen) | sectie "BUGFIX 04-09 — ROLGROEP VOLGT DE INGANG" onderaan dit register |
 | **Ontwerpbesluiten Peter 22-08 (v2):** (1) plannen doet het KANTOOR; grid = **actieve projecten als rijen** (afgeronde projecten verdwijnen), dagen (ma–vr) als kolommen, personen als sleepbare kaartjes — meerdere per project/dag, halve dagen mét ½-label (dagdeel heel/half); (A) **slepen/toewijzen maakt de ZZP↔project-koppeling automatisch aan** — planning ís de koppeling (geaudit, bron 'planning'); (B) de **veldwerker ziet zijn eigen planning ALLEEN-LEZEN** in de app, de hele week vooruit ("waar moet ik heen") — geen mutatiepad in de veld-API; (C) **> 5 geplande dagen p.p. per week = zacht signaal** (kleurt oranje in de pool); (5) **uren buiten planning = oranje bij de keuring, GEEN blokkade** (invallen/omplannen blijft mogelijk); **dubbele dag zonder planning-dekking = interne melding + teller per ZZP'er (30 dgn), uitsluitend kantoor** (vlagpatroon, geen enum-status); (6) **FAILSAFE**: dezelfde persoon nooit 2× op dezelfde dag op hetzélfde project — de cel weigert; in de bouw de samengestelde PK persoon×project×dag | **besloten (Peter 2026-08-22)** | mockup `planning-steigerbouw.html` (desknote); dit register |
@@ -2624,4 +2629,368 @@ referentie-dedup tegen RLZ blijft) + knip 02-09 + `voorraad-rlz-sync --volledig`
 | Uitkomst | **alle 9 stappen groen** — RLZ `RLZ-04-00002044` (storno 19) → overstap 201 (sync 355/17/6/3, hervertaling 6 docs/6 regels) → geheugen `411000 Property rental` + project "Test Thomas" (`app_bevestigd` blijft) → `BILL/2026/09/0002`↔`RBILL/2026/09/0006` → nakomer `BILL/2026/08/0002`↔`RBILL/2026/09/0007` → duplicaat afgevoerd mét RLZ-boekstuk → `BILL/2026/01/0003` (date 01-01-2026)↔`RBILL/2026/09/0008` → kanteldatum 200/200 → partner gearchiveerd | log `verkenning/output/odoo_overstap_generale_2026-09-04.jsonl` |
 | Gevonden + gefixt in de run | `inkoop._verlegde_taxrates` nam verdwenen RLZ-verlegd-tarieven mee → 502 "account.tax … niet bekend" op élke Odoo-boeking ná een overstap; fix = alleen `verdwenen_uit_bron_op IS NULL`; regressietest | `app/odoo/inkoop.py`, `tests/odoo/test_basis.py::TestVerlegdeTaxratesNaOverstap` |
 | Dev-restanten | dev-testadministratie draait op Odoo (company 1); twee gestrande stap-6-documenten op `boeken_mislukt` mét de 502-reden; TEST-crediteuren 166/167/168 gearchiveerd; TEST-paren blijven in company 1 (norm) | — |
+
+
+## MINI-RUN 06-09 — OVERZICHT (vijf kleine fixes + mini-voorraad; besluiten Peter 04/05-09; migraties 0115 + 0116; parallelle bouwrun zes agenten + coördinator-afsluitroutine)
+
+Blokken: **A** kantoor-signaal "geplande week zonder weekstaat" (migratie 0115) · **B** Inzicht › Projectverdeling (kantoorbrede hercontrole-tabel) · **C** Transport-tab stille 403 weg (smalle catalogus-leesroute) · **D** koude start accordeur-app (timing-log, cache-first, parallelle boot) · **E** native app: eerste login op een niet-geactiveerd account · **F** mini-voorraad speciale producten (migratie 0116, mi-schema, mockup `mini-voorraad.html` ①–⑧ = norm). Per blok een eigen sectie hieronder; de beslispunten per blok staan onderaan elke sectie en zijn NIET zelf beslist.
+
+## PLANNING-SIGNAAL "GEPLANDE WEEK ZONDER WEEKSTAAT" — KANTOORZIJDE (mini-run 06-09 blok A; GEBOUWD + GETEST 06-09; migratie 0115)
+
+**Aanleiding (opdracht Peter 06-09):** de veld-app toont geplande weken maar `OPEN_WEKEN_VENSTER` (6: huidige + 5
+terug) weken terug — venster-besluit A2 04-09 (BESLISSINGEN "DETACHEERDER-FILTERS VELD-APP", beslispunt 1). Een
+geplande week zónder ingediende weekstaat die uit dat venster valt verdween daardoor stil uit élke werklijst; niemand
+zag meer dat er voor die week uren ontbreken. **Pre-feature-check:** bouwt voort op "PLANNING-AGENDA STEIGERBOUW"
+(planning = toetsbron; `planning_toewijzing` persoon × project × dag), "DETACHEERDER-FILTERS VELD-APP" (het venster,
+`overzichten._weken_terug` — één bron, hergebruikt), "STEIGERBOUW-RUN 25-08 — BLOK A" (dossier-herinnering =
+push-anders-mail-kanaal `app/berichten/verzending.py`, dagrij-claim vóór verzenden, max 1/dag — patroon 1-op-1
+gekopieerd) en "UREN & MEERWERK — BOUW" (module-recht 'Meerwerk & urenstaten' als poort op álle kantoor-uren-routes).
+Het signaal zelf bestond nergens; alleen de bouwstenen. **UX-review:** de meerwerk-/keuringskant (`/meerwerk`) is
+per administratie (klantpagina-stand → lijst); het signaal is kantoorbreed per kernprincipe 7 en volgt daarom het
+inzicht-kantoorbreed-lijstpatroon (mockup `inzicht-kantoorbreed.html` ①②⑨: administratie = facet, élke rij draagt
+precies één handeling, tellers "N over M administraties") op een eigen route `/meerwerk/planning-signalen` mét
+nav-item "Weekstaten ontbreken" (zichtbaar onder dezelfde voorwaarde als Planning: module-recht + ≥ 1 opt-in) en een
+KPI-kaart + klantenlijst-kolom op de werkvoorraad (toon-regel: alleen bij > 0). Geen mockup-wijziging nodig; stijl =
+`meerwerk-kantoor.html`. Geen blokkade — signaal mét actie.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Definitie signaal (deterministisch, geen AI, geen RLZ-/Odoo-calls)** | Per (administratie mét `uren_meerwerk_ingeschakeld`, veldwerker, project, ISO-week): ≥ 1 `planning_toewijzing`-dag in die week (heel = 1, half = 0,5 → "geplande dagen") én de week is OUDER dan het app-venster (week < `oudste_vensterweek(vandaag)` = `_weken_terug(vandaag, OPEN_WEKEN_VENSTER)[-1]`; grens-maandag als datumfilter — één bron met de veld-app) én geen weekstaat (soort `geen_staat`) óf een staat in concept/corrigeren (soort `concept` — niet ingediend telt óók, aanbeveling uit de brief gevolgd; chip "concept, niet ingediend" vs "geen weekstaat"). Ingediend/goedgekeurd = afgehandeld. Afgemeld telt niet mee, blijft zichtbaar onder filter "afgemeld". Sortering oudste week eerst, dan administratie/veldwerker/project | GEBOUWD + GETEST | `app/uren/planning_signaal.py::signalen_in_sessie`, `oudste_vensterweek`, `tel_signalen` |
+| **Afhandeling-tabel (migratie 0115)** | `boekhouding.planning_signaal_afhandeling`: `soort` afgemeld \| herinnerd; herinnerd = append-only, één rij per (combinatie, `datum`) = dagrem (partial unique `planning_signaal_herinnerd_dag_uniek`), `status` bezig/verzonden/mislukt/overgeslagen + `kanaal` + `detail` + `verzonden_op`; afgemeld = één actuele rij (partial unique `planning_signaal_afgemeld_actief_uniek` op `ingetrokken_op IS NULL`), `reden` verplicht ≥ 5 (CHECK), intrekken = `ingetrokken_door/op` (nooit delete). FK composiet naar `project_cache`, RLS op administratie (0107/0114-vorm), GRANT SELECT/INSERT/UPDATE (geen DELETE). Het signaal zelf is afgeleid — geen eigen tabel | GEBOUWD (schema-only, downgrade werkt; metadata-guard groen) | `migrations/versions/0115_planning_signaal_afhandeling.py`; model `app/uren/models.py::PlanningSignaalAfhandeling` |
+| **Herinnering sturen** | Dossier-patroon in drie transacties: dagrij claimen (bestaande 'mislukt'-rij herbruikt; verzonden/bezig = `AlHerinnerdVandaag` → 409) → `verzending.verstuur_push_anders_mail(veldwerker, …, url="/accordeur")` buiten de transactie → uitkomst vastleggen (mislukt = audit `planning_signaal_herinnering_mislukt` + 502, telt niet, blokkeert de dag niet). Tekst: "Je stond in week N ingepland op project X, maar er is geen weekstaat ingediend" + "open de app — de week staat weer in je lijst". Eisen: open signaal (afgemeld = 409), veldwerker actief (422). Audit `planning_signaal_herinnerd` mét teller | GEBOUWD + GETEST | `planning_signaal.stuur_herinnering`, `POST /uren/kantoor/planning-signalen/herinneren` |
+| **Herinnerde week terug in de veld-app (UX-noodzaak, afwijking van "bewust niet")** | Zonder dit was de herinnering een dood spoor: de app laadt planning alleen binnen het venster, dus de ZZP'er/detacheerder kon de week niet bereiken. Daarom: een week buiten het venster waarvoor een herinnering VERZONDEN is, wordt in `_planning_stand` alsnog geladen en in `_zichtbare_weken` getoond zolang hij te doen is (`_WeekItem.herinnerd`); ingediend óf afgemeld sluit hem weer. Het venster-besluit zelf blijft: niet-herinnerde oude weken tonen niet. Het detacheerder-werklijstje (`mijn_zzpers`) telt zo'n week automatisch mee (zelfde `_zichtbare_weken`) | GEBOUWD + GETEST — **beslispunt 1** | `planning_signaal.herinnerde_weken_buiten_venster`; `overzichten._planning_stand`, `_zichtbare_weken` |
+| **Afmelden / intrekken** | `meld_af` (reden ≥ 5 → 422 `RedenVerplicht`; geen open signaal → 409; al afgemeld → 409), audit `planning_signaal_afgemeld` oud→nieuw; `afmelding_intrekken` ("Toch tonen") zet de kolommen, audit `planning_signaal_afmelding_ingetrokken`. Poort: kantoorrol mét module-recht 'Meerwerk & urenstaten' + klantscope (zelfde als keuring/dossier), níét Beheerder-only | GEBOUWD + GETEST — **beslispunt 2** | `planning_signaal.meld_af`, `afmelding_intrekken`; `POST …/afmelden`, `POST …/afmelden-intrekken` |
+| **Kantoorbrede lijst-API** | `GET /uren/kantoor/planning-signalen?administratie_id=&filter=open\|afgemeld\|alle&pagina=` — scope = `mijn_administraties` mét opt-in (Beheerder alles), administratie buiten scope/zonder opt-in = 403, administratie-facet altijd kantoorbreed (filter, geen poort), 25/pagina, tellers open/afgemeld/administraties (met ≥ 1 open), `administraties_in_selectie`, `venster_weken`, per rij `herinnerd_vandaag` (uit de dagrij, niet uit de klok — deterministisch testbaar). Poort `require_meerwerk_urenstaten_recht` (veldrollen 403, ook mét scope); rol×endpoint-matrix +2 paden | GEBOUWD + GETEST | `planning_signaal.signalen_kantoorbreed`; `app/uren/router.py` (sectie blok A); `tests/security/test_rol_endpoint_gates.py` |
+| **Werkvoorraad-teller** | `WerkvoorraadKlant.planning_signalen` (service + schema + router, additief): `planning_signaal.tel_signalen(session, administratie_id)` in dezelfde gescoopte sessie als de andere tellers; 0 zonder opt-in; telt niet mee in `heeft_openstaand_werk` (signaal, geen status). Frontend: kolom "Weekstaten ontbreken" op de klantenlijst (klik = lijst gefilterd op de klant) + KPI-kaart "Weekstaten ontbreken" (som, alleen bij > 0, delta "gepland, geen weekstaat ingediend", klik = `/meerwerk/planning-signalen`); `WerkvoorraadKlantDto.planning_signalen?` | GEBOUWD + GETEST | `app/documenten/service.py::werkvoorraad_overzicht`; `frontend/src/werkvoorraad/{WerkvoorraadScreen,Klantenlijst}.tsx`; `api/types.ts` |
+| **Scherm Weekstaten ontbreken** | Route `/meerwerk/planning-signalen` (lazy), nav-item onder Inzicht zichtbaar bij `planningMenuPad` (module-recht + opt-in; backend blijft de poort — 403 = leesbare melding). Inzicht-lijstpatroon: chips open/afgemeld, `AdministratieCombobox`-facet + filter-segment in de URL (`administratie_id=`, `filter=`), kolommen week (nr + ma–zo) / administratie / veldwerker (chip "niet actief") / project / gepland ("2,5 dagen") / stand (chip geen weekstaat = rood, concept = oranje, afgemeld = stil; herinner-regel "herinnerd dd-mm · N× · kanaal"; afmeldreden), acties: `btn secondary` "Herinnering sturen" (→ "Herinnerd vandaag" disabled bij dagrem; disabled bij niet-actief), "Afmelden…" (eigen `AfmeldDialoog`, reden ≥ 5, spiegel server), afgemeld → `linkbtn` "Toch tonen"; deep-link "Naar de planning →" = `/planning?administratie=…&week=JJJJ-Www`. Voet "N signalen over M administraties" + paginering | GEBOUWD + GETEST | `frontend/src/meerwerk/PlanningSignalenScreen.tsx`, `planningSignaalApi.ts`; `KantoorApp.tsx`, `shell/Shell.tsx` |
+
+**Tests:** `tests/uren/test_planning_signaal.py` (17: venstergrens week 28 buiten/29 binnen + verschuiving met
+"vandaag", halve dagen, concept vs geen staat vs ingediend, sortering/tellers/facet, zonder opt-in 0, afmelden/
+intrekken/dubbel/reden-te-kort, herinnering push-anders-mail + dagrem + volgende dag + audit, mislukt telt niet en
+blokkeert de dag niet, afgemeld niet herinneren, herinnerde week terug in de veld-app tot ingediend, afmelding sluit
+de week, RLS echte niet-Beheerder mét scope + 403 buiten scope + zonder module-recht, werkvoorraad-teller service + API,
+API-flow incl. 409/422/403 en administratie-als-filter); rol×endpoint-matrix + metadata-guard + proxy-dump groen
+(423 samen); `tests/uren` + `tests/documenten/test_werkvoorraad_overzicht.py` 232 groen (geen regressie op de
+veld-app-filters). Frontend: `PlanningSignalenScreen.test.tsx` (6), `WerkvoorraadScreen.test.tsx` +1 (kolom + kaart
+toon-regel + klik), `src/shell` + `src/api` groen; `npx tsc -b` schoon voor mijn bestanden (twee TS6133-fouten in
+`src/accordeur/AccordeurApp.tsx` zijn van een ander blok in dezelfde run).
+
+**Beslispunten Peter (verzameld, niet zelf beslist):**
+1. **Herinnerde week terug in de veld-app.** De brief zegt "signaal in de veld-app: nu bewust niet — het venster-besluit
+   blijft". Ik heb dat gerespecteerd voor het *signaal* (een niet-herinnerde oude week blijft onzichtbaar), maar een
+   *verzonden herinnering* maakt de week wél weer zichtbaar in de app tot hij is ingediend of afgemeld — anders wijst
+   "open de app om 'm in te vullen" naar een week die de app niet kan tonen (de weekstaat is alleen via de wekenlijst
+   bereikbaar). Aanbeveling: zo laten. Alternatief: terugdraaien (één regel in `_zichtbare_weken` + de extra
+   planning-query in `_planning_stand`) en de mailtekst aanpassen naar "neem contact op met het kantoor".
+2. **Wie mag afmelden.** Gebouwd: élke kantoorrol mét het module-recht 'Meerwerk & urenstaten' binnen de eigen scope
+   (zelfde poort als keuring, dossier-herinnering en meerwerk-beoordeling; audit mét reden). Alternatief:
+   Beheerder-only (reconciliatie-acceptatie-lijn). Aanbeveling: module-recht — het is een werkvoorraad-handeling van
+   de keurder, geen boekhoudkundige acceptatie.
+3. **Concept-staat als signaal.** Gebouwd: een staat in concept/corrigeren telt óók (chip "concept, niet ingediend");
+   alleen ingediend/goedgekeurd is afgehandeld. Alternatief: alleen "geen enkele staat". Aanbeveling: beide — een
+   nooit ingediend concept is voor de factuurmatch net zo onbruikbaar als niets.
+4. **Herinnering per combinatie (veldwerker × project × week), niet gebundeld.** Bij meerdere ontbrekende weken van
+   dezelfde ZZP'er stuurt het kantoor dus meerdere berichten (dagrem per combinatie). Alternatief: één bundelbericht
+   per veldwerker per dag (nieuwe-facturen-bundelpatroon). Aanbeveling: eerst zo (klikwerk per rij is expliciet), bundelen
+   als het volume dat vraagt.
+5. **Geen eigen instelling voor het venster.** `OPEN_WEKEN_VENSTER = 6` blijft de ene bron (veld-app én signaal);
+   een Beheerder-instelling is niet gebouwd. Akkoord, of moet het venster instelbaar worden?
+
+
+## MINI-RUN 06-09 — BLOK B: INZICHT › PROJECTVERDELING (KANTOORBREDE HERCONTROLE-TABEL) — GEBOUWD + GETEST 06-09, geen migratie
+
+**Aanleiding:** beslispunt 5 van "MEDEWERKER-WENSEN 04-09 — BLOK C" (Peter 06-09: bouwen). Het endpoint
+`GET /projectverdeling/hercontrole-signalen` bestond (afrondingsrun 04-09), de tabel in Inzicht niet; het signaal
+was alleen zichtbaar als rij-chip op de documentenlijst en als banner op het geboekte document — dus alleen wie
+toevallig in díe administratie keek zag dat een verdeling was gaan afwijken. **Pre-feature-check:** endpoint +
+api-call `haalHercontroleSignalenOp` stonden klaar; de Herverdelen-dialoog leefde inline in
+`ProjectverdelingBlok.tsx`; `/reconciliatie` (06-09 blok C) is de meest recente instantie van het
+Inzicht-kantoorbrede lijstpatroon. **UX-review:** geen nieuw patroon — mockup `inzicht-kantoorbreed.html` ①②⑨
+1-op-1 (kantoorbreed endpoint zonder administratie in het pad, 25/pagina server-side, facet + zoekveld, tellers
+"N signalen over M administraties", zwaarste eerst, élke rij een handeling); nav-item Inzicht › Projectverdeling
+naast Reconciliatie; KPI-kaart alleen bij teller > 0 (toon-regel signaal-tellers). Geen nieuwe motor: de actie is
+de bestaande tegenboek-én-opnieuw-boeken-route.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Endpoint additief: facet + zoek + tellers + rijvelden | `GET /projectverdeling/hercontrole-signalen?pagina=&administratie_id=&q=` (kantoorrol, ongewijzigde poort). `administratie_id` = facet, `q` = hoofdletterongevoelig op leverancier/referentie/bestandsnaam/administratienaam; `totaal`/`administraties` = binnen de selectie, nieuw `tellers {signalen, administraties}` = kantoorbrede stand ongeacht filter (kopchips). Per rij nieuw: `totaalbedrag` (boekvoorstel), `geboekt_op` (bevriesmoment), `delen_oud` (bevroren verdeling) en `delen_nieuw` (hercontrole-herberekening) mét projectnaam uit `project_cache` — de Herverdelen-dialoog opent zo zonder extra detail-call. Sortering ongewijzigd: −afwijking_pct, administratienaam, bestandsnaam. Scope: per administratie een `scoped_session(administratie, actor_id=)` (RLS-les) | GEBOUWD + GETEST | `app/projectverdeling/service.py::hercontrole_signalen/SignaalRij/SignaalTellers`, `schemas.py::SignaalRijDto/SignaalTellersDto/SignaalLijstDto`, `router.py` |
+| Herverdelen-dialoog uitgelicht — één bron voor controlescherm én Inzicht | `document/HerverdeelDialoog.tsx` (props administratie/document/delenOud/delenNieuw/periode/afwijkingPct, POST `…/projectverdeling/herverdelen`, reden vooringevuld + ≥ 5 tekens, 409 leesbaar in de dialoog) + formatters `euro`/`periodeLabel`/`vergelijk`; `ProjectverdelingBlok.tsx` gebruikt de component (zelfde testids/labels, bestaande Blok-tests ongewijzigd groen) | GEBOUWD + GETEST | `frontend/src/document/HerverdeelDialoog.tsx`, `ProjectverdelingBlok.tsx` |
+| Scherm Inzicht › Projectverdeling `/projectverdeling` | Lazy route + nav-item onder Inzicht (na Reconciliatie). Kop: chips "N signalen" (warn bij > 0) + "over M administraties" (kantoorbreed), `AdministratieCombobox`-facet + zoekveld, beide in de URL (`?administratie=&q=&pagina=`; legacy `administratie_id` geaccepteerd), ‹ › houdt het filter. Tabel: Leverancier (vet, subregel referentie · € totaal · geboekt DD-MM) · Administratie (link naar de klantpagina) · Afwijking (Badge warn "x % afwijking", subregel drempel + omzetmaand) · Verdeling oud → nieuw (compact: alleen verschoven projecten, max 3 + "+ n") · acties `Herverdelen…` (`Button secundair`) + `Naar het document →` (`/?administratie=&document=`, zelfde padopbouw als reconciliatie). Ná herverdelen: toast + herlaad (rij verdwijnt — document staat weer op te_controleren). Lege stand: "Geen afwijkingen — de maandelijkse hercontrole draait mee in de dagelijkse sync." (mét filter: "Geen afwijkingen binnen dit filter."). Voet ‹ pagina › + "N signalen over M administraties" | GEBOUWD + GETEST (vitest 6) | `frontend/src/projectverdeling/HercontroleScreen.tsx` (+ `.test.tsx`), `KantoorApp.tsx`, `shell/Shell.tsx`, `document/projectverdelingApi.ts::haalHercontroleSignalenOp(params)`, `api/types.ts` |
+| KPI-kaart "Projectverdeling" op de werkvoorraad | Bevinding: er bestond nog GEEN kaart/teller voor projectverdeling-afwijkingen (alleen de rij-chip in de documentenlijst). Nieuw: kaart alleen bij ≥ 1 signaal, waarde = `tellers.signalen`, subregel "verdeling wijkt af · M administraties", stip warn, klik → `/projectverdeling`. Bron = eerste pagina van het bestaande signalen-endpoint (geen aparte stand-route, geen nieuw endpoint); fout = geen kaart, nooit blokkerend | GEBOUWD + GETEST (vitest +2) | `werkvoorraad/WerkvoorraadScreen.tsx` (+ `.test.tsx`) |
+| Rol-allowlist / proxy / rol-matrix | Geen nieuwe route → geen matrix-wijziging (`/projectverdeling/hercontrole-signalen` stond er al); `/projectverdeling` stond al in `proxy-prefixes.json`; `auth/rollen.ts` kent geen per-route-allowlist voor Inzicht-schermen (kantoorrol volstaat, backend blijft de waarheid) | n.v.t. | — |
+
+**Tests:** backend `tests/projectverdeling/` 66 groen (router +2: rijvelden/facet/zoek mét kantoorbrede tellers; RLS
+echte niet-Beheerder MÉT scope ziet het signaal, collega zonder scope ziet 0 en tellers 0; leeg-test bijgewerkt op
+`tellers`). Frontend `npx tsc -b` schoon; vitest `HercontroleScreen` 6, `ProjectverdelingBlok` ongewijzigd groen,
+`WerkvoorraadScreen` +2 (KPI). `api/proxyDekking.test.ts` faalt op `/mini-voorraad/` uit een ANDER blok
+(`materiaal/miniVoorraadApi.ts`; prefix-dump nog niet ververst) — niet door blok B.
+
+**Beslispunten Peter (blok B, niet zelf beslist):**
+1. **KPI-kaart "Projectverdeling" op de werkvoorraad** — gebouwd volgens de toon-regel (alleen bij ≥ 1 signaal, zelfde
+   plek als Reconciliatie/Crediteur-dubbelen). Gewenst, of liever alleen het nav-item (de werkvoorraad-kaartenrij
+   groeit)? Aanbeveling: houden — kernprincipe 7 (signaal draagt actie, kantoorbreed zichtbaar).
+2. **Bron van de KPI-teller** = eerste pagina van het signalen-endpoint (25 rijen extra payload per werkvoorraad-load).
+   Alternatief: een lichte `GET /projectverdeling/hercontrole-stand` (nieuw endpoint + matrix-regel). Aanbeveling: pas
+   bij merkbare traagheid (de rijen zijn klein; de per-administratie-lus is dezelfde).
+3. **Sortering** = zwaarste afwijking eerst (bestaand), daarbinnen administratienaam + bestandsnaam. Wil je een
+   sorteerbare kolomkop (bedrag, geboekt-datum) zoals op de documentenlijst?
+4. **Drempel-weergave** per rij ("drempel 5 % · omzet juli 2026") staat als subregel onder de chip; de drempel is een
+   Beheerder-instelling per administratie (tab Boeken & AI). Akkoord, of alleen tonen als de drempel afwijkt van 5 %?
+5. **Compacte kolom "oud → nieuw"** toont alleen verschoven projecten (max 3, dan "+ n"); de volledige tabel staat in de
+   dialoog. Akkoord?
+6. **Geen snooze/verbergen** op deze lijst (ongewijzigd t.o.v. 04-09 beslispunt 2): een signaal blijft staan tot
+   herverdeeld of onder de drempel. Wil je hier alsnog een "Gezien…"-snooze (reconciliatie-patroon)?
+
+
+## MINI-RUN 06-09 — BLOK C: TRANSPORT-TAB STILLE 403 WEG — SMALLE CATALOGUS-LEESROUTE (besluit Peter 06-09 op beslispunt 1 van "ODOO-SLOTSTUK 04-09 — BLOK C2"; herziet C2 "lezen = schrijven"; geen migratie; GEBOUWD + GETEST 06-09)
+
+**Aanleiding.** Bijwerking van C2 (04-09): de drie catalogus-leesroutes kregen `require_beheerder_of_bp`, waardoor een
+Boekhouding-medewerker mét het module-recht 'Meerwerk & urenstaten' op de Transport-tab een 403 kreeg op leveranciers en
+catalogus — en de frontend vong die STIL af (`.catch(() => set…([]))`) met de misleidende tekst "Nog geen leveranciers —
+Beheerder: Instellingen → Materiaalcatalogus" (strijdig met "niets verdwijnt stil"). Plannen vanuit werkbakje/signaalkaart,
+materiaallijst definitief maken en bestelregels invullen stopten daar zonder eerlijke reden.
+
+**Pre-feature-check.** BESLISSINGEN "ODOO-SLOTSTUK 04-09 — BLOK C2" (opties a/b/c + aanroeperslijst), "ODOO-AFRONDINGSRUN
+04-09 blok B" (beslispunt 2), "PLANNING-UITBREIDING 31-08" (leverancierbeheer B+P). Rolpoort-patroon: `app/auth/deps.py`
+(`require_beheerder_of_bp`, `require_meerwerk_urenstaten_recht`), motor-spiegel in `materiaal/service.py`.
+
+**UX-review.** Geen IA-wijziging, geen mockup-aanpassing: de Transport-tab blijft identiek; alleen de laadfout-weergave
+(`.fout` mét `role="alert"`, server-detail-tekst) vervangt de valse lege-lijst-tekst. Laadfout ≠ lege lijst = aparte state
+(UX-patroon "lege stand = actie" blijft voor de échte lege lijst gelden).
+
+**Besluit (Peter 06-09): OPTIE (b) — smalle LEESroute.** Lezen van leveranciers/catalogus/producten = Beheerder ÓF B+P ÓF
+kantoorrol MÉT module-recht 'Meerwerk & urenstaten'; muteren (PUT/POST/seed) blijft Beheerder/B+P. Daarnaast is de
+frontend-kant van optie (a) óók gebouwd als vangnet: élke laadfout (403 of anders) is nu zichtbaar mét de server-detail.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Nieuwe rolpoort `require_catalogus_lezer` | Beheerder/B+P direct door; andere kantoorrol alleen mét `heeft_meerwerk_urenstaten_recht`; externe rollen fail-closed 403 (detail "Catalogus lezen vereist Beheerder, Boekhouding+Projecten óf het module-recht 'Meerwerk & urenstaten'"). Naast `require_beheerder_of_bp`/`require_meerwerk_urenstaten_recht` gedefinieerd | GEBOUWD | `backend/app/auth/deps.py` |
+| Router: de drie GET's (`leveranciers`, `leveranciers/{lid}/catalogus`, `producten`) → `Depends(require_catalogus_lezer)` + ongewijzigde `vereis_administratie_scope`; PUT leveranciers/categorieen/producten + POST seed blijven `require_beheerder_of_bp`; bestellingen/transport/stand/match onaangeroerd; kopcommentaar catalogus-blok herzien | GEBOUWD | `backend/app/materiaal/router.py` |
+| Motor-spiegel `_vereis_catalogus_lezer` (Beheerder/B+P óf meerwerk-recht via `heeft_meerwerk_urenstaten_recht`) op `leveranciers_overzicht`, `catalogus`, `producten_overzicht`; schrijvers (`zet_leverancier/zet_categorie/zet_product/seed_universal`) blijven `_vereis_beheerder`; docstring `_administratie_met_catalogus_toegang` bijgewerkt | GEBOUWD | `backend/app/materiaal/service.py` |
+| Rol×endpoint-matrix: commentaar CATALOGUS_PADEN + `_is_catalogus_pad` herzien, helper `_is_catalogus_leesroute`; `TestCatalogusRolpoort` nu 5 tests (was 3): matrix bevat de routes; B+P mét scope geen rolweigering; Boekhouding MÉT meerwerk-recht → geen 401/403 op de 3 GET's (409 uit de motor op de Matrix-administratie = géén rolweigering) + 403 op de PUT + bestellingen open; Boekhouding ZONDER recht → 403 op alle 4; veldrollen (zzper/uitvoerder/detacheerder, mét scope) → 403 op de 3 GET's | GROEN | `backend/tests/security/test_rol_endpoint_gates.py` |
+| `test_catalogus_toegang.py::TestCatalogusPoort`: de 04-09-test "Boekhouding+recht 403" omgekeerd naar `test_boekhouding_met_meerwerk_recht_leest_catalogus_maar_schrijft_niet` — zónder recht GeenToegang+403 op alle drie; mét recht motor (1 lev/53 prod, 13 cats, 8 tubelock) + API 200 op alle drie; PUT 403 + `zet_leverancier` GeenToegang. B+P zónder meerwerk-recht leest én schrijft (ongewijzigd) | GROEN | `backend/tests/materiaal/test_catalogus_toegang.py` |
+| `test_catalogus_bestellingen.py::test_beheer_beheerder_only_en_zoeken_paginering`: Boekhouding+recht leest producten (8/3) + leveranciers ("Floor Liften"), API GET 200, PUT 403; B+P-pad ongewijzigd | GROEN | `backend/tests/materiaal/test_catalogus_bestellingen.py` |
+| Frontend Transport-tab: laadfout ≠ lege lijst — nieuwe states `leveranciersFout` (tab) en `catalogusFout` (materiaallijst-dialoog + transport-wijzigen-dialoog); helper `laadFoutTekst("<wat> konden niet worden geladen: <server-detail>")`; zijbalk 🚚 Leveranciers toont bij fout een `.fout`-alert i.p.v. "Nog geen leveranciers…"; `startPlan` (werkbakje/dag-klik/signaalkaart) meldt bij een laadfout diezelfde reden; dialogen tonen de fout i.p.v. "Catalogus wordt geladen — of …" | GEBOUWD | `frontend/src/planning/TransportTab.tsx` |
+| Frontend Instellingen › Materiaalcatalogus: de stille `haalCatalogus(...).catch(() => setCategorieen([]))` meldt nu "Categorieën konden niet worden geladen: <detail>" via de bestaande `fout`-state (de leveranciers-/producten-lading meldde al) | GEBOUWD | `frontend/src/instellingen/MateriaalCatalogusBeheer.tsx` |
+| Regressietest: 403 op leveranciers → `role="alert"` mét "Leveranciers konden niet worden geladen: <detail>", géén "Nog geen leveranciers"; klik op de signaalkaart → dezelfde eerlijke reden | GROEN | `frontend/src/planning/TransportTab.test.tsx` (5 tests, was 4) |
+| `frontend/src/auth/rollen.ts`: GEEN planning-entry (bevestigd, 0 treffers op "planning"); toegang tot `/planning` blijft `heeft_meerwerk_recht` + opt-in via `mijn-toegang` (beslispunt 3 C2) — niets gewijzigd | BEVESTIGD | `frontend/src/auth/rollen.ts` |
+
+**Tests.** `pytest_lock.sh tests/materiaal tests/security/test_rol_endpoint_gates.py -q -x`: **423 passed, 0 failed**
+(run 1, scratchpad `c_pytest_run1.txt`); herrun rol-matrix ná regelbreedte-fix: zie `c_pytest_run2.txt`. Frontend: `npx tsc -b`
+groen; `vitest TransportTab.test.tsx` 5/5. Ruff schoon op deps/router/service/rol-matrix/toegang-test (de E501/I001-meldingen
+in `test_catalogus_bestellingen.py` zijn pre-existing, niet van deze run — bewust niet geformatteerd, gedeeld bestand).
+
+**Wat er zichtbaar veranderde.** Voor Boekhouding mét meerwerk-recht: Transport-tab werkt weer volledig (leverancierskeuze,
+werkbakje-plannen, materiaallijst, bestelregels) — de catalogus is voor hen alleen-lezen; Instellingen › Materiaalcatalogus
+blijft voor hen dicht (registry `materiaal` = Beheerder/B+P, ongewijzigd — wél kunnen zij de GET's nu ook via de API lezen,
+dat is de bedoelde smalle leesroute). Voor iedereen: een mislukte lading van leveranciers/catalogus is een rode melding mét
+de echte reden, nooit meer een valse "nog geen leveranciers".
+
+**Beslispunten Peter**
+1. **Instellingen › Materiaalcatalogus voor Boekhouding+meerwerk-recht?** Nu bewust NIET opengezet (registry `materiaal`
+   blijft Beheerder/B+P — dat is het beheerscherm mét PUT-knoppen). Alleen-lezen daar tonen zou een nieuw scherm-recht
+   vergen; aanbeveling: zo laten — de leesbehoefte zit op de Transport-tab en die is gedekt.
+2. **Klikpunt cloud:** staat er een `boekhouding`-gebruiker mét meerwerk-recht (`platform.gebruiker_module_rol`)? Dan is
+   deze fix voor haar/hem direct merkbaar ná deploy; geen data-actie nodig.
+
+
+## MINI-VOORRAAD SPECIALE PRODUCTEN (blok F mini-run 06-09; besluiten Peter 04/05-09, mockup `mini-voorraad.html` ①–⑧ = norm; migratie 0116 — canoniek per onderdeel; frontend-deel: zie de sectie van de frontend-agent)
+
+**Aanleiding:** Universal Steigerbouw koopt speciale producten in buiten de standaard-materiaalcatalogus; planning/transport
+en de voorraadstand kenden ze niet. Wens Peter 04-09: omschrijving × aantal AUTOMATISCH naar de materiaallijst, mét herkomst.
+**Kernbesluit ⑧ (Peter 05-09): MENS-MANIPULATIE ONMOGELIJK** — geen corrigeer-/samenvoegfunctie, geen enkel endpoint dat een
+stand direct muteert; de stand is een pure afgeleide van brondocumenten (instroom = geboekte inkoopfactuur, uit = verkoop-
+factuur óf beschadigingsmelding verplicht aan een project, storno draait automatisch terug). **Pre-feature-check:** bestond
+niet; hergebruikt zijn de mi-normalisatiesleutels (`normaliseer_tekst`/`normaliseer_code`/`classificeer_soort`, 0086/0088),
+de veldvoorstel-lezer van de voorraad-aansluiting, het `bevries_bij_boeking`-patroon (blok C 04-09) voor de hook ín de
+GEBOEKT-transactie, het `draai_verbruik_terug_in_sessie`-patroon voor de storno-spiegel, het `zet_voorraad_ingeschakeld`-
+toggle-patroon en de append-only-grant van `werkopdracht` (0091). **UX-review:** past in de bestaande IA (tab op
+Instellingen › Materiaalcatalogus, toggle op de detailpagina-tab Voorraad, tijdlijn/toast op het controlescherm, chip in de
+voorraad-aansluiting, sectie in de Materiaallijst-dialoog) — mockup akkoord 05-09, geen tegel, geen nieuw menu-item.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **F1 — opt-in** | `platform.administratie.mini_voorraad_ingeschakeld` (default UIT), `PATCH /administraties/{id}/mini-voorraad {ingeschakeld}` Beheerder-only, audit oud→nieuw (`mini_voorraad_ingeschakeld_gewijzigd`); veld op `AdministratieInstellingenDto`. Geen backfill: boekingen van vóór het aanzetten tellen niet (beslispunt). Universal Steigerbouw activeert Peter zelf | gebouwd + getest 06-09 | migratie 0116; `app/beheer/{service,router,schemas}.py::*mini_voorraad*`; `tests/mini_voorraad/test_router.py::TestToggle` |
+| **Datamodel (mi-schema)** | `mi.mini_product` — sleutel UNIQUE (administratie, vendor_id, omschrijving_norm); `omschrijving` = LETTERLIJK de factuurtekst (⑦), `weergavenaam` alleen via "Naam bevestigen", `artikelcode` (genormaliseerd regelveld `a`), `eenheid` (`e`), vlag `nieuw_controleren`, archiveerkolommen, `bron_document_id`; GRANT zonder DELETE. `mi.mini_voorraad_mutatie` — APPEND-ONLY (GRANT SELECT+INSERT, géén UPDATE/DELETE): getekend `aantal` (instroom +, storno −, uitstroom −, beschadiging −), `datum`, herkomst document+regel+boek_cyclus óf gebeurtenis (project VERPLICHT via CHECK, `gemeld_door`, `toelichting`), CHECK `aantal <> 0`. Stand = SUM(aantal) — query, geen kolom/view. RLS per administratie (0086-vorm) | gebouwd + getest 06-09 (dev-upgrade/dump = coördinator) | migratie `0116_mini_voorraad.py`; `app/mini_voorraad/models.py` |
+| **F2 — instroom ín de boek-transactie (①②③④)** | `instroom.registreer_bij_boeking` direct ná `bevries_bij_boeking` in de GEBOEKT-transactie van `boeken.py` (samen met de statusovergang, of samen niet). Bron = het LAATSTE VELDVOORSTEL (`voorraad.service._laatste_veldvoorstel` — dáár leven `hoeveelheid`/`artikelcode`/`eenheid`; het boekvoorstel kent alleen bedragen). Per regel deterministisch: dienst-/transportregel (`classificeer_soort`) → overslaan · geen/0 aantal → overslaan mét reden · artikelcode per leverancier → bestaand product · exacte `omschrijving_norm` per leverancier → bestaand · anders NIEUW product mét vlag (de stroom stopt nooit). Gevonden product zonder code leert de code (deterministisch). Datum = factuurdatum (BookDate-lijn). Idempotent per (document, boek_cyclus). Tijdlijnregel zónder statusovergang (`detail.mini_voorraad_bijgewerkt` mét tekst "Mini-voorraad bijgewerkt — N regels · nieuw: …") + audit `mini_voorraad_instroom`/`mini_product_aangemaakt`; `BoekResultaat.mini_voorraad` → `BoekenResponse.mini_voorraad` (additief). Gearchiveerd product dat opnieuw voorkomt herleeft mét audit — nooit een tweede rij. Negatieve aantallen (creditregel) tellen getekend mee (spiegel) | gebouwd + getest 06-09 | `app/mini_voorraad/instroom.py`; `app/documenten/boeken.py` (koppelregel + `BoekResultaat.mini_voorraad`); `app/documenten/{schemas,router}.py::MiniVoorraadBoekDto`; `tests/mini_voorraad/test_instroom.py` |
+| **F2 — storno-spiegel** | `instroom.registreer_storno` ín de tegenboek-transactie (náást `draai_verbruik_terug_in_sessie`): élke instroom-mutatie van (document, cyclus) → `storno` met −aantal, datum = dag van terugdraaien, idempotent; tijdlijn `mini_voorraad_teruggedraaid` + audit `mini_voorraad_storno`. "Tegenboeken én opnieuw boeken" telt de nieuwe cyclus opnieuw (test). Óók aangehaakt in `storno_detectie.py` (RLZ-UI-storno actie 19) — dat pad dekt echter uitsluitend `is_vastgoed`-administraties (webhook-detectie) en zet de documentstatus níét terug; voor niet-vastgoed-administraties is een RLZ-UI-storno alleen een reconciliatie-afwijking → **beslispunt** | gebouwd + getest 06-09 (tegenboek-pad); storno_detectie: gebouwd, niet apart getest (vastgoed-only pad) | `app/documenten/tegenboeken.py`; `app/documenten/storno_detectie.py`; `tests/mini_voorraad/test_instroom.py::TestStornoSpiegel` |
+| **F3 — geen mens-manipulatie (⑧)** | Router `/mini-voorraad` kent UITSLUITEND GET's + vier whitelist-POST's: `naam-bevestigen` (alleen weergavenaam + vlag uit, audit oud→nieuw), `archiveren`/`dearchiveren` (Beheerder, kolom + reden ≥ 5, stand/log blijven), `beschadigingen` (kantoorrol; aantal > 0 als string, datum ≤ vandaag, project VERPLICHT en actief in `project_cache` van die administratie → anders 422 leesbaar; vastgelegd als −aantal mét `gemeld_door` = actor; 201). Geen PUT/PATCH/DELETE, geen route die een stand of aantal zet; de DB-grant (geen UPDATE/DELETE op de mutatietabel) dwingt het mee af. Sweep-test loopt de routerlijst én de app-routes af. Opt-in uit: lijst/stand antwoorden `ingeschakeld:false` (geen fout), handelingen 409 `MiniVoorraadUitgeschakeld`. Veld-app-ingang voor beschadigingen = beslispunt (nu kantoor-only) | gebouwd + getest 06-09 | `app/mini_voorraad/{router,service,schemas}.py`; `tests/mini_voorraad/test_router.py` |
+| **F4 — leesroutes (voor de UI)** | `GET …/producten?q=&pagina=&filter=alle\|nieuw\|gearchiveerd` (25/pagina, server-side; nieuw eerst), `GET …/producten/{pid}/log?pagina=` (append-only log nieuwste eerst, verrijkt in drie gebatchte lookups: factuurnummer + leverancier via boekvoorstel/vendor_cache, projectnaam, melder), `GET …/stand` (tellers tab/badge). Router-breed `vereis_kantoorrol` + `vereis_administratie_scope` per route; RLS-test mét echte niet-Beheerder mét scope, zonder scope 403, extern 403; rol×endpoint-matrix +9 paden; proxy-prefix `/mini-voorraad` gedumpt | gebouwd + getest 06-09 | idem; `tests/security/test_rol_endpoint_gates.py`; `frontend/proxy-prefixes.json` |
+| **F5 — planning/transport + voorraad-aansluiting** | (a) Materiaallijst = EIGEN leesroute `GET /mini-voorraad/{aid}/materiaallijst` (actieve producten mét stand > 0, naam = weergavenaam ?? omschrijving) — niet ingebed in `materiaal.catalogus` (die is per materiaal-leverancier; product-ids zijn FK-doelen van bestellingen/transportregels → mini-producten kunnen niet als transportregel worden opgenomen; aparte read-only sectie in de dialoog). (b) Voorraad-aansluiting: één virtuele artikelgroep "Speciale producten (mini-voorraad)" per administratie mét opt-in — begin/in/uit/theoretisch uit twee aggregaatqueries op de mutaties (uit = storno+uitstroom+beschadiging), `telling=None`, `signaal='informatief'`, `bron='mini_voorraad'` (additief DTO-veld, default 'artikelgroep'), deterministisch UUIDv5-groep-id (geen rij); verschijnt alleen als óók "Voorraad bijhouden" aan staat; niet in de kantoorbrede verschillen-lijst (die telt alleen `onderzoeken`) | gebouwd + getest 06-09 | `app/mini_voorraad/service.py::materiaallijst/virtuele_groep`; `app/voorraad/service.py::aansluiting` (+`GroepAansluiting.bron`); `app/voorraad/schemas.py`; `tests/mini_voorraad/test_f5.py` |
+| **Uitstroom via verkoopfactuur (⑤, fase 2)** | Datamodel klaar (soort `uitstroom`, document_id/regel/boek_cyclus); koppeling aan `voorraad.registreer_verkoopregels`/RLZ-/Odoo-uitstroomroutes bewust NIET gebouwd — vergt de match verkoopregel ↔ mini-product (eigen sleutelruimte verkoopcodes, 0088-les) en een besluit over dienst-/transportregels aan de verkoopkant | gedocumenteerd-geparkeerd | deze sectie |
+
+**Tests (06-09):** `tests/mini_voorraad/` — test_instroom 12 (pure matchlogica 3, boek-transactie 6, storno-spiegel 3),
+test_router 9 (⑧-sweep 2, lezen/scope 3, handelingen 3, toggle 1), test_f5 4 (aansluiting 3, materiaallijst 1) = 25 groen;
+rol×endpoint-matrix + fail-closed sweep + migratie-metadata-guard + proxy-dump-guard groen (430); gerichte regressie
+tests/documenten/test_boeken.py + test_tegenboeken.py, tests/voorraad, tests/materiaal, tests/beheer = 189 groen.
+
+**Beslispunten Peter (verzameld, met aanbeveling):**
+1. **Veld-app-ingang beschadigingsmelding** — nu kantoor-only (kantoorrol + scope). Mockup noemt "gemeld door uitvoerder
+   (veld-app)". Aanbeveling: aparte veldroute `POST /uren/…/beschadigingen` achter `vereis_veldrol` + projectkoppeling
+   (alleen projecten waarop de melder gepland/gekoppeld is), zelfde service-functie; bouw ná F-frontend-kliktest.
+2. **RLZ-UI-storno buiten het tegenboek-pad** — `storno_detectie.py` spiegelt nu mee, maar dekt alleen vastgoed-
+   administraties. Voor Universal Steigerbouw (niet-vastgoed) blijft een storno via actie 19 in de RLZ-UI alleen een
+   reconciliatie-afwijking; de mini-voorraad-instroom blijft dan staan. Aanbeveling: in de documenten-reconciliatie
+   (blok A) een "Status 1 op geboekt document"-bevinding óók de storno-spiegel laten schrijven (systeem-actor, idempotent),
+   óf accepteren dat de kantoor-flow "tegenboeken in de app" de norm is (GEBOEKT is lokaal terminaal).
+3. **Geen backfill** — boekingen van vóór het aanzetten van de opt-in tellen niet mee (bevestigen). Alternatief: een
+   eenmalige expliciete CLI `mini-voorraad-inlezen --vanaf <datum>` over geboekte documenten (systeem-actor, zichtbaar in
+   de tijdlijn) — aanbeveling: alleen op verzoek, nooit stil.
+4. **Eenheid-normalisatie** — `eenheid` wordt letterlijk uit de scan overgenomen (st/stuks/pcs blijven verschillend) en is
+   alleen weergave; matching gebeurt op code/omschrijving. Aanbeveling: zo laten (⑧: geen samenvoegen), eventueel later een
+   read-only weergave-normalisatie.
+5. **Negatieve regelaantallen (creditregel op een inkoopfactuur)** tellen als getekende instroom (−) — consistent met de
+   voorraad-aansluiting (creditregels zijn al negatief). Bevestigen.
+6. **Materiaallijst-koppeling** — mini-producten zijn zichtbaar in de Materiaallijst-dialoog maar kunnen niet als
+   transportregel worden meegenomen (zou een stand-mutatie via planning zijn = fase 2 uitstroom). Bevestigen.
+
+
+## MINI-VOORRAAD SPECIALE PRODUCTEN — FRONTEND (opdracht Peter 06-09 blok F; mockup `mini-voorraad.html` ①–⑧ = norm; migratie 0116 backend)
+
+**Aanleiding:** Universal Steigerbouw koopt speciale producten buiten de standaardcatalogus; die moeten op basis van
+factuuromschrijving × aantal automatisch in de materiaallijst en de voorraadstand terechtkomen. **Pre-feature-check:**
+BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D (voorraad-aansluiting `voorraad/VoorraadScreen.tsx`), "BLOK D" steigerbouw-run
+(materiaalcatalogus `instellingen/MateriaalCatalogusBeheer.tsx`, Materiaallijst-dialoog `planning/TransportTab.tsx`),
+"RECONCILIATIE-MELDING + INZICHT" blok C (recentste lijstpatroon: RedenDialoog, bron-link, tellers) en "UX-PATRONEN ALS
+NORM" (één primaire knop + ⋯-menu, lege stand = actie, teal = actie / groen = status). **UX-review:** past in de bestaande IA
+— géén nieuw nav-item: tab náást de catalogus (Instellingen › Materiaalcatalogus), toggle op de administratie-detailpagina,
+melding op het controlescherm, virtuele groep in de bestaande aansluiting, sectie in de bestaande Materiaallijst-dialoog.
+Mockup-aanpassing: geen — de mockup was al herzien (⑦ volle breedte, ⑧ geen mens-manipulatie).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **F1 — opt-in toggle + chip** | Toggle "Mini-voorraad speciale producten" op de detailpagina tab Algemeen direct onder "Voorraad bijhouden" (zelfde `toggle(...)`-helper → PendingToggle `mini_voorraad` → bestaande bevestigingsdialoog in InstellingenScreen mét consequentie-tekst incl. ⑧ → `PATCH /administraties/{id}/mini-voorraad {ingeschakeld}`; optimistische lijst-update op `mini_voorraad_ingeschakeld`); uitgeschakeld bij gearchiveerd; link "materiaalcatalogus › Mini-voorraad →". Chip "Mini-voorraad" (info) in de v2-tabel + detailkop via `chipsVoor`. `AdministratieInstellingenDto.mini_voorraad_ingeschakeld` + alle fixtures (AdministratiesV2/InstellingenScreen/AdministratieWizard-tests, visueel harnas) | GEBOUWD + GETEST 06-09 | `instellingen/AdministratieDetailPagina.tsx`, `AdministratiesV2.tsx::chipsVoor`, `InstellingenScreen.tsx` (berichtVoor/bevestigen), `instellingenApi.ts::zetMiniVoorraadInstelling`, `api/types.ts` |
+| **F4 — tab "Mini-voorraad"** | `materiaal/MiniVoorraadTab.tsx`: tweede tab in de materiaalcatalogus (segment Catalogus / Mini-voorraad), alleen als `GET /mini-voorraad/{aid}/stand` `ingeschakeld` geeft; tabkop-chip "N nieuw — controleer" (④). Volle schermbreedte, één tabel: Product (vet weergavenaam ?? factuurtekst; subregel leverancier · code · eenheid · "factuurtekst: …" zodra er een weergavenaam is; oranje chip "nieuw — controleer naam") · Stand (rechts, tabular) · acties op één rij: "Naam bevestigen" (btn, alleen bij de vlag) · "Voorraadlog ▸/▾" (btn secondary) · ⋯-menu. Filter alle/nieuw/gearchiveerd + zoekveld, server-side 25/pagina, voet "N producten · M nieuw". Lege stand = "Producten verschijnen automatisch bij het boeken van een inkoopfactuur"; opt-in uit (409) = leesbare verwijzing naar de Beheerder | GEBOUWD + GETEST | `frontend/src/materiaal/MiniVoorraadTab.tsx`, `miniVoorraadApi.ts` (spiegel `app/mini_voorraad/schemas.py`), tab-wiring `instellingen/MateriaalCatalogusBeheer.tsx` |
+| **F4 — Voorraadlog** | `materiaal/VoorraadLog.tsx`: uitklap-subrij per product, append-only, 25/pagina; per regel datum · getekend aantal (+24 / −4) · soort-chip (instroom = groen status, beschadiging = oranje, storno/uitstroom gedempt) · bron-link "inkoopfactuur 260630 (Huvanco) →" naar `/documenten/{aid}/{document_id}` (bestaand controlescherm-pad) · project · gemeld door · toelichting · boekcyclus > 1 | GEBOUWD + GETEST | `frontend/src/materiaal/VoorraadLog.tsx` |
+| **F4 — instroom-melding controlescherm** | `BoekenResponseDto.mini_voorraad` (regels, nieuwe_producten, bestaande, overgeslagen) reist via `GeboektInfo.miniVoorraad` naar `naVerwerking`: tweede groene toast "Mini-voorraad bijgewerkt — N regels · nieuw — controleer naam: …" náást de boek-toast (toasts stapelen). Tijdlijn: notities `mini_voorraad_bijgewerkt` (instroom) en `mini_voorraad_teruggedraaid` (tegenboeken/storno) worden als regel getoond — servertekst uit het blok wint, overgeslagen-redenen benoemd, teruggedraaide producten benoemd; herkenning fail-closed (`materiaal/miniVoorraadTijdlijn.ts`) | GEBOUWD + GETEST | `document/DocumentDetailScreen.tsx` (2 verankerde blokken), `document/BoekvoorstelPanel.tsx::GeboektInfo`, `materiaal/miniVoorraadTijdlijn.ts` |
+| **F3 — mens-manipulatie onmogelijk (⑧)** | Frontend kent géén corrigeer-, samenvoeg- of stand-invoer: uitsluitend "Naam bevestigen" (dialoog mét de factuurtekst als referentie, wijzigt alleen `weergavenaam`, 1–200 tekens), "Voorraadlog ▸", ⋯ "Beschadiging melden…" (`materiaal/BeschadigingDialog.tsx`: aantal > 0 max 3 dec., project VERPLICHT via `SearchableCombobox` + `useProjectOpties` — dezelfde lader als de project-kolom —, datum default vandaag, toelichting; zonder project géén POST, fout in het formulier; één primaire knop), ⋯ Beheerder "Archiveren…" (reden ≥ 5, tekst "er wordt niets verwijderd") / "Dearchiveren". Rol uit `useAuthOptioneel` (server blijft de poort). Regressietest: geen spinbutton, geen "samenvoeg"/"corrigeer"/"Telling" in de tab | GEBOUWD + GETEST | `materiaal/MiniVoorraadTab.tsx`, `materiaal/BeschadigingDialog.tsx` |
+| **F5 — Materiaallijst-dialoog (planning/transport)** | Eigen alleen-lezen sectie "Speciale producten (mini-voorraad)" onderaan de catalogus-lijst mét stand per item (zoekveld filtert mee), gevoed door `GET /mini-voorraad/{aid}/materiaallijst` (backend-keuze: eigen leesroute `{categorie, items}`; de catalogus-DTO is niet uitgebreid — de frontend verdraagt óók een catalogus-categorie mét `mini_voorraad_stand`, additief veld op `ProductDto`). Best-effort: 409/404 = geen sectie. Géén aantal-invoer: opnemen op de transportlijst = uitstroom-fase 2 (⑤) | GEBOUWD (geen vitest — zie Tests) | `planning/TransportTab.tsx::MateriaallijstDialog`, `planning/transportApi.ts::ProductDto.mini_voorraad_stand` |
+| **F5 — voorraad-aansluiting** | `GroepAansluitingDto.bron?: 'artikelgroep' \| 'mini_voorraad'` (additief); groep mét `bron === 'mini_voorraad'`: naam zonder drill-down-link + chip "mini-voorraad" (info), subregel "standen uit het voorraadlog · geen telling", actiekolom "informatief — niet muteerbaar" (géén Telling…/Tolerantie) | GEBOUWD + GETEST | `voorraad/VoorraadScreen.tsx`, `voorraad/voorraadApi.ts` |
+
+**Contract-afstemming (`contract_afwijkingen_F.md`, gelezen + verwerkt):** (1) materiaallijst = eigen leesroute `{categorie, items}`
+→ `haalMateriaallijst` pakt `items` uit; (4) toast weggelaten bij `regels === 0 && nieuwe_producten.length === 0`; (5) tijdlijn op
+detail-sleutel `mini_voorraad_bijgewerkt`/`mini_voorraad_teruggedraaid` mét `tekst`; (6) `producten`/`stand` geven bij opt-in uit
+`ingeschakeld: false` i.p.v. 409 — tab beslist daarop, 409 blijft afgevangen; (7) 201 op beschadigingen (apiJson ok);
+(8) `signaal: 'informatief'` toegevoegd aan de DTO-unie + `signaalTekst` ("informatief", soort geen), drill-down/telling/tolerantie
+verborgen voor de virtuele groep.
+
+**Tests (vitest, 06-09):** `materiaal/MiniVoorraadTab.test.tsx` 7 (lijst + vlag + geen-manipulatie-sweep, Naam bevestigen → body
+`{weergavenaam}`, Voorraadlog mét bron-link/project/gemeld-door, beschadiging zonder project = geen POST / mét project =
+body wie-waar-wanneer-hoeveel, Beheerder archiveren mét reden ≥ 5, niet-Beheerder ziet Archiveren niet, 409/leeg),
+`materiaal/miniVoorraadTijdlijn.test.ts` 5, `instellingen/AdministratieDetailPagina.minivoorraad.test.tsx` 3 (toggle →
+PendingToggle, gearchiveerd = disabled, chipsVoor), `voorraad/VoorraadScreen.minivoorraad.test.tsx` 1, `DocumentDetailScreen.test.tsx`
++1 (tijdlijnregel). Bestaande suites MateriaalCatalogusBeheer/AdministratiesV2/VoorraadScreen/TransportTab/AdministratieWizard/
+InstellingenScreen/BoekvoorstelPanel/proxyDekking groen; `tsc -b` groen.
+
+**Beslispunten Peter:**
+1. **Plek van "Beschadiging melden…"** — nu uitsluitend in het ⋯-menu op de tab Mini-voorraad (kantoor). De mockup noemt óók
+   "uit de veld-app of keuring" als bron. Aanbeveling: in deze fase kantoor-only laten (de veld-app heeft geen mini-voorraad-
+   scherm en de keuring is per weekstaat, niet per product); een veld-ingang pas samen met de uitstroom-fase (⑤) — dan mét
+   dezelfde `POST /mini-voorraad/{aid}/beschadigingen` (gemeld_door = de veldwerker).
+2. **Tekstvarianten van hetzelfde product (⑧)** — bewust aparte regels, geen samenvoegen. Aanbeveling voor later: een READ-ONLY
+   groeperingslaag in de weergave (bv. groeperen op bevestigde weergavenaam per leverancier, stand = Σ) zonder enige mutatie;
+   niet gebouwd, geen contractwijziging nodig.
+3. **Bereikbaarheid van de tab** — de materiaalcatalogus is alleen zichtbaar bij uren-&-meerwerk-opt-in óf een Odoo-koppeling
+   (`heeftCatalogusToegang`, spiegel backend). Een administratie mét mini-voorraad maar zónder die toegang komt niet in de
+   administratie-kiezer van het catalogusscherm. Voor Universal Steigerbouw (uren aan) geen probleem; aanbeveling: zo laten
+   (mini-voorraad hoort bij de steigerbouw-tak), anders `heeftCatalogusToegang` én de backend-poort uitbreiden met de opt-in.
+4. **Transportlijst en mini-producten** — de sectie is alleen-lezen (stand tonen); opnemen op de transportlijst vergt dat de
+   server mini-product-ids in de materiaallijst accepteert = uitstroom-fase 2 (⑤). Aanbeveling: koppelen aan die fase.
+
+
+
+## KOUDE START ACCORDEUR-APP (blok D mini-run 06-09; opdracht Peter 06-09; geen migratie)
+
+Aanleiding: de accordeur-app voelt traag bij het openen. Pre-feature-check: de snelheidslaag van
+17-08 (optimistische verzendrij, prefetch/prerender) dekt de overgangen NÁ het openen, niet de
+koude start zelf; het bankscherm heeft sinds 25-08/02-09 het cache-first-patroon "laatst ververst
+HH:MM" (BESLISSINGEN "BANKSCHERM BLOK E") — dat patroon is hier hergebruikt. UX-review: past in de
+bestaande IA (de kaarten staan er alleen eerder; één grijze versheidsregel boven de kaarten, dezelfde
+plek als de bankpaneelkop); geen mockup-wijziging nodig. De optimistische verzendrij (`besluitQueue.ts`)
+is ongewijzigd.
+
+**D1 — waar zit de tijd (beredeneerd uit de code; op toestel = klikpunt, zie onder):**
+
+| Stap | Serieel / parallel | Gemeten / beredeneerd | Duur |
+|---|---|---|---|
+| WebView-boot → `AccordeurApp` gerenderd (index.html, main.tsx, lazy chunk `/accordeur`) | serieel (vóór alles) | beredeneerd; mark `app-render` | toestel-afhankelijk; niet lokaal meetbaar |
+| `AuthProvider` stille refresh `POST /auth/token/vernieuwen` | parallel met slot-status | beredeneerd — **native mét slot: altijd een verloren rondje** (refresh-token staat achter het slot → request zonder token → 401) | 1 RTT, blokkeert niets |
+| Native: slot-status (2 Keychain-reads) → `AppSlotScherm` → Face ID → `haalSessie` (refresh) | serieel; menstijd (Face ID) ertussen | beredeneerd; marks `slot-status`, `slot-ontgrendeld`, `sessie` | 1 RTT ná de biometrie |
+| Web: refresh → `ontgrendelingNodig` false (meestal) → direct door; true (1×/24 u) → passkey-ceremonie | serieel | beredeneerd; mark `sessie` | 1 RTT (+ ceremonie) |
+| `GoedkeurenFlow` mount → `GET /accordering/wachtrij` | serieel ná sessie | beredeneerd; marks `wachtrij-start/-klaar` + **Server-Timing (server-duur)** | 1 RTT + server |
+| `GET /accordering/vragen` | **vóór 06-09 serieel NÁ het wachtrij-antwoord** → nu parallel | beredeneerd; marks `vragen-start/-klaar` + Server-Timing | was +1 RTT, nu 0 extra |
+| `haalMeldingenStatus` | parallel | — | geen invloed |
+| Eerste kaarten → prefetch eerste PDF (`factuurCache`) | ná kaarten | bestaand (17-08) | 1 RTT + render |
+| **Server-side wachtrij** (`service.wachtrij_voor_accordeur`) | — | beredeneerd uit de code: per administratie een eigen `scoped_session`, per ÁLLE open rondes van die administratie losse lookups (stappen, document, voorstel, vendor, verplichting, offerte-match) — N+1, kosten ∝ administraties × open rondes (niet alleen de rondes waar déze accordeur aan de beurt is) | **meetbaar via `Server-Timing: wachtrij;dur=…`**; geen query-herbouw gestart (opdracht) |
+
+Lokaal niet meetbaar (eerlijk): echte WebView-boot, netwerk-RTT en Face ID-tijd op het toestel. Leesinstructie
+kliktest Peter: app koud starten → Safari Web Inspector (iPhone via kabel, Ontwikkelaars-menu) resp.
+`chrome://inspect` → console: `[koude start accordeur-app] ms sinds navigatiestart: {…}` óf `window.__koudeStart`
+(`stappen`, `server`, `afgeleid.wachtrijNetwerkMs` = client-duur − server-duur). Alles blijft lokaal; er gaat niets
+naar de server.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **D1 timing-log** | `performance.mark/measure` rond de boot-keten (`app-render`, `slot-status`, `slot-ontgrendeld`, `sessie`, `cache-render`, `wachtrij-start/-klaar`, `vragen-start/-klaar`, `kaarten-render`), éénmalig per app-run; samenvatting via `console.debug` + `window.__koudeStart` alleen in dev/native; nooit naar de server. Server: `/accordering/wachtrij` en `/accordering/vragen` dragen `Server-Timing: <route>;dur=<ms>` (alleen een duur), CORS `expose_headers=["Server-Timing"]` zodat de native schil (cross-origin) 'm kan lezen; de client splitst client-duur in netwerk + server | gebouwd + getest 06-09 | `frontend/src/accordeur/koudeStart.ts` (+ test); `accordeurApi.ts::leesMetTiming`; `app/accordering/router.py::_zet_server_timing`; `app/main.py` (CORS) |
+| **D2 cache-first stand** | Laatst geladen wachtrij + vragen + tijdstip in `localStorage` onder één sleutel per GEBRUIKER (`accordeur-stand:<sub uit het JWT>`; zonder id niets); bij openen direct getoond mét regel "stand van HH:MM · verversen…", verse stand vervangt stil (geen skeleton/flikker; zonder cache de gewone laadstate) en de regel wordt "laatst ververst HH:MM" (bankscherm-vorm). **Geldbesluiten uitsluitend op de verse stand:** de kaart mag open (lezen, PDF-prefetch), maar Afwijzen/Akkoord staan tot dan disabled met "verversen…" (gekozen boven "kaartklik wacht": lezen is onschadelijk, het geld wacht, in de praktijk < 1 s) + guards in `akkoord()/afwijzen()`; een cache-item dat in de verse stand ontbreekt gaat mét toast terug (bestaand stil-pad). Cache gewist bij uitloggen, server-side dode sessie (kill-switch/verlopen → login), ontgrendel-nooduitgang en ontkoppelen; max 7 dagen oud; formaatversie; lokale `verzend_fout` reist nooit mee. Verzendrij ongewijzigd | gebouwd + getest 06-09 | `frontend/src/accordeur/standCache.ts` (+ test); `GoedkeurenFlow.tsx` (startCache/uitCache/standTijdstip, `.acc-versheid`); `AccordeurApp.tsx` (wisAlleStanden-paden); `GoedkeurenFlow.cache.test.tsx` |
+| **D3 parallelliseren** | (a) wachtrij + vragen tegelijk (`voorlader.ts::laadVerseStand`) — was serieel ná het wachtrij-antwoord; (b) web-voorlader: staat het ontgrendelscherm (24-uurs-cadans) terwijl de stille refresh al een token gaf, dan loopt de fetch alvast en neemt GoedkeurenFlow 'm over (idempotent, 30 s vers, alleen fetchen — de ontgrendeling blijft de poort). **Bewust NIET:** fetchen vóór de refresh — het access-token leeft alleen in geheugen (OWASP), op een koude start is er géén "oud token"; een fetch zonder token = 401 die even lang duurt als de refresh; `apiFetch` doet bij 401 al één single-flight-refresh + één retry (geen tweede mechanisme). **Native:** refresh-token achter het app-slot → de fetch kan pas ná ontgrendelen; wél is de `AuthProvider`-boot-refresh dan een verloren rondje (parallel, blokkeert niet — bewust ongemoeid, `api/client.ts` is gedeeld) | gebouwd + getest 06-09 | `frontend/src/accordeur/voorlader.ts` (+ test); `AccordeurApp.tsx` (voorlaad-effect); `GoedkeurenFlow.tsx::laadWachtrij` |
+
+Tests: frontend `koudeStart.test.ts` (5), `standCache.test.ts` (6), `voorlader.test.ts` (4), `GoedkeurenFlow.cache.test.tsx`
+(6: cache direct + knoppen op slot + los ná verse stand + cache vernieuwd; verdwenen item mét toast; zonder cache
+laadstate + bewaren; andere gebruiker nooit; vragen parallel; voorlader = één wachtrij-call); regressie
+`src/accordeur` + `src/api` + `src/auth` 32 bestanden / 286 tests groen; `tsc -b` schoon. Backend
+`tests/auth/test_webauthn_cadans.py` (Server-Timing op beide routes, 16 groen) + rol-gate-sweep/CORS/vragen-suite.
+
+**Beslispunten Peter (D):**
+1. Toestelmeting: koude start op iPhone/Android mét `window.__koudeStart` uitlezen (leesinstructie boven) en de tabel
+   met cijfers aanvullen — pas dán blijkt of server (N+1 in `wachtrij_voor_accordeur`) of boot/netwerk domineert.
+   Aanbeveling: is `server.wachtrij` structureel > ~300 ms bij accordeurs met meerdere administraties, dan een
+   gerichte query-herbouw (één query over open rondes waar de actor aan de beurt is) als eigen opdracht.
+2. Cache-opslag native: de stand (financiële weergavedata, geen secrets) staat in de WebView-`localStorage`, achter de
+   app-lock bij het TONEN maar niet versleuteld op schijf. Optie: versleutelen op het slot-anker (`appSlot.ts`,
+   zelfde AES-GCM als het refresh-token). Aanbeveling: nu niet — het toestel is het slot (ING-model), de data zijn
+   leverancier/bedrag/administratie; wél expliciet vastleggen.
+3. `AuthProvider`-boot-refresh in native mét gesloten slot is een verloren netwerkrondje (parallel). Aanbeveling:
+   kleine wijziging in `api/client.ts` (geen POST als er in native geen refresh-token leesbaar is) in een rustige run —
+   gedeeld bestand, buiten deze parallelle run gehouden.
+
+## NATIVE APP — EERSTE LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT (blok E mini-run 06-09; casus detacheerder 04-09; geen migratie)
+
+Aanleiding: een uitgenodigde gebruiker opende de app vóór activatie, zag het login-scherm en liep dood; workaround
+was de link in Chrome. Pre-feature-check: universal links + in-app-vertaling staan sinds 31-08 ("PINCODE-ACTIVATIE",
+rij "Universal links") mét OS-verificatie als store-build-kliktest; de generieke 409 `GeenPasskeys` is bewust
+(0022-lijn, geen account-enumeratie). UX-review: past in het bestaande login-scherm (tweede blok ná een mislukte
+poging + tekstlink), geen mockup-wijziging.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **E1 keten geverifieerd — WORTEL GEVONDEN** | Mail-link `{APP_BASIS_URL}/activeren?token=…` (`uitnodigingsmail.py`) valt binnen de AASA-`applinks` (`/activeren*`, `/accordeur*`, `wellknown.py`), het iOS-entitlement `applinks:app.administratiekantoornijenhuis.nl`, het Android-intent-filter (`/activeren` + `/accordeur`, autoVerify) en de vertaling `inAppPadVoorUrl` → `/accordeur/activeren?uitnodiging=`; `SceneDelegate` geeft `continue userActivity` door aan `SceneDelegateProxy`. **Maar: `@capacitor/app` ontbrak in `native/package.json`/`node_modules`/`capacitor.plugins.json`.** Capacitor-core post op iOS alleen een NotificationCenter-notificatie en Android geeft de intent alleen aan geregistreerde plugins; het JS-event `appUrlOpen` komt uitsluitend uit die plugin → `nativeAppUrl.ts` vond `Capacitor.Plugins.App` niet en viel fail-closed stil → de link opende de app wél, maar niets navigeerde → login-scherm. Exact de casus. Fix: dependency `@capacitor/app` toegevoegd; `nativeAppUrl.ts` krijgt `getLaunchUrl()` als tweede vangnet voor de koude start (dedup per URL) en een zichtbare `console.warn` als de plugin in een native build tóch ontbreekt (nooit meer stil) | gebouwd + getest 06-09; **OS-verificatie = store-build versionCode 3** | `native/package.json`; `frontend/src/accordeur/nativeAppUrl.ts` (+ test, 6) |
+| **E2 login-scherm: activatie-hulp** | Generiek uitlegblok "Nog niet geactiveerd?" — uitgevouwen ná élke mislukte login (409 geen passkey / 401 wachtwoord — bewust niet te onderscheiden van "niet geactiveerd") én op verzoek via tekstlink: open de uitnodigingslink uit de e-mail op dít toestel; geen mail (meer) → kantoor "opnieuw mailen". Native daarnaast "Mail-app openen" (iOS `message://`, Android intent `APP_EMAIL`; fallback-tekst eronder) en "Link plakken" → `activatiePadVanGeplakteLink` door DEZELFDE poort als de universal link (`inAppPadVoorUrl`; alleen `/activeren?token=` of `/accordeur/activeren?uitnodiging=` mét code; anders leesbare fout) → `/accordeur/activeren?uitnodiging=` → bestaande pincode-flow. Geen nieuw server-endpoint, geen activatie zonder token, geen omzeiling van de passkey-laag | gebouwd + getest 06-09 | `frontend/src/accordeur/ActivatieHulp.tsx`; `AccordeurLogin.tsx`; `AccordeurLogin.test.tsx` (6); `accordeur.css` `.acc-hulp` |
+| **E2 kantoor-kant geverifieerd** | "Herstel-link sturen" (`maak_herstel_link`) weigert status `uitgenodigd` expliciet ("gebruik 'Opnieuw mailen'") — bedoeld: voor een nog niet geactiveerd account is de knop op /gebruikers **"Opnieuw mailen"** (`vernieuw_uitnodiging`: nieuw token, oude links vervallen, audit; veldrollen krijgen óók de QR). De uitlegtekst in de app zegt daarom "opnieuw te mailen". Geen wijziging | geverifieerd 06-09 | `app/auth/service.py::vernieuw_uitnodiging/maak_herstel_link`; `GebruikersScreen.tsx::opnieuwMailen` |
+
+Tests: `nativeAppUrl.test.ts` (3 → 6: web no-op, native zonder plugin = warn, appUrlOpen + getLaunchUrl één navigatie);
+`AccordeurLogin.test.tsx` (6: web 401 → blok zonder native knoppen; tekstlink; native 409 → blok + mail-app + link
+plakken navigeert; ongeldige/code-loze link = fout zonder navigatie; pure vertaling; mail-URL per platform). `tsc -b` schoon.
+
+**Native wijzigingen (apart committen; store-build volgt als versionCode 3 — klikwerk Peter):**
+- `native/package.json`: `"@capacitor/app": "^8.0.0"` toegevoegd. Daarna `cd native && npm install && npm run
+  bouw-web && npx cap sync` — dat regenereert `ios/App/CapApp-SPM/Package.swift` en
+  `android/app/src/main/assets/capacitor.plugins.json` (CLI-managed, niet met de hand bewerkt); niet gedaan in deze
+  run (netwerk). Geen versionCode-/buildnummer-bump gedaan.
+- Kliktest ná de build: (1) uitnodigingsmail op het toestel → link tikken → app opent DIRECT op de code-keuze; (2) app koud
+  starten via de link (app gesloten) → idem (getLaunchUrl-pad); (3) app openen zónder link → login → mislukte poging →
+  hulpblok → "Link plakken" met de mail-link → code-keuze; (4) "Mail-app openen" op iOS én Android (schema-afhandeling
+  door de webview — bij falen staat de fallback-tekst er).
+
+**Beslispunten Peter (E):**
+1. Expliciete server-detectie "dit adres is uitgenodigd maar niet geactiveerd" is NIET gebouwd (enumeratie-afweging:
+   zo'n antwoord verraadt per e-mailadres of er een account bestaat — precies wat de generieke 409 voorkomt, 0022-lijn).
+   Wil Peter het tóch: variant mét rate-limit per IP+adres (bv. 5/uur) én alleen het onderscheid "uitgenodigd" vs
+   "anders" (nooit "bestaat niet") — aanbeveling: niet doen, het generieke hulpblok dekt de casus.
+2. Tweede vangnet voor mail-apps die universal links niet doorgeven (Gmail-/Outlook-in-app-browser): een custom
+   URL-scheme (`nl.aknijenhuis.goedkeuren://activeren?token=`) + knop "Open in de app" op het web-/activeren-scherm.
+   Aanbeveling: pas ná de kliktest van E1 — mogelijk overbodig nu de plugin er is; "Link plakken" dekt het al handmatig.
+3. Universal-link-verificatie iOS vergt óók de capability "Associated Domains" op het App ID in de Apple Developer
+   portal én de AASA op het app-domein (backend serveert 'm — `APPLE_TEAM_ID`/`NATIVE_APP_BUNDLE_ID` gezet?); Android
+   vergt assetlinks op het app-domein (backend) — beide niet lokaal te toetsen. Klikpunt bij de store-build.
 
