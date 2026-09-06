@@ -91,7 +91,9 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-function stub() {
+const LEVERANCIERS_403_DETAIL = "Catalogus lezen vereist Beheerder, Boekhouding+Projecten óf het module-recht 'Meerwerk & urenstaten'"
+
+function stub(opties: { leveranciers403?: boolean } = {}) {
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
@@ -99,7 +101,10 @@ function stub() {
     if (method === 'POST' && url.endsWith('/materiaal/a1/transport')) return jsonResponse({ ...T_GERESERVEERD, id: 'nieuw' }, 201)
     if (url.includes('/materiaal/a1/transport')) return jsonResponse(WEEK)
     if (url.includes('/materiaal/a1/bestellingen')) return jsonResponse({ items: [], totaal: 0, pagina: 1, per_pagina: 10 })
-    if (url.includes('/materiaal/a1/leveranciers')) return jsonResponse(LEVERANCIERS)
+    if (url.includes('/materiaal/a1/leveranciers')) {
+      if (opties.leveranciers403) return jsonResponse({ detail: LEVERANCIERS_403_DETAIL }, 403)
+      return jsonResponse(LEVERANCIERS)
+    }
     if (url.includes('/materiaal/a1/stand/')) return jsonResponse({ project_id: 'p1', project_naam: '144 Breda', tot_en_met: '2026-08-25', regels: [], m2_op_locatie: '0.00', totaal_items: 0, leveranciers: [] })
     return jsonResponse({})
   })
@@ -123,6 +128,19 @@ function renderTab() {
 }
 
 describe('TransportTab (dag-agenda)', () => {
+  it('403 op leveranciers = eerlijke foutmelding mét server-detail, géén "Nog geen leveranciers" (06-09)', async () => {
+    stub({ leveranciers403: true })
+    const { container } = renderTab()
+    await waitFor(() => expect(container.querySelectorAll('tbody td')).toHaveLength(5))
+    const melding = await screen.findByRole('alert')
+    expect(melding).toHaveTextContent(`Leveranciers konden niet worden geladen: ${LEVERANCIERS_403_DETAIL}`)
+    expect(screen.queryByText(/Nog geen leveranciers/)).not.toBeInTheDocument()
+    // Plannen vanuit de signaalkaart "nog te plannen" stopt op dezelfde eerlijke reden, niet op "nog geen leveranciers".
+    fireEvent.click(screen.getByText(/BST-2026-0007/))
+    await waitFor(() => expect(screen.getAllByText(/Leveranciers konden niet worden geladen/).length).toBeGreaterThanOrEqual(1))
+    expect(screen.queryByText(/Nog geen leveranciers/)).not.toBeInTheDocument()
+  })
+
   it('toont kaarten in de juiste dagkolom mét adres, klant en statuskleur-tekst', async () => {
     stub()
     const { container } = renderTab()

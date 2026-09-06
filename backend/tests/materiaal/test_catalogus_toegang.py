@@ -5,10 +5,12 @@ Odoo-backend ÓF een Odoo-leesbron-koppeling heeft; bestellingen, transport, mat
 RLZ zonder beide: 409 mét de leesbare reden. `mijn-toegang` levert `administraties_met_catalogus` náást de
 ongewijzigde `administraties_met_opt_in`. Echte niet-Beheerder MÉT scope voor het RLS-pad (les 25-08).
 
-Rolpoort catalogus (Odoo-slotstuk C2, besluit Peter 04-09 — sloot beslispunt 2 van blok B): de drie LEESROUTES
-(`/leveranciers`, `/leveranciers/{lid}/catalogus`, `/producten`) dragen dezelfde poort als de PUT-kant —
-Beheerder óf B+P (`require_beheerder_of_bp` in de router + `_vereis_beheerder` in de motor), zónder het
-module-recht 'Meerwerk & urenstaten'; Boekhouding mét dat recht krijgt 403, B+P zónder dat recht 200."""
+Rolpoort catalogus (besluit Peter 06-09, herziet Odoo-slotstuk C2 04-09 "lezen = schrijven"): de drie LEESROUTES
+(`/leveranciers`, `/leveranciers/{lid}/catalogus`, `/producten`) dragen de smalle leespoort `require_catalogus_lezer`
+(router) + `_vereis_catalogus_lezer` (motor) = Beheerder óf B+P ÓF kantoorrol mét het module-recht 'Meerwerk &
+urenstaten' — de planner op de Transport-tab moet leveranciers/catalogus zien. Schrijven blijft Beheerder/B+P:
+Boekhouding mét meerwerk-recht leest (200) maar schrijft niet (403); zonder dat recht 403 op alles; B+P zónder
+meerwerk-recht leest én schrijft."""
 
 from __future__ import annotations
 
@@ -187,16 +189,18 @@ class TestCatalogusPoort:
         items, totaal = materiaal.bestellingen_overzicht(administratie_id=administratie_id, actor_id=beheerder_id)
         assert (items, totaal) == ([], 0)
 
-    def test_catalogus_lezen_is_beheerder_of_bp_boekhouding_met_meerwerk_recht_403(
+    def test_boekhouding_met_meerwerk_recht_leest_catalogus_maar_schrijft_niet(
         self, administratie_odoo, beheerder_id, admin_engine
     ):
-        """Besluit Peter 04-09 (C2): lezen = schrijven. Boekhouding MÉT scope én mét het module-recht 'Meerwerk &
-        urenstaten' krijgt op de drie leesroutes 403 (router én motor) — precies zoals op de PUT-kant."""
+        """Besluit Peter 06-09 (herziet C2 04-09): smalle LEESroute. Boekhouding MÉT scope én mét het module-recht
+        'Meerwerk & urenstaten' leest de drie routes (motor + API, RLS-pad echte niet-Beheerder) — de PUT blijft 403.
+        Diezelfde Boekhouding ZONDER het recht: GeenToegang in de motor + 403 op alle drie de GET's."""
         aid = administratie_odoo
         boekhouder = maak_gebruiker(admin_engine, "boekhouding", "Rob T.")
         auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=boekhouder, administratie_id=aid)
-        uren_service.zet_meerwerk_recht(gebruiker_id=boekhouder, ingeschakeld=True, actor_id=beheerder_id)
         lid = materiaal.seed_universal(administratie_id=aid, actor_id=beheerder_id).leverancier_id
+        h = _bearer(boekhouder, rol="boekhouding")
+        # Zonder recht: dicht (motor én router).
         with pytest.raises(uren_service.GeenToegang):
             materiaal.leveranciers_overzicht(administratie_id=aid, actor_id=boekhouder)
         with pytest.raises(uren_service.GeenToegang):
@@ -205,11 +209,28 @@ class TestCatalogusPoort:
             materiaal.producten_overzicht(
                 administratie_id=aid, actor_id=boekhouder, leverancier_id=None, zoek="", pagina=1, per_pagina=5
             )
-        h = _bearer(boekhouder, rol="boekhouding")
         assert client.get(f"/materiaal/{aid}/leveranciers", headers=h).status_code == 403
         assert client.get(f"/materiaal/{aid}/leveranciers/{lid}/catalogus", headers=h).status_code == 403
         assert client.get(f"/materiaal/{aid}/producten?zoek=ladder", headers=h).status_code == 403
+        # Mét recht: lezen open, schrijven dicht.
+        uren_service.zet_meerwerk_recht(gebruiker_id=boekhouder, ingeschakeld=True, actor_id=beheerder_id)
+        levs = materiaal.leveranciers_overzicht(administratie_id=aid, actor_id=boekhouder)
+        assert len(levs) == 1 and levs[0].aantal_producten == 53
+        assert len(materiaal.catalogus(administratie_id=aid, leverancier_id=lid, actor_id=boekhouder)) == 13
+        _, totaal = materiaal.producten_overzicht(
+            administratie_id=aid, actor_id=boekhouder, leverancier_id=None, zoek="tubelock", pagina=1, per_pagina=3
+        )
+        assert totaal == 8
+        assert client.get(f"/materiaal/{aid}/leveranciers", headers=h).status_code == 200
+        assert client.get(f"/materiaal/{aid}/leveranciers/{lid}/catalogus", headers=h).status_code == 200
+        resp = client.get(f"/materiaal/{aid}/producten?zoek=ladder&per_pagina=10", headers=h)
+        assert resp.status_code == 200 and resp.json()["totaal"] == 2
         assert client.put(f"/materiaal/{aid}/leveranciers", json={"naam": "X"}, headers=h).status_code == 403
+        with pytest.raises(uren_service.GeenToegang):
+            materiaal.zet_leverancier(
+                administratie_id=aid, actor_id=boekhouder, leverancier_id=None, naam="X",
+                bestel_email=None, telefoon=None, adres=None, vendor_id=None,
+            )
 
     def test_bp_zonder_meerwerk_recht_met_scope_leest_en_schrijft_catalogus(
         self, administratie_odoo, beheerder_id, admin_engine

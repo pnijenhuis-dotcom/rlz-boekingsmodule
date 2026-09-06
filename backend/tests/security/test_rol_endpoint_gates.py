@@ -177,8 +177,9 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match"),
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/verplichting-match/koppel"),
         ("GET", "/verplichtingen"),  # kantoorbrede Inzicht-lijst (⑦)
-        # Materiaalcatalogus (Odoo-slotstuk C2 04-09, besluit Peter): LEZEN = SCHRIJVEN = Beheerder/B+P
-        # (`require_beheerder_of_bp` + scope), géén module-recht 'Meerwerk & urenstaten' — zie CATALOGUS_PADEN.
+        # Materiaalcatalogus (besluit Peter 06-09, herziet Odoo-slotstuk C2 04-09): LEZEN = smalle leespoort
+        # `require_catalogus_lezer` (Beheerder/B+P óf kantoorrol mét module-recht 'Meerwerk & urenstaten') + scope;
+        # SCHRIJVEN blijft `require_beheerder_of_bp` — zie CATALOGUS_PADEN + TestCatalogusRolpoort.
         ("GET", f"/materiaal/{aid}/leveranciers"),
         ("GET", f"/materiaal/{aid}/leveranciers/{DUMMY_ID}/catalogus"),
         ("GET", f"/materiaal/{aid}/producten"),
@@ -191,9 +192,14 @@ CATALOGUS_PADEN = re.compile(r"^/materiaal/[^/]+/(leveranciers|producten)(/[^/]+
 
 
 def _is_catalogus_pad(pad: str) -> bool:
-    """De drie catalogus-leesroutes + de leveranciers-PUT: Beheerder/B+P-only (C2 04-09). Bewust een
-    precieze match — bestellingen/transport/stand/match onder /materiaal blijven kantoorrol + module-recht."""
+    """De drie catalogus-leesroutes + de leveranciers-PUT (lezen: Beheerder/B+P óf meerwerk-recht — 06-09;
+    schrijven: Beheerder/B+P). Bewust een precieze match — bestellingen/transport/stand/match onder /materiaal
+    blijven kantoorrol + module-recht."""
     return CATALOGUS_PADEN.match(pad) is not None
+
+
+def _is_catalogus_leesroute(methode: str, pad: str) -> bool:
+    return methode == "GET" and _is_catalogus_pad(pad)
 
 
 class TestExterneRollenGeweigerd:
@@ -282,9 +288,9 @@ class TestKantoorBlijftWerken:
                 or pad == "/reconciliatie/run"
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
-                # (materiaalcatalogus lezen+schrijven, C2 04-09) resp. module-recht 'Meerwerk & urenstaten'
-                # (bestellingen): 403 voor een boekhouder zónder dat recht is correct bestaand gedrag, geen
-                # rolpoort-regressie. De positieve/negatieve catalogus-poort staat in TestCatalogusRolpoort.
+                # (materiaalcatalogus schrijven; lezen sinds 06-09 óók mét meerwerk-recht) resp. module-recht
+                # 'Meerwerk & urenstaten' (bestellingen): 403 voor een boekhouder zónder dat recht is correct
+                # bestaand gedrag, geen rolpoort-regressie. De catalogus-poort staat in TestCatalogusRolpoort.
                 # Reconciliatie (06-09): accepteren en "Nu draaien" zijn Beheerder-only (bestaande
                 # acceptatie-schrijver); lijst/stand/gezien blijven voor élke kantoorrol open.
                 continue
@@ -302,11 +308,12 @@ class TestKantoorBlijftWerken:
 
 
 class TestCatalogusRolpoort:
-    """Materiaalcatalogus lezen = schrijven (besluit Peter 04-09, Odoo-slotstuk C2): de drie leesroutes dragen
-    `require_beheerder_of_bp`. B+P mét scope wordt door de rólpoort niet geweigerd (de Matrix-administratie heeft
-    geen catalogus-toegang → 409 uit de motor, dat is géén rolweigering); Boekhouding mét scope én mét het
-    module-recht 'Meerwerk & urenstaten' krijgt 403 — dat recht opent de catalogus niet meer. Bestellingen
-    (steigerbouw-tak) blijven voor Boekhouding mét dat recht wél open (geen 403)."""
+    """Materiaalcatalogus (besluit Peter 06-09, herziet C2 04-09 "lezen = schrijven"): de drie LEESROUTES dragen
+    de smalle leespoort `require_catalogus_lezer` = Beheerder/B+P ÓF kantoorrol MÉT module-recht 'Meerwerk &
+    urenstaten'; de leveranciers-PUT blijft `require_beheerder_of_bp`. B+P mét scope wordt door de rólpoort niet
+    geweigerd (de Matrix-administratie heeft geen catalogus-toegang → 409 uit de motor, dat is géén rolweigering);
+    Boekhouding mét scope én meerwerk-recht leest (geen 401/403 op de GET's) maar schrijft niet (PUT 403);
+    Boekhouding zónder dat recht krijgt 403 op alle vier; externe rollen 403 (fail-closed)."""
 
     @pytest.fixture
     def bp(self, admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID:
@@ -332,16 +339,44 @@ class TestCatalogusRolpoort:
             resp = client.request(methode, pad, headers=_bearer(bp, rol="boekhouding_projecten"))
             assert resp.status_code not in (401, 403), f"B+P {methode} {pad}: onterecht {resp.status_code}"
 
-    def test_boekhouding_met_meerwerk_recht_403_op_catalogus_maar_niet_op_bestellingen(
+    def test_boekhouding_met_meerwerk_recht_leest_catalogus_maar_schrijft_niet(
         self, boekhouder_met_meerwerk_recht, administratie_id
     ):
         h = _bearer(boekhouder_met_meerwerk_recht, rol="boekhouding")
+        gezien = 0
+        for methode, pad in _kantoor_endpoints(administratie_id):
+            if not _is_catalogus_pad(pad):
+                continue
+            resp = client.request(methode, pad, headers=h)
+            if _is_catalogus_leesroute(methode, pad):
+                gezien += 1
+                assert resp.status_code not in (401, 403), f"+recht {methode} {pad}: onterecht {resp.status_code}"
+            else:
+                assert resp.status_code == 403, f"+recht {methode} {pad}: verwacht 403, kreeg {resp.status_code}"
+        assert gezien == 3
+        resp = client.get(f"/materiaal/{administratie_id}/bestellingen", headers=h)
+        assert resp.status_code not in (401, 403), f"bestellingen: onterecht {resp.status_code}"
+
+    def test_boekhouding_zonder_meerwerk_recht_403_op_alle_catalogus_paden(self, boekhouder, administratie_id):
+        assert not uren_service.heeft_meerwerk_urenstaten_recht(gebruiker_id=boekhouder, rol="boekhouding")
+        h = _bearer(boekhouder, rol="boekhouding")
         for methode, pad in _kantoor_endpoints(administratie_id):
             if _is_catalogus_pad(pad):
                 resp = client.request(methode, pad, headers=h)
                 assert resp.status_code == 403, f"boekhouding {methode} {pad}: verwacht 403, kreeg {resp.status_code}"
-        resp = client.get(f"/materiaal/{administratie_id}/bestellingen", headers=h)
-        assert resp.status_code not in (401, 403), f"bestellingen: onterecht {resp.status_code}"
+
+    @pytest.mark.parametrize("rol", VELD_ROLLEN)
+    def test_externe_rollen_403_op_catalogus_leesroutes(
+        self, admin_engine: Engine, beheerder_id, administratie_id, rol
+    ):
+        """Fail-closed: een veldrol mét scope komt door `require_catalogus_lezer` nooit heen — de router-brede
+        `vereis_kantoorrol` vangt 'm al, en `heeft_meerwerk_urenstaten_recht` is voor externe rollen altijd False."""
+        gid = maak_gebruiker(admin_engine, rol, f"Veld {rol}")
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
+        for methode, pad in _kantoor_endpoints(administratie_id):
+            if _is_catalogus_leesroute(methode, pad):
+                resp = client.request(methode, pad, headers=_bearer(gid, rol=rol))
+                assert resp.status_code == 403, f"{rol} {methode} {pad}: verwacht 403, kreeg {resp.status_code}"
 
 
 # --- Laag 2: fail-closed sweep over álle routes -------------------------------------------------

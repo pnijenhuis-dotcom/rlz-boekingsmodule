@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.auth.deps import (
     CurrentGebruiker,
     require_beheerder_of_bp,
+    require_catalogus_lezer,
     require_meerwerk_urenstaten_recht,
     vereis_administratie_scope,
     vereis_kantoorrol,
@@ -62,10 +63,13 @@ def _transport_dto(t: materiaal.TransportData) -> schemas.TransportDto:
 
 
 # --- catalogus ---------------------------------------------------------------------------------------
-# Rolpoort catalogus-LEESROUTES = de PUT-kant (besluit Peter 04-09, Odoo-slotstuk C2; sloot beslispunt 2 van
-# "ODOO-AFRONDINGSRUN 04-09 blok B"): `require_beheerder_of_bp` náást de administratie-scope, fail-closed —
-# géén module-recht 'Meerwerk & urenstaten' meer op lezen. Bestellingen/transport/stand/match hieronder blijven
-# achter `require_meerwerk_urenstaten_recht` (steigerbouw-tak). Motor spiegelt dit (`_vereis_beheerder`).
+# Rolpoort catalogus (besluit Peter 06-09, herziet Odoo-slotstuk C2 "lezen = schrijven" van 04-09): de drie
+# LEESROUTES (`leveranciers`, `catalogus`, `producten`) dragen de smalle leespoort `require_catalogus_lezer`
+# = Beheerder ÓF B+P ÓF kantoorrol MÉT module-recht 'Meerwerk & urenstaten' (de planner op de Transport-tab
+# moet leveranciers/catalogus zien om te kunnen plannen) — náást de administratie-scope, fail-closed voor
+# externe rollen. MUTEREN (PUT/POST/seed) blijft `require_beheerder_of_bp`. Bestellingen/transport/stand/
+# match hieronder blijven achter `require_meerwerk_urenstaten_recht` (steigerbouw-tak). Motor spiegelt dit
+# (`_vereis_catalogus_lezer` op de lezers, `_vereis_beheerder` op de schrijvers).
 
 
 @router.get("/{administratie_id}/leveranciers", response_model=list[schemas.LeverancierDto])
@@ -73,7 +77,7 @@ def leveranciers(
     administratie_id: uuid.UUID,
     zoek: str = "",
     alleen_actief: bool = True,
-    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
+    actor: CurrentGebruiker = Depends(require_catalogus_lezer),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.LeverancierDto]:
     try:
@@ -117,7 +121,7 @@ def catalogus(
     administratie_id: uuid.UUID,
     leverancier_id: uuid.UUID,
     alleen_actief: bool = True,
-    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
+    actor: CurrentGebruiker = Depends(require_catalogus_lezer),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> list[schemas.CategorieDto]:
     try:
@@ -149,7 +153,7 @@ def producten(
     zoek: str = "",
     pagina: int = 1,
     per_pagina: int = 25,
-    actor: CurrentGebruiker = Depends(require_beheerder_of_bp),
+    actor: CurrentGebruiker = Depends(require_catalogus_lezer),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.ProductenPaginaDto:
     try:

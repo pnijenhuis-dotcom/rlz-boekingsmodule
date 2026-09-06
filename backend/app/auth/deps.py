@@ -156,6 +156,27 @@ def require_meerwerk_urenstaten_recht(
     return current
 
 
+def require_catalogus_lezer(
+    current: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> CurrentGebruiker:
+    """Smalle LEESpoort op de materiaalcatalogus (besluit Peter 06-09, herziet Odoo-slotstuk C2 "lezen =
+    schrijven"): Beheerder ÓF Boekhouding+Projecten ÓF een kantoorrol MÉT het module-recht 'Meerwerk &
+    urenstaten' — de planner op de Transport-tab moet leveranciers en catalogus kunnen zien om te kunnen
+    plannen. Muteren (PUT/POST) blijft `require_beheerder_of_bp`. Fail-closed: externe app-rollen krijgen
+    hier nooit door (`heeft_meerwerk_urenstaten_recht` geeft voor hen altijd False). Klantscope blijft
+    eronder gelden (`vereis_administratie_scope`)."""
+    if current.rol in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
+        return current
+    from app.uren.service import heeft_meerwerk_urenstaten_recht
+
+    if is_kantoorrol(current.rol) and heeft_meerwerk_urenstaten_recht(gebruiker_id=current.id, rol=current.rol):
+        return current
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Catalogus lezen vereist Beheerder, Boekhouding+Projecten óf het module-recht 'Meerwerk & urenstaten'",
+    )
+
+
 def vereis_administratie_scope(
     administratie_id: uuid.UUID, current: CurrentGebruiker = Depends(get_current_gebruiker)
 ) -> CurrentGebruiker:

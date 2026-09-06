@@ -27,6 +27,13 @@ import {
   type TransportWeekDto,
 } from './transportApi'
 
+/** Laadfout ≠ lege lijst (besluit Peter 06-09, "niets verdwijnt stil"): een 403/andere fout op leveranciers of
+ * catalogus wordt als eerlijke melding mét de server-detail-tekst getoond — nooit meer stil als "Nog geen …". */
+function laadFoutTekst(wat: string, err: unknown): string {
+  const detail = err instanceof ApiError || err instanceof Error ? err.message : 'onbekende fout'
+  return `${wat} konden niet worden geladen: ${detail}`
+}
+
 /* Transport-tab op /planning als DAG-AGENDA (feedbackronde Peter 31-08, mockup
  * planning-werkopdracht-transport.html TAB 2 = norm): géén projectrijen — kolommen = de vijf
  * werkdagen, elke kaart is zelfstandig leesbaar (projectnr · klant · adres · ▲levering/▼retour ·
@@ -98,6 +105,8 @@ export function TransportTab({
   const [fout, setFout] = useState<string | null>(null)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [leveranciers, setLeveranciers] = useState<LeverancierDto[]>([])
+  // Aparte state: een mislukte lading (bv. 403 op de catalogus-leesroute) is géén lege leverancierslijst.
+  const [leveranciersFout, setLeveranciersFout] = useState<string | null>(null)
   const [bewerk, setBewerk] = useState<TransportDto | null>(null)
   const [bevestigKaart, setBevestigKaart] = useState<TransportDto | null>(null)
   const [lijstKaart, setLijstKaart] = useState<TransportDto | null>(null)
@@ -210,6 +219,10 @@ export function TransportTab({
 
   /** Plannen vereist een leverancier: precies één actieve = die; anders eerst een keuzemenu. */
   function startPlan(projectId: string, label: string, datum: string, bestellingId: string | null) {
+    if (leveranciersFout) {
+      setActieFout(leveranciersFout)
+      return
+    }
     if (leveranciers.length === 0) {
       setActieFout('Nog geen leveranciers — Beheerder: Instellingen → Materiaalcatalogus.')
       return
@@ -592,7 +605,14 @@ export function TransportTab({
 
           <div className="panel">
             <h2 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}>🚚 Leveranciers</h2>
-            {leveranciers.length === 0 && <p className="hint" style={{ margin: 0, fontSize: 11.5 }}>Nog geen leveranciers — Beheerder: Instellingen → Materiaalcatalogus.</p>}
+            {leveranciersFout && (
+              <div className="fout" role="alert" style={{ fontSize: 11.5 }}>
+                {leveranciersFout}
+              </div>
+            )}
+            {!leveranciersFout && leveranciers.length === 0 && (
+              <p className="hint" style={{ margin: 0, fontSize: 11.5 }}>Nog geen leveranciers — Beheerder: Instellingen → Materiaalcatalogus.</p>
+            )}
             {leveranciers.map((l) => (
               <div key={l.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
                 <b>{l.naam}</b>
@@ -853,6 +873,7 @@ function MateriaallijstDialog({
   const [regels, setRegels] = useState<Record<string, number>>(Object.fromEntries(t.regels.map((r) => [r.product_id, r.aantal])))
   const [planner, setPlanner] = useState(t.transportplanner ?? '')
   const [catalogus, setCatalogus] = useState<CategorieDto[]>([])
+  const [catalogusFout, setCatalogusFout] = useState<string | null>(null)
   const [zoek, setZoek] = useState('')
   const [bezig, setBezig] = useState(false)
   const [foutBericht, setFoutBericht] = useState<string | null>(null)
@@ -895,7 +916,12 @@ function MateriaallijstDialog({
           style={{ width: '100%' }}
         />
         <div style={{ maxHeight: '46vh', overflowY: 'auto', marginTop: 6 }}>
-          {catalogus.length === 0 && <p className="hint">Catalogus wordt geladen — of de leverancier heeft nog geen producten.</p>}
+          {catalogusFout && (
+            <div className="fout" role="alert">
+              {catalogusFout}
+            </div>
+          )}
+          {!catalogusFout && catalogus.length === 0 && <p className="hint">Catalogus wordt geladen — of de leverancier heeft nog geen producten.</p>}
           {catalogus.map((cat) => {
             const producten = cat.producten.filter((p) => (regels[p.id] ?? 0) > 0 || !term || p.naam.toLowerCase().includes(term))
             if (producten.length === 0) return null
@@ -1023,6 +1049,7 @@ function TransportWijzigDialog({
   const [omschrijving, setOmschrijving] = useState(bestaand.omschrijving ?? '')
   const [regels, setRegels] = useState<Record<string, number>>(Object.fromEntries(bestaand.regels.map((r) => [r.product_id, r.aantal])))
   const [catalogus, setCatalogus] = useState<CategorieDto[]>([])
+  const [catalogusFout, setCatalogusFout] = useState<string | null>(null)
   const [zoek, setZoek] = useState('')
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
@@ -1093,6 +1120,11 @@ function TransportWijzigDialog({
         </label>
         <div style={{ marginTop: 8 }}>
           <input type="search" placeholder="Materiaal zoeken in de catalogus…" value={zoek} onChange={(e) => setZoek(e.target.value)} style={{ width: '100%' }} aria-label="Materiaal zoeken" />
+          {catalogusFout && (
+            <div className="fout" role="alert" style={{ marginTop: 6 }}>
+              {catalogusFout}
+            </div>
+          )}
           <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 6 }}>
             {getoond.map((p) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 12.5 }}>

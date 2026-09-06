@@ -99,7 +99,13 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
     haalProducten(administratieId, { leverancier_id: leverancierId, zoek, pagina, per_pagina: 25 })
       .then((r) => setProducten({ items: r.items, totaal: r.totaal }))
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Producten laden mislukt'))
-    haalCatalogus(administratieId, leverancierId, false).then(setCategorieen).catch(() => setCategorieen([]))
+    // Laadfout ≠ lege lijst (06-09): een fout op de categorieën is zichtbaar, niet stil een leeg keuzemenu.
+    haalCatalogus(administratieId, leverancierId, false)
+      .then(setCategorieen)
+      .catch((err: unknown) => {
+        setCategorieen([])
+        setFout(`Categorieën konden niet worden geladen: ${err instanceof Error ? err.message : 'onbekende fout'}`)
+      })
   }, [administratieId, leverancierId, zoek, pagina])
   useEffect(() => {
     laadProducten()

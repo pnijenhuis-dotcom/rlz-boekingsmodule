@@ -56,6 +56,7 @@ from app.uren.service import (
     UrenFout,
     _administratie_met_opt_in,
     _vereis_meerwerk_recht,
+    heeft_meerwerk_urenstaten_recht,
     week_grenzen,
 )
 
@@ -73,6 +74,23 @@ def _vereis_beheerder(session, actor_id: uuid.UUID) -> None:
     actor = session.get(Gebruiker, actor_id)
     if actor is None or actor.rol not in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
         raise GeenToegang("Catalogusbeheer is voorbehouden aan Beheerder en Boekhouding+Projecten")
+
+
+def _vereis_catalogus_lezer(session, actor_id: uuid.UUID) -> None:
+    """Smalle LEESpoort catalogus (besluit Peter 06-09, herziet C2 04-09 "lezen = schrijven"): Beheerder ÓF
+    B+P ÓF kantoorrol MÉT module-recht 'Meerwerk & urenstaten' — spiegel van `require_catalogus_lezer` in
+    de router, hier in de motor afgedwongen zodat een CLI-/service-aanroeper dezelfde grens houdt. Externe
+    rollen: `heeft_meerwerk_urenstaten_recht` is voor hen altijd False → GeenToegang (fail-closed)."""
+    actor = session.get(Gebruiker, actor_id)
+    if actor is None:
+        raise GeenToegang("Onbekende gebruiker")
+    if actor.rol in (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN):
+        return
+    if heeft_meerwerk_urenstaten_recht(gebruiker_id=actor_id, rol=actor.rol):
+        return
+    raise GeenToegang(
+        "Catalogus lezen vereist Beheerder, Boekhouding+Projecten óf het module-recht 'Meerwerk & urenstaten'"
+    )
 
 
 CATALOGUS_VEREIST_TEKST = "Materiaalcatalogus vereist Uren & meerwerk óf een Odoo-koppeling voor deze administratie"
@@ -93,9 +111,10 @@ def heeft_catalogus_toegang(session, administratie: Administratie) -> bool:
 
 def _administratie_met_catalogus_toegang(session, administratie_id: uuid.UUID) -> Administratie:
     """Catalogus-poort (zie `heeft_catalogus_toegang`): 404 onbekend, 409 `ModuleUitgeschakeld` mét
-    leesbare reden. UITSLUITEND voor de catalogus-functies; de rolpoort `_vereis_beheerder` (Beheerder/B+P)
-    geldt sinds 04-09 (Odoo-slotstuk C2, besluit Peter) op lezers én schrijvers van de catalogus — het
-    module-recht 'Meerwerk & urenstaten' blijft de poort van de steigerbouw-tak (bestellingen/transport/stand)."""
+    leesbare reden. UITSLUITEND voor de catalogus-functies. Rolpoort (besluit Peter 06-09, herziet C2 04-09):
+    LEZEN = `_vereis_catalogus_lezer` (Beheerder/B+P óf module-recht 'Meerwerk & urenstaten'), SCHRIJVEN =
+    `_vereis_beheerder` (Beheerder/B+P). Het module-recht blijft daarnaast de poort van de steigerbouw-tak
+    (bestellingen/transport/stand)."""
     administratie = session.get(Administratie, administratie_id)
     if administratie is None:
         raise NietGevonden("Onbekende administratie")
@@ -189,7 +208,7 @@ def leveranciers_overzicht(
 ) -> list[LeverancierData]:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_catalogus_toegang(session, administratie_id)
-        _vereis_beheerder(session, actor_id)  # lezen = schrijven: Beheerder/B+P (besluit Peter 04-09, C2)
+        _vereis_catalogus_lezer(session, actor_id)  # lezen: Beheerder/B+P óf meerwerk-recht (Peter 06-09)
         query = select(MateriaalLeverancier).where(MateriaalLeverancier.administratie_id == administratie_id)
         if alleen_actief:
             query = query.where(MateriaalLeverancier.actief.is_(True))
@@ -350,7 +369,7 @@ def catalogus(
 ) -> list[CategorieData]:
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_catalogus_toegang(session, administratie_id)
-        _vereis_beheerder(session, actor_id)  # lezen = schrijven: Beheerder/B+P (besluit Peter 04-09, C2)
+        _vereis_catalogus_lezer(session, actor_id)  # lezen: Beheerder/B+P óf meerwerk-recht (Peter 06-09)
         _leverancier(session, administratie_id, leverancier_id)
         return _catalogus_in_sessie(session, administratie_id, leverancier_id, alleen_actief=alleen_actief)
 
@@ -368,7 +387,7 @@ def producten_overzicht(
     per_pagina = max(1, min(per_pagina, MAX_PER_PAGINA))
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_catalogus_toegang(session, administratie_id)
-        _vereis_beheerder(session, actor_id)  # lezen = schrijven: Beheerder/B+P (besluit Peter 04-09, C2)
+        _vereis_catalogus_lezer(session, actor_id)  # lezen: Beheerder/B+P óf meerwerk-recht (Peter 06-09)
         query = (
             select(MateriaalProduct, MateriaalCategorie)
             .join(MateriaalCategorie, MateriaalCategorie.id == MateriaalProduct.categorie_id)

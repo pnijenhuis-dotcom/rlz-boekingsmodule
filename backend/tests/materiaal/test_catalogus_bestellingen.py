@@ -71,12 +71,12 @@ class TestCatalogus:
         lid = materiaal.zet_leverancier(administratie_id=administratie_id, actor_id=beheerder_id, leverancier_id=None, naam="Floor Liften", bestel_email="planning@floorliften.nl", telefoon=None, adres=None, vendor_id=uuid.uuid4())
         cid = materiaal.zet_categorie(administratie_id=administratie_id, actor_id=beheerder_id, leverancier_id=lid, categorie_id=None, naam="Liften", bundel="overig", volgorde=1)
         pid = materiaal.zet_product(administratie_id=administratie_id, actor_id=beheerder_id, leverancier_id=lid, product_id=None, categorie_id=cid, naam="Bouwlift 500 kg", verpakking="st.", eenheid="stuks", m2_lengte=None, volgorde=1)
-        # Lezen = schrijven (besluit Peter 04-09, Odoo-slotstuk C2): Boekhouding — óók mét meerwerk-recht en scope —
-        # leest de catalogus niet meer; zoeken/paginering via een B+P'er ZONDER meerwerk-recht (het RLS-pad).
-        with pytest.raises(uren_service.GeenToegang):
-            materiaal.producten_overzicht(administratie_id=administratie_id, actor_id=boekhouder, leverancier_id=None, zoek="tubelock", pagina=1, per_pagina=3)
-        with pytest.raises(uren_service.GeenToegang):
-            materiaal.leveranciers_overzicht(administratie_id=administratie_id, actor_id=boekhouder, zoek="floor")
+        # Smalle leesroute (besluit Peter 06-09, herziet C2 04-09): Boekhouding mét meerwerk-recht en scope LEEST de
+        # catalogus (RLS-pad, echte niet-Beheerder) maar schrijft niet (hierboven GeenToegang op zet_leverancier).
+        items_b, totaal_b = materiaal.producten_overzicht(administratie_id=administratie_id, actor_id=boekhouder, leverancier_id=None, zoek="tubelock", pagina=1, per_pagina=3)
+        assert totaal_b == 8 and len(items_b) == 3
+        assert [lv.naam for lv in materiaal.leveranciers_overzicht(administratie_id=administratie_id, actor_id=boekhouder, zoek="floor")] == ["Floor Liften"]
+        # Zoeken/paginering óók via een B+P'er ZONDER meerwerk-recht (leest én schrijft, ongewijzigd sinds 04-09).
         bp = maak_gebruiker(admin_engine, "boekhouding_projecten", "Haci K.")
         auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=bp, administratie_id=administratie_id)
         items, totaal = materiaal.producten_overzicht(administratie_id=administratie_id, actor_id=bp, leverancier_id=None, zoek="tubelock", pagina=1, per_pagina=3)
@@ -86,15 +86,15 @@ class TestCatalogus:
         levs = materiaal.leveranciers_overzicht(administratie_id=administratie_id, actor_id=bp, zoek="floor")
         assert [lv.naam for lv in levs] == ["Floor Liften"] and levs[0].aantal_producten == 1
         assert "materiaal_product_gezet" in _audit(admin_engine, pid)
-        # API-poorten: veldrol 403 (kantoorrol router-breed); catalogus-GET én -PUT = Beheerder óf B+P
-        # (PUT sinds 31-08, GET sinds 04-09) — rol 'boekhouding' is dus 403 op beide (het B+P-pad staat in test_transport_v2).
+        # API-poorten: veldrol 403 (kantoorrol router-breed); catalogus-GET = Beheerder/B+P óf meerwerk-recht (06-09),
+        # catalogus-PUT = Beheerder óf B+P (31-08) — rol 'boekhouding' mét recht: GET 200, PUT 403.
         zzper = maak_gebruiker(admin_engine, "zzper", "Milan")
         assert client.get(f"/materiaal/{administratie_id}/leveranciers", headers=_bearer(zzper, rol="zzper")).status_code == 403
-        assert client.get(f"/materiaal/{administratie_id}/leveranciers", headers=_bearer(boekhouder, rol="boekhouding")).status_code == 403
+        assert client.get(f"/materiaal/{administratie_id}/leveranciers", headers=_bearer(boekhouder, rol="boekhouding")).status_code == 200
         resp = client.put(f"/materiaal/{administratie_id}/leveranciers", json={"naam": "X"}, headers=_bearer(boekhouder, rol="boekhouding"))
         assert resp.status_code == 403
         resp = client.get(f"/materiaal/{administratie_id}/producten?zoek=ladder&per_pagina=10", headers=_bearer(boekhouder, rol="boekhouding"))
-        assert resp.status_code == 403
+        assert resp.status_code == 200 and resp.json()["totaal"] == 2
         resp = client.get(f"/materiaal/{administratie_id}/producten?zoek=ladder&per_pagina=10", headers=_bearer(bp, rol="boekhouding_projecten"))
         assert resp.status_code == 200 and resp.json()["totaal"] == 2
 
