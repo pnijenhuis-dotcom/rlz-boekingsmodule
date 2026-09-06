@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0113
+-- Migratie-head bij deze dump: 0114
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2245,6 +2245,85 @@ ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: reconciliatie_bevinding; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.reconciliatie_bevinding (
+    id uuid NOT NULL,
+    run_id uuid NOT NULL,
+    blok text NOT NULL,
+    soort text NOT NULL,
+    administratie_id uuid,
+    vingerafdruk text NOT NULL,
+    tekst text NOT NULL,
+    detail jsonb,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_reconciliatie_bevinding_soort CHECK ((soort = ANY (ARRAY['afwijking'::text, 'let_op'::text, 'geaccepteerd'::text, 'uitgesloten'::text, 'fout'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.reconciliatie_bevinding FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: reconciliatie_gezien; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.reconciliatie_gezien (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    blok text NOT NULL,
+    vingerafdruk text NOT NULL,
+    reden_snapshot text,
+    reden text NOT NULL,
+    gezien_door uuid NOT NULL,
+    gezien_op timestamp with time zone DEFAULT now() NOT NULL,
+    vervalt_op timestamp with time zone NOT NULL,
+    ingetrokken_door uuid,
+    ingetrokken_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.reconciliatie_gezien FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: reconciliatie_instelling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.reconciliatie_instelling (
+    singleton boolean DEFAULT true NOT NULL,
+    gezien_dagen integer DEFAULT 90 NOT NULL,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_reconciliatie_instelling_gezien_dagen CHECK (((gezien_dagen >= 1) AND (gezien_dagen <= 3650))),
+    CONSTRAINT reconciliatie_instelling_singleton CHECK (singleton)
+);
+
+
+--
+-- Name: reconciliatie_run; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.reconciliatie_run (
+    id uuid NOT NULL,
+    status text DEFAULT 'wachtend'::text NOT NULL,
+    bron text DEFAULT 'cli'::text NOT NULL,
+    aangevraagd_door uuid,
+    aangevraagd_op timestamp with time zone DEFAULT now() NOT NULL,
+    gestart_op timestamp with time zone,
+    laatst_actief_op timestamp with time zone,
+    afgerond_op timestamp with time zone,
+    exit_code integer,
+    samenvatting jsonb,
+    fout_reden text,
+    mail_status text,
+    mail_detail text,
+    mail_verzonden_op timestamp with time zone,
+    CONSTRAINT ck_reconciliatie_run_bron CHECK ((bron = ANY (ARRAY['scheduler'::text, 'cli'::text, 'handmatig'::text]))),
+    CONSTRAINT ck_reconciliatie_run_status CHECK ((status = ANY (ARRAY['wachtend'::text, 'bezig'::text, 'klaar'::text, 'fout'::text])))
+);
+
+
+--
 -- Name: regel_gb_classificatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -4247,6 +4326,38 @@ ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
 
 
 --
+-- Name: reconciliatie_bevinding reconciliatie_bevinding_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_bevinding
+    ADD CONSTRAINT reconciliatie_bevinding_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: reconciliatie_gezien reconciliatie_gezien_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_gezien
+    ADD CONSTRAINT reconciliatie_gezien_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: reconciliatie_instelling reconciliatie_instelling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_instelling
+    ADD CONSTRAINT reconciliatie_instelling_pkey PRIMARY KEY (singleton);
+
+
+--
+-- Name: reconciliatie_run reconciliatie_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_run
+    ADD CONSTRAINT reconciliatie_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: regel_gb_classificatie regel_gb_classificatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5694,6 +5805,41 @@ CREATE INDEX ix_projectverdeling_hercontrole_signaal ON boekhouding.projectverde
 
 
 --
+-- Name: ix_reconciliatie_bevinding_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_reconciliatie_bevinding_administratie_id ON boekhouding.reconciliatie_bevinding USING btree (administratie_id);
+
+
+--
+-- Name: ix_reconciliatie_bevinding_run_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_reconciliatie_bevinding_run_id ON boekhouding.reconciliatie_bevinding USING btree (run_id);
+
+
+--
+-- Name: ix_reconciliatie_bevinding_vingerafdruk; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_reconciliatie_bevinding_vingerafdruk ON boekhouding.reconciliatie_bevinding USING btree (vingerafdruk);
+
+
+--
+-- Name: ix_reconciliatie_run_aangevraagd_op; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_reconciliatie_run_aangevraagd_op ON boekhouding.reconciliatie_run USING btree (aangevraagd_op);
+
+
+--
+-- Name: ix_reconciliatie_run_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_reconciliatie_run_status ON boekhouding.reconciliatie_run USING btree (status);
+
+
+--
 -- Name: ix_regel_gb_classificatie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5936,6 +6082,13 @@ CREATE INDEX ix_werkstempel_gebruiker_tijdstip ON boekhouding.werkstempel USING 
 --
 
 CREATE UNIQUE INDEX reconciliatie_acceptatie_actief_uniek ON boekhouding.reconciliatie_acceptatie USING btree (administratie_id, bron, vingerafdruk) WHERE (ingetrokken_op IS NULL);
+
+
+--
+-- Name: reconciliatie_gezien_actief_uniek; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX reconciliatie_gezien_actief_uniek ON boekhouding.reconciliatie_gezien USING btree (administratie_id, vingerafdruk) WHERE (ingetrokken_op IS NULL);
 
 
 --
@@ -8007,6 +8160,62 @@ ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
 
 ALTER TABLE ONLY boekhouding.reconciliatie_acceptatie
     ADD CONSTRAINT reconciliatie_acceptatie_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: reconciliatie_bevinding reconciliatie_bevinding_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_bevinding
+    ADD CONSTRAINT reconciliatie_bevinding_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: reconciliatie_bevinding reconciliatie_bevinding_run_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_bevinding
+    ADD CONSTRAINT reconciliatie_bevinding_run_id_fkey FOREIGN KEY (run_id) REFERENCES boekhouding.reconciliatie_run(id);
+
+
+--
+-- Name: reconciliatie_gezien reconciliatie_gezien_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_gezien
+    ADD CONSTRAINT reconciliatie_gezien_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: reconciliatie_gezien reconciliatie_gezien_gezien_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_gezien
+    ADD CONSTRAINT reconciliatie_gezien_gezien_door_fkey FOREIGN KEY (gezien_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: reconciliatie_gezien reconciliatie_gezien_ingetrokken_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_gezien
+    ADD CONSTRAINT reconciliatie_gezien_ingetrokken_door_fkey FOREIGN KEY (ingetrokken_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: reconciliatie_instelling reconciliatie_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_instelling
+    ADD CONSTRAINT reconciliatie_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: reconciliatie_run reconciliatie_run_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.reconciliatie_run
+    ADD CONSTRAINT reconciliatie_run_aangevraagd_door_fkey FOREIGN KEY (aangevraagd_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -10106,6 +10315,32 @@ ALTER TABLE boekhouding.reconciliatie_acceptatie ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY reconciliatie_acceptatie_scope ON boekhouding.reconciliatie_acceptatie USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: reconciliatie_bevinding; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.reconciliatie_bevinding ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: reconciliatie_bevinding reconciliatie_bevinding_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY reconciliatie_bevinding_scope ON boekhouding.reconciliatie_bevinding USING (((administratie_id IS NULL) OR (administratie_id = platform.current_administratie_id()))) WITH CHECK (((administratie_id IS NULL) OR (administratie_id = platform.current_administratie_id())));
+
+
+--
+-- Name: reconciliatie_gezien; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.reconciliatie_gezien ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: reconciliatie_gezien reconciliatie_gezien_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY reconciliatie_gezien_scope ON boekhouding.reconciliatie_gezien USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

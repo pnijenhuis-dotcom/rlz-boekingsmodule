@@ -10,6 +10,8 @@ toevallig ontdekt. Deze motor draait elk kwartier als Cloud Run-job (`rlz-bewaki
 - mailkanaal    — SMTP-configuratie aanwezig (het kanaal waarover de alerts zelf lopen);
 - rlz           — lichte leesroute op de TEST-administratie (alleen mét
                   BEWAKING_RLZ_ADMINISTRATIE_ID; nooit een write — kernprincipe 3);
+- reconciliatie_mail — (06-09) de samenvattingsmail van de jongste reconciliatie-run is niet
+                  'mislukt' (een mailfout maakt die job bewust niet rood — dit is het vangnet);
 - ai            — 1× per uur: schema-zelftest (union-limiet, de 30-08-klasse) + een minimale
                   échte Claude-call op het goedkoopste gepinde model, onder de bestaande
                   kostenmeter (poort + registratie in app/aikosten);
@@ -288,6 +290,34 @@ def _probe_intake_verwerpingsratio(nu: datetime) -> ProbeUitkomst:
     return ProbeUitkomst(soort="intake_verwerpingsratio", status="ok", detail=f"{verworpen}/{pogingen}")
 
 
+def _probe_reconciliatie_mail() -> ProbeUitkomst:
+    """Reconciliatie-melding (opdracht 06-09): de samenvattingsmail van `reconciliatie-alles` mag de job
+    niet rood maken — een mislukte mail staat als `mail_status='mislukt'` op de jongste run en wordt hier
+    als storing 'reconciliatie_mail' opgepikt (alert bij 2 opeenvolgende metingen, herstel zodra de
+    volgende run wél mailt of niets te melden heeft). Geen run = overgeslagen."""
+    from app.reconciliatie.models import ReconciliatieRun
+
+    with scoped_session(None) as session:
+        rij = session.scalars(
+            select(ReconciliatieRun)
+            .where(ReconciliatieRun.afgerond_op.is_not(None))
+            .order_by(ReconciliatieRun.afgerond_op.desc())
+            .limit(1)
+        ).first()
+        if rij is None:
+            return ProbeUitkomst(soort="reconciliatie_mail", status="overgeslagen", detail="nog geen run")
+        if rij.mail_status == "mislukt":
+            return ProbeUitkomst(
+                soort="reconciliatie_mail",
+                status="fout",
+                detail=(
+                    f"samenvattingsmail van run {rij.id} ({rij.afgerond_op:%d-%m %H:%M} UTC) mislukt: "
+                    f"{rij.mail_detail}"
+                ),
+            )
+        return ProbeUitkomst(soort="reconciliatie_mail", status="ok", detail=rij.mail_status)
+
+
 # ---- storing-administratie + alerts --------------------------------------------------------------
 
 
@@ -392,6 +422,7 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
         _meet("documentopslag", _probe_documentopslag),
         _meet("mailkanaal", _probe_mailkanaal),
         _meet("rlz", _probe_rlz),
+        _meet("reconciliatie_mail", _probe_reconciliatie_mail),
     ]
     if met_ai:
         uitkomsten.append(_meet("ai", _probe_ai))

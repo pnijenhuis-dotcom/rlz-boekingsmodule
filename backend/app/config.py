@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     # "projects/…/jobs/rlz-terugkerend-herbereken"). Gezet = "⟳ Herbereken alles" triggert één
     # on-demand job-uitvoering (terugkerend_herbereken_run-rij = de opdracht); leeg = dev-thread.
     terugkerend_herbereken_job_resource: str | None = None
+    # Reconciliatie "Nu draaien" (Inzicht › Reconciliatie, opdracht 06-09: "projects/…/jobs/rlz-reconciliatie").
+    # Gezet = de knop zet een reconciliatie_run-rij (bron handmatig) klaar en triggert één on-demand
+    # job-uitvoering — géén in-process run op Cloud Run (request-based CPU valt stil); leeg = dev-thread.
+    reconciliatie_job_resource: str | None = None
     bank_auto_ververs_drempel_minuten: int = 5
 
     boekingsgeheugen_seed_maanden: int = 36

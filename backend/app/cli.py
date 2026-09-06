@@ -650,6 +650,42 @@ def _odoo_leesbron(args: argparse.Namespace) -> int:
         return 1
 
 
+def _meld(
+    verzamelaar,  # noqa: ANN001 — app.reconciliatie.run.Verzamelaar | None (alleen vanuit reconciliatie-alles)
+    *,
+    soort: str,
+    administratie_id: uuid.UUID | None,
+    tekst: str,
+    vingerafdruk: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Registreer een rapportregel als bevinding van de lopende reconciliatie-alles-run (opdracht
+    06-09). Zonder verzamelaar (losse CLI-commando's) een no-op — de printregels blijven de bron."""
+    if verzamelaar is None:
+        return
+    verzamelaar.bevinding(
+        soort=soort, administratie_id=administratie_id, tekst=tekst, vingerafdruk=vingerafdruk, detail=detail
+    )
+
+
+def _soort_van(beoordeeld: acceptatie_service.Beoordeeld, uitsluiting: str | None) -> str:
+    if uitsluiting:
+        return "uitgesloten"
+    return "afwijking" if beoordeeld.telt_mee else "geaccepteerd"
+
+
+def _afwijking_detail(bron: str, beoordeeld: acceptatie_service.Beoordeeld, uitsluiting: str | None, **extra) -> dict:
+    return {
+        "bron": bron,
+        "record_id": str(beoordeeld.record_id),
+        "afwijking_soort": beoordeeld.soort,
+        "detail": beoordeeld.detail,
+        "geaccepteerd": not beoordeeld.telt_mee,
+        "uitsluiting": uitsluiting,
+        **{k: (str(v) if isinstance(v, uuid.UUID) else v) for k, v in extra.items()},
+    }
+
+
 def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
     """Eén rapportregel, zónder eigen prefix (de aanroeper bepaalt inspringing/stream). De
     vingerafdruk staat er altijd bij: dat is de sleutel waarmee een beoordeelde afwijking
@@ -661,7 +697,7 @@ def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
     return f"GEACCEPTEERD {kop} — reden: {beoordeeld.acceptatie.reden} (sinds {geaccepteerd_op})"
 
 
-def _reconciliatie(args: argparse.Namespace) -> int:
+def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Boeken-failsafe (b) (CLAUDE.md-taak 2.4): vergelijk elk lokaal GEBOEKT document met de
     werkelijke RLZ-staat en rapporteer afwijkingen. Eén administratie zonder werkende
     credentials laat de rest niet stoppen — zie reconcilieer_alle_administraties().
@@ -678,11 +714,17 @@ def _reconciliatie(args: argparse.Namespace) -> int:
         uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
             if uitsluiting:
-                print(f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})")
+                tekst = f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})"
+                print(tekst)
+                _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
                 continue
             fouten += 1
-            print(f"FOUT       {administratie_id}: {resultaat}", file=sys.stderr)
+            tekst = f"FOUT       {administratie_id}: {resultaat}"
+            print(tekst, file=sys.stderr)
+            _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
             continue
+        if verzamelaar is not None:
+            verzamelaar.gecontroleerd(resultaat.aantal_gecontroleerd)
         if not resultaat.afwijkingen:
             print(f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, geen afwijkingen")
             continue
@@ -704,7 +746,13 @@ def _reconciliatie(args: argparse.Namespace) -> int:
                 f"— telt niet mee ({uitsluiting})"
             )
             for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
-                print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
+                regel = _regel(f"document={a.document_id} rlz_document={a.rlz_document_id}", b)
+                print(f"    - {regel}")
+                _meld(
+                    verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=regel,
+                    vingerafdruk=b.vingerafdruk,
+                    detail=_afwijking_detail("documenten", b, uitsluiting, document_id=a.document_id),
+                )
             continue
         afwijkingen_totaal += len(open_afwijkingen)
         geaccepteerd_totaal += len(beoordeeld) - len(open_afwijkingen)
@@ -714,7 +762,13 @@ def _reconciliatie(args: argparse.Namespace) -> int:
             f"{len(open_afwijkingen)} afwijking(en), {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd"
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
-            print(f"    - {_regel(f'document={a.document_id} rlz_document={a.rlz_document_id}', b)}")
+            regel = _regel(f"document={a.document_id} rlz_document={a.rlz_document_id}", b)
+            print(f"    - {regel}")
+            _meld(
+                verzamelaar, soort=_soort_van(b, None), administratie_id=administratie_id, tekst=regel,
+                vingerafdruk=b.vingerafdruk,
+                detail=_afwijking_detail("documenten", b, None, document_id=a.document_id),
+            )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
         if geaccepteerd_uitgesloten
@@ -731,7 +785,9 @@ def _reconciliatie(args: argparse.Namespace) -> int:
     for administratie_id, storno_resultaat in storno_detectie.detecteer_en_meld_gestorneerd_alle().items():
         if isinstance(storno_resultaat, str):
             fouten += 1
-            print(f"FOUT       storno-detectie {administratie_id}: {storno_resultaat}", file=sys.stderr)
+            tekst = f"FOUT       storno-detectie {administratie_id}: {storno_resultaat}"
+            print(tekst, file=sys.stderr)
+            _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
         elif storno_resultaat:
             print(f"STORNO     {administratie_id}: {storno_resultaat} factuur_gestorneerd-event(s) aangemaakt")
 
@@ -776,7 +832,7 @@ def _bank_sync(args: argparse.Namespace) -> int:
     return 1 if fouten else 0
 
 
-def _bank_reconciliatie(args: argparse.Namespace) -> int:
+def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Bank-failsafe: vergelijk directe boekingen en geverifieerde afletteringen met de
     werkelijke RLZ-staat (OpenAmount/documentstatus — nooit IsComplete) en rapporteer
     afwijkingen. Zelfde patroon als het documenten-reconciliatie-commando."""
@@ -790,12 +846,18 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
         uitsluiting = uitgesloten.get(administratie_id)
         if isinstance(resultaat, str):
             if uitsluiting:
-                print(f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})")
+                tekst = f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})"
+                print(tekst)
+                _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
                 continue
             fouten += 1
-            print(f"FOUT       {administratie_id}: {resultaat}", file=sys.stderr)
+            tekst = f"FOUT       {administratie_id}: {resultaat}"
+            print(tekst, file=sys.stderr)
+            _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
             continue
         gecontroleerd = resultaat.boekingen_gecontroleerd + resultaat.afletteringen_gecontroleerd
+        if verzamelaar is not None:
+            verzamelaar.gecontroleerd(gecontroleerd)
         if not resultaat.afwijkingen:
             print(f"OK         {administratie_id}: {gecontroleerd} gecontroleerd, geen afwijkingen")
             continue
@@ -815,7 +877,13 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
                 f"— telt niet mee ({uitsluiting})"
             )
             for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
-                print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
+                regel = _regel(f"record={a.record_id} mutatie={a.payment_transaction_id}", b)
+                print(f"    - {regel}")
+                _meld(
+                    verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=regel,
+                    vingerafdruk=b.vingerafdruk,
+                    detail=_afwijking_detail("bank", b, uitsluiting, payment_transaction_id=a.payment_transaction_id),
+                )
             continue
         afwijkingen_totaal += len(open_afwijkingen)
         geaccepteerd_totaal += len(beoordeeld) - len(open_afwijkingen)
@@ -825,7 +893,13 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
             f"{len(open_afwijkingen)} afwijking(en), {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd"
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
-            print(f"    - {_regel(f'record={a.record_id} mutatie={a.payment_transaction_id}', b)}")
+            regel = _regel(f"record={a.record_id} mutatie={a.payment_transaction_id}", b)
+            print(f"    - {regel}")
+            _meld(
+                verzamelaar, soort=_soort_van(b, None), administratie_id=administratie_id, tekst=regel,
+                vingerafdruk=b.vingerafdruk,
+                detail=_afwijking_detail("bank", b, None, payment_transaction_id=a.payment_transaction_id),
+            )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
         if geaccepteerd_uitgesloten
@@ -838,7 +912,7 @@ def _bank_reconciliatie(args: argparse.Namespace) -> int:
     return 1 if (fouten or afwijkingen_totaal) else 0
 
 
-def _omzet_reconciliatie(args: argparse.Namespace) -> int:
+def _omzet_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Omzet-failsafe: vergelijk elke omzet-boeking (verkoopfactuur + kostprijsmemoriaal) met de
     werkelijke RLZ-staat en rapporteer afwijkingen — incl. alle half_geboekt-rijen."""
     resultaat = omzet_reconciliatie.reconcilieer_alle_omzet()
@@ -846,9 +920,15 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
     echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
     for administratie_id, fout in resultaat.fouten.items():
         if administratie_id in uitgesloten:
-            print(f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})")
+            tekst = f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})"
+            print(tekst)
+            _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
             continue
-        print(f"FOUT       {administratie_id}: {fout}", file=sys.stderr)
+        tekst = f"FOUT       {administratie_id}: {fout}"
+        print(tekst, file=sys.stderr)
+        _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
+    if verzamelaar is not None:
+        verzamelaar.gecontroleerd(getattr(resultaat, "gecontroleerd", 0))
 
     open_totaal = 0
     geaccepteerd_totaal = 0
@@ -864,14 +944,23 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
         )
         for a, b in zip(afwijkingen, beoordeeld, strict=True):
             regel = _regel(f"{administratie_id} boeking={a.boeking_id}", b)
-            if administratie_id in uitgesloten:
-                print(f"UITGESLOTEN {regel} — telt niet mee ({uitgesloten[administratie_id]})")
+            uitsluiting = uitgesloten.get(administratie_id)
+            if uitsluiting:
+                tekst = f"UITGESLOTEN {regel} — telt niet mee ({uitsluiting})"
+                print(tekst)
             elif b.telt_mee:
                 open_totaal += 1
-                print(f"AFWIJKING  {regel}", file=sys.stderr)
+                tekst = f"AFWIJKING  {regel}"
+                print(tekst, file=sys.stderr)
             else:
                 geaccepteerd_totaal += 1
-                print(f"OK         {regel}")
+                tekst = f"OK         {regel}"
+                print(tekst)
+            _meld(
+                verzamelaar, soort=_soort_van(b, uitsluiting), administratie_id=administratie_id, tekst=tekst,
+                vingerafdruk=b.vingerafdruk,
+                detail=_afwijking_detail("omzet", b, uitsluiting, document_id=a.document_id),
+            )
 
     if not echte_fouten and not open_totaal:
         print(f"OK         geen afwijkingen in de omzet-boekingen ({geaccepteerd_totaal} geaccepteerd)")
@@ -884,7 +973,7 @@ def _omzet_reconciliatie(args: argparse.Namespace) -> int:
     return 1
 
 
-def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
+def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Doorbelasting-failsafe: vergelijk elke doorbelastings-boeking (verkoopfactuur in de bron
     + spiegel-inkoopfactuur in het doel) met de werkelijke RLZ-staat — incl. alle
     half_geboekt-rijen en verouderde open spiegel-taken."""
@@ -893,9 +982,15 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
     echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
     for administratie_id, fout in resultaat.fouten.items():
         if administratie_id in uitgesloten:
-            print(f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})")
+            tekst = f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})"
+            print(tekst)
+            _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
             continue
-        print(f"FOUT       {administratie_id}: {fout}", file=sys.stderr)
+        tekst = f"FOUT       {administratie_id}: {fout}"
+        print(tekst, file=sys.stderr)
+        _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
+    if verzamelaar is not None:
+        verzamelaar.gecontroleerd(getattr(resultaat, "gecontroleerd", 0))
 
     open_totaal = 0
     geaccepteerd_totaal = 0
@@ -911,14 +1006,23 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
         )
         for a, b in zip(afwijkingen, beoordeeld, strict=True):
             regel = _regel(f"{administratie_id} boeking={a.boeking_id}", b)
-            if administratie_id in uitgesloten:
-                print(f"UITGESLOTEN {regel} — telt niet mee ({uitgesloten[administratie_id]})")
+            uitsluiting = uitgesloten.get(administratie_id)
+            if uitsluiting:
+                tekst = f"UITGESLOTEN {regel} — telt niet mee ({uitsluiting})"
+                print(tekst)
             elif b.telt_mee:
                 open_totaal += 1
-                print(f"AFWIJKING  {regel}", file=sys.stderr)
+                tekst = f"AFWIJKING  {regel}"
+                print(tekst, file=sys.stderr)
             else:
                 geaccepteerd_totaal += 1
-                print(f"OK         {regel}")
+                tekst = f"OK         {regel}"
+                print(tekst)
+            _meld(
+                verzamelaar, soort=_soort_van(b, uitsluiting), administratie_id=administratie_id, tekst=tekst,
+                vingerafdruk=b.vingerafdruk,
+                detail=_afwijking_detail("doorbelasting", b, uitsluiting, document_id=a.document_id),
+            )
 
     # Opruimlijst (hygiëne-run 2026-08-16): achtergebleven RLZ-concepten van gestorneerde/
     # vervallen runs — puur informatief (LET-OP), telt NOOIT mee in de exit-code. De app
@@ -926,14 +1030,36 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace) -> int:
     # RLZ-UI, "indien gewenst". Ook zichtbaar op Instellingen → Doorbelasting.
     opruim = doorbelasting_reconciliatie.verzamel_alle_opruimlijsten()
     for kandidaat in opruim.kandidaten:
-        print(
+        tekst = (
             f"LET-OP     opruim-kandidaat [{kandidaat.reden}] {kandidaat.kant} {kandidaat.rlz_id} "
             f"in administratie {kandidaat.concept_administratie_id} "
             f"(document {kandidaat.document_id}{f', ref {kandidaat.referentie}' if kandidaat.referentie else ''}) "
             f"— {kandidaat.detail}; handmatig opruimen in de RLZ-UI indien gewenst"
         )
+        print(tekst)
+        if verzamelaar is not None:
+            from app.reconciliatie.run import vingerafdruk_opruim
+
+            _meld(
+                verzamelaar, soort="let_op", administratie_id=kandidaat.administratie_id, tekst=tekst,
+                vingerafdruk=vingerafdruk_opruim(
+                    kant=kandidaat.kant, concept_administratie_id=kandidaat.concept_administratie_id,
+                    rlz_id=kandidaat.rlz_id,
+                ),
+                detail={
+                    "kant": kandidaat.kant,
+                    "rlz_id": str(kandidaat.rlz_id),
+                    "concept_administratie_id": str(kandidaat.concept_administratie_id),
+                    "document_id": str(kandidaat.document_id),
+                    "referentie": kandidaat.referentie,
+                    "reden": kandidaat.reden,
+                    "detail": kandidaat.detail,
+                },
+            )
     for fout in opruim.fouten:
-        print(f"LET-OP     opruimlijst: {fout}")
+        tekst = f"LET-OP     opruimlijst: {fout}"
+        print(tekst)
+        _meld(verzamelaar, soort="let_op", administratie_id=None, tekst=tekst, detail={"reden": "opruimlijst_fout"})
     if opruim.kandidaten:
         print(f"LET-OP     {len(opruim.kandidaten)} achtergebleven RLZ-concept(en) — informatief, geen fout")
 
@@ -1059,29 +1185,24 @@ def _materiaal_seed_universal(args: argparse.Namespace) -> int:
 
 
 def _reconciliatie_alles(args: argparse.Namespace) -> int:
-    """Alle drie de reconciliaties in één run. Bestaat omdat de handmatige `&&`-keten precies
+    """Alle vier de reconciliaties in één run. Bestaat omdat de handmatige `&&`-keten precies
     het verkeerde deed: viel de eerste om, dan draaiden de andere twee niet — juist op een dag
     waarop er iets aan de hand is verloor je zo de omzet-controle (half_geboekt) helemaal.
-    Hier stopt niets vroegtijdig; de exit-code is 1 zodra één blok afwijkingen of fouten meldt."""
+    Hier stopt niets vroegtijdig; de exit-code is 1 zodra één blok afwijkingen of fouten meldt.
+
+    Sinds 06-09 (BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT") legt `app/reconciliatie/run.py`
+    élke run vast (run-rij + bevindingen), bepaalt de delta t.o.v. de vorige run en mailt alleen
+    als er iets te melden is; de CLI-regels zijn ongewijzigd, er komt één RUN-slotregel bij.
+    Een mail- of vastlegfout verandert de exit-code nooit."""
+    from app.reconciliatie import run as reconciliatie_run
+
     blokken = (
         ("bank", _bank_reconciliatie),
         ("documenten", _reconciliatie),
         ("omzet", _omzet_reconciliatie),
         ("doorbelasting", _doorbelasting_reconciliatie),
     )
-    exitcodes: dict[str, int] = {}
-    for naam, functie in blokken:
-        print(f"\n=== {naam}-reconciliatie ===")
-        try:
-            exitcodes[naam] = functie(args)
-        except Exception as exc:  # noqa: BLE001 — een omgevallen blok mag de rest nooit stoppen
-            print(f"FOUT       {naam}-reconciliatie viel om: {exc}", file=sys.stderr)
-            exitcodes[naam] = 1
-
-    print("\n=== samenvatting ===")
-    for naam, code in exitcodes.items():
-        print(f"{'OK       ' if code == 0 else 'ACTIE    '} {naam}-reconciliatie (exit {code})")
-    return 1 if any(exitcodes.values()) else 0
+    return reconciliatie_run.voer_uit(blokken=blokken, args=args)
 
 
 def _huidige_afwijkingen(*, bron: str, administratie_id: uuid.UUID) -> list[tuple[uuid.UUID, str, str]]:

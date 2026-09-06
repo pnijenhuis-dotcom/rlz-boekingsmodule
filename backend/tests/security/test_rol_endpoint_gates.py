@@ -133,6 +133,12 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", "/voorraad/verschillen"),  # kantoorbrede voorraad-landing (blok B3 03-09)
         ("GET", "/voorraad/verschillen/stand"),  # voorraad-tellers (blok B3 03-09)
         ("GET", "/terugkerend/signalen"),  # kantoorbrede terugkerend-lijst (blok B1 03-09)
+        ("GET", "/reconciliatie/stand"),  # KPI-stand reconciliatie (opdracht 06-09)
+        ("GET", "/reconciliatie/bevindingen"),  # kantoorbrede reconciliatie-lijst (opdracht 06-09)
+        ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/gezien"),  # gezien = kantoorrol binnen scope (06-09)
+        ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/accepteren"),  # beheerder-only (06-09)
+        ("POST", "/reconciliatie/run"),  # "Nu draaien" — beheerder-only (06-09)
+        ("GET", "/reconciliatie/instelling"),  # gezien-dagen lezen (06-09)
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling/herverdelen"),
@@ -272,11 +278,15 @@ class TestKantoorBlijftWerken:
                 or "/odoo" in pad
                 or _is_catalogus_pad(pad)
                 or pad.endswith("/bestellingen")
+                or pad.endswith("/accepteren")
+                or pad == "/reconciliatie/run"
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
                 # (materiaalcatalogus lezen+schrijven, C2 04-09) resp. module-recht 'Meerwerk & urenstaten'
                 # (bestellingen): 403 voor een boekhouder zónder dat recht is correct bestaand gedrag, geen
                 # rolpoort-regressie. De positieve/negatieve catalogus-poort staat in TestCatalogusRolpoort.
+                # Reconciliatie (06-09): accepteren en "Nu draaien" zijn Beheerder-only (bestaande
+                # acceptatie-schrijver); lijst/stand/gezien blijven voor élke kantoorrol open.
                 continue
             resp = client.request(methode, pad, headers=_bearer(boekhouder, rol="boekhouding"))
             assert resp.status_code != 403, f"boekhouding {methode} {pad}: onterecht 403"

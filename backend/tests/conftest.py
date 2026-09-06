@@ -167,6 +167,13 @@ def _clean_tables() -> Generator[None, None, None]:
                 "VALUES (true, true) ON CONFLICT (singleton) DO NOTHING"
             )
         )
+        # En voor de reconciliatie-instelling (migratie 0114, boekhouding-schema) — default 90 dagen.
+        conn.execute(
+            text(
+                "INSERT INTO boekhouding.reconciliatie_instelling (singleton, gezien_dagen) VALUES (true, 90) "
+                "ON CONFLICT (singleton) DO NOTHING"
+            )
+        )
         # En voor de AI-kosten-singleton (migratie 0047) — default € 100, zoals de migratie-seed.
         conn.execute(
             text(
