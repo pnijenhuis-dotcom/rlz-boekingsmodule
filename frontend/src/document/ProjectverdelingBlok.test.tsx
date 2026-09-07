@@ -22,7 +22,7 @@ const PREFILL: ProjectverdelingDto = {
   basisbedrag: '2000.00',
   vaste_regels: [],
   pro_rato: true,
-  pro_rato_periode: '2026-07-01',
+  pro_rato_periode: '2026-07',
   pro_rato_periode_label: 'juli 2026',
   pro_rato_bedrag: '2000.00',
   delen: [
@@ -69,7 +69,7 @@ const GEBOEKT_MET_SIGNAAL: ProjectverdelingDto = {
     op: '2026-09-02T07:00:00Z',
     afwijking_pct: '7.73',
     drempel_pct: '5.00',
-    periode: '2026-07-01',
+    periode: '2026-07',
     signaal: true,
     nieuwe_verdeling: [
       { project_id: TILBURG, project_naam: '26127 Tilburg (Heijmans)', wijze: 'vast', bedrag: '600.00' },
@@ -168,7 +168,7 @@ describe('ProjectverdelingBlok', () => {
     await waitFor(() => expect(puts.length).toBeGreaterThan(0), { timeout: 3000 })
     const laatste = puts[puts.length - 1] as { vaste_regels: { project_id: string; bedrag: string }[]; pro_rato_periode: string }
     expect(laatste.vaste_regels).toEqual([{ project_id: TILBURG, bedrag: '600.00', hint: null }])
-    expect(laatste.pro_rato_periode).toBe('2026-07-01')
+    expect(laatste.pro_rato_periode).toBe('2026-07')
     // Serverantwoord (MET_VAST) wordt de getoonde stand: restant € 1.400.
     expect(await screen.findByText('€ 1.400,00')).toBeInTheDocument()
   })

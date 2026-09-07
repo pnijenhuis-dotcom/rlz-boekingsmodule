@@ -74,7 +74,7 @@ def herbereken_administratie(
                 Document.status == DocumentStatus.GEBOEKT,
             )
         ).all()
-        omzet_cache: dict[date, list[pv.Omzetstand]] = {}
+        omzet_cache: dict[pv.Periode, list[pv.Omzetstand]] = {}
         for row in rijen:
             tellers["beoordeeld"] += 1
             if not moet_herrekenen(
@@ -85,18 +85,24 @@ def herbereken_administratie(
             if _al_tegengeboekt(session, row) or row.pro_rato_bedrag is None or row.pro_rato_periode is None:
                 tellers["overgeslagen"] += 1
                 continue
-            periode = row.pro_rato_periode
+            # Maand: dezelfde maand, actuele stand. Jaar (D4 07-09, notitie ⑩): de ACTUELE jaarstand — de
+            # afgesloten maanden t/m de vorige maand van `vandaag`; er komen dus maanden bij, en die
+            # verschuiving wordt met dezelfde drempel zichtbaar.
+            periode = pv.Periode.uit_opslag(row.pro_rato_periode, row.pro_rato_soort)
+            assert periode is not None
             if periode not in omzet_cache:
                 omzet_cache[periode] = omzet_per_project(
-                    session, administratie_id=administratie_id, periode=periode
+                    session, administratie_id=administratie_id, periode=periode, vandaag=vandaag
                 ).standen
             standen = omzet_cache[periode]
             oud = pv.delen_uit_json(row.verdeling)
             vast = [d for d in oud if d.wijze == pv.WIJZE_VAST]
             if not standen:
-                # Geen enkel project mét omzet meer in die maand: er is geen nieuwe verdeling te berekenen — niet
+                # Geen enkel project mét omzet meer in die periode: er is geen nieuwe verdeling te berekenen — niet
                 # stil, maar ook geen vals signaal met een halve verdeling (log + overgeslagen-teller).
-                logger.warning("Hercontrole %s: geen omzet meer in %s — overgeslagen", row.document_id, periode)
+                logger.warning(
+                    "Hercontrole %s: geen omzet meer in %s — overgeslagen", row.document_id, periode.code
+                )
                 tellers["overgeslagen"] += 1
                 continue
             try:
@@ -117,7 +123,14 @@ def herbereken_administratie(
                 tellers["signalen"] += 1
                 if not was_signaal or vorige_pct != pct:
                     _signaleer(
-                        session, administratie_id=administratie_id, row=row, pct=pct, drempel=drempel, standen=standen
+                        session,
+                        administratie_id=administratie_id,
+                        row=row,
+                        pct=pct,
+                        drempel=drempel,
+                        standen=standen,
+                        periode=periode,
+                        vandaag=vandaag,
                     )
             else:
                 row.hercontrole_verdeling = None
@@ -127,21 +140,37 @@ def herbereken_administratie(
 
 
 def _signaleer(
-    session: Session, *, administratie_id: uuid.UUID, row: Projectverdeling, pct, drempel, standen: list[pv.Omzetstand]
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    row: Projectverdeling,
+    pct,
+    drempel,
+    standen: list[pv.Omzetstand],
+    periode: pv.Periode,
+    vandaag: date,
 ) -> None:
     document = session.get(Document, row.document_id)
     assert document is not None
     namen = projectnamen(session, administratie_id=administratie_id, project_ids={s.project_id for s in standen})
-    periode = pv.periode_label(row.pro_rato_periode) if row.pro_rato_periode else "?"
+    if periode.is_jaar:
+        bevroren = pv.periode_label(periode, row.geboekt_op.date() if row.geboekt_op else None)
+        omschrijving = (
+            f"jaaromzet {periode.code} (bij boeken {bevroren}, nu {pv.periode_label(periode, vandaag)}) is ná het "
+            "boeken gewijzigd"
+        )
+    else:
+        omschrijving = f"omzet {pv.periode_label(periode)} is ná het boeken gewijzigd"
     reden = (
-        f"hercontrole: omzet {periode} is ná het boeken gewijzigd — de projectverdeling wijkt nu {pct} % af "
+        f"hercontrole: {omschrijving} — de projectverdeling wijkt nu {pct} % af "
         f"(drempel {drempel} %); herverdelen = tegenboeken + nieuwe verdeling, mens bevestigt"
     )
     detail = {
         "projectverdeling_afwijking": {
             "afwijking_pct": str(pct),
             "drempel_pct": str(drempel),
-            "periode": row.pro_rato_periode.isoformat() if row.pro_rato_periode else None,
+            "periode": periode.code,
+            "periode_label": pv.periode_label(periode, vandaag),
             "nieuwe_verdeling": row.hercontrole_verdeling,
             "omzetstanden_nu": [
                 {"project_id": str(s.project_id), "omzet": str(s.omzet), "naam": namen.get(s.project_id)}

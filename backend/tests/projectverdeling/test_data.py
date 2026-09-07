@@ -27,12 +27,15 @@ def standen(*omzetten: str) -> list[pv.Omzetstand]:
 
 class TestPeriode:
     def test_default_periode_is_vorige_kalendermaand(self) -> None:
-        assert pv.default_periode(date(2026, 9, 4)) == date(2026, 8, 1)
-        assert pv.default_periode(date(2026, 1, 15)) == date(2025, 12, 1)
+        assert pv.default_periode(date(2026, 9, 4)) == pv.Periode.maand(date(2026, 8, 1))
+        assert pv.default_periode(date(2026, 1, 15)) == pv.Periode.maand(date(2025, 12, 1))
+        assert pv.default_periode(date(2026, 9, 4)).code == "2026-08"
 
     def test_periode_eind_en_label(self) -> None:
         assert pv.periode_eind(date(2026, 12, 1)) == date(2027, 1, 1)
+        assert pv.periode_eind(pv.Periode.maand(date(2026, 12, 1))) == date(2027, 1, 1)
         assert pv.periode_label(date(2026, 7, 1)) == "juli 2026"
+        assert pv.periode_label(pv.Periode.parse("2026-07")) == "juli 2026"
 
 
 class TestVerdelen:

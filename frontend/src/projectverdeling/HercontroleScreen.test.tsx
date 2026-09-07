@@ -29,7 +29,7 @@ const FLOORBEHEER: ProjectverdelingSignaalRijDto = {
   bestandsnaam: 'floorbeheer-2026-07.pdf',
   leverancier: 'Floorbeheer B.V.',
   referentie: 'FB-2026-0731',
-  pro_rato_periode: '2026-07-01',
+  pro_rato_periode: '2026-07',
   pro_rato_bedrag: '1400.00',
   afwijking_pct: '7.73',
   drempel_pct: '5.00',

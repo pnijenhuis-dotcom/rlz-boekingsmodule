@@ -24,6 +24,7 @@ class Projectverdeling(Base):
     __tablename__ = "projectverdeling"
     __table_args__ = (
         CheckConstraint("status IN ('voorstel', 'geboekt', 'vervallen')", name="ck_projectverdeling_status"),
+        CheckConstraint("pro_rato_soort IN ('maand', 'jaar')", name="ck_projectverdeling_pro_rato_soort"),
         UniqueConstraint("document_id", name="uq_projectverdeling_document"),
         Index("ix_projectverdeling_administratie_id", "administratie_id"),
         Index(
@@ -40,6 +41,9 @@ class Projectverdeling(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
     vaste_regels: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     pro_rato_periode: Mapped[date | None] = mapped_column(default=None)
+    #: D4 07-09 (migratie 0119): 'maand' = pro_rato_periode is de eerste dag van de omzetmaand; 'jaar' = 1 januari
+    #: van het jaar waarvan de AFGESLOTEN maanden meetellen (mockup-notitie ⑩).
+    pro_rato_soort: Mapped[str] = mapped_column(default="maand", server_default="maand")
     pro_rato_bedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     verdeling: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     omzetstanden: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")

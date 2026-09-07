@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -31,11 +31,17 @@ class OmzetstandDto(BaseModel):
     omzet: Decimal
 
 
+#: Omzetperiode-code (D4 07-09): "JJJJ-MM" = kalendermaand, "JJJJ" = de afgesloten maanden van dat jaar.
+#: De oude vorm "JJJJ-MM-01" wordt bij invoer nog geaccepteerd (open tabbladen van vóór de release).
+PERIODE_PATROON = r"^\d{4}(-\d{2}(-01)?)?$"
+
+
 class HercontroleDto(BaseModel):
     op: datetime
     afwijking_pct: Decimal | None = None
     drempel_pct: Decimal
-    periode: date | None = None
+    periode: str | None = None
+    periode_label: str | None = None
     signaal: bool
     nieuwe_verdeling: list[VerdeelDeelDto]
 
@@ -55,7 +61,9 @@ class ProjectverdelingDto(BaseModel):
     basisbedrag: Decimal | None = None
     vaste_regels: list[VasteRegelDto] = []
     pro_rato: bool = False
-    pro_rato_periode: date | None = None
+    #: "JJJJ-MM" (maand) of "JJJJ" (heel jaar — afgesloten maanden)
+    pro_rato_periode: str | None = None
+    #: "juli 2026" · "2026 (t/m augustus)" · "2025"
     pro_rato_periode_label: str | None = None
     pro_rato_bedrag: Decimal | None = None
     delen: list[VerdeelDeelDto] = []
@@ -76,8 +84,9 @@ class VasteRegelInput(StrikteInvoer):
 
 class ProjectverdelingInput(StrikteInvoer):
     vaste_regels: list[VasteRegelInput] = []
-    #: eerste dag van de omzetmaand; None = pro rato uit (alleen vaste regels)
-    pro_rato_periode: date | None = None
+    #: "JJJJ-MM" = omzetmaand, "JJJJ" = heel jaar (afgesloten maanden; huidig of vorig jaar — server toetst);
+    #: None = pro rato uit (alleen vaste regels)
+    pro_rato_periode: str | None = Field(default=None, pattern=PERIODE_PATROON)
     #: True = de mens haalt de verdeling weg (status vervallen — geen prefill meer, nooit een DELETE)
     vervallen: bool = False
 
@@ -124,7 +133,9 @@ class SignaalRijDto(BaseModel):
     bestandsnaam: str
     leverancier: str | None = None
     referentie: str | None = None
-    pro_rato_periode: date | None = None
+    pro_rato_periode: str | None = None
+    #: dekking op het boekmoment ("2026 (t/m juli)") — de frontend toont dit i.p.v. zelf te labelen
+    pro_rato_periode_label: str | None = None
     pro_rato_bedrag: Decimal | None = None
     afwijking_pct: Decimal
     drempel_pct: Decimal

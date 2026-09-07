@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.projecten.models import CijfersSyncRunStatus, ProjectCijfersSyncRun, ProjectRegelCache, ProjectRegelSoort
-from app.projectverdeling.data import Omzetstand, periode_eind
+from app.projectverdeling.data import Omzetstand, Periode, als_periode, periode_eind
 from app.sync.models import ProjectCache
 
 # Herkenning van het interne overhead-project (CLAUDE.md "Projecten": overhead → intern OVH-project; mockup
@@ -40,11 +40,17 @@ class OmzetSelectie:
     cache_leeg: bool  # géén enkele verkoopregel in de cache voor deze administratie → sync nog nooit gedraaid
 
 
-def omzet_per_project(session: Session, *, administratie_id: uuid.UUID, periode: date) -> OmzetSelectie:
-    """Σ netto van de verkoopregels per project in [periode, volgende maand), gefilterd op actieve, niet-OVH
-    projecten. `cache_leeg` onderscheidt "geen omzet die maand" van "de cijfers-sync heeft nog nooit gedraaid"
-    (lege stand = actie: knop naar de cijfers-sync)."""
-    eind = periode_eind(periode)
+def omzet_per_project(
+    session: Session, *, administratie_id: uuid.UUID, periode: Periode | date, vandaag: date | None = None
+) -> OmzetSelectie:
+    """Σ netto van de verkoopregels per project in [start, eind), gefilterd op actieve, niet-OVH projecten.
+    Maand: [eerste dag, volgende maand); jaar (D4 07-09, notitie ⑩): [1 januari, min(1 januari volgend jaar,
+    eerste dag van de lopende maand)) — alleen AFGESLOTEN maanden, dezelfde uitsluitingen. `cache_leeg`
+    onderscheidt "geen omzet in de periode" van "de cijfers-sync heeft nog nooit gedraaid" (lege stand = actie:
+    knop naar de cijfers-sync)."""
+    periode = als_periode(periode)
+    assert periode is not None
+    eind = periode_eind(periode, vandaag)
     rijen = session.execute(
         select(ProjectRegelCache.project_id, func.sum(ProjectRegelCache.netto_bedrag), ProjectCache.naam)
         .join(
@@ -56,7 +62,7 @@ def omzet_per_project(session: Session, *, administratie_id: uuid.UUID, periode:
             ProjectRegelCache.administratie_id == administratie_id,
             ProjectRegelCache.soort == ProjectRegelSoort.VERKOOP.value,
             ProjectRegelCache.verdwenen_uit_bron_op.is_(None),
-            ProjectRegelCache.datum >= periode,
+            ProjectRegelCache.datum >= periode.start,
             ProjectRegelCache.datum < eind,
             ProjectCache.is_actief.is_(True),
             ProjectCache.verdwenen_uit_bron_op.is_(None),

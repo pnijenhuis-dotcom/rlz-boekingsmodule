@@ -362,6 +362,7 @@ export interface ProjectverdelingHercontroleDto {
   op: string
   afwijking_pct: string | null
   drempel_pct: string
+  /** Periode-code: "JJJJ-MM" (maand) of "JJJJ" (heel jaar, D4 07-09). */
   periode: string | null
   /** Serverlabel mét dekking ("2026 (t/m augustus)"); ontbreekt bij oudere antwoorden. */
   periode_label?: string | null
@@ -425,6 +426,7 @@ export interface ProjectverdelingSignaalRijDto {
   bestandsnaam: string
   leverancier: string | null
   referentie: string | null
+  /** Periode-code: "JJJJ-MM" (maand) of "JJJJ" (heel jaar, D4 07-09). */
   pro_rato_periode: string | null
   /** Serverlabel mét dekking op het boekmoment ("2026 (t/m juli)"); ontbreekt bij oudere antwoorden. */
   pro_rato_periode_label?: string | null

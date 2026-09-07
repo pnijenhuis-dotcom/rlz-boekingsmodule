@@ -14,6 +14,7 @@ Model (mockup blok 1, ontwerpnotities ②③⑤):
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date
@@ -69,9 +70,11 @@ class HercontroleInfo:
     op: object  # datetime — bewust niet getypeerd op tz om de pure laag DB-vrij te houden
     afwijking_pct: Decimal | None
     drempel_pct: Decimal
-    periode: date | None
+    periode: Periode | None
     nieuwe_verdeling: list[VerdeelDeel]
     signaal: bool
+    #: peildatum van de herberekening (voor het dekkingslabel van een jaarperiode: "2026 (t/m augustus)")
+    peildatum: date | None = None
 
 
 @dataclass(frozen=True)
@@ -82,7 +85,7 @@ class ProjectverdelingData:
     basisbedrag: Decimal | None
     vaste_regels: list[VasteRegel]
     pro_rato: bool
-    pro_rato_periode: date | None
+    pro_rato_periode: Periode | None
     pro_rato_bedrag: Decimal | None
     delen: list[VerdeelDeel]
     omzetstanden: list[Omzetstand]
@@ -94,6 +97,14 @@ class ProjectverdelingData:
     boek_cyclus: int | None = None
     omzet_cache_leeg: bool = False
     aantal_projecten_met_omzet: int = field(default=0)
+    #: peildatum van de omzetstand (live = vandaag, bevroren = boekmoment) — bepaalt de dekking van een jaarperiode
+    pro_rato_peildatum: date | None = None
+
+    @property
+    def pro_rato_periode_label(self) -> str | None:
+        if self.pro_rato_periode is None:
+            return None
+        return periode_label(self.pro_rato_periode, self.pro_rato_peildatum)
 
     @property
     def actief(self) -> bool:
@@ -107,36 +118,155 @@ class ProjectverdelingData:
         return self.actief and self.compleet
 
 
-def default_periode(vandaag: date) -> date:
-    """Vorige afgesloten kalendermaand: de eerste dag ervan (①)."""
+SOORT_MAAND = "maand"
+SOORT_JAAR = "jaar"
+
+_PERIODE_CODE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-01)?)?$")
+
+MAANDEN = (
+    "januari",
+    "februari",
+    "maart",
+    "april",
+    "mei",
+    "juni",
+    "juli",
+    "augustus",
+    "september",
+    "oktober",
+    "november",
+    "december",
+)
+
+
+class PeriodeFout(ProjectverdelingFout):
+    """Ongeldige omzetperiode (vorm, maand 13, jaar in de toekomst, jaar zonder afgesloten maand)."""
+
+
+@dataclass(frozen=True, order=True)
+class Periode:
+    """De omzetperiode van de pro-rato-weging (①, uitgebreid met "heel jaar" — D4 07-09, notitie ⑩).
+
+    - soort `maand`: één kalendermaand, `start` = de eerste dag ervan; code "YYYY-MM".
+    - soort `jaar`: de AFGESLOTEN maanden van een kalenderjaar (huidig óf vorig jaar), `start` = 1 januari;
+      code "YYYY". Afgesloten = volledig verstreken t.o.v. de peildatum (`vandaag`): voor het lopende jaar
+      loopt de dekking t/m de vorige maand, voor een verstreken jaar alle twaalf. De hercontrole rekent tegen
+      de dan actuele jaarstand — er komen maanden bij, de verschuiving wordt zichtbaar (zelfde drempel).
+    Opslag: `pro_rato_periode` (date = start) + `pro_rato_soort` (migratie 0119)."""
+
+    start: date
+    soort: str = SOORT_MAAND
+
+    @property
+    def is_jaar(self) -> bool:
+        return self.soort == SOORT_JAAR
+
+    @property
+    def code(self) -> str:
+        return f"{self.start.year:04d}" if self.is_jaar else f"{self.start.year:04d}-{self.start.month:02d}"
+
+    @classmethod
+    def maand(cls, eerste_dag: date) -> Periode:
+        return cls(start=eerste_dag.replace(day=1), soort=SOORT_MAAND)
+
+    @classmethod
+    def jaar(cls, jaar: int) -> Periode:
+        return cls(start=date(jaar, 1, 1), soort=SOORT_JAAR)
+
+    @classmethod
+    def parse(cls, code: str) -> Periode:
+        """"YYYY" → heel jaar, "YYYY-MM" (ook de oude vorm "YYYY-MM-01") → maand; anders PeriodeFout."""
+        m = _PERIODE_CODE.match(code.strip()) if isinstance(code, str) else None
+        if m is None:
+            raise PeriodeFout("Omzetperiode hoort de vorm JJJJ-MM (maand) of JJJJ (heel jaar) te hebben")
+        jaar = int(m.group(1))
+        if m.group(2) is None:
+            return cls.jaar(jaar)
+        maand = int(m.group(2))
+        if not 1 <= maand <= 12:
+            raise PeriodeFout(f"Omzetmaand {code} bestaat niet (maand 01–12)")
+        return cls.maand(date(jaar, maand, 1))
+
+    @classmethod
+    def uit_opslag(cls, start: date | None, soort: str | None) -> Periode | None:
+        if start is None:
+            return None
+        return cls(start=start.replace(day=1), soort=SOORT_JAAR if soort == SOORT_JAAR else SOORT_MAAND)
+
+
+def als_periode(waarde: Periode | date | str | None) -> Periode | None:
+    """Normalisatie aan de servicegrens: een `date` (oude aanroepen/tests) = die kalendermaand, een string = code."""
+    if waarde is None or isinstance(waarde, Periode):
+        return waarde
+    if isinstance(waarde, date):
+        if waarde.day != 1:
+            raise PeriodeFout("De omzetmaand hoort de eerste dag van een kalendermaand te zijn")
+        return Periode.maand(waarde)
+    return Periode.parse(waarde)
+
+
+def default_periode(vandaag: date) -> Periode:
+    """Vorige afgesloten kalendermaand (①)."""
     eerste = vandaag.replace(day=1)
     vorige_laatste = eerste.fromordinal(eerste.toordinal() - 1)
-    return vorige_laatste.replace(day=1)
+    return Periode.maand(vorige_laatste.replace(day=1))
 
 
-def periode_eind(periode: date) -> date:
-    """Exclusieve bovengrens: de eerste dag van de volgende maand."""
-    if periode.month == 12:
-        return date(periode.year + 1, 1, 1)
-    return date(periode.year, periode.month + 1, 1)
+def _volgende_maand(eerste_dag: date) -> date:
+    if eerste_dag.month == 12:
+        return date(eerste_dag.year + 1, 1, 1)
+    return date(eerste_dag.year, eerste_dag.month + 1, 1)
 
 
-def periode_label(periode: date) -> str:
-    maanden = (
-        "januari",
-        "februari",
-        "maart",
-        "april",
-        "mei",
-        "juni",
-        "juli",
-        "augustus",
-        "september",
-        "oktober",
-        "november",
-        "december",
-    )
-    return f"{maanden[periode.month - 1]} {periode.year}"
+def periode_eind(periode: Periode | date, vandaag: date | None = None) -> date:
+    """Exclusieve bovengrens van de omzetselectie. Maand: de eerste dag van de volgende maand. Jaar: 1 januari
+    van het volgende jaar, maar nooit verder dan de eerste dag van de lopende maand (alleen AFGESLOTEN maanden
+    tellen) — voor het lopende jaar dus t/m de vorige maand."""
+    periode = als_periode(periode)
+    assert periode is not None
+    if not periode.is_jaar:
+        return _volgende_maand(periode.start)
+    vandaag = vandaag or date.today()
+    volledig = date(periode.start.year + 1, 1, 1)
+    return min(volledig, max(vandaag.replace(day=1), periode.start))
+
+
+def laatste_afgesloten_maand(periode: Periode, vandaag: date | None = None) -> int:
+    """Voor een jaarperiode: nummer (1–12) van de laatste maand die meetelt; 0 = nog geen afgesloten maand."""
+    eind = periode_eind(periode, vandaag)
+    if eind <= periode.start:
+        return 0
+    laatste = eind.fromordinal(eind.toordinal() - 1)
+    return laatste.month
+
+
+def valideer_periode(periode: Periode, vandaag: date) -> None:
+    """Server-side poort (422): een jaar in de toekomst óf zonder ook maar één afgesloten maand is geen bruikbare
+    omzetperiode; een maand die nog niet begonnen is evenmin."""
+    if periode.is_jaar:
+        if periode.start.year > vandaag.year:
+            raise PeriodeFout(f"Jaar {periode.start.year} ligt in de toekomst — kies het huidige of vorige jaar")
+        if laatste_afgesloten_maand(periode, vandaag) == 0:
+            raise PeriodeFout(f"Jaar {periode.start.year} heeft nog geen afgesloten maand — kies het vorige jaar")
+        return
+    if periode.start > vandaag:
+        raise PeriodeFout(f"Omzetmaand {periode_label(periode)} ligt in de toekomst")
+
+
+def periode_label(periode: Periode | date | None, vandaag: date | None = None) -> str:
+    """"juli 2026" · jaar: "2026 (t/m augustus)" zolang het jaar loopt op de peildatum, anders "2025"."""
+    periode = als_periode(periode)
+    if periode is None:
+        return ""
+    if not periode.is_jaar:
+        return f"{MAANDEN[periode.start.month - 1]} {periode.start.year}"
+    jaar = periode.start.year
+    if vandaag is None or vandaag.year != jaar:
+        return f"{jaar}"
+    laatste = laatste_afgesloten_maand(periode, vandaag)
+    if laatste == 0:
+        return f"{jaar} (nog geen afgesloten maand)"
+    return f"{jaar} (t/m {MAANDEN[laatste - 1]})"
 
 
 def _cent(bedrag: Decimal) -> Decimal:
@@ -209,9 +339,10 @@ def bereken(
     basisbedrag: Decimal | None,
     vaste_regels: list[VasteRegel],
     pro_rato: bool,
-    periode: date | None,
+    periode: Periode | date | None,
     omzetstanden: list[Omzetstand],
     omzet_cache_leeg: bool = False,
+    vandaag: date | None = None,
 ) -> Berekening:
     """Eén deterministische berekening voor UI (preview), checks (blokkade) en adapters (delen).
     De blokkade is de ene zin onder de tabel (UX-norm); `compleet` = alle regels zonder project krijgen
@@ -238,17 +369,16 @@ def bereken(
             False,
             f"€ {restant:.2f} nog niet verdeeld — voeg een vaste regel toe of zet 'pro rato omzet' aan",
         )
+    periode = als_periode(periode)
     if periode is None:
-        return Berekening(restant, vast, False, "Kies de omzetmaand voor de pro-rato-verdeling")
+        return Berekening(restant, vast, False, "Kies de omzetperiode (maand of heel jaar) voor de pro-rato-verdeling")
     standen = [s for s in omzetstanden if s.omzet > 0]
     if not standen:
+        label = periode_label(periode, vandaag)
         if omzet_cache_leeg:
-            reden = (
-                f"Geen omzetcijfers bekend voor {periode_label(periode)} — ververs de projectcijfers (⟳) of vul "
-                "vaste regels in"
-            )
+            reden = f"Geen omzetcijfers bekend voor {label} — ververs de projectcijfers (⟳) of vul vaste regels in"
         else:
-            reden = f"Geen omzet in {periode_label(periode)} — vul vaste regels in of kies een andere maand"
+            reden = f"Geen omzet in {label} — vul vaste regels in of kies een andere periode"
         return Berekening(restant, vast, False, reden)
     return Berekening(restant, [*vast, *verdeel_pro_rato(restant, standen)], True, None)
 

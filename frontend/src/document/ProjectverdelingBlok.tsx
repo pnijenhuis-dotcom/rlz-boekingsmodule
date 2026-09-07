@@ -8,7 +8,7 @@ import type {
 } from '../api/types'
 import { SearchableCombobox } from './SearchableCombobox'
 // Herverdelen-dialoog + formatters: één bron, gedeeld met Inzicht › Projectverdeling (blok B 06-09).
-import { HerverdeelDialoog, euro, periodeLabel } from './HerverdeelDialoog'
+import { HerverdeelDialoog, euro, isJaarPeriode, periodeLabel } from './HerverdeelDialoog'
 import { haalProjectverdelingOp, slaProjectverdelingOp, startProjectcijfersSync } from './projectverdelingApi'
 import { useProjectOpties } from './useSyncOpties'
 import { useAuthOptioneel } from '../auth/AuthContext'
@@ -55,18 +55,34 @@ function pct(aandeel: string | null | undefined): string {
   return `${(Number(aandeel) * 100).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
 }
 
-/** Vorige afgesloten kalendermaand (client-side default vóór de eerste server-ronde; de server rekent bindend). */
+/** Vorige afgesloten kalendermaand als periode-code "JJJJ-MM" (client-side default vóór de eerste server-ronde;
+ * de server rekent bindend). */
 export function defaultPeriode(vandaag = new Date()): string {
   const d = new Date(vandaag.getFullYear(), vandaag.getMonth() - 1, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-/** De laatste 12 afgesloten maanden als keuzelijst voor "pro rato ▾". */
-function periodeOpties(vandaag = new Date()): string[] {
-  return Array.from({ length: 12 }, (_, i) => {
+export interface PeriodeOptie {
+  code: string
+  label: string
+}
+
+/** Keuzelijst voor "pro rato ▾": de laatste 12 afgesloten maanden + de jaaropties (D4 07-09, mockup-notitie ⑩):
+ * het lopende jaar zodra er minstens één afgesloten maand is ("pro rato omzet 2026 (t/m augustus)") en het vorige
+ * jaar ("pro rato omzet 2025"). Jaar = omzet per project over de afgesloten maanden van dat kalenderjaar. */
+export function periodeOpties(vandaag = new Date()): PeriodeOptie[] {
+  const maanden = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(vandaag.getFullYear(), vandaag.getMonth() - 1 - i, 1)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+    const code = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    return { code, label: `pro rato ${periodeLabel(code, vandaag)} ▾` }
   })
+  const jaren: PeriodeOptie[] = []
+  const jaar = vandaag.getFullYear()
+  if (vandaag.getMonth() > 0) {
+    jaren.push({ code: `${jaar}`, label: `pro rato omzet ${periodeLabel(`${jaar}`, vandaag)} ▾` })
+  }
+  jaren.push({ code: `${jaar - 1}`, label: `pro rato omzet ${jaar - 1} ▾` })
+  return [...maanden, ...jaren]
 }
 
 function naarBedragString(invoer: string): string | null {
@@ -399,10 +415,15 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
             )}
             <tr data-testid="pv-restant-regel">
               <td>
-                <b>Restant — pro rato omzet {periodeLabel(alleenLezen ? dto.pro_rato_periode : proRato ? periode : null) || '(uit)'}</b>
+                <b>
+                  Restant — pro rato omzet{' '}
+                  {(alleenLezen ? dto.pro_rato_periode_label ?? periodeLabel(dto.pro_rato_periode) : proRato ? periodeLabel(periode) : '') || '(uit)'}
+                </b>
                 <div className="pv-hint">
                   {proRato || dto.pro_rato
-                    ? `${dto.aantal_projecten_met_omzet ?? 0} projecten mét omzet · omzetloos telt niet mee · OVH uitgesloten`
+                    ? `${dto.aantal_projecten_met_omzet ?? 0} projecten mét omzet · omzetloos telt niet mee · OVH uitgesloten${
+                        isJaarPeriode(alleenLezen ? dto.pro_rato_periode : periode) ? ' · alleen afgesloten maanden' : ''
+                      }`
                     : 'pro rato staat uit — het restant moet via vaste regels verdeeld worden'}
                 </div>
               </td>
@@ -412,7 +433,7 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
                 ) : (
                   <select
                     className="pv-periode"
-                    aria-label="Pro rato omzetmaand"
+                    aria-label="Pro rato omzetperiode"
                     value={proRato ? periode : ''}
                     onChange={(e) => {
                       if (e.target.value === '') {
@@ -425,8 +446,8 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
                   >
                     <option value="">pro rato uit</option>
                     {periodeOpties().map((p) => (
-                      <option key={p} value={p}>
-                        pro rato {periodeLabel(p)} ▾
+                      <option key={p.code} value={p.code}>
+                        {p.label}
                       </option>
                     ))}
                   </select>
@@ -482,7 +503,7 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
         <div className="signaal" role="status" data-testid="pv-signaal">
           ⚠{' '}
           <span>
-            <b>Hercontrole {periodeLabel(hercontrole.op.slice(0, 7) + '-01')}:</b> omzet {periodeLabel(hercontrole.periode)} is ná het boeken
+            <b>Hercontrole {periodeLabel(hercontrole.op.slice(0, 7))}:</b> omzet {hercontrole.periode_label ?? periodeLabel(hercontrole.periode)} is ná het boeken
             gewijzigd — verdeling wijkt nu {Number(hercontrole.afwijking_pct ?? 0).toLocaleString('nl-NL')}% af (drempel{' '}
             {Number(hercontrole.drempel_pct).toLocaleString('nl-NL')}%).
           </span>

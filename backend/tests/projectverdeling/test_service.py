@@ -111,7 +111,7 @@ class TestVoorstelEnPrefill:
         )
         data = voorstel.projectverdeling
         assert data is not None and data.prefill and not data.opgeslagen
-        assert data.pro_rato and data.pro_rato_periode == PERIODE
+        assert data.pro_rato and data.pro_rato_periode == pv.Periode.maand(PERIODE)
         assert data.vaste_regels == []
         assert data.pro_rato_bedrag == Decimal("2000.00") and data.compleet
         assert sum(d.bedrag for d in data.delen) == Decimal("2000.00")

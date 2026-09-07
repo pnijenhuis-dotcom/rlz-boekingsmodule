@@ -47,8 +47,8 @@ def naar_dto(
             for r in data.vaste_regels
         ],
         pro_rato=data.pro_rato,
-        pro_rato_periode=data.pro_rato_periode,
-        pro_rato_periode_label=pv.periode_label(data.pro_rato_periode) if data.pro_rato_periode else None,
+        pro_rato_periode=data.pro_rato_periode.code if data.pro_rato_periode else None,
+        pro_rato_periode_label=data.pro_rato_periode_label,
         pro_rato_bedrag=data.pro_rato_bedrag,
         delen=[_deel(d) for d in data.delen],
         omzetstanden=[
@@ -65,7 +65,8 @@ def naar_dto(
                 op=data.hercontrole.op,  # type: ignore[arg-type]
                 afwijking_pct=data.hercontrole.afwijking_pct,
                 drempel_pct=data.hercontrole.drempel_pct,
-                periode=data.hercontrole.periode,
+                periode=data.hercontrole.periode.code if data.hercontrole.periode else None,
+                periode_label=pv.periode_label(data.hercontrole.periode, data.hercontrole.peildatum) or None,
                 signaal=data.hercontrole.signaal,
                 nieuwe_verdeling=[_deel(d) for d in data.hercontrole.nieuwe_verdeling],
             )
@@ -264,7 +265,8 @@ def hercontrole_signalen_kantoorbreed(
                 bestandsnaam=r.bestandsnaam,
                 leverancier=r.leverancier,
                 referentie=r.referentie,
-                pro_rato_periode=r.pro_rato_periode,
+                pro_rato_periode=r.pro_rato_periode.code if r.pro_rato_periode else None,
+                pro_rato_periode_label=r.pro_rato_periode_label,
                 pro_rato_bedrag=r.pro_rato_bedrag,
                 afwijking_pct=r.afwijking_pct,
                 drempel_pct=r.drempel_pct,

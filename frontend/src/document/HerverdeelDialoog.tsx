@@ -18,11 +18,25 @@ export function euro(bedrag: string | number | null | undefined): string {
   return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })
 }
 
-/** "2026-07-01" → "juli 2026" (leeg = ''). */
-export function periodeLabel(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const [jaar, maand] = iso.split('-').map(Number)
-  return `${MAANDEN[(maand ?? 1) - 1]} ${jaar}`
+/** Periode-code → label. "2026-07" (of de oude vorm "2026-07-01") → "juli 2026"; "2026" (heel jaar, D4 07-09) →
+ * "2026 (t/m augustus)" zolang het jaar loopt op de peildatum (alleen afgesloten maanden tellen), anders "2026".
+ * Leeg = ''. De server levert voor bevroren standen zijn eigen label (dekking op het boekmoment) — gebruik dat
+ * waar het meekomt; dit is de client-side terugval. */
+export function periodeLabel(code: string | null | undefined, peildatum: Date = new Date()): string {
+  if (!code) return ''
+  const [jaarS, maandS] = code.split('-')
+  const jaar = Number(jaarS)
+  if (maandS === undefined || maandS === '') {
+    if (peildatum.getFullYear() !== jaar) return `${jaar}`
+    const laatsteAfgesloten = peildatum.getMonth() // 0 = januari → nog geen afgesloten maand
+    return laatsteAfgesloten === 0 ? `${jaar} (nog geen afgesloten maand)` : `${jaar} (t/m ${MAANDEN[laatsteAfgesloten - 1]})`
+  }
+  return `${MAANDEN[Number(maandS) - 1]} ${jaar}`
+}
+
+/** Is de periode-code een heel jaar ("2026") i.p.v. een maand ("2026-07")? */
+export function isJaarPeriode(code: string | null | undefined): boolean {
+  return Boolean(code) && !String(code).includes('-')
 }
 
 /** Vooringevulde reden (opdracht 04-09): leeg gelaten = deze tekst gaat mee (verplicht veld, nooit leeg). */

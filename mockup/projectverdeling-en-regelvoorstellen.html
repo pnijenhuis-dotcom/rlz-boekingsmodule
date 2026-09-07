@@ -72,7 +72,7 @@ harde checks blijven de poort. Donkere controlescherm-v2-stijl.</p>
     </tr>
     <tr>
       <td><b>Restant — pro rato omzet juli 2026</b><div class="hint">7 projecten mét omzet · omzetloos telt niet mee · OVH uitgesloten</div></td>
-      <td><span class="chip">pro rato ▾</span></td>
+      <td><span class="chip">pro rato ▾</span><div class="hint" style="margin-top:4px">keuze: laatste 12 maanden · <b>omzet 2026 (t/m augustus)</b> · <b>omzet 2025</b> (heel jaar, ⑩)</div></td>
       <td class="euro"><b>€ 1.400,00</b></td>
       <td><span class="btn sec">Verdeling tonen ▸</span></td>
     </tr>
@@ -134,6 +134,16 @@ altijd van AI; AI-classificatie loopt onder de bestaande AI-gates + kostenmeter;
 geheugen-regel. ⑧ <b>Btw-default</b> (blok 3): Beheerder-instelling per administratie, default UIT; bestaande
 administraties ongemoeid tot Peter activeert. ⑨ <b>Losse bugfix</b> (niet op dit ontwerp wachten): kortingsregels
 worden nu niet als regel geëxtraheerd én de regeltelling vergeleek som-excl met totaal-incl (Huvanco-casus 04-09,
-afwijking € 117,95) — extractie kortingsregels + netto-vs-netto-toets.</p>
+afwijking € 117,95) — extractie kortingsregels + netto-vs-netto-toets.
+⑩ <b>Pro-rato-periode "heel jaar"</b> (opdracht Peter 07-09, blok D4): naast de laatste twaalf maanden biedt de
+periode-keuze twee jaaropties — "pro rato omzet &lt;huidig jaar&gt; (t/m &lt;laatste afgesloten maand&gt;)" en
+"pro rato omzet &lt;vorig jaar&gt;". Jaaromzet = de geboekte verkoopomzet per project over de AFGESLOTEN maanden van
+dat kalenderjaar (afgesloten = volledig verstreken op de dag van verdelen; vorig jaar = alle twaalf), dezelfde
+uitsluitingen als ① en ② (alleen actieve projecten, omzet &gt; 0, OVH uit), dezelfde grootste-rest-centen. Bij het
+boeken worden de jaarstanden bevroren mét de dekking van dat moment ("2026 (t/m juli)"); de maandelijkse hercontrole
+⑥ rekent tegen de dan actuele jaarstand — er komen maanden bij, dus een verschuiving boven de drempel wordt zichtbaar
+mét dezelfde actie "Herverdelen…". Server-side poort: een jaar in de toekomst of zonder één afgesloten maand
+(januari) is geen geldige keuze; het lopende jaar verschijnt pas vanaf februari in de lijst. Opslag: periode-code
+"JJJJ-MM" of "JJJJ" (kolom `pro_rato_soort`, migratie 0119).</p>
 </body>
 </html>

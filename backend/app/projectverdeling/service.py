@@ -102,15 +102,19 @@ def _live(
     administratie_id: uuid.UUID,
     regels: list[tuple[uuid.UUID | None, Decimal | None]],
     vaste: list[pv.VasteRegel],
-    periode: date | None,
+    periode: pv.Periode | None,
     status: str,
     opgeslagen: bool,
     prefill: bool,
     boek_cyclus: int | None,
+    vandaag: date | None = None,
 ) -> pv.ProjectverdelingData:
+    vandaag = vandaag or date.today()
     basis = pv.basisbedrag_van(regels)
     selectie = (
-        omzet_per_project(session, administratie_id=administratie_id, periode=periode) if periode is not None else None
+        omzet_per_project(session, administratie_id=administratie_id, periode=periode, vandaag=vandaag)
+        if periode is not None
+        else None
     )
     standen = selectie.standen if selectie else []
     berekening = pv.bereken(
@@ -120,6 +124,7 @@ def _live(
         periode=periode,
         omzetstanden=standen,
         omzet_cache_leeg=bool(selectie and selectie.cache_leeg),
+        vandaag=vandaag,
     )
     delen, vaste, standen = _met_namen(session, administratie_id, berekening, vaste, standen)
     return pv.ProjectverdelingData(
@@ -138,6 +143,7 @@ def _live(
         boek_cyclus=boek_cyclus,
         omzet_cache_leeg=bool(selectie and selectie.cache_leeg),
         aantal_projecten_met_omzet=len(standen),
+        pro_rato_peildatum=vandaag,
     )
 
 
@@ -149,6 +155,7 @@ def _bevroren(
     standen = pv.omzetstanden_uit_json(row.omzetstanden)
     berekening = pv.Berekening(row.pro_rato_bedrag, delen, True, None)
     delen, vaste, standen = _met_namen(session, administratie_id, berekening, vaste, standen)
+    periode = _periode_van(row)
     hercontrole = None
     if row.hercontrole_op is not None:
         nieuwe = pv.delen_uit_json(row.hercontrole_verdeling) if row.hercontrole_verdeling else []
@@ -157,17 +164,18 @@ def _bevroren(
             op=row.hercontrole_op,
             afwijking_pct=row.hercontrole_afwijking_pct,
             drempel_pct=drempel,
-            periode=row.pro_rato_periode,
+            periode=periode,
             nieuwe_verdeling=[replace(d, project_naam=namen.get(d.project_id)) for d in nieuwe],
             signaal=row.hercontrole_verdeling is not None,
+            peildatum=row.hercontrole_op.date(),
         )
     basis = sum((r.bedrag for r in vaste), Decimal(0)) + (row.pro_rato_bedrag or Decimal(0))
     return pv.ProjectverdelingData(
         status=pv.STATUS_GEBOEKT,
         basisbedrag=basis.quantize(pv.CENT),
         vaste_regels=vaste,
-        pro_rato=row.pro_rato_periode is not None,
-        pro_rato_periode=row.pro_rato_periode,
+        pro_rato=periode is not None,
+        pro_rato_periode=periode,
         pro_rato_bedrag=row.pro_rato_bedrag,
         delen=delen,
         omzetstanden=standen,
@@ -177,7 +185,23 @@ def _bevroren(
         boek_cyclus=row.boek_cyclus,
         hercontrole=hercontrole,
         aantal_projecten_met_omzet=len(standen),
+        # Dekking van een jaarperiode = de stand op het boekmoment (bevroren), niet die van vandaag.
+        pro_rato_peildatum=row.geboekt_op.date() if row.geboekt_op else None,
     )
+
+
+def _periode_van(row: Projectverdeling) -> pv.Periode | None:
+    return pv.Periode.uit_opslag(row.pro_rato_periode, row.pro_rato_soort)
+
+
+def _zet_periode(row: Projectverdeling, periode: pv.Periode | None) -> None:
+    row.pro_rato_periode = periode.start if periode else None
+    row.pro_rato_soort = periode.soort if periode else pv.SOORT_MAAND
+
+
+def _periode_code(row: Projectverdeling) -> str | None:
+    periode = _periode_van(row)
+    return periode.code if periode else None
 
 
 def lees(
@@ -212,6 +236,7 @@ def lees(
             opgeslagen=False,
             prefill=True,
             boek_cyclus=boek_cyclus,
+            vandaag=vandaag,
         )
     if row.status == pv.STATUS_GEBOEKT and (row.boek_cyclus is None or row.boek_cyclus >= boek_cyclus):
         return _bevroren(session, administratie_id=administratie_id, row=row, drempel=drempel_pct)
@@ -235,11 +260,12 @@ def lees(
         administratie_id=administratie_id,
         regels=regels,
         vaste=pv.vaste_regels_uit_json(row.vaste_regels),
-        periode=row.pro_rato_periode,
+        periode=_periode_van(row),
         status=pv.STATUS_VOORSTEL,
         opgeslagen=True,
         prefill=False,
         boek_cyclus=boek_cyclus,
+        vandaag=vandaag,
     )
 
 
@@ -275,7 +301,7 @@ def samenvatting(data: pv.ProjectverdelingData) -> str:
     (mét vaste regels: "… vast + pro rato omzet …"; alleen vaste regels: "… vaste regels")."""
     projecten = len({d.project_id for d in data.delen})
     if data.pro_rato and data.pro_rato_periode is not None and (data.pro_rato_bedrag or Decimal(0)) != 0:
-        wijze = f"pro rato omzet {pv.periode_label(data.pro_rato_periode)}"
+        wijze = f"pro rato omzet {data.pro_rato_periode_label}"
         if data.vaste_regels:
             wijze = f"vast + {wijze}"
     else:
@@ -347,18 +373,23 @@ def sla_op(
     document_id: uuid.UUID,
     actor_id: uuid.UUID,
     vaste_regels: list[pv.VasteRegel],
-    pro_rato_periode: date | None,
+    pro_rato_periode: pv.Periode | date | str | None,
     vervallen: bool = False,
+    vandaag: date | None = None,
 ) -> pv.ProjectverdelingData | None:
     """Upsert van de verdeling op een NOG NIET geboekt inkoopdocument. `pro_rato_periode=None` = pro rato uit
-    (alleen vaste regels); `vervallen=True` = de mens haalt de verdeling weg (status vervallen — de prefill komt
-    dan niet terug; nooit een DELETE). Audit oud→nieuw op élke wijziging."""
+    (alleen vaste regels); een maand ("JJJJ-MM" / eerste dag) óf een heel jaar ("JJJJ", D4 07-09: alleen het
+    huidige of vorige jaar, met minstens één afgesloten maand — anders 422); `vervallen=True` = de mens haalt de
+    verdeling weg (status vervallen — de prefill komt dan niet terug; nooit een DELETE). Audit oud→nieuw op élke
+    wijziging."""
+    vandaag = vandaag or date.today()
     try:
         pv.valideer_vaste_regels(vaste_regels)
+        periode = pv.als_periode(pro_rato_periode)
+        if periode is not None:
+            pv.valideer_periode(periode, vandaag)
     except pv.ProjectverdelingFout as exc:
         raise ProjectverdelingServiceFout(str(exc)) from exc
-    if pro_rato_periode is not None and pro_rato_periode.day != 1:
-        raise ProjectverdelingServiceFout("De omzetmaand hoort de eerste dag van een kalendermaand te zijn")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = _laad_document(session, administratie_id, document_id)
         if document.soort != "inkoopfactuur":
@@ -373,7 +404,7 @@ def sla_op(
             {
                 "status": row.status,
                 "vaste_regels": row.vaste_regels,
-                "pro_rato_periode": str(row.pro_rato_periode) if row.pro_rato_periode else None,
+                "pro_rato_periode": _periode_code(row),
             }
             if row
             else None
@@ -383,7 +414,7 @@ def sla_op(
             session.add(row)
         row.status = pv.STATUS_VERVALLEN if vervallen else pv.STATUS_VOORSTEL
         row.vaste_regels = [] if vervallen else pv.vaste_regels_naar_json(vaste_regels)
-        row.pro_rato_periode = None if vervallen else pro_rato_periode
+        _zet_periode(row, None if vervallen else periode)
         row.boek_cyclus = None
         row.geboekt_op = None
         row.hercontrole_op = None
@@ -403,11 +434,12 @@ def sla_op(
                 administratie_id=administratie_id,
                 regels=regels,
                 vaste=vaste_regels,
-                periode=pro_rato_periode,
+                periode=periode,
                 status=pv.STATUS_VOORSTEL,
                 opgeslagen=True,
                 prefill=False,
                 boek_cyclus=None,
+                vandaag=vandaag,
             )
             row.pro_rato_bedrag = live.pro_rato_bedrag
             row.verdeling = pv.delen_naar_json(live.delen)
@@ -428,7 +460,8 @@ def sla_op(
             nieuwe_waarde={
                 "status": row.status,
                 "vaste_regels": row.vaste_regels,
-                "pro_rato_periode": str(row.pro_rato_periode) if row.pro_rato_periode else None,
+                "pro_rato_periode": _periode_code(row),
+                "pro_rato_periode_label": live.pro_rato_periode_label if live else None,
                 "pro_rato_bedrag": str(row.pro_rato_bedrag) if row.pro_rato_bedrag is not None else None,
                 "compleet": bool(live and live.compleet),
             },
@@ -458,7 +491,7 @@ def bevries_bij_boeking(
         session.add(row)
     row.status = pv.STATUS_GEBOEKT
     row.vaste_regels = pv.vaste_regels_naar_json(data.vaste_regels)
-    row.pro_rato_periode = data.pro_rato_periode
+    _zet_periode(row, data.pro_rato_periode)
     row.pro_rato_bedrag = data.pro_rato_bedrag
     row.verdeling = pv.delen_naar_json(data.delen)
     row.omzetstanden = pv.omzetstanden_naar_json(data.omzetstanden)
@@ -477,7 +510,8 @@ def bevries_bij_boeking(
         correlatie_id=uuid.uuid4(),
         nieuwe_waarde={
             "boek_cyclus": boek_cyclus,
-            "pro_rato_periode": str(data.pro_rato_periode) if data.pro_rato_periode else None,
+            "pro_rato_periode": data.pro_rato_periode.code if data.pro_rato_periode else None,
+            "pro_rato_periode_label": data.pro_rato_periode_label,
             "pro_rato_bedrag": str(data.pro_rato_bedrag) if data.pro_rato_bedrag is not None else None,
             "verdeling": row.verdeling,
             "omzetstanden": row.omzetstanden,
@@ -637,11 +671,13 @@ class SignaalRij:
     bestandsnaam: str
     leverancier: str | None
     referentie: str | None
-    pro_rato_periode: date | None
+    pro_rato_periode: pv.Periode | None
     pro_rato_bedrag: Decimal | None
     afwijking_pct: Decimal
     drempel_pct: Decimal
     hercontrole_op: datetime
+    #: label mét dekking op het boekmoment ("juli 2026" / "2026 (t/m juli)")
+    pro_rato_periode_label: str | None = None
     #: Inzicht › Projectverdeling (blok B 06-09): wat het kantoorbrede scherm per rij nodig heeft — totaal van de
     #: factuur, wanneer geboekt, en de bevroren (oude) versus herrekende (nieuwe) delen mét projectnaam, zodat de
     #: bestaande Herverdelen-dialoog (oud vs nieuw) zonder extra detail-call kan openen.
@@ -733,7 +769,11 @@ def hercontrole_signalen(
                         if boekvoorstel and boekvoorstel.vendor_id
                         else None,
                         referentie=boekvoorstel.referentie if boekvoorstel else None,
-                        pro_rato_periode=row.pro_rato_periode,
+                        pro_rato_periode=_periode_van(row),
+                        pro_rato_periode_label=pv.periode_label(
+                            _periode_van(row), row.geboekt_op.date() if row.geboekt_op else None
+                        )
+                        or None,
                         pro_rato_bedrag=row.pro_rato_bedrag,
                         afwijking_pct=row.hercontrole_afwijking_pct or Decimal("0"),
                         drempel_pct=administratie.projectverdeling_drempel_pct,

@@ -186,7 +186,7 @@ export function HercontroleScreen() {
                           {pctLabel(r.afwijking_pct)} afwijking
                         </Badge>
                         <div className="hint" style={{ margin: 0, fontSize: 11.5 }}>
-                          drempel {pctLabel(r.drempel_pct)} · omzet {periodeLabel(r.pro_rato_periode)}
+                          drempel {pctLabel(r.drempel_pct)} · omzet {r.pro_rato_periode_label ?? periodeLabel(r.pro_rato_periode)}
                         </div>
                       </td>
                       <td>
