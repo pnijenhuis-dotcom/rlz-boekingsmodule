@@ -231,6 +231,9 @@ class StaffelRegelData:
     prijs_per_eenheid: Decimal
     verrekenbaar: bool
     bron: str | None
+    # D6: 'contract' (direct uit de contract-ontleding) | 'mens' | None (vóór 0118). Een contract-staffel mag
+    # als VOORSTEL dienen; het prijsbesluit zelf (keur_meerwerk_goed) blijft een mens-handeling.
+    herkomst: str | None = None
 
 
 # --- helpers ---------------------------------------------------------------------------------
@@ -1299,6 +1302,7 @@ def contract_toets(*, administratie_id: uuid.UUID, project_id: uuid.UUID, eenhei
                 prijs_per_eenheid=r.prijs_per_eenheid,
                 verrekenbaar=r.verrekenbaar,
                 bron=r.bron,
+                herkomst=r.herkomst,
             )
             for r in regels
         ]

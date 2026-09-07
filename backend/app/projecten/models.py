@@ -145,15 +145,29 @@ class ProjectCijfersSyncRun(Base):
 
 
 class OntledingRegelStatus(enum.StrEnum):
+    """Uitkomst per gelezen regel. Sinds blok D6 (07-09, besluit Peter 06-09 — AUTO-FIRST) schrijft de
+    ontleding DIRECT: `overgenomen` (ingevuld in spec/staffel mét herkomst 'contract'),
+    `niet_aangetroffen` (de AI antwoordde expliciet met de sentinel — een zichtbare uitkomst, geen
+    stilte), `ongeldig` (gelezen maar niet deterministisch te plaatsen, bv. onbekende eenheid of
+    onleesbaar getal — zichtbaar, niet ingevuld; reden in `waarde.reden`), `mens_behouden` (gelezen, maar
+    het spec-veld droeg al een mens-waarde — die wint, zichtbaar). De drie oude statussen
+    (`voorstel`/`bevestigd`/`afgewezen`) blijven bestaan voor rijen van vóór 0118."""
+
     VOORSTEL = "voorstel"
     BEVESTIGD = "bevestigd"
     AFGEWEZEN = "afgewezen"
+    OVERGENOMEN = "overgenomen"
+    NIET_AANGETROFFEN = "niet_aangetroffen"
+    ONGELDIG = "ongeldig"
+    MENS_BEHOUDEN = "mens_behouden"
 
 
 class OntledingRegelSoort(enum.StrEnum):
-    """Wat een ontleed-voorstelregel bij bevestiging deterministisch voedt (mockup: bevestigen
-    per regel, nooit automatisch overnemen)."""
+    """Wat een gelezen regel deterministisch voedt. Kopvelden (soort_werk, contract_m2,
+    doorlopende_huur) vraagt het schema sinds D6 expliciet uit (sentinel-patroon); de rest komt als
+    regels. Auto-first: direct ingevuld mét herkomst 'contract' (app/projecten/ontleding.py)."""
 
+    SOORT_WERK = "soort_werk"  # → project_specificatie.soort_werk (kopveld, D6)
     CONTRACT_M2 = "contract_m2"  # → project_specificatie.contract_m2
     LOOPTIJD = "looptijd"  # → looptijd_van/looptijd_tot
     HUURTIJD = "huurtijd"  # → huurtijd_omschrijving
@@ -169,12 +183,12 @@ _ONTLEDING_STATUS_SQL = ", ".join(f"'{s.value}'" for s in OntledingRegelStatus)
 
 
 class ProjectOntledingRegel(Base):
-    """Eén regel van het contract-/offerte-ontleedvoorstel (AI — mockup projecten-invoer.html:
-    "Ontleed-voorstel … bevestig per regel"; migratie 0062). De AI stelt VOOR, de mens
-    bevestigt (✓) of wijst af (✗); bevestigen = deterministisch doorschrijven naar
-    project_specificatie/project_staffel (app/projecten/ontleding.py) — er wordt nooit iets
-    automatisch overgenomen. Een her-ontleding vervangt alleen de nog onbesliste
-    voorstel-regels; besliste regels blijven als vastlegging staan."""
+    """Eén gelezen regel van de contract-/offerte-ontleding (AI; migratie 0062, verruimd 0118).
+    Tot 07-09 een VOORSTEL dat de mens per regel bevestigde; sinds blok D6 (besluit Peter 06-09,
+    AUTO-FIRST) is dit het leesspoor: wat gelezen is staat DIRECT in project_specificatie/
+    project_staffel mét herkomst 'contract' en deze rij bewaart citaat + zekerheid + uitkomst
+    (overgenomen / niet_aangetroffen / ongeldig). Een her-ontleding vervangt de eigen rijen van dat
+    document; oude besliste rijen (bevestigd/afgewezen) blijven als vastlegging staan."""
 
     __tablename__ = "project_ontleding_regel"
     __table_args__ = (

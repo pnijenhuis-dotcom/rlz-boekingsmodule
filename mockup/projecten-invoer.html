@@ -184,7 +184,7 @@
 
   <div class="kaart">
     <div class="kaart-kop"><h2>Specificaties</h2>
-      <div class="uitleg">Deze velden voeden de uitvoerder-app (specs-scherm), de planning en de projectsignalen. Handmatig invullen of bevestigen uit de contract-ontleding hieronder.</div>
+      <div class="uitleg">Deze velden voeden de uitvoerder-app (specs-scherm), de planning en de projectsignalen. Handmatig invullen of direct uit de contract-ontleding hieronder (label "uit contract", herzien 07-09).</div>
     </div>
     <div class="kaart-body grid2">
       <div class="veld"><label>Opdrachtgever</label><input value="Moeskops Bouw B.V."></div>
@@ -198,7 +198,7 @@
 
   <div class="kaart">
     <div class="kaart-kop"><h2>Documenten (contract & offerte)</h2>
-      <div class="uitleg">Alleen-lezen zichtbaar voor de uitvoerder in de veld-app. Ná upload stelt de ontleding specs en staffels VOOR — jij bevestigt per regel, er wordt nooit iets automatisch overgenomen.</div>
+      <div class="uitleg">Alleen-lezen zichtbaar voor de uitvoerder in de veld-app. Ná upload vult de ontleding specs en staffels DIRECT in mét het label "uit contract" (herzien 07-09, blok D6); corrigeren kan altijd, een correctie wordt "handmatig" en blijft bij een nieuwe ontleding staan.</div>
     </div>
     <div class="kaart-body">
       <div class="doc"><span class="ic">📄</span><span><b>Opdrachtbevestiging 26014 v2.pdf</b><small>geüpload 12 aug · getekend · ontleed ✓</small></span><span class="rechts"><span class="badge ok">actueel contract</span><button class="btn secundair klein">Bekijk</button></span></div>
@@ -206,7 +206,7 @@
       <div class="dropzone">Sleep hier een contract of offerte (PDF) naartoe, of <b>blader</b> — ontleding start daarna als voorstel</div>
 
       <div class="voorstel">
-        <div class="vkop">🧠 Ontleed-voorstel uit "Opdrachtbevestiging 26014 v2.pdf" — bevestig per regel</div>
+        <div class="vkop">🧠 Gelezen uit "Opdrachtbevestiging 26014 v2.pdf" — direct ingevuld (label "uit contract"; ✓/✗ = historisch, sinds 07-09 alleen corrigeren)</div>
         <div class="vregel bevestigd"><span class="oms">Contract-m² <small>gevonden op p.1: "4.200 m² steigerwerk gevel A–C"</small></span><span class="prijs">4.200 m²</span><span class="acties"><button class="ok-knop">✓</button><button class="nee-knop">✗</button></span></div>
         <div class="vregel"><span class="oms">Staffel: trapsteiger <small>§4.2 "verrekenbaar tegen € 9,20 per m²"</small></span><span class="prijs">€ 9,20 /m²</span><span class="acties"><button class="ok-knop" onclick="this.closest('.vregel').classList.add('bevestigd')">✓</button><button class="nee-knop">✗</button></span></div>
         <div class="vregel"><span class="oms">Staffel: doorwerkvoorziening netten <small>§4.3 "€ 3,10 per m¹ per week"</small></span><span class="prijs">€ 3,10 /m¹/wk</span><span class="acties"><button class="ok-knop" onclick="this.closest('.vregel').classList.add('bevestigd')">✓</button><button class="nee-knop">✗</button></span></div>
@@ -386,7 +386,7 @@
   <h2>Wat je ziet (ontwerpronde — nog niet gebouwd)</h2>
   De invoerkant van de projectadministratie (steigerbouw-tak): per RLZ-project de <b>specs</b> (contract-m², looptijd, huurtijd, doorlopende-huurtarief), <b>documenten</b> (contract/offerte, alleen-lezen door naar de uitvoerder-app), <b>verrekenstaffels</b> (bron van het meerwerk-prijsvoorstel) en <b>leverancier-werknummers</b>. De lijst toont sync-projecten met compleetheids-badges; voortgang komt uit de goedgekeurde weekstaten (m²).
   <h2>Bewuste keuzes (graag jouw oordeel)</h2>
-  1. Contract-ontleding = VOORSTEL per regel, mens bevestigt (✓/✗) — niets wordt automatisch overgenomen; draait onder de bestaande AI-gate + kostengrens, en zonder AI blijft alles handmatig invulbaar.<br>
+  1. <s>Contract-ontleding = VOORSTEL per regel, mens bevestigt (✓/✗) — niets wordt automatisch overgenomen</s> <b>HERZIEN 06/07-09 (besluit Peter, blok D6): AUTO-FIRST</b> — wat de ontleding leest (soort werk, contract-m², doorlopende huur, looptijd, staffels) wordt DIRECT en deterministisch ingevuld mét herkomst-chip "uit contract" (corrigeerbaar → "handmatig", audit oud→nieuw); "niet in contract aangetroffen" is een expliciete uitkomst; het meerwerk-prijsvoorstel blijft een mens-besluit. Draait onder de bestaande AI-gate + kostengrens; zonder AI blijft alles handmatig invulbaar.<br>
   2. "Verrekenbaar nee" bij een staffel = meerwerk-beoordeling adviseert "eigen rekening" — de mens beslist.<br>
   3. Boeteclausules worden vastgelegd als projectsignaal (info), geen automatische actie.<br>
   4. Toegang: zelfde module-recht "Meerwerk & urenstaten" + klantscope; wijzigen door Boekhouding+Projecten en Beheerder.<br>

@@ -55,6 +55,55 @@ _EENHEDEN = tuple(e.value for e in MeerwerkEenheid)
 
 _NUMMER_PATROON = re.compile(r"^(\d{3,5})\b")
 
+# Herkomst van spec-velden en staffelregels (blok D6 07-09, migratie 0118 — AUTO-FIRST): 'contract' = direct
+# ingevuld door de contract-ontleding (chip "uit contract"), 'mens' = door een mens ingevuld/gecorrigeerd.
+HERKOMST_CONTRACT = "contract"
+HERKOMST_MENS = "mens"
+
+# Spec-velden die een herkomst dragen (alle inhoudelijke velden; de projectzone-velden blijven mens-only).
+SPEC_HERKOMST_VELDEN = (
+    "opdrachtgever",
+    "werknummer_opdrachtgever",
+    "soort_werk",
+    "contract_m2",
+    "looptijd_van",
+    "looptijd_tot",
+    "huurtijd_omschrijving",
+    "doorlopende_huur_omschrijving",
+)
+
+
+def _als_audit_waarde(waarde: object) -> object:
+    if isinstance(waarde, Decimal):
+        # Genormaliseerd ("4200.00" uit Numeric(10,2) en "4200" uit het formulier zijn dezelfde waarde) — anders
+        # zou een ongewijzigd veld als mens-wijziging tellen.
+        return format(waarde.normalize(), "f")
+    if isinstance(waarde, date | datetime):
+        return waarde.isoformat()
+    return waarde
+
+
+def spec_snapshot(spec: ProjectSpecificatie | None) -> dict:
+    """Audit-snapshot (oud→nieuw) van de inhoudelijke spec-velden + hun herkomst."""
+    if spec is None:
+        return {}
+    return {
+        **{veld: _als_audit_waarde(getattr(spec, veld)) for veld in SPEC_HERKOMST_VELDEN},
+        "veld_herkomst": dict(spec.veld_herkomst or {}),
+    }
+
+
+def staffel_snapshot(staffel: ProjectStaffel) -> dict:
+    return {
+        "id": str(staffel.id),
+        "omschrijving": staffel.omschrijving,
+        "eenheid": staffel.eenheid,
+        "prijs_per_eenheid": str(staffel.prijs_per_eenheid),
+        "verrekenbaar": staffel.verrekenbaar,
+        "bron": staffel.bron,
+        "herkomst": staffel.herkomst,
+    }
+
 
 class ProjectenFout(Exception):
     """Basis voor domeinfouten in de kantoor-projectenmodule."""
@@ -242,6 +291,9 @@ class StaffelInfo:
     verrekenbaar: bool
     bron: str | None
     aangemaakt_op: datetime
+    # D6: 'contract' | 'mens' | None (rij van vóór 0118 — UI leidt dan af uit `bron`).
+    herkomst: str | None = None
+    herkomst_document_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +465,8 @@ def project_detail(*, administratie_id: uuid.UUID, project_id: uuid.UUID) -> Pro
                 verrekenbaar=s.verrekenbaar,
                 bron=s.bron,
                 aangemaakt_op=s.aangemaakt_op,
+                herkomst=s.herkomst,
+                herkomst_document_id=s.herkomst_document_id,
             )
             for s in session.scalars(
                 select(ProjectStaffel)
@@ -541,7 +595,10 @@ def zet_specificatie(
 ) -> None:
     """Upsert van de projectspecificatie (mockup specs-grid) — voedt de uitvoerder-app, de
     planning (looptijd) en de projectsignalen. Projectzone (blok C 28-08): adres + WGS84-punt +
-    straal; zonder punt = geen geofence voor dit project (stil). Lat/lon altijd samen."""
+    straal; zonder punt = geen geofence voor dit project (stil). Lat/lon altijd samen.
+    Herkomst (D6): élk inhoudelijk veld dat hier van waarde verandert krijgt herkomst 'mens' — de
+    contract-ontleding overschrijft zo'n veld daarna nooit meer; ongewijzigde velden houden hun
+    herkomst (chip "uit contract" blijft staan). Audit oud→nieuw."""
     if looptijd_van is not None and looptijd_tot is not None and looptijd_tot < looptijd_van:
         raise OngeldigeInvoer("Looptijd-einde ligt vóór de start")
     if (locatie_lat is None) != (locatie_lon is None):
@@ -561,6 +618,7 @@ def zet_specificatie(
                 project_id=project_id, administratie_id=administratie_id, bijgewerkt_door=actor_id
             )
             session.add(spec)
+        oude = spec_snapshot(spec)
         nieuwe = {
             "opdrachtgever": opdrachtgever,
             "werknummer_opdrachtgever": werknummer_opdrachtgever,
@@ -588,6 +646,14 @@ def zet_specificatie(
         spec.locatie_lon = locatie_lon
         spec.zone_straal_m = zone_straal_m
         spec.bijgewerkt_door = actor_id
+        # Herkomst 'mens' voor élk inhoudelijk veld dat van waarde veranderde (nieuwe dict → JSONB-wijziging zichtbaar).
+        herkomst = dict(spec.veld_herkomst or {})
+        for veld in SPEC_HERKOMST_VELDEN:
+            if oude.get(veld) != _als_audit_waarde(getattr(spec, veld)):
+                herkomst[veld] = HERKOMST_MENS
+        if herkomst != (spec.veld_herkomst or {}):
+            spec.veld_herkomst = herkomst
+        nieuwe["veld_herkomst"] = dict(spec.veld_herkomst or {})
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -596,6 +662,7 @@ def zet_specificatie(
             record_id=project_id,
             actie="project_specificatie_bijgewerkt",
             correlatie_id=project_id,
+            oude_waarde=oude,
             nieuwe_waarde=nieuwe,
             administratie_id=administratie_id,
         )
@@ -629,6 +696,7 @@ def voeg_staffel_toe(
             prijs_per_eenheid=prijs_per_eenheid,
             verrekenbaar=verrekenbaar,
             bron=bron,
+            herkomst=HERKOMST_MENS,
             aangemaakt_door=actor_id,
         )
         session.add(staffel)
@@ -647,6 +715,7 @@ def voeg_staffel_toe(
                 "prijs_per_eenheid": str(prijs_per_eenheid),
                 "verrekenbaar": verrekenbaar,
                 "bron": bron,
+                "herkomst": HERKOMST_MENS,
             },
             administratie_id=administratie_id,
         )
@@ -673,18 +742,15 @@ def wijzig_staffel(
         staffel = session.get(ProjectStaffel, staffel_id)
         if staffel is None or staffel.administratie_id != administratie_id:
             raise ProjectNietGevonden("Onbekende staffelregel")
-        oude = {
-            "omschrijving": staffel.omschrijving,
-            "eenheid": staffel.eenheid,
-            "prijs_per_eenheid": str(staffel.prijs_per_eenheid),
-            "verrekenbaar": staffel.verrekenbaar,
-        }
+        oude = staffel_snapshot(staffel)
         staffel.omschrijving = omschrijving.strip() or staffel.omschrijving
         staffel.eenheid = eenheid
         staffel.prijs_per_eenheid = prijs_per_eenheid
         staffel.verrekenbaar = verrekenbaar
         if bron is not None:
             staffel.bron = bron
+        # D6: een mens-correctie maakt de regel 'mens' — de her-ontleding van het contract raakt 'm dan niet meer.
+        staffel.herkomst = HERKOMST_MENS
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -694,12 +760,7 @@ def wijzig_staffel(
             actie="project_staffel_gewijzigd",
             correlatie_id=staffel.project_id,
             oude_waarde=oude,
-            nieuwe_waarde={
-                "omschrijving": staffel.omschrijving,
-                "eenheid": eenheid,
-                "prijs_per_eenheid": str(prijs_per_eenheid),
-                "verrekenbaar": verrekenbaar,
-            },
+            nieuwe_waarde=staffel_snapshot(staffel),
             administratie_id=administratie_id,
         )
 

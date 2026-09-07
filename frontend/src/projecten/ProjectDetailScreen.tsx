@@ -9,7 +9,6 @@ import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
 import { VerplichtingenPaneel, WeekstatenPaneel } from './ProjectDetailVerrijking'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
-  beslisOntledingRegel,
   bevestigWerknummer,
   haalProjectDetail,
   ontleedDocument,
@@ -30,16 +29,19 @@ import {
   type VeldwerkerKeuzeDto,
 } from './projectenApi'
 
-/* Projectdetail (mockup projecten-invoer.html view 2, akkoord Peter 22-08): specs-grid
- * (voedt de uitvoerder-app, planning en projectsignalen), documenten (contract/offerte,
- * alleen-lezen door naar de veld-app) mét AI-ontleedvoorstel dat per regel bevestigd wordt
- * (nooit automatisch overgenomen; zonder AI blijft alles handmatig invulbaar),
- * verrekenstaffels (bron van het meerwerk-prijsvoorstel) en leverancier-werknummers
+/* Projectdetail (mockup projecten-invoer.html view 2, akkoord Peter 22-08; contract-ontleding
+ * herzien D6 07-09 — besluit Peter 06-09 AUTO-FIRST): specs-grid (voedt de uitvoerder-app,
+ * planning en projectsignalen), documenten (contract/offerte, alleen-lezen door naar de veld-app)
+ * waarvan de AI-ontleding specs en staffels DIRECT invult mét herkomst-chip "uit contract"
+ * (corrigeerbaar → "handmatig"; "niet in contract aangetroffen" is een zichtbare uitkomst; zonder
+ * AI blijft alles handmatig invulbaar), verrekenstaffels (bron van het meerwerk-prijsVOORSTEL —
+ * het prijsbesluit blijft een mens-handeling) en leverancier-werknummers
  * (praktijkles factuur↔project-matching). Wijzigen = Beheerder/Boekhouding+Projecten
  * (server-side afgedwongen; een 403 hier toont de nette melding). */
 
 const EENHEID_LABELS: Record<string, string> = { m2: 'm²', m1: 'm¹', stuks: 'stuks', manuren: 'manuren' }
 const SOORT_LABELS: Record<string, string> = {
+  soort_werk: 'Soort werk',
   contract_m2: 'Contract-m²',
   looptijd: 'Looptijd',
   huurtijd: 'Huurtijd inbegrepen',
@@ -62,6 +64,30 @@ const veldStijl = {
 
 function euro(bedrag: string | number): string {
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })
+}
+
+/** Herkomst-chip (D6): 'contract' = direct ingevuld door de ontleding (info = actie-neutraal, geen
+ * status-groen), 'mens' = handmatig ingevuld/gecorrigeerd. */
+function HerkomstChip({ herkomst }: { herkomst: 'contract' | 'mens' | string | null | undefined }) {
+  if (herkomst === 'contract') return <Badge variant="info">uit contract</Badge>
+  if (herkomst === 'mens') return <Badge variant="stil">handmatig</Badge>
+  return null
+}
+
+/** Rijen van vóór 0118 dragen geen herkomst: 'handmatig' als bron → mens, anders (citaat) → uit contract. */
+function staffelHerkomst(staffel: StaffelDto): 'contract' | 'mens' | string {
+  if (staffel.herkomst) return staffel.herkomst
+  return staffel.bron === 'handmatig' || staffel.bron === null ? 'mens' : 'contract'
+}
+
+const ONTLEDING_STATUS: Record<string, { label: string; variant: 'ok' | 'warn' | 'danger' | 'info' | 'stil' }> = {
+  overgenomen: { label: '✓ ingevuld uit contract', variant: 'ok' },
+  niet_aangetroffen: { label: 'niet in contract aangetroffen', variant: 'stil' },
+  ongeldig: { label: 'niet ingevuld', variant: 'warn' },
+  mens_behouden: { label: 'handmatige waarde behouden', variant: 'stil' },
+  bevestigd: { label: '✓ bevestigd (oud voorstel)', variant: 'ok' },
+  afgewezen: { label: '✗ afgewezen (oud voorstel)', variant: 'danger' },
+  voorstel: { label: 'oud voorstel — ontleed opnieuw', variant: 'warn' },
 }
 
 export function ProjectDetailScreen() {
@@ -199,48 +225,52 @@ function SpecificatiePaneel({
   const zet = (veld: keyof SpecificatieDto) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setVorm((huidig) => ({ ...huidig, [veld]: e.target.value || null }))
   const zoneActief = Boolean(vorm.locatie_lat && vorm.locatie_lon)
+  const chip = (veld: keyof SpecificatieDto) => (
+    <HerkomstChip herkomst={specificatie?.veld_herkomst?.[veld as string] ?? null} />
+  )
 
   return (
     <div className="panel">
       <h2>Specificaties</h2>
       <p className="hint" style={{ marginTop: 0 }}>
-        Deze velden voeden de uitvoerder-app (specs-scherm), de planning en de projectsignalen. Handmatig invullen of
-        bevestigen uit de contract-ontleding hieronder.
+        Deze velden voeden de uitvoerder-app (specs-scherm), de planning en de projectsignalen. De contract-ontleding
+        hieronder vult ze direct in (chip &quot;uit contract&quot;); corrigeer hier waar nodig — een gecorrigeerd veld wordt
+        &quot;handmatig&quot; en wordt door een nieuwe ontleding niet meer overschreven.
       </p>
       <div style={{ display: 'grid', gap: '12px 16px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Opdrachtgever
+          Opdrachtgever {chip('opdrachtgever')}
           <input value={vorm.opdrachtgever ?? ''} onChange={zet('opdrachtgever')} style={veldStijl} />
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Werknummer opdrachtgever
+          Werknummer opdrachtgever {chip('werknummer_opdrachtgever')}
           <input value={vorm.werknummer_opdrachtgever ?? ''} onChange={zet('werknummer_opdrachtgever')} style={veldStijl} />
           <span style={{ color: 'var(--faint)', fontWeight: 400 }}>gebruikt voor factuur↔project-matching</span>
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Soort werk
+          Soort werk {chip('soort_werk')}
           <input value={vorm.soort_werk ?? ''} onChange={zet('soort_werk')} style={veldStijl} />
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Contract-m²
+          Contract-m² {chip('contract_m2')}
           <input value={vorm.contract_m2 ?? ''} onChange={zet('contract_m2')} inputMode="decimal" style={veldStijl} />
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Looptijd van
+          Looptijd van {chip('looptijd_van')}
           <input type="date" value={vorm.looptijd_van ?? ''} onChange={zet('looptijd_van')} style={veldStijl} />
           {vorm.looptijd_van && <span className="hint" style={{ fontSize: 11 }}>{datumMetWeek(vorm.looptijd_van)}</span>}
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Looptijd t/m
+          Looptijd t/m {chip('looptijd_tot')}
           <input type="date" value={vorm.looptijd_tot ?? ''} onChange={zet('looptijd_tot')} style={veldStijl} />
           {vorm.looptijd_tot && <span className="hint" style={{ fontSize: 11 }}>{datumMetWeek(vorm.looptijd_tot)}</span>}
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Huurtijd inbegrepen
+          Huurtijd inbegrepen {chip('huurtijd_omschrijving')}
           <input value={vorm.huurtijd_omschrijving ?? ''} onChange={zet('huurtijd_omschrijving')} style={veldStijl} />
         </label>
         <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
-          Doorlopende huur daarna
+          Doorlopende huur daarna {chip('doorlopende_huur_omschrijving')}
           <input
             value={vorm.doorlopende_huur_omschrijving ?? ''}
             onChange={zet('doorlopende_huur_omschrijving')}
@@ -291,23 +321,21 @@ function SpecificatiePaneel({
   )
 }
 
-function OntledingRegelRij({
-  regel,
-  administratieId,
-  actie,
-}: {
-  regel: OntledingRegelDto
-  administratieId: string
-  actie: (fn: () => Promise<unknown>, geslaagd?: string) => Promise<void>
-}) {
-  const [eenheid, setEenheid] = useState('m2')
+function OntledingRegelRij({ regel }: { regel: OntledingRegelDto }) {
   const waardeTekst =
     regel.soort === 'looptijd'
       ? [regel.waarde?.van, regel.waarde?.tot].filter(Boolean).join(' t/m ')
       : regel.soort === 'staffel'
-        ? `${euro(regel.waarde?.waarde ?? '0')} ${regel.waarde?.eenheid ? `/${regel.waarde.eenheid}` : ''}`
+        ? `${euro(regel.waarde?.prijs ?? regel.waarde?.waarde ?? '0')} ${
+            regel.waarde?.eenheid_code
+              ? `/${EENHEID_LABELS[regel.waarde.eenheid_code] ?? regel.waarde.eenheid_code}`
+              : regel.waarde?.eenheid
+                ? `/${regel.waarde.eenheid}`
+                : ''
+          }`
         : (regel.waarde?.waarde ?? '')
-  const beslist = regel.status !== 'voorstel'
+  const status = ONTLEDING_STATUS[regel.status] ?? { label: regel.status, variant: 'stil' as const }
+  const gedempt = regel.status === 'niet_aangetroffen' || regel.status === 'afgewezen'
   return (
     <div
       style={{
@@ -316,7 +344,7 @@ function OntledingRegelRij({
         display: 'flex',
         flexWrap: 'wrap',
         gap: 10,
-        opacity: beslist ? 0.65 : 1,
+        opacity: gedempt ? 0.7 : 1,
         padding: '9px 14px',
       }}
     >
@@ -324,49 +352,13 @@ function OntledingRegelRij({
         <b>{SOORT_LABELS[regel.soort] ?? regel.soort}</b>
         {regel.soort === 'staffel' || regel.soort === 'boete' ? `: ${regel.omschrijving}` : ''}
         {regel.citaat && <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>{regel.citaat}</span>}
+        {regel.waarde?.reden && (
+          <span style={{ color: 'var(--warn)', display: 'block', fontSize: 11 }}>{regel.waarde.reden}</span>
+        )}
       </span>
       <b style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{waardeTekst}</b>
       {regel.zekerheid !== null && <Badge>{Math.round(Number(regel.zekerheid) * 100)}%</Badge>}
-      {beslist && (
-        <Badge variant={regel.status === 'bevestigd' ? 'ok' : 'danger'}>
-          {regel.status === 'bevestigd' ? '✓ bevestigd' : '✗ afgewezen'}
-        </Badge>
-      )}
-      {!beslist && (
-        <span style={{ alignItems: 'center', display: 'inline-flex', gap: 6 }}>
-          {regel.soort === 'staffel' && (
-            <Select aria-label="Eenheid" value={eenheid} onChange={(e) => setEenheid(e.target.value)}>
-              {Object.entries(EENHEID_LABELS).map(([waarde, label]) => (
-                <option key={waarde} value={waarde}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          )}
-          <Button
-            maat="klein"
-            aria-label={`Bevestig ${regel.omschrijving}`}
-            onClick={() =>
-              void actie(() =>
-                beslisOntledingRegel(administratieId, regel.id, {
-                  bevestigen: true,
-                  eenheid: regel.soort === 'staffel' ? eenheid : null,
-                }),
-              )
-            }
-          >
-            ✓
-          </Button>
-          <Button
-            variant="secundair"
-            maat="klein"
-            aria-label={`Wijs ${regel.omschrijving} af`}
-            onClick={() => void actie(() => beslisOntledingRegel(administratieId, regel.id, { bevestigen: false }))}
-          >
-            ✗
-          </Button>
-        </span>
-      )}
+      <Badge variant={status.variant}>{status.label}</Badge>
     </div>
   )
 }
@@ -399,8 +391,9 @@ function DocumentenPaneel({
     <div className="panel">
       <h2>Documenten (contract &amp; offerte)</h2>
       <p className="hint" style={{ marginTop: 0 }}>
-        Alleen-lezen zichtbaar voor de uitvoerder in de veld-app. Ná upload stelt de ontleding specs en staffels VOOR —
-        jij bevestigt per regel, er wordt nooit iets automatisch overgenomen.
+        Alleen-lezen zichtbaar voor de uitvoerder in de veld-app. &quot;Ontleden&quot; leest soort werk, contract-m²,
+        doorlopende huur, looptijd, opdrachtgever, werknummer en de verrekenstaffels en vult ze DIRECT in mét de chip
+        &quot;uit contract&quot; — corrigeer waar nodig; wat niet in het contract staat wordt als zodanig gemeld.
       </p>
       {detail.documenten.map((doc) => (
         <div
@@ -435,7 +428,7 @@ function DocumentenPaneel({
             onClick={() =>
               void actie(
                 () => ontleedDocument(administratieId, projectId, doc.id),
-                'Ontleed-voorstel klaargezet — bevestig per regel.',
+                'Contract ontleed — specs en staffels zijn ingevuld (chip "uit contract"); controleer en corrigeer waar nodig.',
               )
             }
           >
@@ -451,7 +444,7 @@ function DocumentenPaneel({
         <Button variant="secundair" maat="klein" onClick={() => bestandRef.current?.click()}>
           PDF kiezen…
         </Button>
-        <span>ontleding start daarna als voorstel (AI-gate + kostengrens; uit = handmatig invullen)</span>
+        <span>daarna &quot;Ontleden&quot; → specs en staffels direct ingevuld (AI-gate + kostengrens; uit = handmatig invullen)</span>
         <input
           ref={bestandRef}
           type="file"
@@ -473,10 +466,10 @@ function DocumentenPaneel({
       {detail.ontleding.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, marginTop: 12, overflow: 'hidden' }}>
           <div style={{ background: 'var(--info-bg)', color: 'var(--info)', fontSize: 12.5, fontWeight: 700, padding: '10px 14px' }}>
-            🧠 Ontleed-voorstel — bevestig per regel (staffels: kies de eenheid, de AI-eenheid is alleen een voorstel)
+            🧠 Gelezen uit het contract — direct ingevuld mét citaat; &quot;niet ingevuld&quot; = zelf aanvullen
           </div>
           {detail.ontleding.map((regel) => (
-            <OntledingRegelRij key={regel.id} regel={regel} administratieId={administratieId} actie={actie} />
+            <OntledingRegelRij key={regel.id} regel={regel} />
           ))}
         </div>
       )}
@@ -505,8 +498,9 @@ function StaffelsPaneel({
         </Button>
       </h2>
       <p className="hint" style={{ marginTop: 0 }}>
-        Bron voor het prijsvoorstel bij meerwerk-beoordeling. &quot;Verrekenbaar nee&quot; = meerwerk op dit item wordt
-        standaard afgeraden (eigen rekening) — de mens beslist altijd.
+        Bron voor het prijsVOORSTEL bij meerwerk-beoordeling — de prijs zelf blijft een mens-besluit. Regels &quot;uit
+        contract&quot; komen direct uit de ontleding; wijzigen maakt ze &quot;handmatig&quot; (een nieuwe ontleding raakt ze dan
+        niet meer). &quot;Verrekenbaar nee&quot; = meerwerk op dit item wordt standaard afgeraden (eigen rekening).
       </p>
       {staffels.length === 0 && <p className="hint">Nog geen staffels — voeg een regel toe of ontleed het contract.</p>}
       {staffels.length > 0 && (
@@ -518,6 +512,7 @@ function StaffelsPaneel({
                 <th>Eenheid</th>
                 <th>Prijs</th>
                 <th>Verrekenbaar</th>
+                <th>Herkomst</th>
                 <th>Bron</th>
                 <th />
               </tr>
@@ -529,6 +524,9 @@ function StaffelsPaneel({
                   <td>{EENHEID_LABELS[staffel.eenheid] ?? staffel.eenheid}</td>
                   <td>{euro(staffel.prijs_per_eenheid)}</td>
                   <td>{staffel.verrekenbaar ? <Badge variant="ok">ja</Badge> : <Badge variant="warn">nee</Badge>}</td>
+                  <td>
+                    <HerkomstChip herkomst={staffelHerkomst(staffel)} />
+                  </td>
                   <td>{staffel.bron ?? '—'}</td>
                   <td>
                     <Button variant="secundair" maat="klein" onClick={() => setBewerk(staffel)}>

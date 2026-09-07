@@ -2,7 +2,7 @@
 rekenlaag resultaat-per-project (weekverdeling, werkweek-herleiding, onderweg-verrijking
 zonder gokken, detail==overzicht), de lijst-badges, de schrijfpaden mét de
 schrijfrol-poort (Beheerder/Boekhouding+Projecten), nieuw-project via de bestaande
-motor-bouwstenen en de contract-ontleding (voorstel → bevestigen per regel)."""
+motor-bouwstenen en de contract-ontleding (auto-first sinds D6 07-09)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.db.session import scoped_session
-from app.extractie.contract import ContractRegel
+from app.extractie.contract import ContractKop, ContractOntleding, ContractRegel
 from app.projecten import cijfers, kantoor, ontleding
 from tests.projecten.conftest import FakeProjectClient
 from tests.uren.conftest import maak_gebruiker, maak_project
@@ -447,9 +447,12 @@ class TestOntleding:
                 project_document_id=document_id, actor_id=beheerder_id,
             )
 
-    def test_voorstel_en_bevestigen_per_regel(
+    def test_ontleding_vult_direct_in_auto_first(
         self, admin_engine: Engine, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, tmp_path, monkeypatch
     ) -> None:
+        """D6 (07-09, besluit Peter 06-09) herziet de 22-08-regel: geen voorstel + bevestigen per regel meer —
+        wat gelezen is staat DIRECT in spec/staffels mét herkomst 'contract'. Volledige dekking in
+        tests/projecten/test_contract_ontleding_auto_first.py; hier de rook-toets op de bestaande seam."""
         project_id = maak_project(admin_engine, administratie_id, "26031 Ontleed (X)")
         document_id = self._document(admin_engine, administratie_id, beheerder_id, project_id, tmp_path, monkeypatch)
         with admin_engine.begin() as conn:
@@ -461,66 +464,38 @@ class TestOntleding:
 
         def fake_extraheer(pdf_bytes, *, verbruik_referentie=None):
             assert pdf_bytes == b"%PDF-1.4 contract"
-            return [
-                ContractRegel(soort="contract_m2", omschrijving="Contract-m²",
-                              citaat='p.1: "4.200 m² steigerwerk"', waarde="4200", eenheid=None,
-                              van=None, tot=None, zekerheid=0.95),
-                ContractRegel(soort="staffel", omschrijving="Trapsteiger",
-                              citaat='§4.2 "€ 9,20 per m²"', waarde="9.20", eenheid="m²",
-                              van=None, tot=None, zekerheid=0.9),
-                ContractRegel(soort="boete", omschrijving="Boeteclausule",
-                              citaat='§7 "€ 500 per kalenderdag"', waarde="500", eenheid=None,
-                              van=None, tot=None, zekerheid=0.8),
-            ]
+            return ContractOntleding(
+                kop=ContractKop(contract_m2="4200", contract_m2_citaat='p.1: "4.200 m² steigerwerk"'),
+                regels=[
+                    ContractRegel(soort="staffel", omschrijving="Trapsteiger",
+                                  citaat='§4.2 "€ 9,20 per m²"', waarde="9.20", eenheid="m²",
+                                  van=None, tot=None, zekerheid=0.9),
+                    ContractRegel(soort="boete", omschrijving="Boeteclausule",
+                                  citaat='§7 "€ 500 per kalenderdag"', waarde="500", eenheid=None,
+                                  van=None, tot=None, zekerheid=0.8),
+                ],
+            )
 
         resultaat = ontleding.ontleed_document(
             administratie_id=administratie_id, project_id=project_id,
             project_document_id=document_id, actor_id=beheerder_id, extraheer=fake_extraheer,
         )
-        assert resultaat.aantal_regels == 3
-        detail = kantoor.project_detail(administratie_id=administratie_id, project_id=project_id)
-        assert len(detail.ontleding) == 3
-        per_soort = {r.soort: r for r in detail.ontleding}
-        # Bevestigen contract_m2 → deterministisch naar de specificatie.
-        ontleding.beslis_regel(
-            administratie_id=administratie_id, regel_id=per_soort["contract_m2"].id,
-            actor_id=beheerder_id, bevestigen=True,
-        )
-        # Staffel vereist een mens-gekozen eenheid uit de vaste vier (AI-eenheid = voorstel).
-        with pytest.raises(kantoor.OngeldigeInvoer, match="eenheid"):
-            ontleding.beslis_regel(
-                administratie_id=administratie_id, regel_id=per_soort["staffel"].id,
-                actor_id=beheerder_id, bevestigen=True,
-            )
-        ontleding.beslis_regel(
-            administratie_id=administratie_id, regel_id=per_soort["staffel"].id,
-            actor_id=beheerder_id, bevestigen=True, eenheid="m2",
-        )
-        # Afwijzen laat niets achter in spec/staffels.
-        ontleding.beslis_regel(
-            administratie_id=administratie_id, regel_id=per_soort["boete"].id,
-            actor_id=beheerder_id, bevestigen=False,
-        )
+        # 3 kopvelden (2× niet aangetroffen) + 2 regels, alles zonder mens-klik.
+        assert (resultaat.aantal_regels, resultaat.overgenomen, resultaat.niet_aangetroffen) == (5, 3, 2)
         detail = kantoor.project_detail(administratie_id=administratie_id, project_id=project_id)
         assert detail.specificatie is not None and detail.specificatie.contract_m2 == Decimal("4200")
+        assert (detail.specificatie.veld_herkomst or {})["contract_m2"] == "contract"
         [staffel] = detail.staffels
-        assert (staffel.omschrijving, staffel.eenheid, staffel.prijs_per_eenheid) == (
-            "Trapsteiger", "m2", Decimal("9.20"),
+        assert (staffel.omschrijving, staffel.eenheid, staffel.prijs_per_eenheid, staffel.herkomst) == (
+            "Trapsteiger", "m2", Decimal("9.20"), "contract",
         )
         assert staffel.bron == '§4.2 "€ 9,20 per m²"'
-        statussen = {r.soort: r.status for r in detail.ontleding}
-        assert statussen == {"contract_m2": "bevestigd", "staffel": "bevestigd", "boete": "afgewezen"}
-        # Een regel kan maar één keer beslist worden.
-        with pytest.raises(kantoor.OngeldigeInvoer, match="al beslist"):
-            ontleding.beslis_regel(
-                administratie_id=administratie_id, regel_id=per_soort["boete"].id,
-                actor_id=beheerder_id, bevestigen=True,
-            )
-        # Her-ontleding vervangt alleen de (niet meer bestaande) voorstel-regels; besliste
-        # regels blijven als vastlegging staan.
+        assert {r.status for r in detail.ontleding} == {"overgenomen", "niet_aangetroffen"}
+        # Her-ontleding vervangt het eigen leesspoor én de eigen contract-staffels (niets blijft dubbel staan).
         ontleding.ontleed_document(
             administratie_id=administratie_id, project_id=project_id,
-            project_document_id=document_id, actor_id=beheerder_id, extraheer=lambda *_a, **_k: [],
+            project_document_id=document_id, actor_id=beheerder_id,
+            extraheer=lambda *_a, **_k: ContractOntleding(kop=ContractKop(), regels=[]),
         )
         detail = kantoor.project_detail(administratie_id=administratie_id, project_id=project_id)
-        assert len(detail.ontleding) == 3  # de drie besliste regels blijven
+        assert len(detail.ontleding) == 3 and detail.staffels == []

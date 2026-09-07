@@ -38,6 +38,9 @@ export interface SpecificatieDto {
   locatie_lat?: string | null
   locatie_lon?: string | null
   zone_straal_m?: number | null
+  /** D6 (07-09): herkomst per veld — 'contract' (chip "uit contract", direct ingevuld door de ontleding) |
+   * 'mens' (handmatig ingevuld/gecorrigeerd); ontbrekend = onbekend (rij van vóór 0118). */
+  veld_herkomst?: Record<string, 'contract' | 'mens' | string>
 }
 
 export interface ProjectDocumentDto {
@@ -58,6 +61,9 @@ export interface StaffelDto {
   verrekenbaar: boolean
   bron: string | null
   aangemaakt_op: string
+  /** D6: 'contract' | 'mens' | null (vóór 0118 — dan afleiden uit `bron`: 'handmatig' → mens, anders contract). */
+  herkomst?: 'contract' | 'mens' | string | null
+  herkomst_document_id?: string | null
 }
 
 export interface WerknummerDto {
@@ -78,7 +84,18 @@ export interface OntledingRegelDto {
   citaat: string | null
   waarde: Record<string, string> | null
   zekerheid: string | null
-  status: 'voorstel' | 'bevestigd' | 'afgewezen' | string
+  /** D6 auto-first: 'overgenomen' (direct ingevuld), 'niet_aangetroffen' (expliciete uitkomst), 'ongeldig'
+   * (gelezen, niet plaatsbaar — reden in waarde.reden), 'mens_behouden' (mens-waarde wint); de drie oude
+   * statussen alleen nog op rijen van vóór 07-09. */
+  status:
+    | 'voorstel'
+    | 'bevestigd'
+    | 'afgewezen'
+    | 'overgenomen'
+    | 'niet_aangetroffen'
+    | 'ongeldig'
+    | 'mens_behouden'
+    | string
 }
 
 /** Projectafspraak per veldwerker (steigerbouw-run B1, mockup projecten-invoer "Prijsafspraken

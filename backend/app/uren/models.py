@@ -509,6 +509,11 @@ class ProjectSpecificatie(Base):
     locatie_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), default=None)
     locatie_lon: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), default=None)
     zone_straal_m: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    # Herkomst per spec-veld (blok D6 07-09, migratie 0118): {"contract_m2": "contract", "soort_werk": "mens", …}.
+    # 'contract' = direct ingevuld door de ontleding (auto-first, herkomst-chip "uit contract"), 'mens' = door een
+    # mens (in)gevuld of gecorrigeerd — een her-ontleding overschrijft een mens-veld NOOIT. Ontbrekende sleutel/
+    # NULL = rij van vóór 0118 (geen backfill; UI toont een gevuld veld dan als "uit contract").
+    veld_herkomst: Mapped[dict | None] = mapped_column(JSONB, default=None)
     bijgewerkt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -702,6 +707,17 @@ class ProjectStaffel(Base):
     prijs_per_eenheid: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     verrekenbaar: Mapped[bool] = mapped_column(default=True)
     bron: Mapped[str | None] = mapped_column(default=None)
+    # Herkomst (blok D6 07-09, migratie 0118): 'contract' = direct ingevuld door de contract-ontleding (auto-first,
+    # chip "uit contract"), 'mens' = handmatig toegevoegd of gecorrigeerd. NULL = rij van vóór 0118 (geen backfill;
+    # UI leidt dan af uit `bron`: 'handmatig' → mens, anders → uit contract). `herkomst_document_id` = het
+    # contract/de offerte die de regel las; een her-ontleding van dát document vervangt alleen zíjn eigen
+    # contract-regels (audit oud→nieuw) en raakt mens-regels nooit.
+    herkomst: Mapped[str | None] = mapped_column(default=None)
+    herkomst_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("boekhouding.project_document.id", name="fk_project_staffel_herkomst_document"),
+        default=None,
+    )
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
