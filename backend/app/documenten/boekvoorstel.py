@@ -17,6 +17,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import leverancier_iban
+from app.documenten import periode as periode_regels
 from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
@@ -688,6 +689,10 @@ def _prefill_triggers(prefill: BoekvoorstelData, regels: list[BoekvoorstelRegelD
         triggers.append("kop: template")
     if prefill.afdeling_prefill_id is not None:
         triggers.append("afdeling: leverancier_geheugen")
+    # Blok 11: een periode die de factuur zélf noemt (week/datumbereik/maand) triggert de autosave — de terugval uit de
+    # factuurdatum niet (die is altijd live af te leiden; persisteren zou een AI-only prefill alsnog opslaan).
+    if prefill.periode is not None and prefill.periode.herkomst in periode_regels.HERKOMSTEN_UIT_FACTUUR:
+        triggers.append(f"periode: {prefill.periode.herkomst}")
     for i, regel in enumerate(regels, start=1):
         for veld, bron in (regel.prefill_herkomst or {}).items():
             if bron in _AUTOSAVE_HERKOMSTEN or (veld == "project" and bron in _PROJECT_FACTUUR_HERKOMSTEN):
@@ -951,6 +956,7 @@ def _lees_opgeslagen_voorstel(
         boek_cyclus=bestaand.boek_cyclus,
         btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
         prefill_automatisch=prefill_automatisch,
+        periode=_opgeslagen_periode(bestaand, veldvoorstel),
         **_samenvoeg_velden(
             session,
             administratie_id=administratie_id,
@@ -1057,6 +1063,8 @@ def _bereken_prefill(
         opgeslagen=False,
         regels=prefill_regels,
         btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
+        # Blok 11: voorgelezen periode → ISO-weken (deterministisch), anders de week van de factuurdatum.
+        periode=_automatische_periode(veldvoorstel, _als_datum(veldvoorstel.get("factuurdatum"))),
         **samenvoeg,
         **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=vendor_id, huidige_afdeling_id=None),
     ))
@@ -1173,6 +1181,7 @@ def persisteer_prefill_bij_openen(
             totaalbedrag=prefill.totaalbedrag,
             regels=regels,
             afdeling_id=prefill.afdeling_prefill_id,
+            periode=prefill.periode.sleutel if prefill.periode is not None else None,
             prefill_snapshot=snapshot,
         )
     except IntegrityError:
@@ -1297,6 +1306,17 @@ def sla_boekvoorstel_op(
                 actor_id=actor_id,
             )
         bestaand.totaalbedrag = totaalbedrag
+        # Blok 11: factuurperiode (kolommen 0120) — automatische afleiding of mens-correctie, audit bij echte wijziging.
+        _verwerk_periode(
+            session,
+            administratie_id=administratie_id,
+            document=document,
+            actor_id=actor_id,
+            bestaand=bestaand,
+            factuurdatum=factuurdatum,
+            periode=periode,
+            autosave=autosave,
+        )
 
         # Klaargezette doorbelasting (besluit 25-08) verwijst per regel-id — over de
         # delete+insert heen meenemen per volgnummer. Lazy import: doorbelasting.service

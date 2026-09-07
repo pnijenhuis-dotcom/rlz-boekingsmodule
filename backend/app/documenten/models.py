@@ -211,7 +211,20 @@ class Boekvoorstel(Base):
     boeken — zie verkenning/api-verkenning.md), leeg totdat de eerste PUT gelukt is."""
 
     __tablename__ = "boekvoorstel"
-    __table_args__ = {"schema": "boekhouding"}
+    __table_args__ = (
+        # Factuurperiode (migratie 0120): herkomst-enum + geldig weekbereik (van ≤ tot, 1..53) op DB-niveau.
+        CheckConstraint(
+            "periode_herkomst IS NULL OR periode_herkomst IN "
+            "('factuur', 'factuur_maand', 'afgeleid_van_factuurdatum', 'mens')",
+            name="ck_boekvoorstel_periode_herkomst",
+        ),
+        CheckConstraint(
+            "(periode_week_van IS NULL AND periode_week_tot IS NULL) OR "
+            "(periode_week_van BETWEEN 1 AND 53 AND periode_week_tot BETWEEN periode_week_van AND 53)",
+            name="ck_boekvoorstel_periode_weken",
+        ),
+        {"schema": "boekhouding"},
+    )
 
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
@@ -226,6 +239,16 @@ class Boekvoorstel(Base):
     # Odoo `payment_reference`; RLZ kent het veld niet en negeert het. Leeg = niet gelezen/niet van toepassing.
     betalingskenmerk: Mapped[str | None] = mapped_column(default=None)
     totaalbedrag: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
+    # Factuurperiode op weekniveau (blok 11 vervolgrun 07-09, migratie 0120; app/documenten/periode.py): de
+    # ISO-week(s) waarop de factuur betrekking heeft — `factuur`/`factuur_maand` (voorgelezen tekst, deterministisch
+    # genormaliseerd), `afgeleid_van_factuurdatum` (terugval) of `mens` (correctie via de PUT, wint altijd).
+    # `periode_tekst` = de letterlijke tekst van de factuur (ook als die onherkenbaar was — niets verdwijnt stil).
+    # Datalaag voor "kosten per project × week" (Inzicht, later): regel-projectverdeling × deze periode.
+    periode_jaar: Mapped[int | None] = mapped_column(default=None)
+    periode_week_van: Mapped[int | None] = mapped_column(default=None)
+    periode_week_tot: Mapped[int | None] = mapped_column(default=None)
+    periode_herkomst: Mapped[str | None] = mapped_column(default=None)
+    periode_tekst: Mapped[str | None] = mapped_column(default=None)
     # Afdeling (migratie 0084, blok A 28-08): handmatige kantoorkeuze per document zodra de
     # administratie-toggle aan staat; stuurt de accorderingsroute en is de MI-dimensie voor later.
     afdeling_id: Mapped[uuid.UUID | None] = mapped_column(

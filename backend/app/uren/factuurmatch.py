@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
+from app.documenten import periode as periode_regels
 from app.documenten.models import Boekvoorstel, BoekvoorstelRegel, Document, DocumentSoort
 from app.sync.models import ProjectCache
 from app.uren.models import (
@@ -168,6 +169,45 @@ class FactuurmatchData:
 
 def _als_str(waarde: Decimal | None) -> str | None:
     return str(waarde) if waarde is not None else None
+
+
+def _weken_label(weken: list[tuple[int, int]]) -> str:
+    """Compacte weergave van (jaar, week)-paren, per jaar gegroepeerd: "wk 33, 35 · 2026"."""
+    per_jaar: dict[int, list[int]] = {}
+    for jaar, week in weken:
+        per_jaar.setdefault(jaar, []).append(week)
+    return "; ".join(f"wk {', '.join(str(w) for w in sorted(ws))} · {jaar}" for jaar, ws in sorted(per_jaar.items()))
+
+
+def periode_signaal(voorstel: Boekvoorstel | None, staten: list[_StaatRegel]) -> dict | None:
+    """Blok 11 (kosten op weekniveau): komt de factuurperiode (boekvoorstel, 0120) niet overeen met de weken van de
+    gematchte weekstaat/-staten, dan een oranje signaal-tekst in het match-resultaat — géén statuswijziging: de
+    match blijft op bedrag/uren toetsen. Puur. None als er niets te vergelijken is: geen periode, een periode die
+    alleen uit de factuurdatum is afgeleid (die ligt per definitie ná de gewerkte week — dat zou ruis zijn), geen
+    staten, of exact dezelfde weken."""
+    if voorstel is None or voorstel.periode_jaar is None or voorstel.periode_week_van is None or not staten:
+        return None
+    if voorstel.periode_herkomst not in (*periode_regels.HERKOMSTEN_UIT_FACTUUR, periode_regels.HERKOMST_MENS):
+        return None
+    periode = periode_regels.FactuurPeriode(
+        jaar=voorstel.periode_jaar,
+        week_van=voorstel.periode_week_van,
+        week_tot=voorstel.periode_week_tot if voorstel.periode_week_tot is not None else voorstel.periode_week_van,
+        herkomst=voorstel.periode_herkomst,
+        tekst=voorstel.periode_tekst,
+    )
+    staten_weken = sorted({(s.jaar, s.weeknummer) for s in staten})
+    if set(staten_weken) == set(periode.weken):
+        return None
+    return {
+        "tekst": (
+            f"Factuurperiode {periode_regels.label(periode)} komt niet overeen met de weekstaten in deze match "
+            f"({_weken_label(staten_weken)}) — controleer de periode op de factuur of kies andere weekstaten."
+        ),
+        "factuurperiode": {"jaar": periode.jaar, "week_van": periode.week_van, "week_tot": periode.week_tot,
+                           "herkomst": periode.herkomst},
+        "staten_weken": [{"jaar": j, "weeknummer": w} for j, w in staten_weken],
+    }
 
 
 # --- staten-selectie ---------------------------------------------------------------------------
@@ -487,6 +527,9 @@ def bereken_match_in_sessie(
         "tarief_ontbreekt_voor": [lid.naam or str(lid.gebruiker_id) for lid in leden if lid.bedrag is None],
         # De match-sectie toont áltijd welke tariefbron gebruikt is (mockup projecten-invoer).
         "tariefbronnen": sorted({g.label for g in geprijsd if g.label}),
+        # Blok 11 07-09: factuurperiode vs. de weken van de gematchte staten — NIET-blokkerend oranje signaal
+        # (geen invloed op `uitkomst`); None = geen periode uit de factuur/mens, geen staten, of ze komen overeen.
+        "periode_signaal": periode_signaal(voorstel, staten),
     }
 
     match = session.get(Factuurmatch, document_id)

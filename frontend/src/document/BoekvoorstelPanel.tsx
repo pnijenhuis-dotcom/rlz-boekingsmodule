@@ -5,6 +5,7 @@ import type {
   BoekenResponseDto,
   BoekvoorstelDto,
   BoekvoorstelMetChecksDto,
+  BoekvoorstelPeriodeDto,
   BoekvoorstelRegelDto,
   CheckRapportDto,
   DocumentActieResponseDto,
@@ -639,6 +640,10 @@ export function BoekvoorstelPanel({
   const [factuurdatum, setFactuurdatum] = useState('')
   const [vervaldatum, setVervaldatum] = useState('')
   const [vervaldatumSignaal, setVervaldatumSignaal] = useState<string | null>(null)
+  // Blok 11 (07-09): factuurperiode — inline invoer (weeknummer(s) + jaar) + de serverstand voor de herkomst-chip.
+  const [periodeWeken, setPeriodeWeken] = useState('')
+  const [periodeJaar, setPeriodeJaar] = useState('')
+  const [periodeServer, setPeriodeServer] = useState<BoekvoorstelPeriodeDto | null>(null)
   const [afdelingId, setAfdelingId] = useState<string | null>(null)
   // Prefill uit het leverancier-geheugen: herkomst-chip "🧠 vorige keuze bij <leverancier>" tot de
   // mens het veld aanraakt (dan is het zijn keuze, geen voorstel meer).
@@ -721,6 +726,10 @@ export function BoekvoorstelPanel({
         setFactuurdatum(dto.factuurdatum ?? '')
         setVervaldatum(dto.vervaldatum ?? '')
         setVervaldatumSignaal(dto.vervaldatum_signaal ?? null)
+        const periode = dto.periode ?? null
+        setPeriodeServer(periode)
+        setPeriodeWeken(periode ? (periode.week_van === periode.week_tot ? `${periode.week_van}` : `${periode.week_van}-${periode.week_tot}`) : '')
+        setPeriodeJaar(periode ? `${periode.jaar}` : '')
         if (dto.afdeling_id) {
           setAfdelingId(dto.afdeling_id)
           // A10: de autosave schreef de afdeling-prefill als keuze weg; de server geeft de prefill dan mee zolang de
@@ -1091,6 +1100,9 @@ export function BoekvoorstelPanel({
             omschrijving: omschrijving.trim() || null,
             factuurdatum: factuurdatum || null,
             vervaldatum: vervaldatum || null,
+            // Blok 11: de factuurperiode zoals de mens 'm liet staan — de server bepaalt of het een correctie is
+            // (afwijkend van de afleiding = 'mens'); onherkenbare invoer = niet meesturen (serverstand blijft).
+            periode: parsePeriodeInvoer(periodeWeken, periodeJaar),
             // Blok A 28-08: alleen meesturen als de toggle aan staat (uit = veld onzichtbaar, keuze blijft).
             afdeling_id: afdelingen.ingeschakeld ? afdelingId : null,
             totaalbedrag: totaalbedrag ? normaliseerBedrag(totaalbedrag) : null,
@@ -1516,6 +1528,10 @@ export function BoekvoorstelPanel({
             <StatischVeld label="Omschrijving boekstuk" waarde={omschrijving} />
             <StatischVeld label="Factuurdatum" waarde={factuurdatum} />
             <StatischVeld label="Vervaldatum" waarde={vervaldatum} />
+            <StatischVeld
+              label="Periode (weken)"
+              waarde={periodeServer ? `${periodeLabel(periodeServer)} (${PERIODE_HERKOMST[periodeServer.herkomst]?.label ?? periodeServer.herkomst})` : ''}
+            />
             {afdelingen.ingeschakeld && (
               <StatischVeld
                 label="Afdeling"
@@ -1586,6 +1602,45 @@ export function BoekvoorstelPanel({
               {vervaldatumHint && (
                 <div className="hint" style={{ marginTop: 4, color: vervaldatumHint.kleur }}>
                   {vervaldatumHint.tekst}
+                </div>
+              )}
+            </div>
+            <div data-testid="periode-veld">
+              {/* Blok 11 (07-09): factuurperiode op weekniveau — automatisch gevuld (chip = herkomst), inline te corrigeren. */}
+              <label htmlFor="boekvoorstel-periode-weken">Periode (weken)</label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  id="boekvoorstel-periode-weken"
+                  value={periodeWeken}
+                  placeholder="34 of 34-35"
+                  title="Weeknummer of weekbereik, bijvoorbeeld 34 of 34-35"
+                  style={{ width: '9ch', fontVariantNumeric: 'tabular-nums' }}
+                  onChange={(e) => {
+                    setPeriodeWeken(e.target.value)
+                    veranderInvoer()
+                  }}
+                />
+                <input
+                  id="boekvoorstel-periode-jaar"
+                  aria-label="Periode jaar"
+                  value={periodeJaar}
+                  placeholder="2026"
+                  inputMode="numeric"
+                  style={{ width: '6ch', fontVariantNumeric: 'tabular-nums' }}
+                  onChange={(e) => {
+                    setPeriodeJaar(e.target.value)
+                    veranderInvoer()
+                  }}
+                />
+              </div>
+              {periodeChip && (
+                <div style={{ marginTop: 4 }}>
+                  <PeriodeChip periode={periodeChip} />
+                </div>
+              )}
+              {periodeWeken.trim() !== '' && !parsePeriodeInvoer(periodeWeken, periodeJaar) && (
+                <div className="hint" style={{ marginTop: 4, color: 'var(--orange)' }}>
+                  Onherkenbare periode — gebruik een weeknummer (34) of bereik (34-35) plus een jaar (2026)
                 </div>
               )}
             </div>

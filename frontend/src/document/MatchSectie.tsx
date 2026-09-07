@@ -81,6 +81,8 @@ export function MatchSectie({
   // De match-sectie toont áltijd welke tariefbron gebruikt is (B1, mockup projecten-invoer).
   const tariefbronnen = (match.details?.tariefbronnen as string[] | undefined) ?? []
   const heeftStaatTarief = staten.some((s) => s.tariefbron !== undefined)
+  // Blok 11 (07-09): niet-blokkerend periode-signaal uit de motor (`details.periode_signaal.tekst`).
+  const periodeSignaal = (match.details?.periode_signaal as { tekst?: string } | null | undefined)?.tekst ?? null
 
   return (
     <div className="panel">
@@ -115,6 +117,13 @@ export function MatchSectie({
           </>
         )}
       </p>
+
+      {periodeSignaal && (
+        // Blok 11 (07-09): factuurperiode ≠ weken van de gematchte staten — oranje signaal, geen statuswijziging.
+        <p className="hint" style={{ marginTop: 0, color: 'var(--orange)' }} data-testid="match-periode-signaal">
+          {periodeSignaal}
+        </p>
+      )}
 
       <p className="hint" style={{ marginTop: 0 }}>
         Tariefbron:{' '}
