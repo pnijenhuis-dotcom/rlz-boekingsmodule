@@ -193,6 +193,10 @@ class Settings(BaseSettings):
     # per administratie per kalenderdag. Bewust laag — dit is een noodrem tegen een runaway-bug
     # of verkeerd geconfigureerde automatische boeking, geen normale-bedrijfsvoering-limiet.
     max_boekingen_per_dag_per_administratie: int = 20
+    # Crediteuren-dubbelen schaalbaar (blok B13 07-09): een cluster is alleen EENDUIDIG (systeem handelt af) als élke
+    # verliezer hooguit zoveel boekingen/geheugenregels draagt — daarboven blijft het mens. Bewust klein: het
+    # geheugen verhuist mee, maar een veelgebruikte crediteur "wegzetten" is een menskeuze.
+    crediteur_dubbel_auto_max_boekingen_verliezer: int = 3
     # Punt 23 (besluit Peter 28-08, opruimrun): boekingen die volgen op een COMPLEET klant-akkoord
     # (accorderingspad, incl. de herstel-CLI) zijn uitgezonderd van de 20/dag-rem — de mens heeft
     # al per document op de knop gedrukt, de rem is een vangnet tegen ongewenste automatisering.

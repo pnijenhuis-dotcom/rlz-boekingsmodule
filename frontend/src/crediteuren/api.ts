@@ -1,9 +1,10 @@
-// Crediteuren-dubbelen v2 (design-ronde 03-09, mockup crediteuren-dubbelen-v2.html) — spiegelt
-// backend/app/crediteuren/schemas.py. Kantoorbreed; administratie is een filter, geen poort. Bedragen als
-// string (Decimal); de client formatteert alleen.
-import { apiJson } from '../api/client'
+// Crediteuren-dubbelen v2 → schaalbaar (design-ronde 03-09; blok B13 07-09) — spiegelt backend/app/crediteuren/schemas.py.
+// Kantoorbreed; administratie is een filter, geen poort. Geen RLZ-calls: verliezers worden in de MODULE onbruikbaar,
+// de RLZ-opruimlijst is een optionele CSV-export.
+import { apiFetch, apiJson } from '../api/client'
 
 export type SleutelSoort = 'btw_nummer' | 'kvk_nummer' | 'iban' | 'naam'
+export type Classificatie = 'twijfel' | 'eenduidig'
 
 export const SLEUTEL_LABEL: Record<SleutelSoort, string> = {
   btw_nummer: 'btw-nummer',
@@ -22,13 +23,6 @@ export interface KaartDto {
   laatst_geboekt: string | null
 }
 
-export interface KlaargezetDto {
-  werklijst_id: string
-  voorkeur_vendor_id: string
-  namen: string[]
-  aangemaakt_op: string
-}
-
 export interface ClusterDto {
   cluster_id: string
   administratie_id: string
@@ -43,12 +37,13 @@ export interface ClusterDto {
   kvk_verschilt: boolean
   afmelden_primair: boolean
   voorkeur_suggestie: string
-  klaargezet: KlaargezetDto | null
+  eenduidig: boolean
+  classificatie_reden: string
 }
 
 export interface TellersDto {
-  clusters: number
-  klaargezet: number
+  clusters: number // twijfel — mens nodig
+  eenduidig: number // automatisch afhandelbaar
   administraties: number
 }
 
@@ -66,60 +61,92 @@ export interface LijstDto {
   facetten: FacettenDto
 }
 
-export interface OpenPostDto {
-  rlz_document_id: string
-  referentie: string | null
-  datum: string | null
-  open_bedrag: string
-}
-
 export interface ClusterDetailDto {
   administratie_id: string
   administratie_naam: string
   crediteuren: KaartDto[]
   voorkeur_suggestie: string
-  open_posten: Record<string, OpenPostDto[]>
-  toets_ok: boolean
-  toets_fout: string | null
+  eenduidig: boolean
+  classificatie_reden: string
 }
 
-export interface ArchiveerUitkomstDto {
-  werklijst_id: string
+export interface AfhandelUitkomstDto {
+  afhandeling_id: string
   voorkeur_naam: string | null
-  te_archiveren_namen: string[]
+  verliezer_namen: string[]
   geheugen_verhuisd: number
   kenmerk_verhuisd: boolean
   ibans_verhuisd: number
-  al_klaargezet: boolean
+  boekvoorstellen_hervertaald: number
   melding: string
 }
 
-export interface WerklijstRegelDto {
+export interface VoorbeeldDto {
+  cluster_id: string
+  voorkeur_naam: string | null
+  verliezer_namen: string[]
+  reden: string
+  afgehandeld: boolean
+  fout: string | null
+}
+
+export interface AdministratieUitkomstDto {
+  administratie_id: string
+  administratie_naam: string
+  eenduidig: number
+  twijfel: number
+  afgehandeld: number
+  fouten: number
+  voorbeelden: VoorbeeldDto[]
+}
+
+export interface AutoRunDto {
+  run_id: string
+  dry_run: boolean
+  eenduidig: number
+  twijfel: number
+  afgehandeld: number
+  fouten: number
+  administraties: AdministratieUitkomstDto[]
+}
+
+export interface AfhandelingRegelDto {
   id: string
   administratie_id: string
   administratie_naam: string
+  bron: 'auto' | 'mens'
   voorkeur_vendor_id: string
   voorkeur_naam: string | null
-  te_archiveren: { vendor_id: string; naam: string | null }[]
-  status: 'open' | 'gedaan'
-  aangemaakt_op: string
-  gedaan_op: string | null
-  gedaan_bron: string | null
-  laatste_hertoets_op: string | null
-  hertoets_detail: Record<string, string> | null
+  verliezers: { vendor_id: string; naam: string | null }[]
+  sleutels: { soort: SleutelSoort; sleutel: string }[]
+  classificatie_reden: string
+  geheugen_verhuisd: number
+  kenmerk_verhuisd: boolean
+  ibans_verhuisd: number
+  boekvoorstellen_hervertaald: number
+  afgehandeld_op: string
+  teruggedraaid_op: string | null
+  teruggedraaid_reden: string | null
 }
 
-export interface WerklijstDto {
-  regels: WerklijstRegelDto[]
-  open: number
-  gedaan: number
+export interface AfhandelingenDto {
+  regels: AfhandelingRegelDto[]
+  actief: number
+  teruggedraaid: number
 }
 
-export function haalDubbelenOp(opties: { pagina: number; q: string; administratieId: string; sleutel: string }): Promise<LijstDto> {
+export function haalDubbelenOp(opties: {
+  pagina: number
+  q: string
+  administratieId: string
+  sleutel: string
+  classificatie?: Classificatie | ''
+}): Promise<LijstDto> {
   const params = new URLSearchParams({ pagina: String(opties.pagina) })
   if (opties.q) params.set('q', opties.q)
   if (opties.administratieId) params.set('administratie_id', opties.administratieId)
   if (opties.sleutel) params.set('sleutel', opties.sleutel)
+  if (opties.classificatie) params.set('classificatie', opties.classificatie)
   return apiJson<LijstDto>(`/crediteuren/dubbelen?${params.toString()}`)
 }
 
@@ -133,11 +160,11 @@ export function haalClusterDetailOp(administratieId: string, vendorIds: string[]
   return apiJson<ClusterDetailDto>(`/crediteuren/dubbelen/${administratieId}/cluster-detail?${params.toString()}`)
 }
 
-export function archiveerCluster(administratieId: string, voorkeurVendorId: string, overigeVendorIds: string[]): Promise<ArchiveerUitkomstDto> {
-  return apiJson<ArchiveerUitkomstDto>(`/crediteuren/dubbelen/${administratieId}/archiveer`, {
+export function handelClusterAf(administratieId: string, voorkeurVendorId: string, verliezerVendorIds: string[]): Promise<AfhandelUitkomstDto> {
+  return apiJson<AfhandelUitkomstDto>(`/crediteuren/dubbelen/${administratieId}/afhandelen`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ voorkeur_vendor_id: voorkeurVendorId, overige_vendor_ids: overigeVendorIds }),
+    body: JSON.stringify({ voorkeur_vendor_id: voorkeurVendorId, verliezer_vendor_ids: verliezerVendorIds }),
   })
 }
 
@@ -149,10 +176,29 @@ export function meldClusterAf(administratieId: string, vendorIds: string[], rede
   })
 }
 
-export function haalWerklijstOp(): Promise<WerklijstDto> {
-  return apiJson<WerklijstDto>('/crediteuren/werklijst')
+export function autoAfhandelen(opties: { dryRun: boolean; administratieId?: string }): Promise<AutoRunDto> {
+  return apiJson<AutoRunDto>('/crediteuren/dubbelen/auto-afhandelen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dry_run: opties.dryRun, administratie_id: opties.administratieId || null }),
+  })
 }
 
-export function markeerWerklijstGedaan(werklijstId: string): Promise<WerklijstRegelDto> {
-  return apiJson<WerklijstRegelDto>(`/crediteuren/werklijst/${werklijstId}/gedaan`, { method: 'POST' })
+export function haalAfhandelingenOp(): Promise<AfhandelingenDto> {
+  return apiJson<AfhandelingenDto>('/crediteuren/afhandelingen')
+}
+
+export function draaiAfhandelingTerug(afhandelingId: string, reden: string): Promise<AfhandelingRegelDto> {
+  return apiJson<AfhandelingRegelDto>(`/crediteuren/afhandelingen/${afhandelingId}/terugdraaien`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reden }),
+  })
+}
+
+/** RLZ-opruimlijst als CSV — via fetch + blob (de frontend navigeert nooit rechtstreeks naar een API-URL). */
+export async function haalOpruimlijstCsvOp(): Promise<Blob> {
+  const resp = await apiFetch('/crediteuren/opruimlijst.csv')
+  if (!resp.ok) throw new Error(`Export mislukt (${resp.status})`)
+  return resp.blob()
 }

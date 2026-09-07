@@ -120,10 +120,14 @@ class _VendorData:
 
 def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, _VendorData]:
     """Alle invoer van de motor voor één administratie, in één RLS-gescoopte sessie."""
+    from app.crediteuren.voorkeur import verliezers as verliezers_kaart  # B13 07-09
+
     data: dict[uuid.UUID, _VendorData] = {}
+    # Verliezers van een afgehandeld dubbel-cluster nomineren we nooit: hun historie telt mee op de voorkeur.
+    kaart = verliezers_kaart(session, administratie_id=administratie_id)
 
     def vd(vendor_id: uuid.UUID) -> _VendorData:
-        return data.setdefault(vendor_id, _VendorData())
+        return data.setdefault(kaart.get(vendor_id, vendor_id), _VendorData())
 
     taxrate_namen = dict(
         session.execute(

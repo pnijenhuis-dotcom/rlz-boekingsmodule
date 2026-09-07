@@ -1,12 +1,14 @@
-// Crediteuren-dubbelen v2 (design-ronde 03-09, mockup crediteuren-dubbelen-v2.html): kantoorbrede lijst mét chips,
-// facetten en tellers; "Voorkeur kiezen & rest archiveren…" opent de dialoog mét kaartgegevens, blokkeert op open
-// posten ("eerst afletteren") en toont ná bevestigen de werklijst-melding; "Geen dubbel — afmelden" vraagt een reden.
+// Crediteuren-dubbelen schaalbaar (blok B13 07-09): kantoorbrede lijst mét classificatie-chip per cluster en teller
+// "N twijfelclusters"; knop "Eenduidige clusters automatisch afhandelen (N)" opent een dialoog mét dry-run-preview
+// (aantallen per administratie) en POST daarna dry_run=false; "Voorkeur kiezen…" (radio, geen RLZ-toets) POST voorkeur +
+// verliezers; ⋯-menu op het paneel: CSV-export via fetch+blob en "Afgehandeld tonen" mét terugdraaien (reden verplicht);
+// "Geen dubbel — afmelden" vraagt een reden. Geen RLZ-werklijst-paneel meer.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CrediteurenDubbelenScreen } from './CrediteurenDubbelenScreen'
-import type { ClusterDetailDto, ClusterDto, LijstDto, WerklijstDto } from './api'
+import type { AfhandelingenDto, AutoRunDto, ClusterDetailDto, ClusterDto, LijstDto } from './api'
 
 const ADM = 'aaaaaaaa-0000-0000-0000-000000000001'
 const ADM2 = 'aaaaaaaa-0000-0000-0000-000000000002'
@@ -35,7 +37,8 @@ const LABO_CLUSTER: ClusterDto = {
   kvk_verschilt: false,
   afmelden_primair: false,
   voorkeur_suggestie: LABO_BV,
-  klaargezet: null,
+  eenduidig: true,
+  classificatie_reden: 'eenduidig: identieke naam, geen conflicterend KvK/btw, verliezer(s) hooguit 2 boeking(en) (≤ 3)',
 }
 
 const HK_CLUSTER: ClusterDto = {
@@ -55,7 +58,8 @@ const HK_CLUSTER: ClusterDto = {
   kvk_verschilt: true,
   afmelden_primair: true,
   voorkeur_suggestie: HK2,
-  klaargezet: null,
+  eenduidig: false,
+  classificatie_reden: 'twijfel: verschillend KvK-nummer',
 }
 
 const LIJST: LijstDto = {
@@ -63,7 +67,7 @@ const LIJST: LijstDto = {
   totaal: 2,
   pagina: 1,
   per_pagina: 25,
-  tellers: { clusters: 2, klaargezet: 0, administraties: 2 },
+  tellers: { clusters: 1, eenduidig: 1, administraties: 2 },
   facetten: {
     administraties: [
       { administratie_id: ADM, naam: 'Kempen Facilities B.V.', aantal: 1 },
@@ -73,54 +77,110 @@ const LIJST: LijstDto = {
   },
 }
 
-const WERKLIJST_LEEG: WerklijstDto = { regels: [], open: 0, gedaan: 0 }
+const DETAIL: ClusterDetailDto = {
+  administratie_id: ADM,
+  administratie_naam: 'Kempen Facilities B.V.',
+  crediteuren: LABO_CLUSTER.crediteuren,
+  voorkeur_suggestie: LABO_BV,
+  eenduidig: true,
+  classificatie_reden: LABO_CLUSTER.classificatie_reden,
+}
+
+const PREVIEW: AutoRunDto = {
+  run_id: 'run-1',
+  dry_run: true,
+  eenduidig: 1,
+  twijfel: 1,
+  afgehandeld: 0,
+  fouten: 0,
+  administraties: [
+    {
+      administratie_id: ADM,
+      administratie_naam: 'Kempen Facilities B.V.',
+      eenduidig: 1,
+      twijfel: 0,
+      afgehandeld: 0,
+      fouten: 0,
+      voorbeelden: [{ cluster_id: LABO_CLUSTER.cluster_id, voorkeur_naam: 'Labo Derva B.V.', verliezer_namen: ['Labo Derva'], reden: LABO_CLUSTER.classificatie_reden, afgehandeld: false, fout: null }],
+    },
+    { administratie_id: ADM2, administratie_naam: 'Universal Steigerbouw B.V.', eenduidig: 0, twijfel: 1, afgehandeld: 0, fouten: 0, voorbeelden: [] },
+  ],
+}
+
+const AFHANDELINGEN: AfhandelingenDto = {
+  regels: [
+    {
+      id: 'afh-1',
+      administratie_id: ADM,
+      administratie_naam: 'Kempen Facilities B.V.',
+      bron: 'auto',
+      voorkeur_vendor_id: LABO_BV,
+      voorkeur_naam: 'Labo Derva B.V.',
+      verliezers: [{ vendor_id: LABO, naam: 'Labo Derva' }],
+      sleutels: [{ soort: 'naam', sleutel: 'labo derva' }],
+      classificatie_reden: LABO_CLUSTER.classificatie_reden,
+      geheugen_verhuisd: 2,
+      kenmerk_verhuisd: false,
+      ibans_verhuisd: 0,
+      boekvoorstellen_hervertaald: 1,
+      afgehandeld_op: '2026-09-07T10:00:00Z',
+      teruggedraaid_op: null,
+      teruggedraaid_reden: null,
+    },
+  ],
+  actief: 1,
+  teruggedraaid: 0,
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-function stubFetch(opties: { detail: ClusterDetailDto; archiveerStatus?: number }) {
+function stubFetch() {
   const aangeroepen: { pad: string; method: string; body: unknown }[] = []
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET'
-      aangeroepen.push({ pad: url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined
+      aangeroepen.push({ pad: url, method, body })
       if (url.startsWith('/crediteuren/dubbelen?')) return Promise.resolve(jsonResponse(LIJST))
-      if (url === '/crediteuren/werklijst') return Promise.resolve(jsonResponse(WERKLIJST_LEEG))
-      if (url.includes('/cluster-detail?')) return Promise.resolve(jsonResponse(opties.detail))
-      if (url.endsWith('/archiveer') && method === 'POST') {
-        if (opties.archiveerStatus === 409) {
-          return Promise.resolve(jsonResponse({ detail: { bericht: '1 open post(en) — eerst afletteren', open_posten: {} } }, 409))
+      if (url === '/crediteuren/dubbelen/auto-afhandelen' && method === 'POST') {
+        const echt: AutoRunDto = {
+          ...PREVIEW,
+          dry_run: false,
+          afgehandeld: 1,
+          administraties: PREVIEW.administraties.map((a) => (a.eenduidig ? { ...a, afgehandeld: a.eenduidig } : a)),
         }
+        return Promise.resolve(jsonResponse(body.dry_run ? PREVIEW : echt))
+      }
+      if (url.includes('/cluster-detail?')) return Promise.resolve(jsonResponse(DETAIL))
+      if (url.endsWith('/afhandelen') && method === 'POST') {
         return Promise.resolve(
           jsonResponse({
-            werklijst_id: 'w-1',
+            afhandeling_id: 'afh-2',
             voorkeur_naam: 'Labo Derva B.V.',
-            te_archiveren_namen: ['Labo Derva'],
+            verliezer_namen: ['Labo Derva'],
             geheugen_verhuisd: 2,
             kenmerk_verhuisd: false,
             ibans_verhuisd: 0,
-            al_klaargezet: false,
-            melding: 'klaargezet — archiveer in RLZ: Labo Derva',
+            boekvoorstellen_hervertaald: 0,
+            melding: 'afgehandeld — Labo Derva is in de module onbruikbaar; voorkeur Labo Derva B.V.',
           }),
         )
       }
       if (url.endsWith('/afmelden') && method === 'POST') return Promise.resolve(jsonResponse({ afmelding_id: 'a-1' }))
+      if (url === '/crediteuren/afhandelingen') return Promise.resolve(jsonResponse(AFHANDELINGEN))
+      if (url.endsWith('/terugdraaien') && method === 'POST') {
+        return Promise.resolve(jsonResponse({ ...AFHANDELINGEN.regels[0], teruggedraaid_op: '2026-09-07T11:00:00Z', teruggedraaid_reden: body.reden }))
+      }
+      if (url === '/crediteuren/opruimlijst.csv') {
+        return Promise.resolve(new Response('administratie;voorkeur;verliezer\r\n', { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } }))
+      }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
   return aangeroepen
-}
-
-const DETAIL_SCHOON: ClusterDetailDto = {
-  administratie_id: ADM,
-  administratie_naam: 'Kempen Facilities B.V.',
-  crediteuren: LABO_CLUSTER.crediteuren,
-  voorkeur_suggestie: LABO_BV,
-  open_posten: { [LABO]: [], [LABO_BV]: [] },
-  toets_ok: true,
-  toets_fout: null,
 }
 
 function renderScherm() {
@@ -131,90 +191,107 @@ function renderScherm() {
   )
 }
 
-describe('CrediteurenDubbelenScreen (crediteuren-dubbelen v2, 03-09)', () => {
+describe('CrediteurenDubbelenScreen (crediteuren-dubbelen schaalbaar, B13 07-09)', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('toont kantoorbreed clusters mét chips, kaartgegevens, teller en facetten; primaire knop per rij volgt de sleutel', async () => {
-    stubFetch({ detail: DETAIL_SCHOON })
+  it('toont clusters mét classificatie-chip, teller twijfelclusters, auto-knop mét aantal en géén RLZ-werklijst-paneel', async () => {
+    stubFetch()
     renderScherm()
     const tabel = await screen.findByTestId('clusters-tabel')
-    expect(screen.getByTestId('clusters-chip')).toHaveTextContent('2 clusters')
+    expect(screen.getByTestId('clusters-chip')).toHaveTextContent('1 twijfelcluster')
     expect(screen.getByText(/over 2 administraties/)).toBeInTheDocument()
+    expect(screen.getByTestId('auto-knop')).toHaveTextContent('Eenduidige clusters automatisch afhandelen (1)')
     expect(within(tabel).getByText('Labo Derva / Labo Derva B.V.')).toBeInTheDocument()
-    expect(within(tabel).getByText('zelfde btw-nummer')).toBeInTheDocument()
-    expect(within(tabel).getByText('verschillend KvK — géén dubbel')).toBeInTheDocument()
-    expect(within(tabel).getByText(/14 boekingen/)).toBeInTheDocument()
-    // btw-cluster: primaire (teal) actie = archiveren; naam-cluster mét verschillend KvK: secundair afmelden.
-    expect(within(tabel).getByRole('button', { name: /Voorkeur kiezen & rest archiveren: Labo Derva/ })).toBeInTheDocument()
+    const chips = within(tabel).getAllByTestId('classificatie-chip')
+    expect(chips[0]).toHaveTextContent('eenduidig — systeem')
+    expect(chips[1]).toHaveTextContent('twijfel — mens')
+    expect(within(tabel).getByText(/verschillend KvK-nummer/)).toBeInTheDocument()
+    // Primaire actie: "Voorkeur kiezen…" bij het eenduidige cluster; afmelden bij verschillend KvK.
+    expect(within(tabel).getByRole('button', { name: /Voorkeur kiezen: Labo Derva/ })).toBeInTheDocument()
     expect(within(tabel).getByRole('button', { name: /Geen dubbel — afmelden: Hello Kitchen/ })).toBeInTheDocument()
-    expect(within(tabel).queryByRole('button', { name: /Geen dubbel — afmelden: Labo Derva/ })).toBeNull()
-    // Facet Sleutel toont de tellers per sleutel.
-    const sleutelFacet = screen.getByLabelText('Sleutel') as HTMLSelectElement
-    expect(within(sleutelFacet).getByRole('option', { name: 'btw-nummer (1)' })).toBeInTheDocument()
-    expect(screen.getByTestId('rlz-werklijst')).toHaveTextContent('Niets klaargezet')
+    expect(screen.queryByTestId('rlz-werklijst')).toBeNull()
+    expect(screen.queryByText(/klaargezet/)).toBeNull()
+    // Classificatie-facet.
+    const facet = screen.getByLabelText('Classificatie') as HTMLSelectElement
+    expect(within(facet).getByRole('option', { name: 'Twijfel (mens) (1)' })).toBeInTheDocument()
   })
 
-  it('archiveer-dialoog: voorkeur vooringevuld, bevestigen POST voorkeur + overige en toont de werklijst-melding', async () => {
-    const aangeroepen = stubFetch({ detail: DETAIL_SCHOON })
+  it('auto-afhandelen: dialoog laadt dry-run-preview per administratie, bevestigen POST dry_run=false en toont de uitkomst', async () => {
+    const aangeroepen = stubFetch()
+    renderScherm()
+    await userEvent.click(await screen.findByTestId('auto-knop'))
+    const dialoog = await screen.findByTestId('auto-dialoog')
+    const preview = await within(dialoog).findByTestId('auto-preview')
+    expect(preview).toHaveTextContent('1 cluster eenduidig over 1 administratie')
+    expect(preview).toHaveTextContent('1 twijfel blijft voor u')
+    expect(within(preview).getByText('Kempen Facilities B.V.')).toBeInTheDocument()
+    // Preview = dry_run:true; niets gewijzigd.
+    const dry = aangeroepen.filter((a) => a.pad === '/crediteuren/dubbelen/auto-afhandelen')
+    expect(dry).toHaveLength(1)
+    expect(dry[0].body).toEqual({ dry_run: true, administratie_id: null })
+    const bevestig = within(dialoog).getByRole('button', { name: 'Afhandelen (1)' })
+    await userEvent.click(bevestig)
+    await waitFor(() => expect(aangeroepen.filter((a) => a.pad === '/crediteuren/dubbelen/auto-afhandelen')).toHaveLength(2))
+    const echt = aangeroepen.filter((a) => a.pad === '/crediteuren/dubbelen/auto-afhandelen')[1]
+    expect(echt.body).toEqual({ dry_run: false, administratie_id: null })
+    expect(await screen.findByTestId('afhandel-uitkomst')).toHaveTextContent('1 cluster automatisch afgehandeld over 1 administratie')
+  })
+
+  it('voorkeur kiezen: dialoog zonder RLZ-toets, voorkeur vooringevuld, POST voorkeur + verliezers en toont de melding', async () => {
+    const aangeroepen = stubFetch()
     renderScherm()
     const tabel = await screen.findByTestId('clusters-tabel')
-    await userEvent.click(within(tabel).getByRole('button', { name: /Voorkeur kiezen & rest archiveren: Labo Derva/ }))
-    const dialoog = await screen.findByTestId('archiveer-dialoog')
+    await userEvent.click(within(tabel).getByRole('button', { name: /Voorkeur kiezen: Labo Derva/ }))
+    const dialoog = await screen.findByTestId('afhandel-dialoog')
     const radioBv = (await within(dialoog).findByRole('radio', { name: 'Voorkeur: Labo Derva B.V.' })) as HTMLInputElement
     expect(radioBv.checked).toBe(true)
-    expect(within(dialoog).getByText('voorkeur (meest gebruikt)')).toBeInTheDocument()
-    expect(within(dialoog).getByText('wordt gearchiveerd')).toBeInTheDocument()
-    const bevestig = within(dialoog).getByRole('button', { name: /Klaarzetten: archiveer de andere in RLZ/ })
+    expect(within(dialoog).getByText('wordt onbruikbaar in de module')).toBeInTheDocument()
+    expect(await within(dialoog).findByTestId('detail-classificatie')).toHaveTextContent('eenduidig')
+    expect(within(dialoog).queryByText(/eerst afletteren/)).toBeNull()
+    const bevestig = within(dialoog).getByRole('button', { name: /Afhandelen: de andere wordt onbruikbaar/ })
     await waitFor(() => expect(bevestig).toBeEnabled())
     await userEvent.click(bevestig)
-    await waitFor(() => expect(aangeroepen.some((a) => a.pad.endsWith('/archiveer') && a.method === 'POST')).toBe(true))
-    const post = aangeroepen.find((a) => a.pad.endsWith('/archiveer'))!
-    expect(post.pad).toBe(`/crediteuren/dubbelen/${ADM}/archiveer`)
-    expect(post.body).toEqual({ voorkeur_vendor_id: LABO_BV, overige_vendor_ids: [LABO] })
-    expect(await screen.findByTestId('archiveer-uitkomst')).toHaveTextContent('klaargezet — archiveer in RLZ: Labo Derva')
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad.endsWith('/afhandelen') && a.method === 'POST')).toBe(true))
+    const post = aangeroepen.find((a) => a.pad.endsWith('/afhandelen'))!
+    expect(post.pad).toBe(`/crediteuren/dubbelen/${ADM}/afhandelen`)
+    expect(post.body).toEqual({ voorkeur_vendor_id: LABO_BV, verliezer_vendor_ids: [LABO] })
+    expect(await screen.findByTestId('afhandel-uitkomst')).toHaveTextContent('afgehandeld — Labo Derva is in de module onbruikbaar')
   })
 
-  it('archiveer-dialoog: open posten op de te archiveren crediteur blokkeren ("eerst afletteren"); toets mislukt = geen bevestigen', async () => {
-    stubFetch({
-      detail: {
-        ...DETAIL_SCHOON,
-        open_posten: { [LABO]: [{ rlz_document_id: 'f-1', referentie: 'F-2026-17', datum: '2026-08-01', open_bedrag: '121.00' }], [LABO_BV]: [] },
-      },
-    })
+  it('⋯-menu op het paneel: CSV-export via fetch (geen navigatie) en "Afgehandeld tonen" mét terugdraaien (reden verplicht)', async () => {
+    const aangeroepen = stubFetch()
+    const createObjectURL = vi.fn(() => 'blob:opruimlijst')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
     renderScherm()
-    const tabel = await screen.findByTestId('clusters-tabel')
-    await userEvent.click(within(tabel).getByRole('button', { name: /Voorkeur kiezen & rest archiveren: Labo Derva/ }))
-    const dialoog = await screen.findByTestId('archiveer-dialoog')
-    const blokkade = await within(dialoog).findByTestId('open-posten-blokkade')
-    expect(blokkade).toHaveTextContent('1 open post — eerst afletteren')
-    expect(blokkade).toHaveTextContent('F-2026-17')
-    expect(blokkade).toHaveTextContent('€ 121,00 open')
-    expect(within(dialoog).getByRole('button', { name: /Klaarzetten/ })).toBeDisabled()
-    // Andere voorkeur kiezen: dan is Labo Derva B.V. de te archiveren crediteur — zonder open posten → wél toegestaan.
-    await userEvent.click(within(dialoog).getByRole('radio', { name: 'Voorkeur: Labo Derva' }))
-    expect(within(dialoog).queryByTestId('open-posten-blokkade')).toBeNull()
-    expect(within(dialoog).getByRole('button', { name: /Klaarzetten/ })).toBeEnabled()
-  })
+    await screen.findByTestId('clusters-tabel')
+    await userEvent.click(screen.getByRole('button', { name: 'Meer acties voor crediteuren' }))
+    const menu = await screen.findByRole('menu', { name: 'Acties voor crediteuren' })
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Exporteer RLZ-opruimlijst (CSV)' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/crediteuren/opruimlijst.csv')).toBe(true))
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
 
-  it('toets mislukt (RLZ onbereikbaar) = fail-closed: melding + opnieuw toetsen, bevestigen uit', async () => {
-    stubFetch({ detail: { ...DETAIL_SCHOON, open_posten: {}, toets_ok: false, toets_fout: 'Open-posten-toets in Reeleezee mislukt: 503' } })
-    renderScherm()
-    const tabel = await screen.findByTestId('clusters-tabel')
-    await userEvent.click(within(tabel).getByRole('button', { name: /Voorkeur kiezen & rest archiveren: Labo Derva/ }))
-    const dialoog = await screen.findByTestId('archiveer-dialoog')
-    expect(await within(dialoog).findByTestId('toets-mislukt')).toHaveTextContent('eerst opnieuw proberen')
-    expect(within(dialoog).getByRole('button', { name: /Klaarzetten/ })).toBeDisabled()
-    expect(within(dialoog).getByRole('button', { name: 'Opnieuw toetsen' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Meer acties voor crediteuren' }))
+    await userEvent.click(within(await screen.findByRole('menu', { name: 'Acties voor crediteuren' })).getByRole('menuitem', { name: 'Afgehandeld tonen (terugdraaien)' }))
+    const paneel = await screen.findByTestId('afgehandeld-paneel')
+    expect(await within(paneel).findByText('Labo Derva B.V.')).toBeInTheDocument()
+    expect(within(paneel).getByText('systeem')).toBeInTheDocument()
+    await userEvent.click(within(paneel).getByRole('button', { name: /Terugdraaien: Labo Derva B.V./ }))
+    const dialoog = await screen.findByTestId('terugdraai-dialoog')
+    expect(within(dialoog).getByRole('button', { name: 'Terugdraaien' })).toBeDisabled()
+    await userEvent.type(within(dialoog).getByLabelText('Reden'), 'Toch twee bedrijven')
+    await userEvent.click(within(dialoog).getByRole('button', { name: 'Terugdraaien' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/crediteuren/afhandelingen/afh-1/terugdraaien' && a.method === 'POST')).toBe(true))
+    expect(aangeroepen.find((a) => a.pad.endsWith('/terugdraaien'))!.body).toEqual({ reden: 'Toch twee bedrijven' })
   })
 
   it('afmelden vraagt een reden (verplicht) en POST vendor_ids + reden', async () => {
-    const aangeroepen = stubFetch({ detail: DETAIL_SCHOON })
+    const aangeroepen = stubFetch()
     renderScherm()
     const tabel = await screen.findByTestId('clusters-tabel')
     await userEvent.click(within(tabel).getByRole('button', { name: /Geen dubbel — afmelden: Hello Kitchen/ }))
     const dialoog = await screen.findByTestId('afmeld-dialoog')
     const reden = within(dialoog).getByLabelText('Reden') as HTMLInputElement
-    // Vooringevuld bij verschillend KvK; leegmaken = knop uit (reden verplicht).
     expect(reden.value).toContain('KvK')
     await userEvent.clear(reden)
     expect(within(dialoog).getByRole('button', { name: 'Afmelden' })).toBeDisabled()
@@ -226,8 +303,8 @@ describe('CrediteurenDubbelenScreen (crediteuren-dubbelen v2, 03-09)', () => {
     expect(post.body).toEqual({ vendor_ids: [HK1, HK2], reden: 'Twee vestigingen, eigen KvK' })
   })
 
-  it('⋯-menu: bij een btw-cluster staat afmelden in het menu, nooit primair', async () => {
-    stubFetch({ detail: DETAIL_SCHOON })
+  it('⋯-rijmenu: bij een eenduidig cluster staat afmelden in het menu, nooit primair', async () => {
+    stubFetch()
     renderScherm()
     const tabel = await screen.findByTestId('clusters-tabel')
     await userEvent.click(within(tabel).getByRole('button', { name: /Meer acties voor Labo Derva/ }))

@@ -302,11 +302,19 @@ def lijst_taxrates(*, administratie_id: uuid.UUID) -> list[TaxRateCache]:
 
 
 def lijst_vendors(*, administratie_id: uuid.UUID) -> list[VendorCache]:
+    """Keuzelijst crediteuren (controlescherm-combobox): actueel en géén verliezer van een afgehandeld
+    dubbel-cluster (B13 07-09 — een verliezer is in de module onbruikbaar)."""
+    from app.crediteuren.voorkeur import BRUIKBAAR
+
     with scoped_session(administratie_id) as session:
         return list(
             session.scalars(
                 select(VendorCache)
-                .where(VendorCache.administratie_id == administratie_id, VendorCache.verdwenen_uit_bron_op.is_(None))
+                .where(
+                    VendorCache.administratie_id == administratie_id,
+                    VendorCache.verdwenen_uit_bron_op.is_(None),
+                    BRUIKBAAR,
+                )
                 .order_by(VendorCache.naam)
             )
         )

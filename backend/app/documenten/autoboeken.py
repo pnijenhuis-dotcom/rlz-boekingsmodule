@@ -64,13 +64,17 @@ class LeverancierAutoboeken:
 
 
 def lijst_leverancier_autoboeken(*, administratie_id: uuid.UUID) -> list[LeverancierAutoboeken]:
-    """Alle actieve leveranciers van de administratie mét hun opt-in-stand (Instellingen-UI)."""
+    """Alle actieve leveranciers van de administratie mét hun opt-in-stand (Instellingen-UI); verliezers van een
+    afgehandeld dubbel-cluster staan er niet in (B13 07-09 — opt-in hoort op de voorkeur)."""
+    from app.crediteuren.voorkeur import BRUIKBAAR
+
     with scoped_session(administratie_id) as session:
         vendors = session.scalars(
             select(VendorCache)
             .where(
                 VendorCache.administratie_id == administratie_id,
                 VendorCache.verdwenen_uit_bron_op.is_(None),
+                BRUIKBAAR,
             )
             .order_by(VendorCache.naam)
         ).all()

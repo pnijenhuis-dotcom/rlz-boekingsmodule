@@ -72,7 +72,10 @@ def kenmerken_per_vendor(session: Session, *, administratie_id: uuid.UUID) -> di
 
 
 def kandidaten_met_kenmerken(session: Session, *, administratie_id: uuid.UUID) -> list[VendorKandidaat]:
-    """Vendor-kandidaten voor de extractie-controlelaag (naam + nummers), actueel en niet-gearchiveerd."""
+    """Vendor-kandidaten voor de extractie-controlelaag (naam + nummers), actueel, niet-gearchiveerd en géén
+    verliezer van een afgehandeld dubbel-cluster (B13 07-09: een verliezer wordt nooit meer voorgesteld)."""
+    from app.crediteuren.voorkeur import BRUIKBAAR
+
     kenmerken = kenmerken_per_vendor(session, administratie_id=administratie_id)
     return [
         VendorKandidaat(
@@ -86,6 +89,7 @@ def kandidaten_met_kenmerken(session: Session, *, administratie_id: uuid.UUID) -
                 VendorCache.administratie_id == administratie_id,
                 VendorCache.verdwenen_uit_bron_op.is_(None),
                 VendorCache.is_gearchiveerd.isnot(True),
+                BRUIKBAAR,
             )
         )
     ]
@@ -180,6 +184,8 @@ def dubbele_crediteuren(*, administratie_id: uuid.UUID) -> list[DubbelGroep]:
     btw-nummer, KvK-nummer of IBAN delen, of dezelfde genormaliseerde naam (zonder rechtsvorm/leestekens,
     hoofdletterongevoelig — 'Wola' vs 'Wola b.v.'). Volgorde: nummer-groepen eerst (zekerst), dan IBAN,
     dan naam; binnen een groep op naam."""
+    from app.crediteuren.voorkeur import BRUIKBAAR  # lokaal: één bron verliezer→voorkeur (B13 07-09)
+
     with scoped_session(administratie_id) as session:
         vendors = list(
             session.scalars(
@@ -187,6 +193,7 @@ def dubbele_crediteuren(*, administratie_id: uuid.UUID) -> list[DubbelGroep]:
                     VendorCache.administratie_id == administratie_id,
                     VendorCache.verdwenen_uit_bron_op.is_(None),
                     VendorCache.is_gearchiveerd.isnot(True),
+                    BRUIKBAAR,  # afgehandelde verliezers zijn geen dubbel meer — het cluster verdwijnt vanzelf
                 )
             )
         )

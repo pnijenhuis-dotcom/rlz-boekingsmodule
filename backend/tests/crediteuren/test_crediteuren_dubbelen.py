@@ -1,8 +1,9 @@
 # ruff: noqa: F811 — pytest-fixtures als parameters
-"""Crediteuren-dubbelen v2 (design-ronde 03-09, mockup crediteuren-dubbelen-v2.html, migratie 0100): kantoorbrede
-lijst (bundeling per ledenset, sortering zwaarste sleutel eerst, facetten, zoek, paginering, scope), afmelden mét
-verplichte reden, "Voorkeur kiezen & rest archiveren…" (LIVE open-posten-toets fail-closed, werklijst-regel,
-verhuizing geheugen + kenmerk + IBAN mét audit — geen RLZ-write) en de dagelijkse hertoets die afvinkt."""
+"""Crediteuren-dubbelen v2 → schaalbaar (design-ronde 03-09, migratie 0100; blok B13 07-09, migratie 0117): kantoorbrede
+lijst (bundeling per ledenset, sortering zwaarste sleutel eerst, classificatie eenduidig/twijfel, facetten, zoek,
+paginering, scope), afmelden mét verplichte reden en "Voorkeur kiezen…" door de mens (verliezers in de module
+onbruikbaar, verhuizing geheugen + kenmerk + IBAN mét audit — geen RLZ-call). De auto-run, terugdraaien, export en de
+verliezer-uitsluiting in de leespaden staan in `test_auto_afhandeling.py`."""
 
 from __future__ import annotations
 
@@ -13,14 +14,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select, text
 
-from app.crediteuren import service
-from app.crediteuren.models import CrediteurArchiveerWerklijst
+from app.crediteuren.models import CrediteurDubbelAfhandeling
 from app.db.session import scoped_session
 from app.documenten.models import CrediteurKenmerk, LeverancierIban
 from app.geheugen.models import BoekingObservatie, ObservatieBron
 from app.main import app
-from app.rlz.client import RlzApiError
 from app.security.tokens import create_access_token
+from app.sync.models import VendorCache
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
 from tests.documenten.conftest import gescoopte_gebruiker  # noqa: F401
 
@@ -136,41 +136,6 @@ def dubbelen(
         )
 
 
-class FakeRlz:
-    """RLZ-leesroutes zoals de service ze gebruikt: PurchaseInvoices per Entity + Vendors/{id}?fields=all."""
-
-    def __init__(
-        self,
-        *,
-        open_posten: dict[uuid.UUID, list[dict]] | None = None,
-        gearchiveerd: set[uuid.UUID] = frozenset(),
-        afwezig: set[uuid.UUID] = frozenset(),
-        fout: Exception | None = None,
-    ) -> None:
-        self.open_posten = open_posten or {}
-        self.gearchiveerd = set(gearchiveerd)
-        self.afwezig = set(afwezig)
-        self.fout = fout
-        self.aanroepen: list[str] = []
-
-    def get(self, path: str, *, params: dict | None = None):
-        self.aanroepen.append(path)
-        if self.fout is not None:
-            raise self.fout
-        if path == "PurchaseInvoices":
-            vendor = uuid.UUID((params or {})["$filter"].split("Entity/id eq ")[1].split(" ")[0])
-            return {"value": self.open_posten.get(vendor, [])}
-        if path.startswith("Vendors/"):
-            vid = uuid.UUID(path.split("/")[1])
-            if vid in self.afwezig:
-                raise RlzApiError(404, "GET", path, "not found")
-            return {"id": str(vid), "IsArchived": vid in self.gearchiveerd, "RecordStatus": 2}
-        raise AssertionError(f"onverwachte RLZ-call {path}")
-
-    def close(self) -> None:
-        pass
-
-
 def _audit_acties(admin_engine: Engine, actie: str) -> int:
     with admin_engine.connect() as conn:
         return int(
@@ -186,8 +151,11 @@ class TestLijst:
         r = client.get("/crediteuren/dubbelen", headers=headers)
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["totaal"] == 3 and body["tellers"] == {"clusters": 3, "klaargezet": 0, "administraties": 2}
+        # Tellers: clusters = TWIJFEL (Wola: KvK verschilt), eenduidig = Labo (naam identiek, verliezer 1 boeking) +
+        # Coolblue (naam identiek, 0 boekingen).
+        assert body["totaal"] == 3 and body["tellers"] == {"clusters": 1, "eenduidig": 2, "administraties": 2}
         eerste = body["rijen"][0]
+        assert eerste["eenduidig"] is True and eerste["classificatie_reden"].startswith("eenduidig: identieke naam")
         # Labo Derva: zelfde btw én genormaliseerde naam → één cluster mét twee chips, zwaarste sleutel btw bovenaan.
         assert eerste["soort"] == "btw_nummer" and eerste["chips"] == ["zelfde btw-nummer", "naam ≈"]
         assert [s["soort"] for s in eerste["sleutels"]] == ["btw_nummer", "naam"]
@@ -204,8 +172,12 @@ class TestLijst:
         wola = next(c for c in body["rijen"] if c["soort"] == "naam" and c["administratie_id"] == str(administratie_id))
         assert wola["kvk_verschilt"] is True and wola["afmelden_primair"] is True
         assert wola["chips"] == ["naam ≈", "verschillend KvK — géén dubbel"]
+        assert wola["eenduidig"] is False and "verschillend KvK-nummer" in wola["classificatie_reden"]
         cool = next(c for c in body["rijen"] if c["administratie_id"] == str(andere_administratie))
-        assert cool["kvk_verschilt"] is False and cool["afmelden_primair"] is False
+        assert cool["kvk_verschilt"] is False and cool["afmelden_primair"] is False and cool["eenduidig"] is True
+        assert client.get("/crediteuren/dubbelen?classificatie=twijfel", headers=headers).json()["totaal"] == 1
+        assert client.get("/crediteuren/dubbelen?classificatie=eenduidig", headers=headers).json()["totaal"] == 2
+        assert client.get("/crediteuren/dubbelen?classificatie=onzin", headers=headers).status_code == 422
         # Facetten + filters.
         assert body["facetten"]["sleutels"] == {"btw_nummer": 1, "naam": 2}
         assert {f["naam"]: f["aantal"] for f in body["facetten"]["administraties"]} == {"Scope-test": 2, "Andere BV": 1}
@@ -222,8 +194,8 @@ class TestLijst:
         p2 = client.get("/crediteuren/dubbelen?pagina=2", headers=headers).json()
         assert p2["totaal"] == 3 and p2["rijen"] == [] and p2["per_pagina"] == 25
         assert client.get("/crediteuren/dubbelen/stand", headers=headers).json() == {
-            "clusters": 3,
-            "klaargezet": 0,
+            "clusters": 1,
+            "eenduidig": 2,
             "administraties": 2,
         }
 
@@ -248,12 +220,16 @@ class TestLijst:
         )
         assert r.status_code == 404
         r = client.post(
-            f"/crediteuren/dubbelen/{andere_administratie}/archiveer",
+            f"/crediteuren/dubbelen/{andere_administratie}/afhandelen",
             headers=headers,
-            json={"voorkeur_vendor_id": str(COOL), "overige_vendor_ids": [str(COOL_BV)]},
+            json={"voorkeur_vendor_id": str(COOL), "verliezer_vendor_ids": [str(COOL_BV)]},
         )
         assert r.status_code == 404
-        assert client.get("/crediteuren/dubbelen/stand", headers=headers).json()["clusters"] == 2
+        assert client.get("/crediteuren/dubbelen/stand", headers=headers).json() == {
+            "clusters": 1,
+            "eenduidig": 1,
+            "administraties": 1,
+        }
 
 
 class TestAfmelden:
@@ -290,12 +266,10 @@ class TestAfmelden:
         assert _audit_acties(admin_engine, "crediteur_dubbel_afgemeld") == 1
 
 
-class TestArchiveer:
-    def test_verhuist_geheugen_kenmerk_iban_met_audit_en_zet_werklijst_klaar(
-        self, dubbelen, administratie_id, beheerder_id, admin_engine, monkeypatch
+class TestAfhandelenMens:
+    def test_voorkeur_kiezen_verhuist_markeert_en_audit_geen_rlz(
+        self, dubbelen, administratie_id, beheerder_id, admin_engine
     ) -> None:
-        rlz = FakeRlz()
-        monkeypatch.setattr(service, "_open_client", lambda aid: rlz)
         headers = _bearer(beheerder_id, rol="beheerder")
         detail = client.get(
             f"/crediteuren/dubbelen/{administratie_id}/cluster-detail?vendor_ids={LABO_BV}&vendor_ids={LABO}",
@@ -303,220 +277,74 @@ class TestArchiveer:
         )
         assert detail.status_code == 200, detail.text
         d = detail.json()
-        assert d["toets_ok"] is True and d["voorkeur_suggestie"] == str(LABO_BV)
-        assert d["open_posten"] == {str(LABO_BV): [], str(LABO): []}
-        assert rlz.aanroepen == ["PurchaseInvoices", "PurchaseInvoices"]  # detail toetst álle leden
-        rlz.aanroepen.clear()
+        assert d["voorkeur_suggestie"] == str(LABO_BV) and d["eenduidig"] is True
+        assert "open_posten" not in d  # geen RLZ-toets meer (07-09)
 
         r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
+            f"/crediteuren/dubbelen/{administratie_id}/afhandelen",
             headers=headers,
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO)]},
+            json={"voorkeur_vendor_id": str(LABO_BV), "verliezer_vendor_ids": [str(LABO)]},
         )
         assert r.status_code == 200, r.text
         uit = r.json()
-        assert uit["melding"] == "klaargezet — archiveer in RLZ: Labo Derva"
+        assert uit["melding"].startswith("afgehandeld — Labo Derva is in de module onbruikbaar")
         assert uit["geheugen_verhuisd"] == 2 and uit["kenmerk_verhuisd"] is True and uit["ibans_verhuisd"] == 1
-        assert rlz.aanroepen == ["PurchaseInvoices"]  # alleen de te archiveren crediteur, alleen lezen
 
         with scoped_session(administratie_id, actor_id=beheerder_id) as session:
             obs = session.scalars(select(BoekingObservatie).where(BoekingObservatie.vendor_id == LABO_BV)).all()
             assert len(obs) == 4  # 2 eigen seed + 2 verhuisd (seed + app), bron-rijen blijven staan
             assert {o.regel_sleutel for o in obs} == {None, "lab kosten"}
-            assert (
-                session.scalars(select(BoekingObservatie).where(BoekingObservatie.vendor_id == LABO)).all().__len__()
-                == 2
-            )
+            assert len(session.scalars(select(BoekingObservatie).where(BoekingObservatie.vendor_id == LABO)).all()) == 2
             kenmerk = session.get(CrediteurKenmerk, (administratie_id, LABO_BV))
             assert kenmerk is not None and kenmerk.btw_nummer == BTW and kenmerk.kvk_nummer == "12345678"
             assert session.get(LeverancierIban, (administratie_id, LABO_BV, IBAN)) is not None
-            werk = session.scalars(select(CrediteurArchiveerWerklijst)).all()
+            verliezer = session.get(VendorCache, (LABO, administratie_id))
             assert (
-                len(werk) == 1
-                and werk[0].status == "open"
-                and werk[0].te_archiveren == [{"vendor_id": str(LABO), "naam": "Labo Derva"}]
+                verliezer is not None
+                and verliezer.voorkeur_vendor_id == LABO_BV
+                and verliezer.dubbel_afgehandeld_bron == "mens"
+                and verliezer.dubbel_afgehandeld_door == beheerder_id
             )
+            assert session.get(VendorCache, (LABO_BV, administratie_id)).voorkeur_vendor_id is None
+            log = session.scalars(select(CrediteurDubbelAfhandeling)).all()
+            assert len(log) == 1 and log[0].bron == "mens" and log[0].verliezers == [
+                {"vendor_id": str(LABO), "naam": "Labo Derva"}
+            ]
+            assert [(p[0], p[1]) for p in log[0].verhuisd["geheugen"]].__len__() == 2
+            assert log[0].verhuisd["kenmerk_oud"]["kvk_nummer"] is None and log[0].verhuisd["ibans"] == [IBAN]
         assert _audit_acties(admin_engine, "crediteur_geheugen_verhuisd") == 1
         assert _audit_acties(admin_engine, "crediteur_kenmerk_verhuisd") == 1
         assert _audit_acties(admin_engine, "crediteur_iban_verhuisd") == 1
-        assert _audit_acties(admin_engine, "crediteur_archiveer_klaargezet") == 1
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 1
 
-        # Cluster blijft zichtbaar als "klaargezet" en telt niet meer als te behandelen.
+        # Het cluster verdwijnt uit de lijst (de verliezer is geen dubbel meer) — niets blijft "klaargezet" hangen.
         body = client.get("/crediteuren/dubbelen", headers=headers).json()
-        labo = next(c for c in body["rijen"] if c["soort"] == "btw_nummer")
-        assert (
-            labo["klaargezet"]["namen"] == ["Labo Derva"] and labo["klaargezet"]["werklijst_id"] == uit["werklijst_id"]
-        )
-        assert body["tellers"] == {"clusters": 2, "klaargezet": 1, "administraties": 2}
-        # Idempotent: nogmaals = dezelfde regel, niets dubbel.
+        assert body["totaal"] == 2 and all(c["soort"] != "btw_nummer" for c in body["rijen"])
+        assert body["tellers"] == {"clusters": 1, "eenduidig": 1, "administraties": 2}
+        # Nogmaals afhandelen op een al-verliezer = 422 fail-closed, niets dubbel.
         r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
+            f"/crediteuren/dubbelen/{administratie_id}/afhandelen",
             headers=headers,
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO)]},
+            json={"voorkeur_vendor_id": str(LABO_BV), "verliezer_vendor_ids": [str(LABO)]},
         )
-        assert (
-            r.status_code == 200
-            and r.json()["al_klaargezet"] is True
-            and r.json()["werklijst_id"] == uit["werklijst_id"]
-        )
-        assert _audit_acties(admin_engine, "crediteur_archiveer_klaargezet") == 1
-        werklijst = client.get("/crediteuren/werklijst", headers=headers).json()
-        assert (
-            werklijst["open"] == 1
-            and werklijst["gedaan"] == 0
-            and werklijst["regels"][0]["voorkeur_naam"] == "Labo Derva B.V."
-        )
+        assert r.status_code == 422 and "al afgehandeld" in r.json()["detail"]
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 1
+        # Log-lijst kantoorbreed.
+        log = client.get("/crediteuren/afhandelingen", headers=headers).json()
+        assert log["actief"] == 1 and log["teruggedraaid"] == 0
+        assert log["regels"][0]["voorkeur_naam"] == "Labo Derva B.V."
 
-    def test_weigert_bij_open_posten_en_bij_mislukte_toets(
-        self, dubbelen, administratie_id, beheerder_id, admin_engine, monkeypatch
-    ) -> None:
+    def test_zonder_verliezer_of_zelfde_id_422(self, dubbelen, administratie_id, beheerder_id) -> None:
         headers = _bearer(beheerder_id, rol="beheerder")
-        open_post = {
-            "id": "f-1",
-            "Reference": "F-2026-17",
-            "Date": "2026-08-01T00:00:00",
-            "Status": 2,
-            "BaseRemainingAmount": "121.00",
-        }
-        gesloten = {"id": "f-2", "Reference": "F-2026-16", "Status": 3, "BaseRemainingAmount": "0"}
-        rlz = FakeRlz(open_posten={LABO: [open_post, gesloten]})
-        monkeypatch.setattr(service, "_open_client", lambda aid: rlz)
-        d = client.get(
-            f"/crediteuren/dubbelen/{administratie_id}/cluster-detail?vendor_ids={LABO_BV}&vendor_ids={LABO}",
-            headers=headers,
-        ).json()
-        assert d["toets_ok"] is True and [p["referentie"] for p in d["open_posten"][str(LABO)]] == ["F-2026-17"]
         r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
+            f"/crediteuren/dubbelen/{administratie_id}/afhandelen",
             headers=headers,
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO)]},
-        )
-        assert r.status_code == 409, r.text
-        assert "eerst afletteren" in r.json()["detail"]["bericht"]
-        assert r.json()["detail"]["open_posten"][str(LABO)][0]["open_bedrag"] == "121.00"
-        # Andersom (Labo Derva B.V. archiveren) heeft géén open posten → zou wél mogen; hier alleen toetsen dat
-        # niets geschreven is ná de blokkade.
-        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
-            assert session.scalars(select(CrediteurArchiveerWerklijst)).all() == []
-        assert _audit_acties(admin_engine, "crediteur_archiveer_klaargezet") == 0
-
-        # RLZ onbereikbaar = toets mislukt = fail-closed (409, niets gewijzigd).
-        monkeypatch.setattr(
-            service, "_open_client", lambda aid: FakeRlz(fout=RlzApiError(503, "GET", "PurchaseInvoices", "down"))
-        )
-        d = client.get(
-            f"/crediteuren/dubbelen/{administratie_id}/cluster-detail?vendor_ids={LABO_BV}&vendor_ids={LABO}",
-            headers=headers,
-        ).json()
-        assert d["toets_ok"] is False and "mislukt" in d["toets_fout"]
-        r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
-            headers=headers,
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO)]},
-        )
-        assert r.status_code == 409 and "opnieuw proberen" in r.json()["detail"]
-        # Voorkeur in de overige-lijst / lege overige = 422.
-        r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
-            headers=headers,
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO_BV)]},
+            json={"voorkeur_vendor_id": str(LABO_BV), "verliezer_vendor_ids": [str(LABO_BV)]},
         )
         assert r.status_code == 422
-
-    def test_open_posten_toets_valt_terug_op_entity_filter_bij_400(self) -> None:
-        class Client400:
-            def __init__(self) -> None:
-                self.filters: list[str] = []
-
-            def get(self, path, *, params=None):
-                self.filters.append(params["$filter"])
-                if "BaseRemainingAmount" in params["$filter"]:
-                    raise RlzApiError(400, "GET", path, "invalid")
-                return {
-                    "value": [
-                        {"id": "x", "Status": 2, "BaseRemainingAmount": 5},
-                        {"id": "y", "Status": 1, "BaseRemainingAmount": 5},
-                    ]
-                }
-
-        c = Client400()
-        posten = service.open_posten_van_crediteur(c, LABO)  # type: ignore[arg-type]
-        assert [p.rlz_document_id for p in posten] == ["x"]
-        assert len(c.filters) == 2 and c.filters[1] == f"Entity/id eq {LABO}"
-
-
-class TestWerklijstHertoets:
-    def _klaarzetten(self, administratie_id, beheerder_id, monkeypatch) -> uuid.UUID:
-        monkeypatch.setattr(service, "_open_client", lambda aid: FakeRlz())
         r = client.post(
-            f"/crediteuren/dubbelen/{administratie_id}/archiveer",
-            headers=_bearer(beheerder_id, rol="beheerder"),
-            json={"voorkeur_vendor_id": str(LABO_BV), "overige_vendor_ids": [str(LABO)]},
+            f"/crediteuren/dubbelen/{administratie_id}/afhandelen",
+            headers=headers,
+            json={"voorkeur_vendor_id": str(LABO_BV), "verliezer_vendor_ids": [str(uuid.uuid4())]},
         )
-        assert r.status_code == 200, r.text
-        return uuid.UUID(r.json()["werklijst_id"])
-
-    def test_hertoets_zet_gedaan_bij_isarchived_of_afwezig(
-        self, dubbelen, administratie_id, beheerder_id, admin_engine, monkeypatch
-    ) -> None:
-        werklijst_id = self._klaarzetten(administratie_id, beheerder_id, monkeypatch)
-        # Nog actief in RLZ → blijft open, mét hertoets-detail.
-        uit = service.hertoets_werklijst(client_factory=lambda aid: FakeRlz())
-        assert uit[administratie_id] == {"open": 1, "gedaan": 0, "nog_open": 1}
-        with scoped_session(administratie_id) as session:
-            rij = session.get(CrediteurArchiveerWerklijst, werklijst_id)
-            assert (
-                rij is not None
-                and rij.status == "open"
-                and rij.hertoets_detail == {str(LABO): "actief"}
-                and rij.laatste_hertoets_op is not None
-            )
-        # IsArchived: true → gedaan mét audit (systeem-actor).
-        uit = service.hertoets_werklijst(client_factory=lambda aid: FakeRlz(gearchiveerd={LABO}))
-        assert uit[administratie_id] == {"open": 1, "gedaan": 1, "nog_open": 0}
-        with scoped_session(administratie_id) as session:
-            rij = session.get(CrediteurArchiveerWerklijst, werklijst_id)
-            assert rij.status == "gedaan" and rij.gedaan_bron == "hertoets" and rij.gedaan_op is not None
-        assert _audit_acties(admin_engine, "crediteur_archiveer_gedaan") == 1
-        # Niets open meer → administratie niet in het rapport.
-        assert service.hertoets_werklijst(client_factory=lambda aid: FakeRlz()) == {}
-        # Zodra de crediteur in RLZ gearchiveerd is, verdwijnt het cluster via de Vendors-sync (is_gearchiveerd).
-        with admin_engine.begin() as conn:
-            conn.execute(
-                text("UPDATE boekhouding.vendor_cache SET is_gearchiveerd = true WHERE id = :id"), {"id": LABO}
-            )
-        body = client.get("/crediteuren/dubbelen", headers=_bearer(beheerder_id, rol="beheerder")).json()
-        assert all(c["soort"] != "btw_nummer" for c in body["rijen"])
-        werklijst = client.get("/crediteuren/werklijst", headers=_bearer(beheerder_id, rol="beheerder")).json()
-        assert werklijst["open"] == 0 and werklijst["gedaan"] == 1
-
-    def test_afwezig_404_telt_als_gearchiveerd_en_fout_stopt_de_rest_niet(
-        self, dubbelen, administratie_id, beheerder_id, monkeypatch
-    ) -> None:
-        werklijst_id = self._klaarzetten(administratie_id, beheerder_id, monkeypatch)
-        uit = service.hertoets_werklijst(client_factory=lambda aid: FakeRlz(afwezig={LABO}))
-        assert uit[administratie_id]["gedaan"] == 1
-        with scoped_session(administratie_id) as session:
-            assert session.get(CrediteurArchiveerWerklijst, werklijst_id).hertoets_detail == {str(LABO): "gearchiveerd"}
-
-    def test_fout_per_administratie_is_zichtbaar(self, dubbelen, administratie_id, beheerder_id, monkeypatch) -> None:
-        self._klaarzetten(administratie_id, beheerder_id, monkeypatch)
-
-        def kapot(aid):
-            raise RuntimeError("geen credentials")
-
-        uit = service.hertoets_werklijst(client_factory=kapot)
-        assert uit[administratie_id] == "RuntimeError: geen credentials"
-
-    def test_handmatig_markeer_als_gedaan(
-        self, dubbelen, administratie_id, beheerder_id, admin_engine, monkeypatch
-    ) -> None:
-        werklijst_id = self._klaarzetten(administratie_id, beheerder_id, monkeypatch)
-        headers = _bearer(beheerder_id, rol="beheerder")
-        r = client.post(f"/crediteuren/werklijst/{werklijst_id}/gedaan", headers=headers)
-        assert r.status_code == 200 and r.json()["status"] == "gedaan" and r.json()["gedaan_bron"] == "handmatig"
-        assert _audit_acties(admin_engine, "crediteur_archiveer_gedaan") == 1
-        # Idempotent + onbekend = 404.
-        assert client.post(f"/crediteuren/werklijst/{werklijst_id}/gedaan", headers=headers).status_code == 200
-        assert _audit_acties(admin_engine, "crediteur_archiveer_gedaan") == 1
-        assert client.post(f"/crediteuren/werklijst/{uuid.uuid4()}/gedaan", headers=headers).status_code == 404
+        assert r.status_code == 422

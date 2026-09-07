@@ -1,15 +1,16 @@
-"""Inzicht › Crediteuren — kantoorbrede dubbel-signalering mét actie (design-ronde 03-09). Rolpoort: élke
-kantoorrol (`vereis_kantoorrol`, router-breed) — de oude per-administratie-route droeg al alleen een scope-poort;
-kantoorbreed = uitsluitend de administraties in scope van de actor (Beheerder alle actieve). Geen RLZ-writes."""
+"""Inzicht › Crediteuren — kantoorbrede dubbel-signalering mét actie (design-ronde 03-09; schaalbaar blok B13 07-09).
+Rolpoort: élke kantoorrol (`vereis_kantoorrol`, router-breed); kantoorbreed = uitsluitend de administraties in scope
+van de actor (Beheerder alle actieve). Geen RLZ-calls, geen RLZ-writes: verliezers worden in de MODULE onbruikbaar."""
 
 from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 
 from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
-from app.crediteuren import schemas, service
+from app.crediteuren import afhandeling, schemas, service
 
 router = APIRouter(prefix="/crediteuren", tags=["crediteuren"], dependencies=[Depends(vereis_kantoorrol)])
 
@@ -17,19 +18,6 @@ router = APIRouter(prefix="/crediteuren", tags=["crediteuren"], dependencies=[De
 def _vertaal(exc: service.CrediteurenFout) -> HTTPException:
     if isinstance(exc, service.OnbekendeAdministratie):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    if isinstance(exc, service.OpenPostenBlokkeren):
-        return HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "bericht": str(exc),
-                "open_posten": {
-                    str(v): [schemas.OpenPostDto(**p.__dict__).model_dump(mode="json") for p in posten]
-                    for v, posten in exc.posten.items()
-                },
-            },
-        )
-    if isinstance(exc, service.OpenPostenToetsMislukt):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
 
 
@@ -60,7 +48,8 @@ def _cluster(c: service.Cluster) -> schemas.ClusterDto:
         kvk_verschilt=c.kvk_verschilt,
         afmelden_primair=c.afmelden_primair,
         voorkeur_suggestie=c.voorkeur_suggestie,
-        klaargezet=schemas.KlaargezetDto(**c.klaargezet.__dict__) if c.klaargezet else None,
+        eenduidig=c.eenduidig,
+        classificatie_reden=c.classificatie_reden,
     )
 
 
@@ -74,12 +63,15 @@ def dubbelen_lijst(
     q: str = Query(""),
     administratie_id: uuid.UUID | None = Query(None),
     sleutel: str | None = Query(None),
+    classificatie: str | None = Query(None),
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.LijstDto:
-    """Kantoorbrede lijst van dubbel-clusters (zwaarste sleutel eerst), facetten Administratie/Sleutel, zoekterm,
-    paginering 25 — administratie is een filter, geen poort (ontwerpnotitie ①)."""
+    """Kantoorbrede lijst van dubbel-clusters (zwaarste sleutel eerst), facetten Administratie/Sleutel/Classificatie,
+    zoekterm, paginering 25 — administratie is een filter, geen poort (ontwerpnotitie ①)."""
     try:
-        lijst = service.lijst(actor, q=q, pagina=pagina, administratie_id=administratie_id, sleutel=sleutel)
+        lijst = service.lijst(
+            actor, q=q, pagina=pagina, administratie_id=administratie_id, sleutel=sleutel, classificatie=classificatie
+        )
     except service.CrediteurenFout as exc:
         raise _vertaal(exc) from exc
     return schemas.LijstDto(
@@ -97,8 +89,47 @@ def dubbelen_lijst(
 
 @router.get("/dubbelen/stand", response_model=schemas.TellersDto)
 def dubbelen_stand(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.TellersDto:
-    """Werkvoorraad-teller "crediteur-dubbelen (N)" — alleen tonen bij N > 0 (ontwerpnotitie ⑧)."""
+    """Werkvoorraad-teller "crediteur-dubbelen (N)" = alleen TWIJFEL-clusters (mens nodig) — tonen bij N > 0."""
     return _tellers(service.stand(actor))
+
+
+def _run_dto(u: afhandeling.RunUitkomst) -> schemas.AutoRunDto:
+    return schemas.AutoRunDto(
+        run_id=u.run_id,
+        dry_run=u.dry_run,
+        eenduidig=u.eenduidig,
+        twijfel=u.twijfel,
+        afgehandeld=u.afgehandeld,
+        fouten=u.fouten,
+        administraties=[
+            schemas.AdministratieUitkomstDto(
+                administratie_id=a.administratie_id,
+                administratie_naam=a.administratie_naam,
+                eenduidig=a.eenduidig,
+                twijfel=a.twijfel,
+                afgehandeld=a.afgehandeld,
+                fouten=a.fouten,
+                voorbeelden=[schemas.VoorbeeldDto(**v.__dict__) for v in a.voorbeelden],
+            )
+            for a in u.administraties
+        ],
+    )
+
+
+@router.post("/dubbelen/auto-afhandelen", response_model=schemas.AutoRunDto)
+def auto_afhandelen(
+    invoer: schemas.AutoAfhandelenInvoer, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.AutoRunDto:
+    """ "Eenduidige clusters automatisch afhandelen (N)": `dry_run=true` = preview (aantallen + voorbeelden per
+    administratie, niets gewijzigd); `dry_run=false` = afhandelen — één transactie per cluster, audit, terugdraaibaar.
+    Alleen administraties in scope van de actor."""
+    try:
+        u = afhandeling.auto_afhandelen(
+            service.Actor(id=actor.id, rol=actor.rol), dry_run=invoer.dry_run, administratie_id=invoer.administratie_id
+        )
+    except service.CrediteurenFout as exc:
+        raise _vertaal(exc) from exc
+    return _run_dto(u)
 
 
 @router.get("/dubbelen/{administratie_id}/cluster-detail", response_model=schemas.ClusterDetailDto)
@@ -107,7 +138,7 @@ def cluster_detail(
     vendor_ids: list[uuid.UUID] = Query(..., min_length=2),
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.ClusterDetailDto:
-    """Dialooggegevens mét LIVE open-posten-toets per crediteur (RLZ-leesroute; onbereikbaar = toets mislukt)."""
+    """Dialooggegevens "Voorkeur kiezen…": kaarten, vooringevulde voorkeur, classificatie mét reden. Geen RLZ-call."""
     try:
         d = service.cluster_detail(actor, administratie_id=administratie_id, vendor_ids=vendor_ids)
     except service.CrediteurenFout as exc:
@@ -117,33 +148,28 @@ def cluster_detail(
         administratie_naam=d.administratie_naam,
         crediteuren=[_kaart(k) for k in d.crediteuren],
         voorkeur_suggestie=d.voorkeur_suggestie,
-        open_posten={
-            str(v): [schemas.OpenPostDto(**p.__dict__) for p in posten] for v, posten in d.open_posten.items()
-        },
-        toets_ok=d.toets_ok,
-        toets_fout=d.toets_fout,
+        eenduidig=d.eenduidig,
+        classificatie_reden=d.classificatie_reden,
     )
 
 
-@router.post("/dubbelen/{administratie_id}/archiveer", response_model=schemas.ArchiveerUitkomstDto)
-def archiveer(
-    administratie_id: uuid.UUID, invoer: schemas.ArchiveerInvoer, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
-) -> schemas.ArchiveerUitkomstDto:
-    """ "Voorkeur kiezen & rest archiveren…": server hertoetst de open posten (409 bij blokkade of mislukte toets),
-    schrijft de RLZ-werklijst-regel en verhuist geheugen + kenmerk naar de voorkeur — alles in één transactie."""
+@router.post("/dubbelen/{administratie_id}/afhandelen", response_model=schemas.AfhandelUitkomstDto)
+def afhandelen(
+    administratie_id: uuid.UUID, invoer: schemas.AfhandelenInvoer, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.AfhandelUitkomstDto:
+    """ "Voorkeur kiezen…" (mens): verliezers worden in de module onbruikbaar; geheugen, kenmerk, IBAN's en open
+    boekvoorstellen gaan naar de voorkeur — één transactie, audit, terugdraaibaar. Geen RLZ-write."""
     try:
-        u = service.archiveer(
+        u = service.afhandelen(
             actor,
             administratie_id=administratie_id,
             voorkeur_vendor_id=invoer.voorkeur_vendor_id,
-            overige_vendor_ids=invoer.overige_vendor_ids,
+            verliezer_vendor_ids=invoer.verliezer_vendor_ids,
         )
     except service.CrediteurenFout as exc:
         raise _vertaal(exc) from exc
-    melding = f"klaargezet — archiveer in RLZ: {', '.join(u.te_archiveren_namen)}"
-    if u.al_klaargezet:
-        melding = f"stond al klaar — archiveer in RLZ: {', '.join(u.te_archiveren_namen)}"
-    return schemas.ArchiveerUitkomstDto(**u.__dict__, melding=melding)
+    melding = f"afgehandeld — {', '.join(u.verliezer_namen)} {'is' if len(u.verliezer_namen) == 1 else 'zijn'} in de module onbruikbaar; voorkeur {u.voorkeur_naam or ''}".strip()
+    return schemas.AfhandelUitkomstDto(**u.__dict__, melding=melding)
 
 
 @router.post("/dubbelen/{administratie_id}/afmelden", response_model=schemas.AfmeldenUitkomstDto)
@@ -161,27 +187,44 @@ def afmelden(
     return schemas.AfmeldenUitkomstDto(afmelding_id=afmelding_id)
 
 
-def _werklijst_dto(regels: list[service.WerklijstRegel]) -> schemas.WerklijstDto:
-    return schemas.WerklijstDto(
-        regels=[schemas.WerklijstRegelDto(**r.__dict__) for r in regels],
-        open=sum(1 for r in regels if r.status == "open"),
-        gedaan=sum(1 for r in regels if r.status == "gedaan"),
+def _afhandelingen_dto(regels: list[afhandeling.AfhandelingRegel]) -> schemas.AfhandelingenDto:
+    return schemas.AfhandelingenDto(
+        regels=[schemas.AfhandelingRegelDto(**r.__dict__) for r in regels],
+        actief=sum(1 for r in regels if r.teruggedraaid_op is None),
+        teruggedraaid=sum(1 for r in regels if r.teruggedraaid_op is not None),
     )
 
 
-@router.get("/werklijst", response_model=schemas.WerklijstDto)
-def werklijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.WerklijstDto:
-    """Paneel "RLZ-werklijst": open + gedaan, kantoorbreed binnen scope."""
-    return _werklijst_dto(service.werklijst(actor))
+@router.get("/afhandelingen", response_model=schemas.AfhandelingenDto)
+def afhandelingen(
+    administratie_id: uuid.UUID | None = Query(None), actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.AfhandelingenDto:
+    """Log van afgehandelde clusters (auto + mens), nieuwste eerst, kantoorbreed binnen scope — de terugdraai-ingang."""
+    return _afhandelingen_dto(
+        afhandeling.lijst_afhandelingen(service.Actor(id=actor.id, rol=actor.rol), administratie_id=administratie_id)
+    )
 
 
-@router.post("/werklijst/{werklijst_id}/gedaan", response_model=schemas.WerklijstRegelDto)
-def werklijst_gedaan(
-    werklijst_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
-) -> schemas.WerklijstRegelDto:
-    """Handmatige afvinkroute "Markeer als gedaan" (audit) — naast de dagelijkse hertoets."""
+@router.post("/afhandelingen/{afhandeling_id}/terugdraaien", response_model=schemas.AfhandelingRegelDto)
+def terugdraaien(
+    afhandeling_id: uuid.UUID, invoer: schemas.TerugdraaiInvoer, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.AfhandelingRegelDto:
+    """Terugdraaien mét verplichte reden: markering en kenmerk/boekvoorstellen hersteld, audit."""
     try:
-        r = service.markeer_gedaan(actor, werklijst_id=werklijst_id)
+        r = afhandeling.draai_terug(
+            service.Actor(id=actor.id, rol=actor.rol), afhandeling_id=afhandeling_id, reden=invoer.reden
+        )
     except service.CrediteurenFout as exc:
         raise _vertaal(exc) from exc
-    return schemas.WerklijstRegelDto(**r.__dict__)
+    return schemas.AfhandelingRegelDto(**r.__dict__)
+
+
+@router.get("/opruimlijst.csv")
+def opruimlijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> Response:
+    """Optionele export "wie wil opruimen in RLZ": alle verliezers in scope + legacy werklijst-regels. Geen teller."""
+    csv_tekst = afhandeling.export_opruimlijst(service.Actor(id=actor.id, rol=actor.rol))
+    return Response(
+        content=csv_tekst.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="rlz-opruimlijst-crediteuren.csv"'},
+    )

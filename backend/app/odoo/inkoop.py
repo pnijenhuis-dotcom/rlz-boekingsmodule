@@ -269,6 +269,12 @@ class OdooInkoopPort:
             )
 
     def partner_id_voor(self, vendor_id: uuid.UUID) -> int:
+        """B13 07-09: een verliezer van een afgehandeld dubbel-cluster gaat nooit als partner mee — altijd de
+        voorkeur (één bron: crediteuren/voorkeur.py)."""
+        from app.crediteuren.voorkeur import voorkeur_van
+
+        with scoped_session(self.administratie_id) as session:
+            vendor_id = voorkeur_van(session, administratie_id=self.administratie_id, vendor_id=vendor_id) or vendor_id
         return self._odoo_id("res.partner", vendor_id)
 
     def _verlegde_taxrates(self) -> set[uuid.UUID]:

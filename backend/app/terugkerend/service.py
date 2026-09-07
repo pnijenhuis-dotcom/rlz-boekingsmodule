@@ -98,7 +98,11 @@ class _Factuur:
 
 
 def _facturen_per_vendor(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, list[_Factuur]]:
-    """App-documenten (met bedrag) + RLZ-historie (alleen datum, één per boekstuk) per crediteur."""
+    """App-documenten (met bedrag) + RLZ-historie (alleen datum, één per boekstuk) per crediteur. Verliezers van een
+    afgehandeld dubbel-cluster (B13 07-09) tellen mee op hun VOORKEUR — één patroon per echte leverancier."""
+    from app.crediteuren.voorkeur import verliezers as verliezers_kaart
+
+    kaart = verliezers_kaart(session, administratie_id=administratie_id)
     per: dict[uuid.UUID, list[_Factuur]] = {}
     rijen = session.execute(
         select(Boekvoorstel.vendor_id, Boekvoorstel.factuurdatum, Boekvoorstel.totaalbedrag, Boekvoorstel.document_id)
@@ -112,6 +116,7 @@ def _facturen_per_vendor(session: Session, administratie_id: uuid.UUID) -> dict[
         )
     ).all()
     for vendor_id, datum, bedrag, document_id in rijen:
+        vendor_id = kaart.get(vendor_id, vendor_id)
         per.setdefault(vendor_id, []).append(_Factuur(datum=datum, bedrag=bedrag, document_id=document_id))
     historie = session.execute(
         select(BoekingObservatie.vendor_id, BoekingObservatie.bron_datum, BoekingObservatie.boekstuk_ref)
@@ -120,6 +125,7 @@ def _facturen_per_vendor(session: Session, administratie_id: uuid.UUID) -> dict[
     ).all()
     gezien: set[tuple[uuid.UUID, str | None, date]] = set()
     for vendor_id, datum, boekstuk in historie:
+        vendor_id = kaart.get(vendor_id, vendor_id)
         sleutel = (vendor_id, boekstuk, datum)
         if sleutel in gezien:
             continue

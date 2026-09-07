@@ -117,9 +117,12 @@ def lopende_kandidaten(
             Document.status == DocumentStatus.GEACCORDEERD,
         )
     ).all()
+    from app.crediteuren.voorkeur import verliezers as verliezers_kaart  # B13 07-09: verliezer telt als voorkeur
+
+    kaart = verliezers_kaart(session, administratie_id=administratie_id)
     kandidaten: list[match_motor.Kandidaat] = []
     for rij, _status in rijen:
-        if vendor_sleutel(rij.vendor_id, btw) != sleutel:
+        if vendor_sleutel(kaart.get(rij.vendor_id, rij.vendor_id), btw) != sleutel:
             continue
         kandidaten.append(
             match_motor.Kandidaat(
@@ -302,8 +305,12 @@ def herbereken_na_verplichting_wijziging(*, administratie_id: uuid.UUID, verplic
         verplichting = session.get(Verplichting, verplichting_document_id)
         if verplichting is None:
             return 0
+        from app.crediteuren.voorkeur import voorkeur_van  # B13 07-09
+
         btw = btw_per_vendor(session, administratie_id=administratie_id)
-        sleutel = vendor_sleutel(verplichting.vendor_id, btw)
+        sleutel = vendor_sleutel(
+            voorkeur_van(session, administratie_id=administratie_id, vendor_id=verplichting.vendor_id), btw
+        )
         if sleutel is None:
             return 0
         kandidaat_documenten = [

@@ -186,9 +186,16 @@ def vendor_groep(session: Session, *, administratie_id: uuid.UUID, vendor_id: uu
     """Alle vendor-ids in deze administratie met hetzelfde crediteur-kenmerk (btw-nummer, anders
     KvK-nummer) als `vendor_id` — de dedupe-groep voor het regel-geheugen. Zonder kenmerk: alleen de
     vendor zelf (nooit op naam groeperen — dat doet de crediteur-voorstel-match al, mét mens)."""
+    from app.crediteuren.voorkeur import verliezers as verliezers_kaart  # B13 07-09
     from app.documenten.crediteur_kenmerk import kenmerken_per_vendor  # lokaal: extractie-controlelaag
 
-    kenmerken = kenmerken_per_vendor(session, administratie_id=administratie_id)
+    # Verliezers van een afgehandeld dubbel-cluster tellen niet mee: hun observaties zijn al als kopie op de
+    # voorkeur gezet — meenemen zou dubbel gewicht geven. Een aangeboden verliezer-id wordt eerst vertaald.
+    verliezers = verliezers_kaart(session, administratie_id=administratie_id)
+    vendor_id = verliezers.get(vendor_id, vendor_id)
+    kenmerken = {
+        v: k for v, k in kenmerken_per_vendor(session, administratie_id=administratie_id).items() if v not in verliezers
+    }
     eigen = kenmerken.get(vendor_id)
     if eigen is None:
         return frozenset({vendor_id})

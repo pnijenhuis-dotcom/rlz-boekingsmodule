@@ -1,10 +1,9 @@
-"""DTO's crediteuren-dubbelen v2 (Inzicht › Crediteuren, kantoorbreed — design-ronde 03-09)."""
+"""DTO's crediteuren-dubbelen (Inzicht › Crediteuren, kantoorbreed — design-ronde 03-09; schaalbaar blok B13 07-09)."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -26,13 +25,6 @@ class SleutelDto(BaseModel):
     sleutel: str
 
 
-class KlaargezetDto(BaseModel):
-    werklijst_id: uuid.UUID
-    voorkeur_vendor_id: uuid.UUID
-    namen: list[str]
-    aangemaakt_op: datetime
-
-
 class ClusterDto(BaseModel):
     cluster_id: str
     administratie_id: uuid.UUID
@@ -47,12 +39,13 @@ class ClusterDto(BaseModel):
     kvk_verschilt: bool
     afmelden_primair: bool
     voorkeur_suggestie: uuid.UUID
-    klaargezet: KlaargezetDto | None
+    eenduidig: bool
+    classificatie_reden: str
 
 
 class TellersDto(BaseModel):
-    clusters: int
-    klaargezet: int
+    clusters: int  # twijfel — mens nodig
+    eenduidig: int  # automatisch afhandelbaar
     administraties: int
 
 
@@ -76,36 +69,28 @@ class LijstDto(BaseModel):
     facetten: FacettenDto
 
 
-class OpenPostDto(BaseModel):
-    rlz_document_id: str
-    referentie: str | None
-    datum: str | None
-    open_bedrag: Decimal
-
-
 class ClusterDetailDto(BaseModel):
     administratie_id: uuid.UUID
     administratie_naam: str
     crediteuren: list[KaartDto]
     voorkeur_suggestie: uuid.UUID
-    open_posten: dict[str, list[OpenPostDto]]
-    toets_ok: bool
-    toets_fout: str | None
+    eenduidig: bool
+    classificatie_reden: str
 
 
-class ArchiveerInvoer(StrikteInvoer):
+class AfhandelenInvoer(StrikteInvoer):
     voorkeur_vendor_id: uuid.UUID
-    overige_vendor_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    verliezer_vendor_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
 
 
-class ArchiveerUitkomstDto(BaseModel):
-    werklijst_id: uuid.UUID
+class AfhandelUitkomstDto(BaseModel):
+    afhandeling_id: uuid.UUID
     voorkeur_naam: str | None
-    te_archiveren_namen: list[str]
+    verliezer_namen: list[str]
     geheugen_verhuisd: int
     kenmerk_verhuisd: bool
     ibans_verhuisd: int
-    al_klaargezet: bool
+    boekvoorstellen_hervertaald: int
     melding: str
 
 
@@ -118,22 +103,64 @@ class AfmeldenUitkomstDto(BaseModel):
     afmelding_id: uuid.UUID
 
 
-class WerklijstRegelDto(BaseModel):
+class AutoAfhandelenInvoer(StrikteInvoer):
+    dry_run: bool = True
+    administratie_id: uuid.UUID | None = None
+
+
+class VoorbeeldDto(BaseModel):
+    cluster_id: str
+    voorkeur_naam: str | None
+    verliezer_namen: list[str]
+    reden: str
+    afgehandeld: bool
+    fout: str | None
+
+
+class AdministratieUitkomstDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    eenduidig: int
+    twijfel: int
+    afgehandeld: int
+    fouten: int
+    voorbeelden: list[VoorbeeldDto]
+
+
+class AutoRunDto(BaseModel):
+    run_id: uuid.UUID
+    dry_run: bool
+    eenduidig: int
+    twijfel: int
+    afgehandeld: int
+    fouten: int
+    administraties: list[AdministratieUitkomstDto]
+
+
+class AfhandelingRegelDto(BaseModel):
     id: uuid.UUID
     administratie_id: uuid.UUID
     administratie_naam: str
+    bron: str
     voorkeur_vendor_id: uuid.UUID
     voorkeur_naam: str | None
-    te_archiveren: list[dict]
-    status: str
-    aangemaakt_op: datetime
-    gedaan_op: datetime | None
-    gedaan_bron: str | None
-    laatste_hertoets_op: datetime | None
-    hertoets_detail: dict | None
+    verliezers: list[dict]
+    sleutels: list[dict]
+    classificatie_reden: str
+    geheugen_verhuisd: int
+    kenmerk_verhuisd: bool
+    ibans_verhuisd: int
+    boekvoorstellen_hervertaald: int
+    afgehandeld_op: datetime
+    teruggedraaid_op: datetime | None
+    teruggedraaid_reden: str | None
 
 
-class WerklijstDto(BaseModel):
-    regels: list[WerklijstRegelDto]
-    open: int
-    gedaan: int
+class AfhandelingenDto(BaseModel):
+    regels: list[AfhandelingRegelDto]
+    actief: int
+    teruggedraaid: int
+
+
+class TerugdraaiInvoer(StrikteInvoer):
+    reden: str = Field(min_length=1, max_length=500)

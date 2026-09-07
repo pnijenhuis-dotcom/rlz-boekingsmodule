@@ -77,3 +77,43 @@ class CrediteurArchiveerWerklijst(Base):
     laatste_hertoets_op: Mapped[datetime | None] = mapped_column(default=None)
     # {"<vendor_id>": "gearchiveerd" | "actief" | "fout: …"} — stand van de laatste hertoets per crediteur.
     hertoets_detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+
+AFHANDELING_BRONNEN = ("auto", "mens")
+
+
+class CrediteurDubbelAfhandeling(Base):
+    """Append-only log per afgehandeld dubbel-cluster (blok B13 07-09, migratie 0117): voorkeur + verliezers +
+    sleutels + classificatie-reden + de OUDE stand van alles wat verhuisd/gewijzigd is (`verhuisd`), zodat
+    `draai_terug` de markering op `vendor_cache`, het kenmerk en de hervertaalde boekvoorstellen herstelt.
+    Geheugen-/IBAN-kopieën zijn append-only en blijven staan (zichtbaar in `verhuisd` + audit). De enige UPDATE
+    is `teruggedraaid_*`; geen DELETE-grant."""
+
+    __tablename__ = "crediteur_dubbel_afhandeling"
+    __table_args__ = (
+        Index("ix_crediteur_dubbel_afhandeling_administratie_id", "administratie_id"),
+        CheckConstraint("bron IN ('auto', 'mens')", name="ck_crediteur_dubbel_afhandeling_bron"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    bron: Mapped[str]
+    voorkeur_vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    voorkeur_naam: Mapped[str | None] = mapped_column(default=None)
+    # [{"vendor_id": "...", "naam": "..."}]
+    verliezers: Mapped[list] = mapped_column(JSONB)
+    # [{"soort": "naam", "sleutel": "wola"}, ...]
+    sleutels: Mapped[list] = mapped_column(JSONB)
+    classificatie_reden: Mapped[str]
+    # {"geheugen": [[oud_id, nieuw_id], ...], "kenmerk_oud": {...} | None, "ibans": [...],
+    #  "boekvoorstellen": [{"document_id": "...", "van_vendor_id": "..."}]}
+    verhuisd: Mapped[dict] = mapped_column(JSONB)
+    afgehandeld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    afgehandeld_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    teruggedraaid_op: Mapped[datetime | None] = mapped_column(default=None)
+    teruggedraaid_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    teruggedraaid_reden: Mapped[str | None] = mapped_column(default=None)

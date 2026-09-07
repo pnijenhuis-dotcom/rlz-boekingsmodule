@@ -381,13 +381,16 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nAutoboek-kandidaten (alle actieve administraties):")
     kandidaten_exit = _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
-    # Crediteur-werklijst-hertoets (crediteuren-dubbelen v2, 03-09): leest per open werklijst-regel de Vendors in
-    # RLZ (GET-only) en vinkt af zodra de crediteur dáár gearchiveerd/afwezig is — één kapotte administratie
-    # stopt de rest niet; eigen rapportregel.
-    from app.crediteuren import service as crediteuren_service
+    # Crediteuren-dubbelen auto-afhandeling (blok B13 07-09): eenduidige clusters (identieke naam/IBAN, geen
+    # conflicterend KvK/btw, verliezers ≤ N boekingen) handelt het systeem dagelijks af — verliezers worden in de
+    # module onbruikbaar, geheugen/kenmerk verhuizen, audit, terugdraaibaar. Puur code, geen RLZ-calls. De
+    # RLZ-werklijst-hertoets van 03-09 (N RLZ-GETs per dag) is vervallen: RLZ-archivering is geen doel meer.
+    from app.crediteuren import afhandeling as crediteuren_afhandeling
 
-    print("\nCrediteur-archiveer-werklijst (hertoets tegen RLZ, administraties mét open regels):")
-    werklijst_exit = _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
+    print("\nCrediteuren-dubbelen auto-afhandeling (eenduidige clusters, alle actieve administraties):")
+    werklijst_exit = _rapporteer_crediteuren_dubbelen_auto(
+        crediteuren_afhandeling.auto_afhandelen(None, dry_run=False)
+    )
     # Projectverdeling-hercontrole (blok C 04-09, ⑥): maandelijks meeliftend (1e–7e óf ná verse cijfers) — herrekent
     # geboekte pro-rato-verdelingen tegen de actuele omzetstand; puur code, geen RLZ-/Odoo-calls.
     from app.projectverdeling import hercontrole as projectverdeling_hercontrole
@@ -417,17 +420,25 @@ def _rapporteer_projectverdeling(resultaten: dict) -> int:
     return 1 if fouten else 0
 
 
-def _rapporteer_crediteur_werklijst(resultaten: dict) -> int:
-    fouten = 0
-    if not resultaten:
-        print("OK    geen open werklijst-regels")
-    for administratie_id, r in resultaten.items():
-        if isinstance(r, dict):
-            print(f"OK    {administratie_id}: {r['open']} open regels hertoetst, {r['gedaan']} gedaan, {r['nog_open']} nog open")
-        else:
-            fouten += 1
-            print(f"FOUT  {administratie_id}: {r}", file=sys.stderr)
-    return 1 if fouten else 0
+def _rapporteer_crediteuren_dubbelen_auto(uitkomst) -> int:
+    label = " [dry-run]" if uitkomst.dry_run else ""
+    if not uitkomst.administraties:
+        print(f"OK    geen dubbel-clusters in scope{label}")
+    for a in uitkomst.administraties:
+        regel = (
+            f"{a.administratie_naam}: {a.eenduidig} eenduidig, {a.twijfel} twijfel (mens), "
+            f"{a.afgehandeld} afgehandeld, {a.fouten} fouten{label}"
+        )
+        print(f"{'FOUT ' if a.fouten else 'OK   '} {regel}", file=sys.stderr if a.fouten else sys.stdout)
+        for v in a.voorbeelden:
+            status = "FOUT " if v.fout else ("gedaan" if v.afgehandeld else "zou  ")
+            fout = f" — {v.fout}" if v.fout else ""
+            print(f"        {status} voorkeur {v.voorkeur_naam!r} ← {', '.join(v.verliezer_namen)} — {v.reden}{fout}")
+    print(
+        f"Totaal{label}: {uitkomst.eenduidig} eenduidig, {uitkomst.twijfel} twijfel, "
+        f"{uitkomst.afgehandeld} afgehandeld, {uitkomst.fouten} fouten (run {uitkomst.run_id})"
+    )
+    return 1 if uitkomst.fouten else 0
 
 
 def _rapporteer_autoboek_kandidaten(resultaten: dict) -> int:
@@ -1938,10 +1949,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
     )
 
-    subparsers.add_parser(
-        "crediteur-werklijst-hertoets",
-        help="Crediteur-archiveer-werklijst hertoetsen tegen RLZ (GET Vendors, geen writes): regels waarvan álle te "
-        "archiveren crediteuren in RLZ gearchiveerd/afwezig zijn worden 'gedaan' (loopt óók dagelijks mee in sync-alles).",
+    dubbelen_auto_parser = subparsers.add_parser(
+        "crediteuren-dubbelen-auto",
+        help="Crediteuren-dubbelen (blok B13 07-09): eenduidige clusters automatisch afhandelen — verliezers worden "
+        "in de module onbruikbaar, geheugen/kenmerk/IBAN's en open boekvoorstellen gaan naar de voorkeur (audit, "
+        "terugdraaibaar via de UI). Twijfel blijft mens. Puur code, geen RLZ-calls; loopt óók dagelijks mee in "
+        "sync-alles.",
+    )
+    dubbelen_auto_parser.add_argument(
+        "--dry-run", action="store_true", dest="dry_run", help="Alleen classificeren en tellen; niets gewijzigd."
+    )
+    dubbelen_auto_parser.add_argument(
+        "--administratie", default=None, metavar="UUID", help="Beperk de run tot deze administratie."
     )
 
     projectverdeling_parser = subparsers.add_parser(
@@ -2406,10 +2425,15 @@ def main(argv: list[str] | None = None) -> int:
         from app.autoboek_kandidaten import service as kandidaten_service
 
         return _rapporteer_autoboek_kandidaten(kandidaten_service.herbereken_alle())
-    if args.commando == "crediteur-werklijst-hertoets":
-        from app.crediteuren import service as crediteuren_service
+    if args.commando == "crediteuren-dubbelen-auto":
+        from app.crediteuren import afhandeling as crediteuren_afhandeling
 
-        return _rapporteer_crediteur_werklijst(crediteuren_service.hertoets_werklijst())
+        administratie_filter = uuid.UUID(args.administratie) if args.administratie else None
+        return _rapporteer_crediteuren_dubbelen_auto(
+            crediteuren_afhandeling.auto_afhandelen(
+                None, dry_run=args.dry_run, administratie_id=administratie_filter
+            )
+        )
     if args.commando == "projectverdeling-hercontrole":
         from app.projectverdeling import hercontrole as projectverdeling_hercontrole
 

@@ -197,10 +197,13 @@ def _raad_vendor_id(session: Session, *, administratie_id: uuid.UUID, leverancie
     toewijzing)."""
     if not leverancier_naam:
         return None
+    from app.crediteuren.voorkeur import BRUIKBAAR  # B13 07-09: een verliezer wordt nooit voorgesteld
+
     kandidaten = session.scalars(
         select(VendorCache).where(
             VendorCache.administratie_id == administratie_id,
             func.lower(VendorCache.naam) == leverancier_naam.strip().lower(),
+            BRUIKBAAR,
         )
     ).all()
     if len(kandidaten) == 1:
@@ -411,33 +414,15 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
 
     with scoped_session(administratie_id) as session:
         _laad_document(session, document_id=document_id)
-        veldvoorstel = _laatste_veldvoorstel(session, document_id)
-
-        def samenvoeg_velden(vendor_id: uuid.UUID | None) -> dict:
-            """Fix 3: effectieve samenvoeg-stand (projectplicht = hard gesplitst; anders de
-            onthouden leverancier-voorkeur, default AAN) + de berekende één-regel-variant."""
-            if project_verplicht:
-                return {"regels_samenvoegen": False, "samenvoegen_toegestaan": False, "samengevoegde_regel": None}
-            voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
-            return {
-                # Default zonder leverancier-voorkeur = backend-capability (RLZ AAN; Odoo UIT — regelniveau-
-                # data moet in Odoo landen, eis Peter 03-09); de leverancier-voorkeur wint altijd.
-                "regels_samenvoegen": voorkeur if voorkeur is not None else standaard_samenvoegen,
-                "samenvoegen_toegestaan": True,
-                "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
-            }
-
-        def afdeling_velden(vendor_id: uuid.UUID | None, huidige_afdeling_id: uuid.UUID | None) -> dict:
-            """Blok A 28-08: prefill uit het leverancier-geheugen alleen als er nog geen keuze op het
-            document staat; toggle uit = niets (het veld is dan onzichtbaar)."""
-            from app.afdelingen.service import afdelingen_ingeschakeld_in_sessie, prefill_voor_vendor
-
-            if not afdelingen_ingeschakeld_in_sessie(session, administratie_id):
-                return {"afdeling_id": huidige_afdeling_id}
-            prefill = (
-                prefill_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
-                if huidige_afdeling_id is None
-                else None
+        bestaand = session.get(Boekvoorstel, document_id)
+        if bestaand is not None:
+            return _lees_opgeslagen_voorstel(
+                session,
+                administratie_id=administratie_id,
+                bestaand=bestaand,
+                gebeurtenissen=_gebeurtenissen_van(session, document_id),
+                project_verplicht=project_verplicht,
+                standaard_samenvoegen=standaard_samenvoegen,
             )
             return {
                 "afdeling_id": huidige_afdeling_id,
@@ -569,7 +554,15 @@ def sla_boekvoorstel_op(
     afdeling_id: uuid.UUID | None = None,
     betalingskenmerk: str | None = None,
 ) -> BoekvoorstelData:
-    """`regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
+    """`prefill_snapshot` (blok A10 07-09) ≠ None = AUTOSAVE van de prefill bij het openen
+    (`persisteer_prefill_bij_openen`): zelfde schrijfpad, maar (1) géén leerlus-bijeffecten die een
+    MENSELIJKE bevestiging veronderstellen — crediteur-kenmerk (btw-/KvK-nummer) onthouden, afdeling-
+    keuze per leverancier onthouden, samenvoeg-voorkeur — de autosave mag het geheugen nooit met zijn
+    eigen voorstel voeden; (2) audit-actie `boekvoorstel_prefill_opgeslagen` mét de herkomst per veld
+    + wie opende; (3) een tijdlijn-notitie (status blijft) met het snapshot, waaruit de leesroute de
+    herkomst-chips herstelt en de idempotentie/staleness toetst.
+
+    `regels_samenvoegen` (fix 3) is de weergavekeuze van de controleur op het moment van
     opslaan — die wordt als voorkeur per (administratie, crediteur) onthouden. None = niet
     meegegeven (bv. oude client of geen crediteur gekozen): voorkeur blijft ongemoeid. Bij
     projectplicht wordt de keuze genegeerd — daar is per-regel hard.

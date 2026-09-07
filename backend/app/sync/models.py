@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +45,16 @@ class VendorCache(Base):
     __tablename__ = "vendor_cache"
     __table_args__ = (
         Index("ix_vendor_cache_administratie_id", "administratie_id"),
+        Index(
+            "ix_vendor_cache_voorkeur_vendor_id",
+            "administratie_id",
+            "voorkeur_vendor_id",
+            postgresql_where=text("voorkeur_vendor_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "dubbel_afgehandeld_bron IS NULL OR dubbel_afgehandeld_bron IN ('auto', 'mens')",
+            name="ck_vendor_cache_dubbel_afgehandeld_bron",
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -57,6 +67,15 @@ class VendorCache(Base):
     brondata: Mapped[dict] = mapped_column(JSONB)
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Crediteuren-dubbelen schaalbaar (blok B13 07-09, migratie 0117): gezet = deze crediteur is een VERLIEZER van
+    # een afgehandeld dubbel-cluster en is in de module onbruikbaar — voorstellen/matching/geheugen gaan uitsluitend
+    # naar `voorkeur_vendor_id` (één bron: `app/crediteuren/voorkeur.py`). De sync-upsert raakt deze kolommen niet.
+    voorkeur_vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    dubbel_afgehandeld_op: Mapped[datetime | None] = mapped_column(default=None)
+    dubbel_afgehandeld_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    dubbel_afgehandeld_bron: Mapped[str | None] = mapped_column(default=None)  # 'auto' | 'mens'
 
 
 class ProjectCache(Base):
