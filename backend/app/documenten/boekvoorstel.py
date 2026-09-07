@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.backends.port import CrediteurNietGekoppeld
 from app.backends.registry import inkoop_port_voor, standaard_regels_samenvoegen
 from app.db.audit import record_audit_event
 from app.db.models import Administratie
@@ -1646,17 +1647,27 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     gelezen_totalen: tuple[Decimal | None, Decimal | None] = (None, None),
     historie_treffers: list[dict] | None = None,
     module_check: CheckResultaat | None = None,
+    crediteur_niet_gekoppeld: str | None = None,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
     gebruiken (app/documenten/checks.py). De lokale checks (geen RLZ nodig) draaien gewoon door,
     inclusief de IBAN-wissel-check tegen de al opgeslagen vertrouwde set (zonder RLZ-seed of
     baseline — die vergen een werkende verbinding); alleen de duplicaatcheck wordt een blokkerend,
-    herkenbaar checkresultaat — nooit een kale 500 bij de gebruiker."""
+    herkenbaar checkresultaat — nooit een kale 500 bij de gebruiker.
+
+    `crediteur_niet_gekoppeld` (blok D 07-09, Odoo): de crediteur heeft nog geen partner-koppeling — dan is óók de
+    IBAN-rij BLOKKEREND met die leesbare tekst (de seed kan niet draaien; een wissel is niet uit te sluiten), i.p.v.
+    "niets te vergelijken"."""
     regels = _naar_check_regels(voorstel, _taxrate_percentages(administratie_id))
     vertrouwd: set[str] = set()
     if voorstel.vendor_id is not None:
         vertrouwd = leverancier_iban.vertrouwde_ibans(administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+    iban_check = (
+        CheckResultaat("IBAN-wissel", False, crediteur_niet_gekoppeld)
+        if crediteur_niet_gekoppeld
+        else check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd)
+    )
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -1681,7 +1692,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 taxrate_namen=_taxrate_namen(administratie_id),
                 factuur_btw_nummer=factuur_btw_nummer,
             ),
-            check_iban_wissel(factuur_iban=factuur_iban, vertrouwde_ibans=vertrouwd),
+            iban_check,
             # Odoo-slotstuk 04-09: treffers uit de eigen RLZ-era-historie (overgestapte administratie) horen óók
             # in de storings-tak thuis — de reden blijft rood, het boekstuk komt erbij.
             CheckResultaat(
@@ -1807,16 +1818,34 @@ def voer_checks_uit(
                 module_check=module_check,
             )
     try:
-        vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
-            administratie_id=administratie_id,
-            vendor_id=voorstel.vendor_id,
-            factuur_iban=factuur_iban,
-            client=client,
-            # Systeem-actor: seed/baseline gebeuren als bijeffect van de checks, niet als
-            # bewuste gebruikershandeling — de menselijke bevestiging (bevestig_iban) draagt
-            # wél de echte actor.
-            actor_id=SYSTEEM_ACTOR_ID,
-        )
+        try:
+            vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
+                administratie_id=administratie_id,
+                vendor_id=voorstel.vendor_id,
+                factuur_iban=factuur_iban,
+                client=client,
+                # Systeem-actor: seed/baseline gebeuren als bijeffect van de checks, niet als
+                # bewuste gebruikershandeling — de menselijke bevestiging (bevestig_iban) draagt
+                # wél de echte actor.
+                actor_id=SYSTEEM_ACTOR_ID,
+            )
+        except CrediteurNietGekoppeld as exc:
+            # Blok D 07-09: Odoo-administratie, crediteur zonder partner-koppeling — de IBAN-seed én de live
+            # duplicaatquery kunnen niet draaien (dezelfde koppeling). Geen 500: de storings-tak mét een leesbare,
+            # BLOKKERENDE uitkomst op de IBAN-rij (handelingsperspectief in de tekst); lokale checks + module-check
+            # draaien gewoon door. Fail-closed tot de koppeling er is.
+            return _duplicaatcheck_niet_uitgevoerd_rapport(
+                administratie_id=administratie_id,
+                voorstel=voorstel,
+                project_verplicht=project_verplicht,
+                factuur_iban=factuur_iban,
+                factuur_btw_nummer=factuur_btw_nummer,
+                reden=str(exc),
+                gelezen_totalen=gelezen_totalen,
+                historie_treffers=historie_treffers,
+                module_check=module_check,
+                crediteur_niet_gekoppeld=str(exc),
+            )
         # Tegenboek-pad: het eigen GUID volgt de boek_cyclus (herboeking = nieuw GUID); alle
         # eerdere (her)boekings- en tegenboekings-GUID's van dit document zijn de gekoppelde
         # correctieketen en tellen niet als duplicaat (mockup 22-08 — de herboeking heeft

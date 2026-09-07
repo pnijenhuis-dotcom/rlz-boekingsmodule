@@ -9,7 +9,10 @@ Eén motor, drie afnemers:
 - de backfill-CLI (`duplicaten-backfill`) — dezelfde verzameling, dezelfde regels.
 
 Categorieën (geld in code, geen AI; alleen binnen DEZELFDE administratie — cross-administratie is nooit een duplicaat):
-  (a) `bestand`               — zelfde sha256 van het hoofdbestand;
+  (a) `bestand`               — zelfde sha256 van het hoofdbestand, óf (blok D 07-09, regel Peter) byte-identiek aan
+                                het PDF-beeld / een samengevouwen exemplaar van een al GEBUNDELD document — sha-aliassen
+                                uit bestaande data (`_sha_aliassen`: tijdlijn `vorige_sha256_hash` + `samengevoegd`-
+                                rijen), geen migratie;
   (b) `referentie_bedrag`     — zelfde genormaliseerde referentie (`duplicaat_afvoer.normaliseer_referentie`, de ENIGE
                                 normalisatie) + totaalbedrag cent-exact, over ÁLLE crediteur-records;
   (c) `crediteur_referentie`  — zelfde crediteur (zelfde vendor, zelfde KvK- óf btw-nummer, óf verliezer en voorkeur van
@@ -113,6 +116,12 @@ class Kop:
     referentie_norm: str | None
     totaalbedrag: Decimal | None
     intake_bericht_id: uuid.UUID | None
+    #: Gebundeld document (UBL = data, PDF = beeld via `bron_*`): het beeld heeft geen eigen sha-kolom.
+    heeft_beeld: bool = False
+    #: Sha-aliassen van het document (blok D 07-09): de sha256 van zijn PDF-beeld (tijdlijn `vorige_sha256_hash` van
+    #: de nabundeling) en van élk exemplaar dat erin is samengevouwen (`samengevoegd`-rij mét `samengevoegd_in_id`).
+    #: Een nieuw bestand dat byte-identiek is aan zo'n exemplaar is een duplicaat (a) van dít document.
+    beeld_sha256s: frozenset[str] = frozenset()
 
     @property
     def is_xml(self) -> bool:
@@ -121,6 +130,12 @@ class Kop:
     @property
     def stam(self) -> str:
         return Path(self.bestandsnaam).stem.strip().lower()
+
+    @property
+    def alle_sha256(self) -> frozenset[str]:
+        """Hoofdbestand + aliassen — de verzameling waarop categorie (a) toetst."""
+        eigen = frozenset({self.sha256_hash}) if self.sha256_hash else frozenset()
+        return eigen | self.beeld_sha256s
 
 
 @dataclass(frozen=True)
@@ -145,9 +160,23 @@ def _stam(bestandsnaam: str) -> str:
     return Path(bestandsnaam).stem.strip().lower()
 
 
+def zelfde_bestand(a: Kop, b: Kop) -> bool:
+    """Categorie (a): het hoofdbestand van de één is byte-identiek aan het hoofdbestand, het PDF-beeld of een
+    samengevouwen exemplaar van de ander (sha-aliassen, blok D 07-09 — casus Floor Bouwliftenservice: een los
+    PDF-exemplaar van een factuur die al GEBUNDELD (UBL + dit PDF als beeld) bestaat)."""
+    return bool(a.alle_sha256 & b.alle_sha256)
+
+
 def is_bundelpaar(a: Kop, b: Kop) -> bool:
-    """UBL+PDF van dezelfde factuur (1d): verschillende vorm én (zelfde intake-bericht óf zelfde naamstam)."""
+    """UBL+PDF van dezelfde factuur (1d): verschillende vorm én (zelfde intake-bericht óf zelfde naamstam).
+
+    Blok D 07-09: NIET als het ene bestand byte-identiek is aan het PDF-beeld (of een samengevouwen exemplaar) van het
+    andere — dan is het geen bundel-in-wording maar een tweede exemplaar van een al gebundelde factuur (regel Peter:
+    "PDF byte-identiek aan de bijlage van een al gebundeld exemplaar = duplicaat"). Een PDF met dezelfde naamstam maar
+    ándere bytes blijft een bundelpaar (nabundelen is dáár de weg, nooit afvoeren)."""
     if a.is_xml == b.is_xml:
+        return False
+    if zelfde_bestand(a, b):
         return False
     if a.intake_bericht_id is not None and a.intake_bericht_id == b.intake_bericht_id:
         return True
@@ -198,14 +227,14 @@ class Verzameling:
         for kop in self.koppen.values():
             if kop.document_id == eigen.document_id or not is_bundelpaar(eigen, kop):
                 continue
-            zelfde_bestand = bool(eigen.sha256_hash) and eigen.sha256_hash == kop.sha256_hash
             zelfde_kop = (
                 eigen.referentie_norm is not None
                 and eigen.referentie_norm == kop.referentie_norm
                 and eigen.totaalbedrag is not None
                 and eigen.totaalbedrag == kop.totaalbedrag
             )
-            if zelfde_bestand or zelfde_kop:
+            # `zelfde_bestand` kan hier niet meer waar zijn (is_bundelpaar sluit dat sinds blok D uit) — alleen de kop.
+            if zelfde_kop:
                 uit.append(kop)
         return uit
 
@@ -244,16 +273,24 @@ class Verzameling:
 
 
 def categorie_van(eigen: Kop, ander: Kop, verzameling: Verzameling) -> str | None:
-    """Pure match van één paar → zwaarste categorie of None. De bundel-uitzondering (1d) gaat vóór alles."""
+    """Pure match van één paar → zwaarste categorie of None. De bundel-uitzondering (1d) gaat vóór alles.
+
+    Code-borg blok D 07-09 (gesplitste delen — `intake/splitsing.py` maakt kinderen die tot hun extractie GEEN
+    referentie en GEEN totaal dragen): zonder referentie aan één van beide kanten bestaat er géén (b) en géén (c);
+    zonder totaal aan één van beide kanten bestaat er géén (b). Lege waarden zijn nooit "gelijk aan elkaar".
+    (a) blijft byte-identiek: twee delen van dezelfde splitsing zijn per definitie verschillende bytes (elk deel is een
+    eigen pagina-extract) en vallen dus nooit in (a) — behalve als de bron écht twee identieke pagina's bevatte, en
+    dan IS het dezelfde factuur twee keer."""
     if is_bundelpaar(eigen, ander):
         return None
-    if eigen.sha256_hash and ander.sha256_hash and eigen.sha256_hash == ander.sha256_hash:
+    if zelfde_bestand(eigen, ander):
         return CATEGORIE_BESTAND
-    ref_gelijk = eigen.referentie_norm is not None and eigen.referentie_norm == ander.referentie_norm
-    if not ref_gelijk:
+    if eigen.referentie_norm is None or ander.referentie_norm is None:
+        return None  # geen referentie = geen (b), geen (c)
+    if eigen.referentie_norm != ander.referentie_norm:
         return None
     if eigen.totaalbedrag is not None and ander.totaalbedrag is not None and eigen.totaalbedrag == ander.totaalbedrag:
-        return CATEGORIE_REFERENTIE_BEDRAG
+        return CATEGORIE_REFERENTIE_BEDRAG  # (b) vergt aan BEIDE kanten een totaal
     if verzameling.zelfde_crediteur(eigen.vendor_id, ander.vendor_id):
         return CATEGORIE_CREDITEUR_REFERENTIE
     return None
@@ -300,7 +337,12 @@ def _afmeldingen(session: Session, *, administratie_id: uuid.UUID) -> set[frozen
     return paren
 
 
-def _kop_uit(document: Document, bv: Boekvoorstel | None, ds: DuplicaatSignaal | None) -> Kop:
+def _kop_uit(
+    document: Document,
+    bv: Boekvoorstel | None,
+    ds: DuplicaatSignaal | None,
+    beeld_sha256s: frozenset[str] = frozenset(),
+) -> Kop:
     vendor_id = (bv.vendor_id if bv is not None else None) or (ds.vendor_id if ds is not None else None)
     referentie = (bv.referentie if bv is not None else None) or (ds.referentie if ds is not None else None)
     totaal = bv.totaalbedrag if bv is not None and bv.totaalbedrag is not None else (ds.totaalbedrag if ds else None)
@@ -315,7 +357,49 @@ def _kop_uit(document: Document, bv: Boekvoorstel | None, ds: DuplicaatSignaal |
         referentie_norm=normaliseer(referentie),
         totaalbedrag=_bedrag(totaal),
         intake_bericht_id=document.intake_bericht_id,
+        heeft_beeld=document.bron_opslag_pad is not None,
+        beeld_sha256s=beeld_sha256s,
     )
+
+
+#: Tijdlijn-sleutel van de nabundeling (`intake/nabundelen.py`): de sha256 van de PDF vóór die het beeld werd.
+_TIJDLIJN_VORIGE_SHA = "vorige_sha256_hash"
+
+
+def _sha_aliassen(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, set[str]]:
+    """Sha-aliassen per document, deterministisch uit BESTAANDE data (geen migratie, geen bestandslezing):
+    (1) het PDF-beeld van een nagebundeld document — de nabundel-motor legt de PDF-sha vast als tijdlijn-detail
+        `vorige_sha256_hash` op het leidende document; telt alleen zolang dat document daadwerkelijk een beeld draagt
+        (`bron_opslag_pad`, ná 'nabundeling ongedaan' is de PDF weer het hoofdbestand);
+    (2) élk exemplaar dat in een document is samengevouwen (`samengevoegd`-rij mét `samengevoegd_in_id`): de rij
+        draagt zijn eigen sha256 — de nagebundelde UBL, een weggevouwen byte-identiek dubbel (07-09) of een handmatig
+        samengevoegd bestand (verzamelbak). Zijn inhoud leeft voort in het leidende document.
+    Bekende grens: een bundel die al bíj de intake ontstond (`intake/bundeling.py`, UBL + PDF uit dezelfde mail) heeft
+    geen van beide sporen — dat PDF-beeld blijft zonder sha-alias tot er een kolom of tijdlijnspoor voor komt."""
+    aliassen: dict[uuid.UUID, set[str]] = defaultdict(set)
+    tijdlijn = session.execute(
+        select(DocumentGebeurtenis.document_id, DocumentGebeurtenis.detail[_TIJDLIJN_VORIGE_SHA].astext)
+        .join(Document, DocumentGebeurtenis.document_id == Document.id)
+        .where(
+            Document.administratie_id == administratie_id,
+            Document.bron_opslag_pad.isnot(None),
+            DocumentGebeurtenis.detail.has_key(_TIJDLIJN_VORIGE_SHA),
+        )
+    ).all()
+    for document_id, sha in tijdlijn:
+        if sha:
+            aliassen[document_id].add(str(sha))
+    samengevouwen = session.execute(
+        select(Document.samengevoegd_in_id, Document.sha256_hash).where(
+            Document.administratie_id == administratie_id,
+            Document.status == DocumentStatus.SAMENGEVOEGD,
+            Document.samengevoegd_in_id.isnot(None),
+        )
+    ).all()
+    for leidend_id, sha in samengevouwen:
+        if sha:
+            aliassen[leidend_id].add(str(sha))
+    return aliassen
 
 
 def laad_verzameling(session: Session, *, administratie_id: uuid.UUID) -> Verzameling:
@@ -330,7 +414,10 @@ def laad_verzameling(session: Session, *, administratie_id: uuid.UUID) -> Verzam
             Document.status.notin_(list(UITGESLOTEN_STATUSSEN)),
         )
     ).all()
-    koppen = {document.id: _kop_uit(document, bv, ds) for document, bv, ds in rijen}
+    aliassen = _sha_aliassen(session, administratie_id=administratie_id)
+    koppen = {
+        document.id: _kop_uit(document, bv, ds, frozenset(aliassen.get(document.id, ()))) for document, bv, ds in rijen
+    }
     return Verzameling(
         administratie_id=administratie_id,
         koppen=koppen,
@@ -363,6 +450,8 @@ def eigen_kop(
         referentie_norm=normaliseer(referentie or basis.referentie),
         totaalbedrag=_bedrag(totaalbedrag) if totaalbedrag is not None else basis.totaalbedrag,
         intake_bericht_id=basis.intake_bericht_id,
+        heeft_beeld=basis.heeft_beeld,
+        beeld_sha256s=basis.beeld_sha256s,
     )
 
 

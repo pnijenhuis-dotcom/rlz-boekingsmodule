@@ -153,7 +153,11 @@ def seed_en_baseline_voor_checks(
     wordt alleen ná een gesláágde (lege) seed-poging gezet: mislukt de RLZ-aanroep, dan weten we
     niet of RLZ een tegensprekende bankrelatie heeft — geen baseline, én `seed_mislukt=True`
     zodat check_iban_wissel zelfstandig fail-closed blokkeert (nooit leunen op de
-    duplicaatcheck)."""
+    duplicaatcheck).
+
+    Een `backends.port.CrediteurNietGekoppeld` uit de Odoo-leesfacade (crediteur zonder partner-koppeling, blok D
+    07-09) wordt hier bewust NIET gevangen: dat is geen verbindingsfout maar een stamgegevens-toestand — de
+    orkestratie (`voer_checks_uit`) maakt er een leesbare, blokkerende checkuitkomst van."""
     if vendor_id is None:
         return set(), False, False
     vertrouwd = vertrouwde_ibans(administratie_id=administratie_id, vendor_id=vendor_id)

@@ -685,3 +685,281 @@ class TestArchiefEnZoeken:
         r = client.get(f"/administraties/{administratie_id}/archief?status=afgevoerd", headers=koppen)
         assert r.json()["totaal"] == 0
         assert _module_check(administratie_id, b).ok is False
+
+
+# ----------------------------------------------------------------------------- blok D 07-09: splitsing + beeld-sha
+
+
+def _pure_kop(**over) -> duplicaat_module.Kop:
+    basis = dict(
+        document_id=uuid.uuid4(),
+        status=DocumentStatus.TE_CONTROLEREN,
+        bestandsnaam="deel.pdf",
+        aangemaakt_op=__import__("datetime").datetime(2026, 9, 7, 12, 0),
+        sha256_hash=uuid.uuid4().hex,
+        vendor_id=None,
+        referentie=None,
+        referentie_norm=None,
+        totaalbedrag=None,
+        intake_bericht_id=None,
+    )
+    basis.update(over)
+    return duplicaat_module.Kop(**basis)
+
+
+def _lege_verzameling(administratie_id: uuid.UUID) -> duplicaat_module.Verzameling:
+    return duplicaat_module.Verzameling(administratie_id=administratie_id, koppen={}, identiteit={})
+
+
+class TestGesplitsteDelen:
+    """4b (blok D 07-09): kinderen van een splitsing dragen tot hun extractie GEEN referentie en GEEN totaal — die mogen
+    nooit als (b) `referentie_bedrag` afgevoerd worden, en zonder referentie bestaat ook geen (c). Code-borg in
+    `categorie_van`, niet alleen in de test."""
+
+    def test_zonder_referentie_nooit_b_of_c_ook_niet_bij_zelfde_vendor_en_zelfde_totaal(self) -> None:
+        vendor = uuid.uuid4()
+        a = _pure_kop(vendor_id=vendor, totaalbedrag=Decimal("100.00"))
+        b = _pure_kop(vendor_id=vendor, totaalbedrag=Decimal("100.00"))
+        assert duplicaat_module.categorie_van(a, b, _lege_verzameling(uuid.uuid4())) is None
+        # Eén kant mét referentie, de andere zonder: nog steeds niets.
+        c = _pure_kop(vendor_id=vendor, referentie="F-1", referentie_norm="f1", totaalbedrag=Decimal("100.00"))
+        assert duplicaat_module.categorie_van(a, c, _lege_verzameling(uuid.uuid4())) is None
+        assert duplicaat_module.categorie_van(c, a, _lege_verzameling(uuid.uuid4())) is None
+
+    def test_zonder_totaal_nooit_b_hoogstens_c_bij_dezelfde_crediteur(self) -> None:
+        vendor = uuid.uuid4()
+        met_totaal = _pure_kop(
+            vendor_id=vendor, referentie="F-1", referentie_norm="f1", totaalbedrag=Decimal("100")
+        )
+        zonder_totaal = _pure_kop(vendor_id=vendor, referentie="F-1", referentie_norm="f1", totaalbedrag=None)
+        verzameling = _lege_verzameling(uuid.uuid4())
+        # Zelfde vendor → (c): signaal, nooit afvoer.
+        assert (
+            duplicaat_module.categorie_van(met_totaal, zonder_totaal, verzameling)
+            == duplicaat_module.CATEGORIE_CREDITEUR_REFERENTIE
+        )
+        # Andere vendor zonder identiteitssleutels → niets (geen (b) zonder totaal aan beide kanten).
+        ander = _pure_kop(vendor_id=uuid.uuid4(), referentie="F-1", referentie_norm="f1", totaalbedrag=None)
+        assert duplicaat_module.categorie_van(met_totaal, ander, verzameling) is None
+
+    def test_echte_splitsing_kinderen_zijn_geen_duplicaten_van_elkaar_en_verschillen_in_bytes(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """Twee delen uit één bron-PDF (dezelfde pagina-extractie als `intake/splitsing.py`): eigen bytes per deel →
+        géén (a); geen kop → géén (b)/(c); de backfill telt 0 kandidaten. (a) is dus geen 'splitsing-uitzondering'
+        nodig: alleen als de bron twee byte-identieke pagina's bevat vallen de delen samen — en dan ís het dezelfde
+        factuur twee keer."""
+        import io
+
+        from pypdf import PdfWriter
+
+        from app.intake.splitsing import _pdf_deel
+
+        schrijver = PdfWriter()
+        schrijver.add_blank_page(width=200, height=200)
+        schrijver.add_blank_page(width=300, height=420)
+        buffer = io.BytesIO()
+        schrijver.write(buffer)
+        bron = buffer.getvalue()
+        deel1, deel2 = _pdf_deel(bron, start=1, eind=1), _pdf_deel(bron, start=2, eind=2)
+        assert deel1 != deel2
+        ouder = _upload_bytes(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, inhoud=bron, naam="bron.pdf"
+        )
+        kinderen = []
+        for n, deel in enumerate((deel1, deel2), start=1):
+            kinderen.append(
+                service.upload_document(
+                    administratie_id=administratie_id,
+                    bestandsnaam=f"bron-deel{n}.pdf",
+                    inhoud=deel,
+                    actor_id=gescoopte_gebruiker,
+                    opslag=opslag,
+                    gesplitst_uit_id=ouder,
+                ).document_id
+            )
+        _noodrem_aan(beheerder_id)
+        with scoped_session(administratie_id) as session:
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+            k1, k2 = verzameling.kop(kinderen[0]), verzameling.kop(kinderen[1])
+            assert k1 is not None and k2 is not None
+            assert k1.sha256_hash != k2.sha256_hash
+            assert k1.referentie_norm is None and k1.totaalbedrag is None
+            assert duplicaat_module.categorie_van(k1, k2, verzameling) is None
+            bulk = duplicaat_module.treffers_bulk(session, administratie_id=administratie_id, document_ids=kinderen)
+            assert bulk == {}
+        for kind in kinderen:
+            assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=kind) == []
+            assert _status(admin_engine, kind) == DocumentStatus.TE_CONTROLEREN.value
+        (u,) = duplicaat_afvoer.backfill(dry_run=True, administratie_id=administratie_id)
+        assert u.kandidaten == 0 and u.af_te_voeren == 0
+
+
+class TestBeeldSha:
+    """4c (blok D 07-09, casus Floor Bouwliftenservice): een los PDF-exemplaar dat byte-identiek is aan het PDF-beeld
+    van een al GEBUNDELD document (UBL = data, PDF = beeld) is categorie (a) — de beeld-sha komt deterministisch uit
+    bestaande data (tijdlijn `vorige_sha256_hash` van de nabundeling, `samengevoegd`-rijen mét verwijzing), zonder
+    migratie. Een PDF met dezelfde naamstam maar ándere bytes blijft een bundelpaar (nooit afgevoerd)."""
+
+    def test_los_pdf_exemplaar_van_gebundelde_factuur_is_bestandsduplicaat_en_gaat_af(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        admin_engine: Engine,
+        noodrem_uit: None,
+    ) -> None:
+        """Noodrem UIT tijdens de opbouw (anders voert de upload-hook het losse exemplaar al af — dat is het
+        productiegedrag, maar hier willen we eerst de rode check zien); daarna noodrem AAN → afvoer."""
+        from app.intake import nabundelen
+        from tests.intake.test_nabundelen import _gescheiden_paar
+
+        pdf_bytes = b"%PDF-1.4 floor 26223 " + uuid.uuid4().bytes
+        _bericht, ubl_id, gebundeld_id = _gescheiden_paar(
+            gescoopte_gebruiker,
+            administratie_id,
+            ubl_naam="Floor - 26223.xml",
+            pdf_naam="Floor - 26223.pdf",
+            pdf_inhoud=pdf_bytes,
+        )
+        assert nabundelen.nabundel_verzamelbak().samengevoegd == 1
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text("SELECT bestandsnaam, bron_opslag_pad, sha256_hash FROM boekhouding.document WHERE id = :id"),
+                {"id": gebundeld_id},
+            ).one()
+        assert rij[0] == "Floor - 26223.xml" and rij[1] is not None  # UBL = data, PDF = beeld
+        pdf_sha = __import__("hashlib").sha256(pdf_bytes).hexdigest()
+        assert rij[2] != pdf_sha  # het gebundelde document draagt de UBL-sha — het beeld heeft geen kolom
+
+        # De motor kent de beeld-sha als alias van het gebundelde document.
+        with scoped_session(administratie_id) as session:
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+            kop = verzameling.kop(gebundeld_id)
+            assert kop is not None and kop.heeft_beeld and pdf_sha in kop.beeld_sha256s
+            assert ubl_id not in verzameling.koppen  # samengevoegd = uitgesloten
+
+        # Hetzelfde PDF komt nog eens binnen (andere mail, zelfde naamstam) → (a), niet 'bundelpaar'.
+        los = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="Floor - 26223.pdf",
+            inhoud=pdf_bytes,
+            actor_id=gescoopte_gebruiker,
+        ).document_id
+        check = _module_check(administratie_id, los)
+        assert check.ok is False and "hetzelfde bestand" in check.melding
+        with scoped_session(administratie_id) as session:
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+            eigen = verzameling.kop(los)
+            assert eigen is not None and not verzameling.bundelparen_voor(eigen)
+            treffers = verzameling.treffers_voor(eigen)
+            assert [(t.document_id, t.categorie) for t in treffers] == [
+                (gebundeld_id, duplicaat_module.CATEGORIE_BESTAND)
+            ]
+            groep = duplicaat_afvoer.bepaal_groep(session, administratie_id=administratie_id, document_id=los)
+            assert groep is not None and groep.origineel.document_id == gebundeld_id  # gebundeld wint, los gaat af
+            assert [lid.document_id for lid in groep.duplicaten] == [los]
+        _noodrem_aan(beheerder_id)
+        assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=los) == [los]
+        assert _status(admin_engine, los) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, gebundeld_id) == DocumentStatus.TE_CONTROLEREN.value
+        rij = _afwijzing_rij(admin_engine, los)
+        assert rij is not None and rij["duplicaat_van_document_id"] == gebundeld_id and rij["automatisch"] is True
+        # Idempotent + het gebundelde document zelf blijft groen.
+        assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=gebundeld_id) == []
+        assert _module_check(administratie_id, gebundeld_id).ok is True
+
+    def test_zelfde_naamstam_andere_bytes_blijft_bundelpaar(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        from app.intake import nabundelen
+        from tests.intake.test_nabundelen import _gescheiden_paar
+
+        _bericht, _ubl, gebundeld_id = _gescheiden_paar(
+            gescoopte_gebruiker,
+            administratie_id,
+            ubl_naam="Floor - 26224.xml",
+            pdf_naam="Floor - 26224.pdf",
+            pdf_inhoud=b"%PDF-1.4 versie 1 " + uuid.uuid4().bytes,
+        )
+        assert nabundelen.nabundel_verzamelbak().samengevoegd == 1
+        ander = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="Floor - 26224.pdf",
+            inhoud=b"%PDF-1.4 versie 2 " + uuid.uuid4().bytes,
+            actor_id=gescoopte_gebruiker,
+        ).document_id
+        assert _module_check(administratie_id, ander).ok is True
+        _noodrem_aan(beheerder_id)
+        assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=ander) == []
+        assert _status(admin_engine, ander) == DocumentStatus.TE_CONTROLEREN.value
+        assert _status(admin_engine, gebundeld_id) == DocumentStatus.TE_CONTROLEREN.value
+
+    def test_samengevouwen_exemplaar_is_sha_alias_van_het_leidende_document(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        beheerder_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        noodrem_uit: None,
+    ) -> None:
+        """Alias-bron 2: een `samengevoegd`-rij (weggevouwen byte-identiek dubbel, verzamelbak-samenvoeging) draagt
+        zijn eigen sha256 en verwijst naar het leidende document — een nieuw bestand met die sha is (a) van dát
+        document."""
+        inhoud = b"%PDF-1.4 dubbel " + uuid.uuid4().bytes
+        leidend = _upload_bytes(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            inhoud=b"%PDF-1.4 leidend " + uuid.uuid4().bytes,
+            naam="leidend.pdf",
+        )
+        weggevouwen = _upload_bytes(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            inhoud=inhoud,
+            naam="dubbel.pdf",
+        )
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE boekhouding.document SET status = 'samengevoegd', samengevoegd_in_id = :l WHERE id = :id"
+                ),
+                {"l": leidend, "id": weggevouwen},
+            )
+        nieuw = _upload_bytes(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            inhoud=inhoud,
+            naam="nog-eens.pdf",
+        )
+        with scoped_session(administratie_id) as session:
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+            assert weggevouwen not in verzameling.koppen
+            kop_leidend = verzameling.kop(leidend)
+            assert kop_leidend is not None
+            assert __import__("hashlib").sha256(inhoud).hexdigest() in kop_leidend.beeld_sha256s
+            kop_nieuw = verzameling.kop(nieuw)
+            assert kop_nieuw is not None
+            treffers = verzameling.treffers_voor(kop_nieuw)
+            assert [(t.document_id, t.categorie) for t in treffers] == [(leidend, duplicaat_module.CATEGORIE_BESTAND)]
+        # Noodrem aan → het nieuwe exemplaar gaat af als duplicaat van het LEIDENDE document (niet de weggevouwen rij).
+        _noodrem_aan(beheerder_id)
+        assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=nieuw) == [nieuw]
+        rij = _afwijzing_rij(admin_engine, nieuw)
+        assert rij is not None and rij["duplicaat_van_document_id"] == leidend

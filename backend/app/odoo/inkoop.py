@@ -48,6 +48,7 @@ from app.backends.port import (
     Backend,
     BackendBoekFout,
     BoekUitkomst,
+    CrediteurNietGekoppeld,
     NietOndersteund,
     OrigineelStand,
     TegenboekUitkomst,
@@ -183,7 +184,7 @@ class OdooLeesFacade:
             ["ref", "=", reference],
         ]
         if vendor_id is not None:
-            domain.append(["partner_id", "=", self._port.partner_id_voor(uuid.UUID(str(vendor_id)))])
+            domain.append(["partner_id", "=", self._partner_id_of_fout(uuid.UUID(str(vendor_id)))])
         rijen = client.search_read(
             MODEL_MOVE, domain, ["name", "partner_id", "amount_total", "state", "payment_state", "invoice_origin"]
         )
@@ -218,11 +219,20 @@ class OdooLeesFacade:
             )
         return uit
 
+    def _partner_id_of_fout(self, vendor_id: uuid.UUID) -> int:
+        """Blok D 07-09: een crediteur zónder partner-koppeling gaf uit `…/boekvoorstel/checks` een kale 500
+        (`OnbekendeOdooId` uit de compat-`get`). Nu een domeinfout die de checks-orkestratie kent en als leesbare,
+        blokkerende checkuitkomst toont — fail-closed, nooit een crash."""
+        try:
+            return self._port.partner_id_voor(vendor_id)
+        except odoo_sync.OnbekendeOdooId as exc:
+            raise CrediteurNietGekoppeld(vendor_id) from exc
+
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Alleen de leesroute die de IBAN-wissel-check gebruikt: `Vendors/{id}/BankRelations`."""
         delen = path.strip("/").split("/")
         if len(delen) == 3 and delen[0] == "Vendors" and delen[2] == "BankRelations":
-            partner_id = self._port.partner_id_voor(uuid.UUID(delen[1]))
+            partner_id = self._partner_id_of_fout(uuid.UUID(delen[1]))
             rijen = self._port.client.search_read(
                 "res.partner.bank",
                 [["partner_id", "=", partner_id], ["active", "in", [True, False]]],

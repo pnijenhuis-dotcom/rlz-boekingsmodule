@@ -69,6 +69,22 @@ class OrigineelStand:
     volledig_afgeletterd: bool
 
 
+class CrediteurNietGekoppeld(Exception):
+    """De crediteur van het voorstel heeft in deze backend nog geen tegenhanger (Odoo: geen `res.partner`-koppeling
+    in `odoo_id_koppeling`) — de leesroutes van de harde checks (IBAN-seed, duplicaatquery) kunnen dan niet draaien.
+    Blok D 07-09: nooit een kale 500 uit `…/boekvoorstel/checks`, maar een leesbare BLOKKERENDE checkuitkomst mét
+    handelingsperspectief (`str(exc)`); fail-closed tot de koppeling er is."""
+
+    def __init__(self, vendor_id: uuid.UUID | str, backend_label: str = "Odoo") -> None:
+        self.vendor_id = vendor_id
+        self.backend_label = backend_label
+        super().__init__(
+            f"Crediteur nog niet gekoppeld in {backend_label} — koppel de crediteur aan een {backend_label}-partner "
+            f"(stamgegevens synchroniseren ná het aanmaken van de leverancier in {backend_label}, of kies een al "
+            "gekoppelde crediteur in het voorstel) en voer de checks opnieuw uit"
+        )
+
+
 class ToetsMislukt(Exception):
     """De reconciliatie-toets zelf kon niet uitgevoerd worden (500, 401 ná een credential-rotatie, uitgeputte
     rate-limit-retry, meerdere kandidaten in Odoo) — zegt niets over het document, alleen over de verbinding.
