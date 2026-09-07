@@ -47,6 +47,7 @@ import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
+import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -658,11 +659,13 @@ export function DocumentDetailScreen() {
       meld(miniVoorraadMelding(info.miniVoorraad), 'ok')
     // Punt 1b: mét lijstcontext blijft de doorloop BINNEN het actieve filter (vanuit "Klaar om te
     // boeken" → het volgende klaar-om-te-boeken-document); filter leeg → terug naar de lijst mét
-    // dat filter. Zonder context: het bestaande gedrag (zelfde klant, zelfde soort eerst).
+    // dat filter. Zonder context: de backend-volgorde (nieuwste eerst) — exact de volgorde die de
+    // documentenlijst zonder filter/sortering zelf toont (besluit Peter 07-09: positie in de
+    // getoonde lijstvolgorde wint altijd, geen soort-voorkeur meer).
     let doel = lijstRoute(administratieId, context)
     try {
       const lijst = await apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
-      const volgende = kiesVolgendDocument(lijst.documenten, documentId, detail.soort, context, { naamVoor })
+      const volgende = kiesVolgendDocument(lijst.documenten, documentId, context, { naamVoor })
       if (volgende) doel = documentRoute(administratieId, volgende, context)
     } catch {
       // Lijst niet leesbaar: de documentenlijst zelf toont die fout — daar landen we dan.
@@ -1338,6 +1341,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isPrefillAutosaveNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-prefill-autosave">
                           {prefillAutosaveTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* Blok 9 (07-09): kop-omschrijving handmatig gezet of terug naar automatisch. */}
+                      {g.detail && isKopOmschrijvingNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-omschrijving">
+                          {kopOmschrijvingTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Mini-voorraad (06-09): notitie mini_voorraad_bijgewerkt, geschreven ín de boek-transactie. */}

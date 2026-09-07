@@ -35,6 +35,25 @@ export function binnenGrenzen(iso: string, min?: string, max?: string): boolean 
   return true
 }
 
+/** Soepele blur-parser (bugfix 07-09 — "Tab/blur wist ingevulde datum"): naast het kanonieke
+ * dd-mm-jjjj accepteert dit ook d-m-jjjj, dd-mm-jj (2-cijferig jaar → 20jj), ddmmjjjj (geen
+ * scheidingsteken) en dezelfde vormen met '/' of '.' als scheidingsteken (bv. 7/9/2026,
+ * 07.09.2026). Ongeldige vorm of ongeldige kalenderdatum (bv. 31-02) → null; de aanroeper
+ * beslist dan zelf over de foutmelding — deze functie wist nooit iets. */
+export function parseSoepeleDatum(ruw: string): string | null {
+  const tekst = ruw.trim()
+  if (!tekst) return null
+  const metScheidingsteken = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/.exec(tekst)
+  const zonderScheidingsteken = metScheidingsteken ? null : /^(\d{2})(\d{2})(\d{4})$/.exec(tekst)
+  const match = metScheidingsteken ?? zonderScheidingsteken
+  if (!match) return null
+  const [, ddRuw, mmRuw, jjjjRuw] = match
+  const dd = ddRuw.padStart(2, '0')
+  const mm = mmRuw.padStart(2, '0')
+  const jjjj = jjjjRuw.length === 2 ? String(2000 + Number(jjjjRuw)) : jjjjRuw
+  return weergaveNaarIso(`${dd}-${mm}-${jjjj}`)
+}
+
 export function isoNaarDate(iso: string): Date {
   const [jjjj, mm, dd] = iso.split('-').map(Number)
   return new Date(jjjj, mm - 1, dd)

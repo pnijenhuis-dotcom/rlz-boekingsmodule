@@ -4,6 +4,7 @@ import {
   dateNaarIso,
   isoNaarWeergave,
   maskeerDatumInvoer,
+  parseSoepeleDatum,
   weergaveNaarIso,
 } from './datum'
 
@@ -49,6 +50,40 @@ describe('binnenGrenzen', () => {
     expect(binnenGrenzen('2026-08-07', '2026-01-01', '2026-12-31')).toBe(true)
     expect(binnenGrenzen('2025-12-31', '2026-01-01', undefined)).toBe(false)
     expect(binnenGrenzen('2027-01-01', undefined, '2026-12-31')).toBe(false)
+  })
+})
+
+describe('parseSoepeleDatum (bugfix 07-09 — soepele blur-parser)', () => {
+  it('accepteert het kanonieke dd-mm-jjjj', () => {
+    expect(parseSoepeleDatum('07-09-2026')).toBe('2026-09-07')
+  })
+
+  it('accepteert d-m-jjjj (eencijferige dag/maand)', () => {
+    expect(parseSoepeleDatum('7-9-2026')).toBe('2026-09-07')
+  })
+
+  it('accepteert dd-mm-jj en vult 20 vóór het jaar aan', () => {
+    expect(parseSoepeleDatum('07-09-26')).toBe('2026-09-07')
+  })
+
+  it('accepteert ddmmjjjj zonder scheidingsteken', () => {
+    expect(parseSoepeleDatum('07092026')).toBe('2026-09-07')
+  })
+
+  it('accepteert / en . als scheidingsteken', () => {
+    expect(parseSoepeleDatum('7/9/2026')).toBe('2026-09-07')
+    expect(parseSoepeleDatum('07.09.2026')).toBe('2026-09-07')
+  })
+
+  it('weigert een niet-bestaande kalenderdatum', () => {
+    expect(parseSoepeleDatum('31-02-2026')).toBeNull()
+  })
+
+  it('weigert rommel en lege invoer', () => {
+    expect(parseSoepeleDatum('')).toBeNull()
+    expect(parseSoepeleDatum('   ')).toBeNull()
+    expect(parseSoepeleDatum('07-08')).toBeNull()
+    expect(parseSoepeleDatum('geen datum')).toBeNull()
   })
 })
 

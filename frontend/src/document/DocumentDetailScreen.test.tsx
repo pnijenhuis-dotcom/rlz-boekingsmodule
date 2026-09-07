@@ -775,12 +775,15 @@ describe('DocumentDetailScreen — doorloop ná boeken (deel 4 punt 1)', () => {
     },
   })
 
-  it('boekt, toont een toast met referentie + boekstuk en opent het volgende inkoopdocument van de klant', async () => {
+  it('boekt, toont een toast met referentie + boekstuk en opent het eerstvolgende te verwerken document in lijstvolgorde (besluit Peter 07-09 — positioneel, geen soort-voorkeur)', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const gebruiker = userEvent.setup()
+    const VERKOOP_ID = 'eeeeeeee-0000-0000-0000-000000000005'
     const opties = boekOpties([
       lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren'),
-      lijstItem('eeeeeeee-0000-0000-0000-000000000005', 'verkoopfactuur', 'te_controleren'),
+      // Positie wint: dit verkoopfactuur staat direct ná het huidige document en is dus de
+      // volgende stap, óók al staat er verderop nog een inkoopfactuur.
+      lijstItem(VERKOOP_ID, 'verkoopfactuur', 'te_controleren'),
       lijstItem(VOLGEND_ID, 'inkoopfactuur', 'klaar_om_te_boeken'),
     ])
     installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), opties)
@@ -794,7 +797,7 @@ describe('DocumentDetailScreen — doorloop ná boeken (deel 4 punt 1)', () => {
     expect(await screen.findByText('Geboekt — F-1 · boekstuk RLZ-04-00002001')).toBeInTheDocument()
     await waitFor(() => expect(opties.lijstAanroepen).toHaveLength(1))
     await waitFor(() =>
-      expect(screen.getByTestId('locatie')).toHaveTextContent(`/documenten/${ADMINISTRATIE_ID}/${VOLGEND_ID}`),
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/verkoop/${ADMINISTRATIE_ID}/${VERKOOP_ID}`),
     )
   })
 
