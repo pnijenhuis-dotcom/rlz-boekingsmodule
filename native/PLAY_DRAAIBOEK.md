@@ -305,7 +305,7 @@ Bron: STORE_GEREEDHEID §2/§3 (privacy-labels) + §1. Play stelt de vragen in d
 | Onderdeel | Antwoord |
 |---|---|
 | **Privacy policy** | `https://app.administratiekantoornijenhuis.nl/accordeur/privacy` |
-| **App access** | "All or some functionality is restricted" → **Add new instructions**: naam *Demo-account review*, gebruikersnaam `p.nijenhuis+applereview@kempengroep.nl`, wachtwoord = het review-wachtwoord uit TESTFLIGHT_DRAAIBOEK §0 (zelfde demo-account: SEED-PASSKEYTEST, uitsluitend fictieve facturen; seed met `backend/scripts/cloud_seed_review_demo.py` als dat nog niet gebeurd is). Extra uitleg: *"Invitation-only app. Sign in with e-mail + password; on first sign-in the app registers a passkey via the Android system prompt (Google Password Manager must be available on the device). Accept the terms screen to continue."* |
+| **App access** | "All or some functionality is restricted" → **Add new instructions**: naam *Demo-account review*, gebruikersnaam `p.nijenhuis+applereview@kempengroep.nl`, wachtwoord = het review-wachtwoord uit TESTFLIGHT_DRAAIBOEK §0 (zelfde demo-account: SEED-PASSKEYTEST, uitsluitend fictieve facturen; seed met `backend/scripts/cloud_seed_review_demo.py` als dat nog niet gebeurd is). Extra uitleg ("Any other information"): de tekst uit **§11** (herzien 07-09 ná de Play-afwijzing — mét de toestelvereisten schermvergrendeling + Google-account). Wachtwoord = het wachtwoord uit het eindrapport van de fixrun 07-09 (dezelfde waarde als in App Store Connect). |
 | **Ads** | No, my app does not contain ads |
 | **Content rating** | Start questionnaire → e-mail `p.nijenhuis@kempengroep.nl` → category **Utility, Productivity, Communication, or Other** → alle vragen **No** (geen geweld, seks, taal, gecontroleerde middelen, gokken, user-generated content, locatie-delen, aankopen) → Save → **Everyone / PEGI 3** |
 | **Target audience and content** | Target age: **18 and over** only → "Store presence: appeal to children?" **No** |
@@ -365,10 +365,103 @@ Ná §4 (build via de opt-in-link geïnstalleerd) en §5 (assetlinks + origins l
 ## 9. Daarna
 
 - **Closed test → Production** = Google-review (1–7 dagen): dan tellen §6 (screenshots) en §7
-  (App access mét werkend demo-wachtwoord) volledig; reviewnotities-tekst staat in
-  TESTFLIGHT_DRAAIBOEK §1 stap 6 (Engels; vervang de iOS-zinnen door *"registers a passkey via
-  the Android Credential Manager / Google Password Manager"*).
+  (App access mét werkend demo-wachtwoord) volledig; de reviewer-instructie voor Play staat in
+  **§11** (Engels, genummerd, mét toestelvereisten) — de iOS-variant in TESTFLIGHT_DRAAIBOEK §1
+  stap 6. Afwijzing 07-09 ("Login credentials are incorrect"): wortel + herstel in **§10**.
 - Gefaseerde uitrol; de PWA blijft parallel live als terugval (besluit 14-08) — passkeys blijven
   geldig (zelfde rp_id).
 - Later, aparte afweging: CI-build van de AAB (Xcode Cloud-equivalent — bv. GitHub Actions met
   de upload-keystore als secret) zodat, net als op iOS, elke `main`-push een testbuild oplevert.
+
+## 10. Afwijzing 07-09 — wortel + herstel (Play; zelfde build als de Apple-2.1-afwijzing)
+
+Play Console wees de ingediende build af met *"Login credentials are incorrect"* (demo-account).
+Apple wees dezelfde dag build 1.0 (44) af op 2.1 (TESTFLIGHT_DRAAIBOEK §0b). **Bij Play is de wortel
+een ándere dan bij Apple** (blok PLAY, fixrun 07-09 — Cloud Logging op `rlz-backend`, auth-routes,
+03–07-09):
+
+| Wanneer (UTC) | Herkomst | Wat de reviewer deed | Uitkomst |
+|---|---|---|---|
+| 03-09 10:55–11:00 | `2001:4860:…` = **Google LLC (IPv6)**, UA *Android 12; Pixel 6 … wv* | 3× "Inloggen met passkey" → `passkey-login/opties` **409**; daarna **7× `/auth/accordeur/login` → 200** (wachtwoord GOED) zonder vervolgstap; daarna 3× 401 (varianten geprobeerd) | strandde ná de wachtwoordstap = op de passkey-registratie |
+| 03-09 19:48–19:52 | 103.62.154.196 (PH, Parasat Cable TV), UA *Android 12; SM-S928B … wv* | 2× 409, daarna **11× login → 200** zonder vervolg | idem — tweede reviewer/toestel |
+| 04-09 09:49–09:59 | Apple (17.185.64.x / 139.178.129.4, iOS 18.7) | 20× login → **401** | Apple: wachtwoord-mismatch (§0b TestFlight) |
+
+De aanname in de Apple-analyse ("03-09 was de wachtwoordstap 17× groen = Peters eigen Android-tests")
+klopt dus niet: die 18 groene wachtwoordstappen kwamen van Google's reviewers. Zij hadden het juiste
+wachtwoord en kwamen niet voorbij de passkey-stap — Play rapporteert dat als "credentials incorrect".
+
+**Reproductie (07-09, kale reviewer-emulator):** AVD `review_pixel` (Pixel 7, `system-images;android-36;
+google_apis_playstore;arm64-v8a`, koude start, géén schermvergrendeling, géén Google-account), release-APK
+gesigneerd met de upload-key (staat in de live assetlinks) tegen productie:
+
+1. Start → passkey-eerst-scherm → "Inloggen met wachtwoord" → e-mail + wachtwoord → **200**
+   (`accordeur_login_wachtwoord_ok` in het audit-log).
+2. Passkey-registratie faalt direct, zonder enige systeemdialoog, met de in-app-melding
+   **"Passkey-registratie mislukt: No create options available."** De reviewer blijft op het
+   loginscherm (velden gevuld, rode balk) en kan niet verder. logcat: `Auth.Api.Credentials:
+   [CreateRemotePasskeyOperation] Operation failed … [28433]`, `[CreatePasswordOrPasskeyOperation]
+   Operation failed … [28434]`, `CredentialManager: Provider status changed: CANCELED, source:
+   REMOTE_PROVIDER`.
+3. Mét schermvergrendeling (`adb shell locksettings set-pin 1234`) en opnieuw inloggen: **identieke
+   fout.** De schermvergrendeling alléén is dus niet genoeg: Google Password Manager maakt alleen
+   passkeys voor een **op het toestel aangemeld Google-account** (de passkey wordt aan dat account
+   gesynchroniseerd); zonder account biedt Credential Manager geen enkele aanmaak-optie. Een
+   Google-account toevoegen was in deze run niet mogelijk (geen testaccount) — de stap "passkey →
+   code → wachtrij → PDF" is op Android daarom niet in de emulator bewezen; op een echt toestel mét
+   account is die keten wél bewezen (Peters Xiaomi-activatie 02-09; iOS-keten iPad-simulator 07-09).
+4. Passkey-eerst-pad zonder passkey ("Inloggen met passkey" + e-mail) geeft de generieke melding
+   *"Geen passkey voor dit adres — vraag het kantoor om een nieuwe activatielink"* (bewust, 0022-lijn).
+
+**Herstel (één herstel voor beide stores):**
+- Demo-account 07-09 13:27 opnieuw definitief gezet (`cloud_seed_review_demo.py --genereer-wachtwoord`
+  tegen productie; passkeys 0; wachtrij 8 fictieve facturen). Het wachtwoord staat uitsluitend in het
+  eindrapport van de fixrun — **het wachtwoord uit het ochtendrapport van 07-09 is daarmee ongeldig.**
+- Reviewer-instructie **§11** mét toestelvereisten (schermvergrendeling + Google-account) vóór de
+  eerste login; zelfde tekst (iOS-variant) in TESTFLIGHT_DRAAIBOEK §1.
+- **Geen app-wijziging.** Het kleinste codepad voor "wachtwoord-login mét uitgestelde passkey-setup"
+  staat als beslispunt in BESLISSINGEN "GOOGLE PLAY AFWIJZING 07-09" — het verzwakt platformbesluit
+  0020 (passkeys-eerst) en is bewust NIET gebouwd.
+
+**Klikwerk Peter (Play Console):** Policy → **App content → App access** → de instructie
+*Demo-account review* bewerken: username `p.nijenhuis+applereview@kempengroep.nl`, password = het
+nieuwe wachtwoord, "Any other information" = §11 → Save. Daarna de afgewezen release opnieuw ter
+review aanbieden (**Publishing overview → Send changes for review**, of de release opnieuw
+uitrollen op dezelfde track). Play kent geen reply-kanaal zoals het Resolution Center; de uitleg
+moet volledig in App access staan.
+
+## 11. Reviewer-instructie "Sign in details" (Play Console › App content › App access)
+
+Velden: *Instruction name* `Demo-account review` · *Username* `p.nijenhuis+applereview@kempengroep.nl`
+· *Password* `<wachtwoord uit het eindrapport>` · *Any other information* = onderstaande tekst
+(Engels; past in het veld — ± 1.000 tekens). Stap 1 is bewust "tik Inloggen met wachtwoord": de
+app opent op het passkey-eerst-scherm en een reviewer met alleen gebruikersnaam/wachtwoord loopt
+daar anders dood.
+
+```
+Invitation-only business app (no self-registration). Use the demo account above.
+
+BEFORE the first sign-in, prepare the test device:
+(a) set a screen lock (PIN, pattern or password) and
+(b) sign in to a Google account on the device.
+The first sign-in creates a passkey through Android Credential Manager / Google Password Manager,
+which requires both. Without them Android reports "No create options available" and the sign-in
+cannot complete — this is platform behaviour, not an app defect.
+
+Steps:
+1. Open the app. On the first screen tap the white button "Inloggen met wachtwoord"
+   (= sign in with password), below the green passkey button.
+2. Enter the demo e-mail and password and tap "Inloggen".
+3. Confirm the Android passkey prompt (Google Password Manager) with the screen lock or
+   fingerprint. A passkey is created for this device.
+4. Choose a 5-digit app code and repeat it. This code unlocks the app on later launches; the
+   password is never asked again on this device.
+5. The approval queue with fictitious demonstration invoices appears. Tap an invoice to view the
+   PDF and approve ("Akkoord") or reject ("Afwijzen"); the next invoice opens automatically.
+
+If step 3 fails, add a Google account and a screen lock to the device and repeat from step 1.
+```
+
+**Dezelfde tekst voor App Store Connect › App Review Information › Notes** (toestel-/simulator-
+neutraal; iOS-vereiste = toestelcode + iCloud-sleutelhanger i.p.v. schermvergrendeling + Google-
+account) staat volledig in **TESTFLIGHT_DRAAIBOEK.md §1 stap 6** — beide teksten samen vormen de
+reviewnotities van 07-09; wijzig ze samen.

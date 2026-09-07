@@ -105,6 +105,16 @@ standard ASAuthorizationController flow and requires iCloud Keychain to be enabl
 device. No app changes were needed; the same build can be reviewed again.
 ```
 
+> **Aanvulling 07-09 (Play-afwijzing, blok PLAY):** Google Play wees dezelfde build óók af ("Login
+> credentials are incorrect"), maar met een ÁNDERE wortel: Cloud Logging toont op 03-09 vanaf Google-IP's
+> 7× resp. 11× een geslaagde wachtwoordstap (200) zonder vervolg — de reviewer strandde op de passkey-
+> registratie (Android Credential Manager: "No create options available" op een toestel zonder
+> Google-account). Gereproduceerd in een kale Pixel-7-emulator. Daarom staan hieronder in §1 en in
+> `PLAY_DRAAIBOEK.md` §10/§11 de toestelvereisten (schermvergrendeling + Google-account / iCloud-
+> sleutelhanger) nu expliciet in de reviewnotities. Het wachtwoord is op 07-09 13:27 (blok PLAY) NOGMAALS
+> vernieuwd — het wachtwoord uit het ochtendrapport van 07-09 is daarmee ONGELDIG; gebruik het
+> wachtwoord uit het eindrapport van de fixrun 07-09.
+
 Klikwerk: (1) nieuw wachtwoord in App Review Information zetten, (2) de notes in §1 hierboven
 overnemen, (3) reply plaatsen en de submission opnieuw ter review aanbieden — óf, als de
 universal-link-fix (06-09, `@capacitor/app`) meteen mee moet, eerst build 45 laten bouwen
@@ -157,20 +167,29 @@ approve or reject them. There is no open registration.
 
 Demo account (demo administration, contains FICTITIOUS demonstration invoices only):
 - Email: p.nijenhuis+applereview@kempengroep.nl
-- Password: <het wachtwoord uit de seed-run van 07-09>
+- Password: <wachtwoord uit het eindrapport>
+
+IMPORTANT — device prerequisites for the first sign-in:
+- The first sign-in registers a passkey on the review device through the operating system's
+  standard passkey flow (Apple: ASAuthorizationController). This requires a device passcode
+  and iCloud Keychain (Passwords) to be enabled and signed in on the test device. Without them
+  iOS cannot store the passkey and the sign-in cannot complete; this is platform behaviour, not
+  an app defect. Face ID / Touch ID is optional (the device passcode also works).
 
 Sign-in steps (verified end to end on an iPad Air 11-inch against our production backend):
 1. Open the app. The first screen is the passkey sign-in for returning devices; tap the white
    button "Inloggen met wachtwoord" (= sign in with password) underneath the green one.
 2. Enter the email and password above and tap "Inloggen".
 3. iOS shows its system passkey sheet ("Een passkey bewaren?" = save a passkey). Confirm with
-   Face ID / Touch ID or the device passcode. This is Apple's standard ASAuthorizationController
-   prompt; the passkey is stored in the device's Passwords app and requires iCloud Keychain to
-   be enabled. If the sheet is dismissed, simply sign in again.
+   Face ID / Touch ID or the device passcode. If the sheet is dismissed, simply sign in again
+   (steps 1-2).
 4. Choose a 5-digit app code and repeat it. This code unlocks the app on later launches (the
    app never asks for the password again on this device).
 5. The approval queue with demonstration invoices appears. Tap an invoice to view the PDF and
    approve ("Akkoord") or reject ("Afwijzen"); the next invoice opens automatically.
+
+If step 3 fails with a passkey error: enable iCloud Keychain (Settings > [Apple ID] > iCloud >
+Passwords & Keychain) and set a device passcode, then repeat from step 1.
 
 Push notifications: a daily 09:00 reminder and a "new invoices ready for you" message —
 only sent while work is pending. Approving from a notification is deliberately impossible;
