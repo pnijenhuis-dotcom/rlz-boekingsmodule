@@ -10,6 +10,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 > laatste volledige CLAUDE.md = commit `ed6d176` (`git show ed6d176:CLAUDE.md`). Regel voortaan: een nieuw
 > besluit krijgt hier hooguit één verwijsregel per domein ("X — zie BESLISSINGEN '<sectie>'"), de volledige
 > tekst staat in BESLISSINGEN.
+> **Guard (blok 14 vervolgrun 07-09):** `backend/tests/unit/test_claude_md_beslissingen_verwijzingen.py` — élke
+> BESLISSINGEN-verwijzing hier moet als kop of registerrij bestaan; omvang < 150k tekens.
 
 ## Kernprincipes (hard, niet onderhandelbaar)
 
@@ -208,6 +210,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   boekingsregels-kolomminima** (besluiten Peter 25-08 t/m 01-09) — zie BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08 DEEL 4",
   "WERKSTROOM- + UI-RUN 27/28-08", "VERZAMELRUN 27-08" punt 4, "KANTOOR-MINI-RUN 27-08" punt 4, "GECOMBINEERDE RUN
   01-09" blok D; `werkvoorraad/volgendDocument.ts`, `werkvoorraad/lijstContext.ts`, `document/sneltoetsen.ts`.
+- **Doorloop na boeken POSITIONEEL (blok 7 vervolgrun 07-09; herziet de soort-voorkeur van 25-08) + DatePicker-blurfix (blok 8) + "+ Nieuwe crediteur in RLZ" altijd bereikbaar (blok 6):** het eerstvolgende verwerkbare document ná het huidige in de getoonde lijstvolgorde, daarna cyclisch; een datum verdwijnt nooit meer stil bij Tab/blur (soepel parsen, anders rode rand + melding); crediteur aanmaken als vaste combobox-voetoptie + linkbtn — zie BESLISSINGEN "FIXRUN 07-09 — BLOK 7+8" en "FIXRUN 07-09 — BLOK 6".
 - **Kantoor-frontend-modernisering** (platform-fundament Tailwind v4 + tokens; IA klant-centrisch, drie lagen, klant-klik
   landt DIRECT op de documentenlijst; Instellingen v3 twee-paneel + `instellingenRegistry.ts` fail-closed; `/gebruikers`
   mét archiveren/blokkeren) — zie BESLISSINGEN "Kantoor-frontend-modernisering", "RLZ-FEEDBACKRONDE 25-08" punt C,
@@ -224,11 +227,13 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   crediteuren`: zelfde btw-nummer = BLOKKEREND, anders ORANJE SIGNAAL; migratie 0082) — zie BESLISSINGEN "OPRUIMRUN 28-08"
   punt 14.
 - **Crediteuren-dubbelen schaalbaar (B13 07-09; migratie 0117):** eenduidige clusters handelt het systeem af (`app/crediteuren/afhandeling.py`, dagelijks in `sync-alles`), verliezers zijn in de MODULE onbruikbaar via één bron `crediteuren/voorkeur.py` (alle voorstel-/match-/geheugen-/Odoo-partner-paden), RLZ-werklijst = optionele CSV-export, terugdraaibaar — zie BESLISSINGEN "CREDITEUREN-DUBBELEN SCHAALBAAR".
+- **Crediteuren-dubbelen nazorg (blok 5 vervolgrun 07-09; besluiten Peter op B13-beslispunten 1/2/7):** N = 3 blijft; alleen-KvK-clusters zijn EENDUIDIG (alleen-btw blijft twijfel); legacy-werklijst eenmalig omgezet in markeringen (CLI `crediteuren-werklijst-nazorg`, live 07-09: 2 regels) — zie BESLISSINGEN "VERVOLGRUN 07-09 — BLOK 5".
 - **Medewerker-wensen 04-09** (A duplicaat-auto-afvoer STANDAARD AAN achter één platformbrede noodrem, B splitsing
   bijlage-bewust + "nooit splitsen" per afzender, C projectverdeling pro rato omzet, D regel-niveau GB-voorstel, E
   btw-default per administratie, F bugfix Huvanco/`regelsom.py`; migraties 0105–0109) — zie BESLISSINGEN
   "MEDEWERKER-WENSEN 04-09" (canoniek per blok), mockup `projectverdeling-en-regelvoorstellen.html`.
 - **Bulk-afvoer op de Mogelijk-duplicaat-tab (B2 07-09):** checkbox + "alle N" server-side + "Afvoeren als duplicaat (n)" over de bestaande per-document-route, buiten de 20/dag-rem, uitkomst per rij — zie BESLISSINGEN "BULK-AFVOER OP DE MOGELIJK-DUPLICAAT-TAB".
+- **Duplicaten hoofdmodel (blok 1 vervolgrun 07-09; besluit Peter "duplicaten eruit, geen lijst"):** harde check "Duplicaat (module)" tegen de EIGEN DB (sha256 / genormaliseerde referentie + bedrag over álle crediteur-records / crediteur+referentie bij ander bedrag), directe auto-afvoer (a)/(b) buiten de 20/dag-rem, mens-override alleen via afmelden mét reden, Archief-filter "afgevoerd" + Zoeken-chip, CLI `duplicaten-backfill` (live 07-09: Universal 110, Kempen Facilities 6); UBL+PDF = bundel, nooit duplicaat — zie BESLISSINGEN "DUPLICATEN HOOFDMODEL".
 - **Verplichtingen — offerte-accordering + factuur↔offerte-match** (documenttype `verplichting`, géén RLZ-/Odoo-boeking,
   deterministische match-motor `app/verplichting/match.py`, nooit blokkade; migratie 0110) — zie BESLISSINGEN
   "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09", mockup `offerte-matching.html`.
@@ -238,6 +243,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   historie, nog niet bevestigd"), óók bij hoge stem-confidence — pas de eerste app-bevestiging van
   die waarde maakt 'm groen (`app_bevestigd` per veld in engine + voorstel-response).**
 - **Prefill-autosave bij openen (A10 07-09):** leverancier-geheugen server-side in de prefill; `GET …/boekvoorstel` persisteert geheugen-/template-/default-prefills direct (herkomst-chip blijft, mens wint, idempotent, tijdlijn + audit) zodat checks en doorbelasten-blok dezelfde stand zien — zie BESLISSINGEN "STALE CHECK BIJ GEHEUGEN-PREFILL".
+- **Controlescherm auto-first velden (blokken 9/10 vervolgrun 07-09, besluit Peter "auto-first"):** kop-omschrijving deterministisch (één regel → regeltekst; anders AI-veld `betreft`; anders leverancier + factuurnummer; mens wint als tijdlijn-override) en mee als RLZ `Description` / Odoo `narration`; projectnummer uit de factuur op kop- én regelniveau (AI-veld `proj`, gedeelde motor `app/projecten/match.py`: exacte code > leverancier-werknummer > plaats/opdrachtgever alleen oranje; meerduidig = nooit invullen; eerste keer per leverancier oranje, ná één boeking groen) — zie BESLISSINGEN "KOP-OMSCHRIJVING AUTOMATISCH" en "PROJECTNUMMER UIT DE FACTUUR".
+- **Factuurperiode op weekniveau — datalaag (blok 11 vervolgrun 07-09; migratie 0120):** AI-veld `periode` (sentinel) deterministisch genormaliseerd naar ISO-week(s) (`app/documenten/periode.py`, weeklogica uit `app/uren`), terugval = week van de factuurdatum, kolommen op `boekvoorstel`, chip "Periode (weken)" met herkomst in het controlescherm (mens wint), niet-blokkerend signaal in de factuurmatch; GEEN weekweergave van kosten per project (schermimpact → mockup) — zie BESLISSINGEN "FACTUURPERIODE WEEKNIVEAU — DATALAAG".
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** De korte opsomming van gebouwde checks, de
@@ -264,6 +271,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   een doorzoekbare combobox (`ui/AdministratieCombobox`, punt 13) — nooit meer een kale select; nooit meer een
   absoluut gepositioneerde popup bínnen `.tabel-scroll`/`table{overflow:hidden}`.
 - **Verzamelbak-rij (C9 07-09):** soort-keuze = chip-toggle Factuur/Offerte onder de twijfelchip, kolombreedtes uit één bron (`VERZAMELBAK_KOLOMMEN`), constante rijhoogte, sweep-variant `?twijfel=1` — zie BESLISSINGEN "FIXRUN 07-09 — BLOK C9".
+- **Nabundel-motor dubbel-exemplaren (blok 2 vervolgrun 07-09; herziet 03-09 "niet bouwen"):** byte-identieke PDF-/UBL-exemplaren uit hetzelfde intake-bericht worden samengevouwen (`samengevoegd` mét verwijzing, nooit verwijderd, terugdraaibaar); AFGEWEZEN telt als terminaal en ontgrendelt het paar; herdraai Universal Steigerbouw live 07-09 (26 paren) — zie BESLISSINGEN "B2 — NABUNDEL-MOTOR".
 - **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter
   2026-08-15, bewust kort; Google Workspace) — splitsen van multi-factuur-PDF's op
   factuurgrenzen, toewijzen op tenaamstelling.
@@ -297,6 +305,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Reconciliatie-melding + Inzicht › Reconciliatie** (`reconciliatie-alles`, mail alleen als er iets te melden is,
   `/reconciliatie`; migratie 0114) — zie BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT".
 - **Reconciliatie 07-09 (A11/A12/A8):** verdwenen extern document = `ontbreekt_in_rlz`/`ontbreekt_in_odoo` (zwaarste categorie) mét actie "Opnieuw boeken" zonder tegenboeking (`app/documenten/herboeken.py`, GEBOEKT → KLAAR_OM_TE_BOEKEN, boek_cyclus +1); documenten-blok backend-agnostisch via `InkoopPort.toets_geboekt` (Odoo: posted/amount_total/onbekende reversal), bank/omzet/doorbelasting blijven RLZ-only en slaan Odoo-administraties zichtbaar over; bevindingen leesbaar (titel/wat/doe, `app/reconciliatie/teksten.py`) en acceptatie direct zichtbaar — zie BESLISSINGEN "A11 — DOCUMENTEN-RECONCILIATIE", "A12 — RECONCILIATIE BACKEND-AGNOSTISCH", "RECONCILIATIE-TEKSTEN LEESBAAR + ACCEPTATIE-BUG".
+- **Reconciliatie-herzieningen vervolgrun 07-09 (blok 3 + 4, correcties Peter):** herboeken van een verdwenen document BLOKKEERT als de boekdatum in een ingediende btw-periode valt ("btw mogelijk al aangegeven — suppletie-pad", 409); alleen een Beheerder zet door met expliciete bevestiging + reden (audit + tijdlijn); Odoo-variant via lock dates; fail-closed bij onleesbare aangiftestatus — A11-rij "Volumerem / aangifte-poort — HERZIEN 07-09". RLZ-verleden van een overgestapte administratie wordt tegen RLZ getoetst via de bewaarde credential (`client_voor_rlz_verleden`), nooit meer "niet van toepassing" — zie BESLISSINGEN "RLZ-VERLEDEN VAN EEN OVERGESTAPTE ADMINISTRATIE".
 - **Mini-voorraad speciale producten** (mi-schema, stand = Σ append-only mutaties, MENS-MANIPULATIE ONMOGELIJK;
   migratie 0116) — zie BESLISSINGEN "MINI-VOORRAAD SPECIALE PRODUCTEN" (+ "— FRONTEND").
 - **Kantoor-signaal "geplande week zonder weekstaat"** (`app/uren/planning_signaal.py`, geen blokkade; migratie 0115)
@@ -307,6 +316,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Accordeur-app koude start + niet-geactiveerd account** (`accordeur/standCache.ts`, `voorlader.ts`,
   `koudeStart.ts`; E1-wortel `@capacitor/app`) — zie BESLISSINGEN "KOUDE START ACCORDEUR-APP" + "NATIVE APP — EERSTE
   LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT".
+- **Accordeur-app vervolgrun 07-09 (blok 12+13):** diagnoseregel "Laatste koude start" in Toegang-instellingen (lokaal, nooit naar de server), geen boot-refresh-POST in native zonder leesbaar refresh-token, eerlijke Play-melding bij ontbrekende passkey-beheerder (variant B, geen 0020-impact), build 45 klaargezet (iOS via Xcode Cloud bij push, Android-AAB versionCode 3); Cloud Run min-instances staat al op 1 — zie BESLISSINGEN "ACCORDEUR-APP — DIAGNOSEREGEL".
 - **Omzetboekingen** (kassarapporten, bijv. BLOW Margerapport): type in de werkvoorraad; boekt als
   SalesInvoice (omzet per categorie → omzet-GB, btw-code per categorie) + gekoppelde
   kostprijsmemoriaal (per productgroep aan voorraad), als één transactie. Periode uit rapport,
@@ -332,7 +342,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   GEKRAAKT", "RLZ-FEEDBACKRONDE 25-08 DEEL 4", "BANKSCHERM BLOK E"; RLZ-feiten in api-verkenning "Bankmodule
   schrijf-PoC" + "Bankmutatie op een RELATIE + mutatie SPLITSEN — STAP-0 (25-08)".
 - **Kempen-doorbelasting** (besluit Peter 2026-08-13; canoniek `verkenning/16_DOORBELASTING_KEMPEN.md` + BESLISSINGEN
-  "KEMPEN-DOORBELASTING"): tweezijdige motor bron-verkoop + spiegel-inkoop, "Boeken + doorbelasten", whitelist +
+  registerrij "KEMPEN-DOORBELASTING" + archief "Domeinbeslissingen — Kempen-doorbelasting"): tweezijdige motor bron-verkoop + spiegel-inkoop, "Boeken + doorbelasten", whitelist +
   "+ Doelentiteit toevoegen", IC-vlag, storno-blokkade ná ingediende aangifte (`app/rlz/aangifte.py`) → TEGENBOEK-PAD,
   rechtsgeldige factuur-PDF, doorbelasting × projecten. Zie ook BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt A,
   "ONBOARDING-BATCH 15-08", "Doorbelasting-kliktest-nazorg", "TEGENBOEK-PAD", "GECOMBINEERDE RUN 26-08" blok A,

@@ -6,6 +6,49 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-07 — Duplicaten automatisch weg, omschrijving en project uit de factuur, herboeken beschermd tegen dubbele btw
+
+### Duplicaten en dubbele exemplaren
+
+- Dubbele facturen kunnen niet meer geboekt worden: naast de controle tegen Reeleezee kijkt de module nu ook in de eigen administratie — hetzelfde bestand, hetzelfde factuurnummer met hetzelfde bedrag, of dezelfde leverancier met hetzelfde factuurnummer blokkeert boeken tot het duplicaat is afgevoerd of door een medewerker mét reden als "geen duplicaat" is afgemeld.
+- Duplicaten verdwijnen vanzelf uit de werkvoorraad: een tweede exemplaar (zelfde bestand, of zelfde factuurnummer + bedrag — ook met een andere schrijfwijze of een andere leverancierskaart) wordt direct afgevoerd met een verwijzing naar het origineel; een al geboekt exemplaar blijft altijd het origineel. Een UBL-bestand met zijn PDF is géén duplicaat.
+- Afgevoerde duplicaten zijn terug te vinden in het Archief (kiezer "Tonen: Afgevoerd als duplicaat") en via Zoeken, met een link naar het origineel en de knop "Terug naar werkvoorraad".
+- Dubbele exemplaren van dezelfde factuur uit één e-mail (letterlijk hetzelfde bestand, twee keer aangeleverd) worden bij het nabundelen automatisch samengevouwen: één exemplaar blijft het document, het andere staat als "Samengevoegd" mét verwijzing — niets wordt verwijderd en het is terug te draaien.
+- Een afgewezen dubbel exemplaar telt niet meer mee als tegenhanger: afwijzen maakt het overgebleven UBL+PDF-paar alsnog eenduidig, zodat het systeem het kan samenvoegen.
+- Universal Steigerbouw: 26 resterende UBL+PDF-paren van de mailreeks van 2 september zijn samengevoegd tot één document per factuur.
+
+### Controlescherm: automatisch ingevuld, u corrigeert alleen
+
+- Het controlescherm vult de omschrijving van de boeking nu automatisch: bij één boekingsregel de tekst van die regel, anders de betreft-regel van de factuur, en anders leverancier plus factuurnummer. Een klein label eronder laat zien waar de tekst vandaan komt.
+- De omschrijving gaat mee naar de boekhouding (Reeleezee én Odoo), ook bij opnieuw boeken en tegenboeken.
+- Typ je zelf een omschrijving, dan blijft die staan — ook na heropenen of een nieuwe uitlezing van de factuur. Veld leegmaken zet 'm weer op automatisch. Wijzigingen staan in de tijdlijn.
+- Bij het uitlezen van een factuur leest het systeem nu ook de betreft-/onderwerpregel mee.
+- Staat uw projectnummer op de inkoopfactuur (in de kop of per regel), dan vult het controlescherm het project nu zelf in — groen "uit factuur" als het nummer precies overeenkomt met een van uw projecten.
+- Gebruikt een leverancier zijn eigen werknummer, dan is het voorstel de eerste keer oranje ("uit factuur, nog niet bevestigd"); boekt u de factuur met dat project, dan onthoudt de module de koppeling en is de volgende factuur van die leverancier direct groen.
+- Past een nummer op meerdere projecten, dan wordt er niets ingevuld en ziet u welke projecten in aanmerking komen — u kiest zelf.
+- Een nieuwe crediteur aanmaken in Reeleezee kan nu altijd met één klik in het controlescherm — de knop verdween voorheen als het crediteurveld al (automatisch) was ingevuld; die is nu ook zichtbaar in de crediteurenlijst zelf, als laatste keuze onderaan.
+- Na het boeken (of afwijzen, of ter accordering aanbieden) van een document opent nu automatisch het eerstvolgende openstaande document zoals het in de lijst staat — niet meer altijd eerst hetzelfde documenttype.
+- Een datum intypen en dan wegklikken of Tab drukken wist de invoer niet meer stil: een onvolledige of ongeldige datum blijft gewoon staan met een duidelijke melding erbij, en ook 7-9-2026, 7/9/2026 of 07.09.2026 worden nu herkend.
+- Het controlescherm leest nu ook de periode van een inkoopfactuur voor (bijvoorbeeld "week 34-35" of "18 t/m 22 augustus") en zet die automatisch om naar weeknummers, met een label dat vertelt of dit van de factuur komt of uit de factuurdatum is afgeleid. Staat er niets op de factuur, dan geldt de week van de factuurdatum.
+- Klopt de periode niet, dan past u die direct aan in het kopveld "Periode (weken)" — uw keuze wint en wordt nooit meer automatisch overschreven.
+- Bij de urenmatch van een veldwerkersfactuur ziet u een oranje melding als de periode op de factuur niet overeenkomt met de weken van de goedgekeurde weekstaten; het blokkeert niets.
+
+### Reconciliatie en crediteuren
+
+- Opnieuw boeken van een document dat uit de boekhouding verdwenen is, wordt nu tegengehouden als de btw van dat document al in een ingediende btw-aangifte zat — anders zou de btw dubbel geclaimd worden. U ziet dan de melding "btw mogelijk al aangegeven — suppletie-pad".
+- Alleen een Beheerder kan zo'n herboeking toch doorzetten, met een uitdrukkelijke bevestiging dat de btw niet in die aangifte zat en een verplichte reden; beide komen in de tijdlijn van het document.
+- Reconciliatie van een administratie die van Reeleezee naar Odoo is overgestapt: facturen die vóór de overstap in Reeleezee zijn geboekt worden nu ook echt tegen Reeleezee gecontroleerd (met de bewaarde Reeleezee-login) in plaats van overgeslagen; facturen van ná de overstap tegen Odoo.
+- De controleregel per administratie laat zien hoeveel facturen in Odoo en hoeveel in het Reeleezee-verleden zijn gecontroleerd.
+- Is er geen bewaarde Reeleezee-login meer, dan verschijnt per factuur een zichtbare melding "Reeleezee-verleden niet controleerbaar" met wat je moet doen — niets wordt stil overgeslagen.
+- Dubbele crediteuren met hetzelfde KvK-nummer worden nu automatisch samengevoegd, ook als de handelsnaam verschilt — één KvK-nummer is één bedrijf. Crediteuren die alleen een btw-nummer delen (fiscale eenheid) blijven ter beoordeling staan.
+- De oude "archiveer in Reeleezee"-werklijst is eenmalig afgerond: de daar gekozen voorkeuren zijn omgezet in dezelfde markeringen als bij "Voorkeur kiezen…", op naam van degene die de keuze maakte, en zijn terug te draaien in Inzicht › Crediteuren onder "Afgehandeld".
+
+### Goedkeur-app
+
+- Goedkeur-app: onder "Toegang tot de app" staat nu een regel "Laatste koude start" met de starttijden en het versienummer van de app — start de app traag, stuur dan een screenshot of kopie naar het kantoor. De gegevens blijven op je toestel.
+- Goedkeur-app (telefoon-app): het openen met een gesloten slot doet één verbinding minder, waardoor het ontgrendelscherm iets sneller verschijnt.
+- Goedkeur-app op Android: lukt het aanmaken van de passkey niet omdat het toestel geen Google-account of schermvergrendeling heeft, dan zegt de app dat nu duidelijk en wat je eraan kunt doen.
+
 ## 2026-09-07 — Reconciliatie leesbaar en ook voor Odoo, duplicaten in bulk afvoeren, dubbele crediteuren automatisch, projecten in één overzicht
 
 ### Reconciliatie: verdwenen boekingen opnieuw boeken, ook voor Odoo-administraties

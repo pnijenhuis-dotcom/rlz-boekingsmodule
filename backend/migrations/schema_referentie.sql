@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0119
+-- Migratie-head bij deze dump: 0120
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -814,7 +814,14 @@ CREATE TABLE boekhouding.boekvoorstel (
     boek_cyclus integer DEFAULT 0 NOT NULL,
     vervaldatum date,
     afdeling_id uuid,
-    betalingskenmerk text
+    betalingskenmerk text,
+    periode_jaar integer,
+    periode_week_van integer,
+    periode_week_tot integer,
+    periode_herkomst text,
+    periode_tekst text,
+    CONSTRAINT ck_boekvoorstel_periode_herkomst CHECK (((periode_herkomst IS NULL) OR (periode_herkomst = ANY (ARRAY['factuur'::text, 'factuur_maand'::text, 'afgeleid_van_factuurdatum'::text, 'mens'::text])))),
+    CONSTRAINT ck_boekvoorstel_periode_weken CHECK ((((periode_week_van IS NULL) AND (periode_week_tot IS NULL)) OR (((periode_week_van >= 1) AND (periode_week_van <= 53)) AND ((periode_week_tot >= periode_week_van) AND (periode_week_tot <= 53)))))
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel FORCE ROW LEVEL SECURITY;
