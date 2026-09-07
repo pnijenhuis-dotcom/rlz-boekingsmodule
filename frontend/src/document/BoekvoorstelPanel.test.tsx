@@ -774,6 +774,116 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.queryByText(/AI las:/)).not.toBeInTheDocument()
   })
 
+  // ————— Besluit Peter 07-09: "+ Nieuwe crediteur in RLZ" is ALTIJD bereikbaar (niet meer —————
+  // ————— alleen binnen het AI-voorstelblok): vaste laatste combobox-optie + linkbtn onder het veld.
+
+  describe('"+ Nieuwe crediteur in RLZ" altijd bereikbaar (besluit Peter 07-09)', () => {
+    it('blijft zichtbaar met een gevuld crediteurveld (exacte AI-match, vendorId gezet)', async () => {
+      const gebruiker = userEvent.setup()
+      installFetchMock({
+        boekvoorstel: { ...AI_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+        vendors: [{ id: VENDOR_ID, naam: 'Confide B.V.' }],
+      })
+      render(
+        <BoekvoorstelPanel
+          administratieId={ADMINISTRATIE_ID}
+          documentId={DOCUMENT_ID}
+          status="te_controleren"
+          veldvoorstel={{ ...AI_VOORSTEL, vendor_suggestie: { vendor_id: VENDOR_ID, match: 'exact' } }}
+          onGeboekt={() => {}}
+          onHersteld={() => {}}
+        />,
+      )
+      await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Confide B.V.'))
+      // (2) linkbtn onder het veld — ongeacht vendorId.
+      expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument()
+      // (1) vaste laatste optie in de combobox zelf.
+      await gebruiker.click(screen.getByLabelText('Crediteur', { exact: false }))
+      expect(await screen.findByRole('button', { name: '+ Nieuwe crediteur in RLZ…' })).toBeInTheDocument()
+    })
+
+    it('blijft zichtbaar zonder scan/AI-gegevens (lege AI-naam, leeg veld)', async () => {
+      const gebruiker = userEvent.setup()
+      installFetchMock({})
+      render(
+        <BoekvoorstelPanel
+          administratieId={ADMINISTRATIE_ID}
+          documentId={DOCUMENT_ID}
+          status="te_controleren"
+          onGeboekt={() => {}}
+          onHersteld={() => {}}
+        />,
+      )
+      await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
+      expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument()
+      await gebruiker.click(screen.getByLabelText('Crediteur', { exact: false }))
+      expect(await screen.findByRole('button', { name: '+ Nieuwe crediteur in RLZ…' })).toBeInTheDocument()
+    })
+
+    it('blijft zichtbaar bij een crediteur uit server-side geheugen-prefill (B13-voorkeur; geen AI/scan aanwezig)', async () => {
+      const gebruiker = userEvent.setup()
+      // Geen veldvoorstel-prop (geen AI/scan): vendorId komt uitsluitend uit de server-side
+      // prefill (A10/B13) die het GET /boekvoorstel al ingevuld teruggeeft.
+      installFetchMock({
+        boekvoorstel: { ...LEEG_BOEKVOORSTEL, vendor_id: VENDOR_ID },
+      })
+      render(
+        <BoekvoorstelPanel
+          administratieId={ADMINISTRATIE_ID}
+          documentId={DOCUMENT_ID}
+          status="te_controleren"
+          onGeboekt={() => {}}
+          onHersteld={() => {}}
+        />,
+      )
+      await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toHaveValue('Bouwmaat Nederland B.V.'))
+      expect(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' })).toBeInTheDocument()
+      await gebruiker.click(screen.getByLabelText('Crediteur', { exact: false }))
+      expect(await screen.findByRole('button', { name: '+ Nieuwe crediteur in RLZ…' })).toBeInTheDocument()
+    })
+
+    it('klik op de combobox-voetactie opent de dialoog, voorgevuld uit de scan', async () => {
+      const gebruiker = userEvent.setup()
+      installFetchMock({ boekvoorstel: AI_BOEKVOORSTEL, vendors: [] })
+      render(
+        <BoekvoorstelPanel
+          administratieId={ADMINISTRATIE_ID}
+          documentId={DOCUMENT_ID}
+          status="te_controleren"
+          veldvoorstel={AI_VOORSTEL}
+          onGeboekt={() => {}}
+          onHersteld={() => {}}
+        />,
+      )
+      await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
+      await gebruiker.click(screen.getByLabelText('Crediteur', { exact: false }))
+      const voetActie = await screen.findByRole('button', { name: '+ Nieuwe crediteur in RLZ…' })
+      await gebruiker.click(voetActie)
+      const dialoog = await screen.findByRole('dialog')
+      expect(within(dialoog).getByLabelText('Naam')).toHaveValue('Confide BV')
+    })
+
+    it('opent leeg zonder scan-gegevens (geen AI/veldvoorstel)', async () => {
+      const gebruiker = userEvent.setup()
+      installFetchMock({})
+      render(
+        <BoekvoorstelPanel
+          administratieId={ADMINISTRATIE_ID}
+          documentId={DOCUMENT_ID}
+          status="te_controleren"
+          onGeboekt={() => {}}
+          onHersteld={() => {}}
+        />,
+      )
+      await waitFor(() => expect(screen.getByLabelText('Crediteur', { exact: false })).toBeInTheDocument())
+      await gebruiker.click(screen.getByRole('button', { name: '+ Nieuwe crediteur in RLZ' }))
+      const dialoog = await screen.findByRole('dialog')
+      expect(within(dialoog).getByLabelText('Naam')).toHaveValue('')
+      expect(within(dialoog).getByLabelText(/KvK-nummer/)).toHaveValue('')
+      expect(within(dialoog).getByLabelText(/Btw-nummer/)).toHaveValue('')
+    })
+  })
+
   // ————— Fix 3 (2026-07-10): standaard één samengevoegde boekingsregel + vinkje "splitsen per regel" —————
 
   it('fix 3: toont standaard één samengevoegde regel met het vinkje, splitsen toont de losse regels', async () => {

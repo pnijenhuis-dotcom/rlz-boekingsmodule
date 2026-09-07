@@ -1241,7 +1241,21 @@ export function BoekvoorstelPanel({
                   onWijzig={wijzigVendorId}
                   vereist
                   fout={checkRapport?.geblokkeerd && vendorId === null}
+                  voetActie={{ label: '+ Nieuwe crediteur in RLZ…', onKies: () => setNieuweCrediteurOpen(true) }}
                 />
+                {/* Besluit Peter 07-09: "+ Nieuwe crediteur in RLZ" is ALTIJD bereikbaar — niet
+                    langer afhankelijk van vendorId/AI-naam (was: alleen in het AI-voorstelblok
+                    hieronder). Dialoog blijft voorgevuld uit de scan waar aanwezig, anders leeg. */}
+                <div style={{ marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="linkbtn"
+                    title="Maakt idempotent een crediteur aan in Reeleezee, voorgevuld met naam · KvK · btw · IBAN uit de scan"
+                    onClick={() => setNieuweCrediteurOpen(true)}
+                  >
+                    + Nieuwe crediteur in RLZ
+                  </button>
+                </div>
                 {aiKop?.vendor && (
                   <div style={{ marginTop: 4 }}>
                     <AiChip score={aiKop.vendor.score} drempel={aiKop.drempel} match={aiKop.vendor.match} bron={aiKop.bron} />
@@ -1297,15 +1311,8 @@ export function BoekvoorstelPanel({
                           Koppel aan „{s.optie.label}”
                         </button>
                       ))}
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        style={{ maxWidth: '100%' }}
-                        title="Maakt idempotent een crediteur aan in Reeleezee, voorgevuld met naam · KvK · btw · IBAN uit de scan"
-                        onClick={() => setNieuweCrediteurOpen(true)}
-                      >
-                        + Nieuwe crediteur in RLZ
-                      </button>
+                      {/* "+ Nieuwe crediteur in RLZ" staat sinds 07-09 altijd (combobox-voetactie +
+                          linkbtn hierboven) — hier alleen nog de koppel-suggesties. */}
                     </div>
                   </div>
                 )}
