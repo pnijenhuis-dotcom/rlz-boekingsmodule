@@ -219,12 +219,19 @@ def reconciliatie_instelling_zetten(
     "/reconciliatie/bevindingen/{bevinding_id}/opnieuw-boeken", response_model=schemas.OpnieuwBoekenResultaatDto
 )
 def bevinding_opnieuw_boeken(
-    bevinding_id: uuid.UUID, invoer: schemas.RedenInvoerDto, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+    bevinding_id: uuid.UUID,
+    invoer: schemas.OpnieuwBoekenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.OpnieuwBoekenResultaatDto:
     """ "Opnieuw boeken (extern document verdwenen)" (A11, 07-09) op een documenten-afwijking
     `ontbreekt_in_rlz`/`ontbreekt_in_odoo`: de service toetst LIVE dat de backend het stuk echt niet meer kent,
     zet het document terug op klaar_om_te_boeken mét boek_cyclus +1 (vers GUID, géén tegenboeking) en legt
-    reden/tijdlijn/audit vast; de mens boekt daarna via het controlescherm (harde checks opnieuw)."""
+    reden/tijdlijn/audit vast; de mens boekt daarna via het controlescherm (harde checks opnieuw).
+
+    Aangifte-poort (correctie Peter 07-09): valt de boekdatum van de verdwenen boeking in een ingediende
+    btw-aangifte (of is die status niet leesbaar), dan 409 mét `detail.code == "btw_mogelijk_aangegeven"`; alleen
+    een Beheerder zet door met `btw_niet_in_aangifte_bevestigd` + `bevestiging_reden` (andere rol = 403, reden
+    ontbreekt = 422). De rol komt uit het token/DB (`CurrentGebruiker.rol`), nooit uit de body."""
     from app.documenten import herboeken
 
     try:
@@ -234,6 +241,8 @@ def bevinding_opnieuw_boeken(
             reden=invoer.reden,
             actor_id=actor.id,
             rol=actor.rol,
+            btw_niet_in_aangifte_bevestigd=invoer.btw_niet_in_aangifte_bevestigd,
+            bevestiging_reden=invoer.bevestiging_reden,
         )
     except herboeken.BevindingNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -241,6 +250,8 @@ def bevinding_opnieuw_boeken(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except herboeken.NogAanwezigInBackend as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except herboeken.BtwMogelijkAangegeven as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
     except herboeken.HerboekenFout as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     return schemas.OpnieuwBoekenResultaatDto(

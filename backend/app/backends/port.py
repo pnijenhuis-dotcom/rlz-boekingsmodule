@@ -21,6 +21,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from app.documenten.boekvoorstel import BoekvoorstelData
     from app.rlz.aangifte import KantToets
 
@@ -117,6 +119,13 @@ class InkoopPort(Protocol):
     def toets_geboekt(
         self, *, document_id: uuid.UUID, boek_cyclus: int, boekstuknummer: str | None = None
     ) -> ToetsUitkomst: ...
+
+    def toets_btw_periode(self, *, boekdatum: date) -> KantToets:
+        """Aangifte-poort op een BOEKDATUM zónder document (herboeken ná een verdwenen extern document, correctie
+        Peter 07-09 op A11): valt de boekdatum in een periode waarvan de btw al is aangegeven, dan is de
+        voorbelasting al geclaimd en zou een herboeking 'm opnieuw claimen. RLZ = TaxDeclarations Status 2/3;
+        Odoo = lock dates (tax/fiscalyear/purchase/hard). Fail-closed: niet leesbaar = `toegestaan=False`."""
+        ...
 
     def boek_tegenboeking(
         self,

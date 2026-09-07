@@ -61,7 +61,7 @@ from app.documenten.boekvoorstel import BoekvoorstelData
 from app.odoo import sync as odoo_sync
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.credentials import OdooVerbinding, koppeling_voor, odoo_client_voor
-from app.odoo.fouten import BoekdatumBesluit, bepaal_boekdatum, lock_date_melding, vertaal_odoo_fout
+from app.odoo.fouten import LOCK_LABELS, BoekdatumBesluit, bepaal_boekdatum, lock_date_melding, vertaal_odoo_fout
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
 from app.odoo.models import OdooDocumentKoppeling
 from app.odoo.probe import lees_lock_dates
@@ -868,6 +868,34 @@ class OdooInkoopPort:
             backend=Backend.ODOO,
             bestaat=False,
             reden="geen Odoo-document bekend voor dit document (geen koppeling, geen herkenning in invoice_origin)",
+        )
+
+    def toets_btw_periode(self, *, boekdatum: date) -> KantToets:
+        """Aangifte-poort op een boekdatum zónder document (herboeken ná verdwenen document, correctie Peter 07-09).
+        Odoo kent geen TaxDeclarations; het equivalent zijn de lock dates op res.company (STAP-0 §3.5): valt de
+        boekdatum op/vóór een lock date (tax/fiscalyear/purchase/hard — Odoo's regel `date <= lock_date`), dan is de
+        periode afgesloten en de btw aangegeven; een herboeking zou (via `bepaal_boekdatum`) naar de eerste open
+        periode verschuiven en de voorbelasting opnieuw claimen. Fail-closed: lock dates niet leesbaar = geblokkeerd."""
+        try:
+            lock_dates = lees_lock_dates(self.client)
+        except OdooFout as exc:
+            return KantToets(
+                kant="inkoopfactuur",
+                toegestaan=False,
+                reden=f"Odoo-lock dates niet leesbaar ({exc}) — herboeken uit voorzorg geblokkeerd",
+            )
+        geraakt = [(veld, datum) for veld, datum in lock_dates.items() if datum is not None and boekdatum <= datum]
+        if not geraakt:
+            return KantToets(kant="inkoopfactuur", toegestaan=True)
+        lock_veld, lock_datum = max(geraakt, key=lambda paar: paar[1])
+        return KantToets(
+            kant="inkoopfactuur",
+            toegestaan=False,
+            reden=(
+                f"boekdatum {boekdatum.isoformat()} valt in een in Odoo afgesloten periode "
+                f"({LOCK_LABELS.get(lock_veld, lock_veld)} t/m {lock_datum.isoformat()})"
+            ),
+            periode_eind=lock_datum,
         )
 
     def boek_tegenboeking(

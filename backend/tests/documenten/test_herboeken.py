@@ -6,7 +6,12 @@
   GEEN tegenboeking-rij, tijdlijn-detail + audit_event mét reden en oud extern id;
 - daarna boekt het gewone boekpad op het NIEUWE GUID (retry-idempotentie: dezelfde velden, nieuwe cyclus) en de
   reconciliatie is weer schoon;
-- verplichte reden; ToetsMislukt → leesbare fout, niets gewijzigd."""
+- verplichte reden; ToetsMislukt → leesbare fout, niets gewijzigd;
+- AANGIFTE-POORT (correctie Peter 07-09 op A11 beslispunt 2): boekdatum van de verdwenen boeking in een INGEDIENDE
+  btw-periode → `BtwMogelijkAangegeven` (409-code `btw_mogelijk_aangegeven`), niets gewijzigd; alleen een Beheerder
+  zet door mét `btw_niet_in_aangifte_bevestigd` + reden (tijdlijn + audit dragen de bevestiging); een andere rol mét
+  bevestiging = `GeenToegang`; reden ontbreekt = fout; aangiften niet leesbaar = fail-closed blokkade; open periode =
+  gewoon door. Odoo-adapter: lock dates als aangifte-equivalent (fail-closed)."""
 
 from __future__ import annotations
 
@@ -20,15 +25,21 @@ from sqlalchemy import Engine, select, text
 from app.backends.port import Backend, ToetsMislukt, ToetsUitkomst
 from app.backends.rlz_inkoop import RlzInkoopPort
 from app.beheer import service as beheer_service
-from app.db.models import AuditEvent
+from app.db.models import AuditEvent, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten import boeken, boekvoorstel, herboeken, reconciliatie, service
 from app.documenten.models import DocumentGebeurtenis, DocumentStatus, Tegenboeking
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.storage import LokaleBestandsopslag
+from app.odoo.client import OdooFout
+from app.odoo.inkoop import OdooInkoopPort
 from tests.documenten.fake_rlz_client import FakeBoekClient
 
 REDEN = "document op 16-08 per abuis in de RLZ-UI verwijderd (kliktest-erfenis)"
+BEVESTIGING = "aangifte Q2 is ingediend ZONDER dit document — RLZ-document verwijderd vóór de aangifte (gecontroleerd)"
+# Factuurdatum in de fixture = 22-06-2026 → valt in Q2; Q1 raakt 'm niet.
+AANGIFTE_Q2_INGEDIEND = {"Status": 2, "StartDate": "2026-04-01T00:00:00", "Date": "2026-06-30T00:00:00"}
+AANGIFTE_Q1_INGEDIEND = {"Status": 3, "StartDate": "2026-01-01T00:00:00", "Date": "2026-03-31T00:00:00"}
 
 
 def _regel() -> boekvoorstel.BoekvoorstelRegelData:
@@ -236,3 +247,253 @@ class TestOpnieuwBoekenNaVerdwijnen:
                 reden=REDEN,
                 port=RlzInkoopPort(fake_client),
             )
+
+
+def _laatste_overgang(administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentGebeurtenis:
+    with scoped_session(administratie_id) as session:
+        overgang = session.scalars(
+            select(DocumentGebeurtenis)
+            .where(DocumentGebeurtenis.document_id == document_id)
+            .order_by(DocumentGebeurtenis.tijdstip.desc())
+        ).first()
+        assert overgang is not None
+        session.expunge(overgang)
+        return overgang
+
+
+class TestAangiftePoortHerboeken:
+    """Correctie Peter 07-09: herboeken in een ingediende btw-periode is NIET vrij (voorbelasting zit al in de aangifte)."""
+
+    def _verdwenen(self, geboekt_document, aangiften) -> tuple[uuid.UUID, FakeBoekClient]:
+        document_id, fake_client = geboekt_document
+        del fake_client._invoices[str(rlz_herboeking_id(document_id, 0))]
+        fake_client.aangiften = aangiften
+        return document_id, fake_client
+
+    def test_boekdatum_in_ingediende_aangifte_blokkeert_zonder_bevestiging(
+        self, geboekt_document, administratie_id, gescoopte_gebruiker, admin_engine
+    ) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [AANGIFTE_Q2_INGEDIEND])
+        with pytest.raises(herboeken.BtwMogelijkAangegeven, match="suppletie-pad") as exc_info:
+            herboeken.opnieuw_boeken_na_verdwijnen(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                reden=REDEN,
+                rol=GebruikerRol.BOEKHOUDING,
+                port=RlzInkoopPort(fake_client),
+            )
+        exc = exc_info.value
+        assert exc.code == "btw_mogelijk_aangegeven" and exc.controleerbaar is True
+        detail = exc.als_detail()
+        assert detail["code"] == "btw_mogelijk_aangegeven" and detail["soort"] == "ingediende_periode"
+        assert detail["boekdatum"] == "2026-06-22" and detail["backend"] == "rlz"
+        assert (detail["periode_start"], detail["periode_eind"]) == ("2026-04-01", "2026-06-30")
+        assert detail["bevestiging_mogelijk"] is True and detail["bevestiging_rol"] == "beheerder"
+        assert "Beheerder" in detail["bericht"] and "2026-06-22" in detail["bericht"]
+        # Niets gewijzigd: status, cyclus, boekstuk, geen tijdlijn-overgang, geen audit.
+        assert _status(admin_engine, document_id) == "geboekt"
+        assert _voorstel(admin_engine, document_id) == (0, "RLZ-TEST-00001")
+        assert _laatste_overgang(administratie_id, document_id).naar_status == DocumentStatus.GEBOEKT
+        with scoped_session(administratie_id) as session:
+            assert (
+                session.scalars(
+                    select(AuditEvent).where(AuditEvent.record_id == document_id, AuditEvent.actie == "opnieuw_boeken_na_verdwijnen")
+                ).all()
+                == []
+            )
+
+    def test_beheerder_met_bevestiging_zet_door_met_tijdlijn_en_audit(
+        self, geboekt_document, administratie_id, beheerder_id, admin_engine
+    ) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [AANGIFTE_Q2_INGEDIEND])
+        r = herboeken.opnieuw_boeken_na_verdwijnen(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=beheerder_id,
+            reden=REDEN,
+            rol=GebruikerRol.BEHEERDER,
+            btw_niet_in_aangifte_bevestigd=True,
+            bevestiging_reden=BEVESTIGING,
+            port=RlzInkoopPort(fake_client),
+        )
+        assert r.status == DocumentStatus.KLAAR_OM_TE_BOEKEN and r.boek_cyclus == 1
+        assert _status(admin_engine, document_id) == "klaar_om_te_boeken"
+        overgang = _laatste_overgang(administratie_id, document_id)
+        ob = overgang.detail["opnieuw_boeken"]
+        assert ob["btw_poort"]["toegestaan"] is False and ob["btw_poort"]["doorgezet_met_bevestiging"] is True
+        assert ob["btw_poort"]["boekdatum"] == "2026-06-22"
+        assert (ob["btw_poort"]["periode_start"], ob["btw_poort"]["periode_eind"]) == ("2026-04-01", "2026-06-30")
+        assert "ingediende btw-aangifte" in ob["btw_poort"]["reden"]
+        assert ob["btw_niet_in_aangifte_bevestigd"] == {"door": str(beheerder_id), "rol": "beheerder", "reden": BEVESTIGING}
+        assert "Beheerder-bevestiging" in overgang.detail["reden"] and BEVESTIGING in overgang.detail["reden"]
+        with scoped_session(administratie_id) as session:
+            [audit] = session.scalars(
+                select(AuditEvent).where(AuditEvent.record_id == document_id, AuditEvent.actie == "opnieuw_boeken_na_verdwijnen")
+            ).all()
+            assert audit.actor_id == beheerder_id
+            assert audit.oude_waarde == {"boek_cyclus": 0, "rlz_boekstuknummer": "RLZ-TEST-00001", "status": "geboekt"}
+            assert audit.nieuwe_waarde["btw_niet_in_aangifte_bevestigd"]["reden"] == BEVESTIGING
+            assert audit.nieuwe_waarde["btw_poort"]["doorgezet_met_bevestiging"] is True
+            assert audit.nieuwe_waarde["status"] == "klaar_om_te_boeken"
+
+    def test_niet_beheerder_met_bevestiging_is_geen_toegang(
+        self, geboekt_document, administratie_id, gescoopte_gebruiker, admin_engine
+    ) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [AANGIFTE_Q2_INGEDIEND])
+        with pytest.raises(herboeken.GeenToegang, match="Alleen een Beheerder"):
+            herboeken.opnieuw_boeken_na_verdwijnen(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                reden=REDEN,
+                rol=GebruikerRol.BOEKHOUDING,
+                btw_niet_in_aangifte_bevestigd=True,
+                bevestiging_reden=BEVESTIGING,
+                port=RlzInkoopPort(fake_client),
+            )
+        # Ook zonder rol (defensief: geen rol = geen Beheerder).
+        with pytest.raises(herboeken.GeenToegang):
+            herboeken.opnieuw_boeken_na_verdwijnen(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                reden=REDEN,
+                btw_niet_in_aangifte_bevestigd=True,
+                bevestiging_reden=BEVESTIGING,
+                port=RlzInkoopPort(fake_client),
+            )
+        assert _status(admin_engine, document_id) == "geboekt"
+        assert _voorstel(admin_engine, document_id) == (0, "RLZ-TEST-00001")
+
+    def test_bevestiging_zonder_reden_geweigerd(self, geboekt_document, administratie_id, beheerder_id, admin_engine) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [AANGIFTE_Q2_INGEDIEND])
+        for reden in (None, "", "   ", "ok"):
+            with pytest.raises(herboeken.HerboekenFout, match="Reden van de bevestiging"):
+                herboeken.opnieuw_boeken_na_verdwijnen(
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    actor_id=beheerder_id,
+                    reden=REDEN,
+                    rol=GebruikerRol.BEHEERDER,
+                    btw_niet_in_aangifte_bevestigd=True,
+                    bevestiging_reden=reden,
+                    port=RlzInkoopPort(fake_client),
+                )
+        assert _status(admin_engine, document_id) == "geboekt"
+
+    def test_aangiften_niet_leesbaar_blokkeert_fail_closed(
+        self, geboekt_document, administratie_id, gescoopte_gebruiker, beheerder_id, admin_engine
+    ) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [])
+        fake_client.faal_op = "aangiften"  # GET TaxDeclarations → 500
+        with pytest.raises(herboeken.BtwMogelijkAangegeven, match="kon niet gecontroleerd worden") as exc_info:
+            herboeken.opnieuw_boeken_na_verdwijnen(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                reden=REDEN,
+                rol=GebruikerRol.BOEKHOUDING,
+                port=RlzInkoopPort(fake_client),
+            )
+        detail = exc_info.value.als_detail()
+        assert detail["code"] == "btw_mogelijk_aangegeven" and detail["soort"] == "niet_controleerbaar"
+        assert detail["periode_start"] is None and "niet leesbaar" in detail["bericht"]
+        assert _status(admin_engine, document_id) == "geboekt"
+        # Een Beheerder mág ook hier doorzetten (bewuste keuze: de mens weet wat er is aangegeven) — de tijdlijn
+        # legt vast dat de poort niet controleerbaar was.
+        r = herboeken.opnieuw_boeken_na_verdwijnen(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=beheerder_id,
+            reden=REDEN,
+            rol=GebruikerRol.BEHEERDER,
+            btw_niet_in_aangifte_bevestigd=True,
+            bevestiging_reden=BEVESTIGING,
+            port=RlzInkoopPort(fake_client),
+        )
+        assert r.boek_cyclus == 1
+        ob = _laatste_overgang(administratie_id, document_id).detail["opnieuw_boeken"]
+        assert ob["btw_poort"]["doorgezet_met_bevestiging"] is True and "niet leesbaar" in ob["btw_poort"]["reden"]
+
+    def test_port_zonder_aangiftepoort_blokkeert_fail_closed(self, geboekt_document, administratie_id, gescoopte_gebruiker) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [])
+
+        class PortZonderPoort:
+            backend = Backend.RLZ
+
+            def toets_geboekt(self, **_kw) -> ToetsUitkomst:
+                return ToetsUitkomst(backend=Backend.RLZ, bestaat=False, reden="404")
+
+            def __exit__(self, *exc) -> None:
+                return None
+
+        with pytest.raises(herboeken.BtwMogelijkAangegeven, match="niet controleerbaar"):
+            herboeken.opnieuw_boeken_na_verdwijnen(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=gescoopte_gebruiker,
+                reden=REDEN,
+                rol=GebruikerRol.BOEKHOUDING,
+                port=PortZonderPoort(),  # type: ignore[arg-type]
+            )
+
+    def test_open_periode_gaat_gewoon_door_en_legt_de_toets_vast(
+        self, geboekt_document, administratie_id, gescoopte_gebruiker, admin_engine
+    ) -> None:
+        document_id, fake_client = self._verdwenen(geboekt_document, [AANGIFTE_Q1_INGEDIEND])  # Q1 raakt 22-06 niet
+        r = herboeken.opnieuw_boeken_na_verdwijnen(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=gescoopte_gebruiker,
+            reden=REDEN,
+            rol=GebruikerRol.BOEKHOUDING,
+            port=RlzInkoopPort(fake_client),
+        )
+        assert r.boek_cyclus == 1 and _status(admin_engine, document_id) == "klaar_om_te_boeken"
+        ob = _laatste_overgang(administratie_id, document_id).detail["opnieuw_boeken"]
+        assert ob["btw_poort"] == {
+            "boekdatum": "2026-06-22",
+            "toegestaan": True,
+            "reden": None,
+            "periode_start": None,
+            "periode_eind": None,
+            "doorgezet_met_bevestiging": False,
+        }
+        assert ob["btw_niet_in_aangifte_bevestigd"] is None
+        assert "Beheerder-bevestiging" not in _laatste_overgang(administratie_id, document_id).detail["reden"]
+
+
+class _FakeOdooClient:
+    company_id = 1
+
+    def __init__(self, rij: dict | None, *, faal: bool = False) -> None:
+        self._rij = rij
+        self._faal = faal
+
+    def read_een(self, model: str, odoo_id: int, fields: list[str]) -> dict | None:
+        if self._faal:
+            raise OdooFout(500, "InternalError", "storing (simulatie)", model=model, methode="read")
+        return self._rij
+
+
+class TestOdooBtwPeriodePoort:
+    """Odoo kent geen TaxDeclarations — de lock dates (tax/fiscalyear/purchase/hard) zijn het aangifte-equivalent."""
+
+    def _port(self, client: _FakeOdooClient) -> OdooInkoopPort:
+        return OdooInkoopPort(uuid.uuid4(), None, client)  # type: ignore[arg-type]
+
+    def test_boekdatum_op_of_voor_lock_date_blokkeert(self) -> None:
+        port = self._port(_FakeOdooClient({"tax_lock_date": "2026-06-30", "fiscalyear_lock_date": "2025-12-31"}))
+        toets = port.toets_btw_periode(boekdatum=date(2026, 6, 22))
+        assert toets.toegestaan is False and toets.periode_eind == date(2026, 6, 30)
+        assert "btw-lock date t/m 2026-06-30" in (toets.reden or "")
+        assert port.toets_btw_periode(boekdatum=date(2026, 6, 30)).toegestaan is False  # grens inclusief
+        assert port.toets_btw_periode(boekdatum=date(2026, 7, 1)).toegestaan is True
+
+    def test_geen_lock_dates_is_vrij_en_leesfout_is_fail_closed(self) -> None:
+        assert self._port(_FakeOdooClient({})).toets_btw_periode(boekdatum=date(2026, 6, 22)).toegestaan is True
+        toets = self._port(_FakeOdooClient(None, faal=True)).toets_btw_periode(boekdatum=date(2026, 6, 22))
+        assert toets.toegestaan is False and "niet leesbaar" in (toets.reden or "")
+        # company niet leesbaar (None) = OdooFout uit lees_lock_dates → ook fail-closed
+        assert self._port(_FakeOdooClient(None)).toets_btw_periode(boekdatum=date(2026, 6, 22)).toegestaan is False

@@ -2,7 +2,8 @@
 """`POST /reconciliatie/bevindingen/{id}/opnieuw-boeken` (A11, 07-09): kantoorrol binnen scope, alleen op een
 documenten-afwijking `ontbreekt_in_*`, poort via de adapter (backend kent het stuk niet meer), 200 mét status +
 boek_cyclus + doel_pad; 403 buiten scope; 409 als het stuk nog bestaat; 422 op een andere afwijkingssoort;
-404 op een onbekende bevinding."""
+404 op een onbekende bevinding. Aangifte-poort (correctie Peter 07-09): 409 mét `detail.code == "btw_mogelijk_aangegeven"`,
+Beheerder mét bevestiging + reden → 200, niet-Beheerder mét bevestiging → 403, bevestiging zonder reden → 422."""
 
 from __future__ import annotations
 
@@ -174,4 +175,66 @@ class TestOpnieuwBoekenEndpoint:
             headers=_bearer(accordeur, rol="klant_accordeur"),
         )
         assert r.status_code == 403
+        assert _status(admin_engine, document_id) == "geboekt"
+
+
+class TestAangiftePoortEndpoint:
+    AANGIFTE_Q2 = {"Status": 2, "StartDate": "2026-04-01T00:00:00", "Date": "2026-06-30T00:00:00"}
+    BEVESTIGING = "aangifte Q2 ingediend zonder dit document — RLZ-stuk was al weg vóór indiening (gecontroleerd)"
+
+    def test_409_code_dan_alleen_beheerder_met_bevestiging_door(
+        self, geboekt, administratie_id, gescoopte_gebruiker, beheerder_id, admin_engine
+    ) -> None:
+        document_id, fake = geboekt
+        del fake._invoices[str(rlz_herboeking_id(document_id, 0))]
+        fake.aangiften = [self.AANGIFTE_Q2]  # factuurdatum 22-06 valt in de ingediende Q2-aangifte
+        _run_met(administratie_id, document_id, "ontbreekt_in_rlz", "404")
+        pad = None
+        h_bh = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        h_beh = _bearer(beheerder_id, rol="beheerder")
+        pad = f"/reconciliatie/bevindingen/{_bevinding_id(h_bh)}/opnieuw-boeken"
+        basis = {"administratie_id": str(administratie_id), "reden": REDEN}
+
+        # 1. Zonder bevestiging: 409 mét herkenbare code + leesbaar bericht (geen 500), voor élke kantoorrol.
+        for h in (h_bh, h_beh):
+            r = client.post(pad, json=basis, headers=h)
+            assert r.status_code == 409, r.text
+            d = r.json()["detail"]
+            assert d["code"] == "btw_mogelijk_aangegeven" and d["soort"] == "ingediende_periode"
+            assert d["boekdatum"] == "2026-06-22" and d["periode_eind"] == "2026-06-30"
+            assert d["bevestiging_mogelijk"] is True and d["bevestiging_rol"] == "beheerder"
+            assert "suppletie-pad" in d["bericht"]
+        assert _status(admin_engine, document_id) == "geboekt"
+
+        # 2. Niet-Beheerder mét bevestiging: 403 (rol uit token/DB, nooit uit de body).
+        r = client.post(pad, json={**basis, "btw_niet_in_aangifte_bevestigd": True, "bevestiging_reden": self.BEVESTIGING}, headers=h_bh)
+        assert r.status_code == 403 and "Beheerder" in r.json()["detail"]
+        assert _status(admin_engine, document_id) == "geboekt"
+
+        # 3. Beheerder mét bevestiging maar zonder (of te korte) reden: 422.
+        r = client.post(pad, json={**basis, "btw_niet_in_aangifte_bevestigd": True}, headers=h_beh)
+        assert r.status_code == 422 and "Reden van de bevestiging" in r.json()["detail"]
+        r = client.post(pad, json={**basis, "btw_niet_in_aangifte_bevestigd": True, "bevestiging_reden": "ok"}, headers=h_beh)
+        assert r.status_code == 422
+        assert _status(admin_engine, document_id) == "geboekt"
+
+        # 4. Beheerder mét bevestiging + reden: 200, document terug naar klaar_om_te_boeken.
+        r = client.post(pad, json={**basis, "btw_niet_in_aangifte_bevestigd": True, "bevestiging_reden": self.BEVESTIGING}, headers=h_beh)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "klaar_om_te_boeken" and r.json()["boek_cyclus"] == 1
+        assert _status(admin_engine, document_id) == "klaar_om_te_boeken"
+
+    def test_aangiften_niet_leesbaar_is_409_fail_closed(self, geboekt, administratie_id, gescoopte_gebruiker, admin_engine) -> None:
+        document_id, fake = geboekt
+        del fake._invoices[str(rlz_herboeking_id(document_id, 0))]
+        fake.faal_op = "aangiften"
+        _run_met(administratie_id, document_id, "ontbreekt_in_rlz", "404")
+        h = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        r = client.post(
+            f"/reconciliatie/bevindingen/{_bevinding_id(h)}/opnieuw-boeken",
+            json={"administratie_id": str(administratie_id), "reden": REDEN},
+            headers=h,
+        )
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["code"] == "btw_mogelijk_aangegeven" and r.json()["detail"]["soort"] == "niet_controleerbaar"
         assert _status(admin_engine, document_id) == "geboekt"

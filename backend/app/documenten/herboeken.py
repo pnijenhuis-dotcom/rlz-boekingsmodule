@@ -16,9 +16,18 @@ tegenboeking:
    oorspronkelijke boeking worden teruggedraaid zoals bij tegenboeken (verplichting-verbruik, mini-voorraad-
    instroom), zodat de herboeking ze opnieuw registreert;
 3. de mens boekt daarna via het controlescherm (harde checks onverkort — een intussen handmatig in het pakket
-   opnieuw ingevoerde factuur blokkeert dan als duplicaat: precies goed, de mens beslist). Volumerem en
-   aangifte-poort ongewijzigd: er staat in het pakket niets meer voor deze cyclus, dus er is niets om te
-   blokkeren (beslispunt Peter, BESLISSINGEN A11).
+   opnieuw ingevoerde factuur blokkeert dan als duplicaat: precies goed, de mens beslist). Volumerem
+   ongewijzigd (er staat in het pakket niets meer voor deze cyclus).
+
+AANGIFTE-POORT (correctie Peter 07-09 op A11 beslispunt 2 — HERZIET "gewoon toegestaan"): is het externe document
+ná indiening van de btw-aangifte verwijderd, dan zit de voorbelasting al in die aangifte; de herboeking krijgt
+`BookDate` = factuurdatum en RLZ verschuift de TaxSource naar de eerstvolgende open periode — de btw wordt dan
+OPNIEUW geclaimd. Daarom toetst stap 1 óók de boekdatum van de verdwenen boeking (`InkoopPort.toets_btw_periode`:
+RLZ = TaxDeclarations Status 2/3 via `app/rlz/aangifte.py`, Odoo = lock dates) — valt die in een ingediende
+periode, of is de aangiftestatus niet leesbaar (fail-closed), dan BLOKKEERT herboeken met code
+`btw_mogelijk_aangegeven` (409): "btw mogelijk al aangegeven — suppletie-pad". Alleen een BEHEERDER kan in dezelfde
+actie doorzetten met `btw_niet_in_aangifte_bevestigd=True` + verplichte `bevestiging_reden` (≥ 5 tekens) — een
+andere rol mét bevestiging = 403; de bevestiging + reden landen in tijdlijn-detail én audit (oud→nieuw).
 
 Vastgoed-administraties: het `factuur_geboekt`-event van de verdwenen boeking wordt gevolgd door een
 `factuur_gestorneerd` (bron rlz_ui_detectie, reden = deze actie) in dezelfde boekstand-reeks — de herboeking
@@ -26,9 +35,12 @@ vuurt straks haar eigen geboekt-event op het nieuwe rlz_document_id (koppelcontr
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+from sqlalchemy import select
 
 from app.auth import service as auth_service
 from app.backends import inkoop_port_voor
@@ -37,16 +49,34 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.boekstand import laatste_boekstand_rij, stand_van_rij
-from app.documenten.models import Boekvoorstel, Document, DocumentStatus, WebhookUitgaand
+from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
 from app.documenten.reconciliatie import ONTBREEKT_SOORTEN
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.webhook import FACTUUR_GEBOEKT_EVENT, GESTORNEERD_BRON_RLZ_UI, bouw_factuur_gestorneerd_payload
 from app.reconciliatie.models import BevindingSoort, ReconciliatieBevinding
+from app.rlz.aangifte import KantToets
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 
+logger = logging.getLogger(__name__)
+
 MIN_REDEN_LENGTE = 5  # zelfde ondergrens als tegenboeken/acceptaties
+
+#: Herkenbare 409-code voor de frontend (tweede stap in dezelfde dialoog, alleen Beheerder).
+BTW_BLOKKADE_CODE = "btw_mogelijk_aangegeven"
+BTW_BLOKKADE_MELDING = (
+    "Btw mogelijk al aangegeven — suppletie-pad: de boekdatum van de verdwenen boeking valt in een ingediende "
+    "btw-aangifte; opnieuw boeken zou de voorbelasting opnieuw claimen"
+)
+BTW_NIET_CONTROLEERBAAR_MELDING = (
+    "Btw-aangiftestatus kon niet gecontroleerd worden — opnieuw boeken uit voorzorg geblokkeerd "
+    "(btw mogelijk al aangegeven — suppletie-pad)"
+)
+BTW_BEVESTIGING_TOELICHTING = (
+    "Alleen een Beheerder kan doorzetten, met de bevestiging dat de btw van dit document NIET in de ingediende "
+    "aangifte zat (verplichte reden; komt in tijdlijn en audit)"
+)
 
 
 class HerboekenFout(Exception):
@@ -63,6 +93,37 @@ class GeenToegang(HerboekenFout):
 
 class NogAanwezigInBackend(HerboekenFout):
     """409 — het externe document bestaat (nog/weer): dan is storno/tegenboeken de route, niet herboeken."""
+
+
+class BtwMogelijkAangegeven(HerboekenFout):
+    """409 `btw_mogelijk_aangegeven` — de boekdatum van de verdwenen boeking valt in een ingediende btw-periode
+    (of de aangiftestatus is niet leesbaar: fail-closed). Alleen een Beheerder zet door mét bevestiging + reden."""
+
+    code = BTW_BLOKKADE_CODE
+
+    def __init__(self, *, toets: KantToets, boekdatum: date | None, backend: str) -> None:
+        self.toets = toets
+        self.boekdatum = boekdatum
+        self.backend = backend
+        # Geen periode in de toets = niet controleerbaar (leesfout, boekdatum onbekend) — eigen melding.
+        self.controleerbaar = toets.periode_start is not None or toets.periode_eind is not None
+        basis = BTW_BLOKKADE_MELDING if self.controleerbaar else BTW_NIET_CONTROLEERBAAR_MELDING
+        toelichting = f" ({toets.reden})" if toets.reden else ""
+        super().__init__(f"{basis}{toelichting}. {BTW_BEVESTIGING_TOELICHTING}.")
+
+    def als_detail(self) -> dict:
+        """HTTP-409-detail: herkenbare code + leesbaar `bericht` (frontend `foutmelding` leest die sleutel)."""
+        return {
+            "code": self.code,
+            "bericht": str(self),
+            "soort": "ingediende_periode" if self.controleerbaar else "niet_controleerbaar",
+            "boekdatum": self.boekdatum.isoformat() if self.boekdatum else None,
+            "periode_start": self.toets.periode_start.isoformat() if self.toets.periode_start else None,
+            "periode_eind": self.toets.periode_eind.isoformat() if self.toets.periode_eind else None,
+            "backend": self.backend,
+            "bevestiging_mogelijk": True,
+            "bevestiging_rol": GebruikerRol.BEHEERDER.value,
+        }
 
 
 @dataclass(frozen=True)
@@ -128,6 +189,68 @@ def _meld_gestorneerd_voor_vastgoed(
     return True
 
 
+def _parse_datum(waarde: object) -> date | None:
+    if not isinstance(waarde, str) or len(waarde) < 10:
+        return None
+    try:
+        return date.fromisoformat(waarde[:10])
+    except ValueError:
+        return None
+
+
+def _boekdatum_verdwenen_boeking(
+    session,  # noqa: ANN001
+    *,
+    document_id: uuid.UUID,
+    oud_rlz_document_id: uuid.UUID,
+    voorstel: Boekvoorstel,
+) -> date | None:
+    """De BookDate waarmee de verdwenen boeking in het pakket stond — dáár hangt de btw-periode aan.
+    RLZ: de adapter zet `BookDate` = factuurdatum (besluit Peter 27-08), dus `boekvoorstel.factuurdatum`.
+    Odoo: de boekdatum kan verschoven zijn (`bepaal_boekdatum` → tijdlijn-detail `boekdatum_verschoven.naar` op het
+    geboekt-event van déze cyclus) — dan geldt die datum. Het geboekt-event wint als het een datum draagt; anders de
+    factuurdatum; None = onbekend (fail-closed in de poort)."""
+    events = session.scalars(
+        select(DocumentGebeurtenis)
+        .where(
+            DocumentGebeurtenis.document_id == document_id,
+            DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+        )
+        .order_by(DocumentGebeurtenis.tijdstip.desc())
+    ).all()
+    for e in events:
+        d = e.detail or {}
+        if d.get("rlz_document_id") != str(oud_rlz_document_id):
+            continue
+        verschoven = d.get("boekdatum_verschoven")
+        if isinstance(verschoven, dict):
+            datum = _parse_datum(verschoven.get("naar"))
+            if datum is not None:
+                return datum
+        break
+    return voorstel.factuurdatum
+
+
+def _toets_btw_periode(port: InkoopPort, boekdatum: date | None) -> KantToets:
+    """Fail-closed rond de adapter: geen boekdatum, geen port-operatie of een leesfout = geblokkeerd — nooit stil
+    doorlaten."""
+    if boekdatum is None:
+        return KantToets(
+            kant="inkoopfactuur",
+            toegestaan=False,
+            reden="boekdatum van de verdwenen boeking onbekend — herboeken uit voorzorg geblokkeerd",
+        )
+    try:
+        return port.toets_btw_periode(boekdatum=boekdatum)
+    except Exception as exc:  # noqa: BLE001 — fail-closed: élke fout in de aangifte-poort blokkeert
+        logger.warning("Aangifte-poort herboeken niet uitvoerbaar (%s): %s", port.backend.value, exc)
+        return KantToets(
+            kant="inkoopfactuur",
+            toegestaan=False,
+            reden=f"btw-aangiftestatus niet controleerbaar ({exc}) — herboeken uit voorzorg geblokkeerd",
+        )
+
+
 def opnieuw_boeken_na_verdwijnen(
     *,
     administratie_id: uuid.UUID,
@@ -135,11 +258,28 @@ def opnieuw_boeken_na_verdwijnen(
     actor_id: uuid.UUID,
     reden: str,
     port: InkoopPort | None = None,
+    rol: GebruikerRol | None = None,
+    btw_niet_in_aangifte_bevestigd: bool = False,
+    bevestiging_reden: str | None = None,
 ) -> HerboekResultaat:
-    """De kern (zie moduledocstring). `port` = test-seam; standaard de adapter van de administratie."""
+    """De kern (zie moduledocstring). `port` = test-seam; standaard de adapter van de administratie.
+    `btw_niet_in_aangifte_bevestigd` + `bevestiging_reden` = de Beheerder-doorzet ná een `BtwMogelijkAangegeven`
+    (rol server-side getoetst — een andere rol mét bevestiging = `GeenToegang`/403)."""
     if len((reden or "").strip()) < MIN_REDEN_LENGTE:
         raise HerboekenFout(f"Reden is verplicht (minimaal {MIN_REDEN_LENGTE} tekens)")
     reden = reden.strip()
+    if btw_niet_in_aangifte_bevestigd:
+        if rol != GebruikerRol.BEHEERDER:
+            raise GeenToegang(
+                "Alleen een Beheerder kan bevestigen dat de btw van dit document niet in de ingediende aangifte zat"
+            )
+        if len((bevestiging_reden or "").strip()) < MIN_REDEN_LENGTE:
+            raise HerboekenFout(
+                f"Reden van de bevestiging 'btw niet in aangifte' is verplicht (minimaal {MIN_REDEN_LENGTE} tekens)"
+            )
+        bevestiging_reden = (bevestiging_reden or "").strip()
+    else:
+        bevestiging_reden = None
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _laad_geboekt_document(session, administratie_id=administratie_id, document_id=document_id)
@@ -148,8 +288,14 @@ def opnieuw_boeken_na_verdwijnen(
             raise HerboekenFout("Het document heeft geen boekvoorstel — opnieuw boeken kan niet")
         boek_cyclus = int(voorstel.boek_cyclus or 0)
         oud_boekstuknummer = voorstel.rlz_boekstuknummer
+        oud_rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
+        boekdatum = _boekdatum_verdwenen_boeking(
+            session, document_id=document_id, oud_rlz_document_id=oud_rlz_document_id, voorstel=voorstel
+        )
 
-    # Harde poort: de backend kent het document LIVE niet meer. Een nog bestaand stuk = storno/tegenboeken.
+    # Harde poort 1: de backend kent het document LIVE niet meer. Een nog bestaand stuk = storno/tegenboeken.
+    # Harde poort 2 (correctie Peter 07-09): de boekdatum van de verdwenen boeking mag niet in een ingediende
+    # btw-periode vallen — tenzij een Beheerder in dezelfde actie bevestigt dat de btw er niet in zat.
     eigen_port = port is None
     port = port or _port_voor(administratie_id)
     try:
@@ -159,18 +305,20 @@ def opnieuw_boeken_na_verdwijnen(
             )
         except ToetsMislukt as exc:
             raise HerboekenFout(f"De stand in de boekhouding kon niet gecontroleerd worden: {exc}") from exc
+        if not uitkomst.van_toepassing:
+            raise HerboekenFout(uitkomst.reden or "Dit document is in deze boekhouding niet te toetsen")
+        if uitkomst.bestaat:
+            raise NogAanwezigInBackend(
+                f"Het externe document bestaat nog ({uitkomst.boekstuknummer or uitkomst.extern_id}, "
+                f"status {uitkomst.extern_state}) — corrigeer via storno of tegenboeken, niet via opnieuw boeken"
+            )
+        btw_toets = _toets_btw_periode(port, boekdatum)
     finally:
         if eigen_port:
             port.__exit__(None, None, None)
-    if not uitkomst.van_toepassing:
-        raise HerboekenFout(uitkomst.reden or "Dit document is in deze boekhouding niet te toetsen")
-    if uitkomst.bestaat:
-        raise NogAanwezigInBackend(
-            f"Het externe document bestaat nog ({uitkomst.boekstuknummer or uitkomst.extern_id}, "
-            f"status {uitkomst.extern_state}) — corrigeer via storno of tegenboeken, niet via opnieuw boeken"
-        )
-
-    oud_rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
+    if not btw_toets.toegestaan and not btw_niet_in_aangifte_bevestigd:
+        raise BtwMogelijkAangegeven(toets=btw_toets, boekdatum=boekdatum, backend=port.backend.value)
+    doorgezet_met_bevestiging = bool(btw_niet_in_aangifte_bevestigd and not btw_toets.toegestaan)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = _laad_geboekt_document(session, administratie_id=administratie_id, document_id=document_id)
         voorstel = session.get(Boekvoorstel, document_id)
@@ -193,10 +341,29 @@ def opnieuw_boeken_na_verdwijnen(
                 "nieuw_rlz_document_id": str(rlz_herboeking_id(document_id, nieuwe_cyclus)),
                 "toets": uitkomst.reden,
                 "tegenboeking": None,  # bewust: er is niets om tegen te boeken
+                # Aangifte-poort (correctie Peter 07-09): wat getoetst is en of een Beheerder 'm heeft doorgezet.
+                "btw_poort": {
+                    "boekdatum": boekdatum.isoformat() if boekdatum else None,
+                    "toegestaan": btw_toets.toegestaan,
+                    "reden": btw_toets.reden,
+                    "periode_start": btw_toets.periode_start.isoformat() if btw_toets.periode_start else None,
+                    "periode_eind": btw_toets.periode_eind.isoformat() if btw_toets.periode_eind else None,
+                    "doorgezet_met_bevestiging": doorgezet_met_bevestiging,
+                },
+                "btw_niet_in_aangifte_bevestigd": (
+                    {"door": str(actor_id), "rol": rol.value if rol else None, "reden": bevestiging_reden}
+                    if btw_niet_in_aangifte_bevestigd
+                    else None
+                ),
             },
             "reden": (
                 f"opnieuw boeken — extern document verdwenen "
                 f"({oud_boekstuknummer or str(oud_rlz_document_id)[:8]}): {reden}"
+                + (
+                    f" — ná Beheerder-bevestiging 'btw niet in de ingediende aangifte': {bevestiging_reden}"
+                    if doorgezet_met_bevestiging
+                    else ""
+                )
             ),
         }
         _schrijf_overgang(
@@ -259,6 +426,8 @@ def opnieuw_boeken_vanuit_bevinding(
     actor_id: uuid.UUID,
     rol: GebruikerRol,
     port: InkoopPort | None = None,
+    btw_niet_in_aangifte_bevestigd: bool = False,
+    bevestiging_reden: str | None = None,
 ) -> HerboekResultaat:
     """Ingang vanuit Inzicht › Reconciliatie: de bevinding moet een documenten-afwijking `ontbreekt_in_*` zijn
     binnen de scope van de actor (RLS-les 25-08: lezen in `scoped_session(<adm>, actor_id=…)`)."""
@@ -280,4 +449,7 @@ def opnieuw_boeken_vanuit_bevinding(
         actor_id=actor_id,
         reden=reden,
         port=port,
+        rol=rol,
+        btw_niet_in_aangifte_bevestigd=btw_niet_in_aangifte_bevestigd,
+        bevestiging_reden=bevestiging_reden,
     )

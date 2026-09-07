@@ -8,6 +8,8 @@ import type { BevindingDto } from './reconciliatieApi'
 // A11 (07-09): "Opnieuw boeken…" op een documenten-afwijking `ontbreekt_in_rlz`/`ontbreekt_in_odoo` — teal knop,
 // bevestigingsdialoog mét leverancier/factuurnummer en VERPLICHTE reden (≥ 5 tekens), POST naar het endpoint,
 // daarna de melding + de link "Nu boeken →" naar het controlescherm; een serverfout blijft zichtbaar.
+// Aangifte-poort (correctie Peter 07-09): 409 met code `btw_mogelijk_aangegeven` → melding + periode in de dialoog; alleen een
+// Beheerder krijgt de tweede stap (bevestigings-checkbox + verplichte reden) en de herhaalde POST draagt de vlag + reden.
 
 const ADMIN = 'aaaaaaaa-0000-0000-0000-000000000001'
 
@@ -107,6 +109,97 @@ describe('OpnieuwBoekenActie', () => {
       'href',
       `/?administratie=${ADMIN}&document=doc-1`,
     )
+  })
+
+  const BTW_409 = {
+    detail: {
+      code: 'btw_mogelijk_aangegeven',
+      bericht:
+        'Btw mogelijk al aangegeven — suppletie-pad: de boekdatum van de verdwenen boeking valt in een ingediende btw-aangifte; opnieuw boeken zou de voorbelasting opnieuw claimen (boekdatum 2026-06-22 valt in de ingediende btw-aangifte 2026-04-01 t/m 2026-06-30). Alleen een Beheerder kan doorzetten, met de bevestiging dat de btw van dit document NIET in de ingediende aangifte zat (verplichte reden; komt in tijdlijn en audit).',
+      soort: 'ingediende_periode',
+      boekdatum: '2026-06-22',
+      periode_start: '2026-04-01',
+      periode_eind: '2026-06-30',
+      backend: 'rlz',
+      bevestiging_mogelijk: true,
+      bevestiging_rol: 'beheerder',
+    },
+  }
+
+  it('aangifte-poort 409: toont de melding + periode; een niet-Beheerder krijgt GEEN bevestigingsstap en kan niet doorzetten', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(BTW_409, 409)))
+    vi.stubGlobal('fetch', fetchMock)
+    const onGelukt = vi.fn()
+    render(
+      <MemoryRouter>
+        <OpnieuwBoekenActie bevinding={bevinding()} onGelukt={onGelukt} isBeheerder={false} />
+      </MemoryRouter>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Opnieuw boeken/ }))
+    await userEvent.type(await screen.findByLabelText('Reden'), 'document verdwenen na kliktest')
+    await userEvent.click(screen.getByRole('button', { name: 'Terug naar klaar om te boeken' }))
+    const blok = await screen.findByTestId('btw-blokkade')
+    expect(blok).toHaveTextContent(/suppletie-pad/)
+    expect(blok).toHaveTextContent('22-06-2026')
+    expect(blok).toHaveTextContent('01-04-2026 t/m 30-06-2026 (ingediend)')
+    expect(blok).toHaveTextContent(/Alleen een Beheerder kan dit doorzetten/)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    // De knop is nu de bevestig-variant maar blijft voor deze rol uitgeschakeld; de dialoog blijft open.
+    expect(screen.getByRole('button', { name: 'Bevestig en zet terug naar klaar om te boeken' })).toBeDisabled()
+    expect(screen.getByTestId('opnieuw-boeken-dialoog')).toBeInTheDocument()
+    expect(onGelukt).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('aangifte-poort 409: een Beheerder bevestigt (checkbox + reden ≥ 5) en de herhaalde POST draagt vlag + reden', async () => {
+    const aangeroepen: { body: Record<string, unknown> }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+        aangeroepen.push({ body })
+        if (body.btw_niet_in_aangifte_bevestigd === true) {
+          return Promise.resolve(
+            jsonResponse({ document_id: 'doc-1', status: 'klaar_om_te_boeken', boek_cyclus: 1, doel_pad: `/?administratie=${ADMIN}&document=doc-1` }),
+          )
+        }
+        return Promise.resolve(jsonResponse(BTW_409, 409))
+      }),
+    )
+    const onGelukt = vi.fn()
+    render(
+      <MemoryRouter>
+        <OpnieuwBoekenActie bevinding={bevinding()} onGelukt={onGelukt} isBeheerder />
+      </MemoryRouter>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Opnieuw boeken/ }))
+    await userEvent.type(await screen.findByLabelText('Reden'), 'document verdwenen na kliktest')
+    await userEvent.click(screen.getByRole('button', { name: 'Terug naar klaar om te boeken' }))
+    await screen.findByTestId('btw-blokkade')
+    const knop = screen.getByRole('button', { name: 'Bevestig en zet terug naar klaar om te boeken' })
+    expect(knop).toBeDisabled()
+    // Stap 2: checkbox aanvinken → reden-veld verschijnt; pas met ≥ 5 tekens is de knop actief.
+    const vink = screen.getByRole('checkbox', { name: /Ik bevestig: de btw van dit document zat NIET in de ingediende aangifte/ })
+    expect(screen.queryByLabelText('Reden van de bevestiging')).toBeNull()
+    await userEvent.click(vink)
+    const bevestigingReden = screen.getByLabelText('Reden van de bevestiging')
+    expect(knop).toBeDisabled()
+    await userEvent.type(bevestigingReden, 'ok')
+    expect(knop).toBeDisabled()
+    await userEvent.type(bevestigingReden, ' — aangifte Q2 gecontroleerd, document zat er niet in')
+    expect(knop).toBeEnabled()
+    await userEvent.click(knop)
+    await waitFor(() => expect(onGelukt).toHaveBeenCalled())
+    expect(aangeroepen).toHaveLength(2)
+    expect(aangeroepen[0].body).not.toHaveProperty('btw_niet_in_aangifte_bevestigd')
+    expect(aangeroepen[1].body).toMatchObject({
+      administratie_id: ADMIN,
+      reden: 'document verdwenen na kliktest',
+      btw_niet_in_aangifte_bevestigd: true,
+    })
+    expect(String(aangeroepen[1].body.bevestiging_reden)).toMatch(/aangifte Q2 gecontroleerd/)
+    expect(screen.queryByTestId('opnieuw-boeken-dialoog')).toBeNull()
+    expect(screen.getByRole('link', { name: /Naar het document om opnieuw te boeken/ })).toBeInTheDocument()
   })
 
   it('toont de serverfout in de dialoog (409: document bestaat nog) en roept onGelukt niet aan', async () => {

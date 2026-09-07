@@ -125,6 +125,16 @@ class InstellingDto(BaseModel):
     gezien_dagen: int = Field(ge=1, le=3650)
 
 
+class OpnieuwBoekenInvoerDto(RedenInvoerDto):
+    """Invoer van "Opnieuw boeken (extern document verdwenen)". De twee extra velden zijn de Beheerder-doorzet ná een
+    409 `btw_mogelijk_aangegeven` (correctie Peter 07-09 op A11): de boekdatum van de verdwenen boeking valt in een
+    ingediende btw-aangifte. `btw_niet_in_aangifte_bevestigd=True` mag ALLEEN een Beheerder zetten (server-side
+    rolcheck, anders 403) en vereist `bevestiging_reden` (≥ 5 tekens, anders 422)."""
+
+    btw_niet_in_aangifte_bevestigd: bool = False
+    bevestiging_reden: str | None = Field(default=None, max_length=2000)
+
+
 class OpnieuwBoekenResultaatDto(BaseModel):
     """Antwoord van "Opnieuw boeken (extern document verdwenen)" (A11, 07-09): het document staat weer klaar om te
     boeken mét een nieuwe boek_cyclus; `doel_pad` = het controlescherm waar de mens de boeking afmaakt."""

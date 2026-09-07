@@ -258,6 +258,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
               herlaad()
             }}
             onAccepteren={isBeheerder && kanReden ? accepteren : undefined}
+            isBeheerder={isBeheerder}
           />{' '}
           {deeplink}
         </>

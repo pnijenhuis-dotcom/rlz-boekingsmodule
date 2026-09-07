@@ -27,7 +27,7 @@ from app.documenten.rlz_ids import (
     rlz_tegenboeking_upload_id,
 )
 from app.projectverdeling.data import gewichten_per_project, splits_regel
-from app.rlz.aangifte import AangiftePoort
+from app.rlz.aangifte import AangiftePoort, KantToets
 from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.fouten import vertaal_rlz_boekfout
@@ -227,6 +227,12 @@ class RlzInkoopPort:
             extern_state=None if status is None else str(status),
             ruw=invoice,
         )
+
+    def toets_btw_periode(self, *, boekdatum: date) -> KantToets:
+        """Aangifte-poort op een boekdatum zónder document (herboeken ná verdwenen document, correctie Peter 07-09):
+        dezelfde fail-closed `AangiftePoort` als het storno-/tegenboek-pad, maar op de bewaarde BookDate (= factuur-
+        datum van de verdwenen boeking) — het RLZ-document zelf bestaat niet meer om op te toetsen."""
+        return AangiftePoort(self.client).toets_boekdatum(boekdatum, kant="inkoopfactuur")
 
     def boek_tegenboeking(
         self,
