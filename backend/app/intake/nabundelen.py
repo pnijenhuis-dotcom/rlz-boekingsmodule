@@ -35,6 +35,32 @@ HARDE VOORWAARDEN (besluit Peter 02-09):
   naamstam, precies één toegewezen PDF-tegenhanger én precies één UBL met die stam in dat
   bericht); twijfel = overslaan mét reden, nooit gokken.
 
+PDF-DUBBELEN SAMENVOUWEN (besluit Peter 07-09, beslispunt 2 optie b — HERZIET het 03-09-besluit "deel-4/
+deel-7-dubbelmails niet bouwen, afwijs-klikwerk voor kantoor"): staan er in DEZELFDE administratie meer
+PDF-documenten met dezelfde naamstam uit HETZELFDE intake-bericht (de dubbele deel-mails van 02-09: 50
+stammen × 2 byte-identieke PDF's), dan is dat géén gok meer zodra hun `sha256_hash` gelijk is — de motor
+vouwt ze deterministisch samen vóór de paarvorming: één exemplaar wordt het GEHOUDEN exemplaar (= de
+tegenhanger voor de UBL), de overige gaan naar de terminale status `samengevoegd` mét verwijzing
+(`samengevoegd_in_id` = het gehouden exemplaar), tijdlijn + audit, nooit verwijderd. Rangorde gehouden
+exemplaar (`_samenvouw_plan`): (1) GEBOEKT wint altijd (bewaarplicht, boekstuk hangt eraan); (2) daarna
+elk exemplaar dat een mens verder heeft gebracht (klaar_om_te_boeken, ter_accordering, …); (3) daarna
+een exemplaar mét opgeslagen boekvoorstel (mens heeft dít exemplaar beoordeeld); (4) anders het OUDSTE
+(`aangemaakt_op`, dan id — stabiel en herhaalbaar). De weggevouwen exemplaren moeten zelf op
+te_controleren/handmatig_afmaken staan zónder opgeslagen boekvoorstel; is meer dan één exemplaar door een
+mens aangeraakt, of verschilt de inhoud (sha256), dan blijft het paar "meerduidig" = overslaan mét reden.
+Het samenvouwen gebeurt in DEZELFDE transactie als de nabundeling (wordt het paar om een andere reden
+overgeslagen — gehouden exemplaar al geboekt e.d. — dan wordt er óók niets samengevouwen: niets half).
+Dry-run toont het samenvouw-plan per paar. Ongedaan maken (`maak_nabundeling_ongedaan`) zet óók de
+weggevouwen exemplaren terug naar hun status van vóór de run (weer losse exemplaren in de werkvoorraad).
+Dezelfde sha256-regel geldt SYMMETRISCH voor byte-identieke UBL-dubbelen uit hetzelfde bericht (de dry-run van
+07-09 legde 5 stammen bloot met 2 identieke UBL's + 2 identieke PDF's — verborgen achter de PDF-telling): het
+gehouden UBL-exemplaar (zelfde rangorde) is de kandidaat, de overige UBL's worden in dezelfde transactie
+samengevouwen in het uiteindelijke document (het gehouden PDF-exemplaar) — beslispunt Peter, zie rapport 07-09.
+
+AFGEWEZEN TELT ALS TERMINAAL VOOR DE TELLING (besluit Peter 07-09, beslispunt 3): een afgewezen
+dubbel-exemplaar (mét reden, blijft zichtbaar) telt niet meer als tegenhanger en ontgrendelt het paar —
+het afwijs-klikwerk van kantoor maakt een meerduidig paar dus wél eenduidig.
+
 Deterministisch (geen AI, geen RLZ-calls), systeem-actor, audit per paar, idempotent (een tweede run
 vindt 0 kandidaten: de UBL-rij is dan `samengevoegd`). Bestanden worden nooit verwijderd — de oude
 PDF-locatie ís de nieuwe bron-locatie, het UBL-bestand komt er als kopie naast onder het
@@ -78,7 +104,10 @@ _TOEGEWEZEN_DETAIL = re.compile(r"→\s*([0-9a-f-]{36})\s*$")
 _NABUNDEL_STATUSSEN = frozenset({DocumentStatus.TE_CONTROLEREN, DocumentStatus.HANDMATIG_AFMAKEN})
 #: Statussen die bij het tellen van tegenhangers binnen een administratie niet meedoen (terminaal, geen
 #: exemplaar meer in de werkvoorraad) — een zacht-verwijderd derde exemplaar maakt een paar niet meerduidig.
-_TERMINAAL_VOOR_TELLING = frozenset({DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST, DocumentStatus.SAMENGEVOEGD})
+#: AFGEWEZEN sinds 07-09 (besluit Peter, beslispunt 3): een afgewezen dubbel-exemplaar ontgrendelt het paar.
+_TERMINAAL_VOOR_TELLING = frozenset(
+    {DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST, DocumentStatus.SAMENGEVOEGD, DocumentStatus.AFGEWEZEN}
+)
 #: Noodrem: zoveel opeenvolgende paren die óók ná de herkansing op de verbinding stranden = run stopt.
 MAX_OPEENVOLGENDE_VERBINDINGSFOUTEN = 3
 
@@ -94,6 +123,12 @@ NABUNDEL_ADMINISTRATIE_SLEUTEL = "nagebundeld_administratie_id"
 #: Sleutel in datzelfde detail: de status van het UBL-DOCUMENT vóór de nabundeling (dubbelparen 03-09) —
 #: de ongedaan-route zet 'm daarop terug; afwezig = het was een verzamelbak-rij (→ niet_toegewezen).
 NABUNDEL_VORIGE_STATUS_SLEUTEL = "vorige_status"
+#: Sleutel (True) in het tijdlijn-detail van de `samengevoegd`-overgang van een WEGGEVOUWEN byte-identiek
+#: dubbel-exemplaar (PDF of UBL, 07-09) — onderscheidt die rij van de nagebundelde UBL-rij die naar hetzelfde
+#: gehouden exemplaar verwijst (de ongedaan-route zet beide soorten terug, elk naar zijn eigen vorige status).
+NABUNDEL_SAMENVOUW_SLEUTEL = "samengevouwen_dubbel"
+AUDIT_DUBBEL_SAMENGEVOUWEN = "document_dubbel_samengevouwen"
+AUDIT_DUBBEL_SAMENVOUW_ONGEDAAN = "document_dubbel_samenvouw_ongedaan"
 
 
 class NabundelingOngedaanGeweigerd(Exception):
@@ -113,6 +148,9 @@ class NabundelKandidaat:
     #: True = de UBL is zelf al een toegewezen DOCUMENT in `administratie_id` (dubbelpaar, 03-09);
     #: False = verzamelbak-rij (platformbreed).
     ubl_in_administratie: bool = False
+    #: Byte-identieke dubbel-exemplaren (PDF én UBL, 07-09) die vóór de paarvorming in `pdf_document_id` (het
+    #: uiteindelijke document) worden weggevouwen — leeg als er niets samen te vouwen is.
+    samen_te_vouwen: tuple[uuid.UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,12 +162,22 @@ class NabundelUitkomst:
     reden: str | None = None
     herkanst: bool = False
     administratie_id: uuid.UUID | None = None
+    #: Dubbel-exemplaren (PDF/UBL) die in dit paar zijn (dry-run: zouden worden) weggevouwen in `pdf_document_id`.
+    samengevouwen: tuple[uuid.UUID, ...] = ()
 
     def als_regel(self) -> str:
-        kern = f"{self.ubl_bestandsnaam}: {self.uitkomst}"
+        ids = f"UBL {self.ubl_document_id}"
+        if self.pdf_document_id is not None:
+            ids += f" → PDF {self.pdf_document_id}"
+        kern = f"{self.ubl_bestandsnaam} ({ids}): {self.uitkomst}"
         if self.herkanst:
             kern += " (ná herkansing)"
-        return f"{kern} — {self.reden}" if self.reden else kern
+        if self.reden:
+            kern += f" — {self.reden}"
+        if self.samengevouwen:
+            ids_dubbelen = ", ".join(map(str, self.samengevouwen))
+            kern += f" [dubbel-exemplaren samengevouwen in het gehouden exemplaar: {ids_dubbelen}]"
+        return kern
 
 
 @dataclass
@@ -144,12 +192,20 @@ class NabundelTelling:
     #: Paren die niet meer geprobeerd zijn omdat de run op de noodrem stopte.
     niet_geprobeerd: int = 0
     gestopt_reden: str | None = None
+    #: Aantal byte-identieke dubbel-exemplaren (PDF + UBL) dat in deze run is weggevouwen (dry-run: zou worden) —
+    #: over alle paren die daadwerkelijk samengevoegd/gekoppeld zijn (of, in dry-run, kandidaat zijn).
+    samengevouwen_dubbelen: int = 0
+    #: Aantal paren mét zo'n samenvouw-plan.
+    paren_met_samenvouw: int = 0
     uitkomsten: list[NabundelUitkomst] = field(default_factory=list)
 
     def registreer(self, uitkomst: NabundelUitkomst) -> None:
         self.uitkomsten.append(uitkomst)
         if uitkomst.herkanst:
             self.herkanst += 1
+        if uitkomst.samengevouwen:
+            self.samengevouwen_dubbelen += len(uitkomst.samengevouwen)
+            self.paren_met_samenvouw += 1
         if uitkomst.uitkomst == UITKOMST_SAMENGEVOEGD:
             self.samengevoegd += 1
         elif uitkomst.uitkomst == UITKOMST_GEKOPPELD_VOORSTEL_BEHOUDEN:
@@ -306,6 +362,48 @@ def _vind_verzamelbak_kandidaten() -> list[NabundelKandidaat]:
         return kandidaten
 
 
+def _status_rang(status: DocumentStatus) -> int:
+    """Rangorde van het GEHOUDEN exemplaar bij byte-identieke PDF-dubbelen (07-09): geboekt wint altijd
+    (bewaarplicht, RLZ-boekstuk hangt eraan); daarna alles wat een mens verder heeft gebracht dan het
+    controlescherm; te_controleren/handmatig_afmaken zijn gelijkwaardig (daar beslissen boekvoorstel en ouderdom)."""
+    if status == DocumentStatus.GEBOEKT:
+        return 2
+    if status not in _NABUNDEL_STATUSSEN:
+        return 1
+    return 0
+
+
+def _samenvouw_plan(session, exemplaren: list[Document], soort: str) -> tuple[Document, list[Document]] | str:
+    """Meer dan één document van dezelfde soort (`soort` = "PDF-document"/"UBL-document") met dezelfde naamstam
+    uit hetzelfde intake-bericht in één administratie: byte-identiek (zelfde `sha256_hash`) → (gehouden exemplaar,
+    weg te vouwen exemplaren); anders een twijfel-reden (string). Zie de module-docstring voor de rangorde. Weg te
+    vouwen exemplaren moeten op te_controleren/handmatig_afmaken staan zónder opgeslagen boekvoorstel en zonder
+    eigen beeld/bron — anders heeft een mens (of een eerdere bundeling) dat exemplaar aangeraakt en is samenvouwen
+    een gok."""
+    if len({p.sha256_hash for p in exemplaren}) > 1:
+        return (
+            f"meerduidig: meer dan één {soort} met dezelfde naamstam uit deze e-mail in de administratie "
+            "én de inhoud verschilt (sha256) — geen byte-identiek dubbel"
+        )
+    met_voorstel = set(
+        session.scalars(
+            select(Boekvoorstel.document_id).where(Boekvoorstel.document_id.in_([p.id for p in exemplaren]))
+        )
+    )
+    gesorteerd = sorted(
+        exemplaren,
+        key=lambda p: (-_status_rang(p.status), 0 if p.id in met_voorstel else 1, p.aangemaakt_op, str(p.id)),
+    )
+    gehouden, weg = gesorteerd[0], gesorteerd[1:]
+    for p in weg:
+        if p.status not in _NABUNDEL_STATUSSEN or p.id in met_voorstel or p.bron_opslag_pad is not None:
+            return (
+                f"meerduidig: byte-identieke {soort}-dubbelen, maar meer dan één exemplaar is door een mens "
+                f"aangeraakt (status/boekvoorstel/beeld — o.a. {p.bestandsnaam} {p.id}) — mensenwerk"
+            )
+    return gehouden, weg
+
+
 def _vind_dubbelpaar_kandidaten() -> list[NabundelKandidaat]:
     """Dubbelparen (03-09): per actieve administratie de al toegewezen UBL-DOCUMENTEN op
     te_controleren/handmatig_afmaken die een PDF-document uit HETZELFDE intake-bericht met DEZELFDE
@@ -333,14 +431,14 @@ def _vind_dubbelpaar_kandidaten() -> list[NabundelKandidaat]:
             if not ubls:
                 continue
             pdfs_per_sleutel: dict[tuple[uuid.UUID, str], list[Document]] = {}
-            ubls_per_sleutel: dict[tuple[uuid.UUID, str], int] = {}
+            ubls_per_sleutel: dict[tuple[uuid.UUID, str], list[Document]] = {}
             for d in documenten:
                 assert d.intake_bericht_id is not None
                 sleutel = (d.intake_bericht_id, _stam(d.bestandsnaam))
                 if _is_pdf(d.bestandsnaam):
                     pdfs_per_sleutel.setdefault(sleutel, []).append(d)
                 elif _is_xml(d.bestandsnaam):
-                    ubls_per_sleutel[sleutel] = ubls_per_sleutel.get(sleutel, 0) + 1
+                    ubls_per_sleutel.setdefault(sleutel, []).append(d)
             for ubl in ubls:
                 assert ubl.intake_bericht_id is not None
                 sleutel = (ubl.intake_bericht_id, _stam(ubl.bestandsnaam))
@@ -353,36 +451,55 @@ def _vind_dubbelpaar_kandidaten() -> list[NabundelKandidaat]:
                     "intake_bericht_id": ubl.intake_bericht_id,
                     "ubl_in_administratie": True,
                 }
+
+                def twijfel(reden: str, _basis: dict = basis, _adm: uuid.UUID = adm) -> NabundelKandidaat:
+                    return NabundelKandidaat(
+                        **_basis,
+                        pdf_document_id=None,
+                        pdf_bestandsnaam=None,
+                        administratie_id=_adm,
+                        twijfel_reden=reden,
+                    )
+
+                samen_te_vouwen: list[uuid.UUID] = []
+                # UBL-dubbelen (07-09, symmetrisch): byte-identiek = het gehouden UBL-exemplaar is dé kandidaat, de
+                # overige gaan in zijn plan mee; de niet-gehouden exemplaren zelf leveren geen eigen kandidaat op
+                # (zouden anders dubbel rapporteren) — tenzij het gehouden exemplaar niet nabundelbaar is, dan wordt
+                # dat zichtbaar gemeld (niets verdwijnt stil).
+                ubl_groep = ubls_per_sleutel.get(sleutel, [ubl])
+                if len(ubl_groep) > 1:
+                    ubl_plan = _samenvouw_plan(session, ubl_groep, "UBL-document")
+                    if isinstance(ubl_plan, str):
+                        kandidaten.append(twijfel(ubl_plan))
+                        continue
+                    gehouden_ubl, weg_ubls = ubl_plan
+                    if gehouden_ubl.id != ubl.id:
+                        if gehouden_ubl.status not in _NABUNDEL_STATUSSEN:
+                            kandidaten.append(
+                                twijfel(
+                                    "meerduidig: byte-identiek dubbel UBL-exemplaar, maar het gehouden exemplaar "
+                                    f"{gehouden_ubl.id} is al verder verwerkt (status "
+                                    f"{gehouden_ubl.status.value.replace('_', ' ')}) — mensenwerk"
+                                )
+                            )
+                        continue
+                    samen_te_vouwen.extend(p.id for p in weg_ubls)
+                gehouden = pdfs[0]
                 if len(pdfs) > 1:
-                    kandidaten.append(
-                        NabundelKandidaat(
-                            **basis,
-                            pdf_document_id=None,
-                            pdf_bestandsnaam=None,
-                            administratie_id=adm,
-                            twijfel_reden="meerduidig: meer dan één PDF-document met dezelfde naamstam uit deze e-mail "
-                            "in de administratie",
-                        )
-                    )
-                    continue
-                if ubls_per_sleutel.get(sleutel, 0) > 1:
-                    kandidaten.append(
-                        NabundelKandidaat(
-                            **basis,
-                            pdf_document_id=None,
-                            pdf_bestandsnaam=None,
-                            administratie_id=adm,
-                            twijfel_reden="meerduidig: meer dan één UBL-document met dezelfde naamstam uit deze e-mail "
-                            "in de administratie",
-                        )
-                    )
-                    continue
+                    # PDF-dubbelen (07-09): byte-identiek = samenvouwen vóór de paarvorming, anders twijfel.
+                    plan = _samenvouw_plan(session, pdfs, "PDF-document")
+                    if isinstance(plan, str):
+                        kandidaten.append(twijfel(plan))
+                        continue
+                    gehouden, weg = plan
+                    samen_te_vouwen.extend(p.id for p in weg)
                 kandidaten.append(
                     NabundelKandidaat(
                         **basis,
-                        pdf_document_id=pdfs[0].id,
-                        pdf_bestandsnaam=pdfs[0].bestandsnaam,
+                        pdf_document_id=gehouden.id,
+                        pdf_bestandsnaam=gehouden.bestandsnaam,
                         administratie_id=adm,
+                        samen_te_vouwen=tuple(samen_te_vouwen),
                     )
                 )
     return kandidaten
@@ -472,8 +589,56 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
         if pdf.bron_opslag_pad is not None:
             return overgeslagen(f"tegenhanger heeft al een beeld/bron ({pdf.bron_bestandsnaam})")
         if pdf.status not in _NABUNDEL_STATUSSEN:
-            return overgeslagen(_status_reden(pdf.status))
+            return overgeslagen(
+                _status_reden(pdf.status)
+                + (
+                    f" (gehouden exemplaar van {len(kandidaat.samen_te_vouwen) + 1} byte-identieke PDF's — niets "
+                    "samengevouwen)"
+                    if kandidaat.samen_te_vouwen
+                    else ""
+                )
+            )
         voorstel_behouden = session.get(Boekvoorstel, pdf.id) is not None
+
+        # Dubbel-exemplaren (07-09): de weg te vouwen PDF's/UBL's opnieuw toetsen bínnen deze transactie — het plan
+        # komt uit een eerdere leesronde; intussen kan een mens geklikt hebben. Elke afwijking = overslaan.
+        dubbelen: list[Document] = []
+        for dubbel_id in kandidaat.samen_te_vouwen:
+            dubbel = session.get(Document, dubbel_id)
+            if (
+                dubbel is None
+                or dubbel.id in (ubl.id, pdf.id)
+                or dubbel.administratie_id != adm
+                or dubbel.intake_bericht_id != pdf.intake_bericht_id
+            ):
+                return overgeslagen(f"dubbel-exemplaar {dubbel_id} niet (meer) gevonden bij het gehouden exemplaar")
+            if dubbel.status not in _NABUNDEL_STATUSSEN:
+                return overgeslagen(
+                    f"dubbel-exemplaar {dubbel.bestandsnaam} ({dubbel_id}) is intussen verder verwerkt "
+                    f"(status {dubbel.status.value.replace('_', ' ')}) — niets samengevouwen"
+                )
+            # Byte-identiek aan zíjn gehouden exemplaar: een PDF-dubbel aan de PDF, een UBL-dubbel aan de UBL.
+            referentie_sha = pdf.sha256_hash if _is_pdf(dubbel.bestandsnaam) else ubl.sha256_hash
+            if dubbel.sha256_hash != referentie_sha or _stam(dubbel.bestandsnaam) != _stam(pdf.bestandsnaam):
+                return overgeslagen(
+                    f"dubbel-exemplaar {dubbel_id} is niet (meer) byte-identiek aan het gehouden exemplaar"
+                )
+            if dubbel.bron_opslag_pad is not None or dubbel.samengevoegd_in_id is not None:
+                return overgeslagen(f"dubbel-exemplaar {dubbel_id} draagt intussen een beeld/bron of verwijzing")
+            if session.get(Boekvoorstel, dubbel.id) is not None:
+                return overgeslagen(
+                    f"dubbel-exemplaar {dubbel.bestandsnaam} ({dubbel_id}) heeft intussen een opgeslagen "
+                    "boekvoorstel — mensenwerk, niets samengevouwen"
+                )
+            dubbelen.append(dubbel)
+        n_pdf = sum(1 for d in dubbelen if _is_pdf(d.bestandsnaam))
+        n_ubl = len(dubbelen) - n_pdf
+        samenvouw_tekst = (
+            f" + {len(dubbelen)} byte-identiek(e) dubbel-exemplaar/-exemplaren ({n_pdf} PDF, {n_ubl} UBL) "
+            f"samengevouwen in het gehouden exemplaar {pdf.bestandsnaam} ({pdf.id})"
+            if dubbelen
+            else ""
+        )
 
         if dry_run:
             return NabundelUitkomst(
@@ -487,7 +652,9 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                     if voorstel_behouden
                     else f"samenvoegen + her-extractie uit de UBL (tegenhanger {pdf.bestandsnaam}, {pdf.status.value})"
                 )
-                + (" [dubbelpaar: UBL-document → samengevoegd]" if kandidaat.ubl_in_administratie else ""),
+                + (" [dubbelpaar: UBL-document → samengevoegd]" if kandidaat.ubl_in_administratie else "")
+                + samenvouw_tekst,
+                samengevouwen=tuple(d.id for d in dubbelen),
             )
 
         ubl_inhoud = opslag.lezen(pad=ubl.opslag_pad)
@@ -500,6 +667,49 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 pdf_document_id=pdf.id,
                 uitkomst=UITKOMST_MISLUKT,
                 reden=f"geen geldige UBL — niet gekoppeld: {exc}",
+                administratie_id=adm,
+            )
+
+        correlatie_id = uuid.uuid4()
+
+        # 0. Dubbel-exemplaren (07-09): byte-identieke PDF's/UBL's wegvouwen in het uiteindelijke document (het
+        #    gehouden PDF-exemplaar) — terminaal `samengevoegd` mét verwijzing, vorige status in het tijdlijn-detail
+        #    (ongedaan-route), audit; het bestand van het dubbel blijft op de opslag staan (nooit verwijderen).
+        for dubbel in dubbelen:
+            dubbel_oud = {"status": dubbel.status.value, "samengevoegd_in_id": None}
+            dubbel_soort = "PDF" if _is_pdf(dubbel.bestandsnaam) else "UBL"
+            dubbel.samengevoegd_in_id = pdf.id
+            _schrijf_overgang(
+                session,
+                document=dubbel,
+                naar=DocumentStatus.SAMENGEVOEGD,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    "samengevoegd_in": str(pdf.id),
+                    "leidend_bestandsnaam": pdf.bestandsnaam,
+                    NABUNDEL_SAMENVOUW_SLEUTEL: True,
+                    NABUNDEL_ADMINISTRATIE_SLEUTEL: str(adm),
+                    NABUNDEL_VORIGE_STATUS_SLEUTEL: dubbel.status.value,
+                    "sha256_hash": dubbel.sha256_hash,
+                    "reden": f"nabundel-nazorg: byte-identiek dubbel {dubbel_soort}-exemplaar (zelfde e-mail, zelfde "
+                    "naam, zelfde sha256) samengevouwen in het gehouden exemplaar van dezelfde factuur — niets "
+                    "verwijderd",
+                },
+            )
+            record_audit_event(
+                session,
+                actor_id=SYSTEEM_ACTOR_ID,
+                module="boekhouding",
+                tabel="document",
+                record_id=dubbel.id,
+                actie=AUDIT_DUBBEL_SAMENGEVOUWEN,
+                correlatie_id=correlatie_id,
+                oude_waarde=dubbel_oud,
+                nieuwe_waarde={
+                    "status": DocumentStatus.SAMENGEVOEGD.value,
+                    "samengevoegd_in_id": str(pdf.id),
+                    "sha256_hash": dubbel.sha256_hash,
+                },
                 administratie_id=adm,
             )
 
@@ -522,10 +732,19 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
             if kandidaat.ubl_in_administratie
             else "UBL uit dezelfde e-mail"
         )
-        reden_pdf = f"nabundel-nazorg: {herkomst} gekoppeld als databron, deze PDF is het beeld" + (
-            " — opgeslagen boekvoorstel blijft ongewijzigd (geen her-extractie)"
-            if voorstel_behouden
-            else " — velden opnieuw uit de UBL gelezen"
+        reden_pdf = (
+            f"nabundel-nazorg: {herkomst} gekoppeld als databron, deze PDF is het beeld"
+            + (
+                " — opgeslagen boekvoorstel blijft ongewijzigd (geen her-extractie)"
+                if voorstel_behouden
+                else " — velden opnieuw uit de UBL gelezen"
+            )
+            + (
+                f" — {len(dubbelen)} byte-identiek(e) dubbel-exemplaar/-exemplaren ({n_pdf} PDF, {n_ubl} UBL) uit "
+                "dezelfde e-mail hierin samengevouwen"
+                if dubbelen
+                else ""
+            )
         )
         _tijdlijn_notitie(
             session,
@@ -538,6 +757,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 "vorige_sha256_hash": oud["sha256_hash"],
                 "voorstel_behouden": voorstel_behouden,
                 "dubbelpaar": kandidaat.ubl_in_administratie,
+                "samengevouwen_dubbelen": [str(d.id) for d in dubbelen],
                 "reden": reden_pdf,
             },
         )
@@ -566,7 +786,6 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
         _schrijf_overgang(
             session, document=ubl, naar=DocumentStatus.SAMENGEVOEGD, actor_id=SYSTEEM_ACTOR_ID, detail=overgang_detail
         )
-        correlatie_id = uuid.uuid4()
         record_audit_event(
             session,
             actor_id=SYSTEEM_ACTOR_ID,
@@ -584,6 +803,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 "samengevoegd_document_id": str(ubl.id),
                 "voorstel_behouden": voorstel_behouden,
                 "dubbelpaar": kandidaat.ubl_in_administratie,
+                "samengevouwen_dubbelen": [str(d.id) for d in dubbelen],
             },
             administratie_id=adm,
         )
@@ -624,7 +844,9 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
             "opgeslagen boekvoorstel aanwezig — alleen gekoppeld, voorstel ongewijzigd"
             if voorstel_behouden
             else f"status nu {eind_status.value if eind_status else '?'}"
-        ),
+        )
+        + samenvouw_tekst,
+        samengevouwen=tuple(d.id for d in dubbelen),
     )
 
 
@@ -716,6 +938,29 @@ def _jongste_samengevoegd_overgang(session, ubl_document_id: uuid.UUID) -> Docum
         )
         .order_by(DocumentGebeurtenis.tijdstip.desc())
     ).first()
+
+
+def _is_samenvouw_rij(session, document: Document) -> bool:
+    """True als deze `samengevoegd`-rij een weggevouwen byte-identiek PDF-dubbel is (07-09) — herkend aan
+    het tijdlijn-detail van zijn jongste samengevoegd-overgang, nooit aan de bestandsnaam alleen."""
+    rij = _jongste_samengevoegd_overgang(session, document.id)
+    return bool(rij is not None and (rij.detail or {}).get(NABUNDEL_SAMENVOUW_SLEUTEL) is True)
+
+
+def nagebundelde_ubl_rij(session, leidend_document_id: uuid.UUID, administratie_id: uuid.UUID | None = None):
+    """De nagebundelde UBL-rij die naar `leidend_document_id` verwijst — NIET een weggevouwen PDF-dubbel
+    (07-09: meerdere `samengevoegd`-rijen kunnen naar hetzelfde gehouden exemplaar verwijzen). `administratie_id`
+    beperkt tot rijen in die administratie (dubbelpaar); None = platformbreed lezen binnen de huidige scope.
+    Geeft None als er geen nagebundelde UBL-rij is."""
+    query = select(Document).where(
+        Document.samengevoegd_in_id == leidend_document_id, Document.status == DocumentStatus.SAMENGEVOEGD
+    )
+    if administratie_id is not None:
+        query = query.where(Document.administratie_id == administratie_id)
+    for rij in session.scalars(query.order_by(Document.aangemaakt_op)):
+        if not _is_samenvouw_rij(session, rij):
+            return rij
+    return None
 
 
 def nagebundelde_administratie(session, ubl_document_id: uuid.UUID) -> uuid.UUID | None:
@@ -814,6 +1059,46 @@ def maak_nabundeling_ongedaan(
                 "was_samengevoegd_in": str(leidend.id),
             },
         )
+        # Dubbel-exemplaren (07-09): de in dezelfde run weggevouwen byte-identieke PDF's/UBL's komen óók terug, elk
+        # naar zijn status van vóór de run — de hele nabundeling is één handeling, dus ongedaan = de hele vorige stand.
+        teruggezette_dubbelen: list[str] = []
+        for dubbel in session.scalars(
+            select(Document)
+            .where(
+                Document.samengevoegd_in_id == leidend.id,
+                Document.status == DocumentStatus.SAMENGEVOEGD,
+                Document.administratie_id == administratie_id,
+            )
+            .order_by(Document.aangemaakt_op)
+        ).all():
+            if not _is_samenvouw_rij(session, dubbel):
+                continue
+            dubbel_terug = _status_van_voor_nabundeling(session, dubbel)
+            dubbel.samengevoegd_in_id = None
+            _schrijf_overgang(
+                session,
+                document=dubbel,
+                naar=dubbel_terug,
+                actor_id=actor_id,
+                detail={
+                    "reden": "nabundeling ongedaan gemaakt — dit dubbele exemplaar staat weer los in de "
+                    "werkvoorraad (byte-identiek aan het exemplaar waarin het was samengevouwen)",
+                    "was_samengevoegd_in": str(leidend.id),
+                },
+            )
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="document",
+                record_id=dubbel.id,
+                actie=AUDIT_DUBBEL_SAMENVOUW_ONGEDAAN,
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={"status": DocumentStatus.SAMENGEVOEGD.value, "samengevoegd_in_id": str(leidend.id)},
+                nieuwe_waarde={"status": dubbel_terug.value, "samengevoegd_in_id": None},
+                administratie_id=administratie_id,
+            )
+            teruggezette_dubbelen.append(str(dubbel.id))
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -830,6 +1115,7 @@ def maak_nabundeling_ongedaan(
                 "bron_bestandsnaam": None,
                 "teruggezet_document_id": str(ubl.id),
                 "teruggezet_naar_status": terug_naar.value,
+                "teruggezette_dubbelen": teruggezette_dubbelen,
             },
             administratie_id=administratie_id,
         )

@@ -752,3 +752,326 @@ class TestVerbindingsBlip:
         monkeypatch.setattr(nabundelen, "parseer_ubl_factuur", echte_parser)
         telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
         assert telling.samengevoegd == 4
+
+
+# ---- PDF-dubbelen samenvouwen + afgewezen terminaal (besluiten Peter 07-09) ------------------------------
+
+
+def _kopieer_document(admin_engine: Engine, pdf_id: uuid.UUID, *, status: str = "te_controleren") -> uuid.UUID:
+    """Herschept de cloud-stand van de dubbele deel-mails 02-09: een TWEEDE, byte-identiek document (PDF of UBL)
+    (zelfde sha256, zelfde intake-bericht, zelfde naam) in dezelfde administratie, iets jonger. Via SQL omdat
+    `upload_document` dezelfde bytes uit hetzelfde bericht bewust als hetzelfde document teruggeeft."""
+    nieuw = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO boekhouding.document (id, administratie_id, bron, soort, bestandsnaam, sha256_hash, "
+                "status, opslag_pad, intake_bericht_id, afzender_hint, tenaamstelling, aangemaakt_op) "
+                "SELECT :nieuw, administratie_id, bron, soort, bestandsnaam, sha256_hash, :status, opslag_pad, "
+                "intake_bericht_id, afzender_hint, tenaamstelling, aangemaakt_op + interval '1 second' "
+                "FROM boekhouding.document WHERE id = :id"
+            ),
+            {"nieuw": nieuw, "status": status, "id": pdf_id},
+        )
+    return nieuw
+
+
+class TestPdfDubbelen:
+    def test_byte_identieke_dubbel_uit_dezelfde_mail_wordt_samengevouwen_en_paar_gebundeld(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        dubbel_id = _kopieer_document(admin_engine, pdf_id)
+        assert _document(admin_engine, dubbel_id)["sha256_hash"] == _document(admin_engine, pdf_id)["sha256_hash"]
+        voor = _document(admin_engine, pdf_id)
+
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.als_dict() == {
+            "kandidaten": 1,
+            "samengevoegd": 1,
+            "gekoppeld_voorstel_behouden": 0,
+            "overgeslagen": 0,
+            "mislukt": 0,
+        }
+        assert telling.samengevouwen_dubbelen == 1 and telling.paren_met_samenvouw == 1
+        uitkomst = telling.uitkomsten[0]
+        # Het OUDSTE exemplaar is het gehouden exemplaar (= de tegenhanger), het jongere is weggevouwen.
+        assert uitkomst.pdf_document_id == pdf_id and uitkomst.samengevouwen == (dubbel_id,)
+        assert str(dubbel_id) in uitkomst.als_regel() and f"UBL {ubl_id}" in uitkomst.als_regel()
+
+        # Gehouden exemplaar = HET document: UBL data, PDF beeld, voorstel uit de UBL.
+        na = _document(admin_engine, pdf_id)
+        assert na["bestandsnaam"] == UBL_NAAM and na["bron_opslag_pad"] == voor["opslag_pad"]
+        assert na["status"] == "te_controleren"
+        # Weggevouwen dubbel: terminaal samengevoegd mét verwijzing naar het gehouden exemplaar, in de
+        # administratie gebleven (nooit verwijderd), eigen bestand/sha ongewijzigd.
+        dubbel = _document(admin_engine, dubbel_id)
+        assert dubbel["status"] == "samengevoegd" and dubbel["samengevoegd_in_id"] == pdf_id
+        assert dubbel["administratie_id"] == administratie_id and dubbel["bestandsnaam"] == PDF_NAAM
+        assert dubbel["sha256_hash"] == voor["sha256_hash"] and dubbel["bron_opslag_pad"] is None
+        assert nabundelen.AUDIT_DUBBEL_SAMENGEVOUWEN in _audit_acties(admin_engine, dubbel_id)
+        dubbel_details = _tijdlijn_details(administratie_id, dubbel_id)
+        assert any(
+            d.get(nabundelen.NABUNDEL_SAMENVOUW_SLEUTEL) is True
+            and d.get("vorige_status") == "te_controleren"
+            and d.get("samengevoegd_in") == str(pdf_id)
+            for d in dubbel_details
+        )
+        # De UBL verwijst ook naar het gehouden exemplaar; de tijdlijn van het gehouden exemplaar noemt de dubbel.
+        assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == pdf_id
+        pdf_details = _tijdlijn_details(administratie_id, pdf_id)
+        assert any(d.get("samengevouwen_dubbelen") == [str(dubbel_id)] for d in pdf_details)
+        # Werkvoorraad: precies één open document over.
+        klant = documenten_service.werkvoorraad_overzicht(administratie_ids_met_naam=[(administratie_id, "X")])[0]
+        assert klant.te_controleren == 1
+        # Idempotent.
+        tweede = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert tweede.kandidaten == 0 and tweede.samengevouwen_dubbelen == 0
+
+    def test_verschillende_inhoud_blijft_meerduidig(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        bericht_id, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        tweede_pdf = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=PDF_NAAM,
+            inhoud=bouw_pdf(1) + b"tweede exemplaar, andere bytes",
+            actor_id=gescoopte_gebruiker,
+            intake_bericht_id=bericht_id,
+        ).document_id
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, tweede_pdf)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.overgeslagen == 1 and telling.samengevouwen_dubbelen == 0
+        assert "meerduidig" in (telling.uitkomsten[0].reden or "") and "sha256" in (telling.uitkomsten[0].reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_byte_identiek_uit_een_andere_mail_wordt_niet_samengevouwen(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        pdf_bytes = documenten_service.haal_bijlage_op(administratie_id=administratie_id, document_id=pdf_id)[0]
+        ander_bericht = uuid.uuid4()
+        with scoped_session(None, actor_id=gescoopte_gebruiker) as session:
+            session.add(
+                IntakeBericht(
+                    id=ander_bericht,
+                    message_id=f"<{ander_bericht}@test.local>",
+                    afzender="administratie@universal-steigerbouw.nl",
+                    onderwerp="RLZ export (herhaald)",
+                    verwerkt_door=gescoopte_gebruiker,
+                    detail={"bijlagen": []},
+                )
+            )
+        ander_pdf = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=PDF_NAAM,
+            inhoud=pdf_bytes,
+            actor_id=gescoopte_gebruiker,
+            intake_bericht_id=ander_bericht,
+        ).document_id
+        assert ander_pdf != pdf_id
+        ander_voor = _document(admin_engine, ander_pdf)
+        assert ander_voor["sha256_hash"] == _document(admin_engine, pdf_id)["sha256_hash"]
+
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        # Het paar uit de eigen mail is eenduidig; de identieke PDF uit de ándere mail blijft onaangeroerd.
+        assert telling.samengevoegd == 1 and telling.samengevouwen_dubbelen == 0
+        assert telling.uitkomsten[0].pdf_document_id == pdf_id and telling.uitkomsten[0].samengevouwen == ()
+        assert _document(admin_engine, ander_pdf) == ander_voor
+        assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == pdf_id
+
+    def test_afgewezen_dubbel_ontgrendelt_het_paar(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        bericht_id, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        tweede_pdf = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=PDF_NAAM,
+            inhoud=bouw_pdf(1) + b"ander exemplaar",
+            actor_id=gescoopte_gebruiker,
+            intake_bericht_id=bericht_id,
+        ).document_id
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).overgeslagen == 1  # meerduidig (andere bytes)
+        # Kantoor wijst het tweede exemplaar af (mét reden) — beslispunt 3: afgewezen telt niet meer mee.
+        _zet_status(admin_engine, tweede_pdf, "afgewezen")
+        afgewezen_voor = _document(admin_engine, tweede_pdf)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.samengevoegd == 1 and telling.samengevouwen_dubbelen == 0
+        assert telling.uitkomsten[0].pdf_document_id == pdf_id
+        assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == pdf_id
+        assert _document(admin_engine, tweede_pdf) == afgewezen_voor  # afgewezen exemplaar blijft zichtbaar staan
+
+    def test_geboekt_exemplaar_wint_en_paar_wordt_overgeslagen_zonder_samenvouwen(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        geboekt_id = _kopieer_document(admin_engine, pdf_id, status="geboekt")  # jonger, maar geboekt
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, geboekt_id)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.overgeslagen == 1 and telling.samengevouwen_dubbelen == 0
+        uitkomst = telling.uitkomsten[0]
+        assert uitkomst.pdf_document_id == geboekt_id  # geboekt wint altijd als gehouden exemplaar
+        assert "al geboekt" in (uitkomst.reden or "") and "niets samengevouwen" in (uitkomst.reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_exemplaar_met_opgeslagen_boekvoorstel_wint(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        beoordeeld_id = _kopieer_document(admin_engine, pdf_id)  # jonger, maar door een mens beoordeeld
+        boekvoorstel_service.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=beoordeeld_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=None,
+            referentie="MENS-DUBBEL",
+            factuurdatum=None,
+            totaalbedrag=Decimal("121.00"),
+            regels=[],
+        )
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.gekoppeld_voorstel_behouden == 1 and telling.samengevouwen_dubbelen == 1
+        uitkomst = telling.uitkomsten[0]
+        assert uitkomst.pdf_document_id == beoordeeld_id and uitkomst.samengevouwen == (pdf_id,)
+        # Het beoordeelde exemplaar is het document: UBL gekoppeld, voorstel intact; het oudere is weggevouwen.
+        voorstel = boekvoorstel_service.haal_boekvoorstel_op(
+            administratie_id=administratie_id, document_id=beoordeeld_id
+        )
+        assert voorstel.opgeslagen is True and voorstel.referentie == "MENS-DUBBEL"
+        assert _document(admin_engine, beoordeeld_id)["bestandsnaam"] == UBL_NAAM
+        oud = _document(admin_engine, pdf_id)
+        assert oud["status"] == "samengevoegd" and oud["samengevoegd_in_id"] == beoordeeld_id
+        assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == beoordeeld_id
+
+    def test_twee_beoordeelde_exemplaren_is_mensenwerk(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        dubbel_id = _kopieer_document(admin_engine, pdf_id)
+        for d in (pdf_id, dubbel_id):
+            boekvoorstel_service.sla_boekvoorstel_op(
+                administratie_id=administratie_id,
+                document_id=d,
+                actor_id=gescoopte_gebruiker,
+                vendor_id=None,
+                referentie=f"MENS-{d}",
+                factuurdatum=None,
+                totaalbedrag=Decimal("1.00"),
+                regels=[],
+            )
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, dubbel_id)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert telling.overgeslagen == 1 and "mensenwerk" in (telling.uitkomsten[0].reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_dry_run_toont_samenvouw_plan_en_schrijft_niets(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        dubbel_id = _kopieer_document(admin_engine, pdf_id)
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, dubbel_id)}
+        telling = nabundelen.nabundel_verzamelbak(dry_run=True, ook_toegewezen=True)
+        assert telling.kandidaten == 1 and telling.samengevoegd == 0
+        assert telling.samengevouwen_dubbelen == 1 and telling.paren_met_samenvouw == 1
+        uitkomst = telling.uitkomsten[0]
+        assert uitkomst.uitkomst == nabundelen.UITKOMST_KANDIDAAT and uitkomst.samengevouwen == (dubbel_id,)
+        assert "samengevouwen in het gehouden exemplaar" in (uitkomst.reden or "")
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+        assert nabundelen.AUDIT_DUBBEL_SAMENGEVOUWEN not in _audit_acties(admin_engine, dubbel_id)
+
+    def test_ongedaan_zet_ook_de_weggevouwen_dubbel_terug(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        dubbel_id = _kopieer_document(admin_engine, pdf_id, status="handmatig_afmaken")
+        voor = {d: _document(admin_engine, d) for d in (pdf_id, dubbel_id)}
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).samengevouwen_dubbelen == 1
+        assert _document(admin_engine, dubbel_id)["status"] == "samengevoegd"
+
+        r = client.post(f"/verzamelbak/{pdf_id}/samenvoegen-ongedaan", headers=_bearer(gescoopte_gebruiker))
+        assert r.status_code == 200, r.text
+        assert r.json()["teruggezet_document_id"] == str(ubl_id)  # de UBL-rij, niet de weggevouwen PDF
+        # Gehouden exemplaar weer een gewone PDF; UBL weer los; de dubbel terug naar zíjn vorige status.
+        na = _document(admin_engine, pdf_id)
+        assert na["bestandsnaam"] == PDF_NAAM and na["sha256_hash"] == voor[pdf_id]["sha256_hash"]
+        assert na["bron_opslag_pad"] is None
+        assert _document(admin_engine, ubl_id)["status"] == "te_controleren"
+        dubbel = _document(admin_engine, dubbel_id)
+        assert dubbel["status"] == "handmatig_afmaken" and dubbel["samengevoegd_in_id"] is None
+        assert dubbel["bestandsnaam"] == PDF_NAAM and dubbel["administratie_id"] == administratie_id
+        assert nabundelen.AUDIT_DUBBEL_SAMENVOUW_ONGEDAAN in _audit_acties(admin_engine, dubbel_id)
+        # En opnieuw nabundelen vouwt 'm weer weg (herhaalbaar).
+        opnieuw = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        assert opnieuw.samengevoegd == 1 and opnieuw.samengevouwen_dubbelen == 1
+        assert _document(admin_engine, dubbel_id)["status"] == "samengevoegd"
+
+    def test_byte_identieke_ubl_dubbel_wordt_symmetrisch_samengevouwen(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        # Cloud-stand 07-09 (5 stammen): 2 identieke UBL's + 2 identieke PDF's uit dezelfde mail, alles te_controleren.
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        ubl_dubbel = _kopieer_document(admin_engine, ubl_id)
+        pdf_dubbel = _kopieer_document(admin_engine, pdf_id)
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        # Eén kandidaat (het gehouden = oudste UBL-exemplaar), niet twee; beide dubbelen in zijn plan.
+        assert telling.kandidaten == 1 and telling.samengevoegd == 1 and telling.overgeslagen == 0
+        uitkomst = telling.uitkomsten[0]
+        assert uitkomst.ubl_document_id == ubl_id and uitkomst.pdf_document_id == pdf_id
+        assert set(uitkomst.samengevouwen) == {ubl_dubbel, pdf_dubbel} and telling.samengevouwen_dubbelen == 2
+        assert "1 PDF, 1 UBL" in (uitkomst.reden or "")
+        for dubbel in (ubl_dubbel, pdf_dubbel):
+            rij = _document(admin_engine, dubbel)
+            assert rij["status"] == "samengevoegd" and rij["samengevoegd_in_id"] == pdf_id
+            assert nabundelen.AUDIT_DUBBEL_SAMENGEVOUWEN in _audit_acties(admin_engine, dubbel)
+        assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == pdf_id
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == UBL_NAAM
+        klant = documenten_service.werkvoorraad_overzicht(administratie_ids_met_naam=[(administratie_id, "X")])[0]
+        assert klant.te_controleren == 1
+        assert nabundelen.nabundel_verzamelbak(ook_toegewezen=True).kandidaten == 0
+        # Ongedaan zet alle drie terug: UBL, UBL-dubbel en PDF-dubbel weer los; het gehouden exemplaar weer een PDF.
+        r = client.post(f"/verzamelbak/{pdf_id}/samenvoegen-ongedaan", headers=_bearer(gescoopte_gebruiker))
+        assert r.status_code == 200, r.text
+        assert r.json()["teruggezet_document_id"] == str(ubl_id)
+        for d in (ubl_id, ubl_dubbel, pdf_dubbel):
+            rij = _document(admin_engine, d)
+            assert rij["status"] == "te_controleren" and rij["samengevoegd_in_id"] is None
+        assert _document(admin_engine, pdf_id)["bestandsnaam"] == PDF_NAAM
+
+    def test_ubl_dubbelen_met_verschillende_inhoud_blijven_meerduidig(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        bericht_id, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        tweede_ubl = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=UBL_NAAM,
+            inhoud=bouw_ubl(klant="Universal Steigerbouw B.V.", factuurnummer="2080141234", leverancier="Ander"),
+            actor_id=gescoopte_gebruiker,
+            intake_bericht_id=bericht_id,
+        ).document_id
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, tweede_ubl)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        # Beide UBL's rapporteren als meerduidig (verschillende inhoud) — niets samengevouwen, niets geraakt.
+        assert telling.kandidaten == 2 and telling.overgeslagen == 2 and telling.samengevouwen_dubbelen == 0
+        assert all("UBL-document" in (u.reden or "") and "sha256" in (u.reden or "") for u in telling.uitkomsten)
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot
+
+    def test_gehouden_ubl_exemplaar_dat_verder_is_maakt_dubbel_zichtbaar_mensenwerk(
+        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
+        verder = _kopieer_document(admin_engine, ubl_id, status="klaar_om_te_boeken")  # jonger, maar verder verwerkt
+        voor = {d: _document(admin_engine, d) for d in (ubl_id, pdf_id, verder)}
+        telling = nabundelen.nabundel_verzamelbak(ook_toegewezen=True)
+        # Het gehouden UBL-exemplaar (rang: verder verwerkt) is zelf geen kandidaat; het andere wordt niet stil
+        # overgeslagen maar zichtbaar als mensenwerk gemeld.
+        assert telling.kandidaten == 1 and telling.overgeslagen == 1
+        assert telling.uitkomsten[0].ubl_document_id == ubl_id
+        reden = telling.uitkomsten[0].reden or ""
+        assert "verder verwerkt" in reden and str(verder) in reden
+        for d, snapshot in voor.items():
+            assert _document(admin_engine, d) == snapshot

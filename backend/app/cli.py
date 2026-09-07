@@ -244,6 +244,12 @@ def _verzamelbak_nabundelen(args: argparse.Namespace) -> int:
         + (f", {telling.herkanst} ná herkansing geslaagd" if telling.herkanst else "")
         + (f", {telling.niet_geprobeerd} niet geprobeerd" if telling.niet_geprobeerd else "")
     )
+    if telling.paren_met_samenvouw:
+        # Dubbel-exemplaren (07-09): byte-identieke PDF's/UBL's uit dezelfde e-mail, weggevouwen in het gehouden exemplaar.
+        print(
+            f"  dubbel-exemplaren samengevouwen{' (plan)' if args.dry_run else ''}: {telling.samengevouwen_dubbelen} "
+            f"exemplaar/exemplaren in {telling.paren_met_samenvouw} paar/paren"
+        )
     per_reden = telling.overgeslagen_per_reden()
     if per_reden:
         print("  overgeslagen per reden:")
@@ -2139,7 +2145,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Dubbelparen (03-09): óók een al toegewezen UBL-DOCUMENT dat naast zijn PDF-tegenhanger in dezelfde "
         "administratie staat (zelfde e-mail + naamstam) in dat PDF-document nabundelen; het UBL-document gaat naar "
-        "samengevoegd (nooit verwijderd). Zelfde poorten aan beide kanten.",
+        "samengevoegd (nooit verwijderd). Zelfde poorten aan beide kanten. Byte-identieke PDF-dubbelen uit dezelfde "
+        "e-mail (07-09) worden vóór de paarvorming samengevouwen in het gehouden exemplaar (geboekt > verder verwerkt "
+        "> opgeslagen boekvoorstel > oudste); afgewezen exemplaren tellen niet meer mee.",
     )
     nabundel_parser.add_argument(
         "--administratie",

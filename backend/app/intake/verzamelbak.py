@@ -700,24 +700,15 @@ def maak_samenvoegen_ongedaan(
         )
         nagebundeld: tuple[uuid.UUID, uuid.UUID] | None = None
         if not in_bak:
-            ubl_rij = session.scalars(
-                select(Document).where(
-                    Document.samengevoegd_in_id == document_id, Document.status == DocumentStatus.SAMENGEVOEGD
-                )
-            ).first()
+            # De UBL-rij, níét een weggevouwen byte-identiek PDF-dubbel dat óók naar dit document verwijst (07-09).
+            ubl_rij = nabundelen.nagebundelde_ubl_rij(session, document_id)
             adm = nabundelen.nagebundelde_administratie(session, ubl_rij.id) if ubl_rij is not None else None
             if ubl_rij is not None and adm is not None:
                 nagebundeld = (ubl_rij.id, adm)
     if not in_bak and nagebundeld is None:
         for adm in administratie_kandidaten:
             with scoped_session(adm, actor_id=actor_id) as session:
-                ubl_rij = session.scalars(
-                    select(Document).where(
-                        Document.samengevoegd_in_id == document_id,
-                        Document.status == DocumentStatus.SAMENGEVOEGD,
-                        Document.administratie_id == adm,
-                    )
-                ).first()
+                ubl_rij = nabundelen.nagebundelde_ubl_rij(session, document_id, administratie_id=adm)
                 if ubl_rij is not None:
                     nagebundeld = (ubl_rij.id, adm)
             if nagebundeld is not None:
