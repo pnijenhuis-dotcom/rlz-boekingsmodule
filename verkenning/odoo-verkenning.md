@@ -605,3 +605,28 @@ boekdatum-verschuiving bij een afgesloten periode → kanteldatum vrij te wijzig
 TEST-paren op company 1 (norm: blijven staan): BILL/2026/09/0002 ↔ RBILL/2026/09/0006, BILL/2026/08/0002 ↔ RBILL/2026/09/0007,
 BILL/2026/01/0003 ↔ RBILL/2026/09/0008 (+ de A2-paren uit §9.1). De dev-testadministratie draait sindsdien op Odoo (company 1).
 De echte Universal-Steigerbouw-overstap volgt uitsluitend op een expliciete GO van Peter.
+
+## §10 Documenten-reconciliatie tegen Odoo — LIVE 07-09-2026 (fixrun blok A12, strikt read-only)
+
+Aanleiding: de vier reconciliatie-blokken toetsten uitsluitend Reeleezee; vóór de Universal-overstap moet het
+documenten-blok via de boekhoud-port (`InkoopPort.toets_geboekt`) naar de adapter van de administratie. Bewijs op
+**company 1 (Universal Steigerbouw B.V.) via de dev-administratie `faae29c5` (op Odoo sinds de generale 04-09)** —
+alleen `account.move` reads, geen writes. Log: `verkenning/output/odoo_reconciliatie_toets_2026-09-07.jsonl` (gitignored).
+
+| # | Toets | Uitkomst (terug-gelezen uit Odoo) |
+|---|---|---|
+| 1 | `reconcilieer_administratie(faae29c5)` via `OdooInkoopPort` | backend `odoo`, 9 gecontroleerd, **6 overgeslagen** (RLZ-verleden: boekstuk `RLZ-04-…` zonder Odoo-spoor → "niet van toepassing"), **0 afwijkingen** — de drie generale-documenten (BILL/2026/09/0002, BILL/2026/08/0002, BILL/2026/01/0003) staan posted en hun reversal (RBILL …/0006/0007/0008) is onze EIGEN tegenboeking (`odoo_document_koppeling soort=tegenboeking`) → groen |
+| 2 | `beoordeel_move(3087 RBILL/2026/09/0003)` — posted, geen reversal | bestaat, geboekt, niet teruggedraaid, € 10.323,49, state posted → **groen** |
+| 3 | `beoordeel_move(3049 BILL/2026/08/0001)` — STAP-0-artefact, reversal 3051 zonder eigen koppeling | **teruggedraaid** ("onbekende reversal(s) 3051 op het origineel"), payment_state reversed → afwijking `teruggedraaid_in_odoo` |
+| 4 | `beoordeel_move(3101 BILL/2026/09/0002)` mét eigen tegenboeking {3102} vs zónder | mét: groen; zónder: teruggedraaid — de eigen-tegenboeking-uitzondering werkt exact op de koppeling-rijen |
+| 5 | `toets_geboekt` op de drie generale-documenten (koppeling-pad) | bestaat/geboekt, `extern_id` 3101/3103/3105, `eigen_tegenboekingen` [3102]/[3104]/[3106] → geen afwijking |
+| 6 | `toets_geboekt` op een onbekend document zonder boekstuk | `bestaat=False` "geen Odoo-document bekend … (geen koppeling, geen herkenning in invoice_origin)" → `ontbreekt_in_odoo` |
+| 7 | `toets_geboekt` met boekstuk `RLZ-04-00002006`, geen Odoo-spoor | `van_toepassing=False` "geboekt in Reeleezee vóór de overstap" → overgeslagen, geen bevinding |
+
+**Feiten/keuzes:** (a) posted = geboekt; draft/cancel = `niet_geboekt_in_odoo`; (b) "teruggedraaid" = `reversal_move_ids` bevat
+een move die niet in onze tegenboeking-koppelingen zit (of `payment_state == reversed` zonder eigen tegenboeking) — het
+RLZ-equivalent van "iemand corrigeerde buiten de app om"; (c) bedrag = `amount_total` (cent-exact) vs boekvoorstel-totaal,
+boekstuk = `name`; (d) `company_id` ≠ verwacht = `ToetsMislukt` (KRITIEK, geen stille afwijking); (e) bank/omzet/doorbelasting
+blijven RLZ-only en slaan een Odoo-administratie zichtbaar over (`OVERGESLAGEN <id>: niet van toepassing — backend odoo`).
+Open beslispunt Peter: het RLZ-verleden van een overgestapte administratie alsnog toetsen via de bewaarde RLZ-credential
+(`rlz_admin_id_voor_overstap`) i.p.v. overslaan — zie BESLISSINGEN "A12".

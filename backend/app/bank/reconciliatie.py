@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.bank.models import AfletterOpdrachtStatus, BankAfletterOpdracht, BankBoeking, BankBoekingStatus
-from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -135,12 +134,11 @@ def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None =
 def reconcilieer_bank_alle_administraties() -> dict[uuid.UUID, BankReconciliatieRapport | str]:
     """Zelfde tolerantie-patroon als de documenten-reconciliatie: één kapotte administratie
     stopt de rest niet."""
-    with scoped_session(None) as session:
-        administratie_ids = [
-            row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
-        ]
+    # RLZ-only blok (A12, 07-09): een Odoo-administratie wordt zichtbaar overgeslagen, nooit als fout gemeld.
+    from app.backends.registry import RLZ_ONLY_OVERGESLAGEN, actieve_administraties_per_backend
 
-    resultaten: dict[uuid.UUID, BankReconciliatieRapport | str] = {}
+    administratie_ids, odoo_ids = actieve_administraties_per_backend()
+    resultaten: dict[uuid.UUID, BankReconciliatieRapport | str] = {aid: RLZ_ONLY_OVERGESLAGEN for aid in odoo_ids}
     for administratie_id in administratie_ids:
         try:
             resultaten[administratie_id] = reconcilieer_bank(administratie_id=administratie_id)

@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
-from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.omzet.models import OmzetBoeking, OmzetBoekingStatus
 from app.rlz.client import RlzApiError, RlzClient
@@ -118,17 +117,17 @@ class OmzetReconciliatieResultaat:
 
     afwijkingen: list[OmzetAfwijking]
     fouten: dict[uuid.UUID, str]
+    #: A12 (07-09): Odoo-administraties — dit blok is RLZ-only en slaat ze zichtbaar over (geen fout).
+    overgeslagen: dict[uuid.UUID, str] = field(default_factory=dict)
 
 
 def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
     """Alle administraties; één kapotte administratie (credentials, RLZ-storing) stopt de rest
     niet — zelfde patroon als sync_alle_administraties — maar wordt wél teruggegeven zodat de
     aanroeper hem zichtbaar maakt en de exit-code op 1 zet."""
-    with scoped_session(None) as session:
-        administratie_ids = [
-            rij.id for rij in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
-        ]
+    from app.backends.registry import RLZ_ONLY_OVERGESLAGEN, actieve_administraties_per_backend
 
+    administratie_ids, odoo_ids = actieve_administraties_per_backend()
     alle: list[OmzetAfwijking] = []
     fouten: dict[uuid.UUID, str] = {}
     for administratie_id in administratie_ids:
@@ -137,4 +136,6 @@ def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
         except Exception as exc:  # noqa: BLE001 — rapporteren en door, nooit de hele run stoppen
             logger.exception("Omzet-reconciliatie mislukt voor administratie %s", administratie_id)
             fouten[administratie_id] = str(exc)
-    return OmzetReconciliatieResultaat(afwijkingen=alle, fouten=fouten)
+    return OmzetReconciliatieResultaat(
+        afwijkingen=alle, fouten=fouten, overgeslagen={aid: RLZ_ONLY_OVERGESLAGEN for aid in odoo_ids}
+    )

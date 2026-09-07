@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 
 from app.auth import service
+from app.backends.registry import RLZ_ONLY_OVERGESLAGEN
 from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
@@ -668,6 +669,12 @@ def _meld(
     )
 
 
+def _print_overgeslagen(administratie_id: uuid.UUID) -> None:
+    """A12 (07-09): bank/omzet/doorbelasting toetsen alleen Reeleezee; een Odoo-administratie staat zichtbaar in
+    de uitvoer als OVERGESLAGEN — geen fout, geen bevinding, geen exit-code-effect."""
+    print(f"OVERGESLAGEN {administratie_id}: {RLZ_ONLY_OVERGESLAGEN}")
+
+
 def _soort_van(beoordeeld: acceptatie_service.Beoordeeld, uitsluiting: str | None) -> str:
     if uitsluiting:
         return "uitgesloten"
@@ -725,8 +732,18 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
             continue
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(resultaat.aantal_gecontroleerd)
+        # A12 (07-09): documenten die in de backend van de administratie niet te toetsen zijn (RLZ-verleden van
+        # een Odoo-administratie) staan zichtbaar in de regel — nooit stil weggelaten.
+        overgeslagen = (
+            f" ({resultaat.aantal_overgeslagen} niet van toepassing: geboekt in Reeleezee vóór de overstap)"
+            if getattr(resultaat, "aantal_overgeslagen", 0)
+            else ""
+        )
         if not resultaat.afwijkingen:
-            print(f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, geen afwijkingen")
+            print(
+                f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
+                f"geen afwijkingen{overgeslagen}"
+            )
             continue
         beoordeeld = acceptatie_service.beoordeel(
             bron=ReconciliatieBron.DOCUMENTEN,
@@ -751,7 +768,9 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
                 _meld(
                     verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=regel,
                     vingerafdruk=b.vingerafdruk,
-                    detail=_afwijking_detail("documenten", b, uitsluiting, document_id=a.document_id),
+                    detail=_afwijking_detail(
+                        "documenten", b, uitsluiting, document_id=a.document_id, **getattr(a, "context", {})
+                    ),
                 )
             continue
         afwijkingen_totaal += len(open_afwijkingen)
@@ -760,6 +779,7 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
         print(
             f"{kop} {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "
             f"{len(open_afwijkingen)} afwijking(en), {len(beoordeeld) - len(open_afwijkingen)} geaccepteerd"
+            f"{overgeslagen}"
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
             regel = _regel(f"document={a.document_id} rlz_document={a.rlz_document_id}", b)
@@ -767,7 +787,9 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
             _meld(
                 verzamelaar, soort=_soort_van(b, None), administratie_id=administratie_id, tekst=regel,
                 vingerafdruk=b.vingerafdruk,
-                detail=_afwijking_detail("documenten", b, None, document_id=a.document_id),
+                detail=_afwijking_detail(
+                    "documenten", b, None, document_id=a.document_id, **getattr(a, "context", {})
+                ),
             )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
@@ -844,6 +866,9 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
     geaccepteerd_uitgesloten = 0
     for administratie_id, resultaat in resultaten.items():
         uitsluiting = uitgesloten.get(administratie_id)
+        if resultaat == RLZ_ONLY_OVERGESLAGEN:
+            _print_overgeslagen(administratie_id)  # Odoo-administratie: RLZ-only blok (A12, 07-09)
+            continue
         if isinstance(resultaat, str):
             if uitsluiting:
                 tekst = f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})"
@@ -916,6 +941,8 @@ def _omzet_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # 
     """Omzet-failsafe: vergelijk elke omzet-boeking (verkoopfactuur + kostprijsmemoriaal) met de
     werkelijke RLZ-staat en rapporteer afwijkingen — incl. alle half_geboekt-rijen."""
     resultaat = omzet_reconciliatie.reconcilieer_alle_omzet()
+    for administratie_id in getattr(resultaat, "overgeslagen", {}):
+        _print_overgeslagen(administratie_id)  # RLZ-only blok (A12, 07-09)
     uitgesloten = acceptatie_service.uitgesloten_administraties()
     echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
     for administratie_id, fout in resultaat.fouten.items():
@@ -978,6 +1005,8 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
     + spiegel-inkoopfactuur in het doel) met de werkelijke RLZ-staat — incl. alle
     half_geboekt-rijen en verouderde open spiegel-taken."""
     resultaat = doorbelasting_reconciliatie.reconcilieer_alle_doorbelasting()
+    for administratie_id in getattr(resultaat, "overgeslagen", {}):
+        _print_overgeslagen(administratie_id)  # RLZ-only blok (A12, 07-09)
     uitgesloten = acceptatie_service.uitgesloten_administraties()
     echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
     for administratie_id, fout in resultaat.fouten.items():

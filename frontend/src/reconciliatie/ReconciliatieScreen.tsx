@@ -26,6 +26,7 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import {
   accepteerBevinding,
   BLOK_LABEL,
@@ -230,6 +231,33 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
       </Link>
     ) : null
 
+    // A11 (07-09): extern document verdwenen → "Opnieuw boeken…" (herboek-mechanisme zonder tegenboeking) is de
+    // primaire handeling; accepteren (Beheerder) blijft als tweede knop beschikbaar.
+    if (r.soort === 'afwijking' && isVerdwenenDocument(r)) {
+      const accepteren = () =>
+        setRedenActie({
+          bevinding: r,
+          titel: 'Afwijking accepteren',
+          beschrijving:
+            'De bevinding blijft bewaard, maar telt niet meer mee als afwijking. Leg vast waaróm dit verschil klopt — de reden komt in het audit log.',
+          bevestig: 'Accepteren',
+          uitvoeren: (aid, reden) => accepteerBevinding(r.id, aid, reden),
+          gelukt: 'Afwijking geaccepteerd.',
+        })
+      return (
+        <>
+          <OpnieuwBoekenActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+            onAccepteren={isBeheerder && kanReden ? accepteren : undefined}
+          />{' '}
+          {deeplink}
+        </>
+      )
+    }
     if (r.soort === 'afwijking') {
       return (
         <>

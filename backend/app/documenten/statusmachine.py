@@ -211,7 +211,12 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # uitsluitend gebruikt door app/documenten/tegenboeken.py ná een geslaagde tegenboeking in
     # RLZ (aangifte-poort geblokkeerd, verplichte reden, audit). Een kale storno kent het
     # inkooppad nog steeds niet (dat blijft actie 19 in de RLZ-UI + detectie).
-    DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN}),
+    # Opnieuw boeken ná een VERDWENEN extern document (A11, fixrun 07-09; casus BOOT/Kempen): de reconciliatie
+    # meldt `ontbreekt_in_rlz`/`ontbreekt_in_odoo`, de kantoormens kiest "Opnieuw boeken" — terug naar
+    # klaar_om_te_boeken mét boek_cyclus +1 (vers GUID), GEEN tegenboeking (er is niets om tegen te boeken);
+    # de harde checks draaien bij het boeken opnieuw. Uitsluitend via app/documenten/herboeken.py, en alleen
+    # als de backend het document daadwerkelijk niet meer kent (poort in de service).
+    DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN, DocumentStatus.KLAAR_OM_TE_BOEKEN}),
     DocumentStatus.GESPLITST: frozenset(),
     # Samenvoegen ongedaan maken: een bak-rij gaat terug naar niet_toegewezen (zolang het leidende
     # document nog in de verzamelbak staat of nagebundeld is); een nagebundeld UBL-DOCUMENT (03-09)

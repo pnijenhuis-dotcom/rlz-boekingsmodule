@@ -10,7 +10,15 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.backends.port import Backend, BackendBoekFout, BoekUitkomst, OrigineelStand, TegenboekUitkomst
+from app.backends.port import (
+    Backend,
+    BackendBoekFout,
+    BoekUitkomst,
+    OrigineelStand,
+    TegenboekUitkomst,
+    ToetsMislukt,
+    ToetsUitkomst,
+)
 from app.documenten.boekvoorstel import BoekvoorstelData
 from app.documenten.rlz_ids import (
     rlz_herboeking_id,
@@ -99,6 +107,14 @@ def _als_decimal(waarde: object) -> Decimal | None:
         return None
 
 
+def is_bruikbaar_rlz_document(antwoord: object) -> bool:
+    """Defensieve poort (A11, 07-09): een `GET PurchaseInvoices/{id}` die 200 geeft maar géén document draagt
+    (geen dict, leeg object, geen `Status`-veld) telt als 'ontbreekt' — nooit stil als 'klopt' doorlaten. Een
+    échte RLZ-PurchaseInvoice draagt altijd `Status` (live geverifieerd 07-09 op Kempen Facilities: 200 mét
+    id/Status/Type/ReceiptNumber…; een onbekend GUID = 404 `NotFound_PurchaseInvoice`)."""
+    return isinstance(antwoord, dict) and "Status" in antwoord
+
+
 class RlzInkoopPort:
     backend = Backend.RLZ
 
@@ -174,6 +190,42 @@ class RlzInkoopPort:
             betaald_bedrag=_als_decimal(origineel.get("BasePaidAmount")),
             open_bedrag=_als_decimal(origineel.get("BaseRemainingAmount")),
             volledig_afgeletterd=origineel.get("Status") == 3,
+        )
+
+    def toets_geboekt(
+        self, *, document_id: uuid.UUID, boek_cyclus: int, boekstuknummer: str | None = None
+    ) -> ToetsUitkomst:
+        """Documenten-reconciliatie (A11/A12): één GET op het herboeking-GUID van de actieve cyclus.
+        404 óf een hol antwoord = het document bestaat niet (meer) in RLZ; elke andere API-fout = `ToetsMislukt`
+        (verbinding, niet het document). Status 2/3 = geboekt (CLAUDE.md — nooit alleen op 2 toetsen)."""
+        rlz_document_id = rlz_herboeking_id(document_id, boek_cyclus)
+        try:
+            invoice = self.client.get(f"PurchaseInvoices/{rlz_document_id}")
+        except RlzApiError as exc:
+            if exc.status_code == 404:
+                return ToetsUitkomst(
+                    backend=Backend.RLZ, bestaat=False, extern_id=str(rlz_document_id), reden=str(exc)
+                )
+            raise ToetsMislukt(str(exc)) from exc
+        if not is_bruikbaar_rlz_document(invoice):
+            return ToetsUitkomst(
+                backend=Backend.RLZ,
+                bestaat=False,
+                extern_id=str(rlz_document_id),
+                reden="RLZ gaf 200 zonder bruikbaar document (geen id/Status) — behandeld als verdwenen",
+                ruw={"antwoord": invoice} if isinstance(invoice, dict) else {"antwoord": repr(invoice)[:200]},
+            )
+        status = invoice.get("Status")
+        return ToetsUitkomst(
+            backend=Backend.RLZ,
+            bestaat=True,
+            geboekt=status in _RLZ_GEBOEKT,
+            teruggedraaid=False,
+            bedrag=_als_decimal(invoice.get("BaseInvoiceAmount")),
+            boekstuknummer=invoice.get("ReceiptNumber"),
+            extern_id=str(rlz_document_id),
+            extern_state=None if status is None else str(status),
+            ruw=invoice,
         )
 
     def boek_tegenboeking(

@@ -9,5 +9,7 @@ from app.backends.port import (  # noqa: F401
     NietOndersteund,
     OrigineelStand,
     TegenboekUitkomst,
+    ToetsMislukt,
+    ToetsUitkomst,
 )
 from app.backends.registry import backend_voor, inkoop_port_voor, standaard_regels_samenvoegen  # noqa: F401

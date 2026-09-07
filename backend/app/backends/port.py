@@ -67,6 +67,38 @@ class OrigineelStand:
     volledig_afgeletterd: bool
 
 
+class ToetsMislukt(Exception):
+    """De reconciliatie-toets zelf kon niet uitgevoerd worden (500, 401 ná een credential-rotatie, uitgeputte
+    rate-limit-retry, meerdere kandidaten in Odoo) — zegt niets over het document, alleen over de verbinding.
+    De documenten-reconciliatie meldt dit als `controle_mislukt`, nooit als 'verdwenen' (les 2026-08-12)."""
+
+
+@dataclass(frozen=True)
+class ToetsUitkomst:
+    """Stand van één (her)boeking in de boekhoud-backend voor de documenten-reconciliatie (A11/A12, 07-09).
+
+    Backend-agnostisch: RLZ = `GET PurchaseInvoices/{herboeking-GUID}` (Status 2/3 = geboekt); Odoo =
+    `account.move` via onze koppeling/marker (state posted = geboekt; een ONBEKENDE reversal = teruggedraaid —
+    een eigen tegenboeking uit `odoo_document_koppeling` telt niet, dat is net als in RLZ een bewuste correctie).
+    `van_toepassing=False` = er is in déze backend niets te toetsen (bv. een document dat vóór de overstap in
+    Reeleezee is geboekt — boekstuk `RLZ-…` — terwijl de administratie nu op Odoo draait)."""
+
+    backend: Backend
+    van_toepassing: bool = True
+    bestaat: bool = False
+    geboekt: bool = False
+    teruggedraaid: bool = False
+    bedrag: Decimal | None = None
+    boekstuknummer: str | None = None
+    #: RLZ-GUID resp. Odoo move-id (als string) — de sleutel waarmee een mens het stuk in het pakket vindt
+    extern_id: str | None = None
+    #: RLZ `Status` (als string) resp. Odoo `state`
+    extern_state: str | None = None
+    #: leesbare toelichting (hol object, niet van toepassing, verdwenen)
+    reden: str | None = None
+    ruw: dict[str, Any] = field(default_factory=dict, compare=False)
+
+
 class InkoopPort(Protocol):
     backend: Backend
 
@@ -81,6 +113,10 @@ class InkoopPort(Protocol):
     ) -> BoekUitkomst: ...
 
     def origineel_stand(self, *, document_id: uuid.UUID, boek_cyclus: int) -> OrigineelStand: ...
+
+    def toets_geboekt(
+        self, *, document_id: uuid.UUID, boek_cyclus: int, boekstuknummer: str | None = None
+    ) -> ToetsUitkomst: ...
 
     def boek_tegenboeking(
         self,

@@ -44,7 +44,16 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.backends.port import Backend, BackendBoekFout, BoekUitkomst, NietOndersteund, OrigineelStand, TegenboekUitkomst
+from app.backends.port import (
+    Backend,
+    BackendBoekFout,
+    BoekUitkomst,
+    NietOndersteund,
+    OrigineelStand,
+    TegenboekUitkomst,
+    ToetsMislukt,
+    ToetsUitkomst,
+)
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
@@ -752,6 +761,107 @@ class OdooInkoopPort:
             betaald_bedrag=totaal - residu,
             open_bedrag=residu,
             volledig_afgeletterd=move.get("payment_state") in ("paid", "reversed", "in_payment"),
+        )
+
+    # --- reconciliatie-toets (A12, 07-09) -------------------------------------------------------------
+    def _eigen_tegenboeking_moves(self, session, document_id: uuid.UUID) -> set[int]:  # noqa: ANN001
+        """Alle reversal-moves die WIJ voor dit document maakten (élke cyclus) — een reversal die daarin zit is
+        een bewuste correctie (tegenboek-pad), geen afwijking; elke andere reversal is 'onbekend'."""
+        rijen = session.scalars(
+            select(OdooDocumentKoppeling).where(
+                OdooDocumentKoppeling.administratie_id == self.administratie_id,
+                OdooDocumentKoppeling.document_id == document_id,
+                OdooDocumentKoppeling.soort == "tegenboeking",
+            )
+        )
+        return {int(r.odoo_move_id) for r in rijen}
+
+    def beoordeel_move(self, move: dict[str, Any], *, eigen_tegenboekingen: set[int]) -> ToetsUitkomst:
+        """Pure beoordeling van één terug-gelezen `account.move` (odoo-verkenning §3.2/§3.3): posted = geboekt;
+        draft/cancel = niet geboekt; een reversal buiten onze eigen tegenboekingen = teruggedraaid."""
+        reversals = [int(i) for i in (move.get("reversal_move_ids") or [])]
+        onbekende_reversals = [r for r in reversals if r not in eigen_tegenboekingen]
+        teruggedraaid = bool(onbekende_reversals) or (
+            move.get("payment_state") == "reversed" and not eigen_tegenboekingen
+        )
+        company_id = _m2o_id(move.get("company_id"))
+        if company_id is not None and company_id != self.client.company_id:
+            raise ToetsMislukt(
+                f"KRITIEK: Odoo-document {move.get('name') or move.get('id')} staat op company {company_id}, "
+                f"verwacht company {self.client.company_id} — direct beoordelen in Odoo"
+            )
+        return ToetsUitkomst(
+            backend=Backend.ODOO,
+            bestaat=True,
+            geboekt=move.get("state") == "posted",
+            teruggedraaid=teruggedraaid,
+            bedrag=_cent(move.get("amount_total")),
+            boekstuknummer=move.get("name") or None,
+            extern_id=str(move.get("id")),
+            extern_state=str(move.get("state")) if move.get("state") is not None else None,
+            reden=(
+                f"onbekende reversal(s) {', '.join(str(r) for r in onbekende_reversals)} op het origineel"
+                if onbekende_reversals
+                else None
+            ),
+            ruw={
+                "payment_state": move.get("payment_state"),
+                "reversal_move_ids": reversals,
+                "eigen_tegenboekingen": sorted(eigen_tegenboekingen),
+                "reversed_entry_id": _m2o_id(move.get("reversed_entry_id")),
+            },
+        )
+
+    def toets_geboekt(
+        self, *, document_id: uuid.UUID, boek_cyclus: int, boekstuknummer: str | None = None
+    ) -> ToetsUitkomst:
+        """Documenten-reconciliatie tegen Odoo: eigen koppeling → anders onze marker in `invoice_origin`
+        (verloren create-antwoord) → anders 'ontbreekt'. Uitzondering: een document dat vóór de overstap in
+        Reeleezee is geboekt (boekstuk `RLZ-…`, geen Odoo-spoor) is hier NIET van toepassing — dat leeft in het
+        RLZ-verleden van de administratie (beslispunt Peter: apart toetsen via de bewaarde RLZ-credential?)."""
+        with scoped_session(self.administratie_id) as session:
+            rij = self._koppeling(session, document_id, boek_cyclus, "boeking")
+            move_id = rij.odoo_move_id if rij else None
+            eigen = self._eigen_tegenboeking_moves(session, document_id)
+        try:
+            if move_id is not None:
+                move = self._lees_move(move_id)
+                if move is None:
+                    return ToetsUitkomst(
+                        backend=Backend.ODOO,
+                        bestaat=False,
+                        extern_id=str(move_id),
+                        reden=f"account.move {move_id} (koppeling) bestaat niet meer in Odoo",
+                    )
+                return self.beoordeel_move(move, eigen_tegenboekingen=eigen)
+            treffers = self.client.search_read(
+                MODEL_MOVE,
+                [
+                    ["company_id", "=", self.client.company_id],
+                    ["move_type", "=", "in_invoice"],
+                    ["invoice_origin", "=", marker(document_id, boek_cyclus, "boeking")],
+                ],
+                _MOVE_VELDEN,
+            )
+        except OdooFout as exc:
+            raise ToetsMislukt(vertaal_odoo_fout(exc)) from exc
+        if len(treffers) > 1:
+            namen = ", ".join(str(t.get("name") or t["id"]) for t in treffers)
+            raise ToetsMislukt(f"Meerdere Odoo-documenten dragen onze herkenning voor dit document ({namen})")
+        if treffers:
+            return self.beoordeel_move(treffers[0], eigen_tegenboekingen=eigen)
+        if boekstuknummer and boekstuknummer.upper().startswith("RLZ-"):
+            return ToetsUitkomst(
+                backend=Backend.ODOO,
+                van_toepassing=False,
+                reden=(
+                    f"geboekt in Reeleezee vóór de overstap (boekstuk {boekstuknummer}) — geen Odoo-document te toetsen"
+                ),
+            )
+        return ToetsUitkomst(
+            backend=Backend.ODOO,
+            bestaat=False,
+            reden="geen Odoo-document bekend voor dit document (geen koppeling, geen herkenning in invoice_origin)",
         )
 
     def boek_tegenboeking(

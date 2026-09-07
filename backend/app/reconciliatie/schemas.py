@@ -111,3 +111,13 @@ class ActieResultaatDto(BaseModel):
 
 class InstellingDto(BaseModel):
     gezien_dagen: int = Field(ge=1, le=3650)
+
+
+class OpnieuwBoekenResultaatDto(BaseModel):
+    """Antwoord van "Opnieuw boeken (extern document verdwenen)" (A11, 07-09): het document staat weer klaar om te
+    boeken mét een nieuwe boek_cyclus; `doel_pad` = het controlescherm waar de mens de boeking afmaakt."""
+
+    document_id: uuid.UUID
+    status: str
+    boek_cyclus: int
+    doel_pad: str

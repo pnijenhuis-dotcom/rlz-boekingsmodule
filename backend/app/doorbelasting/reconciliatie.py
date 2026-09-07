@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -40,6 +40,8 @@ class DoorbelastingAfwijking:
 class DoorbelastingReconciliatieResultaat:
     afwijkingen: list[DoorbelastingAfwijking]
     fouten: dict[uuid.UUID, str]
+    #: A12 (07-09): Odoo-administraties mét doorbelasting aan — RLZ-only blok, zichtbaar overgeslagen (geen fout).
+    overgeslagen: dict[uuid.UUID, str] = field(default_factory=dict)
 
 
 def _controleer(client: RlzClient, pad: str, rlz_id: uuid.UUID, label: str) -> tuple[str, str] | None:
@@ -371,9 +373,13 @@ def verzamel_alle_opruimlijsten() -> OpruimlijstResultaat:
                 Administratie.actief.is_(True), Administratie.doorbelasting_ingeschakeld.is_(True)
             )
         ).all()
+    from app.backends.port import Backend
+
     kandidaten: list[OpruimKandidaat] = []
     fouten: list[str] = []
     for administratie in administraties:
+        if administratie.boekhoud_backend == Backend.ODOO.value:
+            continue  # RLZ-only (A12, 07-09): de opruimlijst kijkt naar RLZ-concepten; Odoo kent die niet
         try:
             resultaat = verzamel_opruimlijst(administratie.id)
             kandidaten.extend(resultaat.kandidaten)
@@ -393,12 +399,19 @@ def reconcilieer_alle_doorbelasting() -> DoorbelastingReconciliatieResultaat:
                 Administratie.actief.is_(True), Administratie.doorbelasting_ingeschakeld.is_(True)
             )
         ).all()
+    from app.backends.port import Backend
+    from app.backends.registry import RLZ_ONLY_OVERGESLAGEN
+
     afwijkingen: list[DoorbelastingAfwijking] = []
     fouten: dict[uuid.UUID, str] = {}
+    overgeslagen: dict[uuid.UUID, str] = {}
     for administratie in administraties:
+        if administratie.boekhoud_backend == Backend.ODOO.value:
+            overgeslagen[administratie.id] = RLZ_ONLY_OVERGESLAGEN  # RLZ-only blok (A12, 07-09)
+            continue
         try:
             afwijkingen.extend(reconcilieer_doorbelasting(administratie.id))
         except Exception as exc:  # noqa: BLE001 — rapportagerun: doorgaan, fout zichtbaar
             logger.exception("Doorbelasting-reconciliatie faalde voor %s", administratie.naam)
             fouten[administratie.id] = f"{administratie.naam}: {exc}"
-    return DoorbelastingReconciliatieResultaat(afwijkingen=afwijkingen, fouten=fouten)
+    return DoorbelastingReconciliatieResultaat(afwijkingen=afwijkingen, fouten=fouten, overgeslagen=overgeslagen)

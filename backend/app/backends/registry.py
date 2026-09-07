@@ -9,6 +9,8 @@ import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
+
 from app.backends.port import Backend, InkoopPort
 from app.db.models import Administratie
 from app.db.session import scoped_session
@@ -58,3 +60,20 @@ def standaard_regels_samenvoegen(administratie_id: uuid.UUID) -> bool:
 
 def backend_label(backend: Backend) -> str:
     return {"rlz": "RLZ", "odoo": "Odoo"}[backend.value]
+
+
+#: Reconciliatie-blokken bank/omzet/doorbelasting toetsen uitsluitend Reeleezee (A12, 07-09: Steigerbouw gebruikt
+#: ze niet; alleen het documenten-blok is backend-agnostisch). Een Odoo-administratie wordt in die blokken
+#: ZICHTBAAR overgeslagen met deze tekst — nooit als fout, nooit stil.
+RLZ_ONLY_OVERGESLAGEN = "niet van toepassing — backend odoo (dit blok toetst alleen Reeleezee)"
+
+
+def actieve_administraties_per_backend() -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """(rlz-administraties, odoo-administraties) — alleen actieve; voor de RLZ-only reconciliatie-blokken."""
+    with scoped_session(None) as session:
+        rijen = session.execute(
+            select(Administratie.id, Administratie.boekhoud_backend).where(Administratie.actief.is_(True))
+        ).all()
+    rlz = [rij.id for rij in rijen if rij.boekhoud_backend != Backend.ODOO.value]
+    odoo = [rij.id for rij in rijen if rij.boekhoud_backend == Backend.ODOO.value]
+    return rlz, odoo

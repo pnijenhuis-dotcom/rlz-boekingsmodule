@@ -33,8 +33,12 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
     nog altijd minstens verwijderd als uitgang. Uitzondering sinds het tegenboek-pad (migratie
     0061, mockup 22-08): GEBOEKT heeft precies één uitgang — terug naar te_controleren bij
     "tegenboeken én opnieuw boeken" (alleen ná een geslaagde tegenboeking in RLZ); nooit naar
-    verwijderd."""
-    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset({DocumentStatus.TE_CONTROLEREN})
+    verwijderd. Sinds A11 (fixrun 07-09) is er een tweede uitgang: terug naar klaar_om_te_boeken
+    wanneer het externe document VERDWENEN is (reconciliatie `ontbreekt_in_rlz`/`ontbreekt_in_odoo`,
+    actie "Opnieuw boeken" — app/documenten/herboeken.py, poort: de backend kent het stuk niet meer)."""
+    assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT] == frozenset(
+        {DocumentStatus.TE_CONTROLEREN, DocumentStatus.KLAAR_OM_TE_BOEKEN}
+    )
     assert DocumentStatus.VERWIJDERD not in _TOEGESTANE_OVERGANGEN[DocumentStatus.GEBOEKT]
     assert _TOEGESTANE_OVERGANGEN[DocumentStatus.GESPLITST] == frozenset()
     # Verplichtingen (04-09): geaccordeerd is óók terminaal — géén uitgangen.

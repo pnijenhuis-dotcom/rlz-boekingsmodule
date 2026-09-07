@@ -140,6 +140,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/gezien"),  # gezien = kantoorrol binnen scope (06-09)
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/accepteren"),  # beheerder-only (06-09)
         ("POST", "/reconciliatie/run"),  # "Nu draaien" — beheerder-only (06-09)
+        ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/opnieuw-boeken"),  # opnieuw boeken ná verdwenen document — kantoorrol (A11 07-09)
         ("GET", "/reconciliatie/instelling"),  # gezien-dagen lezen (06-09)
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),

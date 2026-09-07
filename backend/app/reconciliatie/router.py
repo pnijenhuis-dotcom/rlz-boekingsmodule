@@ -209,3 +209,36 @@ def reconciliatie_instelling_zetten(
         )
     except kantoorbreed.ReconciliatieFout as exc:
         raise _vertaal(exc) from exc
+
+
+@router.post(
+    "/reconciliatie/bevindingen/{bevinding_id}/opnieuw-boeken", response_model=schemas.OpnieuwBoekenResultaatDto
+)
+def bevinding_opnieuw_boeken(
+    bevinding_id: uuid.UUID, invoer: schemas.RedenInvoerDto, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.OpnieuwBoekenResultaatDto:
+    """ "Opnieuw boeken (extern document verdwenen)" (A11, 07-09) op een documenten-afwijking
+    `ontbreekt_in_rlz`/`ontbreekt_in_odoo`: de service toetst LIVE dat de backend het stuk echt niet meer kent,
+    zet het document terug op klaar_om_te_boeken mét boek_cyclus +1 (vers GUID, géén tegenboeking) en legt
+    reden/tijdlijn/audit vast; de mens boekt daarna via het controlescherm (harde checks opnieuw)."""
+    from app.documenten import herboeken
+
+    try:
+        r = herboeken.opnieuw_boeken_vanuit_bevinding(
+            bevinding_id=bevinding_id,
+            administratie_id=invoer.administratie_id,
+            reden=invoer.reden,
+            actor_id=actor.id,
+            rol=actor.rol,
+        )
+    except herboeken.BevindingNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except herboeken.GeenToegang as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except herboeken.NogAanwezigInBackend as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except herboeken.HerboekenFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return schemas.OpnieuwBoekenResultaatDto(
+        document_id=r.document_id, status=r.status.value, boek_cyclus=r.boek_cyclus, doel_pad=r.doel_pad
+    )
