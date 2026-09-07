@@ -74,6 +74,26 @@ export interface DuplicaatAfvoerResponseDto {
   origineel: DuplicaatOrigineelDto
 }
 
+/** Bulk-afvoer vanaf de Mogelijk-duplicaat-tab (B2 07-09): één rij per verwerkt document. `al_afgevoerd` =
+ * idempotente herhaling (was al als duplicaat afgevoerd, niets gewijzigd); `overgeslagen` draagt altijd een reden. */
+export interface DuplicaatBulkAfvoerRijDto {
+  document_id: string
+  bestandsnaam: string | null
+  uitkomst: 'afgevoerd' | 'al_afgevoerd' | 'overgeslagen' | string
+  reden: string | null
+  origineel: DuplicaatOrigineelDto | null
+}
+
+/** Antwoord op POST …/documenten/duplicaten/afvoeren-bulk. `geselecteerd` = unieke documenten die de server
+ * verwerkte (bij `alle: true` de server-side selectie). */
+export interface DuplicaatBulkAfvoerResponseDto {
+  resultaten: DuplicaatBulkAfvoerRijDto[]
+  geselecteerd: number
+  afgevoerd: number
+  al_afgevoerd: number
+  overgeslagen: number
+}
+
 export interface AfwijzingDto {
   id: string
   document_id: string

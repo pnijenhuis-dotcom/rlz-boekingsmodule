@@ -45,6 +45,7 @@ import { StatusChip } from './StatusChip'
 import { geboektInRlzTooltip } from '../document/GeboektInRlz'
 import { VerwijderDialog } from './VerwijderDialog'
 import { DuplicaatAfvoerDialog, toonAfvoerenAlsDuplicaat } from '../document/DuplicaatAfvoer'
+import { DuplicaatBulkBalk, isDuplicaatBulkSelecteerbaar, redenNietSelecteerbaar } from './DuplicaatBulkAfvoer'
 
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
 const EXTRACTIE_POLL_MS = 3000
@@ -135,6 +136,10 @@ export function DocumentenDeelscherm({
   const [bulkBezig, setBulkBezig] = useState(false)
   const [bulkFout, setBulkFout] = useState<string | null>(null)
   const [bulkResultaat, setBulkResultaat] = useState<BulkAanbiedenResponseDto | null>(null)
+  // Bulk-afvoer duplicaten (B2 07-09): eigen selectie op de tab "Mogelijk duplicaat"; `dupAlleModus` = "alle N op
+  // deze tab" (server-side selectie, GMail-patroon) — de checkboxes staan dan op slot.
+  const [dupSelectie, setDupSelectie] = useState<Set<string>>(() => new Set())
+  const [dupAlleModus, setDupAlleModus] = useState(false)
 
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
@@ -465,6 +470,32 @@ export function DocumentenDeelscherm({
     }
   }
 
+  // --- Bulk "Afvoeren als duplicaat" (B2 07-09) -----------------------------------------------
+  // Alleen op de tab "Mogelijk duplicaat". Selecteerbaar = inkoopfactuur in een afvoerbare status mét signaal;
+  // de server toetst per rij opnieuw (harde match, origineel) en slaat over mét reden — nooit stil.
+  const dupBulkMogelijk = statusFilter === STATUSFILTER_DUPLICAAT
+  const dupSelecteerbaar = useMemo(
+    () => (dupBulkMogelijk ? (gefilterd ?? []).filter(isDuplicaatBulkSelecteerbaar) : []),
+    [dupBulkMogelijk, gefilterd],
+  )
+  const dupTotaalOpTab = useMemo(() => (inScope ?? []).filter(isDuplicaatBulkSelecteerbaar).length, [inScope])
+  useEffect(() => {
+    // Selectie opschonen zodra rijen verdwijnen (herladen/filterwissel); buiten de tab geen alle-modus.
+    setDupSelectie((s) => {
+      const ids = new Set(dupSelecteerbaar.map((d) => d.id))
+      const nieuw = new Set([...s].filter((id) => ids.has(id)))
+      return nieuw.size === s.size ? s : nieuw
+    })
+    if (!dupBulkMogelijk) setDupAlleModus(false)
+  }, [dupSelecteerbaar, dupBulkMogelijk])
+  const wisselDupSelectie = (id: string) =>
+    setDupSelectie((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+
   // --- Vervallen-melding (punt 2a): nieuwste batch met nog niet opnieuw aangeboden documenten ----
   const [weggeklikteBatches, setWeggeklikteBatches] = useState<Set<string>>(() => new Set())
   const actieveMelding =
@@ -772,6 +803,31 @@ export function DocumentenDeelscherm({
           </div>
         )}
 
+        {/* Bulk-afvoer duplicaten (B2 07-09): alleen op de tab "Mogelijk duplicaat" mét afvoerbare rijen. */}
+        {dupBulkMogelijk && dupTotaalOpTab > 0 && (
+          <DuplicaatBulkBalk
+            administratieId={administratieId}
+            selectie={dupSelectie}
+            alleModus={dupAlleModus}
+            zichtbaarSelecteerbaar={dupSelecteerbaar}
+            totaalOpTab={dupTotaalOpTab}
+            onSelecteerZichtbaar={(aan) =>
+              setDupSelectie((s) => {
+                const n = new Set(s)
+                for (const d of dupSelecteerbaar) if (aan) n.add(d.id)
+                else n.delete(d.id)
+                return n
+              })
+            }
+            onAlleModus={setDupAlleModus}
+            onWissen={() => {
+              setDupSelectie(new Set())
+              setDupAlleModus(false)
+            }}
+            onAfgerond={laadDocumenten}
+          />
+        )}
+
         {lijstFout && (
           <FoutMelding
             melding="De documentenlijst kon niet geladen worden."
@@ -812,7 +868,7 @@ export function DocumentenDeelscherm({
             <table className={`documenten-tabel${dichtheid === 'compact' ? ' dichtheid-compact' : ''}`} data-dichtheid={dichtheid}>
               <tbody>
                 <tr>
-                  {bulkMogelijk && <th className="selectie" aria-label="Selectie" />}
+                  {(bulkMogelijk || dupBulkMogelijk) && <th className="selectie" aria-label="Selectie" />}
                   {sorteerKop('leverancier', 'Leverancier')}
                   {sorteerKop('factuurdatum', 'Factuurdatum')}
                   {sorteerKop('bedrag', 'Bedrag (incl. btw)', 'amount')}
@@ -834,7 +890,8 @@ export function DocumentenDeelscherm({
                   const isVerkoopfactuur = d.soort === 'verkoopfactuur'
                   const isWaarborg = d.soort === 'waarborg'
                   const route = documentRoute(administratieId, d, context)
-                  const geselecteerd = selectie.has(d.id)
+                  const dupSelecteerbaarRij = dupBulkMogelijk && isDuplicaatBulkSelecteerbaar(d)
+                  const geselecteerd = selectie.has(d.id) || dupSelectie.has(d.id) || (dupAlleModus && dupSelecteerbaarRij)
                   return (
                     <tr
                       key={d.id}
@@ -854,6 +911,33 @@ export function DocumentenDeelscherm({
                                   : `Selecteer ${d.leverancier ?? d.bestandsnaam}`
                               }
                               onChange={() => wisselSelectie(d.id)}
+                            />
+                          )}
+                        </td>
+                      )}
+                      {dupBulkMogelijk && (
+                        <td className="selectie" onClick={(e) => e.stopPropagation()}>
+                          {dupSelecteerbaarRij ? (
+                            <Checkbox
+                              checked={geselecteerd}
+                              aria-label={`Selecteer ${d.leverancier ?? d.bestandsnaam} voor afvoeren als duplicaat`}
+                              onChange={() => {
+                                if (dupAlleModus) {
+                                  // Eén rij uitvinken in de alle-modus = terug naar een expliciete selectie zonder die rij.
+                                  setDupAlleModus(false)
+                                  setDupSelectie(new Set(dupSelecteerbaar.filter((x) => x.id !== d.id).map((x) => x.id)))
+                                  return
+                                }
+                                wisselDupSelectie(d.id)
+                              }}
+                            />
+                          ) : (
+                            <Checkbox
+                              checked={false}
+                              disabled
+                              title={redenNietSelecteerbaar(d)}
+                              aria-label={`${d.leverancier ?? d.bestandsnaam}: ${redenNietSelecteerbaar(d)}`}
+                              onChange={() => undefined}
                             />
                           )}
                         </td>

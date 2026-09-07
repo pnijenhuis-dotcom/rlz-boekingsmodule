@@ -135,6 +135,43 @@ class DuplicaatAfvoerResponse(BaseModel):
     origineel: DuplicaatOrigineelDto
 
 
+class DuplicaatBulkAfvoerInput(StrikteInvoer):
+    """Bulk-afvoer vanaf de Mogelijk-duplicaat-tab (B2 07-09). Óf een expliciete selectie (`document_ids`,
+    begrensd), óf `alle=true` = server-side selectie van álle afvoerbare kandidaten op die tab van de
+    administratie (zelfde tab-definitie als de frontend, geen client-side id-lijst van duizenden)."""
+
+    document_ids: list[uuid.UUID] | None = Field(default=None, max_length=500)
+    alle: bool = False
+
+    @model_validator(mode="after")
+    def _precies_een_vorm(self) -> DuplicaatBulkAfvoerInput:
+        if self.alle and self.document_ids:
+            raise ValueError("Geef óf document_ids óf alle=true, niet beide")
+        if not self.alle and not self.document_ids:
+            raise ValueError("Geef minstens één document_id, of alle=true")
+        return self
+
+
+class DuplicaatBulkAfvoerRijDto(BaseModel):
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    # 'afgevoerd' | 'al_afgevoerd' (idempotente herhaling) | 'overgeslagen' (mét reden)
+    uitkomst: str
+    reden: str | None = None
+    origineel: DuplicaatOrigineelDto | None = None
+
+
+class DuplicaatBulkAfvoerResponse(BaseModel):
+    """Antwoord op POST …/documenten/duplicaten/afvoeren-bulk: uitkomst per rij + tellers. `geselecteerd` = het
+    aantal unieke documenten dat de server verwerkte (bij `alle=true` de server-side selectie)."""
+
+    resultaten: list[DuplicaatBulkAfvoerRijDto]
+    geselecteerd: int
+    afgevoerd: int
+    al_afgevoerd: int
+    overgeslagen: int
+
+
 class FactuurmatchKortDto(BaseModel):
     """Compacte matchstand voor de werkvoorraad-chip (factuurmatch fase 2, besluit 3 —
     duplicaat-patroon: losse vlag bovenop de normale flow, geen status)."""

@@ -1444,6 +1444,47 @@ def document_afvoeren_als_duplicaat(
 
 
 @router.post(
+    "/administraties/{administratie_id}/documenten/duplicaten/afvoeren-bulk",
+    response_model=schemas.DuplicaatBulkAfvoerResponse,
+)
+def documenten_afvoeren_als_duplicaat_bulk(
+    administratie_id: uuid.UUID,
+    invoer: schemas.DuplicaatBulkAfvoerInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DuplicaatBulkAfvoerResponse:
+    """Bulk "Afvoeren als duplicaat" vanaf de Mogelijk-duplicaat-tab (B2 07-09): expliciete mensactie over de
+    bestaande per-document-route (zelfde harde match, kruisverwijzing, heropenen-terugweg, audit); valt buiten
+    de 20/dag-automatiseringsrem. `alle=true` = server-side selectie van álle afvoerbare kandidaten op de tab.
+    Per rij een uitkomst (`afgevoerd` / `al_afgevoerd` / `overgeslagen` mét reden) — nooit stil, idempotent
+    bij dubbel klikken. Kantoorrol (router-breed) + administratie-scope; RLS per document via de actor."""
+    if invoer.alle:
+        document_ids = duplicaat_afvoer.selecteer_alle_bulk_kandidaten(
+            administratie_id=administratie_id, actor_id=actor.id
+        )
+    else:
+        document_ids = list(invoer.document_ids or [])
+    uitkomsten = duplicaat_afvoer.voer_af_in_bulk(
+        administratie_id=administratie_id, document_ids=document_ids, actor_id=actor.id
+    )
+    return schemas.DuplicaatBulkAfvoerResponse(
+        resultaten=[
+            schemas.DuplicaatBulkAfvoerRijDto(
+                document_id=u.document_id,
+                bestandsnaam=u.bestandsnaam,
+                uitkomst=u.uitkomst,
+                reden=u.reden,
+                origineel=_naar_origineel_dto(u.origineel),
+            )
+            for u in uitkomsten
+        ],
+        geselecteerd=len(uitkomsten),
+        afgevoerd=sum(1 for u in uitkomsten if u.uitkomst == "afgevoerd"),
+        al_afgevoerd=sum(1 for u in uitkomsten if u.uitkomst == "al_afgevoerd"),
+        overgeslagen=sum(1 for u in uitkomsten if u.uitkomst == "overgeslagen"),
+    )
+
+
+@router.post(
     "/administraties/{administratie_id}/documenten/{document_id}/heropenen",
     response_model=schemas.AfwijzingResponse,
 )

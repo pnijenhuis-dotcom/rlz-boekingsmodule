@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -732,3 +732,172 @@ def verwerk_na_signaal_stil(*, administratie_id: uuid.UUID | None, document_id: 
         verwerk_na_signaal(administratie_id=administratie_id, document_id=document_id)
     except Exception:  # noqa: BLE001 — automatisering mag de upload/worker/opslag nooit laten falen
         logger.exception("Duplicaat-afvoer mislukt voor document %s", document_id)
+
+
+# ----------------------------------------------------------------------------- bulk (B2 07-09)
+
+
+@dataclass(frozen=True)
+class BulkAfvoerUitkomst:
+    """Eén rij van de bulk-afvoer: `afgevoerd` (nu afgevoerd), `al_afgevoerd` (idempotente herhaling — was al
+    als duplicaat afgevoerd, niets gewijzigd) of `overgeslagen` mét leesbare reden (status laat het niet toe,
+    geen harde match, zelf het origineel, onbekend document, geen toewijzing mogelijk, …)."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    uitkomst: str
+    reden: str | None
+    origineel: Origineel | None
+
+
+def selecteer_alle_bulk_kandidaten(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> list[uuid.UUID]:
+    """Server-side "alle N" voor de Mogelijk-duplicaat-tab (B2 07-09): dezelfde tab-definitie als de frontend
+    (`lijstContext.isMogelijkDuplicaat` — gecachet RLZ-/Odoo-signaal `mogelijk_duplicaat` óf het sha256-
+    bestandsduplicaat `mogelijk_duplicaat_van_id`) beperkt tot wat de één-klik überhaupt kan afvoeren
+    (inkoopfactuur in een AFVOERBARE status). Geen client-side id-lijst van duizenden; RLS via de gescoopte
+    sessie van de actor. Volgorde: oudste eerst (deterministisch, zelfde als de groepsrangorde)."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rijen = session.scalars(
+            select(Document.id)
+            .outerjoin(DuplicaatSignaal, DuplicaatSignaal.document_id == Document.id)
+            .where(
+                Document.administratie_id == administratie_id,
+                Document.soort == DocumentSoort.INKOOPFACTUUR.value,
+                Document.status.in_(list(AFVOERBARE_STATUSSEN)),
+                or_(
+                    DuplicaatSignaal.uitkomst == DuplicaatSignaalUitkomst.MOGELIJK_DUPLICAAT.value,
+                    Document.mogelijk_duplicaat_van_id.isnot(None),
+                ),
+            )
+            .order_by(Document.aangemaakt_op, Document.id)
+        ).all()
+    return list(rijen)
+
+
+def _bestandsnaam_van(*, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID) -> str | None:
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        return document.bestandsnaam if document is not None else None
+
+
+def _audit_bulk(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    actie: str,
+    correlatie_id: uuid.UUID,
+    waarde: dict,
+) -> None:
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="document",
+            record_id=document_id,
+            actie=actie,
+            correlatie_id=correlatie_id,
+            nieuwe_waarde=waarde,
+            administratie_id=administratie_id,
+        )
+
+
+def voer_af_in_bulk(
+    *, administratie_id: uuid.UUID, document_ids: list[uuid.UUID], actor_id: uuid.UUID
+) -> list[BulkAfvoerUitkomst]:
+    """Bulk-afvoer vanaf de Mogelijk-duplicaat-tab (B2 07-09): expliciete MENSACTIE over de BESTAANDE
+    één-klik-route per document (`voer_af_als_duplicaat` — zelfde harde match, kruisverwijzing, afwikkeling
+    ronde/vraag, heropenen-terugweg, afwijs-audit + tijdlijn). Valt bewust BUITEN de 20/dag-automatiseringsrem:
+    die telt alleen `automatisch_afgevoerd`-overgangen (systeem-actor), de mens-afvoer schrijft dat detail niet.
+
+    Nooit stil: élke rij komt terug met een uitkomst; wat niet kan (status, geen harde match, zelf het
+    origineel, onbekend) wordt OVERGESLAGEN mét de reden uit de motor. Idempotent: dubbel klikken geeft
+    `al_afgevoerd` zonder tweede afwijzing. Eén bulk-run = één `correlatie_id` in het audit-event per rij
+    (`duplicaat_afgevoerd` resp. `duplicaat_afvoer_geweigerd`, actor = de mens, `bulk: true`)."""
+    from app.documenten.service import DocumentNietGevonden
+
+    correlatie_id = uuid.uuid4()
+    uitkomsten: list[BulkAfvoerUitkomst] = []
+    gezien: set[uuid.UUID] = set()
+    for document_id in document_ids:
+        if document_id in gezien:
+            continue  # dubbel in de selectie = één keer verwerken
+        gezien.add(document_id)
+        bestandsnaam = _bestandsnaam_van(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
+        try:
+            resultaat = voer_af_als_duplicaat(
+                administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+            )
+        except DocumentNietGevonden:
+            uitkomsten.append(
+                BulkAfvoerUitkomst(
+                    document_id=document_id,
+                    bestandsnaam=bestandsnaam,
+                    uitkomst="overgeslagen",
+                    reden="Onbekend document (of buiten je scope)",
+                    origineel=None,
+                )
+            )
+            continue
+        except (
+            DuplicaatAfvoerFout,
+            OngeldigeStatusovergang,
+            GeenToewijzingMogelijk,
+            ToegewezeneBuitenScope,
+            afwijzen.AfwijzingFout,
+            vragen.VraagFout,
+        ) as exc:
+            reden = str(exc)
+            _audit_bulk(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor_id,
+                actie="duplicaat_afvoer_geweigerd",
+                correlatie_id=correlatie_id,
+                waarde={"reden": reden, "bulk": True, "automatisch": False},
+            )
+            uitkomsten.append(
+                BulkAfvoerUitkomst(
+                    document_id=document_id,
+                    bestandsnaam=bestandsnaam,
+                    uitkomst="overgeslagen",
+                    reden=reden,
+                    origineel=None,
+                )
+            )
+            continue
+        if resultaat.al_afgevoerd:
+            uitkomsten.append(
+                BulkAfvoerUitkomst(
+                    document_id=document_id,
+                    bestandsnaam=bestandsnaam,
+                    uitkomst="al_afgevoerd",
+                    reden=resultaat.afwijzing.reden,
+                    origineel=resultaat.origineel,
+                )
+            )
+            continue
+        _audit_bulk(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=actor_id,
+            actie="duplicaat_afgevoerd",
+            correlatie_id=correlatie_id,
+            waarde={
+                "reden": resultaat.afwijzing.reden,
+                "origineel": _origineel_json(resultaat.origineel),
+                "automatisch": False,
+                "bulk": True,
+            },
+        )
+        uitkomsten.append(
+            BulkAfvoerUitkomst(
+                document_id=document_id,
+                bestandsnaam=bestandsnaam,
+                uitkomst="afgevoerd",
+                reden=resultaat.afwijzing.reden,
+                origineel=resultaat.origineel,
+            )
+        )
+    return uitkomsten
