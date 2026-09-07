@@ -1,26 +1,30 @@
-"""Duplicaat-afvoer — duplicaten automatisch uit de werklijst (medewerker-wens, besluit Peter 04-09;
-kernprincipe 7 "minimale mens, maximale autonomie": signalering zonder handeling is niet af).
+"""Duplicaat-afvoer — duplicaten automatisch uit de werklijst (medewerker-wens, besluit Peter 04-09; HERZIEN
+07-09, besluit Peter: "duplicaten eruit, hoef ik niet in een lijst te zien; moet er toch een geboekt worden, dan zoek
+ik hem in het archief"). Kernprincipe 7 "minimale mens, maximale autonomie": signalering zonder handeling is niet af.
 
 Bij een HARDE duplicaat-match voert het systeem een inkoopfactuur af naar Afgewezen met reden
 "Duplicaat van ‹referentie› (…)" — mét persistente kruisverwijzing naar het origineel (beide kanten
-zichtbaar), audit en tijdlijn. Nooit verwijderen, nooit stil; terughalen = de bestaande heropenen-route.
+zichtbaar), audit en tijdlijn. Nooit verwijderen, nooit stil; terughalen = de bestaande heropenen-route
+(Archief › filter "Afgevoerd als duplicaat" → "Terug naar werkvoorraad").
 
-HARDE MATCH (geld in code, geen AI), alle drie tegelijk:
-1. zelfde crediteur op btw-nummer — zelfde `vendor_id`, óf een andere vendor van dezelfde administratie
-   met hetzelfde btw-nummer (`crediteur_kenmerk.btw_per_vendor`);
-2. zelfde referentie — genormaliseerd op witruimte en afgekapt op 30 tekens (RLZ kapt `Reference` op
-   30, zie `RlzClient.find_purchase_invoices_by_reference`);
-3. zelfde totaalbedrag (cent-exact);
-en het origineel is (a) GEBOEKT in RLZ/Odoo — de gecachete treffers van `duplicaatsignaal.py`
-(uitkomst `mogelijk_duplicaat`; zelfde vendor + referentie + bedrag, eigen herboek-/tegenboek-keten al
-uitgesloten) — óf (b) een ANDER app-document van dezelfde administratie met dezelfde kop (bron: de
-`duplicaat_signaal`-kop, d.w.z. de kop zoals hij bij extractie/veldopslag getoetst is).
+HARDE MATCH sinds 07-09 = de module-motor `app/documenten/duplicaat_module.py` (één verzameling per administratie,
+dezelfde motor als de harde check "Duplicaat (module)" en de backfill-CLI):
+  (a) zelfde sha256 van het bestand;
+  (b) zelfde genormaliseerde referentie (`normaliseer_referentie` — de ENIGE normalisatie: hoofdletters, witruimte,
+      leestekens, voorloopnullen, voorvoegsels factuur/factuurnr/factuurnummer/inv/invoice/nr/no/#) + totaalbedrag
+      cent-exact, over ÁLLE crediteur-records (herziet 04-09 "alleen zelfde crediteur op btw-nummer": referentie +
+      bedrag bij een andere crediteur-record was een zacht signaal en is nu een hard duplicaat);
+  plus (ongewijzigd) een gecachete RLZ-/Odoo-treffer van `duplicaatsignaal.py` (origineel geboekt buiten de app).
+Categorie (c) van de motor — zelfde crediteur + referentie bij een ANDER bedrag — voert NOOIT automatisch af: die
+blijft als vlag `mogelijk_duplicaat_van_id` op de Mogelijk-duplicaat-tab (mens kijkt: deelfactuur? creditnota?).
+UBL-XML + PDF van dezelfde factuur is een BUNDEL, geen duplicaat (`duplicaat_module.is_bundelpaar`) en wordt nooit
+afgevoerd. Een mens-afmelding "Geen duplicaat" (`duplicaat_module.meld_af`, reden verplicht) wordt gerespecteerd.
 
-Wie is het origineel binnen zo'n groep? Deterministisch: eerst een in de app GEBOEKT document (oudste),
-dan een RLZ-/Odoo-treffer zónder app-document, dan het document waarop al een boekpoging liep
-(boeken_mislukt / wacht_op_iban_accordering), dan het document bij de klant-accordeur (ter_accordering),
-dan het document met een open vraag (vraag_open), dan het OUDSTE (`aangemaakt_op`, daarna id). Alle
-andere groepsleden in een afvoerbare status zijn duplicaten — SINDS BLOK A2 04-09 (besluit Peter "geen
+Wie is het origineel binnen zo'n groep? Deterministisch: eerst een in de app GEBOEKT document (oudste — geboekt wint
+altijd, ook als het jonger is), dan een RLZ-/Odoo-treffer zónder app-document, dan het document waarop al een
+boekpoging liep (boeken_mislukt / wacht_op_iban_accordering), dan het document bij de klant-accordeur
+(ter_accordering), dan het document met een open vraag (vraag_open), dan het OUDSTE (`aangemaakt_op`, daarna id).
+Alle andere groepsleden in een afvoerbare status zijn duplicaten — SINDS BLOK A2 04-09 (besluit Peter "geen
 dubbeling") óók een document dat bij de klant-accordeur ligt of een open vraag draagt: de lopende
 accorderingsronde wordt dan INGETROKKEN mét reden "afgevoerd als duplicaat van ‹ref›" (bestaand
 vervallen-patroon, `accordering.service.laat_ronde_vervallen_bij_duplicaat`) en élke open vraag wordt
@@ -28,26 +32,26 @@ zichtbaar GESLOTEN met dezelfde reden als slotbericht in de thread (`vragen.slui
 alles in tijdlijn + audit — nooit stil. Alleen boeken_mislukt / wacht_op_iban_accordering (er liep al een
 boekpoging) en geboekt worden nooit automatisch afgevoerd.
 
-ZACHTE signalen voeren nooit af: referentie + bedrag bij een andere crediteur zónder btw-match
-(`checks.check_duplicaat_over_crediteuren`, oranje) en de eigen herboek-/tegenboek-keten.
-
-Twee ingangen, één motor (`_voer_af`):
-- automatisch (`verwerk_na_signaal_stil`, post-commit ná `bereken_duplicaatsignaal`): STANDAARD AAN voor
-  de hele module (blok A1 04-09) achter één platformbrede noodrem `platform.duplicaat_afvoer_instelling`
-  (Beheerder, Instellingen › Boeken, `make duplicaat-autoafvoer-uit`); systeem-actor, volumerem
-  `max_duplicaat_afvoer_per_dag_per_administratie`, elke poging geauditeerd
-  (`duplicaat_afgevoerd` / `duplicaat_afvoer_geweigerd` + reden). De per-administratie-opt-in van 0105 is
-  vervallen (kolom blijft staan, wordt niet meer gelezen);
-- één-klik (`voer_af_als_duplicaat`, altijd — ook mét de noodrem aan): actor = de mens, `automatisch=False`,
-  idempotent (al afgevoerd = zelfde data terug), 409 zonder harde match of bij een status die het niet
-  toelaat.
+Drie ingangen, één motor (`_voer_af`):
+- automatisch (`verwerk_na_signaal_stil`, post-commit ná `bereken_duplicaatsignaal`; en de backfill-CLI
+  `duplicaten-backfill`): STANDAARD AAN voor de hele module (blok A1 04-09) achter één platformbrede noodrem
+  `platform.duplicaat_afvoer_instelling` (Beheerder, Instellingen › Boeken, `make duplicaat-autoafvoer-uit`);
+  systeem-actor; elke poging geauditeerd (`duplicaat_afgevoerd` / `duplicaat_afvoer_geweigerd` + reden). De
+  volumerem `max_duplicaat_afvoer_per_dag_per_administratie` geldt sinds 07-09 ALLEEN nog voor twijfelgevallen —
+  een origineel dat uitsluitend uit de RLZ-cache komt (kan verouderd zijn); een module-match (a)/(b) met een
+  app-document als origineel gaat DIRECT, buiten de rem. De per-administratie-opt-in van 0105 is vervallen
+  (kolom blijft staan, wordt niet meer gelezen);
+- één-klik (`voer_af_als_duplicaat`, altijd — ook mét de noodrem aan) en bulk (B2): actor = de mens,
+  `automatisch=False`, idempotent (al afgevoerd = zelfde data terug), 409 zonder harde match of bij een status die het
+  niet toelaat.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 from decimal import Decimal
 
@@ -56,11 +60,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.audit import record_audit_event
-from app.db.models import DuplicaatAfvoerInstelling
+from app.db.models import Administratie, DuplicaatAfvoerInstelling, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten import afwijzen, vragen
-from app.documenten.crediteur_kenmerk import btw_per_vendor
+from app.documenten import afwijzen, duplicaat_module, vragen
 from app.documenten.models import (
     Afwijzing,
     AfwijzingStatus,
@@ -119,7 +122,26 @@ _STATUS_RANG: dict[DocumentStatus, int] = {
 }
 _RANG_OVERIG = 4
 
-_REFERENTIE_MAX = 30  # RLZ kapt Reference op 30 tekens
+# RLZ kapt Reference op 30 tekens — alleen nog relevant voor de RLZ-leesroute, niet voor de module-match.
+_REFERENTIE_MAX = 30
+
+# Gangbare voorvoegsels die leveranciers vóór hun factuurnummer zetten — verschijnen in de ene extractie wél en in de
+# andere niet ("Factuur 2026-0042" vs "2026-0042"). Langste eerst, zodat "factuurnummer" niet als "factuur" + "nummer"
+# wordt gelezen. Alleen aan het BEGIN van de referentie, alleen als er iets na komt.
+_REFERENTIE_VOORVOEGSELS = (
+    "factuurnummer",
+    "factuurnr",
+    "factuur",
+    "invoice",
+    "inv",
+    "nr",
+    "no",
+)
+_VOORVOEGSEL_PATROON = re.compile(
+    r"^(?:(?:" + "|".join(_REFERENTIE_VOORVOEGSELS) + r")\b\s*[.:#\-]?\s*|#\s*)+",
+    re.IGNORECASE,
+)
+_NIET_ALFANUMERIEK = re.compile(r"[^0-9a-z]+")
 
 
 class DuplicaatAfvoerFout(Exception):
@@ -136,12 +158,33 @@ class AfvoerNietMogelijk(DuplicaatAfvoerFout):
 
 
 def normaliseer_referentie(referentie: str | None) -> str | None:
-    """Vergelijkingsvorm van een factuurreferentie: witruimte genormaliseerd, afgekapt op 30 tekens
-    (RLZ-gedrag). Leeg = None (niet toetsbaar)."""
+    """DE vergelijkingsvorm van een factuurreferentie — één functie voor de harde check "Duplicaat (module)",
+    de auto-afvoer, de bulk-afvoer en de backfill (besluit Peter 07-09: nooit twee normalisaties naast elkaar).
+
+    Stappen (deterministisch, geen AI): (1) hoofdletterongevoelig; (2) gangbare voorvoegsels vooraan weg —
+    factuur / factuurnr / factuurnummer / inv / invoice / nr / no / "#", ook gecombineerd ("Factuur nr. 42");
+    (3) alle leestekens en witruimte weg — alleen letters en cijfers blijven; (4) voorloopnullen weg per
+    cijfergroep zoals die in de oorspronkelijke tekst gescheiden stond ("2026-0042" ≡ "2026-42" ≡ "F 2026 0042"
+    → "202642"; een aaneengesloten "20260042" blijft "20260042" — een scheidingsteken weglaten is géén gangbare
+    variant, cijfers weglaten wel). Leeg ná normalisatie (bv. alleen "#") = None = niet toetsbaar.
+
+    Bewust NIET meer afgekapt op 30 tekens: de match loopt tegen onze eigen database, RLZ's Reference-lengte is
+    daar irrelevant (de RLZ-leesroute kapt zelf, zie `RlzClient.find_purchase_invoices_by_reference`)."""
     if not referentie:
         return None
-    schoon = " ".join(referentie.split())
-    return schoon[:_REFERENTIE_MAX] or None
+    tekst = referentie.strip().lower()
+    tekst = _VOORVOEGSEL_PATROON.sub("", tekst)
+    if not tekst:
+        # Alleen een voorvoegsel ("Factuur") is geen referentie; maar een kale "#42" is er wél één.
+        return None
+    tokens = [t for t in _NIET_ALFANUMERIEK.split(tekst) if t]
+    delen: list[str] = []
+    for token in tokens:
+        if token.isdigit():
+            token = token.lstrip("0") or "0"
+        delen.append(token)
+    schoon = "".join(delen)
+    return schoon or None
 
 
 @dataclass(frozen=True)
@@ -177,16 +220,19 @@ class _Lid:
     bestandsnaam: str
     aangemaakt_op: datetime
     vendor_id: uuid.UUID | None
-    referentie: str
-    totaalbedrag: Decimal
+    referentie: str | None
+    totaalbedrag: Decimal | None
 
 
 @dataclass(frozen=True)
 class Groep:
-    """Eén duplicaatgroep rond een document: het origineel + de leden die afgevoerd mogen worden."""
+    """Eén duplicaatgroep rond een document: het origineel + de leden die afgevoerd mogen worden. `hard` = de groep
+    rust op een module-match (a)/(b) met een app-document als origineel (07-09: direct afvoeren, buiten de rem);
+    False = uitsluitend een gecachete RLZ-/Odoo-treffer (twijfelgeval: rem blijft gelden)."""
 
     origineel: Origineel
     duplicaten: list[_Lid]
+    hard: bool = True
 
 
 @dataclass(frozen=True)
@@ -211,6 +257,9 @@ class DuplicaatAfvoerStand:
     kandidaat: Origineel | None
     afgevoerd_als_duplicaat_van: Origineel | None
     afgevoerde_duplicaten: list[AfgevoerdDuplicaat]
+    # 07-09: álle module-tegenhangers (a/b/c, niet afgemeld) + de laatste mens-afmelding "Geen duplicaat".
+    module_treffers: list[duplicaat_module.Treffer] = field(default_factory=list)
+    afmelding: duplicaat_module.Afmelding | None = None
 
 
 @dataclass(frozen=True)
@@ -220,61 +269,35 @@ class AfvoerResultaat:
     al_afgevoerd: bool
 
 
-# ----------------------------------------------------------------------------- groepsbepaling
+# ----------------------------------------------------------------------------- groepsbepaling (module-motor 07-09)
 
 
 def _vendor_sleutel(vendor_id: uuid.UUID | None, btw: dict[str, str]) -> str | None:
-    """Crediteur-identiteit voor de match: btw-nummer als bekend (dekt dubbele crediteuren), anders de
-    vendor zelf. None = geen crediteur → niet toetsbaar."""
+    """Crediteur-identiteit op btw-nummer (anders de vendor zelf) — sinds 07-09 alleen nog gebruikt door
+    `duplicaat_historie.py` (RLZ-era-historie ná een Odoo-overstap) en `verplichting/match_pipeline.py`; de
+    module-motor zelf werkt met `duplicaat_module.Verzameling.identiteit` (vendor/voorkeur + btw + KvK)."""
     if vendor_id is None:
         return None
     nummer = btw.get(str(vendor_id))
     return f"btw:{nummer}" if nummer else f"vendor:{vendor_id}"
 
 
-def _leden_met_kop(session: Session, *, administratie_id: uuid.UUID) -> list[_Lid]:
-    """Alle toetsbare inkoopfacturen van de administratie mét hun getoetste kop (duplicaat_signaal-rij),
-    exclusief verwijderd/gesplitst/samengevoegd/afgewezen/niet_toegewezen."""
-    rijen = session.execute(
-        select(DuplicaatSignaal, Document)
-        .join(Document, DuplicaatSignaal.document_id == Document.id)
-        .where(
-            DuplicaatSignaal.administratie_id == administratie_id,
-            Document.administratie_id == administratie_id,
-            Document.soort == DocumentSoort.INKOOPFACTUUR.value,
-            Document.status.notin_(list(_UITGESLOTEN_STATUSSEN)),
-            DuplicaatSignaal.vendor_id.isnot(None),
-            DuplicaatSignaal.referentie.isnot(None),
-            DuplicaatSignaal.totaalbedrag.isnot(None),
-        )
-    ).all()
-    leden: list[_Lid] = []
-    for signaal, document in rijen:
-        ref = normaliseer_referentie(signaal.referentie)
-        if ref is None or signaal.totaalbedrag is None:
-            continue
-        leden.append(
-            _Lid(
-                document_id=document.id,
-                status=document.status,
-                bestandsnaam=document.bestandsnaam,
-                aangemaakt_op=document.aangemaakt_op,
-                vendor_id=signaal.vendor_id,
-                referentie=ref,
-                totaalbedrag=Decimal(signaal.totaalbedrag).quantize(Decimal("0.01")),
-            )
-        )
-    return leden
+def _lid_uit_kop(kop: duplicaat_module.Kop) -> _Lid:
+    return _Lid(
+        document_id=kop.document_id,
+        status=kop.status,
+        bestandsnaam=kop.bestandsnaam,
+        aangemaakt_op=kop.aangemaakt_op,
+        vendor_id=kop.vendor_id,
+        referentie=kop.referentie,
+        totaalbedrag=kop.totaalbedrag,
+    )
 
 
-def _groepeer(leden: list[_Lid], btw: dict[str, str]) -> dict[tuple[str, str, Decimal], list[_Lid]]:
-    groepen: dict[tuple[str, str, Decimal], list[_Lid]] = {}
-    for lid in leden:
-        sleutel_vendor = _vendor_sleutel(lid.vendor_id, btw)
-        if sleutel_vendor is None:
-            continue
-        groepen.setdefault((sleutel_vendor, lid.referentie, lid.totaalbedrag), []).append(lid)
-    return groepen
+def _referentie_label(kop_of_lid: duplicaat_module.Kop | _Lid) -> str:
+    """Leesbare aanduiding in de afwijsreden/chip: de referentie, of bij een kale bestandsmatch (sha256 zonder kop)
+    het bestand zelf — nooit een lege string."""
+    return kop_of_lid.referentie or f"bestand {kop_of_lid.bestandsnaam}"
 
 
 def _rang(lid: _Lid) -> tuple[int, datetime, str]:
@@ -308,7 +331,7 @@ def _origineel_uit_geboekt_lid(session: Session, lid: _Lid, treffers: list[dict]
     )
     return Origineel(
         bron="geboekt",
-        referentie=lid.referentie,
+        referentie=_referentie_label(lid),
         document_id=lid.document_id,
         rlz_document_id=rlz_id,
         boekstuknummer=boekstuk,
@@ -360,7 +383,7 @@ def _bepaal_origineel(session: Session, *, groep: list[_Lid], treffers: list[dic
     eerste = sorted(groep, key=_rang)[0]
     return Origineel(
         bron="werkvoorraad",
-        referentie=eerste.referentie,
+        referentie=_referentie_label(eerste),
         document_id=eerste.document_id,
         bestandsnaam=eerste.bestandsnaam,
         aangemaakt_op=eerste.aangemaakt_op,
@@ -368,52 +391,89 @@ def _bepaal_origineel(session: Session, *, groep: list[_Lid], treffers: list[dic
     )
 
 
-def bepaal_groep(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Groep | None:
-    """De duplicaatgroep rond één document, of None als het document niet toetsbaar is (kop incompleet)
-    of geen harde match heeft. Sessie van de aanroeper, al gescoopt op de administratie."""
-    leden = _leden_met_kop(session, administratie_id=administratie_id)
-    btw = btw_per_vendor(session, administratie_id=administratie_id)
-    groepen = _groepeer(leden, btw)
-    eigen = next((lid for lid in leden if lid.document_id == document_id), None)
-    treffers = _rlz_treffers(session, document_id)
+def _leden_rond(
+    verzameling: duplicaat_module.Verzameling, eigen: duplicaat_module.Kop
+) -> tuple[list[_Lid], list[duplicaat_module.Treffer]]:
+    """Het document + zijn module-tegenhangers in de AFVOER-categorieën (a)/(b); (c) en afgemelde paren en
+    UBL+PDF-bundelparen zitten er per definitie niet in."""
+    treffers = [t for t in verzameling.treffers_voor(eigen) if t.categorie in duplicaat_module.AFVOER_CATEGORIEEN]
+    leden = [_lid_uit_kop(eigen)]
+    for t in treffers:
+        kop = verzameling.kop(t.document_id)
+        if kop is not None:
+            leden.append(_lid_uit_kop(kop))
+    return leden, treffers
+
+
+def bepaal_groep(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    verzameling: duplicaat_module.Verzameling | None = None,
+) -> Groep | None:
+    """De duplicaatgroep rond één document, of None als het document niet toetsbaar is (uitgesloten status, geen
+    inkoopfactuur) of geen harde match heeft. Sessie van de aanroeper, al gescoopt op de administratie; een
+    aanroeper die veel documenten langsloopt (backfill, lijst) geeft één geladen `verzameling` door."""
+    if verzameling is None:
+        verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+    eigen = verzameling.kop(document_id)
     if eigen is None:
-        # Kop incompleet of document niet (meer) toetsbaar: zonder eigen kop is er geen groep — óók niet
-        # op RLZ-treffers (die horen bij een kop die we dan niet kennen).
         return None
-    sleutel_vendor = _vendor_sleutel(eigen.vendor_id, btw)
-    if sleutel_vendor is None:
+    leden, module_treffers = _leden_rond(verzameling, eigen)
+    treffers = _rlz_treffers(session, document_id)
+    if len(leden) < 2 and not treffers:
         return None
-    groep = groepen.get((sleutel_vendor, eigen.referentie, eigen.totaalbedrag), [eigen])
-    if len(groep) < 2 and not treffers:
-        return None
-    origineel = _bepaal_origineel(session, groep=groep, treffers=treffers, referentie=eigen.referentie)
+    origineel = _bepaal_origineel(session, groep=leden, treffers=treffers, referentie=_referentie_label(eigen))
+
+    def _is_duplicaat_van_origineel(lid: _Lid) -> bool:
+        """Een lid gaat alleen af als het óók een echte (a)/(b)-match van het GEKOZEN origineel is — nooit een
+        UBL+PDF-bundelpartner van dat origineel of een afgemeld paar (de groep is een ster rond `eigen`; een derde
+        exemplaar mag het bundelpaar van een ander niet uit elkaar trekken)."""
+        if origineel.document_id is None:
+            return True  # RLZ-/Odoo-origineel zonder app-document: alle leden zijn matches van `eigen`
+        kop_lid = verzameling.kop(lid.document_id)
+        kop_origineel = verzameling.kop(origineel.document_id)
+        if kop_lid is None or kop_origineel is None:
+            return True
+        if verzameling.afgemeld(lid.document_id, origineel.document_id):
+            return False
+        categorie = duplicaat_module.categorie_van(kop_lid, kop_origineel, verzameling)
+        return categorie in duplicaat_module.AFVOER_CATEGORIEEN
+
     duplicaten = sorted(
-        (lid for lid in groep if lid.document_id != origineel.document_id and lid.status in AFVOERBARE_STATUSSEN),
+        (
+            lid
+            for lid in leden
+            if lid.document_id != origineel.document_id
+            and lid.status in AFVOERBARE_STATUSSEN
+            and _is_duplicaat_van_origineel(lid)
+        ),
         key=_rang,
     )
-    return Groep(origineel=origineel, duplicaten=duplicaten)
+    return Groep(origineel=origineel, duplicaten=duplicaten, hard=bool(module_treffers))
 
 
 def werkvoorraad_matches_bulk(
     *, administratie_id: uuid.UUID, document_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, Origineel]:
     """Lijst-lezer (geen N+1): per document dat níét het origineel van zijn groep is, het origineel binnen
-    de werkvoorraad/app (RLZ-treffers lopen al via de duplicaatsignaal-chip). Alleen groepen met ≥ 2
-    app-documenten."""
+    de werkvoorraad/app (RLZ-treffers lopen al via de duplicaatsignaal-chip). Alleen module-matches (a)/(b)."""
     if not document_ids:
         return {}
-    gevraagd = set(document_ids)
     with scoped_session(administratie_id) as session:
-        leden = _leden_met_kop(session, administratie_id=administratie_id)
-        btw = btw_per_vendor(session, administratie_id=administratie_id)
+        verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
         resultaat: dict[uuid.UUID, Origineel] = {}
-        for groep in _groepeer(leden, btw).values():
-            if len(groep) < 2:
+        for document_id in set(document_ids):
+            eigen = verzameling.kop(document_id)
+            if eigen is None:
                 continue
-            origineel = _bepaal_origineel(session, groep=groep, treffers=[], referentie=groep[0].referentie)
-            for lid in groep:
-                if lid.document_id != origineel.document_id and lid.document_id in gevraagd:
-                    resultaat[lid.document_id] = origineel
+            leden, _ = _leden_rond(verzameling, eigen)
+            if len(leden) < 2:
+                continue
+            origineel = _bepaal_origineel(session, groep=leden, treffers=[], referentie=_referentie_label(eigen))
+            if origineel.document_id != document_id:
+                resultaat[document_id] = origineel
         return resultaat
 
 
@@ -483,8 +543,16 @@ def stand_voor_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID) 
         if document is None or document.administratie_id != administratie_id:
             return DuplicaatAfvoerStand(kandidaat=None, afgevoerd_als_duplicaat_van=None, afgevoerde_duplicaten=[])
         kandidaat: Origineel | None = None
+        module_treffers: list[duplicaat_module.Treffer] = []
+        verzameling: duplicaat_module.Verzameling | None = None
+        if document.soort == DocumentSoort.INKOOPFACTUUR.value and document.status not in _UITGESLOTEN_STATUSSEN:
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+            eigen = verzameling.kop(document_id)
+            module_treffers = verzameling.treffers_voor(eigen) if eigen is not None else []
         if document.status in AFVOERBARE_STATUSSEN and document.soort == DocumentSoort.INKOOPFACTUUR.value:
-            groep = bepaal_groep(session, administratie_id=administratie_id, document_id=document_id)
+            groep = bepaal_groep(
+                session, administratie_id=administratie_id, document_id=document_id, verzameling=verzameling
+            )
             if groep is not None and any(lid.document_id == document_id for lid in groep.duplicaten):
                 kandidaat = groep.origineel
         afgevoerd_van: Origineel | None = None
@@ -496,6 +564,8 @@ def stand_voor_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID) 
             kandidaat=kandidaat,
             afgevoerd_als_duplicaat_van=afgevoerd_van,
             afgevoerde_duplicaten=afgevoerde_duplicaten_van(session, document_id=document_id),
+            module_treffers=module_treffers,
+            afmelding=duplicaat_module.laatste_afmelding(session, document_id=document_id),
         )
 
 
@@ -537,6 +607,27 @@ def _wikkel_af_voor_afvoer(
             )
 
 
+def _toegewezene_voor_afvoer(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID | None:
+    """"Ter controle naar" voor een duplicaat-afvoer (bugfix 07-09, live-backfill: in productie heeft GEEN administratie
+    een eigenaar, waardoor élke afvoer — automatisch én één-klik — sinds 04-09 strandde op `GeenToewijzingMogelijk`).
+    Terugval-volgorde: (1) de administratie-eigenaar (bestaande default van `afwijzen.wijs_af` — None teruggeven);
+    (2) de mens die afvoert (één-klik/bulk: hij heeft scope, anders kwam hij niet bij het endpoint); (3) voor de
+    systeem-actor een ACTIEVE Beheerder (deterministisch: naam, id) — zelfde terugval als de IBAN-accordeurs ("lege set
+    → actieve beheerders"). Niets gevonden = None → `wijs_af` weigert zichtbaar zoals voorheen."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is not None and administratie.eigenaar_gebruiker_id is not None:
+            return None
+        if actor_id != SYSTEEM_ACTOR_ID:
+            return actor_id
+        return session.scalars(
+            select(Gebruiker.id)
+            .where(Gebruiker.rol == GebruikerRol.BEHEERDER, Gebruiker.status == GebruikerStatus.ACTIEF)
+            .order_by(Gebruiker.naam, Gebruiker.id)
+            .limit(1)
+        ).first()
+
+
 def _voer_af(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, origineel: Origineel, automatisch: bool
 ) -> afwijzen.AfwijzingData:
@@ -549,6 +640,7 @@ def _voer_af(
         administratie_id=administratie_id,
         document_id=document_id,
         actor_id=actor_id,
+        toegewezen_aan=_toegewezene_voor_afvoer(administratie_id=administratie_id, actor_id=actor_id),
         reden=origineel.reden(),
         duplicaat_van_document_id=origineel.document_id,
         duplicaat_van_rlz_document_id=origineel.rlz_document_id,
@@ -601,8 +693,8 @@ def voer_af_als_duplicaat(
         groep = bepaal_groep(session, administratie_id=administratie_id, document_id=document_id)
         if groep is None:
             raise GeenHardeMatch(
-                "Geen harde duplicaat-match (meer): crediteur, referentie en totaalbedrag komen niet alle drie "
-                "overeen met een geboekte of oudere factuur"
+                "Geen harde duplicaat-match (meer): geen ander document met hetzelfde bestand of dezelfde "
+                "referentie + totaalbedrag (een zelfde referentie bij een ander bedrag is een signaal, geen afvoer)"
             )
         if not any(lid.document_id == document_id for lid in groep.duplicaten):
             raise GeenHardeMatch(
@@ -662,64 +754,87 @@ def platformbreed_ingeschakeld(session: Session) -> bool:
 
 def verwerk_na_signaal(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[uuid.UUID]:
     """Automatisch pad, post-commit ná de duplicaatsignaal-berekening (extractie én veldopslag). Standaard
-    AAN (blok A1) achter de platformbrede noodrem; systeem-actor; volumerem; elke poging geauditeerd. Geeft
-    de afgevoerde document-id's terug (test-/log-doel). Mét de noodrem UIT bewust géén audit-ruis."""
+    AAN (blok A1) achter de platformbrede noodrem; systeem-actor; elke poging geauditeerd. Geeft de afgevoerde
+    document-id's terug (test-/log-doel). Mét de noodrem UIT bewust géén audit-ruis.
+
+    07-09: een module-match (a)/(b) — `groep.hard` — gaat DIRECT, buiten de 20/dag-rem; alleen een groep die
+    uitsluitend op de RLZ-cache rust valt nog onder de rem. Wat na de ronde blijft staan mét tegenhangers (categorie
+    (c), niet-afvoerbare status, geweigerd) krijgt de vlag `mogelijk_duplicaat_van_id` → Mogelijk-duplicaat-tab."""
     with scoped_session(administratie_id) as session:
         if not platformbreed_ingeschakeld(session):
             return []
-        groep = bepaal_groep(session, administratie_id=administratie_id, document_id=document_id)
-        if groep is None or not groep.duplicaten:
-            return []
-        origineel = groep.origineel
-        duplicaten = list(groep.duplicaten)
+        verzameling = duplicaat_module.laad_verzameling(session, administratie_id=administratie_id)
+        eigen = verzameling.kop(document_id)
+        alle_treffers = verzameling.treffers_voor(eigen) if eigen is not None else []
+        groep = bepaal_groep(
+            session, administratie_id=administratie_id, document_id=document_id, verzameling=verzameling
+        )
         limiet = settings.max_duplicaat_afvoer_per_dag_per_administratie
         al_vandaag = _afgevoerd_vandaag(session, administratie_id=administratie_id)
 
     afgevoerd: list[uuid.UUID] = []
-    for lid in duplicaten:
-        if al_vandaag + len(afgevoerd) >= limiet:
+    if groep is not None and groep.duplicaten:
+        origineel = groep.origineel
+        for lid in list(groep.duplicaten):
+            if not groep.hard and al_vandaag + len(afgevoerd) >= limiet:
+                _audit(
+                    administratie_id=administratie_id,
+                    document_id=lid.document_id,
+                    actie="duplicaat_afvoer_geweigerd",
+                    waarde={
+                        "reden": (
+                            f"Volumerem: dagelijkse limiet van {limiet} automatische duplicaat-afvoeren bereikt — "
+                            "document blijft in de werkvoorraad"
+                        ),
+                        "origineel": _origineel_json(origineel),
+                    },
+                )
+                continue
+            try:
+                _voer_af(
+                    administratie_id=administratie_id,
+                    document_id=lid.document_id,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    origineel=origineel,
+                    automatisch=True,
+                )
+            except (
+                GeenToewijzingMogelijk,
+                ToegewezeneBuitenScope,
+                OngeldigeStatusovergang,
+                afwijzen.AfwijzingFout,
+                vragen.VraagFout,
+            ) as exc:
+                _audit(
+                    administratie_id=administratie_id,
+                    document_id=lid.document_id,
+                    actie="duplicaat_afvoer_geweigerd",
+                    waarde={"reden": str(exc), "origineel": _origineel_json(origineel)},
+                )
+                continue
+            afgevoerd.append(lid.document_id)
             _audit(
                 administratie_id=administratie_id,
                 document_id=lid.document_id,
-                actie="duplicaat_afvoer_geweigerd",
-                waarde={
-                    "reden": (
-                        f"Volumerem: dagelijkse limiet van {limiet} automatische duplicaat-afvoeren bereikt — "
-                        "document blijft in de werkvoorraad"
-                    ),
-                    "origineel": _origineel_json(origineel),
-                },
+                actie="duplicaat_afgevoerd",
+                waarde={"reden": origineel.reden(), "origineel": _origineel_json(origineel), "automatisch": True},
             )
-            continue
-        try:
-            _voer_af(
-                administratie_id=administratie_id,
-                document_id=lid.document_id,
-                actor_id=SYSTEEM_ACTOR_ID,
-                origineel=origineel,
-                automatisch=True,
-            )
-        except (
-            GeenToewijzingMogelijk,
-            ToegewezeneBuitenScope,
-            OngeldigeStatusovergang,
-            afwijzen.AfwijzingFout,
-            vragen.VraagFout,
-        ) as exc:
-            _audit(
-                administratie_id=administratie_id,
-                document_id=lid.document_id,
-                actie="duplicaat_afvoer_geweigerd",
-                waarde={"reden": str(exc), "origineel": _origineel_json(origineel)},
-            )
-            continue
-        afgevoerd.append(lid.document_id)
-        _audit(
-            administratie_id=administratie_id,
-            document_id=lid.document_id,
-            actie="duplicaat_afgevoerd",
-            waarde={"reden": origineel.reden(), "origineel": _origineel_json(origineel), "automatisch": True},
-        )
+
+    # Zichtbaar houden wat blijft staan (nooit stil): het document zelf, als het niet afgevoerd is maar wél
+    # tegenhangers heeft die nog bestaan.
+    if document_id not in afgevoerd:
+        rest = [t for t in alle_treffers if t.document_id not in afgevoerd]
+        if rest:
+            with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+                document = session.get(Document, document_id)
+                if document is not None and document.status not in _UITGESLOTEN_STATUSSEN:
+                    duplicaat_module.markeer_mogelijk_duplicaat(
+                        session,
+                        document=document,
+                        treffers=rest,
+                        administratie_id=administratie_id,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                    )
     return afgevoerd
 
 
@@ -900,4 +1015,130 @@ def voer_af_in_bulk(
                 origineel=resultaat.origineel,
             )
         )
+    return uitkomsten
+
+
+# ----------------------------------------------------------------------------- backfill (blok 1 07-09)
+
+
+@dataclass
+class BackfillAdministratie:
+    """Uitkomst van de backfill voor één administratie — cijfers PER ADMINISTRATIE (dry-run én echt)."""
+
+    administratie_id: uuid.UUID
+    naam: str
+    documenten: int = 0  # toetsbare inkoopfacturen in de verzameling
+    kandidaten: int = 0  # met ≥ 1 tegenhanger in categorie (a)/(b)
+    af_te_voeren: int = 0
+    afgevoerd: int = 0
+    bundelparen_beschermd: int = 0  # documenten met een UBL+PDF-tegenhanger die daardoor NIET meetelt
+    afgemeld: int = 0  # documenten met een mens-afmelding die een tegenhanger uitschakelt
+    overgeslagen: dict[str, int] = field(default_factory=dict)
+    regels: list[str] = field(default_factory=list)
+    gestopt_reden: str | None = None
+
+    def tel(self, reden: str) -> None:
+        self.overgeslagen[reden] = self.overgeslagen.get(reden, 0) + 1
+
+
+def backfill(*, dry_run: bool, administratie_id: uuid.UUID | None = None) -> list[BackfillAdministratie]:
+    """CLI `duplicaten-backfill` (blok 1 07-09, GO Peter): over álle actieve administraties (of één) élk toetsbaar
+    inkoopfactuur-document door DEZELFDE motor als het automatische pad halen — module-match (a)/(b), zelfde
+    origineel-regel, zelfde uitsluitingen (bundelparen UBL+PDF, afmeldingen, uitgesloten statussen) — en de
+    duplicaten afvoeren (systeem-actor, `automatisch=True`, BUITEN de dagrem, mét de platformbrede noodrem).
+    Geen RLZ-/Odoo-calls, geen bestandslezing: puur database. Idempotent: een tweede run vindt 0 af te voeren
+    (afgevoerd = afgewezen = uitgesloten). `dry_run=True` toetst alles en schrijft niets."""
+    from app.db.models import Administratie
+
+    with scoped_session(None) as session:
+        admins = session.execute(
+            select(Administratie.id, Administratie.naam)
+            .where(Administratie.actief.is_(True))
+            .order_by(Administratie.naam)
+        ).all()
+    if administratie_id is not None:
+        admins = [a for a in admins if a[0] == administratie_id]
+
+    uitkomsten: list[BackfillAdministratie] = []
+    for aid, naam in admins:
+        u = BackfillAdministratie(administratie_id=aid, naam=naam)
+        plan: dict[uuid.UUID, Origineel] = {}
+        with scoped_session(aid) as session:
+            if not platformbreed_ingeschakeld(session):
+                u.gestopt_reden = "platformbrede noodrem duplicaat-afvoer staat UIT — niets afgevoerd"
+                uitkomsten.append(u)
+                continue
+            verzameling = duplicaat_module.laad_verzameling(session, administratie_id=aid)
+            u.documenten = len(verzameling.koppen)
+            for kop in sorted(verzameling.koppen.values(), key=lambda k: (k.aangemaakt_op, str(k.document_id))):
+                if verzameling.bundelparen_voor(kop):
+                    u.bundelparen_beschermd += 1
+                if verzameling.afgemelde_tegenhangers(kop):
+                    u.afgemeld += 1
+                treffers = [
+                    t for t in verzameling.treffers_voor(kop) if t.categorie in duplicaat_module.AFVOER_CATEGORIEEN
+                ]
+                if not treffers:
+                    continue
+                u.kandidaten += 1
+                groep = bepaal_groep(
+                    session, administratie_id=aid, document_id=kop.document_id, verzameling=verzameling
+                )
+                if groep is None:
+                    u.tel("geen groep te bepalen")
+                    continue
+                if groep.origineel.document_id == kop.document_id:
+                    u.tel("zelf het origineel van zijn groep")
+                    continue
+                if kop.status not in AFVOERBARE_STATUSSEN:
+                    u.tel(f"status laat afvoeren niet toe ({kop.status.value})")
+                    continue
+                if not any(lid.document_id == kop.document_id for lid in groep.duplicaten):
+                    u.tel("niet in de duplicatenlijst van zijn groep")
+                    continue
+                plan[kop.document_id] = groep.origineel
+                doel = groep.origineel.bestandsnaam or groep.origineel.boekstuknummer or "?"
+                u.regels.append(
+                    f"{kop.bestandsnaam} [{kop.status.value}, {treffers[0].categorie}] → duplicaat van "
+                    f"{groep.origineel.referentie} ({doel}, {groep.origineel.bron})"
+                )
+        u.af_te_voeren = len(plan)
+        if not dry_run:
+            for document_id, origineel in plan.items():
+                try:
+                    _voer_af(
+                        administratie_id=aid,
+                        document_id=document_id,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        origineel=origineel,
+                        automatisch=True,
+                    )
+                except (
+                    GeenToewijzingMogelijk,
+                    ToegewezeneBuitenScope,
+                    OngeldigeStatusovergang,
+                    afwijzen.AfwijzingFout,
+                    vragen.VraagFout,
+                ) as exc:
+                    u.tel(f"geweigerd: {exc}")
+                    _audit(
+                        administratie_id=aid,
+                        document_id=document_id,
+                        actie="duplicaat_afvoer_geweigerd",
+                        waarde={"reden": str(exc), "origineel": _origineel_json(origineel), "backfill": True},
+                    )
+                    continue
+                u.afgevoerd += 1
+                _audit(
+                    administratie_id=aid,
+                    document_id=document_id,
+                    actie="duplicaat_afgevoerd",
+                    waarde={
+                        "reden": origineel.reden(),
+                        "origineel": _origineel_json(origineel),
+                        "automatisch": True,
+                        "backfill": True,
+                    },
+                )
+        uitkomsten.append(u)
     return uitkomsten

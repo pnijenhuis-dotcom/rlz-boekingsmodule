@@ -363,15 +363,17 @@ class TestSignaalEnAfvoer:
     def test_auto_afvoer_als_duplicaat_van_het_rlz_origineel_via_de_historie_treffer(
         self, administratie_id, beheerder_id, eigenaar_id, admin_engine: Engine, rlz_era_geboekt, nakomer
     ) -> None:
-        """Het origineel heeft geen signaal-kop (RLZ-era): de groep bestaat uit de nakomer + de historie-treffer →
-        origineel = het app-document uit die treffer (bron 'geboekt', boekstuk, bestandsnaam), nakomer afgevoerd."""
+        """Het origineel heeft geen signaal-kop (RLZ-era) maar wél een boekvoorstel-kop: sinds 07-09 vindt de
+        module-motor (categorie (b), referentie + bedrag) het geboekte origineel al bij binnenkomst van de nakomer —
+        afgevoerd in de upload-hook, vóór de overstap. Origineel = het app-document (bron 'geboekt', boekstuk,
+        bestandsnaam); een tweede signaal-/afvoerronde is idempotent ([])."""
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
         _maak_overgestapt(admin_engine, administratie_id, beheerder_id)
-        assert _status(admin_engine, nakomer) == DocumentStatus.TE_CONTROLEREN.value
         duplicaatsignaal.bereken_duplicaatsignaal(
             administratie_id=administratie_id, document_id=nakomer, client=FakeBoekClient(duplicaten=[])
         )
         afgevoerd = duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=nakomer)
-        assert afgevoerd == [nakomer]
+        assert afgevoerd == []  # al afgevoerd bij binnenkomst — idempotent
         assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
         assert _status(admin_engine, rlz_era_geboekt) == DocumentStatus.GEBOEKT.value  # origineel ongemoeid
         stand = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=nakomer)
@@ -389,16 +391,20 @@ class TestSignaalEnAfvoer:
         stand_o = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=rlz_era_geboekt)
         assert [d.document_id for d in stand_o.afgevoerde_duplicaten] == [nakomer]
 
-    def test_zonder_overstap_geen_afvoer_ondanks_dezelfde_kop(
+    def test_zonder_overstap_toch_afvoer_op_module_match_met_het_geboekte_origineel(
         self, administratie_id, eigenaar_id, admin_engine: Engine, rlz_era_geboekt, nakomer
     ) -> None:
-        """RLZ-administratie mét een origineel zonder signaal-kop: de historie wordt niet geraadpleegd, de live query
-        (hier leeg) beslist — ongewijzigd gedrag."""
+        """HERZIET het 04-09-gedrag (besluit Peter 07-09): óók zónder overstap — de historie wordt niet geraadpleegd en
+        de live query is leeg — vindt de module-motor het in de app GEBOEKTE origineel met dezelfde referentie + bedrag
+        (categorie (b)) en voert de nakomer bij binnenkomst af, mét kruisverwijzing naar dat origineel."""
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
         duplicaatsignaal.bereken_duplicaatsignaal(
             administratie_id=administratie_id, document_id=nakomer, client=FakeBoekClient(duplicaten=[])
         )
         assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=nakomer) == []
-        assert _status(admin_engine, nakomer) == DocumentStatus.TE_CONTROLEREN.value
+        stand = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=nakomer)
+        o = stand.afgevoerd_als_duplicaat_van
+        assert o is not None and o.bron == "geboekt" and o.document_id == rlz_era_geboekt
 
     def test_ander_bedrag_geen_signaal_geen_afvoer(
         self, administratie_id, beheerder_id, gescoopte_gebruiker, opslag, admin_engine: Engine, rlz_era_geboekt

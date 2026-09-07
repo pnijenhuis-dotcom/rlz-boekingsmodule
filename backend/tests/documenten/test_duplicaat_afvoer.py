@@ -302,7 +302,7 @@ class TestAutomatischPad:
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
         assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
 
-    def test_zacht_signaal_andere_crediteur_zonder_btw_match_voert_nooit_af(
+    def test_referentie_en_bedrag_bij_andere_crediteur_is_sinds_07_09_een_hard_duplicaat_ander_bedrag_niet(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -311,6 +311,10 @@ class TestAutomatischPad:
         standaard_aan: None,
         admin_engine: Engine,
     ) -> None:
+        """HERZIET 04-09 (besluit Peter 07-09 "duplicaten eruit"): dezelfde genormaliseerde referentie + hetzelfde
+        bedrag bij een ÁNDER crediteur-record zonder btw-match was een zacht signaal en is nu module-categorie (b) →
+        automatisch afgevoerd. Zelfde crediteur + zelfde referentie maar een ander bedrag = categorie (c): nooit
+        automatisch, wél zichtbaar (vlag `mogelijk_duplicaat_van_id` → Mogelijk-duplicaat-tab)."""
         v1, v2 = uuid.uuid4(), uuid.uuid4()
         _zet_btw(admin_engine, administratie_id=administratie_id, vendor_id=v1, btw="NL111111111B01")
         _zet_btw(admin_engine, administratie_id=administratie_id, vendor_id=v2, btw="NL222222222B01")
@@ -320,7 +324,7 @@ class TestAutomatischPad:
         b = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=v2
         )
-        # Zelfde vendor maar ander bedrag: óók geen harde match.
+        # Zelfde vendor maar ander bedrag: categorie (c) — geen afvoer, wél de vlag.
         c = _upload_met_kop(
             administratie_id=administratie_id,
             actor_id=gescoopte_gebruiker,
@@ -328,12 +332,20 @@ class TestAutomatischPad:
             vendor_id=v1,
             totaal=Decimal("121.01"),
         )
-        for d in (a, b, c):
-            assert _status(admin_engine, d) == DocumentStatus.TE_CONTROLEREN.value
-        assert _afwijzing_rij(admin_engine, b) is None
-        assert (
-            duplicaat_afvoer.werkvoorraad_matches_bulk(administratie_id=administratie_id, document_ids=[a, b, c]) == {}
-        )
+        assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        rij = _afwijzing_rij(admin_engine, b)
+        assert rij is not None and rij["duplicaat_van_document_id"] == a and rij["automatisch"] is True
+        assert _status(admin_engine, c) == DocumentStatus.TE_CONTROLEREN.value
+        assert _afwijzing_rij(admin_engine, c) is None
+        with admin_engine.connect() as conn:
+            vlag = conn.execute(
+                text("SELECT mogelijk_duplicaat_van_id FROM boekhouding.document WHERE id = :id"), {"id": c}
+            ).scalar_one()
+        assert vlag == a  # (c)-treffer zichtbaar op de tab, mens beslist
+        assert "duplicaat_module_gesignaleerd" in _audit_acties(admin_engine, tabel="document", record_id=c)
+        matches = duplicaat_afvoer.werkvoorraad_matches_bulk(administratie_id=administratie_id, document_ids=[a, c])
+        assert matches == {}  # (c) is geen afvoer-match
 
     def test_vraag_open_wint_van_een_ouder_te_controleren_exemplaar(
         self,
@@ -367,7 +379,7 @@ class TestAutomatischPad:
         rij = _afwijzing_rij(admin_engine, a)
         assert rij is not None and rij["duplicaat_van_document_id"] == b
 
-    def test_volumerem_weigert_met_audit_en_reden(
+    def test_volumerem_geldt_alleen_nog_voor_rlz_cache_groepen_module_match_gaat_direct(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -377,6 +389,8 @@ class TestAutomatischPad:
         admin_engine: Engine,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """07-09: een module-match (a)/(b) met een app-document als origineel gaat DIRECT af, buiten de dagrem; de
+        rem blijft voor het twijfelgeval dat het origineel alleen uit de RLZ-cache komt."""
         monkeypatch.setattr(settings, "max_duplicaat_afvoer_per_dag_per_administratie", 1)
         vendor_id = uuid.uuid4()
         a = _upload_met_kop(
@@ -390,40 +404,77 @@ class TestAutomatischPad:
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
         assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
-        assert _status(admin_engine, c) == DocumentStatus.TE_CONTROLEREN.value  # rem bereikt: blijft staan
-        assert "duplicaat_afvoer_geweigerd" in _audit_acties(admin_engine, tabel="document", record_id=c)
+        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # buiten de rem (module-match)
+        # Twijfelgeval: uniek document, origineel alleen als RLZ-treffer → rem (al 2 vandaag ≥ limiet 1) weigert.
+        d = _upload_met_kop(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            vendor_id=vendor_id,
+            referentie="UNIEK-1",
+            naam="d.pdf",
+        )
+        duplicaatsignaal.bereken_duplicaatsignaal(
+            administratie_id=administratie_id,
+            document_id=d,
+            client=FakeBoekClient(
+                duplicaten=[{"id": str(uuid.uuid4()), "Reference": "UNIEK-1", "InvoiceNumber": "INK-9"}]
+            ),
+        )
+        assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=d) == []
+        assert _status(admin_engine, d) == DocumentStatus.TE_CONTROLEREN.value  # rem bereikt: blijft staan
+        assert "duplicaat_afvoer_geweigerd" in _audit_acties(admin_engine, tabel="document", record_id=d)
         with admin_engine.connect() as conn:
             reden = conn.execute(
                 text(
                     "SELECT nieuwe_waarde->>'reden' FROM platform.audit_event WHERE tabel = 'document' "
                     "AND record_id = :id AND actie = 'duplicaat_afvoer_geweigerd'"
                 ),
-                {"id": c},
+                {"id": d},
             ).scalar_one()
         assert "Volumerem" in reden and "1 " in reden
         # Één-klik telt niet mee en werkt óók boven de rem.
         resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
-            administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker
+            administratie_id=administratie_id, document_id=d, actor_id=gescoopte_gebruiker
         )
         assert resultaat.al_afgevoerd is False and resultaat.afwijzing.automatisch is False
 
-    def test_zonder_eigenaar_geweigerd_met_reden_nooit_stil(
+    def test_zonder_eigenaar_valt_terug_op_actieve_beheerder_en_mens_op_zichzelf(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         opslag: LokaleBestandsopslag,
         standaard_aan: None,
         admin_engine: Engine,
+        beheerder_id: uuid.UUID,
     ) -> None:
+        """Bugfix 07-09 (live-backfill: geen enkele productie-administratie heeft een eigenaar → élke afvoer strandde
+        sinds 04-09 op GeenToewijzingMogelijk): zonder eigenaar wijst het systeem "ter controle" toe aan een actieve
+        Beheerder, een mens (één-klik) aan zichzelf — nooit meer een stille weigering om een ontbrekende eigenaar."""
         vendor_id = uuid.uuid4()
-        _upload_met_kop(
+        a = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
         b = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
-        assert _status(admin_engine, b) == DocumentStatus.TE_CONTROLEREN.value
-        assert "duplicaat_afvoer_geweigerd" in _audit_acties(admin_engine, tabel="document", record_id=b)
+        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        with admin_engine.connect() as conn:
+            toegewezen = conn.execute(
+                text("SELECT toegewezen_aan FROM boekhouding.afwijzing WHERE document_id = :id"), {"id": b}
+            ).scalar_one()
+        assert toegewezen == beheerder_id
+        # Mens-één-klik zonder eigenaar: toegewezen aan de mens zelf.
+        c = _upload_met_kop(
+            administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
+        )
+        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # automatisch, beheerder
+        afwijzen.heropen(administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker)
+        resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
+            administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker
+        )
+        assert resultaat.afwijzing.toegewezen_aan == gescoopte_gebruiker
+        assert resultaat.origineel.document_id == a
 
     def test_heropenen_haalt_terug_en_origineel_toont_geen_afgevoerd_duplicaat_meer(
         self,

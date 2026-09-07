@@ -359,10 +359,20 @@ class TestVoerChecksUit:
             "Btw-tarief buitenland",
             "IBAN-wissel",
             "Duplicaatcheck",
+            "Duplicaat (module)",  # blok 1 07-09: eigen-DB-check draait óók in de storings-tak (geen RLZ nodig)
         ]
-        verplichte_velden, afdeling, projectverdeling, regeltelling, _vervaldatum, _buitenland, iban_wissel, duplicaatcheck = (
-            rapport.resultaten
-        )
+        (
+            verplichte_velden,
+            afdeling,
+            projectverdeling,
+            regeltelling,
+            _vervaldatum,
+            _buitenland,
+            iban_wissel,
+            duplicaatcheck,
+            duplicaat_module,
+        ) = rapport.resultaten
+        assert duplicaat_module.ok  # geen tegenhanger in de eigen database
         assert afdeling.ok  # toggle uit = check zwijgt (blok A 28-08)
         assert projectverdeling.ok  # geen verdeling = niet van toepassing (blok C 04-09)
         assert verplichte_velden.ok  # lokale check, draait gewoon door zonder RLZ

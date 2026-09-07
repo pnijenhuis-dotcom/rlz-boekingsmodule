@@ -263,6 +263,45 @@ def _verzamelbak_nabundelen(args: argparse.Namespace) -> int:
     return 0 if not telling.gestopt_reden else 1
 
 
+def _duplicaten_backfill(args: argparse.Namespace) -> int:
+    """Blok 1 07-09 (besluit Peter "duplicaten eruit"): álle bestaande Mogelijk-duplicaat-rijen én open documenten
+    door de module-motor (sha256 / genormaliseerde referentie + bedrag) — duplicaten afgevoerd mét kruisverwijzing,
+    buiten de dagrem, noodrem gerespecteerd, UBL+PDF-bundelparen en mens-afmeldingen beschermd. Geen RLZ-/Odoo-calls.
+    --dry-run toetst alles en schrijft niets; cijfers per administratie."""
+    from app.documenten import duplicaat_afvoer
+
+    administratie_filter: uuid.UUID | None = None
+    if args.administratie:
+        try:
+            administratie_filter = uuid.UUID(args.administratie)
+        except ValueError:
+            print(f"Ongeldig --administratie-id: {args.administratie!r}", file=sys.stderr)
+            return 2
+    uitkomsten = duplicaat_afvoer.backfill(dry_run=args.dry_run, administratie_id=administratie_filter)
+    label = " [dry-run]" if args.dry_run else ""
+    tot_kand = sum(u.kandidaten for u in uitkomsten)
+    tot_plan = sum(u.af_te_voeren for u in uitkomsten)
+    tot_af = sum(u.afgevoerd for u in uitkomsten)
+    print(
+        f"duplicaten-backfill{label}: {len(uitkomsten)} administratie(s), {tot_kand} kandidaten, "
+        f"{tot_plan} af te voeren, {tot_af} afgevoerd"
+    )
+    for u in uitkomsten:
+        if not u.kandidaten and not u.gestopt_reden and not u.bundelparen_beschermd:
+            continue
+        print(
+            f"  {u.naam}: {u.documenten} toetsbaar, {u.kandidaten} kandidaten, {u.af_te_voeren} af te voeren, "
+            f"{u.afgevoerd} afgevoerd, {u.bundelparen_beschermd} bundelpaar-beschermd, {u.afgemeld} afgemeld"
+        )
+        for reden, n in sorted(u.overgeslagen.items(), key=lambda kv: -kv[1]):
+            print(f"    overgeslagen {n}× {reden}")
+        for regel in u.regels:
+            print(f"    - {regel}")
+        if u.gestopt_reden:
+            print(f"    ! {u.gestopt_reden}")
+    return 0
+
+
 def _toewijzing_regels_opschonen(args: argparse.Namespace) -> int:
     """Data-nazorg afzender-geheugen (blok D 02-09): actieve afzender-regels op een config-uitgesloten
     kantoor-/doorstuurdomein óf met een meerduidige historie (≥ 3 doelen) deactiveren mét audit —
@@ -2109,6 +2148,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Beperk de run tot paren waarvan het leidende document in deze administratie staat (bereik-begrenzing).",
     )
 
+    backfill_parser = subparsers.add_parser(
+        "duplicaten-backfill",
+        help="Blok 1 07-09: bestaande duplicaten (zelfde bestand of zelfde genormaliseerde referentie + bedrag) over "
+        "alle actieve administraties afvoeren mét kruisverwijzing — zelfde motor als de auto-afvoer, buiten de dagrem, "
+        "noodrem gerespecteerd, UBL+PDF-bundelparen en 'geen duplicaat'-afmeldingen beschermd. --dry-run schrijft "
+        "niets.",
+    )
+    backfill_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    backfill_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
+
     subparsers.add_parser(
         "bewaking-probe",
         help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
@@ -2564,6 +2613,8 @@ def main(argv: list[str] | None = None) -> int:
         return _webhook_redrive(args)
     if args.commando == "import-env-credentials":
         return _importeer_env_credentials(args)
+    if args.commando == "duplicaten-backfill":
+        return _duplicaten_backfill(args)
     return 1
 
 

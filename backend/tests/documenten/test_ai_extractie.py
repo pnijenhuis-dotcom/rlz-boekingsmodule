@@ -67,11 +67,13 @@ def fake_extraheer(monkeypatch: pytest.MonkeyPatch):
     return aanroepen
 
 
-def _upload_pdf(administratie_id: uuid.UUID, actor_id: uuid.UUID, opslag: LokaleBestandsopslag):
+def _upload_pdf(
+    administratie_id: uuid.UUID, actor_id: uuid.UUID, opslag: LokaleBestandsopslag, inhoud: bytes = _PDF
+):
     return service.upload_document(
         administratie_id=administratie_id,
         bestandsnaam="factuur.pdf",
-        inhoud=_PDF,
+        inhoud=inhoud,
         actor_id=actor_id,
         opslag=opslag,
     )
@@ -475,7 +477,9 @@ class TestHeraanbiedenGefaaldeExtracties:
             raise RuntimeError(fout)
 
         monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _kapot)
-        return _upload_pdf(administratie_id, actor_id, opslag)
+        # Unieke bytes per document: byte-identieke uploads worden sinds 07-09 (blok 1 vervolgrun) direct als
+        # duplicaat afgevoerd — deze test gaat over herextractie, niet over duplicaten.
+        return _upload_pdf(administratie_id, actor_id, opslag, inhoud=_PDF + b" " + uuid.uuid4().hex.encode())
 
     def test_heraanbieden_pakt_alleen_de_laatste_fout_en_respecteert_filter(
         self,

@@ -22,6 +22,7 @@ from app.documenten.checks import (
     CheckResultaat,
     check_afdeling,
     check_buitenland_tarief_crediteurkaart,
+    check_duplicaat_module,
     check_iban_wissel,
     check_regeltelling,
     check_verplichte_velden,
@@ -1267,6 +1268,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     reden: str,
     gelezen_totalen: tuple[Decimal | None, Decimal | None] = (None, None),
     historie_treffers: list[dict] | None = None,
+    module_check: CheckResultaat | None = None,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
@@ -1311,6 +1313,8 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 f"Duplicaatcheck kon niet uitgevoerd worden: {reden}"
                 + (f"; {historie_melding(historie_treffers)}" if historie_treffers else ""),
             ),
+            # 07-09: de module-check (eigen database, geen RLZ) draait óók in de storings-tak — nooit stil wegvallen.
+            *([module_check] if module_check is not None else []),
         )
     )
 
@@ -1388,6 +1392,20 @@ def voer_checks_uit(
     # Odoo-slotstuk 04-09: duplicaat over de backend-grens — voor een OVERGESTAPTE administratie de in de app
     # geboekte RLZ-era documenten met dezelfde kop (geen RLZ-/Odoo-call; leeg voor alle andere administraties).
     historie_treffers = _historie_treffers(administratie_id=administratie_id, voorstel=voorstel)
+    # HARDE check "Duplicaat (module)" (besluit Peter 07-09): tegen onze eigen database, binnen de administratie,
+    # over álle statussen behalve afgevoerd/afgewezen/verwijderd/gesplitst/samengevoegd — geen RLZ/Odoo nodig, dus
+    # in BEIDE takken (ook bij een RLZ-storing). Bundelparen (UBL+PDF) en mens-afmeldingen zijn al toegepast.
+    from app.documenten import duplicaat_module  # lokaal: houdt de importgraaf klein
+
+    module_check = check_duplicaat_module(
+        treffers=duplicaat_module.treffers_voor_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=voorstel.vendor_id,
+            referentie=voorstel.referentie,
+            totaalbedrag=voorstel.totaalbedrag,
+        )
+    )
 
     eigen_client = client is None
     eigen_port = None
@@ -1409,6 +1427,7 @@ def voer_checks_uit(
                 reden=str(exc),
                 gelezen_totalen=gelezen_totalen,
                 historie_treffers=historie_treffers,
+                module_check=module_check,
             )
     try:
         vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
@@ -1458,6 +1477,8 @@ def voer_checks_uit(
         # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
         # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
         resultaten.insert(2, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
+        # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
+        resultaten.append(module_check)
         return CheckRapport(tuple(resultaten))
     finally:
         if eigen_client and eigen_port is not None:

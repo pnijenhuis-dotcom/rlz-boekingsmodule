@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { apiFetch } from '../api/client'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ApiError, apiFetch, apiPostJson } from '../api/client'
 import type { ArchiefKantoorbreedDocumentDto, ArchiefKantoorbreedResponseDto } from '../api/types'
 import { AnkerPopup, Paginering } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
@@ -41,11 +41,17 @@ export function ArchiefScreen() {
   const q = searchParams.get('q') ?? ''
   const sortParam = searchParams.get('sort')
   const sortering = useMemo(() => archiefSorteringUitParam(sortParam), [sortParam])
+  // Blok 1 07-09 (besluit Peter "moet er toch een geboekt worden, dan zoek ik hem in het archief"): statusfilter
+  // binnen dit scherm — 'geboekt' (default, bewaarplicht) of 'afgevoerd' (als duplicaat afgevoerde documenten).
+  const statusFilter: 'geboekt' | 'afgevoerd' = searchParams.get('status') === 'afgevoerd' ? 'afgevoerd' : 'geboekt'
+  const afgevoerdWeergave = statusFilter === 'afgevoerd'
   const pagina = Math.max(1, Number(searchParams.get('pagina') ?? '1') || 1)
 
   const [resultaat, setResultaat] = useState<ArchiefKantoorbreedResponseDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bestandFout, setBestandFout] = useState<string | null>(null)
+  const [actieFout, setActieFout] = useState<string | null>(null)
+  const [actieBezig, setActieBezig] = useState<string | null>(null)
   const [herlaad, setHerlaad] = useState(0)
   // Zoekveld: lokale invoer, met debounce naar de URL (die de request stuurt).
   const [zoekInvoer, setZoekInvoer] = useState(q)
@@ -78,7 +84,7 @@ export function ArchiefScreen() {
     setResultaat(null)
     setFout(null)
     let actief = true
-    haalArchiefKantoorbreedOp({ pagina, van, tot, q, sort: sortParam, administratieId })
+    haalArchiefKantoorbreedOp({ pagina, van, tot, q, sort: sortParam, administratieId, status: statusFilter })
       .then((data) => {
         if (actief) setResultaat(data)
       })
@@ -88,7 +94,25 @@ export function ArchiefScreen() {
     return () => {
       actief = false
     }
-  }, [administratieId, van, tot, q, sortParam, pagina, herlaad])
+  }, [administratieId, van, tot, q, sortParam, pagina, herlaad, statusFilter])
+
+  /** "Terug naar werkvoorraad" (blok 1 07-09) = het bestaande heropenen-pad: de duplicaat-afwijzing gaat naar
+   * heropend, het document terug naar zijn herkomst-status; de harde check "Duplicaat (module)" blijft daarna
+   * rood tot een mens 'm afmeldt als "geen duplicaat" (reden verplicht) op de documentpagina. */
+  const terugNaarWerkvoorraad = async (doc: ArchiefKantoorbreedDocumentDto) => {
+    setActieFout(null)
+    setActieBezig(doc.document_id)
+    try {
+      await apiPostJson(`/administraties/${doc.administratie_id}/documenten/${doc.document_id}/heropenen`, {})
+      setHerlaad((h) => h + 1)
+    } catch (err) {
+      setActieFout(
+        err instanceof ApiError ? `${doc.bestandsnaam}: ${err.message}` : `${doc.bestandsnaam}: terughalen mislukt.`,
+      )
+    } finally {
+      setActieBezig(null)
+    }
+  }
 
   const sorteerOp = (kolom: ArchiefSorteerKolom) => {
     zetParams({ sort: archiefSorteringNaarParam(volgendeArchiefSortering(sortering, kolom)) })
@@ -192,8 +216,20 @@ export function ArchiefScreen() {
           />
         )}
         {bestandFout && <FoutMelding melding={bestandFout} />}
+        {actieFout && <FoutMelding melding={actieFout} />}
 
         <div className="filters" style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <label style={{ display: 'grid', gap: 4, fontSize: 12, margin: 0 }}>
+            Tonen
+            <select
+              value={statusFilter}
+              onChange={(e) => zetParams({ status: e.target.value === 'afgevoerd' ? 'afgevoerd' : null })}
+              aria-label="Tonen"
+            >
+              <option value="geboekt">Geboekte documenten</option>
+              <option value="afgevoerd">Afgevoerd als duplicaat</option>
+            </select>
+          </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 12, margin: 0 }}>
             Zoeken
             <input
@@ -205,7 +241,7 @@ export function ArchiefScreen() {
             />
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 12, margin: 0 }}>
-            Geboekt van
+            {afgevoerdWeergave ? 'Afgevoerd van' : 'Geboekt van'}
             <input type="date" value={van || resultaat?.van || ''} onChange={(e) => zetParams({ van: e.target.value || null })} />
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 12, margin: 0 }}>
@@ -245,7 +281,9 @@ export function ArchiefScreen() {
         {documenten !== null && documenten.length === 0 && (
           <p className="hint">
             {totaal === 0
-              ? 'Geen geboekte documenten in dit datumvenster. Verruim het venster of pas het zoekfilter aan — elk geboekt stuk blijft hier 7 jaar terugvindbaar mét PDF (bewaarplicht).'
+              ? afgevoerdWeergave
+                ? 'Geen als duplicaat afgevoerde documenten in dit datumvenster. Verruim het venster of pas het zoekfilter aan — een afgevoerd duplicaat blijft hier terugvindbaar mét PDF en kruisverwijzing naar het origineel.'
+                : 'Geen geboekte documenten in dit datumvenster. Verruim het venster of pas het zoekfilter aan — elk geboekt stuk blijft hier 7 jaar terugvindbaar mét PDF (bewaarplicht).'
               : 'Deze pagina is leeg — ga terug naar een eerdere pagina.'}
           </p>
         )}
@@ -260,7 +298,7 @@ export function ArchiefScreen() {
                   {sorteerKop('boekstuk', 'Boekstuk')}
                   {sorteerKop('bedrag', 'Bedrag', 'amount')}
                   {sorteerKop('factuurdatum', 'Factuurdatum')}
-                  {sorteerKop('geboekt_op', 'Geboekt op')}
+                  {sorteerKop('geboekt_op', afgevoerdWeergave ? 'Afgevoerd op' : 'Geboekt op')}
                   {meerdereAdministraties && sorteerKop('administratie', 'Administratie')}
                   <th />
                 </tr>
@@ -281,7 +319,33 @@ export function ArchiefScreen() {
                     <td className={amountKlasse(doc.totaalbedrag)}>{formatBedrag(doc.totaalbedrag)}</td>
                     <td>{formatDatumKort(doc.factuurdatum)}</td>
                     <td>
-                      {doc.geboekt_op ? formatDatum(doc.geboekt_op) : '—'}
+                      {doc.afgevoerd_als_duplicaat_van
+                        ? formatDatum(doc.afgevoerd_als_duplicaat_van.afgevoerd_op)
+                        : doc.geboekt_op
+                          ? formatDatum(doc.geboekt_op)
+                          : '—'}
+                      {doc.afgevoerd_als_duplicaat_van && (
+                        <div style={{ marginTop: 4, fontSize: 12 }}>
+                          <span
+                            className="chip afwijking"
+                            title={`Als duplicaat afgevoerd${doc.afgevoerd_als_duplicaat_van.automatisch ? ' door het systeem' : ''} — het origineel blijft het te boeken stuk`}
+                          >
+                            afgevoerd als duplicaat van{' '}
+                            {doc.afgevoerd_als_duplicaat_van.referentie ?? doc.afgevoerd_als_duplicaat_van.bestandsnaam ?? '…'}
+                          </span>
+                          {doc.afgevoerd_als_duplicaat_van.document_id && (
+                            <>
+                              {' '}
+                              <Link
+                                to={`/documenten/${doc.administratie_id}/${doc.afgevoerd_als_duplicaat_van.document_id}`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                open origineel
+                              </Link>
+                            </>
+                          )}
+                        </div>
+                      )}
                       {doc.automatisch_geboekt && (
                         <>
                           {' '}
@@ -341,7 +405,7 @@ export function ArchiefScreen() {
                         {/* Tegenboek-ingang (mockup 22-08): opent het controlescherm mét de tegenboek-flow
                             open; alleen zinvol op inkoopfacturen — de sectie zelf toetst server-side of
                             storno écht geblokkeerd is. */}
-                        {doc.soort === 'inkoopfactuur' && !doc.tegengeboekt && (
+                        {doc.soort === 'inkoopfactuur' && !doc.tegengeboekt && !doc.afgevoerd_als_duplicaat_van && (
                           <button
                             type="button"
                             className="linkbtn"
@@ -352,6 +416,21 @@ export function ArchiefScreen() {
                             }}
                           >
                             Tegenboeken…
+                          </button>
+                        )}
+                        {/* Blok 1 07-09: een afgevoerd duplicaat terughalen = het bestaande heropenen-pad. */}
+                        {doc.afgevoerd_als_duplicaat_van && (
+                          <button
+                            type="button"
+                            className="linkbtn"
+                            role="menuitem"
+                            disabled={actieBezig === doc.document_id}
+                            onClick={() => {
+                              setMenuOpen(null)
+                              void terugNaarWerkvoorraad(doc)
+                            }}
+                          >
+                            {actieBezig === doc.document_id ? 'Bezig…' : 'Terug naar werkvoorraad'}
                           </button>
                         )}
                       </AnkerPopup>

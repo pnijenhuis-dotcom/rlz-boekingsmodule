@@ -20,6 +20,8 @@ export interface ArchiefQuery {
   q?: string
   /** `<kolom>:<asc|desc>` (documentenlijst-conventie punt 21); leeg = boekmoment nieuwste eerst. */
   sort?: string | null
+  /** Blok 1 07-09: 'geboekt' (default) | 'afgevoerd' (als duplicaat afgevoerde documenten). */
+  status?: string | null
 }
 
 export function archiefParams(query: ArchiefQuery): URLSearchParams {
@@ -28,6 +30,7 @@ export function archiefParams(query: ArchiefQuery): URLSearchParams {
   if (query.tot) params.set('tot', query.tot)
   if (query.q) params.set('q', query.q)
   if (query.sort) params.set('sort', query.sort)
+  if (query.status && query.status !== 'geboekt') params.set('status', query.status)
   return params
 }
 

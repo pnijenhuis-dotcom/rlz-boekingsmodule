@@ -261,11 +261,22 @@ class TestAutoboekPad:
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
         eerste = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert _status(admin_engine, eerste) == "geboekt"
-        # Zelfde bytes opnieuw → mogelijk-duplicaat-vlag → autoboeken weigert, mens beoordeelt.
+        # Zelfde bytes opnieuw → sinds 07-09 (blok 1 vervolgrun, besluit Peter "duplicaten eruit"): het byte-identieke
+        # exemplaar wordt DIRECT afgevoerd als duplicaat van het geboekte origineel (status afgewezen mét
+        # kruisverwijzing + audit) — autoboeken boekt het nooit een tweede keer.
         tweede = _upload(administratie_id, gescoopte_gebruiker, opslag)
-        assert _status(admin_engine, tweede) == "te_controleren"
-        [reden] = _audit_redenen(admin_engine, tweede)
-        assert "mogelijk-duplicaat" in reden
+        assert _status(admin_engine, tweede) == "afgewezen"
+        assert _status(admin_engine, eerste) == "geboekt"
+        with admin_engine.connect() as conn:
+            afvoer = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde->>'automatisch' FROM platform.audit_event "
+                    "WHERE actie = 'duplicaat_afgevoerd' AND record_id = :id"
+                ),
+                {"id": tweede},
+            ).all()
+        assert afvoer and afvoer[0][0] == "true"
+        assert len(fake_client.puts) == 1  # het origineel is één keer geboekt, het duplicaat nooit
 
     def test_volumerem_weigert(
         self,

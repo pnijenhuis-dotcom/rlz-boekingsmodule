@@ -113,14 +113,44 @@ class AfgevoerdDuplicaatDto(BaseModel):
     afgewezen_door: uuid.UUID
 
 
+class DuplicaatModuleTrefferDto(BaseModel):
+    """07-09: één tegenhanger uit de module-motor (eigen database). `categorie` = bestand | referentie_bedrag |
+    crediteur_referentie; alleen de eerste twee zijn automatisch afvoerbaar."""
+
+    document_id: uuid.UUID
+    categorie: str
+    status: str
+    bestandsnaam: str
+    aangemaakt_op: datetime
+    referentie: str | None = None
+    totaalbedrag: Decimal | None = None
+
+
+class DuplicaatAfmeldingDto(BaseModel):
+    """De laatste mens-afmelding "Geen duplicaat" op dit document (tijdlijnregel `duplicaat_afgemeld`)."""
+
+    reden: str
+    actor_id: uuid.UUID
+    tijdstip: datetime
+    tegenhangers: list[uuid.UUID] = []
+
+
+class DuplicaatAfmeldenInput(BaseModel):
+    reden: str = Field(min_length=1, max_length=2000)
+
+
 class DuplicaatAfvoerStandDto(BaseModel):
     """Controlescherm: `kandidaat` = harde match gevonden én status laat afvoeren toe (knop "Afvoeren als
     duplicaat"); `afgevoerd_als_duplicaat_van` = dit document ís afgevoerd (→ open origineel);
-    `afgevoerde_duplicaten` = de duplicaten die naar dít origineel wijzen."""
+    `afgevoerde_duplicaten` = de duplicaten die naar dít origineel wijzen; `module_treffers` (07-09) = álle
+    tegenhangers uit de module-motor die de harde check "Duplicaat (module)" rood maken; `afmelding` = laatste
+    "Geen duplicaat"-afmelding."""
 
     kandidaat: DuplicaatOrigineelDto | None = None
     afgevoerd_als_duplicaat_van: DuplicaatOrigineelDto | None = None
     afgevoerde_duplicaten: list[AfgevoerdDuplicaatDto] = []
+    module_treffers: list[DuplicaatModuleTrefferDto] = []
+    afmelding: DuplicaatAfmeldingDto | None = None
 
 
 class DuplicaatAfvoerResponse(BaseModel):

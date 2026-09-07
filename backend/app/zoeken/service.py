@@ -31,6 +31,8 @@ from app.auth import service as auth_service
 from app.db.models import AuditEvent, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.models import (
+    Afwijzing,
+    AfwijzingStatus,
     Boekvoorstel,
     Document,
     DocumentGebeurtenis,
@@ -62,6 +64,18 @@ class AccorderingHit:
 
 
 @dataclass(frozen=True)
+class AfgevoerdVan:
+    """Blok 1 07-09: het origineel waarvan een document als duplicaat is afgevoerd (open afwijzing mét
+    kruisverwijzing) — chip "afgevoerd als duplicaat van ‹ref›" + link in Archief en Zoeken."""
+
+    document_id: uuid.UUID | None
+    referentie: str | None
+    bestandsnaam: str | None
+    afgevoerd_op: datetime
+    automatisch: bool
+
+
+@dataclass(frozen=True)
 class DocumentHit:
     document_id: uuid.UUID
     administratie_id: uuid.UUID
@@ -78,6 +92,40 @@ class DocumentHit:
     automatisch_geboekt: bool
     vragen: list[VraagHit] = field(default_factory=list)
     accordering: list[AccorderingHit] = field(default_factory=list)
+    afgevoerd_als_duplicaat_van: AfgevoerdVan | None = None
+
+
+def afgevoerd_van_per_document(session: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, AfgevoerdVan]:
+    """Per document de OPEN duplicaat-afwijzing (heropend = niet meer afgevoerd) mét het origineel."""
+    if not document_ids:
+        return {}
+    rijen = session.scalars(
+        select(Afwijzing).where(
+            Afwijzing.document_id.in_(document_ids),
+            Afwijzing.status == AfwijzingStatus.OPEN.value,
+            or_(
+                Afwijzing.duplicaat_van_document_id.isnot(None),
+                Afwijzing.duplicaat_van_rlz_document_id.isnot(None),
+                Afwijzing.duplicaat_van_referentie.isnot(None),
+            ),
+        )
+    ).all()
+    origineel_ids = [a.duplicaat_van_document_id for a in rijen if a.duplicaat_van_document_id is not None]
+    namen: dict[uuid.UUID, str] = {}
+    if origineel_ids:
+        namen = dict(
+            session.execute(select(Document.id, Document.bestandsnaam).where(Document.id.in_(origineel_ids))).all()
+        )
+    return {
+        a.document_id: AfgevoerdVan(
+            document_id=a.duplicaat_van_document_id,
+            referentie=a.duplicaat_van_referentie,
+            bestandsnaam=namen.get(a.duplicaat_van_document_id) if a.duplicaat_van_document_id else None,
+            afgevoerd_op=a.afgewezen_op,
+            automatisch=bool(a.automatisch),
+        )
+        for a in rijen
+    }
 
 
 @dataclass(frozen=True)
@@ -229,6 +277,7 @@ def _zoek_documenten_in_administratie(
         vragen = _vraag_hits(session, document_ids)
         accorderingen = _accordering_hits(session, document_ids)
         automatisch = _automatisch_geboekt_ids(session, document_ids)
+        afgevoerd_van = afgevoerd_van_per_document(session, document_ids)
         tegengeboekte_ids: set[uuid.UUID] = set()
         if document_ids:
             from app.documenten.models import Tegenboeking
@@ -281,6 +330,7 @@ def _zoek_documenten_in_administratie(
                     automatisch_geboekt=document.id in automatisch,
                     vragen=vragen.get(document.id, []),
                     accordering=accorderingen.get(document.id, []),
+                    afgevoerd_als_duplicaat_van=afgevoerd_van.get(document.id),
                 )
             )
 
@@ -411,6 +461,10 @@ class ArchiefDocument:
     # Tegenboek-pad (migratie 0061): er bestaat een tegenboeking voor de huidige boek_cyclus —
     # de rij draagt de chip TEGENGEBOEKT (kruisverwijzing op de documentpagina).
     tegengeboekt: bool
+    # Blok 1 07-09: statusfilter "afgevoerd" — een als duplicaat afgevoerd document (status afgewezen, open afwijzing
+    # mét kruisverwijzing) is in het archief terugvindbaar mét zijn origineel; `status` = de documentstatus.
+    status: str = DocumentStatus.GEBOEKT.value
+    afgevoerd_als_duplicaat_van: AfgevoerdVan | None = None
 
 
 # --- Archief: server-side paginering + datumvenster + sortering (C1 design-ronde 03-09) ----------
@@ -438,11 +492,16 @@ class ArchiefFout(ValueError):
     """Ongeldige invoer (venster, sortering) — de router vertaalt naar 422."""
 
 
+ARCHIEF_STATUSSEN = ("geboekt", "afgevoerd")
+
+
 @dataclass(frozen=True)
 class ArchiefFilter:
     van: date
     tot: date
     q: str = ""
+    # 'geboekt' (default, bewaarplicht) | 'afgevoerd' (als duplicaat afgevoerde documenten, blok 1 07-09).
+    status: str = "geboekt"
 
 
 @dataclass(frozen=True)
@@ -485,17 +544,20 @@ def standaard_datumvenster(vandaag: date | None = None) -> tuple[date, date]:
 
 
 def maak_archief_filter(
-    *, van: date | None, tot: date | None, q: str = "", vandaag: date | None = None
+    *, van: date | None, tot: date | None, q: str = "", vandaag: date | None = None, status: str | None = None
 ) -> ArchiefFilter:
     """Ontbrekende grenzen krijgen de default (12 maanden terug resp. vandaag); van > tot = fout.
     Eén expliciete grens laat de andere op de default staan — `van` in het verleden zonder `tot`
-    betekent dus "van die datum tot vandaag"."""
+    betekent dus "van die datum tot vandaag". `status` = geboekt (default) | afgevoerd (07-09)."""
     default_van, default_tot = standaard_datumvenster(vandaag)
     van = van or default_van
     tot = tot or default_tot
     if van > tot:
         raise ArchiefFout("Het datumvenster is ongeldig: 'van' ligt na 'tot'.")
-    return ArchiefFilter(van=van, tot=tot, q=q.strip())
+    status = status or "geboekt"
+    if status not in ARCHIEF_STATUSSEN:
+        raise ArchiefFout(f"Onbekend statusfilter: {status!r} (geboekt of afgevoerd).")
+    return ArchiefFilter(van=van, tot=tot, q=q.strip(), status=status)
 
 
 def parse_archief_sortering(waarde: str | None) -> ArchiefSortering:
@@ -538,8 +600,28 @@ def _leverancier_expr():
     return func.coalesce(vendor_naam, VerkoopVoorstel.debiteur_naam)
 
 
-def _archief_kolomexpressies() -> dict[str, object]:
-    geboekt_op = _geboekt_op_expr()
+def _afgevoerd_op_expr():
+    """Afvoermoment = de open duplicaat-afwijzing (precies één open afwijzing per document)."""
+    return (
+        select(func.max(Afwijzing.afgewezen_op))
+        .where(
+            Afwijzing.document_id == Document.id,
+            Afwijzing.status == AfwijzingStatus.OPEN.value,
+            or_(
+                Afwijzing.duplicaat_van_document_id.isnot(None),
+                Afwijzing.duplicaat_van_rlz_document_id.isnot(None),
+                Afwijzing.duplicaat_van_referentie.isnot(None),
+            ),
+        )
+        .correlate(Document)
+        .scalar_subquery()
+    )
+
+
+def _archief_kolomexpressies(status: str = "geboekt") -> dict[str, object]:
+    # Het "moment" van de rij: boekmoment voor het geboekte archief, afvoermoment voor het afgevoerd-filter — dezelfde
+    # sorteer-/venstersleutel `geboekt_op`, zodat sortering en paginering één pad houden.
+    geboekt_op = _afgevoerd_op_expr() if status == "afgevoerd" else _geboekt_op_expr()
     return {
         "geboekt_op": geboekt_op,
         "leverancier": _leverancier_expr(),
@@ -574,10 +656,14 @@ def _archief_zoekvoorwaarde(term: str, kolommen: dict[str, object]):
 
 
 def _archief_basis(administratie_id: uuid.UUID, filt: ArchiefFilter):
-    kolommen = _archief_kolomexpressies()
+    kolommen = _archief_kolomexpressies(filt.status)
+    if filt.status == "afgevoerd":
+        status_voorwaarde = [Document.status == DocumentStatus.AFGEWEZEN, kolommen["geboekt_op"].isnot(None)]
+    else:
+        status_voorwaarde = [Document.status == DocumentStatus.GEBOEKT]
     where = [
         Document.administratie_id == administratie_id,
-        Document.status == DocumentStatus.GEBOEKT,
+        *status_voorwaarde,
         kolommen["vensterdatum"] >= filt.van,
         kolommen["vensterdatum"] <= filt.tot,
     ]
@@ -646,6 +732,7 @@ def archief_rijen(
     rijen = session.execute(stmt).all()
     document_ids = [document.id for document, *_ in rijen]
     automatisch = _automatisch_geboekt_ids(session, document_ids)
+    afgevoerd_van = afgevoerd_van_per_document(session, document_ids) if filt.status == "afgevoerd" else {}
     tegengeboekte_ids: set[uuid.UUID] = set()
     if document_ids:
         from app.documenten.models import Tegenboeking
@@ -689,9 +776,11 @@ def archief_rijen(
                 rlz_boekstuknummer=boekstuk,
                 totaalbedrag=totaal,
                 factuurdatum=datum,
-                geboekt_op=geboekt_op,
+                geboekt_op=geboekt_op if filt.status != "afgevoerd" else None,
                 automatisch_geboekt=document.id in automatisch,
                 tegengeboekt=document.id in tegengeboekte_ids,
+                status=document.status.value,
+                afgevoerd_als_duplicaat_van=afgevoerd_van.get(document.id),
             )
         )
     return resultaat
@@ -706,15 +795,17 @@ def archief(
     tot: date | None = None,
     q: str = "",
     sortering: ArchiefSortering | None = None,
+    status: str | None = None,
 ) -> ArchiefPagina:
     """Het geboekte archief van één administratie (bewaarplicht 7 jaar), gepagineerd (C1 03-09):
     kopgegevens + RLZ-boekstuknummer + boekmoment; de PDF/UBL zelf via het bestaande
-    bestand-endpoint. Zonder `van`/`tot` = de laatste 12 maanden op boekmoment."""
+    bestand-endpoint. Zonder `van`/`tot` = de laatste 12 maanden op boekmoment. `status=afgevoerd`
+    (07-09) = de als duplicaat afgevoerde documenten (venster op afvoermoment) mét hun origineel."""
     if pagina < 1:
         raise ArchiefFout("Pagina begint bij 1.")
     if not 1 <= per_pagina <= ARCHIEF_PER_PAGINA_MAX:
         raise ArchiefFout(f"per_pagina moet tussen 1 en {ARCHIEF_PER_PAGINA_MAX} liggen.")
-    filt = maak_archief_filter(van=van, tot=tot, q=q)
+    filt = maak_archief_filter(van=van, tot=tot, q=q, status=status)
     sortering = sortering or STANDAARD_ARCHIEF_SORTERING
     with scoped_session(administratie_id) as session:
         totaal = archief_tel(session, administratie_id=administratie_id, filt=filt)

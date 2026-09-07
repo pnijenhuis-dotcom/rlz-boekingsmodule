@@ -97,6 +97,28 @@ def _naar_duplicaat_afvoer_stand(
     return schemas.DuplicaatAfvoerStandDto(
         kandidaat=_naar_origineel_dto(stand.kandidaat),
         afgevoerd_als_duplicaat_van=_naar_origineel_dto(stand.afgevoerd_als_duplicaat_van),
+        module_treffers=[
+            schemas.DuplicaatModuleTrefferDto(
+                document_id=t.document_id,
+                categorie=t.categorie,
+                status=t.status.value,
+                bestandsnaam=t.bestandsnaam,
+                aangemaakt_op=t.aangemaakt_op,
+                referentie=t.referentie,
+                totaalbedrag=t.totaalbedrag,
+            )
+            for t in stand.module_treffers
+        ],
+        afmelding=(
+            schemas.DuplicaatAfmeldingDto(
+                reden=stand.afmelding.reden,
+                actor_id=stand.afmelding.actor_id,
+                tijdstip=stand.afmelding.tijdstip,
+                tegenhangers=stand.afmelding.tegenhangers,
+            )
+            if stand.afmelding is not None
+            else None
+        ),
         afgevoerde_duplicaten=[
             schemas.AfgevoerdDuplicaatDto(
                 afwijzing_id=d.afwijzing_id,
@@ -1440,6 +1462,40 @@ def document_afvoeren_als_duplicaat(
         automatisch=a.automatisch,
         al_afgevoerd=resultaat.al_afgevoerd,
         origineel=_naar_origineel_dto(resultaat.origineel),  # type: ignore[arg-type]
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/documenten/{document_id}/duplicaat-afmelden",
+    response_model=schemas.DuplicaatAfmeldingDto,
+)
+def document_duplicaat_afmelden(
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    invoer: schemas.DuplicaatAfmeldenInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DuplicaatAfmeldingDto:
+    """"Geen duplicaat — afmelden" (07-09): de ENIGE mens-override op de harde check "Duplicaat (module)". Reden
+    verplicht (422 zonder). Tijdlijnregel zonder statusovergang + audit oud→nieuw; de sha256-vlag gaat eraf. Geldt
+    voor het paar (beide kanten) en alleen voor de tegenhangers van nú — een nieuw exemplaar blokkeert weer. 409 als er
+    niets af te melden is."""
+    from app.documenten import duplicaat_module
+
+    try:
+        afmelding = duplicaat_module.meld_af(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except service.DocumentNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except duplicaat_module.RedenVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except duplicaat_module.NietsAfTeMelden as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return schemas.DuplicaatAfmeldingDto(
+        reden=afmelding.reden,
+        actor_id=afmelding.actor_id,
+        tijdstip=afmelding.tijdstip,
+        tegenhangers=afmelding.tegenhangers,
     )
 
 

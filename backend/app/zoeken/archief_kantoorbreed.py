@@ -36,7 +36,7 @@ from app.auth.deps import CurrentGebruiker, vereis_kantoorrol
 from app.db.models import GebruikerRol
 from app.db.session import scoped_session
 from app.zoeken import service
-from app.zoeken.router import ArchiefDocumentDto
+from app.zoeken.router import AfgevoerdVanDto, ArchiefDocumentDto
 from app.zoeken.service import ArchiefDocument, ArchiefFout, ArchiefSortering
 
 MAX_DIEPTE = 5000
@@ -116,12 +116,13 @@ def blader(
     tot: date | None = None,
     q: str = "",
     sortering: ArchiefSortering | None = None,
+    status_filter: str | None = None,
 ) -> KantoorbreedPagina:
     if pagina < 1:
         raise ArchiefFout("Pagina begint bij 1.")
     if not 1 <= per_pagina <= service.ARCHIEF_PER_PAGINA_MAX:
         raise ArchiefFout(f"per_pagina moet tussen 1 en {service.ARCHIEF_PER_PAGINA_MAX} liggen.")
-    filt = service.maak_archief_filter(van=van, tot=tot, q=q)
+    filt = service.maak_archief_filter(van=van, tot=tot, q=q, status=status_filter)
     sortering = sortering or service.STANDAARD_ARCHIEF_SORTERING
 
     administraties = auth_service.mijn_administraties(actor_id=actor_id, rol=rol)
@@ -222,6 +223,10 @@ def _dto(rij: KantoorbreedRij) -> ArchiefKantoorbreedDocumentDto:
         geboekt_op=d.geboekt_op,
         automatisch_geboekt=d.automatisch_geboekt,
         tegengeboekt=d.tegengeboekt,
+        status=d.status,
+        afgevoerd_als_duplicaat_van=(
+            AfgevoerdVanDto(**vars(d.afgevoerd_als_duplicaat_van)) if d.afgevoerd_als_duplicaat_van else None
+        ),
     )
 
 
@@ -234,6 +239,7 @@ def archief_kantoorbreed(
     tot: date | None = Query(None),
     q: str = Query(""),
     sort: str | None = Query(None, description="<kolom>:<asc|desc>; leeg = boekmoment nieuwste eerst"),
+    status_filter: str | None = Query(None, alias="status", description="geboekt (default) | afgevoerd (07-09)"),
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> ArchiefKantoorbreedResponse:
     """Kantoorbreed geboekt archief over álle administraties in de scope van de actor — gepagineerd,
@@ -250,6 +256,7 @@ def archief_kantoorbreed(
             tot=tot,
             q=q,
             sortering=service.parse_archief_sortering(sort),
+            status_filter=status_filter,
         )
     except ArchiefFout as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc

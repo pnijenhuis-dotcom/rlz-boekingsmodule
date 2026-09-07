@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { ZoekAccorderingHitDto, ZoekDocumentHitDto, ZoekResponseDto } from '../api/types'
 import { FoutMelding } from '../ui/FoutMelding'
 import { StatusChip } from '../werkvoorraad/StatusChip'
@@ -222,6 +222,27 @@ export function ZoekenScreen() {
                               {' '}
                               <span className="chip geheugen">automatisch</span>
                             </>
+                          )}
+                          {hit.afgevoerd_als_duplicaat_van && (
+                            <div style={{ marginTop: 4, fontSize: 12 }}>
+                              <span
+                                className="chip afwijking"
+                                title="Als duplicaat afgevoerd — het origineel blijft het te boeken stuk; terughalen via Heropenen op de documentpagina"
+                              >
+                                afgevoerd als duplicaat van {hit.afgevoerd_als_duplicaat_van.referentie ?? hit.afgevoerd_als_duplicaat_van.bestandsnaam ?? '…'}
+                              </span>
+                              {hit.afgevoerd_als_duplicaat_van.document_id && (
+                                <>
+                                  {' '}
+                                  <Link
+                                    to={`/documenten/${hit.administratie_id}/${hit.afgevoerd_als_duplicaat_van.document_id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    open origineel
+                                  </Link>
+                                </>
+                              )}
+                            </div>
                           )}
                         </td>
                         <HistorieCel hit={hit} />

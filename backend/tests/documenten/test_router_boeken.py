@@ -88,6 +88,7 @@ class TestBoekvoorstelEndpoints:
             "IBAN-wissel",
             "Duplicaatcheck",
             "Duplicaat bij andere crediteur",
+            "Duplicaat (module)",  # blok 1 07-09
         }
 
     def test_put_met_mismatch_totaal_geeft_geblokkeerd_checkrapport(
@@ -146,6 +147,7 @@ class TestBoekvoorstelEndpoints:
             "IBAN-wissel",
             "Duplicaatcheck",
             "Duplicaat bij andere crediteur",
+            "Duplicaat (module)",  # blok 1 07-09
         }
         assert all(r["ok"] for r in body["checks"]["resultaten"])
 

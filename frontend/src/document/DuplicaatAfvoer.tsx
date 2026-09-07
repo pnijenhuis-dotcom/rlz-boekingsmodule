@@ -4,8 +4,10 @@ import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type {
   DocumentDetailDto,
   DocumentListItemDto,
+  DuplicaatAfmeldingDto,
   DuplicaatAfvoerResponseDto,
   DuplicaatAfvoerStandDto,
+  DuplicaatModuleTrefferDto,
   DuplicaatOrigineelDto,
 } from '../api/types'
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
@@ -144,6 +146,83 @@ export function DuplicaatAfvoerDialog({ administratieId, documentId, bestandsnaa
   )
 }
 
+/** Blok 1 07-09: leesbare categorie van een module-tegenhanger (harde check "Duplicaat (module)"). */
+export const MODULE_CATEGORIE_LABEL: Record<string, string> = {
+  bestand: 'zelfde bestand',
+  referentie_bedrag: 'zelfde referentie + bedrag',
+  crediteur_referentie: 'zelfde crediteur + referentie (ander bedrag)',
+}
+
+interface AfmeldDialogProps {
+  administratieId: string
+  documentId: string
+  treffers: DuplicaatModuleTrefferDto[]
+  onAfgemeld: (afmelding: DuplicaatAfmeldingDto) => void
+  onAnnuleren: () => void
+}
+
+/** "Geen duplicaat — afmelden" (blok 1 07-09): de ENIGE mens-override op de harde check "Duplicaat (module)".
+ * Reden verplicht; de afmelding geldt voor precies deze tegenhangers (beide kanten) — een nieuw exemplaar blokkeert
+ * weer. Geen statuswissel: tijdlijnregel + audit. */
+export function DuplicaatAfmeldenDialog({ administratieId, documentId, treffers, onAfgemeld, onAnnuleren }: AfmeldDialogProps) {
+  const [reden, setReden] = useState('')
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+
+  const bevestig = async () => {
+    if (!reden.trim()) {
+      setFout('Een reden is verplicht.')
+      return
+    }
+    setBezig(true)
+    setFout(null)
+    try {
+      const afmelding = await apiPostJson<DuplicaatAfmeldingDto>(
+        `/administraties/${administratieId}/documenten/${documentId}/duplicaat-afmelden`,
+        { reden: reden.trim() },
+      )
+      onAfgemeld(afmelding)
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Afmelden mislukt.')
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onAnnuleren()}>
+      <DialogContent aria-describedby={undefined} data-testid="duplicaat-afmelden-dialoog">
+        <DialogTitle>Geen duplicaat — afmelden</DialogTitle>
+        <DialogDescription>
+          Je verklaart dat dit document géén duplicaat is van {treffers.length === 1 ? 'het onderstaande document' : `de ${treffers.length} onderstaande documenten`}.
+          De controle &ldquo;Duplicaat (module)&rdquo; wordt daarna groen voor precies deze tegenhanger(s); een nieuw
+          exemplaar blokkeert opnieuw. Reden verplicht (audit).
+        </DialogDescription>
+        <ul style={{ margin: '4px 0 8px', paddingLeft: 18, fontSize: 12.5 }}>
+          {treffers.map((t) => (
+            <li key={t.document_id}>
+              {t.bestandsnaam} — {MODULE_CATEGORIE_LABEL[t.categorie] ?? t.categorie} ({t.status.replace(/_/g, ' ')})
+            </li>
+          ))}
+        </ul>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+          Reden
+          <textarea value={reden} onChange={(e) => setReden(e.target.value)} rows={3} required aria-label="Reden" />
+        </label>
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button type="button" variant="secundair" onClick={onAnnuleren} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button type="button" onClick={() => void bevestig()} disabled={bezig || !reden.trim()}>
+            {bezig ? 'Bezig…' : 'Afmelden als geen duplicaat'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 interface SectieProps {
   administratieId: string
   documentId: string
@@ -159,29 +238,66 @@ interface SectieProps {
  * afgewezen-banner mét Heropenen staat er los onder); (3) origineel-kant → "N duplicaten afgevoerd". */
 export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaam, status, stand, naamVoor, onGewijzigd }: SectieProps) {
   const [dialoogOpen, setDialoogOpen] = useState(false)
+  const [afmeldenOpen, setAfmeldenOpen] = useState(false)
   if (!stand) return null
   const kandidaat = DUPLICAAT_AFVOERBARE_STATUSSEN.includes(status) ? stand.kandidaat : null
   const afgevoerdVan = status === 'afgewezen' ? stand.afgevoerd_als_duplicaat_van : null
   const afgevoerde = stand.afgevoerde_duplicaten
-  if (!kandidaat && !afgevoerdVan && afgevoerde.length === 0) return null
+  // Blok 1 07-09: module-tegenhangers (harde check rood) — alleen op een niet-afgewezen document.
+  const moduleTreffers = status === 'afgewezen' ? [] : (stand.module_treffers ?? [])
+  const afmelding = stand.afmelding ?? null
+  if (!kandidaat && !afgevoerdVan && afgevoerde.length === 0 && moduleTreffers.length === 0 && !afmelding) return null
   return (
     <>
-      {kandidaat && (
-        <div className="panel" data-testid="duplicaat-kandidaat">
+      {(kandidaat || moduleTreffers.length > 0) && (
+        <div className="panel" data-testid={kandidaat ? 'duplicaat-kandidaat' : 'duplicaat-module'}>
           <h2>
-            Duplicaat gevonden <span className="chip vraag">harde match</span>
+            Duplicaat gevonden <span className="chip vraag">{kandidaat ? 'harde match' : 'controle rood'}</span>
           </h2>
-          <p className="hint" style={{ marginTop: 0 }}>
-            Zelfde crediteur, referentie en totaalbedrag als een {kandidaat.bron === 'geboekt' ? 'al geboekte' : 'oudere'} factuur.
-            Afvoeren zet dit document op Afgewezen mét kruisverwijzing; het origineel blijft staan.
-          </p>
-          <OrigineelRegel administratieId={administratieId} origineel={kandidaat} />
+          {kandidaat ? (
+            <p className="hint" style={{ marginTop: 0 }}>
+              Zelfde bestand of zelfde referentie + totaalbedrag als een {kandidaat.bron === 'geboekt' ? 'al geboekte' : 'oudere'} factuur.
+              Afvoeren zet dit document op Afgewezen mét kruisverwijzing; het origineel blijft staan.
+            </p>
+          ) : (
+            <p className="hint" style={{ marginTop: 0 }}>
+              De controle &ldquo;Duplicaat (module)&rdquo; blokkeert boeken: een ander document in deze administratie lijkt
+              hetzelfde stuk. Is het géén duplicaat (deelfactuur, creditnota met hetzelfde nummer)? Meld het af mét reden.
+            </p>
+          )}
+          {kandidaat && <OrigineelRegel administratieId={administratieId} origineel={kandidaat} />}
+          {moduleTreffers.length > 0 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }} data-testid="duplicaat-module-lijst">
+              {moduleTreffers.map((t) => (
+                <li key={t.document_id}>
+                  <Link to={`/documenten/${administratieId}/${t.document_id}`} onClick={(e) => e.stopPropagation()}>
+                    {t.bestandsnaam}
+                  </Link>{' '}
+                  — {MODULE_CATEGORIE_LABEL[t.categorie] ?? t.categorie}
+                  {t.referentie ? ` · ${t.referentie}` : ''} <span className="chip">{t.status.replace(/_/g, ' ')}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="actions">
-            <button type="button" className="btn secondary" onClick={() => setDialoogOpen(true)}>
-              Afvoeren als duplicaat…
-            </button>
+            {kandidaat && (
+              <button type="button" className="btn secondary" onClick={() => setDialoogOpen(true)}>
+                Afvoeren als duplicaat…
+              </button>
+            )}
+            {moduleTreffers.length > 0 && (
+              <button type="button" className="linkbtn" onClick={() => setAfmeldenOpen(true)}>
+                Geen duplicaat — afmelden…
+              </button>
+            )}
           </div>
         </div>
+      )}
+      {afmelding && moduleTreffers.length === 0 && status !== 'afgewezen' && (
+        <p className="hint" data-testid="duplicaat-afgemeld">
+          Afgemeld als geen duplicaat door {naamVoor(afmelding.actor_id)} op {formatDatumKort(afmelding.tijdstip)}:
+          &ldquo;{afmelding.reden}&rdquo;
+        </p>
       )}
       {afgevoerdVan && (
         <div className="panel" data-testid="duplicaat-afgevoerd">
@@ -205,6 +321,18 @@ export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaa
             ))}
           </ul>
         </div>
+      )}
+      {afmeldenOpen && moduleTreffers.length > 0 && (
+        <DuplicaatAfmeldenDialog
+          administratieId={administratieId}
+          documentId={documentId}
+          treffers={moduleTreffers}
+          onAfgemeld={() => {
+            setAfmeldenOpen(false)
+            onGewijzigd()
+          }}
+          onAnnuleren={() => setAfmeldenOpen(false)}
+        />
       )}
       {dialoogOpen && kandidaat && (
         <DuplicaatAfvoerDialog

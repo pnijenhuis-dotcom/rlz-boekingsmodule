@@ -30,6 +30,16 @@ class AccorderingHitDto(BaseModel):
     besloten_op: datetime | None
 
 
+class AfgevoerdVanDto(BaseModel):
+    """Blok 1 07-09: origineel van een als duplicaat afgevoerd document (chip + link)."""
+
+    document_id: uuid.UUID | None
+    referentie: str | None
+    bestandsnaam: str | None
+    afgevoerd_op: datetime
+    automatisch: bool
+
+
 class DocumentHitDto(BaseModel):
     document_id: uuid.UUID
     administratie_id: uuid.UUID
@@ -46,6 +56,7 @@ class DocumentHitDto(BaseModel):
     automatisch_geboekt: bool
     vragen: list[VraagHitDto]
     accordering: list[AccorderingHitDto]
+    afgevoerd_als_duplicaat_van: AfgevoerdVanDto | None = None
 
 
 class AuditHitDto(BaseModel):
@@ -80,6 +91,19 @@ class ArchiefDocumentDto(BaseModel):
     geboekt_op: datetime | None
     automatisch_geboekt: bool
     tegengeboekt: bool
+    # Blok 1 07-09: statusfilter "afgevoerd" in het bestaande archiefscherm.
+    status: str = "geboekt"
+    afgevoerd_als_duplicaat_van: AfgevoerdVanDto | None = None
+
+
+def archief_document_dto(rij: service.ArchiefDocument) -> ArchiefDocumentDto:
+    velden = {k: v for k, v in vars(rij).items() if k != "afgevoerd_als_duplicaat_van"}
+    return ArchiefDocumentDto(
+        **velden,
+        afgevoerd_als_duplicaat_van=(
+            AfgevoerdVanDto(**vars(rij.afgevoerd_als_duplicaat_van)) if rij.afgevoerd_als_duplicaat_van else None
+        ),
+    )
 
 
 class ArchiefResponse(BaseModel):
@@ -122,6 +146,11 @@ def globaal_zoeken(
                 automatisch_geboekt=hit.automatisch_geboekt,
                 vragen=[VraagHitDto(**vars(v)) for v in hit.vragen],
                 accordering=[AccorderingHitDto(**vars(a)) for a in hit.accordering],
+                afgevoerd_als_duplicaat_van=(
+                    AfgevoerdVanDto(**vars(hit.afgevoerd_als_duplicaat_van))
+                    if hit.afgevoerd_als_duplicaat_van
+                    else None
+                ),
             )
             for hit in resultaat.documenten
         ],
@@ -138,6 +167,7 @@ def archief_lijst(
     tot: date | None = Query(None),
     q: str = Query(""),
     sort: str | None = Query(None, description="<kolom>:<asc|desc>; leeg = boekmoment nieuwste eerst"),
+    status_filter: str | None = Query(None, alias="status", description="geboekt (default) | afgevoerd"),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> ArchiefResponse:
     """Geboekte documenten van één administratie (bewaarplicht 7 jaar), gepagineerd (C1 03-09)
@@ -154,11 +184,12 @@ def archief_lijst(
             tot=tot,
             q=q,
             sortering=sortering,
+            status=status_filter,
         )
     except service.ArchiefFout as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     return ArchiefResponse(
-        documenten=[ArchiefDocumentDto(**vars(rij)) for rij in resultaat.documenten],
+        documenten=[archief_document_dto(rij) for rij in resultaat.documenten],
         totaal=resultaat.totaal,
         pagina=resultaat.pagina,
         per_pagina=resultaat.per_pagina,

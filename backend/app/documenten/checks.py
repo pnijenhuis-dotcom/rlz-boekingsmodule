@@ -320,6 +320,47 @@ def check_duplicaat(
     return CheckResultaat("Duplicaatcheck", True, "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag")
 
 
+NAAM_DUPLICAAT_MODULE = "Duplicaat (module)"
+
+_CATEGORIE_TEKST = {
+    "bestand": "hetzelfde bestand (sha256)",
+    "referentie_bedrag": "dezelfde referentie en hetzelfde totaalbedrag",
+    "crediteur_referentie": "dezelfde crediteur en dezelfde referentie (ander bedrag)",
+}
+
+
+def check_duplicaat_module(*, treffers: Sequence[object]) -> CheckResultaat:
+    """HARDE check "Duplicaat (module)" (besluit Peter 07-09) — tegen onze EIGEN database, binnen de administratie,
+    náást de live-RLZ-check: een ander niet-afgevoerd document met (a) hetzelfde bestand, (b) dezelfde
+    genormaliseerde referentie + totaalbedrag over álle crediteur-records, of (c) dezelfde crediteur (vendor / KvK /
+    btw / dubbel-cluster) + referentie bij een ander bedrag = BLOKKEREND. Pure functie: de aanroeper
+    (app/documenten/boekvoorstel.py) levert de tegenhangers uit `duplicaat_module.treffers_voor_document`, waar de
+    bundel-uitzondering (UBL+PDF) en de mens-afmelding ("Geen duplicaat") al zijn toegepast. Geen tegenhangers =
+    groen. Geen RLZ/Odoo-call, dus deze check draait óók in de RLZ-storings-tak."""
+    if not treffers:
+        return CheckResultaat(
+            NAAM_DUPLICAAT_MODULE,
+            True,
+            "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of "
+            "dezelfde crediteur + referentie",
+        )
+    delen: list[str] = []
+    for t in treffers:
+        categorie = getattr(t, "categorie", "")
+        status = getattr(t, "status", None)
+        status_tekst = status.value.replace("_", " ") if hasattr(status, "value") else str(status or "")
+        tekst = _CATEGORIE_TEKST.get(categorie, categorie)
+        delen.append(f"{getattr(t, 'bestandsnaam', '?')} ({status_tekst}) — {tekst}")
+    n = len(treffers)
+    return CheckResultaat(
+        NAAM_DUPLICAAT_MODULE,
+        False,
+        f"{n} ander{'' if n == 1 else 'e'} document{'' if n == 1 else 'en'} in deze administratie: "
+        + "; ".join(delen)
+        + ' — voer dit document af als duplicaat, of meld het af als "geen duplicaat" (reden verplicht)',
+    )
+
+
 def historie_melding(historie: Sequence[dict]) -> str:
     """Rode melding voor treffers uit de eigen historie (Odoo-slotstuk 04-09): al geboekt in Reeleezee vóór de
     overstap, mét boekstuknummer(s) zodat de controleur 'm in RLZ terugvindt."""
