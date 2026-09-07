@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 from app.schemas_basis import StrikteInvoer
 
@@ -514,6 +514,9 @@ class BoekvoorstelResponse(BaseModel):
     totaalbedrag: DecimalMetKomma | None = None
     rlz_boekstuknummer: str | None = None
     opgeslagen: bool
+    # Blok A10 07-09: True = het opgeslagen voorstel is de automatische prefill bij het openen (geheugen/template/
+    # default), kopvelden nog niet door een mens gewijzigd — de UI houdt de AI-/herkomst-chips aan.
+    prefill_automatisch: bool = False
     regels: list[BoekvoorstelRegelDto]
     # Fix 3 (2026-07-10): effectieve samenvoeg-stand voor dit document (voorkeur per crediteur,
     # default AAN), of samenvoegen überhaupt kan (False bij projectplicht — hard per-regel) en

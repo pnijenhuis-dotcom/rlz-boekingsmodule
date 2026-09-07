@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.backends.registry import inkoop_port_voor, standaard_regels_samenvoegen
@@ -34,6 +35,7 @@ from app.documenten.models import (
     BoekvoorstelRegel,
     Document,
     DocumentGebeurtenis,
+    DocumentSoort,
     DocumentStatus,
     LeverancierVoorkeur,
 )
@@ -99,6 +101,11 @@ class BoekvoorstelRegelData:
     # (`app/odoo/hervertaling.py`) — per veld van→naar of "geen tegenhanger". Alleen op opgeslagen regels; de
     # eerstvolgende PUT door de mens schrijft de regels opnieuw zonder dit spoor (chip verdwijnt, bewust).
     overstap_vertaling: dict | None = None
+    # Blok A10 07-09 (stale check bij geheugen-prefill): herkomst per gevuld veld op een prefill-regel —
+    # {"grootboek"|"btw"|"project": bron} met bron = gb_bron-waarde (blok D) | "leverancier_geheugen" (kop-niveau-
+    # engine, chip "Geheugen N %") | "factuur" | "standaard" (blok E). Intern: stuurt de autosave-trigger en het
+    # herstel van de herkomst-chips ná het persisteren (regel_prefill.py). Niet in de DTO.
+    prefill_herkomst: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +150,11 @@ class BoekvoorstelData:
     # projecten mét omzet; None = niet van toepassing. Voorstel = live herrekend, geboekt = bevroren snapshot.
     # De adapters (RLZ: regels splitsen; Odoo: analytic_distribution) lezen hieruit — app/projectverdeling/.
     projectverdeling: ProjectverdelingData | None = None
+    # Blok A10 07-09: True als het OPGESLAGEN voorstel de automatische prefill van het openen is
+    # (`persisteer_prefill_bij_openen`) en de kopvelden sindsdien niet door een mens gewijzigd zijn — de UI houdt
+    # dan de AI-zekerheidschips aan (zelfde stand als een nog niet opgeslagen prefill). Altijd False op een
+    # niet-opgeslagen voorstel en op een door een mens opgeslagen voorstel.
+    prefill_automatisch: bool = False
 
 
 def _met_projectverdeling(
@@ -404,11 +416,402 @@ def _laad_document(session: Session, *, document_id: uuid.UUID) -> Document:
     return document
 
 
+def _samenvoeg_velden(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID | None,
+    veldvoorstel: dict | None,
+    project_verplicht: bool,
+    standaard_samenvoegen: bool,
+) -> dict:
+    """Fix 3: effectieve samenvoeg-stand (projectplicht = hard gesplitst; anders de onthouden
+    leverancier-voorkeur, default = backend-capability) + de berekende één-regel-variant."""
+    if project_verplicht:
+        return {"regels_samenvoegen": False, "samenvoegen_toegestaan": False, "samengevoegde_regel": None}
+    voorkeur = _voorkeur_samenvoegen(session, administratie_id=administratie_id, vendor_id=vendor_id)
+    return {
+        # Default zonder leverancier-voorkeur = backend-capability (RLZ AAN; Odoo UIT — regelniveau-
+        # data moet in Odoo landen, eis Peter 03-09); de leverancier-voorkeur wint altijd.
+        "regels_samenvoegen": voorkeur if voorkeur is not None else standaard_samenvoegen,
+        "samenvoegen_toegestaan": True,
+        "samengevoegde_regel": _samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
+    }
+
+
+def _afdeling_velden(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None, huidige_afdeling_id: uuid.UUID | None
+) -> dict:
+    """Blok A 28-08: prefill uit het leverancier-geheugen alleen als er nog geen keuze op het
+    document staat; toggle uit = niets (het veld is dan onzichtbaar)."""
+    from app.afdelingen.service import afdelingen_ingeschakeld_in_sessie, prefill_voor_vendor
+
+    if not afdelingen_ingeschakeld_in_sessie(session, administratie_id):
+        return {"afdeling_id": huidige_afdeling_id}
+    prefill = (
+        prefill_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
+        if huidige_afdeling_id is None
+        else None
+    )
+    return {
+        "afdeling_id": huidige_afdeling_id,
+        "afdeling_prefill_id": prefill.afdeling_id if prefill else None,
+        "afdeling_prefill_leverancier": prefill.leverancier_naam if prefill else None,
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# Blok A10 07-09 — stale check bij geheugen-prefill: de prefill uit geheugen/template/default wordt
+# bij het OPENEN van het controlescherm gepersisteerd (autosave), mét een herkomst-snapshot in de
+# tijdlijn (DocumentGebeurtenis.detail["boekvoorstel_prefill"]) zodat (1) de checks en het
+# doorbelasten-blok exact zien wat de mens ziet, (2) de herkomst-chips blijven staan tot de mens
+# een waarde wijzigt (waarde-gelijkheid met het snapshot — dezelfde regel als de GeheugenChipBlok),
+# (3) openen 2× niets opnieuw persisteert en een door een mens gezette waarde nooit overschreven
+# wordt, en (4) een VERSE extractie ná een nog onaangeraakte autosave de prefill opnieuw afleidt
+# (anders zou "opnieuw extraheren" stil niets meer tonen — niets verdwijnt stil).
+# ---------------------------------------------------------------------------------------------
+PREFILL_SNAPSHOT_SLEUTEL = "boekvoorstel_prefill"
+# Statussen waarin het controlescherm bewerkbaar is (spiegel van DoorbelastenNaBoeken.KLAARZETBAAR
+# en `doorbelasting.service._KLAARZETBARE_DOCUMENTSTATUSSEN`): alleen dáár mag de prefill
+# gepersisteerd worden — bevroren/afgewezen/ter accordering/vraag open: nooit.
+_AUTOSAVE_STATUSSEN = frozenset(
+    {
+        DocumentStatus.TE_CONTROLEREN,
+        DocumentStatus.KLAAR_OM_TE_BOEKEN,
+        DocumentStatus.HANDMATIG_AFMAKEN,
+        DocumentStatus.BOEKEN_MISLUKT,
+    }
+)
+# Herkomsten die de autosave TRIGGEREN (opdracht Peter 07-09: "prefills uit geheugen/template/default"):
+# regel-geheugen (alle drie de blok-D-varianten, ook seed-only oranje), leverancier-geheugen (kop-niveau-
+# engine) en de btw-default van de administratie; plus een template-veldvoorstel (kop). AI-classificatie
+# ("ai") en de uit de factuur afgeleide btw ("factuur") triggeren níét — een AI-only prefill blijft
+# zoals voorheen niet-opgeslagen (de checks zagen die al).
+_AUTOSAVE_HERKOMSTEN = frozenset(
+    {"geheugen", "geheugen_seed", "geheugen_conflict", "leverancier_geheugen", "standaard"}
+)
+
+
+def _str_of_none(waarde: object) -> str | None:
+    return None if waarde is None else str(waarde)
+
+
+def _regel_snapshot(volgnummer: int, regel: BoekvoorstelRegelData) -> dict:
+    return {
+        "volgnummer": volgnummer,
+        "ledger_id": _str_of_none(regel.ledger_id),
+        "taxrate_id": _str_of_none(regel.taxrate_id),
+        "project_id": _str_of_none(regel.project_id),
+        "netto_bedrag": _str_of_none(regel.netto_bedrag),
+        "btw_bedrag": _str_of_none(regel.btw_bedrag),
+        "omschrijving": regel.omschrijving or None,
+        "gb_bron": regel.gb_bron,
+        "gb_voorstel_detail": regel.gb_voorstel_detail,
+        "btw_bron": regel.btw_bron,
+        "herkomst": dict(regel.prefill_herkomst or {}),
+    }
+
+
+def _maak_prefill_snapshot(
+    prefill: BoekvoorstelData,
+    *,
+    regels: list[BoekvoorstelRegelData],
+    veldvoorstel: dict,
+    triggers: list[str],
+    geopend_door: uuid.UUID,
+) -> dict:
+    return {
+        "bron": "openen",
+        "geopend_door": str(geopend_door),
+        "veldvoorstel_bron": veldvoorstel.get("bron") or ("ubl" if veldvoorstel.get("regels") is None else None),
+        "triggers": triggers,
+        "regels_samenvoegen": bool(prefill.regels_samenvoegen and prefill.samengevoegde_regel is not None),
+        "kop": {
+            "vendor_id": _str_of_none(prefill.vendor_id),
+            "referentie": prefill.referentie or None,
+            "factuurdatum": _str_of_none(prefill.factuurdatum),
+            "vervaldatum": _str_of_none(prefill.vervaldatum),
+            "totaalbedrag": _str_of_none(prefill.totaalbedrag),
+            "betalingskenmerk": prefill.betalingskenmerk or None,
+            "afdeling_prefill_id": _str_of_none(prefill.afdeling_prefill_id),
+            "afdeling_prefill_leverancier": prefill.afdeling_prefill_leverancier,
+        },
+        "regels": [_regel_snapshot(i, r) for i, r in enumerate(regels, start=1)],
+    }
+
+
+def _prefill_triggers(prefill: BoekvoorstelData, regels: list[BoekvoorstelRegelData], veldvoorstel: dict) -> list[str]:
+    """Leesbare redenen waarom de prefill gepersisteerd wordt (leeg = niet persisteren)."""
+    triggers: list[str] = []
+    if veldvoorstel.get("bron") == "template":
+        triggers.append("kop: template")
+    if prefill.afdeling_prefill_id is not None:
+        triggers.append("afdeling: leverancier_geheugen")
+    for i, regel in enumerate(regels, start=1):
+        for veld, bron in (regel.prefill_herkomst or {}).items():
+            if bron in _AUTOSAVE_HERKOMSTEN:
+                triggers.append(f"{veld} regel {i}: {bron}")
+    return triggers
+
+
+def _effectieve_regels(prefill: BoekvoorstelData) -> list[BoekvoorstelRegelData]:
+    """De regels zoals het controlescherm ze toont (en de PUT ze zou sturen): samengevoegd = de ene
+    samengevoegde regel, anders de gesplitste regels — zelfde keuze als autoboeken.py."""
+    if prefill.regels_samenvoegen and prefill.samengevoegde_regel is not None:
+        return [prefill.samengevoegde_regel]
+    return list(prefill.regels)
+
+
+def _laatste_prefill_snapshot(gebeurtenissen: list[DocumentGebeurtenis]) -> DocumentGebeurtenis | None:
+    return next(
+        (g for g in reversed(gebeurtenissen) if g.detail and PREFILL_SNAPSHOT_SLEUTEL in g.detail),
+        None,
+    )
+
+
+def _laatste_veldvoorstel_gebeurtenis(gebeurtenissen: list[DocumentGebeurtenis]) -> DocumentGebeurtenis | None:
+    return next((g for g in reversed(gebeurtenissen) if g.detail and "veldvoorstel" in g.detail), None)
+
+
+def _regel_komt_overeen(regel: BoekvoorstelRegel, snap: dict) -> bool:
+    """Match voor het herstel van de herkomst-chips: zelfde plek én zelfde omschrijving (een verplaatste/
+    andere regel krijgt nooit de chip van een ander)."""
+    return regel.volgnummer == snap.get("volgnummer") and (regel.omschrijving or None) == snap.get("omschrijving")
+
+
+def _regel_onaangeraakt(regel: BoekvoorstelRegel, snap: dict) -> bool:
+    return (
+        _regel_komt_overeen(regel, snap)
+        and _str_of_none(regel.ledger_id) == snap.get("ledger_id")
+        and _str_of_none(regel.taxrate_id) == snap.get("taxrate_id")
+        and _str_of_none(regel.project_id) == snap.get("project_id")
+        and _str_of_none(regel.netto_bedrag) == snap.get("netto_bedrag")
+        and _str_of_none(regel.btw_bedrag) == snap.get("btw_bedrag")
+    )
+
+
+def _kop_onaangeraakt(bestaand: Boekvoorstel, kop: dict) -> bool:
+    return (
+        _str_of_none(bestaand.vendor_id) == kop.get("vendor_id")
+        and (bestaand.referentie or None) == kop.get("referentie")
+        and _str_of_none(bestaand.factuurdatum) == kop.get("factuurdatum")
+        and _str_of_none(bestaand.totaalbedrag) == kop.get("totaalbedrag")
+    )
+
+
+def _voorstel_onaangeraakt(bestaand: Boekvoorstel, regels: list[BoekvoorstelRegel], snapshot: dict) -> bool:
+    snaps = snapshot.get("regels") or []
+    if len(snaps) != len(regels):
+        return False
+    return _kop_onaangeraakt(bestaand, snapshot.get("kop") or {}) and all(
+        _regel_onaangeraakt(regel, snap) for regel, snap in zip(regels, snaps, strict=True)
+    )
+
+
+def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> BoekvoorstelRegelData:
+    """Opgeslagen regel → data, mét herstelde herkomst-chips per veld zolang de waarde nog de
+    autosave-prefill is (waarde-gelijkheid; een gewijzigd veld verliest zijn chip, bewust)."""
+    snap = None
+    if snapshot is not None:
+        snap = next((x for x in snapshot.get("regels") or [] if _regel_komt_overeen(regel, x)), None)
+    gb_bron = gb_detail = btw_bron = None
+    herkomst: dict[str, str] = {}
+    if snap is not None:
+        snap_herkomst = snap.get("herkomst") or {}
+        if regel.ledger_id is not None and _str_of_none(regel.ledger_id) == snap.get("ledger_id"):
+            gb_bron, gb_detail = snap.get("gb_bron"), snap.get("gb_voorstel_detail")
+            if "grootboek" in snap_herkomst:
+                herkomst["grootboek"] = snap_herkomst["grootboek"]
+        if regel.taxrate_id is not None and _str_of_none(regel.taxrate_id) == snap.get("taxrate_id"):
+            btw_bron = snap.get("btw_bron")
+            if "btw" in snap_herkomst:
+                herkomst["btw"] = snap_herkomst["btw"]
+        if (
+            regel.project_id is not None
+            and _str_of_none(regel.project_id) == snap.get("project_id")
+            and "project" in snap_herkomst
+        ):
+            herkomst["project"] = snap_herkomst["project"]
+    return BoekvoorstelRegelData(
+        ledger_id=regel.ledger_id,
+        taxrate_id=regel.taxrate_id,
+        project_id=regel.project_id,
+        netto_bedrag=regel.netto_bedrag,
+        btw_bedrag=regel.btw_bedrag,
+        omschrijving=regel.omschrijving,
+        id=regel.id,
+        btw_bron=btw_bron,
+        gb_bron=gb_bron,
+        gb_voorstel_detail=gb_detail if gb_bron else None,
+        overstap_vertaling=regel.overstap_vertaling,
+        prefill_herkomst=herkomst or None,
+    )
+
+
+def _lees_opgeslagen_voorstel(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    bestaand: Boekvoorstel,
+    gebeurtenissen: list[DocumentGebeurtenis],
+    project_verplicht: bool,
+    standaard_samenvoegen: bool,
+) -> BoekvoorstelData:
+    document_id = bestaand.document_id
+    # B13 07-09: een crediteur die intussen VERLIEZER van een afgehandeld dubbel-cluster werd, wordt bij het openen
+    # doorvertaald naar de voorkeur (de afhandeling hervertaalt open voorstellen al persistent mét audit; dit is het
+    # vangnet voor een race). Eén bron: crediteuren/voorkeur.py.
+    from app.crediteuren.voorkeur import voorkeur_van
+
+    vendor_id = voorkeur_van(session, administratie_id=administratie_id, vendor_id=bestaand.vendor_id)
+    veldvoorstel = _laatste_veldvoorstel(session, document_id)
+    regels = session.scalars(
+        select(BoekvoorstelRegel)
+        .where(BoekvoorstelRegel.document_id == document_id)
+        .order_by(BoekvoorstelRegel.volgnummer)
+    ).all()
+    snapshot_gebeurtenis = _laatste_prefill_snapshot(gebeurtenissen)
+    snapshot = snapshot_gebeurtenis.detail[PREFILL_SNAPSHOT_SLEUTEL] if snapshot_gebeurtenis is not None else None
+    kop = (snapshot or {}).get("kop") or {}
+    prefill_automatisch = snapshot is not None and _kop_onaangeraakt(bestaand, kop)
+    afdeling = _afdeling_velden(
+        session,
+        administratie_id=administratie_id,
+        vendor_id=vendor_id,
+        huidige_afdeling_id=bestaand.afdeling_id,
+    )
+    # Afdeling-prefill (blok A 28-08) is bij de autosave als KEUZE weggeschreven — de chip "vorige keuze bij
+    # <leverancier>" blijft staan zolang de waarde de prefill is (zelfde waarde-gelijkheid als de regels).
+    if (
+        snapshot is not None
+        and bestaand.afdeling_id is not None
+        and kop.get("afdeling_prefill_id") == str(bestaand.afdeling_id)
+        and "afdeling_prefill_id" in afdeling
+    ):
+        afdeling["afdeling_prefill_id"] = bestaand.afdeling_id
+        afdeling["afdeling_prefill_leverancier"] = kop.get("afdeling_prefill_leverancier")
+    return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+        document_id=document_id,
+        vendor_id=vendor_id,
+        referentie=bestaand.referentie,
+        factuurdatum=bestaand.factuurdatum,
+        vervaldatum=bestaand.vervaldatum,
+        vervaldatum_signaal=vervaldatum_signaal(factuurdatum=bestaand.factuurdatum, vervaldatum=bestaand.vervaldatum),
+        betalingskenmerk=bestaand.betalingskenmerk,
+        totaalbedrag=bestaand.totaalbedrag,
+        rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
+        opgeslagen=True,
+        regels=[_opgeslagen_regel_data(r, snapshot) for r in regels],
+        boek_cyclus=bestaand.boek_cyclus,
+        btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
+        prefill_automatisch=prefill_automatisch,
+        **_samenvoeg_velden(
+            session,
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            veldvoorstel=veldvoorstel,
+            project_verplicht=project_verplicht,
+            standaard_samenvoegen=standaard_samenvoegen,
+        ),
+        **afdeling,
+    ))
+
+
+def _bereken_prefill(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    veldvoorstel: dict | None,
+    project_verplicht: bool,
+    standaard_samenvoegen: bool,
+) -> BoekvoorstelData:
+    """Het NIET-opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of het AI-/
+    template-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), verrijkt met regel-geheugen, leverancier-
+    geheugen en btw-default (regel_prefill.py). Geen veldvoorstel = volledig leeg voorstel."""
+    if veldvoorstel is None:
+        return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+            document_id=document_id,
+            vendor_id=None,
+            referentie=None,
+            factuurdatum=None,
+            totaalbedrag=None,
+            rlz_boekstuknummer=None,
+            opgeslagen=False,
+            regels=[],
+            **_samenvoeg_velden(
+                session,
+                administratie_id=administratie_id,
+                vendor_id=None,
+                veldvoorstel=None,
+                project_verplicht=project_verplicht,
+                standaard_samenvoegen=standaard_samenvoegen,
+            ),
+            **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=None, huidige_afdeling_id=None),
+        ))
+
+    # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
+    # tegen de vendor-cache, alleen bij een uniek resultaat); anders de bestaande exacte
+    # naammatch. In beide gevallen een voorstel dat de controleur kan overschrijven.
+    suggestie = veldvoorstel.get("vendor_suggestie")
+    vendor_id = _als_uuid(suggestie.get("vendor_id")) if isinstance(suggestie, dict) else None
+    # B13 07-09: een oud AI-veldvoorstel kan een intussen afgehandelde VERLIEZER suggereren → voorkeur.
+    from app.crediteuren.voorkeur import voorkeur_van
+
+    vendor_id = voorkeur_van(session, administratie_id=administratie_id, vendor_id=vendor_id)
+    if vendor_id is None:
+        vendor_id = _raad_vendor_id(
+            session, administratie_id=administratie_id, leverancier_naam=veldvoorstel.get("leverancier_naam")
+        )
+    # Blok D + E (medewerker-wensen 04-09) + A10 (07-09): regel-GB-voorstel (regel-geheugen → persistente
+    # AI-classificatie), leverancier-geheugen (kop-niveau-engine, server-side sinds 07-09) en btw-default van de
+    # administratie — uitsluitend op dit prefill-pad; een opgeslagen keuze van de mens wint altijd.
+    from app.documenten import regel_prefill  # lokaal: regel_prefill leest de dataclass hierboven
+
+    samenvoeg = _samenvoeg_velden(
+        session,
+        administratie_id=administratie_id,
+        vendor_id=vendor_id,
+        veldvoorstel=veldvoorstel,
+        project_verplicht=project_verplicht,
+        standaard_samenvoegen=standaard_samenvoegen,
+    )
+    prefill_regels, samenvoeg["samengevoegde_regel"] = regel_prefill.verrijk_prefill(
+        session,
+        administratie_id=administratie_id,
+        document_id=document_id,
+        vendor_id=vendor_id,
+        regels=_regels_prefill(veldvoorstel),
+        samengevoegde_regel=samenvoeg["samengevoegde_regel"],
+        project_verplicht=project_verplicht,
+    )
+    return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+        document_id=document_id,
+        vendor_id=vendor_id,
+        referentie=veldvoorstel.get("factuurnummer"),
+        factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
+        vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
+        vervaldatum_signaal=vervaldatum_signaal(
+            factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
+            vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
+        ),
+        betalingskenmerk=(veldvoorstel.get("betalingskenmerk") or None),
+        totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
+        rlz_boekstuknummer=None,
+        opgeslagen=False,
+        regels=prefill_regels,
+        btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
+        **samenvoeg,
+        **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=vendor_id, huidige_afdeling_id=None),
+    ))
+
+
 def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> BoekvoorstelData:
     """Het opgeslagen boekvoorstel, of — als er nog niets opgeslagen is — een niet-opgeslagen
-    voorstel op basis van het UBL-veldvoorstel (CLAUDE.md-taak 2.1: "veldvoorstellen (UBL)
-    vooringevuld waar aanwezig"). PDF-documenten hebben geen UBL-veldvoorstel en krijgen dus een
-    volledig leeg voorstel — de controleur vult alles handmatig in."""
+    voorstel op basis van het veldvoorstel (CLAUDE.md-taak 2.1: "veldvoorstellen (UBL)
+    vooringevuld waar aanwezig"). PDF-documenten zonder extractie krijgen een volledig leeg
+    voorstel — de controleur vult alles handmatig in. Leest alleen; het persisteren van de prefill
+    bij het openen doet `persisteer_prefill_bij_openen` (GET-router)."""
     project_verplicht = _project_verplicht(administratie_id)
     standaard_samenvoegen = standaard_regels_samenvoegen(administratie_id)
 
@@ -424,109 +827,96 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
                 project_verplicht=project_verplicht,
                 standaard_samenvoegen=standaard_samenvoegen,
             )
-            return {
-                "afdeling_id": huidige_afdeling_id,
-                "afdeling_prefill_id": prefill.afdeling_id if prefill else None,
-                "afdeling_prefill_leverancier": prefill.leverancier_naam if prefill else None,
-            }
+        return _bereken_prefill(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            veldvoorstel=_laatste_veldvoorstel(session, document_id),
+            project_verplicht=project_verplicht,
+            standaard_samenvoegen=standaard_samenvoegen,
+        )
 
+
+def persisteer_prefill_bij_openen(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, geopend_door: uuid.UUID
+) -> bool:
+    """Blok A10 07-09 (opdracht Peter, auto-first): persisteer bij het openen van het controlescherm de prefill
+    zodra die minstens één veld uit geheugen/template/default draagt (`_AUTOSAVE_HERKOMSTEN`), zodat de checks en
+    het doorbelasten-blok exact zien wat de mens ziet. Geeft True terug als er geschreven is.
+
+    Poorten (fail-closed, in deze volgorde): bewerkbare status én inkoopfactuur; een veldvoorstel (zonder
+    extractie is er niets eenduidigs — een leeg voorstel persisteren zou een latere extractie stil verbergen);
+    géén bestaand voorstel — óf een bestaand voorstel dat (a) zelf een autosave is, (b) sindsdien niet door een
+    mens is aangeraakt (waarde-gelijkheid met het snapshot) én (c) een NIEUWER veldvoorstel heeft (opnieuw
+    extraheren): dan wordt de prefill opnieuw afgeleid en overschreven. Een door een mens opgeslagen voorstel
+    wordt nooit geraakt. Schrijft onder de systeem-actor (de waarden zijn machinaal afgeleid; de opener staat in
+    het audit-event als `geopend_door`). Een fout in de autosave blokkeert het openen nooit (gelogd; het
+    scherm toont dan de niet-opgeslagen prefill zoals voorheen); een parallelle GET die net eerder schreef =
+    IntegrityError op de PK = geen fout."""
+    project_verplicht = _project_verplicht(administratie_id)
+    standaard_samenvoegen = standaard_regels_samenvoegen(administratie_id)
+    with scoped_session(administratie_id) as session:
+        document = _laad_document(session, document_id=document_id)
+        if document.status not in _AUTOSAVE_STATUSSEN or document.soort != DocumentSoort.INKOOPFACTUUR.value:
+            return False
+        gebeurtenissen = _gebeurtenissen_van(session, document_id)
+        veldvoorstel_gebeurtenis = _laatste_veldvoorstel_gebeurtenis(gebeurtenissen)
+        if veldvoorstel_gebeurtenis is None:
+            return False
+        veldvoorstel = veldvoorstel_gebeurtenis.detail["veldvoorstel"]
         bestaand = session.get(Boekvoorstel, document_id)
         if bestaand is not None:
-            regels = session.scalars(
+            snapshot_gebeurtenis = _laatste_prefill_snapshot(gebeurtenissen)
+            if snapshot_gebeurtenis is None:
+                return False  # door een mens opgeslagen — nooit raken
+            if veldvoorstel_gebeurtenis.tijdstip <= snapshot_gebeurtenis.tijdstip:
+                return False  # al gepersisteerd op basis van dit veldvoorstel (idempotent)
+            regels_db = session.scalars(
                 select(BoekvoorstelRegel)
                 .where(BoekvoorstelRegel.document_id == document_id)
                 .order_by(BoekvoorstelRegel.volgnummer)
             ).all()
-            return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
-                document_id=document_id,
-                vendor_id=bestaand.vendor_id,
-                referentie=bestaand.referentie,
-                factuurdatum=bestaand.factuurdatum,
-                vervaldatum=bestaand.vervaldatum,
-                vervaldatum_signaal=vervaldatum_signaal(
-                    factuurdatum=bestaand.factuurdatum, vervaldatum=bestaand.vervaldatum
-                ),
-                betalingskenmerk=bestaand.betalingskenmerk,
-                totaalbedrag=bestaand.totaalbedrag,
-                rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
-                opgeslagen=True,
-                regels=[
-                    BoekvoorstelRegelData(
-                        ledger_id=r.ledger_id,
-                        taxrate_id=r.taxrate_id,
-                        project_id=r.project_id,
-                        netto_bedrag=r.netto_bedrag,
-                        btw_bedrag=r.btw_bedrag,
-                        omschrijving=r.omschrijving,
-                        id=r.id,
-                        overstap_vertaling=r.overstap_vertaling,
-                    )
-                    for r in regels
-                ],
-                boek_cyclus=bestaand.boek_cyclus,
-                btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
-                **samenvoeg_velden(bestaand.vendor_id),
-                **afdeling_velden(bestaand.vendor_id, bestaand.afdeling_id),
-            ))
-
-        # Geen opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of
-        # het AI-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), indien aanwezig.
-        if veldvoorstel is None:
-            return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
-                document_id=document_id,
-                vendor_id=None,
-                referentie=None,
-                factuurdatum=None,
-                totaalbedrag=None,
-                rlz_boekstuknummer=None,
-                opgeslagen=False,
-                regels=[],
-                **samenvoeg_velden(None),
-                **afdeling_velden(None, None),
-            ))
-
-        # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
-        # tegen de vendor-cache, alleen bij een uniek resultaat); anders de bestaande exacte
-        # naammatch. In beide gevallen een voorstel dat de controleur kan overschrijven.
-        suggestie = veldvoorstel.get("vendor_suggestie")
-        vendor_id = _als_uuid(suggestie.get("vendor_id")) if isinstance(suggestie, dict) else None
-        if vendor_id is None:
-            vendor_id = _raad_vendor_id(
-                session, administratie_id=administratie_id, leverancier_naam=veldvoorstel.get("leverancier_naam")
-            )
-        # Blok D + E (medewerker-wensen 04-09): regel-GB-voorstel (regel-geheugen → persistente
-        # AI-classificatie → leeg) en btw-default van de administratie (factuur → leverancier-geheugen →
-        # default → leeg) — uitsluitend op dit prefill-pad; een opgeslagen keuze van de mens wint altijd.
-        from app.documenten import regel_prefill  # lokaal: regel_prefill leest de dataclass hierboven
-
-        samenvoeg = samenvoeg_velden(vendor_id)
-        prefill_regels, samenvoeg["samengevoegde_regel"] = regel_prefill.verrijk_prefill(
+            if not _voorstel_onaangeraakt(bestaand, regels_db, snapshot_gebeurtenis.detail[PREFILL_SNAPSHOT_SLEUTEL]):
+                return False  # de mens heeft er intussen aan gewerkt — zijn keuzes winnen van de verse extractie
+        prefill = _bereken_prefill(
             session,
             administratie_id=administratie_id,
             document_id=document_id,
-            vendor_id=vendor_id,
-            regels=_regels_prefill(veldvoorstel),
-            samengevoegde_regel=samenvoeg["samengevoegde_regel"],
+            veldvoorstel=veldvoorstel,
+            project_verplicht=project_verplicht,
+            standaard_samenvoegen=standaard_samenvoegen,
         )
-        return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+        regels = _effectieve_regels(prefill)
+        triggers = _prefill_triggers(prefill, regels, veldvoorstel)
+        if not triggers:
+            return False
+        snapshot = _maak_prefill_snapshot(
+            prefill, regels=regels, veldvoorstel=veldvoorstel, triggers=triggers, geopend_door=geopend_door
+        )
+
+    try:
+        sla_boekvoorstel_op(
+            administratie_id=administratie_id,
             document_id=document_id,
-            vendor_id=vendor_id,
-            referentie=veldvoorstel.get("factuurnummer"),
-            factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
-            vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
-            vervaldatum_signaal=vervaldatum_signaal(
-                factuurdatum=_als_datum(veldvoorstel.get("factuurdatum")),
-                vervaldatum=_als_datum(veldvoorstel.get("vervaldatum")),
-            ),
-            betalingskenmerk=(veldvoorstel.get("betalingskenmerk") or None),
-            totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl")),
-            rlz_boekstuknummer=None,
-            opgeslagen=False,
-            regels=prefill_regels,
-            btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
-            **samenvoeg,
-            **afdeling_velden(vendor_id, None),
-        ))
+            actor_id=SYSTEEM_ACTOR_ID,
+            vendor_id=prefill.vendor_id,
+            referentie=prefill.referentie,
+            factuurdatum=prefill.factuurdatum,
+            vervaldatum=prefill.vervaldatum,
+            betalingskenmerk=prefill.betalingskenmerk,
+            totaalbedrag=prefill.totaalbedrag,
+            regels=regels,
+            afdeling_id=prefill.afdeling_prefill_id,
+            prefill_snapshot=snapshot,
+        )
+    except IntegrityError:
+        # Twee GET's tegelijk (controlescherm + doorbelasten-blok openen beide het voorstel): de ander won.
+        logger.info("Prefill-autosave voor document %s al door een parallelle aanvraag gedaan", document_id)
+        return False
+    except Exception:  # noqa: BLE001 — de autosave is een verbetering, nooit een blokkade van het openen
+        logger.exception("Prefill-autosave bij openen mislukt voor document %s", document_id)
+        return False
+    return True
 
 
 def _gebeurtenissen_van(session: Session, document_id: uuid.UUID) -> list[DocumentGebeurtenis]:
@@ -553,6 +943,7 @@ def sla_boekvoorstel_op(
     vervaldatum: date | None = None,
     afdeling_id: uuid.UUID | None = None,
     betalingskenmerk: str | None = None,
+    prefill_snapshot: dict | None = None,
 ) -> BoekvoorstelData:
     """`prefill_snapshot` (blok A10 07-09) ≠ None = AUTOSAVE van de prefill bij het openen
     (`persisteer_prefill_bij_openen`): zelfde schrijfpad, maar (1) géén leerlus-bijeffecten die een
@@ -584,6 +975,7 @@ def sla_boekvoorstel_op(
                 raise BoekvoorstelFout("Onbekende afdeling voor deze administratie")
 
         bestaand = session.get(Boekvoorstel, document_id)
+        was_nieuw = bestaand is None
         if bestaand is None:
             bestaand = Boekvoorstel(document_id=document_id)
             session.add(bestaand)
@@ -594,7 +986,8 @@ def sla_boekvoorstel_op(
         bestaand.vervaldatum = vervaldatum
         bestaand.betalingskenmerk = (" ".join(betalingskenmerk.split()) or None) if betalingskenmerk else None
         bestaand.afdeling_id = afdeling_id
-        if afdeling_id is not None and vendor_id is not None:
+        autosave = prefill_snapshot is not None
+        if afdeling_id is not None and vendor_id is not None and not autosave:
             from app.afdelingen.service import onthoud_keuze
 
             onthoud_keuze(
@@ -614,7 +1007,7 @@ def sla_boekvoorstel_op(
         # Punt 14 (28-08): het btw-/KvK-nummer van de factuur per crediteur onthouden zodra de mens de
         # crediteur bevestigt (opslaan mét vendor) — voedt nummer-match, cross-crediteur-check en de
         # dubbel-signalering. Lazy import: crediteur_kenmerk gebruikt de extractie-controlelaag.
-        if vendor_id is not None:
+        if vendor_id is not None and not autosave:
             from app.documenten.crediteur_kenmerk import neem_over_uit_veldvoorstel
 
             neem_over_uit_veldvoorstel(
@@ -633,6 +1026,27 @@ def sla_boekvoorstel_op(
         from app.doorbelasting import service as doorbelasting_service
 
         verdeling_snapshot = doorbelasting_service.neem_klaargezette_verdeling_los(session, document_id=document_id)
+        oude_regels_snapshot: dict | None = None
+        if prefill_snapshot is not None and not was_nieuw:
+            # Her-autosave ná een verse extractie (persisteer_prefill_bij_openen): de vorige stand in het audit-event.
+            oude_regels = session.scalars(
+                select(BoekvoorstelRegel)
+                .where(BoekvoorstelRegel.document_id == document_id)
+                .order_by(BoekvoorstelRegel.volgnummer)
+            ).all()
+            if oude_regels:
+                oude_regels_snapshot = {
+                    "opgeslagen": True,
+                    "regels": [
+                        {
+                            "volgnummer": r.volgnummer,
+                            "ledger_id": _str_of_none(r.ledger_id),
+                            "taxrate_id": _str_of_none(r.taxrate_id),
+                            "netto_bedrag": _str_of_none(r.netto_bedrag),
+                        }
+                        for r in oude_regels
+                    ],
+                }
         session.execute(delete(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == document_id))
         nieuwe_regels: list[BoekvoorstelRegel] = []
         for i, regel in enumerate(regels, start=1):
@@ -656,7 +1070,12 @@ def sla_boekvoorstel_op(
                 nieuwe_regels={r.volgnummer: r.id for r in nieuwe_regels},
             )
 
-        if regels_samenvoegen is not None and vendor_id is not None and not _project_verplicht(administratie_id):
+        if (
+            regels_samenvoegen is not None
+            and vendor_id is not None
+            and not autosave
+            and not _project_verplicht(administratie_id)
+        ):
             _onthoud_voorkeur_samenvoegen(
                 session,
                 administratie_id=administratie_id,
@@ -665,21 +1084,56 @@ def sla_boekvoorstel_op(
                 regels_samenvoegen=regels_samenvoegen,
             )
 
-        record_audit_event(
-            session,
-            actor_id=actor_id,
-            module="boekhouding",
-            tabel="boekvoorstel",
-            record_id=document_id,
-            actie="boekvoorstel_opgeslagen",
-            correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={
-                "referentie": referentie,
-                "aantal_regels": len(regels),
-                "afdeling_id": str(afdeling_id) if afdeling_id else None,
-            },
-            administratie_id=administratie_id,
-        )
+        if autosave:
+            assert prefill_snapshot is not None
+            # Eén tijdlijn-notitie (status blijft) + één audit-event per autosave; de herkomst per veld staat in
+            # beide (audit: oud = leeg voorstel / de vorige autosave-stand, nieuw = de gepersisteerde prefill).
+            session.add(
+                DocumentGebeurtenis(
+                    document_id=document_id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=actor_id,
+                    detail={PREFILL_SNAPSHOT_SLEUTEL: prefill_snapshot},
+                )
+            )
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="boekvoorstel",
+                record_id=document_id,
+                actie="boekvoorstel_prefill_opgeslagen",
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={"opgeslagen": False} if oude_regels_snapshot is None else oude_regels_snapshot,
+                nieuwe_waarde={
+                    "referentie": referentie,
+                    "aantal_regels": len(regels),
+                    "afdeling_id": str(afdeling_id) if afdeling_id else None,
+                    "geopend_door": prefill_snapshot.get("geopend_door"),
+                    "triggers": prefill_snapshot.get("triggers"),
+                    "herkomst_per_regel": [
+                        {"volgnummer": r["volgnummer"], **r["herkomst"]} for r in prefill_snapshot.get("regels", [])
+                    ],
+                },
+                administratie_id=administratie_id,
+            )
+        else:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="boekvoorstel",
+                record_id=document_id,
+                actie="boekvoorstel_opgeslagen",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={
+                    "referentie": referentie,
+                    "aantal_regels": len(regels),
+                    "afdeling_id": str(afdeling_id) if afdeling_id else None,
+                },
+                administratie_id=administratie_id,
+            )
 
     # Factuurmatch (fase 2): ná élke voorstel-opslag herberekenen — crediteur, factuurdatum en
     # regelbedragen sturen alle drie de match. Post-commit en onder de systeem-actor (de

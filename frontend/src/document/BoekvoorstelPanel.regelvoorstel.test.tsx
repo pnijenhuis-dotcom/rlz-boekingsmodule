@@ -37,7 +37,11 @@ function regel(overrides: Record<string, unknown>) {
   }
 }
 
-function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown, opties: { projectVerplicht?: boolean } = {}) {
+function installFetchMock(
+  regels: unknown[],
+  geheugenVoorstel?: unknown,
+  opties: { projectVerplicht?: boolean; boekvoorstelExtra?: Record<string, unknown> } = {},
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -82,6 +86,7 @@ function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown, opties:
             regels_samenvoegen: false,
             samenvoegen_toegestaan: true,
             samengevoegde_regel: null,
+            ...(opties.boekvoorstelExtra ?? {}),
           }),
         )
       }
@@ -91,11 +96,71 @@ function installFetchMock(regels: unknown[], geheugenVoorstel?: unknown, opties:
   )
 }
 
-function renderPanel() {
+function renderPanel(veldvoorstel?: Record<string, unknown>) {
   return render(
-    <BoekvoorstelPanel administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="te_controleren" onGeboekt={() => {}} onHersteld={() => {}} />,
+    <BoekvoorstelPanel
+      administratieId={ADMINISTRATIE_ID}
+      documentId={DOCUMENT_ID}
+      status="te_controleren"
+      veldvoorstel={veldvoorstel}
+      onGeboekt={() => {}}
+      onHersteld={() => {}}
+    />,
   )
 }
+
+/** Blok A10 07-09: AI-veldvoorstel dat bij de prefill-autosave hoort (één regel, zekerheid 0,93). */
+const AI_VOORSTEL_AUTOSAVE = {
+  bron: 'ai',
+  leverancier_naam: 'Derks Automatisering B.V.',
+  factuurnummer: 'D-2026-0901',
+  factuurdatum: '2026-09-01',
+  vervaldatum: null,
+  valuta: 'EUR',
+  totaal_excl: '82.40',
+  totaal_incl: '99.70',
+  btw_bedrag: '17.30',
+  regelaantal: 1,
+  regels: [{ omschrijving: 'Microsoft 365 Business Premium (YR-MTH)', netto_bedrag: '82.40', btw_bedrag: '17.30', hoeveelheid: null, taxrate_id: null }],
+  zekerheid: { leverancier_naam: 0.93, factuurnummer: 0.97 },
+  regel_zekerheid: [0.93],
+  zekerheid_drempel: 0.8,
+  vendor_suggestie: null,
+  controle: { regelsom: '99.70', regelsom_wijkt_af: false, onparseerbaar: [], lage_zekerheid: [], bsn_verwijderd: 0, onvolledig: false },
+}
+
+describe('BoekvoorstelPanel — prefill-autosave bij openen (blok A10 07-09)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('crypto', { ...globalThis.crypto, randomUUID: () => `local-${Math.random()}` })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('opgeslagen + prefill_automatisch = AI-zekerheidschips blijven staan (geen menselijke opslag)', async () => {
+    installFetchMock(
+      [regel({ id: 'rrrrrrrr-0000-0000-0000-000000000001', omschrijving: 'Microsoft 365 Business Premium (YR-MTH)', ledger_id: GB_4110, taxrate_id: TAXRATE_HOOG, btw_bron: 'factuur' })],
+      undefined,
+      { boekvoorstelExtra: { opgeslagen: true, prefill_automatisch: true } },
+    )
+    renderPanel(AI_VOORSTEL_AUTOSAVE)
+    await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('4110 · Automatisering'))
+    // Regel-zekerheidschip én de herkomst-chip "uit factuur" staan er nog — het voorstel is machinaal opgeslagen.
+    expect(screen.getByText('AI 93%')).toBeInTheDocument()
+    expect(screen.getByText(/uit factuur/)).toBeInTheDocument()
+  })
+
+  it('opgeslagen door een mens (prefill_automatisch false) = geen AI-chips, zoals voorheen', async () => {
+    installFetchMock(
+      [regel({ id: 'rrrrrrrr-0000-0000-0000-000000000001', omschrijving: 'Microsoft 365 Business Premium (YR-MTH)', ledger_id: GB_4110, taxrate_id: TAXRATE_HOOG })],
+      undefined,
+      { boekvoorstelExtra: { opgeslagen: true, prefill_automatisch: false } },
+    )
+    renderPanel(AI_VOORSTEL_AUTOSAVE)
+    await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toHaveValue('4110 · Automatisering'))
+    expect(screen.queryByText('AI 93%')).not.toBeInTheDocument()
+  })
+})
 
 describe('BoekvoorstelPanel — regel-GB-voorstel (blok D 04-09, Derks-casus)', () => {
   beforeEach(() => {

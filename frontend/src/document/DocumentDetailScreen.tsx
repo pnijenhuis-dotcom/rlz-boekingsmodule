@@ -46,6 +46,7 @@ import { IbanAccorderingSectie } from './IbanAccorderingSectie'
 import { SOORT_LABELS } from './ibanAccorderingApi'
 import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/ReviewSplitter'
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
+import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -1332,6 +1333,12 @@ export function DocumentDetailScreen() {
                             </div>
                           )}
                         </>
+                      )}
+                      {/* Blok A10 07-09: prefill uit geheugen/template/default bij het openen automatisch opgeslagen. */}
+                      {g.detail && isPrefillAutosaveNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-prefill-autosave">
+                          {prefillAutosaveTijdlijnTekst(g.detail)}
+                        </div>
                       )}
                       {/* Mini-voorraad (06-09): notitie mini_voorraad_bijgewerkt, geschreven ín de boek-transactie. */}
                       {g.detail && isMiniVoorraadNotitie(g.detail) && (

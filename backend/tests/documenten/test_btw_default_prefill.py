@@ -197,8 +197,10 @@ def test_leverancier_geheugen_wint_van_default(
     fake_extraheer: None,
     default_verlegd: None,
 ) -> None:
-    """Heeft de engine een btw-voorstel (hier op leverancier-niveau), dan blijft het veld leeg voor de UI —
-    die vult 'm via /boekingsgeheugen/voorstel mét geheugen-chip. De default overrulet het geheugen nooit."""
+    """Heeft de engine een btw-voorstel (hier op leverancier-niveau), dan wint dat van de default. Sinds blok A10
+    (07-09) vult de server die engine-waarde zélf in de prefill (zonder `btw_bron`: de UI toont de GeheugenChipBlok
+    op waarde-gelijkheid) — vóór 07-09 bleef het veld hier leeg en vulde de browser 'm. De default overrulet het
+    geheugen nooit."""
     with scoped_session(administratie_id) as session:
         session.add(
             BoekingObservatie(
@@ -217,8 +219,10 @@ def test_leverancier_geheugen_wint_van_default(
     data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     diesel, huur = data.regels
     assert diesel.taxrate_id == HOOG_ID and diesel.btw_bron == "factuur"  # factuur blijft eerst
-    assert huur.taxrate_id is None and huur.btw_bron is None
-    assert data.samengevoegde_regel is not None and data.samengevoegde_regel.taxrate_id is None
+    assert huur.taxrate_id == GEHEUGEN_BTW_ID and huur.btw_bron is None  # leverancier-geheugen, geen default
+    assert huur.prefill_herkomst == {"grootboek": "leverancier_geheugen", "btw": "leverancier_geheugen"}
+    assert data.samengevoegde_regel is not None and data.samengevoegde_regel.taxrate_id == GEHEUGEN_BTW_ID
+    assert data.samengevoegde_regel.btw_bron is None
 
 
 def test_default_uit_vult_niets(

@@ -64,6 +64,11 @@ BRON_GEHEUGEN = "geheugen"  # groen — app-bevestigd, eenduidig
 BRON_GEHEUGEN_CONFLICT = "geheugen_conflict"  # oranje — app-observaties met wisselend grootboek, jongste wint
 BRON_GEHEUGEN_SEED = "geheugen_seed"  # oranje — uitsluitend RLZ-historie, nog niet bevestigd
 BRON_AI = "ai"  # oranje — AI-classificatie tegen de historische grootboeken van deze leverancier
+# Blok A10 07-09: herkomst-waarde (regel_prefill.prefill_herkomst["grootboek"]) van een grootboek dat de
+# kop-niveau-engine (leverancier-geheugen, chip "Geheugen N %") server-side invulde — géén regel-treffer, géén
+# AI: voor de classificatie telt zo'n regel nog als OPEN (de AI-classificatie gaat vóór de engine-vulling,
+# zelfde volgorde als de UI vóór 07-09).
+HERKOMST_LEVERANCIER_GEHEUGEN = "leverancier_geheugen"
 
 # Onder dit aantal historische grootboeken geen AI-call (zie moduledocstring, punt 2).
 MIN_KANDIDATEN_VOOR_AI = 2
@@ -349,7 +354,9 @@ def classificeer_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID
     open_regels = [
         (i, r)
         for i, r in enumerate(voorstel.regels, start=1)
-        if r.ledger_id is None and r.gb_bron is None and (r.omschrijving or "").strip()
+        if (r.ledger_id is None or (r.prefill_herkomst or {}).get("grootboek") == HERKOMST_LEVERANCIER_GEHEUGEN)
+        and r.gb_bron is None
+        and (r.omschrijving or "").strip()
     ]
     if not open_regels:
         return 0

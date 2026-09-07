@@ -219,8 +219,11 @@ class TestPrefillVolgorde:
         assert bekend.gb_voorstel_detail == f"2× bevestigd, laatst {date.today():%d-%m-%Y}"
         assert nieuw.ledger_id == GB_4112 and nieuw.gb_bron == "ai"
         assert nieuw.gb_voorstel_detail == "AI koos uit 2 grootboeken van deze leverancier — bevestig of corrigeer"
-        # De samengevoegde regel krijgt nooit een regel-GB (synthetische omschrijving).
-        assert data.samengevoegde_regel is not None and data.samengevoegde_regel.ledger_id is None
+        # De samengevoegde regel krijgt nooit een regel-GB (synthetische omschrijving) — wél het leverancier-geheugen
+        # (kop-niveau-engine, sinds blok A10 07-09 server-side; geen gb_bron: de UI toont de GeheugenChipBlok).
+        assert data.samengevoegde_regel is not None and data.samengevoegde_regel.gb_bron is None
+        assert data.samengevoegde_regel.ledger_id == GB_4110
+        assert data.samengevoegde_regel.prefill_herkomst["grootboek"] == "leverancier_geheugen"
 
     def test_herladen_doet_geen_tweede_call(
         self,
@@ -255,7 +258,9 @@ class TestPrefillVolgorde:
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert _classificaties(admin_engine, document_id) == [(2, None)]
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-        assert data.regels[1].ledger_id is None and data.regels[1].gb_bron is None
+        # Geen regel-GB (AI koos "geen"); het leverancier-geheugen vult 'm wél (A10 07-09, geen regel-chip).
+        assert data.regels[1].gb_bron is None and data.regels[1].ledger_id == GB_4110
+        assert data.regels[1].prefill_herkomst["grootboek"] == "leverancier_geheugen"
         assert regel_gb.classificeer_document(administratie_id=administratie_id, document_id=document_id) == 0
         assert len(fake_claude.aanroepen) == 1
 
@@ -320,7 +325,8 @@ class TestAiPoorten:
         assert fake_claude.aanroepen == []  # één historisch grootboek: de engine kiest die al
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
         assert data.regels[0].gb_bron == "geheugen"
-        assert data.regels[1].ledger_id is None and data.regels[1].gb_bron is None  # leeg = mens (of engine-prefill UI)
+        # Geen regel-chip; het ene historische grootboek komt via het leverancier-geheugen (A10 07-09 server-side).
+        assert data.regels[1].gb_bron is None and data.regels[1].ledger_id == GB_4110
 
     def test_zonder_leverancier_geen_call(
         self,

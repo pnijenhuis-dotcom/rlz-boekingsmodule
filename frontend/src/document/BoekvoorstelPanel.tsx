@@ -591,7 +591,9 @@ export function BoekvoorstelPanel({
     apiJson<BoekvoorstelDto>(`/administraties/${administratieId}/documenten/${documentId}/boekvoorstel`)
       .then((dto) => {
         if (!actief) return
-        const aiPrefill = !dto.opgeslagen && ai !== null
+        // Blok A10 07-09: de prefill uit geheugen/template/default is bij het openen al server-side opgeslagen
+        // (`prefill_automatisch`) — dat is géén menselijke opslag, de AI-zekerheidschips blijven staan.
+        const aiPrefill = (!dto.opgeslagen || dto.prefill_automatisch === true) && ai !== null
         setAiChipsActief(aiPrefill)
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
@@ -600,7 +602,11 @@ export function BoekvoorstelPanel({
         setVervaldatumSignaal(dto.vervaldatum_signaal ?? null)
         if (dto.afdeling_id) {
           setAfdelingId(dto.afdeling_id)
-          setAfdelingPrefill(null)
+          // A10: de autosave schreef de afdeling-prefill als keuze weg; de server geeft de prefill dan mee zolang de
+          // waarde nog die prefill is — de chip "vorige keuze bij <leverancier>" blijft tot de mens 'm wijzigt.
+          setAfdelingPrefill(
+            dto.afdeling_prefill_id === dto.afdeling_id ? { leverancier: dto.afdeling_prefill_leverancier ?? null } : null,
+          )
         } else if (dto.afdeling_prefill_id) {
           // Voorstel uit het geheugen — vooraf ingevuld mét chip; de mens beslist (opslaan = keuze).
           setAfdelingId(dto.afdeling_prefill_id)

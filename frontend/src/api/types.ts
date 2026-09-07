@@ -340,6 +340,8 @@ export interface ProjectverdelingHercontroleDto {
   afwijking_pct: string | null
   drempel_pct: string
   periode: string | null
+  /** Serverlabel mét dekking ("2026 (t/m augustus)"); ontbreekt bij oudere antwoorden. */
+  periode_label?: string | null
   signaal: boolean
   nieuwe_verdeling: ProjectverdelingDeelDto[]
 }
@@ -401,6 +403,8 @@ export interface ProjectverdelingSignaalRijDto {
   leverancier: string | null
   referentie: string | null
   pro_rato_periode: string | null
+  /** Serverlabel mét dekking op het boekmoment ("2026 (t/m juli)"); ontbreekt bij oudere antwoorden. */
+  pro_rato_periode_label?: string | null
   pro_rato_bedrag: string | null
   afwijking_pct: string
   drempel_pct: string
@@ -688,6 +692,9 @@ export interface BoekvoorstelDto {
   totaalbedrag: string | null
   rlz_boekstuknummer: string | null
   opgeslagen: boolean
+  /** Blok A10 07-09: het opgeslagen voorstel is de automatische prefill bij het openen (geheugen/template/
+   * default) en de kopvelden zijn nog niet door een mens gewijzigd — de AI-/herkomst-chips blijven dan staan. */
+  prefill_automatisch?: boolean
   regels: BoekvoorstelRegelDto[]
   /** Fix 3 (2026-07-10): effectieve samenvoeg-stand (voorkeur per crediteur, default aan),
    * of samenvoegen kan (false bij projectplicht — daar is per-regel hard) en de door de backend

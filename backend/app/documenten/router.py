@@ -212,6 +212,7 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         totaalbedrag=data.totaalbedrag,
         rlz_boekstuknummer=data.rlz_boekstuknummer,
         opgeslagen=data.opgeslagen,
+        prefill_automatisch=data.prefill_automatisch,
         regels=[_naar_regel_dto(r) for r in data.regels],
         regels_samenvoegen=data.regels_samenvoegen,
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
@@ -703,7 +704,13 @@ def boekvoorstel_ophalen(
     document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BoekvoorstelResponse:
+    """Openen van het controlescherm. Blok A10 07-09: persisteert éérst de prefill uit geheugen/template/default
+    (autosave, herkomst-snapshot in de tijdlijn; idempotent, nooit over een mens heen) en leest dán — zodat de
+    checks (POST …/checks) en het doorbelasten-blok exact zien wat het scherm toont."""
     try:
+        boekvoorstel.persisteer_prefill_bij_openen(
+            administratie_id=administratie_id, document_id=document_id, geopend_door=actor.id
+        )
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
