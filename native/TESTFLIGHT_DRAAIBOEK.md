@@ -34,7 +34,7 @@ iCloud-sleutelhanger.
   iCloud-sleutelhanger vereist. Wijst Apple af op een falende passkey, dan is dat een
   reply/appeal met verwijzing naar de notities — NIET een reden om een bypass te bouwen.
 
-Klaarzetten (jouw klikwerk, vergt gcloud-login):
+Klaarzetten (jouw klikwerk, vergt gcloud-login; **HERZIEN 07-09 ná de 2.1-afwijzing — zie §0b**):
 
 ```bash
 cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 --gcloud-auth &
@@ -42,20 +42,73 @@ cd backend
 APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:\
 $(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
 DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten \
-    .venv/bin/python scripts/cloud_seed_review_demo.py
+    .venv/bin/python scripts/cloud_seed_review_demo.py --genereer-wachtwoord
 ```
 
-Het script print de activatielink → open
-`https://app.administratiekantoornijenhuis.nl/activeren?token=…`, kies dáár het
-review-wachtwoord (komt in de reviewnotities; bewaar het ook zelf). Raakt de wachtrij ooit
-leeg (reviewer heeft alles beoordeeld), draai het script opnieuw met een batch-letter:
-`… cloud_seed_review_demo.py b`.
+Het script maakt het account zélf volledig geactiveerd (status actief, definitief wachtwoord,
+open links vervallen, bestaande demo-passkeys ingetrokken, audit) en **print het wachtwoord** —
+dat gaat 1-op-1 naar App Store Connect › App Review Information én de reviewnotities. Er is géén
+activatielink meer te doorlopen (de oude route liet het wachtwoord op de link geparkeerd staan
+tot de passkey-registratie — dáár ging het 02-09 mis). Zonder `--genereer-wachtwoord` blijft een
+bestaand wachtwoord staan (alleen herseed van facturen). De seed weigert zonder
+`DOCUMENT_GCS_BUCKET`, verifieert élke PDF-upload en herstelt ontbrekende PDF-objecten van
+eerdere runs. Raakt de wachtrij ooit leeg (reviewer heeft alles beoordeeld), draai het script
+opnieuw met een batch-letter: `… cloud_seed_review_demo.py b`.
 
 > ⚠️ Netwerk-bevinding 2026-08-18: op het kantoornetwerk (gateway 192.168.30.1) wordt
 > uitgaand TCP 3307/5432 per direct geweigerd — de Cloud SQL Auth Proxy komt er dan niet
 > doorheen ("connection refused" in ~2 ms = lokale firewall, niet Google). De seed draaien
 > lukt dus alleen vanaf een netwerk zónder die blokkade (hotspot/thuis) of ná een
 > firewall-uitzondering voor 3307.
+
+## 0b. Afwijzing 2.1 op build 1.0 (44) — wortel + herstel (07-09)
+
+Apple wees build 1.0 (44) af (guideline 2.1): de reviewer kon op een iPad Air niet inloggen met
+het demo-account. **Wortel (Cloud Logging + audit-log, 07-09):** 20 pogingen op 04-09
+09:49–09:59 UTC vanaf twee Apple-adressen (17.185.64.112 / 139.178.129.4, iOS 18.7) en één op
+05-09 12:07 UTC (iPad, Three Ireland) — álle `POST /auth/accordeur/login` → 401 mét een
+`login_mislukt`-auditrij op het demo-account. Het adres klopte dus, het account was actief mét
+hash, de rol klopte: het enige resterende faalpad is `verify_password` → **het wachtwoord in App
+Review Information kwam niet overeen met het wachtwoord dat op 02-09 bij de activatie op het
+Xiaomi-toestel is gekozen.** Op 03-09 was de wachtwoordstap nog 17× groen (Peters eigen
+Android-tests), dus de hash was niet kapot — het opgegeven wachtwoord was een ander.
+De reviewer kwam dus nooit bij de passkey-sheet; de eerdere hypothesen (vastlopen op de sheet,
+registratie geweigerd zonder iCloud-sleutelhanger) zijn hiermee uitgesloten voor déze afwijzing.
+
+**Herstel 07-09:** herziene seed (§0) gedraaid tegen productie: nieuw wachtwoord, Android-passkey
+ingetrokken, wachtrij 9 fictieve facturen. **Tweede vondst tijdens de simulator-verificatie:**
+drie demo-documenten uit de seed-run van 02-09 hadden géén PDF-object in de bucket (500 op
+`/bestand`, "factuurbeeld kon niet geladen worden") — hersteld door het identieke PDF-object te
+kopiëren; de seed doet dat sinds 07-09 zelf. **Volledige reviewer-flow bewezen** in de iPad
+Air 11"-simulator (verse staat, webbundel HEAD 07-09 tegen `app.administratiekantoornijenhuis.nl`;
+het loginpad is sinds build 44 alleen met het uitlegblok "Nog niet geactiveerd?" uitgebreid):
+wachtwoordscherm → 200 → iOS-passkey-sheet → Touch ID → code kiezen + bevestigen → wachtrij →
+factuur-PDF → Akkoord → volgende; herstart → code-slot → wachtrij. Build 44 zelf faalde nergens.
+
+**Concept-reply App Store Connect (Resolution Center, Engels, kort):**
+
+```
+Thank you for the review. We investigated the failed sign-in on the iPad Air with build 1.0 (44).
+Our server logs show that every attempt reached our backend and was rejected as "invalid
+credentials": the password listed in App Review Information did not match the demo account.
+We have reset the demo account and verified the complete sign-in flow end to end on an
+iPad Air (11-inch) against our production backend.
+
+Updated demo credentials (also updated in App Review Information):
+Email: p.nijenhuis+applereview@kempengroep.nl
+Password: <nieuw wachtwoord>
+
+Steps: open the app → tap "Inloggen met wachtwoord" (sign in with password) → enter the email
+and password → confirm the iOS passkey prompt with Face ID / Touch ID → choose a 5-digit app
+code → the approval queue with demonstration invoices appears. The passkey prompt is Apple's
+standard ASAuthorizationController flow and requires iCloud Keychain to be enabled on the
+device. No app changes were needed; the same build can be reviewed again.
+```
+
+Klikwerk: (1) nieuw wachtwoord in App Review Information zetten, (2) de notes in §1 hierboven
+overnemen, (3) reply plaatsen en de submission opnieuw ter review aanbieden — óf, als de
+universal-link-fix (06-09, `@capacitor/app`) meteen mee moet, eerst build 45 laten bouwen
+(package-lock + Package.swift zijn 07-09 gecommit; Xcode Cloud `npm ci` faalde anders).
 
 ## 1. App-registratie in App Store Connect (A4)
 
@@ -104,12 +157,20 @@ approve or reject them. There is no open registration.
 
 Demo account (demo administration, contains FICTITIOUS demonstration invoices only):
 - Email: p.nijenhuis+applereview@kempengroep.nl
-- Password: <invullen>
+- Password: <het wachtwoord uit de seed-run van 07-09>
 
-Sign-in flow: enter email + password. On first sign-in on a new device the app registers a
-passkey via the iOS system prompt (ASAuthorizationController / Face ID); this requires
-iCloud Keychain to be enabled on the device. After that, the app unlocks with the passkey
-once per app launch. If a terms & privacy screen appears, tap agree to continue.
+Sign-in steps (verified end to end on an iPad Air 11-inch against our production backend):
+1. Open the app. The first screen is the passkey sign-in for returning devices; tap the white
+   button "Inloggen met wachtwoord" (= sign in with password) underneath the green one.
+2. Enter the email and password above and tap "Inloggen".
+3. iOS shows its system passkey sheet ("Een passkey bewaren?" = save a passkey). Confirm with
+   Face ID / Touch ID or the device passcode. This is Apple's standard ASAuthorizationController
+   prompt; the passkey is stored in the device's Passwords app and requires iCloud Keychain to
+   be enabled. If the sheet is dismissed, simply sign in again.
+4. Choose a 5-digit app code and repeat it. This code unlocks the app on later launches (the
+   app never asks for the password again on this device).
+5. The approval queue with demonstration invoices appears. Tap an invoice to view the PDF and
+   approve ("Akkoord") or reject ("Afwijzen"); the next invoice opens automatically.
 
 Push notifications: a daily 09:00 reminder and a "new invoices ready for you" message —
 only sent while work is pending. Approving from a notification is deliberately impossible;
