@@ -288,10 +288,16 @@ def check_duplicaat(
 
     `historie_treffers` (Odoo-slotstuk 04-09, `documenten/duplicaat_historie.py`): documenten die vóór een overstap
     al in Reeleezee geboekt zijn — de live query van de Odoo-backend ziet die niet. Aanwezig = rood mét boekstuk,
-    ongeacht de live uitkomst (dedup op `id`, zelfde uitzonderingen)."""
+    ongeacht de live uitkomst (dedup op `id`, zelfde uitzonderingen).
+
+    Herstelrun 07-09 (blok 1b, casus Kempen Facilities 281637 / 2026-0322): de cloud-diagnose bewees dat deze
+    check NIET faalde — beide tweede exemplaren zijn nooit in RLZ geboekt; de live check kan alleen zien wat al
+    in RLZ staat (ook concepten), een tweede exemplaar dat nog in de module wacht is het domein van
+    `check_duplicaat_module`. Verharding hier: het bedrag gaat als Decimal mee en wordt in de client cent-exact
+    vergeleken (geen OData-float-`eq` meer), zodat een wankele float-match nooit een treffer verbergt."""
     if vendor_id is None or not referentie:
         return CheckResultaat("Duplicaatcheck", False, "Kan niet controleren zonder crediteur en referentie")
-    bedrag = float(totaalbedrag) if totaalbedrag is not None else None
+    bedrag = totaalbedrag
     uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
     historie = [t for t in historie_treffers if str(t.get("id")) not in uitgezonderd]
     try:
@@ -541,7 +547,7 @@ def check_duplicaat_over_crediteuren(
         return CheckResultaat(naam, True, "Niet toetsbaar zonder referentie en totaalbedrag")
     try:
         gevonden = client.find_purchase_invoices_by_reference(
-            vendor_id=None, reference=referentie, total_amount=float(totaalbedrag), expand_entity=True
+            vendor_id=None, reference=referentie, total_amount=totaalbedrag, expand_entity=True
         )
     except Exception as exc:  # noqa: BLE001 — bewust breed: signaal, nooit een crash
         return CheckResultaat(naam, True, f"Kon niet over crediteuren heen toetsen: {exc}", signaal=True)

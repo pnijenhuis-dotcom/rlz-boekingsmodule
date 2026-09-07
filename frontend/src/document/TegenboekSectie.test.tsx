@@ -20,6 +20,9 @@ function toets(overrides: Partial<TegenboekToetsDto> = {}): TegenboekToetsDto {
     document_id: DOCUMENT_ID,
     storno_geblokkeerd: true,
     blokkade_melding: 'BTW-aangifte over deze periode is definitief ingediend — wijzigingen handmatig verwerken (tegenboeking)',
+    tegenboeken_beschikbaar: true,
+    aanbod_reden: 'aangifte',
+    duplicaat_van_geboekt: [],
     tegenboeking: null,
     betaalstatus: { betaald_bedrag: '0', open_bedrag: '121.00', volledig_afgeletterd: false },
     voorbeeld: [
@@ -139,10 +142,75 @@ describe('TegenboekSectie', () => {
     expect(screen.queryByRole('button', { name: 'Tegenboeken…' })).not.toBeInTheDocument()
   })
 
-  it('toont niets als storno niet geblokkeerd is (bestaand gedrag blijft)', async () => {
-    installMock(toets({ storno_geblokkeerd: false, blokkade_melding: null }))
+  it('toont niets als storno niet geblokkeerd is en er geen duplicaat is (bestaand gedrag blijft)', async () => {
+    installMock(toets({ storno_geblokkeerd: false, blokkade_melding: null, tegenboeken_beschikbaar: false, aanbod_reden: null }))
     const { container } = renderSectie()
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
     await waitFor(() => expect(container.querySelector('.panel')).toBeNull())
+  })
+
+  // Herstelrun 07-09 blok 1c: dubbel geboekt (module-duplicaat van een ándere geboekte factuur) → de actie
+  // "Tegenboeken…" DIRECT, óók als de aangifte nog open is; geen "Storneren (geblokkeerd)"-knop.
+  it('biedt Tegenboeken direct aan bij een dubbel geboekt document met open aangifte', async () => {
+    installMock(
+      toets({
+        storno_geblokkeerd: false,
+        blokkade_melding: null,
+        tegenboeken_beschikbaar: true,
+        aanbod_reden: 'duplicaat',
+        duplicaat_van_geboekt: [
+          {
+            document_id: 'bbbbbbbb-0000-0000-0000-00000000000b',
+            categorie: 'bestand',
+            referentie: '2026-0322',
+            bestandsnaam: '2026-0322.pdf',
+            rlz_boekstuknummer: 'RLZ-04-00004348',
+          },
+        ],
+      }),
+    )
+    renderSectie()
+    await waitFor(() => expect(screen.getByText('Dubbel geboekt — tegenboeken')).toBeInTheDocument())
+    expect(screen.getByText(/staat dubbel in de boekhouding/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '2026-0322' })).toHaveAttribute(
+      'href',
+      `/documenten/${ADMINISTRATIE_ID}/bbbbbbbb-0000-0000-0000-00000000000b`,
+    )
+    expect(screen.getByText(/boekstuk RLZ-04-00004348/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Storneren (geblokkeerd)' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Tegenboeken…' }))
+    expect(screen.getByText('Volledig tegenboeken')).toBeInTheDocument()
+  })
+
+  it('opent de flow direct vanuit het archief (?tegenboeken=1) bij een dubbel geboekt document', async () => {
+    installMock(
+      toets({
+        storno_geblokkeerd: false,
+        blokkade_melding: null,
+        tegenboeken_beschikbaar: true,
+        aanbod_reden: 'duplicaat',
+        duplicaat_van_geboekt: [
+          { document_id: 'bbbbbbbb-0000-0000-0000-00000000000b', categorie: 'referentie_bedrag', referentie: '281637', bestandsnaam: '281637.pdf', rlz_boekstuknummer: null },
+        ],
+      }),
+    )
+    render(
+      <MemoryRouter initialEntries={[`/x?tegenboeken=1`]}>
+        <TegenboekSectie administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="geboekt" soort="inkoopfactuur" onGewijzigd={() => undefined} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('Volledig tegenboeken')).toBeInTheDocument())
+    expect(screen.getByText(/dezelfde referentie en hetzelfde bedrag/)).toBeInTheDocument()
+  })
+
+  it('legt vanuit het archief uit waarom tegenboeken niet aan de orde is (geen stille no-op)', async () => {
+    installMock(toets({ storno_geblokkeerd: false, blokkade_melding: null, tegenboeken_beschikbaar: false, aanbod_reden: null }))
+    render(
+      <MemoryRouter initialEntries={[`/x?tegenboeken=1`]}>
+        <TegenboekSectie administratieId={ADMINISTRATIE_ID} documentId={DOCUMENT_ID} status="geboekt" soort="inkoopfactuur" onGewijzigd={() => undefined} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText(/niet aan de orde/)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Tegenboeken…' })).not.toBeInTheDocument()
   })
 })

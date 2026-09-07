@@ -393,6 +393,9 @@ class TestRlzPortDescription:
         (put,) = fake.puts
         assert put["id"] == rlz_herboeking_id(document_id, boek_cyclus)
         assert put["Description"] == "Steigerhuur week 34"
+        # STAP-0 07-09 (herstelrun blok 4a): RLZ negeert de document-Description op PurchaseInvoices en leidt 'm
+        # af uit regel 1; `Header` wordt wél bewaard — de kop gaat dus óók als Header mee.
+        assert put["Header"] == "Steigerhuur week 34"
         assert put["reference"] == "2026-0841"  # Reference blijft het factuurnummer
         assert put["lines"][0]["Description"] == "Steigerhuur week 34"  # regel-Description ongewijzigd
 
@@ -404,6 +407,19 @@ class TestRlzPortDescription:
                 document_id=document_id, voorstel=_voorstel(document_id, omschrijving=None), bestand=b"%PDF", bestandsnaam="f.pdf"
             )
         assert "Description" not in fake.puts[0]
+        assert "Header" not in fake.puts[0]
+
+    def test_koptekst_afgekapt_op_rlz_200_tekens(self) -> None:
+        """RLZ kapt tekstvelden op 200 af (STAP-0 07-09: 250 → 200 in de readback) — zelf netjes afkappen."""
+        from app.backends.rlz_inkoop import RLZ_KOPTEKST_MAX, koptekst_velden
+
+        lang = "Steigerhuur " * 30  # 360 tekens
+        velden = koptekst_velden(lang)
+        assert velden["Header"] == velden["Description"]
+        assert len(velden["Header"]) <= RLZ_KOPTEKST_MAX == 200
+        assert velden["Header"].endswith("…")
+        assert koptekst_velden("kort") == {"Header": "kort", "Description": "kort"}
+        assert koptekst_velden(None) == {} and koptekst_velden("") == {}
 
     def test_tegenboeking_draagt_de_tegenboek_omschrijving_ook_op_documentniveau(self) -> None:
         fake = FakeBoekClient()
@@ -421,6 +437,7 @@ class TestRlzPortDescription:
         (put,) = fake.puts
         assert put["id"] == rlz_tegenboeking_id(document_id, 0)
         assert put["Description"] == "TEGENBOEKING 2026-0841 · Boot Steigers B.V."
+        assert put["Header"] == "TEGENBOEKING 2026-0841 · Boot Steigers B.V."
         assert put["lines"][0]["Description"] == "TEGENBOEKING 2026-0841 · Boot Steigers B.V."
 
 

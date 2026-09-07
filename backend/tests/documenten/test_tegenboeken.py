@@ -17,6 +17,9 @@ from sqlalchemy import Engine, text
 
 from app.beheer import service as beheer_service
 from app.documenten import boeken, boekvoorstel, service, tegenboeken
+from app.documenten.checks import NAAM_DUPLICAAT_MODULE, CheckResultaat
+from app.main import app
+from tests.documenten.test_duplicaat_afvoer import _bearer
 from app.documenten.models import DocumentStatus
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.storage import LokaleBestandsopslag
@@ -408,3 +411,188 @@ class TestWebhook:
                 text("SELECT count(*) FROM boekhouding.webhook_uitgaand WHERE document_id = :id"), {"id": document_id}
             ).scalar_one()
         assert aantal == 0
+
+
+class TestDubbelGeboektDuplicaat:
+    """Herstelrun 07-09 blok 1c (casus Kempen 281637 / 2026-0322 — twee exemplaren, één ervan geboekt): een
+    GEBOEKT document dat module-duplicaat (a/b/c) is van een ÁNDER geboekt document krijgt "Tegenboeken…" DIRECT
+    aangeboden, óók als de aangifte-poort storno niet blokkeert; het tegenboek-pad zelf laat het dan toe. Het tweede
+    exemplaar wordt geboekt met de module-check tijdelijk uitgeschakeld — precies de legacy-situatie van vóór 07-09
+    (de check bestond nog niet), die het kantoor in het archief kan aantreffen."""
+
+    @staticmethod
+    def _boek_tweede_exemplaar(
+        *,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> uuid.UUID:
+        # Platformbrede noodrem UIT: anders voert de auto-afvoer (blok A 04-09 / blok 1 07-09) het byte-identieke
+        # tweede exemplaar al bij de upload af — precies wat vóór 07-09 níét gebeurde (legacy-simulatie).
+        beheer_service.zet_duplicaat_autoafvoer_platform(actor_id=beheerder_id, ingeschakeld=False)
+        tweede = service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur (2).pdf",
+            inhoud=b"%PDF-1.4 testfactuur",  # byte-identiek → sha256 gelijk = categorie (a) bestand
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        )
+        boekvoorstel.sla_boekvoorstel_op(
+            administratie_id=administratie_id,
+            document_id=tweede.document_id,
+            actor_id=gescoopte_gebruiker,
+            vendor_id=uuid.uuid4(),
+            referentie="F-2026-0841",
+            factuurdatum=date(2026, 7, 1),
+            totaalbedrag=Decimal("121.00"),
+            regels=[_regel()],
+        )
+        with pytest.MonkeyPatch.context() as mp:
+            # Legacy-simulatie: vóór 07-09 bestond de harde module-check niet — alleen dán kon een tweede exemplaar
+            # geboekt worden. De live-RLZ-check (fake, leeg) en alle andere checks draaien gewoon.
+            mp.setattr(
+                boekvoorstel,
+                "check_duplicaat_module",
+                lambda **kw: CheckResultaat(NAAM_DUPLICAAT_MODULE, True, "legacy: module-check bestond nog niet"),
+            )
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=tweede.document_id, actor_id=gescoopte_gebruiker
+            )
+        return tweede.document_id
+
+    def test_toets_biedt_tegenboeken_direct_aan_bij_dubbel_geboekt_ondanks_open_aangifte(
+        self,
+        geboekt_document,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        eerste_id, fake_client = geboekt_document
+        fake_client.aangiften = []  # aangifte nog open → storno NIET geblokkeerd
+        tweede_id = self._boek_tweede_exemplaar(
+            administratie_id=administratie_id,
+            gescoopte_gebruiker=gescoopte_gebruiker,
+            beheerder_id=beheerder_id,
+            opslag=opslag,
+        )
+
+        toets = tegenboeken.toets(administratie_id=administratie_id, document_id=tweede_id)
+        assert toets.storno_geblokkeerd is False
+        assert toets.tegenboeken_beschikbaar is True
+        assert toets.aanbod_reden == tegenboeken.AANBOD_DUPLICAAT
+        [dup] = toets.duplicaat_van_geboekt
+        assert dup.document_id == eerste_id
+        assert dup.categorie == "bestand"
+        assert dup.referentie == "F-2026-0841"
+        assert dup.bestandsnaam == "factuur.pdf"
+        assert dup.rlz_boekstuknummer is not None  # boekstuk van het origineel, leesbaar voor de mens
+        # Symmetrisch: ook het eerste exemplaar ziet het tweede als geboekt duplicaat.
+        toets_eerste = tegenboeken.toets(administratie_id=administratie_id, document_id=eerste_id)
+        assert [d.document_id for d in toets_eerste.duplicaat_van_geboekt] == [tweede_id]
+
+    def test_zonder_duplicaat_en_open_aangifte_blijft_de_knop_weg(
+        self, geboekt_document, administratie_id: uuid.UUID
+    ) -> None:
+        document_id, fake_client = geboekt_document
+        fake_client.aangiften = []
+        toets = tegenboeken.toets(administratie_id=administratie_id, document_id=document_id)
+        assert toets.tegenboeken_beschikbaar is False
+        assert toets.aanbod_reden is None
+        assert toets.duplicaat_van_geboekt == ()
+
+    def test_aangifte_geblokkeerd_wint_als_aanbod_reden(self, geboekt_document, administratie_id: uuid.UUID) -> None:
+        document_id, _ = geboekt_document  # aangifte ingediend (fixture)
+        toets = tegenboeken.toets(administratie_id=administratie_id, document_id=document_id)
+        assert toets.tegenboeken_beschikbaar is True
+        assert toets.aanbod_reden == tegenboeken.AANBOD_AANGIFTE
+
+    def test_tegenboeken_van_het_dubbele_exemplaar_mag_ondanks_vrije_storno(
+        self,
+        geboekt_document,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+    ) -> None:
+        eerste_id, fake_client = geboekt_document
+        fake_client.aangiften = []
+        tweede_id = self._boek_tweede_exemplaar(
+            administratie_id=administratie_id,
+            gescoopte_gebruiker=gescoopte_gebruiker,
+            beheerder_id=beheerder_id,
+            opslag=opslag,
+        )
+        resultaat = tegenboeken.voer_tegenboeking_uit(
+            administratie_id=administratie_id,
+            document_id=tweede_id,
+            actor_id=gescoopte_gebruiker,
+            soort="volledig",
+            reden="dubbel geboekt — origineel is boekstuk van het eerste exemplaar",
+        )
+        assert resultaat.status == DocumentStatus.GEBOEKT
+        assert resultaat.rlz_tegenboeking_id == rlz_tegenboeking_id(tweede_id, 0)
+        with admin_engine.connect() as conn:
+            tijdlijn = conn.execute(
+                text(
+                    "SELECT detail FROM boekhouding.document_gebeurtenis "
+                    "WHERE document_id = :id AND detail ? 'tegenboeking'"
+                ),
+                {"id": tweede_id},
+            ).one()
+        assert tijdlijn.detail["tegenboeking"]["aanbod_reden"] == "duplicaat"
+        assert tijdlijn.detail["tegenboeking"]["duplicaat_van_geboekt"] == [str(eerste_id)]
+        # Het origineel blijft onaangeroerd geboekt en is nu géén dubbel-geboekt-geval meer? Nee: de tegenboeking
+        # laat het tweede exemplaar op GEBOEKT (chip TEGENGEBOEKT) — de module ziet beide nog; de bestaande
+        # tegenboeking-rij verbergt de knop op het tweede, het eerste toont nog het aanbod (mens beslist).
+        toets_tweede = tegenboeken.toets(administratie_id=administratie_id, document_id=tweede_id)
+        assert toets_tweede.tegenboeking is not None
+        assert _document_status(admin_engine, eerste_id) == "geboekt"
+
+    def test_zonder_duplicaat_blijft_vrije_storno_geweigerd(
+        self, geboekt_document, administratie_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID
+    ) -> None:
+        document_id, fake_client = geboekt_document
+        fake_client.aangiften = []
+        with pytest.raises(tegenboeken.TegenboekenNietToegestaan, match="geen duplicaat"):
+            tegenboeken.voer_tegenboeking_uit(
+                administratie_id=administratie_id, document_id=document_id, actor_id=gescoopte_gebruiker,
+                soort="volledig", reden=REDEN,
+            )
+
+    def test_route_tegenboek_toets_draagt_de_duplicaatvelden(
+        self,
+        geboekt_document,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+    ) -> None:
+        """De leesroute (router-mapping) mét de nieuwe DTO-velden: 200 + tegenboeken_beschikbaar/aanbod_reden/
+        duplicaat_van_geboekt — de vorm die TegenboekSectie.tsx en het archief-⋯-menu lezen."""
+        from fastapi.testclient import TestClient
+
+        eerste_id, fake_client = geboekt_document
+        fake_client.aangiften = []
+        tweede_id = self._boek_tweede_exemplaar(
+            administratie_id=administratie_id,
+            gescoopte_gebruiker=gescoopte_gebruiker,
+            beheerder_id=beheerder_id,
+            opslag=opslag,
+        )
+        r = TestClient(app).get(
+            f"/administraties/{administratie_id}/documenten/{tweede_id}/tegenboek-toets",
+            headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["storno_geblokkeerd"] is False
+        assert body["tegenboeken_beschikbaar"] is True
+        assert body["aanbod_reden"] == "duplicaat"
+        [dup] = body["duplicaat_van_geboekt"]
+        assert dup["document_id"] == str(eerste_id)
+        assert dup["categorie"] == "bestand"
+        assert dup["referentie"] == "F-2026-0841"
+        assert dup["rlz_boekstuknummer"]

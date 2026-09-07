@@ -1829,3 +1829,31 @@ schrijft niets naar RLZ; de uitkomst is een **RLZ-werklijst-regel** ("klaargezet
 status open/gedaan) én een dagelijkse hertoets (meeliftend in `sync-alles`) die de regel afvinkt zodra de
 crediteur in RLZ `IsArchived: true` draagt of uit de Vendors-lijst verdwenen is. Boekingsgeheugen en
 `crediteur_kenmerk` verhuizen wél direct in de app naar de voorkeurs-crediteur (notitie ⑥).
+
+## Description op PurchaseInvoices — STAP 0 07-09 (herstelrun blok 4a; `verkenning/poc_description.py`) — DOCUMENT-DESCRIPTION WORDT GENEGEERD, `Header` BLIJFT
+
+Vraag (blok 9 vervolgrun 07-09, "kop-omschrijving automatisch"): bewaart RLZ de document-`Description` die de
+boekmotor sinds blok 9 op de PurchaseInvoice-PUT meegeeft, en komt die terug via GET? TEST-administratie
+(`8dbfb856-…`), TEST-crediteur `TEST-DOORB Kempen Facilities B.V.`, referenties `TEST-DESC-01` (geboekt → actie 19)
+en `TEST-DESC-02` (concept, blijft staan mét `Header` — kijkpunt voor Peter in de RLZ-UI). Audit:
+`verkenning/output/descriptionpoc_audit.jsonl`. Niets verwijderd.
+
+| Experiment | Antwoord | Readback |
+|---|---|---|
+| PUT mét `Description: "TEST-DESC kop-omschrijving …"` + regel-`Description: "TEST-DESC regelomschrijving (regel 1)"` | 204 | **document-`Description` = de regel-Description** ("TEST-DESC regelomschrijving (regel 1)"), in concept (Status 1) én ná actie 17 (Status 2) identiek; `Lines` dragen de regel-Description ongewijzigd |
+| PUT zónder document-Description (alleen regel) | 204 | document-`Description` = regel-Description — dus afgeleid uit regel 1, niet "leeg" |
+| Her-PUT mét `Header: "TEST-DESC kop-omschrijving …"` | 204 | **`Header` komt exact terug** — het enige kopveld dat een eigen tekst vasthoudt (`Header` is in élke PurchaseInvoice-GET aanwezig, standaard `null`) |
+| Regel-Description van 250 tekens | 204 | document- én regel-Description **afgekapt op 200 tekens** (stil, geen 400) |
+| Collectie-filter `Entity/id eq … and Reference eq '…'` op het CONCEPT (Status 1) | 200 | **1 treffer mét Status 1** — concepten zijn zichtbaar voor `find_purchase_invoices_by_reference` (bijvangst 1b: een al ge-PUT maar nog niet geboekt exemplaar telt als duplicaat-treffer) |
+| `… and Status eq 1` | **400** `A binary operator with incompatible types … 'Reeleezee.DTO.DocumentStatus' and 'Edm.Int32'` | Status is een enum-type; werkende vormen: `Status eq Reeleezee.DTO.DocumentStatus'1'`, `Status eq 'Tentative'`, `Status eq '1'` (alle drie 1 treffer op het concept, 0 ná boeken) |
+
+**Conclusie:** RLZ negeert de document-`Description` op PurchaseInvoices — **identiek aan SalesInvoices**
+("Verkoopfactuur-boekpad STAP-0" punt 4) — en leidt 'm af uit de Description van regel 1. Blok 9's
+`Description` op de PUT was daardoor een stille no-op: in productie (Kempen Facilities, `RLZ-04-00004352`) staat
+als document-omschrijving "Factuur 281637 — samengevoegd (16 regels)" = de tekst van de (enige) regel, niet de
+kop-omschrijving. **Aanpassing boekmotor (`app/backends/rlz_inkoop.py::koptekst_velden`):** de kop-omschrijving
+gaat mee als `Header` én `Description` (Header = het veld dat blijft; Description harmloos), zelf afgekapt op
+RLZ's 200 tekens met een ellipsis — ook op de tegenboeking. Open: (1) waar toont de RLZ-UI `Header` (kijkpunt:
+concept `RLZ-04-00002046` in de TEST-administratie draagt 'm); (2) wil Peter bij meerregelige facturen de
+kop-omschrijving óók als regel-1-Description (dan is 'm de zichtbare document-omschrijving in RLZ, maar de eigen
+regeltekst van regel 1 verdwijnt uit RLZ) — bewust NIET gedaan zonder besluit.

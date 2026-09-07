@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { TegenboekToetsDto } from '../api/types'
 import { haalTegenboekToetsOp, voerTegenboekingUit } from './tegenboekenApi'
@@ -18,8 +18,10 @@ function euro(bedrag: string | number): string {
 
 /** Tegenboek-sectie op het documentdetail (mockup tegenboek-mockup.html 1-op-1, akkoord Peter
  * 22-08 — besluit: géén suppletie-signaal). Alleen zichtbaar op een GEBOEKTE inkoopfactuur, en
- * de knop "Tegenboeken…" verschijnt alléén als storno door de aangifte-poort geblokkeerd is
- * (anders is stornering in Reeleezee de route — bestaand gedrag, ongewijzigd). Eén scherm,
+ * de knop "Tegenboeken…" verschijnt als storno door de aangifte-poort geblokkeerd is (anders is
+ * stornering in Reeleezee de route — bestaand gedrag) ÓF — herstelrun 07-09 blok 1c — als het document
+ * een duplicaat is van een ándere geboekte factuur (dubbel geboekt): dan is tegenboeken DIRECT de
+ * aangeboden actie, ook met een nog open aangifte (`tegenboeken_beschikbaar` + `aanbod_reden`). Eén scherm,
  * geen wizard: keuze volledig/vervang, voorbeeld van de tegenboeking, btw-effect,
  * betaalstatus-waarschuwing (alleen als het origineel (deels) afgeletterd is), verplichte
  * reden, boeken. Ná een tegenboeking toont de sectie de chip TEGENGEBOEKT mét kruisverwijzing
@@ -56,7 +58,7 @@ export function TegenboekSectie({ administratieId, documentId, status, soort, on
   }, [administratieId, documentId, relevant])
 
   useEffect(() => {
-    if (autoOpen && typeof toets === 'object' && toets.storno_geblokkeerd && !toets.tegenboeking) {
+    if (autoOpen && typeof toets === 'object' && toets.tegenboeken_beschikbaar && !toets.tegenboeking) {
       setOpen(true)
     }
   }, [autoOpen, toets])
@@ -95,7 +97,27 @@ export function TegenboekSectie({ administratieId, documentId, status, soort, on
     )
   }
 
-  if (!toets.storno_geblokkeerd) return null
+  if (!toets.tegenboeken_beschikbaar) {
+    // Geen stille no-op vanuit het archief-⋯-menu (?tegenboeken=1): zeg wat de route dan wél is.
+    if (!autoOpen) return null
+    return (
+      <div className="panel">
+        <h2>Tegenboeken</h2>
+        <p className="hint" style={{ margin: 0 }}>
+          Tegenboeken is hier niet aan de orde: storno is niet door de btw-aangifte geblokkeerd en dit document is
+          geen duplicaat van een andere geboekte factuur. Corrigeren = storneren (actie 19) in Reeleezee.
+        </p>
+      </div>
+    )
+  }
+
+  const dubbelGeboekt = toets.aanbod_reden === 'duplicaat'
+  const categorieTekst = (categorie: string) =>
+    categorie === 'bestand'
+      ? 'hetzelfde bestand'
+      : categorie === 'referentie_bedrag'
+        ? 'dezelfde referentie en hetzelfde bedrag'
+        : 'dezelfde crediteur en referentie'
 
   const sluit = () => {
     setOpen(false)
@@ -132,17 +154,37 @@ export function TegenboekSectie({ administratieId, documentId, status, soort, on
 
   return (
     <div className="panel">
-      <h2>Corrigeren ná ingediende btw-aangifte</h2>
+      <h2>{dubbelGeboekt ? 'Dubbel geboekt — tegenboeken' : 'Corrigeren ná ingediende btw-aangifte'}</h2>
       {geslaagd && <p className="hint" style={{ color: 'var(--ok)' }}>{geslaagd}</p>}
-      <p style={{ margin: '4px 0 10px' }}>
-        ⚠️ <b>Storno niet mogelijk:</b> {toets.blokkade_melding ?? 'de btw-aangifte over deze periode is definitief ingediend'}.
-        Corrigeren kan via een <b>tegenboeking</b> in de huidige open periode — het origineel blijft staan, de
-        btw-correctie telt mee in de eerstvolgende aangifte.
-      </p>
+      {dubbelGeboekt ? (
+        <p style={{ margin: '4px 0 10px' }}>
+          ⚠️ <b>Deze factuur staat dubbel in de boekhouding:</b> hij is een duplicaat van{' '}
+          {toets.duplicaat_van_geboekt.map((d, i) => (
+            <span key={d.document_id}>
+              {i > 0 && ', '}
+              <Link to={`/documenten/${administratieId}/${d.document_id}`}>
+                {d.referentie ?? d.bestandsnaam}
+              </Link>
+              {d.rlz_boekstuknummer ? ` (boekstuk ${d.rlz_boekstuknummer})` : ''} — {categorieTekst(d.categorie)}
+            </span>
+          ))}
+          . Met een <b>tegenboeking</b> wordt het saldo-effect van dit exemplaar nul; het andere exemplaar blijft
+          staan en het spoor blijft zichtbaar in tijdlijn en archief.
+        </p>
+      ) : (
+        <p style={{ margin: '4px 0 10px' }}>
+          ⚠️ <b>Storno niet mogelijk:</b>{' '}
+          {toets.blokkade_melding ?? 'de btw-aangifte over deze periode is definitief ingediend'}. Corrigeren kan via
+          een <b>tegenboeking</b> in de huidige open periode — het origineel blijft staan, de btw-correctie telt mee in
+          de eerstvolgende aangifte.
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn secondary" disabled title={toets.blokkade_melding ?? undefined}>
-          Storneren (geblokkeerd)
-        </button>
+        {!dubbelGeboekt && (
+          <button type="button" className="btn secondary" disabled title={toets.blokkade_melding ?? undefined}>
+            Storneren (geblokkeerd)
+          </button>
+        )}
         {!open && (
           <button type="button" className="btn" onClick={() => setOpen(true)}>
             Tegenboeken…

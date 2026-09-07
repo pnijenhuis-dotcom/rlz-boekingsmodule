@@ -45,6 +45,21 @@ def _projectgewichten(voorstel: BoekvoorstelData) -> list[tuple[uuid.UUID, Decim
     return gewichten_per_project(verdeling.delen)
 
 
+# RLZ kapt tekstvelden op PurchaseInvoices (document-Description, regel-Description én — aangenomen — Header) af
+# op 200 tekens (STAP-0 07-09: een regel-Description van 250 tekens kwam als 200 terug). Zelf afkappen zodat de
+# kop nooit stil halverwege een woord door RLZ wordt geknipt en `kop_omschrijving.MAX_LENGTE` (255) niet als
+# schijnzekerheid dient.
+RLZ_KOPTEKST_MAX = 200
+
+
+def koptekst_velden(tekst: str | None) -> dict[str, str]:
+    """`Header` + `Description` voor de PurchaseInvoice-PUT, of leeg als er geen kop-omschrijving is."""
+    if not tekst:
+        return {}
+    kop = tekst if len(tekst) <= RLZ_KOPTEKST_MAX else tekst[: RLZ_KOPTEKST_MAX - 1].rstrip() + "…"
+    return {"Header": kop, "Description": kop}
+
+
 def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
     gewichten = _projectgewichten(voorstel)
     lines: list[dict] = []
@@ -150,10 +165,12 @@ class RlzInkoopPort:
                 BookDate=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
                 # Vervaldatum (C1 26-08): live bewezen; zonder DueDate leidt RLZ 'm zelf af.
                 **({"DueDate": f"{voorstel.vervaldatum.isoformat()}T00:00:00"} if voorstel.vervaldatum else {}),
-                # Kop-omschrijving (blok 9 vervolgrun 07-09, auto-first): document-`Description`. ⚠️ Op SalesInvoices
-                # negeert RLZ dit veld en leidt 'm af uit regel 1 (api-verkenning "Receipts-verkenning" punt 4); voor
-                # PurchaseInvoices is dat nog niet live getoetst — STAP-0-punt, zie rapport_9 / BESLISSINGEN.
-                **({"Description": voorstel.omschrijving} if voorstel.omschrijving else {}),
+                # Kop-omschrijving (blok 9 vervolgrun 07-09, auto-first) → `Header` + `Description`. STAP-0 07-09
+                # (api-verkenning "Description op PurchaseInvoices — STAP 0 07-09"): RLZ NEGEERT de document-
+                # `Description` op PurchaseInvoices (net als op SalesInvoices) en leidt 'm af uit regel 1;
+                # `Header` wordt WÉL bewaard en komt terug in de GET. Beide gaan mee (Description = harmloos,
+                # Header = het veld dat blijft), afgekapt op RLZ's 200 tekens.
+                **koptekst_velden(voorstel.omschrijving),
             )
             zorg_voor_bijlage(
                 self.client,
@@ -270,8 +287,8 @@ class RlzInkoopPort:
                     reference=referentie,
                     Date=f"{date.today().isoformat()}T00:00:00",
                     # Blok 9: de herkenbare tegenboek-omschrijving ("TEGENBOEKING ‹nr› · ‹leverancier›") die al op
-                    # élke regel staat, óók als document-Description.
-                    Description=omschrijving,
+                    # élke regel staat, óók als document-kop (`Header` + `Description`, STAP-0 07-09).
+                    **koptekst_velden(omschrijving),
                 )
                 zorg_voor_bijlage(
                     self.client,

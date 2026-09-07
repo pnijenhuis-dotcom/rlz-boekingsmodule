@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -517,7 +518,7 @@ class RlzClient:
         *,
         vendor_id: uuid.UUID | str | None,
         reference: str,
-        total_amount: float | None = None,
+        total_amount: float | Decimal | None = None,
         expand_entity: bool = False,
     ) -> list[dict[str, Any]]:
         """Eigen duplicaatcheck (idempotentie-fundament — RLZ's actie 138 geeft geen bruikbaar
@@ -527,8 +528,15 @@ class RlzClient:
 
         RLZ kapt `Reference` af op 30 tekens (geverifieerd) — filter dus op de afgekapte vorm,
         anders mist de check net-te-lange referenties zoals een volledige UUID. `total_amount`
-        filtert op `BaseInvoiceAmount` (netto + btw, geverifieerd veld) — optioneel, voor
-        onderscheid tussen twee facturen die toevallig dezelfde (afgekapte) referentie delen."""
+        toetst op `BaseInvoiceAmount` (netto + btw, geverifieerd veld) — optioneel, voor
+        onderscheid tussen twee facturen die toevallig dezelfde (afgekapte) referentie delen.
+
+        Herstelrun 07-09 (blok 1b): het bedrag gaat NIET meer als OData-`eq`-predicaat op een float mee
+        (`BaseInvoiceAmount eq 7927.8`) maar wordt CLIENT-SIDE cent-exact als Decimal vergeleken op de
+        teruggegeven rijen — een wankele float-vergelijking aan RLZ-kant kan zo nooit meer een échte
+        treffer verbergen (fail-open); de collectie per crediteur + referentie is klein. Concepten
+        (Status 1) komen in dit filter gewoon mee (STAP-0 07-09, api-verkenning "Description op
+        PurchaseInvoices") — een al ge-PUT maar nog niet geboekt exemplaar telt dus ook als treffer."""
         # `vendor_id=None` (punt 14, 28-08 — duplicaat over crediteuren heen): géén Entity-predicaat, de
         # treffers komen van álle crediteuren; `expand_entity=True` voegt `$expand=Entity` toe zodat de
         # aanroeper per treffer ziet bij wélke crediteur 'm staat (Entity op de collectie alleen mét
@@ -537,12 +545,25 @@ class RlzClient:
         predicaten = [f"Reference eq '{truncated_reference}'"]
         if vendor_id is not None:
             predicaten.insert(0, f"Entity/id eq {vendor_id}")
-        if total_amount is not None:
-            predicaten.append(f"BaseInvoiceAmount eq {total_amount}")
         params: dict[str, str] = {"$filter": " and ".join(predicaten)}
         if expand_entity:
             params["$expand"] = "Entity"
-        return self.get("PurchaseInvoices", params=params).get("value", [])
+        rijen = self.get("PurchaseInvoices", params=params).get("value", [])
+        if total_amount is None:
+            return rijen
+        doel = bedrag_cent_exact(total_amount)
+        return [rij for rij in rijen if bedrag_cent_exact(rij.get("BaseInvoiceAmount")) == doel]
+
+
+def bedrag_cent_exact(waarde: object) -> Decimal | None:
+    """Cent-exacte Decimal van een RLZ-bedrag (float in de JSON) of een eigen Decimal/float; None als onleesbaar.
+    Via `str()` zodat 7927.8 → Decimal("7927.80") en niet de binaire float-expansie."""
+    if waarde is None:
+        return None
+    try:
+        return Decimal(str(waarde)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
 
 
 def _parse_retry_after(value: str | None) -> float | None:

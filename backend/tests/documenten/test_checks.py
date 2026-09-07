@@ -228,7 +228,9 @@ class TestDuplicaat:
             eigen_rlz_document_id=uuid.uuid4(),
         )
         assert client.aanroepen[0]["reference"] == lange_referentie  # afkappen zit in RlzClient zelf
-        assert client.aanroepen[0]["total_amount"] == 121.0
+        # Herstelrun 07-09 (1b): het bedrag gaat als Decimal mee — de client vergelijkt cent-exact, geen float-eq.
+        assert client.aanroepen[0]["total_amount"] == Decimal("121.00")
+        assert isinstance(client.aanroepen[0]["total_amount"], Decimal)
 
     def test_rlz_fout_geeft_blokkerend_checkresultaat_geen_exception(self) -> None:
         """Een falende RLZ-aanroep tijdens de duplicaatquery mag nooit als kale 500 bij de
@@ -464,3 +466,60 @@ class TestRegeltellingBasis:
         )
         regeltelling = next(r for r in rapport.resultaten if r.naam == "Regeltelling vs totaal")
         assert regeltelling.ok and "totaal excl." in regeltelling.melding
+
+
+class TestFindPurchaseInvoicesByReferenceBedrag:
+    """Herstelrun 07-09 blok 1b (casus Kempen 281637 / 2026-0322): `RlzClient.find_purchase_invoices_by_reference`
+    zet het bedrag niet meer als OData-float-`eq` in het filter maar vergelijkt de teruggegeven rijen client-side
+    cent-exact (Decimal). Reproduceert het live-scenario: RLZ geeft `BaseInvoiceAmount: 7927.8` (float) terug
+    voor een voorstel met Decimal("7927.80")."""
+
+    @staticmethod
+    def _client_met(rijen: list[dict]):
+        from app.rlz.client import RlzClient
+
+        client = RlzClient(username="t", password="t", admin_id="00000000-0000-0000-0000-000000000000")
+        client.aanroepen = []  # type: ignore[attr-defined]
+
+        def nep_get(path, params=None):
+            client.aanroepen.append({"path": path, "params": params})  # type: ignore[attr-defined]
+            return {"value": rijen}
+
+        client.get = nep_get  # type: ignore[method-assign]
+        return client
+
+    def test_float_uit_rlz_matcht_cent_exact_met_decimal_voorstel(self) -> None:
+        rijen = [
+            {"id": "a", "Status": 3, "Reference": "2026-0322", "BaseInvoiceAmount": 7927.8},
+            {"id": "b", "Status": 1, "Reference": "2026-0322", "BaseInvoiceAmount": 7927.81},
+            {"id": "c", "Status": 2, "Reference": "2026-0322", "BaseInvoiceAmount": None},
+        ]
+        client = self._client_met(rijen)
+        gevonden = client.find_purchase_invoices_by_reference(
+            vendor_id=uuid.UUID("88bf385d-e7df-48c9-a9fc-6d3473197dff"), reference="2026-0322",
+            total_amount=Decimal("7927.80"),
+        )
+        assert [r["id"] for r in gevonden] == ["a"]
+        filter_ = client.aanroepen[0]["params"]["$filter"]  # type: ignore[attr-defined]
+        assert "BaseInvoiceAmount" not in filter_  # geen float-eq meer aan RLZ-kant
+        assert filter_ == "Entity/id eq 88bf385d-e7df-48c9-a9fc-6d3473197dff and Reference eq '2026-0322'"
+
+    def test_float_bedrag_van_oude_aanroepers_blijft_werken(self) -> None:
+        rijen = [{"id": "a", "BaseInvoiceAmount": 254.78}, {"id": "b", "BaseInvoiceAmount": 254.7}]
+        client = self._client_met(rijen)
+        assert [r["id"] for r in client.find_purchase_invoices_by_reference(
+            vendor_id=None, reference="281637", total_amount=254.78
+        )] == ["a"]
+
+    def test_zonder_bedrag_alle_rijen_en_concepten_tellen_mee(self) -> None:
+        rijen = [{"id": "concept", "Status": 1, "BaseInvoiceAmount": 121.0}, {"id": "geboekt", "Status": 2, "BaseInvoiceAmount": 1.0}]
+        client = self._client_met(rijen)
+        assert len(client.find_purchase_invoices_by_reference(vendor_id=None, reference="X")) == 2
+
+    def test_bedrag_cent_exact_helper(self) -> None:
+        from app.rlz.client import bedrag_cent_exact
+
+        assert bedrag_cent_exact(7927.8) == Decimal("7927.80")
+        assert bedrag_cent_exact(Decimal("7927.80")) == Decimal("7927.80")
+        assert bedrag_cent_exact("abc") is None
+        assert bedrag_cent_exact(None) is None

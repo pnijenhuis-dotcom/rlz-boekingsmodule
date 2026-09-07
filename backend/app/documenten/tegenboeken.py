@@ -131,10 +131,29 @@ class TegenboekingInfo:
 
 
 @dataclass(frozen=True)
+class DuplicaatGeboekt:
+    """Een ánder GEBOEKT document in dezelfde administratie waarvan dit document een module-duplicaat is
+    (`duplicaat_module`, categorie a/b/c) — herstelrun 07-09 blok 1c: dubbel geboekt = tegenboeken is DIRECT de
+    aangeboden actie, óók als de aangifte-poort storno niet blokkeert."""
+
+    document_id: uuid.UUID
+    categorie: str
+    referentie: str | None
+    bestandsnaam: str
+    rlz_boekstuknummer: str | None
+
+
+AANBOD_AANGIFTE = "aangifte"
+AANBOD_DUPLICAAT = "duplicaat"
+
+
+@dataclass(frozen=True)
 class TegenboekToets:
     """Leesroute voor de UI: mag hier tegengeboekt worden, en wat wordt het dan? De knop
-    "Tegenboeken…" verschijnt alléén als `storno_geblokkeerd` (en er nog geen tegenboeking
-    voor de huidige cyclus bestaat)."""
+    "Tegenboeken…" verschijnt als `tegenboeken_beschikbaar`: storno door de aangifte-poort geblokkeerd
+    (`storno_geblokkeerd`, mockup 22-08) ÓF het document is een module-duplicaat van een ander geboekt
+    document (`duplicaat_van_geboekt`, herstelrun 07-09 blok 1c) — en er nog geen tegenboeking voor de huidige
+    cyclus bestaat. `aanbod_reden` zegt de UI welke van de twee teksten hoort."""
 
     document_id: uuid.UUID
     storno_geblokkeerd: bool
@@ -148,6 +167,19 @@ class TegenboekToets:
     leverancier_naam: str | None
     totaal_netto: Decimal
     totaal_btw: Decimal
+    duplicaat_van_geboekt: tuple[DuplicaatGeboekt, ...] = ()
+
+    @property
+    def tegenboeken_beschikbaar(self) -> bool:
+        return self.storno_geblokkeerd or bool(self.duplicaat_van_geboekt)
+
+    @property
+    def aanbod_reden(self) -> str | None:
+        if self.storno_geblokkeerd:
+            return AANBOD_AANGIFTE
+        if self.duplicaat_van_geboekt:
+            return AANBOD_DUPLICAAT
+        return None
 
 
 @dataclass(frozen=True)
@@ -258,6 +290,44 @@ def _betaalstatus_van(stand) -> BetaalStatus | None:
     )
 
 
+def geboekte_duplicaten(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, voorstel: BoekvoorstelData
+) -> tuple[DuplicaatGeboekt, ...]:
+    """Module-tegenhangers (a/b/c, bundelparen en mens-afmeldingen al toegepast) die zélf GEBOEKT zijn — de
+    "dubbel geboekt"-situatie waarin tegenboeken direct de actie is. Geen RLZ-/Odoo-call (eigen DB), dus
+    backend-agnostisch. Boekstuknummer per tegenhanger uit zijn boekvoorstel (leesbaar voor de mens)."""
+    from app.documenten import duplicaat_module  # lokaal: geen kring op moduleniveau
+
+    treffers = [
+        t
+        for t in duplicaat_module.treffers_voor_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=voorstel.vendor_id,
+            referentie=voorstel.referentie,
+            totaalbedrag=voorstel.totaalbedrag,
+        )
+        if t.status == DocumentStatus.GEBOEKT
+    ]
+    if not treffers:
+        return ()
+    with scoped_session(administratie_id) as session:
+        boekstukken = {
+            rij.document_id: rij.rlz_boekstuknummer
+            for rij in session.query(Boekvoorstel).filter(Boekvoorstel.document_id.in_([t.document_id for t in treffers]))
+        }
+    return tuple(
+        DuplicaatGeboekt(
+            document_id=t.document_id,
+            categorie=t.categorie,
+            referentie=t.referentie,
+            bestandsnaam=t.bestandsnaam,
+            rlz_boekstuknummer=boekstukken.get(t.document_id),
+        )
+        for t in treffers
+    )
+
+
 def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekToets:
     """De leesroute voor de UI (controlescherm-sectie + archief-⋯-menu): is storno geblokkeerd
     (dan verschijnt "Tegenboeken…"), bestaat er al een tegenboeking (chip TEGENGEBOEKT), en het
@@ -279,6 +349,7 @@ def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekTo
         stand = port.origineel_stand(document_id=document_id, boek_cyclus=voorstel.boek_cyclus)
     kant = stand.kant
     betaalstatus = _betaalstatus_van(stand)
+    duplicaten = geboekte_duplicaten(administratie_id=administratie_id, document_id=document_id, voorstel=voorstel)
 
     return TegenboekToets(
         document_id=document_id,
@@ -293,6 +364,7 @@ def toets(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> TegenboekTo
         leverancier_naam=leverancier,
         totaal_netto=sum((r.netto_bedrag for r in voorbeeld), Decimal("0")),
         totaal_btw=sum((r.btw_bedrag for r in voorbeeld), Decimal("0")),
+        duplicaat_van_geboekt=duplicaten,
     )
 
 
@@ -419,8 +491,9 @@ def voer_tegenboeking_uit(
     """De tegenboek-actie (mockup: één scherm — keuze, voorbeeld, reden, boeken):
 
     1. poorten: geboekt inkoopdocument, verplichte reden, geldige soort, storno-geblokkeerd
-       (de aangifte-poort — tegenboeken is uitsluitend de route als storno niet kan), geen
-       bestaande tegenboeking voor deze cyclus, origineel in RLZ nog geboekt;
+       (de aangifte-poort — tegenboeken is de route als storno niet kan) ÓF dubbel geboekt (module-duplicaat
+       van een ander geboekt document, herstelrun 07-09 blok 1c), geen bestaande tegenboeking voor deze
+       cyclus, origineel in RLZ nog geboekt;
     2. harde checks onverkort op de tegenboeking (incl. duplicaatcheck met keten-uitzondering);
     3. RLZ, idempotent: lookup-vóór-PUT op het deterministische tegenboek-GUID → PUT
        (gespiegelde negatieve regels, zelfde Entity, boekdatum vandaag) → bijlage (het
@@ -461,10 +534,11 @@ def voer_tegenboeking_uit(
                 "Het origineel staat in de boekhouding al op concept of is al teruggedraaid (gestorneerd) — een "
                 "tegenboeking zou dubbel corrigeren"
             )
-        if kant.toegestaan:
+        duplicaten = geboekte_duplicaten(administratie_id=administratie_id, document_id=document_id, voorstel=voorstel)
+        if kant.toegestaan and not duplicaten:
             raise TegenboekenNietToegestaan(
-                "Storno is niet door de btw-aangifte geblokkeerd — corrigeer via stornering "
-                "(actie 19) in Reeleezee in plaats van een tegenboeking"
+                "Storno is niet door de btw-aangifte geblokkeerd en het document is geen duplicaat van een andere "
+                "geboekte factuur — corrigeer via stornering (actie 19) in Reeleezee in plaats van een tegenboeking"
             )
 
         rapport = _harde_checks_op_tegenboeking(
@@ -524,6 +598,11 @@ def voer_tegenboeking_uit(
                 **uitkomst.detail,
                 "referentie": referentie,
                 "origineel_betaald_bedrag": str(betaalstatus.betaald_bedrag) if betaalstatus else None,
+                # Herstelrun 07-09 (1c): waarom tegenboeken hier de route was — aangifte-poort of dubbel geboekt.
+                "aanbod_reden": AANBOD_AANGIFTE if not kant.toegestaan else AANBOD_DUPLICAAT,
+                **(
+                    {"duplicaat_van_geboekt": [str(d.document_id) for d in duplicaten]} if duplicaten else {}
+                ),
             }
         }
         if soort == TegenboekingSoort.VERVANG.value:
