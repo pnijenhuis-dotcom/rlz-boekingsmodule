@@ -519,7 +519,50 @@ _REDEN_LABEL = {
 }
 
 
+def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, str]:
+    """LET-OP uit de tellers per automatisering (herstelrun 07-09 blok C): ontbrekende harde voorwaarde of een
+    automatisering die zeven dagen stil is. Labels uit `app/reconciliatie/automatiseringen.py`; de handeling
+    is altijd de instelling herstellen (deeplink op de rij) — nooit een menselijke instelling als poort."""
+    from app.reconciliatie import automatiseringen as auto
+
+    label = _s(d, "automatisering_label") or _s(d, "automatisering") or "automatisering"
+    reden = str(d.get("reden") or "")
+    aantal = d.get("aantal") or 0
+    waar = _s(d, "administratie_naam") or administratie_naam
+    if reden == auto.STIL_7_DAGEN:
+        return (
+            _titel("Automatisering stil", label),
+            f"{label} staat aan, maar deed {auto.STIL_DAGEN} dagen niets bij {aantal} kandidaat/kandidaten — "
+            "geen boeking en geen geregistreerde reden.",
+            "Controleer de instelling en het achtergrondwerk (sync-alles/Cloud Run-jobs); blijft het stil, "
+            "dan is het een storing.",
+        )
+    reden_label = auto.REDEN_LABEL.get(reden, reden.replace("_", " "))
+    doe = {
+        auto.CREDENTIAL: "Registreer de webservice-login opnieuw (Instellingen › Administraties); "
+        "de volgende run loopt door.",
+        auto.API_KEY: "Zet de API-key (Instellingen › Intake & AI); de wachtende stukken worden daarna verwerkt.",
+        auto.GELDPOORT: "Zet boeken weer aan (Instellingen › Boeken) of verwerk de wachtende stukken handmatig.",
+        auto.NOODREM: "Zet de noodrem weer aan (Instellingen › Boeken) of voer de gesignaleerde duplicaten "
+        "handmatig af.",
+        auto.VOLUMEREM: "Verwerk de wachtende stukken handmatig of verhoog de dagelijkse limiet "
+        "(Instellingen › Autoboeken).",
+        auto.GEEN_EIGENAAR: "Dit mag sinds 07-09 niet meer voorkomen (een eigenaar is geen poort): stel de eigenaar in "
+        "(Instellingen › Administraties) en meld de regressie.",
+    }.get(reden, "Herstel de voorwaarde via de instelling op deze rij; de volgende run loopt door.")
+    voorbeeld = _s(d, "voorbeeld")
+    return (
+        _titel("Automatisering wacht op voorwaarde", label),
+        f"{label} sloeg {aantal} stuk(s) over{f' in {waar}' if waar else ''}: {reden_label}"
+        + (f" ({zonder_guids(voorbeeld)[:120]})" if voorbeeld else "")
+        + ".",
+        doe,
+    )
+
+
 def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:
+    if d.get("automatisering"):
+        return _automatisering(d, administratie_naam)
     if d.get("reden") == "opruimlijst_fout" or (not d.get("kant") and "opruimlijst" in (tekst or "").lower()):
         return (
             "Opruimlijst niet compleet",

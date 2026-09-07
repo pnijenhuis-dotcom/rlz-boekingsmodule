@@ -26,6 +26,7 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { AutomatiseringenBlok } from './AutomatiseringenBlok'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import {
   accepteerBevinding,
@@ -230,9 +231,20 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
   /** Actie-kolom: precies één handeling per rij, plus eventueel de deep-link naar het stuk zelf. */
   const actieVoor = (r: BevindingDto) => {
     const kanReden = r.administratie_id !== null
+    // Automatiserings-LET-OP (07-09 blok C): de handeling is de instelling herstellen — de deeplink wijst
+    // naar de instellingenpagina, ook zonder administratie (platformbrede voorwaarde).
+    const isAutomatisering = r.blok === 'automatisering'
     const deeplink = r.doel_pad ? (
-      <Link to={r.doel_pad} className="btn secondary" aria-label={`Naar het document van ${r.administratie_naam ?? 'deze bevinding'}`}>
-        {r.soort === 'let_op' ? 'Naar de doorbelasting →' : 'Naar het document →'}
+      <Link
+        to={r.doel_pad}
+        className="btn secondary"
+        aria-label={
+          isAutomatisering
+            ? `Naar de instelling van ${titelVan(r)}`
+            : `Naar het document van ${r.administratie_naam ?? 'deze bevinding'}`
+        }
+      >
+        {isAutomatisering ? 'Naar de instelling →' : r.soort === 'let_op' ? 'Naar de doorbelasting →' : 'Naar het document →'}
       </Link>
     ) : null
 
@@ -457,6 +469,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             {runTekst(run)}
           </div>
         )}
+        <AutomatiseringenBlok data={laatsteRun?.samenvatting?.automatiseringen} />
         {run?.status === 'fout' && (
           <div style={{ padding: '0 18px' }}>
             <FoutMelding

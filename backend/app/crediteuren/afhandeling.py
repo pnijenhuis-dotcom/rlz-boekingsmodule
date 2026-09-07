@@ -476,7 +476,40 @@ def auto_afhandelen(
             " [dry-run]" if dry_run else "",
         )
         uit.administraties.append(stand)
+    if not dry_run:
+        _audit_run(uit, actor_id=uitvoerder.id)
     return uit
+
+
+def _audit_run(uit: RunUitkomst, *, actor_id: uuid.UUID) -> None:
+    """Eén administratie-loos audit-event per échte run (herstelrun 07-09 blok C): het "overgeslagen"-spoor
+    van deze automatisering — twijfel-clusters en fouten bleven tot nu toe alleen in de log. De reconciliatie
+    leest dit event voor de tellers "verwacht / gedaan / overgeslagen mét reden" (`app/reconciliatie/
+    automatiseringen.py`). Eén event per run (niet per cluster): geen audit-ruis, wél een dagelijks spoor —
+    ook een run zonder clusters schrijft 'm, zodat "niet gedraaid" zichtbaar verschilt van "niets te doen".
+    Nooit raise-n: een mislukt audit-event maakt de run niet rood."""
+    try:
+        with scoped_session(None, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="crediteur_dubbel_afhandeling",
+                record_id=uit.run_id,
+                actie="crediteur_dubbel_auto_run",
+                correlatie_id=uit.run_id,
+                nieuwe_waarde={
+                    "run_id": str(uit.run_id),
+                    "administraties": len(uit.administraties),
+                    "eenduidig": sum(a.eenduidig for a in uit.administraties),
+                    "afgehandeld": sum(a.afgehandeld for a in uit.administraties),
+                    "twijfel": sum(a.twijfel for a in uit.administraties),
+                    "fouten": sum(a.fouten for a in uit.administraties),
+                    "reden": "twijfel: niet-eenduidige clusters blijven voor de mens; fouten per cluster in de log",
+                },
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("Crediteuren-dubbelen auto-run %s: audit-event niet geschreven", uit.run_id)
 
 
 # ----------------------------------------------------------------------------- nazorg legacy-werklijst (07-09)

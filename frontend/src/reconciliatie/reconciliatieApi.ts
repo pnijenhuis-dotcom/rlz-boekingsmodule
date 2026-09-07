@@ -21,6 +21,48 @@ export interface BlokStandDto {
   foutmelding: string | null
 }
 
+/** Tellers over één venster (etmaal of week): verwacht / gedaan / overgeslagen per reden-categorie. */
+export interface AutomatiseringVensterDto {
+  verwacht: number
+  gedaan: number
+  /** categorie-sleutel → aantal; vaste categorieën (bv. geen_eigenaar) staan er ook als 0 in. */
+  overgeslagen: Record<string, number>
+}
+
+export interface HardeVoorwaardeDto {
+  categorie: string
+  aantal: number
+  administratie_id: string | null
+  voorbeeld: string | null
+}
+
+/** Eén automatisering (herstelrun 07-09 blok C — spiegelt app/reconciliatie/automatiseringen.py). */
+export interface AutomatiseringTellerDto {
+  sleutel: string
+  label: string
+  stand: 'aan' | 'uit' | 'deels' | 'altijd' | 'op_aanvraag'
+  stand_detail: string | null
+  bron: string
+  dag: AutomatiseringVensterDto
+  week: AutomatiseringVensterDto
+  harde_voorwaarden: HardeVoorwaardeDto[]
+  /** Zeven dagen aan + kandidaten, maar 0 gedaan en 0 overgeslagen = "stil" (LET-OP-bevinding). */
+  stil: boolean
+}
+
+export interface AutomatiseringenDto {
+  venster_uren: number
+  stil_dagen: number
+  berekend_op: string
+  tellers: AutomatiseringTellerDto[]
+}
+
+/** samenvatting = blokstanden per blok + (sinds 07-09) de tellers per automatisering onder één vaste sleutel. */
+export interface SamenvattingDto {
+  [blok: string]: BlokStandDto | AutomatiseringenDto | undefined
+  automatiseringen?: AutomatiseringenDto
+}
+
 export interface ReconciliatieRunDto {
   run_id: string
   status: RunStatus
@@ -29,7 +71,7 @@ export interface ReconciliatieRunDto {
   gestart_op: string | null
   afgerond_op: string | null
   exit_code: number | null
-  samenvatting: Record<string, BlokStandDto> | null
+  samenvatting: SamenvattingDto | null
   fout_reden: string | null
   mail_status: MailStatus | null
   mail_detail: string | null
@@ -38,7 +80,7 @@ export interface ReconciliatieRunDto {
 export type BevindingSoort = 'afwijking' | 'let_op' | 'fout' | 'geaccepteerd' | 'uitgesloten' | 'gezien'
 /** Facet in de URL: 'aandacht' (default) = afwijking + fout + let-op. */
 export type SoortFacet = 'aandacht' | BevindingSoort | 'alle'
-export type BevindingBlok = 'bank' | 'documenten' | 'omzet' | 'doorbelasting' | 'run'
+export type BevindingBlok = 'bank' | 'documenten' | 'omzet' | 'doorbelasting' | 'run' | 'automatisering'
 
 export interface BevindingDto {
   id: string
@@ -197,6 +239,38 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   omzet: 'Omzet',
   doorbelasting: 'Doorbelasting',
   run: 'Run',
+  automatisering: 'Automatisering',
+}
+
+/** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */
+export const REDEN_LABEL: Record<string, string> = {
+  geen_eigenaar: 'geen eigenaar/toewijzing',
+  volumerem: 'volumerem bereikt',
+  geldpoort: 'boeken staat uit',
+  credential: 'geen werkende credential',
+  api_key: 'geen API-key',
+  noodrem: 'noodrem staat uit',
+  harde_checks: 'harde checks blokkeren',
+  mens_beoordeelt: 'mens beoordeelt',
+  extractie_onvolledig: 'extractie onvolledig',
+  geheugen_oranje: 'geheugen niet bevestigd',
+  urenmatch: 'urenmatch niet groen',
+  duplicaatsignaal: 'duplicaatsignaal',
+  boekfout: 'boekfout',
+  half_geboekt: 'half geboekt',
+  twijfel: 'twijfel',
+  fout: 'fout',
+  regel_overgeslagen: 'regel overgeslagen',
+  zacht_signaal: 'zacht signaal — mens beoordeelt',
+  stil_7_dagen: 'zeven dagen stil',
+}
+
+export const STAND_LABEL: Record<AutomatiseringTellerDto['stand'], string> = {
+  aan: 'aan',
+  uit: 'uit',
+  deels: 'deels aan',
+  altijd: 'aan',
+  op_aanvraag: 'op aanvraag',
 }
 
 export const MAIL_LABEL: Record<MailStatus, string> = {

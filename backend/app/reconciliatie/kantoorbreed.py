@@ -158,6 +158,14 @@ def _doel_pad(b: ReconciliatieBevinding) -> str | None:
     return None
 
 
+def _doel_pad_of_instelling(b: ReconciliatieBevinding) -> str | None:
+    """Automatiserings-LET-OP (herstelrun 07-09 blok C): de handeling is de instelling herstellen — de
+    deeplink staat in `detail.doel_pad`, ook zonder administratie (platformbrede voorwaarde)."""
+    if b.blok == "automatisering":
+        return str((b.detail or {}).get("doel_pad") or "/instellingen")
+    return _doel_pad(b)
+
+
 def _scope(actor_id: uuid.UUID, rol: GebruikerRol) -> list[tuple[uuid.UUID, str]]:
     return [(a.id, a.naam) for a in auth_service.mijn_administraties(actor_id=actor_id, rol=rol)]
 
@@ -274,7 +282,7 @@ def _rijen_voor_administratie(
                         else None
                     ),
                     detail=b.detail,
-                    doel_pad=_doel_pad(b),
+                    doel_pad=_doel_pad_of_instelling(b),
                     titel=lees.titel,
                     wat=lees.wat,
                     doe=lees.doe,

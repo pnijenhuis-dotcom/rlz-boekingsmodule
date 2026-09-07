@@ -54,6 +54,9 @@ logger = logging.getLogger(__name__)
 
 _AMSTERDAM = ZoneInfo("Europe/Amsterdam")
 BLOKKEN = ("bank", "documenten", "omzet", "doorbelasting")
+#: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
+#: staan onder blok `automatisering`, enkelvoud).
+AUTOMATISERINGEN_SLEUTEL = "automatiseringen"
 _VINGERAFDRUK_LENGTE = 16
 #: Een run mét live RLZ-controles over tientallen administraties duurt minuten; de job-timeout is 3600 s.
 #: `laatst_actief_op` wordt per blok bijgewerkt — langer dan dit zonder teken van leven = afgebroken.
@@ -117,6 +120,9 @@ class Verzamelaar:
         self.blokken: dict[str, BlokStand] = {}
         self._huidig: str | None = None
         self.gestart_op = datetime.now(UTC)
+        #: Tellers per automatisering (herstelrun 07-09 blok C, `app/reconciliatie/automatiseringen.py`) —
+        #: landt in `samenvatting["automatiseringen"]`, naast de blokstanden (geen migratie, 0114-JSONB).
+        self.automatiseringen: dict | None = None
 
     def start_blok(self, naam: str) -> None:
         self._huidig = naam
@@ -176,7 +182,10 @@ class Verzamelaar:
         self._huidig = None
 
     def samenvatting(self) -> dict[str, dict]:
-        return {naam: asdict(stand) for naam, stand in self.blokken.items()}
+        uit: dict[str, dict] = {naam: asdict(stand) for naam, stand in self.blokken.items()}
+        if self.automatiseringen is not None:
+            uit[AUTOMATISERINGEN_SLEUTEL] = self.automatiseringen
+        return uit
 
 
 # ---- delta + mail ------------------------------------------------------------------------------
@@ -330,6 +339,12 @@ def bouw_mail(
             f"{stand.get('let_op', 0)} let-op, {stand.get('fouten', 0)} fout(en)"
             + (f" — {stand['foutmelding']}" if stand.get("foutmelding") else "")
         )
+    # Herstelrun 07-09 blok C: één compact blok per automatisering (verwacht/gedaan/overgeslagen mét reden) —
+    # het vangnet op "geen stille no-op". Altijd in de mail als de run 'm heeft, ook zonder LET-OP.
+    if samenvatting.get(AUTOMATISERINGEN_SLEUTEL):
+        from app.reconciliatie import automatiseringen
+
+        regels.extend(["", *automatiseringen.regels_uit_samenvatting(samenvatting[AUTOMATISERINGEN_SLEUTEL])])
 
     def sectie(kop: str, items: Sequence[Bevinding]) -> None:
         if not items:
@@ -777,6 +792,23 @@ def voer_uit(
                 _teken_van_leven(run_id)
             except Exception:  # noqa: BLE001
                 logger.exception("teken van leven mislukt")
+
+    # Herstelrun 07-09 blok C: tellers per automatisering (vangnet, geen poort) — LET-OP-bevindingen op blok
+    # `automatisering`, tellers in de samenvatting. Een fout hier verandert exit-code noch blokuitkomst.
+    stdout("\n=== automatiseringen ===")
+    try:
+        from app.reconciliatie import automatiseringen
+
+        verzamelaar.automatiseringen = automatiseringen.registreer(verzamelaar, stdout=stdout)
+    except Exception as exc:  # noqa: BLE001 — het vangnet mag de reconciliatie nooit laten omvallen
+        logger.exception("Tellers per automatisering mislukt")
+        stderr(f"FOUT       tellers per automatisering niet bepaald: {exc}")
+        verzamelaar.bevinding(
+            soort=BevindingSoort.FOUT.value,
+            administratie_id=None,
+            tekst=f"FOUT       tellers per automatisering niet bepaald: {exc}",
+            blok="automatisering",
+        )
 
     stdout("\n=== samenvatting ===")
     for naam, code in exitcodes.items():
