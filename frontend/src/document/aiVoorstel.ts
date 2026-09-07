@@ -10,6 +10,8 @@ export interface AiRegelVoorstel {
   taxrate_id: string | null
   /** 'factuur' als de btw-code deterministisch uit netto/btw is afgeleid (punt 3, 26-08). */
   btw_bron?: string | null
+  /** Blok 10 07-09: project-/werknummer van de opdrachtgever op déze regel zoals gelezen (ruw; de server matcht). */
+  project_tekst?: string | null
 }
 
 export interface AiControle {
@@ -54,7 +56,11 @@ export interface AiVoorstel {
   btw_bedrag: string | null
   /** Letterlijke "btw verlegd"-vermelding, alleen als code die als verleggingstekst herkent. */
   btw_verlegd_vermelding?: string | null
+  /** Blok 9 (07-09): voorgelezen betreft-/onderwerpregel van de factuur — voedt server-side de kop-omschrijving. */
+  betreft?: string | null
   regelaantal: number
+  /** Blok 10 07-09: project-/werknummer van de opdrachtgever op de factuurkop zoals gelezen (ruw; de server matcht). */
+  project_tekst?: string | null
   regels: AiRegelVoorstel[]
   zekerheid: Record<string, number>
   /** Eén zekerheidsscore per regel (compact schema, 2026-07-10). */

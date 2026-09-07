@@ -337,6 +337,16 @@ def bouw_veldvoorstel(
     leverancier_naam = tekst_van("leverancier_naam")
     factuurnummer = tekst_van("factuurnummer")
     betalingskenmerk = tekst_van("betalingskenmerk")
+    # Betreft-/onderwerpregel (blok 9 vervolgrun 07-09): alleen doorgeven; de kop-omschrijving wordt in
+    # documenten/kop_omschrijving.py deterministisch afgeleid (één regel → regeltekst, anders dit veld).
+    betreft = tekst_van("betreft")
+    # Projectnummer/werknummer van de opdrachtgever (blok 10 07-09): alleen doorgeven (ruw); de match tegen de
+    # project-cache + het leverancier-werknummer-geheugen gebeurt deterministisch bij de prefill
+    # (documenten/regel_prefill.py + app/projecten/match.py) — dan klopt oranje/groen met de actuele stand.
+    project_tekst = tekst_van("project_tekst")
+    # Factuurperiode (blok 11 07-09): alleen doorgeven (ruw); de normalisatie naar ISO-weken gebeurt deterministisch
+    # bij de prefill (documenten/periode.py) — dan is de factuurdatum (jaar-anker) de opgeslagen stand.
+    periode_tekst = tekst_van("periode")
     valuta = tekst_van("valuta")
     # IBAN: deterministische mod-97-validatie (app/extractie/iban.py) — een ongeldig IBAN wordt
     # gemarkeerd (onparseerbaar) en nooit doorgegeven; de IBAN-wissel-check mag alleen op een
@@ -398,6 +408,8 @@ def bouw_veldvoorstel(
                 "stuksprijs": regel.stuksprijs,
                 # Voorraad-normalisatie v2 (30-08): leverancierscode als deterministische sleutel.
                 "artikelcode": regel.artikelcode,
+                # Blok 10 07-09: project-/werknummer op de regel (ruw; regel wint van kop bij de prefill).
+                "project_tekst": regel.project_tekst,
                 "taxrate_id": str(afleiding.taxrate_id) if afleiding.taxrate_id else None,
                 # Herkomst van de btw-code (punt 3, 26-08): "factuur" = deterministisch uit
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
@@ -440,6 +452,9 @@ def bouw_veldvoorstel(
         "vervaldatum": vervaldatum.isoformat() if vervaldatum else None,
         # Betalingskenmerk (fase 1 Odoo): alleen doorgeven, nooit afleiden; Odoo `payment_reference`.
         "betalingskenmerk": betalingskenmerk,
+        "betreft": betreft,
+        "project_tekst": project_tekst,
+        "periode_tekst": periode_tekst,
         "valuta": valuta,
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),

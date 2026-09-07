@@ -4,7 +4,8 @@ wens Peter 04-09, mockup `offerte-matching.html` blok 1 "Controle kantoor").
 Zelfde vorm als de andere extracties: AI LEEST, CODE BESLIST. De AI leest de kopvelden voor met een
 zekerheidsscore per veld; déze code parseert de bedragen/datums (nooit een gok doorgeven), matcht de
 crediteur uitsluitend tegen de eigen vendor-cache (btw → KvK → naam, hergebruik van
-`controle.match_vendor_met_waarschuwing`) en het project deterministisch tegen de project-cache.
+`controle.match_vendor_met_waarschuwing`) en het project deterministisch tegen de project-cache
+(`app/projecten/match.py::match_project` — sinds blok 10 gedeeld met de inkoopfactuur).
 
 SCHEMA (bugfix 31-08, unionlimiet): SENTINEL-patroon — alle velden zijn verplichte strings, `""`
 betekent "niet gelezen" en wordt door deze code None. Géén nullable/union-velden erbij; het schema
@@ -16,18 +17,16 @@ AI-kostenpoort ín de client — zie `app/documenten/service.py::_verplichting_e
 
 from __future__ import annotations
 
-import re
-import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from difflib import SequenceMatcher
 from typing import Any
 
 from app.aikosten.service import AiVerbruikReferentie
 from app.extractie import controle
 from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
 from app.extractie.client import AiExtractieFout, ClaudeExtractieClient
+from app.projecten.match import ProjectKandidaat, match_project  # blok 10: gedeelde project-matchmotor
 
 #: Toegestane soort-labels (gelijk aan de CHECK op verplichting.soort_label).
 SOORT_LABELS = ("offerte", "prijsopgave", "opdrachtbevestiging")
@@ -108,14 +107,6 @@ OPDRACHT = (
 
 
 @dataclass(frozen=True)
-class ProjectKandidaat:
-    """Actief project uit de project-cache — de deterministische match-basis (nooit AI)."""
-
-    id: uuid.UUID
-    naam: str
-
-
-@dataclass(frozen=True)
 class AiVerplichtingExtractie:
     """Ruwe, door de AI voorgelezen tekstwaarden + zekerheden — één op één uit de respons."""
 
@@ -156,60 +147,6 @@ def extraheer_verplichting(
         for naam in _ZEKERHEID_VELDEN
     }
     return AiVerplichtingExtractie(velden=velden, zekerheid=zekerheid)
-
-
-_NIET_ALFANUMERIEK = re.compile(r"[^0-9a-z]+")
-_NUMMER_PREFIX = re.compile(r"^\s*([0-9][0-9A-Za-z\-]*)")
-
-
-def _norm(tekst: str | None) -> str:
-    return _NIET_ALFANUMERIEK.sub("", (tekst or "").lower())
-
-
-def match_project(
-    project_tekst: str | None, kandidaten: list[ProjectKandidaat]
-) -> tuple[uuid.UUID | None, str | None, str | None]:
-    """Deterministische project-suggestie: (project_id, match, naam) of (None, None, None).
-
-    Volgorde: nummer-prefix exact (de naamconventie van de klant is "26127 Tilburg (Heijmans)" —
-    het eerste token is het projectnummer) → naam-bevat (genormaliseerd, in één van beide
-    richtingen) → geen suggestie. Bij méér dan één plausibele kandidaat géén suggestie
-    ("nooit auto-toewijzen bij twijfel")."""
-    if not project_tekst or not kandidaten:
-        return None, None, None
-    gelezen_nummer = _NUMMER_PREFIX.match(project_tekst)
-    if gelezen_nummer is not None:
-        doel = _norm(gelezen_nummer.group(1))
-        op_nummer = [
-            k
-            for k in kandidaten
-            if (m := _NUMMER_PREFIX.match(k.naam or "")) is not None and _norm(m.group(1)) == doel
-        ]
-        if len(op_nummer) == 1:
-            return op_nummer[0].id, "nummer", op_nummer[0].naam
-        if len(op_nummer) > 1:
-            return None, None, None
-    doel = _norm(project_tekst)
-    if len(doel) < 4:
-        return None, None, None
-    op_naam = [k for k in kandidaten if (n := _norm(k.naam)) and (doel in n or n in doel)]
-    if len(op_naam) == 1:
-        return op_naam[0].id, "naam", op_naam[0].naam
-    if op_naam:
-        return None, None, None
-    # Laatste kans: fuzzy op de genormaliseerde naam mét één uniek beste resultaat (zelfde drempel
-    # als de crediteur-match) — "Koningstraat verbouwing" vs "26140 Koningstraat (Confide)".
-    scores = sorted(
-        ((SequenceMatcher(None, doel, _norm(k.naam)).ratio(), k) for k in kandidaten if k.naam),
-        key=lambda item: item[0],
-        reverse=True,
-    )
-    if not scores or scores[0][0] < 0.85:
-        return None, None, None
-    besten = [k for score, k in scores if scores[0][0] - score < 0.02]
-    if len(besten) != 1:
-        return None, None, None
-    return besten[0].id, "naam", besten[0].naam
 
 
 def bouw_verplichting_veldvoorstel(

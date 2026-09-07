@@ -727,6 +727,20 @@ export interface BoekvoorstelRegelDto {
    * `naar_id: null` + `reden` als er geen Odoo-tegenhanger was (veld dan leeg). De server negeert 'm bij opslaan; ná een
    * PUT door de mens verdwijnt het spoor (bewust — de chip is dan niet meer waar). */
   overstap_vertaling?: Record<string, unknown> | null
+  /** Blok 10 07-09 (project uit de factuur): 'factuur' (groen: exacte projectcode of bevestigd werknummer) |
+   * 'factuur_onbevestigd' (oranje: eerste keer / fuzzy) | 'factuur_meerduidig' (niets ingevuld — meerdere projecten
+   * passen, `project_bron_detail` noemt ze); null = leeg/mens/geheugen. Informatief — de server negeert ze bij opslaan. */
+  project_bron?: string | null
+  project_bron_detail?: string | null
+}
+
+/** Factuurperiode op weekniveau (blok 11 vervolgrun 07-09, migratie 0120). `tekst` = de letterlijke factuurtekst. */
+export interface BoekvoorstelPeriodeDto {
+  jaar: number
+  week_van: number
+  week_tot: number
+  herkomst: 'factuur' | 'factuur_maand' | 'afgeleid_van_factuurdatum' | 'mens'
+  tekst?: string | null
 }
 
 export interface BoekvoorstelDto {

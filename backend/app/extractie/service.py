@@ -103,9 +103,11 @@ _REGEL_SCHEMA: dict[str, Any] = {
         "e": _TEKST_MET_LEEG_SENTINEL,
         "p": _TEKST_MET_LEEG_SENTINEL,
         "a": _TEKST_MET_LEEG_SENTINEL,
+        # Blok 10 07-09: project-/werknummer op REGELNIVEAU (regel wint van kop) — sentinel-string, geen union.
+        "proj": _TEKST_MET_LEEG_SENTINEL,
         "z": {"type": "number"},
     },
-    "required": ["o", "n", "b", "h", "e", "p", "a", "z"],
+    "required": ["o", "n", "b", "h", "e", "p", "a", "proj", "z"],
     "additionalProperties": False,
 }
 
@@ -156,14 +158,23 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   "Betreft: huur steigermateriaal project 26123 week 34", "Onderwerp: …", "Project: …" — de tekst ná het label;
   alleen als zo'n regel er staat, nooit zelf een samenvatting maken; anders "")
   — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
+  proj=het projectnummer/werknummer/referentie van de OPDRACHTGEVER zoals vermeld op de factuur (bijv.
+  "Project 26140", "Werknummer 26140", "Uw referentie: 26140" — de waarde zelf, dus "26140"; staat er geen
+  project-/werknummer van de opdrachtgever, dan "" — het factuurnummer of het eigen ordernummer van de
+  leverancier is géén projectnummer).
+  periode=de periode waarop de factuur betrekking heeft, zoals vermeld: weeknummer(s)/jaar of datumbereik,
+  letterlijk (bijv. "week 34", "wk 34-35 2026", "18-08-2026 t/m 22-08-2026", "augustus 2026" — de tekst ná een
+  label als "Periode:"; staat er geen periode, dan "" — de factuur- of vervaldatum is géén periode).
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
   indien expliciet vermeld), e=eenheid van de hoeveelheid zoals vermeld (bijv. "st", "stuks", "m", "m2",
   "kg", "uur", "doos"; "" als niet vermeld), p=stuksprijs/prijs per eenheid zoals vermeld ("" als niet
   vermeld — nooit zelf uitrekenen), a=artikelcode/artikelnummer van de leverancier zoals op de regel vermeld
-  (eigen kolom "Art.nr"/"Code" of tussen haakjes; "" als er geen code staat — nooit verzinnen), z=één
-  zekerheidsscore voor de hele regel.
+  (eigen kolom "Art.nr"/"Code" of tussen haakjes; "" als er geen code staat — nooit verzinnen), proj=het
+  projectnummer/werknummer van de opdrachtgever als dat óp deze regel staat (bijv. een kolom "Project"/"Werk" of
+  een regelgroep-kop "Project 26140"; "" als de regel er geen heeft — het kopveld proj dekt dan het hele
+  document), z=één zekerheidsscore voor de hele regel.
   Kortings- en andere NEGATIEVE regels zijn óók factuurregels: een kortingsregel, rabat, creditregel,
   retour of een verrekende aanbetaling die als eigen regel op de factuur staat, neem je op als eigen
   regel met een NEGATIEF nettobedrag (bijv. "Korting 10%" met n="-56.44") en, als de factuur er een
@@ -237,6 +248,8 @@ class AiRegel:
     stuksprijs: str | None = None
     # Voorraad-normalisatie v2 (30-08): leverancierscode zoals vermeld (normalisatiesleutel per leverancier).
     artikelcode: str | None = None
+    # Blok 10 07-09: project-/werknummer van de opdrachtgever op de regel zoals vermeld (ruw; match in code).
+    project_tekst: str | None = None
 
 
 @dataclass(frozen=True)
@@ -342,7 +355,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
         if not isinstance(ruwe_regel, dict):
             continue
         waarden: dict[str, str | None] = {}
-        for key in ("o", "n", "b", "h", "e", "p", "a"):
+        for key in ("o", "n", "b", "h", "e", "p", "a", "proj"):
             waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
@@ -356,6 +369,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
                 eenheid=waarden["e"],
                 stuksprijs=waarden["p"],
                 artikelcode=waarden["a"],
+                project_tekst=waarden["proj"],
             )
         )
 

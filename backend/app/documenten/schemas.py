@@ -566,6 +566,35 @@ class BoekvoorstelRegelDto(BaseModel):
     # {…, naar_id: None, reden} (geen Odoo-tegenhanger → veld leeg gelaten), plus `op` (iso). Informatief — de
     # server negeert 'm bij opslaan; ná een PUT door de mens verdwijnt 'm (bewust: de keuze is dan de mens z'n keuze).
     overstap_vertaling: dict | None = None
+    # Blok 10 07-09 (project uit de factuur, casus Spot Services): herkomst van het vooringevulde project —
+    # "factuur" (groen: exacte projectcode of bevestigde werknummer-mapping) | "factuur_onbevestigd" (oranje: eerste
+    # keer bij deze leverancier of fuzzy op plaats/opdrachtgever) | "factuur_meerduidig" (niets ingevuld — meerdere
+    # projecten passen, `project_bron_detail` noemt ze); None = leeg/mens/geheugen. Informatief — de server negeert
+    # ze bij opslaan; chip weg zodra de mens het veld aanraakt (zelfde regel als gb_bron/btw_bron).
+    project_bron: str | None = None
+    project_bron_detail: str | None = None
+
+
+class BoekvoorstelPeriodeDto(BaseModel):
+    """Factuurperiode op weekniveau (blok 11 vervolgrun 07-09, migratie 0120): de ISO-week(s) waarop de factuur
+    betrekking heeft. `herkomst`: "factuur" (voorgelezen tekst, deterministisch genormaliseerd) | "factuur_maand"
+    (maandvermelding → weekbereik) | "afgeleid_van_factuurdatum" (terugval) | "mens" (correctie, wint altijd).
+    `tekst` = de letterlijke factuurtekst (ook als die onherkenbaar was)."""
+
+    jaar: int
+    week_van: int
+    week_tot: int
+    herkomst: str
+    tekst: str | None = None
+
+
+class BoekvoorstelPeriodeInput(StrikteInvoer):
+    """Correctie van de factuurperiode door de mens (PUT): weeknummer(s) + jaar. `week_tot` leeg = één week.
+    De server vergelijkt met de automatische afleiding: gelijk → automatische herkomst blijft; anders `mens`."""
+
+    jaar: int = Field(ge=2000, le=2100)
+    week_van: int = Field(ge=1, le=53)
+    week_tot: int | None = Field(default=None, ge=1, le=53)
 
 
 class BoekvoorstelResponse(BaseModel):

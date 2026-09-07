@@ -30,6 +30,16 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   intern mee zodat `boekvoorstel.persisteer_prefill_bij_openen` weet wélke velden deterministisch gevuld zijn
   (autosave-trigger) en de herkomst-chips ná het persisteren kan herstellen.
 
+- **Project uit de factuur (blok 10 07-09, casus Spot Services — óns projectnummer staat op de factuur):** de
+  extractie leest `proj` op kop- én regelniveau voor (`BoekvoorstelRegelData.project_tekst`: regel wint van kop,
+  kop = default voor regels zonder eigen tekst). Déze code matcht deterministisch (`app/projecten/match.py::
+  bepaal_project_uit_factuur`): exacte projectcode → GROEN ("factuur"); leverancier-werknummer-mapping → groen als
+  bevestigd, anders ORANJE ("factuur_onbevestigd" — boeken bevestigt 'm, `app_bevestigd`-patroon); fuzzy op
+  plaats/opdrachtgever → altijd oranje; meerduidig → NIETS ingevuld, chip met de kandidaten ("factuur_meerduidig").
+  Alleen lege projectvelden, alleen bij projectplicht (zelfde regel als het leverancier-geheugen — de projectkolom
+  bestaat alleen dáár); het leverancier-geheugen blijft de terugval als de factuur niets zegt. Deze herkomst
+  triggert de A10-autosave (boekvoorstel._PROJECT_FACTUUR_HERKOMSTEN).
+
 Opgeslagen keuzes van de mens worden hier nooit geraakt: de aanroeper roept dit uitsluitend op het
 prefill-pad aan (zelfde regel als de btw-chip "uit factuur").
 """
@@ -48,6 +58,7 @@ from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.geheugen.service import laad_engine_observaties
+from app.projecten import match as project_match
 
 if TYPE_CHECKING:  # boekvoorstel.py importeert deze module (lazy) — geen runtime-cyclus
     from app.documenten.boekvoorstel import BoekvoorstelRegelData
@@ -98,6 +109,27 @@ def _met_leverancier_geheugen(
     return _met_herkomst(replace(regel, **wijzigingen), **herkomst)
 
 
+def _met_factuur_project(
+    regel: BoekvoorstelRegelData,
+    *,
+    kandidaten: list[project_match.ProjectKandidaat],
+    werknummers: list[project_match.WerknummerKoppeling],
+    project_verplicht: bool,
+) -> BoekvoorstelRegelData:
+    """Blok 10: project uit de op de factuur gelezen tekst — alleen een leeg projectveld bij projectplicht.
+    Meerduidig vult niets maar draagt de kandidaten als chip-detail; geen tekst = ongemoeid."""
+    if not project_verplicht or regel.project_id is not None or not regel.project_tekst or not kandidaten:
+        return regel
+    uitkomst = project_match.bepaal_project_uit_factuur(regel.project_tekst, kandidaten, werknummers)
+    herkomst = uitkomst.herkomst
+    if herkomst is None:
+        return regel
+    regel = replace(regel, project_bron=herkomst, project_bron_detail=uitkomst.detail)
+    if uitkomst.project_id is None:
+        return regel  # meerduidig: niets invullen, wél zichtbaar maken
+    return _met_herkomst(replace(regel, project_id=uitkomst.project_id), **{VELD_PROJECT: herkomst})
+
+
 def _engine_observaties(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> list[Observatie]:
     """Exact dezelfde invoer als `geheugen.service.voorstel_voor` (vendor-niveau, geen kenmerk-groep) —
     via dezélfde lader, incl. de Odoo-rekening-mapping-vertaling van een overgestapte administratie (blok A
@@ -140,12 +172,28 @@ def verrijk_prefill(
     regels: list[BoekvoorstelRegelData],
     samengevoegde_regel: BoekvoorstelRegelData | None,
     project_verplicht: bool = False,
+    kop_project_tekst: str | None = None,
 ) -> tuple[list[BoekvoorstelRegelData], BoekvoorstelRegelData | None]:
-    """Geeft (regels, samengevoegde_regel) terug mét regel-GB-voorstel (blok D), leverancier-geheugen (A10) en
-    btw-default (blok E); élk gevuld veld draagt zijn herkomst in `prefill_herkomst`."""
+    """Geeft (regels, samengevoegde_regel) terug mét regel-GB-voorstel (blok D), project uit de factuur (blok 10),
+    leverancier-geheugen (A10) en btw-default (blok E); élk gevuld veld draagt zijn herkomst in `prefill_herkomst`.
+    `kop_project_tekst` = het kop-`proj` (voor de samengevoegde regel; de losse regels dragen hun eigen tekst al)."""
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
     vandaag = datetime.now(UTC).date()
+    if samengevoegde_regel is not None and samengevoegde_regel.project_tekst is None and kop_project_tekst:
+        samengevoegde_regel = replace(samengevoegde_regel, project_tekst=kop_project_tekst)
+
+    # Blok 10: kandidaten + werknummer-geheugen één keer per document laden, alleen als er iets te matchen is.
+    projectkandidaten: list[project_match.ProjectKandidaat] = []
+    werknummers: list[project_match.WerknummerKoppeling] = []
+    if project_verplicht and (
+        any(r.project_tekst for r in regels) or (samengevoegde_regel is not None and samengevoegde_regel.project_tekst)
+    ):
+        projectkandidaten = project_match.laad_projectkandidaten(session, administratie_id=administratie_id)
+        if vendor_id is not None and projectkandidaten:
+            werknummers = project_match.laad_werknummers(
+                session, administratie_id=administratie_id, vendor_id=vendor_id
+            )
 
     regel_observaties: list[regel_gb.RegelObservatie] = []
     engine_observaties: list[Observatie] = []
@@ -184,6 +232,9 @@ def verrijk_prefill(
                         ),
                         **{VELD_GROOTBOEK: regel_gb.BRON_AI},
                     )
+        regel = _met_factuur_project(
+            regel, kandidaten=projectkandidaten, werknummers=werknummers, project_verplicht=project_verplicht
+        )
         regel = _met_leverancier_geheugen(
             regel,
             engine_observaties=engine_observaties,
@@ -204,6 +255,12 @@ def verrijk_prefill(
         # redenering als in autoboeken.py).
         if samengevoegde_regel.btw_bron == HERKOMST_FACTUUR and samengevoegde_regel.taxrate_id is not None:
             samengevoegde_regel = _met_herkomst(samengevoegde_regel, **{VELD_BTW: HERKOMST_FACTUUR})
+        samengevoegde_regel = _met_factuur_project(
+            samengevoegde_regel,
+            kandidaten=projectkandidaten,
+            werknummers=werknummers,
+            project_verplicht=project_verplicht,
+        )
         samengevoegde_regel = _met_leverancier_geheugen(
             samengevoegde_regel,
             engine_observaties=engine_observaties,

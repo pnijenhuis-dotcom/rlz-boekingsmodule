@@ -108,6 +108,16 @@ class BoekvoorstelRegelData:
     # engine, chip "Geheugen N %") | "factuur" | "standaard" (blok E). Intern: stuurt de autosave-trigger en het
     # herstel van de herkomst-chips ná het persisteren (regel_prefill.py). Niet in de DTO.
     prefill_herkomst: dict[str, str] | None = None
+    # Blok 10 07-09 (project uit de factuur, casus Spot Services): `project_tekst` = het op de factuur gelezen
+    # projectnummer/werknummer voor déze regel (regel-`proj`, anders kop-`proj`; ruw, alleen op prefill-regels —
+    # intern). `project_bron` = herkomst van het ingevulde project: "factuur" (groen: exacte projectcode of
+    # bevestigde werknummer-mapping) | "factuur_onbevestigd" (oranje: eerste keer / fuzzy) |
+    # "factuur_meerduidig" (niets ingevuld — meerdere kandidaten, `project_bron_detail` noemt ze); None = leeg/
+    # mens/geheugen. `project_bron_detail` = tooltip-tekst. Beide in de DTO (informatief; de server negeert
+    # ze bij opslaan), zelfde chip-regel als gb_bron/btw_bron: weg zodra de mens het veld aanraakt.
+    project_tekst: str | None = None
+    project_bron: str | None = None
+    project_bron_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -282,6 +292,8 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             omschrijving=regel.get("omschrijving"),
             btw_bron=_btw_bron(regel),
             btw_bewust_leeg=_btw_bewust_leeg(regel),
+            # Blok 10: regel-`proj` wint van kop-`proj`; de kop is de default voor regels zonder eigen tekst.
+            project_tekst=_str_of_none(regel.get("project_tekst") or veldvoorstel.get("project_tekst") or None),
         )
         for regel in ai_regels
         if isinstance(regel, dict)
@@ -608,6 +620,10 @@ _AUTOSAVE_STATUSSEN = frozenset(
 _AUTOSAVE_HERKOMSTEN = frozenset(
     {"geheugen", "geheugen_seed", "geheugen_conflict", "leverancier_geheugen", "standaard"}
 )
+# Blok 10 07-09: een project uit de factuur (exacte code, werknummer-mapping of fuzzy — ingevuld) triggert de autosave
+# óók (opdracht: "via het A10-prefill-/autosave-pad") — de projectplicht-check en het doorbelasten-blok zien dan
+# hetzelfde project als de mens. "factuur_meerduidig" vult niets en triggert dus niet.
+_PROJECT_FACTUUR_HERKOMSTEN = frozenset({"factuur", "factuur_onbevestigd"})
 
 
 def _str_of_none(waarde: object) -> str | None:
@@ -626,6 +642,8 @@ def _regel_snapshot(volgnummer: int, regel: BoekvoorstelRegelData) -> dict:
         "gb_bron": regel.gb_bron,
         "gb_voorstel_detail": regel.gb_voorstel_detail,
         "btw_bron": regel.btw_bron,
+        "project_bron": regel.project_bron,
+        "project_bron_detail": regel.project_bron_detail,
         "herkomst": dict(regel.prefill_herkomst or {}),
     }
 
@@ -672,7 +690,7 @@ def _prefill_triggers(prefill: BoekvoorstelData, regels: list[BoekvoorstelRegelD
         triggers.append("afdeling: leverancier_geheugen")
     for i, regel in enumerate(regels, start=1):
         for veld, bron in (regel.prefill_herkomst or {}).items():
-            if bron in _AUTOSAVE_HERKOMSTEN:
+            if bron in _AUTOSAVE_HERKOMSTEN or (veld == "project" and bron in _PROJECT_FACTUUR_HERKOMSTEN):
                 triggers.append(f"{veld} regel {i}: {bron}")
     return triggers
 
@@ -835,7 +853,7 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
     snap = None
     if snapshot is not None:
         snap = next((x for x in snapshot.get("regels") or [] if _regel_komt_overeen(regel, x)), None)
-    gb_bron = gb_detail = btw_bron = None
+    gb_bron = gb_detail = btw_bron = project_bron = project_detail = None
     herkomst: dict[str, str] = {}
     if snap is not None:
         snap_herkomst = snap.get("herkomst") or {}
@@ -853,6 +871,10 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
             and "project" in snap_herkomst
         ):
             herkomst["project"] = snap_herkomst["project"]
+            project_bron, project_detail = snap.get("project_bron"), snap.get("project_bron_detail")
+        elif regel.project_id is None and snap.get("project_id") is None and snap.get("project_bron"):
+            # Blok 10: "meerdere projecten passen" — niets ingevuld, de kandidaten-chip blijft tot de mens kiest.
+            project_bron, project_detail = snap.get("project_bron"), snap.get("project_bron_detail")
     return BoekvoorstelRegelData(
         ledger_id=regel.ledger_id,
         taxrate_id=regel.taxrate_id,
@@ -866,6 +888,8 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
         gb_voorstel_detail=gb_detail if gb_bron else None,
         overstap_vertaling=regel.overstap_vertaling,
         prefill_herkomst=herkomst or None,
+        project_bron=project_bron,
+        project_bron_detail=project_detail if project_bron else None,
     )
 
 
@@ -911,7 +935,8 @@ def _lees_opgeslagen_voorstel(
     ):
         afdeling["afdeling_prefill_id"] = bestaand.afdeling_id
         afdeling["afdeling_prefill_leverancier"] = kop.get("afdeling_prefill_leverancier")
-    return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+    regel_data = [_opgeslagen_regel_data(r, snapshot) for r in regels]
+    data = _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
         document_id=document_id,
         vendor_id=vendor_id,
         referentie=bestaand.referentie,
@@ -1014,8 +1039,9 @@ def _bereken_prefill(
         regels=_regels_prefill(veldvoorstel),
         samengevoegde_regel=samenvoeg["samengevoegde_regel"],
         project_verplicht=project_verplicht,
+        kop_project_tekst=_str_of_none(veldvoorstel.get("project_tekst") or None),
     )
-    return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
+    data = _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
         document_id=document_id,
         vendor_id=vendor_id,
         referentie=veldvoorstel.get("factuurnummer"),

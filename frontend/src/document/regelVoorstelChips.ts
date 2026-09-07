@@ -12,6 +12,12 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 
 export type BtwBron = 'factuur' | 'standaard'
 
+/** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
+ * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
+ * (werknummer nog niet bevestigd — boeken bevestigt 'm — of fuzzy op plaats/opdrachtgever), 'factuur_meerduidig' =
+ * niets ingevuld, meerdere projecten passen (de detailtekst noemt ze; de mens kiest). */
+export type ProjectBron = 'factuur' | 'factuur_onbevestigd' | 'factuur_meerduidig'
+
 export interface RegelChip {
   /** CSS-klassen naast `chip` — `ok` (groen), `afwijking` (oranje), `handmatig` (neutraal grijs), `blokkerend` (rood). */
   klasse: 'ok' | 'afwijking' | 'handmatig' | 'blokkerend'
@@ -24,6 +30,46 @@ const GB_BRONNEN: ReadonlySet<string> = new Set<GbBron>(['geheugen', 'geheugen_s
 /** Server-waarde → gevalideerde bron; onbekende/lege waarden tellen als "geen voorstel". */
 export function gbBronUitDto(waarde: string | null | undefined): GbBron | null {
   return waarde && GB_BRONNEN.has(waarde) ? (waarde as GbBron) : null
+}
+
+const PROJECT_BRONNEN: ReadonlySet<string> = new Set<ProjectBron>(['factuur', 'factuur_onbevestigd', 'factuur_meerduidig'])
+
+export function projectBronUitDto(waarde: string | null | undefined): ProjectBron | null {
+  return waarde && PROJECT_BRONNEN.has(waarde) ? (waarde as ProjectBron) : null
+}
+
+/** Chip-besluit voor het projectveld (blok 10): gevuld = alleen zolang het voorstel nog in het veld staat;
+ * meerduidig = alleen zolang het veld nog LEEG is (de chip is dan de uitleg waarom er niets staat). Weg zodra de
+ * mens het veld aanraakt — zelfde regel als de gb-/btw-chips. */
+export function bepaalProjectFactuurChip(
+  bron: ProjectBron | null,
+  detail: string | null,
+  huidigProjectId: string | null,
+  handmatig: boolean,
+): RegelChip | null {
+  if (!bron || handmatig) return null
+  const toelichting = detail ? ` ${detail}.` : ''
+  if (bron === 'factuur_meerduidig') {
+    if (huidigProjectId) return null
+    return {
+      klasse: 'afwijking',
+      tekst: 'factuur noemt een project — meerdere passen, kies',
+      titel: `${detail ?? 'De factuur noemt een projectnummer dat op meerdere projecten past'} Er is bewust niets ingevuld (nooit auto-toewijzen bij twijfel).`,
+    }
+  }
+  if (!huidigProjectId) return null
+  if (bron === 'factuur') {
+    return {
+      klasse: 'ok',
+      tekst: 'uit factuur',
+      titel: `Projectnummer op de factuur — deterministisch gematcht tegen de projecten van deze administratie (exacte code of bevestigd werknummer van deze leverancier), geen AI.${toelichting} De projectplicht-check blijft de poort.`,
+    }
+  }
+  return {
+    klasse: 'afwijking',
+    tekst: 'uit factuur, nog niet bevestigd',
+    titel: `Project afgeleid uit de tekst op de factuur (werknummer van deze leverancier of naam/plaats/opdrachtgever) — nog niet door een mens bevestigd.${toelichting} Boeken met dit project bevestigt 'm; de volgende factuur van deze leverancier is dan groen.`,
+  }
 }
 
 export function btwBronUitDto(waarde: string | null | undefined, taxrateId: string | null): BtwBron | null {

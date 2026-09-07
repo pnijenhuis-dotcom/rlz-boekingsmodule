@@ -15,7 +15,7 @@ from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
-from app.documenten.boekvoorstel import BoekvoorstelData, haal_boekvoorstel_op, voer_checks_uit
+from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_herboeking_id  # noqa: F401 — re-export (tests, doorbelasting)
@@ -341,6 +341,25 @@ def _sla_webhook_op(
     session.add(WebhookUitgaand(document_id=document_id, event=payload["event"], payload=payload))
 
 
+def _project_teksten_per_regel(
+    veldvoorstel: dict | None, regels: list, regels_samenvoegen: bool
+) -> list[tuple[uuid.UUID | None, str | None]]:
+    """Per geboekte regel (project_id, op de factuur gelezen projecttekst): regel-`proj` als de regelset
+    één-op-één de extractie is (gesplitst, gelijk aantal), anders kop-`proj` — precies de prefill-regel
+    (regel wint van kop, kop = default). Geen veldvoorstel = niets te leren."""
+    if not veldvoorstel:
+        return [(r.project_id, None) for r in regels]
+    kop = veldvoorstel.get("project_tekst") or None
+    ai_regels = [r for r in (veldvoorstel.get("regels") or []) if isinstance(r, dict)]
+    uit: list[tuple[uuid.UUID | None, str | None]] = []
+    for i, regel in enumerate(regels):
+        tekst = None
+        if not regels_samenvoegen and len(ai_regels) == len(regels):
+            tekst = ai_regels[i].get("project_tekst") or None
+        uit.append((regel.project_id, tekst or kop))
+    return uit
+
+
 def boek_document(
     *,
     administratie_id: uuid.UUID,
@@ -561,6 +580,23 @@ def boek_document(
             boekstuk_ref=rlz_boekstuknummer,
             regels=voorstel.regels,
             regels_samenvoegen=voorstel.regels_samenvoegen,
+        )
+        # Blok 10 07-09 (project uit de factuur): boeken ís de menselijke bevestiging — de (leverancier, gelezen
+        # projecttekst) → gekozen-project-mapping gaat in `leverancier_werknummer` (bron 'factuur', bevestigd),
+        # zodat de volgende factuur van deze leverancier met datzelfde werknummer groen prefillt ("eerste keer
+        # oranje, daarna groen"). Mens wint: een afwijkende keuze herschrijft de mapping (audit oud→nieuw). Lazy
+        # import: projecten.match leest de projectverdeling-omzetmodule (geen kring op moduleniveau).
+        from app.projecten.match import leer_werknummers_uit_boeking
+
+        leer_werknummers_uit_boeking(
+            session,
+            administratie_id=administratie_id,
+            document_id=document_id,
+            vendor_id=voorstel.vendor_id,
+            actor_id=actor_id,
+            regel_projecten=_project_teksten_per_regel(
+                _laatste_veldvoorstel(session, document_id), voorstel.regels, voorstel.regels_samenvoegen
+            ),
         )
         # Aanbetaling-verrekening (feedbackronde 25-08 deel 4 punt 3): draagt het voorstel de
         # tegenregel −X op de vooruitbetalingsrekening, dan sluit de open aanbetaling van deze

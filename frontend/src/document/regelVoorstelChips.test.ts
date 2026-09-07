@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { bepaalBtwStandaardChip, bepaalGbChip, bepaalOverstapChip, btwBronUitDto, gbBronUitDto, overstapVertalingUitDto } from './regelVoorstelChips'
+import {
+  bepaalBtwStandaardChip,
+  bepaalGbChip,
+  bepaalOverstapChip,
+  bepaalProjectFactuurChip,
+  btwBronUitDto,
+  gbBronUitDto,
+  overstapVertalingUitDto,
+  projectBronUitDto,
+} from './regelVoorstelChips'
 
 describe('regelVoorstelChips — grootboek per regel (blok D 04-09, mockup blok 2)', () => {
   it('geheugen = groene chip "uit geheugen" mét detail in de tooltip', () => {
@@ -89,5 +98,43 @@ describe('regelVoorstelChips — overstap-vertaling van een open voorstel (Odoo-
     expect(overstapVertalingUitDto('tekst')).toBeNull()
     expect(overstapVertalingUitDto({ op: 'x' })).toBeNull()
     expect(overstapVertalingUitDto({ grootboek: 'geen object' })).toBeNull()
+  })
+})
+
+describe('regelVoorstelChips — project uit de factuur (blok 10 07-09, casus Spot Services)', () => {
+  it('exacte code / bevestigd werknummer = groen "uit factuur" mét detail', () => {
+    const chip = bepaalProjectFactuurChip('factuur', 'Factuur vermeldt "26140" = projectcode van 26140 Koningstraat', 'p-1', false)
+    expect(chip).toMatchObject({ klasse: 'ok', tekst: 'uit factuur' })
+    expect(chip?.titel).toContain('projectcode van 26140 Koningstraat')
+  })
+
+  it('onbevestigd werknummer of fuzzy = oranje "uit factuur, nog niet bevestigd"', () => {
+    expect(bepaalProjectFactuurChip('factuur_onbevestigd', null, 'p-1', false)).toMatchObject({
+      klasse: 'afwijking',
+      tekst: 'uit factuur, nog niet bevestigd',
+    })
+  })
+
+  it('meerduidig = uitleg-chip zolang het veld leeg is, weg zodra er iets gekozen is', () => {
+    const chip = bepaalProjectFactuurChip('factuur_meerduidig', 'meerdere projecten passen: A, B', null, false)
+    expect(chip).toMatchObject({ klasse: 'afwijking', tekst: 'factuur noemt een project — meerdere passen, kies' })
+    expect(chip?.titel).toContain('A, B')
+    expect(bepaalProjectFactuurChip('factuur_meerduidig', null, 'p-1', false)).toBeNull()
+  })
+
+  it('geen chip zonder bron, zonder waarde in het veld (gevulde bronnen) of zodra de mens het veld aanraakte', () => {
+    expect(bepaalProjectFactuurChip(null, null, 'p-1', false)).toBeNull()
+    expect(bepaalProjectFactuurChip('factuur', null, null, false)).toBeNull()
+    expect(bepaalProjectFactuurChip('factuur', null, 'p-1', true)).toBeNull()
+    expect(bepaalProjectFactuurChip('factuur_meerduidig', null, null, true)).toBeNull()
+  })
+
+  it('server-waarden worden gevalideerd', () => {
+    expect(projectBronUitDto('factuur')).toBe('factuur')
+    expect(projectBronUitDto('factuur_onbevestigd')).toBe('factuur_onbevestigd')
+    expect(projectBronUitDto('factuur_meerduidig')).toBe('factuur_meerduidig')
+    expect(projectBronUitDto('geheugen')).toBeNull()
+    expect(projectBronUitDto(null)).toBeNull()
+    expect(projectBronUitDto(undefined)).toBeNull()
   })
 })

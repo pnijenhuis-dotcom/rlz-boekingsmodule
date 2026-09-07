@@ -28,11 +28,14 @@ import {
   bepaalBtwStandaardChip,
   bepaalGbChip,
   bepaalOverstapChip,
+  bepaalProjectFactuurChip,
   btwBronUitDto,
   gbBronUitDto,
   overstapVertalingUitDto,
+  projectBronUitDto,
   type BtwBron,
   type GbBron,
+  type ProjectBron,
   type OverstapVeld,
   type OverstapVeldVertaling,
   type OverstapVertaling,
@@ -133,6 +136,12 @@ interface RegelState {
    * op het grootboek zolang deze regel-chip staat — de regel-treffer is specifieker. */
   gbBron: GbBron | null
   gbDetail: string | null
+  /** Blok 10 07-09 (project uit de factuur, casus Spot Services): herkomst van het vooringevulde project — groen
+   * "uit factuur" (exacte projectcode / bevestigd werknummer), oranje "uit factuur, nog niet bevestigd" (eerste keer /
+   * fuzzy) of de uitleg-chip bij meerduidig (niets ingevuld). Zelfde chip-regel: weg zodra de mens het veld aanraakt;
+   * het kop-niveau-geheugen (GeheugenChipBlok) zwijgt op project zolang deze chip staat. */
+  projectBron: ProjectBron | null
+  projectDetail: string | null
   /** Odoo-slotstuk 04-09 (C1 hervertaling): informatief spoor per veld als een OPEN voorstel bij de overstap via de
    * mapping is hervertaald — chips "vertaald bij overstap" (oranje) / "niet vertaalbaar — kies" (rood), weg zodra de
    * mens het veld aanraakt (zelfde regel als de gb-/btw-chips). Alleen op geladen server-regels. */
@@ -169,6 +178,8 @@ function nieuweRegel(): RegelState {
     btwBron: null,
     gbBron: null,
     gbDetail: null,
+    projectBron: null,
+    projectDetail: null,
     overstap: null,
     omschrijving: '',
     aiZekerheid: null,
@@ -190,6 +201,8 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
     gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
     gbDetail: r.gb_voorstel_detail ?? null,
+    projectBron: projectBronUitDto(r.project_bron),
+    projectDetail: r.project_bron_detail ?? null,
     overstap: overstapVertalingUitDto(r.overstap_vertaling),
     omschrijving: r.omschrijving ?? '',
     aiZekerheid,
@@ -228,6 +241,8 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     // server-prefill van dto.regels); de kop-niveau-engine vult 'm dan zoals voorheen.
     gbBron: null,
     gbDetail: null,
+    projectBron: null,
+    projectDetail: null,
     overstap: null,
     omschrijving: r.omschrijving ?? '',
     aiZekerheid: ai.regel_zekerheid[i] ?? null,
@@ -1835,8 +1850,20 @@ export function BoekvoorstelPanel({
                               : undefined
                           }
                         />
+                        {(() => {
+                          // Blok 10 07-09 (casus Spot Services): project uit de tekst op de factuur — groen "uit factuur",
+                          // oranje "nog niet bevestigd", of de uitleg-chip bij meerduidig. Weg zodra de mens het veld aanraakt.
+                          const projectChip = bepaalProjectFactuurChip(regel.projectBron, regel.projectDetail, regel.projectId, regel.handmatigeVelden.projectId)
+                          return projectChip ? (
+                            <div style={{ marginTop: 4 }}>
+                              <span className={`chip ${projectChip.klasse}`} title={projectChip.titel} data-testid="regel-project-factuur-chip">
+                                {projectChip.tekst}
+                              </span>
+                            </div>
+                          ) : null
+                        })()}
                         <OverstapChip vertaling={regel.overstap?.project} veld="project" huidig={regel.projectId} handmatig={regel.handmatigeVelden.projectId} />
-                        {regel.geheugen && (
+                        {regel.geheugen && !bepaalProjectFactuurChip(regel.projectBron, regel.projectDetail, regel.projectId, regel.handmatigeVelden.projectId) && (
                           <GeheugenChipBlok
                             veld={regel.geheugen.project}
                             huidig={regel.projectId}
