@@ -95,11 +95,17 @@ def _resolve_from_store(rlz_admin_id: str) -> tuple[str, str] | None:
         ).one_or_none()
         if administratie is None:
             return None
-        credential = session.get(RlzCredential, administratie.id)
-        if credential is None:
-            return None
-        wachtwoord = unwrap_secret(credential.wachtwoord_ciphertext, credential.wrapped_data_key).decode()
-        return credential.webservice_username, wachtwoord
+        return _store_credential_voor(session, administratie.id)
+
+
+def _store_credential_voor(session, administratie_id: uuid.UUID) -> tuple[str, str] | None:  # noqa: ANN001
+    """De ene unwrap-route voor `platform.rlz_credential` (PK = administratie_id) — gedeeld door de gewone
+    store-lookup (op rlz_admin_id) en de RLZ-verleden-lookup van een overgestapte administratie."""
+    credential = session.get(RlzCredential, administratie_id)
+    if credential is None:
+        return None
+    wachtwoord = unwrap_secret(credential.wachtwoord_ciphertext, credential.wrapped_data_key).decode()
+    return credential.webservice_username, wachtwoord
 
 
 def lees_env_login(prefix: str) -> tuple[str, str] | None:
@@ -160,6 +166,39 @@ def rlz_admin_id_voor(administratie_id: uuid.UUID) -> str:
 def client_voor_rlz_admin_id(rlz_admin_id: str) -> RlzClient:
     username, password = resolve_credentials(rlz_admin_id)
     return RlzClient(username=username, password=password, admin_id=rlz_admin_id)
+
+
+RLZ_VERLEDEN_NIET_TOETSBAAR = "RLZ-verleden niet toetsbaar: geen bewaarde RLZ-credential"
+
+
+def client_voor_rlz_verleden(administratie_id: uuid.UUID) -> RlzClient:
+    """RLZ-leesclient voor het RLZ-VERLEDEN van een overgestapte administratie (RLZ → Odoo; besluit Peter 07-09
+    op A12 beslispunt 1): documenten die vóór de kanteldatum in Reeleezee zijn geboekt blijven dáár de bron van
+    waarheid (bewaarplicht 7 jaar) en worden tegen RLZ getoetst via de BEWAARDE credential.
+
+    `administratie.rlz_admin_id` draagt ná de overstap de Odoo-sentinel, dus `client_voor_rlz_admin_id(oud_id)`
+    vindt de store-rij niet meer (die zoekt op rlz_admin_id). Hier: oud RLZ-id uit `odoo_koppeling.
+    rlz_admin_id_voor_overstap` + de `rlz_credential`-rij op administratie_id (blijft bij de overstap staan —
+    nooit verwijderen), dev-fallback = .env-login voor het oude id. Geen bewaard id of geen credential
+    (gearchiveerde webservice-login) = `GeenRlzCredentials` mét `RLZ_VERLEDEN_NIET_TOETSBAAR` — de aanroeper
+    maakt daar een ZICHTBARE bevinding van, nooit een stille overslag."""
+    from app.odoo.models import OdooKoppeling  # lazy: geen kring rlz ↔ odoo op moduleniveau
+
+    with scoped_session(None) as session:
+        koppeling = session.get(OdooKoppeling, administratie_id)
+        oud_rlz_admin_id = koppeling.rlz_admin_id_voor_overstap if koppeling is not None else None
+        if not oud_rlz_admin_id:
+            raise GeenRlzCredentials(
+                f"{RLZ_VERLEDEN_NIET_TOETSBAAR} (geen bewaard RLZ-administratie-id op de Odoo-koppeling)"
+            )
+        login = _store_credential_voor(session, administratie_id)
+    if login is None:
+        try:
+            login = _resolve_from_env(oud_rlz_admin_id)
+        except GeenRlzCredentials as exc:
+            raise GeenRlzCredentials(f"{RLZ_VERLEDEN_NIET_TOETSBAAR} ({exc})") from exc
+    username, password = login
+    return RlzClient(username=username, password=password, admin_id=oud_rlz_admin_id)
 
 
 def open_root_client(rlz_admin_id: str) -> RlzClient:

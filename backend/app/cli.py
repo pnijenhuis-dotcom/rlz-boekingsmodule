@@ -816,13 +816,18 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
             continue
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(resultaat.aantal_gecontroleerd)
-        # A12 (07-09): documenten die in de backend van de administratie niet te toetsen zijn (RLZ-verleden van
-        # een Odoo-administratie) staan zichtbaar in de regel — nooit stil weggelaten.
-        overgeslagen = (
-            f" ({resultaat.aantal_overgeslagen} niet van toepassing: geboekt in Reeleezee vóór de overstap)"
-            if getattr(resultaat, "aantal_overgeslagen", 0)
-            else ""
-        )
+        # A12 (07-09) + besluit Peter 07-09 (beslispunt 1): een Odoo-administratie toont de verdeling van de toets
+        # — N documenten in Odoo, M in het Reeleezee-verleden (vóór de kanteldatum geboekt, getoetst via de bewaarde
+        # RLZ-credential). Échte niet-van-toepassing-gevallen (port: van_toepassing=False) blijven apart zichtbaar
+        # — nooit stil weggelaten.
+        overgeslagen = ""
+        if getattr(resultaat, "backend", "rlz") == "odoo":
+            overgeslagen += (
+                f" ({getattr(resultaat, 'aantal_in_odoo', 0)} getoetst in Odoo, "
+                f"{getattr(resultaat, 'aantal_in_rlz_verleden', 0)} in Reeleezee-verleden)"
+            )
+        if getattr(resultaat, "aantal_overgeslagen", 0):
+            overgeslagen += f" ({resultaat.aantal_overgeslagen} niet van toepassing: niets te toetsen in deze backend)"
         if not resultaat.afwijkingen:
             print(
                 f"OK         {administratie_id}: {resultaat.aantal_gecontroleerd} gecontroleerd, "

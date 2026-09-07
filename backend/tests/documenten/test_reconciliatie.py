@@ -37,7 +37,8 @@ def _boek_een_document(
     resultaat = service.upload_document(
         administratie_id=administratie_id,
         bestandsnaam="factuur.pdf",
-        inhoud=b"%PDF-1.4 reconciliatie",
+        # Uniek per document: byte-identieke bestanden zijn sinds 07-09 een hard duplicaat (check "Duplicaat (module)").
+        inhoud=b"%PDF-1.4 reconciliatie " + uuid.uuid4().bytes,
         actor_id=gescoopte_gebruiker,
         opslag=opslag,
     )

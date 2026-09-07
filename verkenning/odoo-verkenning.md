@@ -630,3 +630,26 @@ boekstuk = `name`; (d) `company_id` ≠ verwacht = `ToetsMislukt` (KRITIEK, geen
 blijven RLZ-only en slaan een Odoo-administratie zichtbaar over (`OVERGESLAGEN <id>: niet van toepassing — backend odoo`).
 Open beslispunt Peter: het RLZ-verleden van een overgestapte administratie alsnog toetsen via de bewaarde RLZ-credential
 (`rlz_admin_id_voor_overstap`) i.p.v. overslaan — zie BESLISSINGEN "A12".
+
+### §10.1 RLZ-verleden alsnog getoetst via de bewaarde credential — LIVE 07-09-2026 (vervolgrun blok 4, besluit Peter; strikt read-only)
+
+Besluit Peter 07-09 op A12 beslispunt 1: documenten van vóór de kanteldatum worden tegen **Reeleezee** getoetst via de bewaarde
+credential (`odoo_koppeling.rlz_admin_id_voor_overstap` + de blijvende `rlz_credential`-rij; `app/rlz/credentials.py::
+client_voor_rlz_verleden`), documenten ná de kanteldatum tegen Odoo — nooit meer "niet van toepassing" voor iets dat in RLZ staat.
+Zelfde dev-administratie `faae29c5` (Odoo company 1, oud RLZ-id = TESTADMIN `8dbfb856-…`); alleen `account.move`-reads + RLZ
+`GET PurchaseInvoices/{herboeking-GUID}`. Run 14:35:29–14:35:35 UTC.
+
+| # | Toets | Uitkomst |
+|---|---|---|
+| 1 | `reconcilieer_administratie(faae29c5)` — routering per document | backend `odoo`, 9 gecontroleerd, **3 getoetst in Odoo, 6 in Reeleezee-verleden, 0 overgeslagen** (was in §10: 6 overgeslagen) |
+| 2 | de 3 Odoo-documenten (BILL/2026/09/0002, BILL/2026/08/0002, BILL/2026/01/0003) | ongewijzigd groen (posted, eigen tegenboeking) |
+| 3 | RLZ-verleden RLZ-04-00002023 en RLZ-04-00002024 | bestaan in RLZ, Status 2/3, bedrag/boekstuk gelijk → **groen** |
+| 4 | RLZ-verleden RLZ-04-00002006 / -00002010 / -00002014 | RLZ 404 `NotFound_PurchaseInvoice` op de herboeking-GUID → `ontbreekt_in_rlz` mét `backend=rlz`, `rlz_verleden=true` (testadministratie: stukken zijn daar ná het testen opgeruimd — precies wat de toets moet laten zien, vroeger onzichtbaar als "overgeslagen") |
+| 5 | RLZ-verleden RLZ-04-00002044 | RLZ Status 1 (teruggezet naar concept, test-storno actie 19) → `status_niet_definitief`, `extern=12.1`, `state=1` |
+
+**Feiten/keuzes:** (a) routering is lokaal (boekstuk `RLZ-…` én geen `odoo_document_koppeling soort=boeking` voor de actieve
+`boek_cyclus`) — geen extra API-call om te kiezen; (b) de RLZ-verleden-port wordt pas geopend bij het eerste verleden-document en
+één keer per administratie; (c) zonder bewaarde credential (gearchiveerde webservice-login) = per document een zichtbare
+`controle_mislukt` "RLZ-verleden niet toetsbaar: geen bewaarde RLZ-credential" — leesbaar als "Reeleezee-verleden niet
+controleerbaar" mét handelingsperspectief (login opnieuw registreren); (d) `OdooInkoopPort.toets_geboekt` houdt zijn
+`van_toepassing=False`-vangnet voor rechtstreekse aanroepen, de reconciliatie raakt die tak niet meer.

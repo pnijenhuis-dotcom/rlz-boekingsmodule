@@ -3,8 +3,11 @@
 
 - Odoo-port-toets met gefakete client: posted zonder reversal = groen; draft/cancel = niet_geboekt_in_odoo; ONBEKENDE
   reversal = teruggedraaid_in_odoo, maar onze EIGEN tegenboeking (odoo_document_koppeling) níét; amount_total ≠ eigen
-  totaal = bedrag_wijkt_af; move verdwenen / geen koppeling+marker = ontbreekt_in_odoo; RLZ-boekstuk zonder
-  Odoo-spoor = niet van toepassing (overgeslagen, geen bevinding); OdooFout = controle_mislukt;
+  totaal = bedrag_wijkt_af; move verdwenen / geen koppeling+marker = ontbreekt_in_odoo; OdooFout = controle_mislukt;
+- RLZ-VERLEDEN (besluit Peter 07-09 op A12 beslispunt 1, blok 4 vervolgrun): in één Odoo-administratie gaat een
+  document mét Odoo-koppeling naar de Odoo-port en een `RLZ-…`-document zónder Odoo-spoor naar een RLZ-port op de
+  bewaarde credential (`client_voor_rlz_verleden`); ontbreekt het daar = `ontbreekt_in_rlz`; geen bewaarde
+  credential = zichtbare `controle_mislukt` "RLZ-verleden niet toetsbaar …" per document; tellingen in rapport + CLI;
 - bank/omzet/doorbelasting blijven RLZ-only: een Odoo-administratie wordt zichtbaar OVERGESLAGEN (CLI-regel), nooit
   als fout geteld;
 - de CLI zet de naam-context op élke documenten-afwijking (contract A↔A8)."""
@@ -14,6 +17,7 @@ from __future__ import annotations
 import argparse
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -22,18 +26,29 @@ from sqlalchemy import Engine, text
 from app import cli
 from app.backends.port import Backend, ToetsMislukt
 from app.backends.registry import RLZ_ONLY_OVERGESLAGEN, actieve_administraties_per_backend
+from app.backends.rlz_inkoop import RlzInkoopPort
 from app.bank import reconciliatie as bank_reconciliatie
+from app.db.models import RlzCredential
+from app.db.session import scoped_session
 from app.documenten import reconciliatie
 from app.documenten.reconciliatie import ReconciliatieAfwijking, ReconciliatieRapport
+from app.documenten.rlz_ids import rlz_herboeking_id
 from app.doorbelasting import reconciliatie as doorbelasting_reconciliatie
 from app.odoo.client import OdooFout
 from app.odoo.credentials import OdooVerbinding
 from app.odoo.inkoop import OdooInkoopPort
+from app.odoo.models import OdooDocumentKoppeling
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.reconciliatie import run as run_service
+from app.reconciliatie import teksten
 from app.reconciliatie.service import Beoordeeld
+from app.rlz.credentials import RLZ_VERLEDEN_NIET_TOETSBAAR, GeenRlzCredentials, client_voor_rlz_verleden
+from app.security.envelope import wrap_secret
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
 from tests.documenten.conftest import _opslag_naar_tmp, gescoopte_gebruiker, opslag  # noqa: F401
+from tests.documenten.fake_rlz_client import FakeBoekClient
+from tests.documenten.test_duplicaat_historie import _maak_overgestapt
+from tests.documenten.test_reconciliatie import _boek_een_document
 
 COMPANY = 1
 
@@ -62,10 +77,12 @@ class _FakeOdoo:
         self.moves = moves
         self.faal = faal
         self.gesloten = False
+        self.gelezen: list[int] = []
 
     def read_een(self, model: str, odoo_id: int, fields: list[str]) -> dict[str, Any] | None:
         if self.faal:
             raise OdooFout(500, "InternalError", "storing (simulatie)", model=model, methode="read")
+        self.gelezen.append(int(odoo_id))
         return self.moves.get(int(odoo_id))
 
     def search_read(self, model: str, domain: list, fields: list[str]) -> list[dict[str, Any]]:
@@ -194,24 +211,29 @@ class TestOdooToets:
 
 
 class TestReconcilieerViaPort:
-    def test_rapport_met_overgeslagen_en_controle_mislukt(self, administratie_id, monkeypatch) -> None:
-        """Eén administratie, drie 'documenten' via een gefakete port: van_toepassing=False → overgeslagen;
+    def test_rapport_met_overgeslagen_controle_mislukt_en_rlz_verleden(self, administratie_id, monkeypatch) -> None:
+        """Eén Odoo-administratie, vier 'documenten': `RLZ-…` zonder Odoo-spoor → de RLZ-verleden-port (07-09, besluit
+        Peter — niet meer overgeslagen); een port die van_toepassing=False geeft → overgeslagen (échte n.v.t.);
         ToetsMislukt → controle_mislukt; bestaat=False → ontbreekt_in_odoo."""
         from app.backends.port import ToetsUitkomst
 
         docs = [
             _doc(rlz_boekstuknummer="RLZ-04-00002006"),
+            _doc(rlz_boekstuknummer="NVT/1"),
             _doc(rlz_boekstuknummer=None),
             _doc(rlz_boekstuknummer="BILL/1"),
         ]
         monkeypatch.setattr(reconciliatie, "_geboekte_documenten", lambda aid: docs)
+        odoo_gezien: list[str | None] = []
+        rlz_gezien: list[str | None] = []
 
         class Port:
             backend = Backend.ODOO
 
             def toets_geboekt(self, *, document_id, boek_cyclus, boekstuknummer=None):  # noqa: ANN001
-                if boekstuknummer and boekstuknummer.startswith("RLZ-"):
-                    return ToetsUitkomst(backend=Backend.ODOO, van_toepassing=False, reden="RLZ-verleden")
+                odoo_gezien.append(boekstuknummer)
+                if boekstuknummer and boekstuknummer.startswith("NVT/"):
+                    return ToetsUitkomst(backend=Backend.ODOO, van_toepassing=False, reden="niets te toetsen")
                 if boekstuknummer is None:
                     raise ToetsMislukt("storing")
                 return ToetsUitkomst(backend=Backend.ODOO, bestaat=False, reden="geen Odoo-document bekend")
@@ -219,9 +241,28 @@ class TestReconcilieerViaPort:
             def __exit__(self, *exc) -> None:
                 return None
 
-        rapport = reconciliatie.reconcilieer_administratie(administratie_id=administratie_id, port=Port())  # type: ignore[arg-type]
-        assert rapport.aantal_gecontroleerd == 3 and rapport.aantal_overgeslagen == 1 and rapport.backend == "odoo"
-        assert sorted(a.soort for a in rapport.afwijkingen) == ["controle_mislukt", "ontbreekt_in_odoo"]
+        class VerledenPort:
+            backend = Backend.RLZ
+            gesloten = False
+
+            def toets_geboekt(self, *, document_id, boek_cyclus, boekstuknummer=None):  # noqa: ANN001
+                rlz_gezien.append(boekstuknummer)
+                return ToetsUitkomst(backend=Backend.RLZ, bestaat=False, reden="GET -> 404")
+
+            def __exit__(self, *exc) -> None:
+                self.gesloten = True
+
+        verleden = VerledenPort()
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id, port=Port(), rlz_verleden_port_factory=lambda aid: verleden  # type: ignore[arg-type]
+        )
+        assert rapport.aantal_gecontroleerd == 4 and rapport.aantal_overgeslagen == 1 and rapport.backend == "odoo"
+        assert rapport.aantal_in_odoo == 3 and rapport.aantal_in_rlz_verleden == 1
+        assert sorted(a.soort for a in rapport.afwijkingen) == ["controle_mislukt", "ontbreekt_in_odoo", "ontbreekt_in_rlz"]
+        assert odoo_gezien == ["NVT/1", None, "BILL/1"] and rlz_gezien == ["RLZ-04-00002006"]
+        assert verleden.gesloten
+        [verleden_afwijking] = [a for a in rapport.afwijkingen if a.soort == "ontbreekt_in_rlz"]
+        assert verleden_afwijking.context["backend"] == "rlz" and verleden_afwijking.context["rlz_verleden"] == "true"
 
 
 @pytest.fixture
@@ -290,7 +331,10 @@ class TestCliContextVerrijking:
                 "boek_cyclus": "0",
             },
         )
-        rapport = ReconciliatieRapport(administratie_id=aid, aantal_gecontroleerd=1, afwijkingen=(afwijking,), aantal_overgeslagen=2)
+        rapport = ReconciliatieRapport(
+            administratie_id=aid, aantal_gecontroleerd=1, afwijkingen=(afwijking,), aantal_overgeslagen=2, backend="odoo",
+            aantal_in_odoo=1, aantal_in_rlz_verleden=0,
+        )
         monkeypatch.setattr(cli.reconciliatie, "reconcilieer_alle_administraties", lambda: {aid: rapport})
         monkeypatch.setattr(cli.acceptatie_service, "uitgesloten_administraties", lambda: {})
         monkeypatch.setattr(
@@ -304,7 +348,7 @@ class TestCliContextVerrijking:
         exit_code = cli._reconciliatie(argparse.Namespace(), verzamelaar=verzamelaar)
         uit = capsys.readouterr().out
         assert exit_code == 1
-        assert "(2 niet van toepassing: geboekt in Reeleezee vóór de overstap)" in uit
+        assert "(1 getoetst in Odoo, 0 in Reeleezee-verleden) (2 niet van toepassing: niets te toetsen in deze backend)" in uit
         [b] = verzamelaar.bevindingen
         assert b.soort == "afwijking" and b.blok == "documenten"
         assert b.detail["afwijking_soort"] == "ontbreekt_in_rlz" and b.detail["document_id"] == str(doc)
@@ -312,3 +356,225 @@ class TestCliContextVerrijking:
         assert b.detail["factuurnummer"] == "202632704" and b.detail["rlz_boekstuk"] == "RLZ-04-00004038"
         assert b.detail["administratie_naam"] == "Kempen Facilities B.V." and b.detail["backend"] == "rlz"
         assert b.detail["bedrag_lokaal"] == "1775.98" and b.detail["bedrag_extern"] is None
+
+
+# ---- RLZ-verleden van een overgestapte administratie (besluit Peter 07-09, A12 beslispunt 1) ----------------------
+
+
+def _leg_rlz_credential_vast(administratie_id: uuid.UUID, beheerder_id: uuid.UUID) -> None:
+    ciphertext, wrapped = wrap_secret(b"rlz-wachtwoord")
+    with scoped_session(None, actor_id=beheerder_id) as session:
+        session.add(
+            RlzCredential(
+                administratie_id=administratie_id,
+                webservice_username="ws-testadmin",
+                wachtwoord_ciphertext=ciphertext,
+                wrapped_data_key=wrapped,
+                aangemaakt_door=beheerder_id,
+            )
+        )
+
+
+def _oud_rlz_id(admin_engine: Engine, administratie_id: uuid.UUID) -> str:
+    with admin_engine.connect() as conn:
+        return conn.execute(
+            text("SELECT rlz_admin_id_voor_overstap FROM platform.odoo_koppeling WHERE administratie_id = :id"),
+            {"id": administratie_id},
+        ).scalar_one()
+
+
+class _RlzMetSpoor(FakeBoekClient):
+    def __init__(self, **kw: Any) -> None:
+        super().__init__(**kw)
+        self.paden: list[str] = []
+
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.paden.append(path)
+        return super().get(path, params=params)
+
+
+def _leesbaar(a: ReconciliatieAfwijking) -> teksten.Leesbaar:
+    detail = cli._afwijking_detail(
+        "documenten",
+        Beoordeeld(record_id=a.document_id, soort=a.soort, detail=a.detail, vingerafdruk="vaf", acceptatie=None),
+        None,
+        document_id=a.document_id,
+        **a.context,
+    )
+    return teksten.leesbaar(SimpleNamespace(blok="documenten", soort="afwijking", tekst="", detail=detail, vingerafdruk="vaf"))
+
+
+class TestRlzVerleden:
+    @pytest.fixture
+    def overgestapt(
+        self, gescoopte_gebruiker, administratie_id, opslag, beheerder_id, monkeypatch, admin_engine: Engine
+    ) -> tuple[uuid.UUID, uuid.UUID]:
+        """Eén administratie mét twee GEBOEKTE documenten, daarna overgestapt naar Odoo: `doc_rlz` houdt zijn
+        `RLZ-…`-boekstuk zonder Odoo-spoor (RLZ-verleden), `doc_odoo` krijgt een odoo_document_koppeling + BILL-boekstuk."""
+        kw = dict(
+            gescoopte_gebruiker=gescoopte_gebruiker, administratie_id=administratie_id, opslag=opslag,
+            beheerder_id=beheerder_id, monkeypatch=monkeypatch,
+        )
+        doc_rlz = _boek_een_document(**kw)
+        doc_odoo = _boek_een_document(**kw)
+        _maak_overgestapt(admin_engine, administratie_id, beheerder_id)
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            session.add(
+                OdooDocumentKoppeling(
+                    administratie_id=administratie_id, document_id=doc_odoo, boek_cyclus=0, soort="boeking",
+                    odoo_move_id=3101, odoo_naam="BILL/2026/09/3101", odoo_move_type="in_invoice", company_id=COMPANY,
+                    state="posted",
+                )
+            )
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE boekhouding.boekvoorstel SET rlz_boekstuknummer = 'BILL/2026/09/3101' WHERE document_id = :id"),
+                {"id": doc_odoo},
+            )
+        return doc_rlz, doc_odoo
+
+    def test_geboekte_documenten_dragen_odoo_spoor_en_routeren(self, overgestapt, administratie_id) -> None:
+        doc_rlz, doc_odoo = overgestapt
+        per_id = {d.document_id: d for d in reconciliatie._geboekte_documenten(administratie_id)}
+        assert per_id[doc_odoo].heeft_odoo_koppeling and not reconciliatie.is_rlz_verleden(per_id[doc_odoo])
+        assert not per_id[doc_rlz].heeft_odoo_koppeling and reconciliatie.is_rlz_verleden(per_id[doc_rlz])
+        assert per_id[doc_rlz].rlz_boekstuknummer.startswith("RLZ-")
+
+    def test_odoo_document_naar_odoo_port_rlz_verleden_naar_rlz_port_alles_groen(
+        self, overgestapt, administratie_id
+    ) -> None:
+        doc_rlz, doc_odoo = overgestapt
+        fake_odoo = _FakeOdoo({3101: _move(3101)})
+        rlz_id = rlz_herboeking_id(doc_rlz, 0)
+        fake_rlz = _RlzMetSpoor(
+            bestaande_invoices={str(rlz_id): {"Status": 3, "ReceiptNumber": "RLZ-TEST-00001", "BaseInvoiceAmount": 121.0}}
+        )
+        factory_aanroepen: list[uuid.UUID] = []
+
+        def factory(aid: uuid.UUID) -> RlzInkoopPort:
+            factory_aanroepen.append(aid)
+            return RlzInkoopPort(fake_rlz)  # type: ignore[arg-type]
+
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id, port=_port(administratie_id, fake_odoo), rlz_verleden_port_factory=factory
+        )
+        assert rapport.afwijkingen == ()
+        assert rapport.backend == "odoo" and rapport.aantal_gecontroleerd == 2
+        assert rapport.aantal_in_odoo == 1 and rapport.aantal_in_rlz_verleden == 1 and rapport.aantal_overgeslagen == 0
+        # Elke port zag precies zijn eigen document.
+        assert fake_odoo.gelezen == [3101]
+        assert fake_rlz.paden == [f"PurchaseInvoices/{rlz_id}"]
+        assert factory_aanroepen == [administratie_id] and fake_rlz.gesloten
+
+    def test_rlz_verleden_verdwenen_in_rlz_is_ontbreekt_in_rlz_met_reeleezee_tekst(
+        self, overgestapt, administratie_id
+    ) -> None:
+        doc_rlz, _ = overgestapt
+        fake_rlz = _RlzMetSpoor()  # niets bekend in RLZ
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id,
+            port=_port(administratie_id, _FakeOdoo({3101: _move(3101)})),
+            rlz_verleden_port_factory=lambda aid: RlzInkoopPort(fake_rlz),  # type: ignore[arg-type]
+        )
+        [a] = rapport.afwijkingen
+        assert a.soort == "ontbreekt_in_rlz" and a.document_id == doc_rlz
+        assert a.context["backend"] == "rlz" and a.context["rlz_verleden"] == "true"
+        assert a.context["rlz_boekstuk"] == "RLZ-TEST-00001"
+        lb = _leesbaar(a)
+        assert lb.titel.startswith("RLZ-document verdwenen") and "in RLZ bestaat het boekstuk niet meer" in lb.wat
+        assert "vóór de overstap" in lb.wat and not lb.titel.startswith("Odoo")
+        assert ("systeem", "rlz") in lb.details
+
+    def test_zonder_bewaarde_credential_is_controle_mislukt_zichtbaar_per_document(
+        self, overgestapt, administratie_id
+    ) -> None:
+        """Default-factory (geen test-seam): geen rlz_credential-rij en geen .env-prefix voor het oude id →
+        GeenRlzCredentials → één zichtbare controle_mislukt per verleden-document, het Odoo-document blijft groen."""
+        doc_rlz, _ = overgestapt
+        fake_odoo = _FakeOdoo({3101: _move(3101)})
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id, port=_port(administratie_id, fake_odoo)
+        )
+        [a] = rapport.afwijkingen
+        assert a.soort == "controle_mislukt" and a.document_id == doc_rlz
+        assert a.detail.startswith(RLZ_VERLEDEN_NIET_TOETSBAAR)
+        assert a.context["backend"] == "rlz" and a.context["rlz_verleden"] == "true"
+        assert rapport.aantal_in_rlz_verleden == 1 and rapport.aantal_in_odoo == 1 and rapport.aantal_overgeslagen == 0
+        assert fake_odoo.gelezen == [3101]
+        lb = _leesbaar(a)
+        assert lb.titel.startswith("Reeleezee-verleden niet controleerbaar")
+        assert "geen bewaarde Reeleezee-login" in lb.wat and "Odoo gaf" not in lb.wat
+        assert "webservice-login" in lb.doe
+
+    def test_client_voor_rlz_verleden_gebruikt_bewaarde_credential_op_het_oude_id(
+        self, overgestapt, administratie_id, beheerder_id, admin_engine: Engine
+    ) -> None:
+        _leg_rlz_credential_vast(administratie_id, beheerder_id)
+        oud = _oud_rlz_id(admin_engine, administratie_id)
+        assert oud.startswith("rlz-")  # het fixture-id van vóór de overstap, niet de Odoo-sentinel
+        client = client_voor_rlz_verleden(administratie_id)
+        try:
+            assert client._path("PurchaseInvoices/x") == f"/{oud}/PurchaseInvoices/x"
+        finally:
+            client.close()
+
+    def test_client_voor_rlz_verleden_zonder_credential_of_zonder_oud_id_is_fail_loud(
+        self, overgestapt, administratie_id, admin_engine: Engine
+    ) -> None:
+        with pytest.raises(GeenRlzCredentials, match="geen bewaarde RLZ-credential"):
+            client_voor_rlz_verleden(administratie_id)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE platform.odoo_koppeling SET rlz_admin_id_voor_overstap = NULL WHERE administratie_id = :id"),
+                {"id": administratie_id},
+            )
+        with pytest.raises(GeenRlzCredentials, match="geen bewaard RLZ-administratie-id"):
+            client_voor_rlz_verleden(administratie_id)
+
+    def test_default_factory_opent_rlz_port_op_de_verleden_client(
+        self, overgestapt, administratie_id, beheerder_id, monkeypatch
+    ) -> None:
+        """Zonder seam loopt het productiepad: `client_voor_rlz_verleden(administratie_id)` → RlzInkoopPort."""
+        doc_rlz, _ = overgestapt
+        _leg_rlz_credential_vast(administratie_id, beheerder_id)
+        rlz_id = rlz_herboeking_id(doc_rlz, 0)
+        fake_rlz = _RlzMetSpoor(
+            bestaande_invoices={str(rlz_id): {"Status": 2, "ReceiptNumber": "RLZ-TEST-00001", "BaseInvoiceAmount": 121.0}}
+        )
+        gevraagd: list[uuid.UUID] = []
+
+        def fake_client_voor_rlz_verleden(aid: uuid.UUID) -> _RlzMetSpoor:
+            gevraagd.append(aid)
+            return fake_rlz
+
+        monkeypatch.setattr(reconciliatie, "client_voor_rlz_verleden", fake_client_voor_rlz_verleden)
+        rapport = reconciliatie.reconcilieer_administratie(
+            administratie_id=administratie_id, port=_port(administratie_id, _FakeOdoo({3101: _move(3101)}))
+        )
+        assert rapport.afwijkingen == () and gevraagd == [administratie_id]
+        assert fake_rlz.paden == [f"PurchaseInvoices/{rlz_id}"] and fake_rlz.gesloten
+
+    def test_cli_regel_toont_verdeling_odoo_en_reeleezee_verleden(self, monkeypatch, capsys) -> None:
+        aid = uuid.uuid4()
+        rapport = ReconciliatieRapport(
+            administratie_id=aid, aantal_gecontroleerd=9, afwijkingen=(), backend="odoo",
+            aantal_in_odoo=3, aantal_in_rlz_verleden=6,
+        )
+        monkeypatch.setattr(cli.reconciliatie, "reconcilieer_alle_administraties", lambda: {aid: rapport})
+        monkeypatch.setattr(cli.acceptatie_service, "uitgesloten_administraties", lambda: {})
+        monkeypatch.setattr(cli.storno_detectie, "detecteer_en_meld_gestorneerd_alle", lambda: {})
+        exit_code = cli._reconciliatie(argparse.Namespace())
+        uit = capsys.readouterr().out
+        assert exit_code == 0
+        assert f"OK         {aid}: 9 gecontroleerd, geen afwijkingen (3 getoetst in Odoo, 6 in Reeleezee-verleden)" in uit
+        assert "niet van toepassing" not in uit
+
+    def test_rlz_administratie_regel_ongewijzigd(self, monkeypatch, capsys) -> None:
+        aid = uuid.uuid4()
+        rapport = ReconciliatieRapport(administratie_id=aid, aantal_gecontroleerd=4, afwijkingen=())
+        monkeypatch.setattr(cli.reconciliatie, "reconcilieer_alle_administraties", lambda: {aid: rapport})
+        monkeypatch.setattr(cli.acceptatie_service, "uitgesloten_administraties", lambda: {})
+        monkeypatch.setattr(cli.storno_detectie, "detecteer_en_meld_gestorneerd_alle", lambda: {})
+        cli._reconciliatie(argparse.Namespace())
+        uit = capsys.readouterr().out
+        assert f"OK         {aid}: 4 gecontroleerd, geen afwijkingen\n" in uit

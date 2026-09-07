@@ -248,13 +248,14 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     onderwerp = _onderwerp_documenten(d)
     lokaal, extern = _bedragen(d)
     boekdatum = datum(_s(d, "boekdatum", "geboekt_op", "factuurdatum"))
+    verleden = " (vóór de overstap naar Odoo geboekt in Reeleezee)" if d.get("rlz_verleden") else ""
     if soort in ("ontbreekt_in_rlz", "ontbreekt_in_odoo"):
         geboekt = " ".join(x for x in ("Wij boekten", lokaal, f"op {boekdatum}" if boekdatum else None) if x)
         if not (lokaal or boekdatum):
             geboekt = "Wij boekten dit document definitief"
         return (
             _titel(f"{sys_}-document verdwenen", onderwerp),
-            f"{geboekt}, in {sys_} bestaat het boekstuk niet meer.",
+            f"{geboekt}{verleden}, in {sys_} bestaat het boekstuk niet meer.",
             "Boek opnieuw via de actie op deze rij, of accepteer met reden.",
         )
     if soort == "bedrag_wijkt_af":
@@ -283,9 +284,19 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
         )
         return _titel("Boekstuknummer afwijkt", onderwerp), wat, f"Controleer in {sys_}; {_DOE_ACCEPTEER}"
     if soort == "controle_mislukt":
+        if "geen bewaarde RLZ-credential" in (d.get("detail") or tekst or ""):
+            # Besluit Peter 07-09 (A12 beslispunt 1): het RLZ-verleden van een overgestapte administratie wordt
+            # tegen Reeleezee getoetst; zonder bewaarde webservice-login is dat niet mogelijk — zichtbaar, niet stil.
+            return (
+                _titel("Reeleezee-verleden niet controleerbaar", onderwerp),
+                "Dit document is vóór de overstap naar Odoo in Reeleezee geboekt, maar er is geen bewaarde "
+                "Reeleezee-login voor deze administratie om het te controleren; over de boeking zelf zegt dat niets.",
+                "Registreer de Reeleezee-webservice-login voor deze administratie opnieuw (Instellingen › "
+                "Administraties); de controle loopt daarna automatisch mee.",
+            )
         return (
             _titel("Controle mislukt", onderwerp),
-            f"{sys_} gaf een fout bij het ophalen van dit document; over de boeking zelf zegt dat niets.",
+            f"{sys_} gaf een fout bij het ophalen van dit document{verleden}; over de boeking zelf zegt dat niets.",
             _DOE_CONTROLE_MISLUKT,
         )
     if soort == "niet_geboekt_in_odoo":
@@ -595,6 +606,7 @@ def _uitgesloten(blok: str, d: dict, tekst: str, administratie_naam: str | None)
 _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
     ("afwijking_soort", "soort"),
     ("backend", "systeem"),
+    ("rlz_verleden", "vóór de overstap in Reeleezee geboekt"),
     ("record_id", "record"),
     ("document_id", "document-id"),
     ("extern_id", "extern id"),
