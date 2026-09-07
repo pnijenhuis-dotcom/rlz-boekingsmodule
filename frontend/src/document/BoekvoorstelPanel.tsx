@@ -284,6 +284,103 @@ type VendorMatch = 'exact' | 'fuzzy' | 'btw_nummer' | 'kvk_nummer' | 'iban'
 
 const HERKENNING_LABEL: Record<string, string> = { btw_nummer: 'btw-nummer', kvk_nummer: 'KvK-nummer', iban: 'IBAN' }
 
+/** Herkomst-chip bij de kop-omschrijving (blok 9 vervolgrun 07-09, auto-first): de server leidt de omschrijving
+ * deterministisch af — 'regel' (de enige boekingsregel), 'factuur' (betreft-regel van de scan), 'afgeleid'
+ * (leverancier + factuurnummer) — of de mens zette 'm ('handmatig', wint altijd). Zelfde regel als de andere
+ * herkomst-chips: verdwijnt zodra de invoer afwijkt van de serverwaarde (dan beschrijft de herkomst de inhoud niet meer). */
+const KOP_OMSCHRIJVING_CHIP: Record<string, { label: string; klasse: string; titel: string }> = {
+  regel: {
+    label: 'uit regel',
+    klasse: 'chip ok',
+    titel: 'Overgenomen van de enige boekingsregel — gaat als omschrijving mee naar de boekhouding.',
+  },
+  factuur: {
+    label: 'uit factuur',
+    klasse: 'chip ok',
+    titel: 'De betreft-/onderwerpregel zoals die op de factuur staat (voorgelezen, niet samengevat).',
+  },
+  afgeleid: {
+    label: 'afgeleid',
+    klasse: 'chip',
+    titel: 'Geen enkele regeltekst of betreft-regel beschikbaar — leveranciersnaam + factuurnummer als omschrijving.',
+  },
+  handmatig: {
+    label: 'handmatig',
+    klasse: 'chip',
+    titel: 'Door een medewerker gezet — wordt nooit meer automatisch overschreven.',
+  },
+}
+
+/** Factuurperiode op weekniveau (blok 11 vervolgrun 07-09 — datalaag voor kosten per project × week). De server
+ * normaliseert de voorgelezen periode deterministisch naar ISO-weken; de chip toont "wk 34 · 2026" / "wk 34–35 · 2026"
+ * mét herkomst-label. Correctie = klein inline-veld (weeknummer(s) + jaar) — geen nieuw scherm. Zelfde chip-regel als
+ * de andere herkomst-chips: de herkomst staat zolang de invoer gelijk is aan de serverstand; ná opslaan volgt de chip
+ * de serverstand ('mens' = "handmatig"). */
+const PERIODE_HERKOMST: Record<string, { label: string; klasse: string; titel: string }> = {
+  factuur: {
+    label: 'uit factuur',
+    klasse: 'chip ok',
+    titel: 'De periode zoals die op de factuur staat (voorgelezen, in code omgezet naar weeknummers).',
+  },
+  factuur_maand: {
+    label: 'uit factuur (maand)',
+    klasse: 'chip ok',
+    titel: 'De factuur noemt een maand — omgezet naar de weken van die maand.',
+  },
+  afgeleid_van_factuurdatum: {
+    label: 'afgeleid van factuurdatum',
+    klasse: 'chip geheugen',
+    titel: 'Geen periode op de factuur gevonden — de week van de factuurdatum als aanname. Controleer en corrigeer zo nodig.',
+  },
+  mens: {
+    label: 'handmatig',
+    klasse: 'chip',
+    titel: 'Door een medewerker gezet — wordt nooit meer automatisch overschreven.',
+  },
+}
+
+export function periodeLabel(p: { week_van: number; week_tot: number; jaar: number }): string {
+  return p.week_van === p.week_tot ? `wk ${p.week_van} · ${p.jaar}` : `wk ${p.week_van}–${p.week_tot} · ${p.jaar}`
+}
+
+/** "34" | "34-35" | "34–35" | "34 t/m 35" → [van, tot]; null = leeg of onherkenbaar. */
+export function parseWeken(invoer: string): [number, number] | null {
+  const m = invoer.trim().match(/^(\d{1,2})(?:\s*(?:-|–|t\/m|tot)\s*(\d{1,2}))?$/i)
+  if (!m) return null
+  const van = Number(m[1])
+  const tot = m[2] ? Number(m[2]) : van
+  if (van < 1 || van > 53 || tot < 1 || tot > 53) return null
+  return van <= tot ? [van, tot] : [tot, van]
+}
+
+export function parsePeriodeInvoer(weken: string, jaar: string): { jaar: number; week_van: number; week_tot: number } | null {
+  const w = parseWeken(weken)
+  const j = Number(jaar.trim())
+  if (!w || !/^\d{4}$/.test(jaar.trim()) || j < 2000 || j > 2100) return null
+  return { jaar: j, week_van: w[0], week_tot: w[1] }
+}
+
+function PeriodeChip({ periode }: { periode: BoekvoorstelPeriodeDto }) {
+  const chip = PERIODE_HERKOMST[periode.herkomst]
+  if (!chip) return null
+  const titel = periode.tekst ? `${chip.titel} Gelezen tekst: "${periode.tekst}".` : chip.titel
+  return (
+    <span className={chip.klasse} title={titel} data-testid="periode-chip">
+      {periodeLabel(periode)} · {chip.label}
+    </span>
+  )
+}
+
+function KopOmschrijvingChip({ herkomst }: { herkomst: string }) {
+  const chip = KOP_OMSCHRIJVING_CHIP[herkomst]
+  if (!chip) return null
+  return (
+    <span className={chip.klasse} title={chip.titel} data-testid="kop-omschrijving-chip">
+      {chip.label}
+    </span>
+  )
+}
+
 interface AiChipProps {
   score: number
   drempel: number
@@ -519,6 +616,11 @@ export function BoekvoorstelPanel({
   const [ladenFout, setLadenFout] = useState<string | null>(null)
   const [vendorId, setVendorId] = useState<string | null>(null)
   const [referentie, setReferentie] = useState('')
+  // Blok 9 (07-09): kop-omschrijving — invoer + de serverstand (waarde + herkomst) voor de herkomst-chip. De chip
+  // staat zolang de invoer gelijk is aan wat de server afleidde/bewaarde; wijzigen = chip weg, opslaan = de server
+  // beslist (gelijk aan de afleiding → automatisch blijft; anders mens-override, herkomst 'handmatig').
+  const [omschrijving, setOmschrijving] = useState('')
+  const [omschrijvingServer, setOmschrijvingServer] = useState<{ tekst: string; herkomst: string } | null>(null)
   const [factuurdatum, setFactuurdatum] = useState('')
   const [vervaldatum, setVervaldatum] = useState('')
   const [vervaldatumSignaal, setVervaldatumSignaal] = useState<string | null>(null)
@@ -597,6 +699,10 @@ export function BoekvoorstelPanel({
         setAiChipsActief(aiPrefill)
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
+        setOmschrijving(dto.omschrijving ?? '')
+        setOmschrijvingServer(
+          dto.omschrijving && dto.omschrijving_herkomst ? { tekst: dto.omschrijving, herkomst: dto.omschrijving_herkomst } : null,
+        )
         setFactuurdatum(dto.factuurdatum ?? '')
         setVervaldatum(dto.vervaldatum ?? '')
         setVervaldatumSignaal(dto.vervaldatum_signaal ?? null)
@@ -810,6 +916,23 @@ export function BoekvoorstelPanel({
     setReferentie(waarde)
     veranderInvoer()
   }
+  const wijzigOmschrijving = (waarde: string) => {
+    setOmschrijving(waarde)
+    veranderInvoer()
+  }
+  // Chip alleen zolang de invoer nog de serverwaarde is (whitespace-ongevoelig, zoals de server normaliseert).
+  const omschrijvingChip =
+    omschrijvingServer && omschrijving.trim().split(/\s+/).join(' ') === omschrijvingServer.tekst ? omschrijvingServer.herkomst : null
+  // Blok 11: periode-chip zolang de invoer nog de serverstand is (waarde-gelijkheid — zelfde regel als de andere chips).
+  const periodeInvoer = parsePeriodeInvoer(periodeWeken, periodeJaar)
+  const periodeChip =
+    periodeServer &&
+    periodeInvoer &&
+    periodeInvoer.jaar === periodeServer.jaar &&
+    periodeInvoer.week_van === periodeServer.week_van &&
+    periodeInvoer.week_tot === periodeServer.week_tot
+      ? periodeServer
+      : null
   const wijzigFactuurdatum = (waarde: string) => {
     setFactuurdatum(waarde)
     veranderInvoer()
@@ -949,6 +1072,8 @@ export function BoekvoorstelPanel({
           body: JSON.stringify({
             vendor_id: vendorId,
             referentie: referentie || null,
+            // Blok 9: de kop-omschrijving zoals de mens 'm liet staan — de server bepaalt of het een override is.
+            omschrijving: omschrijving.trim() || null,
             factuurdatum: factuurdatum || null,
             vervaldatum: vervaldatum || null,
             // Blok A 28-08: alleen meesturen als de toggle aan staat (uit = veld onzichtbaar, keuze blijft).
@@ -971,6 +1096,19 @@ export function BoekvoorstelPanel({
       if (wijzigingsVersieRef.current === versieBijStart) {
         setCheckRapport(resultaat.checks)
         setChecksActueel(true)
+        // Blok 9: de serverstand van de kop-omschrijving ná opslaan (afleiding volgt de regels; een afwijkende
+        // invoer is nu een override met herkomst 'handmatig') — de chip volgt die stand.
+        const bv = resultaat.boekvoorstel
+        if (bv && typeof bv === 'object' && 'omschrijving' in bv) {
+          const tekst = bv.omschrijving ?? null
+          const herkomst = bv.omschrijving_herkomst ?? null
+          setOmschrijvingServer(tekst && herkomst ? { tekst, herkomst } : null)
+          if (tekst !== null && omschrijving.trim() === '') setOmschrijving(tekst)
+        }
+        // Blok 11: de serverstand van de periode ná opslaan (herkomst 'mens' bij een correctie) — de chip volgt die.
+        if (bv && typeof bv === 'object' && 'periode' in bv) {
+          setPeriodeServer(bv.periode ?? null)
+        }
       }
       onVoorstelOpgeslagen?.()
     } catch (err) {
@@ -1360,6 +1498,7 @@ export function BoekvoorstelPanel({
           <div className="grid2">
             <StatischVeld label="Crediteur" waarde={optieWeergave(vendorOpties, vendorId)} />
             <StatischVeld label="Referentie / factuurnummer" waarde={referentie} />
+            <StatischVeld label="Omschrijving boekstuk" waarde={omschrijving} />
             <StatischVeld label="Factuurdatum" waarde={factuurdatum} />
             <StatischVeld label="Vervaldatum" waarde={vervaldatum} />
             {afdelingen.ingeschakeld && (
@@ -1382,6 +1521,22 @@ export function BoekvoorstelPanel({
               {aiKop?.referentie && (
                 <div style={{ marginTop: 4 }}>
                   <AiChip score={aiKop.referentie.score} drempel={aiKop.drempel} bron={aiKop.bron} />
+                </div>
+              )}
+            </div>
+            <div>
+              {/* Blok 9 (07-09): kop-omschrijving — automatisch gevuld (chip = herkomst), mens mag overschrijven. */}
+              <label htmlFor="boekvoorstel-omschrijving">Omschrijving boekstuk</label>
+              <input
+                id="boekvoorstel-omschrijving"
+                value={omschrijving}
+                maxLength={255}
+                placeholder="Automatisch uit regel, factuur of leverancier + nummer"
+                onChange={(e) => wijzigOmschrijving(e.target.value)}
+              />
+              {omschrijvingChip && (
+                <div style={{ marginTop: 4 }}>
+                  <KopOmschrijvingChip herkomst={omschrijvingChip} />
                 </div>
               )}
             </div>

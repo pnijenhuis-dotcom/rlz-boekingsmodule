@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -15,6 +15,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import leverancier_iban
 from app.documenten.checks import (
     CheckRapport,
@@ -156,6 +157,18 @@ class BoekvoorstelData:
     # dan de AI-zekerheidschips aan (zelfde stand als een nog niet opgeslagen prefill). Altijd False op een
     # niet-opgeslagen voorstel en op een door een mens opgeslagen voorstel.
     prefill_automatisch: bool = False
+    # Blok 9 vervolgrun 07-09 (besluit Peter, auto-first): kop-omschrijving van het document — RLZ `Description`
+    # op de PurchaseInvoice, Odoo `narration`. Deterministisch afgeleid (app/documenten/kop_omschrijving.py:
+    # één regel → regeltekst | `betreft` uit de scan | "‹leverancier› ‹nummer›") tenzij de mens 'm zette
+    # (herkomst "handmatig", bewaard als tijdlijn-notitie `kop_omschrijving` — geen kolom). Herkomst =
+    # "regel" | "factuur" | "afgeleid" | "handmatig" | None (chip op het controlescherm).
+    omschrijving: str | None = None
+    omschrijving_herkomst: str | None = None
+    # Blok 11 vervolgrun 07-09 (kosten op weekniveau — datalaag): de ISO-week(s) waarop de factuur betrekking heeft,
+    # mét herkomst (`factuur`/`factuur_maand` = voorgelezen en deterministisch genormaliseerd, `afgeleid_van_
+    # factuurdatum` = terugval, `mens` = correctie via de PUT, wint altijd) en de ruwe factuurtekst. Kolommen op
+    # `boekvoorstel` (migratie 0120); op een oud voorstel zonder kolomwaarde wordt de stand live afgeleid.
+    periode: periode_regels.FactuurPeriode | None = None
 
 
 def _met_projectverdeling(
@@ -462,6 +475,110 @@ def _afdeling_velden(
 
 
 # ---------------------------------------------------------------------------------------------
+# Blok 9 vervolgrun 07-09 — kop-omschrijving (RLZ `Description` / Odoo `narration`), auto-first.
+# De afleiding is puur (kop_omschrijving.py); hier de koppeling met het voorstel: welke regelteksten
+# tellen (de synthetische samengevoegde regel niet), waar `betreft`/leveranciersnaam vandaan komen,
+# en de mens-override als tijdlijn-notitie (`DocumentGebeurtenis.detail["kop_omschrijving"]`,
+# zelfde JSON-patroon als de A10-prefill-snapshot; geen kolom, geen migratie — opdracht blok 9).
+# ---------------------------------------------------------------------------------------------
+KOP_OMSCHRIJVING_SLEUTEL = "kop_omschrijving"
+
+
+def _laatste_kop_omschrijving_notitie(gebeurtenissen: list[DocumentGebeurtenis]) -> dict | None:
+    return next(
+        (
+            g.detail[KOP_OMSCHRIJVING_SLEUTEL]
+            for g in reversed(gebeurtenissen)
+            if g.detail and isinstance(g.detail.get(KOP_OMSCHRIJVING_SLEUTEL), dict)
+        ),
+        None,
+    )
+
+
+def _kop_omschrijving_override(gebeurtenissen: list[DocumentGebeurtenis]) -> str | None:
+    """De door een mens gezette kop-omschrijving (laatste notitie wint); `tekst: null` = terug naar automatisch."""
+    notitie = _laatste_kop_omschrijving_notitie(gebeurtenissen)
+    if notitie is None:
+        return None
+    return kop_omschrijving_regels.normaliseer(notitie.get("tekst"))
+
+
+def _leverancier_naam(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None) -> str | None:
+    if vendor_id is None:
+        return None
+    vendor = session.get(VendorCache, (vendor_id, administratie_id))
+    return vendor.naam if vendor else None
+
+
+def _echte_regelteksten(
+    regels: list[BoekvoorstelRegelData], *, veldvoorstel: dict | None, samengevoegde_regel: BoekvoorstelRegelData | None
+) -> list[str | None]:
+    """Regelteksten voor de afleiding. Is de ene boekingsregel de SYNTHETISCHE samengevoegde regel ("Factuur X —
+    samengevoegd (n regels)"), dan is dat geen factuurtekst: dan tellen de gelezen factuurregels uit het
+    veldvoorstel (precies één gelezen regel → die tekst; meerdere → geen regeltekst, `betreft` of terugval)."""
+    if (
+        len(regels) == 1
+        and samengevoegde_regel is not None
+        and samengevoegde_regel.omschrijving is not None
+        and regels[0].omschrijving == samengevoegde_regel.omschrijving
+    ):
+        gelezen = [r for r in (veldvoorstel or {}).get("regels") or [] if isinstance(r, dict)]
+        return [r.get("omschrijving") for r in gelezen]
+    return [r.omschrijving for r in regels]
+
+
+def _afgeleide_kop_omschrijving(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID | None,
+    referentie: str | None,
+    regels: list[BoekvoorstelRegelData],
+    veldvoorstel: dict | None,
+) -> kop_omschrijving_regels.KopOmschrijving:
+    """Eén bron voor leesroute (GET), autosave en PUT: dezelfde invoer geeft dezelfde omschrijving."""
+    return kop_omschrijving_regels.bepaal_kop_omschrijving(
+        regel_omschrijvingen=_echte_regelteksten(
+            regels,
+            veldvoorstel=veldvoorstel,
+            samengevoegde_regel=_samengevoegde_regel(veldvoorstel) if veldvoorstel else None,
+        ),
+        betreft=(veldvoorstel or {}).get("betreft"),
+        leverancier_naam=_leverancier_naam(session, administratie_id=administratie_id, vendor_id=vendor_id),
+        referentie=referentie,
+    )
+
+
+def _met_kop_omschrijving(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    data: BoekvoorstelData,
+    regels: list[BoekvoorstelRegelData],
+    veldvoorstel: dict | None,
+    gebeurtenissen: list[DocumentGebeurtenis] | None,
+) -> BoekvoorstelData:
+    """Zet `omschrijving` + `omschrijving_herkomst` op het (frozen) voorstel: mens-override (tijdlijn) wint,
+    anders de afleiding. `gebeurtenissen=None` = prefill-pad (een override veronderstelt een opgeslagen voorstel)."""
+    override = _kop_omschrijving_override(gebeurtenissen) if gebeurtenissen is not None else None
+    if override is not None:
+        return replace(
+            data,
+            omschrijving=kop_omschrijving_regels.kap_af(override),
+            omschrijving_herkomst=kop_omschrijving_regels.HERKOMST_HANDMATIG,
+        )
+    afgeleid = _afgeleide_kop_omschrijving(
+        session,
+        administratie_id=administratie_id,
+        vendor_id=data.vendor_id,
+        referentie=data.referentie,
+        regels=regels,
+        veldvoorstel=veldvoorstel,
+    )
+    return replace(data, omschrijving=afgeleid.tekst, omschrijving_herkomst=afgeleid.herkomst)
+
+
+# ---------------------------------------------------------------------------------------------
 # Blok A10 07-09 — stale check bij geheugen-prefill: de prefill uit geheugen/template/default wordt
 # bij het OPENEN van het controlescherm gepersisteerd (autosave), mét een herkomst-snapshot in de
 # tijdlijn (DocumentGebeurtenis.detail["boekvoorstel_prefill"]) zodat (1) de checks en het
@@ -536,6 +653,11 @@ def _maak_prefill_snapshot(
             "betalingskenmerk": prefill.betalingskenmerk or None,
             "afdeling_prefill_id": _str_of_none(prefill.afdeling_prefill_id),
             "afdeling_prefill_leverancier": prefill.afdeling_prefill_leverancier,
+            # Blok 9: informatief — de kop-omschrijving is een afleiding (geen kolom), de leesroute herleidt 'm zelf.
+            "omschrijving": prefill.omschrijving,
+            "omschrijving_herkomst": prefill.omschrijving_herkomst,
+            # Blok 11: factuurperiode zoals de prefill 'm afleidde (informatief; de kolommen zijn de stand).
+            "periode": _periode_snapshot(prefill.periode),
         },
         "regels": [_regel_snapshot(i, r) for i, r in enumerate(regels, start=1)],
     }
@@ -597,6 +719,104 @@ def _kop_onaangeraakt(bestaand: Boekvoorstel, kop: dict) -> bool:
         and (bestaand.referentie or None) == kop.get("referentie")
         and _str_of_none(bestaand.factuurdatum) == kop.get("factuurdatum")
         and _str_of_none(bestaand.totaalbedrag) == kop.get("totaalbedrag")
+        # Blok 11: een door de mens gecorrigeerde periode is een kop-wijziging (een verse extractie mag 'm niet
+        # overschrijven).
+        and bestaand.periode_herkomst != periode_regels.HERKOMST_MENS
+    )
+
+
+# --- factuurperiode (blok 11 vervolgrun 07-09) -------------------------------------------------------------------
+# De normalisatie is puur (periode.py); hier de koppeling met het voorstel: automatische stand uit veldvoorstel +
+# factuurdatum, de opgeslagen kolommen als bron zodra ze gevuld zijn, en de mens-correctie via de PUT (waarde ≠
+# automatische afleiding → herkomst `mens`, wint; gelijk → automatisch blijft meebewegen — dezelfde regel als de
+# kop-omschrijving en de A10-chips).
+
+
+def _periode_snapshot(periode: periode_regels.FactuurPeriode | None) -> dict | None:
+    if periode is None:
+        return None
+    return {
+        "jaar": periode.jaar,
+        "week_van": periode.week_van,
+        "week_tot": periode.week_tot,
+        "herkomst": periode.herkomst,
+        "tekst": periode.tekst,
+    }
+
+
+def _automatische_periode(veldvoorstel: dict | None, factuurdatum: date | None) -> periode_regels.FactuurPeriode | None:
+    return periode_regels.bepaal_periode((veldvoorstel or {}).get("periode_tekst"), factuurdatum=factuurdatum)
+
+
+def _opgeslagen_periode(bestaand: Boekvoorstel, veldvoorstel: dict | None) -> periode_regels.FactuurPeriode | None:
+    """De kolommen zijn de stand; een voorstel van vóór 0120 (kolommen leeg) krijgt de automatische afleiding live
+    (niet-opgeslagen) — de eerstvolgende PUT of autosave persisteert 'm."""
+    if bestaand.periode_jaar is not None and bestaand.periode_week_van is not None and bestaand.periode_herkomst:
+        return periode_regels.FactuurPeriode(
+            jaar=bestaand.periode_jaar,
+            week_van=bestaand.periode_week_van,
+            week_tot=bestaand.periode_week_tot if bestaand.periode_week_tot is not None else bestaand.periode_week_van,
+            herkomst=bestaand.periode_herkomst,
+            tekst=bestaand.periode_tekst,
+        )
+    return _automatische_periode(veldvoorstel, bestaand.factuurdatum)
+
+
+def _verwerk_periode(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document: Document,
+    actor_id: uuid.UUID,
+    bestaand: Boekvoorstel,
+    factuurdatum: date | None,
+    periode: tuple[int, int, int] | None,
+    autosave: bool,
+) -> None:
+    """Zet de periode-kolommen. `periode` = (jaar, week_van, week_tot) zoals de client 'm toont/de mens 'm liet
+    staan; None = niet meegegeven (oude client/autoboeken) → de opgeslagen stand blijft, of — nog leeg — de
+    automatische afleiding wordt gepersisteerd. Gelijk aan de automatische afleiding = automatische herkomst;
+    afwijkend = `mens`. De ruwe factuurtekst blijft altijd staan. Een échte wijziging van de stand door een mens
+    wordt geaudit (oud→nieuw); de autosave staat al in het prefill-snapshot + zijn eigen audit-event."""
+    veldvoorstel = _laatste_veldvoorstel(session, document.id)
+    auto = _automatische_periode(veldvoorstel, factuurdatum)
+    oud = _opgeslagen_periode(bestaand, veldvoorstel) if bestaand.periode_herkomst else None
+    if periode is None:
+        nieuw = oud if oud is not None else auto
+    elif auto is not None and auto.sleutel == tuple(periode):
+        nieuw = auto
+    else:
+        jaar, week_van, week_tot = periode
+        try:
+            nieuw = periode_regels.maak_periode(
+                jaar,
+                week_van,
+                week_tot,
+                herkomst=periode_regels.HERKOMST_MENS,
+                tekst=auto.tekst if auto is not None else (oud.tekst if oud is not None else None),
+            )
+        except periode_regels.OngeldigePeriode as exc:
+            raise BoekvoorstelFout(f"Ongeldige periode: {exc}") from exc
+    bestaand.periode_jaar = nieuw.jaar if nieuw else None
+    bestaand.periode_week_van = nieuw.week_van if nieuw else None
+    bestaand.periode_week_tot = nieuw.week_tot if nieuw else None
+    bestaand.periode_herkomst = nieuw.herkomst if nieuw else None
+    bestaand.periode_tekst = nieuw.tekst if nieuw else None
+    if autosave or _periode_snapshot(oud) == _periode_snapshot(nieuw):
+        return
+    if oud is None and nieuw is not None and nieuw.herkomst != periode_regels.HERKOMST_MENS:
+        return  # eerste persist van de automatische afleiding (voorstel van vóór 0120) — geen mens-handeling
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="boekvoorstel",
+        record_id=document.id,
+        actie="boekvoorstel_periode_gewijzigd",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde={"periode": _periode_snapshot(oud)},
+        nieuwe_waarde={"periode": _periode_snapshot(nieuw)},
+        administratie_id=administratie_id,
     )
 
 
@@ -702,7 +922,7 @@ def _lees_opgeslagen_voorstel(
         totaalbedrag=bestaand.totaalbedrag,
         rlz_boekstuknummer=bestaand.rlz_boekstuknummer,
         opgeslagen=True,
-        regels=[_opgeslagen_regel_data(r, snapshot) for r in regels],
+        regels=regel_data,
         boek_cyclus=bestaand.boek_cyclus,
         btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
         prefill_automatisch=prefill_automatisch,
@@ -716,6 +936,15 @@ def _lees_opgeslagen_voorstel(
         ),
         **afdeling,
     ))
+    # Blok 9: kop-omschrijving over de OPGESLAGEN regels (= wat de motoren boeken); mens-override uit de tijdlijn wint.
+    return _met_kop_omschrijving(
+        session,
+        administratie_id=administratie_id,
+        data=data,
+        regels=regel_data,
+        veldvoorstel=veldvoorstel,
+        gebeurtenissen=gebeurtenissen,
+    )
 
 
 def _bereken_prefill(
@@ -805,6 +1034,16 @@ def _bereken_prefill(
         **samenvoeg,
         **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=vendor_id, huidige_afdeling_id=None),
     ))
+    # Blok 9: kop-omschrijving over de regels zoals het scherm ze toont (samengevoegd = de ene regel); nog geen
+    # opgeslagen voorstel, dus geen mens-override mogelijk.
+    return _met_kop_omschrijving(
+        session,
+        administratie_id=administratie_id,
+        data=data,
+        regels=_effectieve_regels(data),
+        veldvoorstel=veldvoorstel,
+        gebeurtenissen=None,
+    )
 
 
 def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> BoekvoorstelData:
@@ -945,8 +1184,20 @@ def sla_boekvoorstel_op(
     afdeling_id: uuid.UUID | None = None,
     betalingskenmerk: str | None = None,
     prefill_snapshot: dict | None = None,
+    omschrijving: str | None = None,
+    periode: tuple[int, int, int] | None = None,
 ) -> BoekvoorstelData:
-    """`prefill_snapshot` (blok A10 07-09) ≠ None = AUTOSAVE van de prefill bij het openen
+    """`periode` (blok 11 vervolgrun 07-09) = (jaar, week_van, week_tot) zoals de client 'm toont; None = niet
+    meegegeven (oude client/autoboeken) → opgeslagen stand blijft, of de automatische afleiding wordt gepersisteerd.
+    Gelijk aan de automatische afleiding = automatische herkomst; afwijkend = `mens` (wint). Zie `_verwerk_periode`.
+
+    `omschrijving` (blok 9 vervolgrun 07-09) = de kop-omschrijving zoals de mens 'm in het veld liet staan.
+    None = niet meegegeven (oude client/autosave/autoboeken): niets aan de omschrijving gedaan. Gelijk aan de
+    automatische afleiding (of leeg) = geen override — de omschrijving blijft automatisch meebewegen; anders
+    wordt de tekst als mens-override bewaard (tijdlijn-notitie `kop_omschrijving` + audit oud→nieuw) en wint
+    voortaan altijd (herkomst "handmatig"). Leegmaken ná een override = terug naar automatisch (`tekst: null`).
+
+    `prefill_snapshot` (blok A10 07-09) ≠ None = AUTOSAVE van de prefill bij het openen
     (`persisteer_prefill_bij_openen`): zelfde schrijfpad, maar (1) géén leerlus-bijeffecten die een
     MENSELIJKE bevestiging veronderstellen — crediteur-kenmerk (btw-/KvK-nummer) onthouden, afdeling-
     keuze per leverancier onthouden, samenvoeg-voorkeur — de autosave mag het geheugen nooit met zijn
@@ -1085,6 +1336,18 @@ def sla_boekvoorstel_op(
                 regels_samenvoegen=regels_samenvoegen,
             )
 
+        if omschrijving is not None and not autosave:
+            _verwerk_kop_omschrijving(
+                session,
+                administratie_id=administratie_id,
+                document=document,
+                actor_id=actor_id,
+                vendor_id=vendor_id,
+                referentie=referentie,
+                regels=regels,
+                ingevoerd=omschrijving,
+            )
+
         if autosave:
             assert prefill_snapshot is not None
             # Eén tijdlijn-notitie (status blijft) + één audit-event per autosave; de herkomst per veld staat in
@@ -1162,6 +1425,74 @@ def sla_boekvoorstel_op(
     duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
 
     return haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
+
+
+def _verwerk_kop_omschrijving(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document: Document,
+    actor_id: uuid.UUID,
+    vendor_id: uuid.UUID | None,
+    referentie: str | None,
+    regels: list[BoekvoorstelRegelData],
+    ingevoerd: str,
+) -> None:
+    """Blok 9: mens-override van de kop-omschrijving als tijdlijn-notitie. Alleen een ÉCHTE wijziging van de
+    override-stand schrijft (notitie + audit) — elke opslaan-actie herhaalt de actuele veldwaarde, dat is geen
+    handeling op de omschrijving. Ingevoerd == afleiding → geen override (chip blijft, automatisch beweegt mee)."""
+    gebeurtenissen = _gebeurtenissen_van(session, document.id)
+    veldvoorstel = next(
+        (g.detail["veldvoorstel"] for g in reversed(gebeurtenissen) if g.detail and "veldvoorstel" in g.detail), None
+    )
+    afgeleid = _afgeleide_kop_omschrijving(
+        session,
+        administratie_id=administratie_id,
+        vendor_id=vendor_id,
+        referentie=referentie,
+        regels=regels,
+        veldvoorstel=veldvoorstel,
+    )
+    nieuw_tekst = kop_omschrijving_regels.normaliseer(ingevoerd)
+    nieuw_override = nieuw_tekst if nieuw_tekst and nieuw_tekst != afgeleid.tekst else None
+    if nieuw_override is not None:
+        nieuw_override = kop_omschrijving_regels.kap_af(nieuw_override)
+    oud_override = _kop_omschrijving_override(gebeurtenissen)
+    if nieuw_override == oud_override:
+        return
+    session.add(
+        DocumentGebeurtenis(
+            document_id=document.id,
+            van_status=document.status,
+            naar_status=document.status,
+            actor_id=actor_id,
+            detail={
+                KOP_OMSCHRIJVING_SLEUTEL: {
+                    "tekst": nieuw_override,
+                    "herkomst": kop_omschrijving_regels.HERKOMST_HANDMATIG if nieuw_override else afgeleid.herkomst,
+                    "afgeleid": afgeleid.tekst,
+                }
+            },
+        )
+    )
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="boekvoorstel",
+        record_id=document.id,
+        actie="boekvoorstel_omschrijving_gewijzigd",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde={
+            "omschrijving": oud_override if oud_override is not None else afgeleid.tekst,
+            "handmatig": oud_override is not None,
+        },
+        nieuwe_waarde={
+            "omschrijving": nieuw_override if nieuw_override is not None else afgeleid.tekst,
+            "handmatig": nieuw_override is not None,
+        },
+        administratie_id=administratie_id,
+    )
 
 
 def _onthoud_voorkeur_samenvoegen(

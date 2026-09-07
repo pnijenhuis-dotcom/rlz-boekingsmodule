@@ -150,6 +150,10 @@ class RlzInkoopPort:
                 BookDate=f"{voorstel.factuurdatum.isoformat()}T00:00:00",
                 # Vervaldatum (C1 26-08): live bewezen; zonder DueDate leidt RLZ 'm zelf af.
                 **({"DueDate": f"{voorstel.vervaldatum.isoformat()}T00:00:00"} if voorstel.vervaldatum else {}),
+                # Kop-omschrijving (blok 9 vervolgrun 07-09, auto-first): document-`Description`. ⚠️ Op SalesInvoices
+                # negeert RLZ dit veld en leidt 'm af uit regel 1 (api-verkenning "Receipts-verkenning" punt 4); voor
+                # PurchaseInvoices is dat nog niet live getoetst — STAP-0-punt, zie rapport_9 / BESLISSINGEN.
+                **({"Description": voorstel.omschrijving} if voorstel.omschrijving else {}),
             )
             zorg_voor_bijlage(
                 self.client,
@@ -265,6 +269,9 @@ class RlzInkoopPort:
                     lines=tegenboek_lines(voorstel, omschrijving),
                     reference=referentie,
                     Date=f"{date.today().isoformat()}T00:00:00",
+                    # Blok 9: de herkenbare tegenboek-omschrijving ("TEGENBOEKING ‹nr› · ‹leverancier›") die al op
+                    # élke regel staat, óók als document-Description.
+                    Description=omschrijving,
                 )
                 zorg_voor_bijlage(
                     self.client,

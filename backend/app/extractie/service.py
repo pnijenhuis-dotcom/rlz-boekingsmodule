@@ -46,6 +46,19 @@ _KOP_KEYS: dict[str, str] = {
     # Betalingskenmerk (Odoo-adapter fase 1, 03-09): het kenmerk dat de leverancier bij de betaling vraagt te
     # vermelden (Odoo `payment_reference`; RLZ heeft het veld niet). Sentinel-string, geen union (limiet ≤ 16).
     "kenmerk": "betalingskenmerk",
+    # Betreft-/onderwerpregel van de factuur (blok 9 vervolgrun 07-09, kop-omschrijving auto-first): de regel
+    # "Betreft: …"/"Onderwerp: …"/"Project: …" boven de regels — VOORLEZEN, niet samenvatten. Voedt de kop-
+    # omschrijving (documenten/kop_omschrijving.py) alleen als er meer dan één boekingsregel is. Sentinel-string,
+    # geen union (limiet ≤ 16; vrije tekst → BSN-filter).
+    "betreft": "betreft",
+    # Projectnummer/werknummer/referentie van de OPDRACHTGEVER zoals op de factuur vermeld (blok 10 07-09, casus Spot
+    # Services: óns projectnummer staat op de factuur). Alleen voorlezen; de match tegen de project-cache en het
+    # leverancier-werknummer-geheugen is deterministisch (app/projecten/match.py) bij de prefill. Sentinel-string.
+    "proj": "project_tekst",
+    # Factuurperiode (blok 11 07-09, kosten op weekniveau): de periode waarop de factuur betrekking heeft zoals
+    # vermeld — weeknummer(s)/jaar, datumbereik of maand, LETTERLIJK. Normalisatie naar ISO-weken is deterministisch
+    # (app/documenten/periode.py) bij de prefill, nooit de AI. Sentinel-string, geen union (limiet ≤ 16).
+    "periode": "periode",
 }
 
 # Sentinel i.p.v. union (bugfix 31-08): Anthropic's structured outputs staan maximaal 16
@@ -138,7 +151,10 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   anders "", btwnr=het btw-nummer (btw-identificatienummer, bv. NL123456789B01) van de LEVERANCIER zoals
   het op de factuur staat (niet dat van de afnemer), kvk=het KvK-nummer (8 cijfers) van de leverancier,
   kenmerk=het betalingskenmerk/betalingsreferentie dat de leverancier vraagt bij de betaling te vermelden
-  (alleen als dat expliciet zo op de factuur staat; anders "" — het factuurnummer is géén betalingskenmerk)
+  (alleen als dat expliciet zo op de factuur staat; anders "" — het factuurnummer is géén betalingskenmerk),
+  betreft=de betreft-/onderwerpregel van de factuur zoals die letterlijk boven of onder de regels staat (bijv.
+  "Betreft: huur steigermateriaal project 26123 week 34", "Onderwerp: …", "Project: …" — de tekst ná het label;
+  alleen als zo'n regel er staat, nooit zelf een samenvatting maken; anders "")
   — telkens zoals ze óp de factuur staan, totalen dus niet zelf optellen.
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
@@ -169,14 +185,16 @@ antwoord — ook niet als het prominent op het document staat (bijv. bij een G-r
 urenstaat). Laat zulke nummers volledig weg; vervang ze in omschrijvingen door "[BSN weggelaten]"."""
 
 OPDRACHT = (
-    "Extraheer de kopgegevens (kop + kz) en ALLE factuurregels (regels) van deze inkoopfactuur "
-    "volgens het schema — inclusief kortings-/rabat-/creditregels als eigen regel met negatief bedrag. "
-    'Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
+    "Extraheer de kopgegevens (kop + kz, inclusief de betreft-/onderwerpregel als die op de factuur staat) en "
+    "ALLE factuurregels (regels) van deze inkoopfactuur volgens het schema — inclusief kortings-/rabat-/"
+    "creditregels als eigen regel met negatief bedrag. Alleen voorlezen wat er staat; onbekend of onleesbaar = "
+    'lege string "".'
 )
 
 OPDRACHT_KOP = (
-    "Extraheer alleen de kopgegevens (kop + kz) van deze inkoopfactuur volgens het schema — "
-    'géén factuurregels. Alleen voorlezen wat er staat; onbekend of onleesbaar = lege string "".'
+    "Extraheer alleen de kopgegevens (kop + kz, inclusief de betreft-/onderwerpregel als die op de factuur staat) "
+    'van deze inkoopfactuur volgens het schema — géén factuurregels. Alleen voorlezen wat er staat; onbekend of '
+    'onleesbaar = lege string "".'
 )
 
 # {start}/{eind} zijn 1-gebaseerde regelnummers in documentvolgorde; de batch-loop hieronder
@@ -278,7 +296,7 @@ class _Genormaliseerd:
 # maskeerde een echt factuurnummer dat toevallig de elfproef doorstond (fix 2026-07-10, Peters
 # controle van een echte factuur). Zie ook app/extractie/bsn.py: het filter zelf eist bovendien
 # BSN-context.
-_VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl"})
+_VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl", "betreft", "periode"})
 _VRIJE_TEKST_REGEL_KEYS = frozenset({"o", "a"})
 
 

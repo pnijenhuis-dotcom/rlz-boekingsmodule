@@ -1249,6 +1249,18 @@ tr.subrij .eerste-sync-rij ul {
 .datepicker input {
   min-width: 0;
 }
+/* Bugfix 07-09 ("Tab/blur wist ingevulde datum"): rode rand + meldingsregel bij ongeldige/
+   buiten-grenzen-invoer — de meldingsregel bestaat alleen in de DOM zolang er een fout is, dus
+   de veldhoogte blijft ongewijzigd in de foutloze stand (zelfde conventie als FormField .fout). */
+.datepicker input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.datepicker-fout {
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
 .datepicker-knop {
   display: inline-flex;
   align-items: center;

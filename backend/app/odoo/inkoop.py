@@ -528,6 +528,11 @@ class OdooInkoopPort:
         if voorstel.vervaldatum:
             vals["invoice_date_due"] = voorstel.vervaldatum.isoformat()
             vals["invoice_payment_term_id"] = False
+        # Kop-omschrijving (blok 9 vervolgrun 07-09) → `narration` (het vrije omschrijvingsveld op de factuur);
+        # `ref` blijft de referentie = het factuurnummer van de leverancier (duplicaatquery + bank-matching in Odoo
+        # zoeken dáárop — de omschrijving mag die sleutel nooit vervuilen).
+        if voorstel.omschrijving:
+            vals["narration"] = voorstel.omschrijving
         return vals
 
     def _ververs_concept(
@@ -822,9 +827,10 @@ class OdooInkoopPort:
         self, *, document_id: uuid.UUID, boek_cyclus: int, boekstuknummer: str | None = None
     ) -> ToetsUitkomst:
         """Documenten-reconciliatie tegen Odoo: eigen koppeling → anders onze marker in `invoice_origin`
-        (verloren create-antwoord) → anders 'ontbreekt'. Uitzondering: een document dat vóór de overstap in
-        Reeleezee is geboekt (boekstuk `RLZ-…`, geen Odoo-spoor) is hier NIET van toepassing — dat leeft in het
-        RLZ-verleden van de administratie (beslispunt Peter: apart toetsen via de bewaarde RLZ-credential?)."""
+        (verloren create-antwoord) → anders 'ontbreekt'. Vangnet: een document dat vóór de overstap in Reeleezee is
+        geboekt (boekstuk `RLZ-…`, geen Odoo-spoor) is hier NIET van toepassing — sinds 07-09 (besluit Peter, A12
+        beslispunt 1) routeert `documenten/reconciliatie.py` zo'n document vooraf naar een RLZ-port op de bewaarde
+        credential, dus deze tak wordt alleen nog geraakt als de port rechtstreeks wordt aangeroepen."""
         with scoped_session(self.administratie_id) as session:
             rij = self._koppeling(session, document_id, boek_cyclus, "boeking")
             move_id = rij.odoo_move_id if rij else None

@@ -235,6 +235,19 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         rlz_boekstuknummer=data.rlz_boekstuknummer,
         opgeslagen=data.opgeslagen,
         prefill_automatisch=data.prefill_automatisch,
+        omschrijving=data.omschrijving,
+        omschrijving_herkomst=data.omschrijving_herkomst,
+        periode=(
+            schemas.BoekvoorstelPeriodeDto(
+                jaar=data.periode.jaar,
+                week_van=data.periode.week_van,
+                week_tot=data.periode.week_tot,
+                herkomst=data.periode.herkomst,
+                tekst=data.periode.tekst,
+            )
+            if data.periode is not None
+            else None
+        ),
         regels=[_naar_regel_dto(r) for r in data.regels],
         regels_samenvoegen=data.regels_samenvoegen,
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
@@ -773,6 +786,12 @@ def boekvoorstel_opslaan(
             ],
             regels_samenvoegen=invoer.regels_samenvoegen,
             afdeling_id=invoer.afdeling_id,
+            omschrijving=invoer.omschrijving,
+            periode=(
+                (invoer.periode.jaar, invoer.periode.week_van, invoer.periode.week_tot or invoer.periode.week_van)
+                if invoer.periode is not None
+                else None
+            ),
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

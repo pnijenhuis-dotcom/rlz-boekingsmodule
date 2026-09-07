@@ -64,6 +64,29 @@ export interface DuplicaatAfvoerStandDto {
   kandidaat: DuplicaatOrigineelDto | null
   afgevoerd_als_duplicaat_van: DuplicaatOrigineelDto | null
   afgevoerde_duplicaten: AfgevoerdDuplicaatDto[]
+  /** Blok 1 07-09: álle tegenhangers uit de module-motor (harde check "Duplicaat (module)"). */
+  module_treffers?: DuplicaatModuleTrefferDto[]
+  /** Laatste mens-afmelding "Geen duplicaat" (reden verplicht). */
+  afmelding?: DuplicaatAfmeldingDto | null
+}
+
+/** Blok 1 07-09: één tegenhanger uit de module-motor. `categorie` bestand | referentie_bedrag (automatisch
+ * afvoerbaar) | crediteur_referentie (mens kijkt). */
+export interface DuplicaatModuleTrefferDto {
+  document_id: string
+  categorie: 'bestand' | 'referentie_bedrag' | 'crediteur_referentie' | string
+  status: string
+  bestandsnaam: string
+  aangemaakt_op: string
+  referentie: string | null
+  totaalbedrag: string | null
+}
+
+export interface DuplicaatAfmeldingDto {
+  reden: string
+  actor_id: string
+  tijdstip: string
+  tegenhangers: string[]
 }
 
 /** Antwoord op POST …/documenten/{id}/afvoeren-als-duplicaat. */
@@ -720,6 +743,15 @@ export interface BoekvoorstelDto {
   /** Blok A10 07-09: het opgeslagen voorstel is de automatische prefill bij het openen (geheugen/template/
    * default) en de kopvelden zijn nog niet door een mens gewijzigd — de AI-/herkomst-chips blijven dan staan. */
   prefill_automatisch?: boolean
+  /** Blok 9 vervolgrun 07-09 (auto-first): kop-omschrijving van het document (RLZ `Description`, Odoo `narration`),
+   * deterministisch afgeleid — 'regel' (de enige boekingsregel) | 'factuur' (betreft-regel uit de scan) |
+   * 'afgeleid' (leverancier + factuurnummer) — of 'handmatig' (door de mens gezet, wint altijd); null = niets. */
+  omschrijving?: string | null
+  omschrijving_herkomst?: 'regel' | 'factuur' | 'afgeleid' | 'handmatig' | null
+  /** Blok 11 vervolgrun 07-09 (kosten op weekniveau — datalaag): de ISO-week(s) waarop de factuur betrekking heeft,
+   * mét herkomst — 'factuur' (voorgelezen tekst, deterministisch genormaliseerd) | 'factuur_maand' (maand → weekbereik)
+   * | 'afgeleid_van_factuurdatum' (terugval) | 'mens' (correctie via de PUT, wint altijd); null = geen factuurdatum. */
+  periode?: BoekvoorstelPeriodeDto | null
   regels: BoekvoorstelRegelDto[]
   /** Fix 3 (2026-07-10): effectieve samenvoeg-stand (voorkeur per crediteur, default aan),
    * of samenvoegen kan (false bij projectplicht — daar is per-regel hard) en de door de backend
@@ -1200,6 +1232,17 @@ export interface ZoekDocumentHitDto {
   automatisch_geboekt: boolean
   vragen: ZoekVraagHitDto[]
   accordering: ZoekAccorderingHitDto[]
+  /** Blok 1 07-09: als duplicaat afgevoerd → chip + link naar het origineel. */
+  afgevoerd_als_duplicaat_van?: AfgevoerdVanDto | null
+}
+
+/** Blok 1 07-09: origineel van een als duplicaat afgevoerd document (Archief + Zoeken). */
+export interface AfgevoerdVanDto {
+  document_id: string | null
+  referentie: string | null
+  bestandsnaam: string | null
+  afgevoerd_op: string
+  automatisch: boolean
 }
 
 export interface ZoekAuditHitDto {
@@ -1237,6 +1280,9 @@ export interface ArchiefDocumentDto {
   geboekt_op: string | null
   automatisch_geboekt: boolean
   tegengeboekt: boolean
+  /** Blok 1 07-09: statusfilter "afgevoerd" — documentstatus + het origineel van de afvoer. */
+  status?: string
+  afgevoerd_als_duplicaat_van?: AfgevoerdVanDto | null
 }
 
 /** C1 (03-09): verplicht gepagineerd + datumvenster; `van`/`tot` = het effectief toegepaste

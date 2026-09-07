@@ -584,6 +584,13 @@ class BoekvoorstelResponse(BaseModel):
     # Blok A10 07-09: True = het opgeslagen voorstel is de automatische prefill bij het openen (geheugen/template/
     # default), kopvelden nog niet door een mens gewijzigd — de UI houdt de AI-/herkomst-chips aan.
     prefill_automatisch: bool = False
+    # Blok 9 vervolgrun 07-09: kop-omschrijving (RLZ `Description`, Odoo `narration`) + herkomst voor de chip:
+    # "regel" (enige boekingsregel) | "factuur" (betreft-regel uit de scan) | "afgeleid" (leverancier + nummer) |
+    # "handmatig" (door de mens gezet, wint altijd) | None (niets bruikbaar).
+    omschrijving: str | None = None
+    omschrijving_herkomst: str | None = None
+    # Blok 11 vervolgrun 07-09: factuurperiode (ISO-weken) mét herkomst — chip + inline correctie op het controlescherm.
+    periode: BoekvoorstelPeriodeDto | None = None
     regels: list[BoekvoorstelRegelDto]
     # Fix 3 (2026-07-10): effectieve samenvoeg-stand voor dit document (voorkeur per crediteur,
     # default AAN), of samenvoegen überhaupt kan (False bij projectplicht — hard per-regel) en
@@ -608,6 +615,12 @@ class BoekvoorstelInput(StrikteInvoer):
     betalingskenmerk: str | None = None
     afdeling_id: uuid.UUID | None = None
     totaalbedrag: DecimalMetKomma | None = None
+    # Blok 9: de kop-omschrijving zoals de mens 'm liet staan. None = niet meegegeven (oude client) → ongemoeid;
+    # gelijk aan de automatische afleiding = geen override; afwijkend = mens-override (wint voortaan).
+    omschrijving: str | None = None
+    # Blok 11: de factuurperiode zoals de mens 'm liet staan (weeknummer(s) + jaar). None = niet meegegeven (oude
+    # client) → opgeslagen stand blijft / automatische afleiding; gelijk aan de afleiding = automatisch; anders `mens`.
+    periode: BoekvoorstelPeriodeInput | None = None
     regels: list[BoekvoorstelRegelDto] = []
     # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per
     # (administratie, crediteur) onthouden. None = niet meegegeven, voorkeur ongemoeid.
