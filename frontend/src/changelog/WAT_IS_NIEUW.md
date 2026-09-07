@@ -6,6 +6,32 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-07 — Niets blijft stil liggen: automatisering wacht niet op instellingen, controlemail telt mee
+
+### Automatisch, ook zonder eigenaar of behandelaar
+
+- Een administratie zonder vaste eigenaar houdt niets meer tegen: automatisch afgevoerde dubbele facturen, automatische vragen en afwijzingen worden gewoon verwerkt en verschijnen kantoorbreed in de lijsten, met de vermelding "niet toegewezen".
+- In Inzicht › Open vragen en in de werkvoorraad zie je nu expliciet "niet toegewezen" bij een vraag of afwijzing zonder behandelaar — zo valt er niets stil weg.
+- Een automatische vraag zonder behandelaar kan door iedere collega met toegang tot die administratie worden afgehandeld.
+- Bij het verplaatsen van een document naar een administratie zonder eigenaar blijft een open vraag zichtbaar voor het hele kantoor in plaats van ongemerkt bij de verplaatser te landen.
+
+### Dagelijkse controlemail en Inzicht › Reconciliatie
+
+- **De dagelijkse controlemail en het scherm Inzicht › Reconciliatie tonen nu per automatisering wat er de afgelopen dag gebeurde:** hoeveel er te doen was, hoeveel er automatisch is gedaan en hoeveel er is overgeslagen — met de reden erbij (bijvoorbeeld "harde checks blokkeren" of "volumerem bereikt"). Een automatisering die uit staat, staat er als één regel "uit" bij.
+- **Wacht een automatisering op iets wat een mens moet instellen — een verlopen koppeling, een ontbrekende sleutel, een uitgezette boekknop — dan zie je dat als aandachtspunt mét een knop "Naar de instelling".** Zo blijft er niets stil liggen. Het aandachtspunt komt één keer in de mail, niet elke dag opnieuw.
+- **Staat een automatisering aan maar deed ze zeven dagen niets terwijl er wel werk was, dan krijg je daar een aandachtspunt over.**
+
+### Duplicaten en tegenboeken
+
+- Een factuur die al als UBL + PDF gebundeld in de werkvoorraad staat, wordt niet meer voor de tweede keer aangeboden als hetzelfde PDF-bestand later nog eens los binnenkomt — dat exemplaar gaat automatisch naar het archief als duplicaat, met een verwijzing naar de gebundelde factuur. Een PDF met dezelfde naam maar andere inhoud blijft gewoon staan.
+- Delen van een gesplitste factuur-PDF worden nooit onbedoeld als duplicaat van elkaar afgevoerd zolang hun factuurnummer en bedrag nog niet gelezen zijn.
+- Op een administratie die in Odoo boekt gaven de controles een foutmelding als de leverancier nog niet aan een Odoo-relatie gekoppeld was. Dat is nu een duidelijke, blokkerende controle-uitkomst met wat je moet doen (leverancier in Odoo aanmaken en stamgegevens synchroniseren, of een gekoppelde leverancier kiezen).
+
+- **Dubbel geboekt? Direct tegenboeken.** Staat een factuur per ongeluk twee keer geboekt, dan toont het controlescherm van beide exemplaren nu meteen de knop "Tegenboeken…" — ook als de btw-aangifte van die periode nog open staat. Het paneel laat zien van welke factuur (met boekstuknummer) het een dubbele is.
+- **Geen stille "er gebeurt niets" meer vanuit het archief.** Kiest u in het archief "Tegenboeken…" bij een factuur waar dat niet aan de orde is, dan legt het scherm uit waarom en wat de route dan wél is.
+- **Duplicaatcontrole tegen Reeleezee nog strenger op bedragen.** Bedragen worden nu op de cent exact vergeleken, zodat een afrondingsverschil in de koppeling nooit een bestaande factuur kan verbergen.
+- **Omschrijving van de factuur komt aan in Reeleezee.** De automatische kop-omschrijving gaat nu mee in het veld dat Reeleezee daadwerkelijk bewaart (en wordt netjes afgekort als hij te lang is).
+
 ## 2026-09-07 — Duplicaten automatisch weg, omschrijving en project uit de factuur, herboeken beschermd tegen dubbele btw
 
 ### Duplicaten en dubbele exemplaren

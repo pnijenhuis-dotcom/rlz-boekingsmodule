@@ -39,6 +39,11 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
    administraties (server-side paginering, urgentie-sortering, tellers "N over M administraties");
    (5) de grenzen blijven onverkort: nooit verwijderen in externe systemen, geld in code, harde
    checks blokkerend, audit op alles. Referentie-patroon: het autoboek-kandidaten-scherm.
+   **(6) Geen stille no-op (besluit Peter 07-09, WERKWIJZE v1.13):** automatisering wacht NOOIT op een menselijke
+   instelling — een lege optionele voorwaarde (eigenaar, toewijzing, ontvanger) = doorlopen, resultaat zonder toewijzing
+   in het kantoorbrede overzicht; alleen harde voorwaarden (credential, API-key, geldpoort) blokkeren, altijd zichtbaar;
+   elke opt-in heeft een test op het afwezig-pad (guard-test) en dagtellers verwacht/gedaan/overgeslagen in de
+   reconciliatiemail — zie BESLISSINGEN "HERSTELRUN 07-09 — GEEN STILLE NO-OP".
 
 ## Stack & platform (besloten, koppelcontract v1.1 §2b)
 
@@ -234,6 +239,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "MEDEWERKER-WENSEN 04-09" (canoniek per blok), mockup `projectverdeling-en-regelvoorstellen.html`.
 - **Bulk-afvoer op de Mogelijk-duplicaat-tab (B2 07-09):** checkbox + "alle N" server-side + "Afvoeren als duplicaat (n)" over de bestaande per-document-route, buiten de 20/dag-rem, uitkomst per rij — zie BESLISSINGEN "BULK-AFVOER OP DE MOGELIJK-DUPLICAAT-TAB".
 - **Duplicaten hoofdmodel (blok 1 vervolgrun 07-09; besluit Peter "duplicaten eruit, geen lijst"):** harde check "Duplicaat (module)" tegen de EIGEN DB (sha256 / genormaliseerde referentie + bedrag over álle crediteur-records / crediteur+referentie bij ander bedrag), directe auto-afvoer (a)/(b) buiten de 20/dag-rem, mens-override alleen via afmelden mét reden, Archief-filter "afgevoerd" + Zoeken-chip, CLI `duplicaten-backfill` (live 07-09: Universal 110, Kempen Facilities 6); UBL+PDF = bundel, nooit duplicaat — zie BESLISSINGEN "DUPLICATEN HOOFDMODEL".
+- **Herstelrun 07-09 blok A (Kempen-"duplicaten" = niet dubbel in RLZ; RLZ-duplicaatcheck cent-exact client-side; "Tegenboeken…" direct bij een geboekt module-duplicaat; RLZ negeert document-`Description` op PurchaseInvoices → kop als `Header`, afkap 200):** zie BESLISSINGEN "HERSTELRUN 07-09 — BLOK A" + api-verkenning "Description op PurchaseInvoices — STAP 0 07-09".
+- **Duplicaten blok D herstelrun 07-09 (beeld-sha van een gebundeld document = categorie (a) zonder migratie, gesplitste delen nooit (b)/(c) zonder referentie/totaal, Odoo-crediteur zonder partner-koppeling = leesbare blokkerende check i.p.v. 500; live Universal 12 Floor-PDF's afgevoerd):** zie BESLISSINGEN "HERSTELRUN 07-09 — BLOK D".
 - **Verplichtingen — offerte-accordering + factuur↔offerte-match** (documenttype `verplichting`, géén RLZ-/Odoo-boeking,
   deterministische match-motor `app/verplichting/match.py`, nooit blokkade; migratie 0110) — zie BESLISSINGEN
   "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09", mockup `offerte-matching.html`.
@@ -260,6 +267,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   **DIALOOG-model (besluit Peter 25-08, migratie 0064): een vraag is een thread; blokkeert boeken tot "Afgehandeld"
   door de oorspronkelijke vraagsteller.** Vraag aan de klant-accordeur (26-08 blok B5, migratie 0079). Zie
   BESLISSINGEN "RLZ-FEEDBACKRONDE 25-08" punt B + "GECOMBINEERDE RUN 26-08" blok B.
+- **Leeg = doorlopen — toewijzing optioneel (blok 2 herstelrun 07-09; migratie 0121):** geen eigenaar/toegewezene houdt geen automatisering meer tegen (afwijzen, vragen, duplicaat-afvoer, autovraag, verplaatsen → `toegewezen_aan = NULL`, kantoorbreed zichtbaar als "niet toegewezen"; `GeenToewijzingMogelijk` vervallen); guard `tests/unit/test_optin_afwezig_pad_guard.py` + marker `afwezig_pad` per opt-in — zie BESLISSINGEN "LEEG = DOORLOPEN — TOEWIJZING OPTIONEEL".
 - **Afwijzen** = verplichte reden, blijft zichtbaar ("Afgewezen — ter controle").
 - **Verzamelbak "Niet toegewezen"**: alles wat niet eenduidig aan een administratie koppelt
   (tenaamstelling leidend, afzender = hint); leert van handmatige toewijzingen; "hoort niet bij
@@ -306,6 +314,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `/reconciliatie`; migratie 0114) — zie BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT".
 - **Reconciliatie 07-09 (A11/A12/A8):** verdwenen extern document = `ontbreekt_in_rlz`/`ontbreekt_in_odoo` (zwaarste categorie) mét actie "Opnieuw boeken" zonder tegenboeking (`app/documenten/herboeken.py`, GEBOEKT → KLAAR_OM_TE_BOEKEN, boek_cyclus +1); documenten-blok backend-agnostisch via `InkoopPort.toets_geboekt` (Odoo: posted/amount_total/onbekende reversal), bank/omzet/doorbelasting blijven RLZ-only en slaan Odoo-administraties zichtbaar over; bevindingen leesbaar (titel/wat/doe, `app/reconciliatie/teksten.py`) en acceptatie direct zichtbaar — zie BESLISSINGEN "A11 — DOCUMENTEN-RECONCILIATIE", "A12 — RECONCILIATIE BACKEND-AGNOSTISCH", "RECONCILIATIE-TEKSTEN LEESBAAR + ACCEPTATIE-BUG".
 - **Reconciliatie-herzieningen vervolgrun 07-09 (blok 3 + 4, correcties Peter):** herboeken van een verdwenen document BLOKKEERT als de boekdatum in een ingediende btw-periode valt ("btw mogelijk al aangegeven — suppletie-pad", 409); alleen een Beheerder zet door met expliciete bevestiging + reden (audit + tijdlijn); Odoo-variant via lock dates; fail-closed bij onleesbare aangiftestatus — A11-rij "Volumerem / aangifte-poort — HERZIEN 07-09". RLZ-verleden van een overgestapte administratie wordt tegen RLZ getoetst via de bewaarde credential (`client_voor_rlz_verleden`), nooit meer "niet van toepassing" — zie BESLISSINGEN "RLZ-VERLEDEN VAN EEN OVERGESTAPTE ADMINISTRATIE".
+- **Tellers per automatisering in de reconciliatie (blok 3 herstelrun 07-09):** per automatisering per etmaal verwacht/gedaan/overgeslagen mét reden uit bestaande audit-/run-sporen (`app/reconciliatie/automatiseringen.py`, geen migratie), LET-OP mét deeplink bij een ontbrekende harde voorwaarde en bij zeven dagen stil; uit = één regel — zie BESLISSINGEN "TELLERS PER AUTOMATISERING IN DE RECONCILIATIE".
 - **Mini-voorraad speciale producten** (mi-schema, stand = Σ append-only mutaties, MENS-MANIPULATIE ONMOGELIJK;
   migratie 0116) — zie BESLISSINGEN "MINI-VOORRAAD SPECIALE PRODUCTEN" (+ "— FRONTEND").
 - **Kantoor-signaal "geplande week zonder weekstaat"** (`app/uren/planning_signaal.py`, geen blokkade; migratie 0115)
