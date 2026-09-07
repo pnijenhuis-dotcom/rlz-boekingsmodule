@@ -120,6 +120,33 @@ overnemen, (3) reply plaatsen en de submission opnieuw ter review aanbieden — 
 universal-link-fix (06-09, `@capacitor/app`) meteen mee moet, eerst build 45 laten bouwen
 (package-lock + Package.swift zijn 07-09 gecommit; Xcode Cloud `npm ci` faalde anders).
 
+### 0c. Build 45 klaarzetten (vervolgrun 07-09, blok 12d) — NIET ingediend
+
+**Hoe build 44 → 45 werkt:** het iOS-buildnummer komt NIET uit de repo. `ci_scripts/ci_post_clone.sh`
+zet bij élke Xcode Cloud-build `CURRENT_PROJECT_VERSION ← CI_BUILD_NUMBER` (beide pbxproj-plekken);
+de repo blijft op `3`, `MARKETING_VERSION` blijft `1.0`. Build 44 was dus gewoon Xcode Cloud-build
+nr. 44 op `main`. **Build 45 = de eerstvolgende push naar `main`** ná de commit van deze run — er is
+geen handmatige bump; Xcode Cloud bundelt via `bouw-web --mode native` + `cap sync ios` automatisch de
+actuele web-assets (incl. 12a/12b/13 hieronder) en de `@capacitor/app`-plugin (E1 06-09, Package.swift
+gecommit 0f6a085). Handmatig archiveren (§3) blijft de terugval; lokaal is `npm run bouw-web && npx
+cap sync` op 07-09 gedraaid (ios/App/App/public ververst — niet ingecheckt, CLI-managed).
+
+**Wat build 45 inhoudelijk meeneemt t.o.v. 44:** universal-link-fix (E1), activatie-hulpblok (E2),
+diagnoseregel (12a), geen verloren boot-refresh in native (12b), eerlijke Android-melding bij
+ontbrekende passkey-beheerder (13 — raakt iOS niet).
+
+**Diagnoseregel als kliktest-/reviewer-hulp (12a):** in de app → ⚙ (Toegang tot de app) → onderaan
+"Diagnose › Laatste koude start": één regel `web <sha-datum> · app 1.0 (45) · boot … ms · sessie … ms
+· server … ms · netwerk … ms · totaal … ms · dd-mm HH:MM`. Blijft lokaal op het toestel; een
+screenshot (of "Kopiëren") volstaat — de Web Inspector-instructie uit BESLISSINGEN "KOUDE START"
+beslispunt 1 is daarmee overbodig. `app 1.0 (45)` bevestigt meteen dat de juiste build draait.
+
+Klikwerk Peter: (a) commits van de vervolgrun op `main` → Xcode Cloud bouwt 45 (mail "processing
+completed"); (b) TestFlight → build 45 op het eigen toestel → kliktest E1 (mail-link opent de app op
+de code-keuze) + 12a (diagnoseregel toont `app 1.0 (45)`); (c) dán pas in App Store Connect build 45
+aan de versie 1.0 koppelen + reply §0b + opnieuw ter review. Android-tegenhanger: PLAY_DRAAIBOEK §3
+(versionCode 3).
+
 ## 1. App-registratie in App Store Connect (A4)
 
 Vooraf: door de kliktest-builds met "automatically manage signing" bestaat het App ID

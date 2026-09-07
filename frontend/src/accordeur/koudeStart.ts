@@ -44,6 +44,25 @@ export interface KoudeStartOverzicht {
 
 const PREFIX = 'acc:'
 
+/** Web-bundelversie: `vite.config.ts` bakt git-short-sha + bouwmoment in als VITE_BUILD_ID (blok 12a
+ * 07-09); zonder define (bv. een losse test-runner zonder de vite-config) 'dev'. */
+export const WEB_BUILD_ID: string = (import.meta.env?.VITE_BUILD_ID as string | undefined) ?? 'dev'
+
+/** Laatste afgeronde koude-start-meting, lokaal bewaard (blok 12a 07-09) zodat de diagnoseregel in
+ * Instellingen › Toegang 'm ná het openen nog kan tonen. Alleen tijden + bundelversie — geen
+ * gebruikers-id, geen documentdata, geen PII; één sleutel per toestel (niet per gebruiker). Gaat
+ * NOOIT naar de server: de mens stuurt desgewenst een screenshot. */
+export const KOUDE_START_OPSLAG_SLEUTEL = 'accordeur-koude-start'
+
+export interface BewaardeKoudeStart {
+  versie: 1
+  /** ISO-tijdstip van de meting (moment van de eerste verse kaarten). */
+  tijdstip: string
+  /** Web-bundelversie die de meting deed. */
+  build: string
+  overzicht: KoudeStartOverzicht
+}
+
 let stappen: Partial<Record<KoudeStartStap, number>> = {}
 let server: Partial<Record<'wachtrij' | 'vragen', number>> = {}
 let samenvattingGelogd = false
@@ -145,6 +164,59 @@ function logSamenvatting(): void {
     ;(window as { __koudeStart?: KoudeStartOverzicht }).__koudeStart = o
     console.debug('[koude start accordeur-app] ms sinds navigatiestart:', o.stappen, 'server:', o.server, 'afgeleid:', o.afgeleid)
   }
+  bewaarLaatsteKoudeStart(o)
+}
+
+function bewaarLaatsteKoudeStart(o: KoudeStartOverzicht): void {
+  const record: BewaardeKoudeStart = { versie: 1, tijdstip: new Date().toISOString(), build: WEB_BUILD_ID, overzicht: o }
+  try {
+    localStorage.setItem(KOUDE_START_OPSLAG_SLEUTEL, JSON.stringify(record))
+  } catch {
+    // opslag vol/geblokkeerd — diagnostiek mag nooit de app raken
+  }
+}
+
+/** De laatst bewaarde meting, of null (nog nooit een koude start afgerond op dit toestel / ander formaat). */
+export function leesLaatsteKoudeStart(): BewaardeKoudeStart | null {
+  try {
+    const ruw = localStorage.getItem(KOUDE_START_OPSLAG_SLEUTEL)
+    if (!ruw) return null
+    const record = JSON.parse(ruw) as Partial<BewaardeKoudeStart>
+    if (record.versie !== 1 || typeof record.tijdstip !== 'string' || !record.overzicht?.stappen) return null
+    return record as BewaardeKoudeStart
+  } catch {
+    return null
+  }
+}
+
+function ms(waarde: number | undefined): string {
+  return waarde === undefined ? '–' : `${Math.round(waarde)} ms`
+}
+
+/** Eén kopieerbare diagnoseregel voor Instellingen › Toegang (blok 12a 07-09) — de vervanger van
+ * "lees `window.__koudeStart` uit via de Web Inspector". Velden (alle ms):
+ *  - boot    = navigatiestart → eerste render van AccordeurApp (bundel laden + React mount);
+ *  - sessie  = eerste render → access-token (native: inclusief slot/Face ID = menstijd);
+ *  - server  = server-duur van /accordering/wachtrij (Server-Timing-header);
+ *  - netwerk = client-duur van die fetch minus de server-duur;
+ *  - totaal  = navigatiestart → eerste verse kaarten.
+ * `appBuild` = native "versie (build)" uit Capacitor App.getInfo() als die er is. */
+export function diagnoseRegel(meting: BewaardeKoudeStart | null, appBuild: string | null = null): string {
+  const build = `web ${meting?.build ?? WEB_BUILD_ID}${appBuild ? ` · app ${appBuild}` : ''}`
+  if (!meting) return `${build} · nog geen koude start gemeten`
+  const s = meting.overzicht.stappen
+  const boot = s['app-render']
+  const sessie = s.sessie !== undefined && boot !== undefined ? Math.max(0, s.sessie - boot) : undefined
+  const totaal = s['kaarten-render'] ?? s['cache-render']
+  const d = new Date(meting.tijdstip)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const wanneer = Number.isNaN(d.getTime())
+    ? ''
+    : ` · ${pad(d.getDate())}-${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return (
+    `${build} · boot ${ms(boot)} · sessie ${ms(sessie)} · server ${ms(meting.overzicht.server.wachtrij)}` +
+    ` · netwerk ${ms(meting.overzicht.afgeleid.wachtrijNetwerkMs)} · totaal ${ms(totaal)}${wanneer}`
+  )
 }
 
 /** Alleen voor tests: begin opnieuw (module-singleton). */
@@ -155,6 +227,7 @@ export function resetVoorTests(): void {
   try {
     performance.clearMarks()
     performance.clearMeasures()
+    localStorage.removeItem(KOUDE_START_OPSLAG_SLEUTEL)
   } catch {
     // geen User Timing API
   }

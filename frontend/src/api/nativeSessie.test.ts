@@ -84,3 +84,53 @@ describe('refresh-flow in de native schil', () => {
     expect(gezienHeaders!.has('X-Refresh-Token')).toBe(false)
   })
 })
+
+// Blok 12b (07-09, beslispunt 3 "KOUDE START ACCORDEUR-APP"): in de native schil zonder leesbaar
+// refresh-token (gesloten slot / verse installatie) doet de stille refresh GEEN netwerkrondje meer —
+// de uitkomst is dezelfde als bij een 401 (false). Web blijft onverkort het cookie-pad.
+describe('boot-refresh native zonder leesbaar token (12b)', () => {
+  it('native + geen token → false zónder fetch; native + token → wél de POST', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ access_token: 'acc-2' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const opslag = maakOpslagFake()
+    stubCapacitor(opslag)
+
+    await expect(verversSessie()).resolves.toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(opslag.haal).toHaveBeenCalledWith({ sleutel: 'refresh_token' })
+
+    opslag._data.set('refresh_token', 'tok')
+    await expect(verversSessie()).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('web (geen schil): de POST gaat altijd — ook zonder enig token (cookie-pad, ongewijzigd)', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 401 })))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(verversSessie()).resolves.toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String((fetchMock.mock.calls[0] as unknown as [RequestInfo])[0])).toBe('/auth/token/vernieuwen')
+  })
+
+  it('apiFetch-401-pad: native zonder token → sessie-verlopen-handler, precies als ná een mislukte refresh', async () => {
+    const { apiFetch, setSessieVerlopenHandler } = await import('./client')
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 401 })))
+    vi.stubGlobal('fetch', fetchMock)
+    stubCapacitor(maakOpslagFake())
+    const handler = vi.fn()
+    setSessieVerlopenHandler(handler)
+    try {
+      const resp = await apiFetch('/accordering/wachtrij')
+      expect(resp.status).toBe(401)
+      // Eén request (de 401), géén vernieuwen-POST erachteraan.
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(handler).toHaveBeenCalledTimes(1)
+    } finally {
+      setSessieVerlopenHandler(null)
+    }
+  })
+})

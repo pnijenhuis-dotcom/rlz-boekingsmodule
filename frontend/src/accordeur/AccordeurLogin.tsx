@@ -7,6 +7,7 @@ import { ApiError } from '../api/client'
 import { appSlotBeschikbaar, bewaarCredentialId } from '../api/appSlot'
 import type { TokenPaarResponseDto } from '../api/types'
 import { ActivatieHulp } from './ActivatieHulp'
+import { loginFoutmelding } from './passkeyFouten'
 import {
   accordeurLogin,
   accordeurPasskeyLoginOpties,
@@ -72,7 +73,7 @@ export function AccordeurLogin({ naIngelogd }: Props) {
         setFout(err.message)
         return
       }
-      setFout(err instanceof Error ? err.message : 'Inloggen mislukt.')
+      setFout(loginFoutmelding(err))
     } finally {
       setBezig(false)
     }
@@ -159,7 +160,9 @@ export function AccordeurLogin({ naIngelogd }: Props) {
       naIngelogd(paar)
     } catch (err) {
       setToonHulp(true)
-      setFout(err instanceof Error ? err.message : 'Inloggen mislukt.')
+      // Blok 13 (07-09): Android zonder passkey-beheerder → eerlijke melding i.p.v. de kale
+      // Credential-Manager-fout; iOS/web en alle andere fouten ongewijzigd.
+      setFout(loginFoutmelding(err))
     } finally {
       setBezig(false)
     }

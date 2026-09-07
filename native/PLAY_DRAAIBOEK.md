@@ -153,6 +153,17 @@ versionCode/-Name, `POST_NOTIFICATIONS` aanwezig, `ACCESS_BACKGROUND_LOCATION` a
 `allowMixedContent`/emulator-API-base in de bundel, geen `usesCleartextTraffic` in het release-manifest
 (die horen alleen bij de lokale debug-screenshotbuild, zie §6). Dít bestand sleep je in §4 stap 4.
 
+**✅ versionCode 3 KLAARGEZET 07-09 (vervolgrun, blok 12d — NIET geüpload):**
+`native/scripts/bouw_android_release.sh 3 1.0` (JAVA_HOME/ANDROID_HOME per shell, keystore.properties
+aanwezig → gesigneerd met de upload-key, SHA-256 `4A:B4:3C:…:8F:A1` = de vingerafdruk in de live
+assetlinks) → `native/android/app/release/nijenhuis-goedkeuren-1.0-vc3-20260907-1711.aab` (15 MB,
+SHA-256 `1ccebc371b3eb7dc58ec75e92647e326be07e8d4a8e5c8dc11926c2f7cd9cdb2`) + `-mapping.txt` +
+`-native-debug-symbols.zip`; bundletool validate ✓, versionCode 3 · versionName 1.0 ✓, alle guards ✓.
+Webbundel = HEAD 07-09 mét build-id `fcc35a8-20260907-1511` (12a), `capacitor.plugins.json` noemt
+`@capacitor/app` (E1 universal-link-fix). Inhoud t.o.v. vc2: E1 + E2 (06-09), 12a diagnoseregel, 12b
+(geen verloren boot-refresh), **13 eerlijke melding bij ontbrekende passkey-beheerder** (§10).
+Klikwerk: §4 stap 4 met dít bestand (interne test-track eerst), daarna App access (§11) + review.
+
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
 - **Upload-artefacten náást de AAB (sinds 30-08):** het script legt in `app/release/` óók
@@ -418,9 +429,20 @@ gesigneerd met de upload-key (staat in de live assetlinks) tegen productie:
   eindrapport van de fixrun — **het wachtwoord uit het ochtendrapport van 07-09 is daarmee ongeldig.**
 - Reviewer-instructie **§11** mét toestelvereisten (schermvergrendeling + Google-account) vóór de
   eerste login; zelfde tekst (iOS-variant) in TESTFLIGHT_DRAAIBOEK §1.
-- **Geen app-wijziging.** Het kleinste codepad voor "wachtwoord-login mét uitgestelde passkey-setup"
-  staat als beslispunt in BESLISSINGEN "GOOGLE PLAY AFWIJZING 07-09" — het verzwakt platformbesluit
-  0020 (passkeys-eerst) en is bewust NIET gebouwd.
+- **Geen app-wijziging** in de fixrun van 07-09. Het kleinste codepad voor "wachtwoord-login mét
+  uitgestelde passkey-setup" (variant A) staat als beslispunt in BESLISSINGEN "GOOGLE PLAY AFWIJZING
+  07-09" — het verzwakt platformbesluit 0020 (passkeys-eerst) en is bewust NIET gebouwd.
+- **Variant B GEBOUWD (vervolgrun 07-09, blok 13; zit in versionCode 3, §3):** herkent de
+  Credential-Manager-fout ("No create options available", GMS 28433/28434, `CANCELED … REMOTE_PROVIDER`,
+  "No provider dependencies") in `frontend/src/accordeur/passkeyFouten.ts` en toont op Android i.p.v.
+  de kale fout: *"Op dit toestel is geen passkey-beheerder actief — voeg een Google-account toe of zet
+  schermvergrendeling aan; of gebruik een ander toestel."* Een weggetikte sheet blijft "geannuleerd";
+  iOS/web ongewijzigd; géén alternatieve loginroute (0020 onverkort). De reviewer op een kaal toestel
+  ziet nu dus wat hij moet doen — §11 blijft de instructie vóóraf.
+- **Diagnoseregel (blok 12a) als kliktest-hulp:** in de app → ⚙ (Toegang tot de app) → "Diagnose ›
+  Laatste koude start" toont één kopieerbare regel `web <sha-datum> · app 1.0 (3) · boot … ms ·
+  sessie … ms · server … ms · netwerk … ms · totaal … ms · dd-mm HH:MM` (lokaal, nooit naar de server).
+  `app 1.0 (3)` bevestigt de juiste versionCode; een screenshot vervangt `chrome://inspect`.
 
 **Klikwerk Peter (Play Console):** Policy → **App content → App access** → de instructie
 *Demo-account review* bewerken: username `p.nijenhuis+applereview@kempengroep.nl`, password = het

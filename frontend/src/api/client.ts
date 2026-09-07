@@ -144,6 +144,13 @@ export async function kaleAuthFetch(pad: string, init: RequestInit = {}): Promis
 }
 
 async function voerVerversUit(): Promise<boolean> {
+  // Native schil zónder leesbaar refresh-token (blok 12b 07-09, beslispunt 3 "KOUDE START"): een
+  // koude start mét gesloten app-slot (token versleuteld achter het anker) of een verse installatie
+  // heeft géén token om mee te sturen — de POST zou gegarandeerd 401 geven. Dat rondje slaan we
+  // over en geven dezelfde uitkomst als die 401 (false, geen ontgrendelings-uitspraak); de
+  // aanroepers (AuthContext → 'uitgelogd', apiFetch → sessie-verlopen-pad) zien geen verschil.
+  // Web: `natieveSessieBeschikbaar()` is false → ongewijzigd cookie-pad.
+  if (natieveSessieBeschikbaar() && !(await haalNatiefRefreshToken())) return false
   let resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
   if (resp.status === 409) {
     // Rotatie-botsing (backend hield de rij-lock vast voor een parallelle vernieuwing, bv. een

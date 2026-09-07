@@ -1766,3 +1766,21 @@
 .acc-hulp b {
   color: var(--acc-text);
 }
+
+/* Diagnoseregel Instellingen › Toegang (blok 12a 07-09): één kopieerbare regel met de laatste
+   koude-start-meting + bundelversie — voor een screenshot i.p.v. de Web Inspector. */
+.acc-diag {
+  display: block;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--acc-text);
+  background: var(--acc-bg);
+  border: 1px solid var(--acc-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  user-select: all;
+  -webkit-user-select: all;
+  max-width: 100%;
+}

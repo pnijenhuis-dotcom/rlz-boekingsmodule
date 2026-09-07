@@ -15,8 +15,24 @@ import {
   zetDirectVergrendelen,
 } from '../../api/appSlot'
 import { apiFetch } from '../../api/client'
+import { diagnoseRegel, leesLaatsteKoudeStart } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
+
+/** Native "versie (build)" uit Capacitor's App-plugin (`@capacitor/app`, sinds E1 06-09 gebundeld);
+ * null buiten de schil of zonder plugin — dan toont de regel alleen de web-bundelversie. */
+async function nativeAppBuild(): Promise<string | null> {
+  try {
+    const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { App?: { getInfo?: () => Promise<{ version?: string; build?: string }> } } } })
+      .Capacitor
+    if (!cap?.isNativePlatform?.() || typeof cap.Plugins?.App?.getInfo !== 'function') return null
+    const info = await cap.Plugins.App.getInfo()
+    if (!info?.version && !info?.build) return null
+    return `${info.version ?? '?'} (${info.build ?? '?'})`
+  } catch {
+    return null
+  }
+}
 
 interface Props {
   sluit: () => void
@@ -35,12 +51,29 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   const [fout, setFout] = useState<string | null>(null)
   const [melding, setMelding] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
+  // Diagnose (blok 12a 07-09): laatste koude-start-meting uit de lokale opslag + bundelversie(s);
+  // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
+  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart()))
+  const [gekopieerd, setGekopieerd] = useState(false)
 
   useEffect(() => {
     void biometrieBeschikbaar().then(setBioKan)
     void isBiometrieAan().then(setBioAan)
     void isDirectVergrendelen().then(setDirect)
+    void nativeAppBuild().then((appBuild) => {
+      if (appBuild) setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), appBuild))
+    })
   }, [])
+
+  const kopieerDiagnose = async () => {
+    try {
+      await navigator.clipboard.writeText(diagnose)
+      setGekopieerd(true)
+      setTimeout(() => setGekopieerd(false), 2000)
+    } catch {
+      // geen clipboard-toegang (oudere webview) — de regel is selecteerbaar, screenshot werkt altijd
+    }
+  }
 
   const wisselBiometrie = async () => {
     if (bioAan) {
@@ -203,6 +236,22 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
         </div>
         <span aria-hidden>›</span>
       </button>
+      <div className="acc-toegang-kop">Diagnose</div>
+      <div className="acc-toegang-rij" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
+        <div>
+          <div className="t">Laatste koude start</div>
+          <div className="s" style={{ maxWidth: 'none' }}>
+            Tijden in ms sinds het openen van de app; blijft op dit toestel. Stuur een screenshot of
+            kopie naar het kantoor als de app traag start.
+          </div>
+        </div>
+        <code className="acc-diag" data-testid="acc-diagnose">
+          {diagnose}
+        </code>
+        <button className="acc-btn secundair klein" style={{ alignSelf: 'flex-end', marginTop: 8 }} onClick={() => void kopieerDiagnose()}>
+          {gekopieerd ? 'Gekopieerd' : 'Kopiëren'}
+        </button>
+      </div>
     </div>
   )
 }

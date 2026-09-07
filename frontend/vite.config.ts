@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -25,9 +26,27 @@ const BACKEND = 'http://localhost:8000'
 // 2026-08-08) leven in proxyRegels.ts, getest via src/api/proxyDekking.test.ts.
 const proxy = bouwProxyMap(proxyPrefixes, BACKEND)
 
+// Web-bundelversie voor de diagnoseregel in de accordeur-app (blok 12a, 07-09): git-short-sha +
+// bouwmoment, ingebakken als `import.meta.env.VITE_BUILD_ID`. Zonder git (CI-tarball) valt 'm terug
+// op alleen de datum — nooit een build-fout om een versielabel. Puur lokaal/diagnostisch; de
+// waarde reist alleen als tekst op het scherm (screenshot), nooit naar de server.
+function bouwId(): string {
+  const stempel = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2')
+  let sha = 'nogit'
+  try {
+    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || sha
+  } catch {
+    // geen git beschikbaar — datum volstaat
+  }
+  return `${sha}-${stempel}`
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(bouwId()),
+  },
   server: {
     // Vaste poort per project (Platform/registers/conventies.md, afspraak 2026-08-07:
     // RLZ = 5173, Vastly = 5174). strictPort: liever hard falen dan stil uitwijken naar een

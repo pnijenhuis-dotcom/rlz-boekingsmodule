@@ -156,3 +156,69 @@ describe('activatiePadVanGeplakteLink + mailAppUrl (puur)', () => {
     expect(mailAppUrl('web')).toBeNull()
   })
 })
+
+// Blok 13 (07-09, Play-afwijzing variant B): Android zonder passkey-beheerder → eerlijke melding met
+// handelingsperspectief i.p.v. de kale Credential-Manager-fout; iOS ongewijzigd (zelfde fouttekst blijft).
+describe('AccordeurLogin — Credential-Manager-fout bij passkey-registratie (blok 13)', () => {
+  const CM_FOUT = 'Passkey-registratie mislukt: No create options available.'
+
+  function stubNativeMetPasskeyPlugin(platform: 'ios' | 'android') {
+    stubNative(platform)
+    const cap = (window as unknown as { Capacitor: { Plugins: Record<string, unknown> } }).Capacitor
+    cap.Plugins.NatievePasskey = {
+      registreer: () => Promise.reject(new Error(CM_FOUT)),
+      onderteken: () => Promise.reject(new Error('Passkey-verificatie geannuleerd')),
+    }
+  }
+
+  function loginRoutes(): FetchAntwoorden {
+    return {
+      '/auth/webauthn/config': CONFIG,
+      '/auth/accordeur/login': () => jsonResponse({ passkey_setup_token: 'setup-1', heeft_passkeys: false }),
+      '/auth/webauthn/registratie/opties': () => jsonResponse({ opties: '{"challenge":"x"}' }),
+    }
+  }
+
+  async function logInMetWachtwoord() {
+    await userEvent.click(screen.getByRole('button', { name: 'Inloggen met wachtwoord' }))
+    await userEvent.type(screen.getByLabelText('E-mailadres'), 'reviewer@test.local')
+    await userEvent.type(screen.getByLabelText('Wachtwoord'), 'geheim-wachtwoord')
+    await userEvent.click(screen.getByRole('button', { name: 'Inloggen' }))
+  }
+
+  it('android: "geen passkey-beheerder" — Google-account / schermvergrendeling / ander toestel; kale fout verdwijnt', async () => {
+    stubNativeMetPasskeyPlugin('android')
+    stubFetch(loginRoutes())
+    renderLogin()
+    await logInMetWachtwoord()
+    const melding = await screen.findByText(/geen passkey-beheerder actief/)
+    expect(melding).toHaveTextContent('voeg een Google-account toe of zet schermvergrendeling aan')
+    expect(melding).toHaveTextContent('gebruik een ander toestel')
+    expect(screen.queryByText(/No create options available/)).not.toBeInTheDocument()
+    // Geen alternatieve loginroute: het uitlegblok blijft het bestaande hulpblok, geen extra knop.
+    expect(screen.queryByRole('button', { name: /zonder passkey/i })).not.toBeInTheDocument()
+  })
+
+  it('iOS: dezelfde fouttekst blijft ongewijzigd staan (geen Android-melding)', async () => {
+    stubNativeMetPasskeyPlugin('ios')
+    stubFetch(loginRoutes())
+    renderLogin()
+    await logInMetWachtwoord()
+    expect(await screen.findByText(CM_FOUT)).toBeInTheDocument()
+    expect(screen.queryByText(/geen passkey-beheerder actief/)).not.toBeInTheDocument()
+  })
+
+  it('android: een gewone annulering blijft "geannuleerd" (geen valse beheerder-melding)', async () => {
+    stubNativeMetPasskeyPlugin('android')
+    const cap = (window as unknown as { Capacitor: { Plugins: Record<string, unknown> } }).Capacitor
+    cap.Plugins.NatievePasskey = {
+      registreer: () => Promise.reject(new Error('Passkey-registratie geannuleerd')),
+      onderteken: () => Promise.reject(new Error('Passkey-verificatie geannuleerd')),
+    }
+    stubFetch(loginRoutes())
+    renderLogin()
+    await logInMetWachtwoord()
+    expect(await screen.findByText('Passkey-registratie geannuleerd')).toBeInTheDocument()
+    expect(screen.queryByText(/geen passkey-beheerder actief/)).not.toBeInTheDocument()
+  })
+})
