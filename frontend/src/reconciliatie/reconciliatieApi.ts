@@ -49,8 +49,14 @@ export interface BevindingDto {
   administratie_id: string | null
   administratie_naam: string | null
   vingerafdruk: string
-  /** Letterlijk de CLI-regel — de enige plek waar technische verwijzingen zichtbaar mogen zijn. */
+  /** Letterlijk de CLI-regel (technisch, mét GUID's) — alleen nog zichtbaar in de uitklap "details". */
   tekst: string
+  /** Leesbare laag (07-09, blok A8): korte titel met namen, één zin "wat is er", één zin "wat doe je". */
+  titel: string
+  wat: string
+  doe: string
+  /** Technische sleutels (vingerafdruk, record-id's, ruwe regel) voor de uitklap — nooit in titel/wat/doe. */
+  details: { label: string; waarde: string }[]
   sinds: string
   nieuw: boolean
   acceptatie: { reden: string; geaccepteerd_op: string; geaccepteerd_door_naam: string | null } | null

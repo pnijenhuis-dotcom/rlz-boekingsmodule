@@ -368,3 +368,131 @@ class TestHandelingen:
             ]
             == "klaar"
         )
+
+
+class TestAcceptatieDirectZichtbaar:
+    """BUGFIX 07-09 (blok A8, opdracht Peter): een geaccepteerde afwijking bleef tot de VOLGENDE run in
+    "aandacht nodig" staan (de lijst las `soort` uit de opgeslagen bevinding). Nu volgt de lijst — én de
+    KPI-stand — de LIVE acceptatie-stand: accepteren → direct facet geaccepteerd; intrekken → direct terug."""
+
+    def test_accepteren_en_intrekken_zonder_nieuwe_run(
+        self, run_met_bevindingen, administratie_id, gescoopte_gebruiker, beheerder_id
+    ) -> None:
+        hb = _bearer(beheerder_id, rol="beheerder")
+        hs = _bearer(gescoopte_gebruiker, rol="boekhouding")  # RLS-les: echte niet-Beheerder MÉT scope
+        rij = next(
+            x
+            for x in client.get("/reconciliatie/bevindingen", headers=hb).json()["rijen"]
+            if x["soort"] == "afwijking" and x["administratie_id"] == str(administratie_id)
+        )
+        assert client.get("/reconciliatie/stand", headers=hb).json()["afwijkingen"] == 2
+        assert client.get("/reconciliatie/stand", headers=hs).json()["afwijkingen"] == 1
+
+        r = client.post(
+            f"/reconciliatie/bevindingen/{rij['id']}/accepteren",
+            json={"administratie_id": str(administratie_id), "reden": "testboeking, in de RLZ-UI opgeruimd"},
+            headers=hb,
+        )
+        assert r.status_code == 200
+
+        # DIRECT (zonder nieuwe run): uit "aandacht nodig", in "geaccepteerd" — voor Beheerder én scoped gebruiker.
+        for h, verwacht_aandacht in ((hb, 1), (hs, 0)):
+            aandacht = client.get("/reconciliatie/bevindingen", headers=h).json()
+            assert rij["vingerafdruk"] not in {x["vingerafdruk"] for x in aandacht["rijen"]}
+            assert aandacht["tellers"]["afwijkingen"] == verwacht_aandacht
+            assert aandacht["tellers"]["geaccepteerd"] == 1
+            assert aandacht["facetten"]["soort"]["geaccepteerd"] == 1
+            geaccepteerd = client.get("/reconciliatie/bevindingen?soort=geaccepteerd", headers=h).json()
+            assert [x["vingerafdruk"] for x in geaccepteerd["rijen"]] == [rij["vingerafdruk"]]
+            g = geaccepteerd["rijen"][0]
+            assert g["soort"] == "geaccepteerd" and g["id"] == rij["id"]  # dezelfde bevinding-rij, live omgezet
+            assert g["acceptatie"]["reden"].startswith("testboeking") and g["acceptatie"]["geaccepteerd_door_naam"]
+            assert "intrekken" in g["doe"].lower()
+        assert client.get("/reconciliatie/stand", headers=hb).json()["afwijkingen"] == 1
+        assert client.get("/reconciliatie/stand", headers=hs).json()["afwijkingen"] == 0
+
+        # nog eens accepteren = 409 (live-stand), niet stil 200
+        r = client.post(
+            f"/reconciliatie/bevindingen/{rij['id']}/accepteren",
+            json={"administratie_id": str(administratie_id), "reden": "per ongeluk nog een keer"},
+            headers=hb,
+        )
+        assert r.status_code == 409
+
+        # intrekken → DIRECT weer afwijking in "aandacht nodig", KPI terug omhoog
+        r = client.post(
+            f"/reconciliatie/bevindingen/{rij['id']}/intrekken",
+            json={"administratie_id": str(administratie_id), "reden": "toch niet in orde"},
+            headers=hb,
+        )
+        assert r.status_code == 200
+        aandacht = client.get("/reconciliatie/bevindingen", headers=hs).json()
+        terug = next(x for x in aandacht["rijen"] if x["vingerafdruk"] == rij["vingerafdruk"])
+        assert terug["soort"] == "afwijking" and terug["acceptatie"] is None
+        assert aandacht["tellers"]["geaccepteerd"] == 0
+        assert client.get("/reconciliatie/stand", headers=hs).json()["afwijkingen"] == 1
+        assert client.get("/reconciliatie/bevindingen?soort=geaccepteerd", headers=hb).json()["totaal"] == 0
+
+        # opnieuw accepteren ná intrekken kan zonder nieuwe run (geen stale "al geaccepteerd" uit de snapshot)
+        r = client.post(
+            f"/reconciliatie/bevindingen/{rij['id']}/accepteren",
+            json={"administratie_id": str(administratie_id), "reden": "alsnog beoordeeld en akkoord"},
+            headers=hb,
+        )
+        assert r.status_code == 200
+        assert client.get("/reconciliatie/stand", headers=hs).json()["afwijkingen"] == 0
+
+    def test_opgeslagen_geaccepteerd_na_intrekken_direct_afwijking(
+        self, run_met_bevindingen, administratie_id, gescoopte_gebruiker, beheerder_id
+    ) -> None:
+        """Omgekeerde richting: de run legde de rij al als 'geaccepteerd' vast; intrekken zet 'm live terug."""
+        hb = _bearer(beheerder_id, rol="beheerder")
+        rij = next(
+            x
+            for x in client.get("/reconciliatie/bevindingen", headers=hb).json()["rijen"]
+            if x["soort"] == "afwijking" and x["administratie_id"] == str(administratie_id)
+        )
+        client.post(
+            f"/reconciliatie/bevindingen/{rij['id']}/accepteren",
+            json={"administratie_id": str(administratie_id), "reden": "kliktest, beoordeeld"},
+            headers=hb,
+        )
+        _draai(("documenten", _documenten_blok(run_met_bevindingen)))
+        g = client.get("/reconciliatie/bevindingen?soort=geaccepteerd", headers=hb).json()["rijen"][0]
+        assert g["soort"] == "geaccepteerd"
+        r = client.post(
+            f"/reconciliatie/bevindingen/{g['id']}/intrekken",
+            json={"administratie_id": str(administratie_id), "reden": "toch niet in orde"},
+            headers=hb,
+        )
+        assert r.status_code == 200
+        hs = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        aandacht = client.get("/reconciliatie/bevindingen", headers=hs).json()
+        assert g["vingerafdruk"] in {x["vingerafdruk"] for x in aandacht["rijen"] if x["soort"] == "afwijking"}
+        assert client.get("/reconciliatie/stand", headers=hs).json()["afwijkingen"] == 1
+
+
+class TestLeesbareLaag:
+    def test_dto_draagt_titel_wat_doe_details_en_zoekt_op_namen(
+        self, run_met_bevindingen, administratie_id, beheerder_id
+    ) -> None:
+        h = _bearer(beheerder_id, rol="beheerder")
+        d = client.get("/reconciliatie/bevindingen?soort=alle", headers=h).json()
+        for x in d["rijen"]:
+            assert x["titel"] and x["wat"] and x["doe"], x
+            assert len(x["titel"]) <= 60
+            for zin in (x["titel"], x["wat"], x["doe"]):
+                assert "[vaf:" not in zin and str(administratie_id) not in zin, zin
+            assert x["details"][0] == {"label": "vingerafdruk", "waarde": x["vingerafdruk"]}
+            assert any(r["label"] == "ruwe regel" and r["waarde"] == x["tekst"] for r in x["details"])
+            assert x["tekst"]  # CLI-regel blijft beschikbaar
+        weg = next(x for x in d["rijen"] if (x["detail"] or {}).get("afwijking_soort") == "ontbreekt_in_rlz")
+        assert weg["titel"].startswith("RLZ-document verdwenen")
+        assert "Boek opnieuw via de actie op deze rij" in weg["doe"]
+        let_op = next(x for x in d["rijen"] if x["soort"] == "let_op")
+        assert let_op["titel"].startswith("Achtergebleven concept in RLZ") and "Scope-test" in let_op["titel"]
+        # zoeken op de leesbare tekst (niet alleen de CLI-regel)
+        assert client.get("/reconciliatie/bevindingen?q=verdwenen", headers=h).json()["totaal"] == 1
+        # urgentie binnen afwijkingen: ontbreekt_in_rlz vóór bedrag_wijkt_af
+        soorten = [(x["detail"] or {}).get("afwijking_soort") for x in d["rijen"] if x["soort"] == "afwijking"]
+        assert soorten == ["ontbreekt_in_rlz", "bedrag_wijkt_af"]

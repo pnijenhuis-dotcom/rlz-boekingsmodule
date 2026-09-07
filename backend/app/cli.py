@@ -693,6 +693,34 @@ def _afwijking_detail(bron: str, beoordeeld: acceptatie_service.Beoordeeld, uits
     }
 
 
+def _verrijk(verzamelaar, functie: str, **kw) -> dict:  # noqa: ANN001
+    """Naamverrijking van een detail-dict (fixrun 07-09 blok A8, `app/reconciliatie/verrijking.py`) —
+    alleen binnen een reconciliatie-alles-run (verzamelaar), losse CLI-commando's blijven identiek.
+    Nooit een fout: de verrijking levert hooguit een leeg dict."""
+    if verzamelaar is None:
+        return {}
+    from app.reconciliatie import verrijking
+
+    try:
+        return getattr(verrijking, functie)(**kw)
+    except Exception:  # noqa: BLE001 — een naamlookup mag de run nooit laten omvallen
+        return {}
+
+
+def _verrijk_bank(verzamelaar, administratie_id: uuid.UUID, a) -> dict:  # noqa: ANN001
+    return _verrijk(
+        verzamelaar, "bank", administratie_id=administratie_id, record_id=a.record_id,
+        payment_transaction_id=a.payment_transaction_id,
+    )
+
+
+def _verrijk_administratie(
+    verzamelaar, administratie_id: uuid.UUID, *, fout: str | None = None, uitsluiting: str | None = None  # noqa: ANN001
+) -> dict | None:
+    d = _verrijk(verzamelaar, "administratie", administratie_id=administratie_id, fout=fout, uitsluiting=uitsluiting)
+    return d or None
+
+
 def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
     """Eén rapportregel, zónder eigen prefix (de aanroeper bepaalt inspringing/stream). De
     vingerafdruk staat er altijd bij: dat is de sleutel waarmee een beoordeelde afwijking
@@ -873,12 +901,20 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
             if uitsluiting:
                 tekst = f"UITGESLOTEN {administratie_id}: {resultaat} (uitgesloten: {uitsluiting})"
                 print(tekst)
-                _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
+                _meld(
+                    verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst,
+                    detail=_verrijk_administratie(
+                        verzamelaar, administratie_id, fout=resultaat, uitsluiting=uitsluiting
+                    ),
+                )
                 continue
             fouten += 1
             tekst = f"FOUT       {administratie_id}: {resultaat}"
             print(tekst, file=sys.stderr)
-            _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
+            _meld(
+                verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst,
+                detail=_verrijk_administratie(verzamelaar, administratie_id, fout=resultaat),
+            )
             continue
         gecontroleerd = resultaat.boekingen_gecontroleerd + resultaat.afletteringen_gecontroleerd
         if verzamelaar is not None:
@@ -907,7 +943,10 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
                 _meld(
                     verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=regel,
                     vingerafdruk=b.vingerafdruk,
-                    detail=_afwijking_detail("bank", b, uitsluiting, payment_transaction_id=a.payment_transaction_id),
+                    detail=_afwijking_detail(
+                        "bank", b, uitsluiting, payment_transaction_id=a.payment_transaction_id,
+                        **_verrijk_bank(verzamelaar, administratie_id, a),
+                    ),
                 )
             continue
         afwijkingen_totaal += len(open_afwijkingen)
@@ -923,7 +962,10 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
             _meld(
                 verzamelaar, soort=_soort_van(b, None), administratie_id=administratie_id, tekst=regel,
                 vingerafdruk=b.vingerafdruk,
-                detail=_afwijking_detail("bank", b, None, payment_transaction_id=a.payment_transaction_id),
+                detail=_afwijking_detail(
+                    "bank", b, None, payment_transaction_id=a.payment_transaction_id,
+                    **_verrijk_bank(verzamelaar, administratie_id, a),
+                ),
             )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
@@ -949,11 +991,19 @@ def _omzet_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # 
         if administratie_id in uitgesloten:
             tekst = f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})"
             print(tekst)
-            _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
+            _meld(
+                verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst,
+                detail=_verrijk_administratie(
+                    verzamelaar, administratie_id, fout=fout, uitsluiting=uitgesloten[administratie_id]
+                ),
+            )
             continue
         tekst = f"FOUT       {administratie_id}: {fout}"
         print(tekst, file=sys.stderr)
-        _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
+        _meld(
+            verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst,
+            detail=_verrijk_administratie(verzamelaar, administratie_id, fout=fout),
+        )
     if verzamelaar is not None:
         verzamelaar.gecontroleerd(getattr(resultaat, "gecontroleerd", 0))
 
@@ -986,7 +1036,10 @@ def _omzet_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # 
             _meld(
                 verzamelaar, soort=_soort_van(b, uitsluiting), administratie_id=administratie_id, tekst=tekst,
                 vingerafdruk=b.vingerafdruk,
-                detail=_afwijking_detail("omzet", b, uitsluiting, document_id=a.document_id),
+                detail=_afwijking_detail(
+                    "omzet", b, uitsluiting, document_id=a.document_id,
+                    **_verrijk(verzamelaar, "omzet", administratie_id=administratie_id, boeking_id=a.boeking_id),
+                ),
             )
 
     if not echte_fouten and not open_totaal:
@@ -1013,11 +1066,19 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
         if administratie_id in uitgesloten:
             tekst = f"UITGESLOTEN {administratie_id}: {fout} (uitgesloten: {uitgesloten[administratie_id]})"
             print(tekst)
-            _meld(verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst)
+            _meld(
+                verzamelaar, soort="uitgesloten", administratie_id=administratie_id, tekst=tekst,
+                detail=_verrijk_administratie(
+                    verzamelaar, administratie_id, fout=fout, uitsluiting=uitgesloten[administratie_id]
+                ),
+            )
             continue
         tekst = f"FOUT       {administratie_id}: {fout}"
         print(tekst, file=sys.stderr)
-        _meld(verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst)
+        _meld(
+            verzamelaar, soort="fout", administratie_id=administratie_id, tekst=tekst,
+            detail=_verrijk_administratie(verzamelaar, administratie_id, fout=fout),
+        )
     if verzamelaar is not None:
         verzamelaar.gecontroleerd(getattr(resultaat, "gecontroleerd", 0))
 
@@ -1050,7 +1111,12 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
             _meld(
                 verzamelaar, soort=_soort_van(b, uitsluiting), administratie_id=administratie_id, tekst=tekst,
                 vingerafdruk=b.vingerafdruk,
-                detail=_afwijking_detail("doorbelasting", b, uitsluiting, document_id=a.document_id),
+                detail=_afwijking_detail(
+                    "doorbelasting", b, uitsluiting, document_id=a.document_id,
+                    **_verrijk(
+                        verzamelaar, "doorbelasting", administratie_id=administratie_id, boeking_id=a.boeking_id
+                    ),
+                ),
             )
 
     # Opruimlijst (hygiëne-run 2026-08-16): achtergebleven RLZ-concepten van gestorneerde/
@@ -1083,6 +1149,12 @@ def _doorbelasting_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> 
                     "referentie": kandidaat.referentie,
                     "reden": kandidaat.reden,
                     "detail": kandidaat.detail,
+                    **_verrijk(
+                        verzamelaar, "opruim_kandidaat",
+                        administratie_id=kandidaat.administratie_id,
+                        concept_administratie_id=kandidaat.concept_administratie_id,
+                        document_id=kandidaat.document_id,
+                    ),
                 },
             )
     for fout in opruim.fouten:

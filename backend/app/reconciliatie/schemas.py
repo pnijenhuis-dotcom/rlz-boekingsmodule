@@ -39,8 +39,16 @@ class GezienWeergaveDto(BaseModel):
     gezien_door_naam: str | None = None
 
 
+class DetailRegelDto(BaseModel):
+    """Eén technische sleutel in de uitklap "details" (GUID, vingerafdruk, ruwe regel)."""
+
+    label: str
+    waarde: str
+
+
 class BevindingDto(BaseModel):
-    """Eén rij = één bevinding uit de laatste afgeronde run, mét precies één handeling."""
+    """Eén rij = één bevinding uit de laatste afgeronde run, mét precies één handeling. Sinds 07-09 (blok A8)
+    draagt ze de leesbare laag `titel`/`wat`/`doe` (namen, geen GUID's) + `details`; `tekst` = de CLI-regel."""
 
     id: uuid.UUID
     run_id: uuid.UUID
@@ -50,6 +58,10 @@ class BevindingDto(BaseModel):
     administratie_naam: str | None = None
     vingerafdruk: str
     tekst: str
+    titel: str = ""
+    wat: str = ""
+    doe: str = ""
+    details: list[DetailRegelDto] = []
     sinds: datetime
     nieuw: bool
     acceptatie: AcceptatieWeergaveDto | None = None

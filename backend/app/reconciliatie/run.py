@@ -267,34 +267,11 @@ def bepaal_delta(
     )
 
 
-_PERSPECTIEF_AFWIJKING = (
-    "→ controleren in de app (Inzicht › Reconciliatie) of in Reeleezee; is de situatie beoordeeld en "
-    "blijvend, dan 'Accepteren…' mét reden."
-)
-_PERSPECTIEF_HALF_GEBOEKT = (
-    "→ half geboekt: herstel via de half-geboekt-route (make omzet-reconciliatie / doorbelasting-"
-    "reconciliatie, BESLISSINGEN 'Omzetmodule' resp. 'KEMPEN-DOORBELASTING') — nooit stil laten staan."
-)
-_PERSPECTIEF_CONTROLE_MISLUKT = (
-    "→ verbinding/credentials van deze administratie nagaan; de volgende run controleert opnieuw."
-)
-_PERSPECTIEF_LET_OP = (
-    "→ achtergebleven Reeleezee-concept: opruimen is klikwerk in de RLZ-UI (de app verwijdert nooit); "
-    "in de app 'Gezien' mét reden om 'm uit de teller te halen."
-)
-_PERSPECTIEF_GEACCEPTEERD = "→ ter kennisgeving (beoordeeld-en-blijvend); intrekken kan op Inzicht › Reconciliatie."
-_PERSPECTIEF_FOUT = (
-    "→ niet gecontroleerd: credentials of RLZ-bereikbaarheid nagaan; de volgende run controleert opnieuw."
-)
+def _perspectief_afwijking(b: Bevinding, administratie_naam: str | None = None) -> str:
+    """Handelingsperspectief = de 'doe'-zin van de leesbare tekst (sinds 07-09 blok A8 één bron voor UI en mail)."""
+    from app.reconciliatie import teksten
 
-
-def _perspectief_afwijking(b: Bevinding) -> str:
-    soort = (b.detail or {}).get("afwijking_soort") or ""
-    if soort == "half_geboekt":
-        return _PERSPECTIEF_HALF_GEBOEKT
-    if soort == "controle_mislukt":
-        return _PERSPECTIEF_CONTROLE_MISLUKT
-    return _PERSPECTIEF_AFWIJKING
+    return teksten.leesbaar(b, administratie_naam=administratie_naam).doe
 
 
 def bouw_mail(
@@ -308,18 +285,33 @@ def bouw_mail(
     open_afwijkingen: int,
     namen: dict[uuid.UUID, str],
 ) -> tuple[str, str]:
-    """(onderwerp, platte tekst). Bevindingen letterlijk = de CLI-regel, mét administratienaam náást
-    het GUID; per soort het handelingsperspectief in één zin."""
+    """(onderwerp, platte tekst). Per bevinding DEZELFDE leesbare tekst als in de UI (blok A8, 07-09):
+    "[administratie] titel — wat" + "doe" als hoofdregels; de vingerafdruk (sleutel voor de CLI-acceptatie)
+    en de ruwe CLI-regel staan als technische regel eronder — nooit meer een kale GUID-regel bovenaan."""
+    from app.reconciliatie import teksten
+
     datum = afgerond_op.astimezone(_AMSTERDAM).strftime("%d-%m-%Y")
     onderwerp = (
         f"RLZ reconciliatie {datum}: {open_afwijkingen} afwijking(en) · "
         f"{delta.aantal_nieuwe_aandachtspunten} nieuwe aandachtspunt(en)"
     )
 
-    def naam(b: Bevinding) -> str:
+    def adm_naam(b: Bevinding) -> str | None:
         if b.administratie_id is None:
-            return ""
-        return f"[{namen.get(b.administratie_id, 'onbekende administratie')}] "
+            return None
+        return namen.get(b.administratie_id, "onbekende administratie")
+
+    def naam(b: Bevinding) -> str:
+        n = adm_naam(b)
+        return f"[{n}] " if n else ""
+
+    def leesbare_regels(b: Bevinding) -> list[str]:
+        lees = teksten.leesbaar(b, administratie_naam=adm_naam(b))
+        return [
+            f"  - {naam(b)}{lees.titel} — {lees.wat}",
+            f"    → {lees.doe}",
+            f"    technisch: vaf:{b.vingerafdruk} · {b.tekst}",
+        ]
 
     regels: list[str] = [
         f"Reconciliatie-run {afgerond_op.astimezone(_AMSTERDAM):%d-%m-%Y %H:%M} (bron {bron}, exit {exit_code}).",
@@ -339,26 +331,27 @@ def bouw_mail(
             + (f" — {stand['foutmelding']}" if stand.get("foutmelding") else "")
         )
 
-    def sectie(kop: str, items: Sequence[Bevinding], perspectief: Callable[[Bevinding], str] | str) -> None:
+    def sectie(kop: str, items: Sequence[Bevinding]) -> None:
         if not items:
             return
         regels.extend(["", f"{kop} ({len(items)}):"])
         for b in items:
-            regels.append(f"  - {naam(b)}{b.tekst}")
-            regels.append(f"    {perspectief(b) if callable(perspectief) else perspectief}")
+            regels.extend(leesbare_regels(b))
 
     if delta.blokken_fout:
         regels.extend(["", f"Omgevallen blok(ken): {', '.join(delta.blokken_fout)} — zie de foutmelding hierboven."])
-    sectie("Nieuwe afwijkingen", delta.nieuwe_afwijkingen, _perspectief_afwijking)
-    sectie("Nieuwe fouten (niet gecontroleerd)", delta.nieuwe_fouten, _PERSPECTIEF_FOUT)
-    sectie("Nieuwe aandachtspunten (LET-OP)", delta.nieuwe_let_op, _PERSPECTIEF_LET_OP)
-    sectie("Nieuw geaccepteerd", delta.nieuwe_geaccepteerd, _PERSPECTIEF_GEACCEPTEERD)
+    sectie("Nieuwe afwijkingen", delta.nieuwe_afwijkingen)
+    sectie("Nieuwe fouten (niet gecontroleerd)", delta.nieuwe_fouten)
+    sectie("Nieuwe aandachtspunten (LET-OP)", delta.nieuwe_let_op)
+    sectie("Nieuw geaccepteerd", delta.nieuwe_geaccepteerd)
     if delta.verdwenen_afwijkingen:
         regels.extend(
             ["", f"Hersteld — {len(delta.verdwenen_afwijkingen)} afwijking(en) uit de vorige run niet meer gezien:"]
         )
         for b in delta.verdwenen_afwijkingen:
-            regels.append(f"  - {naam(b)}{b.tekst}")
+            lees = teksten.leesbaar(b, administratie_naam=adm_naam(b))
+            regels.append(f"  - {naam(b)}{lees.titel} — {lees.wat}")
+            regels.append(f"    technisch: vaf:{b.vingerafdruk} · {b.tekst}")
     regels.extend(
         [
             "",

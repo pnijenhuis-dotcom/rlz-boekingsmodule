@@ -7,7 +7,7 @@
 // bevinding mét precies één handeling (②): afwijking → "Accepteren…" (Beheerder, verplichte reden),
 // let-op → "Gezien…", gezien → "Toch tonen", plus de deep-link naar het document. "▶ Nu draaien" =
 // één kantoorbrede achtergrondrun (③, 202 + status-poll). Teal = actie, groen = status.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -58,6 +58,11 @@ function ddmm(iso: string): string {
 
 function tijd(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Leesbare titel (07-09, blok A8) — met terugval op de CLI-regel voor een server zonder de leesbare laag. */
+function titelVan(r: BevindingDto): string {
+  return r.titel?.trim() ? r.titel : r.tekst
 }
 
 function isSoortFacet(w: string | null): w is SoortFacet {
@@ -265,7 +270,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             <Button
               variant="secundair"
               maat="klein"
-              aria-label={`Afwijking accepteren: ${r.tekst}`}
+              aria-label={`Afwijking accepteren: ${titelVan(r)}`}
               onClick={() =>
                 setRedenActie({
                   bevinding: r,
@@ -292,7 +297,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
         <Button
           variant="secundair"
           maat="klein"
-          aria-label={`Acceptatie intrekken: ${r.tekst}`}
+          aria-label={`Acceptatie intrekken: ${titelVan(r)}`}
           onClick={() =>
             setRedenActie({
               bevinding: r,
@@ -317,7 +322,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             <Button
               variant="secundair"
               maat="klein"
-              aria-label={`Gezien: ${r.tekst}`}
+              aria-label={`Gezien: ${titelVan(r)}`}
               onClick={() =>
                 setRedenActie({
                   bevinding: r,
@@ -342,7 +347,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
         <button
           type="button"
           className="linkbtn"
-          aria-label={`Toch tonen: ${r.tekst}`}
+          aria-label={`Toch tonen: ${titelVan(r)}`}
           onClick={() =>
             setRedenActie({
               bevinding: r,
@@ -511,14 +516,39 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
                     </td>
                     <td>{BLOK_LABEL[r.blok] ?? r.blok}</td>
                     <td>
-                      <div>
-                        {r.tekst}{' '}
+                      <div data-testid="bevinding-titel">
+                        <strong>{titelVan(r)}</strong>{' '}
                         {r.nieuw && (
                           <Badge variant="warn" data-testid="chip-nieuw">
                             nieuw
                           </Badge>
                         )}
                       </div>
+                      {r.wat && <div data-testid="bevinding-wat">{r.wat}</div>}
+                      {r.doe && (
+                        <div className="hint" style={{ margin: 0 }} data-testid="bevinding-doe">
+                          → {r.doe}
+                        </div>
+                      )}
+                      {(r.details?.length ?? 0) > 0 && (
+                        <details style={{ marginTop: 4 }} data-testid="bevinding-details">
+                          <summary className="hint" style={{ cursor: 'pointer', fontSize: 11.5, margin: 0 }}>
+                            details
+                          </summary>
+                          <dl style={{ margin: '4px 0 0', fontSize: 11.5, display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 10px' }}>
+                            {r.details.map((d, i) => (
+                              <Fragment key={`${d.label}-${i}`}>
+                                <dt className="hint" style={{ margin: 0 }}>
+                                  {d.label}
+                                </dt>
+                                <dd style={{ margin: 0, wordBreak: 'break-all' }}>
+                                  <code style={{ fontSize: 11 }}>{d.waarde}</code>
+                                </dd>
+                              </Fragment>
+                            ))}
+                          </dl>
+                        </details>
+                      )}
                       {r.acceptatie && (
                         <div className="hint" style={{ margin: 0, fontSize: 11.5 }}>
                           geaccepteerd: {r.acceptatie.reden}
@@ -632,8 +662,9 @@ function RedenDialoog({
       <DialogContent aria-describedby={undefined} data-testid="reden-dialoog">
         <DialogTitle>{actie.titel}</DialogTitle>
         <DialogDescription>{actie.beschrijving}</DialogDescription>
-        <div className="hint" style={{ marginTop: 0 }}>
-          {actie.bevinding.tekst}
+        <div className="hint" style={{ marginTop: 0 }} data-testid="reden-dialoog-bevinding">
+          <strong>{titelVan(actie.bevinding)}</strong>
+          {actie.bevinding.wat ? <div>{actie.bevinding.wat}</div> : null}
         </div>
         <form
           onSubmit={(e) => {

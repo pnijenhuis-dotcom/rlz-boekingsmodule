@@ -7,6 +7,7 @@ afwijking = wél mail; verdwijnen = herstelmelding) en een mailfout maakt de job
 from __future__ import annotations
 
 import argparse
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -25,9 +26,11 @@ from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
 ARGS = argparse.Namespace()
 
 
-def _b(soort: str, aid: uuid.UUID | None, vaf: str, tekst: str = "regel", **detail) -> Bevinding:
+def _b(
+    soort: str, aid: uuid.UUID | None, vaf: str, tekst: str = "regel", blok: str = "documenten", **detail
+) -> Bevinding:
     return Bevinding(
-        blok="documenten", soort=soort, administratie_id=aid, vingerafdruk=vaf, tekst=tekst, detail=detail or None
+        blok=blok, soort=soort, administratie_id=aid, vingerafdruk=vaf, tekst=tekst, detail=detail or None
     )
 
 
@@ -102,30 +105,75 @@ class TestDelta:
 
 
 class TestBouwMail:
-    def test_onderwerp_body_administratienaam_en_perspectief(self) -> None:
+    def test_onderwerp_body_leesbare_tekst_en_technische_regel(self) -> None:
+        """Blok A8 (07-09): de mail draagt per bevinding DEZELFDE leesbare tekst als de UI ("[administratie]
+        titel — wat" + "→ doe"); de CLI-regel mét GUID's en de vingerafdruk (sleutel voor de CLI-acceptatie)
+        staan als technische regel erónder — nooit meer als hoofdregel."""
         aid = uuid.uuid4()
+        doc = uuid.uuid4()
         delta = Delta(
             nieuwe_afwijkingen=[
                 _b(
                     "afwijking",
                     aid,
                     "a1",
-                    tekst="document=x rlz_document=y soort=half_geboekt [vaf:a1]: half geboekt",
+                    tekst=f"AFWIJKING  {aid} boeking={doc} soort=half_geboekt [vaf:a1]: Periode 2026-08-01 t/m "
+                    "2026-08-31: verkoopfactuur staat (mogelijk) geboekt zonder kostprijsmemoriaal — x",
+                    blok="omzet",
+                    bron="omzet",
                     afwijking_soort="half_geboekt",
+                    detail="Periode 2026-08-01 t/m 2026-08-31: verkoopfactuur staat (mogelijk) geboekt zonder "
+                    "kostprijsmemoriaal — x",
+                    totaal_omzet="15230.10",
                 ),
-                _b("afwijking", aid, "a2", tekst="AFWIJKING  regel", afwijking_soort="ontbreekt_in_rlz"),
+                _b(
+                    "afwijking",
+                    aid,
+                    "a2",
+                    tekst=f"document={doc} rlz_document={uuid.uuid4()} soort=bedrag_wijkt_af [vaf:a2]: "
+                    "eigen=€274.89 rlz=€279.51",
+                    bron="documenten",
+                    afwijking_soort="bedrag_wijkt_af",
+                    detail="eigen=€274.89 rlz=€279.51",
+                    leverancier_naam="Kader Consultancy",
+                    factuurnummer="F212604921",
+                    rlz_boekstuk="RLZ-01-00000241",
+                    bedrag_lokaal="274.89",
+                    bedrag_extern="279.51",
+                ),
             ],
             nieuwe_let_op=[
                 _b(
                     "let_op",
                     aid,
                     "l1",
-                    tekst=f"LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron 1111 in administratie {aid}",
+                    tekst=f"LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron {uuid.uuid4()} "
+                    f"in administratie {aid}",
+                    kant="verkoop_bron",
+                    reden="gestorneerd",
+                    referentie="24713188",
                 )
             ],
-            nieuwe_geaccepteerd=[_b("geaccepteerd", aid, "g1", tekst="GEACCEPTEERD regel")],
-            nieuwe_fouten=[_b("fout", None, "f1", tekst="FOUT       bank-reconciliatie viel om: boem")],
-            verdwenen_afwijkingen=[_b("afwijking", aid, "oud", tekst="oude afwijking")],
+            nieuwe_geaccepteerd=[
+                _b(
+                    "geaccepteerd",
+                    aid,
+                    "g1",
+                    tekst="GEACCEPTEERD regel",
+                    bron="documenten",
+                    afwijking_soort="ontbreekt_in_rlz",
+                    detail="404",
+                    leverancier_naam="Labo Derva",
+                    factuurnummer="2026-118",
+                )
+            ],
+            nieuwe_fouten=[_b("fout", None, "f1", tekst="FOUT       bank-reconciliatie viel om: boem", blok="bank")],
+            verdwenen_afwijkingen=[
+                _b(
+                    "afwijking", aid, "oud", tekst="oude afwijking", bron="documenten",
+                    afwijking_soort="bedrag_wijkt_af", detail="eigen=€1 rlz=€2", leverancier_naam="Oud BV",
+                )
+            ],
             blokken_fout=["bank"],
         )
         samenvatting = {
@@ -161,15 +209,31 @@ class TestBouwMail:
         assert "FOUT  bank" in tekst and "RuntimeError: boem" in tekst
         assert "ACTIE documenten" in tekst and "12 gecontroleerd, 2 afwijking(en), 1 geaccepteerd" in tekst
         assert "omzet          niet gedraaid" in tekst
-        # administratienaam náást het GUID (de CLI-regel zelf blijft letterlijk staan)
+
+        regels = tekst.splitlines()
+        hoofdregels = [r for r in regels if r.startswith("  - ")]
+        # Hoofdregels = leesbaar, met administratienaam, ZONDER GUID/vingerafdruk.
         assert (
-            f"[Kempen Facilities B.V.] LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron 1111 in administratie {aid}"
-            in tekst
+            "  - [Kempen Facilities B.V.] Bedrag afwijkt in RLZ — Kader Consultancy F212604921 — "
+            "Wij boekten € 274,89, RLZ toont € 279,51." in hoofdregels
         )
-        assert "half-geboekt-route" in tekst  # perspectief half_geboekt
-        assert "Accepteren…" in tekst  # perspectief gewone afwijking
-        assert "klikwerk in de RLZ-UI" in tekst  # perspectief let-op: nooit de app
-        assert "Hersteld — 1 afwijking(en)" in tekst and "oude afwijking" in tekst
+        assert any("Omzet half geboekt — 01-08-2026 t/m 31-08-2026 — De verkoopfactuur" in r for r in hoofdregels)
+        assert any("Achtergebleven concept in RLZ" in r and "(ref 24713188)" in r for r in hoofdregels)
+        assert any("RLZ-document verdwenen — Labo Derva 2026-118" in r for r in hoofdregels)
+        assert any("Controle bank viel om — Het blok bank is niet gedraaid: boem." in r for r in hoofdregels)
+        assert any("Hersteld — 1 afwijking(en)" in r for r in regels)
+        assert any("Bedrag afwijkt in RLZ — Oud BV — Wij boekten € 1,00, RLZ toont € 2,00." in r for r in hoofdregels)
+        guid = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+        for r in hoofdregels:
+            assert not guid.search(r) and "[vaf:" not in r, r
+        # Doe-zin per bevinding (dezelfde als in de UI) …
+        assert "    → Controleer de wijziging in RLZ; klopt die, accepteer met reden." in tekst
+        assert "    → Herstel via de half-geboekt-route (omzet-reconciliatie) — nooit laten staan." in tekst
+        assert "klikwerk in Reeleezee" in tekst  # let-op: nooit de app
+        assert "intrekken kan via de actie op deze rij" in tekst  # geaccepteerd
+        # … en de vingerafdruk + ruwe CLI-regel als technische regel erónder (CLI-acceptatie blijft mogelijk).
+        assert "    technisch: vaf:a2 · document=" in tekst and "[vaf:a2]: eigen=€274.89 rlz=€279.51" in tekst
+        assert "    technisch: vaf:oud" in tekst
         assert "Omgevallen blok(ken): bank" in tekst
         assert "/reconciliatie" in tekst
 
@@ -465,9 +529,12 @@ class TestCliReconciliatieAlles:
         assert rij.samenvatting["documenten"]["gecontroleerd"] == 2 and rij.samenvatting["bank"]["gecontroleerd"] == 1
         assert rij.samenvatting["doorbelasting"]["let_op"] == 1
         assert len(mails) == 1 and "1 afwijking(en) · 3 nieuwe aandachtspunt(en)" in mails[0]["onderwerp"]
-        # administratienaam náást het GUID in de mail
+        # leesbare hoofdregel mét administratienaam (blok A8); de CLI-regel staat als technische regel eronder
         with scoped_session(None) as session:
             naam = session.execute(
                 text("SELECT naam FROM platform.administratie WHERE id = :id"), {"id": administratie_id}
             ).scalar_one()
-        assert f"[{naam}] LET-OP" in mails[0]["tekst"]
+        assert f"  - [{naam}] Achtergebleven concept in RLZ — {naam}" in mails[0]["tekst"]
+        assert f"[{naam}] LET-OP" not in mails[0]["tekst"]
+        assert "    technisch: vaf:" in mails[0]["tekst"]
+        assert "LET-OP     opruim-kandidaat [gestorneerd]" in mails[0]["tekst"]

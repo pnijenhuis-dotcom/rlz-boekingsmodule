@@ -32,7 +32,15 @@ const AFWIJKING: BevindingDto = {
   administratie_id: ADMIN_A,
   administratie_naam: 'Kempen Facilities B.V.',
   vingerafdruk: 'bank:mut-1',
-  tekst: 'bank: mutatie 01-09 € 1.240,00 is in de app afgeletterd maar staat in Reeleezee nog open',
+  tekst: 'record=aaaaaaaa-1111-2222-3333-444444444444 mutatie=bbbbbbbb-1111-2222-3333-444444444444 soort=aflettering_teruggedraaid_in_rlz [vaf:bank:mut-1]: OpenAmount=1240.00',
+  titel: 'Aflettering teruggedraaid in RLZ — Shell · € 1.240,00 · 01-09-2026',
+  wat: 'Wij letterden de bankmutatie van 01-09-2026 (Shell, € 1.240,00) af; in RLZ staat er weer € 1.240,00 open.',
+  doe: 'Letter opnieuw af in het bankscherm, of accepteer met reden.',
+  details: [
+    { label: 'vingerafdruk', waarde: 'bank:mut-1' },
+    { label: 'RLZ-mutatie', waarde: 'bbbbbbbb-1111-2222-3333-444444444444' },
+    { label: 'ruwe regel', waarde: 'record=aaaaaaaa-1111-2222-3333-444444444444 mutatie=bbbbbbbb-1111-2222-3333-444444444444 soort=aflettering_teruggedraaid_in_rlz [vaf:bank:mut-1]: OpenAmount=1240.00' },
+  ],
   sinds: '2026-09-05T05:00:00Z',
   nieuw: true,
   acceptatie: null,
@@ -48,7 +56,11 @@ const LET_OP: BevindingDto = {
   administratie_id: ADMIN_B,
   administratie_naam: 'Universal Steigerbouw B.V.',
   vingerafdruk: 'db:concept-7',
-  tekst: 'doorbelasting: achtergebleven concept in de bron-administratie (run van 02-09)',
+  tekst: 'LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron cccccccc-1111-2222-3333-444444444444 in administratie bbbbbbbb-0000-0000-0000-000000000002',
+  titel: 'Achtergebleven concept in RLZ — Universal Steigerbouw B.V.',
+  wat: 'Een verkoop-concept in de bron-administratie van een gestorneerde doorbelasting (ref 24713188) staat nog in Reeleezee — het telt nergens mee, maar vervuilt de administratie.',
+  doe: "Opruimen is klikwerk in Reeleezee (de app verwijdert nooit); 'Gezien' met reden haalt 'm uit de teller.",
+  details: [{ label: 'vingerafdruk', waarde: 'db:concept-7' }],
   sinds: '2026-09-04T05:00:00Z',
   nieuw: false,
   acceptatie: null,
@@ -64,7 +76,11 @@ const FOUT: BevindingDto = {
   administratie_id: null,
   administratie_naam: null,
   vingerafdruk: 'run:502',
-  tekst: 'omzet: Reeleezee niet bereikbaar (502) — blok niet gecontroleerd',
+  tekst: 'FOUT       omzet-reconciliatie viel om: Reeleezee niet bereikbaar (502)',
+  titel: 'Controle omzet viel om',
+  wat: 'Het blok omzet is niet gedraaid: Reeleezee niet bereikbaar (502).',
+  doe: 'Niets is gecontroleerd in dit blok; de volgende run probeert opnieuw. Blijft het, dan is het een storing.',
+  details: [{ label: 'vingerafdruk', waarde: 'run:502' }],
   sinds: '2026-09-05T05:00:00Z',
   nieuw: false,
   acceptatie: null,
@@ -112,7 +128,7 @@ function lijst(rijen: BevindingDto[] = [AFWIJKING, LET_OP, FOUT], extra: Partial
 
 interface StubOpties {
   runStatussen?: ReconciliatieRunDto[]
-  lijstAntwoord?: BevindingenLijstDto
+  lijstAntwoord?: BevindingenLijstDto | (() => BevindingenLijstDto)
   actieStatus?: number
   actieDetail?: string
 }
@@ -136,7 +152,10 @@ function stubFetch(rol = 'boekhouding', opties: StubOpties = {}) {
           }),
         )
       }
-      if (url.startsWith('/reconciliatie/bevindingen?')) return Promise.resolve(jsonResponse(opties.lijstAntwoord ?? lijst()))
+      if (url.startsWith('/reconciliatie/bevindingen?')) {
+        const antwoord = typeof opties.lijstAntwoord === 'function' ? opties.lijstAntwoord() : opties.lijstAntwoord
+        return Promise.resolve(jsonResponse(antwoord ?? lijst()))
+      }
       if (url === '/reconciliatie/run/laatste') return Promise.resolve(jsonResponse(null))
       if (url === '/reconciliatie/run' && method === 'POST') return Promise.resolve(jsonResponse(run('wachtend'), 202))
       if (url === `/reconciliatie/run/${RUN_ID}`) {
@@ -179,17 +198,33 @@ describe('ReconciliatieScreen (kantoorbreed)', () => {
     )
     const rijen = within(tabel).getAllByTestId('reconciliatie-rij')
     expect(rijen).toHaveLength(3)
-    // Afwijking: administratie-link, blok, letterlijke CLI-regel, chip "nieuw", deep-link naar het document.
+    // Afwijking: administratie-link, blok, LEESBARE titel (vet) + wat + doe (blok A8, 07-09), chip "nieuw", deep-link.
     expect(within(rijen[0]).getByRole('link', { name: 'Kempen Facilities B.V.' })).toHaveAttribute('href', `/?administratie=${ADMIN_A}`)
     expect(within(rijen[0]).getByText('Bank')).toBeInTheDocument()
-    expect(within(rijen[0]).getByText(/mutatie 01-09 € 1\.240,00/)).toBeInTheDocument()
+    expect(within(rijen[0]).getByTestId('bevinding-titel')).toHaveTextContent('Aflettering teruggedraaid in RLZ — Shell · € 1.240,00 · 01-09-2026')
+    expect(within(rijen[0]).getByTestId('bevinding-titel').querySelector('strong')).toHaveTextContent('Aflettering teruggedraaid in RLZ')
+    expect(within(rijen[0]).getByTestId('bevinding-wat')).toHaveTextContent('Wij letterden de bankmutatie van 01-09-2026 (Shell, € 1.240,00) af')
+    expect(within(rijen[0]).getByTestId('bevinding-doe')).toHaveTextContent('→ Letter opnieuw af in het bankscherm, of accepteer met reden.')
+    // De ruwe CLI-regel mét GUID's staat NIET in titel/wat/doe, alleen in de uitklap "details".
+    for (const id of ['bevinding-titel', 'bevinding-wat', 'bevinding-doe']) {
+      expect(within(rijen[0]).getByTestId(id)).not.toHaveTextContent(/record=|\[vaf:/)
+    }
+    const uitklap = within(rijen[0]).getByTestId('bevinding-details')
+    expect(within(uitklap).getByText(/^record=aaaaaaaa/)).toBeInTheDocument()
+    expect(uitklap).not.toHaveAttribute('open')
+    expect(within(uitklap).getByText('RLZ-mutatie')).toBeInTheDocument()
+    expect(within(uitklap).getByText('bbbbbbbb-1111-2222-3333-444444444444')).toBeInTheDocument()
+    expect(within(uitklap).getByText(/soort=aflettering_teruggedraaid_in_rlz \[vaf:bank:mut-1\]/)).toBeInTheDocument()
+    await userEvent.click(within(uitklap).getByText('details'))
+    expect(uitklap).toHaveAttribute('open')
     expect(within(rijen[0]).getByTestId('chip-nieuw')).toHaveTextContent('nieuw')
     expect(within(rijen[0]).getByRole('link', { name: /Naar het document/ })).toHaveAttribute('href', `/?administratie=${ADMIN_A}&document=doc-1`)
     // Let-op: eigen actie + eigen deep-link-tekst.
     expect(within(rijen[1]).getByRole('button', { name: /^Gezien:/ })).toBeInTheDocument()
     expect(within(rijen[1]).getByRole('link', { name: /Naar het document van/ })).toHaveTextContent('Naar de doorbelasting →')
-    // Administratie-loze blokfout: geen knop, wél handelingsperspectief.
+    // Administratie-loze blokfout: geen knop, wél handelingsperspectief; leesbare titel.
     expect(within(rijen[2]).getByText('—')).toBeInTheDocument()
+    expect(within(rijen[2]).getByTestId('bevinding-titel')).toHaveTextContent('Controle omzet viel om')
     expect(within(rijen[2]).getByText(/credentials\/RLZ-bereikbaarheid/)).toBeInTheDocument()
     expect(within(rijen[2]).queryByRole('button')).toBeNull()
     expect(screen.getByTestId('reconciliatie-voet')).toHaveTextContent(/1 van 1/)
@@ -220,12 +255,20 @@ describe('ReconciliatieScreen (kantoorbreed)', () => {
     expect(screen.queryByLabelText("'Gezien' vervalt na (dagen)")).toBeNull()
   })
 
-  it('Accepteren…: reden verplicht en inhoudelijk (< 5 tekens = knop uit), POST mét administratie_id + reden', async () => {
-    const aangeroepen = stubFetch('beheerder')
+  it('Accepteren…: reden verplicht en inhoudelijk (< 5 tekens = knop uit), POST mét administratie_id + reden; de geaccepteerde rij verdwijnt direct uit "aandacht nodig"', async () => {
+    // Server-stand vóór en ná accepteren (bugfix 07-09: de lijst volgt de live acceptatie, geen nieuwe run nodig).
+    const naAccepteren = lijst([LET_OP, FOUT], { totaal: 2, tellers: { afwijkingen: 2, let_op: 2, fouten: 1, geaccepteerd: 5, uitgesloten: 1, gezien: 0, administraties: 2 } })
+    let geaccepteerd = false
+    const aangeroepen = stubFetch('beheerder', { lijstAntwoord: () => (geaccepteerd ? naAccepteren : lijst()) })
     renderScherm()
     const tabel = await screen.findByTestId('reconciliatie-tabel')
-    await userEvent.click(within(tabel).getByRole('button', { name: /^Afwijking accepteren:/ }))
+    expect(within(tabel).getAllByTestId('reconciliatie-rij')).toHaveLength(3)
+    await userEvent.click(within(tabel).getByRole('button', { name: 'Afwijking accepteren: Aflettering teruggedraaid in RLZ — Shell · € 1.240,00 · 01-09-2026' }))
     const dialoog = await screen.findByTestId('reden-dialoog')
+    // De dialoog toont de leesbare titel + wat, niet de ruwe CLI-regel.
+    expect(within(dialoog).getByTestId('reden-dialoog-bevinding')).toHaveTextContent('Aflettering teruggedraaid in RLZ')
+    expect(within(dialoog).getByTestId('reden-dialoog-bevinding')).toHaveTextContent('Wij letterden de bankmutatie')
+    expect(within(dialoog).queryByText(/record=aaaaaaaa/)).toBeNull()
     const bevestig = within(dialoog).getByRole('button', { name: 'Accepteren' })
     expect(bevestig).toBeDisabled()
     await userEvent.type(within(dialoog).getByLabelText('Reden'), 'ok')
@@ -233,14 +276,28 @@ describe('ReconciliatieScreen (kantoorbreed)', () => {
     expect(within(dialoog).getByText(/minimaal 5 tekens/)).toBeInTheDocument()
     await userEvent.type(within(dialoog).getByLabelText('Reden'), ' — handmatig gecorrigeerd in Reeleezee')
     expect(bevestig).toBeEnabled()
+    geaccepteerd = true // vanaf de POST antwoordt de server met de live-stand (rij is geaccepteerd)
     await userEvent.click(bevestig)
     await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/reconciliatie/bevindingen/r1/accepteren')).toBe(true))
     const post = aangeroepen.find((a) => a.pad === '/reconciliatie/bevindingen/r1/accepteren')!
     expect(post.method).toBe('POST')
     expect(post.body).toEqual({ administratie_id: ADMIN_A, reden: 'ok — handmatig gecorrigeerd in Reeleezee' })
-    // Na succes: dialoog dicht en de lijst opnieuw opgehaald.
+    // Na succes: dialoog dicht, de lijst opnieuw opgehaald en de geaccepteerde rij is WEG uit "aandacht nodig"
+    // (geen client-side filter dat 'm vasthoudt); de teller-chip volgt de server.
     await waitFor(() => expect(screen.queryByTestId('reden-dialoog')).toBeNull())
     expect(aangeroepen.filter((a) => a.pad.startsWith('/reconciliatie/bevindingen?')).length).toBeGreaterThan(1)
+    await waitFor(() => expect(within(screen.getByTestId('reconciliatie-tabel')).getAllByTestId('reconciliatie-rij')).toHaveLength(2))
+    expect(screen.queryByText('Aflettering teruggedraaid in RLZ — Shell · € 1.240,00 · 01-09-2026')).toBeNull()
+    expect(screen.getByTestId('chip-afwijkingen')).toHaveTextContent('2 afwijkingen')
+  })
+
+  it('zonder leesbare laag (oude server) valt de rij terug op de CLI-regel', async () => {
+    const oud = { ...AFWIJKING, titel: '', wat: '', doe: '', details: [] }
+    stubFetch('boekhouding', { lijstAntwoord: lijst([oud]) })
+    renderScherm()
+    const tabel = await screen.findByTestId('reconciliatie-tabel')
+    expect(within(tabel).getByTestId('bevinding-titel')).toHaveTextContent(/^record=aaaaaaaa/)
+    expect(within(tabel).queryByTestId('bevinding-details')).toBeNull()
   })
 
   it('Gezien…: let-op-melding tijdelijk wegleggen; een serverfout blijft zichtbaar in de dialoog', async () => {

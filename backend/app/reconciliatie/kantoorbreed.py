@@ -31,6 +31,7 @@ from app.db.models import Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.reconciliatie import run as run_service
 from app.reconciliatie import service as acceptatie_service
+from app.reconciliatie import teksten
 from app.reconciliatie.models import (
     BevindingSoort,
     ReconciliatieBevinding,
@@ -43,6 +44,18 @@ PER_PAGINA = 25
 SOORT_FACETTEN = ("aandacht", "afwijking", "let_op", "fout", "geaccepteerd", "uitgesloten", "gezien", "alle")
 AANDACHT = (BevindingSoort.AFWIJKING.value, BevindingSoort.FOUT.value, BevindingSoort.LET_OP.value)
 _URGENTIE = {"afwijking": 0, "fout": 1, "let_op": 2, "geaccepteerd": 3, "uitgesloten": 4, "gezien": 5}
+#: Binnen soort=afwijking bovenaan (contract A↔A8 punt 5): een verdwenen of teruggedraaid extern document
+#: is de zwaarste categorie — daar is boekhoudkundig werk, niet alleen beoordelen.
+_URGENTIE_AFWIJKING_SOORT = {
+    "ontbreekt_in_rlz": 0,
+    "ontbreekt_in_odoo": 0,
+    "document_ontbreekt_in_rlz": 0,
+    "mutatie_ontbreekt_in_rlz": 0,
+    "teruggedraaid_in_odoo": 1,
+    "boeking_teruggedraaid_in_rlz": 1,
+    "aflettering_teruggedraaid_in_rlz": 1,
+    "half_geboekt": 2,
+}
 _MINIMALE_REDEN = 5
 
 
@@ -81,6 +94,16 @@ class Rij:
     gezien: GezienWeergave | None
     detail: dict | None
     doel_pad: str | None
+    # Leesbare laag (fixrun 07-09 blok A8, app/reconciliatie/teksten.py): titel + "wat is er" + "wat doe je"
+    # met namen; technische sleutels in `details` (label, waarde) voor de uitklap. `tekst` blijft de CLI-regel.
+    titel: str = ""
+    wat: str = ""
+    doe: str = ""
+    details: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def zoektekst(self) -> str:
+        return " ".join((self.tekst, self.titel, self.wat, self.administratie_naam or "")).lower()
 
 
 @dataclass(frozen=True)
@@ -209,7 +232,16 @@ def _rijen_voor_administratie(
             if gezien_rij is not None:
                 soort = "gezien"
             acc = acceptaties.get(b.vingerafdruk)
+            # BUGFIX 07-09 (blok A8): de opgeslagen bevinding zegt 'afwijking' tot de VOLGENDE run; de
+            # acceptatie is echter al live (reconciliatie_acceptatie). De lijst en de KPI volgen daarom de
+            # actuele acceptatie-stand: geaccepteerd → direct uit "aandacht nodig"; ingetrokken → direct terug.
+            # Uitgesloten blijft uitgesloten (besluit 0043), gezien/let_op/fout raakt dit niet.
+            if soort == BevindingSoort.AFWIJKING.value and acc is not None:
+                soort = BevindingSoort.GEACCEPTEERD.value
+            elif soort == BevindingSoort.GEACCEPTEERD.value and acc is None and (b.detail or {}).get("bron"):
+                soort = BevindingSoort.AFWIJKING.value
             eerste = sinds.get(b.vingerafdruk) or run_afgerond or b.aangemaakt_op
+            lees = teksten.leesbaar(b, administratie_naam=naam, soort=soort)
             uit.append(
                 Rij(
                     id=b.id,
@@ -243,6 +275,10 @@ def _rijen_voor_administratie(
                     ),
                     detail=b.detail,
                     doel_pad=_doel_pad(b),
+                    titel=lees.titel,
+                    wat=lees.wat,
+                    doe=lees.doe,
+                    details=tuple(lees.details),
                 )
             )
         return uit
@@ -269,8 +305,24 @@ def _in_facet(rij: Rij, soort: str) -> bool:
     return rij.soort == soort
 
 
+def _urgentie_binnen_soort(r: Rij) -> int:
+    if r.soort != BevindingSoort.AFWIJKING.value:
+        return 9
+    return _URGENTIE_AFWIJKING_SOORT.get(str((r.detail or {}).get("afwijking_soort") or ""), 5)
+
+
 def _sorteer(rijen: list[Rij]) -> list[Rij]:
-    return sorted(rijen, key=lambda r: (_URGENTIE.get(r.soort, 9), r.sinds, r.administratie_naam or "", r.tekst))
+    return sorted(
+        rijen,
+        key=lambda r: (
+            _URGENTIE.get(r.soort, 9),
+            _urgentie_binnen_soort(r),
+            r.sinds,
+            r.administratie_naam or "",
+            r.titel,
+            r.tekst,
+        ),
+    )
 
 
 def lijst(
@@ -302,15 +354,10 @@ def lijst(
     binnen_admin_q = [
         r
         for r in alle
-        if (administratie_id is None or r.administratie_id == administratie_id)
-        and (not term or term in r.tekst.lower() or term in (r.administratie_naam or "").lower())
+        if (administratie_id is None or r.administratie_id == administratie_id) and (not term or term in r.zoektekst)
     ]
     facetten_soort = {s: sum(1 for r in binnen_admin_q if _in_facet(r, s)) for s in SOORT_FACETTEN}
-    binnen_soort_q = [
-        r
-        for r in alle
-        if _in_facet(r, soort) and (not term or term in r.tekst.lower() or term in (r.administratie_naam or "").lower())
-    ]
+    binnen_soort_q = [r for r in alle if _in_facet(r, soort) and (not term or term in r.zoektekst)]
     per_admin: dict[uuid.UUID, tuple[str, int]] = {}
     for r in binnen_soort_q:
         if r.administratie_id is None:
@@ -377,9 +424,15 @@ def accepteer(
     _vereis_scope(actor_id, rol, administratie_id)
     b = _laad_bevinding(bevinding_id=bevinding_id, administratie_id=administratie_id, actor_id=actor_id)
     d = b.detail or {}
-    if b.soort not in (BevindingSoort.AFWIJKING.value, BevindingSoort.UITGESLOTEN.value) or not d.get("bron"):
+    if b.soort not in (
+        BevindingSoort.AFWIJKING.value,
+        BevindingSoort.UITGESLOTEN.value,
+        BevindingSoort.GEACCEPTEERD.value,  # opgeslagen als geaccepteerd, maar intussen ingetrokken (live-stand)
+    ) or not d.get("bron"):
         raise ReconciliatieFout("Alleen een afwijking kan geaccepteerd worden")
-    if d.get("geaccepteerd"):
+    # "Al geaccepteerd" toetsen op de LIVE acceptatie-stand, niet op de snapshot in de bevinding (bugfix 07-09):
+    # ná intrekken moet dezelfde rij opnieuw te accepteren zijn zonder een nieuwe run.
+    if b.vingerafdruk in acceptatie_service._actieve_acceptaties(administratie_id=administratie_id, bron=d["bron"]):
         raise ReconciliatieFout("Deze afwijking is al geaccepteerd")
     try:
         return acceptatie_service.accepteer(
