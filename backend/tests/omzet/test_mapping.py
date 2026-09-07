@@ -173,12 +173,23 @@ class TestAutovraag:
             administratie_id=administratie_id, document_id=kassarapport_document
         )
 
-    def test_geen_eigenaar_is_no_op_zonder_fout(
-        self, kassarapport_document: uuid.UUID, administratie_id: uuid.UUID
+    def test_geen_eigenaar_stelt_de_vraag_toch_niet_toegewezen(
+        self, kassarapport_document: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
     ) -> None:
-        assert not autovraag.stel_mapping_vraag_indien_nodig(
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen"; herziet de gelogde no-op): zonder eigenaar wordt de
+        automatische mapping-vraag tóch gesteld — niet-toegewezen, zichtbaar in Inzicht › Open vragen — in plaats
+        van stil overgeslagen."""
+        assert autovraag.stel_mapping_vraag_indien_nodig(
             administratie_id=administratie_id, document_id=kassarapport_document
         )
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text(
+                    "SELECT toegewezen_aan, aan_de_beurt, status FROM boekhouding.vraag WHERE document_id = :d"
+                ),
+                {"d": kassarapport_document},
+            ).one()
+        assert rij.status == "open" and rij.toegewezen_aan is None and rij.aan_de_beurt is None
 
     def test_geen_vraag_als_alles_gemapt(
         self,

@@ -74,7 +74,8 @@ class AfwijzingInfoDto(BaseModel):
     reden: str
     afgewezen_door: uuid.UUID
     afgewezen_op: datetime
-    toegewezen_aan: uuid.UUID
+    # None = niet toegewezen (geen eigenaar, geen expliciete keuze — 0121, "leeg = doorlopen").
+    toegewezen_aan: uuid.UUID | None = None
     status_voor_afwijzing: str
     # Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel — gevuld als het
     # document als duplicaat is afgevoerd (chip "duplicaat afgevoerd" op de lijst); `automatisch` =
@@ -750,7 +751,8 @@ class VraagResponse(BaseModel):
     status_voor_vraag: str
     gesteld_door: uuid.UUID
     gesteld_op: datetime
-    toegewezen_aan: uuid.UUID
+    # None = niet toegewezen (0121, "leeg = doorlopen").
+    toegewezen_aan: uuid.UUID | None = None
     antwoord_tekst: str | None = None
     beantwoord_door: uuid.UUID | None = None
     beantwoord_op: datetime | None = None
@@ -759,7 +761,7 @@ class VraagResponse(BaseModel):
     ingetrokken_reden: str | None = None
     # Dialoog (migratie 0064): wie aan zet is, afhandeling, de thread (oudste eerst) en de
     # server-side poort-uitkomst voor de "Afgehandeld"-knop (UI-hint; de server hertoetst).
-    aan_de_beurt: uuid.UUID
+    aan_de_beurt: uuid.UUID | None = None
     afgehandeld_door: uuid.UUID | None = None
     afgehandeld_op: datetime | None = None
     berichten: list[VraagBerichtResponse] = []
@@ -773,7 +775,7 @@ class VraagLijstResponse(BaseModel):
 class AfwijzenInput(StrikteInvoer):
     """Afwijsmodal (mockup #afwijsmodal): reden verplicht (lege reden wordt óók in de service-
     én DB-laag geweigerd — deze schema-eis is de eerste poort, geen vervanging), toewijzing
-    "Ter controle naar" optioneel (default: de administratie-eigenaar)."""
+    "Ter controle naar" optioneel (default: de administratie-eigenaar; zonder eigenaar leeg)."""
 
     reden: str
     toegewezen_aan: uuid.UUID | None = None
@@ -788,7 +790,7 @@ class AfwijzingResponse(BaseModel):
     status_voor_afwijzing: str
     afgewezen_door: uuid.UUID
     afgewezen_op: datetime
-    toegewezen_aan: uuid.UUID
+    toegewezen_aan: uuid.UUID | None = None
     heropend_door: uuid.UUID | None = None
     heropend_op: datetime | None = None
 
@@ -872,14 +874,29 @@ class TegenboekingInfoDto(BaseModel):
     aangemaakt_op: datetime
 
 
+class TegenboekDuplicaatDto(BaseModel):
+    """Ander GEBOEKT document waarvan dit document een module-duplicaat is (herstelrun 07-09 blok 1c)."""
+
+    document_id: uuid.UUID
+    categorie: str
+    referentie: str | None = None
+    bestandsnaam: str
+    rlz_boekstuknummer: str | None = None
+
+
 class TegenboekToetsResponse(BaseModel):
     """Leesroute voor de sectie op het controlescherm en het ⋯-menu in het archief: de knop
-    "Tegenboeken…" verschijnt alléén bij storno_geblokkeerd (en zonder bestaande tegenboeking).
+    "Tegenboeken…" verschijnt bij `tegenboeken_beschikbaar` = storno_geblokkeerd (aangifte-poort, mockup 22-08)
+    ÓF `duplicaat_van_geboekt` niet leeg (dubbel geboekt — herstelrun 07-09 blok 1c; ook als de aangifte nog
+    open is), en zonder bestaande tegenboeking. `aanbod_reden` = "aangifte" | "duplicaat" | None stuurt de tekst.
     `betaalstatus` is None als het origineel in RLZ niet leesbaar was."""
 
     document_id: uuid.UUID
     storno_geblokkeerd: bool
     blokkade_melding: str | None = None
+    tegenboeken_beschikbaar: bool = False
+    aanbod_reden: Literal["aangifte", "duplicaat"] | None = None
+    duplicaat_van_geboekt: list[TegenboekDuplicaatDto] = []
     tegenboeking: TegenboekingInfoDto | None = None
     betaalstatus: TegenboekBetaalstatusDto | None = None
     voorbeeld: list[TegenboekVoorbeeldRegelDto]

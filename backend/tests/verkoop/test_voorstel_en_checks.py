@@ -392,6 +392,33 @@ class TestAutovraag:
             is False
         )
 
+    def test_onbekende_code_zonder_eigenaar_stelt_de_vraag_toch_niet_toegewezen(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        rekeningschema: None,
+    ) -> None:
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen"; herziet de gelogde no-op): zonder administratie-eigenaar
+        wordt de GB-code-vraag tóch gesteld — niet-toegewezen, kantoorbreed zichtbaar — nooit stil overgeslagen."""
+        from sqlalchemy import select
+
+        from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+        from app.documenten.models import Vraag
+
+        document_id = upload_verkoopfactuur(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            inhoud=bouw_vastly_verkoop_ubl(
+                regels=[{"naam": "Huur", "netto": "100.00", "pct": "21.00", "categorie": "S", "gb_code": "9999"}]
+            ),
+        )
+        with scoped_session(administratie_id) as session:
+            vraag = session.scalars(select(Vraag).where(Vraag.document_id == document_id)).one()
+            assert vraag.gesteld_door == SYSTEEM_ACTOR_ID and vraag.status == "open"
+            assert vraag.toegewezen_aan is None and vraag.aan_de_beurt is None
+
     def test_bekende_codes_geen_vraag(
         self,
         gescoopte_gebruiker: uuid.UUID,

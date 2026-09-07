@@ -4,7 +4,13 @@ zichtbaar in de werkvoorraad als "Afgewezen — ter controle" mét reden en wie 
 is geblokkeerd (boeken.py::_KAN_BOEKPOGING_STARTEN_VANUIT bevat afgewezen niet). Heropenen zet
 het document terug naar exact de status van vóór de afwijzing (afwijzing.status_voor_afwijzing)
 — zelfde status_voor_*-patroon als de vragenworkflow (app/documenten/vragen.py), waarvan ook de
-toewijzings-default (administratie-eigenaar) en de scope-afdwinging hergebruikt worden."""
+toewijzings-default (administratie-eigenaar) en de scope-afdwinging hergebruikt worden.
+
+LEEG = DOORLOPEN (herstelrun 07-09 blok 2, besluit Peter, kernprincipe 7; migratie 0121): géén eigenaar en
+géén expliciete toegewezene betekent NIET meer een weigering (`GeenToewijzingMogelijk` is vervallen) maar een
+afwijzing zónder toewijzing — de rij landt in de kantoorbrede werkvoorraad "Afgewezen — ter controle"
+(administratie is een filter, geen poort). Alleen een expliciet opgegeven toegewezene buiten de scope blijft
+een zichtbare fout (`ToegewezeneBuitenScope`)."""
 
 from __future__ import annotations
 
@@ -20,10 +26,7 @@ from app.db.session import scoped_session
 from app.documenten.models import Afwijzing, AfwijzingStatus, Document, DocumentStatus
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.statusmachine import OngeldigeStatusovergang
-from app.documenten.vragen import (
-    GeenToewijzingMogelijk,
-    _controleer_toegewezene_scope,
-)
+from app.documenten.vragen import _controleer_toegewezene_scope
 
 
 class AfwijzingFout(Exception):
@@ -70,7 +73,8 @@ class AfwijzingData:
     status_voor_afwijzing: str
     afgewezen_door: uuid.UUID
     afgewezen_op: datetime
-    toegewezen_aan: uuid.UUID
+    # None = niet toegewezen (geen eigenaar, geen expliciete keuze) — kantoorbreed zichtbaar.
+    toegewezen_aan: uuid.UUID | None
     heropend_door: uuid.UUID | None
     heropend_op: datetime | None
     # Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel; None bij een
@@ -115,8 +119,9 @@ def wijs_af(
 ) -> AfwijzingData:
     """Wijst een document af: reden verplicht, document -> afgewezen (blijft zichtbaar in de
     werkvoorraad, boeken geblokkeerd), toewijzing ("Ter controle naar", mockup #afwijsmodal)
-    default naar de administratie-eigenaar. Document.toegewezen_aan volgt mee (werkvoorraad-
-    kolom "Toegewezen") — zelfde gedrag als een vraag.
+    default naar de administratie-eigenaar; zonder eigenaar blijft de toewijzing LEEG (07-09: leeg =
+    doorlopen, nooit een weigering). Document.toegewezen_aan volgt mee (werkvoorraad-kolom
+    "Toegewezen", leeg = "— (niet toegewezen)") — zelfde gedrag als een vraag.
 
     Duplicaat-afvoer (04-09, migratie 0105): de `duplicaat_van_*`-kruisverwijzing en `automatisch`
     reizen mee naar de afwijzing-rij, de tijdlijn (`automatisch_afgevoerd`, `duplicaat_van_*`) en het
@@ -139,11 +144,9 @@ def wijs_af(
         if toegewezene is None:
             administratie = session.get(Administratie, administratie_id)
             toegewezene = administratie.eigenaar_gebruiker_id if administratie else None
-        if toegewezene is None:
-            raise GeenToewijzingMogelijk(
-                "Deze administratie heeft geen eigenaar — wijs de controle expliciet toe of stel een eigenaar in"
-            )
-        _controleer_toegewezene_scope(session, gebruiker_id=toegewezene, administratie_id=administratie_id)
+        # Geen eigenaar → toegewezene blijft None: de afwijzing landt niet-toegewezen in de kantoorbrede lijst.
+        if toegewezene is not None:
+            _controleer_toegewezene_scope(session, gebruiker_id=toegewezene, administratie_id=administratie_id)
 
         afwijzing = Afwijzing(
             id=uuid.uuid4(),
@@ -180,7 +183,7 @@ def wijs_af(
             detail={
                 "afwijzing_id": str(afwijzing.id),
                 "reden": reden_tekst,
-                "toegewezen_aan": str(toegewezene),
+                "toegewezen_aan": str(toegewezene) if toegewezene is not None else None,
                 "status_voor_afwijzing": afwijzing.status_voor_afwijzing,
                 **duplicaat_detail,
             },
@@ -198,7 +201,7 @@ def wijs_af(
             nieuwe_waarde={
                 "document_id": str(document_id),
                 "reden": reden_tekst,
-                "toegewezen_aan": str(toegewezene),
+                "toegewezen_aan": str(toegewezene) if toegewezene is not None else None,
                 "status_voor_afwijzing": afwijzing.status_voor_afwijzing,
                 **duplicaat_detail,
             },

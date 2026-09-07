@@ -14,7 +14,7 @@ import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { AnkerPopup, Checkbox, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
-import { useMedewerkers } from '../vragen/useMedewerkers'
+import { NIET_TOEGEWEZEN, useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
 import { useDichtheid } from './dichtheid'
@@ -1119,6 +1119,10 @@ export function DocumentenDeelscherm({
                           </span>
                         ) : d.toegewezen_aan ? (
                           naamVoor(d.toegewezen_aan)
+                        ) : d.afwijzing || d.status === 'vraag_open' ? (
+                          // 07-09 "leeg = doorlopen": een afwijzing/vraag zonder toegewezene is een kantoorbrede
+                          // rij, geen fout — de kolom zegt dat expliciet i.p.v. een kaal streepje.
+                          <span style={{ color: 'var(--muted)' }}>{NIET_TOEGEWEZEN}</span>
                         ) : (
                           '—'
                         )}

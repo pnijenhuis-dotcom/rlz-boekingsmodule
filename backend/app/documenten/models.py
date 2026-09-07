@@ -416,7 +416,9 @@ class Vraag(Base):
     open vraag per document tegelijk (partiële unique index, migratie 0022); eerdere beantwoorde
     of ingetrokken vragen blijven als historie staan. `toegewezen_aan` default naar de
     administratie-eigenaar (Administratie.eigenaar_gebruiker_id), overschrijfbaar binnen de scope
-    van de administratie — zie app/documenten/vragen.py. `status_voor_vraag` is de document-
+    van de administratie — zie app/documenten/vragen.py; sinds migratie 0121 (herstelrun 07-09,
+    "leeg = doorlopen") NULLABLE: geen eigenaar en geen expliciete toewijzing = een vraag zonder
+    toegewezene, zichtbaar in de kantoorbrede lijst Inzicht › Open vragen. `status_voor_vraag` is de document-
     status van vóór de vraag: beantwoorden/intrekken herstellen exact díé herkomst (nooit
     hardgecodeerd te_controleren). De antwoord- en intrek-velden zijn per CHECK-constraint
     gebonden aan de status."""
@@ -438,7 +440,9 @@ class Vraag(Base):
     gesteld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     gesteld_op: Mapped[datetime] = mapped_column(server_default=func.now())
     vraag_tekst: Mapped[str]
-    toegewezen_aan: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    toegewezen_aan: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
     # TEXT met CHECK, niet de document_status-PG-enum (zie migratie 0022 voor het waarom);
     # app/documenten/vragen.py vertaalt van/naar DocumentStatus.
     status_voor_vraag: Mapped[str]
@@ -506,7 +510,9 @@ class Afwijzing(Base):
     index, migratie 0023); eerdere heropende afwijzingen blijven als historie staan. `reden` is
     verplicht (ook op DB-niveau: CHECK niet-leeg). `toegewezen_aan` = "Ter controle naar" uit de
     mockup-modal, default de administratie-eigenaar — zelfde patroon en scope-afdwinging als
-    Vraag (app/documenten/afwijzen.py). `status_voor_afwijzing` is de document-status van vóór
+    Vraag (app/documenten/afwijzen.py); sinds migratie 0121 NULLABLE ("leeg = doorlopen"): zonder
+    eigenaar en zonder expliciete toewijzing landt de afwijzing niet-toegewezen in de kantoorbrede
+    werkvoorraad "Afgewezen — ter controle". `status_voor_afwijzing` is de document-status van vóór
     de afwijzing: heropenen herstelt exact díé herkomst (zelfde status_voor_*-patroon als
     Vraag.status_voor_vraag)."""
 
@@ -533,7 +539,9 @@ class Afwijzing(Base):
     afgewezen_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     afgewezen_op: Mapped[datetime] = mapped_column(server_default=func.now())
     reden: Mapped[str]
-    toegewezen_aan: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    toegewezen_aan: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
     # TEXT met CHECK, niet de document_status-PG-enum — zelfde overweging als Vraag (migratie
     # 0022); app/documenten/afwijzen.py vertaalt van/naar DocumentStatus.
     status_voor_afwijzing: Mapped[str]

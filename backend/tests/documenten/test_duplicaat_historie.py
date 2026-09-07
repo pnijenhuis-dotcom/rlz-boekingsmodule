@@ -145,8 +145,9 @@ def _status(admin_engine: Engine, document_id: uuid.UUID) -> str:
 
 @pytest.fixture
 def eigenaar_id(admin_engine: Engine, administratie_id: uuid.UUID, beheerder_id: uuid.UUID) -> uuid.UUID:
-    """De afwijs-route wijst het afgevoerde document toe aan de eigenaar van de administratie (afwijzen.py) — zonder
-    eigenaar weigert de afvoer leesbaar (`GeenToewijzingMogelijk`, audit `duplicaat_afvoer_geweigerd`)."""
+    """De afwijs-route wijst het afgevoerde document toe aan de eigenaar van de administratie (afwijzen.py); zonder
+    eigenaar loopt de afvoer sinds 07-09 (blok 2, "leeg = doorlopen") niet-toegewezen door — deze fixture toetst
+    het pad MÉT eigenaar."""
     gid = _extra_gebruiker(admin_engine, met_scope_op=administratie_id, beheerder_id=beheerder_id)
     beheer_service.zet_eigenaar(actor_id=beheerder_id, administratie_id=administratie_id, eigenaar_gebruiker_id=gid)
     return gid

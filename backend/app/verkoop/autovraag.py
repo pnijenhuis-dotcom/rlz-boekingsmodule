@@ -1,20 +1,20 @@
 """Automatische vraag bij een onbekende AccountingCost-code (§2d-GB-uitbreiding v1.10:
 "onbekende code = blokkerende check + vraag, nooit stil een andere rekening kiezen") — zelfde
 patroon als de omzet-mappingvraag (app/omzet/autovraag.py): systeem-actor, bestaande
-vragenworkflow, en alle nee-redenen zijn no-ops — de blokkerende GB-code-check op het
-reviewscherm blijft de harde poort, de vraag is de signalering eromheen."""
+vragenworkflow. Zónder administratie-eigenaar wordt de vraag sinds 07-09 (herstelrun blok 2, "leeg =
+doorlopen") tóch gesteld — niet-toegewezen, zichtbaar in Inzicht › Open vragen — in plaats van stil
+overgeslagen; de enige overgebleven no-ops zijn een al open vraag of een status die het niet toelaat
+(race). De blokkerende GB-code-check op het reviewscherm blijft de harde poort, de vraag is de
+signalering eromheen."""
 
 from __future__ import annotations
 
-import logging
 import uuid
 
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import vragen
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.verkoop.voorstel import GeenVerkoopfactuur, haal_verkoop_voorstel_op
-
-logger = logging.getLogger(__name__)
 
 
 def onbekende_gb_codes(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[str]:
@@ -47,12 +47,5 @@ def stel_gb_code_vraag_indien_nodig(*, administratie_id: uuid.UUID, document_id:
             vraag_tekst=tekst,
         )
     except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang):
-        return False
-    except vragen.GeenToewijzingMogelijk:
-        logger.warning(
-            "GB-code-vraag voor verkoopdocument %s kon niet toegewezen worden (geen eigenaar) — "
-            "de blokkerende check blijft de poort",
-            document_id,
-        )
         return False
     return True

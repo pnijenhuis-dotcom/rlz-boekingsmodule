@@ -95,7 +95,8 @@ class OpenVraagRij:
     gesteld_door_id: uuid.UUID
     gesteld_door_naam: str | None
     gesteld_op: datetime
-    aan_de_beurt_id: uuid.UUID
+    #: None = niet toegewezen (0121, "leeg = doorlopen") — de rij staat gewoon in de kantoorbrede lijst.
+    aan_de_beurt_id: uuid.UUID | None
     aan_de_beurt_naam: str | None
     #: True als de actor zelf aan zet is ("aan u" in de mockup).
     aan_mij: bool
@@ -173,7 +174,9 @@ def _alle_open_vragen(*, actor_id: uuid.UUID, rol: GebruikerRol, nu: datetime) -
             ):
                 laatste.setdefault(bericht.vraag_id, bericht)
             gebruiker_ids = {vraag.gesteld_door for vraag, _d, _b, _n in rijen}
-            gebruiker_ids |= {vraag.aan_de_beurt or vraag.toegewezen_aan for vraag, _d, _b, _n in rijen}
+            gebruiker_ids |= {
+                beurt for vraag, _d, _b, _n in rijen if (beurt := vraag.aan_de_beurt or vraag.toegewezen_aan)
+            }
             gebruiker_ids |= {b.auteur_id for b in laatste.values()}
             namen = dict(
                 session.execute(select(Gebruiker.id, Gebruiker.naam).where(Gebruiker.id.in_(list(gebruiker_ids)))).all()

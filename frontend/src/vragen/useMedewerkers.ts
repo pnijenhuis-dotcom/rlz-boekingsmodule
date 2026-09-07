@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import type { MedewerkerDto } from '../api/types'
 import { haalMedewerkersOp } from './vragenApi'
 
+/** Weergave van een lege toewijzing (07-09 "leeg = doorlopen"): een vraag/afwijzing zónder toegewezene is geen
+ * fout maar een kantoorbrede rij — de kolom "Toegewezen" en de detailregels zeggen dat expliciet. */
+export const NIET_TOEGEWEZEN = '— (niet toegewezen)'
+
+/** Naam van een toegewezene, of het expliciete niet-toegewezen-label bij null. */
+export function toegewezeneLabel(naamVoor: (id: string | null) => string, id: string | null | undefined): string {
+  return id ? naamVoor(id) : NIET_TOEGEWEZEN
+}
+
 /** Toewijsbare medewerkers van één administratie (vraagmodal, toegewezen-kolom, vragen-view) +
  * een naam-opzoeker voor gebruiker-UUID's. Een id buiten de lijst (bv. iemand wiens scope later
  * is ingetrokken) valt terug op een herkenbaar label, nooit op een kale UUID. */

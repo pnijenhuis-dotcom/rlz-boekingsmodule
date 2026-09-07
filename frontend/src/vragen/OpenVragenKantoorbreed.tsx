@@ -33,7 +33,14 @@ export function subregel(rij: OpenVraagRijDto): string {
   else delen.push(rij.document_bestandsnaam)
   if (rij.referentie) delen.push(rij.referentie)
   if (rij.totaalbedrag !== null) delen.push(formatBedrag(rij.totaalbedrag))
-  delen.push(rij.aan_mij ? 'aan u' : `aan ${rij.aan_de_beurt_naam ?? 'onbekend'}`)
+  // Null-id = niet toegewezen (07-09 "leeg = doorlopen") — de rij staat gewoon in deze kantoorbrede lijst.
+  delen.push(
+    rij.aan_mij
+      ? 'aan u'
+      : rij.aan_de_beurt_id === null
+        ? 'niet toegewezen'
+        : `aan ${rij.aan_de_beurt_naam ?? 'onbekend'}`,
+  )
   return delen.join(' · ')
 }
 

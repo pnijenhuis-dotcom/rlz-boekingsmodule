@@ -21,7 +21,7 @@ class OpenVraagRijDto(BaseModel):
     gesteld_door_id: uuid.UUID
     gesteld_door_naam: str | None
     gesteld_op: datetime
-    aan_de_beurt_id: uuid.UUID
+    aan_de_beurt_id: uuid.UUID | None
     aan_de_beurt_naam: str | None
     aan_mij: bool
     wacht_dagen: int

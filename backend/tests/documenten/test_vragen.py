@@ -176,22 +176,91 @@ class TestVraagStellen:
             )
         assert _status(admin_engine, document_te_controleren) == DocumentStatus.TE_CONTROLEREN.value
 
-    def test_zonder_eigenaar_en_zonder_toewijzing_geweigerd(
+    def test_zonder_eigenaar_loopt_door_zonder_toewijzing_en_blijft_kantoorbreed_zichtbaar(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         document_te_controleren: uuid.UUID,
         admin_engine: Engine,
     ) -> None:
-        """Geen stille default en geen onbeheerde vraag: zonder eigenaar is een expliciete
-        toewijzing verplicht."""
-        with pytest.raises(vragen.GeenToewijzingMogelijk):
-            vragen.stel_vraag(
-                administratie_id=administratie_id,
-                document_id=document_te_controleren,
-                actor_id=gescoopte_gebruiker,
-                vraag_tekst="Wie moet dit oppakken?",
-            )
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen", migratie 0121; herziet de weigering `GeenToewijzingMogelijk`):
+        zonder eigenaar én zonder expliciete toewijzing wordt de vraag gewoon gesteld — toegewezen_aan en aan_de_beurt
+        leeg, document op vraag_open (boeken geblokkeerd), zichtbaar in de per-administratie-lijst én de kantoorbrede
+        lijst Inzicht › Open vragen; tijdlijn en audit dragen `toegewezen_aan: null`."""
+        from app.db.models import GebruikerRol
+        from app.vragen import service as open_vragen
+
+        data = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_te_controleren,
+            actor_id=gescoopte_gebruiker,
+            vraag_tekst="Wie moet dit oppakken?",
+        )
+        assert data.toegewezen_aan is None and data.aan_de_beurt is None
+        assert _status(admin_engine, document_te_controleren) == DocumentStatus.VRAAG_OPEN.value
+        assert _toegewezen_aan(admin_engine, document_te_controleren) is None
+        open_per_administratie = vragen.lijst_vragen(administratie_id=administratie_id, status=VraagStatus.OPEN)
+        assert [v.id for v in open_per_administratie] == [data.id]
+        kantoorbreed = open_vragen.lijst(actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING)
+        rij = next(r for r in kantoorbreed.rijen if r.vraag_id == data.id)
+        assert rij.aan_de_beurt_id is None and rij.aan_de_beurt_naam is None and rij.aan_mij is False
+        assert rij.blokkeert_boeken is True
+        # "Aan mij" is een filter op de kantoorbrede set — de niet-toegewezen rij verdwijnt daar (terecht) uit,
+        # maar staat in de standaardweergave "alle".
+        aan_mij = open_vragen.lijst(actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING, toegewezen="mij")
+        assert data.id not in {r.vraag_id for r in aan_mij.rijen}
+        with admin_engine.connect() as conn:
+            audit = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE tabel = 'vraag' AND record_id = :id "
+                    "AND actie = 'vraag_gesteld'"
+                ),
+                {"id": data.id},
+            ).scalar_one()
+            tijdlijn = conn.execute(
+                text(
+                    "SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :d "
+                    "AND naar_status = 'vraag_open'"
+                ),
+                {"d": document_te_controleren},
+            ).scalar_one()
+        assert "toegewezen_aan" in audit and audit["toegewezen_aan"] is None
+        assert "toegewezen_aan" in tijdlijn and tijdlijn["toegewezen_aan"] is None
+        # De dialoog blijft werken zonder toegewezene: bericht van de vraagsteller → beurt blijft leeg (niemand
+        # specifiek), een collega antwoordt → beurt naar de vraagsteller; afhandelen door de vraagsteller.
+        na_bericht = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=data.id, actor_id=gescoopte_gebruiker, tekst="Iemand?"
+        )
+        assert na_bericht.aan_de_beurt is None
+        afgehandeld = vragen.handel_vraag_af(
+            administratie_id=administratie_id, vraag_id=data.id, actor_id=gescoopte_gebruiker
+        )
+        assert afgehandeld.status == VraagStatus.AFGEHANDELD.value
+        assert _status(admin_engine, document_te_controleren) == DocumentStatus.TE_CONTROLEREN.value
+
+    def test_systeem_vraag_zonder_toegewezene_mag_door_iedereen_in_scope_afgehandeld_worden(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        document_te_controleren: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """Een automatische (systeem-)vraag op een eigenaarloze administratie heeft geen toegewezene; zonder deze
+        regel kon die vraag nooit dicht (alleen 'de toegewezene' mocht afhandelen). Nu: iedereen binnen de scope."""
+        from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+        data = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_te_controleren,
+            actor_id=SYSTEEM_ACTOR_ID,
+            vraag_tekst="Automatische vraag zonder eigenaar",
+        )
+        assert data.toegewezen_aan is None
+        assert vragen.mag_afhandelen(SYSTEEM_ACTOR_ID, None, gescoopte_gebruiker) is True
+        afgehandeld = vragen.handel_vraag_af(
+            administratie_id=administratie_id, vraag_id=data.id, actor_id=gescoopte_gebruiker
+        )
+        assert afgehandeld.status == VraagStatus.AFGEHANDELD.value
         assert _status(admin_engine, document_te_controleren) == DocumentStatus.TE_CONTROLEREN.value
 
     def test_toewijzing_override_binnen_scope(

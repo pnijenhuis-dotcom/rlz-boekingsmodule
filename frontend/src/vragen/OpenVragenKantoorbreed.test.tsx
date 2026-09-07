@@ -235,6 +235,10 @@ describe('helpers', () => {
     expect(wachtLabel(1)).toBe('1 dag')
     expect(wachtLabel(8)).toBe('8 dagen')
     expect(subregel(rij({ leverancier_naam: null, referentie: null, totaalbedrag: null }) as never)).toBe('shell.pdf · aan Barbara')
+    // 07-09 "leeg = doorlopen": een vraag zonder toegewezene (geen eigenaar) staat gewoon in de lijst, expliciet gelabeld.
+    expect(
+      subregel(rij({ leverancier_naam: null, referentie: null, totaalbedrag: null, aan_de_beurt_id: null, aan_de_beurt_naam: null, aan_mij: false }) as never),
+    ).toBe('shell.pdf · niet toegewezen')
   })
 
   it('openVragenQuery laat defaults weg en trimt de zoekterm', () => {

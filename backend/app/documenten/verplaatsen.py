@@ -17,7 +17,9 @@ Wat er gebeurt, in één transactie op de BRON-scope die halverwege naar de DOEL
    die het RLS-beleid voor deze verhuizing passeert, gepoort op bron-scope + status ontvangen)
    verhuist document + kindrijen met eigen administratie_id;
 7. in de doel-scope: duplicaatvlag opnieuw bepaald, vraag-toegewezenen zonder doel-scope naar de
-   doel-eigenaar, platform-breed audit_event `document_verplaatst`;
+   doel-eigenaar — of LEEG als het doel geen eigenaar heeft (herstelrun 07-09 blok 2, "leeg =
+   doorlopen": de vraag landt dan niet-toegewezen in Inzicht › Open vragen; nooit stil naar de
+   verplaatser), platform-breed audit_event `document_verplaatst`;
 8. ná de commit: `start_extractie_na_toewijzing` in het doel — exact het ene extractiepad achter de
    gates van de dóél-administratie (26-08 punt 4); de post-extractie-hook herberekent
    duplicaatsignaal/factuurmatch/materiaalmatch dáár, en een open vraag zet het document weer op
@@ -361,20 +363,24 @@ def verplaats_document(
             )
         )
         if vragen_in_doel:
+            # Doel-eigenaar mét scope, anders LEEG (0121): een vraag zonder toegewezene is kantoorbreed
+            # zichtbaar — nooit stil naar de verplaatser (die koos alleen de doeladministratie).
             vervanger: uuid.UUID | None = None
             if doel_eigenaar_id is not None and _heeft_scope(
                 session, gebruiker_id=doel_eigenaar_id, administratie_id=doel_administratie_id
             ):
                 vervanger = doel_eigenaar_id
-            else:
-                vervanger = actor_id
             for vraag in vragen_in_doel:
                 gewijzigd = False
-                if not _heeft_scope(session, gebruiker_id=vraag.toegewezen_aan, administratie_id=doel_administratie_id):
+                if vraag.toegewezen_aan is not None and not _heeft_scope(
+                    session, gebruiker_id=vraag.toegewezen_aan, administratie_id=doel_administratie_id
+                ):
                     vraag.toegewezen_aan = vervanger
                     gewijzigd = True
                 beurt = vraag.aan_de_beurt or vraag.toegewezen_aan
-                if not _heeft_scope(session, gebruiker_id=beurt, administratie_id=doel_administratie_id):
+                if beurt is not None and not _heeft_scope(
+                    session, gebruiker_id=beurt, administratie_id=doel_administratie_id
+                ):
                     vraag.aan_de_beurt = vervanger
                     vraag.aan_de_beurt_sinds = datetime.now(UTC)
                     gewijzigd = True

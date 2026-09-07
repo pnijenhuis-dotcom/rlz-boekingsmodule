@@ -60,7 +60,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.audit import record_audit_event
-from app.db.models import Administratie, DuplicaatAfvoerInstelling, Gebruiker, GebruikerRol, GebruikerStatus
+from app.db.models import Administratie, DuplicaatAfvoerInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import afwijzen, duplicaat_module, vragen
@@ -77,7 +77,7 @@ from app.documenten.models import (
 )
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.statusmachine import OngeldigeStatusovergang
-from app.documenten.vragen import GeenToewijzingMogelijk, ToegewezeneBuitenScope
+from app.documenten.vragen import ToegewezeneBuitenScope
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,8 @@ _UITGESLOTEN_STATUSSEN = frozenset(
 # Rangorde "wie is het origineel": lager = eerder origineel. Geboekt wint altijd; daarna het document waarop
 # al een boekpoging liep; dan het document bij de klant-accordeur (ronde intrekken is duurder dan een
 # te_controleren-exemplaar afvoeren); dan het document met een open vraag; dan de rest op leeftijd. Binnen
-# één rang wint het oudste. Sinds blok A2 zijn rang 2 en 3 wél afvoerbaar als er een hoger origineel is.
+# één rang wint een GEBUNDELD document (UBL + PDF-beeld) van een los exemplaar, daarna het oudste (blok D 07-09).
+# Sinds blok A2 zijn rang 2 en 3 wél afvoerbaar als er een hoger origineel is.
 _STATUS_RANG: dict[DocumentStatus, int] = {
     DocumentStatus.GEBOEKT: 0,
     DocumentStatus.BOEKEN_MISLUKT: 1,
@@ -222,6 +223,8 @@ class _Lid:
     vendor_id: uuid.UUID | None
     referentie: str | None
     totaalbedrag: Decimal | None
+    #: Gebundeld document (UBL-data + PDF-beeld): wint binnen dezelfde status-rang van een los exemplaar (blok D).
+    heeft_beeld: bool = False
 
 
 @dataclass(frozen=True)
@@ -291,6 +294,7 @@ def _lid_uit_kop(kop: duplicaat_module.Kop) -> _Lid:
         vendor_id=kop.vendor_id,
         referentie=kop.referentie,
         totaalbedrag=kop.totaalbedrag,
+        heeft_beeld=kop.heeft_beeld,
     )
 
 
@@ -300,8 +304,11 @@ def _referentie_label(kop_of_lid: duplicaat_module.Kop | _Lid) -> str:
     return kop_of_lid.referentie or f"bestand {kop_of_lid.bestandsnaam}"
 
 
-def _rang(lid: _Lid) -> tuple[int, datetime, str]:
-    return (_STATUS_RANG.get(lid.status, _RANG_OVERIG), lid.aangemaakt_op, str(lid.document_id))
+def _rang(lid: _Lid) -> tuple[int, int, datetime, str]:
+    """Rangorde origineel: status-rang, dan GEBUNDELD vóór los (blok D 07-09, regel Peter: het losse PDF-exemplaar is
+    het duplicaat van de al gebundelde factuur — ook als het toevallig ouder is), dan het oudste, dan id."""
+    gebundeld_eerst = 0 if lid.heeft_beeld else 1
+    return (_STATUS_RANG.get(lid.status, _RANG_OVERIG), gebundeld_eerst, lid.aangemaakt_op, str(lid.document_id))
 
 
 def _rlz_treffers(session: Session, document_id: uuid.UUID) -> list[dict]:
@@ -608,24 +615,17 @@ def _wikkel_af_voor_afvoer(
 
 
 def _toegewezene_voor_afvoer(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID | None:
-    """"Ter controle naar" voor een duplicaat-afvoer (bugfix 07-09, live-backfill: in productie heeft GEEN administratie
-    een eigenaar, waardoor élke afvoer — automatisch én één-klik — sinds 04-09 strandde op `GeenToewijzingMogelijk`).
-    Terugval-volgorde: (1) de administratie-eigenaar (bestaande default van `afwijzen.wijs_af` — None teruggeven);
-    (2) de mens die afvoert (één-klik/bulk: hij heeft scope, anders kwam hij niet bij het endpoint); (3) voor de
-    systeem-actor een ACTIEVE Beheerder (deterministisch: naam, id) — zelfde terugval als de IBAN-accordeurs ("lege set
-    → actieve beheerders"). Niets gevonden = None → `wijs_af` weigert zichtbaar zoals voorheen."""
+    """"Ter controle naar" voor een duplicaat-afvoer — geen persoon NODIG (herstelrun 07-09 blok 2, "leeg =
+    doorlopen", migratie 0121; herziet de Beheerder-terugval van eerder die dag). Volgorde: (1) de administratie-
+    eigenaar (None teruggeven → de bestaande default van `afwijzen.wijs_af` vult 'm); (2) de mens die afvoert
+    (één-klik/bulk: hij heeft scope, anders kwam hij niet bij het endpoint); (3) voor de systeem-actor NIEMAND —
+    de afwijzing landt niet-toegewezen in de kantoorbrede werkvoorraad/Mogelijk-duplicaat-tab. Een afvoer strandt
+    dus nooit meer op een ontbrekende instelling."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is not None and administratie.eigenaar_gebruiker_id is not None:
             return None
-        if actor_id != SYSTEEM_ACTOR_ID:
-            return actor_id
-        return session.scalars(
-            select(Gebruiker.id)
-            .where(Gebruiker.rol == GebruikerRol.BEHEERDER, Gebruiker.status == GebruikerStatus.ACTIEF)
-            .order_by(Gebruiker.naam, Gebruiker.id)
-            .limit(1)
-        ).first()
+    return actor_id if actor_id != SYSTEEM_ACTOR_ID else None
 
 
 def _voer_af(
@@ -799,7 +799,6 @@ def verwerk_na_signaal(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -
                     automatisch=True,
                 )
             except (
-                GeenToewijzingMogelijk,
                 ToegewezeneBuitenScope,
                 OngeldigeStatusovergang,
                 afwijzen.AfwijzingFout,
@@ -958,7 +957,6 @@ def voer_af_in_bulk(
         except (
             DuplicaatAfvoerFout,
             OngeldigeStatusovergang,
-            GeenToewijzingMogelijk,
             ToegewezeneBuitenScope,
             afwijzen.AfwijzingFout,
             vragen.VraagFout,
@@ -1114,7 +1112,6 @@ def backfill(*, dry_run: bool, administratie_id: uuid.UUID | None = None) -> lis
                         automatisch=True,
                     )
                 except (
-                    GeenToewijzingMogelijk,
                     ToegewezeneBuitenScope,
                     OngeldigeStatusovergang,
                     afwijzen.AfwijzingFout,

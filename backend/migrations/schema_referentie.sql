@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0120
+-- Migratie-head bij deze dump: 0121
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -490,7 +490,7 @@ CREATE TABLE boekhouding.afwijzing (
     afgewezen_door uuid NOT NULL,
     afgewezen_op timestamp with time zone DEFAULT now() NOT NULL,
     reden text NOT NULL,
-    toegewezen_aan uuid NOT NULL,
+    toegewezen_aan uuid,
     status_voor_afwijzing text NOT NULL,
     status text DEFAULT 'open'::text NOT NULL,
     heropend_door uuid,
@@ -2796,7 +2796,7 @@ CREATE TABLE boekhouding.vraag (
     gesteld_door uuid NOT NULL,
     gesteld_op timestamp with time zone DEFAULT now() NOT NULL,
     vraag_tekst text NOT NULL,
-    toegewezen_aan uuid NOT NULL,
+    toegewezen_aan uuid,
     status_voor_vraag text NOT NULL,
     status text DEFAULT 'open'::text NOT NULL,
     antwoord_tekst text,

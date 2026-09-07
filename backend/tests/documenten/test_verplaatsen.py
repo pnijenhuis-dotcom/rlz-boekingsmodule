@@ -415,6 +415,71 @@ class TestVerplaatsen:
         assert v.aan_de_beurt == beheerder_id
         assert _document_rij(admin_engine, document_id).toegewezen_aan == beheerder_id
 
+    def test_open_vraag_zonder_doelscope_naar_doel_zonder_eigenaar_wordt_niet_toegewezen(
+        self,
+        administratie_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen"): heeft de doeladministratie geen eigenaar, dan gaat een
+        vraag-toegewezene zonder doel-scope naar LEEG (kantoorbreed zichtbaar in Inzicht › Open vragen) — niet stil
+        naar de verplaatser, die alleen de doeladministratie koos."""
+        doel_zonder_eigenaar = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.administratie (id, naam, rlz_admin_id) "
+                    "VALUES (:id, 'Eigenaarloos BV', :rlz)"
+                ),
+                {"id": doel_zonder_eigenaar, "rlz": f"rlz-{doel_zonder_eigenaar}"},
+            )
+        auth_service.voeg_scope_toe(
+            actor_id=beheerder_id, doel_gebruiker_id=gescoopte_gebruiker, administratie_id=doel_zonder_eigenaar
+        )
+        collega = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.gebruiker (id, naam, e_mail, rol, status) "
+                    "VALUES (:id, 'Collega', :mail, 'boekhouding', 'actief')"
+                ),
+                {"id": collega, "mail": f"{collega}@test.local"},
+            )
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=collega, administratie_id=administratie_id)
+        document_id = _upload(administratie_id, gescoopte_gebruiker)
+        vraag = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            actor_id=gescoopte_gebruiker,
+            vraag_tekst="Klopt dit?",
+            toegewezen_aan=collega,
+        )
+        resultaat = verplaatsen.verplaats_document(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            doel_administratie_id=doel_zonder_eigenaar,
+            actor_id=gescoopte_gebruiker,
+            actor_rol=GebruikerRol.BOEKHOUDING,
+        )
+        assert resultaat.vragen_hertoegewezen == 1
+        with admin_engine.connect() as conn:
+            v = conn.execute(
+                text("SELECT toegewezen_aan, aan_de_beurt, status FROM boekhouding.vraag WHERE id = :id"),
+                {"id": vraag.id},
+            ).one()
+        assert v.status == "open" and v.toegewezen_aan is None and v.aan_de_beurt is None
+        assert _document_rij(admin_engine, document_id).toegewezen_aan is None
+        # Kantoorbreed zichtbaar in het doel, niet-toegewezen.
+        from app.vragen import service as open_vragen
+
+        rij = next(
+            r
+            for r in open_vragen.lijst(actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING).rijen
+            if r.vraag_id == vraag.id
+        )
+        assert rij.administratie_id == doel_zonder_eigenaar and rij.aan_de_beurt_id is None
+
     def test_open_afwijzing_sluit_door_de_verhuizing(
         self,
         administratie_id: uuid.UUID,

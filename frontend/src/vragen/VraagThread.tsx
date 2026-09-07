@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { VraagDto } from '../api/types'
+import { toegewezeneLabel } from './useMedewerkers'
 import { handelVraagAf, plaatsBericht, trekVraagIn } from './vragenApi'
 
 export function formatVraagDatum(iso: string): string {
@@ -88,11 +89,11 @@ export function VraagThread({
         {vraagStatusChip(vraag.status)}
         {kop}
         {' '}· gesteld door {naamVoor(vraag.gesteld_door)}, {formatVraagDatum(vraag.gesteld_op)} · aan{' '}
-        <b>{naamVoor(vraag.toegewezen_aan)}</b>
+        <b>{toegewezeneLabel(naamVoor, vraag.toegewezen_aan)}</b>
         {isOpen && (
           <>
             {' '}
-            · aan de beurt: <b>{naamVoor(vraag.aan_de_beurt)}</b>
+            · aan de beurt: <b>{toegewezeneLabel(naamVoor, vraag.aan_de_beurt)}</b>
             {isKlantAccordeur?.(vraag.aan_de_beurt) && (
               <span className="chip vraag" style={{ marginLeft: 6 }} title="De vraag ligt bij de klant-accordeur; die antwoordt in de app">
                 bij de klant

@@ -439,7 +439,9 @@ class TestAutomatischPad:
         )
         assert resultaat.al_afgevoerd is False and resultaat.afwijzing.automatisch is False
 
-    def test_zonder_eigenaar_valt_terug_op_actieve_beheerder_en_mens_op_zichzelf(
+    @pytest.mark.afwezig_pad("duplicaat_afvoer_instelling.platformbreed_ingeschakeld")
+    @pytest.mark.afwezig_pad("administratie.duplicaat_autoafvoer_ingeschakeld")
+    def test_zonder_eigenaar_loopt_de_afvoer_door_zonder_toewijzing_en_mens_op_zichzelf(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -448,9 +450,20 @@ class TestAutomatischPad:
         admin_engine: Engine,
         beheerder_id: uuid.UUID,
     ) -> None:
-        """Bugfix 07-09 (live-backfill: geen enkele productie-administratie heeft een eigenaar → élke afvoer strandde
-        sinds 04-09 op GeenToewijzingMogelijk): zonder eigenaar wijst het systeem "ter controle" toe aan een actieve
-        Beheerder, een mens (één-klik) aan zichzelf — nooit meer een stille weigering om een ontbrekende eigenaar."""
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen", migratie 0121; herziet de Beheerder-terugval van eerder die
+        dag): zonder eigenaar voert het systeem het duplicaat gewoon af — de afwijzing is NIET toegewezen (geen persoon
+        nodig; de rij staat kantoorbreed in de werkvoorraad/Mogelijk-duplicaat-tab), een mens (één-klik) wijst 'm aan
+        zichzelf toe. De per-administratie-vlag `duplicaat_autoafvoer_ingeschakeld` staat hier (zoals in productie op
+        álle 34 administraties) op false en stuurt sinds 04-09 niets meer: alleen de platformbrede noodrem telt."""
+        with admin_engine.connect() as conn:
+            vlag = conn.execute(
+                text(
+                    "SELECT duplicaat_autoafvoer_ingeschakeld, eigenaar_gebruiker_id "
+                    "FROM platform.administratie WHERE id = :a"
+                ),
+                {"a": administratie_id},
+            ).one()
+        assert vlag.duplicaat_autoafvoer_ingeschakeld is False and vlag.eigenaar_gebruiker_id is None
         vendor_id = uuid.uuid4()
         a = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
@@ -460,15 +473,29 @@ class TestAutomatischPad:
         )
         assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
         with admin_engine.connect() as conn:
-            toegewezen = conn.execute(
-                text("SELECT toegewezen_aan FROM boekhouding.afwijzing WHERE document_id = :id"), {"id": b}
+            rij = conn.execute(
+                text("SELECT toegewezen_aan, automatisch FROM boekhouding.afwijzing WHERE document_id = :id"), {"id": b}
+            ).one()
+            document_toegewezen = conn.execute(
+                text("SELECT toegewezen_aan FROM boekhouding.document WHERE id = :id"), {"id": b}
             ).scalar_one()
-        assert toegewezen == beheerder_id
-        # Mens-één-klik zonder eigenaar: toegewezen aan de mens zelf.
+            geweigerd = conn.execute(
+                text(
+                    "SELECT count(*) FROM platform.audit_event WHERE tabel = 'document' AND record_id = :id "
+                    "AND actie = 'duplicaat_afvoer_geweigerd'"
+                ),
+                {"id": b},
+            ).scalar_one()
+        assert rij.toegewezen_aan is None and rij.automatisch is True and rij.toegewezen_aan != beheerder_id
+        assert document_toegewezen is None and geweigerd == 0
+        # Kantoorbreed zichtbaar: de werkvoorraad-chip "Afgewezen — ter controle" mét kruisverwijzing, zonder persoon.
+        chip = afwijzen.open_afwijzingen(administratie_id=administratie_id)[b]
+        assert chip.duplicaat_van_document_id == a and chip.toegewezen_aan is None
+        # Mens-één-klik zonder eigenaar: toegewezen aan de mens zelf (hij heeft scope).
         c = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
-        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # automatisch, beheerder
+        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # automatisch, niet toegewezen
         afwijzen.heropen(administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker)
         resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
             administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker

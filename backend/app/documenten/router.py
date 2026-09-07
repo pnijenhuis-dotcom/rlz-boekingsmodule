@@ -1007,6 +1007,18 @@ def _naar_tegenboek_toets_response(data: tegenboeken.TegenboekToets) -> schemas.
         document_id=data.document_id,
         storno_geblokkeerd=data.storno_geblokkeerd,
         blokkade_melding=data.blokkade_melding,
+        tegenboeken_beschikbaar=data.tegenboeken_beschikbaar,
+        aanbod_reden=data.aanbod_reden,
+        duplicaat_van_geboekt=[
+            schemas.TegenboekDuplicaatDto(
+                document_id=d.document_id,
+                categorie=d.categorie,
+                referentie=d.referentie,
+                bestandsnaam=d.bestandsnaam,
+                rlz_boekstuknummer=d.rlz_boekstuknummer,
+            )
+            for d in data.duplicaat_van_geboekt
+        ],
         tegenboeking=(
             schemas.TegenboekingInfoDto(
                 soort=data.tegenboeking.soort,
@@ -1284,8 +1296,8 @@ def vraag_stellen(
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.VraagResponse:
     """Vraag stellen (mockup #vraagmodal): document -> vraag_open (boeken geblokkeerd tot het
-    antwoord er is), toewijzing default naar de administratie-eigenaar, overschrijfbaar binnen
-    de scope van deze administratie."""
+    antwoord er is), toewijzing default naar de administratie-eigenaar (zonder eigenaar: leeg,
+    kantoorbreed zichtbaar — 0121), overschrijfbaar binnen de scope van deze administratie."""
     try:
         data = vragen.stel_vraag(
             administratie_id=administratie_id,
@@ -1298,7 +1310,7 @@ def vraag_stellen(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except vragen.VraagTekstVerplicht as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+    except vragen.ToegewezeneBuitenScope as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -1443,7 +1455,7 @@ def document_afwijzen(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except afwijzen.RedenVerplicht as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+    except vragen.ToegewezeneBuitenScope as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except OngeldigeStatusovergang as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -1472,7 +1484,7 @@ def document_afvoeren_als_duplicaat(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (duplicaat_afvoer.DuplicaatAfvoerFout, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (vragen.GeenToewijzingMogelijk, vragen.ToegewezeneBuitenScope) as exc:
+    except vragen.ToegewezeneBuitenScope as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     a = resultaat.afwijzing
     return schemas.DuplicaatAfvoerResponse(

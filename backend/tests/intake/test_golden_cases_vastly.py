@@ -132,7 +132,17 @@ class TestIntakeRouting380:
         rij = _document_rij(admin_engine, resultaat.bijlagen[0].document_id)
         assert rij.administratie_id == administratie_heet_rubicon
         assert rij.soort == "verkoopfactuur"
-        assert rij.status == "te_controleren"
+        # Herstelrun 07-09 ("leeg = doorlopen", blok 2): de golden UBL's dragen GB-codes die niet in het
+        # rekeningschema van deze testadministratie staan, dus stelt de verkoop-autovraag ná de extractie
+        # automatisch een vraag — óók zonder administratie-eigenaar (vóór 07-09 sloeg die dan STIL over en
+        # bleef het document op te_controleren). Het document landt niet-toegewezen in de kantoorbrede lijst.
+        assert rij.status == "vraag_open"
+        with admin_engine.connect() as conn:
+            toegewezen = conn.execute(
+                text("SELECT toegewezen_aan FROM boekhouding.document WHERE id = :id"),
+                {"id": resultaat.bijlagen[0].document_id},
+            ).scalar_one()
+        assert toegewezen is None
 
 
 class TestIntakeRouting381:

@@ -23,7 +23,8 @@ export interface AfwijzingInfoDto {
   reden: string
   afgewezen_door: string
   afgewezen_op: string
-  toegewezen_aan: string
+  /** Null = niet toegewezen (geen eigenaar, geen expliciete keuze — 07-09 "leeg = doorlopen"). */
+  toegewezen_aan: string | null
   status_voor_afwijzing: string
   /** Duplicaat-afvoer (04-09, migratie 0105): kruisverwijzing naar het origineel — gevuld als het document
    * als duplicaat is afgevoerd (chip "duplicaat afgevoerd"); `automatisch` = door het systeem (opt-in). */
@@ -129,7 +130,7 @@ export interface AfwijzingDto {
   status_voor_afwijzing: string
   afgewezen_door: string
   afgewezen_op: string
-  toegewezen_aan: string
+  toegewezen_aan: string | null
   heropend_door: string | null
   heropend_op: string | null
 }
@@ -1004,7 +1005,8 @@ export interface VraagDto {
   status_voor_vraag: string
   gesteld_door: string
   gesteld_op: string
-  toegewezen_aan: string
+  /** Null = niet toegewezen (07-09 "leeg = doorlopen"): de vraag staat kantoorbreed open. */
+  toegewezen_aan: string | null
   antwoord_tekst: string | null
   beantwoord_door: string | null
   beantwoord_op: string | null
@@ -1013,7 +1015,7 @@ export interface VraagDto {
   ingetrokken_reden: string | null
   /** Dialoog (0064): wie aan zet is, afhandeling, de thread (oudste eerst) en de server-side
    * poort-uitkomst voor de "Afgehandeld"-knop (UI-hint — de server hertoetst). */
-  aan_de_beurt: string
+  aan_de_beurt: string | null
   afgehandeld_door: string | null
   afgehandeld_op: string | null
   berichten: VraagBerichtDto[]
@@ -1555,10 +1557,23 @@ export interface TegenboekingInfoDto {
 
 /** Leesroute: de knop "Tegenboeken…" verschijnt alléén bij storno_geblokkeerd (en zonder
  * bestaande tegenboeking voor de huidige cyclus). */
+/** Ander GEBOEKT document waarvan dit document een module-duplicaat is (herstelrun 07-09 blok 1c). */
+export interface TegenboekDuplicaatDto {
+  document_id: string
+  categorie: 'bestand' | 'referentie_bedrag' | 'crediteur_referentie' | string
+  referentie: string | null
+  bestandsnaam: string
+  rlz_boekstuknummer: string | null
+}
+
 export interface TegenboekToetsDto {
   document_id: string
   storno_geblokkeerd: boolean
   blokkade_melding: string | null
+  /** Knop "Tegenboeken…" tonen: storno geblokkeerd (aangifte) ÓF dubbel geboekt (duplicaat_van_geboekt). */
+  tegenboeken_beschikbaar: boolean
+  aanbod_reden: 'aangifte' | 'duplicaat' | null
+  duplicaat_van_geboekt: TegenboekDuplicaatDto[]
   tegenboeking: TegenboekingInfoDto | null
   betaalstatus: TegenboekBetaalstatusDto | null
   voorbeeld: TegenboekVoorbeeldRegelDto[]
@@ -1610,7 +1625,7 @@ export interface OpenVraagRijDto {
   gesteld_door_id: string
   gesteld_door_naam: string | null
   gesteld_op: string
-  aan_de_beurt_id: string
+  aan_de_beurt_id: string | null
   aan_de_beurt_naam: string | null
   aan_mij: boolean
   wacht_dagen: number

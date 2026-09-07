@@ -2,13 +2,14 @@
 GB/btw-mapping krijgt na de extractie automatisch een vraag via de bestaande vragenworkflow
 ("nieuwe categorie zónder mapping → regel blokkerend + automatische vraag", CLAUDE.md-
 omzetbesluit). De vraag draagt de systeem-actor als steller en gaat naar de administratie-
-eigenaar (de vragen-default). De blokkerende mapping-check op het reviewscherm blijft de harde
-poort — deze vraag is de signalering eromheen, dus elke reden om 'm níét te stellen (geen
-eigenaar, al een open vraag, status laat het niet toe) is een gelogde no-op, nooit een fout."""
+eigenaar (de vragen-default); zónder eigenaar wordt de vraag sinds 07-09 (herstelrun blok 2, "leeg =
+doorlopen") tóch gesteld — niet-toegewezen, zichtbaar in Inzicht › Open vragen — in plaats van stil
+overgeslagen. De blokkerende mapping-check op het reviewscherm blijft de harde poort — deze vraag is
+de signalering eromheen; de enige overgebleven no-ops zijn een al open vraag of een status die het
+niet toelaat (race), en die zijn zichtbaar via de open vraag zelf."""
 
 from __future__ import annotations
 
-import logging
 import uuid
 
 from sqlalchemy import select
@@ -19,8 +20,6 @@ from app.documenten import vragen
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.omzet.mapping import actieve_mappings, normaliseer_categorie_sleutel
-
-logger = logging.getLogger(__name__)
 
 
 def onbekende_categorieen(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[str]:
@@ -88,12 +87,4 @@ def stel_mapping_vraag_indien_nodig(*, administratie_id: uuid.UUID, document_id:
         return True
     except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang):
         # Race met een menselijke vraag of statuswijziging — de blokkerende check dekt het.
-        return False
-    except vragen.GeenToewijzingMogelijk:
-        logger.warning(
-            "Automatische mapping-vraag niet gesteld voor document %s: administratie %s heeft geen "
-            "eigenaar — de blokkerende mapping-check blijft gelden",
-            document_id,
-            administratie_id,
-        )
         return False

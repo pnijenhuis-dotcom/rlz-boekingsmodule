@@ -94,4 +94,5 @@ markers = [
     "write_integration: schrijf-integratietests tegen een echte RLZ-testadministratie (skipt zonder TESTADMIN_* credentials) — opt-in, zie addopts hierboven",
     "read_integration: alleen-lezende integratietests tegen een echte RLZ-administratie (skipt zonder credentials) — ook opt-in, zie addopts hierboven",
     "ai_integration: echte Claude-API-aanroepen (kost geld, vereist ANTHROPIC_API_KEY) — opt-in, zie addopts hierboven",
+    "afwezig_pad(vlag): bewijst dat de automatisering achter opt-in `<tabel>.<kolom>` doorloopt als een OPTIONELE voorwaarde (eigenaar/toewijzing/ontvanger) ontbreekt — herstelrun 07-09 blok 2; guard: tests/unit/test_optin_afwezig_pad_guard.py",
 ]

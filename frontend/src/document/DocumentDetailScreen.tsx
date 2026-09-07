@@ -20,7 +20,7 @@ import { SneltoetsOverzicht } from './SneltoetsOverzicht'
 import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
-import { useMedewerkers } from '../vragen/useMedewerkers'
+import { toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
 import { VraagThread } from '../vragen/VraagThread'
@@ -968,7 +968,7 @@ export function DocumentDetailScreen() {
                   <div className="meta">
                     afgewezen door {naamVoor(detail.afwijzing.afgewezen_door)},{' '}
                     {formatDatum(detail.afwijzing.afgewezen_op)} · ter controle naar{' '}
-                    <b>{naamVoor(detail.afwijzing.toegewezen_aan)}</b>
+                    <b>{toegewezeneLabel(naamVoor, detail.afwijzing.toegewezen_aan)}</b>
                   </div>
                   <div className="vraagtekst">reden: &ldquo;{detail.afwijzing.reden}&rdquo;</div>
                 </div>
@@ -1004,7 +1004,8 @@ export function DocumentDetailScreen() {
                   <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
                     <div className="meta">
                       gesteld door {naamVoor(openVraag.gesteld_door)}, {formatDatum(openVraag.gesteld_op)} · aan{' '}
-                      <b>{naamVoor(openVraag.toegewezen_aan)}</b> · aan de beurt: <b>{naamVoor(openVraag.aan_de_beurt)}</b>
+                      <b>{toegewezeneLabel(naamVoor, openVraag.toegewezen_aan)}</b> · aan de beurt:{' '}
+                      <b>{toegewezeneLabel(naamVoor, openVraag.aan_de_beurt)}</b>
                       {openVraag.berichten.length > 0 && (
                         <> · {openVraag.berichten.length} {openVraag.berichten.length === 1 ? 'reactie' : 'reacties'}</>
                       )}
@@ -1458,7 +1459,7 @@ export function DocumentDetailScreen() {
                       {g.detail && 'vraag_id' in g.detail && g.naar_status === 'vraag_open' && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           Vraag gesteld door {naamVoor(g.actor_id)} — toegewezen aan{' '}
-                          {naamVoor(typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
+                          {toegewezeneLabel(naamVoor, typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
                         </div>
                       )}
                       {g.detail && 'geboekt_ondanks_match_afwijking' in g.detail && (
@@ -1536,7 +1537,7 @@ export function DocumentDetailScreen() {
                           Afgewezen door {naamVoor(g.actor_id)}
                           {typeof g.detail.reden === 'string' && g.detail.reden ? ` — reden: “${g.detail.reden}”` : ''}
                           {' '}· ter controle naar{' '}
-                          {naamVoor(typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
+                          {toegewezeneLabel(naamVoor, typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}
                         </div>
                       )}
                       {g.detail && 'afwijzing_heropend' in g.detail && (

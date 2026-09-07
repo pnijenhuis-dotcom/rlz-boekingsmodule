@@ -17,6 +17,13 @@ menselijke vraagsteller; dan mag de toegewezene afhandelen, anders zou zo'n vraa
 kunnen. Legacy-rijen met status 'beantwoord' blijven staan; hun oude antwoord verschijnt als
 laatste bericht in de thread.
 
+LEEG = DOORLOPEN (herstelrun 07-09 blok 2, besluit Peter, kernprincipe 7; migratie 0121): géén eigenaar
+en géén expliciete toegewezene is GEEN weigering meer (`GeenToewijzingMogelijk` is vervallen) — de vraag
+wordt gesteld zónder toegewezene en landt kantoorbreed in Inzicht › Open vragen (administratie is een
+filter, geen poort). Een systeem-vraag zonder toegewezene mag door iedereen binnen de scope afgehandeld
+worden. Alleen een expliciet opgegeven toegewezene buiten de scope blijft een zichtbare fout
+(`ToegewezeneBuitenScope`).
+
 "Antwoord voedt het geheugen" loopt in v1 via de bestaande boek-leerlus (app/geheugen/leerlus.py):
 het antwoord leidt tot een correctie in het boekvoorstel + boeken, en dát legt de gekozen GB/btw
 als app-observatie vast — geen apart leer-pad hier. Een doorzoekbare Q&A-kennisbank per crediteur
@@ -73,11 +80,6 @@ class AlleenVraagstellerMagAfhandelen(VraagFout):
 
 class ErIsAlEenOpenVraag(VraagFout):
     """Eén open vraag per document tegelijk (ook op DB-niveau afgedwongen, migratie 0022)."""
-
-
-class GeenToewijzingMogelijk(VraagFout):
-    """Geen expliciete toewijzing én geen administratie-eigenaar — zichtbare fout, geen stille
-    default of onbeheerde vraag."""
 
 
 class ToegewezeneBuitenScope(VraagFout):
@@ -146,7 +148,8 @@ class VraagData:
     status_voor_vraag: str
     gesteld_door: uuid.UUID
     gesteld_op: datetime
-    toegewezen_aan: uuid.UUID
+    # None = niet toegewezen (geen eigenaar, geen expliciete keuze; 07-09) — kantoorbreed zichtbaar.
+    toegewezen_aan: uuid.UUID | None
     antwoord_tekst: str | None
     beantwoord_door: uuid.UUID | None
     beantwoord_op: datetime | None
@@ -154,15 +157,16 @@ class VraagData:
     ingetrokken_op: datetime | None
     ingetrokken_reden: str | None
     # Dialoog (0064): wie aan zet is, afhandeling en de berichten in chronologische volgorde
-    # (oudste eerst — de UI toont het nieuwste onderaan).
-    aan_de_beurt: uuid.UUID
+    # (oudste eerst — de UI toont het nieuwste onderaan). None = niemand specifiek (vraag zonder toegewezene).
+    aan_de_beurt: uuid.UUID | None
     afgehandeld_door: uuid.UUID | None
     afgehandeld_op: datetime | None
     berichten: tuple[BerichtData, ...]
 
 
-def _aan_de_beurt(vraag: Vraag) -> uuid.UUID:
-    """NULL op rijen van vóór migratie 0064 betekent: de toegewezene is aan zet."""
+def _aan_de_beurt(vraag: Vraag) -> uuid.UUID | None:
+    """NULL op rijen van vóór migratie 0064 betekent: de toegewezene is aan zet (None als de vraag
+    geen toegewezene heeft — 0121)."""
     return vraag.aan_de_beurt or vraag.toegewezen_aan
 
 
@@ -287,7 +291,8 @@ def stel_vraag(
 ) -> VraagData:
     """Stelt een vraag over een document: document -> vraag_open (statusmachine bepaalt vanuit
     welke statussen dat mag; boeken is vanuit vraag_open geblokkeerd), toewijzing default naar de
-    administratie-eigenaar. Document.toegewezen_aan volgt mee (werkvoorraad-kolom "Toegewezen")."""
+    administratie-eigenaar; zonder eigenaar blijft de toewijzing LEEG (07-09: leeg = doorlopen, nooit een
+    weigering). Document.toegewezen_aan volgt mee (werkvoorraad-kolom "Toegewezen")."""
     tekst = vraag_tekst.strip()
     if not tekst:
         raise VraagTekstVerplicht("Een vraag zonder tekst is niet toegestaan")
@@ -315,11 +320,9 @@ def stel_vraag(
         if toegewezene is None:
             administratie = session.get(Administratie, administratie_id)
             toegewezene = administratie.eigenaar_gebruiker_id if administratie else None
-        if toegewezene is None:
-            raise GeenToewijzingMogelijk(
-                "Deze administratie heeft geen eigenaar — wijs de vraag expliciet toe of stel een eigenaar in"
-            )
-        _controleer_toegewezene_scope(session, gebruiker_id=toegewezene, administratie_id=administratie_id)
+        # Geen eigenaar → toegewezene blijft None: de vraag landt niet-toegewezen in Inzicht › Open vragen.
+        if toegewezene is not None:
+            _controleer_toegewezene_scope(session, gebruiker_id=toegewezene, administratie_id=administratie_id)
 
         vraag = Vraag(
             id=uuid.uuid4(),
@@ -335,7 +338,7 @@ def stel_vraag(
         session.add(vraag)
         overgang_detail = {
             "vraag_id": str(vraag.id),
-            "toegewezen_aan": str(toegewezene),
+            "toegewezen_aan": str(toegewezene) if toegewezene is not None else None,
             "status_voor_vraag": vraag.status_voor_vraag,
             # Vangnet 28-08: een automatische (systeem-)vraag draagt haar tekst als reden.
             "reden": f"vraag gesteld: {vraag_tekst.strip()[:160]}",
@@ -365,7 +368,7 @@ def stel_vraag(
             nieuwe_waarde={
                 "document_id": str(document_id),
                 "vraag_tekst": tekst,
-                "toegewezen_aan": str(toegewezene),
+                "toegewezen_aan": str(toegewezene) if toegewezene is not None else None,
             },
             administratie_id=administratie_id,
         )
@@ -439,12 +442,12 @@ def plaats_bericht(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id
             record_id=bericht.id,
             actie="vraag_bericht_geplaatst",
             correlatie_id=uuid.uuid4(),
-            oude_waarde={"aan_de_beurt": str(vorige_beurt)},
+            oude_waarde={"aan_de_beurt": str(vorige_beurt) if vorige_beurt is not None else None},
             nieuwe_waarde={
                 "vraag_id": str(vraag.id),
                 "document_id": str(document.id),
                 "tekst": inhoud,
-                "aan_de_beurt": str(nieuwe_beurt),
+                "aan_de_beurt": str(nieuwe_beurt) if nieuwe_beurt is not None else None,
             },
             administratie_id=administratie_id,
         )
@@ -484,11 +487,15 @@ def _herstel_document_na_sluiten(
         _tijdlijn_zonder_overgang(session, document=document, actor_id=actor_id, detail=detail)
 
 
-def mag_afhandelen(vraag_gesteld_door: uuid.UUID, vraag_toegewezen_aan: uuid.UUID, actor_id: uuid.UUID) -> bool:
+def mag_afhandelen(
+    vraag_gesteld_door: uuid.UUID, vraag_toegewezen_aan: uuid.UUID | None, actor_id: uuid.UUID
+) -> bool:
     """De ene bron voor de "Afgehandeld"-poort (server én UI-hint): uitsluitend de oorspronkelijke
-    vraagsteller; bij een automatische vraag van de systeem-actor de toegewezene."""
+    vraagsteller; bij een automatische vraag van de systeem-actor de toegewezene — en heeft die
+    systeem-vraag géén toegewezene (0121: geen eigenaar), dan iedereen binnen de scope (de router
+    dwingt de scope af), anders kon zo'n vraag nooit dicht."""
     if vraag_gesteld_door == SYSTEEM_ACTOR_ID:
-        return actor_id == vraag_toegewezen_aan
+        return vraag_toegewezen_aan is None or actor_id == vraag_toegewezen_aan
     return actor_id == vraag_gesteld_door
 
 

@@ -9,7 +9,7 @@ import { verwerkEml } from '../intake/intakeApi'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
-import { useMedewerkers } from '../vragen/useMedewerkers'
+import { toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
 import { documentRoute, amountKlasse, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
@@ -299,7 +299,7 @@ export function KlantStanden({
                         blokkeert {vraag.document_bestandsnaam}
                       </div>
                     </td>
-                    <td>{naamVoor(vraag.toegewezen_aan)}</td>
+                    <td>{toegewezeneLabel(naamVoor, vraag.toegewezen_aan)}</td>
                     <td>{ouderdomLabel(vraag.gesteld_op)}</td>
                     <td style={{ textAlign: 'right' }}>
                       <span className="text-primary" style={{ fontWeight: 600 }}>

@@ -14,7 +14,7 @@ from app.documenten import afwijzen, boeken, service
 from app.documenten.models import AfwijzingStatus, DocumentStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.documenten.storage import LokaleBestandsopslag
-from app.documenten.vragen import GeenToewijzingMogelijk, ToegewezeneBuitenScope
+from app.documenten.vragen import ToegewezeneBuitenScope
 from tests.documenten.test_vragen import _extra_gebruiker, _status, _toegewezen_aan, _zet_document_op
 
 # Zelfde herstelbare herkomsten als bij vragen: heropenen moet er exact naar terugkeren
@@ -130,21 +130,54 @@ class TestAfwijzen:
             ).scalar_one()
         assert aantal == 0
 
-    def test_zonder_eigenaar_en_zonder_toewijzing_geweigerd(
+    def test_zonder_eigenaar_loopt_door_zonder_toewijzing_en_blijft_kantoorbreed_zichtbaar(
         self,
         gescoopte_gebruiker: uuid.UUID,
         administratie_id: uuid.UUID,
         document_te_controleren: uuid.UUID,
         admin_engine: Engine,
     ) -> None:
-        with pytest.raises(GeenToewijzingMogelijk):
-            afwijzen.wijs_af(
-                administratie_id=administratie_id,
-                document_id=document_te_controleren,
-                actor_id=gescoopte_gebruiker,
-                reden="Niet onze bestelling",
-            )
-        assert _status(admin_engine, document_te_controleren) == DocumentStatus.TE_CONTROLEREN.value
+        """Herstelrun 07-09 blok 2 ("leeg = doorlopen", migratie 0121; herziet de weigering `GeenToewijzingMogelijk`):
+        zonder eigenaar én zonder expliciete toewijzing wordt het document gewoon afgewezen — toegewezen_aan leeg op
+        afwijzing én document, de rij staat in de werkvoorraad "Afgewezen — ter controle", tijdlijn en audit dragen
+        `toegewezen_aan: null`. Een ontbrekende instelling houdt de handeling nooit meer tegen."""
+        data = afwijzen.wijs_af(
+            administratie_id=administratie_id,
+            document_id=document_te_controleren,
+            actor_id=gescoopte_gebruiker,
+            reden="Niet onze bestelling",
+        )
+        assert data.toegewezen_aan is None
+        assert _status(admin_engine, document_te_controleren) == DocumentStatus.AFGEWEZEN.value
+        assert _toegewezen_aan(admin_engine, document_te_controleren) is None
+        chip = afwijzen.open_afwijzingen(administratie_id=administratie_id)[document_te_controleren]
+        assert chip.toegewezen_aan is None and chip.reden == "Niet onze bestelling"
+        with admin_engine.connect() as conn:
+            rij = conn.execute(
+                text("SELECT toegewezen_aan FROM boekhouding.afwijzing WHERE id = :id"), {"id": data.id}
+            ).one()
+            audit = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE tabel = 'afwijzing' AND record_id = :id "
+                    "AND actie = 'document_afgewezen'"
+                ),
+                {"id": data.id},
+            ).scalar_one()
+            tijdlijn = conn.execute(
+                text(
+                    "SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :d "
+                    "AND naar_status = 'afgewezen'"
+                ),
+                {"d": document_te_controleren},
+            ).scalar_one()
+        assert rij.toegewezen_aan is None
+        assert "toegewezen_aan" in audit and audit["toegewezen_aan"] is None
+        assert "toegewezen_aan" in tijdlijn and tijdlijn["toegewezen_aan"] is None
+        # Heropenen werkt zonder toewijzing net zo.
+        hersteld = afwijzen.heropen(
+            administratie_id=administratie_id, document_id=document_te_controleren, actor_id=gescoopte_gebruiker
+        )
+        assert hersteld.document_status == DocumentStatus.TE_CONTROLEREN
 
     def test_toewijzing_buiten_scope_geweigerd_en_laat_niets_achter(
         self,
