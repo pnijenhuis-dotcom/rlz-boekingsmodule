@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0116
+-- Migratie-head bij deze dump: 0119
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -862,6 +862,32 @@ CREATE TABLE boekhouding.crediteur_archiveer_werklijst (
 );
 
 ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: crediteur_dubbel_afhandeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.crediteur_dubbel_afhandeling (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    run_id uuid NOT NULL,
+    bron text NOT NULL,
+    voorkeur_vendor_id uuid NOT NULL,
+    voorkeur_naam text,
+    verliezers jsonb NOT NULL,
+    sleutels jsonb NOT NULL,
+    classificatie_reden text NOT NULL,
+    verhuisd jsonb NOT NULL,
+    afgehandeld_door uuid NOT NULL,
+    afgehandeld_op timestamp with time zone DEFAULT now() NOT NULL,
+    teruggedraaid_op timestamp with time zone,
+    teruggedraaid_door uuid,
+    teruggedraaid_reden text,
+    CONSTRAINT ck_crediteur_dubbel_afhandeling_bron CHECK ((bron = ANY (ARRAY['auto'::text, 'mens'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afhandeling FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2091,8 +2117,8 @@ CREATE TABLE boekhouding.project_ontleding_regel (
     beslist_door uuid,
     beslist_op timestamp with time zone,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_project_ontleding_regel_soort CHECK ((soort = ANY (ARRAY['contract_m2'::text, 'looptijd'::text, 'huurtijd'::text, 'doorlopende_huur'::text, 'opdrachtgever'::text, 'werknummer'::text, 'staffel'::text, 'boete'::text]))),
-    CONSTRAINT ck_project_ontleding_regel_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'bevestigd'::text, 'afgewezen'::text])))
+    CONSTRAINT ck_project_ontleding_regel_soort CHECK ((soort = ANY (ARRAY['contract_m2'::text, 'looptijd'::text, 'huurtijd'::text, 'doorlopende_huur'::text, 'opdrachtgever'::text, 'werknummer'::text, 'staffel'::text, 'boete'::text, 'soort_werk'::text]))),
+    CONSTRAINT ck_project_ontleding_regel_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'bevestigd'::text, 'afgewezen'::text, 'overgenomen'::text, 'niet_aangetroffen'::text, 'ongeldig'::text, 'mens_behouden'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.project_ontleding_regel FORCE ROW LEVEL SECURITY;
@@ -2176,6 +2202,7 @@ CREATE TABLE boekhouding.project_specificatie (
     locatie_lat numeric(9,6),
     locatie_lon numeric(9,6),
     zone_straal_m smallint,
+    veld_herkomst jsonb,
     CONSTRAINT ck_project_specificatie_zone_straal CHECK (((zone_straal_m IS NULL) OR ((zone_straal_m >= 50) AND (zone_straal_m <= 1000))))
 );
 
@@ -2197,6 +2224,8 @@ CREATE TABLE boekhouding.project_staffel (
     bron text,
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    herkomst text,
+    herkomst_document_id uuid,
     CONSTRAINT ck_project_staffel_eenheid CHECK ((eenheid = ANY (ARRAY['m2'::text, 'm1'::text, 'stuks'::text, 'manuren'::text]))),
     CONSTRAINT ck_project_staffel_prijs CHECK ((prijs_per_eenheid >= (0)::numeric))
 );
@@ -2245,6 +2274,8 @@ CREATE TABLE boekhouding.projectverdeling (
     hercontrole_verdeling jsonb,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    pro_rato_soort text DEFAULT 'maand'::text NOT NULL,
+    CONSTRAINT ck_projectverdeling_pro_rato_soort CHECK ((pro_rato_soort = ANY (ARRAY['maand'::text, 'jaar'::text]))),
     CONSTRAINT ck_projectverdeling_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'geboekt'::text, 'vervallen'::text])))
 );
 
@@ -2594,7 +2625,12 @@ CREATE TABLE boekhouding.vendor_cache (
     is_gearchiveerd boolean,
     brondata jsonb NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
-    verdwenen_uit_bron_op timestamp with time zone
+    verdwenen_uit_bron_op timestamp with time zone,
+    voorkeur_vendor_id uuid,
+    dubbel_afgehandeld_op timestamp with time zone,
+    dubbel_afgehandeld_door uuid,
+    dubbel_afgehandeld_bron text,
+    CONSTRAINT ck_vendor_cache_dubbel_afgehandeld_bron CHECK (((dubbel_afgehandeld_bron IS NULL) OR (dubbel_afgehandeld_bron = ANY (ARRAY['auto'::text, 'mens'::text]))))
 );
 
 ALTER TABLE ONLY boekhouding.vendor_cache FORCE ROW LEVEL SECURITY;
@@ -3892,6 +3928,14 @@ ALTER TABLE ONLY boekhouding.boekvoorstel_regel
 
 ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
     ADD CONSTRAINT crediteur_archiveer_werklijst_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crediteur_dubbel_afhandeling crediteur_dubbel_afhandeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afhandeling
+    ADD CONSTRAINT crediteur_dubbel_afhandeling_pkey PRIMARY KEY (id);
 
 
 --
@@ -5471,6 +5515,13 @@ CREATE INDEX ix_crediteur_archiveer_werklijst_administratie_id ON boekhouding.cr
 
 
 --
+-- Name: ix_crediteur_dubbel_afhandeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_crediteur_dubbel_afhandeling_administratie_id ON boekhouding.crediteur_dubbel_afhandeling USING btree (administratie_id);
+
+
+--
 -- Name: ix_crediteur_dubbel_afmelding_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6049,6 +6100,13 @@ CREATE INDEX ix_veldwerker_dossier_administratie_id ON boekhouding.veldwerker_do
 --
 
 CREATE INDEX ix_vendor_cache_administratie_id ON boekhouding.vendor_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_vendor_cache_voorkeur_vendor_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_vendor_cache_voorkeur_vendor_id ON boekhouding.vendor_cache USING btree (administratie_id, voorkeur_vendor_id) WHERE (voorkeur_vendor_id IS NOT NULL);
 
 
 --
@@ -7004,6 +7062,30 @@ ALTER TABLE ONLY boekhouding.crediteur_archiveer_werklijst
 
 
 --
+-- Name: crediteur_dubbel_afhandeling crediteur_dubbel_afhandeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afhandeling
+    ADD CONSTRAINT crediteur_dubbel_afhandeling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: crediteur_dubbel_afhandeling crediteur_dubbel_afhandeling_afgehandeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afhandeling
+    ADD CONSTRAINT crediteur_dubbel_afhandeling_afgehandeld_door_fkey FOREIGN KEY (afgehandeld_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: crediteur_dubbel_afhandeling crediteur_dubbel_afhandeling_teruggedraaid_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.crediteur_dubbel_afhandeling
+    ADD CONSTRAINT crediteur_dubbel_afhandeling_teruggedraaid_door_fkey FOREIGN KEY (teruggedraaid_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: crediteur_dubbel_afmelding crediteur_dubbel_afmelding_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -7553,6 +7635,14 @@ ALTER TABLE ONLY boekhouding.project_prijsafspraak
 
 ALTER TABLE ONLY boekhouding.project_specificatie
     ADD CONSTRAINT fk_project_specificatie_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_staffel fk_project_staffel_herkomst_document; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_staffel
+    ADD CONSTRAINT fk_project_staffel_herkomst_document FOREIGN KEY (herkomst_document_id) REFERENCES boekhouding.project_document(id);
 
 
 --
@@ -8657,6 +8747,14 @@ ALTER TABLE ONLY boekhouding.veldwerker_dossier
 
 ALTER TABLE ONLY boekhouding.vendor_cache
     ADD CONSTRAINT vendor_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: vendor_cache vendor_cache_dubbel_afgehandeld_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.vendor_cache
+    ADD CONSTRAINT vendor_cache_dubbel_afgehandeld_door_fkey FOREIGN KEY (dubbel_afgehandeld_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -9825,6 +9923,19 @@ ALTER TABLE boekhouding.crediteur_archiveer_werklijst ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY crediteur_archiveer_werklijst_scope ON boekhouding.crediteur_archiveer_werklijst USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: crediteur_dubbel_afhandeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.crediteur_dubbel_afhandeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: crediteur_dubbel_afhandeling crediteur_dubbel_afhandeling_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY crediteur_dubbel_afhandeling_scope ON boekhouding.crediteur_dubbel_afhandeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

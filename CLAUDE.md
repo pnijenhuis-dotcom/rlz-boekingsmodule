@@ -223,10 +223,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Crediteur-dedup + duplicaat over crediteuren heen** (btw-/KvK-nummer als crediteur-kenmerk, `check_duplicaat_over_
   crediteuren`: zelfde btw-nummer = BLOKKEREND, anders ORANJE SIGNAAL; migratie 0082) — zie BESLISSINGEN "OPRUIMRUN 28-08"
   punt 14.
+- **Crediteuren-dubbelen schaalbaar (B13 07-09; migratie 0117):** eenduidige clusters handelt het systeem af (`app/crediteuren/afhandeling.py`, dagelijks in `sync-alles`), verliezers zijn in de MODULE onbruikbaar via één bron `crediteuren/voorkeur.py` (alle voorstel-/match-/geheugen-/Odoo-partner-paden), RLZ-werklijst = optionele CSV-export, terugdraaibaar — zie BESLISSINGEN "CREDITEUREN-DUBBELEN SCHAALBAAR".
 - **Medewerker-wensen 04-09** (A duplicaat-auto-afvoer STANDAARD AAN achter één platformbrede noodrem, B splitsing
   bijlage-bewust + "nooit splitsen" per afzender, C projectverdeling pro rato omzet, D regel-niveau GB-voorstel, E
   btw-default per administratie, F bugfix Huvanco/`regelsom.py`; migraties 0105–0109) — zie BESLISSINGEN
   "MEDEWERKER-WENSEN 04-09" (canoniek per blok), mockup `projectverdeling-en-regelvoorstellen.html`.
+- **Bulk-afvoer op de Mogelijk-duplicaat-tab (B2 07-09):** checkbox + "alle N" server-side + "Afvoeren als duplicaat (n)" over de bestaande per-document-route, buiten de 20/dag-rem, uitkomst per rij — zie BESLISSINGEN "BULK-AFVOER OP DE MOGELIJK-DUPLICAAT-TAB".
 - **Verplichtingen — offerte-accordering + factuur↔offerte-match** (documenttype `verplichting`, géén RLZ-/Odoo-boeking,
   deterministische match-motor `app/verplichting/match.py`, nooit blokkade; migratie 0110) — zie BESLISSINGEN
   "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09", mockup `offerte-matching.html`.
@@ -235,6 +237,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
   historie, nog niet bevestigd"), óók bij hoge stem-confidence — pas de eerste app-bevestiging van
   die waarde maakt 'm groen (`app_bevestigd` per veld in engine + voorstel-response).**
+- **Prefill-autosave bij openen (A10 07-09):** leverancier-geheugen server-side in de prefill; `GET …/boekvoorstel` persisteert geheugen-/template-/default-prefills direct (herkomst-chip blijft, mens wint, idempotent, tijdlijn + audit) zodat checks en doorbelasten-blok dezelfde stand zien — zie BESLISSINGEN "STALE CHECK BIJ GEHEUGEN-PREFILL".
 - **Automatisch boeken = opt-in per leverancier**; harde checks blijven áltijd blokkerend.
   **Status per harde/blokkerende check: canoniek in `docs/BESLISSINGEN.md` (verplichte eerste
   check, houd dáár actueel — gedocumenteerd ≠ gebouwd).** De korte opsomming van gebouwde checks, de
@@ -260,6 +263,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   + UI-RUN 27/28-08", "OPRUIMRUN 28-08" punt 21. Bindend blijft: Administratie-kiezers zijn overal in de kantoor-UI
   een doorzoekbare combobox (`ui/AdministratieCombobox`, punt 13) — nooit meer een kale select; nooit meer een
   absoluut gepositioneerde popup bínnen `.tabel-scroll`/`table{overflow:hidden}`.
+- **Verzamelbak-rij (C9 07-09):** soort-keuze = chip-toggle Factuur/Offerte onder de twijfelchip, kolombreedtes uit één bron (`VERZAMELBAK_KOLOMMEN`), constante rijhoogte, sweep-variant `?twijfel=1` — zie BESLISSINGEN "FIXRUN 07-09 — BLOK C9".
 - **E-mail intake**: één centraal adres — **`facturen@ak-nijenhuis.nl`** (adreskeuze Peter
   2026-08-15, bewust kort; Google Workspace) — splitsen van multi-factuur-PDF's op
   factuurgrenzen, toewijzen op tenaamstelling.
@@ -292,12 +296,14 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   migratie 0092) — zie BESLISSINGEN "SYNTHETISCHE BEWAKING + ALERTING".
 - **Reconciliatie-melding + Inzicht › Reconciliatie** (`reconciliatie-alles`, mail alleen als er iets te melden is,
   `/reconciliatie`; migratie 0114) — zie BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT".
+- **Reconciliatie 07-09 (A11/A12/A8):** verdwenen extern document = `ontbreekt_in_rlz`/`ontbreekt_in_odoo` (zwaarste categorie) mét actie "Opnieuw boeken" zonder tegenboeking (`app/documenten/herboeken.py`, GEBOEKT → KLAAR_OM_TE_BOEKEN, boek_cyclus +1); documenten-blok backend-agnostisch via `InkoopPort.toets_geboekt` (Odoo: posted/amount_total/onbekende reversal), bank/omzet/doorbelasting blijven RLZ-only en slaan Odoo-administraties zichtbaar over; bevindingen leesbaar (titel/wat/doe, `app/reconciliatie/teksten.py`) en acceptatie direct zichtbaar — zie BESLISSINGEN "A11 — DOCUMENTEN-RECONCILIATIE", "A12 — RECONCILIATIE BACKEND-AGNOSTISCH", "RECONCILIATIE-TEKSTEN LEESBAAR + ACCEPTATIE-BUG".
 - **Mini-voorraad speciale producten** (mi-schema, stand = Σ append-only mutaties, MENS-MANIPULATIE ONMOGELIJK;
   migratie 0116) — zie BESLISSINGEN "MINI-VOORRAAD SPECIALE PRODUCTEN" (+ "— FRONTEND").
 - **Kantoor-signaal "geplande week zonder weekstaat"** (`app/uren/planning_signaal.py`, geen blokkade; migratie 0115)
   — zie BESLISSINGEN "PLANNING-SIGNAAL 'GEPLANDE WEEK ZONDER WEEKSTAAT'".
 - **Inzicht › Projectverdeling** (`/projectverdeling`, `document/HerverdeelDialoog.tsx`) en **Catalogus-leesroute
   smal** (`require_catalogus_lezer`) — zie BESLISSINGEN "MINI-RUN 06-09 — OVERZICHT" blokken B en C.
+- **Pro-rato-periode "heel jaar" (D4 07-09; migratie 0119):** `Periode(maand|jaar)`, jaar = afgesloten kalendermaanden, bevroren jaarstand mét dekkingslabel, hercontrole tegen de actuele jaarstand — zie BESLISSINGEN "FIXRUN 07-09 — BLOK D4".
 - **Accordeur-app koude start + niet-geactiveerd account** (`accordeur/standCache.ts`, `voorlader.ts`,
   `koudeStart.ts`; E1-wortel `@capacitor/app`) — zie BESLISSINGEN "KOUDE START ACCORDEUR-APP" + "NATIVE APP — EERSTE
   LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT".
@@ -345,6 +351,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "GECOMBINEERDE RUN 01-09" blok A, "NATIVE-APP FASE 1–5", "NATIVE KLIKTEST RONDE 1/2", "XCODE CLOUD",
   "ANDROID-BOUWRONDE 28-08", "PLAY-NAZORG 30-08", "STORE-LINK-NAZORG", "ACCORDEUR-NOTIFICATIES",
   "NIEUWE-FACTUREN-BUNDELMELDING", "APPLE REVIEW 2.1"; `verkenning/17_NATIVE_STORE_APP_ACCORDEUR.md`.
+- **Google Play-afwijzing 07-09 (blok PLAY):** wortel ≠ Apple — reviewers logden in en strandden op de passkey-registratie (kale emulator zonder Google-account: "No create options available"); reviewer-instructies voor beide stores in `native/PLAY_DRAAIBOEK.md` §10–11 + `TESTFLIGHT_DRAAIBOEK.md` §1 — zie BESLISSINGEN "GOOGLE PLAY AFWIJZING 07-09".
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
   blokkerend, géén "geen project"-optie; overhead → intern OVH-project (uitgesloten van bewaking).
   Budget uit offerte-ontleding (status offerte ≠ opdracht; meerwerk = aparte budgetversie).
@@ -356,6 +363,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   (Opdrachtgever)"), synct bij aanmaken naar RLZ.
   Kantoor-projectenmodule (mockup projecten-invoer.html, migratie 0062) + cijfers-sync als ACHTERGRONDRUN (migratie
   0063) — zie BESLISSINGEN "PROJECTENMODULE KANTOOR" + "CIJFERS-SYNC-CRASH".
+- **Inzicht › Projecten kantoorbreed + projectdetail-verrijking (C5 07-09):** `GET /projecten/kantoorbreed` (lijstpatroon, chips resultaat/verplichtingen/weekstaten/m² uit caches), route `/projecten` zonder param = kantoorbreed, chip "Projecten" op de klant-documentenlijst — zie BESLISSINGEN "INZICHT › PROJECTEN KANTOORBREED".
+- **Contract-ontleding AUTO-FIRST (D6 07-09, besluit Peter 06-09; migratie 0118 — HERZIET de 22-08-regel "voorstel per regel, mens bevestigt"):** kopvelden soort werk / contract-m² / doorlopende huur als sentinel-strings (schema 0 unions), ontleding schrijft specs + staffels DIRECT met herkomst `contract` (chip "uit contract", correctie → `mens`, audit oud→nieuw), meerwerk-prijsvoorstel blijft mens-besluit — zie BESLISSINGEN "CONTRACT-ONTLEDING: KOPVELDEN + AUTO-FIRST".
 - **Uren & meerwerk (steigerbouw-tak, opt-in per administratie — alleen Universal initieel):** WEEKSTAAT PER PROJECT,
   rollen ZZP'er/uitvoerder/detacheerder in de bestaande native app, hybride keuring op weekniveau, factuurmatch
   (fase 1–4), ZZP-dossier + handhaving + KvK, geofence-stempels BASIS (native achtergrondlocatie alleen op branch
@@ -366,6 +375,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   ZZP-/BUREAUFACTUREN" (fase 1–4), "STEIGERBOUW-RUN 25-08" blokken A–D, "BOUWRUN 28-08 AVOND" blok C, "OPDRACHT 29-08"
   blok C, "PLANNING-AGENDA STEIGERBOUW", "PLANNING-UITBREIDING 31-08", "DETACHEERDER-FILTERS VELD-APP"; mockups
   `uren-uitvoerder.html`, `meerwerk-kantoor.html`, `planning-steigerbouw.html`, `planning-werkopdracht-transport.html`.
+- **Veldwerker-dialogen zonder picker-poort (C3 07-09):** dossier/crediteur-koppelen openen voorgeselecteerd via `gebruikers/standaardAdministratie.ts` (één in scope → recentste planning/koppeling → uren-opt-in), picker = wissel-filter — zie BESLISSINGEN "FIXRUN 07-09 — BLOK C3". **KvK-lookup productie (E7 07-09):** `KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen` + secret `KVK_API_KEY` (Vastly-sleutel, zelfde BV) in deploy.yml; lokaal zonder beide = testomgeving — zie BESLISSINGEN "E7 — KVK-LOOKUP PRODUCTIE".
 - **Voorraad-aansluiting fase 1** (`mi`-schema, controle-laag, NOOIT RLZ-writes; opt-in `voorraad_ingeschakeld`;
   RLZ-verkoopfacturen als uitstroom-leesroute; normalisatie v2; Odoo als LEESBRON vanaf de voorraad-knip; migraties
   0086–0088/0102) — zie BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D, "OPDRACHT 29-08" blok A/B, "OPDRACHT 30-08",

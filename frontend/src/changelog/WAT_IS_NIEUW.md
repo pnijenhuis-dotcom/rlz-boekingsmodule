@@ -6,6 +6,68 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-07 — Reconciliatie leesbaar en ook voor Odoo, duplicaten in bulk afvoeren, dubbele crediteuren automatisch, projecten in één overzicht
+
+### Reconciliatie: verdwenen boekingen opnieuw boeken, ook voor Odoo-administraties
+
+- **Verdwenen boeking? Opnieuw boeken met één klik.** Staat een factuur in de app als geboekt, maar kent Reeleezee (of Odoo) het stuk niet meer — bijvoorbeeld omdat het daar per ongeluk is verwijderd — dan meldt Inzicht › Reconciliatie dat nu als zwaarste afwijking, met leverancier en factuurnummer erbij. Op die regel staat de knop "Opnieuw boeken…": u geeft een reden, het document gaat terug naar "klaar om te boeken" met dezelfde gegevens en u boekt het daarna opnieuw op het controlescherm (alle controles draaien opnieuw). Er wordt niets tegengeboekt; reden en oude boekstuknummer staan in de tijdlijn.
+- **Reconciliatie werkt ook voor administraties op Odoo.** De dagelijkse controle van geboekte documenten kijkt nu in het boekhoudpakket van de administratie zelf: in Odoo controleert ze of de factuur bestaat, geboekt is, hetzelfde totaal heeft en niet buiten de app om is teruggedraaid. Bank-, omzet- en doorbelastingscontroles blijven voor Reeleezee-administraties; bij een Odoo-administratie staan die zichtbaar als "niet van toepassing" in plaats van als fout.
+
+### Reconciliatie leesbaar
+
+- Inzicht › Reconciliatie leest nu als tekst voor mensen: elke bevinding heeft een korte titel met leverancier, factuurnummer, boekstuk of tegenpartij, één zin "wat is er" en één zin "wat doe je" — bedragen in euro-notatie, datums als dag-maand-jaar. Technische codes staan alleen nog in een uitklapbaar "details"-blokje.
+- De dagelijkse reconciliatie-mail gebruikt dezelfde leesbare zinnen als het scherm; de technische sleutel staat er als aparte regel onder.
+- Opgelost: een geaccepteerde afwijking bleef tot de volgende nachtelijke controle in "aandacht nodig" staan. Accepteren haalt de rij nu direct uit de lijst en de teller (en intrekken zet 'm direct terug).
+- In de reconciliatielijst kun je nu ook zoeken op leverancier, factuurnummer of tegenpartij, en verdwenen boekstukken staan bovenaan tussen de afwijkingen.
+
+### Controlescherm: vooringevulde waarden direct opgeslagen
+
+- Het controlescherm meldt niet langer "grootboekrekening ontbreekt" terwijl het veld al uit het geheugen gevuld staat: de controle kijkt nu naar precies dezelfde vooringevulde waarden als u ziet.
+- Vooringevulde waarden uit het geheugen, een leverancier-template of de standaard btw van de administratie worden bij het openen direct opgeslagen — u hoeft niets meer aan te raken voordat "Doorbelasten na boeken" de regels ziet. De herkomst-labels blijven staan tot u een waarde wijzigt.
+- Uw eigen keuzes winnen altijd: iets wat u al heeft aangepast wordt nooit door de automatische voorinvulling overschreven; opnieuw uitlezen van een nog onaangeraakt document vult de nieuwe waarden gewoon opnieuw in.
+- In de tijdlijn van het document ziet u wanneer en waaruit het voorstel automatisch is vooringevuld.
+
+### Duplicaten in bulk afvoeren
+
+- **Duplicaten in één keer afvoeren.** Op het filter "Mogelijk duplicaat" van de documentenlijst staat nu een selectievakje per rij en een knop "Afvoeren als duplicaat (aantal)". Vink de rijen aan (of alles in één keer, ook wat door je zoekterm verborgen is), bevestig het aantal in het venster, en de gekozen facturen gaan als duplicaat naar Afgewezen — elk met een verwijzing naar het origineel, precies zoals de losse actie in het rijmenu.
+- Wat niet kan (bijvoorbeeld een al geboekte factuur of een rij zonder echte match) wordt niet stil overgeslagen: je ziet na afloop per document waarom. Terughalen kan per document via Heropenen.
+- Dit is een handeling van jou en telt daarom niet mee in de dagelijkse rem op het automatisch afvoeren van duplicaten.
+
+### Dubbele crediteuren
+
+- Dubbele crediteuren die duidelijk dezelfde zijn (zelfde naam of hetzelfde rekeningnummer, geen tegenstrijdig KvK- of btw-nummer, nauwelijks boekingen op de dubbel) handelt het systeem nu zelf af — u ziet vooraf per administratie wat er gebeurt en alleen twijfelgevallen vragen nog uw keuze.
+- Een afgehandelde dubbel wordt nergens in de module meer voorgesteld of gekozen: boekingsgeheugen, btw-/KvK-kenmerk en vertrouwde rekeningnummers gaan naar de voorkeurscrediteur, ook op nog openstaande facturen.
+- Elke afhandeling is terug te draaien (met reden) via ⋯ › Afgehandeld; in Reeleezee verandert er niets en er wordt niets verwijderd.
+- De lijst "archiveer in Reeleezee" vraagt niet meer om aandacht: wie wil opruimen, downloadt hem als bestand via ⋯ › Exporteer RLZ-opruimlijst.
+
+### Verzamelbak en veldwerkers
+
+- Verzamelbak "Niet toegewezen": bij twijfel "factuur of offerte?" kies je nu met twee compacte knopjes (Factuur | Offerte) direct onder de twijfelmelding; de administratie-kiezer en de actieknoppen staan weer netjes in hun eigen kolom en elke rij heeft dezelfde hoogte — ook bij een lange tenaamstelling.
+- Veldwerkers (Gebruikers & toegang): het dossier en "crediteur koppelen" openen direct met de juiste administratie voorgeselecteerd — de enige in je scope, anders die van de recentste planning of koppeling, anders de administratie met uren & meerwerk. Wisselen blijft mogelijk via de kiezer.
+
+### Projecten in één overzicht
+
+- **Projecten in één overzicht** — onder Inzicht staat nu "Projecten": alle lopende projecten van al je administraties in één lijst, met per project de stand van het resultaat, de offertes, de weekstaten en de gebouwde m². Projecten met een signaal (offerte overschreden, negatieve marge, ontbrekende weekstaat) staan bovenaan; filteren kan op administratie en status, zoeken op project, opdrachtgever of werknummer.
+- **Sneller naar de projecten van een klant** — op de documentenlijst van een klant staat een chip "Projecten" die direct naar de projectenlijst van die administratie gaat.
+- **Projectdetail toont nu de offertes en de weekstaten** — per project zie je de goedgekeurde offertes met een verbruiksbalk (hoeveel van het offertebedrag al geboekt is) en per week wat er gepland, ingediend en gekeurd is, met een link naar de planning van die week.
+
+### Projectverdeling over een heel jaar
+
+- Projectverdeling pro rato omzet kan nu ook over een heel jaar: naast de laatste twaalf maanden kies je "omzet <dit jaar> (t/m de laatste afgesloten maand)" of "omzet <vorig jaar>". De verdeling volgt dan de omzet per project over de afgesloten maanden van dat jaar, met dezelfde uitsluitingen als bij een maand.
+- Bij het boeken wordt de jaarstand vastgelegd mét de dekking van dat moment (bijvoorbeeld "2026 (t/m juli)"); de maandelijkse hercontrole rekent tegen de actuele jaarstand, zodat een verschuiving boven de drempel gewoon als signaal mét "Herverdelen…" verschijnt.
+- Een jaar in de toekomst of een jaar zonder afgesloten maand kun je niet kiezen; de melding zegt wat wél kan.
+
+### Contract ontleden vult direct in
+
+- Contract ontleden vult de projectgegevens nu direct in: soort werk, contract-m², looptijd, opdrachtgever, werknummer, doorlopende huur en de verrekenstaffels staan meteen in het project met het label "uit contract" — bevestigen per regel is niet meer nodig.
+- Staat iets niet in het contract, dan zie je dat als uitkomst ("niet in contract aangetroffen"); wat niet eenduidig te plaatsen is (bijvoorbeeld een onbekende eenheid) wordt gemeld en niet ingevuld.
+- Corrigeer je een ingevuld veld of staffelregel, dan wordt die "handmatig" en laat een nieuwe ontleding hem met rust; elke ontleding en correctie staat in het logboek.
+- Doorlopende huur wordt waar mogelijk uit de huurstaffel afgeleid ("€ 150 per week uitgaande van 9 weken" wordt "vanaf week 10"). De prijs bij meerwerk blijft altijd een keuze van een medewerker; de staffel is alleen het voorstel.
+
+### KvK-controle
+
+- De KvK-controle in het ZZP-dossier en bij crediteuren werkt nu op echte KvK-nummers: bedrijfsnaam, rechtsvorm en vestigingsplaats komen uit het officiële Handelsregister in plaats van de KvK-testomgeving (die bij echte nummers altijd "niet gevonden" gaf).
+
 ## 2026-09-06 — Mini-voorraad, ontbrekende weekstaten, projectverdeling-overzicht en een snellere app
 
 ### Mini-voorraad speciale producten
