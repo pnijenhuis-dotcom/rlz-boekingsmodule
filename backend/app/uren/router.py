@@ -1406,6 +1406,8 @@ def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) 
             uren_afwijking_aantal=k.uren_afwijking_aantal,
             uren_afwijking_som=k.uren_afwijking_som,
             dossiers=[schemas.DossierSamenvattingDto(**d.__dict__) for d in k.dossiers],
+            recentste_planning_administratie_id=k.recentste_planning_administratie_id,
+            recentste_koppeling_administratie_id=k.recentste_koppeling_administratie_id,
         )
         for k in kaarten
     ]

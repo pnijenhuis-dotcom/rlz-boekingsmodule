@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
-import { Select } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   bevestigSplitsing,
@@ -19,6 +18,57 @@ import {
 import { bijlageOmschrijving, NooitSplitsenDialog } from './NooitSplitsenDialog'
 import { SamenvoegDialog } from './SamenvoegDialog'
 import { VerzamelbakPreview } from './VerzamelbakPreview'
+
+/** Kolommen van de verzamelbak-tabel — ÉÉN bron voor breedte (colgroup) én celklasse (C9, fixrun
+ * 07-09): `table-layout: fixed` + constante rijhoogte (components.css `.verzamelbak-tabel`), zodat een
+ * rij mét twijfelchip + soort-toggle + lange tenaamstelling het raster niet breekt. Percentages tellen
+ * op tot 100; onder de min-breedte scrolt de tabel intern in `.tabel-scroll` (bestaand patroon). */
+export const VERZAMELBAK_KOLOMMEN = [
+  { sleutel: 'selectie', kop: '', breedte: '3%' },
+  { sleutel: 'document', kop: 'Document', breedte: '21%' },
+  { sleutel: 'via', kop: 'Binnengekomen via', breedte: '14%' },
+  { sleutel: 'tenaamstelling', kop: 'Tenaamstelling / suggestie', breedte: '24%' },
+  { sleutel: 'toewijzen', kop: 'Toewijzen aan', breedte: '14%' },
+  { sleutel: 'acties', kop: '', breedte: '24%' },
+] as const
+
+export type DocumentsoortKeuze = 'inkoopfactuur' | 'verplichting'
+
+/** Compacte chip-toggle "Factuur | Offerte" (C9): staat in de tenaamstelling-kolom direct onder de
+ * twijfelchip — nooit meer gestapeld onder de administratie-picker. Bestaand `.segment`-patroon
+ * (gekozen = `.actief`, géén teal: teal is exclusief actie), `aria-pressed` per chip. */
+function SoortToggle({
+  bestandsnaam,
+  waarde,
+  onWijzig,
+}: {
+  bestandsnaam: string
+  waarde: DocumentsoortKeuze
+  onWijzig: (soort: DocumentsoortKeuze) => void
+}) {
+  return (
+    <div className="segment compact soort-toggle" role="group" aria-label={`Documentsoort voor ${bestandsnaam}`}>
+      <button
+        type="button"
+        className={waarde === 'inkoopfactuur' ? 'actief' : undefined}
+        aria-pressed={waarde === 'inkoopfactuur'}
+        title="Inkoopfactuur"
+        onClick={() => onWijzig('inkoopfactuur')}
+      >
+        Factuur
+      </button>
+      <button
+        type="button"
+        className={waarde === 'verplichting' ? 'actief' : undefined}
+        aria-pressed={waarde === 'verplichting'}
+        title="Verplichting (offerte / prijsopgave / opdrachtbevestiging)"
+        onClick={() => onWijzig('verplichting')}
+      >
+        Offerte
+      </button>
+    </div>
+  )
+}
 
 function formatDatum(iso: string): string {
   return new Date(iso).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
@@ -49,7 +99,7 @@ export function VerzamelbakPaneel({
   const [keuze, setKeuze] = useState<Record<string, string>>({})
   // Blok B 04-09: per rij de door de MENS gekozen documentsoort — alleen relevant als de intake
   // "factuur of offerte?" niet kon beslissen (reden documentsoort_onduidelijk).
-  const [soortKeuze, setSoortKeuze] = useState<Record<string, 'inkoopfactuur' | 'verplichting'>>({})
+  const [soortKeuze, setSoortKeuze] = useState<Record<string, DocumentsoortKeuze>>({})
   const [bezig, setBezig] = useState<string | null>(null)
   const [redenVoor, setRedenVoor] = useState<VerzamelbakItemDto | null>(null)
   // "Is één factuur" (blok B 04-09): bevestigingsdialoog mét optionele vink "nooit splitsen" voor deze afzender.
@@ -345,10 +395,15 @@ export function VerzamelbakPaneel({
           scrollen i.p.v. door de paneelrand klippen (zelfde patroon als de
           boekingsregels-tabel; de mockup kent geen smal breakpoint). */}
       <div className="tabel-scroll">
-        <table>
+        <table className="verzamelbak-tabel">
+          <colgroup>
+            {VERZAMELBAK_KOLOMMEN.map((k) => (
+              <col key={k.sleutel} className={`kol-${k.sleutel}`} style={{ width: k.breedte }} />
+            ))}
+          </colgroup>
           <tbody>
             <tr>
-              <th style={{ width: 28 }}>
+              <th className="kol-selectie">
                 <input
                   type="checkbox"
                   aria-label={filterTerm ? `Selecteer alle ${selecteerbaar.length} gefilterde rijen` : `Selecteer alle ${selecteerbaar.length} rijen`}
@@ -363,11 +418,11 @@ export function VerzamelbakPaneel({
                   }
                 />
               </th>
-              <th>Document</th>
-              <th>Binnengekomen via</th>
-              <th>Tenaamstelling / suggestie</th>
-              <th>Toewijzen aan</th>
-              <th />
+              {VERZAMELBAK_KOLOMMEN.filter((k) => k.sleutel !== 'selectie').map((k) => (
+                <th key={k.sleutel} className={`kol-${k.sleutel}`}>
+                  {k.kop}
+                </th>
+              ))}
             </tr>
             {zichtbaar.map((item) => {
               const suggestieNaam = administraties.find((a) => a.id === item.suggestie_administratie_id)?.naam
@@ -380,7 +435,7 @@ export function VerzamelbakPaneel({
               const isGeselecteerd = geselecteerd.includes(item.document_id)
               return (
                 <tr key={item.document_id}>
-                  <td style={{ padding: '8px 4px' }}>
+                  <td className="kol-selectie" style={{ padding: '8px 4px' }}>
                     {!item.splitsing_voorstel && (
                       <input
                         type="checkbox"
@@ -394,7 +449,7 @@ export function VerzamelbakPaneel({
                       />
                     )}
                   </td>
-                  <td>
+                  <td className="kol-document">
                     {/* D1 (besluit 25-08): voorbeeld bij hover, klik = volledige weergave — lazy. */}
                     <VerzamelbakPreview
                       documentId={item.document_id}
@@ -402,7 +457,9 @@ export function VerzamelbakPaneel({
                       tenaamstelling={item.tenaamstelling}
                       beeldBestandsnaam={item.beeld_bestandsnaam ?? null}
                     />{' '}
-                    {item.bestandsnaam}
+                    <span className="bestandsnaam" title={item.bestandsnaam}>
+                      {item.bestandsnaam}
+                    </span>
                     {item.beeld_bestandsnaam && (
                       <span
                         className="chip geheugen"
@@ -474,67 +531,62 @@ export function VerzamelbakPaneel({
                       </div>
                     )}
                   </td>
-                  <td>
-                    {item.bron === 'email' ? 'e-mail' : 'upload'}
-                    {item.afzender_hint ? ` · ${item.afzender_hint}` : ''}
+                  <td className="kol-via">
+                    {/* C9: één regel mét ellipsis (title = volledige afzender) — een lange afzender mag de
+                        constante rijhoogte niet opblazen. */}
+                    <div className="via-tekst" title={item.afzender_hint ?? undefined}>
+                      {item.bron === 'email' ? 'e-mail' : 'upload'}
+                      {item.afzender_hint ? ` · ${item.afzender_hint}` : ''}
+                    </div>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatDatum(item.aangemaakt_op)}</div>
                   </td>
-                  <td>
-                    {item.tenaamstelling && <span>&ldquo;{item.tenaamstelling}&rdquo;</span>}
-                    {redenLabel && (
-                      <div>
-                        <span className="chip vraag" title={item.reden ?? undefined}>
-                          {redenLabel}
-                        </span>
+                  <td className="kol-tenaamstelling">
+                    {item.tenaamstelling && (
+                      <div className="tenaamstelling-tekst" title={item.tenaamstelling}>
+                        &ldquo;{item.tenaamstelling}&rdquo;
                       </div>
                     )}
-                    {suggestieNaam && (
-                      <div>
-                        <span className="chip ai">suggestie: {suggestieNaam}</span>
+                    {(redenLabel || suggestieNaam) && (
+                      <div className="chips-rij">
+                        {redenLabel && (
+                          <span className="chip vraag" title={item.reden ?? undefined}>
+                            {redenLabel}
+                          </span>
+                        )}
+                        {suggestieNaam && (
+                          <span className="chip ai" title={`suggestie: ${suggestieNaam}`}>
+                            suggestie: {suggestieNaam}
+                          </span>
+                        )}
                       </div>
+                    )}
+                    {/* Blok B 04-09 + C9 07-09: de intake-AI liet "factuur of offerte?" onbeslist — de mens
+                        beslist hier, direct onder de twijfelchip; nooit stil als factuur behandeld (①). */}
+                    {item.reden === 'documentsoort_onduidelijk' && !item.splitsing_voorstel && (
+                      <SoortToggle
+                        bestandsnaam={item.bestandsnaam}
+                        waarde={soortKeuze[item.document_id] ?? 'inkoopfactuur'}
+                        onWijzig={(soort) => setSoortKeuze((k) => ({ ...k, [item.document_id]: soort }))}
+                      />
                     )}
                   </td>
-                  <td>
+                  <td className="kol-toewijzen">
                     {item.splitsing_voorstel ? (
                       <span className="hint" style={{ margin: 0 }}>
                         eerst de splitsing beoordelen
                       </span>
                     ) : (
-                      <>
-                        <AdministratieCombobox
-                          label={`Toewijzen aan voor ${item.bestandsnaam}`}
-                          toonLabel={false}
-                          administraties={administraties}
-                          waarde={gekozen}
-                          onWijzig={(id) => setKeuze((k) => ({ ...k, [item.document_id]: id }))}
-                          placeholder="— kies administratie —"
-                        />
-                        {/* Blok B 04-09: de intake-AI liet "factuur of offerte?" onbeslist — de mens
-                            beslist hier, nooit stil als factuur behandeld (①). */}
-                        {item.reden === 'documentsoort_onduidelijk' && (
-                          <label style={{ display: 'block', marginTop: 6, fontSize: 11.5, margin: 0 }}>
-                            <span className="hint" style={{ margin: 0 }}>
-                              Wat is dit?
-                            </span>
-                            <Select
-                              aria-label={`Documentsoort voor ${item.bestandsnaam}`}
-                              value={soortKeuze[item.document_id] ?? 'inkoopfactuur'}
-                              onChange={(e) =>
-                                setSoortKeuze((k) => ({
-                                  ...k,
-                                  [item.document_id]: e.target.value as 'inkoopfactuur' | 'verplichting',
-                                }))
-                              }
-                            >
-                              <option value="inkoopfactuur">Inkoopfactuur</option>
-                              <option value="verplichting">Verplichting (offerte / opdrachtbevestiging)</option>
-                            </Select>
-                          </label>
-                        )}
-                      </>
+                      <AdministratieCombobox
+                        label={`Toewijzen aan voor ${item.bestandsnaam}`}
+                        toonLabel={false}
+                        administraties={administraties}
+                        waarde={gekozen}
+                        onWijzig={(id) => setKeuze((k) => ({ ...k, [item.document_id]: id }))}
+                        placeholder="— kies administratie —"
+                      />
                     )}
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td className="kol-acties">
                     {item.splitsing_voorstel && item.splitsing_id ? (
                       <>
                         <button

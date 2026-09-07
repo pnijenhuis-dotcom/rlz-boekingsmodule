@@ -650,6 +650,80 @@ tr.subrij .eerste-sync-rij ul {
   overflow-x: auto;
 }
 
+/* Verzamelbak-tabel (C9, fixrun 07-09): vaste kolombreedtes uit één bron (colgroup in
+   VerzamelbakPaneel.tsx → VERZAMELBAK_KOLOMMEN), table-layout fixed en een constante rijhoogte —
+   een rij mét twijfelchip + soort-toggle + lange tenaamstelling breekt het raster niet meer. Onder de
+   min-breedte scrolt de tabel intern (.tabel-scroll), zoals vóór 07-09. */
+.verzamelbak-tabel {
+  /* Gemeten (headless, harnas ?twijfel=1, probe data-verzamelbak-rijhoogtes): breedste rij =
+     tenaamstelling + chip-rij + toggle = 91 px incl. celpadding — élke rij krijgt 92 px
+     (td-height werkt als minimum), op alle vier de sweep-breedtes. */
+  --verzamelbak-rijhoogte: 92px;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1100px;
+}
+
+.verzamelbak-tabel td {
+  height: var(--verzamelbak-rijhoogte);
+  padding-top: 8px;
+  padding-bottom: 8px;
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.verzamelbak-tabel .tenaamstelling-tekst {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verzamelbak-tabel .chips-rij {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.verzamelbak-tabel .chips-rij .chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  line-height: 16px;
+}
+
+/* De twijfel-/redenchip is de boodschap en wordt nooit afgekort; de suggestie-chip krimpt (title draagt de volle tekst). */
+.verzamelbak-tabel .chips-rij .chip.vraag {
+  flex: none;
+}
+
+/* Bron + afzender: één regel mét ellipsis (title = volledige afzender). */
+.verzamelbak-tabel .kol-via .via-tekst {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Lange bestandsnaam: één regel mét ellipsis (title = volledige naam), naast de preview-knop. */
+.verzamelbak-tabel .kol-document .bestandsnaam {
+  display: inline-block;
+  max-width: calc(100% - 44px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.verzamelbak-tabel .soort-toggle {
+  margin-top: 3px;
+}
+
+.verzamelbak-tabel .kol-acties .btn {
+  white-space: nowrap;
+}
+
 /* Zichtbare scroll-affordance (responsive-melding Peter 2026-08-15, tweede ronde): macOS
  * verbergt overlay-scrollbars tot er gescrold wordt, waardoor een intern scrollende tabel
  * eruitzag als een kapot geklipte layout (halve chips, verdwenen kolommen). Een dunne, altijd

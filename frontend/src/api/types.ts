@@ -1,6 +1,9 @@
 export interface AdministratieDto {
   id: string
   naam: string
+  /** Uren & meerwerk-opt-in (fixrun 07-09 blok C3, additief op /auth/administraties): voedt de
+   * standaard-administratie van de veldwerker-dialogen (regel 3) — optioneel, oudere mocks missen 'm. */
+  uren_meerwerk_ingeschakeld?: boolean
 }
 
 export interface MijnAdministratiesResponseDto {

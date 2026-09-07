@@ -1,7 +1,8 @@
 /** Veldwerkers-paneel (factuurmatch fase 3, 22-08): crediteur-koppeling + tarieven zichtbaar,
  * bureau-tarief per gekoppelde ZZP'er op de detacheerder-rij, en de kantoor-only
  * afwijkingsstatistiek (afkeuringen mét correctievoorstel) als waarschuwing. */
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GebruikerOverzichtDto } from './gebruikersApi'
 import { VeldwerkersPanel } from './VeldwerkersPanel'
@@ -143,5 +144,123 @@ describe('VeldwerkersPanel — crediteur & tarieven (factuurmatch fase 3)', () =
     expect(screen.getByText(/Milan K\. · €\s*51,00\/u/)).toBeInTheDocument()
     expect(screen.getByText(/Stefan B\. · geen tarief/)).toBeInTheDocument()
     expect(screen.getByText('tarieven…')).toBeInTheDocument()
+  })
+})
+
+
+/* Fixrun 07-09 blok C3: de dialogen openen VOORGESELECTEERD — geen administratie-picker als poort
+ * (kernprincipe 7). De picker blijft als wissel-filter. */
+const ADMIN_A = 'aaaaaaaa-0000-0000-0000-00000000000a'
+const ADMIN_B = 'bbbbbbbb-0000-0000-0000-00000000000b'
+
+function dossierAntwoord(administratieId: string) {
+  return {
+    administratie_id: administratieId,
+    gebruiker_id: ZZP_ID,
+    gebruiker_naam: 'Milan K.',
+    documenten: [],
+    aantal_verplicht: 0,
+    aantal_aanwezig: 0,
+    aantal_ontbrekend: 0,
+    aantal_verlopen: 0,
+    aantal_verloopt_binnenkort: 0,
+    aantal_ter_controle: 0,
+    compleet: true,
+    compleet_incl_ter_controle: true,
+    herinneringen_teller: 0,
+    herinneringen_max: 3,
+    laatste_herinnering_op: null,
+    geblokkeerd: false,
+    geblokkeerd_op: null,
+    kan_herinneren_vandaag: true,
+    kvk_nummer: null,
+    btw_nummer: null,
+    kvk_naam: null,
+    kvk_plaats: null,
+    kvk_rechtsvorm: null,
+    kvk_bevestigd_op: null,
+    kvk_bevestigd_door_naam: null,
+    signalen: [],
+  }
+}
+
+function installDialoogMock(veld: unknown[], aanroepen: string[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      aanroepen.push(url)
+      if (url.includes('/uren/beheer/veldgebruikers')) return Promise.resolve(jsonResponse(veld))
+      const dossier = url.match(/\/uren\/kantoor\/dossier\/([^/]+)\//)
+      if (dossier) return Promise.resolve(jsonResponse(dossierAntwoord(dossier[1])))
+      if (url.match(/\/administraties\/[^/]+\/crediteuren/)) return Promise.resolve(jsonResponse({ crediteuren: [] }))
+      return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+    }),
+  )
+}
+
+function renderMetScope(
+  gebruikers: GebruikerOverzichtDto[],
+  administraties: { id: string; naam: string; uren_meerwerk_ingeschakeld?: boolean }[],
+) {
+  return render(
+    <VeldwerkersPanel gebruikers={gebruikers} administraties={administraties} onUitnodigen={() => {}} actieKolom={() => null} />,
+  )
+}
+
+describe('VeldwerkersPanel — dialogen zonder picker-poort (C3, 07-09)', () => {
+  it('dossier opent voorgeselecteerd met één administratie in scope — zonder picker', async () => {
+    const aanroepen: string[] = []
+    installDialoogMock([veldGebruiker({ dossiers: [] })], aanroepen)
+    renderMetScope([overzichtGebruiker({})], [{ id: ADMIN_B, naam: 'Universal Steigerbouw', uren_meerwerk_ingeschakeld: true }])
+    await userEvent.click(await screen.findByTitle('ZZP-dossier openen (documenten, KvK/btw, herinneringen)'))
+
+    await waitFor(() => expect(aanroepen.some((u) => u.includes(`/uren/kantoor/dossier/${ADMIN_B}/${ZZP_ID}`))).toBe(true))
+    const dialoog = screen.getByRole('dialog')
+    expect(within(dialoog).queryByLabelText('Administratie')).not.toBeInTheDocument()
+    expect(within(dialoog).queryByTestId('standaard-administratie-uitleg')).not.toBeInTheDocument()
+  })
+
+  it('dossier: meerdere in scope → recentste planning voorgeselecteerd; de picker wisselt naar een andere administratie', async () => {
+    const aanroepen: string[] = []
+    installDialoogMock([veldGebruiker({ dossiers: [], recentste_planning_administratie_id: ADMIN_B })], aanroepen)
+    renderMetScope(
+      [overzichtGebruiker({})],
+      [
+        { id: ADMIN_A, naam: 'BLOW B.V.' },
+        { id: ADMIN_B, naam: 'Universal Steigerbouw', uren_meerwerk_ingeschakeld: true },
+      ],
+    )
+    await userEvent.click(await screen.findByTitle('ZZP-dossier openen (documenten, KvK/btw, herinneringen)'))
+
+    await waitFor(() => expect(aanroepen.some((u) => u.includes(`/uren/kantoor/dossier/${ADMIN_B}/`))).toBe(true))
+    expect(aanroepen.some((u) => u.includes(`/uren/kantoor/dossier/${ADMIN_A}/`))).toBe(false)
+    const dialoog = screen.getByRole('dialog')
+    expect(within(dialoog).getByTestId('standaard-administratie-uitleg')).toHaveTextContent('recentste planning')
+
+    // Wissel-filter: de picker blijft staan en wisselt naar BLOW.
+    await userEvent.click(within(dialoog).getByLabelText('Administratie'))
+    await userEvent.click(await screen.findByRole('option', { name: 'BLOW B.V.' }))
+    await waitFor(() => expect(aanroepen.some((u) => u.includes(`/uren/kantoor/dossier/${ADMIN_A}/`))).toBe(true))
+    expect(within(dialoog).queryByTestId('standaard-administratie-uitleg')).not.toBeInTheDocument()
+  })
+
+  it('crediteur koppelen: zonder koppeling of planning wint de administratie mét uren-&-meerwerk-opt-in (niet de eerste in de lijst)', async () => {
+    const aanroepen: string[] = []
+    installDialoogMock([veldGebruiker({ dossiers: [] })], aanroepen)
+    renderMetScope(
+      [overzichtGebruiker({})],
+      [
+        { id: ADMIN_A, naam: 'BLOW B.V.' },
+        { id: ADMIN_B, naam: 'Universal Steigerbouw', uren_meerwerk_ingeschakeld: true },
+      ],
+    )
+    await userEvent.click(await screen.findByRole('button', { name: 'crediteur koppelen' }))
+
+    await waitFor(() => expect(aanroepen.some((u) => u.includes(`/administraties/${ADMIN_B}/crediteuren`))).toBe(true))
+    expect(aanroepen.some((u) => u.includes(`/administraties/${ADMIN_A}/crediteuren`))).toBe(false)
+    const dialoog = screen.getByRole('dialog')
+    expect(within(dialoog).getByLabelText('Administratie')).toBeInTheDocument()
+    expect(within(dialoog).getByTestId('standaard-administratie-uitleg')).toHaveTextContent('uren & meerwerk')
   })
 })

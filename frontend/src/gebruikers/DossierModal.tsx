@@ -16,6 +16,7 @@ import {
 } from '../meerwerk/meerwerkApi'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField, useToastOptioneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
+import { kiesStandaardAdministratie, standaardRedenLabel, urenMeerwerkOptIns } from './standaardAdministratie'
 
 /* ZZP-dossier per veldwerker (steigerbouw-run A1–A3, mockup meerwerk-kantoor.html "📁 Dossier"
  * = norm): KvK-/btw-blok (lookup → mens bevestigt), documententabel per type met status/geldig-
@@ -84,7 +85,21 @@ export function DossierModal({
   const keuzes = (veldwerker.dossiers ?? []).length > 0
     ? veldwerker.dossiers.map((d) => ({ id: d.administratie_id, naam: d.administratie_naam ?? d.administratie_id }))
     : administraties.map((a) => ({ id: a.id, naam: a.naam }))
-  const [administratieId, setAdministratieId] = useState(keuzes[0]?.id ?? '')
+  // Fixrun 07-09 blok C3: opent VOORGESELECTEERD (één in scope → die; anders recentste planning/
+  // koppeling; anders de administratie mét uren-&-meerwerk-opt-in) — de picker blijft als wissel-filter.
+  const [standaard] = useState(() =>
+    kiesStandaardAdministratie(
+      keuzes,
+      {
+        recentstePlanning: veldwerker.recentste_planning_administratie_id,
+        recentsteKoppeling: veldwerker.recentste_koppeling_administratie_id,
+        voorkeur: 'planning',
+      },
+      { urenMeerwerk: urenMeerwerkOptIns(administraties) },
+    ),
+  )
+  const [administratieId, setAdministratieId] = useState(standaard?.id ?? keuzes[0]?.id ?? '')
+  const standaardUitleg = standaard && administratieId === standaard.id ? standaardRedenLabel(standaard.reden) : null
   const [dossier, setDossier] = useState<DossierDto | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -147,12 +162,19 @@ export function DossierModal({
           geëxtraheerd of geïndexeerd; weergave gemaskeerd, elke inzage geauditeerd.
         </DialogDescription>
         {keuzes.length > 1 && (
-          <AdministratieCombobox
-            label="Administratie"
-            administraties={keuzes}
-            waarde={administratieId}
-            onWijzig={setAdministratieId}
-          />
+          <>
+            <AdministratieCombobox
+              label="Administratie"
+              administraties={keuzes}
+              waarde={administratieId}
+              onWijzig={setAdministratieId}
+            />
+            {standaardUitleg && (
+              <p className="hint" style={{ marginTop: -4 }} data-testid="standaard-administratie-uitleg">
+                {standaardUitleg}
+              </p>
+            )}
+          </>
         )}
         {fout && <div className="fout">{fout}</div>}
         {dossier === null && !fout && <SkeletonRegels />}

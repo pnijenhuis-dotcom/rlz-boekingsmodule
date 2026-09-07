@@ -268,6 +268,10 @@ class ScopeToevoegenRequest(StrikteInvoer):
 class AdministratieResponse(BaseModel):
     id: uuid.UUID
     naam: str
+    # Fixrun 07-09 blok C3 (additief): uren-&-meerwerk-opt-in per administratie, zodat de
+    # veldwerker-dialogen zonder picker-poort een standaard-administratie kunnen kiezen
+    # (regel 3: de administratie mét opt-in — nooit hardcoded Universal).
+    uren_meerwerk_ingeschakeld: bool = False
 
 
 class MijnAdministratiesResponse(BaseModel):

@@ -295,7 +295,10 @@ def logout_overal(
 def mijn_administraties(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.MijnAdministratiesResponse:
     administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     return schemas.MijnAdministratiesResponse(
-        administraties=[schemas.AdministratieResponse(id=a.id, naam=a.naam) for a in administraties]
+        administraties=[
+            schemas.AdministratieResponse(id=a.id, naam=a.naam, uren_meerwerk_ingeschakeld=a.uren_meerwerk_ingeschakeld)
+            for a in administraties
+        ]
     )
 
 

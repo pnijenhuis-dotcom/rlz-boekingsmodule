@@ -234,6 +234,48 @@ class TestBeheerKoppelingen:
         assert resp.json() and per_naam["Milan K."]["gebruiker_id"] in [g["gebruiker_id"] for g in resp.json()]
         assert next(g for g in resp.json() if g["naam"] == "Milan K.")["projecten"] == []
 
+    def test_veldgebruikers_dragen_recency_hints_voor_de_standaard_administratie(
+        self, admin_engine: Engine, administratie_id, project_id, zzper, detacheerder, beheerder_id
+    ):
+        """Fixrun 07-09 blok C3 (additief): de veldwerker-dialogen openen voorgeselecteerd — regel 2 is
+        'recentste planning/koppeling'. Het overzicht draagt per veldwerker de administratie van de
+        JONGSTE planningsdag en van de laatst gewijzigde crediteur-koppeling; None zonder beide."""
+        from app.uren import planning
+        from tests.uren.conftest import maak_project
+        from tests.uren.test_factuurmatch import koppel_crediteur
+
+        tweede_administratie = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.administratie (id, naam, rlz_admin_id, uren_meerwerk_ingeschakeld) "
+                    "VALUES (:id, 'Tweede steigerbouw (test)', :rlz, true)"
+                ),
+                {"id": tweede_administratie, "rlz": f"rlz-{tweede_administratie}"},
+            )
+        tweede_project = maak_project(admin_engine, tweede_administratie, "26099 Venlo (Heijmans)")
+
+        # Oudere planning op de eerste, jongere op de tweede administratie → de tweede wint.
+        planning.plan_toewijzing(
+            administratie_id=administratie_id, gebruiker_id=zzper, project_id=project_id,
+            datum=date(2026, 8, 17), actor_id=beheerder_id,
+        )
+        planning.plan_toewijzing(
+            administratie_id=tweede_administratie, gebruiker_id=zzper, project_id=tweede_project,
+            datum=date(2026, 8, 24), actor_id=beheerder_id,
+        )
+        # Crediteur-koppeling alleen op de eerste administratie.
+        koppel_crediteur(administratie_id, zzper, uuid.uuid4(), beheerder_id, uurtarief="42.50")
+
+        resp = client.get("/uren/beheer/veldgebruikers", headers=_bearer(beheerder_id, rol="beheerder"))
+        assert resp.status_code == 200, resp.text
+        per_naam = {g["naam"]: g for g in resp.json()}
+        assert per_naam["Milan K."]["recentste_planning_administratie_id"] == str(tweede_administratie)
+        assert per_naam["Milan K."]["recentste_koppeling_administratie_id"] == str(administratie_id)
+        # Zonder planning én zonder koppeling: geen hint — de frontend valt terug op de opt-in-regel.
+        assert per_naam["Karin S."]["recentste_planning_administratie_id"] is None
+        assert per_naam["Karin S."]["recentste_koppeling_administratie_id"] is None
+
     def test_beheer_is_beheerder_only(self, admin_engine: Engine, administratie_id):
         medewerker = maak_gebruiker(admin_engine, "boekhouding", "Rob T.")
         resp = client.get("/uren/beheer/veldgebruikers", headers=_bearer(medewerker, rol="boekhouding"))

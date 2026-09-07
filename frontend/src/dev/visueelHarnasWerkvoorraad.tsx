@@ -102,6 +102,27 @@ const VERZAMELBAK = {
       splitsing_id: null,
       splitsing_voorstel: null,
     },
+    // C9 (fixrun 07-09), variant ?twijfel=1: de breedste rij — twijfelchip "factuur of offerte?" +
+    // soort-toggle + suggestie-chip + lange tenaamstelling + picker + beide actieknoppen.
+    ...(new URLSearchParams(window.location.search).has('twijfel')
+      ? [
+          {
+            document_id: 'dddddddd-0000-0000-0000-000000000003',
+            bestandsnaam: 'offerte_of_factuur_steigerwerk_koningstraat_fase_2_definitief.pdf',
+            soort: 'inkoopfactuur',
+            bron: 'email',
+            afzender_hint: 'administratie@confide-steigerverhuur-nederland.nl',
+            tenaamstelling: 'Universal Steigerbouw Nederland B.V. t.a.v. de afdeling crediteurenadministratie Eindhoven',
+            suggestie_administratie_id: ADMIN_2,
+            suggestie_bron: 'tenaamstelling',
+            reden: 'documentsoort_onduidelijk',
+            reden_label: 'factuur of offerte? — kies bij toewijzen',
+            aangemaakt_op: '2026-09-07T08:15:00Z',
+            splitsing_id: null,
+            splitsing_voorstel: null,
+          },
+        ]
+      : []),
     {
       document_id: 'dddddddd-0000-0000-0000-000000000002',
       bestandsnaam: 'scan_whatsapp_bonnetje.jpg.pdf',

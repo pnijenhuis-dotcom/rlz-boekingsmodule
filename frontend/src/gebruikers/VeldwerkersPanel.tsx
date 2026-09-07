@@ -28,6 +28,7 @@ import {
 } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { DossierModal, dossierBadge } from './DossierModal'
+import { kiesStandaardAdministratie, standaardRedenLabel, urenMeerwerkOptIns } from './standaardAdministratie'
 import {
   formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
 
@@ -412,9 +413,23 @@ function CrediteurModal({
   onSluiten: () => void
   onGewijzigd: () => void
 }) {
-  const [administratieId, setAdministratieId] = useState(
-    veldwerker.crediteuren[0]?.administratie_id ?? administraties[0]?.id ?? '',
+  // Fixrun 07-09 blok C3: opent VOORGESELECTEERD zonder picker-poort — één in scope → die; anders de
+  // recentste koppeling (hier vóór de planning), anders de administratie mét uren-&-meerwerk-opt-in.
+  const [standaard] = useState(() =>
+    kiesStandaardAdministratie(
+      administraties,
+      {
+        recentsteKoppeling: veldwerker.recentste_koppeling_administratie_id ?? veldwerker.crediteuren[0]?.administratie_id,
+        recentstePlanning: veldwerker.recentste_planning_administratie_id,
+        voorkeur: 'koppeling',
+      },
+      { urenMeerwerk: urenMeerwerkOptIns(administraties) },
+    ),
   )
+  const [administratieId, setAdministratieId] = useState(
+    standaard?.id ?? veldwerker.crediteuren[0]?.administratie_id ?? administraties[0]?.id ?? '',
+  )
+  const standaardUitleg = standaard && administratieId === standaard.id ? standaardRedenLabel(standaard.reden) : null
   const [crediteuren, setCrediteuren] = useState<{ id: string; naam: string | null }[] | null>(null)
   const huidige = veldwerker.crediteuren.find((c) => c.administratie_id === administratieId) ?? null
   const [vendorId, setVendorId] = useState('')
@@ -504,6 +519,11 @@ function CrediteurModal({
           waarde={administratieId}
           onWijzig={setAdministratieId}
         />
+        {standaardUitleg && (
+          <p className="hint" style={{ marginTop: -4 }} data-testid="standaard-administratie-uitleg">
+            {standaardUitleg}
+          </p>
+        )}
         {crediteuren === null && !fout && <p className="hint">Crediteuren laden…</p>}
         {crediteuren !== null && (
           <FormField label="Crediteur (uit Reeleezee)" htmlFor="crediteur-vendor">

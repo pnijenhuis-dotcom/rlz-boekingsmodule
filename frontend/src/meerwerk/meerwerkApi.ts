@@ -145,6 +145,10 @@ export interface VeldgebruikerDto {
   uren_afwijking_som: string
   // ZZP-dossier per administratie (A1): teller + signalen voor de dossier-badge.
   dossiers: DossierSamenvattingDto[]
+  // Fixrun 07-09 blok C3 (additief): recency-hints voor de standaard-administratie van de
+  // dossier-/crediteur-dialoog — jongste planningsdag resp. laatst gewijzigde koppeling.
+  recentste_planning_administratie_id?: string | null
+  recentste_koppeling_administratie_id?: string | null
 }
 
 /* --- ZZP-dossier per veldwerker (steigerbouw-run blok A, migratie 0072) ---------------------- */

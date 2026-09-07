@@ -190,6 +190,20 @@
   box-shadow: var(--shadow);
 }
 
+/* Compacte segment-toggle voor in een tabelcel (verzamelbak "Factuur | Offerte", C9 07-09):
+   zelfde semantiek (gekozen = .actief, geen teal), kleinere maat zodat de rijhoogte constant blijft. */
+.segment.compact {
+  padding: 2px;
+  border-radius: 7px;
+}
+
+.segment.compact button {
+  padding: 2px 9px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 5px;
+}
+
 /* Zoekbare multiselect (.ms — schaalbaar tot 50+ opties) + scope-chips */
 .ms {
   border: 1px solid var(--border);

@@ -368,6 +368,7 @@ class StaffelRegelDto(BaseModel):
     prijs_per_eenheid: Decimal
     verrekenbaar: bool
     bron: str | None = None
+    herkomst: str | None = None  # D6: 'contract' | 'mens' | None
 
 
 class MeerwerkGoedkeurenRequest(StrikteInvoer):
@@ -444,6 +445,11 @@ class VeldgebruikerDto(BaseModel):
     uren_afwijking_som: Decimal = Decimal("0")
     # ZZP-dossier per administratie (A1): teller + signalen voor de dossier-badge op het paneel.
     dossiers: list[DossierSamenvattingDto] = []
+    # Fixrun 07-09 blok C3 (additief): recency-hints voor de standaard-administratie van de
+    # veldwerker-dialogen — administratie van de jongste planningsdag resp. de laatst
+    # gewijzigde crediteur-koppeling; None zonder planning/koppeling.
+    recentste_planning_administratie_id: uuid.UUID | None = None
+    recentste_koppeling_administratie_id: uuid.UUID | None = None
 
 
 class ProjectKoppelingRequest(StrikteInvoer):

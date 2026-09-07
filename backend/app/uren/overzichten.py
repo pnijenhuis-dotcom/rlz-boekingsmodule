@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -1075,6 +1075,10 @@ class VeldgebruikerKaart:
     uren_afwijking_som: Decimal
     # ZZP-dossier (A1): stand per administratie mét scope (teller + signalen + blokkade).
     dossiers: list = field(default_factory=list)
+    # Fixrun 07-09 blok C3: recency-hints voor de standaard-administratie in de veldwerker-
+    # dialogen (dossier/crediteur) — jongste planningsdag resp. laatst gewijzigde koppeling.
+    recentste_planning_administratie_id: uuid.UUID | None = None
+    recentste_koppeling_administratie_id: uuid.UUID | None = None
 
 
 def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]:
@@ -1101,6 +1105,10 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
     crediteuren_per_gebruiker: dict[uuid.UUID, list[CrediteurKoppelingKaart]] = {}
     dossiers_per_gebruiker: dict[uuid.UUID, list] = {}
     from app.uren import dossier as dossier_service
+    # C3 (07-09): per gebruiker (jongste planningsdatum, administratie) en (jongste koppeling-
+    # wijziging, administratie) over álle opt-in-administraties heen.
+    recentste_planning: dict[uuid.UUID, tuple[date, uuid.UUID]] = {}
+    recentste_koppeling: dict[uuid.UUID, tuple[datetime, uuid.UUID]] = {}
 
     for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
         with scoped_session(administratie.id, actor_id=actor_id) as session:
@@ -1115,6 +1123,9 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                 select(VeldwerkerCrediteur).where(VeldwerkerCrediteur.administratie_id == administratie.id)
             ):
                 vendor = session.get(VendorCache, (koppel.vendor_id, administratie.id))
+                bekend = recentste_koppeling.get(koppel.gebruiker_id)
+                if bekend is None or koppel.bijgewerkt_op > bekend[0]:
+                    recentste_koppeling[koppel.gebruiker_id] = (koppel.bijgewerkt_op, administratie.id)
                 crediteuren_per_gebruiker.setdefault(koppel.gebruiker_id, []).append(
                     CrediteurKoppelingKaart(
                         administratie_id=administratie.id,
@@ -1138,6 +1149,14 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
                     .distinct()
                 ).all()
             )
+            for gid, jongste in session.execute(
+                select(PlanningToewijzing.gebruiker_id, func.max(PlanningToewijzing.datum))
+                .where(PlanningToewijzing.administratie_id == administratie.id)
+                .group_by(PlanningToewijzing.gebruiker_id)
+            ).all():
+                bekend_plan = recentste_planning.get(gid)
+                if bekend_plan is None or jongste > bekend_plan[0]:
+                    recentste_planning[gid] = (jongste, administratie.id)
             met_uren = set(
                 session.execute(
                     select(Weekstaat.gebruiker_id, Weekstaat.project_id)
@@ -1197,6 +1216,8 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
             uren_afwijking_aantal=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[0],
             uren_afwijking_som=afwijking_per_gebruiker.get(g.id, (0, Decimal("0")))[1],
             dossiers=dossiers_per_gebruiker.get(g.id, []),
+            recentste_planning_administratie_id=(recentste_planning.get(g.id) or (None, None))[1],
+            recentste_koppeling_administratie_id=(recentste_koppeling.get(g.id) or (None, None))[1],
         )
         for g in gebruikers
     ]

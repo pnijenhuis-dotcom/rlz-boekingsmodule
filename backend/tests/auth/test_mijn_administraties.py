@@ -87,3 +87,25 @@ def test_gebruiker_zonder_scope_ziet_lege_lijst(admin_engine: Engine) -> None:
     resp = client.get("/auth/administraties", headers=_bearer(doel, rol="boekhouding"))
     assert resp.status_code == 200, resp.text
     assert resp.json()["administraties"] == []
+
+
+def test_mijn_administraties_dragen_de_uren_meerwerk_opt_in(beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+    """Fixrun 07-09 blok C3 (additief): de veldwerker-dialogen kiezen zonder picker-poort een
+    standaard-administratie — regel 3 is 'de administratie mét uren-&-meerwerk-opt-in', dus die
+    vlag reist mee op /auth/administraties (default false, nooit hardcoded Universal)."""
+    met_opt_in = uuid.uuid4()
+    zonder = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO platform.administratie (id, naam, rlz_admin_id, uren_meerwerk_ingeschakeld) "
+                "VALUES (:a, 'Steigerbouw (test)', :ra, true), (:b, 'Zonder opt-in (test)', :rb, false)"
+            ),
+            {"a": met_opt_in, "ra": f"rlz-{met_opt_in}", "b": zonder, "rb": f"rlz-{zonder}"},
+        )
+
+    resp = client.get("/auth/administraties", headers=_bearer(beheerder_id, rol="beheerder"))
+    assert resp.status_code == 200, resp.text
+    per_id = {a["id"]: a for a in resp.json()["administraties"]}
+    assert per_id[str(met_opt_in)]["uren_meerwerk_ingeschakeld"] is True
+    assert per_id[str(zonder)]["uren_meerwerk_ingeschakeld"] is False
