@@ -33,6 +33,7 @@ from app.db.models import GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.crediteur_kenmerk import DubbelGroep, dubbele_crediteuren
 from app.documenten.models import Boekvoorstel, CrediteurKenmerk, Document, DocumentStatus, LeverancierIban
+from app.extractie.btw_nummer import normaliseer_kvk_nummer
 from app.geheugen.models import BoekingObservatie, ObservatieBron
 from app.sync.models import VendorCache
 
@@ -243,7 +244,9 @@ def _voorkeur_suggestie(kaarten: list[Kaart]) -> uuid.UUID:
 
 
 def _kvk_verschilt(kaarten: list[Kaart]) -> bool:
-    nummers = {k.kvk_nummer for k in kaarten if k.kvk_nummer}
+    """≥ 2 verschillende KvK-nummers op de kaarten — genormaliseerd (blok 5 07-09: "KvK 1234.5678" ≡ "12345678";
+    een onnormaliseerbare waarde telt letterlijk mee, nooit stil weggefilterd)."""
+    nummers = {normaliseer_kvk_nummer(k.kvk_nummer) or k.kvk_nummer for k in kaarten if k.kvk_nummer}
     return len(nummers) >= 2
 
 

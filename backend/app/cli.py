@@ -486,6 +486,37 @@ def _rapporteer_crediteuren_dubbelen_auto(uitkomst) -> int:
     return 1 if uitkomst.fouten else 0
 
 
+def _rapporteer_crediteuren_werklijst_nazorg(uitkomst) -> int:
+    label = " [dry-run]" if uitkomst.dry_run else ""
+    if not uitkomst.administraties:
+        print(f"OK    geen open legacy-werklijst-regels{label}")
+    for a in uitkomst.administraties:
+        regel = (
+            f"{a.administratie_naam}: {a.regels} regels, {a.om_te_zetten} om te zetten, {a.omgezet} omgezet, "
+            f"{a.al_gemarkeerd} al gemarkeerd, {a.niet_meer_bestaand} niet meer bestaand, {a.fouten} fouten"
+            f"{f', {a.systeem_actor_fallback}× systeem-actor (aanmaker onbekend)' if a.systeem_actor_fallback else ''}"
+            f"{label}"
+        )
+        print(f"{'FOUT ' if a.fouten else 'OK   '} {regel}", file=sys.stderr if a.fouten else sys.stdout)
+        for d in a.details:
+            status = "FOUT " if d.uitkomst == "fout" else ("gedaan" if d.uitkomst == "omgezet" else "zou  ")
+            if d.uitkomst == "niets om te zetten":
+                status = "leeg " if uitkomst.dry_run else "gedaan"
+            fout = f" — {d.fout}" if d.fout else ""
+            actor = "systeem-actor (aanmaker onbekend)" if d.actor_fallback else f"aanmaker {str(d.actor_id)[:8]}"
+            print(
+                f"        {status} regel {str(d.werklijst_id)[:8]} ({d.aangemaakt_op:%d-%m-%Y}, {actor}) voorkeur "
+                f"{d.voorkeur_naam!r} ← om te zetten {d.om_te_zetten}, al gemarkeerd {d.al_gemarkeerd}, "
+                f"niet meer bestaand {d.niet_meer_bestaand}{fout}"
+            )
+    print(
+        f"Totaal{label}: {uitkomst.regels} regels, {uitkomst.om_te_zetten} om te zetten, {uitkomst.omgezet} omgezet, "
+        f"{uitkomst.al_gemarkeerd} al gemarkeerd, {uitkomst.niet_meer_bestaand} niet meer bestaand, "
+        f"{uitkomst.fouten} fouten (run {uitkomst.run_id})"
+    )
+    return 1 if uitkomst.fouten else 0
+
+
 def _rapporteer_autoboek_kandidaten(resultaten: dict) -> int:
     fouten = 0
     for administratie_id, r in resultaten.items():
@@ -2013,6 +2044,20 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID", help="Beperk de run tot deze administratie."
     )
 
+    werklijst_nazorg_parser = subparsers.add_parser(
+        "crediteuren-werklijst-nazorg",
+        help="Eenmalige nazorg (besluit Peter 07-09, beslispunt 7): open legacy-regels van de RLZ-werklijst "
+        "(crediteur_archiveer_werklijst, vóór blok B13) omzetten in markeringen via het gewone afhandel-pad — bron "
+        "'mens', actor = oorspronkelijke aanmaker; de regel wordt 'gedaan' (bron 'nazorg'), nooit verwijderd. "
+        "Idempotent; geen RLZ-calls.",
+    )
+    werklijst_nazorg_parser.add_argument(
+        "--dry-run", action="store_true", dest="dry_run", help="Alleen tellen per administratie; niets gewijzigd."
+    )
+    werklijst_nazorg_parser.add_argument(
+        "--administratie", default=None, metavar="UUID", help="Beperk de run tot deze administratie."
+    )
+
     projectverdeling_parser = subparsers.add_parser(
         "projectverdeling-hercontrole",
         help="Projectverdeling-hercontrole los draaien: geboekte pro-rato-verdelingen herrekenen tegen de actuele "
@@ -2495,6 +2540,13 @@ def main(argv: list[str] | None = None) -> int:
             crediteuren_afhandeling.auto_afhandelen(
                 None, dry_run=args.dry_run, administratie_id=administratie_filter
             )
+        )
+    if args.commando == "crediteuren-werklijst-nazorg":
+        from app.crediteuren import afhandeling as crediteuren_afhandeling
+
+        administratie_filter = uuid.UUID(args.administratie) if args.administratie else None
+        return _rapporteer_crediteuren_werklijst_nazorg(
+            crediteuren_afhandeling.nazorg_werklijst(dry_run=args.dry_run, administratie_id=administratie_filter)
         )
     if args.commando == "projectverdeling-hercontrole":
         from app.projectverdeling import hercontrole as projectverdeling_hercontrole

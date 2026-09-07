@@ -8,12 +8,20 @@ spoor). Alles in één transactie per cluster, geauditeerd, en TERUGDRAAIBAAR vi
 `crediteur_dubbel_afhandeling` (migratie 0117) die de oude stand bewaart.
 
 Classificatie (deterministisch, puur code):
-  EENDUIDIG  = (genormaliseerde naam identiek óf IBAN identiek) én geen conflicterend KvK-/btw-nummer én élke
-               niet-voorkeur-kaart draagt ≤ N boekingen/geheugenregels (N = settings, default 3) én op geen
-               verliezer rust een menskeuze (autoboek-opt-in, veldwerker-koppeling).
+  EENDUIDIG  = (genormaliseerde naam identiek óf IBAN identiek óf hetzelfde genormaliseerde KvK-nummer op ÁLLE
+               kaarten) én geen conflicterend KvK-/btw-nummer én élke niet-voorkeur-kaart draagt ≤ N boekingen/
+               geheugenregels (N = settings, default 3) én op geen verliezer rust een menskeuze (autoboek-opt-in,
+               veldwerker-koppeling).
   TWIJFEL    = alles anders — blijft voor de mens in de lijst, mét de reden op de rij.
-Een cluster dat alléén op btw-/KvK-nummer dubbel is (namen én IBAN's verschillen) is bewust twijfel: een fiscale
-eenheid deelt één btw-nummer over verschillende bedrijven.
+Alleen-KvK-clusters zijn EENDUIDIG (besluit Peter 07-09, beslispunt 2): één KvK-nummer = één rechtspersoon, ook met
+meerdere handelsnamen. Alleen-btw-clusters (namen, IBAN's én KvK verschillen of ontbreken) blijven bewust twijfel:
+een fiscale eenheid deelt één btw-nummer over verschillende bedrijven. Zelfde KvK mét conflicterend btw-nummer =
+twijfel (die combinatie hoort niet te bestaan — datakwaliteit, mens kijkt).
+
+Nazorg werklijst (besluit Peter 07-09, beslispunt 7): `nazorg_werklijst` zet de open legacy-regels van
+`crediteur_archiveer_werklijst` (het RLZ-klikwerk van vóór blok B13) eenmalig om in markeringen via hetzelfde
+`handel_af`-pad — bron 'mens', actor = de oorspronkelijke aanmaker van de regel; de regel wordt 'gedaan' (bron
+'nazorg'), nooit verwijderd. Idempotent; dry-run schrijft niets.
 
 Waarom géén RLZ-open-posten-toets (v2 03-09 had die): die toets bewaakte het ARCHIVEREN in RLZ (een gearchiveerde
 crediteur mét open post is dáár een probleem). Een markering in de module raakt RLZ niet — open posten worden
@@ -40,6 +48,7 @@ from app.db.models import Administratie, GebruikerRol
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Boekvoorstel, CrediteurKenmerk, Document, DocumentStatus, LeverancierVoorkeur
+from app.extractie.btw_nummer import normaliseer_kvk_nummer
 from app.sync.models import VendorCache
 from app.uren.models import VeldwerkerCrediteur
 
@@ -78,6 +87,12 @@ def _btw_verschilt(kaarten: list[service.Kaart]) -> bool:
     return len({k.btw_nummer for k in kaarten if k.btw_nummer}) >= 2
 
 
+def _zelfde_kvk(kaarten: list[service.Kaart]) -> bool:
+    """Élke kaart draagt een (genormaliseerd) KvK-nummer en het is overal hetzelfde — één rechtspersoon."""
+    nummers = [normaliseer_kvk_nummer(k.kvk_nummer) for k in kaarten]
+    return bool(nummers) and all(nummers) and len(set(nummers)) == 1
+
+
 def classificeer(
     cluster: service.Cluster, *, max_boekingen: int | None = None, menskeuze: frozenset[uuid.UUID] = frozenset()
 ) -> Classificatie:
@@ -88,9 +103,12 @@ def classificeer(
     voorkeur = cluster.voorkeur_suggestie
     verliezers = [k for k in kaarten if k.vendor_id != voorkeur]
     soorten = {s for s, _ in cluster.sleutels}
+    zelfde_kvk = _zelfde_kvk(kaarten)
     twijfel: list[str] = []
-    if not soorten & {"naam", "iban"}:
-        twijfel.append("alleen zelfde btw-/KvK-nummer — naam en IBAN verschillen (fiscale eenheid mogelijk)")
+    if not soorten & {"naam", "iban"} and not zelfde_kvk:
+        twijfel.append(
+            "alleen zelfde btw-nummer — naam, IBAN en KvK-nummer verschillen of ontbreken (fiscale eenheid mogelijk)"
+        )
     if service._kvk_verschilt(kaarten):
         twijfel.append("verschillend KvK-nummer")
     if _btw_verschilt(kaarten):
@@ -102,9 +120,14 @@ def classificeer(
             twijfel.append(f"autoboek-opt-in of veldwerker-koppeling op {k.naam or str(k.vendor_id)[:8]}")
     if twijfel:
         return Classificatie(False, "twijfel: " + "; ".join(twijfel), voorkeur, [k.vendor_id for k in verliezers])
-    basis = "identieke naam" if "naam" in soorten else "identiek IBAN"
-    if "naam" in soorten and "iban" in soorten:
-        basis = "identieke naam én IBAN"
+    delen: list[str] = []
+    if "naam" in soorten:
+        delen.append("identieke naam")
+    if "iban" in soorten:
+        delen.append("identiek IBAN")
+    if zelfde_kvk:
+        delen.append("zelfde KvK-nummer (één rechtspersoon, handelsnamen mogen verschillen)")
+    basis = " én ".join(delen)
     hoogste = max((k.aantal_boekingen for k in verliezers), default=0)
     reden = f"eenduidig: {basis}, geen conflicterend KvK/btw, verliezer(s) hooguit {hoogste} boeking(en) (≤ {grens})"
     return Classificatie(True, reden, voorkeur, [k.vendor_id for k in verliezers])
@@ -449,6 +472,298 @@ def auto_afhandelen(
             stand.eenduidig,
             stand.twijfel,
             stand.afgehandeld,
+            stand.fouten,
+            " [dry-run]" if dry_run else "",
+        )
+        uit.administraties.append(stand)
+    return uit
+
+
+# ----------------------------------------------------------------------------- nazorg legacy-werklijst (07-09)
+
+NAZORG_BRON = "nazorg"
+NAZORG_PREFIX = "nazorg werklijst 07-09: "
+
+
+@dataclass(frozen=True)
+class NazorgRegel:
+    werklijst_id: uuid.UUID
+    aangemaakt_op: datetime
+    actor_id: uuid.UUID
+    actor_fallback: bool
+    voorkeur_naam: str | None
+    om_te_zetten: list[str]
+    al_gemarkeerd: list[str]
+    niet_meer_bestaand: list[str]
+    uitkomst: str  # 'omgezet' | 'zou omzetten' | 'niets om te zetten' | 'fout'
+    fout: str | None = None
+    afhandeling_id: uuid.UUID | None = None
+
+
+@dataclass
+class NazorgAdministratie:
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    regels: int = 0
+    om_te_zetten: int = 0
+    omgezet: int = 0
+    al_gemarkeerd: int = 0
+    niet_meer_bestaand: int = 0
+    fouten: int = 0
+    systeem_actor_fallback: int = 0
+    details: list[NazorgRegel] = field(default_factory=list)
+
+
+@dataclass
+class NazorgUitkomst:
+    run_id: uuid.UUID
+    dry_run: bool
+    administraties: list[NazorgAdministratie]
+
+    def _som(self, veld: str) -> int:
+        return sum(getattr(a, veld) for a in self.administraties)
+
+    @property
+    def regels(self) -> int:
+        return self._som("regels")
+
+    @property
+    def om_te_zetten(self) -> int:
+        return self._som("om_te_zetten")
+
+    @property
+    def omgezet(self) -> int:
+        return self._som("omgezet")
+
+    @property
+    def al_gemarkeerd(self) -> int:
+        return self._som("al_gemarkeerd")
+
+    @property
+    def niet_meer_bestaand(self) -> int:
+        return self._som("niet_meer_bestaand")
+
+    @property
+    def fouten(self) -> int:
+        return self._som("fouten")
+
+    @property
+    def systeem_actor_fallback(self) -> int:
+        return self._som("systeem_actor_fallback")
+
+
+def _cluster_voor_paar(
+    clusters: list[service.Cluster], voorkeur: uuid.UUID, verliezers: list[uuid.UUID]
+) -> service.Cluster | None:
+    leden = {voorkeur, *verliezers}
+    return next((c for c in clusters if leden <= c.vendor_ids), None)
+
+
+def _nazorg_regel(
+    session: Session,
+    *,
+    regel: CrediteurArchiveerWerklijst,
+    administratie_id: uuid.UUID,
+    clusters: list[service.Cluster],
+    dry_run: bool,
+    run_id: uuid.UUID,
+) -> NazorgRegel:
+    """Eén open legacy-regel → markering(en) via `handel_af` (bron 'mens', actor = aanmaker) + regel 'gedaan'
+    (bron 'nazorg', audit). Alles in de sessie van de aanroeper (één transactie per regel)."""
+    actor_fallback = regel.aangemaakt_door is None
+    actor_id = regel.aangemaakt_door or SYSTEEM_ACTOR_ID
+    voorkeur = regel.voorkeur_vendor_id
+    doelen: list[tuple[uuid.UUID, str]] = []
+    for t in regel.te_archiveren or []:
+        try:
+            doelen.append((uuid.UUID(str(t.get("vendor_id"))), str(t.get("naam") or t.get("vendor_id") or "?")))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    cache = {
+        r.id: r
+        for r in session.scalars(
+            select(VendorCache).where(
+                VendorCache.administratie_id == administratie_id,
+                VendorCache.id.in_([voorkeur, *(v for v, _ in doelen)]),
+            )
+        )
+    }
+    om_te_zetten: list[tuple[uuid.UUID, str]] = []
+    al_gemarkeerd: list[str] = []
+    niet_meer_bestaand: list[str] = []
+    for vid, naam in doelen:
+        rij = cache.get(vid)
+        if rij is None:
+            niet_meer_bestaand.append(naam)
+        elif rij.voorkeur_vendor_id is not None:
+            al_gemarkeerd.append(naam)
+        else:
+            om_te_zetten.append((vid, naam))
+    basis = dict(
+        werklijst_id=regel.id,
+        aangemaakt_op=regel.aangemaakt_op,
+        actor_id=actor_id,
+        actor_fallback=actor_fallback,
+        voorkeur_naam=regel.voorkeur_naam,
+        om_te_zetten=[n for _, n in om_te_zetten],
+        al_gemarkeerd=al_gemarkeerd,
+        niet_meer_bestaand=niet_meer_bestaand,
+    )
+    voorkeur_rij = cache.get(voorkeur)
+    if om_te_zetten and voorkeur_rij is None:
+        return NazorgRegel(
+            **basis, uitkomst="fout", fout=f"voorkeur {regel.voorkeur_naam!r} staat niet meer in vendor_cache"
+        )
+    if om_te_zetten and voorkeur_rij is not None and voorkeur_rij.voorkeur_vendor_id is not None:
+        return NazorgRegel(
+            **basis,
+            uitkomst="fout",
+            fout=f"voorkeur {regel.voorkeur_naam!r} is intussen zelf verliezer (→ {voorkeur_rij.voorkeur_vendor_id})",
+        )
+    if dry_run:
+        return NazorgRegel(**basis, uitkomst="zou omzetten" if om_te_zetten else "niets om te zetten")
+
+    afhandeling_id: uuid.UUID | None = None
+    detail: dict[str, str] = dict(regel.hertoets_detail or {})
+    if om_te_zetten:
+        cluster = _cluster_voor_paar(clusters, voorkeur, [v for v, _ in om_te_zetten])
+        oorspronkelijk = (
+            f"mens koos voorkeur {regel.voorkeur_naam!r} op {regel.aangemaakt_op:%d-%m-%Y} "
+            f"('Voorkeur kiezen & rest archiveren', werklijst-regel {regel.id})"
+        )
+        if cluster is not None:
+            oorspronkelijk += f"; huidige classificatie: {cluster.classificatie_reden}"
+        uit = handel_af(
+            session,
+            administratie_id=administratie_id,
+            voorkeur=voorkeur,
+            verliezers=[v for v, _ in om_te_zetten],
+            sleutels=list(cluster.sleutels) if cluster is not None else [],
+            reden=NAZORG_PREFIX + oorspronkelijk,
+            bron="mens",
+            actor_id=actor_id,
+            run_id=run_id,
+        )
+        afhandeling_id = uit.afhandeling_id
+        for vid, _ in om_te_zetten:
+            detail[str(vid)] = f"nazorg 07-09: gemarkeerd als verliezer (afhandeling {afhandeling_id})"
+    for vid, naam in doelen:
+        if naam in al_gemarkeerd and str(vid) not in detail:
+            detail[str(vid)] = "nazorg 07-09: was al gemarkeerd als verliezer"
+        if naam in niet_meer_bestaand:
+            detail[str(vid)] = "nazorg 07-09: niet meer in vendor_cache"
+    nu = datetime.now(UTC)
+    regel.status = "gedaan"
+    regel.gedaan_op = nu
+    regel.gedaan_door = actor_id
+    regel.gedaan_bron = NAZORG_BRON
+    regel.hertoets_detail = detail
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="crediteur_archiveer_werklijst",
+        record_id=regel.id,
+        actie="crediteur_werklijst_nazorg",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde={"status": "open", "gedaan_bron": None},
+        nieuwe_waarde={
+            "status": "gedaan",
+            "gedaan_bron": NAZORG_BRON,
+            "run_id": str(run_id),
+            "afhandeling_id": str(afhandeling_id) if afhandeling_id else None,
+            "omgezet": [n for _, n in om_te_zetten],
+            "al_gemarkeerd": al_gemarkeerd,
+            "niet_meer_bestaand": niet_meer_bestaand,
+            "actor_fallback_systeem": actor_fallback,
+        },
+        administratie_id=administratie_id,
+    )
+    session.flush()
+    return NazorgRegel(
+        **basis, uitkomst="omgezet" if om_te_zetten else "niets om te zetten", afhandeling_id=afhandeling_id
+    )
+
+
+def nazorg_werklijst(*, dry_run: bool, administratie_id: uuid.UUID | None = None) -> NazorgUitkomst:
+    """Eenmalige nazorgstap (beslispunt 7, besluit Peter 07-09): élke OPEN regel van de legacy RLZ-werklijst
+    (aangemaakt door "Voorkeur kiezen & rest archiveren" vóór blok B13 — die route bestaat niet meer, dus 'open' =
+    legacy) wordt omgezet: verliezers die nog geen markering hebben én nog in `vendor_cache` staan → `handel_af`
+    (bron 'mens', actor = `aangemaakt_door`, terugval systeem-actor zichtbaar in het rapport); de regel wordt
+    'gedaan' mét bron 'nazorg' (nooit verwijderd). Een regel waarvan de voorkeur zelf verdwenen of verliezer is,
+    blijft open en telt als fout. Idempotent: een tweede run vindt geen open regels. `dry_run` schrijft niets."""
+    run_id = uuid.uuid4()
+    uit = NazorgUitkomst(run_id=run_id, dry_run=dry_run, administraties=[])
+    for aid, naam in _alle_actieve_administraties():
+        if administratie_id is not None and aid != administratie_id:
+            continue
+        with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as session:
+            open_regels = session.execute(
+                select(CrediteurArchiveerWerklijst.id, CrediteurArchiveerWerklijst.aangemaakt_door)
+                .where(
+                    CrediteurArchiveerWerklijst.administratie_id == aid,
+                    CrediteurArchiveerWerklijst.status == "open",
+                )
+                .order_by(CrediteurArchiveerWerklijst.aangemaakt_op)
+            ).all()
+        if not open_regels:
+            continue
+        stand = NazorgAdministratie(administratie_id=aid, administratie_naam=naam, regels=len(open_regels))
+        clusters = service._clusters_voor_administratie(_systeem_actor(), aid, naam)
+        for regel_id, aanmaker in open_regels:
+            # De schrijvende sessie draait onder de oorspronkelijke aanmaker (audit-actor); RLS is per
+            # administratie, niet per actor. Eén transactie per regel; in dry-run schrijft `_nazorg_regel` niets.
+            try:
+                with scoped_session(aid, actor_id=aanmaker or SYSTEEM_ACTOR_ID) as session:
+                    regel = session.get(CrediteurArchiveerWerklijst, regel_id)
+                    if regel is None or regel.status != "open":
+                        continue
+                    r = _nazorg_regel(
+                        session,
+                        regel=regel,
+                        administratie_id=aid,
+                        clusters=clusters,
+                        dry_run=dry_run,
+                        run_id=run_id,
+                    )
+            except Exception as exc:  # noqa: BLE001 — één regel stopt de rest niet, fout blijft zichtbaar
+                logger.exception("Nazorg werklijst-regel %s mislukt", regel_id)
+                stand.fouten += 1
+                stand.details.append(
+                    NazorgRegel(
+                        werklijst_id=regel_id,
+                        aangemaakt_op=datetime.now(UTC),
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        actor_fallback=False,
+                        voorkeur_naam=None,
+                        om_te_zetten=[],
+                        al_gemarkeerd=[],
+                        niet_meer_bestaand=[],
+                        uitkomst="fout",
+                        fout=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+                continue
+            stand.details.append(r)
+            if r.uitkomst != "fout":  # bij een fout (voorkeur weg/zelf verliezer) is er niets om te zetten
+                stand.om_te_zetten += len(r.om_te_zetten)
+            stand.al_gemarkeerd += len(r.al_gemarkeerd)
+            stand.niet_meer_bestaand += len(r.niet_meer_bestaand)
+            stand.systeem_actor_fallback += int(r.actor_fallback)
+            if r.uitkomst == "fout":
+                stand.fouten += 1
+            elif r.uitkomst == "omgezet":
+                stand.omgezet += len(r.om_te_zetten)
+        logger.info(
+            "Nazorg werklijst %s %s: %s regels, %s om te zetten, %s omgezet, %s al gemarkeerd, %s niet meer bestaand, "
+            "%s fouten%s",
+            run_id,
+            naam,
+            stand.regels,
+            stand.om_te_zetten,
+            stand.omgezet,
+            stand.al_gemarkeerd,
+            stand.niet_meer_bestaand,
             stand.fouten,
             " [dry-run]" if dry_run else "",
         )

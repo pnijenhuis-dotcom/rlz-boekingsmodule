@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
 from app.crediteuren import afhandeling, service
-from app.crediteuren.models import CrediteurDubbelAfhandeling
+from app.crediteuren.models import CrediteurArchiveerWerklijst, CrediteurDubbelAfhandeling
 from app.crediteuren.voorkeur import verliezers, voorkeur_van
 from app.db.models import GebruikerRol
 from app.db.session import scoped_session
@@ -95,6 +95,62 @@ class TestClassificatie:
         # Alleen-btw (naam én IBAN verschillen) = twijfel — fiscale eenheid.
         alleen_btw = service.Cluster(**{**labo.__dict__, "sleutels": [("btw_nummer", BTW)]})
         assert "fiscale eenheid" in afhandeling.classificeer(alleen_btw).reden
+
+    def test_alleen_kvk_eenduidig_alleen_btw_twijfel_kvk_met_btw_conflict_twijfel(
+        self, dubbelen, administratie_id, beheerder_id
+    ) -> None:
+        """Besluit Peter 07-09 (beslispunt 2): één KvK-nummer = één rechtspersoon, ook met meerdere handelsnamen →
+        alleen-KvK is EENDUIDIG; alleen-btw (fiscale eenheid) blijft twijfel; zelfde KvK + conflicterend btw = twijfel."""
+        clusters = {c.soort: c for c in service._clusters_voor_administratie(_actor(beheerder_id), administratie_id, "S")}
+        labo = clusters["btw_nummer"]
+
+        def kaart(vendor_id: uuid.UUID, naam: str, *, kvk: str | None, btw: str | None, boekingen: int = 1) -> service.Kaart:
+            return service.Kaart(
+                vendor_id=vendor_id, naam=naam, btw_nummer=btw, kvk_nummer=kvk, ibans=[], aantal_boekingen=boekingen,
+                laatst_geboekt=None,
+            )
+
+        def cluster(kaarten: list[service.Kaart], sleutels: list[tuple[str, str]]) -> service.Cluster:
+            return service.Cluster(
+                **{
+                    **labo.__dict__,
+                    "crediteuren": kaarten,
+                    "sleutels": sleutels,
+                    "soort": sleutels[0][0],
+                    "voorkeur_suggestie": service._voorkeur_suggestie(kaarten),
+                }
+            )
+
+        a, b = uuid.uuid4(), uuid.uuid4()
+        # Alleen-KvK: namen én IBAN's verschillen, KvK genormaliseerd gelijk ("KvK 1234.5678" ≡ "12345678").
+        alleen_kvk = cluster(
+            [kaart(a, "Hubo Oirschot", kvk="12345678", btw=None, boekingen=3), kaart(b, "Bouwmarkt Oirschot B.V.", kvk="KvK 1234.5678", btw=None)],
+            [("kvk_nummer", "12345678")],
+        )
+        cl = afhandeling.classificeer(alleen_kvk)
+        assert cl.eenduidig and cl.voorkeur_vendor_id == a and cl.verliezer_vendor_ids == [b]
+        assert cl.reden.startswith("eenduidig: zelfde KvK-nummer (één rechtspersoon, handelsnamen mogen verschillen), geen conflicterend KvK/btw")
+        # Alleen-btw (fiscale eenheid): geen naam/IBAN-sleutel, KvK ontbreekt of verschilt → twijfel.
+        alleen_btw = cluster(
+            [kaart(a, "Holding A", kvk=None, btw=BTW), kaart(b, "Werkmij B", kvk=None, btw=BTW)], [("btw_nummer", BTW)]
+        )
+        cl = afhandeling.classificeer(alleen_btw)
+        assert not cl.eenduidig and "alleen zelfde btw-nummer" in cl.reden and "fiscale eenheid" in cl.reden
+        # Alleen-btw mét één kaart mét KvK en één zonder: geen 'zelfde KvK op alle kaarten' → twijfel.
+        half_kvk = cluster(
+            [kaart(a, "Holding A", kvk="12345678", btw=BTW), kaart(b, "Werkmij B", kvk=None, btw=BTW)], [("btw_nummer", BTW)]
+        )
+        assert not afhandeling.classificeer(half_kvk).eenduidig
+        # Zelfde KvK maar conflicterend btw-nummer → twijfel (datakwaliteit), mét beide motiveringen zichtbaar.
+        kvk_btw_conflict = cluster(
+            [kaart(a, "Hubo Oirschot", kvk="12345678", btw="NL123456789B01"), kaart(b, "Bouwmarkt Oirschot B.V.", kvk="12345678", btw=BTW)],
+            [("kvk_nummer", "12345678")],
+        )
+        cl = afhandeling.classificeer(kvk_btw_conflict)
+        assert not cl.eenduidig and "verschillend btw-nummer" in cl.reden and "fiscale eenheid" not in cl.reden
+        # De N-grens en menskeuze gelden onverkort voor alleen-KvK-clusters.
+        assert not afhandeling.classificeer(alleen_kvk, max_boekingen=0).eenduidig
+        assert not afhandeling.classificeer(alleen_kvk, menskeuze=frozenset({b})).eenduidig
 
     def test_menskeuze_uit_db(self, dubbelen, administratie_id, beheerder_id) -> None:
         with scoped_session(administratie_id, actor_id=beheerder_id) as session:
@@ -295,3 +351,94 @@ class TestKaartTelling:
         assert {k.naam for k in labo.crediteuren} == {"Labo Derva B.V.", "LABO DERVA bv"}
         assert next(k for k in labo.crediteuren if k.naam == "Labo Derva B.V.").aantal_boekingen == 3
         assert Decimal(labo.aantal_boekingen) == 3
+
+
+class TestNazorgWerklijst:
+    """Beslispunt 7 (besluit Peter 07-09): open legacy-werklijst-regels → markeringen via `handel_af` (bron 'mens',
+    actor = aanmaker), regel 'gedaan' mét bron 'nazorg'. Dry-run schrijft niets; idempotent."""
+
+    def _werklijst_regel(self, session, *, administratie_id, voorkeur, voorkeur_naam, te_archiveren, aanmaker) -> uuid.UUID:
+        rij = CrediteurArchiveerWerklijst(
+            id=uuid.uuid4(),
+            administratie_id=administratie_id,
+            voorkeur_vendor_id=voorkeur,
+            voorkeur_naam=voorkeur_naam,
+            te_archiveren=[{"vendor_id": str(v), "naam": n} for v, n in te_archiveren],
+            status="open",
+            aangemaakt_door=aanmaker,
+        )
+        session.add(rij)
+        session.flush()
+        return rij.id
+
+    def test_dry_run_schrijft_niets_echte_run_markeert_logt_audit_en_is_idempotent(
+        self, dubbelen, administratie_id, andere_administratie, beheerder_id, admin_engine: Engine
+    ) -> None:
+        # Coolblue (adm 2) is al automatisch afgehandeld: COOL = voorkeur, COOL_BV = verliezer.
+        afhandeling.auto_afhandelen(_actor(beheerder_id), dry_run=False, administratie_id=andere_administratie)
+        spook = uuid.uuid4()
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            regel_labo = self._werklijst_regel(
+                session, administratie_id=administratie_id, voorkeur=LABO_BV, voorkeur_naam="Labo Derva B.V.",
+                te_archiveren=[(LABO, "Labo Derva"), (spook, "Spook B.V.")], aanmaker=beheerder_id,
+            )
+        with scoped_session(andere_administratie, actor_id=beheerder_id) as session:
+            regel_cool = self._werklijst_regel(
+                session, administratie_id=andere_administratie, voorkeur=COOL, voorkeur_naam="Coolblue",
+                te_archiveren=[(COOL_BV, "Coolblue B.V.")], aanmaker=beheerder_id,
+            )
+            regel_fout = self._werklijst_regel(
+                session, administratie_id=andere_administratie, voorkeur=COOL_BV, voorkeur_naam="Coolblue B.V.",
+                te_archiveren=[(COOL, "Coolblue")], aanmaker=beheerder_id,
+            )
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 1
+
+        # Dry-run: telt, schrijft niets.
+        dry = afhandeling.nazorg_werklijst(dry_run=True)
+        assert dry.dry_run and dry.regels == 3 and dry.om_te_zetten == 1 and dry.omgezet == 0
+        assert dry.al_gemarkeerd == 1 and dry.niet_meer_bestaand == 1 and dry.fouten == 1 and dry.systeem_actor_fallback == 0
+        per = {a.administratie_naam: a for a in dry.administraties}
+        assert per["Scope-test"].details[0].uitkomst == "zou omzetten" and per["Scope-test"].details[0].om_te_zetten == ["Labo Derva"]
+        assert per["Scope-test"].details[0].niet_meer_bestaand == ["Spook B.V."]
+        fout = next(d for d in per["Andere BV"].details if d.uitkomst == "fout")
+        assert fout.werklijst_id == regel_fout and "intussen zelf verliezer" in fout.fout
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            assert verliezers(session, administratie_id=administratie_id) == {}
+            assert session.get(CrediteurArchiveerWerklijst, regel_labo).status == "open"
+        assert _audit_acties(admin_engine, "crediteur_werklijst_nazorg") == 0
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 1
+
+        # Echte run.
+        echt = afhandeling.nazorg_werklijst(dry_run=False)
+        assert echt.regels == 3 and echt.omgezet == 1 and echt.al_gemarkeerd == 1 and echt.niet_meer_bestaand == 1 and echt.fouten == 1
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            assert verliezers(session, administratie_id=administratie_id) == {LABO: LABO_BV}
+            vc = session.get(VendorCache, (LABO, administratie_id))
+            assert vc.dubbel_afgehandeld_bron == "mens" and vc.dubbel_afgehandeld_door == beheerder_id
+            log = session.scalars(select(CrediteurDubbelAfhandeling)).one()
+            assert log.bron == "mens" and log.run_id == echt.run_id and log.afgehandeld_door == beheerder_id
+            assert log.classificatie_reden.startswith(afhandeling.NAZORG_PREFIX + "mens koos voorkeur 'Labo Derva B.V.' op ")
+            assert "huidige classificatie: eenduidig: identieke naam" in log.classificatie_reden
+            assert log.sleutels == [{"soort": "btw_nummer", "sleutel": BTW}, {"soort": "naam", "sleutel": "labo derva"}]
+            regel = session.get(CrediteurArchiveerWerklijst, regel_labo)
+            assert regel.status == "gedaan" and regel.gedaan_bron == "nazorg" and regel.gedaan_door == beheerder_id
+            assert regel.gedaan_op is not None
+            assert regel.hertoets_detail[str(LABO)].startswith("nazorg 07-09: gemarkeerd als verliezer (afhandeling ")
+            assert regel.hertoets_detail[str(spook)] == "nazorg 07-09: niet meer in vendor_cache"
+        with scoped_session(andere_administratie, actor_id=beheerder_id) as session:
+            cool = session.get(CrediteurArchiveerWerklijst, regel_cool)
+            assert cool.status == "gedaan" and cool.gedaan_bron == "nazorg"
+            assert cool.hertoets_detail[str(COOL_BV)] == "nazorg 07-09: was al gemarkeerd als verliezer"
+            assert session.get(CrediteurArchiveerWerklijst, regel_fout).status == "open"  # blijft zichtbaar, niets stil
+            assert len(session.scalars(select(CrediteurDubbelAfhandeling)).all()) == 1  # alleen de auto-run van Coolblue
+        assert _audit_acties(admin_engine, "crediteur_werklijst_nazorg") == 2
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 2
+        # Export: alleen de nog-open (fout)regel staat nog als legacy in de lijst.
+        csv_tekst = afhandeling.export_opruimlijst(_actor(beheerder_id))
+        assert csv_tekst.count("werklijst (vóór 07-09)") == 1 and "Coolblue B.V.;Coolblue;" in csv_tekst
+
+        # Tweede run: niets meer om te zetten, alleen de fout-regel blijft; geen nieuwe audit.
+        opnieuw = afhandeling.nazorg_werklijst(dry_run=False)
+        assert opnieuw.regels == 1 and opnieuw.omgezet == 0 and opnieuw.om_te_zetten == 0 and opnieuw.fouten == 1
+        assert _audit_acties(admin_engine, "crediteur_werklijst_nazorg") == 2
+        assert _audit_acties(admin_engine, "crediteur_dubbel_afgehandeld") == 2
