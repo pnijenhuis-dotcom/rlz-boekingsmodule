@@ -122,6 +122,9 @@ export interface ProjectDetailDto {
   gebouwd_m2: string
   prijsafspraken?: PrijsafspraakDto[]
   veldwerkers?: VeldwerkerKeuzeDto[]
+  /** Additief (C5 07-09): verplichtingen mét verbruiksstand + weekstaten-/planningstand. */
+  verplichtingen?: ProjectVerplichtingDto[]
+  weekstaten_stand?: WeekstatenStandDto | null
 }
 
 export interface ProjectWeekDto {
@@ -366,4 +369,158 @@ export function euro(bedrag: string | number | null | undefined): string {
 export function euroPrecies(bedrag: string | number | null | undefined): string {
   if (bedrag === null || bedrag === undefined) return '—'
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' })
+}
+
+/* --- Inzicht › Projecten kantoorbreed + detail-verrijking (fixrun 07-09 blok C5) ---------------------
+ * Spiegelt backend/app/projecten/schemas_kantoor.py (ProjectenKantoorbreedResponse, ProjectVerplichtingDto,
+ * WeekstatenStandDto). De client formatteert alleen — chips, urgentie, facetten en paginering komen van
+ * de server. */
+
+export type ProjectSignaal = 'verplichting_overschreden' | 'marge_negatief' | 'weekstaat_ontbreekt' | 'te_keuren'
+export type ProjectStatusFacet = 'alle' | 'signaal' | ProjectSignaal | 'op_schema'
+
+export interface ResultaatChipDto {
+  baten: string
+  kosten: string
+  marge: string
+  marge_pct: string | null
+  onbepaalbaar_uren: string
+  heeft_cijfers: boolean
+}
+
+export interface VerplichtingenChipDto {
+  aantal: number
+  goedgekeurd_excl: string
+  verbruikt_excl: string
+  percentage: number | null
+  overschreden: number
+}
+
+export interface WeekstatenChipDto {
+  van_toepassing: boolean
+  ontbrekend: number
+  oudste_ontbrekende_jaar: number | null
+  oudste_ontbrekende_week: number | null
+  te_keuren: number
+  concept: number
+}
+
+export interface M2ChipDto {
+  gebouwd_m2: string
+  contract_m2: string | null
+  percentage: number | null
+  doorlopende_huur: boolean
+}
+
+export interface ProjectKantoorbreedRijDto {
+  administratie_id: string
+  administratie_naam: string
+  project_id: string
+  naam: string | null
+  opdrachtgever: string | null
+  werknummer_opdrachtgever: string | null
+  looptijd_tot: string | null
+  resultaat: ResultaatChipDto
+  verplichtingen: VerplichtingenChipDto
+  weekstaten: WeekstatenChipDto
+  m2: M2ChipDto
+  signalen: ProjectSignaal[]
+  urgentie: number
+}
+
+export interface ProjectenKantoorbreedTellersDto {
+  projecten: number
+  administraties: number
+  met_signaal: number
+  verplichting_overschreden: number
+  marge_negatief: number
+  weekstaat_ontbreekt: number
+  te_keuren: number
+}
+
+export interface ProjectenKantoorbreedDto {
+  rijen: ProjectKantoorbreedRijDto[]
+  totaal: number
+  pagina: number
+  per_pagina: number
+  administraties_in_selectie: number
+  tellers: ProjectenKantoorbreedTellersDto
+  facetten: {
+    status: Record<string, number>
+    administraties: { administratie_id: string; naam: string; aantal: number }[]
+  }
+}
+
+export const PROJECT_STATUS_FACETTEN: ProjectStatusFacet[] = [
+  'alle',
+  'signaal',
+  'verplichting_overschreden',
+  'marge_negatief',
+  'weekstaat_ontbreekt',
+  'te_keuren',
+  'op_schema',
+]
+
+export const PROJECT_STATUS_LABEL: Record<ProjectStatusFacet, string> = {
+  alle: 'alle',
+  signaal: 'met signaal',
+  verplichting_overschreden: 'offerte overschreden',
+  marge_negatief: 'negatieve marge',
+  weekstaat_ontbreekt: 'weekstaat ontbreekt',
+  te_keuren: 'weekstaat te keuren',
+  op_schema: 'op schema',
+}
+
+export function haalProjectenKantoorbreed(params: {
+  pagina: number
+  q?: string
+  administratieId?: string | null
+  status?: ProjectStatusFacet
+}): Promise<ProjectenKantoorbreedDto> {
+  const p = new URLSearchParams()
+  p.set('pagina', String(params.pagina))
+  p.set('status', params.status ?? 'alle')
+  if (params.q) p.set('q', params.q)
+  if (params.administratieId) p.set('administratie_id', params.administratieId)
+  return apiJson(`/projecten/kantoorbreed?${p.toString()}`)
+}
+
+/** Eén verplichting op het projectdetail mét verbruiksstand (VerbruiksBalk-patroon). */
+export interface ProjectVerplichtingDto {
+  document_id: string
+  offertenummer: string | null
+  soort_label: string | null
+  leverancier_naam: string | null
+  omschrijving: string | null
+  goedgekeurd_excl: string | null
+  verbruikt_excl: string
+  percentage: number | null
+  over_excl: string | null
+  geldig_tot: string | null
+  status: 'lopend' | 'overschreden' | 'vervallen' | string
+  open_facturen_aantal: number
+  open_facturen_excl: string
+}
+
+export interface WeekStandDto {
+  jaar: number
+  weeknummer: number
+  maandag: string
+  gepland_personen: number
+  gepland_dagen: string
+  concept: number
+  ingediend: number
+  goedgekeurd: number
+  corrigeren: number
+  ontbrekend: number
+  afgemeld: number
+}
+
+export interface WeekstatenStandDto {
+  van_toepassing: boolean
+  weken: WeekStandDto[]
+  ontbrekend_totaal: number
+  te_keuren_totaal: number
+  oudste_ontbrekende_jaar: number | null
+  oudste_ontbrekende_week: number | null
 }

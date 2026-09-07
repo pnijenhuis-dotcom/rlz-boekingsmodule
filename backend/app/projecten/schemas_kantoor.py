@@ -47,6 +47,9 @@ class SpecificatieDto(BaseModel):
     locatie_lat: Decimal | None = None
     locatie_lon: Decimal | None = None
     zone_straal_m: int | None = None
+    # D6 (migratie 0118): herkomst per veld — 'contract' (chip "uit contract") | 'mens'; ontbrekend = onbekend
+    # (rij van vóór 0118).
+    veld_herkomst: dict[str, str] = {}
 
 
 class SpecificatieInput(StrikteInvoer):
@@ -82,6 +85,9 @@ class StaffelDto(BaseModel):
     verrekenbaar: bool
     bron: str | None = None
     aangemaakt_op: datetime
+    # D6: 'contract' | 'mens' | None (vóór 0118 — client leidt dan af uit `bron`).
+    herkomst: str | None = None
+    herkomst_document_id: uuid.UUID | None = None
 
 
 class StaffelInput(StrikteInvoer):
@@ -182,6 +188,10 @@ class ProjectDetailResponse(BaseModel):
     gebouwd_m2: Decimal
     prijsafspraken: list[PrijsafspraakDto] = []
     veldwerkers: list[VeldwerkerKeuzeDto] = []
+    # Additief (fixrun 07-09 blok C5): verplichtingen mét verbruiksstand + weekstaten-/planningstand
+    # (DTO's onderaan dit bestand; `from __future__ import annotations` maakt de vooruitverwijzing mogelijk).
+    verplichtingen: list[ProjectVerplichtingDto] = []
+    weekstaten_stand: WeekstatenStandDto | None = None
 
 
 class NieuwProjectInput(StrikteInvoer):
@@ -204,6 +214,13 @@ class VolgendNummerResponse(BaseModel):
 class OntleedResponse(BaseModel):
     project_document_id: uuid.UUID
     aantal_regels: int
+    # D6 auto-first: tellers per uitkomst (direct ingevuld / expliciet niet aangetroffen / niet plaatsbaar /
+    # mens-waarde behouden) + of doorlopende huur uit de huurstaffel is afgeleid (code, geen AI).
+    overgenomen: int = 0
+    niet_aangetroffen: int = 0
+    ongeldig: int = 0
+    mens_behouden: int = 0
+    doorlopende_huur_afgeleid: bool = False
 
 
 class CijfersSyncStartResponse(BaseModel):
@@ -288,3 +305,122 @@ class ProjectenOverzichtResponse(BaseModel):
     marge_pct: Decimal | None = None
     aandacht: int
     rijen: list[OverzichtRijDto]
+
+
+# --- Inzicht › Projecten kantoorbreed + detail-verrijking (fixrun 07-09 blok C5) --------------------
+
+
+class ResultaatChipDto(BaseModel):
+    baten: Decimal
+    kosten: Decimal
+    marge: Decimal
+    marge_pct: Decimal | None = None
+    onbepaalbaar_uren: Decimal
+    heeft_cijfers: bool
+
+
+class VerplichtingenChipDto(BaseModel):
+    aantal: int
+    goedgekeurd_excl: Decimal
+    verbruikt_excl: Decimal
+    percentage: int | None = None
+    overschreden: int
+
+
+class WeekstatenChipDto(BaseModel):
+    van_toepassing: bool
+    ontbrekend: int
+    oudste_ontbrekende_jaar: int | None = None
+    oudste_ontbrekende_week: int | None = None
+    te_keuren: int
+    concept: int
+
+
+class M2ChipDto(BaseModel):
+    gebouwd_m2: Decimal
+    contract_m2: Decimal | None = None
+    percentage: int | None = None
+    doorlopende_huur: bool
+
+
+class ProjectKantoorbreedRijDto(BaseModel):
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    project_id: uuid.UUID
+    naam: str | None = None
+    opdrachtgever: str | None = None
+    werknummer_opdrachtgever: str | None = None
+    looptijd_tot: date | None = None
+    resultaat: ResultaatChipDto
+    verplichtingen: VerplichtingenChipDto
+    weekstaten: WeekstatenChipDto
+    m2: M2ChipDto
+    signalen: list[str]
+    urgentie: int
+
+
+class ProjectenKantoorbreedTellersDto(BaseModel):
+    projecten: int
+    administraties: int
+    met_signaal: int
+    verplichting_overschreden: int
+    marge_negatief: int
+    weekstaat_ontbreekt: int
+    te_keuren: int
+
+
+class ProjectenAdministratieFacetDto(BaseModel):
+    administratie_id: uuid.UUID
+    naam: str
+    aantal: int
+
+
+class ProjectenKantoorbreedResponse(BaseModel):
+    rijen: list[ProjectKantoorbreedRijDto]
+    totaal: int
+    pagina: int
+    per_pagina: int
+    administraties_in_selectie: int
+    tellers: ProjectenKantoorbreedTellersDto
+    facetten: dict  # {"status": {facet: n}, "administraties": [ProjectenAdministratieFacetDto]}
+
+
+class ProjectVerplichtingDto(BaseModel):
+    """Eén verplichting op het projectdetail mét verbruiksstand (VerbruiksBalk-patroon)."""
+
+    document_id: uuid.UUID
+    offertenummer: str | None = None
+    soort_label: str | None = None
+    leverancier_naam: str | None = None
+    omschrijving: str | None = None
+    goedgekeurd_excl: Decimal | None = None
+    verbruikt_excl: Decimal
+    percentage: int | None = None
+    over_excl: Decimal | None = None
+    geldig_tot: date | None = None
+    status: str  # lopend | overschreden | vervallen
+    open_facturen_aantal: int = 0
+    open_facturen_excl: Decimal = Decimal("0.00")
+
+
+class WeekStandDto(BaseModel):
+    jaar: int
+    weeknummer: int
+    maandag: date
+    gepland_personen: int
+    gepland_dagen: Decimal
+    concept: int
+    ingediend: int
+    goedgekeurd: int
+    corrigeren: int
+    ontbrekend: int
+    afgemeld: int
+
+
+class WeekstatenStandDto(BaseModel):
+    van_toepassing: bool
+    weken: list[WeekStandDto] = []
+    ontbrekend_totaal: int = 0
+    te_keuren_totaal: int = 0
+    oudste_ontbrekende_jaar: int | None = None
+    oudste_ontbrekende_week: int | None = None

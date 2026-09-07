@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
 from app.db.session import scoped_session
-from app.projecten import cijfers, cijfers_run, kantoor, ontleding
+from app.projecten import cijfers, cijfers_run, kantoor, kantoorbreed, ontleding
 from app.projecten import schemas_kantoor as schemas
 from app.projecten.motor import ProjectAanmakenMislukt, ProjectNaamConflict
 from app.rlz.client import RlzApiError
@@ -50,6 +50,79 @@ def _specificatie_dto(spec) -> schemas.SpecificatieDto | None:
         locatie_lat=spec.locatie_lat,
         locatie_lon=spec.locatie_lon,
         zone_straal_m=spec.zone_straal_m,
+        veld_herkomst=dict(spec.veld_herkomst or {}),
+    )
+
+
+def _weekstaten_chip_dto(ws: kantoorbreed.WeekstatenChip) -> schemas.WeekstatenChipDto:
+    oudste = ws.oudste_ontbrekende_week
+    return schemas.WeekstatenChipDto(
+        van_toepassing=ws.van_toepassing,
+        ontbrekend=ws.ontbrekend,
+        oudste_ontbrekende_jaar=oudste[0] if oudste else None,
+        oudste_ontbrekende_week=oudste[1] if oudste else None,
+        te_keuren=ws.te_keuren,
+        concept=ws.concept,
+    )
+
+
+def _kantoorbreed_rij_dto(r: kantoorbreed.Rij) -> schemas.ProjectKantoorbreedRijDto:
+    return schemas.ProjectKantoorbreedRijDto(
+        administratie_id=r.administratie_id,
+        administratie_naam=r.administratie_naam,
+        project_id=r.project_id,
+        naam=r.naam,
+        opdrachtgever=r.opdrachtgever,
+        werknummer_opdrachtgever=r.werknummer_opdrachtgever,
+        looptijd_tot=r.looptijd_tot,
+        resultaat=schemas.ResultaatChipDto(**r.resultaat.__dict__),
+        verplichtingen=schemas.VerplichtingenChipDto(**r.verplichtingen.__dict__),
+        weekstaten=_weekstaten_chip_dto(r.weekstaten),
+        m2=schemas.M2ChipDto(**r.m2.__dict__),
+        signalen=list(r.signalen),
+        urgentie=r.urgentie,
+    )
+
+
+# ⚠️ Volgorde: deze route staat bewust VÓÓR `/{administratie_id}` — Starlette matcht op volgorde en
+# `kantoorbreed` is geen UUID (anders 422 op de UUID-route).
+@router.get("/kantoorbreed", response_model=schemas.ProjectenKantoorbreedResponse)
+def projecten_kantoorbreed(
+    pagina: int = Query(1, ge=1),
+    q: str = Query(""),
+    administratie_id: uuid.UUID | None = Query(None),
+    status_facet: str = Query("alle", alias="status"),
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.ProjectenKantoorbreedResponse:
+    """Inzicht › Projecten (fixrun 07-09 blok C5): alle actieve projecten over de administraties in scope
+    (RLS per administratie mét actor), status-chips uit de caches (nooit live RLZ), urgentste bovenaan,
+    administratie + status = facet (filter, nooit poort), zoek op project/opdrachtgever/werknummer/
+    administratie, 25 per pagina."""
+    try:
+        lijst = kantoorbreed.lijst(
+            actor_id=actor.id,
+            rol=actor.rol,
+            pagina=pagina,
+            q=q,
+            administratie_id=administratie_id,
+            status=status_facet,
+        )
+    except kantoorbreed.ProjectenKantoorbreedFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return schemas.ProjectenKantoorbreedResponse(
+        rijen=[_kantoorbreed_rij_dto(r) for r in lijst.rijen],
+        totaal=lijst.totaal,
+        pagina=lijst.pagina,
+        per_pagina=lijst.per_pagina,
+        administraties_in_selectie=lijst.administraties_in_selectie,
+        tellers=schemas.ProjectenKantoorbreedTellersDto(**lijst.tellers.__dict__),
+        facetten={
+            "status": lijst.facetten_status,
+            "administraties": [
+                schemas.ProjectenAdministratieFacetDto(**f.__dict__).model_dump(mode="json")
+                for f in lijst.facetten_administraties
+            ],
+        },
     )
 
 
@@ -198,7 +271,21 @@ def project_detail(
         detail = kantoor.project_detail(administratie_id=administratie_id, project_id=project_id)
     except kantoor.ProjectenFout as exc:
         raise _vertaal(exc) from exc
+    # Additief (fixrun 07-09 blok C5): verplichtingen mét verbruiksstand + weekstaten-/planningstand,
+    # zelfde helpers als de kantoorbrede lijst — de cijfers sluiten op elkaar.
+    verrijking = kantoorbreed.detail_verrijking(administratie_id=administratie_id, project_id=project_id)
+    ws = verrijking.weekstaten
+    oudste = ws.oudste_ontbrekende_week
     return schemas.ProjectDetailResponse(
+        verplichtingen=[schemas.ProjectVerplichtingDto(**v.__dict__) for v in verrijking.verplichtingen],
+        weekstaten_stand=schemas.WeekstatenStandDto(
+            van_toepassing=ws.van_toepassing,
+            weken=[schemas.WeekStandDto(**w.__dict__) for w in ws.weken],
+            ontbrekend_totaal=ws.ontbrekend_totaal,
+            te_keuren_totaal=ws.te_keuren_totaal,
+            oudste_ontbrekende_jaar=oudste[0] if oudste else None,
+            oudste_ontbrekende_week=oudste[1] if oudste else None,
+        ),
         project_id=detail.project_id,
         naam=detail.naam,
         is_actief=detail.is_actief,
@@ -379,9 +466,10 @@ def document_ontleden(
     project_document_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.OntleedResponse:
-    """AI-ontleding als VOORSTEL (mens bevestigt per regel) — achter de per-administratie
-    AVG-gate én de AI-kostengrens (poort in de client); uit/limiet = zichtbare fout,
-    handmatig invullen blijft werken."""
+    """AI-ontleding AUTO-FIRST (D6, besluit Peter 06-09): specs en staffels worden DIRECT ingevuld
+    mét herkomst 'contract' (corrigeerbaar, audit); "niet in contract aangetroffen" is een zichtbare
+    uitkomst. Achter de per-administratie AVG-gate én de AI-kostengrens (poort in de client);
+    uit/limiet = zichtbare fout, handmatig invullen blijft werken."""
     from app.aikosten.service import AiKostenLimietBereikt
     from app.extractie.client import AiExtractieFout, AiExtractieNietGeconfigureerd
 
@@ -401,7 +489,13 @@ def document_ontleden(
     except (AiExtractieFout, AiExtractieNietGeconfigureerd) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return schemas.OntleedResponse(
-        project_document_id=resultaat.project_document_id, aantal_regels=resultaat.aantal_regels
+        project_document_id=resultaat.project_document_id,
+        aantal_regels=resultaat.aantal_regels,
+        overgenomen=resultaat.overgenomen,
+        niet_aangetroffen=resultaat.niet_aangetroffen,
+        ongeldig=resultaat.ongeldig,
+        mens_behouden=resultaat.mens_behouden,
+        doorlopende_huur_afgeleid=resultaat.doorlopende_huur_afgeleid,
     )
 
 

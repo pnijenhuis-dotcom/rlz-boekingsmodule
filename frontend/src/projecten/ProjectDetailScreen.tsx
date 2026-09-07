@@ -6,6 +6,7 @@ import { Badge, Button, Select, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
+import { VerplichtingenPaneel, WeekstatenPaneel } from './ProjectDetailVerrijking'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   beslisOntledingRegel,
@@ -160,6 +161,9 @@ export function ProjectDetailScreen() {
         veldwerkers={detail.veldwerkers ?? []}
         actie={actie}
       />
+      {/* C5 (07-09): verplichtingen mét verbruiksbalk + weekstaten-/planningstand (additieve detail-velden). */}
+      <VerplichtingenPaneel administratieId={administratieId} verplichtingen={detail.verplichtingen ?? []} />
+      <WeekstatenPaneel administratieId={administratieId} stand={detail.weekstaten_stand} />
       <MateriaalstandPaneel administratieId={administratieId} projectId={projectId} />
       <WerknummersPaneel
         administratieId={administratieId}

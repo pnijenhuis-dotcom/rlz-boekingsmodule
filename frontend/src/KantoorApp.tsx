@@ -33,7 +33,8 @@ const DoorbelastingReviewScreen = lazy(() =>
 
 // Projectenmodule (mockup projecten-invoer.html, 22-08): lazy — steigerbouw-specifiek, alleen
 // relevant voor administraties met de uren-&-meerwerk-tak.
-const ProjectenScreen = lazy(() => import('./projecten/ProjectenScreen').then((m) => ({ default: m.ProjectenScreen })))
+// C5 (07-09): één ingang — zónder ?administratie= de kantoorbrede Inzicht-lijst, mét = de lijst per administratie.
+const ProjectenIngang = lazy(() => import('./projecten/ProjectenIngang').then((m) => ({ default: m.ProjectenIngang })))
 const VoorraadScreen = lazy(() => import('./voorraad/VoorraadScreen').then((m) => ({ default: m.VoorraadScreen })))
 const TerugkerendScreen = lazy(() => import('./terugkerend/TerugkerendScreen').then((m) => ({ default: m.TerugkerendScreen })))
 // Reconciliatie (opdracht 06-09 blok C): kantoorbrede uitkomst van de nachtelijke
@@ -213,7 +214,7 @@ function BeschermdeRoutes() {
           path="/projecten"
           element={
             <Suspense fallback={<SkeletonPaneel />}>
-              <ProjectenScreen />
+              <ProjectenIngang />
             </Suspense>
           }
         />

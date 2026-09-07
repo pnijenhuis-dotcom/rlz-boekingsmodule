@@ -14,6 +14,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { WerkvoorraadScreen } from '../werkvoorraad/WerkvoorraadScreen'
+import { ProjectenKantoorbreedScreen } from '../projecten/ProjectenKantoorbreedScreen'
 import { OverflowBadge } from './overflowBadge'
 import '../index.css'
 
@@ -249,10 +250,76 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
+// C5 (07-09): Inzicht › Projecten kantoorbreed (?projecten=1) — breedste realistische rij: lange projectnaam +
+// werknummer, alle vier chips gevuld (negatieve marge mét onbepaalbare uren, overschreden offerte, ontbrekende
+// én te-keuren weekstaten, m²-voortgang) naast een lege rij (geen cijfers / n.v.t.).
+const PROJECTEN_KANTOORBREED = {
+  rijen: [
+    {
+      administratie_id: ADMIN_1,
+      administratie_naam: 'Universal Steigerbouw B.V.',
+      project_id: '33333333-0000-0000-0000-000000000001',
+      naam: '26014 Breda Molenstraat-Zuid fase 2 (Moeskops Bouw & Ontwikkeling)',
+      opdrachtgever: 'Moeskops Bouw & Ontwikkeling B.V.',
+      werknummer_opdrachtgever: 'MB-88412-2026-BRD',
+      looptijd_tot: '2026-12-31',
+      resultaat: { baten: '128400.00', kosten: '141260.50', marge: '-12860.50', marge_pct: '-10.0', onbepaalbaar_uren: '36', heeft_cijfers: true },
+      verplichtingen: { aantal: 3, goedgekeurd_excl: '148500.00', verbruikt_excl: '151900.00', percentage: 102, overschreden: 1 },
+      weekstaten: { van_toepassing: true, ontbrekend: 3, oudste_ontbrekende_jaar: 2026, oudste_ontbrekende_week: 33, te_keuren: 2, concept: 1 },
+      m2: { gebouwd_m2: '3280.00', contract_m2: '4200', percentage: 78, doorlopende_huur: false },
+      signalen: ['verplichting_overschreden', 'marge_negatief', 'weekstaat_ontbreekt', 'te_keuren'],
+      urgentie: 15,
+    },
+    {
+      administratie_id: ADMIN_1,
+      administratie_naam: 'Universal Steigerbouw B.V.',
+      project_id: '33333333-0000-0000-0000-000000000002',
+      naam: '26021 Tilburg (Heijmans)',
+      opdrachtgever: 'Heijmans Infra',
+      werknummer_opdrachtgever: null,
+      looptijd_tot: null,
+      resultaat: { baten: '42800.00', kosten: '31200.00', marge: '11600.00', marge_pct: '27.1', onbepaalbaar_uren: '0', heeft_cijfers: true },
+      verplichtingen: { aantal: 1, goedgekeurd_excl: '48500.00', verbruikt_excl: '27150.00', percentage: 56, overschreden: 0 },
+      weekstaten: { van_toepassing: true, ontbrekend: 0, oudste_ontbrekende_jaar: null, oudste_ontbrekende_week: null, te_keuren: 0, concept: 0 },
+      m2: { gebouwd_m2: '0', contract_m2: null, percentage: null, doorlopende_huur: true },
+      signalen: [],
+      urgentie: 0,
+    },
+    {
+      administratie_id: '22222222-0000-0000-0000-000000000002',
+      administratie_naam: 'Kempen Facilities B.V.',
+      project_id: '33333333-0000-0000-0000-000000000003',
+      naam: 'Kantoorpand Eindhoven',
+      opdrachtgever: null,
+      werknummer_opdrachtgever: null,
+      looptijd_tot: null,
+      resultaat: { baten: '0', kosten: '0', marge: '0', marge_pct: null, onbepaalbaar_uren: '0', heeft_cijfers: false },
+      verplichtingen: { aantal: 0, goedgekeurd_excl: '0', verbruikt_excl: '0', percentage: null, overschreden: 0 },
+      weekstaten: { van_toepassing: false, ontbrekend: 0, oudste_ontbrekende_jaar: null, oudste_ontbrekende_week: null, te_keuren: 0, concept: 0 },
+      m2: { gebouwd_m2: '0', contract_m2: null, percentage: null, doorlopende_huur: false },
+      signalen: [],
+      urgentie: 0,
+    },
+  ],
+  totaal: 3,
+  pagina: 1,
+  per_pagina: 25,
+  administraties_in_selectie: 2,
+  tellers: { projecten: 3, administraties: 2, met_signaal: 1, verplichting_overschreden: 1, marge_negatief: 1, weekstaat_ontbreekt: 1, te_keuren: 1 },
+  facetten: {
+    status: { alle: 3, signaal: 1, verplichting_overschreden: 1, marge_negatief: 1, weekstaat_ontbreekt: 1, te_keuren: 1, op_schema: 2 },
+    administraties: [
+      { administratie_id: ADMIN_1, naam: 'Universal Steigerbouw B.V.', aantal: 2 },
+      { administratie_id: '22222222-0000-0000-0000-000000000002', naam: 'Kempen Facilities B.V.', aantal: 1 },
+    ],
+  },
+}
+
 const echteFetch = window.fetch.bind(window)
 window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = String(invoer)
   if (url.endsWith('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
+  if (url.includes('/projecten/kantoorbreed')) return Promise.resolve(jsonResponse(PROJECTEN_KANTOORBREED))
   if (url.endsWith('/werkvoorraad/overzicht')) return Promise.resolve(jsonResponse(WERKVOORRAAD_OVERZICHT))
   if (url.endsWith('/bank/overzicht')) return Promise.resolve(jsonResponse(BANK_OVERZICHT))
   if (url.includes('/doorbelasting/') && url.endsWith('/spiegel-taken')) {
@@ -309,11 +376,22 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
 
 const PARAMS = new URLSearchParams(window.location.search)
 // IA-verbouwing 15-08: ?klant=1 = klantpagina (standen), ?docs=1 = documenten-deelscherm.
-const START_URL = PARAMS.has('docs')
-  ? `/?administratie=${ADMIN_1}&sectie=documenten`
-  : PARAMS.has('klant')
-    ? `/?administratie=${ADMIN_1}`
-    : '/'
+// C5 (07-09): ?projecten=1 = Inzicht › Projecten kantoorbreed.
+const START_URL = PARAMS.has('projecten')
+  ? '/projecten'
+  : PARAMS.has('docs')
+    ? `/?administratie=${ADMIN_1}&sectie=documenten`
+    : PARAMS.has('klant')
+      ? `/?administratie=${ADMIN_1}`
+      : '/'
+
+// C9 (07-09): rijhoogte-probe voor headless verificatie — schrijft de offsetHeight van élke
+// verzamelbak-rij als data-attribuut op <body> (uit te lezen met --dump-dom), zodat "constante
+// rijhoogte" een meetbaar feit is en geen oogschatting.
+window.setTimeout(() => {
+  const rijen = Array.from(document.querySelectorAll<HTMLTableRowElement>('.verzamelbak-tabel tbody tr'))
+  document.body.dataset.verzamelbakRijhoogtes = rijen.map((r) => r.offsetHeight).join(',')
+}, 1500)
 
 // ?donker=1 — dark mode voor headless verificatie (thema.ts-klassepatroon).
 if (new URLSearchParams(window.location.search).has('donker')) {
@@ -340,6 +418,7 @@ createRoot(document.getElementById('root')!).render(
           <div className="content">
             <Routes>
               <Route path="/" element={<WerkvoorraadScreen />} />
+              <Route path="/projecten" element={<ProjectenKantoorbreedScreen />} />
             </Routes>
           </div>
         </div>

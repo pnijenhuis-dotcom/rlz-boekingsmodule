@@ -417,6 +417,9 @@ describe('WerkvoorraadScreen — klantenlijst met tellers (mockup-flow, browserr
       'href',
       `/?administratie=${ADMINISTRATIE_ID}&sectie=standen`,
     )
+    // C5 (07-09): de Projecten-chip is een deeplink naar de projectenlijst van deze klant — alleen mét de
+    // uren-&-meerwerk-opt-in (in deze mock geen urenstand → geen chip).
+    expect(screen.queryByTestId('chip-projecten')).toBeNull()
   })
 
   it('bank-teller komt uit het bank-overzicht en een bankfout blokkeert de lijst niet', async () => {

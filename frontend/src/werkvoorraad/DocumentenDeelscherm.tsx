@@ -574,6 +574,13 @@ export function DocumentenDeelscherm({
             🛠 {meerwerkOpen} meerwerk/urenstaten te beoordelen
           </button>
         )}
+        {/* Projecten (C5 07-09): vaste, niet teller-afhankelijke ingang naar de projectenlijst van deze klant
+            (deeplink; zelfde doel als de knop op Standen & overzicht) — alleen mét de uren-&-meerwerk-opt-in. */}
+        {urenStand && (
+          <Link className="chip klikbaar" to={`/projecten?administratie=${administratieId}`} data-testid="chip-projecten">
+            📁 Projecten ›
+          </Link>
+        )}
         <Link className="chip klikbaar" to={`/?administratie=${administratieId}&sectie=standen`}>
           Standen &amp; overzicht ›
         </Link>

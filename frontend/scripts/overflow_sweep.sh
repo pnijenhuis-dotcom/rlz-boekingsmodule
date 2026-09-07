@@ -17,7 +17,8 @@ BASIS="http://localhost:${POORT}"
 # intern scrollende tabel) — ?pad= kiest de startroute in het instellingen-harnas.
 # Instellingen v3 (01-09): twee-paneel-layout — de administraties-lijst, de detailpagina (alle tabs
 # zichtbaar, incl. de brede Boeken & AI-tab) en het autoboeken-item meten mee.
-HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?klant=1" harness-gebruikers.html harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
+# C9 (07-09): ?twijfel=1 = verzamelbak-rij mét twijfelchip + soort-toggle + lange tenaamstelling + picker.
+HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
 BREEDTES=(1440 1170 1024 768)
 
 if [ ! -x "$CHROME" ]; then

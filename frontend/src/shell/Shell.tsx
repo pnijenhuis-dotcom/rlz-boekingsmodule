@@ -64,6 +64,10 @@ export function Shell() {
           {/* Verplichtingen (blok B 04-09, ⑦): goedgekeurde offertes/opdrachtbevestigingen mét
               verbruiksstand — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
           <NavItem to="/verplichtingen">Verplichtingen</NavItem>
+          {/* Projecten (fixrun 07-09 blok C5): alle actieve projecten over alle administraties mét status-chips
+              (resultaat, offertes, weekstaten, m²) — kantoorbreed lijstpatroon; mét ?administratie= blijft
+              /projecten de bestaande lijst per administratie (deeplink-doel). */}
+          <NavItem to="/projecten">Projecten</NavItem>
           {/* Reconciliatie (opdracht 06-09 blok C): de nachtelijke controle van onze eigen boekingen
               tegen de werkelijke stand in Reeleezee — kantoorbreed lijstpatroon, filter i.p.v. poort. */}
           <NavItem to="/reconciliatie">Reconciliatie</NavItem>
