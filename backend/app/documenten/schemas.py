@@ -135,7 +135,7 @@ class DuplicaatAfmeldingDto(BaseModel):
     tegenhangers: list[uuid.UUID] = []
 
 
-class DuplicaatAfmeldenInput(BaseModel):
+class DuplicaatAfmeldenInput(StrikteInvoer):
     reden: str = Field(min_length=1, max_length=2000)
 
 

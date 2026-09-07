@@ -776,6 +776,16 @@ def _kopieer_document(admin_engine: Engine, pdf_id: uuid.UUID, *, status: str = 
     return nieuw
 
 
+def _zonder_directe_duplicaat_afvoer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Blok 1 (vervolgrun 07-09) voert een byte-identiek exemplaar DIRECT af zodra een veldopslag/extractie het
+    duplicaatsignaal herberekent — dan is er voor de samenvouw-motor niets meer te vouwen (dat is het gewenste
+    productiegedrag; de motor blijft de waarborg voor exemplaren van vóór 07-09 of mét de noodrem uit). Deze tests
+    toetsen de motor zelf en zetten de directe afvoer daarom uit."""
+    from app.documenten import duplicaat_afvoer
+
+    monkeypatch.setattr(duplicaat_afvoer, "verwerk_na_signaal_stil", lambda **kwargs: None)
+
+
 class TestPdfDubbelen:
     def test_byte_identieke_dubbel_uit_dezelfde_mail_wordt_samengevouwen_en_paar_gebundeld(
         self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
@@ -917,8 +927,13 @@ class TestPdfDubbelen:
             assert _document(admin_engine, d) == snapshot
 
     def test_exemplaar_met_opgeslagen_boekvoorstel_wint(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        _zonder_directe_duplicaat_afvoer(monkeypatch)
         _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
         beoordeeld_id = _kopieer_document(admin_engine, pdf_id)  # jonger, maar door een mens beoordeeld
         boekvoorstel_service.sla_boekvoorstel_op(
@@ -946,8 +961,13 @@ class TestPdfDubbelen:
         assert _document(admin_engine, ubl_id)["samengevoegd_in_id"] == beoordeeld_id
 
     def test_twee_beoordeelde_exemplaren_is_mensenwerk(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        _zonder_directe_duplicaat_afvoer(monkeypatch)
         _, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
         dubbel_id = _kopieer_document(admin_engine, pdf_id)
         for d in (pdf_id, dubbel_id):
@@ -1042,8 +1062,13 @@ class TestPdfDubbelen:
         assert _document(admin_engine, pdf_id)["bestandsnaam"] == PDF_NAAM
 
     def test_ubl_dubbelen_met_verschillende_inhoud_blijven_meerduidig(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        _zonder_directe_duplicaat_afvoer(monkeypatch)
         bericht_id, ubl_id, pdf_id = _dubbelpaar(gescoopte_gebruiker, administratie_id)
         tweede_ubl = documenten_service.upload_document(
             administratie_id=administratie_id,

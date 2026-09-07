@@ -29,7 +29,7 @@ from app.intake import verwerking
 from app.intake.splitsing import SplitsDeelInput
 from app.main import app
 from app.security.tokens import create_access_token
-from tests.documenten.test_ai_extractie import _fake_extractie
+from tests.documenten.test_ai_extractie import _fake_extractie, _veld
 from tests.intake.conftest import bouw_eml, bouw_pdf
 
 client = TestClient(app)
@@ -323,6 +323,18 @@ class TestVerzamelbakEnSplitsing:
         )
         # Twee ongelijke pagina's: identieke blanco pagina's zouden identieke deel-PDF's (zelfde
         # sha256) geven en dan terecht op de intake-idempotentie van hetzelfde bericht stuiten.
+        # Én per deel een eigen factuurnummer: sinds 07-09 (blok 1 vervolgrun) is "zelfde referentie + bedrag"
+        # een hard duplicaat dat direct wordt afgevoerd — twee delen mét dezelfde fake-extractie zouden dan
+        # terecht als duplicaat eindigen, terwijl deze test over het extractiepad per deel gaat.
+        teller = iter(range(1, 100))
+
+        def _fake_per_deel(pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None):
+            fake_extraheer.append(pdf_bytes)
+            extractie = _fake_extractie()
+            extractie.kop["factuurnummer"] = _veld(f"F-SPLITS-{next(teller)}")
+            return extractie
+
+        monkeypatch.setattr("app.extractie.service.extraheer_inkoopfactuur", _fake_per_deel)
         eml = bouw_eml(bijlagen=[("batch.pdf", _pdf_met_ongelijke_paginas(), "application", "pdf")])
         resultaat = verwerking.verwerk_eml(eml, actor_id=gescoopte_gebruiker)
         assert resultaat.bijlagen[0].uitkomst == "splitsingsvoorstel"
