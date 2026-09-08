@@ -48,6 +48,13 @@ describe('regelVoorstelChips — btw-default administratie (blok E 04-09, mockup
     expect(bepaalBtwStandaardChip('standaard', 'btw-1', true)).toBeNull()
     expect(bepaalBtwStandaardChip('standaard', null, false)).toBeNull()
     expect(bepaalBtwStandaardChip(null, 'btw-1', false)).toBeNull()
+    // blok 6 herstelrun 08-09: de herkomst van de verlegd-keuze reist mee in de chip
+    expect(bepaalBtwStandaardChip('factuur_verlegd', 'btw-1', false, 'meest gebruikt in RLZ-historie (12×)')).toMatchObject({
+      klasse: 'afwijking',
+      tekst: 'uit factuur: btw verlegd — meest gebruikt in RLZ-historie (12×)',
+    })
+    expect(bepaalBtwStandaardChip('factuur_verlegd', 'btw-1', false)).toMatchObject({ tekst: 'uit factuur: btw verlegd' })
+    expect(bepaalBtwStandaardChip('factuur_verlegd', 'btw-1', true, 'voorkeur beheerder')).toBeNull()
   })
 
   it('btw-bron uit de DTO alleen mét een taxrate in het veld', () => {

@@ -16,22 +16,47 @@ const OPTIES = [
   { id: HOOG_ID, naam: 'NL, Hoog Tarief', percentage: '0.2100' },
 ]
 
-function installFetchMock(opties: { huidig?: string | null; putAanroepen?: unknown[]; putStatus?: number }) {
+function installFetchMock(opties: {
+  huidig?: string | null
+  putAanroepen?: unknown[]
+  putStatus?: number
+  verlegdPutAanroepen?: unknown[]
+}) {
   let huidig: string | null = opties.huidig ?? null
+  let verlegd: string | null = null
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
-      if (!url.endsWith('/btw-default')) return Promise.resolve(new Response(null, { status: 404 }))
+      const isVerlegd = url.endsWith('/verlegd-voorkeur')
+      if (!url.endsWith('/btw-default') && !isVerlegd) return Promise.resolve(new Response(null, { status: 404 }))
       if (init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { taxrate_id: string | null }
-        opties.putAanroepen?.push(body)
-        if (opties.putStatus && opties.putStatus >= 400) {
-          return Promise.resolve(jsonResponse({ detail: 'Onbekende btw-code voor deze administratie — kies een tarief uit de gesyncte lijst.' }, opties.putStatus))
+        if (isVerlegd) {
+          opties.verlegdPutAanroepen?.push(body)
+          verlegd = body.taxrate_id
+        } else {
+          opties.putAanroepen?.push(body)
+          if (opties.putStatus && opties.putStatus >= 400) {
+            return Promise.resolve(jsonResponse({ detail: 'Onbekende btw-code voor deze administratie — kies een tarief uit de gesyncte lijst.' }, opties.putStatus))
+          }
+          huidig = body.taxrate_id
         }
-        huidig = body.taxrate_id
       }
       const naam = OPTIES.find((o) => o.id === huidig)?.naam ?? null
-      return Promise.resolve(jsonResponse({ taxrate_id: huidig, taxrate_naam: naam, opties: OPTIES }))
+      const verlegdNaam = OPTIES.find((o) => o.id === verlegd)?.naam ?? null
+      return Promise.resolve(
+        jsonResponse({
+          taxrate_id: huidig,
+          taxrate_naam: naam,
+          opties: OPTIES,
+          verlegd_taxrate_id: verlegd,
+          verlegd_taxrate_naam: verlegdNaam,
+          verlegd_opties: OPTIES.filter((o) => o.id === VERLEGD_ID),
+          verlegd_effectief_id: verlegd ?? VERLEGD_ID,
+          verlegd_effectief_naam: verlegdNaam ?? 'NL, BTW verlegd (hoog)',
+          verlegd_effectief_herkomst: verlegd ? 'voorkeur beheerder' : 'meest gebruikt in RLZ-historie (12×)',
+        }),
+      )
     }),
   )
 }
@@ -49,7 +74,7 @@ describe('BtwDefaultRij — standaard btw-voorstel per administratie (blok E 04-
     expect(select).toHaveValue('')
     expect(screen.getByText('Standaard btw-voorstel')).toBeInTheDocument()
     expect(screen.getByText(/vult alleen regels waar factuur en leverancier-geheugen niets opleveren/i)).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '0% · NL, BTW verlegd (hoog)' })).toBeInTheDocument()
+    expect(screen.getAllByRole('option', { name: '0% · NL, BTW verlegd (hoog)' })[0]).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '21% · NL, Hoog Tarief' })).toBeInTheDocument()
   })
 
@@ -85,5 +110,20 @@ describe('BtwDefaultRij — standaard btw-voorstel per administratie (blok E 04-
   it('optietekst volgt de btw-combobox van het controlescherm', () => {
     expect(optieTekst({ id: 'x', naam: 'NL, Hoog Tarief', percentage: '0.21' })).toBe('21% · NL, Hoog Tarief')
     expect(optieTekst({ id: 'x', naam: 'Onbekend', percentage: null })).toBe('Onbekend')
+  })
+
+  it('blok 6: tweede rij toont de verlegd-codes, wat de prefill nú kiest mét herkomst, en zet de voorkeur via PUT /verlegd-voorkeur', async () => {
+    const verlegdPutAanroepen: unknown[] = []
+    installFetchMock({ verlegdPutAanroepen })
+    render(<BtwDefaultRij administratieId={ADMINISTRATIE_ID} naam="Universal Steigerbouw" />)
+    const select = await screen.findByLabelText('Verlegd-tarief voor Universal Steigerbouw')
+    await waitFor(() => expect(select).not.toBeDisabled())
+    expect(select).toHaveValue('')
+    // alleen IsRelayed-tarieven in de lijst (het 21 %-tarief niet)
+    expect(screen.getAllByRole('option', { name: '0% · NL, BTW verlegd (hoog)' }).length).toBeGreaterThan(0)
+    expect(screen.getByTestId('verlegd-effectief')).toHaveTextContent('Nu gekozen: NL, BTW verlegd (hoog) (meest gebruikt in RLZ-historie (12×))')
+    await userEvent.selectOptions(select, VERLEGD_ID)
+    await waitFor(() => expect(verlegdPutAanroepen).toEqual([{ taxrate_id: VERLEGD_ID }]))
+    await waitFor(() => expect(screen.getByTestId('verlegd-effectief')).toHaveTextContent('(voorkeur beheerder)'))
   })
 })

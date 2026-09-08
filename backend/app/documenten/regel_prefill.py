@@ -48,6 +48,11 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   uit `taxrate_cache`, niet verdwenen; precies één → die; anders de NL-tarieven (naam-prefix "NL," — EU-verlegd is
   óók relayed); anders precies één RLZ-favoriet; anders NIETS = meerduidig, de hint-chip blijft) mét
   `btw_bron='factuur_verlegd'` — ORANJE tot het leverancier-geheugen de waarde bevestigt (seed-only-regel).
+  **HERZIEN blok 6 herstelrun 08-09 (Universal: 12 IsRelayed-tarieven zonder favoriet → None → toevallig kloppende
+  administratie-default):** wélk verlegd-tarief = `bepaal_verlegd_taxrate` (keuzevolgorde in die docstring:
+  voorkeur Beheerder → meest gebruikt in de RLZ-historie → één/NL/favoriet → administratie-default als die verlegd is →
+  leeg). Het gekozen tarief draagt zijn herkomst als `btw_bron_detail` (chip-tekst: "voorkeur beheerder" /
+  "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — nooit toeval.
 
   **WINNAARSVOLGORDE btw-code (één plek, bindend):**
     1. opgeslagen keuze van de MENS (nooit geraakt — alleen het prefill-pad komt hier);
@@ -65,17 +70,18 @@ prefill-pad aan (zelfde regel als de btw-chip "uit factuur").
 from __future__ import annotations
 
 import uuid
-from dataclasses import replace
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Administratie
 from app.documenten.checks import is_buitenland_tarief
 from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
+from app.geheugen.models import BoekingObservatie
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.geheugen.service import laad_engine_observaties
 from app.projecten import match as project_match
@@ -90,11 +96,82 @@ BTW_BRON_STANDAARD = "standaard"
 BTW_BRON_FACTUUR_VERLEGD = "factuur_verlegd"
 
 
-def verlegd_taxrate_voor(session: Session, *, administratie_id: uuid.UUID) -> uuid.UUID | None:
-    """Het ene verlegd-tarief van de administratie, deterministisch: `IsRelayed`-tarieven (niet verdwenen) →
-    precies één = die; anders alleen de NL-tarieven (naam-prefix vóór de komma "NL" — EU-verlegd is óók relayed,
-    api-verkenning 31-08) → precies één = die; anders precies één RLZ-favoriet (`IsFavorite`) daarbinnen = die;
-    anders None (hoog/laag verlegd zonder favoriet = meerduidig — nooit raden, de mens kiest)."""
+# Herkomst-labels van de verlegd-keuze (blok 6 herstelrun 08-09) — reizen als `btw_bron_detail` mee naar de UI-chip.
+VERLEGD_HERKOMST_VOORKEUR = "voorkeur beheerder"
+VERLEGD_HERKOMST_HISTORIE = "meest gebruikt in RLZ-historie"  # + " (n×)"
+VERLEGD_HERKOMST_ENIGE = "enige verlegd-code van de administratie"
+VERLEGD_HERKOMST_ENIGE_NL = "enige NL-verlegd-code van de administratie"
+VERLEGD_HERKOMST_FAVORIET = "RLZ-favoriet onder de verlegd-codes"
+VERLEGD_HERKOMST_DEFAULT = "administratie-default"
+# Venster van de RLZ-historie-telling: laatste 400 dagen (zelfde horizon als de rlz_dubbel-toets); is er in dat venster
+# níéts, dan telt alles wat er is.
+VERLEGD_HISTORIE_DAGEN = 400
+
+
+@dataclass(frozen=True)
+class VerlegdKeuze:
+    """Uitkomst van `bepaal_verlegd_taxrate`: het gekozen verlegd-tarief + leesbare herkomst (chip-tekst) +
+    het aantal historische boekingen waarop de historie-stap steunde (0 buiten die stap)."""
+
+    taxrate_id: uuid.UUID
+    herkomst: str
+    aantal: int = 0
+
+    @property
+    def detail(self) -> str:
+        return f"{self.herkomst} ({self.aantal}×)" if self.herkomst == VERLEGD_HERKOMST_HISTORIE else self.herkomst
+
+
+def _verlegd_sorteersleutel(rij: TaxRateCache) -> tuple[int, int, str]:
+    """Gelijkspel-volgorde (bindend, nooit toeval): NL vóór EU/Ex-EU, dan hoog vóór laag, dan naam-alfabetisch."""
+    naam = rij.naam or ""
+    return (1 if is_buitenland_tarief(naam) else 0, 0 if "hoog" in naam.lower() else 1, naam.lower())
+
+
+def _historie_telling(
+    session: Session, *, administratie_id: uuid.UUID, kandidaat_ids: set[uuid.UUID], vandaag: date
+) -> dict[uuid.UUID, int]:
+    """Aantal boekingen per verlegd-tarief in het boekingsgeheugen van déze administratie (`boeking_observatie`:
+    RLZ-historie-seed + app-bevestigingen), eerst binnen `VERLEGD_HISTORIE_DAGEN`, anders alles wat er is."""
+    if not kandidaat_ids:
+        return {}
+    basis = (
+        select(BoekingObservatie.btw_id, func.count())
+        .where(
+            BoekingObservatie.administratie_id == administratie_id,
+            BoekingObservatie.btw_id.in_(kandidaat_ids),
+        )
+        .group_by(BoekingObservatie.btw_id)
+    )
+    recent = basis.where(BoekingObservatie.bron_datum >= vandaag - timedelta(days=VERLEGD_HISTORIE_DAGEN))
+    telling = {btw_id: int(n) for btw_id, n in session.execute(recent).all()}
+    if telling:
+        return telling
+    return {btw_id: int(n) for btw_id, n in session.execute(basis).all()}
+
+
+def bepaal_verlegd_taxrate(
+    session: Session, *, administratie_id: uuid.UUID, vandaag: date | None = None
+) -> VerlegdKeuze | None:
+    """WELK verlegd-tarief krijgt een regel op een verlegd-factuur (blok 4c) — deterministisch, in deze volgorde
+    (blok 6 herstelrun 08-09; elke stap alleen over `IsRelayed`-tarieven van de administratie die niet uit de sync
+    verdwenen zijn):
+
+      1. de expliciete VOORKEUR van de Beheerder (`administratie.voorkeurs_verlegd_taxrate_id`, tab Boeken & AI) —
+         alleen als dat tarief nog een niet-verdwenen IsRelayed-tarief is (anders valt de stap door, nooit een
+         stale id);
+      2. het verlegd-tarief dat in de RLZ-HISTORIE van deze administratie (boekingsgeheugen `boeking_observatie`:
+         RLZ-seed + app-bevestigingen, laatste 400 dagen — is dat venster leeg, dan alles wat er is) het MEEST
+         gebruikt is; gelijkspel: NL-variant boven EU/Ex-EU, dan hoog boven laag, dan naam-alfabetisch;
+      3. het bestaande pad zonder historie: precies één IsRelayed-tarief → die; anders precies één NL-tarief
+         (naam-prefix "NL," — EU-verlegd is óók relayed) → die; anders precies één RLZ-favoriet (`IsFavorite`)
+         daarbinnen → die;
+      4. de administratie-default (`standaard_taxrate_id`, blok E) — alleen als die zélf een IsRelayed-tarief is;
+      5. None = meerduidig, de mens kiest (hint-chip blijft).
+
+    De uitkomst draagt haar herkomst (`VerlegdKeuze.detail`) zodat het controlescherm toont waaróm dit tarief
+    voorstaat. Geen AI, geen toeval."""
+    vandaag = vandaag or datetime.now(UTC).date()
     rijen = list(
         session.scalars(
             select(TaxRateCache).where(
@@ -102,34 +179,67 @@ def verlegd_taxrate_voor(session: Session, *, administratie_id: uuid.UUID) -> uu
             )
         )
     )
-    verlegd = [rij for rij in rijen if taxrate_vlaggen(rij.brondata)[0]]
-    if len(verlegd) == 1:
-        return verlegd[0].id
+    verlegd = sorted((rij for rij in rijen if taxrate_vlaggen(rij.brondata)[0]), key=_verlegd_sorteersleutel)
     if not verlegd:
         return None
+    per_id = {rij.id: rij for rij in verlegd}
+    administratie = session.get(Administratie, administratie_id)
+
+    # 1. voorkeur Beheerder
+    voorkeur = administratie.voorkeurs_verlegd_taxrate_id if administratie is not None else None
+    if voorkeur is not None and voorkeur in per_id:
+        return VerlegdKeuze(taxrate_id=voorkeur, herkomst=VERLEGD_HERKOMST_VOORKEUR)
+
+    # 2. meest gebruikt in de RLZ-historie (gelijkspel via de vaste sorteervolgorde van `verlegd`)
+    telling = _historie_telling(session, administratie_id=administratie_id, kandidaat_ids=set(per_id), vandaag=vandaag)
+    if telling:
+        hoogste = max(telling.values())
+        winnaar = next(rij for rij in verlegd if telling.get(rij.id) == hoogste)
+        return VerlegdKeuze(taxrate_id=winnaar.id, herkomst=VERLEGD_HERKOMST_HISTORIE, aantal=hoogste)
+
+    # 3. bestaand pad: één / NL / favoriet
+    if len(verlegd) == 1:
+        return VerlegdKeuze(taxrate_id=verlegd[0].id, herkomst=VERLEGD_HERKOMST_ENIGE)
     nl = [rij for rij in verlegd if rij.naam and "," in rij.naam and not is_buitenland_tarief(rij.naam)]
+    if len(nl) == 1:
+        return VerlegdKeuze(taxrate_id=nl[0].id, herkomst=VERLEGD_HERKOMST_ENIGE_NL)
     kandidaten = nl or verlegd
-    if len(kandidaten) == 1:
-        return kandidaten[0].id
     favorieten = [rij for rij in kandidaten if bool((rij.brondata or {}).get("IsFavorite"))]
     if len(favorieten) == 1:
-        return favorieten[0].id
+        return VerlegdKeuze(taxrate_id=favorieten[0].id, herkomst=VERLEGD_HERKOMST_FAVORIET)
+
+    # 4. administratie-default, alleen als die zelf verlegd is
+    default = administratie.standaard_taxrate_id if administratie is not None else None
+    if default is not None and default in per_id:
+        return VerlegdKeuze(taxrate_id=default, herkomst=VERLEGD_HERKOMST_DEFAULT)
     return None
 
 
-def _met_factuur_verlegd(
-    regel: BoekvoorstelRegelData, *, verlegd_taxrate_id: uuid.UUID | None
-) -> BoekvoorstelRegelData:
+def verlegd_taxrate_voor(session: Session, *, administratie_id: uuid.UUID) -> uuid.UUID | None:
+    """Compat-vorm van `bepaal_verlegd_taxrate` (alleen het tarief-id; None = meerduidig, de mens kiest)."""
+    keuze = bepaal_verlegd_taxrate(session, administratie_id=administratie_id)
+    return None if keuze is None else keuze.taxrate_id
+
+
+def _met_factuur_verlegd(regel: BoekvoorstelRegelData, *, verlegd: VerlegdKeuze | None) -> BoekvoorstelRegelData:
     """Stap 4 van de winnaarsvolgorde: alleen een nog leeg btw-veld op een regel zonder regel-btw (0 of niet gelezen),
-    alleen als de factuur verlegd is (aanroeper geeft dan het tarief mee) — oranje `factuur_verlegd`."""
-    if verlegd_taxrate_id is None or regel.taxrate_id is not None:
+    alleen als de factuur verlegd is (aanroeper geeft dan de keuze mee) — oranje `factuur_verlegd`, mét de herkomst
+    van de keuze als `btw_bron_detail` (blok 6)."""
+    if verlegd is None or regel.taxrate_id is not None:
         return regel
     if regel.btw_bedrag is not None and regel.btw_bedrag != 0:
         return regel  # deze regel draagt wél btw — verlegd geldt niet voor haar
     return _met_herkomst(
-        replace(regel, taxrate_id=verlegd_taxrate_id, btw_bron=BTW_BRON_FACTUUR_VERLEGD, btw_bewust_leeg=False),
+        replace(
+            regel,
+            taxrate_id=verlegd.taxrate_id,
+            btw_bron=BTW_BRON_FACTUUR_VERLEGD,
+            btw_bron_detail=verlegd.detail,
+            btw_bewust_leeg=False,
+        ),
         **{VELD_BTW: BTW_BRON_FACTUUR_VERLEGD},
     )
+
 
 # Herkomst-waarden per veld in `BoekvoorstelRegelData.prefill_herkomst` (blok A10 07-09). Grootboek: de
 # `gb_bron`-waarden van blok D ("geheugen" / "geheugen_seed" / "geheugen_conflict" / "ai") óf
@@ -248,7 +358,9 @@ def verrijk_prefill(
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
     vandaag = datetime.now(UTC).date()
-    verlegd_taxrate_id = verlegd_taxrate_voor(session, administratie_id=administratie_id) if factuur_verlegd else None
+    verlegd = (
+        bepaal_verlegd_taxrate(session, administratie_id=administratie_id, vandaag=vandaag) if factuur_verlegd else None
+    )
     if samengevoegde_regel is not None and samengevoegde_regel.project_tekst is None and kop_project_tekst:
         samengevoegde_regel = replace(samengevoegde_regel, project_tekst=kop_project_tekst)
 
@@ -311,7 +423,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
-        regel = _met_factuur_verlegd(regel, verlegd_taxrate_id=verlegd_taxrate_id)
+        regel = _met_factuur_verlegd(regel, verlegd=verlegd)
         regel = _met_btw_default(
             regel,
             standaard_taxrate_id=standaard_taxrate_id,
@@ -338,7 +450,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
-        samengevoegde_regel = _met_factuur_verlegd(samengevoegde_regel, verlegd_taxrate_id=verlegd_taxrate_id)
+        samengevoegde_regel = _met_factuur_verlegd(samengevoegde_regel, verlegd=verlegd)
         samengevoegde_regel = _met_btw_default(
             samengevoegde_regel,
             standaard_taxrate_id=standaard_taxrate_id,

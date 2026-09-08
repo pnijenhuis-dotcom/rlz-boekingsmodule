@@ -885,3 +885,26 @@ def btw_default_zetten(
     except btw_default.BtwDefaultOnbekendTarief as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return btw_default.naar_dto(stand)
+
+
+@router.put(
+    "/administraties/{administratie_id}/verlegd-voorkeur",
+    response_model=btw_default.BtwDefaultDto,
+)
+def verlegd_voorkeur_zetten(
+    administratie_id: uuid.UUID,
+    invoer: btw_default.VerlegdVoorkeurInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> btw_default.BtwDefaultDto:
+    """Voorkeurs-verlegd-code zetten (blok 6 herstelrun 08-09, migratie 0123; null = geen voorkeur, de RLZ-historie
+    beslist) — stap 1 van `regel_prefill.bepaal_verlegd_taxrate`; alleen IsRelayed-tarieven (anders 422); audit
+    oud→nieuw mét tariefnaam. Antwoord = dezelfde stand als GET btw-default (incl. wat de prefill nú kiest)."""
+    try:
+        stand = btw_default.zet_verlegd_voorkeur(
+            actor_id=actor.id, administratie_id=administratie_id, taxrate_id=invoer.taxrate_id
+        )
+    except btw_default.BtwDefaultFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except btw_default.BtwDefaultOnbekendTarief as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return btw_default.naar_dto(stand)

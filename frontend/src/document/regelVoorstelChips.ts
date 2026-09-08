@@ -122,7 +122,12 @@ export function bepaalGbChip(
  * tekst): grijs "standaard administratie" (blok E) of oranje "uit factuur: btw verlegd" (blok 4c 08-09 — winnaarsvolgorde
  * mens > factuur berekend > leverancier-geheugen > factuur verlegd > administratie-default > leeg, zie
  * backend regel_prefill.py). Weg zodra de mens het veld aanraakt of een andere waarde in het veld staat. */
-export function bepaalBtwHerkomstChip(bron: BtwBron | null, huidigTaxrateId: string | null, handmatig: boolean): RegelChip | null {
+export function bepaalBtwHerkomstChip(
+  bron: BtwBron | null,
+  huidigTaxrateId: string | null,
+  handmatig: boolean,
+  detail: string | null = null,
+): RegelChip | null {
   if (!bron || !huidigTaxrateId || handmatig) return null
   if (bron === 'standaard') {
     return {
@@ -133,11 +138,14 @@ export function bepaalBtwHerkomstChip(bron: BtwBron | null, huidigTaxrateId: str
     }
   }
   if (bron === 'factuur_verlegd') {
+    // Blok 6 herstelrun 08-09: de herkomst van de gekozen verlegd-code reist mee ("voorkeur beheerder" / "meest gebruikt
+    // in RLZ-historie (n×)" / "administratie-default" / …) — één regel, de toelichting in de title.
+    const herkomst = detail ? ` — ${detail}` : ''
     return {
       klasse: 'afwijking',
-      tekst: 'uit factuur: btw verlegd',
+      tekst: `uit factuur: btw verlegd${herkomst}`,
       titel:
-        'De factuur vermeldt "btw verlegd" en draagt geen btw — het verlegd-tarief van deze administratie is voorgesteld (code, geen AI). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt \'m voortaan groen. De harde checks blijven de poort.',
+        `De factuur vermeldt "btw verlegd" en draagt geen btw — het verlegd-tarief van deze administratie is voorgesteld (code, geen AI${detail ? `; gekozen op: ${detail}` : ''}). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt 'm voortaan groen. De harde checks blijven de poort. Een vaste voorkeur zet de Beheerder in Instellingen › Administraties › Boeken & AI.`,
     }
   }
   return null

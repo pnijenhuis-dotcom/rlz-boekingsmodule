@@ -160,6 +160,11 @@ class Administratie(Base):
     # administratie"). NULL = uit — bestaande administraties ongemoeid tot Peter activeert. Bewust geen FK
     # naar taxrate_cache (overleeft een sync-verdwijning); app/beheer/btw_default.py valideert tegen de cache.
     standaard_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Voorkeurs-verlegd-tarief (blok 6 herstelrun 08-09, migratie 0123): de door de Beheerder gekozen verlegd-code
+    # (alleen `IsRelayed`-tarieven) — stap 1 van `regel_prefill.bepaal_verlegd_taxrate` (voorkeur → meest gebruikt
+    # in de RLZ-historie → één/NL/favoriet → administratie-default als die verlegd is → leeg). NULL = geen voorkeur,
+    # de historie beslist. Geen FK naar taxrate_cache (zelfde overweging als standaard_taxrate_id).
+    voorkeurs_verlegd_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     # Klant-accorderingsflow (migratie 0033, mockup #autorisatie): optioneel per administratie,
     # default UIT. Aan = de boekknop wordt "Ter accordering" en direct boeken is server-side
     # geblokkeerd tot alle vereiste lagen akkoord zijn (app/accordering/service.py).
