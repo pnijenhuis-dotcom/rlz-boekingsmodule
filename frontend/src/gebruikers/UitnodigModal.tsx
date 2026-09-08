@@ -118,9 +118,9 @@ export function UitnodigModal({
         </DialogTitle>
         <DialogDescription>
           {isAccordeur
-            ? 'De accordeur krijgt een activatiemail voor de mobiele app (wachtwoord → passkey → voorwaarden). Meerdere administraties mag — de wachtrij toont alles bij elkaar.'
+            ? 'De accordeur krijgt een activatiemail voor de mobiele app: link óf activatiecode (72 uur geldig, eenmalig) → toestel koppelen → eigen toegangscode → voorwaarden. Meerdere administraties mag — de wachtrij toont alles bij elkaar.'
             : isVeldwerker
-              ? "Veldwerkers (uren & meerwerk) gebruiken dezelfde mobiele app en passkey-flow als de accordeurs. Ná activatie koppel je projecten (ZZP'er/uitvoerder) of ZZP'ers (detacheerder) in dit scherm."
+              ? "Veldwerkers (uren & meerwerk) gebruiken dezelfde mobiele app en activatie (link of activatiecode, daarna een toegangscode) als de accordeurs. Ná activatie koppelt u projecten (ZZP'er/uitvoerder) of ZZP'ers (detacheerder) in dit scherm."
               : 'De uitnodiging wordt gemaild (eenmalige link, 72 uur geldig). Activatie = wachtwoord + tweede factor.'}
         </DialogDescription>
         <p className="hint" data-testid="uitnodig-rolgroep" style={{ marginTop: 0 }}>
@@ -210,7 +210,7 @@ export function UitnodigModal({
         </FormField>
         {isAccordeur && (
           <p className="hint" style={{ marginTop: 0 }}>
-            Accorderingslagen en drempels stel je per administratie in onder Instellingen → accordering.
+            Accorderingslagen en drempels stelt u per administratie in onder Instellingen → accordering.
           </p>
         )}
         {isVeldwerker && (
@@ -218,7 +218,7 @@ export function UitnodigModal({
             <Checkbox checked={uitnodigingLater} onChange={(e) => setUitnodigingLater(e.target.checked)} />
             <span>
               <b>Uitnodiging later versturen</b> — het account wordt nu aangemaakt (status uitgenodigd) zonder mail; alsnog
-              uitnodigen kan met "Opnieuw mailen".
+              uitnodigen kan met "Opnieuw mailen" (de activatiecode verschijnt dan hier in beeld).
             </span>
           </label>
         )}

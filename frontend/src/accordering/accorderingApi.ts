@@ -230,13 +230,20 @@ export interface ApparaatDto {
   aangemaakt_op: string
   laatst_gebruikt_op: string | null
   ingetrokken_op: string | null
+  /** App-auth zonder passkey (08-09): 'toestel' = toestelbinding uit de app-activatie; 'passkey' = WebAuthn-credential.
+   * Ontbreekt het veld (oudere backend) → passkey. */
+  soort?: 'passkey' | 'toestel'
+  /** 'ios' | 'android' | 'web' — alleen bij toestel-rijen. */
+  platform?: string | null
+  /** Passkey van een app-gebruiker die niet meer in gebruik is — nooit verwijderd, grijs in de lijst. */
+  niet_meer_gebruikt_op?: string | null
 }
 
 export function haalApparaten(gebruikerId: string): Promise<{ apparaten: ApparaatDto[] }> {
   return apiJson(`/auth/gebruikers/${gebruikerId}/apparaten`)
 }
 
-/** Kill-switch: trekt de passkey én alle sessies van dit apparaat per direct in. */
+/** Kill-switch: trekt de passkey of het gekoppelde toestel én alle sessies van dit apparaat per direct in. */
 export function trekApparaatIn(apparaatId: string): Promise<void> {
   return apiJson(`/auth/apparaten/${apparaatId}/intrekken`, { method: 'POST' })
 }

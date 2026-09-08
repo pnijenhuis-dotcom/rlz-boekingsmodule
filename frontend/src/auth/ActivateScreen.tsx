@@ -2,20 +2,23 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { StoreLinks } from './StoreLinks'
-import type { WebauthnConfigDto } from '../accordeur/webauthnClient'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
 import type { TokenPaarResponseDto, UitnodigingAccepterenResponseDto } from '../api/types'
 import {
+  activatieOpDitApparaat,
+  haalAppConfig,
   haalUitnodigingInfo,
-  haalWebauthnConfig,
-  toetsActivatieApparaat,
+  isAppFlow,
+  isMobielUserAgent,
+  type AppConfigDto,
   type UitnodigingInfoDto,
-} from '../accordeur/webauthnClient'
+} from './uitnodigingInfoApi'
 import { FormFouten, useFormFouten } from '../ui/FormFouten'
 import { useAuth } from './AuthContext'
 
 /** Externe rollen activeren in de app-flow (/accordeur/activeren) mét de link in de URL —
- * een refresh begint de flow gewoon opnieuw, de link blijft geldig tot de passkey staat. */
+ * een refresh begint de flow gewoon opnieuw, de link blijft geldig tot het toestel gekoppeld is
+ * (app-auth zonder passkey, besluit Peter 08-09: activatiecode/link → toegangscode). */
 function accordeurActivatiePad(token: string, herstel: boolean): string {
   return `/accordeur/activeren?uitnodiging=${encodeURIComponent(token)}${herstel ? '&herstel=1' : ''}`
 }
@@ -40,15 +43,16 @@ export function ActivateScreen() {
   const isHerstel = searchParams.get('herstel') === '1'
 
   const [stap, setStap] = useState<'wachtwoord' | 'totp'>('wachtwoord')
-  // Mobiel-first activatie externe rollen (besluit Peter 28-08, mockup activatie-mobiel.html):
+  // Mobiel-first activatie externe rollen (besluit Peter 28-08, mockup activatie-mobiel.html; app-auth 08-09):
   // vóór de wachtwoordstap weten we via de publieke info-route welke flow bij de link hoort.
-  // Extern + telefoon → door naar de app-flow; extern + desktop/twijfel → stop-scherm mét QR
-  // (de link verzilvert hier níéts); kantoor → het bestaande wachtwoord + TOTP hieronder.
+  // App-rol + telefoon/tablet → door naar de app-flow (dáár: toestel koppelen + toegangscode); app-rol +
+  // desktop → stop-scherm mét QR en de activatiecode-hint (de link verzilvert hier níéts); kantoor → het
+  // bestaande wachtwoord + TOTP hieronder. Een passkey-capability-toets bestaat niet meer: er is niets te toetsen.
   const [linkToets, setLinkToets] = useState<'bezig' | 'kantoor' | 'stop' | 'ongeldig'>('bezig')
   const [linkInfo, setLinkInfo] = useState<UitnodigingInfoDto | null>(null)
   const [linkFout, setLinkFout] = useState<string | null>(null)
   // Blok F: store-links (leeg = niets tonen) voor het stop-scherm naast de QR.
-  const [webauthnConfig, setWebauthnConfig] = useState<WebauthnConfigDto | null>(null)
+  const [appConfig, setAppConfig] = useState<AppConfigDto | null>(null)
   useEffect(() => {
     if (!token) return
     let actief = true
@@ -57,22 +61,20 @@ export function ActivateScreen() {
         const info = await haalUitnodigingInfo(token)
         if (!actief) return
         setLinkInfo(info)
-        if (info.flow !== 'passkey') {
+        if (!isAppFlow(info.flow)) {
           setLinkToets('kantoor')
           return
         }
-        const devStub = await haalWebauthnConfig()
-          .then((c) => {
-            if (actief) setWebauthnConfig(c)
-            return c.dev_stub
-          })
-          .catch(() => false)
-        const uitkomst = await toetsActivatieApparaat(devStub)
-        if (!actief) return
-        if (uitkomst === 'doorgaan') {
+        if (activatieOpDitApparaat(isMobielUserAgent()) === 'doorgaan') {
           void navigate(accordeurActivatiePad(token, info.herstel), { replace: true })
           return
         }
+        // Store-links alleen voor het stop-scherm — best-effort, nooit blokkerend.
+        haalAppConfig()
+          .then((c) => {
+            if (actief) setAppConfig(c)
+          })
+          .catch(() => undefined)
         setLinkToets('stop')
       } catch (err) {
         if (!actief) return
@@ -125,7 +127,7 @@ export function ActivateScreen() {
           <h1>{isHerstel ? 'Herstel-link werkt niet meer' : 'Activatielink werkt niet meer'}</h1>
           <p className="hint">{linkFout}</p>
           <p className="hint">
-            Al geactiveerd? Log dan gewoon in. Anders vraag je het kantoor om een nieuwe{' '}
+            Al geactiveerd? Log dan gewoon in. Anders vraagt u het kantoor om een nieuwe{' '}
             {isHerstel ? 'herstel-link' : 'uitnodiging'} — er is niets vastgelegd.
           </p>
         </div>
@@ -142,9 +144,9 @@ export function ActivateScreen() {
           <h1>Open deze uitnodiging op uw telefoon</h1>
           <div className="sub">RLZ Boekingsmodule</div>
           <p className="hint" style={{ marginTop: 0 }}>
-            {linkInfo?.naam ? `${linkInfo.naam}, u` : 'U'} activeert uw account in de app op uw telefoon, met
-            gezichtsherkenning of vingerafdruk. Scan de QR-code met de camera van uw telefoon, of open de link uit
-            de e-mail dáár.
+            {linkInfo?.naam ? `${linkInfo.naam}, u` : 'U'} activeert uw account op uw telefoon in de app. Scan de
+            QR-code met de camera van uw telefoon, of open de link uit de e-mail dáár. Lukt dat niet? Voer dan in de
+            app de activatiecode uit de e-mail in — die is even lang geldig als deze link.
           </p>
           <div className="row" style={{ alignItems: 'center' }}>
             <span id="activeer-stop-qr-label">QR-code met dezelfde activatielink</span>
@@ -156,7 +158,7 @@ export function ActivateScreen() {
               <QRCodeSVG value={dezelfdeLink} size={180} />
             </div>
           </div>
-          <StoreLinks config={webauthnConfig} variant="stop" />
+          <StoreLinks config={appConfig} variant="stop" />
           <p className="hint">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd</p>
         </div>
       </div>
@@ -177,9 +179,9 @@ export function ActivateScreen() {
         token,
         wachtwoord,
       })
-      if (resultaat.soort === 'passkey') {
-        // Vangnet: een externe link die toch hier verzilverd wordt (info-route zei 'totp' of
-        // faalde) — door naar de app-flow; de server heeft het wachtwoord alleen geparkeerd.
+      if (resultaat.soort === 'app' || resultaat.soort === 'passkey') {
+        // Vangnet: een app-link die toch hier verzilverd wordt (info-route zei 'totp' of faalde) —
+        // door naar de app-flow; dáár wordt het toestel gekoppeld.
         void navigate(accordeurActivatiePad(token, isHerstel), { replace: true })
         return
       }
@@ -220,8 +222,8 @@ export function ActivateScreen() {
         <div className="sub">RLZ Boekingsmodule</div>
         {isHerstel && stap === 'wachtwoord' && (
           <p className="hint" style={{ marginTop: 0 }}>
-            Het kantoor heeft een herstel-link voor je aangemaakt. Stel een nieuw wachtwoord in; daarna registreer je
-            dit apparaat. Je bestaande instellingen blijven bewaard.
+            Het kantoor heeft een herstel-link voor u aangemaakt. Stel een nieuw wachtwoord in; daarna volgt de
+            tweede factor. Uw bestaande instellingen blijven bewaard.
           </p>
         )}
         {fout && <div className="fout">{fout}</div>}

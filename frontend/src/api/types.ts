@@ -733,9 +733,9 @@ export interface TokenPaarResponseDto {
 }
 
 export interface UitnodigingAccepterenResponseDto {
-  /** 'totp' (kantoor-rollen; totp-velden gevuld) of 'passkey' (klant-accordeur;
-   * passkey_setup_token gevuld — accordeur-activeringsflow, besluit 2026-08-11). */
-  soort: 'totp' | 'passkey'
+  /** 'totp' (kantoor-rollen; totp-velden gevuld) of 'app' (externe app-rol — de link hoort in de app-flow
+   * verzilverd te worden; app-auth zonder passkey 08-09). 'passkey' = de oude waarde, tijdelijk geaccepteerd. */
+  soort: 'totp' | 'passkey' | 'app'
   totp_setup_token: string | null
   otpauth_uri: string | null
   secret: string | null

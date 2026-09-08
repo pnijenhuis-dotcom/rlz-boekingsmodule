@@ -62,11 +62,11 @@ describe('ActivateScreen — TOTP-enrollment', () => {
   })
 })
 
-function infoResponse(flow: 'passkey' | 'totp', herstel = false): Response {
+function infoResponse(flow: 'app' | 'passkey' | 'totp', herstel = false): Response {
   return jsonResponse({ flow, naam: 'Haci Y.', herstel, verloopt_op: '2026-09-01T00:00:00Z' })
 }
 
-function stubInfoFetch(flow: 'passkey' | 'totp', herstel = false, extra?: (url: string) => Response | null) {
+function stubInfoFetch(flow: 'app' | 'passkey' | 'totp', herstel = false, extra?: (url: string) => Response | null) {
   const aangeroepen: string[] = []
   vi.stubGlobal(
     'fetch',
@@ -101,19 +101,21 @@ function renderActiveren(pad: string) {
   )
 }
 
-describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-08, mockup activatie-mobiel.html)', () => {
+describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-08; app-auth zonder passkey 08-09: flow "app")', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('externe link op een desktop (jsdom-UA, geen platform-authenticator) → stop-scherm mét QR van dezelfde link, GEEN wachtwoordveld', async () => {
-    const aangeroepen = stubInfoFetch('passkey')
+  it('app-link op een desktop (jsdom-UA) → stop-scherm mét QR van dezelfde link + activatiecode-hint, GEEN wachtwoordveld, GEEN passkey-tekst', async () => {
+    const aangeroepen = stubInfoFetch('app')
     renderActiveren('/activeren?token=abc')
     expect(await screen.findByTestId('activatie-stopscherm')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Open deze uitnodiging op uw telefoon' })).toBeInTheDocument()
     expect(screen.getByLabelText('QR-code met dezelfde activatielink').querySelector('svg')).toBeInTheDocument()
     expect(screen.queryByLabelText(/wachtwoord/i)).toBeNull()
     expect(screen.getByText(/niets is nog vastgelegd/)).toBeInTheDocument()
+    expect(screen.getByText(/activatiecode uit de e-mail/)).toBeInTheDocument()
+    expect(screen.getByTestId('activatie-stopscherm').textContent).not.toMatch(/passkey|gezichtsherkenning|vingerafdruk/i)
     // Blok F: zonder gevulde store-links geen spoor (geen placeholders).
     expect(screen.queryByTestId('store-links')).toBeNull()
     // De link verzilvert hier niets: alleen de info-route is geraakt, nooit accepteren.
@@ -121,7 +123,7 @@ describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-0
   })
 
   it('blok F: mét gevulde store-links toont het stop-scherm "Download eerst de app" naast de QR — alleen de gevulde platformen', async () => {
-    stubInfoFetch('passkey')
+    stubInfoFetch('app')
     const basis = globalThis.fetch
     vi.stubGlobal(
       'fetch',
@@ -145,36 +147,52 @@ describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-0
     expect(screen.getByLabelText('QR-code met dezelfde activatielink')).toBeInTheDocument()
   })
 
-  it('externe link op een telefoon mét platform-authenticator → door naar de app-flow, mét de link in de URL', async () => {
-    stubInfoFetch('passkey')
+  it('app-link op een iPhone → door naar de app-flow, mét de link in de URL (geen passkey-capability-toets, geen config-call)', async () => {
+    const aangeroepen = stubInfoFetch('app')
     vi.stubGlobal('navigator', {
       ...window.navigator,
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
     })
-    vi.stubGlobal('PublicKeyCredential', { isUserVerifyingPlatformAuthenticatorAvailable: async () => true })
     renderActiveren('/activeren?token=abc')
     expect(await screen.findByTestId('locatie')).toHaveTextContent('/accordeur/activeren?uitnodiging=abc')
+    expect(aangeroepen.some((a) => a.includes('/auth/webauthn/config'))).toBe(false)
   })
 
-  it('telefoon-UA maar onbekende capability = twijfel → stop-scherm (fail-safe richting telefoon)', async () => {
-    stubInfoFetch('passkey')
+  it('Android-telefoon zonder enige WebAuthn-capability → tóch door naar de app-flow (er is niets meer te toetsen — was: stop bij twijfel)', async () => {
+    stubInfoFetch('app')
     vi.stubGlobal('navigator', {
       ...window.navigator,
       userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36',
     })
     renderActiveren('/activeren?token=abc')
-    expect(await screen.findByTestId('activatie-stopscherm')).toBeInTheDocument()
+    expect(await screen.findByTestId('locatie')).toHaveTextContent('/accordeur/activeren?uitnodiging=abc')
   })
 
-  it('herstel-link is altijd extern → mobiel-first mét herstel=1 in de app-URL', async () => {
-    stubInfoFetch('passkey', true)
+  it('oude flow-waarde "passkey" (lopende link van vóór 08-09) wordt tijdelijk als app-flow behandeld', async () => {
+    stubInfoFetch('passkey')
     vi.stubGlobal('navigator', {
       ...window.navigator,
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148',
     })
-    vi.stubGlobal('PublicKeyCredential', { isUserVerifyingPlatformAuthenticatorAvailable: async () => true })
+    renderActiveren('/activeren?token=abc')
+    expect(await screen.findByTestId('locatie')).toHaveTextContent('/accordeur/activeren?uitnodiging=abc')
+  })
+
+  it('herstel-link is altijd extern → mobiel-first mét herstel=1 in de app-URL', async () => {
+    stubInfoFetch('app', true)
+    vi.stubGlobal('navigator', {
+      ...window.navigator,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148',
+    })
     renderActiveren('/activeren?token=abc&herstel=1')
     expect(await screen.findByTestId('locatie')).toHaveTextContent('/accordeur/activeren?uitnodiging=abc&herstel=1')
+  })
+
+  it('kantoor-link (flow totp) blijft het wachtwoord + TOTP-pad — de app-vertakking raakt de kantoor-webapp niet', async () => {
+    stubInfoFetch('totp')
+    renderActiveren('/activeren?token=abc')
+    expect(await screen.findByLabelText(/Nieuw wachtwoord/)).toBeInTheDocument()
+    expect(screen.queryByTestId('activatie-stopscherm')).toBeNull()
   })
 
   it('ongeldige/verbruikte link → duidelijke melding, geen formulier', async () => {

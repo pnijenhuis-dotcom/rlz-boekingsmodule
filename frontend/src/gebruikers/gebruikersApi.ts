@@ -54,6 +54,9 @@ export interface UitnodigingResultaatDto {
   mail_fout: string | null
   /** A4 (25-08): bewust niet gemaild ("uitnodiging later versturen") — geen fout. */
   mail_uitgesteld?: boolean
+  /** App-auth zonder passkey (besluit Peter 08-09): 8-tekens activatiecode voor externe app-rollen — hetzelfde
+   * verloop en dezelfde eenmaligheid als de link; kantoor-rollen krijgen null. Weergave `XXXX-XXXX`. */
+  activatiecode?: string | null
 }
 
 export interface ApparaatDto {
@@ -63,6 +66,31 @@ export interface ApparaatDto {
   aangemaakt_op: string
   laatst_gebruikt_op: string | null
   ingetrokken_op: string | null
+  /** App-auth 08-09: 'toestel' = toestelbinding uit de app-activatie (activatiecode/link + toegangscode); 'passkey' =
+   * WebAuthn-credential (kantoor, of een oud app-toestel). Ontbreekt het veld (oudere backend) → passkey. */
+  soort?: 'passkey' | 'toestel'
+  /** 'ios' | 'android' | 'web' — alleen bij toestel-rijen gevuld. */
+  platform?: string | null
+  /** Passkey van een app-gebruiker die niet meer in gebruik is (CLI `app-passkeys-markeren`) — nooit verwijderd,
+   * grijs in de lijst; de kill-switch blijft werken. */
+  niet_meer_gebruikt_op?: string | null
+}
+
+/** Weergave van de activatiecode: hoofdletters, alleen het 32-tekens-alfabet, koppelteken na vier tekens. */
+export function formatteerActivatiecode(code: string): string {
+  const kaal = code.toUpperCase().replace(/[^A-Z2-9]/g, '')
+  return kaal.length > 4 ? `${kaal.slice(0, 4)}-${kaal.slice(4)}` : kaal
+}
+
+export const PLATFORM_LABELS: Record<string, string> = { ios: 'iOS', android: 'Android', web: 'browser' }
+
+export function platformLabel(platform: string | null | undefined): string | null {
+  if (!platform) return null
+  return PLATFORM_LABELS[platform] ?? platform
+}
+
+export function isToestel(a: Pick<ApparaatDto, 'soort'>): boolean {
+  return a.soort === 'toestel'
 }
 
 export const ROL_LABELS: Record<string, string> = {
@@ -85,7 +113,7 @@ export function rolLabel(rol: string): string {
   return ROL_LABELS[rol] ?? rol
 }
 
-/** Externe app-rollen (accordeur + veldrollen): passkey-cadans, herstel-link-doelgroep. */
+/** Externe app-rollen (accordeur + veldrollen): app-activatie mét activatiecode, herstel-link-doelgroep. */
 export function isExterneAppRol(rol: string): boolean {
   return rol === 'klant_accordeur' || isVeldrol(rol)
 }
@@ -141,6 +169,8 @@ export interface EMailWijzigenResultaatDto {
   verloopt_op: string | null
   mail_verzonden: boolean
   mail_fout: string | null
+  /** App-auth 08-09 (aanvulling A): verse uitnodiging voor een nog-niet-geactiveerd app-account draagt ook een activatiecode. */
+  activatiecode?: string | null
 }
 
 /** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen; niet-geactiveerd account krijgt
@@ -157,8 +187,8 @@ export function mailUitnodigingOpnieuw(gebruikerId: string): Promise<Uitnodiging
   return apiPostJson<UitnodigingResultaatDto>(`/auth/gebruikers/${gebruikerId}/uitnodiging-opnieuw`, {})
 }
 
-/** "Herstel-link sturen" (feedbackronde 25-08 punt 7): eenmalige 72-uurs link voor een actieve
- * accordeur/veldwerker die zijn wachtwoord kwijt is — zelfde responsvorm als de uitnodiging. */
+/** "Herstel-link sturen" (feedbackronde 25-08 punt 7; app-auth 08-09): eenmalige 72-uurs link + activatiecode voor
+ * een actieve accordeur/veldwerker die de app opnieuw moet koppelen — zelfde responsvorm als de uitnodiging. */
 export function stuurHerstelLink(gebruikerId: string): Promise<UitnodigingResultaatDto> {
   return apiPostJson<UitnodigingResultaatDto>(`/auth/gebruikers/${gebruikerId}/herstel-link`, {})
 }

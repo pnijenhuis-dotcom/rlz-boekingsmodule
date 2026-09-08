@@ -1,3 +1,4 @@
+import { PLATFORM_LABELS } from '../gebruikers/gebruikersApi'
 import { useCallback, useEffect, useState } from 'react'
 import {
   haalAccorderingInstellingen,
@@ -25,9 +26,10 @@ function formatMoment(iso: string | null): string {
   return d.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-/** Geregistreerde apparaten (passkeys) per accordeur + kill-switch (blok 1c/4 accordeur-PWA,
- * besluit 2026-08-11): intrekken trekt de passkey én alle sessies van dat apparaat per direct
- * in (server-side, geauditeerd). Beheerder-only — het endpoint weigert andere rollen. */
+/** Gekoppelde toestellen en apparaten per accordeur + kill-switch (blok 1c/4 accordeur-PWA, besluit 2026-08-11;
+ * app-auth zonder passkey 08-09: toestel-rijen uit de app-activatie naast oude passkey-rijen, die grijs "niet meer
+ * gebruikt" tonen zodra de CLI ze markeert — nooit verwijderd). Intrekken trekt de koppeling/passkey én alle
+ * sessies van dat apparaat per direct in (server-side, geauditeerd). Beheerder-only — het endpoint weigert andere rollen. */
 function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
   const [perGebruiker, setPerGebruiker] = useState<Record<string, ApparaatDto[]>>({})
   const [fout, setFout] = useState<string | null>(null)
@@ -58,12 +60,12 @@ function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
 
   return (
     <>
-      <h3 style={{ margin: '6px 0 0' }}>Geregistreerde apparaten (passkeys)</h3>
+      <h3 style={{ margin: '6px 0 0' }}>Gekoppelde toestellen en apparaten</h3>
       {fout && <div className="fout">{fout}</div>}
       {rijen.length === 0 ? (
         <p className="hint" style={{ margin: 0 }}>
-          Nog geen geregistreerde apparaten — een accordeur registreert zijn toestel bij de activering of de
-          eerste login.
+          Nog geen gekoppelde toestellen — een accordeur koppelt zijn toestel bij de activering in de app (link of
+          activatiecode uit de uitnodiging).
         </p>
       ) : (
         <>
@@ -72,7 +74,8 @@ function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
               <tr>
                 <th>Accordeur</th>
                 <th>Apparaat</th>
-                <th>Geregistreerd</th>
+                <th>Soort</th>
+                <th>Gekoppeld</th>
                 <th>Laatst gebruikt</th>
                 <th>Status</th>
                 <th></th>
@@ -82,15 +85,26 @@ function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
               {rijen.map(({ kandidaat, apparaat }) => (
                 <tr key={apparaat.id}>
                   <td>{kandidaat.naam}</td>
-                  <td>
+                  <td style={apparaat.niet_meer_gebruikt_op ? { color: 'var(--muted)' } : undefined}>
                     {apparaat.apparaat_naam ?? 'Onbekend apparaat'}
                     {apparaat.is_dev_stub && <span className="chip"> dev-stub</span>}
+                  </td>
+                  <td style={apparaat.niet_meer_gebruikt_op ? { color: 'var(--muted)' } : undefined}>
+                    {apparaat.soort === 'toestel'
+                      ? `Toestel${apparaat.platform ? ` (${PLATFORM_LABELS[apparaat.platform] ?? apparaat.platform})` : ''}`
+                      : apparaat.niet_meer_gebruikt_op
+                        ? 'passkey — niet meer gebruikt'
+                        : 'passkey'}
                   </td>
                   <td>{formatMoment(apparaat.aangemaakt_op)}</td>
                   <td>{formatMoment(apparaat.laatst_gebruikt_op)}</td>
                   <td>
                     {apparaat.ingetrokken_op ? (
                       <span className="chip">ingetrokken</span>
+                    ) : apparaat.niet_meer_gebruikt_op ? (
+                      <span className="chip" title="Passkey van een app-gebruiker, niet meer in gebruik — nooit verwijderd; intrekken kan nog">
+                        niet meer gebruikt
+                      </span>
                     ) : (
                       <span className="chip geheugen">actief</span>
                     )}
@@ -111,8 +125,9 @@ function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
             </tbody>
           </table>
           <div className="hint" style={{ margin: 0 }}>
-            Intrekken (kill-switch) blokkeert dit apparaat per direct: de passkey én alle lopende sessies
-            vervallen — de accordeur kan alleen opnieuw beginnen via wachtwoord + nieuwe registratie.
+            Intrekken (kill-switch) blokkeert dit apparaat per direct: de toestelkoppeling of passkey én alle lopende
+            sessies vervallen — de accordeur kan alleen opnieuw beginnen met een nieuwe uitnodiging of herstel-link
+            (link of activatiecode) op een toestel.
           </div>
         </>
       )}

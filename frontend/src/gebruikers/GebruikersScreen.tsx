@@ -44,8 +44,11 @@ import {
   archiveerGebruiker,
   dearchiveerGebruiker,
   haalOpenWerkOp,
+  isToestel,
+  platformLabel,
   type OpenWerkDto,
 } from './gebruikersApi'
+import { ActivatiecodeBlok } from './ActivatiecodeBlok'
 import {
   haalModuleRechtHouders,
   haalVeldwerkerbeheerHouders,
@@ -68,6 +71,19 @@ interface ApparaatGroep {
   isDevStub: boolean
   /** Alle credential-id's achter deze weergave-rij — de kill-switch trekt ze ÁLLE in. */
   ids: string[]
+  /** App-auth 08-09: toestel (activatiecode/link + toegangscode) of passkey (WebAuthn; ook oude app-toestellen). */
+  soort: 'passkey' | 'toestel'
+  platform: string | null
+  aangemaaktOp: string
+  laatstGebruiktOp: string | null
+  /** Gevuld = passkey van een app-gebruiker die niet meer in gebruik is: grijs, kill-switch blijft. */
+  nietMeerGebruiktOp: string | null
+}
+
+function formatDag(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' })
 }
 
 /** Dev-stub-registraties maakten vóór de bron-fix (2026-08-16) per activering een nieuwe
@@ -81,9 +97,51 @@ function groepeerApparaten(apparaten: ApparaatDto[]): ApparaatGroep[] {
     const naam = apparaat.apparaat_naam ?? 'apparaat'
     const bestaande = apparaat.is_dev_stub ? groepen.find((g) => g.isDevStub && g.naam === naam) : undefined
     if (bestaande) bestaande.ids.push(apparaat.id)
-    else groepen.push({ naam, isDevStub: apparaat.is_dev_stub, ids: [apparaat.id] })
+    else
+      groepen.push({
+        naam,
+        isDevStub: apparaat.is_dev_stub,
+        ids: [apparaat.id],
+        soort: isToestel(apparaat) ? 'toestel' : 'passkey',
+        platform: apparaat.platform ?? null,
+        aangemaaktOp: apparaat.aangemaakt_op,
+        laatstGebruiktOp: apparaat.laatst_gebruikt_op,
+        nietMeerGebruiktOp: apparaat.niet_meer_gebruikt_op ?? null,
+      })
   }
   return groepen
+}
+
+/** Eén apparaat-rij in de apparatenkolom (contract §6): toestel = "Toestel · naam (platform) · gekoppeld dd-mm ·
+ * laatst gebruikt dd-mm"; passkey = "🔑 naam", grijs mét "passkey — niet meer gebruikt" als de CLI 'm zo markeerde.
+ * De kill-switch-knop staat bij beide — zelfde endpoint, zelfde bevestiging. */
+function ApparaatChip({ groep }: { groep: ApparaatGroep }) {
+  const nietMeer = groep.nietMeerGebruiktOp !== null
+  if (groep.soort === 'toestel') {
+    const platform = platformLabel(groep.platform)
+    const delen = [
+      `📱 Toestel · ${groep.naam}${platform ? ` (${platform})` : ''}`,
+      formatDag(groep.aangemaaktOp) ? `gekoppeld ${formatDag(groep.aangemaaktOp)}` : null,
+      formatDag(groep.laatstGebruiktOp) ? `laatst gebruikt ${formatDag(groep.laatstGebruiktOp)}` : null,
+    ].filter((d): d is string => d !== null)
+    return (
+      <span className="apparaat-chip" data-testid="apparaat-toestel">
+        {delen.join(' · ')}
+      </span>
+    )
+  }
+  return (
+    <span
+      className="apparaat-chip"
+      data-testid={nietMeer ? 'apparaat-passkey-oud' : 'apparaat-passkey'}
+      style={nietMeer ? { color: 'var(--muted)', opacity: 0.75 } : undefined}
+      title={nietMeer ? `Passkey — niet meer gebruikt sinds ${formatDag(groep.nietMeerGebruiktOp) ?? '?'}; nooit verwijderd` : undefined}
+    >
+      🔑 {groep.naam}
+      {groep.isDevStub ? ' (dev-stub)' : ''}
+      {nietMeer ? ' · passkey — niet meer gebruikt' : ''}
+    </span>
+  )
 }
 
 export type GebruikersGroep = 'kantoor' | 'veldwerkers' | 'accordeurs'
@@ -138,7 +196,9 @@ export function GebruikersScreen() {
   const [fout, setFout] = useState<string | null>(null)
   const [mailFout, setMailFout] = useState<string | null>(null)
   // D3 (01-09): "Toon QR" — de laatste uitnodigingslink van een veldwerker als QR voor de bouwplaats.
-  const [qrAanbod, setQrAanbod] = useState<{ link: string; naam: string } | null>(null)
+  // App-auth 08-09: dezelfde banner draagt de activatiecode van een app-rol-uitnodiging/herstel-link (alleen als
+  // de server er één meegaf; kantoor-rollen krijgen null) — één plek, geen tweede melding.
+  const [aanbod, setAanbod] = useState<{ link: string | null; code: string | null; naam: string } | null>(null)
   const [qrOpen, setQrOpen] = useState(false)
   const [apparatenPer, setApparatenPer] = useState<Record<string, ApparaatDto[]>>({})
 
@@ -296,7 +356,9 @@ export function GebruikersScreen() {
     setMailFout(null)
     try {
       const resultaat = await mailUitnodigingOpnieuw(gebruiker.id)
-      if (isVeldRol(gebruiker.rol) && resultaat.token) setQrAanbod({ link: activeerLinkUrl(resultaat.token), naam: gebruiker.naam })
+      const link = isVeldRol(gebruiker.rol) && resultaat.token ? activeerLinkUrl(resultaat.token) : null
+      const code = resultaat.activatiecode ?? null
+      if (link || code) setAanbod({ link, code, naam: gebruiker.naam })
       if (resultaat.mail_verzonden) {
         meld(`Uitnodiging opnieuw gemaild aan ${gebruiker.e_mail} — de oude link is vervallen.`)
       } else {
@@ -312,10 +374,10 @@ export function GebruikersScreen() {
     }
   }
 
-  /** "Herstel-link sturen" (feedbackronde 25-08 punt 7): actieve accordeur/veldwerker die zijn
-   * wachtwoord kwijt is (bv. ná een kill-switch) krijgt een eenmalige 72-uurs link — nieuw
-   * wachtwoord + apparaat registreren; passkeys/akkoorden blijven, oudere links vervallen.
-   * Fail-zichtbaar: mislukt de mail, dan staat de link hier om handmatig te delen. */
+  /** "Herstel-link sturen" (feedbackronde 25-08 punt 7; app-auth 08-09): actieve accordeur/veldwerker die de app
+   * opnieuw moet koppelen (nieuw toestel, toegangscode kwijt, ná een kill-switch) krijgt een eenmalige 72-uurs link
+   * + activatiecode; akkoorden blijven, oudere links vervallen, lopende sessies eindigen.
+   * Fail-zichtbaar: mislukt de mail, dan staan link én code hier om handmatig te delen. */
   async function bevestigHerstelLink() {
     if (!herstelVoor) return
     setActieBezig(true)
@@ -323,6 +385,7 @@ export function GebruikersScreen() {
     setMailFout(null)
     try {
       const resultaat = await stuurHerstelLink(herstelVoor.id)
+      if (resultaat.activatiecode) setAanbod({ link: null, code: resultaat.activatiecode, naam: herstelVoor.naam })
       if (resultaat.mail_verzonden) {
         meld(`Herstel-link gemaild aan ${herstelVoor.e_mail} — eerder verstuurde links zijn vervallen.`)
       } else {
@@ -370,6 +433,7 @@ export function GebruikersScreen() {
     try {
       const r = await wijzigEMail(eMailVoor.id, nieuwEMail.trim())
       if (r.uitnodiging_vernieuwd) {
+        if (r.activatiecode) setAanbod({ link: null, code: r.activatiecode, naam: eMailVoor.naam })
         if (r.mail_verzonden) {
           meld(`E-mailadres gewijzigd naar ${r.nieuw_e_mail} — verse uitnodiging gemaild, oude links zijn vervallen.`)
         } else {
@@ -378,7 +442,7 @@ export function GebruikersScreen() {
           )
         }
       } else {
-        meld(`E-mailadres (login) gewijzigd naar ${r.nieuw_e_mail} — passkeys, TOTP en historie blijven aan het account hangen.`)
+        meld(`E-mailadres (login) gewijzigd naar ${r.nieuw_e_mail} — passkeys, toestellen, TOTP en historie blijven aan het account hangen.`)
       }
       setEMailVoor(null)
       laad()
@@ -389,15 +453,15 @@ export function GebruikersScreen() {
     }
   }
 
-  /** Casus Haci (28-08): wachtwoord gezet, passkey nooit gelukt — de Herstel-link (rechts) ruimt
-   * dit op. Nieuwe activaties zijn atomair; dit is de terugwerkende-kracht-detectie. */
+  /** Casus Haci (28-08): activatie ooit halverwege gestrand (wachtwoord gezet, toestel nooit gekoppeld) — de
+   * Herstel-link (rechts) ruimt dit op. Nieuwe activaties zijn atomair; dit is de terugwerkende-kracht-detectie. */
   function halfGeactiveerdBadge(g: GebruikerOverzichtDto) {
     if (!g.half_geactiveerd) return null
     return (
       <>
         {' '}
-        <Badge variant="warn" title="Wachtwoord staat, passkey ontbreekt — stuur een herstel-link">
-          half geactiveerd — geen passkey
+        <Badge variant="warn" title="Activatie niet afgerond, geen gekoppeld toestel — stuur een herstel-link">
+          half geactiveerd — geen toestel
         </Badge>
       </>
     )
@@ -636,18 +700,23 @@ export function GebruikersScreen() {
 
       {fout && <FoutMelding melding="De gebruikerslijst kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
       {mailFout && <FoutMelding melding={mailFout} />}
-      {qrAanbod && (
+      {aanbod && (
         <div className="hint" role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }} data-testid="qr-aanbod">
-          Uitnodigingslink voor {qrAanbod.naam} — op de bouwplaats scannen?
-          <Button variant="secundair" maat="klein" onClick={() => setQrOpen(true)}>
-            Toon QR
-          </Button>
-          <button type="button" className="linkbtn" onClick={() => setQrAanbod(null)}>
+          {aanbod.link && (
+            <>
+              Uitnodigingslink voor {aanbod.naam} — op de bouwplaats scannen?
+              <Button variant="secundair" maat="klein" onClick={() => setQrOpen(true)}>
+                Toon QR
+              </Button>
+            </>
+          )}
+          <ActivatiecodeBlok code={aanbod.code} naam={aanbod.link ? undefined : aanbod.naam} />
+          <button type="button" className="linkbtn" onClick={() => setAanbod(null)}>
             verbergen
           </button>
         </div>
       )}
-      <QrLinkDialog link={qrOpen && qrAanbod ? qrAanbod.link : null} titel={`QR-uitnodiging — ${qrAanbod?.naam ?? ''}`} onSluiten={() => setQrOpen(false)} />
+      <QrLinkDialog link={qrOpen && aanbod?.link ? aanbod.link : null} titel={`QR-uitnodiging — ${aanbod?.naam ?? ''}`} onSluiten={() => setQrOpen(false)} />
       {administratiesFout && <FoutMelding melding="Administraties konden niet geladen worden." detail={administratiesFout} />}
 
       {/* Tabs per groep (besluit Peter 25-08 "net zoals instellingen"): tellers per tab, eigen
@@ -879,7 +948,8 @@ export function GebruikersScreen() {
         <div className="panel" role="tabpanel">
           <h2 style={{ margin: 0 }}>Klant-accordeurs</h2>
           <p className="hint" style={{ marginTop: 6 }}>
-            Accordeurs gebruiken de mobiele app met passkey. Eén accordeur kan meerdere administraties bedienen —
+            Accordeurs gebruiken de mobiele app: activeren met de link of activatiecode uit de uitnodiging, daarna een eigen
+            toegangscode. Eén accordeur kan meerdere administraties bedienen —
             de wachtrij en de dagelijkse herinnering voegen alles samen.
           </p>
           {gebruikers !== null && accordeurs.length === 0 && (
@@ -944,10 +1014,7 @@ export function GebruikersScreen() {
                         )}
                         {apparaten.map((groep) => (
                           <span key={groep.ids[0]} style={{ whiteSpace: 'nowrap' }}>
-                            <span className="apparaat-chip">
-                              📱 {groep.naam}
-                              {groep.isDevStub ? ' (dev-stub)' : ''}
-                            </span>{' '}
+                            <ApparaatChip groep={groep} />{' '}
                             <Button
                               variant="ghost"
                               maat="klein"
@@ -1003,8 +1070,10 @@ export function GebruikersScreen() {
         administraties={administraties ?? []}
         onSluiten={() => setUitnodigSoort(null)}
         onUitgenodigd={(resultaat) => {
-          if (uitnodigSoort === 'veldwerker' && resultaat.token) {
-            setQrAanbod({ link: activeerLinkUrl(resultaat.token), naam: 'de nieuwe veldwerker' })
+          const link = uitnodigSoort === 'veldwerker' && resultaat.token ? activeerLinkUrl(resultaat.token) : null
+          const code = resultaat.activatiecode ?? null
+          if (link || code) {
+            setAanbod({ link, code, naam: uitnodigSoort === 'veldwerker' ? 'de nieuwe veldwerker' : 'de nieuwe accordeur' })
           }
           if (resultaat.mail_uitgesteld) {
             meld('Account aangemaakt zonder mail (status uitgenodigd) — nodig later uit via "Opnieuw mailen".')
@@ -1041,7 +1110,7 @@ export function GebruikersScreen() {
                   ? 'Dit account is nog niet geactiveerd: de oude uitnodigingslink vervalt en er gaat direct een verse uitnodiging naar het nieuwe adres.'
                   : eMailVoor.status === 'geblokkeerd'
                     ? 'Dit account is geblokkeerd: alleen de login wijzigt, de blokkade blijft staan.'
-                    : 'Alleen de login wijzigt — passkeys, TOTP, sessies en historie blijven aan het account hangen.'}{' '}
+                    : 'Alleen de login wijzigt — passkeys, gekoppelde toestellen, TOTP, sessies en historie blijven aan het account hangen.'}{' '}
               De wijziging wordt geauditeerd (oud → nieuw).
             </DialogDescription>
             <FormField label="Nieuw e-mailadres" htmlFor="nieuw-e-mail">
@@ -1083,8 +1152,8 @@ export function GebruikersScreen() {
           titel={blokkade.actie === 'blokkeren' ? 'Gebruiker blokkeren' : 'Gebruiker heractiveren'}
           bericht={
             blokkade.actie === 'blokkeren'
-              ? `${blokkade.gebruiker.naam} wordt per direct geblokkeerd: inloggen wordt geweigerd, alle sessies vervallen en passkeys zijn onbruikbaar zolang de blokkade staat. Heractiveren kan altijd — er wordt niets verwijderd. De actie wordt geauditeerd.`
-              : `${blokkade.gebruiker.naam} kan na heractivering weer inloggen (bestaande passkeys werken weer; oude sessies komen niet terug). De actie wordt geauditeerd.`
+              ? `${blokkade.gebruiker.naam} wordt per direct geblokkeerd: inloggen wordt geweigerd, alle sessies vervallen en passkeys/gekoppelde toestellen zijn onbruikbaar zolang de blokkade staat. Heractiveren kan altijd — er wordt niets verwijderd. De actie wordt geauditeerd.`
+              : `${blokkade.gebruiker.naam} kan na heractivering weer inloggen (bestaande passkeys en gekoppelde toestellen werken weer; oude sessies komen niet terug). De actie wordt geauditeerd.`
           }
           bezig={actieBezig}
           fout={actieFout}
@@ -1101,7 +1170,7 @@ export function GebruikersScreen() {
           titel={archivering.actie === 'archiveren' ? 'Gebruiker archiveren' : 'Gebruiker dearchiveren'}
           bericht={
             archivering.actie === 'archiveren'
-              ? `${archivering.gebruiker.naam} wordt gearchiveerd: verdwijnt uit alle lijsten en tabs (terug te vinden via het filter "gearchiveerd"), inloggen wordt per direct geweigerd, sessies vervallen en passkeys zijn onbruikbaar. Historie, audit en akkoord-sporen blijven volledig staan — er wordt niets verwijderd. Dearchiveren kan altijd. De actie wordt geauditeerd.${openWerkTekst(openWerk)}`
+              ? `${archivering.gebruiker.naam} wordt gearchiveerd: verdwijnt uit alle lijsten en tabs (terug te vinden via het filter "gearchiveerd"), inloggen wordt per direct geweigerd, sessies vervallen en passkeys/gekoppelde toestellen zijn onbruikbaar. Historie, audit en akkoord-sporen blijven volledig staan — er wordt niets verwijderd. Dearchiveren kan altijd. De actie wordt geauditeerd.${openWerkTekst(openWerk)}`
               : `${archivering.gebruiker.naam} krijgt de status van vóór archivering terug (een blokkade van toen blijft dan staan). Oude sessies komen niet terug. De actie wordt geauditeerd.`
           }
           bezig={actieBezig || openWerk === 'laden'}
@@ -1117,7 +1186,7 @@ export function GebruikersScreen() {
       {herstelVoor && (
         <BevestigDialog
           titel="Herstel-link sturen"
-          bericht={`${herstelVoor.naam} (${herstelVoor.e_mail}) ontvangt een eenmalige link (72 uur geldig) om een nieuw wachtwoord in te stellen en daarna een apparaat te registreren. Bestaande passkeys en akkoorden blijven staan; eerder verstuurde links vervallen en lopende sessies worden beëindigd. De actie wordt geauditeerd.`}
+          bericht={`${herstelVoor.naam} (${herstelVoor.e_mail}) ontvangt een eenmalige link én activatiecode (72 uur geldig) om de app op een toestel opnieuw te koppelen en een nieuwe toegangscode te kiezen. Akkoorden en instellingen blijven staan; eerder verstuurde links vervallen en lopende sessies worden beëindigd. De actie wordt geauditeerd.`}
           bezig={actieBezig}
           fout={actieFout}
           onBevestigen={() => void bevestigHerstelLink()}
@@ -1131,7 +1200,7 @@ export function GebruikersScreen() {
       {killSwitchVoor && (
         <BevestigDialog
           titel="Kill-switch — apparaat blokkeren"
-          bericht={`"${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: de passkey en alle sessies van dit apparaat vervallen. De accordeur kan met wachtwoord + nieuwe registratie weer verder — niemand raakt buitengesloten (wachtwoord kwijt? "Herstel-link").`}
+          bericht={`"${killSwitchVoor.groep.naam}" van ${killSwitchVoor.gebruiker.naam} wordt per direct geblokkeerd: ${killSwitchVoor.groep.soort === 'toestel' ? 'de toestelkoppeling' : 'de passkey'} en alle sessies van dit apparaat vervallen. Verder kan alleen met een nieuwe uitnodiging of "Herstel-link" (link of activatiecode op een toestel) — niemand raakt buitengesloten.`}
           bezig={actieBezig}
           fout={actieFout}
           onBevestigen={() => void bevestigKillSwitch()}

@@ -186,8 +186,8 @@ export function VeldwerkersPanel({
                       {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
                       {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
                       {g.half_geactiveerd && (
-                        <Badge variant="warn" title="Wachtwoord staat, passkey ontbreekt — stuur een herstel-link">
-                          half geactiveerd — geen passkey
+                        <Badge variant="warn" title="Activatie niet afgerond, geen gekoppeld toestel — stuur een herstel-link">
+                          half geactiveerd — geen toestel
                         </Badge>
                       )}
                       {g.open_herstel_verloopt_op && (

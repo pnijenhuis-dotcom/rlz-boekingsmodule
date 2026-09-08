@@ -8,7 +8,7 @@ import {
   registreerPasskey,
   webauthnBeschikbaar,
   type WebauthnConfigDto,
-} from '../accordeur/webauthnClient'
+} from '../auth/webauthnClient'
 import {
   haalKantoorApparaten,
   haalMijnApparaten,
@@ -157,7 +157,9 @@ export function BeveiligingInstellingen({ isBeheerder }: { isBeheerder: boolean 
       .then(([mijn, configDto, kantoor]) => {
         setApparaten(mijn.apparaten)
         setConfig(configDto)
-        setKantoorApparaten(kantoor?.apparaten ?? null)
+        // Kantoor-overzicht = alleen kantoor-passkeys (server filtert op rol); app-toestel-rijen horen hier nooit
+        // te lekken — vangnet client-side (app-auth 08-09, contract §4e).
+        setKantoorApparaten(kantoor ? kantoor.apparaten.filter((a) => a.soort !== 'toestel') : null)
       })
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [isBeheerder])

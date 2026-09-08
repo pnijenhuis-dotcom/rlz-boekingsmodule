@@ -1,9 +1,9 @@
 // Store-links (blok F nachtrun 01/02-09): "Download eerst de app" — alleen zichtbaar zodra een link gevuld is
 // (config STORE_LINK_IOS/STORE_LINK_ANDROID via /auth/webauthn/config), per platform alleen als zijn link
 // gevuld is. Leeg = niets renderen: exact het huidige gedrag zolang Apple/Google nog niet goedgekeurd hebben.
-import type { WebauthnConfigDto } from '../accordeur/webauthnClient'
+import type { AppConfigDto } from './uitnodigingInfoApi'
 
-export type StoreLinkConfig = Pick<WebauthnConfigDto, 'store_link_ios' | 'store_link_android'> | null | undefined
+export type StoreLinkConfig = Pick<AppConfigDto, 'store_link_ios' | 'store_link_android'> | null | undefined
 
 export function heeftStoreLinks(config: StoreLinkConfig): boolean {
   return Boolean(config?.store_link_ios || config?.store_link_android)

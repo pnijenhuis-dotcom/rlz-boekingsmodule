@@ -47,6 +47,8 @@ function installMock(opties: {
   gebruikers?: unknown[]
   postAanroepen?: string[]
   mailVerzonden?: boolean
+  /** App-auth 08-09: activatiecode in de uitnodigings-/opnieuw-/herstelrespons (null = kantoor-rol). */
+  activatiecode?: string | null
   apparaten?: unknown[]
   openWerk?: unknown
   uitnodigBodies?: Record<string, unknown>[]
@@ -119,6 +121,7 @@ function installMock(opties: {
             mail_verzonden: true,
             mail_fout: null,
             mail_uitgesteld: body.uitnodiging_later === true,
+            activatiecode: opties.activatiecode ?? null,
           }),
         )
       }
@@ -132,6 +135,7 @@ function installMock(opties: {
             verloopt_op: new Date(Date.now() + 72 * 3600e3).toISOString(),
             mail_verzonden: opties.mailVerzonden ?? true,
             mail_fout: (opties.mailVerzonden ?? true) ? null : 'SMTP niet geconfigureerd',
+            activatiecode: opties.activatiecode ?? null,
           }),
         )
       }
@@ -161,6 +165,7 @@ function installMock(opties: {
             verloopt_op: new Date(Date.now() + 72 * 3600e3).toISOString(),
             mail_verzonden: opties.mailVerzonden ?? true,
             mail_fout: (opties.mailVerzonden ?? true) ? null : 'SMTP niet geconfigureerd',
+            activatiecode: opties.activatiecode ?? null,
           }),
         )
       }
@@ -259,7 +264,8 @@ describe('GebruikersScreen', () => {
     expect(screen.getAllByRole('button', { name: 'Herstel-link' })).toHaveLength(1)
     const gebruikerEvent = userEvent.setup()
     await gebruikerEvent.click(screen.getByRole('button', { name: 'Herstel-link' }))
-    expect(screen.getByText(/Bestaande passkeys en akkoorden blijven staan/)).toBeInTheDocument()
+    expect(screen.getByText(/Akkoorden en instellingen blijven staan/)).toBeInTheDocument()
+    expect(screen.getByText(/link én activatiecode/)).toBeInTheDocument()
     await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(posts).toContain(`/auth/gebruikers/${ACCORDEUR_ID}/herstel-link`))
   })
@@ -386,6 +392,123 @@ describe('GebruikersScreen', () => {
     await waitFor(() => expect(posts).toContain('/auth/apparaten/stub-1/intrekken'))
     expect(posts).toContain('/auth/apparaten/stub-2/intrekken')
     expect(posts).not.toContain('/auth/apparaten/echt-1/intrekken')
+  })
+
+  it('app-auth 08-09: herstel-link mét activatiecode → code zichtbaar als XXXX-XXXX mét kopieerknop (linkbtn), ook als de mail slaagde', async () => {
+    installMock({
+      gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur' })],
+      activatiecode: 'ABCDEFGH',
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Herstel-link' })).toBeInTheDocument())
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Herstel-link' }))
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    expect(await screen.findByTestId('activatiecode')).toHaveTextContent('ABCD-EFGH')
+    expect(screen.getByTestId('activatiecode-blok')).toHaveTextContent('voor wie de link niet kan openen')
+    const kopieer = screen.getByRole('button', { name: /Activatiecode ABCD-EFGH kopiëren/ })
+    expect(kopieer).toHaveClass('linkbtn')
+    await gebruikerEvent.click(kopieer)
+    // user-event levert bij setup() een eigen klembord-stub — daar lezen we uit.
+    await waitFor(async () => expect(await navigator.clipboard.readText()).toBe('ABCD-EFGH'))
+    expect(screen.getByRole('button', { name: /kopiëren/ })).toHaveTextContent('Gekopieerd')
+    // Geen QR-aanbod voor een accordeur-herstel (dat is veldwerker-only); verbergen ruimt de banner op.
+    expect(screen.queryByRole('button', { name: 'Toon QR' })).toBeNull()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'verbergen' }))
+    expect(screen.queryByTestId('activatiecode-blok')).toBeNull()
+  })
+
+  it('app-auth 08-09: "Opnieuw mailen" voor een veldwerker toont QR-aanbod én activatiecode in dezelfde banner', async () => {
+    installMock({
+      gebruikers: [
+        gebruiker({
+          rol: 'zzper',
+          status: 'uitgenodigd',
+          open_uitnodiging_verloopt_op: new Date(Date.now() + 68 * 3600e3).toISOString(),
+        }),
+      ],
+      postAanroepen: [],
+      activatiecode: 'wxyz-2345',
+    })
+    renderScherm('/gebruikers?groep=veldwerkers')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Opnieuw mailen' })).toBeInTheDocument())
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Opnieuw mailen' }))
+    const banner = await screen.findByTestId('qr-aanbod')
+    expect(banner).toHaveTextContent('Uitnodigingslink voor Demi de Vries')
+    expect(screen.getByRole('button', { name: 'Toon QR' })).toBeInTheDocument()
+    // Normalisatie: kleine letters/koppelteken uit de server → XXXX-XXXX.
+    expect(screen.getByTestId('activatiecode')).toHaveTextContent('WXYZ-2345')
+  })
+
+  it('app-auth 08-09: een kantoor-uitnodiging (activatiecode null) toont géén code-blok', async () => {
+    const posts: string[] = []
+    installMock({
+      gebruikers: [
+        gebruiker({
+          status: 'uitgenodigd',
+          heeft_totp: false,
+          open_uitnodiging_verloopt_op: new Date(Date.now() + 68 * 3600e3).toISOString(),
+        }),
+      ],
+      postAanroepen: posts,
+      activatiecode: null,
+    })
+    renderScherm()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Opnieuw mailen' })).toBeInTheDocument())
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Opnieuw mailen' }))
+    await waitFor(() => expect(posts).toContain(`/auth/gebruikers/${ANDER_ID}/uitnodiging-opnieuw`))
+    expect(screen.queryByTestId('activatiecode-blok')).toBeNull()
+    expect(screen.queryByTestId('qr-aanbod')).toBeNull()
+  })
+
+  it('app-auth 08-09: apparatenlijst toont een toestel-rij (platform, gekoppeld, laatst gebruikt) en een oude passkey grijs "niet meer gebruikt"; kill-switch werkt op het toestel', async () => {
+    const posts: string[] = []
+    installMock({
+      gebruikers: [gebruiker({ id: ACCORDEUR_ID, naam: 'R. de Groot', rol: 'klant_accordeur', aantal_passkeys: 1 })],
+      postAanroepen: posts,
+      apparaten: [
+        {
+          id: 'toestel-1',
+          apparaat_naam: 'iPhone van Jan',
+          is_dev_stub: false,
+          aangemaakt_op: '2026-09-08T10:00:00Z',
+          laatst_gebruikt_op: '2026-09-08T12:00:00Z',
+          ingetrokken_op: null,
+          soort: 'toestel',
+          platform: 'ios',
+          niet_meer_gebruikt_op: null,
+        },
+        {
+          id: 'passkey-oud',
+          apparaat_naam: 'iPhone (oud)',
+          is_dev_stub: false,
+          aangemaakt_op: '2026-08-11T10:00:00Z',
+          laatst_gebruikt_op: '2026-08-30T12:00:00Z',
+          ingetrokken_op: null,
+          soort: 'passkey',
+          platform: null,
+          niet_meer_gebruikt_op: '2026-09-08T08:00:00Z',
+        },
+      ],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    const toestel = await screen.findByTestId('apparaat-toestel')
+    expect(toestel).toHaveTextContent('Toestel · iPhone van Jan (iOS)')
+    expect(toestel).toHaveTextContent(/gekoppeld 08-09/)
+    expect(toestel).toHaveTextContent(/laatst gebruikt 08-09/)
+    const oud = screen.getByTestId('apparaat-passkey-oud')
+    expect(oud).toHaveTextContent('iPhone (oud) · passkey — niet meer gebruikt')
+    expect(oud).toHaveStyle({ color: 'var(--muted)' })
+    // Kill-switch bij beide rijen, zelfde endpoint; de dialoog noemt bij een toestel de toestelkoppeling.
+    const knoppen = screen.getAllByRole('button', { name: 'Kill-switch' })
+    expect(knoppen).toHaveLength(2)
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.click(knoppen[0])
+    expect(screen.getByText(/de toestelkoppeling en alle sessies/)).toBeInTheDocument()
+    expect(screen.getByText(/per direct geblokkeerd/).textContent).not.toMatch(/wachtwoord/)
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(posts).toContain('/auth/apparaten/toestel-1/intrekken'))
+    expect(posts).not.toContain('/auth/apparaten/passkey-oud/intrekken')
   })
 
   it('een niet-Beheerder krijgt een nette melding, geen lege tabel', async () => {

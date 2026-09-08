@@ -124,6 +124,9 @@ describe('UitnodigModal — rolgroep volgt de ingang (bugfix 04-09, casus "+ Vel
 
     render(<UitnodigModal soort="accordeur" {...props} />)
     expect(screen.getByTestId('uitnodig-rolgroep')).toHaveTextContent('Rolgroep: Klant-accordeur')
+    // App-auth zonder passkey (08-09): de uitleg noemt link/activatiecode + toegangscode, nooit meer passkey.
+    expect(screen.getByText(/link óf activatiecode/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/passkey/i)
     await gebruiker.type(screen.getByLabelText('Naam'), 'R. de Groot')
     await gebruiker.type(screen.getByLabelText('E-mailadres'), 'r@klant.nl')
     await gebruiker.click(screen.getByRole('button', { name: 'Alle administraties selecteren' }))

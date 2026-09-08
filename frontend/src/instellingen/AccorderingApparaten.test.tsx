@@ -35,6 +35,21 @@ describe('AccorderingInstellingen — apparaten/kill-switch', () => {
                   aangemaakt_op: '2026-08-11T10:00:00Z',
                   laatst_gebruikt_op: '2026-08-11T12:00:00Z',
                   ingetrokken_op: ingetrokken.includes('ap1') ? '2026-08-11T13:00:00Z' : null,
+                  soort: 'toestel',
+                  platform: 'ios',
+                  niet_meer_gebruikt_op: null,
+                },
+                // App-auth 08-09: oude passkey van een app-gebruiker, door de CLI gemarkeerd — grijs, nooit weg, intrekbaar.
+                {
+                  id: 'ap0',
+                  apparaat_naam: 'Oude iPhone',
+                  is_dev_stub: false,
+                  aangemaakt_op: '2026-08-01T10:00:00Z',
+                  laatst_gebruikt_op: '2026-08-20T12:00:00Z',
+                  ingetrokken_op: null,
+                  soort: 'passkey',
+                  platform: null,
+                  niet_meer_gebruikt_op: '2026-09-08T08:00:00Z',
                 },
               ],
             }),
@@ -51,13 +66,18 @@ describe('AccorderingInstellingen — apparaten/kill-switch', () => {
     // Sectie per administratie is een <details>; openen triggert het laden.
     await userEvent.click(screen.getByText('BLOW B.V.'))
 
-    expect(await screen.findByText('Geregistreerde apparaten (passkeys)')).toBeInTheDocument()
+    expect(await screen.findByText('Gekoppelde toestellen en apparaten')).toBeInTheDocument()
     expect(await screen.findByText('iPhone')).toBeInTheDocument()
+    expect(screen.getByText('Toestel (iOS)')).toBeInTheDocument()
     expect(screen.getByText('actief')).toBeInTheDocument()
+    // De oude passkey staat er grijs bij mét "niet meer gebruikt" én houdt zijn intrek-knop (kill-switch voor beide).
+    expect(screen.getByText('passkey — niet meer gebruikt')).toBeInTheDocument()
+    expect(screen.getByText('niet meer gebruikt')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Toegang intrekken' })).toHaveLength(2)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Toegang intrekken' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Toegang intrekken' })[0])
     await waitFor(() => expect(ingetrokken).toContain('ap1'))
     expect(await screen.findByText('ingetrokken')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Toegang intrekken' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Toegang intrekken' })).toHaveLength(1)
   })
 })
