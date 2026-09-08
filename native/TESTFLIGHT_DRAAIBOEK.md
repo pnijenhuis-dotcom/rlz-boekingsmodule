@@ -105,6 +105,16 @@ standard ASAuthorizationController flow and requires iCloud Keychain to be enabl
 device. No app changes were needed; the same build can be reviewed again.
 ```
 
+> **Waar je opnieuw indient (08-09):** ná een 2.1-afwijzing staat de submissiepagina zelf
+> (App Store-tab van de versie) meestal nog grijs/inactief — dat is geen bug, de opnieuw-
+> indienen-actie zit dan op de **versiepagina**: App Store Connect → jouw app → tab **App
+> Store** → de betreffende versie (status "Rejected") → reageer eerst in **Resolution
+> Center** (de conceptreply hierboven) → daarna verschijnt bovenaan de versiepagina de knop
+> **"Update Review"** — die stuurt de bestaande versie (met de bijgewerkte App Review
+> Information/wachtwoord) opnieuw ter review, zonder een nieuwe build te hoeven kiezen. Pas
+> als je ook een nieuwe build wilt koppelen (zie §0c) selecteer je die eerst onder "Build" op
+> dezelfde pagina, vóórdat je "Update Review" gebruikt.
+
 > **Aanvulling 07-09 (Play-afwijzing, blok PLAY):** Google Play wees dezelfde build óók af ("Login
 > credentials are incorrect"), maar met een ÁNDERE wortel: Cloud Logging toont op 03-09 vanaf Google-IP's
 > 7× resp. 11× een geslaagde wachtwoordstap (200) zonder vervolg — de reviewer strandde op de passkey-
@@ -117,35 +127,87 @@ device. No app changes were needed; the same build can be reviewed again.
 
 Klikwerk: (1) nieuw wachtwoord in App Review Information zetten, (2) de notes in §1 hierboven
 overnemen, (3) reply plaatsen en de submission opnieuw ter review aanbieden — óf, als de
-universal-link-fix (06-09, `@capacitor/app`) meteen mee moet, eerst build 45 laten bouwen
-(package-lock + Package.swift zijn 07-09 gecommit; Xcode Cloud `npm ci` faalde anders).
+universal-link-fix (06-09, `@capacitor/app`) meteen mee moet, eerst de eerstvolgende build laten
+bouwen (destijds op 07-09 verwacht als build 45; werd build 89 — zie §0c) (package-lock +
+Package.swift zijn 07-09 gecommit; Xcode Cloud `npm ci` faalde anders).
 
-### 0c. Build 45 klaarzetten (vervolgrun 07-09, blok 12d) — NIET ingediend
+### 0c. Eerstvolgende build klaarzetten (vervolgrun 07-09, blok 12d) — NIET ingediend
 
-**Hoe build 44 → 45 werkt:** het iOS-buildnummer komt NIET uit de repo. `ci_scripts/ci_post_clone.sh`
+> **Correctie 08-09 (bouwagent BLOK 8):** Xcode Cloud telt het buildnummer per PUSH naar `main`
+> (élke commit-batch die iets in de app-relevante boom raakt, niet alleen een bewust
+> "app-release"-moment) — het is dus geen teller die je met "de eerstvolgende push" op 45 kunt
+> vasthouden zodra er tussentijds meerdere runs met commits naar `main` gaan (elk met een eigen
+> Stop-hook-push). Tussen deze paragraaf (07-09) en de huidige bundelrun (08-09) zijn dat er veel
+> geweest: de eerstvolgende Xcode Cloud-build op `main` is daardoor **build 89**, niet 45. Overal
+> hieronder waar destijds "45" stond is dat gecorrigeerd naar het huidige, juiste getal; waar de
+> tekst destijds een verwachting uitsprak staat "(destijds verwacht als 45; werd 89)" erbij — niets
+> is stilzwijgend herschreven. Dit is een documentcorrectie, geen nieuwe Xcode Cloud-run: het
+> werkelijke buildnummer wordt pas bevestigd door de eerstvolgende "processing completed"-mail:
+> toets dat live vóór je in App Store Connect een buildnummer aan de versie koppelt.
+
+**Hoe build 44 → 89 werkt:** het iOS-buildnummer komt NIET uit de repo. `ci_scripts/ci_post_clone.sh`
 zet bij élke Xcode Cloud-build `CURRENT_PROJECT_VERSION ← CI_BUILD_NUMBER` (beide pbxproj-plekken);
 de repo blijft op `3`, `MARKETING_VERSION` blijft `1.0`. Build 44 was dus gewoon Xcode Cloud-build
-nr. 44 op `main`. **Build 45 = de eerstvolgende push naar `main`** ná de commit van deze run — er is
-geen handmatige bump; Xcode Cloud bundelt via `bouw-web --mode native` + `cap sync ios` automatisch de
-actuele web-assets (incl. 12a/12b/13 hieronder) en de `@capacitor/app`-plugin (E1 06-09, Package.swift
-gecommit 0f6a085). Handmatig archiveren (§3) blijft de terugval; lokaal is `npm run bouw-web && npx
-cap sync` op 07-09 gedraaid (ios/App/App/public ververst — niet ingecheckt, CLI-managed).
+nr. 44 op `main`. **De eerstvolgende push naar `main` ná de commit van deze run krijgt het
+eerstvolgende Xcode Cloud-buildnummer (destijds op 07-09 verwacht als build 45; werd build 89 —
+zie de correctie hierboven)** — er is geen handmatige bump; Xcode Cloud bundelt via `bouw-web
+--mode native` + `cap sync ios` automatisch de actuele web-assets (incl. 12a/12b/13 hieronder) en
+de `@capacitor/app`-plugin (E1 06-09, Package.swift gecommit 0f6a085). Handmatig archiveren (§3)
+blijft de terugval; lokaal is `npm run bouw-web && npx cap sync` op 07-09 gedraaid
+(ios/App/App/public ververst — niet ingecheckt, CLI-managed).
 
-**Wat build 45 inhoudelijk meeneemt t.o.v. 44:** universal-link-fix (E1), activatie-hulpblok (E2),
-diagnoseregel (12a), geen verloren boot-refresh in native (12b), eerlijke Android-melding bij
-ontbrekende passkey-beheerder (13 — raakt iOS niet).
+**Wat build 89 inhoudelijk meeneemt t.o.v. 44 (destijds verwacht als 45; werd 89):**
+universal-link-fix (E1), activatie-hulpblok (E2), diagnoseregel (12a), geen verloren boot-refresh
+in native (12b), eerlijke Android-melding bij ontbrekende passkey-beheerder (13 — raakt iOS niet)
+— plus alles wat sindsdien op `main` is gecommit tot aan de daadwerkelijke build-run (toets de
+inhoud tegen de "processing completed"-mail, niet tegen deze lijst).
 
 **Diagnoseregel als kliktest-/reviewer-hulp (12a):** in de app → ⚙ (Toegang tot de app) → onderaan
-"Diagnose › Laatste koude start": één regel `web <sha-datum> · app 1.0 (45) · boot … ms · sessie … ms
-· server … ms · netwerk … ms · totaal … ms · dd-mm HH:MM`. Blijft lokaal op het toestel; een
-screenshot (of "Kopiëren") volstaat — de Web Inspector-instructie uit BESLISSINGEN "KOUDE START"
-beslispunt 1 is daarmee overbodig. `app 1.0 (45)` bevestigt meteen dat de juiste build draait.
+"Diagnose › Laatste koude start": één regel `web <sha-datum> · app 1.0 (89) · boot … ms · sessie … ms
+· server … ms · netwerk … ms · totaal … ms · dd-mm HH:MM` (destijds verwacht als `app 1.0 (45)`;
+werd `app 1.0 (89)`). Blijft lokaal op het toestel; een screenshot (of "Kopiëren") volstaat — de
+Web Inspector-instructie uit BESLISSINGEN "KOUDE START" beslispunt 1 is daarmee overbodig. De
+diagnoseregel bevestigt meteen dat het juiste, daadwerkelijke buildnummer draait — lees dat getal
+altijd live af (TestFlight of de diagnoseregel zelf), plak het niet blind uit dit document.
 
-Klikwerk Peter: (a) commits van de vervolgrun op `main` → Xcode Cloud bouwt 45 (mail "processing
-completed"); (b) TestFlight → build 45 op het eigen toestel → kliktest E1 (mail-link opent de app op
-de code-keuze) + 12a (diagnoseregel toont `app 1.0 (45)`); (c) dán pas in App Store Connect build 45
-aan de versie 1.0 koppelen + reply §0b + opnieuw ter review. Android-tegenhanger: PLAY_DRAAIBOEK §3
-(versionCode 3).
+Klikwerk Peter: (a) commits van de vervolgrun op `main` → Xcode Cloud bouwt de eerstvolgende build
+(mail "processing completed" noemt het echte nummer — destijds verwacht als 45, werd 89); (b)
+TestFlight → die build op het eigen toestel → kliktest E1 (mail-link opent de app op de
+code-keuze) + 12a (diagnoseregel toont het echte buildnummer); (c) dán pas in App Store Connect
+dat buildnummer aan de versie 1.0 koppelen + reply §0b + opnieuw ter review. Android-tegenhanger:
+PLAY_DRAAIBOEK §3 (versionCode 3).
+
+#### 2c — uitnodigingslink in Safari (08-09)
+
+**Melding:** op 08-09 08:31 (NL) opende een uitnodigingslink op een iPhone in Safari i.p.v. in de app.
+**Toetsing (agent BLOK 2, 08-09, code + live):**
+
+- **AASA live OK:** `curl https://app.administratiekantoornijenhuis.nl/.well-known/apple-app-site-association`
+  → HTTP 200, `content-type: application/json`, 210 bytes: `applinks.details[0].appIDs =
+  ["VRQP26CX43.nl.aknijenhuis.goedkeuren"]`, `components = [{"/": "/accordeur*"}, {"/": "/activeren*"}]`
+  (+ `webcredentials` voor de passkeys). `/activeren` staat er dus in; de uitnodigingsmail linkt rechtstreeks
+  (`{app_basis_url}/activeren?token=…`, `berichten/uitnodigingsmail.py`), geen tracking-redirect ertussen.
+- **Build 44 heeft dit gedrag (Safari) NIET door de AASA maar door de app zelf:** build 44 is vóór 04-09 gebouwd
+  (review-log 04-09 09:49 UTC); de E1-fix (`@capacitor/app` toegevoegd, `native/package.json`, commit `e40b91f`)
+  dateert van 06-09 11:43. Zonder die plugin komt een universal link wél de app in, maar het `appUrlOpen`-event
+  bereikt de webcode nooit → login-scherm; dát was de casus van 04-09. **"Opent in Safari" is een ándere
+  faalvorm:** dan heeft iOS de link niet eens aan de app gegeven.
+- **Build 89 bevat E1:** het is de eerstvolgende Xcode Cloud-build op `main` ná `e40b91f`/`0f6a085`
+  (Package.swift 07-09); Xcode Cloud draait `bouw-web --mode native` + `cap sync ios` → `@capacitor/app` zit in de
+  bundel (`capacitor.plugins.json`, 12d). Toets op het toestel: Toegang › Diagnose toont `app 1.0 (89)`.
+- **Waarom dan tóch Safari (08-09)?** Niet live vast te stellen zonder het toestel; de bekende oorzaken, in
+  volgorde van waarschijnlijkheid: (1) op dat toestel stond op 08:31 nog build 44 (of géén TestFlight-build) —
+  universal links werken alleen als de geïnstalleerde app de AASA bij installatie heeft opgehaald; ná een
+  (her)installatie duurt dat soms minuten; (2) de gebruiker heeft eerder rechtsboven "Openen in Safari" gekozen
+  of de link lang ingedrukt → iOS onthoudt die keuze per domein (herstel: link in Safari openen → banner
+  "Open in app" tikken, óf lang-drukken op de link → "Openen in Nijenhuis"); (3) de link is niet vanuit de
+  mail-app maar vanuit Safari zelf gevolgd (zelfde-domein-navigatie triggert nooit een universal link) of via een
+  omhullende mailclient (Outlook Safe Links-achtige redirect) — de mail van het kantoor zelf linkt direct.
+  Werkende terugval bestaat al sinds E2: in de app "Nog niet geactiveerd? → Link plakken" accepteert dezelfde URL.
+- **Advies:** eerst het buildnummer op het toestel controleren (diagnoseregel) en de gebruiker de lang-druk-route
+  laten proberen; pas als build 89 aantoonbaar draait én de link uit de kantoormail nog steeds in Safari opent, is
+  het een echte E1-regressie (dan: `sysdiagnose`/`swcutil` niet nodig — `Instellingen › Ontwikkelaar ›
+  Universal Links › Diagnostics` op het toestel geeft het AASA-oordeel direct).
 
 ## 1. App-registratie in App Store Connect (A4)
 
@@ -272,6 +334,12 @@ webcode wijzigen: eerst `cd native && npm run bouw-web && npx cap sync ios`.
    - **Internal Testing** → **+** naast Internal Testing → groep "Interne test" →
      voeg jezelf toe (je ASC-gebruiker) → selecteer de build. Interne testers = geen
      beta-review nodig; je krijgt direct de TestFlight-uitnodiging per mail.
+     **Let op (08-09):** Internal Testing kan uitsluitend App Store Connect-teamleden
+     bevatten (een gebruiker met een rol op déze app in ASC — Admin/App Manager/Developer/
+     Marketing e.d.), geen los e-mailadres. Kantoormedewerkers die geen ASC-teamlid zijn
+     (de gewone situatie) kun je dus niet als interne tester toevoegen — voor hen is de
+     **External Testing**-groep de juiste weg (los e-mailadres volstaat, wél een eenmalige
+     lichte beta-review door Apple per build/groep, geen store-review). Zie §5 "Daarna".
 8. iPhone: installeer **TestFlight** uit de App Store → open de uitnodiging → installeer
    "Nijenhuis Boekingsmodule" (op het beginscherm heet de app kort "Nijenhuis").
    NB dit vervangt de kabel-/dev-build op het toestel.
@@ -292,8 +360,12 @@ plekken) — het is een óf-óf-schakelaar.
 
 ## 5. Daarna
 
-- Interne test met jou (en desgewenst kantoor) — de accordeurs blijven op de PWA tot de
-  echte uitrol (PWA blijft terugval, besluit 14-08).
+- Interne test met jou (ASC-teamlid) — de accordeurs blijven op de PWA tot de echte
+  uitrol (PWA blijft terugval, besluit 14-08). **Wil je kantoormedewerkers (Boekhouding e.d.)
+  laten meekijken:** die zijn normaliter géén ASC-teamlid, dus niet toe te voegen aan
+  Internal Testing (08-09-advies) — gebruik daarvoor de External Testing-groep (los
+  e-mailadres, met een eenmalige lichte beta-review per build/groep, geen volle
+  store-review).
 - Externe TestFlight-groepen of App Store-release = beta-/app-review → dan moeten §0
   (demo-account geseed + geactiveerd) en §1 (reviewnotities) af zijn.
 - Android/Firebase-ronde: eigen draaiboek `native/PLAY_DRAAIBOEK.md` (bouwronde 28-08 —

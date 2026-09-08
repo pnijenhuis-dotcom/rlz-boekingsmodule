@@ -147,10 +147,12 @@ class Administratie(Base):
     # Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles
     # groen is — opt-in per administratie, default UIT, Beheerder-only (app/omzet/autoboeken.py).
     omzet_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
-    # Duplicaat-auto-afvoer (migratie 0105) — VERVALLEN als gedrag sinds blok A1 04-09 (besluit Peter:
-    # standaard AAN voor de hele module, één platformbrede noodrem `DuplicaatAfvoerInstelling`, migratie
-    # 0109). De kolom blijft staan (geen drop, geen backfill) maar wordt door het automatische pad, de UI,
-    # de API en de CLI niet meer gelezen of geschreven.
+    # Duplicaat-auto-afvoer (migratie 0105) — VERVALLEN sinds 04-09 (blok A1, besluit Peter): geen
+    # lezer meer — het automatische pad, de UI, de API en de CLI lezen/schrijven deze kolom niet
+    # meer; alleen de platformbrede noodrem `DuplicaatAfvoerInstelling.platformbreed_ingeschakeld`
+    # (migratie 0109, standaard AAN voor de hele module) stuurt. Kolom blijft staan (geen drop, geen
+    # backfill) tot een aparte opruim-migratie — herbevestigd + gecontroleerd (frontend/backend
+    # grep, 0 lezers buiten de kolomdefinitie zelf) in de fixrun blok 8, 08-09-2026.
     duplicaat_autoafvoer_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Btw-default per administratie (blok E medewerker-wensen 04-09, migratie 0108, mockup
     # `projectverdeling-en-regelvoorstellen.html` blok 3 + notitie ⑧): standaard-btw-voorstel dat in de

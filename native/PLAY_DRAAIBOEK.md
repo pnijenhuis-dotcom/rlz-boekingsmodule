@@ -444,6 +444,38 @@ gesigneerd met de upload-key (staat in de live assetlinks) tegen productie:
   sessie … ms · server … ms · netwerk … ms · totaal … ms · dd-mm HH:MM` (lokaal, nooit naar de server).
   `app 1.0 (3)` bevestigt de juiste versionCode; een screenshot vervangt `chrome://inspect`.
 
+> **Aanvulling 08-09 (bouwagent BLOK 8) — Play-bewijs 07-09 toonde "Ongeldige inloggegevens":**
+> tijdens (of kort na) de herstel-run van 07-09 gaf een Play-testpoging op het demo-account de
+> melding "Ongeldige inloggegevens" — geverifieerd in de code dat dit de generieke, opzettelijk
+> niet-onthullende foutmelding is die het backend-endpoint `POST /auth/accordeur/login` teruggeeft
+> als **HTTP 401** (`webauthn_service.start_accordeur_login`: elk faalpad — onbekend e-mailadres,
+> verkeerde rol/status, of een fout wachtwoord via `verify_password` — geeft dezelfde tekst
+> `"Ongeldige inloggegevens"`, bewust géén account-enumeratie; `backend/app/auth/router.py` vertaalt
+> `AuthError` op deze route naar `HTTP_401_UNAUTHORIZED`). Dat is dus GEEN app-fout en geen aparte
+> bug — het is precies het gedrag dat een verkeerd wachtwoord hoort te geven. **Aannemelijkste
+> verklaring:** het demo-wachtwoord is op 07-09 tweemaal gewijzigd (een ochtend-reset vóór 13:27
+> UTC, daarna nogmaals door de fixrun van blok PLAY om 13:27 UTC — zie de "Herstel"-bullets
+> hierboven) — een testpoging met een wachtwoord van vóór 13:27 UTC (bv. het ochtendwachtwoord, of
+> een reviewer/Peter die het net ververste wachtwoord nog niet had) faalt daarna correct met 401.
+> **Niet live geverifieerd:** de gcloud-tokens waren bij het schrijven van deze aanvulling verlopen
+> (`gcloud auth print-access-token` → Reauthentication failed), dus de exacte timing kon niet tegen
+> Cloud Logging getoetst worden. Klaargezet commando (ná `gcloud auth login`) om te bevestigen dat
+> de 401-poging(en) vóór 13:27 UTC liggen (dus verklaard door het oude wachtwoord) en niet erna
+> (wat een nieuw probleem zou zijn):
+> ```bash
+> gcloud logging read '
+>   resource.type="cloud_run_revision"
+>   resource.labels.service_name="rlz-backend"
+>   httpRequest.requestUrl:"/auth/accordeur/login"
+>   httpRequest.status=401
+>   timestamp>="2026-09-07T00:00:00Z"
+>   timestamp<="2026-09-08T00:00:00Z"
+> ' --project rlz-boekhouding --format=json --limit 50
+> ```
+> Toets ook `platform.audit_event` (actie `login_mislukt`) op dezelfde vensters voor een tweede
+> bevestiging. Bevestigt de log geen 401-pogingen rond die tijd, dan is de "ochtend-reset"-verklaring
+> onjuist en moet de wortel opnieuw onderzocht worden.
+
 **Klikwerk Peter (Play Console):** Policy → **App content → App access** → de instructie
 *Demo-account review* bewerken: username `p.nijenhuis+applereview@kempengroep.nl`, password = het
 nieuwe wachtwoord, "Any other information" = §11 → Save. Daarna de afgewezen release opnieuw ter
@@ -455,35 +487,29 @@ moet volledig in App access staan.
 
 Velden: *Instruction name* `Demo-account review` · *Username* `p.nijenhuis+applereview@kempengroep.nl`
 · *Password* `<wachtwoord uit het eindrapport>` · *Any other information* = onderstaande tekst
-(Engels; past in het veld — ± 1.000 tekens). Stap 1 is bewust "tik Inloggen met wachtwoord": de
-app opent op het passkey-eerst-scherm en een reviewer met alleen gebruikersnaam/wachtwoord loopt
-daar anders dood.
+(Engels). Stap 1 is bewust "tik Inloggen met wachtwoord": de app opent op het passkey-eerst-scherm
+en een reviewer met alleen gebruikersnaam/wachtwoord loopt daar anders dood.
+
+> **Correctie 08-09 (bouwagent BLOK 8):** "Any other information" is in Play Console een veld met
+> een harde limiet van **500 tekens** — de eerder hier vermelde tekst was 1.272 tekens en paste
+> dus NIET (± "1.000 tekens" hierboven was een schatting, geen meting). Onderstaande tekst is
+> ingekort tot **497 tekens** (geteld met Python `len()` op de kale string, incl. spaties/regel-
+> einden, exclusief de code-fence) — dit is de tekst zoals op 07-09 ingediend in Play Console.
+> Dezelfde vijf stappen en dezelfde platform-uitleg blijven inhoudelijk gelijk aan de eerdere,
+> langere versie; alleen de bewoording is compacter. Wijzig je de tekst ooit weer: tel opnieuw
+> vóór het opslaan (`python3 -c "print(len(open('tekst.txt').read()))"` op de kale string).
 
 ```
-Invitation-only business app (no self-registration). Use the demo account above.
+Invitation-only app. BEFORE sign-in: set a screen lock + add a Google account — Android creates a passkey via Credential Manager, needing both; without them: "No create options available" (platform, not a defect).
 
-BEFORE the first sign-in, prepare the test device:
-(a) set a screen lock (PIN, pattern or password) and
-(b) sign in to a Google account on the device.
-The first sign-in creates a passkey through Android Credential Manager / Google Password Manager,
-which requires both. Without them Android reports "No create options available" and the sign-in
-cannot complete — this is platform behaviour, not an app defect.
+Steps: 1) Tap "Inloggen met wachtwoord" (below passkey button). 2) Enter e-mail/password, tap Inloggen. 3) Confirm passkey prompt. 4) Choose a 5-digit app code. 5) Approval queue appears; tap invoice, approve/reject.
 
-Steps:
-1. Open the app. On the first screen tap the white button "Inloggen met wachtwoord"
-   (= sign in with password), below the green passkey button.
-2. Enter the demo e-mail and password and tap "Inloggen".
-3. Confirm the Android passkey prompt (Google Password Manager) with the screen lock or
-   fingerprint. A passkey is created for this device.
-4. Choose a 5-digit app code and repeat it. This code unlocks the app on later launches; the
-   password is never asked again on this device.
-5. The approval queue with fictitious demonstration invoices appears. Tap an invoice to view the
-   PDF and approve ("Akkoord") or reject ("Afwijzen"); the next invoice opens automatically.
-
-If step 3 fails, add a Google account and a screen lock to the device and repeat from step 1.
+If step 3 fails: add Google account + screen lock, retry step 1.
 ```
 
-**Dezelfde tekst voor App Store Connect › App Review Information › Notes** (toestel-/simulator-
-neutraal; iOS-vereiste = toestelcode + iCloud-sleutelhanger i.p.v. schermvergrendeling + Google-
-account) staat volledig in **TESTFLIGHT_DRAAIBOEK.md §1 stap 6** — beide teksten samen vormen de
-reviewnotities van 07-09; wijzig ze samen.
+**App Store Connect › App Review Information › Notes** is een ANDER, veel ruimer veld (geen
+500-tekens-limiet) en draagt daarom de volledige, uitgeschreven iOS-tekst — zie
+**TESTFLIGHT_DRAAIBOEK.md §1 stap 6**. De twee teksten zijn dus bewust niet meer letterlijk
+gelijk (Play kort, ASC uitgebreid); beide vormen samen de reviewnotities van 07-09 en dragen
+dezelfde kernboodschap (toestelvereisten vóór de eerste login, dezelfde vijf stappen) — wijzig ze
+samen als de flow verandert.
