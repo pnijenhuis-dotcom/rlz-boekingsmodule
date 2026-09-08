@@ -209,6 +209,30 @@ PLAY_DRAAIBOEK §3 (versionCode 3).
   het een echte E1-regressie (dan: `sysdiagnose`/`swcutil` niet nodig — `Instellingen › Ontwikkelaar ›
   Universal Links › Diagnostics` op het toestel geeft het AASA-oordeel direct).
 
+### 0d. Reviewer-poging 07-09 22:01 NL — gestrand op de passkey-registratie (herstelrun "Basis eerst" 08-09, blok 9)
+
+- **Wat er gebeurde (audit + Cloud Logging, read-only):** het App-review-demo-account op een iPhone, iOS 18.7, in de
+  Capacitor-schil (Apple-IP-range) — 19:55Z twee mislukte logins (401), daarna 19:59–20:03Z **zeven keer** wachtwoordstap
+  OK gevolgd door `POST /auth/webauthn/registratie/opties` (200) en NOOIT `/registratie/voltooien`. De reviewer strandde
+  dus zeven keer op de passkey-registratie: zonder iCloud-sleutelhanger kan iOS de passkey niet aanmaken (platformgedrag,
+  zelfde wortel als de Play-afwijzing 07-09). Sinds build 89/90 toont de app dit eerlijk (`passkeyFouten.ts`).
+- **Wat de reviewnotities hiervoor nu bevatten (§1 stap 6, letterlijk):** *"IMPORTANT — device prerequisites for the
+  first sign-in: … This requires a device passcode and iCloud Keychain (Passwords) to be enabled and signed in on the
+  test device. Without them iOS cannot store the passkey and the sign-in cannot complete; this is platform behaviour,
+  not an app defect."* en *"If step 3 fails with a passkey error: enable iCloud Keychain (Settings > [Apple ID] > iCloud >
+  Passwords & Keychain) and set a device passcode, then repeat from step 1."* Die tekst dekt het scenario inhoudelijk;
+  of hij op 07-09 22:01 al in App Store Connect stónd is niet vast te stellen (klikwerk §0b stap 2).
+- **Klikwerk Peter:** (1) controleren of de §1-notes in ASC › App Review Information › Notes staan, anders overnemen;
+  (2) beslispunt: één extra openingsregel bovenaan de Notes — *"REVIEWER: please enable iCloud Keychain (Settings >
+  [your name] > iCloud > Passwords & Keychain) and a device passcode BEFORE the first sign-in — on 7 Sept 2026 the
+  passkey registration failed seven times on a test iPhone (iOS 18.7) because iCloud Keychain was off. Without it iOS
+  cannot create the passkey; the app itself has no other sign-in route by design."*; (3) Resolution Center-reply +
+  "Update Review" op de versiepagina.
+- **Build 90 / versionCode 4 (08-09):** iOS: geen pbxproj-bump nodig (`ci_post_clone.sh` zet `CURRENT_PROJECT_VERSION`
+  uit `CI_BUILD_NUMBER`); build 90 = de eerstvolgende Xcode Cloud-build op `main` ná de push van de herstelrun.
+  Android: AAB `native/android/app/release/nijenhuis-goedkeuren-1.0-vc4-20260908-1536.aab` (gitignored, versionCode 4,
+  upload-key-signatuur ✓, bundletool ✓) — uploaden op de interne test-track (PLAY §4), niets ingediend.
+
 ## 1. App-registratie in App Store Connect (A4)
 
 Vooraf: door de kliktest-builds met "automatically manage signing" bestaat het App ID

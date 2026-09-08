@@ -243,6 +243,18 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Duplicaten blok D herstelrun 07-09 (beeld-sha van een gebundeld document = categorie (a) zonder migratie, gesplitste delen nooit (b)/(c) zonder referentie/totaal, Odoo-crediteur zonder partner-koppeling = leesbare blokkerende check i.p.v. 500; live Universal 12 Floor-PDF's afgevoerd):** zie BESLISSINGEN "HERSTELRUN 07-09 — BLOK D".
 - **Duplicaten-UI — eigen status `afgevoerd_duplicaat` (blok 3 bundel 08-09; migratie 0122; herziet "afgevoerd = afgewezen mét kruisverwijzing"):** telt in geen werkvoorraad-teller/-tab mee, terugvindbaar via Archief/Zoeken + toggle "Toon afgevoerde documenten", reden "automatisch (duplicaatregel)", backfill-CLI `duplicaat-status-backfill` — zie BESLISSINGEN "DUPLICATEN-UI — EIGEN STATUS `afgevoerd_duplicaat`".
 - **Afgehandelde documenten — één toggle (definitieve aanvulling blok 3, Peter 08-09):** eindstatussen `samengevoegd`/`afgevoerd_duplicaat`/`verwijderd`/`afgewezen` (`AFGEHANDELDE_STATUSSEN`) standaard niet in de documentenlijst en niet in "Alle"; toggle "Toon afgehandelde documenten (N)" toont ze grijs mét reden + "→ samengevoegd in ‹document›"/"→ duplicaat van ‹document›"; tellers reizen altijd mee (`tel_afgehandeld`, chip afgewezen blijft); ⋯-menu op zo'n rij alleen Openen/Toon origineel (+ Herstellen bij verwijderd); chip "N exemplaren samengevoegd" op het echte document; boeken/aanbieden = 409 (`DocumentNietAanbiedbaar`). Plus de live-uitkomsten van de cloud-scripts (wachtrij-restoorzaak = doorbelasting-`review_data` per item, `rlz_dubbel` bij Kempen 516 paren = niet inzetbaar, backfills uitgevoerd) — zie BESLISSINGEN "NAZORGRUN 08-09 — CLOUD-UITKOMSTEN BUNDEL 08-09 + AANVULLING BLOK 3".
+- **Herstelrun "Basis eerst" 08-09 (besluit Peter: nieuwe definitie van "af" = gouden set groen + productie-nameting + rapportregel "werkt in productie: ja/nee"; geen nieuwe functies, elf blokken; migraties 0123–0124):** overzicht + per-blok-secties — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — OVERZICHT".
+- **Gouden set = verplichte poort (blok 0):** `backend/tests/keten/` + `frontend/scripts/keten_sweep.sh`, guard `tests/unit/test_keten_guard.py` — zie BESLISSINGEN "GOUDEN SET — KETENTEST OP ECHTE DOCUMENTEN" en § Werkwijze hieronder.
+- **Wachtrij accordeur-app doorbelasting in bulk (blok 1):** `verdeling_per_doelentiteit_bulk`, statement-aantal constant per administratie — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 1".
+- **Extractie-wachtrij-trigger (blok 2):** trigger werkt in productie sinds revisie 00462 (13/13 uploads → job-executie < 1 s); audit-spoor `extractie_wachtrij_trigger` + teller in de reconciliatiemail — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 2".
+- **UBL is deterministisch (blok 3):** kop, crediteur (btw → KvK → IBAN → naam), regels en datums rechtstreeks uit de XML bij intake (`app/documenten/ubl_voorstel.py`), AI hooguit aanvullend; crediteur-dialoog gevuld uit UBL, PDF-in-verwerking toont "Verwerking loopt — velden volgen" — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 3".
+- **RLZ-bestaanscheck op het juiste moment (blok 4):** al geboekt in RLZ/Odoo = direct `afgevoerd_duplicaat` mét boekstuknummer (UBL bij intake, PDF ná extractie), geen credential = zichtbaar overgeslagen; chip "N exemplaren samengevoegd/afgevoerd" — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 4".
+- **Klant-accordeurs: scope vanuit de accordeur (blok 5):** "Administraties toevoegen…" over `POST /accordering/bulk-instellen`, verwijderen mét vervallen-rondes- en laatste-laag-waarschuwing (`aanleiding` in audit + tijdlijn), gearchiveerde administraties als naam mét status — zie BESLISSINGEN "KLANT-ACCORDEURS — SCOPE VANUIT DE ACCORDEUR".
+- **Verlegd-tarief deterministisch (blok 6; migratie 0123):** `voorkeurs_verlegd_taxrate_id` per administratie (Beheerder) → meest gebruikt in RLZ-historie → bestaand pad → default, mét herkomst-chip — zie BESLISSINGEN "VERLEGD-TARIEF DETERMINISTISCH KIEZEN".
+- **Reconciliatie `rlz_dubbel` alleen op referentie (blok 7):** bedrag+datum vervallen, placeholder-referenties tellen als leeg; BOOT 202632703/04 = aanvaarde grens — zie BESLISSINGEN "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 7".
+- **Rapport verwijderde documenten Universal Steigerbouw 08-09 (blok 8, alleen lezen):** 222 verwijderd "dubbel", 197 zonder ander exemplaar — zie BESLISSINGEN "RAPPORT VERWIJDERDE DOCUMENTEN UNIVERSAL STEIGERBOUW 08-09".
+- **Hercontrole projectverdeling (blok 10; migratie 0124):** lege omzetstand = bevinding "omzetcijfers ontbreken" mét actie cijfers-sync, geen signaal onder de drempel, hercontrole alleen ná afsluiting van de referentiemaand — zie BESLISSINGEN "HERCONTROLE PROJECTVERDELING — VALSE SIGNALEN, CADANS, BEVINDING".
+- **Lijst-aanvulling — de standaardlijst is kantoorwerk (blok 11, besluit Peter 08-09):** `geboekt` onder de toggle afgehandeld (grijs, boekstuknummer, "Open in Reeleezee/Odoo"), tab "Geboekt (N)" vervalt, "Wachten op anderen (N)" = ter accordering + open vraag en telt niet in "Alle", `?groep=kantoor|wachten|afgehandeld`; klantenlijst-tellers/KPI's tellen alles — zie BESLISSINGEN "LIJST-AANVULLING — DE STANDAARDLIJST IS KANTOORWERK".
 - **Verplichtingen — offerte-accordering + factuur↔offerte-match** (documenttype `verplichting`, géén RLZ-/Odoo-boeking,
   deterministische match-motor `app/verplichting/match.py`, nooit blokkade; migratie 0110) — zie BESLISSINGEN
   "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09", mockup `offerte-matching.html`.
@@ -517,6 +529,21 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 
 ## Werkwijze
 
+- **Gouden set = verplichte poort (besluit Peter 08-09, herstelrun "Basis eerst" blok 0):** `backend/tests/keten/` is één
+  ketentest op échte, geanonimiseerde productiedocumenten (Universal Nederland RLZ-2080143037, Floor 26219, Spot Services
+  2026-608, Universal-Nederland-splitsing RLZ-2080143038/39, BOOT-creditnota 202633199, BDO 6088744, DCTE 202611050, Kader
+  F212604921) door intake → bundeling/nabundel → extractie (deterministische stub speelt de bewaarde AI-uitkomst af, nooit
+  een echte AI-call) → prefill → checks → lijst-DTO → afvoer/status, plus het frontend-harnas `harness-keten.html` +
+  `frontend/scripts/keten_sweep.sh` (echte controlescherm en documentenlijst op exact de door de backend geëxporteerde
+  DTO's, pixelvergelijking tegen `frontend/scripts/keten_baseline/`). **Definitie van "af" voor élk blok dat intake/
+  controlescherm/lijst/accordeur-app raakt: (1) gouden set groen (doelgedrag dat nog niet staat is `xfail(strict, reason=
+  "blok N — …")`, de eigenaar haalt zijn xfail weg — nooit de assert), (2) productiegedrag ná deploy nagemeten met een
+  vooraf genoemd meetrecept, (3) het rapport zegt letterlijk "werkt in productie: ja/nee".** Guard:
+  `tests/unit/test_keten_guard.py` — een werkboom-wijziging onder app/intake, app/extractie, app/documenten of
+  frontend/src/document zonder aanraking van tests/keten is rood. Nieuwe echte casus toevoegen = fixture-map onder
+  `tests/keten/fixtures/` (UBL geanonimiseerd, PDF nooit als echte bytes — kerntekst in `pdf_tekst.json`, AI-uitkomst als
+  `ai_antwoord.json`, herkomst in `bron.json`); nooit BSN's — zie BESLISSINGEN "GOUDEN SET — KETENTEST OP ECHTE DOCUMENTEN
+  (blok 0 herstelrun 08-09)".
 - **`docs/BESLISSINGEN.md` is de verplichte eerste check vóór elk feature-voorstel of bouwstart**
   (pre-feature-ritueel, `Platform/WERKWIJZE.md` v1.9 — incl. de bindende
   bron-vs-realiteit-verificatie, de periodieke drift-audit én de **UX-review vóór elke

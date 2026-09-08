@@ -6,6 +6,33 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-08 — Basis eerst: UBL direct gevuld, lijst = kantoorwerk, duplicaten en verlegd-btw deterministisch
+
+<!-- herstelrun-basis-eerst-08-09 -->
+- Achter de schermen: elke wijziging aan het inlezen van facturen, het controlescherm en de documentenlijst wordt nu eerst getoetst op een vaste set échte (geanonimiseerde) facturen uit de praktijk — onder meer een factuur die twee keer binnenkwam, een factuur met UBL én PDF, een scan met tariefregels, een gesplitste meervoudige PDF en een creditnota. Pas als die set klopt én het gedrag na de uitrol in de praktijk is nagekeken, geldt een verbetering als klaar.
+- Het controlescherm en de documentenlijst worden voor die facturen ook als plaatje vergeleken met de vorige versie, zodat een onbedoelde wijziging in het scherm direct opvalt.
+- De wachtrij in de goedkeur-app laadt weer snel, ook als veel facturen een doorbelasting hebben: de verdeling per bedrijf wordt nu in één keer voor de hele lijst opgehaald in plaats van per factuur. Wat u op de kaart ziet (bedrijf, aandeel, bedrag, provisie) is ongewijzigd.
+- In de samenvatting van de dagelijkse controle staat nu ook of de directe verwerking van geüploade facturen goed is gestart; mislukt dat een keer, dan ziet u dat als aandachtspunt (de factuur wordt dan binnen tien minuten alsnog verwerkt).
+- Een digitale factuur (UBL/XML) is nu direct compleet bij binnenkomst: leverancier (herkend op KvK-, btw-nummer, IBAN of naam), factuurnummer, factuur- en vervaldatum, totaal en factuurregels mét btw-code staan al klaar vóór u het document opent — zonder AI en zonder wachten op "Wordt verwerkt…".
+- "+ Nieuwe crediteur in RLZ" is bij zo'n factuur voorgevuld met naam, KvK-nummer, btw-nummer, IBAN en het adres uit de factuur (gemarkeerd "uit UBL"); bij een gescande PDF die nog verwerkt wordt zegt het venster dat de velden nog volgen, in plaats van leeg te blijven.
+- De duplicaatcontrole zegt precies wat er nog ontbreekt ("kies of maak de crediteur; het factuurnummer is bekend") en niet meer "zonder crediteur en referentie" terwijl het factuurnummer er al staat.
+- Staat een factuur al geboekt in Reeleezee (buiten de app om), dan wordt het binnengekomen exemplaar direct afgevoerd met de reden "Al geboekt in RLZ (buiten de module)" én het boekstuknummer — zodra leverancier en factuurnummer bekend zijn, dus bij een UBL al bij binnenkomst en bij een PDF direct na de uitlezing. Terug te vinden via "Toon afgehandelde documenten".
+- Kan die controle niet draaien (geen Reeleezee-koppeling), dan staat dat als regel in de tijdlijn van het document; de factuur blijft gewoon in de werkvoorraad.
+- Op het echte document ziet u nu "N exemplaren samengevoegd/afgevoerd" — ook de als duplicaat afgevoerde exemplaren tellen mee.
+- Bij Gebruikers › Klant-accordeurs kun je per accordeur de administraties nu direct beheren: "beheren" opent het lijstje met per administratie een link naar de accorderingsinstellingen van die klant.
+- "Administraties toevoegen…" kiest een of meer klanten en zet de accordeur in één keer in de klant-accordering van die klanten, met vooraf een overzicht van wat er verandert.
+- "Verwijderen…" haalt de accordeur uit de accordering en de toegang van die klant, met vooraf de waarschuwing welke lopende accorderingen daardoor vervallen.
+- Een gearchiveerde klant heet nu gewoon bij zijn naam met "— gearchiveerd" erachter, in plaats van een technische code.
+- Facturen met "btw verlegd" krijgen nu altijd een eenduidige verlegd-code voorgesteld: eerst uw eigen voorkeur per administratie, anders de code die in de Reeleezee-historie van die administratie het meest gebruikt is — nooit meer toeval. Het controlescherm laat bij de btw-code zien waaróm die code gekozen is ("voorkeur beheerder", "meest gebruikt in RLZ-historie (12×)", "administratie-default").
+- Instellingen › Administraties › Boeken & AI heeft een nieuwe rij "Verlegd-tarief bij btw verlegd": kies een vaste verlegd-code of laat de historie beslissen; de rij toont wat er nu gekozen wordt en waarom.
+- De dagelijkse controle "mogelijk dubbel geboekt in Reeleezee" kijkt nu alleen nog naar facturen van dezelfde leverancier met hetzelfde factuurnummer. Facturen met alleen hetzelfde bedrag op dezelfde dag (bijvoorbeeld reeksfacturen) worden niet meer gemeld, en algemene teksten als "Ingescand document" tellen niet als factuurnummer.
+- De hercontrole van de projectverdeling gaf bij pas geboekte facturen een vals signaal ("0 % afwijking", nieuwe verdeling € 0,00). Dat is opgelost: een verdeling wordt pas gecontroleerd als de omzetmaand voorbij is, nooit in de maand van boeken, en hooguit één keer per maand.
+- Ontbreken de omzetcijfers voor een maand, dan ziet u dat nu als aparte melding "omzetcijfers ontbreken voor ‹maand›" met de knop "Cijfers-sync starten" — in plaats van een herverdeling met lege bedragen.
+- De documentenlijst van een klant toont nu alleen nog wat het kantoor zelf moet doen: controleren, boeken, afmaken, mislukte boekingen en twijfelgevallen. "Alle" telt precies dat.
+- Documenten die bij de klant ter accordering liggen of waar een vraag over openstaat, staan bij elkaar onder één knop "Wachten op anderen (N)". Ze tellen niet mee in "Alle".
+- Geboekte documenten staan niet meer tussen het werk. Zet "Toon afgehandelde documenten" aan en ze verschijnen grijs, met het boekstuknummer en "Open in Reeleezee" (of Odoo). Zoeken en Archief vinden ze zoals altijd.
+- Oude links naar een status (bijvoorbeeld "bij klant" of "geboekt") blijven werken.
+
 ## 2026-09-08 — Snellere accordeur-app, controlescherm scherper, duplicaten uit het zicht
 
 <!-- bundel-08-09 blok 1 -->
