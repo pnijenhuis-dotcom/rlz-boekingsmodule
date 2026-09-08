@@ -1,0 +1,872 @@
+{
+ "casus": "b_floor",
+ "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+ "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+ "detail": {
+  "id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+  "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+  "status": "te_controleren",
+  "bron": "email",
+  "soort": "inkoopfactuur",
+  "mogelijk_duplicaat_van": null,
+  "toegewezen_aan": null,
+  "aangemaakt_op": "2026-09-08T12:00:00Z",
+  "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+  "veldvoorstel": {
+   "bron": "ubl",
+   "iban": "NL63KETN1000000004",
+   "valuta": "EUR",
+   "btw_nummer": "NL100015839B01",
+   "klant_naam": "Universal steigerbouw BV",
+   "kvk_nummer": "91000002",
+   "totaal_btw": "436.80",
+   "ubl_regels": [
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 1,
+     "netto_bedrag": "0.00",
+     "omschrijving": "Plaats: Zwolle",
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 2,
+     "netto_bedrag": "0.00",
+     "omschrijving": null,
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 3,
+     "netto_bedrag": "0.00",
+     "omschrijving": "Project: 25011",
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 4,
+     "netto_bedrag": "0.00",
+     "omschrijving": null,
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 5,
+     "netto_bedrag": "0.00",
+     "omschrijving": "Periode: 01-07 t/m 31-07",
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 6,
+     "netto_bedrag": "0.00",
+     "omschrijving": null,
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "33.00",
+     "soort": null,
+     "aantal": "10.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "69.30",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "volgnummer": 7,
+     "netto_bedrag": "330.00",
+     "omschrijving": "Huur per werkdag:",
+     "btw_categorie": "S",
+     "btw_percentage": "21.00",
+     "btw_afleiding_reden": null
+    },
+    {
+     "prijs": "0.00",
+     "soort": null,
+     "aantal": "0.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "taxrate_id": null,
+     "volgnummer": 8,
+     "netto_bedrag": "0.00",
+     "omschrijving": null,
+     "btw_categorie": "Z",
+     "btw_percentage": "0.00",
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "prijs": "1400.00",
+     "soort": null,
+     "aantal": "1.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "294.00",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "volgnummer": 9,
+     "netto_bedrag": "1400.00",
+     "omschrijving": "Liftmontage 16.5m 6 et",
+     "btw_categorie": "S",
+     "btw_percentage": "21.00",
+     "btw_afleiding_reden": null
+    },
+    {
+     "prijs": "350.00",
+     "soort": null,
+     "aantal": "1.00",
+     "eenheid": "ZZ",
+     "gb_code": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "73.50",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "volgnummer": 10,
+     "netto_bedrag": "350.00",
+     "omschrijving": "transport aanvoer lift:",
+     "btw_categorie": "S",
+     "btw_percentage": "21.00",
+     "btw_afleiding_reden": null
+    }
+   ],
+   "referenties": [],
+   "regelaantal": 10,
+   "totaal_excl": "2080.00",
+   "totaal_incl": "2516.80",
+   "vervaldatum": "2026-09-12",
+   "factuurdatum": "2026-08-13",
+   "factuurnummer": "26219",
+   "is_creditnota": false,
+   "betalingskenmerk": null,
+   "leverancier_naam": "Floor Bouwliftenservice",
+   "vendor_suggestie": {
+    "match": "btw_nummer",
+    "vendor_id": "33333333-0000-0000-0000-000000000002"
+   },
+   "leverancier_adres": "Arie Jacob van Ogtenstraat 7, 4051 AM Ochten, NL",
+   "vendor_waarschuwing": null,
+   "btw_nummer_geverifieerd": true,
+   "gecrediteerde_factuurnummers": [],
+   "additional_document_reference_ids": [
+    "26219"
+   ]
+  },
+  "afwijzing": null,
+  "factuurmatch": null,
+  "herkomst_mail": {
+   "afzender": "administratie@universal-steigerbouw.example",
+   "onderwerp": "Facturen universal steigerbouw deel 5",
+   "ontvangen_op": "2026-09-08T12:00:00Z",
+   "body_tekst": "Bijgaand de factuur.",
+   "bron": "imap"
+  },
+  "bron_bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.pdf",
+  "tenaamstelling": "Universal steigerbouw BV",
+  "geboekt_in_rlz": null,
+  "tijdlijn": [
+   {
+    "van_status": null,
+    "naar_status": "ontvangen",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": null,
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "ontvangen",
+    "naar_status": "extractie_bezig",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": {
+     "reden": "extractie gestart"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_bezig",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": {
+     "veldvoorstel": {
+      "bron": "ubl",
+      "iban": "NL63KETN1000000004",
+      "valuta": "EUR",
+      "btw_nummer": "NL100015839B01",
+      "klant_naam": "Universal steigerbouw BV",
+      "kvk_nummer": "91000002",
+      "totaal_btw": "436.80",
+      "ubl_regels": [
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 1,
+        "netto_bedrag": "0.00",
+        "omschrijving": "Plaats: Zwolle",
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 2,
+        "netto_bedrag": "0.00",
+        "omschrijving": null,
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 3,
+        "netto_bedrag": "0.00",
+        "omschrijving": "Project: 25011",
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 4,
+        "netto_bedrag": "0.00",
+        "omschrijving": null,
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 5,
+        "netto_bedrag": "0.00",
+        "omschrijving": "Periode: 01-07 t/m 31-07",
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 6,
+        "netto_bedrag": "0.00",
+        "omschrijving": null,
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "33.00",
+        "soort": null,
+        "aantal": "10.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "69.30",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 7,
+        "netto_bedrag": "330.00",
+        "omschrijving": "Huur per werkdag:",
+        "btw_categorie": "S",
+        "btw_percentage": "21.00",
+        "btw_afleiding_reden": null
+       },
+       {
+        "prijs": "0.00",
+        "soort": null,
+        "aantal": "0.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "taxrate_id": null,
+        "volgnummer": 8,
+        "netto_bedrag": "0.00",
+        "omschrijving": null,
+        "btw_categorie": "Z",
+        "btw_percentage": "0.00",
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "prijs": "1400.00",
+        "soort": null,
+        "aantal": "1.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "294.00",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 9,
+        "netto_bedrag": "1400.00",
+        "omschrijving": "Liftmontage 16.5m 6 et",
+        "btw_categorie": "S",
+        "btw_percentage": "21.00",
+        "btw_afleiding_reden": null
+       },
+       {
+        "prijs": "350.00",
+        "soort": null,
+        "aantal": "1.00",
+        "eenheid": "ZZ",
+        "gb_code": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "73.50",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 10,
+        "netto_bedrag": "350.00",
+        "omschrijving": "transport aanvoer lift:",
+        "btw_categorie": "S",
+        "btw_percentage": "21.00",
+        "btw_afleiding_reden": null
+       }
+      ],
+      "referenties": [],
+      "regelaantal": 10,
+      "totaal_excl": "2080.00",
+      "totaal_incl": "2516.80",
+      "vervaldatum": "2026-09-12",
+      "factuurdatum": "2026-08-13",
+      "factuurnummer": "26219",
+      "is_creditnota": false,
+      "betalingskenmerk": null,
+      "leverancier_naam": "Floor Bouwliftenservice",
+      "vendor_suggestie": {
+       "match": "btw_nummer",
+       "vendor_id": "33333333-0000-0000-0000-000000000002"
+      },
+      "leverancier_adres": "Arie Jacob van Ogtenstraat 7, 4051 AM Ochten, NL",
+      "vendor_waarschuwing": null,
+      "btw_nummer_geverifieerd": true,
+      "gecrediteerde_factuurnummers": [],
+      "additional_document_reference_ids": [
+       "26219"
+      ]
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "te_controleren",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": true,
+    "detail": {
+     "boekvoorstel_prefill": {
+      "kop": {
+       "periode": {
+        "jaar": 2026,
+        "tekst": null,
+        "herkomst": "afgeleid_van_factuurdatum",
+        "week_tot": 33,
+        "week_van": 33
+       },
+       "vendor_id": "33333333-0000-0000-0000-000000000002",
+       "referentie": "26219",
+       "vervaldatum": "2026-09-12",
+       "factuurdatum": "2026-08-13",
+       "omschrijving": "Floor Bouwliftenservice 26219",
+       "totaalbedrag": "2516.80",
+       "betalingskenmerk": null,
+       "afdeling_prefill_id": null,
+       "omschrijving_herkomst": "afgeleid",
+       "afdeling_prefill_leverancier": null
+      },
+      "bron": "intake",
+      "regels": [
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur",
+         "project": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "69.30",
+        "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 1,
+        "netto_bedrag": "330.00",
+        "omschrijving": "Huur per werkdag:",
+        "project_bron": "factuur",
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+       },
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur",
+         "project": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "294.00",
+        "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 2,
+        "netto_bedrag": "1400.00",
+        "omschrijving": "Liftmontage 16.5m 6 et",
+        "project_bron": "factuur",
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+       },
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur",
+         "project": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "73.50",
+        "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 3,
+        "netto_bedrag": "350.00",
+        "omschrijving": "transport aanvoer lift:",
+        "project_bron": "factuur",
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+       }
+      ],
+      "triggers": [
+       "kop: ubl",
+       "project regel 1: factuur",
+       "project regel 2: factuur",
+       "project regel 3: factuur"
+      ],
+      "geopend_door": "00000000-0000-4000-8000-000000000020",
+      "veldvoorstel_bron": "ubl",
+      "regels_samenvoegen": false
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   }
+  ],
+  "duplicaat_afvoer": {
+   "kandidaat": null,
+   "afgevoerd_als_duplicaat_van": null,
+   "afgevoerde_duplicaten": [
+    {
+     "afwijzing_id": "00000000-0000-4000-8000-000000000021",
+     "document_id": "00000000-0000-4000-8000-000000000022",
+     "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+     "aangemaakt_op": "2026-09-08T12:00:00Z",
+     "referentie": "26219",
+     "automatisch": true,
+     "afgewezen_op": "2026-09-08T12:00:00Z",
+     "afgewezen_door": "00000000-0000-4000-8000-000000000020"
+    }
+   ],
+   "module_treffers": [],
+   "afmelding": null
+  }
+ },
+ "boekvoorstel": {
+  "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "vendor_id": "33333333-0000-0000-0000-000000000002",
+  "referentie": "26219",
+  "factuurdatum": "2026-08-13",
+  "vervaldatum": "2026-09-12",
+  "vervaldatum_signaal": null,
+  "betalingskenmerk": null,
+  "totaalbedrag": "2516.80",
+  "rlz_boekstuknummer": null,
+  "opgeslagen": true,
+  "prefill_automatisch": true,
+  "omschrijving": "Floor Bouwliftenservice 26219",
+  "omschrijving_herkomst": "afgeleid",
+  "periode": {
+   "jaar": 2026,
+   "week_van": 33,
+   "week_tot": 33,
+   "herkomst": "afgeleid_van_factuurdatum",
+   "tekst": null
+  },
+  "regels": [
+   {
+    "id": "00000000-0000-4000-8000-000000000023",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+    "netto_bedrag": "330.00",
+    "btw_bedrag": "69.30",
+    "omschrijving": "Huur per werkdag:",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000024",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+    "netto_bedrag": "1400.00",
+    "btw_bedrag": "294.00",
+    "omschrijving": "Liftmontage 16.5m 6 et",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000025",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
+    "netto_bedrag": "350.00",
+    "btw_bedrag": "73.50",
+    "omschrijving": "transport aanvoer lift:",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
+   }
+  ],
+  "regels_samenvoegen": false,
+  "samenvoegen_toegestaan": false,
+  "samengevoegde_regel": null,
+  "btw_verlegd_vermelding": null,
+  "afdeling_id": null,
+  "afdeling_prefill_id": null,
+  "afdeling_prefill_leverancier": null
+ },
+ "checks": {
+  "geblokkeerd": true,
+  "resultaten": [
+   {
+    "naam": "Verplichte velden",
+    "ok": false,
+    "melding": "Ontbrekend: grootboekrekening (alle 3 regels)",
+    "signaal": false
+   },
+   {
+    "naam": "Afdeling",
+    "ok": true,
+    "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Projectverdeling",
+    "ok": true,
+    "melding": "Geen projectverdeling van toepassing",
+    "signaal": false
+   },
+   {
+    "naam": "Regeltelling vs totaal",
+    "ok": true,
+    "melding": "Som van de regels (netto + btw € 2516.80) komt overeen met het totaal incl. (€ 2516.80)",
+    "signaal": false
+   },
+   {
+    "naam": "Vervaldatum",
+    "ok": true,
+    "melding": "Vervaldatum 2026-09-12 (termijn 30 dagen)",
+    "signaal": false
+   },
+   {
+    "naam": "Btw-tarief buitenland",
+    "ok": true,
+    "melding": "Geen EU-/buitenland-tarief op de regels",
+    "signaal": false
+   },
+   {
+    "naam": "IBAN-wissel",
+    "ok": true,
+    "melding": "Eerste IBAN voor deze crediteur (NL63KETN…004) vastgelegd als baseline — controleer het rekeningnummer op de factuur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaatcheck",
+    "ok": true,
+    "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat bij andere crediteur",
+    "ok": true,
+    "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat (module)",
+    "ok": true,
+    "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
+    "signaal": false
+   }
+  ]
+ },
+ "lijst": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+    "status": "te_controleren",
+    "bron": "email",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 1,
+    "afgevoerde_exemplaren": 1,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Floor Bouwliftenservice",
+    "totaalbedrag": "2516.80",
+    "factuurdatum": "2026-08-13",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 1,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 1
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 1
+  }
+ },
+ "lijst_afgehandeld": {
+  "documenten": [
+   {
+    "id": "00000000-0000-4000-8000-000000000022",
+    "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+    "status": "afgevoerd_duplicaat",
+    "bron": "email",
+    "samengevoegd_in": null,
+    "duplicaat_van": {
+     "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+     "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml"
+    },
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": {
+     "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+     "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+     "aangemaakt_op": "2026-09-08T12:00:00Z"
+    },
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": {
+     "id": "00000000-0000-4000-8000-000000000021",
+     "reden": "Duplicaat van 26219 (document Floor Bouwliftenservice - 26219 - 2026-08-13.xml van 2026-09-08 in de werkvoorraad)",
+     "afgewezen_door": "00000000-0000-4000-8000-000000000020",
+     "afgewezen_op": "2026-09-08T12:00:00Z",
+     "toegewezen_aan": null,
+     "status_voor_afwijzing": "te_controleren",
+     "duplicaat_van_document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+     "duplicaat_van_rlz_document_id": null,
+     "duplicaat_van_referentie": "26219",
+     "automatisch": true
+    },
+    "leverancier": "Floor Bouwliftenservice",
+    "totaalbedrag": "2516.80",
+    "factuurdatum": "2026-08-13",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": null
+   },
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
+    "status": "te_controleren",
+    "bron": "email",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 1,
+    "afgevoerde_exemplaren": 1,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Floor Bouwliftenservice",
+    "totaalbedrag": "2516.80",
+    "factuurdatum": "2026-08-13",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 1,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 1
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 1
+  }
+ }
+}

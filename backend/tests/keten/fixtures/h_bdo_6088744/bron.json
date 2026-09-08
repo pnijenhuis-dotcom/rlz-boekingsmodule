@@ -1,0 +1,8 @@
+{
+ "administratie": "Universal Steigerbouw B.V.",
+ "document_id": "bc5da422-5251-44f7-8053-284e67c1073f (te_controleren)",
+ "huls_id": "6119694a-6bbb-497b-911b-1d6af57df3ae",
+ "derde_exemplaar": "23465af9 (Fwd van Peter 07-09, UBL+PDF gebundeld, afgewezen als duplicaat, verwijderd 08-09)",
+ "intake_bericht": "c4743e14 ('Facturen universal steigerbouw', 2026-09-02) + 3d72c871 (07-09)",
+ "opmerking": "In productie kwam de PDF-AI-extractie eerst (factuurnummer '6088744/1101779'), de UBL zegt 6088744; ai_antwoord.json is die PDF-uitkomst (reconstructie)."
+}

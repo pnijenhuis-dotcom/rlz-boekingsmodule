@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Name: F212604921.xml
+	Generator: AFAS Profit 8
+	Date: 2-9-2026 15:50:03
+	Type: eBisV3
+	
+-->
+<Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+  <cbc:ID>F212604921</cbc:ID>
+  <cbc:IssueDate>2026-09-02</cbc:IssueDate>
+  <cbc:DueDate>2026-09-16</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cac:InvoicePeriod>
+    <cbc:StartDate>2026-08-25</cbc:StartDate>
+    <cbc:EndDate>2026-08-25</cbc:EndDate>
+  </cac:InvoicePeriod>
+  <cac:OrderReference>
+    <cbc:ID>.</cbc:ID>
+  </cac:OrderReference>
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>Projectfactuur F212604921.PDF</cbc:ID>
+    <cac:Attachment>
+      <cbc:EmbeddedDocumentBinaryObject filename="Projectfactuur F212604921.PDF" mimeCode="application/pdf">KETEN-INGESLOTEN-PDF</cbc:EmbeddedDocumentBinaryObject>
+    </cac:Attachment>
+  </cac:AdditionalDocumentReference>
+  <cac:ProjectReference>
+    <cbc:ID>34537</cbc:ID>
+  </cac:ProjectReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0106">91000009</cbc:EndpointID>
+      <cac:PartyName>
+        <cbc:Name>Kader Consultancy &amp; Interim B.V.</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Dijnselburgerlaan 2</cbc:StreetName>
+        <cbc:CityName>Zeist</cbc:CityName>
+        <cbc:PostalZone>3705LP</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>NL100055436B01</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Kader Consultancy &amp; Interim B.V.</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0106">91000009</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:Telephone>0100000007</cbc:Telephone>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0106">91000008</cbc:EndpointID>
+      <cac:PartyName>
+        <cbc:Name>Universal Steigerbouw B.V.</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Ekkersrijt 2012</cbc:StreetName>
+        <cbc:CityName>Son En Breugel</cbc:CityName>
+        <cbc:PostalZone>5692BA</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Universal Steigerbouw B.V.</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0106">91000008</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:Name>Universal Steigerbouw B.V.</cbc:Name>
+        <cbc:Telephone>0100000008</cbc:Telephone>
+        <cbc:ElectronicMail>administratie@leverancier1.example</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:Delivery>
+    <cbc:ActualDeliveryDate>2026-09-02</cbc:ActualDeliveryDate>
+    <cac:DeliveryLocation>
+      <cac:Address>
+        <cbc:StreetName>Ekkersrijt 2012</cbc:StreetName>
+        <cbc:CityName>Son En Breugel</cbc:CityName>
+        <cbc:PostalZone>5692BA</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:Address>
+    </cac:DeliveryLocation>
+  </cac:Delivery>
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
+    <cbc:PaymentID>2000000212604921</cbc:PaymentID>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID>NL84KETN1000000014</cbc:ID>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:PaymentTerms>
+    <cbc:Note>14 dagen</cbc:Note>
+  </cac:PaymentTerms>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">132.30</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">630.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">132.30</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">630.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">630.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">762.30</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">762.30</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="HUR">4.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">630.00</cbc:LineExtensionAmount>
+    <cac:InvoicePeriod>
+      <cbc:StartDate>2026-08-25</cbc:StartDate>
+      <cbc:EndDate>2026-08-25</cbc:EndDate>
+    </cac:InvoicePeriod>
+    <cac:Item>
+      <cbc:Description>/34537-Onderhoudsabonnement RI&amp;E/4e/4 2026 RIE/PVA/VCA* abonnement - SON EN BREUGEL</cbc:Description>
+      <cbc:Name>/34537-Onderhoudsabonnement RI&amp;E/4e/4 2026 RIE/PVA/VCA* abonnement - SON EN BREUGEL</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID>02.</cbc:ID>
+      </cac:SellersItemIdentification>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>naamKandidaat</cbc:Name>
+        <cbc:Value>Kandidaat A</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">157.50</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="HUR">1.00</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

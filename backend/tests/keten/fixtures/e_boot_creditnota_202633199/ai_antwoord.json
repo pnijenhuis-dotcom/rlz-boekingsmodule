@@ -1,0 +1,66 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "BOOT organiserend ingenieursburo bv",
+   "zekerheid": 0.95
+  },
+  "factuurnummer": {
+   "waarde": "202633199",
+   "zekerheid": 0.98
+  },
+  "factuurdatum": {
+   "waarde": "2026-07-21",
+   "zekerheid": 0.95
+  },
+  "vervaldatum": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "-1467.75",
+   "zekerheid": 0.95
+  },
+  "totaal_incl": {
+   "waarde": "-1775.98",
+   "zekerheid": 0.95
+  },
+  "btw_bedrag": {
+   "waarde": "-308.23",
+   "zekerheid": 0.95
+  },
+  "iban": {
+   "waarde": "NL52KETN1000000008",
+   "zekerheid": 0.9
+  },
+  "btw_nummer": {
+   "waarde": "NL100031687B01",
+   "zekerheid": 0.9
+  },
+  "kvk_nummer": {
+   "waarde": "91000004",
+   "zekerheid": 0.9
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.0
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Creditfactuur behorende bij factuurnummer 202632704, d.d. 22-6-2026",
+   "netto_bedrag": "-1467.75",
+   "btw_bedrag": "-308.23",
+   "hoeveelheid": null,
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": null,
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ],
+ "volledig": true
+}

@@ -1,0 +1,823 @@
+{
+ "casus": "c_spot_services",
+ "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+ "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+ "detail": {
+  "id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+  "bestandsnaam": "2026-608 Universal.pdf",
+  "status": "te_controleren",
+  "bron": "upload",
+  "soort": "inkoopfactuur",
+  "mogelijk_duplicaat_van": null,
+  "toegewezen_aan": null,
+  "aangemaakt_op": "2026-09-08T12:00:00Z",
+  "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+  "veldvoorstel": {
+   "bron": "ai",
+   "iban": "NL09KETN1000000006",
+   "regels": [
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "6.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "280.00",
+     "netto_bedrag": "1680.00",
+     "omschrijving": "Montage",
+     "project_tekst": null,
+     "tariefstaffel": false,
+     "btw_afleiding_reden": "btw_nul"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "3.25",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Demontage",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "43.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "9.00",
+     "netto_bedrag": "387.00",
+     "omschrijving": "Regie",
+     "project_tekst": null,
+     "tariefstaffel": false,
+     "btw_afleiding_reden": "btw_nul"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "3.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Montage Grondslag",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "1.25",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Demontage Grondslag",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "50.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Mon Balkon",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "25.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Demo Balkon",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "50.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Toren",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "25.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Demo trap",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "250.00",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Post",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": "0.00",
+     "stuksprijs": "1.25",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "560.00",
+     "netto_bedrag": "700.00",
+     "omschrijving": "Net",
+     "project_tekst": null,
+     "tariefstaffel": false,
+     "btw_afleiding_reden": "btw_nul"
+    },
+    {
+     "eenheid": null,
+     "btw_bron": null,
+     "btw_bedrag": null,
+     "stuksprijs": "1.50",
+     "taxrate_id": null,
+     "artikelcode": null,
+     "hoeveelheid": "0.00",
+     "netto_bedrag": "0.00",
+     "omschrijving": "Binnen leuningen",
+     "project_tekst": null,
+     "tariefstaffel": true,
+     "btw_afleiding_reden": "onbepaalbaar"
+    }
+   ],
+   "valuta": "EUR",
+   "betreft": "Week 34",
+   "controle": {
+    "regelsom": "2767.00",
+    "onvolledig": false,
+    "onparseerbaar": [],
+    "bsn_verwijderd": 0,
+    "lage_zekerheid": [
+     "btw_bedrag"
+    ],
+    "regelsom_basis": "excl",
+    "regelsom_reden": null,
+    "regelsom_wijkt_af": false
+   },
+   "zekerheid": {
+    "iban": 0.95,
+    "valuta": 0.9,
+    "betreft": 0.9,
+    "periode": 0.85,
+    "btw_bedrag": 0.6,
+    "btw_nummer": 0.95,
+    "kvk_nummer": 0.95,
+    "totaal_excl": 0.9,
+    "totaal_incl": 0.9,
+    "vervaldatum": 0.95,
+    "factuurdatum": 0.95,
+    "factuurnummer": 0.98,
+    "project_tekst": 0.95,
+    "betalingskenmerk": 0.0,
+    "leverancier_naam": 0.98,
+    "btw_verlegd_vermelding": 0.85
+   },
+   "btw_bedrag": "0.00",
+   "btw_nummer": "NL100023757B01",
+   "kvk_nummer": "91000003",
+   "regelaantal": 12,
+   "totaal_excl": "2767.00",
+   "totaal_incl": "2767.00",
+   "vervaldatum": "2026-09-14",
+   "factuurdatum": "2026-09-07",
+   "factuurnummer": "2026-608",
+   "periode_tekst": "Week 34",
+   "project_tekst": "26049",
+   "regel_zekerheid": [
+    0.9,
+    0.85,
+    0.9,
+    0.85,
+    0.85,
+    0.85,
+    0.85,
+    0.85,
+    0.85,
+    0.85,
+    0.9,
+    0.8
+   ],
+   "betalingskenmerk": null,
+   "leverancier_naam": "Spot Services B.V",
+   "vendor_suggestie": {
+    "match": "btw_nummer",
+    "vendor_id": "33333333-0000-0000-0000-000000000003"
+   },
+   "zekerheid_drempel": 0.8,
+   "vendor_waarschuwing": null,
+   "tariefstaffel_aantal": 9,
+   "btw_verlegd_vermelding": "Verlegd",
+   "btw_nummer_geverifieerd": true
+  },
+  "afwijzing": null,
+  "factuurmatch": null,
+  "herkomst_mail": null,
+  "bron_bestandsnaam": null,
+  "tenaamstelling": null,
+  "geboekt_in_rlz": null,
+  "tijdlijn": [
+   {
+    "van_status": null,
+    "naar_status": "ontvangen",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": null,
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "ontvangen",
+    "naar_status": "extractie_wachtrij",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": {
+     "bytes": 5052,
+     "reden": "upload — verwerking op de achtergrond",
+     "paginas": 2,
+     "extractie_wachtrij": "achtergrond"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_wachtrij",
+    "naar_status": "extractie_bezig",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": true,
+    "detail": {
+     "reden": "extractie gestart"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_bezig",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": true,
+    "detail": {
+     "reden": "extractie afgerond — ter controle",
+     "ai_metriek": {
+      "regels": 12
+     },
+     "veldvoorstel": {
+      "bron": "ai",
+      "iban": "NL09KETN1000000006",
+      "regels": [
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "6.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "280.00",
+        "netto_bedrag": "1680.00",
+        "omschrijving": "Montage",
+        "project_tekst": null,
+        "tariefstaffel": false,
+        "btw_afleiding_reden": "btw_nul"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "3.25",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Demontage",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "43.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "9.00",
+        "netto_bedrag": "387.00",
+        "omschrijving": "Regie",
+        "project_tekst": null,
+        "tariefstaffel": false,
+        "btw_afleiding_reden": "btw_nul"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "3.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Montage Grondslag",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "1.25",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Demontage Grondslag",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "50.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Mon Balkon",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "25.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Demo Balkon",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "50.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Toren",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "25.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Demo trap",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "250.00",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Post",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": "0.00",
+        "stuksprijs": "1.25",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "560.00",
+        "netto_bedrag": "700.00",
+        "omschrijving": "Net",
+        "project_tekst": null,
+        "tariefstaffel": false,
+        "btw_afleiding_reden": "btw_nul"
+       },
+       {
+        "eenheid": null,
+        "btw_bron": null,
+        "btw_bedrag": null,
+        "stuksprijs": "1.50",
+        "taxrate_id": null,
+        "artikelcode": null,
+        "hoeveelheid": "0.00",
+        "netto_bedrag": "0.00",
+        "omschrijving": "Binnen leuningen",
+        "project_tekst": null,
+        "tariefstaffel": true,
+        "btw_afleiding_reden": "onbepaalbaar"
+       }
+      ],
+      "valuta": "EUR",
+      "betreft": "Week 34",
+      "controle": {
+       "regelsom": "2767.00",
+       "onvolledig": false,
+       "onparseerbaar": [],
+       "bsn_verwijderd": 0,
+       "lage_zekerheid": [
+        "btw_bedrag"
+       ],
+       "regelsom_basis": "excl",
+       "regelsom_reden": null,
+       "regelsom_wijkt_af": false
+      },
+      "zekerheid": {
+       "iban": 0.95,
+       "valuta": 0.9,
+       "betreft": 0.9,
+       "periode": 0.85,
+       "btw_bedrag": 0.6,
+       "btw_nummer": 0.95,
+       "kvk_nummer": 0.95,
+       "totaal_excl": 0.9,
+       "totaal_incl": 0.9,
+       "vervaldatum": 0.95,
+       "factuurdatum": 0.95,
+       "factuurnummer": 0.98,
+       "project_tekst": 0.95,
+       "betalingskenmerk": 0.0,
+       "leverancier_naam": 0.98,
+       "btw_verlegd_vermelding": 0.85
+      },
+      "btw_bedrag": "0.00",
+      "btw_nummer": "NL100023757B01",
+      "kvk_nummer": "91000003",
+      "regelaantal": 12,
+      "totaal_excl": "2767.00",
+      "totaal_incl": "2767.00",
+      "vervaldatum": "2026-09-14",
+      "factuurdatum": "2026-09-07",
+      "factuurnummer": "2026-608",
+      "periode_tekst": "Week 34",
+      "project_tekst": "26049",
+      "regel_zekerheid": [
+       0.9,
+       0.85,
+       0.9,
+       0.85,
+       0.85,
+       0.85,
+       0.85,
+       0.85,
+       0.85,
+       0.85,
+       0.9,
+       0.8
+      ],
+      "betalingskenmerk": null,
+      "leverancier_naam": "Spot Services B.V",
+      "vendor_suggestie": {
+       "match": "btw_nummer",
+       "vendor_id": "33333333-0000-0000-0000-000000000003"
+      },
+      "zekerheid_drempel": 0.8,
+      "vendor_waarschuwing": null,
+      "tariefstaffel_aantal": 9,
+      "btw_verlegd_vermelding": "Verlegd",
+      "btw_nummer_geverifieerd": true
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   }
+  ],
+  "duplicaat_afvoer": {
+   "kandidaat": null,
+   "afgevoerd_als_duplicaat_van": null,
+   "afgevoerde_duplicaten": [],
+   "module_treffers": [],
+   "afmelding": null
+  }
+ },
+ "boekvoorstel": {
+  "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "vendor_id": "33333333-0000-0000-0000-000000000003",
+  "referentie": "2026-608",
+  "factuurdatum": "2026-09-07",
+  "vervaldatum": "2026-09-14",
+  "vervaldatum_signaal": null,
+  "betalingskenmerk": null,
+  "totaalbedrag": "2767.00",
+  "rlz_boekstuknummer": null,
+  "opgeslagen": true,
+  "prefill_automatisch": true,
+  "omschrijving": "Week 34",
+  "omschrijving_herkomst": "factuur",
+  "periode": {
+   "jaar": 2026,
+   "week_van": 34,
+   "week_tot": 34,
+   "herkomst": "factuur",
+   "tekst": "Week 34"
+  },
+  "regels": [
+   {
+    "id": "00000000-0000-4000-8000-000000000021",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000009",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000026049",
+    "netto_bedrag": "1680.00",
+    "btw_bedrag": "0.00",
+    "omschrijving": "Montage",
+    "btw_bron": "factuur_verlegd",
+    "btw_bron_detail": "enige verlegd-code van de administratie",
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000022",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000009",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000026049",
+    "netto_bedrag": "387.00",
+    "btw_bedrag": "0.00",
+    "omschrijving": "Regie",
+    "btw_bron": "factuur_verlegd",
+    "btw_bron_detail": "enige verlegd-code van de administratie",
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000023",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000009",
+    "project_id": "aaaaaaaa-0000-0000-0000-000000026049",
+    "netto_bedrag": "700.00",
+    "btw_bedrag": "0.00",
+    "omschrijving": "Net",
+    "btw_bron": "factuur_verlegd",
+    "btw_bron_detail": "enige verlegd-code van de administratie",
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": "factuur",
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+   }
+  ],
+  "regels_samenvoegen": false,
+  "samenvoegen_toegestaan": false,
+  "samengevoegde_regel": null,
+  "btw_verlegd_vermelding": "Verlegd",
+  "afdeling_id": null,
+  "afdeling_prefill_id": null,
+  "afdeling_prefill_leverancier": null
+ },
+ "checks": {
+  "geblokkeerd": true,
+  "resultaten": [
+   {
+    "naam": "Verplichte velden",
+    "ok": false,
+    "melding": "Ontbrekend: grootboekrekening (alle 3 regels)",
+    "signaal": false
+   },
+   {
+    "naam": "Afdeling",
+    "ok": true,
+    "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Projectverdeling",
+    "ok": true,
+    "melding": "Geen projectverdeling van toepassing",
+    "signaal": false
+   },
+   {
+    "naam": "Regeltelling vs totaal",
+    "ok": true,
+    "melding": "Som van de regels (netto + btw € 2767.00) komt overeen met het totaal incl. (€ 2767.00)",
+    "signaal": false
+   },
+   {
+    "naam": "Vervaldatum",
+    "ok": true,
+    "melding": "Vervaldatum 2026-09-14 (termijn 7 dagen)",
+    "signaal": false
+   },
+   {
+    "naam": "Btw-tarief buitenland",
+    "ok": true,
+    "melding": "Geen EU-/buitenland-tarief op de regels",
+    "signaal": false
+   },
+   {
+    "naam": "IBAN-wissel",
+    "ok": true,
+    "melding": "Eerste IBAN voor deze crediteur (NL09KETN…006) vastgelegd als baseline — controleer het rekeningnummer op de factuur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaatcheck",
+    "ok": true,
+    "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat bij andere crediteur",
+    "ok": true,
+    "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat (module)",
+    "ok": true,
+    "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
+    "signaal": false
+   }
+  ]
+ },
+ "lijst": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "2026-608 Universal.pdf",
+    "status": "te_controleren",
+    "bron": "upload",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Spot Services B.V.",
+    "totaalbedrag": "2767.00",
+    "factuurdatum": "2026-09-07",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ },
+ "lijst_afgehandeld": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "2026-608 Universal.pdf",
+    "status": "te_controleren",
+    "bron": "upload",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Spot Services B.V.",
+    "totaalbedrag": "2767.00",
+    "factuurdatum": "2026-09-07",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ },
+ "stamgegevens": {
+  "grootboek_inhuur": "44444444-0000-0000-0000-000000004400"
+ }
+}

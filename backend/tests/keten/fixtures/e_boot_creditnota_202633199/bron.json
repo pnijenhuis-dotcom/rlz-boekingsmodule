@@ -1,0 +1,7 @@
+{
+ "administratie": "Kempen Facilities B.V. (66e1e296)",
+ "ubl_document_id": "54b55252-61c5-4cc4-8564-1e66c89b5074 (verwijderd 31-08 'dubbel')",
+ "pdf_document_id": "357faef3-89af-4de2-b965-47ba44367025 (ter_accordering, boekvoorstel -1775,98)",
+ "intake_bericht": "1c6f9ded (imap 2026-08-31, 'Fw: Factuur betreffende Ulestraten, Camping D'n Uul')",
+ "opmerking": "UBL-bedragen zijn positief (CreditNote-conventie), de PDF-AI las negatieve bedragen; BillingReference = 1234 (placeholder van de leverancier zelf)."
+}

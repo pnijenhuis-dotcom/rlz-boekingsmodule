@@ -1,0 +1,370 @@
+[
+ [
+  "Spot Services B.V",
+  "Theo Verhaarveld 16",
+  "3076 LS  - Rotterdam",
+  "KvK: 91000003",
+  "BTW: NL100023757B01",
+  "IBAN: NL36KETN1000000005",
+  "administratie@leverancier4.example",
+  "0100000003",
+  "",
+  "Factuurdatum: 7 september 2026",
+  "Betalingsconditie (d): 7",
+  "Vervaldatum: 14 september 2026",
+  "Factuurnummer: 2026-608",
+  "Betreft: Week 34",
+  "Bestelbonnummer: Hoofddorp REK-NR NL36KETN1000000005",
+  "Projectnummer: 26049",
+  "",
+  [
+   [
+    50,
+    "Omschrijving"
+   ],
+   [
+    200,
+    "Aantal"
+   ],
+   [
+    260,
+    "Tarief p/e"
+   ],
+   [
+    340,
+    "Totaal excl."
+   ],
+   [
+    430,
+    "BTW"
+   ],
+   [
+    480,
+    "Totaal"
+   ]
+  ],
+  [
+   [
+    50,
+    "Montage"
+   ],
+   [
+    200,
+    "280,00"
+   ],
+   [
+    260,
+    "€ 6,00"
+   ],
+   [
+    340,
+    "€ 1.680,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "1.680,00€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Demontage"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 3,25"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Regie"
+   ],
+   [
+    200,
+    "9,00"
+   ],
+   [
+    260,
+    "€ 43,00"
+   ],
+   [
+    340,
+    "€ 387,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "387,00€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Montage Grondslag"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 3,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Demontage Grondslag"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 1,25"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Mon Balkon"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 50,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Demo Balkon"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 25,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Toren"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 50,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Demo trap"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 25,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Post"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 250,00"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Net"
+   ],
+   [
+    200,
+    "560,00"
+   ],
+   [
+    260,
+    "€ 1,25"
+   ],
+   [
+    340,
+    "€ 700,00"
+   ],
+   [
+    430,
+    "0%"
+   ],
+   [
+    480,
+    "700,00€"
+   ]
+  ],
+  [
+   [
+    50,
+    "Binnen leuningen"
+   ],
+   [
+    200,
+    "0,00"
+   ],
+   [
+    260,
+    "€ 1,50"
+   ],
+   [
+    340,
+    "€ 0,00"
+   ],
+   [
+    480,
+    "-€"
+   ]
+  ],
+  "",
+  "Factuurbedrag 2.767,00€",
+  "BTW Verlegd",
+  "Universal Steigerbouw BV",
+  "Ekkersrijt 2012",
+  "5692 BA Son en Beugel",
+  "GELIEVE OVERMAKEN BINNEN DE AFGESPROKEN TERMIJN ONDER VERMELDING VAN HET FACTUURNUMMER"
+ ],
+ [
+  "SPOT Services B.V.",
+  "Wekelijkse urenstaat — week 34 — projectnummer 26049",
+  "Opdrachtgever: Universal Steigerbouw",
+  "Opmerkingen/Productie: 280 m2 montage · 9 uur regie steiger aanpassen · 560 m2 montage gaas",
+  "Akkoord Allround Rent",
+  "(persoonsgegevens van de urenstaat zijn in de gouden set bewust weggelaten)"
+ ]
+]

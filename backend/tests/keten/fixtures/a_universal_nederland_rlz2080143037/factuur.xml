@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<doc:Invoice xmlns:doc="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2" xmlns:nl-cac="urn:digi-inkoop:ubl:2.0:NL:1.8:UBL-NL-CommonAggregateComponents-2" xmlns:nl-cbc="urn:digi-inkoop:ubl:2.0:NL:1.7:UBL-NL-CommonBasicComponents-2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<cbc:UBLVersionID>2.0</cbc:UBLVersionID>
+	<cbc:CustomizationID>1.9</cbc:CustomizationID>
+	<cbc:ProfileID>NL</cbc:ProfileID>
+	<cbc:ID>RLZ-2080143037</cbc:ID>
+	<cbc:CopyIndicator>false</cbc:CopyIndicator>
+	<cbc:IssueDate>2026-08-01</cbc:IssueDate>
+	<cbc:InvoiceTypeCode listID="NL-1001" listAgencyID="88" listAgencyName="Logius Gegevensbeheer NL-Overheid" listName="FactuurSoort" listVersionID="1.7" listURI="http://www.nltaxonomie.nl/ubl/2.0/NL/1.7/cl/gc/InvoiceTypeCode.gc" listSchemeURI="urn:digi-inkoop:ubl:2.0:NL:1.7:gc:InvoiceTypeCode">D</cbc:InvoiceTypeCode>
+	<cbc:Note>Werk: 26084 - Opdrachtgever A (W03611)</cbc:Note>
+	<cbc:DocumentCurrencyCode listID="ISO 4217 Alpha" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Currency" listVersionID="2001" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/cefact/CurrencyCode-2.0.gc" listSchemeURI="urn:un:unece:uncefact:codelist:specification:54217">EUR</cbc:DocumentCurrencyCode>
+	<cac:InvoicePeriod>
+		<cbc:StartDate>2026-08-01</cbc:StartDate>
+		<cbc:EndDate>2026-08-01</cbc:EndDate>
+		<cbc:DescriptionCode listID="NL-1004" listAgencyID="88" listAgencyName="Logius Gegevensbeheer NL-Overheid" listName="FactuurPeriodDescriptionCode" listVersionID="1.7" listURI="http://www.nltaxonomie.nl/ubl/2.0/NL/1.7/cl/gc/InvoicePeriodDescriptionCode.gc" listSchemeURI="urn:digi-inkoop:ubl:2.0:NL:1.7:gc:InvoicePeriodDescriptionCode">I</cbc:DescriptionCode>
+	</cac:InvoicePeriod>
+	<cac:OrderReference>
+		<cbc:ID>2080143037</cbc:ID>
+	</cac:OrderReference>
+	<cac:AccountingSupplierParty>
+		<cac:Party>
+			<cac:PartyIdentification>
+				<cbc:ID schemeAgencyID="NL" schemeAgencyName="KvK">91000001</cbc:ID>
+			</cac:PartyIdentification>
+			<cac:PartyName>
+				<cbc:Name>Universal Nederland B.V.</cbc:Name>
+			</cac:PartyName>
+			<cac:PhysicalLocation>
+				<cac:Address>
+					<cbc:StreetName>Ekkersrijt</cbc:StreetName>
+					<cbc:BuildingNumber>2012</cbc:BuildingNumber>
+					<cbc:CityName>Son en Breugel</cbc:CityName>
+					<cbc:PostalZone>5692 BA</cbc:PostalZone>
+					<cac:Country>
+						<cbc:IdentificationCode listID="ISO3166-1" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Country" listVersionID="0.3" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/default/CountryIdentificationCode-2.0.gc" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode">NL</cbc:IdentificationCode>
+					</cac:Country>
+				</cac:Address>
+			</cac:PhysicalLocation>
+			<cac:PartyTaxScheme>
+				<cbc:CompanyID>NL100007922B01</cbc:CompanyID>
+				<cac:TaxScheme>
+					<cbc:ID>VAT</cbc:ID>
+				</cac:TaxScheme>
+			</cac:PartyTaxScheme>
+			<cac:PartyLegalEntity>
+				<cac:RegistrationAddress>
+					<cbc:StreetName>Ekkersrijt</cbc:StreetName>
+					<cbc:BuildingNumber>2012</cbc:BuildingNumber>
+					<cbc:CityName>Son en Breugel</cbc:CityName>
+					<cbc:PostalZone>5692 BA</cbc:PostalZone>
+					<cac:Country>
+						<cbc:IdentificationCode listID="ISO3166-1" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Country" listVersionID="0.3" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/default/CountryIdentificationCode-2.0.gc" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode">NL</cbc:IdentificationCode>
+					</cac:Country>
+				</cac:RegistrationAddress>
+			</cac:PartyLegalEntity>
+			<cac:Contact>
+				<cbc:Name>Universal Nederland B.V.</cbc:Name>
+				<cbc:Telephone>0100000001</cbc:Telephone>
+				<cbc:ElectronicMail>administratie@leverancier1.example</cbc:ElectronicMail>
+			</cac:Contact>
+		</cac:Party>
+	</cac:AccountingSupplierParty>
+	<cac:AccountingCustomerParty>
+		<cac:Party>
+			<cac:PartyIdentification>
+				<cbc:ID schemeAgencyID="NL" schemeAgencyName="BTW" />
+			</cac:PartyIdentification>
+			<cac:PartyName>
+				<cbc:Name>Universal Steigerbouw B.V.</cbc:Name>
+			</cac:PartyName>
+			<cac:PostalAddress>
+				<cbc:StreetName>Ekkersrijt</cbc:StreetName>
+				<cbc:BuildingNumber>2012</cbc:BuildingNumber>
+				<cbc:CityName>Son en Breugel</cbc:CityName>
+				<cbc:PostalZone>5692 BA</cbc:PostalZone>
+				<cac:Country>
+					<cbc:IdentificationCode listID="ISO3166-1" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Country" listVersionID="0.3" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/default/CountryIdentificationCode-2.0.gc" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode">NL</cbc:IdentificationCode>
+				</cac:Country>
+			</cac:PostalAddress>
+			<cac:PartyLegalEntity>
+				<cac:RegistrationAddress>
+					<cbc:StreetName>Ekkersrijt</cbc:StreetName>
+					<cbc:BuildingNumber>2012</cbc:BuildingNumber>
+					<cbc:CityName>Son en Breugel</cbc:CityName>
+					<cbc:PostalZone>5692 BA</cbc:PostalZone>
+					<cac:Country>
+						<cbc:IdentificationCode listID="ISO3166-1" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Country" listVersionID="0.3" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/default/CountryIdentificationCode-2.0.gc" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode">NL</cbc:IdentificationCode>
+					</cac:Country>
+				</cac:RegistrationAddress>
+			</cac:PartyLegalEntity>
+		</cac:Party>
+	</cac:AccountingCustomerParty>
+	<cac:Delivery>
+		<cbc:ActualDeliveryDate>2026-08-01</cbc:ActualDeliveryDate>
+	</cac:Delivery>
+	<cac:PaymentMeans>
+		<cbc:PaymentMeansCode listID="UN/ECE 4461" listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listName="Payment Means" listVersionID="D03A" listURI="http://docs.oasis-open.org/ubl/os-UBL-2.0-update/cl/gc/default/PaymentMeansCode-2.0.gc" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:PaymentMeansCode">42</cbc:PaymentMeansCode>
+		<cbc:PaymentDueDate>2026-08-31</cbc:PaymentDueDate>
+		<cac:PayeeFinancialAccount>
+			<cbc:ID>NL20KETN1000000002</cbc:ID>
+		</cac:PayeeFinancialAccount>
+	</cac:PaymentMeans>
+	<cac:TaxTotal>
+		<cbc:TaxAmount currencyID="EUR">36.83</cbc:TaxAmount>
+		<cac:TaxSubtotal>
+			<cbc:TaxableAmount currencyID="EUR">175.38</cbc:TaxableAmount>
+			<cbc:TaxAmount currencyID="EUR">36.83</cbc:TaxAmount>
+			<cac:TaxCategory>
+				<cbc:Name>NL, Hoog Tarief</cbc:Name>
+				<cbc:Percent>21</cbc:Percent>
+				<cac:TaxScheme>
+					<cbc:Name>BTW</cbc:Name>
+				</cac:TaxScheme>
+			</cac:TaxCategory>
+		</cac:TaxSubtotal>
+	</cac:TaxTotal>
+	<cac:LegalMonetaryTotal>
+		<cbc:LineExtensionAmount currencyID="EUR">175.38</cbc:LineExtensionAmount>
+		<cbc:TaxExclusiveAmount currencyID="EUR">175.38</cbc:TaxExclusiveAmount>
+		<cbc:TaxInclusiveAmount currencyID="EUR">212.21</cbc:TaxInclusiveAmount>
+		<cbc:PayableAmount currencyID="EUR">212.21</cbc:PayableAmount>
+	</cac:LegalMonetaryTotal>
+	<cac:InvoiceLine>
+		<cbc:ID>1</cbc:ID>
+		<cbc:InvoicedQuantity unitCode="EA">1</cbc:InvoicedQuantity>
+		<cbc:LineExtensionAmount currencyID="EUR">175.38</cbc:LineExtensionAmount>
+		<cbc:FreeOfChargeIndicator>false</cbc:FreeOfChargeIndicator>
+		<cac:TaxTotal>
+			<cbc:TaxAmount currencyID="EUR">36.83</cbc:TaxAmount>
+			<cac:TaxSubtotal>
+				<cbc:TaxableAmount currencyID="EUR">175.38</cbc:TaxableAmount>
+				<cbc:TaxAmount currencyID="EUR">36.83</cbc:TaxAmount>
+				<cac:TaxCategory>
+					<cbc:ID>H</cbc:ID>
+					<cbc:Name>NL, Hoog Tarief</cbc:Name>
+					<cbc:Percent>21</cbc:Percent>
+					<cac:TaxScheme>
+						<cbc:Name>BTW</cbc:Name>
+					</cac:TaxScheme>
+				</cac:TaxCategory>
+			</cac:TaxSubtotal>
+		</cac:TaxTotal>
+		<cac:Item>
+			<cbc:CatalogueIndicator>false</cbc:CatalogueIndicator>
+			<cbc:Name>Huurperiode juli 2026, conform huuroverzicht</cbc:Name>
+		</cac:Item>
+		<cac:Price>
+			<cbc:PriceAmount currencyID="EUR">175.377</cbc:PriceAmount>
+			<cbc:BaseQuantity unitCode="EA">1</cbc:BaseQuantity>
+		</cac:Price>
+	</cac:InvoiceLine>
+</doc:Invoice>

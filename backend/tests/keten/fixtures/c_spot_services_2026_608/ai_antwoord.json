@@ -1,0 +1,203 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "Spot Services B.V",
+   "zekerheid": 0.98
+  },
+  "factuurnummer": {
+   "waarde": "2026-608",
+   "zekerheid": 0.98
+  },
+  "factuurdatum": {
+   "waarde": "2026-09-07",
+   "zekerheid": 0.95
+  },
+  "vervaldatum": {
+   "waarde": "2026-09-14",
+   "zekerheid": 0.95
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "2767.00",
+   "zekerheid": 0.9
+  },
+  "totaal_incl": {
+   "waarde": "2767.00",
+   "zekerheid": 0.9
+  },
+  "btw_bedrag": {
+   "waarde": "0.00",
+   "zekerheid": 0.6
+  },
+  "iban": {
+   "waarde": "NL09KETN1000000006",
+   "zekerheid": 0.95
+  },
+  "btw_nummer": {
+   "waarde": "NL100023757B01",
+   "zekerheid": 0.95
+  },
+  "kvk_nummer": {
+   "waarde": "91000003",
+   "zekerheid": 0.95
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": "Verlegd",
+   "zekerheid": 0.85
+  },
+  "betreft": {
+   "waarde": "Week 34",
+   "zekerheid": 0.9
+  },
+  "project_tekst": {
+   "waarde": "26049",
+   "zekerheid": 0.95
+  },
+  "periode": {
+   "waarde": "Week 34",
+   "zekerheid": 0.85
+  },
+  "betalingskenmerk": {
+   "waarde": null,
+   "zekerheid": 0.0
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Montage",
+   "netto_bedrag": "1680.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "280.00",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "6.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Demontage",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "3.25",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Regie",
+   "netto_bedrag": "387.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "9.00",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "43.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Montage Grondslag",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "3.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Demontage Grondslag",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "1.25",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Mon Balkon",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "50.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Demo Balkon",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "25.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Toren",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "50.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Demo trap",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "25.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Post",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "250.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Net",
+   "netto_bedrag": "700.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "560.00",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "1.25",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Binnen leuningen",
+   "netto_bedrag": "0.00",
+   "btw_bedrag": null,
+   "hoeveelheid": "0.00",
+   "zekerheid": 0.8,
+   "eenheid": null,
+   "stuksprijs": "1.50",
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ],
+ "volledig": true
+}

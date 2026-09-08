@@ -1,0 +1,66 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "Universal Nederland B.V.",
+   "zekerheid": 0.85
+  },
+  "factuurnummer": {
+   "waarde": "RLZ-2080143038",
+   "zekerheid": 0.98
+  },
+  "factuurdatum": {
+   "waarde": "2026-08-01",
+   "zekerheid": 0.98
+  },
+  "vervaldatum": {
+   "waarde": "2026-08-31",
+   "zekerheid": 0.95
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "2099.29",
+   "zekerheid": 0.98
+  },
+  "totaal_incl": {
+   "waarde": "2540.14",
+   "zekerheid": 0.98
+  },
+  "btw_bedrag": {
+   "waarde": "440.85",
+   "zekerheid": 0.98
+  },
+  "iban": {
+   "waarde": "NL20KETN1000000002",
+   "zekerheid": 0.9
+  },
+  "btw_nummer": {
+   "waarde": "NL100007922B01",
+   "zekerheid": 0.95
+  },
+  "kvk_nummer": {
+   "waarde": "91000001",
+   "zekerheid": 0.95
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.9
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Huurperiode juli 2026, conform huuroverzicht",
+   "netto_bedrag": "2099.29",
+   "btw_bedrag": null,
+   "hoeveelheid": "1",
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": "2099.292",
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ],
+ "volledig": true
+}

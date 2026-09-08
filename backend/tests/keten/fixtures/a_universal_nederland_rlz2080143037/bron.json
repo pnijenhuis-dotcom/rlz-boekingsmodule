@@ -1,0 +1,8 @@
+{
+ "administratie": "Universal Steigerbouw B.V.",
+ "document_id": "249eb716-6bcb-42ec-bc9e-654852893f60",
+ "huls_id": "37615790-0238-40e6-b15d-1d3ccd1071f7",
+ "intake_bericht": "b1029925-2196-4cc3-90f6-c5253a6db012 (imap, 'Facturen universal steigerbouw deel 8', 2026-09-02)",
+ "productie": "geboekt 2026-09-08 RLZ-25-00003231; UBL+PDF los verwerkt (PDF via AI, UBL in verzamelbak → nabundel 03-09 → huls samengevoegd)",
+ "opmerking": "ai_antwoord.json = reconstructie uit het bewaarde veldvoorstel van de PDF-extractie; kop project_tekst W03611 toegevoegd uit cbc:Note (casus i)."
+}

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="nl">
+  <!-- Gouden-set-harnas (blok 0 herstelrun 08-09, dev-gereedschap, geen productie-entry): rendert het echte
+       controlescherm en de echte documentenlijst met de DTO's die de backend-ketentests (backend/tests/keten)
+       naar src/dev/keten/<casus>.json exporteren — backend en frontend tonen zo exact dezelfde stand.
+       Gebruik: npx vite --port 5199 → /harness-keten.html?casus=h_bdo&scherm=detail (of scherm=lijst).
+       Screenshots + pixelvergelijking: scripts/keten_sweep.sh. Zie src/dev/visueelHarnasKeten.tsx. -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gouden set — ketenharnas</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/dev/visueelHarnasKeten.tsx"></script>
+  </body>
+</html>

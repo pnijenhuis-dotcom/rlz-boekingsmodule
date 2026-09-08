@@ -1,0 +1,88 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "Floor Bouwliftenservice",
+   "zekerheid": 0.95
+  },
+  "factuurnummer": {
+   "waarde": "26219",
+   "zekerheid": 0.98
+  },
+  "factuurdatum": {
+   "waarde": "2026-08-13",
+   "zekerheid": 0.98
+  },
+  "vervaldatum": {
+   "waarde": "2026-09-12",
+   "zekerheid": 0.9
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "2080.00",
+   "zekerheid": 0.98
+  },
+  "totaal_incl": {
+   "waarde": "2516.80",
+   "zekerheid": 0.98
+  },
+  "btw_bedrag": {
+   "waarde": "436.80",
+   "zekerheid": 0.98
+  },
+  "iban": {
+   "waarde": "NL63KETN1000000004",
+   "zekerheid": 0.95
+  },
+  "btw_nummer": {
+   "waarde": "NL100015839B01",
+   "zekerheid": 0.95
+  },
+  "kvk_nummer": {
+   "waarde": "91000002",
+   "zekerheid": 0.95
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.9
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Huur per werkdag",
+   "netto_bedrag": "330.00",
+   "btw_bedrag": null,
+   "hoeveelheid": "10,00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "33.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "Liftmontage 16.5m 6 et",
+   "netto_bedrag": "1400.00",
+   "btw_bedrag": null,
+   "hoeveelheid": "1,00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "1400.00",
+   "artikelcode": null,
+   "project_tekst": null
+  },
+  {
+   "omschrijving": "transport aanvoer lift",
+   "netto_bedrag": "350.00",
+   "btw_bedrag": null,
+   "hoeveelheid": "1,00",
+   "zekerheid": 0.85,
+   "eenheid": null,
+   "stuksprijs": "350.00",
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ],
+ "volledig": true
+}

@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2&#xA;http://docs.oasis-open.org/ubl/os-UBL-2.1/xsd/maindoc/UBL-Invoice-2.1.xsd">
+  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>urn:www.cenbii.eu:transaction:biitrns010:ver2.0:extended:urn:www.peppol.eu:bis:peppol4a:ver2.0:extended:urn:www.simplerinvoicing.org:si:si-ubl:ver1.2</cbc:CustomizationID>
+  <cbc:ProfileID>urn:www.cenbii.eu:profile:bii04:ver1.0</cbc:ProfileID>
+  <cbc:ID>26219</cbc:ID>
+  <cbc:IssueDate>2026-08-13</cbc:IssueDate>
+  <cbc:InvoiceTypeCode listAgencyID="6" listID="UNCL1001">380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode listAgencyID="6" listID="ISO 4217 Alpha">EUR</cbc:DocumentCurrencyCode>
+  <cac:OrderReference>
+    <cbc:ID>0</cbc:ID>
+    <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+  </cac:OrderReference>
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>26219</cbc:ID>
+    <cac:Attachment>
+      <cbc:EmbeddedDocumentBinaryObject mimeCode="application/pdf">KETEN-INGESLOTEN-PDF</cbc:EmbeddedDocumentBinaryObject>
+    </cac:Attachment>
+  </cac:AdditionalDocumentReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>Floor Bouwliftenservice</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Arie Jacob van Ogtenstraat 7</cbc:StreetName>
+        <cbc:CityName>Ochten</cbc:CityName>
+        <cbc:PostalZone>4051 AM</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode listAgencyID="6" listID="ISO3166-1:Alpha2">NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID schemeAgencyID="ZZZ" schemeID="NL:VAT">NL100015839B01</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Floor Bouwliftenservice</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="ZZZ" schemeID="NL:KVK">91000002</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:Name>Administratie</cbc:Name>
+        <cbc:Telephone>0100000002</cbc:Telephone>
+        <cbc:ElectronicMail>administratie@leverancier2.example</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>Universal steigerbouw BV</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Ekkersrijt 2012</cbc:StreetName>
+        <cbc:CityName>SON EN BREUGEL</cbc:CityName>
+        <cbc:PostalZone>5692BA</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode listAgencyID="6" listID="ISO3166-1:Alpha2">NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID schemeAgencyID="ZZZ" schemeID="NL:VAT">NL</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Universal steigerbouw BV</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="ZZZ" schemeID="NL:KVK">91000001</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:ElectronicMail>administratie@leverancier3.example</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:Delivery>
+    <cac:DeliveryLocation>
+      <cac:Address>
+        <cbc:StreetName>Ekkersrijt 2012</cbc:StreetName>
+        <cbc:CityName>SON EN BREUGEL</cbc:CityName>
+        <cbc:PostalZone>5692BA</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode listAgencyID="6" listID="ISO3166-1:Alpha2">NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:Address>
+    </cac:DeliveryLocation>
+  </cac:Delivery>
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode listID="UNCL4461">1</cbc:PaymentMeansCode>
+    <cbc:PaymentDueDate>2026-09-12</cbc:PaymentDueDate>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID schemeID="IBAN">NL63KETN1000000004</cbc:ID>
+      <cac:FinancialInstitutionBranch>
+        <cac:FinancialInstitution>
+          <cbc:ID schemeID="BIC">RABONL2U</cbc:ID>
+        </cac:FinancialInstitution>
+      </cac:FinancialInstitutionBranch>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">436.80</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+        <cbc:Percent>0.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">2080.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">436.80</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">S</cbc:ID>
+        <cbc:Percent>21.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">2080.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">2080.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">2516.80</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">2516.80</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>1</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>Plaats: Zwolle</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>2</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>2</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name></cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>3</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>3</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>Project: 25011</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>4</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>4</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name></cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>5</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>5</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>Periode: 01-07 t/m 31-07</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>6</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>6</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name></cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>7</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">10.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">330.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>7</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">69.30</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">330.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">69.30</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">S</cbc:ID>
+          <cbc:Percent>21.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>Huur per werkdag:</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID>-1</cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">33.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>8</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">0.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">0.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>8</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">0.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">Z</cbc:ID>
+          <cbc:Percent>0.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name></cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID></cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>9</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">1.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">1400.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>9</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">294.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">1400.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">294.00</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">S</cbc:ID>
+          <cbc:Percent>21.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>Liftmontage 16.5m 6 et</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID>-1</cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">1400.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>10</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ZZ">1.00</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">350.00</cbc:LineExtensionAmount>
+    <cac:OrderLineReference>
+      <cbc:LineID>10</cbc:LineID>
+      <cac:OrderReference>
+        <cbc:ID>0</cbc:ID>
+        <cbc:SalesOrderID>50522</cbc:SalesOrderID>
+      </cac:OrderReference>
+    </cac:OrderLineReference>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="EUR">73.50</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="EUR">350.00</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="EUR">73.50</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:ID schemeID="UNCL5305" schemeAgencyID="6">S</cbc:ID>
+          <cbc:Percent>21.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID schemeAgencyID="6" schemeID="UN/ECE 5153">VAT</cbc:ID>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Name>transport aanvoer lift:</cbc:Name>
+      <cac:SellersItemIdentification>
+        <cbc:ID>-1</cbc:ID>
+      </cac:SellersItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">350.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

@@ -1,0 +1,449 @@
+{
+ "casus": "h_bdo",
+ "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+ "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+ "detail": {
+  "id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+  "bestandsnaam": "BDO Accountancy_ Tax _ Legal B.V - 6088744 - 2026-07-02.xml",
+  "status": "te_controleren",
+  "bron": "email",
+  "soort": "inkoopfactuur",
+  "mogelijk_duplicaat_van": null,
+  "toegewezen_aan": null,
+  "aangemaakt_op": "2026-09-08T12:00:00Z",
+  "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+  "veldvoorstel": {
+   "bron": "ubl",
+   "iban": "NL95KETN1000000010",
+   "valuta": "EUR",
+   "btw_nummer": "NL100039595B01",
+   "klant_naam": "Universal Steigerbouw B.V.",
+   "kvk_nummer": "91000006",
+   "totaal_btw": "1155.00",
+   "ubl_regels": [
+    {
+     "prijs": "5500.00",
+     "soort": null,
+     "aantal": "0",
+     "eenheid": "EA",
+     "gb_code": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "1155.00",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "volgnummer": 1,
+     "netto_bedrag": "5500.00",
+     "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+     "btw_categorie": "1",
+     "btw_percentage": "21.00",
+     "btw_afleiding_reden": null
+    }
+   ],
+   "referenties": [],
+   "regelaantal": 1,
+   "totaal_excl": "5500.00",
+   "totaal_incl": "6655.00",
+   "vervaldatum": "2026-07-16",
+   "factuurdatum": "2026-07-02",
+   "factuurnummer": "6088744",
+   "is_creditnota": false,
+   "betalingskenmerk": null,
+   "leverancier_naam": "BDO Accountancy, Tax & Legal B.V.",
+   "vendor_suggestie": {
+    "match": "btw_nummer",
+    "vendor_id": "33333333-0000-0000-0000-000000000004"
+   },
+   "leverancier_adres": "Philitelaan 73, 5617 AM Eindhoven, NL",
+   "vendor_waarschuwing": null,
+   "btw_nummer_geverifieerd": true,
+   "gecrediteerde_factuurnummers": [],
+   "additional_document_reference_ids": [
+    "factuur.pdf"
+   ]
+  },
+  "afwijzing": null,
+  "factuurmatch": null,
+  "herkomst_mail": {
+   "afzender": "administratie@universal-steigerbouw.example",
+   "onderwerp": "Facturen universal steigerbouw",
+   "ontvangen_op": "2026-09-08T12:00:00Z",
+   "body_tekst": "Bijgaand de factuur.",
+   "bron": "imap"
+  },
+  "bron_bestandsnaam": "BDO Accountancy_ Tax _ Legal B.V - 6088744 - 2026-07-02.pdf",
+  "tenaamstelling": "Universal Steigerbouw B.V.",
+  "geboekt_in_rlz": null,
+  "tijdlijn": [
+   {
+    "van_status": null,
+    "naar_status": "ontvangen",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": null,
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "ontvangen",
+    "naar_status": "extractie_bezig",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": {
+     "reden": "extractie gestart"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_bezig",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_is_systeem": false,
+    "detail": {
+     "veldvoorstel": {
+      "bron": "ubl",
+      "iban": "NL95KETN1000000010",
+      "valuta": "EUR",
+      "btw_nummer": "NL100039595B01",
+      "klant_naam": "Universal Steigerbouw B.V.",
+      "kvk_nummer": "91000006",
+      "totaal_btw": "1155.00",
+      "ubl_regels": [
+       {
+        "prijs": "5500.00",
+        "soort": null,
+        "aantal": "0",
+        "eenheid": "EA",
+        "gb_code": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "1155.00",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 1,
+        "netto_bedrag": "5500.00",
+        "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+        "btw_categorie": "1",
+        "btw_percentage": "21.00",
+        "btw_afleiding_reden": null
+       }
+      ],
+      "referenties": [],
+      "regelaantal": 1,
+      "totaal_excl": "5500.00",
+      "totaal_incl": "6655.00",
+      "vervaldatum": "2026-07-16",
+      "factuurdatum": "2026-07-02",
+      "factuurnummer": "6088744",
+      "is_creditnota": false,
+      "betalingskenmerk": null,
+      "leverancier_naam": "BDO Accountancy, Tax & Legal B.V.",
+      "vendor_suggestie": {
+       "match": "btw_nummer",
+       "vendor_id": "33333333-0000-0000-0000-000000000004"
+      },
+      "leverancier_adres": "Philitelaan 73, 5617 AM Eindhoven, NL",
+      "vendor_waarschuwing": null,
+      "btw_nummer_geverifieerd": true,
+      "gecrediteerde_factuurnummers": [],
+      "additional_document_reference_ids": [
+       "factuur.pdf"
+      ]
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "te_controleren",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": true,
+    "detail": {
+     "boekvoorstel_prefill": {
+      "kop": {
+       "periode": {
+        "jaar": 2026,
+        "tekst": null,
+        "herkomst": "afgeleid_van_factuurdatum",
+        "week_tot": 27,
+        "week_van": 27
+       },
+       "vendor_id": "33333333-0000-0000-0000-000000000004",
+       "referentie": "6088744",
+       "vervaldatum": "2026-07-16",
+       "factuurdatum": "2026-07-02",
+       "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+       "totaalbedrag": "6655.00",
+       "betalingskenmerk": null,
+       "afdeling_prefill_id": null,
+       "omschrijving_herkomst": "regel",
+       "afdeling_prefill_leverancier": null
+      },
+      "bron": "intake",
+      "regels": [
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "1155.00",
+        "project_id": null,
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 1,
+        "netto_bedrag": "5500.00",
+        "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+        "project_bron": null,
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": null
+       }
+      ],
+      "triggers": [
+       "kop: ubl"
+      ],
+      "geopend_door": "00000000-0000-4000-8000-000000000020",
+      "veldvoorstel_bron": "ubl",
+      "regels_samenvoegen": false
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   }
+  ],
+  "duplicaat_afvoer": {
+   "kandidaat": null,
+   "afgevoerd_als_duplicaat_van": null,
+   "afgevoerde_duplicaten": [],
+   "module_treffers": [],
+   "afmelding": null
+  }
+ },
+ "boekvoorstel": {
+  "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "vendor_id": "33333333-0000-0000-0000-000000000004",
+  "referentie": "6088744",
+  "factuurdatum": "2026-07-02",
+  "vervaldatum": "2026-07-16",
+  "vervaldatum_signaal": null,
+  "betalingskenmerk": null,
+  "totaalbedrag": "6655.00",
+  "rlz_boekstuknummer": null,
+  "opgeslagen": true,
+  "prefill_automatisch": true,
+  "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+  "omschrijving_herkomst": "regel",
+  "periode": {
+   "jaar": 2026,
+   "week_van": 27,
+   "week_tot": 27,
+   "herkomst": "afgeleid_van_factuurdatum",
+   "tekst": null
+  },
+  "regels": [
+   {
+    "id": "00000000-0000-4000-8000-000000000021",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": null,
+    "netto_bedrag": "5500.00",
+    "btw_bedrag": "1155.00",
+    "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": null,
+    "project_bron_detail": null
+   }
+  ],
+  "regels_samenvoegen": false,
+  "samenvoegen_toegestaan": false,
+  "samengevoegde_regel": null,
+  "btw_verlegd_vermelding": null,
+  "afdeling_id": null,
+  "afdeling_prefill_id": null,
+  "afdeling_prefill_leverancier": null
+ },
+ "checks": {
+  "geblokkeerd": true,
+  "resultaten": [
+   {
+    "naam": "Verplichte velden",
+    "ok": false,
+    "melding": "Ontbrekend: grootboekrekening (regel 1), project (regel 1) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "signaal": false
+   },
+   {
+    "naam": "Afdeling",
+    "ok": true,
+    "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Projectverdeling",
+    "ok": true,
+    "melding": "Geen projectverdeling — 1 regel zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "signaal": true
+   },
+   {
+    "naam": "Regeltelling vs totaal",
+    "ok": true,
+    "melding": "Som van de regels (netto + btw € 6655.00) komt overeen met het totaal incl. (€ 6655.00)",
+    "signaal": false
+   },
+   {
+    "naam": "Vervaldatum",
+    "ok": true,
+    "melding": "Vervaldatum 2026-07-16 (termijn 14 dagen)",
+    "signaal": false
+   },
+   {
+    "naam": "Btw-tarief buitenland",
+    "ok": true,
+    "melding": "Geen EU-/buitenland-tarief op de regels",
+    "signaal": false
+   },
+   {
+    "naam": "IBAN-wissel",
+    "ok": true,
+    "melding": "Eerste IBAN voor deze crediteur (NL95KETN…010) vastgelegd als baseline — controleer het rekeningnummer op de factuur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaatcheck",
+    "ok": true,
+    "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat bij andere crediteur",
+    "ok": true,
+    "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat (module)",
+    "ok": true,
+    "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
+    "signaal": false
+   }
+  ]
+ },
+ "lijst": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "BDO Accountancy_ Tax _ Legal B.V - 6088744 - 2026-07-02.xml",
+    "status": "te_controleren",
+    "bron": "email",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "BDO Accountancy, Tax & Legal B.V.",
+    "totaalbedrag": "6655.00",
+    "factuurdatum": "2026-07-02",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ },
+ "lijst_afgehandeld": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "BDO Accountancy_ Tax _ Legal B.V - 6088744 - 2026-07-02.xml",
+    "status": "te_controleren",
+    "bron": "email",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "BDO Accountancy, Tax & Legal B.V.",
+    "totaalbedrag": "6655.00",
+    "factuurdatum": "2026-07-02",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ },
+ "stamgegevens": {
+  "grootboek_advies": "44444444-0000-0000-0000-000000004700"
+ }
+}

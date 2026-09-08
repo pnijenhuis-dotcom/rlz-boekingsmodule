@@ -1,0 +1,8 @@
+{
+ "administratie": "Universal Steigerbouw B.V.",
+ "document_id": "647b9bde-19ad-4440-ae3b-7c07c8b60ec7 (verwijderd 08-09 'dubbel')",
+ "huls_id": "4f981bc3-16f0-494b-a25b-29bef036000c",
+ "tweede_exemplaar": "2f961933-9b47-4f1c-b989-8e8fa91229c0 (mail 'deel 9', byte-identieke PDF, afgewezen als duplicaat 07-09) + huls ad57853e",
+ "intake_berichten": "85adaa8b (deel 5) en 4cb92d88 (deel 9), imap 2026-09-02",
+ "opmerking": "De ingesloten PDF in de UBL en de losse PDF-bijlage waren byte-identiek (bundelreden ingesloten_pdf_hash); in de fixture is dat de gegenereerde PDF uit pdf_tekst.json."
+}

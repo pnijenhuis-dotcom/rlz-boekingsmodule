@@ -1,0 +1,66 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "BDO Accountancy, Tax & Legal B.V.",
+   "zekerheid": 0.95
+  },
+  "factuurnummer": {
+   "waarde": "6088744/1101779",
+   "zekerheid": 0.95
+  },
+  "factuurdatum": {
+   "waarde": "2026-07-02",
+   "zekerheid": 0.95
+  },
+  "vervaldatum": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "5500.00",
+   "zekerheid": 0.95
+  },
+  "totaal_incl": {
+   "waarde": "6655.00",
+   "zekerheid": 0.95
+  },
+  "btw_bedrag": {
+   "waarde": "1155.00",
+   "zekerheid": 0.95
+  },
+  "iban": {
+   "waarde": "NL95KETN1000000010",
+   "zekerheid": 0.9
+  },
+  "btw_nummer": {
+   "waarde": "NL100039595B01",
+   "zekerheid": 0.9
+  },
+  "kvk_nummer": {
+   "waarde": "91000006",
+   "zekerheid": 0.9
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.0
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
+   "netto_bedrag": "5500.00",
+   "btw_bedrag": null,
+   "hoeveelheid": null,
+   "zekerheid": 0.9,
+   "eenheid": null,
+   "stuksprijs": null,
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ],
+ "volledig": true
+}
