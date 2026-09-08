@@ -53,6 +53,21 @@ class CheckRapport:
         return any(not r.ok for r in self.resultaten)
 
 
+_MAX_LOSSE_REGELNUMMERS = 4
+
+
+def _regelplekken(nummers: list[int], totaal: int) -> str:
+    """Leesbare plek-aanduiding: "(regel 3)", "(alle 11 regels)", "(regel 1, 3, 5)" of "(7 regels: 1, 2, 3, 4, …)"."""
+    if len(nummers) == 1:
+        return f"(regel {nummers[0]})"
+    if totaal > 1 and len(nummers) == totaal:
+        return f"(alle {totaal} regels)"
+    if len(nummers) <= _MAX_LOSSE_REGELNUMMERS:
+        return f"(regel {', '.join(str(n) for n in nummers)})"
+    kop = ", ".join(str(n) for n in nummers[:_MAX_LOSSE_REGELNUMMERS])
+    return f"({len(nummers)} regels: {kop}, …)"
+
+
 def check_verplichte_velden(
     *,
     vendor_id: uuid.UUID | None,
@@ -73,19 +88,25 @@ def check_verplichte_velden(
         ontbrekend.append("totaalbedrag")
     if not regels:
         ontbrekend.append("minstens één boekingsregel")
+    # Blok 4d (08-09, Spot Services 12 regels): per veld GEAGGREGEERD i.p.v. per regel opgesomd — "grootboekrekening
+    # (alle 11 regels)" / "(regel 1, 3, 5)" i.p.v. 33 losse fragmenten. Eén regel houdt de bestaande vorm "(regel i)".
+    per_veld: dict[str, list[int]] = {"grootboekrekening": [], "btw-code": [], "netto bedrag": [], "project": []}
     for i, regel in enumerate(regels, start=1):
         if regel.ledger_id is None:
-            ontbrekend.append(f"grootboekrekening (regel {i})")
+            per_veld["grootboekrekening"].append(i)
         if regel.taxrate_id is None:
-            ontbrekend.append(f"btw-code (regel {i})")
+            per_veld["btw-code"].append(i)
         if regel.netto_bedrag is None:
-            ontbrekend.append(f"netto bedrag (regel {i})")
+            per_veld["netto bedrag"].append(i)
         if project_verplicht and regel.project_id is None:
-            ontbrekend.append(f"project (regel {i})")
+            per_veld["project"].append(i)
+    for veld, nummers in per_veld.items():
+        if nummers:
+            ontbrekend.append(f"{veld} {_regelplekken(nummers, len(regels))}")
 
     if ontbrekend:
         melding = f"Ontbrekend: {', '.join(ontbrekend)}"
-        if any(o.startswith("project (regel") for o in ontbrekend):
+        if per_veld["project"]:
             # B3 (04-09): handelingsperspectief — één project per regel óf de projectverdeling
             # (vaste regels en/of pro rato omzet) die élke regel zonder project een project geeft.
             melding += ' — kies per regel een project óf gebruik "Verdelen over projecten…" onder de boekingsregels'

@@ -506,7 +506,8 @@ describe('BoekvoorstelPanel', () => {
     await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
 
     expect(screen.getByLabelText('Btw bedrag')).toHaveValue('5,00')
-    expect(screen.getByText(/Berekend uit tarief: € 21,00 · factuur-btw leidend/)).toBeInTheDocument()
+    // Blok 4d (08-09): korte grijze regel mét tooltip i.p.v. de wrappende chip.
+    expect(screen.getByTestId('regel-btw-berekend-hint')).toHaveTextContent('tarief geeft € 21,00 — factuur leidend')
   })
 
   it('regelrij-UI 25-08: een afrondingsverschil van 1 cent tussen netto × tarief en factuur-btw geeft géén berekend-hint', async () => {

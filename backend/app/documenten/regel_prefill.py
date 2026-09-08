@@ -40,6 +40,24 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
   bestaat alleen dáár); het leverancier-geheugen blijft de terugval als de factuur niets zegt. Deze herkomst
   triggert de A10-autosave (boekvoorstel._PROJECT_FACTUUR_HERKOMSTEN).
 
+- **Btw verlegd uit de factuur (blok 4c bundel 08-09, casus Spot Services 2026-608):** `leid_btw_af` is puur
+  rekenkundig (netto × tarief ≈ btw) en laat 0 % bewust leeg; de verleggings-vermelding ("Btw verlegd" in kop/
+  totaalblok, `btw_verlegd_vermelding`, deterministisch getoetst) was tot 08-09 alleen een HINT-chip. Nu: draagt de
+  factuur die vermelding ÉN is de factuur-btw 0 (`boekvoorstel._factuur_is_verlegd`), dan krijgt élke regel zonder
+  btw-code én zonder regel-btw het verlegd-tarief van de administratie (`verlegd_taxrate_voor`: `IsRelayed`-tarieven
+  uit `taxrate_cache`, niet verdwenen; precies één → die; anders de NL-tarieven (naam-prefix "NL," — EU-verlegd is
+  óók relayed); anders precies één RLZ-favoriet; anders NIETS = meerduidig, de hint-chip blijft) mét
+  `btw_bron='factuur_verlegd'` — ORANJE tot het leverancier-geheugen de waarde bevestigt (seed-only-regel).
+
+  **WINNAARSVOLGORDE btw-code (één plek, bindend):**
+    1. opgeslagen keuze van de MENS (nooit geraakt — alleen het prefill-pad komt hier);
+    2. uit de factuur BEREKEND (`btw_bron='factuur'`, netto × tarief ≈ btw, groen) — `_regels_prefill`;
+    3. leverancier-GEHEUGEN (kop-niveau-engine, ook oranje/seed) — `_met_leverancier_geheugen`;
+    4. uit de factuur VERLEGD (`btw_bron='factuur_verlegd'`, oranje) — `_met_factuur_verlegd`;
+    5. administratie-DEFAULT (`btw_bron='standaard'`, grijs) — `_met_btw_default`;
+    6. leeg = de mens kiest.
+  Elke stap vult uitsluitend een nog leeg veld; de harde checks blijven de poort.
+
 Opgeslagen keuzes van de mens worden hier nooit geraakt: de aanroeper roept dit uitsluitend op het
 prefill-pad aan (zelfde regel als de btw-chip "uit factuur").
 """
@@ -51,19 +69,67 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Administratie
+from app.documenten.checks import is_buitenland_tarief
 from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.geheugen.service import laad_engine_observaties
 from app.projecten import match as project_match
+from app.sync.btw import taxrate_vlaggen
+from app.sync.models import TaxRateCache
 
 if TYPE_CHECKING:  # boekvoorstel.py importeert deze module (lazy) — geen runtime-cyclus
     from app.documenten.boekvoorstel import BoekvoorstelRegelData
 
 BTW_BRON_STANDAARD = "standaard"
+# Blok 4c (08-09): btw-code uit de verleggings-vermelding op de factuur — oranje tot het geheugen bevestigt.
+BTW_BRON_FACTUUR_VERLEGD = "factuur_verlegd"
+
+
+def verlegd_taxrate_voor(session: Session, *, administratie_id: uuid.UUID) -> uuid.UUID | None:
+    """Het ene verlegd-tarief van de administratie, deterministisch: `IsRelayed`-tarieven (niet verdwenen) →
+    precies één = die; anders alleen de NL-tarieven (naam-prefix vóór de komma "NL" — EU-verlegd is óók relayed,
+    api-verkenning 31-08) → precies één = die; anders precies één RLZ-favoriet (`IsFavorite`) daarbinnen = die;
+    anders None (hoog/laag verlegd zonder favoriet = meerduidig — nooit raden, de mens kiest)."""
+    rijen = list(
+        session.scalars(
+            select(TaxRateCache).where(
+                TaxRateCache.administratie_id == administratie_id, TaxRateCache.verdwenen_uit_bron_op.is_(None)
+            )
+        )
+    )
+    verlegd = [rij for rij in rijen if taxrate_vlaggen(rij.brondata)[0]]
+    if len(verlegd) == 1:
+        return verlegd[0].id
+    if not verlegd:
+        return None
+    nl = [rij for rij in verlegd if rij.naam and "," in rij.naam and not is_buitenland_tarief(rij.naam)]
+    kandidaten = nl or verlegd
+    if len(kandidaten) == 1:
+        return kandidaten[0].id
+    favorieten = [rij for rij in kandidaten if bool((rij.brondata or {}).get("IsFavorite"))]
+    if len(favorieten) == 1:
+        return favorieten[0].id
+    return None
+
+
+def _met_factuur_verlegd(
+    regel: BoekvoorstelRegelData, *, verlegd_taxrate_id: uuid.UUID | None
+) -> BoekvoorstelRegelData:
+    """Stap 4 van de winnaarsvolgorde: alleen een nog leeg btw-veld op een regel zonder regel-btw (0 of niet gelezen),
+    alleen als de factuur verlegd is (aanroeper geeft dan het tarief mee) — oranje `factuur_verlegd`."""
+    if verlegd_taxrate_id is None or regel.taxrate_id is not None:
+        return regel
+    if regel.btw_bedrag is not None and regel.btw_bedrag != 0:
+        return regel  # deze regel draagt wél btw — verlegd geldt niet voor haar
+    return _met_herkomst(
+        replace(regel, taxrate_id=verlegd_taxrate_id, btw_bron=BTW_BRON_FACTUUR_VERLEGD, btw_bewust_leeg=False),
+        **{VELD_BTW: BTW_BRON_FACTUUR_VERLEGD},
+    )
 
 # Herkomst-waarden per veld in `BoekvoorstelRegelData.prefill_herkomst` (blok A10 07-09). Grootboek: de
 # `gb_bron`-waarden van blok D ("geheugen" / "geheugen_seed" / "geheugen_conflict" / "ai") óf
@@ -173,13 +239,16 @@ def verrijk_prefill(
     samengevoegde_regel: BoekvoorstelRegelData | None,
     project_verplicht: bool = False,
     kop_project_tekst: str | None = None,
+    factuur_verlegd: bool = False,
 ) -> tuple[list[BoekvoorstelRegelData], BoekvoorstelRegelData | None]:
     """Geeft (regels, samengevoegde_regel) terug mét regel-GB-voorstel (blok D), project uit de factuur (blok 10),
-    leverancier-geheugen (A10) en btw-default (blok E); élk gevuld veld draagt zijn herkomst in `prefill_herkomst`.
-    `kop_project_tekst` = het kop-`proj` (voor de samengevoegde regel; de losse regels dragen hun eigen tekst al)."""
+    leverancier-geheugen (A10), btw verlegd uit de factuur (blok 4c) en btw-default (blok E); élk gevuld veld draagt
+    zijn herkomst in `prefill_herkomst`. `kop_project_tekst` = het kop-`proj` (voor de samengevoegde regel; de losse
+    regels dragen hun eigen tekst al). `factuur_verlegd` = de factuur vermeldt "btw verlegd" én de factuur-btw is 0."""
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
     vandaag = datetime.now(UTC).date()
+    verlegd_taxrate_id = verlegd_taxrate_voor(session, administratie_id=administratie_id) if factuur_verlegd else None
     if samengevoegde_regel is not None and samengevoegde_regel.project_tekst is None and kop_project_tekst:
         samengevoegde_regel = replace(samengevoegde_regel, project_tekst=kop_project_tekst)
 
@@ -242,6 +311,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
+        regel = _met_factuur_verlegd(regel, verlegd_taxrate_id=verlegd_taxrate_id)
         regel = _met_btw_default(
             regel,
             standaard_taxrate_id=standaard_taxrate_id,
@@ -268,6 +338,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
+        samengevoegde_regel = _met_factuur_verlegd(samengevoegde_regel, verlegd_taxrate_id=verlegd_taxrate_id)
         samengevoegde_regel = _met_btw_default(
             samengevoegde_regel,
             standaard_taxrate_id=standaard_taxrate_id,

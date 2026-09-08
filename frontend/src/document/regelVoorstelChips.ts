@@ -10,7 +10,10 @@
 
 export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 
-export type BtwBron = 'factuur' | 'standaard'
+/** 'factuur' = door code berekend uit netto/btw (groen, chip in het paneel); 'standaard' = btw-default van de
+ * administratie (grijs); 'factuur_verlegd' (blok 4c 08-09) = de factuur vermeldt "btw verlegd" en de btw is 0 → het
+ * verlegd-tarief van de administratie, ORANJE tot het leverancier-geheugen 'm bevestigt (seed-only-regel). */
+export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd'
 
 /** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
@@ -74,7 +77,7 @@ export function bepaalProjectFactuurChip(
 
 export function btwBronUitDto(waarde: string | null | undefined, taxrateId: string | null): BtwBron | null {
   if (!taxrateId) return null
-  return waarde === 'factuur' || waarde === 'standaard' ? waarde : null
+  return waarde === 'factuur' || waarde === 'standaard' || waarde === 'factuur_verlegd' ? waarde : null
 }
 
 /** Chip-besluit voor het grootboek-veld: alleen zolang het voorstel nog in het veld staat én de mens het
@@ -115,17 +118,33 @@ export function bepaalGbChip(
   }
 }
 
-/** Chip-besluit voor de btw-default van de administratie (blok E). De factuur-chip blijft in het paneel
- * zelf (percentage in de tekst). */
-export function bepaalBtwStandaardChip(bron: BtwBron | null, huidigTaxrateId: string | null, handmatig: boolean): RegelChip | null {
-  if (bron !== 'standaard' || !huidigTaxrateId || handmatig) return null
-  return {
-    klasse: 'handmatig',
-    tekst: 'standaard administratie',
-    titel:
-      'Standaard btw-voorstel van deze administratie (Instellingen › Boeken & AI) — vult alleen regels waar factuur en leverancier-geheugen niets opleveren. Controleer; de harde checks blijven de poort.',
+/** Chip-besluit voor de btw-herkomst náást de berekende factuur-chip (die blijft in het paneel zelf, percentage in de
+ * tekst): grijs "standaard administratie" (blok E) of oranje "uit factuur: btw verlegd" (blok 4c 08-09 — winnaarsvolgorde
+ * mens > factuur berekend > leverancier-geheugen > factuur verlegd > administratie-default > leeg, zie
+ * backend regel_prefill.py). Weg zodra de mens het veld aanraakt of een andere waarde in het veld staat. */
+export function bepaalBtwHerkomstChip(bron: BtwBron | null, huidigTaxrateId: string | null, handmatig: boolean): RegelChip | null {
+  if (!bron || !huidigTaxrateId || handmatig) return null
+  if (bron === 'standaard') {
+    return {
+      klasse: 'handmatig',
+      tekst: 'standaard administratie',
+      titel:
+        'Standaard btw-voorstel van deze administratie (Instellingen › Boeken & AI) — vult alleen regels waar factuur en leverancier-geheugen niets opleveren. Controleer; de harde checks blijven de poort.',
+    }
   }
+  if (bron === 'factuur_verlegd') {
+    return {
+      klasse: 'afwijking',
+      tekst: 'uit factuur: btw verlegd',
+      titel:
+        'De factuur vermeldt "btw verlegd" en draagt geen btw — het verlegd-tarief van deze administratie is voorgesteld (code, geen AI). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt \'m voortaan groen. De harde checks blijven de poort.',
+    }
+  }
+  return null
 }
+
+/** Compat-naam (blok E-tests): zelfde besluit als `bepaalBtwHerkomstChip`. */
+export const bepaalBtwStandaardChip = bepaalBtwHerkomstChip
 
 /* --- Overstap-vertaling van een OPEN boekvoorstel (Odoo-slotstuk 04-09, C1 hervertaling) ---------------------
  * Bij een Reeleezee → Odoo-overstap hervertaalt de server de regels van nog open boekvoorstellen via de bevestigde

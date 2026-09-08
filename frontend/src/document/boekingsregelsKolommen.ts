@@ -17,13 +17,15 @@
  * `BoekvoorstelPanel.test.tsx` de gerenderde `<col>`-breedtes + tabel-min-width. */
 
 export const KOLOM_PX = {
-  /** Zoek-combobox grootboek: "4699 · Diverse kosten" leesbaar tot ~18 tekens; de listbox is altijd
-   * ≥ 280 px (SearchableCombobox.MIN_LEESBARE_BREEDTE) dus de volledige naam blijft bereikbaar. */
-  grootboek: 150,
+  /** Zoek-combobox grootboek: "7006 · Inhuur montage" leesbaar tot ~22 tekens (blok 4d 08-09, screenshot Spot
+   * Services: 150 px kapte "7006 · Inhuur mor" af); de listbox is altijd ≥ 280 px (SearchableCombobox.
+   * MIN_LEESBARE_BREEDTE) en het gesloten veld draagt de volledige waarde als `title`. */
+  grootboek: 184,
   /** Zoek-combobox btw-code: "21% · NL Hoog" past. */
   btw: 116,
-  /** Zoek-combobox project (alleen bij projectplicht): "26127 Tilburg (…)" — de code blijft zichtbaar. */
-  project: 136,
+  /** Zoek-combobox project (alleen bij projectplicht): "26049 Hoofddorp (…)" — code + plaats zichtbaar (blok 4d
+   * 08-09: 136 px gaf "26049 Hoofddc"). */
+  project: 168,
   /** Geld altijd volledig leesbaar: 104 px past "123.456,78" incl. input- en celpadding. */
   netto: 104,
   btwBedrag: 104,
@@ -31,10 +33,11 @@ export const KOLOM_PX = {
   verwijder: 30,
 } as const
 
-/** Ondergrens voor de omschrijving-kolom: ~24 tekens op 12,5 px — genoeg om op WOORDgrenzen te
+/** Ondergrens voor de omschrijving-kolom: ~28 tekens op 12,5 px (blok 4d 08-09: de kolomkop "Omschrijving" mag
+ * nooit tot "Omschrijv" krimpen) — genoeg om op WOORDgrenzen te
  * wrappen; alleen één onafbreekbaar token langer dan deze breedte breekt nog binnen het woord
  * (`overflow-wrap: break-word`, nooit `anywhere`/`break-all`). */
-export const OMSCHRIJVING_MIN_PX = 168
+export const OMSCHRIJVING_MIN_PX = 200
 
 /** Som van alle kolomminima = de `min-width` van de tabel; daaronder scrollt `.tabel-scroll`. */
 export function minimaleTabelbreedte(metProject: boolean): number {

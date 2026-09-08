@@ -14,6 +14,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
+from app.documenten import veldvoorstel_regels
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
@@ -349,8 +350,9 @@ def _project_teksten_per_regel(
     (regel wint van kop, kop = default). Geen veldvoorstel = niets te leren."""
     if not veldvoorstel:
         return [(r.project_id, None) for r in regels]
-    kop = veldvoorstel.get("project_tekst") or None
-    ai_regels = [r for r in (veldvoorstel.get("regels") or []) if isinstance(r, dict)]
+    # Blok 4 (08-09): dezelfde regelset als de prefill — tariefstaffels weg, kop = kop-`proj` óf het enige regel-`proj`.
+    kop = veldvoorstel_regels.kop_project_tekst(veldvoorstel)
+    ai_regels = veldvoorstel_regels.boekbare_regels(veldvoorstel)
     uit: list[tuple[uuid.UUID | None, str | None]] = []
     for i, regel in enumerate(regels):
         tekst = None

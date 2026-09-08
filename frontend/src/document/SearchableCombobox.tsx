@@ -300,6 +300,8 @@ export function SearchableCombobox({
         autoComplete="off"
         placeholder={placeholder ?? 'Typen om te zoeken…'}
         value={open ? zoekterm : geselecteerd ? weergaveTekst(geselecteerd) : ''}
+        // Blok 4d (08-09): het gesloten veld kapt een lange keuze af — de volledige waarde blijft als tooltip leesbaar.
+        title={!open && geselecteerd ? weergaveTekst(geselecteerd) : undefined}
         onFocus={() => {
           setOpen(true)
           setZoekterm('')

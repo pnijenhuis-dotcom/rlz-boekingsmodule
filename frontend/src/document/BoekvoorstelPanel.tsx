@@ -26,7 +26,7 @@ import {
   type HandmatigeVelden,
 } from './geheugenVoorstel'
 import {
-  bepaalBtwStandaardChip,
+  bepaalBtwHerkomstChip,
   bepaalGbChip,
   bepaalOverstapChip,
   bepaalProjectFactuurChip,
@@ -49,6 +49,7 @@ import type { MateriaalmatchDto } from '../planning/transportApi'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
 import { KOLOM_PX, minimaleTabelbreedte } from './boekingsregelsKolommen'
+import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { NieuweCrediteurDialog, type NieuweCrediteurResultaat } from './NieuweCrediteurDialog'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
@@ -215,11 +216,10 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
 
 function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
   if (dto.regels.length === 0) return [nieuweRegel()]
-  // Sinds het compacte schema (2026-07-10) levert de AI één zekerheidsscore per regel.
-  const aiScores =
-    ai && ai.regels.length === dto.regels.length
-      ? dto.regels.map((_, i) => ai.regel_zekerheid[i] ?? null)
-      : null
+  // Sinds het compacte schema (2026-07-10) levert de AI één zekerheidsscore per regel. Blok 4 (08-09): de server
+  // filtert tariefstaffel-regels uit de prefill — uitlijnen op de BOEKBARE regels van het veldvoorstel.
+  const boekbaar = ai ? boekbareAiRegels(ai) : null
+  const aiScores = boekbaar && boekbaar.length === dto.regels.length ? boekbaar.map((x) => x.zekerheid) : null
   return dto.regels.map((r, i) => regelUitDtoRegel(r, aiScores ? aiScores[i] : null))
 }
 
@@ -229,7 +229,8 @@ function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[]
  * daardoor altijd beschikbaar zolang er een AI-voorstel is. */
 function regelsUitAi(ai: AiVoorstel): RegelState[] {
   if (ai.regels.length === 0) return [nieuweRegel()]
-  return ai.regels.map((r, i) => ({
+  // Blok 4 (08-09): tariefstaffel-regels (aantal 0, bedrag 0) worden geen boekingsregel — zelfde filter als de server.
+  return boekbareAiRegels(ai).map(({ regel: r, zekerheid }) => ({
     key: crypto.randomUUID(),
     ledgerId: null,
     taxrateId: r.taxrate_id,
@@ -246,7 +247,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     projectDetail: null,
     overstap: null,
     omschrijving: r.omschrijving ?? '',
-    aiZekerheid: ai.regel_zekerheid[i] ?? null,
+    aiZekerheid: zekerheid,
     geheugen: null,
     handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
     geheugenFout: false,
@@ -1728,7 +1729,7 @@ export function BoekvoorstelPanel({
             </label>
             <span className="hint" style={{ margin: 0, flex: '1 1 260px', minWidth: 0 }}>
               {regelsSamenvoegen
-                ? `Samengevoegd tot één boekingsregel (${inactieveRegels.length} factuurregels gelezen) — keuze wordt per leverancier onthouden.`
+                ? `Samengevoegd tot één boekingsregel (${inactieveRegels.length} factuurregels gelezen${ai && aantalTariefstaffels(ai) > 0 ? `, ${aantalTariefstaffels(ai)} tariefregels zonder bedrag weggelaten` : ''}) — keuze wordt per leverancier onthouden.`
                 : 'Losse factuurregels — keuze wordt per leverancier onthouden.'}
             </span>
           </div>
@@ -1795,7 +1796,7 @@ export function BoekvoorstelPanel({
                         // oranje historie/conflict/"AI-voorstel — bevestig". Weg zodra de mens het veld aanraakt.
                         const gbChip = bepaalGbChip(regel.gbBron, regel.gbDetail, regel.ledgerId, regel.handmatigeVelden.ledgerId)
                         return gbChip ? (
-                          <div style={{ marginTop: 4 }}>
+                          <div className="regel-herkomst">
                             <span className={`chip ${gbChip.klasse}`} title={gbChip.titel} data-testid="regel-gb-chip">
                               {gbChip.tekst}
                             </span>
@@ -1836,12 +1837,18 @@ export function BoekvoorstelPanel({
                         toonLabel={false}
                       />
                       {(() => {
-                        // Blok E 04-09 (mockup blok 3): btw-default van de administratie — neutrale chip
-                        // "standaard administratie", alleen zolang de mens het veld niet aanraakt.
-                        const btwChip = bepaalBtwStandaardChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId)
+                        // Blok E 04-09 (mockup blok 3): btw-default van de administratie — neutrale chip "standaard
+                        // administratie"; blok 4c 08-09: oranje "uit factuur: btw verlegd". Eén regel, ellipsis + title
+                        // (norm C9), alleen zolang de mens het veld niet aanraakt.
+                        const btwChip = bepaalBtwHerkomstChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId)
                         return btwChip ? (
-                          <div style={{ marginTop: 4 }}>
-                            <span className={`chip ${btwChip.klasse}`} title={btwChip.titel} data-testid="regel-btw-standaard-chip">
+                          <div className="regel-herkomst">
+                            <span
+                              className={`chip ${btwChip.klasse}`}
+                              title={btwChip.titel}
+                              data-testid="regel-btw-standaard-chip"
+                              data-bron={regel.btwBron ?? undefined}
+                            >
                               {btwChip.tekst}
                             </span>
                           </div>
@@ -1849,7 +1856,7 @@ export function BoekvoorstelPanel({
                       })()}
                       <OverstapChip vertaling={regel.overstap?.btw} veld="btw" huidig={regel.taxrateId} handmatig={regel.handmatigeVelden.taxrateId} />
                       {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
-                        <div style={{ marginTop: 4 }}>
+                        <div className="regel-herkomst">
                           <span
                             className="chip ok"
                             title="Door code afgeleid uit netto- en btw-bedrag van deze factuurregel (±1 cent) tegen de RLZ-tarieven van deze administratie — geen AI, geen geheugen. De harde checks blijven de poort."
@@ -1862,7 +1869,7 @@ export function BoekvoorstelPanel({
                         regel.taxrateId === null &&
                         !regel.handmatigeVelden.taxrateId &&
                         (bedragAlsGetal(regel.btw) ?? 0) === 0 && (
-                          <div style={{ marginTop: 4 }}>
+                          <div className="regel-herkomst">
                             <span
                               className="chip vraag"
                               title={`De factuur vermeldt: "${verlegdVermelding}". Dit is een hint — 0% kan verlegd, vrijgesteld of 0%-tarief zijn, dus de code wordt nooit automatisch ingevuld; kies zelf (of het boekingsgeheugen van deze leverancier vult 'm).`}
@@ -1910,7 +1917,7 @@ export function BoekvoorstelPanel({
                           // oranje "nog niet bevestigd", of de uitleg-chip bij meerduidig. Weg zodra de mens het veld aanraakt.
                           const projectChip = bepaalProjectFactuurChip(regel.projectBron, regel.projectDetail, regel.projectId, regel.handmatigeVelden.projectId)
                           return projectChip ? (
-                            <div style={{ marginTop: 4 }}>
+                            <div className="regel-herkomst">
                               <span className={`chip ${projectChip.klasse}`} title={projectChip.titel} data-testid="regel-project-factuur-chip">
                                 {projectChip.tekst}
                               </span>
@@ -1958,13 +1965,14 @@ export function BoekvoorstelPanel({
                         onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
                       />
                       {btwWijktAf && verwachtBtw !== null && (
-                        <div className="regel-hint" style={{ textAlign: 'right' }}>
-                          <span
-                            className="chip afwijking"
-                            title={`Netto × tarief geeft € ${formatEuro(verwachtBtw)}; het ingevulde bedrag wijkt meer dan 1 cent af. De btw van de factuur is leidend — controleer of het tarief klopt.`}
-                          >
-                            Berekend uit tarief: € {formatEuro(verwachtBtw)} · factuur-btw leidend
-                          </span>
+                        // Blok 4d (08-09): één korte grijze regel mét tooltip i.p.v. een chip die tot vijf regels wrapte.
+                        <div
+                          className="regel-herkomst muted"
+                          style={{ textAlign: 'right' }}
+                          data-testid="regel-btw-berekend-hint"
+                          title={`Netto × tarief geeft € ${formatEuro(verwachtBtw)}; het ingevulde bedrag wijkt meer dan 1 cent af. De btw van de factuur is leidend — controleer of het tarief klopt.`}
+                        >
+                          tarief geeft € {formatEuro(verwachtBtw)} — factuur leidend
                         </div>
                       )}
                     </>
@@ -2029,6 +2037,8 @@ export function BoekvoorstelPanel({
         {/* B1 (04-09, UX-norm "lege stand = actie"): regels zonder project bieden de verdeling aan — één project blijft
             gewoon de kolom, het blok is voor de meerdere-projecten-gevallen. */}
         {!isReadOnly && projectVerplicht && onVerdelenGevraagd && regels.some((r) => r.projectId === null) && (
+          // Blok 4d (08-09): draagt de factuur zélf een projectnummer (blok 10-chip op een regel), dan is verdelen over
+          // projecten niet de weg — dan alleen "kies per regel een project".
           <div className="hint" data-testid="project-leeg-actie" style={{ marginTop: 6 }}>
             {regels.filter((r) => r.projectId === null).length === 1
               ? '1 regel zonder project'
@@ -2036,6 +2046,8 @@ export function BoekvoorstelPanel({
             {verdelingDektRegels ? (
               // B3-dekking: de opgeslagen verdeling geeft deze regels hun project(en) — geen actie meer nodig.
               <>— gedekt door de projectverdeling ✓</>
+            ) : regels.some((r) => r.projectBron !== null) ? (
+              <>— kies per regel een project (de factuur noemt een projectnummer)</>
             ) : (
               <>
                 — kies per regel een project óf{' '}

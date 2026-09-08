@@ -19,6 +19,7 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import leverancier_iban
 from app.documenten import periode as periode_regels
+from app.documenten import veldvoorstel_regels
 from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
@@ -280,10 +281,15 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
     die worden één-op-één regels in het boekvoorstel, incl. de eventuele btw-code-suggestie uit
     de sync-cache. GB (`ledger_id`) blijft bewust leeg: het boekingsgeheugen is een volgende
     sessie, en zonder geheugen is elke GB-keuze een gok. UBL-voorstellen houden hun bestaande
-    één-regel-prefill uit de totalen."""
-    ai_regels = veldvoorstel.get("regels")
-    if not isinstance(ai_regels, list) or not ai_regels:
+    één-regel-prefill uit de totalen.
+
+    Blok 4 (08-09, Spot Services): tariefstaffel-regels (aantal 0, bedrag 0, btw 0) worden GEEN boekingsregel —
+    ze blijven als bron in het veldvoorstel (`veldvoorstel_regels.boekbare_regels`). Kop-`proj` = default voor regels
+    zonder eigen tekst; staat het nummer alleen op één regel, dan is dát de kop (`kop_project_tekst`)."""
+    if not isinstance(veldvoorstel.get("regels"), list) or not veldvoorstel.get("regels"):
         return _regel_prefill_uit_ubl(veldvoorstel)
+    ai_regels = veldvoorstel_regels.boekbare_regels(veldvoorstel)
+    kop_project = veldvoorstel_regels.kop_project_tekst(veldvoorstel)
     return [
         BoekvoorstelRegelData(
             ledger_id=None,
@@ -295,10 +301,9 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             btw_bron=_btw_bron(regel),
             btw_bewust_leeg=_btw_bewust_leeg(regel),
             # Blok 10: regel-`proj` wint van kop-`proj`; de kop is de default voor regels zonder eigen tekst.
-            project_tekst=_str_of_none(regel.get("project_tekst") or veldvoorstel.get("project_tekst") or None),
+            project_tekst=_str_of_none(regel.get("project_tekst") or kop_project or None),
         )
         for regel in ai_regels
-        if isinstance(regel, dict)
     ]
 
 
@@ -323,8 +328,9 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
     excl), met als vangnet de deterministische som van de geëxtraheerde regels — alleen als álle
     regelbedragen geparst zijn, nooit een gedeeltelijke som. Grootboek blijft leeg
     (boekingsgeheugen = sessie 2); btw-code alleen als alle regels dezelfde cache-suggestie
-    dragen. De AI blijft altijd alle regels extraheren — dit is puur de weergave-/boekvorm."""
-    regels = [r for r in veldvoorstel.get("regels") or [] if isinstance(r, dict)]
+    dragen. De AI blijft altijd alle regels extraheren — dit is puur de weergave-/boekvorm.
+    Tariefstaffel-regels (blok 4 08-09) tellen niet mee in het regelaantal (som ongewijzigd: ze zijn 0)."""
+    regels = veldvoorstel_regels.boekbare_regels(veldvoorstel)
 
     netto = _als_decimal(veldvoorstel.get("totaal_excl"))
     if netto is None and regels:
@@ -375,6 +381,23 @@ def _samengevoegde_regel(veldvoorstel: dict) -> BoekvoorstelRegelData | None:
 def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
     waarde = veldvoorstel.get("btw_verlegd_vermelding") if veldvoorstel else None
     return waarde if isinstance(waarde, str) and waarde else None
+
+
+def _factuur_is_verlegd(veldvoorstel: dict | None) -> bool:
+    """Blok 4c (08-09, Spot Services): de factuur draagt een verleggings-vermelding (kop/totaalblok, deterministisch
+    getoetst in controle.is_verlegd_vermelding) ÉN de factuur-btw is 0 — gelezen btw-bedrag 0, of (zonder gelezen
+    btw-bedrag) incl. = excl. Onbekend = False: nooit raden."""
+    if veldvoorstel is None or _verlegd_vermelding(veldvoorstel) is None:
+        return False
+    # NB niet via `_gelezen_totalen`: die zet een gelezen btw-bedrag van 0 met `or` op None.
+    factuur_btw = _als_decimal(veldvoorstel.get("btw_bedrag"))
+    if factuur_btw is None:
+        factuur_btw = _als_decimal(veldvoorstel.get("totaal_btw"))
+    if factuur_btw is not None:
+        return factuur_btw == 0
+    totaal_excl = _als_decimal(veldvoorstel.get("totaal_excl"))
+    totaal_incl = _als_decimal(veldvoorstel.get("totaal_incl"))
+    return totaal_excl is not None and totaal_incl is not None and totaal_excl == totaal_incl
 
 
 def _gelezen_totalen(veldvoorstel: dict | None) -> tuple[Decimal | None, Decimal | None]:
@@ -536,8 +559,8 @@ def _echte_regelteksten(
         and samengevoegde_regel.omschrijving is not None
         and regels[0].omschrijving == samengevoegde_regel.omschrijving
     ):
-        gelezen = [r for r in (veldvoorstel or {}).get("regels") or [] if isinstance(r, dict)]
-        return [r.get("omschrijving") for r in gelezen]
+        # Blok 4 (08-09): tariefstaffel-regels zijn geen factuurtekst voor de kop-omschrijving.
+        return [r.get("omschrijving") for r in veldvoorstel_regels.boekbare_regels(veldvoorstel)]
     return [r.omschrijving for r in regels]
 
 
@@ -1046,7 +1069,9 @@ def _bereken_prefill(
         regels=_regels_prefill(veldvoorstel),
         samengevoegde_regel=samenvoeg["samengevoegde_regel"],
         project_verplicht=project_verplicht,
-        kop_project_tekst=_str_of_none(veldvoorstel.get("project_tekst") or None),
+        kop_project_tekst=veldvoorstel_regels.kop_project_tekst(veldvoorstel),
+        # Blok 4c (08-09): "btw verlegd" op de factuur + btw 0 → verlegd-tarief voorstellen (oranje, vóór de default).
+        factuur_verlegd=_factuur_is_verlegd(veldvoorstel),
     )
     data = _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
         document_id=document_id,

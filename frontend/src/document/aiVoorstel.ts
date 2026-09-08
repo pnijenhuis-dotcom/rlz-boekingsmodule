@@ -12,6 +12,8 @@ export interface AiRegelVoorstel {
   btw_bron?: string | null
   /** Blok 10 07-09: project-/werknummer van de opdrachtgever op déze regel zoals gelezen (ruw; de server matcht). */
   project_tekst?: string | null
+  /** Blok 4 08-09: tariefstaffel-regel (aantal 0, bedrag 0, btw 0) — bron ja, boekingsregel nee (nulregels.ts). */
+  tariefstaffel?: boolean
 }
 
 export interface AiControle {

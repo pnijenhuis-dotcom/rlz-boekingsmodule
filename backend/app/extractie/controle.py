@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
 from app.documenten.regelsom import REDEN_GEEN_REGELS, toets_regelsom
+from app.documenten.veldvoorstel_regels import VLAG_TARIEFSTAFFEL, is_nulregel, parse_hoeveelheid
 from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
 from app.extractie.iban import is_geldig_iban, normaliseer_iban
 from app.extractie.service import AiFactuurExtractie, AiVeld
@@ -397,12 +398,16 @@ def bouw_veldvoorstel(
         netto_per_regel.append(netto)
         btw_per_regel.append(btw)
         afleiding = leid_btw_af(netto, btw, taxrates)
+        # Blok 4 (08-09, Spot Services): tariefstaffel-regel (aantal 0/ontbrekend, netto 0, btw 0) — blijft als
+        # BRON in `regels` (tariefkaart/self-billing), wordt géén boekingsregel (documenten/veldvoorstel_regels.py).
+        tariefstaffel = is_nulregel(netto=netto, btw=btw, hoeveelheid=parse_hoeveelheid(regel.hoeveelheid))
         regels.append(
             {
                 "omschrijving": regel.omschrijving,
                 "netto_bedrag": _bedrag_str(netto),
                 "btw_bedrag": _bedrag_str(btw),
                 "hoeveelheid": regel.hoeveelheid,
+                VLAG_TARIEFSTAFFEL: tariefstaffel,
                 # Blok D 28-08 (voorraad-aansluiting): eenheid + stuksprijs zoals vermeld — ruw.
                 "eenheid": regel.eenheid,
                 "stuksprijs": regel.stuksprijs,
@@ -467,6 +472,8 @@ def bouw_veldvoorstel(
         "btw_nummer_geverifieerd": btw_gelezen.geverifieerd if btw_gelezen else None,
         "kvk_nummer": kvk_nummer,
         "regelaantal": len(regels),
+        # Aantal tariefstaffel-regels (aantal 0, bedrag 0) dat géén boekingsregel wordt — leesbaar in de tijdlijn.
+        "tariefstaffel_aantal": sum(1 for r in regels if r[VLAG_TARIEFSTAFFEL]),
         "regels": regels,
         "zekerheid": zekerheid,
         "regel_zekerheid": regel_zekerheid,
