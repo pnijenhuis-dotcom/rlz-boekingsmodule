@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0125
+-- Migratie-head bij deze dump: 0127
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -696,6 +696,25 @@ ALTER TABLE ONLY boekhouding.bank_relatie_boeking FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: bank_relatie_iban; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_relatie_iban (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    iban text NOT NULL,
+    entity_guid uuid NOT NULL,
+    entity_naam text,
+    aantal_bevestigingen integer NOT NULL,
+    eerste_bevestiging_op timestamp with time zone DEFAULT now() NOT NULL,
+    laatste_bevestiging_op timestamp with time zone DEFAULT now() NOT NULL,
+    laatste_opdracht_id uuid
+);
+
+ALTER TABLE ONLY boekhouding.bank_relatie_iban FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: bank_splitsing; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -821,6 +840,10 @@ CREATE TABLE boekhouding.boekvoorstel (
     periode_week_tot integer,
     periode_herkomst text,
     periode_tekst text,
+    betaalstatus text,
+    betaalstatus_herkomst text,
+    verwachte_betaaldatum date,
+    CONSTRAINT ck_boekvoorstel_betaalstatus_herkomst CHECK (((betaalstatus_herkomst IS NULL) OR (betaalstatus_herkomst = ANY (ARRAY['kanaal'::text, 'factuur'::text, 'mens'::text])))),
     CONSTRAINT ck_boekvoorstel_periode_herkomst CHECK (((periode_herkomst IS NULL) OR (periode_herkomst = ANY (ARRAY['factuur'::text, 'factuur_maand'::text, 'afgeleid_van_factuurdatum'::text, 'mens'::text])))),
     CONSTRAINT ck_boekvoorstel_periode_weken CHECK ((((periode_week_van IS NULL) AND (periode_week_tot IS NULL)) OR (((periode_week_van >= 1) AND (periode_week_van <= 53)) AND ((periode_week_tot >= periode_week_van) AND (periode_week_tot <= 53)))))
 );
@@ -1386,6 +1409,8 @@ CREATE TABLE boekhouding.intake_bericht (
     verwerkt_door uuid NOT NULL,
     detail jsonb NOT NULL,
     body_tekst text,
+    kanaal text DEFAULT 'facturen'::text NOT NULL,
+    CONSTRAINT ck_intake_bericht_kanaal CHECK ((kanaal = ANY (ARRAY['facturen'::text, 'declaraties'::text]))),
     CONSTRAINT intake_bericht_bron_geldig CHECK ((bron = ANY (ARRAY['eml_upload'::text, 'imap'::text])))
 );
 
@@ -3904,6 +3929,14 @@ ALTER TABLE ONLY boekhouding.bank_relatie_boeking
 
 
 --
+-- Name: bank_relatie_iban bank_relatie_iban_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_iban
+    ADD CONSTRAINT bank_relatie_iban_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: bank_splitsing_deel bank_splitsing_deel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5511,6 +5544,13 @@ CREATE INDEX ix_bank_relatie_boeking_entity ON boekhouding.bank_relatie_boeking 
 
 
 --
+-- Name: ix_bank_relatie_iban_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_relatie_iban_administratie_id ON boekhouding.bank_relatie_iban USING btree (administratie_id);
+
+
+--
 -- Name: ix_bank_splitsing_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6400,6 +6440,13 @@ CREATE UNIQUE INDEX ux_bank_relatie_boeking_actief_per_mutatie ON boekhouding.ba
 
 
 --
+-- Name: ux_bank_relatie_iban_per_relatie; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_bank_relatie_iban_per_relatie ON boekhouding.bank_relatie_iban USING btree (administratie_id, iban, entity_guid);
+
+
+--
 -- Name: ux_bank_splitsing_actief_per_mutatie; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -7006,6 +7053,14 @@ ALTER TABLE ONLY boekhouding.bank_relatie_boeking
 
 ALTER TABLE ONLY boekhouding.bank_relatie_boeking
     ADD CONSTRAINT bank_relatie_boeking_gestorneerd_door_fkey FOREIGN KEY (gestorneerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: bank_relatie_iban bank_relatie_iban_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_relatie_iban
+    ADD CONSTRAINT bank_relatie_iban_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -9870,6 +9925,19 @@ ALTER TABLE boekhouding.bank_relatie_boeking ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY bank_relatie_boeking_scope ON boekhouding.bank_relatie_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: bank_relatie_iban; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_relatie_iban ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_relatie_iban bank_relatie_iban_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_relatie_iban_scope ON boekhouding.bank_relatie_iban USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

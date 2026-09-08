@@ -81,6 +81,7 @@ class TestBoekvoorstelEndpoints:
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
             "Afdeling",
+            "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: buiten het declaraties-kanaal informatief
             "Projectverdeling",
             "Regeltelling vs totaal",
             "Vervaldatum",
@@ -140,6 +141,7 @@ class TestBoekvoorstelEndpoints:
         assert {r["naam"] for r in body["checks"]["resultaten"]} == {
             "Verplichte velden",
             "Afdeling",
+            "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: buiten het declaraties-kanaal informatief
             "Projectverdeling",
             "Regeltelling vs totaal",
             "Vervaldatum",
