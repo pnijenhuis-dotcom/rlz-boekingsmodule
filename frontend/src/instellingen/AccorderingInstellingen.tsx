@@ -13,6 +13,7 @@ import {
   type StaandeRegelDto,
 } from '../accordering/accorderingApi'
 import { Select, Switch, SkeletonRegels } from '../ui/basis'
+import { IntercompanyLeveranciers } from './IntercompanyLeveranciers'
 
 interface LaagInvoer {
   accordeurId: string
@@ -358,6 +359,11 @@ export function AccorderingInstellingen({
       {administraties.map((a) => (
         <AdministratieAccordering key={a.id} administratieId={a.id} naam={a.naam} />
       ))}
+      {/* Nachtrun 08/09-09 blok 1: intercompany-leveranciers per administratie — alleen op de detailpagina (één
+          administratie); de kantoorbrede sectie toont het niet (daar zou het N blokken worden). */}
+      {administraties.length === 1 && (
+        <IntercompanyLeveranciers administratieId={administraties[0].id} naam={administraties[0].naam} />
+      )}
     </div>
   )
 }

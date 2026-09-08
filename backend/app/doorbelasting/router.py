@@ -675,3 +675,104 @@ def storno_toets(
             for boeking_id, toetsen in per_boeking.items()
         }
     )
+
+
+# --- Intercompany-leveranciers per administratie (nachtrun 08/09-09 blok 1) ---------------------------------------
+# Instellingen › Administraties › ‹BV› › Klant-accordering, blok "Intercompany — accordering overslaan". Lezen voor
+# elke kantoorrol mét scope, schrijven Beheerder-only; dezelfde tabel als de doorbelasting-mapping (geen tweede bron).
+
+
+def _naar_ic_response(administratie_id: uuid.UUID) -> schemas.IntercompanyLeveranciersResponse:
+    from app.db.session import scoped_session
+    from app.doorbelasting import intercompany_beheer
+
+    with scoped_session(administratie_id) as session:
+        leveranciers = intercompany_beheer.lijst_intercompany_leveranciers(session, administratie_id=administratie_id)
+        historie = intercompany_beheer.historie_intercompany_leveranciers(session, administratie_id=administratie_id)
+    return schemas.IntercompanyLeveranciersResponse(
+        leveranciers=[
+            schemas.IntercompanyLeverancierDto(
+                vendor_id=lv.vendor_id,
+                naam=lv.naam,
+                bron=lv.bron,  # type: ignore[arg-type]
+                actief=lv.actief,
+                gewijzigd_op=lv.gewijzigd_op,
+                verwijderbaar=lv.verwijderbaar,
+            )
+            for lv in leveranciers
+        ],
+        historie=[
+            schemas.IntercompanyHistorieRegelDto(
+                tijdstip=h.tijdstip,
+                actor_naam=h.actor_naam,
+                actie=h.actie,  # type: ignore[arg-type]
+                vendor_id=h.vendor_id,
+                naam=h.naam,
+                reden=h.reden,
+                bron=h.bron,
+            )
+            for h in historie
+        ],
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/intercompany-leveranciers",
+    response_model=schemas.IntercompanyLeveranciersResponse,
+)
+def intercompany_leveranciers_lijst(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
+) -> schemas.IntercompanyLeveranciersResponse:
+    """Actieve IC-leveranciers van deze administratie (handmatig + uit de doorbelasting-mapping) + de tijdlijn van de
+    instelling (audit-regels)."""
+    return _naar_ic_response(administratie_id)
+
+
+@router.put(
+    "/administraties/{administratie_id}/intercompany-leveranciers/{vendor_id}",
+    response_model=schemas.IntercompanyLeveranciersResponse,
+)
+def intercompany_leverancier_markeren(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.IntercompanyMarkeerRequest | None = None,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.IntercompanyLeveranciersResponse:
+    """Beheerder-only: markeer een crediteur als intercompany (klant-accordering wordt voor diens facturen
+    overgeslagen; open posten nooit afletter-doel). Audit oud→nieuw; idempotent."""
+    from app.doorbelasting import intercompany_beheer
+
+    try:
+        intercompany_beheer.markeer_intercompany_leverancier(
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            actor_id=actor.id,
+            reden=invoer.reden if invoer else None,
+        )
+    except intercompany_beheer.CrediteurOnbekend as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _naar_ic_response(administratie_id)
+
+
+@router.delete(
+    "/administraties/{administratie_id}/intercompany-leveranciers/{vendor_id}",
+    response_model=schemas.IntercompanyLeveranciersResponse,
+)
+def intercompany_leverancier_verwijderen(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.IntercompanyLeveranciersResponse:
+    """Beheerder-only: handmatige IC-vlag weg (`actief=False`, nooit delete). Een rij uit de doorbelasting-mapping is
+    alleen-lezen → 409."""
+    from app.doorbelasting import intercompany_beheer
+
+    try:
+        intercompany_beheer.verwijder_intercompany_leverancier(
+            administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor.id
+        )
+    except intercompany_beheer.RijUitDoorbelasting as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except intercompany_beheer.CrediteurOnbekend as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _naar_ic_response(administratie_id)

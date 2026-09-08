@@ -313,9 +313,9 @@ export const REGISTRY: readonly RegistryEntry[] = [
   },
   {
     id: 'tab-accordering',
-    naam: 'Klant-accordering — lagen, toggle',
+    naam: 'Klant-accordering — lagen, toggle, intercompany-leveranciers',
     waar: 'Administraties › <administratie> › tab Klant-accordering',
-    synoniemen: ['accordering', 'accordeur', 'goedkeuring', 'lagen', 'drempel', 'bedragdrempel'],
+    synoniemen: ['accordering', 'accordeur', 'goedkeuring', 'lagen', 'drempel', 'bedragdrempel', 'intercompany', 'groepsbedrijf', 'ic-leverancier', 'overslaan'],
     doel: { soort: 'tab', tab: 'accordering' },
     beheerder: true,
   },

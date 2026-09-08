@@ -649,6 +649,77 @@ def _rapporteer_crediteuren_dubbelen_auto(uitkomst) -> int:
     return 1 if uitkomst.fouten else 0
 
 
+def _intercompany_leverancier_markeren(args) -> int:
+    """Blok 2 nachtrun 08/09-09: één geauditeerde IC-rij via de servicelaag van de Beheerder-instelling. De actor
+    moet een bestaande Beheerder zijn (zelfde poort als de route); administratie en crediteur op uuid óf unieke naam."""
+    from app.db.models import Administratie, Gebruiker
+    from app.db.session import scoped_session
+    from app.doorbelasting import intercompany_beheer
+    from app.sync.models import VendorCache
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        actor = session.scalars(select(Gebruiker).where(Gebruiker.e_mail == args.actor_email.strip().lower())).first()
+        if actor is None or actor.rol != "beheerder":
+            print(f"FOUT  actor {args.actor_email!r} is geen bestaande Beheerder", file=sys.stderr)
+            return 2
+        try:
+            administratie = session.get(Administratie, uuid.UUID(args.administratie))
+        except ValueError:
+            administratie = session.scalars(
+                select(Administratie).where(Administratie.naam == args.administratie)
+            ).first()
+        if administratie is None:
+            print(f"FOUT  administratie {args.administratie!r} onbekend", file=sys.stderr)
+            return 2
+        actor_id, administratie_id, administratie_naam = actor.id, administratie.id, administratie.naam
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        try:
+            vendors = [session.get(VendorCache, (uuid.UUID(args.crediteur), administratie_id))]
+            vendors = [v for v in vendors if v is not None]
+        except ValueError:
+            vendors = list(
+                session.scalars(
+                    select(VendorCache).where(
+                        VendorCache.administratie_id == administratie_id, VendorCache.naam == args.crediteur
+                    )
+                )
+            )
+        if len(vendors) != 1:
+            print(
+                f"FOUT  crediteur {args.crediteur!r} in {administratie_naam}: {len(vendors)} treffers (verwacht 1)",
+                file=sys.stderr,
+            )
+            return 2
+        vendor_id, vendor_naam = vendors[0].id, vendors[0].naam
+        huidige = intercompany_beheer.lijst_intercompany_leveranciers(session, administratie_id=administratie_id)
+    al_actief = any(lv.vendor_id == vendor_id for lv in huidige)
+    werkwoord = "verwijderen" if args.verwijderen else "markeren"
+    print(
+        f"{'DRY  ' if args.dry_run else 'PLAN '} {werkwoord}: {vendor_naam} ({vendor_id}) in {administratie_naam} "
+        f"({administratie_id}); actor {args.actor_email}; nu {'al' if al_actief else 'niet'} intercompany; "
+        f"reden: {args.reden}"
+    )
+    if args.dry_run:
+        return 0
+    try:
+        if args.verwijderen:
+            intercompany_beheer.verwijder_intercompany_leverancier(
+                administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, reden=args.reden
+            )
+        else:
+            intercompany_beheer.markeer_intercompany_leverancier(
+                administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, reden=args.reden
+            )
+    except intercompany_beheer.IntercompanyBeheerFout as exc:
+        print(f"FOUT  {exc}", file=sys.stderr)
+        return 1
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        stand = intercompany_beheer.lijst_intercompany_leveranciers(session, administratie_id=administratie_id)
+    namen = ", ".join(f"{lv.naam} [{lv.bron}]" for lv in stand) or "geen"
+    print(f"OK    intercompany-leveranciers in {administratie_naam} nu: {namen}")
+    return 0
+
+
 def _rapporteer_crediteuren_werklijst_nazorg(uitkomst) -> int:
     label = " [dry-run]" if uitkomst.dry_run else ""
     if not uitkomst.administraties:
@@ -2224,6 +2295,26 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID", help="Beperk de run tot deze administratie."
     )
 
+    ic_parser = subparsers.add_parser(
+        "intercompany-leverancier-markeren",
+        help="Markeer één crediteur als intercompany-leverancier in één administratie (dezelfde servicelaag als "
+        "Instellingen › Administraties › ‹BV› › Klant-accordering; blok 2 nachtrun 08/09-09). Klant-accordering wordt "
+        "voor diens facturen overgeslagen. Audit oud→nieuw op de opgegeven actor; idempotent; geen RLZ-calls.",
+    )
+    ic_parser.add_argument(
+        "--administratie", required=True, metavar="UUID|NAAM", help="Administratie (uuid of exacte naam)."
+    )
+    ic_parser.add_argument(
+        "--crediteur",
+        required=True,
+        metavar="GUID|NAAM",
+        help="Crediteur (RLZ-vendor-GUID of unieke naam in de cache).",
+    )
+    ic_parser.add_argument("--actor-email", required=True, metavar="E-MAIL", help="Beheerder namens wie (audit-actor).")
+    ic_parser.add_argument("--reden", required=True, help="Reden (komt in de audit).")
+    ic_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Alleen tonen wat gezet zou worden.")
+    ic_parser.add_argument("--verwijderen", action="store_true", help="Vlag weer weg (actief=False), i.p.v. zetten.")
+
     werklijst_nazorg_parser = subparsers.add_parser(
         "crediteuren-werklijst-nazorg",
         help="Eenmalige nazorg (besluit Peter 07-09, beslispunt 7): open legacy-regels van de RLZ-werklijst "
@@ -2761,6 +2852,8 @@ def main(argv: list[str] | None = None) -> int:
                 None, dry_run=args.dry_run, administratie_id=administratie_filter
             )
         )
+    if args.commando == "intercompany-leverancier-markeren":
+        return _intercompany_leverancier_markeren(args)
     if args.commando == "crediteuren-werklijst-nazorg":
         from app.crediteuren import afhandeling as crediteuren_afhandeling
 

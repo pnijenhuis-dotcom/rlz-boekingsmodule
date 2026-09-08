@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import Literal
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -267,3 +267,35 @@ class StornoToetsResponse(BaseModel):
     """Per niet-gestorneerde boeking van het document: mag de storno-knop aan?"""
 
     per_boeking: dict[uuid.UUID, BoekingStornoToetsDto]
+
+
+# --- Intercompany-leveranciers per administratie (nachtrun 08/09-09 blok 1; zelfde tabel als de mapping) ---------
+
+
+class IntercompanyLeverancierDto(BaseModel):
+    vendor_id: uuid.UUID
+    naam: str
+    bron: Literal["handmatig", "doorbelasting_mapping"]
+    actief: bool
+    gewijzigd_op: datetime | None
+    # Alleen een handmatige rij heeft een verwijder-kruisje; een mapping-rij volgt de doorbelasting (alleen-lezen).
+    verwijderbaar: bool
+
+
+class IntercompanyHistorieRegelDto(BaseModel):
+    tijdstip: datetime
+    actor_naam: str | None
+    actie: Literal["gemarkeerd", "verwijderd"]
+    vendor_id: uuid.UUID | None
+    naam: str | None
+    reden: str | None
+    bron: str | None
+
+
+class IntercompanyLeveranciersResponse(BaseModel):
+    leveranciers: list[IntercompanyLeverancierDto]
+    historie: list[IntercompanyHistorieRegelDto]
+
+
+class IntercompanyMarkeerRequest(StrikteInvoer):
+    reden: str | None = Field(default=None, max_length=500)

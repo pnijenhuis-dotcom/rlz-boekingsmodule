@@ -253,3 +253,53 @@ export function haalApparaten(gebruikerId: string): Promise<{ apparaten: Apparaa
 export function trekApparaatIn(apparaatId: string): Promise<void> {
   return apiJson(`/auth/apparaten/${apparaatId}/intrekken`, { method: 'POST' })
 }
+
+// --- Intercompany-leveranciers per administratie (nachtrun 08/09-09 blok 1) ------------------------------------
+// Dezelfde tabel als de doorbelasting-mapping; een handmatige rij is verwijderbaar (actief=false, nooit delete),
+// een mapping-rij is alleen-lezen. Schrijven is Beheerder-only (server-side poort).
+
+export interface IntercompanyLeverancierDto {
+  vendor_id: string
+  naam: string
+  bron: 'handmatig' | 'doorbelasting_mapping'
+  actief: boolean
+  gewijzigd_op: string | null
+  verwijderbaar: boolean
+}
+
+export interface IntercompanyHistorieRegelDto {
+  tijdstip: string
+  actor_naam: string | null
+  actie: 'gemarkeerd' | 'verwijderd'
+  vendor_id: string | null
+  naam: string | null
+  reden: string | null
+  bron: string | null
+}
+
+export interface IntercompanyLeveranciersDto {
+  leveranciers: IntercompanyLeverancierDto[]
+  historie: IntercompanyHistorieRegelDto[]
+}
+
+export function haalIntercompanyLeveranciers(administratieId: string): Promise<IntercompanyLeveranciersDto> {
+  return apiJson<IntercompanyLeveranciersDto>(`/administraties/${administratieId}/intercompany-leveranciers`)
+}
+
+export function markeerIntercompanyLeverancier(
+  administratieId: string,
+  vendorId: string,
+  reden: string | null,
+): Promise<IntercompanyLeveranciersDto> {
+  return apiJson<IntercompanyLeveranciersDto>(`/administraties/${administratieId}/intercompany-leveranciers/${vendorId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reden }),
+  })
+}
+
+export function verwijderIntercompanyLeverancier(administratieId: string, vendorId: string): Promise<IntercompanyLeveranciersDto> {
+  return apiJson<IntercompanyLeveranciersDto>(`/administraties/${administratieId}/intercompany-leveranciers/${vendorId}`, {
+    method: 'DELETE',
+  })
+}
