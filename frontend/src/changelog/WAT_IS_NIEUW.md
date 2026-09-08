@@ -35,6 +35,9 @@
 - "Verdelen over projecten…" verschijnt alleen nog als de factuur zelf geen projectnummer noemt.
 
 <!-- bundel-08-09 blok 3 -->
+- Afgehandelde documenten (samengevoegd, als duplicaat afgevoerd, verwijderd of afgewezen) staan niet meer tussen het werk en tellen niet mee in "Alle". Eén knop "Toon afgehandelde documenten (aantal)" laat ze grijs zien, met de reden en een link "→ samengevoegd in …" of "→ duplicaat van …" naar het echte document. Het menu op zo'n rij biedt alleen nog Openen en Toon origineel — verwijderen of boeken kan daar niet meer per ongeluk.
+- Op het echte document zie je een label "2 exemplaren samengevoegd", zodat duidelijk is dat de dubbelen al verwerkt zijn. Het aantal afgewezen documenten blijft als knop zichtbaar; een klik toont ze.
+- Kantoor: de factuurperiode (weeknummers) is voor alle al geboekte inkoopfacturen ingevuld (117 documenten), en de laatste als duplicaat afgevoerde documenten hebben nu overal dezelfde status "Afgevoerd als duplicaat".
 - Een als duplicaat afgevoerd document telt niet meer mee als "Afgewezen — ter controle" en staat niet meer tussen de mogelijke duplicaten — het heeft nu een eigen, duidelijke status "Afgevoerd als duplicaat".
 - Zo'n document blijft gewoon terugvindbaar: in het Archief/Zoeken (filter "Afgevoerd als duplicaat") en via de nieuwe knop "Toon afgevoerde documenten" in de documentenlijst. Terughalen kan nog steeds met één klik ("Terug naar werkvoorraad").
 - Op het controlescherm van zo'n document staat nu duidelijk wie/wat het afvoerde, met reden en een link naar het origineel — bij een automatische afvoer staat er "automatisch (duplicaatregel)" in plaats van de verwarrende "onbekende medewerker".
