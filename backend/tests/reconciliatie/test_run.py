@@ -238,6 +238,118 @@ class TestBouwMail:
         assert "/reconciliatie" in tekst
 
 
+
+class TestBouwMailAutomatiseringen:
+    """Blok 5 (08-09, feedback Peter "wat moet ik hiermee"): het blok "Automatiseringen (laatste 24 u):" staat alleen
+    nog in de mail als er iets afwijkt (≥ 1 LET-OP: harde voorwaarde in het etmaal of zeven dagen stil); anders één
+    regel "Automatiseringen: alles gelopen (N aan)". CLI-uitvoer en mail-drempel ongewijzigd."""
+
+    @staticmethod
+    def _teller(sleutel: str, stand: str = "aan", **extra) -> dict:
+        t = {
+            "sleutel": sleutel,
+            "label": sleutel.replace("_", " ").capitalize(),
+            "stand": stand,
+            "stand_detail": None,
+            "bron": "audit",
+            "dag": {"verwacht": 3, "gedaan": 3, "overgeslagen": {}},
+            "week": {"verwacht": 9, "gedaan": 9, "overgeslagen": {}},
+            "harde_voorwaarden": [],
+            "stil": False,
+        }
+        t.update(extra)
+        return t
+
+    def _mail(self, tellers: list[dict]) -> str:
+        _, tekst = bouw_mail(
+            run_id=uuid.uuid4(),
+            bron="scheduler",
+            afgerond_op=datetime(2026, 9, 9, 4, 31, tzinfo=UTC),
+            exit_code=0,
+            samenvatting={
+                "documenten": {"status": "ok", "gecontroleerd": 1, "afwijkingen": 0, "geaccepteerd": 0, "let_op": 0, "fouten": 0},
+                "automatiseringen": {"venster_uren": 24, "stil_dagen": 7, "berekend_op": "2026-09-09T04:31:00+00:00", "tellers": tellers},
+            },
+            delta=Delta(nieuwe_afwijkingen=[_b("afwijking", uuid.uuid4(), "x1")]),
+            open_afwijkingen=1,
+            namen={},
+        )
+        return tekst
+
+    def test_alles_gelopen_is_een_regel_zonder_blok_en_zonder_uit_regels(self) -> None:
+        tekst = self._mail(
+            [
+                self._teller("autoboeken_inkoop"),
+                self._teller("autoboeken_omzet", stand="uit"),
+                self._teller("bank_autoboeken", stand="deels"),
+                self._teller("terugkerend", stand="altijd"),
+                self._teller("bank_sync", stand="altijd"),  # onbekende/nieuwe sleutel (blok 1) — telt gewoon mee
+            ]
+        )
+        assert "Automatiseringen: alles gelopen (4 aan)" in tekst
+        assert "Automatiseringen (laatste 24 u):" not in tekst
+        assert "Autoboeken omzet" not in tekst and "uit (" not in tekst
+
+    def test_let_op_harde_voorwaarde_geeft_het_volledige_blok(self) -> None:
+        aid = str(uuid.uuid4())
+        tekst = self._mail(
+            [
+                self._teller("autoboeken_inkoop"),
+                self._teller(
+                    "duplicaat_afvoer",
+                    dag={"verwacht": 5, "gedaan": 4, "overgeslagen": {"volumerem": 1}},
+                    harde_voorwaarden=[{"categorie": "volumerem", "aantal": 1, "administratie_id": aid, "voorbeeld": "limiet"}],
+                ),
+            ]
+        )
+        assert "Automatiseringen (laatste 24 u):" in tekst
+        assert "alles gelopen" not in tekst
+        assert re.search(r"Duplicaat afvoer\s+aan\s+verwacht 5, gedaan 4, overgeslagen 1 \(volumerem bereikt: 1\) — LET-OP: 1× volumerem bereikt", tekst)
+
+    def test_zeven_dagen_stil_geeft_het_volledige_blok(self) -> None:
+        tekst = self._mail(
+            [
+                self._teller("terugkerend", stand="altijd", dag={"verwacht": 12, "gedaan": 0, "overgeslagen": {}}, week={"verwacht": 84, "gedaan": 0, "overgeslagen": {}}, stil=True),
+            ]
+        )
+        assert "Automatiseringen (laatste 24 u):" in tekst
+        assert "LET-OP: 7 dagen stil bij 84 kandidaten" in tekst
+
+    def test_alles_uit_is_nul_aan(self) -> None:
+        tekst = self._mail([self._teller("autoboeken_omzet", stand="uit")])
+        assert "Automatiseringen: alles gelopen (0 aan)" in tekst
+
+    def test_let_op_op_een_uit_teller_geeft_toch_het_volledige_blok(self) -> None:
+        """07-09-uitzondering: noodrem UIT + gesignaleerde duplicaten in het etmaal = LET-OP op een teller met stand uit —
+        een signaal mét handeling verdwijnt nooit achter "alles gelopen"."""
+        aid = str(uuid.uuid4())
+        tekst = self._mail(
+            [
+                self._teller("autoboeken_inkoop"),
+                self._teller(
+                    "duplicaat_afvoer",
+                    stand="uit",
+                    stand_detail="platformbrede noodrem UIT",
+                    dag={"verwacht": 1, "gedaan": 0, "overgeslagen": {"noodrem": 1}},
+                    harde_voorwaarden=[{"categorie": "noodrem", "aantal": 1, "administratie_id": aid, "voorbeeld": "zelfde_referentie"}],
+                ),
+            ]
+        )
+        assert "Automatiseringen (laatste 24 u):" in tekst and "alles gelopen" not in tekst
+        assert re.search(r"Duplicaat afvoer\s+uit \(platformbrede noodrem UIT\)", tekst)
+
+    def test_cli_regels_blijven_volledig(self) -> None:
+        """De CLI-uitvoer (`automatiseringen.regels`) is ongewijzigd: álle regels, ook uit — alleen de mail is compact."""
+        from app.reconciliatie import automatiseringen
+
+        tellers = automatiseringen.uit_samenvatting(
+            {"tellers": [self._teller("autoboeken_inkoop"), self._teller("autoboeken_omzet", stand="uit")]}
+        )
+        regels = automatiseringen.regels(tellers)
+        assert regels[0] == "Automatiseringen (laatste 24 u):" and len(regels) == 3
+        assert any("Autoboeken omzet" in r and "uit" in r for r in regels)
+
+
 # ---- voer_uit end-to-end -------------------------------------------------------------------------
 
 

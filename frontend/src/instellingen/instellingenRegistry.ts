@@ -256,7 +256,8 @@ export const REGISTRY: readonly RegistryEntry[] = [
     id: 'nav-boeken',
     naam: 'Boeken platformbreed (noodstop)',
     waar: 'nav-item Boeken platformbreed',
-    synoniemen: ['boeken', 'platformbreed', 'kill switch', 'noodstop', 'plat', 'boeken kan'],
+    // Blok 5 (08-09): het tellersblok "Automatiseringen" staat op deze pagina (verhuisd van Inzicht › Reconciliatie).
+    synoniemen: ['boeken', 'platformbreed', 'kill switch', 'noodstop', 'plat', 'boeken kan', 'automatiseringen', 'tellers'],
     doel: { soort: 'sectie', sectie: 'boeken' },
     beheerder: true,
   },

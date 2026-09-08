@@ -49,6 +49,32 @@ async function openDetail(naam: string, tab?: string) {
   return detail
 }
 
+/** Blok 5 (08-09): laatste reconciliatie-run mét tellers per automatisering — één LET-OP (volumerem) en één uit-regel. */
+const LAATSTE_RUN_MET_TELLERS = {
+  run_id: 'cccccccc-0000-0000-0000-000000000003',
+  status: 'klaar',
+  bron: 'scheduler',
+  aangevraagd_op: '2026-09-07T04:00:00Z',
+  gestart_op: null,
+  afgerond_op: '2026-09-07T04:31:00Z',
+  exit_code: 0,
+  samenvatting: {
+    automatiseringen: {
+      venster_uren: 24,
+      stil_dagen: 7,
+      berekend_op: '2026-09-07T04:30:00Z',
+      tellers: [
+        { sleutel: 'autoboeken_inkoop', label: 'Autoboeken inkoop', stand: 'aan', stand_detail: null, bron: 'audit', dag: { verwacht: 5, gedaan: 5, overgeslagen: {} }, week: { verwacht: 20, gedaan: 20, overgeslagen: {} }, harde_voorwaarden: [], stil: false },
+        { sleutel: 'autoboeken_omzet', label: 'Autoboeken omzet', stand: 'uit', stand_detail: '0 van 12 administraties', bron: 'audit', dag: { verwacht: 0, gedaan: 0, overgeslagen: {} }, week: { verwacht: 0, gedaan: 0, overgeslagen: {} }, harde_voorwaarden: [], stil: false },
+        { sleutel: 'bank_autoboeken', label: 'Bank-autoboeken/afletteren', stand: 'deels', stand_detail: '4 van 12 administraties', bron: 'bank_sync_run', dag: { verwacht: 26, gedaan: 25, overgeslagen: { volumerem: 1 } }, week: { verwacht: 90, gedaan: 89, overgeslagen: { volumerem: 1 } }, harde_voorwaarden: [{ categorie: 'volumerem', aantal: 1, administratie_id: ADMINISTRATIE_ID, voorbeeld: 'volumerem: limiet 25' }], stil: false },
+      ],
+    },
+  },
+  fout_reden: null,
+  mail_status: 'niet_nodig',
+  mail_detail: null,
+}
+
 function installFetchMock(opties: {
   rol: string
   administraties?: unknown[]
@@ -63,6 +89,8 @@ function installFetchMock(opties: {
   odooMapping?: Record<string, unknown>
   /** Blok B 04-09: overrides op /uren/kantoor/mijn-toegang (o.a. `administraties_met_catalogus`). */
   mijnToegang?: Record<string, unknown>
+  /** Blok 5 08-09: antwoord op GET /reconciliatie/run/laatste (default = run mét tellers; null = nog geen run). */
+  laatsteRun?: unknown
 }) {
   const administraties = opties.administraties ?? [administratie()]
   let killSwitch = opties.killSwitch ?? true
@@ -317,6 +345,10 @@ function installFetchMock(opties: {
       }
       if (url === '/auth/apparaten/kantoor') {
         return Promise.resolve(jsonResponse({ apparaten: [] }))
+      }
+      // Blok 5 (08-09): Boeken platformbreed toont het tellersblok "Automatiseringen" uit de laatste reconciliatie-run.
+      if (url === '/reconciliatie/run/laatste') {
+        return Promise.resolve(jsonResponse(opties.laatsteRun === undefined ? LAATSTE_RUN_MET_TELLERS : opties.laatsteRun))
       }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
@@ -629,6 +661,25 @@ describe('InstellingenScreen — toggle-flow (Beheerder)', () => {
     renderScherm()
     await openDetail('BLOW B.V.', 'Boeken & AI')
     expect(screen.queryByRole('checkbox', { name: /Duplicaat-afvoer automatisch voor/ })).not.toBeInTheDocument()
+  })
+
+  it('Instellingen › Boeken toont het blok "Automatiseringen" (blok 5, 08-09: verhuisd van Inzicht › Reconciliatie) — één regel, open bij let-op mét "Naar de instelling →", uit-regels weg; zonder run een hint', async () => {
+    installFetchMock({ rol: 'beheerder' })
+    const r = renderScherm('/instellingen/boeken')
+    await screen.findByRole('checkbox', { name: 'Boeken platformbreed' })
+    const blok = await screen.findByTestId('automatiseringen-blok')
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('2 aan · 1 let-op')
+    expect(blok).toHaveAttribute('open')
+    expect(screen.queryByTestId('automatisering-autoboeken_omzet')).toBeNull() // uit → niet getoond
+    const bank = screen.getByTestId('automatisering-bank_autoboeken')
+    expect(within(bank).getByRole('link', { name: 'Naar de instelling van Bank-autoboeken/afletteren' })).toHaveAttribute('href', '/instellingen/autoboeken')
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/reconciliatie/run/laatste')).toBe(true)
+    r.unmount()
+    vi.unstubAllGlobals()
+    installFetchMock({ rol: 'beheerder', laatsteRun: null })
+    renderScherm('/instellingen/boeken')
+    await screen.findByRole('checkbox', { name: 'Boeken platformbreed' })
+    expect(await screen.findByTestId('automatiseringen-geen-run')).toHaveTextContent('nog geen afgeronde reconciliatie-run')
   })
 
   it('"Boeken platformbreed" (D4: aan = boeken kan, uit = boeken staat plat) vraagt ook een bevestiging', async () => {

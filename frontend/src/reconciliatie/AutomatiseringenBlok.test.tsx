@@ -2,14 +2,15 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
-import { AutomatiseringenBlok } from './AutomatiseringenBlok'
+import { AutomatiseringenBlok, AutomatiseringenInstellingenBlok, samenvattingTekst } from './AutomatiseringenBlok'
 import { ReconciliatieScreen } from './ReconciliatieScreen'
-import type { AutomatiseringenDto, AutomatiseringTellerDto, BevindingDto, BevindingenLijstDto } from './reconciliatieApi'
+import type { AutomatiseringenDto, AutomatiseringTellerDto, BevindingDto, BevindingenLijstDto, ReconciliatieRunDto } from './reconciliatieApi'
 
-// Blok "Automatiseringen (laatste 24 u)" (herstelrun 07-09 blok C, "geen stille no-op"): per automatisering
-// stand + verwacht / gedaan / overgeslagen mét reden; uitgeschakeld = één regel "uit"; een ontbrekende harde
-// voorwaarde en "zeven dagen stil" zijn zichtbaar als LET-OP — de bijbehorende bevinding in de lijst draagt
-// de handeling "Naar de instelling →". De tellers komen mee in laatste_run.samenvatting (geen nieuw endpoint).
+// Blok "Automatiseringen" (herstelrun 07-09 blok C, "geen stille no-op"; VERHUISD 08-09 blok 5 — feedback Peter
+// "wat moet ik hiermee"): staat op Instellingen › Boeken platformbreed, niet meer op het werkscherm Inzicht ›
+// Reconciliatie. Standaard ingeklapt tot één regel ("N aan · M let-op"); automatisch open bij een LET-OP mét de
+// handeling "Naar de instelling →" op de rij; uit-regels worden niet getoond; onbekende sleutels crashen nooit.
+// De tellers komen mee in laatste_run.samenvatting (GET /reconciliatie/run/laatste — geen nieuw endpoint).
 
 function teller(sleutel: string, label: string, extra: Partial<AutomatiseringTellerDto> = {}): AutomatiseringTellerDto {
   return {
@@ -57,12 +58,18 @@ const AUTOMATISERINGEN: AutomatiseringenDto = {
 }
 
 describe('AutomatiseringenBlok', () => {
-  it('toont per automatisering stand, verwacht/gedaan/overgeslagen mét reden; uit = één regel; let-op zichtbaar', () => {
-    render(<AutomatiseringenBlok data={AUTOMATISERINGEN} />)
+  it('één-regel-samenvatting zonder uit-regels; open bij let-op; per let-op-rij "Naar de instelling →"', () => {
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={AUTOMATISERINGEN} />
+      </MemoryRouter>,
+    )
     const blok = screen.getByTestId('automatiseringen-blok')
-    expect(blok).toHaveTextContent('Automatiseringen (laatste 24 u)')
+    expect(blok).toHaveTextContent('Automatiseringen')
+    // 4 tellers, 1 uit → "3 aan"; bank (harde voorwaarde) + terugkerend (stil) → "2 let-op"
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('3 aan · 2 let-op')
     expect(screen.getByTestId('automatiseringen-let-op')).toHaveTextContent('2 let-op')
-    expect(blok).toHaveAttribute('open') // let-op → standaard uitgeklapt
+    expect(blok).toHaveAttribute('open') // let-op → automatisch uitgeklapt
 
     const inkoop = screen.getByTestId('automatisering-autoboeken_inkoop')
     const cellen = within(inkoop).getAllByRole('cell')
@@ -72,39 +79,98 @@ describe('AutomatiseringenBlok', () => {
     // overgeslagen mét reden; de vaste categorie "geen eigenaar" blijft zichtbaar als 0 (kernprincipe 7)
     expect(cellen[4]).toHaveTextContent('2 (geen eigenaar/toewijzing: 0, harde checks blokkeren: 1, urenmatch niet groen: 1)')
     expect(cellen[5]).toHaveTextContent('14 / 20')
+    // geen let-op → geen actie op de rij
+    expect(within(inkoop).queryByTestId('automatisering-actie')).toBeNull()
 
-    // uitgeschakeld = één regel "uit", geen tellers
-    const omzet = screen.getByTestId('automatisering-autoboeken_omzet')
-    expect(omzet).toHaveTextContent('uit (0 van 12 administraties)')
-    expect(omzet).toHaveTextContent('uitgeschakeld — geen bevinding')
-    expect(within(omzet).getAllByRole('cell')).toHaveLength(3)
+    // uitgeschakeld = NIET getoond (besluit Peter 08-09)
+    expect(screen.queryByTestId('automatisering-autoboeken_omzet')).toBeNull()
 
-    // harde voorwaarde → chip "wacht op voorwaarde"; deels aan → detail zichtbaar
+    // harde voorwaarde → chip + handeling naar de instelling (spiegel DOEL_PAD: volumerem → Autoboeken)
     const bank = screen.getByTestId('automatisering-bank_autoboeken')
     expect(within(bank).getByTestId('chip-harde-voorwaarde')).toHaveTextContent('wacht op voorwaarde')
     expect(bank).toHaveTextContent('deels aan (4 van 12 administraties)')
     expect(bank).toHaveTextContent('1 (volumerem bereikt: 1)')
+    const bankLink = within(bank).getByRole('link', { name: 'Naar de instelling van Bank-autoboeken/afletteren' })
+    expect(bankLink).toHaveAttribute('href', '/instellingen/autoboeken')
+    expect(bankLink).toHaveTextContent('Naar de instelling →')
 
-    // zeven dagen stil → chip "stil"
-    expect(screen.getByTestId('automatisering-terugkerend')).toHaveTextContent('stil')
+    // zeven dagen stil → chip "stil" + handeling (geen autoboek-pad → de bevinding op Inzicht › Reconciliatie)
+    const terug = screen.getByTestId('automatisering-terugkerend')
+    expect(terug).toHaveTextContent('stil')
+    expect(within(terug).getByRole('link', { name: /Naar de instelling van/ })).toHaveAttribute('href', '/reconciliatie?soort=let_op')
   })
 
-  it('zonder tellers (oude run of oude server) rendert het blok niets', () => {
+  it('zonder let-op is het blok ingeklapt (één regel) maar wél aanwezig', () => {
+    const rustig = { ...AUTOMATISERINGEN, tellers: [AUTOMATISERINGEN.tellers[0], AUTOMATISERINGEN.tellers[1]] }
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={rustig} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('automatiseringen-blok')).not.toHaveAttribute('open')
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('1 aan · 0 let-op')
+    expect(screen.queryByTestId('automatiseringen-let-op')).toBeNull()
+  })
+
+  it('zonder tellers (oude run of oude server) rendert het blok niets; alles uit = één hint-regel', () => {
     const { container } = render(<AutomatiseringenBlok data={null} />)
     expect(container).toBeEmptyDOMElement()
     render(<AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [] }} />)
     expect(screen.queryByTestId('automatiseringen-blok')).toBeNull()
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [AUTOMATISERINGEN.tellers[1]] }} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('automatiseringen-leeg')).toHaveTextContent('Alle automatiseringen staan uit.')
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('0 aan · 0 let-op')
   })
 
-  it('zonder let-op is het blok ingeklapt maar wél aanwezig', () => {
-    const rustig = { ...AUTOMATISERINGEN, tellers: [AUTOMATISERINGEN.tellers[0], AUTOMATISERINGEN.tellers[1]] }
-    render(<AutomatiseringenBlok data={rustig} />)
-    expect(screen.getByTestId('automatiseringen-blok')).not.toHaveAttribute('open')
-    expect(screen.queryByTestId('automatiseringen-let-op')).toBeNull()
+  it('een uit-teller MÉT let-op (noodrem UIT + gesignaleerde duplicaten, 07-09-uitzondering) wordt wél getoond en telt als let-op', () => {
+    const noodremUit = teller('duplicaat_afvoer', 'Duplicaat-afvoer', {
+      stand: 'uit',
+      stand_detail: 'platformbrede noodrem UIT',
+      dag: { verwacht: 3, gedaan: 0, overgeslagen: { volumerem: 0, noodrem: 3 } },
+      week: { verwacht: 3, gedaan: 0, overgeslagen: { volumerem: 0, noodrem: 3 } },
+      harde_voorwaarden: [{ categorie: 'noodrem', aantal: 3, administratie_id: 'aaaaaaaa-0000-0000-0000-000000000001', voorbeeld: 'zelfde_referentie' }],
+    })
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [AUTOMATISERINGEN.tellers[0], noodremUit] }} />
+      </MemoryRouter>,
+    )
+    // 1 aan (inkoop), maar de let-op op de uit-teller telt mee én de rij staat er, mét stand-detail en handeling naar Boeken
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('1 aan · 1 let-op')
+    expect(screen.getByTestId('automatiseringen-blok')).toHaveAttribute('open')
+    const rij = screen.getByTestId('automatisering-duplicaat_afvoer')
+    expect(rij).toHaveTextContent('uit (platformbrede noodrem UIT)')
+    expect(rij).toHaveTextContent('3 (noodrem staat uit: 3)')
+    expect(within(rij).getByRole('link', { name: 'Naar de instelling van Duplicaat-afvoer' })).toHaveAttribute('href', '/instellingen/boeken')
+  })
+
+  it('is sleutel-agnostisch: onbekende automatisering, reden, stand en voorwaarde-categorie crashen nooit (blok 1 voegt bank_sync toe)', () => {
+    const onbekend = teller('bank_sync', '', {
+      stand: 'ergens_tussenin' as AutomatiseringTellerDto['stand'],
+      dag: { verwacht: 3, gedaan: 1, overgeslagen: { nieuwe_reden_x: 2 } },
+      week: { verwacht: 3, gedaan: 1, overgeslagen: { nieuwe_reden_x: 2 } },
+      harde_voorwaarden: [{ categorie: 'nieuwe_voorwaarde', aantal: 2, administratie_id: null, voorbeeld: null }],
+    })
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [onbekend] }} />
+      </MemoryRouter>,
+    )
+    const rij = screen.getByTestId('automatisering-bank_sync')
+    expect(rij).toHaveTextContent('bank_sync') // leeg label → sleutel
+    expect(rij).toHaveTextContent('ergens tussenin') // onbekende stand → sleutel als label
+    expect(rij).toHaveTextContent('2 (nieuwe reden x: 2)') // onbekende reden → sleutel als label
+    // onbekende voorwaarde-categorie → de bevinding (mét server-deeplink) op Inzicht › Reconciliatie
+    expect(within(rij).getByRole('link', { name: /Naar de instelling van/ })).toHaveAttribute('href', '/reconciliatie?soort=let_op')
+    expect(samenvattingTekst([onbekend])).toBe('1 aan · 1 let-op')
   })
 })
 
-// ---- in het scherm: het blok komt uit laatste_run.samenvatting, de LET-OP-rij draagt "Naar de instelling →"
+// ---- Instellingen › Boeken: het blok laadt zelf de laatste run ----------------------------------------
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -114,6 +180,72 @@ function fakeAccessToken(rol: string): string {
   const payload = btoa(JSON.stringify({ sub: 'gebruiker-id', rol })).replace(/\+/g, '-').replace(/\//g, '_')
   return `kop.${payload}.handtekening`
 }
+
+function run(extra: Partial<ReconciliatieRunDto> = {}): ReconciliatieRunDto {
+  return {
+    run_id: 'cccccccc-0000-0000-0000-000000000003',
+    status: 'klaar',
+    bron: 'scheduler',
+    aangevraagd_op: '2026-09-07T04:00:00Z',
+    gestart_op: null,
+    afgerond_op: '2026-09-07T04:31:00Z',
+    exit_code: 0,
+    samenvatting: {
+      documenten: { status: 'ok', exit_code: 0, gecontroleerd: 12, afwijkingen: 0, geaccepteerd: 0, uitgesloten: 0, let_op: 0, fouten: 0, foutmelding: null },
+      automatiseringen: AUTOMATISERINGEN,
+    },
+    fout_reden: null,
+    mail_status: 'verzonden',
+    mail_detail: null,
+    ...extra,
+  }
+}
+
+function renderInstellingenBlok(laatste: ReconciliatieRunDto | null | Response) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      if (url === '/auth/token/vernieuwen') return Promise.resolve(jsonResponse({ access_token: fakeAccessToken('beheerder') }))
+      if (url === '/reconciliatie/run/laatste') return Promise.resolve(laatste instanceof Response ? laatste : jsonResponse(laatste))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    }),
+  )
+  return render(
+    <MemoryRouter initialEntries={['/instellingen/boeken']}>
+      <AuthProvider>
+        <AutomatiseringenInstellingenBlok />
+      </AuthProvider>
+    </MemoryRouter>,
+  )
+}
+
+describe('AutomatiseringenInstellingenBlok (Instellingen › Boeken platformbreed)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('laadt de laatste run via GET /reconciliatie/run/laatste en toont het blok', async () => {
+    renderInstellingenBlok(run())
+    expect(await screen.findByTestId('automatiseringen-blok')).toHaveTextContent('Autoboeken inkoop')
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('3 aan · 2 let-op')
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/reconciliatie/run/laatste')).toBe(true)
+  })
+
+  it('nog geen run → hint mét link naar Inzicht › Reconciliatie; run bezig → "tellers volgen"', async () => {
+    const r1 = renderInstellingenBlok(null)
+    expect(await screen.findByTestId('automatiseringen-geen-run')).toHaveTextContent('nog geen afgeronde reconciliatie-run')
+    expect(screen.getByRole('link', { name: 'Inzicht › Reconciliatie' })).toHaveAttribute('href', '/reconciliatie')
+    r1.unmount()
+    vi.unstubAllGlobals()
+    renderInstellingenBlok(run({ status: 'bezig', samenvatting: null, afgerond_op: null }))
+    expect(await screen.findByTestId('automatiseringen-geen-run')).toHaveTextContent('reconciliatie bezig — tellers volgen')
+  })
+
+  it('een fout bij het laden blokkeert de pagina niet (één hint-regel)', async () => {
+    renderInstellingenBlok(new Response(JSON.stringify({ detail: 'kapot' }), { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    expect(await screen.findByTestId('automatiseringen-fout')).toHaveTextContent('Automatiseringen: stand niet geladen')
+  })
+})
+
+// ---- Inzicht › Reconciliatie: het tellersblok staat er NIET meer; de LET-OP-bevinding mét handeling blijft ----
 
 const LET_OP_AUTOMATISERING: BevindingDto = {
   id: 'a1',
@@ -145,36 +277,21 @@ function lijst(): BevindingenLijstDto {
     administraties_in_selectie: 0,
     tellers: { afwijkingen: 0, let_op: 1, fouten: 0, geaccepteerd: 0, uitgesloten: 0, gezien: 0, administraties: 0 },
     facetten: { soort: { aandacht: 1, let_op: 1, alle: 1 }, administraties: [] },
-    laatste_run: {
-      run_id: 'cccccccc-0000-0000-0000-000000000003',
-      status: 'klaar',
-      bron: 'scheduler',
-      aangevraagd_op: '2026-09-07T04:00:00Z',
-      gestart_op: null,
-      afgerond_op: '2026-09-07T04:31:00Z',
-      exit_code: 0,
-      samenvatting: {
-        documenten: { status: 'ok', exit_code: 0, gecontroleerd: 12, afwijkingen: 0, geaccepteerd: 0, uitgesloten: 0, let_op: 0, fouten: 0, foutmelding: null },
-        automatiseringen: AUTOMATISERINGEN,
-      },
-      fout_reden: null,
-      mail_status: 'verzonden',
-      mail_detail: null,
-    },
+    laatste_run: run(),
   }
 }
 
-describe('ReconciliatieScreen — automatiseringen', () => {
+describe('ReconciliatieScreen — automatiseringen (blok 5, 08-09)', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('toont het blok uit laatste_run.samenvatting en de LET-OP-rij met "Naar de instelling →" (geen Gezien zonder administratie)', async () => {
+  it('toont het tellersblok NIET meer, wél de LET-OP-rij met "Naar de instelling →" (geen Gezien zonder administratie)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
         if (url === '/auth/token/vernieuwen') return Promise.resolve(jsonResponse({ access_token: fakeAccessToken('boekhouding') }))
         if (url === '/auth/administraties') return Promise.resolve(jsonResponse({ administraties: [] }))
         if (url.startsWith('/reconciliatie/bevindingen?')) return Promise.resolve(jsonResponse(lijst()))
-        if (url === '/reconciliatie/run/laatste') return Promise.resolve(jsonResponse(null))
+        if (url === '/reconciliatie/run/laatste') return Promise.resolve(jsonResponse(run()))
         return Promise.resolve(new Response(null, { status: 404 }))
       }),
     )
@@ -186,7 +303,10 @@ describe('ReconciliatieScreen — automatiseringen', () => {
       </MemoryRouter>,
     )
     const tabel = await screen.findByTestId('reconciliatie-tabel')
-    expect(screen.getByTestId('automatiseringen-blok')).toHaveTextContent('Autoboeken inkoop')
+    // De run mét tellers is geladen (standregel) — maar het tellersblok staat op Instellingen › Boeken, niet hier.
+    expect(await screen.findByTestId('reconciliatie-stand')).toHaveTextContent('exit 0')
+    expect(screen.queryByTestId('automatiseringen-blok')).toBeNull()
+    expect(screen.queryByText('Autoboeken inkoop')).toBeNull()
     const rij = within(tabel).getByTestId('reconciliatie-rij')
     expect(within(rij).getByText('Automatisering')).toBeInTheDocument()
     expect(within(rij).getByTestId('bevinding-titel')).toHaveTextContent('Automatisering wacht op voorwaarde — Duplicaat-afvoer')

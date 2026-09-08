@@ -265,6 +265,28 @@ export const REDEN_LABEL: Record<string, string> = {
   regel_overgeslagen: 'regel overgeslagen',
   zacht_signaal: 'zacht signaal — mens beoordeelt',
   stil_7_dagen: 'zeven dagen stil',
+  // Blok 1 bundel 08-09 — teller `bank_sync` (dagelijkse bank-sync, alle administraties).
+  odoo_administratie: 'Odoo-administratie (bank niet via Reeleezee)',
+  geen_credential_geregistreerd: 'geen webservice-login geregistreerd',
+  geen_sync_run: 'geen bank-sync-run in het venster',
+}
+
+/** Spiegel van DOEL_PAD in automatiseringen.py (blok 5, 08-09): waar de mens een ontbrekende harde voorwaarde
+ * herstelt. Onbekende categorie → de bevinding op Inzicht › Reconciliatie (daar staat de server-deeplink). */
+const DOEL_PAD_VOORWAARDE: Record<string, string> = {
+  credential: '/instellingen/administraties/{aid}',
+  geen_eigenaar: '/instellingen/administraties/{aid}',
+  api_key: '/instellingen/intake-ai',
+  geldpoort: '/instellingen/boeken',
+  noodrem: '/instellingen/boeken',
+  volumerem: '/instellingen/autoboeken',
+  vangnet_scheduler: '/reconciliatie',
+}
+
+export function doelPadVoorVoorwaarde(categorie: string, administratieId: string | null): string {
+  const pad = DOEL_PAD_VOORWAARDE[categorie] ?? '/reconciliatie?soort=let_op'
+  if (!pad.includes('{aid}')) return pad
+  return administratieId ? pad.replace('{aid}', administratieId) : '/instellingen/administraties'
 }
 
 export const STAND_LABEL: Record<AutomatiseringTellerDto['stand'], string> = {

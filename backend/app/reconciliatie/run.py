@@ -285,6 +285,23 @@ def _perspectief_afwijking(b: Bevinding, administratie_naam: str | None = None) 
     return teksten.leesbaar(b, administratie_naam=administratie_naam).doe
 
 
+def automatiseringen_mailregels(samenvatting_automatiseringen: dict) -> list[str]:
+    """Blok 5 (08-09): de mail draagt het volledige blok "Automatiseringen (laatste 24 u):" ALLEEN als er iets afwijkt —
+    ≥ 1 LET-OP (ontbrekende harde voorwaarde in het etmaal, óf zeven dagen stil; ook op een uit-teller). Anders één regel
+    "Automatiseringen: alles gelopen (N aan)" — N = automatiseringen die niet uit staan. Sleutel-agnostisch: leest de
+    opgeslagen JSON terug via `uit_samenvatting` (een nieuwe teller-sleutel zoals `bank_sync` hoeft hier niets)."""
+    from app.reconciliatie import automatiseringen
+
+    tellers = automatiseringen.uit_samenvatting(samenvatting_automatiseringen)
+    aan = [t for t in tellers if not t.is_uit]
+    # Óók een uit-teller kan een LET-OP dragen (07-09-uitzondering: noodrem UIT + gesignaleerde duplicaten in het etmaal) —
+    # een signaal mét handeling gaat nooit stil weg, dus over álle tellers toetsen.
+    afwijkend = [t for t in tellers if t.stil or t.harde_voorwaarden]
+    if afwijkend:
+        return automatiseringen.regels(tellers)
+    return [f"Automatiseringen: alles gelopen ({len(aan)} aan)"]
+
+
 def bouw_mail(
     *,
     run_id: uuid.UUID,
@@ -341,12 +358,11 @@ def bouw_mail(
             f"{stand.get('let_op', 0)} let-op, {stand.get('fouten', 0)} fout(en)"
             + (f" — {stand['foutmelding']}" if stand.get("foutmelding") else "")
         )
-    # Herstelrun 07-09 blok C: één compact blok per automatisering (verwacht/gedaan/overgeslagen mét reden) —
-    # het vangnet op "geen stille no-op". Altijd in de mail als de run 'm heeft, ook zonder LET-OP.
+    # Herstelrun 07-09 blok C: het vangnet op "geen stille no-op". Blok 5 (08-09, feedback Peter "wat moet ik
+    # hiermee"): het volledige blok staat alleen nog in de mail als er iets AFWIJKT; anders één regel. De CLI-uitvoer
+    # blijft volledig (`automatiseringen.regels`), de mail-drempel (geen delta = geen mail) is ongewijzigd.
     if samenvatting.get(AUTOMATISERINGEN_SLEUTEL):
-        from app.reconciliatie import automatiseringen
-
-        regels.extend(["", *automatiseringen.regels_uit_samenvatting(samenvatting[AUTOMATISERINGEN_SLEUTEL])])
+        regels.extend(["", *automatiseringen_mailregels(samenvatting[AUTOMATISERINGEN_SLEUTEL])])
 
     def sectie(kop: str, items: Sequence[Bevinding]) -> None:
         if not items:

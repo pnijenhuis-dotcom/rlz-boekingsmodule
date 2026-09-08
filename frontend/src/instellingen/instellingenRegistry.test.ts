@@ -116,6 +116,9 @@ describe('instellingenRegistry — deterministische zoeker', () => {
 
   it('generieke zoekwoorden landen op het nav-item (synoniemen, prefix-match, accent-ongevoelig, stabiele volgorde)', () => {
     expect(zoek('noodstop')[0].pad).toBe('/instellingen/boeken')
+    // Blok 5 (08-09): het tellersblok "Automatiseringen" staat op Boeken platformbreed — de zoeker vindt het.
+    expect(zoek('automatiseringen')[0].pad).toBe('/instellingen/boeken')
+    expect(zoek('tellers')[0].pad).toBe('/instellingen/boeken')
     expect(zoek('passk')[0].pad).toBe('/instellingen/beveiliging')
     expect(zoek('Gebruikers')[0].pad).toBe('/gebruikers')
     expect(zoek('provisie').map((t) => t.pad)).toContain('/instellingen/doorbelasting')

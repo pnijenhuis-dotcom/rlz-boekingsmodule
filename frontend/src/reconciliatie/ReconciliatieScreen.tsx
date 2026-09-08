@@ -26,7 +26,6 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
-import { AutomatiseringenBlok } from './AutomatiseringenBlok'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
@@ -473,7 +472,9 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             {runTekst(run)}
           </div>
         )}
-        <AutomatiseringenBlok data={laatsteRun?.samenvatting?.automatiseringen} />
+        {/* Blok 5 (08-09, feedback Peter): het tellersblok "Automatiseringen" staat niet meer op dit werkscherm maar op
+            Instellingen › Boeken platformbreed; hier blijven alleen de bevindingen MÉT handeling (LET-OP-rijen blok
+            Automatisering dragen "Naar de instelling →"). */}
         {run?.status === 'fout' && (
           <div style={{ padding: '0 18px' }}>
             <FoutMelding

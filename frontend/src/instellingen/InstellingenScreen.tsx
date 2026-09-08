@@ -26,6 +26,8 @@ import { ArchiveerDialog } from './ArchiveerDialog'
 import { InstellingenLayout, type NavStanden } from './InstellingenLayout'
 import { SchrijftestDialog, WebserviceGegevensDialog } from './KoppelingDialogen'
 import { AutoboekKandidaten } from './AutoboekKandidaten'
+// Blok 5 (08-09): tellers per automatisering — verhuisd van Inzicht › Reconciliatie naar deze Beheerder-pagina.
+import { AutomatiseringenInstellingenBlok } from '../reconciliatie/AutomatiseringenBlok'
 import {
   eersteSectieVoor,
   type InstellingenSectie,
@@ -582,6 +584,10 @@ export function InstellingenScreen() {
                 </label>
               )}
             </div>
+            {/* Blok 5 (08-09, feedback Peter "wat moet ik hiermee"): het blok "Automatiseringen" (verwacht / gedaan /
+                overgeslagen per automatisering, laatste 24 u) staat hier bij de platformbrede poorten — ingeklapt tot één
+                regel, open bij een LET-OP mét "Naar de instelling →". Weg van het werkscherm Inzicht › Reconciliatie. */}
+            <AutomatiseringenInstellingenBlok />
           </div>
         )}
 
