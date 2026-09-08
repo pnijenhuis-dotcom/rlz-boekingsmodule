@@ -6,6 +6,46 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-08 — Snellere accordeur-app, controlescherm scherper, duplicaten uit het zicht
+
+<!-- bundel-08-09 blok 1 -->
+- De goedkeur-app laadt de wachtrij nu in een fractie van de tijd, ook als u bij veel administraties meekijkt — de "wachtrij kon niet geladen worden"-melding door een trage server is daarmee weg.
+- Duurt het verversen toch even, dan blijven uw kaarten gewoon staan en ziet u "verversen duurt lang…"; mislukt het, dan staat er "verversen mislukt — stand van HH:MM" met een knop Opnieuw in plaats van een leeg scherm.
+- Een factuur die op kantoor wordt geüpload of gesleept vertraagt andere gebruikers niet meer.
+- Een factuur uploaden is nu direct klaar: het bestand staat binnen een paar seconden in de lijst met het label "Wordt verwerkt…" en de automatische uitlezing loopt op de achtergrond door — geen wachten meer en geen foutmelding terwijl de upload eigenlijk gelukt was.
+- Duurt een upload toch onverwacht lang, dan zegt het scherm dat u de lijst even moet controleren in plaats van "geen verbinding" — en vraagt het u nadrukkelijk het bestand niet nog eens te uploaden.
+
+<!-- bundel-08-09 blok 7 -->
+- Kantoor: al geboekte inkoopfacturen kunnen in één keer hun factuurperiode (weeknummers) krijgen, zodat kosten per week ook voor oudere boekingen kloppen; een handmatig ingevulde periode blijft altijd staan.
+
+<!-- bundel-08-09 blok 6 -->
+- De dagelijkse controle (Inzicht › Reconciliatie) kijkt nu ook in Reeleezee zelf naar mogelijk dubbel ingevoerde inkoopfacturen: twee facturen van dezelfde leverancier met hetzelfde factuurnummer, of met hetzelfde bedrag op dezelfde datum, waarvan er minstens één met de hand in Reeleezee is ingevoerd.
+- Zo'n paar staat als één regel in de lijst met beide boekstuknummers, de bedragen en de datums; klik op een boekstuknummer om het te kopiëren en zoek het op in Reeleezee. Beoordelen en corrigeren doe je in Reeleezee — de app verwijdert er nooit iets.
+- Klopt het toch (twee echte facturen)? Dan accepteer je de melding met een reden; ze komt daarna niet opnieuw in de mail.
+- Nog-niet-geboekte concepten tellen mee en staan als "nog concept" gemarkeerd; wat de app zelf boekte wordt niet tegen zichzelf gemeld.
+
+<!-- bundel-08-09 blok 5 -->
+- Materiaalcatalogus (Instellingen): "geen crediteur-koppeling", "transport-contact: nog niet ingevuld" en "materiaal-contact: nog niet ingevuld" zijn nu direct klikbaar — je hoeft niet meer apart naar de knop "wijzig leverancier" te zoeken.
+
+<!-- bundel-08-09 blok 4 -->
+- Tariefregels zonder bedrag (aantal 0, € 0) op een factuur worden niet meer als boekingsregel getoond — ze blijven wel zichtbaar in het gelezen voorstel.
+- Staat er één projectnummer op de factuur, dan krijgen álle regels dat project voorgesteld, ook als het nummer maar op één regel staat.
+- Zegt de factuur "btw verlegd" en staat er geen btw op, dan wordt de verlegd-btw-code voorgesteld (oranje, ter controle) in plaats van de standaard btw-code van de administratie.
+- Controlescherm rustiger: uitlegchips passen op één regel (volledige tekst bij aanwijzen), kolommen voor grootboek en project zijn breder, en de melding over ontbrekende velden zegt "grootboek ontbreekt op alle 3 regels" in plaats van elke regel apart.
+- "Verdelen over projecten…" verschijnt alleen nog als de factuur zelf geen projectnummer noemt.
+
+<!-- bundel-08-09 blok 3 -->
+- Een als duplicaat afgevoerd document telt niet meer mee als "Afgewezen — ter controle" en staat niet meer tussen de mogelijke duplicaten — het heeft nu een eigen, duidelijke status "Afgevoerd als duplicaat".
+- Zo'n document blijft gewoon terugvindbaar: in het Archief/Zoeken (filter "Afgevoerd als duplicaat") en via de nieuwe knop "Toon afgevoerde documenten" in de documentenlijst. Terughalen kan nog steeds met één klik ("Terug naar werkvoorraad").
+- Op het controlescherm van zo'n document staat nu duidelijk wie/wat het afvoerde, met reden en een link naar het origineel — bij een automatische afvoer staat er "automatisch (duplicaatregel)" in plaats van de verwarrende "onbekende medewerker".
+- De Mogelijk-duplicaat-tab toont voortaan alleen nog rijen waarvan de tegenhanger nog echt bestaat (niet zelf al afgevoerd, afgewezen of verwijderd) — geen verouderde meldingen meer.
+
+<!-- bundel-08-09 blok 2 -->
+- Accordeur-app: als het aanmaken van een passkey op een iPhone of iPad niet lukt, zegt de app nu wat je kunt doen (iCloud-sleutelhanger aanzetten, toegangscode instellen) in plaats van een technische Apple-melding.
+- Accordeur-app: de melding "Geen verbinding met de server" op het code-slot vertelt nu de oorzaak (geen antwoord binnen 10 seconden, netwerkfout, of een storing bij de server).
+- Accordeur-app: Instellingen › Toegang › Diagnose toont ook de laatste verbindingsfout met tijdstip — handig om aan het kantoor te laten zien; blijft op je toestel.
+
+
 ## 2026-09-07 — Niets blijft stil liggen: automatisering wacht niet op instellingen, controlemail telt mee
 
 ### Automatisch, ook zonder eigenaar of behandelaar
