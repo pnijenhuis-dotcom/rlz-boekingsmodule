@@ -278,6 +278,15 @@ class MijnAdministratiesResponse(BaseModel):
     administraties: list[AdministratieResponse]
 
 
+class GebruikerAdministratieKortDto(BaseModel):
+    """Blok 5 (herstelrun 08-09): naam + status van een scope-administratie — óók gearchiveerde, zodat Gebruikers &
+    toegang "‹naam› — gearchiveerd" toont i.p.v. een kale GUID."""
+
+    id: uuid.UUID
+    naam: str
+    actief: bool
+
+
 class GebruikerOverzichtResponse(BaseModel):
     """Rij op Gebruikers & toegang (fase 3 modernisering 15-08) — alleen bestaans-/statusfeiten
     over de beveiliging, nooit secret- of credentialmateriaal."""
@@ -306,6 +315,8 @@ class GebruikerOverzichtResponse(BaseModel):
     # Alleen gevuld bij status 'gearchiveerd' (migratie 0075, feedbackronde 26-08 punt 1).
     gearchiveerd_op: datetime | None = None
     gearchiveerd_door_naam: str | None = None
+    # Blok 5 (08-09): naam + actief per scope-administratie (volgorde = administratie_ids), incl. gearchiveerde.
+    administraties: list[GebruikerAdministratieKortDto] = Field(default_factory=list)
 
 
 class GebruikersLijstResponse(BaseModel):

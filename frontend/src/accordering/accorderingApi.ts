@@ -119,6 +119,8 @@ export function zetAccorderingInstellingen(
   payload: {
     ingeschakeld: boolean
     lagen: { volgnummer: number; accordeur_gebruiker_id: string; bedrag_drempel: string | null }[]
+    /** Blok 5 (08-09): aanleiding van de wijziging — reist mee in audit + tijdlijn (bv. "verwijderd via Klant-accordeurs"). */
+    aanleiding?: string | null
   },
 ): Promise<AccorderingInstellingenDto> {
   return apiJson(`/administraties/${administratieId}/accordering/instellingen`, {

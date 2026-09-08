@@ -52,6 +52,7 @@ import {
   zetModuleRecht,
   zetVeldwerkerbeheerRecht,
 } from '../meerwerk/meerwerkApi'
+import { AccordeurAdministraties } from './AccordeurAdministraties'
 import { ScopeModal } from './ScopeModal'
 import { UitnodigModal } from './UitnodigModal'
 import { VeldwerkersPanel } from './VeldwerkersPanel'
@@ -114,48 +115,6 @@ export function filterGebruikers(
       .join(' ')
       .toLowerCase()
       .includes(term),
-  )
-}
-
-/** Compacte administraties-kolom (punt 3e): tot twee namen inline, daarboven één chip
- * "N administraties" mét een dialoog die de volledige lijst toont — de kolom maakt de tabel
- * nooit meer breder dan het scherm. Zelfde patroon als de IBAN-accordeurs-kolom (punt 4a). */
-function AdministratiesSamenvatting({ ids, naamPerAdministratie, eigenaar }: { ids: string[]; naamPerAdministratie: Map<string, string>; eigenaar: string }) {
-  const [open, setOpen] = useState(false)
-  const namen = ids.map((id) => naamPerAdministratie.get(id) ?? id)
-  if (ids.length === 0) return <>—</>
-  if (ids.length <= 2) {
-    return (
-      <>
-        {namen.map((naam) => (
-          <span key={naam}>
-            <Badge variant="info">{naam}</Badge>{' '}
-          </span>
-        ))}
-      </>
-    )
-  }
-  return (
-    <>
-      <Badge variant="info">{ids.length} administraties</Badge>{' '}
-      <Button variant="ghost" maat="klein" aria-label={`Administraties van ${eigenaar} bekijken`} onClick={() => setOpen(true)}>
-        bekijk
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogTitle>Administraties van {eigenaar}</DialogTitle>
-          <DialogDescription>
-            {ids.length} administraties — de wachtrij en de dagelijkse herinnering voegen ze samen. Scope wijzigen gaat via
-            de uitnodiging of het accorderingsbeheer per administratie.
-          </DialogDescription>
-          <ul style={{ margin: '10px 0 0', paddingLeft: 18, columns: namen.length > 8 ? 2 : 1 }}>
-            {[...namen].sort((a, b) => a.localeCompare(b, 'nl')).map((naam) => (
-              <li key={naam}>{naam}</li>
-            ))}
-          </ul>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 
@@ -968,10 +927,13 @@ export function GebruikersScreen() {
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
                       </td>
                       <td>
-                        <AdministratiesSamenvatting
-                          ids={g.administratie_ids}
+                        {/* Blok 5 (08-09): scope vanuit de accordeur — toevoegen (bulk-route, accordeur vooringevuld),
+                            verwijderen (vervallen-waarschuwing), namen als links naar Instellingen › ‹BV› › Klant-accordering. */}
+                        <AccordeurAdministraties
+                          gebruiker={g}
+                          administraties={administraties ?? []}
                           naamPerAdministratie={naamPerAdministratie}
-                          eigenaar={g.naam}
+                          onGewijzigd={laad}
                         />
                       </td>
                       <td>
@@ -1023,8 +985,10 @@ export function GebruikersScreen() {
             </>
           )}
           <p className="hint" style={{ marginBottom: 0 }}>
-            Staande goedkeuringen beheren (bekijken/intrekken) en accorderingslagen instellen gebeurt per
-            administratie onder Instellingen → accordering.
+            Administraties van een accordeur beheer je via &ldquo;beheren&rdquo; in de kolom Administraties (toevoegen =
+            de bulk-instelling mét deze accordeur in laag 1; verwijderen = uit de lagen én de toegang). Staande
+            goedkeuringen beheren (bekijken/intrekken) en de volledige lagen instellen gebeurt per administratie onder
+            Instellingen → Klant-accordering.
           </p>
         </div>
       )}

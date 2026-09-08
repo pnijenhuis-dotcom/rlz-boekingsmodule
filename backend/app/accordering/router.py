@@ -159,6 +159,7 @@ def instellingen_opslaan(
                 )
                 for laag in invoer.lagen
             ],
+            aanleiding=invoer.aanleiding,
         )
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc

@@ -179,6 +179,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("PUT", "/instellingen/duplicaat-autoafvoer"),
         ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
+        ("PUT", f"/administraties/{aid}/verlegd-voorkeur"),  # voorkeurs-verlegd-code (blok 6 08-09, beheerder-only)
         # Verplichtingen / offerte-matching (04-09) — router-breed vereis_kantoorrol + scope.
         ("GET", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
         ("PUT", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
@@ -298,6 +299,7 @@ class TestKantoorBlijftWerken:
                 or pad.startswith("/uren/kantoor")
                 or pad.endswith("/is-vastgoed")
                 or pad.endswith("/btw-default")
+                or pad.endswith("/verlegd-voorkeur")
                 or pad.endswith("/duplicaat-autoafvoer")
                 or pad.endswith("/leveranciers-projectverdeling")
                 or pad.endswith("/projectverdeling-instelling")

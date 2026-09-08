@@ -37,6 +37,9 @@ class LaagInputDto(StrikteInvoer):
 class InstellingenInput(StrikteInvoer):
     ingeschakeld: bool
     lagen: list[LaagInputDto]
+    # Blok 5 (herstelrun 08-09): optionele aanleiding van de wijziging (bv. "verwijderd via Klant-accordeurs") —
+    # reist mee in het audit-event en in het tijdlijn-detail van élke ronde die hierdoor vervalt.
+    aanleiding: str | None = None
 
 
 class KandidaatDto(BaseModel):

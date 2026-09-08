@@ -40,6 +40,36 @@ class TestLijstGebruikers:
         assert rij.aantal_passkeys == 0
         assert rij.open_uitnodiging_verloopt_op is not None
 
+    def test_scope_draagt_naam_en_status_ook_van_een_gearchiveerde_administratie(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine  # noqa: F811
+    ) -> None:
+        """Blok 5 (herstelrun 08-09, bijvangst Peter: een kale GUID als administratienaam bij een klant-accordeur):
+        de rij levert naam + actief per scope-administratie, óók als die gearchiveerd is."""
+        gearchiveerd = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.administratie (id, naam, rlz_admin_id, actief, gearchiveerd_op) "
+                    "VALUES (:id, 'Oude Test B.V.', :rlz, false, :nu)"
+                ),
+                {"id": gearchiveerd, "rlz": f"rlz-{gearchiveerd}", "nu": datetime.now(UTC)},
+            )
+        resultaat = service.maak_uitnodiging(
+            actor_id=beheerder_id,
+            naam="Accordeur Twee BV's",
+            e_mail=f"{uuid.uuid4()}@test.local",
+            rol=GebruikerRol.KLANT_ACCORDEUR,
+            administratie_ids=[administratie_id, gearchiveerd],
+        )
+        rij = _vind(service.lijst_gebruikers(actor_id=beheerder_id), resultaat.gebruiker_id)
+        per_id = {a.id: a for a in rij.administraties}
+        assert set(per_id) == {administratie_id, gearchiveerd} == set(rij.administratie_ids)
+        assert per_id[administratie_id].naam == "Scope-test" and per_id[administratie_id].actief is True
+        assert per_id[gearchiveerd].naam == "Oude Test B.V." and per_id[gearchiveerd].actief is False
+        # De actieve lijst (/auth/administraties) kent de gearchiveerde niet — dáárom reist de naam hier mee.
+        actieve = service.mijn_administraties(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER)
+        assert gearchiveerd not in {a.id for a in actieve}
+
     def test_gepseudonimiseerde_gebruiker_blijft_buiten_de_lijst(
         self, beheerder_id: uuid.UUID, admin_engine: Engine
     ) -> None:

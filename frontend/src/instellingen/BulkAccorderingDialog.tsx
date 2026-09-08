@@ -65,15 +65,19 @@ export function BulkAccorderingDialog({
   administraties,
   onSluiten,
   onGereed,
+  vooringevuldeAccordeurId = null,
 }: {
   /** De op moment van openen geselecteerde administraties (id + naam). */
   administraties: { id: string; naam: string }[]
   onSluiten: () => void
   onGereed: () => void
+  /** Blok 5 (08-09): geopend vanuit Gebruikers › Klant-accordeurs — de accordeur staat vooringevuld in laag 1
+   * (scope-vink staat al aan); dezelfde route, preview en uitkomsten als vanuit Instellingen. */
+  vooringevuldeAccordeurId?: string | null
 }) {
   const { meld } = useToastOptioneel()
   const [kandidaten, setKandidaten] = useState<KandidaatDto[] | null>(null)
-  const [lagen, setLagen] = useState<LaagInvoer[]>([{ accordeurId: null, drempel: '' }])
+  const [lagen, setLagen] = useState<LaagInvoer[]>([{ accordeurId: vooringevuldeAccordeurId, drempel: '' }])
   const [scopeVink, setScopeVink] = useState(true)
   const [preview, setPreview] = useState<BulkInstellenPreviewDto | null>(null)
   const [previewFout, setPreviewFout] = useState<string | null>(null)

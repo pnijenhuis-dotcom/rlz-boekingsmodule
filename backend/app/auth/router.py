@@ -333,6 +333,10 @@ def gebruikers_lijst(
                 gearchiveerd_op=item.gearchiveerd_op,
                 gearchiveerd_door_naam=item.gearchiveerd_door_naam,
                 half_geactiveerd=item.half_geactiveerd,
+                administraties=[
+                    schemas.GebruikerAdministratieKortDto(id=a.id, naam=a.naam, actief=a.actief)
+                    for a in item.administraties
+                ],
             )
             for item in items
         ]

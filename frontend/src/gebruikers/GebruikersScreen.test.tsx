@@ -11,6 +11,8 @@ const EIGEN_ID = 'aaaaaaaa-0000-0000-0000-00000000000a'
 const ANDER_ID = 'bbbbbbbb-0000-0000-0000-00000000000b'
 const ACCORDEUR_ID = 'cccccccc-0000-0000-0000-00000000000c'
 const ADMINISTRATIE_ID = 'dddddddd-0000-0000-0000-00000000000d'
+const TWEEDE_ID = 'dddddddd-0000-0000-0000-000000000002'
+const OUDE_ID = 'faae29c5-d197-4c24-a704-be2eae91fe49'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -48,6 +50,10 @@ function installMock(opties: {
   apparaten?: unknown[]
   openWerk?: unknown
   uitnodigBodies?: Record<string, unknown>[]
+  /** Blok 5: alle schrijvende aanroepen (method + url + body) — scope-verwijderen, instellingen, bulk. */
+  aanroepen?: { method: string; url: string; body: unknown }[]
+  /** Blok 5: lagen die GET …/accordering/instellingen teruggeeft. */
+  lagen?: { volgnummer: number; accordeur_gebruiker_id: string; accordeur_naam: string | null; bedrag_drempel: string | null }[]
 }) {
   vi.stubGlobal(
     'fetch',
@@ -59,7 +65,47 @@ function installMock(opties: {
         return Promise.resolve(jsonResponse({ gebruikers: opties.gebruikers ?? [] }))
       }
       if (url === '/auth/administraties') {
-        return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: 'Molenhof Beheer B.V.' }] }))
+        return Promise.resolve(
+          jsonResponse({
+            administraties: [
+              { id: ADMINISTRATIE_ID, naam: 'Molenhof Beheer B.V.' },
+              { id: TWEEDE_ID, naam: 'Tweede B.V.' },
+            ],
+          }),
+        )
+      }
+      // Blok 5 (08-09): scope vanuit de accordeur — bestaande routes.
+      if (url.endsWith('/accordering/instellingen') && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse({ ingeschakeld: true, lagen: opties.lagen ?? [] }))
+      }
+      if (url.endsWith('/accordering/instellingen') && init?.method === 'PUT') {
+        opties.aanroepen?.push({ method: 'PUT', url, body: JSON.parse(String(init.body)) })
+        return Promise.resolve(jsonResponse({ ingeschakeld: true, lagen: [], rondes_vervallen: 2 }))
+      }
+      if (url.includes('/scope/') && init?.method === 'DELETE') {
+        opties.aanroepen?.push({ method: 'DELETE', url, body: null })
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (url === '/accordering/accordeur-kandidaten') {
+        return Promise.resolve(jsonResponse({ kandidaten: [{ id: ACCORDEUR_ID, naam: 'R. de Groot' }] }))
+      }
+      if (url === '/accordering/bulk-instellen/preview' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { administratie_ids: string[] }
+        opties.aanroepen?.push({ method: 'POST', url, body })
+        return Promise.resolve(
+          jsonResponse({
+            uitkomsten: body.administratie_ids.map((id) => ({
+              administratie_id: id,
+              administratie_naam: id === TWEEDE_ID ? 'Tweede B.V.' : id,
+              uitkomst: 'ingesteld',
+              rondes_vervallen: 0,
+              toggle_aangezet: true,
+              scope_toegevoegd_voor: ['R. de Groot'],
+              reden: null,
+            })),
+            scope_ontbreekt: [],
+          }),
+        )
       }
       if (url === '/auth/uitnodigingen' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>
@@ -521,5 +567,172 @@ describe('GebruikersScreen — archiveren (feedbackronde 26-08 punt 1)', () => {
     expect(screen.getByText(/er wordt niets verwijderd/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(postAanroepen).toContain(`/auth/gebruikers/${ACCORDEUR_ID}/archiveren`))
+  })
+})
+
+describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-accordeur vanuit de accordeur', () => {
+  const accordeurMetTwee = gebruiker({
+    id: ACCORDEUR_ID,
+    naam: 'R. de Groot',
+    e_mail: 'r.degroot@molenhof.nl',
+    rol: 'klant_accordeur',
+    aantal_passkeys: 1,
+    administratie_ids: [ADMINISTRATIE_ID, OUDE_ID],
+    administraties: [
+      { id: ADMINISTRATIE_ID, naam: 'Molenhof Beheer B.V.', actief: true },
+      { id: OUDE_ID, naam: 'Odoo-testadministratie', actief: false },
+    ],
+  })
+
+  it('toont een gearchiveerde administratie als "‹naam› — gearchiveerd" (nooit de GUID) en namen als links naar Instellingen › ‹BV› › Klant-accordering; de uitnodigings-tekst is weg', async () => {
+    installMock({ gebruikers: [accordeurMetTwee] })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    expect(screen.getByText('Odoo-testadministratie — gearchiveerd')).toBeInTheDocument()
+    expect(screen.queryByText(OUDE_ID)).not.toBeInTheDocument()
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    const dialoog = await screen.findByTestId('accordeur-administraties-dialoog')
+    expect(dialoog).not.toHaveTextContent(/Scope wijzigen gaat via/)
+    expect(dialoog).not.toHaveTextContent(OUDE_ID)
+    expect(screen.getByRole('link', { name: 'Molenhof Beheer B.V.' })).toHaveAttribute(
+      'href',
+      `/instellingen/administraties/${ADMINISTRATIE_ID}?tab=accordering`,
+    )
+    expect(screen.getByRole('link', { name: 'Odoo-testadministratie — gearchiveerd' })).toHaveAttribute(
+      'href',
+      `/instellingen/administraties/${OUDE_ID}?tab=accordering`,
+    )
+    expect(screen.getByRole('button', { name: 'Administraties toevoegen…' })).toBeInTheDocument()
+  })
+
+  it('"Administraties toevoegen…" = multi-select van actieve BV\'s buiten de scope → bestaande bulk-dialoog met de accordeur vooringevuld in laag 1 en scope-vink aan', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({ gebruikers: [accordeurMetTwee], aanroepen })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Administraties toevoegen…' }))
+    // Alleen BV's die nog niet in de scope zitten.
+    expect(screen.getByText('Tweede B.V.')).toBeInTheDocument()
+    expect(screen.queryByText('Molenhof Beheer B.V.', { selector: '.ms-optie' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Verder (0)' })).toBeDisabled()
+    await g.click(screen.getByText('Tweede B.V.'))
+    await g.click(screen.getByRole('button', { name: 'Verder (1)' }))
+
+    const bulk = await screen.findByTestId('bulk-accordering-dialoog')
+    expect(bulk).toHaveTextContent('Klant-accordering instellen — 1 administratie')
+    // Vooringevulde accordeur → de preview loopt direct via de bestaande route mét scope_toevoegen.
+    await waitFor(() => expect(aanroepen.some((a) => a.url === '/accordering/bulk-instellen/preview')).toBe(true))
+    const preview = aanroepen.find((a) => a.url === '/accordering/bulk-instellen/preview')!.body as {
+      administratie_ids: string[]
+      lagen: { volgnummer: number; accordeur_gebruiker_id: string }[]
+      scope_toevoegen: boolean
+    }
+    expect(preview.administratie_ids).toEqual([TWEEDE_ID])
+    expect(preview.lagen).toEqual([{ volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, bedrag_drempel: null }])
+    expect(preview.scope_toevoegen).toBe(true)
+    await waitFor(() => expect(bulk).toHaveTextContent('Tweede B.V.'))
+  })
+
+  it('"Verwijderen…" toont de vervallen-rondes-waarschuwing en haalt de accordeur uit de lagen (PUT zonder hem) én uit de scope (DELETE) — nooit iets nieuws', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [
+        { volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, accordeur_naam: 'R. de Groot', bedrag_drempel: null },
+        { volgnummer: 2, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Demi de Vries', bedrag_drempel: '1000.00' },
+      ],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
+
+    const bevestig = await screen.findByTestId('bevestig-dialoog')
+    expect(bevestig).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
+    expect(bevestig).toHaveTextContent(/terug naar "Klaar om te boeken"/)
+    expect(aanroepen).toHaveLength(0)
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['PUT', 'DELETE']))
+    expect(aanroepen[0].url).toBe(`/administraties/${ADMINISTRATIE_ID}/accordering/instellingen`)
+    expect(aanroepen[0].body).toEqual({
+      ingeschakeld: true,
+      lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ANDER_ID, bedrag_drempel: '1000.00' }],
+      aanleiding: 'verwijderd via Klant-accordeurs',
+    })
+    expect(aanroepen[1].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
+    // Geen tweede bevestiging: er blijft een laag over, accordering blijft aan.
+    expect(screen.queryByText(/wordt hiermee uitgeschakeld/)).not.toBeInTheDocument()
+  })
+
+  it('aanvulling Peter 08-09: is de accordeur de laatste laag, dan volgt een APARTE bevestiging "accordering voor ‹BV› wordt hiermee uitgeschakeld" vóór PUT (toggle uit, aanleiding) + DELETE', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, accordeur_naam: 'R. de Groot', bedrag_drempel: null }],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
+
+    // Stap 1: de gewone waarschuwing, mét de aankondiging dat er een aparte uitschakel-bevestiging volgt.
+    const stap1 = await screen.findByTestId('bevestig-dialoog')
+    await waitFor(() => expect(stap1).toHaveTextContent(/laatste accorderingslaag/))
+    expect(stap1).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    // Nog niets geschreven.
+    expect(aanroepen).toHaveLength(0)
+
+    // Stap 2: de expliciete uitschakel-bevestiging (eigen dialoog, eigen knop).
+    const stap2 = await screen.findByTestId('bevestig-dialoog')
+    expect(stap2).toHaveTextContent('accordering voor Molenhof Beheer B.V. wordt hiermee uitgeschakeld')
+    expect(screen.getByText('Klant-accordering voor Molenhof Beheer B.V. uitschakelen?')).toBeInTheDocument()
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['PUT', 'DELETE']))
+    expect(aanroepen[0].body).toEqual({ ingeschakeld: false, lagen: [], aanleiding: 'verwijderd via Klant-accordeurs' })
+    expect(aanroepen[1].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
+  })
+
+  it('annuleren in de uitschakel-stap schrijft niets', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, accordeur_naam: 'R. de Groot', bedrag_drempel: null }],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
+    await waitFor(() => expect(screen.getByTestId('bevestig-dialoog')).toHaveTextContent(/laatste accorderingslaag/))
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await screen.findByText('Klant-accordering voor Molenhof Beheer B.V. uitschakelen?')
+    await g.click(screen.getByRole('button', { name: 'Annuleren' }))
+    expect(screen.queryByTestId('bevestig-dialoog')).not.toBeInTheDocument()
+    expect(aanroepen).toHaveLength(0)
+  })
+
+  it('verwijderen bij een gearchiveerde administratie raakt alleen de scope (geen instellingen-route)', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({ gebruikers: [accordeurMetTwee], aanroepen })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Odoo-testadministratie verwijderen bij R. de Groot' }))
+    expect(await screen.findByTestId('bevestig-dialoog')).toHaveTextContent(/is gearchiveerd: alleen de toegang/)
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['DELETE']))
+    expect(aanroepen[0].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${OUDE_ID}`)
   })
 })

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, text, update
@@ -1242,6 +1242,17 @@ def mijn_administraties(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[Admin
 
 
 @dataclass(frozen=True)
+class AdministratieKort:
+    """Naam + status van een administratie in iemands scope (blok 5 herstelrun 08-09): óók een gearchiveerde
+    administratie krijgt zo een leesbare naam in Gebruikers & toegang ("‹naam› — gearchiveerd") i.p.v. een kale
+    GUID — /auth/administraties levert alleen actieve administraties."""
+
+    id: uuid.UUID
+    naam: str
+    actief: bool
+
+
+@dataclass(frozen=True)
 class GebruikerOverzicht:
     """Eén rij op het scherm Gebruikers & toegang (fase 3 modernisering, designronde 15-08).
     Dataminimalisatie: alleen bestaans-/statusfeiten over de beveiliging (heeft TOTP, aantal
@@ -1266,6 +1277,8 @@ class GebruikerOverzicht:
     gearchiveerd_door_naam: str | None = None
     # Externe app-rol met wachtwoord maar zonder actieve passkey (28-08, casus Haci).
     half_geactiveerd: bool = False
+    # Blok 5 (08-09): naam + actief per scope-administratie, incl. gearchiveerde (volgorde = administratie_ids).
+    administraties: list[AdministratieKort] = field(default_factory=list)
 
 
 def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = False) -> list[GebruikerOverzicht]:
@@ -1285,6 +1298,16 @@ def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = Fals
         scope_rijen = session.execute(
             select(GebruikerAdministratie.gebruiker_id, GebruikerAdministratie.administratie_id)
         ).all()
+        # Blok 5 (08-09): naam + actief van élke administratie in iemands scope — óók gearchiveerde, zodat het
+        # scherm nooit een kale GUID toont (/auth/administraties geeft alleen actieve terug).
+        administratie_kort: dict[uuid.UUID, AdministratieKort] = {
+            a_id: AdministratieKort(id=a_id, naam=naam, actief=actief)
+            for a_id, naam, actief in session.execute(
+                select(Administratie.id, Administratie.naam, Administratie.actief).where(
+                    Administratie.id.in_({a for _, a in scope_rijen})
+                )
+            ).all()
+        } if scope_rijen else {}
         totp_ids = set(session.scalars(select(TotpSecret.gebruiker_id).where(TotpSecret.bevestigd_op.is_not(None))))
         passkeys = dict(
             session.execute(
@@ -1344,6 +1367,11 @@ def lijst_gebruikers(*, actor_id: uuid.UUID, inclusief_gearchiveerd: bool = Fals
                 and passkeys.get(g.id, 0) == 0
                 and g.status in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY)
             ),
+            administraties=[
+                administratie_kort[a_id]
+                for a_id in scope_per_gebruiker.get(g.id, [])
+                if a_id in administratie_kort
+            ],
         )
         for g in gebruikers
     ]

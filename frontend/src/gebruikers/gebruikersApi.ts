@@ -24,6 +24,14 @@ export interface GebruikerOverzichtDto {
   /** Archivering (feedbackronde 26-08 punt 1, migratie 0075) — alleen bij status 'gearchiveerd'. */
   gearchiveerd_op?: string | null
   gearchiveerd_door_naam?: string | null
+  /** Blok 5 (08-09): naam + status per scope-administratie, óók gearchiveerde — nooit meer een kale GUID. */
+  administraties?: ScopeAdministratieDto[]
+}
+
+export interface ScopeAdministratieDto {
+  id: string
+  naam: string
+  actief: boolean
 }
 
 /** Open werk vóór archiveren: waarschuwing mét aantallen, geen blokkade. */

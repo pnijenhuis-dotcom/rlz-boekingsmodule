@@ -262,3 +262,56 @@ class TestBulkAanbieden:
         # Lege selectie = 422 (min_length).
         resp = client.post(pad, json={"document_ids": []}, headers=_bearer(gescoopte_gebruiker, rol="boekhouding"))
         assert resp.status_code == 422
+
+
+class TestUitschakelenViaKlantAccordeurs:
+    """Blok 5 herstelrun 08-09 (aanvulling Peter): de laatste accordeur verwijderen via Gebruikers › Klant-accordeurs
+    = PUT zonder laag mét `aanleiding` — toggle uit, lopende rondes vervallen via het BESTAANDE spoor (tijdlijn +
+    audit), en de aanleiding "verwijderd via Klant-accordeurs" staat leesbaar in audit én tijdlijn."""
+
+    AANLEIDING = "verwijderd via Klant-accordeurs"
+
+    def test_put_zonder_laag_met_aanleiding_schrijft_audit_en_tijdlijn(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
+        resp = client.put(
+            f"/administraties/{administratie_id}/accordering/instellingen",
+            json={"ingeschakeld": False, "lagen": [], "aanleiding": self.AANLEIDING},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ingeschakeld"] is False and resp.json()["rondes_vervallen"] == 1
+        assert document_status(admin_engine, klaar_document) == "klaar_om_te_boeken"
+
+        # Tijdlijn: bestaande vervallen-regel mét reden + de aanleiding.
+        detail = documenten_service.haal_document_op(administratie_id=administratie_id, document_id=klaar_document)
+        regels = [g for g in detail.gebeurtenissen if g.detail and g.detail.get("accordering_vervallen")]
+        assert len(regels) == 1
+        assert regels[0].detail["reden"] == service.VERVALLEN_REDEN
+        assert regels[0].detail["aanleiding"] == self.AANLEIDING
+
+        # Audit: schema-wijziging én toggle-wijziging dragen de aanleiding; per ronde het bestaande vervallen-event.
+        with admin_engine.connect() as conn:
+            rijen = conn.execute(
+                text(
+                    "SELECT actie, nieuwe_waarde::text FROM platform.audit_event "
+                    "WHERE actie IN ('accordering_schema_gewijzigd', 'accordering_ingeschakeld_gewijzigd', "
+                    "'accordering_vervallen') AND record_id IN (:a, "
+                    "(SELECT id FROM boekhouding.document_accordering WHERE document_id = :d))"
+                ),
+                {"a": administratie_id, "d": klaar_document},
+            ).all()
+        per_actie = {}
+        for actie, waarde in rijen:
+            per_actie.setdefault(actie, []).append(waarde)
+        assert "accordering_vervallen" in per_actie
+        assert any(self.AANLEIDING in w for w in per_actie["accordering_schema_gewijzigd"])
+        assert any(self.AANLEIDING in w and '"accordering_ingeschakeld": false' in w for w in per_actie["accordering_ingeschakeld_gewijzigd"])
