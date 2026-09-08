@@ -48,7 +48,7 @@ export function VoorwaardenScherm({ naAkkoord, uitloggen }: Props) {
     <div className="acc-vol" style={{ justifyContent: 'flex-start', paddingTop: 'calc(40px + env(safe-area-inset-top))' }}>
       {/* Wie niet akkoord gaat moet er ook uit kunnen: zonder deze knop laat de fail-closed-gate
           alleen "app sluiten" over en blijft de server-sessie leven (randgeval 2026-08-12). */}
-      <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void uitloggen()}>
+      <button className="acc-iconbtn" title="Vergrendelen" aria-label="Vergrendelen" onClick={() => void uitloggen()}>
         <UitlogIcoon />
       </button>
       <div className="acc-appnaam">

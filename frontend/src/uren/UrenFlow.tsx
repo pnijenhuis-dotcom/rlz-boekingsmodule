@@ -298,7 +298,7 @@ export function UrenFlow({
               ⚙
             </button>
           )}
-          <button className="acc-iconbtn" title="Uitloggen" onClick={() => void uitloggen()}>
+          <button className="acc-iconbtn" title="Vergrendelen" aria-label="Vergrendelen" onClick={() => void uitloggen()}>
             <UitlogIcoon />
           </button>
         </div>

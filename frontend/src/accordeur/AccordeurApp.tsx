@@ -231,7 +231,7 @@ export default function AccordeurApp() {
     setToegangVerlopen(true)
   }, [])
 
-  // Header-"Uitloggen" in de flow = de app vergrendelen (ING-model: het toestel blijft gekoppeld,
+  // Header-"Vergrendelen" (tot 08-09 "Uitloggen") in de flow = de app vergrendelen (ING-model: het toestel blijft gekoppeld,
   // de volgende opening vraagt de toegangscode). Echt loskoppelen (server-side intrekken + slot
   // wissen) zit in ⚙ Toegang tot de app → "Dit toestel loskoppelen".
   const vergrendelApp = useCallback(async () => {

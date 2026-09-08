@@ -816,8 +816,8 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
 
   const doeUitloggen = async () => {
     if (besluitVerzender.aantalOnderweg() > 0) {
-      // Uitloggen trekt de sessie in — besluiten die nog onderweg zijn zouden dan pas bij de
-      // volgende login zichtbaar terugkomen. Even laten uitrazen (seconden) is veiliger.
+      // Vergrendelen ontmantelt de flow — besluiten die nog onderweg zijn zouden dan pas bij de
+      // volgende ontgrendeling zichtbaar terugkomen. Even laten uitrazen (seconden) is veiliger.
       toon('Nog besluiten onderweg naar de server — een moment…')
       return
     }
@@ -826,7 +826,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
     } catch {
       // Backend onbereikbaar (of andere fout): de sessie is dan niet ingetrokken — blijf in
       // de app en meld het, in lijn met "niets verdwijnt stil".
-      toon('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw')
+      toon('Vergrendelen mislukte — probeer het opnieuw')
     }
   }
 
@@ -948,7 +948,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
               ⚙
             </button>
           )}
-          <button className="acc-iconbtn" title="Uitloggen" aria-label="Uitloggen" onClick={() => void doeUitloggen()}>
+          <button className="acc-iconbtn" title="Vergrendelen" aria-label="Vergrendelen" onClick={() => void doeUitloggen()}>
             <UitlogIcoon />
           </button>
         </div>

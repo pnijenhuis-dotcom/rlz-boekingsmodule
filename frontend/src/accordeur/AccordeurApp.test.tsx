@@ -2,7 +2,7 @@
 // verse installatie → activatiescherm; slot vergrendeld → AppSlotScherm → toegangscode → stille
 // refresh mét slot-headers → flow; 5× fout → uitgesloten + melding; sessie server-side dood → slot
 // gewist + activatiescherm mét melding; universal link mét ?document= → activatie → toegangscode →
-// /accordeur?document=; legacy toestel (plain token, geen slot) → PincodeKiezen; header-"Uitloggen"
+// /accordeur?document=; legacy toestel (plain token, geen slot) → PincodeKiezen; header-"Vergrendelen"
 // = vergrendelen. Draait in de PWA-slotmodus (jsdom op /accordeur + fake IndexedDB + WebCrypto);
 // het legacy-pad stubt de native schil.
 
@@ -210,14 +210,14 @@ describe('AccordeurApp — slot vergrendeld (koude start van een geactiveerd toe
     expect(await isAppSlotIngesteld()).toBe(false)
   })
 
-  it('header-"Uitloggen" in de flow = vergrendelen: terug naar het slot, géén logout-POST, toestel blijft gekoppeld', async () => {
+  it('header-"Vergrendelen" in de flow = vergrendelen: terug naar het slot, géén logout-POST, toestel blijft gekoppeld', async () => {
     await geactiveerdToestelMetDichtSlot()
     const aanroepen = stubFetch()
     renderApp()
     await screen.findByText('Voer je code in')
     await tikCode('13579')
     await screen.findByText('Alles is bij', undefined, { timeout: 3000 })
-    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vergrendelen' }))
     expect(await screen.findByText('Voer je code in')).toBeInTheDocument()
     expect(aanroepen.some((a) => a.pad === '/auth/token/vernieuwen/logout')).toBe(false)
     expect(await isAppSlotIngesteld()).toBe(true)

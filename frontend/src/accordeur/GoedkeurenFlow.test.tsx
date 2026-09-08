@@ -446,7 +446,7 @@ describe('GoedkeurenFlow', () => {
     renderFlow(uitloggen)
 
     await screen.findByText('1 factuur wacht op je akkoord')
-    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vergrendelen' }))
     expect(uitloggen).toHaveBeenCalledTimes(1)
   })
 
@@ -455,9 +455,9 @@ describe('GoedkeurenFlow', () => {
     renderFlow(() => Promise.reject(new Error('backend plat')))
 
     await screen.findByText('1 factuur wacht op je akkoord')
-    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vergrendelen' }))
     expect(
-      await screen.findByText('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw'),
+      await screen.findByText('Vergrendelen mislukte — probeer het opnieuw'),
     ).toBeInTheDocument()
   })
 
@@ -509,7 +509,7 @@ describe('GoedkeurenFlow', () => {
     renderFlow(uitloggen)
 
     expect(await screen.findByText('Voordat je begint')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vergrendelen' }))
     expect(uitloggen).toHaveBeenCalledTimes(1)
   })
 
@@ -527,9 +527,9 @@ describe('GoedkeurenFlow', () => {
     renderFlow(() => Promise.reject(new Error('backend plat')))
 
     expect(await screen.findByText('Voordat je begint')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Uitloggen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vergrendelen' }))
     expect(
-      await screen.findByText('Uitloggen mislukte — server niet bereikbaar, probeer het opnieuw'),
+      await screen.findByText('Vergrendelen mislukte — probeer het opnieuw'),
     ).toBeInTheDocument()
   })
 })
