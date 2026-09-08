@@ -44,6 +44,11 @@ export const CATALOGUS_GEEN_ADMINISTRATIE_TEKST =
   'Geen administratie met toegang tot de materiaalcatalogus. De catalogus komt beschikbaar zodra een administratie Uren & meerwerk aan heeft óf een Odoo-koppeling — in te stellen op de administratie-detailpagina.'
 
 type WerklijstVeld = 'bestel_email' | 'vendor_id'
+// Fixrun 08-09 (blok 5): de leverancierregel toont naast de werklijst óók per-veld statustekst
+// (crediteur/transport-/materiaal-contact) voor de GESELECTEERDE leverancier; de lege-waarde-tekst
+// ("nog niet ingevuld"/"crediteur: —") was een kale <span> — nu klikbaar naar hetzelfde
+// wijzig-dialoog, voorgeselecteerd + met focus op het veld (zelfde mechanisme als de werklijst).
+type DialoogVeld = WerklijstVeld | 'transport_contact_naam' | 'materiaal_contact_naam'
 
 /** Eén regel per probleem per ACTIEVE leverancier — deterministisch uit de lijst-response, geen extra call. */
 export function bepaalWerklijst(leveranciers: LeverancierDto[]): { lev: LeverancierDto; veld: WerklijstVeld; tekst: string }[] {
@@ -68,8 +73,9 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
   const [producten, setProducten] = useState<{ items: ProductDto[]; totaal: number } | null>(null)
   const [categorieen, setCategorieen] = useState<CategorieDto[]>([])
   const [bewerkLev, setBewerkLev] = useState<Partial<LeverancierDto> | null>(null)
-  // Werklijst-klik: welk veld in de wijzig-dialoog focus krijgt (null = gewoon openen).
-  const [focusVeld, setFocusVeld] = useState<WerklijstVeld | null>(null)
+  // Werklijst-klik (of een klik op de kale statustekst, blok 5 08-09): welk veld in de
+  // wijzig-dialoog focus krijgt (null = gewoon openen).
+  const [focusVeld, setFocusVeld] = useState<DialoogVeld | null>(null)
   const [chipZoek, setChipZoek] = useState('')
   const [bewerkProd, setBewerkProd] = useState<Partial<ProductDto> | null>(null)
   const [nieuweCat, setNieuweCat] = useState('')
@@ -152,13 +158,19 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
   const chipsMetZoek = (leveranciers?.length ?? 0) > CHIPS_ZOEK_VANAF
   const zichtbareChips = (leveranciers ?? []).filter((l) => !chipsMetZoek || l.naam.toLowerCase().includes(chipZoek.trim().toLowerCase()))
 
+  const FOCUS_VELD_ID: Record<DialoogVeld, string> = {
+    bestel_email: 'leverancier-bestel-email',
+    vendor_id: 'leverancier-vendor',
+    transport_contact_naam: 'leverancier-transport-contact',
+    materiaal_contact_naam: 'leverancier-materiaal-contact',
+  }
   useEffect(() => {
     if (!bewerkLev || !focusVeld) return
-    document.getElementById(focusVeld === 'bestel_email' ? 'leverancier-bestel-email' : 'leverancier-vendor')?.focus()
+    document.getElementById(FOCUS_VELD_ID[focusVeld])?.focus()
     setFocusVeld(null)
   }, [bewerkLev, focusVeld])
 
-  const openWerklijstRegel = (regel: { lev: LeverancierDto; veld: WerklijstVeld }) => {
+  const openWerklijstRegel = (regel: { lev: LeverancierDto; veld: DialoogVeld }) => {
     setLeverancierId(regel.lev.id)
     setPagina(1)
     setFocusVeld(regel.veld)
@@ -271,9 +283,31 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5 }}>
             <b>{lev.naam}</b>
             <span className="hint" style={{ margin: 0 }}>{lev.bestel_email ?? 'bestel-mailadres: —'}</span>
-            <span className="hint" style={{ margin: 0 }}>{lev.vendor_id ? `crediteur: ${vendors.find((v) => v.id === lev.vendor_id)?.naam ?? lev.vendor_id}` : 'crediteur: —'}</span>
             <span className="hint" style={{ margin: 0 }}>
-              transport-contact: {lev.transport_contact_naam ?? 'nog niet ingevuld'} · materiaal-contact: {lev.materiaal_contact_naam ?? 'nog niet ingevuld'}
+              {lev.vendor_id ? (
+                `crediteur: ${vendors.find((v) => v.id === lev.vendor_id)?.naam ?? lev.vendor_id}`
+              ) : (
+                <>
+                  crediteur:{' '}
+                  <button type="button" className="linkbtn" onClick={() => openWerklijstRegel({ lev, veld: 'vendor_id' })}>
+                    geen crediteur-koppeling — koppelen…
+                  </button>
+                </>
+              )}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              transport-contact:{' '}
+              {lev.transport_contact_naam ?? (
+                <button type="button" className="linkbtn" onClick={() => openWerklijstRegel({ lev, veld: 'transport_contact_naam' })}>
+                  nog niet ingevuld
+                </button>
+              )}{' '}
+              · materiaal-contact:{' '}
+              {lev.materiaal_contact_naam ?? (
+                <button type="button" className="linkbtn" onClick={() => openWerklijstRegel({ lev, veld: 'materiaal_contact_naam' })}>
+                  nog niet ingevuld
+                </button>
+              )}
             </span>
             <Button variant="ghost" maat="klein" onClick={() => setBewerkLev(lev)}>
               wijzig leverancier
@@ -357,7 +391,7 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
               <label className="hint" style={{ margin: 0 }}>
                 Transport-contact (naam)
-                <input value={bewerkLev.transport_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, transport_contact_naam: e.target.value })} style={{ width: '100%' }} />
+                <input id="leverancier-transport-contact" value={bewerkLev.transport_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, transport_contact_naam: e.target.value })} style={{ width: '100%' }} />
               </label>
               <label className="hint" style={{ margin: 0 }}>
                 Transport-contact e-mail
@@ -365,7 +399,7 @@ export function MateriaalCatalogusBeheer({ administraties }: { administraties: A
               </label>
               <label className="hint" style={{ margin: 0 }}>
                 Materiaal-contact (naam)
-                <input value={bewerkLev.materiaal_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, materiaal_contact_naam: e.target.value })} style={{ width: '100%' }} />
+                <input id="leverancier-materiaal-contact" value={bewerkLev.materiaal_contact_naam ?? ''} onChange={(e) => setBewerkLev({ ...bewerkLev, materiaal_contact_naam: e.target.value })} style={{ width: '100%' }} />
               </label>
               <label className="hint" style={{ margin: 0 }}>
                 Materiaal-contact e-mail

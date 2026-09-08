@@ -152,3 +152,63 @@ describe('MateriaalCatalogusBeheer — toegang bij Odoo (Odoo-afrondingsrun 04-0
     expect(screen.queryByText(/steigerbouw-tak/)).not.toBeInTheDocument()
   })
 })
+
+describe('MateriaalCatalogusBeheer — kale statustekst klikbaar naar het wijzig-dialoog (blok 5, fixrun 08-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('"geen crediteur-koppeling — koppelen…" opent het wijzig-dialoog van díe leverancier, voorgeselecteerd, met focus op het crediteur-veld', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch([leverancier({ naam: 'Alpha Steigers', vendor_id: null })])
+    renderScherm()
+    await screen.findByText('Alpha Steigers · 3')
+
+    await gebruiker.click(screen.getByRole('button', { name: 'geen crediteur-koppeling — koppelen…' }))
+    const dialoog = await screen.findByRole('dialog', { name: 'Leverancier wijzigen' })
+    expect(within(dialoog).getByLabelText('Naam')).toHaveValue('Alpha Steigers')
+    await waitFor(() => expect(within(dialoog).getByLabelText(/RLZ-crediteur/)).toHaveFocus())
+  })
+
+  it('"nog niet ingevuld" (transport-contact) opent het dialoog met focus op het transport-contact-veld', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch([leverancier({ naam: 'Bravo Verhuur' })])
+    renderScherm()
+    await screen.findByText('Bravo Verhuur · 3')
+
+    const knoppen = screen.getAllByRole('button', { name: 'nog niet ingevuld' })
+    expect(knoppen).toHaveLength(2) // transport-contact + materiaal-contact
+    await gebruiker.click(knoppen[0])
+    const dialoog = await screen.findByRole('dialog', { name: 'Leverancier wijzigen' })
+    expect(within(dialoog).getByLabelText('Naam')).toHaveValue('Bravo Verhuur')
+    await waitFor(() => expect(within(dialoog).getByLabelText('Transport-contact (naam)')).toHaveFocus())
+  })
+
+  it('"nog niet ingevuld" (materiaal-contact) opent het dialoog met focus op het materiaal-contact-veld', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch([leverancier({ naam: 'Charlie Compleet' })])
+    renderScherm()
+    await screen.findByText('Charlie Compleet · 3')
+
+    const knoppen = screen.getAllByRole('button', { name: 'nog niet ingevuld' })
+    await gebruiker.click(knoppen[1])
+    const dialoog = await screen.findByRole('dialog', { name: 'Leverancier wijzigen' })
+    await waitFor(() => expect(within(dialoog).getByLabelText('Materiaal-contact (naam)')).toHaveFocus())
+  })
+
+  it('is de crediteur al gekoppeld en zijn de contacten al ingevuld, dan staat er kale tekst zonder knop', async () => {
+    installFetch([
+      leverancier({
+        naam: 'Delta Compleet',
+        vendor_id: VENDOR,
+        transport_contact_naam: 'Jan Transport',
+        materiaal_contact_naam: 'Marie Materiaal',
+      }),
+    ])
+    renderScherm()
+    await screen.findByText('Delta Compleet · 3')
+    expect(screen.getByText(/crediteur: Alpha Steigers B\.V\. \(RLZ\)/)).toBeInTheDocument()
+    expect(screen.getByText(/transport-contact: Jan Transport/)).toBeInTheDocument()
+    expect(screen.getByText(/materiaal-contact: Marie Materiaal/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /koppelen…/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'nog niet ingevuld' })).not.toBeInTheDocument()
+  })
+})
