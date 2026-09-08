@@ -20,7 +20,8 @@ export const STATUS_LABELS: Record<string, string> = {
   ter_accordering: 'Bij klant — ter accordering',
   verwijderd: 'Verwijderd',
   // Nabundel-nazorg dubbelparen (03-09): een UBL-exemplaar dat in het PDF-document van dezelfde
-  // factuur is opgenomen — terminaal, leeft door in het leidende document.
+  // factuur is opgenomen — terminaal, leeft door in het leidende document. Sinds de aanvulling van
+  // 08-09 standaard verborgen in de documentenlijst (zelfde knop als afgevoerde duplicaten).
   samengevoegd: 'Samengevoegd',
   gesplitst: 'Gesplitst',
   // Verplichtingen (blok B 04-09): eindstand ná het laatste klant-akkoord — er wordt niets

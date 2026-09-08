@@ -87,6 +87,12 @@ class OngeldigeAanbieding(AccorderingFout):
     pass
 
 
+class DocumentNietAanbiedbaar(OngeldigeAanbieding):
+    """Statuspoort (aanvulling blok 3, 08-09): het document staat niet op klaar_om_te_boeken — bv. een
+    `samengevoegd`-huls of een afgevoerd duplicaat. Conflict met de actuele stand (409, zoals de boek-route
+    met `OngeldigeBoekpoging`), geen invoerfout (400)."""
+
+
 class KlantAkkoordAlCompleet(OngeldigeAanbieding):
     """Punt 24 (opruimrun 28-08): de LAATSTE ronde is al afgerond (alle lagen akkoord), het bedrag
     is ongewijzigd en het document is daarna nog niet geboekt — opnieuw aanbieden zou de klant
@@ -1197,7 +1203,7 @@ def bied_ter_accordering_aan(
         if document is None:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
         if document.status != DocumentStatus.KLAAR_OM_TE_BOEKEN:
-            raise OngeldigeAanbieding(
+            raise DocumentNietAanbiedbaar(
                 f"Document staat op {document.status.value} — alleen een boekklaar document kan ter accordering"
             )
         if _open_accordering(session, document_id) is not None:

@@ -8,6 +8,7 @@ const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
 const GEBOEKT_DOCUMENT_ID = 'cccccccc-0000-0000-0000-000000000003'
 const VERWIJDERD_DOCUMENT_ID = 'dddddddd-0000-0000-0000-000000000004'
+const SAMENGEVOEGD_DOCUMENT_ID = 'eeeeeeee-0000-0000-0000-000000000005'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -43,6 +44,10 @@ function document(overrides: Record<string, unknown>) {
 interface MockOpties {
   documenten?: unknown[]
   verwijderdeDocumenten?: unknown[]
+  /** Antwoord op ?toon_afgehandeld=true (aanvulling blok 3, 08-09): de lijst mét eindstatus-rijen. */
+  afgehandeldeDocumenten?: unknown[]
+  /** Tellers van de standaard-verborgen eindstatus-rijen (reizen altijd mee). */
+  afgehandeld?: { verwijderd: number; afgewezen: number; samengevoegd: number; afgevoerd_duplicaat: number; totaal: number }
   verwijderenAanroepen?: { url: string; body: unknown }[]
   herstellenAanroepen?: string[]
   verwijderenStatus?: number
@@ -67,9 +72,14 @@ function installFetchMock(opties: MockOpties) {
         return Promise.resolve(jsonResponse({ document_id: VERWIJDERD_DOCUMENT_ID, status: 'te_controleren' }))
       }
       if (url.includes('/documenten') && (!init || init.method === undefined)) {
-        const toontVerwijderd = url.includes('toon_verwijderd=true')
+        const toontAfgehandeld = url.includes('toon_afgehandeld=true')
         return Promise.resolve(
-          jsonResponse({ documenten: toontVerwijderd ? (opties.verwijderdeDocumenten ?? documenten) : documenten }),
+          jsonResponse({
+            documenten: toontAfgehandeld
+              ? (opties.afgehandeldeDocumenten ?? opties.verwijderdeDocumenten ?? documenten)
+              : documenten,
+            afgehandeld: opties.afgehandeld ?? null,
+          }),
         )
       }
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -234,14 +244,21 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
     }
   })
 
-  it('"toon verwijderde documenten" haalt de lijst met toon_verwijderd=true op en toont een herstelknop', async () => {
+  it('"toon afgehandelde documenten" haalt de lijst met toon_afgehandeld=true op, toont de verwijder-reden grijs en een herstelknop', async () => {
     const gebruiker = userEvent.setup()
     const herstellenAanroepen: string[] = []
     installFetchMock({
       documenten: [document({})],
-      verwijderdeDocumenten: [
-        document({ id: VERWIJDERD_DOCUMENT_ID, bestandsnaam: 'verwijderde-factuur.pdf', status: 'verwijderd' }),
+      afgehandeldeDocumenten: [
+        document({}),
+        document({
+          id: VERWIJDERD_DOCUMENT_ID,
+          bestandsnaam: 'verwijderde-factuur.pdf',
+          status: 'verwijderd',
+          verwijderd_reden: 'dubbel',
+        }),
       ],
+      afgehandeld: { verwijderd: 1, afgewezen: 0, samengevoegd: 0, afgevoerd_duplicaat: 0, totaal: 1 },
       herstellenAanroepen,
     })
     renderScherm()
@@ -249,14 +266,61 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText('verwijderde-factuur.pdf')).not.toBeInTheDocument()
 
-    await gebruiker.click(screen.getByLabelText('Toon verwijderde documenten'))
+    // De toggle draagt het server-aantal (niets verdwijnt stil); de rij komt grijs mét reden terug onder "Alle".
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (1)'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
     await waitFor(() => expect(screen.getByText('verwijderde-factuur.pdf')).toBeInTheDocument())
+    expect(screen.getByText('verwijderde-factuur.pdf').closest('tr')).toHaveClass('afgehandeld')
+    expect(screen.getByText(/verwijderd: “dubbel”/)).toBeInTheDocument()
 
-    // Herstellen zit sinds 27/28-08 óók in het ⋯-rijmenu.
+    // Herstellen zit sinds 27/28-08 óók in het ⋯-rijmenu; op een eindstatus-rij géén Verwijderen/Afvoeren meer.
     await gebruiker.click(screen.getByRole('button', { name: /Acties voor verwijderde-factuur\.pdf/ }))
-    await gebruiker.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /Herstellen/ }))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).queryByRole('menuitem', { name: /Verwijderen/ })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: /Afvoeren/ })).not.toBeInTheDocument()
+    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Herstellen/ }))
     await waitFor(() => expect(herstellenAanroepen).toHaveLength(1))
     expect(herstellenAanroepen[0]).toContain(`/documenten/${VERWIJDERD_DOCUMENT_ID}/herstellen`)
+  })
+})
+
+describe('WerkvoorraadScreen — afgehandelde documenten (definitieve aanvulling blok 3, 08-09)', () => {
+  it('verbergt samengevoegde hulzen standaard, toont "2 exemplaren samengevoegd" op het echte document en via de toggle de grijze hulzen met link en menu Openen/Toon origineel', async () => {
+    const gebruiker = userEvent.setup()
+    const floor = document({ bestandsnaam: 'Floor Bouwliftenservice - 26219.pdf', samengevoegde_exemplaren: 2 })
+    const huls = document({
+      id: SAMENGEVOEGD_DOCUMENT_ID,
+      bestandsnaam: 'Floor Bouwliftenservice - 26219 (2).pdf',
+      status: 'samengevoegd',
+      samengevoegd_in: { document_id: DOCUMENT_ID, bestandsnaam: 'Floor Bouwliftenservice - 26219.pdf' },
+    })
+    installFetchMock({
+      documenten: [floor],
+      afgehandeldeDocumenten: [floor, huls],
+      afgehandeld: { verwijderd: 0, afgewezen: 0, samengevoegd: 2, afgevoerd_duplicaat: 0, totaal: 2 },
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText('Floor Bouwliftenservice - 26219.pdf')).toBeInTheDocument())
+    expect(screen.queryByText('Floor Bouwliftenservice - 26219 (2).pdf')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.getByText('2 exemplaren samengevoegd')).toBeInTheDocument()
+
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (2)'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
+    await waitFor(() => expect(screen.getByText('Floor Bouwliftenservice - 26219 (2).pdf')).toBeInTheDocument())
+    expect(screen.getByText('Floor Bouwliftenservice - 26219 (2).pdf').closest('tr')).toHaveClass('afgehandeld')
+    const link = screen.getByRole('link', { name: '→ samengevoegd in Floor Bouwliftenservice - 26219.pdf' })
+    expect(link).toHaveAttribute('href', `/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`)
+
+    // ⋯-menu op de huls: alleen Openen en Toon origineel — nooit Verwijderen/Afvoeren/Boeken.
+    await gebruiker.click(screen.getByRole('button', { name: /Acties voor Floor Bouwliftenservice - 26219 \(2\)\.pdf/ }))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Openen', 'Toon origineel'])
+    const fetchMock = vi.mocked(fetch)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('toon_afgehandeld=true'))).toBe(true)
   })
 })
 

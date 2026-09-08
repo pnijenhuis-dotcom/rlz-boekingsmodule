@@ -8,7 +8,14 @@ import {
   type VervallenMeldingDto,
 } from '../accordering/accorderingApi'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
-import type { DocumentActieResponseDto, DocumentListItemDto, DocumentListResponseDto, VraagDto } from '../api/types'
+import { isAfgehandeld } from '../api/types'
+import type {
+  AfgehandeldTellersDto,
+  DocumentActieResponseDto,
+  DocumentListItemDto,
+  DocumentListResponseDto,
+  VraagDto,
+} from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
@@ -106,11 +113,11 @@ export function DocumentenDeelscherm({
 
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [lijstFout, setLijstFout] = useState<string | null>(null)
-  const [toonVerwijderd, setToonVerwijderd] = useState(false)
-  // Duplicaten-UI (blok 3, fixrun 08-09): analoog aan "Toon verwijderde documenten" — een afgevoerd
-  // duplicaat zit standaard niet meer in deze lijst (terugvindbaar via Archief/Zoeken); deze knop
-  // haalt 'm er weer bij (bv. om te heropenen).
-  const [toonAfgevoerd, setToonAfgevoerd] = useState(false)
+  // Definitieve aanvulling blok 3 (Peter 08-09): ÉÉN toggle voor álle eindstatussen (verwijderd, afgewezen,
+  // samengevoegd, afgevoerd_duplicaat) — standaard niet in de lijst en niet in "Alle"; aan = grijs erbij, mét
+  // reden en verwijzing. De aantallen komen altijd mee (`afgehandeld`), zodat niets stil verdwijnt.
+  const [toonAfgehandeld, setToonAfgehandeld] = useState(false)
+  const [afgehandeld, setAfgehandeld] = useState<AfgehandeldTellersDto | null>(null)
   const [zoekterm, setZoekterm] = useState(zoekParam)
   // Blok D 01-09: `null` = geen expliciete keuze (geen `status=` in de URL, nog geen klik) — het
   // effectieve filter valt dan op de default "Te controleren" (of "Alle" bij teller 0), zie
@@ -148,13 +155,15 @@ export function DocumentenDeelscherm({
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
     const params = new URLSearchParams()
-    if (toonVerwijderd) params.set('toon_verwijderd', 'true')
-    if (toonAfgevoerd) params.set('toon_afgevoerd', 'true')
+    if (toonAfgehandeld) params.set('toon_afgehandeld', 'true')
     const query = params.toString()
     apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten${query ? `?${query}` : ''}`)
-      .then((data) => setDocumenten(data.documenten))
+      .then((data) => {
+        setDocumenten(data.documenten)
+        setAfgehandeld(data.afgehandeld ?? null)
+      })
       .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId, toonVerwijderd, toonAfgevoerd])
+  }, [administratieId, toonAfgehandeld])
 
   useEffect(() => {
     setDocumenten(null)
@@ -358,7 +367,9 @@ export function DocumentenDeelscherm({
   // eigen standen, ongeacht hoe isOpenstaand ze indeelt).
   const alle = documenten ?? []
   const terAccordering = alle.filter((d) => d.status === 'ter_accordering').length
-  const afgewezen = alle.filter((d) => d.status === 'afgewezen').length
+  // Afgewezen-rijen zijn standaard verborgen (eindstatus) — de chip leest het server-aantal en zet bij een klik de
+  // toggle aan, zodat "Afgewezen — ter controle" als signaal blijft bestaan (niets verdwijnt stil).
+  const afgewezen = afgehandeld?.afgewezen ?? alle.filter((d) => d.status === 'afgewezen').length
   const ibanWachtend = alle.filter((d) => d.status === 'wacht_op_iban_accordering').length
   const openVragen = vragen?.length ?? 0
   const openRekeningen = (rekeningen?.rekeningen ?? []).filter((r) => r.open_mutaties > 0)
@@ -558,7 +569,14 @@ export function DocumentenDeelscherm({
           </button>
         )}
         {afgewezen > 0 && (
-          <button type="button" className="chip vraag klikbaar" onClick={() => naarStatus('afgewezen')}>
+          <button
+            type="button"
+            className="chip vraag klikbaar"
+            onClick={() => {
+              setToonAfgehandeld(true)
+              naarStatus('afgewezen')
+            }}
+          >
             ✕ {afgewezen} afgewezen — ter controle
           </button>
         )}
@@ -654,18 +672,17 @@ export function DocumentenDeelscherm({
               aria-selected={toontAlle}
               className={toontAlle ? 'actief' : undefined}
               onClick={() => naarTab(SOORT_ALLE)}
-              title="Alle documenten van deze klant, incl. geboekt en verwijderd (herstel-pad)"
+              title="Alle documenten van deze klant, incl. geboekt; afgehandelde documenten (verwijderd, afgewezen, samengevoegd, afgevoerd duplicaat) alleen met de knop hiernaast"
             >
               Alle documenten
             </button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
-            <Checkbox checked={toonVerwijderd} onChange={(e) => setToonVerwijderd(e.target.checked)} />
-            Toon verwijderde documenten
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
-            <Checkbox checked={toonAfgevoerd} onChange={(e) => setToonAfgevoerd(e.target.checked)} />
-            Toon afgevoerde documenten
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}
+            title="Verwijderde, afgewezen, samengevoegde en als duplicaat afgevoerde documenten — grijs, met reden en verwijzing"
+          >
+            <Checkbox checked={toonAfgehandeld} onChange={(e) => setToonAfgehandeld(e.target.checked)} />
+            Toon afgehandelde documenten{afgehandeld && afgehandeld.totaal > 0 ? ` (${afgehandeld.totaal})` : ''}
           </label>
         </div>
         {/* Segment-filters (mockup #scherm-docs) + zoekveld + dichtheid (punt 3b). */}
@@ -909,10 +926,12 @@ export function DocumentenDeelscherm({
                   const route = documentRoute(administratieId, d, context)
                   const dupSelecteerbaarRij = dupBulkMogelijk && isDuplicaatBulkSelecteerbaar(d)
                   const geselecteerd = selectie.has(d.id) || dupSelectie.has(d.id) || (dupAlleModus && dupSelecteerbaarRij)
+                  const afgehandeldeRij = isAfgehandeld(d)
+                  const origineelVan = d.samengevoegd_in ?? d.duplicaat_van ?? null
                   return (
                     <tr
                       key={d.id}
-                      className={`clickable${geselecteerd ? ' geselecteerd' : ''}`}
+                      className={`clickable${geselecteerd ? ' geselecteerd' : ''}${afgehandeldeRij ? ' afgehandeld' : ''}`}
                       onClick={() => navigate(route)}
                     >
                       {bulkMogelijk && (
@@ -1000,13 +1019,43 @@ export function DocumentenDeelscherm({
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ fontSize: 11.5 }}
                                   >
-                                    open origineel
+                                    → duplicaat van {d.duplicaat_van?.bestandsnaam ?? 'origineel'}
                                   </Link>
                                 )}
                                 <br />
                               </>
                             )}
                             reden: &ldquo;{d.afwijzing.reden}&rdquo; — {actorLabel(naamVoor, d.afwijzing.afgewezen_door)}
+                          </div>
+                        )}
+                        {/* Aanvulling blok 3 (08-09): een samengevoegd-huls ná (na)bundelen is geen werk — alleen
+                            zichtbaar met "Toon afgevoerde en samengevoegde documenten", mét de weg naar het
+                            leidende document (dáár gebeurt alles: controleren, boeken, accorderen). */}
+                        {d.status === 'samengevoegd' && d.samengevoegd_in && (
+                          <div style={{ marginTop: 4 }}>
+                            <Link
+                              to={`/documenten/${administratieId}/${d.samengevoegd_in.document_id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ fontSize: 11.5 }}
+                              title="Dit exemplaar is opgegaan in het leidende document; controleren en boeken gebeurt dáár"
+                            >
+                              → samengevoegd in {d.samengevoegd_in.bestandsnaam}
+                            </Link>
+                          </div>
+                        )}
+                        {d.status === 'verwijderd' && (
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                            verwijderd{d.verwijderd_reden ? <>: &ldquo;{d.verwijderd_reden}&rdquo;</> : ' (zonder reden)'}
+                          </div>
+                        )}
+                        {(d.samengevoegde_exemplaren ?? 0) > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <span
+                              className="chip geheugen"
+                              title="Extra exemplaren van dezelfde factuur zijn in dit document opgegaan — de dubbelen zijn al verwerkt"
+                            >
+                              {d.samengevoegde_exemplaren} {d.samengevoegde_exemplaren === 1 ? 'exemplaar' : 'exemplaren'} samengevoegd
+                            </span>
                           </div>
                         )}
                         {d.duplicaat_werkvoorraad_van && (
@@ -1178,19 +1227,40 @@ export function DocumentenDeelscherm({
                           >
                             Openen
                           </button>
-                          {isVerwijderd ? (
-                            <button
-                              type="button"
-                              className="linkbtn"
-                              role="menuitem"
-                              disabled={herstellenBezig === d.id}
-                              onClick={() => {
-                                setMenuOpen(null)
-                                void herstellen(d.id)
-                              }}
-                            >
-                              {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
-                            </button>
+                          {afgehandeldeRij ? (
+                            <>
+                              {/* Eindstatus-rij (aanvulling blok 3, 08-09): geen Verwijderen/Afwijzen/Boeken/Afvoeren —
+                                  alleen Openen en Toon origineel; de melding "Overgang samengevoegd -> verwijderd is
+                                  niet toegestaan" kan zo niet meer ontstaan. Herstellen blijft het herstel-pad van een
+                                  verwijderd document (design-pass taak 4). */}
+                              {origineelVan && (
+                                <button
+                                  type="button"
+                                  className="linkbtn"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpen(null)
+                                    navigate(`/documenten/${administratieId}/${origineelVan.document_id}`)
+                                  }}
+                                >
+                                  Toon origineel
+                                </button>
+                              )}
+                              {isVerwijderd && (
+                                <button
+                                  type="button"
+                                  className="linkbtn"
+                                  role="menuitem"
+                                  disabled={herstellenBezig === d.id}
+                                  onClick={() => {
+                                    setMenuOpen(null)
+                                    void herstellen(d.id)
+                                  }}
+                                >
+                                  {herstellenBezig === d.id ? 'Bezig…' : '↺ Herstellen'}
+                                </button>
+                              )}
+                            </>
                           ) : (
                             <>
                               {/* Duplicaat-afvoer (04-09): alleen bij een harde-match-signaal én afvoerbare status. */}

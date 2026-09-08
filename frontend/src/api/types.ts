@@ -279,6 +279,29 @@ export interface GeboektInRlzDto {
   boekdatum_verschoven?: string | null
 }
 
+/** Aanvulling blok 3 (08-09): verwijzing van een afgehandelde rij — "→ samengevoegd in ‹document›" of
+ * "→ duplicaat van ‹document›". */
+export interface DocumentVerwijzingDto {
+  document_id: string
+  bestandsnaam: string
+}
+
+/** Aantal standaard-verborgen eindstatus-rijen per status (aanvulling blok 3, 08-09). */
+export interface AfgehandeldTellersDto {
+  verwijderd: number
+  afgewezen: number
+  samengevoegd: number
+  afgevoerd_duplicaat: number
+  totaal: number
+}
+
+/** Eindstatussen die standaard niet in de documentenlijst staan (besluit Peter 08-09) — één toggle
+ * "Toon afgehandelde documenten" haalt ze grijs erbij; zelfde lijst als backend `AFGEHANDELDE_STATUSSEN`. */
+export const AFGEHANDELDE_STATUSSEN = ['verwijderd', 'afgewezen', 'samengevoegd', 'afgevoerd_duplicaat'] as const
+export function isAfgehandeld(d: { status: string }): boolean {
+  return (AFGEHANDELDE_STATUSSEN as readonly string[]).includes(d.status)
+}
+
 export interface DocumentListItemDto {
   id: string
   bestandsnaam: string
@@ -319,6 +342,15 @@ export interface DocumentListItemDto {
   /** Duplicaat-afvoer (04-09): een ouder/verder app-document met dezelfde crediteur (btw-nummer), referentie en
    * totaalbedrag — voedt het rijmenu-item "Afvoeren als duplicaat" en de chip. Null/afwezig = geen. */
   duplicaat_werkvoorraad_van?: DuplicaatOrigineelDto | null
+  /** Aanvulling blok 3 (08-09): alleen bij status `samengevoegd` — het leidende document waarin deze huls is
+   * opgegaan (rij-link "→ samengevoegd in ‹document›"). Null/afwezig bij elke andere status. */
+  samengevoegd_in?: DocumentVerwijzingDto | null
+  /** Aanvulling blok 3 (08-09): app-origineel van een afgevoerd duplicaat (rij-link "→ duplicaat van ‹document›"). */
+  duplicaat_van?: DocumentVerwijzingDto | null
+  /** Aanvulling blok 3 (08-09): reden van de verwijdering (alleen bij status `verwijderd`). */
+  verwijderd_reden?: string | null
+  /** Aanvulling blok 3 (08-09): aantal hulzen dat in DIT document is opgegaan — chip "N exemplaren samengevoegd". */
+  samengevoegde_exemplaren?: number
   /** Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte
    * pro-rato-verdeling — chip "verdeling wijkt x% af", actie "Herverdelen…" op het document. */
   projectverdeling_afwijking_pct?: string | null
@@ -343,6 +375,8 @@ export interface AccordeurAanDeBeurtDto {
 
 export interface DocumentListResponseDto {
   documenten: DocumentListItemDto[]
+  /** Aanvulling blok 3 (08-09): aantallen van de standaard-verborgen eindstatus-rijen. */
+  afgehandeld?: AfgehandeldTellersDto | null
 }
 
 /** Autoboeken-opt-in per leverancier (Instellingen, Beheerder-only — CLAUDE.md-poort vóór het

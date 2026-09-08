@@ -528,12 +528,21 @@ class TestDubbelparen:
             and d.get(nabundelen.NABUNDEL_ADMINISTRATIE_SLEUTEL) == str(administratie_id)
             for d in ubl_details
         )
-        # Zichtbaar in de documentenlijst als samengevoegd, maar geen openstaand werk meer in de tellers.
+        # Aanvulling blok 3 (08-09): de huls is geen werk — standaard verborgen in de documentenlijst (en
+        # daarmee uit de "Alle"-teller), wél terug te halen via "Toon afgevoerde en samengevoegde documenten"
+        # mét verwijzing naar het leidende document.
         lijst = {
             d.document.id: d.document.status.value
             for d in documenten_service.lijst_documenten(administratie_id=administratie_id)
         }
-        assert lijst[ubl_id] == "samengevoegd" and lijst[pdf_id] == "te_controleren"
+        assert ubl_id not in lijst and lijst[pdf_id] == "te_controleren"
+        met_hulzen = {
+            d.document.id: d for d in documenten_service.lijst_documenten(administratie_id=administratie_id, toon_afgevoerd=True)
+        }
+        assert met_hulzen[ubl_id].document.status.value == "samengevoegd"
+        assert met_hulzen[ubl_id].samengevoegd_in is not None
+        assert met_hulzen[ubl_id].samengevoegd_in.document_id == pdf_id
+        assert met_hulzen[ubl_id].samengevoegd_in.bestandsnaam == UBL_NAAM  # het PDF-document draagt nu de UBL-naam
         klant = documenten_service.werkvoorraad_overzicht(administratie_ids_met_naam=[(administratie_id, "X")])[0]
         assert klant.te_controleren == 1
         # Het toewijzings-geheugen leerde niets van de nabundeling (wel eerder van Barbara's toewijzing).

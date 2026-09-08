@@ -54,6 +54,10 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
     if isinstance(exc, service.KlantAkkoordAlCompleet):
         # Punt 24 (opruimrun 28-08): conflict met de actuele stand — boeken is de juiste actie.
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, service.DocumentNietAanbiedbaar):
+        # Aanvulling blok 3 (08-09): statuspoort = conflict met de actuele stand (zoals `OngeldigeBoekpoging`
+        # op de boek-route) — een samengevoegd-huls of afgevoerd duplicaat is nooit aanbiedbaar.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, herinnering.AlHerinnerdVandaag):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, herinnering.HerinneringVerzendingMislukt):

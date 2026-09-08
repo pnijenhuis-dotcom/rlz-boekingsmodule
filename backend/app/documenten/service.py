@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
 from app.config import settings
@@ -22,6 +22,8 @@ from app.documenten.beeld import BestandenSnapshot, beeld_is_bron, bepaal_beeld
 from app.documenten.geboekt_in_rlz import GeboektInRlz, bepaal_geboekt_in_rlz
 from app.documenten.mime import content_type_voor
 from app.documenten.models import (
+    Afwijzing,
+    AfwijzingStatus,
     Boekvoorstel,
     Document,
     DocumentBron,
@@ -1290,9 +1292,42 @@ class AccordeurAanDeBeurt:
 
 
 @dataclass(frozen=True)
+class DocumentVerwijzing:
+    """Verwijzing van een afgehandelde rij naar het document waar het om draait (aanvulling blok 3, 08-09):
+    "→ samengevoegd in ‹document›" (huls → leidend document) of "→ duplicaat van ‹document›" (afgevoerd
+    duplicaat → origineel in de app). id + bestandsnaam, uit één bulk-query — geen N+1."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str
+
+
+# Eindstatussen die standaard NIET in de documentenlijst staan en niet in de "Alle"-teller tellen (besluit Peter
+# 08-09, aanvulling blok 3): afgehandeld werk. Eén toggle "Toon afgehandelde documenten" haalt ze er grijs bij,
+# mét reden en verwijzing; de aantallen reizen altijd mee (`tel_afgehandeld`) zodat niets stil verdwijnt.
+AFGEHANDELDE_STATUSSEN: tuple[DocumentStatus, ...] = (
+    DocumentStatus.VERWIJDERD,
+    DocumentStatus.AFGEWEZEN,
+    DocumentStatus.SAMENGEVOEGD,
+    DocumentStatus.AFGEVOERD_DUPLICAAT,
+)
+
+
+@dataclass(frozen=True)
 class DocumentMetDuplicaat:
     document: Document
     duplicaat_referentie: DuplicaatReferentie | None
+    # Aanvulling blok 3 (08-09): alleen bij status `samengevoegd` — het leidende document (`samengevoegd_in_id`)
+    # mét bestandsnaam, zodat de rij kan verwijzen. None bij elke andere status.
+    samengevoegd_in: DocumentVerwijzing | None = None
+    # Aanvulling blok 3 (08-09): het app-origineel van een afgevoerd duplicaat (open Afwijzing mét
+    # `duplicaat_van_document_id`) — rij-link "→ duplicaat van ‹document›". None zonder app-origineel.
+    duplicaat_van: DocumentVerwijzing | None = None
+    # Aanvulling blok 3 (08-09): aantal hulzen dat in DIT document is opgegaan (chip "N exemplaren samengevoegd"
+    # op het echte document — zichtbaar dat de dubbelen al verwerkt zijn).
+    samengevoegde_exemplaren: int = 0
+    # Aanvulling blok 3 (08-09): reden van de verwijder-overgang (detail `reden` van de laatste VERWIJDERD-
+    # gebeurtenis) — de afgehandelde rij toont zijn reden. None bij elke andere status.
+    verwijderd_reden: str | None = None
     # Kopgegevens voor de werkvoorraad-documentenlijst (mockup #klantpagina: kolommen
     # Leverancier + Bedrag): uit het opgeslagen boekvoorstel, of anders het laatste
     # extractie-veldvoorstel — None zolang er nog geen van beide is.
@@ -1332,7 +1367,11 @@ class DocumentMetDuplicaat:
 
 
 def lijst_documenten(
-    *, administratie_id: uuid.UUID, toon_verwijderd: bool = False, toon_afgevoerd: bool = False
+    *,
+    administratie_id: uuid.UUID,
+    toon_verwijderd: bool = False,
+    toon_afgevoerd: bool = False,
+    toon_afgehandeld: bool = False,
 ) -> list[DocumentMetDuplicaat]:
     """`toon_verwijderd=False` (default) verbergt zachtgewiste documenten uit de normale
     werkvoorraad — de "toon verwijderde"-filter (design-pass taak 4) zet dit aan om ze er weer
@@ -1340,18 +1379,82 @@ def lijst_documenten(
 
     `toon_afgevoerd=False` (default, blok 3 fixrun 08-09): zelfde patroon voor een als duplicaat
     afgevoerd document (`afgevoerd_duplicaat`) — telt in GEEN werkvoorraad-tab/-teller mee, alleen
-    terugvindbaar via Archief/Zoeken (filter "afgevoerd") of via deze knop "Toon afgevoerde
-    documenten" (naast "Toon verwijderde documenten")."""
+    terugvindbaar via Archief/Zoeken (filter "afgevoerd") of via deze knop "Toon afgevoerde en
+    samengevoegde documenten" (naast "Toon verwijderde documenten"). Sinds de aanvulling van 08-09
+    (Peter: 119 hulzen bij Universal Steigerbouw stonden nog tussen het werk op "Alle") geldt dezelfde
+    regel voor `samengevoegd`: de huls ná (na)bundelen leeft door in het leidende document en is geen werk
+    — verborgen, niet in de "Alle"-teller, mét `samengevoegd_in` voor de rij-link als de knop aanstaat.
+
+    `toon_afgehandeld=True` (definitieve aanvulling Peter 08-09): ÉÉN toggle voor álle eindstatussen
+    (`AFGEHANDELDE_STATUSSEN`: verwijderd, afgewezen, samengevoegd, afgevoerd_duplicaat) — standaard staan die
+    geen van alle in de lijst en tellen ze niet in "Alle"; de aantallen staan in `tel_afgehandeld`. De twee
+    oudere vlaggen blijven als deel-toggles werken (verwijderd resp. afgevoerd+samengevoegd)."""
     with scoped_session(administratie_id) as session:
         voorwaarden = [Document.administratie_id == administratie_id]
-        if not toon_verwijderd:
-            voorwaarden.append(Document.status != DocumentStatus.VERWIJDERD)
-        if not toon_afgevoerd:
-            voorwaarden.append(Document.status != DocumentStatus.AFGEVOERD_DUPLICAAT)
+        verborgen = set(AFGEHANDELDE_STATUSSEN)
+        if toon_afgehandeld:
+            verborgen.clear()
+        if toon_verwijderd:
+            verborgen.discard(DocumentStatus.VERWIJDERD)
+        if toon_afgevoerd:
+            verborgen.discard(DocumentStatus.AFGEVOERD_DUPLICAAT)
+            verborgen.discard(DocumentStatus.SAMENGEVOEGD)
+        if verborgen:
+            voorwaarden.append(Document.status.notin_(list(verborgen)))
         documenten = list(session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc())))
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
         )
+        # Samengevoegd-hulzen (aanvulling blok 3, 08-09): bestandsnaam van het leidende document in één query.
+        doel_ids = {d.samengevoegd_in_id for d in documenten if d.samengevoegd_in_id is not None}
+        samengevoegd_doelen: dict[uuid.UUID, str] = (
+            dict(session.execute(select(Document.id, Document.bestandsnaam).where(Document.id.in_(doel_ids))).all())
+            if doel_ids
+            else {}
+        )
+        lijst_ids = [d.id for d in documenten]
+        # Chip "N exemplaren samengevoegd" op het echte document: hulzen per leidend document, één GROUP BY.
+        exemplaren_per_doel: dict[uuid.UUID, int] = (
+            dict(
+                session.execute(
+                    select(Document.samengevoegd_in_id, func.count())
+                    .where(Document.samengevoegd_in_id.in_(lijst_ids), Document.status == DocumentStatus.SAMENGEVOEGD)
+                    .group_by(Document.samengevoegd_in_id)
+                ).all()
+            )
+            if lijst_ids
+            else {}
+        )
+        # "→ duplicaat van ‹document›": open Afwijzing mét app-origineel, mét diens bestandsnaam (één query).
+        afgevoerde_ids = [
+            d.id for d in documenten if d.status in (DocumentStatus.AFGEVOERD_DUPLICAAT, DocumentStatus.AFGEWEZEN)
+        ]
+        duplicaat_van: dict[uuid.UUID, DocumentVerwijzing] = {}
+        if afgevoerde_ids:
+            origineel = aliased(Document)
+            for document_id, origineel_id, origineel_naam in session.execute(
+                select(Afwijzing.document_id, origineel.id, origineel.bestandsnaam)
+                .join(origineel, origineel.id == Afwijzing.duplicaat_van_document_id)
+                .where(
+                    Afwijzing.document_id.in_(afgevoerde_ids),
+                    Afwijzing.status == AfwijzingStatus.OPEN.value,
+                    Afwijzing.duplicaat_van_document_id.is_not(None),
+                )
+            ).all():
+                duplicaat_van[document_id] = DocumentVerwijzing(document_id=origineel_id, bestandsnaam=origineel_naam)
+        # Reden van de verwijdering (detail `reden` op de laatste VERWIJDERD-overgang), alleen voor verwijderde rijen.
+        verwijderde_ids = [d.id for d in documenten if d.status == DocumentStatus.VERWIJDERD]
+        verwijderd_redenen: dict[uuid.UUID, str | None] = {}
+        if verwijderde_ids:
+            for gebeurtenis in session.scalars(
+                select(DocumentGebeurtenis)
+                .where(
+                    DocumentGebeurtenis.document_id.in_(verwijderde_ids),
+                    DocumentGebeurtenis.naar_status == DocumentStatus.VERWIJDERD,
+                )
+                .order_by(DocumentGebeurtenis.tijdstip)
+            ):
+                verwijderd_redenen[gebeurtenis.document_id] = (gebeurtenis.detail or {}).get("reden") or None
         # Kopgegevens per document in drie bulk-queries (geen N+1): opgeslagen boekvoorstellen,
         # de vendornamen uit de cache, en — voor documenten zónder opgeslagen voorstel — het
         # laatste extractie-veldvoorstel uit de tijdlijn (zelfde bron als de controlescherm-
@@ -1481,6 +1584,16 @@ def lijst_documenten(
                     duplicaat_referentie=referenties.get(d.mogelijk_duplicaat_van_id)
                     if d.mogelijk_duplicaat_van_id
                     else None,
+                    samengevoegd_in=(
+                        DocumentVerwijzing(
+                            document_id=d.samengevoegd_in_id, bestandsnaam=samengevoegd_doelen[d.samengevoegd_in_id]
+                        )
+                        if d.samengevoegd_in_id is not None and d.samengevoegd_in_id in samengevoegd_doelen
+                        else None
+                    ),
+                    duplicaat_van=duplicaat_van.get(d.id),
+                    samengevoegde_exemplaren=exemplaren_per_doel.get(d.id, 0),
+                    verwijderd_reden=verwijderd_redenen.get(d.id),
                     leverancier=leverancier,
                     totaalbedrag=totaalbedrag,
                     factuurdatum=factuurdatum,
@@ -1503,6 +1616,22 @@ def lijst_documenten(
                 )
             )
         return resultaat
+
+
+def tel_afgehandeld(*, administratie_id: uuid.UUID) -> dict[DocumentStatus, int]:
+    """Aantal afgehandelde documenten per eindstatus (aanvulling blok 3, 08-09) — reist mee met élke lijst-
+    response zodat de toggle "Toon afgehandelde documenten (N)" en de chip "N afgewezen — ter controle" hun
+    getal houden terwijl de rijen zelf standaard verborgen zijn (niets verdwijnt stil). Eén GROUP BY."""
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(Document.status, func.count())
+            .where(Document.administratie_id == administratie_id, Document.status.in_(list(AFGEHANDELDE_STATUSSEN)))
+            .group_by(Document.status)
+        ).all()
+    tellers = {status: 0 for status in AFGEHANDELDE_STATUSSEN}
+    for status, aantal in rijen:
+        tellers[DocumentStatus(status)] = aantal
+    return tellers
 
 
 # Statusbuckets voor de werkvoorraad-klantenlijst (mockup #werkvoorraad "Overzicht per klant").

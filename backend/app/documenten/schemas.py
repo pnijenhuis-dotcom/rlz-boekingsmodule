@@ -390,11 +390,37 @@ class VerplichtingMatchKortDto(BaseModel):
     offertenummer: str | None = None
 
 
+class DocumentVerwijzingDto(BaseModel):
+    """Aanvulling blok 3 (08-09): verwijzing van een afgehandelde rij — "→ samengevoegd in ‹document›" (huls →
+    leidend document) of "→ duplicaat van ‹document›" (afgevoerd duplicaat → app-origineel). Alleen zichtbaar met
+    "Toon afgehandelde documenten"."""
+
+    document_id: uuid.UUID
+    bestandsnaam: str
+
+
+class AfgehandeldTellersDto(BaseModel):
+    """Aantal standaard-verborgen eindstatus-rijen per status (aanvulling blok 3, 08-09) — de toggle toont
+    "Toon afgehandelde documenten (totaal)", de chip "N afgewezen — ter controle" leest `afgewezen`."""
+
+    verwijderd: int = 0
+    afgewezen: int = 0
+    samengevoegd: int = 0
+    afgevoerd_duplicaat: int = 0
+    totaal: int = 0
+
+
 class DocumentListItemResponse(BaseModel):
     id: uuid.UUID
     bestandsnaam: str
     status: str
     bron: str
+    # Aanvulling blok 3 (08-09) — afgehandelde rijen: verwijzing (samengevoegd → leidend document; afgevoerd/
+    # afgewezen duplicaat → origineel), de verwijder-reden, en op het ECHTE document het aantal opgegane hulzen.
+    samengevoegd_in: DocumentVerwijzingDto | None = None
+    duplicaat_van: DocumentVerwijzingDto | None = None
+    verwijderd_reden: str | None = None
+    samengevoegde_exemplaren: int = 0
     # 'inkoopfactuur' | 'kassarapport' (migratie 0027) — de werkvoorraad routeert een
     # kassarapport naar het omzetreview-scherm en toont de omzetboeking-chip.
     soort: str = "inkoopfactuur"
@@ -488,6 +514,8 @@ class WerkvoorraadOverzichtResponse(BaseModel):
 
 class DocumentListResponse(BaseModel):
     documenten: list[DocumentListItemResponse]
+    # Aanvulling blok 3 (08-09): aantallen van de standaard-verborgen eindstatus-rijen (altijd meegegeven).
+    afgehandeld: AfgehandeldTellersDto | None = None
 
 
 class DocumentGebeurtenisResponse(BaseModel):

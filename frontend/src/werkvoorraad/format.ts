@@ -79,10 +79,11 @@ export function documentRoute(administratieId: string, d: DocumentListItemDto, c
 }
 
 /** Terminale statussen — zelfde definitie als de backend-overzichtstellers
- * (`_TERMINAAL_VOOR_TELLERS`): geboekt/verwijderd/gesplitst/samengevoegd tellen niet als openstaand
- * werk. `geaccordeerd` (blok B 04-09) is de eindstand van een verplichting: het akkoord is gegeven,
- * er wordt niets geboekt — dus geen openstaand werk meer. */
-export const TERMINALE_STATUSSEN = ['geboekt', 'verwijderd', 'gesplitst', 'samengevoegd', 'geaccordeerd']
+ * (`_TERMINAAL_VOOR_TELLERS`): geboekt/verwijderd/gesplitst/samengevoegd/afgevoerd_duplicaat tellen niet als
+ * openstaand werk. `geaccordeerd` (blok B 04-09) is de eindstand van een verplichting: het akkoord is gegeven,
+ * er wordt niets geboekt — dus geen openstaand werk meer. `afgevoerd_duplicaat` (blok 3 08-09) ontbrak hier
+ * t.o.v. de backend-lijst — rechtgezet in de aanvulling van 08-09. */
+export const TERMINALE_STATUSSEN = ['geboekt', 'verwijderd', 'gesplitst', 'samengevoegd', 'geaccordeerd', 'afgevoerd_duplicaat']
 
 /** Openstaand = niet terminaal. */
 export function isOpenstaand(d: DocumentListItemDto): boolean {

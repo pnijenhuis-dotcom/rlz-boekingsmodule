@@ -33,7 +33,7 @@ from app.documenten import (
 from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
 from app.documenten.checks import CheckRapport
 from app.documenten.mime import content_type_voor
-from app.documenten.models import DocumentSoort, IbanAccorderingStatus, IbanSoort, VraagStatus
+from app.documenten.models import DocumentSoort, DocumentStatus, IbanAccorderingStatus, IbanSoort, VraagStatus
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.materiaal.match import MateriaalAfwijkingBevestigingVereist, lees_materiaalmatch
 from app.rlz.credentials import GeenRlzCredentials
@@ -74,6 +74,12 @@ def _naar_afwijzing_info(data: afwijzen.AfwijzingData | None) -> schemas.Afwijzi
         duplicaat_van_referentie=data.duplicaat_van_referentie,
         automatisch=data.automatisch,
     )
+
+
+def _naar_verwijzing_dto(v: service.DocumentVerwijzing | None) -> schemas.DocumentVerwijzingDto | None:
+    if v is None:
+        return None
+    return schemas.DocumentVerwijzingDto(document_id=v.document_id, bestandsnaam=v.bestandsnaam)
 
 
 def _naar_origineel_dto(o: duplicaat_afvoer.Origineel | None) -> schemas.DuplicaatOrigineelDto | None:
@@ -393,12 +399,21 @@ def documenten_lijst(
     toon_verwijderd: bool = False,
     # Duplicaten-UI (blok 3, fixrun 08-09): analoog aan toon_verwijderd — een afgevoerd duplicaat
     # zit standaard niet meer in de normale werkvoorraad-lijst; deze knop haalt 'm er weer bij.
+    # Aanvulling 08-09: dezelfde knop dekt óók de `samengevoegd`-hulzen ná (na)bundelen.
     toon_afgevoerd: bool = False,
+    # Definitieve aanvulling blok 3 (Peter 08-09): ÉÉN toggle "Toon afgehandelde documenten" voor álle
+    # eindstatussen (verwijderd, afgewezen, samengevoegd, afgevoerd_duplicaat); de twee vlaggen hierboven
+    # blijven als deel-toggles werken.
+    toon_afgehandeld: bool = False,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
     items = service.lijst_documenten(
-        administratie_id=administratie_id, toon_verwijderd=toon_verwijderd, toon_afgevoerd=toon_afgevoerd
+        administratie_id=administratie_id,
+        toon_verwijderd=toon_verwijderd,
+        toon_afgevoerd=toon_afgevoerd,
+        toon_afgehandeld=toon_afgehandeld,
     )
+    afgehandeld = service.tel_afgehandeld(administratie_id=administratie_id)
     # Werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie afwees (mockup): één query
     # voor alle open afwijzingen, geen N+1.
     afwijzingen = afwijzen.open_afwijzingen(administratie_id=administratie_id)
@@ -414,6 +429,10 @@ def documenten_lijst(
                 status=item.document.status.value,
                 bron=item.document.bron.value,
                 soort=item.document.soort,
+                samengevoegd_in=_naar_verwijzing_dto(item.samengevoegd_in),
+                duplicaat_van=_naar_verwijzing_dto(item.duplicaat_van),
+                verwijderd_reden=item.verwijderd_reden,
+                samengevoegde_exemplaren=item.samengevoegde_exemplaren,
                 mogelijk_duplicaat_van=_naar_duplicaat_response(item.duplicaat_referentie),
                 toegewezen_aan=item.document.toegewezen_aan,
                 aangemaakt_op=item.document.aangemaakt_op,
@@ -461,7 +480,14 @@ def documenten_lijst(
                 ),
             )
             for item in items
-        ]
+        ],
+        afgehandeld=schemas.AfgehandeldTellersDto(
+            verwijderd=afgehandeld[DocumentStatus.VERWIJDERD],
+            afgewezen=afgehandeld[DocumentStatus.AFGEWEZEN],
+            samengevoegd=afgehandeld[DocumentStatus.SAMENGEVOEGD],
+            afgevoerd_duplicaat=afgehandeld[DocumentStatus.AFGEVOERD_DUPLICAAT],
+            totaal=sum(afgehandeld.values()),
+        ),
     )
 
 

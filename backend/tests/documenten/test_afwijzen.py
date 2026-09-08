@@ -245,7 +245,11 @@ class TestAfwijzen:
             actor_id=gescoopte_gebruiker,
             reden="Niet onze bestelling, navragen bij leverancier",
         )
-        items = service.lijst_documenten(administratie_id=administratie_id)
+        # Aanvulling blok 3 (Peter 08-09): afgewezen is een eindstatus — standaard verborgen in de lijst, het
+        # aantal reist mee (tel_afgehandeld) en de rij komt mét reden/wie terug via "Toon afgehandelde documenten".
+        assert document_te_controleren not in {i.document.id for i in service.lijst_documenten(administratie_id=administratie_id)}
+        assert service.tel_afgehandeld(administratie_id=administratie_id)[DocumentStatus.AFGEWEZEN] == 1
+        items = service.lijst_documenten(administratie_id=administratie_id, toon_afgehandeld=True)
         assert any(
             item.document.id == document_te_controleren
             and item.document.status == DocumentStatus.AFGEWEZEN

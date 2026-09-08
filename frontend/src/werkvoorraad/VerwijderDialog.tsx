@@ -12,7 +12,7 @@ interface Props {
  * design-pass taak 4 "reden optioneel"): verwijderen zit sinds die run achter het ⋯-rijmenu en
  * volgt het afwijs-patroon, zodat een zware actie nooit meer op één onbeschermde klik gebeurt.
  * Benoemt expliciet wat er gebeurt ("niets verdwijnt stil"): soft-delete — bestand en
- * geschiedenis blijven bewaard, herstel via "Toon verwijderde documenten". De server eist de
+ * geschiedenis blijven bewaard, herstel via "Toon afgehandelde documenten". De server eist de
  * reden óók (422 zonder). */
 export function VerwijderDialog({ bestandsnaam, bezig, fout, onBevestigen, onAnnuleren }: Props) {
   const [reden, setReden] = useState('')
@@ -30,7 +30,7 @@ export function VerwijderDialog({ bestandsnaam, bezig, fout, onBevestigen, onAnn
         <p className="hint" style={{ marginTop: 0 }}>
           "{bestandsnaam}" verdwijnt uit de werkvoorraad en telt niet meer mee in de standen. Het wordt niet
           definitief verwijderd — het bestand en de geschiedenis blijven bewaard en het is altijd te herstellen via
-          "Toon verwijderde documenten". De reden komt in de tijdlijn en het auditlog.
+          "Toon afgehandelde documenten". De reden komt in de tijdlijn en het auditlog.
         </p>
         <div className="row">
           <label htmlFor="verwijder-reden">Reden (verplicht)</label>

@@ -187,6 +187,15 @@ tr.geselecteerd td {
   background: var(--accent-bg);
 }
 
+/* Afgehandelde rijen (aanvulling blok 3, 08-09): eindstatussen grijs — alleen zichtbaar met de toggle
+   "Toon afgehandelde documenten"; links en chips blijven leesbaar. */
+tr.afgehandeld td {
+  color: var(--muted);
+}
+tr.afgehandeld td .chip {
+  opacity: 0.8;
+}
+
 .amount {
   text-align: right;
   font-variant-numeric: tabular-nums;
