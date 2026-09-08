@@ -348,6 +348,10 @@ def bouw_veldvoorstel(
     # Factuurperiode (blok 11 07-09): alleen doorgeven (ruw); de normalisatie naar ISO-weken gebeurt deterministisch
     # bij de prefill (documenten/periode.py) — dan is de factuurdatum (jaar-anker) de opgeslagen stand.
     periode_tekst = tekst_van("periode")
+    # Betaalwijze/incassodatum (blok 3 bundel 08-09): alleen doorgeven (ruw); óf het een incasso is beslist
+    # app/documenten/betaalstatus.py deterministisch (documenten/service.py, samen met de PDF-tekstlaag).
+    betaalwijze_tekst = tekst_van("betaalwijze_tekst")
+    incasso_datum_tekst = tekst_van("incasso_datum_tekst")
     valuta = tekst_van("valuta")
     # IBAN: deterministische mod-97-validatie (app/extractie/iban.py) — een ongeldig IBAN wordt
     # gemarkeerd (onparseerbaar) en nooit doorgegeven; de IBAN-wissel-check mag alleen op een
@@ -460,6 +464,8 @@ def bouw_veldvoorstel(
         "betreft": betreft,
         "project_tekst": project_tekst,
         "periode_tekst": periode_tekst,
+        "betaalwijze_tekst": betaalwijze_tekst,
+        "incasso_datum_tekst": incasso_datum_tekst,
         "valuta": valuta,
         "totaal_excl": _bedrag_str(totaal_excl),
         "totaal_incl": _bedrag_str(totaal_incl),

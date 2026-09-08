@@ -223,6 +223,23 @@ class RlzClient:
         naar concept (Status 1) — er komt géén apart creditdocument bij."""
         return self.post_action(f"PurchaseInvoices/{invoice_id}", ACTION_CORRECT)
 
+    def list_quick_payment_selections(self, invoice_id: uuid.UUID | str) -> list[dict[str, Any]]:
+        """De acht "Betaling"-keuzes van RLZ voor dít document (STAP-0 08-09, api-verkenning "Betaalstatus
+        inkoopfactuur"): `[{id, Description}]` — "Nog te betalen", "Wordt automatisch geïncasseerd", "Betaald per bank",
+        "Betaald met PIN", "Betaald met Creditcard", "Betaald - contant", "Verrekend met prive", "Verrekend met Rekening
+        Courant". Vaste template-GUID's over administraties heen, maar de motor matcht altijd op het label van déze
+        lijst
+        (app/documenten/betaalstatus.py::kies_keuze_id) — nooit op een gehardcode GUID."""
+        return self.get(f"PurchaseInvoices/{invoice_id}/QuickPaymentSelections").get("value", [])
+
+    def set_quick_payment_selection(self, invoice_id: uuid.UUID | str, selection_id: uuid.UUID | str) -> httpx.Response:
+        """Betaalstatus zetten met een KALE her-PUT `{id, QuickPaymentSelection:{id}}` — bewezen op concept én GEBOEKT
+        document (Status 2): 204, `$expand=QuickPaymentSelection` toont de keuze, Status/BaseRemainingAmount/regels
+        ongewijzigd (post blijft open, verdwijnt uit de betaallijst). Géén PaymentAccount en géén actie 148: dat zou een
+        échte betaling boeken (post dicht + eigen bankregel), niet wat we willen."""
+        body = {"id": str(invoice_id), "QuickPaymentSelection": {"id": str(selection_id)}}
+        return self.put(f"PurchaseInvoices/{invoice_id}", body)
+
     def run_unreliable_duplicate_check_action(self, invoice_id: uuid.UUID) -> httpx.Response:
         """Actie 138 op een bestaand document. Bewezen zonder waarneembaar effect (drie
         experimenten, verkenning/api-verkenning.md "Actie 138"): geen verschil in respons of

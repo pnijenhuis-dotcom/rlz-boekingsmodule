@@ -1,0 +1,6 @@
+{
+ "administratie": "Universal Steigerbouw B.V. (testadministratie in de keten)",
+ "herkomst": "SYNTHETISCH (blok 3 bundel 08-09 avond, B3): geen echt productiedocument — patroon uit echte telecom-/energie-incassofacturen (betaalwijze-blok onder het totaal, 'wordt automatisch geincasseerd … op of rond <datum>', machtigingskenmerk + incassant-ID). Leverancier, nummers, IBAN en bedragen zijn fictief maar syntactisch geldig.",
+ "doel": "Casus (m): incasso-detectie deterministisch (betaalstatus 'Wordt automatisch geincasseerd' + verwachte betaaldatum 25-09-2026), declaraties-kanaal → 'Betaald per bank' (kanaal wint), harde check 'Betaalstatus (declaraties)' blokkeert zonder status, mens wint (audit).",
+ "opmerking": "Geen persoonsgegevens; de rekening van de afnemer is een fictief IBAN."
+}

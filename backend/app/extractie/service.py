@@ -59,6 +59,14 @@ _KOP_KEYS: dict[str, str] = {
     # vermeld — weeknummer(s)/jaar, datumbereik of maand, LETTERLIJK. Normalisatie naar ISO-weken is deterministisch
     # (app/documenten/periode.py) bij de prefill, nooit de AI. Sentinel-string, geen union (limiet ≤ 16).
     "periode": "periode",
+    # Betaalwijze + incassodatum (blok 3 bundel 08-09, betaalstatus): de letterlijke vermelding dat het bedrag
+    # automatisch
+    # geïncasseerd wordt en de genoemde incassodatum — VOORLEZEN. Óf het een incasso is en welke datum dat wordt,
+    # beslist
+    # deterministisch app/documenten/betaalstatus.py (mét de PDF-tekstlaag als tweede bron). Sentinel-strings, geen
+    # union.
+    "betaalwijze": "betaalwijze_tekst",
+    "incasso": "incasso_datum_tekst",
 }
 
 # Sentinel i.p.v. union (bugfix 31-08): Anthropic's structured outputs staan maximaal 16
@@ -165,6 +173,11 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   periode=de periode waarop de factuur betrekking heeft, zoals vermeld: weeknummer(s)/jaar of datumbereik,
   letterlijk (bijv. "week 34", "wk 34-35 2026", "18-08-2026 t/m 22-08-2026", "augustus 2026" — de tekst ná een
   label als "Periode:"; staat er geen periode, dan "" — de factuur- of vervaldatum is géén periode).
+  betaalwijze=de letterlijke zin over de manier van betalen als de factuur zegt dat het bedrag automatisch wordt
+  geïncasseerd/afgeschreven (bijv. "Het bedrag wordt automatisch geïncasseerd", "Wij schrijven het bedrag rond
+  25 september af van uw rekening", "SEPA-incasso"); staat er zo'n zin niet, dan "" — een verzoek om zelf over te
+  maken is géén betaalwijze. incasso=de genoemde incasso-/afschrijfdatum zoals vermeld (bijv. "25-09-2026",
+  "rond 25 september"); niet genoemd, dan "".
 - kz: per kopveld één zekerheidsscore tussen 0 en 1 (zelfde sleutels als kop).
 - regels: één item per factuurregel, in documentvolgorde. o=regelomschrijving (kort, alleen de
   omschrijvingstekst van de regel zelf), n=nettobedrag, b=btw-bedrag van de regel, h=hoeveelheid (alleen
@@ -309,7 +322,7 @@ class _Genormaliseerd:
 # maskeerde een echt factuurnummer dat toevallig de elfproef doorstond (fix 2026-07-10, Peters
 # controle van een echte factuur). Zie ook app/extractie/bsn.py: het filter zelf eist bovendien
 # BSN-context.
-_VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl", "betreft", "periode"})
+_VRIJE_TEKST_KOP_KEYS = frozenset({"lev", "vl", "betreft", "periode", "betaalwijze"})
 _VRIJE_TEKST_REGEL_KEYS = frozenset({"o", "a"})
 
 

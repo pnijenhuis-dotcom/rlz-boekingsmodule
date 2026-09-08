@@ -17,6 +17,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import betaalstatus as betaalstatus_regels
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
 from app.documenten import leverancier_iban, veldvoorstel_regels
 from app.documenten import periode as periode_regels
@@ -25,6 +26,7 @@ from app.documenten.checks import (
     CheckRegel,
     CheckResultaat,
     check_afdeling,
+    check_betaalstatus_declaraties,
     check_buitenland_tarief_crediteurkaart,
     check_duplicaat_module,
     check_iban_wissel,
@@ -47,6 +49,7 @@ from app.documenten.models import (
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
 from app.documenten.ubl import is_ubl_veldvoorstel
+from app.intake.models import IntakeBericht
 from app.projectverdeling.data import ProjectverdelingData
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -187,6 +190,87 @@ class BoekvoorstelData:
     # factuurdatum` = terugval, `mens` = correctie via de PUT, wint altijd) en de ruwe factuurtekst. Kolommen op
     # `boekvoorstel` (migratie 0120); op een oud voorstel zonder kolomwaarde wordt de stand live afgeleid.
     periode: periode_regels.FactuurPeriode | None = None
+    # Blok 3 bundel 08-09 (RLZ-betaalstatus; app/documenten/betaalstatus.py): één van de acht RLZ-waarden LETTERLIJK
+    # (RLZ `QuickPaymentSelection`, kaal gezet tussen PUT en actie 17), herkomst 'kanaal' (declaraties@ → "Betaald per
+    # bank") | 'factuur' (deterministische incasso-detectie / UBL PaymentMeansCode 59) | 'mens' (wint), de verwachte
+    # betaaldatum (incassodatum — kolom voor de bankmatch) en de factuurzin die de detectie droeg (chip-tooltip).
+    # `intake_kanaal` = het postvak waaruit het document kwam ('facturen' | 'declaraties' | None = upload).
+    betaalstatus: str | None = None
+    betaalstatus_herkomst: str | None = None
+    verwachte_betaaldatum: date | None = None
+    betaalstatus_bron_tekst: str | None = None
+    intake_kanaal: str | None = None
+
+
+def _intake_kanaal(session: Session, document: Document) -> str | None:
+    """Het intake-kanaal van een document via zijn intake-bericht (migratie 0126); None = losse upload/geen bericht."""
+    if document.intake_bericht_id is None:
+        return None
+    bericht = session.get(IntakeBericht, document.intake_bericht_id)
+    return bericht.kanaal if bericht is not None else None
+
+
+@dataclass(frozen=True)
+class _BetaalstatusStand:
+    betaalstatus: str | None
+    herkomst: str | None
+    verwachte_betaaldatum: date | None
+    bron_tekst: str | None
+
+    def als_velden(self) -> dict:
+        return {
+            "betaalstatus": self.betaalstatus,
+            "betaalstatus_herkomst": self.herkomst,
+            "verwachte_betaaldatum": self.verwachte_betaaldatum,
+            "betaalstatus_bron_tekst": self.bron_tekst,
+        }
+
+
+_LEGE_BETAALSTATUS = _BetaalstatusStand(None, None, None, None)
+
+
+def _automatische_betaalstatus(veldvoorstel: dict | None, *, kanaal: str | None) -> _BetaalstatusStand:
+    """Winnaarsvolgorde (blok 3 bundel 08-09): kanaal (declaraties@ = al betaald door de medewerker → "Betaald per
+    bank")
+    > factuur (incasso-detectie op de PDF-tekst/AI-velden, of UBL PaymentMeansCode 59 → "Wordt automatisch
+    geïncasseerd" mét incassodatum; UBL: de vervaldatum is de incassodatum) > leeg. Nooit "Nog te betalen" invullen:
+    leeg = RLZ-default, niets te zetten."""
+    kanaal_status = betaalstatus_regels.BETAALSTATUS_PER_KANAAL.get(kanaal or "")
+    if kanaal_status is not None:
+        return _BetaalstatusStand(kanaal_status, betaalstatus_regels.HERKOMST_KANAAL, None, None)
+    if not veldvoorstel:
+        return _LEGE_BETAALSTATUS
+    incasso = veldvoorstel.get("incasso")
+    if isinstance(incasso, dict) and betaalstatus_regels.is_geldig(incasso.get("betaalstatus")):
+        return _BetaalstatusStand(
+            betaalstatus_regels.canoniek(incasso.get("betaalstatus")),
+            betaalstatus_regels.HERKOMST_FACTUUR,
+            _als_datum(incasso.get("verwachte_betaaldatum")),
+            incasso.get("bron_tekst"),
+        )
+    if betaalstatus_regels.is_ubl_incasso(veldvoorstel.get("payment_means_code")):
+        return _BetaalstatusStand(
+            betaalstatus_regels.AUTOMATISCH_GEINCASSEERD,
+            betaalstatus_regels.HERKOMST_FACTUUR,
+            _als_datum(veldvoorstel.get("vervaldatum")),
+            f"UBL PaymentMeansCode {veldvoorstel.get('payment_means_code')} (SEPA-incasso)",
+        )
+    return _LEGE_BETAALSTATUS
+
+
+def _opgeslagen_betaalstatus(
+    bestaand: Boekvoorstel, veldvoorstel: dict | None, *, kanaal: str | None
+) -> _BetaalstatusStand:
+    """Kolomstand als die er is (mens/kanaal/factuur), anders de live afleiding (voorstel van vóór 0126)."""
+    auto = _automatische_betaalstatus(veldvoorstel, kanaal=kanaal)
+    if bestaand.betaalstatus_herkomst:
+        return _BetaalstatusStand(
+            bestaand.betaalstatus,
+            bestaand.betaalstatus_herkomst,
+            bestaand.verwachte_betaaldatum,
+            auto.bron_tekst if bestaand.betaalstatus == auto.betaalstatus else None,
+        )
+    return auto
 
 
 def _met_projectverdeling(
@@ -802,6 +886,10 @@ def _maak_prefill_snapshot(
             "omschrijving_herkomst": prefill.omschrijving_herkomst,
             # Blok 11: factuurperiode zoals de prefill 'm afleidde (informatief; de kolommen zijn de stand).
             "periode": _periode_snapshot(prefill.periode),
+            # Blok 3 bundel 08-09: betaalstatus zoals de prefill 'm afleidde (kanaal/factuur; de kolommen zijn de
+            # stand).
+            "betaalstatus": prefill.betaalstatus,
+            "betaalstatus_herkomst": prefill.betaalstatus_herkomst,
         },
         "regels": [_regel_snapshot(i, r) for i, r in enumerate(regels, start=1)],
     }
@@ -822,6 +910,14 @@ def _prefill_triggers(prefill: BoekvoorstelData, regels: list[BoekvoorstelRegelD
     # factuurdatum niet (die is altijd live af te leiden; persisteren zou een AI-only prefill alsnog opslaan).
     if prefill.periode is not None and prefill.periode.herkomst in periode_regels.HERKOMSTEN_UIT_FACTUUR:
         triggers.append(f"periode: {prefill.periode.herkomst}")
+    # Blok 3 bundel 08-09: een betaalstatus uit het kanaal (declaratie) of de factuur (incasso) moet in de kolommen
+    # staan
+    # vóór de checks en de boekmotor 'm lezen — persisteren bij het openen.
+    if prefill.betaalstatus and prefill.betaalstatus_herkomst in (
+        betaalstatus_regels.HERKOMST_KANAAL,
+        betaalstatus_regels.HERKOMST_FACTUUR,
+    ):
+        triggers.append(f"betaalstatus: {prefill.betaalstatus_herkomst}")
     for i, regel in enumerate(regels, start=1):
         for veld, bron in (regel.prefill_herkomst or {}).items():
             if bron in _AUTOSAVE_HERKOMSTEN or (veld == "project" and bron in _PROJECT_FACTUUR_HERKOMSTEN):
@@ -874,6 +970,8 @@ def _kop_onaangeraakt(bestaand: Boekvoorstel, kop: dict) -> bool:
         # Blok 11: een door de mens gecorrigeerde periode is een kop-wijziging (een verse extractie mag 'm niet
         # overschrijven).
         and bestaand.periode_herkomst != periode_regels.HERKOMST_MENS
+        # Blok 3 bundel 08-09: een door de mens gekozen betaalstatus is een kop-wijziging.
+        and bestaand.betaalstatus_herkomst != betaalstatus_regels.HERKOMST_MENS
     )
 
 
@@ -972,6 +1070,80 @@ def _verwerk_periode(
     )
 
 
+def _verwerk_betaalstatus(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document: Document,
+    actor_id: uuid.UUID,
+    bestaand: Boekvoorstel,
+    betaalstatus: str | None,
+    autosave: bool,
+) -> None:
+    """Zet de betaalstatus-kolommen (0126). Mens wint: een waarde ≠ de automatische afleiding = herkomst `mens`;
+    gelijk =
+    automatische herkomst (kanaal/factuur); "" = terug naar automatisch; None (niet meegegeven/autosave) = kolomstand
+    blijft, of de afleiding wordt gepersisteerd als er nog niets staat. Een ongeldig label (geen van de acht
+    RLZ-waarden)
+    is een BoekvoorstelFout — nooit stil een gok bewaren. Audit + tijdlijn-notitie bij een échte wijziging."""
+    veldvoorstel = _laatste_veldvoorstel(session, document.id)
+    kanaal = _intake_kanaal(session, document)
+    auto = _automatische_betaalstatus(veldvoorstel, kanaal=kanaal)
+    oud = _opgeslagen_betaalstatus(bestaand, veldvoorstel, kanaal=kanaal) if bestaand.betaalstatus_herkomst else None
+    if betaalstatus is None or autosave:
+        # Autosave/oude client: een mens-keuze blijft staan; anders de (verse) automatische afleiding.
+        nieuw = oud if oud is not None and oud.herkomst == betaalstatus_regels.HERKOMST_MENS else auto
+    elif betaalstatus.strip() == "":
+        nieuw = auto
+    else:
+        gekozen = betaalstatus_regels.canoniek(betaalstatus)
+        if gekozen is None:
+            raise BoekvoorstelFout(
+                f"Onbekende betaalstatus {betaalstatus!r} — kies één van: "
+                f"{', '.join(betaalstatus_regels.BETAALSTATUSSEN)}"
+            )
+        if gekozen == auto.betaalstatus:
+            nieuw = auto
+        else:
+            nieuw = _BetaalstatusStand(gekozen, betaalstatus_regels.HERKOMST_MENS, auto.verwachte_betaaldatum, None)
+    bestaand.betaalstatus = nieuw.betaalstatus
+    bestaand.betaalstatus_herkomst = nieuw.herkomst
+    bestaand.verwachte_betaaldatum = nieuw.verwachte_betaaldatum
+    if autosave or (oud is None and nieuw.betaalstatus is None):
+        return
+    oud_velden = {"betaalstatus": oud.betaalstatus, "herkomst": oud.herkomst} if oud is not None else None
+    nieuw_velden = {"betaalstatus": nieuw.betaalstatus, "herkomst": nieuw.herkomst}
+    if oud_velden == nieuw_velden:
+        return
+    session.add(
+        DocumentGebeurtenis(
+            document_id=document.id,
+            van_status=document.status,
+            naar_status=document.status,
+            actor_id=actor_id,
+            detail={
+                "betaalstatus": nieuw_velden,
+                "reden": (
+                    f"betaalstatus {nieuw.betaalstatus or 'leeg'} ({nieuw.herkomst or 'automatisch'})"
+                    + (f" — was {oud.betaalstatus or 'leeg'} ({oud.herkomst})" if oud is not None else "")
+                ),
+            },
+        )
+    )
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="boekvoorstel",
+        record_id=document.id,
+        actie="boekvoorstel_betaalstatus_gewijzigd",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde=oud_velden,
+        nieuwe_waarde=nieuw_velden,
+        administratie_id=administratie_id,
+    )
+
+
 def _voorstel_onaangeraakt(bestaand: Boekvoorstel, regels: list[BoekvoorstelRegel], snapshot: dict) -> bool:
     snaps = snapshot.get("regels") or []
     if len(snaps) != len(regels):
@@ -1045,6 +1217,7 @@ def _lees_opgeslagen_voorstel(
 
     vendor_id = voorkeur_van(session, administratie_id=administratie_id, vendor_id=bestaand.vendor_id)
     veldvoorstel = _laatste_veldvoorstel(session, document_id)
+    kanaal = _intake_kanaal(session, _laad_document(session, document_id=document_id))
     regels = session.scalars(
         select(BoekvoorstelRegel)
         .where(BoekvoorstelRegel.document_id == document_id)
@@ -1087,6 +1260,8 @@ def _lees_opgeslagen_voorstel(
         btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
         prefill_automatisch=prefill_automatisch,
         periode=_opgeslagen_periode(bestaand, veldvoorstel),
+        intake_kanaal=kanaal,
+        **_opgeslagen_betaalstatus(bestaand, veldvoorstel, kanaal=kanaal).als_velden(),
         **_samenvoeg_velden(
             session,
             administratie_id=administratie_id,
@@ -1120,6 +1295,7 @@ def _bereken_prefill(
     """Het NIET-opgeslagen voorstel: prefill uit het veldvoorstel (UBL deterministisch geparst, of het AI-/
     template-voorstel uit app/extractie/ — zelfde tijdlijn-sleutel), verrijkt met regel-geheugen, leverancier-
     geheugen en btw-default (regel_prefill.py). Geen veldvoorstel = volledig leeg voorstel."""
+    kanaal = _intake_kanaal(session, _laad_document(session, document_id=document_id))
     if veldvoorstel is None:
         return _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
             document_id=document_id,
@@ -1130,6 +1306,8 @@ def _bereken_prefill(
             rlz_boekstuknummer=None,
             opgeslagen=False,
             regels=[],
+            intake_kanaal=kanaal,
+            **_automatische_betaalstatus(None, kanaal=kanaal).als_velden(),
             **_samenvoeg_velden(
                 session,
                 administratie_id=administratie_id,
@@ -1205,6 +1383,9 @@ def _bereken_prefill(
         btw_verlegd_vermelding=_verlegd_vermelding(veldvoorstel),
         # Blok 11: voorgelezen periode → ISO-weken (deterministisch), anders de week van de factuurdatum.
         periode=_automatische_periode(veldvoorstel, _als_datum(veldvoorstel.get("factuurdatum"))),
+        # Blok 3 bundel 08-09: betaalstatus — kanaal > factuur (incasso-detectie / UBL 59) > leeg.
+        intake_kanaal=kanaal,
+        **_automatische_betaalstatus(veldvoorstel, kanaal=kanaal).als_velden(),
         **samenvoeg,
         **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=vendor_id, huidige_afdeling_id=None),
     ))
@@ -1361,6 +1542,7 @@ def persisteer_prefill_bij_openen(
             regels=regels,
             afdeling_id=prefill.afdeling_prefill_id,
             periode=prefill.periode.sleutel if prefill.periode is not None else None,
+            betaalstatus=prefill.betaalstatus,
             prefill_snapshot=snapshot,
         )
     except IntegrityError:
@@ -1400,8 +1582,14 @@ def sla_boekvoorstel_op(
     prefill_snapshot: dict | None = None,
     omschrijving: str | None = None,
     periode: tuple[int, int, int] | None = None,
+    betaalstatus: str | None = None,
 ) -> BoekvoorstelData:
-    """`periode` (blok 11 vervolgrun 07-09) = (jaar, week_van, week_tot) zoals de client 'm toont; None = niet
+    """`betaalstatus` (blok 3 bundel 08-09) = de RLZ-betaalstatus zoals de client 'm toont. None = niet meegegeven
+    (oude client/autoboeken) → opgeslagen stand blijft, of de automatische afleiding (kanaal/factuur) wordt
+    gepersisteerd; "" = terug naar automatisch; gelijk aan de afleiding = automatische herkomst; afwijkend = `mens`
+    (wint; audit oud→nieuw). Zie `_verwerk_betaalstatus`.
+
+    `periode` (blok 11 vervolgrun 07-09) = (jaar, week_van, week_tot) zoals de client 'm toont; None = niet
     meegegeven (oude client/autoboeken) → opgeslagen stand blijft, of de automatische afleiding wordt gepersisteerd.
     Gelijk aan de automatische afleiding = automatische herkomst; afwijkend = `mens` (wint). Zie `_verwerk_periode`.
 
@@ -1494,6 +1682,18 @@ def sla_boekvoorstel_op(
             bestaand=bestaand,
             factuurdatum=factuurdatum,
             periode=periode,
+            autosave=autosave,
+        )
+
+        # Blok 3 bundel 08-09: betaalstatus (kolommen 0126) — kanaal/factuur-afleiding of mens-keuze, audit bij
+        # wijziging.
+        _verwerk_betaalstatus(
+            session,
+            administratie_id=administratie_id,
+            document=document,
+            actor_id=actor_id,
+            bestaand=bestaand,
+            betaalstatus=betaalstatus,
             autosave=autosave,
         )
 
@@ -1857,6 +2057,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
             ),
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
+            check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus),
             _projectverdeling_check(voorstel, project_verplicht=project_verplicht),
             check_regeltelling(
                 totaalbedrag=voorstel.totaalbedrag,
@@ -2058,9 +2259,13 @@ def voer_checks_uit(
         # storings-tak), vóór de RLZ-afhankelijke checks.
         resultaten = list(rapport.resultaten)
         resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
+        # Blok 3 bundel 08-09: betaalstatus-check (lokaal) — een declaratie boekt nooit zonder betaalstatus.
+        resultaten.insert(
+            2, check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus)
+        )
         # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
         # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
-        resultaten.insert(2, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
+        resultaten.insert(3, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
         # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
         resultaten.append(module_check)
         return CheckRapport(tuple(resultaten))

@@ -873,9 +873,18 @@ def verwerk_eml(
     actor_id: uuid.UUID,
     bron: str = "eml_upload",
     opslag: DocumentOpslag | None = None,
+    kanaal: str = "facturen",
 ) -> IntakeResultaat:
     """Verwerkt één .eml-bericht (upload of — later, via dezelfde route — de live IMAP-fetch).
-    Idempotent op Message-ID: hetzelfde bericht wordt nooit twee keer verwerkt."""
+    Idempotent op Message-ID: hetzelfde bericht wordt nooit twee keer verwerkt.
+
+    `kanaal` (blok 3 bundel 08-09, migratie 0126): 'facturen' (default) of 'declaraties' — het postvak waaruit het
+    bericht kwam; een document uit het declaraties-kanaal krijgt bij de prefill betaalstatus "Betaald per bank"
+    (app/documenten/betaalstatus.py). De markering staat op het intake-bericht (alle documenten eruit delen 'm)."""
+    from app.documenten import betaalstatus as _bs  # lokaal: houdt de importgraaf intake → documenten klein
+
+    if kanaal not in _bs.KANALEN:
+        raise ValueError(f"Onbekend intake-kanaal {kanaal!r} — kies {' of '.join(_bs.KANALEN)}")
     try:
         mail: IntakeMail = parse_eml(inhoud)
     except GeenGeldigeEml as exc:
@@ -906,6 +915,7 @@ def verwerk_eml(
             bericht.verwerkt_door = actor_id
             bericht.detail = {"bijlagen": [], "verwerking": "bezig", "herverwerking": True}
             bericht.body_tekst = mail.body_tekst
+            bericht.kanaal = kanaal
         else:
             session.add(
                 IntakeBericht(
@@ -920,6 +930,7 @@ def verwerk_eml(
                     # Mail-body (punt 1a, migratie 0069): dezelfde tekst hoort bij álle
                     # documenten uit dit bericht (via de FK document.intake_bericht_id).
                     body_tekst=mail.body_tekst,
+                    kanaal=kanaal,
                 )
             )
 

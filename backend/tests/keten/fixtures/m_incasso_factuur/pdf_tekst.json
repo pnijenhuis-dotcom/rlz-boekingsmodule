@@ -1,0 +1,59 @@
+[
+ [
+  "Kempen Telecom Diensten B.V.",
+  "Industrieweg 12",
+  "5531 AB  - Bladel",
+  "KvK: 91000042",
+  "BTW: NL100067890B01",
+  "IBAN: NL91KETN1000000042",
+  "facturatie@leverancier7.example",
+  "",
+  "FACTUUR",
+  "Factuurnummer: KTD-2026-09-0417",
+  "Factuurdatum: 5 september 2026",
+  "Vervaldatum: 25 september 2026",
+  "Klantnummer: 300142",
+  "Betreft: Telefonie en internet september 2026",
+  "",
+  "Universal Steigerbouw B.V.",
+  "Postbus 1",
+  "5531 ZZ Bladel",
+  "",
+  [
+   [50, "Omschrijving"],
+   [300, "Aantal"],
+   [360, "Bedrag excl."],
+   [450, "Btw"]
+  ],
+  [
+   [50, "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026"],
+   [300, "1"],
+   [360, "89,00"],
+   [450, "18,69"]
+  ],
+  [
+   [50, "Mobiele abonnementen (6 x Zakelijk Onbeperkt)"],
+   [300, "6"],
+   [360, "150,00"],
+   [450, "31,50"]
+  ],
+  "",
+  [
+   [300, "Totaal excl. btw"],
+   [420, "EUR 239,00"]
+  ],
+  [
+   [300, "Btw 21%"],
+   [420, "EUR 50,19"]
+  ],
+  [
+   [300, "Totaal te betalen"],
+   [420, "EUR 289,19"]
+  ],
+  "",
+  "Betaalwijze: automatische incasso",
+  "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening NL00KETN0000000001",
+  "op of rond 25-09-2026. Machtigingskenmerk: KTD-300142-001. Incassant-ID: NL14ZZZ910000420000.",
+  "U hoeft niets te doen. Zorg voor voldoende saldo op de incassodatum."
+ ]
+]

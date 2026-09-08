@@ -1719,10 +1719,14 @@ def _intake_postvak_verwerken(args: argparse.Namespace) -> int:
     retry-lus) — de run eindigt dan wel op exit 1 zodat de job-failure-alert bijt; een
     verwerkingscrash laat het bericht ongelezen staan (volgende run = retry)."""
     verwerkt = al_eerder = fouten = 0
+    # Blok 3 bundel 08-09 (B3): --kanaal declaraties leest het tweede postvak (declaraties@) en markeert het bericht.
+    kanaal = getattr(args, "kanaal", None) or "facturen"
     try:
-        for inhoud in ImapPostvakBron().nieuwe_berichten():
+        for inhoud in ImapPostvakBron(kanaal).nieuwe_berichten():
             try:
-                resultaat = intake_verwerking.verwerk_eml(inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap")
+                resultaat = intake_verwerking.verwerk_eml(
+                    inhoud, actor_id=SYSTEEM_ACTOR_ID, bron="imap", kanaal=kanaal
+                )
             except intake_verwerking.GeenGeldigIntakeBericht as exc:
                 fouten += 1
                 print(
@@ -2474,14 +2478,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Alleen deze administratie (default: alle).",
     )
 
-    subparsers.add_parser(
+    intake_postvak_parser = subparsers.add_parser(
         "intake-postvak-verwerken",
         help="Haal ongelezen berichten uit het centrale IMAP-postvak (facturen@ak-nijenhuis.nl) "
         "en verwerk ze idempotent via het intake-codepad (F3.4; zonder INTAKE_IMAP_*-settings "
         "meldt het commando expliciet dat de bron niet geconfigureerd is).",
     )
+    # Blok 3 bundel 08-09 (B3): tweede postvak declaraties@ak-nijenhuis.nl (INTAKE_DECLARATIES_IMAP_*-envs).
+    intake_postvak_parser.add_argument(
+        "--kanaal",
+        choices=("facturen", "declaraties"),
+        default="facturen",
+        help="Welk postvak: facturen (default, facturen@) of declaraties (declaraties@ — documenten krijgen "
+        "betaalstatus 'Betaald per bank').",
+    )
 
-    intake_postvak_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "accordeur-herinneringen",
         help="Dagelijkse accordeur-herinnering (09:00 Europe/Amsterdam): push of e-mail bij >0 "
         "openstaande accorderingen — idempotent per dag per accordeur, volumerem, fail-zichtbaar.",

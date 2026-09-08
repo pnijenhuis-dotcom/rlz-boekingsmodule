@@ -198,6 +198,7 @@
     "vendor_id": "33333333-0000-0000-0000-000000000002"
    },
    "leverancier_adres": "Arie Jacob van Ogtenstraat 7, 4051 AM Ochten, NL",
+   "payment_means_code": "1",
    "vendor_waarschuwing": null,
    "btw_nummer_geverifieerd": true,
    "gecrediteerde_factuurnummers": [],
@@ -221,7 +222,7 @@
    {
     "van_status": null,
     "naar_status": "ontvangen",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": null,
     "tijdstip": "2026-09-08T12:00:00Z"
@@ -229,7 +230,7 @@
    {
     "van_status": "ontvangen",
     "naar_status": "extractie_bezig",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": {
      "reden": "extractie gestart"
@@ -239,7 +240,7 @@
    {
     "van_status": "extractie_bezig",
     "naar_status": "te_controleren",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": {
      "veldvoorstel": {
@@ -427,6 +428,7 @@
        "vendor_id": "33333333-0000-0000-0000-000000000002"
       },
       "leverancier_adres": "Arie Jacob van Ogtenstraat 7, 4051 AM Ochten, NL",
+      "payment_means_code": "1",
       "vendor_waarschuwing": null,
       "btw_nummer_geverifieerd": true,
       "gecrediteerde_factuurnummers": [],
@@ -440,7 +442,7 @@
    {
     "van_status": "te_controleren",
     "naar_status": "te_controleren",
-    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_id": "00000000-0000-4000-8000-000000000021",
     "actor_is_systeem": true,
     "detail": {
      "boekvoorstel_prefill": {
@@ -455,11 +457,13 @@
        "vendor_id": "33333333-0000-0000-0000-000000000002",
        "referentie": "26219",
        "vervaldatum": "2026-09-12",
+       "betaalstatus": null,
        "factuurdatum": "2026-08-13",
        "omschrijving": "Floor Bouwliftenservice 26219",
        "totaalbedrag": "2516.80",
        "betalingskenmerk": null,
        "afdeling_prefill_id": null,
+       "betaalstatus_herkomst": null,
        "omschrijving_herkomst": "afgeleid",
        "afdeling_prefill_leverancier": null
       },
@@ -529,7 +533,7 @@
        "project regel 2: factuur",
        "project regel 3: factuur"
       ],
-      "geopend_door": "00000000-0000-4000-8000-000000000020",
+      "geopend_door": "00000000-0000-4000-8000-000000000021",
       "veldvoorstel_bron": "ubl",
       "regels_samenvoegen": false
      }
@@ -542,14 +546,14 @@
    "afgevoerd_als_duplicaat_van": null,
    "afgevoerde_duplicaten": [
     {
-     "afwijzing_id": "00000000-0000-4000-8000-000000000021",
-     "document_id": "00000000-0000-4000-8000-000000000022",
+     "afwijzing_id": "00000000-0000-4000-8000-000000000022",
+     "document_id": "00000000-0000-4000-8000-000000000023",
      "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
      "aangemaakt_op": "2026-09-08T12:00:00Z",
      "referentie": "26219",
      "automatisch": true,
      "afgewezen_op": "2026-09-08T12:00:00Z",
-     "afgewezen_door": "00000000-0000-4000-8000-000000000020"
+     "afgewezen_door": "00000000-0000-4000-8000-000000000021"
     }
    ],
    "module_treffers": [],
@@ -577,9 +581,24 @@
    "herkomst": "afgeleid_van_factuurdatum",
    "tekst": null
   },
+  "betaalstatus": null,
+  "betaalstatus_herkomst": null,
+  "verwachte_betaaldatum": null,
+  "betaalstatus_bron_tekst": null,
+  "betaalstatus_opties": [
+   "Nog te betalen",
+   "Wordt automatisch geïncasseerd",
+   "Betaald per bank",
+   "Betaald met PIN",
+   "Betaald met Creditcard",
+   "Betaald - contant",
+   "Verrekend met prive",
+   "Verrekend met Rekening Courant"
+  ],
+  "intake_kanaal": "facturen",
   "regels": [
    {
-    "id": "00000000-0000-4000-8000-000000000023",
+    "id": "00000000-0000-4000-8000-000000000024",
     "ledger_id": null,
     "taxrate_id": "55555555-0000-0000-0000-000000000021",
     "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
@@ -595,7 +614,7 @@
     "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
    },
    {
-    "id": "00000000-0000-4000-8000-000000000024",
+    "id": "00000000-0000-4000-8000-000000000025",
     "ledger_id": null,
     "taxrate_id": "55555555-0000-0000-0000-000000000021",
     "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
@@ -611,7 +630,7 @@
     "project_bron_detail": "Factuur vermeldt \"25011\" = projectcode van 25011 Zwolle (Bouwbedrijf Zwolle)"
    },
    {
-    "id": "00000000-0000-4000-8000-000000000025",
+    "id": "00000000-0000-4000-8000-000000000026",
     "ledger_id": null,
     "taxrate_id": "55555555-0000-0000-0000-000000000021",
     "project_id": "aaaaaaaa-0000-0000-0000-000000025011",
@@ -633,7 +652,8 @@
   "btw_verlegd_vermelding": null,
   "afdeling_id": null,
   "afdeling_prefill_id": null,
-  "afdeling_prefill_leverancier": null
+  "afdeling_prefill_leverancier": null,
+  "accordering_overgeslagen_reden": null
  },
  "checks": {
   "geblokkeerd": true,
@@ -648,6 +668,12 @@
     "naam": "Afdeling",
     "ok": true,
     "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Betaalstatus (declaraties)",
+    "ok": true,
+    "melding": "Niet van toepassing — geen declaratie",
     "signaal": false
    },
    {
@@ -761,7 +787,7 @@
  "lijst_afgehandeld": {
   "documenten": [
    {
-    "id": "00000000-0000-4000-8000-000000000022",
+    "id": "00000000-0000-4000-8000-000000000023",
     "bestandsnaam": "Floor Bouwliftenservice - 26219 - 2026-08-13.xml",
     "status": "afgevoerd_duplicaat",
     "bron": "email",
@@ -783,9 +809,9 @@
     "aangemaakt_op": "2026-09-08T12:00:00Z",
     "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
     "afwijzing": {
-     "id": "00000000-0000-4000-8000-000000000021",
+     "id": "00000000-0000-4000-8000-000000000022",
      "reden": "Duplicaat van 26219 (document Floor Bouwliftenservice - 26219 - 2026-08-13.xml van 2026-09-08 in de werkvoorraad)",
-     "afgewezen_door": "00000000-0000-4000-8000-000000000020",
+     "afgewezen_door": "00000000-0000-4000-8000-000000000021",
      "afgewezen_op": "2026-09-08T12:00:00Z",
      "toegewezen_aan": null,
      "status_voor_afwijzing": "te_controleren",

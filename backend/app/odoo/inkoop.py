@@ -126,6 +126,11 @@ def eigen_id_uit_marker(invoice_origin: Any) -> str | None:
     return str(maker(document_id, int(delen[2])))
 
 
+BETAALSTATUS_NIET_NAAR_ODOO = (
+    "betaalstatus niet naar Odoo geschreven — niet ondersteund (Odoo kent geen open-houdende betaalmarkering)"
+)
+
+
 def _voeg_waarschuwing_toe(detail: dict[str, Any], tekst: str) -> None:
     """Meerdere waarschuwingen op één boeking (boekdatum + bijlage) overschrijven elkaar niet."""
     bestaand = detail.get("waarschuwing")
@@ -741,6 +746,12 @@ class OdooInkoopPort:
             detail["bijlage"] = f"MISLUKT: {vertaal_odoo_fout(exc)}"
             _voeg_waarschuwing_toe(detail, "bijlage niet gekoppeld in Odoo — later opnieuw koppelen")
 
+        # Betaalstatus (blok 3 bundel 08-09, 3c): Odoo kent geen niet-afsluitend equivalent van RLZ's "Betaling"-veld
+        # (`account.payment.register` sluit de post) — zichtbaar in tijdlijn + rapport, geen fout (PARKEERPOST).
+        if voorstel.betaalstatus:
+            detail["betaalstatus"] = voorstel.betaalstatus
+            detail["betaalstatus_odoo"] = BETAALSTATUS_NIET_NAAR_ODOO
+            _voeg_waarschuwing_toe(detail, BETAALSTATUS_NIET_NAAR_ODOO)
         detail.update(
             {
                 "odoo_move_id": move_id,

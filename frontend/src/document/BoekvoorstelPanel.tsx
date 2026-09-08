@@ -362,6 +362,52 @@ const PERIODE_HERKOMST: Record<string, { label: string; klasse: string; titel: s
   },
 }
 
+/** RLZ-betaalstatus (blok 3 bundel 08-09, B3): het RLZ-veld "Betaling" (post blijft open, verdwijnt uit de betaallijst)
+ * als keuzelijst van de acht RLZ-waarden mét herkomst-chip — 'kanaal' (declaraties@-postvak), 'factuur' (incasso-
+ * detectie / UBL SEPA-incasso), 'mens' (gekozen). Zelfde chip-regel als periode: de chip staat zolang de keuze gelijk is
+ * aan de serverstand; ná opslaan volgt de chip de serverstand. */
+export const BETAALSTATUS_HERKOMST: Record<string, { label: string; klasse: string; titel: string }> = {
+  kanaal: {
+    label: 'uit kanaal (declaratie)',
+    klasse: 'chip ok',
+    titel: 'Binnengekomen via declaraties@ — de medewerker heeft dit al betaald; Reeleezee zet de post niet in de betaallijst.',
+  },
+  factuur: {
+    label: 'uit factuur (incasso)',
+    klasse: 'chip ok',
+    titel: 'De factuur meldt een automatische incasso — in code herkend; de bank haalt het bedrag zelf.',
+  },
+  mens: {
+    label: 'handmatig',
+    klasse: 'chip',
+    titel: 'Door een medewerker gekozen — wordt nooit meer automatisch overschreven.',
+  },
+}
+
+export const BETAALSTATUS_OPTIES_FALLBACK = [
+  'Nog te betalen',
+  'Wordt automatisch geïncasseerd',
+  'Betaald per bank',
+  'Betaald met PIN',
+  'Betaald met Creditcard',
+  'Betaald - contant',
+  'Verrekend met prive',
+  'Verrekend met Rekening Courant',
+]
+
+export function BetaalstatusChip({ herkomst, bronTekst, verwachteBetaaldatum }: { herkomst: string; bronTekst?: string | null; verwachteBetaaldatum?: string | null }) {
+  const chip = BETAALSTATUS_HERKOMST[herkomst] ?? { label: herkomst, klasse: 'chip', titel: '' }
+  const extra = [bronTekst ? `Gelezen tekst: "${bronTekst}".` : '', verwachteBetaaldatum ? `Verwachte betaaldatum ${verwachteBetaaldatum}.` : '']
+    .filter(Boolean)
+    .join(' ')
+  return (
+    <span className={chip.klasse} title={`${chip.titel} ${extra}`.trim()} data-testid="betaalstatus-chip">
+      {chip.label}
+      {verwachteBetaaldatum ? ` · verwacht ${verwachteBetaaldatum}` : ''}
+    </span>
+  )
+}
+
 export function periodeLabel(p: { week_van: number; week_tot: number; jaar: number }): string {
   return p.week_van === p.week_tot ? `wk ${p.week_van} · ${p.jaar}` : `wk ${p.week_van}–${p.week_tot} · ${p.jaar}`
 }
@@ -654,6 +700,16 @@ export function BoekvoorstelPanel({
   const [periodeWeken, setPeriodeWeken] = useState('')
   const [periodeJaar, setPeriodeJaar] = useState('')
   const [periodeServer, setPeriodeServer] = useState<BoekvoorstelPeriodeDto | null>(null)
+  // Blok 3 bundel 08-09 (B3): RLZ-betaalstatus — keuze + serverstand (herkomst-chip) + de acht RLZ-waarden.
+  const [betaalstatus, setBetaalstatus] = useState('')
+  const [betaalstatusServer, setBetaalstatusServer] = useState<{
+    waarde: string | null
+    herkomst: string | null
+    bronTekst: string | null
+    verwachteBetaaldatum: string | null
+  } | null>(null)
+  const [betaalstatusOpties, setBetaalstatusOpties] = useState<string[]>(BETAALSTATUS_OPTIES_FALLBACK)
+  const [intakeKanaal, setIntakeKanaal] = useState<string | null>(null)
   const [afdelingId, setAfdelingId] = useState<string | null>(null)
   // Prefill uit het leverancier-geheugen: herkomst-chip "🧠 vorige keuze bij <leverancier>" tot de
   // mens het veld aanraakt (dan is het zijn keuze, geen voorstel meer).
@@ -731,6 +787,7 @@ export function BoekvoorstelPanel({
         // (`prefill_automatisch`) — dat is géén menselijke opslag, de AI-zekerheidschips blijven staan.
         const aiPrefill = (!dto.opgeslagen || dto.prefill_automatisch === true) && ai !== null
         setAiChipsActief(aiPrefill)
+        setAccorderingOvergeslagenReden(dto.accordering_overgeslagen_reden ?? null)
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
         setOmschrijving(dto.omschrijving ?? '')
@@ -744,6 +801,16 @@ export function BoekvoorstelPanel({
         setPeriodeServer(periode)
         setPeriodeWeken(periode ? (periode.week_van === periode.week_tot ? `${periode.week_van}` : `${periode.week_van}-${periode.week_tot}`) : '')
         setPeriodeJaar(periode ? `${periode.jaar}` : '')
+        // Blok 3 bundel 08-09: betaalstatus + herkomst uit de serverstand; opties = de acht RLZ-waarden van de server.
+        setBetaalstatus(dto.betaalstatus ?? '')
+        setBetaalstatusServer({
+          waarde: dto.betaalstatus ?? null,
+          herkomst: dto.betaalstatus_herkomst ?? null,
+          bronTekst: dto.betaalstatus_bron_tekst ?? null,
+          verwachteBetaaldatum: dto.verwachte_betaaldatum ?? null,
+        })
+        if (dto.betaalstatus_opties && dto.betaalstatus_opties.length > 0) setBetaalstatusOpties(dto.betaalstatus_opties)
+        setIntakeKanaal(dto.intake_kanaal ?? null)
         if (dto.afdeling_id) {
           setAfdelingId(dto.afdeling_id)
           // A10: de autosave schreef de afdeling-prefill als keuze weg; de server geeft de prefill dan mee zolang de
@@ -787,7 +854,6 @@ export function BoekvoorstelPanel({
       })
       .catch((err: unknown) => {
         if (actief) setLadenFout(err instanceof Error ? err.message : 'Onbekende fout')
-        setAccorderingOvergeslagenReden(dto.accordering_overgeslagen_reden ?? null)
       })
       .finally(() => {
         if (actief) setLaden(false)
@@ -1128,6 +1194,9 @@ export function BoekvoorstelPanel({
             // Blok 11: de factuurperiode zoals de mens 'm liet staan — de server bepaalt of het een correctie is
             // (afwijkend van de afleiding = 'mens'); onherkenbare invoer = niet meesturen (serverstand blijft).
             periode: parsePeriodeInvoer(periodeWeken, periodeJaar),
+            // Blok 3 bundel 08-09: de betaalstatus zoals de mens 'm liet staan ("" = terug naar automatisch); de server
+            // bepaalt of het een keuze is (afwijkend van kanaal/factuur = 'mens').
+            betaalstatus: betaalstatus,
             // Blok A 28-08: alleen meesturen als de toggle aan staat (uit = veld onzichtbaar, keuze blijft).
             afdeling_id: afdelingen.ingeschakeld ? afdelingId : null,
             totaalbedrag: totaalbedrag ? normaliseerBedrag(totaalbedrag) : null,
@@ -1158,6 +1227,16 @@ export function BoekvoorstelPanel({
           if (tekst !== null && omschrijving.trim() === '') setOmschrijving(tekst)
         }
         // Blok 11: de serverstand van de periode ná opslaan (herkomst 'mens' bij een correctie) — de chip volgt die.
+        if (bv && typeof bv === 'object' && 'betaalstatus' in bv) {
+          // Blok 3 bundel 08-09: serverstand van de betaalstatus ná opslaan (herkomst 'mens' bij een keuze).
+          setBetaalstatus(bv.betaalstatus ?? '')
+          setBetaalstatusServer({
+            waarde: bv.betaalstatus ?? null,
+            herkomst: bv.betaalstatus_herkomst ?? null,
+            bronTekst: bv.betaalstatus_bron_tekst ?? null,
+            verwachteBetaaldatum: bv.verwachte_betaaldatum ?? null,
+          })
+        }
         if (bv && typeof bv === 'object' && 'periode' in bv) {
           setPeriodeServer(bv.periode ?? null)
         }
@@ -1561,6 +1640,14 @@ export function BoekvoorstelPanel({
               label="Periode (weken)"
               waarde={periodeServer ? `${periodeLabel(periodeServer)} (${PERIODE_HERKOMST[periodeServer.herkomst]?.label ?? periodeServer.herkomst})` : ''}
             />
+            <StatischVeld
+              label="Betaalstatus"
+              waarde={
+                betaalstatusServer?.waarde
+                  ? `${betaalstatusServer.waarde}${betaalstatusServer.herkomst ? ` (${BETAALSTATUS_HERKOMST[betaalstatusServer.herkomst]?.label ?? betaalstatusServer.herkomst})` : ''}`
+                  : ''
+              }
+            />
             {afdelingen.ingeschakeld && (
               <StatischVeld
                 label="Afdeling"
@@ -1670,6 +1757,39 @@ export function BoekvoorstelPanel({
               {periodeWeken.trim() !== '' && !parsePeriodeInvoer(periodeWeken, periodeJaar) && (
                 <div className="hint" style={{ marginTop: 4, color: 'var(--orange)' }}>
                   Onherkenbare periode — gebruik een weeknummer (34) of bereik (34-35) plus een jaar (2026)
+                </div>
+              )}
+            </div>
+            <div data-testid="betaalstatus-veld">
+              {/* Blok 3 bundel 08-09 (B3): RLZ-betaalstatus ("Betaling") — automatisch uit kanaal/factuur, mens kiest. */}
+              <label htmlFor="boekvoorstel-betaalstatus">Betaalstatus (Reeleezee)</label>
+              <Select
+                id="boekvoorstel-betaalstatus"
+                value={betaalstatus}
+                onChange={(e) => {
+                  setBetaalstatus(e.target.value)
+                  veranderInvoer()
+                }}
+              >
+                <option value="">{intakeKanaal === 'declaraties' ? 'Kies betaalwijze…' : 'Nog te betalen (standaard)'}</option>
+                {betaalstatusOpties.map((optie) => (
+                  <option key={optie} value={optie}>
+                    {optie}
+                  </option>
+                ))}
+              </Select>
+              {betaalstatusServer?.herkomst && betaalstatus === (betaalstatusServer.waarde ?? '') && betaalstatus !== '' && (
+                <div style={{ marginTop: 4 }}>
+                  <BetaalstatusChip
+                    herkomst={betaalstatusServer.herkomst}
+                    bronTekst={betaalstatusServer.bronTekst}
+                    verwachteBetaaldatum={betaalstatusServer.verwachteBetaaldatum}
+                  />
+                </div>
+              )}
+              {intakeKanaal === 'declaraties' && betaalstatus === '' && (
+                <div className="hint" style={{ marginTop: 4, color: 'var(--red)' }}>
+                  Declaratie zonder betaalstatus — kies hoe deze al betaald is
                 </div>
               )}
             </div>
@@ -2235,6 +2355,12 @@ export function BoekvoorstelPanel({
                   Geboekt in RLZ — boekstuknummer <b>{boekResultaat.rlz_boekstuknummer}</b>
                 </div>
               )}
+              {accorderingAan && accorderingOvergeslagenReden === 'intercompany' && (
+                <div className="hint" style={{ marginTop: 0 }} data-testid="accordering-overgeslagen-intercompany">
+                  <span className="chip geheugen">intercompany</span> Klant-accordering wordt overgeslagen
+                  (leveranciersregel: intercompany-leverancier) — het document boekt direct, mét alle harde checks.
+                </div>
+              )}
               <div className="actions">
                 {onAfwijzen && (
                   <button type="button" className="btn secondary" onClick={onAfwijzen} title="Afwijzen — sneltoets A">
@@ -2314,9 +2440,3 @@ export function BoekvoorstelPanel({
     </>
   )
 }
-              {accorderingAan && accorderingOvergeslagenReden === 'intercompany' && (
-                <div className="hint" style={{ marginTop: 0 }} data-testid="accordering-overgeslagen-intercompany">
-                  <span className="chip geheugen">intercompany</span> Klant-accordering wordt overgeslagen
-                  (leveranciersregel: intercompany-leverancier) — het document boekt direct, mét alle harde checks.
-                </div>
-              )}

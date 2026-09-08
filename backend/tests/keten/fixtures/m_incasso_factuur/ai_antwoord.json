@@ -1,0 +1,27 @@
+{
+ "kop": {
+  "leverancier_naam": {"waarde": "Kempen Telecom Diensten B.V.", "zekerheid": 0.98},
+  "factuurnummer": {"waarde": "KTD-2026-09-0417", "zekerheid": 0.98},
+  "factuurdatum": {"waarde": "2026-09-05", "zekerheid": 0.95},
+  "vervaldatum": {"waarde": "2026-09-25", "zekerheid": 0.95},
+  "valuta": {"waarde": "EUR", "zekerheid": 0.9},
+  "totaal_excl": {"waarde": "239.00", "zekerheid": 0.95},
+  "totaal_incl": {"waarde": "289.19", "zekerheid": 0.95},
+  "btw_bedrag": {"waarde": "50.19", "zekerheid": 0.95},
+  "iban": {"waarde": "NL91KETN1000000042", "zekerheid": 0.95},
+  "btw_nummer": {"waarde": "NL100067890B01", "zekerheid": 0.95},
+  "kvk_nummer": {"waarde": "91000042", "zekerheid": 0.95},
+  "btw_verlegd_vermelding": {"waarde": null, "zekerheid": 0.0},
+  "betreft": {"waarde": "Telefonie en internet september 2026", "zekerheid": 0.9},
+  "project_tekst": {"waarde": null, "zekerheid": 0.0},
+  "periode": {"waarde": "01-09-2026 t/m 30-09-2026", "zekerheid": 0.85},
+  "betalingskenmerk": {"waarde": null, "zekerheid": 0.0},
+  "betaalwijze_tekst": {"waarde": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.", "zekerheid": 0.9},
+  "incasso_datum_tekst": {"waarde": "25-09-2026", "zekerheid": 0.9}
+ },
+ "regels": [
+  {"omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026", "netto_bedrag": "89.00", "btw_bedrag": "18.69", "hoeveelheid": "1", "zekerheid": 0.9, "eenheid": null, "stuksprijs": "89.00", "artikelcode": null, "project_tekst": null},
+  {"omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)", "netto_bedrag": "150.00", "btw_bedrag": "31.50", "hoeveelheid": "6", "zekerheid": 0.9, "eenheid": null, "stuksprijs": "25.00", "artikelcode": null, "project_tekst": null}
+ ],
+ "volledig": true
+}

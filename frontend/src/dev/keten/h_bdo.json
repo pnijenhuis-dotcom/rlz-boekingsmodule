@@ -54,6 +54,7 @@
     "vendor_id": "33333333-0000-0000-0000-000000000004"
    },
    "leverancier_adres": "Philitelaan 73, 5617 AM Eindhoven, NL",
+   "payment_means_code": "31",
    "vendor_waarschuwing": null,
    "btw_nummer_geverifieerd": true,
    "gecrediteerde_factuurnummers": [],
@@ -77,7 +78,7 @@
    {
     "van_status": null,
     "naar_status": "ontvangen",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": null,
     "tijdstip": "2026-09-08T12:00:00Z"
@@ -85,7 +86,7 @@
    {
     "van_status": "ontvangen",
     "naar_status": "extractie_bezig",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": {
      "reden": "extractie gestart"
@@ -95,7 +96,7 @@
    {
     "van_status": "extractie_bezig",
     "naar_status": "te_controleren",
-    "actor_id": "00000000-0000-4000-8000-000000000019",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
     "actor_is_systeem": false,
     "detail": {
      "veldvoorstel": {
@@ -139,6 +140,7 @@
        "vendor_id": "33333333-0000-0000-0000-000000000004"
       },
       "leverancier_adres": "Philitelaan 73, 5617 AM Eindhoven, NL",
+      "payment_means_code": "31",
       "vendor_waarschuwing": null,
       "btw_nummer_geverifieerd": true,
       "gecrediteerde_factuurnummers": [],
@@ -152,7 +154,7 @@
    {
     "van_status": "te_controleren",
     "naar_status": "te_controleren",
-    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_id": "00000000-0000-4000-8000-000000000021",
     "actor_is_systeem": true,
     "detail": {
      "boekvoorstel_prefill": {
@@ -167,11 +169,13 @@
        "vendor_id": "33333333-0000-0000-0000-000000000004",
        "referentie": "6088744",
        "vervaldatum": "2026-07-16",
+       "betaalstatus": null,
        "factuurdatum": "2026-07-02",
        "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
        "totaalbedrag": "6655.00",
        "betalingskenmerk": null,
        "afdeling_prefill_id": null,
+       "betaalstatus_herkomst": null,
        "omschrijving_herkomst": "regel",
        "afdeling_prefill_leverancier": null
       },
@@ -199,7 +203,7 @@
       "triggers": [
        "kop: ubl"
       ],
-      "geopend_door": "00000000-0000-4000-8000-000000000020",
+      "geopend_door": "00000000-0000-4000-8000-000000000021",
       "veldvoorstel_bron": "ubl",
       "regels_samenvoegen": false
      }
@@ -236,9 +240,24 @@
    "herkomst": "afgeleid_van_factuurdatum",
    "tekst": null
   },
+  "betaalstatus": null,
+  "betaalstatus_herkomst": null,
+  "verwachte_betaaldatum": null,
+  "betaalstatus_bron_tekst": null,
+  "betaalstatus_opties": [
+   "Nog te betalen",
+   "Wordt automatisch geïncasseerd",
+   "Betaald per bank",
+   "Betaald met PIN",
+   "Betaald met Creditcard",
+   "Betaald - contant",
+   "Verrekend met prive",
+   "Verrekend met Rekening Courant"
+  ],
+  "intake_kanaal": "facturen",
   "regels": [
    {
-    "id": "00000000-0000-4000-8000-000000000021",
+    "id": "00000000-0000-4000-8000-000000000022",
     "ledger_id": null,
     "taxrate_id": "55555555-0000-0000-0000-000000000021",
     "project_id": null,
@@ -260,7 +279,8 @@
   "btw_verlegd_vermelding": null,
   "afdeling_id": null,
   "afdeling_prefill_id": null,
-  "afdeling_prefill_leverancier": null
+  "afdeling_prefill_leverancier": null,
+  "accordering_overgeslagen_reden": null
  },
  "checks": {
   "geblokkeerd": true,
@@ -275,6 +295,12 @@
     "naam": "Afdeling",
     "ok": true,
     "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Betaalstatus (declaraties)",
+    "ok": true,
+    "melding": "Niet van toepassing — geen declaratie",
     "signaal": false
    },
    {

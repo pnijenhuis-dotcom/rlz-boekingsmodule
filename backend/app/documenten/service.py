@@ -686,7 +686,48 @@ def _pdf_extractie_detail(session: Session, *, document: Document, opslag: Docum
     detail, blokkeer = _ai_extractie_detail(session, document=document, opslag=opslag, inhoud=inhoud)
     if notitie:
         detail = {**detail, "template_terugval": notitie}
-    return detail, blokkeer
+    return _met_incasso_detectie(detail, inhoud=inhoud), blokkeer
+
+
+def _met_incasso_detectie(detail: dict, *, inhoud: bytes) -> dict:
+    """Betaalstatus (blok 3 bundel 08-09): deterministische incasso-detectie over de PDF-tekstlaag + de voorgelezen
+    AI-velden `betaalwijze_tekst`/`incasso_datum_tekst` (app/documenten/betaalstatus.py). Uitkomst als `incasso`-blok in
+    het veldvoorstel (betaalstatus, verwachte_betaaldatum, bron_tekst) — de prefill maakt er de kolomstand van
+    (herkomst 'factuur'; kanaal en mens winnen). Geen veldvoorstel of geen treffer = ongewijzigd; een fout in de
+    tekstlaag-lezer mag de extractie nooit laten falen."""
+    veldvoorstel = detail.get("veldvoorstel") if isinstance(detail, dict) else None
+    if not isinstance(veldvoorstel, dict):
+        return detail
+    from app.documenten import betaalstatus as bs
+    from app.extractie import template_terugval as tt
+
+    try:
+        laag = tt.lees_tekstlaag(inhoud)
+    except Exception:  # noqa: BLE001 — de tekstlaag is een extra bron, nooit een blokkade
+        logger.exception("Tekstlaag lezen voor incasso-detectie mislukt")
+        laag = None
+    tekstlaag = "\n".join(laag.regels) if laag is not None else None
+    detectie = bs.detecteer_incasso(
+        veldvoorstel.get("betaalwijze_tekst"),
+        tekstlaag,
+        factuurdatum=_als_datum_of_none(veldvoorstel.get("factuurdatum")),
+        incasso_datum_tekst=veldvoorstel.get("incasso_datum_tekst"),
+    )
+    if detectie is None:
+        return detail
+    return {
+        **detail,
+        "veldvoorstel": {
+            **veldvoorstel,
+            "incasso": {
+                "betaalstatus": detectie.betaalstatus,
+                "verwachte_betaaldatum": (
+                    detectie.verwachte_betaaldatum.isoformat() if detectie.verwachte_betaaldatum else None
+                ),
+                "bron_tekst": detectie.bron_tekst,
+            },
+        },
+    }
 
 
 def _taxrate_kandidaten(session: Session, *, administratie_id: uuid.UUID) -> list[extractie_controle.TaxRateKandidaat]:

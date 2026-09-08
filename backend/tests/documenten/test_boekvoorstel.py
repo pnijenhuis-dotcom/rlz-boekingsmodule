@@ -354,6 +354,7 @@ class TestVoerChecksUit:
         assert [r.naam for r in rapport.resultaten] == [
             "Verplichte velden",
             "Afdeling",
+            "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: lokale check, óók in de storings-tak
             "Projectverdeling",
             "Regeltelling vs totaal",
             "Vervaldatum",
@@ -365,6 +366,7 @@ class TestVoerChecksUit:
         (
             verplichte_velden,
             afdeling,
+            betaalstatus,
             projectverdeling,
             regeltelling,
             _vervaldatum,
@@ -375,6 +377,7 @@ class TestVoerChecksUit:
         ) = rapport.resultaten
         assert duplicaat_module.ok  # geen tegenhanger in de eigen database
         assert afdeling.ok  # toggle uit = check zwijgt (blok A 28-08)
+        assert betaalstatus.ok  # losse upload = geen declaratie: niet van toepassing (blok 3 bundel 08-09)
         assert projectverdeling.ok  # geen verdeling = niet van toepassing (blok C 04-09)
         assert verplichte_velden.ok  # lokale check, draait gewoon door zonder RLZ
         assert regeltelling.ok  # lokale check, draait gewoon door zonder RLZ

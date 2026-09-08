@@ -131,7 +131,8 @@ class NepBron:
 
 
 def _cli_met_bron(monkeypatch: pytest.MonkeyPatch, berichten: list[bytes]) -> int:
-    monkeypatch.setattr(cli, "ImapPostvakBron", lambda: NepBron(berichten))
+    # Blok 3 bundel 08-09: de CLI geeft het kanaal mee (ImapPostvakBron(kanaal)) — de nep-bron negeert 'm.
+    monkeypatch.setattr(cli, "ImapPostvakBron", lambda *args, **kwargs: NepBron(berichten))
     return cli.main(["intake-postvak-verwerken"])
 
 

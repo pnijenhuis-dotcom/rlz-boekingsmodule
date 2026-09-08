@@ -672,6 +672,17 @@ class BoekvoorstelResponse(BaseModel):
     omschrijving_herkomst: str | None = None
     # Blok 11 vervolgrun 07-09: factuurperiode (ISO-weken) mét herkomst — chip + inline correctie op het controlescherm.
     periode: BoekvoorstelPeriodeDto | None = None
+    # Blok 3 bundel 08-09 (RLZ-betaalstatus, migratie 0126): één van de acht RLZ-waarden letterlijk (RLZ "Betaling" =
+    # QuickPaymentSelection) mét herkomst "kanaal" (declaraties@) | "factuur" (incasso-detectie/UBL 59) | "mens" (wint);
+    # `verwachte_betaaldatum` = incassodatum (bankmatch); `betaalstatus_bron_tekst` = de factuurzin achter de detectie;
+    # `betaalstatus_opties` = de acht RLZ-waarden voor de keuzelijst; `intake_kanaal` = 'facturen' | 'declaraties' |
+    # None.
+    betaalstatus: str | None = None
+    betaalstatus_herkomst: str | None = None
+    verwachte_betaaldatum: date | None = None
+    betaalstatus_bron_tekst: str | None = None
+    betaalstatus_opties: list[str] = []
+    intake_kanaal: str | None = None
     regels: list[BoekvoorstelRegelDto]
     # Fix 3 (2026-07-10): effectieve samenvoeg-stand voor dit document (voorkeur per crediteur,
     # default AAN), of samenvoegen überhaupt kan (False bij projectplicht — hard per-regel) en
@@ -686,6 +697,10 @@ class BoekvoorstelResponse(BaseModel):
     afdeling_id: uuid.UUID | None = None
     afdeling_prefill_id: uuid.UUID | None = None
     afdeling_prefill_leverancier: str | None = None
+    # Blok 4 (08-09, besluit Peter): de klant-accordering wordt voor dit document overgeslagen op de
+    # leveranciersregel ("intercompany" = leverancier met IC-vlag in déze administratie). Alleen gevuld als
+    # accordering aanstaat; de kantoor-frontend toont dan "Boeken" i.p.v. "Ter accordering". Additief.
+    accordering_overgeslagen_reden: str | None = None
 
 
 class BoekvoorstelInput(StrikteInvoer):
@@ -697,15 +712,16 @@ class BoekvoorstelInput(StrikteInvoer):
     afdeling_id: uuid.UUID | None = None
     totaalbedrag: DecimalMetKomma | None = None
     # Blok 9: de kop-omschrijving zoals de mens 'm liet staan. None = niet meegegeven (oude client) → ongemoeid;
-    # Blok 4 (08-09, besluit Peter): de klant-accordering wordt voor dit document overgeslagen op de
-    # leveranciersregel ("intercompany" = leverancier met IC-vlag in déze administratie). Alleen gevuld als
-    # accordering aanstaat; de kantoor-frontend toont dan "Boeken" i.p.v. "Ter accordering". Additief.
-    accordering_overgeslagen_reden: str | None = None
     # gelijk aan de automatische afleiding = geen override; afwijkend = mens-override (wint voortaan).
     omschrijving: str | None = None
     # Blok 11: de factuurperiode zoals de mens 'm liet staan (weeknummer(s) + jaar). None = niet meegegeven (oude
     # client) → opgeslagen stand blijft / automatische afleiding; gelijk aan de afleiding = automatisch; anders `mens`.
     periode: BoekvoorstelPeriodeInput | None = None
+    # Blok 3 bundel 08-09: de betaalstatus zoals de mens 'm liet staan (één van de acht RLZ-waarden). None = niet
+    # meegegeven
+    # (oude client) → stand blijft / automatische afleiding; "" = terug naar automatisch; afwijkend van de afleiding =
+    # `mens`.
+    betaalstatus: str | None = None
     regels: list[BoekvoorstelRegelDto] = []
     # Fix 3: de weergavekeuze van de controleur bij opslaan — wordt als voorkeur per
     # (administratie, crediteur) onthouden. None = niet meegegeven, voorkeur ongemoeid.

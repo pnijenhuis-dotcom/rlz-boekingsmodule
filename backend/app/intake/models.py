@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +25,7 @@ class IntakeBericht(Base):
             unique=True,
             postgresql_where=text("message_id IS NOT NULL"),
         ),
+        CheckConstraint("kanaal IN ('facturen', 'declaraties')", name="ck_intake_bericht_kanaal"),
         {"schema": "boekhouding"},
     )
 
@@ -41,6 +42,11 @@ class IntakeBericht(Base):
     # tekst (7 jaar) + hint voor toewijzing/extractie. NULL = bericht van vóór 0069 (geen
     # backfill mogelijk) of een mail zonder tekstdeel.
     body_tekst: Mapped[str | None] = mapped_column(default=None)
+    # Intake-kanaal (migratie 0126, blok 3 bundel 08-09): het postvak waaruit het bericht kwam — 'facturen'
+    # (facturen@ak-nijenhuis.nl, default) of 'declaraties' (declaraties@ak-nijenhuis.nl: al door een medewerker
+    # betaald →
+    # betaalstatus "Betaald per bank", herkomst 'kanaal'). Zie app/documenten/betaalstatus.py::KANALEN.
+    kanaal: Mapped[str] = mapped_column(default="facturen", server_default="facturen")
 
 
 class ToewijzingRegelSoort(enum.StrEnum):

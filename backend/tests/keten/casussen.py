@@ -85,11 +85,6 @@ class Casus:
     def splitsing_antwoord(self) -> list[FactuurSegment]:
         return [FactuurSegment(**deel) for deel in self._json("splitsing_antwoord.json")]
 
-    def xml_bestandsnaam(self) -> str:
-        """Bestandsnaam zoals de leverancier/RLZ 'm meestuurde (uit bron.json-conventie: '<naam>.xml')."""
-        return BESTANDSNAMEN[self.naam][0]
-
-    def pdf_bestandsnaam(self) -> str:
     # ---- bank-casus (blok 2 bundel 08-09) ------------------------------------------------------------------
     def bank_mutaties(self) -> list[dict]:
         """Onverwerkte bankmutaties zoals de sync ze in `bank_mutatie` zet (bedragen als string, cent-exact)."""
@@ -99,6 +94,11 @@ class Casus:
         """Open posten zoals de sync ze in `payment_item_cache` zet (RLZ-teken: inkoop negatief, verkoop positief)."""
         return self._json("open_posten.json")
 
+    def xml_bestandsnaam(self) -> str:
+        """Bestandsnaam zoals de leverancier/RLZ 'm meestuurde (uit bron.json-conventie: '<naam>.xml')."""
+        return BESTANDSNAMEN[self.naam][0]
+
+    def pdf_bestandsnaam(self) -> str:
         return BESTANDSNAMEN[self.naam][1]
 
 
@@ -118,6 +118,7 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
     ),
     K1_DCTE: ("DCTE B.V - 202611050 - 2026-07-27.xml", "DCTE B.V - 202611050 - 2026-07-27.pdf"),
     K2_KADER: ("Factuur F212604921.xml", "Projectfactuur F212604921.PDF"),
+    M_INCASSO: ("", "Factuur KTD-2026-09-0417.pdf"),
 }
 
 

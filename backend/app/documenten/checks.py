@@ -162,6 +162,34 @@ def check_vervaldatum(*, factuurdatum: date | None, vervaldatum: date | None) ->
     )
 
 
+def check_betaalstatus_declaraties(*, kanaal: str | None, betaalstatus: str | None) -> CheckResultaat:
+    """Harde check "Betaalstatus (declaraties)" (blok 3 bundel 08-09): een document uit het declaraties@-kanaal is al
+    door een medewerker betaald — boeken ZONDER betaalstatus zou 'm in RLZ's betaallijst zetten (dubbele betaling).
+    Blokkerend zolang de betaalstatus leeg of ongeldig is; buiten het declaraties-kanaal niet van toepassing (groen),
+    een
+    gezette status op een gewoon document is informatief groen (mens/kanaal/factuur staan erop)."""
+    from app.documenten import betaalstatus as bs  # lokaal: pure module, houdt checks.py vrij van kringen
+
+    naam = "Betaalstatus (declaraties)"
+    if kanaal != bs.KANAAL_DECLARATIES:
+        if betaalstatus and bs.is_geldig(betaalstatus):
+            return CheckResultaat(
+                naam, True, f"Betaalstatus {bs.canoniek(betaalstatus)!r} gaat mee naar de boekhouding"
+            )
+        return CheckResultaat(naam, True, "Niet van toepassing — geen declaratie")
+    if not betaalstatus:
+        return CheckResultaat(
+            naam, False, "Declaratie zonder betaalstatus — kies hoe deze al betaald is (bijv. Betaald per bank)"
+        )
+    if not bs.is_geldig(betaalstatus):
+        return CheckResultaat(naam, False, f"Onbekende betaalstatus {betaalstatus!r} — kies één van de RLZ-waarden")
+    if bs.canoniek(betaalstatus) == bs.NOG_TE_BETALEN:
+        return CheckResultaat(
+            naam, False, "Declaratie staat op 'Nog te betalen' — een declaratie is al betaald; kies de betaalwijze"
+        )
+    return CheckResultaat(naam, True, f"Declaratie — betaalstatus {bs.canoniek(betaalstatus)!r}")
+
+
 def vervaldatum_signaal(*, factuurdatum: date | None, vervaldatum: date | None) -> str | None:
     """Oranje signaal (geen blokkade): betaaltermijn langer dan VERVALDATUM_TERMIJN_SIGNAAL_DAGEN."""
     if vervaldatum is None or factuurdatum is None or vervaldatum < factuurdatum:

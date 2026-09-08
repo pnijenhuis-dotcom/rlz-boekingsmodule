@@ -88,6 +88,37 @@ class FakeBoekClient:
         )
         return SimpleNamespace(status_code=204)
 
+    # Betaalstatus (blok 3 bundel 08-09): RLZ's QuickPaymentSelections per document — vaste labels, keuze wordt op de
+    # invoice bewaard zodat een test `client.betaalstatus_gezet` en de readback kan toetsen.
+    QUICK_PAYMENT_SELECTIONS: list[dict[str, Any]] = [
+        {"id": "d23b7073-16ae-4d9d-9074-40838d6249be", "Description": "Nog te betalen"},
+        {"id": "1a7732dc-053c-4ea1-87b9-2e0cb863ea19", "Description": "Wordt automatisch ge\u00efncasseerd"},
+        {"id": "6b541fa5-d3ca-4aac-ac8d-9af47bc8aa44", "Description": "Betaald per bank"},
+        {"id": "e36aa80c-b13c-4518-a64a-8e0d18bc37f9", "Description": "Betaald met PIN"},
+        {"id": "9e5826c0-260c-4e8c-9b65-92da1941b450", "Description": "Betaald met Creditcard"},
+        {"id": "739b0ff3-0cac-472f-a081-5cff1f7c06eb", "Description": "Betaald - contant"},
+        {"id": "4e13b2db-3522-454f-aa22-1135bd64b0df", "Description": "Verrekend met prive"},
+        {"id": "2a51bd39-25c5-44d1-8201-778de9bd055d", "Description": "Verrekend met Rekening Courant"},
+    ]
+
+    def list_quick_payment_selections(self, invoice_id: uuid.UUID | str) -> list[dict[str, Any]]:
+        if self.faal_op == "quick_payment_selections":
+            raise RlzApiError(500, "GET", "QuickPaymentSelections", "Keuzelijst mislukt (simulatie)")
+        return list(getattr(self, "quick_payment_selections", self.QUICK_PAYMENT_SELECTIONS))
+
+    def set_quick_payment_selection(
+        self, invoice_id: uuid.UUID | str, selection_id: uuid.UUID | str
+    ) -> SimpleNamespace:
+        if self.faal_op == "quick_payment_selection_put":
+            raise RlzApiError(400, "PUT", "PurchaseInvoices", "Betaalstatus zetten mislukt (simulatie)")
+        if not hasattr(self, "betaalstatus_gezet"):
+            self.betaalstatus_gezet: list[dict[str, Any]] = []
+        self.betaalstatus_gezet.append({"id": str(invoice_id), "selection_id": str(selection_id)})
+        invoice = self._invoices.get(str(invoice_id))
+        if invoice is not None:
+            invoice["QuickPaymentSelection"] = {"id": str(selection_id)}
+        return SimpleNamespace(status_code=204)
+
     def list_tax_declarations(self) -> list[dict[str, Any]]:
         if self.faal_op == "aangiften":
             raise RlzApiError(500, "GET", "TaxDeclarations", "Aangiften mislukt (simulatie)")

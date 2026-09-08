@@ -1857,3 +1857,64 @@ RLZ's 200 tekens met een ellipsis — ook op de tegenboeking. Open: (1) waar too
 concept `RLZ-04-00002046` in de TEST-administratie draagt 'm); (2) wil Peter bij meerregelige facturen de
 kop-omschrijving óók als regel-1-Description (dan is 'm de zichtbare document-omschrijving in RLZ, maar de eigen
 regeltekst van regel 1 verdwijnt uit RLZ) — bewust NIET gedaan zonder besluit.
+
+## Betaalstatus inkoopfactuur — STAP-0 08-09 (bundel 08-09 avond blok 3; `verkenning/poc_betaalstatus.py`) — VELD = `QuickPaymentSelection`, KAAL ZETBAAR OP EEN GEBOEKT DOCUMENT
+
+Aanleiding (Peter 08-09): het UI-veld "Betaling" op een inkoopfactuur (acht keuzes) houdt de post open maar haalt
+'m uit de betaallijst — nodig voor declaraties (al door een medewerker betaald) en incasso-facturen. Twee sporen:
+LEZEN in productie-administratie "Administratiekantoor Nijenhuis C.V." (alleen GET, via de cloud-credential-store;
+Kadaster/Exact niet aangeraakt) en SCHRIJVEN op de TEST-administratie (`8dbfb856-…`, TEST-BETAAL-01/-02, terugweg
+actie 19, niets verwijderd; audit `verkenning/output/betaalstatuspoc_audit.jsonl`, leesrapport
+`verkenning/output/stap0_cv_lezen.json`).
+
+### 1. Het veld heet `QuickPaymentSelection` en is alleen via `$expand` zichtbaar
+
+| Meting (C.V.-administratie) | Kadaster RLZ-04-00003156 (UI: "Betaald per bank") | Exact/Reeleezee RLZ-16-00003154 (UI: "Nog te betalen") |
+|---|---|---|
+| kale `GET PurchaseInvoices/{id}` — diff van álle kopvelden | geen betaalveld in de kale response (verschillen alleen bedragen/datums/teksten/Token) | idem |
+| `$expand=QuickPaymentSelection` | **`{"id":"6b541fa5-d3ca-4aac-ac8d-9af47bc8aa44","Description":"Betaald per bank"}`** | **`null`** (= "Nog te betalen") |
+| `Status` / `BaseRemainingAmount` | 2 / 175,34 — post blijft OPEN | 2 / 45,92 |
+| `$expand=PaymentTermList` → `PaymentBatchInformation` | `null` (niet in een betaalbatch) | `RLZEE_CT_20260908_192438_3097_0001` (zit in de betaallijst) — bevestigt Peters waarneming |
+| `$expand=PaymentAccount` | zelfde default-bankrekening bij beide — geen onderscheidend veld | idem |
+| `GET PurchaseInvoices/{id}/PaymentItems` | 404 (route bestaat niet) | 404 |
+| `GET $metadata` (root én admin-scoped) | 404 — RLZ publiceert geen OData-metadata; de enum is alleen als keuzelijst per document leesbaar | — |
+
+### 2. De acht keuzes (`GET PurchaseInvoices/{id}/QuickPaymentSelections`) — LETTERLIJK, vaste GUID's
+
+Identiek in de C.V.-administratie én de TEST-administratie, op concept (Status 1) én geboekt (Status 2) — het zijn
+template-GUID's (zelfde patroon als de RLZ-systeemrekeningen). De `Description` is de UI-tekst (let op: RLZ schrijft
+"Betaald - contant" met los streepje en "Verrekend met prive" zonder accent):
+
+| # | `id` | `Description` |
+|---|---|---|
+| 1 | `d23b7073-16ae-4d9d-9074-40838d6249be` | Nog te betalen (readback = `null`) |
+| 2 | `1a7732dc-053c-4ea1-87b9-2e0cb863ea19` | Wordt automatisch geïncasseerd |
+| 3 | `6b541fa5-d3ca-4aac-ac8d-9af47bc8aa44` | Betaald per bank |
+| 4 | `e36aa80c-b13c-4518-a64a-8e0d18bc37f9` | Betaald met PIN |
+| 5 | `9e5826c0-260c-4e8c-9b65-92da1941b450` | Betaald met Creditcard |
+| 6 | `739b0ff3-0cac-472f-a081-5cff1f7c06eb` | Betaald - contant |
+| 7 | `4e13b2db-3522-454f-aa22-1135bd64b0df` | Verrekend met prive |
+| 8 | `2a51bd39-25c5-44d1-8201-778de9bd055d` | Verrekend met Rekening Courant |
+
+De motor matcht op `Description` (genormaliseerd: kleine letters, accenten en streepjes weg) tegen de per-document
+opgehaalde lijst — nooit op een gehardcode GUID (les systeemrekeningen: GUID alleen samen met de administratie).
+
+### 3. Schrijven (TEST-administratie) — alles 204, post blijft open
+
+| Experiment | Antwoord | Readback |
+|---|---|---|
+| PUT TEST-BETAAL-01 zonder betaalveld → actie 17 | 204 / 204 | Status 2, BaseRemainingAmount 121,00, `$expand=QuickPaymentSelection` = null |
+| **her-PUT op het GEBOEKTE document, kale body `{"id": …, "QuickPaymentSelection": {"id": <2>}}`** | **204** | `QuickPaymentSelection` = "Wordt automatisch geïncasseerd"; **Status 2 en BaseRemainingAmount 121,00 ONGEWIJZIGD**; PaymentTermList ongewijzigd (OpenAmountBase 121, PaymentBatchInformation null); DocumentLineList NIET geraakt (kale body vervangt géén regels) |
+| her-PUT kaal → <3> "Betaald per bank" | 204 | `QuickPaymentSelection` = "Betaald per bank"; Status/bedragen ongewijzigd (alleen `Token` wisselt) |
+| PUT TEST-BETAAL-02 mét `QuickPaymentSelection` in de EERSTE PUT (concept) | 204 | keuze staat al op het concept |
+| actie 17 op TEST-BETAAL-02 | 204 | Status 2, BaseRemainingAmount 12,10, **keuze overleeft het boeken** |
+| opruimen actie 19 op beide | 204 | Status 1 (concept, TEST-referentie, blijven staan — nooit verwijderd) |
+
+Niet getest (bewust): `PaymentAccount` meegeven (niet nodig — kale body volstaat; de 02-08-flow gaf 'm mee voor
+actie 148 = échte betaling, dat is NIET wat we willen), actie 148 (sluit de post — geen betaalstatus maar een betaling),
+keuze <1> expliciet zetten (readback van "Nog te betalen" is `null`; de motor zet dan simpelweg niets).
+
+**Conclusie:** de betaalstatus is via de publieke API volledig zetbaar — vóór én ná boeken, met een kale her-PUT
+die regels en bedragen niet raakt. Motor (blok 3b): `RlzClient.list_quick_payment_selections` +
+`set_quick_payment_selection`; `RlzInkoopPort.boek_inkoopfactuur` zet 'm tussen PUT en actie 17 (keuze op label
+gematcht per document; label niet gevonden = zichtbare boekfout, nooit stil boeken zonder status op een declaratie).

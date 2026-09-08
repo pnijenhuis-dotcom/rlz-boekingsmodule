@@ -180,6 +180,10 @@ class RlzInkoopPort:
                 filename=bestandsnaam,
                 content_base64=base64.b64encode(bestand).decode(),
             )
+            # Betaalstatus (blok 3 bundel 08-09; STAP-0 08-09 "Betaalstatus inkoopfactuur"): RLZ's "Betaling"-veld =
+            # `QuickPaymentSelection`, kaal zetbaar vóór het boeken — de post blijft open maar staat niet in de
+            # betaallijst (declaratie al betaald / incasso door de bank). Keuze op label uit de per-document-lijst.
+            betaalstatus_detail = self._zet_betaalstatus(rlz_document_id, voorstel)
             self.client.book_purchase_invoice(rlz_document_id)
             geboekt = self.client.get(f"PurchaseInvoices/{rlz_document_id}")
         except RlzApiError as exc:
@@ -187,8 +191,28 @@ class RlzInkoopPort:
         return BoekUitkomst(
             extern_document_id=rlz_document_id,
             boekstuknummer=geboekt.get("ReceiptNumber"),
-            detail={"backend": Backend.RLZ.value},
+            detail={"backend": Backend.RLZ.value, **betaalstatus_detail},
         )
+
+    def _zet_betaalstatus(self, rlz_document_id: uuid.UUID, voorstel: BoekvoorstelData) -> dict:
+        """Zet `QuickPaymentSelection` als het voorstel een betaalstatus draagt (anders niets — RLZ-default "Nog te
+        betalen" = geen PUT). Label niet in RLZ's lijst = BackendBoekFout (zichtbaar `boek_fout`, retry) — nooit stil
+        boeken zonder status: op een declaratie zou dat een dubbele betaling uitlokken."""
+        from app.documenten import betaalstatus as bs  # lokaal: houdt de importgraaf backends → documenten klein
+
+        status = bs.canoniek(voorstel.betaalstatus)
+        if status is None or status == bs.NOG_TE_BETALEN:
+            return {}
+        keuzes = self.client.list_quick_payment_selections(rlz_document_id)
+        keuze_id = bs.kies_keuze_id(keuzes, status)
+        if keuze_id is None:
+            raise BackendBoekFout(
+                f"Betaalstatus {status!r} staat niet in de keuzelijst van Reeleezee voor dit document "
+                f"({', '.join(str(k.get('Description')) for k in keuzes) or 'lege lijst'}) — "
+                "kies een andere betaalstatus of controleer de administratie in Reeleezee"
+            )
+        self.client.set_quick_payment_selection(rlz_document_id, keuze_id)
+        return {"betaalstatus": status, "betaalstatus_herkomst": voorstel.betaalstatus_herkomst}
 
     def origineel_stand(self, *, document_id: uuid.UUID, boek_cyclus: int) -> OrigineelStand:
         """Eén GET op het origineel: de aangifte-poort-toets én de betaalstatus uit dezelfde response."""

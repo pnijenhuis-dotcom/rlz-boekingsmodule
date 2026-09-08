@@ -19,9 +19,47 @@ from __future__ import annotations
 import imaplib
 from collections.abc import Iterator
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.config import settings
+
+# Intake-kanalen (blok 3 bundel 08-09): 'facturen' = het bestaande postvak (settings.intake_imap_*), 'declaraties' = het
+# tweede postvak (settings.intake_declaraties_imap_*). Bron van de kanaalnamen: app/documenten/betaalstatus.py::KANALEN.
+KANAAL_FACTUREN = "facturen"
+KANAAL_DECLARATIES = "declaraties"
+_SETTINGS_PREFIX_PER_KANAAL = {KANAAL_FACTUREN: "intake_imap", KANAAL_DECLARATIES: "intake_declaraties_imap"}
+
+
+@dataclass(frozen=True)
+class ImapInstellingen:
+    kanaal: str
+    host: str | None
+    poort: int
+    gebruiker: str | None
+    wachtwoord: str | None
+    env_prefix: str  # voor de foutmelding: welke envs/secret op de job horen te staan
+
+    @classmethod
+    def voor_kanaal(cls, kanaal: str) -> ImapInstellingen:
+        if kanaal not in _SETTINGS_PREFIX_PER_KANAAL:
+            raise ValueError(f"Onbekend intake-kanaal {kanaal!r} — kies {' of '.join(_SETTINGS_PREFIX_PER_KANAAL)}")
+        prefix = _SETTINGS_PREFIX_PER_KANAAL[kanaal]
+        return cls(
+            kanaal=kanaal,
+            host=getattr(settings, f"{prefix}_host"),
+            poort=getattr(settings, f"{prefix}_poort"),
+            gebruiker=getattr(settings, f"{prefix}_gebruiker"),
+            wachtwoord=getattr(settings, f"{prefix}_wachtwoord"),
+            env_prefix=prefix.upper(),
+        )
+
+    def ontbrekend(self) -> list[str]:
+        return [
+            f"{self.env_prefix.lower()}_{naam}"
+            for naam, waarde in (("host", self.host), ("gebruiker", self.gebruiker), ("wachtwoord", self.wachtwoord))
+            if not waarde
+        ]
 
 
 class PostvakBron(Protocol):
@@ -57,32 +95,34 @@ class ImapPostvakBron:
     (generator hervat) UID STORE +FLAGS \\Seen. Het postvak is een dedicated app-mailbox;
     de gelezen-vlag is dáár de "verwerkt door de intake"-administratie."""
 
+    def __init__(self, kanaal: str = KANAAL_FACTUREN) -> None:
+        # Blok 3 bundel 08-09: één bron-klasse voor beide postvakken; de instellingen worden pas bij het lezen opgehaald
+        # (tests monkeypatchen `settings` ná constructie — zelfde gedrag als vóór de kanaal-parameter).
+        self.kanaal = kanaal
+
     def nieuwe_berichten(self) -> Iterator[bytes]:
-        ontbrekend = [
-            naam
-            for naam in ("intake_imap_host", "intake_imap_gebruiker", "intake_imap_wachtwoord")
-            if not getattr(settings, naam)
-        ]
+        instellingen = ImapInstellingen.voor_kanaal(self.kanaal)
+        ontbrekend = instellingen.ontbrekend()
         if ontbrekend:
             raise PostvakNietGeconfigureerd(
-                f"Live postvak-fetch is niet geconfigureerd ({', '.join(ontbrekend)} ontbreekt) — "
+                f"Live postvak-fetch ({self.kanaal}) is niet geconfigureerd ({', '.join(ontbrekend)} ontbreekt) — "
                 "lokaal is de .eml-upload (POST /intake/eml) het kanaal; in de cloud horen de "
-                "INTAKE_IMAP_*-envs + het secret INTAKE_IMAP_WACHTWOORD op de job te staan (F3.4)."
+                f"{instellingen.env_prefix}_*-envs + het secret {instellingen.env_prefix}_WACHTWOORD "
+                "op de job te staan."
             )
         try:
-            verbinding = imaplib.IMAP4_SSL(settings.intake_imap_host, settings.intake_imap_poort)
+            verbinding = imaplib.IMAP4_SSL(instellingen.host, instellingen.poort)
         except OSError as exc:
             raise PostvakFout(
-                f"Geen verbinding met IMAP-server {settings.intake_imap_host}:"
-                f"{settings.intake_imap_poort}: {exc}"
+                f"Geen verbinding met IMAP-server {instellingen.host}:{instellingen.poort}: {exc}"
             ) from exc
         try:
             try:
-                verbinding.login(settings.intake_imap_gebruiker, settings.intake_imap_wachtwoord)
+                verbinding.login(instellingen.gebruiker, instellingen.wachtwoord)
             except imaplib.IMAP4.error as exc:
                 raise PostvakFout(
-                    f"IMAP-login geweigerd voor {settings.intake_imap_gebruiker} — controleer het "
-                    f"app-wachtwoord (secret INTAKE_IMAP_WACHTWOORD): {exc}"
+                    f"IMAP-login geweigerd voor {instellingen.gebruiker} — controleer het "
+                    f"app-wachtwoord (secret {instellingen.env_prefix}_WACHTWOORD): {exc}"
                 ) from exc
             status, _ = verbinding.select("INBOX")
             if status != "OK":

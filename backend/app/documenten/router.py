@@ -31,6 +31,9 @@ from app.documenten import (
     verplaatsen,
     vragen,
 )
+from app.documenten import (
+    betaalstatus as betaalstatus_regels,
+)
 from app.documenten.afbeelding import AFBEELDING_SUFFIXEN, AfbeeldingOnbruikbaar, afbeelding_naar_pdf, is_afbeelding
 from app.documenten.checks import CheckRapport
 from app.documenten.mime import content_type_voor
@@ -233,9 +236,6 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
     )
 
 
-def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.BoekvoorstelResponse:
-    return schemas.BoekvoorstelResponse(
-        document_id=data.document_id,
 def _met_accordering_overgeslagen(
     resp: schemas.BoekvoorstelResponse, *, administratie_id: uuid.UUID
 ) -> schemas.BoekvoorstelResponse:
@@ -250,6 +250,9 @@ def _met_accordering_overgeslagen(
     return resp
 
 
+def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.BoekvoorstelResponse:
+    return schemas.BoekvoorstelResponse(
+        document_id=data.document_id,
         vendor_id=data.vendor_id,
         referentie=data.referentie,
         factuurdatum=data.factuurdatum,
@@ -273,6 +276,13 @@ def _met_accordering_overgeslagen(
             if data.periode is not None
             else None
         ),
+        # Blok 3 bundel 08-09: betaalstatus mét herkomst + de acht RLZ-waarden voor de keuzelijst.
+        betaalstatus=data.betaalstatus,
+        betaalstatus_herkomst=data.betaalstatus_herkomst,
+        verwachte_betaaldatum=data.verwachte_betaaldatum,
+        betaalstatus_bron_tekst=data.betaalstatus_bron_tekst,
+        betaalstatus_opties=list(betaalstatus_regels.BETAALSTATUSSEN),
+        intake_kanaal=data.intake_kanaal,
         regels=[_naar_regel_dto(r) for r in data.regels],
         regels_samenvoegen=data.regels_samenvoegen,
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
@@ -871,6 +881,8 @@ def boekvoorstel_opslaan(
                 if invoer.periode is not None
                 else None
             ),
+            # Blok 3 bundel 08-09: betaalstatus zoals de mens 'm liet staan (None = oude client → ongemoeid).
+            betaalstatus=invoer.betaalstatus,
         )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

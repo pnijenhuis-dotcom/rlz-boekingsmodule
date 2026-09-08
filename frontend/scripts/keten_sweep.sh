@@ -16,7 +16,7 @@ CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 BASIS="http://localhost:${POORT}"
 BREEDTE="${KETEN_BREEDTE:-1440}"
 HOOGTE="${KETEN_HOOGTE:-1800}"
-CASUSSEN=(a_universal_nederland b_floor c_spot_services h_bdo)
+CASUSSEN=(a_universal_nederland b_floor c_spot_services h_bdo m_incasso_factuur)
 SCHERMEN=(detail lijst)
 
 if [ ! -x "$CHROME" ]; then

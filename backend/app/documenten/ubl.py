@@ -99,6 +99,10 @@ class UblVeldvoorstel:
     iban: str | None = None
     leverancier_adres: str | None = None
     betalingskenmerk: str | None = None
+    # Blok 3 bundel 08-09 (betaalstatus): cac:PaymentMeans/cbc:PaymentMeansCode (UNCL4461) — 59 = SEPA direct debit,
+    # 49 = direct debit → betaalstatus "Wordt automatisch geïncasseerd" (app/documenten/betaalstatus.py,
+    # deterministisch).
+    payment_means_code: str | None = None
 
     def als_dict(self) -> dict:
         d = asdict(self)
@@ -354,6 +358,7 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
     betalingskenmerk = next(
         (r for r in root.findall("cac:PaymentMeans/cbc:PaymentID", _NS) if r.text and r.text.strip()), None
     )
+    payment_means_code = _tekst("cac:PaymentMeans/cbc:PaymentMeansCode")
 
     if factuurnummer is None and totaal_incl is None:
         raise GeenGeldigeUbl("Geen UBL-Invoice-velden gevonden (ID/PayableAmount ontbreken)")
@@ -380,6 +385,7 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
         iban=_payee_iban(root),
         leverancier_adres=_leverancier_adres(partij),
         betalingskenmerk=betalingskenmerk.text.strip() if betalingskenmerk is not None else None,
+        payment_means_code=payment_means_code,
     )
 
 

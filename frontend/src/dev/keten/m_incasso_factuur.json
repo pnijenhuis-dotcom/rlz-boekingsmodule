@@ -1,0 +1,622 @@
+{
+ "casus": "m_incasso_factuur",
+ "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+ "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+ "detail": {
+  "id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+  "bestandsnaam": "Factuur KTD-2026-09-0417.pdf",
+  "status": "te_controleren",
+  "bron": "upload",
+  "soort": "inkoopfactuur",
+  "mogelijk_duplicaat_van": null,
+  "toegewezen_aan": null,
+  "aangemaakt_op": "2026-09-08T12:00:00Z",
+  "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+  "veldvoorstel": {
+   "bron": "ai",
+   "iban": null,
+   "regels": [
+    {
+     "eenheid": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "18.69",
+     "stuksprijs": "89.00",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "artikelcode": null,
+     "hoeveelheid": "1",
+     "netto_bedrag": "89.00",
+     "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
+     "project_tekst": null,
+     "tariefstaffel": false,
+     "btw_afleiding_reden": null
+    },
+    {
+     "eenheid": null,
+     "btw_bron": "factuur",
+     "btw_bedrag": "31.50",
+     "stuksprijs": "25.00",
+     "taxrate_id": "55555555-0000-0000-0000-000000000021",
+     "artikelcode": null,
+     "hoeveelheid": "6",
+     "netto_bedrag": "150.00",
+     "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
+     "project_tekst": null,
+     "tariefstaffel": false,
+     "btw_afleiding_reden": null
+    }
+   ],
+   "valuta": "EUR",
+   "betreft": "Telefonie en internet september 2026",
+   "incasso": {
+    "bron_tekst": "het factuurbedrag van eur 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+    "betaalstatus": "Wordt automatisch geïncasseerd",
+    "verwachte_betaaldatum": "2026-09-25"
+   },
+   "controle": {
+    "regelsom": "289.19",
+    "onvolledig": false,
+    "onparseerbaar": [
+     "iban"
+    ],
+    "bsn_verwijderd": 0,
+    "lage_zekerheid": [],
+    "regelsom_basis": "incl",
+    "regelsom_reden": null,
+    "regelsom_wijkt_af": false
+   },
+   "zekerheid": {
+    "iban": 0.95,
+    "valuta": 0.9,
+    "betreft": 0.9,
+    "periode": 0.85,
+    "btw_bedrag": 0.95,
+    "btw_nummer": 0.95,
+    "kvk_nummer": 0.95,
+    "totaal_excl": 0.95,
+    "totaal_incl": 0.95,
+    "vervaldatum": 0.95,
+    "factuurdatum": 0.95,
+    "factuurnummer": 0.98,
+    "project_tekst": 0.0,
+    "betalingskenmerk": 0.0,
+    "leverancier_naam": 0.98,
+    "betaalwijze_tekst": 0.9,
+    "incasso_datum_tekst": 0.9,
+    "btw_verlegd_vermelding": 0.0
+   },
+   "btw_bedrag": "50.19",
+   "btw_nummer": "NL100067890B01",
+   "kvk_nummer": "91000042",
+   "regelaantal": 2,
+   "totaal_excl": "239.00",
+   "totaal_incl": "289.19",
+   "vervaldatum": "2026-09-25",
+   "factuurdatum": "2026-09-05",
+   "factuurnummer": "KTD-2026-09-0417",
+   "periode_tekst": "01-09-2026 t/m 30-09-2026",
+   "project_tekst": null,
+   "regel_zekerheid": [
+    0.9,
+    0.9
+   ],
+   "betalingskenmerk": null,
+   "leverancier_naam": "Kempen Telecom Diensten B.V.",
+   "vendor_suggestie": {
+    "match": "btw_nummer",
+    "vendor_id": "33333333-0000-0000-0000-000000000008"
+   },
+   "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+   "zekerheid_drempel": 0.8,
+   "incasso_datum_tekst": "25-09-2026",
+   "vendor_waarschuwing": null,
+   "tariefstaffel_aantal": 0,
+   "btw_verlegd_vermelding": null,
+   "btw_nummer_geverifieerd": false
+  },
+  "afwijzing": null,
+  "factuurmatch": null,
+  "herkomst_mail": null,
+  "bron_bestandsnaam": null,
+  "tenaamstelling": null,
+  "geboekt_in_rlz": null,
+  "tijdlijn": [
+   {
+    "van_status": null,
+    "naar_status": "ontvangen",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": false,
+    "detail": null,
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "ontvangen",
+    "naar_status": "extractie_wachtrij",
+    "actor_id": "00000000-0000-4000-8000-000000000020",
+    "actor_is_systeem": false,
+    "detail": {
+     "bytes": 2606,
+     "reden": "upload — verwerking op de achtergrond",
+     "paginas": 1,
+     "extractie_wachtrij": "achtergrond"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_wachtrij",
+    "naar_status": "extractie_bezig",
+    "actor_id": "00000000-0000-4000-8000-000000000021",
+    "actor_is_systeem": true,
+    "detail": {
+     "reden": "extractie gestart"
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "extractie_bezig",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000021",
+    "actor_is_systeem": true,
+    "detail": {
+     "reden": "extractie afgerond — ter controle",
+     "ai_metriek": {
+      "regels": 2
+     },
+     "veldvoorstel": {
+      "bron": "ai",
+      "iban": null,
+      "regels": [
+       {
+        "eenheid": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "18.69",
+        "stuksprijs": "89.00",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "artikelcode": null,
+        "hoeveelheid": "1",
+        "netto_bedrag": "89.00",
+        "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
+        "project_tekst": null,
+        "tariefstaffel": false,
+        "btw_afleiding_reden": null
+       },
+       {
+        "eenheid": null,
+        "btw_bron": "factuur",
+        "btw_bedrag": "31.50",
+        "stuksprijs": "25.00",
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "artikelcode": null,
+        "hoeveelheid": "6",
+        "netto_bedrag": "150.00",
+        "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
+        "project_tekst": null,
+        "tariefstaffel": false,
+        "btw_afleiding_reden": null
+       }
+      ],
+      "valuta": "EUR",
+      "betreft": "Telefonie en internet september 2026",
+      "incasso": {
+       "bron_tekst": "het factuurbedrag van eur 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+       "betaalstatus": "Wordt automatisch geïncasseerd",
+       "verwachte_betaaldatum": "2026-09-25"
+      },
+      "controle": {
+       "regelsom": "289.19",
+       "onvolledig": false,
+       "onparseerbaar": [
+        "iban"
+       ],
+       "bsn_verwijderd": 0,
+       "lage_zekerheid": [],
+       "regelsom_basis": "incl",
+       "regelsom_reden": null,
+       "regelsom_wijkt_af": false
+      },
+      "zekerheid": {
+       "iban": 0.95,
+       "valuta": 0.9,
+       "betreft": 0.9,
+       "periode": 0.85,
+       "btw_bedrag": 0.95,
+       "btw_nummer": 0.95,
+       "kvk_nummer": 0.95,
+       "totaal_excl": 0.95,
+       "totaal_incl": 0.95,
+       "vervaldatum": 0.95,
+       "factuurdatum": 0.95,
+       "factuurnummer": 0.98,
+       "project_tekst": 0.0,
+       "betalingskenmerk": 0.0,
+       "leverancier_naam": 0.98,
+       "betaalwijze_tekst": 0.9,
+       "incasso_datum_tekst": 0.9,
+       "btw_verlegd_vermelding": 0.0
+      },
+      "btw_bedrag": "50.19",
+      "btw_nummer": "NL100067890B01",
+      "kvk_nummer": "91000042",
+      "regelaantal": 2,
+      "totaal_excl": "239.00",
+      "totaal_incl": "289.19",
+      "vervaldatum": "2026-09-25",
+      "factuurdatum": "2026-09-05",
+      "factuurnummer": "KTD-2026-09-0417",
+      "periode_tekst": "01-09-2026 t/m 30-09-2026",
+      "project_tekst": null,
+      "regel_zekerheid": [
+       0.9,
+       0.9
+      ],
+      "betalingskenmerk": null,
+      "leverancier_naam": "Kempen Telecom Diensten B.V.",
+      "vendor_suggestie": {
+       "match": "btw_nummer",
+       "vendor_id": "33333333-0000-0000-0000-000000000008"
+      },
+      "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+      "zekerheid_drempel": 0.8,
+      "incasso_datum_tekst": "25-09-2026",
+      "vendor_waarschuwing": null,
+      "tariefstaffel_aantal": 0,
+      "btw_verlegd_vermelding": null,
+      "btw_nummer_geverifieerd": false
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   },
+   {
+    "van_status": "te_controleren",
+    "naar_status": "te_controleren",
+    "actor_id": "00000000-0000-4000-8000-000000000021",
+    "actor_is_systeem": true,
+    "detail": {
+     "boekvoorstel_prefill": {
+      "kop": {
+       "periode": {
+        "jaar": 2026,
+        "tekst": "01-09-2026 t/m 30-09-2026",
+        "herkomst": "factuur",
+        "week_tot": 40,
+        "week_van": 36
+       },
+       "vendor_id": "33333333-0000-0000-0000-000000000008",
+       "referentie": "KTD-2026-09-0417",
+       "vervaldatum": "2026-09-25",
+       "betaalstatus": "Wordt automatisch geïncasseerd",
+       "factuurdatum": "2026-09-05",
+       "omschrijving": "Telefonie en internet september 2026",
+       "totaalbedrag": "289.19",
+       "betalingskenmerk": null,
+       "afdeling_prefill_id": null,
+       "betaalstatus_herkomst": "factuur",
+       "omschrijving_herkomst": "factuur",
+       "afdeling_prefill_leverancier": null
+      },
+      "bron": "openen",
+      "regels": [
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "18.69",
+        "project_id": null,
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 1,
+        "netto_bedrag": "89.00",
+        "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
+        "project_bron": null,
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": null
+       },
+       {
+        "gb_bron": null,
+        "btw_bron": "factuur",
+        "herkomst": {
+         "btw": "factuur"
+        },
+        "ledger_id": null,
+        "btw_bedrag": "31.50",
+        "project_id": null,
+        "taxrate_id": "55555555-0000-0000-0000-000000000021",
+        "volgnummer": 2,
+        "netto_bedrag": "150.00",
+        "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
+        "project_bron": null,
+        "btw_bron_detail": null,
+        "gb_voorstel_detail": null,
+        "project_bron_detail": null
+       }
+      ],
+      "triggers": [
+       "periode: factuur",
+       "betaalstatus: factuur"
+      ],
+      "geopend_door": "00000000-0000-4000-8000-000000000020",
+      "veldvoorstel_bron": "ai",
+      "regels_samenvoegen": false
+     }
+    },
+    "tijdstip": "2026-09-08T12:00:00Z"
+   }
+  ],
+  "duplicaat_afvoer": {
+   "kandidaat": null,
+   "afgevoerd_als_duplicaat_van": null,
+   "afgevoerde_duplicaten": [],
+   "module_treffers": [],
+   "afmelding": null
+  }
+ },
+ "boekvoorstel": {
+  "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+  "vendor_id": "33333333-0000-0000-0000-000000000008",
+  "referentie": "KTD-2026-09-0417",
+  "factuurdatum": "2026-09-05",
+  "vervaldatum": "2026-09-25",
+  "vervaldatum_signaal": null,
+  "betalingskenmerk": null,
+  "totaalbedrag": "289.19",
+  "rlz_boekstuknummer": null,
+  "opgeslagen": true,
+  "prefill_automatisch": true,
+  "omschrijving": "Telefonie en internet september 2026",
+  "omschrijving_herkomst": "factuur",
+  "periode": {
+   "jaar": 2026,
+   "week_van": 36,
+   "week_tot": 40,
+   "herkomst": "factuur",
+   "tekst": "01-09-2026 t/m 30-09-2026"
+  },
+  "betaalstatus": "Wordt automatisch geïncasseerd",
+  "betaalstatus_herkomst": "factuur",
+  "verwachte_betaaldatum": "2026-09-25",
+  "betaalstatus_bron_tekst": "het factuurbedrag van eur 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+  "betaalstatus_opties": [
+   "Nog te betalen",
+   "Wordt automatisch geïncasseerd",
+   "Betaald per bank",
+   "Betaald met PIN",
+   "Betaald met Creditcard",
+   "Betaald - contant",
+   "Verrekend met prive",
+   "Verrekend met Rekening Courant"
+  ],
+  "intake_kanaal": null,
+  "regels": [
+   {
+    "id": "00000000-0000-4000-8000-000000000022",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": null,
+    "netto_bedrag": "89.00",
+    "btw_bedrag": "18.69",
+    "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": null,
+    "project_bron_detail": null
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000023",
+    "ledger_id": null,
+    "taxrate_id": "55555555-0000-0000-0000-000000000021",
+    "project_id": null,
+    "netto_bedrag": "150.00",
+    "btw_bedrag": "31.50",
+    "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
+    "btw_bron": "factuur",
+    "btw_bron_detail": null,
+    "gb_bron": null,
+    "gb_voorstel_detail": null,
+    "overstap_vertaling": null,
+    "project_bron": null,
+    "project_bron_detail": null
+   }
+  ],
+  "regels_samenvoegen": false,
+  "samenvoegen_toegestaan": false,
+  "samengevoegde_regel": null,
+  "btw_verlegd_vermelding": null,
+  "afdeling_id": null,
+  "afdeling_prefill_id": null,
+  "afdeling_prefill_leverancier": null,
+  "accordering_overgeslagen_reden": null
+ },
+ "checks": {
+  "geblokkeerd": true,
+  "resultaten": [
+   {
+    "naam": "Verplichte velden",
+    "ok": false,
+    "melding": "Ontbrekend: grootboekrekening (alle 2 regels), project (alle 2 regels) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "signaal": false
+   },
+   {
+    "naam": "Afdeling",
+    "ok": true,
+    "melding": "Afdelingen niet van toepassing voor deze administratie",
+    "signaal": false
+   },
+   {
+    "naam": "Betaalstatus (declaraties)",
+    "ok": true,
+    "melding": "Betaalstatus 'Wordt automatisch geïncasseerd' gaat mee naar de boekhouding",
+    "signaal": false
+   },
+   {
+    "naam": "Projectverdeling",
+    "ok": true,
+    "melding": "Geen projectverdeling — 2 regels zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
+    "signaal": true
+   },
+   {
+    "naam": "Regeltelling vs totaal",
+    "ok": true,
+    "melding": "Som van de regels (netto + btw € 289.19) komt overeen met het totaal incl. (€ 289.19)",
+    "signaal": false
+   },
+   {
+    "naam": "Vervaldatum",
+    "ok": true,
+    "melding": "Vervaldatum 2026-09-25 (termijn 20 dagen)",
+    "signaal": false
+   },
+   {
+    "naam": "Btw-tarief buitenland",
+    "ok": true,
+    "melding": "Geen EU-/buitenland-tarief op de regels",
+    "signaal": false
+   },
+   {
+    "naam": "IBAN-wissel",
+    "ok": true,
+    "melding": "Geen (geldig) IBAN op de factuur gelezen — geen wisselcontrole mogelijk",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaatcheck",
+    "ok": true,
+    "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat bij andere crediteur",
+    "ok": true,
+    "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
+    "signaal": false
+   },
+   {
+    "naam": "Duplicaat (module)",
+    "ok": true,
+    "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
+    "signaal": false
+   }
+  ]
+ },
+ "lijst": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "Factuur KTD-2026-09-0417.pdf",
+    "status": "te_controleren",
+    "bron": "upload",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Kempen Telecom Diensten B.V.",
+    "totaalbedrag": "289.19",
+    "factuurdatum": "2026-09-05",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ },
+ "lijst_afgehandeld": {
+  "documenten": [
+   {
+    "id": "bbbbbbbb-0000-4000-8000-000000000001",
+    "bestandsnaam": "Factuur KTD-2026-09-0417.pdf",
+    "status": "te_controleren",
+    "bron": "upload",
+    "samengevoegd_in": null,
+    "duplicaat_van": null,
+    "verwijderd_reden": null,
+    "samengevoegde_exemplaren": 0,
+    "afgevoerde_exemplaren": 0,
+    "soort": "inkoopfactuur",
+    "mogelijk_duplicaat_van": null,
+    "toegewezen_aan": null,
+    "aangemaakt_op": "2026-09-08T12:00:00Z",
+    "laatst_gewijzigd_op": "2026-09-08T12:00:00Z",
+    "afwijzing": null,
+    "leverancier": "Kempen Telecom Diensten B.V.",
+    "totaalbedrag": "289.19",
+    "factuurdatum": "2026-09-05",
+    "automatisch_geboekt": false,
+    "geboekt_in_rlz": null,
+    "factuurmatch": null,
+    "accordeur_aan_de_beurt": null,
+    "accordering_boek_fout": null,
+    "klant_akkoord_compleet": false,
+    "duplicaatsignaal": {
+     "uitkomst": "geen",
+     "aantal_treffers": 0,
+     "berekend_op": "2026-09-08T12:00:00Z"
+    },
+    "afdeling": null,
+    "projectverdeling_afwijking_pct": null,
+    "duplicaat_werkvoorraad_van": null,
+    "verplichting_match": {
+     "uitkomst": "geen_verplichting",
+     "overschrijding_excl": null,
+     "offertenummer": null
+    }
+   }
+  ],
+  "afgehandeld": {
+   "verwijderd": 0,
+   "afgewezen": 0,
+   "samengevoegd": 0,
+   "afgevoerd_duplicaat": 0,
+   "geboekt": 0,
+   "gesplitst": 0,
+   "geaccordeerd": 0,
+   "totaal": 0
+  },
+  "groepen": {
+   "kantoor": 1,
+   "wachten": 0,
+   "afgehandeld": 0
+  }
+ }
+}

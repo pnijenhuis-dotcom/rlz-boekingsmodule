@@ -232,6 +232,11 @@ class Boekvoorstel(Base):
             "(periode_week_van BETWEEN 1 AND 53 AND periode_week_tot BETWEEN periode_week_van AND 53)",
             name="ck_boekvoorstel_periode_weken",
         ),
+        # Betaalstatus (migratie 0126, blok 3 bundel 08-09): herkomst-enum op DB-niveau.
+        CheckConstraint(
+            "betaalstatus_herkomst IS NULL OR betaalstatus_herkomst IN ('kanaal', 'factuur', 'mens')",
+            name="ck_boekvoorstel_betaalstatus_herkomst",
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -258,6 +263,14 @@ class Boekvoorstel(Base):
     periode_week_tot: Mapped[int | None] = mapped_column(default=None)
     periode_herkomst: Mapped[str | None] = mapped_column(default=None)
     periode_tekst: Mapped[str | None] = mapped_column(default=None)
+    # Betaalstatus (blok 3 bundel 08-09, migratie 0126; app/documenten/betaalstatus.py): RLZ's `QuickPaymentSelection`
+    # ("Betaling"-veld) LETTERLIJK als één van de acht RLZ-waarden, met herkomst 'kanaal' (declaraties@ → Betaald per
+    # bank) | 'factuur' (deterministische incasso-detectie / UBL PaymentMeansCode 59) | 'mens' (controlescherm, wint).
+    # NULL = niets te zetten (RLZ-default "Nog te betalen"). `verwachte_betaaldatum` = de incassodatum uit de factuur —
+    # kolom voor de bankmatch (blok 2), hier alleen gevuld.
+    betaalstatus: Mapped[str | None] = mapped_column(default=None)
+    betaalstatus_herkomst: Mapped[str | None] = mapped_column(default=None)
+    verwachte_betaaldatum: Mapped[date | None] = mapped_column(default=None)
     # Afdeling (migratie 0084, blok A 28-08): handmatige kantoorkeuze per document zodra de
     # administratie-toggle aan staat; stuurt de accorderingsroute en is de MI-dimensie voor later.
     afdeling_id: Mapped[uuid.UUID | None] = mapped_column(

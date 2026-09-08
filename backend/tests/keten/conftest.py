@@ -69,6 +69,8 @@ VENDORS: dict[str, tuple[uuid.UUID, str]] = {
     "dcte": (uuid.UUID("33333333-0000-0000-0000-000000000005"), "DCTE B.V. (Derks Computers, Telecom & Electronica)"),
     "kader": (uuid.UUID("33333333-0000-0000-0000-000000000006"), "Kader Consultancy & Interim B.V."),
     "boot": (uuid.UUID("33333333-0000-0000-0000-000000000007"), "BOOT organiserend ingenieursburo B.V."),
+    # Blok 3 bundel 08-09 (B3): synthetische incasso-leverancier (casus m).
+    "telecom": (uuid.UUID("33333333-0000-0000-0000-000000000008"), "Kempen Telecom Diensten B.V."),
 }
 
 FRONTEND_KETEN_DIR = Path(__file__).resolve().parents[3] / "frontend" / "src" / "dev" / "keten"
@@ -182,6 +184,8 @@ def stamgegevens(universal: uuid.UUID, admin_engine: Engine) -> dict[str, uuid.U
     }
     spot_kop = json.loads((Casus(casussen.C_SPOT).map / "ai_antwoord.json").read_text())["kop"]
     kenmerken["spot"] = (spot_kop["btw_nummer"]["waarde"], spot_kop["kvk_nummer"]["waarde"])
+    telecom_kop = json.loads((Casus(casussen.M_INCASSO).map / "ai_antwoord.json").read_text())["kop"]
+    kenmerken["telecom"] = (telecom_kop["btw_nummer"]["waarde"], telecom_kop["kvk_nummer"]["waarde"])
     with scoped_session(universal) as session:
         for sleutel, (vendor_id, naam) in VENDORS.items():
             session.add(VendorCache(id=vendor_id, administratie_id=universal, naam=naam, brondata={"Name": naam}))
@@ -298,15 +302,17 @@ class Keten:
         afzender: str = casussen.AFZENDER_UNIVERSAL,
         onderwerp: str = "Facturen universal steigerbouw",
         message_id: str | None = None,
+        kanaal: str = "facturen",
     ):
-        """Eén intake-bericht (IMAP-route) met de gegeven bijlagen — zoals de leverancier/RLZ 'm stuurde."""
+        """Eén intake-bericht (IMAP-route) met de gegeven bijlagen — zoals de leverancier/RLZ 'm stuurde.
+        `kanaal` (blok 3 bundel 08-09): 'facturen' (default) of 'declaraties' (het tweede postvak)."""
         eml = bouw_eml(
             afzender=afzender,
             onderwerp=onderwerp,
             message_id=message_id,
             bijlagen=[(naam, inhoud, *_mime(naam)) for naam, inhoud in bijlagen],
         )
-        return verwerking.verwerk_eml(eml, actor_id=self.actor, bron="imap", opslag=self.opslag)
+        return verwerking.verwerk_eml(eml, actor_id=self.actor, bron="imap", opslag=self.opslag, kanaal=kanaal)
 
     def upload(self, bestandsnaam: str, inhoud: bytes):
         """Losse upload in de administratie (werkvoorraad-sleepzone mét klant)."""

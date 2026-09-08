@@ -339,6 +339,16 @@ class Settings(BaseSettings):
     intake_imap_gebruiker: str | None = None
     intake_imap_wachtwoord: str | None = None
     intake_postvak_adres: str | None = None
+    # Tweede intake-kanaal declaraties@ak-nijenhuis.nl (blok 3 bundel 08-09; app/documenten/betaalstatus.py::KANALEN):
+    # zelfde IMAP-fetch, eigen postvak; een document uit dit kanaal krijgt betaalstatus "Betaald per bank" (herkomst
+    # 'kanaal') — de medewerker heeft de declaratie al betaald. Envs op de job rlz-intake-imap-declaraties:
+    # INTAKE_DECLARATIES_IMAP_HOST / _POORT / _GEBRUIKER / _WACHTWOORD (Secret Manager INTAKE_DECLARATIES_IMAP_WACHTWOORD)
+    # + INTAKE_DECLARATIES_POSTVAK_ADRES. None = niet geconfigureerd → het CLI-commando meldt dat zichtbaar.
+    intake_declaraties_imap_host: str | None = None
+    intake_declaraties_imap_poort: int = 993
+    intake_declaraties_imap_gebruiker: str | None = None
+    intake_declaraties_imap_wachtwoord: str | None = None
+    intake_declaraties_postvak_adres: str | None = None
     # Afzender-leren begrenzen (diagnose 02-09 punt 3): kantoor-/doorstuurdomeinen leren nooit een
     # afzender-regel en wijzen nooit automatisch toe op afzender (de afzender blijft wél zichtbaar
     # als hint op de verzamelbak-rij). Subdomeinen tellen mee. Aanvullen = env-var
