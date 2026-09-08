@@ -271,10 +271,13 @@ Geen enkele systeemdialoog van iOS (geen passkey-sheet, geen Face ID-vraag tenzi
   "processing completed" noemt het echte nummer (verwacht **90** — lees het live af, zie de correctie in §0c). Kliktest: TestFlight
   → die build op het eigen toestel → Toegang › Diagnose toont `app 1.0 (90)` → verse activatie met een verse uitnodiging → code →
   wachtrij → sluiten/openen → slot → 5× fout → "Kantoor vragen om nieuwe uitnodiging" → nieuwe uitnodiging → opnieuw activeren.
-- Android: de AAB `nijenhuis-goedkeuren-1.0-vc4-20260908-1536.aab` (§0d) is van vóór deze run en bevat de nieuwe activatieflow
-  NIET. Opnieuw bouwen ná de commit: `native/scripts/bouw_android_release.sh 4 1.0` (JAVA_HOME/ANDROID_HOME per shell,
-  keystore.properties aanwezig — PLAY §1–§3); versionCode 4 mag hergebruikt worden zolang vc4 nog niet naar Play is geüpload,
-  anders 5. Upload op de interne test-track (PLAY §4) → zelfde kliktest → dan App access (§11) + review.
+- Android: **✅ GEBOUWD 08-09 21:13** — `nijenhuis-goedkeuren-1.0-vc4-20260908-2113.aab` (PLAY §3) mét de nieuwe activatieflow en
+  de headerknop "Vergrendelen"; de oude vc4 van 15:36 staat opzij in `app/release/vervangen/`. Upload op de interne test-track
+  (PLAY §4) → zelfde kliktest → dan App access (§11) + review.
+- **Productie-nameting 08-09 21:11 (ná deploy revisie 00476 / migratie 0125): werkt in productie: ja** — activatieroute zonder
+  client-aankondiging 400, onjuiste code 400 leesbaar, demo-activatiecode 200 mét token-paar, wachtrij 200 op het toestel-token,
+  ontkoppelen 204; audit `toestel_geactiveerd` + `apparaat_ingetrokken`; geen legacy-passkey-verkeer meer in Cloud Logging. Seed
+  (`--genereer-activatiecode`, wachtrij 5) en CLI `app-passkeys-markeren` (18 rijen) zijn gedraaid; de code staat in het eindrapport.
 - Dán pas: build 90 aan versie 1.0 koppelen in App Store Connect, App Review Information bijwerken (Password = activatiecode,
   Notes = §1 stap 6), Resolution Center-reply (concept hieronder) en **"Update Review"** op de versiepagina (§0b-kader).
 

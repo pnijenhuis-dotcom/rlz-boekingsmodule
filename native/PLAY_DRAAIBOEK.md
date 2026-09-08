@@ -164,6 +164,15 @@ Webbundel = HEAD 07-09 mét build-id `fcc35a8-20260907-1511` (12a), `capacitor.p
 (geen verloren boot-refresh), **13 eerlijke melding bij ontbrekende passkey-beheerder** (§10).
 Klikwerk: §4 stap 4 met dít bestand (interne test-track eerst), daarna App access (§11) + review.
 
+**✅ versionCode 4 GEBOUWD 08-09 21:13 (vervolgrun app-auth zonder passkey — NIET geüpload):**
+`native/scripts/bouw_android_release.sh 4 1.0` → `native/android/app/release/nijenhuis-goedkeuren-1.0-vc4-20260908-2113.aab`
+(15 MB, SHA-256 `2795575e0111ae338b1c20809788c80d226ab6ec97ecf9629c436c957221a52b`) + `-mapping.txt` +
+`-native-debug-symbols.zip`; signatuur = upload-key (`4A:B4:3C:…:8F:A1`, staat als tweede vingerafdruk in de live
+`assetlinks.json` op de apex), bundletool validate ✓, versionCode 4 · versionName 1.0 ✓, alle guards ✓. Webbundel = commit
+van 08-09 avond mét de nieuwe activatieflow (activatiecode → toegangscode → wachtrij, geen passkey) en de headerknop
+"Vergrendelen". De eerdere vc4-AAB van 15:36 (§0d TESTFLIGHT, vóór de app-frontend-commit) staat opzij in
+`app/release/vervangen/` — die NIET uploaden. Klikwerk: §4 stap 4 met dít bestand (interne test-track), kliktest, dan §11 + review.
+
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
 - **Upload-artefacten náást de AAB (sinds 30-08):** het script legt in `app/release/` óók
@@ -198,8 +207,9 @@ Play Console = https://play.google.com/console → kies het **PDL Powerhouse**-o
 4. **Test and release → Testing → Internal testing → Create new release**:
    - App bundles: upload de `.aab` uit §3 (sleep 'm erin). Play toont daarna versionCode 1,
      package, en "Signed by Google Play" (bewijs dat App Signing actief is).
-   - Release name: `1.0 (1)` (default is prima). Release notes (nl-NL):
-     `Eerste interne testversie: facturen goedkeuren met passkey, meldingen bij nieuwe facturen.`
+   - Release name: `1.0 (4)` (default = versionCode). Release notes (nl-NL, herschreven 08-09 — geen passkey meer):
+     `Inloggen vereenvoudigd: activeer de app één keer met de activatiecode uit je uitnodiging en kies een 5-cijferige toegangscode; geen passkey, Google-account of wachtwoord meer nodig. De knop rechtsboven heet nu Vergrendelen (de app gaat op slot, het toestel blijft gekoppeld). Meldingen bij nieuwe facturen ongewijzigd.`
+     (Historisch, eerste upload vc1 29-08: `Eerste interne testversie: facturen goedkeuren met passkey, meldingen bij nieuwe facturen.`)
    - **Next → Save → Review release → Start rollout to Internal testing.** Interne test =
      géén Google-review, direct beschikbaar (max. 100 testers).
 5. **Testers** (tab *Testers* onder Internal testing): **Create email list** "Interne test
