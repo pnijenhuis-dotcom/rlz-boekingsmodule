@@ -55,6 +55,8 @@ _URGENTIE_AFWIJKING_SOORT = {
     "boeking_teruggedraaid_in_rlz": 1,
     "aflettering_teruggedraaid_in_rlz": 1,
     "half_geboekt": 2,
+    # Blok 6 (08-09): mogelijk dubbel in RLZ — beoordelen in Reeleezee, geen boekhoudkundig werk in de app.
+    "dubbel_in_rlz": 3,
 }
 _MINIMALE_REDEN = 5
 

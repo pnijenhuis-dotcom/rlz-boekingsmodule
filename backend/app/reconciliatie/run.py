@@ -53,7 +53,9 @@ from app.reconciliatie.models import (
 logger = logging.getLogger(__name__)
 
 _AMSTERDAM = ZoneInfo("Europe/Amsterdam")
-BLOKKEN = ("bank", "documenten", "omzet", "doorbelasting")
+#: Blok 6 (08-09): `rlz_dubbel` = periodieke toets "mogelijk dubbel geboekt in RLZ" (app/reconciliatie/rlz_dubbel.py) —
+#: een eigen blok zodat Peter 'm kan schrappen door één tuple-regel (hier + cli._reconciliatie_alles) weg te halen.
+BLOKKEN = ("bank", "documenten", "omzet", "doorbelasting", "rlz_dubbel")
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).
 AUTOMATISERINGEN_SLEUTEL = "automatiseringen"

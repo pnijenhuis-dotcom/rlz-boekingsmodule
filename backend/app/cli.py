@@ -1470,6 +1470,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     élke run vast (run-rij + bevindingen), bepaalt de delta t.o.v. de vorige run en mailt alleen
     als er iets te melden is; de CLI-regels zijn ongewijzigd, er komt één RUN-slotregel bij.
     Een mail- of vastlegfout verandert de exit-code nooit."""
+    from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
 
     blokken = (
@@ -1477,6 +1478,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         ("documenten", _reconciliatie),
         ("omzet", _omzet_reconciliatie),
         ("doorbelasting", _doorbelasting_reconciliatie),
+        # Blok 6 (08-09): periodieke toets "mogelijk dubbel geboekt in RLZ" (handmatig ingevoerde paren) —
+        # eigen blok, schrappen = deze regel + run.BLOKKEN.
+        (rlz_dubbel.BLOK, rlz_dubbel.cli_blok),
     )
     return reconciliatie_run.voer_uit(blokken=blokken, args=args)
 
@@ -2299,10 +2303,6 @@ def main(argv: list[str] | None = None) -> int:
     backfill_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
     backfill_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
 
-    subparsers.add_parser(
-        "bewaking-probe",
-        help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
-        "mailkanaal/RLZ-leesroute + 1×/uur AI-call en extractie-foutratio; alert per SMTP bij 2 "
     status_backfill_parser = subparsers.add_parser(
         "duplicaat-status-backfill",
         help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
@@ -2329,6 +2329,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Ook niet-geboekte documenten (alles behalve verwijderd/niet_toegewezen) — standaard alleen geboekt.",
     )
 
+    subparsers.add_parser(
+        "bewaking-probe",
+        help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
+        "mailkanaal/RLZ-leesroute + 1×/uur AI-call en extractie-foutratio; alert per SMTP bij 2 "
         "opeenvolgende fouten, herstelmelding zodra weer groen.",
     )
 
@@ -2789,12 +2793,12 @@ def main(argv: list[str] | None = None) -> int:
         return _importeer_env_credentials(args)
     if args.commando == "duplicaten-backfill":
         return _duplicaten_backfill(args)
-    return 1
-
-
-if __name__ == "__main__":
     if args.commando == "duplicaat-status-backfill":
         return _duplicaat_status_backfill(args)
     if args.commando == "periode-backfill":
         return _periode_backfill(args)
+    return 1
+
+
+if __name__ == "__main__":
     raise SystemExit(main())

@@ -178,12 +178,22 @@ def _onderwerp_doorbelasting(d: dict) -> Segmenten:
     return [x for x in (doel, f"ref {ref}" if ref else None, f"({bron})" if bron else None) if x]
 
 
-_SCHEIDING = {"documenten": " ", "doorbelasting": " ", "bank": " · ", "omzet": " · "}
+def _onderwerp_rlz_dubbel(d: dict) -> Segmenten:
+    """Blok 6 (08-09): leverancier · referentie(s) · beide boekstuknummers."""
+    ref_a, ref_b = _s(d, "referentie_a"), _s(d, "referentie_b")
+    refs = ref_a if ref_a and (ref_a == ref_b or not ref_b) else " / ".join(x for x in (ref_a, ref_b) if x)
+    boekstukken = " + ".join(x for x in (_s(d, "boekstuk_a"), _s(d, "boekstuk_b")) if x)
+    return [x for x in (_s(d, "leverancier_naam"), refs or None, boekstukken or None) if x]
+
+
+_SCHEIDING = {"documenten": " ", "doorbelasting": " ", "bank": " · ", "omzet": " · ", "rlz_dubbel": " · "}
 
 
 def _onderwerp(blok: str, d: dict) -> Segmenten:
     if blok == "documenten":
         return _onderwerp_documenten(d)
+    if blok == "rlz_dubbel":
+        return _onderwerp_rlz_dubbel(d)
     if blok == "bank":
         return _onderwerp_bank(d)
     if blok == "omzet":
@@ -490,11 +500,56 @@ def _doorbelasting(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
+def _exemplaar(d: dict, kant: str) -> str:
+    """'RLZ-04-00004037 (22-06-2026, € 1.234,56, concept, via de module)' — één RLZ-exemplaar van het paar."""
+    delen = [
+        datum(_s(d, f"datum_{kant}")),
+        euro(_s(d, f"bedrag_{kant}")),
+        "concept" if str(d.get(f"status_{kant}")) == "1" else None,
+        "via de module geboekt" if d.get(f"van_module_{kant}") else None,
+    ]
+    binnen = ", ".join(x for x in delen if x)
+    boekstuk = _s(d, f"boekstuk_{kant}") or "zonder boekstuknummer"
+    return f"{boekstuk} ({binnen})" if binnen else boekstuk
+
+
+def _rlz_dubbel(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok 6 (08-09): mogelijk dubbel geboekt in Reeleezee — twee inkoopfacturen van dezelfde crediteur met
+    dezelfde referentie en/of hetzelfde bedrag op dezelfde datum, waarvan minstens één niet via de module kwam.
+    Handeling ligt in Reeleezee (de app verwijdert nooit); geen deeplink beschikbaar (geen bekende URL-vorm)."""
+    onderwerp = _onderwerp_rlz_dubbel(d)
+    lev = _s(d, "leverancier_naam") or "dezelfde crediteur"
+    regel = str(d.get("regel") or "")
+    ref_a, ref_b = _s(d, "referentie_a"), _s(d, "referentie_b")
+    if "referentie" in regel and "bedrag_datum" in regel:
+        waarom = f"dezelfde referentie {ref_a or ''} én hetzelfde bedrag op dezelfde datum".replace("  ", " ")
+    elif "referentie" in regel:
+        waarom = f"dezelfde referentie {ref_a or ref_b or ''}".strip()
+    else:
+        waarom = "hetzelfde bedrag op dezelfde factuurdatum" + (
+            f" (referenties {ref_a} en {ref_b})" if ref_a and ref_b and ref_a != ref_b else ""
+        )
+    handmatig = (
+        "geen van beide via de module geboekt (handmatig ingevoerd of geïmporteerd)"
+        if not d.get("van_module_a") and not d.get("van_module_b")
+        else "één ervan via de module, de andere handmatig ingevoerd"
+    )
+    concept = " Minstens één exemplaar is nog concept." if d.get("concept") else ""
+    return (
+        _titel("Mogelijk dubbel in RLZ", onderwerp, " · "),
+        f"In Reeleezee staan twee inkoopfacturen van {lev} met {waarom}: {_exemplaar(d, 'a')} en "
+        f"{_exemplaar(d, 'b')} — {handmatig}.{concept}",
+        "Open beide boekstuknummers in Reeleezee en beoordeel; is er één dubbel, corrigeer dáár (de app verwijdert "
+        "nooit). Klopt het zo, accepteer met reden.",
+    )
+
+
 _BLOK_AFWIJKING = {
     "documenten": _documenten,
     "bank": _bank,
     "omzet": _omzet,
     "doorbelasting": _doorbelasting,
+    "rlz_dubbel": _rlz_dubbel,
 }
 
 
@@ -655,6 +710,10 @@ _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
     ("extern_id", "extern id"),
     ("rlz_id", "RLZ-id"),
     ("rlz_document_id", "RLZ-document"),
+    ("rlz_id_a", "RLZ-document A"),
+    ("rlz_id_b", "RLZ-document B"),
+    ("rlz_admin_id", "RLZ-administratie"),
+    ("regel", "matchregel"),
     ("payment_transaction_id", "RLZ-mutatie"),
     ("payment_item_id", "RLZ-openstaande post"),
     ("concept_administratie_id", "administratie-id concept"),

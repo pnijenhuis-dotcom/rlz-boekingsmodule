@@ -28,6 +28,7 @@ import {
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { AutomatiseringenBlok } from './AutomatiseringenBlok'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
+import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
   BLOK_LABEL,
@@ -279,6 +280,9 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
     if (r.soort === 'afwijking') {
       return (
         <>
+          {/* Blok 6 (08-09): mogelijk dubbel in RLZ — geen document in de app, geen RLZ-deeplink bekend: de
+              handeling is beide boekstuknummers in Reeleezee openen; accepteren (Beheerder) blijft de tweede knop. */}
+          {isRlzDubbel(r) && <RlzDubbelBoekstukken bevinding={r} />}
           {isBeheerder && kanReden ? (
             <Button
               variant="secundair"

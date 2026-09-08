@@ -80,7 +80,8 @@ export interface ReconciliatieRunDto {
 export type BevindingSoort = 'afwijking' | 'let_op' | 'fout' | 'geaccepteerd' | 'uitgesloten' | 'gezien'
 /** Facet in de URL: 'aandacht' (default) = afwijking + fout + let-op. */
 export type SoortFacet = 'aandacht' | BevindingSoort | 'alle'
-export type BevindingBlok = 'bank' | 'documenten' | 'omzet' | 'doorbelasting' | 'run' | 'automatisering'
+/** 'rlz_dubbel' (blok 6, 08-09) = periodieke toets "mogelijk dubbel geboekt in RLZ" — handeling ligt in Reeleezee. */
+export type BevindingBlok = 'bank' | 'documenten' | 'omzet' | 'doorbelasting' | 'run' | 'automatisering' | 'rlz_dubbel'
 
 export interface BevindingDto {
   id: string
@@ -240,6 +241,7 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   doorbelasting: 'Doorbelasting',
   run: 'Run',
   automatisering: 'Automatisering',
+  rlz_dubbel: 'Dubbel in RLZ',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */

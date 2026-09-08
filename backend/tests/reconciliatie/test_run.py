@@ -417,8 +417,12 @@ class TestVoerUit:
 class TestCliReconciliatieAlles:
     def test_cli_uitvoer_identiek_plus_run_slotregel(self, administratie_id, mails, monkeypatch, capsys) -> None:
         """De vier echte CLI-blokken via reconciliatie-alles, motoren gestubd: de bekende regels staan er
-        nog letterlijk, de run is vastgelegd mét bevindingen per soort (afwijking + geaccepteerd + let-op)."""
+        nog letterlijk, de run is vastgelegd mét bevindingen per soort (afwijking + geaccepteerd + let-op).
+        Het vijfde blok `rlz_dubbel` (blok 6, 08-09) is hier leeg gestubd — eigen dekking in test_rlz_dubbel.py."""
         from app.bank.reconciliatie import BankReconciliatieRapport
+        from app.reconciliatie import rlz_dubbel
+
+        monkeypatch.setattr(rlz_dubbel, "toets_alle", lambda **kw: rlz_dubbel.RlzDubbelResultaat())
         from app.documenten.reconciliatie import ReconciliatieAfwijking, ReconciliatieRapport
         from app.doorbelasting.reconciliatie import (
             DoorbelastingReconciliatieResultaat,
