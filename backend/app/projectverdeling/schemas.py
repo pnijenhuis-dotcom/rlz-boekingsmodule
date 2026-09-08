@@ -44,6 +44,9 @@ class HercontroleDto(BaseModel):
     periode_label: str | None = None
     signaal: bool
     nieuwe_verdeling: list[VerdeelDeelDto]
+    #: Blok 10 08-09: 'omzet_ontbreekt' + leesbare zin — actie "cijfers-sync starten", herverdelen geblokkeerd.
+    bevinding: str | None = None
+    bevinding_tekst: str | None = None
 
 
 class ProjectverdelingDto(BaseModel):
@@ -147,6 +150,10 @@ class SignaalRijDto(BaseModel):
     geboekt_op: datetime | None = None
     delen_oud: list[VerdeelDeelDto] = []
     delen_nieuw: list[VerdeelDeelDto] = []
+    #: Blok 10 08-09: 'afwijking' (Herverdelen… mogelijk) | 'omzet_ontbreekt' (bevinding — actie cijfers-sync starten,
+    #: herverdelen geblokkeerd); `bevinding` = de leesbare zin.
+    soort: str = "afwijking"
+    bevinding: str | None = None
 
 
 class SignaalTellersDto(BaseModel):

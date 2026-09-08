@@ -13,7 +13,7 @@ from sqlalchemy import Engine, text
 from app.main import app
 from app.projectverdeling import hercontrole
 from app.security.tokens import create_access_token
-from tests.projectverdeling.conftest import PERIODE, seed_omzet
+from tests.projectverdeling.conftest import PERIODE, na_boekmaand, seed_omzet
 from tests.projectverdeling.test_service import geboekt_met_verdeling  # noqa: F401 — fixture (geboekt + signaal-basis)
 
 client = TestClient(app)
@@ -156,7 +156,7 @@ class TestKantoorbreed:
                 {"id": vendor_id, "aid": administratie_id},
             )
         seed_omzet(admin_engine, administratie_id, projecten["venlo"], "1000.00", date(2026, 7, 20))
-        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2), forceer=True)
+        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2), forceer=True)
 
     def test_signalen_rij_velden_facet_en_zoekterm(
         self, geboekt_met_verdeling, administratie_id, beheerder_id, projecten, admin_engine, vendor_id  # noqa: F811

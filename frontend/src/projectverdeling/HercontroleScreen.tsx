@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { ProjectverdelingDeelDto, ProjectverdelingSignaalLijstDto, ProjectverdelingSignaalRijDto } from '../api/types'
 import { HerverdeelDialoog, euro, periodeLabel, vergelijk } from '../document/HerverdeelDialoog'
-import { haalHercontroleSignalenOp } from '../document/projectverdelingApi'
+import { haalHercontroleSignalenOp, startProjectcijfersSync } from '../document/projectverdelingApi'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Badge, Button, SkeletonRegels, useToastOptioneel } from '../ui/basis'
@@ -53,6 +53,20 @@ export function HercontroleScreen() {
   const [herverdeelRij, setHerverdeelRij] = useState<ProjectverdelingSignaalRijDto | null>(null)
 
   const herlaad = useCallback(() => setVersie((v) => v + 1), [])
+  const [syncBezig, setSyncBezig] = useState<string | null>(null)
+
+  /** Blok 10 08-09: bevinding "omzetcijfers ontbreken" — de actie is de bestaande cijfers-sync-achtergrondrun. */
+  const startSync = async (r: ProjectverdelingSignaalRijDto) => {
+    setSyncBezig(r.document_id)
+    try {
+      await startProjectcijfersSync(r.administratie_id)
+      toast.meld(`Cijfers-sync gestart voor ${r.administratie_naam} — de bevinding vervalt bij de eerstvolgende hercontrole zodra er omzetcijfers zijn.`)
+    } catch (err) {
+      toast.meld(err instanceof Error ? err.message : 'Cijfers-sync starten mislukt.')
+    } finally {
+      setSyncBezig(null)
+    }
+  }
 
   useEffect(() => {
     let actueel = true
@@ -164,8 +178,9 @@ export function HercontroleScreen() {
               <tbody>
                 {rijen.map((r) => {
                   const verschoven = verschuivingen(r.delen_oud ?? [], r.delen_nieuw ?? [])
+                  const omzetOntbreekt = r.soort === 'omzet_ontbreekt'
                   return (
-                    <tr key={r.document_id} data-testid="hercontrole-rij">
+                    <tr key={r.document_id} data-testid="hercontrole-rij" data-soort={r.soort ?? 'afwijking'}>
                       <td>
                         <div>
                           <b>{r.leverancier ?? r.bestandsnaam}</b>
@@ -182,12 +197,26 @@ export function HercontroleScreen() {
                         </Link>
                       </td>
                       <td>
-                        <Badge variant="warn" data-testid="chip-afwijking">
-                          {pctLabel(r.afwijking_pct)} afwijking
-                        </Badge>
-                        <div className="hint" style={{ margin: 0, fontSize: 11.5 }}>
-                          drempel {pctLabel(r.drempel_pct)} · omzet {r.pro_rato_periode_label ?? periodeLabel(r.pro_rato_periode)}
-                        </div>
+                        {omzetOntbreekt ? (
+                          <>
+                            <Badge variant="warn" data-testid="chip-bevinding">
+                              omzetcijfers ontbreken
+                            </Badge>
+                            <div className="hint" style={{ margin: 0, fontSize: 11.5 }}>
+                              {r.bevinding ?? `omzetcijfers ontbreken voor ${r.pro_rato_periode_label ?? periodeLabel(r.pro_rato_periode)}`} — geen
+                              herverdeling berekend
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <Badge variant="warn" data-testid="chip-afwijking">
+                              {pctLabel(r.afwijking_pct)} afwijking
+                            </Badge>
+                            <div className="hint" style={{ margin: 0, fontSize: 11.5 }}>
+                              drempel {pctLabel(r.drempel_pct)} · omzet {r.pro_rato_periode_label ?? periodeLabel(r.pro_rato_periode)}
+                            </div>
+                          </>
+                        )}
                       </td>
                       <td>
                         {verschoven.length === 0 ? (
@@ -208,14 +237,26 @@ export function HercontroleScreen() {
                         )}
                       </td>
                       <td className="acties" style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                        <Button
-                          variant="secundair"
-                          maat="klein"
-                          aria-label={`Herverdelen: ${r.leverancier ?? r.bestandsnaam} ${r.referentie ?? ''}`.trim()}
-                          onClick={() => setHerverdeelRij(r)}
-                        >
-                          Herverdelen…
-                        </Button>{' '}
+                        {omzetOntbreekt ? (
+                          <Button
+                            variant="secundair"
+                            maat="klein"
+                            aria-label={`Cijfers-sync starten voor ${r.administratie_naam}`}
+                            disabled={syncBezig === r.document_id}
+                            onClick={() => void startSync(r)}
+                          >
+                            ⟳ Cijfers-sync starten
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secundair"
+                            maat="klein"
+                            aria-label={`Herverdelen: ${r.leverancier ?? r.bestandsnaam} ${r.referentie ?? ''}`.trim()}
+                            onClick={() => setHerverdeelRij(r)}
+                          >
+                            Herverdelen…
+                          </Button>
+                        )}{' '}
                         <Link to={documentPad(r)} className="btn secondary" aria-label={`Naar het document van ${r.leverancier ?? r.bestandsnaam}`}>
                           Naar het document →
                         </Link>

@@ -222,16 +222,27 @@ class TestHercontroleLogica:
         assert pv.afwijking_pct(oud, oud, Decimal("1400.00")) == Decimal("0.00")
 
     def test_moet_herrekenen_cadans(self) -> None:
-        aug = datetime(2026, 8, 3, 7, 0, tzinfo=UTC)
-        assert moet_herrekenen(hercontrole_op=None, laatste_sync=None, vandaag=date(2026, 9, 15), forceer=False)
-        assert moet_herrekenen(hercontrole_op=aug, laatste_sync=None, vandaag=date(2026, 9, 2), forceer=False)
-        assert not moet_herrekenen(hercontrole_op=aug, laatste_sync=None, vandaag=date(2026, 8, 20), forceer=False)
-        assert not moet_herrekenen(
-            hercontrole_op=datetime(2026, 9, 1, tzinfo=UTC), laatste_sync=None, vandaag=date(2026, 9, 5), forceer=False
-        )
-        verse_sync = datetime(2026, 8, 20, tzinfo=UTC)
-        assert moet_herrekenen(hercontrole_op=aug, laatste_sync=verse_sync, vandaag=date(2026, 8, 21), forceer=False)
-        assert moet_herrekenen(hercontrole_op=aug, laatste_sync=None, vandaag=date(2026, 8, 20), forceer=True)
+        """Cadans blok 10 08-09: periode af + niet in de boekmaand + hooguit één keer per kalendermaand."""
+        aug = pv.Periode.uit_opslag(date(2026, 8, 1), "maand")
+        geboekt_aug = datetime(2026, 8, 30, 9, 0, tzinfo=UTC)
+        sept1 = datetime(2026, 9, 1, 5, 0, tzinfo=UTC)
+
+        def m(**kw):
+            basis = dict(
+                hercontrole_op=None, geboekt_op=geboekt_aug, periode=aug, vandaag=date(2026, 9, 2), forceer=False
+            )
+            return moet_herrekenen(**{**basis, **kw})
+
+        assert m()  # augustus af, geboekt in augustus, nog nooit gecontroleerd
+        assert not m(vandaag=date(2026, 8, 31))  # referentiemaand nog niet af
+        assert not m(geboekt_op=datetime(2026, 9, 1, tzinfo=UTC))  # geboekt in de lopende maand
+        assert not m(geboekt_op=datetime(2026, 9, 1, tzinfo=UTC), forceer=True)  # forceer heft dát niet op
+        assert not m(hercontrole_op=sept1, vandaag=date(2026, 9, 5))  # deze maand al gecontroleerd
+        assert m(hercontrole_op=sept1, vandaag=date(2026, 9, 5), forceer=True)  # …tenzij geforceerd
+        assert m(hercontrole_op=sept1, vandaag=date(2026, 10, 2))  # volgende maand: opnieuw één keer
+        jaar = pv.Periode.uit_opslag(date(2026, 1, 1), "jaar")
+        assert not m(periode=jaar, geboekt_op=datetime(2025, 12, 20, tzinfo=UTC), vandaag=date(2026, 1, 15))
+        assert m(periode=jaar, geboekt_op=datetime(2025, 12, 20, tzinfo=UTC), vandaag=date(2026, 2, 2))
 
 
 class TestOvh:

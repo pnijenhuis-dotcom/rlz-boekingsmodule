@@ -91,6 +91,7 @@ function stubFetch(opties: { lijstAntwoord?: ProjectverdelingSignaalLijstDto; po
         )
       }
       if (url.startsWith('/projectverdeling/hercontrole-signalen?')) return Promise.resolve(jsonResponse(opties.lijstAntwoord ?? lijst()))
+      if (url.endsWith('/cijfers-sync') && method === 'POST') return Promise.resolve(jsonResponse({ status: 'wachtrij' }))
       if (url.endsWith('/projectverdeling/herverdelen') && method === 'POST') {
         if (opties.postStatus && opties.postStatus !== 200) {
           return Promise.resolve(jsonResponse({ detail: opties.postDetail ?? 'Mislukt' }, opties.postStatus))
@@ -184,6 +185,31 @@ describe('HercontroleScreen (Inzicht › Projectverdeling, kantoorbreed)', () =>
     const dialoog = await screen.findByTestId('pv-herverdeel-dialoog')
     await userEvent.click(within(dialoog).getByRole('button', { name: 'Tegenboeken en herverdelen' }))
     expect(await within(dialoog).findByText(/Herverdelen via tegenboeken kan alleen/)).toBeInTheDocument()
+  })
+
+  it('blok 10: een bevinding "omzetcijfers ontbreken" toont geen afwijking/verdeling maar de actie "Cijfers-sync starten" (POST op de bestaande route)', async () => {
+    const DCTE: ProjectverdelingSignaalRijDto = {
+      ...FLOORBEHEER,
+      document_id: 'dddddddd-0000-0000-0000-000000000003',
+      leverancier: 'DCTE B.V.',
+      referentie: '202611050',
+      pro_rato_periode: '2026-08',
+      pro_rato_periode_label: 'augustus 2026',
+      afwijking_pct: '0',
+      delen_nieuw: [],
+      soort: 'omzet_ontbreekt',
+      bevinding: 'omzetcijfers ontbreken voor augustus 2026',
+    }
+    const aangeroepen = stubFetch({ lijstAntwoord: lijst([DCTE], { tellers: { signalen: 1, administraties: 1 } }) })
+    renderScherm()
+    const rij = (await screen.findAllByTestId('hercontrole-rij'))[0]
+    expect(rij).toHaveAttribute('data-soort', 'omzet_ontbreekt')
+    expect(within(rij).getByTestId('chip-bevinding')).toHaveTextContent('omzetcijfers ontbreken')
+    expect(within(rij).getByText(/omzetcijfers ontbreken voor augustus 2026/)).toBeInTheDocument()
+    expect(within(rij).queryByTestId('chip-afwijking')).toBeNull()
+    expect(within(rij).queryByRole('button', { name: /Herverdelen/ })).toBeNull()
+    await userEvent.click(within(rij).getByRole('button', { name: 'Cijfers-sync starten voor Universal Steigerbouw B.V.' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === `/projecten/${ADMIN_A}/cijfers-sync` && a.method === 'POST')).toBe(true))
   })
 
   it('lege stand zonder filter benoemt de cadans; mét filter zegt hij dat het filter leeg is', async () => {

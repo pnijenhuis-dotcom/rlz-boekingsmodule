@@ -19,7 +19,7 @@ from app.projectverdeling import data as pv
 from app.projectverdeling import hercontrole, service
 from app.projectverdeling.omzet import omzet_per_project
 from tests.documenten.fake_rlz_client import FakeBoekClient
-from tests.projectverdeling.conftest import PERIODE, seed_omzet
+from tests.projectverdeling.conftest import PERIODE, na_boekmaand, seed_omzet
 
 AANGIFTE_Q3_INGEDIEND = {"Status": 2, "StartDate": "2026-07-01T00:00:00", "Date": "2026-09-30T00:00:00"}
 
@@ -324,15 +324,15 @@ class TestHercontrole:
     ) -> None:
         document_id, _ = geboekt_met_verdeling
         # Ongewijzigde omzet → 0 % afwijking, geen signaal.
-        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2))
-        assert tellers == {"beoordeeld": 1, "herrekend": 1, "signalen": 0, "overgeslagen": 0}
+        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2))
+        assert tellers == {"beoordeeld": 1, "herrekend": 1, "signalen": 0, "overgeslagen": 0, "omzet_ontbreekt": 0}
         rij = _rij(admin_engine, document_id)
         assert rij["hercontrole_afwijking_pct"] == Decimal("0.00") and rij["hercontrole_verdeling"] is None
 
         # Nagekomen factuur Venlo (+ € 1.000): Venlo 210 → 318,18 = 7,73 % > 5 % drempel.
         seed_omzet(admin_engine, administratie_id, projecten["venlo"], "1000.00", date(2026, 7, 20))
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=administratie_id, vandaag=date(2026, 9, 2), forceer=True
+            administratie_id=administratie_id, vandaag=na_boekmaand(2), forceer=True
         )
         assert tellers["signalen"] == 1
         rij = _rij(admin_engine, document_id)
@@ -351,10 +351,10 @@ class TestHercontrole:
 
         assert tijdlijn_signalen() == 1
         # Nogmaals (geforceerd) mét dezelfde uitkomst → geen tweede tijdlijnregel.
-        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2), forceer=True)
+        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2), forceer=True)
         assert tijdlijn_signalen() == 1
-        # Buiten de cadans (20e, geen verse sync) → overgeslagen.
-        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 20))
+        # Buiten de cadans (zelfde kalendermaand al gecontroleerd, blok 10) → overgeslagen.
+        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(20))
         assert tellers["overgeslagen"] == 1 and tellers["herrekend"] == 0
 
         # Lijst-chipdata + kantoorbrede lijst.
@@ -380,7 +380,7 @@ class TestHercontrole:
         stand = service.haal_instellingen(administratie_id=administratie_id)
         assert (stand.drempel_pct, stand.wachtweken) == (Decimal("10.00"), 6)
         seed_omzet(admin_engine, administratie_id, projecten["venlo"], "1000.00", date(2026, 7, 20))
-        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2))
+        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2))
         assert tellers["signalen"] == 0  # 7,73 % < 10 %
         with pytest.raises(service.ProjectverdelingServiceFout):
             service.zet_instellingen(
@@ -391,7 +391,7 @@ class TestHercontrole:
 class TestHerverdelen:
     def _signaleer(self, administratie_id, projecten, admin_engine) -> None:
         seed_omzet(admin_engine, administratie_id, projecten["venlo"], "1000.00", date(2026, 7, 20))
-        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2), forceer=True)
+        hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2), forceer=True)
 
     def test_herverdelen_is_tegenboeken_en_opnieuw_boeken_met_nieuwe_verdeling(
         self, geboekt_met_verdeling, administratie_id, gescoopte_gebruiker, projecten, admin_engine

@@ -25,6 +25,10 @@ class Projectverdeling(Base):
     __table_args__ = (
         CheckConstraint("status IN ('voorstel', 'geboekt', 'vervallen')", name="ck_projectverdeling_status"),
         CheckConstraint("pro_rato_soort IN ('maand', 'jaar')", name="ck_projectverdeling_pro_rato_soort"),
+        CheckConstraint(
+            "hercontrole_bevinding IS NULL OR hercontrole_bevinding IN ('omzet_ontbreekt')",
+            name="ck_projectverdeling_hercontrole_bevinding",
+        ),
         UniqueConstraint("document_id", name="uq_projectverdeling_document"),
         Index("ix_projectverdeling_administratie_id", "administratie_id"),
         Index(
@@ -52,6 +56,13 @@ class Projectverdeling(Base):
     boek_cyclus: Mapped[int | None] = mapped_column(default=None)
     hercontrole_op: Mapped[datetime | None] = mapped_column(default=None)
     hercontrole_afwijking_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), default=None)
-    hercontrole_verdeling: Mapped[list | None] = mapped_column(JSONB, default=None)
+    #: Blok 10 herstelrun 08-09: `none_as_null=True` — een expliciete `= None` (bij boeken/opslaan/onder de drempel)
+    #: moet SQL NULL worden, geen JSON `null`; tot 08-09 gold élke pas geboekte verdeling daardoor als "signaal"
+    #: (IS NOT NULL was waar) mét 0 % en een lege nieuwe verdeling (Universal, 5 rijen). Lezers: jsonb_typeof = 'array'.
+    hercontrole_verdeling: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), default=None)
+    #: Blok 10 (migratie 0124): eigen bevinding i.p.v. een herverdeling — 'omzet_ontbreekt' = geen enkel project mét
+    #: omzet in de referentieperiode (cijfers-sync nog niet gedraaid of niets geboekt); actie = cijfers-sync starten,
+    #: herverdelen geblokkeerd. NULL = geen bevinding.
+    hercontrole_bevinding: Mapped[str | None] = mapped_column(default=None)
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

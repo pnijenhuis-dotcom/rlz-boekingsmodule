@@ -69,6 +69,8 @@ def naar_dto(
                 periode_label=pv.periode_label(data.hercontrole.periode, data.hercontrole.peildatum) or None,
                 signaal=data.hercontrole.signaal,
                 nieuwe_verdeling=[_deel(d) for d in data.hercontrole.nieuwe_verdeling],
+                bevinding=data.hercontrole.bevinding,
+                bevinding_tekst=data.hercontrole.bevinding_tekst,
             )
             if data.hercontrole
             else None
@@ -275,6 +277,8 @@ def hercontrole_signalen_kantoorbreed(
                 geboekt_op=r.geboekt_op,
                 delen_oud=[_deel(d) for d in r.delen_oud],
                 delen_nieuw=[_deel(d) for d in r.delen_nieuw],
+                soort=r.soort,
+                bevinding=r.bevinding,
             )
             for r in lijst.rijen
         ],

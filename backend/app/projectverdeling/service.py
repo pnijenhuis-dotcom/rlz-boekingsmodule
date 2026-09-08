@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
@@ -22,6 +22,7 @@ from app.db.session import scoped_session
 from app.documenten.checks import CheckResultaat
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus, LeverancierVoorkeur
 from app.projectverdeling import data as pv
+from app.projectverdeling import hercontrole as hercontrole_regels
 from app.projectverdeling.models import Projectverdeling
 from app.projectverdeling.omzet import omzet_per_project, projectnamen
 from app.sync.models import ProjectCache, VendorCache
@@ -166,8 +167,14 @@ def _bevroren(
             drempel_pct=drempel,
             periode=periode,
             nieuwe_verdeling=[replace(d, project_naam=namen.get(d.project_id)) for d in nieuwe],
-            signaal=row.hercontrole_verdeling is not None,
+            signaal=bool(nieuwe),
             peildatum=row.hercontrole_op.date(),
+            bevinding=row.hercontrole_bevinding,
+            bevinding_tekst=(
+                hercontrole_regels.bevinding_tekst(periode, row.hercontrole_op.date())
+                if row.hercontrole_bevinding and periode
+                else None
+            ),
         )
     basis = sum((r.bedrag for r in vaste), Decimal(0)) + (row.pro_rato_bedrag or Decimal(0))
     return pv.ProjectverdelingData(
@@ -420,6 +427,7 @@ def sla_op(
         row.hercontrole_op = None
         row.hercontrole_afwijking_pct = None
         row.hercontrole_verdeling = None
+        row.hercontrole_bevinding = None
         # Informatief snapshot van de berekening op dit moment (de bindende stand wordt bij het boeken bevroren).
         from app.documenten.models import BoekvoorstelRegel
 
@@ -500,6 +508,7 @@ def bevries_bij_boeking(
     row.hercontrole_op = None
     row.hercontrole_afwijking_pct = None
     row.hercontrole_verdeling = None
+    row.hercontrole_bevinding = None
     record_audit_event(
         session,
         actor_id=actor_id,
@@ -657,10 +666,17 @@ def afwijkingen_per_document(session: Session, document_ids: list[uuid.UUID]) ->
         select(Projectverdeling.document_id, Projectverdeling.hercontrole_afwijking_pct).where(
             Projectverdeling.document_id.in_(document_ids),
             Projectverdeling.status == pv.STATUS_GEBOEKT,
-            Projectverdeling.hercontrole_verdeling.is_not(None),
+            heeft_hercontrole_signaal(),
         )
     ).all()
     return {doc_id: pct for doc_id, pct in rijen if pct is not None}
+
+
+def heeft_hercontrole_signaal():
+    """SQL-toets "er staat een hercontrole-signaal": een JSON-ARRAY in `hercontrole_verdeling`. Bewust niet `IS NOT
+    NULL` — tot blok 10 (08-09) schreef het boekpad JSON `null` (JSONB zonder none_as_null), en dat is niet SQL NULL:
+    élke pas geboekte verdeling gold als signaal met 0 % en een lege nieuwe verdeling (Universal, 5 rijen)."""
+    return func.jsonb_typeof(Projectverdeling.hercontrole_verdeling) == "array"
 
 
 @dataclass(frozen=True)
@@ -685,6 +701,14 @@ class SignaalRij:
     geboekt_op: datetime | None = None
     delen_oud: list[pv.VerdeelDeel] = field(default_factory=list)
     delen_nieuw: list[pv.VerdeelDeel] = field(default_factory=list)
+    #: Blok 10 08-09: 'afwijking' (herverdelen mogelijk) | 'omzet_ontbreekt' (bevinding: cijfers-sync starten,
+    #: herverdelen geblokkeerd); `bevinding` = de leesbare zin ("omzetcijfers ontbreken voor augustus 2026").
+    soort: str = "afwijking"
+    bevinding: str | None = None
+
+
+SOORT_AFWIJKING = "afwijking"
+SOORT_OMZET_ONTBREEKT = "omzet_ontbreekt"
 
 
 @dataclass(frozen=True)
@@ -738,7 +762,7 @@ def hercontrole_signalen(
                 .where(
                     Projectverdeling.administratie_id == administratie.id,
                     Projectverdeling.status == pv.STATUS_GEBOEKT,
-                    Projectverdeling.hercontrole_verdeling.is_not(None),
+                    or_(heeft_hercontrole_signaal(), Projectverdeling.hercontrole_bevinding.is_not(None)),
                     Document.status == DocumentStatus.GEBOEKT,
                 )
             ).all()
@@ -753,7 +777,7 @@ def hercontrole_signalen(
                     ).all()
                 )
             delen_per_rij = [
-                (pv.delen_uit_json(row.verdeling), pv.delen_uit_json(row.hercontrole_verdeling))
+                (pv.delen_uit_json(row.verdeling), pv.delen_uit_json(row.hercontrole_verdeling or []))
                 for row, _, _ in resultaten
             ]
             project_ids = {d.project_id for oud, nieuw in delen_per_rij for d in [*oud, *nieuw]}
@@ -782,6 +806,12 @@ def hercontrole_signalen(
                         geboekt_op=row.geboekt_op,
                         delen_oud=[replace(d, project_naam=projectnaam.get(d.project_id)) for d in oud],
                         delen_nieuw=[replace(d, project_naam=projectnaam.get(d.project_id)) for d in nieuw],
+                        soort=SOORT_OMZET_ONTBREEKT if row.hercontrole_bevinding else SOORT_AFWIJKING,
+                        bevinding=(
+                            hercontrole_regels.bevinding_tekst(_periode_van(row), row.hercontrole_op.date())
+                            if row.hercontrole_bevinding and _periode_van(row) and row.hercontrole_op
+                            else None
+                        ),
                     )
                 )
     tellers = SignaalTellers(signalen=len(rijen), administraties=len({r.administratie_id for r in rijen}))
@@ -791,7 +821,15 @@ def hercontrole_signalen(
         for r in rijen
         if (administratie_id is None or r.administratie_id == administratie_id) and _zoek_treffer(r, term)
     ]
-    selectie.sort(key=lambda r: (-r.afwijking_pct, r.administratie_naam, r.bestandsnaam))
+    # Bevindingen (omzet ontbreekt — er kán niets herverdeeld worden) bovenaan, daarna zwaarste afwijking eerst.
+    selectie.sort(
+        key=lambda r: (
+            0 if r.soort == SOORT_OMZET_ONTBREEKT else 1,
+            -r.afwijking_pct,
+            r.administratie_naam,
+            r.bestandsnaam,
+        )
+    )
     start = (pagina - 1) * PER_PAGINA
     return SignaalLijst(
         rijen=selectie[start : start + PER_PAGINA],

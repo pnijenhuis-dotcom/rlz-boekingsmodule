@@ -499,6 +499,19 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
         </p>
       )}
       {fout && <div className="fout">{fout}</div>}
+      {geboekt && hercontrole?.bevinding === 'omzet_ontbreekt' && (
+        <div className="signaal" role="status" data-testid="pv-bevinding">
+          ⚠{' '}
+          <span>
+            <b>Hercontrole {periodeLabel(hercontrole.op.slice(0, 7))}:</b>{' '}
+            {hercontrole.bevinding_tekst ?? `omzetcijfers ontbreken voor ${hercontrole.periode_label ?? periodeLabel(hercontrole.periode)}`} — er is
+            geen nieuwe verdeling berekend; herverdelen kan pas als er omzetcijfers zijn.
+          </span>
+          <button type="button" className="btn secondary pv-actie" onClick={() => void cijfersVerversen()} disabled={syncBezig}>
+            ⟳ Projectcijfers verversen
+          </button>
+        </div>
+      )}
       {signaal && hercontrole && (
         <div className="signaal" role="status" data-testid="pv-signaal">
           ⚠{' '}

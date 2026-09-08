@@ -75,6 +75,10 @@ class HercontroleInfo:
     signaal: bool
     #: peildatum van de herberekening (voor het dekkingslabel van een jaarperiode: "2026 (t/m augustus)")
     peildatum: date | None = None
+    #: Blok 10 08-09: 'omzet_ontbreekt' = geen enkel project mét omzet in de referentieperiode — geen herverdeling,
+    #: wél een zichtbare bevinding (`bevinding_tekst`) mét actie cijfers-sync; herverdelen geblokkeerd.
+    bevinding: str | None = None
+    bevinding_tekst: str | None = None
 
 
 @dataclass(frozen=True)

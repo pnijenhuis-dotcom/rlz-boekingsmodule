@@ -5,7 +5,7 @@ een klaar boekvoorstel zónder projecten op de regels (de Floorbeheer-casus: €
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -23,6 +23,16 @@ from tests.documenten.conftest import (  # noqa: F401 — fixtures her-exportere
 )
 
 PERIODE = date(2026, 7, 1)  # omzetmaand juli 2026 (mockup-casus)
+
+
+def na_boekmaand(dag: int = 2, maanden: int = 1) -> date:
+    """Peildatum voor de hercontrole (cadans blok 10 08-09): de fixtures boeken 'nu', en een document wordt nooit in
+    zijn boekmaand hercontroleerd — dus altijd een dag in een LATERE kalendermaand kiezen (nooit een vaste datum:
+    die loopt bij de volgende maandwissel tegen de boekmaand-regel aan)."""
+    eerste = date.today().replace(day=1)
+    for _ in range(maanden):
+        eerste = (eerste.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return eerste.replace(day=dag)
 
 
 def maak_project(admin_engine: Engine, aid: uuid.UUID, naam: str, *, actief: bool = True) -> uuid.UUID:

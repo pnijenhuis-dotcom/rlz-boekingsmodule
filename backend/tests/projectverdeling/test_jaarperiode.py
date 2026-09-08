@@ -25,7 +25,7 @@ from app.projectverdeling import hercontrole, service
 from app.projectverdeling.omzet import omzet_per_project
 from app.security.tokens import create_access_token
 from tests.documenten.fake_rlz_client import FakeBoekClient
-from tests.projectverdeling.conftest import seed_omzet
+from tests.projectverdeling.conftest import na_boekmaand, seed_omzet
 from tests.projectverdeling.test_service import AANGIFTE_Q3_INGEDIEND, _rij, _VasteDatum
 
 VANDAAG = date(2026, 9, 15)  # → lopend jaar 2026 = afgesloten t/m augustus
@@ -266,7 +266,7 @@ class TestHercontroleJaar:
 
         # Hercontrole op 02-09 zónder nieuwe boekingen: augustus is nu afgesloten (Eindhoven +99.999) → de
         # jaarstand verschuift, maar hier onder de drempel (E 96,4 % → 98,1 %): pct > 0, geen signaal.
-        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=date(2026, 9, 2))
+        tellers = hercontrole.herbereken_administratie(administratie_id=administratie_id, vandaag=na_boekmaand(2))
         assert tellers["herrekend"] == 1 and tellers["signalen"] == 0
         pct = _rij(admin_engine, document_id)["hercontrole_afwijking_pct"]
         assert Decimal("0") < pct < Decimal("5")
@@ -277,7 +277,7 @@ class TestHercontroleJaar:
         # Grote augustusfactuur Tilburg (€ 50.000) → Tilburg 2,3 % → 20,2 % van de jaaromzet → boven drempel.
         seed_omzet(admin_engine, administratie_id, projecten["tilburg"], "50000.00", date(2026, 8, 15))
         tellers = hercontrole.herbereken_administratie(
-            administratie_id=administratie_id, vandaag=date(2026, 9, 2), forceer=True
+            administratie_id=administratie_id, vandaag=na_boekmaand(2), forceer=True
         )
         assert tellers["signalen"] == 1
         rij = _rij(admin_engine, document_id)
@@ -292,8 +292,12 @@ class TestHercontroleJaar:
                 {"id": document_id},
             ).scalar_one()
         assert detail["projectverdeling_afwijking"]["periode"] == "2026"
-        assert detail["projectverdeling_afwijking"]["periode_label"] == "2026 (t/m augustus)"
-        assert "jaaromzet 2026" in detail["reden"] and "nu 2026 (t/m augustus)" in detail["reden"]
+        # dekkingslabel volgt de peildatum van de hercontrole (afgesloten maanden t/m de vorige maand)
+        assert detail["projectverdeling_afwijking"]["periode_label"] == pv.periode_label(
+            pv.Periode.uit_opslag(date(2026, 1, 1), "jaar"), na_boekmaand(2)
+        )
+        label_nu = pv.periode_label(pv.Periode.uit_opslag(date(2026, 1, 1), "jaar"), na_boekmaand(2))
+        assert "jaaromzet 2026" in detail["reden"] and f"nu {label_nu}" in detail["reden"]
 
         # Kantoorbrede lijst + bevroren lezing dragen code én label.
         lijst = service.hercontrole_signalen(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER)
