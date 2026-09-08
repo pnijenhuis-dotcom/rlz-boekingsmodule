@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { haalLaatstHerinnerd, herinnerAccordeur } from '../accordering/accorderingApi'
 import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
-import { apiJson } from '../api/client'
+import { apiJson, BackendOnbereikbaarError } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { verwerkEml } from '../intake/intakeApi'
@@ -612,12 +612,22 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
           resultaat.mogelijk_duplicaat_van
             ? `"${bestand.name}" geüpload — mogelijk duplicaat, gemarkeerd ter controle.`
             : resultaat.status === 'extractie_wachtrij'
-              ? `"${bestand.name}" geüpload — groot document, wordt op de achtergrond verwerkt.`
+              ? `"${bestand.name}" geüpload — wordt verwerkt… (achtergrond); de rij staat al in de lijst.`
               : `"${bestand.name}" geüpload en in verwerking.`,
         )
         onGeupload()
       } catch (err) {
-        setFout(err instanceof Error ? err.message : 'Upload mislukt')
+        // Blok 1c 08-09: een upload-antwoord dat tóch langer dan de request-timeout duurt is géén
+        // "backend niet beschikbaar" — het bestand staat dan meestal al geregistreerd (live 28–51 s
+        // mét 201). Nooit uitnodigen tot een tweede upload (= duplicaat): lijst verversen + kijken.
+        if (err instanceof BackendOnbereikbaarError && err.oorzaak === 'timeout') {
+          setFout(
+            `Upload van "${bestand.name}" duurt lang — controleer de lijst hieronder; het document verschijnt daar met "Wordt verwerkt…". Upload het niet opnieuw.`,
+          )
+          onGeupload()
+        } else {
+          setFout(err instanceof Error ? err.message : 'Upload mislukt')
+        }
       } finally {
         setBezig(false)
       }

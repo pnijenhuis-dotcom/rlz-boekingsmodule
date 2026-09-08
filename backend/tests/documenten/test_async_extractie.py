@@ -93,9 +93,12 @@ class TestRouting:
         opslag: LokaleBestandsopslag,
         ai_gate_aan: None,
         fake_extraheer: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """De normale factuur merkt niets van de async-route: upload komt direct als
-        te_controleren terug, mét voorstel, zonder wachtrij-status in de tijdlijn."""
+        """Legacy klein-vs-groot-routing achter de seam `ai_extractie_in_request` (sinds blok 1c 08-09
+        is de wachtrij de standaard voor élke AI-extractie): een kleine factuur komt met de seam aan
+        direct als te_controleren terug, mét voorstel, zonder wachtrij-status in de tijdlijn."""
+        monkeypatch.setattr(settings, "ai_extractie_in_request", True)
         wachtrij = FakeWachtrij()
         resultaat = _upload(administratie_id, gescoopte_gebruiker, opslag, wachtrij=wachtrij)
 
@@ -145,6 +148,7 @@ class TestRouting:
         fake_extraheer: list[bytes],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.setattr(settings, "ai_extractie_in_request", True)  # legacy klein-vs-groot-seam
         monkeypatch.setattr(settings, "ai_extractie_sync_max_paginas", 3)
         wachtrij = FakeWachtrij()
 
@@ -265,6 +269,7 @@ class TestAsyncFlow:
     ) -> None:
         """De aanleiding van deze hele sessie: juist een hér-extractie van een monsterfactuur
         hield het scherm vast — die gaat nu ook via de wachtrij."""
+        monkeypatch.setattr(settings, "ai_extractie_in_request", True)  # legacy klein-vs-groot-seam
         resultaat = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert resultaat.status == DocumentStatus.TE_CONTROLEREN  # klein bij upload
 

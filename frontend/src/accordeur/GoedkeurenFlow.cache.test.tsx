@@ -12,7 +12,7 @@ import { setAccessToken } from '../api/client'
 import { AuthProvider, useAuth } from '../auth/AuthContext'
 import type { WachtrijItemDto } from './accordeurApi'
 import { besluitVerzender } from './besluitQueue'
-import { GoedkeurenFlow } from './GoedkeurenFlow'
+import { GoedkeurenFlow, TRAAG_NA_MS, zetTraagNaMsVoorTests } from './GoedkeurenFlow'
 import { resetVoorTests as resetKoudeStart } from './koudeStart'
 import { factuurCache } from './pdfCache'
 import { bewaarStand, leesStand } from './standCache'
@@ -140,6 +140,52 @@ describe('GoedkeurenFlow — cache-first (D2) + parallel laden (D3)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     localStorage.clear()
+    zetTraagNaMsVoorTests(TRAAG_NA_MS)
+  })
+
+  it('blok 1 (08-09): duurt de verversing lang, dan zegt de regel dat — de kaarten uit de cache blijven staan', async () => {
+    zetTraagNaMsVoorTests(50)
+    bewaarStand('u-1', [KEMPEN_1], [])
+    const uitgesteld: Uitgesteld = { geef: () => {} }
+    stubFetch(routes('u-1', uitgesteld))
+    renderFlow()
+    expect(await screen.findByText('LUSSO Interieurbouw')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('acc-versheid')).toHaveTextContent(/^stand van \d\d:\d\d · verversen duurt lang…$/),
+    )
+    expect(screen.getByText('LUSSO Interieurbouw')).toBeInTheDocument()
+    expect(screen.queryByText(/kon niet geladen worden/)).not.toBeInTheDocument()
+    uitgesteld.geef([KEMPEN_1])
+    await waitFor(() => expect(screen.getByTestId('acc-versheid')).toHaveTextContent(/^laatst ververst \d\d:\d\d$/))
+  })
+
+  it('blok 1 (08-09): mislukt de verversing (time-out/netwerk) mét een cache-stand, dan "verversen mislukt — stand van HH:MM" i.p.v. een kale fout; Opnieuw ververst', async () => {
+    bewaarStand('u-1', [KEMPEN_1], [])
+    let pogingen = 0
+    const basis = routes('u-1', null, [KEMPEN_1])
+    stubFetch({
+      ...basis,
+      '/accordering/wachtrij': () => {
+        pogingen += 1
+        if (pogingen === 1) return Promise.reject(new TypeError('Load failed')) as unknown as Response
+        return jsonResponse({ items: [KEMPEN_1] })
+      },
+    })
+    renderFlow()
+    expect(await screen.findByText('LUSSO Interieurbouw')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('acc-versheid')).toHaveTextContent(/^verversen mislukt — stand van \d\d:\d\d/),
+    )
+    // Nooit de kale fout en geen lege lijst zolang er een stand is.
+    expect(screen.queryByText('De wachtrij kon niet geladen worden. Probeer het opnieuw.')).not.toBeInTheDocument()
+    expect(screen.getByText('LUSSO Interieurbouw')).toBeInTheDocument()
+    // Geldknoppen blijven op slot (de stand is nog uit de cache).
+    await userEvent.click(screen.getByText('LUSSO Interieurbouw'))
+    expect(await screen.findAllByRole('button', { name: 'verversen…' })).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: /terug|wachtrij/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Opnieuw' }))
+    await waitFor(() => expect(screen.getByTestId('acc-versheid')).toHaveTextContent(/^laatst ververst \d\d:\d\d$/))
+    expect(pogingen).toBe(2)
   })
 
   it('toont de cache direct met "stand van HH:MM · verversen…", houdt de geldknoppen op slot en laat ze los zodra de verse stand er is', async () => {

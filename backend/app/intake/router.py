@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.auth import service as auth_service
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
@@ -47,7 +48,9 @@ async def eml_verwerken(
     if not inhoud:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Leeg bestand")
     try:
-        resultaat = verwerking.verwerk_eml(inhoud, actor_id=actor.id)
+        # Blokkerend werk (bijlagen lezen, opslag, extractie) in de threadpool — nooit op de
+        # event-loop (blok 1 spoedrun 08-09, zie documenten/router.py::document_uploaden).
+        resultaat = await run_in_threadpool(verwerking.verwerk_eml, inhoud, actor_id=actor.id)
     except verwerking.GeenGeldigIntakeBericht as exc:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     return schemas.IntakeVerwerkResponse(
@@ -78,7 +81,11 @@ async def los_bestand_verwerken(
     if len(inhoud) > settings.document_max_bytes:
         raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Bestand te groot")
     try:
-        r = verwerking.verwerk_los_bestand(
+        # Blokkerend werk (PDF/UBL lezen, sha, opslag, extractie) in de threadpool — nooit op de
+        # event-loop (blok 1 spoedrun 08-09; Cloud Logging 07-09: POST /intake/bestand 21,5 s
+        # verdrong triviale routes). Zie documenten/router.py::document_uploaden.
+        r = await run_in_threadpool(
+            verwerking.verwerk_los_bestand,
             bestandsnaam=bestand.filename or "bestand",
             inhoud=inhoud,
             content_type=bestand.content_type,

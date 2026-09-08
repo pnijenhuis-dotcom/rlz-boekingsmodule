@@ -79,6 +79,13 @@ def _upload_pdf(
     )
 
 
+def _db_status(administratie_id: uuid.UUID, document_id: uuid.UUID) -> DocumentStatus:
+    """Eindstand in de database. Sinds blok 1c (08-09) gaat élke AI-extractie via de wachtrij: de
+    upload-/herextractie-aanroep geeft `extractie_wachtrij` terug en de (in de suite directe) worker
+    zet daarna de eindstatus — dáár toetsen deze AI-voorsteltests op."""
+    return service.haal_document_op(administratie_id=administratie_id, document_id=document_id).document.status
+
+
 def _extractie_detail(administratie_id: uuid.UUID, document_id: uuid.UUID) -> dict | None:
     detail = service.haal_document_op(administratie_id=administratie_id, document_id=document_id)
     for gebeurtenis in detail.gebeurtenissen:
@@ -212,7 +219,9 @@ class TestAiVoorstel:
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
 
         # Eindstatus is en blijft te_controleren: de mens drukt, nooit de AI.
-        assert resultaat.status == DocumentStatus.TE_CONTROLEREN
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.TE_CONTROLEREN
+        )
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
         doorlopen = {g.naar_status for g in detail.gebeurtenissen}
         assert DocumentStatus.KLAAR_OM_TE_BOEKEN not in doorlopen
@@ -253,7 +262,10 @@ class TestAiVoorstel:
             opslag=opslag,
         )
 
-        assert status == DocumentStatus.TE_CONTROLEREN
+        assert status == DocumentStatus.EXTRACTIE_WACHTRIJ  # herextractie ook via de wachtrij (1c 08-09)
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.TE_CONTROLEREN
+        )
         assert aanroepen == [_PDF]
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
         # Nieuwste extractie wint: het voorstel is nu aanwezig, en de tijdlijn toont beide pogingen.
@@ -366,7 +378,9 @@ class TestWaarborgProjectadministratie:
 
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
 
-        assert resultaat.status == DocumentStatus.HANDMATIG_AFMAKEN
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.HANDMATIG_AFMAKEN
+        )
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
         # Bewust géén voorstel — ook niet gedeeltelijk.
         assert detail.veldvoorstel is None
@@ -395,7 +409,9 @@ class TestWaarborgProjectadministratie:
 
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
 
-        assert resultaat.status == DocumentStatus.TE_CONTROLEREN
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.TE_CONTROLEREN
+        )
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
         assert detail.veldvoorstel is not None
         assert detail.veldvoorstel["controle"]["onvolledig"] is True
@@ -418,7 +434,9 @@ class TestWaarborgProjectadministratie:
             lambda pdf_bytes, *, client=None, verbruik_referentie=None, mail_context=None: _fake_extractie(volledig=False),
         )
         resultaat = _upload_pdf(administratie_id, gescoopte_gebruiker, opslag)
-        assert resultaat.status == DocumentStatus.HANDMATIG_AFMAKEN
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.HANDMATIG_AFMAKEN
+        )
 
         # Tweede poging krijgt de regelset wél compleet → normaal voorstel, te_controleren.
         monkeypatch.setattr(
@@ -432,7 +450,10 @@ class TestWaarborgProjectadministratie:
             opslag=opslag,
         )
 
-        assert status == DocumentStatus.TE_CONTROLEREN
+        assert status == DocumentStatus.EXTRACTIE_WACHTRIJ  # herextractie via de wachtrij (1c 08-09)
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.TE_CONTROLEREN
+        )
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=resultaat.document_id)
         assert detail.veldvoorstel is not None
         assert detail.veldvoorstel["controle"]["onvolledig"] is False
@@ -455,7 +476,9 @@ class TestWaarborgProjectadministratie:
 
         # De upload faalt niet en het document verdwijnt niet stil: fout herkenbaar in de tijdlijn,
         # controleur kan handmatig verder.
-        assert resultaat.status == DocumentStatus.TE_CONTROLEREN
+        assert _db_status(administratie_id, resultaat.document_id) == (
+            DocumentStatus.TE_CONTROLEREN
+        )
         detail = _extractie_detail(administratie_id, resultaat.document_id)
         assert detail is not None
         assert "529 overloaded" in detail["ai_extractie_fout"]
@@ -528,7 +551,9 @@ class TestHeraanbiedenGefaaldeExtracties:
 
         # Echte run mét filter: alleen union_1 wordt heraangeboden en krijgt een voorstel.
         telling = service.heraanbied_gefaalde_extracties(sinds=sinds, fout_filter="union types", opslag=opslag)
-        assert telling == {"kandidaten": 1, "heraangeboden": 1, "naar_wachtrij": 0, "overgeslagen": 0}
+        # 1c 08-09: de herextractie loopt via de wachtrij (naar_wachtrij telt mee); de directe
+        # suite-wachtrij verwerkt 'm meteen, dus de AI is wél precies één keer extra aangeroepen.
+        assert telling == {"kandidaten": 1, "heraangeboden": 1, "naar_wachtrij": 1, "overgeslagen": 0}
         assert len(aanroepen) == 2
         detail = service.haal_document_op(administratie_id=administratie_id, document_id=union_1.document_id)
         assert detail.veldvoorstel is not None and detail.veldvoorstel["bron"] == "ai"

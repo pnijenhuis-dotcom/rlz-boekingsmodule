@@ -234,6 +234,8 @@ _GEEN_OPEN_FACTUUR = frozenset(
     {
         DocumentStatus.GEBOEKT.value,
         DocumentStatus.AFGEWEZEN.value,
+        # Duplicaten-UI (blok 3, fixrun 08-09): eigen terminale status, hoort erbij zoals afgewezen.
+        DocumentStatus.AFGEVOERD_DUPLICAAT.value,
         DocumentStatus.VERWIJDERD.value,
         DocumentStatus.GESPLITST.value,
         DocumentStatus.SAMENGEVOEGD.value,
@@ -959,3 +961,99 @@ def offerte_match_kort(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -
     if data.uitkomst not in (match_motor.BINNEN, match_motor.BUITEN):
         return None
     return data
+
+
+def offerte_match_kort_per_document(
+    session: Session, *, administratie_id: uuid.UUID, document_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, MatchData]:
+    """Bulk-variant van `offerte_match_kort` voor de accordeer-wachtrij (blok 1 spoedrun 08-09):
+    één query op de match-rijen met uitkomst binnen/buiten, daarna één query per bijtabel
+    (verplichting, leverancier, project, goedkeurder) voor de hele set — nooit per document.
+    `kandidaten` blijft leeg: de wachtrij-kaart toont die niet (het controlescherm gebruikt
+    `haal_match_op`). Sessie van de aanroeper, al gescoopt op de administratie."""
+    if not document_ids:
+        return {}
+    from app.db.models import Gebruiker
+
+    rijen = list(
+        session.scalars(
+            select(VerplichtingMatch).where(
+                VerplichtingMatch.document_id.in_(document_ids),
+                VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
+            )
+        )
+    )
+    if not rijen:
+        return {}
+    verplichting_ids = {r.verplichting_document_id for r in rijen if r.verplichting_document_id is not None}
+    verplichtingen = (
+        {
+            v.document_id: v
+            for v in session.scalars(select(Verplichting).where(Verplichting.document_id.in_(verplichting_ids)))
+        }
+        if verplichting_ids
+        else {}
+    )
+    vendor_ids = {v.vendor_id for v in verplichtingen.values() if v.vendor_id is not None}
+    project_ids = {v.project_id for v in verplichtingen.values() if v.project_id is not None}
+    gebruiker_ids = {v.goedgekeurd_door for v in verplichtingen.values() if v.goedgekeurd_door is not None}
+    vendor_namen = (
+        dict(
+            session.execute(
+                select(VendorCache.id, VendorCache.naam).where(
+                    VendorCache.id.in_(vendor_ids), VendorCache.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        if vendor_ids
+        else {}
+    )
+    project_namen = (
+        dict(
+            session.execute(
+                select(ProjectCache.id, ProjectCache.naam).where(
+                    ProjectCache.id.in_(project_ids), ProjectCache.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        if project_ids
+        else {}
+    )
+    gebruiker_namen = (
+        dict(session.execute(select(Gebruiker.id, Gebruiker.naam).where(Gebruiker.id.in_(gebruiker_ids))).all())
+        if gebruiker_ids
+        else {}
+    )
+    uitkomst: dict[uuid.UUID, MatchData] = {}
+    for rij in rijen:
+        v = verplichtingen.get(rij.verplichting_document_id) if rij.verplichting_document_id else None
+        details = rij.details or {}
+        percentage_na = details.get("percentage_na")
+        uitkomst[rij.document_id] = MatchData(
+            document_id=rij.document_id,
+            uitkomst=rij.uitkomst,
+            verplichting=(
+                VerplichtingKort(
+                    document_id=v.document_id,
+                    offertenummer=v.offertenummer,
+                    soort_label=v.soort_label,
+                    leverancier_naam=vendor_namen.get(v.vendor_id) if v.vendor_id else None,
+                    project_naam=project_namen.get(v.project_id) if v.project_id else None,
+                    totaal_excl=v.goedgekeurd_bedrag_excl or v.totaalbedrag_excl,
+                    goedgekeurd_op=v.goedgekeurd_op,
+                    goedgekeurd_door_naam=gebruiker_namen.get(v.goedgekeurd_door) if v.goedgekeurd_door else None,
+                )
+                if v is not None
+                else None
+            ),
+            bedrag_excl=rij.bedrag_excl,
+            verbruik_voor=rij.verbruik_voor,
+            verbruik_na=rij.verbruik_na,
+            percentage_na=int(percentage_na) if isinstance(percentage_na, int) else None,
+            overschrijding_excl=rij.overschrijding_excl,
+            handmatig_gekoppeld=rij.handmatig_gekoppeld,
+            kandidaten=[],
+            berekend_op=rij.berekend_op,
+            melding=str(details.get("melding") or ""),
+        )
+    return uitkomst

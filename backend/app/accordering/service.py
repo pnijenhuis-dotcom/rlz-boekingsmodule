@@ -65,7 +65,7 @@ from app.documenten.models import (
     VraagStatus,
 )
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
-from app.documenten.vragen import open_vraag_aan_accordeur_op_document
+from app.documenten.vragen import open_vragen_aan_accordeur_per_document
 from app.sync.models import VendorCache
 
 logger = logging.getLogger(__name__)
@@ -2221,7 +2221,9 @@ def _doorbelasting_voor_wachtrij(
     """Leesroute voor de accordeur: de klaargezette verdeling samengevat per doelentiteit.
     Aandeel-% = netto_totaal van de doelentiteit t.o.v. het totaal van de verdeelde bron-regels
     (de per-regel-percentages kunnen verschillen; de accordeur krijgt één begrijpelijk getal).
-    Faalvriendelijk: een leesfout hier mag de wachtrij nooit blokkeren — dan géén blok."""
+    Faalvriendelijk: een leesfout hier mag de wachtrij nooit blokkeren — dan géén blok.
+    Sinds blok 1 (08-09) alleen nog aangeroepen voor documenten die volgens één bulk-query een
+    klaargezette run HEBBEN (zie `_klaargezette_run_ids`) — geen sessie per wachtrij-item meer."""
     from app.doorbelasting import orkestratie
     from app.doorbelasting import service as doorbelasting_service
 
@@ -2250,6 +2252,23 @@ def _doorbelasting_voor_wachtrij(
     return tuple(regels)
 
 
+def _klaargezette_run_ids(session: Session, document_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Eén query: welke van deze documenten hebben een klaargezette doorbelasting-run. Alleen dié
+    krijgen daarna de (eigen-sessie) review-samenvatting — de rest kost niets."""
+    if not document_ids:
+        return set()
+    from app.doorbelasting.models import DoorbelastingRun, DoorbelastingRunStatus
+
+    return set(
+        session.scalars(
+            select(DoorbelastingRun.document_id).where(
+                DoorbelastingRun.document_id.in_(document_ids),
+                DoorbelastingRun.status == DoorbelastingRunStatus.KLAARGEZET.value,
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class VerplichtingKaart:
     """Kaart-gegevens van een verplichting-document in de accordeur-wachtrij (mockup blok 1)."""
@@ -2262,81 +2281,196 @@ class VerplichtingKaart:
     omschrijving: str | None
 
 
-def _verplichting_kaart(
-    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID
-) -> VerplichtingKaart | None:
-    """Leesroute voor de accordeur (04-09): de verplichting-rij + leveranciers-/projectnaam uit de
-    caches. Faalvriendelijk: geen rij = geen kaart (de app valt dan terug op de kop-gegevens)."""
+def _verplichting_kaarten(
+    session: Session, *, administratie_id: uuid.UUID, document_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, VerplichtingKaart]:
+    """Leesroute voor de accordeur (04-09, bulk sinds 08-09): de verplichting-rijen + leveranciers-/
+    projectnamen uit de caches in drie queries voor de hele set. Faalvriendelijk: geen rij = geen
+    kaart (de app valt dan terug op de kop-gegevens)."""
+    if not document_ids:
+        return {}
     from app.sync.models import ProjectCache
     from app.verplichting.models import Verplichting
 
-    rij = session.get(Verplichting, document_id)
-    if rij is None:
-        return None
-    vendor = session.get(VendorCache, (rij.vendor_id, administratie_id)) if rij.vendor_id else None
-    project = session.get(ProjectCache, (rij.project_id, administratie_id)) if rij.project_id else None
-    return VerplichtingKaart(
-        soort_label=rij.soort_label,
-        leverancier_naam=vendor.naam if vendor else None,
-        project_naam=project.naam if project else None,
-        totaal_excl=rij.totaalbedrag_excl,
-        geldig_tot=rij.geldig_tot,
-        omschrijving=rij.omschrijving,
-    )
-
-
-def _offerte_match_voor_wachtrij(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, soort: str
-) -> object | None:
-    """De conform-offerte-melding voor een INKOOPfactuur in de wachtrij (OPTIE A, ④): alleen een
-    `binnen`/`buiten`-uitkomst is voor de accordeur zichtbaar. Faalvriendelijk: een leesfout mag de
-    wachtrij nooit blokkeren — dan géén melding."""
-    if soort != DocumentSoort.INKOOPFACTUUR.value:
-        return None
-    from app.verplichting import service as verplichting_service
-
-    try:
-        return verplichting_service.offerte_match_kort(
-            administratie_id=administratie_id, document_id=document_id
+    rijen = list(session.scalars(select(Verplichting).where(Verplichting.document_id.in_(document_ids))))
+    if not rijen:
+        return {}
+    vendor_ids = {r.vendor_id for r in rijen if r.vendor_id is not None}
+    project_ids = {r.project_id for r in rijen if r.project_id is not None}
+    vendor_namen = (
+        dict(
+            session.execute(
+                select(VendorCache.id, VendorCache.naam).where(
+                    VendorCache.id.in_(vendor_ids), VendorCache.administratie_id == administratie_id
+                )
+            ).all()
         )
-    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
-        logger.exception("Offerte-match voor de wachtrij niet te laden (document %s)", document_id)
-        return None
+        if vendor_ids
+        else {}
+    )
+    project_namen = (
+        dict(
+            session.execute(
+                select(ProjectCache.id, ProjectCache.naam).where(
+                    ProjectCache.id.in_(project_ids), ProjectCache.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        if project_ids
+        else {}
+    )
+    return {
+        r.document_id: VerplichtingKaart(
+            soort_label=r.soort_label,
+            leverancier_naam=vendor_namen.get(r.vendor_id) if r.vendor_id else None,
+            project_naam=project_namen.get(r.project_id) if r.project_id else None,
+            totaal_excl=r.totaalbedrag_excl,
+            geldig_tot=r.geldig_tot,
+            omschrijving=r.omschrijving,
+        )
+        for r in rijen
+    }
 
 
-def _boeking_omschrijving(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
-    """Eerste boekingsregel als leesbare samenvatting: grootboeknaam + btw-naam, met een
-    "+n regels"-suffix bij meer regels (de accordeur beoordeelt de factuur, niet de codering —
-    besluit scope-aanscherping 2026-08-08)."""
+def _boeking_omschrijvingen(
+    session: Session, *, administratie_id: uuid.UUID, document_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Eerste boekingsregel per document als leesbare samenvatting: grootboeknaam + btw-naam, met
+    een "+n regels"-suffix bij meer regels (de accordeur beoordeelt de factuur, niet de codering —
+    besluit scope-aanscherping 2026-08-08). Bulk (08-09): regels, grootboeknamen en btw-namen in
+    drie queries voor de hele set."""
+    if not document_ids:
+        return {}
     from app.db.models import Grootboekrekening
     from app.documenten.models import BoekvoorstelRegel
     from app.sync.models import TaxRateCache
 
-    regels = list(
-        session.scalars(
-            select(BoekvoorstelRegel)
-            .where(BoekvoorstelRegel.document_id == document_id)
-            .order_by(BoekvoorstelRegel.volgnummer)
+    regels_per_document: dict[uuid.UUID, list[BoekvoorstelRegel]] = {}
+    for regel in session.scalars(
+        select(BoekvoorstelRegel)
+        .where(BoekvoorstelRegel.document_id.in_(document_ids))
+        .order_by(BoekvoorstelRegel.document_id, BoekvoorstelRegel.volgnummer)
+    ):
+        regels_per_document.setdefault(regel.document_id, []).append(regel)
+    if not regels_per_document:
+        return {}
+    eerste_regels = {doc_id: regels[0] for doc_id, regels in regels_per_document.items()}
+    ledger_ids = {r.ledger_id for r in eerste_regels.values() if r.ledger_id is not None}
+    taxrate_ids = {r.taxrate_id for r in eerste_regels.values() if r.taxrate_id is not None}
+    grootboek_namen = (
+        dict(
+            session.execute(
+                select(Grootboekrekening.ledger_id, Grootboekrekening.naam).where(
+                    Grootboekrekening.ledger_id.in_(ledger_ids), Grootboekrekening.administratie_id == administratie_id
+                )
+            ).all()
         )
+        if ledger_ids
+        else {}
     )
-    if not regels:
-        return None
-    eerste = regels[0]
-    delen: list[str] = []
-    if eerste.ledger_id is not None:
-        grootboek = session.get(Grootboekrekening, (eerste.ledger_id, administratie_id))
-        if grootboek is not None:
-            delen.append(grootboek.naam)
-    if eerste.taxrate_id is not None:
-        taxrate = session.get(TaxRateCache, (eerste.taxrate_id, administratie_id))
-        if taxrate is not None and taxrate.naam:
-            delen.append(taxrate.naam)
-    if not delen:
-        return None
-    samenvatting = " · ".join(delen)
-    if len(regels) > 1:
-        samenvatting += f" · +{len(regels) - 1} regels"
-    return samenvatting
+    taxrate_namen = (
+        dict(
+            session.execute(
+                select(TaxRateCache.id, TaxRateCache.naam).where(
+                    TaxRateCache.id.in_(taxrate_ids), TaxRateCache.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        if taxrate_ids
+        else {}
+    )
+    uitkomst: dict[uuid.UUID, str] = {}
+    for doc_id, regels in regels_per_document.items():
+        eerste = regels[0]
+        delen: list[str] = []
+        if eerste.ledger_id is not None and grootboek_namen.get(eerste.ledger_id):
+            delen.append(grootboek_namen[eerste.ledger_id])
+        if eerste.taxrate_id is not None and taxrate_namen.get(eerste.taxrate_id):
+            delen.append(taxrate_namen[eerste.taxrate_id])
+        if not delen:
+            continue
+        samenvatting = " · ".join(delen)
+        if len(regels) > 1:
+            samenvatting += f" · +{len(regels) - 1} regels"
+        uitkomst[doc_id] = samenvatting
+    return uitkomst
+
+
+def _boeking_omschrijving(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+    """Enkelvoudige vorm (delegeert naar de bulk-variant)."""
+    return _boeking_omschrijvingen(session, administratie_id=administratie_id, document_ids=[document_id]).get(
+        document_id
+    )
+
+
+def _staande_regel_kandidaten(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    accordeur_id: uuid.UUID,
+    kandidaten: list[tuple[uuid.UUID, uuid.UUID | None, Decimal | None, uuid.UUID | None]],
+) -> set[uuid.UUID]:
+    """Voor welke wachtrij-documenten stelt de PWA ná het akkoord de staande goedkeuring voor:
+    déze accordeur gaf eerder HANDMATIG akkoord op een ánder document van dezelfde leverancier met
+    exact hetzelfde bedrag (binnen dezelfde afdeling — blok A 28-08) en er bestaat nog geen actieve
+    staande regel voor die combinatie. `kandidaten` = (document_id, vendor_id, totaalbedrag,
+    afdeling_id). Bulk (08-09): één query op de actieve regels van deze accordeur + één join-query
+    rondes×stappen beperkt tot de leveranciers in de wachtrij — de oude vorm liep per item ALLE
+    rondes van de administratie door mét een stappen-query per ronde (kwadratisch)."""
+    relevant = [(d, v, t, a) for d, v, t, a in kandidaten if v is not None and t is not None]
+    if not relevant:
+        return set()
+    vendor_ids = {v for _, v, _, _ in relevant}
+    actieve_regels = {
+        (r.vendor_id, r.bedrag, r.afdeling_id)
+        for r in session.scalars(
+            select(StaandeGoedkeuring).where(
+                StaandeGoedkeuring.administratie_id == administratie_id,
+                StaandeGoedkeuring.accordeur_gebruiker_id == accordeur_id,
+                StaandeGoedkeuring.vendor_id.in_(vendor_ids),
+                StaandeGoedkeuring.actief.is_(True),
+            )
+        )
+    }
+    # Eerdere handmatige akkoorden van déze accordeur bij deze leveranciers: ronde + de detail-JSON
+    # (vendor_id/totaalbedrag/afdeling) in één join, gefilterd op vendor_id in SQL.
+    eerdere = session.execute(
+        select(DocumentAccordering.document_id, DocumentAccordering.detail)
+        .join(AccorderingStap, AccorderingStap.accordering_id == DocumentAccordering.id)
+        .where(
+            DocumentAccordering.administratie_id == administratie_id,
+            DocumentAccordering.detail["vendor_id"].astext.in_([str(v) for v in vendor_ids]),
+            AccorderingStap.accordeur_gebruiker_id == accordeur_id,
+            AccorderingStap.besluit == StapBesluit.AKKOORD.value,
+            AccorderingStap.besluit_bron == StapBesluitBron.HANDMATIG.value,
+        )
+    ).all()
+    handmatig_eerder: set[tuple[uuid.UUID, Decimal, uuid.UUID | None, uuid.UUID]] = set()
+    for document_id, detail in eerdere:
+        detail = detail or {}
+        try:
+            vendor_id = uuid.UUID(str(detail.get("vendor_id")))
+        except ValueError:
+            continue
+        bedrag = _als_decimal(detail.get("totaalbedrag"))
+        if bedrag is None:
+            continue
+        afdeling_ruw = detail.get("afdeling_id")
+        try:
+            afdeling_id = uuid.UUID(str(afdeling_ruw)) if afdeling_ruw else None
+        except ValueError:
+            afdeling_id = None
+        handmatig_eerder.add((vendor_id, bedrag, afdeling_id, document_id))
+    uitkomst: set[uuid.UUID] = set()
+    for document_id, vendor_id, totaalbedrag, afdeling_id in relevant:
+        if (vendor_id, totaalbedrag, afdeling_id) in actieve_regels:
+            continue
+        if any(
+            v == vendor_id and b == totaalbedrag and a == afdeling_id and d != document_id
+            for v, b, a, d in handmatig_eerder
+        ):
+            uitkomst.add(document_id)
+    return uitkomst
 
 
 def _is_staande_regel_kandidaat(
@@ -2349,131 +2483,195 @@ def _is_staande_regel_kandidaat(
     totaalbedrag: Decimal | None,
     afdeling_id: uuid.UUID | None = None,
 ) -> bool:
-    """True als déze accordeur eerder HANDMATIG akkoord gaf op een ander document van dezelfde
-    leverancier met exact hetzelfde bedrag (binnen dezelfde afdeling — blok A 28-08), en er nog
-    geen actieve staande regel voor die combinatie bestaat — dan stelt de PWA ná het akkoord de
-    staande goedkeuring voor."""
-    if vendor_id is None or totaalbedrag is None:
-        return False
-    bestaande_regel = session.scalars(
-        select(StaandeGoedkeuring.id).where(
-            StaandeGoedkeuring.administratie_id == administratie_id,
-            StaandeGoedkeuring.accordeur_gebruiker_id == accordeur_id,
-            StaandeGoedkeuring.vendor_id == vendor_id,
-            StaandeGoedkeuring.bedrag == totaalbedrag,
-            StaandeGoedkeuring.actief.is_(True),
-            _afdeling_gelijk(StaandeGoedkeuring.afdeling_id, afdeling_id),
+    """Enkelvoudige vorm (delegeert naar de bulk-variant)."""
+    return document_id in _staande_regel_kandidaten(
+        session,
+        administratie_id=administratie_id,
+        accordeur_id=accordeur_id,
+        kandidaten=[(document_id, vendor_id, totaalbedrag, afdeling_id)],
+    )
+
+
+def _open_rondes_met_volgende_stap(
+    session: Session, *, administratie_id: uuid.UUID, alleen_met_stap_van: uuid.UUID | None = None
+) -> list[tuple[DocumentAccordering, AccorderingStap]]:
+    """DE gedeelde aan-de-beurt-bron (wachtrij, teller, meldingen — nooit uiteenlopen): alle open
+    rondes van de administratie mét hun eerstvolgende open vereiste stap (`_eerstvolgende_open_stap`),
+    in twee queries (rondes + álle stappen van die rondes). Met `alleen_met_stap_van` worden alleen
+    rondes gelezen waarin die gebruiker überhaupt een stap heeft (EXISTS-filter in SQL) — een
+    Beheerder-accordeur met 33 administraties laadt zo nooit álle open rondes."""
+    rondes_q = select(DocumentAccordering).where(
+        DocumentAccordering.administratie_id == administratie_id,
+        DocumentAccordering.status == AccorderingStatus.OPEN.value,
+    )
+    if alleen_met_stap_van is not None:
+        rondes_q = rondes_q.where(
+            select(AccorderingStap.id)
+            .where(
+                AccorderingStap.accordering_id == DocumentAccordering.id,
+                AccorderingStap.accordeur_gebruiker_id == alleen_met_stap_van,
+            )
+            .exists()
         )
-    ).first()
-    if bestaande_regel is not None:
-        return False
-    eerdere = session.scalars(
-        select(DocumentAccordering).where(
-            DocumentAccordering.administratie_id == administratie_id,
-            DocumentAccordering.document_id != document_id,
+    rondes = list(session.scalars(rondes_q))
+    if not rondes:
+        return []
+    stappen_per_ronde: dict[uuid.UUID, list[AccorderingStap]] = {}
+    for stap in session.scalars(
+        select(AccorderingStap).where(AccorderingStap.accordering_id.in_([r.id for r in rondes]))
+    ):
+        stappen_per_ronde.setdefault(stap.accordering_id, []).append(stap)
+    uitkomst: list[tuple[DocumentAccordering, AccorderingStap]] = []
+    for ronde in rondes:
+        volgende = _eerstvolgende_open_stap(stappen_per_ronde.get(ronde.id, []))
+        if volgende is not None:
+            uitkomst.append((ronde, volgende))
+    return uitkomst
+
+
+# Bovengrens (documentatie + test `test_wachtrij_querytelling.py`): aantal SQL-statements per
+# administratie in `wachtrij_voor_accordeur`, ONAFHANKELIJK van het aantal rondes. Opbouw:
+# 2 set_config + 1 rondes (EXISTS) + 1 stappen + 1 administratie + 1 documenten + 1 voorstellen
+# + 1 vendors + 3 boekingsomschrijving + 2 staande-regel + 1 vragen (+3 als er vragen zijn)
+# + 3 verplichting-kaarten (alleen bij verplichting-items) + 1 doorbelasting-runs
+# + 1 offerte-match (+4 als er treffers zijn) = 15 zonder verrijkingstreffers, 25 met álle.
+# Zonder rondes voor deze actor: 3 (2 set_config + rondes-query). Uitzondering, bewust: per
+# document MÉT een klaargezette doorbelasting-run komt daar de bestaande review-leesroute bij
+# (eigen sessie, `doorbelasting_service.review_data`) — die schaalt met het aantal
+# doorbelasting-documenten in de wachtrij, niet met het aantal rondes.
+WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE = 25
+
+
+def _wachtrij_administratie(
+    session: Session, *, actor_id: uuid.UUID, administratie_id: uuid.UUID
+) -> list[WachtrijItem]:
+    """Wachtrij-items van één administratie, set-based (blok 1 spoedrun 08-09 — de oude vorm deed
+    per open ronde 8–12 losse lookups plus per item twee eigen sessies; live 9,8–11,5 s voor
+    Peter). Aan-de-beurt-definitie = `_open_rondes_met_volgende_stap`."""
+    rondes = [
+        (ronde, volgende)
+        for ronde, volgende in _open_rondes_met_volgende_stap(
+            session, administratie_id=administratie_id, alleen_met_stap_van=actor_id
         )
-    ).all()
-    for accordering in eerdere:
-        detail = accordering.detail or {}
-        if detail.get("vendor_id") != str(vendor_id):
-            continue
-        if _ronde_afdeling_id(accordering) != afdeling_id:
-            continue
-        eerder_bedrag = _als_decimal(detail.get("totaalbedrag"))
-        if eerder_bedrag is None or eerder_bedrag != totaalbedrag:
-            continue
-        for stap in _stappen_van(session, accordering.id):
-            if (
-                stap.accordeur_gebruiker_id == accordeur_id
-                and stap.besluit == StapBesluit.AKKOORD.value
-                and stap.besluit_bron == StapBesluitBron.HANDMATIG.value
-            ):
-                return True
-    return False
+        if volgende.accordeur_gebruiker_id == actor_id
+    ]
+    if not rondes:
+        return []
+    administratie = session.get(Administratie, administratie_id)
+    document_ids = [ronde.document_id for ronde, _ in rondes]
+    documenten = {d.id: d for d in session.scalars(select(Document).where(Document.id.in_(document_ids)))}
+    voorstellen = {
+        v.document_id: v
+        for v in session.scalars(select(Boekvoorstel).where(Boekvoorstel.document_id.in_(document_ids)))
+    }
+    vendor_ids = {v.vendor_id for v in voorstellen.values() if v.vendor_id is not None}
+    vendor_namen = (
+        dict(
+            session.execute(
+                select(VendorCache.id, VendorCache.naam).where(
+                    VendorCache.id.in_(vendor_ids), VendorCache.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        if vendor_ids
+        else {}
+    )
+    omschrijvingen = _boeking_omschrijvingen(session, administratie_id=administratie_id, document_ids=document_ids)
+    kandidaten = _staande_regel_kandidaten(
+        session,
+        administratie_id=administratie_id,
+        accordeur_id=actor_id,
+        kandidaten=[
+            (
+                ronde.document_id,
+                voorstellen[ronde.document_id].vendor_id if ronde.document_id in voorstellen else None,
+                voorstellen[ronde.document_id].totaalbedrag if ronde.document_id in voorstellen else None,
+                _ronde_afdeling_id(ronde),
+            )
+            for ronde, _ in rondes
+        ],
+    )
+    vragen = open_vragen_aan_accordeur_per_document(session, document_ids=document_ids, actor_id=actor_id)
+    verplichting_ids = [
+        d
+        for d in document_ids
+        if (doc := documenten.get(d)) is not None and doc.soort == DocumentSoort.VERPLICHTING.value
+    ]
+    verplichting_kaarten = _verplichting_kaarten(
+        session, administratie_id=administratie_id, document_ids=verplichting_ids
+    )
+    inkoop_ids = [d for d in document_ids if d not in set(verplichting_ids)]
+    from app.verplichting import service as verplichting_service
+
+    try:
+        offerte_matches = verplichting_service.offerte_match_kort_per_document(
+            session, administratie_id=administratie_id, document_ids=inkoop_ids
+        )
+    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
+        logger.exception("Offerte-match voor de wachtrij niet te laden (administratie %s)", administratie_id)
+        offerte_matches = {}
+    met_doorbelasting = _klaargezette_run_ids(session, document_ids)
+
+    items: list[WachtrijItem] = []
+    for ronde, volgende in rondes:
+        document = documenten.get(ronde.document_id)
+        soort = document.soort if document is not None else DocumentSoort.INKOOPFACTUUR.value
+        voorstel = voorstellen.get(ronde.document_id)
+        leverancier = vendor_namen.get(voorstel.vendor_id) if voorstel is not None and voorstel.vendor_id else None
+        is_verplichting = soort == DocumentSoort.VERPLICHTING.value
+        verplichting_kaart = verplichting_kaarten.get(ronde.document_id) if is_verplichting else None
+        if verplichting_kaart is not None and verplichting_kaart.leverancier_naam:
+            leverancier = verplichting_kaart.leverancier_naam
+        items.append(
+            WachtrijItem(
+                document_id=ronde.document_id,
+                administratie_id=administratie_id,
+                administratie_naam=administratie.naam if administratie else None,
+                leverancier_naam=leverancier,
+                referentie=voorstel.referentie if voorstel else None,
+                factuurdatum=voorstel.factuurdatum if voorstel else None,
+                totaalbedrag=voorstel.totaalbedrag if voorstel else None,
+                aangeboden_op=ronde.aangeboden_op,
+                laag_volgnummer=volgende.volgnummer,
+                boeking_omschrijving=omschrijvingen.get(ronde.document_id),
+                staande_regel_kandidaat=ronde.document_id in kandidaten,
+                # Vult de aanroeper ná de sessie (eigen leesroute met eigen sessies, nooit genest);
+                # het sentinel `()` markeert "run aanwezig, samenvatting nog te laden".
+                doorbelasting=() if ronde.document_id in met_doorbelasting else None,
+                vraag=vragen.get(ronde.document_id),
+                afdeling_id=_ronde_afdeling_id(ronde),
+                afdeling_naam=(ronde.detail or {}).get("afdeling_naam"),
+                soort=soort,
+                verplichting=verplichting_kaart,
+                offerte_match=(
+                    offerte_matches.get(ronde.document_id) if soort == DocumentSoort.INKOOPFACTUUR.value else None
+                ),
+            )
+        )
+    return items
 
 
 def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid.UUID]) -> list[WachtrijItem]:
     """De accordeer-wachtrij (PWA-endpoint, scope-aanscherping 2026-08-08: uitsluitend de
     wachtrij): documenten in ter_accordering waar déze accordeur aan de beurt is — per
-    administratie binnen de scope (RLS dwingt dat af; de lijst komt uit de scope-bron)."""
+    administratie binnen de scope (RLS dwingt dat af; de lijst komt uit de scope-bron).
+    Set-based sinds blok 1 (08-09): per administratie één gescoopte sessie met een constant aantal
+    queries (`WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE`), nooit per ronde."""
     items: list[WachtrijItem] = []
     for administratie_id in administratie_ids:
         with scoped_session(administratie_id) as session:
-            administratie = session.get(Administratie, administratie_id)
-            open_rondes = list(
-                session.scalars(
-                    select(DocumentAccordering).where(
-                        DocumentAccordering.administratie_id == administratie_id,
-                        DocumentAccordering.status == AccorderingStatus.OPEN.value,
-                    )
-                )
-            )
-            for accordering in open_rondes:
-                stappen = _stappen_van(session, accordering.id)
-                volgende = _eerstvolgende_open_stap(stappen)
-                if volgende is None or volgende.accordeur_gebruiker_id != actor_id:
-                    continue
-                document = session.get(Document, accordering.document_id)
-                soort = document.soort if document is not None else DocumentSoort.INKOOPFACTUUR.value
-                voorstel = session.get(Boekvoorstel, accordering.document_id)
-                leverancier = None
-                if voorstel is not None and voorstel.vendor_id is not None:
-                    vendor = session.get(VendorCache, (voorstel.vendor_id, administratie_id))
-                    leverancier = vendor.naam if vendor else None
-                verplichting_kaart = None
-                if soort == DocumentSoort.VERPLICHTING.value:
-                    # Verplichting-kaart (mockup blok 1): chip soort-label, leverancier vet,
-                    # "‹omschrijving› · project ‹nr› · geldig t/m ‹d›", bedrag excl.
-                    verplichting_kaart = _verplichting_kaart(
-                        session, administratie_id=administratie_id, document_id=accordering.document_id
-                    )
-                    if verplichting_kaart is not None and verplichting_kaart.leverancier_naam:
-                        leverancier = verplichting_kaart.leverancier_naam
-                items.append(
-                    WachtrijItem(
-                        document_id=accordering.document_id,
-                        administratie_id=administratie_id,
-                        administratie_naam=administratie.naam if administratie else None,
-                        leverancier_naam=leverancier,
-                        referentie=voorstel.referentie if voorstel else None,
-                        factuurdatum=voorstel.factuurdatum if voorstel else None,
-                        totaalbedrag=voorstel.totaalbedrag if voorstel else None,
-                        aangeboden_op=accordering.aangeboden_op,
-                        laag_volgnummer=volgende.volgnummer,
-                        boeking_omschrijving=_boeking_omschrijving(
-                            session, administratie_id=administratie_id, document_id=accordering.document_id
-                        ),
-                        staande_regel_kandidaat=_is_staande_regel_kandidaat(
-                            session,
-                            administratie_id=administratie_id,
-                            accordeur_id=actor_id,
-                            document_id=accordering.document_id,
-                            vendor_id=voorstel.vendor_id if voorstel else None,
-                            totaalbedrag=voorstel.totaalbedrag if voorstel else None,
-                            afdeling_id=_ronde_afdeling_id(accordering),
-                        ),
-                        doorbelasting=None,
-                        vraag=open_vraag_aan_accordeur_op_document(
-                            session, document_id=accordering.document_id, actor_id=actor_id
-                        ),
-                        afdeling_id=_ronde_afdeling_id(accordering),
-                        afdeling_naam=(accordering.detail or {}).get("afdeling_naam"),
-                        soort=soort,
-                        verplichting=verplichting_kaart,
-                    )
-                )
+            items.extend(_wachtrij_administratie(session, actor_id=actor_id, administratie_id=administratie_id))
     # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen
-    # sessies (review_data), nooit genest.
+    # sessies (review_data), nooit genest — alleen voor items met een klaargezette run.
     items = [
         replace(
             item,
             doorbelasting=_doorbelasting_voor_wachtrij(
                 administratie_id=item.administratie_id, document_id=item.document_id
             ),
-            offerte_match=_offerte_match_voor_wachtrij(
-                administratie_id=item.administratie_id, document_id=item.document_id, soort=item.soort
-            ),
         )
+        if item.doorbelasting is not None
+        else item
         for item in items
     ]
     items.sort(key=lambda i: i.aangeboden_op)
@@ -2482,23 +2680,13 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
 
 def documenten_aan_de_beurt(*, administratie_id: uuid.UUID) -> dict[uuid.UUID, list[uuid.UUID]]:
     """Per accordeur de document-id's waar híj/zij nu aan de beurt is, voor één administratie —
-    exact dezelfde aan-de-beurt-definitie als de wachtrij (eerstvolgende open vereiste stap),
+    exact dezelfde aan-de-beurt-definitie als de wachtrij (`_open_rondes_met_volgende_stap`),
     zodat teller, wachtrij en meldingen nooit uiteenlopen. Selectiebron van de dagelijkse
     herinnering (via aantallen_aan_de_beurt) én de nieuwe-facturen-bundelmelding."""
     per_accordeur: dict[uuid.UUID, list[uuid.UUID]] = {}
     with scoped_session(administratie_id) as session:
-        open_rondes = list(
-            session.scalars(
-                select(DocumentAccordering).where(
-                    DocumentAccordering.administratie_id == administratie_id,
-                    DocumentAccordering.status == AccorderingStatus.OPEN.value,
-                )
-            )
-        )
-        for accordering in open_rondes:
-            volgende = _eerstvolgende_open_stap(_stappen_van(session, accordering.id))
-            if volgende is not None:
-                per_accordeur.setdefault(volgende.accordeur_gebruiker_id, []).append(accordering.document_id)
+        for ronde, volgende in _open_rondes_met_volgende_stap(session, administratie_id=administratie_id):
+            per_accordeur.setdefault(volgende.accordeur_gebruiker_id, []).append(ronde.document_id)
     return per_accordeur
 
 

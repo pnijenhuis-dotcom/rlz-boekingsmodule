@@ -9,9 +9,24 @@ import { markeer, noteerServerTiming } from './koudeStart'
 /** Als apiJson, maar mét koude-start-marks en de Server-Timing-header van de leesroute
  * (blok D1 06-09) — zelfde foutvertaling: `detail`-string letterlijk (de 403
  * `voorwaarden_akkoord_vereist` wordt door isVoorwaardenVereist op de tekst herkend). */
+/** Timeout voor de twee leesroutes (blok 1 08-09): live deed de wachtrij 9,8–11,5 s (Cloud Logging
+ * 07/08-09) en brak de app op de standaard REQUEST_TIMEOUT_MS (10 s) af met een kale fout, terwijl de
+ * server wél antwoordde. Lezen mag langer wachten — de cache-stand blijft staan en na 3 s verschijnt
+ * "verversen duurt lang…" (GoedkeurenFlow) — geldbesluiten houden de standaard van 10 s. Eigen
+ * AbortSignal: `fetchMetTimeout` laat een meegegeven signal ongemoeid (bestaand contract), dus de
+ * 10 s-timer geldt hier niet. Een afgebroken request wordt zoals elke abort een BackendOnbereikbaarError. */
+export const LEES_TIMEOUT_MS = 30_000
+
 async function leesMetTiming<T>(pad: string, route: 'wachtrij' | 'vragen'): Promise<T> {
   markeer(`${route}-start`)
-  const resp = await apiFetch(pad)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), LEES_TIMEOUT_MS)
+  let resp: Response
+  try {
+    resp = await apiFetch(pad, { signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
   if (!resp.ok) {
     let detail: unknown
     try {

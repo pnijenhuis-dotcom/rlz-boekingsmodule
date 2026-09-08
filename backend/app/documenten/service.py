@@ -331,9 +331,11 @@ def _herstel_open_vraag_na_extractie(session: Session, *, document: Document, ac
 
 
 def _groot_document_detail(session: Session, *, document: Document, inhoud: bytes) -> dict | None:
-    """Klein-vs-groot-routing (async extractie, 2026-07-10): geeft het tijdlijn-detail voor de
-    wachtrij-overgang als dit document de async-route in moet, anders None (synchroon, zoals
-    altijd). Alleen PDF's die daadwerkelijk de AI-route in gaan (AVG-gate aan + key aanwezig)
+    """Wachtrij-routing (async extractie 2026-07-10; sinds blok 1c 08-09 de STANDAARD voor élke
+    AI-extractie): geeft het tijdlijn-detail voor de wachtrij-overgang als dit document de
+    async-route in moet, anders None (synchroon — alleen nog zonder AI-extractie, of via de
+    test-seam `settings.ai_extractie_in_request`). Alleen PDF's die daadwerkelijk de AI-route in
+    gaan (AVG-gate aan + key aanwezig)
     tellen mee — voor een overgeslagen extractie is "achtergrond" alleen maar een tragere no-op.
     Drempels configureerbaar (settings.ai_extractie_sync_max_paginas/_bytes); lukt de
     paginatelling niet, dan beslist bestandsgrootte alleen."""
@@ -351,15 +353,25 @@ def _groot_document_detail(session: Session, *, document: Document, inhoud: byte
     te_groot = len(inhoud) > settings.ai_extractie_sync_max_bytes or (
         paginas is not None and paginas > settings.ai_extractie_sync_max_paginas
     )
-    if not te_groot:
-        return None
-    # "reden" hoort erbij: de heraanbied-lus (31-08) draait deze overgang met de systeem-actor,
-    # en élke ⚙-overgang draagt een leesbare reden (_borg_systeem_reden).
+    if te_groot:
+        # "reden" hoort erbij: de heraanbied-lus (31-08) draait deze overgang met de systeem-actor,
+        # en élke ⚙-overgang draagt een leesbare reden (_borg_systeem_reden).
+        return {
+            "extractie_wachtrij": "groot_document",
+            "paginas": paginas,
+            "bytes": len(inhoud),
+            "reden": "groot document — extractie via de wachtrij",
+        }
+    if settings.ai_extractie_in_request:
+        return None  # test-/dev-seam: klein synchroon in de request (gedrag vóór 08-09)
+    # Blok 1c verbreed (08-09): élke AI-extractie op de achtergrond — de upload geeft binnen
+    # seconden 201 + document-id terug (opslag + registratie + sha-duplicaatvlag), de rij zegt
+    # "wordt verwerkt…" tot de worker (Cloud Run-job on-demand, scheduler-vangnet) klaar is.
     return {
-        "extractie_wachtrij": "groot_document",
+        "extractie_wachtrij": "achtergrond",
         "paginas": paginas,
         "bytes": len(inhoud),
-        "reden": "groot document — extractie via de wachtrij",
+        "reden": "upload — verwerking op de achtergrond",
     }
 
 

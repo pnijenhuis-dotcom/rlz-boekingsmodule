@@ -200,7 +200,7 @@ describe('DocumentDetailScreen — tijdlijn en duplicaat', () => {
     renderScherm()
 
     await waitFor(() => expect(screen.getAllByText(/systeem/)).toHaveLength(2))
-    expect(screen.getByText(/In wachtrij \(extractie\) →/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Wordt verwerkt… →/)).toHaveLength(2) // wachtrij → bezig → te_controleren (1c 08-09: één label)
   })
 
   it('toont een klikbare duplicaat-link met bestandsnaam en datum, geen kale UUID', async () => {

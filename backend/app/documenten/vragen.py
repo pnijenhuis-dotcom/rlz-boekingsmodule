@@ -770,15 +770,50 @@ def open_vraag_aan_accordeur_op_document(
 ) -> VraagData | None:
     """Voor de wachtrij-kaart (blok B5): de open vraag op dít document, alleen als die aan deze
     accordeur gericht is. Sessie van de aanroeper (al gescoopt op de administratie)."""
-    vraag = session.scalars(
-        select(Vraag).where(
-            Vraag.document_id == document_id,
-            Vraag.status == VraagStatus.OPEN.value,
-            Vraag.toegewezen_aan == actor_id,
+    return open_vragen_aan_accordeur_per_document(session, document_ids=[document_id], actor_id=actor_id).get(
+        document_id
+    )
+
+
+def open_vragen_aan_accordeur_per_document(
+    session: Session, *, document_ids: list[uuid.UUID], actor_id: uuid.UUID
+) -> dict[uuid.UUID, VraagData]:
+    """Bulk-variant voor de accordeer-wachtrij (blok 1 spoedrun 08-09, N+1 weg): per document
+    de open vraag die aan déze accordeur gericht is — vier queries voor de hele set (vragen,
+    documenten, totaalbedragen, berichten), nul als er geen vragen zijn. Zelfde selectie als de
+    enkelvoudige route (die delegeert hierheen); bij meer open vragen op één document wint de
+    eerst gestelde (deterministisch)."""
+    if not document_ids:
+        return {}
+    vragen = list(
+        session.scalars(
+            select(Vraag)
+            .where(
+                Vraag.document_id.in_(document_ids),
+                Vraag.status == VraagStatus.OPEN.value,
+                Vraag.toegewezen_aan == actor_id,
+            )
+            .order_by(Vraag.gesteld_op, Vraag.id)
         )
-    ).first()
-    if vraag is None:
-        return None
-    document = session.get(Document, document_id)
-    berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
-    return _naar_data(vraag, document, _totaalbedrag_van(session, document_id), berichten)
+    )
+    if not vragen:
+        return {}
+    doc_ids = {v.document_id for v in vragen}
+    documenten = {d.id: d for d in session.scalars(select(Document).where(Document.id.in_(doc_ids)))}
+    totalen = dict(
+        session.execute(
+            select(Boekvoorstel.document_id, Boekvoorstel.totaalbedrag).where(Boekvoorstel.document_id.in_(doc_ids))
+        ).all()
+    )
+    berichten = _berichten_per_vraag(session, [v.id for v in vragen])
+    uitkomst: dict[uuid.UUID, VraagData] = {}
+    for vraag in vragen:
+        if vraag.document_id in uitkomst:
+            continue
+        document = documenten.get(vraag.document_id)
+        if document is None:
+            continue
+        uitkomst[vraag.document_id] = _naar_data(
+            vraag, document, totalen.get(vraag.document_id), berichten.get(vraag.id, [])
+        )
+    return uitkomst

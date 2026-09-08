@@ -193,6 +193,23 @@ def _clean_tables() -> Generator[None, None, None]:
     yield
 
 
+@pytest.fixture(autouse=True)
+def _extractie_wachtrij_direct() -> Generator[None, None, None]:
+    """Blok 1c verbreed (08-09): élke AI-extractie gaat via de wachtrij. In de suite is de
+    procesbrede default-wachtrij een DirecteExtractieWachtrij (de worker draait meteen, in de
+    aanroepende thread, ná de commit) — zo blijft de eindstand (te_controleren + voorstel) voor
+    bestaande tests gelijk, alleen de tijdlijn draagt nu wachtrij → bezig → te_controleren met de
+    systeem-actor. Tests die de wachtrij zelf toetsen injecteren hun eigen instantie via de
+    `wachtrij`-parameter of monkeypatchen `documenten_service._wachtrij`."""
+    from app.documenten import service as documenten_service
+    from app.documenten.wachtrij import DirecteExtractieWachtrij
+
+    origineel = documenten_service._wachtrij
+    documenten_service._wachtrij = DirecteExtractieWachtrij(taak=documenten_service.verwerk_extractie_taak)
+    yield
+    documenten_service._wachtrij = origineel
+
+
 @pytest.fixture
 def admin_engine() -> Generator[Engine, None, None]:
     """Verbinding als schema-owner (migratierol) — voor testopzet/assertions op DDL-niveau."""

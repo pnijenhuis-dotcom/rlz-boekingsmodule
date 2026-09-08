@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.auth import service as auth_service
 from app.auth.deps import (
@@ -308,31 +309,41 @@ async def document_uploaden(
         raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Bestand te groot")
 
     bestandsnaam = bestand.filename
-    bron_bestand: service.BronBestand | None = None
-    if is_afbeelding(bestandsnaam, bestand.content_type):
-        # Directe upload door een mens: een onbruikbare afbeelding meldt zich meteen terug (het
-        # bestand staat nog op diens schijf) — via mail landt hetzelfde geval in de verzamelbak.
-        try:
-            omgezet = afbeelding_naar_pdf(inhoud, bestandsnaam=bestandsnaam)
-        except AfbeeldingOnbruikbaar as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Afbeelding onbruikbaar: {exc}"
-            ) from exc
-        bron_bestand = service.BronBestand(
-            bestandsnaam=bestandsnaam,
-            inhoud=inhoud,
-            content_type=bestand.content_type or content_type_voor(bestandsnaam),
-        )
-        bestandsnaam, inhoud = omgezet.pdf_bestandsnaam, omgezet.pdf
+    content_type = bestand.content_type
 
-    resultaat = service.upload_document(
-        administratie_id=administratie_id,
-        bestandsnaam=bestandsnaam,
-        inhoud=inhoud,
-        actor_id=actor.id,
-        soort=document_soort,
-        bron_bestand=bron_bestand,
-    )
+    def _verwerk() -> service.UploadResultaat:
+        # Blok 1 spoedrun 08-09 (Cloud Logging 07-09: een synchrone upload van 23,9 s legde óók de
+        # accordeur-wachtrij en triviale routes 14,7 s plat). Deze route is `async def`; alles wat
+        # blokkeert (afbeelding → PDF, sha, opslag-write, extractie incl. de Claude-call van
+        # maximaal 120 s) draait daarom in de threadpool — nooit op de event-loop, zodat andere
+        # requests gewoon doorlopen. Zie tests/documenten/test_upload_gelijktijdigheid.py.
+        naam, data = bestandsnaam, inhoud
+        bron_bestand: service.BronBestand | None = None
+        if is_afbeelding(naam, content_type):
+            # Directe upload door een mens: een onbruikbare afbeelding meldt zich meteen terug (het
+            # bestand staat nog op diens schijf) — via mail landt hetzelfde geval in de verzamelbak.
+            try:
+                omgezet = afbeelding_naar_pdf(data, bestandsnaam=naam)
+            except AfbeeldingOnbruikbaar as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Afbeelding onbruikbaar: {exc}"
+                ) from exc
+            bron_bestand = service.BronBestand(
+                bestandsnaam=naam,
+                inhoud=data,
+                content_type=content_type or content_type_voor(naam),
+            )
+            naam, data = omgezet.pdf_bestandsnaam, omgezet.pdf
+        return service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=naam,
+            inhoud=data,
+            actor_id=actor.id,
+            soort=document_soort,
+            bron_bestand=bron_bestand,
+        )
+
+    resultaat = await run_in_threadpool(_verwerk)
     return schemas.DocumentUploadResponse(
         document_id=resultaat.document_id,
         status=resultaat.status.value,

@@ -1,8 +1,9 @@
 // Mapping DocumentStatus (backend, app/documenten/models.py) -> label + mockup-chipklasse.
 export const STATUS_LABELS: Record<string, string> = {
   ontvangen: 'Ontvangen',
-  extractie_wachtrij: 'In wachtrij (extractie)',
-  extractie_bezig: 'Extractie bezig',
+  // Blok 1c 08-09: élke AI-extractie draait op de achtergrond — één leesbaar rijlabel voor beide stappen.
+  extractie_wachtrij: 'Wordt verwerkt…',
+  extractie_bezig: 'Wordt verwerkt…',
   te_controleren: 'Te controleren',
   klaar_om_te_boeken: 'Klaar om te boeken',
   geboekt: 'Geboekt',

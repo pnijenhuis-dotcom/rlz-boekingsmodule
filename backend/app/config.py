@@ -279,6 +279,11 @@ class Settings(BaseSettings):
     # boven één van deze drempels zit, gaat niet synchroon in de upload-request maar direct de
     # achtergrondwachtrij in (status extractie_wachtrij) — een monsterfactuur mag het scherm
     # nooit meer blokkeren. Onder beide drempels blijft de bestaande snelle synchrone route.
+    # Blok 1c verbreed (08-09, Cloud Logging: POST …/documenten 28–51 s → browser-timeout terwijl de
+    # upload slaagde): élke upload die AI-extractie krijgt gaat STANDAARD via de wachtrij (response
+    # < 2 s, status extractie_wachtrij, verwerking op de achtergrond). True = de oude klein-vs-groot-
+    # routing (klein synchroon in de request) — uitsluitend een test-/dev-seam, nooit productie.
+    ai_extractie_in_request: bool = False
     ai_extractie_sync_max_paginas: int = 8
     ai_extractie_sync_max_bytes: int = 3 * 1024 * 1024  # 3 MB
     # Overbelastingsbescherming: maximaal zoveel zware extracties tegelijk (dev: in-process

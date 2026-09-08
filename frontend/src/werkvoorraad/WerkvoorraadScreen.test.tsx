@@ -202,7 +202,7 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
 
       await waitFor(() => expect(screen.getByText('monsterfactuur.pdf')).toBeInTheDocument())
       // De statustekst staat ook als optie in het statusfilter — minstens één zichtbare chip.
-      expect(screen.getAllByText('In wachtrij (extractie)').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Wordt verwerkt…').length).toBeGreaterThan(0)
 
       const lijstAanroepen = () =>
         vi

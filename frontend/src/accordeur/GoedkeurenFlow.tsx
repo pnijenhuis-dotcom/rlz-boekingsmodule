@@ -75,6 +75,14 @@ type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 /** Wachtrij-item + lokale terugkeer-melding na een definitief mislukte verzending. */
 type WachtrijItem = WachtrijItemDto & { verzend_fout?: string }
 
+/** Na hoeveel ms een lopende verversing "verversen duurt lang…" meldt (blok 1 08-09: de server deed
+ * live 10 s; de kaarten uit de cache blijven staan, de mens ziet dat er gewacht wordt). */
+export const TRAAG_NA_MS = 3000
+let traagNaMs = TRAAG_NA_MS
+export function zetTraagNaMsVoorTests(ms: number): void {
+  traagNaMs = ms
+}
+
 /** Dubbeltik-vangnet op de geld-knoppen: de overgang naar de volgende factuur is instant —
  * een onbedoelde tweede tik (typisch < 300 ms na de eerste) zou anders de VOLGENDE factuur
  * ongezien besluiten. Elke factuur verdient een bewuste klik; dit remt de weergave niet. */
@@ -447,6 +455,11 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const [verwerkt, setVerwerkt] = useState(0)
   const [laden, setLaden] = useState(() => startCache === null)
   const [fout, setFout] = useState<string | null>(null)
+  // Blok 1 08-09: een verversing die > TRAAG_NA_MS loopt ("verversen duurt lang…") en een mislukte
+  // verversing terwijl er een stand staat ("verversen mislukt — stand van HH:MM") — nooit een kale
+  // fout zolang er kaarten te tonen zijn.
+  const [traag, setTraag] = useState(false)
+  const [verversFout, setVerversFout] = useState<string | null>(null)
   const [voorwaardenNodig, setVoorwaardenNodig] = useState(false)
   const [huidige, setHuidige] = useState<WachtrijItem | null>(null)
   const [afwijsOpen, setAfwijsOpen] = useState(false)
@@ -485,17 +498,24 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   // Voor de stille verversing: welke factuur staat nu open (zonder de callback te herbinden).
   const huidigeRef = useRef<WachtrijItem | null>(null)
   huidigeRef.current = huidige
+  const standTijdstipRef = useRef<string | null>(standTijdstip)
+  standTijdstipRef.current = standTijdstip
 
   /** Wachtrij (+ vragen) laden. `stil` (pull-to-refresh, voorgrond-terugkeer): de lijst blijft
    * staan tijdens het laden en een fout wordt een toast i.p.v. een leeg scherm; de teller
    * "verwerkt" blijft staan. Niet-stil (eerste keer, "Opnieuw"): volledige laadstate. */
   const laadWachtrij = useCallback(
     async (opties: { stil?: boolean; voorgeladen?: Promise<VerseStand> | null } = {}) => {
-      const stil = opties.stil === true
+      // Staat er een stand (cache of eerder ververst), dan is élke verversing stil: de kaarten
+      // blijven staan, ook bij "Opnieuw" — een kale laadstate/fout is alleen voor een leeg scherm.
+      const heeftStand = standTijdstipRef.current !== null
+      const stil = opties.stil === true || heeftStand
       if (!stil) {
         setLaden(true)
         setFout(null)
       }
+      setTraag(false)
+      const traagTimer = setTimeout(() => setTraag(true), traagNaMs)
       try {
         // D3 (06-09): wachtrij én vragen parallel; een al lopende voorlader-fetch (gestart terwijl
         // het ontgrendelscherm nog stond) wordt overgenomen i.p.v. opnieuw gedaan.
@@ -515,6 +535,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
         markeer('kaarten-render')
         if (!stil) setVerwerkt(0)
         setFout(null)
+        setVerversFout(null)
         setVoorwaardenNodig(false)
         // Stond er een factuur open die intussen door een ander is afgehandeld/ingetrokken, dan
         // terug naar de wachtrij — nooit een besluit op een verdwenen document.
@@ -527,12 +548,18 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
       } catch (err) {
         if (isVoorwaardenVereist(err)) {
           setVoorwaardenNodig(true)
+        } else if (heeftStand) {
+          // Time-out/fout mét een stand: de kaarten blijven, de versheidsregel zegt wat er is.
+          const stand = standTijdstipRef.current
+          setVerversFout(`verversen mislukt — ${stand ? verversTekst(stand).replace('laatst ververst ', 'stand van ') : 'stand onbekend'}`)
         } else if (stil) {
           toon('Verversen mislukte — controleer de verbinding')
         } else {
           setFout('De wachtrij kon niet geladen worden. Probeer het opnieuw.')
         }
       } finally {
+        clearTimeout(traagTimer)
+        setTraag(false)
         if (!stil) setLaden(false)
       }
     },
@@ -944,9 +971,20 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                 verse stand binnen is, daarna "laatst ververst HH:MM". Klein en grijs, geen ruis. */}
             {!laden && !fout && standTijdstip && (
               <div className="acc-versheid" data-testid="acc-versheid">
-                {uitCache
-                  ? `stand van ${verversTekst(standTijdstip).replace('laatst ververst ', '')} · verversen…`
-                  : verversTekst(standTijdstip)}
+                {verversFout ? (
+                  <>
+                    {verversFout}{' '}
+                    <button className="acc-btn klein secundair" onClick={() => void laadWachtrij({ stil: true })}>
+                      Opnieuw
+                    </button>
+                  </>
+                ) : uitCache ? (
+                  `stand van ${verversTekst(standTijdstip).replace('laatst ververst ', '')} · ${traag ? 'verversen duurt lang…' : 'verversen…'}`
+                ) : traag ? (
+                  `${verversTekst(standTijdstip)} · verversen duurt lang…`
+                ) : (
+                  verversTekst(standTijdstip)
+                )}
               </div>
             )}
 
