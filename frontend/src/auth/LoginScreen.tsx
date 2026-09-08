@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { haalWebauthnConfig, ondertekenAssertieMetMeta, webauthnBeschikbaar } from '../accordeur/webauthnClient'
+import { haalWebauthnConfig, ondertekenAssertieMetMeta, webauthnBeschikbaar } from './webauthnClient'
 import { ApiError, apiPostJson, BACKEND_ONBEREIKBAAR_MELDING } from '../api/client'
 import type { TokenPaarResponseDto } from '../api/types'
 import { FormFouten, useFormFouten } from '../ui/FormFouten'

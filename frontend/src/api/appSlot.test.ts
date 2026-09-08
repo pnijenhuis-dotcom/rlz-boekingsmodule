@@ -23,6 +23,8 @@ import {
   zetBiometrieAan,
 } from './appSlot'
 import { bewaarNatiefRefreshToken, haalNatiefRefreshToken } from './nativeSessie'
+import { installeerFakeIndexedDb } from './fakeIndexedDb.testhulp'
+import { appSlotBeschikbaar } from './appSlot'
 
 // jsdom heeft geen WebCrypto — Node's implementatie is byte-compatibel.
 if (!globalThis.crypto?.subtle) {
@@ -176,5 +178,52 @@ describe('biometrie-gemakslaag', () => {
     await wisAppSlotLokaal()
     expect(biometrieKluis.waarde).toBeNull()
     expect(await isBiometrieAan()).toBe(false)
+  })
+})
+
+// App-auth zonder passkey (contract §5a/§5g, 08-09): hetzelfde slot op de IndexedDB-adapter in de PWA-
+// slotmodus (geen Capacitor, pad /accordeur) — instellen, versleuteld token, 5× fout wist alles behalve
+// het toestel-id; buiten de accordeur-oppervlakte bestaat er geen slot.
+describe('web-adapter (PWA-slotmodus)', () => {
+  let idb: ReturnType<typeof installeerFakeIndexedDb>
+  beforeEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor
+    idb = installeerFakeIndexedDb()
+    window.history.pushState({}, '', '/accordeur')
+  })
+  afterEach(() => {
+    idb.herstel()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('appSlotBeschikbaar: true op /accordeur mét IndexedDB, false op het kantoor-pad', () => {
+    expect(appSlotBeschikbaar()).toBe(true)
+    window.history.pushState({}, '', '/')
+    expect(appSlotBeschikbaar()).toBe(false)
+  })
+
+  it('stelt in, bewaart het refresh-token versleuteld in IndexedDB en ontgrendelt met de code', async () => {
+    await stelCodeIn('13579')
+    await bewaarNatiefRefreshToken('token-web')
+    const kv = idb.data.get('accordeur-slot')!.get('kv')!
+    expect(kv.get('refresh_token')).toMatch(/^slot\.v1\./)
+    expect(kv.get('appslot_salt')).toBeTruthy()
+    vergrendel()
+    expect(await haalNatiefRefreshToken()).toBeNull()
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+    expect(await haalNatiefRefreshToken()).toBe('token-web')
+  })
+
+  it('5× fout wist slot + token + biometrie-vlag, het toestel-id (meldsleutel) blijft', async () => {
+    await stelCodeIn('13579')
+    await bewaarCredentialId('cred-web')
+    await bewaarNatiefRefreshToken('token-web')
+    vergrendel()
+    for (let i = 0; i < MAX_FOUTEN - 1; i++) expect(await ontgrendelMetCode('00001')).toBe('fout')
+    expect(await ontgrendelMetCode('00001')).toBe('uitgesloten')
+    expect(await isAppSlotIngesteld()).toBe(false)
+    expect(await haalNatiefRefreshToken()).toBeNull()
+    expect(await haalCredentialId()).toBe('cred-web')
+    await wisAppSlotLokaal()
   })
 })

@@ -1,19 +1,14 @@
 // Access-token leeft alleen in het geheugen van dit module — NOOIT in localStorage (OWASP,
 // zelfde reden als de httpOnly-refresh-cookie aan de backend-kant, zie Auth-0010-b). Een
 // paginaherlaad verliest 'm bewust; verversSessie() haalt 'm dan terug via de refresh-cookie
-// (web) of het Keychain/Keystore-refresh-token via de X-Refresh-Token-header (native schil,
-// fase 4 — de SameSite-cookie werkt niet in de Capacitor-webview).
-import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, natieveSessieBeschikbaar } from './nativeSessie'
+// (kantoor-web) of het refresh-token achter het app-slot via de X-Refresh-Token-header (native
+// schil: Keychain/Keystore; accordeur-PWA in de slotmodus: IndexedDB — app-auth zonder passkey,
+// besluit Peter 08-09-2026). De kantoor-web merkt van dat slot-pad niets: zonder slot-opslag is
+// elke request byte-identiek aan vóór 08-09 (guard in client.test.ts).
+import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, slotModus, slotSessieBeschikbaar } from './nativeSessie'
 
 let accessToken: string | null = null
 let sessieVerlopenHandler: (() => void) | null = null
-/** Uitspraak van de laatste stille refresh over de passkey-ontgrendeling (27-08): true/false
- * alleen op apparaat-gebonden externe-app-sessies, null = server deed geen uitspraak. */
-let laatsteOntgrendelingNodig: boolean | null = null
-
-export function getOntgrendelingNodig(): boolean | null {
-  return laatsteOntgrendelingNodig
-}
 
 /** Native schil (fase 4): alle paden zijn root-relatief; in de app-bundel wijst
  * VITE_API_BASE naar het productiedomein (capacitor://localhost heeft geen backend).
@@ -24,11 +19,13 @@ function apiUrl(pad: string): string {
   return API_BASE ? `${API_BASE}${pad}` : pad
 }
 
-/** Native aankondiging + het header-refresh-token voor de vernieuwen-familie (het pad-prefix
- * spiegelt bewust het cookie-path van de backend). Web: no-op. */
-async function metNatieveAuthHeaders(pad: string, headers: Headers): Promise<void> {
-  if (!natieveSessieBeschikbaar()) return
-  headers.set('X-Native-Client', '1')
+/** Slot-aankondiging (native: X-Native-Client, PWA-slotmodus: X-App-Slot — contract §4a/§5a) + het
+ * header-refresh-token voor de vernieuwen-familie (het pad-prefix spiegelt bewust het cookie-path
+ * van de backend). Kantoor-web (geen slot): no-op. */
+async function metSlotAuthHeaders(pad: string, headers: Headers): Promise<void> {
+  const modus = slotModus()
+  if (!modus) return
+  headers.set(modus === 'native' ? 'X-Native-Client' : 'X-App-Slot', '1')
   if (pad.startsWith('/auth/token/vernieuwen')) {
     const token = await haalNatiefRefreshToken()
     if (token) headers.set('X-Refresh-Token', token)
@@ -146,32 +143,32 @@ async function fetchMetTimeout(pad: string, init: RequestInit): Promise<Response
 async function ruweFetch(pad: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers)
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
-  // Alleen awaiten in de native schil: op het webpad start fetch in dezelfde tick (het
+  // Alleen awaiten mét slot-opslag: op het kantoor-webpad start fetch in dezelfde tick (het
   // single-flight-contract van verversSessie leunt daarop — zie client.test.ts).
-  if (natieveSessieBeschikbaar()) await metNatieveAuthHeaders(pad, headers)
+  if (slotSessieBeschikbaar()) await metSlotAuthHeaders(pad, headers)
   return fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
 }
 
-/** Voor auth-endpoints buiten de access-token-flow (accordeur: setup-token in een eigen
- * Authorization-header, of alleen de refresh-cookie): zelfde timeout- en onbereikbaar-
- * vertaling als apiFetch, maar zonder het in-memory access-token (dat zou een meegegeven
- * setup-token overschrijven) en zonder 401-refresh-retry. */
+/** Voor auth-endpoints buiten de access-token-flow (app-activatie, slot-meldingen, of alleen de
+ * refresh-cookie/-header): zelfde timeout- en onbereikbaar-vertaling als apiFetch, maar zonder
+ * het in-memory access-token (dat zou een meegegeven Authorization-header overschrijven) en
+ * zonder 401-refresh-retry. */
 export async function kaleAuthFetch(pad: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
-  if (natieveSessieBeschikbaar()) await metNatieveAuthHeaders(pad, headers)
+  if (slotSessieBeschikbaar()) await metSlotAuthHeaders(pad, headers)
   const resp = await fetchMetTimeout(pad, { ...init, headers, credentials: 'include' })
   await gooiAlsBackendOnbereikbaar(resp)
   return resp
 }
 
 async function voerVerversUit(): Promise<boolean> {
-  // Native schil zónder leesbaar refresh-token (blok 12b 07-09, beslispunt 3 "KOUDE START"): een
+  // Slot-opslag zónder leesbaar refresh-token (blok 12b 07-09, beslispunt 3 "KOUDE START"): een
   // koude start mét gesloten app-slot (token versleuteld achter het anker) of een verse installatie
   // heeft géén token om mee te sturen — de POST zou gegarandeerd 401 geven. Dat rondje slaan we
-  // over en geven dezelfde uitkomst als die 401 (false, geen ontgrendelings-uitspraak); de
-  // aanroepers (AuthContext → 'uitgelogd', apiFetch → sessie-verlopen-pad) zien geen verschil.
-  // Web: `natieveSessieBeschikbaar()` is false → ongewijzigd cookie-pad.
-  if (natieveSessieBeschikbaar() && !(await haalNatiefRefreshToken())) return false
+  // over en geven dezelfde uitkomst als die 401 (false); de aanroepers (AuthContext → 'uitgelogd',
+  // apiFetch → sessie-verlopen-pad) zien geen verschil. Geldt sinds 08-09 ook voor de PWA-slotmodus.
+  // Kantoor-web: `slotSessieBeschikbaar()` is false → ongewijzigd cookie-pad.
+  if (slotSessieBeschikbaar() && !(await haalNatiefRefreshToken())) return false
   let resp = await ruweFetch('/auth/token/vernieuwen', { method: 'POST' })
   if (resp.status === 409) {
     // Rotatie-botsing (backend hield de rij-lock vast voor een parallelle vernieuwing, bv. een
@@ -181,18 +178,18 @@ async function voerVerversUit(): Promise<boolean> {
   }
   await gooiAlsBackendOnbereikbaar(resp)
   if (!resp.ok) return false
-  const body = (await resp.json()) as { access_token: string; refresh_token?: string; ontgrendeling_nodig?: boolean | null }
+  const body = (await resp.json()) as { access_token: string; refresh_token?: string }
   accessToken = body.access_token
-  laatsteOntgrendelingNodig = typeof body.ontgrendeling_nodig === 'boolean' ? body.ontgrendeling_nodig : null
-  // Native (fase 4): de rotatie levert het nieuwe refresh-token in de body — meteen naar de
-  // Keychain/Keystore, anders is de sessie na de volgende app-start alsnog weg.
+  // Slot-opslag (native fase 4, PWA 08-09): de rotatie levert het nieuwe refresh-token in de body —
+  // meteen achter het slot, anders is de sessie na de volgende app-start alsnog weg.
   if (body.refresh_token) await bewaarNatiefRefreshToken(body.refresh_token)
   return true
 }
 
 let refreshInFlight: Promise<boolean> | null = null
 
-/** Stille refresh via de httpOnly-cookie — geen TOTP nodig zolang de cookie geldig is. Gooit
+/** Stille refresh via de httpOnly-cookie (kantoor) of het slot-refresh-token (app) — geen
+ * tweede factor nodig zolang die geldig is. Gooit
  * BackendOnbereikbaarError door (in plaats van 'm als gewone mislukte refresh te behandelen) zodat
  * de aanroeper (AuthContext, bij het laden van de app) dat kan onderscheiden van "gewoon niet
  * ingelogd" en een nette melding kan tonen i.p.v. stil op het login-scherm te belanden.

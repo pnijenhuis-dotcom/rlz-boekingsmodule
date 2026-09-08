@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** client.ts houdt module-state bij (access-token, in-flight refresh-promise) — elke test krijgt
  * daarom een verse module-instantie via resetModules + dynamic import. */
@@ -227,5 +227,85 @@ describe('BackendOnbereikbaarError.oorzaak (blok 2b 08-09)', () => {
     >
     expect(err.oorzaak).toBe('server')
     expect(err.technisch).toBe('HTTP 503')
+  })
+})
+
+// App-auth zonder passkey (contract §5a, 08-09): de PWA-slotmodus stuurt X-App-Slot: 1 (+ X-Refresh-Token
+// op de vernieuwen-familie) — en de kantoor-web merkt daar NIETS van: buiten /accordeur zonder slot-vlag
+// zijn de headers byte-identiek aan vóór 08-09.
+describe('slot-headers alleen in de slotmodus (§5a) — kantoor-pad byte-identiek', () => {
+  // Node 22+ schaduwt window.localStorage in de jsdom-testomgeving — in-memory vervanger.
+  beforeAll(() => {
+    const opslag = new Map<string, string>()
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (k: string) => opslag.get(k) ?? null,
+        setItem: (k: string, v: string) => void opslag.set(k, String(v)),
+        removeItem: (k: string) => void opslag.delete(k),
+        clear: () => opslag.clear(),
+        key: (i: number) => [...opslag.keys()][i] ?? null,
+        get length() {
+          return opslag.size
+        },
+      } as Storage,
+    })
+  })
+  afterEach(() => {
+    window.history.pushState({}, '', '/')
+    localStorage.removeItem('accordeur-slot-modus')
+  })
+
+  it('kantoor-pad: alleen Authorization, credentials include, géén X-App-Slot/X-Native-Client/X-Refresh-Token', async () => {
+    const client = await verseClient()
+    client.setAccessToken('tok-k')
+    let gezien: { headers: Headers; init: RequestInit } | null = null
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_u: RequestInfo | URL, init?: RequestInit) => {
+        gezien = { headers: new Headers(init?.headers), init: init ?? {} }
+        return Promise.resolve(jsonResponse({ ok: true }))
+      }),
+    )
+    await client.apiJson('/werkvoorraad/overzicht')
+    expect([...gezien!.headers.entries()]).toEqual([['authorization', 'Bearer tok-k']])
+    expect(gezien!.init.credentials).toBe('include')
+    // Ook de vernieuwen-familie: cookie-pad, geen header-token.
+    await client.verversSessie()
+    expect(gezien!.headers.has('X-App-Slot')).toBe(false)
+    expect(gezien!.headers.has('X-Refresh-Token')).toBe(false)
+  })
+
+  it('PWA-slotmodus (/accordeur + IndexedDB + WebCrypto): X-App-Slot: 1 op elke request, X-Refresh-Token op vernieuwen, nooit X-Native-Client', async () => {
+    const { installeerFakeIndexedDb } = await import('./fakeIndexedDb.testhulp')
+    const { webcrypto } = await import('node:crypto')
+    if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true })
+    const idb = installeerFakeIndexedDb()
+    try {
+      window.history.pushState({}, '', '/accordeur')
+      const client = await verseClient()
+      const { webVeiligeOpslag } = await import('./webVeiligeOpslag')
+      await webVeiligeOpslag().zet({ sleutel: 'refresh_token', waarde: 'rt-web' })
+      const gezien: Headers[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_u: RequestInfo | URL, init?: RequestInit) => {
+          gezien.push(new Headers(init?.headers))
+          return Promise.resolve(jsonResponse({ access_token: 'acc-web', refresh_token: 'rt-web-2' }))
+        }),
+      )
+      await expect(client.verversSessie()).resolves.toBe(true)
+      expect(gezien[0].get('X-App-Slot')).toBe('1')
+      expect(gezien[0].get('X-Refresh-Token')).toBe('rt-web')
+      expect(gezien[0].has('X-Native-Client')).toBe(false)
+      await client.apiJson('/accordering/wachtrij')
+      expect(gezien[1].get('X-App-Slot')).toBe('1')
+      expect(gezien[1].has('X-Refresh-Token')).toBe(false)
+      expect(gezien[1].get('Authorization')).toBe('Bearer acc-web')
+      // Rotatie: het nieuwe token staat in de web-opslag (slot niet ingesteld → plain, zoals native legacy).
+      expect(idb.data.get('accordeur-slot')?.get('kv')?.get('refresh_token')).toBe('rt-web-2')
+    } finally {
+      idb.herstel()
+    }
   })
 })

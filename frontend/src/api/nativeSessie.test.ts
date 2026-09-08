@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setAccessToken, verversSessie } from './client'
-import { haalNatiefRefreshToken, natieveSessieBeschikbaar } from './nativeSessie'
+import { haalNatiefRefreshToken, natieveSessieBeschikbaar, slotModus, slotSessieBeschikbaar } from './nativeSessie'
 
 function maakOpslagFake(begin: Record<string, string> = {}) {
   const data = new Map(Object.entries(begin))
@@ -38,9 +38,16 @@ describe('natieveSessieBeschikbaar — detectie', () => {
     expect(natieveSessieBeschikbaar()).toBe(false)
   })
 
-  it('true met het volledige plugin-oppervlak', () => {
+  it('true met het volledige plugin-oppervlak; slotModus = native, slotSessieBeschikbaar true', () => {
     stubCapacitor(maakOpslagFake())
     expect(natieveSessieBeschikbaar()).toBe(true)
+    expect(slotModus()).toBe('native')
+    expect(slotSessieBeschikbaar()).toBe(true)
+  })
+
+  it('kantoor-web (geen schil, geen accordeur-pad): geen slotmodus', () => {
+    expect(slotModus()).toBeNull()
+    expect(slotSessieBeschikbaar()).toBe(false)
   })
 })
 

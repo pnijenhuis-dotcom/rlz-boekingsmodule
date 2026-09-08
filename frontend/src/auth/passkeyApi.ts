@@ -1,7 +1,7 @@
 // Kantoor-passkeys (platformbesluit 0020): passkey als eerste authenticatielijn op het
 // kantoor-loginscherm, wachtwoord + TOTP als volwaardig terugvalpad. Dit is alleen de
 // API-glue voor de kantoor-endpoints — de browser-WebAuthn-glue (registreerPasskey/
-// ondertekenAssertie/webauthnBeschikbaar/…) wordt hergebruikt uit accordeur/webauthnClient.ts
+// ondertekenAssertie/webauthnBeschikbaar/…) wordt hergebruikt uit auth/webauthnClient.ts
 // (tweede afnemer van dezelfde bouwstenen, geen nieuw auth-systeem).
 
 import type { ApparaatDto } from '../accordering/accorderingApi'

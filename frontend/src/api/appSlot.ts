@@ -1,8 +1,9 @@
-// App-lock met 5-cijferige code (besluit Peter 31-08, mockup app-lock-pincode.html = norm,
-// ING-patroon, gedeeld met Vastly). De code is het ANKER: hij ontgrendelt lokaal een
-// toestel-gebonden sleutel (het "anker") die het refresh-token versleutelt — de code gaat
-// NOOIT naar de server, er is geen server-side pinopslag en de kill-switch per apparaat blijft
-// onverkort werken (het refresh-token/de passkey blijft de echte credential eronder).
+// App-slot met 5-cijferige toegangscode (besluit Peter 31-08, mockup app-lock-pincode.html =
+// norm, ING-patroon, gedeeld met Vastly; sinds 08-09 hét tweede-factor-model van de app, native én
+// PWA). De code is het ANKER: hij ontgrendelt lokaal een toestel-gebonden sleutel (het "anker") die
+// het refresh-token versleutelt — de code gaat NOOIT naar de server, er is geen server-side
+// pinopslag en de kill-switch per toestel blijft onverkort werken (het toestel-token blijft de
+// echte credential eronder).
 //
 // Biometrie (Face ID / BiometricPrompt) is puur gemak: een kopie van het anker leeft achter de
 // biometrie-poort van het OS (AppSlot-plugin — iOS Keychain SecAccessControl .biometryAny,
@@ -13,11 +14,10 @@
 // Realistische dreigingsafweging (bewust, geen tekortkoming): een 5-cijferige code heeft 100.000
 // combinaties — wie de opslag van het toestel kan uitlezen, kan de wrap offline kraken ongeacht
 // de KDF. Het slot beschermt tegen meekijken/even-pakken (het ING-model); de échte
-// beveiligingslaag blijft de passkey + de server-side kill-switch (5× fout = apparaat
-// uitgesloten, herstel = verse kantoor-link).
+// beveiligingslaag blijft het langlevende toestel-token + de server-side kill-switch (5× fout =
+// toestel uitgesloten, herstel = nieuwe uitnodiging van het kantoor).
 //
-// Zelfde toegangspatroon als nativeSessie/nativePasskey: bridge-globals, geen @capacitor-import,
-// fail-closed. De statische import-cyclus met nativeSessie is bewust en veilig: beide modules
+// Zelfde toegangspatroon als nativeSessie: bridge-globals, geen @capacitor-import, fail-closed. De statische import-cyclus met nativeSessie is bewust en veilig: beide modules
 // gebruiken elkaars functies uitsluitend ín functie-bodies (geen top-level uitvoering).
 
 import { veiligeOpslagPlugin } from './nativeSessie'
@@ -73,9 +73,9 @@ export function appSlotPlugin(): AppSlotPlugin | null {
   return plugin
 }
 
-/** Het slot bestaat alleen in de native schil mét veilige opslag (Keychain/Keystore) — de
- * PWA/web houdt de bestaande passkey-cadans (scope-besluit 31-08). De biometrie-plugin is
- * optioneel gemak: zonder AppSlot-plugin werkt de code-flow gewoon. */
+/** Het slot bestaat overal waar een veilige opslag is: de native schil (Keychain/Keystore) én de
+ * PWA-slotmodus (IndexedDB + WebCrypto, api/webVeiligeOpslag.ts — contract §5a). De biometrie-
+ * plugin is optioneel gemak (alleen native): zonder AppSlot-plugin werkt de code-flow gewoon. */
 export function appSlotBeschikbaar(): boolean {
   return veiligeOpslagPlugin() !== null
 }
@@ -251,7 +251,7 @@ export async function wijzigCode(huidig: string, nieuw: string): Promise<Ontgren
   return 'ok'
 }
 
-/** Lokale wissing (5× fout, ontkoppelen, her-login): slot + sessie weg; het credential_id
+/** Lokale wissing (5× fout, loskoppelen, dode sessie): slot + sessie weg; het credential_id
  * blijft staan — dat is de sleutel waarmee de uitsluiting/hulpvraag zich bij de server meldt. */
 export async function wisAppSlotLokaal(): Promise<void> {
   ankerInGeheugen = null
@@ -338,8 +338,8 @@ export async function zetDirectVergrendelen(aan: boolean): Promise<void> {
   await schrijf(DIRECT_SLEUTEL, aan ? '1' : '0')
 }
 
-/** Het passkey-credential_id (base64url, géén geheim in de zin van een wachtwoord) van dít
- * toestel — de sleutel voor de app-lock-meldingen (/auth/app-lock/uitgesloten en /hulp). */
+/** Het toestel-credential_id (base64url, geen geheim) van dít toestel — de meldsleutel voor de
+ * app-slot-meldingen (/auth/app-lock/uitgesloten en /hulp). */
 export async function bewaarCredentialId(idB64url: string): Promise<void> {
   await schrijf(CREDENTIAL_SLEUTEL, idB64url)
 }

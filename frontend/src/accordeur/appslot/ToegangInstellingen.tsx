@@ -1,6 +1,8 @@
-// Instellingen › Toegang tot de app (mockup app-lock-pincode.html scherm 7): Face ID-switch,
-// code wijzigen (huidige code vereist — zelfde foutenteller als het slot), direct vergrendelen
-// en toestel ontkoppelen. Alleen bereikbaar in de native schil mét ingesteld slot.
+// Instellingen › Toegang tot de app (mockup app-lock-pincode.html scherm 7): Face ID-switch
+// (optioneel, standaard uit), toegangscode wijzigen (huidige code vereist — zelfde foutenteller als
+// het slot; ná succes een audit-event bij de server zónder code + een lokale audit-regel), direct
+// vergrendelen en dit toestel loskoppelen. Bereikbaar mét ingesteld, ontgrendeld slot (native én
+// PWA — app-auth zonder passkey, besluit Peter 08-09).
 
 import { useEffect, useState } from 'react'
 import {
@@ -15,6 +17,8 @@ import {
   zetDirectVergrendelen,
 } from '../../api/appSlot'
 import { apiFetch } from '../../api/client'
+import { zetWebSlotModus } from '../../api/webVeiligeOpslag'
+import { laatsteCodeWijziging, meldToegangscodeGewijzigd, schrijfAppSlotAudit } from '../appAuthApi'
 import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
@@ -36,6 +40,8 @@ async function nativeAppBuild(): Promise<string | null> {
 
 interface Props {
   sluit: () => void
+  /** Loskoppelen afgerond (server-side intrekking geprobeerd, lokaal alles gewist): de shell zet de
+   * app terug naar het activatiescherm. */
   uitloggen: () => Promise<void>
 }
 
@@ -55,6 +61,8 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
   const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout()))
   const [gekopieerd, setGekopieerd] = useState(false)
+  // Lokale audit (§5d): "Laatste wijziging: dd-mm HH:MM" onder de rij — uit localStorage, geen code.
+  const [laatsteWijziging, setLaatsteWijziging] = useState<string | null>(() => laatsteCodeWijziging())
 
   useEffect(() => {
     void biometrieBeschikbaar().then(setBioKan)
@@ -90,7 +98,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   }
 
   /** 5× fout tijdens het wijzigen = zelfde uitsluiting als op het slot: lokaal is alles al
-   * gewist (appSlot), de herstart landt op het login-/uitgesloten-pad. */
+   * gewist (appSlot), de herstart landt op het activatiescherm. */
   const naUitgesloten = async () => {
     await uitloggen()
     window.location.assign('/accordeur')
@@ -123,7 +131,13 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     const uitkomst = await wijzigCode(huidigOk, code)
     setHuidigOk(null)
     setFase('overzicht')
-    setMelding(uitkomst === 'ok' ? 'Je code is gewijzigd.' : 'Code wijzigen is niet gelukt — probeer het opnieuw.')
+    setMelding(uitkomst === 'ok' ? 'Je toegangscode is gewijzigd.' : 'Toegangscode wijzigen is niet gelukt — probeer het opnieuw.')
+    if (uitkomst === 'ok') {
+      // Audit (§4b/§5d): server-event zonder code (best-effort) + lokale regel voor "Laatste wijziging".
+      schrijfAppSlotAudit('toegangscode_gewijzigd')
+      setLaatsteWijziging(laatsteCodeWijziging())
+      void meldToegangscodeGewijzigd()
+    }
     if (uitkomst === 'ok' && bioAan) {
       // De biometrie-kopie draagt hetzelfde anker — her-wrappen raakt hem niet, maar we
       // schrijven 'm defensief opnieuw zodat kopie en wrap nooit uiteen kunnen lopen.
@@ -136,9 +150,10 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     try {
       await apiFetch('/auth/app-lock/ontkoppelen', { method: 'POST' })
     } catch {
-      // Ook offline ontkoppelen we lokaal — het kantoor kan het apparaat altijd nog intrekken.
+      // Ook offline koppelen we lokaal los — het kantoor kan het toestel altijd nog intrekken.
     }
     await wisAppSlotLokaal()
+    zetWebSlotModus(false)
     await uitloggen()
   }
 
@@ -149,7 +164,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
           ‹ Toegang
         </button>
         <div className="acc-bio">
-          <b>Voer je huidige code in</b>
+          <b>Voer je huidige toegangscode in</b>
           {fout && <div className="acc-fout">{fout}</div>}
         </div>
         <PincodeInvoer code={huidig} onCijfer={(c) => void huidigCijfer(c)} onWis={() => setHuidig('')} fout={fout !== null} />
@@ -167,14 +182,14 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
       <div className="acc-vol">
         <div className="acc-bio">
           <div className="acc-icoon">✕</div>
-          <b>Toestel ontkoppelen?</b>
+          <b>Dit toestel loskoppelen?</b>
           <div className="acc-sub">
-            Dit logt dit toestel uit en trekt de toegang ervan in. Opnieuw koppelen kan met een
-            verse link van het kantoor.
+            Wist de toegang op dit toestel en trekt het toestel bij het kantoor in. Opnieuw koppelen
+            kan met een nieuwe uitnodiging.
           </div>
         </div>
         <button className="acc-btn afwijs" disabled={bezig} onClick={() => void ontkoppel()}>
-          {bezig ? 'Bezig…' : 'Ja, ontkoppel dit toestel'}
+          {bezig ? 'Bezig…' : 'Ja, koppel dit toestel los'}
         </button>
         <button className="acc-btn secundair" disabled={bezig} onClick={() => setFase('overzicht')}>
           Annuleren
@@ -209,8 +224,13 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
       )}
       <button type="button" className="acc-toegang-rij" onClick={() => setFase('code_huidig')}>
         <div>
-          <div className="t">Code wijzigen</div>
+          <div className="t">Toegangscode wijzigen</div>
           <div className="s">Je huidige code is nodig om een nieuwe te kiezen.</div>
+          {laatsteWijziging && (
+            <div className="s" data-testid="acc-laatste-wijziging">
+              Laatste wijziging: {laatsteWijziging}
+            </div>
+          )}
         </div>
         <span aria-hidden>›</span>
       </button>
@@ -231,8 +251,11 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
       <div className="acc-toegang-kop">Dit toestel</div>
       <button type="button" className="acc-toegang-rij" onClick={() => setFase('ontkoppelen')}>
         <div>
-          <div className="t">Toestel ontkoppelen</div>
-          <div className="s">Logt dit toestel uit; opnieuw koppelen kan met een verse link van het kantoor.</div>
+          <div className="t">Dit toestel loskoppelen</div>
+          <div className="s">
+            Wist de toegang op dit toestel en trekt het toestel bij het kantoor in. Opnieuw koppelen kan met een nieuwe
+            uitnodiging.
+          </div>
         </div>
         <span aria-hidden>›</span>
       </button>

@@ -1,7 +1,12 @@
-// Accordeur-PWA — eigen minimale shell op /accordeur (géén kantoor-navigatie; route-based
-// code splitting: dit bestand is een lazy chunk, zie App.tsx). Mockup/accordeur.html is het
+// Accordeur-/veldwerker-app — eigen minimale shell op /accordeur (géén kantoor-navigatie; route-
+// based code splitting: dit bestand is een lazy chunk, zie App.tsx). Mockup/accordeur.html is het
 // goedgekeurde ontwerp (eindakkoord Peter 2026-08-11): mobiel leading, dark default
-// (systeemvolgend, ◐ = handmatige override), biometrie-ontgrendeling bij app-opening.
+// (systeemvolgend, ◐ = handmatige override).
+//
+// Toegang (app-auth zonder passkey en TOTP, besluit Peter 08-09-2026, contract §5c): precies één pad —
+// uitnodiging → activatie op dít toestel (AppActiveren: link óf activatiecode) → 5-cijferige
+// toegangscode (app-slot, mockup app-lock-pincode.html). Native én PWA volgen hetzelfde model; het
+// slot bewaakt het toestel-token, de server-side sliding-TTL en kill-switch blijven de poort.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
@@ -9,12 +14,10 @@ import { useAuth } from '../auth/AuthContext'
 import { isKantoorRol, isVeldRol } from '../auth/rollen'
 import type { TokenPaarResponseDto } from '../api/types'
 import './accordeur.css'
-import { AccordeurLogin } from './AccordeurLogin'
-import { AccordeurActiveren } from './AccordeurActiveren'
+import { AppActiveren, TOEGANG_VERLOPEN_MELDING } from './AppActiveren'
 import { GoedkeurenFlow } from './GoedkeurenFlow'
 import { installeerNativeTapAfhandeling } from './nativePush'
 import { installeerNativeUrlAfhandeling } from './nativeAppUrl'
-import { Ontgrendel } from './Ontgrendel'
 import { UrenFlow } from '../uren/UrenFlow'
 import {
   ACHTERGROND_VERGRENDEL_MS,
@@ -24,15 +27,15 @@ import {
   isOntgrendeld,
   stelCodeIn,
   vergrendel,
+  wisAppSlotLokaal,
 } from '../api/appSlot'
+import { webSlotOnmogelijkOpAccordeur } from '../api/webVeiligeOpslag'
 import { AppSlotScherm } from './appslot/AppSlotScherm'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
 import { ToegangInstellingen } from './appslot/ToegangInstellingen'
 import { markeer } from './koudeStart'
 import { wisAlleStanden } from './standCache'
-import { voorlaadStand } from './voorlader'
 
-const ONTGRENDELD_VLAG = 'accordeur-ontgrendeld'
 const THEMA_SLEUTEL = 'accordeur-thema'
 
 type ThemaKeuze = 'donker' | 'licht' | null
@@ -104,42 +107,37 @@ function useManifest(): void {
 }
 
 export default function AccordeurApp() {
-  const { status, rol, ontgrendelingNodig, inloggen, uitloggen } = useAuth()
+  const { status, rol, inloggen, uitloggen } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const { licht, wissel } = useThema()
   useManifest()
 
-  // "Geldig tot de app sluit": sessionStorage overleeft een reload binnen dezelfde
-  // app-sessie, maar niet een koude start — precies de cadans (besluit 2026-08-11). De échte
-  // verificatie is server-side (assertion + audit); dit vlaggetje bepaalt alleen wanneer het
-  // ontgrendel-scherm terugkomt.
-  const [ontgrendeld, setOntgrendeld] = useState(() => sessionStorage.getItem(ONTGRENDELD_VLAG) === '1')
-  const [forceerLogin, setForceerLogin] = useState(false)
-
-  // App-lock (besluit Peter 31-08, mockup app-lock-pincode.html): in de native schil vervangt
-  // het lokale slot (code = anker, Face ID = gemak) de 24-uurs passkey-assertion bij het
-  // openen — de server-side sliding-refresh en kill-switch blijven ongewijzigd de poort. De
-  // PWA/web houdt de bestaande Ontgrendel-cadans (scope-besluit).
-  const nativeSlot = appSlotBeschikbaar()
+  // App-slot (besluit Peter 31-08, mockup app-lock-pincode.html; sinds 08-09 óók in de PWA): het
+  // lokale slot (code = anker, Face ID = gemak) bewaakt het refresh-token; de server-side
+  // sliding-refresh en kill-switch blijven ongewijzigd de poort. `slotKan` is false alleen zonder
+  // veilige opslag (web zonder secure context) — dan kan de app niet werken en zegt dat eerlijk.
+  const slotKan = appSlotBeschikbaar()
   const [slotStatus, setSlotStatus] = useState<'laden' | 'geen' | 'vergrendeld' | 'ontgrendeld'>(
-    nativeSlot ? 'laden' : 'geen',
+    slotKan ? 'laden' : 'geen',
   )
   const [toegangOpen, setToegangOpen] = useState(false)
+  // Melding op het activatiescherm ná een server-side dode sessie (kill-switch / 7-dagen-TTL).
+  const [toegangVerlopen, setToegangVerlopen] = useState(false)
 
   useEffect(() => {
-    if (!nativeSlot) return
+    if (!slotKan) return
     void isAppSlotIngesteld().then((ingesteld) => {
       setSlotStatus(ingesteld ? (isOntgrendeld() ? 'ontgrendeld' : 'vergrendeld') : 'geen')
       markeer('slot-status')
     })
-  }, [nativeSlot])
+  }, [slotKan])
 
   // Vergrendelen bij achtergrond: "direct vergrendelen" aan = meteen bij het verlaten, uit =
   // pas ná 5 minuten achtergrond (mockup scherm 7). Een koude start is sowieso vergrendeld
   // (het anker leeft alleen in het geheugen).
   useEffect(() => {
-    if (!nativeSlot) return
+    if (!slotKan) return
     let verborgenSinds: number | null = null
     const naarSlot = () => {
       vergrendel()
@@ -161,41 +159,29 @@ export default function AccordeurApp() {
     }
     document.addEventListener('visibilitychange', opWissel)
     return () => document.removeEventListener('visibilitychange', opWissel)
-  }, [nativeSlot])
-
-  // Ontgrendel-frequentie (besluit Peter 27-08): hooguit 1× per 24 uur per apparaat. De stille
-  // refresh bij het openen draagt de server-uitspraak (venster op het apparaat, geen client-
-  // klok): false = de laatste passkey-ceremonie is jonger dan 24 u → direct door, ook bij een
-  // koude start; true/null = het bestaande gedrag (ontgrendelscherm, tenzij al ontgrendeld in
-  // deze app-sessie). De 7-dagen-inactiviteitsregel en de kill-switch zitten in de refresh zelf.
-  useEffect(() => {
-    if (status === 'ingelogd' && ontgrendelingNodig === false && !ontgrendeld) {
-      sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
-      setOntgrendeld(true)
-    }
-  }, [status, ontgrendelingNodig, ontgrendeld])
+  }, [slotKan])
 
   // Koude-start-meting (D1 06-09): het moment waarop er een access-token is.
   useEffect(() => {
     if (status === 'ingelogd') markeer('sessie')
   }, [status])
 
-  // D3 (06-09, web): staat het ontgrendelscherm nog (24-uurs-cadans) terwijl de stille refresh al
-  // een geldig access-token gaf, dan loopt de wachtrij-/vragen-fetch alvast — GoedkeurenFlow
-  // neemt 'm over bij het monteren. Alleen fetchen, niets tonen: de ontgrendeling blijft de poort.
-  // Native niet: daar zit het refresh-token achter het app-slot, de sessie komt pas ná ontgrendelen.
+  // Sessie server-side dood terwijl het slot open stond (kill-switch, 7-dagen-TTL → 401 op een
+  // gewone request): het slot is dan waardeloos — lokaal wissen, stand-cache mee weg (D2: die
+  // leeft nooit langer dan zijn sessie) en terug naar het activatiescherm mét melding.
   useEffect(() => {
-    if (status === 'ingelogd' && !ontgrendeld && !nativeSlot && !forceerLogin && !isVeldRol(rol)) voorlaadStand()
-  }, [status, ontgrendeld, nativeSlot, forceerLogin, rol])
-
-  // D2 (06-09): sterft de sessie terwijl de app open stond (kill-switch, 7-dagen-TTL → login),
-  // dan gaat de lokale stand-cache mee weg — hij leeft nooit langer dan zijn sessie.
-  useEffect(() => {
-    if (status === 'uitgelogd' && ontgrendeld) wisAlleStanden()
-  }, [status, ontgrendeld])
+    if (status === 'uitgelogd' && slotStatus === 'ontgrendeld') {
+      void wisAppSlotLokaal().then(() => {
+        wisAlleStanden()
+        setToegangOpen(false)
+        setSlotStatus('geen')
+        setToegangVerlopen(true)
+      })
+    }
+  }, [status, slotStatus])
 
   // Native schil (fase 3): melding-tap → /accordeur-deep-link. No-op buiten de schil;
-  // de auth-cadans blijft de poort (de app opent gewoon op ontgrendelen/login).
+  // de slot-cadans blijft de poort (de app opent gewoon op het slot/de activatie).
   useEffect(() => {
     markeer('app-render')
     installeerNativeTapAfhandeling()
@@ -203,93 +189,65 @@ export default function AccordeurApp() {
     installeerNativeUrlAfhandeling()
   }, [])
 
-  const naIngelogd = useCallback(
-    (paar: TokenPaarResponseDto) => {
-      inloggen(paar)
-      sessionStorage.setItem(ONTGRENDELD_VLAG, '1')
-      setOntgrendeld(true)
-      setForceerLogin(false)
-      // App-lock: ná een activatie staat het slot al (ontgrendeld); ná een her-login is het
-      // bewust gewist — de gebruiker kiest dan opnieuw een code (setup-branch hieronder).
-      if (nativeSlot) {
-        void isAppSlotIngesteld().then((ingesteld) =>
-          setSlotStatus(ingesteld && isOntgrendeld() ? 'ontgrendeld' : ingesteld ? 'vergrendeld' : 'geen'),
-        )
-      }
-      // Vanaf /activeren expliciet DOOR naar de flow (kliktest Peter 2026-08-15, 2e
-      // reproductie): zonder deze navigatie bleef het scherm ná een geslaagde registratie
-      // op de registratiestap staan — het setup-token in de navigation-state won het in de
-      // render-vertakking van de ingelogde status, en niets ruimde de /activeren-route op.
-      if (location.pathname.endsWith('/activeren')) void navigate('/accordeur', { replace: true })
-    },
-    [inloggen, location.pathname, navigate, nativeSlot],
-  )
-
-  // Uitloggen (kliktest 2026-08-12): trekt server-side de refresh-sessie in via het
-  // cookie-pad (/auth/token/vernieuwen/logout, zie AuthContext) en zet de PWA terug naar
-  // het login-scherm; het ontgrendeld-vlaggetje gaat mee weg zodat een volgende sessie
-  // altijd opnieuw bij login/ontgrendelen begint.
-  const uitloggenAccordeur = useCallback(async () => {
-    await uitloggen()
-    sessionStorage.removeItem(ONTGRENDELD_VLAG)
-    setOntgrendeld(false)
-    // D2: de lokale stand-cache hoort bij de sessie — mee weg (nooit iets van een vorige
-    // gebruiker op dit toestel).
-    wisAlleStanden()
-  }, [uitloggen])
-
-  // App-lock-handlers (native): ontgrendeld = verse sessie uit de stille refresh; naar login =
-  // de sessie was server-side dood en het slot is al lokaal gewist (AppSlotScherm).
-  const naSlotOntgrendeld = useCallback(
-    (paar: TokenPaarResponseDto) => {
-      setSlotStatus('ontgrendeld')
-      naIngelogd(paar)
-    },
-    [naIngelogd],
-  )
-  const naSlotNaarLogin = useCallback(() => {
-    // Sessie server-side dood (kill-switch/verlopen) → login; de stand-cache gaat mee weg (D2).
-    wisAlleStanden()
-    setSlotStatus('geen')
-    setForceerLogin(true)
-  }, [])
-  const uitloggenVanToegang = useCallback(async () => {
-    setToegangOpen(false)
-    setSlotStatus('geen')
-    await uitloggenAccordeur()
-  }, [uitloggenAccordeur])
-  const openToegang = nativeSlot && slotStatus === 'ontgrendeld' ? () => setToegangOpen(true) : undefined
-
   const opActiveren = location.pathname.endsWith('/activeren')
-  const activatieToken = useMemo(() => {
-    const state = location.state as { passkeySetupToken?: string } | null
-    return opActiveren ? (state?.passkeySetupToken ?? null) : null
-  }, [location, opActiveren])
-  // Mobiel-first + atomaire activatie (28-08): het /activeren-scherm van de kantoor-bundel
-  // stuurt externe rollen hierheen mét de uitnodigingslink in de URL (`?uitnodiging=`), zodat
-  // de drie stappen (wachtwoord → passkey → klaar) in de app-stijl lopen en een refresh de flow
-  // gewoon opnieuw begint — de link blijft verzilverbaar tot de passkey staat.
+  // Mobiel-first activatie externe rollen (28-08): het kantoor-/activeren-scherm en de universal
+  // link sturen hierheen mét de uitnodigingslink in de URL (`?uitnodiging=`); een refresh begint
+  // de flow gewoon opnieuw — de link blijft verzilverbaar tot het toestel gekoppeld is.
   const uitnodigingToken = useMemo(() => {
     if (!opActiveren) return null
-    const params = new URLSearchParams(location.search)
-    return params.get('uitnodiging')
+    return new URLSearchParams(location.search).get('uitnodiging')
   }, [location.search, opActiveren])
   const uitnodigingHerstel = new URLSearchParams(location.search).get('herstel') === '1'
 
-  // Token-loos /activeren (kliktest 2026-08-15): het setup-token leeft alleen in de
-  // navigation-state en is na een refresh weg — zonder deze branch viel de app stil terug
-  // op de status-branches. Eén duidelijke actie: opnieuw inloggen; de nieuwe-apparaat-route
-  // (AccordeurLogin → passkey_setup_token) vangt de registratie daarna gewoon op.
-  const naarLoginNaVerlopenSessie = useCallback(() => {
+  /** Ná activatie + toegangscode (AppActiveren): sessie starten (AuthContext bewaart het refresh-
+   * token versleuteld — het slot staat al open), slot = ontgrendeld en dóór naar de flow. Vanaf
+   * /activeren expliciet navigeren (kliktest 2026-08-15: anders bleef de activatieroute staan),
+   * mét behoud van een `?document=`-deeplink uit de oorspronkelijke URL. */
+  const naGeactiveerd = useCallback(
+    (paar: TokenPaarResponseDto) => {
+      inloggen(paar)
+      setToegangVerlopen(false)
+      setSlotStatus('ontgrendeld')
+      if (opActiveren) {
+        const document = new URLSearchParams(location.search).get('document')
+        void navigate(document ? `/accordeur?document=${encodeURIComponent(document)}` : '/accordeur', { replace: true })
+      }
+    },
+    [inloggen, location.search, navigate, opActiveren],
+  )
+
+  // Slot-handlers: ontgrendeld = verse sessie uit de stille refresh; sessie dood = het slot is al
+  // lokaal gewist (AppSlotScherm) → activatiescherm mét melding (§5c).
+  const naSlotOntgrendeld = useCallback(
+    (paar: TokenPaarResponseDto) => {
+      inloggen(paar)
+      setSlotStatus('ontgrendeld')
+    },
+    [inloggen],
+  )
+  const naSlotSessieDood = useCallback(() => {
     wisAlleStanden()
-    setForceerLogin(true)
-    void navigate('/accordeur', { replace: true })
-  }, [navigate])
-  // Ontgrendel-nooduitgang (web) / verlopen sessie: naar het login-scherm mét gewiste stand-cache.
-  const naarLoginVanOntgrendel = useCallback(() => {
-    wisAlleStanden()
-    setForceerLogin(true)
+    setSlotStatus('geen')
+    setToegangVerlopen(true)
   }, [])
+
+  // Header-"Uitloggen" in de flow = de app vergrendelen (ING-model: het toestel blijft gekoppeld,
+  // de volgende opening vraagt de toegangscode). Echt loskoppelen (server-side intrekken + slot
+  // wissen) zit in ⚙ Toegang tot de app → "Dit toestel loskoppelen".
+  const vergrendelApp = useCallback(async () => {
+    vergrendel()
+    setToegangOpen(false)
+    setSlotStatus('vergrendeld')
+  }, [])
+  // Loskoppelen vanuit ⚙ Toegang: server-side intrekken + lokaal alles weg → activatiescherm.
+  const losgekoppeld = useCallback(async () => {
+    setToegangOpen(false)
+    setSlotStatus('geen')
+    setToegangVerlopen(false)
+    wisAlleStanden()
+    await uitloggen()
+  }, [uitloggen])
+  const openToegang = slotStatus === 'ontgrendeld' ? () => setToegangOpen(true) : undefined
 
   const veldrol = isVeldRol(rol)
   if (status === 'ingelogd' && isKantoorRol(rol)) {
@@ -301,31 +259,20 @@ export default function AccordeurApp() {
     return <Navigate to="/" replace />
   }
 
+  const laden = (
+    <div className="acc-vol">
+      <div className="acc-appnaam">
+        Nijenhuis <span>Boekingsmodule</span>
+      </div>
+      <div className="acc-bio">
+        <div className="acc-sub">Laden…</div>
+      </div>
+    </div>
+  )
+
   let inhoud: React.ReactNode
-  if (uitnodigingToken) {
-    inhoud = <AccordeurActiveren uitnodigingToken={uitnodigingToken} herstel={uitnodigingHerstel} naIngelogd={naIngelogd} />
-  } else if (activatieToken) {
-    inhoud = <AccordeurActiveren passkeySetupToken={activatieToken} naIngelogd={naIngelogd} />
-  } else if (opActiveren && status !== 'uitgelogd') {
-    // Zelfherstel (kliktest 2026-08-15, 2e reproductie): scherm herladen ná een geslaagde
-    // registratie = token-loos /activeren mét een levende sessie (de silent refresh op de
-    // httpOnly-cookie is de server-side waarheid). Dan is "Sessie verlopen" fout — door naar
-    // de flow (voorwaarden-poort zit fail-closed in GoedkeurenFlow; koude start → Ontgrendel).
-    // Tijdens status 'laden' rendert de Navigate nog niet: eerst weten of de sessie leeft.
-    inhoud =
-      status === 'ingelogd' ? (
-        <Navigate to="/accordeur" replace />
-      ) : (
-        <div className="acc-vol">
-          <div className="acc-appnaam">
-            Nijenhuis <span>Boekingsmodule</span>
-          </div>
-          <div className="acc-bio">
-            <div className="acc-sub">Laden…</div>
-          </div>
-        </div>
-      )
-  } else if (opActiveren) {
+  if (!slotKan && webSlotOnmogelijkOpAccordeur()) {
+    // Web zonder secure context (http-LAN-adres): geen WebCrypto → geen slot → geen app.
     inhoud = (
       <div className="acc-vol">
         <div className="acc-appnaam">
@@ -333,49 +280,29 @@ export default function AccordeurApp() {
         </div>
         <div className="acc-bio">
           <div className="acc-icoon">☉</div>
-          <b>Sessie verlopen</b>
+          <b>Beveiligde verbinding nodig</b>
           <div className="acc-sub">
-            Deze activatiestap is verlopen (bijvoorbeeld door de pagina te verversen). Log opnieuw
-            in met je e-mailadres en wachtwoord — daarna kun je dit apparaat direct registreren.
+            Deze app werkt alleen via een beveiligde verbinding (https) of in de app uit de App Store / Google Play.
+            Open de link uit de uitnodiging opnieuw op je telefoon.
           </div>
         </div>
-        <button className="acc-btn primair" onClick={naarLoginNaVerlopenSessie}>
-          Opnieuw inloggen
-        </button>
       </div>
     )
-  } else if (nativeSlot && slotStatus === 'laden') {
-    // Native: eerst weten of er een slot staat vóór er iets anders toont — een vergrendeld slot
-    // wint van het login-scherm (de stille refresh faalt bewust zolang het refresh-token op
-    // slot staat).
-    inhoud = (
-      <div className="acc-vol">
-        <div className="acc-appnaam">
-          Nijenhuis <span>Boekingsmodule</span>
-        </div>
-        <div className="acc-bio">
-          <div className="acc-sub">Laden…</div>
-        </div>
-      </div>
-    )
-  } else if (nativeSlot && slotStatus === 'vergrendeld' && !forceerLogin) {
-    inhoud = <AppSlotScherm naOntgrendeld={naSlotOntgrendeld} naarLogin={naSlotNaarLogin} />
+  } else if (slotStatus === 'laden') {
+    // Eerst weten of er een slot staat vóór er iets anders toont — een vergrendeld slot wint van
+    // het activatiescherm (de stille refresh slaat bewust over zolang het token op slot staat).
+    inhoud = laden
+  } else if (slotStatus === 'vergrendeld') {
+    inhoud = <AppSlotScherm naOntgrendeld={naSlotOntgrendeld} naarLogin={naSlotSessieDood} />
+  } else if (uitnodigingToken) {
+    inhoud = <AppActiveren token={uitnodigingToken} herstel={uitnodigingHerstel} naGeactiveerd={naGeactiveerd} />
   } else if (status === 'laden') {
-    inhoud = (
-      <div className="acc-vol">
-        <div className="acc-appnaam">
-          Nijenhuis <span>Boekingsmodule</span>
-        </div>
-        <div className="acc-bio">
-          <div className="acc-sub">Laden…</div>
-        </div>
-      </div>
-    )
-  } else if (status === 'uitgelogd' || forceerLogin) {
-    inhoud = <AccordeurLogin naIngelogd={naIngelogd} />
-  } else if (nativeSlot && slotStatus === 'geen') {
-    // Slot instellen: ná een her-login (slot bewust gewist) of op een legacy-toestel van vóór
-    // 31-08 — de code is verplicht vóór de app verdergaat (het refresh-token gaat erachter).
+    inhoud = laden
+  } else if (slotStatus === 'geen' && status === 'uitgelogd') {
+    inhoud = <AppActiveren melding={toegangVerlopen ? TOEGANG_VERLOPEN_MELDING : null} naGeactiveerd={naGeactiveerd} />
+  } else if (slotStatus === 'geen') {
+    // Legacy toestel (plain token in de Keychain/Keystore van vóór 31-08) mét levende sessie: de
+    // toegangscode is verplicht vóór de app verdergaat (het refresh-token gaat erachter).
     inhoud = (
       <PincodeKiezen
         onGekozen={(codeNieuw) => {
@@ -383,15 +310,19 @@ export default function AccordeurApp() {
         }}
       />
     )
-  } else if (!ontgrendeld && !nativeSlot) {
-    inhoud = <Ontgrendel naOntgrendeld={naIngelogd} naarLogin={naarLoginVanOntgrendel} />
-  } else if (toegangOpen && nativeSlot) {
-    inhoud = <ToegangInstellingen sluit={() => setToegangOpen(false)} uitloggen={uitloggenVanToegang} />
+  } else if (status === 'uitgelogd') {
+    // Slot open maar (nog) geen sessie: het effect hierboven wist het slot en toont de activatie.
+    inhoud = laden
+  } else if (opActiveren) {
+    // Token-loos /activeren mét levende sessie (bv. herladen ná een geslaagde activatie): door.
+    inhoud = <Navigate to="/accordeur" replace />
+  } else if (toegangOpen) {
+    inhoud = <ToegangInstellingen sluit={() => setToegangOpen(false)} uitloggen={losgekoppeld} />
   } else if (veldrol) {
     // Uren & meerwerk (fase 4, mockup/uren-uitvoerder.html): zelfde app, rolafhankelijke tabs.
-    inhoud = <UrenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} openToegang={openToegang} />
+    inhoud = <UrenFlow wisselThema={wissel} uitloggen={vergrendelApp} openToegang={openToegang} />
   } else {
-    inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={uitloggenAccordeur} openToegang={openToegang} />
+    inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={vergrendelApp} openToegang={openToegang} />
   }
 
   return (

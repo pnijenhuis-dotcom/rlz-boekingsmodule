@@ -4,6 +4,9 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { SLOT_MODUS_SLEUTEL } from '../../api/webVeiligeOpslag'
+import { APPSLOT_AUDIT_SLEUTEL } from '../appAuthApi'
 import { KOUDE_START_OPSLAG_SLEUTEL, WEB_BUILD_ID } from '../koudeStart'
 import { ToegangInstellingen } from './ToegangInstellingen'
 
@@ -26,6 +29,9 @@ beforeAll(() => {
 })
 
 vi.mock('../../api/appSlot', () => ({
+  CODE_LENGTE: 5,
+  isZwakkeCode: () => false,
+  haalCredentialId: () => Promise.resolve('cred-1'),
   biometrieBeschikbaar: () => Promise.resolve(false),
   isBiometrieAan: () => Promise.resolve(false),
   isDirectVergrendelen: () => Promise.resolve(false),
@@ -114,5 +120,68 @@ describe('ToegangInstellingen — laatste verbindingsfout (2b)', () => {
     )
     expect(fetchMock).not.toHaveBeenCalled()
     localStorage.removeItem('accordeur-laatste-verbindingsfout')
+  })
+})
+
+// App-auth zonder passkey (contract §5d, 08-09): toegangscode wijzigen mét server-event (zonder code) +
+// lokale audit-regel, en "Dit toestel loskoppelen".
+describe('ToegangInstellingen — toegangscode wijzigen + loskoppelen (§5d)', () => {
+  async function tikCode(code: string) {
+    for (const c of code) await userEvent.click(screen.getByRole('button', { name: c }))
+  }
+
+  function renderMetFetch(uitloggen = vi.fn(() => Promise.resolve())) {
+    const aanroepen: { methode: string; pad: string; body: unknown }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL, init?: RequestInit) => {
+        aanroepen.push({ methode: init?.method ?? 'GET', pad: String(invoer), body: init?.body ?? null })
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }),
+    )
+    render(<ToegangInstellingen sluit={() => {}} uitloggen={uitloggen} />)
+    return { aanroepen, uitloggen }
+  }
+
+  it('rijen heten "Toegangscode wijzigen" en "Dit toestel loskoppelen"; zonder wijziging geen "Laatste wijziging"', () => {
+    renderMetFetch()
+    expect(screen.getByText('Toegangscode wijzigen')).toBeInTheDocument()
+    expect(screen.getByText('Dit toestel loskoppelen')).toBeInTheDocument()
+    expect(screen.queryByTestId('acc-laatste-wijziging')).toBeNull()
+    expect(screen.queryByText(/Face ID gebruiken/)).toBeNull()
+  })
+
+  it('huidige code → nieuwe code 2× → melding, POST /auth/app/toegangscode-gewijzigd (leeg body) + lokale audit-regel', async () => {
+    const { aanroepen } = renderMetFetch()
+    await userEvent.click(screen.getByText('Toegangscode wijzigen'))
+    expect(screen.getByText('Voer je huidige toegangscode in')).toBeInTheDocument()
+    await tikCode('13579')
+    expect(await screen.findByText('Kies een code')).toBeInTheDocument()
+    await tikCode('24680')
+    await screen.findByText('Nog één keer')
+    await tikCode('24680')
+    expect(await screen.findByText('Je toegangscode is gewijzigd.')).toBeInTheDocument()
+    await waitFor(() => expect(aanroepen.some((a) => a.pad === '/auth/app/toegangscode-gewijzigd' && a.methode === 'POST')).toBe(true))
+    expect(aanroepen.find((a) => a.pad === '/auth/app/toegangscode-gewijzigd')!.body).toBeNull()
+    const audit = JSON.parse(localStorage.getItem(APPSLOT_AUDIT_SLEUTEL) ?? '[]') as { actie: string; tijdstip: string }[]
+    expect(audit).toHaveLength(1)
+    expect(audit[0].actie).toBe('toegangscode_gewijzigd')
+    expect(JSON.stringify(audit)).not.toContain('24680')
+    expect(screen.getByTestId('acc-laatste-wijziging')).toHaveTextContent(/^Laatste wijziging: \d\d-\d\d \d\d:\d\d$/)
+    localStorage.removeItem(APPSLOT_AUDIT_SLEUTEL)
+  })
+
+  it('"Dit toestel loskoppelen" → bevestiging → POST /auth/app-lock/ontkoppelen, slot-vlag weg, uitloggen aangeroepen', async () => {
+    localStorage.setItem(SLOT_MODUS_SLEUTEL, '1')
+    const { aanroepen, uitloggen } = renderMetFetch()
+    await userEvent.click(screen.getByText('Dit toestel loskoppelen'))
+    expect(screen.getByText('Dit toestel loskoppelen?')).toBeInTheDocument()
+    expect(
+      screen.getByText('Wist de toegang op dit toestel en trekt het toestel bij het kantoor in. Opnieuw koppelen kan met een nieuwe uitnodiging.'),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Ja, koppel dit toestel los' }))
+    await waitFor(() => expect(uitloggen).toHaveBeenCalledTimes(1))
+    expect(aanroepen.some((a) => a.pad === '/auth/app-lock/ontkoppelen' && a.methode === 'POST')).toBe(true)
+    expect(localStorage.getItem(SLOT_MODUS_SLEUTEL)).toBeNull()
   })
 })

@@ -731,7 +731,7 @@
   opacity: 0.8;
 }
 
-/* Login-formulier (volledige login: wachtwoord + passkey) */
+/* Activatie-formulier (activatiecode / geplakte uitnodigingslink) */
 .acc-form {
   width: 100%;
   max-width: 320px;
@@ -753,6 +753,13 @@
   background: var(--acc-panel);
   color: var(--acc-text);
   font-family: inherit;
+}
+.acc-form input.acc-activatiecode {
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
 }
 .acc-form input:focus {
   outline: none;

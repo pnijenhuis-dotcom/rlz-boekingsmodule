@@ -1,6 +1,6 @@
 // Native-push-brug (store-app fase 3): in de Capacitor-schil bestaat Web Push niet (geen
 // service worker in de webview) — meldingen lopen daar via @capacitor/push-notifications
-// (APNs op iOS, FCM op Android). Zelfde toegangspatroon als nativePasskey.ts: bridge-globals,
+// (APNs op iOS, FCM op Android). Zelfde toegangspatroon als nativeSessie.ts: bridge-globals,
 // géén @capacitor-dependency in de webcode, fail-closed detectie.
 //
 // De permissieprompt komt óók native alleen vanuit een expliciete klik (zelfde principe als

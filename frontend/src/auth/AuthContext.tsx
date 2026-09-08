@@ -4,7 +4,6 @@ import {
   BackendOnbereikbaarError,
   decodeerJwtPayload,
   getAccessToken,
-  getOntgrendelingNodig,
   setAccessToken,
   setSessieVerlopenHandler,
   verversSessie,
@@ -25,10 +24,6 @@ interface AuthContextWaarde {
    * niet bereikbaar was (i.p.v. gewoon geen geldige refresh-cookie) — zie LoginScreen voor de
    * bijbehorende melding. */
   backendOnbereikbaar: boolean
-  /** Ontgrendel-frequentie accordeur (besluit Peter 27-08, server-side 24-uursvenster): de
-   * uitspraak van de stille refresh — false = de app opent direct, true = ontgrendelscherm,
-   * null = geen uitspraak (kantoor, of nog niet geladen). Alleen de accordeur-shell leest dit. */
-  ontgrendelingNodig: boolean | null
   inloggen: (paar: TokenPaarResponseDto) => void
   uitloggen: () => Promise<void>
 }
@@ -50,7 +45,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rol, setRol] = useState<string | null>(null)
   const [gebruikerId, setGebruikerId] = useState<string | null>(null)
   const [backendOnbereikbaar, setBackendOnbereikbaar] = useState(false)
-  const [ontgrendelingNodig, setOntgrendelingNodig] = useState<boolean | null>(null)
 
   useEffect(() => {
     setSessieVerlopenHandler(() => {
@@ -59,15 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGebruikerId(null)
     })
 
-    // Silent refresh bij het laden van de app: de httpOnly-cookie overleeft een paginaherlaad,
-    // het in-memory access-token niet — dit haalt 'm terug zonder opnieuw TOTP te vragen.
+    // Silent refresh bij het laden van de app: de httpOnly-cookie (kantoor) of het refresh-token
+    // achter het app-slot (native/PWA-slotmodus) overleeft een paginaherlaad, het in-memory
+    // access-token niet — dit haalt 'm terug zonder opnieuw een tweede factor te vragen.
     void verversSessie()
       .then((gelukt) => {
         if (gelukt) {
           const token = getAccessToken()
           setRol(token ? rolUitToken(token) : null)
           setGebruikerId(token ? gebruikerIdUitToken(token) : null)
-          setOntgrendelingNodig(getOntgrendelingNodig())
           setStatus('ingelogd')
         } else {
           setStatus('uitgelogd')
@@ -89,27 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGebruikerId(gebruikerIdUitToken(paar.access_token))
     setStatus('ingelogd')
     setBackendOnbereikbaar(false)
-    setOntgrendelingNodig(typeof paar.ontgrendeling_nodig === 'boolean' ? paar.ontgrendeling_nodig : null)
-    // Native schil (fase 4): het refresh-token uit de body naar de Keychain/Keystore — de
-    // volgende app-opening ontgrendelt dan gewoon i.p.v. een volledige login te eisen.
+    // Slot-opslag (native fase 4, PWA 08-09): het refresh-token uit de body versleuteld achter het
+    // app-slot — de volgende app-opening ontgrendelt dan gewoon met de toegangscode.
     if (paar.refresh_token) void bewaarNatiefRefreshToken(paar.refresh_token)
   }
 
   const uitloggen = async () => {
     // Onder het cookie-pad (/auth/token/vernieuwen): alleen dáár stuurt de browser de
     // path-gebonden refresh-cookie mee, anders wordt er server-side niets ingetrokken.
-    // Native reist het token als header (client.ts) — zelfde endpoint, zelfde intrekking.
+    // Native/PWA-slotmodus reist het token als header (client.ts) — zelfde endpoint, zelfde intrekking.
     await apiFetch('/auth/token/vernieuwen/logout', { method: 'POST' })
     await wisNatiefRefreshToken()
     setAccessToken(null)
     setRol(null)
     setGebruikerId(null)
-    setOntgrendelingNodig(null)
     setStatus('uitgelogd')
   }
 
   return (
-    <AuthContext.Provider value={{ status, rol, gebruikerId, backendOnbereikbaar, ontgrendelingNodig, inloggen, uitloggen }}>
+    <AuthContext.Provider value={{ status, rol, gebruikerId, backendOnbereikbaar, inloggen, uitloggen }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,19 +1,14 @@
-// App-lock bij het openen (mockup app-lock-pincode.html schermen 4/5/6). Vervangt in de native
-// schil de 24-uurs passkey-assertion: Face ID (of vingerafdruk) is het standaardpad, de code de
-// terugval — beide ontgrendelen LOKAAL het anker waarmee het refresh-token leesbaar wordt;
-// daarna haalt een gewone stille refresh de sessie op (server-side sliding-TTL en kill-switch
-// blijven onverkort de poort). 5 foute codes = slot + sessie lokaal gewist + uitsluiting bij de
-// server gemeld; herstel = verse kantoor-link (poortwachter-model, mockup-notitie ④).
+// App-slot bij het openen (mockup app-lock-pincode.html schermen 4/5/6; native én PWA sinds 08-09):
+// de toegangscode is het anker, Face ID (of vingerafdruk) optioneel gemak — beide ontgrendelen
+// LOKAAL het anker waarmee het refresh-token leesbaar wordt; daarna haalt een gewone stille
+// refresh de sessie op (server-side sliding-TTL en kill-switch blijven onverkort de poort).
+// 5 foute codes = slot + sessie lokaal gewist + uitsluiting bij de server gemeld; herstel = nieuwe
+// uitnodiging van het kantoor (poortwachter-model, mockup-notitie ④).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  haalCredentialId,
-  isBiometrieAan,
-  ontgrendelMetBiometrie,
-  ontgrendelMetCode,
-  wisAppSlotLokaal,
-} from '../../api/appSlot'
+import { isBiometrieAan, ontgrendelMetBiometrie, ontgrendelMetCode, wisAppSlotLokaal } from '../../api/appSlot'
 import { BackendOnbereikbaarError, kaleAuthFetch, type BackendOnbereikbaarOorzaak } from '../../api/client'
+import { meldAppLock } from '../appAuthApi'
 import { bewaarLaatsteVerbindingsfout } from '../koudeStart'
 
 /** Korte, eerlijke oorzaak-tekst voor het slot (blok 2b 08-09). */
@@ -28,28 +23,12 @@ import { PincodeInvoer } from './PincodeInvoer'
 
 interface Props {
   naOntgrendeld: (paar: TokenPaarResponseDto) => void
-  /** Sessie server-side dood (verlopen/kill-switch): slot is dan al gewist — door naar login. */
+  /** Sessie server-side dood (verlopen/kill-switch): slot is dan al gewist — terug naar het
+   * activatiescherm (AppActiveren mét melding, contract §5c). */
   naarLogin: () => void
 }
 
 type Fase = 'biometrie' | 'code' | 'sessie' | 'uitgesloten'
-
-/** Meldt de uitsluiting/hulpvraag bij de server; zonder bekend credential_id (legacy toestel)
- * blijft het bij de lokale wissing — fail-soft, nooit een fout richting de gebruiker. */
-async function meldAppLock(pad: '/auth/app-lock/uitgesloten' | '/auth/app-lock/hulp'): Promise<void> {
-  const credentialId = await haalCredentialId()
-  if (!credentialId) return
-  try {
-    await kaleAuthFetch(pad, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential_id: credentialId }),
-    })
-  } catch {
-    // Offline of backend plat: de lokale wissing is al gebeurd; de kill-switch-melding is
-    // best-effort (het kantoor ziet het apparaat sowieso bij de nieuwe-link-vraag).
-  }
-}
 
 export function AppSlotScherm({ naOntgrendeld, naarLogin }: Props) {
   const [fase, setFase] = useState<Fase>('biometrie')
@@ -73,8 +52,8 @@ export function AppSlotScherm({ naOntgrendeld, naarLogin }: Props) {
         naOntgrendeld((await resp.json()) as TokenPaarResponseDto)
         return
       }
-      // Sessie server-side dood (7-dagen-TTL verstreken of kill-switch): her-login = e-mail +
-      // passkey; daarna kiest de gebruiker opnieuw een code — het oude slot is dan waardeloos.
+      // Sessie server-side dood (7-dagen-TTL verstreken of kill-switch): het toestel moet opnieuw
+      // geactiveerd worden met een nieuwe uitnodiging — het oude slot is dan waardeloos.
       await wisAppSlotLokaal()
       naarLogin()
     } catch (err) {
@@ -152,17 +131,20 @@ export function AppSlotScherm({ naOntgrendeld, naarLogin }: Props) {
           <b>Even opnieuw beginnen</b>
           <div className="acc-fout">De code is 5 keer onjuist ingevoerd.</div>
           <div className="acc-sub">
-            Uit voorzorg is dit toestel uitgelogd. Vraag het kantoor om een nieuwe activatielink —
-            daarna kies je opnieuw een code en werkt alles zoals je gewend bent.
+            Uit voorzorg is de toegang op dit toestel gewist. Vraag het kantoor om een nieuwe uitnodiging —
+            daarna activeer je de app opnieuw, kies je een nieuwe code en werkt alles zoals je gewend bent.
           </div>
         </div>
         {hulp === 'ja' ? (
-          <div className="acc-sub acc-vertrouwen">✓ Het kantoor is op de hoogte en stuurt je een nieuwe link.</div>
+          <div className="acc-sub acc-vertrouwen">✓ Het kantoor is op de hoogte en stuurt je een nieuwe uitnodiging.</div>
         ) : (
           <button className="acc-btn primair" disabled={hulp === 'bezig'} onClick={() => void vraagHulp()}>
-            {hulp === 'bezig' ? 'Bezig…' : 'Kantoor vragen om nieuwe link'}
+            {hulp === 'bezig' ? 'Bezig…' : 'Kantoor vragen om nieuwe uitnodiging'}
           </button>
         )}
+        <button className="acc-btn secundair" onClick={naarLogin}>
+          Activatiecode invoeren
+        </button>
       </div>
     )
   }

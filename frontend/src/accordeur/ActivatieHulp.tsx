@@ -1,33 +1,21 @@
-// Activatie-hulp op het login-scherm (blok E2 opdracht 06-09, casus detacheerder 04-09): wie de
-// app opent VÓÓR de activatie (of wiens uitnodigingslink in de browser opende) liep dood op het
-// login-scherm. Dit blok legt eerlijk uit wat er aan de hand kan zijn mét handelingsperspectief:
-// open de uitnodigingslink uit de mail op dít toestel (universal link → activatie-/code-flow),
-// of — native — plak de link hier; geen mail (meer) = kantoor "Opnieuw mailen".
+// Activatie-hulp op het activatiescherm (blok E2 06-09, herschreven 08-09 voor app-auth zonder
+// passkey): wie de app opent zonder uitnodiging (of wiens uitnodigingslink in de browser opende)
+// krijgt hier eerlijk uitgelegd wat er aan de hand kan zijn mét handelingsperspectief: open de link
+// uit de uitnodigingsmail op dít toestel (universal link → activatie), voer de activatiecode uit
+// dezelfde mail in, of — geen mail (meer) — vraag het kantoor om een nieuwe uitnodiging.
 //
-// SECURITY-KADER (0022-lijn): de server antwoordt op een onbekend/niet-geactiveerd/passkey-loos
-// adres bewust IDENTIEK (generieke 409 `GeenPasskeys`, 401 op het wachtwoord) — geen
-// user-enumeration. Dit blok is daarom generiek ("Nog niet geactiveerd?") en verschijnt ná élke
-// mislukte login of op verzoek; het stelt nergens vast óf het adres bestaat. "Link plakken" gaat
+// SECURITY-KADER (0022-lijn): de server antwoordt op een onbekende code en een ongeldige link
+// IDENTIEK — dit blok stelt nergens vast óf een account bestaat. "Link plakken" (AppActiveren) gaat
 // door exact dezelfde token-poort als de mail-link (inAppPadVoorUrl → /accordeur/activeren?
-// uitnodiging=) — geen activatie zonder token, geen omzeiling van de passkey-laag.
+// uitnodiging=) — geen activatie zonder uitnodiging.
 
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { inAppPadVoorUrl } from './nativeAppUrl'
-
-type Platform = 'ios' | 'android' | 'web'
-
-function platform(): Platform {
-  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor
-  if (!cap?.isNativePlatform?.()) return 'web'
-  const p = cap.getPlatform?.()
-  return p === 'ios' || p === 'android' ? p : 'web'
-}
+import { huidigPlatform, type AppPlatform } from './appAuthApi'
 
 /** URL die de mail-INBOX opent (niet een nieuw bericht): iOS `message://` (Mail), Android de
  * APP_EMAIL-categorie via een intent-URL; Capacitor's webview-client geeft niet-http(s)-schema's
  * aan het OS. Web: geen betrouwbare vorm → null (alleen de tekst). */
-export function mailAppUrl(p: Platform): string | null {
+export function mailAppUrl(p: AppPlatform): string | null {
   if (p === 'ios') return 'message://'
   if (p === 'android') return 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.APP_EMAIL;end'
   return null
@@ -35,7 +23,7 @@ export function mailAppUrl(p: Platform): string | null {
 
 export const GEEN_UITNODIGINGSLINK =
   'Dit is geen uitnodigingslink van de Nijenhuis Boekingsmodule. Plak de volledige link uit de e-mail van het kantoor.'
-export const LINK_ZONDER_CODE = 'Deze link bevat geen uitnodigingscode — plak de volledige link uit de e-mail.'
+export const LINK_ZONDER_CODE = 'Deze link bevat geen uitnodiging — plak de volledige link uit de e-mail.'
 
 /** Pure vertaling van een geplakte link naar de in-app-activatieroute; string = fout. Zelfde
  * poort als de universal link (alleen /activeren?token= en /accordeur/activeren?uitnodiging=). */
@@ -50,18 +38,14 @@ export function activatiePadVanGeplakteLink(ruw: string): { pad: string } | { fo
 }
 
 interface Props {
-  /** Open = uitgevouwen tonen (ná een mislukte login automatisch); dicht = alleen de tekstlink. */
+  /** Open = uitgevouwen tonen (ná een mislukte activatie automatisch); dicht = alleen de tekstlink. */
   open: boolean
   onToggle: () => void
 }
 
 export function ActivatieHulp({ open, onToggle }: Props) {
-  const navigate = useNavigate()
-  const p = platform()
+  const p = huidigPlatform()
   const native = p !== 'web'
-  const [link, setLink] = useState('')
-  const [linkFout, setLinkFout] = useState<string | null>(null)
-  const [plakOpen, setPlakOpen] = useState(false)
   const mailUrl = mailAppUrl(p)
 
   const openMailApp = () => {
@@ -73,20 +57,10 @@ export function ActivatieHulp({ open, onToggle }: Props) {
     }
   }
 
-  const naarActivatie = () => {
-    const uitkomst = activatiePadVanGeplakteLink(link)
-    if ('fout' in uitkomst) {
-      setLinkFout(uitkomst.fout)
-      return
-    }
-    setLinkFout(null)
-    void navigate(uitkomst.pad)
-  }
-
   if (!open) {
     return (
       <button type="button" className="acc-tekstlink" onClick={onToggle}>
-        Nog niet geactiveerd?
+        Nog geen uitnodiging?
       </button>
     )
   }
@@ -94,10 +68,11 @@ export function ActivatieHulp({ open, onToggle }: Props) {
   return (
     <div className="acc-hulp" data-testid="acc-activatie-hulp" aria-live="polite">
       <div>
-        <b>Nog niet geactiveerd?</b> Bent u door het kantoor uitgenodigd, open dan de <b>uitnodigingslink uit de
-        e-mail op dít toestel</b> — de app opent dan vanzelf de activatie (u kiest een code, daarna Face ID of
-        vingerafdruk). Geen e-mail (meer)? Vraag het kantoor de uitnodiging <b>opnieuw te mailen</b>; de oude link
-        vervalt dan.
+        <b>Nog geen uitnodiging?</b> Je activeert de app met de uitnodiging van het kantoor: tik op de{' '}
+        <b>link in de uitnodigingsmail op dít toestel</b> (de app opent dan vanzelf de activatie) of voer de{' '}
+        <b>activatiecode</b> uit dezelfde mail hierboven in. Daarna kies je een code van 5 cijfers waarmee je de app
+        voortaan opent. Geen e-mail (meer) of is de uitnodiging verlopen? Vraag het kantoor om een <b>nieuwe uitnodiging</b>;
+        de oude vervalt dan.
       </div>
       {native && mailUrl && (
         <>
@@ -105,35 +80,9 @@ export function ActivatieHulp({ open, onToggle }: Props) {
             Mail-app openen
           </button>
           <div className="acc-vertrouwen" style={{ textAlign: 'left', maxWidth: 'none' }}>
-            Opent de mail-app niet? Open hem dan zelf en tik op de link in de uitnodiging.
+            Opent de mail-app niet? Open hem dan zelf en tik op de link in de uitnodiging, of typ de activatiecode over.
           </div>
         </>
-      )}
-      {native && !plakOpen && (
-        <button type="button" className="acc-tekstlink" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setPlakOpen(true)}>
-          Link plakken
-        </button>
-      )}
-      {native && plakOpen && (
-        <div className="acc-form" style={{ width: '100%' }}>
-          <label htmlFor="acc-plaklink">Uitnodigingslink uit de e-mail</label>
-          <input
-            id="acc-plaklink"
-            type="url"
-            inputMode="url"
-            autoComplete="off"
-            placeholder="https://app.…/activeren?token=…"
-            value={link}
-            onChange={(e) => {
-              setLink(e.target.value)
-              setLinkFout(null)
-            }}
-          />
-          {linkFout && <div className="acc-fout">{linkFout}</div>}
-          <button type="button" className="acc-btn primair" disabled={link.trim() === ''} onClick={naarActivatie}>
-            Naar de activatie
-          </button>
-        </div>
       )}
     </div>
   )
