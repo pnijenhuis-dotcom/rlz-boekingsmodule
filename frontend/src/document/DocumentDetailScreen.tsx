@@ -48,6 +48,7 @@ import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/Rev
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
+import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -1387,6 +1388,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isKopOmschrijvingNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-omschrijving">
                           {kopOmschrijvingTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* Blok 4 bundel 08-09: intercompany-leverancier → klant-accordering overgeslagen (leveranciersregel). */}
+                      {g.detail && isAccorderingOvergeslagenNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-accordering-overgeslagen">
+                          {accorderingOvergeslagenTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Mini-voorraad (06-09): notitie mini_voorraad_bijgewerkt, geschreven ín de boek-transactie. */}

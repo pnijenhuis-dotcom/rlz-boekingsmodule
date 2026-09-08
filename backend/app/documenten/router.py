@@ -236,6 +236,20 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
 def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.BoekvoorstelResponse:
     return schemas.BoekvoorstelResponse(
         document_id=data.document_id,
+def _met_accordering_overgeslagen(
+    resp: schemas.BoekvoorstelResponse, *, administratie_id: uuid.UUID
+) -> schemas.BoekvoorstelResponse:
+    """Blok 4 (08-09): additief veld `accordering_overgeslagen_reden` — "intercompany" als de leverancier op het
+    voorstel een IC-vlag draagt in deze administratie én klant-accordering aanstaat; anders None. Lazy import:
+    accordering.service gebruikt documenten-modules (geen kringimport op moduleniveau)."""
+    from app.accordering import service as accordering_service
+
+    resp.accordering_overgeslagen_reden = accordering_service.accordering_overgeslagen_reden_voor_dto(
+        administratie_id=administratie_id, document_id=resp.document_id
+    )
+    return resp
+
+
         vendor_id=data.vendor_id,
         referentie=data.referentie,
         factuurdatum=data.factuurdatum,
@@ -814,7 +828,7 @@ def boekvoorstel_ophalen(
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return _naar_boekvoorstel_response(data)
+    return _met_accordering_overgeslagen(_naar_boekvoorstel_response(data), administratie_id=administratie_id)
 
 
 @router.put(
@@ -875,7 +889,9 @@ def boekvoorstel_opslaan(
     rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
 
     return schemas.BoekvoorstelMetChecksResponse(
-        boekvoorstel=_naar_boekvoorstel_response(data),
+        boekvoorstel=_met_accordering_overgeslagen(
+            _naar_boekvoorstel_response(data), administratie_id=administratie_id
+        ),
         checks=_naar_check_rapport_response(rapport),
         # sla_boekvoorstel_op herberekende de factuurmatch al (post-commit) — hier de verse stand.
         factuurmatch=_lees_match_dto(administratie_id, document_id),

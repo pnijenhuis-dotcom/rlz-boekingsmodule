@@ -712,7 +712,11 @@ export function BoekvoorstelPanel({
   // terugval naar klaar_om_te_boeken), dan is de knop weer "Boeken" — nooit een tweede ronde
   // naar de klant. De server-poort toetst hetzelfde (laatste ronde afgerond, bedrag ongewijzigd).
   const [klantAkkoordCompleet, setKlantAkkoordCompleet] = useState(false)
-  const effectiefAccorderingAan = accorderingAan && !klantAkkoordCompleet
+  // Blok 4 bundel 08-09 (besluit Peter): leverancier met IC-vlag in deze administratie → de klant-accordering wordt
+  // overgeslagen op de leveranciersregel; de knop is dan gewoon "Boeken" (de server-poort staat voor zo'n document
+  // open, zonder ronde). Additief DTO-veld op het boekvoorstel; ontbrekend = gewone flow.
+  const [accorderingOvergeslagenReden, setAccorderingOvergeslagenReden] = useState<string | null>(null)
+  const effectiefAccorderingAan = accorderingAan && !klantAkkoordCompleet && accorderingOvergeslagenReden === null
   const [herstellenBezig, setHerstellenBezig] = useState(false)
   const [herstellenFout, setHerstellenFout] = useState<string | null>(null)
 
@@ -783,6 +787,7 @@ export function BoekvoorstelPanel({
       })
       .catch((err: unknown) => {
         if (actief) setLadenFout(err instanceof Error ? err.message : 'Onbekende fout')
+        setAccorderingOvergeslagenReden(dto.accordering_overgeslagen_reden ?? null)
       })
       .finally(() => {
         if (actief) setLaden(false)
@@ -2309,3 +2314,9 @@ export function BoekvoorstelPanel({
     </>
   )
 }
+              {accorderingAan && accorderingOvergeslagenReden === 'intercompany' && (
+                <div className="hint" style={{ marginTop: 0 }} data-testid="accordering-overgeslagen-intercompany">
+                  <span className="chip geheugen">intercompany</span> Klant-accordering wordt overgeslagen
+                  (leveranciersregel: intercompany-leverancier) — het document boekt direct, mét alle harde checks.
+                </div>
+              )}

@@ -75,6 +75,10 @@ class AccorderingResponse(BaseModel):
     # controlescherm toont 'm rood in de accorderingssectie mét de knop "Opnieuw boeken".
     boek_fout: str | None = None
     boek_fout_op: datetime | None = None
+    # Blok 4 (08-09): status "overgeslagen" = geen ronde, klant-accordering overgeslagen op de leveranciersregel
+    # (`overgeslagen_reden` = "intercompany"); `stappen` leeg, geen acties. Additief.
+    overgeslagen_reden: str | None = None
+    overgeslagen_leverancier_naam: str | None = None
 
 
 class HerinneringResponse(BaseModel):
@@ -187,11 +191,14 @@ class AfwijsInput(StrikteInvoer):
 
 
 class BesluitResponse(BaseModel):
-    accordering: AccorderingResponse
+    # Blok 4 (08-09): None uitsluitend als de accordering op de leveranciersregel is overgeslagen (geen ronde;
+    # `accordering_overgeslagen_reden` = "intercompany", `geboekt`/`boek_fout` dragen de boekuitkomst).
+    accordering: AccorderingResponse | None
     alles_akkoord: bool
     geboekt: bool
     boek_fout: str | None
     staande_regel_id: uuid.UUID | None
+    accordering_overgeslagen_reden: str | None = None
 
 
 class WachtrijDoorbelastingRegelResponse(BaseModel):

@@ -78,6 +78,8 @@ def _accordering_response(data: service.AccorderingData) -> schemas.AccorderingR
         afgerond_op=data.afgerond_op,
         boek_fout=data.boek_fout,
         boek_fout_op=data.boek_fout_op,
+        overgeslagen_reden=data.overgeslagen_reden,
+        overgeslagen_leverancier_naam=data.overgeslagen_leverancier_naam,
         stappen=[
             schemas.StapResponse(
                 volgnummer=s.volgnummer,
@@ -98,11 +100,12 @@ def _accordering_response(data: service.AccorderingData) -> schemas.AccorderingR
 
 def _besluit_response(resultaat: service.AkkoordResultaat) -> schemas.BesluitResponse:
     return schemas.BesluitResponse(
-        accordering=_accordering_response(resultaat.accordering),
+        accordering=_accordering_response(resultaat.accordering) if resultaat.accordering is not None else None,
         alles_akkoord=resultaat.alles_akkoord,
         geboekt=resultaat.geboekt,
         boek_fout=resultaat.boek_fout,
         staande_regel_id=resultaat.staande_regel_id,
+        accordering_overgeslagen_reden=resultaat.overgeslagen_reden,
     )
 
 

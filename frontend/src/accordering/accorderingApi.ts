@@ -83,14 +83,20 @@ export interface AccorderingDto {
    * accorderingssectie toont 'm rood mét de knop "Opnieuw boeken". Null = geen. */
   boek_fout?: string | null
   boek_fout_op?: string | null
+  /** Blok 4 bundel 08-09: status 'overgeslagen' = geen ronde, klant-accordering overgeslagen op de
+   * leveranciersregel ('intercompany'); `stappen` leeg, geen acties. */
+  overgeslagen_reden?: string | null
+  overgeslagen_leverancier_naam?: string | null
 }
 
 export interface BesluitResultaatDto {
-  accordering: AccorderingDto
+  /** Null uitsluitend bij een overgeslagen accordering (blok 4 bundel 08-09) — dan geen ronde. */
+  accordering: AccorderingDto | null
   alles_akkoord: boolean
   geboekt: boolean
   boek_fout: string | null
   staande_regel_id: string | null
+  accordering_overgeslagen_reden?: string | null
 }
 
 export interface StaandeRegelDto {

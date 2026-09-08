@@ -865,6 +865,22 @@ export interface BoekvoorstelDto {
   afdeling_id?: string | null
   afdeling_prefill_id?: string | null
   afdeling_prefill_leverancier?: string | null
+  /** Blok 3 bundel 08-09 (RLZ-betaalstatus, B3): het RLZ-veld "Betaling" (QuickPaymentSelection) als één van de acht
+   * RLZ-waarden letterlijk, mét herkomst — 'kanaal' (declaraties@-postvak → "Betaald per bank") | 'factuur' (incasso-
+   * detectie op de factuurtekst / UBL SEPA-incasso) | 'mens' (keuze op het controlescherm, wint altijd); null = niets te
+   * zetten (RLZ-default "Nog te betalen"). `verwachte_betaaldatum` = de incassodatum; `betaalstatus_bron_tekst` = de
+   * factuurzin achter de detectie (tooltip); `betaalstatus_opties` = de acht RLZ-waarden voor de keuzelijst;
+   * `intake_kanaal` = 'facturen' | 'declaraties' | null (losse upload). */
+  betaalstatus?: string | null
+  betaalstatus_herkomst?: 'kanaal' | 'factuur' | 'mens' | null
+  verwachte_betaaldatum?: string | null
+  betaalstatus_bron_tekst?: string | null
+  betaalstatus_opties?: string[]
+  intake_kanaal?: 'facturen' | 'declaraties' | null
+  /** Blok 4 bundel 08-09 (intercompany): de klant-accordering wordt voor dit document overgeslagen op de
+   * leveranciersregel ('intercompany' = leverancier met IC-vlag in déze administratie). Alleen gevuld als
+   * accordering aanstaat — de knop is dan "Boeken" i.p.v. "Ter accordering". Ontbrekend/null = gewone flow. */
+  accordering_overgeslagen_reden?: 'intercompany' | string | null
 }
 
 export interface GeheugenVeldVoorstelDto {

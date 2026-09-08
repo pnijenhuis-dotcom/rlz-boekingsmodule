@@ -134,6 +134,23 @@ export function AccorderingSectie({
 
   if (accordering === null) return null
 
+  // Blok 4 bundel 08-09 (besluit Peter): overgeslagen op de leveranciersregel — historie-rij zonder acties.
+  if (accordering.status === 'overgeslagen') {
+    return (
+      <div className="panel" data-testid="accordering-overgeslagen">
+        <h2>
+          Klant-accordering <span className="chip geheugen">overgeslagen — intercompany</span>
+        </h2>
+        <div className="hint">
+          Leverancier {accordering.overgeslagen_leverancier_naam ? <b>{accordering.overgeslagen_leverancier_naam}</b> : null}
+          {accordering.overgeslagen_leverancier_naam ? ' ' : ''}heeft in deze administratie de intercompany-vlag
+          (leveranciersregel): het document gaat niet naar de klant-accordeur en boekt direct, mét alle harde checks.
+          Geen actie nodig.
+        </div>
+      </div>
+    )
+  }
+
   // Zelfde statussen als de herstelroute (app/accordering/herstel.py::HERSTELBARE_STATUSSEN):
   // vraag_open ná akkoord (boeken wacht op de open vraag) en de tegenboek-herboeking vallen er
   // bewust buiten — daar is niets "mislukt".

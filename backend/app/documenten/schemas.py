@@ -697,6 +697,10 @@ class BoekvoorstelInput(StrikteInvoer):
     afdeling_id: uuid.UUID | None = None
     totaalbedrag: DecimalMetKomma | None = None
     # Blok 9: de kop-omschrijving zoals de mens 'm liet staan. None = niet meegegeven (oude client) → ongemoeid;
+    # Blok 4 (08-09, besluit Peter): de klant-accordering wordt voor dit document overgeslagen op de
+    # leveranciersregel ("intercompany" = leverancier met IC-vlag in déze administratie). Alleen gevuld als
+    # accordering aanstaat; de kantoor-frontend toont dan "Boeken" i.p.v. "Ter accordering". Additief.
+    accordering_overgeslagen_reden: str | None = None
     # gelijk aan de automatische afleiding = geen override; afwijkend = mens-override (wint voortaan).
     omschrijving: str | None = None
     # Blok 11: de factuurperiode zoals de mens 'm liet staan (weeknummer(s) + jaar). None = niet meegegeven (oude

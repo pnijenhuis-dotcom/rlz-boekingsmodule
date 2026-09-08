@@ -405,6 +405,13 @@ def boek_document(
             blokkade = accordering_service.accordering_blokkade_voor_boeken(session, document_id=document_id)
             if blokkade is not None:
                 raise AccorderingVereist(blokkade)
+        # Blok 4 (08-09, besluit Peter): stond de poort open op de intercompany-leveranciersregel (geen ronde), dan
+        # is dat zichtbaar — tijdlijnregel + audit "intercompany — klant-accordering overgeslagen (leveranciersregel)"
+        # mét vendor-id/naam, op het autoboek-pad én het handmatige pad (idempotent per boek-cyclus). Een échte
+        # afgeronde ronde schrijft niets (dan is er niets overgeslagen).
+        accordering_service.registreer_accordering_overgeslagen(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+        )
 
     # Factuurmatch-poort (fase 2): staten-versheid + afwijking-bevestiging, vóór de checks en
     # dus ruim vóór de RLZ-schrijfacties. Ná de accorderingspoort: "Ter accordering" hoort als

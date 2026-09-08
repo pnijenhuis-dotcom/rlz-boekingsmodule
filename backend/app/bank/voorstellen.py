@@ -35,18 +35,12 @@ def _specs(post) -> "doelpost.DoelPostSpecs":
 
 def intercompany_entity_guids(session, *, administratie_id: uuid.UUID) -> set[uuid.UUID]:
     """De entity-GUID's die in deze administratie als intercompany gelden (gevoed door de
-    doorbelasting-mapping, migratie 0045). Lokale import: bank kent doorbelasting verder niet."""
-    from app.doorbelasting.models import IntercompanyTegenpartij
+    doorbelasting-mapping, migratie 0045). Sinds blok 4 (08-09) gedelegeerd aan de gedeelde leesbron
+    `app/doorbelasting/intercompany.py` (zelfde query, zelfde uitkomst) — de klant-accordering leest dezelfde
+    definitie. Lokale import: bank kent doorbelasting verder niet."""
+    from app.doorbelasting.intercompany import intercompany_entity_guids as _gedeeld
 
-    return {
-        rij.entity_guid
-        for rij in session.scalars(
-            select(IntercompanyTegenpartij).where(
-                IntercompanyTegenpartij.administratie_id == administratie_id,
-                IntercompanyTegenpartij.actief.is_(True),
-            )
-        )
-    }
+    return _gedeeld(session, administratie_id=administratie_id)
 
 
 @dataclass(frozen=True)
@@ -55,15 +49,15 @@ class MatchContext:
     open_posten: list[matchmotor.OpenPost]
     vaste_regels: list[matchmotor.VasteRegelGegevens]
     regel_per_id: dict[uuid.UUID, BankRegel]
-    # Blok 2 bundel 08-09: geleerde IBAN ↔ RLZ-entity-koppelingen (bank_relatie_iban, 0127) — het
-    # naam/IBAN-been van de matchmotor-score.
-    iban_relaties: list[matchmotor.IbanRelatie] = field(default_factory=list)
     btw_percentage_per_taxrate: dict[uuid.UUID | None, Decimal | None]
     # (tegenpartij_sleutel, ledger_id, taxrate_id) per eerdere handmatige/regel-boeking —
     # voedt het 3×-regelvoorstel.
     boekhistorie: list[tuple[str, uuid.UUID, uuid.UUID | None]] = field(default_factory=list)
     open_opdracht_per_mutatie: dict[uuid.UUID, BankAfletterOpdracht] = field(default_factory=dict)
     boeking_per_mutatie: dict[uuid.UUID, BankBoeking] = field(default_factory=dict)
+    # Blok 2 bundel 08-09: geleerde IBAN ↔ RLZ-entity-koppelingen (bank_relatie_iban, 0127) — het
+    # naam/IBAN-been van de matchmotor-score.
+    iban_relaties: list[matchmotor.IbanRelatie] = field(default_factory=list)
 
 
 def _mutatie_gegevens(rij: BankMutatie) -> matchmotor.MutatieGegevens:
@@ -136,16 +130,16 @@ def laad_matchcontext(
         }
         open_opdrachten = list(
             session.scalars(
-        # Blok 2 (08-09): IBAN-geheugen (lokale import — iban_geheugen importeert de matchmotor).
-        from app.bank.iban_geheugen import iban_relaties_voor
-
-        iban_relaties = iban_relaties_voor(session, administratie_id=administratie_id)
                 select(BankAfletterOpdracht).where(
                     BankAfletterOpdracht.administratie_id == administratie_id,
                     BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
                 )
             )
         )
+        # Blok 2 (08-09): IBAN-geheugen (lokale import — iban_geheugen importeert de matchmotor).
+        from app.bank.iban_geheugen import iban_relaties_voor
+
+        iban_relaties = iban_relaties_voor(session, administratie_id=administratie_id)
 
     eerste_regel_per_boeking: dict[uuid.UUID, BankBoekingRegel] = {}
     for regel_rij in sorted(regel_rijen, key=lambda r: (str(r.bank_boeking_id), r.volgnummer)):
@@ -166,13 +160,13 @@ def laad_matchcontext(
     return MatchContext(
         open_mutaties=[_mutatie_gegevens(rij) for rij in mutaties],
         open_posten=[
-                entity_guid=post.entity_guid,
             matchmotor.OpenPost(
                 id=post.id,
                 bedrag=post.bedrag,
                 referentie=post.referentie,
                 referentie2=post.referentie2,
                 rlz_document_id=post.rlz_document_id,
+                entity_guid=post.entity_guid,
                 **_specs(post).__dict__,
             )
             for post in posten
@@ -190,13 +184,13 @@ def laad_matchcontext(
             for regel in regels
         ],
         regel_per_id={regel.id: regel for regel in regels},
-        iban_relaties=iban_relaties,
         btw_percentage_per_taxrate={t.id: t.percentage for t in taxrates},
         boekhistorie=boekhistorie,
         open_opdracht_per_mutatie={o.payment_transaction_id: o for o in open_opdrachten},
         boeking_per_mutatie={
             b.payment_transaction_id: b for b in boekingen if b.status == BankBoekingStatus.GEBOEKT.value
         },
+        iban_relaties=iban_relaties,
     )
 
 

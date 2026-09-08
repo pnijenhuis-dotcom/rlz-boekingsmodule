@@ -66,6 +66,7 @@ from app.documenten.models import (
 )
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.vragen import open_vragen_aan_accordeur_per_document
+from app.doorbelasting.intercompany import OVERGESLAGEN_REDEN_INTERCOMPANY, intercompany_tegenpartij
 from app.sync.models import VendorCache
 
 logger = logging.getLogger(__name__)
@@ -156,15 +157,22 @@ class AccorderingData:
     # `detail["boek_fout"]`), zichtbaar op het controlescherm + in de documentenlijst. None = geen.
     boek_fout: str | None = None
     boek_fout_op: datetime | None = None
+    # Blok 4 (08-09): status "overgeslagen" — geen ronde, de klant-accordering is voor dit document overgeslagen
+    # op de leveranciersregel (`reden` = "intercompany"); `stappen` is dan leeg en er zijn geen acties.
+    overgeslagen_reden: str | None = None
+    overgeslagen_leverancier_naam: str | None = None
 
 
 @dataclass(frozen=True)
 class AkkoordResultaat:
-    accordering: AccorderingData
+    # None uitsluitend bij een overgeslagen accordering (blok 4, 08-09): er is dan geen ronde — het document is
+    # direct via de bestaande boekstap gegaan (`geboekt`/`boek_fout` dragen de uitkomst).
+    accordering: AccorderingData | None
     alles_akkoord: bool
     geboekt: bool
     boek_fout: str | None
     staande_regel_id: uuid.UUID | None
+    overgeslagen_reden: str | None = None
 
 
 def _gebruikersnamen_publiek(ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -248,13 +256,139 @@ def _open_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccor
     ).first()
 
 
+@dataclass(frozen=True)
+class OvergeslagenAccordering:
+    """Blok 4 (08-09): waarom de klant-accordering voor dit document niet nodig is — nu alleen de
+    intercompany-leveranciersregel (`reden` = OVERGESLAGEN_REDEN_INTERCOMPANY)."""
+
+    reden: str
+    vendor_id: uuid.UUID
+    leverancier_naam: str
+
+
+def accordering_overgeslagen(
+    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID
+) -> OvergeslagenAccordering | None:
+    """Puur lezen: heeft dit document een leverancier met IC-vlag in de ADMINISTRATIE VAN HET DOCUMENT
+    (`intercompany_tegenpartij`, app/doorbelasting/intercompany.py)? Dan wordt de stap "ter accordering"
+    overgeslagen — de rest van de flow (extractie, checks, boeken/autoboek) is ongewijzigd. Géén leverancier op het
+    voorstel, geen rij of een inactieve rij = None = gewone flow (kernprincipe 7: lege IC-tabel = niets bijzonders).
+    Toetst NIET of accordering aanstaat — dat doet de aanroeper (zonder accordering is er niets over te slaan)."""
+    voorstel = session.get(Boekvoorstel, document_id)
+    if voorstel is None or voorstel.vendor_id is None:
+        return None
+    rij = intercompany_tegenpartij(session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id)
+    if rij is None:
+        return None
+    return OvergeslagenAccordering(
+        reden=OVERGESLAGEN_REDEN_INTERCOMPANY, vendor_id=voorstel.vendor_id, leverancier_naam=rij.naam
+    )
+
+
+def accordering_overgeslagen_reden_voor_dto(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+    """Additief DTO-veld `accordering_overgeslagen_reden` op het boekvoorstel (kantoor-frontend: knop "Boeken" i.p.v.
+    "Ter accordering"): alleen gevuld als accordering aanstaat én de leveranciersregel geldt, anders None."""
+    if not is_accordering_ingeschakeld(administratie_id=administratie_id):
+        return None
+    with scoped_session(administratie_id) as session:
+        overgeslagen = accordering_overgeslagen(session, administratie_id=administratie_id, document_id=document_id)
+    return overgeslagen.reden if overgeslagen is not None else None
+
+
+OVERGESLAGEN_TIJDLIJN_SLEUTEL = "accordering_overgeslagen"
+OVERGESLAGEN_AUDIT_ACTIE = "accordering_overgeslagen_intercompany"
+
+
+def registreer_accordering_overgeslagen(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> bool:
+    """Tijdlijnregel (status blijft) + audit-event "intercompany — klant-accordering overgeslagen (leveranciersregel)"
+    mét vendor-id/naam. Aangeroepen door de boekmotor zodra de accorderingspoort op de leveranciersregel openging
+    (app/documenten/boeken.py) — dus op het autoboek-pad én het handmatige boek-pad. Idempotent per boek-cyclus (een
+    herboeking ná tegenboeken krijgt een nieuwe regel, een retry na boekfout niet). False = niets geschreven: geen
+    IC-leverancier, of de laatste ronde is écht afgerond (dan is er niets overgeslagen)."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            return False
+        overgeslagen = accordering_overgeslagen(session, administratie_id=administratie_id, document_id=document_id)
+        if overgeslagen is None:
+            return False
+        laatste = _laatste_accordering(session, document_id)
+        if laatste is not None and laatste.status == AccorderingStatus.AFGEROND.value:
+            return False
+        voorstel = session.get(Boekvoorstel, document_id)
+        boek_cyclus = int(voorstel.boek_cyclus) if voorstel is not None else 0
+        al_geschreven = session.scalar(
+            select(func.count())
+            .select_from(DocumentGebeurtenis)
+            .where(
+                DocumentGebeurtenis.document_id == document_id,
+                DocumentGebeurtenis.detail[OVERGESLAGEN_TIJDLIJN_SLEUTEL]["boek_cyclus"].as_integer() == boek_cyclus,
+            )
+        )
+        if al_geschreven:
+            return False
+        detail = {
+            "reden": overgeslagen.reden,
+            "vendor_id": str(overgeslagen.vendor_id),
+            "leverancier_naam": overgeslagen.leverancier_naam,
+            "boek_cyclus": boek_cyclus,
+            "tekst": "intercompany — klant-accordering overgeslagen (leveranciersregel)",
+        }
+        session.add(
+            DocumentGebeurtenis(
+                document_id=document_id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=actor_id,
+                detail={OVERGESLAGEN_TIJDLIJN_SLEUTEL: detail},
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="document",
+            record_id=document_id,
+            actie=OVERGESLAGEN_AUDIT_ACTIE,
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={"document_id": str(document_id), **detail},
+            administratie_id=administratie_id,
+        )
+    return True
+
+
+def _overgeslagen_tijdstip(session: Session, document_id: uuid.UUID) -> datetime | None:
+    return session.scalar(
+        select(func.min(DocumentGebeurtenis.tijdstip)).where(
+            DocumentGebeurtenis.document_id == document_id,
+            DocumentGebeurtenis.detail.has_key(OVERGESLAGEN_TIJDLIJN_SLEUTEL),
+        )
+    )
+
+
 def accordering_blokkade_voor_boeken(session: Session, *, document_id: uuid.UUID) -> str | None:
     """Poort voor de boekmotor bij accordering-aan (app/documenten/boeken.py — nooit de client
     vertrouwen): None = boeken mag, anders de leesbare reden waarom niet. Sinds de bugfix-run
     28-08 telt uitsluitend de LAATSTE ronde (een oudere afgeronde ronde naast een nieuwe open
     ronde was een bypass) én moet het totaalbedrag van het voorstel nog gelijk zijn aan het
-    bedrag waarop de klant akkoord gaf (aangrenzend gat: voorstel wijzigen ná akkoord)."""
+    bedrag waarop de klant akkoord gaf (aangrenzend gat: voorstel wijzigen ná akkoord).
+
+    Blok 4 (08-09, besluit Peter): een document van een leverancier met IC-vlag in déze administratie heeft
+    geen klant-accordering nodig — de poort staat open zonder ronde. Uitzondering: loopt er op dit moment tóch
+    een OPEN ronde (IC-rij ná het aanbieden ontstaan), dan blijft die zichtbaar leidend (niets verdwijnt stil;
+    het kantoor kan 'm terughalen)."""
     laatste = _laatste_accordering(session, document_id)
+    document = session.get(Document, document_id)
+    if (
+        document is not None
+        and document.administratie_id is not None
+        and (laatste is None or laatste.status != AccorderingStatus.OPEN.value)
+        and accordering_overgeslagen(session, administratie_id=document.administratie_id, document_id=document_id)
+        is not None
+    ):
+        return None
     if laatste is None:
         return (
             "Klant-accordering staat aan voor deze administratie — bied het document ter "
@@ -1228,6 +1362,22 @@ def bied_ter_accordering_aan(
                 "Klant-akkoord is al compleet voor dit document — boek het direct (opnieuw aanbieden "
                 "zou de klant een tweede keer om hetzelfde akkoord vragen)"
             )
+        # Blok 4 (08-09, besluit Peter): leverancier met IC-vlag → géén ronde; het document gaat direct de
+        # bestaande boekstap in (zelfde poorten/checks als "Boeken (+ doorbelasten)", actor = de mens die klikte).
+        # Geen opt-in, geen knop — de knop op het controlescherm zegt al "Boeken"; deze tak vangt de bulk-route
+        # en een verouderd scherm. De tijdlijn-/auditregel schrijft de boekmotor zelf (poort).
+        overgeslagen = (
+            None
+            if is_verplichting
+            else accordering_overgeslagen(session, administratie_id=administratie_id, document_id=document_id)
+        )
+
+    if overgeslagen is not None:
+        return _boek_direct_zonder_ronde(administratie_id=administratie_id, document_id=document_id, actor_id=actor_id)
+
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        document = session.get(Document, document_id)
+        assert document is not None
 
         if is_verplichting:
             # Verplichting (04-09): het drempelbedrag is het totaalbedrag EXCLUSIEF btw uit de
@@ -1337,6 +1487,44 @@ def bied_ter_accordering_aan(
     )
 
 
+def _boek_direct_zonder_ronde(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID
+) -> AkkoordResultaat:
+    """Blok 4 (08-09): de "Ter accordering"-knop op een IC-document = de bestaande boekstap (mét klaargezette
+    doorbelasting in één gang, zoals `_boek_na_laatste_akkoord`) door de mens-actor. Check-blokkades reizen als
+    ChecksNietGroen (zelfde 409-vorm als aanbieden); elke andere boekfout (toggle uit, volumerem, RLZ) komt als
+    zichtbare `boek_fout` terug — nooit stil, nooit een 500 op een akkoord-knop. De IC-tijdlijnregel + audit
+    schrijft de boekmotor ín de poort (`registreer_accordering_overgeslagen`)."""
+    from app.doorbelasting import orkestratie
+
+    geboekt = False
+    boek_fout: str | None = None
+    try:
+        gecombineerd = orkestratie.boek_document_met_doorbelasting(
+            administratie_id=administratie_id, document_id=document_id, actor_id=actor_id
+        )
+        geboekt = True
+        if gecombineerd.doorbelasting_fout:
+            boek_fout = "Inkoopfactuur geboekt; doorbelasting (deels) mislukt: " + gecombineerd.doorbelasting_fout
+    except orkestratie.DoorbelastingChecksNietGroen as exc:
+        raise ChecksNietGroen(exc.rapport) from exc
+    except boeken_service.BoekenGeblokkeerdDoorChecks as exc:
+        raise ChecksNietGroen(exc.rapport) from exc
+    except boeken_service.OngeldigeBoekpoging:
+        raise
+    except boeken_service.BoekenFout as exc:
+        boek_fout = str(exc)
+        logger.warning("Intercompany-document %s: accordering overgeslagen, boeken mislukt: %s", document_id, boek_fout)
+    return AkkoordResultaat(
+        accordering=None,
+        alles_akkoord=True,
+        geboekt=geboekt,
+        boek_fout=boek_fout,
+        staande_regel_id=None,
+        overgeslagen_reden=OVERGESLAGEN_REDEN_INTERCOMPANY,
+    )
+
+
 @dataclass(frozen=True)
 class BulkAanbiedResultaat:
     """Uitkomst per document van de bulk-actie "Ter accordering aanbieden" (punt 2b):
@@ -1422,6 +1610,22 @@ def bulk_aanbieden(
         except AccorderingFout as exc:
             resultaten.append(BulkAanbiedResultaat(document_id, naam, "overgeslagen", str(exc)))
         else:
+            if uitkomst.overgeslagen_reden is not None:
+                # Blok 4 (08-09): IC-document — geen ronde; geboekt, of zichtbaar overgeslagen mét boekfout als reden.
+                resultaten.append(
+                    BulkAanbiedResultaat(
+                        document_id,
+                        naam,
+                        "geboekt" if uitkomst.geboekt else "overgeslagen",
+                        (
+                            "intercompany — klant-accordering overgeslagen (leveranciersregel)"
+                            if uitkomst.geboekt
+                            else f"intercompany — klant-accordering overgeslagen, boeken mislukt: {uitkomst.boek_fout}"
+                        ),
+                        boek_fout=uitkomst.boek_fout,
+                    )
+                )
+                continue
             resultaten.append(
                 BulkAanbiedResultaat(
                     document_id,
@@ -2182,7 +2386,28 @@ def accordering_van_document(*, administratie_id: uuid.UUID, document_id: uuid.U
             .order_by(DocumentAccordering.aangeboden_op.desc())
         ).first()
         if accordering is None:
-            return None
+            # Blok 4 (08-09): geen ronde, maar wél een leverancier met IC-vlag in een administratie mét
+            # klant-accordering → zichtbaar in de historie als "overgeslagen — intercompany" (zonder acties), live
+            # berekend zodat het controlescherm het al vóór de boeking toont.
+            if not is_accordering_ingeschakeld(administratie_id=administratie_id):
+                return None
+            overgeslagen = accordering_overgeslagen(session, administratie_id=administratie_id, document_id=document_id)
+            if overgeslagen is None:
+                return None
+            document = session.get(Document, document_id)
+            tijdstip = _overgeslagen_tijdstip(session, document_id) or (
+                document.aangemaakt_op if document is not None else datetime.now(UTC)
+            )
+            return AccorderingData(
+                id=document_id,
+                document_id=document_id,
+                status="overgeslagen",
+                aangeboden_op=tijdstip,
+                afgerond_op=None,
+                stappen=[],
+                overgeslagen_reden=overgeslagen.reden,
+                overgeslagen_leverancier_naam=overgeslagen.leverancier_naam,
+            )
         stappen = _stappen_van(session, accordering.id)
         return _naar_data(session, accordering, stappen)
 
