@@ -263,7 +263,7 @@ export function KlantStanden({
               style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
               onClick={() => navigate(`/?administratie=${administratieId}&sectie=documenten&soort=alle`)}
             >
-              Alle documenten (incl. geboekt en verwijderd) →
+              Alle documenten →
             </button>
           </p>
         )}

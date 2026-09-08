@@ -86,3 +86,41 @@ export function GeboektInRlzRegel({ stand }: { stand: GeboektInRlzDto }) {
     </p>
   )
 }
+
+/** Blok 11 (herstelrun 08-09): een geboekte rij in de documentenlijst staat achter de toggle "Toon afgehandelde
+ * documenten" en draagt dan het boekstuknummer mét "Open in Reeleezee/Odoo". Er is geen bekende URL-vorm van de
+ * RLZ-web-UI per document (zelfde les als reconciliatie/RlzDubbelBoekstukken), dus de handeling is: het
+ * boekstuknummer kopiëren (linkbtn) en dáár opzoeken — nooit een navigatie naar een API-URL. */
+export function OpenInBoekhouding({ stand }: { stand: GeboektInRlzDto }) {
+  const systeem = stand.backend === 'odoo' ? 'Odoo' : 'Reeleezee'
+  const nummer = stand.boekstuknummer
+  const kopieer = () => {
+    if (!nummer) return
+    try {
+      void navigator.clipboard?.writeText(nummer)
+    } catch {
+      /* clipboard niet beschikbaar (bv. http zonder secure context) — het nummer staat gewoon op het scherm */
+    }
+  }
+  return (
+    <span className="hint" data-testid="open-in-boekhouding" style={{ margin: 0, fontSize: 11.5 }} title={geboektInRlzTooltip(stand)}>
+      Open in {systeem}:{' '}
+      {nummer ? (
+        <button
+          type="button"
+          className="linkbtn"
+          aria-label={`Boekstuknummer ${nummer} kopiëren`}
+          title={`Kopieer het boekstuknummer en zoek het op in ${systeem}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            kopieer()
+          }}
+        >
+          boekstuk {nummer}
+        </button>
+      ) : (
+        <span>boekstuknummer onbekend</span>
+      )}
+    </span>
+  )
+}

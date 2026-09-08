@@ -84,7 +84,7 @@ def test_upload_ubl_xml_voegt_veldvoorstel_toe(
         detail = conn.execute(
             text(
                 "SELECT detail FROM boekhouding.document_gebeurtenis "
-                "WHERE document_id = :id AND naar_status = 'te_controleren'"
+                "WHERE document_id = :id AND naar_status = 'te_controleren' AND detail ? 'veldvoorstel'"
             ),
             {"id": resultaat.document_id},
         ).scalar_one()

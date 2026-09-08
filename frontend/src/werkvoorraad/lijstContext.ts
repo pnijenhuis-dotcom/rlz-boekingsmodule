@@ -1,4 +1,4 @@
-import type { DocumentListItemDto } from '../api/types'
+import { isWachtenOpAnderen, type DocumentListItemDto } from '../api/types'
 import { statusLabel } from './status'
 
 /** Lijstcontext (werkstroom-run 27/28-08, punt 1): de documentenlijst-context — soort-tab,
@@ -24,6 +24,9 @@ export const STATUSFILTER_URENMATCH = '__urenmatch_afwijking'
  * goedgekeurde offerte vallen óf waarvoor géén goedgekeurde offerte gevonden is — zelfde
  * prefix-regel, duplicaat-patroon. Signaal, nooit een blokkade. */
 export const STATUSFILTER_BUITEN_OFFERTE = '__buiten_offerte'
+/** Sentinel voor de tab "Wachten op anderen" (blok 11, 08-09): bij de klant ter accordering + open vraag — één
+ * tab, telt NIET in "Alle" (dat is kantoorwerk). Zelfde prefix-regel. */
+export const STATUSFILTER_WACHTEN = '__wachten_op_anderen'
 /** Expliciete "alle documenten"-tab (incl. geboekt/verwijderd). */
 export const SOORT_ALLE = 'alle'
 
@@ -36,7 +39,11 @@ export const SOORT_ALLE = 'alle'
 export const STATUS_TE_CONTROLEREN = 'te_controleren'
 
 export function defaultStatusFilter(items: DocumentListItemDto[]): string {
-  return items.some((d) => d.status === STATUS_TE_CONTROLEREN) ? STATUS_TE_CONTROLEREN : STATUSFILTER_ALLE
+  if (items.some((d) => d.status === STATUS_TE_CONTROLEREN)) return STATUS_TE_CONTROLEREN
+  // Blok 11 (08-09): "Alle" is kantoorwerk. Ligt álles bij anderen (ter accordering / open vraag), dan opent de
+  // lijst op de tab "Wachten op anderen" — nooit een leeg eerste beeld met een gevulde tab ernaast.
+  if (items.length > 0 && items.every(isWachtenOpAnderen)) return STATUSFILTER_WACHTEN
+  return STATUSFILTER_ALLE
 }
 
 /** Sorteerbare kolomkoppen van de documentenlijst (punt 21, opruimrun 28-08). */
@@ -154,7 +161,10 @@ export function isBuitenOfferte(d: DocumentListItemDto): boolean {
 
 /** Voldoet één document aan het status-filter (echte status óf sentinel)? */
 export function voldoetAanStatusFilter(d: DocumentListItemDto, status: string): boolean {
-  if (status === STATUSFILTER_ALLE) return true
+  // Blok 11 (08-09): "Alle" = alles behalve wat bij anderen ligt (ter accordering / open vraag heeft zijn eigen
+  // tab); afgehandelde rijen zitten alleen in de lijst als de server ze meegaf (toggle) en tellen dan mee.
+  if (status === STATUSFILTER_ALLE) return !isWachtenOpAnderen(d)
+  if (status === STATUSFILTER_WACHTEN) return isWachtenOpAnderen(d)
   if (status === STATUSFILTER_AUTOMATISCH) return d.automatisch_geboekt
   if (status === STATUSFILTER_DUPLICAAT) return isMogelijkDuplicaat(d)
   if (status === STATUSFILTER_URENMATCH) return isUrenmatchAfwijking(d)

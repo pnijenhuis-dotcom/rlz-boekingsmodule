@@ -112,8 +112,8 @@ class TestPunt24AanbiedenWeigertBijCompleetAkkoord:
             administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
         )
         assert boek.status == DocumentStatus.GEBOEKT and len(fake.puts) == 1
-        # Ná de boeking is het akkoord verzilverd — de lijstmarkering verdwijnt.
-        rijen = documenten_service.lijst_documenten(administratie_id=administratie_id)
+        # Ná de boeking is het akkoord verzilverd — de lijstmarkering verdwijnt (geboekt = achter de toggle, blok 11).
+        rijen = documenten_service.lijst_documenten(administratie_id=administratie_id, toon_afgehandeld=True)
         assert next(r for r in rijen if r.document.id == klaar_document).klant_akkoord_compleet is False
 
     def test_bulk_slaat_over_met_reden(

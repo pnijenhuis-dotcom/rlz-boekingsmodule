@@ -8,7 +8,7 @@ import {
   type VervallenMeldingDto,
 } from '../accordering/accorderingApi'
 import { ApiError, apiJson, apiPostJson } from '../api/client'
-import { isAfgehandeld } from '../api/types'
+import { isAfgehandeld, isWachtenOpAnderen } from '../api/types'
 import type {
   AfgehandeldTellersDto,
   DocumentActieResponseDto,
@@ -34,6 +34,7 @@ import {
   STATUSFILTER_BUITEN_OFFERTE,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
+  STATUSFILTER_WACHTEN,
   defaultStatusFilter,
   filterDocumenten,
   isBuitenOfferte,
@@ -49,7 +50,7 @@ import {
 } from './lijstContext'
 import { extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
-import { geboektInRlzTooltip } from '../document/GeboektInRlz'
+import { OpenInBoekhouding, geboektInRlzTooltip } from '../document/GeboektInRlz'
 import { VerwijderDialog } from './VerwijderDialog'
 import { DuplicaatAfvoerDialog, toonAfvoerenAlsDuplicaat } from '../document/DuplicaatAfvoer'
 import { DuplicaatBulkBalk, isDuplicaatBulkSelecteerbaar, redenNietSelecteerbaar } from './DuplicaatBulkAfvoer'
@@ -174,6 +175,9 @@ export function DocumentenDeelscherm({
   // segment-filter voor; `?q=` de zoekterm (terugweg vanaf het controlescherm, punt 1).
   useEffect(() => {
     setStatusKeuze(statusParam)
+    // Blok 11 (08-09): een deeplink naar een afgehandelde status (bv. ?status=geboekt vanuit een oudere link) zet
+    // de toggle vanzelf aan — anders zou het filter op een rij wijzen die de server standaard niet meegeeft.
+    if (statusParam !== null && isAfgehandeld({ status: statusParam })) setToonAfgehandeld(true)
   }, [statusParam])
   useEffect(() => {
     setZoekterm(zoekParam)
@@ -416,10 +420,14 @@ export function DocumentenDeelscherm({
     )
   }
 
+  // Blok 11 (08-09): statusknoppen alleen voor kantoorwerk (+ afgehandeld als de toggle aanstaat); wat bij anderen
+  // ligt zit in de ene tab "Wachten op anderen" en telt niet in "Alle".
   const aanwezigeStatussen = useMemo(
-    () => Array.from(new Set((inScope ?? []).map((d) => d.status))).sort(),
+    () => Array.from(new Set((inScope ?? []).filter((d) => !isWachtenOpAnderen(d)).map((d) => d.status))).sort(),
     [inScope],
   )
+  const aantalAlle = useMemo(() => (inScope ?? []).filter((d) => !isWachtenOpAnderen(d)).length, [inScope])
+  const aantalWachten = useMemo(() => (inScope ?? []).filter(isWachtenOpAnderen).length, [inScope])
   const heeftAutomatischGeboekt = useMemo(() => (inScope ?? []).some((d) => d.automatisch_geboekt), [inScope])
   const aantalMogelijkDuplicaat = useMemo(() => (inScope ?? []).filter(isMogelijkDuplicaat).length, [inScope])
   const aantalUrenmatch = useMemo(() => (inScope ?? []).filter(isUrenmatchAfwijking).length, [inScope])
@@ -564,7 +572,7 @@ export function DocumentenDeelscherm({
           </button>
         )}
         {terAccordering > 0 && (
-          <button type="button" className="chip geheugen klikbaar" onClick={() => naarStatus('ter_accordering')}>
+          <button type="button" className="chip geheugen klikbaar" onClick={() => naarStatus(STATUSFILTER_WACHTEN)}>
             👤 {terAccordering} bij klant ter accordering
           </button>
         )}
@@ -650,8 +658,8 @@ export function DocumentenDeelscherm({
       <KlantUpload administratieId={administratieId} onGeupload={laadDocumenten} />
 
       <div className="panel">
-        {/* Tabs per soort (besluit 25-08, C1): alleen soorten met teller > 0; "Alle documenten"
-            houdt het herstel-pad (geboekt/verwijderd) bereikbaar. */}
+        {/* Tabs per soort (besluit 25-08, C1): alleen soorten met teller > 0; "Alle documenten" = alle soorten.
+            Blok 11 (08-09): geboekt is afgehandeld en zit — net als verwijderd — achter de toggle hiernaast. */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="segment tabs-soort" role="tablist" aria-label="Documentsoort">
             {tabs.map((t) => (
@@ -672,14 +680,14 @@ export function DocumentenDeelscherm({
               aria-selected={toontAlle}
               className={toontAlle ? 'actief' : undefined}
               onClick={() => naarTab(SOORT_ALLE)}
-              title="Alle documenten van deze klant, incl. geboekt; afgehandelde documenten (verwijderd, afgewezen, samengevoegd, afgevoerd duplicaat) alleen met de knop hiernaast"
+              title="Alle soorten van deze klant; afgehandelde documenten (geboekt, verwijderd, afgewezen, samengevoegd, afgevoerd duplicaat) alleen met de knop hiernaast"
             >
               Alle documenten
             </button>
           </div>
           <label
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}
-            title="Verwijderde, afgewezen, samengevoegde en als duplicaat afgevoerde documenten — grijs, met reden en verwijzing"
+            title="Geboekte (mét boekstuknummer), verwijderde, afgewezen, samengevoegde en als duplicaat afgevoerde documenten — grijs, met reden en verwijzing. Geboekte documenten vind je ook via Archief en Zoeken."
           >
             <Checkbox checked={toonAfgehandeld} onChange={(e) => setToonAfgehandeld(e.target.checked)} />
             Toon afgehandelde documenten{afgehandeld && afgehandeld.totaal > 0 ? ` (${afgehandeld.totaal})` : ''}
@@ -693,7 +701,7 @@ export function DocumentenDeelscherm({
               className={statusFilter === STATUSFILTER_ALLE ? 'actief' : undefined}
               onClick={() => setStatusKeuze(STATUSFILTER_ALLE)}
             >
-              Alle ({inScope?.length ?? 0})
+              Alle ({aantalAlle})
             </button>
             {aanwezigeStatussen.map((s) => (
               <button
@@ -705,6 +713,16 @@ export function DocumentenDeelscherm({
                 {statusLabel(s, soort)} ({aantalMetStatus(s)})
               </button>
             ))}
+            {aantalWachten > 0 && (
+              <button
+                type="button"
+                className={statusFilter === STATUSFILTER_WACHTEN ? 'actief' : undefined}
+                onClick={() => setStatusKeuze(STATUSFILTER_WACHTEN)}
+                title="Bij de klant ter accordering of een open vraag — het kantoor wacht op een ander; telt niet mee in Alle"
+              >
+                Wachten op anderen ({aantalWachten})
+              </button>
+            )}
             {heeftAutomatischGeboekt && (
               <button
                 type="button"
@@ -914,12 +932,12 @@ export function DocumentenDeelscherm({
                   const isVerwijderd = d.status === 'verwijderd'
                   // Backend blokkeert dit hard (bewaarplicht/lopende accordering) — het menu-item legt
                   // uit waarom i.p.v. stil te verdwijnen.
+                  // (Een geboekte rij is sinds blok 11 een afgehandelde rij: ⋯-menu alleen "Openen"; storno/tegenboeken
+                  // staat op het document zelf.)
                   const redenNietVerwijderbaar =
-                    d.status === 'geboekt'
-                      ? 'Geboekt in RLZ — bewaarplicht; terugdraaien kan alleen via storno of tegenboeken.'
-                      : d.status === 'ter_accordering'
-                        ? 'Ligt bij de klant ter accordering — trek de accordering eerst in.'
-                        : null
+                    d.status === 'ter_accordering'
+                      ? 'Ligt bij de klant ter accordering — trek de accordering eerst in.'
+                      : null
                   const isKassarapport = d.soort === 'kassarapport'
                   const isVerkoopfactuur = d.soort === 'verkoopfactuur'
                   const isWaarborg = d.soort === 'waarborg'
@@ -1048,13 +1066,19 @@ export function DocumentenDeelscherm({
                             verwijderd{d.verwijderd_reden ? <>: &ldquo;{d.verwijderd_reden}&rdquo;</> : ' (zonder reden)'}
                           </div>
                         )}
+                        {/* Blok 11 (08-09): geboekt = afgehandeld — grijs, mét boekstuknummer en "Open in Reeleezee/Odoo". */}
+                        {d.status === 'geboekt' && d.geboekt_in_rlz && (
+                          <div style={{ marginTop: 4 }}>
+                            <OpenInBoekhouding stand={d.geboekt_in_rlz} />
+                          </div>
+                        )}
                         {(d.samengevoegde_exemplaren ?? 0) > 0 && (
                           <div style={{ marginTop: 4 }}>
                             <span
                               className="chip geheugen"
-                              title="Extra exemplaren van dezelfde factuur zijn in dit document opgegaan — de dubbelen zijn al verwerkt"
+                              title="Extra exemplaren van dezelfde factuur zijn in dit document opgegaan of als duplicaat afgevoerd — de dubbelen zijn al verwerkt (terugvindbaar via 'Toon afgehandelde documenten')"
                             >
-                              {d.samengevoegde_exemplaren} {d.samengevoegde_exemplaren === 1 ? 'exemplaar' : 'exemplaren'} samengevoegd
+                              {exemplarenChipLabel(d.samengevoegde_exemplaren ?? 0, d.afgevoerde_exemplaren ?? 0)}
                             </span>
                           </div>
                         )}
@@ -1335,4 +1359,14 @@ export function DocumentenDeelscherm({
       )}
     </div>
   )
+}
+
+/** Blok 4c herstelrun 08-09: `totaal` = alle exemplaren die in dit document opgingen (hulzen + afgevoerde duplicaten),
+ * `afgevoerd` = het afgevoerde deel → "N exemplaren samengevoegd", "N exemplaren afgevoerd" of "… samengevoegd/afgevoerd"
+ * (beide aanwezig); enkelvoud bij precies één exemplaar. */
+export function exemplarenChipLabel(totaal: number, afgevoerd: number): string {
+  const samengevoegd = Math.max(totaal - afgevoerd, 0)
+  const woord = totaal === 1 ? 'exemplaar' : 'exemplaren'
+  const wat = samengevoegd > 0 && afgevoerd > 0 ? 'samengevoegd/afgevoerd' : afgevoerd > 0 ? 'afgevoerd' : 'samengevoegd'
+  return `${totaal} ${woord} ${wat}`
 }

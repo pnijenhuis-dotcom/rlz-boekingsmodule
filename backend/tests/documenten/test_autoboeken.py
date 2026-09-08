@@ -169,8 +169,8 @@ class TestAutoboekPad:
                 {"id": document_id},
             ).scalar_one()
             assert str(gb) == str(GB_ID)
-        # Werkvoorraad-lijst draagt de markering.
-        items = service.lijst_documenten(administratie_id=administratie_id)
+        # Werkvoorraad-lijst draagt de markering (geboekt = afgehandeld sinds blok 11: achter de toggle).
+        items = service.lijst_documenten(administratie_id=administratie_id, toon_afgehandeld=True)
         item = next(i for i in items if i.document.id == document_id)
         assert item.automatisch_geboekt is True
 

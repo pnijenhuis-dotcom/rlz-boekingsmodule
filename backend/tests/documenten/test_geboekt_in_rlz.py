@@ -79,7 +79,9 @@ class TestInkoop:
         )
 
         item = next(
-            i for i in service.lijst_documenten(administratie_id=administratie_id) if i.document.id == klaar_document
+            i
+            for i in service.lijst_documenten(administratie_id=administratie_id, toon_afgehandeld=True)
+            if i.document.id == klaar_document
         )
         assert item.geboekt_in_rlz is not None
         assert item.geboekt_in_rlz.boekstuknummer == "RLZ-TEST-00001"
@@ -94,7 +96,10 @@ class TestInkoop:
 
         # Via de API: kant-en-klare regel op lijst én detail.
         headers = {"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"}
-        lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+        # Geboekt = afgehandeld (blok 11, 08-09): de rij zit achter de toggle.
+        lijst = client.get(
+            f"/administraties/{administratie_id}/documenten", params={"toon_afgehandeld": "true"}, headers=headers
+        )
         assert lijst.status_code == 200
         rij = next(d for d in lijst.json()["documenten"] if d["id"] == str(klaar_document))
         assert rij["geboekt_in_rlz"]["regel"].startswith("Geboekt in RLZ · boekstuk RLZ-TEST-00001")

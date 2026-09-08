@@ -6,6 +6,7 @@ import {
   STATUSFILTER_BUITEN_OFFERTE,
   STATUSFILTER_DUPLICAAT,
   STATUSFILTER_URENMATCH,
+  STATUSFILTER_WACHTEN,
   STATUS_TE_CONTROLEREN,
   defaultStatusFilter,
   filterDocumenten,
@@ -60,6 +61,12 @@ describe('lijstContext — defaultStatusFilter (blok D 01-09: binnenkomst = eers
   it('valt terug op "Alle" zonder te-controleren-werk — nooit een leeg eerste beeld', () => {
     expect(defaultStatusFilter(LIJST.filter((d) => d.status !== STATUS_TE_CONTROLEREN))).toBe(STATUSFILTER_ALLE)
     expect(defaultStatusFilter([])).toBe(STATUSFILTER_ALLE)
+  })
+
+  it('blok 11: ligt álles bij anderen, dan opent de lijst op "Wachten op anderen" (Alle zou leeg zijn)', () => {
+    expect(defaultStatusFilter([doc({ id: 'w', status: 'ter_accordering' }), doc({ id: 'v', status: 'vraag_open' })])).toBe(STATUSFILTER_WACHTEN)
+    // Zodra er kantoorwerk is, wint "Alle" weer.
+    expect(defaultStatusFilter([doc({ id: 'w', status: 'ter_accordering' }), doc({ id: 'k', status: 'klaar_om_te_boeken' })])).toBe(STATUSFILTER_ALLE)
   })
 })
 
@@ -236,5 +243,27 @@ describe('format — soort verplichting (blok B 04-09)', () => {
     expect(statusLabel('geaccordeerd')).toBe('Geaccordeerd')
     // Chipklasse = statusgroen, net als geboekt (status, geen actie).
     expect(statusChipKlasse('geaccordeerd')).toBe('geboekt')
+  })
+})
+
+describe('lijstContext — blok 11 (08-09): "Alle" = kantoorwerk, "Wachten op anderen" apart', () => {
+  const MET_WACHTEN = [
+    doc({ id: 'k1', status: 'te_controleren' }),
+    doc({ id: 'k2', status: 'klaar_om_te_boeken' }),
+    doc({ id: 'w1', status: 'ter_accordering' }),
+    doc({ id: 'w2', status: 'vraag_open' }),
+    doc({ id: 'g1', status: 'geboekt' }),
+  ]
+
+  it('"Alle" laat ter_accordering en vraag_open weg (die staan in de eigen tab), geboekt telt mee als de server hem meegaf', () => {
+    expect(filterDocumenten(MET_WACHTEN, { soort: null, status: STATUSFILTER_ALLE, zoekterm: '' }).map((d) => d.id)).toEqual(['k1', 'k2', 'g1'])
+  })
+
+  it('de sentinel "wachten op anderen" selecteert precies ter_accordering + vraag_open', () => {
+    expect(filterDocumenten(MET_WACHTEN, { soort: null, status: STATUSFILTER_WACHTEN, zoekterm: '' }).map((d) => d.id)).toEqual(['w1', 'w2'])
+  })
+
+  it('een expliciete status blijft als deeplink werken (?status=ter_accordering)', () => {
+    expect(filterDocumenten(MET_WACHTEN, { soort: null, status: 'ter_accordering', zoekterm: '' }).map((d) => d.id)).toEqual(['w1'])
   })
 })

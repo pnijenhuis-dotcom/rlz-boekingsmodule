@@ -231,10 +231,12 @@ class TestVerplaatsen:
             actor_rol=GebruikerRol.BOEKHOUDING,
         )
         with admin_engine.connect() as conn:
-            aantal = conn.execute(
-                text("SELECT count(*) FROM boekhouding.boekvoorstel WHERE document_id = :id"), {"id": document_id}
-            ).scalar_one()
-        assert aantal == 0
+            referenties = conn.execute(
+                text("SELECT referentie FROM boekhouding.boekvoorstel WHERE document_id = :id"), {"id": document_id}
+            ).scalars().all()
+        # Het administratie-specifieke voorstel (F-1) is weg; blok 3 08-09: de her-extractie in het DOEL persisteert de
+        # UBL-kop meteen opnieuw (machinale intake-autosave, geen mensenwerk) — dus géén F-1 meer, wél de UBL-kop.
+        assert "F-1" not in referenties
         assert _document_rij(admin_engine, document_id).mogelijk_duplicaat_van_id == origineel
 
     def test_handmatige_toewijzing_zonder_leerregel_verplaatst_alleen(

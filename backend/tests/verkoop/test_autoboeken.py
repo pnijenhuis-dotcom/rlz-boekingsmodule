@@ -190,7 +190,7 @@ class TestVerkoopAutoboeken:
             ).scalar_one()
             assert event == "factuur_geboekt"
         # Werkvoorraad-lijst draagt de markering (zelfde chip/filter als het inkoop-pad).
-        items = documenten_service.lijst_documenten(administratie_id=vastgoed_administratie)
+        items = documenten_service.lijst_documenten(administratie_id=vastgoed_administratie, toon_afgehandeld=True)
         item = next(i for i in items if i.document.id == document_id)
         assert item.automatisch_geboekt is True
 

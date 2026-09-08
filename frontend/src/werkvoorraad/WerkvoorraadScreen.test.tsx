@@ -47,10 +47,17 @@ interface MockOpties {
   /** Antwoord op ?toon_afgehandeld=true (aanvulling blok 3, 08-09): de lijst mét eindstatus-rijen. */
   afgehandeldeDocumenten?: unknown[]
   /** Tellers van de standaard-verborgen eindstatus-rijen (reizen altijd mee). */
-  afgehandeld?: { verwijderd: number; afgewezen: number; samengevoegd: number; afgevoerd_duplicaat: number; totaal: number }
+  afgehandeld?: { verwijderd: number; afgewezen: number; samengevoegd: number; afgevoerd_duplicaat: number; geboekt?: number; totaal: number }
   verwijderenAanroepen?: { url: string; body: unknown }[]
   herstellenAanroepen?: string[]
   verwijderenStatus?: number
+}
+
+/** Servergedrag (blok 11, 08-09): afgehandelde statussen (geboekt, verwijderd, afgewezen, samengevoegd, afgevoerd
+ * duplicaat, gesplitst, geaccordeerd) zitten standaard NIET in de lijst-response — alleen met toon_afgehandeld=true. */
+const AFGEHANDELD_SERVER = new Set(['geboekt', 'verwijderd', 'afgewezen', 'samengevoegd', 'afgevoerd_duplicaat', 'gesplitst', 'geaccordeerd'])
+function zonderAfgehandeld(lijst: unknown[]): unknown[] {
+  return lijst.filter((d) => !AFGEHANDELD_SERVER.has((d as { status: string }).status))
 }
 
 function installFetchMock(opties: MockOpties) {
@@ -77,7 +84,7 @@ function installFetchMock(opties: MockOpties) {
           jsonResponse({
             documenten: toontAfgehandeld
               ? (opties.afgehandeldeDocumenten ?? opties.verwijderdeDocumenten ?? documenten)
-              : documenten,
+              : zonderAfgehandeld(documenten),
             afgehandeld: opties.afgehandeld ?? null,
           }),
         )
@@ -172,19 +179,47 @@ describe('WerkvoorraadScreen — verwijderen/herstellen via het ⋯-rijmenu (des
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText(/Fout/)).toBeInTheDocument())
   })
 
-  it('hard: bij een geboekt document is "Verwijderen…" uitgeschakeld mét de bewaarplicht-uitleg', async () => {
+  it('blok 11: een geboekt document is afgehandeld — alleen met de toggle zichtbaar, grijs, mét boekstuknummer en een ⋯-menu met alleen "Openen"', async () => {
     const gebruiker = userEvent.setup()
+    const geboekt = document({
+      id: GEBOEKT_DOCUMENT_ID,
+      bestandsnaam: 'geboekte-factuur.pdf',
+      status: 'geboekt',
+      geboekt_in_rlz: {
+        regel: 'Geboekt in RLZ · boekstuk 2026-00123 · Bouwmaat',
+        boekstuknummer: '2026-00123',
+        rlz_document_id: 'x',
+        tegenpartij: 'Bouwmaat',
+        tegenpartij_rol: 'crediteur',
+        geboekt_op: '2026-09-08T10:00:00Z',
+        memoriaal_boekstuknummer: null,
+        vindplaats_hint: null,
+      },
+    })
     installFetchMock({
-      documenten: [document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'geboekte-factuur.pdf', status: 'geboekt' })],
+      documenten: [document({}), geboekt],
+      afgehandeldeDocumenten: [document({}), geboekt],
+      afgehandeld: { verwijderd: 0, afgewezen: 0, samengevoegd: 0, afgevoerd_duplicaat: 0, geboekt: 1, totaal: 1 },
     })
     renderScherm()
 
+    await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
+    // Standaard: niet in de lijst, niet in "Alle", geen tab "Geboekt".
+    expect(screen.queryByText('geboekte-factuur.pdf')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Geboekt \(/ })).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten (1)'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Alle (2)' })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle (2)' }))
     await waitFor(() => expect(screen.getByText('geboekte-factuur.pdf')).toBeInTheDocument())
+    const rij = screen.getByText('geboekte-factuur.pdf').closest('tr')
+    expect(rij).toHaveClass('afgehandeld')
+    expect(within(rij as HTMLElement).getByTestId('open-in-boekhouding')).toHaveTextContent('Open in Reeleezee: boekstuk 2026-00123')
+    expect(within(rij as HTMLElement).getByRole('button', { name: 'Boekstuknummer 2026-00123 kopiëren' })).toHaveClass('linkbtn')
+
     const menu = await openRijmenu(gebruiker, /Acties voor geboekte-factuur\.pdf/)
-    expect(within(menu).getByRole('menuitem', { name: /Verwijderen/ })).toBeDisabled()
-    expect(within(menu).getByText(/bewaarplicht/)).toBeInTheDocument()
-    await gebruiker.click(within(menu).getByRole('menuitem', { name: /Verwijderen/ }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Openen'])
   })
 
   it('hard: bij een lopende accordering is "Verwijderen…" uitgeschakeld mét "eerst intrekken"', async () => {
@@ -357,10 +392,11 @@ describe('WerkvoorraadScreen — vragenworkflow (PART B)', () => {
     installVraagFetchMock([document({ status: 'vraag_open', toegewezen_aan: EIGENAAR_ID })])
     renderScherm()
 
-    // De statustekst staat als chip in de rij én als segment-filter met teller.
+    // De statustekst staat als chip in de rij; het segment is sinds blok 11 (08-09) de tab "Wachten op anderen".
     await waitFor(() => expect(screen.getAllByText('Vraag open').length).toBeGreaterThan(0))
     expect(screen.getByText('M. de Boer')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Vraag open (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Wachten op anderen (1)' })).toHaveClass('actief')
+    expect(screen.queryByRole('button', { name: 'Vraag open (1)' })).not.toBeInTheDocument()
   })
 
   it('klik op een vraag-regel opent de vraag (vragen-deelscherm gefilterd op het document)', async () => {
@@ -682,8 +718,10 @@ describe('Blok D (01-09) — documentenlijst opent standaard op "Te controleren"
       </MemoryRouter>,
     )
 
+    // Blok 11: een deeplink naar een afgehandelde status zet de toggle vanzelf aan (toon_afgehandeld=true).
     await waitFor(() => expect(screen.getByText(/geboekt\.pdf/)).toBeInTheDocument())
     expect(screen.queryByText(/werk\.pdf/)).not.toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('toon_afgehandeld=true'))).toBe(true)
   })
 
   it('randvoorwaarde 2: niets te controleren → default valt terug op "Alle" — nooit een leeg eerste beeld', async () => {
@@ -696,8 +734,9 @@ describe('Blok D (01-09) — documentenlijst opent standaard op "Te controleren"
     renderScherm()
 
     await waitFor(() => expect(screen.getByText(/klaar\.pdf/)).toBeInTheDocument())
-    expect(screen.getByText(/geboekt\.pdf/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Alle (2)' })).toHaveClass('actief')
+    // Blok 11: geboekt is afgehandeld — standaard niet in de lijst en niet in "Alle".
+    expect(screen.queryByText(/geboekt\.pdf/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alle (1)' })).toHaveClass('actief')
   })
 })
 
@@ -719,6 +758,9 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
     })
     renderScherm()
 
+    // Blok 11: geboekt staat achter de toggle "Toon afgehandelde documenten".
+    await waitFor(() => expect(screen.getByLabelText('Toon afgehandelde documenten')).toBeInTheDocument())
+    await userEvent.setup().click(screen.getByLabelText('Toon afgehandelde documenten'))
     await waitFor(() => expect(screen.getByText('auto-factuur.pdf')).toBeInTheDocument())
     const chip = screen.getByText('automatisch')
     expect(chip).toHaveClass('chip')
@@ -741,6 +783,8 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
     })
     renderScherm()
 
+    await waitFor(() => expect(screen.getByLabelText('Toon afgehandelde documenten')).toBeInTheDocument())
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten'))
     await waitFor(() => expect(screen.getByText('handmatig.pdf')).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('button', { name: 'Automatisch geboekt' }))
 
@@ -752,6 +796,8 @@ describe('Klantpagina — chip en filter "automatisch geboekt" (autoboeken-opt-i
     installFetchMock({ documenten: [document({ status: 'geboekt' })] })
     renderScherm()
 
+    await waitFor(() => expect(screen.getByLabelText('Toon afgehandelde documenten')).toBeInTheDocument())
+    await userEvent.setup().click(screen.getByLabelText('Toon afgehandelde documenten'))
     await waitFor(() => expect(screen.getByText('factuur.pdf')).toBeInTheDocument())
     expect(screen.queryByText('automatisch')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Automatisch geboekt' })).not.toBeInTheDocument()
@@ -826,7 +872,7 @@ describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt 
     expect(screen.queryByText('verkoop.xml')).not.toBeInTheDocument()
   })
 
-  it('tab-klik wisselt de soort; "Alle documenten" toont ook geboekte documenten (herstel-pad)', async () => {
+  it('tab-klik wisselt de soort; "Alle documenten" toont geboekte documenten alleen mét de toggle (blok 11)', async () => {
     const gebruiker = userEvent.setup()
     installFetchMock({
       documenten: [
@@ -842,9 +888,13 @@ describe('Klantlanding — tabs per soort + chip-rij (besluit Peter 25-08, punt 
     expect(screen.queryByText('inkoop.pdf')).not.toBeInTheDocument()
 
     await gebruiker.click(screen.getByRole('tab', { name: 'Alle documenten' }))
-    await waitFor(() => expect(screen.getByText('kas.pdf')).toBeInTheDocument())
-    expect(screen.getByText('inkoop.pdf')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('inkoop.pdf')).toBeInTheDocument())
     expect(screen.getByText('verkoop.xml')).toBeInTheDocument()
+    // Blok 11: geboekt is afgehandeld — pas zichtbaar (grijs) met de toggle.
+    expect(screen.queryByText('kas.pdf')).not.toBeInTheDocument()
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten'))
+    await waitFor(() => expect(screen.getByText('kas.pdf')).toBeInTheDocument())
+    expect(screen.getByText('kas.pdf').closest('tr')).toHaveClass('afgehandeld')
   })
 
   it('chip-rij toont alleen standen met teller > 0 en ?status= kiest het segment-filter voor', async () => {
@@ -949,7 +999,10 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
         if (openVragenAntwoord(url)) return Promise.resolve(openVragenAntwoord(url)!)
         if (url.includes('/vragen')) return Promise.resolve(jsonResponse({ vragen: [] }))
         if (url.includes('/documenten') && (!init || init.method === undefined)) {
-          return Promise.resolve(jsonResponse({ documenten: opties.documenten ?? [] }))
+          const alle = opties.documenten ?? []
+          return Promise.resolve(
+            jsonResponse({ documenten: url.includes('toon_afgehandeld=true') ? alle : zonderAfgehandeld(alle) }),
+          )
         }
         return Promise.resolve(new Response(null, { status: 404 }))
       }),
@@ -1089,7 +1142,6 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
     expect(hoofd).toHaveClass('lijst-hoofd')
     const meta = hoofd.parentElement?.querySelector('.lijst-meta')
     expect(meta).toHaveTextContent(/a\.pdf · email · 26 aug/)
-    expect(screen.getByText('Geboekt')).toHaveClass('status', 'geboekt')
 
     const tabel = hoofd.closest('table') as HTMLElement
     expect(tabel).toHaveClass('documenten-tabel')
@@ -1097,6 +1149,11 @@ describe('Werkstroom-run 27/28-08 — kolom-tellers, bulk aanbieden, vervallen-m
     await gebruiker.click(screen.getByRole('button', { name: 'Compact' }))
     expect(tabel).toHaveClass('dichtheid-compact')
     expect(window.localStorage.getItem('rlz.documentenlijst.dichtheid')).toBe('compact')
+
+    // Blok 11: de geboekt-dot staat op de (grijze) afgehandelde rij achter de toggle (de lijst herlaadt).
+    await gebruiker.click(screen.getByLabelText('Toon afgehandelde documenten'))
+    await waitFor(() => expect(screen.getByText('Geboekt')).toHaveClass('status', 'geboekt'))
+    expect(screen.getByText('Geboekt').closest('tr')).toHaveClass('afgehandeld')
   })
 
   it('punt 5: "/" zet de cursor in het zoekveld', async () => {
@@ -1332,5 +1389,57 @@ describe('KPI-kaart Projectverdeling (opdracht 06-09 blok B)', () => {
     renderIngang()
     await waitFor(() => expect(screen.getByText('Testklant')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Projectverdeling/ })).toBeNull()
+  })
+})
+
+describe('Blok 11 (herstelrun 08-09) — "Wachten op anderen" en de teller "Alle" = kantoorwerk', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('ter accordering en open vraag staan in één tab "Wachten op anderen (N)" die niet in "Alle" meetelt; ?status=ter_accordering blijft werken', async () => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'werk.pdf', status: 'te_controleren' }),
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'bij-klant.pdf', status: 'ter_accordering' }),
+        document({ id: VERWIJDERD_DOCUMENT_ID, bestandsnaam: 'vraag.pdf', status: 'vraag_open' }),
+      ],
+    })
+    renderScherm()
+
+    await waitFor(() => expect(screen.getByText(/werk\.pdf/)).toBeInTheDocument())
+    // "Alle" telt alleen kantoorwerk; de twee wachtende rijen zitten in de eigen tab.
+    expect(screen.getByRole('button', { name: 'Alle (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Wachten op anderen (2)' })).toBeInTheDocument()
+    // Geen losse statusknoppen meer voor bij-klant/vraag.
+    expect(screen.queryByRole('button', { name: /Bij klant — ter accordering \(/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Vraag open \(/ })).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Alle (1)' }))
+    expect(screen.getByText(/werk\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText(/bij-klant\.pdf/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/vraag\.pdf/)).not.toBeInTheDocument()
+
+    await gebruiker.click(screen.getByRole('button', { name: 'Wachten op anderen (2)' }))
+    expect(screen.getByText(/bij-klant\.pdf/)).toBeInTheDocument()
+    expect(screen.getByText(/vraag\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText(/werk\.pdf/)).not.toBeInTheDocument()
+  })
+
+  it('bestaande deeplink ?status=ter_accordering toont precies de bij-klant-rijen', async () => {
+    installFetchMock({
+      documenten: [
+        document({ id: DOCUMENT_ID, bestandsnaam: 'werk.pdf', status: 'te_controleren' }),
+        document({ id: GEBOEKT_DOCUMENT_ID, bestandsnaam: 'bij-klant.pdf', status: 'ter_accordering' }),
+      ],
+    })
+    render(
+      <MemoryRouter initialEntries={[`/?administratie=${ADMINISTRATIE_ID}&status=ter_accordering`]}>
+        <WerkvoorraadScreen />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText(/bij-klant\.pdf/)).toBeInTheDocument())
+    expect(screen.queryByText(/werk\.pdf/)).not.toBeInTheDocument()
   })
 })
