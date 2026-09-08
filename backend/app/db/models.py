@@ -389,6 +389,7 @@ class Uitnodiging(Base):
     __tablename__ = "uitnodiging"
     __table_args__ = (
         Index("ix_uitnodiging_gebruiker_id", "gebruiker_id"),
+        Index("uq_uitnodiging_activatiecode_hash", "activatiecode_hash", unique=True),
         CheckConstraint("soort IN ('uitnodiging', 'wachtwoord_herstel')", name="ck_uitnodiging_soort"),
     )
 
@@ -406,6 +407,17 @@ class Uitnodiging(Base):
     # de hash hier; pas de geslaagde passkey-registratie zet 'm op de gebruiker en verbruikt de
     # link. Kantoor-rollen gebruiken dit veld niet.
     wachtwoord_hash_in_wacht: Mapped[str | None] = mapped_column(Text, default=None)
+    # App-auth zonder passkey (migratie 0125, besluit Peter 08-09): 8-tekens activatiecode als alternatief
+    # voor de link — alleen de sha256-hex van de genormaliseerde code, uitsluitend voor externe app-rollen
+    # (kantoor = NULL). Zelfde geldigheid/eenmaligheid als het link-token (verloopt_op / gebruikt_op).
+    activatiecode_hash: Mapped[str | None] = mapped_column(Text, default=None)
+    # Rate-limit per uitnodiging: max 5 pogingen per uur (venster start bij activatiecode_pogingen_vanaf).
+    activatiecode_pogingen: Mapped[int] = mapped_column(default=0, server_default="0")
+    activatiecode_pogingen_vanaf: Mapped[datetime | None] = mapped_column(default=None)
+    # UITSLUITEND het review-demo-account (scripts/cloud_seed_review_demo.py): code verloopt niet en mag
+    # op meerdere toestellen. De server toetst de e-mail hard (app_activatie.REVIEW_DEMO_EMAIL) — voor
+    # elk ander account wordt de vlag als false behandeld.
+    demo_herbruikbaar: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
 class RefreshToken(Base):
@@ -441,6 +453,14 @@ class RefreshToken(Base):
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
+class WebauthnCredentialSoort(enum.StrEnum):
+    """`passkey` = WebAuthn-credential (kantoor, en de legacy app-passkeys tot de sunset); `toestel` =
+    apparaat-record zonder publieke sleutel uit de app-activatie (besluit Peter 08-09, migratie 0125)."""
+
+    PASSKEY = "passkey"
+    TOESTEL = "toestel"
+
+
 class WebauthnCredential(Base):
     """Passkey per GEBRUIKER+APPARAAT (migratie 0040, besluit auth-cadans 2026-08-11): de
     publieke sleutel van een geregistreerd apparaat. Draagt de nieuw/onbekend-apparaat-detectie
@@ -451,7 +471,10 @@ class WebauthnCredential(Base):
     geen echte passkey registreren)."""
 
     __tablename__ = "webauthn_credential"
-    __table_args__ = (Index("ix_webauthn_credential_gebruiker_id", "gebruiker_id"),)
+    __table_args__ = (
+        Index("ix_webauthn_credential_gebruiker_id", "gebruiker_id"),
+        CheckConstraint("soort IN ('passkey', 'toestel')", name="ck_webauthn_credential_soort"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
@@ -468,6 +491,37 @@ class WebauthnCredential(Base):
     ingetrokken_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
+    # App-auth zonder passkey (migratie 0125, besluit Peter 08-09): een TOESTEL-rij hergebruikt dit
+    # apparaat-record (kill-switch, RefreshToken.apparaat_id, per-request-toets, push-subscripties) zonder
+    # publieke sleutel — `credential_id` = 16 random bytes (de meldsleutel van het toestel voor app-lock),
+    # `public_key` = b"toestel" (kolom NOT NULL, zelfde truc als de dev-stub). `platform` = ios/android/web.
+    soort: Mapped[str] = mapped_column(
+        Text, default=WebauthnCredentialSoort.PASSKEY.value, server_default=WebauthnCredentialSoort.PASSKEY.value
+    )
+    platform: Mapped[str | None] = mapped_column(default=None)
+    # "Passkey van een app-gebruiker, niet meer in gebruik" (CLI app-passkeys-markeren) — markering, nooit
+    # verwijderen; `ingetrokken_op` blijft ongemoeid zodat bestaande sessies hun TTL uitzitten.
+    niet_meer_gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class ActivatiecodePoging(Base):
+    """Mislukte app-activatiepoging per IP (migratie 0125): rate-limit 5 missers per uur over Cloud-Run-
+    instanties heen (een in-memory teller zou per instantie tellen). Alleen het IP + tijdstip — geen
+    koppeling aan een account (onbekende codes hebben er geen); rijen ouder dan een uur worden bij elke
+    insert opgeruimd (zelfde huishouding als WebauthnChallenge)."""
+
+    __tablename__ = "activatiecode_poging"
+    __table_args__ = (
+        Index("ix_activatiecode_poging_ip_tijdstip", "ip", "tijdstip"),
+        {
+            "comment": "Mislukte app-activatiepogingen per IP (rate-limit 5/uur, 08-09). Geen PII buiten het IP; "
+            "rijen ouder dan een uur worden bij elke insert opgeruimd."
+        },
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    ip: Mapped[str]
+    tijdstip: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class WebauthnChallenge(Base):

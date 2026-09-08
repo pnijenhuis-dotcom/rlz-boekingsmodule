@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime, time
+from email.utils import format_datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 
-from app.auth import schemas, service, voorwaarden, webauthn_service
+from app.auth import app_activatie, schemas, service, voorwaarden, webauthn_service
 from app.auth.deps import (
     CurrentGebruiker,
     get_current_gebruiker,
@@ -20,7 +25,75 @@ from app.berichten import uitnodigingsmail
 from app.config import settings
 from app.db.models import GebruikerRol
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+# --- sunset legacy-app-auth (besluit Peter 08-09; parkeerpost: verwijderen ná settings.app_legacy_auth_sunset_op)
+#
+# De alleen-door-de-app-gebruikte passkey-/wachtwoordroutes dragen `Deprecation: true` + `Sunset: <RFC 1123>` en
+# antwoorden ná de datum 410. Als route_class i.p.v. dependency: een dependency kan de headers alleen op een
+# GESLAAGD antwoord zetten (bij een HTTPException gaat het Response-object verloren) — de app moet de sunset óók op
+# een 401/409 zien. Kantoor-routes (/auth/login, /auth/totp/*, /auth/webauthn/kantoor/*) staan niet in de set.
+
+SUNSET_TEKST = "Dit inlogpad bestaat niet meer — activeer de app met de activatiecode uit je uitnodiging"
+LEGACY_APP_PADEN = frozenset(
+    {
+        "/auth/accordeur/login",
+        "/auth/accordeur/passkey-login/opties",
+        "/auth/accordeur/passkey-login/voltooien",
+        "/auth/uitnodigingen/activatie-zonder-wachtwoord",
+        "/auth/webauthn/registratie/opties",
+        "/auth/webauthn/registratie/voltooien",
+        "/auth/webauthn/login/opties",
+        "/auth/webauthn/login/voltooien",
+        "/auth/token/vernieuwen/ontgrendel-opties",
+        "/auth/token/vernieuwen/ontgrendelen",
+    }
+)
+
+
+def _sunset_headers() -> dict[str, str]:
+    sunset_moment = datetime.combine(settings.app_legacy_auth_sunset_op, time(23, 59, 59), tzinfo=UTC)
+    return {"Deprecation": "true", "Sunset": format_datetime(sunset_moment, usegmt=True)}
+
+
+def _sunset_verstreken() -> bool:
+    return datetime.now(UTC).date() > settings.app_legacy_auth_sunset_op
+
+
+def _pas_sunset_toe(response: Response) -> None:
+    """Voor routes die de sunset conditioneel dragen (/uitnodigingen/accepteren: alleen app-rollen): headers op het
+    antwoord, ná de datum 410. Op een later foutantwoord van zo'n route ontbreken de headers (bekende beperking)."""
+    headers = _sunset_headers()
+    if _sunset_verstreken():
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=SUNSET_TEKST, headers=headers)
+    for naam, waarde in headers.items():
+        response.headers[naam] = waarde
+
+
+class _SunsetRoute(APIRoute):
+    """Legacy-app-routes: 410 vóór de handler zodra de datum verstreken is; anders de handler mét sunset-headers
+    op élk antwoord — ook op een HTTPException (headers op de exceptie gezet). Overige routes: ongewijzigd."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        origineel = super().get_route_handler()
+        if self.path not in LEGACY_APP_PADEN:
+            return origineel
+
+        async def handler(request: Request) -> Response:
+            headers = _sunset_headers()
+            if _sunset_verstreken():
+                raise HTTPException(status_code=status.HTTP_410_GONE, detail=SUNSET_TEKST, headers=headers)
+            try:
+                response = await origineel(request)
+            except HTTPException as exc:
+                exc.headers = {**(exc.headers or {}), **headers}
+                raise
+            for naam, waarde in headers.items():
+                response.headers[naam] = waarde
+            return response
+
+        return handler
+
+
+router = APIRouter(prefix="/auth", tags=["auth"], route_class=_SunsetRoute)
 _bearer = HTTPBearer(auto_error=True)
 
 REFRESH_COOKIE_NAME = "refresh_token"
@@ -64,11 +137,39 @@ def _clear_refresh_cookie(response: Response) -> None:
 # capacitor://localhost) kan de SameSite=Strict-cookie niet dragen — daar leeft het
 # refresh-token in Keychain/Keystore en reist het als header.
 NATIVE_CLIENT_HEADER = "X-Native-Client"
+# PWA-slotmodus (app-auth zonder passkey, blok 3, 08-09): de accordeur-PWA bewaart het refresh-token
+# versleuteld in IndexedDB achter de toegangscode en dient zich met deze header aan — zelfde
+# body-levering als native, géén cookie. De kantoor-webapp stuurt deze header nooit.
+APP_SLOT_HEADER = "X-App-Slot"
 REFRESH_HEADER = "X-Refresh-Token"
 
 
 def _is_native_client(request: Request) -> bool:
-    return request.headers.get(NATIVE_CLIENT_HEADER) == "1" or REFRESH_HEADER in request.headers
+    return (
+        request.headers.get(NATIVE_CLIENT_HEADER) == "1"
+        or request.headers.get(APP_SLOT_HEADER) == "1"
+        or REFRESH_HEADER in request.headers
+    )
+
+
+def _is_app_client(request: Request) -> bool:
+    """App-activatie eist een expliciete client-aankondiging (native óf PWA-slotmodus) — het token-paar
+    gaat daar altijd in de body en mag nooit in een gewone webcontext terechtkomen."""
+    return request.headers.get(NATIVE_CLIENT_HEADER) == "1" or request.headers.get(APP_SLOT_HEADER) == "1"
+
+
+def _client_ip_achter_lb(request: Request) -> str | None:
+    """Cloud Run staat achter een load balancer: het échte client-IP is de eerste hop in
+    X-Forwarded-For; zonder die header (lokaal/TestClient) het socket-adres. Alleen voor de
+    rate-limit + audit-metadata van de app-activatie — nooit een auth-anker (Auth-0010-b)."""
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        eerste = xff.split(",")[0].strip()
+        if eerste:
+            return eerste
+    return _client_ip(request)
+
+
 
 
 def _lees_refresh_token(request: Request) -> str | None:
@@ -145,6 +246,7 @@ def uitnodiging_aanmaken(
                 token=resultaat.token,
                 verloopt_op=resultaat.verloopt_op,
                 app_rol=is_externe_app_rol(payload.rol),
+                activatiecode=resultaat.activatiecode,
             )
             mail_verzonden = True
         except berichten_mail.MailFout as exc:
@@ -157,6 +259,7 @@ def uitnodiging_aanmaken(
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
         mail_uitgesteld=payload.uitnodiging_later,
+        activatiecode=resultaat.activatiecode,
     )
 
 
@@ -190,7 +293,12 @@ def activatie_probleem_melden(payload: schemas.ActivatieProbleemRequest) -> Resp
 @router.post("/uitnodigingen/accepteren", response_model=schemas.UitnodigingAccepterenResponse)
 def uitnodiging_accepteren(
     payload: schemas.UitnodigingAccepterenRequest,
+    response: Response,
 ) -> schemas.UitnodigingAccepterenResponse:
+    # Sunset (08-09) ALLEEN voor app-rollen: de wachtwoordstap van de externe activatie is legacy;
+    # kantoor-links (wachtwoord + TOTP) blijven onaangeroerd — geen header, geen 410.
+    if service.uitnodiging_is_app_rol(token=payload.token):
+        _pas_sunset_toe(response)
     try:
         resultaat = service.accepteer_uitnodiging(token=payload.token, wachtwoord=payload.wachtwoord)
     except service.AuthError as exc:
@@ -364,6 +472,7 @@ def uitnodiging_opnieuw_mailen(
             token=vernieuwd.resultaat.token,
             verloopt_op=vernieuwd.resultaat.verloopt_op,
             app_rol=rol is not None and is_externe_app_rol(rol),
+            activatiecode=vernieuwd.resultaat.activatiecode,
         )
         mail_verzonden = True
     except berichten_mail.MailFout as exc:
@@ -375,6 +484,7 @@ def uitnodiging_opnieuw_mailen(
         verloopt_op=vernieuwd.resultaat.verloopt_op,
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
+        activatiecode=vernieuwd.resultaat.activatiecode,
     )
 
 
@@ -400,6 +510,7 @@ def herstel_link_sturen(
             e_mail=herstel.e_mail,
             token=herstel.resultaat.token,
             verloopt_op=herstel.resultaat.verloopt_op,
+            activatiecode=herstel.resultaat.activatiecode,
         )
         mail_verzonden = True
     except berichten_mail.MailFout as exc:
@@ -411,6 +522,7 @@ def herstel_link_sturen(
         verloopt_op=herstel.resultaat.verloopt_op,
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
+        activatiecode=herstel.resultaat.activatiecode,
     )
 
 
@@ -458,6 +570,7 @@ def e_mail_wijzigen(
                 token=vernieuwd.token,
                 verloopt_op=vernieuwd.verloopt_op,
                 app_rol=rol is not None and is_externe_app_rol(rol),
+                activatiecode=vernieuwd.activatiecode,
             )
             mail_verzonden = True
         except berichten_mail.MailFout as exc:
@@ -471,6 +584,7 @@ def e_mail_wijzigen(
         verloopt_op=vernieuwd.verloopt_op if vernieuwd else None,
         mail_verzonden=mail_verzonden,
         mail_fout=mail_fout,
+        activatiecode=vernieuwd.activatiecode if vernieuwd else None,
     )
 
 
@@ -824,6 +938,9 @@ def kantoor_registratie_voltooien(
         aangemaakt_op=apparaat.aangemaakt_op,
         laatst_gebruikt_op=apparaat.laatst_gebruikt_op,
         ingetrokken_op=apparaat.ingetrokken_op,
+        soort=apparaat.soort,
+        platform=apparaat.platform,
+        niet_meer_gebruikt_op=apparaat.niet_meer_gebruikt_op,
     )
 
 
@@ -886,6 +1003,9 @@ def mijn_apparaten(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> 
                 aangemaakt_op=a.aangemaakt_op,
                 laatst_gebruikt_op=a.laatst_gebruikt_op,
                 ingetrokken_op=a.ingetrokken_op,
+                soort=a.soort,
+                platform=a.platform,
+                niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
             )
             for a in webauthn_service.apparaten_van(gebruiker_id=actor.id)
         ]
@@ -909,6 +1029,9 @@ def kantoor_apparaten_overzicht(
                 ingetrokken_op=a.ingetrokken_op,
                 gebruiker_id=a.gebruiker_id,
                 gebruiker_naam=a.gebruiker_naam,
+                soort=a.soort,
+                platform=a.platform,
+                niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
             )
             for a in webauthn_service.kantoor_apparaten()
         ]
@@ -932,6 +1055,9 @@ def apparaten_van_gebruiker(
                 aangemaakt_op=a.aangemaakt_op,
                 laatst_gebruikt_op=a.laatst_gebruikt_op,
                 ingetrokken_op=a.ingetrokken_op,
+                soort=a.soort,
+                platform=a.platform,
+                niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
             )
             for a in webauthn_service.apparaten_van(gebruiker_id=gebruiker_id)
         ]
@@ -951,6 +1077,60 @@ def apparaat_intrekken(apparaat_id: uuid.UUID, actor: CurrentGebruiker = Depends
             apparaat_id=apparaat_id,
             alleen_van_gebruiker=None if actor.rol == GebruikerRol.BEHEERDER else actor.id,
         )
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# --- app-activatie zonder passkey (besluit Peter 08-09; app/auth/app_activatie.py) -------------------
+
+
+@router.post("/app/activeren", response_model=schemas.AppActiverenResponse)
+def app_activeren(
+    payload: schemas.AppActiverenRequest, request: Request, response: Response
+) -> schemas.AppActiverenResponse:
+    """Het ENIGE toegangspad van de app: uitnodiging (link óf 8-tekens activatiecode) → dít toestel
+    gekoppeld → token-paar in de body (het toestel zet het refresh-token achter de lokale toegangscode).
+    Publiek, maar eist de client-aankondiging (X-Native-Client of X-App-Slot) — zonder die header 400,
+    zodat een gewone webcontext het refresh-token nooit in de body krijgt. 400 = ongeldig/verlopen/
+    kantoor-rol/geblokkeerd (één tekst voor onbekend/ongeldig — 0022), 409 = al op een ander toestel
+    gebruikt, 429 = te veel pogingen (per uitnodiging of per IP, 5 per uur)."""
+    if not _is_app_client(request):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=app_activatie.FOUT_ALLEEN_APP)
+    try:
+        uitkomst = app_activatie.activeer_toestel(
+            token=payload.token,
+            activatiecode=payload.activatiecode,
+            toestel_naam=payload.toestel_naam,
+            platform=payload.platform,
+            ip_adres=_client_ip_achter_lb(request),
+        )
+    except app_activatie.TeVeelPogingen as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except app_activatie.UitnodigingAlGebruikt as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return schemas.AppActiverenResponse(
+        access_token=uitkomst.token_paar.access_token,
+        refresh_token=uitkomst.token_paar.refresh_token,
+        apparaat_credential_id=uitkomst.apparaat_credential_id,
+        naam=uitkomst.naam,
+        herstel=uitkomst.herstel,
+    )
+
+
+@router.post("/app/toegangscode-gewijzigd", status_code=status.HTTP_204_NO_CONTENT)
+def app_toegangscode_gewijzigd(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> None:
+    """Instellingen › "Toegangscode wijzigen": de code zelf bereikt de server nooit — alleen het audit-feit
+    `toegangscode_gewijzigd` op de toestel-rij van deze sessie (apparaat-claim). Sessie zonder
+    apparaatbinding = 400."""
+    if actor.apparaat_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Deze sessie is niet aan een apparaat gebonden"
+        )
+    try:
+        app_activatie.meld_toegangscode_gewijzigd(actor_id=actor.id, apparaat_id=actor.apparaat_id)
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

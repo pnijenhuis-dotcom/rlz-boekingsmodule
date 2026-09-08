@@ -190,7 +190,7 @@ class TestUitnodigingInfo:
         e_mail, token = _nodig_accordeur_uit(beheerder_id)
         resp = client.get("/auth/uitnodigingen/info", params={"token": token})
         assert resp.status_code == 200, resp.text
-        assert resp.json()["flow"] == "passkey"
+        assert resp.json()["flow"] == "app"  # 08-09: toestel + activatiecode (was 'passkey')
         assert resp.json()["herstel"] is False
         assert resp.json()["naam"]
         assert "e_mail" not in resp.json()

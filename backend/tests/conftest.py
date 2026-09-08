@@ -139,6 +139,9 @@ def _clean_tables() -> Generator[None, None, None]:
         # AI-kostenmeter (migratie 0047): FK-loos, dus buiten de CASCADE — apart legen zodat
         # verbruik/meldingen van de ene test nooit de poort van de volgende dichtzetten.
         conn.execute(text("TRUNCATE TABLE platform.ai_gebruik, platform.ai_kosten_maandstatus"))
+        # Rate-limit-tabel app-activatie (migratie 0125): FK-loos, dus buiten de CASCADE — apart legen zodat
+        # de IP-missers van de ene test nooit de 429-poort van de volgende dichtzetten.
+        conn.execute(text("TRUNCATE TABLE platform.activatiecode_poging"))
         conn.execute(
             text(
                 "INSERT INTO platform.boeken_instelling (singleton, globaal_ingeschakeld) VALUES (true, true) "

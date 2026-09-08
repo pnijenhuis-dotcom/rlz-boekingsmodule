@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from urllib.parse import quote_plus
 
@@ -63,6 +64,10 @@ class Settings(BaseSettings):
     # TTL van het tussentoken ná de wachtwoordstap van de accordeur-login/activatie — alleen
     # geldig om de passkey-registratie of -assertion af te ronden (zelfde idee als totp_setup).
     jwt_passkey_setup_ttl_seconds: int = 600
+    # Sunset legacy-app-auth (besluit Peter 08-09, parkeerpost "verwijderen ná 2026-10-08"): de alleen-door-
+    # de-app-gebruikte passkey-/wachtwoordroutes dragen tot deze datum `Deprecation`/`Sunset`-headers en
+    # antwoorden erná 410. Kantoor-routes (/auth/login, /auth/totp/*, /auth/webauthn/kantoor/*) raakt dit niet.
+    app_legacy_auth_sunset_op: date = date(2026, 10, 8)
     # WebAuthn Relying Party: rp_id moet het registreerbare domein zijn waarop de app draait
     # (dev: localhost; GCP: het productiedomein via env). Origins = exact wat de browser als
     # origin meestuurt (dev: de Vite-server; de backend op 8000 voor echte-HTTP-tests).

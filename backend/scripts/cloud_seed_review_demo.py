@@ -1,41 +1,32 @@
 """Cloud-seed: demo-account + fictieve demo-facturen voor de App Store-/Play-review (A2).
 
-Strategie (native/TESTFLIGHT_DRAAIBOEK.md — de passkey-laag wordt NIET verzwakt):
-- een gewoon accordeur-account "App-review" op de SEED-PASSKEYTEST-administratie; de reviewer
-  doorloopt exact de normale flow: e-mail + wachtwoord → passkey-registratie op het eigen
-  toestel (Face ID) → wachtrij. Geen bypass, geen reviewer-achterdeur, dev-stub blijft hard
-  onwerkzaam buiten dev.
-- de wachtrijdocumenten zijn FICTIEVE demonstratiefacturen (eigen gegenereerde PDF's,
-  verzonnen leveranciers, voettekst "Fictieve demonstratiefactuur") — nooit echte
-  klantfacturen voor reviewers/screenshots.
-- TWEE accorderingslagen: laag 1 = het review-account, laag 2 = het passkeytest-account.
-  Het akkoord van de reviewer is dus nooit het láátste akkoord → de boekmotor (die op deze
-  credential-loze administratie zichtbaar zou falen) wordt nooit geraakt; de reviewer ziet
-  gewoon "akkoord → volgende factuur".
+Strategie (native/TESTFLIGHT_DRAAIBOEK.md + PLAY_DRAAIBOEK.md — HERZIEN 08-09, besluit Peter "app-auth zonder
+passkey en TOTP"): de reviewer doorloopt exact de normale app-flow van élke gebruiker:
+    activatiecode invoeren (XXXX-XXXX) → 5-cijferige toegangscode kiezen → wachtrij.
+Geen sleutelhanger, geen iCloud- of Google-account, geen wachtwoord, geen passkey — precies de drempel waarop
+beide reviews (Apple 2.1 op 07-09, Google Play 07-09: "No create options available") strandden. Geen bypass en
+geen reviewer-achterdeur: de code loopt door dezelfde `POST /auth/app/activeren` als een echte accordeur.
 
-HERZIEN 07-09 (Apple review 2.1, submission d46ad39e — reviewer kon niet inloggen): het script
-levert nu een VOLLEDIG geactiveerd account op, zonder dat iemand een uitnodigingslink hoeft te
-doorlopen. Rationale: de normale externe activatie parkeert de wachtwoord-hash op de link tot de
-passkey-registratie (atomair, 28-08) en de native build activeert sinds 31-08 zelfs zonder
-wachtwoord (pincode-flow) — een demo-account dat via zo'n flow ontstaat heeft dus niet
-gegarandeerd een definitief wachtwoord. Voor de reviewer is het wachtwoord de ENIGE ingang, dus
-dit script zet het zelf: status `actief`, definitieve hash, alle open links vervallen, audit.
-De passkey-stap blijft onverkort: de wachtwoordlogin geeft alleen een passkey_setup-token en de
-reviewer registreert een passkey op het reviewtoestel (`webauthn_service.start_accordeur_login`).
-Daarom wist het script standaard de bestaande passkeys van het demo-account (kill-switch per
-apparaat, dezelfde schrijver als de kantoor-UI): zonder actieve passkey slaat de app op een
-nieuw toestel de assertion-poging over en gaat direct naar de registratie — één iOS-prompt
-minder voor de reviewer. `--behoud-passkeys` laat ze staan. UITSLUITEND dit ene demo-account
-wordt geraakt (e-mail hard gepind); voor echte accordeurs bestaat dit pad niet.
+- een gewoon accordeur-account "App-review" op de SEED-PASSKEYTEST-administratie;
+- de wachtrijdocumenten zijn FICTIEVE demonstratiefacturen (eigen gegenereerde PDF's, verzonnen leveranciers,
+  voettekst "Fictieve demonstratiefactuur") — nooit echte klantfacturen voor reviewers/screenshots;
+- TWEE accorderingslagen: laag 1 = het review-account, laag 2 = het passkeytest-account. Het akkoord van de
+  reviewer is dus nooit het láátste akkoord → de boekmotor (die op deze credential-loze administratie
+  zichtbaar zou falen) wordt nooit geraakt; de reviewer ziet gewoon "akkoord → volgende factuur".
 
-UITGEVOERD 07-09 tegen productie (wortel Apple-afwijzing: 21× `login_mislukt` op Apple-toestellen
-04/05-09 = het wachtwoord in App Store Connect kwam niet overeen met de hash uit Peters activatie van
-02-09; account, status en e-mail klopten). Tweede vondst bij de simulator-verificatie: drie
-demo-documenten uit een eerdere seed-run hadden GEEN PDF-object in de bucket (500 op /bestand,
-"factuurbeeld kon niet geladen worden"). Daarom sinds 07-09: (a) de seed weigert zonder
-DOCUMENT_GCS_BUCKET (nooit stil naar lokale opslag), (b) élke upload wordt ná afloop geverifieerd
-(`opslag.bestaat`), (c) zelfherstel: bestaande DEMO-REVIEW-documenten zonder object krijgen hun
-deterministische PDF opnieuw geüpload (zelfde bytes, sha256 wordt getoetst — rijen blijven ongemoeid).
+De activatiecode van het demo-account is HERBRUIKBAAR (`Uitnodiging.demo_herbruikbaar`, migratie 0125): hij
+verloopt niet (verloopt_op 2099) en mag op meerdere toestellen — Apple en Google reviewen op verschillende
+apparaten en herhalen de test. De server honoreert die vlag UITSLUITEND voor REVIEW_EMAIL
+(`app_activatie.REVIEW_DEMO_EMAIL`); voor echte accounts bestaat dit pad niet. Per run is er precies één
+geldige code: eerdere demo-uitnodigingen vervallen.
+
+Wachtwoord-vlaggen blijven bestaan als kantoor-web-terugval (de reviewer gebruikt ze niet meer). De bestaande
+passkeys/toestellen van het demo-account worden standaard ingetrokken (kill-switch per apparaat, dezelfde
+schrijver als de kantoor-UI) zodat elke run schoon begint; `--behoud-passkeys` laat ze staan.
+
+Vondst 07-09 (blijft gelden): (a) de seed weigert zonder DOCUMENT_GCS_BUCKET (nooit stil naar lokale opslag),
+(b) élke upload wordt ná afloop geverifieerd (`opslag.bestaat`), (c) zelfherstel: bestaande DEMO-REVIEW-
+documenten zonder object krijgen hun deterministische PDF opnieuw geüpload (sha256 wordt getoetst).
 
 Opties:
     [batch]                  batch-letter voor de demo-facturen (default: 'a'; automatisch de
@@ -44,7 +35,10 @@ Opties:
     --genereer-wachtwoord    genereert een vers wachtwoord en print het (voor App Store Connect)
     (geen van beide)         wachtwoord ongemoeid als er al een definitieve hash staat; anders
                              wordt er één gegenereerd + geprint (het account moet bruikbaar zijn)
-    --behoud-passkeys        bestaande passkeys van het demo-account NIET intrekken
+    --behoud-passkeys        bestaande passkeys/toestellen van het demo-account NIET intrekken
+    --activatiecode CODE     zet dít als herbruikbare activatiecode (8 tekens uit ABCDEFGHJKLMNPQRSTUVWXYZ23456789)
+    --genereer-activatiecode genereert een verse herbruikbare activatiecode en print die (XXXX-XXXX) — dit is
+                             wat in App Store Connect / Play Console bij de reviewer-instructies hoort
 
 Draaien (patroon cloud_seed_accordering.py):
     cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 --gcloud-auth &
@@ -52,10 +46,10 @@ Draaien (patroon cloud_seed_accordering.py):
     APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:\
 $(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
     DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten \
-        .venv/bin/python scripts/cloud_seed_review_demo.py --genereer-wachtwoord
+        .venv/bin/python scripts/cloud_seed_review_demo.py --genereer-activatiecode
 
-Het geprinte wachtwoord gaat in App Store Connect › App Review Information (en in de
-reviewnotities); het is een demo-credential, geen platform-secret."""
+De geprinte activatiecode gaat in App Store Connect › App Review Information en in de Play Console
+(reviewer-instructies); het is een demo-credential, geen platform-secret."""
 
 from __future__ import annotations
 
@@ -202,12 +196,15 @@ def zet_account_definitief(*, review_id: uuid.UUID, beheerder_id: uuid.UUID, wac
             gebruiker.status = GebruikerStatus.ACTIEF
         if wachtwoord is not None:
             gebruiker.wachtwoord_hash = hash_password(wachtwoord)
+        # De herbruikbare demo-activatiecode (demo_herbruikbaar, 08-09) is een aparte, bewust langlevende
+        # link — die beheert zet_demo_activatiecode; hier alleen de gewone links vervallen.
         vervallen = session.execute(
             update(Uitnodiging)
             .where(
                 Uitnodiging.gebruiker_id == review_id,
                 Uitnodiging.gebruikt_op.is_(None),
                 Uitnodiging.verloopt_op > nu,
+                Uitnodiging.demo_herbruikbaar.is_(False),
             )
             .values(verloopt_op=nu, wachtwoord_hash_in_wacht=None)
         ).rowcount
@@ -232,10 +229,78 @@ def zet_account_definitief(*, review_id: uuid.UUID, beheerder_id: uuid.UUID, wac
     return {"oud": oud, "nieuw": nieuw}
 
 
+def zet_demo_activatiecode(*, review_id: uuid.UUID, beheerder_id: uuid.UUID, code: str) -> str:
+    """Herbruikbare activatiecode voor het demo-account (08-09): één Uitnodiging soort `wachtwoord_herstel`
+    (het account is al actief — herstel-semantiek koppelt een toestel zonder de status te raken) mét
+    `demo_herbruikbaar=True`, `verloopt_op` 2099-01-01 en alleen de sha256 van de code. Eerdere demo-
+    uitnodigingen vervallen (één geldige code). Audit `review_demo_activatiecode_gezet` ZONDER de code.
+    Hard gepind op REVIEW_EMAIL; de server honoreert de vlag óók alleen voor dat adres."""
+    from sqlalchemy import update
+
+    from app.auth import app_activatie
+    from app.auth.service import _hash_token
+    from app.db.audit import record_audit_event
+    from app.db.models import Gebruiker, Uitnodiging, UitnodigingSoort
+    from app.db.session import scoped_session
+
+    if not app_activatie.is_geldig_activatiecode_formaat(code):
+        raise SystemExit(
+            "FOUT: activatiecode moet 8 tekens zijn uit het alfabet "
+            f"{app_activatie.ACTIVATIECODE_ALFABET} (koppelteken/spaties mogen)."
+        )
+    nu = datetime.now(UTC)
+    uitnodiging_id = uuid.uuid4()
+    with scoped_session(None, actor_id=beheerder_id) as session:
+        gebruiker = session.get(Gebruiker, review_id)
+        assert gebruiker is not None
+        if gebruiker.e_mail != REVIEW_EMAIL or gebruiker.e_mail != app_activatie.REVIEW_DEMO_EMAIL:
+            raise SystemExit("FAILSAFE: dit is niet het demo-account — gestopt.")
+        vervallen = session.execute(
+            update(Uitnodiging)
+            .where(
+                Uitnodiging.gebruiker_id == review_id,
+                Uitnodiging.demo_herbruikbaar.is_(True),
+                Uitnodiging.verloopt_op > nu,
+            )
+            # Vlag óók uit: een oude demo-rij wordt weer een gewone (verlopen) link — anders zou de
+            # herbruikbaarheid de vervaldatum overleven.
+            .values(verloopt_op=nu, demo_herbruikbaar=False)
+        ).rowcount
+        session.add(
+            Uitnodiging(
+                id=uitnodiging_id,
+                gebruiker_id=review_id,
+                token_hash=_hash_token(secrets.token_urlsafe(32)),  # link-token bewust weggegooid: alleen de code
+                aangemaakt_door=beheerder_id,
+                verloopt_op=datetime(2099, 1, 1, tzinfo=UTC),
+                soort=UitnodigingSoort.WACHTWOORD_HERSTEL.value,
+                activatiecode_hash=app_activatie.hash_activatiecode(code),
+                demo_herbruikbaar=True,
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=beheerder_id,
+            module="platform",
+            tabel="platform.uitnodiging",
+            record_id=uitnodiging_id,
+            actie="review_demo_activatiecode_gezet",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "gebruiker_id": str(review_id),
+                "demo_herbruikbaar": True,
+                "verloopt_op": "2099-01-01",
+                "eerdere_demo_codes_vervallen": vervallen,
+                "bron": "cloud_seed_review_demo",
+            },
+        )
+    return app_activatie.formatteer_activatiecode(code)
+
+
 def wis_passkeys(*, review_id: uuid.UUID, beheerder_id: uuid.UUID) -> int:
-    """Trekt de actieve passkeys van het demo-account in via de bestaande kill-switch-schrijver
-    (credential + gebonden refresh-tokens, audit). Eerste login op het reviewtoestel gaat dan
-    rechtstreeks naar de passkey-registratie."""
+    """Trekt de actieve passkeys én toestellen van het demo-account in via de bestaande kill-switch-schrijver
+    (credential + gebonden refresh-tokens, audit) — elke reviewronde begint schoon; de herbruikbare
+    activatiecode koppelt het reviewtoestel opnieuw."""
     from app.auth import webauthn_service
 
     n = 0
@@ -243,7 +308,7 @@ def wis_passkeys(*, review_id: uuid.UUID, beheerder_id: uuid.UUID) -> int:
         if apparaat.ingetrokken_op is None:
             webauthn_service.trek_apparaat_in(actor_id=beheerder_id, apparaat_id=apparaat.id)
             naam = apparaat.apparaat_naam or "?"
-            print(f"  passkey ingetrokken: {naam} (aangemaakt {apparaat.aangemaakt_op:%d-%m %H:%M})")
+            print(f"  {apparaat.soort} ingetrokken: {naam} (aangemaakt {apparaat.aangemaakt_op:%d-%m %H:%M})")
             n += 1
     return n
 
@@ -296,9 +361,13 @@ def main() -> int:
     parser.add_argument("--wachtwoord", default=None)
     parser.add_argument("--genereer-wachtwoord", action="store_true")
     parser.add_argument("--behoud-passkeys", action="store_true")
+    parser.add_argument("--activatiecode", default=None, help="herbruikbare activatiecode (8 tekens) voor de reviewer")
+    parser.add_argument("--genereer-activatiecode", action="store_true")
     args = parser.parse_args()
     if args.wachtwoord and args.genereer_wachtwoord:
         raise SystemExit("Kies óf --wachtwoord óf --genereer-wachtwoord.")
+    if args.activatiecode and args.genereer_activatiecode:
+        raise SystemExit("Kies óf --activatiecode óf --genereer-activatiecode.")
     _controleer_database_doel()
 
     from sqlalchemy import select
@@ -361,7 +430,17 @@ def main() -> int:
     print(f"Account definitief: {uitkomst['oud']} → {uitkomst['nieuw']}")
     if not args.behoud_passkeys:
         n = wis_passkeys(review_id=review_id, beheerder_id=beheerder_id)
-        print(f"Passkeys ingetrokken: {n} (eerste login op het reviewtoestel = directe registratie).")
+        print(f"Passkeys/toestellen ingetrokken: {n} (het reviewtoestel koppelt opnieuw met de activatiecode).")
+    activatiecode: str | None = None
+    if args.activatiecode or args.genereer_activatiecode:
+        from app.auth import app_activatie
+
+        activatiecode = zet_demo_activatiecode(
+            review_id=review_id,
+            beheerder_id=beheerder_id,
+            code=args.activatiecode or app_activatie.genereer_activatiecode(),
+        )
+        print("Herbruikbare activatiecode gezet (eerdere demo-codes vervallen).")
 
     # 2. Twee lagen: reviewer éérst, passkeytest als tweede — het reviewer-akkoord is nooit
     #    het laatste akkoord, dus de boekmotor wordt nooit geraakt (credential-loze admin).
@@ -463,12 +542,16 @@ def main() -> int:
     wachtrij = accordering_service.wachtrij_voor_accordeur(actor_id=review_id, administratie_ids=[administratie_id])
     print()
     print(f"Klaar. Wachtrij reviewer: {len(wachtrij)} document(en).")
-    print(f"Inloggen: e-mail {REVIEW_EMAIL}")
-    if wachtwoord is not None:
-        print(f"Wachtwoord (NIEUW — zet dit in App Store Connect › App Review Information): {wachtwoord}")
+    print(f"Demo-account: {REVIEW_EMAIL}")
+    if activatiecode is not None:
+        print(f"Activatiecode (NIEUW, herbruikbaar — zet dit in App Store Connect / Play Console): {activatiecode}")
     else:
-        print("Wachtwoord: ongewijzigd (bestaande hash).")
-    print("De reviewer registreert bij de eerste login een eigen passkey (Face ID) — normale flow, geen bypass.")
+        print("Activatiecode: ongewijzigd (geen --activatiecode/--genereer-activatiecode).")
+    if wachtwoord is not None:
+        print(f"Wachtwoord kantoor-web-terugval (NIEUW): {wachtwoord}")
+    else:
+        print("Wachtwoord (kantoor-web-terugval): ongewijzigd.")
+    print("Reviewer-flow: activatiecode invoeren → 5-cijferige toegangscode kiezen → wachtrij. Geen bypass.")
     return 0
 
 

@@ -25,6 +25,7 @@ from app.db.models import (
     Uitnodiging,
     UitnodigingSoort,
     WebauthnCredential,
+    WebauthnCredentialSoort,
 )
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
@@ -80,6 +81,21 @@ class UitnodigingResultaat:
     gebruiker_id: uuid.UUID
     token: str
     verloopt_op: datetime
+    # App-auth zonder passkey (08-09, migratie 0125): de 8-tekens activatiecode (weergave XXXX-XXXX) —
+    # alleen voor externe app-rollen, kantoor = None. Zelfde geldigheid/eenmaligheid als het token; de
+    # plaintext verlaat de server via de mail en deze respons aan de Beheerder.
+    activatiecode: str | None = None
+
+
+def _nieuwe_activatiecode(rol: GebruikerRol) -> tuple[str | None, str | None]:
+    """(plaintext, sha256-hex) voor een externe app-rol; (None, None) voor kantoor-rollen. Lokale import:
+    app_activatie importeert deze module (zelfde richting als webauthn_service)."""
+    if not is_externe_app_rol(rol):
+        return None, None
+    from app.auth.app_activatie import formatteer_activatiecode, genereer_activatiecode, hash_activatiecode
+
+    code = genereer_activatiecode()
+    return formatteer_activatiecode(code), hash_activatiecode(code)
 
 
 class VeldwerkerbeheerBegrenzing(AuthError):
@@ -180,6 +196,7 @@ def maak_uitnodiging(
     gebruiker_id = uuid.uuid4()
     token = secrets.token_urlsafe(32)
     verloopt_op = datetime.now(UTC) + INVITE_TTL
+    activatiecode, activatiecode_hash = _nieuwe_activatiecode(rol)
 
     with scoped_session(None, actor_id=actor_id) as session:
         # Punt 22 (28-08): leesbare weigering i.p.v. de DB-uniciteitsfout (500 mét correlatie-id).
@@ -216,6 +233,7 @@ def maak_uitnodiging(
                 token_hash=_hash_token(token),
                 aangemaakt_door=actor_id,
                 verloopt_op=verloopt_op,
+                activatiecode_hash=activatiecode_hash,
             )
         )
         # Audit op de uitnodiging-rij (record = uitnodiging, correlatie = gebruiker) — de
@@ -238,11 +256,16 @@ def maak_uitnodiging(
                 "administratie_ids": [str(a) for a in administratie_ids],
                 "status": GebruikerStatus.UITGENODIGD.value,
                 "mail_uitgesteld": uitnodiging_later,
+                "activatiecode": activatiecode is not None,  # bestaan, nooit de code zelf
             },
         )
 
     return UitnodigingResultaat(
-        uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op
+        uitnodiging_id=uitnodiging_id,
+        gebruiker_id=gebruiker_id,
+        token=token,
+        verloopt_op=verloopt_op,
+        activatiecode=activatiecode,
     )
 
 
@@ -370,24 +393,37 @@ def start_activatie_zonder_wachtwoord(*, token: str) -> AcceptatieResultaat:
         )
 
 
-def rond_uitnodiging_af_met_passkey(
-    session: Session, *, gebruiker: Gebruiker, uitnodiging_id: uuid.UUID, now: datetime
+def rond_uitnodiging_af(
+    session: Session,
+    *,
+    gebruiker: Gebruiker,
+    uitnodiging_id: uuid.UUID,
+    now: datetime,
+    via: str = "passkey",
+    demo_herbruikbaar: bool = False,
 ) -> None:
-    """Het atomaire sluitstuk (aangeroepen BINNEN de registratie-transactie van
-    webauthn_service): geparkeerde hash → gebruiker, link verbruikt, status actief (uitnodiging)
-    resp. alle sessies ingetrokken (herstel), audit. Faalt hier iets, dan rolt de hele
-    registratie terug — passkey én wachtwoord bestaan dan allebei niet.
+    """Het atomaire sluitstuk (aangeroepen BINNEN de transactie van de aanroeper — de
+    passkey-registratie in webauthn_service, of de toestel-activatie in app_activatie): geparkeerde
+    hash → gebruiker, link verbruikt, status actief (uitnodiging) resp. alle sessies ingetrokken
+    (herstel), audit. Faalt hier iets, dan rolt de hele activatie terug — credential/toestel én
+    wachtwoord bestaan dan allebei niet.
 
     Pincode-flow (31-08, mockup app-lock-pincode.html): zonder geparkeerde hash is dit de
     wachtwoordloze activatie — de code leeft uitsluitend lokaal op het toestel, het account
     krijgt géén wachtwoord (wachtwoord_hash blijft zoals hij was; bij een verse uitnodiging is
-    dat None). Herstel = verse kantoor-link, precies het bestaande poortwachter-model."""
+    dat None). Herstel = verse kantoor-link, precies het bestaande poortwachter-model.
+
+    App-auth zonder passkey (08-09): `via="toestel"` reist mee in het audit-record (de actienamen
+    `activatie_afgerond`/`wachtwoord_hersteld` blijven). `demo_herbruikbaar` (UITSLUITEND het
+    review-demo-account, door de aanroeper al tegen REVIEW_DEMO_EMAIL getoetst): de link/code wordt
+    NIET verbruikt, sessies worden NIET ingetrokken en de verlopen-poort wordt overgeslagen — de
+    reviewer activeert dezelfde code op meerdere toestellen."""
     uitnodiging = session.get(Uitnodiging, uitnodiging_id)
     if uitnodiging is None or uitnodiging.gebruiker_id != gebruiker.id:
         raise AuthError("Ongeldig uitnodigingstoken")
     if uitnodiging.gebruikt_op is not None:
         raise AuthError("Uitnodiging is al gebruikt")
-    if uitnodiging.verloopt_op < now:
+    if not demo_herbruikbaar and uitnodiging.verloopt_op < now:
         raise AuthError("Uitnodiging is verlopen — vraag het kantoor om een nieuwe link")
     if gebruiker.status in (GebruikerStatus.GEBLOKKEERD, GebruikerStatus.GEARCHIVEERD):
         raise AuthError("Account is geblokkeerd — neem contact op met het kantoor")
@@ -396,9 +432,13 @@ def rond_uitnodiging_af_met_passkey(
     if not zonder_wachtwoord:
         gebruiker.wachtwoord_hash = uitnodiging.wachtwoord_hash_in_wacht
         uitnodiging.wachtwoord_hash_in_wacht = None
-    uitnodiging.gebruikt_op = now
+    if not demo_herbruikbaar:
+        uitnodiging.gebruikt_op = now
+    uitnodiging.activatiecode_pogingen = 0
+    uitnodiging.activatiecode_pogingen_vanaf = None
     if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value:
-        _intrek_alle_sessies(session, gebruiker.id, now=now)
+        if not demo_herbruikbaar:
+            _intrek_alle_sessies(session, gebruiker.id, now=now)
         actie = "wachtwoord_hersteld"
     else:
         gebruiker.status = GebruikerStatus.ACTIEF
@@ -416,8 +456,14 @@ def rond_uitnodiging_af_met_passkey(
             "status": gebruiker.status.value,
             "atomair": True,
             "zonder_wachtwoord": zonder_wachtwoord,
+            "via": via,
+            "demo_herbruikbaar": demo_herbruikbaar,
         },
     )
+
+
+# Oude naam blijft als alias staan (webauthn_service + bestaande tests; opruimen = parkeerpost sunset).
+rond_uitnodiging_af_met_passkey = rond_uitnodiging_af
 
 
 @dataclass(frozen=True)
@@ -426,7 +472,7 @@ class UitnodigingInfo:
     /activeren-scherm vóór de wachtwoordstap weet of het een externe (passkey, mobiel-first)
     of een kantoor-activatie (TOTP) is. Bewust minimaal — geen e-mail, geen rol."""
 
-    flow: str  # 'passkey' | 'totp'
+    flow: str  # 'app' (externe app-rol: toestel + activatiecode, 08-09 — was 'passkey') | 'totp' (kantoor)
     naam: str
     herstel: bool
     verloopt_op: datetime
@@ -440,11 +486,25 @@ def uitnodiging_info(*, token: str) -> UitnodigingInfo:
         gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
         assert gebruiker is not None
         return UitnodigingInfo(
-            flow="passkey" if is_externe_app_rol(gebruiker.rol) else "totp",
+            flow="app" if is_externe_app_rol(gebruiker.rol) else "totp",
             naam=gebruiker.naam,
             herstel=uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value,
             verloopt_op=uitnodiging.verloopt_op,
         )
+
+
+def uitnodiging_is_app_rol(*, token: str) -> bool:
+    """Sunset-poort op /auth/uitnodigingen/accepteren (08-09): hoort deze link bij een externe app-rol?
+    Leest alleen (geen poorten — een onbekende/verlopen link geeft False en loopt daarna gewoon tegen de
+    bestaande 400 van accepteren aan). Kantoor-links (False) blijven onaangeroerd."""
+    with scoped_session(None) as session:
+        uitnodiging = session.scalars(
+            select(Uitnodiging).where(Uitnodiging.token_hash == _hash_token(token))
+        ).one_or_none()
+        if uitnodiging is None:
+            return False
+        gebruiker = session.get(Gebruiker, uitnodiging.gebruiker_id)
+        return gebruiker is not None and is_externe_app_rol(gebruiker.rol)
 
 
 def meld_activatie_probleem(*, token: str) -> str:
@@ -537,6 +597,10 @@ def _ontgrendeling_nodig(
     if apparaat_id is None or not is_externe_app_rol(rol):
         return None
     credential = session.get(WebauthnCredential, apparaat_id)
+    if credential is not None and credential.soort == WebauthnCredentialSoort.TOESTEL.value:
+        # App-auth zonder passkey (08-09): een toestel-sessie kent geen ontgrendel-ceremonie meer — het
+        # slot is lokaal (toegangscode), de server doet er geen uitspraak over.
+        return None
     if credential is None or credential.laatst_gebruikt_op is None:
         return True
     return now - credential.laatst_gebruikt_op > timedelta(seconds=settings.ontgrendel_venster_seconds)
@@ -708,6 +772,7 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
             # vóór de gebruikt_op-tak, anders zou een grace-race op een ingetrokken apparaat
             # alsnog een vers token opleveren.
             apparaat_ingetrokken = False
+            credential: WebauthnCredential | None = None
             if rij is not None and rij.apparaat_id is not None:
                 credential = session.get(WebauthnCredential, rij.apparaat_id)
                 apparaat_ingetrokken = credential is None or credential.ingetrokken_op is not None
@@ -767,6 +832,10 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                     faal_reden = "inactief"
                 else:
                     rij.gebruikt_op = now
+                    if credential is not None and credential.soort == WebauthnCredentialSoort.TOESTEL.value:
+                        # Toestel-rij (08-09): elke rotatie is "laatst gebruikt" — er is geen aparte
+                        # ceremonie meer die dit veld zet (Gebruikers & toegang toont het als activiteit).
+                        credential.laatst_gebruikt_op = now
                     paar = replace(
                         _issue_token_paar(
                             session,
@@ -1431,6 +1500,7 @@ def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Ver
         if gebruiker.status != GebruikerStatus.UITGENODIGD:
             raise AuthError("Alleen een nog niet geactiveerde uitnodiging kan opnieuw gemaild worden")
         naam, e_mail = gebruiker.naam, gebruiker.e_mail
+        activatiecode, activatiecode_hash = _nieuwe_activatiecode(gebruiker.rol)
         nu = datetime.now(UTC)
         session.execute(
             update(Uitnodiging)
@@ -1448,6 +1518,7 @@ def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Ver
                 token_hash=_hash_token(token),
                 aangemaakt_door=actor_id,
                 verloopt_op=verloopt_op,
+                activatiecode_hash=activatiecode_hash,
             )
         )
         record_audit_event(
@@ -1458,11 +1529,19 @@ def vernieuw_uitnodiging(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Ver
             record_id=uitnodiging_id,
             actie="uitnodiging_opnieuw_gemaild",
             correlatie_id=uuid.uuid4(),
-            nieuwe_waarde={"gebruiker_id": str(gebruiker_id), "verloopt_op": verloopt_op.isoformat()},
+            nieuwe_waarde={
+                "gebruiker_id": str(gebruiker_id),
+                "verloopt_op": verloopt_op.isoformat(),
+                "activatiecode": activatiecode is not None,
+            },
         )
     return VernieuwdeUitnodiging(
         resultaat=UitnodigingResultaat(
-            uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op
+            uitnodiging_id=uitnodiging_id,
+            gebruiker_id=gebruiker_id,
+            token=token,
+            verloopt_op=verloopt_op,
+            activatiecode=activatiecode,
         ),
         naam=naam,
         e_mail=e_mail,
@@ -1497,6 +1576,7 @@ def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Vernie
         if gebruiker.status not in (GebruikerStatus.ACTIEF, GebruikerStatus.WACHT_OP_PASSKEY):
             raise AuthError("Account is nog niet geactiveerd — gebruik 'Opnieuw mailen' voor de uitnodiging")
         naam, e_mail = gebruiker.naam, gebruiker.e_mail
+        activatiecode, activatiecode_hash = _nieuwe_activatiecode(gebruiker.rol)
         nu = datetime.now(UTC)
         session.execute(
             update(Uitnodiging)
@@ -1515,6 +1595,7 @@ def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Vernie
                 aangemaakt_door=actor_id,
                 verloopt_op=verloopt_op,
                 soort=UitnodigingSoort.WACHTWOORD_HERSTEL.value,
+                activatiecode_hash=activatiecode_hash,
             )
         )
         record_audit_event(
@@ -1530,11 +1611,16 @@ def maak_herstel_link(*, actor_id: uuid.UUID, gebruiker_id: uuid.UUID) -> Vernie
                 "rol": gebruiker.rol.value,
                 "status": gebruiker.status.value,
                 "verloopt_op": verloopt_op.isoformat(),
+                "activatiecode": activatiecode is not None,
             },
         )
     return VernieuwdeUitnodiging(
         resultaat=UitnodigingResultaat(
-            uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker_id, token=token, verloopt_op=verloopt_op
+            uitnodiging_id=uitnodiging_id,
+            gebruiker_id=gebruiker_id,
+            token=token,
+            verloopt_op=verloopt_op,
+            activatiecode=activatiecode,
         ),
         naam=naam,
         e_mail=e_mail,
@@ -1593,6 +1679,7 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
             token = secrets.token_urlsafe(32)
             verloopt_op = now + INVITE_TTL
             uitnodiging_id = uuid.uuid4()
+            activatiecode, activatiecode_hash = _nieuwe_activatiecode(gebruiker.rol)
             session.add(
                 Uitnodiging(
                     id=uitnodiging_id,
@@ -1600,10 +1687,15 @@ def wijzig_e_mail(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuw_e_
                     token_hash=_hash_token(token),
                     aangemaakt_door=actor_id,
                     verloopt_op=verloopt_op,
+                    activatiecode_hash=activatiecode_hash,
                 )
             )
             vernieuwd = UitnodigingResultaat(
-                uitnodiging_id=uitnodiging_id, gebruiker_id=gebruiker.id, token=token, verloopt_op=verloopt_op
+                uitnodiging_id=uitnodiging_id,
+                gebruiker_id=gebruiker.id,
+                token=token,
+                verloopt_op=verloopt_op,
+                activatiecode=activatiecode,
             )
         record_audit_event(
             session,

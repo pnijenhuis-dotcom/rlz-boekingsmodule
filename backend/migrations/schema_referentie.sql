@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0124
+-- Migratie-head bij deze dump: 0125
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3273,6 +3273,24 @@ CREATE TABLE platform.accordeur_nieuw_gemeld (
 
 
 --
+-- Name: activatiecode_poging; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.activatiecode_poging (
+    id uuid NOT NULL,
+    ip text NOT NULL,
+    tijdstip timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: TABLE activatiecode_poging; Type: COMMENT; Schema: platform; Owner: -
+--
+
+COMMENT ON TABLE platform.activatiecode_poging IS 'Mislukte app-activatiepogingen per IP (rate-limit 5/uur, 08-09). Geen PII buiten het IP; rijen ouder dan een uur worden bij elke insert opgeruimd.';
+
+
+--
 -- Name: administratie; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -3718,6 +3736,10 @@ CREATE TABLE platform.uitnodiging (
     gebruikt_op timestamp with time zone,
     soort text DEFAULT 'uitnodiging'::text NOT NULL,
     wachtwoord_hash_in_wacht text,
+    activatiecode_hash text,
+    activatiecode_pogingen integer DEFAULT 0 NOT NULL,
+    activatiecode_pogingen_vanaf timestamp with time zone,
+    demo_herbruikbaar boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_uitnodiging_soort CHECK ((soort = ANY (ARRAY['uitnodiging'::text, 'wachtwoord_herstel'::text])))
 );
 
@@ -3755,7 +3777,11 @@ CREATE TABLE platform.webauthn_credential (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     laatst_gebruikt_op timestamp with time zone,
     ingetrokken_op timestamp with time zone,
-    ingetrokken_door uuid
+    ingetrokken_door uuid,
+    soort text DEFAULT 'passkey'::text NOT NULL,
+    platform text,
+    niet_meer_gebruikt_op timestamp with time zone,
+    CONSTRAINT ck_webauthn_credential_soort CHECK ((soort = ANY (ARRAY['passkey'::text, 'toestel'::text])))
 );
 
 
@@ -5043,6 +5069,14 @@ ALTER TABLE ONLY platform.accordeur_herinnering
 
 ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
     ADD CONSTRAINT accordeur_nieuw_gemeld_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: activatiecode_poging activatiecode_poging_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.activatiecode_poging
+    ADD CONSTRAINT activatiecode_poging_pkey PRIMARY KEY (id);
 
 
 --
@@ -6527,6 +6561,13 @@ CREATE INDEX ix_accordeur_nieuw_gemeld_gebruiker_id ON platform.accordeur_nieuw_
 
 
 --
+-- Name: ix_activatiecode_poging_ip_tijdstip; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_activatiecode_poging_ip_tijdstip ON platform.activatiecode_poging USING btree (ip, tijdstip);
+
+
+--
 -- Name: ix_audit_event_administratie_id; Type: INDEX; Schema: platform; Owner: -
 --
 
@@ -6643,6 +6684,13 @@ CREATE INDEX ix_webauthn_credential_gebruiker_id ON platform.webauthn_credential
 --
 
 CREATE UNIQUE INDEX uq_bewaking_storing_open_soort ON platform.bewaking_storing USING btree (soort) WHERE (hersteld_op IS NULL);
+
+
+--
+-- Name: uq_uitnodiging_activatiecode_hash; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_uitnodiging_activatiecode_hash ON platform.uitnodiging USING btree (activatiecode_hash);
 
 
 --

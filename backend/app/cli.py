@@ -341,6 +341,26 @@ def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
     return 0 if not tot_fouten else 1
 
 
+def _app_passkeys_markeren(args: argparse.Namespace) -> int:
+    """App-auth zonder passkey (besluit Peter 08-09, blok 2): markeert alle passkey-rijen van gebruikers met een
+    externe app-rol als 'niet meer gebruikt' (`niet_meer_gebruikt_op`), audit per rij (systeem-actor). NIETS wordt
+    verwijderd en `ingetrokken_op` blijft ongemoeid — bestaande sessies op oude toestellen lopen door tot hun TTL.
+    --dry-run telt alleen. Idempotent (al gemarkeerde rijen worden overgeslagen)."""
+    from app.auth import app_activatie
+
+    per_rol = app_activatie.markeer_app_passkeys(dry_run=args.dry_run)
+    label = " [dry-run]" if args.dry_run else ""
+    totaal = sum(per_rol.values())
+    print(
+        f"app-passkeys-markeren{label}: {totaal} passkey-rij(en) van app-gebruikers gemarkeerd als niet meer gebruikt"
+    )
+    for rol, n in sorted(per_rol.items()):
+        print(f"  {rol}: {n}")
+    if not totaal:
+        print("  (niets te markeren)")
+    return 0
+
+
 def _periode_backfill(args: argparse.Namespace) -> int:
     """Blok 7 bundel 08-09 (BESLISSINGEN "FACTUURPERIODE WEEKNIVEAU" beslispunt 4): vult de factuurperiode-
     kolommen (migratie 0120) van GEBOEKTE documenten mét boekvoorstel maar zonder periode — AI-veld `periode` uit
@@ -2314,6 +2334,12 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID", help="Beperk tot één administratie."
     )
 
+    passkeys_markeren_parser = subparsers.add_parser(
+        "app-passkeys-markeren",
+        help="Markeer legacy app-passkeys als 'niet meer gebruikt' (08-09) — niets verwijderen, sessies blijven",
+    )
+    passkeys_markeren_parser.add_argument("--dry-run", action="store_true", help="alleen tellen, niets schrijven")
+
     periode_parser = subparsers.add_parser(
         "periode-backfill",
         help="Blok 7 08-09: factuurperiode-kolommen (migratie 0120) vullen voor GEBOEKTE documenten mét boekvoorstel "
@@ -2797,6 +2823,8 @@ def main(argv: list[str] | None = None) -> int:
         return _duplicaat_status_backfill(args)
     if args.commando == "periode-backfill":
         return _periode_backfill(args)
+    if args.commando == "app-passkeys-markeren":
+        return _app_passkeys_markeren(args)
     return 1
 
 

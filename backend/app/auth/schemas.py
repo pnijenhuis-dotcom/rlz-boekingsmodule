@@ -4,11 +4,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 from app.db.models import GebruikerRol
 from app.schemas_basis import StrikteInvoer
-
 
 # Bugfix 04-09 (casus "+ Veldwerker" maakte een kantoormedewerker aan): de aanroepende INGANG reist mee,
 # zodat de server een rolgroep die niet bij de ingang past weigert (422) én de audit de ingang draagt.
@@ -45,6 +44,9 @@ class UitnodigingAanmakenResponse(BaseModel):
     mail_fout: str | None = None
     # A4: bewust niet gemaild (uitnodiging_later) — géén fout, wel zichtbaar.
     mail_uitgesteld: bool = False
+    # App-auth zonder passkey (08-09, migratie 0125): 8-tekens activatiecode (XXXX-XXXX) voor externe
+    # app-rollen — "voor wie de link niet kan openen; zelfde geldigheid". Kantoor-rollen: None.
+    activatiecode: str | None = None
 
 
 class UitnodigingAccepterenRequest(StrikteInvoer):
@@ -54,8 +56,8 @@ class UitnodigingAccepterenRequest(StrikteInvoer):
 
 class UitnodigingInfoResponse(BaseModel):
     """Publiek, op token: welke activatieflow hoort bij deze link (28-08, mockup
-    activatie-mobiel.html). `flow` = 'passkey' (externe app-rol, mobiel-first + atomair) of
-    'totp' (kantoor). Verzilvert niets; minimaal — geen e-mail, geen rol."""
+    activatie-mobiel.html). `flow` = 'app' (externe app-rol: toestel + activatiecode, 08-09 —
+    was 'passkey') of 'totp' (kantoor). Verzilvert niets; minimaal — geen e-mail, geen rol."""
 
     flow: str
     naam: str
@@ -79,6 +81,39 @@ class ActivatieZonderWachtwoordResponse(BaseModel):
     geslaagde registratie verbruikt de link en maakt het account definitief (atomair, 28-08)."""
 
     passkey_setup_token: str
+
+
+AppPlatform = Literal["ios", "android", "web"]
+
+
+class AppActiverenRequest(StrikteInvoer):
+    """App-activatie (besluit Peter 08-09): precies één van `token` (universal link uit de mail) of
+    `activatiecode` (8 tekens, XXXX-XXXX — normalisatie server-side) — anders 422. De 5-cijferige
+    toegangscode reist NOOIT mee: die is een lokaal anker op het toestel."""
+
+    token: str | None = None
+    activatiecode: str | None = Field(default=None, max_length=32)
+    toestel_naam: str | None = Field(default=None, max_length=120)
+    platform: AppPlatform | None = None
+
+    @model_validator(mode="after")
+    def _precies_een_ingang(self) -> AppActiverenRequest:
+        if (self.token is None) == (self.activatiecode is None):
+            raise ValueError("Geef óf een activatiecode óf een link (token) op — niet beide, niet geen van beide")
+        return self
+
+
+class AppActiverenResponse(BaseModel):
+    """Token-levering ALTIJD in de body (het toestel bewaart het refresh-token in Keychain/Keystore/IndexedDB
+    achter het lokale slot) — de route eist daarom de client-aankondiging (X-Native-Client / X-App-Slot).
+    `apparaat_credential_id` = base64url van de toestel-meldsleutel voor /auth/app-lock/*."""
+
+    access_token: str
+    token_type: str = "bearer"
+    refresh_token: str
+    apparaat_credential_id: str
+    naam: str
+    herstel: bool = False
 
 
 class AppLockMeldingRequest(StrikteInvoer):
@@ -196,6 +231,11 @@ class ApparaatResponse(BaseModel):
     aangemaakt_op: datetime
     laatst_gebruikt_op: datetime | None
     ingetrokken_op: datetime | None
+    # App-auth zonder passkey (08-09, migratie 0125): 'passkey' | 'toestel'; platform ios/android/web van een
+    # toestel; niet_meer_gebruikt_op = legacy app-passkey gemarkeerd (CLI app-passkeys-markeren).
+    soort: str = "passkey"
+    platform: str | None = None
+    niet_meer_gebruikt_op: datetime | None = None
 
 
 class ApparatenResponse(BaseModel):
@@ -259,6 +299,8 @@ class EMailWijzigenResponse(BaseModel):
     verloopt_op: datetime | None = None
     mail_verzonden: bool = False
     mail_fout: str | None = None
+    # 08-09: bij een vernieuwde uitnodiging voor een app-rol reist ook de nieuwe activatiecode mee (additief).
+    activatiecode: str | None = None
 
 
 class ScopeToevoegenRequest(StrikteInvoer):

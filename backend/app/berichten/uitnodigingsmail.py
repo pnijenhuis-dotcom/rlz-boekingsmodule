@@ -37,12 +37,31 @@ def download_blok() -> str:
     return f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n\n"
 
 
+def activatiecode_blok(activatiecode: str | None, *, app_rol: bool) -> str:
+    """App-auth zonder passkey (besluit Peter 08-09): het codeblok voor externe app-rollen — voor wie de
+    link niet kan openen of op een ander toestel activeert. Zelfde geldigheid als de link. Kantoor-rollen
+    (geen code) en ontbrekende code = lege string, de mail is dan exact zoals voorheen."""
+    if not app_rol or not activatiecode:
+        return ""
+    return (
+        f"Kun je de link niet openen (of activeer je op een ander toestel)? Voer dan in de app deze "
+        f"activatiecode in: {activatiecode} (zelfde geldigheid).\n\n"
+    )
+
+
 def verstuur_uitnodigingsmail(
-    *, naam: str, e_mail: str, token: str, verloopt_op: datetime, app_rol: bool = False
+    *,
+    naam: str,
+    e_mail: str,
+    token: str,
+    verloopt_op: datetime,
+    app_rol: bool = False,
+    activatiecode: str | None = None,
 ) -> None:
     """Raise-t mail.MailFout bij niet-geconfigureerd/mislukt — de aanroeper maakt dat zichtbaar.
     `app_rol` (accordeur/veldrollen, blok F): mét gevulde store-links krijgt de mail het blok
-    "Download eerst de app"; zonder links is de mail exact zoals voorheen."""
+    "Download eerst de app"; zonder links is de mail exact zoals voorheen. `activatiecode` (08-09): het
+    codeblok "Activatiecode: XXXX-XXXX" voor app-rollen."""
     link = activeerlink(token)
     tekst = (
         f"Beste {naam},\n\n"
@@ -50,6 +69,7 @@ def verstuur_uitnodigingsmail(
         f"{download_blok() if app_rol else ''}"
         f"Activeer je account via deze link (eenmalig, geldig tot "
         f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
+        f"{activatiecode_blok(activatiecode, app_rol=app_rol)}"
         f"Werkt de link niet meer? Vraag dan een nieuwe uitnodiging aan bij het kantoor.\n\n"
         f"Administratiekantoor Nijenhuis"
     )
@@ -58,27 +78,34 @@ def verstuur_uitnodigingsmail(
 
 def herstellink(token: str) -> str:
     """Zelfde /activeren-route als de uitnodiging (het token bepaalt server-side de soort);
-    `herstel=1` is uitsluitend presentatie — het scherm zegt dan 'Nieuw wachtwoord instellen'
+    `herstel=1` is uitsluitend presentatie — het scherm zegt dan 'Toestel opnieuw koppelen'
     i.p.v. 'Account activeren'."""
     return f"{activeerlink(token)}&herstel=1"
 
 
-def verstuur_herstelmail(*, naam: str, e_mail: str, token: str, verloopt_op: datetime) -> None:
-    """Wachtwoord-herstel voor een actieve externe gebruiker (feedbackronde 25-08 punt 7).
-    Raise-t mail.MailFout bij niet-geconfigureerd/mislukt — de aanroeper maakt dat zichtbaar."""
+def verstuur_herstelmail(
+    *, naam: str, e_mail: str, token: str, verloopt_op: datetime, activatiecode: str | None = None
+) -> None:
+    """Herstel-link voor een actieve externe app-gebruiker (feedbackronde 25-08 punt 7; herzien 08-09 naar het
+    toestel-model: geen wachtwoord meer — de link/code koppelt een (nieuw) toestel, de gebruiker kiest daarna
+    opnieuw een toegangscode; alle oude sessies vervallen). Herstel-links bestaan alleen voor app-rollen, dus
+    het codeblok staat er altijd zodra er een code is. Raise-t mail.MailFout bij niet-geconfigureerd/mislukt."""
     link = herstellink(token)
     tekst = (
         f"Beste {naam},\n\n"
-        f"Het kantoor heeft een herstel-link voor je aangemaakt zodat je een nieuw wachtwoord kunt "
-        f"instellen voor je account bij Administratiekantoor Nijenhuis.\n\n"
-        f"Stel je nieuwe wachtwoord in via deze link (eenmalig, geldig tot "
+        f"Het kantoor heeft een herstel-link voor je aangemaakt zodat je de app opnieuw kunt koppelen aan je "
+        f"account bij Administratiekantoor Nijenhuis.\n\n"
+        f"{download_blok()}"
+        f"Open deze link op je telefoon (eenmalig, geldig tot "
         f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
-        f"Daarna registreer je je apparaat opnieuw. Je bestaande instellingen blijven bewaard.\n\n"
+        f"{activatiecode_blok(activatiecode, app_rol=True)}"
+        f"Daarna kies je een nieuwe toegangscode voor de app. Je bestaande instellingen blijven bewaard; "
+        f"eerdere toestellen worden uitgelogd.\n\n"
         f"Heb je hier niet om gevraagd? Neem dan contact op met het kantoor — de link vervalt "
         f"vanzelf.\n\n"
         f"Administratiekantoor Nijenhuis"
     )
-    mail.verzend_mail(naar=e_mail, onderwerp="Nieuw wachtwoord instellen — Administratiekantoor Nijenhuis", tekst=tekst)
+    mail.verzend_mail(naar=e_mail, onderwerp="App opnieuw koppelen — Administratiekantoor Nijenhuis", tekst=tekst)
 
 
 def verstuur_activatieprobleem_aan_kantoor(*, naam: str, e_mail: str) -> None:
@@ -94,9 +121,9 @@ def verstuur_activatieprobleem_aan_kantoor(*, naam: str, e_mail: str) -> None:
         logger.warning("Activatieprobleem gemeld door %s (%s) — geen kantoor-adres (BERICHTEN_REPLY_TO)", naam, e_mail)
         return
     tekst = (
-        f"{naam} ({e_mail}) meldt vanuit de activatieflow van de app dat de passkey-registratie niet "
-        f"lukt.\n\nEr is niets half geregistreerd: het account staat nog op 'uitgenodigd' en de "
-        f"activatielink blijft geldig tot de vervaldatum. Neem contact op met de gebruiker; lukt het "
+        f"{naam} ({e_mail}) meldt vanuit de activatieflow van de app dat de activatie niet lukt.\n\n"
+        f"Er is niets half geregistreerd: het account staat nog op 'uitgenodigd' en de activatielink/"
+        f"activatiecode blijft geldig tot de vervaldatum. Neem contact op met de gebruiker; lukt het "
         f"daarna nog niet, stuur dan een nieuwe uitnodiging of herstel-link vanuit Gebruikers & toegang.\n\n"
         f"Administratiekantoor Nijenhuis — automatisch bericht"
     )
@@ -120,9 +147,9 @@ def verstuur_app_lock_hulp_aan_kantoor(*, naam: str, e_mail: str) -> None:
     tekst = (
         f"{naam} ({e_mail}) heeft de toegangscode van de app 5 keer onjuist ingevoerd. Het toestel "
         f"is uit voorzorg uitgelogd en de toegang van dat apparaat is ingetrokken.\n\n"
-        f"De gebruiker vraagt om een nieuwe activatielink. Stuur die vanuit Gebruikers & toegang "
-        f"(Herstel-link of nieuwe uitnodiging) — daarna kiest de gebruiker opnieuw een code en "
-        f"werkt alles zoals voorheen.\n\n"
+        f"De gebruiker vraagt om een nieuwe uitnodiging. Stuur die vanuit Gebruikers & toegang "
+        f"(Herstel-link of nieuwe uitnodiging; de mail bevat link én activatiecode) — daarna activeert de "
+        f"gebruiker het toestel opnieuw, kiest een nieuwe toegangscode en werkt alles zoals voorheen.\n\n"
         f"Administratiekantoor Nijenhuis — automatisch bericht"
     )
     try:

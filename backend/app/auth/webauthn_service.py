@@ -66,6 +66,7 @@ from app.db.models import (
     RefreshToken,
     WebauthnChallenge,
     WebauthnCredential,
+    WebauthnCredentialSoort,
 )
 from app.db.session import scoped_session
 from app.security.passwords import verify_password
@@ -680,6 +681,9 @@ def voltooi_kantoor_registratie(
             aangemaakt_op=rij.aangemaakt_op,
             laatst_gebruikt_op=rij.laatst_gebruikt_op,
             ingetrokken_op=rij.ingetrokken_op,
+            soort=rij.soort,
+            platform=rij.platform,
+            niet_meer_gebruikt_op=rij.niet_meer_gebruikt_op,
         )
 
 
@@ -959,6 +963,11 @@ class ApparaatData:
     aangemaakt_op: datetime
     laatst_gebruikt_op: datetime | None
     ingetrokken_op: datetime | None
+    # App-auth zonder passkey (08-09, migratie 0125): 'passkey' | 'toestel', platform van een toestel,
+    # niet-meer-gebruikt-markering van een legacy app-passkey.
+    soort: str = "passkey"
+    platform: str | None = None
+    niet_meer_gebruikt_op: datetime | None = None
 
 
 def apparaten_van(*, gebruiker_id: uuid.UUID) -> list[ApparaatData]:
@@ -976,6 +985,9 @@ def apparaten_van(*, gebruiker_id: uuid.UUID) -> list[ApparaatData]:
                 aangemaakt_op=r.aangemaakt_op,
                 laatst_gebruikt_op=r.laatst_gebruikt_op,
                 ingetrokken_op=r.ingetrokken_op,
+                soort=r.soort,
+                platform=r.platform,
+                niet_meer_gebruikt_op=r.niet_meer_gebruikt_op,
             )
             for r in rijen
         ]
@@ -1025,12 +1037,13 @@ def trek_apparaat_in(
             nieuwe_waarde={
                 "gebruiker_id": str(rij.gebruiker_id),
                 "apparaat_naam": rij.apparaat_naam,
+                "soort": rij.soort,
                 "ingetrokken_op": now.isoformat(),
             },
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class KantoorApparaatData(ApparaatData):
     gebruiker_id: uuid.UUID
     gebruiker_naam: str
@@ -1047,6 +1060,8 @@ def kantoor_apparaten() -> list[KantoorApparaatData]:
             .where(
                 Gebruiker.rol.not_in(list(EXTERNE_APP_ROLLEN)),
                 Gebruiker.status != GebruikerStatus.GEARCHIVEERD,  # 0075: niet in default-lijsten
+                # 08-09: toestel-rijen (app-activatie) horen hier nooit — alleen kantoor-passkeys.
+                WebauthnCredential.soort == WebauthnCredentialSoort.PASSKEY.value,
             )
             .order_by(Gebruiker.naam, WebauthnCredential.aangemaakt_op.desc())
         ).all()
@@ -1060,6 +1075,9 @@ def kantoor_apparaten() -> list[KantoorApparaatData]:
                 ingetrokken_op=r.ingetrokken_op,
                 gebruiker_id=r.gebruiker_id,
                 gebruiker_naam=naam,
+                soort=r.soort,
+                platform=r.platform,
+                niet_meer_gebruikt_op=r.niet_meer_gebruikt_op,
             )
             for r, naam in rijen
         ]
