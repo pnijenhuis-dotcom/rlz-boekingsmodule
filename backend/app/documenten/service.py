@@ -282,7 +282,20 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
         inhoud = opslag.lezen(pad=document.opslag_pad)
         try:
             voorstel = parseer_ubl_factuur(inhoud)
-            detail = {"veldvoorstel": voorstel.als_dict()}
+            veldvoorstel = voorstel.als_dict()
+            if document.administratie_id is not None:
+                # Blok 3 herstelrun 08-09 (casus BDO 6088744): crediteur-match btw → KvK → IBAN → naam, zelfde
+                # vorm als het AI-voorstel (`vendor_suggestie`/`vendor_waarschuwing`) — de UBL is deterministisch
+                # en is bij intake compleet; er komt nooit een AI-stap achter.
+                from app.documenten import ubl_voorstel  # lokaal: houdt de importgraaf klein
+
+                veldvoorstel = ubl_voorstel.verrijk_met_crediteur_match(
+                    session,
+                    administratie_id=document.administratie_id,
+                    veldvoorstel=veldvoorstel,
+                    taxrates=_taxrate_kandidaten(session, administratie_id=document.administratie_id),
+                )
+            detail = {"veldvoorstel": veldvoorstel}
         except GeenGeldigeUbl as exc:
             detail = {"ubl_parse_fout": str(exc)}
     elif suffix == _PDF_SUFFIX:
@@ -864,13 +877,30 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
     if administratie_id is None:
         return
     if soort == DocumentSoort.INKOOPFACTUUR.value:
+        # Blok 3 herstelrun 08-09: een UBL is bij intake compleet — het boekvoorstel (crediteur op btw/KvK/IBAN/naam,
+        # referentie, datums, totaal, regel) wordt DIRECT gepersisteerd via het A10-autosave-pad (systeem-actor,
+        # snapshot `bron: intake`, mens wint later). Zo zien lijst, checks, duplicaat-motor en doorbelasten-blok
+        # dezelfde stand vóór iemand het document opent. De opslag-hook draait daarbij al het duplicaatsignaal +
+        # de auto-afvoer; dan hier niet nog eens (één RLZ-call).
+        from app.documenten import boekvoorstel as boekvoorstel_service  # lokaal: houdt de importgraaf klein
+
+        ubl_gepersisteerd = False
+        try:
+            ubl_gepersisteerd = boekvoorstel_service.persisteer_ubl_prefill_na_intake(
+                administratie_id=administratie_id, document_id=document_id
+            )
+        except Exception:  # noqa: BLE001 — de autosave is een verbetering, nooit een blokkade van de intake
+            logger.exception("UBL-boekvoorstel persisteren bij intake mislukt voor document %s", document_id)
+
         # Duplicaatsignaal (besluit Peter 25-08, deel 2 punt 6): de RLZ-duplicaatquery éénmaal
         # ná extractie draaien en cachen, zodat de werkvoorraad de chip direct toont. Puur
         # signalering (de live check op het boekmoment blijft bindend); fouten zichtbaar als
-        # 'onbekend' + gelogd, nooit een blokkade.
+        # 'onbekend' + gelogd, nooit een blokkade. Blok 4a (08-09): een GEBOEKTE treffer in RLZ/Odoo
+        # voert het document direct af als "al geboekt in RLZ (buiten de module)" (duplicaat_afvoer).
         from app.documenten import duplicaatsignaal  # lokaal: houdt de importgraaf klein
 
-        duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
+        if not ubl_gepersisteerd:
+            duplicaatsignaal.bereken_duplicaatsignaal_stil(administratie_id=administratie_id, document_id=document_id)
 
         # Regel-GB-voorstel blok D (medewerker-wensen 04-09): AI-classificatie van regels zónder
         # regel-geheugen-treffer tegen de historische grootboeken van deze leverancier — éénmaal ná de
@@ -1301,15 +1331,63 @@ class DocumentVerwijzing:
     bestandsnaam: str
 
 
-# Eindstatussen die standaard NIET in de documentenlijst staan en niet in de "Alle"-teller tellen (besluit Peter
-# 08-09, aanvulling blok 3): afgehandeld werk. Eén toggle "Toon afgehandelde documenten" haalt ze er grijs bij,
-# mét reden en verwijzing; de aantallen reizen altijd mee (`tel_afgehandeld`) zodat niets stil verdwijnt.
+# Drie groepen in de documentenlijst (blok 11 herstelrun "Basis eerst" 08-09, besluit Peter — herziet de
+# aanvulling van blok 3 van dezelfde dag): de standaardlijst toont uitsluitend werk waar het KANTOOR iets mee
+# moet; wat bij anderen ligt staat apart; wat af is staat achter één toggle. Élke DocumentStatus zit in precies
+# één groep (guard: tests/documenten/test_afgehandeld_lijst.py::test_elke_status_in_precies_een_groep).
+#
+# KANTOOR = de standaardlijst en de teller "Alle": te controleren, klaar om te boeken, handmatig afmaken, boeken
+# mislukt, IBAN-wissel (vier-ogen door het kantoor), verzamelbak, plus ontvangen/extractie-wachtrij/-bezig
+# ("Wordt verwerkt…" — kantoorwerk in wording: de rij is zichtbaar zodat niets stil in een wachtrij hangt).
+KANTOOR_STATUSSEN: tuple[DocumentStatus, ...] = (
+    DocumentStatus.ONTVANGEN,
+    DocumentStatus.EXTRACTIE_WACHTRIJ,
+    DocumentStatus.EXTRACTIE_BEZIG,
+    DocumentStatus.TE_CONTROLEREN,
+    DocumentStatus.KLAAR_OM_TE_BOEKEN,
+    DocumentStatus.HANDMATIG_AFMAKEN,
+    DocumentStatus.BOEKEN_MISLUKT,
+    DocumentStatus.NIET_TOEGEWEZEN,
+    DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
+)
+# WACHTEN OP ANDEREN = één tab "Wachten op anderen (N)", telt NIET in "Alle": bij de klant ter accordering en
+# een open vraag (het antwoord komt van een ander; het kantoor kan niet boeken).
+WACHTEN_STATUSSEN: tuple[DocumentStatus, ...] = (
+    DocumentStatus.TER_ACCORDERING,
+    DocumentStatus.VRAAG_OPEN,
+)
+# AFGEHANDELD = eindstatussen die standaard NIET in de documentenlijst staan en niet in "Alle" tellen: één toggle
+# "Toon afgehandelde documenten (N)" haalt ze er grijs bij, mét reden en verwijzing (aanvulling blok 3) en — sinds
+# blok 11 — óók `geboekt` (mét RLZ-/Odoo-boekstuknummer; terugvinden gaat via Archief en Zoeken), `gesplitst`
+# (bron-PDF ná splitsing) en `geaccordeerd` (verplichting ná het laatste akkoord). De aantallen reizen altijd mee
+# (`tel_afgehandeld`) zodat niets stil verdwijnt.
 AFGEHANDELDE_STATUSSEN: tuple[DocumentStatus, ...] = (
     DocumentStatus.VERWIJDERD,
     DocumentStatus.AFGEWEZEN,
     DocumentStatus.SAMENGEVOEGD,
     DocumentStatus.AFGEVOERD_DUPLICAAT,
+    DocumentStatus.GEBOEKT,
+    DocumentStatus.GESPLITST,
+    DocumentStatus.GEACCORDEERD,
 )
+
+GROEP_KANTOOR = "kantoor"
+GROEP_WACHTEN = "wachten"
+GROEP_AFGEHANDELD = "afgehandeld"
+LIJST_GROEPEN: tuple[str, ...] = (GROEP_KANTOOR, GROEP_WACHTEN, GROEP_AFGEHANDELD)
+_STATUSSEN_PER_GROEP: dict[str, tuple[DocumentStatus, ...]] = {
+    GROEP_KANTOOR: KANTOOR_STATUSSEN,
+    GROEP_WACHTEN: WACHTEN_STATUSSEN,
+    GROEP_AFGEHANDELD: AFGEHANDELDE_STATUSSEN,
+}
+
+
+def groep_van_status(status: DocumentStatus) -> str:
+    """De lijst-groep van een status (kantoor | wachten | afgehandeld) — één bron voor lijst, tellers en tests."""
+    for groep, statussen in _STATUSSEN_PER_GROEP.items():
+        if status in statussen:
+            return groep
+    raise ValueError(f"DocumentStatus zonder lijst-groep: {status!r}")
 
 
 @dataclass(frozen=True)
@@ -1325,6 +1403,11 @@ class DocumentMetDuplicaat:
     # Aanvulling blok 3 (08-09): aantal hulzen dat in DIT document is opgegaan (chip "N exemplaren samengevoegd"
     # op het echte document — zichtbaar dat de dubbelen al verwerkt zijn).
     samengevoegde_exemplaren: int = 0
+    # Blok 4c herstelrun 08-09: `samengevoegde_exemplaren` = ALLE exemplaren die in dit document opgingen (hulzen +
+    # als duplicaat afgevoerde exemplaren met dit document als origineel); `afgevoerde_exemplaren` = het afgevoerde
+    # deel daarvan (open Afwijzing mét `duplicaat_van_document_id`, status afgevoerd_duplicaat of legacy afgewezen) —
+    # chip "N exemplaren samengevoegd/afgevoerd" op het echte document.
+    afgevoerde_exemplaren: int = 0
     # Aanvulling blok 3 (08-09): reden van de verwijder-overgang (detail `reden` van de laatste VERWIJDERD-
     # gebeurtenis) — de afgehandelde rij toont zijn reden. None bij elke andere status.
     verwijderd_reden: str | None = None
@@ -1372,6 +1455,7 @@ def lijst_documenten(
     toon_verwijderd: bool = False,
     toon_afgevoerd: bool = False,
     toon_afgehandeld: bool = False,
+    groep: str | None = None,
 ) -> list[DocumentMetDuplicaat]:
     """`toon_verwijderd=False` (default) verbergt zachtgewiste documenten uit de normale
     werkvoorraad — de "toon verwijderde"-filter (design-pass taak 4) zet dit aan om ze er weer
@@ -1388,19 +1472,29 @@ def lijst_documenten(
     `toon_afgehandeld=True` (definitieve aanvulling Peter 08-09): ÉÉN toggle voor álle eindstatussen
     (`AFGEHANDELDE_STATUSSEN`: verwijderd, afgewezen, samengevoegd, afgevoerd_duplicaat) — standaard staan die
     geen van alle in de lijst en tellen ze niet in "Alle"; de aantallen staan in `tel_afgehandeld`. De twee
-    oudere vlaggen blijven als deel-toggles werken (verwijderd resp. afgevoerd+samengevoegd)."""
+    oudere vlaggen blijven als deel-toggles werken (verwijderd resp. afgevoerd+samengevoegd).
+
+    `groep` (blok 11 herstelrun 08-09): `kantoor` = alleen de standaardlijst (KANTOOR_STATUSSEN), `wachten` =
+    alleen "Wachten op anderen" (WACHTEN_STATUSSEN), `afgehandeld` = alleen de eindstatussen (ongeacht de
+    toggles). Zonder `groep` (default, bestaande deeplinks) komen kantoor + wachten terug en gelden de toggles
+    voor afgehandeld — sinds blok 11 valt ook `geboekt` onder afgehandeld en dus standaard buiten de lijst."""
+    if groep is not None and groep not in LIJST_GROEPEN:
+        raise ValueError(f"Onbekende lijst-groep: {groep!r} (kies uit {', '.join(LIJST_GROEPEN)})")
     with scoped_session(administratie_id) as session:
         voorwaarden = [Document.administratie_id == administratie_id]
-        verborgen = set(AFGEHANDELDE_STATUSSEN)
-        if toon_afgehandeld:
-            verborgen.clear()
-        if toon_verwijderd:
-            verborgen.discard(DocumentStatus.VERWIJDERD)
-        if toon_afgevoerd:
-            verborgen.discard(DocumentStatus.AFGEVOERD_DUPLICAAT)
-            verborgen.discard(DocumentStatus.SAMENGEVOEGD)
-        if verborgen:
-            voorwaarden.append(Document.status.notin_(list(verborgen)))
+        if groep is not None:
+            voorwaarden.append(Document.status.in_(list(_STATUSSEN_PER_GROEP[groep])))
+        else:
+            verborgen = set(AFGEHANDELDE_STATUSSEN)
+            if toon_afgehandeld:
+                verborgen.clear()
+            if toon_verwijderd:
+                verborgen.discard(DocumentStatus.VERWIJDERD)
+            if toon_afgevoerd:
+                verborgen.discard(DocumentStatus.AFGEVOERD_DUPLICAAT)
+                verborgen.discard(DocumentStatus.SAMENGEVOEGD)
+            if verborgen:
+                voorwaarden.append(Document.status.notin_(list(verborgen)))
         documenten = list(session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc())))
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
@@ -1420,6 +1514,23 @@ def lijst_documenten(
                     select(Document.samengevoegd_in_id, func.count())
                     .where(Document.samengevoegd_in_id.in_(lijst_ids), Document.status == DocumentStatus.SAMENGEVOEGD)
                     .group_by(Document.samengevoegd_in_id)
+                ).all()
+            )
+            if lijst_ids
+            else {}
+        )
+        # Blok 4c (08-09): afgevoerde duplicaten per ORIGINEEL in de lijst — één GROUP BY over de open Afwijzingen.
+        afgevoerd_per_origineel: dict[uuid.UUID, int] = (
+            dict(
+                session.execute(
+                    select(Afwijzing.duplicaat_van_document_id, func.count())
+                    .join(Document, Document.id == Afwijzing.document_id)
+                    .where(
+                        Afwijzing.duplicaat_van_document_id.in_(lijst_ids),
+                        Afwijzing.status == AfwijzingStatus.OPEN.value,
+                        Document.status.in_([DocumentStatus.AFGEVOERD_DUPLICAAT, DocumentStatus.AFGEWEZEN]),
+                    )
+                    .group_by(Afwijzing.duplicaat_van_document_id)
                 ).all()
             )
             if lijst_ids
@@ -1558,9 +1669,12 @@ def lijst_documenten(
             veldvoorstel = veldvoorstellen.get(document_id)
             if veldvoorstel is None:
                 return None, None, None
+            totaal = _als_decimal_of_none(veldvoorstel.get("totaal_incl"))
+            if totaal is not None and veldvoorstel.get("is_creditnota") and "ubl_regels" in veldvoorstel:
+                totaal = -totaal  # UBL-CreditNote (381): in de lijst negatief, zoals het boekvoorstel (blok 3 08-09)
             return (
                 veldvoorstel.get("leverancier_naam") or None,
-                _als_decimal_of_none(veldvoorstel.get("totaal_incl")),
+                totaal,
                 _als_datum_of_none(veldvoorstel.get("factuurdatum")),
             )
 
@@ -1592,7 +1706,10 @@ def lijst_documenten(
                         else None
                     ),
                     duplicaat_van=duplicaat_van.get(d.id),
-                    samengevoegde_exemplaren=exemplaren_per_doel.get(d.id, 0),
+                    # Blok 4c (08-09): één teller "exemplaren die in dit document opgingen" = hulzen + afgevoerde
+                    # duplicaten (opdracht: `samengevoegde_exemplaren` telt óók afgevoerde); het afgevoerde deel apart.
+                    samengevoegde_exemplaren=exemplaren_per_doel.get(d.id, 0) + afgevoerd_per_origineel.get(d.id, 0),
+                    afgevoerde_exemplaren=afgevoerd_per_origineel.get(d.id, 0),
                     verwijderd_reden=verwijderd_redenen.get(d.id),
                     leverancier=leverancier,
                     totaalbedrag=totaalbedrag,
@@ -1618,20 +1735,41 @@ def lijst_documenten(
         return resultaat
 
 
-def tel_afgehandeld(*, administratie_id: uuid.UUID) -> dict[DocumentStatus, int]:
-    """Aantal afgehandelde documenten per eindstatus (aanvulling blok 3, 08-09) — reist mee met élke lijst-
-    response zodat de toggle "Toon afgehandelde documenten (N)" en de chip "N afgewezen — ter controle" hun
-    getal houden terwijl de rijen zelf standaard verborgen zijn (niets verdwijnt stil). Eén GROUP BY."""
+def tel_per_status(*, administratie_id: uuid.UUID) -> dict[DocumentStatus, int]:
+    """Aantal documenten per status van één administratie — één GROUP BY (blok 11, 08-09). Bron voor zowel de
+    afgehandeld-tellers als de groep-tellers van de lijst-response; ontbrekende statussen tellen 0."""
     with scoped_session(administratie_id) as session:
         rijen = session.execute(
             select(Document.status, func.count())
-            .where(Document.administratie_id == administratie_id, Document.status.in_(list(AFGEHANDELDE_STATUSSEN)))
+            .where(Document.administratie_id == administratie_id)
             .group_by(Document.status)
         ).all()
-    tellers = {status: 0 for status in AFGEHANDELDE_STATUSSEN}
+    tellers = dict.fromkeys(DocumentStatus, 0)
     for status, aantal in rijen:
         tellers[DocumentStatus(status)] = aantal
     return tellers
+
+
+def tel_afgehandeld(
+    *, administratie_id: uuid.UUID, per_status: dict[DocumentStatus, int] | None = None
+) -> dict[DocumentStatus, int]:
+    """Aantal afgehandelde documenten per eindstatus (aanvulling blok 3, 08-09; sinds blok 11 incl. geboekt,
+    gesplitst en geaccordeerd) — reist mee met élke lijst-response zodat de toggle "Toon afgehandelde documenten
+    (N)" en de chip "N afgewezen — ter controle" hun getal houden terwijl de rijen zelf standaard verborgen zijn
+    (niets verdwijnt stil). `per_status` = de uitkomst van `tel_per_status` als de aanroeper die al heeft."""
+    if per_status is None:
+        per_status = tel_per_status(administratie_id=administratie_id)
+    return {status: per_status.get(status, 0) for status in AFGEHANDELDE_STATUSSEN}
+
+
+def tel_groepen(*, administratie_id: uuid.UUID, per_status: dict[DocumentStatus, int] | None = None) -> dict[str, int]:
+    """Tellers per lijst-groep (blok 11): kantoor | wachten | afgehandeld — uit dezelfde ene GROUP BY."""
+    if per_status is None:
+        per_status = tel_per_status(administratie_id=administratie_id)
+    return {
+        groep: sum(per_status.get(status, 0) for status in statussen)
+        for groep, statussen in _STATUSSEN_PER_GROEP.items()
+    }
 
 
 # Statusbuckets voor de werkvoorraad-klantenlijst (mockup #werkvoorraad "Overzicht per klant").

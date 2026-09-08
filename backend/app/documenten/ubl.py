@@ -5,6 +5,14 @@ from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
+from app.extractie.btw_nummer import normaliseer_kvk_nummer, valideer_btw_nummer
+from app.extractie.iban import is_geldig_iban, normaliseer_iban
+
+#: `bron` in het veldvoorstel-dict van een UBL (blok 3 herstelrun 08-09): de frontend en de prefill herkennen
+#: hieraan een DETERMINISTISCH voorstel (naast "ai" en "template"). Oudere UBL-voorstellen dragen geen `bron`
+#: maar wél `ubl_regels` — `is_ubl_veldvoorstel` kent beide vormen.
+BRON_UBL = "ubl"
+
 _NS = {
     "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
     "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
@@ -80,9 +88,21 @@ class UblVeldvoorstel:
     is_creditnota: bool = False
     gecrediteerde_factuurnummers: tuple[str, ...] = ()
     ubl_regels: tuple[dict, ...] = field(default=())
+    # Blok 3 herstelrun "Basis eerst" 08-09 (casus BDO 6088744): de crediteur-identiteit en de betaalgegevens
+    # komen RECHTSTREEKS uit de XML — nooit via AI, nooit leeg als de UBL ze draagt. Zelfde sleutelnamen als het
+    # AI-veldvoorstel (`iban`, `btw_nummer`, `kvk_nummer`, `vervaldatum`, `betalingskenmerk`) zodat élke afnemer
+    # (crediteur-match, crediteur-kenmerk-geheugen, IBAN-wissel-check, "Nieuwe crediteur in RLZ") één leespad heeft.
+    vervaldatum: str | None = None
+    kvk_nummer: str | None = None
+    btw_nummer: str | None = None
+    btw_nummer_geverifieerd: bool | None = None
+    iban: str | None = None
+    leverancier_adres: str | None = None
+    betalingskenmerk: str | None = None
 
     def als_dict(self) -> dict:
         d = asdict(self)
+        d["bron"] = BRON_UBL
         d["additional_document_reference_ids"] = list(self.additional_document_reference_ids)
         d["referenties"] = list(self.referenties)
         d["gecrediteerde_factuurnummers"] = list(self.gecrediteerde_factuurnummers)
@@ -119,6 +139,18 @@ def _partijnaam(root: ET.Element, partij: str) -> str | None:
     return None
 
 
+def _document_btw_percentage(root: ET.Element) -> str | None:
+    """Eén btw-percentage voor het hele document uit cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cbc:Percent —
+    alleen als álle subtotalen hetzelfde percentage dragen (blok 3 08-09, casus BDO: de regel zelf draagt geen
+    ClassifiedTaxCategory/Percent, het TaxSubtotal wél). Meerdere percentages = None (nooit gokken per regel)."""
+    percentages = {
+        el.text.strip()
+        for el in root.findall("cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cbc:Percent", _NS)
+        if el.text and el.text.strip()
+    }
+    return percentages.pop() if len(percentages) == 1 else None
+
+
 def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str | None) -> tuple[dict, ...]:
     """Regels uit InvoiceLine/CreditNoteLine PLUS de document-niveau kortingen/toeslagen
     (bugfix 04-09, Huvanco-casus): een korting die de leverancier als eigen regel op de factuur zet,
@@ -128,6 +160,7 @@ def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str
     definitie is `cbc:LineExtensionAmount` (BT-131) al het nettobedrag NÁ regelkorting/-toeslag —
     nog eens aftrekken zou dubbel tellen (de RLZ-export-fixture draagt zo'n regelkorting van 0)."""
     regels: list[dict] = []
+    document_percentage = _document_btw_percentage(root)
     for i, lijn in enumerate(root.findall(regel_element, _NS), start=1):
         # Invoice-regels dragen cbc:InvoicedQuantity, CreditNote-regels cbc:CreditedQuantity (BT-129).
         hoeveelheid_el = lijn.find("cbc:InvoicedQuantity", _NS)
@@ -141,8 +174,12 @@ def _parse_regels(root: ET.Element, *, regel_element: str, document_gb_code: str
                 omschrijving=_element_tekst(lijn, "cac:Item/cbc:Name")
                 or _element_tekst(lijn, "cac:Item/cbc:Description"),
                 netto_bedrag=_element_tekst(lijn, "cbc:LineExtensionAmount"),
-                btw_percentage=_element_tekst(lijn, "cac:Item/cac:ClassifiedTaxCategory/cbc:Percent"),
-                btw_categorie=_element_tekst(lijn, "cac:Item/cac:ClassifiedTaxCategory/cbc:ID"),
+                # Regel-percentage; ontbreekt het, dan het ene document-percentage uit de TaxSubtotal (blok 3 08-09).
+                btw_percentage=_element_tekst(lijn, "cac:Item/cac:ClassifiedTaxCategory/cbc:Percent")
+                or _element_tekst(lijn, "cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cbc:Percent")
+                or document_percentage,
+                btw_categorie=_element_tekst(lijn, "cac:Item/cac:ClassifiedTaxCategory/cbc:ID")
+                or _element_tekst(lijn, "cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cbc:ID"),
                 # BT-133 per regel; BT-19 (documentniveau) is de contractuele fallback wanneer
                 # alle regels dezelfde code delen (§2d-GB-uitbreiding v1.10).
                 gb_code=_element_tekst(lijn, "cbc:AccountingCost") or document_gb_code,
@@ -188,6 +225,78 @@ def _allowance_charge_als_regel(ac: ET.Element, *, volgnummer: int, document_gb_
         gb_code=document_gb_code,
         soort="korting" if is_korting else "toeslag",
     )
+
+
+# Scheme-id's waaronder een KvK-nummer in UBL/NLCIUS voorkomt (PartyLegalEntity/CompanyID of PartyIdentification/ID):
+# SI-UBL "NL:KVK", EN 16931/Peppol ICD "0106" (NL KvK). Zonder schemeID telt een 8-cijferige CompanyID onder
+# PartyLegalEntity óók als KvK (BT-30 is in NL de KvK-inschrijving); een PartyIdentification zónder scheme niet
+# (dat kan een klantnummer zijn).
+_KVK_SCHEMES = {"NL:KVK", "0106", "KVK"}
+
+
+def _leverancier_partij(root: ET.Element) -> ET.Element | None:
+    return root.find("cac:AccountingSupplierParty/cac:Party", _NS)
+
+
+def _leverancier_kvk(partij: ET.Element | None) -> str | None:
+    """KvK uit PartyLegalEntity/CompanyID (voorkeur) of PartyIdentification/ID mét KvK-scheme — deterministisch
+    genormaliseerd (8 cijfers) via dezelfde functie als de AI-controlelaag."""
+    if partij is None:
+        return None
+    for el in partij.findall("cac:PartyLegalEntity/cbc:CompanyID", _NS):
+        scheme = (el.get("schemeID") or "").upper()
+        kvk = normaliseer_kvk_nummer(el.text)
+        if kvk and (not scheme or scheme in _KVK_SCHEMES):
+            return kvk
+    for el in partij.findall("cac:PartyIdentification/cbc:ID", _NS):
+        # SI-UBL 1.x / RLZ-export: `schemeAgencyName="KvK"` (zonder schemeID) — zelfde betekenis.
+        scheme = (el.get("schemeID") or "").upper()
+        agency = (el.get("schemeAgencyName") or "").upper()
+        if scheme in _KVK_SCHEMES or agency == "KVK":
+            kvk = normaliseer_kvk_nummer(el.text)
+            if kvk:
+                return kvk
+    return None
+
+
+def _leverancier_btw(partij: ET.Element | None) -> tuple[str | None, bool | None]:
+    """Btw-nummer uit PartyTaxScheme/CompanyID (TaxScheme VAT of geen TaxScheme) — gevalideerd met dezelfde
+    proef als de AI-controlelaag (`valideer_btw_nummer`): (genormaliseerd, geverifieerd) of (None, None)."""
+    if partij is None:
+        return None, None
+    for pts in partij.findall("cac:PartyTaxScheme", _NS):
+        scheme = (_element_tekst(pts, "cac:TaxScheme/cbc:ID") or "VAT").upper()
+        if scheme not in {"VAT", "BTW"}:
+            continue
+        nummer = valideer_btw_nummer(_element_tekst(pts, "cbc:CompanyID"))
+        if nummer is not None:
+            return nummer.genormaliseerd, nummer.geverifieerd
+    return None, None
+
+
+def _leverancier_adres(partij: ET.Element | None) -> str | None:
+    """Postadres als één leesbare regel ("Straat 1, 1234 AB Plaats, NL") — alleen voor de crediteur-dialoog."""
+    if partij is None:
+        return None
+    adres = partij.find("cac:PostalAddress", _NS)
+    if adres is None:
+        return None
+    straat = " ".join(
+        t for t in (_element_tekst(adres, "cbc:StreetName"), _element_tekst(adres, "cbc:BuildingNumber")) if t
+    )
+    plaats = " ".join(t for t in (_element_tekst(adres, "cbc:PostalZone"), _element_tekst(adres, "cbc:CityName")) if t)
+    land = _element_tekst(adres, "cac:Country/cbc:IdentificationCode")
+    delen = [d for d in (straat, plaats, land) if d]
+    return ", ".join(delen) or None
+
+
+def _payee_iban(root: ET.Element) -> str | None:
+    """Eerste GELDIG IBAN uit cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:ID (mod-97, `app/extractie/iban.py`)
+    — een ongeldig nummer wordt nooit overgenomen (code voor cijfers)."""
+    for el in root.findall("cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:ID", _NS):
+        if is_geldig_iban(el.text):
+            return normaliseer_iban(el.text)
+    return None
 
 
 def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
@@ -238,6 +347,13 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
         for el in root.findall("cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID", _NS)
         if el.text and el.text.strip()
     )
+    # Blok 3 (08-09): crediteur-identiteit + betaalgegevens deterministisch uit de XML.
+    partij = _leverancier_partij(root)
+    btw_nummer, btw_geverifieerd = _leverancier_btw(partij)
+    vervaldatum = _tekst("cbc:DueDate") or _tekst("cac:PaymentMeans/cbc:PaymentDueDate")
+    betalingskenmerk = next(
+        (r for r in root.findall("cac:PaymentMeans/cbc:PaymentID", _NS) if r.text and r.text.strip()), None
+    )
 
     if factuurnummer is None and totaal_incl is None:
         raise GeenGeldigeUbl("Geen UBL-Invoice-velden gevonden (ID/PayableAmount ontbreken)")
@@ -257,7 +373,24 @@ def parseer_ubl_factuur(inhoud: bytes) -> UblVeldvoorstel:
         is_creditnota=is_creditnota,
         gecrediteerde_factuurnummers=gecrediteerd,
         ubl_regels=regels,
+        vervaldatum=vervaldatum,
+        kvk_nummer=_leverancier_kvk(partij),
+        btw_nummer=btw_nummer,
+        btw_nummer_geverifieerd=btw_geverifieerd,
+        iban=_payee_iban(root),
+        leverancier_adres=_leverancier_adres(partij),
+        betalingskenmerk=betalingskenmerk.text.strip() if betalingskenmerk is not None else None,
     )
+
+
+def is_ubl_veldvoorstel(veldvoorstel: dict | None) -> bool:
+    """Herkent een deterministisch UBL-veldvoorstel in de tijdlijn: `bron == "ubl"` (sinds 08-09) óf — voor
+    voorstellen van vóór die datum — de UBL-eigen sleutel `ubl_regels`. Een AI-/template-voorstel is het nooit."""
+    if not isinstance(veldvoorstel, dict):
+        return False
+    if veldvoorstel.get("bron") == BRON_UBL:
+        return True
+    return veldvoorstel.get("bron") is None and "ubl_regels" in veldvoorstel
 
 
 # §2d-markering (koppelcontract, vaste constante — nooit een prefix-match).

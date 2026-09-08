@@ -407,7 +407,22 @@ class AfgehandeldTellersDto(BaseModel):
     afgewezen: int = 0
     samengevoegd: int = 0
     afgevoerd_duplicaat: int = 0
+    # Blok 11 (herstelrun 08-09): geboekt, gesplitst en geaccordeerd zijn óók afgehandeld — de toggle toont ze
+    # grijs (geboekt mét boekstuknummer); terugvinden gaat via Archief/Zoeken.
+    geboekt: int = 0
+    gesplitst: int = 0
+    geaccordeerd: int = 0
     totaal: int = 0
+
+
+class GroepTellersDto(BaseModel):
+    """Tellers per lijst-groep (blok 11, 08-09): `kantoor` = de standaardlijst/"Alle", `wachten` = de tab "Wachten op
+    anderen" (ter accordering + open vraag, telt niet in "Alle"), `afgehandeld` = achter de toggle. Reizen mee in
+    élke lijst-response (één GROUP BY), ook als de rijen zelf niet zijn opgehaald."""
+
+    kantoor: int = 0
+    wachten: int = 0
+    afgehandeld: int = 0
 
 
 class DocumentListItemResponse(BaseModel):
@@ -420,7 +435,10 @@ class DocumentListItemResponse(BaseModel):
     samengevoegd_in: DocumentVerwijzingDto | None = None
     duplicaat_van: DocumentVerwijzingDto | None = None
     verwijderd_reden: str | None = None
+    # Blok 4c (08-09): `samengevoegde_exemplaren` = hulzen + afgevoerde duplicaten (totaal); `afgevoerde_exemplaren`
+    # = het afgevoerde deel daarvan.
     samengevoegde_exemplaren: int = 0
+    afgevoerde_exemplaren: int = 0
     # 'inkoopfactuur' | 'kassarapport' (migratie 0027) — de werkvoorraad routeert een
     # kassarapport naar het omzetreview-scherm en toont de omzetboeking-chip.
     soort: str = "inkoopfactuur"
@@ -516,6 +534,8 @@ class DocumentListResponse(BaseModel):
     documenten: list[DocumentListItemResponse]
     # Aanvulling blok 3 (08-09): aantallen van de standaard-verborgen eindstatus-rijen (altijd meegegeven).
     afgehandeld: AfgehandeldTellersDto | None = None
+    # Blok 11 (08-09): tellers per groep kantoor | wachten | afgehandeld (altijd meegegeven).
+    groepen: GroepTellersDto | None = None
 
 
 class DocumentGebeurtenisResponse(BaseModel):
@@ -585,6 +605,9 @@ class BoekvoorstelRegelDto(BaseModel):
     # (prefill); None = leeg/mens/geheugen. Alleen informatief — de server negeert 'm bij opslaan.
     # Blok E 04-09: "standaard" = btw-default van de administratie (chip "standaard administratie").
     btw_bron: str | None = None
+    # Blok 6 herstelrun 08-09: bij "factuur_verlegd" de leesbare herkomst van de gekozen verlegd-code ("voorkeur
+    # beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — chip-tekst, informatief.
+    btw_bron_detail: str | None = None
     # Blok D 04-09 (app/geheugen/regel_gb.py): herkomst van het grootboek-voorstel per regel —
     # "geheugen" (groen) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai" (oranje, bevestigen);
     # None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij opslaan.

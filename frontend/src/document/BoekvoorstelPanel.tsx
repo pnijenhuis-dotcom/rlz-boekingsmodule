@@ -13,7 +13,8 @@ import type {
   GeheugenVoorstelDto,
   MatchAfwijkingDetailDto,
 } from '../api/types'
-import { alsAiVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
+import { alsAiVoorstel, alsUblVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
+import { extractieActief } from '../werkvoorraad/status'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { crediteurSuggesties } from './crediteurSuggesties'
 import { toetsRegelsom } from './regelsom'
@@ -132,6 +133,8 @@ interface RegelState {
    * veld niet zelf aanraakt — daarna is de keuze van de mens (zelfde regel als de AI-chip).
    * 'standaard' (blok E 04-09) = btw-default van de administratie, chip "standaard administratie". */
   btwBron: BtwBron | null
+  /** Blok 6 herstelrun 08-09: herkomst van de gekozen verlegd-code bij btwBron 'factuur_verlegd' (chip-tekst). */
+  btwDetail: string | null
   /** Herkomst van het vooringevulde grootboek per regel (blok D 04-09, mockup blok 2): regel-geheugen
    * (groen), historie/conflict (oranje) of AI-classificatie (oranje "bevestig"). Zelfde chip-regel als
    * btwBron: weg zodra de mens het veld aanraakt; het kop-niveau-geheugen (GeheugenChipBlok) zwijgt
@@ -178,6 +181,7 @@ function nieuweRegel(): RegelState {
     btw: '',
     btwHandmatig: false,
     btwBron: null,
+    btwDetail: null,
     gbBron: null,
     gbDetail: null,
     projectBron: null,
@@ -201,6 +205,7 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
+    btwDetail: r.btw_bron_detail ?? null,
     gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
     gbDetail: r.gb_voorstel_detail ?? null,
     projectBron: projectBronUitDto(r.project_bron),
@@ -239,6 +244,7 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
+    btwDetail: null, // AI-veldvoorstel-regels kennen geen verlegd-keuze (die reist mee op de server-prefill)
     // Client-side splitsing uit het AI-veldvoorstel kent geen regel-GB-voorstel (dat reist mee op de
     // server-prefill van dto.regels); de kop-niveau-engine vult 'm dan zoals voorheen.
     gbBron: null,
@@ -597,6 +603,9 @@ export function BoekvoorstelPanel({
   verdelingDektRegels = false,
 }: Props) {
   const ai = useMemo(() => alsAiVoorstel(veldvoorstel), [veldvoorstel])
+  // Blok 3 herstelrun 08-09 (casus BDO 6088744): een UBL-voorstel is deterministisch — zelfde crediteur-kaart en
+  // dezelfde "+ Nieuwe crediteur"-voorvulling als bij een scan, maar zonder AI-zekerheidschips.
+  const ubl = useMemo(() => alsUblVoorstel(veldvoorstel), [veldvoorstel])
   // Chips alleen bij een vers (nog niet opgeslagen) AI-voorstel — na opslaan is de invoer van de
   // controleur, niet meer van de AI.
   const [aiChipsActief, setAiChipsActief] = useState(false)
@@ -1045,11 +1054,21 @@ export function BoekvoorstelPanel({
   // Fix 2: de AI las een leveranciersnaam, maar het crediteur-veld is (nog) leeg — nooit een
   // leeg verplicht veld zonder handelingsperspectief. Voorstelblok met de gelezen naam +
   // zekerheid, klikbare koppel-suggesties uit de cache, en "nieuwe crediteur aanmaken in RLZ".
-  const aiLeverancierNaam = ai?.leverancier_naam?.trim() || null
+  const aiLeverancierNaam = ai?.leverancier_naam?.trim() || ubl?.leverancier_naam?.trim() || null
   const crediteurVoorstellen = useMemo(
     () => (aiLeverancierNaam ? crediteurSuggesties(aiLeverancierNaam, vendorOpties) : []),
     [aiLeverancierNaam, vendorOpties],
   )
+  // Nummers/IBAN van de leverancier: uit de scan (AI) óf deterministisch uit de UBL — één leespad voor de kaart en
+  // de crediteur-dialoog. Bij een PDF waarvan de extractie nog loopt is er niets; de dialoog zegt dat dan.
+  const gelezenNummers = ai
+    ? { btw_nummer: ai.btw_nummer ?? null, btw_nummer_geverifieerd: ai.btw_nummer_geverifieerd ?? null, kvk_nummer: ai.kvk_nummer ?? null }
+    : ubl
+      ? { btw_nummer: ubl.btw_nummer, btw_nummer_geverifieerd: ubl.btw_nummer_geverifieerd, kvk_nummer: ubl.kvk_nummer }
+      : null
+  const gelezenIban = typeof veldvoorstel?.iban === 'string' && veldvoorstel.iban ? veldvoorstel.iban : null
+  const gelezenBronLabel: 'scan' | 'UBL' = ubl && !ai ? 'UBL' : 'scan'
+  const extractieLoopt = extractieActief(status)
 
   const naNieuweCrediteur = (resultaat: NieuweCrediteurResultaat) => {
     setNieuweCrediteurOpen(false)
@@ -1430,26 +1449,26 @@ export function BoekvoorstelPanel({
                 {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
                     de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
                     opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
-                {(ai?.btw_nummer || ai?.kvk_nummer) && (
+                {(gelezenNummers?.btw_nummer || gelezenNummers?.kvk_nummer) && (
                   <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {ai?.btw_nummer && (
+                    {gelezenNummers?.btw_nummer && (
                       <span
-                        className={`chip ${ai.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
+                        className={`chip ${gelezenNummers.btw_nummer_geverifieerd ? 'ok' : 'afwijking'}`}
                         title={
-                          ai.btw_nummer_geverifieerd
+                          gelezenNummers.btw_nummer_geverifieerd
                             ? 'Btw-nummer uit de factuur — vorm én elfproef/mod-97 kloppen.'
                             : 'Btw-nummer uit de factuur — vorm klopt, controlegetal niet te verifiëren (controleer).'
                         }
                       >
-                        btw {ai.btw_nummer}
+                        btw {gelezenNummers.btw_nummer}
                       </span>
                     )}
-                    {ai?.kvk_nummer && (
+                    {gelezenNummers?.kvk_nummer && (
                       <span className="chip ok" title="KvK-nummer uit de factuur (8 cijfers).">
-                        KvK {ai.kvk_nummer}
+                        KvK {gelezenNummers.kvk_nummer}
                       </span>
                     )}
-                    <span>uit factuur</span>
+                    <span>{gelezenBronLabel === 'UBL' ? 'uit UBL' : 'uit factuur'}</span>
                   </div>
                 )}
                 {vendorId === null && aiLeverancierNaam && (
@@ -1462,7 +1481,8 @@ export function BoekvoorstelPanel({
                         <span className="chip afwijking">AI {zekerheidPct(ai.zekerheid.leverancier_naam)}</span>
                       )}
                       <span style={{ fontSize: 12, color: 'var(--muted)', overflowWrap: 'anywhere', minWidth: 0 }}>
-                        AI las: „{aiLeverancierNaam}” — geen eenduidige match in de crediteuren-cache.
+                        {gelezenBronLabel === 'UBL' ? 'UBL' : 'AI las'}: „{aiLeverancierNaam}” — geen eenduidige match in de
+                        crediteuren-cache.
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1510,11 +1530,14 @@ export function BoekvoorstelPanel({
           documentId={documentId}
           voorgevuld={{
             naam: aiLeverancierNaam ?? '',
-            kvk_nummer: ai?.kvk_nummer ?? null,
-            btw_nummer: ai?.btw_nummer ?? null,
-            iban: typeof veldvoorstel?.iban === 'string' ? veldvoorstel.iban : null,
+            kvk_nummer: gelezenNummers?.kvk_nummer ?? null,
+            btw_nummer: gelezenNummers?.btw_nummer ?? null,
+            iban: gelezenIban,
           }}
-          herkomst={{ kvk: Boolean(ai?.kvk_nummer), btw: Boolean(ai?.btw_nummer), iban: typeof veldvoorstel?.iban === 'string' }}
+          herkomst={{ kvk: Boolean(gelezenNummers?.kvk_nummer), btw: Boolean(gelezenNummers?.btw_nummer), iban: gelezenIban !== null }}
+          bron={gelezenBronLabel}
+          adres={ubl?.leverancier_adres ?? null}
+          extractieLoopt={extractieLoopt && !ai && !ubl}
           onAangemaakt={naNieuweCrediteur}
           onBestaand={naBestaandeCrediteur}
           onSluit={() => setNieuweCrediteurOpen(false)}
@@ -1840,7 +1863,7 @@ export function BoekvoorstelPanel({
                         // Blok E 04-09 (mockup blok 3): btw-default van de administratie — neutrale chip "standaard
                         // administratie"; blok 4c 08-09: oranje "uit factuur: btw verlegd". Eén regel, ellipsis + title
                         // (norm C9), alleen zolang de mens het veld niet aanraakt.
-                        const btwChip = bepaalBtwHerkomstChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId)
+                        const btwChip = bepaalBtwHerkomstChip(regel.btwBron, regel.taxrateId, regel.handmatigeVelden.taxrateId, regel.btwDetail)
                         return btwChip ? (
                           <div className="regel-herkomst">
                             <span

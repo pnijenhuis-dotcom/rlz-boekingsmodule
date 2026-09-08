@@ -224,14 +224,15 @@ class TestAutomatischPad:
         assert rij["duplicaat_van_rlz_document_id"] == rlz_id
         assert rij["duplicaat_van_document_id"] is None
         assert rij["duplicaat_van_referentie"] == REF
-        assert rij["reden"] == f"Duplicaat van {REF} (boekstuk INK-77)"
+        # Blok 4a herstelrun 08-09: origineel buiten de module → leesbare reden mét RLZ-boekstuknummer.
+        assert rij["reden"] == f"Duplicaat — al geboekt in RLZ (buiten de module), boekstuk INK-77, referentie {REF}"
         assert rij["afgewezen_door"] == uuid.UUID("00000000-0000-0000-0000-000000000001")  # systeem-actor
 
         details = _tijdlijn_details(admin_engine, document_id)
         assert len(details) == 1
         assert details[0]["automatisch_afgevoerd"] is True
         assert details[0]["duplicaat_van_rlz_document_id"] == str(rlz_id)
-        assert details[0]["reden"].startswith("Duplicaat van")
+        assert details[0]["reden"].startswith("Duplicaat — al geboekt in RLZ (buiten de module)")
         assert "duplicaat_afgevoerd" in _audit_acties(admin_engine, tabel="document", record_id=document_id)
         assert "document_afgewezen" in _audit_acties(admin_engine, tabel="afwijzing", record_id=rij["id"])
 

@@ -292,14 +292,47 @@ export interface AfgehandeldTellersDto {
   afgewezen: number
   samengevoegd: number
   afgevoerd_duplicaat: number
+  /** Blok 11 (08-09): geboekt/gesplitst/geaccordeerd zijn óók afgehandeld (optioneel voor oudere servers). */
+  geboekt?: number
+  gesplitst?: number
+  geaccordeerd?: number
   totaal: number
 }
 
-/** Eindstatussen die standaard niet in de documentenlijst staan (besluit Peter 08-09) — één toggle
- * "Toon afgehandelde documenten" haalt ze grijs erbij; zelfde lijst als backend `AFGEHANDELDE_STATUSSEN`. */
-export const AFGEHANDELDE_STATUSSEN = ['verwijderd', 'afgewezen', 'samengevoegd', 'afgevoerd_duplicaat'] as const
+/** Tellers per lijst-groep (blok 11, 08-09): kantoor = de standaardlijst ("Alle"), wachten = "Wachten op anderen",
+ * afgehandeld = achter de toggle. Zelfde bron als backend `tel_groepen`. */
+export interface GroepTellersDto {
+  kantoor: number
+  wachten: number
+  afgehandeld: number
+}
+
+/** Eindstatussen die standaard niet in de documentenlijst staan (besluit Peter 08-09; blok 11: óók geboekt,
+ * gesplitst en geaccordeerd) — één toggle "Toon afgehandelde documenten" haalt ze grijs erbij; zelfde lijst als
+ * backend `AFGEHANDELDE_STATUSSEN`. */
+export const AFGEHANDELDE_STATUSSEN = [
+  'verwijderd',
+  'afgewezen',
+  'samengevoegd',
+  'afgevoerd_duplicaat',
+  'geboekt',
+  'gesplitst',
+  'geaccordeerd',
+] as const
 export function isAfgehandeld(d: { status: string }): boolean {
   return (AFGEHANDELDE_STATUSSEN as readonly string[]).includes(d.status)
+}
+
+/** "Wachten op anderen" (blok 11, 08-09): bij de klant ter accordering of een open vraag — het kantoor kan niet
+ * verder tot een ander iets doet. Eén tab, telt niet in "Alle"; zelfde lijst als backend `WACHTEN_STATUSSEN`. */
+export const WACHTEN_STATUSSEN = ['ter_accordering', 'vraag_open'] as const
+export function isWachtenOpAnderen(d: { status: string }): boolean {
+  return (WACHTEN_STATUSSEN as readonly string[]).includes(d.status)
+}
+
+/** Kantoorwerk = niet afgehandeld en niet bij anderen — de standaardlijst en de teller "Alle". */
+export function isKantoorwerk(d: { status: string }): boolean {
+  return !isAfgehandeld(d) && !isWachtenOpAnderen(d)
 }
 
 export interface DocumentListItemDto {
@@ -349,8 +382,11 @@ export interface DocumentListItemDto {
   duplicaat_van?: DocumentVerwijzingDto | null
   /** Aanvulling blok 3 (08-09): reden van de verwijdering (alleen bij status `verwijderd`). */
   verwijderd_reden?: string | null
-  /** Aanvulling blok 3 (08-09): aantal hulzen dat in DIT document is opgegaan — chip "N exemplaren samengevoegd". */
+  /** Aantal exemplaren dat in DIT document is opgegaan: samengevoegde hulzen + (blok 4c 08-09) als duplicaat
+   * afgevoerde exemplaren met dit document als origineel — chip "N exemplaren samengevoegd/afgevoerd". */
   samengevoegde_exemplaren?: number
+  /** Blok 4c herstelrun 08-09: het afgevoerde deel van `samengevoegde_exemplaren`. */
+  afgevoerde_exemplaren?: number
   /** Projectverdeling-hercontrole (blok C 04-09): afwijking in % boven de drempel op een geboekte
    * pro-rato-verdeling — chip "verdeling wijkt x% af", actie "Herverdelen…" op het document. */
   projectverdeling_afwijking_pct?: string | null
@@ -377,6 +413,8 @@ export interface DocumentListResponseDto {
   documenten: DocumentListItemDto[]
   /** Aanvulling blok 3 (08-09): aantallen van de standaard-verborgen eindstatus-rijen. */
   afgehandeld?: AfgehandeldTellersDto | null
+  /** Blok 11 (08-09): tellers per groep kantoor | wachten | afgehandeld. */
+  groepen?: GroepTellersDto | null
 }
 
 /** Autoboeken-opt-in per leverancier (Instellingen, Beheerder-only — CLAUDE.md-poort vóór het
@@ -426,6 +464,10 @@ export interface ProjectverdelingHercontroleDto {
   periode_label?: string | null
   signaal: boolean
   nieuwe_verdeling: ProjectverdelingDeelDto[]
+  /** Blok 10 08-09: 'omzet_ontbreekt' = geen enkel project mét omzet in de referentieperiode — geen herverdeling maar een
+   * bevinding mét actie "cijfers-sync starten" (herverdelen geblokkeerd). `bevinding_tekst` = de leesbare zin. */
+  bevinding?: string | null
+  bevinding_tekst?: string | null
 }
 
 export interface ProjectverdelingDto {
@@ -499,6 +541,10 @@ export interface ProjectverdelingSignaalRijDto {
   geboekt_op?: string | null
   delen_oud?: ProjectverdelingDeelDto[]
   delen_nieuw?: ProjectverdelingDeelDto[]
+  /** Blok 10 08-09: 'afwijking' (Herverdelen… mogelijk) | 'omzet_ontbreekt' (bevinding — actie cijfers-sync starten,
+   * herverdelen geblokkeerd); `bevinding` = de leesbare zin. Ontbreekt bij oudere antwoorden = 'afwijking'. */
+  soort?: 'afwijking' | 'omzet_ontbreekt'
+  bevinding?: string | null
 }
 
 /** Kantoorbrede stand ongeacht facet/zoekterm — kopchips "N signalen · over M administraties". */
@@ -752,6 +798,9 @@ export interface BoekvoorstelRegelDto {
    * netto/btw van de gelezen regel (prefill); 'standaard' = btw-default van de administratie (blok E
    * 04-09, chip "standaard administratie"); null = leeg, of van de mens/het geheugen. */
   btw_bron?: string | null
+  /** Blok 6 herstelrun 08-09: bij 'factuur_verlegd' de leesbare herkomst van de gekozen verlegd-code ("voorkeur
+   * beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — chip-tekst, informatief. */
+  btw_bron_detail?: string | null
   /** Herkomst van het grootboek-voorstel per regel (blok D 04-09, regel-geheugen): 'geheugen' (groen,
    * app-bevestigd) | 'geheugen_seed' / 'geheugen_conflict' (oranje) | 'ai' (oranje, bevestigen);
    * null = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Alleen op prefill-regels. */

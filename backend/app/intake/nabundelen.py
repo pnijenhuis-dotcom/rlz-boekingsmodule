@@ -86,7 +86,8 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.beeld import beeld_is_bron
-from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus
+from app.documenten.boekvoorstel import boekvoorstel_door_mens_aangeraakt
+from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus
 from app.documenten.service import (
     DocumentNietGevonden,
     _na_extractie_hook,
@@ -392,11 +393,9 @@ def _samenvouw_plan(session, exemplaren: list[Document], soort: str) -> tuple[Do
             f"meerduidig: meer dan één {soort} met dezelfde naamstam uit deze e-mail in de administratie "
             "én de inhoud verschilt (sha256) — geen byte-identiek dubbel"
         )
-    met_voorstel = set(
-        session.scalars(
-            select(Boekvoorstel.document_id).where(Boekvoorstel.document_id.in_([p.id for p in exemplaren]))
-        )
-    )
+    # Blok 3 herstelrun 08-09: een boekvoorstel telt alleen als "mens heeft dit exemplaar beoordeeld" als een mens
+    # eraan werkte — de machinale prefill-autosave (UBL bij intake, prefill bij openen) is geen menselijke keuze.
+    met_voorstel = {p.id for p in exemplaren if boekvoorstel_door_mens_aangeraakt(session, document_id=p.id)}
     gesorteerd = sorted(
         exemplaren,
         key=lambda p: (-_status_rang(p.status), 0 if p.id in met_voorstel else 1, p.aangemaakt_op, str(p.id)),
@@ -577,7 +576,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 return overgeslagen(
                     f"UBL-document is intussen verder verwerkt (status {ubl.status.value.replace('_', ' ')})"
                 )
-            if session.get(Boekvoorstel, ubl.id) is not None:
+            if boekvoorstel_door_mens_aangeraakt(session, document_id=ubl.id):
                 return overgeslagen(
                     "UBL-document heeft een opgeslagen boekvoorstel (mens heeft dit exemplaar beoordeeld) — "
                     "beide exemplaren blijven staan"
@@ -605,7 +604,9 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                     else ""
                 )
             )
-        voorstel_behouden = session.get(Boekvoorstel, pdf.id) is not None
+        # Blok 3 08-09: alleen een door een MENS aangeraakt voorstel blijft staan; een machinale prefill-autosave wordt
+        # door de her-extractie uit de UBL + de intake-autosave gewoon opnieuw afgeleid (mens wint, machine niet).
+        voorstel_behouden = boekvoorstel_door_mens_aangeraakt(session, document_id=pdf.id)
 
         # Dubbel-exemplaren (07-09): de weg te vouwen PDF's/UBL's opnieuw toetsen bínnen deze transactie — het plan
         # komt uit een eerdere leesronde; intussen kan een mens geklikt hebben. Elke afwijking = overslaan.
@@ -632,7 +633,7 @@ def _nabundel_een(kandidaat: NabundelKandidaat, *, opslag: DocumentOpslag, dry_r
                 )
             if dubbel.bron_opslag_pad is not None or dubbel.samengevoegd_in_id is not None:
                 return overgeslagen(f"dubbel-exemplaar {dubbel_id} draagt intussen een beeld/bron of verwijzing")
-            if session.get(Boekvoorstel, dubbel.id) is not None:
+            if boekvoorstel_door_mens_aangeraakt(session, document_id=dubbel.id):
                 return overgeslagen(
                     f"dubbel-exemplaar {dubbel.bestandsnaam} ({dubbel_id}) heeft intussen een opgeslagen "
                     "boekvoorstel — mensenwerk, niets samengevouwen"

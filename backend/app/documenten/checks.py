@@ -317,7 +317,13 @@ def check_duplicaat(
     `check_duplicaat_module`. Verharding hier: het bedrag gaat als Decimal mee en wordt in de client cent-exact
     vergeleken (geen OData-float-`eq` meer), zodat een wankele float-match nooit een treffer verbergt."""
     if vendor_id is None or not referentie:
-        return CheckResultaat("Duplicaatcheck", False, "Kan niet controleren zonder crediteur en referentie")
+        # Blok 3 herstelrun 08-09: benoem precies wat ontbreekt — een UBL draagt de referentie altijd, dan is
+        # alleen de crediteur de open post (kies of maak 'm) en zegt de tekst niet meer "en referentie".
+        ontbreekt = [naam for naam, leeg in (("crediteur", vendor_id is None), ("referentie", not referentie)) if leeg]
+        tekst = f"Kan niet controleren zonder {' en '.join(ontbreekt)}"
+        if vendor_id is None and referentie:
+            tekst += f" — kies of maak de crediteur; referentie {referentie} is bekend"
+        return CheckResultaat("Duplicaatcheck", False, tekst)
     bedrag = totaalbedrag
     uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
     historie = [t for t in historie_treffers if str(t.get("id")) not in uitgezonderd]

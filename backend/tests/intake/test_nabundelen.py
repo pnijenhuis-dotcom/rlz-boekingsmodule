@@ -189,7 +189,8 @@ class TestNabundelMotor:
         assert na["sha256_hash"] == hashlib.sha256(data).hexdigest()
         # Her-extractie uit de UBL: het boekvoorstel is vooringevuld met de UBL-velden.
         voorstel = boekvoorstel_service.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=pdf_id)
-        assert voorstel.opgeslagen is False and voorstel.referentie == "2080141234"
+        # Blok 3 herstelrun 08-09: de UBL-kop wordt ná de her-extractie meteen (machinaal) gepersisteerd — mens wint later.
+        assert voorstel.opgeslagen is True and voorstel.referentie == "2080141234"
         details = _tijdlijn_details(administratie_id, pdf_id)
         assert any(d.get("nagebundeld_met") == str(ubl_id) and d.get("voorstel_behouden") is False for d in details)
         assert any("veldvoorstel" in d for d in details)
@@ -513,7 +514,8 @@ class TestDubbelparen:
         assert na["bron_opslag_pad"] == voor["opslag_pad"] and na["bron_bestandsnaam"] == PDF_NAAM
         assert na["status"] == "te_controleren"
         voorstel = boekvoorstel_service.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=pdf_id)
-        assert voorstel.opgeslagen is False and voorstel.referentie == "2080141234"
+        # Blok 3 herstelrun 08-09: de UBL-kop wordt ná de her-extractie meteen (machinaal) gepersisteerd — mens wint later.
+        assert voorstel.opgeslagen is True and voorstel.referentie == "2080141234"
         assert "document_nagebundeld" in _audit_acties(admin_engine, pdf_id)
         assert any(d.get("dubbelpaar") is True for d in _tijdlijn_details(administratie_id, pdf_id))
 

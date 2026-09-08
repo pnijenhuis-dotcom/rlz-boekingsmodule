@@ -28,6 +28,9 @@ export function NieuweCrediteurDialog({
   documentId,
   voorgevuld,
   herkomst,
+  bron = 'scan',
+  adres = null,
+  extractieLoopt = false,
   onAangemaakt,
   onBestaand,
   onSluit,
@@ -37,6 +40,12 @@ export function NieuweCrediteurDialog({
   voorgevuld: NieuweCrediteurVelden
   /** Welke velden uit de scan komen (herkomst-chip). */
   herkomst: { kvk?: boolean; btw?: boolean; iban?: boolean }
+  /** Blok 3 herstelrun 08-09: 'UBL' = deterministisch uit de XML (chip "uit UBL"), anders "uit factuur" (scan). */
+  bron?: 'scan' | 'UBL'
+  /** Adres uit de UBL — alleen ter controle getoond (RLZ krijgt via deze route alleen de naam). */
+  adres?: string | null
+  /** Blok 3 herstelrun 08-09: de extractie van dit (PDF-)document loopt nog — de velden volgen; nooit stil leeg. */
+  extractieLoopt?: boolean
   onAangemaakt: (resultaat: NieuweCrediteurResultaat) => void
   onBestaand: (vendorId: string) => void
   onSluit: () => void
@@ -90,7 +99,7 @@ export function NieuweCrediteurDialog({
   const chip = (uitScan: boolean | undefined) =>
     uitScan ? (
       <span className="chip ok" style={{ marginLeft: 6 }}>
-        uit factuur
+        {bron === 'UBL' ? 'uit UBL' : 'uit factuur'}
       </span>
     ) : null
 
@@ -99,9 +108,23 @@ export function NieuweCrediteurDialog({
       <DialogContent>
         <DialogTitle>Nieuwe crediteur in Reeleezee</DialogTitle>
         <DialogDescription>
-          Voorgevuld uit de scan — controleer en pas aan. De naam gaat naar Reeleezee; KvK, btw en IBAN worden bij deze
-          crediteur onthouden (het IBAN als vertrouwde rekening) zodat de volgende factuur direct herkend wordt.
+          {bron === 'UBL'
+            ? 'Voorgevuld uit de UBL (deterministisch gelezen, geen AI) — controleer en pas aan. '
+            : 'Voorgevuld uit de scan — controleer en pas aan. '}
+          De naam gaat naar Reeleezee; KvK, btw en IBAN worden bij deze crediteur onthouden (het IBAN als vertrouwde
+          rekening) zodat de volgende factuur direct herkend wordt.
         </DialogDescription>
+        {extractieLoopt && (
+          <div className="hint" role="status" data-testid="nieuwe-crediteur-verwerking-loopt">
+            Verwerking loopt — de velden uit de factuur volgen zodra de extractie klaar is. Je kunt de crediteur nu ook
+            handmatig invullen.
+          </div>
+        )}
+        {adres && (
+          <div className="hint" data-testid="nieuwe-crediteur-adres">
+            Adres volgens de UBL: {adres}
+          </div>
+        )}
         <div className="row">
           <label htmlFor="nc-naam">Naam</label>
           <input id="nc-naam" value={naam} onChange={(e) => setNaam(e.target.value)} />

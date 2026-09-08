@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
@@ -223,6 +224,7 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         btw_bedrag=r.btw_bedrag,
         omschrijving=r.omschrijving,
         btw_bron=r.btw_bron,
+        btw_bron_detail=r.btw_bron_detail,
         gb_bron=r.gb_bron,
         gb_voorstel_detail=r.gb_voorstel_detail,
         overstap_vertaling=r.overstap_vertaling,
@@ -405,6 +407,10 @@ def documenten_lijst(
     # eindstatussen (verwijderd, afgewezen, samengevoegd, afgevoerd_duplicaat); de twee vlaggen hierboven
     # blijven als deel-toggles werken.
     toon_afgehandeld: bool = False,
+    # Blok 11 (herstelrun 08-09): één groep opvragen — `kantoor` (standaardlijst = "Alle"), `wachten` ("Wachten op
+    # anderen": ter accordering + open vraag) of `afgehandeld` (eindstatussen incl. geboekt). Zonder groep: kantoor +
+    # wachten, afgehandeld achter de toggles (bestaande deeplinks ?status=… en ?toon_afgehandeld=… blijven werken).
+    groep: Literal["kantoor", "wachten", "afgehandeld"] | None = None,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
     items = service.lijst_documenten(
@@ -412,8 +418,12 @@ def documenten_lijst(
         toon_verwijderd=toon_verwijderd,
         toon_afgevoerd=toon_afgevoerd,
         toon_afgehandeld=toon_afgehandeld,
+        groep=groep,
     )
-    afgehandeld = service.tel_afgehandeld(administratie_id=administratie_id)
+    # Eén GROUP BY voedt zowel de afgehandeld-tellers als de groep-tellers.
+    per_status = service.tel_per_status(administratie_id=administratie_id)
+    afgehandeld = service.tel_afgehandeld(administratie_id=administratie_id, per_status=per_status)
+    groepen = service.tel_groepen(administratie_id=administratie_id, per_status=per_status)
     # Werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie afwees (mockup): één query
     # voor alle open afwijzingen, geen N+1.
     afwijzingen = afwijzen.open_afwijzingen(administratie_id=administratie_id)
@@ -433,6 +443,7 @@ def documenten_lijst(
                 duplicaat_van=_naar_verwijzing_dto(item.duplicaat_van),
                 verwijderd_reden=item.verwijderd_reden,
                 samengevoegde_exemplaren=item.samengevoegde_exemplaren,
+                afgevoerde_exemplaren=item.afgevoerde_exemplaren,
                 mogelijk_duplicaat_van=_naar_duplicaat_response(item.duplicaat_referentie),
                 toegewezen_aan=item.document.toegewezen_aan,
                 aangemaakt_op=item.document.aangemaakt_op,
@@ -486,7 +497,15 @@ def documenten_lijst(
             afgewezen=afgehandeld[DocumentStatus.AFGEWEZEN],
             samengevoegd=afgehandeld[DocumentStatus.SAMENGEVOEGD],
             afgevoerd_duplicaat=afgehandeld[DocumentStatus.AFGEVOERD_DUPLICAAT],
+            geboekt=afgehandeld[DocumentStatus.GEBOEKT],
+            gesplitst=afgehandeld[DocumentStatus.GESPLITST],
+            geaccordeerd=afgehandeld[DocumentStatus.GEACCORDEERD],
             totaal=sum(afgehandeld.values()),
+        ),
+        groepen=schemas.GroepTellersDto(
+            kantoor=groepen[service.GROEP_KANTOOR],
+            wachten=groepen[service.GROEP_WACHTEN],
+            afgehandeld=groepen[service.GROEP_AFGEHANDELD],
         ),
     )
 

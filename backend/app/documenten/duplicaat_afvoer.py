@@ -203,17 +203,35 @@ class Origineel:
     bestandsnaam: str | None = None
     aangemaakt_op: datetime | None = None
     status: str | None = None
+    #: Blok 4a (08-09): RLZ-/Odoo-documentstatus van een EXTERN origineel (1 = concept, 2/3 = geboekt); None = onbekend.
+    extern_status: int | None = None
+
+    @property
+    def buiten_de_module(self) -> bool:
+        """Origineel zonder app-document: het staat alleen in RLZ/Odoo (buiten de module geboekt of aangemaakt)."""
+        return self.document_id is None
+
+    @property
+    def extern_geboekt(self) -> bool:
+        """Blok 4a: de externe treffer is GEBOEKT (RLZ-status 2 open / 3 gesloten) — geen concept."""
+        return self.buiten_de_module and self.extern_status in (2, 3)
 
     def reden(self) -> str:
-        """Deterministische afwijsreden — 'Duplicaat van ‹referentie› (…)'."""
+        """Deterministische afwijsreden — 'Duplicaat van ‹referentie› (…)'; voor een origineel BUITEN de module
+        (blok 4a 08-09) leesbaar als "Al geboekt in RLZ (buiten de module) — boekstuk …, referentie …"."""
         if self.document_id is not None and self.bestandsnaam:
             datum = f" van {self.aangemaakt_op.date().isoformat()}" if self.aangemaakt_op else ""
             if self.bron == "geboekt":
                 boekstuk = f"boekstuk {self.boekstuknummer} / " if self.boekstuknummer else ""
                 return f"Duplicaat van {self.referentie} ({boekstuk}document {self.bestandsnaam}{datum}, al geboekt)"
             return f"Duplicaat van {self.referentie} (document {self.bestandsnaam}{datum} in de werkvoorraad)"
-        boekstuk = f"boekstuk {self.boekstuknummer}" if self.boekstuknummer else "al geboekt in de boekhouding"
-        return f"Duplicaat van {self.referentie} ({boekstuk})"
+        boekstuk = f"boekstuk {self.boekstuknummer}" if self.boekstuknummer else "boekstuk onbekend"
+        if self.extern_status == 1:
+            return (
+                f"Duplicaat — al aanwezig in RLZ als concept (buiten de module), {boekstuk}, "
+                f"referentie {self.referentie}"
+            )
+        return f"Duplicaat — al geboekt in RLZ (buiten de module), {boekstuk}, referentie {self.referentie}"
 
 
 @dataclass(frozen=True)
@@ -379,15 +397,18 @@ def _bepaal_origineel(session: Session, *, groep: list[_Lid], treffers: list[dic
     if geboekt:
         return _origineel_uit_geboekt_lid(session, geboekt[0], treffers)
     if treffers:
-        t = treffers[0]
+        # Blok 4a (08-09): een GEBOEKTE externe treffer (status 2/3) wint van een concept (1) of onbekend.
+        t = sorted(treffers, key=lambda x: 0 if x.get("status") in (2, 3) else 1)[0]
         uit_historie = _origineel_uit_historie_treffer(session, t, referentie)
         if uit_historie is not None:
             return uit_historie
+        status = t.get("status")
         return Origineel(
             bron="geboekt",
             referentie=str(t.get("reference") or referentie),
             rlz_document_id=_als_uuid(t.get("id")),
             boekstuknummer=(str(t["invoice_number"]) if t.get("invoice_number") else None),
+            extern_status=int(status) if isinstance(status, int) else None,
         )
     eerste = sorted(groep, key=_rang)[0]
     return Origineel(
@@ -460,7 +481,12 @@ def bepaal_groep(
         ),
         key=_rang,
     )
-    return Groep(origineel=origineel, duplicaten=duplicaten, hard=bool(module_treffers))
+    # Blok 4a (08-09): een origineel dat GEBOEKT in RLZ/Odoo staat (cent-exact op crediteur + referentie + bedrag,
+    # buiten de module) is net zo hard als een module-match — direct afvoeren, buiten de dagrem. Een extern CONCEPT
+    # of een treffer zonder status blijft het twijfelgeval onder de rem.
+    return Groep(
+        origineel=origineel, duplicaten=duplicaten, hard=bool(module_treffers) or origineel.extern_geboekt
+    )
 
 
 def werkvoorraad_matches_bulk(
@@ -665,6 +691,7 @@ def _origineel_json(origineel: Origineel) -> dict:
         "rlz_document_id": str(origineel.rlz_document_id) if origineel.rlz_document_id else None,
         "boekstuknummer": origineel.boekstuknummer,
         "bestandsnaam": origineel.bestandsnaam,
+        "extern_status": origineel.extern_status,
     }
 
 
@@ -842,6 +869,14 @@ def verwerk_na_signaal(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -
                 actie="duplicaat_afgevoerd",
                 waarde={"reden": origineel.reden(), "origineel": _origineel_json(origineel), "automatisch": True},
             )
+            if origineel.buiten_de_module:
+                # Blok 4a (08-09): meetbaar spoor in Cloud Logging (filter op "al geboekt in RLZ (buiten de module)").
+                logger.info(
+                    "Duplicaat afgevoerd — al geboekt in RLZ (buiten de module): document %s, administratie %s, %s",
+                    lid.document_id,
+                    administratie_id,
+                    origineel.reden(),
+                )
 
     # Zichtbaar houden wat blijft staan (nooit stil): het document zelf, als het niet afgevoerd is maar wél
     # tegenhangers heeft die nog bestaan.

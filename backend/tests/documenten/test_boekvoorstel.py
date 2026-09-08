@@ -59,7 +59,8 @@ class TestPrefillZonderOpgeslagenVoorstel:
             opslag=opslag,
         )
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=resultaat.document_id)
-        assert data.opgeslagen is False
+        # Blok 3 herstelrun 08-09: een UBL-kop is deterministisch en wordt bij INTAKE al gepersisteerd (was: pas bij openen).
+        assert data.opgeslagen is True
         assert data.referentie == "2026-0642"
         assert data.factuurdatum is not None
         assert data.totaalbedrag is not None

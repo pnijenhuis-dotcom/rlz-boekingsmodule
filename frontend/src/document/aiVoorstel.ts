@@ -93,6 +93,50 @@ export function alsAiVoorstel(veldvoorstel: Record<string, unknown> | null | und
   return veldvoorstel as unknown as AiVoorstel
 }
 
+/** Deterministisch UBL-veldvoorstel (blok 3 herstelrun 08-09, backend/app/documenten/ubl.py): geen zekerheids-
+ * scores (het is geen gok), wél de crediteur-identiteit rechtstreeks uit de XML — voedt de crediteur-kaart en
+ * "+ Nieuwe crediteur in RLZ". `bron: 'ubl'` sinds 08-09; oudere UBL-voorstellen herken je aan `ubl_regels`. */
+export interface UblVoorstel {
+  bron: 'ubl'
+  leverancier_naam: string | null
+  factuurnummer: string | null
+  kvk_nummer: string | null
+  btw_nummer: string | null
+  btw_nummer_geverifieerd: boolean | null
+  iban: string | null
+  leverancier_adres: string | null
+  vendor_suggestie: { vendor_id: string; match: string } | null
+}
+
+function tekst(waarde: unknown): string | null {
+  return typeof waarde === 'string' && waarde.trim() ? waarde : null
+}
+
+export function isUblVoorstel(veldvoorstel: Record<string, unknown> | null | undefined): boolean {
+  if (!veldvoorstel) return false
+  return veldvoorstel.bron === 'ubl' || (veldvoorstel.bron == null && Array.isArray(veldvoorstel.ubl_regels))
+}
+
+export function alsUblVoorstel(veldvoorstel: Record<string, unknown> | null | undefined): UblVoorstel | null {
+  if (!veldvoorstel || !isUblVoorstel(veldvoorstel)) return null
+  const suggestie = veldvoorstel.vendor_suggestie
+  return {
+    bron: 'ubl',
+    leverancier_naam: tekst(veldvoorstel.leverancier_naam),
+    factuurnummer: tekst(veldvoorstel.factuurnummer),
+    kvk_nummer: tekst(veldvoorstel.kvk_nummer),
+    btw_nummer: tekst(veldvoorstel.btw_nummer),
+    btw_nummer_geverifieerd:
+      typeof veldvoorstel.btw_nummer_geverifieerd === 'boolean' ? veldvoorstel.btw_nummer_geverifieerd : null,
+    iban: tekst(veldvoorstel.iban),
+    leverancier_adres: tekst(veldvoorstel.leverancier_adres),
+    vendor_suggestie:
+      suggestie && typeof suggestie === 'object' && 'vendor_id' in suggestie
+        ? (suggestie as { vendor_id: string; match: string })
+        : null,
+  }
+}
+
 export function isTemplateVoorstel(voorstel: AiVoorstel | null | undefined): boolean {
   return voorstel?.bron === 'template'
 }

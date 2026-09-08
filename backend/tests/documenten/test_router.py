@@ -185,7 +185,9 @@ def test_document_detail_bevat_tijdlijn_en_veldvoorstel(
     assert body["status"] == "te_controleren"
     assert body["veldvoorstel"]["factuurnummer"] == "F-1"
     naar_statussen = [g["naar_status"] for g in body["tijdlijn"]]
-    assert naar_statussen == ["ontvangen", "extractie_bezig", "te_controleren"]
+    # Blok 3 herstelrun 08-09: de UBL-kop wordt bij intake gepersisteerd — één extra tijdlijnregel (autosave-notitie,
+    # status blijft te_controleren).
+    assert naar_statussen == ["ontvangen", "extractie_bezig", "te_controleren", "te_controleren"]
 
 
 def test_document_detail_onbekend_document_geeft_404(

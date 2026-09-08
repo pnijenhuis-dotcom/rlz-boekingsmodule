@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import date
@@ -17,9 +18,8 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
-from app.documenten import leverancier_iban
+from app.documenten import leverancier_iban, veldvoorstel_regels
 from app.documenten import periode as periode_regels
-from app.documenten import veldvoorstel_regels
 from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
@@ -46,6 +46,7 @@ from app.documenten.models import (
 )
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
+from app.documenten.ubl import is_ubl_veldvoorstel
 from app.projectverdeling.data import ProjectverdelingData
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -90,6 +91,10 @@ class BoekvoorstelRegelData:
     # controleur (zelfde regel als de AI-zekerheidschips). Sinds blok E 04-09 óók "standaard" = de
     # btw-default van de administratie (vult alleen wat factuur én leverancier-geheugen leeg lieten).
     btw_bron: str | None = None
+    # Blok 6 herstelrun 08-09: leesbare herkomst van de verlegd-keuze bij `btw_bron='factuur_verlegd'` ("voorkeur
+    # beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …, regel_prefill.VerlegdKeuze) —
+    # chip-tekst in de UI, informatief; in de snapshot zodat de chip ná het persisteren terugkomt.
+    btw_bron_detail: str | None = None
     # Herkomst van het grootboek-voorstel per regel (blok D 04-09, app/geheugen/regel_gb.py):
     # "geheugen" (groen, app-bevestigd) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai"
     # (oranje, AI-classificatie tegen de historische grootboeken van deze leverancier). None = leeg of
@@ -250,12 +255,56 @@ def _raad_vendor_id(session: Session, *, administratie_id: uuid.UUID, leverancie
     return None
 
 
+_UBL_TOTAALSLEUTELS = ("totaal_excl", "totaal_incl", "totaal_btw", "btw_bedrag")
+_UBL_PROJECT_PATROON = re.compile(r"^\s*project(?:nummer|nr\.?|code)?\s*[:#]\s*(.+?)\s*$", re.IGNORECASE)
+
+
+def _is_ubl_creditnota(veldvoorstel: dict | None) -> bool:
+    return is_ubl_veldvoorstel(veldvoorstel) and bool((veldvoorstel or {}).get("is_creditnota"))
+
+
+def _veldvoorstel_met_teken(veldvoorstel: dict | None) -> dict | None:
+    """Blok 3 herstelrun 08-09 (gouden casus BOOT 202633199): een UBL-CreditNote (381) draagt per conventie POSITIEVE
+    bedragen; in het boekvoorstel, de lijst en de checks is een creditnota NEGATIEF (zo boekt de mens 'm, zo boekt RLZ
+    'm). De totalen worden hier één keer van teken gewisseld; de regels doen dat zelf in `_regel_prefill_uit_ubl`."""
+    if not _is_ubl_creditnota(veldvoorstel):
+        return veldvoorstel
+    kopie = dict(veldvoorstel or {})
+    for sleutel in _UBL_TOTAALSLEUTELS:
+        bedrag = _als_decimal(kopie.get(sleutel))
+        if bedrag is not None:
+            kopie[sleutel] = str(-bedrag)
+    return kopie
+
+
+def _ubl_project_tekst(veldvoorstel: dict) -> str | None:
+    """Projectnummer dat een leverancier als NULREGEL op de UBL zet ("Project: 25011" — casus Floor 26219): één
+    distinct projecttekst uit de nulregel-omschrijvingen (of het kop-`project_tekst`); meerdere = None (nooit
+    gokken)."""
+    kop = veldvoorstel.get("project_tekst")
+    if isinstance(kop, str) and kop.strip():
+        return kop.strip()
+    gevonden: dict[str, str] = {}
+    for regel in veldvoorstel.get("ubl_regels") or []:
+        if not isinstance(regel, dict):
+            continue
+        m = _UBL_PROJECT_PATROON.match(str(regel.get("omschrijving") or ""))
+        if m:
+            gevonden.setdefault(m.group(1).lower(), m.group(1))
+    return next(iter(gevonden.values())) if len(gevonden) == 1 else None
+
+
 def _regel_prefill_uit_ubl(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
+    """Regels van een UBL-voorstel. Blok 3 herstelrun 08-09: RECHTSTREEKS uit de XML-regels (`ubl_regels`:
+    netto = LineExtensionAmount, btw = netto × cbc:Percent (of het verrijkte `btw_bedrag`), omschrijving = Item/Name,
+    btw-code = deterministische afleiding uit de extractie-afronding) — mits élke regel een netto én een btw-bedrag
+    draagt en de som exact op de gelezen totalen sluit (code voor cijfers: bij twijfel de bewezen één-regel-prefill uit
+    de totalen, nooit een half regelsetje)."""
     totaal_excl = _als_decimal(veldvoorstel.get("totaal_excl"))
     totaal_incl = _als_decimal(veldvoorstel.get("totaal_incl"))
     if totaal_excl is None or totaal_incl is None:
         return []
-    return [
+    een_regel = [
         BoekvoorstelRegelData(
             ledger_id=None,
             taxrate_id=None,
@@ -265,6 +314,55 @@ def _regel_prefill_uit_ubl(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             omschrijving=None,
         )
     ]
+    ubl_regels = veldvoorstel.get("ubl_regels")
+    if not isinstance(ubl_regels, list) or not ubl_regels:
+        return een_regel
+    from app.documenten.ubl_voorstel import regel_btw_bedrag  # lokaal: ubl_voorstel leest crediteur_kenmerk
+
+    # CreditNote (381): de UBL-regels zijn positief, het voorstel negatief (totalen zijn al gewisseld, zie
+    # `_veldvoorstel_met_teken`). Nulregels (aantal 0, bedrag 0 — "Plaats: …", "Project: …", "Periode: …", casus
+    # Floor) zijn bron, geen boekingsregel; hun projecttekst gaat als `project_tekst` mee naar de échte regels.
+    teken = Decimal(-1) if veldvoorstel.get("is_creditnota") else Decimal(1)
+    project_tekst = _ubl_project_tekst(veldvoorstel)
+    regels: list[BoekvoorstelRegelData] = []
+    echte = [
+        r
+        for r in ubl_regels
+        if isinstance(r, dict)
+        and not veldvoorstel_regels.is_nulregel(
+            netto=_als_decimal(r.get("netto_bedrag")),
+            btw=regel_btw_bedrag(r),
+            hoeveelheid=veldvoorstel_regels.parse_hoeveelheid(r.get("aantal")),
+        )
+    ]
+    if len(echte) != len([r for r in ubl_regels if isinstance(r, dict)]) and not echte:
+        echte = [r for r in ubl_regels if isinstance(r, dict)]  # louter nulregels: niets stil wegfilteren
+    for regel in echte:
+        netto, btw = _als_decimal(regel.get("netto_bedrag")), regel_btw_bedrag(regel)
+        if netto is None:
+            return een_regel
+        if btw is None and len(echte) == 1:
+            btw = (totaal_incl - totaal_excl) * teken  # één regel zonder percentage: de document-btw ís de regel-btw
+        if btw is None:
+            return een_regel
+        regels.append(
+            BoekvoorstelRegelData(
+                ledger_id=None,
+                taxrate_id=_als_uuid(regel.get("taxrate_id")),
+                project_id=None,
+                netto_bedrag=netto * teken,
+                btw_bedrag=btw * teken,
+                omschrijving=regel.get("omschrijving") or None,
+                btw_bron=_btw_bron(regel),
+                btw_bewust_leeg=_btw_bewust_leeg(regel),
+                project_tekst=project_tekst,
+            )
+        )
+    if not regels or sum((r.netto_bedrag for r in regels), Decimal(0)) != totaal_excl:
+        return een_regel
+    if sum((r.btw_bedrag for r in regels), Decimal(0)) != totaal_incl - totaal_excl:
+        return een_regel
+    return regels
 
 
 def _als_uuid(waarde: str | None) -> uuid.UUID | None:
@@ -409,6 +507,7 @@ def _gelezen_totalen(veldvoorstel: dict | None) -> tuple[Decimal | None, Decimal
     er niets te toetsen is (nooit stil excl-vs-incl)."""
     if not veldvoorstel:
         return None, None
+    veldvoorstel = _veldvoorstel_met_teken(veldvoorstel) or veldvoorstel  # UBL-creditnota: negatief (blok 3 08-09)
     totaal_excl = _als_decimal(veldvoorstel.get("totaal_excl"))
     factuur_btw = _als_decimal(veldvoorstel.get("btw_bedrag")) or _als_decimal(veldvoorstel.get("totaal_btw"))
     return totaal_excl, factuur_btw
@@ -667,6 +766,7 @@ def _regel_snapshot(volgnummer: int, regel: BoekvoorstelRegelData) -> dict:
         "gb_bron": regel.gb_bron,
         "gb_voorstel_detail": regel.gb_voorstel_detail,
         "btw_bron": regel.btw_bron,
+        "btw_bron_detail": regel.btw_bron_detail,
         "project_bron": regel.project_bron,
         "project_bron_detail": regel.project_bron_detail,
         "herkomst": dict(regel.prefill_herkomst or {}),
@@ -680,11 +780,12 @@ def _maak_prefill_snapshot(
     veldvoorstel: dict,
     triggers: list[str],
     geopend_door: uuid.UUID,
+    aanleiding: str = "openen",
 ) -> dict:
     return {
-        "bron": "openen",
+        "bron": aanleiding,
         "geopend_door": str(geopend_door),
-        "veldvoorstel_bron": veldvoorstel.get("bron") or ("ubl" if veldvoorstel.get("regels") is None else None),
+        "veldvoorstel_bron": veldvoorstel.get("bron") or ("ubl" if is_ubl_veldvoorstel(veldvoorstel) else None),
         "triggers": triggers,
         "regels_samenvoegen": bool(prefill.regels_samenvoegen and prefill.samengevoegde_regel is not None),
         "kop": {
@@ -711,6 +812,10 @@ def _prefill_triggers(prefill: BoekvoorstelData, regels: list[BoekvoorstelRegelD
     triggers: list[str] = []
     if veldvoorstel.get("bron") == "template":
         triggers.append("kop: template")
+    if is_ubl_veldvoorstel(veldvoorstel):
+        # Blok 3 herstelrun 08-09: een UBL-kop is deterministisch (geen AI-gok) — altijd persisteren, zodat lijst,
+        # checks en duplicaat-motor dezelfde stand zien als de mens (vóór én bij het openen).
+        triggers.append("kop: ubl")
     if prefill.afdeling_prefill_id is not None:
         triggers.append("afdeling: leverancier_geheugen")
     # Blok 11: een periode die de factuur zélf noemt (week/datumbereik/maand) triggert de autosave — de terugval uit de
@@ -882,7 +987,7 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
     snap = None
     if snapshot is not None:
         snap = next((x for x in snapshot.get("regels") or [] if _regel_komt_overeen(regel, x)), None)
-    gb_bron = gb_detail = btw_bron = project_bron = project_detail = None
+    gb_bron = gb_detail = btw_bron = btw_detail = project_bron = project_detail = None
     herkomst: dict[str, str] = {}
     if snap is not None:
         snap_herkomst = snap.get("herkomst") or {}
@@ -891,7 +996,7 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
             if "grootboek" in snap_herkomst:
                 herkomst["grootboek"] = snap_herkomst["grootboek"]
         if regel.taxrate_id is not None and _str_of_none(regel.taxrate_id) == snap.get("taxrate_id"):
-            btw_bron = snap.get("btw_bron")
+            btw_bron, btw_detail = snap.get("btw_bron"), snap.get("btw_bron_detail")
             if "btw" in snap_herkomst:
                 herkomst["btw"] = snap_herkomst["btw"]
         if (
@@ -913,6 +1018,7 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
         omschrijving=regel.omschrijving,
         id=regel.id,
         btw_bron=btw_bron,
+        btw_bron_detail=btw_detail if btw_bron else None,
         gb_bron=gb_bron,
         gb_voorstel_detail=gb_detail if gb_bron else None,
         overstap_vertaling=regel.overstap_vertaling,
@@ -1035,6 +1141,8 @@ def _bereken_prefill(
             **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=None, huidige_afdeling_id=None),
         ))
 
+    # Blok 3 08-09: UBL-CreditNote → negatieve totalen (regels: `_regel_prefill_uit_ubl`).
+    veldvoorstel = _veldvoorstel_met_teken(veldvoorstel) or veldvoorstel
     # AI-voorstellen dragen een vendor-suggestie uit de controlelaag (exacte of fuzzy match
     # tegen de vendor-cache, alleen bij een uniek resultaat); anders de bestaande exacte
     # naammatch. In beide gevallen een voorstel dat de controleur kan overschrijven.
@@ -1048,6 +1156,12 @@ def _bereken_prefill(
         vendor_id = _raad_vendor_id(
             session, administratie_id=administratie_id, leverancier_naam=veldvoorstel.get("leverancier_naam")
         )
+    if vendor_id is None:
+        # Blok 3 herstelrun 08-09: een UBL draagt KvK/btw/IBAN — live matchen (btw → KvK → IBAN → naam incl.
+        # fuzzy mét mismatch-guard), ook voor UBL-voorstellen van vóór 08-09 en ná het aanmaken van de crediteur.
+        from app.documenten import ubl_voorstel  # lokaal: ubl_voorstel leest crediteur_kenmerk
+
+        vendor_id = ubl_voorstel.raad_vendor_id(session, administratie_id=administratie_id, veldvoorstel=veldvoorstel)
     # Blok D + E (medewerker-wensen 04-09) + A10 (07-09): regel-GB-voorstel (regel-geheugen → persistente
     # AI-classificatie), leverancier-geheugen (kop-niveau-engine, server-side sinds 07-09) en btw-default van de
     # administratie — uitsluitend op dit prefill-pad; een opgeslagen keuze van de mens wint altijd.
@@ -1137,8 +1251,42 @@ def haal_boekvoorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID)
         )
 
 
+def boekvoorstel_door_mens_aangeraakt(session: Session, *, document_id: uuid.UUID) -> bool:
+    """Is er een boekvoorstel waar een MENS aan gewerkt heeft? Blok 3 herstelrun 08-09: sinds een UBL-kop bij intake
+    (en elke prefill bij openen) machinaal gepersisteerd wordt, is "er bestaat een boekvoorstel-rij" geen bewijs meer
+    van menselijke beoordeling. Mens-aangeraakt = een rij zónder prefill-snapshot (door een mens opgeslagen) óf een rij
+    waarvan de waarden afwijken van het laatste snapshot (`_voorstel_onaangeraakt`). Eén bron voor de nabundel-motor
+    (`intake/nabundelen.py`: "nooit een door een mens beoordeeld exemplaar aanraken") en elke andere poort die
+    "heeft een boekvoorstel" als mens-signaal las."""
+    bestaand = session.get(Boekvoorstel, document_id)
+    if bestaand is None:
+        return False
+    snapshot = _laatste_prefill_snapshot(_gebeurtenissen_van(session, document_id))
+    if snapshot is None:
+        return True
+    regels_db = session.scalars(
+        select(BoekvoorstelRegel)
+        .where(BoekvoorstelRegel.document_id == document_id)
+        .order_by(BoekvoorstelRegel.volgnummer)
+    ).all()
+    return not _voorstel_onaangeraakt(bestaand, regels_db, snapshot.detail[PREFILL_SNAPSHOT_SLEUTEL])
+
+
+def persisteer_ubl_prefill_na_intake(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> bool:
+    """Blok 3 herstelrun 08-09: direct ná de (synchrone) UBL-extractie de prefill persisteren — hetzelfde
+    A10-pad als bij het openen, met de systeem-actor en snapshot-bron `intake`. Alleen voor een UBL-veldvoorstel
+    (`is_ubl_veldvoorstel`); een PDF wacht op zijn extractie en volgt het openen-pad. True = geschreven."""
+    with scoped_session(administratie_id) as session:
+        veldvoorstel = _laatste_veldvoorstel(session, document_id)
+    if not is_ubl_veldvoorstel(veldvoorstel):
+        return False
+    return persisteer_prefill_bij_openen(
+        administratie_id=administratie_id, document_id=document_id, geopend_door=SYSTEEM_ACTOR_ID, aanleiding="intake"
+    )
+
+
 def persisteer_prefill_bij_openen(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, geopend_door: uuid.UUID
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, geopend_door: uuid.UUID, aanleiding: str = "openen"
 ) -> bool:
     """Blok A10 07-09 (opdracht Peter, auto-first): persisteer bij het openen van het controlescherm de prefill
     zodra die minstens één veld uit geheugen/template/default draagt (`_AUTOSAVE_HERKOMSTEN`), zodat de checks en
@@ -1191,7 +1339,12 @@ def persisteer_prefill_bij_openen(
         if not triggers:
             return False
         snapshot = _maak_prefill_snapshot(
-            prefill, regels=regels, veldvoorstel=veldvoorstel, triggers=triggers, geopend_door=geopend_door
+            prefill,
+            regels=regels,
+            veldvoorstel=veldvoorstel,
+            triggers=triggers,
+            geopend_door=geopend_door,
+            aanleiding=aanleiding,
         )
 
     try:

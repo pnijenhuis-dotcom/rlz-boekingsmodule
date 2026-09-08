@@ -48,7 +48,8 @@ def _treffer_kort(factuur: dict) -> dict:
     kort = {
         "id": factuur.get("id"),
         "reference": factuur.get("Reference"),
-        "invoice_number": factuur.get("InvoiceNumber"),
+        # RLZ: InvoiceNumber; de Odoo-leesfacade levert het `account.move`-nummer als ReceiptNumber (blok 4a 08-09).
+        "invoice_number": factuur.get("InvoiceNumber") or factuur.get("ReceiptNumber"),
         "status": (factuur.get("Status") or {}).get("id") if isinstance(factuur.get("Status"), dict) else None,
     }
     if factuur.get("bron") == "app_historie":
@@ -151,6 +152,11 @@ def bereken_duplicaatsignaal(
         if rij is None:
             rij = DuplicaatSignaal(document_id=document_id, administratie_id=administratie_id, uitkomst=uitkomst.value)
             session.add(rij)
+        if uitkomst is DuplicaatSignaalUitkomst.ONBEKEND and rij.uitkomst != uitkomst.value:
+            # Blok 4a (08-09) — nooit stil: de RLZ-bestaanscheck kon niet draaien (geen credential/verbinding).
+            # Eén tijdlijnregel (zonder statusovergang) bij de OVERGANG naar 'onbekend' — niet bij elke veldopslag
+            # opnieuw — plus een Cloud-Logging-regel; de lijst/het scherm tonen het gecachete signaal.
+            _noteer_overgeslagen(session, document_id=document_id, reden=melding or "onbekende reden")
         rij.uitkomst = uitkomst.value
         rij.vendor_id = voorstel.vendor_id
         rij.referentie = voorstel.referentie
@@ -159,6 +165,37 @@ def bereken_duplicaatsignaal(
         rij.melding = melding
         session.flush()
     return DuplicaatSignaalData(document_id=document_id, uitkomst=uitkomst, treffers=treffers, melding=melding)
+
+
+RLZ_BESTAANSCHECK_OVERGESLAGEN = "rlz_bestaanscheck_overgeslagen"
+
+
+def _noteer_overgeslagen(session, *, document_id: uuid.UUID, reden: str) -> None:
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.documenten.models import DocumentGebeurtenis
+
+    document = session.get(Document, document_id)
+    if document is None:
+        return
+    logger.warning(
+        "RLZ-bestaanscheck overgeslagen voor document %s (administratie %s): %s",
+        document_id,
+        document.administratie_id,
+        reden,
+    )
+    session.add(
+        DocumentGebeurtenis(
+            id=uuid.uuid4(),
+            document_id=document_id,
+            van_status=document.status,
+            naar_status=document.status,
+            actor_id=SYSTEEM_ACTOR_ID,
+            detail={
+                RLZ_BESTAANSCHECK_OVERGESLAGEN: True,
+                "reden": f"RLZ-bestaanscheck (duplicaat buiten de module) overgeslagen: {reden}",
+            },
+        )
+    )
 
 
 def bereken_duplicaatsignaal_stil(*, administratie_id: uuid.UUID | None, document_id: uuid.UUID) -> None:
