@@ -15,7 +15,7 @@ import {
   zetDirectVergrendelen,
 } from '../../api/appSlot'
 import { apiFetch } from '../../api/client'
-import { diagnoseRegel, leesLaatsteKoudeStart } from '../koudeStart'
+import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
 
@@ -53,7 +53,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   const [bezig, setBezig] = useState(false)
   // Diagnose (blok 12a 07-09): laatste koude-start-meting uit de lokale opslag + bundelversie(s);
   // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
-  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart()))
+  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout()))
   const [gekopieerd, setGekopieerd] = useState(false)
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     void isBiometrieAan().then(setBioAan)
     void isDirectVergrendelen().then(setDirect)
     void nativeAppBuild().then((appBuild) => {
-      if (appBuild) setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), appBuild))
+      if (appBuild) setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), appBuild, leesLaatsteVerbindingsfout()))
     })
   }, [])
 
@@ -241,8 +241,9 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
         <div>
           <div className="t">Laatste koude start</div>
           <div className="s" style={{ maxWidth: 'none' }}>
-            Tijden in ms sinds het openen van de app; blijft op dit toestel. Stuur een screenshot of
-            kopie naar het kantoor als de app traag start.
+            Tijden in ms sinds het openen van de app, plus de laatste verbindingsfout van het slot; blijft
+            op dit toestel. Stuur een screenshot of kopie naar het kantoor als de app traag start of geen
+            verbinding krijgt.
           </div>
         </div>
         <code className="acc-diag" data-testid="acc-diagnose">

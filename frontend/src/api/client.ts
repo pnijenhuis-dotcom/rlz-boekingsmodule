@@ -83,15 +83,29 @@ async function gooiAlsBackendOnbereikbaar(resp: Response): Promise<void> {
   } catch {
     // geen JSON-body → gateway
   }
-  throw new BackendOnbereikbaarError()
+  throw new BackendOnbereikbaarError('server', `HTTP ${resp.status}`)
 }
 
 /** Netwerkfout (bv. backend echt plat, geen proxy-response) én de 502/503/504-gatewaystatus delen
  * dezelfde gebruikersmelding — het onderscheid tussen "geen verbinding" en "verbinding maar geen
  * backend erachter" is voor de eindgebruiker niet relevant. */
+export type BackendOnbereikbaarOorzaak = 'timeout' | 'netwerk' | 'server'
+
 export class BackendOnbereikbaarError extends ApiError {
-  constructor() {
+  /** Diagnostische oorzaak (blok 2b 08-09, incident "Geen verbinding" zonder request bij de server):
+   *  - `timeout`: onze eigen 10 s-timer brak de request af (server antwoordde niet op tijd);
+   *  - `netwerk`: fetch() gooide vóór er een HTTP-response was (offline, DNS/TLS, CORS-preflight, webview-"Load
+   *    failed") — er kwam dan doorgaans níéts bij de server aan;
+   *  - `server`: er kwam wél een response, maar een kale 502/503/504 van de gateway.
+   *  De gebruikersmelding blijft één en dezelfde; de oorzaak is voor het slot-scherm en de lokale diagnoseregel. */
+  oorzaak: BackendOnbereikbaarOorzaak
+  /** De ruwe foutmelding van de browser/webview (bv. "Load failed", "Failed to fetch") — alleen lokaal getoond. */
+  technisch: string | null
+
+  constructor(oorzaak: BackendOnbereikbaarOorzaak = 'netwerk', technisch: string | null = null) {
     super(0, BACKEND_ONBEREIKBAAR_MELDING)
+    this.oorzaak = oorzaak
+    this.technisch = technisch
   }
 }
 
@@ -102,23 +116,30 @@ export class BackendOnbereikbaarError extends ApiError {
 export const REQUEST_TIMEOUT_MS = 10_000
 
 async function fetchMetTimeout(pad: string, init: RequestInit): Promise<Response> {
+  let doorTimer = false
   try {
     if (init.signal) return await fetch(apiUrl(pad), init)
     // clearTimeout ná de response-headers: de timeout bewaakt "server antwoordt niet", niet
     // het daarna binnenstromen van een grote body (PDF-blob) — die zou anders halverwege
     // afgebroken worden.
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timer = setTimeout(() => {
+      doorTimer = true
+      controller.abort()
+    }, REQUEST_TIMEOUT_MS)
     try {
       return await fetch(apiUrl(pad), { ...init, signal: controller.signal })
     } finally {
       clearTimeout(timer)
     }
-  } catch {
+  } catch (err) {
     // fetch() gooit alleen bij een echte netwerkfout of de abort hierboven (geen enkele
     // HTTP-response) — een 502 van de dev-proxy komt hier niet binnen, dat is een gewone
-    // (niet-ok) Response.
-    throw new BackendOnbereikbaarError()
+    // (niet-ok) Response. Blok 2b 08-09: de oorzaak gaat mee (timeout ≠ netwerkfout) plus de
+    // ruwe browsermelding, zodat het slot-scherm en de lokale diagnoseregel kunnen zeggen wát er
+    // misging in plaats van alleen "geen verbinding".
+    const technisch = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    throw new BackendOnbereikbaarError(doorTimer ? 'timeout' : 'netwerk', technisch.slice(0, 160))
   }
 }
 

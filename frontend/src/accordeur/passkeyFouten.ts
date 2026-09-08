@@ -39,6 +39,25 @@ export function isAndroidGeenPasskeyBeheerder(bericht: string): boolean {
   return b.includes('mislukt') && b.includes('canceled')
 }
 
+/** iOS (blok 2a 08-09, incident 07-09 22:01: vijf wachtwoord-logins, vijf registratie-opties, nul voltooiingen):
+ * de Swift-plugin geeft elke niet-annulering door als "Passkey-verzoek mislukt: <localizedDescription>" — voor de
+ * gebruiker een kale Apple-tekst ("The operation couldn't be completed. (…AuthorizationError error 1004.)"). De
+ * meest voorkomende oorzaak is een uitgeschakelde iCloud-sleutelhanger (of geen toegangscode op het toestel); die
+ * krijgt hier een handelingsperspectief. Een weggetikte sheet blijft "Passkey-verzoek geannuleerd". */
+export const IOS_PASSKEY_MISLUKT_MELDING =
+  'Passkey aanmaken is op dit iPhone/iPad niet gelukt. Controleer of iCloud-sleutelhanger aan staat ' +
+  '(Instellingen › je naam › iCloud › Wachtwoorden en sleutelhanger) en of het toestel een toegangscode heeft; ' +
+  'probeer het daarna opnieuw of vraag het kantoor om hulp.'
+
+const IOS_MISLUKT_FRAGMENTEN = ['passkey-verzoek mislukt', 'authenticationservices', 'authorizationerror']
+
+/** True als het foutbericht de iOS-plugin-/ASAuthorization-fout is (géén annulering). Pure functie. */
+export function isIosPasskeyMislukt(bericht: string): boolean {
+  const b = bericht.toLowerCase()
+  if (b.includes('geannuleerd')) return false
+  return IOS_MISLUKT_FRAGMENTEN.some((f) => b.includes(f))
+}
+
 function huidigPlatform(): string {
   if (typeof window === 'undefined') return 'web'
   const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor
@@ -51,5 +70,9 @@ function huidigPlatform(): string {
 export function loginFoutmelding(err: unknown, platform: string = huidigPlatform()): string {
   const bericht = err instanceof Error ? err.message : 'Inloggen mislukt.'
   if (platform === 'android' && isAndroidGeenPasskeyBeheerder(bericht)) return GEEN_PASSKEY_BEHEERDER_MELDING
+  // De technische melding blijft (kort) zichtbaar: het kantoor herkent er de Apple-foutcode aan.
+  if (platform === 'ios' && isIosPasskeyMislukt(bericht)) {
+    return `${IOS_PASSKEY_MISLUKT_MELDING} (${bericht.replace(/^passkey-verzoek mislukt:\s*/i, '').slice(0, 160)})`
+  }
   return bericht
 }

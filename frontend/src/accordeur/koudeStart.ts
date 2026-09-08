@@ -189,6 +189,59 @@ export function leesLaatsteKoudeStart(): BewaardeKoudeStart | null {
   }
 }
 
+/** Laatste verbindingsfout van het app-slot (blok 2b 08-09; incident "Geen verbinding met de server" op het
+ * code-slot terwijl er géén request bij de server aankwam). Alleen lokaal (localStorage), nooit naar de server:
+ * oorzaak + ruwe browsermelding + tijdstip, zodat een screenshot van de diagnoseregel zegt of het een timeout,
+ * een netwerkfout vóór de server of een gateway-storing was. Geen PII, geen tokens. */
+export const VERBINDINGSFOUT_OPSLAG_SLEUTEL = 'accordeur-laatste-verbindingsfout'
+
+export interface BewaardeVerbindingsfout {
+  versie: 1
+  /** ISO-tijdstip van de fout. */
+  tijdstip: string
+  /** `timeout` | `netwerk` | `server` (zie BackendOnbereikbaarError.oorzaak). */
+  oorzaak: string
+  /** Ruwe browser-/webviewmelding, afgekapt (bv. "TypeError: Load failed"). */
+  technisch: string | null
+  /** Het API-pad waarop het misging (root-relatief). */
+  pad: string
+}
+
+export function bewaarLaatsteVerbindingsfout(fout: { oorzaak: string; technisch?: string | null; pad: string }): void {
+  const record: BewaardeVerbindingsfout = {
+    versie: 1,
+    tijdstip: new Date().toISOString(),
+    oorzaak: fout.oorzaak,
+    technisch: fout.technisch ? fout.technisch.slice(0, 160) : null,
+    pad: fout.pad,
+  }
+  try {
+    localStorage.setItem(VERBINDINGSFOUT_OPSLAG_SLEUTEL, JSON.stringify(record))
+  } catch {
+    // opslag vol/geblokkeerd — diagnostiek mag nooit de app raken
+  }
+}
+
+/** De laatst bewaarde verbindingsfout, of null (nog nooit / ander formaat). */
+export function leesLaatsteVerbindingsfout(): BewaardeVerbindingsfout | null {
+  try {
+    const ruw = localStorage.getItem(VERBINDINGSFOUT_OPSLAG_SLEUTEL)
+    if (!ruw) return null
+    const record = JSON.parse(ruw) as Partial<BewaardeVerbindingsfout>
+    if (record.versie !== 1 || typeof record.tijdstip !== 'string' || typeof record.oorzaak !== 'string') return null
+    return record as BewaardeVerbindingsfout
+  } catch {
+    return null
+  }
+}
+
+function ddmmHHMM(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function ms(waarde: number | undefined): string {
   return waarde === undefined ? '–' : `${Math.round(waarde)} ms`
 }
@@ -201,9 +254,18 @@ function ms(waarde: number | undefined): string {
  *  - netwerk = client-duur van die fetch minus de server-duur;
  *  - totaal  = navigatiestart → eerste verse kaarten.
  * `appBuild` = native "versie (build)" uit Capacitor App.getInfo() als die er is. */
-export function diagnoseRegel(meting: BewaardeKoudeStart | null, appBuild: string | null = null): string {
+export function diagnoseRegel(
+  meting: BewaardeKoudeStart | null,
+  appBuild: string | null = null,
+  verbindingsfout: BewaardeVerbindingsfout | null = null,
+): string {
   const build = `web ${meting?.build ?? WEB_BUILD_ID}${appBuild ? ` · app ${appBuild}` : ''}`
-  if (!meting) return `${build} · nog geen koude start gemeten`
+  // Blok 2b 08-09: de laatste verbindingsfout van het slot als staart — oorzaak, tijdstip en de ruwe melding.
+  const staart = verbindingsfout
+    ? ` · laatste verbindingsfout: ${verbindingsfout.oorzaak}${verbindingsfout.technisch ? ` (${verbindingsfout.technisch})` : ''}` +
+      `${ddmmHHMM(verbindingsfout.tijdstip) ? ` ${ddmmHHMM(verbindingsfout.tijdstip)}` : ''}`
+    : ''
+  if (!meting) return `${build} · nog geen koude start gemeten${staart}`
   const s = meting.overzicht.stappen
   const boot = s['app-render']
   const sessie = s.sessie !== undefined && boot !== undefined ? Math.max(0, s.sessie - boot) : undefined
@@ -215,7 +277,7 @@ export function diagnoseRegel(meting: BewaardeKoudeStart | null, appBuild: strin
     : ` · ${pad(d.getDate())}-${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return (
     `${build} · boot ${ms(boot)} · sessie ${ms(sessie)} · server ${ms(meting.overzicht.server.wachtrij)}` +
-    ` · netwerk ${ms(meting.overzicht.afgeleid.wachtrijNetwerkMs)} · totaal ${ms(totaal)}${wanneer}`
+    ` · netwerk ${ms(meting.overzicht.afgeleid.wachtrijNetwerkMs)} · totaal ${ms(totaal)}${wanneer}${staart}`
   )
 }
 
@@ -228,6 +290,7 @@ export function resetVoorTests(): void {
     performance.clearMarks()
     performance.clearMeasures()
     localStorage.removeItem(KOUDE_START_OPSLAG_SLEUTEL)
+    localStorage.removeItem(VERBINDINGSFOUT_OPSLAG_SLEUTEL)
   } catch {
     // geen User Timing API
   }

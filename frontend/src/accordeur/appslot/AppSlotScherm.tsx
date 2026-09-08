@@ -13,7 +13,15 @@ import {
   ontgrendelMetCode,
   wisAppSlotLokaal,
 } from '../../api/appSlot'
-import { BackendOnbereikbaarError, kaleAuthFetch } from '../../api/client'
+import { BackendOnbereikbaarError, kaleAuthFetch, type BackendOnbereikbaarOorzaak } from '../../api/client'
+import { bewaarLaatsteVerbindingsfout } from '../koudeStart'
+
+/** Korte, eerlijke oorzaak-tekst voor het slot (blok 2b 08-09). */
+export const VERBINDINGSFOUT_TEKST: Record<BackendOnbereikbaarOorzaak, string> = {
+  timeout: 'timeout, geen antwoord binnen 10 s',
+  netwerk: 'netwerkfout, het verzoek bereikte de server niet',
+  server: 'de server gaf een storing (502/503/504)',
+}
 import type { TokenPaarResponseDto } from '../../api/types'
 import { markeer } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
@@ -71,7 +79,12 @@ export function AppSlotScherm({ naOntgrendeld, naarLogin }: Props) {
       naarLogin()
     } catch (err) {
       if (err instanceof BackendOnbereikbaarError) {
-        setMelding('Geen verbinding met de server — controleer je internet en probeer het opnieuw.')
+        // Blok 2b 08-09: zeg wát er misging (timeout / netwerkfout vóór de server / gateway-storing) en bewaar het
+        // lokaal voor de diagnoseregel in Instellingen › Toegang — nooit naar de server.
+        bewaarLaatsteVerbindingsfout({ oorzaak: err.oorzaak, technisch: err.technisch, pad: '/auth/token/vernieuwen' })
+        setMelding(
+          `Geen verbinding met de server (oorzaak: ${VERBINDINGSFOUT_TEKST[err.oorzaak]}) — controleer je internet en probeer het opnieuw.`,
+        )
         setFase('code')
         return
       }

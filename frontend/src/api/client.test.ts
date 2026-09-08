@@ -190,3 +190,42 @@ describe('apiJson — niet-JSON-vangnet (proxy-bugklasse)', () => {
     await expect(client.apiJson('/bank/overzicht')).rejects.toThrow(client.GEEN_JSON_MELDING)
   })
 })
+
+// Blok 2b (08-09): incident "Geen verbinding met de server" op het code-slot zonder request bij de server —
+// de foutklasse draagt nu de oorzaak (timeout / netwerk / server) + de ruwe browsermelding, zodat slot en
+// diagnoseregel kunnen zeggen wát er misging.
+describe('BackendOnbereikbaarError.oorzaak (blok 2b 08-09)', () => {
+  it('eigen 10 s-timer → oorzaak "timeout" mét de AbortError als technische melding', async () => {
+    const client = await verseClient()
+    stubHangendeFetch()
+    const belofte = client.kaleAuthFetch('/auth/token/vernieuwen', { method: 'POST' })
+    const verwachting = belofte.catch((err: unknown) => err)
+    await vi.advanceTimersByTimeAsync(client.REQUEST_TIMEOUT_MS + 100)
+    const err = (await verwachting) as InstanceType<typeof client.BackendOnbereikbaarError>
+    expect(err).toBeInstanceOf(client.BackendOnbereikbaarError)
+    expect(err.oorzaak).toBe('timeout')
+    expect(err.technisch).toContain('AbortError')
+  })
+
+  it('fetch gooit vóór een response (offline/CORS/webview "Load failed") → oorzaak "netwerk" + ruwe melding', async () => {
+    const client = await verseClient()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Load failed')))
+    const err = (await client.kaleAuthFetch('/auth/token/vernieuwen', { method: 'POST' }).catch((e: unknown) => e)) as InstanceType<
+      typeof client.BackendOnbereikbaarError
+    >
+    expect(err).toBeInstanceOf(client.BackendOnbereikbaarError)
+    expect(err.oorzaak).toBe('netwerk')
+    expect(err.technisch).toBe('TypeError: Load failed')
+    expect(err.message).toBe(client.BACKEND_ONBEREIKBAAR_MELDING)
+  })
+
+  it('kale 502/503/504 → oorzaak "server" mét de status', async () => {
+    const client = await verseClient()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 503 })))
+    const err = (await client.kaleAuthFetch('/auth/token/vernieuwen', { method: 'POST' }).catch((e: unknown) => e)) as InstanceType<
+      typeof client.BackendOnbereikbaarError
+    >
+    expect(err.oorzaak).toBe('server')
+    expect(err.technisch).toBe('HTTP 503')
+  })
+})

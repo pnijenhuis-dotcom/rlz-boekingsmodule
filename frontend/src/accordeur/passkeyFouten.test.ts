@@ -2,7 +2,13 @@
 // eerlijke melding; iOS/web en andere fouten (incl. gewone annulering) blijven ongewijzigd.
 
 import { describe, expect, it } from 'vitest'
-import { GEEN_PASSKEY_BEHEERDER_MELDING, isAndroidGeenPasskeyBeheerder, loginFoutmelding } from './passkeyFouten'
+import {
+  GEEN_PASSKEY_BEHEERDER_MELDING,
+  IOS_PASSKEY_MISLUKT_MELDING,
+  isAndroidGeenPasskeyBeheerder,
+  isIosPasskeyMislukt,
+  loginFoutmelding,
+} from './passkeyFouten'
 
 describe('isAndroidGeenPasskeyBeheerder', () => {
   it('herkent de plugin-/GMS-varianten uit de emulator-reproductie van 07-09', () => {
@@ -40,5 +46,33 @@ describe('loginFoutmelding', () => {
   it('android met een andere fout: oorspronkelijk bericht; niet-Error → generiek', () => {
     expect(loginFoutmelding(new Error('Onjuiste inloggegevens'), 'android')).toBe('Onjuiste inloggegevens')
     expect(loginFoutmelding('x', 'android')).toBe('Inloggen mislukt.')
+  })
+})
+
+// Blok 2a (08-09): iOS geeft bij een mislukte registratie een kale Apple-tekst door — die krijgt een
+// handelingsperspectief (iCloud-sleutelhanger/toegangscode); annulering en andere platforms ongewijzigd.
+describe('iOS — mislukte passkey-registratie (blok 2a 08-09)', () => {
+  const asFout = new Error(
+    'Passkey-verzoek mislukt: The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1004.)',
+  )
+
+  it('isIosPasskeyMislukt herkent de plugin-/ASAuthorization-vorm, niet de annulering', () => {
+    expect(isIosPasskeyMislukt(asFout.message)).toBe(true)
+    expect(isIosPasskeyMislukt('Passkey-verzoek mislukt: Application with identifier X is not associated with domain Y')).toBe(true)
+    expect(isIosPasskeyMislukt('Passkey-verzoek geannuleerd')).toBe(false)
+    expect(isIosPasskeyMislukt('Ongeldige inloggegevens')).toBe(false)
+  })
+
+  it('ios: eerlijke melding mét de technische melding er kort achter', () => {
+    const melding = loginFoutmelding(asFout, 'ios')
+    expect(melding.startsWith(IOS_PASSKEY_MISLUKT_MELDING)).toBe(true)
+    expect(melding).toContain('iCloud-sleutelhanger')
+    expect(melding).toContain('AuthorizationError error 1004')
+  })
+
+  it('ios: weggetikte sheet blijft "Passkey-verzoek geannuleerd"; android/web laten de iOS-tekst ongemoeid', () => {
+    expect(loginFoutmelding(new Error('Passkey-verzoek geannuleerd'), 'ios')).toBe('Passkey-verzoek geannuleerd')
+    expect(loginFoutmelding(asFout, 'android')).toBe(asFout.message)
+    expect(loginFoutmelding(asFout, 'web')).toBe(asFout.message)
   })
 })

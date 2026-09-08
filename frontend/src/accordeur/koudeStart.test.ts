@@ -132,3 +132,23 @@ describe('laatste koude start bewaren + diagnoseregel (12a)', () => {
     expect(diagnoseRegel(null)).toBe(`web ${WEB_BUILD_ID} · nog geen koude start gemeten`)
   })
 })
+
+// Blok 2b (08-09): laatste verbindingsfout van het slot lokaal bewaard en als staart in de diagnoseregel.
+describe('laatste verbindingsfout (blok 2b 08-09)', () => {
+  it('bewaren → lezen → staart in de diagnoseregel (oorzaak, ruwe melding, tijdstip); zonder fout geen staart', async () => {
+    const { bewaarLaatsteVerbindingsfout, leesLaatsteVerbindingsfout, diagnoseRegel: regel, resetVoorTests } = await import('./koudeStart')
+    resetVoorTests()
+    expect(leesLaatsteVerbindingsfout()).toBeNull()
+    expect(regel(null)).not.toContain('verbindingsfout')
+    bewaarLaatsteVerbindingsfout({ oorzaak: 'netwerk', technisch: 'TypeError: Load failed', pad: '/auth/token/vernieuwen' })
+    const fout = leesLaatsteVerbindingsfout()
+    expect(fout?.oorzaak).toBe('netwerk')
+    expect(fout?.pad).toBe('/auth/token/vernieuwen')
+    expect(fout?.technisch).toBe('TypeError: Load failed')
+    const tekst = regel(null, '1.0 (89)', { ...fout!, tijdstip: '2026-09-08T10:12:00' })
+    expect(tekst).toBe(`web ${WEB_BUILD_ID} · app 1.0 (89) · nog geen koude start gemeten · laatste verbindingsfout: netwerk (TypeError: Load failed) 08-09 10:12`)
+    // Onleesbaar record = geen fout.
+    localStorage.setItem('accordeur-laatste-verbindingsfout', '{"versie":2}')
+    expect(leesLaatsteVerbindingsfout()).toBeNull()
+  })
+})

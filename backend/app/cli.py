@@ -308,6 +308,89 @@ def _duplicaten_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
+    """Blok 3 (fixrun 08-09, feedback Peter): eenmalige data-stap ná migratie 0122 — legacy-rijen die vóór deze
+    deploy als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing, exact het
+    archief-filter-criterium) krijgen de eigen terminale status `afgevoerd_duplicaat`, via de statusmachine mét
+    tijdlijn + audit (systeem-actor). Geen RLZ/Odoo-calls. --dry-run schrijft niets; idempotent."""
+    from app.documenten import duplicaat_afvoer
+
+    administratie_filter: uuid.UUID | None = None
+    if args.administratie:
+        try:
+            administratie_filter = uuid.UUID(args.administratie)
+        except ValueError:
+            print(f"Ongeldig --administratie-id: {args.administratie!r}", file=sys.stderr)
+            return 2
+    uitkomsten = duplicaat_afvoer.status_backfill(dry_run=args.dry_run, administratie_id=administratie_filter)
+    label = " [dry-run]" if args.dry_run else ""
+    tot_gevonden = sum(u.legacy_gevonden for u in uitkomsten)
+    tot_omgezet = sum(u.omgezet for u in uitkomsten)
+    tot_fouten = sum(sum(u.fouten.values()) for u in uitkomsten)
+    print(
+        f"duplicaat-status-backfill{label}: {len(uitkomsten)} administratie(s), {tot_gevonden} legacy-rij(en) "
+        f"(afgewezen mét duplicaat-kruisverwijzing), {tot_omgezet} omgezet naar afgevoerd_duplicaat"
+        + (f", {tot_fouten} fout(en)" if tot_fouten else "")
+    )
+    for u in uitkomsten:
+        if not u.legacy_gevonden and not u.fouten:
+            continue
+        print(f"  {u.naam}: {u.legacy_gevonden} gevonden, {u.omgezet} omgezet")
+        for reden, n in sorted(u.fouten.items(), key=lambda kv: -kv[1]):
+            print(f"    fout {n}× {reden}")
+    return 0 if not tot_fouten else 1
+
+
+def _periode_backfill(args: argparse.Namespace) -> int:
+    """Blok 7 bundel 08-09 (BESLISSINGEN "FACTUURPERIODE WEEKNIVEAU" beslispunt 4): vult de factuurperiode-
+    kolommen (migratie 0120) van GEBOEKTE documenten mét boekvoorstel maar zonder periode — AI-veld `periode` uit
+    het opgeslagen veldvoorstel als het er is, anders de ISO-week van de factuurdatum (exact de datalaag-regel).
+    Een gevulde stand (ook `mens`) wordt nooit overschreven; tijdlijn + audit per gewijzigd document (systeem-
+    actor); geen RLZ/Odoo/AI. --dry-run toetst alles en schrijft niets; --alle-statussen neemt ook open documenten
+    mee; cijfers per administratie."""
+    from app.documenten import periode_backfill
+
+    administratie_filter: uuid.UUID | None = None
+    if args.administratie:
+        try:
+            administratie_filter = uuid.UUID(args.administratie)
+        except ValueError:
+            print(f"Ongeldig --administratie-id: {args.administratie!r}", file=sys.stderr)
+            return 2
+    uitkomsten = periode_backfill.backfill(
+        dry_run=args.dry_run, administratie_id=administratie_filter, alle_statussen=args.alle_statussen
+    )
+    label = " [dry-run]" if args.dry_run else ""
+    tot = {
+        "toetsbaar": sum(u.toetsbaar for u in uitkomsten),
+        "al_gevuld": sum(u.al_gevuld for u in uitkomsten),
+        "te_vullen": sum(u.te_vullen for u in uitkomsten),
+        "ai": sum(u.uit_ai_veld for u in uitkomsten),
+        "terugval": sum(u.uit_terugval for u in uitkomsten),
+        "overgeslagen": sum(sum(u.overgeslagen.values()) for u in uitkomsten),
+        "gevuld": sum(u.gevuld for u in uitkomsten),
+    }
+    print(
+        f"periode-backfill{label}: {len(uitkomsten)} administratie(s), {tot['toetsbaar']} toetsbaar, "
+        f"{tot['al_gevuld']} al gevuld, {tot['te_vullen']} te vullen ({tot['ai']} uit AI-veld, "
+        f"{tot['terugval']} uit terugval), {tot['overgeslagen']} overgeslagen, {tot['gevuld']} gevuld"
+    )
+    for u in uitkomsten:
+        if not u.toetsbaar:
+            continue
+        print(
+            f"  {u.naam}: {u.toetsbaar} toetsbaar, {u.al_gevuld} al gevuld (waarvan {u.mens} mens), "
+            f"{u.uit_ai_veld} uit AI-veld, {u.uit_terugval} uit terugval, {u.gevuld} gevuld"
+        )
+        for reden, n in sorted(u.overgeslagen.items(), key=lambda kv: -kv[1]):
+            print(f"    overgeslagen {n}× {reden}")
+        for regel in u.regels[:25]:
+            print(f"    - {regel}")
+        if len(u.regels) > 25:
+            print(f"    … en {len(u.regels) - 25} meer")
+    return 0
+
+
 def _toewijzing_regels_opschonen(args: argparse.Namespace) -> int:
     """Data-nazorg afzender-geheugen (blok D 02-09): actieve afzender-regels op een config-uitgesloten
     kantoor-/doorstuurdomein óf met een meerduidige historie (≥ 3 doelen) deactiveren mét audit —
@@ -2220,6 +2303,32 @@ def main(argv: list[str] | None = None) -> int:
         "bewaking-probe",
         help="Synthetische bewaking (kwartier-job rlz-bewaking, 31-08): health/DB/documentopslag/"
         "mailkanaal/RLZ-leesroute + 1×/uur AI-call en extractie-foutratio; alert per SMTP bij 2 "
+    status_backfill_parser = subparsers.add_parser(
+        "duplicaat-status-backfill",
+        help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
+        "duplicaat-kruisverwijzing draagt) omzetten naar de eigen terminale status afgevoerd_duplicaat (migratie "
+        "0122) — via de statusmachine, mét tijdlijn + audit. --dry-run schrijft niets; idempotent.",
+    )
+    status_backfill_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    status_backfill_parser.add_argument(
+        "--administratie", default=None, metavar="UUID", help="Beperk tot één administratie."
+    )
+
+    periode_parser = subparsers.add_parser(
+        "periode-backfill",
+        help="Blok 7 08-09: factuurperiode-kolommen (migratie 0120) vullen voor GEBOEKTE documenten mét boekvoorstel "
+        "maar zonder periode — AI-veld `periode` uit het opgeslagen veldvoorstel, anders de week van de factuurdatum; "
+        "een gevulde stand (ook mens) wordt nooit overschreven; tijdlijn + audit per document. --dry-run schrijft "
+        "niets.",
+    )
+    periode_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    periode_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
+    periode_parser.add_argument(
+        "--alle-statussen",
+        action="store_true",
+        help="Ook niet-geboekte documenten (alles behalve verwijderd/niet_toegewezen) — standaard alleen geboekt.",
+    )
+
         "opeenvolgende fouten, herstelmelding zodra weer groen.",
     )
 
@@ -2684,4 +2793,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if args.commando == "duplicaat-status-backfill":
+        return _duplicaat_status_backfill(args)
+    if args.commando == "periode-backfill":
+        return _periode_backfill(args)
     raise SystemExit(main())

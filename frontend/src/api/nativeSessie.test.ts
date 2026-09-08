@@ -134,3 +134,28 @@ describe('boot-refresh native zonder leesbaar token (12b)', () => {
     }
   })
 })
+
+// Blok 2b (08-09): een Keychain-/Keystore-leesfout is GÉÉN "geen verbinding" — haalNatiefRefreshToken vangt 'm
+// (null) en de vernieuwen-POST gaat gewoon uit, zonder X-Refresh-Token (→ 401 = login-pad). Vastgelegd omdat het
+// incident van 08-09 10:12 juist géén request bij de server liet zien: de opslag-plugin is daar dus geen verklaring.
+describe('opslag-plugin-fout is geen onbereikbaar-pad (2b)', () => {
+  it('haal() gooit → token null, POST gaat wél uit zonder refresh-header, geen BackendOnbereikbaarError', async () => {
+    const opslag = maakOpslagFake()
+    opslag.haal.mockImplementation(() => Promise.reject(new Error('Keychain: errSecInteractionNotAllowed')))
+    stubCapacitor(opslag)
+    let gezienHeaders: Headers | null = null
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_invoer: RequestInfo | URL, init?: RequestInit) => {
+        gezienHeaders = new Headers(init?.headers)
+        return Promise.resolve(new Response(null, { status: 401 }))
+      }),
+    )
+    await expect(haalNatiefRefreshToken()).resolves.toBeNull()
+    const { kaleAuthFetch } = await import('./client')
+    const resp = await kaleAuthFetch('/auth/token/vernieuwen', { method: 'POST' })
+    expect(resp.status).toBe(401)
+    expect(gezienHeaders!.get('X-Native-Client')).toBe('1')
+    expect(gezienHeaders!.has('X-Refresh-Token')).toBe(false)
+  })
+})

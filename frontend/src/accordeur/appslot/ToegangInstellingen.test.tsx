@@ -99,3 +99,20 @@ describe('ToegangInstellingen — diagnoseregel', () => {
     expect(writeText).toHaveBeenCalledWith(screen.getByTestId('acc-diagnose').textContent)
   })
 })
+
+// Blok 2b (08-09): de laatste verbindingsfout van het slot staat als staart in dezelfde regel — lokaal, geen request.
+describe('ToegangInstellingen — laatste verbindingsfout (2b)', () => {
+  it('toont oorzaak + tijdstip achter de koude-start-meting', () => {
+    localStorage.setItem(KOUDE_START_OPSLAG_SLEUTEL, JSON.stringify(METING))
+    localStorage.setItem(
+      'accordeur-laatste-verbindingsfout',
+      JSON.stringify({ versie: 1, tijdstip: '2026-09-08T10:12:00', oorzaak: 'timeout', technisch: 'AbortError: afgebroken', pad: '/auth/token/vernieuwen' }),
+    )
+    const fetchMock = renderScherm()
+    expect(screen.getByTestId('acc-diagnose')).toHaveTextContent(
+      'totaal 2900 ms · 07-09 13:05 · laatste verbindingsfout: timeout (AbortError: afgebroken) 08-09 10:12',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    localStorage.removeItem('accordeur-laatste-verbindingsfout')
+  })
+})
