@@ -465,3 +465,67 @@ class TestOntgrendelVenster:
         body = TokenPaarResponse(access_token="x", ontgrendeling_nodig=None).model_dump()
         assert "ontgrendeling_nodig" not in body
         assert auth_service.TokenPaar(access_token="a", refresh_token="r").ontgrendeling_nodig is None
+
+
+# --- upgrade-pad 89 → 90: app-client op een legacy passkey-rij (app-auth zonder passkey, 08-09) ----
+# Migratie 0125 zet bestaande rijen NIET om naar soort='toestel'; build 90 refresht het 89-token
+# met de app-aankondiging. De server geeft dan geen ontgrendel-eis meer en houdt `laatst_gebruikt_op`
+# bij (anders bevriest Gebruikers & toegang voor dat toestel). Het cookie-pad blijft ongewijzigd.
+
+
+def _laatst_gebruikt_van(admin_engine: Engine, e_mail: str) -> tuple[datetime | None, str]:
+    with admin_engine.connect() as conn:
+        rij = conn.execute(
+            text(
+                "SELECT laatst_gebruikt_op, soort FROM platform.webauthn_credential "
+                "WHERE gebruiker_id = (SELECT id FROM platform.gebruiker WHERE e_mail = :mail)"
+            ),
+            {"mail": e_mail},
+        ).one()
+    return rij[0], rij[1]
+
+
+class TestUpgradePasskeyRijNaarAppClient:
+    @pytest.mark.parametrize("aankondiging", [{"X-Native-Client": "1"}, {"X-App-Slot": "1"}])
+    def test_app_refresh_op_passkey_rij_zet_laatst_gebruikt_en_geen_ontgrendeling(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine, aankondiging: dict[str, str]
+    ) -> None:
+        e_mail, _, _ = _activeer_accordeur(beheerder_id)
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=25)
+
+        # Cookie-pad (PWA vóór blok 3 / kantoor): ongewijzigd — venster verstreken, veld blijft oud.
+        resp = client.post("/auth/token/vernieuwen")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ontgrendeling_nodig"] is True
+        oud, soort = _laatst_gebruikt_van(admin_engine, e_mail)
+        assert soort == "passkey" and oud is not None and datetime.now(UTC) - oud > timedelta(hours=24)
+
+        # Build 90 neemt het 89-token over uit de secure storage en refresht mét app-aankondiging.
+        token_89 = client.cookies.get("refresh_token")
+        assert token_89
+        client.cookies.clear()
+        resp = client.post("/auth/token/vernieuwen", headers={**aankondiging, "X-Refresh-Token": token_89})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["refresh_token"] and body["ontgrendeling_nodig"] is False
+        nieuw, soort = _laatst_gebruikt_van(admin_engine, e_mail)
+        assert soort == "passkey", "de rij wordt niet omgezet — alleen de activiteit wordt bijgehouden"
+        assert nieuw is not None and datetime.now(UTC) - nieuw < timedelta(minutes=1)
+
+        # Volgende rotatie blijft werken (rotatie op dezelfde passkey-rij) en blijft zonder eis.
+        resp = client.post("/auth/token/vernieuwen", headers={**aankondiging, "X-Refresh-Token": body["refresh_token"]})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ontgrendeling_nodig"] is False
+
+    def test_header_zonder_app_aankondiging_wijzigt_niets(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+        """Alleen X-Refresh-Token (zonder X-Native-Client/X-App-Slot) is geen app-aankondiging:
+        het passkey-venster blijft de norm en `laatst_gebruikt_op` blijft een ceremonie-anker."""
+        e_mail, _, _ = _activeer_accordeur(beheerder_id)
+        _laatst_gebruikt_terugzetten(admin_engine, e_mail, uren=25)
+        token = client.cookies.get("refresh_token")
+        client.cookies.clear()
+        resp = client.post("/auth/token/vernieuwen", headers={"X-Refresh-Token": token})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ontgrendeling_nodig"] is True
+        oud, _ = _laatst_gebruikt_van(admin_engine, e_mail)
+        assert oud is not None and datetime.now(UTC) - oud > timedelta(hours=24)

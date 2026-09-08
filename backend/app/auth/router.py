@@ -362,7 +362,9 @@ def token_vernieuwen(request: Request, response: Response) -> schemas.TokenPaarR
     if refresh_token is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geen refresh-token aangeleverd")
     try:
-        paar = service.vernieuw_token(refresh_token=refresh_token, ip_adres=_client_ip(request))
+        paar = service.vernieuw_token(
+            refresh_token=refresh_token, ip_adres=_client_ip(request), app_client=_is_app_client(request)
+        )
     except service.RotatieBezetError as exc:
         # Bewust géén 401: de sessie is niet ongeldig, een parallelle rotatie hield de rij-lock
         # langer vast dan de lock-timeout. De client mag kort wachten en één keer opnieuw proberen.

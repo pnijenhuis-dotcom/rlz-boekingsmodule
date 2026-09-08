@@ -272,4 +272,42 @@ describe('AccordeurApp — legacy native toestel (plain refresh-token, geen slot
     expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
     expect(opslag.get('refresh_token')).toMatch(/^slot\.v1\./)
   })
+
+  it('negeert ontgrendeling_nodig: true van de server (upgrade 89 → 90 op een passkey-rij): geen ceremonie, wél PincodeKiezen', async () => {
+    // Migratie 0125 zet bestaande app-credentials niet om; de server rekent op zo'n rij het oude
+    // 24-uursvenster nog uit. Build 90 kent geen ontgrendel-ceremonie meer en mag daar niets mee doen.
+    const opslag = new Map<string, string>([['refresh_token', 'rt-plain']])
+    vi.stubGlobal('Capacitor', {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      Plugins: {
+        VeiligeOpslag: {
+          zet: ({ sleutel, waarde }: { sleutel: string; waarde: string }) => {
+            opslag.set(sleutel, waarde)
+            return Promise.resolve()
+          },
+          haal: ({ sleutel }: { sleutel: string }) => Promise.resolve({ waarde: opslag.get(sleutel) ?? null }),
+          verwijder: ({ sleutel }: { sleutel: string }) => {
+            opslag.delete(sleutel)
+            return Promise.resolve()
+          },
+        },
+      },
+    })
+    const aanroepen = stubFetch({
+      '/auth/token/vernieuwen': () => Promise.resolve(jsonResponse({ ...SESSIE, ontgrendeling_nodig: true })),
+    })
+    renderApp()
+    expect(await screen.findByText('Kies een code')).toBeInTheDocument()
+    await tikCode('13579')
+    await screen.findByText('Nog één keer')
+    await tikCode('13579')
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
+    // Geen passkey-/ontgrendel-verkeer en geen ontgrendel- of inlogtekst: de vlag is dood voor de app.
+    expect(aanroepen.some((a) => a.pad.startsWith('/auth/token/vernieuwen/ontgrendel'))).toBe(false)
+    expect(aanroepen.some((a) => a.pad.startsWith('/auth/webauthn/') && a.pad !== '/auth/webauthn/config')).toBe(false)
+    expect(screen.queryByText(/ontgrendel/i)).toBeNull()
+    expect(screen.queryByText(/passkey|inloggen/i)).toBeNull()
+    expect(opslag.get('refresh_token')).toMatch(/^slot\.v1\./)
+  })
 })

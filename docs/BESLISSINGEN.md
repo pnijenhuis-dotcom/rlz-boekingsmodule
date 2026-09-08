@@ -6187,3 +6187,18 @@ kliktest; PWA in Safari op de telefoon zonder app; (5) consoles: ASC › App Rev
 stap 6) + Resolution Center-reply + "Update Review" ná koppelen van build 90; Play › App access (Password = activatiecode, "Any other
 information" §11) + release opnieuw ter review; (6) productie-nameting: audit `toestel_geactiveerd` (via code/link, platform) + géén
 nieuwe `registratie/opties`-hits in Cloud Logging ná de deploy → rapportregel "werkt in productie: ja/nee".
+
+**Upgrade-pad 89 → 90 op een bestaand toestel (vraag Peter 08-09 avond, nagelopen + twee gaten gedicht):** migratie 0125 zet
+bestaande app-credentials NIET om naar `soort='toestel'` (schema-only; alle bestaande rijen blijven `passkey`, ook na
+`app-passkeys-markeren` — die zet alleen `niet_meer_gebruikt_op`). Een 89-toestel heeft een plain refresh-token in de secure storage
+en géén slot; build 90 (legacy-tak in `AccordeurApp.tsx`) refresht dat token stil mét `X-Native-Client`, dwingt daarna PincodeKiezen
+af en zet het token achter het slot — zonder nieuwe uitnodiging. De server hield op zo'n passkey-rij het 24-uursvenster nog in stand
+(`ontgrendeling_nodig: true` ná een dag), maar dat veld was altijd al een advies-vlag, nooit een blokkade: het token-paar wordt
+uitgegeven, alleen kill-switch/TTL/hergebruik/inactief weigeren. Gedicht (08-09 avond): (1) `vernieuw_token(app_client=…)` — een
+refresh mét app-aankondiging (`X-Native-Client` of `X-App-Slot`) zet `laatst_gebruikt_op` óók op een passkey-rij, zodat Gebruikers &
+toegang voor zo'n toestel niet bevriest en de vlag ná de eerste 90-refresh weer `False` is; alleen `X-Refresh-Token` zonder
+aankondiging én het cookie-pad blijven byte-identiek (`TestUpgradePasskeyRijNaarAppClient`, 3 tests); (2) frontend-regressie-assert:
+de legacy-tak negeert `ontgrendeling_nodig: true` (geen ontgrendel-/webauthn-verkeer, geen ontgrendel-/inlogtekst, wél PincodeKiezen →
+slot) in `AccordeurApp.test.tsx`. Niet gebouwd (bewust): een backfill `passkey → toestel` — de rij blijft historisch juist en het
+gedrag is via `app_client` al toestel-gelijk. Open: een echte end-to-end 89 → 90-meting op een toestel staat als stap in het klikwerk
+hierboven (4), niet in een geautomatiseerde test.

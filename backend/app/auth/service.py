@@ -723,7 +723,7 @@ def _is_lock_timeout(exc: OperationalError) -> bool:
     return getattr(orig, "sqlstate", None) == "55P03"
 
 
-def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenPaar:
+def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None, app_client: bool = False) -> TokenPaar:
     """Rotatie bij elke aanroep (Auth-0010-b punt 1): het aangeboden token wordt verbruikt-
     gemarkeerd en vervangen door een nieuwe. Wordt hetzelfde token een tweede keer aangeboden
     (gebruikt_op of ingetrokken_op al gezet), dan is dat in beginsel hergebruik van een
@@ -742,7 +742,13 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
     Zelfde reden als in login(): de revoke-all + audit-schrijving bij hergebruik mogen niet
     verloren gaan doordat deze functie voor de aanroeper een fout meldt — dus wordt hier nooit
     binnen de `with`-transactie ge-raised; de uitkomst wordt na het blok (dat altijd commit't)
-    omgezet in een AuthError."""
+    omgezet in een AuthError.
+
+    App-client (08-09): `app_client=True` = de aanroeper heeft zich als app aangekondigd (X-Native-Client
+    of X-App-Slot). Zo'n toestel heeft geen ontgrendel-ceremonie meer; élke rotatie telt dan als "laatst
+    gebruikt" — óók op een legacy passkey-rij (toestel geactiveerd vóór build 90; migratie 0125 zet
+    `soort` niet om), anders bevriest de apparatenlijst voor dat toestel en meldt de server na een dag
+    permanent `ontgrendeling_nodig`. Het web-/cookie-pad (app_client=False) blijft byte-identiek."""
     try:
         payload = decode_token(refresh_token, expected_type="refresh")
     except TokenError as exc:
@@ -832,9 +838,13 @@ def vernieuw_token(*, refresh_token: str, ip_adres: str | None = None) -> TokenP
                     faal_reden = "inactief"
                 else:
                     rij.gebruikt_op = now
-                    if credential is not None and credential.soort == WebauthnCredentialSoort.TOESTEL.value:
+                    if credential is not None and (
+                        credential.soort == WebauthnCredentialSoort.TOESTEL.value or app_client
+                    ):
                         # Toestel-rij (08-09): elke rotatie is "laatst gebruikt" — er is geen aparte
                         # ceremonie meer die dit veld zet (Gebruikers & toegang toont het als activiteit).
+                        # Zelfde regel voor een app-client op een legacy passkey-rij (upgrade 89 → 90):
+                        # de app kent geen ceremonie meer, dus is dit het enige activiteitsspoor.
                         credential.laatst_gebruikt_op = now
                     paar = replace(
                         _issue_token_paar(
