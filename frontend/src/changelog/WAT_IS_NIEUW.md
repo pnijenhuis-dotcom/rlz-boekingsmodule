@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-09 — Intercompany-leveranciers zelf instellen
+
+<!-- nachtrun 08/09-09 blok 1 -->
+- **Intercompany-facturen hoeven niet meer langs de accordeur — en u bepaalt nu zelf welke leveranciers dat zijn.** Onder Instellingen › Administraties › ‹administratie› › Klant-accordering staat het blok "Intercompany — accordering overslaan". Kies daar een crediteur (typ om te zoeken), geef eventueel een reden op en klik "Markeren als intercompany". Facturen van die leverancier worden in die administratie gewoon gecontroleerd en direct geboekt, zonder de stap bij de klant-accordeur. Alleen een Beheerder kan dit instellen.
+- **Verwijderen kan altijd.** Achter een zelf toegevoegde leverancier staat een kruisje; daarna gaan zijn facturen weer gewoon ter accordering. Leveranciers die uit de doorbelasting komen staan er met het label "doorbelasting" bij en zijn alleen te lezen — die volgen de doorbelasting-instellingen.
+- **Alles blijft terug te vinden.** Onder het blok staat een historie: wie welke leverancier wanneer heeft toegevoegd of verwijderd, met de opgegeven reden.
+
 ## 2026-09-08 — Bank dagelijks automatisch, betere bankvoorstellen, declaraties en betaalstatus
 
 <!-- bundel-08-09-avond blokken 1–6 -->

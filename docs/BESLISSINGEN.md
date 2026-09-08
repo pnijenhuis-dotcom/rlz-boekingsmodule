@@ -6413,12 +6413,49 @@ De accordeur-app kent geen historie-lijst (alleen de wachtrij) — een IC-docume
    Beheerder-instelling "Intercompany-leveranciers" per administratie (Instellingen › Administraties, tab Doorbelasting/IC) mét
    audit — schaalbaar en zonder kantoor-SQL; (c) automatisch afleiden uit het entiteitenregister (zelfde groep = IC). Advies: (a) nu
    voor de eerste casus, (b) als vervolgblok (past in de bestaande IA, geen mockup nodig).
+   **BESLIST (Peter 08-09, nachtrun 08/09-09): (b) + (a) via dezelfde servicelaag — zie sectie "INTERCOMPANY-LEVERANCIERS INSTELBAAR + EENMALIGE RIJ UNIVERSAL".**
 2. Lopende ronde blijft leidend als de IC-vlag later komt (kantoor haalt terug) — akkoord, of moet een later gezette vlag lopende
    rondes zichtbaar laten vervallen (bestaand vervallen-patroon mét reden)?
 3. Zoeken (`hit.accordering`) toont alleen echte stappen; een overgeslagen accordering staat er niet als rij. Akkoord (de tijdlijn
    en de documentsectie tonen het wel), of ook daar een regel "overgeslagen — intercompany"?
 4. `zoeken`/reconciliatie-tellers: moet "accordering overgeslagen (intercompany)" als dagteller in de reconciliatiemail
    (`app/reconciliatie/automatiseringen.py`, patroon blok 3 herstelrun 07-09)? Nu alleen audit + tijdlijn.
+
+## INTERCOMPANY-LEVERANCIERS INSTELBAAR + EENMALIGE RIJ UNIVERSAL (nachtrun 08/09-09; besluit Peter 08-09 op beslispunt 1 van "INTERCOMPANY SLAAT KLANT-ACCORDERING OVER"; geen migratie)
+
+**Aanleiding / besluit Peter (opdracht nachtrun 08/09-09).** Beslispunt 1 van de sectie hierboven is beslist als (b) + (a): een
+kleine Beheerder-instelling "Intercompany-leveranciers" per administratie (Instellingen › Administraties › ‹BV› › tab
+Klant-accordering, blok "Intercompany — accordering overslaan") én de eerste rij Universal Nederland B.V. → administratie
+Universal Steigerbouw B.V. eenmalig, geauditeerd (actor Peter, reden "besluit 08-09 intercompany Universal") via een CLI met
+DEZELFDE servicelaag. Optie (c) (afleiden uit het entiteitenregister) blijft parkeerpost. **Nieuwe bindende regel (Peter 08-09,
+CLAUDE.md § Werkwijze): productie alleen via de bestaande Cloud Run-service (routes) of read-only scripts via Cloud Shell — nooit
+een lokale backend of ad-hoc proces tegen de productiedatabase.** Voor dit blok betekent dat: de eenmalige rij loopt als
+`gcloud run jobs execute` op de gedeployde job-image (bestaande Cloud Run-job, zelfde CLI-entrypoint als de andere backfills), en
+dus pas NÁ de deploy van deze commit — niet in de nachtrun zelf.
+
+**Pre-feature-check.** "INTERCOMPANY SLAAT KLANT-ACCORDERING OVER" (leesbron `doorbelasting/intercompany.py`, tabel
+`intercompany_tegenpartij` 0045, bron-kolom default `doorbelasting_mapping`), "KEMPEN-DOORBELASTING" blok 2 (mapping onderhoudt
+bron-/doel-kant; `actief=False` i.p.v. delete), "INSTELLINGEN V3" (tabs + registry fail-closed: één tab-entry per tab — de
+instelling krijgt daarom SYNONIEMEN op de bestaande `tab-accordering`-entry, geen tweede entry), rollen-gate (router-breed
+`vereis_kantoorrol`, schrijven `require_beheerder`, sweep). Geen conflict; geen tweede bron: instelling en mapping schrijven en
+lezen dezelfde tabel, onderscheid = kolom `bron`.
+
+**UX-review (bestaande IA, geen mockup nodig).** Nieuw blok onderaan de bestaande tab Klant-accordering van de detailpagina (alleen
+daar — de kantoorbrede sectie Klant-accordering toont het niet, dat zouden N blokken worden): uitleg, lijst gemarkeerde leveranciers
+mét herkomst-chip (`handmatig` = verwijder-kruisje; `doorbelasting` = alleen-lezen, tooltip "volgt de mapping, tab Doorbelasting"),
+doorzoekbare crediteur-combobox (bestaand `SearchableCombobox`-patroon, al gemarkeerde crediteuren en naamloze cache-rijen
+uitgefilterd) + optioneel reden-veld + knop "Markeren als intercompany"; uitklapbare historie (audit-regels: wie/wanneer/wat/reden).
+Lege stand = uitleg "elke factuur gaat hier gewoon ter accordering".
+
+| Punt | Besluit / gebouwd | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Servicelaag | `intercompany_beheer.py`: `lijst_…` (actieve rijen beide herkomsten), `historie_…` (audit-spoor tabel × administratie, join actor-naam, nieuwste eerst, max 25), `markeer_…` (crediteur moet in `vendor_cache` van déze administratie staan → anders `CrediteurOnbekend`; nieuwe rij `bron='handmatig'`; inactieve rij heractiveren = bron wisselt naar handmatig; al actieve mapping-rij blijft mapping; idempotent; élke aanroep audit `intercompany_leverancier_gewijzigd` oud→nieuw mét `reden`), `verwijder_…` (`actief=False`, nooit delete; mapping-rij → `RijUitDoorbelasting`). `scoped_session(administratie, actor)`. | GEBOUWD + GETEST | `backend/app/doorbelasting/intercompany_beheer.py`; `tests/doorbelasting/test_intercompany_beheer.py` |
+| Routes | `GET /administraties/{id}/intercompany-leveranciers` (kantoorrol mét scope; `leveranciers` + `historie`), `PUT …/{vendor_id}` (Beheerder; body optioneel `{reden}`; 404 onbekende crediteur), `DELETE …/{vendor_id}` (Beheerder; 409 mapping-rij, 404 niet gemarkeerd). Router doorbelasting (eigenaar van de tabel), router-brede `vereis_kantoorrol` → accordeur/veldrollen 403; rol-gate-sweep groen. | GEBOUWD + GETEST | `backend/app/doorbelasting/router.py`, `schemas.py`; `tests/security/test_rol_endpoint_gates.py` |
+| Leesbron-effect | Markeren via de instelling maakt de crediteur direct "leverancier met IC-vlag" voor de klant-accordering (poort open, DTO-reden, geen ronde) én het bank-afletteren (open posten nooit doel); verwijderen zet de gewone flow terug. Gouden set casus (o). | GEBOUWD + GETEST | `tests/keten/test_o_intercompany_instelling.py`; `tests/doorbelasting/test_intercompany_beheer.py::TestServicelaag` |
+| CLI | `intercompany-leverancier-markeren --administratie <uuid\|naam> --crediteur <guid\|naam> --actor-email <beheerder> --reden "…" [--dry-run] [--verwijderen]` — dezelfde servicelaag; actor moet een bestaande Beheerder zijn (exit 2), crediteur uniek in de cache (exit 2), dry-run schrijft niets; print de stand ná de mutatie. | GEBOUWD + GETEST | `backend/app/cli.py::_intercompany_leverancier_markeren`; `tests/doorbelasting/test_intercompany_beheer.py::TestCli` |
+| Frontend | `IntercompanyLeveranciers.tsx` in de tab Klant-accordering van de detailpagina (via `AccorderingInstellingen` bij precies één administratie); API in `accorderingApi.ts`; registry: synoniemen `intercompany`, `groepsbedrijf`, `ic-leverancier`, `overslaan` op `tab-accordering` (guard "één entry per tab" blijft). | GEBOUWD + GETEST (vitest 2, registry-guard groen, tsc -b groen) | `frontend/src/instellingen/IntercompanyLeveranciers.tsx` (+ `.test.tsx`), `AccorderingInstellingen.tsx`, `instellingenRegistry.ts` |
+| **Blok 2 — eenmalige rij Universal Nederland → Universal Steigerbouw (productie)** | Uitvoering NÁ de deploy van deze commit (job-image draagt de CLI), conform de nieuwe productie-regel: (1) dry-run `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --args="-m,app.cli,intercompany-leverancier-markeren,--administratie,Universal Steigerbouw B.V.,--crediteur,Universal Nederland B.V.,--actor-email,p.nijenhuis@kempengroep.nl,--reden,besluit 08-09 intercompany Universal,--dry-run" --wait` → log toont "DRY   markeren: Universal Nederland B.V. (‹guid›) in Universal Steigerbouw B.V. (‹uuid›) … nu niet intercompany"; bij ≠ 1 treffer op naam de GUID uit de dry-run-melding gebruiken; (2) zelfde commando zonder `--dry-run` → "OK    intercompany-leveranciers in Universal Steigerbouw B.V. nu: Universal Nederland B.V. [handmatig]". **Meetrecept:** (a) live GET = Instellingen › Administraties › Universal Steigerbouw › Klant-accordering toont de rij mét chip `handmatig` en historie "P. Nijenhuis: … gemarkeerd … besluit 08-09 intercompany Universal"; (b) een open Universal-Nederland-document in Steigerbouw openen → controlescherm toont hint `intercompany` en knop "Boeken in RLZ ✓" (niet "Ter accordering"), documentenlijst groep kantoor; ná boeken: tijdlijn "Intercompany — klant-accordering overgeslagen (leveranciersregel)", 0 rondes; (c) is er geen open document: alleen (a) + eerstvolgende Universal-Nederland-intake volgen. Script met beide commando's: `scripts/gcp/intercompany_universal_08-09.sh`. | **VOORBEREID — uitvoering ná deploy (werkt in productie: nog niet gemeten)** | `scripts/gcp/intercompany_universal_08-09.sh`; deze rij |
+| Beslispunten 2–4 van de sectie hierboven | Ongewijzigd open (lopende ronde blijft leidend; zoeken zonder rij; geen dagteller). | open | — |
 
 ## AUTOMATISERINGS-TELLERS WEG VAN HET WERKSCHERM (bundel 08-09 avond blok 5; feedback Peter 08-09 "wat moet ik hiermee"; geen migratie)
 

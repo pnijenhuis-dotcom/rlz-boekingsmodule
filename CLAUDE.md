@@ -391,6 +391,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   "ANDROID-BOUWRONDE 28-08", "PLAY-NAZORG 30-08", "STORE-LINK-NAZORG", "ACCORDEUR-NOTIFICATIES",
   "NIEUWE-FACTUREN-BUNDELMELDING", "APPLE REVIEW 2.1"; `verkenning/17_NATIVE_STORE_APP_ACCORDEUR.md`.
 - **Intercompany slaat klant-accordering over (blok 4 bundel 08-09 avond, besluit Peter 08-09; geen migratie):** leverancier met IC-vlag (actieve rij in `intercompany_tegenpartij` van de ADMINISTRATIE VAN HET DOCUMENT — één leesbron `app/doorbelasting/intercompany.py`, ook voor bank) in een administratie mét klant-accordering → zelfde flow, géén ronde, direct de boekstap (handmatig én autoboek), tijdlijn + audit "intercompany — klant-accordering overgeslagen (leveranciersregel)", DTO-veld `accordering_overgeslagen_reden`, knop "Boeken", historie "overgeslagen — intercompany"; lege IC-tabel = gewone flow; een lopende ronde blijft leidend — zie BESLISSINGEN "INTERCOMPANY SLAAT KLANT-ACCORDERING OVER".
+- **Intercompany-leveranciers instelbaar (nachtrun 08/09-09, besluit Peter op beslispunt 1; geen migratie):** Beheerder-blok "Intercompany — accordering overslaan" op Instellingen › Administraties › ‹BV› › Klant-accordering (crediteur-combobox, herkomst-chip `handmatig`/`doorbelasting`, verwijderen = `actief=False`, audit + historie), routes `…/intercompany-leveranciers`, CLI `intercompany-leverancier-markeren`; eenmalige rij Universal Nederland → Universal Steigerbouw ná deploy via Cloud Run-job — zie BESLISSINGEN "INTERCOMPANY-LEVERANCIERS INSTELBAAR + EENMALIGE RIJ UNIVERSAL".
 - **Google Play-afwijzing 07-09 (blok PLAY):** wortel ≠ Apple — reviewers logden in en strandden op de passkey-registratie (kale emulator zonder Google-account: "No create options available"); reviewer-instructies voor beide stores in `native/PLAY_DRAAIBOEK.md` §10–11 + `TESTFLIGHT_DRAAIBOEK.md` §1 — zie BESLISSINGEN "GOOGLE PLAY AFWIJZING 07-09".
 - **Docs-nazorg store-draaiboeken 08-09 (blok 8 bundel 08-09):** eerstvolgende iOS-build = 89 (Xcode Cloud telt per push), resubmit via "Update Review" op de versiepagina, interne testers = ASC-teamleden, Play-veld "Andere informatie" ≤ 500 tekens, dode kolom `duplicaat_autoafvoer_ingeschakeld` = vervallen (geen drop) — zie BESLISSINGEN "FIXRUN 08-09 — BLOK 8: DOCS-NAZORG".
 - **Projecten** (module, zichtbaar per rol + per administratie-toggle): project verplicht = hard
@@ -585,6 +586,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   te wachten; de Stop-hook pusht daarna beide repo's. **Uitzondering:** zegt een opdracht
   expliciet "niet committen, eerst review", dan wordt er niet gecommit en stopt de run voor
   review. Force-push blijft verboden.
+- **Productie alleen via de bestaande Cloud Run-service of read-only scripts via Cloud Shell (regel Peter 08-09,
+  nachtrun 08/09-09 — bindend):** nooit een lokale backend of ad-hoc proces (ook geen lokale CLI over de Auth Proxy)
+  tegen de productiedatabase starten. Schrijvende nazorg/backfills lopen als `gcloud run jobs execute <bestaande job>
+  --args="-m,app.cli,<commando>,…"` op de gedeployde job-image (dus ná de deploy van de commit die het commando
+  draagt), lezen via de routes van de service of read-only in Cloud Shell. Een run die productie moet raken vóór de
+  deploy is er niet: voorbereiden, meetrecept noteren, uitvoeren ná deploy.
 - **Bash-commando's: absolute paden, geen cd-kettingen met relatieve reads (afspraak Peter
   03-09, herhaalde permission-prompts).** Er staat een Read-deny op secret-bestanden; een
   samengesteld commando met `cd` + relatieve bestandsreads kan niet automatisch getoetst
