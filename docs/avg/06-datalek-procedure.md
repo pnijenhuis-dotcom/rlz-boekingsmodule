@@ -6,6 +6,8 @@
 > **Bijgewerkt 2026-08-19:** §5 op de PDL-keten (document 7, Bijlage B) — subverwerkers
 > melden aan PDL, PDL informeert het kantoor uiterlijk binnen 24 uur (artikel 9 van de
 > verwerkersovereenkomst).
+> **Bijgewerkt 2026-09-08 (ná het jurist-akkoord; besluit 0029):** §1 noemt het app-toegangsmodel (toestelbinding +
+> toegangscode, geen passkey/wachtwoord meer in de app); kantoor-web ongewijzigd. Procedure zelf ongewijzigd.
 
 ## 1. Wat is een datalek (werkdefinitie)
 
@@ -13,7 +15,9 @@ Elke inbreuk op de beveiliging die per ongeluk of onrechtmatig leidt tot verniet
 wijziging, of ongeoorloofde verstrekking van of toegang tot persoonsgegevens. Voorbeelden in
 onze context: een verkeerd geadresseerde e-mail met factuurbijlagen, een kwijtgeraakte/gestolen
 (ontgrendelde) telefoon of laptop met toegang, een gecompromitteerd account (ondanks
-2FA/passkeys), onbevoegde toegang tot een administratie door een scoping-fout, een inbraak bij
+2FA/passkeys op de kantoor-webapp; in de app sinds 08-09 toestelbinding + toegangscode — een kwijtgeraakt
+toestel is dáár het relevante scenario: kantoor trekt het toestel in via /gebruikers, de app wist zichzelf ná 5 foute
+codes), onbevoegde toegang tot een administratie door een scoping-fout, een inbraak bij
 een (sub)verwerker in de keten (PDL, Anthropic, Google, Exact), of ransomware op een
 kantoormachine.
 

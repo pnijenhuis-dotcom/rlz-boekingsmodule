@@ -64,7 +64,7 @@ Kolom "geïnformeerd" is de logplek voor doc 11 (datum/kanaal) — leeg tot verz
 | A.Y. Holding 2 B.V. | Holding (geen facturatiemodule) | D | AAN | AAN | | | ☐ |
 | Zilver Beheer B.V. | Beheer/holding | D | AAN | AAN | | | ☐ |
 | Administratiekantoor Nijenhuis C.V. | Eigen kantoor-administratie | E (D) | AAN | AAN | kantoorfacturen kunnen klantnamen dragen; geen aanvullende afspraak nodig (eigen entiteit) | n.v.t. | ☐ |
-| Test-administratie (passkey-test) | Seed, `rlz_admin_id = SEED-PASSKEYTEST` | E | AAN | **UIT** | geen echte data; gate uit = hygiëne (geen calls, geen ruis in de kostenmeter) | n.v.t. | ☐ |
+| Test-administratie (review-demo; historische seed-naam "passkey-test" — de app kent sinds 08-09 geen passkeys meer, besluit 0029) | Seed, `rlz_admin_id = SEED-PASSKEYTEST` | E | AAN | **UIT** | geen echte data; gate uit = hygiëne (geen calls, geen ruis in de kostenmeter) | n.v.t. | ☐ |
 | Administratiekantoor Nijenhuis (test) | Gearchiveerd 30-08 | E | UIT | UIT | al uit; gearchiveerd | n.v.t. | — |
 
 Telling voorstel (02-09 ochtend): 2× UIT tot bevestiging (A?), 1× UIT (test-seed), 27× AAN, 1×

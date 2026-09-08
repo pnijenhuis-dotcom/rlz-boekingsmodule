@@ -2,6 +2,11 @@
 
 > ✅ **Getoetst — jurist-akkoord 2026-08-12** (intern opgesteld, juridische toetsing afgerond
 > — zie `docs/BESLISSINGEN.md` "AVG-compliance"); sindsdien de operationele leidraad.
+> **Herziening 2026-09-08 (ná het jurist-akkoord; besluit Peter 08-09, platformbesluit 0029):** de accordeur-/veldwerker-app
+> (native + PWA) logt niet meer in met passkey/Face ID/wachtwoord maar met **toestelbinding + 5-cijferige toegangscode**
+> (activatie via link óf activatiecode uit de uitnodigingsmail; biometrie = optioneel lokaal gemak, standaard uit). De
+> kantoor-webapp is ongewijzigd (passkeys eerst, wachtwoord + TOTP terugval). Gevolgen voor dit document staan als
+> datumnoten 08-09 bij de betreffende passages; de akkoordtekst (bijlage A) krijgt een nieuwe tekstversie — klikpunt.
 > Harde regel (besluit Peter 2026-08-11): dit pakket is de poort vóór AI op echte klantdata
 > en vóór klantdata in de cloud. Een gate gaat pas AAN als alle vinkjes van zijn stap staan.
 > **Bijgewerkt 2026-08-19:** stap 1 op de PDL-keten (document 7, Bijlage B) — het
@@ -152,6 +157,8 @@ gewicht op de gedocumenteerde waarborgen):
       **opdracht-/gebruiksvoorwaarden + privacyverklaring** en vraagt expliciet akkoord vóór
       het eerste gebruik; het akkoord (wie, wanneer, welke tekstversie) landt in het
       append-only audit log.
+      *(08-09: de flow is nu link/activatiecode → toegangscode → akkoord; de akkoordstap en de server-side
+      fail-closed poorten op wachtrij/akkoord/afwijzen zijn ongewijzigd.)*
 - [x] De **akkoordtekst (bijlage A)** is juridisch getoetst vóórdat de eerste échte
       accordeur live gaat — **gedaan: jurist-akkoord 2026-08-12**.
 
@@ -206,6 +213,15 @@ korting) en zijn zichtbaar voor jou en voor de keurder van het kantoor — verde
 worden even lang bewaard als je weekstaten. Uitzetten kan altijd via de locatie-instelling van je
 telefoon; de controle zwijgt dan.*
 
+> **Datumnoot 08-09 (besluit 0029):** alinea 2 noemt "inloggegevens (wachtwoord versleuteld, eventuele passkey)". Voor
+> app-gebruikers verwerken wij sinds 08-09 **een toestelkoppeling** (apparaat-gebonden toegangssleutel, toestelnaam en
+> -platform) in plaats van wachtwoord/passkey; de 5-cijferige toegangscode blijft op het toestel en wordt níét door ons
+> verwerkt; Face ID/vingerafdruk is optioneel en blijft OS-lokaal. Voorgestelde bewoording voor de eerstvolgende
+> tekstversie: *"inloggegevens (de koppeling van je toestel; voor kantoormedewerkers wachtwoord versleuteld en eventuele
+> passkey)"*. De live akkoordtekst (`2026-08-28-v2`) is NIET gewijzigd — een nieuwe tekstversie vraagt alle gebruikers
+> opnieuw om akkoord en is daarom een klikpunt Peter (+ jurist ter kennisname; inhoudelijk geen nieuwe verwerking, wél
+> een andere/lichtere).
+>
 > Alinea 4 toegevoegd in tekstversie `2026-08-28-v2` (bouwrun 28-08 blok C, mockup
 > `geofence-stempels.html`; jurist akkoord 28-08 — regeling via deze voorwaarden, géén apart
 > instemmingsscherm; het OS toont daarnaast zijn eigen locatie-permissievraag). Bestaande

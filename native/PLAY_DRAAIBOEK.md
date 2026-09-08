@@ -386,6 +386,13 @@ Ná §4 (build via de opt-in-link geïnstalleerd) en §5 (assetlinks + origins l
 
 ## 10. Afwijzing 07-09 — wortel + herstel (Play; zelfde build als de Apple-2.1-afwijzing)
 
+> **Noot 08-09 (besluit Peter 08-09, platformbesluit 0029):** de wortel hieronder — passkey-registratie via Credential Manager,
+> die zonder Google-account (en schermvergrendeling) faalt — is **structureel weg**: de app kent sinds de run van 08-09 geen
+> passkey, wachtwoord of TOTP meer; activeren = activatiecode (of link) → 5-cijferige app-code. Variant A/B/C uit de
+> beslispunten van 07-09 zijn daarmee vervallen (B zat in versionCode 3, is nu uit de bundel). De logtabel en de
+> emulator-reproductie blijven staan als historie. Nieuwe reviewer-instructie: **§11 (herschreven 08-09)**; toestelvereisten
+> vooraf zijn er niet meer. Android-build: `bouw_android_release.sh 4 1.0` ná de commit van 08-09 (TESTFLIGHT §0e).
+
 Play Console wees de ingediende build af met *"Login credentials are incorrect"* (demo-account).
 Apple wees dezelfde dag build 1.0 (44) af op 2.1 (TESTFLIGHT_DRAAIBOEK §0b). **Bij Play is de wortel
 een ándere dan bij Apple** (blok PLAY, fixrun 07-09 — Cloud Logging op `rlz-backend`, auth-routes,
@@ -485,31 +492,32 @@ moet volledig in App access staan.
 
 ## 11. Reviewer-instructie "Sign in details" (Play Console › App content › App access)
 
-Velden: *Instruction name* `Demo-account review` · *Username* `p.nijenhuis+applereview@kempengroep.nl`
-· *Password* `<wachtwoord uit het eindrapport>` · *Any other information* = onderstaande tekst
-(Engels). Stap 1 is bewust "tik Inloggen met wachtwoord": de app opent op het passkey-eerst-scherm
-en een reviewer met alleen gebruikersnaam/wachtwoord loopt daar anders dood.
+**HERSCHREVEN 08-09 (besluit 0029 — geen passkey meer in de app).** Velden: *Instruction name* `Demo-account review` ·
+*Username* `p.nijenhuis+applereview@kempengroep.nl` · *Password* **`<activatiecode uit het eindrapport>`** (de app heeft
+geen wachtwoord meer; het verplichte Password-veld draagt de 8-tekens activatiecode `XXXX-XXXX` — herbruikbaar en
+niet-verlopend voor uitsluitend dit demo-account, gezet met `cloud_seed_review_demo.py --genereer-activatiecode`,
+TESTFLIGHT §0e) · *Any other information* = onderstaande tekst (Engels).
 
-> **Correctie 08-09 (bouwagent BLOK 8):** "Any other information" is in Play Console een veld met
-> een harde limiet van **500 tekens** — de eerder hier vermelde tekst was 1.272 tekens en paste
-> dus NIET (± "1.000 tekens" hierboven was een schatting, geen meting). Onderstaande tekst is
-> ingekort tot **497 tekens** (geteld met Python `len()` op de kale string, incl. spaties/regel-
-> einden, exclusief de code-fence) — dit is de tekst zoals op 07-09 ingediend in Play Console.
-> Dezelfde vijf stappen en dezelfde platform-uitleg blijven inhoudelijk gelijk aan de eerdere,
-> langere versie; alleen de bewoording is compacter. Wijzig je de tekst ooit weer: tel opnieuw
-> vóór het opslaan (`python3 -c "print(len(open('tekst.txt').read()))"` op de kale string).
+> Het veld "Any other information" heeft een harde limiet van **500 tekens** (correctie 08-09 blok 8). Onderstaande tekst is
+> **481 tekens** (geteld met Python `len()` op de kale string, incl. spaties/regeleinden, exclusief de code-fence).
+> Wijzig je de tekst ooit weer: tel opnieuw vóór het opslaan (`python3 -c "print(len(open('tekst.txt').read()))"`).
 
 ```
-Invitation-only app. BEFORE sign-in: set a screen lock + add a Google account — Android creates a passkey via Credential Manager, needing both; without them: "No create options available" (platform, not a defect).
+Invitation-only app. No passkey, Google account, screen lock or password needed.
 
-Steps: 1) Tap "Inloggen met wachtwoord" (below passkey button). 2) Enter e-mail/password, tap Inloggen. 3) Confirm passkey prompt. 4) Choose a 5-digit app code. 5) Approval queue appears; tap invoice, approve/reject.
+Steps: 1) Open the app: screen "Activatiecode invoeren". 2) Enter the activation code given as the password above (8 characters, XXXX-XXXX), tap "Activeren". 3) If a terms screen appears, tick and confirm. 4) Choose a 5-digit app code and repeat it. 5) The approval queue with demo invoices appears; tap an invoice, approve or reject.
 
-If step 3 fails: add Google account + screen lock, retry step 1.
+Code rejected? Mail p.nijenhuis@kempengroep.nl for a fresh one.
 ```
 
-**App Store Connect › App Review Information › Notes** is een ANDER, veel ruimer veld (geen
-500-tekens-limiet) en draagt daarom de volledige, uitgeschreven iOS-tekst — zie
-**TESTFLIGHT_DRAAIBOEK.md §1 stap 6**. De twee teksten zijn dus bewust niet meer letterlijk
-gelijk (Play kort, ASC uitgebreid); beide vormen samen de reviewnotities van 07-09 en dragen
-dezelfde kernboodschap (toestelvereisten vóór de eerste login, dezelfde vijf stappen) — wijzig ze
-samen als de flow verandert.
+**App Store Connect › App Review Information › Notes** is een ANDER, veel ruimer veld en draagt de volledige, uitgeschreven
+iOS-tekst — zie **TESTFLIGHT_DRAAIBOEK.md §1 stap 6 (herschreven 08-09)**. Beide teksten dragen dezelfde kernboodschap
+(geen toestelvereisten meer; activatiecode → app-code → wachtrij) — wijzig ze samen als de flow verandert.
+
+**Klikwerk Peter (Play Console, ná deploy + seed + AAB versionCode 4 op de interne test-track):** Policy → App content → App
+access → *Demo-account review* bewerken: Password = activatiecode, "Any other information" = de tekst hierboven → Save →
+release opnieuw ter review (**Publishing overview → Send changes for review**). Play kent geen reply-kanaal; de uitleg moet
+volledig in App access staan.
+
+> Historische versie van §11 (07-09: "tik Inloggen met wachtwoord", toestelvereisten schermvergrendeling + Google-account,
+> 497 tekens): vervangen op 08-09; niet meer indienen. De emulator-reproductie in §10 blijft de bron voor de oude wortel.

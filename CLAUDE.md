@@ -76,23 +76,20 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   `boekhouding` (deze module). Vastgoedmodule krijgt `vastgoed`, MI-dashboard later `mi`.
 - Auth: e-mailuitnodiging (eenmalige link 72 u) + wachtwoord + **TOTP-2FA verplicht**, JWT-sessies.
   Rollen: Beheerder / Boekhouding+Projecten / Boekhouding / Klant-accordeur (scope: eigen administratie).
-  **Uitzondering klant-accordeur (besluit + gebouwd 2026-08-11, migratie 0040): passkey/WebAuthn
-  i.p.v. TOTP** — publieke sleutel per gebruiker+apparaat (py_webauthn), volledige login alleen
-  bij eerste gebruik / nieuw apparaat / ná 7 dagen inactiviteit (sliding 7-dagen-refresh-TTL),
-  passkey-assertion bij app-opening — **sinds 27-08 HOOGUIT 1× per 24 uur per apparaat
-  (besluit Peter, server-side venster op `webauthn_credential.laatst_gebruikt_op`, veld
-  `ontgrendeling_nodig` op de stille refresh; geen migratie — BESLISSINGEN "VERZAMELRUN 27-08"
-  punt 3)**, GEEN biometrie per actie; kantoor-kill-switch per
-  apparaat (bijt per request + bij rotatie + bij assertion); dev-stub `auth_biometrie_dev_stub`
-  voor LAN-kliktests (WebAuthn vereist https/localhost), hard onwerkzaam buiten dev. Zie
-  BESLISSINGEN "Accordeur-PWA + auth-cadans — GEBOUWD". Verder (volledige tekst: archief "Auth"): Wachtwoord
-  kwijt = Beheerder-knop "Herstel-link sturen", bewust géén selfservice "wachtwoord vergeten" ("RLZ-FEEDBACKRONDE
+  **App-auth zonder passkey (besluit Peter 08-09, platformbesluit 0029 = amendement op 0020; migratie 0125): native
+  accordeur-/veldwerker-app + accordeur-PWA = toestelbinding (apparaat-gebonden token, rij `webauthn_credential`
+  `soort='toestel'`, kill-switch per toestel, 7-dagen sliding TTL) + 5-cijferige toegangscode (lokaal anker, nooit
+  server-side); activatie via universal link óf 8-tekens activatiecode uit dezelfde uitnodigingsmail; passkey/TOTP/
+  wachtwoord uit de app; legacy-app-routes `Deprecation`/`Sunset`, 410 ná 2026-10-08; kantoor-web ongewijzigd (0020)
+  — zie BESLISSINGEN "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE (besluit Peter 08-09)". Historie
+  accordeur-passkeys (2026-08-11, migratie 0040), 24-uurs-cadans 27-08 en pincode-activatie 31-08: archief "Auth"
+  (aanvulling 08-09).** Verder (volledige tekst: archief "Auth"): Wachtwoord kwijt = Beheerder-knop "Herstel-link
+  sturen" (app-rollen sinds 08-09 mét activatiecode), bewust géén selfservice "wachtwoord vergeten" ("RLZ-FEEDBACKRONDE
   25-08 DEEL 2" punt 7); E-mail wijzigen zonder carrousel ("OPRUIMRUN 28-08" punt 22); activatie externe rollen
-  MOBIEL-FIRST + ATOMAIR ("BOUWRUN 28-08 AVOND" blok B, géén eigen push-login); PINCODE-ACTIVATIE + APP-LOCK
-  NATIVE APP (besluit Peter 31-08, herziet de 28-08-flow UITSLUITEND voor de native app — "PINCODE-ACTIVATIE +
-  APP-LOCK"); **Platformbesluit 0020 (2026-08-14): passkeys worden de EERSTE authenticatielijn voor álle
-  rollen; wachtwoord + TOTP wordt terugval/herstel**; kantoor-passkeys GEBOUWD + GETEST 2026-08-15
-  ("KANTOOR-PASSKEYS").
+  MOBIEL-FIRST + ATOMAIR ("BOUWRUN 28-08 AVOND" blok B, géén eigen push-login; de telefoonroute mondt sinds 08-09 uit in
+  de app-activatie); **Platformbesluit 0020 (2026-08-14): passkeys worden de EERSTE authenticatielijn voor álle
+  rollen; wachtwoord + TOTP wordt terugval/herstel — sinds 0029 alleen nog voor de kantoor-web**; kantoor-passkeys
+  GEBOUWD + GETEST 2026-08-15 ("KANTOOR-PASSKEYS").
 - **Autorisatie (hard, bevestigd 2026-07-06):** klanten-scope per medewerker via koppeltabel
   gebruiker↔administraties, afgedwongen door RLS (DB-niveau) + server-side checks — geen scope =
   geen data, ook niet via bugs in de app-laag. Rol- en scope-wijzigingen exclusief door de

@@ -33,6 +33,8 @@
 | P-20 | Intake-diagnose 02-09 punt 2 (UBL+PDF-paren bundelen + handmatige samenvoeg-actie) en punt 3 (afzender-leren begrenzen op kantoor-/doorstuuradressen) — aparte run ná beoordeling | 2026-09-02 | regel 1181 |
 | P-21 | Open AVG-stap-1-restpunten (ZDR-besluit, model-check, klantinformatie, gevoelige administraties) terwijl de AI-gate live AAN staat — klikpunt Peter | 2026-09-02 | regel 1213 |
 | P-22 | Openstaande review-/browserchecks Peter: Vastly-verkoopfactuur-boekpad (sinds 09-08), e-mail-intake + verzamelbak en omzetmodule (sinds 07-08), responsive-fix controlescherm (sinds 15-07), zoeken + archief (09-08) | 2026-07/08 | regel 69 |
+| P-23 | Sunset legacy-app-auth-routes (accordeur-login, accordeur-passkey-login, webauthn-registratie/-login voor app-rollen, ontgrendel-opties, activatie-zonder-wachtwoord): nu `Deprecation`/`Sunset`-headers en 410 ná **2026-10-08**; fysiek verwijderen + rol-gate-matrix bijwerken + ActivateScreen-terugval flow `"passkey"` opruimen = aparte run ná die datum | 2026-09-08 | sectie "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE (besluit Peter 08-09)", alinea Parkeerposten |
+| P-24 | Native plugin `NatievePasskey` (Swift/Java) uit de Capacitor-schil opruimen — bewust niet in de run van 08-09 (Xcode-Cloud-risico), samen met P-23 | 2026-09-08 | zelfde sectie, alinea Parkeerposten |
 
 Cross-project parkeerposten staan niet hier maar in `Platform/OPEN_ITEMS.md` (o.a. `--verwacht-productie`-vlag/
 omgevingsbanner, EU-verwerkingsroute Claude, schematron/BR-NL-10-status 02-09).

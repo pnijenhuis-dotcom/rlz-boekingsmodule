@@ -6,6 +6,30 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-08 — Inloggen in de app is eenvoudiger geworden
+
+<!-- app-auth-zonder-passkey-08-09 blok C -->
+- De goedkeur-app (iPhone, Android én de webversie op je telefoon) vraagt geen passkey, Face ID of wachtwoord meer om in te loggen. Je activeert de app één keer op je eigen toestel en kiest een 5-cijferige code; daarna opent de app met die code.
+- Activeren gaat met de link uit de uitnodigingsmail van het kantoor, of — als de link niet opent of je op een ander toestel zit — met de activatiecode die in dezelfde mail staat (acht tekens, bijvoorbeeld ABCD-2345). De code is 72 uur geldig en werkt één keer.
+- Face ID of vingerafdruk blijft mogelijk als gemak: zet het aan onder ⚙ Toegang tot de app. De code werkt altijd, ook als de herkenning een keer niet lukt.
+- Onder ⚙ Toegang tot de app kun je je code wijzigen (met je huidige code) en dit toestel loskoppelen. Je ziet daar ook wanneer je de code voor het laatst hebt gewijzigd.
+- Vijf keer een verkeerde code: de app wist de toegang op dit toestel en meldt dat bij het kantoor. Opnieuw activeren kan met een nieuwe uitnodiging; de knop "Kantoor vragen om nieuwe uitnodiging" staat in het scherm.
+- Kantoor: na "Uitnodigen", "Opnieuw mailen" of "Herstel-link sturen" voor een app-gebruiker staat de activatiecode naast de link, met een kopieerknop. Bij Gebruikers zie je gekoppelde toestellen ("Toestel · iPhone van Jan") en kun je een toestel intrekken; oude passkeys staan er grijs bij als "niet meer gebruikt".
+- Wie de app al gebruikt, hoeft niets te doen zolang de huidige toegang loopt; is die verlopen, dan vraagt de app één keer om opnieuw te activeren met een nieuwe uitnodiging van het kantoor.
+- De kantoor-webapp verandert niet: daar log je in zoals je gewend bent (passkey, of wachtwoord met verificatiecode).
+- Een activatiecode kan niet worden geraden: na vijf mislukte pogingen (per uitnodiging én per netwerkadres) blokkeert het activeren een uur, en het kantoor kan altijd een nieuwe uitnodiging sturen.
+- Een toestel opnieuw koppelen (bijvoorbeeld ná een nieuwe telefoon of vijf keer een foute toegangscode) gaat via de bekende herstel-link van het kantoor; oude toestellen worden daarbij automatisch losgekoppeld.
+- De oude inlogroutes van de app (passkey en wachtwoord) blijven tot 8 oktober 2026 werken voor wie de app nog niet heeft bijgewerkt; daarna geven ze een duidelijke melding om de app te activeren met de activatiecode.
+- Ook in de browser-versie (app op het beginscherm). De browser-versie werkt nu precies zoals de app uit de App Store / Google Play: activeren met code of link, daarna je toegangscode. Gebruikte je de browser-versie al? Dan vraag je het kantoor één keer om een nieuwe uitnodiging.
+- Toegang verlopen of ingetrokken? Dan zie je het activatiescherm met een melding en de knop "Kantoor vragen om nieuwe uitnodiging" — één tik, het kantoor weet het.
+- Uitloggen-knop = de app op slot. Het toestel blijft gekoppeld; bij de volgende keer openen voer je je toegangscode in. Echt loskoppelen doe je via ⚙ Toegang tot de app.
+<!-- app-auth-zonder-passkey-08-09 blok D (kantoor) -->
+- **Activatiecode bij elke app-uitnodiging.** Nodigt u een accordeur of veldwerker uit, mailt u een uitnodiging opnieuw of stuurt u een herstel-link, dan ziet u naast de link nu ook de activatiecode (bijvoorbeeld `K7PQ-3WXM`) met een knop "Kopiëren". Die code staat ook in de mail en is bedoeld voor wie de link niet kan openen of op een ander toestel wil activeren; hij is even lang geldig als de link (72 uur) en eenmalig te gebruiken. Kantoormedewerkers krijgen geen code — voor hen verandert er niets.
+- **Apparatenlijst toont toestellen.** Bij klant-accordeurs (Gebruikers & toegang en Instellingen › Klant-accordering) ziet u per gekoppeld toestel de naam, het platform (iOS/Android/browser), wanneer het gekoppeld is en wanneer het voor het laatst gebruikt is. Een oude passkey die niet meer in gebruik is, blijft grijs zichtbaar met de aanduiding "passkey — niet meer gebruikt" — er verdwijnt niets.
+- **Kill-switch werkt voor toestellen én passkeys.** "Kill-switch" en "Toegang intrekken" blokkeren een toestel per direct, met dezelfde bevestiging als voorheen. De gebruiker kan daarna alleen verder met een nieuwe uitnodiging of herstel-link.
+- **Activatiepagina zonder passkey-uitleg.** Opent een accordeur of veldwerker de uitnodigingslink op een pc, dan ziet hij een QR-code voor zijn telefoon en de tip om anders de activatiecode uit de mail in de app in te voeren. Op een telefoon gaat de link direct door naar de app. Voor kantoormedewerkers blijft de activatie (wachtwoord + tweede factor) precies zoals die was.
+
+
 ## 2026-09-08 — Basis eerst: UBL direct gevuld, lijst = kantoorwerk, duplicaten en verlegd-btw deterministisch
 
 <!-- herstelrun-basis-eerst-08-09 -->

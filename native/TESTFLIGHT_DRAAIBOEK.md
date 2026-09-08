@@ -233,6 +233,68 @@ PLAY_DRAAIBOEK §3 (versionCode 3).
   Android: AAB `native/android/app/release/nijenhuis-goedkeuren-1.0-vc4-20260908-1536.aab` (gitignored, versionCode 4,
   upload-key-signatuur ✓, bundletool ✓) — uploaden op de interne test-track (PLAY §4), niets ingediend.
 
+### 0e. Nieuwe reviewflow 08-09 (geen passkey): activatiecode (besluit Peter 08-09, platformbesluit 0029)
+
+**Wat er veranderd is:** de app kent sinds de run van 08-09 nog één toegangspad — **activatiecode (of universal link) →
+5-cijferige app-code → wachtrij**. Passkey, wachtwoord en TOTP zijn uit de app; de kantoor-webapp is ongewijzigd. De wortel
+van beide store-afwijzingen (passkey-registratie zonder iCloud-sleutelhanger / Google-account, §0b–§0d) bestaat daarmee
+structureel niet meer: de reviewer heeft **géén** iCloud-sleutelhanger, toegangscode-instelling of Google-account nodig.
+Canoniek: `docs/BESLISSINGEN.md` "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE (besluit Peter 08-09)".
+
+**Demo-account (§0 blijft: zelfde adres, zelfde administratie SEED-PASSKEYTEST met uitsluitend fictieve facturen, twee lagen):**
+het review-account krijgt één **herbruikbare, niet-verlopende activatiecode** (uitsluitend dit ene account; server toetst het
+adres) — de reviewer kan de app dus op meerdere toestellen en meerdere keren activeren. Klaarzetten ná de deploy van 08-09
+(zelfde proxy-opzet als §0):
+
+```bash
+cloud-sql-proxy rlz-boekhouding:europe-west4:rlz-sql2 --port 5434 --gcloud-auth &
+cd backend
+APP_DATABASE_URL="postgresql+psycopg://boekhouding_app:\
+$(gcloud secrets versions access latest --secret=APP_DB_PASSWORD)@127.0.0.1:5434/boekhouding" \
+DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten \
+    .venv/bin/python scripts/cloud_seed_review_demo.py --genereer-activatiecode
+```
+
+Het script print de code als `XXXX-XXXX` (alfabet zonder 0/O/1/I) — die gaat 1-op-1 in **App Store Connect › App Review
+Information › Password** én in de Notes (§1 stap 6), en in Play Console › App access (PLAY §11). Eerdere demo-codes
+vervallen bij elke run (één geldige code). De code staat uitsluitend in het eindrapport + beide consoles, nooit in de repo.
+`--genereer-wachtwoord` blijft bestaan voor de kantoor-web-terugval, maar de reviewer heeft het wachtwoord niet meer nodig.
+
+**Verwachte reviewer-ervaring (te toetsen in de iPad-/iPhone-simulator tegen productie vóór het indienen):** app openen →
+scherm "Activatiecode invoeren" → code → "Activeren" → (eventueel voorwaarden-akkoord) → "Welkom, …" code kiezen (5 cijfers,
+2×) → wachtrij met fictieve facturen → PDF → Akkoord/Afwijzen → volgende; app sluiten en openen → code-slot → wachtrij.
+Geen enkele systeemdialoog van iOS (geen passkey-sheet, geen Face ID-vraag tenzij de reviewer die zelf aanzet in ⚙ Toegang).
+
+**Build 90 + versionCode 4 klaarzetten (zelfde stappen als §0c/§0d; NIET indienen, niets gebouwd in de run van 08-09):**
+- iOS: geen pbxproj-bump (`ci_scripts/ci_post_clone.sh` zet `CURRENT_PROJECT_VERSION` uit `CI_BUILD_NUMBER`; repo blijft op
+  `3`, `MARKETING_VERSION` 1.0). De eerstvolgende push naar `main` ná de commit van deze run start Xcode Cloud → mail
+  "processing completed" noemt het echte nummer (verwacht **90** — lees het live af, zie de correctie in §0c). Kliktest: TestFlight
+  → die build op het eigen toestel → Toegang › Diagnose toont `app 1.0 (90)` → verse activatie met een verse uitnodiging → code →
+  wachtrij → sluiten/openen → slot → 5× fout → "Kantoor vragen om nieuwe uitnodiging" → nieuwe uitnodiging → opnieuw activeren.
+- Android: de AAB `nijenhuis-goedkeuren-1.0-vc4-20260908-1536.aab` (§0d) is van vóór deze run en bevat de nieuwe activatieflow
+  NIET. Opnieuw bouwen ná de commit: `native/scripts/bouw_android_release.sh 4 1.0` (JAVA_HOME/ANDROID_HOME per shell,
+  keystore.properties aanwezig — PLAY §1–§3); versionCode 4 mag hergebruikt worden zolang vc4 nog niet naar Play is geüpload,
+  anders 5. Upload op de interne test-track (PLAY §4) → zelfde kliktest → dan App access (§11) + review.
+- Dán pas: build 90 aan versie 1.0 koppelen in App Store Connect, App Review Information bijwerken (Password = activatiecode,
+  Notes = §1 stap 6), Resolution Center-reply (concept hieronder) en **"Update Review"** op de versiepagina (§0b-kader).
+
+**Concept-reply App Store Connect (Resolution Center, Engels, kort — vervangt de reply in §0b):**
+
+```
+Thank you for the review. We investigated the failed sign-ins on the test devices: the sign-in required a passkey to be
+created on the device, which iOS cannot do without iCloud Keychain. We have removed that requirement. The app now
+activates with a one-time activation code and a 5-digit app code — no passkey, keychain, password or Google account
+is needed. Build 1.0 (90) contains this change.
+
+Updated demo access (also updated in App Review Information):
+Email: p.nijenhuis+applereview@kempengroep.nl
+Activation code (enter this in the "Password" field / in the app): <uit het eindrapport>
+
+Steps: open the app → enter the activation code → tap "Activeren" → choose a 5-digit app code (twice) → the approval
+queue with demonstration invoices appears. On later launches the app asks only for the 5-digit code.
+```
+
+
 ## 1. App-registratie in App Store Connect (A4)
 
 Vooraf: door de kliktest-builds met "automatically manage signing" bestaat het App ID
@@ -267,11 +329,12 @@ Associated Domains en Push Notifications. Controleer dat eerst:
      tracking; Usage Data/Diagnostics: niet verzameld) → Publish.
 5. **Pricing and Availability**: Price **0** (gratis); Availability: alleen **Nederland**
    volstaat (intern gebruik; meer landen mag).
-6. **App Review Information** (staat op de versiepagina onderaan, zie stap 3 hierna):
+6. **App Review Information** (staat op de versiepagina onderaan, zie stap 3 hierna) — **HERSCHREVEN 08-09 (§0e):**
    - Sign-in required: **aanvinken** → Username `p.nijenhuis+applereview@kempengroep.nl`,
-     Password: het review-wachtwoord uit §0.
+     Password: **de ACTIVATIECODE uit het eindrapport** (`XXXX-XXXX`; er is geen wachtwoord meer in de app-flow — het
+     Password-veld is verplicht in App Store Connect en draagt daarom de code; de Notes leggen dat uit).
    - Contact: jouw naam + telefoonnummer + p.nijenhuis@kempengroep.nl.
-   - Notes: onderstaande Engelse tekst (aanvullen met het wachtwoord):
+   - Notes: onderstaande Engelse tekst (aanvullen met de activatiecode):
 
 ```
 Invitation-only business app for clients of Dutch accounting firm Administratiekantoor
@@ -280,41 +343,41 @@ approve or reject them. There is no open registration.
 
 Demo account (demo administration, contains FICTITIOUS demonstration invoices only):
 - Email: p.nijenhuis+applereview@kempengroep.nl
-- Password: <wachtwoord uit het eindrapport>
+- Activation code: <activatiecode uit het eindrapport>  (this is the value in the "Password"
+  field above — the app has no password sign-in; it is activated once per device with this code)
 
-IMPORTANT — device prerequisites for the first sign-in:
-- The first sign-in registers a passkey on the review device through the operating system's
-  standard passkey flow (Apple: ASAuthorizationController). This requires a device passcode
-  and iCloud Keychain (Passwords) to be enabled and signed in on the test device. Without them
-  iOS cannot store the passkey and the sign-in cannot complete; this is platform behaviour, not
-  an app defect. Face ID / Touch ID is optional (the device passcode also works).
+No device prerequisites: the app does NOT use passkeys, iCloud Keychain, a device passcode or
+Face ID for sign-in. The demo activation code can be used on several devices and more than once.
 
-Sign-in steps (verified end to end on an iPad Air 11-inch against our production backend):
-1. Open the app. The first screen is the passkey sign-in for returning devices; tap the white
-   button "Inloggen met wachtwoord" (= sign in with password) underneath the green one.
-2. Enter the email and password above and tap "Inloggen".
-3. iOS shows its system passkey sheet ("Een passkey bewaren?" = save a passkey). Confirm with
-   Face ID / Touch ID or the device passcode. If the sheet is dismissed, simply sign in again
-   (steps 1-2).
-4. Choose a 5-digit app code and repeat it. This code unlocks the app on later launches (the
-   app never asks for the password again on this device).
+Sign-in steps (verified end to end against our production backend):
+1. Open the app. The first screen is "Activatiecode invoeren" (= enter activation code).
+2. Enter the activation code above (8 characters, shown as XXXX-XXXX; case does not matter)
+   and tap "Activeren".
+3. If a terms & privacy screen ("Voorwaarden") appears, tick the box and confirm.
+4. Choose a 5-digit app code and repeat it ("Welkom" screen). This code unlocks the app on
+   later launches; the app never asks for a password or passkey.
 5. The approval queue with demonstration invoices appears. Tap an invoice to view the PDF and
    approve ("Akkoord") or reject ("Afwijzen"); the next invoice opens automatically.
 
-If step 3 fails with a passkey error: enable iCloud Keychain (Settings > [Apple ID] > iCloud >
-Passwords & Keychain) and set a device passcode, then repeat from step 1.
+If the app says the code is not valid ("niet (meer) geldig"): contact p.nijenhuis@kempengroep.nl
+and we will issue a fresh code within the hour. Face ID / Touch ID is optional and off by default
+(can be enabled by the user under the gear icon "Toegang tot de app"); the 5-digit code always
+works.
 
 Push notifications: a daily 09:00 reminder and a "new invoices ready for you" message —
 only sent while work is pending. Approving from a notification is deliberately impossible;
-tapping opens the app, which unlocks with the passkey first.
+tapping opens the app, which asks for the 5-digit code first.
 
 Account deletion: accounts exist only by invitation of the accounting firm; deletion /
 anonymization is handled by the firm on request (GDPR process; the approval audit log has a
 7-year statutory retention in the Netherlands). Contact: p.nijenhuis@kempengroep.nl.
 
-The app bundles its assets and uses native passkeys, native push and deep links — it is not
-a wrapper around a website (guideline 4.2).
+The app bundles its assets and uses native secure storage (Keychain), native push and deep
+links — it is not a wrapper around a website (guideline 4.2).
 ```
+
+> Historische versie van deze stap (wachtwoord → passkey-sheet → code; reviewnotities 07-09 mét toestelvereisten
+> iCloud-sleutelhanger/toegangscode): zie §0b/§0d — vervangen op 08-09 door §0e, niet meer indienen.
 
 ## 2. Versiepagina invullen (1.0)
 

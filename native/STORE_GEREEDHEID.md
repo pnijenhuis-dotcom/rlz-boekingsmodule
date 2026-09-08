@@ -44,6 +44,13 @@ code als altijd-werkende terugval (app-lock, lokaal — de code gaat nooit naar 
 Face ID-data blijft op het toestel, raakt de privacy-tabel in §2 dus niet). 5 foute codes =
 toestel uitgelogd; herstel via een nieuwe uitnodigingslink van het kantoor.
 
+> **Herzien 08-09 (besluit Peter 08-09, platformbesluit 0029):** de passkey is uit de app. Auth = e-mailuitnodiging →
+> activatie op dít toestel (universal link óf 8-tekens activatiecode uit dezelfde mail) → 5-cijferige code; daarna opent de
+> app met de code (Face ID/vingerafdruk optioneel, standaard uit, altijd terugval op de code). Toestel = factor 1
+> (apparaat-gebonden token in Keychain/Keystore), code = factor 2 (lokaal, nooit naar de server). Privacy-tabel §2
+> ongewijzigd (toestelnaam/-platform vallen onder "apparaat- en sessiegegevens"). Reviewnotities: TESTFLIGHT §0e/§1 stap 6,
+> PLAY §11 — géén toestelvereisten meer voor reviewers. §4 hieronder beschrijft de oude wachtwoord→passkey-strategie (historie).
+
 ## 2. App Store — privacy nutrition labels (in te vullen in App Store Connect)
 
 | Categorie | Verzameld? | Gekoppeld aan identiteit | Tracking |

@@ -30,6 +30,15 @@
 > en Google Workspace naar de PDL-keten. De teken-docx
 > (`Verwerkersovereenkomst-PDL-definitief-2026-08-18.docx`) is de **schone tekenversie
 > zónder deze statusnoot** (gegenereerd met `--zonder-statusnoot`).
+>
+> **Datumnoot 2026-09-08 (ná het jurist-akkoord 12-08 en de ondertekening 19-08; besluit Peter 08-09, platformbesluit
+> 0029) — geen contractwijziging:** artikel 5 en Bijlage C noemen "tweefactorauthenticatie/passkeys". Dat blijft feitelijk
+> juist voor de kantoor-webapp. Voor de accordeur-/veldwerker-app (native + PWA) geldt sinds 08-09 **toestelbinding +
+> 5-cijferige toegangscode** (bezit van het gekoppelde toestel + kennis van de code = twee factoren; passkey/wachtwoord
+> verdwijnen uit de app). Dit valt onder de generieke maatregel "tweefactorauthenticatie" en verlaagt het
+> beschermingsniveau niet (kill-switch per toestel, 7-dagen sessie-TTL, 5× fout = intrekken, audit — ongewijzigd);
+> de getekende tekst en Bijlage C worden daarom NIET aangepast. Ter kennisname aan de jurist bij de eerstvolgende
+> pakket-herziening; canoniek: RLZ `docs/BESLISSINGEN.md` "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE".
 
 **Partijen**
 
