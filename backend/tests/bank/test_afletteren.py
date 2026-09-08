@@ -148,20 +148,65 @@ def test_opdrachten_voor_rekening_levert_levenscyclus_lijst(
     )
     afletteren.verifieer_openstaande_opdrachten(administratie_id=administratie_id, client=client)
 
-    lijst = afletteren.afletter_opdrachten_voor_rekening(
+    levenscyclus = afletteren.afletter_opdrachten_voor_rekening(
         administratie_id=administratie_id, payment_account_id=rekening
     )
+    lijst = levenscyclus.opdrachten
     assert len(lijst) == 1
     assert lijst[0].opdracht.status == "geverifieerd"
     assert lijst[0].opdracht.geverifieerd_op is not None
     assert lijst[0].tegenpartij_naam == "Testpartij B.V."
+    assert levenscyclus.aantal_oud == 0 and levenscyclus.toon_oud is False  # vers geverifieerd = niet "oud"
     # Andere rekening: leeg.
     assert (
         afletteren.afletter_opdrachten_voor_rekening(
             administratie_id=administratie_id, payment_account_id=uuid.uuid4()
-        )
+        ).opdrachten
         == []
     )
+
+
+def test_opdrachten_ouder_dan_30_dagen_achter_toggle_met_teller(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """Blok 6a (bundel 08-09) — het "Toon afgehandelde documenten"-patroon op de bank-levenscyclus: een
+    geverifieerde/ingetrokken opdracht ouder dan 30 dagen staat standaard niet in de lijst, de teller reist altijd
+    mee, `toon_oud=True` haalt 'm terug; een klaargezette (open) opdracht is nooit "oud"."""
+    rekening = uuid.uuid4()
+    oud_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id, payment_account_id=rekening)
+    open_id = maak_bank_mutatie(admin_engine, administratie_id=administratie_id, payment_account_id=rekening)
+    for mutatie_id in (oud_id, open_id):
+        afletteren.zet_klaar_voor_afletteren(
+            administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+            payment_item_id=maak_payment_item(admin_engine, administratie_id=administratie_id),
+            actor_id=beheerder_id, client=FakeBankClient(faal_op="link"),
+        )
+    # De eerste opdracht: geverifieerd, 40 dagen geleden (rechtstreeks in de DB — de motor zet altijd "nu").
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE boekhouding.bank_afletter_opdracht SET status = 'geverifieerd', "
+                "geverifieerd_op = now() - interval '40 days', klaargezet_op = now() - interval '41 days' "
+                "WHERE payment_transaction_id = :m"
+            ),
+            {"m": oud_id},
+        )
+    standaard = afletteren.afletter_opdrachten_voor_rekening(administratie_id=administratie_id, payment_account_id=rekening)
+    assert [o.opdracht.status for o in standaard.opdrachten] == ["klaargezet"]
+    assert standaard.aantal_oud == 1 and standaard.toon_oud is False
+    alles = afletteren.afletter_opdrachten_voor_rekening(
+        administratie_id=administratie_id, payment_account_id=rekening, toon_oud=True
+    )
+    assert sorted(o.opdracht.status for o in alles.opdrachten) == ["geverifieerd", "klaargezet"]
+    assert alles.aantal_oud == 1 and alles.toon_oud is True
+    # Een klaargezette opdracht van 40 dagen oud is óók nooit "oud" — die wacht nog op een handeling.
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE boekhouding.bank_afletter_opdracht SET klaargezet_op = now() - interval '40 days' WHERE payment_transaction_id = :m"),
+            {"m": open_id},
+        )
+    weer = afletteren.afletter_opdrachten_voor_rekening(administratie_id=administratie_id, payment_account_id=rekening)
+    assert [o.opdracht.status for o in weer.opdrachten] == ["klaargezet"] and weer.aantal_oud == 1
 
 
 def test_verificatie_legt_leesspoor_vast_en_filtert_hulzen(
@@ -505,19 +550,21 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Voorstel-volgorde stap 1 automatisch tijdens de sync: exacte match (referentie + bedrag)
-    lettert af met de systeem-actor; een deelmatch blijft liggen (één-klik, nooit auto)."""
+    """Voorstel-volgorde stap 1 automatisch tijdens de sync: exacte match — sinds blok 2 (08-09) GROEN =
+    teken + naam + nummer + bedrag — lettert af met de systeem-actor; een deelmatch (naam + nummer, bedrag
+    wijkt af) blijft liggen (één-klik, nooit auto)."""
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 
     rlz_document_id = uuid.uuid4()
-    # Exacte match: omschrijving draagt de referentie, bedrag gelijk.
+    # Exacte match: omschrijving draagt de referentie, bedrag gelijk, naam gelijk, inkoop-post negatief.
     exact = maak_bank_mutatie(
         admin_engine, administratie_id=administratie_id,
         omschrijving="betaling F-2026-0642", bedrag="-121.00",
     )
     item_id = maak_payment_item(
         admin_engine, administratie_id=administratie_id,
-        referentie="F-2026-0642", rlz_document_id=rlz_document_id,
+        referentie="F-2026-0642", rlz_document_id=rlz_document_id, bedrag="-121.00",
+        entity_naam="Testpartij B.V.", documentsoort="Inkoopfactuur",
     )
     # Deelmatch (zelfde referentie, ander bedrag): mág niet automatisch.
     deel = maak_bank_mutatie(
@@ -558,7 +605,8 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
         omschrijving="betaling F-2026-0643", bedrag="-99.00",
     )
     item2 = maak_payment_item(
-        admin_engine, administratie_id=administratie_id, referentie="F-2026-0643", bedrag="99.00",
+        admin_engine, administratie_id=administratie_id, referentie="F-2026-0643", bedrag="-99.00",
+        entity_naam="Testpartij B.V.", documentsoort="Inkoopfactuur",
     )
     fake.transacties[str(nogmaals)] = {"id": str(nogmaals), "OpenAmount": -99.0, "PaymentReferenceList": []}
     fake.items.append({"id": str(item2)})
@@ -567,3 +615,112 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
     )
     assert gedaan2 == 0
     assert any("volumerem" in f for f in fouten2)
+
+
+# --------------------------------------------------------------- blok 2 bundel 08-09: IBAN-geheugen
+
+
+def _iban_rijen(admin_engine: Engine, administratie_id: uuid.UUID) -> list[tuple]:
+    with admin_engine.connect() as conn:
+        return conn.execute(
+            text(
+                "SELECT iban, entity_guid, entity_naam, aantal_bevestigingen FROM boekhouding.bank_relatie_iban "
+                "WHERE administratie_id = :aid ORDER BY iban"
+            ),
+            {"aid": administratie_id},
+        ).all()
+
+
+def test_bevestigde_aflettering_leert_iban_relatie_en_maakt_het_voorstel_groen(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    """Bevestig-pad = leer-moment (brief 2a-iii): een geslaagde API-koppeling legt IBAN ↔ RLZ-entity vast;
+    een tweede bevestiging telt op; een volgende mutatie van dezelfde IBAN onder een privénaam wordt
+    daarmee GROEN ("IBAN + nummer + bedrag") i.p.v. oranje ("naam onbekend")."""
+    from app.bank import voorstellen
+    from app.bank.matchmotor import VoorstelSoort
+
+    entity = uuid.uuid4()
+    rlz_document_id = uuid.uuid4()
+    mutatie_id = maak_bank_mutatie(
+        admin_engine, administratie_id=administratie_id, bedrag="1210.00", tegenpartij_naam="Hr P.W. N.-P.",
+        omschrijving="2026-0700", tegenrekening_iban="NL91 ABNA 0417 1643 00",
+    )
+    item_id = maak_payment_item(
+        admin_engine, administratie_id=administratie_id, bedrag="1210.00", referentie="2026-0700",
+        rlz_document_id=rlz_document_id, entity_guid=entity, entity_naam="Nijenhuis Vastgoed B.V.",
+        documentsoort="Verkoopfactuur",
+    )
+    # Vóór het leren: oranje (naam onbekend) — de mens bevestigt.
+    vooraf = voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id)
+    assert vooraf[0].voorstel.soort == VoorstelSoort.DEEL_MATCH
+    assert vooraf[0].voorstel.bron == "nummer + bedrag, naam onbekend"
+
+    fake = FakeBankClient(
+        transacties={str(mutatie_id): {"id": str(mutatie_id), "OpenAmount": 1210.0, "PaymentReferenceList": []}},
+        items=[{"id": str(item_id)}],
+        item_documenten={str(item_id): str(rlz_document_id)},
+    )
+    uitvoering = afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        payment_item_id=item_id, actor_id=beheerder_id, client=fake,
+    )
+    assert uitvoering.uitkomst == "afgeletterd_via_api"
+    assert _iban_rijen(admin_engine, administratie_id) == [("NL91ABNA0417164300", entity, "Nijenhuis Vastgoed B.V.", 1)]
+    with admin_engine.connect() as conn:
+        audits = conn.execute(
+            text("SELECT COUNT(*) FROM platform.audit_event WHERE actie = 'bank_iban_relatie_geleerd'")
+        ).scalar_one()
+    assert audits == 1
+
+    # Volgende maand: zelfde IBAN, privénaam, nieuwe factuur → groen op IBAN.
+    volgende = maak_bank_mutatie(
+        admin_engine, administratie_id=administratie_id, bedrag="1210.00", tegenpartij_naam="Hr P.W. N.-P.",
+        omschrijving="2026-0800", tegenrekening_iban="NL91ABNA0417164300",
+    )
+    item2 = maak_payment_item(
+        admin_engine, administratie_id=administratie_id, bedrag="1210.00", referentie="2026-0800",
+        entity_guid=entity, entity_naam="Nijenhuis Vastgoed B.V.", documentsoort="Verkoopfactuur",
+    )
+    daarna = {m.mutatie.id: m for m in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id)}
+    assert daarna[volgende].voorstel.soort == VoorstelSoort.EXACTE_MATCH
+    assert daarna[volgende].voorstel.bron == "IBAN + nummer + bedrag"
+    assert daarna[volgende].voorstel.payment_item_id == item2
+
+    # Tweede bevestiging telt op (geen tweede rij, geen tweede audit).
+    fake.transacties[str(volgende)] = {"id": str(volgende), "OpenAmount": 1210.0, "PaymentReferenceList": []}
+    fake.items.append({"id": str(item2)})
+    afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=volgende,
+        payment_item_id=item2, actor_id=beheerder_id, client=fake,
+    )
+    assert _iban_rijen(admin_engine, administratie_id) == [("NL91ABNA0417164300", entity, "Nijenhuis Vastgoed B.V.", 2)]
+
+
+def test_mislukte_of_ibanloze_aflettering_leert_niets(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID
+) -> None:
+    entity = uuid.uuid4()
+    # API-fout → assist-fallback → geen bevestiging → niets geleerd.
+    mutatie_id = maak_bank_mutatie(
+        admin_engine, administratie_id=administratie_id, tegenrekening_iban="NL91ABNA0417164300"
+    )
+    item_id = maak_payment_item(admin_engine, administratie_id=administratie_id, entity_guid=entity)
+    afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=mutatie_id,
+        payment_item_id=item_id, actor_id=beheerder_id, client=FakeBankClient(faal_op="link"),
+    )
+    assert _iban_rijen(admin_engine, administratie_id) == []
+    # Geslaagd maar zonder IBAN op de mutatie → niets te leren (geen gok).
+    zonder_iban = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
+    item2 = maak_payment_item(admin_engine, administratie_id=administratie_id, entity_guid=entity)
+    fake = FakeBankClient(
+        transacties={str(zonder_iban): {"id": str(zonder_iban), "OpenAmount": -121.0, "PaymentReferenceList": []}},
+        items=[{"id": str(item2)}],
+    )
+    uitvoering = afletteren.zet_klaar_voor_afletteren(
+        administratie_id=administratie_id, payment_transaction_id=zonder_iban,
+        payment_item_id=item2, actor_id=beheerder_id, client=fake,
+    )
+    assert uitvoering.uitkomst == "afgeletterd_via_api"
+    assert _iban_rijen(admin_engine, administratie_id) == []

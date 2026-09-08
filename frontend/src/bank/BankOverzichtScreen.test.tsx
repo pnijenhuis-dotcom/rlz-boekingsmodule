@@ -68,12 +68,26 @@ describe('BankOverzichtScreen', () => {
     expect(screen.getByText('ING zakelijk · Kas')).toBeInTheDocument()
   })
 
-  it('toont nooit-gesynchroniseerde klanten onder "Overige klanten"', async () => {
+  it('blok 1 (08-09): nog-niet-gesynchroniseerde klanten krijgen de neutrale regel "vannacht automatisch" — geen opdracht om de klant te openen', async () => {
     installFetchMock([klantMetOpen, klantZonderOpen])
     renderScherm()
 
     expect(await screen.findByText('BLOW B.V.')).toBeInTheDocument()
-    expect(screen.getByText(/nog nooit gesynchroniseerd/)).toBeInTheDocument()
+    expect(screen.getByText(/nog niet gesynchroniseerd — vannacht automatisch/)).toBeInTheDocument()
+    expect(screen.queryByText(/open de klant om de eerste bank-sync te starten/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nog nooit gesynchroniseerd/)).not.toBeInTheDocument()
+  })
+
+  it('blok 1 (08-09): toont per klant de laatste sync-tijd (datum + HH:MM) in de kolom "Laatste sync"', async () => {
+    installFetchMock([klantMetOpen, { ...klantZonderOpen, ooit_gesynchroniseerd: true, laatste_sync_op: '2026-09-08T05:02:00Z' }])
+    renderScherm()
+
+    expect(await screen.findByText('Laatste sync')).toBeInTheDocument()
+    const verwacht = new Date('2026-08-02T06:00:00Z')
+    const tijd = verwacht.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+    expect(screen.getByText(new RegExp(`02-08-2026 ${tijd}`))).toBeInTheDocument()
+    const tijd2 = new Date('2026-09-08T05:02:00Z').toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+    expect(screen.getByText(new RegExp(`geen open mutaties · laatste sync 08-09-2026 ${tijd2}`))).toBeInTheDocument()
   })
 
   it('navigeert naar het bankdetail bij klik op een klant', async () => {

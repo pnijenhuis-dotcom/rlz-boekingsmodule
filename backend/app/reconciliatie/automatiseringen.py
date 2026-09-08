@@ -64,12 +64,23 @@ VANGNET_SCHEDULER = "vangnet_scheduler"
 #: Extractie-wachtrij: document in de wachtrij gezet zonder trigger-spoor — geen job-resource geconfigureerd
 #: (lokale dev: in-process thread) of een overgang van vóór het spoor (08-09).
 LOKAAL_THREAD = "lokaal_thread"
+#: Bank-sync (blok 1 bundel 08-09): Odoo-administratie — bank loopt niet via Reeleezee (zichtbaar, geen LET-OP).
+ODOO_ADMINISTRATIE = "odoo_administratie"
+#: Bank-sync: geen webservice-login geregistreerd (store noch .env) = niet onboarded — zichtbaar overgeslagen, geen
+#: LET-OP (zelfde lijn als sync-alles/F3: de cloud-seed-testadministratie mag niet dagelijks rood staan). Een
+#: WEL geregistreerde maar kapotte login (401) valt via de run-fout onder `credential` (harde voorwaarde).
+GEEN_CREDENTIAL_GEREGISTREERD = "geen_credential_geregistreerd"
+#: Bank-sync: administratie mét RLZ-verbinding maar zonder enige run (klaar óf fout) in het venster — de nachtelijke
+#: `sync-alles` heeft 'm niet bereikt (job niet gedraaid/afgebroken): LET-OP, platformbreed (administratie-loos).
+GEEN_SYNC_RUN = "geen_sync_run"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
 #: komt de reden tóch voor, dan wacht een automatisering op een menselijke instelling (regressie, zichtbaar mét actie).
 #: `vangnet_scheduler` (08-09): ≥ 1 mislukte job-trigger in het etmaal = LET-OP (platformbreed, administratie-loos).
-HARDE_VOORWAARDEN = frozenset({CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER})
+HARDE_VOORWAARDEN = frozenset(
+    {CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER, GEEN_SYNC_RUN}
+)
 
 REDEN_LABEL: dict[str, str] = {
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
@@ -93,6 +104,9 @@ REDEN_LABEL: dict[str, str] = {
     STIL_7_DAGEN: "zeven dagen stil",
     VANGNET_SCHEDULER: "job-trigger mislukt — scheduler-vangnet (≤ 10 min)",
     LOKAAL_THREAD: "geen job-trigger (lokaal/thread)",
+    ODOO_ADMINISTRATIE: "Odoo-administratie (bank niet via Reeleezee)",
+    GEEN_CREDENTIAL_GEREGISTREERD: "geen webservice-login geregistreerd (niet onboarded)",
+    GEEN_SYNC_RUN: "geen bank-sync-run in het venster (sync-alles niet gedraaid?)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -103,6 +117,7 @@ AUTOBOEK_KANDIDATEN = "autoboek_kandidaten"
 AUTOBOEK_OMZET = "autoboeken_omzet"
 AUTOBOEK_VERKOOP = "autoboeken_verkoop"
 BANK = "bank_autoboeken"
+BANK_SYNC = "bank_sync"
 NABUNDEL = "nabundel"
 TERUGKEREND = "terugkerend"
 MINI_VOORRAAD = "mini_voorraad"
@@ -113,6 +128,7 @@ VOLGORDE: tuple[str, ...] = (
     AUTOBOEK_INKOOP,
     AUTOBOEK_OMZET,
     AUTOBOEK_VERKOOP,
+    BANK_SYNC,
     BANK,
     DUPLICAAT_AFVOER,
     CREDITEUREN,
@@ -132,6 +148,7 @@ LABEL: dict[str, str] = {
     AUTOBOEK_OMZET: "Autoboeken omzet",
     AUTOBOEK_VERKOOP: "Autoboeken verkoop",
     BANK: "Bank-autoboeken/afletteren",
+    BANK_SYNC: "Bank-sync (dagelijks, alle administraties)",
     NABUNDEL: "Nabundel (UBL+PDF, dubbelen)",
     TERUGKEREND: "Terugkerende facturen (herberekening)",
     MINI_VOORRAAD: "Mini-voorraad instroom",
@@ -147,6 +164,7 @@ DOEL_PAD: dict[str, str] = {
     VOLUMEREM: "/instellingen/autoboeken",
     # Geen instelling in de app: de wortel zit in Cloud Run/IAM; de rij op Inzicht › Reconciliatie ís de plek.
     VANGNET_SCHEDULER: "/reconciliatie",
+    GEEN_SYNC_RUN: "/reconciliatie",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -157,6 +175,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     DUPLICAAT_AFVOER: (VOLUMEREM,),
     CREDITEUREN: (TWIJFEL,),
     BANK: (VOLUMEREM,),
+    BANK_SYNC: (FOUT,),
     TERUGKEREND: (FOUT,),
 }
 
@@ -195,6 +214,18 @@ class BankRunFeit:
 
 
 @dataclass(frozen=True)
+class BankSyncRunFeit:
+    """Blok 1 (08-09): élke afgeronde `bank_sync_run` (klaar óf fout, on-demand óf sync_alles) — de basis van de
+    teller `bank_sync`: is er per administratie per etmaal ten minste één geslaagde verversing?"""
+
+    administratie_id: uuid.UUID
+    beeindigd_op: datetime
+    status: str  # klaar | fout
+    fout_reden: str | None = None
+    bron: str | None = None
+
+
+@dataclass(frozen=True)
 class TerugkerendRunFeit:
     klaar_op: datetime
     aantal_administraties: int
@@ -209,6 +240,11 @@ class Feiten:
     administraties: dict[uuid.UUID, str] = field(default_factory=dict)
     audit: list[AuditFeit] = field(default_factory=list)
     bank_runs: list[BankRunFeit] = field(default_factory=list)
+    # Bank-sync (blok 1, 08-09): alle afgeronde runs (klaar/fout), de Odoo-administraties en de administraties MÉT
+    # geregistreerde RLZ-login (positieve set: wie er niet in staat is "niet onboarded", nooit een LET-OP).
+    bank_sync_runs: list[BankSyncRunFeit] = field(default_factory=list)
+    bank_odoo: set[uuid.UUID] = field(default_factory=set)
+    bank_rlz_verbinding: set[uuid.UUID] = field(default_factory=set)
     terugkerend_runs: list[TerugkerendRunFeit] = field(default_factory=list)
     autoboek_kandidaten_laatste_run: datetime | None = None
     duplicaat_noodrem_aan: bool = True
@@ -401,6 +437,12 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         *_stand_per_administratie(feiten.verkoop_aan, adm),
         "audit (bron verkoop_opt_in; poort is_vastgoed)",
     )
+    bank_sync = maak(
+        BANK_SYNC,
+        "altijd",
+        f"dagelijks in sync-alles (07:00) + bij openen bankscherm — {len(adm)} actieve administraties",
+        "bank_sync_run (status klaar/fout) + administratie-kenmerken (Odoo / credential)",
+    )
     bank = maak(BANK, *_stand_per_administratie(feiten.bank_aan, adm), "bank_sync_run.resultaat")
     dup = maak(
         DUPLICAAT_AFVOER,
@@ -504,6 +546,38 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             v.tel_gedaan(n_gedaan)
         for fout in res.get("fouten") or []:
             tel_over(bank, r.beeindigd_op, categoriseer_reden(str(fout)), r.administratie_id, str(fout))
+
+    # --- bank-sync (blok 1, 08-09): per administratie per venster precies één uitkomst
+    #     (verwacht = alle actieve administraties; gedaan = ≥ 1 geslaagde run in het venster)
+    for aid in adm:
+        if aid in feiten.bank_odoo:
+            for v in (bank_sync.dag, bank_sync.week):
+                v.tel_overgeslagen(ODOO_ADMINISTRATIE)
+            continue
+        if aid not in feiten.bank_rlz_verbinding:
+            for v in (bank_sync.dag, bank_sync.week):
+                v.tel_overgeslagen(GEEN_CREDENTIAL_GEREGISTREERD)
+            continue
+        runs = sorted((r for r in feiten.bank_sync_runs if r.administratie_id == aid), key=lambda r: r.beeindigd_op)
+        for v, vanaf in ((bank_sync.dag, dag_vanaf), (bank_sync.week, week_vanaf)):
+            in_venster = [r for r in runs if r.beeindigd_op >= vanaf]
+            if any(r.status == "klaar" for r in in_venster):
+                v.tel_gedaan()
+            elif in_venster:
+                # Alleen mislukte runs: een kapotte login (401) is een harde voorwaarde → LET-OP mét deeplink
+                # naar de administratie; elke andere fout is zichtbaar als "fout" (reden op de run-rij + in het
+                # bankscherm) zonder LET-OP — RLZ-storingen dekken het blok `bank` en de bewaking.
+                reden = in_venster[-1].fout_reden or ""
+                cat = CREDENTIAL if categoriseer_reden(reden) == CREDENTIAL else FOUT
+                v.tel_overgeslagen(cat)
+                if cat == CREDENTIAL and v is bank_sync.dag:
+                    hard.setdefault((BANK_SYNC, CREDENTIAL, aid), []).append(reden)
+            else:
+                # Mét RLZ-verbinding maar zonder enige run: sync-alles heeft deze administratie niet bereikt.
+                # Platformbreed (administratie-loos) → één LET-OP-rij, niet één per administratie.
+                v.tel_overgeslagen(GEEN_SYNC_RUN)
+                if v is bank_sync.dag:
+                    hard.setdefault((BANK_SYNC, GEEN_SYNC_RUN, None), []).append(f"administratie {aid}")
 
     # --- terugkerend (run-tabel, platformbreed)
     for r in feiten.terugkerend_runs:
@@ -710,6 +784,8 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
     from app.db.session import scoped_session
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
     from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus, LeverancierVoorkeur
+    from app.odoo.ids import is_odoo_sentinel
+    from app.rlz.credentials import heeft_rlz_credential_geregistreerd
     from app.terugkerend.models import HerberekenRunStatus, TerugkerendHerberekenRun
     from app.uren.models import VeldwerkerCrediteur
 
@@ -721,6 +797,12 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
             q = q.where(Administratie.id.in_(list(administratie_ids)))
         for a in session.scalars(q):
             feiten.administraties[a.id] = a.naam
+            # Bank-sync (blok 1, 08-09): RLZ-verbinding aanwezig? Odoo = geen RLZ-bank; anders store/.env-toets
+            # zonder unwrap (goedkoop, geen KMS).
+            if is_odoo_sentinel(a.rlz_admin_id):
+                feiten.bank_odoo.add(a.id)
+            elif heeft_rlz_credential_geregistreerd(a.id, a.rlz_admin_id):
+                feiten.bank_rlz_verbinding.add(a.id)
             if a.omzet_autoboeken_ingeschakeld:
                 feiten.omzet_aan.add(a.id)
             if a.is_vastgoed:
@@ -774,13 +856,23 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
             for r in session.scalars(
                 select(BankSyncRun).where(
                     BankSyncRun.administratie_id == aid,
-                    BankSyncRun.status == BankSyncRunStatus.KLAAR.value,
+                    BankSyncRun.status.in_((BankSyncRunStatus.KLAAR.value, BankSyncRunStatus.FOUT.value)),
                     BankSyncRun.beeindigd_op.is_not(None),
                     BankSyncRun.beeindigd_op >= week_vanaf,
                 )
             ):
-                feiten.bank_runs.append(
-                    BankRunFeit(administratie_id=aid, beeindigd_op=r.beeindigd_op, resultaat=r.resultaat)
+                if r.status == BankSyncRunStatus.KLAAR.value:
+                    feiten.bank_runs.append(
+                        BankRunFeit(administratie_id=aid, beeindigd_op=_utc(r.beeindigd_op), resultaat=r.resultaat)
+                    )
+                feiten.bank_sync_runs.append(
+                    BankSyncRunFeit(
+                        administratie_id=aid,
+                        beeindigd_op=_utc(r.beeindigd_op),
+                        status=r.status,
+                        fout_reden=r.fout_reden,
+                        bron=(r.resultaat or {}).get("bron") if isinstance(r.resultaat, dict) else None,
+                    )
                 )
             # Overgangen naar de extractie-wachtrij (upload/intake/herextractie) — herstel-overgangen
             # (`detail.herstel`: achtergebleven na herstart / gestrand op bezig) zijn geen nieuwe kandidaat.

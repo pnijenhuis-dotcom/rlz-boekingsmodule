@@ -120,7 +120,8 @@ describe('useBankAutoVerversing via BankDetailScreen', () => {
     await waitFor(() =>
       expect(aanroepen.filter((a) => a.url.endsWith('/bank/sync-achtergrond') && a.method === 'POST')).toHaveLength(1),
     )
-    expect(await screen.findByText('actueel')).toBeInTheDocument()
+    // Blok 1 (08-09): chip "actueel · laatst ververst HH:MM" (één chip, groen = status).
+    expect(await screen.findByText(/^actueel · /)).toBeInTheDocument()
     expect(screen.getByText(/laatst ververst/)).toBeInTheDocument()
 
     await vi.advanceTimersByTimeAsync(6000)
@@ -165,7 +166,7 @@ describe('useBankAutoVerversing via BankDetailScreen', () => {
     const toast = await screen.findByText(/⟳ Ververst: 3 nieuwe mutaties · 1 bijgewerkt/)
     expect(toast).not.toHaveTextContent(/aflettering|wacht/)
     await waitFor(() => expect(telMutatiesLaads(aanroepen)).toBeGreaterThan(mutatiesVoor))
-    expect(screen.getByText('zojuist ververst')).toBeInTheDocument()
+    expect(screen.getByText(/^zojuist ververst · /)).toBeInTheDocument()
 
     // Ronde afgerond → geen verdere polls.
     await vi.advanceTimersByTimeAsync(6000)

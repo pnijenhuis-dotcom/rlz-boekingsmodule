@@ -13,6 +13,12 @@ cijfers-sync-patroon (app/projecten/cijfers_run.py, migratie 0063) toegepast op 
      dezelfde motor als de knop, incl. verificatie/autoflows — en zet klaar/fout mét reden.
   5. De UI pollt `GET …/bank/sync-achtergrond/status` en werkt de lijst bij zodra `klaar`; `fout`
      toont de reden. Een stille dood wordt via `laatst_actief_op` als fout vertaald (STALE_NA).
+  6. Blok 1 (besluit Peter 08-09, "bank-sync automatisch, geen knoppen"): de nachtelijke `sync-alles`
+     draait dezelfde motor voor ÁLLE actieve administraties via `sync_alle_via_runs(bron="sync_alles")`
+     — elke administratie krijgt een `bank_sync_run`-rij (aangevraagd_door NULL, `resultaat.bron`),
+     zodat klantenlijst ("laatste sync") en reconciliatie-teller `bank_sync` op één spoor leunen.
+     Geen RLZ-verbinding (geen credential / Odoo-administratie) = zichtbaar overgeslagen, géén rij en
+     géén fout; een al lopende on-demand run wordt hergebruikt (nooit twee tegelijk).
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from app.bank import sync
 from app.bank.models import BankSyncRun, BankSyncRunStatus, BankSyncStand
 from app.config import settings
 from app.db.session import scoped_session
+from app.rlz.credentials import GeenRlzCredentials, resolve_credentials, rlz_admin_id_voor
 
 logger = logging.getLogger(__name__)
 
@@ -185,15 +192,17 @@ def _claim(administratie_id: uuid.UUID) -> uuid.UUID | None:
         return rij.id
 
 
-def verwerk_wachtrij_voor(administratie_id: uuid.UUID) -> int:
+def verwerk_wachtrij_voor(administratie_id: uuid.UUID, *, bron: str | None = None) -> int:
     """Verwerkt alle wachtrij-runs van één administratie (meestal één). Geeft het aantal
-    afgeronde runs terug."""
+    afgeronde runs terug. `bron` (blok 1, 08-09) reist mee in `resultaat.bron` — "sync_alles" voor de
+    nachtelijke lus; None = on-demand (openen bankscherm / ⟳), ongewijzigd gedrag."""
     aantal = 0
     while (run_id := _claim(administratie_id)) is not None:
         aantal += 1
         try:
             resultaat = sync.sync_bank_voor_administratie(administratie_id=administratie_id)
             samenvatting = {
+                **({"bron": bron} if bron else {}),
                 "rekeningen_bijgewerkt": resultaat.rekeningen.aangemaakt + resultaat.rekeningen.bijgewerkt,
                 "mutaties_nieuw": resultaat.mutaties.aangemaakt,
                 "mutaties_bijgewerkt": resultaat.mutaties.bijgewerkt,
@@ -235,6 +244,74 @@ def verwerk_wachtrij() -> int:
     for administratie_id in administratie_ids:
         totaal += verwerk_wachtrij_voor(administratie_id)
     return totaal
+
+
+# --- blok 1 (08-09): nachtelijke lus over álle actieve administraties ---------------------------------
+
+BRON_SYNC_ALLES = "sync_alles"
+
+
+@dataclass(frozen=True)
+class BankSyncOvergeslagen:
+    """Administratie zonder RLZ-verbinding: zichtbaar overgeslagen (CLI-regel + reconciliatie-teller),
+    géén run-rij en géén fout. `reden` = 'odoo_administratie' | 'geen_credential'."""
+
+    reden: str
+    detail: str
+
+
+def _overslaan_reden(administratie_id: uuid.UUID) -> BankSyncOvergeslagen | None:
+    """Vooraf toetsen (zonder RlzClient te openen) of er een RLZ-verbinding is — `resolve_credentials`
+    is voor Odoo-sentinels en ontbrekende credentials fail-loud met GeenRlzCredentials."""
+    from app.odoo.ids import is_odoo_sentinel
+
+    try:
+        rlz_admin_id = rlz_admin_id_voor(administratie_id)
+        if is_odoo_sentinel(rlz_admin_id):
+            return BankSyncOvergeslagen("odoo_administratie", "Odoo-administratie — bank loopt niet via Reeleezee")
+        resolve_credentials(rlz_admin_id)
+    except GeenRlzCredentials as exc:
+        return BankSyncOvergeslagen("geen_credential", str(exc))
+    return None
+
+
+def start_nachtelijke_run(administratie_id: uuid.UUID) -> BankSyncRunInfo | BankSyncOvergeslagen:
+    """Eén administratie in de nachtelijke lus: overslaan zonder verbinding; anders een run-rij
+    (aangevraagd_door NULL) en direct synchroon verwerken — een al lopende (niet-stale) on-demand run
+    wordt hergebruikt en NIET dubbel gestart (die maakt zijn eigen status af)."""
+    overgeslagen = _overslaan_reden(administratie_id)
+    if overgeslagen is not None:
+        return overgeslagen
+    nu = datetime.now(UTC)
+    with scoped_session(administratie_id) as session:
+        _markeer_stale(session, administratie_id, nu)
+        actief = _actieve_run(session, administratie_id)
+        if actief is not None and actief.status == BankSyncRunStatus.BEZIG.value:
+            return _dto(actief, laatste_sync_op=_laatste_sync_op(session, administratie_id))
+        if actief is None:
+            session.add(BankSyncRun(administratie_id=administratie_id, aangevraagd_door=None))
+            session.flush()
+    verwerk_wachtrij_voor(administratie_id, bron=BRON_SYNC_ALLES)
+    return laatste_run(administratie_id)
+
+
+def sync_alle_via_runs() -> dict[uuid.UUID, BankSyncRunInfo | BankSyncOvergeslagen | str]:
+    """Entrypoint voor `sync-alles` (cli.py::_sync_alles): álle actieve administraties, één kapotte stopt
+    de rest niet (een onverwachte exception buiten de run-motor landt als string = fout)."""
+    from app.db.models import Administratie
+
+    with scoped_session(None) as session:
+        administratie_ids = list(
+            session.scalars(select(Administratie.id).where(Administratie.actief.is_(True)).order_by(Administratie.naam))
+        )
+    uit: dict[uuid.UUID, BankSyncRunInfo | BankSyncOvergeslagen | str] = {}
+    for administratie_id in administratie_ids:
+        try:
+            uit[administratie_id] = start_nachtelijke_run(administratie_id)
+        except Exception as exc:  # noqa: BLE001 — bewust breed: één kapotte administratie mag de rest niet raken
+            logger.exception("Nachtelijke bank-sync mislukt voor %s", administratie_id)
+            uit[administratie_id] = f"{type(exc).__name__}: {exc}"
+    return uit
 
 
 def als_dict(info: BankSyncRunInfo) -> dict:

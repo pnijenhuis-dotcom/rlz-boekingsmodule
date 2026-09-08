@@ -155,6 +155,22 @@ def resolve_credentials(rlz_admin_id: str) -> tuple[str, str]:
     return _resolve_from_env(rlz_admin_id)
 
 
+def heeft_rlz_credential_geregistreerd(administratie_id: uuid.UUID, rlz_admin_id: str) -> bool:
+    """Goedkope aanwezigheidstoets ZONDER unwrap/KMS (blok 1 08-09, reconciliatie-teller `bank_sync`):
+    store-rij (platform.rlz_credential) óf gevulde .env-login voor het bekende prefix. Odoo-sentinels zijn
+    per definitie geen RLZ-credential. Alleen voor tellers/rapportage — een échte verbinding toets je met
+    `resolve_credentials`."""
+    from app.odoo.ids import is_odoo_sentinel
+
+    if is_odoo_sentinel(rlz_admin_id):
+        return False
+    with scoped_session(None) as session:
+        if session.get(RlzCredential, administratie_id) is not None:
+            return True
+    prefix = _PREFIX_PER_RLZ_ADMIN_ID.get(rlz_admin_id)
+    return prefix is not None and lees_env_login(prefix) is not None
+
+
 def rlz_admin_id_voor(administratie_id: uuid.UUID) -> str:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)

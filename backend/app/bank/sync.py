@@ -34,6 +34,7 @@ from app.bank.models import BankMutatie, BankSyncStand, PaymentAccountCache, Pay
 from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.rlz.client import RlzClient
+from app.rlz.credentials import GeenRlzCredentials
 from app.sync.service import (
     SyncFout,
     SyncTelling,
@@ -420,18 +421,24 @@ def sync_bank_voor_administratie(
             client.close()
 
 
-def sync_bank_alle_administraties() -> dict[uuid.UUID, BankSyncResultaat | str]:
-    """CLI `bank-sync` zonder administratie-id (en straks de Cloud Scheduler-job): één kapotte
-    administratie stopt de rest niet — zelfde patroon als sync_alle_administraties()."""
+def sync_bank_alle_administraties() -> dict[uuid.UUID, BankSyncResultaat | GeenRlzCredentials | str]:
+    """CLI `bank-sync` zonder administratie-id: één kapotte administratie stopt de rest niet — zelfde
+    patroon als sync_alle_administraties(). Blok 1 (08-09): een administratie zónder RLZ-verbinding
+    (geen credential geregistreerd, of een Odoo-administratie — `resolve_credentials` is dáár fail-loud)
+    komt als `GeenRlzCredentials` terug zodat de aanroeper 'm zichtbaar OVERSLAAT zonder de exit-code te
+    raken; een échte RLZ-/API-fout blijft een string en dus een fout. De nachtelijke `sync-alles`-lus
+    gebruikt niet deze functie maar `sync_run.sync_alle_via_runs` (zelfde motor, mét `bank_sync_run`-spoor)."""
     with scoped_session(None) as session:
         administratie_ids = [
             row.id for row in session.scalars(select(Administratie).where(Administratie.actief.is_(True)))
         ]
 
-    resultaten: dict[uuid.UUID, BankSyncResultaat | str] = {}
+    resultaten: dict[uuid.UUID, BankSyncResultaat | GeenRlzCredentials | str] = {}
     for administratie_id in administratie_ids:
         try:
             resultaten[administratie_id] = sync_bank_voor_administratie(administratie_id=administratie_id)
+        except GeenRlzCredentials as exc:
+            resultaten[administratie_id] = exc
         except Exception as exc:  # noqa: BLE001 — bewust breed: één kapotte administratie mag de rest niet raken
             resultaten[administratie_id] = str(exc)
     return resultaten

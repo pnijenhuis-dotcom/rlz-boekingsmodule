@@ -347,26 +347,34 @@ def maak_bank_mutatie(
     omschrijving: str = "test",
     payment_account_id: uuid.UUID | None = None,
     rlz_voorstel_item_id: uuid.UUID | None = None,
+    tegenrekening_iban: str | None = None,
+    boekdatum: str | None = None,
+    mutatie_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    """Directe insert van een cache-rij (schema-owner) — de sync-tests dekken het vullen zelf."""
-    mutatie_id = uuid.uuid4()
+    """Directe insert van een cache-rij (schema-owner) — de sync-tests dekken het vullen zelf.
+    `tegenrekening_iban`/`boekdatum`/`mutatie_id` (blok 2 bundel 08-09): IBAN-been van de matchmotor,
+    vaste datum en vast id voor de gouden set."""
+    mutatie_id = mutatie_id or uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO boekhouding.bank_mutatie "
                 "(id, administratie_id, payment_account_id, boekdatum, bedrag, open_bedrag, "
-                " tegenpartij_naam, omschrijving, rlz_voorstel_item_id, brondata) "
-                "VALUES (:id, :aid, :account, CURRENT_DATE, :bedrag, :open_bedrag, :naam, :oms, :voorstel, '{}')"
+                " tegenpartij_naam, omschrijving, rlz_voorstel_item_id, tegenrekening_iban, brondata) "
+                "VALUES (:id, :aid, :account, COALESCE(CAST(:boekdatum AS date), CURRENT_DATE), :bedrag, "
+                ":open_bedrag, :naam, :oms, :voorstel, :iban, '{}')"
             ),
             {
                 "id": mutatie_id,
                 "aid": administratie_id,
                 "account": payment_account_id,
+                "boekdatum": boekdatum,
                 "bedrag": bedrag,
                 "open_bedrag": open_bedrag if open_bedrag is not None else bedrag,
                 "naam": tegenpartij_naam,
                 "oms": omschrijving,
                 "voorstel": rlz_voorstel_item_id,
+                "iban": tegenrekening_iban,
             },
         )
     return mutatie_id
@@ -381,23 +389,36 @@ def maak_payment_item(
     rlz_document_id: uuid.UUID | None = None,
     entity_guid: uuid.UUID | None = None,
     entity_naam: str | None = None,
+    documentsoort: str | None = None,
+    boekdatum: str | None = None,
+    item_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    item_id = uuid.uuid4()
+    """`documentsoort` ("Inkoopfactuur" | "Verkoopfactuur", blok 2 bundel 08-09) landt als
+    `Document.DocumentType` 1/10 in de brondata — precies wat de sync uit `Document($expand=Entity)`
+    bewaart en wat `doelpost.specs_uit_cache` teruglees voor de teken-toets van de matchmotor."""
+    item_id = item_id or uuid.uuid4()
+    document_type = {"Inkoopfactuur": 1, "Verkoopfactuur": 10}.get(documentsoort or "")
+    brondata: dict[str, Any] = {}
+    if document_type is not None:
+        brondata["Document"] = {"DocumentType": document_type}
     with admin_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO boekhouding.payment_item_cache "
-                "(id, administratie_id, bedrag, referentie, rlz_document_id, entity_guid, entity_naam, brondata) "
-                "VALUES (:id, :aid, :bedrag, :ref, :doc, :entity, :entity_naam, '{}')"
+                "(id, administratie_id, bedrag, boekdatum, referentie, rlz_document_id, entity_guid, entity_naam, "
+                "brondata) VALUES (:id, :aid, :bedrag, CAST(:boekdatum AS date), :ref, :doc, :entity, :entity_naam, "
+                "CAST(:bron AS jsonb))"
             ),
             {
                 "id": item_id,
                 "aid": administratie_id,
                 "bedrag": bedrag,
+                "boekdatum": boekdatum,
                 "ref": referentie,
                 "doc": rlz_document_id or uuid.uuid4(),
                 "entity": entity_guid,
                 "entity_naam": entity_naam,
+                "bron": json.dumps(brondata),
             },
         )
     return item_id

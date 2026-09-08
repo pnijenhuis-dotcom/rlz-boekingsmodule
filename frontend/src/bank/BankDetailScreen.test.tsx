@@ -41,8 +41,8 @@ function mutatie(overrides: Record<string, unknown> = {}) {
     voorstel: {
       soort: 'exacte_match',
       kleur: 'groen',
-      bron: 'exacte match — referentie + bedrag',
-      reden: 'Referentie gevonden én bedrag exact gelijk',
+      bron: 'naam + nummer + bedrag',
+      reden: 'Open post: teken klopt, naam matcht, factuurnummer als heel token én bedrag cent-exact',
       payment_item_id: ITEM_ID,
       open_post: { id: ITEM_ID, bedrag: '1847.23', referentie: '2026-0642', referentie2: null, rlz_document_id: null },
       regel_id: null,
@@ -76,6 +76,11 @@ interface MockOpties {
   mutatiesNaKlaarzetten?: unknown[]
   rekeningenBody?: Record<string, unknown>
   afletterOpdrachten?: unknown[]
+  /** Blok 6a: teller van verwerkte opdrachten > 30 dagen (achter de toggle); `afletterOpdrachtenOud` = de lijst
+   * die de GET mét ?toon_oud=true teruggeeft. */
+  aantalOud?: number
+  afletterOpdrachtenOud?: unknown[]
+  afletterAanroepen?: string[]
   klaarzettenAanroepen?: { url: string; body: unknown }[]
   klaarzettenResponse?: { opdracht_id: string; uitkomst: string; fout: string | null }
   voerUitAanroepen?: string[]
@@ -113,7 +118,16 @@ function installFetchMock(opties: MockOpties = {}) {
         return Promise.resolve(jsonResponse({ mutaties: lijst }))
       }
       if (url.includes('/afletter-opdrachten') && (!init || init.method === undefined)) {
-        return Promise.resolve(jsonResponse({ opdrachten: opties.afletterOpdrachten ?? [] }))
+        opties.afletterAanroepen?.push(url)
+        const toonOud = url.includes('toon_oud=true')
+        return Promise.resolve(
+          jsonResponse({
+            opdrachten: toonOud ? opties.afletterOpdrachtenOud ?? opties.afletterOpdrachten ?? [] : opties.afletterOpdrachten ?? [],
+            aantal_oud: opties.aantalOud ?? 0,
+            toon_oud: toonOud,
+            oud_na_dagen: 30,
+          }),
+        )
       }
       if (url.includes('/verifieer-afletteren') && init?.method === 'POST') {
         opties.verifieerAanroepen?.push(url)
@@ -228,7 +242,7 @@ describe('BankDetailScreen', () => {
 
     expect(await screen.findByText(/Bouwmaat Nederland B.V./)).toBeInTheDocument()
     // Blok E6: de match-reden staat als chip ín de voorstel-kaart, niet meer als losse kolom.
-    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('exacte match — naam + factuurnummer + bedrag')
+    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('exacte match — naam + nummer + bedrag')
     expect(screen.queryByRole('columnheader', { name: 'Bron voorstel' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Rekening')).toBeInTheDocument()
     expect(screen.getByText(/Saldo/)).toBeInTheDocument()
@@ -351,8 +365,8 @@ describe('BankDetailScreen', () => {
           voorstel: {
             soort: 'deel_match',
             kleur: 'oranje',
-            bron: 'deel-match',
-            reden: 'Referentie gevonden, bedrag wijkt af',
+            bron: 'naam + nummer, bedrag wijkt af',
+            reden: 'Open post matcht op naam + nummer, bedrag wijkt af — bevestigen',
             payment_item_id: ITEM_ID,
             open_post: {
               id: ITEM_ID,
@@ -376,7 +390,7 @@ describe('BankDetailScreen', () => {
     expect(kaart).toHaveTextContent('Bouwbedrijf Verhagen B.V.')
     expect(kaart).toHaveTextContent('Inkoopfactuur 26-0441 · RLZ-01-00000921')
     expect(screen.getByTestId('voorstel-deelbetaling')).toHaveTextContent('deelbetaling — restant € 200,00 blijft open')
-    expect(kaart).toHaveTextContent('match op naam + referentie, bedrag wijkt af — bevestigen')
+    expect(kaart).toHaveTextContent('match op naam + nummer, bedrag wijkt af — bevestigen')
     expect(screen.getByRole('button', { name: 'Afletteren (deel) ✓' })).toBeInTheDocument()
   })
 
@@ -566,6 +580,57 @@ describe('BankDetailScreen', () => {
 
     expect(await screen.findByText(/Al 3× zo geboekt/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Boeken…' })).toBeInTheDocument()
+  })
+
+  it('blok 1 (08-09): nog-niet-gesynchroniseerd is een neutrale regel ("vannacht automatisch"), geen start-opdracht; de versheid is een zichtbare chip', async () => {
+    installFetchMock({ rekeningenBody: { ooit_gesynchroniseerd: false, laatste_sync_op: null }, mutaties: [] })
+    renderScherm()
+
+    expect(await screen.findByText(/nog niet gesynchroniseerd — vannacht automatisch/)).toBeInTheDocument()
+    expect(screen.queryByText(/start hieronder de eerste/)).not.toBeInTheDocument()
+    const kop = screen.getByTestId('ververs-hint')
+    // De versheid staat in een chip (role=status), niet als losse grijze tekst.
+    await waitFor(() => expect(kop.querySelector('.chip')).not.toBeNull())
+    expect(kop.querySelector('.chip')).toHaveAttribute('role', 'status')
+  })
+
+  it('blok 1 (08-09): ná een afgeronde achtergrondronde toont de chip "zojuist ververst" (groen = status) en is de lijst herladen', async () => {
+    const syncAchtergrondAanroepen: string[] = []
+    installFetchMock({ syncAchtergrondAanroepen, syncAchtergrondKlaarResultaat: { afletteren_wachtend: 0 } })
+    renderScherm()
+    await screen.findByText(/Bouwmaat Nederland B.V./)
+    const fetchMock = vi.mocked(fetch)
+    const mutatiesVoor = fetchMock.mock.calls.filter(([u]) => String(u).includes('/mutaties')).length
+    await userEvent.click(screen.getByRole('button', { name: 'Nu verversen uit Reeleezee' }))
+    const chip = await screen.findByText(/zojuist ververst/)
+    expect(chip).toHaveClass('chip', 'ok')
+    // De mutatielijst is ná `klaar` opnieuw opgehaald (onKlaar → verversAlles).
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/mutaties')).length).toBeGreaterThan(mutatiesVoor),
+    )
+  })
+
+  it('blok 6a (08-09): verwerkte opdrachten ouder dan 30 dagen staan achter "Toon verwerkte mutaties ouder dan 30 dagen (N)"; de toggle haalt ze server-side op', async () => {
+    const afletterAanroepen: string[] = []
+    const oud = {
+      opdracht: afletterOpdracht({ id: 'oud-1', status: 'geverifieerd', geverifieerd_op: '2026-07-01T10:00:00Z', klaargezet_op: '2026-06-30T10:00:00Z' }),
+      boekdatum: '2026-06-29',
+      tegenpartij_naam: 'Oude Tegenpartij B.V.',
+      bedrag: '-10.00',
+    }
+    installFetchMock({ afletterOpdrachten: [], aantalOud: 1, afletterOpdrachtenOud: [oud], afletterAanroepen, mutaties: [] })
+    renderScherm()
+
+    // Sectie zichtbaar dankzij de teller, ook zonder recente rijen; de oude rij zelf nog niet.
+    const toggle = await screen.findByLabelText('Toon verwerkte mutaties ouder dan 30 dagen (1)')
+    expect(screen.queryByText('Oude Tegenpartij B.V.')).not.toBeInTheDocument()
+    expect(afletterAanroepen.some((u) => u.includes('toon_oud=true'))).toBe(false)
+
+    await userEvent.click(toggle)
+    expect(await screen.findByText('Oude Tegenpartij B.V.')).toBeInTheDocument()
+    expect(afletterAanroepen.some((u) => u.includes('toon_oud=true'))).toBe(true)
+    // Teller blijft zichtbaar met de toggle aan.
+    expect(screen.getByLabelText('Toon verwerkte mutaties ouder dan 30 dagen (1)')).toBeChecked()
   })
 
   it('toont de onboarding-melding zonder bankaanlevering', async () => {

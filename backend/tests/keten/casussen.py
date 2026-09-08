@@ -37,6 +37,11 @@ E_BOOT = "e_boot_creditnota_202633199"
 H_BDO = "h_bdo_6088744"
 K1_DCTE = "k1_dcte_202611050"
 K2_KADER = "k2_kader_f212604921"
+# Blok 3 bundel 08-09 (B3): synthetische incasso-factuur (betaalstatus) — zie fixtures/m_incasso_factuur/bron.json.
+M_INCASSO = "m_incasso_factuur"
+# Blok 2 bundel 08-09 (bankmatchmotor): géén document-casus maar een bank-casus — mutaties.json + open_posten.json
+# (productiegevallen C.V. 08-09 + TransIP/NPG); `alle_casussen()` slaat 'm daarom over (geen factuur.xml/pdf_tekst).
+L_BANK_CV = "l_bank_cv_08-09"
 
 AFZENDER_UNIVERSAL = "administratie@universal-steigerbouw.example"
 
@@ -85,6 +90,15 @@ class Casus:
         return BESTANDSNAMEN[self.naam][0]
 
     def pdf_bestandsnaam(self) -> str:
+    # ---- bank-casus (blok 2 bundel 08-09) ------------------------------------------------------------------
+    def bank_mutaties(self) -> list[dict]:
+        """Onverwerkte bankmutaties zoals de sync ze in `bank_mutatie` zet (bedragen als string, cent-exact)."""
+        return self._json("mutaties.json")
+
+    def bank_open_posten(self) -> list[dict]:
+        """Open posten zoals de sync ze in `payment_item_cache` zet (RLZ-teken: inkoop negatief, verkoop positief)."""
+        return self._json("open_posten.json")
+
         return BESTANDSNAMEN[self.naam][1]
 
 
@@ -127,7 +141,8 @@ def ai_uit_json(data: dict) -> AiFactuurExtractie:
 
 
 def alle_casussen() -> list[Casus]:
-    return [Casus(p.name) for p in sorted(FIXTURES.iterdir()) if p.is_dir()]
+    """Alle DOCUMENT-casussen (map mét pdf_tekst.json); bank-casussen (mutaties.json) vallen erbuiten."""
+    return [Casus(p.name) for p in sorted(FIXTURES.iterdir()) if p.is_dir() and (p / "pdf_tekst.json").exists()]
 
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)

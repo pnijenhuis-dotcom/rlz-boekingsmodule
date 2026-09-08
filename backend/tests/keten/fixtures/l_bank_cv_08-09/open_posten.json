@@ -1,0 +1,42 @@
+[
+ {
+  "sleutel": "2352",
+  "id": "dddddddd-0000-4000-8000-000000002352",
+  "bedrag": "26.56",
+  "referentie": "2352",
+  "documentsoort": "Verkoopfactuur",
+  "entity_naam": "Tupker Beheer B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000002352",
+  "boekdatum": "2026-08-12"
+ },
+ {
+  "sleutel": "2337",
+  "id": "dddddddd-0000-4000-8000-000000002337",
+  "bedrag": "2337.00",
+  "referentie": "2337",
+  "documentsoort": "Verkoopfactuur",
+  "entity_naam": "Kempen Chalets B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000002337",
+  "boekdatum": "2026-08-01"
+ },
+ {
+  "sleutel": "TRANSIP",
+  "id": "dddddddd-0000-4000-8000-000000000824",
+  "bedrag": "-36.24",
+  "referentie": "F0024082026",
+  "documentsoort": "Inkoopfactuur",
+  "entity_naam": "TransIP B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000000824",
+  "boekdatum": "2026-08-20"
+ },
+ {
+  "sleutel": "NPG",
+  "id": "dddddddd-0000-4000-8000-000000002026",
+  "bedrag": "-1815.00",
+  "referentie": "2026053",
+  "documentsoort": "Inkoopfactuur",
+  "entity_naam": "NPG Administratiekantoor B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000002026",
+  "boekdatum": "2026-08-28"
+ }
+]

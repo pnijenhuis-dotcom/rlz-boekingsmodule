@@ -55,6 +55,9 @@ class MatchContext:
     open_posten: list[matchmotor.OpenPost]
     vaste_regels: list[matchmotor.VasteRegelGegevens]
     regel_per_id: dict[uuid.UUID, BankRegel]
+    # Blok 2 bundel 08-09: geleerde IBAN ↔ RLZ-entity-koppelingen (bank_relatie_iban, 0127) — het
+    # naam/IBAN-been van de matchmotor-score.
+    iban_relaties: list[matchmotor.IbanRelatie] = field(default_factory=list)
     btw_percentage_per_taxrate: dict[uuid.UUID | None, Decimal | None]
     # (tegenpartij_sleutel, ledger_id, taxrate_id) per eerdere handmatige/regel-boeking —
     # voedt het 3×-regelvoorstel.
@@ -133,6 +136,10 @@ def laad_matchcontext(
         }
         open_opdrachten = list(
             session.scalars(
+        # Blok 2 (08-09): IBAN-geheugen (lokale import — iban_geheugen importeert de matchmotor).
+        from app.bank.iban_geheugen import iban_relaties_voor
+
+        iban_relaties = iban_relaties_voor(session, administratie_id=administratie_id)
                 select(BankAfletterOpdracht).where(
                     BankAfletterOpdracht.administratie_id == administratie_id,
                     BankAfletterOpdracht.status == AfletterOpdrachtStatus.KLAARGEZET.value,
@@ -159,6 +166,7 @@ def laad_matchcontext(
     return MatchContext(
         open_mutaties=[_mutatie_gegevens(rij) for rij in mutaties],
         open_posten=[
+                entity_guid=post.entity_guid,
             matchmotor.OpenPost(
                 id=post.id,
                 bedrag=post.bedrag,
@@ -182,6 +190,7 @@ def laad_matchcontext(
             for regel in regels
         ],
         regel_per_id={regel.id: regel for regel in regels},
+        iban_relaties=iban_relaties,
         btw_percentage_per_taxrate={t.id: t.percentage for t in taxrates},
         boekhistorie=boekhistorie,
         open_opdracht_per_mutatie={o.payment_transaction_id: o for o in open_opdrachten},
@@ -226,7 +235,10 @@ def open_mutaties_met_voorstellen(
     resultaat: list[MutatieMetVoorstel] = []
     for mutatie in context.open_mutaties:
         voorstel = matchmotor.bepaal_voorstel(
-            mutatie, open_posten=context.open_posten, vaste_regels=context.vaste_regels
+            mutatie,
+            open_posten=context.open_posten,
+            vaste_regels=context.vaste_regels,
+            iban_relaties=context.iban_relaties,
         )
         regel = context.regel_per_id.get(voorstel.regel_id) if voorstel.regel_id else None
         regel_boekregels = []

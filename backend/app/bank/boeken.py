@@ -532,7 +532,10 @@ def verwerk_vaste_regels_automatisch(
     fouten: list[str] = []
     for mutatie in context.open_mutaties:
         voorstel = matchmotor.bepaal_voorstel(
-            mutatie, open_posten=context.open_posten, vaste_regels=context.vaste_regels
+            mutatie,
+            open_posten=context.open_posten,
+            vaste_regels=context.vaste_regels,
+            iban_relaties=context.iban_relaties,
         )
         if voorstel.soort != matchmotor.VoorstelSoort.VASTE_REGEL or voorstel.regel_id is None:
             continue

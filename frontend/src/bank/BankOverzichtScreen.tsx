@@ -8,10 +8,21 @@ function formatDatumKort(iso: string | null): string {
   return new Date(iso).toLocaleDateString('nl-NL', { dateStyle: 'medium' })
 }
 
+/** Laatste bank-sync per administratie (blok 1, 08-09): datum + HH:MM. */
+export function formatSyncTijd(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+/** Tekst voor "nog geen sync": de nachtelijke lus (sync-alles 07:00) pakt élke actieve administratie mee —
+ * niemand hoeft meer "de klant te openen om de eerste bank-sync te starten" (besluit Peter 08-09). */
+export const NOG_NIET_GESYNCHRONISEERD = 'nog niet gesynchroniseerd — vannacht automatisch'
+
 /** Bank-overzicht (mockup #bank): klanten met onverwerkte bankmutaties bovenaan (klik →
- * bankdetail); daaronder compact de overige administraties — nodig om bij een klant zonder
- * eerdere sync de eerste synchronisatie te kunnen starten (bewuste, kleine uitbreiding op de
- * mockup die alleen "klanten mét open mutaties" toont). */
+ * bankdetail); daaronder compact de overige administraties. Sinds blok 1 (08-09) draait de bank-sync
+ * dagelijks automatisch voor álle administraties — het overzicht toont per administratie de laatste
+ * sync-tijd; het openen van een klant ververst daarnaast direct (auto-verversing 25-08). */
 export function BankOverzichtScreen() {
   const navigate = useNavigate()
   const [klanten, setKlanten] = useState<BankKlantDto[] | null>(null)
@@ -75,6 +86,7 @@ export function BankOverzichtScreen() {
                 <th>Rekeningen</th>
                 <th>Onverwerkt</th>
                 <th>Oudste onverwerkte</th>
+                <th>Laatste sync</th>
               </tr>
             </thead>
             <tbody>
@@ -92,6 +104,9 @@ export function BankOverzichtScreen() {
                     <span className="chip ai">{klant.open_mutaties}</span>
                   </td>
                   <td>{formatDatumKort(klant.oudste_open_datum)}</td>
+                  <td className="hint">
+                    {klant.ooit_gesynchroniseerd ? formatSyncTijd(klant.laatste_sync_op) : NOG_NIET_GESYNCHRONISEERD}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -99,7 +114,8 @@ export function BankOverzichtScreen() {
         )}
         <div className="hint">
           Alleen klanten met onverwerkte mutaties; volledig verwerkte klanten verschijnen hier pas weer bij nieuwe
-          mutaties. Klik op een klant voor de rekeningen.
+          mutaties. De bank wordt elke nacht automatisch bijgewerkt uit Reeleezee (en bij het openen van een klant).
+          Klik op een klant voor de rekeningen.
         </div>
       </div>
 
@@ -117,8 +133,8 @@ export function BankOverzichtScreen() {
                   <td>{klant.naam}</td>
                   <td className="hint" style={{ padding: '8px 10px' }}>
                     {klant.ooit_gesynchroniseerd
-                      ? `geen open mutaties · laatste sync ${formatDatumKort(klant.laatste_sync_op)}`
-                      : 'nog nooit gesynchroniseerd — open de klant om de eerste bank-sync te starten'}
+                      ? `geen open mutaties · laatste sync ${formatSyncTijd(klant.laatste_sync_op)}`
+                      : NOG_NIET_GESYNCHRONISEERD}
                   </td>
                 </tr>
               ))}

@@ -133,6 +133,10 @@ class AfletterHistorieRegelResponse(BaseModel):
 
 class AfletterHistorieResponse(BaseModel):
     opdrachten: list[AfletterHistorieRegelResponse]
+    # Blok 6a (08-09): verwerkte opdrachten ouder dan `oud_na_dagen` staan achter een toggle; de teller reist altijd mee.
+    aantal_oud: int = 0
+    toon_oud: bool = False
+    oud_na_dagen: int = 30
 
 
 class AfletterVerifieerResponse(BaseModel):

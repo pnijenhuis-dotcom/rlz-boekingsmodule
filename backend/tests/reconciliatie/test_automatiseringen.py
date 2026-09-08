@@ -384,6 +384,87 @@ class TestBereken:
         json.dumps(json_)  # JSONB-veilig (UUID's als str)
 
 
+class TestBankSync:
+    """BLOK 1 (bundel 08-09): teller `bank_sync` — dagelijks, alle actieve administraties; bron = bank_sync_run
+    (klaar/fout) + administratie-kenmerken. Verwacht = alle actieve administraties; gedaan = ≥ 1 geslaagde run
+    in het venster; overgeslagen mét reden (Odoo / niet onboarded / fout / geen run)."""
+
+    def _run(self, aid, uur, status="klaar", fout=None, bron="sync_alles"):
+        return auto.BankSyncRunFeit(administratie_id=aid, beeindigd_op=_uur(uur), status=status, fout_reden=fout, bron=bron)
+
+    def test_geslaagde_run_in_het_etmaal_is_gedaan_ook_on_demand(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(aid, bank_rlz_verbinding={aid}, bank_sync_runs=[self._run(aid, 2, bron=None)])
+        t = _teller(auto.bereken(f, nu=NU), auto.BANK_SYNC)
+        assert t.stand == "altijd" and (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen_totaal) == (1, 1, 0)
+        assert (t.week.verwacht, t.week.gedaan) == (1, 1)
+        assert t.harde_voorwaarden == [] and not t.stil and auto.bevindingen(auto.bereken(f, nu=NU)) == []
+
+    def test_odoo_en_niet_onboarded_zijn_zichtbaar_overgeslagen_zonder_let_op(self) -> None:
+        odoo, seed, ok = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        f = auto.Feiten(
+            administraties={odoo: "Universal (Odoo)", seed: "Seed-test", ok: "Kempen Facilities B.V."},
+            bank_odoo={odoo},
+            bank_rlz_verbinding={ok},
+            bank_sync_runs=[self._run(ok, 1)],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.BANK_SYNC)
+        assert (t.dag.verwacht, t.dag.gedaan) == (3, 1)
+        assert t.dag.overgeslagen[auto.ODOO_ADMINISTRATIE] == 1
+        assert t.dag.overgeslagen[auto.GEEN_CREDENTIAL_GEREGISTREERD] == 1
+        assert t.dag.overgeslagen[auto.FOUT] == 0  # vaste categorie zichtbaar
+        assert auto.bevindingen(tellers) == []
+        regel = next(r for r in auto.regels(tellers) if r.startswith("  Bank-sync"))
+        assert "verwacht 3, gedaan 1, overgeslagen 2" in regel and "Odoo-administratie" in regel
+
+    def test_alleen_fout_runs_is_fout_zonder_let_op_maar_kapotte_login_is_let_op(self) -> None:
+        aid, kapot = uuid.uuid4(), uuid.uuid4()
+        f = auto.Feiten(
+            administraties={aid: "A", kapot: "B"},
+            bank_rlz_verbinding={aid, kapot},
+            bank_sync_runs=[
+                self._run(aid, 3, status="fout", fout="RlzApiError: 503 Service Unavailable"),
+                self._run(aid, 30, status="klaar"),  # gisteren wél gelukt → week gedaan
+                self._run(kapot, 1, status="fout", fout="RlzApiError: 401 — credential ongeldig"),
+            ],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.BANK_SYNC)
+        assert t.dag.overgeslagen[auto.FOUT] == 1 and t.dag.overgeslagen[auto.CREDENTIAL] == 1 and t.dag.gedaan == 0
+        assert t.week.gedaan == 1 and t.week.overgeslagen[auto.CREDENTIAL] == 1
+        assert [(h.categorie, h.administratie_id) for h in t.harde_voorwaarden] == [(auto.CREDENTIAL, kapot)]
+        bev = auto.bevindingen(tellers, namen=f.administraties)
+        assert len(bev) == 1 and bev[0]["detail"]["doel_pad"] == f"/instellingen/administraties/{kapot}"
+
+    def test_geen_enkele_run_bij_verbinding_is_platformbrede_let_op(self) -> None:
+        a, b = uuid.uuid4(), uuid.uuid4()
+        f = auto.Feiten(administraties={a: "A", b: "B"}, bank_rlz_verbinding={a, b})
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.BANK_SYNC)
+        assert t.dag.overgeslagen[auto.GEEN_SYNC_RUN] == 2 and t.dag.gedaan == 0
+        assert [(h.categorie, h.aantal, h.administratie_id) for h in t.harde_voorwaarden] == [(auto.GEEN_SYNC_RUN, 2, None)]
+        bev = auto.bevindingen(tellers)
+        assert len(bev) == 1 and bev[0]["administratie_id"] is None and bev[0]["detail"]["doel_pad"] == "/reconciliatie"
+        lees = teksten.leesbaar(
+            run_service.Bevinding(
+                blok="automatisering", soort="let_op", administratie_id=None, vingerafdruk="v", tekst=bev[0]["tekst"],
+                detail=bev[0]["detail"],
+            )
+        )
+        assert lees.titel.startswith("Automatisering wacht op voorwaarde") and "rlz-sync" in lees.doe
+        # Uit-regel bestaat niet voor deze teller (stand altijd) — hij staat vóór bank-autoboeken in de volgorde.
+        assert auto.VOLGORDE.index(auto.BANK_SYNC) < auto.VOLGORDE.index(auto.BANK)
+
+    def test_json_roundtrip_draagt_de_nieuwe_teller(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(aid, bank_rlz_verbinding={aid}, bank_sync_runs=[self._run(aid, 1)])
+        tellers = auto.bereken(f, nu=NU)
+        json_ = auto.als_samenvatting(tellers, nu=NU)
+        assert any(t["sleutel"] == "bank_sync" for t in json_["tellers"])
+        assert auto.regels_uit_samenvatting(json_) == auto.regels(tellers)
+
+
 class TestTeksten:
     def test_harde_voorwaarde_leesbaar_met_deeplink_handeling(self) -> None:
         aid = uuid.uuid4()
@@ -481,8 +562,23 @@ class TestVerzamelEnRun:
                 ),
                 {"a": administratie_id, "v": uuid.uuid4()},
             )
+        # Blok 1 (08-09): bank-sync-feiten — een fout-run én een klaar-run; de testadministratie heeft geen
+        # geregistreerde login (niet onboarded) en is geen Odoo-administratie.
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.bank_sync_run (id, administratie_id, status, beeindigd_op, resultaat, fout_reden) "
+                    "VALUES (:i1, :a, 'fout', now() - interval '2 hours', NULL, 'RLZ 503'), "
+                    "(:i2, :a, 'klaar', now() - interval '1 hour', '{\"bron\": \"sync_alles\", \"mutaties_nieuw\": 2}', NULL)"
+                ),
+                {"i1": uuid.uuid4(), "i2": uuid.uuid4(), "a": administratie_id},
+            )
         feiten = auto.verzamel_feiten(nu=datetime.now(UTC))
         assert administratie_id in feiten.administraties
+        assert administratie_id not in feiten.bank_odoo and administratie_id not in feiten.bank_rlz_verbinding
+        runs = sorted((r for r in feiten.bank_sync_runs if r.administratie_id == administratie_id), key=lambda r: r.beeindigd_op)
+        assert [(r.status, r.bron) for r in runs] == [("fout", None), ("klaar", "sync_alles")]
+        assert len([r for r in feiten.bank_runs if r.administratie_id == administratie_id]) == 1  # alleen klaar
         acties = sorted(f.actie for f in feiten.audit)
         assert acties == ["autoboeken_geweigerd", "automatisch_geboekt", "crediteur_dubbel_auto_run"]
         assert feiten.leverancier_optins[administratie_id] == 1 and feiten.duplicaat_noodrem_aan is True

@@ -24,6 +24,7 @@ import {
 import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
+import { NOG_NIET_GESYNCHRONISEERD } from './BankOverzichtScreen'
 import { GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, isDeelbetaling } from './VoorstelKaart'
 import { amountKlasse } from '../werkvoorraad/format'
 
@@ -522,6 +523,10 @@ export function BankDetailScreen() {
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
   const [mutaties, setMutaties] = useState<MutatieDto[] | null>(null)
   const [afletterHistorie, setAfletterHistorie] = useState<AfletterHistorieRegelDto[] | null>(null)
+  // Blok 6a (08-09): het "Toon afgehandelde documenten"-patroon op de bank-levenscyclus — verwerkte opdrachten
+  // ouder dan N dagen standaard ingeklapt achter een toggle; de teller reist altijd mee (server-side filter).
+  const [toonOudeOpdrachten, setToonOudeOpdrachten] = useState(false)
+  const [historieOud, setHistorieOud] = useState<{ aantal: number; naDagen: number }>({ aantal: 0, naDagen: 30 })
   const [fout, setFout] = useState<string | null>(null)
   const [afletterBezigId, setAfletterBezigId] = useState<string | null>(null)
   const [afletterMelding, setAfletterMelding] = useState<{ tekst: string; isFout: boolean } | null>(null)
@@ -557,10 +562,13 @@ export function BankDetailScreen() {
     haalMutaties(administratieId, rekeningId)
       .then((data) => setMutaties(data.mutaties))
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
-    haalAfletterOpdrachten(administratieId, rekeningId)
-      .then((data) => setAfletterHistorie(data.opdrachten))
+    haalAfletterOpdrachten(administratieId, rekeningId, toonOudeOpdrachten)
+      .then((data) => {
+        setAfletterHistorie(data.opdrachten)
+        setHistorieOud({ aantal: data.aantal_oud ?? 0, naDagen: data.oud_na_dagen ?? 30 })
+      })
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId, rekeningId])
+  }, [administratieId, rekeningId, toonOudeOpdrachten])
 
   useEffect(() => {
     setMutaties(null)
@@ -681,9 +689,11 @@ export function BankDetailScreen() {
 
       {rekeningen && !rekeningen.ooit_gesynchroniseerd && (
         <div className="panel">
+          {/* Blok 1 (08-09): de bank-sync draait elke nacht automatisch voor álle administraties; het openen van
+              dit scherm start bovendien direct een verversing (auto-verversing 25-08) — geen knop, geen opdracht. */}
           <p className="hint">
-            Deze administratie is nog nooit met Reeleezee gesynchroniseerd voor bank — start hieronder de eerste
-            synchronisatie.
+            Bank van deze administratie: {NOG_NIET_GESYNCHRONISEERD}. Het openen van dit scherm haalt de eerste
+            stand nu al op — zie de chip in de paneelkop.
           </p>
         </div>
       )}
@@ -732,17 +742,26 @@ export function BankDetailScreen() {
             Uitkomsten = toast; geen statusregels boven de tabel (layout-shift, diagnose Cowork 01-09). */}
         <div className="p-kop bank-p-kop">
           <h2 style={{ margin: 0 }}>Onverwerkte bankmutaties</h2>
+          {/* Blok 1 (08-09): de versheid is een zichtbare CHIP (niet klein grijs) — info-blauw = stand,
+              groen = status "actueel/zojuist ververst" (semantiek-regel: groen = status, teal = actie). */}
           <div className="vers" data-testid="ververs-hint">
-            <span>{formatVerversTijd(laatsteSyncOp)}</span>
             {autoVerversing.bezig ? (
-              <span className="chip vraag" role="status">
-                ⟳ verversen uit Reeleezee…
+              <span className="chip klaar" role="status">
+                ⟳ verversen uit Reeleezee… ({formatVerversTijd(laatsteSyncOp)})
+              </span>
+            ) : autoVerversing.run?.status === 'klaar' ? (
+              <span className="chip ok" role="status">
+                zojuist ververst · {formatVerversTijd(autoVerversing.run.laatste_sync_op ?? laatsteSyncOp)}
               </span>
             ) : autoVerversing.run?.status === 'overgeslagen' ? (
-              <span className="chip geheugen">actueel</span>
-            ) : autoVerversing.run?.status === 'klaar' ? (
-              <span className="chip geheugen">zojuist ververst</span>
-            ) : null}
+              <span className="chip ok" role="status">
+                actueel · {formatVerversTijd(laatsteSyncOp)}
+              </span>
+            ) : (
+              <span className="chip klaar" role="status">
+                {formatVerversTijd(laatsteSyncOp)}
+              </span>
+            )}
             <button
               type="button"
               className="knopje"
@@ -821,14 +840,29 @@ export function BankDetailScreen() {
         <SplitsingenPaneel administratieId={administratieId} rekeningId={rekeningId} herlaadSleutel={herlaadSleutel} />
       )}
 
-      {afletterHistorie !== null && afletterHistorie.length > 0 && (
+      {afletterHistorie !== null && (afletterHistorie.length > 0 || historieOud.aantal > 0) && (
         <div className="panel">
-          <h2>Afletteren via Reeleezee — levenscyclus</h2>
+          <div className="p-kop bank-p-kop">
+            <h2 style={{ margin: 0 }}>Afletteren via Reeleezee — levenscyclus</h2>
+            {/* Blok 6a (08-09): patroon documentenlijst "Toon afgehandelde documenten (N)" — server-side filter
+                (?toon_oud=true), teller altijd zichtbaar; klaargezette (open) opdrachten zijn nooit verborgen. */}
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}
+              title="Geverifieerde en ingetrokken afletteropdrachten die langer dan dertig dagen geleden zijn afgerond — standaard ingeklapt; klaargezette opdrachten blijven altijd zichtbaar."
+            >
+              <Checkbox checked={toonOudeOpdrachten} onChange={(e) => setToonOudeOpdrachten(e.target.checked)} />
+              Toon verwerkte mutaties ouder dan {historieOud.naDagen} dagen ({historieOud.aantal})
+            </label>
+          </div>
+          {afletterHistorie.length === 0 && (
+            <p className="hint">Geen recente afletteropdrachten op deze rekening; de oudere staan achter de toggle.</p>
+          )}
           {afletterMelding && (
             <p className="hint" style={afletterMelding.isFout ? { color: 'var(--red)' } : undefined}>
               {afletterMelding.tekst}
             </p>
           )}
+          {afletterHistorie.length > 0 && (
           <table>
             <thead>
               <tr>
@@ -882,10 +916,11 @@ export function BankDetailScreen() {
               ))}
             </tbody>
           </table>
+          )}
           <div className="hint">
             Klaargezette opdrachten (fallback ná een API-fout) letter je alsnog af met “Nu afletteren”, of je
-            legt de koppeling in Reeleezee; ze worden bij elke bank-sync (en met “Nu verifiëren”) tegen Reeleezee
-            gecontroleerd. Geverifieerd = het open bedrag in RLZ is 0. “Afwijkend gevolgd” betekent: in RLZ is
+            legt de koppeling in Reeleezee; ze worden bij elke bank-sync (nachtelijk en bij het openen van dit
+            scherm) tegen Reeleezee gecontroleerd. Geverifieerd = het open bedrag in RLZ is 0. “Afwijkend gevolgd” betekent: in RLZ is
             tegen iets anders afgeletterd dan het voorstel — zichtbaar, nooit stil.
           </div>
         </div>

@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -351,6 +351,9 @@ def _probeer_api_koppeling(
     if item is not None and open_na == 0 and abs(linked) == abs(item.bedrag or linked):
         # Volledige koppeling: de post is dicht — cache direct bijwerken (de sync bevestigt).
         item.verdwenen_uit_bron_op = nu
+    _leer_iban(
+        session, administratie_id=administratie_id, mutatie=mutatie, item=item, opdracht=opdracht, actor_id=actor_id
+    )
     record_audit_event(
         session,
         actor_id=actor_id,
@@ -415,6 +418,12 @@ def _markeer_al_afgeletterd(
     }
     mutatie.open_bedrag = Decimal(0)
     mutatie.laatst_gesynchroniseerd = nu
+    if voorstel_gevolgd and opdracht.payment_item_id is not None:
+        # De mens koppelde in RLZ precies de voorgestelde post: óók een bevestiging IBAN ↔ relatie.
+        item = session.get(PaymentItemCache, (opdracht.payment_item_id, administratie_id))
+        _leer_iban(
+            session, administratie_id=administratie_id, mutatie=mutatie, item=item, opdracht=opdracht, actor_id=actor_id
+        )
     record_audit_event(
         session,
         actor_id=actor_id,
@@ -432,6 +441,33 @@ def _markeer_al_afgeletterd(
         administratie_id=administratie_id,
     )
     return AfletterUitvoering(uitkomst="al_afgeletterd_in_rlz", opdracht_id=opdracht.id)
+
+
+def _leer_iban(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    mutatie: BankMutatie,
+    item: PaymentItemCache | None,
+    opdracht: BankAfletterOpdracht,
+    actor_id: uuid.UUID,
+) -> None:
+    """Bevestig-pad = leer-moment (blok 2 bundel 08-09, brief 2a-iii): een geslaagde, geverifieerde
+    aflettering legt de tegenrekening-IBAN van de mutatie vast bij de RLZ-entity van de post
+    (bank_relatie_iban). Zonder IBAN of zonder entity op de post gebeurt er niets — geen gok."""
+    if item is None:
+        return
+    from app.bank.iban_geheugen import leer_iban_relatie
+
+    leer_iban_relatie(
+        session,
+        administratie_id=administratie_id,
+        iban=mutatie.tegenrekening_iban,
+        entity_guid=item.entity_guid,
+        entity_naam=item.entity_naam,
+        opdracht_id=opdracht.id,
+        actor_id=actor_id,
+    )
 
 
 def _api_fout(
@@ -500,10 +536,12 @@ def verwerk_exacte_matches_automatisch(
     *, administratie_id: uuid.UUID, client: RlzClient
 ) -> tuple[int, list[str]]:
     """Voorstel-volgorde stap 1, nu écht automatisch (achter `bank_autoboeken_ingeschakeld`,
-    gecontroleerd door de aanroeper in de sync): alle open mutaties met een EXACTE match
-    (referentie + bedrag — groen) worden via de API afgeletterd, systeem-actor, mét de eigen
-    volumerem. Stap 2 (deelmatch) blijft bewust één-klik-bevestigen — nooit automatisch.
-    Fouten per mutatie worden verzameld, één kapotte mutatie stopt de rest niet."""
+    gecontroleerd door de aanroeper in de sync): alle open mutaties met een EXACTE match — sinds
+    blok 2 (08-09) GROEN in de nieuwe zin: teken + naam/IBAN + factuurnummer als heel token +
+    bedrag cent-exact (`matchmotor.PostScore.groen`) — worden via de API afgeletterd, systeem-
+    actor, mét de eigen volumerem. Stap 2 (oranje: twee van drie) blijft bewust één-klik-
+    bevestigen — nooit automatisch. Fouten per mutatie worden verzameld, één kapotte mutatie
+    stopt de rest niet."""
     from app.bank import voorstellen
     from app.bank.matchmotor import VoorstelSoort
 
@@ -704,27 +742,67 @@ class AfletterOpdrachtOverzicht:
     bedrag: Any
 
 
+#: Blok 6a (bundel 08-09) — het "Toon afgehandelde documenten"-patroon op de bank-levenscyclus: een VERWERKTE
+#: opdracht (geverifieerd/ingetrokken) ouder dan dit aantal dagen staat standaard ingeklapt achter een toggle.
+VERWERKT_OUD_NA_DAGEN = 30
+
+#: Eindstatussen van een afletter-opdracht — alleen díe kunnen "oud" zijn; klaargezet blijft altijd zichtbaar.
+_VERWERKTE_STATUSSEN = (AfletterOpdrachtStatus.GEVERIFIEERD.value, AfletterOpdrachtStatus.INGETROKKEN.value)
+
+
+@dataclass(frozen=True)
+class AfletterLevenscyclus:
+    """Uitkomst van `afletter_opdrachten_voor_rekening`: de getoonde rijen + de teller van wat er (nog) achter de
+    toggle zit — de teller reist altijd mee, ook als de toggle uit staat (patroon documentenlijst blok 3/11)."""
+
+    opdrachten: list[AfletterOpdrachtOverzicht]
+    aantal_oud: int
+    toon_oud: bool
+
+
+def _is_oud_filter(grens: datetime):
+    """Verwerkt (eindstatus) én het verwerkingsmoment vóór de grens; zonder verwerkingsstempel telt klaargezet_op."""
+    moment = func.coalesce(
+        BankAfletterOpdracht.geverifieerd_op, BankAfletterOpdracht.ingetrokken_op, BankAfletterOpdracht.klaargezet_op
+    )
+    return BankAfletterOpdracht.status.in_(_VERWERKTE_STATUSSEN) & (moment < grens)
+
+
 def afletter_opdrachten_voor_rekening(
-    *, administratie_id: uuid.UUID, payment_account_id: uuid.UUID, limiet: int = 25
-) -> list[AfletterOpdrachtOverzicht]:
+    *,
+    administratie_id: uuid.UUID,
+    payment_account_id: uuid.UUID,
+    limiet: int = 25,
+    toon_oud: bool = False,
+    nu: datetime | None = None,
+) -> AfletterLevenscyclus:
     """Levenscyclus-lijst per rekening (kliktest 2026-08-08 "lijkt niets te doen"): ook
     geverifieerde en ingetrokken opdrachten blijven zichtbaar — een geverifieerde mutatie is
-    niet meer "open" en verdween daardoor stil uit de mutatielijst. Recentste eerst."""
+    niet meer "open" en verdween daardoor stil uit de mutatielijst. Recentste eerst.
+
+    Blok 6a (08-09): verwerkte opdrachten ouder dan `VERWERKT_OUD_NA_DAGEN` staan standaard NIET in de lijst
+    (`toon_oud=False`) maar tellen altijd mee in `aantal_oud` — de UI toont "Toon verwerkte mutaties ouder dan
+    30 dagen (N)"; mét `toon_oud=True` komen ze (binnen dezelfde limiet, recentste eerst) terug."""
+    grens = (nu or datetime.now(UTC)) - timedelta(days=VERWERKT_OUD_NA_DAGEN)
+    basis = (
+        select(BankAfletterOpdracht, BankMutatie)
+        .join(
+            BankMutatie,
+            (BankMutatie.id == BankAfletterOpdracht.payment_transaction_id)
+            & (BankMutatie.administratie_id == BankAfletterOpdracht.administratie_id),
+        )
+        .where(
+            BankAfletterOpdracht.administratie_id == administratie_id,
+            BankMutatie.payment_account_id == payment_account_id,
+        )
+    )
+    oud = _is_oud_filter(grens)
     with scoped_session(administratie_id) as session:
-        rijen = session.execute(
-            select(BankAfletterOpdracht, BankMutatie)
-            .join(
-                BankMutatie,
-                (BankMutatie.id == BankAfletterOpdracht.payment_transaction_id)
-                & (BankMutatie.administratie_id == BankAfletterOpdracht.administratie_id),
-            )
-            .where(
-                BankAfletterOpdracht.administratie_id == administratie_id,
-                BankMutatie.payment_account_id == payment_account_id,
-            )
-            .order_by(BankAfletterOpdracht.klaargezet_op.desc())
-            .limit(limiet)
-        ).all()
+        aantal_oud = int(
+            session.scalar(select(func.count()).select_from(basis.where(oud).subquery())) or 0
+        )
+        q = basis if toon_oud else basis.where(~oud)
+        rijen = session.execute(q.order_by(BankAfletterOpdracht.klaargezet_op.desc()).limit(limiet)).all()
         resultaat = [
             AfletterOpdrachtOverzicht(
                 opdracht=opdracht,
@@ -735,4 +813,4 @@ def afletter_opdrachten_voor_rekening(
             for opdracht, mutatie in rijen
         ]
         session.expunge_all()
-        return resultaat
+        return AfletterLevenscyclus(opdrachten=resultaat, aantal_oud=aantal_oud, toon_oud=toon_oud)

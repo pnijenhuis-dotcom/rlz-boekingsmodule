@@ -1,0 +1,38 @@
+[
+ {
+  "sleutel": "A",
+  "id": "cccccccc-0000-4000-8000-00000000000a",
+  "boekdatum": "2026-09-05",
+  "bedrag": "12500.00",
+  "tegenpartij_naam": "Hr P.W. N.-P.",
+  "omschrijving": "26247623521810",
+  "tegenrekening_iban": "NL02ABNA0123456789"
+ },
+ {
+  "sleutel": "B",
+  "id": "cccccccc-0000-4000-8000-00000000000b",
+  "boekdatum": "2026-09-04",
+  "bedrag": "-99.99",
+  "tegenpartij_naam": "DNA Notaris",
+  "omschrijving": "Declaratie 2337 kosten inschrijving",
+  "tegenrekening_iban": "NL39RABO0300065264"
+ },
+ {
+  "sleutel": "TRANSIP",
+  "id": "cccccccc-0000-4000-8000-00000000000c",
+  "boekdatum": "2026-08-24",
+  "bedrag": "-36.24",
+  "tegenpartij_naam": "TransIP B.V.",
+  "omschrijving": "Factuur F0024082026 hosting ak-nijenhuis.nl",
+  "tegenrekening_iban": "NL91ABNA0417164300"
+ },
+ {
+  "sleutel": "NPG",
+  "id": "cccccccc-0000-4000-8000-00000000000d",
+  "boekdatum": "2026-09-01",
+  "bedrag": "-1815.00",
+  "tegenpartij_naam": "NPG Administratiekantoor",
+  "omschrijving": "Factuur 2026053",
+  "tegenrekening_iban": "NL20INGB0001234567"
+ }
+]

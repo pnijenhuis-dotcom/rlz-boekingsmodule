@@ -2,9 +2,11 @@
 
 Voorstel-volgorde (goedgekeurd ontwerp, mockup #bankdetail + CLAUDE.md "Bank", stap 4 hersteld
 na de schrijf-PoC):
-1. exacte match (factuurreferentie gevonden in de mutatietekst én exact bedrag) → groen;
-2. gedeeltelijke match (referentie zónder exact bedrag — deelbetaling/G-rekening-split — of
-   exact bedrag zonder referentie) → oranje, bevestigen;
+1. exacte match — sinds blok 2 (08-09): TEKEN klopt (inkoop↔afschrijving, verkoop↔bijschrijving,
+   creditnota omgekeerd) én NAAM/IBAN én factuurNUMMER als heel token én BEDRAG cent-exact → groen
+   (auto-afletteren-kandidaat achter de opt-in);
+2. gedeeltelijke match — geen teken-mismatch en twee van {naam/IBAN, nummer, bedrag}
+   (deelbetaling/G-rekening-split, nummer zonder naam, naam+bedrag zonder nummer) → oranje, bevestigen;
 3. vaste regel uit het geheugen (tegenpartij → grootboek/btw) → direct-op-grootboek-voorstel;
 4. RLZ's eigen voorstel (auto-gevuld MatchedPaymentItem bij exacte bedrag-match) — mét bron;
 5. handmatig.
@@ -14,7 +16,12 @@ geschreven worden (15/16/34/218 dicht — fallback-PoC), dus ze monden uit in he
 (app/bank/afletteren.py). Stap 3 is wél volautomatisch bouwbaar (direct-op-grootboek).
 
 Alles hier is puur en zonder I/O: de service-laag (voorstellen.py) voert data aan, deze module
-beslist — en is daarmee 1-op-1 unit-testbaar (tests verplicht op geldlogica)."""
+beslist — en is daarmee 1-op-1 unit-testbaar (tests verplicht op geldlogica).
+
+Aanleiding herziening stap 1/2 (productie 08-09, Administratiekantoor Nijenhuis C.V.): de oude
+substring-referentiematch koppelde € 12.500 BIJ van een privépersoon aan verkoopfactuur 2352 ("2352"
+zat in het kenmerk 26247623521810) en een afschrijving aan een verkoopfactuur (tekenfout). Zie
+BESLISSINGEN "MATCHMOTOR BANK — NAAM/IBAN + NUMMER + BEDRAG + TEKEN (blok 2 bundel 08-09)"."""
 
 from __future__ import annotations
 
@@ -27,11 +34,27 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 
+# --- referentie (factuurnummer) als HEEL token ------------------------------------------------------
+#
+# Blok 2 bundel 08-09 (productiegeval Administratiekantoor Nijenhuis C.V.): de oude substring-match
+# zag "2352" in het betalingskenmerk "26247623521810" en stelde verkoopfactuur 2352 voor bij een
+# bijschrijving van € 12.500 van een heel andere partij. Een factuurnummer telt sindsdien alleen als
+# HEEL token: tokeniseer op niet-alfanumeriek, vergelijk genormaliseerde tokens én samengestelde
+# aangrenzende tokens ("2026-0642" in de omschrijving → tokens "2026","0642" → samengesteld
+# "20260642" = de genormaliseerde referentie), nooit als substring van een langer cijferblok.
+
 # Een referentie korter dan dit aantal tekens (na normalisatie) is te generiek om op te matchen
 # ("1", "42" — dat soort tokens staat in elke omschrijving); nooit een voorstel op baseren.
 _MIN_REFERENTIE_LENGTE = 4
+# 4–5 tekens ("2352", "26247"): alleen tellen als het bedrag óók exact klopt (brief 2a-ii).
+_KORTE_REFERENTIE_GRENS = 6
+# Samengestelde tokens: maximaal zoveel aangrenzende tokens aaneengeplakt ("F", "2026", "0642").
+_MAX_SAMENGESTELDE_TOKENS = 4
+# Een cijferkern (letters vooraan gestript) moet minstens zo lang zijn om als kern te tellen.
+_MIN_CIJFERKERN_LENGTE = 6
 
 _NIET_ALFANUMERIEK = re.compile(r"[^0-9a-z]+")
+_LEIDENDE_LETTERS = re.compile(r"^[a-z]+")
 
 
 def _genormaliseerd(tekst: str | None) -> str:
@@ -43,9 +66,61 @@ def _genormaliseerd(tekst: str | None) -> str:
     return _NIET_ALFANUMERIEK.sub("", tekst.lower())
 
 
+def _tokens(tekst: str | None) -> list[str]:
+    if not tekst:
+        return []
+    return [token for token in _NIET_ALFANUMERIEK.split(tekst.lower()) if token]
+
+
+def _samengestelde_tokens(tokens: list[str]) -> set[str]:
+    """Alle losse tokens plus alle aaneengeplakte reeksen van 2..N aangrenzende tokens."""
+    uit: set[str] = set()
+    for i in range(len(tokens)):
+        for n in range(1, _MAX_SAMENGESTELDE_TOKENS + 1):
+            if i + n > len(tokens):
+                break
+            uit.add("".join(tokens[i : i + n]))
+    return uit
+
+
+def _cijferkern(token: str) -> str | None:
+    """Het cijferdeel ná een eventueel letter-voorvoegsel ("F20260642" → "20260642"); alleen een
+    zuivere cijferreeks van voldoende lengte telt. Vangt "INV20260642" vs "2026-0642" — een
+    voorvoegsel van letters, nooit een langer CIJFERblok."""
+    kern = _LEIDENDE_LETTERS.sub("", token)
+    if len(kern) >= _MIN_CIJFERKERN_LENGTE and kern.isdigit():
+        return kern
+    return None
+
+
+def referentie_als_token(referentie: str | None, *mutatie_teksten: str | None) -> bool:
+    """Deterministische factuurnummer-match: de genormaliseerde referentie staat als HEEL token (of
+    als aaneengeplakte reeks aangrenzende tokens) in één van de mutatieteksten. Een referentie
+    korter dan `_MIN_REFERENTIE_LENGTE` matcht nooit; een substring van een langer cijferblok
+    matcht nooit ("2352" ⊄ "26247623521810")."""
+    ref = _genormaliseerd(referentie)
+    if len(ref) < _MIN_REFERENTIE_LENGTE:
+        return False
+    kandidaten: set[str] = set()
+    for tekst in mutatie_teksten:
+        kandidaten |= _samengestelde_tokens(_tokens(tekst))
+    if ref in kandidaten:
+        return True
+    kern = _cijferkern(ref)
+    if kern is None:
+        return False
+    return any(_cijferkern(kandidaat) == kern for kandidaat in kandidaten)
+
+
+def referentie_is_kort(referentie: str | None) -> bool:
+    """4–5 tekens na normalisatie: telt alleen samen met een exact bedrag."""
+    return len(_genormaliseerd(referentie)) < _KORTE_REFERENTIE_GRENS
+
+
 def referentie_komt_voor(referentie: str | None, *mutatie_teksten: str | None) -> bool:
-    """Deterministische referentie-match: de genormaliseerde referentie moet als substring in
-    één van de genormaliseerde mutatieteksten staan (naam + omschrijving)."""
+    """LEGACY substring-match (min 4) — sinds blok 2 (08-09) NIET meer door de matchmotor gebruikt
+    (zie `referentie_als_token`). Blijft bestaan voor `app/bank/betaald_signaal.py`; open punt B2:
+    ook dat signaal naar de token-vorm brengen."""
     ref = _genormaliseerd(referentie)
     if len(ref) < _MIN_REFERENTIE_LENGTE:
         return False
@@ -56,6 +131,69 @@ def tegenpartij_sleutel(naam: str | None) -> str | None:
     """Zelfde normalisatie als het boekingsgeheugen (token-set) — de sleutel waarop vaste
     regels en de 3×-teller matchen."""
     return normaliseer_regel_sleutel(naam)
+
+
+# --- naam + IBAN ---------------------------------------------------------------------------------------
+
+# Rechtsvormen, aanspreekvormen, stopwoorden en te generieke bedrijfsnaam-woorden: tellen nooit als
+# significant token (brief 2a-iii). "Tupker Beheer" en "Kempen Beheer" matchen dus niet op "beheer".
+_NAAM_STOPTOKENS = frozenset(
+    {
+        "bv", "nv", "vof", "cv", "b", "v", "n", "o", "f", "c", "ba", "bvba", "gmbh", "ltd", "sa", "sarl",
+        "de", "het", "een", "en", "van", "der", "den", "des", "the", "and", "of",
+        "hr", "dhr", "mw", "mevr", "mr", "mrs", "fam",
+        "holding", "beheer", "groep", "group", "nederland", "netherlands", "international", "services",
+        "service", "bedrijf", "company", "onderneming", "administratiekantoor", "accountants",
+    }
+)
+_MIN_NAAM_TOKEN_LENGTE = 3
+_NAAM_TOKEN_SPLITSER = re.compile(r"[^0-9a-zà-ÿ]+")
+
+
+def naam_tokens(naam: str | None) -> set[str]:
+    """Significante naamtokens: lowercase, gesplitst op niet-alfanumeriek (punten, koppeltekens,
+    "B.V." → "b","v" vallen weg), zonder rechtsvorm/stopwoorden, minimaal 3 tekens."""
+    if not naam:
+        return set()
+    return {
+        token
+        for token in _NAAM_TOKEN_SPLITSER.split(naam.lower())
+        if len(token) >= _MIN_NAAM_TOKEN_LENGTE and token not in _NAAM_STOPTOKENS
+    }
+
+
+def naam_komt_overeen(naam_a: str | None, naam_b: str | None) -> bool:
+    """Token-overlap van minstens één significant token."""
+    return bool(naam_tokens(naam_a) & naam_tokens(naam_b))
+
+
+def normaliseer_iban(iban: str | None) -> str | None:
+    if not iban:
+        return None
+    genormaliseerd = re.sub(r"[^0-9A-Z]+", "", iban.upper())
+    return genormaliseerd or None
+
+
+@dataclass(frozen=True)
+class IbanRelatie:
+    """Geleerde koppeling tegenrekening-IBAN ↔ RLZ-entity (bank_relatie_iban, migratie 0127):
+    gevoed door élke geslaagde, geverifieerde aflettering (afletteren.py)."""
+
+    iban: str
+    entity_guid: uuid.UUID
+
+
+# --- teken ---------------------------------------------------------------------------------------------
+
+# RLZ-conventie (api-verkenning H1 "open PaymentItem −100" op een inkoopfactuur; replay 09-08 "post van
+# −105,42"): een INKOOP-post is negatief, een VERKOOP-post positief; creditnota's omgekeerd. Het teken
+# klopt dus precies dan als mutatie en post hetzelfde teken dragen — toetsbaar zodra de documentsoort
+# bekend is (DocumentType 1/10 uit de cache). Onbekende soort = niet toetsbaar → hooguit oranje.
+_TEKEN_TOETSBARE_SOORTEN = frozenset({"Inkoopfactuur", "Verkoopfactuur"})
+
+TEKEN_OK = "ok"
+TEKEN_MISMATCH = "mismatch"
+TEKEN_ONBEKEND = "onbekend"
 
 
 class VoorstelSoort(enum.StrEnum):
@@ -84,12 +222,13 @@ class OpenPost:
     referentie: str | None
     referentie2: str | None
     rlz_document_id: uuid.UUID | None
-    # Doel-post-specs voor de voorstel-kaart (blok E5, 01/02-09) — puur presentatie uit de cache,
-    # de matchmotor kijkt er niet naar (volgorde stap 1–5 ongewijzigd).
+    # Doel-post-specs (blok E5, 01/02-09) — sinds blok 2 (08-09) óók motor-invoer: `tegenpartij_naam`
+    # (naam-toets) en `documentsoort` (teken-toets). `entity_guid` voedt de IBAN-toets.
     tegenpartij_naam: str | None = None
     documentsoort: str | None = None
     boekstuknummer: str | None = None
     factuurdatum: date | None = None
+    entity_guid: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -107,7 +246,9 @@ class VasteRegelGegevens:
 class Voorstel:
     """Eén voorstel per mutatie, mét herkomst (mockup: 'Elke regel toont wélke bron het
     voorstel deed'). `kleur` volgt het vaste patroon: groen = deterministisch zeker, oranje =
-    markeren/bevestigen, nooit stil overnemen."""
+    markeren/bevestigen, nooit stil overnemen. `bron` zegt sinds blok 2 (08-09) EXACT wat matchte
+    ("IBAN + nummer + bedrag", "nummer + bedrag, naam onbekend") — nooit meer "naam + referentie"
+    als de naam niet getoetst is."""
 
     soort: VoorstelSoort
     kleur: str  # "groen" | "oranje"
@@ -118,18 +259,115 @@ class Voorstel:
     regel_id: uuid.UUID | None = None
 
 
-def _referentie_kandidaten(mutatie: MutatieGegevens, open_posten: list[OpenPost]) -> list[OpenPost]:
-    return [
-        post
-        for post in open_posten
-        if referentie_komt_voor(post.referentie, mutatie.tegenpartij_naam, mutatie.omschrijving)
-    ]
+def teken_toets(mutatie: MutatieGegevens, post: OpenPost) -> str:
+    """TEKEN_OK / TEKEN_MISMATCH / TEKEN_ONBEKEND (documentsoort of bedrag onbekend)."""
+    if mutatie.bedrag is None or post.bedrag is None or mutatie.bedrag == 0 or post.bedrag == 0:
+        return TEKEN_ONBEKEND
+    if post.documentsoort not in _TEKEN_TOETSBARE_SOORTEN:
+        return TEKEN_ONBEKEND
+    return TEKEN_OK if (mutatie.bedrag > 0) == (post.bedrag > 0) else TEKEN_MISMATCH
 
 
-def _bedrag_kandidaten(mutatie: MutatieGegevens, open_posten: list[OpenPost]) -> list[OpenPost]:
-    if mutatie.bedrag is None:
-        return []
-    return [post for post in open_posten if post.bedrag is not None and abs(post.bedrag) == abs(mutatie.bedrag)]
+def _naam_of_iban(
+    mutatie: MutatieGegevens,
+    post: OpenPost,
+    *,
+    vaste_regels: list[VasteRegelGegevens],
+    iban_relaties: list[IbanRelatie],
+) -> str | None:
+    """"IBAN" (geleerde IBAN↔entity-koppeling, of een vaste regel op dit IBAN wiens tegenpartij-
+    sleutel de postnaam dekt), "naam" (token-overlap) of None."""
+    iban = normaliseer_iban(mutatie.tegenrekening_iban)
+    if iban is not None:
+        if post.entity_guid is not None and any(
+            relatie.entity_guid == post.entity_guid and normaliseer_iban(relatie.iban) == iban
+            for relatie in iban_relaties
+        ):
+            return "IBAN"
+        if post.tegenpartij_naam and any(
+            regel.tegenrekening_iban
+            and normaliseer_iban(regel.tegenrekening_iban) == iban
+            and naam_komt_overeen(regel.tegenpartij_sleutel, post.tegenpartij_naam)
+            for regel in vaste_regels
+        ):
+            return "IBAN"
+    if naam_komt_overeen(mutatie.tegenpartij_naam, post.tegenpartij_naam):
+        return "naam"
+    return None
+
+
+def _bedrag_exact(mutatie: MutatieGegevens, post: OpenPost) -> bool:
+    return mutatie.bedrag is not None and post.bedrag is not None and abs(post.bedrag) == abs(mutatie.bedrag)
+
+
+@dataclass(frozen=True)
+class PostScore:
+    """Deterministische score van één open post tegen één mutatie (brief 2a): teken, naam/IBAN,
+    nummer (heel token), bedrag (cent-exact). Puur — geen I/O."""
+
+    post: OpenPost
+    teken: str
+    naam_of_iban: str | None
+    nummer: bool
+    bedrag: bool
+
+    @property
+    def aantal(self) -> int:
+        return int(self.naam_of_iban is not None) + int(self.nummer) + int(self.bedrag)
+
+    @property
+    def groen(self) -> bool:
+        """Auto-afletteren-kandidaat: teken klopt én naam/IBAN én nummer én bedrag."""
+        return self.teken == TEKEN_OK and self.aantal == 3
+
+    @property
+    def oranje(self) -> bool:
+        """Bevestigen: geen teken-mismatch en minstens twee van {naam/IBAN, nummer, bedrag}."""
+        return not self.groen and self.teken != TEKEN_MISMATCH and self.aantal >= 2
+
+    def label(self) -> str:
+        aanwezig = [
+            deel
+            for deel, ok in (
+                (self.naam_of_iban or "naam", self.naam_of_iban is not None),
+                ("nummer", self.nummer),
+                ("bedrag", self.bedrag),
+            )
+            if ok
+        ]
+        tekst = " + ".join(aanwezig)
+        ontbrekend = []
+        if self.naam_of_iban is None:
+            ontbrekend.append("naam onbekend")
+        if not self.nummer:
+            ontbrekend.append("nummer niet gevonden")
+        if not self.bedrag:
+            ontbrekend.append("bedrag wijkt af")
+        if ontbrekend:
+            tekst += ", " + ", ".join(ontbrekend)
+        if self.teken == TEKEN_ONBEKEND:
+            tekst += " — documentsoort onbekend, teken niet getoetst"
+        return tekst
+
+
+def score_post(
+    mutatie: MutatieGegevens,
+    post: OpenPost,
+    *,
+    vaste_regels: list[VasteRegelGegevens],
+    iban_relaties: list[IbanRelatie],
+) -> PostScore:
+    bedrag = _bedrag_exact(mutatie, post)
+    nummer = referentie_als_token(post.referentie, mutatie.tegenpartij_naam, mutatie.omschrijving)
+    if nummer and referentie_is_kort(post.referentie) and not bedrag:
+        nummer = False  # korte referentie telt alleen samen met een exact bedrag
+    return PostScore(
+        post=post,
+        teken=teken_toets(mutatie, post),
+        naam_of_iban=_naam_of_iban(mutatie, post, vaste_regels=vaste_regels, iban_relaties=iban_relaties),
+        nummer=nummer,
+        bedrag=bedrag,
+    )
 
 
 def _vaste_regel_voor(mutatie: MutatieGegevens, regels: list[VasteRegelGegevens]) -> VasteRegelGegevens | None:
@@ -148,74 +386,61 @@ def _vaste_regel_voor(mutatie: MutatieGegevens, regels: list[VasteRegelGegevens]
     return None
 
 
+def _meerdere_kandidaten(scores: list[PostScore], kleur: str) -> Voorstel:
+    refs = ", ".join(repr(s.post.referentie) for s in scores[:5])
+    return Voorstel(
+        soort=VoorstelSoort.HANDMATIG,
+        kleur="oranje",
+        bron="handmatig — meerdere kandidaten",
+        reden=f"{len(scores)} open posten scoren gelijkwaardig ({kleur}: {refs}); geen eenduidige keuze",
+    )
+
+
 def bepaal_voorstel(
     mutatie: MutatieGegevens,
     *,
     open_posten: list[OpenPost],
     vaste_regels: list[VasteRegelGegevens],
+    iban_relaties: list[IbanRelatie] | None = None,
 ) -> Voorstel:
-    """Het ene voorstel voor deze mutatie, in de vaste volgorde 1–5. Bij meerdere gelijkwaardige
-    kandidaten binnen een stap wordt er nooit blind één gekozen: dan zakt het voorstel naar
-    oranje mét de reden, of (zonder eenduidige kandidaat) door naar de volgende stap."""
-    # Stap 1/2: match tegen open posten (referentie en/of bedrag).
-    ref_kandidaten = _referentie_kandidaten(mutatie, open_posten)
-    if len(ref_kandidaten) == 1:
-        post = ref_kandidaten[0]
-        bedrag_exact = (
-            mutatie.bedrag is not None and post.bedrag is not None and abs(post.bedrag) == abs(mutatie.bedrag)
-        )
-        if bedrag_exact:
-            return Voorstel(
-                soort=VoorstelSoort.EXACTE_MATCH,
-                kleur="groen",
-                bron="exacte match — referentie + bedrag",
-                reden=f"Referentie {post.referentie!r} gevonden in de mutatie én bedrag exact gelijk",
-                payment_item_id=post.id,
-                rlz_document_id=post.rlz_document_id,
-            )
-        return Voorstel(
-            soort=VoorstelSoort.DEEL_MATCH,
-            kleur="oranje",
-            bron="match op referentie, bedrag wijkt af — bevestigen",
-            reden=(
-                f"Referentie {post.referentie!r} gevonden, maar het bedrag verschilt "
-                "(deelbetaling of G-rekening-split?)"
-            ),
-            payment_item_id=post.id,
-            rlz_document_id=post.rlz_document_id,
-        )
-    if len(ref_kandidaten) > 1:
-        # Meerdere posten met een matchende referentie: alleen een exacte bedrag-match binnen
-        # die set maakt het nog eenduidig; anders is dit een handmatige beoordeling.
-        exacte = _bedrag_kandidaten(mutatie, ref_kandidaten)
-        if len(exacte) == 1:
-            post = exacte[0]
-            return Voorstel(
-                soort=VoorstelSoort.EXACTE_MATCH,
-                kleur="groen",
-                bron="exacte match — referentie + bedrag",
-                reden=f"Meerdere referentie-matches; alleen {post.referentie!r} matcht ook op bedrag",
-                payment_item_id=post.id,
-                rlz_document_id=post.rlz_document_id,
-            )
-        return Voorstel(
-            soort=VoorstelSoort.HANDMATIG,
-            kleur="oranje",
-            bron="handmatig — meerdere kandidaten",
-            reden=f"{len(ref_kandidaten)} open posten matchen op referentie; geen eenduidige keuze",
-        )
+    """Het ene voorstel voor deze mutatie, in de vaste volgorde 1–5. Stap 1/2 sinds blok 2 (08-09)
+    op de score per open post: GROEN = teken + naam/IBAN + nummer + bedrag (auto-afletteren-
+    kandidaat), ORANJE = geen teken-mismatch + twee van {naam/IBAN, nummer, bedrag} (bevestigen),
+    anders door naar vaste regel / RLZ-voorstel / handmatig. Bij meerdere gelijkwaardige
+    kandidaten binnen een kleur wordt er nooit blind één gekozen (handmatig mét reden)."""
+    relaties = iban_relaties or []
+    scores = [score_post(mutatie, post, vaste_regels=vaste_regels, iban_relaties=relaties) for post in open_posten]
 
-    bedrag_kandidaten = _bedrag_kandidaten(mutatie, open_posten)
-    if len(bedrag_kandidaten) == 1:
-        post = bedrag_kandidaten[0]
+    groen = [s for s in scores if s.groen]
+    if len(groen) == 1:
+        s = groen[0]
+        return Voorstel(
+            soort=VoorstelSoort.EXACTE_MATCH,
+            kleur="groen",
+            bron=s.label(),
+            reden=(
+                f"Open post {s.post.referentie!r}: teken klopt, {s.naam_of_iban} matcht, factuurnummer als heel "
+                "token in de mutatie én bedrag cent-exact gelijk"
+            ),
+            payment_item_id=s.post.id,
+            rlz_document_id=s.post.rlz_document_id,
+        )
+    if len(groen) > 1:
+        return _meerdere_kandidaten(groen, "groen")
+
+    oranje = [s for s in scores if s.oranje]
+    if len(oranje) == 1:
+        s = oranje[0]
         return Voorstel(
             soort=VoorstelSoort.DEEL_MATCH,
             kleur="oranje",
-            bron="match op bedrag, geen referentie — bevestigen",
-            reden=f"Bedrag matcht exact met open post {post.referentie!r}, maar de referentie is niet gevonden",
-            payment_item_id=post.id,
-            rlz_document_id=post.rlz_document_id,
+            bron=s.label(),
+            reden=f"Open post {s.post.referentie!r} matcht op {s.label()} — bevestigen",
+            payment_item_id=s.post.id,
+            rlz_document_id=s.post.rlz_document_id,
         )
+    if len(oranje) > 1:
+        return _meerdere_kandidaten(oranje, "oranje")
 
     # Stap 3: vaste regel uit het geheugen.
     regel = _vaste_regel_voor(mutatie, vaste_regels)

@@ -504,6 +504,16 @@ def _sync_alles(args: argparse.Namespace) -> int:
         kern += f" ({overgeslagen} overgeslagen: geen credential geregistreerd)"
     print(f"\n{kern}")
 
+    # BLOK 1 (besluit Peter 08-09, "bank-sync automatisch, geen knoppen"): de dagelijkse sync ververst óók
+    # de bankcache van ÁLLE actieve administraties (07:00, ná RLZ's eigen bankimport) — tot 08-09 kwamen
+    # mutaties alleen bij het openen van het bankscherm (29 van 33 administraties "nog nooit gesynchroniseerd").
+    # Zelfde motor als de on-demand run, mét bank_sync_run-spoor (bron sync_alles); geen RLZ-verbinding
+    # (geen credential / Odoo) = zichtbaar OVERGESLAGEN, geen fout; eigen fouten-telling (exit 1).
+    from app.bank import sync_run as bank_sync_run
+
+    print("\nBank-sync (alle actieve administraties):")
+    bank_exit = _rapporteer_bank_runs(bank_sync_run.sync_alle_via_runs())
+
     # Automatisering-first (opdracht 23-08 punt 3): de dagelijkse sync ververst óók de
     # projectcijfers voor de uren-&-meerwerk-administraties — de knop blijft de handmatige
     # verversing. Eigen fouten-telling: een kapotte cijfers-sync maakt de job zichtbaar rood.
@@ -547,9 +557,59 @@ def _sync_alles(args: argparse.Namespace) -> int:
     projectverdeling_exit = _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle())
     return (
         1
-        if fouten or cijfers_exit or voorraad_exit or terugkerend_exit or kandidaten_exit or werklijst_exit or projectverdeling_exit
+        if fouten
+        or bank_exit
+        or cijfers_exit
+        or voorraad_exit
+        or terugkerend_exit
+        or kandidaten_exit
+        or werklijst_exit
+        or projectverdeling_exit
         else 0
     )
+
+
+def _rapporteer_bank_runs(resultaten: dict) -> int:
+    """BLOK 1 (08-09): rapportage van de nachtelijke bank-sync per administratie — één regel per administratie
+    (OK / OVERGESLAGEN / FOUT), de tellers uit `bank_sync_run.resultaat`, exit 1 bij élke fout-run of exception.
+    Deze regels zijn het meetrecept in Cloud Logging (job rlz-sync): grep op "bank-sync " per administratie."""
+    from app.bank.sync_run import BankSyncOvergeslagen, BankSyncRunInfo
+
+    fouten = 0
+    overgeslagen = 0
+    if not resultaten:
+        print("OK    geen actieve administraties")
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, BankSyncOvergeslagen):
+            overgeslagen += 1
+            print(f"OVERGESLAGEN bank-sync {administratie_id}: {r.reden} — {r.detail}")
+        elif isinstance(r, BankSyncRunInfo):
+            if r.status == "klaar":
+                res = r.resultaat or {}
+                print(
+                    f"OK    bank-sync {administratie_id}: mutaties_nieuw={res.get('mutaties_nieuw', 0)}, "
+                    f"mutaties_bijgewerkt={res.get('mutaties_bijgewerkt', 0)}, open_ververst={res.get('open_ververst', 0)}, "
+                    f"afletteren_geverifieerd={res.get('afletteren_geverifieerd', 0)}, "
+                    f"automatisch_afgeletterd={res.get('automatisch_afgeletterd', 0)}, "
+                    f"automatisch_geboekt={res.get('automatisch_geboekt', 0)}, fouten={len(res.get('fouten') or [])}"
+                )
+                for fout in res.get("fouten") or []:
+                    print(f"      autoflow-fout: {fout}", file=sys.stderr)
+            elif r.status in ("wachtrij", "bezig"):
+                # Informatief, geen fout: er loopt al een on-demand run (bankscherm open vlak vóór de job) —
+                # die maakt zijn eigen status af, dubbel draaien is juist ongewenst.
+                print(f"OK    bank-sync {administratie_id}: al {r.status} (run {r.run_id}) — niet dubbel gestart")
+            else:
+                fouten += 1
+                print(f"FOUT  bank-sync {administratie_id}: {r.status} — {r.fout_reden}", file=sys.stderr)
+        else:
+            fouten += 1
+            print(f"FOUT  bank-sync {administratie_id}: {r}", file=sys.stderr)
+    kern = f"{len(resultaten) - fouten - overgeslagen}/{len(resultaten)} administraties bank-gesynchroniseerd."
+    if overgeslagen:
+        kern += f" ({overgeslagen} overgeslagen: geen Reeleezee-verbinding)"
+    print(kern)
+    return 1 if fouten else 0
 
 
 def _rapporteer_projectverdeling(resultaten: dict) -> int:
@@ -1060,7 +1120,13 @@ def _bank_sync(args: argparse.Namespace) -> int:
         resultaten = bank_sync_service.sync_bank_alle_administraties()
 
     fouten = 0
+    overgeslagen = 0
     for administratie_id, resultaat in resultaten.items():
+        if isinstance(resultaat, GeenRlzCredentials):
+            # BLOK 1 (08-09): geen RLZ-verbinding (geen credential / Odoo) = zichtbaar overgeslagen, geen fout.
+            overgeslagen += 1
+            print(f"OVERGESLAGEN {administratie_id}: {resultaat}")
+            continue
         if isinstance(resultaat, str) or resultaat is None:
             fouten += 1
             print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
@@ -1073,7 +1139,10 @@ def _bank_sync(args: argparse.Namespace) -> int:
         )
         for fout in resultaat.automatisch_fouten:
             print(f"      autoboek-fout: {fout}", file=sys.stderr)
-    print(f"\n{len(resultaten) - fouten}/{len(resultaten)} administraties bank-gesynchroniseerd.")
+    kern = f"{len(resultaten) - fouten - overgeslagen}/{len(resultaten)} administraties bank-gesynchroniseerd."
+    if overgeslagen:
+        kern += f" ({overgeslagen} overgeslagen: geen Reeleezee-verbinding)"
+    print(f"\n{kern}")
     return 1 if fouten else 0
 
 
@@ -2412,7 +2481,7 @@ def main(argv: list[str] | None = None) -> int:
         "meldt het commando expliciet dat de bron niet geconfigureerd is).",
     )
 
-    subparsers.add_parser(
+    intake_postvak_parser = subparsers.add_parser(
         "accordeur-herinneringen",
         help="Dagelijkse accordeur-herinnering (09:00 Europe/Amsterdam): push of e-mail bij >0 "
         "openstaande accorderingen — idempotent per dag per accordeur, volumerem, fail-zichtbaar.",

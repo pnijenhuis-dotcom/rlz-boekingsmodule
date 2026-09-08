@@ -30,36 +30,52 @@ describe('restantCenten / isDeelbetaling (cent-exact, gehele centen)', () => {
   })
 })
 
-describe('matchChip (E6)', () => {
-  it('groen = exacte match; oranje mét reden voor bedrag-zonder-referentie en deelmatch; geen chip voor vaste regel/handmatig', () => {
-    expect(matchChip({ soort: 'exacte_match' }, false)).toEqual({ tekst: 'exacte match — naam + factuurnummer + bedrag', kleur: 'groen' })
-    expect(matchChip({ soort: 'rlz_voorstel' }, false)).toEqual({ tekst: 'match op bedrag, geen referentie — bevestigen', kleur: 'oranje' })
-    expect(matchChip({ soort: 'deel_match' }, true)?.tekst).toBe('match op naam + referentie, bedrag wijkt af — bevestigen')
+describe('matchChip (E6, label uit de motor sinds blok 2 08-09)', () => {
+  it('groen = exacte match mét wat matchte; oranje = bevestigen mét wat matchte en wat niet; geen chip voor vaste regel/handmatig', () => {
+    expect(matchChip({ soort: 'exacte_match', bron: 'naam + nummer + bedrag' }, false)).toEqual({ tekst: 'exacte match — naam + nummer + bedrag', kleur: 'groen' })
+    expect(matchChip({ soort: 'exacte_match', bron: 'IBAN + nummer + bedrag' }, false)?.tekst).toBe('exacte match — IBAN + nummer + bedrag')
+    expect(matchChip({ soort: 'deel_match', bron: 'nummer + bedrag, naam onbekend' }, false)?.tekst).toBe('match op nummer + bedrag, naam onbekend — bevestigen')
+    expect(matchChip({ soort: 'deel_match', bron: 'naam + nummer, bedrag wijkt af' }, true)?.tekst).toBe('match op naam + nummer, bedrag wijkt af — bevestigen')
+    expect(matchChip({ soort: 'rlz_voorstel', bron: 'voorstel Reeleezee — bedrag-match' }, false)).toEqual({
+      tekst: 'voorstel Reeleezee — alleen bedrag, geen naam of nummer — bevestigen',
+      kleur: 'oranje',
+    })
     expect(matchChip({ soort: 'vaste_regel' }, false)).toBeNull()
     expect(matchChip({ soort: 'handmatig' }, false)).toBeNull()
+  })
+
+  it('zonder bron (oudere DTO) nooit "naam + referentie" verzinnen', () => {
+    expect(matchChip({ soort: 'exacte_match' }, false)?.tekst).toBe('exacte match — naam + nummer + bedrag')
+    expect(matchChip({ soort: 'deel_match' }, true)?.tekst).toBe('match op nummer, bedrag wijkt af — bevestigen')
+    expect(matchChip({ soort: 'deel_match' }, false)?.tekst).not.toContain('naam + referentie')
   })
 })
 
 describe('VoorstelKaart', () => {
   it('exacte match: alle specs + groene chip, geen deelbetaling', () => {
-    render(<VoorstelKaart voorstel={{ soort: 'exacte_match', open_post: POST }} mutatieBedrag="4428.73" />)
+    render(<VoorstelKaart voorstel={{ soort: 'exacte_match', bron: 'naam + nummer + bedrag', open_post: POST }} mutatieBedrag="4428.73" />)
     const kaart = screen.getByTestId('voorstel-kaart')
     expect(kaart).toHaveTextContent('Hans Anders Nederland B.V.')
     expect(kaart).toHaveTextContent('Verkoopfactuur 202600081 · RLZ-01-00000942')
     expect(kaart).toHaveTextContent('factuurdatum 1-9-2026 · open € 4.428,73')
-    expect(kaart).toHaveTextContent('exacte match — naam + factuurnummer + bedrag')
+    expect(kaart).toHaveTextContent('exacte match — naam + nummer + bedrag')
     expect(screen.queryByTestId('voorstel-deelbetaling')).not.toBeInTheDocument()
   })
 
   it('bedrag-match zonder referentie (RLZ-voorstel): oranje chip', () => {
     render(<VoorstelKaart voorstel={{ soort: 'rlz_voorstel', open_post: POST }} mutatieBedrag="4428.73" />)
-    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('match op bedrag, geen referentie — bevestigen')
+    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('voorstel Reeleezee — alleen bedrag, geen naam of nummer — bevestigen')
   })
 
   it('deelmatch: restant expliciet (E7)', () => {
-    render(<VoorstelKaart voorstel={{ soort: 'deel_match', open_post: { ...POST, bedrag: '1200.00' } }} mutatieBedrag="-1000.00" />)
+    render(
+      <VoorstelKaart
+        voorstel={{ soort: 'deel_match', bron: 'naam + nummer, bedrag wijkt af', open_post: { ...POST, bedrag: '1200.00' } }}
+        mutatieBedrag="-1000.00"
+      />,
+    )
     expect(screen.getByTestId('voorstel-deelbetaling')).toHaveTextContent('deelbetaling — restant € 200,00 blijft open')
-    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('match op naam + referentie, bedrag wijkt af — bevestigen')
+    expect(screen.getByTestId('voorstel-kaart')).toHaveTextContent('match op naam + nummer, bedrag wijkt af — bevestigen')
   })
 
   it('ontbrekende cachevelden: kaart zónder die regels — nooit leeg of wachtend', () => {

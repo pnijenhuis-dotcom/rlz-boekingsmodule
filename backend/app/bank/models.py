@@ -509,3 +509,33 @@ class BankSplitsingDeel(Base):
     afletter_opdracht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     relatie_boeking_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     verwerkt_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+# --- blok 2 bundel 08-09 (migratie 0127): IBAN-geheugen voor de matchmotor ----------------------------
+
+
+class BankRelatieIban(Base):
+    """Geleerde koppeling tegenrekening-IBAN ↔ RLZ-entity (crediteur/debiteur) per administratie —
+    het "naam/IBAN"-been van de matchmotor (brief 2a-iii). Gevoed door élke geslaagde, geverifieerde
+    aflettering (afletteren.py: koppeling via de API óf "al afgeletterd in RLZ" mét gevolgd voorstel):
+    de mens/het systeem bevestigde dat déze IBAN bij déze relatie hoort. Nooit verwijderen; een
+    herhaalde bevestiging telt op (`aantal_bevestigingen`). Geen RLZ-waarheid — eigen geheugen."""
+
+    __tablename__ = "bank_relatie_iban"
+    __table_args__ = (
+        Index("ix_bank_relatie_iban_administratie_id", "administratie_id"),
+        Index("ux_bank_relatie_iban_per_relatie", "administratie_id", "iban", "entity_guid", unique=True),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    iban: Mapped[str]  # genormaliseerd (hoofdletters, zonder spaties) — matchmotor.normaliseer_iban
+    entity_guid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    entity_naam: Mapped[str | None] = mapped_column(default=None)
+    aantal_bevestigingen: Mapped[int] = mapped_column(default=1)
+    eerste_bevestiging_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    laatste_bevestiging_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    laatste_opdracht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)

@@ -113,6 +113,11 @@ export interface AfletterHistorieRegelDto {
 
 export interface AfletterHistorieDto {
   opdrachten: AfletterHistorieRegelDto[]
+  /** Blok 6a (08-09): verwerkte (geverifieerd/ingetrokken) opdrachten ouder dan `oud_na_dagen` staan achter de
+   * toggle "Toon verwerkte mutaties ouder dan 30 dagen (N)"; de teller reist altijd mee. */
+  aantal_oud?: number
+  toon_oud?: boolean
+  oud_na_dagen?: number
 }
 
 export interface RegelVoorstelDto {
@@ -197,9 +202,13 @@ export function synchroniseerBank(administratieId: string): Promise<BankSyncResu
   return apiJson<BankSyncResultaatDto>(`/administraties/${administratieId}/bank/sync`, { method: 'POST' })
 }
 
-export function haalAfletterOpdrachten(administratieId: string, rekeningId: string): Promise<AfletterHistorieDto> {
+export function haalAfletterOpdrachten(
+  administratieId: string,
+  rekeningId: string,
+  toonOud = false,
+): Promise<AfletterHistorieDto> {
   return apiJson<AfletterHistorieDto>(
-    `/administraties/${administratieId}/bank/rekeningen/${rekeningId}/afletter-opdrachten`,
+    `/administraties/${administratieId}/bank/rekeningen/${rekeningId}/afletter-opdrachten${toonOud ? '?toon_oud=true' : ''}`,
   )
 }
 

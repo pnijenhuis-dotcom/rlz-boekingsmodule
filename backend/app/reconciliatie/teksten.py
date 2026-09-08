@@ -608,6 +608,10 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         auto.VANGNET_SCHEDULER: "De documenten zijn wél verwerkt (scheduler-vangnet, tot 10 min later). Controleer in "
         "Cloud Logging de melding 'triggeren mislukt' en het IAM-recht run.invoker van de service op de job "
         "rlz-extractie-wachtrij.",
+        # Blok 1 bundel 08-09: bank-sync draait dagelijks in sync-alles; geen run = de job is niet (volledig) gedraaid.
+        auto.GEEN_SYNC_RUN: "De nachtelijke bank-sync (job rlz-sync, 07:00) heeft deze administratie(s) niet bereikt. "
+        "Controleer in Cloud Logging de regels 'bank-sync' van de laatste run (afgebroken/timeout?) en open desnoods "
+        "het bankscherm van de klant — dat start direct een verversing.",
     }.get(reden, "Herstel de voorwaarde via de instelling op deze rij; de volgende run loopt door.")
     voorbeeld = _s(d, "voorbeeld")
     return (

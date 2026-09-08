@@ -6,6 +6,8 @@
 // (groen = exacte match, oranje = bevestigen mét reden); deelmatch expliciet ("restant € X blijft
 // open"); geen match = rustige tekstregel. Eén component, twee plekken (mutatielijst + splitsen-dialoog).
 // Puur presentatie: de matchmotor en de volgorde stap 1–5 zijn ongewijzigd.
+// Blok 2 bundel 08-09: de chip-tekst komt uit `bron` van de motor ("IBAN + nummer + bedrag", "nummer + bedrag, naam
+// onbekend") — de kaart verzint geen "naam + referentie" meer als de naam niet getoetst is.
 import type { OpenPostDto, VoorstelDto } from './bankApi'
 
 export function formatBedrag(bedrag: string | number | null | undefined): string {
@@ -40,19 +42,21 @@ export interface MatchChip {
   kleur: 'groen' | 'oranje'
 }
 
-/** Specifieke match-reden (E6) per voorstel-soort — deterministisch uit het bestaande `soort`
- * (de motor bepaalt; dit vertaalt alleen naar klantleesbare copy). */
-export function matchChip(voorstel: Pick<VoorstelDto, 'soort'>, deel: boolean): MatchChip | null {
+/** Specifieke match-reden (E6) per voorstel-soort — de motor bepaalt wát matchte (`bron`, blok 2 08-09:
+ * "naam + nummer + bedrag", "IBAN + nummer + bedrag", "nummer + bedrag, naam onbekend", "naam + nummer, bedrag
+ * wijkt af"); dit vertaalt alleen naar klantleesbare copy. `deel` blijft de restant-indicatie (E7). */
+export function matchChip(voorstel: Pick<VoorstelDto, 'soort'> & Partial<Pick<VoorstelDto, 'bron'>>, deel: boolean): MatchChip | null {
+  const bron = voorstel.bron?.trim() || null
   switch (voorstel.soort) {
     case 'exacte_match':
-      return { tekst: 'exacte match — naam + factuurnummer + bedrag', kleur: 'groen' }
+      return { tekst: `exacte match — ${bron ?? 'naam + nummer + bedrag'}`, kleur: 'groen' }
     case 'deel_match':
       return {
-        tekst: deel ? 'match op naam + referentie, bedrag wijkt af — bevestigen' : 'match op naam + referentie — bevestigen',
+        tekst: `match op ${bron ?? (deel ? 'nummer, bedrag wijkt af' : 'twee van drie kenmerken')} — bevestigen`,
         kleur: 'oranje',
       }
     case 'rlz_voorstel':
-      return { tekst: 'match op bedrag, geen referentie — bevestigen', kleur: 'oranje' }
+      return { tekst: 'voorstel Reeleezee — alleen bedrag, geen naam of nummer — bevestigen', kleur: 'oranje' }
     default:
       return null
   }
@@ -83,7 +87,7 @@ export function VoorstelKaart({
   mutatieBedrag,
   compact = false,
 }: {
-  voorstel: Pick<VoorstelDto, 'soort' | 'open_post'>
+  voorstel: Pick<VoorstelDto, 'soort' | 'open_post'> & Partial<Pick<VoorstelDto, 'bron'>>
   mutatieBedrag: string | number | null
   /** Splitsen-dialoog: zelfde kaart, zonder de chip (de keuze is daar al gemaakt). */
   compact?: boolean

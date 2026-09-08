@@ -215,13 +215,16 @@ def mutaties(
 def afletter_opdrachten(
     administratie_id: uuid.UUID,
     rekening_id: uuid.UUID,
+    toon_oud: bool = False,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.AfletterHistorieResponse:
     """Levenscyclus-lijst van afletter-opdrachten per rekening (kliktest 2026-08-08 "lijkt niets
     te doen"): ook geverifieerde/ingetrokken opdrachten blijven zichtbaar — een geverifieerde
-    mutatie is niet meer open en verdween daardoor stil uit de mutatielijst."""
-    overzichten = afletteren.afletter_opdrachten_voor_rekening(
-        administratie_id=administratie_id, payment_account_id=rekening_id
+    mutatie is niet meer open en verdween daardoor stil uit de mutatielijst.
+    Blok 6a (08-09): verwerkte opdrachten ouder dan 30 dagen alleen met `?toon_oud=true`; `aantal_oud` reist
+    altijd mee (toggle "Toon verwerkte mutaties ouder dan 30 dagen (N)")."""
+    levenscyclus = afletteren.afletter_opdrachten_voor_rekening(
+        administratie_id=administratie_id, payment_account_id=rekening_id, toon_oud=toon_oud
     )
     return schemas.AfletterHistorieResponse(
         opdrachten=[
@@ -231,8 +234,11 @@ def afletter_opdrachten(
                 tegenpartij_naam=o.tegenpartij_naam,
                 bedrag=o.bedrag,
             )
-            for o in overzichten
-        ]
+            for o in levenscyclus.opdrachten
+        ],
+        aantal_oud=levenscyclus.aantal_oud,
+        toon_oud=levenscyclus.toon_oud,
+        oud_na_dagen=afletteren.VERWERKT_OUD_NA_DAGEN,
     )
 
 
