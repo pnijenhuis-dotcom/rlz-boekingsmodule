@@ -658,7 +658,14 @@ def _archief_zoekvoorwaarde(term: str, kolommen: dict[str, object]):
 def _archief_basis(administratie_id: uuid.UUID, filt: ArchiefFilter):
     kolommen = _archief_kolomexpressies(filt.status)
     if filt.status == "afgevoerd":
-        status_voorwaarde = [Document.status == DocumentStatus.AFGEWEZEN, kolommen["geboekt_op"].isnot(None)]
+        # Blok 3 (fixrun 08-09): sindsdien de eigen status `afgevoerd_duplicaat`; `afgewezen` blijft
+        # ernaast geaccepteerd als terugval voor niet-gebackfilde legacy-rijen (van vóór deze deploy) —
+        # `geboekt_op` (het afvoermoment, uit de open kruisverwijzing) sluit een GEWONE afwijzing hoe
+        # dan ook uit.
+        status_voorwaarde = [
+            Document.status.in_([DocumentStatus.AFGEVOERD_DUPLICAAT, DocumentStatus.AFGEWEZEN]),
+            kolommen["geboekt_op"].isnot(None),
+        ]
     else:
         status_voorwaarde = [Document.status == DocumentStatus.GEBOEKT]
     where = [

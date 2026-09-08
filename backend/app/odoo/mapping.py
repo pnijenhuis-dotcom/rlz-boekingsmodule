@@ -87,11 +87,13 @@ _PROJECTNUMMER = re.compile(r"^\s*(\d{4,6})\b")
 _CODE_PREFIX = re.compile(r"^\s*\[[^\]]*\]\s*")
 
 #: Documentstatussen waarin een boekvoorstel-regel NIET meer "open" is: geboekt (het geheugen heeft 'm al),
-#: afgewezen/verwijderd/gesplitst/samengevoegd/geaccordeerd (er volgt geen boeking meer). Alle overige
-#: statussen tellen als open werk waarvan de RLZ-grootboek-/btw-keuzes ná de overstap nog vertaald moeten.
+#: afgewezen/afgevoerd_duplicaat/verwijderd/gesplitst/samengevoegd/geaccordeerd (er volgt geen boeking meer).
+#: Alle overige statussen tellen als open werk waarvan de RLZ-grootboek-/btw-keuzes ná de overstap nog
+#: vertaald moeten worden. `afgevoerd_duplicaat` (blok 3, fixrun 08-09) hoort erbij, net als afgewezen.
 TERMINALE_STATUSSEN: tuple[DocumentStatus, ...] = (
     DocumentStatus.GEBOEKT,
     DocumentStatus.AFGEWEZEN,
+    DocumentStatus.AFGEVOERD_DUPLICAAT,
     DocumentStatus.VERWIJDERD,
     DocumentStatus.GESPLITST,
     DocumentStatus.SAMENGEVOEGD,

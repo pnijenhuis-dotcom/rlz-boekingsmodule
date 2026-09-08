@@ -3,14 +3,14 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0121
+-- Migratie-head bij deze dump: 0122
 -- =============================================================================
 --
 -- PostgreSQL database dump
 --
 
 
--- Dumped from database version 16.14 (Homebrew)
+-- Dumped from database version 16.15 (Debian 16.15-1.pgdg13+2)
 -- Dumped by pg_dump version 16.14 (Homebrew)
 
 SET statement_timeout = 0;
@@ -76,7 +76,8 @@ CREATE TYPE boekhouding.document_status AS ENUM (
     'handmatig_afmaken',
     'wacht_op_iban_accordering',
     'ter_accordering',
-    'geaccordeerd'
+    'geaccordeerd',
+    'afgevoerd_duplicaat'
 );
 
 

@@ -26,6 +26,9 @@ _NIET_GEBOEKTE_STATUSSEN = frozenset(
         DocumentStatus.NIET_TOEGEWEZEN,
         DocumentStatus.HANDMATIG_AFMAKEN,
         DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
+        # Duplicaten-UI (blok 3, fixrun 08-09): eigen terminale status, hetzelfde niet-geboekte-lot als
+        # afgewezen (verwijderbaar, en VERWIJDERD moet er dus ook weer naar terug kunnen).
+        DocumentStatus.AFGEVOERD_DUPLICAAT,
     }
 )
 
@@ -76,6 +79,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
+            # Duplicaten-UI (blok 3, fixrun 08-09): dezelfde bronstatus als afwijzen hierboven — de
+            # duplicaat-afvoer schrijft sindsdien deze eigen status i.p.v. afgewezen (zie
+            # app/documenten/duplicaat_afvoer.py, app/documenten/afwijzen.py::wijs_af(naar_status=)).
+            DocumentStatus.AFGEVOERD_DUPLICAAT,
             # IBAN-wissel vier-ogen-accordering (2026-07-15): een afwijkend IBAN aanbieden
             # blokkeert boeken tot een accordeur ≠ aanvrager besluit — accorderen herstelt de
             # herkomst (iban_accordering.status_voor_accordering), zelfde patroon als
@@ -114,6 +121,9 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # een al boekklaar document kan alsnog fout blijken — heropenen herstelt exact deze
             # herkomst (afwijzing.status_voor_afwijzing).
             DocumentStatus.AFGEWEZEN,
+            # Duplicaten-UI (blok 3, fixrun 08-09): zelfde overweging — een al boekklaar document
+            # kan alsnog een duplicaat blijken.
+            DocumentStatus.AFGEVOERD_DUPLICAAT,
             DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
             DocumentStatus.VERWIJDERD,
         }
@@ -159,6 +169,7 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VRAAG_OPEN,
             DocumentStatus.AFGEWEZEN,
+            DocumentStatus.AFGEVOERD_DUPLICAAT,  # duplicaten-UI (blok 3, fixrun 08-09), zie te_controleren
             DocumentStatus.WACHT_OP_IBAN_ACCORDERING,
             DocumentStatus.VERWIJDERD,
             DocumentStatus.SAMENGEVOEGD,  # nabundel-nazorg dubbelparen (03-09), zie te_controleren
@@ -184,6 +195,25 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     DocumentStatus.AFGEWEZEN: frozenset(
         {
             DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.HANDMATIG_AFMAKEN,
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            DocumentStatus.VERWIJDERD,
+            # Duplicaten-UI backfill (blok 3, fixrun 08-09): ÉÉNMALIGE migratiepad voor legacy-rijen die
+            # vóór deze deploy als duplicaat naar afgewezen zijn afgevoerd (mét kruisverwijzing) — CLI
+            # `duplicaat-status-backfill` zet ze alsnog om naar de eigen status. Geen enkel ander code-pad
+            # gebruikt deze overgang (de nieuwe afvoer schrijft rechtstreeks naar afgevoerd_duplicaat).
+            DocumentStatus.AFGEVOERD_DUPLICAAT,
+        }
+    ),
+    # Duplicaten-UI (blok 3, fixrun 08-09): heropenen (bestaand pad, `afwijzen.heropen` — generiek
+    # op de open `Afwijzing`-rij, ongeacht de documentstatus) herstelt de HERKOMST-status van vóór
+    # de afvoer (afwijzing.status_voor_afwijzing), daarom dezelfde drie herstelbare herkomsten als
+    # afwijzen hierboven. Bewust GEEN uitgang naar ONTVANGEN (verplaatsen is voor dit blok niet
+    # gevraagd/gebouwd — `verplaatsen.VERPLAATSBARE_STATUSSEN` bevat deze status niet); wél naar
+    # VERWIJDERD (zelfde niet-geboekte lot als afgewezen, zie `_NIET_GEBOEKTE_STATUSSEN`).
+    DocumentStatus.AFGEVOERD_DUPLICAAT: frozenset(
+        {
             DocumentStatus.TE_CONTROLEREN,
             DocumentStatus.HANDMATIG_AFMAKEN,
             DocumentStatus.KLAAR_OM_TE_BOEKEN,

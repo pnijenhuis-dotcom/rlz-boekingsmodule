@@ -75,10 +75,13 @@ AFVOER_CATEGORIEEN = frozenset({CATEGORIE_BESTAND, CATEGORIE_REFERENTIE_BEDRAG})
 _ZWAARTE = {CATEGORIE_BESTAND: 0, CATEGORIE_REFERENTIE_BEDRAG: 1, CATEGORIE_CREDITEUR_REFERENTIE: 2}
 
 #: Statussen die een document uitsluiten als tegenhanger én als eigen toetsobject (zie module-docstring).
+#: `afgevoerd_duplicaat` (blok 3, fixrun 08-09) hoort erbij, net als `afgewezen`: een al afgevoerd document
+#: is uitgesloten zoals afgewezen — anders zou zo'n document na de afvoer weer als kandidaat opduiken.
 UITGESLOTEN_STATUSSEN = frozenset(
     {
         DocumentStatus.VERWIJDERD,
         DocumentStatus.AFGEWEZEN,
+        DocumentStatus.AFGEVOERD_DUPLICAAT,
         DocumentStatus.GESPLITST,
         DocumentStatus.SAMENGEVOEGD,
         DocumentStatus.NIET_TOEGEWEZEN,

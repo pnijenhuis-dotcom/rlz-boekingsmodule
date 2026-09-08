@@ -368,14 +368,14 @@ class TestSignaalEnAfvoer:
         module-motor (categorie (b), referentie + bedrag) het geboekte origineel al bij binnenkomst van de nakomer —
         afgevoerd in de upload-hook, vóór de overstap. Origineel = het app-document (bron 'geboekt', boekstuk,
         bestandsnaam); een tweede signaal-/afvoerronde is idempotent ([])."""
-        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         _maak_overgestapt(admin_engine, administratie_id, beheerder_id)
         duplicaatsignaal.bereken_duplicaatsignaal(
             administratie_id=administratie_id, document_id=nakomer, client=FakeBoekClient(duplicaten=[])
         )
         afgevoerd = duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=nakomer)
         assert afgevoerd == []  # al afgevoerd bij binnenkomst — idempotent
-        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, rlz_era_geboekt) == DocumentStatus.GEBOEKT.value  # origineel ongemoeid
         stand = duplicaat_afvoer.stand_voor_document(administratie_id=administratie_id, document_id=nakomer)
         o = stand.afgevoerd_als_duplicaat_van
@@ -398,7 +398,7 @@ class TestSignaalEnAfvoer:
         """HERZIET het 04-09-gedrag (besluit Peter 07-09): óók zónder overstap — de historie wordt niet geraadpleegd en
         de live query is leeg — vindt de module-motor het in de app GEBOEKTE origineel met dezelfde referentie + bedrag
         (categorie (b)) en voert de nakomer bij binnenkomst af, mét kruisverwijzing naar dat origineel."""
-        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         duplicaatsignaal.bereken_duplicaatsignaal(
             administratie_id=administratie_id, document_id=nakomer, client=FakeBoekClient(duplicaten=[])
         )
@@ -459,7 +459,7 @@ class TestBestaandeGroepslogica:
             vendor_id=VENDOR_ODOO,
             naam="nakomer.pdf",
         )
-        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, nakomer) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         _maak_overgestapt(admin_engine, administratie_id, beheerder_id)
         with scoped_session(administratie_id) as session:
             treffers = duplicaat_historie.geboekte_treffers_uit_historie(

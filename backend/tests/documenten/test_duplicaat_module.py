@@ -19,7 +19,7 @@ from sqlalchemy import Engine, text
 from app.auth import service as auth_service
 from app.beheer import service as beheer_service
 from app.db.session import scoped_session
-from app.documenten import boekvoorstel, duplicaat_afvoer, duplicaat_module, service
+from app.documenten import afwijzen, boekvoorstel, duplicaat_afvoer, duplicaat_module, service
 from app.documenten.checks import NAAM_DUPLICAAT_MODULE, check_duplicaat_module
 from app.documenten.duplicaat_afvoer import normaliseer_referentie
 from app.documenten.models import Document, DocumentStatus
@@ -211,7 +211,7 @@ class TestCategorieen:
         afgevoerd = duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=b)
         assert afgevoerd == [b]
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         rij = _afwijzing_rij(admin_engine, b)
         assert rij is not None and rij["duplicaat_van_document_id"] == a and rij["automatisch"] is True
         assert rij["duplicaat_van_referentie"] == "bestand a.pdf"  # kale bestandsmatch zonder kop
@@ -249,7 +249,7 @@ class TestCategorieen:
             naam="y.pdf",
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         rij = _afwijzing_rij(admin_engine, b)
         assert rij is not None and rij["duplicaat_van_document_id"] == a
         assert rij["reden"].startswith("Duplicaat van Factuur 2026-0042 (document x.pdf")
@@ -345,7 +345,7 @@ class TestCategorieen:
             vendor_id=vendor,
             naam="kopie.pdf",
         )
-        assert _status(admin_engine, kopie) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, kopie) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         rij = _afwijzing_rij(admin_engine, kopie)
         assert rij is not None and rij["duplicaat_van_document_id"] in (pdf, xml)
         assert _status(admin_engine, pdf) == DocumentStatus.TE_CONTROLEREN.value
@@ -462,7 +462,7 @@ class TestAfmelding:
             vendor_id=vendor,
             naam="c.pdf",
         )
-        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, c) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         # Niets af te melden → 409.
         r = client.post(
             f"/administraties/{administratie_id}/documenten/{a}/duplicaat-afmelden",
@@ -604,9 +604,9 @@ class TestBackfill:
         [u] = duplicaat_afvoer.backfill(dry_run=False, administratie_id=administratie_id)
         assert u.af_te_voeren == 2 and u.afgevoerd == 2
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, c) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, d) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, d) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, x) == DocumentStatus.TE_CONTROLEREN.value
         assert _status(admin_engine, y) == DocumentStatus.TE_CONTROLEREN.value
         with admin_engine.connect() as conn:
@@ -649,7 +649,7 @@ class TestArchiefEnZoeken:
             vendor_id=vendor,
             naam="dup.pdf",
         )
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         koppen = _bearer(gescoopte_gebruiker, rol="boekhouding")
         # Default archief (geboekt) toont 'm niet; statusfilter afgevoerd wél, mét origineel.
         r = client.get(f"/administraties/{administratie_id}/archief", headers=koppen)
@@ -659,7 +659,7 @@ class TestArchiefEnZoeken:
         body = r.json()
         assert body["totaal"] == 1
         [rij] = body["documenten"]
-        assert rij["document_id"] == str(b) and rij["status"] == "afgewezen" and rij["geboekt_op"] is None
+        assert rij["document_id"] == str(b) and rij["status"] == "afgevoerd_duplicaat" and rij["geboekt_op"] is None
         assert rij["afgevoerd_als_duplicaat_van"]["document_id"] == str(a)
         assert rij["afgevoerd_als_duplicaat_van"]["referentie"] == REF
         assert rij["afgevoerd_als_duplicaat_van"]["bestandsnaam"] == "orig.pdf"
@@ -867,7 +867,7 @@ class TestBeeldSha:
             assert [lid.document_id for lid in groep.duplicaten] == [los]
         _noodrem_aan(beheerder_id)
         assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=los) == [los]
-        assert _status(admin_engine, los) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, los) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, gebundeld_id) == DocumentStatus.TE_CONTROLEREN.value
         rij = _afwijzing_rij(admin_engine, los)
         assert rij is not None and rij["duplicaat_van_document_id"] == gebundeld_id and rij["automatisch"] is True
@@ -963,3 +963,78 @@ class TestBeeldSha:
         assert duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=nieuw) == [nieuw]
         rij = _afwijzing_rij(admin_engine, nieuw)
         assert rij is not None and rij["duplicaat_van_document_id"] == leidend
+
+
+class TestStatusBackfill:
+    """Blok 3 (fixrun 08-09, feedback Peter): CLI `duplicaat-status-backfill` — legacy-rijen die vóór deze deploy
+    als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing) krijgen alsnog de eigen
+    terminale status `afgevoerd_duplicaat`, via de statusmachine, mét tijdlijn + audit; een gewone afwijzing
+    (geen kruisverwijzing) blijft ongemoeid."""
+
+    def test_dry_run_telt_zonder_te_schrijven_echt_zet_om_en_is_idempotent(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        eigenaar_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        vendor = uuid.uuid4()
+        legacy = _upload_met_kop(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            vendor_id=vendor,
+            referentie="LEGACY-1",
+            naam="legacy.pdf",
+        )
+        # Simuleert het PRE-BLOK-3-schrijfpad (vóór 08-09 schreef duplicaat-afvoer naar afgewezen — `naar_status`
+        # op de default gelaten, precies zoals de code vóór deze fixrun deed).
+        afwijzen.wijs_af(
+            administratie_id=administratie_id,
+            document_id=legacy,
+            actor_id=gescoopte_gebruiker,
+            reden="Duplicaat van F-9999 (boekstuk INK-1, al geboekt)",
+            duplicaat_van_referentie="F-9999",
+            automatisch=True,
+        )
+        assert _status(admin_engine, legacy) == DocumentStatus.AFGEWEZEN.value
+
+        # Een GEWONE afwijzing (geen duplicaat-kruisverwijzing) is geen legacy-duplicaat en blijft ongemoeid.
+        normaal = _upload_met_kop(
+            administratie_id=administratie_id,
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+            vendor_id=vendor,
+            referentie="NORMAAL-1",
+            naam="normaal.pdf",
+        )
+        afwijzen.wijs_af(
+            administratie_id=administratie_id,
+            document_id=normaal,
+            actor_id=gescoopte_gebruiker,
+            reden="niet onze bestelling, navragen bij leverancier",
+        )
+
+        [u] = duplicaat_afvoer.status_backfill(dry_run=True, administratie_id=administratie_id)
+        assert u.legacy_gevonden == 1 and u.omgezet == 0 and not u.fouten
+        assert _status(admin_engine, legacy) == DocumentStatus.AFGEWEZEN.value  # dry-run schrijft niets
+
+        [u] = duplicaat_afvoer.status_backfill(dry_run=False, administratie_id=administratie_id)
+        assert u.legacy_gevonden == 1 and u.omgezet == 1 and not u.fouten
+        assert _status(admin_engine, legacy) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
+        assert _status(admin_engine, normaal) == DocumentStatus.AFGEWEZEN.value  # ongemoeid
+
+        # De Afwijzing-rij zelf (reden/kruisverwijzing/automatisch) blijft ongewijzigd — alleen document.status wijzigt.
+        rij = _afwijzing_rij(admin_engine, legacy)
+        assert rij is not None
+        assert rij["duplicaat_van_referentie"] == "F-9999" and rij["automatisch"] is True
+        assert rij["reden"] == "Duplicaat van F-9999 (boekstuk INK-1, al geboekt)"
+
+        # Tijdlijn + audit: overgang via de statusmachine, systeem-actor.
+        acties = _audit_acties(admin_engine, tabel="document", record_id=legacy)
+        assert "status_afgevoerd_duplicaat" in acties
+
+        # Idempotent: een tweede run vindt 0 legacy-rijen.
+        [u] = duplicaat_afvoer.status_backfill(dry_run=False, administratie_id=administratie_id)
+        assert u.legacy_gevonden == 0 and u.omgezet == 0

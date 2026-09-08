@@ -56,9 +56,11 @@ logger = logging.getLogger(__name__)
 
 #: Statussen waarin een boekvoorstel historie is en NIET hervertaald wordt (zelfde set als
 #: `odoo.mapping.TERMINALE_STATUSSEN` — hier los gedeclareerd om geen Odoo-import in de crediteurenlaag te trekken).
+#: `afgevoerd_duplicaat` (blok 3, fixrun 08-09) hoort erbij, net als afgewezen — historie, geen open werk.
 TERMINALE_STATUSSEN: tuple[DocumentStatus, ...] = (
     DocumentStatus.GEBOEKT,
     DocumentStatus.AFGEWEZEN,
+    DocumentStatus.AFGEVOERD_DUPLICAAT,
     DocumentStatus.VERWIJDERD,
     DocumentStatus.GESPLITST,
     DocumentStatus.SAMENGEVOEGD,

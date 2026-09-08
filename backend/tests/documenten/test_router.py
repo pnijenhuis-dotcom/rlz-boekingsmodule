@@ -153,8 +153,11 @@ def test_documenten_lijst_verrijkt_duplicaat_met_bestandsnaam(
         files={"bestand": ("lijst-kopie.pdf", b"%PDF-1.4 lijst-dup", "application/pdf")},
         headers=headers,
     )
-    resp = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+    # Blok 3 (fixrun 08-09): het byte-identieke tweede exemplaar is al bij upload afgevoerd als duplicaat
+    # (afgevoerd_duplicaat) en zit dus niet meer in de DEFAULT lijst — "Toon afgevoerde documenten" haalt 'm terug.
+    resp = client.get(f"/administraties/{administratie_id}/documenten?toon_afgevoerd=true", headers=headers)
     kopie = next(d for d in resp.json()["documenten"] if d["bestandsnaam"] == "lijst-kopie.pdf")
+    assert kopie["status"] == "afgevoerd_duplicaat"
     assert kopie["mogelijk_duplicaat_van"]["bestandsnaam"] == "lijst-origineel.pdf"
 
 

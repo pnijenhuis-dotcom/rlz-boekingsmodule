@@ -241,10 +241,13 @@ export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaa
   const [afmeldenOpen, setAfmeldenOpen] = useState(false)
   if (!stand) return null
   const kandidaat = DUPLICAAT_AFVOERBARE_STATUSSEN.includes(status) ? stand.kandidaat : null
-  const afgevoerdVan = status === 'afgewezen' ? stand.afgevoerd_als_duplicaat_van : null
+  // Blok 3 (fixrun 08-09): de eigen status; 'afgewezen' blijft ernaast geaccepteerd voor
+  // niet-gebackfilde legacy-rijen (van vóór deze deploy, zie duplicaat-status-backfill).
+  const is_afgevoerd_status = status === 'afgevoerd_duplicaat' || status === 'afgewezen'
+  const afgevoerdVan = is_afgevoerd_status ? stand.afgevoerd_als_duplicaat_van : null
   const afgevoerde = stand.afgevoerde_duplicaten
-  // Blok 1 07-09: module-tegenhangers (harde check rood) — alleen op een niet-afgewezen document.
-  const moduleTreffers = status === 'afgewezen' ? [] : (stand.module_treffers ?? [])
+  // Blok 1 07-09: module-tegenhangers (harde check rood) — alleen op een niet-afgevoerd document.
+  const moduleTreffers = is_afgevoerd_status ? [] : (stand.module_treffers ?? [])
   const afmelding = stand.afmelding ?? null
   if (!kandidaat && !afgevoerdVan && afgevoerde.length === 0 && moduleTreffers.length === 0 && !afmelding) return null
   return (
@@ -293,7 +296,7 @@ export function DuplicaatAfvoerSectie({ administratieId, documentId, bestandsnaa
           </div>
         </div>
       )}
-      {afmelding && moduleTreffers.length === 0 && status !== 'afgewezen' && (
+      {afmelding && moduleTreffers.length === 0 && !is_afgevoerd_status && (
         <p className="hint" data-testid="duplicaat-afgemeld">
           Afgemeld als geen duplicaat door {naamVoor(afmelding.actor_id)} op {formatDatumKort(afmelding.tijdstip)}:
           &ldquo;{afmelding.reden}&rdquo;

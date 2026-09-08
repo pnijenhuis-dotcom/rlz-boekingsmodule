@@ -105,8 +105,15 @@ _NABUNDEL_STATUSSEN = frozenset({DocumentStatus.TE_CONTROLEREN, DocumentStatus.H
 #: Statussen die bij het tellen van tegenhangers binnen een administratie niet meedoen (terminaal, geen
 #: exemplaar meer in de werkvoorraad) — een zacht-verwijderd derde exemplaar maakt een paar niet meerduidig.
 #: AFGEWEZEN sinds 07-09 (besluit Peter, beslispunt 3): een afgewezen dubbel-exemplaar ontgrendelt het paar.
+#: AFGEVOERD_DUPLICAAT (blok 3, fixrun 08-09) telt óók terminaal — zelfde reden als afgewezen.
 _TERMINAAL_VOOR_TELLING = frozenset(
-    {DocumentStatus.VERWIJDERD, DocumentStatus.GESPLITST, DocumentStatus.SAMENGEVOEGD, DocumentStatus.AFGEWEZEN}
+    {
+        DocumentStatus.VERWIJDERD,
+        DocumentStatus.GESPLITST,
+        DocumentStatus.SAMENGEVOEGD,
+        DocumentStatus.AFGEWEZEN,
+        DocumentStatus.AFGEVOERD_DUPLICAAT,
+    }
 )
 #: Noodrem: zoveel opeenvolgende paren die óók ná de herkansing op de verbinding stranden = run stopt.
 MAX_OPEENVOLGENDE_VERBINDINGSFOUTEN = 3

@@ -98,13 +98,15 @@ AFVOERBARE_STATUSSEN = frozenset(
 
 # Statussen die een app-document uitsluiten als origineel én als duplicaat: het bestaat niet (meer) als
 # zelfstandig werkstuk. Afgewezen hoort erbij: een al afgevoerd/afgewezen document is geen origineel
-# meer (anders zou een heropend origineel nooit terugkomen).
+# meer (anders zou een heropend origineel nooit terugkomen). Afgevoerd_duplicaat idem sinds blok 3
+# (fixrun 08-09, eigen terminale status i.p.v. een afwijzen-substatus).
 _UITGESLOTEN_STATUSSEN = frozenset(
     {
         DocumentStatus.VERWIJDERD,
         DocumentStatus.GESPLITST,
         DocumentStatus.SAMENGEVOEGD,
         DocumentStatus.AFGEWEZEN,
+        DocumentStatus.AFGEVOERD_DUPLICAAT,
         DocumentStatus.NIET_TOEGEWEZEN,
     }
 )
@@ -563,7 +565,9 @@ def stand_voor_document(*, administratie_id: uuid.UUID, document_id: uuid.UUID) 
             if groep is not None and any(lid.document_id == document_id for lid in groep.duplicaten):
                 kandidaat = groep.origineel
         afgevoerd_van: Origineel | None = None
-        if document.status == DocumentStatus.AFGEWEZEN:
+        # Blok 3 (fixrun 08-09): de eigen status; AFGEWEZEN blijft als terugval voor niet-gebackfilde
+        # legacy-rijen (vóór deze deploy geschreven) die nog met een kruisverwijzing op afgewezen staan.
+        if document.status in (DocumentStatus.AFGEVOERD_DUPLICAAT, DocumentStatus.AFGEWEZEN):
             afwijzing = _open_afwijzing(session, document_id)
             if afwijzing is not None:
                 afgevoerd_van = _origineel_uit_afwijzing(session, afwijzing)
@@ -632,7 +636,10 @@ def _voer_af(
     *, administratie_id: uuid.UUID, document_id: uuid.UUID, actor_id: uuid.UUID, origineel: Origineel, automatisch: bool
 ) -> afwijzen.AfwijzingData:
     """Eén motor voor beide ingangen: eerst de afwikkeling van ronde/vraag (A2), dan de bestaande afwijs-route
-    mét kruisverwijzing."""
+    mét kruisverwijzing. Schrijft sinds blok 3 (fixrun 08-09, feedback Peter) de eigen TERMINALE status
+    `afgevoerd_duplicaat` i.p.v. `afgewezen` — geen afwijzen-substatus meer: telt niet mee in "Afgewezen —
+    ter controle" of de Mogelijk-duplicaat-tab, wél terugvindbaar in Archief/Zoeken en via heropenen. De
+    `Afwijzing`-rij (reden, kruisverwijzing, toewijzing, tijdlijn, audit) is ONGEWIJZIGD hergebruikt."""
     _wikkel_af_voor_afvoer(
         administratie_id=administratie_id, document_id=document_id, actor_id=actor_id, origineel=origineel
     )
@@ -646,6 +653,7 @@ def _voer_af(
         duplicaat_van_rlz_document_id=origineel.rlz_document_id,
         duplicaat_van_referentie=origineel.referentie,
         automatisch=automatisch,
+        naar_status=DocumentStatus.AFGEVOERD_DUPLICAAT,
     )
 
 
@@ -671,7 +679,21 @@ def voer_af_als_duplicaat(
         document = session.get(Document, document_id)
         if document is None or document.administratie_id != administratie_id:
             raise DocumentNietGevonden(f"Onbekend document: {document_id}")
+        if document.status == DocumentStatus.AFGEVOERD_DUPLICAAT:
+            # Blok 3 (fixrun 08-09): dit is sindsdien de normale idempotentie-route.
+            afwijzing = _open_afwijzing(session, document_id)
+            origineel = _origineel_uit_afwijzing(session, afwijzing) if afwijzing is not None else None
+            if afwijzing is not None and origineel is not None:
+                return AfvoerResultaat(
+                    afwijzing=afwijzen._naar_data(afwijzing, document), origineel=origineel, al_afgevoerd=True
+                )
+            raise AfvoerNietMogelijk(
+                "Dit document staat al geregistreerd als afgevoerd duplicaat, maar de kruisverwijzing ontbreekt — "
+                "neem contact op met het kantoor"
+            )
         if document.status == DocumentStatus.AFGEWEZEN:
+            # Legacy: vóór blok 3 (08-09) schreef een duplicaat-afvoer ook naar afgewezen — niet-gebackfilde
+            # rijen blijven zo idempotent herkenbaar (zie CLI `duplicaat-status-backfill`).
             afwijzing = _open_afwijzing(session, document_id)
             origineel = _origineel_uit_afwijzing(session, afwijzing) if afwijzing is not None else None
             if afwijzing is not None and origineel is not None:
@@ -712,7 +734,9 @@ def voer_af_als_duplicaat(
 
 
 def _afgevoerd_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
-    """Volumerem-teller: automatische afvoer-overgangen van vandaag (tijdlijn-detail `automatisch_afgevoerd`)."""
+    """Volumerem-teller: automatische afvoer-overgangen van vandaag (tijdlijn-detail `automatisch_afgevoerd`).
+    Blok 3 (fixrun 08-09): de doelstatus is sindsdien `afgevoerd_duplicaat`, niet meer `afgewezen` — een
+    "vandaag"-teller hoeft geen legacy-terugval (alles ná deze deploy schrijft de nieuwe status)."""
     vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
     return (
         session.scalar(
@@ -721,7 +745,7 @@ def _afgevoerd_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
             .join(Document, DocumentGebeurtenis.document_id == Document.id)
             .where(
                 Document.administratie_id == administratie_id,
-                DocumentGebeurtenis.naar_status == DocumentStatus.AFGEWEZEN,
+                DocumentGebeurtenis.naar_status == DocumentStatus.AFGEVOERD_DUPLICAAT,
                 DocumentGebeurtenis.detail.has_key("automatisch_afgevoerd"),
                 DocumentGebeurtenis.tijdstip >= vandaag_begin,
             )
@@ -1137,5 +1161,103 @@ def backfill(*, dry_run: bool, administratie_id: uuid.UUID | None = None) -> lis
                         "backfill": True,
                     },
                 )
+        uitkomsten.append(u)
+    return uitkomsten
+
+
+# ----------------------------------------------------------------------------- status-backfill (blok 3, fixrun 08-09)
+
+#: Zelfde criterium als het archief-statusfilter "afgevoerd" vóór deze deploy (`zoeken/service.py::_archief_basis`,
+#: legacy-tak): een AFGEWEZEN document met een OPEN afwijzing die een duplicaat-kruisverwijzing draagt.
+_STATUS_BACKFILL_REDEN = (
+    "Duplicaten-UI blok 3 (fixrun 08-09): deze afwijzing droeg al een duplicaat-kruisverwijzing — het document "
+    "krijgt met terugwerkende kracht de eigen status afgevoerd_duplicaat (geen afwijzen-substatus meer)."
+)
+
+
+@dataclass
+class StatusBackfillAdministratie:
+    """Uitkomst van `duplicaat-status-backfill` voor één administratie."""
+
+    administratie_id: uuid.UUID
+    naam: str
+    legacy_gevonden: int = 0
+    omgezet: int = 0
+    fouten: dict[str, int] = field(default_factory=dict)
+
+    def tel_fout(self, reden: str) -> None:
+        self.fouten[reden] = self.fouten.get(reden, 0) + 1
+
+
+def _legacy_afgevoerd_document_ids(session: Session, *, administratie_id: uuid.UUID) -> list[uuid.UUID]:
+    return list(
+        session.scalars(
+            select(Document.id)
+            .join(Afwijzing, Afwijzing.document_id == Document.id)
+            .where(
+                Document.administratie_id == administratie_id,
+                Document.status == DocumentStatus.AFGEWEZEN,
+                Afwijzing.status == AfwijzingStatus.OPEN.value,
+                or_(
+                    Afwijzing.duplicaat_van_document_id.isnot(None),
+                    Afwijzing.duplicaat_van_rlz_document_id.isnot(None),
+                    Afwijzing.duplicaat_van_referentie.isnot(None),
+                ),
+            )
+            .order_by(Document.aangemaakt_op)
+        )
+    )
+
+
+def status_backfill(*, dry_run: bool, administratie_id: uuid.UUID | None = None) -> list[StatusBackfillAdministratie]:
+    """CLI `duplicaat-status-backfill` (blok 3, fixrun 08-09, feedback Peter — screenshot Universal Steigerbouw):
+    LOSSE, eenmalige data-stap ná migratie 0122. Vóór deze deploy schreef élke duplicaat-afvoer (automatisch,
+    één-klik, bulk, backfill) naar `document.status = 'afgewezen'` mét een open `Afwijzing`-rij die een
+    duplicaat-kruisverwijzing draagt (`duplicaat_van_document_id`/`_rlz_document_id`/`_referentie`) — precies het
+    criterium dat het archief-statusfilter "afgevoerd" al gebruikte. Deze functie zet zulke rijen alsnog om naar
+    de eigen terminale status `afgevoerd_duplicaat`, via de statusmachine (`_schrijf_overgang`: valideert de
+    overgang, schrijft de tijdlijnregel én het audit-event `status_afgevoerd_duplicaat` in dezelfde transactie —
+    systeem-actor, reden verplicht). De `Afwijzing`-rij zelf (reden, kruisverwijzing, toewijzing) blijft
+    ONGEWIJZIGD; alleen `document.status` verandert. Eén transactie per document — een fout stopt de rest niet
+    en blijft zichtbaar in `fouten`. Idempotent: een tweede run vindt 0 legacy-rijen (ze staan dan al op
+    afgevoerd_duplicaat, dus buiten het AFGEWEZEN-criterium hierboven). Geen RLZ-/Odoo-calls.
+    `dry_run=True` telt alles en schrijft niets. Loopt over alle ACTIEVE administraties (of één, `--administratie`)."""
+    from app.db.models import Administratie
+
+    with scoped_session(None) as session:
+        admins = session.execute(
+            select(Administratie.id, Administratie.naam)
+            .where(Administratie.actief.is_(True))
+            .order_by(Administratie.naam)
+        ).all()
+    if administratie_id is not None:
+        admins = [a for a in admins if a[0] == administratie_id]
+
+    uitkomsten: list[StatusBackfillAdministratie] = []
+    for aid, naam in admins:
+        u = StatusBackfillAdministratie(administratie_id=aid, naam=naam)
+        with scoped_session(aid) as session:
+            legacy_ids = _legacy_afgevoerd_document_ids(session, administratie_id=aid)
+        u.legacy_gevonden = len(legacy_ids)
+        if not dry_run:
+            from app.documenten.service import _schrijf_overgang
+
+            for document_id in legacy_ids:
+                with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as tx:
+                    document = tx.get(Document, document_id)
+                    if document is None or document.status != DocumentStatus.AFGEWEZEN:
+                        continue  # race: intussen heropend of anders gewijzigd sinds de leesronde hierboven
+                    try:
+                        _schrijf_overgang(
+                            tx,
+                            document=document,
+                            naar=DocumentStatus.AFGEVOERD_DUPLICAAT,
+                            actor_id=SYSTEEM_ACTOR_ID,
+                            detail={"status_backfill": True, "reden": _STATUS_BACKFILL_REDEN},
+                        )
+                    except OngeldigeStatusovergang as exc:
+                        u.tel_fout(str(exc))
+                        continue
+                    u.omgezet += 1
         uitkomsten.append(u)
     return uitkomsten

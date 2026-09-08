@@ -391,9 +391,14 @@ def werkvoorraad_overzicht(
 def documenten_lijst(
     administratie_id: uuid.UUID,
     toon_verwijderd: bool = False,
+    # Duplicaten-UI (blok 3, fixrun 08-09): analoog aan toon_verwijderd — een afgevoerd duplicaat
+    # zit standaard niet meer in de normale werkvoorraad-lijst; deze knop haalt 'm er weer bij.
+    toon_afgevoerd: bool = False,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DocumentListResponse:
-    items = service.lijst_documenten(administratie_id=administratie_id, toon_verwijderd=toon_verwijderd)
+    items = service.lijst_documenten(
+        administratie_id=administratie_id, toon_verwijderd=toon_verwijderd, toon_afgevoerd=toon_afgevoerd
+    )
     # Werkvoorraad-chip "Afgewezen — ter controle" mét reden + wie afwees (mockup): één query
     # voor alle open afwijzingen, geen N+1.
     afwijzingen = afwijzen.open_afwijzingen(administratie_id=administratie_id)
@@ -545,7 +550,9 @@ def document_detail(
         veldvoorstel=detail.veldvoorstel,
         afwijzing=_naar_afwijzing_info(
             afwijzen.open_afwijzing_van(administratie_id=administratie_id, document_id=document_id)
-            if d.status.value == "afgewezen"
+            # Blok 3 (fixrun 08-09): "afgevoerd_duplicaat" draagt dezelfde open Afwijzing-rij als
+            # "afgewezen" (reden/toewijzing/kruisverwijzing) — beide statussen tonen 'm.
+            if d.status.value in ("afgewezen", "afgevoerd_duplicaat")
             else None
         ),
         factuurmatch=_lees_match_dto(administratie_id, document_id),

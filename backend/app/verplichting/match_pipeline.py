@@ -30,11 +30,13 @@ logger = logging.getLogger(__name__)
 
 #: Statussen waarin een inkoopdocument nog "open werk" is — de teller/chip "buiten offerte" en de
 #: herberekening kijken alleen daarnaar (zelfde definitie als de werkvoorraad-tellers).
+#: `afgevoerd_duplicaat` (blok 3, fixrun 08-09) hoort erbij, net als afgewezen.
 _TERMINALE_STATUSSEN = (
     DocumentStatus.VERWIJDERD,
     DocumentStatus.GESPLITST,
     DocumentStatus.SAMENGEVOEGD,
     DocumentStatus.AFGEWEZEN,
+    DocumentStatus.AFGEVOERD_DUPLICAAT,
     DocumentStatus.NIET_TOEGEWEZEN,
 )
 

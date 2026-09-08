@@ -104,13 +104,15 @@ def _audit_acties(admin_engine: Engine, *, tabel: str, record_id: uuid.UUID) -> 
 
 
 def _tijdlijn_details(admin_engine: Engine, document_id: uuid.UUID) -> list[dict]:
+    """Tijdlijn-detail van de duplicaat-afvoer-overgang. Blok 3 (fixrun 08-09): het doel is sindsdien
+    `afgevoerd_duplicaat` i.p.v. `afgewezen` — geen afwijzen-substatus meer."""
     with admin_engine.connect() as conn:
         return [
             dict(d) if d else {}
             for d in conn.execute(
                 text(
                     "SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :id "
-                    "AND naar_status = 'afgewezen' ORDER BY tijdstip"
+                    "AND naar_status = 'afgevoerd_duplicaat' ORDER BY tijdstip"
                 ),
                 {"id": document_id},
             ).scalars()
@@ -213,7 +215,7 @@ class TestAutomatischPad:
         )
         afgevoerd = duplicaat_afvoer.verwerk_na_signaal(administratie_id=administratie_id, document_id=document_id)
         assert afgevoerd == [document_id]
-        assert _status(admin_engine, document_id) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, document_id) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
 
         rij = _afwijzing_rij(admin_engine, document_id)
         assert rij is not None
@@ -265,7 +267,7 @@ class TestAutomatischPad:
             naam="b.pdf",
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         rij = _afwijzing_rij(admin_engine, b)
         assert rij is not None and rij["duplicaat_van_document_id"] == a and rij["automatisch"] is True
         assert rij["reden"].startswith(f"Duplicaat van {REF} (document a.pdf")
@@ -300,7 +302,7 @@ class TestAutomatischPad:
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=v2
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
 
     def test_referentie_en_bedrag_bij_andere_crediteur_is_sinds_07_09_een_hard_duplicaat_ander_bedrag_niet(
         self,
@@ -333,7 +335,7 @@ class TestAutomatischPad:
             totaal=Decimal("121.01"),
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         rij = _afwijzing_rij(admin_engine, b)
         assert rij is not None and rij["duplicaat_van_document_id"] == a and rij["automatisch"] is True
         assert _status(admin_engine, c) == DocumentStatus.TE_CONTROLEREN.value
@@ -403,8 +405,8 @@ class TestAutomatischPad:
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
         assert _status(admin_engine, a) == DocumentStatus.TE_CONTROLEREN.value
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
-        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # buiten de rem (module-match)
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
+        assert _status(admin_engine, c) == DocumentStatus.AFGEVOERD_DUPLICAAT.value  # buiten de rem (module-match)
         # Twijfelgeval: uniek document, origineel alleen als RLZ-treffer → rem (al 2 vandaag ≥ limiet 1) weigert.
         d = _upload_met_kop(
             administratie_id=administratie_id,
@@ -471,7 +473,7 @@ class TestAutomatischPad:
         b = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         with admin_engine.connect() as conn:
             rij = conn.execute(
                 text("SELECT toegewezen_aan, automatisch FROM boekhouding.afwijzing WHERE document_id = :id"), {"id": b}
@@ -495,7 +497,7 @@ class TestAutomatischPad:
         c = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
-        assert _status(admin_engine, c) == DocumentStatus.AFGEWEZEN.value  # automatisch, niet toegewezen
+        assert _status(admin_engine, c) == DocumentStatus.AFGEVOERD_DUPLICAAT.value  # automatisch, niet toegewezen
         afwijzen.heropen(administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker)
         resultaat = duplicaat_afvoer.voer_af_als_duplicaat(
             administratie_id=administratie_id, document_id=c, actor_id=gescoopte_gebruiker
@@ -519,7 +521,7 @@ class TestAutomatischPad:
         b = _upload_met_kop(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, vendor_id=vendor_id
         )
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         data = afwijzen.heropen(administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker)
         assert data.status == AfwijzingStatus.HEROPEND.value
         assert data.duplicaat_van_document_id == a  # historie blijft in de rij staan
@@ -569,7 +571,7 @@ class TestAfwikkeling:
 
         _noodrem_aan(beheerder_id)
         rlz_id = _rlz_treffer(administratie_id, b)  # origineel al geboekt in RLZ → B is het duplicaat
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _ronde_status(admin_engine, b) == ["vervallen"]
         rij = _afwijzing_rij(admin_engine, b)
         assert rij is not None and rij["automatisch"] is True and rij["duplicaat_van_rlz_document_id"] == rlz_id
@@ -612,7 +614,7 @@ class TestAfwikkeling:
 
         _noodrem_aan(beheerder_id)
         _rlz_treffer(administratie_id, b)
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         with admin_engine.connect() as conn:
             status, reden = conn.execute(
                 text("SELECT status, ingetrokken_reden FROM boekhouding.vraag WHERE id = :id"), {"id": vraag.id}
@@ -665,7 +667,7 @@ class TestAfwikkeling:
             administratie_id=administratie_id, document_id=b, actor_id=gescoopte_gebruiker
         )
         assert resultaat.al_afgevoerd is False and resultaat.origineel.document_id == a
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, a) == DocumentStatus.VRAAG_OPEN.value
 
 
@@ -698,7 +700,7 @@ class TestEenKlik:
         assert resultaat.afwijzing.afgewezen_door == gescoopte_gebruiker
         assert resultaat.afwijzing.duplicaat_van_document_id == a
         assert resultaat.origineel.document_id == a
-        assert _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         details = _tijdlijn_details(admin_engine, b)
         assert "automatisch_afgevoerd" not in details[0]
         assert details[0]["duplicaat_van_document_id"] == str(a)
@@ -813,7 +815,7 @@ class TestRouter:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["al_afgevoerd"] is False and body["automatisch"] is False
-        assert body["document_status"] == "afgewezen" and body["origineel"]["document_id"] == str(a)
+        assert body["document_status"] == "afgevoerd_duplicaat" and body["origineel"]["document_id"] == str(a)
         assert body["reden"].startswith(f"Duplicaat van {REF}")
 
         herhaald = client.post(
@@ -827,8 +829,13 @@ class TestRouter:
         fout = client.post(f"/administraties/{administratie_id}/documenten/{a}/afvoeren-als-duplicaat", headers=headers)
         assert fout.status_code == 409 and "duplicaat" in fout.json()["detail"].lower()
 
-        lijst = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+        # Blok 3 (fixrun 08-09): een afgevoerd duplicaat zit standaard niet meer in de lijst — het
+        # tellen in "Afgewezen — ter controle" is voorbij; "Toon afgevoerde documenten" haalt 'm terug.
+        lijst_default = client.get(f"/administraties/{administratie_id}/documenten", headers=headers)
+        assert str(b) not in {d["id"] for d in lijst_default.json()["documenten"]}
+        lijst = client.get(f"/administraties/{administratie_id}/documenten?toon_afgevoerd=true", headers=headers)
         per_id = {d["id"]: d for d in lijst.json()["documenten"]}
+        assert per_id[str(b)]["status"] == "afgevoerd_duplicaat"
         afwijzing = per_id[str(b)]["afwijzing"]
         assert afwijzing["duplicaat_van_document_id"] == str(a) and afwijzing["automatisch"] is False
         assert afwijzing["duplicaat_van_referentie"] == REF

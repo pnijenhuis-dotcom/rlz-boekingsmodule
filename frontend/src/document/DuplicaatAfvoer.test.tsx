@@ -193,6 +193,33 @@ describe('DuplicaatAfvoerSectie (controlescherm)', () => {
     expect(screen.queryByRole('button', { name: 'Afvoeren als duplicaat…' })).toBeNull()
   })
 
+  it('blok 3 (fixrun 08-09): status afgevoerd_duplicaat toont hetzelfde paneel als het legacy-pad afgewezen', () => {
+    renderSectie('afgevoerd_duplicaat', { kandidaat: null, afgevoerd_als_duplicaat_van: origineel(), afgevoerde_duplicaten: [] })
+    expect(screen.getByTestId('duplicaat-afgevoerd')).toHaveTextContent('Afgevoerd als duplicaat')
+    expect(screen.getByRole('link', { name: 'open origineel' })).toHaveAttribute('href', `/documenten/${ADMINISTRATIE_ID}/${ORIGINEEL_ID}`)
+  })
+
+  it('blok 3: op status afgevoerd_duplicaat blijven module-tegenhangers en de afmeld-actie verborgen (net als afgewezen)', () => {
+    renderSectie('afgevoerd_duplicaat', {
+      kandidaat: null,
+      afgevoerd_als_duplicaat_van: null,
+      afgevoerde_duplicaten: [],
+      module_treffers: [
+        {
+          document_id: 'x1',
+          bestandsnaam: 'x.pdf',
+          referentie: 'F-1',
+          status: 'te_controleren',
+          categorie: 'crediteur_referentie',
+          aangemaakt_op: '2026-09-01T09:00:00Z',
+          totaalbedrag: '100.00',
+        },
+      ],
+    })
+    expect(screen.queryByTestId('duplicaat-module')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Geen duplicaat — afmelden…' })).toBeNull()
+  })
+
   it('origineel-kant telt de afgevoerde duplicaten en benoemt ⚙ systeem vs medewerker', () => {
     renderSectie('te_controleren', {
       kandidaat: null,

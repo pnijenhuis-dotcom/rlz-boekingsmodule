@@ -95,6 +95,15 @@ class DocumentStatus(enum.StrEnum):
     # en voedt de cumulatieve factuur↔offerte-match. Kantoor kan een geaccordeerde verplichting
     # laten VERVALLEN (kolom op verplichting, géén statuswissel — het document blijft geaccordeerd).
     GEACCORDEERD = "geaccordeerd"
+    # Duplicaten-UI (blok 3, fixrun 08-09, feedback Peter — herziet 04-09/07-09 "afvoeren = afwijzen mét
+    # kruisverwijzing"): eigen TERMINALE status van een document dat de duplicaat-afvoer (automatisch,
+    # één-klik, bulk of de backfill-CLI) heeft afgevoerd — GEEN afwijzen-substatus meer. Telt niet mee in
+    # "Afgewezen — ter controle", de Mogelijk-duplicaat-tab of enige werkvoorraad-teller; wél terugvindbaar
+    # via Archief/Zoeken (filter "afgevoerd") en via het bestaande heropenen-pad (`POST …/heropenen` herstelt
+    # de herkomst-status net als bij afgewezen). De kruisverwijzing/reden/tijdlijn/audit blijven op dezelfde
+    # `Afwijzing`-rij als een gewone afwijzing (`app/documenten/afwijzen.py::wijs_af(naar_status=...)`) —
+    # alleen de documentstatus wijkt af. Zie migratie 0122 + `app/documenten/duplicaat_afvoer.py`.
+    AFGEVOERD_DUPLICAAT = "afgevoerd_duplicaat"
 
 
 def _enum_waarden(python_enum: type[enum.StrEnum]) -> list[str]:

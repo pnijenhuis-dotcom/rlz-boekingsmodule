@@ -20,7 +20,7 @@ import { SneltoetsOverzicht } from './SneltoetsOverzicht'
 import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { extractieActief, statusLabel } from '../werkvoorraad/status'
-import { toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
+import { actorLabel, toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { VraagModal } from '../vragen/VraagModal'
 import { VraagThread } from '../vragen/VraagThread'
@@ -966,7 +966,7 @@ export function DocumentDetailScreen() {
               {detail.afwijzing ? (
                 <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
                   <div className="meta">
-                    afgewezen door {naamVoor(detail.afwijzing.afgewezen_door)},{' '}
+                    afgewezen door {actorLabel(naamVoor, detail.afwijzing.afgewezen_door)},{' '}
                     {formatDatum(detail.afwijzing.afgewezen_op)} · ter controle naar{' '}
                     <b>{toegewezeneLabel(naamVoor, detail.afwijzing.toegewezen_aan)}</b>
                   </div>
@@ -988,6 +988,45 @@ export function DocumentDetailScreen() {
                     onClick={() => void heropenen()}
                   >
                     {heropenenBezig ? 'Bezig…' : '↺ Heropenen'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Duplicaten-UI (blok 3, fixrun 08-09): eigen terminale status, GEEN afwijzen-substatus meer —
+              eigen panel i.p.v. de "Afgewezen — ter controle"-banner hierboven. Heropenen is hetzelfde
+              generieke pad (afwijzen.heropen, werkt op elke status met een open Afwijzing-rij). */}
+          {detail.status === 'afgevoerd_duplicaat' && (
+            <div className="panel">
+              <h2>
+                Afgevoerd als duplicaat <span className="chip geheugen">duplicaat</span>
+              </h2>
+              {detail.afwijzing ? (
+                <div className="q-item" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
+                  <div className="meta">
+                    afgevoerd door {actorLabel(naamVoor, detail.afwijzing.afgewezen_door)},{' '}
+                    {formatDatum(detail.afwijzing.afgewezen_op)} · ter controle naar{' '}
+                    <b>{toegewezeneLabel(naamVoor, detail.afwijzing.toegewezen_aan)}</b>
+                  </div>
+                  <div className="vraagtekst">reden: &ldquo;{detail.afwijzing.reden}&rdquo;</div>
+                </div>
+              ) : (
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Dit document is als duplicaat afgevoerd — terugvindbaar via Archief/Zoeken (filter
+                  &ldquo;Afgevoerd als duplicaat&rdquo;); boeken kan pas na terug naar de werkvoorraad.
+                </p>
+              )}
+              {heropenenFout && <div className="fout">{heropenenFout}</div>}
+              {detail.afwijzing && (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={heropenenBezig}
+                    onClick={() => void heropenen()}
+                  >
+                    {heropenenBezig ? 'Bezig…' : '↺ Terug naar werkvoorraad'}
                   </button>
                 </div>
               )}
@@ -1532,9 +1571,12 @@ export function DocumentDetailScreen() {
                           {typeof g.detail.reden === 'string' && g.detail.reden ? ` — “${g.detail.reden}”` : ''}
                         </div>
                       )}
-                      {g.detail && 'afwijzing_id' in g.detail && g.naar_status === 'afgewezen' && (
+                      {g.detail &&
+                        'afwijzing_id' in g.detail &&
+                        (g.naar_status === 'afgewezen' || g.naar_status === 'afgevoerd_duplicaat') && (
                         <div className="hint" style={{ marginTop: 2 }}>
-                          Afgewezen door {naamVoor(g.actor_id)}
+                          {g.naar_status === 'afgevoerd_duplicaat' ? 'Afgevoerd als duplicaat door' : 'Afgewezen door'}{' '}
+                          {actorLabel(naamVoor, g.actor_id)}
                           {typeof g.detail.reden === 'string' && g.detail.reden ? ` — reden: “${g.detail.reden}”` : ''}
                           {' '}· ter controle naar{' '}
                           {toegewezeneLabel(naamVoor, typeof g.detail.toegewezen_aan === 'string' ? g.detail.toegewezen_aan : null)}

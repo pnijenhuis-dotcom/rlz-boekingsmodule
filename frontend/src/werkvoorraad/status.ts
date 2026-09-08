@@ -26,6 +26,10 @@ export const STATUS_LABELS: Record<string, string> = {
   // Verplichtingen (blok B 04-09): eindstand ná het laatste klant-akkoord — er wordt niets
   // geboekt, het akkoord (wie/wanneer/welk bedrag) ís het resultaat.
   geaccordeerd: 'Geaccordeerd',
+  // Duplicaten-UI (blok 3, fixrun 08-09): eigen terminale status, GEEN afwijzen-substatus —
+  // telt niet mee in "Afgewezen — ter controle" of de Mogelijk-duplicaat-tab, wél zichtbaar
+  // in Archief/Zoeken (filter "afgevoerd") en via "Toon afgevoerde documenten".
+  afgevoerd_duplicaat: 'Afgevoerd als duplicaat',
 }
 
 /** Statuslabels die per DOCUMENTSOORT afwijken (blok B 04-09): een verplichting wordt niet
@@ -56,6 +60,8 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   gesplitst: 'geboekt',
   // Statusgroen (--ok), net als geboekt: het akkoord is een afgeronde stand, geen actie.
   geaccordeerd: 'geboekt',
+  // Terminaal, net als verwijderd/samengevoegd/gesplitst — geen openstaande actie meer.
+  afgevoerd_duplicaat: 'geboekt',
 }
 
 /** Statussen waarin de achtergrondextractie nog loopt (async extractie): werkvoorraad en

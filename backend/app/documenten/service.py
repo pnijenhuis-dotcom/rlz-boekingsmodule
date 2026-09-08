@@ -94,11 +94,25 @@ class DuplicaatReferentie:
 
 def _duplicaat_referenties_op(session: Session, document_ids: set[uuid.UUID]) -> dict[uuid.UUID, DuplicaatReferentie]:
     """Eén query voor alle duplicaat-verwijzingen in een lijst/detail-response i.p.v. per document
-    een losse lookup."""
+    een losse lookup.
+
+    Blok 3c (fixrun 08-09, feedback Peter): de tegenhanger telt alleen mee als hij nog een LEVEND
+    werkstuk is — een `mogelijk_duplicaat_van_id` die naar een intussen afgevoerd/afgewezen/
+    verwijderd/gesplitst/samengevoegd document wijst (of naar een document buiten de verzamelbak-
+    scope) is géén reden meer om DIT document als "Mogelijk duplicaat" te tonen; anders zou de
+    Mogelijk-duplicaat-tab een rij blijven tonen waarvan de tegenhanger allang is opgeruimd. GEBOEKT
+    telt wél (de belangrijkste case: "lijkt op een al geboekt document") — zelfde uitsluitingslijst
+    als de harde module-motor (`duplicaat_module.UITGESLOTEN_STATUSSEN`), zodat de tab en de
+    check/afvoer-motor precies hetzelfde criterium voor "nog een geldige tegenhanger" hanteren."""
     if not document_ids:
         return {}
+    from app.documenten.duplicaat_module import UITGESLOTEN_STATUSSEN
+
     rijen = session.execute(
-        select(Document.id, Document.bestandsnaam, Document.aangemaakt_op).where(Document.id.in_(document_ids))
+        select(Document.id, Document.bestandsnaam, Document.aangemaakt_op).where(
+            Document.id.in_(document_ids),
+            Document.status.notin_(UITGESLOTEN_STATUSSEN),
+        )
     ).all()
     return {
         rij.id: DuplicaatReferentie(document_id=rij.id, bestandsnaam=rij.bestandsnaam, aangemaakt_op=rij.aangemaakt_op)
@@ -1317,14 +1331,23 @@ class DocumentMetDuplicaat:
     verplichting_match: object | None = None
 
 
-def lijst_documenten(*, administratie_id: uuid.UUID, toon_verwijderd: bool = False) -> list[DocumentMetDuplicaat]:
+def lijst_documenten(
+    *, administratie_id: uuid.UUID, toon_verwijderd: bool = False, toon_afgevoerd: bool = False
+) -> list[DocumentMetDuplicaat]:
     """`toon_verwijderd=False` (default) verbergt zachtgewiste documenten uit de normale
     werkvoorraad — de "toon verwijderde"-filter (design-pass taak 4) zet dit aan om ze er weer
-    naast te zien (voor het herstelpad), nooit een apart, exclusief lijstje."""
+    naast te zien (voor het herstelpad), nooit een apart, exclusief lijstje.
+
+    `toon_afgevoerd=False` (default, blok 3 fixrun 08-09): zelfde patroon voor een als duplicaat
+    afgevoerd document (`afgevoerd_duplicaat`) — telt in GEEN werkvoorraad-tab/-teller mee, alleen
+    terugvindbaar via Archief/Zoeken (filter "afgevoerd") of via deze knop "Toon afgevoerde
+    documenten" (naast "Toon verwijderde documenten")."""
     with scoped_session(administratie_id) as session:
         voorwaarden = [Document.administratie_id == administratie_id]
         if not toon_verwijderd:
             voorwaarden.append(Document.status != DocumentStatus.VERWIJDERD)
+        if not toon_afgevoerd:
+            voorwaarden.append(Document.status != DocumentStatus.AFGEVOERD_DUPLICAAT)
         documenten = list(session.scalars(select(Document).where(*voorwaarden).order_by(Document.aangemaakt_op.desc())))
         referenties = _duplicaat_referenties_op(
             session, {d.mogelijk_duplicaat_van_id for d in documenten if d.mogelijk_duplicaat_van_id}
@@ -1555,6 +1578,12 @@ _TERMINAAL_VOOR_TELLERS = [
     # Verplichtingen (04-09): geaccordeerd is terminaal — de offerte is goedgekeurd, er volgt geen
     # boeking; het werk zit dan in de verbruiksstand, niet in de werkvoorraad.
     DocumentStatus.GEACCORDEERD,
+    # Duplicaten-UI (blok 3, fixrun 08-09): een afgevoerd duplicaat is GEEN openstaand werk en telt
+    # in GEEN werkvoorraad-teller/-tab mee (ook niet als "afgewezen") — anders dan afgewezen zelf
+    # (dat wél een eigen bucket "Afgewezen — ter controle" heeft). Zonder deze uitsluiting zouden
+    # stale factuurmatch-/duplicaatsignaal-rijen op een afgevoerd document toch nog meetellen in de
+    # signaaltellers hieronder.
+    DocumentStatus.AFGEVOERD_DUPLICAAT,
 ]
 
 

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../ui/basis'
+import { SYSTEEM_ACTOR_ID } from '../vragen/useMedewerkers'
 import { boekdatumVerschovenHint, DocumentDetailScreen } from './DocumentDetailScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -633,6 +634,95 @@ describe('DocumentDetailScreen — afgewezen (mockup #afwijsmodal-vervolg)', () 
       const onderDeTijdlijn = /Tijdlijn|Opmerkingen/.test(kop.textContent ?? '')
       if (!onderDeTijdlijn) expect(naDeKop).toBe(true)
     }
+  })
+})
+
+describe('DocumentDetailScreen — afgevoerd_duplicaat (blok 3, fixrun 08-09)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const AFVOER_AFWIJZING = {
+    id: 'ffffffff-0000-0000-0000-00000000000a',
+    reden: 'Duplicaat van F-2026-0042 (document a.pdf van 2026-08-01, al geboekt)',
+    afgewezen_door: SYSTEEM_ACTOR_ID,
+    afgewezen_op: '2026-09-07T09:00:00Z',
+    toegewezen_aan: null,
+    status_voor_afwijzing: 'te_controleren',
+  }
+
+  function installMetHeropenen(detail: unknown, heropenAanroepen: string[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/heropenen') && init?.method === 'POST') {
+          heropenAanroepen.push(url)
+          return Promise.resolve(jsonResponse({ id: AFVOER_AFWIJZING.id, status: 'heropend' }))
+        }
+        if (url.includes('/accordering/instellingen')) return Promise.resolve(jsonResponse({ ingeschakeld: false, lagen: [] }))
+        if (url.includes('/accordering/documenten/')) return Promise.resolve(jsonResponse(null))
+        if (url.endsWith(`/documenten/${DOCUMENT_ID}`)) return Promise.resolve(jsonResponse(detail))
+        if (url.endsWith('/al-betaald')) return Promise.resolve(jsonResponse({ toetsbaar: false, treffers: [] }))
+        if (url.endsWith('/bestand')) return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
+        if (url.endsWith('/boekvoorstel')) {
+          return Promise.resolve(
+            jsonResponse({
+              document_id: DOCUMENT_ID,
+              vendor_id: null,
+              referentie: null,
+              factuurdatum: null,
+              totaalbedrag: null,
+              rlz_boekstuknummer: null,
+              opgeslagen: false,
+              regels: [],
+            }),
+          )
+        }
+        return Promise.resolve(jsonResponse({ rekeningen: [], btw_codes: [], crediteuren: [], projecten: [], verplicht: false, medewerkers: [], vragen: [] }))
+      }),
+    )
+  }
+
+  it('toont een eigen paneel (niet "Afgewezen — ter controle"), de systeem-actor als "automatisch (duplicaatregel)", en heropent via hetzelfde backend-pad', async () => {
+    const heropenAanroepen: string[] = []
+    installMetHeropenen(
+      detailMet({
+        status: 'afgevoerd_duplicaat',
+        afwijzing: AFVOER_AFWIJZING,
+        tijdlijn: [
+          { van_status: null, naar_status: 'ontvangen', actor_id: 'x', actor_is_systeem: false, detail: null, tijdstip: '2026-07-10T10:00:00Z' },
+          {
+            van_status: 'te_controleren',
+            naar_status: 'afgevoerd_duplicaat',
+            actor_id: SYSTEEM_ACTOR_ID,
+            actor_is_systeem: true,
+            detail: {
+              afwijzing_id: AFVOER_AFWIJZING.id,
+              reden: AFVOER_AFWIJZING.reden,
+              toegewezen_aan: null,
+              status_voor_afwijzing: 'te_controleren',
+            },
+            tijdstip: '2026-09-07T09:00:00Z',
+          },
+        ],
+      }),
+      heropenAanroepen,
+    )
+
+    renderScherm()
+
+    expect(await screen.findByRole('heading', { name: /Afgevoerd als duplicaat/ })).toBeInTheDocument()
+    expect(screen.queryByText('Afgewezen — ter controle')).not.toBeInTheDocument()
+    // De systeem-actor is nergens "onbekende medewerker" (medewerkers-mock is leeg).
+    expect(screen.queryByText(/onbekende medewerker/)).not.toBeInTheDocument()
+    const meldingen = await screen.findAllByText(/automatisch \(duplicaatregel\)/)
+    expect(meldingen.length).toBeGreaterThanOrEqual(2) // banner + tijdlijnregel
+    expect(screen.getByText(/Afgevoerd als duplicaat door/)).toBeInTheDocument()
+
+    const gebruiker = userEvent.setup()
+    await gebruiker.click(screen.getByRole('button', { name: '↺ Terug naar werkvoorraad' }))
+    await waitFor(() => expect(heropenAanroepen).toHaveLength(1))
+    expect(heropenAanroepen[0]).toContain(`/documenten/${DOCUMENT_ID}/heropenen`)
   })
 })
 

@@ -117,7 +117,7 @@ class TestBulkMotor:
             assert per_id[dup].uitkomst == "afgevoerd", per_id[dup]
             assert per_id[dup].origineel is not None and per_id[dup].origineel.document_id == a
             assert per_id[dup].origineel.bron == "geboekt"
-            assert _status(admin_engine, dup) == DocumentStatus.AFGEWEZEN.value
+            assert _status(admin_engine, dup) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
             rij = _afwijzing_rij(admin_engine, dup)
             assert rij is not None and rij["automatisch"] is False
             assert rij["duplicaat_van_document_id"] == a and rij["duplicaat_van_referentie"] == REF
@@ -210,7 +210,7 @@ class TestRouter:
         assert {r["document_id"] for r in body["resultaten"]} == {str(a), str(b)}
         assert all(r["uitkomst"] == "afgevoerd" and r["origineel"]["bron"] == "geboekt" for r in body["resultaten"])
         assert all(r["reden"].startswith(f"Duplicaat van {REF}") for r in body["resultaten"])
-        assert _status(admin_engine, a) == _status(admin_engine, b) == DocumentStatus.AFGEWEZEN.value
+        assert _status(admin_engine, a) == _status(admin_engine, b) == DocumentStatus.AFGEVOERD_DUPLICAAT.value
         assert _status(admin_engine, geboekt) == DocumentStatus.GEBOEKT.value
         assert _status(admin_engine, zonder) == DocumentStatus.TE_CONTROLEREN.value
 

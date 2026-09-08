@@ -14,7 +14,7 @@ import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { AnkerPopup, Checkbox, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
-import { NIET_TOEGEWEZEN, useMedewerkers } from '../vragen/useMedewerkers'
+import { actorLabel, NIET_TOEGEWEZEN, useMedewerkers } from '../vragen/useMedewerkers'
 import { haalVragenOp } from '../vragen/vragenApi'
 import { Breadcrumb } from './Breadcrumb'
 import { useDichtheid } from './dichtheid'
@@ -107,6 +107,10 @@ export function DocumentenDeelscherm({
   const [documenten, setDocumenten] = useState<DocumentListItemDto[] | null>(null)
   const [lijstFout, setLijstFout] = useState<string | null>(null)
   const [toonVerwijderd, setToonVerwijderd] = useState(false)
+  // Duplicaten-UI (blok 3, fixrun 08-09): analoog aan "Toon verwijderde documenten" — een afgevoerd
+  // duplicaat zit standaard niet meer in deze lijst (terugvindbaar via Archief/Zoeken); deze knop
+  // haalt 'm er weer bij (bv. om te heropenen).
+  const [toonAfgevoerd, setToonAfgevoerd] = useState(false)
   const [zoekterm, setZoekterm] = useState(zoekParam)
   // Blok D 01-09: `null` = geen expliciete keuze (geen `status=` in de URL, nog geen klik) — het
   // effectieve filter valt dan op de default "Te controleren" (of "Alle" bij teller 0), zie
@@ -143,12 +147,14 @@ export function DocumentenDeelscherm({
 
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
-    apiJson<DocumentListResponseDto>(
-      `/administraties/${administratieId}/documenten${toonVerwijderd ? '?toon_verwijderd=true' : ''}`,
-    )
+    const params = new URLSearchParams()
+    if (toonVerwijderd) params.set('toon_verwijderd', 'true')
+    if (toonAfgevoerd) params.set('toon_afgevoerd', 'true')
+    const query = params.toString()
+    apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten${query ? `?${query}` : ''}`)
       .then((data) => setDocumenten(data.documenten))
       .catch((err: unknown) => setLijstFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [administratieId, toonVerwijderd])
+  }, [administratieId, toonVerwijderd, toonAfgevoerd])
 
   useEffect(() => {
     setDocumenten(null)
@@ -657,6 +663,10 @@ export function DocumentenDeelscherm({
             <Checkbox checked={toonVerwijderd} onChange={(e) => setToonVerwijderd(e.target.checked)} />
             Toon verwijderde documenten
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, margin: 0 }}>
+            <Checkbox checked={toonAfgevoerd} onChange={(e) => setToonAfgevoerd(e.target.checked)} />
+            Toon afgevoerde documenten
+          </label>
         </div>
         {/* Segment-filters (mockup #scherm-docs) + zoekveld + dichtheid (punt 3b). */}
         <div className="lijst-werkbalk">
@@ -996,7 +1006,7 @@ export function DocumentenDeelscherm({
                                 <br />
                               </>
                             )}
-                            reden: &ldquo;{d.afwijzing.reden}&rdquo; — {naamVoor(d.afwijzing.afgewezen_door)}
+                            reden: &ldquo;{d.afwijzing.reden}&rdquo; — {actorLabel(naamVoor, d.afwijzing.afgewezen_door)}
                           </div>
                         )}
                         {d.duplicaat_werkvoorraad_van && (

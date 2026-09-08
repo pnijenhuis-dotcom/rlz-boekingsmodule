@@ -116,6 +116,7 @@ def wijs_af(
     duplicaat_van_rlz_document_id: uuid.UUID | None = None,
     duplicaat_van_referentie: str | None = None,
     automatisch: bool = False,
+    naar_status: DocumentStatus = DocumentStatus.AFGEWEZEN,
 ) -> AfwijzingData:
     """Wijst een document af: reden verplicht, document -> afgewezen (blijft zichtbaar in de
     werkvoorraad, boeken geblokkeerd), toewijzing ("Ter controle naar", mockup #afwijsmodal)
@@ -126,7 +127,14 @@ def wijs_af(
     Duplicaat-afvoer (04-09, migratie 0105): de `duplicaat_van_*`-kruisverwijzing en `automatisch`
     reizen mee naar de afwijzing-rij, de tijdlijn (`automatisch_afgevoerd`, `duplicaat_van_*`) en het
     audit-event — de enige schrijver is `app/documenten/duplicaat_afvoer.py`; een gewone afwijzing
-    laat ze leeg. Een systeem-actor-overgang draagt de reden als tijdlijnregel (`_borg_systeem_reden`)."""
+    laat ze leeg. Een systeem-actor-overgang draagt de reden als tijdlijnregel (`_borg_systeem_reden`).
+
+    `naar_status` (blok 3, fixrun 08-09; herziet 04-09): duplicaat-afvoer schrijft sindsdien de eigen
+    TERMINALE status `afgevoerd_duplicaat` i.p.v. `afgewezen` — geen afwijzen-substatus meer, telt dus
+    niet meer mee in "Afgewezen — ter controle" of de Mogelijk-duplicaat-tab. De `Afwijzing`-rij zelf
+    (reden, kruisverwijzing, toewijzing, tijdlijn, audit) is ongewijzigd hergebruikt — alleen de
+    document-overgang wijst naar een andere doelstatus; `wijs_af` blijft verder de ENE schrijfroute voor
+    beide. Een gewone afwijzing (geen `duplicaat_afvoer.py`-aanroeper) laat dit param op de default."""
     reden_tekst = reden.strip()
     if not reden_tekst:
         raise RedenVerplicht("Een afwijzing zonder reden is niet toegestaan")
@@ -178,7 +186,7 @@ def wijs_af(
         _schrijf_overgang(
             session,
             document=document,
-            naar=DocumentStatus.AFGEWEZEN,
+            naar=naar_status,
             actor_id=actor_id,
             detail={
                 "afwijzing_id": str(afwijzing.id),

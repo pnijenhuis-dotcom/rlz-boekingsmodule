@@ -262,10 +262,11 @@ class TestAutoboekPad:
         eerste = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert _status(admin_engine, eerste) == "geboekt"
         # Zelfde bytes opnieuw → sinds 07-09 (blok 1 vervolgrun, besluit Peter "duplicaten eruit"): het byte-identieke
-        # exemplaar wordt DIRECT afgevoerd als duplicaat van het geboekte origineel (status afgewezen mét
-        # kruisverwijzing + audit) — autoboeken boekt het nooit een tweede keer.
+        # exemplaar wordt DIRECT afgevoerd als duplicaat van het geboekte origineel (sinds blok 3, fixrun 08-09:
+        # eigen status afgevoerd_duplicaat i.p.v. afgewezen) mét kruisverwijzing + audit — autoboeken boekt het
+        # nooit een tweede keer.
         tweede = _upload(administratie_id, gescoopte_gebruiker, opslag)
-        assert _status(admin_engine, tweede) == "afgewezen"
+        assert _status(admin_engine, tweede) == "afgevoerd_duplicaat"
         assert _status(admin_engine, eerste) == "geboekt"
         with admin_engine.connect() as conn:
             afvoer = conn.execute(
