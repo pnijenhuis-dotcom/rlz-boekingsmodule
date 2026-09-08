@@ -10,6 +10,7 @@ nooit stil verschuiven onder een nieuwe berekening)."""
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -1374,6 +1375,63 @@ def review_data(*, administratie_id: uuid.UUID, run_id: uuid.UUID) -> RunReviewD
     return RunReviewData(
         run=run, regels=regels, previews=previews, rapport=rapport, verdeelsleutel=verdeelsleutel, project_namen=project_namen
     )
+
+
+@dataclass(frozen=True)
+class VerdelingKort:
+    """Verdeling per doelentiteit van één run, zonder checks/boekingen/projecten — precies wat de
+    wachtrijkaart van de accordeur toont (naam, netto excl., provisie)."""
+
+    mapping_id: uuid.UUID
+    doelentiteit_naam: str
+    netto_totaal: Decimal
+    provisie_bedrag: Decimal
+
+
+def verdeling_per_doelentiteit_bulk(
+    session, *, administratie_id: uuid.UUID, run_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, tuple[VerdelingKort, ...]]:
+    """Bulk-leesroute (herstelrun "Basis eerst" 08-09, blok 1): de verdeling per doelentiteit voor een SET runs
+    van dezelfde administratie in een CONSTANT aantal queries (3: regelsommen, mappingnamen, instelling) —
+    zonder checks-rapport, zonder boekingen, zonder projectnamen. Bestaat naast `review_data` omdat de
+    accordeur-wachtrij van Peter (23 administraties, 55 doorbelasting-items bij Kempen) per item `review_data`
+    aanriep (17 queries + checks-rapport per item → 5–12 s). Het detail-/reviewscherm blijft `review_data`
+    gebruiken. Zelfde getallen en zelfde volgorde per run (mapping-id als tekst) als `review_data.previews`:
+    netto = Σ `netto_deel` per mapping, provisie = `provisie_over(netto, provisie_percentage)`.
+    Een run zonder regels krijgt geen sleutel. Draait in de meegegeven (gescoopte) sessie."""
+    if not run_ids:
+        return {}
+    sommen = session.execute(
+        select(DoorbelastingRegel.run_id, DoorbelastingRegel.mapping_id, func.sum(DoorbelastingRegel.netto_deel))
+        .where(DoorbelastingRegel.run_id.in_(list(run_ids)))
+        .group_by(DoorbelastingRegel.run_id, DoorbelastingRegel.mapping_id)
+    ).all()
+    if not sommen:
+        return {}
+    namen = dict(
+        session.execute(
+            select(DoorbelastingMapping.id, DoorbelastingMapping.doelentiteit_naam).where(
+                DoorbelastingMapping.administratie_id == administratie_id
+            )
+        ).all()
+    )
+    instelling = session.get(DoorbelastingInstelling, administratie_id)
+    provisie_pct = instelling.provisie_percentage if instelling is not None else Decimal("5.00")
+    per_run: dict[uuid.UUID, dict[uuid.UUID, Decimal]] = {}
+    for run_id, mapping_id, netto in sommen:
+        per_run.setdefault(run_id, {})[mapping_id] = Decimal(netto or 0)
+    uit: dict[uuid.UUID, tuple[VerdelingKort, ...]] = {}
+    for run_id, per_mapping in per_run.items():
+        uit[run_id] = tuple(
+            VerdelingKort(
+                mapping_id=mapping_id,
+                doelentiteit_naam=namen.get(mapping_id, "?"),
+                netto_totaal=netto,
+                provisie_bedrag=provisie_over(netto, provisie_pct),
+            )
+            for mapping_id, netto in sorted(per_mapping.items(), key=lambda kv: str(kv[0]))
+        )
+    return uit
 
 
 def zet_spiegel_doel_gbs(

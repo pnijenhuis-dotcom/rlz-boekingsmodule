@@ -57,11 +57,19 @@ FOUT = "fout"
 REGEL_OVERGESLAGEN = "regel_overgeslagen"
 ZACHT_SIGNAAL = "zacht_signaal"
 STIL_7_DAGEN = "stil_7_dagen"
+#: Extractie-wachtrij (herstelrun "Basis eerst" 08-09, blok 2): de per-upload-trigger van de Cloud Run-job
+#: `rlz-extractie-wachtrij` mislukte → het scheduler-vangnet (elke 10 min) verwerkt het document (LET-OP: de
+#: wachttijd is dan tot 10 min en de wortel is meestal IAM `run.invoker`).
+VANGNET_SCHEDULER = "vangnet_scheduler"
+#: Extractie-wachtrij: document in de wachtrij gezet zonder trigger-spoor — geen job-resource geconfigureerd
+#: (lokale dev: in-process thread) of een overgang van vóór het spoor (08-09).
+LOKAAL_THREAD = "lokaal_thread"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
 #: komt de reden tóch voor, dan wacht een automatisering op een menselijke instelling (regressie, zichtbaar mét actie).
-HARDE_VOORWAARDEN = frozenset({CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR})
+#: `vangnet_scheduler` (08-09): ≥ 1 mislukte job-trigger in het etmaal = LET-OP (platformbreed, administratie-loos).
+HARDE_VOORWAARDEN = frozenset({CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER})
 
 REDEN_LABEL: dict[str, str] = {
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
@@ -83,6 +91,8 @@ REDEN_LABEL: dict[str, str] = {
     REGEL_OVERGESLAGEN: "regel overgeslagen (transport/dienst/geen aantal)",
     ZACHT_SIGNAAL: "zacht signaal — mens beoordeelt",
     STIL_7_DAGEN: "zeven dagen stil",
+    VANGNET_SCHEDULER: "job-trigger mislukt — scheduler-vangnet (≤ 10 min)",
+    LOKAAL_THREAD: "geen job-trigger (lokaal/thread)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -96,6 +106,7 @@ BANK = "bank_autoboeken"
 NABUNDEL = "nabundel"
 TERUGKEREND = "terugkerend"
 MINI_VOORRAAD = "mini_voorraad"
+EXTRACTIE_WACHTRIJ = "extractie_wachtrij"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -109,9 +120,11 @@ VOLGORDE: tuple[str, ...] = (
     TERUGKEREND,
     NABUNDEL,
     MINI_VOORRAAD,
+    EXTRACTIE_WACHTRIJ,
 )
 
 LABEL: dict[str, str] = {
+    EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
     DUPLICAAT_AFVOER: "Duplicaat-afvoer",
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
     AUTOBOEK_INKOOP: "Autoboeken inkoop",
@@ -132,6 +145,8 @@ DOEL_PAD: dict[str, str] = {
     GELDPOORT: "/instellingen/boeken",
     NOODREM: "/instellingen/boeken",
     VOLUMEREM: "/instellingen/autoboeken",
+    # Geen instelling in de app: de wortel zit in Cloud Run/IAM; de rij op Inzicht › Reconciliatie ís de plek.
+    VANGNET_SCHEDULER: "/reconciliatie",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -157,6 +172,7 @@ _ACTIES: tuple[str, ...] = (
     "document_nagebundeld",
     "document_dubbel_samengevouwen",
     "mini_voorraad_instroom",
+    "extractie_wachtrij_trigger",
 )
 
 
@@ -203,6 +219,11 @@ class Feiten:
     verkoop_aan: set[uuid.UUID] = field(default_factory=set)  # is_vastgoed
     bank_aan: set[uuid.UUID] = field(default_factory=set)
     mini_voorraad_aan: set[uuid.UUID] = field(default_factory=set)
+    # Extractie-wachtrij (08-09): tijdstippen van élke overgang → `extractie_wachtrij` die géén herstel-overgang
+    # is (upload/intake/herextractie), per administratie; de "verwacht"-kant van de trigger-teller.
+    extractie_wachtrij_overgangen: list[tuple[uuid.UUID, datetime]] = field(default_factory=list)
+    # Staat er een Cloud Run-job-resource op de service (productie) of draait de wachtrij lokaal (thread)?
+    extractie_job_resource: str | None = None
 
 
 # --- uitkomst ---------------------------------------------------------------------------------------------
@@ -399,6 +420,15 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         NABUNDEL, "op_aanvraag", "intake + nazorg-CLI", "audit document_nagebundeld / document_dubbel_samengevouwen"
     )
     mini = maak(MINI_VOORRAAD, *_stand_per_administratie(feiten.mini_voorraad_aan, adm), "audit mini_voorraad_instroom")
+    job = feiten.extractie_job_resource
+    extractie = maak(
+        EXTRACTIE_WACHTRIJ,
+        "altijd",
+        f"Cloud Run-job {job.rsplit('/', 1)[-1]} per upload + scheduler-vangnet 10 min"
+        if job
+        else "geen job-resource — lokaal/thread",
+        "audit extractie_wachtrij_trigger + tijdlijn-overgangen naar extractie_wachtrij",
+    )
 
     # --- audit-feiten
     for f in feiten.audit:
@@ -442,6 +472,27 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                 regels_over = nw.get("overgeslagen") or []
                 if regels_over:
                     v.overgeslagen[REGEL_OVERGESLAGEN] = v.overgeslagen.get(REGEL_OVERGESLAGEN, 0) + len(regels_over)
+        elif f.actie == "extractie_wachtrij_trigger":
+            if nw.get("uitkomst") == "geslaagd":
+                for v in vensters(extractie, f.tijdstip):
+                    v.tel_gedaan()
+            else:
+                # Platformbrede voorwaarde (IAM/job) → administratie-loos in de LET-OP; de administratie staat
+                # in het voorbeeld zodat de rij wél naar het document leidt.
+                tel_over(
+                    extractie,
+                    f.tijdstip,
+                    VANGNET_SCHEDULER,
+                    None,
+                    f"{nw.get('fout') or 'trigger mislukt'} (administratie {f.administratie_id})",
+                )
+
+    # --- extractie-wachtrij: overgangen zonder trigger-spoor = lokaal/thread (of van vóór het spoor)
+    for venster_obj, vanaf in ((extractie.dag, dag_vanaf), (extractie.week, week_vanaf)):
+        n_over = sum(1 for _aid, t in feiten.extractie_wachtrij_overgangen if t >= vanaf)
+        rest = n_over - venster_obj.gedaan - venster_obj.overgeslagen_totaal
+        if rest > 0:
+            venster_obj.tel_overgeslagen(LOKAAL_THREAD, rest)
 
     # --- bank (run-tabel)
     for r in feiten.bank_runs:
@@ -650,19 +701,20 @@ def regels_uit_samenvatting(samenvatting: dict) -> list[str]:
 def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | None = None) -> Feiten:
     """Lees de feiten uit de bestaande sporen — per administratie in een gescoopte sessie (RLS), de
     administratie-loze audit-rijen en de platformbrede run-tabellen in de scope-loze sessie."""
-    from sqlalchemy import func, select
+    from sqlalchemy import func, or_, select
 
     from app.autoboek_kandidaten.models import AutoboekInstelling
     from app.bank.models import BankSyncRun, BankSyncRunStatus
+    from app.config import settings
     from app.db.models import Administratie, DuplicaatAfvoerInstelling
     from app.db.session import scoped_session
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-    from app.documenten.models import LeverancierVoorkeur
+    from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus, LeverancierVoorkeur
     from app.terugkerend.models import HerberekenRunStatus, TerugkerendHerberekenRun
     from app.uren.models import VeldwerkerCrediteur
 
     week_vanaf = nu - timedelta(days=STIL_DAGEN)
-    feiten = Feiten()
+    feiten = Feiten(extractie_job_resource=settings.extractie_wachtrij_job_resource or None)
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         q = select(Administratie).where(Administratie.actief.is_(True))
         if administratie_ids is not None:
@@ -730,6 +782,19 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                 feiten.bank_runs.append(
                     BankRunFeit(administratie_id=aid, beeindigd_op=r.beeindigd_op, resultaat=r.resultaat)
                 )
+            # Overgangen naar de extractie-wachtrij (upload/intake/herextractie) — herstel-overgangen
+            # (`detail.herstel`: achtergebleven na herstart / gestrand op bezig) zijn geen nieuwe kandidaat.
+            for (tijdstip,) in session.execute(
+                select(DocumentGebeurtenis.tijdstip)
+                .join(Document, Document.id == DocumentGebeurtenis.document_id)
+                .where(
+                    Document.administratie_id == aid,
+                    DocumentGebeurtenis.naar_status == DocumentStatus.EXTRACTIE_WACHTRIJ,
+                    DocumentGebeurtenis.tijdstip >= week_vanaf,
+                    or_(DocumentGebeurtenis.detail.is_(None), ~DocumentGebeurtenis.detail.has_key("herstel")),
+                )
+            ).all():
+                feiten.extractie_wachtrij_overgangen.append((aid, _utc(tijdstip)))
     return feiten
 
 

@@ -25,6 +25,7 @@ from app.reconciliatie import kantoorbreed, teksten
 from app.reconciliatie import run as run_service
 from app.reconciliatie.models import ReconciliatieRun
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
+from tests.documenten.conftest import gescoopte_gebruiker, opslag  # noqa: F401
 
 NU = datetime(2026, 9, 7, 4, 30, tzinfo=UTC)
 ARGS = argparse.Namespace()
@@ -557,3 +558,147 @@ class TestVerzamelEnRun:
                 len(session.scalars(select(AuditEvent).where(AuditEvent.actie == "crediteur_dubbel_auto_run")).all())
                 == 1
             )
+
+
+# ---- extractie-wachtrij: trigger-teller (herstelrun "Basis eerst" 08-09, blok 2) --------------------------------
+
+JOB = "projects/p/locations/europe-west4/jobs/rlz-extractie-wachtrij"
+
+
+def _trigger(aid: uuid.UUID, uur: float, *, ok: bool) -> auto.AuditFeit:
+    return auto.AuditFeit(
+        actie="extractie_wachtrij_trigger",
+        tijdstip=_uur(uur),
+        administratie_id=aid,
+        nieuwe_waarde={"uitkomst": "geslaagd", "job": "rlz-extractie-wachtrij", "fout": None}
+        if ok
+        else {"uitkomst": "mislukt", "job": "rlz-extractie-wachtrij", "fout": "HTTPStatusError: 403 run.jobs.run"},
+    )
+
+
+class TestExtractieWachtrij:
+    def test_verwacht_gedaan_overgeslagen_en_let_op_bij_mislukte_trigger(self) -> None:
+        """verwacht = documenten die in het venster op extractie_wachtrij gezet zijn; gedaan = trigger geslaagd;
+        overgeslagen = trigger mislukt (vangnet scheduler, LET-OP) of geen trigger-spoor (lokaal/thread)."""
+        aid = uuid.uuid4()
+        f = _feiten(
+            aid,
+            extractie_job_resource=JOB,
+            extractie_wachtrij_overgangen=[(aid, _uur(1)), (aid, _uur(2)), (aid, _uur(3)), (aid, _uur(30))],
+            audit=[_trigger(aid, 1, ok=True), _trigger(aid, 2, ok=False)],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.EXTRACTIE_WACHTRIJ)
+        assert t.stand == "altijd" and "rlz-extractie-wachtrij" in (t.stand_detail or "")
+        assert (t.dag.verwacht, t.dag.gedaan) == (3, 1)
+        assert t.dag.overgeslagen == {auto.VANGNET_SCHEDULER: 1, auto.LOKAAL_THREAD: 1}
+        assert (t.week.verwacht, t.week.gedaan) == (4, 1)
+        assert t.week.overgeslagen == {auto.VANGNET_SCHEDULER: 1, auto.LOKAAL_THREAD: 2}
+        assert t.stil is False
+        # LET-OP: ≥ 1 mislukte trigger in het etmaal, platformbreed (administratie-loos), rij op Inzicht › Reconciliatie
+        (bev,) = [b for b in auto.bevindingen(tellers) if b["detail"]["automatisering"] == auto.EXTRACTIE_WACHTRIJ]
+        assert bev["soort"] == "let_op" and bev["administratie_id"] is None
+        assert bev["detail"]["reden"] == auto.VANGNET_SCHEDULER and bev["detail"]["aantal"] == 1
+        assert bev["detail"]["doel_pad"] == "/reconciliatie"
+        assert "403 run.jobs.run" in bev["detail"]["voorbeeld"] and str(aid) in bev["detail"]["voorbeeld"]
+        regel = next(r for r in auto.regels(tellers) if "Extractie-wachtrij" in r)
+        assert "verwacht 3, gedaan 1, overgeslagen 2" in regel and "LET-OP: 1× job-trigger mislukt" in regel
+        # leesbare laag: titel/wat/doe mét de handeling (IAM run.invoker), zonder GUID's in titel/wat
+        lb = teksten.leesbaar(
+            run_service.Bevinding(
+                blok=auto.BLOK,
+                soort="let_op",
+                administratie_id=None,
+                vingerafdruk=bev["vingerafdruk"],
+                tekst=bev["tekst"],
+                detail=bev["detail"],
+            )
+        )
+        assert lb.titel.startswith("Automatisering wacht op voorwaarde — Extractie-wachtrij")
+        assert "job-trigger mislukt" in lb.wat and "run.invoker" in lb.doe and "scheduler-vangnet" in lb.doe
+        assert not GUID.search(lb.titel)
+        # JSON-roundtrip (mail ná opslag) behoudt de nieuwe categorieën
+        terug = auto.uit_samenvatting(auto.als_samenvatting(tellers, nu=NU))
+        assert _teller(terug, auto.EXTRACTIE_WACHTRIJ).dag.overgeslagen == t.dag.overgeslagen
+
+    def test_alle_triggers_geslaagd_geen_let_op(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(
+            aid,
+            extractie_job_resource=JOB,
+            extractie_wachtrij_overgangen=[(aid, _uur(1)), (aid, _uur(2))],
+            audit=[_trigger(aid, 1, ok=True), _trigger(aid, 2, ok=True)],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.EXTRACTIE_WACHTRIJ)
+        assert (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (2, 2, {})
+        assert not [b for b in auto.bevindingen(tellers) if b["detail"]["automatisering"] == auto.EXTRACTIE_WACHTRIJ]
+
+    def test_zonder_job_resource_is_alles_lokaal_thread_zonder_let_op(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(aid, extractie_job_resource=None, extractie_wachtrij_overgangen=[(aid, _uur(1)), (aid, _uur(5))])
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.EXTRACTIE_WACHTRIJ)
+        assert t.stand == "altijd" and t.stand_detail == "geen job-resource — lokaal/thread"
+        assert (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (2, 0, {auto.LOKAAL_THREAD: 2})
+        assert not [b for b in auto.bevindingen(tellers) if b["detail"]["automatisering"] == auto.EXTRACTIE_WACHTRIJ]
+
+    def test_meer_triggers_dan_overgangen_geeft_geen_negatieve_rest(self) -> None:
+        """Herstel-enqueues (startup-vangnet) triggeren zonder nieuwe overgang: verwacht volgt dan de triggers."""
+        aid = uuid.uuid4()
+        f = _feiten(
+            aid,
+            extractie_job_resource=JOB,
+            extractie_wachtrij_overgangen=[(aid, _uur(1))],
+            audit=[_trigger(aid, 1, ok=True), _trigger(aid, 1.5, ok=True), _trigger(aid, 2, ok=True)],
+        )
+        t = _teller(auto.bereken(f, nu=NU), auto.EXTRACTIE_WACHTRIJ)
+        assert (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (3, 3, {})
+
+    def test_verzamel_feiten_leest_trigger_spoor_en_wachtrij_overgangen_zonder_herstel(
+        self, administratie_id, gescoopte_gebruiker, opslag, monkeypatch
+    ) -> None:
+        from app.config import settings
+        from app.documenten import service as documenten_service
+        from app.documenten.models import DocumentGebeurtenis, DocumentStatus
+        from app.documenten.wachtrij import CloudRunJobExtractieWachtrij
+
+        monkeypatch.setattr(settings, "extractie_wachtrij_job_resource", JOB)
+        doc = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam="factuur.pdf",
+            inhoud=b"%PDF-1.4 trigger-spoor",
+            actor_id=gescoopte_gebruiker,
+            opslag=opslag,
+        ).document_id
+        # Tijdlijn: twee échte wachtrij-overgangen + één herstel-overgang (telt niet als kandidaat)
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            for detail in (None, {"extractie_wachtrij": "achtergrond"}, {"herstel": "gestrand_op_bezig"}):
+                session.add(
+                    DocumentGebeurtenis(
+                        document_id=doc,
+                        van_status=DocumentStatus.ONTVANGEN,
+                        naar_status=DocumentStatus.EXTRACTIE_WACHTRIJ,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        detail=detail,
+                    )
+                )
+        # Trigger-spoor: één geslaagd, één mislukt (echte audit-rijen via de wachtrij zelf)
+        CloudRunJobExtractieWachtrij(job_resource=JOB, trigger=lambda _: None).enqueue(
+            administratie_id=administratie_id, document_id=doc
+        )
+
+        def faal(_: str) -> None:
+            raise RuntimeError("403 run.jobs.run")
+
+        CloudRunJobExtractieWachtrij(job_resource=JOB, trigger=faal).enqueue(
+            administratie_id=administratie_id, document_id=doc
+        )
+        feiten = auto.verzamel_feiten(nu=datetime.now(UTC))
+        assert feiten.extractie_job_resource == JOB
+        assert [a for a, _t in feiten.extractie_wachtrij_overgangen] == [administratie_id, administratie_id]
+        triggers = [f for f in feiten.audit if f.actie == "extractie_wachtrij_trigger"]
+        assert sorted(f.nieuwe_waarde["uitkomst"] for f in triggers) == ["geslaagd", "mislukt"]
+        assert all(f.administratie_id == administratie_id for f in triggers)
+        t = _teller(auto.bereken(feiten, nu=datetime.now(UTC)), auto.EXTRACTIE_WACHTRIJ)
+        assert (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (2, 1, {auto.VANGNET_SCHEDULER: 1})

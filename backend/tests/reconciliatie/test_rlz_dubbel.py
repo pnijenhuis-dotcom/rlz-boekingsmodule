@@ -1,12 +1,13 @@
 # ruff: noqa: F811 — pytest-fixtures als parameters
 """Blok 6 (bundel 08-09): reconciliatie-blok `rlz_dubbel` — periodieke toets "mogelijk dubbel geboekt in RLZ".
 
-Getest zonder RLZ (gemockte client): paginering, matchregels (genormaliseerde referentie / cent-exact bedrag +
-datum, binnen dezelfde crediteur), module-herkenning (beide van de module = geen treffer; GUID-versie-4 nooit van
-ons), stabiele vingerafdruk per paar, de Kempen-casus (BOOT 202632703/202632704: twee VERSCHILLENDE referenties op
-dezelfde datum — alleen een treffer als de bedragen cent-exact gelijk zijn), het CLI-blok in een reconciliatie-
-alles-run (bevindingen, tellers, Odoo overgeslagen, acceptatie via het bestaande pad met bron `documenten`), de
-leesbare tekst (geen GUID's in titel/wat/doe) en de kantoorbrede lijst (geen doel_pad, wel boekstukken in detail)."""
+Getest zonder RLZ (gemockte client): paginering, matchregel (UITSLUITEND genormaliseerde referentie binnen dezelfde
+crediteur — blok 7 herstelrun 08-09: bedrag+datum vervallen, placeholder-referenties matchen nooit), module-herkenning
+(beide van de module = geen treffer; GUID-versie-4 nooit van ons), stabiele vingerafdruk per paar, de Kempen-casus
+(BOOT 202632703/202632704: twee VERSCHILLENDE referenties — bewust NIET gevangen, aanvaarde grens), het CLI-blok in
+een reconciliatie-alles-run (bevindingen, tellers, Odoo overgeslagen, acceptatie via het bestaande pad met bron
+`documenten`), de leesbare tekst (geen GUID's in titel/wat/doe) en de kantoorbrede lijst (geen doel_pad, wel
+boekstukken in detail)."""
 
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ from app.reconciliatie import kantoorbreed, rlz_dubbel, teksten
 from app.reconciliatie import run as run_service
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.rlz_dubbel import (
-    REGEL_BEDRAG_DATUM,
     REGEL_REFERENTIE,
     RlzDocument,
     is_van_module,
@@ -148,17 +148,34 @@ class TestVindParen:
         assert paren[0].regels == (REGEL_REFERENTIE,)
         assert {paren[0].a.rlz_id, paren[0].b.rlz_id} == {V4_A, V4_B}
 
-    def test_gelijk_bedrag_en_datum_zonder_referentiematch_is_paar_op_bedrag_datum(self) -> None:
+    def test_gelijk_bedrag_en_datum_zonder_referentiematch_is_geen_paar_meer(self) -> None:
+        """Blok 7 (08-09): variant (B) bedrag+datum vervallen — Lusso/Kempen Airco-reeksen (508 ruis-paren)."""
         a = _doc(V4_A, ref="A-1", bedrag=100.0)
         b = _doc(V4_B, ref="B-2", bedrag=100.0)
-        (paar,) = vind_paren([a, b])
-        assert paar.regels == (REGEL_BEDRAG_DATUM,)
+        assert vind_paren([a, b]) == []
 
-    def test_beide_regels_tegelijk(self) -> None:
+    def test_zelfde_referentie_met_gelijk_bedrag_is_alleen_referentie_regel(self) -> None:
         a = _doc(V4_A, ref="42", bedrag=100.0)
         b = _doc(V4_B, ref="0042", bedrag=100.0)
         (paar,) = vind_paren([a, b])
-        assert paar.regels == (REGEL_BEDRAG_DATUM, REGEL_REFERENTIE)
+        assert paar.regels == (REGEL_REFERENTIE,)
+
+    @pytest.mark.parametrize(
+        "ref",
+        ["Ingescand document", "ingescand  document", "0", "000", "00-00", "Factuur", "invoice", "#", "Scan", "n.v.t."],
+    )
+    def test_placeholder_referentie_telt_als_leeg_en_matcht_nooit(self, ref: str) -> None:
+        assert rlz_dubbel.toetsbare_referentie(ref) is None
+        a = _doc(V4_A, ref=ref, bedrag=100.0)
+        b = _doc(V4_B, ref=ref, bedrag=100.0)
+        assert a.referentie == (ref or None) and a.referentie_norm is None  # de ruwe tekst blijft leesbaar
+        assert vind_paren([a, b]) == []
+
+    def test_echte_referentie_met_placeholder_woord_erin_blijft_toetsbaar(self) -> None:
+        a = _doc(V4_A, ref="Ingescand document 3")
+        b = _doc(V4_B, ref="ingescand document 03")
+        (paar,) = vind_paren([a, b])
+        assert paar.regels == (REGEL_REFERENTIE,)
 
     def test_andere_crediteur_is_nooit_een_paar(self) -> None:
         a = _doc(V4_A, ref="42", bedrag=100.0)
@@ -170,12 +187,11 @@ class TestVindParen:
         b = _doc(V4_B, ref="42", entity=None)
         assert vind_paren([a, b]) == []
 
-    def test_bedrag_cent_exact_geen_float_ruis(self) -> None:
+    def test_bedrag_blijft_cent_exact_in_het_detail_maar_stuurt_de_match_niet(self) -> None:
         a = _doc(V4_A, ref="A", bedrag=7927.8)
         b = _doc(V4_B, ref="B", bedrag=7927.80)
-        c = _doc(V4_C, ref="C", bedrag=7927.81)
-        paren = vind_paren([a, b, c])
-        assert len(paren) == 1 and {paren[0].a.rlz_id, paren[0].b.rlz_id} == {V4_A, V4_B}
+        assert a.bedrag == b.bedrag == Decimal("7927.80")
+        assert vind_paren([a, b]) == []
 
     def test_beide_van_de_module_is_geen_treffer(self) -> None:
         module = {V5_MODULE_A, V5_MODULE_B}
@@ -218,11 +234,10 @@ class TestVindParen:
 
 
 class TestKempenCasus:
-    """BOOT 202632703 / 202632704 in Kempen Facilities (RLZ-04-00004037/38, handmatig 22-06, GUID-versie 4):
-    twee VERSCHILLENDE referenties van dezelfde crediteur op dezelfde datum. Regel A (referentie) matcht nooit
-    ("202632703" ≠ "202632704" ná normalisatie); regel B (bedrag + datum) matcht UITSLUITEND als de bedragen
-    cent-exact gelijk zijn. De echte bedragen zijn hier niet bekend (live-check wacht op gcloud) — beide takken
-    zijn vastgelegd."""
+    """BOOT 202632703 / 202632704 in Kempen Facilities (RLZ-04-00004037/38, handmatig 22-06, GUID-versie 4,
+    live 08-09: € 2.976,30 vs € 1.775,98): twee VERSCHILLENDE referenties én verschillende bedragen. Sinds blok 7
+    (herstelrun 08-09) toetst het blok alleen op referentie — deze casus wordt BEWUST NIET gevangen (aanvaarde grens,
+    Peter 08-09); ook gelijke bedragen maken er geen paar meer van."""
 
     def _boot(self, bedrag_a: float, bedrag_b: float) -> list[RlzDocument]:
         return [
@@ -230,15 +245,21 @@ class TestKempenCasus:
             _doc(V4_B, ref="202632704", bedrag=bedrag_b, boekstuk="RLZ-04-00004038"),
         ]
 
-    def test_verschillende_bedragen_is_geen_treffer(self) -> None:
-        assert vind_paren(self._boot(1234.56, 987.65)) == []
+    def test_echte_casus_verschillende_bedragen_is_geen_treffer_aanvaarde_grens(self) -> None:
+        assert vind_paren(self._boot(2976.30, 1775.98)) == []
 
-    def test_gelijke_bedragen_is_treffer_op_bedrag_datum_niet_op_referentie(self) -> None:
-        (paar,) = vind_paren(self._boot(1234.56, 1234.56))
-        assert paar.regels == (REGEL_BEDRAG_DATUM,)
+    def test_ook_gelijke_bedragen_op_dezelfde_datum_zijn_geen_treffer_meer(self) -> None:
+        assert vind_paren(self._boot(1234.56, 1234.56)) == []
+
+    def test_zelfde_boot_referentie_twee_keer_blijft_wel_een_treffer(self) -> None:
+        (paar,) = vind_paren(
+            [
+                _doc(V4_A, ref="202632703", bedrag=2976.30, boekstuk="RLZ-04-00004037"),
+                _doc(V4_B, ref="2026-32703", bedrag=2976.30, boekstuk="RLZ-04-00004099"),
+            ]
+        )
+        assert paar.regels == (REGEL_REFERENTIE,)
         ctx = paar.context(administratie_naam="Kempen Facilities B.V.")
-        assert {ctx["referentie_a"], ctx["referentie_b"]} == {"202632703", "202632704"}
-        assert {ctx["boekstuk_a"], ctx["boekstuk_b"]} == {"RLZ-04-00004037", "RLZ-04-00004038"}
         assert ctx["van_module_a"] is False and ctx["van_module_b"] is False
 
 
@@ -390,7 +411,7 @@ class TestTekstEnLijst:
             soort="afwijking",
             administratie_id=uuid.uuid4(),
             vingerafdruk="vaf6",
-            tekst="AFWIJKING  … soort=dubbel_in_rlz [vaf:vaf6]: RLZ-04-00004037 + RLZ-04-00004038 (bedrag_datum)",
+            tekst="AFWIJKING  … soort=dubbel_in_rlz [vaf:vaf6]: RLZ-04-00004037 + RLZ-04-00004038 (referentie)",
             detail={
                 "bron": "documenten",
                 "record_id": str(paar.record_id),
@@ -404,20 +425,20 @@ class TestTekstEnLijst:
         (paar,) = vind_paren(
             [
                 _doc(V4_A, ref="202632703", boekstuk="RLZ-04-00004037", naam="BOOT B.V."),
-                _doc(V4_B, ref="202632704", boekstuk="RLZ-04-00004038", naam="BOOT B.V."),
+                _doc(V4_B, ref="2026-32703", boekstuk="RLZ-04-00004038", naam="BOOT B.V."),
             ]
         )
         lb = teksten.leesbaar(self._bevinding(paar))
-        assert lb.titel.startswith("Mogelijk dubbel in RLZ — BOOT B.V. · 202632703 / 202632704")
+        assert lb.titel.startswith("Mogelijk dubbel in RLZ — BOOT B.V. · 202632703 / 2026-32703")
         assert len(lb.titel) <= teksten.MAX_TITEL
         assert "RLZ-04-00004037 (22-06-2026, € 1.234,56)" in lb.wat and "RLZ-04-00004038" in lb.wat
-        assert "hetzelfde bedrag op dezelfde factuurdatum" in lb.wat and "handmatig ingevoerd" in lb.wat
+        assert "dezelfde referentie 202632703" in lb.wat and "handmatig ingevoerd" in lb.wat
         assert "Open beide boekstuknummers in Reeleezee" in lb.doe and "verwijdert nooit" in lb.doe
         for zin in (lb.titel, lb.wat, lb.doe):
             assert not teksten.bevat_technische_sleutel(zin), zin
         labels = dict(lb.details)
         assert labels["RLZ-document A"] == str(paar.a.rlz_id) and labels["RLZ-document B"] == str(paar.b.rlz_id)
-        assert labels["matchregel"] == "bedrag_datum"
+        assert labels["matchregel"] == "referentie"
 
     def test_geaccepteerd_en_concept_variant(self) -> None:
         (paar,) = vind_paren([_doc(V4_A, ref="42"), _doc(V4_B, ref="42", status=1, boekstuk=None)])

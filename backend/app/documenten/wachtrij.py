@@ -108,11 +108,19 @@ class CloudRunJobExtractieWachtrij:
     'in wachtrij' en pakt het scheduler-vangnet het binnen 10 minuten op; de fout wordt gelogd,
     nooit naar de uploader gegooid (de upload zelf is geslaagd)."""
 
-    def __init__(self, *, job_resource: str, trigger: Callable[[str], None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        job_resource: str,
+        trigger: Callable[[str], None] | None = None,
+        spoor: Callable[..., None] | None = None,
+    ) -> None:
         self._job_resource = job_resource
         self._trigger = trigger
+        self._spoor = spoor if spoor is not None else leg_trigger_uitkomst_vast
 
     def enqueue(self, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
+        fout: str | None = None
         try:
             if self._trigger is not None:
                 self._trigger(self._job_resource)
@@ -120,10 +128,53 @@ class CloudRunJobExtractieWachtrij:
                 from app.projecten.cijfers_run import _trigger_cloud_run_job
 
                 _trigger_cloud_run_job(self._job_resource)
-        except Exception:  # noqa: BLE001 — trigger-fout mag de upload nooit laten falen; vangnet = scheduler
+        except Exception as exc:  # noqa: BLE001 — trigger-fout mag de upload nooit laten falen; vangnet = scheduler
+            fout = f"{type(exc).__name__}: {exc}"[:500]
             logger.exception(
                 "Extractie-wachtrij: Cloud Run-job %s triggeren mislukt voor document %s — het "
                 "scheduler-vangnet pakt het document op",
                 self._job_resource,
                 document_id,
             )
+        self._spoor(
+            administratie_id=administratie_id, document_id=document_id, job_resource=self._job_resource, fout=fout
+        )
+
+
+#: Audit-actie van het trigger-spoor (herstelrun "Basis eerst" 08-09, blok 2). Gelezen door de tellers per
+#: automatisering in de reconciliatie (`app/reconciliatie/automatiseringen.py`, automatisering
+#: `extractie_wachtrij`): geslaagd = gedaan, mislukt = overgeslagen "vangnet scheduler" (LET-OP).
+TRIGGER_AUDIT_ACTIE = "extractie_wachtrij_trigger"
+
+
+def leg_trigger_uitkomst_vast(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, job_resource: str, fout: str | None
+) -> None:
+    """Eén audit-event per trigger (bestaand patroon `record_audit_event`, systeem-actor, gescoopt op de
+    administratie; geen migratie): `nieuwe_waarde = {uitkomst: geslaagd|mislukt, job, fout}`. Vóór 08-09 stond de
+    uitkomst alleen in de log ("triggeren mislukt") — niet telbaar in de reconciliatiemail, dus een stil falende
+    trigger (IAM `run.invoker`) zou pas opvallen als extracties tot 10 minuten wachtten. Nooit raise-n: een niet
+    geschreven spoor mag de upload niet laten falen."""
+    try:
+        from app.db.audit import record_audit_event
+        from app.db.session import scoped_session
+        from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            record_audit_event(
+                session,
+                actor_id=SYSTEEM_ACTOR_ID,
+                module="boekhouding",
+                tabel="document",
+                record_id=document_id,
+                actie=TRIGGER_AUDIT_ACTIE,
+                correlatie_id=document_id,
+                nieuwe_waarde={
+                    "uitkomst": "mislukt" if fout else "geslaagd",
+                    "job": job_resource.rsplit("/", 1)[-1],
+                    "fout": fout,
+                },
+                administratie_id=administratie_id,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("Extractie-wachtrij: trigger-spoor niet geschreven voor document %s", document_id)

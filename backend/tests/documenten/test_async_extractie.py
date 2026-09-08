@@ -490,3 +490,37 @@ class TestWachtrijJob:
         monkeypatch.setattr(settings, "extractie_wachtrij_job_resource", None)
         assert isinstance(service._standaard_wachtrij(), InProcessExtractieWachtrij)
         monkeypatch.setattr(service, "_wachtrij", None)
+
+
+def test_cloud_wachtrij_legt_trigger_uitkomst_vast_als_audit_spoor(administratie_id: uuid.UUID) -> None:
+    """Herstelrun "Basis eerst" 08-09 blok 2: élke trigger laat een audit-event `extractie_wachtrij_trigger` achter
+    (geslaagd/mislukt, systeem-actor, gescoopt op de administratie) — de bron van de teller in de reconciliatiemail.
+    Een mislukte trigger laat de upload nog steeds nooit falen."""
+    from sqlalchemy import select
+
+    from app.db.models import AuditEvent
+    from app.documenten.wachtrij import TRIGGER_AUDIT_ACTIE, CloudRunJobExtractieWachtrij
+
+    job = "projects/p/locations/europe-west4/jobs/rlz-extractie-wachtrij"
+    doc_ok, doc_fout = uuid.uuid4(), uuid.uuid4()
+    CloudRunJobExtractieWachtrij(job_resource=job, trigger=lambda _: None).enqueue(
+        administratie_id=administratie_id, document_id=doc_ok
+    )
+
+    def faal(_: str) -> None:
+        raise RuntimeError("403 run.jobs.run")
+
+    CloudRunJobExtractieWachtrij(job_resource=job, trigger=faal).enqueue(
+        administratie_id=administratie_id, document_id=doc_fout
+    )  # geen exception
+
+    with scoped_session(administratie_id) as session:
+        rijen = {
+            e.record_id: e
+            for e in session.scalars(select(AuditEvent).where(AuditEvent.actie == TRIGGER_AUDIT_ACTIE)).all()
+        }
+    assert set(rijen) == {doc_ok, doc_fout}
+    assert rijen[doc_ok].nieuwe_waarde == {"uitkomst": "geslaagd", "job": "rlz-extractie-wachtrij", "fout": None}
+    assert rijen[doc_fout].nieuwe_waarde["uitkomst"] == "mislukt"
+    assert "403 run.jobs.run" in rijen[doc_fout].nieuwe_waarde["fout"]
+    assert all(e.actor_id == SYSTEEM_ACTOR_ID and e.administratie_id == administratie_id for e in rijen.values())

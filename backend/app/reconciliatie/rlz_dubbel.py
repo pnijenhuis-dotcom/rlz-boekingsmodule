@@ -8,9 +8,16 @@ Wat dit blok doet — en bewust níét:
   PurchaseInvoices van de laatste `VENSTER_DAGEN` dagen gelezen in ÉÉN gepagineerde lees-reeks ($top/$skip, zelfde
   vorm als `app/geheugen/seed.py::_facturen` — live bewezen op deze collectie; `$expand=Entity` omdat Entity op de
   collectie alleen mét expand zichtbaar is). Concepten (Status 1) komen mee (STAP-0 07-09) en worden gemarkeerd.
-- Binnen dezelfde crediteur (Entity) worden paren gezocht op (A) gelijke GENORMALISEERDE referentie
-  (`duplicaat_afvoer.normaliseer_referentie` — één normalisatie in de hele module) en/of (B) gelijk bedrag
-  (`BaseInvoiceAmount`, cent-exact Decimal — nooit float) + gelijke factuurdatum (`Date`).
+- Binnen dezelfde crediteur (Entity) worden paren gezocht op UITSLUITEND gelijke GENORMALISEERDE referentie
+  (`duplicaat_afvoer.normaliseer_referentie` — één normalisatie in de hele module). Placeholder-referenties
+  ("Ingescand document", alleen nullen, "factuur"/"invoice", zie `PLACEHOLDER_REFERENTIES`) tellen als LEEG en
+  matchen nooit. **Herstelrun "Basis eerst" 08-09 (blok 7, besluit Peter 08-09): de vroegere variant (B) "gelijk
+  bedrag + gelijke factuurdatum" is VOLLEDIG vervallen** — de Kempen-live-check gaf 516 paren, waarvan 508 op
+  bedrag+datum: reeksfacturen van Lusso-Design Interior Projects en Kempen Airco (identieke bedragen op één datum,
+  opeenvolgende nummers = echte losse facturen) en "Ingescand document"-referenties die elkaar matchten.
+  **Aanvaarde grens:** de aanleiding-casus BOOT 202632703/202632704 (RLZ-04-00004037/38, € 2.976,30 vs € 1.775,98,
+  beide 22-06-2026) heeft een ándere referentie én een ánder bedrag en wordt door deze toets bewust NIET gevangen
+  (viel ook onder (B) al buiten de criteria).
 - Een paar waarvan BEIDE documenten door de module zijn aangemaakt telt niet: die GUID's zijn deterministisch
   (UUIDv5, `documenten/rlz_ids.py`) en worden per administratie uit de eigen DB afgeleid (document × boek_cyclus,
   tegenboekingen, doorbelasting-spiegels, bank-relatieboekingen). Eén module-exemplaar + één handmatig exemplaar
@@ -27,6 +34,7 @@ Geen AI, geen RLZ-writes. Alle geldvergelijking in Decimal."""
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -56,7 +64,40 @@ ACCEPTATIE_BRON = "documenten"
 VENSTER_DAGEN = 400
 PAGINA_GROOTTE = 200
 REGEL_REFERENTIE = "referentie"
-REGEL_BEDRAG_DATUM = "bedrag_datum"
+#: Genormaliseerde referenties (`normaliseer_referentie`) die geen factuurnummer zijn maar een plaatsvervanger van de
+#: RLZ-UI/scan-import — tellen als leeg, matchen nooit (blok 7 herstelrun 08-09). Alleen nullen (`0`, `000`, `00-00`)
+#: vallen er via `_ALLEEN_NULLEN` ook onder; "factuur"/"invoice" zijn ná normalisatie al leeg (voorvoegsel-strip).
+PLACEHOLDER_REFERENTIES: frozenset[str] = frozenset(
+    {
+        "ingescanddocument",
+        "ingescand",
+        "document",
+        "scan",
+        "factuur",
+        "invoice",
+        "nota",
+        "bon",
+        "onbekend",
+        "nvt",
+        "geen",
+    }
+)
+_ALLEEN_NULLEN = re.compile(r"0+")
+
+
+def is_placeholder_referentie(referentie_norm: str | None) -> bool:
+    """Deterministisch: leeg, alleen nullen of een generieke plaatsvervanger = geen toetsbare referentie."""
+    if not referentie_norm:
+        return True
+    return bool(_ALLEEN_NULLEN.fullmatch(referentie_norm)) or referentie_norm in PLACEHOLDER_REFERENTIES
+
+
+def toetsbare_referentie(referentie: object) -> str | None:
+    """Genormaliseerde referentie voor de match, of None als die leeg/placeholder is."""
+    if referentie in (None, ""):
+        return None
+    norm = normaliseer_referentie(str(referentie))
+    return None if is_placeholder_referentie(norm) else norm
 
 
 # ---- data ----------------------------------------------------------------------------------------
@@ -87,7 +128,7 @@ class RlzDocument:
 class DubbelPaar:
     a: RlzDocument  # a.rlz_id < b.rlz_id (sortering op tekst) — stabiel over runs
     b: RlzDocument
-    regels: tuple[str, ...]  # REGEL_REFERENTIE en/of REGEL_BEDRAG_DATUM
+    regels: tuple[str, ...]  # sinds 08-09 altijd (REGEL_REFERENTIE,); oude bevindingen kunnen nog 'bedrag_datum' dragen
 
     @property
     def detail(self) -> str:
@@ -213,7 +254,7 @@ def naar_rlz_document(rij: dict[str, Any], *, module_ids: set[uuid.UUID]) -> Rlz
         entity_id=_als_uuid(entity.get("id")) if isinstance(entity, dict) else None,
         entity_naam=(entity.get("Name") or entity.get("SearchName")) if isinstance(entity, dict) else None,
         referentie=str(referentie) if referentie not in (None, "") else None,
-        referentie_norm=normaliseer_referentie(str(referentie)) if referentie not in (None, "") else None,
+        referentie_norm=toetsbare_referentie(referentie),
         datum=_als_datum(rij.get("Date")),
         boekdatum=_als_datum(rij.get("BookDate")),
         bedrag=bedrag_cent_exact(rij.get("BaseInvoiceAmount")),
@@ -236,9 +277,10 @@ def is_van_module(rlz_id: uuid.UUID, module_ids: set[uuid.UUID]) -> bool:
 
 
 def vind_paren(documenten: Iterable[RlzDocument]) -> list[DubbelPaar]:
-    """Paren binnen dezelfde crediteur op (A) gelijke genormaliseerde referentie en/of (B) gelijk bedrag + gelijke
-    factuurdatum. Beide-van-de-module = geen treffer. Documenten zonder Entity zijn niet toetsbaar. Elk paar
-    hooguit één keer, gesorteerd op RLZ-id (stabiele vingerafdruk)."""
+    """Paren binnen dezelfde crediteur op UITSLUITEND gelijke genormaliseerde referentie (placeholder-referenties zijn
+    al None, zie `toetsbare_referentie`). Bedrag en datum spelen sinds 08-09 GEEN rol meer (blok 7: 508 ruis-paren bij
+    Kempen). Beide-van-de-module = geen treffer. Documenten zonder Entity zijn niet toetsbaar. Elk paar hooguit één
+    keer, gesorteerd op RLZ-id (stabiele vingerafdruk)."""
     per_crediteur: dict[uuid.UUID, list[RlzDocument]] = {}
     for d in documenten:
         if d.entity_id is None:
@@ -255,20 +297,13 @@ def vind_paren(documenten: Iterable[RlzDocument]) -> list[DubbelPaar]:
 
     for docs in per_crediteur.values():
         op_referentie: dict[str, list[RlzDocument]] = {}
-        op_bedrag_datum: dict[tuple[Decimal, date], list[RlzDocument]] = {}
         for d in docs:
             if d.referentie_norm:
                 op_referentie.setdefault(d.referentie_norm, []).append(d)
-            if d.bedrag is not None and d.datum is not None:
-                op_bedrag_datum.setdefault((d.bedrag, d.datum), []).append(d)
         for groep in op_referentie.values():
             for i, x in enumerate(groep):
                 for y in groep[i + 1 :]:
                     _voeg_toe(x, y, REGEL_REFERENTIE)
-        for groep in op_bedrag_datum.values():
-            for i, x in enumerate(groep):
-                for y in groep[i + 1 :]:
-                    _voeg_toe(x, y, REGEL_BEDRAG_DATUM)
 
     op_id = {d.rlz_id: d for d in documenten}
     uit = [

@@ -500,6 +500,7 @@ def instellingen_opslaan(
     actor_rol: str,
     ingeschakeld: bool,
     lagen: list[LaagInput],
+    aanleiding: str | None = None,
 ) -> int:
     """Beheerder-only (router-dependency) + nooit door een accordeur. Lagen zijn append-only:
     de bestaande actieve lagen worden gedeactiveerd, de nieuwe set aangemaakt. Aanzetten zonder
@@ -512,7 +513,10 @@ def instellingen_opslaan(
     mét reden `VERVALLEN_REDEN` + batch-id voor de werkvoorraad-melding, audit per ronde). Niets
     verdwijnt stil; opnieuw aanbieden is de weg (los of via de bulk-actie op de documentenlijst).
     Een opslag die het schema niet verandert (bv. alleen opnieuw opslaan) raakt geen ronde.
-    Geeft het aantal vervallen rondes terug."""
+    Geeft het aantal vervallen rondes terug.
+
+    `aanleiding` (blok 5 herstelrun 08-09, bv. "verwijderd via Klant-accordeurs"): reist mee in beide audit-events
+    én in het tijdlijn-detail van élke vervallen ronde — de aanleiding van een uitschakeling blijft zo leesbaar."""
     _vereis_kantoor(actor_rol)
     if ingeschakeld and not lagen:
         raise GeenLagenIngesteld("Accordering aanzetten vereist minstens één accorderingslaag")
@@ -542,7 +546,12 @@ def instellingen_opslaan(
             if ingeschakeld:
                 filter_ids = {None, terugval_id(session, administratie_id)}
             vervallen = _laat_open_rondes_vervallen(
-                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu, afdeling_ids=filter_ids
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                afdeling_ids=filter_ids,
+                detail_extra={"aanleiding": aanleiding} if aanleiding else None,
             )
         for invoer in lagen:
             session.add(
@@ -576,6 +585,7 @@ def instellingen_opslaan(
                     for laag in lagen
                 ],
                 "rondes_vervallen": vervallen,
+                **({"aanleiding": aanleiding} if aanleiding else {}),
             },
             administratie_id=administratie_id,
         )
@@ -598,7 +608,10 @@ def instellingen_opslaan(
             actie="accordering_ingeschakeld_gewijzigd",
             correlatie_id=uuid.uuid4(),
             oude_waarde={"accordering_ingeschakeld": oud},
-            nieuwe_waarde={"accordering_ingeschakeld": ingeschakeld},
+            nieuwe_waarde={
+                "accordering_ingeschakeld": ingeschakeld,
+                **({"aanleiding": aanleiding} if aanleiding else {}),
+            },
         )
     return vervallen
 
@@ -2221,31 +2234,19 @@ class WachtrijDoorbelastingRegel:
     provisie_bedrag: Decimal
 
 
-def _doorbelasting_voor_wachtrij(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID
-) -> tuple[WachtrijDoorbelastingRegel, ...] | None:
-    """Leesroute voor de accordeur: de klaargezette verdeling samengevat per doelentiteit.
-    Aandeel-% = netto_totaal van de doelentiteit t.o.v. het totaal van de verdeelde bron-regels
-    (de per-regel-percentages kunnen verschillen; de accordeur krijgt één begrijpelijk getal).
-    Faalvriendelijk: een leesfout hier mag de wachtrij nooit blokkeren — dan géén blok.
-    Sinds blok 1 (08-09) alleen nog aangeroepen voor documenten die volgens één bulk-query een
-    klaargezette run HEBBEN (zie `_klaargezette_run_ids`) — geen sessie per wachtrij-item meer."""
-    from app.doorbelasting import orkestratie
-    from app.doorbelasting import service as doorbelasting_service
-
-    try:
-        run = orkestratie.klaargezette_run_voor(administratie_id=administratie_id, document_id=document_id)
-        if run is None:
-            return None
-        review = doorbelasting_service.review_data(administratie_id=administratie_id, run_id=run.id)
-    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
-        logger.exception("Doorbelasting-samenvatting voor de wachtrij niet te laden (document %s)", document_id)
+def _samenvat_doorbelasting(verdeling) -> tuple[WachtrijDoorbelastingRegel, ...] | None:  # noqa: ANN001
+    """Puur: de klaargezette verdeling (`doorbelasting_service.VerdelingKort` per doelentiteit) samengevat
+    voor de wachtrijkaart. Aandeel-% = netto_totaal van de doelentiteit t.o.v. het totaal van de verdeelde
+    bron-regels (de per-regel-percentages kunnen verschillen; de accordeur krijgt één begrijpelijk getal).
+    Herstelrun "Basis eerst" 08-09 (blok 1): de bron is niet meer `review_data` per item (17 queries +
+    checks-rapport per item; 55× bij Kempen → 5–12 s) maar de bulk-leesroute
+    `verdeling_per_doelentiteit_bulk` in dezelfde gescoopte sessie als de rest van de wachtrij — het
+    checks-rapport blijft exclusief in het detail-/reviewscherm."""
+    if not verdeling:
         return None
-    if not review.previews:
-        return None
-    totaal = sum((p.netto_totaal for p in review.previews), Decimal(0))
+    totaal = sum((p.netto_totaal for p in verdeling), Decimal(0))
     regels = []
-    for p in review.previews:
+    for p in verdeling:
         aandeel = (p.netto_totaal / totaal * Decimal(100)).quantize(Decimal("0.01")) if totaal else Decimal(0)
         regels.append(
             WachtrijDoorbelastingRegel(
@@ -2258,21 +2259,42 @@ def _doorbelasting_voor_wachtrij(
     return tuple(regels)
 
 
-def _klaargezette_run_ids(session: Session, document_ids: list[uuid.UUID]) -> set[uuid.UUID]:
-    """Eén query: welke van deze documenten hebben een klaargezette doorbelasting-run. Alleen dié
-    krijgen daarna de (eigen-sessie) review-samenvatting — de rest kost niets."""
+def _klaargezette_runs(session: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
+    """Eén query: document_id → run_id van de klaargezette doorbelasting-run (alleen documenten die er één
+    hebben). Alleen díe runs gaan daarna de bulk-verdelingsroute in — de rest kost niets."""
     if not document_ids:
-        return set()
+        return {}
     from app.doorbelasting.models import DoorbelastingRun, DoorbelastingRunStatus
 
-    return set(
-        session.scalars(
-            select(DoorbelastingRun.document_id).where(
+    return dict(
+        session.execute(
+            select(DoorbelastingRun.document_id, DoorbelastingRun.id).where(
                 DoorbelastingRun.document_id.in_(document_ids),
                 DoorbelastingRun.status == DoorbelastingRunStatus.KLAARGEZET.value,
             )
-        )
+        ).all()
     )
+
+
+def _doorbelasting_verdelingen(
+    session: Session, *, administratie_id: uuid.UUID, runs: dict[uuid.UUID, uuid.UUID]
+) -> dict[uuid.UUID, tuple[WachtrijDoorbelastingRegel, ...] | None]:
+    """document_id → kaart-samenvatting, voor álle klaargezette runs van deze administratie samen (3 queries,
+    constant). Faalvriendelijk: een leesfout mag de wachtrij nooit blokkeren — dan géén blok op die items."""
+    if not runs:
+        return {}
+    from app.doorbelasting import service as doorbelasting_service
+
+    try:
+        per_run = doorbelasting_service.verdeling_per_doelentiteit_bulk(
+            session, administratie_id=administratie_id, run_ids=list(runs.values())
+        )
+    except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
+        logger.exception(
+            "Doorbelasting-samenvatting voor de wachtrij niet te laden (administratie %s)", administratie_id
+        )
+        return {}
+    return {document_id: _samenvat_doorbelasting(per_run.get(run_id)) for document_id, run_id in runs.items()}
 
 
 @dataclass(frozen=True)
@@ -2539,13 +2561,15 @@ def _open_rondes_met_volgende_stap(
 # administratie in `wachtrij_voor_accordeur`, ONAFHANKELIJK van het aantal rondes. Opbouw:
 # 2 set_config + 1 rondes (EXISTS) + 1 stappen + 1 administratie + 1 documenten + 1 voorstellen
 # + 1 vendors + 3 boekingsomschrijving + 2 staande-regel + 1 vragen (+3 als er vragen zijn)
-# + 3 verplichting-kaarten (alleen bij verplichting-items) + 1 doorbelasting-runs
-# + 1 offerte-match (+4 als er treffers zijn) = 15 zonder verrijkingstreffers, 25 met álle.
-# Zonder rondes voor deze actor: 3 (2 set_config + rondes-query). Uitzondering, bewust: per
-# document MÉT een klaargezette doorbelasting-run komt daar de bestaande review-leesroute bij
-# (eigen sessie, `doorbelasting_service.review_data`) — die schaalt met het aantal
-# doorbelasting-documenten in de wachtrij, niet met het aantal rondes.
-WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE = 25
+# + 3 verplichting-kaarten (alleen bij verplichting-items) + 1 doorbelasting-runs (+3 bulk-verdeling
+# als er klaargezette runs zijn: regelsommen, mappingnamen, instelling — herstelrun "Basis eerst"
+# 08-09 blok 1; vóór die run kwam hier per doorbelasting-document `review_data` bij met 17 queries
+# + checks-rapport, 55× bij Kempen Facilities → 5–12 s voor Peter)
+# + 1 offerte-match (+4 als er treffers zijn) = 15 zonder verrijkingstreffers, 28 met álle.
+# Zonder rondes voor deze actor: 3 (2 set_config + rondes-query). Sinds 08-09 is er GEEN per-item-
+# uitzondering meer: ook doorbelasting schaalt niet met het aantal items (test
+# `test_querytelling_doorbelasting_schaalt_niet_met_items`).
+WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE = 28
 
 
 def _wachtrij_administratie(
@@ -2616,7 +2640,9 @@ def _wachtrij_administratie(
     except Exception:  # noqa: BLE001 — verrijking, nooit blokkerend voor de wachtrij
         logger.exception("Offerte-match voor de wachtrij niet te laden (administratie %s)", administratie_id)
         offerte_matches = {}
-    met_doorbelasting = _klaargezette_run_ids(session, document_ids)
+    doorbelastingen = _doorbelasting_verdelingen(
+        session, administratie_id=administratie_id, runs=_klaargezette_runs(session, document_ids)
+    )
 
     items: list[WachtrijItem] = []
     for ronde, volgende in rondes:
@@ -2641,9 +2667,8 @@ def _wachtrij_administratie(
                 laag_volgnummer=volgende.volgnummer,
                 boeking_omschrijving=omschrijvingen.get(ronde.document_id),
                 staande_regel_kandidaat=ronde.document_id in kandidaten,
-                # Vult de aanroeper ná de sessie (eigen leesroute met eigen sessies, nooit genest);
-                # het sentinel `()` markeert "run aanwezig, samenvatting nog te laden".
-                doorbelasting=() if ronde.document_id in met_doorbelasting else None,
+                # Bulk gelezen in déze sessie (blok 1 herstelrun 08-09); None = geen klaargezette run.
+                doorbelasting=doorbelastingen.get(ronde.document_id),
                 vraag=vragen.get(ronde.document_id),
                 afdeling_id=_ronde_afdeling_id(ronde),
                 afdeling_naam=(ronde.detail or {}).get("afdeling_naam"),
@@ -2662,24 +2687,12 @@ def wachtrij_voor_accordeur(*, actor_id: uuid.UUID, administratie_ids: list[uuid
     wachtrij): documenten in ter_accordering waar déze accordeur aan de beurt is — per
     administratie binnen de scope (RLS dwingt dat af; de lijst komt uit de scope-bron).
     Set-based sinds blok 1 (08-09): per administratie één gescoopte sessie met een constant aantal
-    queries (`WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE`), nooit per ronde."""
+    queries (`WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE`), nooit per ronde én — sinds de herstelrun
+    "Basis eerst" 08-09 — nooit per doorbelasting-item (bulk-verdeling in dezelfde sessie)."""
     items: list[WachtrijItem] = []
     for administratie_id in administratie_ids:
         with scoped_session(administratie_id) as session:
             items.extend(_wachtrij_administratie(session, actor_id=actor_id, administratie_id=administratie_id))
-    # Buiten de scoped_session per administratie: de doorbelasting-leesroute opent zijn eigen
-    # sessies (review_data), nooit genest — alleen voor items met een klaargezette run.
-    items = [
-        replace(
-            item,
-            doorbelasting=_doorbelasting_voor_wachtrij(
-                administratie_id=item.administratie_id, document_id=item.document_id
-            ),
-        )
-        if item.doorbelasting is not None
-        else item
-        for item in items
-    ]
     items.sort(key=lambda i: i.aangeboden_op)
     return items
 

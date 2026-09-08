@@ -515,7 +515,8 @@ def _exemplaar(d: dict, kant: str) -> str:
 
 def _rlz_dubbel(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     """Blok 6 (08-09): mogelijk dubbel geboekt in Reeleezee — twee inkoopfacturen van dezelfde crediteur met
-    dezelfde referentie en/of hetzelfde bedrag op dezelfde datum, waarvan minstens één niet via de module kwam.
+    dezelfde referentie, waarvan minstens één niet via de module kwam. De bedrag+datum-tak blijft alleen voor
+    bevindingen van vóór blok 7 (herstelrun 08-09) in de DB — nieuwe paren zijn altijd op referentie.
     Handeling ligt in Reeleezee (de app verwijdert nooit); geen deeplink beschikbaar (geen bekende URL-vorm)."""
     onderwerp = _onderwerp_rlz_dubbel(d)
     lev = _s(d, "leverancier_naam") or "dezelfde crediteur"
@@ -604,6 +605,9 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         "(Instellingen › Autoboeken).",
         auto.GEEN_EIGENAAR: "Dit mag sinds 07-09 niet meer voorkomen (een eigenaar is geen poort): stel de eigenaar in "
         "(Instellingen › Administraties) en meld de regressie.",
+        auto.VANGNET_SCHEDULER: "De documenten zijn wél verwerkt (scheduler-vangnet, tot 10 min later). Controleer in "
+        "Cloud Logging de melding 'triggeren mislukt' en het IAM-recht run.invoker van de service op de job "
+        "rlz-extractie-wachtrij.",
     }.get(reden, "Herstel de voorwaarde via de instelling op deze rij; de volgende run loopt door.")
     voorbeeld = _s(d, "voorbeeld")
     return (
