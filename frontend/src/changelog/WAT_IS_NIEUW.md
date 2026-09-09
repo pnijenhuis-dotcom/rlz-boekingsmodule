@@ -6,6 +6,21 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-09 — De dagelijkse mail zegt alleen nog wat u moet doen; gegeven akkoorden blijven staan
+
+<!-- bundel 09-09: blok 1 actiemail + systeemmail, blok 2 accorderingsronde herberekenen -->
+### De dagelijkse mail zegt alleen nog wat u moet doen
+- De dagelijkse controlemail van de boekhouding is herschreven: u krijgt alleen nog een bericht als er echt iets te doen is, met bovenaan "N zaken vragen je aandacht" en per zaak één regel: welke administratie, welke leverancier of boeking, en wat er afwijkt.
+- Eén link brengt u naar Inzicht › Reconciliatie, waar u elke zaak direct afhandelt. Meer dan tien zaken? Dan staan de eerste tien in de mail en ziet u de rest in het overzicht.
+- Alle technische details (standen per controle, tellers, automatiseringen) zitten niet meer in uw mail; die gaan apart naar het beheer en blijven zichtbaar op Instellingen › Boeken en Inzicht › Reconciliatie.
+- Een melding die op een fout in het systeem wijst, ziet u nu als "Systeemfout — automatisch gemeld": het beheer wordt automatisch gewaarschuwd, u hoeft er niets mee.
+### Een accordering die al gegeven is blijft staan bij het wijzigen van accordeurs
+- Past u de accordeurs, lagen of bedraggrenzen van een klant aan terwijl er facturen bij de klant liggen, dan gaan die facturen niet meer terug naar "Klaar om te boeken". De lopende goedkeuring wordt opnieuw berekend: akkoorden die al gegeven zijn blijven staan, en alleen de ontbrekende stap wordt bij de juiste accordeur aangevraagd.
+- Is na de wijziging alles al akkoord, dan gaat de factuur meteen door naar het boeken, precies zoals na een laatste akkoord.
+- Alleen als geen enkel gegeven akkoord meer past (bijvoorbeeld omdat de enige accordeur die al akkoord gaf is weggehaald) vervalt de ronde nog; dat ziet u dan zoals voorheen, met reden en de melding op de documentenlijst.
+- Vooraf ziet u wat er gebeurt: "N lopende accorderingsrondes worden herberekend, waarvan M vervallen" — in het instellingenscherm van de klant, in de bulk-actie en bij het verwijderen van een accordeur.
+- In de tijdlijn van de factuur staat leesbaar wat er is gebeurd: hoeveel akkoorden behouden bleven, welke stap opnieuw is aangevraagd en wie de wijziging deed.
+
 ## 2026-09-09 — Goedkeur-app versie 1.1 (App Store en Google Play)
 
 <!-- mini-run 09-09: Apple keurde 1.0 goed, 1.1 draagt de nieuwe activatie -->
