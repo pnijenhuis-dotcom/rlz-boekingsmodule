@@ -82,6 +82,17 @@ HARDE_VOORWAARDEN = frozenset(
     {CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER, GEEN_SYNC_RUN}
 )
 
+#: Bundel 09-09 blok 1 (feedback Peter over de reconciliatiemail). Drie klassen LET-OP op dit blok:
+#: - REGRESSIE: "dit mag sinds … niet meer voorkomen" — een BUG-signaal, geen handeling voor het kantoor. De run
+#:   schrijft er een audit-event `automatisering_regressie` voor (idempotent per run + vingerafdruk) waarop de
+#:   bewaking alarmeert; in mail en UI staat één regel REGRESSIE_TEKST — nooit "meld de regressie" aan de gebruiker.
+#: - BEHEER: de handeling ligt bij het beheer (Cloud Run/IAM/jobs/storing), niet bij het kantoor → alleen systeemmail.
+#: - de rest (credential, API-key, geldpoort, noodrem, volumerem) = een instelling die het kantoor zelf herstelt →
+#:   actiemail.
+REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR})
+BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN})
+REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
+
 REDEN_LABEL: dict[str, str] = {
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
     VOLUMEREM: "volumerem bereikt",

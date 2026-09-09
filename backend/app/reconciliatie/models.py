@@ -115,8 +115,10 @@ class ReconciliatieRun(Base):
     administratie_id, geen RLS — 0099-lijn): de run gaat over álle administraties, de per-administratie-
     scope zit op de bevindingen. `samenvatting` = per blok {status, gecontroleerd, afwijkingen,
     geaccepteerd, uitgesloten, let_op, fouten, exit_code, foutmelding}. `mail_status` draagt de
-    idempotentie van de samenvattingsmail (hooguit één per run): niet_nodig | verzonden | mislukt |
-    niet_geconfigureerd — 'mislukt' pikt de bewaking op als storing 'reconciliatie_mail'."""
+    idempotentie van de mail (hooguit één per kanaal per run) — sinds bundel 09-09 blok 1 een samengestelde
+    tekst "actie=<s>;systeem=<s>" (kanaal actie = kantoor, systeem = beheer; s ∈ niet_nodig | verzonden |
+    mislukt | niet_geconfigureerd; runs van vóór 09-09 dragen één kale status = kanaal actie), te lezen via
+    `run.mail_statussen()`; élk kanaal op 'mislukt' pikt de bewaking op als storing 'reconciliatie_mail'."""
 
     __tablename__ = "reconciliatie_run"
     __table_args__ = (

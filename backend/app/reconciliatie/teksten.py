@@ -594,6 +594,17 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             "dan is het een storing.",
         )
     reden_label = auto.REDEN_LABEL.get(reden, reden.replace("_", " "))
+    voorbeeld = _s(d, "voorbeeld")
+    wat = (
+        f"{label} sloeg {aantal} stuk(s) over{f' in {waar}' if waar else ''}: {reden_label}"
+        + (f" ({zonder_guids(voorbeeld)[:120]})" if voorbeeld else "")
+        + "."
+    )
+    if reden in auto.REGRESSIE_CATEGORIEEN:
+        # Bundel 09-09 blok 1: een regressie-categorie is een bug, geen handeling voor de gebruiker. De run legt
+        # audit `automatisering_regressie` vast en de bewaking alarmeert — hier alleen de constatering.
+        doe_regressie = auto.REGRESSIE_TEKST[0].upper() + auto.REGRESSIE_TEKST[1:] + "."
+        return _titel("Automatisering wacht op voorwaarde", label), wat, doe_regressie
     doe = {
         auto.CREDENTIAL: "Registreer de webservice-login opnieuw (Instellingen › Administraties); "
         "de volgende run loopt door.",
@@ -603,8 +614,6 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         "handmatig af.",
         auto.VOLUMEREM: "Verwerk de wachtende stukken handmatig of verhoog de dagelijkse limiet "
         "(Instellingen › Autoboeken).",
-        auto.GEEN_EIGENAAR: "Dit mag sinds 07-09 niet meer voorkomen (een eigenaar is geen poort): stel de eigenaar in "
-        "(Instellingen › Administraties) en meld de regressie.",
         auto.VANGNET_SCHEDULER: "De documenten zijn wél verwerkt (scheduler-vangnet, tot 10 min later). Controleer in "
         "Cloud Logging de melding 'triggeren mislukt' en het IAM-recht run.invoker van de service op de job "
         "rlz-extractie-wachtrij.",
@@ -613,14 +622,7 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         "Controleer in Cloud Logging de regels 'bank-sync' van de laatste run (afgebroken/timeout?) en open desnoods "
         "het bankscherm van de klant — dat start direct een verversing.",
     }.get(reden, "Herstel de voorwaarde via de instelling op deze rij; de volgende run loopt door.")
-    voorbeeld = _s(d, "voorbeeld")
-    return (
-        _titel("Automatisering wacht op voorwaarde", label),
-        f"{label} sloeg {aantal} stuk(s) over{f' in {waar}' if waar else ''}: {reden_label}"
-        + (f" ({zonder_guids(voorbeeld)[:120]})" if voorbeeld else "")
-        + ".",
-        doe,
-    )
+    return _titel("Automatisering wacht op voorwaarde", label), wat, doe
 
 
 def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:

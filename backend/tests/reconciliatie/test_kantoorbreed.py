@@ -301,13 +301,15 @@ class TestHandelingen:
             _draai(
                 ("documenten", _documenten_blok(run_met_bevindingen)), ("doorbelasting", _opruim_blok(administratie_id))
             )
-            assert verzonden == []  # ongewijzigd + gezien = geen mail
-            # kandidaat komt met een ANDERE reden terug → telt weer als let-op én zit in de mail
+            # ongewijzigd + gezien = geen ACTIEMAIL aan het kantoor; de run heeft open afwijkingen (exit 1), dus
+            # het beheer krijgt wél de systeemmail (bundel 09-09 blok 1: systeemmail bij delta óf exit ≠ 0).
+            assert [o.startswith("[systeem]") for o in verzonden] == [True]
+            # kandidaat komt met een ANDERE reden terug → telt weer als let-op én zit in de actiemail
             _draai(
                 ("documenten", _documenten_blok(run_met_bevindingen)),
                 ("doorbelasting", _opruim_blok(administratie_id, reden="gestorneerd+vervallen_run")),
             )
-            assert len(verzonden) == 1
+            assert len(verzonden) == 3 and verzonden[1].startswith("Boekhouding: ") and verzonden[2].startswith("[systeem]")
         finally:
             mp.undo()
         assert client.get("/reconciliatie/stand", headers=hb).json()["let_op"] == 1

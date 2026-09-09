@@ -225,7 +225,10 @@ class TestBereken:
                 detail=bev[0]["detail"],
             )
         )
-        assert "geen poort" in lees.doe and "regressie" in lees.doe
+        # Bundel 09-09 blok 1: een regressie is een bug-signaal — de gebruiker krijgt nooit "meld de regressie",
+        # alleen "systeemfout — automatisch gemeld" (de run schrijft audit `automatisering_regressie`).
+        assert auto.REGRESSIE_TEKST in lees.doe.lower() and "regressie" not in lees.doe.lower()
+        assert auto.GEEN_EIGENAAR in auto.REGRESSIE_CATEGORIEEN
 
     def test_duplicaat_afvoer_telt_alleen_automatische_afvoer_als_gedaan(self) -> None:
         aid = uuid.uuid4()
@@ -613,8 +616,14 @@ class TestVerzamelEnRun:
         assert bev[0].detail["reden"] == "noodrem" and bev[0].detail["doel_pad"] == "/instellingen/boeken"
         # CLI-uitvoer én mail dragen het compacte blok
         assert "Automatiseringen (laatste 24 u):" in uit
-        assert len(mails) == 1
-        tekst = mails[0]["tekst"]
+        # Bundel 09-09 blok 1: noodrem = een instelling die het kantoor zelf herstelt → actiemail (mails[0]) in
+        # mensentaal; het volledige tellersblok staat alleen nog in de systeemmail (mails[1]).
+        assert len(mails) == 2
+        assert mails[0]["onderwerp"] == "Boekhouding: 1 zaak vraagt je aandacht"
+        assert "Duplicaat-afvoer — Automatisering wacht op voorwaarde" in mails[0]["tekst"]
+        assert "Automatiseringen (laatste 24 u):" not in mails[0]["tekst"]
+        tekst = mails[1]["tekst"]
+        assert mails[1]["onderwerp"].startswith("[systeem] ")
         assert "Automatiseringen (laatste 24 u):" in tekst
         assert re.search(r"Duplicaat-afvoer\s+uit \(platformbrede noodrem UIT\)", tekst)
         assert re.search(r"Autoboeken inkoop\s+uit", tekst)
@@ -628,7 +637,7 @@ class TestVerzamelEnRun:
         assert rijen[0].titel.startswith("Automatisering wacht op voorwaarde")
         # tweede run met ongewijzigde situatie: zelfde vingerafdruk → geen tweede mail (delta leeg)
         run_service.voer_uit(blokken=[("documenten", _leeg_blok)], args=ARGS, bron="cli", stdout=lambda t: None)
-        assert len(mails) == 1
+        assert len(mails) == 2
 
     def test_zonder_activiteit_geen_bevinding_maar_wel_het_blok(self, administratie_id, mails) -> None:
         uit: list[str] = []

@@ -36,7 +36,7 @@ import {
   haalInstelling,
   haalLaatsteRun,
   haalRunStatus,
-  MAIL_LABEL,
+  mailStatusTekst,
   markeerGezien,
   SOORT_FACETTEN,
   SOORT_LABEL,
@@ -75,7 +75,7 @@ function runTekst(run: ReconciliatieRunDto): string {
   if (run.status === 'wachtend') return 'Reconciliatie staat klaar…'
   if (run.status === 'bezig') return 'Reconciliatie bezig…'
   if (run.status === 'fout') return `Laatste reconciliatie (${tijd(run.aangevraagd_op)}) is mislukt.`
-  const mail = run.mail_status ? ` · mail: ${MAIL_LABEL[run.mail_status]}` : ''
+  const mail = run.mail_status ? ` · mail: ${mailStatusTekst(run.mail_status)}` : ''
   return `Stand van ${tijd(run.afgerond_op ?? run.aangevraagd_op)} — exit ${run.exit_code ?? 0}${mail}`
 }
 

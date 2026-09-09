@@ -22,7 +22,9 @@ class ReconciliatieRunDto(BaseModel):
     # let_op, fouten, foutmelding}
     samenvatting: dict | None = None
     fout_reden: str | None = None
-    mail_status: str | None = None  # niet_nodig | verzonden | mislukt | niet_geconfigureerd
+    # Sinds 09-09 samengesteld: "actie=<s>;systeem=<s>" (s ∈ niet_nodig | verzonden | mislukt | niet_geconfigureerd);
+    # oudere runs één kale status. Client: reconciliatieApi.mailStatusTekst.
+    mail_status: str | None = None
     mail_detail: str | None = None
 
 

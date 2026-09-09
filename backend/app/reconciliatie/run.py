@@ -12,11 +12,21 @@ Wat hier gebeurt — en wat bewust níét:
   de vorige run én niet "gezien"), nieuwe GEACCEPTEERD-regels, nieuwe fouten, blokken die omvielen én
   verdwenen afwijkingen (herstelmelding). Een ongewijzigde LET-OP-set = géén mail — anders krijg je
   elke dag dezelfde concepten in je postvak.
-- Mail via het bestaande SMTP-kanaal (app/berichten/mail, zelfde als de bewaking) naar
-  `settings.bewaking_alert_ontvanger`; hooguit één mail per run (`mail_status`); een mailfout maakt de
-  job NIET rood (audit + `mail_status='mislukt'`, de bewaking pikt dat op als storing
+- Mail via het bestaande SMTP-kanaal (app/berichten/mail, zelfde als de bewaking) — sinds bundel 09-09
+  blok 1 (feedback Peter "hier doe ik niks mee, veel te veel input") in TWEE kanalen, elk hooguit één
+  mail per run (`mail_status` = samengestelde tekst "actie=…;systeem=…", geen migratie):
+  * ACTIEMAIL aan het kantoor (`settings.bewaking_alert_ontvanger`): alleen als de delta bevindingen
+    mét handeling voor het kantoor draagt — één kopregel, per bevinding één regel in mensentaal
+    (`bouw_actiemail`), één link naar /reconciliatie. Geen tellers, geen blok-namen, geen run-id.
+  * SYSTEEMMAIL aan het beheer (`settings.reconciliatie_beheer_ontvangers`): de volledige technische
+    samenvatting (`bouw_mail`, onderwerp "[systeem] …") bij dezelfde delta-drempel én altijd bij exit ≠ 0.
+  Een mailfout op één kanaal maakt de job NIET rood en houdt het andere kanaal niet tegen (audit
+  `reconciliatie_mail_mislukt` mét kanaal; de bewaking pikt élk kanaal op 'mislukt' op als storing
   'reconciliatie_mail'). Exit 1 blijft exit 1 — de F3.2-policy blijft het vangnet voor "job draait
   niet / crasht".
+- Regressie-LET-OP's (automatiseringen.REGRESSIE_CATEGORIEEN, "mag sinds … niet meer voorkomen") zijn
+  bug-signalen: audit-event `automatisering_regressie` (administratie-loos, idempotent per run +
+  vingerafdruk) waarop de bewaking alarmeert; nooit in de actiemail.
 - "Nu draaien" (Beheerder, Inzicht › Reconciliatie): wachtrij-rij bron 'handmatig' + voertuig
   (dev = thread, cloud = on-demand Cloud Run-job `settings.reconciliatie_job_resource`); de job-CLI
   claimt een wachtende rij als die er is, anders maakt hij zijn eigen rij (bron scheduler/cli).
@@ -278,6 +288,127 @@ def bepaal_delta(
     )
 
 
+# ---- twee mailkanalen (bundel 09-09 blok 1) ------------------------------------------------------
+
+#: Kanaal 'actie' = het kantoor (bewaking_alert_ontvanger), 'systeem' = het beheer (reconciliatie_beheer_ontvangers).
+KANALEN = ("actie", "systeem")
+MAIL_STATUSSEN = ("niet_nodig", "verzonden", "mislukt", "niet_geconfigureerd")
+#: Eén actiemail-regel blijft leesbaar op een telefoon: harde bovengrens, daarna afkappen met "…".
+MAX_ACTIE_REGEL = 140
+#: Meer bevindingen dan dit = "en N andere" mét dezelfde link (de lijst staat op /reconciliatie).
+MAX_ACTIE_REGELS = 10
+
+
+def mail_status_samenstellen(statussen: dict[str, str]) -> str:
+    """{'actie': 'verzonden', 'systeem': 'niet_nodig'} → 'actie=verzonden;systeem=niet_nodig' (vaste volgorde)."""
+    return ";".join(f"{k}={statussen.get(k, 'niet_nodig')}" for k in KANALEN)
+
+
+def mail_statussen(waarde: str | None) -> dict[str, str]:
+    """De samengestelde kolomwaarde terug naar {kanaal: status}. Een run van vóór 09-09 draagt één kale status —
+    die telt als het (toen enige) kanaal 'actie'. None = nog niet afgerond → leeg."""
+    if not waarde:
+        return {}
+    if "=" not in waarde:
+        return {"actie": waarde}
+    uit: dict[str, str] = {}
+    for deel in waarde.split(";"):
+        k, _, v = deel.partition("=")
+        if k and v:
+            uit[k] = v
+    return uit
+
+
+def is_regressie(b: Bevinding) -> bool:
+    """LET-OP op blok `automatisering` met een regressie-categorie (bv. `geen_eigenaar` ná 0121): bug-signaal."""
+    from app.reconciliatie import automatiseringen
+
+    return (
+        b.blok == automatiseringen.BLOK
+        and b.soort == BevindingSoort.LET_OP
+        and str((b.detail or {}).get("reden") or "") in automatiseringen.REGRESSIE_CATEGORIEEN
+    )
+
+
+def is_beheer_signaal(b: Bevinding) -> bool:
+    """Bevinding waarvan de handeling bij het beheer ligt, niet bij het kantoor: een omgevallen blok of een andere
+    administratie-loze fout (tellers niet bepaald), een LET-OP over Cloud Run/IAM/jobs of zeven dagen stil, en
+    élke regressie. Die gaan uitsluitend in de systeemmail."""
+    from app.reconciliatie import automatiseringen
+
+    if is_regressie(b):
+        return True
+    if b.soort == BevindingSoort.FOUT and b.administratie_id is None:
+        return True
+    return (
+        b.blok == automatiseringen.BLOK
+        and b.soort == BevindingSoort.LET_OP
+        and str((b.detail or {}).get("reden") or "") in automatiseringen.BEHEER_CATEGORIEEN
+    )
+
+
+def actie_bevindingen(delta: Delta) -> list[Bevinding]:
+    """Wat het kantoor uit de delta te DOEN heeft: nieuwe afwijkingen, nieuwe fouten per administratie en nieuwe
+    LET-OP's mét handeling — in urgentievolgorde. Geaccepteerd, hersteld, omgevallen blokken en beheer-/regressie-
+    signalen horen in de systeemmail."""
+    return [
+        b
+        for b in (*delta.nieuwe_afwijkingen, *delta.nieuwe_fouten, *delta.nieuwe_let_op)
+        if not is_beheer_signaal(b)
+    ]
+
+
+def actie_regel(b: Bevinding, administratie_naam: str | None) -> str:
+    """'<administratie> — <onderwerp> — <wat wijkt af>' uit de leesbare titel (teksten.py, één bron met de UI):
+    de titel is 'kop — onderwerp'; hier gedraaid zodat de administratie vooraan staat en de afwijking achteraan.
+    Nooit GUID's/vingerafdrukken (die staan alleen in `details`); ≤ MAX_ACTIE_REGEL tekens."""
+    from app.reconciliatie import teksten
+
+    lees = teksten.leesbaar(b, administratie_naam=administratie_naam)
+    kop, _, onderwerp = lees.titel.partition(" — ")
+    onderwerp = onderwerp.strip()
+    if administratie_naam and onderwerp == administratie_naam:
+        onderwerp = ""  # 'Administratie niet gecontroleerd — <naam>': de naam staat al vooraan
+    regel = " — ".join(x for x in (administratie_naam, onderwerp, kop.strip()) if x)
+    if len(regel) > MAX_ACTIE_REGEL:
+        regel = regel[: MAX_ACTIE_REGEL - 1].rstrip(" —-(·") + "…"
+    return regel
+
+
+def bouw_actiemail(
+    *, bevindingen: Sequence[Bevinding], namen: dict[uuid.UUID, str], alles_gelopen: bool = True
+) -> tuple[str, str] | None:
+    """(onderwerp, platte tekst) van de ACTIEMAIL aan het kantoor, of None als er niets te doen is.
+    Kopregel 'N zaken vragen je aandacht', per bevinding één regel in mensentaal, hooguit MAX_ACTIE_REGELS
+    (daarna 'en N andere'), één link naar /reconciliatie, slotregel. Geen tellers, blok-namen, run-id of
+    vingerafdruk — de guard-test (tests/reconciliatie/test_actiemail_guard.py) bewaakt dat."""
+    if not bevindingen:
+        return None
+    n = len(bevindingen)
+    kop = "1 zaak vraagt je aandacht" if n == 1 else f"{n} zaken vragen je aandacht"
+    link = f"{settings.app_basis_url.rstrip('/')}/reconciliatie"
+    regels = [f"{kop}.", ""]
+    for b in bevindingen[:MAX_ACTIE_REGELS]:
+        naam = namen.get(b.administratie_id, "onbekende administratie") if b.administratie_id else None
+        regels.append(f"- {actie_regel(b, naam)}")
+    rest = n - MAX_ACTIE_REGELS
+    if rest > 0:
+        regels.append(f"- en {rest} andere")
+    regels.extend(
+        [
+            "",
+            f"Bekijken en afhandelen: {link}",
+            "",
+            "Verder liep alles."
+            if alles_gelopen
+            else "Een deel van de controles is vandaag niet gelopen; het beheer is daarvan op de hoogte.",
+            "",
+            "Administratiekantoor Nijenhuis — automatisch bericht",
+        ]
+    )
+    return f"Boekhouding: {kop}", "\n".join(regels)
+
+
 def _perspectief_afwijking(b: Bevinding, administratie_naam: str | None = None) -> str:
     """Handelingsperspectief = de 'doe'-zin van de leesbare tekst (sinds 07-09 blok A8 één bron voor UI en mail)."""
     from app.reconciliatie import teksten
@@ -313,14 +444,16 @@ def bouw_mail(
     open_afwijkingen: int,
     namen: dict[uuid.UUID, str],
 ) -> tuple[str, str]:
-    """(onderwerp, platte tekst). Per bevinding DEZELFDE leesbare tekst als in de UI (blok A8, 07-09):
+    """SYSTEEMMAIL (beheer) — (onderwerp, platte tekst). Sinds bundel 09-09 blok 1 de volledige technische
+    samenvatting voor `settings.reconciliatie_beheer_ontvangers`, onderwerp "[systeem] …"; het kantoor krijgt de
+    actiemail (`bouw_actiemail`). Per bevinding DEZELFDE leesbare tekst als in de UI (blok A8, 07-09):
     "[administratie] titel — wat" + "doe" als hoofdregels; de vingerafdruk (sleutel voor de CLI-acceptatie)
     en de ruwe CLI-regel staan als technische regel eronder — nooit meer een kale GUID-regel bovenaan."""
     from app.reconciliatie import teksten
 
     datum = afgerond_op.astimezone(_AMSTERDAM).strftime("%d-%m-%Y")
     onderwerp = (
-        f"RLZ reconciliatie {datum}: {open_afwijkingen} afwijking(en) · "
+        f"[systeem] RLZ reconciliatie {datum}: {open_afwijkingen} afwijking(en) · "
         f"{delta.aantal_nieuwe_aandachtspunten} nieuwe aandachtspunt(en)"
     )
 
@@ -672,21 +805,76 @@ def _json_veilig(detail: dict | None) -> dict | None:
     return {k: (str(v) if isinstance(v, uuid.UUID) else v) for k, v in detail.items()}
 
 
-def _verzend_mail(*, onderwerp: str, tekst: str) -> tuple[str, str | None]:
-    """→ (mail_status, detail). Nooit raise-n: een mailfout mag de job niet rood maken."""
+def _ontvangers(kanaal: str) -> tuple[str | None, str]:
+    """(adres(sen) als één To-header, naam van de instelling) per kanaal. Komma-gescheiden = meerdere."""
+    if kanaal == "systeem":
+        ruw, naam = settings.reconciliatie_beheer_ontvangers, "RECONCILIATIE_BEHEER_ONTVANGERS"
+    else:
+        ruw, naam = settings.bewaking_alert_ontvanger, "BEWAKING_ALERT_ONTVANGER"
+    adressen = [a.strip() for a in (ruw or "").split(",") if a.strip()]
+    return (", ".join(adressen) if adressen else None), naam
+
+
+def _verzend_mail(*, onderwerp: str, tekst: str, kanaal: str = "actie") -> tuple[str, str | None]:
+    """→ (mail_status, detail) voor één kanaal. Nooit raise-n: een mailfout mag de job niet rood maken en houdt
+    het andere kanaal niet tegen."""
     from app.berichten import mail
 
-    ontvanger = settings.bewaking_alert_ontvanger
+    ontvanger, instelling = _ontvangers(kanaal)
     if not ontvanger:
-        return "niet_geconfigureerd", "geen BEWAKING_ALERT_ONTVANGER"
+        return "niet_geconfigureerd", f"geen {instelling}"
     try:
         mail.verzend_mail(naar=ontvanger, onderwerp=onderwerp, tekst=tekst)
     except mail.MailNietGeconfigureerd as exc:
         return "niet_geconfigureerd", str(exc)[:500]
     except mail.MailFout as exc:
-        logger.exception("Reconciliatie-samenvattingsmail kon niet worden verzonden")
+        logger.exception("Reconciliatie-%smail kon niet worden verzonden", kanaal)
         return "mislukt", str(exc)[:500]
     return "verzonden", None
+
+
+def _registreer_regressies(session, run_id: uuid.UUID, bevindingen: Sequence[Bevinding]) -> int:  # noqa: ANN001
+    """Bundel 09-09 blok 1: élke regressie-LET-OP wordt een audit-event `automatisering_regressie` (administratie-
+    loos; detail = automatisering + categorie + aantal + run-id + vingerafdruk), idempotent per run + vingerafdruk.
+    De bewaking (`_probe_automatisering_regressie`) alarmeert erop. Geeft het aantal nieuw geschreven events terug."""
+    from app.db.models import AuditEvent
+
+    regressies = [b for b in bevindingen if is_regressie(b)]
+    if not regressies:
+        return 0
+    al_gemeld = {
+        (nw or {}).get("vingerafdruk")
+        for (nw,) in session.execute(
+            select(AuditEvent.nieuwe_waarde).where(
+                AuditEvent.actie == "automatisering_regressie", AuditEvent.record_id == run_id
+            )
+        ).all()
+    }
+    geschreven = 0
+    for b in regressies:
+        if b.vingerafdruk in al_gemeld:
+            continue
+        d = b.detail or {}
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="reconciliatie_run",
+            record_id=run_id,
+            actie="automatisering_regressie",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "automatisering": d.get("automatisering"),
+                "categorie": d.get("reden"),
+                "aantal": d.get("aantal"),
+                "administratie_id": str(b.administratie_id) if b.administratie_id else None,
+                "run_id": str(run_id),
+                "vingerafdruk": b.vingerafdruk,
+            },
+        )
+        al_gemeld.add(b.vingerafdruk)
+        geschreven += 1
+    return geschreven
 
 
 def _gezien_sleutels(gezien: dict[tuple[uuid.UUID, str], ReconciliatieGezien], huidig: Sequence[Bevinding]) -> set:
@@ -733,8 +921,19 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
     )
     open_afwijkingen = sum(1 for b in verzamelaar.bevindingen if b.soort == BevindingSoort.AFWIJKING)
 
-    mail_status, mail_detail = "niet_nodig", None
-    if not delta.is_leeg:
+    # Twee kanalen (bundel 09-09 blok 1), onafhankelijk van elkaar: een fout op het ene houdt het andere niet tegen.
+    namen = administratie_namen()
+    statussen: dict[str, str] = {k: "niet_nodig" for k in KANALEN}
+    details: dict[str, str | None] = {k: None for k in KANALEN}
+
+    # ACTIEMAIL (kantoor): alleen bevindingen mét handeling voor het kantoor; geen bevindingen = geen mail.
+    actie = actie_bevindingen(delta)
+    actiemail = bouw_actiemail(bevindingen=actie, namen=namen, alles_gelopen=not delta.blokken_fout)
+    if actiemail is not None:
+        statussen["actie"], details["actie"] = _verzend_mail(onderwerp=actiemail[0], tekst=actiemail[1], kanaal="actie")
+
+    # SYSTEEMMAIL (beheer): de volledige samenvatting bij dezelfde delta-drempel, én altijd bij exit ≠ 0.
+    if not delta.is_leeg or exit_code != 0:
         onderwerp, tekst = bouw_mail(
             run_id=run_id,
             bron=bron,
@@ -743,28 +942,35 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
             samenvatting=samenvatting,
             delta=delta,
             open_afwijkingen=open_afwijkingen,
-            namen=administratie_namen(),
+            namen=namen,
         )
-        mail_status, mail_detail = _verzend_mail(onderwerp=onderwerp, tekst=tekst)
+        statussen["systeem"], details["systeem"] = _verzend_mail(onderwerp=onderwerp, tekst=tekst, kanaal="systeem")
 
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         rij = session.get(ReconciliatieRun, run_id)
         assert rij is not None
-        rij.mail_status = mail_status
-        rij.mail_detail = mail_detail
-        if mail_status == "verzonden":
+        rij.mail_status = mail_status_samenstellen(statussen)
+        rij.mail_detail = "; ".join(f"{k}: {details[k]}" for k in KANALEN if details[k]) or None
+        if "verzonden" in statussen.values():
             rij.mail_verzonden_op = datetime.now(UTC)
-        if mail_status == "mislukt":
-            record_audit_event(
-                session,
-                actor_id=SYSTEEM_ACTOR_ID,
-                module="boekhouding",
-                tabel="reconciliatie_run",
-                record_id=run_id,
-                actie="reconciliatie_mail_mislukt",
-                correlatie_id=uuid.uuid4(),
-                nieuwe_waarde={"detail": mail_detail, "nieuwe_aandachtspunten": delta.aantal_nieuwe_aandachtspunten},
-            )
+        for kanaal in KANALEN:
+            if statussen[kanaal] == "mislukt":
+                record_audit_event(
+                    session,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    module="boekhouding",
+                    tabel="reconciliatie_run",
+                    record_id=run_id,
+                    actie="reconciliatie_mail_mislukt",
+                    correlatie_id=uuid.uuid4(),
+                    nieuwe_waarde={
+                        "kanaal": kanaal,
+                        "detail": details[kanaal],
+                        "nieuwe_aandachtspunten": delta.aantal_nieuwe_aandachtspunten,
+                    },
+                )
+        # Regressie-LET-OP's = bug-signalen: audit-event waarop de bewaking alarmeert (nooit in de actiemail).
+        _registreer_regressies(session, run_id, verzamelaar.bevindingen)
         session.flush()
         session.refresh(rij)
         return _dto(rij)

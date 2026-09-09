@@ -395,6 +395,12 @@ class Settings(BaseSettings):
     # (app/bewaking/service.py). De alert-ontvanger is bewust een code-default (het bestaande
     # kantoor-antwoordadres): de bewaking mag nooit stil staan omdat een env-var vergeten is.
     bewaking_alert_ontvanger: str = "p.nijenhuis@kempengroep.nl"
+    # Reconciliatie-SYSTEEMMAIL (bundel 09-09 blok 1, feedback Peter "hier doe ik niks mee, veel te veel input"):
+    # de volledige technische samenvatting van `reconciliatie-alles` (per-blok-standen, tellers, automatiseringen,
+    # geaccepteerd/hersteld, run-id, exit) gaat als aparte "[systeem]"-mail naar dit adres (komma-gescheiden =
+    # meerdere). Het kantoor (`bewaking_alert_ontvanger`) krijgt alleen nog de ACTIEMAIL: bevindingen mét
+    # handeling in mensentaal. Leeg = geen systeemmail (kanaal 'systeem' = niet_geconfigureerd, geen storing).
+    reconciliatie_beheer_ontvangers: str = "p.nijenhuis@kempengroep.nl"
     # Goedkoopste gepinde model (ai_kosten_prijzen_usd_per_mtok) voor de uurlijkse minimale
     # echte AI-call — valt onder de bestaande kostenmeter/-poort (bron 'bewaking').
     bewaking_ai_model: str = "claude-haiku-4-5"

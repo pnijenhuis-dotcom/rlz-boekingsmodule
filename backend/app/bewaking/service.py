@@ -10,8 +10,13 @@ toevallig ontdekt. Deze motor draait elk kwartier als Cloud Run-job (`rlz-bewaki
 - mailkanaal    — SMTP-configuratie aanwezig (het kanaal waarover de alerts zelf lopen);
 - rlz           — lichte leesroute op de TEST-administratie (alleen mét
                   BEWAKING_RLZ_ADMINISTRATIE_ID; nooit een write — kernprincipe 3);
-- reconciliatie_mail — (06-09) de samenvattingsmail van de jongste reconciliatie-run is niet
-                  'mislukt' (een mailfout maakt die job bewust niet rood — dit is het vangnet);
+- reconciliatie_mail — (06-09) de mail van de jongste reconciliatie-run is op géén van beide
+                  kanalen (actie = kantoor, systeem = beheer; bundel 09-09 blok 1) 'mislukt' (een
+                  mailfout maakt die job bewust niet rood — dit is het vangnet);
+- automatisering_regressie — (bundel 09-09 blok 1) geen audit-event `automatisering_regressie`
+                  in de laatste 24 u: een automatisering wachtte op een voorwaarde die sinds 0121
+                  geen poort meer mag zijn (bug-signaal, alleen voor het beheer — nooit in de
+                  kantoor-actiemail);
 - ai            — 1× per uur: schema-zelftest (union-limiet, de 30-08-klasse) + een minimale
                   échte Claude-call op het goedkoopste gepinde model, onder de bestaande
                   kostenmeter (poort + registratie in app/aikosten);
@@ -306,16 +311,56 @@ def _probe_reconciliatie_mail() -> ProbeUitkomst:
         ).first()
         if rij is None:
             return ProbeUitkomst(soort="reconciliatie_mail", status="overgeslagen", detail="nog geen run")
-        if rij.mail_status == "mislukt":
+        # Bundel 09-09 blok 1: twee kanalen (actie = kantoor, systeem = beheer) in één samengestelde kolomwaarde;
+        # élk kanaal op 'mislukt' is een storing. Een run van vóór 09-09 draagt één kale status (kanaal 'actie').
+        from app.reconciliatie.run import mail_statussen
+
+        mislukt = [k for k, s in mail_statussen(rij.mail_status).items() if s == "mislukt"]
+        if mislukt:
             return ProbeUitkomst(
                 soort="reconciliatie_mail",
                 status="fout",
                 detail=(
-                    f"samenvattingsmail van run {rij.id} ({rij.afgerond_op:%d-%m %H:%M} UTC) mislukt: "
-                    f"{rij.mail_detail}"
+                    f"reconciliatiemail ({', '.join(mislukt)}) van run {rij.id} ({rij.afgerond_op:%d-%m %H:%M} UTC) "
+                    f"mislukt: {rij.mail_detail}"
                 ),
             )
         return ProbeUitkomst(soort="reconciliatie_mail", status="ok", detail=rij.mail_status)
+
+
+def _probe_automatisering_regressie(nu: datetime) -> ProbeUitkomst:
+    """Bundel 09-09 blok 1: een LET-OP van een regressie-categorie ("mag sinds … niet meer voorkomen", bv.
+    `geen_eigenaar` ná 0121) is een bug-signaal, geen handeling voor het kantoor. De reconciliatie-run schrijft er
+    audit `automatisering_regressie` voor; staat zo'n event in de laatste 24 u, dan is dat hier een storing (alert
+    via het bestaande kanaal bij 2 opeenvolgende metingen — het event blijft 24 u staan, dus de alert komt binnen een
+    half uur). Administratie-loos, gelezen in de scope-loze sessie als systeem-actor (RLS-patroon van
+    `automatiseringen._audit_feiten`)."""
+    from app.db.models import AuditEvent
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rijen = session.execute(
+            select(AuditEvent.nieuwe_waarde).where(
+                AuditEvent.actie == "automatisering_regressie",
+                AuditEvent.tijdstip >= nu - timedelta(hours=24),
+            )
+        ).all()
+    if not rijen:
+        return ProbeUitkomst(soort="automatisering_regressie", status="ok", detail="geen regressie-signaal in 24 u")
+    delen = sorted(
+        {
+            f"{(nw or {}).get('automatisering')} · {(nw or {}).get('categorie')} · {(nw or {}).get('aantal')}× "
+            f"(run {(nw or {}).get('run_id')})"
+            for (nw,) in rijen
+        }
+    )
+    return ProbeUitkomst(
+        soort="automatisering_regressie",
+        status="fout",
+        detail=(
+            f"{len(rijen)} regressie-signaal/-signalen in de laatste 24 u — een automatisering wachtte op een "
+            f"voorwaarde die sinds 0121 geen poort meer mag zijn: " + "; ".join(delen)
+        )[:1000],
+    )
 
 
 # ---- storing-administratie + alerts --------------------------------------------------------------
@@ -423,6 +468,7 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
         _meet("mailkanaal", _probe_mailkanaal),
         _meet("rlz", _probe_rlz),
         _meet("reconciliatie_mail", _probe_reconciliatie_mail),
+        _meet("automatisering_regressie", lambda: _probe_automatisering_regressie(nu)),
     ]
     if met_ai:
         uitkomsten.append(_meet("ai", _probe_ai))

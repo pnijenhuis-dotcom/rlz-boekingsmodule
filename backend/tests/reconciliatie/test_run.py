@@ -205,7 +205,7 @@ class TestBouwMail:
             open_afwijkingen=2,
             namen={aid: "Kempen Facilities B.V."},
         )
-        assert onderwerp == "RLZ reconciliatie 06-09-2026: 2 afwijking(en) · 6 nieuwe aandachtspunt(en)"
+        assert onderwerp == "[systeem] RLZ reconciliatie 06-09-2026: 2 afwijking(en) · 6 nieuwe aandachtspunt(en)"
         assert "FOUT  bank" in tekst and "RuntimeError: boem" in tekst
         assert "ACTIE documenten" in tekst and "12 gecontroleerd, 2 afwijking(en), 1 geaccepteerd" in tekst
         assert "omzet          niet gedraaid" in tekst
@@ -415,31 +415,42 @@ class TestVoerUit:
             "fouten": 0,
             "foutmelding": None,
         }
-        assert rij.mail_status == "verzonden" and rij.mail_verzonden_op is not None
-        assert len(mails) == 1 and "1 afwijking(en) · 1 nieuwe aandachtspunt(en)" in mails[0]["onderwerp"]
-        assert "AFWIJKING  regel A" in mails[0]["tekst"]
+        # Bundel 09-09 blok 1: twee kanalen — actiemail (kantoor) + systeemmail (beheer), beide verzonden.
+        assert rij.mail_status == "actie=verzonden;systeem=verzonden" and rij.mail_verzonden_op is not None
+        assert len(mails) == 2
+        actie, systeem = mails
+        assert actie["onderwerp"] == "Boekhouding: 1 zaak vraagt je aandacht" and "AFWIJKING" not in actie["tekst"]
+        assert actie["naar"] == run_service.settings.bewaking_alert_ontvanger
+        assert systeem["naar"] == run_service.settings.reconciliatie_beheer_ontvangers
+        assert "[systeem] " in systeem["onderwerp"] and "1 afwijking(en) · 1 nieuwe aandachtspunt(en)" in systeem["onderwerp"]
+        assert "AFWIJKING  regel A" in systeem["tekst"]
         bevindingen = run_service.lees_bevindingen(rij.id, administratie_ids=[administratie_id])
         assert [(b.soort, b.vingerafdruk) for b in bevindingen] == [("afwijking", "vafA")]
         # CLI-uitvoer: bestaande regels + de nieuwe RUN-slotregel
         assert "\n=== documenten-reconciliatie ===" in uit and "ACTIE     documenten-reconciliatie (exit 1)" in uit
-        assert any(t.startswith(f"RUN        {rij.id} vastgelegd (1 bevinding(en); mail: verzonden") for t in uit)
+        assert any(
+            t.startswith(f"RUN        {rij.id} vastgelegd (1 bevinding(en); mail: actie=verzonden;systeem=verzonden")
+            for t in uit
+        )
 
     def test_ongewijzigde_let_op_set_geeft_geen_tweede_mail(self, administratie_id, mails) -> None:
         blokken = [("doorbelasting", _blok([("let_op", administratie_id, "concept1", "LET-OP     opruim-kandidaat")]))]
         assert run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None) == 0
-        assert len(mails) == 1  # eerste run ooit: één keer melden
+        assert len(mails) == 2  # eerste run ooit: één keer melden (actiemail + systeemmail)
         assert run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None) == 0
-        assert len(mails) == 1  # zelfde concept → géén mail
-        assert _laatste_run().mail_status == "niet_nodig"
+        assert len(mails) == 2  # zelfde concept → géén mail, op geen van beide kanalen
+        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=niet_nodig"
 
     def test_verdwenen_afwijking_geeft_herstelmelding(self, administratie_id, mails) -> None:
         met = [("documenten", _blok([("afwijking", administratie_id, "weg", "AFWIJKING  tijdelijk")], exit_code=1))]
         zonder = [("documenten", _blok([]))]
         run_service.voer_uit(blokken=met, args=ARGS, bron="cli", stdout=lambda t: None)
         assert run_service.voer_uit(blokken=zonder, args=ARGS, bron="cli", stdout=lambda t: None) == 0
-        assert len(mails) == 2
-        assert "0 afwijking(en) · 0 nieuwe aandachtspunt(en)" in mails[1]["onderwerp"]
-        assert "Hersteld — 1 afwijking(en)" in mails[1]["tekst"] and "AFWIJKING  tijdelijk" in mails[1]["tekst"]
+        # run 1: actie + systeem; run 2: alleen de systeemmail (hersteld = geen handeling voor het kantoor)
+        assert len(mails) == 3
+        assert "[systeem] " in mails[2]["onderwerp"] and "0 afwijking(en) · 0 nieuwe aandachtspunt(en)" in mails[2]["onderwerp"]
+        assert "Hersteld — 1 afwijking(en)" in mails[2]["tekst"] and "AFWIJKING  tijdelijk" in mails[2]["tekst"]
+        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=verzonden"
 
     def test_blokcrash_wordt_vastgelegd_en_stopt_de_rest_niet(self, administratie_id, mails) -> None:
         uit: list[str] = []
@@ -457,7 +468,10 @@ class TestVoerUit:
         bevindingen = run_service.lees_bevindingen(rij.id, administratie_ids=[administratie_id])
         assert [(b.blok, b.soort, b.administratie_id) for b in bevindingen] == [("bank", "fout", None)]
         assert "FOUT       bank-reconciliatie viel om: RLZ onbereikbaar (test)" in uit
+        # een omgevallen blok is een beheer-signaal: alleen de systeemmail, geen actiemail aan het kantoor
         assert len(mails) == 1 and "Omgevallen blok(ken): bank" in mails[0]["tekst"]
+        assert mails[0]["onderwerp"].startswith("[systeem] ")
+        assert rij.mail_status == "actie=niet_nodig;systeem=verzonden"
 
     def test_mailfout_maakt_de_job_niet_rood_maar_is_zichtbaar_en_geauditeerd(
         self, administratie_id, monkeypatch
@@ -470,14 +484,14 @@ class TestVoerUit:
         code = run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
         assert code == 0
         rij = _laatste_run()
-        assert rij.status == "klaar" and rij.mail_status == "mislukt" and "535" in rij.mail_detail
+        assert rij.status == "klaar" and rij.mail_status == "actie=mislukt;systeem=mislukt" and "535" in rij.mail_detail
         with scoped_session(None) as session:
             audit = session.scalars(
                 select(AuditEvent).where(
                     AuditEvent.actie == "reconciliatie_mail_mislukt", AuditEvent.record_id == rij.id
                 )
             ).all()
-        assert len(audit) == 1
+        assert len(audit) == 2 and sorted(a.nieuwe_waarde["kanaal"] for a in audit) == ["actie", "systeem"]
         # bewaking pikt 'm op als storing 'reconciliatie_mail'
         from app.bewaking.service import _probe_reconciliatie_mail
 
@@ -491,7 +505,7 @@ class TestVoerUit:
         monkeypatch.setattr(mail, "verzend_mail", niet_geconfigureerd)
         blokken = [("documenten", _blok([("afwijking", administratie_id, "z", "AFWIJKING  z")], exit_code=1))]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
-        assert _laatste_run().mail_status == "niet_geconfigureerd"
+        assert _laatste_run().mail_status == "actie=niet_geconfigureerd;systeem=niet_geconfigureerd"
         from app.bewaking.service import _probe_reconciliatie_mail
 
         assert _probe_reconciliatie_mail().status == "ok"
@@ -638,19 +652,26 @@ class TestCliReconciliatieAlles:
             and "ACTIE     documenten-reconciliatie (exit 1)" in out
             and "OK        bank-reconciliatie (exit 0)" in out
         )
-        assert "RUN        " in out and "vastgelegd (3 bevinding(en); mail: verzonden)" in out
+        assert "RUN        " in out and "vastgelegd (3 bevinding(en); mail: actie=verzonden;systeem=verzonden)" in out
         rij = _laatste_run()
         soorten = sorted(b.soort for b in run_service.lees_bevindingen(rij.id, administratie_ids=[administratie_id]))
         assert soorten == ["afwijking", "geaccepteerd", "let_op"]
         assert rij.samenvatting["documenten"]["gecontroleerd"] == 2 and rij.samenvatting["bank"]["gecontroleerd"] == 1
         assert rij.samenvatting["doorbelasting"]["let_op"] == 1
-        assert len(mails) == 1 and "1 afwijking(en) · 3 nieuwe aandachtspunt(en)" in mails[0]["onderwerp"]
+        # Bundel 09-09 blok 1: mails[0] = actiemail (kantoor), mails[1] = systeemmail (beheer, volledige inhoud).
+        assert len(mails) == 2 and "1 afwijking(en) · 3 nieuwe aandachtspunt(en)" in mails[1]["onderwerp"]
+        systeem = mails[1]["tekst"]
         # leesbare hoofdregel mét administratienaam (blok A8); de CLI-regel staat als technische regel eronder
         with scoped_session(None) as session:
             naam = session.execute(
                 text("SELECT naam FROM platform.administratie WHERE id = :id"), {"id": administratie_id}
             ).scalar_one()
-        assert f"  - [{naam}] Achtergebleven concept in RLZ — {naam}" in mails[0]["tekst"]
-        assert f"[{naam}] LET-OP" not in mails[0]["tekst"]
-        assert "    technisch: vaf:" in mails[0]["tekst"]
-        assert "LET-OP     opruim-kandidaat [gestorneerd]" in mails[0]["tekst"]
+        assert f"  - [{naam}] Achtergebleven concept in RLZ — {naam}" in systeem
+        assert f"[{naam}] LET-OP" not in systeem
+        assert "    technisch: vaf:" in systeem
+        assert "LET-OP     opruim-kandidaat [gestorneerd]" in systeem
+        # actiemail: afwijking + opruim-kandidaat (2 zaken, geaccepteerd telt niet), zonder technische regel
+        actie = mails[0]
+        assert actie["onderwerp"] == "Boekhouding: 2 zaken vragen je aandacht"
+        assert f"- {naam} — " in actie["tekst"] and "technisch:" not in actie["tekst"] and "vaf:" not in actie["tekst"]
+        assert "Verder liep alles." in actie["tekst"]

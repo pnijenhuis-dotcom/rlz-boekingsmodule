@@ -7,6 +7,9 @@ import { apiJson } from '../api/client'
 export type RunStatus = 'wachtend' | 'bezig' | 'klaar' | 'fout'
 export type RunBron = 'scheduler' | 'cli' | 'handmatig'
 export type MailStatus = 'niet_nodig' | 'verzonden' | 'mislukt' | 'niet_geconfigureerd'
+/** Sinds 09-09 (bundel blok 1) draagt de run twee mailkanalen in één samengestelde waarde
+ * "actie=<s>;systeem=<s>" (actie = kantoor-actiemail, systeem = beheer-systeemmail); oudere runs één kale status. */
+export type MailStatusWaarde = MailStatus | string
 
 /** Stand per controleblok binnen één run (bank | documenten | omzet | doorbelasting, + 'run' bij crash). */
 export interface BlokStandDto {
@@ -73,7 +76,7 @@ export interface ReconciliatieRunDto {
   exit_code: number | null
   samenvatting: SamenvattingDto | null
   fout_reden: string | null
-  mail_status: MailStatus | null
+  mail_status: MailStatusWaarde | null
   mail_detail: string | null
 }
 
@@ -302,4 +305,26 @@ export const MAIL_LABEL: Record<MailStatus, string> = {
   verzonden: 'verzonden',
   mislukt: 'mislukt',
   niet_geconfigureerd: 'niet geconfigureerd',
+}
+
+const KANAAL_LABEL: Record<string, string> = { actie: 'actiemail', systeem: 'systeemmail' }
+
+function mailLabel(s: string): string {
+  return (MAIL_LABEL as Record<string, string>)[s] ?? s.replace(/_/g, ' ')
+}
+
+/** "actie=verzonden;systeem=niet_nodig" → "actiemail verzonden · systeemmail niet nodig"; een kale status
+ * (run van vóór 09-09) → het bestaande label. Onbekende sleutels tonen de sleutel — nooit een crash. */
+export function mailStatusTekst(waarde: MailStatusWaarde | null | undefined): string {
+  if (!waarde) return ''
+  if (!waarde.includes('=')) return mailLabel(waarde)
+  return waarde
+    .split(';')
+    .map((deel) => {
+      const [kanaal, status] = deel.split('=')
+      if (!kanaal || !status) return null
+      return `${KANAAL_LABEL[kanaal] ?? kanaal} ${mailLabel(status)}`
+    })
+    .filter((x): x is string => x !== null)
+    .join(' · ')
 }
