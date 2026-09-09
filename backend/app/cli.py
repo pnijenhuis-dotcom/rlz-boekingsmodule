@@ -1170,6 +1170,68 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
     return 1 if (fouten or afwijkingen_totaal) else 0
 
 
+def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
+    """LEES-ONLY nameting-instrument matchmotor bank (bundel 09-09 blok 0; productie-regel Peter 08-09: alleen via
+    de gedeployde job-image). Print per onverwerkte mutatie van één administratie het huidige voorstel
+    (`voorstellen.open_mutaties_met_voorstellen` — exact het pad van het bankscherm) als tabel
+    mutatie | datum | bedrag | tegenpartij | voorstel → referentie | bron. Geen schrijfacties, geen RLZ-calls."""
+    from app.bank import voorstellen as bank_voorstellen
+    from app.bank.models import PaymentAccountCache
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        try:
+            administratie = session.get(Administratie, uuid.UUID(args.administratie))
+        except ValueError:
+            administratie = session.scalars(
+                select(Administratie).where(Administratie.naam.ilike(f"%{args.administratie}%"))
+            ).first()
+        if administratie is None:
+            print(f"FOUT  administratie {args.administratie!r} onbekend", file=sys.stderr)
+            return 2
+        administratie_id, administratie_naam = administratie.id, administratie.naam
+    rekening_id: uuid.UUID | None = None
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rekeningen = list(
+            session.scalars(
+                select(PaymentAccountCache).where(PaymentAccountCache.administratie_id == administratie_id)
+            )
+        )
+        if args.rekening_iban:
+            gezocht = args.rekening_iban.replace(" ", "").upper()
+            treffers = [r for r in rekeningen if (r.iban or "").replace(" ", "").upper() == gezocht]
+            if not treffers:
+                print(f"FOUT  rekening {args.rekening_iban!r} niet bekend in {administratie_naam}", file=sys.stderr)
+                return 2
+            rekening_id = treffers[0].id
+    rijen = bank_voorstellen.open_mutaties_met_voorstellen(
+        administratie_id=administratie_id, payment_account_id=rekening_id
+    )
+    print(f"bank-voorstellen-lezen {administratie_naam} ({administratie_id}) — onverwerkte mutaties: {len(rijen)}")
+    kop = f"{'mutatie':8} {'datum':10} {'bedrag':>12} {'tegenpartij':28} | {'voorstel → referentie':44} | bron"
+    print(kop)
+    print("-" * len(kop))
+    tel: dict[str, int] = {}
+    for rij in rijen:
+        soort = rij.voorstel.soort.value
+        tel[soort] = tel.get(soort, 0) + 1
+        if args.filter and args.filter.lower() not in (
+            f"{rij.mutatie.tegenpartij_naam or ''} {rij.mutatie.omschrijving or ''} {rij.mutatie.bedrag}".lower()
+        ):
+            continue
+        referentie = (rij.open_post.referentie if rij.open_post else None) or "-"
+        print(
+            f"{str(rij.mutatie.id)[:8]:8} {str(rij.boekdatum or ''):10} {str(rij.mutatie.bedrag):>12} "
+            f"{(rij.mutatie.tegenpartij_naam or '')[:28]:28} | {(soort + ' → ' + referentie)[:44]:44} | "
+            f"{rij.voorstel.bron}"
+        )
+    print("-" * len(kop))
+    print(f"Per soort: {dict(sorted(tel.items()))}")
+    print("Geen schrijfacties uitgevoerd.")
+    return 0
+
+
 def _bank_sync(args: argparse.Namespace) -> int:
     """Bank-sync (rekeningen/mutaties/open posten + afletter-verificatie + Vastly-detectie +
     opt-in autoboeken) — voor één administratie of alle (zelfde tolerantie-patroon als
@@ -2569,6 +2631,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Alleen deze administratie (default: alle).",
     )
 
+    bank_voorstellen_parser = subparsers.add_parser(
+        "bank-voorstellen-lezen",
+        help="LEES-ONLY: print per onverwerkte bankmutatie van één administratie het huidige matchmotor-voorstel "
+        "(nameting-instrument, bundel 09-09 blok 0; geen schrijfacties, geen RLZ-calls).",
+    )
+    bank_voorstellen_parser.add_argument("--administratie", required=True, help="UUID of (deel van de) naam.")
+    bank_voorstellen_parser.add_argument(
+        "--rekening-iban", default=None, dest="rekening_iban", help="Alleen deze rekening."
+    )
+    bank_voorstellen_parser.add_argument(
+        "--filter", default=None, help="Toon alleen rijen waarvan tegenpartij/omschrijving/bedrag dit bevat."
+    )
+
     intake_postvak_parser = subparsers.add_parser(
         "intake-postvak-verwerken",
         help="Haal ongelezen berichten uit het centrale IMAP-postvak (facturen@ak-nijenhuis.nl) "
@@ -2854,6 +2929,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.commando == "intercompany-leverancier-markeren":
         return _intercompany_leverancier_markeren(args)
+    if args.commando == "bank-voorstellen-lezen":
+        return _bank_voorstellen_lezen(args)
     if args.commando == "crediteuren-werklijst-nazorg":
         from app.crediteuren import afhandeling as crediteuren_afhandeling
 
