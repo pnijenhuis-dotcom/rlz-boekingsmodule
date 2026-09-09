@@ -168,6 +168,12 @@ MARKETING_VERSION/versionName starten op 1.0; elke webcode-wijziging in de bunde
 store-release (review: uren–dagen) — de PWA blijft daarom het snelste kanaal; een
 live-update-dienst (Appflow e.d.) is een latere, aparte afweging (kosten/AVG).
 
+**Train-regel (09-09, TESTFLIGHT §0f):** Apple sluit een versie-train ná goedkeuring — 1.0 (build 44) is op 09-09 goedgekeurd,
+build 98 werd daarop geweigerd (ITMS-90186/ITMS-90062). Ná élke goedkeuring dus de marketingversie ophogen vóór de volgende
+push naar `main`, op alle drie plekken tegelijk: `MARKETING_VERSION` (pbxproj ×2), `versionName` (build.gradle) en
+`APP_MARKETING_VERSIE` (`frontend/src/accordeur/appVersie.ts`); Android `versionCode` +1 per Play-upload. Guard:
+`backend/tests/unit/test_app_marketingversie_consistent.py`. Stand: **1.1 / versionCode 5** (mini-run 09-09).
+
 ## 7. Xcode Cloud (blok D 2026-08-22) — automatische TestFlight-builds vanaf `main`
 
 **Wat er in de repo staat (gebouwd, geen klikwerk):**

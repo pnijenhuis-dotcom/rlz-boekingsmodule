@@ -164,6 +164,12 @@ Webbundel = HEAD 07-09 mét build-id `fcc35a8-20260907-1511` (12a), `capacitor.p
 (geen verloren boot-refresh), **13 eerlijke melding bij ontbrekende passkey-beheerder** (§10).
 Klikwerk: §4 stap 4 met dít bestand (interne test-track eerst), daarna App access (§11) + review.
 
+**Bron gebumpt naar 1.1 / versionCode 5 (mini-run 09-09 — NIET gebouwd, NIET geüpload):** Apple sloot train 1.0 ná de
+goedkeuring van build 44 (TESTFLIGHT §0f); iOS en Android gaan samen naar 1.1. `build.gradle` draagt nu default `versionName
+"1.1"` / `versionCode 5` — de eerstvolgende `bouw_android_release.sh` levert dus `nijenhuis-goedkeuren-1.1-vc5-….aab`. vc4
+(1.0) blijft op de interne track staan; pas ná de 1.1-kliktest op iOS de Android-AAB bouwen en uploaden (§4, release name
+`1.1 (5)`).
+
 **✅ versionCode 4 GEBOUWD 08-09 21:13 (vervolgrun app-auth zonder passkey — NIET geüpload):**
 `native/scripts/bouw_android_release.sh 4 1.0` → `native/android/app/release/nijenhuis-goedkeuren-1.0-vc4-20260908-2113.aab`
 (15 MB, SHA-256 `2795575e0111ae338b1c20809788c80d226ab6ec97ecf9629c436c957221a52b`) + `-mapping.txt` +

@@ -281,7 +281,7 @@ Geen enkele systeemdialoog van iOS (geen passkey-sheet, geen Face ID-vraag tenzi
 - Dán pas: build 90 aan versie 1.0 koppelen in App Store Connect, App Review Information bijwerken (Password = activatiecode,
   Notes = §1 stap 6), Resolution Center-reply (concept hieronder) en **"Update Review"** op de versiepagina (§0b-kader).
 
-**Concept-reply App Store Connect (Resolution Center, Engels, kort — vervangt de reply in §0b):**
+**Concept-reply App Store Connect (Resolution Center, Engels, kort — vervangt de reply in §0b). ⚠️ VERVALLEN 09-09 (§0f): Apple keurde 1.0 goed, 1.1 gaat als nieuwe submissie — er is geen Resolution Center-thread meer om op te antwoorden; tekst blijft als historie staan:**
 
 ```
 Thank you for the review. We investigated the failed sign-ins on the test devices: the sign-in required a passkey to be
@@ -297,6 +297,45 @@ Steps: open the app → enter the activation code → tap "Activeren" → choose
 queue with demonstration invoices appears. On later launches the app asks only for the 5-digit code.
 ```
 
+
+### 0f. Versie 1.1 — waarom en hoe (mini-run 09-09)
+
+**Feiten 09-09:** Apple heeft **versie 1.0 (build 44, de passkey-app) goedgekeurd**. Daarmee is de train 1.0 in App Store
+Connect gesloten: elke volgende upload moet een hogere `CFBundleShortVersionString` dragen. Xcode Cloud-build 98 (de app-auth
+zonder passkey, §0e) is precies daarop geweigerd — **ITMS-90186** ("version string … has already been used") /
+**ITMS-90062** ("CFBundleShortVersionString must be greater than the previously approved version"). Build 98 is dus niet
+"kapot": hij droeg nog `MARKETING_VERSION = 1.0`.
+
+**Train-regel (bindend vanaf nu):** ná élke goedkeuring van een versie de marketingversie ophogen **vóór de volgende push
+naar `main`**, anders bouwt Xcode Cloud voor niets (elke push = een build, §0c). Het buildnummer blijft CI-gestuurd
+(`ci_post_clone.sh` zet `CURRENT_PROJECT_VERSION ← CI_BUILD_NUMBER` en raakt `MARKETING_VERSION` niet — guard
+`backend/tests/unit/test_app_marketingversie_consistent.py`).
+
+**Wat de mini-run 09-09 gedaan heeft (bron gebumpt, niets gebouwd, niets ingediend):**
+- iOS: `MARKETING_VERSION = 1.1` op beide pbxproj-plekken (Debug + Release); `CURRENT_PROJECT_VERSION` blijft `3` in de repo.
+- Android: `versionName` 1.1, `versionCode` 5 in `build.gradle` (vc4 = 1.0 staat al op de interne track; de 1.1-AAB wordt
+  in een latere run gebouwd via `native/scripts/bouw_android_release.sh`, PLAY §3).
+- Web: `frontend/src/accordeur/appVersie.ts` = één bron `APP_MARKETING_VERSIE = '1.1'`; de diagnoseregel (Toegang › Diagnose)
+  toont buiten de schil `app 1.1 (web)`, in de schil het echte `versie (build)` uit `App.getInfo()`. WAT_IS_NIEUW noemt 1.1.
+- `STORE_LINK_IOS` in deploy.yml = `https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748` (env, geen secret;
+  BESLISSINGEN "STORE-LINK-NAZORG"): ná de deploy tonen het desktop-stop-scherm van `/activeren` en de uitnodigingsmail voor
+  app-rollen het blok "Download eerst de app" mét "iPhone / iPad — App Store". Android-link blijft leeg tot Google goedkeurt.
+
+**Wat er nu gebeurt:** de push van deze run start Xcode Cloud → build **1.1 (99)** (verwacht; lees het echte nummer af uit de
+mail "processing completed", zie de correctie in §0c). Die build is de eerste die TestFlight als 1.1 toont.
+
+**Klikstappen Peter (drie, in deze volgorde — niets hiervan doet deze run):**
+1. **TestFlight 1.1 kliktest:** TestFlight → build 1.1 (99) op het eigen toestel → Toegang › Diagnose toont `app 1.1 (99)` →
+   verse uitnodiging → activatiecode → 5-cijferige code → wachtrij → sluiten/openen → slot (§0e-kliktest).
+2. **App Store Connect › "+ Versie" → 1.1:** op de app-pagina naast "iOS App" op **+** → versie `1.1` → de versiepagina
+   invullen (§2; screenshots mogen blijven; "What's New" = de twee WAT_IS_NIEUW-punten van 09-09 in klantleesbaar Nederlands)
+   → **Build** → build 1.1 (99) koppelen → **App Review Information**: Sign-in required aan, Username het demo-adres,
+   **Password = de activatiecode** (§1 stap 6), Notes = de §1-tekst (activatiecode, geen passkey/wachtwoord).
+3. **Indienen** ("Add for Review" → "Submit to App Review"). Een concept-reply in het Resolution Center is **niet meer nodig**:
+   1.0 is goedgekeurd, 1.1 is een nieuwe submissie op een nieuwe train — het §0e-concept is historie.
+
+**Ná goedkeuring 1.1:** meteen `MARKETING_VERSION`/`versionName`/`APP_MARKETING_VERSIE` → 1.2 (train-regel), vóór de
+eerstvolgende push die de app raakt.
 
 ## 1. App-registratie in App Store Connect (A4)
 
@@ -382,7 +421,7 @@ links — it is not a wrapper around a website (guideline 4.2).
 > Historische versie van deze stap (wachtwoord → passkey-sheet → code; reviewnotities 07-09 mét toestelvereisten
 > iCloud-sleutelhanger/toegangscode): zie §0b/§0d — vervangen op 08-09 door §0e, niet meer indienen.
 
-## 2. Versiepagina invullen (1.0)
+## 2. Versiepagina invullen (1.0 — voor 1.1 identiek, zie §0f stap 2)
 
 Onder **iOS App 1.0** (Prepare for Submission):
 - **Screenshots**: sleep uit `native/store-assets/screenshots/` de drie
@@ -394,8 +433,10 @@ Onder **iOS App 1.0** (Prepare for Submission):
   `ipad-13-0{1,2,3}-*.png` (2064×2752, portret) in het **iPad 13"**-vak; ASC schaalt ze zelf naar
   de kleinere iPad-vakken.
 - **Description** (NL), voorstel:
-  "Keur inkoopfacturen van je eigen administratie goed of wijs ze af — veilig met een
-  passkey (Face ID), alleen op uitnodiging van Administratiekantoor Nijenhuis. Je ziet de
+  (herschreven 09-09 voor 1.1 — geen passkey meer in de app)
+  "Keur inkoopfacturen van je eigen administratie goed of wijs ze af — activeer de app één keer
+  met je activatiecode en open hem daarna met je eigen 5-cijferige code (Face ID optioneel),
+  alleen op uitnodiging van Administratiekantoor Nijenhuis. Je ziet de
   factuur op volledig scherm, met het boekvoorstel van het kantoor eronder. Een dagelijkse
   herinnering en een melding bij nieuwe facturen, alleen als er echt iets openstaat."
 - Keywords: `facturen,goedkeuren,accorderen,administratie,boekhouding,nijenhuis`
