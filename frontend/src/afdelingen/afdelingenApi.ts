@@ -30,6 +30,8 @@ export interface AfdelingenLijstDto {
 export interface AfdelingRouteDto {
   afdeling_id: string
   lagen: RouteLaagDto[]
+  /** Bundel 09-09 blok 2: lopende rondes van de afdeling worden herberekend; vervallen ⊆ herberekend. */
+  rondes_herberekend?: number
   rondes_vervallen: number
 }
 

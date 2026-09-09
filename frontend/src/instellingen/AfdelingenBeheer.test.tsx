@@ -89,7 +89,7 @@ describe('AfdelingenBeheer', () => {
     expect(await screen.findByText(/Afdeling "Magazijn" toegevoegd/)).toBeInTheDocument()
   })
 
-  it('Route wijzigen → editor met lagen, opslaan = PUT en de vervallen-melding', async () => {
+  it('Route wijzigen → editor met lagen, opslaan = PUT en de herberekend-/vervallen-melding', async () => {
     const aangeroepen = stubFetch()
     render(<AfdelingenBeheer administratieId="a1" naam="Kempen" />)
     await screen.findByText('Receptie')
@@ -102,7 +102,9 @@ describe('AfdelingenBeheer', () => {
     await waitFor(() => expect(aangeroepen.some((a) => a.method === 'PUT' && a.pad.endsWith('/afdelingen/rec/accordering/route'))).toBe(true))
     const put = aangeroepen.find((a) => a.method === 'PUT')!
     expect(put.body).toEqual({ lagen: [{ volgnummer: 1, accordeur_gebruiker_id: 'u2', bedrag_drempel: null }] })
-    expect(await screen.findByText(/1 lopende accordering is vervallen/)).toBeInTheDocument()
+    // Bundel 09-09 blok 2: herberekend; het vervallen-deel blijft benoemd mét actie.
+    expect(await screen.findByText(/1 lopende accorderingsronde herberekend/)).toBeInTheDocument()
+    expect(screen.getByText(/1 daarvan is vervallen/)).toBeInTheDocument()
   })
 
   it('Archiveren vraagt bevestiging en POST daarna naar /archiveren', async () => {

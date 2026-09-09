@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  bulkAccorderingPreview,
   haalAccorderingInstellingen,
   zetAccorderingInstellingen,
   type AccorderingInstellingenDto,
 } from '../accordering/accorderingApi'
+import { rondesPreviewTekst, rondesTekst } from '../accordering/rondesTekst'
 import { ApiError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
@@ -28,7 +30,7 @@ import { verwijderScope, type GebruikerOverzichtDto, type ScopeAdministratieDto 
  *  (1) "Administraties toevoegen…" = multi-select van actieve BV's → de BESTAANDE bulk-route
  *      /accordering/bulk-instellen (preview + uitkomsten per administratie) mét de accordeur vooringevuld in
  *      laag 1 en de scope-vink aan — geen nieuwe schrijfroute;
- *  (2) per administratie "Verwijderen…" = dezelfde vervallen-rondes-waarschuwing als instellingen_opslaan, dan
+ *  (2) per administratie "Verwijderen…" = de herberekend-/vervallen-telling (preview, bundel 09-09 blok 2), dan
  *      de accordeur uit de lagen (PUT instellingen zonder hem, `aanleiding` "verwijderd via Klant-accordeurs" in
  *      audit + tijdlijn) en uit de scope (bestaande DELETE-route, Beheerder-poort) — nooit een nieuwe
  *      verwijderroute. Aanvulling Peter 08-09: is hij de laatste laag, dan volgt een APARTE tweede bevestiging
@@ -73,6 +75,9 @@ export function AccordeurAdministraties({
   const [instellingenVoor, setInstellingenVoor] = useState<AccorderingInstellingenDto | null | 'laden'>(null)
   // Tweede, expliciete bevestigingsstap: accordering voor deze BV gaat uit (laatste laag verdwijnt).
   const [uitschakelBevestiging, setUitschakelBevestiging] = useState(false)
+  // Vooraf-telling (bundel 09-09 blok 2): "N lopende rondes worden herberekend, waarvan M vervallen" — via het
+  // bestaande, alleen-lezende preview-endpoint met exact de lagen die overblijven (zelfde pure regel als de PUT).
+  const [rondesVooraf, setRondesVooraf] = useState<{ herberekend: number; vervallen: number } | null>(null)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
 
@@ -112,16 +117,42 @@ export function AccordeurAdministraties({
       return
     }
     setInstellingenVoor('laden')
+    setRondesVooraf(null)
     haalAccorderingInstellingen(a.id)
-      .then((i) => setInstellingenVoor(i))
+      .then((i) => {
+        setInstellingenVoor(i)
+        const rest = i.lagen.filter((l) => l.accordeur_gebruiker_id !== gebruiker.id)
+        if (rest.length === 0 || rest.length === i.lagen.length) return
+        // Alleen lezen; een mislukte telling houdt het verwijderen niet tegen (de tekst blijft dan generiek).
+        bulkAccorderingPreview({
+          administratie_ids: [a.id],
+          lagen: rest.map((l, index) => ({
+            volgnummer: index + 1,
+            accordeur_gebruiker_id: l.accordeur_gebruiker_id,
+            bedrag_drempel: l.bedrag_drempel,
+          })),
+          scope_toevoegen: false,
+        })
+          .then((p) => {
+            const u = p.uitkomsten.find((x) => x.administratie_id === a.id)
+            if (u) setRondesVooraf({ herberekend: u.rondes_herberekend ?? u.rondes_vervallen, vervallen: u.rondes_vervallen })
+          })
+          .catch(() => setRondesVooraf(null))
+      })
       .catch((err: unknown) => {
         setInstellingenVoor(null)
         setFout(err instanceof ApiError ? err.message : 'Accorderingsinstellingen konden niet geladen worden.')
       })
   }
 
+  const lopendeRondesTekst =
+    rondesVooraf && rondesVooraf.herberekend > 0
+      ? ` (nu: ${rondesPreviewTekst(rondesVooraf.herberekend, rondesVooraf.vervallen)})`
+      : ''
+
   const annuleerVerwijderen = () => {
     setVerwijderVoor(null)
+    setRondesVooraf(null)
     setInstellingenVoor(null)
     setUitschakelBevestiging(false)
     setFout(null)
@@ -132,11 +163,12 @@ export function AccordeurAdministraties({
     setBezig(true)
     setFout(null)
     try {
+      let herberekend = 0
       let vervallen = 0
       if (verwijderVoor.actief) {
-        // Uit de accorderingslagen via de bestaande configuratieroute (zelfde validatie, vervallen-regel en audit
-        // als een losse wijziging; `aanleiding` maakt in audit én tijdlijn zichtbaar waar dit vandaan kwam). Een
-        // gearchiveerde administratie heeft geen lopende accordering: alleen scope.
+        // Uit de accorderingslagen via de bestaande configuratieroute (zelfde validatie, herberekeningsregel en audit
+        // als een losse wijziging — bundel 09-09 blok 2; `aanleiding` maakt in audit én tijdlijn zichtbaar waar dit
+        // vandaan kwam). Een gearchiveerde administratie heeft geen lopende accordering: alleen scope.
         const instellingen =
           instellingenVoor && instellingenVoor !== 'laden' ? instellingenVoor : await haalAccorderingInstellingen(verwijderVoor.id)
         const rest = instellingen.lagen.filter((l) => l.accordeur_gebruiker_id !== gebruiker.id)
@@ -150,6 +182,7 @@ export function AccordeurAdministraties({
             })),
             aanleiding: AANLEIDING,
           })
+          herberekend = resultaat.rondes_herberekend ?? 0
           vervallen = resultaat.rondes_vervallen ?? 0
         }
       }
@@ -157,9 +190,8 @@ export function AccordeurAdministraties({
       meld(
         `${gebruiker.naam} is verwijderd bij ${verwijderVoor.naam}` +
           (wordtUitgeschakeld ? ` — klant-accordering voor ${verwijderVoor.naam} staat nu uit` : '') +
-          (vervallen > 0
-            ? ` — ${vervallen} lopende ${vervallen === 1 ? 'accorderingsronde is' : 'accorderingsrondes zijn'} vervallen; die documenten staan weer op "Klaar om te boeken".`
-            : '.'),
+          '.' +
+          rondesTekst(herberekend, vervallen),
         vervallen > 0 || wordtUitgeschakeld ? 'warn' : 'ok',
       )
       annuleerVerwijderen()
@@ -291,7 +323,7 @@ export function AccordeurAdministraties({
           titel={`${verwijderVoor.naam} verwijderen bij ${gebruiker.naam}`}
           bericht={
             verwijderVoor.actief
-              ? `${gebruiker.naam} wordt uit de accorderingslagen van ${verwijderVoor.naam} gehaald en verliest de toegang tot die administratie. Wijzigt dit het effectieve schema, dan vervallen de lopende accorderingsrondes van ${verwijderVoor.naam} (reden op de tijdlijn: "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist"); die documenten gaan terug naar "Klaar om te boeken" en kunnen opnieuw aangeboden worden. Staande goedkeuringen en historie blijven staan. De wijziging wordt geauditeerd (aanleiding: ${AANLEIDING}).` +
+              ? `${gebruiker.naam} wordt uit de accorderingslagen van ${verwijderVoor.naam} gehaald en verliest de toegang tot die administratie. Wijzigt dit het effectieve schema, dan worden de lopende accorderingsrondes van ${verwijderVoor.naam} herberekend: gegeven akkoorden van de overige accordeurs blijven staan, ontbrekende lagen worden opnieuw aangevraagd${lopendeRondesTekst}. Alleen een ronde waarvan geen enkel gegeven akkoord meer past vervalt (reden op de tijdlijn: "accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist"); die documenten gaan terug naar "Klaar om te boeken" en kunnen opnieuw aangeboden worden. Staande goedkeuringen en historie blijven staan. De wijziging wordt geauditeerd (aanleiding: ${AANLEIDING}).` +
                 (wordtUitgeschakeld
                   ? ` LET OP: ${gebruiker.naam} is de laatste accorderingslaag van ${verwijderVoor.naam} — na "Bevestigen" volgt nog een aparte bevestiging voor het uitschakelen.`
                   : '')
@@ -309,7 +341,7 @@ export function AccordeurAdministraties({
       {verwijderVoor && uitschakelBevestiging && (
         <BevestigDialog
           titel={`Klant-accordering voor ${verwijderVoor.naam} uitschakelen?`}
-          bericht={`${gebruiker.naam} is de laatste accordeur in de accorderingslagen van ${verwijderVoor.naam}: accordering voor ${verwijderVoor.naam} wordt hiermee uitgeschakeld. Nieuwe facturen van ${verwijderVoor.naam} gaan dan zonder klant-akkoord naar de boekknop; lopende accorderingsrondes vervallen (documenten terug naar "Klaar om te boeken"). Opnieuw aanzetten kan altijd via Instellingen › ${verwijderVoor.naam} › Klant-accordering. Audit en tijdlijn vermelden de aanleiding "${AANLEIDING}".`}
+          bericht={`${gebruiker.naam} is de laatste accordeur in de accorderingslagen van ${verwijderVoor.naam}: accordering voor ${verwijderVoor.naam} wordt hiermee uitgeschakeld. Nieuwe facturen van ${verwijderVoor.naam} gaan dan zonder klant-akkoord naar de boekknop; lopende accorderingsrondes vervallen (er blijft geen laag over om tegen te herberekenen; documenten terug naar "Klaar om te boeken"). Opnieuw aanzetten kan altijd via Instellingen › ${verwijderVoor.naam} › Klant-accordering. Audit en tijdlijn vermelden de aanleiding "${AANLEIDING}".`}
           bezig={bezig}
           fout={fout}
           onBevestigen={() => void verwijderen()}

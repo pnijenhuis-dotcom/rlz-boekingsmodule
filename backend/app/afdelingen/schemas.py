@@ -48,4 +48,6 @@ class AfdelingRouteInput(StrikteInvoer):
 class AfdelingRouteResponse(BaseModel):
     afdeling_id: uuid.UUID
     lagen: list[RouteLaagDto]
+    # Bundel 09-09 blok 2: lopende rondes van de afdeling worden herberekend; vervallen ⊆ herberekend.
+    rondes_herberekend: int = 0
     rondes_vervallen: int = 0

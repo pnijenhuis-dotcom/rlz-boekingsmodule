@@ -48,6 +48,7 @@ import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/Rev
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
+import { accorderingHerberekendTekst } from './accorderingHerberekendTijdlijn'
 import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
@@ -1432,6 +1433,17 @@ export function DocumentDetailScreen() {
                           {' '}(door {naamVoor(g.actor_id)})
                         </div>
                       )}
+                      {g.detail && 'accordering_herberekend' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2 }}>
+                          {/* Bundel 09-09 blok 2: configuratiewijziging herberekent de ronde i.p.v. vervallen. */}
+                          {accorderingHerberekendTekst(g.detail.accordering_herberekend)} (door {naamVoor(g.actor_id)})
+                        </div>
+                      )}
+                      {g.detail && 'accordering_herberekend_afronding_fout' in g.detail && (
+                        <div className="hint" style={{ marginTop: 2, color: 'var(--red)' }}>
+                          Afronding ná herberekening mislukt — {String(g.detail.accordering_herberekend_afronding_fout)}
+                        </div>
+                      )}
                       {g.detail && 'accordering_ingetrokken' in g.detail && (
                         <div className="hint" style={{ marginTop: 2 }}>
                           Accordering {'na_boekfout' in g.detail ? 'ná boekfout teruggehaald' : 'ingetrokken'} door{' '}
@@ -1456,6 +1468,8 @@ export function DocumentDetailScreen() {
                         typeof g.detail.reden === 'string' &&
                         g.detail.reden &&
                         !('accordering_vervallen' in g.detail) &&
+                        !('accordering_herberekend' in g.detail) &&
+                        !('accordering_herberekend_afronding_fout' in g.detail) &&
                         !('accordering_boek_fout' in g.detail) &&
                         !('alle_lagen_akkoord' in g.detail) && (
                           <div className="hint" style={{ marginTop: 2 }}>

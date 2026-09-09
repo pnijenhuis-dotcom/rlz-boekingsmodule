@@ -13,6 +13,7 @@ import {
   type BulkInstelUitkomstDto,
   type KandidaatDto,
 } from '../accordering/accorderingApi'
+import { rondesPreviewTekst } from '../accordering/rondesTekst'
 import { ApiError } from '../api/client'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
@@ -23,10 +24,20 @@ interface LaagInvoer {
   drempel: string
 }
 
+function totalVervallenHint(vervallen: number): string {
+  return vervallen > 0
+    ? ' De vervallen documenten kunnen daarna in bulk opnieuw aangeboden worden (bestaande banner + bulk-knop).'
+    : ''
+}
+
 function uitkomstTag(u: BulkInstelUitkomstDto): { tekst: string; variant: 'ok' | 'warn' } {
   if (u.uitkomst === 'vervangen') {
-    const rondes = u.rondes_vervallen === 1 ? '1 ronde vervalt' : `${u.rondes_vervallen} rondes vervallen`
-    return { tekst: `vervangen${u.rondes_vervallen > 0 ? ` · ${rondes}` : ''}`, variant: 'warn' }
+    // Bundel 09-09 blok 2: lopende rondes worden herberekend; alleen zonder passend akkoord vervalt er een.
+    const herberekend = u.rondes_herberekend ?? u.rondes_vervallen
+    const delen = ['vervangen']
+    if (herberekend > 0) delen.push(herberekend === 1 ? '1 ronde herberekend' : `${herberekend} rondes herberekend`)
+    if (u.rondes_vervallen > 0) delen.push(u.rondes_vervallen === 1 ? 'waarvan 1 vervalt' : `waarvan ${u.rondes_vervallen} vervallen`)
+    return { tekst: delen.join(' · '), variant: 'warn' }
   }
   if (u.uitkomst === 'ingesteld') {
     const delen = ['ingesteld']
@@ -135,6 +146,7 @@ export function BulkAccorderingDialog({
   }, [JSON.stringify(invoer), resultaat])
 
   const vervangen = (preview?.uitkomsten ?? []).filter((u) => u.uitkomst === 'vervangen')
+  const totaalHerberekend = vervangen.reduce((som, u) => som + (u.rondes_herberekend ?? u.rondes_vervallen), 0)
   const totaalVervallen = vervangen.reduce((som, u) => som + u.rondes_vervallen, 0)
 
   const toepassen = async () => {
@@ -239,13 +251,14 @@ export function BulkAccorderingDialog({
               >
                 ⚠ <b>Overschrijven:</b> {vervangen.map((u) => u.administratie_naam).join(' en ')}{' '}
                 {vervangen.length === 1 ? 'heeft' : 'hebben'} al een accorderingsconfiguratie — die wordt vervangen.
-                {totaalVervallen > 0 && (
+                {totaalHerberekend > 0 && (
                   <>
-                    {' '}Daarbij {totaalVervallen === 1 ? 'vervalt' : 'vervallen'}{' '}
-                    <b>{totaalVervallen} lopende {totaalVervallen === 1 ? 'accorderingsronde' : 'accorderingsrondes'}</b>{' '}
-                    ({vervangen.filter((u) => u.rondes_vervallen > 0).map((u) => `${u.administratie_naam} ${u.rondes_vervallen}`).join(', ')});
-                    de documenten gaan terug naar &ldquo;Klaar om te boeken&rdquo; en kunnen daarna in bulk opnieuw
-                    aangeboden worden (bestaande banner + bulk-knop).
+                    {' '}Daarbij: <b>{rondesPreviewTekst(totaalHerberekend, totaalVervallen)}</b>{' '}
+                    ({vervangen
+                      .filter((u) => (u.rondes_herberekend ?? u.rondes_vervallen) > 0)
+                      .map((u) => `${u.administratie_naam} ${u.rondes_herberekend ?? u.rondes_vervallen}${u.rondes_vervallen > 0 ? ` (${u.rondes_vervallen} vervalt)` : ''}`)
+                      .join(', ')}).
+                    {totalVervallenHint(totaalVervallen)}
                   </>
                 )}
               </div>

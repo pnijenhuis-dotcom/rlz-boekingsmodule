@@ -1,7 +1,8 @@
-"""Accordering-nazorg (werkstroom-run 27/28-08, punt 2 — casus 34 facturen): (a) een wijziging van de
-accorderingsconfiguratie laat lopende rondes expliciet VERVALLEN mét reden in de tijdlijn + een
-batch voor de werkvoorraad-melding; een opslag zonder effectieve wijziging raakt niets; (b) bulk
-"Ter accordering aanbieden" met exact de losse poorten — geweigerd = overgeslagen mét reden."""
+"""Accordering-nazorg (werkstroom-run 27/28-08, punt 2 — casus 34 facturen), HERZIEN bundel 09-09 blok 2 (besluit
+Peter 08-09): (a) een wijziging van de accorderingsconfiguratie HERBEREKENT lopende rondes; alleen als géén gegeven
+akkoord meer past (of de toggle uitgaat) VERVALT de ronde expliciet mét reden in de tijdlijn + een batch voor de
+werkvoorraad-melding; een opslag zonder effectieve wijziging raakt niets; (b) bulk "Ter accordering aanbieden" met
+exact de losse poorten — geweigerd = overgeslagen mét reden. De herberekening zelf: test_herberekenen.py."""
 
 from __future__ import annotations
 
@@ -53,7 +54,7 @@ def _bied_aan(administratie_id: uuid.UUID, document_id: uuid.UUID, actor: uuid.U
 
 
 class TestVervallenBijConfiguratiewijziging:
-    def test_gewijzigde_lagen_laten_lopende_rondes_vervallen_met_reden(
+    def test_gewijzigde_lagen_zonder_passend_akkoord_laten_de_ronde_vervallen_met_reden(
         self,
         klaar_document: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -63,19 +64,26 @@ class TestVervallenBijConfiguratiewijziging:
         accordeur_2: uuid.UUID,
         admin_engine: Engine,
     ) -> None:
-        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        """Bundel 09-09 blok 2: het vervallen-pad blijft bestaan, maar alleen voor een ronde waarvan geen enkel
+        gegeven akkoord meer past. Lagen [1: a1, 2: a2], a1 akkoord; nieuwe lagen [1: a2] → a1 verdwijnt, zijn
+        akkoord past nergens → vervallen mét reden, document terug naar klaar_om_te_boeken."""
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[_laag(1, accordeur_1), _laag(2, accordeur_2)],
+        )
         _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
+        service.geef_akkoord(administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1)
         assert document_status(admin_engine, klaar_document) == "ter_accordering"
-        assert service.wachtrij_voor_accordeur(actor_id=accordeur_1, administratie_ids=[administratie_id])
+        assert service.wachtrij_voor_accordeur(actor_id=accordeur_2, administratie_ids=[administratie_id])
 
-        # Andere accordeur op laag 1 → de bevroren stap (accordeur_1) klopt niet meer.
-        vervallen = zet_schema(
+        uitkomst = zet_schema(
             administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_2)]
         )
-        assert vervallen == 1
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (1, 1)
         assert document_status(admin_engine, klaar_document) == "klaar_om_te_boeken"
         assert _accordering_status(admin_engine, klaar_document) == [AccorderingStatus.VERVALLEN.value]
-        # Niemand ziet 'm meer in een wachtrij — ook de nieuwe accordeur niet (opnieuw aanbieden is de weg).
+        # Niemand ziet 'm meer in een wachtrij (opnieuw aanbieden is de weg).
         assert service.wachtrij_voor_accordeur(actor_id=accordeur_1, administratie_ids=[administratie_id]) == []
         assert service.wachtrij_voor_accordeur(actor_id=accordeur_2, administratie_ids=[administratie_id]) == []
 
@@ -115,6 +123,33 @@ class TestVervallenBijConfiguratiewijziging:
         ]
         assert service.vervallen_meldingen(administratie_id=administratie_id)[0].nog_niet_opnieuw_aangeboden == 0
 
+    def test_gewijzigde_lagen_zonder_gegeven_akkoord_herberekenen_de_ronde(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        accordeur_2: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        """De oude 27/28-08-casus (andere accordeur op laag 1, nog niets besloten) vervalt NIET meer: de ronde loopt
+        door met de nieuwe accordeur — geen kantoor-actie, geen banner."""
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
+        uitkomst = zet_schema(
+            administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_2)]
+        )
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (1, 0)
+        assert document_status(admin_engine, klaar_document) == "ter_accordering"
+        assert _accordering_status(admin_engine, klaar_document) == [AccorderingStatus.OPEN.value]
+        assert service.wachtrij_voor_accordeur(actor_id=accordeur_1, administratie_ids=[administratie_id]) == []
+        assert [
+            w.document_id
+            for w in service.wachtrij_voor_accordeur(actor_id=accordeur_2, administratie_ids=[administratie_id])
+        ] == [klaar_document]
+        assert service.vervallen_meldingen(administratie_id=administratie_id) == []
+
     def test_opslaan_zonder_effectieve_wijziging_raakt_geen_ronde(
         self,
         klaar_document: uuid.UUID,
@@ -130,12 +165,12 @@ class TestVervallenBijConfiguratiewijziging:
         _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
 
         # Zelfde schema opnieuw opslaan (andere volgorde, drempel als '1000' i.p.v. '1000.00').
-        vervallen = zet_schema(
+        uitkomst = zet_schema(
             administratie_id=administratie_id,
             beheerder_id=beheerder_id,
             lagen=[_laag(2, accordeur_2, "1000"), _laag(1, accordeur_1)],
         )
-        assert vervallen == 0
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (0, 0)
         assert document_status(admin_engine, klaar_document) == "ter_accordering"
         assert _accordering_status(admin_engine, klaar_document) == [AccorderingStatus.OPEN.value]
         assert service.vervallen_meldingen(administratie_id=administratie_id) == []
@@ -151,10 +186,10 @@ class TestVervallenBijConfiguratiewijziging:
     ) -> None:
         zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
         _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
-        vervallen = zet_schema(
+        uitkomst = zet_schema(
             administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[], ingeschakeld=False
         )
-        assert vervallen == 1
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (1, 1)
         assert document_status(admin_engine, klaar_document) == "klaar_om_te_boeken"
 
     def test_put_response_draagt_rondes_vervallen(
@@ -166,14 +201,20 @@ class TestVervallenBijConfiguratiewijziging:
         accordeur_1: uuid.UUID,
         accordeur_2: uuid.UUID,
     ) -> None:
-        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        zet_schema(
+            administratie_id=administratie_id,
+            beheerder_id=beheerder_id,
+            lagen=[_laag(1, accordeur_1), _laag(2, accordeur_2)],
+        )
         _bied_aan(administratie_id, klaar_document, gescoopte_gebruiker)
+        service.geef_akkoord(administratie_id=administratie_id, document_id=klaar_document, actor_id=accordeur_1)
         resp = client.put(
             f"/administraties/{administratie_id}/accordering/instellingen",
             json={"ingeschakeld": True, "lagen": [{"volgnummer": 1, "accordeur_gebruiker_id": str(accordeur_2)}]},
             headers=_bearer(beheerder_id, rol="beheerder"),
         )
         assert resp.status_code == 200, resp.text
+        assert resp.json()["rondes_herberekend"] == 1
         assert resp.json()["rondes_vervallen"] == 1
         # GET draagt 'm niet (alleen een uitkomst van de PUT).
         resp = client.get(
@@ -181,6 +222,7 @@ class TestVervallenBijConfiguratiewijziging:
             headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
         )
         assert resp.json()["rondes_vervallen"] == 0
+        assert resp.json()["rondes_herberekend"] == 0
         # Vervallen-melding via HTTP (kantoor).
         resp = client.get(
             f"/administraties/{administratie_id}/accordering/vervallen-meldingen",
@@ -314,4 +356,7 @@ class TestUitschakelenViaKlantAccordeurs:
             per_actie.setdefault(actie, []).append(waarde)
         assert "accordering_vervallen" in per_actie
         assert any(self.AANLEIDING in w for w in per_actie["accordering_schema_gewijzigd"])
-        assert any(self.AANLEIDING in w and '"accordering_ingeschakeld": false' in w for w in per_actie["accordering_ingeschakeld_gewijzigd"])
+        assert any(
+            self.AANLEIDING in w and '"accordering_ingeschakeld": false' in w
+            for w in per_actie["accordering_ingeschakeld_gewijzigd"]
+        )

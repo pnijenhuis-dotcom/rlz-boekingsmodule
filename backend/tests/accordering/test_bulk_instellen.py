@@ -92,7 +92,9 @@ class TestPreview:
         )
         per_id = {u.administratie_id: u for u in uitkomsten}
         assert per_id[administratie_id].uitkomst == "vervangen"
-        assert per_id[administratie_id].rondes_vervallen == 1
+        # Bundel 09-09 blok 2: de lopende ronde wordt HERBEREKEND (geen akkoord gegeven → niets te verliezen).
+        assert per_id[administratie_id].rondes_herberekend == 1
+        assert per_id[administratie_id].rondes_vervallen == 0
         assert per_id[administratie_id].toggle_aangezet is False
         assert per_id[tweede_administratie].uitkomst == "ingesteld"
         assert per_id[tweede_administratie].toggle_aangezet is True
@@ -147,6 +149,7 @@ class TestPreview:
         )
         assert uitkomsten[0].uitkomst == "vervangen"
         assert uitkomsten[0].rondes_vervallen == 0
+        assert uitkomsten[0].rondes_herberekend == 0
 
     def test_niet_accordeur_in_de_lagen_is_geweigerd(
         self,
@@ -165,7 +168,7 @@ class TestPreview:
 
 
 class TestToepassen:
-    def test_toepassen_maakt_scope_vervangt_config_en_laat_rondes_vervallen(
+    def test_toepassen_maakt_scope_vervangt_config_en_herberekent_rondes(
         self,
         klaar_document: uuid.UUID,
         administratie_id: uuid.UUID,
@@ -193,7 +196,8 @@ class TestToepassen:
         )
         per_id = {u.administratie_id: u for u in uitkomsten}
         assert per_id[administratie_id].uitkomst == "vervangen"
-        assert per_id[administratie_id].rondes_vervallen == 1
+        assert per_id[administratie_id].rondes_herberekend == 1
+        assert per_id[administratie_id].rondes_vervallen == 0
         assert per_id[tweede_administratie].uitkomst == "ingesteld"
         assert per_id[tweede_administratie].toggle_aangezet is True
 
@@ -209,9 +213,10 @@ class TestToepassen:
             ).scalar_one()
         assert trigger_audits >= 1
 
-        # Vervallen via het BESTAANDE patroon (punt 2a): status vervallen, document terug,
-        # banner-batch zichtbaar.
-        assert document_status(admin_engine, klaar_document) == "klaar_om_te_boeken"
+        # Herberekend (bundel 09-09 blok 2): de nieuwe laag (> € 2.500) geldt niet voor € 121 → alle vereiste lagen
+        # gedekt → afrondingsroute (Boeken-toggle uit in deze test → zichtbare boek_fout, document blijft bij de
+        # klant-status). Geen vervallen-batch/banner.
+        assert document_status(admin_engine, klaar_document) == "ter_accordering"
         with admin_engine.connect() as conn:
             statussen = [
                 r.status
@@ -220,8 +225,8 @@ class TestToepassen:
                     {"id": klaar_document},
                 )
             ]
-        assert statussen == [AccorderingStatus.VERVALLEN.value]
-        assert service.vervallen_meldingen(administratie_id=administratie_id)[0].aantal == 1
+        assert statussen == [AccorderingStatus.AFGEROND.value]
+        assert service.vervallen_meldingen(administratie_id=administratie_id) == []
 
         # Beide BV's dragen nu de nieuwe config + toggle aan (besluit 3).
         for aid in (administratie_id, tweede_administratie):

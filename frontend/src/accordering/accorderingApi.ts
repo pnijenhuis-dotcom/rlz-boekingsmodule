@@ -13,7 +13,9 @@ export interface AccorderingLaagDto {
 export interface AccorderingInstellingenDto {
   ingeschakeld: boolean
   lagen: AccorderingLaagDto[]
-  /** Alleen op de PUT-response (27/28-08 punt 2a): lopende rondes die door déze wijziging vervielen. */
+  /** Alleen op de PUT-response. Bundel 09-09 blok 2: lopende rondes worden HERBEREKEND (`rondes_herberekend` =
+   * geraakt); `rondes_vervallen` = het deel daarvan dat verviel omdat geen gegeven akkoord meer paste. */
+  rondes_herberekend?: number
   rondes_vervallen?: number
 }
 
@@ -161,6 +163,8 @@ export interface BulkInstelUitkomstDto {
   administratie_id: string
   administratie_naam: string
   uitkomst: 'ingesteld' | 'vervangen' | 'overgeslagen' | 'fout' | string
+  /** Bundel 09-09 blok 2: lopende rondes worden herberekend; vervallen ⊆ herberekend. Optioneel voor oude fixtures. */
+  rondes_herberekend?: number
   rondes_vervallen: number
   toggle_aangezet: boolean
   scope_toegevoegd_voor: string[]

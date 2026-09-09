@@ -23,8 +23,10 @@ class LaagDto(BaseModel):
 class InstellingenResponse(BaseModel):
     ingeschakeld: bool
     lagen: list[LaagDto]
-    # Alleen gevuld op de PUT-response (punt 2a): aantal lopende rondes dat door déze wijziging
-    # verviel — de UI meldt het direct ("N accorderingen vervallen — opnieuw aanbieden").
+    # Alleen gevuld op de PUT-response. Bundel 09-09 blok 2: `rondes_herberekend` = lopende rondes die door déze
+    # wijziging geraakt zijn (herberekend), `rondes_vervallen` = het deel daarvan dat verviel omdat geen enkel
+    # gegeven akkoord meer paste ("N rondes herberekend, waarvan M vervallen").
+    rondes_herberekend: int = 0
     rondes_vervallen: int = 0
 
 
@@ -154,6 +156,8 @@ class BulkInstelUitkomstDto(BaseModel):
     administratie_naam: str
     # 'ingesteld' | 'vervangen' | 'overgeslagen' | 'fout' (fout alleen ná toepassen)
     uitkomst: str
+    # Bundel 09-09 blok 2: lopende rondes worden herberekend; `rondes_vervallen` ⊆ `rondes_herberekend`.
+    rondes_herberekend: int = 0
     rondes_vervallen: int = 0
     toggle_aangezet: bool = False
     scope_toegevoegd_voor: list[str] = Field(default_factory=list)

@@ -38,6 +38,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.accordering import herberekening as herberekening_module
 from app.accordering.models import (
     AccorderingLaag,
     AccorderingStap,
@@ -244,7 +245,16 @@ def _naar_data(session: Session, accordering: DocumentAccordering, stappen: list
 
 
 def _stappen_van(session: Session, accordering_id: uuid.UUID) -> list[AccorderingStap]:
-    return list(session.scalars(select(AccorderingStap).where(AccorderingStap.accordering_id == accordering_id)))
+    """De stappen van een ronde — zonder de bij een herberekening vervallen stappen (bundel 09-09 blok 2): die
+    rijen blijven als historie staan (audit draagt de volledige oude stand) maar zijn geen deel van de ronde meer."""
+    return list(
+        session.scalars(
+            select(AccorderingStap).where(
+                AccorderingStap.accordering_id == accordering_id,
+                AccorderingStap.besluit.is_distinct_from(StapBesluit.VERVALLEN.value),
+            )
+        )
+    )
 
 
 def _open_accordering(session: Session, document_id: uuid.UUID) -> DocumentAccordering | None:
@@ -547,19 +557,19 @@ def afdeling_route_opslaan(
     actor_id: uuid.UUID,
     actor_rol: str,
     lagen: list[LaagInput],
-) -> int:
-    """Route per afdeling (blok A 28-08): zelfde lagen-bouwstenen en dezelfde vervallen-regel als
-    de administratie-route, maar alleen rondes van documenten in DEZE afdeling vervallen. De
-    terugval-afdeling heeft geen eigen route (409 — wijzig de administratie-route). Minstens
-    één laag: een lege route zou elk document van de afdeling stil laten stranden op
-    GeenLagenIngesteld. Geeft het aantal vervallen rondes terug."""
+) -> RondeUitkomst:
+    """Route per afdeling (blok A 28-08): zelfde lagen-bouwstenen en dezelfde herberekeningsregel als
+    de administratie-route (bundel 09-09 blok 2), maar alleen rondes van documenten in DEZE afdeling
+    worden herberekend. De terugval-afdeling heeft geen eigen route (409 — wijzig de
+    administratie-route). Minstens één laag: een lege route zou elk document van de afdeling stil
+    laten stranden op GeenLagenIngesteld. Geeft de ronde-telling (herberekend/vervallen) terug."""
     _vereis_kantoor(actor_rol)
     if not lagen:
         raise GeenLagenIngesteld("Een afdelingsroute vereist minstens één accorderingslaag")
     volgnummers = [laag.volgnummer for laag in lagen]
     if len(volgnummers) != len(set(volgnummers)):
         raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
-    vervallen = 0
+    uitkomst = RondeUitkomst()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         afdeling = session.get(Afdeling, afdeling_id)
         if afdeling is None or afdeling.administratie_id != administratie_id:
@@ -578,8 +588,13 @@ def afdeling_route_opslaan(
             laag.gedeactiveerd_door = actor_id
             laag.gedeactiveerd_op = nu
         if schema_gewijzigd:
-            vervallen = _laat_open_rondes_vervallen(
-                session, administratie_id=administratie_id, actor_id=actor_id, nu=nu, afdeling_ids={afdeling_id}
+            uitkomst = _herbereken_open_rondes(
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                lagen=lagen,
+                afdeling_ids={afdeling_id},
             )
         for invoer in lagen:
             session.add(
@@ -613,11 +628,13 @@ def afdeling_route_opslaan(
                     }
                     for laag in lagen
                 ],
-                "rondes_vervallen": vervallen,
+                "rondes_herberekend": uitkomst.herberekend,
+                "rondes_vervallen": uitkomst.vervallen,
             },
             administratie_id=administratie_id,
         )
-    return vervallen
+    _rond_herberekende_rondes_af(administratie_id=administratie_id, uitkomst=uitkomst)
+    return uitkomst
 
 
 @dataclass(frozen=True)
@@ -635,22 +652,24 @@ def instellingen_opslaan(
     ingeschakeld: bool,
     lagen: list[LaagInput],
     aanleiding: str | None = None,
-) -> int:
+) -> RondeUitkomst:
     """Beheerder-only (router-dependency) + nooit door een accordeur. Lagen zijn append-only:
     de bestaande actieve lagen worden gedeactiveerd, de nieuwe set aangemaakt. Aanzetten zonder
     lagen is geweigerd (een toggle zonder schema zou elke boeking stil blokkeren).
 
-    Lopende rondes (werkstroom-run 27/28-08, punt 2a): een OPEN ronde draagt de stappen die op het
-    aanbied-moment uit de tóén actieve lagen bevroren zijn. Wijzigt het effectieve schema (andere
-    lagen/accordeurs/drempels, of de toggle gaat uit), dan kloppen die stappen niet meer — de
-    ronde VERVALT expliciet (status `vervallen`, document terug naar klaar_om_te_boeken, tijdlijn
-    mét reden `VERVALLEN_REDEN` + batch-id voor de werkvoorraad-melding, audit per ronde). Niets
-    verdwijnt stil; opnieuw aanbieden is de weg (los of via de bulk-actie op de documentenlijst).
-    Een opslag die het schema niet verandert (bv. alleen opnieuw opslaan) raakt geen ronde.
-    Geeft het aantal vervallen rondes terug.
+    Lopende rondes (bundel 09-09 blok 2, besluit Peter 08-09 — herziet punt 2a van 27/28-08): een OPEN
+    ronde draagt de stappen die op het aanbied-moment uit de tóén actieve lagen bevroren zijn. Wijzigt
+    het effectieve schema (andere lagen/accordeurs/drempels), dan wordt de ronde HERBEREKEND tegen de
+    nieuwe lagen (`herberekening.herbereken`): gegeven akkoorden blijven staan waar ze nog passen,
+    ontbrekende lagen worden opnieuw aangevraagd, en is alles gedekt dan volgt de bestaande
+    afrondingsroute. Alleen als géén enkel gegeven akkoord meer past — of de toggle uitgaat — VERVALT de
+    ronde via het bestaande pad (status `vervallen`, document terug naar klaar_om_te_boeken, tijdlijn mét
+    reden `VERVALLEN_REDEN` + batch-id voor de werkvoorraad-melding, audit per ronde). Niets verdwijnt
+    stil. Een opslag die het schema niet verandert (bv. alleen opnieuw opslaan) raakt geen ronde.
+    Geeft de ronde-telling terug (herberekend = geraakt, vervallen ⊆ herberekend).
 
     `aanleiding` (blok 5 herstelrun 08-09, bv. "verwijderd via Klant-accordeurs"): reist mee in beide audit-events
-    én in het tijdlijn-detail van élke vervallen ronde — de aanleiding van een uitschakeling blijft zo leesbaar."""
+    én in het tijdlijn-detail van élke geraakte ronde — de aanleiding van een uitschakeling blijft zo leesbaar."""
     _vereis_kantoor(actor_rol)
     if ingeschakeld and not lagen:
         raise GeenLagenIngesteld("Accordering aanzetten vereist minstens één accorderingslaag")
@@ -658,7 +677,7 @@ def instellingen_opslaan(
     if len(volgnummers) != len(set(volgnummers)):
         raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
 
-    vervallen = 0
+    uitkomst = RondeUitkomst()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         # Alleen de administratie-route (afdeling_id NULL); afdelingsroutes hebben hun eigen
         # opslag (afdeling_route_opslaan) en blijven hier ongemoeid.
@@ -672,21 +691,32 @@ def instellingen_opslaan(
             laag.gedeactiveerd_door = actor_id
             laag.gedeactiveerd_op = nu
         if schema_gewijzigd:
-            # Toggle uit = álle rondes; schema-wijziging = alleen rondes die op de
-            # administratie-route liepen (geen afdeling, of de terugval-afdeling "Algemeen").
-            from app.afdelingen.service import terugval_id
+            detail_extra = {"aanleiding": aanleiding} if aanleiding else None
+            if not ingeschakeld:
+                # Toggle uit = álle rondes vervallen (er is geen configuratie meer om tegen te herberekenen).
+                vervallen = _laat_open_rondes_vervallen(
+                    session,
+                    administratie_id=administratie_id,
+                    actor_id=actor_id,
+                    nu=nu,
+                    afdeling_ids=None,
+                    detail_extra=detail_extra,
+                )
+                uitkomst = RondeUitkomst(herberekend=vervallen, vervallen=vervallen)
+            else:
+                # Schema-wijziging = alleen rondes die op de administratie-route liepen (geen afdeling, of
+                # de terugval-afdeling "Algemeen") worden herberekend; afdelingsroutes blijven ongemoeid.
+                from app.afdelingen.service import terugval_id
 
-            filter_ids: set[uuid.UUID | None] | None = None
-            if ingeschakeld:
-                filter_ids = {None, terugval_id(session, administratie_id)}
-            vervallen = _laat_open_rondes_vervallen(
-                session,
-                administratie_id=administratie_id,
-                actor_id=actor_id,
-                nu=nu,
-                afdeling_ids=filter_ids,
-                detail_extra={"aanleiding": aanleiding} if aanleiding else None,
-            )
+                uitkomst = _herbereken_open_rondes(
+                    session,
+                    administratie_id=administratie_id,
+                    actor_id=actor_id,
+                    nu=nu,
+                    lagen=lagen,
+                    afdeling_ids={None, terugval_id(session, administratie_id)},
+                    detail_extra=detail_extra,
+                )
         for invoer in lagen:
             session.add(
                 AccorderingLaag(
@@ -718,7 +748,8 @@ def instellingen_opslaan(
                     }
                     for laag in lagen
                 ],
-                "rondes_vervallen": vervallen,
+                "rondes_herberekend": uitkomst.herberekend,
+                "rondes_vervallen": uitkomst.vervallen,
                 **({"aanleiding": aanleiding} if aanleiding else {}),
             },
             administratie_id=administratie_id,
@@ -747,7 +778,10 @@ def instellingen_opslaan(
                 **({"aanleiding": aanleiding} if aanleiding else {}),
             },
         )
-    return vervallen
+    # Ná de configuratie-transactie: staande goedkeuringen op de opnieuw aangevraagde stappen en — is alles
+    # gedekt — de bestaande afrondingsroute (exact zoals bij een laatste akkoord).
+    _rond_herberekende_rondes_af(administratie_id=administratie_id, uitkomst=uitkomst)
+    return uitkomst
 
 
 # Reden op de tijdlijnregel van een vervallen ronde (punt 2a, casus 34 facturen 27-08): letterlijk
@@ -837,6 +871,293 @@ def _laat_open_rondes_vervallen(
             administratie_id=administratie_id,
         )
     return len(open_rondes)
+
+
+# --- Herberekening van lopende rondes bij een configuratiewijziging (bundel 09-09 blok 2) ---------
+#
+# Besluit Peter 08-09 (herziet "GECOMBINEERDE RUN 01-09" blok A beslispunt 2): een configuratiewijziging
+# (lagen/accordeurs/drempels via de detail-tab, bulk-instellen, het accordeur-venster of een
+# afdelingsroute) laat een lopende ronde niet meer vervallen maar HERBEREKENT haar. De pure regel staat
+# in `herberekening.py`; hier de schrijfkant: stappen bijwerken, tijdlijn + audit per document, en ná de
+# transactie de bestaande afrondingsroute voor rondes die nu volledig gedekt zijn.
+
+HERBEREKEND_REDEN = "accorderingsconfiguratie gewijzigd — ronde herberekend"
+HERBEREKEND_AUDIT_ACTIE = "accordering_ronde_herberekend"
+HERBEREKEND_TIJDLIJN_SLEUTEL = "accordering_herberekend"
+STAP_VERVALLEN_REDEN = "vervallen bij herberekening — laag past niet meer in de nieuwe configuratie"
+
+
+@dataclass(frozen=True)
+class RondeUitkomst:
+    """Telling van één configuratiewijziging: `herberekend` = lopende rondes die geraakt zijn (incl. de
+    vervallen), `vervallen` = het deel dat verviel omdat geen enkel gegeven akkoord meer paste (of de
+    toggle uitging). `af_te_ronden` = (ronde, document) die ná de transactie de staande-regel-/
+    afrondingsroute krijgen — puur intern, niet in DTO's."""
+
+    herberekend: int = 0
+    vervallen: int = 0
+    af_te_ronden: tuple[tuple[uuid.UUID, uuid.UUID], ...] = ()
+
+
+def _stap_stand(stap: AccorderingStap) -> herberekening_module.StapStand:
+    return herberekening_module.StapStand(
+        volgnummer=stap.volgnummer,
+        accordeur_gebruiker_id=stap.accordeur_gebruiker_id,
+        bedrag_drempel=stap.bedrag_drempel,
+        vereist=stap.vereist,
+        besluit=stap.besluit,
+    )
+
+
+def _laag_specs(lagen: list[LaagInput]) -> list[herberekening_module.LaagSpec]:
+    return [
+        herberekening_module.LaagSpec(
+            volgnummer=laag.volgnummer,
+            accordeur_gebruiker_id=laag.accordeur_gebruiker_id,
+            bedrag_drempel=laag.bedrag_drempel,
+        )
+        for laag in lagen
+    ]
+
+
+def _open_rondes_gefilterd(
+    session: Session, *, administratie_id: uuid.UUID, afdeling_ids: set[uuid.UUID | None] | None
+) -> list[DocumentAccordering]:
+    """Exact het filter van `_laat_open_rondes_vervallen`: open rondes van de administratie, beperkt tot de
+    gegeven afdelingen (None-lid = rondes zonder afdeling)."""
+    return [
+        r
+        for r in session.scalars(
+            select(DocumentAccordering).where(
+                DocumentAccordering.administratie_id == administratie_id,
+                DocumentAccordering.status == AccorderingStatus.OPEN.value,
+            )
+        )
+        if afdeling_ids is None or _ronde_afdeling_id(r) in afdeling_ids
+    ]
+
+
+def _stap_naar_dict(stap: AccorderingStap) -> dict:
+    return {
+        "volgnummer": stap.volgnummer,
+        "accordeur": str(stap.accordeur_gebruiker_id),
+        "bedrag_drempel": str(stap.bedrag_drempel) if stap.bedrag_drempel is not None else None,
+        "vereist": stap.vereist,
+        "besluit": stap.besluit,
+        "besluit_bron": stap.besluit_bron,
+    }
+
+
+def telling_herberekening(
+    session: Session, *, administratie_id: uuid.UUID, lagen: list[LaagInput], afdeling_ids: set[uuid.UUID | None] | None
+) -> RondeUitkomst:
+    """Preview-telling (leest alleen): hoeveel lopende rondes deze lagen zouden herberekenen en hoeveel daarvan
+    zouden vervallen — met dezelfde pure functie als de echte wijziging, zodat vooraf en achteraf nooit uiteenlopen."""
+    rondes = _open_rondes_gefilterd(session, administratie_id=administratie_id, afdeling_ids=afdeling_ids)
+    specs = _laag_specs(lagen)
+    vervallen = 0
+    for ronde in rondes:
+        stappen = _stappen_van(session, ronde.id)
+        h = herberekening_module.herbereken(
+            [_stap_stand(s) for s in stappen], specs, _als_decimal((ronde.detail or {}).get("totaalbedrag"))
+        )
+        if h.ronde_vervalt:
+            vervallen += 1
+    return RondeUitkomst(herberekend=len(rondes), vervallen=vervallen)
+
+
+def _herbereken_open_rondes(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    nu: datetime,
+    lagen: list[LaagInput],
+    afdeling_ids: set[uuid.UUID | None] | None,
+    detail_extra: dict | None = None,
+) -> RondeUitkomst:
+    """Alle OPEN rondes in het filter herberekenen tegen `lagen` (pure regel: `herberekening.herbereken`).
+
+    Per ronde die blijft lopen: behouden akkoorden en hergebruikte onbesliste stappen krijgen de nieuwe
+    positie/drempel (rij bijgewerkt, besluit onaangeroerd), nieuwe lagen krijgen een verse stap, en oude
+    stappen die niet meer passen worden gemarkeerd `besluit='vervallen'` + `vereist=False` (historie blijft
+    staan — de app-rol heeft bewust geen DELETE op accordering_stap). Tijdlijn-notitie (geen statusovergang)
+    + audit `accordering_ronde_herberekend` oud→nieuw per document, één batch_id per wijziging. Een
+    accordeur wiens akkoord verviel én die opnieuw aan de beurt komt, wordt via de bestaande bundelmelding
+    opnieuw gemeld (claim heropend). Rondes waarvan géén enkel gegeven akkoord meer past gaan in één batch
+    door het bestaande vervallen-pad (`_laat_open_rondes_vervallen`). Afgeronde rondes (compleet klant-akkoord)
+    zijn niet OPEN en worden dus nooit geraakt (regel 28-08)."""
+    rondes = _open_rondes_gefilterd(session, administratie_id=administratie_id, afdeling_ids=afdeling_ids)
+    if not rondes:
+        return RondeUitkomst()
+    specs = _laag_specs(lagen)
+    batch_id = uuid.uuid4()
+    te_vervallen: set[uuid.UUID] = set()
+    af_te_ronden: list[tuple[uuid.UUID, uuid.UUID]] = []
+    for ronde in rondes:
+        stappen = _stappen_van(session, ronde.id)
+        totaalbedrag = _als_decimal((ronde.detail or {}).get("totaalbedrag"))
+        h = herberekening_module.herbereken([_stap_stand(s) for s in stappen], specs, totaalbedrag)
+        if h.ronde_vervalt:
+            te_vervallen.add(ronde.document_id)
+            continue
+        oude_stand = [_stap_naar_dict(s) for s in sorted(stappen, key=lambda s: s.volgnummer)]
+        vervallen_akkoord_accordeurs = {
+            stappen[i].accordeur_gebruiker_id
+            for i in h.vervallen_indices
+            if stappen[i].besluit == StapBesluit.AKKOORD.value
+        }
+        for index in h.vervallen_indices:
+            oud = stappen[index]
+            oud.besluit = StapBesluit.VERVALLEN.value
+            oud.vereist = False
+            oud.reden = STAP_VERVALLEN_REDEN
+            oud.besloten_op = nu
+        nieuwe_rijen: list[AccorderingStap] = []
+        for nieuw in h.stappen:
+            if nieuw.bron_index is not None:
+                rij = stappen[nieuw.bron_index]
+                rij.volgnummer = nieuw.volgnummer
+                rij.bedrag_drempel = nieuw.bedrag_drempel
+                rij.vereist = nieuw.vereist
+            else:
+                rij = AccorderingStap(
+                    administratie_id=administratie_id,
+                    accordering_id=ronde.id,
+                    volgnummer=nieuw.volgnummer,
+                    accordeur_gebruiker_id=nieuw.accordeur_gebruiker_id,
+                    bedrag_drempel=nieuw.bedrag_drempel,
+                    vereist=nieuw.vereist,
+                )
+                session.add(rij)
+            nieuwe_rijen.append(rij)
+        session.flush()
+        nieuwe_stand = [_stap_naar_dict(s) for s in sorted(nieuwe_rijen, key=lambda s: s.volgnummer)]
+        ronde.detail = {
+            **(ronde.detail or {}),
+            "herberekend": {
+                "aantal": int(((ronde.detail or {}).get("herberekend") or {}).get("aantal", 0)) + 1,
+                "laatste_op": nu.isoformat(),
+                "batch_id": str(batch_id),
+            },
+        }
+        samenvatting = {
+            "akkoorden_behouden": h.akkoorden_behouden,
+            "akkoorden_vervallen": h.akkoorden_vervallen,
+            "opnieuw_aangevraagd": list(h.opnieuw_aangevraagd),
+            "alles_akkoord": h.alles_akkoord,
+            "lagen": nieuwe_stand,
+        }
+        document = session.get(Document, ronde.document_id)
+        if document is not None:
+            session.add(
+                DocumentGebeurtenis(
+                    id=uuid.uuid4(),
+                    document_id=ronde.document_id,
+                    van_status=document.status,
+                    naar_status=document.status,
+                    actor_id=actor_id,
+                    detail={
+                        "accordering_id": str(ronde.id),
+                        HERBEREKEND_TIJDLIJN_SLEUTEL: samenvatting,
+                        "reden": HERBEREKEND_REDEN,
+                        "batch_id": str(batch_id),
+                        **(detail_extra or {}),
+                    },
+                )
+            )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="document_accordering",
+            record_id=ronde.id,
+            actie=HERBEREKEND_AUDIT_ACTIE,
+            correlatie_id=batch_id,
+            oude_waarde={"stappen": oude_stand},
+            nieuwe_waarde={
+                "document_id": str(ronde.document_id),
+                "reden": HERBEREKEND_REDEN,
+                "stappen": nieuwe_stand,
+                **samenvatting,
+                **(detail_extra or {}),
+            },
+            administratie_id=administratie_id,
+        )
+        # Opnieuw aangevraagd bij een accordeur wiens akkoord zojuist verviel: de bundelmelding meldt een
+        # document nooit tweemaal aan dezelfde accordeur — hier is het een nieuwe vraag, dus claim heropenen.
+        opnieuw_bij = {
+            s.accordeur_gebruiker_id for s in h.stappen if s.vereist and not s.akkoord_behouden
+        } & vervallen_akkoord_accordeurs
+        if opnieuw_bij:
+            _heropen_bundelmelding(session, document_id=ronde.document_id, accordeur_ids=opnieuw_bij, nu=nu)
+        af_te_ronden.append((ronde.id, ronde.document_id))
+    vervallen = 0
+    if te_vervallen:
+        vervallen = _laat_open_rondes_vervallen(
+            session,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            nu=nu,
+            document_ids=te_vervallen,
+            detail_extra=detail_extra,
+        )
+    return RondeUitkomst(herberekend=len(rondes), vervallen=vervallen, af_te_ronden=tuple(af_te_ronden))
+
+
+def _heropen_bundelmelding(
+    session: Session, *, document_id: uuid.UUID, accordeur_ids: set[uuid.UUID], nu: datetime
+) -> None:
+    """Idempotentie-log van de nieuwe-facturen-bundelmelding (platform.accordeur_nieuw_gemeld): een 'verzonden'
+    claim terug naar 'overgeslagen' zodat de volgende run (`berichten/nieuwe_facturen.py`, push-anders-mail)
+    de accordeur opnieuw meldt zodra hij aan de beurt is. Geen eigen verzending hier — de bestaande route."""
+    from app.berichten.models import AccordeurNieuwGemeld, HerinneringStatus
+
+    rijen = session.scalars(
+        select(AccordeurNieuwGemeld).where(
+            AccordeurNieuwGemeld.document_id == document_id,
+            AccordeurNieuwGemeld.gebruiker_id.in_(accordeur_ids),
+            AccordeurNieuwGemeld.status == HerinneringStatus.VERZONDEN.value,
+        )
+    ).all()
+    for rij in rijen:
+        rij.status = HerinneringStatus.OVERGESLAGEN.value
+        rij.detail = {
+            **(rij.detail or {}),
+            "heropend": {"reden": HERBEREKEND_REDEN, "op": nu.isoformat()},
+        }
+
+
+def _rond_herberekende_rondes_af(*, administratie_id: uuid.UUID, uitkomst: RondeUitkomst) -> None:
+    """Ná de configuratie-transactie, per herberekende ronde: staande goedkeuringen op de opnieuw aangevraagde
+    stappen en — alle vereiste lagen gedekt — de bestaande afrondingsroute (`_rond_af_en_boek`: ronde AFGEROND,
+    boekmotor mét alle harde checks, boekfout zichtbaar op de ronde). Precies het pad van een laatste akkoord.
+    Een onverwachte fout in één ronde blokkeert de configuratie-opslag niet en verdwijnt niet stil: log +
+    tijdlijnregel mét reden."""
+    for accordering_id, document_id in uitkomst.af_te_ronden:
+        try:
+            _pas_staande_regels_toe_en_rond_af(
+                administratie_id=administratie_id, accordering_id=accordering_id, document_id=document_id
+            )
+        except Exception as exc:  # noqa: BLE001 — nooit stil, nooit de configuratie-opslag laten stranden
+            logger.exception("Afronding ná herberekening faalde voor ronde %s", accordering_id)
+            with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+                document = session.get(Document, document_id)
+                if document is not None:
+                    session.add(
+                        DocumentGebeurtenis(
+                            id=uuid.uuid4(),
+                            document_id=document_id,
+                            van_status=document.status,
+                            naar_status=document.status,
+                            actor_id=SYSTEEM_ACTOR_ID,
+                            detail={
+                                "accordering_id": str(accordering_id),
+                                "accordering_herberekend_afronding_fout": str(exc) or exc.__class__.__name__,
+                                "reden": f"afronding ná herberekening mislukt: {exc}",
+                            },
+                        )
+                    )
 
 
 # Blok A 28-08: afdeling gewijzigd ná aanbieden — zelfde regel als een configuratiewijziging.
@@ -990,6 +1311,8 @@ class BulkInstelUitkomst:
     # 'ingesteld' (had geen config) | 'vervangen' (had config) | 'overgeslagen' (mét reden) |
     # 'fout' (alleen ná toepassen: deelfout per BV zichtbaar, nooit stil half).
     uitkomst: str
+    # Bundel 09-09 blok 2: lopende rondes worden herberekend (vervallen ⊆ herberekend).
+    rondes_herberekend: int = 0
     rondes_vervallen: int = 0
     toggle_aangezet: bool = False
     scope_toegevoegd_voor: list[str] | None = None
@@ -1032,22 +1355,20 @@ def _valideer_bulk_lagen(lagen: list[LaagInput]) -> dict[uuid.UUID, str]:
     return {r.id: r.naam for r in rijen}
 
 
-def _open_rondes_administratie_route(session: Session, administratie_id: uuid.UUID) -> int:
-    """Telling voor de preview: open rondes die bij een schema-wijziging zouden vervallen —
-    exact het filter van instellingen_opslaan (administratie-route: rondes zonder afdeling of
-    op de terugval-afdeling; afdelingsroutes blijven ongemoeid)."""
+def _telling_administratie_route(
+    session: Session, administratie_id: uuid.UUID, lagen: list[LaagInput]
+) -> RondeUitkomst:
+    """Telling voor de preview: open rondes die bij deze schema-wijziging herberekend zouden worden en
+    hoeveel daarvan zouden vervallen — exact het filter én de pure regel van instellingen_opslaan
+    (administratie-route: rondes zonder afdeling of op de terugval-afdeling; afdelingsroutes blijven
+    ongemoeid)."""
     from app.afdelingen.service import terugval_id
 
-    filter_ids: set[uuid.UUID | None] = {None, terugval_id(session, administratie_id)}
-    return sum(
-        1
-        for r in session.scalars(
-            select(DocumentAccordering).where(
-                DocumentAccordering.administratie_id == administratie_id,
-                DocumentAccordering.status == AccorderingStatus.OPEN.value,
-            )
-        )
-        if _ronde_afdeling_id(r) in filter_ids
+    return telling_herberekening(
+        session,
+        administratie_id=administratie_id,
+        lagen=lagen,
+        afdeling_ids={None, terugval_id(session, administratie_id)},
     )
 
 
@@ -1089,9 +1410,9 @@ def _bulk_evalueer_administratie(
         was_ingeschakeld = administratie.accordering_ingeschakeld
         heeft_config = was_ingeschakeld or bool(bestaande)
         rondes = (
-            _open_rondes_administratie_route(session, administratie_id)
+            _telling_administratie_route(session, administratie_id, lagen)
             if _schema_gewijzigd(bestaande, lagen)
-            else 0
+            else RondeUitkomst()
         )
         ontbrekend = [
             accordeur_id
@@ -1114,7 +1435,8 @@ def _bulk_evalueer_administratie(
             administratie_id=administratie_id,
             administratie_naam=naam,
             uitkomst="vervangen" if heeft_config else "ingesteld",
-            rondes_vervallen=rondes,
+            rondes_herberekend=rondes.herberekend,
+            rondes_vervallen=rondes.vervallen,
             toggle_aangezet=not was_ingeschakeld,
             scope_toegevoegd_voor=[accordeur_namen[a] for a in ontbrekend],
         ),
@@ -1195,14 +1517,16 @@ def bulk_instellen(
                 auth_service.voeg_scope_toe(
                     actor_id=actor_id, doel_gebruiker_id=accordeur_id, administratie_id=administratie_id
                 )
-            vervallen = instellingen_opslaan(
+            rondes = instellingen_opslaan(
                 administratie_id=administratie_id,
                 actor_id=actor_id,
                 actor_rol=actor_rol,
                 ingeschakeld=True,
                 lagen=lagen,
             )
-            uitkomsten.append(replace(evaluatie.uitkomst, rondes_vervallen=vervallen))
+            uitkomsten.append(
+                replace(evaluatie.uitkomst, rondes_herberekend=rondes.herberekend, rondes_vervallen=rondes.vervallen)
+            )
         except Exception as exc:  # noqa: BLE001 — deelfout per BV zichtbaar, nooit stil half
             logger.exception("Bulk klant-accordering instellen faalde voor %s", administratie_id)
             uitkomsten.append(

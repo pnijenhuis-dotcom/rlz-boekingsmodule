@@ -146,10 +146,11 @@ def instellingen_opslaan(
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.InstellingenResponse:
     """Beheerder-only, net als de andere administratie-toggles (rol- en schemabeheer =
-    Beheerder, CLAUDE.md-autorisatie). Wijzigt het effectieve schema, dan vervallen lopende
-    rondes (punt 2a) — het aantal reist mee terug zodat de UI het direct kan melden."""
+    Beheerder, CLAUDE.md-autorisatie). Wijzigt het effectieve schema, dan worden lopende rondes
+    herberekend (bundel 09-09 blok 2; alleen als geen gegeven akkoord meer past vervalt een ronde) — de
+    telling reist mee terug zodat de UI het direct kan melden."""
     try:
-        vervallen = service.instellingen_opslaan(
+        rondes = service.instellingen_opslaan(
             administratie_id=administratie_id,
             actor_id=actor.id,
             actor_rol=actor.rol.value,
@@ -167,7 +168,9 @@ def instellingen_opslaan(
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc
     antwoord = instellingen_ophalen(administratie_id, actor)
-    return antwoord.model_copy(update={"rondes_vervallen": vervallen})
+    return antwoord.model_copy(
+        update={"rondes_herberekend": rondes.herberekend, "rondes_vervallen": rondes.vervallen}
+    )
 
 
 @router.get(
@@ -243,6 +246,7 @@ def _naar_bulk_uitkomsten(uitkomsten: list[service.BulkInstelUitkomst]) -> list[
             administratie_id=u.administratie_id,
             administratie_naam=u.administratie_naam,
             uitkomst=u.uitkomst,
+            rondes_herberekend=u.rondes_herberekend,
             rondes_vervallen=u.rondes_vervallen,
             toggle_aangezet=u.toggle_aangezet,
             scope_toegevoegd_voor=u.scope_toegevoegd_voor or [],

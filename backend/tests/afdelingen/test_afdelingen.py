@@ -424,32 +424,47 @@ class TestRoutePerAfdeling:
             accordering_service.bied_ter_accordering_aan(
                 administratie_id=administratie_id, document_id=d, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
             )
-        # Afdelingsroute Buitendienst wijzigt → alleen doc_b vervalt.
-        vervallen = accordering_service.afdeling_route_opslaan(
+        # Afdelingsroute Buitendienst wijzigt → alleen doc_b wordt HERBEREKEND (bundel 09-09 blok 2: geen akkoord
+        # gegeven → ronde loopt door met accordeur_1; doc_a op de administratie-route blijft ongemoeid).
+        uitkomst = accordering_service.afdeling_route_opslaan(
             administratie_id=administratie_id,
             afdeling_id=buitendienst,
             actor_id=beheerder_id,
             actor_rol="beheerder",
             lagen=[_laag(1, accordeur_1)],
         )
-        assert vervallen == 1
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (1, 0)
         assert document_status(admin_engine, doc_a) == "ter_accordering"
-        assert document_status(admin_engine, doc_b) == "klaar_om_te_boeken"
-        # Opnieuw aanbieden + administratie-route wijzigen → alleen doc_a (Algemeen volgt de administratie).
-        accordering_service.bied_ter_accordering_aan(
-            administratie_id=administratie_id, document_id=doc_b, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
-        )
-        vervallen = zet_schema(
+        assert document_status(admin_engine, doc_b) == "ter_accordering"
+        assert {
+            w.document_id
+            for w in accordering_service.wachtrij_voor_accordeur(
+                actor_id=accordeur_1, administratie_ids=[administratie_id]
+            )
+        } == {doc_a, doc_b}
+        # Administratie-route wijzigen → alleen doc_a (Algemeen volgt de administratie).
+        uitkomst = zet_schema(
             administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_2)]
         )
-        assert vervallen == 1
-        assert document_status(admin_engine, doc_a) == "klaar_om_te_boeken"
-        assert document_status(admin_engine, doc_b) == "ter_accordering"
-        # Toggle uit → álle rondes.
-        vervallen = zet_schema(
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (1, 0)
+        assert [
+            w.document_id
+            for w in accordering_service.wachtrij_voor_accordeur(
+                actor_id=accordeur_2, administratie_ids=[administratie_id]
+            )
+        ] == [doc_a]
+        assert [
+            w.document_id
+            for w in accordering_service.wachtrij_voor_accordeur(
+                actor_id=accordeur_1, administratie_ids=[administratie_id]
+            )
+        ] == [doc_b]
+        # Toggle uit → álle rondes vervallen (beide routes).
+        uitkomst = zet_schema(
             administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[], ingeschakeld=False
         )
-        assert vervallen == 1
+        assert (uitkomst.herberekend, uitkomst.vervallen) == (2, 2)
+        assert document_status(admin_engine, doc_a) == "klaar_om_te_boeken"
         assert document_status(admin_engine, doc_b) == "klaar_om_te_boeken"
 
 

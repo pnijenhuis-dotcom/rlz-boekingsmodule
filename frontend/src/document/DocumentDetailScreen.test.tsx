@@ -1376,6 +1376,45 @@ describe('DocumentDetailScreen — tijdlijnregel "accordering vervallen" mét re
   })
 })
 
+describe('DocumentDetailScreen — tijdlijn bundel 09-09 blok 2: accorderingsronde herberekend i.p.v. vervallen', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont "Accordering herberekend": akkoorden behouden + laag opnieuw aangevraagd, geen generieke reden-regel', async () => {
+    installFetchMock(
+      detailMet({
+        status: 'ter_accordering',
+        veldvoorstel: null,
+        tijdlijn: [
+          {
+            van_status: 'ter_accordering',
+            naar_status: 'ter_accordering',
+            actor_id: 'beheerder',
+            actor_is_systeem: false,
+            detail: {
+              accordering_id: 'acc-1',
+              accordering_herberekend: {
+                akkoorden_behouden: 1,
+                akkoorden_vervallen: 0,
+                opnieuw_aangevraagd: [2],
+                alles_akkoord: false,
+                lagen: [],
+              },
+              reden: 'accorderingsconfiguratie gewijzigd — ronde herberekend',
+              batch_id: 'batch-2',
+            },
+            tijdstip: '2026-09-09T09:00:00Z',
+          },
+        ],
+      }),
+    )
+    renderScherm()
+    expect(
+      await screen.findByText(/Accordering herberekend \(configuratie gewijzigd\): 1 akkoord behouden, laag 2 opnieuw aangevraagd/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Accordering vervallen/)).not.toBeInTheDocument()
+  })
+})
+
 describe('DocumentDetailScreen — tijdlijn bugfix-run 28-08: elke ⚙-systeemovergang draagt een reden', () => {
   afterEach(() => vi.unstubAllGlobals())
 

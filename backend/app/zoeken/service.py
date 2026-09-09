@@ -26,7 +26,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import Date, String, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.accordering.models import AccorderingStap, DocumentAccordering
+from app.accordering.models import AccorderingStap, DocumentAccordering, StapBesluit
 from app.auth import service as auth_service
 from app.db.models import AuditEvent, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
@@ -216,7 +216,11 @@ def _accordering_hits(
         select(DocumentAccordering.document_id, AccorderingStap, Gebruiker.naam)
         .join(AccorderingStap, AccorderingStap.accordering_id == DocumentAccordering.id)
         .join(Gebruiker, Gebruiker.id == AccorderingStap.accordeur_gebruiker_id, isouter=True)
-        .where(DocumentAccordering.document_id.in_(document_ids))
+        .where(
+            DocumentAccordering.document_id.in_(document_ids),
+            # Bundel 09-09 blok 2: een bij herberekening vervallen stap is historie, geen accorderingsstap.
+            AccorderingStap.besluit.is_distinct_from(StapBesluit.VERVALLEN.value),
+        )
         .order_by(DocumentAccordering.aangeboden_op, AccorderingStap.volgnummer)
     ).all()
     for document_id, stap, naam in rijen:

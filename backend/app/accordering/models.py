@@ -37,8 +37,14 @@ class AccorderingStatus(enum.StrEnum):
 
 
 class StapBesluit(enum.StrEnum):
+    """VERVALLEN (bundel 09-09 blok 2): de stap is bij een herberekening van de ronde niet voortgezet (akkoord past
+    niet meer in de nieuwe lagen, of de laag verdween). De rij blijft staan als historie (geen DELETE-recht op
+    accordering_stap, en niets verdwijnt stil) maar telt nergens meer mee: `vereist` staat dan op False en
+    `service._stappen_van` filtert 'm uit de ronde-weergave."""
+
     AKKOORD = "akkoord"
     AFGEWEZEN = "afgewezen"
+    VERVALLEN = "vervallen"
 
 
 class DocumentHerinnering(Base):

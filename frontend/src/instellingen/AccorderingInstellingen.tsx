@@ -13,6 +13,7 @@ import {
   type StaandeRegelDto,
 } from '../accordering/accorderingApi'
 import { Select, Switch, SkeletonRegels } from '../ui/basis'
+import { rondesTekst } from '../accordering/rondesTekst'
 import { IntercompanyLeveranciers } from './IntercompanyLeveranciers'
 
 interface LaagInvoer {
@@ -187,16 +188,10 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
             bedrag_drempel: laag.drempel ? laag.drempel.replace(',', '.') : null,
           })),
       })
-      // Punt 2a (27/28-08): een schemawijziging laat lopende rondes vervallen — hier direct
-      // benoemen (en op de documentenlijst van de klant staat de eenmalige banner).
-      const vervallen = resultaat.rondes_vervallen ?? 0
-      setMelding(
-        vervallen > 0
-          ? `Opgeslagen. ${vervallen} lopende ${vervallen === 1 ? 'accordering is' : 'accorderingen zijn'} vervallen ` +
-              '(accorderingsconfiguratie gewijzigd) en staan weer op "Klaar om te boeken" — bied ze opnieuw aan, ' +
-              'los of via "Ter accordering aanbieden" op de documentenlijst van deze klant.'
-          : 'Opgeslagen.',
-      )
+      // Bundel 09-09 blok 2 (besluit Peter 08-09): een schemawijziging HERBEREKENT lopende rondes — gegeven
+      // akkoorden blijven staan waar ze passen, ontbrekende lagen worden opnieuw aangevraagd. Alleen een ronde
+      // waarvan geen enkel akkoord meer past vervalt (dan staat de eenmalige banner op de documentenlijst).
+      setMelding(`Opgeslagen.${rondesTekst(resultaat.rondes_herberekend ?? 0, resultaat.rondes_vervallen ?? 0)}`)
       laad()
     } catch (err) {
       setFout(err instanceof Error ? err.message : 'Opslaan mislukt')

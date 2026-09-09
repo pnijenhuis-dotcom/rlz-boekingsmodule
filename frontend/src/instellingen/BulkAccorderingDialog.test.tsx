@@ -1,6 +1,6 @@
 // Bulk klant-accordering instellen (mockup bulk-accordering.html, 01-09): de dialoog toont de
 // server-preview (scope-melding per accordeur mét BV-namen, overschrijf-waarschuwing mét
-// telling vervallen rondes, uitkomstenlijst) en herbruikt exact die weergave als resultaat ná
+// telling herberekende/vervallen rondes, uitkomstenlijst) en herbruikt exact die weergave als resultaat ná
 // toepassen — de client rekent niets zelf.
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -31,6 +31,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 administratie_id: ARVUM,
                 administratie_naam: 'ARVUM B.V.',
                 uitkomst: 'vervangen',
+                rondes_herberekend: 3,
                 rondes_vervallen: 2,
                 toggle_aangezet: false,
                 scope_toegevoegd_voor: [],
@@ -40,6 +41,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 administratie_id: MOLENHOF,
                 administratie_naam: 'Molenhof Beheer B.V.',
                 uitkomst: 'ingesteld',
+                rondes_herberekend: 0,
                 rondes_vervallen: 0,
                 toggle_aangezet: true,
                 scope_toegevoegd_voor: ['J.W.F. Gerritsen'],
@@ -66,6 +68,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 administratie_id: ARVUM,
                 administratie_naam: 'ARVUM B.V.',
                 uitkomst: 'vervangen',
+                rondes_herberekend: 3,
                 rondes_vervallen: 2,
                 toggle_aangezet: false,
                 scope_toegevoegd_voor: [],
@@ -75,6 +78,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 administratie_id: MOLENHOF,
                 administratie_naam: 'Molenhof Beheer B.V.',
                 uitkomst: 'ingesteld',
+                rondes_herberekend: 0,
                 rondes_vervallen: 0,
                 toggle_aangezet: true,
                 scope_toegevoegd_voor: ['J.W.F. Gerritsen'],
@@ -113,9 +117,10 @@ describe('BulkAccorderingDialog', () => {
       await screen.findByText(/J\.W\.F\. Gerritsen heeft nog geen toegang tot Molenhof Beheer B\.V\./),
     ).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Overschrijven:')
-    expect(screen.getByRole('alert')).toHaveTextContent('2 lopende accorderingsrondes')
+    // Bundel 09-09 blok 2: "N rondes worden herberekend, waarvan M vervallen" (preview-endpoint, zelfde pure regel).
+    expect(screen.getByRole('alert')).toHaveTextContent('3 lopende accorderingsrondes worden herberekend, waarvan 2 vervallen')
     // Uitkomstenlijst = preview-weergave.
-    expect(screen.getByText('vervangen · 2 rondes vervallen')).toBeInTheDocument()
+    expect(screen.getByText('vervangen · 3 rondes herberekend · waarvan 2 vervallen')).toBeInTheDocument()
     expect(screen.getByText('ingesteld · toggle aan · scope toegevoegd')).toBeInTheDocument()
 
     // De preview-call draagt de vink (default aan) en de volledige laag.
@@ -140,7 +145,7 @@ describe('BulkAccorderingDialog', () => {
     await gebruiker.click(toepassen)
 
     expect(await screen.findByText('Resultaat (per administratie)')).toBeInTheDocument()
-    expect(screen.getByText('vervangen · 2 rondes vervallen')).toBeInTheDocument()
+    expect(screen.getByText('vervangen · 3 rondes herberekend · waarvan 2 vervallen')).toBeInTheDocument()
     expect(aanroepen.some((a) => a.url === '/accordering/bulk-instellen')).toBe(true)
     expect(onGereed).not.toHaveBeenCalled()
     await gebruiker.click(screen.getByRole('button', { name: 'Sluiten' }))

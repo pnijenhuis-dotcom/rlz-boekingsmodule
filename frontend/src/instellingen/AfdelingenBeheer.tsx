@@ -5,6 +5,7 @@
 // alleen als de toggle van de administratie aan staat.
 import { useCallback, useEffect, useState } from 'react'
 import { haalAccorderingKandidaten, type KandidaatDto } from '../accordering/accorderingApi'
+import { rondesTekst } from '../accordering/rondesTekst'
 import {
   archiveerAfdeling,
   haalAfdelingen,
@@ -56,11 +57,9 @@ function RouteEditor({
             bedrag_drempel: laag.drempel ? laag.drempel.replace(',', '.') : null,
           })),
       )
-      const vervallen = resultaat.rondes_vervallen
+      // Bundel 09-09 blok 2: lopende rondes van deze afdeling worden herberekend (vervallen alleen zonder passend akkoord).
       onKlaar(
-        vervallen > 0
-          ? `Route van "${afdeling.naam}" opgeslagen. ${vervallen} lopende ${vervallen === 1 ? 'accordering is' : 'accorderingen zijn'} vervallen (route gewijzigd) en staan weer op "Klaar om te boeken" — bied ze opnieuw aan.`
-          : `Route van "${afdeling.naam}" opgeslagen.`,
+        `Route van "${afdeling.naam}" opgeslagen.${rondesTekst(resultaat.rondes_herberekend ?? resultaat.rondes_vervallen, resultaat.rondes_vervallen)}`,
       )
     } catch (err) {
       setFout(err instanceof ApiError ? err.message : 'Opslaan mislukt.')
@@ -120,8 +119,10 @@ function RouteEditor({
         </Button>
       </div>
       <div className="hint" style={{ margin: 0 }}>
-        Deze route vervángt de administratie-route voor documenten van deze afdeling. Wijzigen laat lopende rondes
-        van deze afdeling vervallen (zichtbaar, mét reden) — net als bij de administratie-route.
+        Deze route vervángt de administratie-route voor documenten van deze afdeling. Wijzigen herberekent de lopende
+        rondes van deze afdeling: gegeven akkoorden blijven staan waar ze passen, ontbrekende lagen worden opnieuw
+        aangevraagd; alleen een ronde zonder passend akkoord vervalt (zichtbaar, mét reden) — net als bij de
+        administratie-route.
       </div>
     </div>
   )

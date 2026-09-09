@@ -138,10 +138,10 @@ def afdeling_route_opslaan(
     invoer: schemas.AfdelingRouteInput,
     actor: CurrentGebruiker = Depends(require_beheerder),
 ) -> schemas.AfdelingRouteResponse:
-    """Beheerder-only. Wijzigt de route van de afdeling, dan vervallen de lopende rondes van
-    documenten in díe afdeling (zelfde patroon als de administratie-route, punt 2a)."""
+    """Beheerder-only. Wijzigt de route van de afdeling, dan worden de lopende rondes van documenten in
+    díe afdeling herberekend (zelfde patroon als de administratie-route, bundel 09-09 blok 2)."""
     try:
-        vervallen = accordering_service.afdeling_route_opslaan(
+        rondes = accordering_service.afdeling_route_opslaan(
             administratie_id=administratie_id,
             afdeling_id=afdeling_id,
             actor_id=actor.id,
@@ -160,4 +160,6 @@ def afdeling_route_opslaan(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     antwoord = afdeling_route_ophalen(administratie_id, afdeling_id, actor)
-    return antwoord.model_copy(update={"rondes_vervallen": vervallen})
+    return antwoord.model_copy(
+        update={"rondes_herberekend": rondes.herberekend, "rondes_vervallen": rondes.vervallen}
+    )

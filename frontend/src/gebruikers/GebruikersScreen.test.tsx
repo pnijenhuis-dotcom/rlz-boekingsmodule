@@ -82,7 +82,7 @@ function installMock(opties: {
       }
       if (url.endsWith('/accordering/instellingen') && init?.method === 'PUT') {
         opties.aanroepen?.push({ method: 'PUT', url, body: JSON.parse(String(init.body)) })
-        return Promise.resolve(jsonResponse({ ingeschakeld: true, lagen: [], rondes_vervallen: 2 }))
+        return Promise.resolve(jsonResponse({ ingeschakeld: true, lagen: [], rondes_herberekend: 2, rondes_vervallen: 1 }))
       }
       if (url.includes('/scope/') && init?.method === 'DELETE') {
         opties.aanroepen?.push({ method: 'DELETE', url, body: null })
@@ -99,8 +99,9 @@ function installMock(opties: {
             uitkomsten: body.administratie_ids.map((id) => ({
               administratie_id: id,
               administratie_naam: id === TWEEDE_ID ? 'Tweede B.V.' : id,
-              uitkomst: 'ingesteld',
-              rondes_vervallen: 0,
+              uitkomst: id === ADMINISTRATIE_ID ? 'vervangen' : 'ingesteld',
+              rondes_herberekend: id === ADMINISTRATIE_ID ? 2 : 0,
+              rondes_vervallen: id === ADMINISTRATIE_ID ? 1 : 0,
               toggle_aangezet: true,
               scope_toegevoegd_voor: ['R. de Groot'],
               reden: null,
@@ -759,7 +760,7 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     await waitFor(() => expect(bulk).toHaveTextContent('Tweede B.V.'))
   })
 
-  it('"Verwijderen…" toont de vervallen-rondes-waarschuwing en haalt de accordeur uit de lagen (PUT zonder hem) én uit de scope (DELETE) — nooit iets nieuws', async () => {
+  it('"Verwijderen…" toont de herberekend-/vervallen-telling en haalt de accordeur uit de lagen (PUT zonder hem) én uit de scope (DELETE) — nooit iets nieuws', async () => {
     const aanroepen: { method: string; url: string; body: unknown }[] = []
     installMock({
       gebruikers: [accordeurMetTwee],
@@ -776,19 +777,28 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
 
     const bevestig = await screen.findByTestId('bevestig-dialoog')
+    // Bundel 09-09 blok 2: herberekenen i.p.v. vervallen — mét de vooraf-telling uit het alleen-lezende
+    // preview-endpoint (zelfde pure regel als de PUT): "N rondes worden herberekend, waarvan M vervallen".
+    expect(bevestig).toHaveTextContent(/worden herberekend/)
     expect(bevestig).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
     expect(bevestig).toHaveTextContent(/terug naar "Klaar om te boeken"/)
-    expect(aanroepen).toHaveLength(0)
+    await waitFor(() =>
+      expect(bevestig).toHaveTextContent(/2 lopende accorderingsrondes worden herberekend, waarvan 1 vervalt/),
+    )
+    // Vóór "Bevestigen" is er niets geschreven: alleen de alleen-lezende preview (POST …/preview met de rest-lagen).
+    expect(aanroepen.map((a) => a.method)).toEqual(['POST'])
+    expect(aanroepen[0].url).toBe('/accordering/bulk-instellen/preview')
+    expect((aanroepen[0].body as { administratie_ids: string[] }).administratie_ids).toEqual([ADMINISTRATIE_ID])
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
 
-    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['PUT', 'DELETE']))
-    expect(aanroepen[0].url).toBe(`/administraties/${ADMINISTRATIE_ID}/accordering/instellingen`)
-    expect(aanroepen[0].body).toEqual({
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST', 'PUT', 'DELETE']))
+    expect(aanroepen[1].url).toBe(`/administraties/${ADMINISTRATIE_ID}/accordering/instellingen`)
+    expect(aanroepen[1].body).toEqual({
       ingeschakeld: true,
       lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ANDER_ID, bedrag_drempel: '1000.00' }],
       aanleiding: 'verwijderd via Klant-accordeurs',
     })
-    expect(aanroepen[1].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
+    expect(aanroepen[2].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
     // Geen tweede bevestiging: er blijft een laag over, accordering blijft aan.
     expect(screen.queryByText(/wordt hiermee uitgeschakeld/)).not.toBeInTheDocument()
   })
