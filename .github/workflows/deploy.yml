@@ -177,16 +177,17 @@ jobs:
       # bevat een '@' en kan dus niet in de ^@^-gescheiden --set-env-vars hierboven; bewust
       # zónder ||-fallback (geen secrets nodig — deze stap mag nooit stil overgeslagen worden:
       # zonder deze env laat de snapshot het veld weg = "geen uitspraak" richting Vastly).
-      # Store-links (blok F nachtrun 01/02-09): zodra Apple/Google de listing goedkeuren, hier
-      # STORE_LINK_IOS / STORE_LINK_ANDROID toevoegen aan de --update-env-vars hieronder
-      # (bv. "…,STORE_LINK_IOS=https://apps.apple.com/…,STORE_LINK_ANDROID=https://play.google.com/…").
-      # Config-waarde invullen = de hele nazorg; leeg = niets tonen. NIET vullen vóór de goedkeuring.
-      - name: Registersync inbox_adres op de service
+      # Store-links (blok F nachtrun 01/02-09; BESLISSINGEN "STORE-LINK-NAZORG"): env, geen secret.
+      # STORE_LINK_IOS GEVULD 09-09 — Apple keurde versie 1.0 (build 44) op 09-09 goed; App Store-id
+      # 6803862748. Effect: het stop-scherm van /activeren (desktop) en de uitnodigingsmail voor
+      # app-rollen tonen de knop "Download de app" voor iOS. STORE_LINK_ANDROID blijft leeg tot Google
+      # de listing goedkeurt (leeg = niets tonen; NIET vullen vóór de goedkeuring).
+      - name: Registersync inbox_adres + store-links op de service
         run: |
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl" \
+            --update-env-vars "^@^INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl@STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748" \
             --quiet
 
       # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
