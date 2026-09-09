@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { SLOT_MODUS_SLEUTEL } from '../../api/webVeiligeOpslag'
 import { APPSLOT_AUDIT_SLEUTEL } from '../appAuthApi'
 import { KOUDE_START_OPSLAG_SLEUTEL, WEB_BUILD_ID } from '../koudeStart'
+import { APP_MARKETING_VERSIE } from '../appVersie'
 import { ToegangInstellingen } from './ToegangInstellingen'
 
 // Node 22+ schaduwt window.localStorage in de jsdom-testomgeving — in-memory vervanger (patroon standCache.test.ts).
@@ -73,16 +74,17 @@ describe('ToegangInstellingen — diagnoseregel', () => {
     expect(screen.getByText('Diagnose')).toBeInTheDocument()
     const regel = screen.getByTestId('acc-diagnose')
     expect(regel.tagName).toBe('CODE')
+    // Buiten de schil: marketingversie als "app 1.1 (web)" (mini-run 09-09), geen native buildnummer.
     expect(regel).toHaveTextContent(
-      'web abc1234-20260907-1500 · boot 410 ms · sessie 1830 ms · server 240 ms · netwerk 310 ms · totaal 2900 ms · 07-09 13:05',
+      `web abc1234-20260907-1500 · app ${APP_MARKETING_VERSIE} (web) · boot 410 ms · sessie 1830 ms · server 240 ms · netwerk 310 ms · totaal 2900 ms · 07-09 13:05`,
     )
-    expect(regel).not.toHaveTextContent('app ')
+    expect(regel).not.toHaveTextContent(/app [0-9.]+ \(\d+\)/)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('zonder meting: "nog geen koude start gemeten" mét de huidige web-bundelversie', () => {
     renderScherm()
-    expect(screen.getByTestId('acc-diagnose')).toHaveTextContent(`web ${WEB_BUILD_ID} · nog geen koude start gemeten`)
+    expect(screen.getByTestId('acc-diagnose')).toHaveTextContent(`web ${WEB_BUILD_ID} · app ${APP_MARKETING_VERSIE} (web) · nog geen koude start gemeten`)
   })
 
   it('native mét @capacitor/app: de app-build (versie + buildnummer) komt in de regel; zonder plugin niet', async () => {

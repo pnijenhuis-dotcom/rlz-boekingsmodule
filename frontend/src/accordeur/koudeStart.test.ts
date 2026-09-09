@@ -84,6 +84,7 @@ describe('markeer + overzicht', () => {
 // Blok 12a (07-09): de afgeronde meting wordt lokaal bewaard (geen PII, nooit naar de server) en
 // de diagnoseregel is één leesbare, kopieerbare regel mét bundelversie.
 import { KOUDE_START_OPSLAG_SLEUTEL, WEB_BUILD_ID, diagnoseRegel, leesLaatsteKoudeStart, type BewaardeKoudeStart } from './koudeStart'
+import { APP_MARKETING_VERSIE } from './appVersie'
 
 describe('laatste koude start bewaren + diagnoseregel (12a)', () => {
   it('kaarten-render bewaart de meting in localStorage; leesLaatsteKoudeStart geeft haar terug', () => {
@@ -126,10 +127,13 @@ describe('laatste koude start bewaren + diagnoseregel (12a)', () => {
     expect(diagnoseRegel(meting, '1.0 (45)')).toBe(
       'web abc1234-20260907-1500 · app 1.0 (45) · boot 410 ms · sessie 1830 ms · server 240 ms · netwerk 310 ms · totaal 2900 ms · 07-09 13:05',
     )
-    // Zonder native build en zonder server-header: alleen web-versie, "–" waar de meting ontbreekt.
+    // Zonder native build (PWA/browser): marketingversie uit appVersie.ts als "app 1.1 (web)" (mini-run 09-09);
+    // zonder server-header "–" waar de meting ontbreekt.
     const kaal: BewaardeKoudeStart = { ...meting, overzicht: { stappen: { 'app-render': 300 }, server: {}, afgeleid: {} } }
-    expect(diagnoseRegel(kaal)).toBe('web abc1234-20260907-1500 · boot 300 ms · sessie – · server – · netwerk – · totaal – · 07-09 13:05')
-    expect(diagnoseRegel(null)).toBe(`web ${WEB_BUILD_ID} · nog geen koude start gemeten`)
+    expect(diagnoseRegel(kaal)).toBe(
+      `web abc1234-20260907-1500 · app ${APP_MARKETING_VERSIE} (web) · boot 300 ms · sessie – · server – · netwerk – · totaal – · 07-09 13:05`,
+    )
+    expect(diagnoseRegel(null)).toBe(`web ${WEB_BUILD_ID} · app ${APP_MARKETING_VERSIE} (web) · nog geen koude start gemeten`)
   })
 })
 

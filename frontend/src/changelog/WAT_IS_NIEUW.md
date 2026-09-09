@@ -6,6 +6,12 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-09 — Goedkeur-app versie 1.1 (App Store en Google Play)
+
+<!-- mini-run 09-09: Apple keurde 1.0 goed, 1.1 draagt de nieuwe activatie -->
+- **De goedkeur-app is door Apple goedgekeurd en heet vanaf nu versie 1.1.** Apple heeft de eerste versie van de app (1.0) op 9 september goedgekeurd. De versie met de nieuwe manier van activeren (activatiecode en 5-cijferige code, geen passkey of wachtwoord meer) wordt als versie 1.1 ingediend bij Apple en Google. Onder "Toegang tot de app" toont de regel "Laatste koude start" nu ook in de browser-versie welke app-versie u gebruikt.
+- **Download-knop voor iPhone en iPad.** In de uitnodigingsmail voor accordeurs en veldwerkers en op het scherm dat u op een computer ziet als u een uitnodigingslink opent, staat nu het blok "Download eerst de app" met de knop "iPhone / iPad — App Store". De Android-knop volgt zodra Google de app heeft goedgekeurd.
+
 ## 2026-09-09 — Intercompany-leveranciers zelf instellen
 
 <!-- nachtrun 08/09-09 blok 1 -->

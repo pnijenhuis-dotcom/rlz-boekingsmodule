@@ -10,6 +10,8 @@
 // `Server-Timing: <naam>;dur=<ms>`-header (router.py) — die wordt hier bij de fetch genoteerd
 // zodat "wachttijd" te splitsen is in netwerk (client-duur − server-duur) en server.
 
+import { APP_MARKETING_VERSIE } from './appVersie'
+
 export type KoudeStartStap =
   | 'app-render' // AccordeurApp is voor het eerst gerenderd (bundel geladen + React gemount)
   | 'slot-status' // native: slot-status bekend (geen/vergrendeld/ontgrendeld)
@@ -253,13 +255,15 @@ function ms(waarde: number | undefined): string {
  *  - server  = server-duur van /accordering/wachtrij (Server-Timing-header);
  *  - netwerk = client-duur van die fetch minus de server-duur;
  *  - totaal  = navigatiestart → eerste verse kaarten.
- * `appBuild` = native "versie (build)" uit Capacitor App.getInfo() als die er is. */
+ * `appBuild` = native "versie (build)" uit Capacitor App.getInfo() als die er is; buiten de schil
+ * (PWA/browser) toont de regel de marketingversie uit `appVersie.ts` als `app <versie> (web)`
+ * (mini-run 09-09) — zo staat overal dezelfde versie, ook zonder native plugin. */
 export function diagnoseRegel(
   meting: BewaardeKoudeStart | null,
   appBuild: string | null = null,
   verbindingsfout: BewaardeVerbindingsfout | null = null,
 ): string {
-  const build = `web ${meting?.build ?? WEB_BUILD_ID}${appBuild ? ` · app ${appBuild}` : ''}`
+  const build = `web ${meting?.build ?? WEB_BUILD_ID} · app ${appBuild ?? `${APP_MARKETING_VERSIE} (web)`}`
   // Blok 2b 08-09: de laatste verbindingsfout van het slot als staart — oorzaak, tijdstip en de ruwe melding.
   const staart = verbindingsfout
     ? ` · laatste verbindingsfout: ${verbindingsfout.oorzaak}${verbindingsfout.technisch ? ` (${verbindingsfout.technisch})` : ''}` +
