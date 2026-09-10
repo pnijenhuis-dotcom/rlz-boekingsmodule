@@ -83,7 +83,9 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   wachtwoord uit de app; legacy-app-routes `Deprecation`/`Sunset`, 410 ná 2026-10-08; kantoor-web ongewijzigd (0020)
   — zie BESLISSINGEN "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE (besluit Peter 08-09)". Historie
   accordeur-passkeys (2026-08-11, migratie 0040), 24-uurs-cadans 27-08 en pincode-activatie 31-08: archief "Auth"
-  (aanvulling 08-09).** Verder (volledige tekst: archief "Auth"): Wachtwoord kwijt = Beheerder-knop "Herstel-link
+  (aanvulling 08-09).**
+  **Toegangscode wijzigen zonder her-verificatie + salt/wrap als één bewezen geschreven sleutel (bugfix 10-09, ZTE) — zie
+  BESLISSINGEN "BUGFIX 10-09 — TOEGANGSCODE WIJZIGEN ANDROID".** Verder (volledige tekst: archief "Auth"): Wachtwoord kwijt = Beheerder-knop "Herstel-link
   sturen" (app-rollen sinds 08-09 mét activatiecode), bewust géén selfservice "wachtwoord vergeten" ("RLZ-FEEDBACKRONDE
   25-08 DEEL 2" punt 7); E-mail wijzigen zonder carrousel ("OPRUIMRUN 28-08" punt 22); activatie externe rollen
   MOBIEL-FIRST + ATOMAIR ("BOUWRUN 28-08 AVOND" blok B, géén eigen push-login; de telefoonroute mondt sinds 08-09 uit in

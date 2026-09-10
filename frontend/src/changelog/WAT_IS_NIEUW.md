@@ -6,6 +6,11 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-10 — Toegangscode wijzigen in de app werkt weer betrouwbaar
+
+<!-- bugfix 10-09: toegangscode wijzigen Android (ZTE), één codepad native + PWA -->
+- In de goedkeur-app kunt u uw toegangscode weer wijzigen zonder de melding "niet gelukt": na het invoeren van uw huidige code wordt de nieuwe code direct vastgelegd en pas bevestigd als hij aantoonbaar is opgeslagen. Lukt het opslaan op uw toestel een keer niet, dan blijft uw oude code gewoon werken en zegt de app dat eerlijk.
+
 ## 2026-09-09 — De dagelijkse mail zegt alleen nog wat u moet doen; gegeven akkoorden blijven staan
 
 <!-- bundel 09-09: blok 1 actiemail + systeemmail, blok 2 accorderingsronde herberekenen -->

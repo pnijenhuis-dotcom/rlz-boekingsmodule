@@ -6621,3 +6621,83 @@ aangevraagde laag verschijnt daar vanzelf; de melding loopt via de bestaande bun
 | 0b IC-rij Universal Nederland → Universal Steigerbouw | `scripts/gcp/intercompany_universal_08-09.sh dry-run` → `echt` (job `rlz-reconciliatie`, CLI `intercompany-leverancier-markeren`) | **NIET UITGEVOERD 09-09: gcloud-sessie verlopen ("Reauthentication failed", ook ADC) — Peter logt opnieuw in (`gcloud auth login`), daarna dry-run → echt → GET-bevestiging chip "handmatig"** | script |
 | 0c Nametingen | recepten in scratchpad: `nameting_banksync.sql`, `nameting_tellers.sql` (Cloud Shell, read-only, RLS via set_config-loop), `nameting_logging.sh`; matchmotor via nieuwe LEES-ONLY CLI `bank-voorstellen-lezen --administratie "Nijenhuis C.V." --filter …` op de job-image (ná deploy) | **NIET GEMETEN 09-09 (zelfde blokkade: gcloud-sessie verlopen); recepten staan klaar, uit te voeren in de volgende beurt ná herlogin; matchmotor-CLI pas ná deploy van commit 12c56e1** | rapport blok 0 |
 | Nieuw nameting-instrument | CLI `bank-voorstellen-lezen` (`app/cli.py::_bank_voorstellen_lezen`): print per onverwerkte bankmutatie het huidige voorstel via exact het bankscherm-pad (`voorstellen.open_mutaties_met_voorstellen`), filters `--rekening-iban`/`--filter`, geen schrijfacties, geen RLZ-calls. Vervangt het proxy-script `nameting_B2.py` (lokaal proces tegen prod-DB = sinds 08-09 verboden). | GEBOUWD + GETEST 09-09 (`tests/sync/test_bank_voorstellen_lezen_cli.py` 2) | `app/cli.py` |
+
+## BUGFIX 10-09 — TOEGANGSCODE WIJZIGEN ANDROID (melding Peter, ZTE, Play interne track release 4 / vc4; geen migratie)
+
+**Melding:** Peter kan op zijn ZTE (release 4 = AAB vc4 van 08-09 21:13) de 5-cijferige toegangscode niet wijzigen. Stap 1
+(huidige code, `ToegangInstellingen` fase `code_huidig`) slaagt elke keer; stap 2 (`PincodeKiezen`, nieuwe code 2×) eindigt
+elke keer op "Toegangscode wijzigen is niet gelukt — probeer het opnieuw".
+
+**Repro + wortel (blok 1 — emulator Pixel 7 / API 36, debug-build van `main` tegen een lokale backend, tijdelijke
+brug-logging rond élke lees/schrijf/verwijder + de takken van `ontgrendelMetCode`/`wijzigCode`, gelezen via logcat):**
+- **Code in release 4 = code op `main`:** `git diff 5beb094 main` over `appSlot.ts`, `nativeSessie.ts`, `webVeiligeOpslag.ts`,
+  `appslot/*.tsx`, de Android- en iOS-`VeiligeOpslagPlugin` raakt alleen `ToegangInstellingen.test.tsx` — de gedeployde
+  release en de werkboom lopen hier niet uiteen; wat Peter ziet, is de code zoals ze op `main` stond.
+- **De emulator reproduceert het NIET:** stap 1 én stap 2 slagen, ook met snelle taps en een dubbele tik op het laatste
+  cijfer. Logvolgorde (drie runs identiek): stap 1 `lees appslot_salt` → `lees appslot_wrap` → tak `ok` → `verwijder
+  appslot_fouten`; stap 2 `wijzigCode` → **tweede** `ontgrendelMetCode(huidig)` → dezelfde twee reads → tak `ok` →
+  `schrijf appslot_salt` → `schrijf appslot_wrap` → 'ok'. Geen enkele brug-aanroep rejectte; PBKDF2 (200k) ≈ 14 ms.
+- **Wat vaststaat over het pad (code-analyse, niet geraden):** de melding komt uitsluitend uit `wijzigCode ≠ 'ok'`, en
+  dat kon alleen via die TWEEDE `ontgrendelMetCode(huidig)` — met exact de code die seconden eerder in stap 1 slaagde,
+  tegen dezelfde twee opslagsleutels. Die tweede verificatie kan alleen falen als (a) één van de twee reads op de ZTE
+  op dat moment `null` teruggeeft of rejectt (Keystore-/EncryptedSharedPreferences-fout, tot 10-09 stil weggeslikt
+  in `lees()`), of (b) salt en wrap niet bij elkaar horen (twee LOSSE sleutels, twee losse `apply()`-schrijfacties —
+  een halve stand is mogelijk zodra één schrijfactie faalt of twee `wijzigCode`-aanroepen elkaar kruisen). Beide
+  oorzaken zijn Android-specifiek in hun waarschijnlijkheid (Keystore-gedrag per OEM; iOS Keychain kent geen
+  `apply()`-asynchronie), maar het codepad is op iOS en in de PWA-slotmodus IDENTIEK — de fix is daarom één codepad.
+  Bijkomend bewijs uit het gedrag: elke mislukte stap 2 telde als foute code (teller +1), maar stap 1 reset de teller
+  weer — precies waarom Peter "elke poging" faalt zónder ooit uitgesloten te raken.
+- **Eerlijke status:** de exacte ZTE-oorzaak (a of b, en welke plugin-reject) is zonder het toestel niet vast te stellen;
+  de emulator liet géén fout zien. Daarom draagt de diagnoseregel sinds 10-09 de laatste slotfout (zie hieronder) —
+  faalt het op de ZTE ná deze fix nog, dan zegt een screenshot van Toegang › Diagnose exact welke brug-aanroep waarom.
+- Tijdelijke logging verwijderd; blijvend: lokale slot-diagnose (nooit naar de server, nooit een waarde).
+
+**Fix (blok 2 — één codepad voor native iOS/Android én PWA-slotmodus, `frontend/src/api/appSlot.ts`):**
+1. **`wijzigCode(nieuw)` verifieert NIET opnieuw tegen de opslag.** Stap 1 (`ontgrendelMetCode`) blijft de verificatie en
+   zet het anker in het geheugen; stap 2 her-wrapt direct op dát anker. Slot tussendoor dicht (anker `null`) →
+   eigen uitkomst `'niet_ontgrendeld'` (geen teller-verhoging); `ToegangInstellingen` gaat dan terug naar stap 1 met
+   "De app is tussendoor vergrendeld — voer je huidige code opnieuw in."
+2. **Salt + wrap = ÉÉN opslagsleutel `appslot_slot`** met waarde `v2.<salt>.<iv>.<cipher>` — één schrijfactie, nooit een
+   halve stand. **Migratie-op-lezen:** de oude losse sleutels `appslot_salt`/`appslot_wrap` blijven leesbaar
+   (`leesSlot()` valt erop terug); bij de eerste geslaagde ontgrendeling wordt de gecombineerde waarde geschreven en
+   pas ná bewezen terug lezen gaan de legacy-sleutels weg. Mislukt die migratie, dan blijven de losse sleutels staan —
+   niemand raakt buitengesloten (test "legacy + mislukte migratie").
+3. **Schrijffouten worden niet meer stil geslikt:** `schrijf()` geeft true/false, elke reject gaat naar de lokale
+   slot-diagnose. `wijzigCode` en `stelCodeIn` schrijven BEWEZEN (`schrijfSlotBewezen`): terug lezen moet byte-gelijk
+   zijn én de nieuwe waarde moet met de nieuwe code ontsleutelen tot precies het anker. Anders → oude stand hersteld
+   (vorige gecombineerde waarde terug, of — legacy — gecombineerde sleutel weg zodat de losse sleutels leidend blijven)
+   en `'fout'`; de melding zegt "je oude code blijft gelden". "Je toegangscode is gewijzigd." verschijnt alleen ná
+   bewezen opslag; de biometrie-kopie (`zetBiometrieAan`) volgt pas daarna.
+- **Diagnose:** nieuwe module `api/slotDiagnose.ts` (`accordeur-laatste-slotfout` in localStorage: handeling, sleutelNAAM,
+  afgekapte reden, tijdstip — nooit een waarde); `koudeStart.ts::diagnoseRegel` toont hem als staart
+  "· laatste slotfout: schrijf appslot_slot (…) dd-mm HH:MM"; `ToegangInstellingen` ververst de regel na een mislukte
+  wijziging.
+- **Niet gewijzigd:** de Android-/iOS-plugins (`VeiligeOpslagPlugin`), de biometrie-laag, het refresh-token-pad
+  (`slot.v1.`-waarden), de activatieflow (`stelCodeIn` geeft nu wel true/false terug; `AppActiveren` toont dat nog niet —
+  bewust buiten deze bugfix).
+
+**Tests (blok 3):** `appSlot.test.ts` (17): wijzigen zonder tweede lees (slaagt zelfs met de slot-waarde uit de opslag
+verwijderd); schrijffout → `'fout'` + oude code werkt + slot-diagnose zonder waarde; terugleescontrole (vervormde
+schrijfactie) → `'fout'` + oude stand hersteld; anker `null` → `'niet_ontgrendeld'` zonder teller-verhoging; legacy
+losse sleutels → leesbaar + gemigreerd naar `appslot_slot`; legacy + mislukte migratie → losse sleutels blijven.
+`ToegangInstellingen.test.tsx` (10): pad code_huidig → code_nieuw → melding voor 'ok' (audit + POST, `wijzigCode`
+één argument, `ontgrendelMetCode` één keer), 'fout' (melding "oude code blijft gelden", géén audit/POST, slotfout in de
+diagnoseregel zonder code) en 'niet_ontgrendeld' (terug naar stap 1). `tsc -b` + vitest volledig groen (167 bestanden,
+1406 tests). **Emulator-nameting van de fix:** koude start op de legacy-sleutels → ontgrendeld (migratie) → wijzigen
+→ "Je toegangscode is gewijzigd." → force-stop → koude start → ontgrendeld met de NIEUWE code → wachtrij.
+**Werkt in emulator: ja.**
+
+**Versies/stores (blok 4):** geen marketingversie-bump (1.1 staat); Android `versionCode` blijft de build.gradle-default 5
+(vc5 is nog niet geüpload, dus geen ophoging nodig — de eerstvolgende `bouw_android_release.sh` levert
+`…-1.1-vc5-….aab` mét deze fix); iOS bouwt via Xcode Cloud bij de push van deze commit.
+
+**Meetrecept Peter (ZTE — de productie-nameting kan alleen op een echt toestel):**
+1. Installeer de eerstvolgende interne Play-release ná deze commit (`1.1 (5)`, AAB vc5 — bouwen met
+   `native/scripts/bouw_android_release.sh 5 1.1`, uploaden PLAY §4 stap 4) en open de app met de huidige code (dat is
+   meteen de migratie van de losse sleutels naar `appslot_slot`).
+2. ⚙ → Toegang tot de app → "Toegangscode wijzigen" → huidige code (stap 1) → nieuwe code 2× (stap 2).
+3. Verwacht: "Je toegangscode is gewijzigd." bovenaan; daarna app sluiten, opnieuw openen en met de NIEUWE code
+   ontgrendelen. Verschijnt tóch "…niet gelukt — je oude code blijft gelden", dan (a) blijft de oude code werken en
+   (b) staat in Toegang › Diagnose een staart "laatste slotfout: …" — screenshot naar het kantoor: die regel noemt de
+   brug-aanroep, de sleutelnaam en de reden (nooit de code).
+**Werkt in productie: nog niet gemeten** — alleen mogelijk op de ZTE, volgens dit recept.
