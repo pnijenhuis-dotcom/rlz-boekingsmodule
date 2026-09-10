@@ -4,6 +4,9 @@
 # alleen via de bestaande Cloud Run-job-image (zelfde CLI-entrypoint als de andere backfills) — dus ná de deploy van de
 # commit die `intercompany-leverancier-markeren` draagt. Eerst dry-run, dan echt. Geen lokale backend, geen proxy.
 set -euo pipefail
+# Nameting-identiteit (§F7 route A, 10-09): ~/Sleutels/nameting.env aanwezig → SA-key of impersonatie; anders huidig gedrag.
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")" && pwd)/nameting_env.sh"
 PROJECT="${PROJECT:-rlz-boekhouding}"
 REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
@@ -17,7 +20,7 @@ ARGS="-m,app.cli,intercompany-leverancier-markeren,--administratie,${ADMINISTRAT
 if [[ "$MODUS" == "dry-run" ]]; then ARGS="${ARGS},--dry-run"; elif [[ "$MODUS" != "echt" ]]; then echo "gebruik: $0 [dry-run|echt]" >&2; exit 2; fi
 
 echo ">> gcloud run jobs execute ${JOB} (${MODUS}) — commando's met komma in een argumentwaarde: gcloud's ^|^-scheidingsteken"
-gcloud run jobs execute "$JOB" --project "$PROJECT" --region "$REGION" --wait \
+gcloud run jobs execute "$JOB" --project "$PROJECT" --region "$REGION" --wait "${NAMETING_GCLOUD_FLAGS[@]}" \
   --args="^|^$(echo "$ARGS" | tr ',' '|')"
 echo ">> Meetrecept: (a) Instellingen › Administraties › ${ADMINISTRATIE} › Klant-accordering toont de rij mét chip 'handmatig' +"
 echo "   historie; (b) een open ${CREDITEUR}-document toont hint 'intercompany' en knop 'Boeken in RLZ ✓' (geen 'Ter accordering');"

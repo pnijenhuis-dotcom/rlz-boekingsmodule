@@ -24,6 +24,9 @@
 # script zet de uitgangssituatie zelf telkens opnieuw klaar.
 # =============================================================================
 set -euo pipefail
+# Nameting-identiteit (§F7 route A, 10-09): ~/Sleutels/nameting.env aanwezig → SA-key of impersonatie; anders huidig gedrag.
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")" && pwd)/nameting_env.sh"
 
 PROJECT_ID="rlz-boekhouding"
 REGION="europe-west4"

@@ -969,6 +969,29 @@ aparte OE voor het beheeraccount beperkt de impact.
 **Advies (niet beslist):** A, mét de latere `rlz-nameting`-job/allowlist zodra nametingen routine zijn; B alleen als tijdelijke
 verlichting (24 u) náást A, of als Peter geen extra geheim wil beheren. **Peter kiest; niets aangemaakt in GCP (10-09).**
 
+### F7.3 UITGEVOERD 10-09-2026 (nametingen-run, blok 1 — besluit Peter 10-09: route A) — stand, afwijkingen, intrekrecept
+
+**Aangemaakt (door Claude Code, als `info@vastly.software`, project `rlz-boekhouding`):**
+
+| Stap | Uitkomst |
+|---|---|
+| A1 SA | `nameting@rlz-boekhouding.iam.gserviceaccount.com` aangemaakt (display "Nametingen (lees-only, Claude Code)"). |
+| A2 custom rol | `projects/rlz-boekhouding/roles/nametingUitvoerder` (naam volgens de opdracht; §F7.1 noemde `nametingJobsRunner`) = `run.jobs.run`, `run.jobs.runWithOverrides`, `run.jobs.get`, `run.executions.get`, `run.executions.list`, `run.operations.get`, stage GA. |
+| A3 binding per job | Alleen op `rlz-reconciliatie` (dé nameting-job: alle lees-only CLI's draaien dáár). Job-scoped via `gcloud run jobs add-iam-policy-binding` — de API staat dat toe. |
+| A4 lezen + logs | Projectbreed `roles/run.viewer` + `roles/logging.viewer` (beslispunt 3 → projectbreed, zoals §F7.1 voorstelde; log-view later optioneel). |
+| A5 | Géén `cloudsql.client`, géén `secretmanager.*`, géén deploy-/IAM-rechten. Geverifieerd: `gcloud sql instances list` → "does not have permission"; `gcloud secrets list` → `IAM_PERMISSION_DENIED`. |
+| A6 key | **GEBLOKKEERD** door de organisatie-policy `constraints/iam.managed.disableServiceAccountKeyCreation` (enforced op organisatie `273731008371`, Google's secure-by-default voor nieuwe organisaties): `keys create` → `FAILED_PRECONDITION … CUSTOM_ORG_POLICY_VIOLATION`. Niet omzeild: een uitzondering op die policy (projectniveau `gcloud org-policies set-policy` met `enforce: false` voor rlz-boekhouding, vereist `orgpolicy.policyAdmin`) is een beveiligingsbesluit van Peter, geen uitvoeringsstap. **Beslispunt Peter** (zie BESLISSINGEN "NAMETINGEN-RUN 10-09"). |
+| A7 activeren | Zonder key: **impersonatie**. `info@vastly.software` kreeg `roles/iam.serviceAccountTokenCreator` op het SA (SA-scoped binding); élke gcloud-aanroep draagt `--impersonate-service-account=nameting@…` → de job-start staat in Cloud Audit Logs op naam van het SA. Nadeel: de gebruikerssessie blijft de basis (dagelijkse herlogin blijft), het probleem dat §F7 wilde oplossen is dus nog NIET weg. |
+| Runtime-SA van de job | Geverifieerd: een executie gestart door het nameting-SA draait onder `run-jobs@rlz-boekhouding.iam.gserviceaccount.com` (executie `rlz-reconciliatie-xb9j9`, `spec.template.spec.serviceAccountName`) — DB-toegang komt uit de job-definitie, het nameting-SA heeft er niets voor nodig. |
+
+**Test (letterlijk, 10-09 ± 20:38 CEST):** `gcloud run jobs execute rlz-reconciliatie --args="-m,app.cli,boeken-status" --wait --impersonate-service-account=nameting@…` → "Execution [rlz-reconciliatie-xb9j9] has successfully completed", succeededCount 1; log gelezen via `gcloud logging read … --impersonate-service-account` (48 administraties). Verboden: `gcloud sql instances list --impersonate…` → "[nameting@…] does not have permission to access projects instance [rlz-boekhouding]"; `gcloud secrets list --impersonate…` → `IAM_PERMISSION_DENIED`. NB `bank-voorstellen-lezen` kon niet als testcommando dienen: dat commando stond nog niet op de gedeployde job-image (zie de deploy-regressie in BESLISSINGEN "NAMETINGEN-RUN 10-09").
+
+**Scripts.** `scripts/gcp/nameting_env.sh` (sourceable: leest `~/Sleutels/nameting.env` — SA-key → `activate-service-account`; geen key → impersonatie-vlag; geen env → huidig gedrag, altijd mét melding) en `scripts/gcp/nameting.sh <cli> [args]` (lees-only allowlist, `reconciliatie-alles` alleen mét `--lees-only`, `--schrijf` geweigerd, print de job-uitvoer uit Cloud Logging). `intercompany_universal_08-09.sh` en `nieuwe_facturen_verificatie.sh` sourcen het env-bestand (aanwezig → gebruiken, anders huidig gedrag). `~/Sleutels/nameting.env` staat klaar (NAMETING_SA + GOOGLE_APPLICATION_CREDENTIALS=~/Sleutels/nameting-sa.json — wordt vanzelf actief zodra de key er is).
+
+**Rotatieregel (jaarlijks) — GEBOUWD:** `settings.nameting_sa_aangemaakt_op` (env `NAMETING_SA_AANGEMAAKT_OP`, ISO-datum, te zetten op de job `rlz-reconciliatie` in deploy.yml zodra de key bestaat; geen migratie — de bestaande settings-laag). De reconciliatie meldt vanaf 30 dagen vóór 12 maanden ná aanmaak een beheer-LET-OP "key van nameting@ … roteer" (systeemmail; `automatiseringen.sa_key_rotatie_bevinding`). Leeg = geen key = geen signaal.
+
+**Rotatie-/intrekrecept.** Roteren: `gcloud iam service-accounts keys create ~/Sleutels/nameting-sa.json --iam-account=nameting@…` → `scripts/gcp/nameting_env.sh` pakt 'm op → oude key `gcloud iam service-accounts keys list/delete` → `NAMETING_SA_AANGEMAAKT_OP` bijwerken. Intrekken (alles ongedaan): `gcloud iam service-accounts keys delete <id> --iam-account=nameting@…`; `gcloud run jobs remove-iam-policy-binding rlz-reconciliatie --member=serviceAccount:nameting@… --role=projects/rlz-boekhouding/roles/nametingUitvoerder`; `gcloud projects remove-iam-policy-binding rlz-boekhouding --member=serviceAccount:nameting@… --role=roles/run.viewer` (idem `roles/logging.viewer`); `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member=user:info@vastly.software --role=roles/iam.serviceAccountTokenCreator`; `gcloud iam roles delete nametingUitvoerder --project=rlz-boekhouding`; `gcloud iam service-accounts delete nameting@…`. Controle: `gcloud auth list` (geen ster bij nameting@), `gcloud projects get-iam-policy rlz-boekhouding --flatten=bindings[].members --filter=bindings.members:nameting@` = leeg.
+
 ## Kritieke pad & parallelsporen
 
 ```

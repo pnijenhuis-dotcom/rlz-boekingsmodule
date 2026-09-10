@@ -6900,6 +6900,16 @@ C.V. → de UUID staat in de URL (`/instellingen/administraties/<uuid CV>`).
 
 ## RECHTEN-PROBE = EERSTE-SYNC-ROUTES + HERPROBE MET DE OPGESLAGEN LOGIN (bundel 10-09 blok C; bevinding Peter 10-09 Baard beheer & management; geen migratie)
 
+**Sporen GELEZEN 10-09 avond (nametingen-run blok 2b, Cloud Logging job `rlz-eerste-sync`, lees-only):** eerste sync Baard
+(`5db4ea78-f8af-4c2f-b8ad-7d0b5fe22305`, rlz_admin `2f916ef0-44aa-46d3-88f2-1b2e225e7f44`) op 10-09 11:59:16Z: `GET /2f916ef0-…/Ledgers`,
+`/Vendors`, `/Projects`, `/PaymentAccounts` → **403 `{"Message":"Actie niet toegestaan bij huidige gebruikersrechten","ExceptionMessage":null}`**;
+TaxRates zonder fout. Hetzelfde letterlijke antwoord dezelfde dag voor **Box Beheer B.V.** (`20d65ab2-…`, rlz `49051ac9-…`, 12:00:48Z) en
+**Kempen B.V.** (`59058883-…`, rlz `82fd98fa-…`, 15:32:24Z). Conclusie mét bewijs: **RLZ-rechten** — RLZ zegt het zelf ("bij huidige
+gebruikersrechten"); het administratie-id klopt (dezelfde `{adm}/…`-padvorm levert TaxRates wél, een fout id geeft geen rechten-melding).
+Handeling Peter (drie administraties): in RLZ de webservice-gebruiker per administratie leesrecht geven op Grootboek, Relaties, Projecten en
+Bankrekeningen → "Sync opnieuw starten". NIET gelezen: `audit_event rlz_check` en `GET Administrations` via de herprobe-route (vereist een
+Beheerder-sessie — knop/route is UI-werk van Peter; geen DB-lezen buiten Cloud Shell, regel 08-09).
+
 **Aanleiding.** Wizard "Administratie toevoegen" meldde voor Baard beheer & management "10 leesroutes groen"; de eerste
 sync gaf daarna 403 op Ledgers/Vendors/Projects/PaymentAccounts (TaxRates wél). Opdracht Peter: vaststellen waarom de
 probe dit niet vangt (uit code + sporen, niet raden), de probe exact de sync-routes laten toetsen mét dezelfde credential,
@@ -7267,6 +7277,13 @@ Toestellen) — geen automatische intrekking gebouwd, want de gebruiker kan mete
 <!-- vervolgrun-10-09-avond:1 -->
 ## RECONCILIATIE RLZ_DUBBEL — CLUSTERS EN REFERENTIE-CLASSIFICATIE (blok 1 vervolgrun 10-09 avond; besluit Peter 10-09; herziet "RECONCILIATIE — PERIODIEKE TOETS" + "HERSTELRUN 'BASIS EERST' 08-09 — BLOK 7"; geen migratie)
 
+**Nulmeting 10-09 (nametingen-run blok 2a, uit de joblog van de reguliere run 04:30Z = 06:30 CEST, executie `rlz-reconciliatie-wvlr8`,
+job-image 2990c8b = code van 08-09):** 901 paar-afwijkingen `dubbel_in_rlz` in 12 van 33 gemeten administraties (Universal Nederland
+771 · Adda Import-Export 103 · Van Boxtel Horeca 7 · Kempen Facilities 6 · Oirschot Vastgoed Beheer 3 · Belastingbutler 3 · Rubicon 2 ·
+BLOw 2 · Veldhoven Recreatie 1 · Bradwolff 1 · BWC Steigers 1 · 6-Steps 1 = RLZ-04-00000069 + RLZ-04-00000072 "(referentie, concept)");
+run-totaal 910 bevindingen. De cluster-code van deze sectie stond op 10-09 nog NIET op de job-image (deploy-regressie, zie
+"NAMETINGEN-RUN 10-09") — de nameting "ná" volgt ná de eerstvolgende geslaagde deploy met het meetrecept hieronder.
+
 **Aanleiding:** productie 10-09 06:32 — het blok `rlz_dubbel` meldde **907 afwijkingen over 14 administraties**, vrijwel
 allemaal paren op een referentie die géén factuurnummer is: BP Express zet het klantnummer 0817725528 op 7 bank-directe
 boekingen (= 21 paren, verschillende data en bedragen), Food service draagt het eigen IBAN NL86INGB0662462785 op 4
@@ -7305,6 +7322,10 @@ Rapportregel: "werkt in productie: ja/nee".
 
 <!-- vervolgrun-10-09-avond:3 -->
 ## AUTOBOEKEN — DREMPEL TELT DRIE IDENTIEKE MENS-BOEKINGEN (blok 3 vervolgrun 10-09 avond; besluit Peter 10-09; herziet de telling van "AUTOBOEKEN PER ADMINISTRATIE — LEREN EN BOEKEN"; geen migratie)
+
+**Beslispunt 1 BESLOTEN 10-09 avond (Peter: "recency wint"):** de gesplitste stem is niet meer blijvend oranje — de engine maakt een
+waarde groen zodra de laatste drie mens-boekingen identiek zijn; B, A, A, A activeert nu wél (test `test_correctie_in_de_reeks_
+activeert_pas_na_drie_identieke_recente`). Zie "BOEKINGSGEHEUGEN — RECENCY WINT" (blok 3.1 nametingen-run 10-09).
 
 **Aanleiding (besluit Peter 10-09 avond op beslispunt 1 van blok A):** "3× exact hetzelfde" = drie identieke mens-boekingen.
 De motor van 01-09 telde "ongewijzigd t.o.v. het geheugen-VOORSTEL vóór de boeking": de eerste boeking zonder historie was
@@ -7359,6 +7380,10 @@ activeert de dagelijkse herberekening (07:00, `sync-alles`) de leveranciers die 
 
 <!-- vervolgrun-10-09-avond:4 -->
 ## AI-PLAUSIBILITEITSTOETS — UITVAL = DOORLOPEN, ZICHTBAAR (blok 4 vervolgrun 10-09 avond; besluit Peter 10-09; herziet de poort-semantiek van "BANK — HISTORIE-REGEL + AI-PLAUSIBILITEITSTOETS ALS POORT"; geen migratie)
+
+**Beslispunt 1 HERZIEN 10-09 avond (Peter):** de platformbrede opt-out (`ai_toets_facturen_ingeschakeld` = UIT) is NIET meer stil —
+chip "AI-toets uit (platform)", teller `ai_toets_uit`, LET-OP "AI-toets staat platformbreed uit sinds <datum>". Zie "AI-TOETS
+PLATFORM-OPT-OUT ZICHTBAAR" (blok 3.2 nametingen-run 10-09). Het onderscheid mens-zette-uit ≠ toets-viel-uit blijft (aparte chip/teller).
 
 **Aanleiding (besluit Peter 10-09 avond).** Sinds blok B (bundel 10-09) stond de AI-plausibiliteitstoets als POORT vóór
 élke automatische bank- én factuurboeking: `plausibel` → boeken, `twijfel` → niet boeken, en óók `overgeslagen`
@@ -7434,6 +7459,11 @@ draaien en de exports mee in de commit; tot dan is guard (4) rood op "export ≠
 
 <!-- vervolgrun-10-09-avond:7 -->
 ## PRODUCTIE-NAMETINGEN STRUCTUREEL — SERVICEACCOUNT OF LANGERE WORKSPACE-SESSIE (blok 7 vervolgrun 10-09 avond; voorbereiding, niets aangemaakt)
+
+**UITGEVOERD 10-09 avond (nametingen-run, blok 1; besluit Peter 10-09: route A):** SA `nameting@`, custom rol `nametingUitvoerder`,
+job-scoped binding op `rlz-reconciliatie`, `run.viewer`/`logging.viewer` projectbreed aangemaakt en getest; **de key kon NIET worden
+aangemaakt** (org-policy `iam.managed.disableServiceAccountKeyCreation`) → voorlopig impersonatie op de gebruikerssessie. Volledig
+verslag, beslispunten en het intrekrecept: "NAMETINGEN-RUN 10-09 — SERVICEACCOUNT, DEPLOY-REGRESSIE, METINGEN" + GCP_UITROL §F7.3.
 
 **Aanleiding.** De regel "Productie alleen via de bestaande Cloud Run-service of read-only scripts via Cloud Shell" (Peter 08-09)
 maakt élke nameting een `gcloud run jobs execute … --args="-m,app.cli,<lees-only-commando>"`. De gcloud-gebruikerssessie (Workspace)
@@ -7518,3 +7548,128 @@ en de UX-norm "één primaire knop + ⋯" ("UX-PATRONEN ALS NORM").
 chips op één regel, één knop + ⋯) en 1170 (interne scroll mét sticky ⋯-kolom; niets afgekapt) op de drie tabs; lokaal
 `frontend/scripts/overflow_sweep.sh` (Chrome headless) groen op alle harnassen incl. de drie `?breed=1`-varianten. Werkt in productie:
 nog niet gemeten.
+
+
+<!-- nametingen-run-10-09:1 -->
+## NAMETINGEN-RUN 10-09 — SERVICEACCOUNT, DEPLOY-REGRESSIE, METINGEN (blok 1 + 2 nametingen-run 10-09 avond; besluit Peter 10-09: route A)
+
+**Opdracht.** (1) Serviceaccount voor nametingen (§F7 route A, eerste GCP-aanmaak door Claude Code), (2) nametingen van bundel 10-09 +
+vervolgrun op de GEDEPLOYDE code van vandaag, (3) geheugen-fix + opt-out zichtbaar (aparte secties). Harde volgorde 1 → 2 → 3; blok 2
+alleen als de deploy van `3707a88` live is.
+
+### Blok 1 — serviceaccount: GEBOUWD, key GEBLOKKEERD (beslispunt)
+
+| Onderdeel | Uitkomst | Vindplaats |
+|---|---|---|
+| SA + custom rol + bindingen | `nameting@rlz-boekhouding.iam.gserviceaccount.com`; rol `nametingUitvoerder` (6 permissions, GA); binding job-scoped op `rlz-reconciliatie`; `run.viewer` + `logging.viewer` projectbreed; géén cloudsql/secretmanager/deploy/IAM. | GCP_UITROL §F7.3 |
+| Runtime-SA | Job gestart door het SA draait onder `run-jobs@` (geverifieerd op executie `rlz-reconciliatie-xb9j9`) — geen extra rechten voor DB-toegang. | §F7.3 |
+| **Key** | **`keys create` → FAILED_PRECONDITION, org-policy `constraints/iam.managed.disableServiceAccountKeyCreation` (organisatie 273731008371).** Niet omzeild — een projectuitzondering op een beveiligingspolicy is Peters besluit. | §F7.3 |
+| Tussenoplossing | Impersonatie (`--impersonate-service-account`, `info@vastly.software` = `serviceAccountTokenCreator` op het SA). Test: `boeken-status` via de job GESLAAGD; `sql instances list` en `secrets list` GEWEIGERD (letterlijk in §F7.3). Nadeel: de dagelijkse herlogin blijft — het doel van §F7 is nog niet bereikt. | §F7.3 |
+| Scripts | `scripts/gcp/nameting_env.sh` (sourceable, key → impersonatie → huidig gedrag, altijd mét melding), `scripts/gcp/nameting.sh <cli>` (lees-only allowlist; `reconciliatie-alles` alleen `--lees-only`); bestaande job-scripts sourcen het env-bestand. `~/Sleutels/nameting.env` klaargezet. | scripts/gcp |
+| Rotatieregel | `settings.nameting_sa_aangemaakt_op` (env, geen migratie) → beheer-LET-OP 30 dagen vóór 12 maanden ná aanmaak (`automatiseringen.sa_key_rotatie_bevinding`, systeemmail). Tests `tests/reconciliatie/test_nameting_sa_rotatie.py`. | app/reconciliatie/automatiseringen.py |
+
+**Beslispunten Peter (blok 1).**
+1. **Key toestaan?** (a) projectuitzondering op de org-policy voor `rlz-boekhouding` (`gcloud org-policies set-policy` met `enforce: false`,
+   vereist orgpolicy.policyAdmin op de organisatie) en dan A6/A7 uitvoeren — de key is het enige dat de dagelijkse herlogin wegneemt; (b)
+   bij impersonatie blijven (audit op naam van het SA, maar herlogin blijft); (c) alsnog route B (Workspace-sessie 24 u) náást impersonatie.
+2. Rolnaam `nametingUitvoerder` (opdracht) i.p.v. `nametingJobsRunner` (§F7.1) — akkoord zoals aangemaakt?
+
+### Deploy-regressie GEVONDEN + GEFIXT (niet in de opdracht; blokkeerde blok 2)
+
+**Feit.** De deploy-workflow brak sinds **09-09 06:00Z** af in de stap "Registersync inbox_adres + store-links op de service": commit
+`8aeed75` (STORE_LINK_IOS, 09-09) koos `^@^` als scheidingsteken terwijl `INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl` zélf een `@` bevat
+→ gcloud weigerde de lijst vóór de API-call (geen audit-spoor), de workflow stopte. Gevolg over 13 deploys (09-09 06:00 → 10-09 17:56):
+**de service kreeg élke push** (revisie 00501 = `3707a88`), **álle F3-jobs bleven op het beeld van `2990c8b` (08-09 22:00)** — dus zonder
+bundel 09-09 (actiemail, ronde-herberekening, `bank-voorstellen-lezen`), bundel 10-09 (autoboeken leren, bank-historie/AI-poort,
+rechten-probe) en vervolgrun 10-09 (rlz_dubbel-clusters, drempel-telling, AI-uitval-doorlopen); **de service verloor `INTAKE_POSTVAK_ADRES`**
+(`--set-env-vars` vervangt de envset, de herstelstap faalde) en `STORE_LINK_IOS` is nooit gezet. Bewijs: `gcloud run jobs describe` (image-tag
+per job), Cloud Audit Logs (08-09 21:57–22:00 wél `Jobs.ReplaceJob`×14, vanaf 09-09 06:00 alleen `ReplaceJob rlz-migratie` +
+`ReplaceService` + `SetIamPolicy`), `git show 8aeed75`. De dagelijkse `SetIamPolicy`-denial op `deploy@` (`run.services.setIamPolicy`,
+`--allow-unauthenticated`) is een gcloud-WAARSCHUWING, geen fout — bestond al vóór 07-09 en is onschuldig (de service is al publiek).
+
+**Fix (deze run).** deploy.yml: scheidingsteken `^|^` + les-commentaar; guard `tests/unit/test_deploy_yml_envvar_delimiters.py`
+(elk fragment KEY=…, geen `@`-scheider bij een e-mailwaarde, zelftest op de kapotte 8aeed75-vorm). De eerstvolgende push (Stop-hook ná deze
+run) herstelt automatisch: jobs op het nieuwe beeld, `INTAKE_POSTVAK_ADRES` + `STORE_LINK_IOS` terug op de service. **Handmatig bijwerken van
+de productie-jobs is bewust NIET gedaan** (regel 08-09 + classifier-blokkade: productie-wijzigingen lopen via de pijplijn).
+
+**Aanbeveling.** `--allow-unauthenticated` uit `gcloud run deploy` halen (IAM staat al) óf `deploy@` `run.services.setIamPolicy` geven — dan
+verdwijnt de dagelijkse denial uit de audit en blijft een échte IAM-fout zichtbaar.
+
+### Blok 2 — nametingen: wat WEL en wat NIET kon (letterlijk)
+
+Voorwaarde "deploy van 3707a88 live" = **service ja, jobs nee** (zie hierboven). Alles hieronder is lees-only gemeten op wat er wél stond.
+
+| Meting | Uitkomst 10-09 | Werkt in productie |
+|---|---|---|
+| **a. rlz_dubbel** | Nulmeting uit de joblog van de reguliere run 06:30 CEST (`rlz-reconciliatie-wvlr8`, code 08-09): **901 paren in 12 van 33 administraties**, run-totaal 910 bevindingen; top: Universal Nederland 771, Adda Import-Export 103, Van Boxtel 7, Kempen Facilities 6; 6-Steps RLZ-04-00000069 + 00000072 aanwezig als paar "(referentie, concept)". `--alleen rlz_dubbel --lees-only` bestaat niet op die image → **nameting "ná" kon niet**. | nog niet (code niet op de job) |
+| **b. Baard** | Cloud Logging `rlz-eerste-sync` 10-09 11:59Z: Ledgers/Vendors/Projects/PaymentAccounts → **403 "Actie niet toegestaan bij huidige gebruikersrechten"**, TaxRates ok; identiek voor Box Beheer (12:00Z) en Kempen B.V. (15:32Z). **Conclusie: RLZ-rechten van de webservice-gebruiker in díe administraties** (administratie-id klopt). `GET Administrations`/audit `rlz_check`: niet leesbaar zonder Beheerder-sessie → Peter klikt de knop of geeft eerst de rechten. | probe-code (blok C) staat op de service, niet op de eerste-sync-job |
+| **c. Autoboeken** | `autoboek-leren-rapport` en `autoboek-drempel-zetten` bestaan niet op de job-image (blok A is van 10-09) → **niet gemeten**; drempel staat dus nog op 5. Administratie-UUID's voor het recept staan in de `boeken-status`-uitvoer (48 rijen, o.a. Nijenhuis C.V. `005e2bca-41b1-4775-9c55-4e36c961f58b`, Universal Nederland `36dade86-a614-4d71-a7d0-fa39572f4bb0`, Kempen Facilities `66e1e296-6582-41bd-80d2-1be7316f5d52`, Universal Steigerbouw `3ee6edf0-5cb8-4f98-bba1-16fb97ae6873`). | nog niet |
+| **d. Bank** | `bank-voorstellen-lezen` bestaat niet op de job-image (09-09) → **niet gemeten**. | nog niet |
+| **e. Reconciliatie-tellers** | De 07:00-run viel niet in de run; recept hieronder. | — |
+| **f. Activatieflow** | Geen productie-meting mogelijk vóór een store-build (1.1 / vc5) — expliciet niet gemeten. | n.v.t. |
+
+**Meetrecept ná de eerstvolgende geslaagde deploy (één commando per regel, allemaal lees-only, via `scripts/gcp/nameting.sh` onder het SA):**
+```
+scripts/gcp/nameting.sh reconciliatie-alles --alleen rlz_dubbel --lees-only          # a: 901 → N clusters; 6-Steps "waarschijnlijk dubbel"
+scripts/gcp/nameting.sh autoboek-leren-rapport --administratie <uuid>                 # c: per administratie (uuid's uit boeken-status)
+scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis C.V." --met-ai-toets   # d (+ Universal Nederland, Kempen Facilities)
+scripts/gcp/nameting.sh boeken-status                                                  # uuid-lijst
+gcloud run jobs execute rlz-reconciliatie --region europe-west4 --wait --args="-m,app.cli,autoboek-drempel-zetten,--drempel,3"   # c: SCHRIJFT (audit) — expliciete opdracht Peter
+```
+e: `gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="rlz-reconciliatie"' --limit 400 --order=asc --format="value(textPayload)"`
+ná 07:00 → blok "Automatiseringen (laatste 24 u)" + tellers `rlz_dubbel`/`ai_toets_overgeslagen`/`ai_toets_uit`.
+
+**Werkt in productie:** blok 1 ja (SA/rol/bindingen/impersonatie getest), key nee (beslispunt); deploy-fix pas ná de push; blok 2 a–d nee
+(code niet op de jobs — de exacte reden staat hierboven, de nameting volgt direct ná de deploy).
+
+<!-- nametingen-run-10-09:2 -->
+## BOEKINGSGEHEUGEN — RECENCY WINT (blok 3.1 nametingen-run 10-09 avond; besluit Peter 10-09 avond op beslispunt 1 van "AUTOBOEKEN — DREMPEL TELT DRIE IDENTIEKE MENS-BOEKINGEN"; geen migratie)
+
+**Aanleiding.** `app/geheugen/engine.py::_stem` markeerde een leverancier-stem als "gesplitst" zodra er méér dan één waarde in de observaties
+stond — gewicht- en leeftijd-onafhankelijk. Eén historische afwijkende boeking (B, A, A, A) hield de leverancier daardoor blijvend oranje én
+buiten de autoboek-activatie (gat vastgelegd in blok 3 vervolgrun 10-09). Besluit Peter: recente mens-boekingen wegen zwaarder; drie identieke
+= groen.
+
+**Pre-feature-check.** "Boekingsgeheugen" (CLAUDE.md: seed-only oranje 14-07, correcties wegen zwaarder), "AUTOBOEKEN — DREMPEL TELT DRIE
+IDENTIEKE MENS-BOEKINGEN" (reeks-telling in de motor), "STALE CHECK BIJ GEHEUGEN-PREFILL" (prefill leest dezelfde engine). **UX-review:** geen
+nieuw scherm; de bestaande geheugen-chip in het controlescherm krijgt een rustige historie-regel "eerder ook: <rekening>" (grijs, geen
+oranje) — past in de IA, geen mockup.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Recency-regel** | `engine._recente_mens_consensus(observaties, veld, n=RECENTE_BOEKINGEN=3)`: app-observaties gegroepeerd per BOEKING (nieuw veld `Observatie.boeking_sleutel` = boekstuknummer; None → conservatief per dag), laatste drie boekingen elk één waarde en onderling gelijk → consensus. `_veld_voorstel(..., consensus=…)` geeft dan `oranje=False`, `app_bevestigd=True`, `recent_consensus=True`, `eerder_ook=(andere waarden uit de historie)`, confidence = gewogen aandeel van de consensuswaarde. Toegepast op het niveau dat toch al woog: GB/project leverancier-niveau (vóór de regel-verfijning), btw regel-niveau (fallback leverancier-niveau blijft oranje "leverancier-fallback" — niveau-regel, geen stem-regel). | GEBOUWD | `app/geheugen/engine.py` |
+| **Automatisch telt niet, breekt niet** | `leerlus.leg_boeking_vast(automatisch=True)` legt GEEN observatie meer vast (`boeken.py` geeft `automatisch_geboekt` uit het overgang-detail door). Observaties van automatische boekingen vóór 10-09 blijven staan (ongemarkeerd, geen migratie): ze droegen de toen groene waarde en kunnen de regel alleen bevestigen. | GEBOUWD | `app/geheugen/leerlus.py`, `app/documenten/boeken.py` |
+| **Loaders** | `geheugen/service.laad_engine_observaties` en `autoboek_kandidaten/service` zetten `boeking_sleutel=boekstuk_ref`; `motor._observaties_van` = document-id; Odoo-vertaling (`replace`) behoudt het veld. | GEBOUWD | idem |
+| **DTO + chip** | `VeldVoorstelResponse.recent_consensus` + `eerder_ook[]` (additief); controlescherm: onder een groene geheugen-chip de regel "eerder ook: ‹rekening›" (`geheugenVoorstel.eerderOokTekst`, `data-testid geheugen-eerder-ook`), tooltip legt uit dat de oudere keuze niet meer telt. | GEBOUWD | `app/geheugen/schemas.py`/`router.py`, `frontend/src/document/BoekvoorstelPanel.tsx`, `geheugenVoorstel.ts` |
+| **Activatie-motor ongewijzigd** | `_geheugen_bevestigd` toetst dezelfde engine → B, A, A, A activeert nu (test herschreven: `test_correctie_in_de_reeks_activeert_pas_na_drie_identieke_recente`). Meetlat: `StandData.eerder_afwijkend` + rapportregel "recency-regel: N leverancier(s) groen met eerder een andere waarde — vóór 10-09 geblokkeerd" in `autoboek-leren-rapport` (zo blijft het "vóór"-cijfer ook ná deploy afleidbaar). | GEBOUWD | `app/autoboek_kandidaten/service.py`, `cli_cmd.py` |
+| **Tests** | `tests/geheugen/test_engine.py::TestRecencyWint` (B-A-A-A groen mét eerder_ook; A-A-B oranje; A-B-A-A oranje → A-B-A-A-A groen; seed-only oranje; seed-B + 3 app-A groen; gesplitste boeking in de staart = geen consensus; regels van één boeking = één boeking; zonder sleutel per dag; btw-fallback blijft oranje; confidence), leerlus-test automatisch = 0 observaties, gouden-set-casus **s** `tests/keten/test_s_geheugen_recency.py` (BDO: B-A-A → oranje, +A → groen via service én kantoor-route, prefill A; A-A-B oranje; schakelaar aan → activatie ná de vierde, `eerder_afwijkend`). Bestaande engine-/autoboek-/keten-tests groen. | GROEN | tests |
+
+**Grenzen.** Regel telt alleen `bron='app'`; seed-only blijft oranje (ontwerp 14-07 ongewijzigd). Een boeking met meerdere GB's (gesplitste
+regels op verschillende rekeningen) is nooit "identiek" op leverancier-niveau — daar blijft de regel-verfijning het pad. Geen migratie: oude
+observaties zonder boekstuknummer groeperen per dag (kan de reeks alleen korter maken).
+
+**Meetrecept productie (ná deploy, lees-only):** `scripts/gcp/nameting.sh autoboek-leren-rapport --administratie <uuid>` → slotregel
+"recency-regel: N leverancier(s) groen met eerder een andere waarde" (= het aantal dat vóór 10-09 door "gesplitste stem" geblokkeerd was) +
+per leverancier de toevoeging "· eerder ook een andere waarde"; kolom `identiek` ongewijzigd. Controlescherm: een leverancier met historie
+B, A, A, A toont een groene geheugen-chip mét "eerder ook: B". **Werkt in productie: nog niet gemeten.**
+
+<!-- nametingen-run-10-09:3 -->
+## AI-TOETS PLATFORM-OPT-OUT ZICHTBAAR (blok 3.2 nametingen-run 10-09 avond; besluit Peter 10-09 avond; herziet beslispunt 1 van "AI-PLAUSIBILITEITSTOETS — UITVAL = DOORLOPEN, ZICHTBAAR"; geen migratie)
+
+**Aanleiding.** De platformbrede opt-out van de factuur-AI-toets (`boeken_instelling.ai_toets_facturen_ingeschakeld` = UIT) gaf uitkomst `uit`
+zonder chip, teller of melding — een stille poort-uitschakeling, strijdig met kernprincipe 7(6) "geen stille no-op".
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Semantiek | `PlausibiliteitUitkomst.ai_toets_uit` (uitkomst `uit`) náást `zonder_ai_toets` (uitval) — mens-zette-uit ≠ toets-viel-uit. | GEBOUWD | `app/aitoets/plausibiliteit.py` |
+| Boeking | GEBOEKT-overgang-detail `ai_toets_uit: true` (tijdlijnregel "Automatisch geboekt met de AI-toets platformbreed uit (Instellingen › Boeken) — alleen de vaste controles liepen"), audit `automatisch_geboekt` veld `ai_toets_uit`, besluit-reden "— AI-toets uit (platform)". | GEBOUWD | `app/documenten/autoboeken.py`, `frontend/src/document/zonderAiToetsTijdlijn.ts`, `DocumentDetailScreen.tsx` |
+| Lijst-chip | DTO `ai_toets_uit` (service → schema → router, bulk zonder N+1); chip "AI-toets uit (platform)" naast "automatisch" (`chip-ai-toets-uit`). | GEBOUWD | `app/documenten/service.py`/`schemas.py`/`router.py`, `DocumentenDeelscherm.tsx` |
+| Teller `ai_toets_uit` | Stand "aan" = de opt-out is actief (schakelaar UIT), stand_detail "… staat platformbreed UIT sinds ‹datum›" (`boeken_instelling.gewijzigd_op`), gedaan = automatische factuurboekingen mét `ai_toets_uit` (dag/week); schakelaar AAN = teller uit (niet getoond). `Feiten.ai_toets_facturen_aan/_gewijzigd_op` uit `BoekenInstelling` (geen rij = AAN). | GEBOUWD | `app/reconciliatie/automatiseringen.py` |
+| LET-OP | Zolang de opt-out actief is (óók bij 0 boekingen): "AI-toets staat platformbreed uit sinds ‹datum› — N automatische factuurboekingen zonder toets in het etmaal", platformbreed, deeplink `/instellingen/boeken`, stabiele vingerafdruk (één actiemail, niet dagelijks); leesbaar in `teksten._automatisering` (titel "AI-toets facturen staat uit", doe "Zet de toets weer aan via Instellingen › Boeken, of laat 'm bewust uit — deze melding blijft dan staan"). Kantoor-signaal (actiemail), geen regressie. | GEBOUWD | idem + `teksten.py`, FE `reconciliatieApi.ts` labels/doelpad |
+| Instellingentekst | Rij "AI-plausibiliteitstoets vóór automatische factuurboekingen" zegt nu wat UIT zichtbaar doet. | GEBOUWD | `frontend/src/instellingen/AiToetsFacturenRij.tsx` |
+| Tests | `tests/aitoets/test_optout_zichtbaar.py` (autoboek mét toets uit boekt door zonder AI-call, detail/audit/DTO; `uit` ≠ `overgeslagen`; teller aan mét LET-OP + datum + deeplink, 0 boekingen = tóch LET-OP, schakelaar aan = uit zonder LET-OP, JSON-roundtrip/regels/leesbaar, `verzamel_feiten` leest de rij); FE `zonderAiToetsTijdlijn.test.ts`. Actiemail-guard groen. | GROEN | tests |
+
+**Meetrecept productie (ná deploy):** schakelaar UIT zetten op Instellingen › Boeken → eerstvolgende `reconciliatie-alles`: regel
+"AI-toets facturen uit (platform-opt-out) … LET-OP: AI-toets staat platformbreed uit sinds ‹datum›" in de joblog + één actiemail-zaak; een
+automatische factuurboeking in die stand toont chip "AI-toets uit (platform)" in de lijst en de tijdlijnregel. Schakelaar AAN → rij en LET-OP
+verdwijnen bij de volgende run. **Werkt in productie: nog niet gemeten.**
