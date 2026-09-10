@@ -7673,3 +7673,140 @@ zonder chip, teller of melding — een stille poort-uitschakeling, strijdig met 
 "AI-toets facturen uit (platform-opt-out) … LET-OP: AI-toets staat platformbreed uit sinds ‹datum›" in de joblog + één actiemail-zaak; een
 automatische factuurboeking in die stand toont chip "AI-toets uit (platform)" in de lijst en de tijdlijnregel. Schakelaar AAN → rij en LET-OP
 verdwijnen bij de volgende run. **Werkt in productie: nog niet gemeten.**
+
+
+<!-- ochtendrun-11-09:1 -->
+## OCHTENDRUN 11-09 — NAMETINGEN + DEPLOY-DRIFT (blok 1 nametingen op deploy #180 = `58feacb`; blok 2 bewaking deploy-drift + deploy-opschoning; uitgevoerd 10-09 22:20–23:30 CEST, vóór de 06:31-run van 11-09)
+
+**Opdracht Peter.** Eerste échte productiemeting van bundel 09-09, bundel 10-09 en de vervolgrun 10-09 op de eindelijk volledige deploy
+(#180 = `58feacb` was de eerste groene sinds #172; #173–#179 rood in ~2m50, afgebroken vóór de job-lus — niemand zag het). Volgorde
+blok 1 (meten) → blok 2 (bouwen) → blok 3 (docs). **Afwijking van de opdracht-timing:** de run is 's avonds 10-09 gestart (22:20 CEST),
+dus de 06:31-run van 11-09 bestond nog niet; de tellers (d) zijn gemeten op een **expliciete echte `reconciliatie-alles`-run om 22:28 CEST
+op de nieuwe code** (bestaande job, regel 08-09) — de 06:31-run van 10-09 (oud beeld) staat ernaast als vóór-beeld. Alles via
+`scripts/gcp/nameting.sh` onder impersonatie van `nameting@` (SA-key blijft org-policy-geblokkeerd, beslispunt).
+
+### Blok 1.0 — deploy-check (22:21 CEST): GROEN
+
+| Onderdeel | Uitkomst letterlijk |
+|---|---|
+| Service `rlz-backend` | `latestReadyRevision` = `rlz-backend-00505-hkk` (aangemaakt 2026-09-10T19:41:20Z), template-image `…/rlz/backend:58feacb99ff2a691ea41f0b3f2d8426de1c13001` |
+| F3-jobs (15) | álle 15 (`rlz-accordeur-herinneringen`, `-bank-sync`, `-bewaking`, `-eerste-sync`, `-extractie-wachtrij`, `-intake-imap`, `-kantoor-digest`, `-migratie`, `-nieuwe-facturen`, `-projecten-cijfers`, `-reconciliatie`, `-smoketest`, `-sync`, `-terugkerend-herbereken`, `-webhook-afleveraar`) op `…backend:58feacb99ff2…` |
+| Service-envs | `INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl` en `STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748` staan terug (de delimiter-fix van 10-09 werkte) |
+
+**Werkt in productie (deploy-fix 10-09, `^|^`): ja.**
+
+### Blok 1a — `rlz_dubbel`: clusters + referentie-classificatie — WERKT IN PRODUCTIE: JA
+
+Commando's (letterlijk): `scripts/gcp/nameting.sh reconciliatie-alles --alleen rlz_dubbel --lees-only` (executie `rlz-reconciliatie-6nr62`,
+22:22–22:24 CEST) → echte run `gcloud run jobs execute rlz-reconciliatie --wait` (executie `rlz-reconciliatie-s596c`, 22:28–22:30 CEST) →
+nogmaals lees-only (executie zie regel "ná de run" hieronder).
+
+| Meting | Uitkomst |
+|---|---|
+| Slotregel lees-only VÓÓR de run | `LEES-ONLY: 66 administratie(s) — paren OUD 954 → clusters NIEUW 42; 901 open paar-bevinding(en) in de vorige run, waarvan 901 bij de eerstvolgende run vervangen worden.` — 5 waarschijnlijk dubbel, 42 open, 0 geaccepteerd |
+| Waarom OUD 954 ≠ nulmeting 901 | de nulmeting (06:30, oud beeld) telde 33 administraties; op 10-09 zijn 33 administraties toegevoegd (eerste sync 33 aangevraagd) — de 53 extra paren zitten in die nieuwe administraties (Clean Care Arnhem 36, Vastgoedgroep Nederland 4, Zonnestudio Elderveld 4, Stephanie Loeffen 2, Delascos 2, Beauty by Tessa 1, Hotel Pax 1, Midden Nederland Beheer 1, Necol Beheer 1, RB Infra 1) |
+| Per administratie (paren OUD → clusters NIEUW; uitsluitingen) | Universal Nederland **771 → 6** (klantkenmerk 8 groepen/77 doc) · Adda Import-Export **103 → 4** (1 waarschijnlijk dubbel RLZ-25-00003916 + 00003917; placeholder 9/41 doc, klantkenmerk 2/20 doc) · Clean Care Arnhem 36 → 5 (placeholder 1/4, klantkenmerk 6/22) · Van Boxtel Horeca 7 → 4 (placeholder 8/33, klantkenmerk 1/3) · Kempen Facilities 6 → 0 (placeholder 2/4, klantkenmerk 1/4) · Oirschot Vastgoed Beheer 3 → 0 (klantkenmerk 1/3) · Belastingbutler 3 → 1 (waarschijnlijk dubbel, 3 exemplaren RLZ-16-00000594/600/602) · Vastgoedgroep Nederland 4 → 4 · Zonnestudio Elderveld 4 → 1 · Rubicon 2 → 2 · BLOw 2 → 2 · Stephanie Loeffen 2 → 2 · Delascos 2 → 2 · **6-Steps 1 → 1 (waarschijnlijk dubbel: RLZ-04-00000069 + RLZ-04-00000072, ref 267520363, concept)** · BWC Steigers 1 → 1 (waarschijnlijk dubbel RLZ-16-00000479/480) · Midden Nederland Beheer 1 → 1 (waarschijnlijk dubbel RLZ-04-00000919/926) · Bradwolff, Veldhoven, Beauty by Tessa, Hotel Pax, Necol, RB Infra 1 → 1 · overige 44 administraties 0 → 0 (waarvan Abbegaa/Sunshine Island/Totaal Ontruimingen/T&J/Mantelzorg MN/Sunfactory alleen placeholder-groepen) |
+| BP Express 0817725528 | `uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): BP Express ref '0817725528' — 7 documenten, 7 verschillende bedragen` (Adda) ✓ |
+| Food service NL86ING80662462785 | `uitgesloten (klant-/contractnummer …): Food service ref 'NL86ING80662462785' — 13 documenten, 8 verschillende bedragen` (Adda). **Let op: uitgesloten als klantkenmerk, NIET als IBAN** — de referentie in RLZ mist de "B" van `INGB` (`ING8066…`), dus geen geldige NL-IBAN-vorm; de uitkomst (weg uit de lijst) is gelijk, de teller staat onder (b). Geen bouw nodig; als Peter de IBAN-teller wil, is een tolerante bankcode-check (3 letters + cijfer) een kleine aanvulling |
+| Echte run 22:28 (nieuwe code) | `66/66 administraties getoetst, 19235 inkoopfacturen, 42 cluster(s) met dezelfde referentie (42 open, 0 geaccepteerd); 901 paar-bevinding(en) uit de vorige run vervangen.` · `RUN e715ef2f-4257-454c-94c8-77337be57019 vastgelegd (953 bevinding(en); mail: actie=verzonden;systeem=verzonden)` · samenvatting: OK bank/omzet/doorbelasting, ACTIE documenten (exit 1), ACTIE rlz_dubbel (exit 1). De 953 = 42 clusters + 901 vervangen paren (`uitgesloten`, éénmalig zichtbaar) + 10 overige. Peter heeft om 22:30 één actiemail ("N zaken vragen je aandacht") + één systeemmail ontvangen |
+| Ná de run (lees-only, stap 3 van het meetrecept; executie `rlz-reconciliatie-44h82`, 22:51 CEST) | `LEES-ONLY: 71 administratie(s) — paren OUD 955 → clusters NIEUW 43; 0 open paar-bevinding(en) in de vorige run, waarvan 0 bij de eerstvolgende run vervangen worden.` — de overgang oud → cluster is afgerond; intussen 71 administraties (Peter voegde tussen 22:22 en 22:51 nog 5 toe) en één cluster méér |
+
+Verwachting "907 → hooguit enkele dozijnen, 6-Steps blijft als waarschijnlijk dubbel": **uitgekomen (954 → 42, 6-Steps waarschijnlijk dubbel)**.
+Extra waarschijnlijk-dubbel-kandidaten voor het kantoor: Adda RLZ-25-00003916/3917, Belastingbutler RLZ-16-00000594/600/602, BWC RLZ-16-00000479/480,
+Midden Nederland Beheer RLZ-04-00000919/926 (alle concept, zelfde dag, zelfde bedrag).
+
+### Blok 1b — autoboeken: drempel 3 + leren-rapport — WERKT IN PRODUCTIE: JA (instrument + drempel); leren-motor zelf pas meetbaar mét schakelaar
+
+| Meting | Uitkomst |
+|---|---|
+| `autoboek-drempel-zetten --drempel 3` (executie `rlz-reconciliatie-z8lc2`, 22:26 CEST, bestaande job onder impersonatie) | `autoboek-drempel: 5 -> 3 (audit autoboek_drempel_gewijzigd, actor systeem)` |
+| `autoboek-leren-rapport --administratie <uuid>` × 68 (alle administraties uit `boeken-status`, 6 parallel, 22:27–22:36 CEST; twee logs kwamen leeg terug door Cloud-Logging-vertraging en zijn herhaald) | **13 administraties met historie, 89 leveranciers: 74 op 1/3, 9 op 2/3, 6 op ≥ 3/3, waarvan 5 kwalificerend; `eerder_afwijkend` (recency-regel) = 0 in álle rapporten; gesplitste stem = 8 leveranciers; schakelaar overal UIT (0 van 66 aan), boekt automatisch 0, uitgezonderd 0, handmatig aan 0** |
+| Per administratie (leveranciers · 1/3 · 2/3 · ≥3/3 · kwalificerend) | Kempen Facilities 37 · 26 · 7 · 4 · 4 (Lusso-Design 12/3, Stabu 5/3, Aqua D&S 3/3, SaaSIT 3/3 — maar `schakelaar: uit — niet toegestaan (doorbelasting = mensenwerk)`: hier kan de motor nooit boeken, 409) · Veldhoven Recreatie 12 · 11 · 1 · 0 · 0 · Universal Steigerbouw 7 · 6 · 1 · 0 · 0 (Odoo; 4× gesplitste stem: DCTE 2/3, Hoogwerkservice Hardinxveld, Spot Services, Universal Nederland) · T&J Hoveniers 7 · 6 · 0 · 1 · 1 (Helmink Verhuur 3/3 — `NB schakelaar uit: 1 leverancier(s) zou(den) bij aanzetten direct geactiveerd worden`) · Nijenhuis C.V. 7 · 7 · 0 · 0 · 0 (Reeleezee B.V. gesplitste stem) · Oirschot Recreatie 7 · 7 · 0 · 0 · 0 · Nijenhuis (test) 4 · 3 · 0 · 1 · 0 (Action 3/3 niet kwalificerend: gesplitste stem) · Recreatiecentrum Dijkstel 2 · Caravanpark De Visotter 2 · Molenhof Verhuur 1 · Belastingbutler 1 · Bouwadvies Oost Nederland 1 · Necol Energie 1 (alle op 1/3) · 55 administraties zonder mens-boekingshistorie in de module |
+| Kwalificeert zodra de schakelaar aan gaat | **5 leveranciers** (Kempen Facilities 4 — maar geblokkeerd door doorbelasting; T&J Hoveniers 1). Zonder Kempen: **1** (Helmink Verhuur bij T&J Hoveniers) |
+| Recency-regel (blok 3.1 10-09) | slotregel in élk rapport `recency-regel (blok 3 10-09 avond): 0 leverancier(s) groen met eerder een andere waarde` — er is in de module nog geen B-A-A-A-reeks; de acht gesplitste stemmen zijn alle 1/3–2/3 (te weinig recente boekingen), dus nog niet door de regel te helpen |
+
+Schakelaar bewust NIET aangezet (nulmeting eerst, Peter zet aan). Rapport-instrument, drempel-audit en rapportregels werken in productie: **ja**.
+
+### Blok 1c — bank: matchmotor, historie-regel, AI-poort — WERKT IN PRODUCTIE: matchmotor JA; historie-regel + AI-poort NIET MEETBAAR (geen kandidaten)
+
+`scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie <uuid> --met-ai-toets` (22:27–22:30 CEST) op Nijenhuis C.V. en op de twee
+administraties met de meeste bank-directe boekingen uit (a) (BP Express + Food service zitten beide in Adda; Universal Nederland droeg
+77 klantkenmerk-documenten):
+
+| Administratie | Onverwerkt | groen (`exacte_match`) | oranje (`deel_match`) | RLZ-voorstel | handmatig | historie-regel | AI-toets |
+|---|---|---|---|---|---|---|---|
+| Administratiekantoor Nijenhuis C.V. | 5 | 0 | 0 | 0 | 5 (Spotify, TransIP, Centraal Beheer, Google Cloud, DNA Notaris) | 0 kandidaten | — (0 calls) |
+| Adda Import-Export | 76 | 1 (NPG administratiekantoor 20210412 — naam + nummer + bedrag) | 12 (o.a. AKA import, UNCLE SAM, DE JUNGLE — "naam + bedrag, nummer niet gevonden"; Holland energie groep + POLYFLAME "naam + nummer, bedrag wijkt af") | 1 (KETAM BV 7508 — bedrag-match) | 62 | 0 kandidaten | — (0 calls) |
+| Universal Nederland B.V. | 76 | 2 (Road B.V. 9759174, ENVIEM RETAIL 7903599) | 1 (POPULUS I 2025013, bedrag wijkt af) | 1 (NENT Group) | 72 | 0 kandidaten | — (0 calls) |
+
+**Bevinding:** de historie-regel gaf in géén van de drie administraties een kandidaat en de AI-toets is dus nergens aangeroepen (0 AI-kosten):
+de cache `bank_historie_boeking` is leeg — `bank-historie-backfill` is nooit gedraaid en de bank-sync van 07:00 liep nog op het oude beeld
+(cache-vulling zit in de sync sinds blok B 10-09). Juist de terugkerende regels (Spotify, TransIP, Google Cloud, KPN, Belastingdienst,
+ASR, Heijting) zijn wat de historie-regel moet gaan vangen. **`bank-historie-backfill --dry-run` bestond niet** → gebouwd in blok 2 van deze
+run (telling zonder schrijven, zonder RLZ-lezing; in de nameting-allowlist alleen mét `--dry-run`); meetrecept ná deploy #181:
+`scripts/gcp/nameting.sh bank-historie-backfill --administratie <uuid> --dry-run` per administratie. De echte vulling blijft een expliciete
+opdracht van Peter (schrijft alleen in de eigen cache, nooit in RLZ). Alternatief zonder backfill: de sync-alles van 11-09 07:00 vult
+incrementeel (max 40 RLZ-lezingen per run per administratie) — de nameting van 11-09 avond zegt hoeveel.
+
+### Blok 1d — reconciliatie-tellers (echte run 22:28 CEST op de nieuwe code; 06:31-run 10-09 op het oude beeld als vóór-beeld)
+
+| Teller (blok "Automatiseringen (laatste 24 u)") | 06:31 10-09 (oud beeld, `rlz-reconciliatie-wvlr8`) | 22:28 10-09 (nieuw beeld, `rlz-reconciliatie-s596c`) |
+|---|---|---|
+| Bank-sync (dagelijks) | `aan verwacht 33, gedaan 33, overgeslagen 0` | `aan verwacht 66, gedaan 33, overgeslagen 33 (geen bank-sync-run in het venster (sync-alles niet gedraaid?): 33) — LET-OP: 33× geen bank-sync-run in het venster` |
+| Bank-autoboeken/afletteren (automatisch afgeletterd) | `uit (0 van 33 administraties)` | `uit (0 van 66 administraties)` |
+| AI-plausibiliteitstoets (poort vóór autoboeken) | regel bestond niet | `aan verwacht 0, gedaan 0, overgeslagen 0` |
+| Automatisch geboekt zonder AI-toets (`ai_toets_overgeslagen`) | regel bestond niet | `uit (geen automatische boeking zonder AI-toets in de laatste 7 dagen)` |
+| AI-toets facturen uit (`ai_toets_uit`) | regel bestond niet | `uit (AI-toets facturen staat aan)` |
+| Autoboeken per administratie (`autoboek_leren`) | regel bestond niet | `uit (0 van 66 administraties)` |
+| Eerste sync (onboarding) | — | `op aanvraag verwacht 33, gedaan 30, overgeslagen 3 (fout: 3)` |
+| Autoboek-kandidaten (nominatie) | `verwacht 1, gedaan 1` | `verwacht 1, gedaan 1` |
+| Extractie-wachtrij (job-trigger) | `verwacht 13, gedaan 7, overgeslagen 6 (geen job-trigger (lokaal/thread): 6)` | `verwacht 12, gedaan 11, overgeslagen 1 (geen job-trigger (lokaal/thread): 1)` |
+| Duplicaat-afvoer | `verwacht 4, gedaan 4` | `verwacht 0, gedaan 0` |
+| LET-OPs (letterlijk) | `opruim-kandidaat [gestorneerd] spiegel_doel … (test Peter)`; `1 achtergebleven RLZ-concept(en) — informatief` | dezelfde twee + `33× geen bank-sync-run in het venster` |
+| Run-resultaat | `910 bevinding(en); mail: niet_nodig` | `953 bevinding(en); mail: actie=verzonden;systeem=verzonden` |
+
+**Duiding.** (1) De LET-OP "33× geen bank-sync-run" is verwacht: 33 administraties zijn op 10-09 toegevoegd ná de sync-alles van 07:00 —
+de teller kent geen "jonger dan de laatste sync-alles"-uitzondering. **Beslispunt/klein bouwpunt:** administraties aangemaakt ná de laatste
+sync-alles-run niet als "overgeslagen" tellen (ruis-klasse; verdwijnt vanzelf op 11-09 07:00). (2) `Eerste sync … fout: 3` = de drie 403-
+administraties (Baard, Box Beheer, Kempen B.V.) — zie 1e. (3) De vier nieuwe tellers (AI-toets, vangnet, opt-out, autoboek_leren) staan
+en zeggen wat ze moeten zeggen bij 0 boekingen. **Werkt in productie: ja** (tellers zichtbaar en juist); gedaan-cijfers > 0 pas meetbaar
+mét schakelaars.
+
+### Blok 1e — Baard / Box Beheer / Kempen B.V. (RLZ-check-knop)
+
+Cloud-Logging-requestlog van de service (`httpRequest.requestUrl:"rlz-check"`, laatste 3 dagen, 22:26 CEST): **0 aanroepen** van
+`POST /administraties/{id}/rlz-check` — de herprobe is niet geklikt. **Bevinding Peter 10-09 avond: de route bestaat, maar de knop in
+de UI niet** → bouw in de nachtrun 10/11-09 blok 1. Geen RLZ-rechten-advies zonder het letterlijke antwoord van de herprobe (de rechten
+van RLZ-Baard zijn 10-09 identiek bevonden aan een werkende administratie). Eerste-sync-teller: 3 fout (zie 1d).
+
+### Blok 1f — activatie/toegangscode
+
+Niet meetbaar vóór een store-build (1.1 / vc5); expliciet niet gemeten.
+
+### Blok 2 — bewaking deploy-drift + deploy-opschoning — GEBOUWD + GETEST; werkt in productie: pas ná deploy #181 + IAM-grant
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **2.1 Probe `deploy_drift`** (job `rlz-bewaking`, elk kwartier) | Cloud Run Admin API v2, lees-only met het runtime-SA (metadata-token, zelfde route als de job-triggers): service-template-beeld + `createTime` van de jongste gereed-revisie + het beeld van élke job in de locatie (gepagineerd). Jobs met een ander beeld = achter; binnen **30 min** ná de service-revisie = "deploy loopt nog" (ok mét detail), daarna **fout** → bestaande storing-statemachine (alert bij de 2e opeenvolgende meting = ± 45–60 min ná de revisie, herstelmelding zodra gelijk) + audit `deploy_drift` (systeem-actor, `record_id` = UUIDv5 over revisie + set achterlopende jobs → idempotent per situatie, `nieuwe_waarde` = service/revisie/jobs_achter/aantal). Geen `BEWAKING_SERVICE_RESOURCE` = overgeslagen (dev); **leesfout/403 = fout mét de letterlijke API-melding en de hint "roles/run.viewer op run-jobs@"** — een ontbrekende harde voorwaarde is zichtbaar, nooit stil (kernprincipe 7(6)) | GEBOUWD + GETEST (`tests/bewaking/test_deploy_drift.py`: v2-parsing incl. paginering, gratie, drift, idempotente audit, 403, statemachine → alert → herstel; cadans-test uitgebreid) | `backend/app/bewaking/deploy_drift.py`, `service.py::_probe_deploy_drift`, `config.py::bewaking_service_resource` |
+| **2.1 LET-OP in de reconciliatie** | `automatiseringen.deploy_drift_bevinding` leest de OPEN `bewaking_storing` soort `deploy_drift` → één platformbrede LET-OP (blok `automatisering`, reden `deploy_drift` ∈ `BEHEER_CATEGORIEEN` → systeemmail, niet de actiemail), tekst "… — systeemfout — automatisch gemeld", leesbaar via `teksten.py` (titel "Deploy-drift: jobs achter op de service", doe = "Systeemfout — automatisch gemeld. Controleer de deploy-workflow … de eerstvolgende groene push zet jobs én service-envs weer gelijk; handmatig jobs bijwerken hoort niet"), stabiele vingerafdruk, verdwijnt zodra de storing hersteld is. Bewust NIET in `REGRESSIE_CATEGORIEEN` (dat zou een tweede alert via `automatisering_regressie` geven) | GEBOUWD + GETEST | `app/reconciliatie/automatiseringen.py` (`DEPLOY_DRIFT`, `deploy_drift_bevinding`, `registreer`), `teksten.py::_automatisering` |
+| **2.1 Post-deploy-smoketest** | `deploy-smoketest` leest dezelfde stand ZONDER gratie: één job op een ander beeld = FOUT = deploy rood; leesfout = FOUT (loud); geen resource = melding "overgeslagen". Env `BEWAKING_SERVICE_RESOURCE` op `rlz-smoketest` én `rlz-bewaking` in deploy.yml | GEBOUWD | `app/cli.py::_smoketest_deploy_drift`, deploy.yml |
+| **2.1 IAM (harde voorwaarde)** | `roles/run.viewer` (lees-only) projectbreed op `run-jobs@` is nodig; `deploy@` (run.developer) kan geen IAM zetten en **Claude Code mocht de binding op 10-09 niet zelf zetten (classifier)** → script `scripts/gcp/bewaking_deploy_drift_iam.sh` (idempotent, owner). **Tot Peter dat draait: probe `fout` "403 … run.viewer" (één alert ná 2 metingen, daarna stil tot herstel) en de smoketest van deploy #181 wordt ROOD op de drift-toets** — bewust, zichtbaar | WACHT OP PETER (één commando) | `scripts/gcp/bewaking_deploy_drift_iam.sh`, GCP_UITROL §F3.8 |
+| **2.2 `--allow-unauthenticated` weg** | uit `gcloud run deploy rlz-backend`; de allUsers-invoker-binding staat eenmalig (f2_services.sh stap 3) en overleeft revisies; de vlag faalde dagelijks op `run.services.setIamPolicy` voor `deploy@` (gcloud-waarschuwing die een échte IAM-fout onzichtbaar maakte). Smoketest-stap 0 toetst nu expliciet **publiek 200** op een SPA-navigatie zonder token (`Accept: text/html` + `Sec-Fetch-Dest: document`) mét leesbare foutregel | GEBOUWD | deploy.yml |
+| **2.2 Rode deploy → mail** | Gekozen (simpelste zonder secret in Actions): `if: failure()`-stap die de bestaande job `rlz-bewaking` mét args-override `deploy-mislukt --sha … --run-url … --stap …` start (`deploy@` = run.developer mag `runWithOverrides`); het CLI-commando mailt `reconciliatie_beheer_ontvangers` via het SMTP-kanaal dat die job al heeft (onderwerp "⛔ RLZ-deploy mislukt (‹sha7›)", tekst mét run-URL + wat er dan niet staat). Loopt óók als de fout vóór de job-lus viel (de job draait dan het vorige beeld; het commando bestaat vanaf #181). Faalt dit zelf (auth kapot) → `|| echo`, en dan is GitHub's eigen notificatie het vangnet: **Peter zet "Actions › Send notifications for failed workflows only" aan** (GCP_UITROL §F3.8) — belt-and-braces | GEBOUWD + GETEST (`tests/unit/test_cli_deploy_mislukt.py`) | `app/cli.py::_deploy_mislukt`, deploy.yml |
+| **2.3 Guard** | `tests/unit/test_deploy_yml_image_uniform.py`: élke `--image` in deploy.yml = exact `"${IMAGE}:${GITHUB_SHA}"` (één variabele, geen afwijkend pad/tag per job), service + alle 15 jobs hebben een deploy-stap, geen `--allow-unauthenticated`-vlag, smoketest toetst publiek 200, `BEWAKING_SERVICE_RESOURCE` op bewaking én smoketest, `if: failure()` → `rlz-bewaking deploy-mislukt` mét run-URL en `^|^`-scheider zonder `^` in waarden | GROEN | tests/unit |
+| **Uit blok 1 meegenomen** | `bank-historie-backfill --dry-run` (telling, geen schrijf, geen RLZ-lezing, geen credential) + `nameting.sh`-allowlist alleen mét `--dry-run` | GEBOUWD + GETEST (`tests/bank/test_historie_bron.py::test_dry_run…`) | `app/bank/historie_bron.py` (`dry_run`), `app/bank/cli_cmd.py`, `scripts/gcp/nameting.sh` |
+
+**Meetrecept ná deploy #181 (lees-only):** (1) deploy-check: service-revisie én álle jobs op de nieuwe sha (`gcloud run jobs list --format="table(metadata.name,spec.template.spec.template.spec.containers[0].image)"`), workflow-run #181 groen incl. smoketest-stap; (2) joblog `rlz-bewaking` eerste kwartierrun ná de deploy: `deploy_drift=ok` (mét IAM) of `deploy_drift=fout` + "403 … run.viewer" (zonder); ná `bewaking_deploy_drift_iam.sh`: `ok` en een herstelmelding als er al gealarmeerd was; (3) `scripts/gcp/nameting.sh bank-historie-backfill --administratie <uuid> --dry-run` voor Nijenhuis C.V., Adda, Universal Nederland; (4) reconciliatie 11-09 06:31: geen deploy-drift-LET-OP (of wél, mét de 403-tekst zolang IAM ontbreekt — dan is dat de juiste melding).
+
+**Beslispunten Peter (ochtendrun 11-09).**
+1. `scripts/gcp/bewaking_deploy_drift_iam.sh` als owner draaien (één `gcloud projects add-iam-policy-binding … roles/run.viewer` op run-jobs@) — zonder dit blijft de smoketest rood en de probe op 'fout'.
+2. GitHub-notificatie "failed workflows only" aanzetten (Settings › Notifications › Actions) als tweede vangnet — het simpelste dat altijd werkt, ook als gcloud-auth in de run kapot is.
+3. Bank-sync-teller: administraties jonger dan de laatste sync-alles niet als "overgeslagen" tellen (ruis 33× op 10-09 avond) — klein bouwpunt, of accepteren als eendaags signaal.
+4. Bank-historie: echte `bank-historie-backfill` (schrijft alleen de eigen cache) voor de drie gemeten administraties, of wachten op de incrementele vulling via sync-alles (40 RLZ-lezingen/run/administratie).
+5. Food service-IBAN met typo (`ING8`) telt als klantkenmerk — tolerante bankcode-check bouwen of zo laten (uitkomst gelijk).
+6. Openstaand herhaald: sleutel-policy nameting@ (route 1/2), RLZ-check klikken bij Baard/Box/Kempen B.V. (knop komt in de nachtrun), vc5-AAB, schakelaars autoboeken + bank-autoboeken (ná deze nulmeting: T&J Hoveniers = 1 leverancier direct actief; Kempen Facilities 4 maar geblokkeerd door doorbelasting), Vastgoedgroep-input (Salesforce-leestoegang, Odoo-testdb-secret, rekeningnummers, 3× € 20.000, spaarrekening, 17 concepten).
+
+**Werkt in productie (samenvatting per blok van 09-09/10-09):** rlz_dubbel-clusters + classificatie **ja**; autoboek-drempel + leren-rapport
+**ja** (leren-motor: n.v.t. tot de schakelaar aan gaat); matchmotor-labels **ja**; historie-regel + AI-poort **niet meetbaar** (cache leeg, 0
+kandidaten); tellers AI-toets/vangnet/opt-out/autoboek_leren **ja** (zichtbaar, 0); actiemail + systeemmail **ja** (beide verzonden 22:30);
+rechten-probe-knop **nee — knop ontbrak in de UI** (nachtrun blok 1); deploy-drift-probe/smoketest/failure-mail **pas ná #181 + IAM**.

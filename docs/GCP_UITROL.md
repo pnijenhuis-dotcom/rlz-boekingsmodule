@@ -739,6 +739,36 @@ toont de joblog. Verwacht: push "Er staat 1 factuur voor u klaar." + logregel
 "1 push, 0 e-mail, 1 document(en) nieuw gemeld". Daarna scheduler hervatten:
 `gcloud scheduler jobs resume rlz-nieuwe-facturen --location europe-west4`.
 
+### F3.8 — Deploy-drift-bewaking + deploy-opschoning (ochtendrun 11-09; BESLISSINGEN "OCHTENDRUN 11-09 — NAMETINGEN + DEPLOY-DRIFT")
+
+**Aanleiding.** Deploy-runs #173–#179 (09-09 06:00 → 10-09 17:56) waren rood in ~2m50 — afgebroken ná de service-stap, vóór de F3-lus
+(delimiter-fout, zie "Deploy-les 10-09"). Gevolg: de service kreeg élke push, álle jobs bleven 1,5 dag op het beeld van 08-09, en niemand
+zag het. Drie vangnetten, allemaal in de pijplijn en de bestaande bewaking — geen nieuw kanaal, geen nieuw secret:
+
+| # | Vangnet | Waar | Wat Peter merkt |
+|---|---|---|---|
+| 1 | **Bewakingsprobe `deploy_drift`** (job `rlz-bewaking`, elk kwartier): beeld van de service-template ≠ beeld van een job in `europe-west4`, langer dan 30 min ná de jongste service-revisie → storing (alert bij de 2e meting via het bestaande SMTP-alertkanaal, herstelmelding zodra gelijk) + audit `deploy_drift` + LET-OP "systeemfout — automatisch gemeld" in de reconciliatie (systeemmail, Inzicht › Reconciliatie). Lees-only via de Cloud Run Admin API v2 met het runtime-SA `run-jobs@`. | `app/bewaking/deploy_drift.py`; env `BEWAKING_SERVICE_RESOURCE=projects/rlz-boekhouding/locations/europe-west4/services/rlz-backend` op `rlz-bewaking` én `rlz-smoketest` (deploy.yml) | mail "⛔ RLZ-bewaking: deploy_drift faalt (2× op rij)" mét de jobs + beelden; "✅ … hersteld" ná de volgende groene push |
+| 2 | **Post-deploy-smoketest** toetst ná de job-lus dat service en álle jobs op hetzelfde beeld staan (zonder gratie) én dat de app publiek een 200 geeft (SPA-navigatie zonder token) — dit vervangt de `--allow-unauthenticated`-vlag (die faalde dagelijks op `run.services.setIamPolicy` voor `deploy@`; de allUsers-binding staat eenmalig uit f2_services.sh stap 3). | deploy.yml stap "Post-deploy-smoketest", `app/cli.py::_smoketest_deploy_drift` | rode run + regel "service en jobs niet op hetzelfde beeld: …" of "de app is niet publiek bereikbaar" |
+| 3 | **Rode run → mail**: `if: failure()`-stap start de bestaande job `rlz-bewaking` met `deploy-mislukt --sha … --run-url … --stap …` (args-override; `deploy@` = run.developer mag dat); het commando mailt `reconciliatie_beheer_ontvangers` via het SMTP-kanaal van die job. Werkt ook als de fout vóór de job-lus viel (oud beeld, het commando bestaat sinds #181). | deploy.yml laatste stap, `app/cli.py::_deploy_mislukt` | mail "⛔ RLZ-deploy mislukt (‹sha7›)" met de run-URL |
+
+**Harde voorwaarde — IAM (eenmalig, OWNER):** het runtime-SA leest services/jobs alleen met `roles/run.viewer` (lees-only, geen run/IAM):
+
+```
+scripts/gcp/bewaking_deploy_drift_iam.sh      # = gcloud projects add-iam-policy-binding rlz-boekhouding --member=serviceAccount:run-jobs@… --role=roles/run.viewer
+```
+
+`deploy@` kan dit niet (run.developer, geen IAM) en Claude Code mocht de binding op 10-09 niet zelf zetten. **Zolang het recht ontbreekt:**
+probe `deploy_drift=fout` mét "403 … run.viewer" (één alert ná 2 metingen, daarna stil tot herstel) én de smoketest van élke deploy rood op
+de drift-toets — bewust zichtbaar, nooit stil groen. Controle ná het draaien: joblog `rlz-bewaking` → `deploy_drift=ok`; volgende deploy →
+smoketest-regel "service en N job(s) op ‹sha›".
+
+**Tweede vangnet buiten GCP (Peter, eenmalig):** GitHub → Settings › Notifications › Actions → "Send notifications for failed workflows only"
+aanzetten. Dit is het simpelste dat altijd werkt — ook als de WIF-auth in de run zelf kapot is en vangnet 3 dus niets kan sturen.
+
+**Guard:** `tests/unit/test_deploy_yml_image_uniform.py` — élke `--image` in deploy.yml is exact `"${IMAGE}:${GITHUB_SHA}"` (service + 15 jobs,
+één variabele), geen `--allow-unauthenticated`, smoketest toetst publiek 200 + zelfde beeld, `if: failure()`-stap aanwezig met run-URL.
+Deploy-check-ritueel blijft (les 10-09): service ÉN jobs (`gcloud run jobs list --format="table(metadata.name,spec.template.spec.template.spec.containers[0].image)"`).
+
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
 > **Uitvoering: `docs/F4_ACTIVATIE_RUNBOOK.md` is het cutover-draaiboek (F4-voorbereiding
