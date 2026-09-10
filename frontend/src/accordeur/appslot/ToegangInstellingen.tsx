@@ -17,6 +17,7 @@ import {
   zetDirectVergrendelen,
 } from '../../api/appSlot'
 import { apiFetch } from '../../api/client'
+import { leesLaatsteSlotfout } from '../../api/slotDiagnose'
 import { zetWebSlotModus } from '../../api/webVeiligeOpslag'
 import { laatsteCodeWijziging, meldToegangscodeGewijzigd, schrijfAppSlotAudit } from '../appAuthApi'
 import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout } from '../koudeStart'
@@ -53,13 +54,17 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   const [bioAan, setBioAan] = useState(false)
   const [direct, setDirect] = useState(false)
   const [huidig, setHuidig] = useState('')
-  const [huidigOk, setHuidigOk] = useState<string | null>(null)
+  // Stap 1 (huidige code) is de verificatie — daarna her-wrapt wijzigCode direct op het anker in geheugen.
+  const [huidigGeverifieerd, setHuidigGeverifieerd] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   const [melding, setMelding] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   // Diagnose (blok 12a 07-09): laatste koude-start-meting uit de lokale opslag + bundelversie(s);
   // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
-  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout()))
+  const [appBuild, setAppBuild] = useState<string | null>(null)
+  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout()))
+  const ververDiagnose = (build: string | null) =>
+    setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), build, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout()))
   const [gekopieerd, setGekopieerd] = useState(false)
   // Lokale audit (§5d): "Laatste wijziging: dd-mm HH:MM" onder de rij — uit localStorage, geen code.
   const [laatsteWijziging, setLaatsteWijziging] = useState<string | null>(() => laatsteCodeWijziging())
@@ -68,8 +73,11 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     void biometrieBeschikbaar().then(setBioKan)
     void isBiometrieAan().then(setBioAan)
     void isDirectVergrendelen().then(setDirect)
-    void nativeAppBuild().then((appBuild) => {
-      if (appBuild) setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), appBuild, leesLaatsteVerbindingsfout()))
+    void nativeAppBuild().then((build) => {
+      if (build) {
+        setAppBuild(build)
+        ververDiagnose(build)
+      }
     })
   }, [])
 
@@ -113,7 +121,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     // Verifieert tegen de wrap (en reset de teller); het echte her-wrappen gebeurt in stap 2.
     const uitkomst = await ontgrendelMetCode(nieuw)
     if (uitkomst === 'ok') {
-      setHuidigOk(nieuw)
+      setHuidigGeverifieerd(true)
       setHuidig('')
       setFase('code_nieuw')
       return
@@ -126,12 +134,25 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     setFout('Die code klopt niet.')
   }
 
+  /** Stap 2: her-wrappen op het anker dat stap 1 al in het geheugen zette — geen tweede verificatie
+   * (bugfix 10-09). 'ok' komt alleen ná bewezen opslag; 'fout' laat de oude code gelden;
+   * 'niet_ontgrendeld' (slot tussendoor dicht) = terug naar stap 1, telt niet als foute code. */
   const nieuweCodeGekozen = async (code: string) => {
-    if (!huidigOk) return
-    const uitkomst = await wijzigCode(huidigOk, code)
-    setHuidigOk(null)
+    if (!huidigGeverifieerd) return
+    const uitkomst = await wijzigCode(code)
+    setHuidigGeverifieerd(false)
+    if (uitkomst === 'niet_ontgrendeld') {
+      setFase('code_huidig')
+      setFout('De app is tussendoor vergrendeld — voer je huidige code opnieuw in.')
+      return
+    }
     setFase('overzicht')
-    setMelding(uitkomst === 'ok' ? 'Je toegangscode is gewijzigd.' : 'Toegangscode wijzigen is niet gelukt — probeer het opnieuw.')
+    setMelding(
+      uitkomst === 'ok'
+        ? 'Je toegangscode is gewijzigd.'
+        : 'Toegangscode wijzigen is niet gelukt — je oude code blijft gelden. Probeer het opnieuw.',
+    )
+    if (uitkomst === 'fout') ververDiagnose(appBuild)
     if (uitkomst === 'ok') {
       // Audit (§4b/§5d): server-event zonder code (best-effort) + lokale regel voor "Laatste wijziging".
       schrijfAppSlotAudit('toegangscode_gewijzigd')
@@ -139,8 +160,8 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
       void meldToegangscodeGewijzigd()
     }
     if (uitkomst === 'ok' && bioAan) {
-      // De biometrie-kopie draagt hetzelfde anker — her-wrappen raakt hem niet, maar we
-      // schrijven 'm defensief opnieuw zodat kopie en wrap nooit uiteen kunnen lopen.
+      // De biometrie-kopie draagt hetzelfde anker — her-wrappen raakt hem niet, maar we schrijven 'm
+      // defensief opnieuw zodat kopie en wrap nooit uiteen kunnen lopen; pas ná de bewezen opslag.
       await zetBiometrieAan()
     }
   }

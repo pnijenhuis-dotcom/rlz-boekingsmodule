@@ -11,6 +11,7 @@
 // zodat "wachttijd" te splitsen is in netwerk (client-duur − server-duur) en server.
 
 import { APP_MARKETING_VERSIE } from './appVersie'
+import type { BewaardeSlotfout } from '../api/slotDiagnose'
 
 export type KoudeStartStap =
   | 'app-render' // AccordeurApp is voor het eerst gerenderd (bundel geladen + React gemount)
@@ -262,13 +263,20 @@ export function diagnoseRegel(
   meting: BewaardeKoudeStart | null,
   appBuild: string | null = null,
   verbindingsfout: BewaardeVerbindingsfout | null = null,
+  slotfout: BewaardeSlotfout | null = null,
 ): string {
   const build = `web ${meting?.build ?? WEB_BUILD_ID} · app ${appBuild ?? `${APP_MARKETING_VERSIE} (web)`}`
   // Blok 2b 08-09: de laatste verbindingsfout van het slot als staart — oorzaak, tijdstip en de ruwe melding.
-  const staart = verbindingsfout
-    ? ` · laatste verbindingsfout: ${verbindingsfout.oorzaak}${verbindingsfout.technisch ? ` (${verbindingsfout.technisch})` : ''}` +
-      `${ddmmHHMM(verbindingsfout.tijdstip) ? ` ${ddmmHHMM(verbindingsfout.tijdstip)}` : ''}`
-    : ''
+  // Bugfix 10-09: daarachter de laatste opslagfout van het slot (handeling + sleutelnaam + reden, nooit een waarde).
+  const staart =
+    (verbindingsfout
+      ? ` · laatste verbindingsfout: ${verbindingsfout.oorzaak}${verbindingsfout.technisch ? ` (${verbindingsfout.technisch})` : ''}` +
+        `${ddmmHHMM(verbindingsfout.tijdstip) ? ` ${ddmmHHMM(verbindingsfout.tijdstip)}` : ''}`
+      : '') +
+    (slotfout
+      ? ` · laatste slotfout: ${slotfout.handeling} ${slotfout.sleutel} (${slotfout.reden})` +
+        `${ddmmHHMM(slotfout.tijdstip) ? ` ${ddmmHHMM(slotfout.tijdstip)}` : ''}`
+      : '')
   if (!meting) return `${build} · nog geen koude start gemeten${staart}`
   const s = meting.overzicht.stappen
   const boot = s['app-render']

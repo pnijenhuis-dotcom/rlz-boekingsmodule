@@ -5,6 +5,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
+import { SLOTFOUT_OPSLAG_SLEUTEL, bewaarLaatsteSlotfout } from '../../api/slotDiagnose'
 import { SLOT_MODUS_SLEUTEL } from '../../api/webVeiligeOpslag'
 import { APPSLOT_AUDIT_SLEUTEL } from '../appAuthApi'
 import { KOUDE_START_OPSLAG_SLEUTEL, WEB_BUILD_ID } from '../koudeStart'
@@ -29,6 +30,13 @@ beforeAll(() => {
   })
 })
 
+// Bugfix 10-09: wijzigCode/ontgrendelMetCode als stuurbare mocks (uitkomst per test), zodat beide uitkomsten van
+// het pad code_huidig → code_nieuw → melding getoetst worden.
+const slotMocks = vi.hoisted(() => ({
+  ontgrendelMetCode: vi.fn(() => Promise.resolve('ok')),
+  wijzigCode: vi.fn(() => Promise.resolve('ok')),
+}))
+
 vi.mock('../../api/appSlot', () => ({
   CODE_LENGTE: 5,
   isZwakkeCode: () => false,
@@ -36,8 +44,8 @@ vi.mock('../../api/appSlot', () => ({
   biometrieBeschikbaar: () => Promise.resolve(false),
   isBiometrieAan: () => Promise.resolve(false),
   isDirectVergrendelen: () => Promise.resolve(false),
-  ontgrendelMetCode: () => Promise.resolve('ok'),
-  wijzigCode: () => Promise.resolve('ok'),
+  ontgrendelMetCode: slotMocks.ontgrendelMetCode,
+  wijzigCode: slotMocks.wijzigCode,
   wisAppSlotLokaal: () => Promise.resolve(),
   zetBiometrieAan: () => Promise.resolve(true),
   zetBiometrieUit: () => Promise.resolve(),
@@ -58,6 +66,9 @@ const METING = {
 afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.removeItem(KOUDE_START_OPSLAG_SLEUTEL)
+  localStorage.removeItem(SLOTFOUT_OPSLAG_SLEUTEL)
+  slotMocks.ontgrendelMetCode.mockReset().mockImplementation(() => Promise.resolve('ok'))
+  slotMocks.wijzigCode.mockReset().mockImplementation(() => Promise.resolve('ok'))
 })
 
 function renderScherm() {
@@ -170,7 +181,47 @@ describe('ToegangInstellingen — toegangscode wijzigen + loskoppelen (§5d)', (
     expect(audit[0].actie).toBe('toegangscode_gewijzigd')
     expect(JSON.stringify(audit)).not.toContain('24680')
     expect(screen.getByTestId('acc-laatste-wijziging')).toHaveTextContent(/^Laatste wijziging: \d\d-\d\d \d\d:\d\d$/)
+    // Bugfix 10-09: stap 1 is de enige verificatie; stap 2 her-wrapt zonder huidige code (één argument).
+    expect(slotMocks.ontgrendelMetCode).toHaveBeenCalledTimes(1)
+    expect(slotMocks.wijzigCode).toHaveBeenCalledTimes(1)
+    expect(slotMocks.wijzigCode).toHaveBeenCalledWith('24680')
     localStorage.removeItem(APPSLOT_AUDIT_SLEUTEL)
+  })
+
+  // Bugfix 10-09 (toegangscode wijzigen faalde op Android): de foutuitkomst is eerlijk en compleet.
+  it('wijzigCode → fout: melding "oude code blijft gelden", géén audit/POST, slotfout in de diagnoseregel', async () => {
+    slotMocks.wijzigCode.mockImplementation(() => {
+      bewaarLaatsteSlotfout({ handeling: 'schrijf', sleutel: 'appslot_slot', reden: 'Opslag-schrijffout: kluis dicht' })
+      return Promise.resolve('fout')
+    })
+    const { aanroepen } = renderMetFetch()
+    await userEvent.click(screen.getByText('Toegangscode wijzigen'))
+    await tikCode('13579')
+    await screen.findByText('Kies een code')
+    await tikCode('24680')
+    await screen.findByText('Nog één keer')
+    await tikCode('24680')
+    expect(await screen.findByText('Toegangscode wijzigen is niet gelukt — je oude code blijft gelden. Probeer het opnieuw.')).toBeInTheDocument()
+    expect(screen.queryByText('Je toegangscode is gewijzigd.')).toBeNull()
+    expect(aanroepen.some((a) => a.pad === '/auth/app/toegangscode-gewijzigd')).toBe(false)
+    expect(localStorage.getItem(APPSLOT_AUDIT_SLEUTEL)).toBeNull()
+    expect(screen.queryByTestId('acc-laatste-wijziging')).toBeNull()
+    expect(screen.getByTestId('acc-diagnose')).toHaveTextContent('laatste slotfout: schrijf appslot_slot (Opslag-schrijffout: kluis dicht)')
+    expect(screen.getByTestId('acc-diagnose')).not.toHaveTextContent('24680')
+  })
+
+  it('wijzigCode → niet_ontgrendeld (slot tussendoor dicht): terug naar stap 1 mét uitleg, geen foutmelding "niet gelukt"', async () => {
+    slotMocks.wijzigCode.mockImplementation(() => Promise.resolve('niet_ontgrendeld'))
+    renderMetFetch()
+    await userEvent.click(screen.getByText('Toegangscode wijzigen'))
+    await tikCode('13579')
+    await screen.findByText('Kies een code')
+    await tikCode('24680')
+    await screen.findByText('Nog één keer')
+    await tikCode('24680')
+    expect(await screen.findByText('Voer je huidige toegangscode in')).toBeInTheDocument()
+    expect(screen.getByText('De app is tussendoor vergrendeld — voer je huidige code opnieuw in.')).toBeInTheDocument()
+    expect(screen.queryByText(/niet gelukt/)).toBeNull()
   })
 
   it('"Dit toestel loskoppelen" → bevestiging → POST /auth/app-lock/ontkoppelen, slot-vlag weg, uitloggen aangeroepen', async () => {

@@ -21,9 +21,16 @@
 // gebruiken elkaars functies uitsluitend ín functie-bodies (geen top-level uitvoering).
 
 import { veiligeOpslagPlugin } from './nativeSessie'
+import { bewaarLaatsteSlotfout, type SlotHandeling } from './slotDiagnose'
 
-const SALT_SLEUTEL = 'appslot_salt'
-const WRAP_SLEUTEL = 'appslot_wrap'
+/** Sinds 10-09 (bugfix toegangscode wijzigen) staan salt + wrap als ÉÉN waarde onder één sleutel, zodat het
+ * slot nooit half geschreven kan zijn: `v2.<salt-b64>.<iv-b64>.<cipher-b64>`. */
+const SLOT_SLEUTEL = 'appslot_slot'
+const SLOT_VERSIE_PREFIX = 'v2'
+/** Legacy (tot 10-09): salt en wrap onder twee losse sleutels — alleen nog LEZEN (migratie-op-lezen), zodat een
+ * bestaand toestel nooit buitengesloten raakt; ná de eerste geslaagde ontgrendeling staat alles onder SLOT_SLEUTEL. */
+const LEGACY_SALT_SLEUTEL = 'appslot_salt'
+const LEGACY_WRAP_SLEUTEL = 'appslot_wrap'
 const FOUTEN_SLEUTEL = 'appslot_fouten'
 const BIOMETRIE_AAN_SLEUTEL = 'appslot_biometrie'
 const DIRECT_SLEUTEL = 'appslot_direct'
@@ -81,24 +88,33 @@ export function appSlotBeschikbaar(): boolean {
 }
 
 // ---- opslag-helpers ------------------------------------------------------------------------------
+// Een mislukte brug-aanroep crasht nooit, maar verdwijnt sinds 10-09 ook niet meer stil: de reden gaat (zonder
+// waarde) naar de lokale slot-diagnose en `schrijf` zegt met true/false of het gelukt is.
+
+function noteerSlotfout(handeling: SlotHandeling, sleutel: string, reden: unknown): void {
+  bewaarLaatsteSlotfout({ handeling, sleutel, reden })
+}
 
 async function lees(sleutel: string): Promise<string | null> {
   const plugin = veiligeOpslagPlugin()
   if (!plugin) return null
   try {
     return (await plugin.haal({ sleutel })).waarde
-  } catch {
+  } catch (fout) {
+    noteerSlotfout('lees', sleutel, fout)
     return null
   }
 }
 
-async function schrijf(sleutel: string, waarde: string): Promise<void> {
+async function schrijf(sleutel: string, waarde: string): Promise<boolean> {
   const plugin = veiligeOpslagPlugin()
-  if (!plugin) return
+  if (!plugin) return false
   try {
     await plugin.zet({ sleutel, waarde })
-  } catch {
-    // Opslag mislukt: nooit crashen — de aanroeper merkt het functioneel (slot niet ingesteld).
+    return true
+  } catch (fout) {
+    noteerSlotfout('schrijf', sleutel, fout)
+    return false
   }
 }
 
@@ -107,8 +123,8 @@ async function verwijder(sleutel: string): Promise<void> {
   if (!plugin) return
   try {
     await plugin.verwijder({ sleutel })
-  } catch {
-    // zie boven
+  } catch (fout) {
+    noteerSlotfout('verwijder', sleutel, fout)
   }
 }
 
@@ -179,10 +195,84 @@ export function isZwakkeCode(code: string): boolean {
   return constant || oplopend || aflopend
 }
 
+// ---- slot-waarde (salt + wrap als één geheel) ----------------------------------------------------
+
+interface SlotWaarde {
+  saltB64: string
+  wrap: string
+  /** True als de waarde nog uit de twee losse legacy-sleutels kwam (migratie-op-lezen volgt bij 'ok'). */
+  legacy: boolean
+}
+
+function maakSlotWaarde(saltB64: string, wrap: string): string {
+  return `${SLOT_VERSIE_PREFIX}.${saltB64}.${wrap}`
+}
+
+/** null = ontbreekt of kapot (verkeerd aantal delen / andere versie) — de aanroeper valt dan terug op legacy. */
+function ontleedSlotWaarde(waarde: string | null): { saltB64: string; wrap: string } | null {
+  if (!waarde) return null
+  const delen = waarde.split('.')
+  if (delen.length !== 4 || delen[0] !== SLOT_VERSIE_PREFIX || delen.some((d) => d.length === 0)) return null
+  return { saltB64: delen[1], wrap: `${delen[2]}.${delen[3]}` }
+}
+
+async function leesSlot(): Promise<SlotWaarde | null> {
+  const gecombineerd = ontleedSlotWaarde(await lees(SLOT_SLEUTEL))
+  if (gecombineerd) return { ...gecombineerd, legacy: false }
+  const salt = await lees(LEGACY_SALT_SLEUTEL)
+  const wrap = await lees(LEGACY_WRAP_SLEUTEL)
+  if (salt && wrap) return { saltB64: salt, wrap, legacy: true }
+  return null
+}
+
+/** Schrijft de slot-waarde en BEWIJST dat ze staat: terug lezen moet byte-gelijk zijn. De schrijffout zelf
+ * is dan al genoteerd (schrijf); een afwijkende terugleeswaarde krijgt hier zijn eigen notitie. */
+async function schrijfSlotTerugGelezen(waarde: string, handeling: SlotHandeling): Promise<boolean> {
+  if (!(await schrijf(SLOT_SLEUTEL, waarde))) return false
+  const terug = await lees(SLOT_SLEUTEL)
+  if (terug === waarde) return true
+  noteerSlotfout(handeling, SLOT_SLEUTEL, 'terugleescontrole mislukt: opslag geeft niet terug wat geschreven is')
+  return false
+}
+
+/** Nieuwe salt + wrap voor `code` op `anker`, atomair weggeschreven en bewezen: terug gelezen én met de code
+ * ontsleuteld tot precies dit anker. false = de opslag staat NIET aantoonbaar — de aanroeper herstelt. */
+async function schrijfSlotBewezen(code: string, anker: Uint8Array, handeling: SlotHandeling): Promise<boolean> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const wrap = await aesVersleutel(await kdfSleutel(code, salt), anker)
+  const waarde = maakSlotWaarde(b64(salt), wrap)
+  if (!(await schrijfSlotTerugGelezen(waarde, handeling))) return false
+  const controle = await aesOntsleutel(await kdfSleutel(code, salt), wrap)
+  if (!controle || !bytesGelijk(controle, anker)) {
+    noteerSlotfout(handeling, SLOT_SLEUTEL, 'ontsleutelcontrole mislukt ná schrijven')
+    return false
+  }
+  return true
+}
+
+function bytesGelijk(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  let verschil = 0
+  for (let i = 0; i < a.length; i++) verschil |= a[i] ^ b[i]
+  return verschil === 0
+}
+
+/** Zet de vorige stand terug ná een mislukte schrijfpoging: de oude gecombineerde waarde, of — bij een legacy-
+ * toestel zonder gecombineerde waarde — géén gecombineerde sleutel, zodat de legacy-sleutels weer leidend zijn. */
+async function herstelSlotWaarde(vorige: string | null): Promise<void> {
+  if (vorige) await schrijf(SLOT_SLEUTEL, vorige)
+  else await verwijder(SLOT_SLEUTEL)
+}
+
+async function verwijderLegacySleutels(): Promise<void> {
+  await verwijder(LEGACY_SALT_SLEUTEL)
+  await verwijder(LEGACY_WRAP_SLEUTEL)
+}
+
 // ---- slot-levenscyclus ---------------------------------------------------------------------------
 
 export async function isAppSlotIngesteld(): Promise<boolean> {
-  return (await lees(SALT_SLEUTEL)) !== null && (await lees(WRAP_SLEUTEL)) !== null
+  return (await leesSlot()) !== null
 }
 
 export function isOntgrendeld(): boolean {
@@ -195,13 +285,15 @@ export function vergrendel(): void {
 
 /** Nieuw slot: vers anker + code-wrap; een eventueel al aanwezig (plain) refresh-token gaat
  * direct achter het slot. Laat het slot ONTGRENDELD achter (het anker in geheugen), zodat de
- * lopende sessie gewoon doorwerkt en rotaties versleuteld opgeslagen worden. */
-export async function stelCodeIn(code: string): Promise<void> {
+ * lopende sessie gewoon doorwerkt en rotaties versleuteld opgeslagen worden. Sinds 10-09 met
+ * bewezen opslag: false = de slot-waarde staat niet aantoonbaar in de opslag (de sessie werkt
+ * dan wél, maar de volgende koude start kent geen slot — de aanroeper mag dat melden). */
+export async function stelCodeIn(code: string): Promise<boolean> {
   const anker = crypto.getRandomValues(new Uint8Array(32))
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const wrap = await aesVersleutel(await kdfSleutel(code, salt), anker)
-  await schrijf(SALT_SLEUTEL, b64(salt))
-  await schrijf(WRAP_SLEUTEL, wrap)
+  const vorige = await lees(SLOT_SLEUTEL)
+  const gelukt = await schrijfSlotBewezen(code, anker, 'instellen')
+  if (!gelukt) await herstelSlotWaarde(vorige)
+  else await verwijderLegacySleutels()
   await verwijder(FOUTEN_SLEUTEL)
   ankerInGeheugen = anker
   // Bestaand plain token (legacy-sessie van vóór het slot) meteen omzetten.
@@ -210,21 +302,26 @@ export async function stelCodeIn(code: string): Promise<void> {
     const versleuteld = await versleutelAlsSlotActief(bestaand)
     if (versleuteld) await schrijf(REFRESH_SLEUTEL, versleuteld)
   }
+  return gelukt
 }
 
 export type OntgrendelUitkomst = 'ok' | 'fout' | 'uitgesloten'
 
 /** Code-pad (scherm 5): pure lokale crypto — de GCM-tag van de wrap is de verificatie. 5×
  * fout = slot + sessie lokaal gewist (mockup-notitie ④); de aanroeper meldt de uitsluiting
- * daarna aan de server (credential_id blijft daarvoor bewaard). */
+ * daarna aan de server (credential_id blijft daarvoor bewaard). Een legacy-toestel (twee losse
+ * sleutels) wordt bij de eerste geslaagde ontgrendeling geruisloos naar de gecombineerde
+ * sleutel gebracht — de legacy-sleutels gaan pas weg als de nieuwe waarde bewezen staat. */
 export async function ontgrendelMetCode(code: string): Promise<OntgrendelUitkomst> {
-  const salt = await lees(SALT_SLEUTEL)
-  const wrap = await lees(WRAP_SLEUTEL)
-  if (!salt || !wrap) return 'fout'
-  const anker = await aesOntsleutel(await kdfSleutel(code, vanB64(salt)), wrap)
+  const slot = await leesSlot()
+  if (!slot) return 'fout'
+  const anker = await aesOntsleutel(await kdfSleutel(code, vanB64(slot.saltB64)), slot.wrap)
   if (anker) {
     ankerInGeheugen = anker
     await verwijder(FOUTEN_SLEUTEL)
+    if (slot.legacy && (await schrijfSlotTerugGelezen(maakSlotWaarde(slot.saltB64, slot.wrap), 'schrijf'))) {
+      await verwijderLegacySleutels()
+    }
     return 'ok'
   }
   const fouten = Number((await lees(FOUTEN_SLEUTEL)) ?? '0') + 1
@@ -240,23 +337,34 @@ export async function resterendePogingen(): Promise<number> {
   return MAX_FOUTEN - Number((await lees(FOUTEN_SLEUTEL)) ?? '0')
 }
 
-/** Code wijzigen (scherm 7): huidige code vereist — zelfde foutenteller als het ontgrendelen. */
-export async function wijzigCode(huidig: string, nieuw: string): Promise<OntgrendelUitkomst> {
-  const uitkomst = await ontgrendelMetCode(huidig)
-  if (uitkomst !== 'ok' || !ankerInGeheugen) return uitkomst
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const wrap = await aesVersleutel(await kdfSleutel(nieuw, salt), ankerInGeheugen)
-  await schrijf(SALT_SLEUTEL, b64(salt))
-  await schrijf(WRAP_SLEUTEL, wrap)
-  return 'ok'
+export type WijzigCodeUitkomst = 'ok' | 'fout' | 'niet_ontgrendeld'
+
+/** Code wijzigen (scherm 7). De verificatie van de huidige code is de taak van de aanroeper
+ * (ToegangInstellingen stap 1 = `ontgrendelMetCode`); hier wordt NIET opnieuw tegen de opslag
+ * geverifieerd — het anker staat al in het geheugen en wordt direct opnieuw gewrapt (bugfix 10-09:
+ * de tweede verificatie was het enige pad naar "wijzigen is niet gelukt" en telde bovendien mee in
+ * de foutenteller). 'niet_ontgrendeld' = het slot is tussendoor dichtgegaan (achtergrond, koude
+ * start) — eigen uitkomst, telt niet als foute code. 'fout' = de nieuwe wrap staat niet aantoonbaar
+ * in de opslag; de oude stand is teruggezet en de oude code blijft gelden. 'ok' alleen ná terug lezen
+ * + ontsleutelen van de nieuwe waarde. */
+export async function wijzigCode(nieuw: string): Promise<WijzigCodeUitkomst> {
+  const anker = ankerInGeheugen
+  if (!anker) return 'niet_ontgrendeld'
+  const vorige = await lees(SLOT_SLEUTEL)
+  if (await schrijfSlotBewezen(nieuw, anker, 'wijzig')) {
+    await verwijderLegacySleutels()
+    return 'ok'
+  }
+  await herstelSlotWaarde(vorige)
+  return 'fout'
 }
 
 /** Lokale wissing (5× fout, loskoppelen, dode sessie): slot + sessie weg; het credential_id
  * blijft staan — dat is de sleutel waarmee de uitsluiting/hulpvraag zich bij de server meldt. */
 export async function wisAppSlotLokaal(): Promise<void> {
   ankerInGeheugen = null
-  await verwijder(SALT_SLEUTEL)
-  await verwijder(WRAP_SLEUTEL)
+  await verwijder(SLOT_SLEUTEL)
+  await verwijderLegacySleutels()
   await verwijder(FOUTEN_SLEUTEL)
   await verwijder(BIOMETRIE_AAN_SLEUTEL)
   await verwijder(REFRESH_SLEUTEL)

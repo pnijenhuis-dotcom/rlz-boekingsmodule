@@ -24,11 +24,26 @@ import {
 } from './appSlot'
 import { bewaarNatiefRefreshToken, haalNatiefRefreshToken } from './nativeSessie'
 import { installeerFakeIndexedDb } from './fakeIndexedDb.testhulp'
+import { leesLaatsteSlotfout } from './slotDiagnose'
 import { appSlotBeschikbaar } from './appSlot'
 
 // jsdom heeft geen WebCrypto — Node's implementatie is byte-compatibel.
 if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true })
+}
+
+// De slot-diagnose (api/slotDiagnose.ts) schrijft naar localStorage — in-memory vervanger als de omgeving er geen heeft.
+if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage?.getItem !== 'function') {
+  const kv = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (k: string) => kv.get(k) ?? null,
+      setItem: (k: string, v: string) => void kv.set(k, String(v)),
+      removeItem: (k: string) => void kv.delete(k),
+      clear: () => kv.clear(),
+    },
+  })
 }
 
 let opslag: Map<string, string>
@@ -127,13 +142,104 @@ describe('code-anker', () => {
     expect(await haalCredentialId()).toBe('cred-abc')
   })
 
-  it('wijzigt de code alleen met de juiste huidige code', async () => {
+  it('wijzigt de code op het anker in geheugen — zonder tweede verificatie tegen de opslag', async () => {
     await stelCodeIn('13579')
-    expect(await wijzigCode('99999', '24680')).toBe('fout')
-    expect(await wijzigCode('13579', '24680')).toBe('ok')
+    expect(opslag.get('appslot_slot')).toMatch(/^v2\./)
+    // Bewijs dat er niet opnieuw tegen de opgeslagen wrap geverifieerd wordt: zelfs zonder slot-waarde in
+    // de opslag slaagt het wijzigen (het anker staat in het geheugen sinds stap 1 / het instellen).
+    opslag.delete('appslot_slot')
+    expect(await wijzigCode('24680')).toBe('ok')
     vergrendel()
     expect(await ontgrendelMetCode('13579')).toBe('fout')
     expect(await ontgrendelMetCode('24680')).toBe('ok')
+  })
+
+  it('niet-ontgrendeld slot → eigen uitkomst, geen teller-verhoging, opslag onaangeraakt', async () => {
+    await stelCodeIn('13579')
+    const voor = opslag.get('appslot_slot')
+    vergrendel()
+    expect(await wijzigCode('24680')).toBe('niet_ontgrendeld')
+    expect(await resterendePogingen()).toBe(MAX_FOUTEN)
+    expect(opslag.get('appslot_slot')).toBe(voor)
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+  })
+
+  it('schrijffout bij wijzigen → fout, oude code blijft gelden (niets stil geslikt)', async () => {
+    await stelCodeIn('13579')
+    const voor = opslag.get('appslot_slot')
+    const plugins = (window as unknown as { Capacitor: { Plugins: { VeiligeOpslag: { zet: unknown } } } }).Capacitor.Plugins
+    const echteZet = plugins.VeiligeOpslag.zet as (o: { sleutel: string; waarde: string }) => Promise<void>
+    plugins.VeiligeOpslag.zet = ({ sleutel, waarde }: { sleutel: string; waarde: string }) =>
+      sleutel === 'appslot_slot' ? Promise.reject(new Error('Opslag-schrijffout: kluis dicht')) : echteZet({ sleutel, waarde })
+    expect(await wijzigCode('24680')).toBe('fout')
+    plugins.VeiligeOpslag.zet = echteZet
+    expect(opslag.get('appslot_slot')).toBe(voor)
+    vergrendel()
+    expect(await ontgrendelMetCode('24680')).toBe('fout')
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+    // De reden staat lokaal in de slot-diagnose — sleutelnaam + reden, nooit een waarde.
+    const diag = leesLaatsteSlotfout()
+    expect(diag?.handeling).toBe('schrijf')
+    expect(diag?.sleutel).toBe('appslot_slot')
+    expect(diag?.reden).toContain('kluis dicht')
+    expect(JSON.stringify(diag)).not.toContain(voor!.slice(3, 20))
+  })
+
+  it('schrijven "lukt" maar terug lezen geeft iets anders → fout + oude stand hersteld', async () => {
+    await stelCodeIn('13579')
+    const voor = opslag.get('appslot_slot')
+    const plugins = (window as unknown as { Capacitor: { Plugins: { VeiligeOpslag: { zet: unknown } } } }).Capacitor.Plugins
+    const echteZet = plugins.VeiligeOpslag.zet as (o: { sleutel: string; waarde: string }) => Promise<void>
+    // Alleen de EERSTE schrijfactie op de slot-sleutel komt vervormd aan (de herstel-schrijfactie daarna niet).
+    let vervormd = false
+    plugins.VeiligeOpslag.zet = ({ sleutel, waarde }: { sleutel: string; waarde: string }) => {
+      if (sleutel === 'appslot_slot' && !vervormd) {
+        vervormd = true
+        return echteZet({ sleutel, waarde: `${waarde}kapot` })
+      }
+      return echteZet({ sleutel, waarde })
+    }
+    expect(await wijzigCode('24680')).toBe('fout')
+    plugins.VeiligeOpslag.zet = echteZet
+    expect(opslag.get('appslot_slot')).toBe(voor)
+    vergrendel()
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+  })
+
+  it('legacy: twee losse sleutels (salt + wrap) blijven leesbaar en migreren bij de eerste ontgrendeling', async () => {
+    await stelCodeIn('13579')
+    const [, salt, iv, cipher] = opslag.get('appslot_slot')!.split('.')
+    opslag.delete('appslot_slot')
+    opslag.set('appslot_salt', salt)
+    opslag.set('appslot_wrap', `${iv}.${cipher}`)
+    vergrendel()
+    expect(await isAppSlotIngesteld()).toBe(true)
+    expect(await ontgrendelMetCode('00001')).toBe('fout')
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+    expect(opslag.get('appslot_slot')).toBe(`v2.${salt}.${iv}.${cipher}`)
+    expect(opslag.has('appslot_salt')).toBe(false)
+    expect(opslag.has('appslot_wrap')).toBe(false)
+  })
+
+  it('legacy + mislukte migratie: de losse sleutels blijven staan, niemand raakt buitengesloten', async () => {
+    await stelCodeIn('13579')
+    const [, salt, iv, cipher] = opslag.get('appslot_slot')!.split('.')
+    opslag.delete('appslot_slot')
+    opslag.set('appslot_salt', salt)
+    opslag.set('appslot_wrap', `${iv}.${cipher}`)
+    vergrendel()
+    const plugins = (window as unknown as { Capacitor: { Plugins: { VeiligeOpslag: { zet: unknown } } } }).Capacitor.Plugins
+    const echteZet = plugins.VeiligeOpslag.zet as (o: { sleutel: string; waarde: string }) => Promise<void>
+    plugins.VeiligeOpslag.zet = ({ sleutel, waarde }: { sleutel: string; waarde: string }) =>
+      sleutel === 'appslot_slot' ? Promise.reject(new Error('kluis dicht')) : echteZet({ sleutel, waarde })
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+    expect(opslag.has('appslot_salt')).toBe(true)
+    expect(opslag.has('appslot_wrap')).toBe(true)
+    // Wijzigen faalt dan eerlijk en laat de legacy-stand intact.
+    expect(await wijzigCode('24680')).toBe('fout')
+    plugins.VeiligeOpslag.zet = echteZet
+    vergrendel()
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
   })
 })
 
@@ -207,7 +313,7 @@ describe('web-adapter (PWA-slotmodus)', () => {
     await bewaarNatiefRefreshToken('token-web')
     const kv = idb.data.get('accordeur-slot')!.get('kv')!
     expect(kv.get('refresh_token')).toMatch(/^slot\.v1\./)
-    expect(kv.get('appslot_salt')).toBeTruthy()
+    expect(kv.get('appslot_slot')).toMatch(/^v2\./)
     vergrendel()
     expect(await haalNatiefRefreshToken()).toBeNull()
     expect(await ontgrendelMetCode('13579')).toBe('ok')
