@@ -1461,6 +1461,10 @@ class DocumentMetDuplicaat:
     # Autoboeken-opt-in (blok 2, 2026-08-09): True wanneer de GEBOEKT-overgang het
     # `automatisch_geboekt`-detail draagt — voedt de werkvoorraad-chip en het filter.
     automatisch_geboekt: bool = False
+    # Blok 4 (10-09 avond): de automatische boeking liep door terwijl de AI-plausibiliteitstoets technisch uitviel
+    # (GEBOEKT-overgang-detail `zonder_ai_toets`) — chip "zonder AI-toets" naast "automatisch"; oorzaak als tooltip.
+    zonder_ai_toets: bool = False
+    ai_toets_oorzaak: str | None = None
     # Factuurmatch (fase 2): de actuele matchstand van een veldwerker-factuur — None zolang
     # er geen match berekend is (crediteur niet gekoppeld / nog geen voorstel).
     factuurmatch: FactuurmatchKort | None = None
@@ -1635,16 +1639,20 @@ def lijst_documenten(
         # Automatisch-geboekt-markering (bulk): documenten met een GEBOEKT-overgang die het
         # autoboeken-detail draagt (app/documenten/autoboeken.py via boek_document).
         automatisch_geboekt_ids: set[uuid.UUID] = set()
+        # Blok 4 (10-09 avond): document_id → oorzaak van een boeking zónder AI-toets (zelfde GEBOEKT-overgang).
+        zonder_ai_toets_per_doc: dict[uuid.UUID, str | None] = {}
         if document_ids:
-            automatisch_geboekt_ids = set(
-                session.scalars(
-                    select(DocumentGebeurtenis.document_id).where(
-                        DocumentGebeurtenis.document_id.in_(document_ids),
-                        DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
-                        DocumentGebeurtenis.detail.has_key("automatisch_geboekt"),
-                    )
+            for doc_id, detail in session.execute(
+                select(DocumentGebeurtenis.document_id, DocumentGebeurtenis.detail).where(
+                    DocumentGebeurtenis.document_id.in_(document_ids),
+                    DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+                    DocumentGebeurtenis.detail.has_key("automatisch_geboekt"),
                 )
-            )
+            ).all():
+                automatisch_geboekt_ids.add(doc_id)
+                if (detail or {}).get("zonder_ai_toets"):
+                    oorzaak = (detail or {}).get("ai_toets_oorzaak")
+                    zonder_ai_toets_per_doc[doc_id] = str(oorzaak) if oorzaak else None
         # Factuurmatch-chipdata (fase 2, bulk — zelfde geen-N+1-regel). Lazy import: app.uren
         # gebruikt de documenten-modellen, geen kringimport op moduleniveau.
         from app.uren.models import Factuurmatch
@@ -1756,6 +1764,8 @@ def lijst_documenten(
                     totaalbedrag=totaalbedrag,
                     factuurdatum=factuurdatum,
                     automatisch_geboekt=d.id in automatisch_geboekt_ids,
+                    zonder_ai_toets=d.id in zonder_ai_toets_per_doc,
+                    ai_toets_oorzaak=zonder_ai_toets_per_doc.get(d.id),
                     factuurmatch=matches.get(d.id),
                     duplicaatsignaal=signalen.get(d.id),
                     accordeur_aan_de_beurt=beurt.get(d.id),

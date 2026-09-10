@@ -5,12 +5,21 @@ vaste regel of het factuur-autoboekpad); de AI mag alleen zeggen of dat voorstel
 omschrijving/tegenpartij/bedrag/historie. Uitkomst uitsluitend 'plausibel' of 'twijfel' + reden (sentinel-schema,
 0 unions) — de AI krijgt NOOIT de keuze uit rekeningen.
 
-Poorten, in deze volgorde, elk `overgeslagen` mét oorzaak en NOOIT boeken:
+Poorten, in deze volgorde, elk `overgeslagen` mét `oorzaak`:
 (1) AVG-gate `intake_ai_ingeschakeld` (platform, dezelfde gate als de intake-AI),
 (2) API-key geconfigureerd,
 (3) AI-kostengrens (de client draait `controleer_poort` vóór en `registreer_verbruik` ná de call — zelfde meter),
 (4) AI-fout/timeout/afkap/onbruikbaar antwoord.
-Audit per toets: `ai_plausibiliteitstoets` mét soort/uitkomst/reden/model — nooit de prompt.
+
+**Uitval = doorlopen, zichtbaar (blok 4 vervolgrun 10-09 avond; besluit Peter 10-09 — herziet de poort-semantiek van
+blok B):** de deterministische poorten blijven de eis; valt de AI-toets TECHNISCH uit (`overgeslagen`), dan boekt de
+aanroeper WÉL, mét chip "zonder AI-toets" (bank: `bank_mutatie.ai_toets_uitkomst`; factuur: GEBOEKT-overgang-detail),
+audit `ai_plausibiliteitstoets` mét `oorzaak`, teller `ai_toets_overgeslagen` in de reconciliatie en een LET-OP
+"controleer steekproefsgewijs". De AVG-gate blijft blokkerend voor de AI-CALL (geen byte naar de API), niet voor de
+boeking. `twijfel` blijft NIET boeken (open mét reden); `plausibel` onveranderd. Harde grens
+(ONTWERP_AUTONOMIE_TOEKOMST): de AI kiest nooit een rekening — AI-uitval betekent doorlopen zónder AI, nooit doorlopen
+mét een AI-keuze.
+Audit per toets: `ai_plausibiliteitstoets` mét soort/uitkomst/reden/oorzaak/model — nooit de prompt.
 
 Testseam: `_client_factory` (module-niveau, monkeypatchbaar) — tests gebruiken `tests/aitoets/conftest.py::
 StubPlausibiliteitClient`, nooit een echte call."""
@@ -46,6 +55,9 @@ OORZAAK_KOSTENGRENS = "kostengrens"
 OORZAAK_AI_FOUT = "ai_fout"
 
 AUDIT_ACTIE = "ai_plausibiliteitstoets"
+#: Blok 4 (10-09 avond): één audit-rij per boeking die ná een technische uitval van de toets tóch doorliep — geschreven
+#: door de aanroeper NÁ de geslaagde boeking (bank én factuur), zodat de teller alleen échte boekingen telt.
+AUDIT_ACTIE_GEBOEKT_ZONDER_TOETS = "automatisch_geboekt_zonder_ai_toets"
 _MAX_REDEN_TEKENS = 300
 
 # Sentinel-schema: 0 union-parameters (bugfix 31-08, Anthropic-limiet 16). Alleen ja/nee op het voorgestelde.
@@ -85,15 +97,28 @@ class PlausibiliteitInvoer:
     referentie_id: uuid.UUID  # payment_transaction_id (bank) of document_id (factuur) — audit-record
 
 
+#: Oorzaken van een technische uitval (`overgeslagen`) — één bron voor aanroepers, tellers en chips.
+OORZAKEN_OVERGESLAGEN: tuple[str, ...] = (OORZAAK_AVG_GATE, OORZAAK_API_KEY, OORZAAK_KOSTENGRENS, OORZAAK_AI_FOUT)
+
+
 @dataclass(frozen=True)
 class PlausibiliteitUitkomst:
     uitkomst: str  # UITKOMST_PLAUSIBEL | UITKOMST_TWIJFEL | UITKOMST_OVERGESLAGEN | UITKOMST_UIT
     reden: str  # leesbaar; bij overgeslagen begint de reden met de oorzaak (avg_gate, api_key, kostengrens, ai_fout)
+    # Blok 4 (10-09 avond): expliciete oorzaak van een technische uitval — alleen gevuld bij `overgeslagen`.
+    oorzaak: str | None = None
 
     @property
     def boeken_toegestaan(self) -> bool:
-        """Alleen 'plausibel' en 'uit' (toets niet van toepassing) laten het boekpad door."""
-        return self.uitkomst in (UITKOMST_PLAUSIBEL, UITKOMST_UIT)
+        """'plausibel', 'uit' (toets niet van toepassing) én — sinds blok 4 (10-09 avond) — 'overgeslagen' (technische
+        uitval: doorlopen zonder AI, zichtbaar) laten het boekpad door. Alleen 'twijfel' houdt de boeking tegen."""
+        return self.uitkomst in (UITKOMST_PLAUSIBEL, UITKOMST_UIT, UITKOMST_OVERGESLAGEN)
+
+    @property
+    def zonder_ai_toets(self) -> bool:
+        """True = de boeking gaat door zónder AI-oordeel (chip "zonder AI-toets", teller, LET-OP). Beide aanroepers
+        (bank/boeken.py, documenten/autoboeken.py) delen deze semantiek — nooit eigen string-vergelijkingen."""
+        return self.uitkomst == UITKOMST_OVERGESLAGEN
 
 
 def _standaard_client_factory(referentie):
@@ -144,18 +169,56 @@ def _audit(invoer: PlausibiliteitInvoer, uitkomst: PlausibiliteitUitkomst, *, mo
                 "uitkomst": uitkomst.uitkomst,
                 "reden": uitkomst.reden,
                 "model": model,
+                # Blok 4 (10-09 avond): oorzaak van een technische uitval + of de boeking zónder AI-toets doorloopt —
+                # de bron voor de teller `ai_toets_overgeslagen` en de LET-OP in de reconciliatie.
+                "oorzaak": uitkomst.oorzaak,
+                "zonder_ai_toets": uitkomst.zonder_ai_toets,
             },
             administratie_id=invoer.administratie_id,
         )
 
 
+def registreer_geboekt_zonder_ai_toets(
+    *,
+    administratie_id: uuid.UUID,
+    soort: str,
+    referentie_id: uuid.UUID,
+    uitkomst: PlausibiliteitUitkomst,
+    bron: str | None = None,
+) -> None:
+    """Audit `automatisch_geboekt_zonder_ai_toets` (blok 4): de aanroeper roept dit aan ná een GESLAAGDE automatische
+    boeking waarvan de toets `overgeslagen` was. Tabel = bank_mutatie (bank) of document (factuur); nieuwe_waarde draagt
+    soort/oorzaak/reden/bron — de reconciliatie telt hierop per dag per oorzaak en zet er een LET-OP op."""
+    if not uitkomst.zonder_ai_toets:
+        return
+    tabel = "document" if soort == SOORT_FACTUUR_AUTOBOEKING else "bank_mutatie"
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel=tabel,
+            record_id=referentie_id,
+            actie=AUDIT_ACTIE_GEBOEKT_ZONDER_TOETS,
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "soort": soort,
+                "oorzaak": uitkomst.oorzaak,
+                "reden": uitkomst.reden,
+                "bron": bron,
+            },
+            administratie_id=administratie_id,
+        )
+
+
 def _overgeslagen(oorzaak: str, detail: str) -> PlausibiliteitUitkomst:
-    return PlausibiliteitUitkomst(UITKOMST_OVERGESLAGEN, f"{oorzaak} — {detail}")
+    return PlausibiliteitUitkomst(UITKOMST_OVERGESLAGEN, f"{oorzaak} — {detail}", oorzaak=oorzaak)
 
 
 def toets_plausibiliteit(invoer: PlausibiliteitInvoer) -> PlausibiliteitUitkomst:
-    """Voert de toets uit achter de vier poorten en legt de uitkomst vast in het audit_event. Elke niet-plausibele
-    uitkomst betekent voor de aanroeper: NIET boeken, zichtbaar laten staan."""
+    """Voert de toets uit achter de vier poorten en legt de uitkomst vast in het audit_event. Voor de aanroeper:
+    'twijfel' = NIET boeken, zichtbaar laten staan; 'overgeslagen' (technische uitval, blok 4) = WÉL boeken, mét
+    markering "zonder AI-toets" + oorzaak; 'plausibel' = boeken."""
     from app.aikosten.service import AiKostenFout, AiVerbruikReferentie
     from app.beheer.service import intake_ai_effectief_ingeschakeld
     from app.extractie.client import AiExtractieFout, AiExtractieNietGeconfigureerd
@@ -191,7 +254,7 @@ def toets_plausibiliteit(invoer: PlausibiliteitInvoer) -> PlausibiliteitUitkomst
         uitkomst = _overgeslagen(OORZAAK_AI_FOUT, str(exc))
         _audit(invoer, uitkomst, model=model)
         return uitkomst
-    except Exception as exc:  # noqa: BLE001 — een onverwachte fout in de AI-laag mag nooit een boeking doorlaten
+    except Exception as exc:  # noqa: BLE001 — een onverwachte fout in de AI-laag = uitval: doorlopen zónder AI, zichtbaar
         logger.exception("AI-plausibiliteitstoets onverwacht mislukt (%s)", invoer.referentie_id)
         uitkomst = _overgeslagen(OORZAAK_AI_FOUT, f"{type(exc).__name__}: {exc}")
         _audit(invoer, uitkomst, model=model)
@@ -251,8 +314,25 @@ def toets_factuur_autoboeking(
     omschrijving = invoer_velden.get("omschrijving")
     try:
         voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
-    except Exception as exc:  # noqa: BLE001 — geen voorstel leesbaar = niet plausibel te maken; nooit doorlaten
-        return _overgeslagen(OORZAAK_AI_FOUT, f"boekvoorstel niet leesbaar: {type(exc).__name__}: {exc}")
+    except Exception as exc:  # noqa: BLE001 — toets-invoer niet opbouwbaar = technische uitval (blok 4: doorlopen, zichtbaar)
+        uitkomst = _overgeslagen(OORZAAK_AI_FOUT, f"boekvoorstel niet leesbaar: {type(exc).__name__}: {exc}")
+        _audit(
+            PlausibiliteitInvoer(
+                administratie_id=administratie_id,
+                soort=SOORT_FACTUUR_AUTOBOEKING,
+                omschrijving=None,
+                tegenpartij=None,
+                bedrag=None,
+                rekening_code=None,
+                rekening_naam=None,
+                btw_omschrijving=None,
+                historie_samenvatting="",
+                referentie_id=document_id,
+            ),
+            uitkomst,
+            model=None,
+        )
+        return uitkomst
     regels = voorstel.regels or ([voorstel.samengevoegde_regel] if voorstel.samengevoegde_regel else [])
     if regels:
         ledger_id = ledger_id or regels[0].ledger_id

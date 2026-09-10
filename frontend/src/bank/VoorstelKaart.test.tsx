@@ -119,14 +119,15 @@ describe('historie-regel + AI-toets-chips (blok B bundel 10-09)', () => {
     expect(matchChip({ soort: 'historie_regel', kleur: 'groen', bron: 'historie: 3 van 3 op 4400 Huur', historie_k: 3, historie_n: 3 }, false)?.tekst).toBe('historie-regel — 3 van 3 op 4400 Huur')
   })
 
-  it('AI-toets: twijfel = oranje chip mét reden, overgeslagen = grijze chip mét reden, plausibel/null = geen chip', () => {
+  it('AI-toets: twijfel = oranje chip mét reden, overgeslagen = grijze chip "zonder AI-toets" (blok 4: geboekt zonder toets), plausibel/null = geen chip', () => {
     const { rerender } = render(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'twijfel', ai_toets_reden: 'bedrag 3× hoger dan de historie', ai_toets_op: '2026-09-10T03:00:00Z' }} />)
     const twijfel = screen.getByTestId('ai-toets-twijfel')
     expect(twijfel).toHaveTextContent('AI-twijfel: bedrag 3× hoger dan de historie')
     expect(twijfel).toHaveClass('chip', 'ai')
     rerender(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'overgeslagen', ai_toets_reden: 'api_key — geen API-key geconfigureerd', ai_toets_op: null }} />)
     const over = screen.getByTestId('ai-toets-overgeslagen')
-    expect(over).toHaveTextContent('AI-toets overgeslagen: api_key — geen API-key geconfigureerd')
+    expect(over).toHaveTextContent('zonder AI-toets: api_key — geen API-key geconfigureerd')
+    expect(over).toHaveAttribute('title', expect.stringContaining('loopt door zónder AI-toets'))
     expect(over).toHaveClass('chip')
     expect(over).not.toHaveClass('ai')
     rerender(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'plausibel', ai_toets_reden: 'ok', ai_toets_op: null }} />)

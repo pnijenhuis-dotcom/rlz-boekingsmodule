@@ -77,6 +77,12 @@ GEEN_SYNC_RUN = "geen_sync_run"
 #: AI-kostengrens bereikt is — beide een menselijke instelling (harde voorwaarde, deeplink Instellingen › Intake-AI).
 AVG_GATE = "avg_gate"
 KOSTENGRENS = "kostengrens"
+#: Blok 4 (10-09 avond): een automatische boeking liep door terwijl de AI-plausibiliteitstoets TECHNISCH uitviel
+#: (avg_gate | api_key | kostengrens | ai_fout). Geen poort meer, wél een LET-OP "controleer steekproefsgewijs" op de
+#: eigen teller `ai_toets_overgeslagen`; de oorzaak (avg_gate/api_key/kostengrens/ai_fout uit het audit-veld `oorzaak`)
+#: is daar de categorie — `ai_fout` heeft alleen een label (categoriseer_reden blijft `fout` geven op vrije tekst).
+ZONDER_AI_TOETS = "zonder_ai_toets"
+AI_FOUT = "ai_fout"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -84,8 +90,16 @@ KOSTENGRENS = "kostengrens"
 #: `vangnet_scheduler` (08-09): ≥ 1 mislukte job-trigger in het etmaal = LET-OP (platformbreed, administratie-loos).
 HARDE_VOORWAARDEN = frozenset(
     {
-        CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER, GEEN_SYNC_RUN,
-        AVG_GATE, KOSTENGRENS,
+        CREDENTIAL,
+        API_KEY,
+        GELDPOORT,
+        VOLUMEREM,
+        NOODREM,
+        GEEN_EIGENAAR,
+        VANGNET_SCHEDULER,
+        GEEN_SYNC_RUN,
+        AVG_GATE,
+        KOSTENGRENS,
     }
 )
 
@@ -127,6 +141,8 @@ REDEN_LABEL: dict[str, str] = {
     GEEN_SYNC_RUN: "geen bank-sync-run in het venster (sync-alles niet gedraaid?)",
     AVG_GATE: "AI staat uit (AVG-gate intake-AI)",
     KOSTENGRENS: "AI-kostengrens bereikt",
+    ZONDER_AI_TOETS: "geboekt zonder AI-toets — controleer steekproefsgewijs",
+    AI_FOUT: "AI-fout/timeout",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -141,6 +157,11 @@ AUTOBOEK_LEREN = "autoboek_leren"
 #: factuur); stand = AVG-gate intake-AI; gedaan = plausibel + twijfel; overgeslagen per oorzaak. Geen eigen LET-OP (die
 #: hangt al op het pad dat overgeslagen werd).
 AI_PLAUSIBILITEIT = "ai_plausibiliteit"
+#: Blok 4 (10-09 avond, besluit Peter "uitval = doorlopen, zichtbaar"): automatische boekingen (bank én factuur) die
+#: doorliepen terwijl de AI-toets technisch uitviel — bron audit `automatisch_geboekt_zonder_ai_toets`; per dag per
+#: oorzaak; > 0 in het etmaal = LET-OP "N automatische boekingen zonder AI-toets (oorzaak …) — controleer
+#: steekproefsgewijs" mét deeplink naar de bankrekening/documentenlijst. Stand = aan zodra er in de week iets telde.
+AI_TOETS_OVERGESLAGEN = "ai_toets_overgeslagen"
 #: Verzoek blok C (10-09): eerste-sync-run (onboarding) met een RLZ-weigering 401/403 = harde voorwaarde `credential`
 #: mét deeplink naar de administratie; bron `administratie_sync_run` (status fout, onderdelen.*.http_status).
 EERSTE_SYNC = "eerste_sync"
@@ -161,6 +182,7 @@ VOLGORDE: tuple[str, ...] = (
     BANK_SYNC,
     BANK,
     AI_PLAUSIBILITEIT,
+    AI_TOETS_OVERGESLAGEN,
     EERSTE_SYNC,
     DUPLICAAT_AFVOER,
     CREDITEUREN,
@@ -184,6 +206,7 @@ LABEL: dict[str, str] = {
     BANK: "Bank-autoboeken/afletteren",
     BANK_SYNC: "Bank-sync (dagelijks, alle administraties)",
     AI_PLAUSIBILITEIT: "AI-plausibiliteitstoets (poort vóór autoboeken)",
+    AI_TOETS_OVERGESLAGEN: "Automatisch geboekt zonder AI-toets (vangnet)",
     EERSTE_SYNC: "Eerste sync (onboarding)",
     NABUNDEL: "Nabundel (UBL+PDF, dubbelen)",
     TERUGKEREND: "Terugkerende facturen (herberekening)",
@@ -230,6 +253,7 @@ _ACTIES: tuple[str, ...] = (
     "autoboek_leverancier_geactiveerd",
     "autoboek_leverancier_gereset",
     "ai_plausibiliteitstoets",
+    "automatisch_geboekt_zonder_ai_toets",
     "document_nagebundeld",
     "document_dubbel_samengevouwen",
     "mini_voorraad_instroom",
@@ -351,12 +375,17 @@ class Venster:
 
 @dataclass(frozen=True)
 class HardeVoorwaarde:
-    """Eén groep overgeslagen stukken wegens een ontbrekende harde voorwaarde (laatste 24 u)."""
+    """Eén groep overgeslagen stukken wegens een ontbrekende harde voorwaarde (laatste 24 u). Blok 4 (10-09 avond,
+    additief): `soort` (bank_* | factuur_autoboeking) en `doel_pad` voor de vangnet-teller `ai_toets_overgeslagen` —
+    dáár is de categorie de oorzaak van de uitval en het doel de plek waar de mens de boekingen steekproefsgewijs
+    controleert (bankrekening / documentenlijst), niet een instelling."""
 
     categorie: str
     aantal: int
     administratie_id: uuid.UUID | None
     voorbeeld: str | None = None
+    soort: str | None = None
+    doel_pad: str | None = None
 
 
 @dataclass
@@ -533,6 +562,16 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "AVG-gate intake-AI " + ("aan" if feiten.intake_ai_aan else "UIT — élke toets wordt overgeslagen (avg_gate)"),
         "audit ai_plausibiliteitstoets (bank én factuur; gedaan = plausibel + twijfel)",
     )
+    # Blok 4 (10-09 avond): stand volgt uit de feiten (aan zodra er in de week een boeking zonder toets was) — een
+    # vangnet-rij zonder inhoud verdwijnt zo achter "uit-regels niet tonen", een rij mét inhoud is altijd zichtbaar.
+    zonder_toets = maak(
+        AI_TOETS_OVERGESLAGEN,
+        "uit",
+        "geen automatische boeking zonder AI-toets in de laatste 7 dagen",
+        "audit automatisch_geboekt_zonder_ai_toets (bank én factuur; oorzaak avg_gate/api_key/kostengrens/ai_fout)",
+    )
+    zonder_groepen: dict[tuple[uuid.UUID | None, str, str], list[str]] = {}
+    zonder_detail: dict[str, Any] = {"bank_24u": 0, "factuur_24u": 0, "per_oorzaak_24u": {}}
     eerste_sync = maak(
         EERSTE_SYNC,
         "op_aanvraag",
@@ -641,6 +680,18 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                     str(nw.get("reden") or ""),
                     hard_registreren=False,
                 )
+        elif f.actie == "automatisch_geboekt_zonder_ai_toets":
+            # Blok 4 (10-09 avond): één rij per boeking die doorliep zonder AI-oordeel. gedaan = de boeking (die is
+            # er), overgeslagen[oorzaak] = de toets die uitviel; verwacht = aantal boekingen (één toets per boeking).
+            oorzaak = str(nw.get("oorzaak") or "") or categoriseer_reden(nw.get("reden"))
+            soort = str(nw.get("soort") or "")
+            for v in vensters(zonder_toets, f.tijdstip):
+                v.gedaan += 1
+                v.tel_overgeslagen(oorzaak)
+            if f.tijdstip >= dag_vanaf:
+                zonder_groepen.setdefault((f.administratie_id, soort, oorzaak), []).append(str(nw.get("reden") or ""))
+                zonder_detail["factuur_24u" if soort == "factuur_autoboeking" else "bank_24u"] += 1
+                zonder_detail["per_oorzaak_24u"][oorzaak] = zonder_detail["per_oorzaak_24u"].get(oorzaak, 0) + 1
         elif f.actie == "autoboek_leverancier_geactiveerd":
             if f.tijdstip >= dag_vanaf:
                 leren_detail["geactiveerd_24u"] += 1
@@ -781,6 +832,27 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
     if lr is not None and lr >= week_vanaf:
         kand.week.gedaan = 1  # minimaal één; de instelling bewaart alleen de laatste run
 
+    # --- blok 4 (10-09 avond): vangnet-teller "zonder AI-toets" — stand + LET-OP-groepen per (administratie, soort,
+    #     oorzaak) mét deeplink naar de plek van de boekingen (geen instelling: de mens controleert steekproefsgewijs).
+    if zonder_toets.week.gedaan > 0:
+        zonder_toets.stand = "aan"
+        zonder_toets.stand_detail = (
+            f"{zonder_toets.dag.gedaan} in het etmaal, {zonder_toets.week.gedaan} in {STIL_DAGEN} dagen — "
+            "vangnet, geen poort"
+        )
+    zonder_toets.detail = zonder_detail
+    for (aid, soort, oorzaak), redenen in zonder_groepen.items():
+        zonder_toets.harde_voorwaarden.append(
+            HardeVoorwaarde(
+                categorie=oorzaak,
+                aantal=len(redenen),
+                administratie_id=aid,
+                voorbeeld=next((r for r in redenen if r), None),
+                soort=soort,
+                doel_pad=doel_pad_zonder_ai_toets(soort=soort, administratie_id=aid),
+            )
+        )
+
     # --- harde voorwaarden + stil
     for (sleutel, cat, aid), voorbeelden in hard.items():
         tellers[sleutel].harde_voorwaarden.append(
@@ -811,7 +883,20 @@ def vingerafdruk_automatisering(*, sleutel: str, categorie: str, administratie_i
     return hashlib.sha256(ruw).hexdigest()[:_VINGERAFDRUK_LENGTE]
 
 
+def doel_pad_zonder_ai_toets(*, soort: str, administratie_id: uuid.UUID | None) -> str:
+    """Waar de mens de boekingen-zonder-AI-toets steekproefsgewijs controleert: bank → het bankscherm van de
+    administratie; factuur → de documentenlijst gefilterd op "automatisch geboekt"; zonder administratie → de
+    kantoorbrede werkvoorraad."""
+    if administratie_id is None:
+        return "/?status=__automatisch_geboekt"
+    if soort == "factuur_autoboeking":
+        return f"/?administratie={administratie_id}&status=__automatisch_geboekt"
+    return f"/bank/{administratie_id}"
+
+
 def _doel_pad(hv: HardeVoorwaarde) -> str:
+    if hv.doel_pad:
+        return hv.doel_pad
     pad = DOEL_PAD.get(hv.categorie, "/instellingen")
     if "{aid}" in pad:
         return pad.replace("{aid}", str(hv.administratie_id)) if hv.administratie_id else "/instellingen/administraties"
@@ -827,6 +912,38 @@ def bevindingen(tellers: Sequence[Teller], *, namen: dict[uuid.UUID, str] | None
     for t in tellers:
         for hv in t.harde_voorwaarden:
             waar = f" in administratie {hv.administratie_id}" if hv.administratie_id else ""
+            if t.sleutel == AI_TOETS_OVERGESLAGEN:
+                # Blok 4 (10-09 avond): geen ontbrekende voorwaarde maar een vangnet — de boekingen zijn er, zonder
+                # AI-oordeel; de handeling is een steekproef op de plek van de boekingen (deeplink).
+                soort_tekst = "factuur" if hv.soort == "factuur_autoboeking" else "bank"
+                uit.append(
+                    {
+                        "soort": "let_op",
+                        "administratie_id": hv.administratie_id,
+                        "blok": BLOK,
+                        "vingerafdruk": vingerafdruk_automatisering(
+                            sleutel=t.sleutel,
+                            categorie=f"{ZONDER_AI_TOETS}:{hv.categorie}:{hv.soort or ''}",
+                            administratie_id=hv.administratie_id,
+                        ),
+                        "tekst": (
+                            f"LET-OP     automatisering {t.sleutel}: {hv.aantal} automatische {soort_tekst}boekingen "
+                            f"zonder AI-toets (oorzaak {hv.categorie}){waar} — controleer steekproefsgewijs"
+                        ),
+                        "detail": {
+                            "automatisering": t.sleutel,
+                            "automatisering_label": t.label,
+                            "reden": ZONDER_AI_TOETS,
+                            "oorzaak": hv.categorie,
+                            "boeking_soort": soort_tekst,
+                            "aantal": hv.aantal,
+                            "voorbeeld": hv.voorbeeld,
+                            "administratie_naam": namen.get(hv.administratie_id) if hv.administratie_id else None,
+                            "doel_pad": _doel_pad(hv),
+                        },
+                    }
+                )
+                continue
             uit.append(
                 {
                     "soort": "let_op",
@@ -902,7 +1019,13 @@ def regels(tellers: Sequence[Teller]) -> list[str]:
             regel += f" — {t.stand_detail}"
         if t.stil:
             regel += f" — LET-OP: {STIL_DAGEN} dagen stil bij {t.week.verwacht} kandidaten"
-        if t.harde_voorwaarden:
+        if t.harde_voorwaarden and t.sleutel == AI_TOETS_OVERGESLAGEN:
+            regel += " — LET-OP: " + "; ".join(
+                f"{h.aantal}× geboekt zonder AI-toets ({REDEN_LABEL.get(h.categorie, h.categorie)}) — "
+                "controleer steekproefsgewijs"
+                for h in t.harde_voorwaarden
+            )
+        elif t.harde_voorwaarden:
             regel += " — LET-OP: " + "; ".join(
                 f"{h.aantal}× {REDEN_LABEL.get(h.categorie, h.categorie)}" for h in t.harde_voorwaarden
             )
@@ -933,6 +1056,8 @@ def uit_samenvatting(samenvatting: dict) -> list[Teller]:
                     aantal=int(h.get("aantal") or 0),
                     administratie_id=uuid.UUID(str(aid)) if aid else None,
                     voorbeeld=h.get("voorbeeld"),
+                    soort=h.get("soort"),
+                    doel_pad=h.get("doel_pad"),
                 )
             )
         uit.append(t)

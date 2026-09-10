@@ -80,18 +80,37 @@ export function historieChip(voorstel: Pick<VoorstelDto, 'soort' | 'kleur'> & Pa
   return { tekst: `historie${kern ? `: ${kern}` : ''} — bevestigen`, kleur: 'oranje' }
 }
 
+/** Leesbaar label van de uitval-oorzaak vóór het "—" in de reden ("avg_gate — …" → "AI staat uit (AVG-gate)"). */
+export const AI_TOETS_OORZAAK_LABEL: Record<string, string> = {
+  avg_gate: 'AI staat uit (AVG-gate)',
+  api_key: 'geen API-key',
+  kostengrens: 'AI-kostengrens bereikt',
+  ai_fout: 'AI-fout/timeout',
+}
+
+export function aiToetsOorzaakLabel(oorzaak: string | null | undefined): string {
+  if (!oorzaak) return 'onbekende oorzaak'
+  return AI_TOETS_OORZAAK_LABEL[oorzaak] ?? oorzaak.replace(/_/g, ' ')
+}
+
 /** AI-plausibiliteitstoets (blok B 10-09) op de rij/kaart: `twijfel` = oranje "AI-twijfel: ‹reden›" (niet automatisch
- * geboekt, mens beoordeelt), `overgeslagen` = grijze "AI-toets overgeslagen: ‹reden›" (poort kon niet draaien);
+ * geboekt, mens beoordeelt); `overgeslagen` = grijze "zonder AI-toets: ‹reden›" — sinds blok 4 (10-09 avond, besluit
+ * Peter "uitval = doorlopen, zichtbaar") betekent dat: de toets viel technisch uit (AVG-gate, API-key, kostengrens,
+ * AI-fout) en de automatische boeking loopt/liep door zónder AI-oordeel; controleer steekproefsgewijs.
  * `plausibel`/null = geen chip (de boeking zelf draagt dan de chip "automatisch"). */
 export function AiToetsChip({ mutatie }: { mutatie: Pick<MutatieDto, 'ai_toets_uitkomst' | 'ai_toets_reden' | 'ai_toets_op'> }) {
   const uitkomst = mutatie.ai_toets_uitkomst ?? null
   if (uitkomst !== 'twijfel' && uitkomst !== 'overgeslagen') return null
   const reden = mutatie.ai_toets_reden?.trim() || 'geen reden meegegeven'
   const wanneer = formatDatum(mutatie.ai_toets_op ?? null)
-  const title = `${uitkomst === 'twijfel' ? 'De AI-toets twijfelde aan het voorstel — niet automatisch geboekt, een mens beoordeelt.' : 'De AI-toets kon niet draaien — niet automatisch geboekt.'}${wanneer ? ` (${wanneer})` : ''}`
+  const title = `${
+    uitkomst === 'twijfel'
+      ? 'De AI-toets twijfelde aan het voorstel — niet automatisch geboekt, een mens beoordeelt.'
+      : 'De AI-toets viel technisch uit — de deterministische controles waren groen, de automatische boeking loopt door zónder AI-toets. Controleer steekproefsgewijs.'
+  }${wanneer ? ` (${wanneer})` : ''}`
   return (
     <span className={uitkomst === 'twijfel' ? 'chip ai' : 'chip'} title={title} data-testid={`ai-toets-${uitkomst}`}>
-      {uitkomst === 'twijfel' ? `AI-twijfel: ${reden}` : `AI-toets overgeslagen: ${reden}`}
+      {uitkomst === 'twijfel' ? `AI-twijfel: ${reden}` : `zonder AI-toets: ${reden}`}
     </span>
   )
 }

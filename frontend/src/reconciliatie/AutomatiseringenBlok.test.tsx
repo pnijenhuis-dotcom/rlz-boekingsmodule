@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
@@ -58,6 +58,51 @@ const AUTOMATISERINGEN: AutomatiseringenDto = {
 }
 
 describe('AutomatiseringenBlok', () => {
+  it('blok 4 (10-09 avond): vangnet-teller "geboekt zonder AI-toets" — eigen badge, server-deeplink naar de boekingen, uit zonder inhoud', () => {
+    const vangnet = teller('ai_toets_overgeslagen', 'Automatisch geboekt zonder AI-toets (vangnet)', {
+      stand: 'aan',
+      stand_detail: '2 in het etmaal, 2 in 7 dagen — vangnet, geen poort',
+      dag: { verwacht: 2, gedaan: 2, overgeslagen: { avg_gate: 1, kostengrens: 1 } },
+      week: { verwacht: 2, gedaan: 2, overgeslagen: { avg_gate: 1, kostengrens: 1 } },
+      detail: { bank_24u: 1, factuur_24u: 1, per_oorzaak_24u: { avg_gate: 1, kostengrens: 1 } },
+      harde_voorwaarden: [
+        {
+          categorie: 'avg_gate',
+          aantal: 1,
+          administratie_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          voorbeeld: 'avg_gate — AI staat platformbreed uit',
+          soort: 'bank_historie',
+          doel_pad: '/bank/aaaaaaaa-0000-0000-0000-000000000001',
+        },
+      ],
+    })
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [...AUTOMATISERINGEN.tellers, vangnet] }} />
+      </MemoryRouter>,
+    )
+    const rij = screen.getByTestId('automatisering-ai_toets_overgeslagen')
+    expect(within(rij).getByTestId('chip-harde-voorwaarde')).toHaveTextContent('geboekt zonder AI-toets')
+    expect(rij).toHaveTextContent('2 (AI staat uit (AVG-gate intake-AI): 1, AI-kostengrens bereikt: 1)')
+    const link = within(rij).getByRole('link', { name: 'Naar de boekingen van Automatisch geboekt zonder AI-toets (vangnet)' })
+    expect(link).toHaveAttribute('href', '/bank/aaaaaaaa-0000-0000-0000-000000000001')
+    expect(link).toHaveTextContent('Controleer steekproefsgewijs →')
+    expect(screen.getByTestId('automatiseringen-samenvatting')).toHaveTextContent('4 aan · 3 let-op')
+
+    // Zonder boekingen zonder toets: stand uit, geen harde voorwaarde → de rij is niet zichtbaar (uit-regels niet tonen).
+    cleanup()
+    const uit = teller('ai_toets_overgeslagen', 'Automatisch geboekt zonder AI-toets (vangnet)', {
+      stand: 'uit',
+      stand_detail: 'geen automatische boeking zonder AI-toets in de laatste 7 dagen',
+    })
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={{ ...AUTOMATISERINGEN, tellers: [...AUTOMATISERINGEN.tellers, uit] }} />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByTestId('automatisering-ai_toets_overgeslagen')).toBeNull()
+  })
+
   it('één-regel-samenvatting zonder uit-regels; open bij let-op; per let-op-rij "Naar de instelling →"', () => {
     render(
       <MemoryRouter>

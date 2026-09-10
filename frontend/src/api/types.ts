@@ -355,6 +355,10 @@ export interface DocumentListItemDto {
   /** Autoboeken-opt-in per leverancier: geboekt zónder menselijke boek-klik — voedt de
    * werkvoorraad-chip "automatisch" en het filter "Automatisch geboekt". */
   automatisch_geboekt: boolean
+  /** Blok 4 (10-09 avond): automatisch geboekt terwijl de AI-plausibiliteitstoets technisch uitviel — chip
+   * "zonder AI-toets" naast "automatisch"; `ai_toets_oorzaak` (avg_gate | api_key | kostengrens | ai_fout) als tooltip. */
+  zonder_ai_toets?: boolean
+  ai_toets_oorzaak?: string | null
   /** Blok C 02-09: alleen gevuld bij status geboekt (lijst-tooltip). */
   geboekt_in_rlz?: GeboektInRlzDto | null
   /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip

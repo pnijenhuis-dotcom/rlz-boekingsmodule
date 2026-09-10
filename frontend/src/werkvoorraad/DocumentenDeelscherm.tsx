@@ -17,6 +17,7 @@ import type {
   VraagDto,
 } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
+import { aiToetsOorzaakLabel } from '../bank/VoorstelKaart'
 import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
 import { AnkerPopup, Checkbox, useToastOptioneel } from '../ui/basis'
@@ -1020,6 +1021,20 @@ export function DocumentenDeelscherm({
                           <>
                             {' '}
                             <span className="chip geheugen">automatisch</span>
+                          </>
+                        )}
+                        {/* Blok 4 (10-09 avond): de AI-plausibiliteitstoets viel technisch uit — geboekt zónder AI-toets,
+                            zichtbaar (oorzaak als tooltip); controleer steekproefsgewijs. */}
+                        {d.automatisch_geboekt && d.zonder_ai_toets && (
+                          <>
+                            {' '}
+                            <span
+                              className="chip"
+                              data-testid="chip-zonder-ai-toets"
+                              title={`De AI-plausibiliteitstoets viel technisch uit (${aiToetsOorzaakLabel(d.ai_toets_oorzaak)}) — de deterministische controles waren groen; controleer steekproefsgewijs.`}
+                            >
+                              zonder AI-toets
+                            </span>
                           </>
                         )}
                         {d.afwijzing && (

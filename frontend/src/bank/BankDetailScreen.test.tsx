@@ -582,7 +582,7 @@ describe('BankDetailScreen', () => {
     expect(chips[1]).toHaveTextContent('historie: 4 van 6 op 4300 Telefoon — bevestigen')
     expect(chips[1]).toHaveClass('ai')
     expect(screen.getByTestId('ai-toets-twijfel')).toHaveTextContent('AI-twijfel: bedrag afwijkend van de historie')
-    expect(screen.getByTestId('ai-toets-overgeslagen')).toHaveTextContent('AI-toets overgeslagen: avg_gate — intake-AI staat uit')
+    expect(screen.getByTestId('ai-toets-overgeslagen')).toHaveTextContent('zonder AI-toets: avg_gate — intake-AI staat uit')
     // Geen lege/wachtende voorstel-kaart voor een historie-regel (open_post is null).
     expect(screen.queryByTestId('voorstel-kaart')).not.toBeInTheDocument()
   })

@@ -37,6 +37,10 @@ export interface HardeVoorwaardeDto {
   aantal: number
   administratie_id: string | null
   voorbeeld: string | null
+  /** Blok 4 (10-09 avond, additief): vangnet-teller `ai_toets_overgeslagen` — soort boeking (bank_* | factuur_autoboeking)
+   * en de server-deeplink naar de plek van de boekingen (bankscherm / documentenlijst); wint van DOEL_PAD_VOORWAARDE. */
+  soort?: string | null
+  doel_pad?: string | null
 }
 
 /** Eén automatisering (herstelrun 07-09 blok C — spiegelt app/reconciliatie/automatiseringen.py). */
@@ -278,6 +282,9 @@ export const REDEN_LABEL: Record<string, string> = {
   // Blok A/B bundel 10-09 — AI-plausibiliteitstoets als poort: beide harde voorwaarde mét deeplink Intake-AI.
   avg_gate: 'AI staat uit (AVG-gate intake-AI)',
   kostengrens: 'AI-kostengrens bereikt',
+  // Blok 4 (10-09 avond) — vangnet-teller `ai_toets_overgeslagen`: geboekt zónder AI-toets (technische uitval).
+  ai_fout: 'AI-fout/timeout',
+  zonder_ai_toets: 'geboekt zonder AI-toets — controleer steekproefsgewijs',
 }
 
 /** Spiegel van DOEL_PAD in automatiseringen.py (blok 5, 08-09): waar de mens een ontbrekende harde voorwaarde
@@ -298,6 +305,11 @@ export function doelPadVoorVoorwaarde(categorie: string, administratieId: string
   const pad = DOEL_PAD_VOORWAARDE[categorie] ?? '/reconciliatie?soort=let_op'
   if (!pad.includes('{aid}')) return pad
   return administratieId ? pad.replace('{aid}', administratieId) : '/instellingen/administraties'
+}
+
+/** Blok 4 (10-09 avond): een harde voorwaarde mét server-deeplink (`doel_pad`) wint van de client-spiegel. */
+export function doelPadVoorHardeVoorwaarde(hv: HardeVoorwaardeDto): string {
+  return hv.doel_pad?.trim() || doelPadVoorVoorwaarde(hv.categorie, hv.administratie_id)
 }
 
 export const STAND_LABEL: Record<AutomatiseringTellerDto['stand'], string> = {

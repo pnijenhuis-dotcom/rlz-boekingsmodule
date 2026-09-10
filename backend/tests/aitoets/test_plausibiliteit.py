@@ -51,10 +51,12 @@ def test_poort_1_avg_gate_uit_is_overgeslagen_zonder_call(
     rid = uuid.uuid4()
     uitkomst = pl.toets_plausibiliteit(_invoer(administratie_id, referentie_id=rid))
     assert uitkomst.uitkomst == "overgeslagen" and uitkomst.reden.startswith("avg_gate")
-    assert not uitkomst.boeken_toegestaan
+    # Blok 4 (10-09 avond): technische uitval = doorlopen zónder AI-toets, zichtbaar — de AVG-gate blokkeert de CALL.
+    assert uitkomst.boeken_toegestaan and uitkomst.zonder_ai_toets and uitkomst.oorzaak == pl.OORZAAK_AVG_GATE
     assert stub.aanroepen == []
     audit = audit_toetsen(admin_engine, rid)
     assert len(audit) == 1 and audit[0]["uitkomst"] == "overgeslagen" and audit[0]["tabel"] == "bank_mutatie"
+    assert audit[0]["oorzaak"] == "avg_gate" and audit[0]["zonder_ai_toets"] is True
     assert "prompt" not in audit[0] and "Huur kantoor" not in str(audit[0])
 
 
@@ -63,6 +65,7 @@ def test_poort_2_geen_api_key(administratie_id: uuid.UUID, admin_engine: Engine,
     zet_ai_toets_geen_key(monkeypatch)
     uitkomst = pl.toets_plausibiliteit(_invoer(administratie_id))
     assert uitkomst.uitkomst == "overgeslagen" and uitkomst.reden.startswith("api_key")
+    assert uitkomst.boeken_toegestaan and uitkomst.oorzaak == pl.OORZAAK_API_KEY
 
 
 def test_poort_3_kostengrens(administratie_id: uuid.UUID, admin_engine: Engine, monkeypatch) -> None:
@@ -73,6 +76,7 @@ def test_poort_3_kostengrens(administratie_id: uuid.UUID, admin_engine: Engine, 
     uitkomst = pl.toets_plausibiliteit(_invoer(administratie_id))
     assert uitkomst.uitkomst == "overgeslagen" and uitkomst.reden.startswith("kostengrens")
     assert "maandlimiet" in uitkomst.reden
+    assert uitkomst.boeken_toegestaan and uitkomst.oorzaak == pl.OORZAAK_KOSTENGRENS
 
 
 @pytest.mark.parametrize(
@@ -91,6 +95,7 @@ def test_poort_4_ai_fout_varianten(
     zet_ai_toets_stub(monkeypatch, stub)
     uitkomst = pl.toets_plausibiliteit(_invoer(administratie_id))
     assert uitkomst.uitkomst == "overgeslagen" and uitkomst.reden.startswith("ai_fout")
+    assert uitkomst.boeken_toegestaan and uitkomst.oorzaak == pl.OORZAAK_AI_FOUT
 
 
 def test_plausibel_en_twijfel_via_stub_met_audit(
@@ -106,17 +111,18 @@ def test_plausibel_en_twijfel_via_stub_met_audit(
     rid = uuid.uuid4()
     twijfel = pl.toets_plausibiliteit(_invoer(administratie_id, referentie_id=rid))
     assert twijfel.uitkomst == "twijfel" and "huur" in twijfel.reden
-    assert not twijfel.boeken_toegestaan
+    assert not twijfel.boeken_toegestaan and not twijfel.zonder_ai_toets and twijfel.oorzaak is None
 
     stub.antwoorden = {}
     plausibel = pl.toets_plausibiliteit(_invoer(administratie_id, referentie_id=rid))
-    assert plausibel.uitkomst == "plausibel" and plausibel.boeken_toegestaan
+    assert plausibel.uitkomst == "plausibel" and plausibel.boeken_toegestaan and not plausibel.zonder_ai_toets
 
     audit = audit_toetsen(admin_engine, rid)
     assert [a["uitkomst"] for a in audit] == ["twijfel", "plausibel"]
     assert audit[0]["soort"] == "bank_historie" and audit[0]["model"] == "stub-model"
-    # De prompt zelf staat nooit in het audit_event; wél soort/uitkomst/reden/model.
-    assert set(audit[0]) == {"tabel", "soort", "uitkomst", "reden", "model"}
+    # De prompt zelf staat nooit in het audit_event; wél soort/uitkomst/reden/model (+ blok 4: oorzaak/zonder_ai_toets).
+    assert set(audit[0]) == {"tabel", "soort", "uitkomst", "reden", "model", "oorzaak", "zonder_ai_toets"}
+    assert audit[0]["oorzaak"] is None and audit[0]["zonder_ai_toets"] is False
     # De opdracht draagt het voorstel en de samenvatting, nooit een keuzelijst van rekeningen.
     assert "4400 Huur" in stub.aanroepen[0]["opdracht"] and "12 eerdere mutaties" in stub.aanroepen[0]["opdracht"]
 
@@ -152,11 +158,13 @@ def test_facturen_setting_uit_geeft_uit_en_laat_boeken_door(
 def test_facturen_setting_aan_zonder_leesbaar_boekvoorstel_is_overgeslagen(
     administratie_id: uuid.UUID, admin_engine: Engine, monkeypatch
 ) -> None:
-    """Default AAN; een onbekend document = boekvoorstel niet leesbaar = 'overgeslagen ai_fout' — nooit doorlaten."""
+    """Default AAN; een onbekend document = toets-invoer niet opbouwbaar = 'overgeslagen ai_fout' — sinds blok 4 (10-09
+    avond) technische uitval: doorlopen zónder AI-toets, mét audit (oorzaak ai_fout) — nooit stil."""
     zet_intake_ai(admin_engine, True)
     zet_ai_toets_stub(monkeypatch)
-    uitkomst = pl.toets_factuur_autoboeking(
-        administratie_id=administratie_id, document_id=uuid.uuid4(), invoer_velden={}
-    )
+    rid = uuid.uuid4()
+    uitkomst = pl.toets_factuur_autoboeking(administratie_id=administratie_id, document_id=rid, invoer_velden={})
     assert uitkomst.uitkomst == "overgeslagen" and uitkomst.reden.startswith("ai_fout")
-    assert not uitkomst.boeken_toegestaan
+    assert uitkomst.boeken_toegestaan and uitkomst.zonder_ai_toets and uitkomst.oorzaak == pl.OORZAAK_AI_FOUT
+    audit = audit_toetsen(admin_engine, rid)
+    assert len(audit) == 1 and audit[0]["tabel"] == "document" and audit[0]["oorzaak"] == "ai_fout"

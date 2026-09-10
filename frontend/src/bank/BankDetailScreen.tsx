@@ -325,7 +325,8 @@ function MutatieRij({
         ) : (
           <HandmatigChip />
         )}
-        {/* Blok B 10-09: uitkomst van de AI-plausibiliteitstoets als poort — twijfel/overgeslagen = niet geboekt, zichtbaar. */}
+        {/* Blok B 10-09: uitkomst van de AI-plausibiliteitstoets als poort — twijfel = niet geboekt, zichtbaar; blok 4
+            (10-09 avond): overgeslagen = technische uitval → geboekt zónder AI-toets, zichtbaar (steekproef). */}
         <AiToetsChip mutatie={mutatie} />
         {mutatie.regel_voorstel && (
           <div className="hint">

@@ -84,10 +84,20 @@ def _zoek_administratie(zoekterm: str) -> tuple[uuid.UUID, str] | None:
         return administratie.id, administratie.naam
 
 
+def _ai_toets_label(uitkomst: str | None, reden: str | None) -> str:
+    """Leesbare kolomtekst. Blok 4 (10-09 avond): 'overgeslagen' = de toets viel technisch uit en de boeking loopt
+    (of liep) door zónder AI-toets — niet 'niet geboekt'."""
+    if not uitkomst:
+        return "—"
+    if uitkomst == "overgeslagen":
+        return f"zonder AI-toets (boekt door): {reden or ''}".strip()
+    return f"{uitkomst}: {reden or ''}".strip()
+
+
 def _ai_toets_tekst(stand) -> str:
     if stand is None or not stand.uitkomst:
         return "—"
-    return f"{stand.uitkomst}: {stand.reden or ''}".strip()
+    return _ai_toets_label(stand.uitkomst, stand.reden)
 
 
 def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
@@ -129,7 +139,7 @@ def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
             if not kandidaat or rij.mutatie.bedrag is None:
                 continue
             uitkomst, hergebruikt = boeken.voer_ai_toets_uit(context, rij.mutatie, rij.voorstel, hergebruik=False)
-            live_uitkomsten[rij.mutatie.id] = f"{uitkomst.uitkomst}: {uitkomst.reden}"
+            live_uitkomsten[rij.mutatie.id] = _ai_toets_label(uitkomst.uitkomst, uitkomst.reden)
 
     print(f"bank-voorstellen-lezen {administratie_naam} ({administratie_id}) — onverwerkte mutaties: {len(rijen)}")
     kop = (

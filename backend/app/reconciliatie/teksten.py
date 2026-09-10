@@ -687,6 +687,21 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             "Controleer de instelling en het achtergrondwerk (sync-alles/Cloud Run-jobs); blijft het stil, "
             "dan is het een storing.",
         )
+    if reden == auto.ZONDER_AI_TOETS:
+        # Blok 4 (10-09 avond): geen ontbrekende voorwaarde — de boekingen zijn er, zonder AI-oordeel (technische
+        # uitval van de toets). Handeling = steekproef op de plek van de boekingen (deeplink op de rij).
+        oorzaak = str(d.get("oorzaak") or "")
+        oorzaak_label = auto.REDEN_LABEL.get(oorzaak, oorzaak.replace("_", " ") or "onbekende oorzaak")
+        boeking_soort = _s(d, "boeking_soort") or "bank"
+        plek = "het bankscherm" if boeking_soort == "bank" else "de documentenlijst (filter automatisch geboekt)"
+        return (
+            _titel("Automatisch geboekt zonder AI-toets", waar or ""),
+            f"{aantal} automatische {boeking_soort}boeking(en){f' in {waar}' if waar else ''} liepen door zonder "
+            f"AI-plausibiliteitstoets — de toets viel technisch uit ({oorzaak_label}); de deterministische controles "
+            "waren groen.",
+            f"Controleer steekproefsgewijs of rekening en btw kloppen via {plek}; herstel zo nodig de oorzaak "
+            "(Instellingen › Intake & AI) zodat de toets weer meeloopt.",
+        )
     reden_label = auto.REDEN_LABEL.get(reden, reden.replace("_", " "))
     voorbeeld = _s(d, "voorbeeld")
     wat = (
@@ -816,6 +831,9 @@ _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
     ("rlz_document_id", "RLZ-document"),
     ("rlz_id_a", "RLZ-document A"),
     ("rlz_id_b", "RLZ-document B"),
+    ("rlz_ids_tekst", "RLZ-documenten (cluster)"),
+    ("cluster", "cluster-sleutel"),
+    ("vervangen_door_vingerafdruk", "vervangen door cluster"),
     ("rlz_admin_id", "RLZ-administratie"),
     ("regel", "matchregel"),
     ("payment_transaction_id", "RLZ-mutatie"),
@@ -831,9 +849,6 @@ _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
 
 def _details(bevinding: Any, d: dict) -> list[tuple[str, str]]:
     uit: list[tuple[str, str]] = []
-    ("rlz_ids_tekst", "RLZ-documenten (cluster)"),
-    ("cluster", "cluster-sleutel"),
-    ("vervangen_door_vingerafdruk", "vervangen door cluster"),
     vaf = getattr(bevinding, "vingerafdruk", None)
     if vaf:
         uit.append(("vingerafdruk", str(vaf)))

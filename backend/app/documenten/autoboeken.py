@@ -635,9 +635,15 @@ def probeer_autoboeken_na_extractie(
 
     # B3-poort (blok B bundel 10-09, CONTRACT_A/CONTRACT_B §B3): AI-plausibiliteitstoets op het voorgestelde
     # GB/btw — de AI krijgt géén keuze, alleen ja/nee. 'plausibel' of 'uit' (platformbrede setting uit) → boeken;
-    # 'twijfel' of 'overgeslagen' (AVG-gate, API-key, kostengrens, AI-fout) → NIET boeken, zichtbaar geweigerd
-    # (categorie twijfel/api_key/avg_gate/kostengrens in de reconciliatie-tellers). Lazy import: pakket van agent B.
-    from app.aitoets.plausibiliteit import toets_factuur_autoboeking
+    # 'twijfel' → NIET boeken, zichtbaar geweigerd (categorie twijfel in de reconciliatie-tellers).
+    # Blok 4 (10-09 avond, besluit Peter): 'overgeslagen' (technische uitval — AVG-gate, API-key, kostengrens, AI-fout)
+    # → WÉL boeken, mét `zonder_ai_toets` + oorzaak in het GEBOEKT-overgang-detail (tijdlijn + lijst-chip), audit
+    # `automatisch_geboekt_zonder_ai_toets` en de teller/LET-OP in de reconciliatie. Lazy import: pakket van agent B.
+    from app.aitoets.plausibiliteit import (
+        SOORT_FACTUUR_AUTOBOEKING,
+        registreer_geboekt_zonder_ai_toets,
+        toets_factuur_autoboeking,
+    )
 
     toets = toets_factuur_autoboeking(
         administratie_id=administratie_id,
@@ -658,11 +664,16 @@ def probeer_autoboeken_na_extractie(
             ],
         },
     )
-    if toets.uitkomst not in ("plausibel", "uit"):
+    if not toets.boeken_toegestaan:
         return _weiger(
             administratie_id=administratie_id,
             document_id=document_id,
             reden=f"AI-plausibiliteitstoets: {toets.uitkomst} — {toets.reden}",
+        )
+    overgang_detail: dict = {"automatisch_geboekt": True, "bron": bron}
+    if toets.zonder_ai_toets:
+        overgang_detail.update(
+            {"zonder_ai_toets": True, "ai_toets_oorzaak": toets.oorzaak, "ai_toets_reden": toets.reden}
         )
 
     try:
@@ -670,7 +681,7 @@ def probeer_autoboeken_na_extractie(
             administratie_id=administratie_id,
             document_id=document_id,
             actor_id=SYSTEEM_ACTOR_ID,
-            extra_overgang_detail={"automatisch_geboekt": True, "bron": bron},
+            extra_overgang_detail=overgang_detail,
         )
     except boeken_service.BoekenGeblokkeerdDoorChecks as exc:
         geblokkeerd = [f"{r.naam}: {r.melding}" for r in exc.rapport.resultaten if not r.ok]
@@ -707,7 +718,18 @@ def probeer_autoboeken_na_extractie(
                 "vendor_id": str(voorstel.vendor_id),
                 "referentie": voorstel.referentie,
                 "bron": bron,
+                "zonder_ai_toets": toets.zonder_ai_toets,
+                "ai_toets_oorzaak": toets.oorzaak,
             },
             administratie_id=administratie_id,
         )
+    registreer_geboekt_zonder_ai_toets(
+        administratie_id=administratie_id,
+        soort=SOORT_FACTUUR_AUTOBOEKING,
+        referentie_id=document_id,
+        uitkomst=toets,
+        bron=bron,
+    )
+    if toets.zonder_ai_toets:
+        return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron}) — zonder AI-toets ({toets.oorzaak})")
     return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron})")

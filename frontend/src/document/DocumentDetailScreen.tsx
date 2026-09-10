@@ -50,6 +50,7 @@ import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefil
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
 import { accorderingHerberekendTekst } from './accorderingHerberekendTijdlijn'
 import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
+import { isZonderAiToetsNotitie, zonderAiToetsTijdlijnTekst } from './zonderAiToetsTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
  * _HERSTELBARE_HERKOMSTEN in app/documenten/vragen.py — de backend blijft de waarheid). */
@@ -1395,6 +1396,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isAccorderingOvergeslagenNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-accordering-overgeslagen">
                           {accorderingOvergeslagenTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* Blok 4 vervolgrun 10-09 avond: automatisch geboekt terwijl de AI-plausibiliteitstoets technisch uitviel. */}
+                      {g.detail && isZonderAiToetsNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-zonder-ai-toets">
+                          {zonderAiToetsTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Mini-voorraad (06-09): notitie mini_voorraad_bijgewerkt, geschreven ín de boek-transactie. */}

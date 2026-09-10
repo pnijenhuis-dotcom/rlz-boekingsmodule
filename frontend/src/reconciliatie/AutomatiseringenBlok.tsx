@@ -12,7 +12,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../ui/basis'
 import {
-  doelPadVoorVoorwaarde,
+  doelPadVoorHardeVoorwaarde,
   haalLaatsteRun,
   REDEN_LABEL,
   STAND_LABEL,
@@ -79,15 +79,31 @@ export function samenvattingTekst(tellers: readonly AutomatiseringTellerDto[]): 
   return `${aan} aan · ${letOp} let-op`
 }
 
+/** Blok 4 (10-09 avond): de vangnet-teller "geboekt zonder AI-toets" — geen ontbrekende voorwaarde maar een steekproef
+ * op de plek van de boekingen (server-deeplink op de harde voorwaarde). Sleutel-agnostisch voor alle andere tellers. */
+export const VANGNET_ZONDER_AI_TOETS = 'ai_toets_overgeslagen'
+
+export function isVangnetZonderAiToets(t: Pick<AutomatiseringTellerDto, 'sleutel'>): boolean {
+  return t.sleutel === VANGNET_ZONDER_AI_TOETS
+}
+
 function naarInstelling(t: AutomatiseringTellerDto) {
   // Handeling op de rij: de instelling waar de harde voorwaarde hersteld wordt (spiegel van DOEL_PAD in de
-  // backend); bij "stil" de autoboek-instellingen of, voor een onbekend pad, de bevinding op Inzicht › Reconciliatie.
+  // backend, of de server-deeplink op de voorwaarde); bij "stil" de autoboek-instellingen of, voor een onbekend pad,
+  // de bevinding op Inzicht › Reconciliatie. Vangnet "zonder AI-toets": naar de boekingen (steekproef).
   const hv = t.harde_voorwaarden[0]
   const pad = hv
-    ? doelPadVoorVoorwaarde(hv.categorie, hv.administratie_id)
+    ? doelPadVoorHardeVoorwaarde(hv)
     : t.sleutel.startsWith('autoboek')
       ? '/instellingen/autoboeken'
       : '/reconciliatie?soort=let_op'
+  if (isVangnetZonderAiToets(t)) {
+    return (
+      <Link to={pad} className="linkbtn" aria-label={`Naar de boekingen van ${t.label}`} data-testid="automatisering-actie">
+        Controleer steekproefsgewijs →
+      </Link>
+    )
+  }
   return (
     <Link to={pad} className="linkbtn" aria-label={`Naar de instelling van ${t.label}`} data-testid="automatisering-actie">
       Naar de instelling →
@@ -148,7 +164,7 @@ export function AutomatiseringenBlok({ data }: { data: AutomatiseringenDto | nul
                       <>
                         {' '}
                         <Badge variant="warn" data-testid="chip-harde-voorwaarde">
-                          wacht op voorwaarde
+                          {isVangnetZonderAiToets(t) ? 'geboekt zonder AI-toets' : 'wacht op voorwaarde'}
                         </Badge>
                       </>
                     )}

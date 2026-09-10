@@ -439,7 +439,7 @@ def test_ai_twijfel_boekt_niet_vult_kolommen_en_meldt_overgeslagen(
 
     resultaat = boeken.verwerk_automatisch(administratie_id=administratie_id, client=client)
 
-    assert resultaat.geboekt == 0 and resultaat.fouten == []
+    assert resultaat.geboekt == 0 and resultaat.fouten == [] and resultaat.zonder_ai_toets == []
     assert len(resultaat.overgeslagen) == 1 and resultaat.overgeslagen[0].startswith("twijfel: ")
     assert "bankkosten op een omzetrekening" in resultaat.overgeslagen[0]
     assert client.direct_bookings == {}  # geen byte richting RLZ
@@ -469,9 +469,100 @@ def test_ai_plausibel_boekt(
     assert len(client.direct_bookings) == 1
 
 
-def test_ai_avg_gate_uit_is_zichtbaar_overgeslagen_en_boekt_niet(
+def _audit_zonder_toets(admin_engine: Engine, mutatie_id: uuid.UUID) -> list[dict]:
+    with admin_engine.connect() as conn:
+        return [
+            r[0]
+            for r in conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event "
+                    "WHERE actie = 'automatisch_geboekt_zonder_ai_toets' AND tabel = 'bank_mutatie' AND record_id = :id"
+                ),
+                {"id": mutatie_id},
+            ).all()
+        ]
+
+
+@pytest.mark.parametrize(
+    "uitval,oorzaak",
+    [
+        ("avg_gate", "avg_gate"),
+        ("geen_key", "api_key"),
+        ("kostengrens", "kostengrens"),
+        ("ai_fout", "ai_fout"),
+    ],
+)
+def test_ai_uitval_boekt_door_zonder_ai_toets_zichtbaar(
+    administratie_id: uuid.UUID,
+    admin_engine: Engine,
+    beheerder_id: uuid.UUID,
+    boeken_aan: None,
+    monkeypatch,
+    uitval: str,
+    oorzaak: str,
+) -> None:
+    """Blok 4 (10-09 avond, besluit Peter): technische uitval van de AI-toets (AVG-gate uit, geen API-key, kostengrens,
+    AI-fout) = WÉL boeken — de deterministische poorten waren groen. Zichtbaar via `ai_toets_uitkomst = overgeslagen` +
+    reden op de mutatie (chip "zonder AI-toets"), audit `automatisch_geboekt_zonder_ai_toets` mét oorzaak en de
+    regel in `resultaat.zonder_ai_toets`. Nooit een regel in `overgeslagen` (dat is nu alleen twijfel)."""
+    from tests.aitoets.stub import zet_ai_toets_geen_key
+
+    if uitval == "avg_gate":
+        zet_intake_ai(admin_engine, False)
+        zet_ai_toets_stub(monkeypatch)
+    else:
+        zet_intake_ai(admin_engine, True)
+        if uitval == "geen_key":
+            zet_ai_toets_geen_key(monkeypatch)
+        elif uitval == "kostengrens":
+            zet_ai_toets_stub(
+                monkeypatch, StubPlausibiliteitClient(kostenfout="AI-maandlimiet bereikt (€ 100 van € 100)")
+            )
+        else:
+            zet_ai_toets_stub(monkeypatch, StubPlausibiliteitClient(fout="Claude API-timeout na 120s"))
+    mutatie_id = _vaste_regel_kandidaat(admin_engine, administratie_id, beheerder_id)
+    client = FakeBankClient(transacties={str(mutatie_id): _tx_record(mutatie_id, bedrag="-24.50")})
+
+    resultaat = boeken.verwerk_automatisch(administratie_id=administratie_id, client=client)
+
+    assert (resultaat.geboekt, resultaat.fouten, resultaat.overgeslagen) == (1, [], [])
+    assert len(client.direct_bookings) == 1
+    assert len(resultaat.zonder_ai_toets) == 1
+    assert resultaat.zonder_ai_toets[0].startswith(f"zonder AI-toets: {oorzaak} — ")
+    uitkomst, reden, op_gevuld, _hash = _ai_kolommen(admin_engine, mutatie_id)
+    assert (uitkomst, op_gevuld) == ("overgeslagen", True) and reden.startswith(oorzaak)
+    audit = _audit_zonder_toets(admin_engine, mutatie_id)
+    assert len(audit) == 1 and audit[0]["oorzaak"] == oorzaak and audit[0]["soort"] == "bank_vaste_regel"
+    assert audit[0]["bron"] == "bank_autoboeken"
+    with admin_engine.connect() as conn:
+        bron = conn.execute(
+            text("SELECT bron FROM boekhouding.bank_boeking WHERE payment_transaction_id = :id"), {"id": mutatie_id}
+        ).scalar_one()
+    assert bron == "automatisch"
+
+
+def test_ai_avg_gate_uit_blokkeert_de_call_niet_de_boeking(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, boeken_aan: None, monkeypatch
 ) -> None:
+    """AVG-gate uit = geen byte naar de Claude API (stub nooit aangeroepen) — de boeking loopt door (blok 4)."""
+    zet_intake_ai(admin_engine, False)
+    stub = zet_ai_toets_stub(monkeypatch)
+    mutatie_id = _vaste_regel_kandidaat(admin_engine, administratie_id, beheerder_id)
+    client = FakeBankClient(transacties={str(mutatie_id): _tx_record(mutatie_id, bedrag="-24.50")})
+
+    resultaat = boeken.verwerk_automatisch(administratie_id=administratie_id, client=client)
+
+    assert resultaat.geboekt == 1 and stub.aanroepen == [] and len(client.direct_bookings) == 1
+    assert _ai_kolommen(admin_engine, mutatie_id)[0] == "overgeslagen"
+    assert _audit_zonder_toets(admin_engine, mutatie_id)[0]["oorzaak"] == "avg_gate"
+
+
+def test_ai_uitval_mislukte_boeking_telt_niet_als_zonder_ai_toets(
+    administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, monkeypatch
+) -> None:
+    """De audit-rij `automatisch_geboekt_zonder_ai_toets` komt alleen ná een GESLAAGDE boeking — faalt het boekpad
+    (hier: boeken-toggle uit), dan staat er een fout en géén 'zonder AI-toets'-regel (de teller telt échte
+    boekingen)."""
     zet_intake_ai(admin_engine, False)
     zet_ai_toets_stub(monkeypatch)
     mutatie_id = _vaste_regel_kandidaat(admin_engine, administratie_id, beheerder_id)
@@ -479,9 +570,8 @@ def test_ai_avg_gate_uit_is_zichtbaar_overgeslagen_en_boekt_niet(
 
     resultaat = boeken.verwerk_automatisch(administratie_id=administratie_id, client=client)
 
-    assert resultaat.geboekt == 0 and client.direct_bookings == {}
-    assert len(resultaat.overgeslagen) == 1 and resultaat.overgeslagen[0].startswith("overgeslagen: avg_gate")
-    assert _ai_kolommen(admin_engine, mutatie_id)[0] == "overgeslagen"
+    assert resultaat.geboekt == 0 and len(resultaat.fouten) == 1 and resultaat.zonder_ai_toets == []
+    assert _audit_zonder_toets(admin_engine, mutatie_id) == []
 
 
 def test_historie_regel_groen_boekt_automatisch_na_plausibel(

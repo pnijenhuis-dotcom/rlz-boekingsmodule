@@ -26,8 +26,11 @@ Volautomatisch (opt-in per administratie, `bank_autoboeken_ingeschakeld`, defaul
 verwerk_automatisch() past vaste regels (stap 3) én — sinds blok B bundel 10-09 — groene historie-regel-
 voorstellen (stap 3b, 100 % dezelfde rekening/btw) toe op open mutaties, uitsluitend waar de matchmotor dat
 als voorstel geeft, dus nooit óver een open-post-match heen. Vóór élke automatische boeking loopt de
-AI-plausibiliteitstoets als POORT (app/aitoets/plausibiliteit.py): plausibel → boeken; twijfel/overgeslagen →
-NIET boeken, uitkomst + reden op de mutatie (chip in de werkvoorraad) en als regel in `overgeslagen`."""
+AI-plausibiliteitstoets als POORT (app/aitoets/plausibiliteit.py): plausibel → boeken; twijfel → NIET boeken,
+uitkomst + reden op de mutatie (chip in de werkvoorraad) en als regel in `overgeslagen`. **Blok 4 (10-09 avond,
+besluit Peter): overgeslagen (technische uitval: AVG-gate, API-key, kostengrens, AI-fout) → WÉL boeken**, mét
+`ai_toets_uitkomst = overgeslagen` + reden op de mutatie (chip "zonder AI-toets"), audit
+`automatisch_geboekt_zonder_ai_toets` en een regel in `zonder_ai_toets` (teller + LET-OP in de reconciliatie)."""
 
 from __future__ import annotations
 
@@ -537,12 +540,15 @@ def historie_naar_boekregels(
 
 @dataclass
 class AutomatischResultaat:
-    """Uitkomst van één automatische verwerkingsronde: geboekt, fouten (boekpad) en overgeslagen (AI-poort —
-    tekst begint met "twijfel: …" of "overgeslagen: ‹oorzaak› — …" zodat de reconciliatie-tellers ze categoriseren)."""
+    """Uitkomst van één automatische verwerkingsronde: geboekt, fouten (boekpad), overgeslagen (AI-poort: alleen nog
+    "twijfel: …" — de reconciliatie-tellers categoriseren op die tekst) en — blok 4 (10-09 avond) — `zonder_ai_toets`:
+    boekingen die doorliepen terwijl de toets technisch uitviel ("zonder AI-toets: ‹oorzaak› — …"); die tellen mee in
+    `geboekt`."""
 
     geboekt: int = 0
     fouten: list[str] = field(default_factory=list)
     overgeslagen: list[str] = field(default_factory=list)
+    zonder_ai_toets: list[str] = field(default_factory=list)
 
 
 def ai_toets_invoer_hash(invoer) -> str:
@@ -624,9 +630,14 @@ def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> Au
     matchmotor een vaste regel (stap 3) of een GROENE historie-regel (stap 3b, 100 %) voorstelt, met de
     systeem-actor — ná de AI-plausibiliteitstoets als poort. De matchmotor-volgorde garandeert dat een
     open-post-match (afletteren) altijd vóór gaat — automatisch boeken kan een afletterkandidaat dus nooit
-    wegkapen. Fouten per mutatie stoppen de rest niet en worden zichtbaar gerapporteerd; niet-plausibel =
-    zichtbaar overgeslagen mét reden op de mutatie."""
-    from app.aitoets.plausibiliteit import UITKOMST_TWIJFEL
+    wegkapen. Fouten per mutatie stoppen de rest niet en worden zichtbaar gerapporteerd; twijfel =
+    zichtbaar overgeslagen mét reden op de mutatie; technische uitval van de toets (blok 4) = boeken mét markering
+    "zonder AI-toets" (nooit stil)."""
+    from app.aitoets.plausibiliteit import (
+        SOORT_BANK_HISTORIE,
+        SOORT_BANK_VASTE_REGEL,
+        registreer_geboekt_zonder_ai_toets,
+    )
     from app.bank.voorstellen import bepaal_voorstel_in_context, laad_matchcontext  # lokale import
 
     with scoped_session(None) as session:
@@ -660,16 +671,15 @@ def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> Au
         if not regels:
             continue
 
-        # AI-plausibiliteitstoets als POORT — twijfel/overgeslagen = niet boeken, zichtbaar.
+        # AI-plausibiliteitstoets als POORT — twijfel = niet boeken, zichtbaar. Technische uitval (`overgeslagen`,
+        # blok 4 10-09 avond) = WÉL boeken: de deterministische poorten waren al groen; de mutatie draagt
+        # `ai_toets_uitkomst = overgeslagen` + reden (chip "zonder AI-toets"), hieronder volgt de audit-rij.
         uitkomst, hergebruikt = voer_ai_toets_uit(context, mutatie, voorstel)
         if not uitkomst.boeken_toegestaan:
-            if uitkomst.uitkomst == UITKOMST_TWIJFEL:
-                resultaat.overgeslagen.append(
-                    f"twijfel: {mutatie.id} ({voorstel.soort.value}) — {uitkomst.reden}"
-                    + (" [eerder getoetst, voorstel ongewijzigd]" if hergebruikt else "")
-                )
-            else:
-                resultaat.overgeslagen.append(f"overgeslagen: {uitkomst.reden} ({mutatie.id}, {voorstel.soort.value})")
+            resultaat.overgeslagen.append(
+                f"twijfel: {mutatie.id} ({voorstel.soort.value}) — {uitkomst.reden}"
+                + (" [eerder getoetst, voorstel ongewijzigd]" if hergebruikt else "")
+            )
             continue
         try:
             boek_mutatie_direct(
@@ -682,6 +692,21 @@ def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> Au
                 client=client,
             )
             resultaat.geboekt += 1
+            if uitkomst.zonder_ai_toets:
+                resultaat.zonder_ai_toets.append(
+                    f"zonder AI-toets: {uitkomst.oorzaak} — {mutatie.id} ({voorstel.soort.value}) — {uitkomst.reden}"
+                )
+                registreer_geboekt_zonder_ai_toets(
+                    administratie_id=administratie_id,
+                    soort=(
+                        SOORT_BANK_VASTE_REGEL
+                        if voorstel.soort == matchmotor.VoorstelSoort.VASTE_REGEL
+                        else SOORT_BANK_HISTORIE
+                    ),
+                    referentie_id=mutatie.id,
+                    uitkomst=uitkomst,
+                    bron="bank_autoboeken",
+                )
         except BankBoekenFout as exc:
             resultaat.fouten.append(f"{mutatie.id}: {exc}")
             logger.warning("Automatische bankboeking voor mutatie %s mislukt: %s", mutatie.id, exc)

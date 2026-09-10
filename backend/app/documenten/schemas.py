@@ -456,6 +456,10 @@ class DocumentListItemResponse(BaseModel):
     # Autoboeken (blok 2, 2026-08-09): geboekt zonder menselijke boek-klik (opt-in leverancier)
     # — voedt de werkvoorraad-chip "automatisch" en het filter "automatisch geboekt".
     automatisch_geboekt: bool = False
+    # Blok 4 (10-09 avond): automatisch geboekt terwijl de AI-plausibiliteitstoets technisch uitviel — chip
+    # "zonder AI-toets" (oorzaak avg_gate/api_key/kostengrens/ai_fout als tooltip); alleen bij automatisch geboekt.
+    zonder_ai_toets: bool = False
+    ai_toets_oorzaak: str | None = None
     # Blok C 02-09: alleen gevuld bij status geboekt.
     geboekt_in_rlz: GeboektInRlzDto | None = None
     # Factuurmatch (fase 2): matchstand van een veldwerker-factuur — voedt de chip
