@@ -7810,3 +7810,212 @@ Niet meetbaar vóór een store-build (1.1 / vc5); expliciet niet gemeten.
 **ja** (leren-motor: n.v.t. tot de schakelaar aan gaat); matchmotor-labels **ja**; historie-regel + AI-poort **niet meetbaar** (cache leeg, 0
 kandidaten); tellers AI-toets/vangnet/opt-out/autoboek_leren **ja** (zichtbaar, 0); actiemail + systeemmail **ja** (beide verzonden 22:30);
 rechten-probe-knop **nee — knop ontbrak in de UI** (nachtrun blok 1); deploy-drift-probe/smoketest/failure-mail **pas ná #181 + IAM**.
+
+<!-- nachtrun-10-11-09:1 -->
+## RLZ-CHECK ALS KNOP (nachtrun 10/11-09 blok 1; bevinding Peter 10-09 avond "de route bestaat, de knop niet"; geen migratie)
+
+**Aanleiding.** Blok C 10-09 bouwde `POST /administraties/{id}/rlz-check` (herprobe met de OPGESLAGEN webservice-login over exact
+de leesroutes van de eerste sync, mét het letterlijke RLZ-antwoord) — maar alleen als service-route; de Baard-/Box Beheer-/Kempen
+B.V.-403's waren daardoor alleen uit Cloud Logging te lezen. Opdracht Peter: de knop in de UI, resultaat inline per route, plus
+"welke administraties ziet deze login" zodat een verkeerd administratie-id direct opvalt.
+
+**Pre-feature-check.** Route + service: "RECHTEN-PROBE = EERSTE-SYNC-ROUTES + HERPROBE MET DE OPGESLAGEN LOGIN" (rij "Herprobe-route
+met de opgeslagen login" — "geen knop in de UI — wens FE"). Scherm: "INSTELLINGEN V3" (detailpagina, tab Algemeen, blok
+Boekhoud-backend › rij Webservice-gegevens). Eerste-sync-herstart: bestaande `POST /instellingen/administraties/{id}/eerste-sync`
+(`eerste_sync.start_run`, hergebruikt — geen nieuwe route). **UX-review:** geen nieuw scherm; de bestaande rij Webservice-gegevens
+krijgt één secundaire knop, het resultaat verschijnt als volle-breedte-blok ónder de rij (`.inst-rij` mét flex-wrap); één primaire knop
+("Sync opnieuw starten") alleen als de check groen is én de laatste eerste sync rood. Past in de IA, geen mockup nodig.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| DTO additief | `RechtenProbeResponse` (bestaand `rapport`, `meldingen`) + `rechten: dict[route, rlz_recht]` (uit `app/rlz/leesroutes.py`, óók voor groene routes), `administraties_zichtbaar: [{id, naam}]`, `administraties_fout: str \| None` (letterlijke RLZ-melding ≤ 300 tekens als `GET Administrations` zelf faalt → lijst leeg), `rlz_admin_id: str`. Nieuw `ZichtbareAdministratieDto`. Bestaande aanroepers ongewijzigd (defaults) | gebouwd + getest | `app/credentialstore/schemas.py`, `router.py` |
+| Eén Administrations-call | `voer_probe_uit` leest de zichtbare administraties uit het ANTWOORD van de bestaande probe-route `Administrations` (root-client) — geen tweede request; `_administraties_uit_antwoord` (`id` + `Name`, zelfde veldvorm als `onboarding._administraties_via`); onverwacht antwoord = lege lijst, route blijft 'ok'. `ProbeUitkomst` draagt de nieuwe velden (defaults) | gebouwd + getest | `app/credentialstore/service.py`; `tests/credentialstore/test_service.py::TestRlzCheckVelden`, `test_router.py::test_rlz_check_response_draagt_rechten_administraties_en_eigen_id` |
+| Knop "RLZ-check" | Rij Webservice-gegevens = component `RlzCheck` (titel/uitleg/login-chip als props): knop **"RLZ-check"** (`btn secondary`, aria "RLZ-check voor ‹naam›"), tijdens de call "RLZ-check loopt…"; ná de call herlaadt de lijst (probe-stand/kenmerk `verkoopmodule_afwezig` kunnen wijzigen). Samenvattingschip "N leesroutes groen" (groen) / "K van N leesroutes rood" (rood) | gebouwd + getest | `frontend/src/instellingen/RlzCheck.tsx`, `AdministratieDetailPagina.tsx`; `RlzCheck.test.tsx` |
+| Resultaat per route | Tabel **Stand · Leesroute · Reeleezee zegt · RLZ-recht**: chip `ok` / `HTTP 403` (rood) / `403 — facturatiemodule niet afgenomen` (oranje, alleen SalesInvoices — regel 01-09), kolom "Reeleezee zegt" = letterlijk RLZ-antwoord (≤ 300 tekens, uit `meldingen`) of "RLZ antwoordt normaal", kolom RLZ-recht uit `rechten` | gebouwd + getest | idem |
+| Administraties die deze login ziet | Regel **"Administraties die deze login ziet: N (‹naam› · ‹id›, …)"**, het eigen id vet; chip **"✓ deze administratie"** (groen) als `rlz_admin_id` in de lijst staat, anders **"⚠ eigen id NIET in de lijst"** (rood, title met het opgeslagen id + handeling). Bij `administraties_fout`: **"Administraties die deze login ziet: onbekend — Reeleezee weigert Administrations: ‹melding›"** | gebouwd + getest | idem |
+| Sync opnieuw starten | Alleen zichtbaar bij check groen (`rlzCheckIsGroen` = backend-regel `probe_is_groen`) én `eerste_sync.status === 'fout'`: primaire knop **"Sync opnieuw starten"** (aria "… voor ‹naam›") → bestaande `startEersteSync` (`POST …/eerste-sync`), daarna status "Eerste sync opnieuw gestart — de stand verschijnt hieronder bij “Eerste sync”" + herlaad; hint "De check is groen maar de laatste eerste sync was rood — start de sync opnieuw met de knop hierboven." Rood = géén sync-knop | gebouwd + getest | idem |
+| Fouten leesbaar | 404 → "Administratie onbekend of geen webservice-login geregistreerd — ‹detail›"; 503 → "Geen opgeslagen webservice-login voor deze administratie — ‹detail›"; overig = backend-detail; `role=alert`, resultaat blijft leeg | gebouwd + getest | `RlzCheck.tsx::rlzCheckFoutTekst` |
+| Rij-chip "sync-fout" tooltip | `AdministratiesV2::syncFoutTooltip(run)`: eerste regel van de eerste rode onderdeel-stand (`onderdelen.*.fout` — draagt sinds blok C het letterlijke RLZ-antwoord: 'Reeleezee weigert GET Ledgers (HTTP 403) — ‹recht›. RLZ zegt: "…"'), terugval `fout_reden`, daarna "eerste sync mislukt". Géén lijst-DTO-wijziging (beheer-service buiten de bestandsgrenzen van blok 1; de laatste probe-MELDINGEN staan alleen in `audit_event`) | gebouwd + getest | `AdministratiesV2.tsx`; `AdministratiesV2.test.tsx` |
+
+**Tests.** Backend: `tests/credentialstore/test_service.py::TestRlzCheckVelden` (6) + `test_router.py` (2 nieuw: velden in de
+response, 503 leesbaar) — bestaande probe-tests groen (compat-velden). Frontend: `RlzCheck.test.tsx` (9), `AdministratiesV2.test.tsx`
+(+2); `npx vitest run src/instellingen src/api/proxyDekking.test.ts` 273/273; `tsc -b` groen. Geen nieuwe route → `test_rol_endpoint_gates`
+ongewijzigd (router-brede `vereis_kantoorrol` + `vereis_administratie_scope` op rlz-check blijven).
+
+**Meetrecept (Peter, Beheerder-sessie).** Instellingen › Administraties › **Baard beheer & management** › Algemeen › rij
+Webservice-gegevens › "RLZ-check"; idem **Box Beheer B.V.** en **Kempen B.V.** Verwacht vóór de RLZ-rechtenfix: Ledgers/Vendors/
+Projects/PaymentAccounts rood mét "Reeleezee zegt: HTTP 403 — {"Message":"Actie niet toegestaan bij huidige gebruikersrechten",…}",
+TaxRates ok, regel "Administraties die deze login ziet: N (…)" mét "✓ deze administratie" (het id klopt — RLZ noemt de rechten);
+ná het zetten van de leesrechten in RLZ: "10 leesroutes groen" (of 9 + oranje SalesInvoices) én de knop "Sync opnieuw starten" →
+Eerste sync klaar. Rapport noteert letterlijk wat de knop toont.
+
+**Beslispunten.** (1) De bestaande rij "Eerste sync" toont bij een rode run óók haar eigen (secundaire) "Sync opnieuw starten"
+(`EersteSyncStatus`) — ná een groene check staan er dus twee herstart-knoppen op de tab (primair naast de check, secundair in de
+sync-rij). Voorstel: de secundaire verbergen zodra de RlzCheck-knop zichtbaar is, of andersom — keuze Peter. (2) De tooltip van de
+lijst-chip leest de eerste-sync-stand, niet de laatste probe-melding (die leeft alleen in audit) — wil Peter de laatste
+probe-melding óók in de lijst-DTO (klein additief veld in beheer-service, aparte run)?
+
+**Werkt in productie:** nog niet gemeten (deploy volgt) — meetrecept hierboven.
+
+## SCOPE-DIALOOG: LIJST IN PLAATS VAN CHIPS (nachtrun 10/11-09 blok 2; kliktest Peter 10-09 avond met 71 administraties; geen migratie, geen backend-wijziging)
+
+Aanleiding (Peter, kliktest 10-09 avond): de dialoog "Scope van ‹medewerker›" (Gebruikers & toegang › Kantoor › ⋯ › Scope
+wijzigen…) en de accordeur-variant "Administraties toevoegen…" werkten met een MultiSelect van 150 px hoog plus een chips-wolk
+eronder — bij 71 administraties onwerkbaar (scrollen in een postzegel, chips-wolk hoger dan de lijst). Besluit: één doorzoekbare
+lijst met een vinkje per rij over de volledige dialooghoogte; de chips-wolk verdwijnt.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Gedeeld component | `ScopeLijst` (zoekveld, teller "N van M geselecteerd", filter "alleen geselecteerde", knoppen Alles/Geen, lijst met checkbox-rijen, status-chip "gearchiveerd", vergrendelde rijen "heeft al toegang"); pure helpers `sorteerScopeItems`, `berekenVerschil`, `verschilTekst` ("+3 −1"), `namenOpsomming` (max 10 + "en N andere"). Gebruikt door `ScopeModal` én `AccordeurAdministraties`. | GEBOUWD + GETEST 10/11-09 | `frontend/src/gebruikers/ScopeLijst.tsx`, `ScopeLijst.test.tsx` |
+| Volgorde | Alfabetisch (nl-collator, accent-ongevoelig, numeriek), gearchiveerde administraties als blok ONDERAAN mét chip. Aanvinken hersorteert NIET (besluit Peter: hersorteren laat de lijst bij elke klik springen); een aangevinkte rij draagt de bestaande scope-chip-kleur (`--accent-bg`/`--primary`). | GEBOUWD + GETEST | idem |
+| Hoogte | Lijst `min-height` 12 × 34 px (= 12 rijen), `height: clamp(408px, 60vh, 680px)`, intern scrollend; dialooginhoud `max-h calc(100vh − 32px)`. Meting headless Chrome 1440×900 / 1170×900 / 768×900 / 400×800: zie rapport (probe `body[data-scope-dialoog]`). | GEBOUWD; alleen 1440×900 licht gemeten (rijen=12, geen overloop) — rest NIET GEMETEN, zie rapport | `ScopeLijst.tsx` (`SCOPELIJST_RIJHOOGTE_PX`, `SCOPELIJST_MIN_RIJEN`) |
+| Alles / Geen | "Alles" = alle ZICHTBARE (zoekfilter), actieve, kiesbare rijen erbij — gearchiveerde administraties nooit in bulk (wel per rij). "Geen" = alle zichtbare kiesbare rijen eraf; vraagt bevestiging via de bestaande `BevestigDialog` zodra er al scope stond (RLS: geen scope = niets zien). Zonder eerdere scope (accordeur-toevoegen) direct. | GEBOUWD + GETEST | idem |
+| Opslaan mét verschil | Knop "Scope opslaan (+3 −1)" (uit zonder verschil); klik = `BevestigDialog` met "Erbij (N): namen… Eraf (M): namen…" (max 10 namen + "en N andere"), LET-OP-regel als de scope leeg wordt; pas ná bevestigen lopen de BESTAANDE routes `POST /auth/gebruikers/{id}/scope` per erbij en `DELETE …/scope/{adm}` per eraf — audit ongewijzigd. Fout = zichtbaar in de dialoog ("… al doorgevoerde wijzigingen blijven staan; de lijst wordt ververst"). | GEBOUWD + GETEST | `frontend/src/gebruikers/ScopeModal.tsx`, `ScopeModal.test.tsx` |
+| Lijstinhoud kantoor-dialoog | Actieve administraties (`GET /auth/administraties`) + gearchiveerde die nog in de scope staan (naam/status uit de gebruikers-DTO `administraties`); een scope-id zonder naam heet "onbekende administratie" — nooit een GUID in de dialoog. | GEBOUWD + GETEST | `ScopeModal.tsx::scopeLijstItems` |
+| Accordeur-variant | "Administraties toevoegen…" toont dezelfde ScopeLijst met ÁLLE administraties: wat al in de scope zit staat aangevinkt én vergrendeld (chip "heeft al toegang", teller "N van M geselecteerd · K hebben al toegang"; verwijderen blijft de rij "Verwijderen…" mét herberekend-/vervallen-telling), gearchiveerd onderaan; de bestaande administratielijst met links maakt in de toevoeg-stand plaats voor de lijst; "Verder (n)" = aantal nieuw aangevinkt → de bestaande `BulkAccorderingDialog` (preview + uitkomsten) blijft de bevestiging. Geen nieuwe schrijfroute. | GEBOUWD + GETEST | `frontend/src/gebruikers/AccordeurAdministraties.tsx`, `GebruikersScreen.test.tsx` |
+| Toegankelijkheid | Native checkboxes (role checkbox, `aria-label` = naam of "‹naam› — gearchiveerd") in een `role="group"` "Administraties" — bewust géén `role="listbox"` (ARIA-listbox verwacht option-kinderen zonder eigen checkbox; natives geven Tab/Spatie en de bestaande testconventie `toBeChecked` zonder aria-vertaalslag). Pijl-omlaag vanuit het zoekveld → eerste rij. | GEBOUWD + GETEST | `ScopeLijst.tsx` |
+| Overflow-sweep | Harnas-varianten `harness-gebruikers.html?scope=71` (kantoor-dialoog, Demi, 71 administraties waarvan 4 gearchiveerd in scope, één zeer lange naam) en `?scope=71&variant=accordeur` (toevoeg-stand, prop `initieelToevoegen` — alleen harnas). Probe `body[data-scope-dialoog]="rijen=…;scrollx=…;lijstScrollx=…;dialoogBreedte=…;dialoogRechts=…;viewport=…"`; loopt de dialooginhoud intern horizontaal over (de Radix-overlay is zelf een scroll-container, de pagina-badge ziet dat niet) dan schrijft het harnas "OVERFLOW — scope-dialoog …" in de body waar de sweep op grep't. | GEBOUWD; sweep NIET volledig gedraaid (3–4 min per meting op deze Mac) — meetrecept in rapport | `frontend/src/dev/visueelHarnasGebruikers.tsx`, `frontend/scripts/overflow_sweep.sh` |
+
+Meetrecept productie (ná deploy): Gebruikers & toegang › Kantoor › ⋯ bij een medewerker › "Scope wijzigen…" op 1440×900: lijst
+toont ≥ 12 rijen zonder chips-wolk, zoekveld filtert, "Alles"/"Geen" werken ("Geen" vraagt bevestiging), aanvinken van een rij
+laat de volgorde staan, de knop leest "Scope opslaan (+N −M)", bevestiging toont de namen, ná bevestigen staan de wijzigingen
+in de tabel en in het audit-log (`scope_toegevoegd`/`scope_verwijderd` ongewijzigd). Klant-accordeurs › beheren › "Administraties
+toevoegen…": al-in-scope aangevinkt + vergrendeld, "Verder (n)" → bulk-dialoog.
+
+Werkt in productie: nog niet gemeten (deploy volgt).
+
+Beslispunten Peter:
+1. "Alles" laat gearchiveerde administraties bewust buiten schot (alleen per rij aan te vinken) — akkoord, of moet "Alles" ze
+   ook meenemen als het zoekfilter er expliciet op staat?
+2. "Geen" bevestigt zodra er al scope stond, óók als het zoekfilter maar een deel toont (het haalt alleen de zichtbare rijen
+   weg) — de tekst zegt dat; volstaat dat of moet "Geen" bij een actief filter zonder bevestiging?
+3. De dialoog blijft 480 px breed (past op 400 px). Bij 71 administraties met lange namen wordt de naam afgekapt met "…" en een
+   title-tooltip — breder maken (`breed` = 720 px) kan in één regel als dat prettiger leest.
+
+## BANK — DEELS AFGELETTERDE MUTATIES: OPEN BEDRAG IS DE MAAT (nachtrun 10/11-09 blok 3; bug Peter 10-09 avond, Zilver Beheer; migratie 0131)
+
+**Aanleiding (Peter 10-09 avond, Zilver Beheer).** Bewijs in RLZ: bankmutatie 01-07 +5.023,09 was in RLZ al gekoppeld aan
+verkoopfactuur 2024840 (€ 2.512,04, boekstuk RLZ-01-00000800) — `OpenAmount` 2.511,05 — en op 08-09 kwam −2.511,05 "retour dubbele
+betaling" van dezelfde tegenpartij. De module toonde 5.023,09, liet de matchmotor op 5.023,09 toetsen en bood "handmatig 5.023,09"
+aan; boeken zou het TOTAAL op grootboek hebben gezet over een in RLZ al deels gekoppelde mutatie heen. Wortel: `boeken.py` dekte
+`mutatie.bedrag` (deelmodus bestond, maar alleen voor splitsen), `matchmotor.teken_toets/_bedrag_exact`, de vaste-regel- en
+historie-regel-boekregels en de AI-toets-invoer namen `mutatie.bedrag`; `splitsen.py` weigerde een deels verwerkte mutatie zelfs
+("alleen op een volledig open mutatie"). De sync-verversronde hield `open_bedrag` wél bij (⚠️ op `OpenAmount`, nooit `IsComplete`)
+maar las de KOPPELINGEN niet — de UI kon niet zeggen waaraan de mutatie al vastzat. Pre-feature-check: bouwt voort op "Bankmodule —
+GEBOUWD + GETEST", "MATCHMOTOR BANK — NAAM/IBAN + NUMMER + BEDRAG + TEKEN", "Afletteren-tegen-open-post: GEKRAAKT" (leesspoor
+`PaymentReferenceList($expand=Document)`, api-verkenning schrijf-PoC §5/§6) en "BANK — HISTORIE-REGEL + AI-PLAUSIBILITEITSTOETS";
+geen nieuw patroon, de deelmodus wordt hergebruikt.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Eén bron "te verwerken bedrag"** | `matchmotor.open_bedrag_van(bedrag, open_bedrag)` (= `open_bedrag`, terugval `bedrag` als de sync 'm niet kent) + `MutatieGegevens.te_verwerken_bedrag` + `is_deels_afgeletterd(bedrag, open)` (open ≠ 0 én ≠ totaal). Puur, geen I/O. | GEBOUWD 11-09 | `backend/app/bank/matchmotor.py` |
+| **Matchmotor toetst het open bedrag** | `teken_toets` en `_bedrag_exact` (stap 1/2) op `te_verwerken_bedrag`: een post van het restant (2.511,05) is groen, een post van het totaal (5.023,09) hooguit oranje "bedrag wijkt af". Vaste regel/historie-regel/RLZ-voorstel ongewijzigd in volgorde. | GEBOUWD 11-09 | `matchmotor.py`, `tests/bank/test_deels_afgeletterd.py::TestOpenBedragIsDeMaat` |
+| **Boeken: dekking = open bedrag** | `boek_mutatie_direct` volle modus: Σ(netto+btw) = OPEN bedrag (lokaal), deel ≤ open bedrag; fouttekst begint met `DEKKING_FOUT_PREFIX` = "Bedrag dekt niet het open bedrag van de mutatie" + open/totaal/al gekoppeld → router 409 (bestaande vertaling `RegelsDekkenMutatieNiet`). Nieuw: verse RLZ-`OpenAmount` ≠ lokaal open (sync liep achter) = `MutatieAlAfgeletterd` mét hetzelfde voorvoegsel + "ververs de bankmutaties" (409) — nooit op een verouderde stand boeken. Lokaal open 0 valt terug op het totaal zodat de bestaande poorten (BankBoekingBestaatAl / RLZ-stand) blijven spreken. | GEBOUWD 11-09 | `backend/app/bank/boeken.py` |
+| **Vaste regel, historie-regel, autoflow, AI-toets** | `regel_naar_boekregels`/`historie_naar_boekregels`/`verwerk_automatisch`/`bouw_ai_invoer` en de servicelaag (`voorstellen.open_mutaties_met_voorstellen`) bouwen regels en AI-invoer op het open bedrag. | GEBOUWD 11-09 | `boeken.py`, `voorstellen.py` |
+| **Splitsen op het open bedrag** | Delen verdelen `open_bedrag` (weigering "alleen volledig open" vervallen); `BankSplitsing.mutatie_bedrag` = het te verdelen (open) bedrag; 422-tekst noemt totaal, al gekoppeld en te verdelen bedrag. | GEBOUWD 11-09 | `backend/app/bank/splitsen.py` |
+| **Sync: koppelingen uit het leesspoor** | Verversronde-GET per lokaal-open mutatie expandeert `PaymentReferenceList($expand=Document)` (`VERVERS_EXPAND`); systeemhulzen (DocumentType 19 + Status 1, `afletteren._is_systeemhuls`) uitgefilterd; per koppeling `{document_id, boekstuknummer, referentie, bedrag (grootte), document_type, omschrijving}` → nieuwe kolom `bank_mutatie.rlz_koppelingen JSONB NULL` (0131). Een batch-record zónder leesspoor (lijst-GET) laat de kolom ongewijzigd; deels gekoppelde batch-records worden in dezelfde run alsnog per id nagelezen. Verificatie 3.3: een in RLZ weggeboekte mutatie (Delta Energie 29-06 / VHK 06-08, Peter 10-09 22:4x) krijgt via de verversronde `open_bedrag` 0 en verdwijnt uit de open lijst — bestaand gedrag, nu met test bewezen (vier rondes). | GEBOUWD 11-09 | `backend/app/bank/sync.py`, `migrations/versions/0131_bank_mutatie_rlz_koppelingen.py`, `test_deels_afgeletterd.py::TestSyncVerversrondeMetKoppelingen` |
+| **DTO additief (contract N3a↔N3b)** | `MutatieResponse.deels_afgeletterd: bool = False` + `rlz_koppelingen: list[RlzKoppelingResponse] = []`; router leest ze uit de servicelaag (`MutatieMetVoorstel.rlz_koppelingen`, `.deels_afgeletterd`). Mutatievolgorde stabiel (boekdatum desc, id). | GEBOUWD 11-09 | `schemas.py`, `router.py`, `voorstellen.py` |
+| **CLI `bank-voorstellen-lezen`** | Bedragkolom `5023.09/open 2511.05` bij een deels afgeletterde mutatie (kolom 22 breed), JSON `open_bedrag`/`deels_afgeletterd`/`rlz_koppelingen`. | GEBOUWD 11-09 | `backend/app/bank/cli_cmd.py` |
+| **Gouden set casus l uitgebreid** | `fixtures/l_bank_cv_08-09/deels_afgeletterd.json` (rekening + A/B, geanonimiseerd, cent-exact) + `open_posten.json` vaste `rlz_document_id`; tests: A voorstel op 2.511,05 (handmatig zonder post, groen mét post van het restant), B handmatig, DTO-velden, API direct-boeken 5.023,09 = 409 mét contracttekst / 2.511,05 = 200 en mutatie dicht; export `frontend/src/dev/keten/l_bank_cv_08-09.json` (sleutel `bank`) vervangt N3b's contract-fixture, byte-stabiel, matchmotor-"vandaag" gepind op de referentiedag (`_BevrorenDatum`) zodat de historie-regel deterministisch blijft. | GEBOUWD + GROEN 11-09 | `backend/tests/keten/test_l_bank_matchmotor.py`, `tests/keten/fixtures/l_bank_cv_08-09/` |
+| **Niet gebouwd (bewust)** | Verrekening-regel A ↔ B (zelfde tegenpartij, tegengesteld restant) = blok 3.4 (N3c STAP-0, alleen voorstel). `relatie.py`/`afletteren.py` werkten al op de verse `OpenAmount` — ongewijzigd. | — | — |
+
+**Migratie 0131** — `make -C backend migrate` op de dev-DB 11-09: `Running upgrade 0130 -> 0131` (0,5 s); `alembic check`: "No new upgrade
+operations detected"; live 200 op `GET /administraties/{id}/bank/rekeningen/{rek}/mutaties` (uvicorn 8011, beheerder-token) mét
+`deels_afgeletterd: true` + koppeling RLZ-01-00000800; schema-dump (`scripts/dump_schema.sh`) door de coördinator ná de volledige suite.
+
+**Meetrecept productie (Zilver Beheer, ná deploy; lees-only via `scripts/gcp/nameting.sh`):**
+1. Vóór: `bank-voorstellen-lezen --administratie "Zilver Beheer"` toont mutatie 01-07 als `5023.09` handmatig (oude image) — de
+   nulmeting van 10-09 avond is de kliktest van Peter.
+2. Ná deploy + eerstvolgende `sync-alles` (07:00): dezelfde regel toont `5023.09/open 2511.05` (JSON: `deels_afgeletterd: true`,
+   `rlz_koppelingen: [{boekstuknummer: RLZ-01-00000800, referentie: 2024840, bedrag: 2512.04}]`); Delta Energie 29-06 en VHK 06-08 staan
+   NIET meer in de lijst; mutatie 08-09 −2.511,05 staat als handmatig.
+3. Bankscherm Zilver Beheer: rij toont "€ 5.023,09 · open € 2.511,05" + chip "deels afgeletterd in RLZ" (N3b); "Boeken…" opent op
+   2.511,05; een boeking van 5.023,09 (bv. via de API) = 409 "Bedrag dekt niet het open bedrag van de mutatie…".
+Rapportregel "werkt in productie: ja/nee" ná die meting door de coördinator.
+
+**Beslispunten Peter.**
+1. Kolom `rlz_koppelingen` blijft NULL tot de eerstvolgende sync (verversronde leest alleen lokaal-open mutaties) — acceptabel, of
+   een eenmalige backfill over álle open mutaties per administratie (één per-id GET per open mutatie)? Advies: niet nodig, de
+   nachtelijke sync vult 'm binnen 24 u.
+2. Mutatie B (retour dubbele betaling) blijft handmatig; de verrekening-regel (A ↔ B) wacht op de STAP-0 van N3c (blok 3.4).
+3. `MutatieAlAfgeletterd` bij "RLZ-open ≠ lokaal open" is een 409 (zoals de andere stand-conflicten) — of liever een 412/zichtbare
+   "ververs"-knop in de UI? Advies: 409 + de bestaande auto-verversing bij openen volstaat.
+
+**Werkt in productie:** nog niet gemeten (meetrecept hierboven; de nachtelijke sync ná de deploy is de eerste meting).
+
+### Blok 3 — frontend (N3b): weergave, formulier/splitsen op het open bedrag, keten-sweep-baseline
+
+*(deel-sectie voor "BANK — DEELS AFGELETTERDE MUTATIES (nachtrun 10/11-09 blok 3)")*
+
+**Aanleiding (Peter 10-09 avond, Zilver Beheer):** mutatie 01-07 +5.023,09 is in RLZ al voor € 2.512,04 gekoppeld aan
+verkoopfactuur 2024840 (RLZ-01-00000800), nog te boeken 2.511,05; 08-09 −2.511,05 "retour dubbele betaling", zelfde
+tegenpartij. Het bankscherm toonde het volle bedrag en bood "handmatig € 5.023,09". Wortel frontend: `BankDetailScreen`
+gebruikte `open_bedrag` nergens — kolom Bedrag, `HandmatigBoekenForm` (netto = `mutatie.bedrag`), `VoorstelKaart`
+(`mutatieBedrag = mutatie.bedrag`), `isDeelbetaling` en `SplitsenForm` (`mutatieCenten` uit `mutatie.bedrag`) rekenden alle
+op het volledige mutatiebedrag.
+
+**Pre-feature-check:** bouwt voort op "Bankmodule — GEBOUWD + GETEST" (volgorde 1–5), "BANKSCHERM BLOK E" (voorstel-kaart,
+één primaire knop + ⋯), "MATCHMOTOR BANK …" (label uit `bron`) en "GOUDEN SET — KETENTEST" (harnas + `keten_sweep.sh`).
+De bank-casus `l_bank_cv_08-09` had GEEN frontend-fixture en geen plek in de sweep (alleen a/b/c/h/m × detail/lijst) — er
+was dus geen bank-baseline om te verversen; die is nieuw aangelegd. **UX-review:** past in de bestaande IA — geen nieuw
+scherm, geen mockup; bedragkolom krijgt bij een deels afgeletterde mutatie een kleinere tweede regel en een chip op een
+eigen regel (kolomminima ongewijzigd; de gewone rij verandert pixel-exact niet — 0 afwijkende pixels in de bestaande
+baselines).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **DTO additief + één bron** | `MutatieDto.deels_afgeletterd?: boolean`, `rlz_koppelingen?: RlzKoppelingDto[]` (`document_id, boekstuknummer, referentie, bedrag, document_type, omschrijving` — alle null-baar); oudere antwoorden zonder de velden blijven werken. `openBedrag(mutatie)` = `open_bedrag ?? bedrag` is de ENIGE bron voor handmatig boeken, splitsen en de voorstel-kaart; `isDeelsAfgeletterd(mutatie)` = contractveld, anders cent-exact afgeleid (open ≠ bedrag én ≠ 0). | GEBOUWD | `frontend/src/bank/bankApi.ts` |
+| **3.1 Weergave** | Kolom Bedrag: volle bedrag (kleur teken) + tweede regel `open € 2.511,05` (`bank-oms`, rechts) + chip **"deels afgeletterd in RLZ"** (`chip klaar` = info-blauw "stand", één regel; testid `chip-deels-afgeletterd`); tooltip "In Reeleezee is van deze mutatie al een deel afgeletterd; nog open € … van € …" + "Gekoppeld aan: RLZ-01-00000800 · factuur 2024840 · € 2.512,04" en dezelfde koppelingen als regel `gekoppeld: …` (`koppelingTekst`, nooit een GUID) — lege lijst = alleen de bedragen + "weet de sync (nog) niet". Volledig afgeletterd (open 0) komt de lijst niet in (backend-filter, ongewijzigd). | GEBOUWD | `BankDetailScreen.tsx` (`DeelsAfgeletterdChip`, `koppelingTekst`, `MutatieRij`) |
+| **3.2 Handmatig boeken** | Formulier opent met regel "Te boeken: **€ 2.511,05** — het open bedrag; van de mutatie (€ 5.023,09) is de rest in Reeleezee al afgeletterd." (gewone mutatie: "(het volledige mutatiebedrag)"); netto/btw-splitsing rekent op `openBedrag`; de 409-detail van de backend ("Bedrag dekt niet het open bedrag van de mutatie …") blijft letterlijk als rode regel in het formulier staan, formulier blijft open (nooit stil). | GEBOUWD | `BankDetailScreen.tsx::HandmatigBoekenForm` |
+| **3.2 Splitsen** | `SplitsenForm`: rest-teller, voorvulling open-post-deel en body-som op het OPEN bedrag; uitleg "Open bedrag € 2.511,05 van mutatie € 5.023,09 verdelen … De delen moeten exact optellen tot het open bedrag." | GEBOUWD | `Splitsen.tsx` |
+| **3.2 Voorstel-kaart** | `VoorstelKaart mutatieBedrag={openBedrag(mutatie)}` in de rij én in het splitsen-deel; `isDeelbetaling` (knop "Afletteren (deel)") toetst het open bedrag — deelbetaling/restant volgen wat in RLZ nog open staat. | GEBOUWD | `BankDetailScreen.tsx`, `Splitsen.tsx` |
+| **Koppel aan relatie** | Geen frontend-wijziging: het formulier stuurt geen bedrag; het aanbetalingsbedrag = open bedrag is een backend-zaak (N3a). | n.v.t. | `RelatieKoppeling.tsx` |
+| **3.5 Gouden set — bank in de keten-sweep** | Harnas `visueelHarnasKeten.tsx` krijgt `scherm=bank`: rendert het ECHTE `BankDetailScreen` op fixture-sleutel `bank: { rekening_id, rekeningen, mutaties, afletter_opdrachten }` (= de DTO's van GET …/bank/rekeningen, …/mutaties, …/afletter-opdrachten; achtergrond-sync = overgeslagen, panelen leeg); `keten_sweep.sh`: `BANK_CASUSSEN=(l_bank_cv_08-09)` één meting `__bank`, `meet()`-functie, `KETEN_ALLEEN=<casus>` voor een deelroute. Fixture `src/dev/keten/l_bank_cv_08-09.json` is een CONTRACT-fixture (vier C.V.-mutaties + huur + mutatie A/B, datums bevroren op de referentiedag) tot de backend-export van N3a 'm vervangt. **Baseline `scripts/keten_baseline/l_bank_cv_08-09__bank.png` NIEUW gezet** — reden: er bestond geen bank-baseline; de screenshot toont A mét "open € 2.511,05" + chip + koppelingsregel, B gewoon −2.511,05, TransIP/NPG groen, huur historie-regel. Volledige sweep 11 metingen groen, bestaande 10 baselines 0 pixels afwijkend. | GEBOUWD — baseline vraagt een TWEEDE RONDE zodra N3a's export er is (tegenpartij A/B is nu placeholder "Debiteur Z Beheer B.V.") | `frontend/src/dev/visueelHarnasKeten.tsx`, `frontend/scripts/keten_sweep.sh`, `frontend/scripts/keten_baseline/l_bank_cv_08-09__bank.png`, `frontend/src/dev/keten/l_bank_cv_08-09.json` |
+| **Tests** | `frontend/src/bank/DeelsAfgeletterd.test.tsx` (9): helper-unit (open/deels/terugval/oude DTO), lijst A+B (bedrag, open-regel, chip, tooltip, koppelingsregel; B zonder), lege koppelingen, oude DTO zonder velden, formulier "Te boeken" + body netto 2511.05, volledig-open ongewijzigd (−2511.05), 409-tekst letterlijk zichtbaar + formulier blijft, splitsen rest/som op 2511.05, deel_match-restant op het open bedrag (488,95) + knop "Afletteren (deel)". `npx vitest run src/bank`: 6 bestanden, 59 tests groen; `tsc -b` groen; `keten_sweep.sh` 11/11 groen. | GROEN 10-09 | — |
+
+**Meetrecept productie (ná deploy van N3a + N3b):** Zilver Beheer › Bank › rekening met de mutatie 01-07: rij toont
+"€ 5.023,09" / "open € 2.511,05" / chip "deels afgeletterd in RLZ" met tooltip RLZ-01-00000800 · factuur 2024840 ·
+€ 2.512,04; "Boeken…" opent met "Te boeken: € 2.511,05"; boeken op 2.511,05 → geboekt; (negatief pad alleen via een
+handmatig aangepaste request) 5.023,09 → rode regel "Bedrag dekt niet het open bedrag van de mutatie …". Rapportregel
+"werkt in productie: ja/nee" door de coördinator. **Werkt in productie: nog niet gemeten (niet gedeployed).**
+
+**Beslispunten Peter (frontend)**
+1. Chip-kleur: info-blauw (`chip klaar`, "stand") gekozen — niet groen (groen = status "af/actueel", dit is een tussenstand)
+   en niet oranje (geen afwijking: RLZ heeft het bewust zo). Liever oranje als "let op"? Eén klasse.
+2. De koppelingen staan zowel als tooltip als als regel onder de chip (leesbaar zonder hover; de kolom wordt bij zo'n rij
+   iets hoger, niet breder). Alleen tooltip is één regel code.
+3. Mutatie B (retour dubbele betaling) blijft "handmatig" — de verrekening-regel is blok 3.4 (alleen voorstel, N3c).
+
+## Blok 3.4 — STAP-0 verrekening tussen twee bankmutaties (lees-only, nachtrun 10/11-09)
+
+Aanleiding: casus Zilver Beheer 10-09 — mutatie A +5.023,09 gekoppeld aan verkoopfactuur € 2.512,04, open rest 2.511,05;
+mutatie B −2.511,05 "retour dubbele betaling", zelfde tegenpartij. Vraag Peter: welke RLZ-vorm bestaat via de API om A-rest en
+B tegen elkaar weg te strepen? Uitsluitend GET's (Help, enumeraties, TEST-administratie), geen schrijf-PoC, geen bouw.
+Canoniek: `verkenning/api-verkenning.md` "Verrekening tussen twee bankmutaties — STAP-0 (nachtrun 10/11-09, lees-only)";
+script `verkenning/stap0_verrekening_lezen.py`.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Actie 15 met PaymentItem van de andere mutatie | Structureel onmogelijk: `PaymentItem` verwijst per model alleen naar een `Document`; geen mutatie/BMDB komt als item voor | UITGESLOTEN (lees-only bewezen) | api-verkenning §1/§2/§3 vorm 1 |
+| RLZ's eigen verrekenen (actie 34 `Settle`) | In RLZ = paar PaymentTransactions op de Type-4 Verrekeningen-rekening (GB 2001), elk gekoppeld aan één DOCUMENT (factuur ↔ creditfactuur); nooit een bankmutatie als zijde; API-vorm blijft 400 (02-08), niet aangeboden op mutaties | DOOD SPOOR voor bank↔bank | api-verkenning §2 + §3 vorm 3 |
+| Kruispost-/tussenrekening (twee BMDB's) | Alle bouwstenen bewezen (deel-BMDB, BMDB op tussenrekening, storno per deel); kandidaat-rekeningen 1808/1405 (bank-detail true) of 1010 Kruisposten; geen relatie-spoor op de RLZ-kaart → eigen tabel + reconciliatie | BOUWBAAR, wacht op keuze Peter | api-verkenning §3 vorm 2, §4 |
+| Aanbetalingsdocument-paar op de relatie + actie 15 | Spiegel van de relatie-PoC 25-08 (1403/1806); netste boekhouding; ontvangstkant niet live bewezen, twee extra documenten per geval | HALF BEWEZEN, wacht op keuze Peter | api-verkenning §3 vorm 2b |
+| RLZ-eigen "Betaling storneren" (ActionKind 115 + `CancellationCandidates`) | Leesroute bestaat en selecteert "andere mutatie, zelfde tegenpartij, tegengesteld teken" (bedrag-onafhankelijk); schrijfvorm/semantiek onbekend | ONGEKRAAKT — capture Peter nodig | api-verkenning §2 + §3 vorm 4 |
+| Matchmotor-regel "verrekening" | Voorstel: zelfde tegenpartij (IBAN → naam + IBAN-geheugen), tegengesteld teken, cent-exact op het OPEN bedrag, ≤ 90 dagen, beide open, geen open post die B dekt, één kandidaat → GROEN `VoorstelSoort.VERREKENING` (autoboek achter bestaande poorten); anders ORANJE mét kandidatenlijst; positie ná stap 2 (deel-match), vóór stap 3 (vaste regel) | VOORSTEL, NIET GEBOUWD | api-verkenning §4 |
+
+**Nieuwe API-feiten (lees-only):** `$metadata` 404 herbevestigd; `PaymentTransactions/{id}/Actions` = altijd 15/16/148/160/161;
+`PaymentAccountTypes` 4 Settling / 7 Intermediate; `PaymentTransaction.ReturnReason` bestaat maar is nergens gevuld;
+`BankMutationDirectBookings?$filter=PaymentAccount/id …` → 200 mét HTML; `PaymentItems?$filter=Document/DocumentType eq n` → 400
+enum-typebug; 2001 Verrekeningen heeft `UseForBankCashMutationDetails false` (géén BMDB-doel).
+
+**Beslispunt Peter — welke RLZ-vorm:** (2) twee BMDB's op een tussenrekening (technisch klaar, per deel storneerbaar, relatie-spoor
+= onze tabel) · (2b) aanbetalingsdocument-paar op de debiteur/crediteur (netste boekhouding, ontvangstkant niet live bewezen) ·
+(4) RLZ-eigen "betaling storneren" (eerst DevTools-capture in de RLZ-UI op een retourmutatie, dan STAP-0-replay zoals actie 15).
+Daarbij: rekeningkeuze 1808/1405 vs 1010, en akkoord voor een schrijf-PoC op de TEST-administratie (alleen de crediteur-spiegel
+is daar toetsbaar — positieve mutaties zijn via de API niet aan te maken; de debiteurkant volgt bij de eerste echte casus mét
+storno klaar).
+
+**Meetrecept (pas ná bouw):** gouden-set-casus `l_bank_cv_08-09` A/B → voorstel `verrekening` groen op beide mutaties;
+`scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie <Zilver Beheer>` toont soort `verrekening` op A en B.
+**Werkt in productie:** n.v.t. — niets gebouwd (STAP-0).
+

@@ -6,6 +6,19 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-11 — RLZ-check met één knop, scope kiezen uit een lijst, bankmutaties met een open bedrag
+
+<!-- nachtrun-10-11-09:1 -->
+- **RLZ-check met één knop.** Op de administratiepagina (Algemeen › Webservice-gegevens) staat nu de knop "RLZ-check": hij toetst de opgeslagen Reeleezee-login op precies de onderdelen die de eerste sync nodig heeft en laat per onderdeel zien of het goed is, wat Reeleezee letterlijk antwoordt en welk recht er in Reeleezee ontbreekt. Je ziet ook welke administraties die login kan zien — een verkeerd administratie-id valt zo direct op.
+- **Sync direct opnieuw starten.** Is de check groen terwijl de eerste sync eerder mislukte, dan staat "Sync opnieuw starten" er meteen naast. De waarschuwingschip "sync-fout" in de administratielijst toont bij aanwijzen nu de echte reden uit Reeleezee.
+- **Scope van een medewerker: één lijst met vinkjes in plaats van losse labels.** In Gebruikers & toegang toont "Scope wijzigen…" nu alle administraties in één doorzoekbare lijst over de hele hoogte van het venster (minstens twaalf rijen zichtbaar), alfabetisch, met een vinkje per rij en gearchiveerde administraties onderaan. Bovenin staat een teller ("12 van 71 geselecteerd"), een filter "alleen geselecteerde" en de knoppen Alles / Geen — "Geen" vraagt eerst om bevestiging, want zonder toegang ziet een medewerker niets.
+- **Opslaan laat eerst zien wat er verandert.** De knop leest bijvoorbeeld "Scope opslaan (+3 −1)"; na een klik zie je de namen van de administraties die erbij komen en eraf gaan en bevestig je pas dan. Elke wijziging blijft in het audit-log.
+- **Klant-accordeurs: dezelfde lijst bij "Administraties toevoegen…".** Wat de accordeur al heeft staat aangevinkt en vergrendeld ("heeft al toegang"); nieuw aangevinkte administraties gaan via de bekende bevestiging met vooruitblik.
+- **Bankmutaties die in Reeleezee al deels zijn afgeletterd worden nu goed behandeld.** Het voorstel, het boekformulier, splitsen en het boeken zelf werken op het bedrag dat nog open staat — niet meer op het totaal van de mutatie. Een boeking voor het volle bedrag van een al deels gekoppelde mutatie wordt geweigerd met een duidelijke melding ("Bedrag dekt niet het open bedrag van de mutatie…"), zodat er nooit dubbel geboekt wordt over wat Reeleezee al gekoppeld heeft.
+- **U ziet waaraan een mutatie in Reeleezee al gekoppeld is.** Bij de dagelijkse bankverversing halen we per open mutatie ook de bestaande koppelingen op (boekstuknummer, factuurreferentie en bedrag). Mutaties die intussen in Reeleezee zijn weggeboekt verdwijnen na de eerstvolgende verversing uit de lijst.
+- **Voor het kantoor:** het lees-only rapport van de bankvoorstellen toont bij zo'n mutatie "totaal/open restant".
+- **Bank: mutaties die in Reeleezee al deels zijn afgeletterd, tonen nu het open bedrag.** Bij zo'n mutatie staat onder het volledige bedrag "open € …" met de markering "deels afgeletterd in RLZ"; wijs de markering aan en je ziet aan welke factuur het al gekoppelde deel hangt.
+- **Boeken en splitsen gaan over het open bedrag.** "Boeken…" opent met de regel "Te boeken: € … — het open bedrag" en boekt precies dat; splitsen verdeelt het open bedrag. Probeert een boeking toch méér te dekken dan er open staat, dan zie je de reden direct in het formulier.
 ## 2026-09-10 — Reconciliatie zonder ruis, overzichtelijker gebruikersscherm, autoboeken leert sneller, AI-controle valt niet meer stil
 
 <!-- vervolgrun-10-09-avond:1 -->
