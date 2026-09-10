@@ -21,7 +21,10 @@ BASIS="http://localhost:${POORT}"
 # Blok 2 (10-09): harness-gebruikers ?breed=1 = brede variant (langste namen/e-mails, "Opnieuw mailen", alle
 # beveiligings-/statuschips en Rechten-switches aan) op de drie tabs — kolomminima uit gebruikersKolommen.ts;
 # op 1170/1024/768 scrolt de tabel intern in .tabel-scroll (sticky acties), de pagina zelf nooit.
-HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html "harness-gebruikers.html?breed=1" "harness-gebruikers.html?breed=1&groep=veldwerkers" "harness-gebruikers.html?breed=1&groep=accordeurs" harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
+# Blok 2 nachtrun 10/11-09: harness-gebruikers ?scope=71 = de scope-dialoog (ScopeLijst, 71 administraties, 4 gearchiveerd)
+# open bóven het scherm; &variant=accordeur = de accordeur-variant "Administraties toevoegen…". Het harnas schrijft zelf
+# "OVERFLOW — scope-dialoog …" in de body als de dialooginhoud intern horizontaal overloopt (de badge meet alleen de pagina).
+HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html "harness-gebruikers.html?breed=1" "harness-gebruikers.html?breed=1&groep=veldwerkers" "harness-gebruikers.html?breed=1&groep=accordeurs" "harness-gebruikers.html?scope=71" "harness-gebruikers.html?scope=71&variant=accordeur" harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
 BREEDTES=(1440 1170 1024 768)
 
 if [ ! -x "$CHROME" ]; then

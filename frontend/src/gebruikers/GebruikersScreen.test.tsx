@@ -746,7 +746,7 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     expect(screen.getByRole('button', { name: 'Administraties toevoegen…' })).toBeInTheDocument()
   })
 
-  it('"Administraties toevoegen…" = multi-select van actieve BV\'s buiten de scope → bestaande bulk-dialoog met de accordeur vooringevuld in laag 1 en scope-vink aan', async () => {
+  it('"Administraties toevoegen…" = ScopeLijst van álle BV\'s (al-in-scope aangevinkt + vergrendeld "heeft al toegang", gearchiveerd onderaan) → bestaande bulk-dialoog met de accordeur vooringevuld in laag 1 en scope-vink aan', async () => {
     const aanroepen: { method: string; url: string; body: unknown }[] = []
     installMock({ gebruikers: [accordeurMetTwee], aanroepen })
     renderScherm('/gebruikers?groep=accordeurs')
@@ -754,11 +754,18 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     const g = userEvent.setup()
     await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     await g.click(await screen.findByRole('button', { name: 'Administraties toevoegen…' }))
-    // Alleen BV's die nog niet in de scope zitten.
-    expect(screen.getByText('Tweede B.V.')).toBeInTheDocument()
-    expect(screen.queryByText('Molenhof Beheer B.V.', { selector: '.ms-optie' })).not.toBeInTheDocument()
+    // Blok 2 nachtrun 10/11-09: de gedeelde ScopeLijst — geen MultiSelect/chips-wolk meer; wat al in de scope zit is
+    // aangevinkt én vergrendeld (verwijderen loopt via de rij "Verwijderen…"), de gearchiveerde onderaan mét chip.
+    const lijst = screen.getByTestId('accordeur-toevoeg-lijst')
+    expect(lijst.querySelector('.ms-optie')).toBeNull()
+    expect(screen.getByTestId('scope-teller')).toHaveTextContent('0 van 1 geselecteerd · 2 hebben al toegang')
+    expect(screen.getByRole('checkbox', { name: 'Molenhof Beheer B.V.' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Molenhof Beheer B.V.' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Odoo-testadministratie — gearchiveerd' })).toBeDisabled()
+    expect(screen.getAllByTestId('scope-rij').at(-1)).toHaveTextContent('Odoo-testadministratie')
+    expect(screen.getByRole('checkbox', { name: 'Tweede B.V.' })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Verder (0)' })).toBeDisabled()
-    await g.click(screen.getByText('Tweede B.V.'))
+    await g.click(screen.getByRole('checkbox', { name: 'Tweede B.V.' }))
     await g.click(screen.getByRole('button', { name: 'Verder (1)' }))
 
     const bulk = await screen.findByTestId('bulk-accordering-dialoog')

@@ -20,16 +20,20 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-  MultiSelect,
   useToastOptioneel,
 } from '../ui/basis'
 import { verwijderScope, type GebruikerOverzichtDto, type ScopeAdministratieDto } from './gebruikersApi'
+import { ScopeLijst, type ScopeLijstItem } from './ScopeLijst'
 
 /* Blok 5 herstelrun "Basis eerst" (08-09, besluit Peter): de scope van een klant-accordeur is vanuit de
  * accordeur zelf te beheren — Gebruikers › Klant-accordeurs › "Administraties van ‹accordeur›":
- *  (1) "Administraties toevoegen…" = multi-select van actieve BV's → de BESTAANDE bulk-route
+ *  (1) "Administraties toevoegen…" = keuzelijst van actieve BV's → de BESTAANDE bulk-route
  *      /accordering/bulk-instellen (preview + uitkomsten per administratie) mét de accordeur vooringevuld in
- *      laag 1 en de scope-vink aan — geen nieuwe schrijfroute;
+ *      laag 1 en de scope-vink aan — geen nieuwe schrijfroute. Sinds blok 2 nachtrun 10/11-09 (kliktest Peter
+ *      10-09 avond, 71 administraties) is die keuzelijst de gedeelde ScopeLijst: álle administraties alfabetisch,
+ *      zoekveld, teller, filter, Alles/Geen; wat al in de scope zit staat aangevinkt én vergrendeld ("heeft al
+ *      toegang" — verwijderen loopt via de rij hierboven), gearchiveerd onderaan mét chip; "Verder (n)" = het aantal
+ *      nieuw aangevinkte administraties;
  *  (2) per administratie "Verwijderen…" = de herberekend-/vervallen-telling (preview, bundel 09-09 blok 2), dan
  *      de accordeur uit de lagen (PUT instellingen zonder hem, `aanleiding` "verwijderd via Klant-accordeurs" in
  *      audit + tijdlijn) en uit de scope (bestaande DELETE-route, Beheerder-poort) — nooit een nieuwe
@@ -59,16 +63,20 @@ export function AccordeurAdministraties({
   administraties,
   naamPerAdministratie,
   onGewijzigd,
+  initieelToevoegen = false,
 }: {
   gebruiker: GebruikerOverzichtDto
   /** Actieve administraties (GET /auth/administraties) — de keuzelijst voor "toevoegen". */
   administraties: AdministratieDto[]
   naamPerAdministratie: Map<string, string>
   onGewijzigd: () => void
+  /** Alleen voor het visuele harnas (overflow-sweep `?scope=71&variant=accordeur`): start met de dialoog open in
+   * de toevoeg-stand, zodat headless Chrome de ScopeLijst meet zonder te klikken. */
+  initieelToevoegen?: boolean
 }) {
   const { meld } = useToastOptioneel()
-  const [open, setOpen] = useState(false)
-  const [toevoegKeuze, setToevoegKeuze] = useState<string[] | null>(null)
+  const [open, setOpen] = useState(initieelToevoegen)
+  const [toevoegKeuze, setToevoegKeuze] = useState<string[] | null>(initieelToevoegen ? [] : null)
   const [bulkVoor, setBulkVoor] = useState<{ id: string; naam: string }[] | null>(null)
   const [verwijderVoor, setVerwijderVoor] = useState<ScopeAdministratieDto | null>(null)
   // Instellingen van de te verwijderen administratie, vooraf opgehaald: bepaalt of dit de laatste laag is.
@@ -83,14 +91,13 @@ export function AccordeurAdministraties({
 
   const lijst = useMemo(() => scopeAdministraties(gebruiker, naamPerAdministratie), [gebruiker, naamPerAdministratie])
   const inScope = useMemo(() => new Set(gebruiker.administratie_ids), [gebruiker.administratie_ids])
-  const toevoegbaar = useMemo(
-    () =>
-      administraties
-        .filter((a) => !inScope.has(a.id))
-        .map((a) => ({ waarde: a.id, label: a.naam }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'nl')),
-    [administraties, inScope],
-  )
+  /** Lijst voor "toevoegen": alle actieve BV's + de (gearchiveerde) administraties die al in de scope staan. */
+  const keuzeItems = useMemo<ScopeLijstItem[]>(() => {
+    const perId = new Map<string, ScopeLijstItem>(administraties.map((a) => [a.id, { id: a.id, naam: a.naam, actief: true }]))
+    for (const a of lijst) if (!perId.has(a.id)) perId.set(a.id, { id: a.id, naam: a.naam, actief: a.actief })
+    return [...perId.values()]
+  }, [administraties, lijst])
+  const aantalToevoegbaar = keuzeItems.filter((it) => !inScope.has(it.id)).length
 
   const AANLEIDING = 'verwijderd via Klant-accordeurs'
 
@@ -230,7 +237,7 @@ export function AccordeurAdministraties({
         beheren
       </Button>
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : sluit())}>
-        <DialogContent data-testid="accordeur-administraties-dialoog">
+        <DialogContent data-testid="accordeur-administraties-dialoog" className="flex max-h-[calc(100vh-32px)] flex-col">
           <DialogTitle>Administraties van {gebruiker.naam}</DialogTitle>
           <DialogDescription>
             {lijst.length === 1 ? '1 administratie' : `${lijst.length} administraties`} — de wachtrij en de dagelijkse
@@ -238,8 +245,10 @@ export function AccordeurAdministraties({
             van die administratie en geeft toegang; verwijderen haalt {gebruiker.naam} uit de accorderingslagen én de
             toegang. Klik een naam voor de accorderingslagen van die administratie.
           </DialogDescription>
-          {lijst.length === 0 && <p className="hint">Nog geen administraties — voeg er hieronder een toe.</p>}
-          {lijst.length > 0 && (
+          {toevoegKeuze === null && lijst.length === 0 && (
+            <p className="hint">Nog geen administraties — voeg er hieronder een toe.</p>
+          )}
+          {toevoegKeuze === null && lijst.length > 0 && (
             <ul style={{ margin: '10px 0 0', paddingLeft: 18, columns: lijst.length > 8 ? 2 : 1 }}>
               {lijst.map((a) => (
                 <li key={a.id} style={{ marginBottom: 4, breakInside: 'avoid' }}>
@@ -263,18 +272,19 @@ export function AccordeurAdministraties({
               <span className="hint" style={{ margin: '0 0 6px', display: 'block', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>
                 Administraties toevoegen
               </span>
-              {toevoegbaar.length === 0 ? (
-                <p className="hint" style={{ margin: 0 }}>
+              {aantalToevoegbaar === 0 && (
+                <p className="hint" style={{ margin: '0 0 6px' }}>
                   {gebruiker.naam} heeft al toegang tot alle actieve administraties.
                 </p>
-              ) : (
-                <MultiSelect
-                  opties={toevoegbaar}
-                  waarden={toevoegKeuze}
-                  onChange={setToevoegKeuze}
-                  zoekPlaceholder="Zoek administratie…"
-                />
               )}
+              <ScopeLijst
+                items={keuzeItems}
+                geselecteerd={toevoegKeuze}
+                onChange={setToevoegKeuze}
+                vergrendeld={inScope}
+                zoekPlaceholder="Zoek administratie…"
+                data-testid="accordeur-toevoeg-lijst"
+              />
             </div>
           )}
           <DialogFooter>

@@ -6,6 +6,12 @@
 //                         beveiligings-/statuschips aan, geblokkeerd mét detail, Rechten-switches aan
 //   ?groep=veldwerkers    de Veldwerkers-tab (mock /uren/beheer/veldgebruikers)
 //   ?groep=accordeurs     de Klant-accordeurs-tab (toestel + oude passkey + half geactiveerd)
+//   ?scope=71             blok 2 nachtrun 10/11-09: de scope-dialoog "Scope van Demi de Vries" open bóven het scherm
+//                         met 71 administraties (4 gearchiveerd in scope, lange namen) — ScopeLijst i.p.v. chips-wolk;
+//                         &variant=accordeur = de accordeur-variant "Administraties toevoegen…" (R. de Groot) in
+//                         de toevoeg-stand. Probe body[data-scope-dialoog] = "rijen=N;scrollx=…;lijstScrollx=…" en,
+//                         als de dialooginhoud intern horizontaal overloopt, de tekst "OVERFLOW — scope-dialoog …" in
+//                         de body (de OverflowBadge meet alleen de pagina; een Radix-overlay scrolt zelf).
 //   ?meet=1               meetstand: table-layout auto + nowrap op alle cellen — op een zeer breed venster
 //                         (bv. --window-size=4000,1600) toont body[data-gebruikers-kolombreedtes] de
 //                         natuurlijke max-content-breedte per kolom (bron voor de minima in
@@ -18,7 +24,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../auth/AuthContext'
+import { AccordeurAdministraties } from '../gebruikers/AccordeurAdministraties'
 import { GebruikersScreen } from '../gebruikers/GebruikersScreen'
+import { ScopeModal } from '../gebruikers/ScopeModal'
+import { SCOPELIJST_RIJHOOGTE_PX } from '../gebruikers/ScopeLijst'
 import { ToastProvider } from '../ui/basis'
 import { OverflowBadge } from './overflowBadge'
 import '../index.css'
@@ -32,6 +41,8 @@ const params = new URLSearchParams(window.location.search)
 const BREED = params.has('breed')
 const MEET = params.has('meet')
 const GROEP = params.get('groep')
+const SCOPE = params.has('scope') ? Math.max(1, Number(params.get('scope')) || 71) : 0
+const SCOPE_VARIANT = params.get('variant')
 
 function fakeAccessToken(): string {
   const payload = btoa(JSON.stringify({ sub: EIGEN_ID, rol: 'beheerder' }))
@@ -275,11 +286,54 @@ const GEBRUIKERS_BREED = [
   },
 ]
 
-const ADMINISTRATIES = [
+const ADMINISTRATIES_BASIS = [
   { id: ADMIN_1, naam: 'Molenhof Beheer B.V.' },
   { id: ADMIN_2, naam: 'Molenhof Verhuur B.V.' },
   { id: ADMIN_3, naam: 'Universal Steigerbouw B.V.', uren_meerwerk_ingeschakeld: true },
 ]
+
+/** ?scope=N — N fictieve administraties (kantoorschaal, kliktest 10-09: 71), realistische namenmix incl. één zeer
+ * lange naam; deterministisch (geen random) zodat de meting herhaalbaar is. */
+const SCOPE_VOORNAMEN = ['Akkerman', 'Baard', 'Boxx', 'De Kempen', 'Derva', 'Floor', 'Groenewegen', 'Hoogland', 'IJsselsteijn', 'Jansen', 'Kempen Facilities', 'Labo', 'Molenhof', 'Nijenhuis', 'Oosterhuis', 'Poelman', 'Quist', 'Roerdink', 'Spot Services', 'Ter Braak', 'Universal', 'Vastly', 'Westerlaken', 'Zilver']
+const SCOPE_ACHTER = ['Beheer B.V.', 'Holding B.V.', 'Vastgoed B.V.', 'Onroerend Goed B.V.', 'Exploitatie B.V.', 'V.O.F.', 'Pensioen B.V.']
+function scopeAdministraties(n: number): { id: string; naam: string }[] {
+  const uit: { id: string; naam: string }[] = []
+  for (let i = 0; i < n; i++) {
+    const id = `5c0be000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`
+    const naam =
+      i === 7
+        ? 'Administratiekantoor Nijenhuis Beheer- en Exploitatiemaatschappij Oost-Nederland B.V.'
+        : `${SCOPE_VOORNAMEN[i % SCOPE_VOORNAMEN.length]} ${SCOPE_ACHTER[(i * 5) % SCOPE_ACHTER.length]}${i >= SCOPE_VOORNAMEN.length ? ` ${Math.floor(i / SCOPE_VOORNAMEN.length) + 1}` : ''}`
+    uit.push({ id, naam })
+  }
+  return uit
+}
+const SCOPE_ACTIEF = SCOPE ? scopeAdministraties(SCOPE - Math.min(4, SCOPE - 1)) : []
+const SCOPE_GEARCHIVEERD = SCOPE
+  ? Array.from({ length: Math.min(4, SCOPE - 1) }, (_, i) => ({
+      id: `5c0be000-0000-4000-8000-9${String(i + 1).padStart(11, '0')}`,
+      naam: `Oud ${['Akkerman', 'Baard', 'Derva', 'Zilver'][i]} B.V.`,
+      actief: false,
+    }))
+  : []
+const ADMINISTRATIES = SCOPE ? SCOPE_ACTIEF : ADMINISTRATIES_BASIS
+/** Demi in de scope-variant: elke derde actieve + alle gearchiveerde in scope. */
+const SCOPE_DEMI_IDS = SCOPE
+  ? [...SCOPE_ACTIEF.filter((_, i) => i % 3 === 0).map((a) => a.id), ...SCOPE_GEARCHIVEERD.map((a) => a.id)]
+  : []
+const SCOPE_DEMI = {
+  ...GEBRUIKERS[1],
+  administratie_ids: SCOPE_DEMI_IDS,
+  administraties: [
+    ...SCOPE_ACTIEF.filter((_, i) => i % 3 === 0).map((a) => ({ ...a, actief: true })),
+    ...SCOPE_GEARCHIVEERD,
+  ],
+}
+const SCOPE_ACCORDEUR = {
+  ...GEBRUIKERS[3],
+  administratie_ids: [...SCOPE_ACTIEF.slice(0, 5).map((a) => a.id), SCOPE_GEARCHIVEERD[0]?.id].filter(Boolean) as string[],
+  administraties: [...SCOPE_ACTIEF.slice(0, 5).map((a) => ({ ...a, actief: true })), ...SCOPE_GEARCHIVEERD.slice(0, 1)],
+}
 
 /** Veldgebruikers-mock (VeldwerkersPanel haalt /uren/beheer/veldgebruikers): koppelingen mét tarieven,
  * dossier-samenvatting en de kantoor-only correctie-⚠. */
@@ -435,6 +489,28 @@ if (MEET) {
 
 // Probes (patroon C9 verzamelbak-rijhoogtes): meetbare feiten i.p.v. oogschatting.
 window.setTimeout(() => {
+  if (SCOPE) {
+    // Scope-dialoog (blok 2 nachtrun 10/11-09): rijen zichtbaar in de lijst + interne horizontale overloop van de
+    // dialooginhoud. De Radix-overlay is zelf een scroll-container, dus de pagina-badge ziet die overloop niet —
+    // daarom hier expliciet, mét dezelfde "OVERFLOW —"-tekst waar de sweep op grep't.
+    const lijst = document.querySelector<HTMLElement>('[data-testid="scope-lijst-rijen"]')
+    const dialoog = document.querySelector<HTMLElement>('[role="dialog"]')
+    const rijen = lijst ? Math.floor(lijst.clientHeight / SCOPELIJST_RIJHOOGTE_PX) : -1
+    const scrollx = dialoog ? dialoog.scrollWidth - dialoog.clientWidth : -1
+    const lijstScrollx = lijst ? lijst.scrollWidth - lijst.clientWidth : -1
+    const dialoogBreedte = dialoog ? Math.round(dialoog.getBoundingClientRect().width) : -1
+    const dialoogRechts = dialoog ? Math.round(dialoog.getBoundingClientRect().right) : -1
+    document.body.dataset.scopeDialoog = `rijen=${rijen};scrollx=${scrollx};lijstScrollx=${lijstScrollx};dialoogBreedte=${dialoogBreedte};dialoogRechts=${dialoogRechts};viewport=${window.innerWidth}`
+    if (scrollx > 0 || lijstScrollx > 0 || dialoogRechts > window.innerWidth || !dialoog) {
+      const melding = document.createElement('div')
+      melding.setAttribute('data-harnas-badge', '')
+      melding.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:999;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;color:#fff;background:#b42318'
+      melding.textContent = dialoog
+        ? `OVERFLOW — scope-dialoog scrollWidth ${dialoog.scrollWidth} / viewport ${window.innerWidth} (lijst ${lijstScrollx}, rechts ${dialoogRechts})`
+        : 'OVERFLOW — scope-dialoog niet gevonden (render mislukt)'
+      document.body.appendChild(melding)
+    }
+  }
   const tabellen = Array.from(document.querySelectorAll<HTMLTableElement>('.gebruikers-tabel'))
   document.body.dataset.gebruikersKolombreedtes = tabellen
     .map((t) =>
@@ -451,7 +527,11 @@ window.setTimeout(() => {
     .join('|')
 }, 1500)
 
-const START = GROEP ? `/gebruikers?groep=${encodeURIComponent(GROEP)}` : '/gebruikers'
+const START = GROEP
+  ? `/gebruikers?groep=${encodeURIComponent(GROEP)}`
+  : SCOPE && SCOPE_VARIANT === 'accordeur'
+    ? '/gebruikers?groep=accordeurs'
+    : '/gebruikers'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -475,6 +555,20 @@ createRoot(document.getElementById('root')!).render(
                 <Routes>
                   <Route path="/gebruikers" element={<GebruikersScreen />} />
                 </Routes>
+                {SCOPE > 0 && SCOPE_VARIANT !== 'accordeur' && (
+                  <ScopeModal gebruiker={SCOPE_DEMI} administraties={ADMINISTRATIES} onSluiten={() => undefined} onGewijzigd={() => undefined} />
+                )}
+                {SCOPE > 0 && SCOPE_VARIANT === 'accordeur' && (
+                  <div hidden>
+                    <AccordeurAdministraties
+                      gebruiker={SCOPE_ACCORDEUR}
+                      administraties={ADMINISTRATIES}
+                      naamPerAdministratie={new Map(ADMINISTRATIES.map((a) => [a.id, a.naam]))}
+                      onGewijzigd={() => undefined}
+                      initieelToevoegen
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
