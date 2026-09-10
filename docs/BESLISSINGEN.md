@@ -6701,3 +6701,39 @@ diagnoseregel zonder code) en 'niet_ontgrendeld' (terug naar stap 1). `tsc -b` +
    (b) staat in Toegang › Diagnose een staart "laatste slotfout: …" — screenshot naar het kantoor: die regel noemt de
    brug-aanroep, de sleutelnaam en de reden (nooit de code).
 **Werkt in productie: nog niet gemeten** — alleen mogelijk op de ZTE, volgens dit recept.
+
+<!-- bundel-10-09:E -->
+## ONTWERPNOTITIE AUTONOMIE-TOEKOMSTLIJN (bundel 10-09 blok E; geen bouw; wacht op akkoord Peter)
+
+**Aanleiding (Peter/agent 10-09):** vijf richtingen voor de volgende fase van "minimale mens, maximale autonomie", uit te werken
+tot een ontwerpnotitie — geen bouw. Canoniek: `docs/ONTWERP_AUTONOMIE_TOEKOMST.md` (wat/waarom/hergebruik/nieuw/risico's/
+omvang/afhankelijkheden/meetrecept per richting, regel-DSL-voorstel, steekproef- en foutkans-ontwerp, beslispunten).
+**Pre-feature-check:** bouwt voort op "AUTOBOEK-KANDIDATEN-MOTOR", "Autoboek-afweging overige deterministische paden", "Harde/
+blokkerende checks", "TELLERS PER AUTOMATISERING IN DE RECONCILIATIE", "MATCHMOTOR BANK — NAAM/IBAN + NUMMER + BEDRAG + TEKEN",
+"AI-KOSTENGRENS INTAKE", "BUGFIX 31-08" (sentinel-schema's ≤ 16 unions), "EXTRACTIE-TERUGVAL TEMPLATES" (kenmerk-pooling zonder
+klantdata), "RECONCILIATIEMAIL = ACTIEMAIL + SYSTEEMMAIL", "RECONCILIATIE — PERIODIEKE TOETS", "PRINCIPE MINIMALE MENS, MAXIMALE
+AUTONOMIE", "HERSTELRUN 07-09 — GEEN STILLE NO-OP", "ODOO-ADAPTER FASE 1" (mapping-patroon `odoo_rekening_mapping`) én op de
+CONTRACT_A/CONTRACT_B-blokken van deze run (tel-drempel 3 op rij; bank-historie-regel + AI-plausibiliteitspoort). RGS bestaat
+in de code niet (enige treffer: BOUWPLAN fase 5). **UX-review:** elke richting heeft schermimpact → mockup-aanvulling vóór bouw
+(tab "Regels", lijst "Steekproef — te beoordelen", tab "Rekeningschema", rij-uitklap "Onderzoek", reconciliatie-rijvariant),
+alle binnen de bestaande IA.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Volgorde-advies 2 → 5 → 3 → 4 → 1** | 2 vervangt de tel-drempel (blok A) door een backtest en generaliseert B1; 5 levert de foutkans die de autonomie alleen VERNAUWEND stuurt; 3 schaalt over ~80 administraties via RGS-mapping lokaal + geaggregeerde patronen; 4 is het duurste AI-gebruik (feitenverzameling = code, mag eerder); 1 vergt een betrouwbaar verwachtingsmodel dat pas ná 2/5 bestaat | ontworpen — wacht op akkoord | `docs/ONTWERP_AUTONOMIE_TOEKOMST.md` §0 |
+| **Richting 1 — boekhouden op uitzondering** | verwachtingsmodel (terugkerend + bank-kern + omzet + regels), "ontbrekend/afwijkend" = reconciliatie-bevinding mét actie, nooit boeken op verwachting; precisie bewaakt via 5 | ontworpen — wacht op akkoord | §1 |
+| **Richting 2 — AI schrijft deterministische regels + backtest** | gesloten JSON-DSL (leverancier/IBAN/omschrijvingskern/bedragbereik → GB/btw/project), backtest op 12 mnd mens-boekingen, actief bij precision 100 % ∧ treffers ≥ N (10) ∧ module-bevestigd ≥ K (3) ∧ dekking ≥ 6 mnd; AI = regelvoorsteller, code toetst; één opt-in-schrijver | ontworpen — wacht op akkoord | §2 |
+| **Richting 3 — leren over administraties heen op RGS-niveau** | STAP-0 RGS-veld RLZ/Odoo; `rgs_mapping` lokaal mens-bevestigd (patroon `odoo_rekening_mapping`); aggregatie alleen tellingen (kenmerk, RGS-code, btw-cat) bij ≥ 2 administraties; kantoorpatroon = altijd oranje | ontworpen — wacht op akkoord | §3 |
+| **Richting 4 — nachtelijke AI-onderzoeker** | feiten deterministisch verzameld onder RLS (systeem-actor, alleen SELECT + eigen tabel), AI-samenvatting gescheiden met chip, gesloten actie-labels, nooit een handeling; sub-budget + dagmaximum | ontworpen — wacht op akkoord | §4 |
+| **Richting 5 — AI-auditor steekproef → foutkans** | aselect + gestratificeerd (zaad reproduceerbaar), auditor ziet document ÉN boeking (blind = zonder herkomst/regel/historie), alleen mens-bevestigde fouten tellen, Wilson-bovengrens stuurt stand/volumerem/B3 alleen vernauwend | ontworpen — wacht op akkoord | §5 |
+
+**Meetrecept:** per richting in het document (autoboek-aandeel, correctie-% ná automatische boeking, foutkans `p_hoog`,
+doorlooptijd open items, AI-kosten per boeking, precisie verwachtingssignalen); productie-recepten als `gcloud run jobs execute …
+--dry-run`-regels.
+**Werkt in productie:** n.v.t. — ontwerp, niets gebouwd.
+**Beslispunten Peter:** twaalf, genummerd in §7 (volgorde; backtest-populatie/N/K; AI-regelschrijver nu of later; Wilson vs
+Bayes; sturing alleen vernauwend; B3 uit bij `p_hoog` ≤ 2 %; kantoorpatroon nooit groen; privacy-minimum ≥ 2 + eenmanszaken
+uitsluiten; AI-sub-budgetten € 25/€ 20; dagmaximum onderzoek 50; RGS STAP-0 uitvoeren; bank-verwachting eerder).
+**Aangrenzende gaten:** §8 (lifecycle regels/mappings/administratie-archief/Odoo-overstap; consistentie drie leerdrempels in één
+instellingenblok + één tekstbron + tellers-sleutels + één opt-in-schrijver; UX standChip + vijf mockup-aanvullingen; compliance
+AVG-regel, audit zonder prompt, bewaarplicht, nooit verwijderen extern, sub-budgetten).
