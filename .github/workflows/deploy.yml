@@ -182,12 +182,19 @@ jobs:
       # 6803862748. Effect: het stop-scherm van /activeren (desktop) en de uitnodigingsmail voor
       # app-rollen tonen de knop "Download de app" voor iOS. STORE_LINK_ANDROID blijft leeg tot Google
       # de listing goedkeurt (leeg = niets tonen; NIET vullen vóór de goedkeuring).
+      # ⚠️ DELIMITER-LES 10-09 (deploy-regressie 09-09 06:00 → 10-09 17:56, 13 deploys): commit 8aeed75
+      # koos hier `^@^` als scheidingsteken terwijl de waarde van INTAKE_POSTVAK_ADRES zélf een '@' bevat →
+      # gcloud brak de stap af ("Bad syntax for dict arg") vóór de API-call (geen audit-spoor), de workflow
+      # stopte, en ÁLLE F3-jobs bleven op het beeld van 2990c8b (08-09 22:00) terwijl de service wél elke push
+      # kreeg — én de service verloor INTAKE_POSTVAK_ADRES (--set-env-vars hierboven vervangt de hele envset).
+      # Scheidingsteken is nu '|' (komt in geen van beide waarden voor). Nooit een teken kiezen dat in een
+      # waarde staat; `^<t>^` geldt voor de HELE lijst. Vangnet: tests/unit/test_deploy_yml_envvar_delimiters.py.
       - name: Registersync inbox_adres + store-links op de service
         run: |
           gcloud run services update rlz-backend \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "^@^INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl@STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748" \
+            --update-env-vars "^|^INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748" \
             --quiet
 
       # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
