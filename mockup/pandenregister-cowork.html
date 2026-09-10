@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup (Cowork-variant) — Pandenregister + pand-dashboard, boekmodel handelsvoorraad (Vastgoedgroep Nederland, 10-09-2026)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#fff; --panel-2:#fafbfb; --border:#e6e8ea; --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-hover:#0a635a; --primary-fg:#fff; --accent-bg:#e6f4f2; --ring:rgba(14,122,110,.3);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3; --danger:#b42318; --danger-bg:#fceceb;
+    --info:#3548a5; --info-bg:#eaeefb; --purple:#6941c6; --purple-bg:#f1ecfb;
+    --rail:#101b19; --rail-text:#c7d2cf; --rail-muted:#7d8c88; --rail-actief:#16332e; --rail-accent:#4fd1c0;
+    --radius:12px; --radius-sm:8px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); font-size:13.5px; line-height:1.45; }
+  .app { display:grid; grid-template-columns:200px 1fr; min-height:100vh; }
+  .rail { background:var(--rail); color:var(--rail-text); padding:18px 12px; }
+  .rail .brand { color:#fff; font-weight:700; margin-bottom:22px; font-size:15px; }
+  .rail .brand small { display:block; font-weight:400; color:var(--rail-muted); font-size:11px; }
+  .rail h6 { font-size:10px; letter-spacing:.12em; color:var(--rail-muted); margin:14px 10px 6px; }
+  .rail a { display:block; padding:7px 10px; border-radius:8px; color:var(--rail-text); text-decoration:none; font-size:13px; }
+  .rail a.actief { background:var(--rail-actief); color:#fff; border-left:3px solid var(--rail-accent); }
+  main { padding:22px 28px 60px; max-width:1360px; }
+  .crumbs { color:var(--muted); font-size:12px; margin-bottom:6px; }
+  .crumbs b { color:var(--text); }
+  h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--muted); margin-bottom:16px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin:14px 0 18px; }
+  .tabs span { padding:8px 14px; border-radius:8px 8px 0 0; color:var(--muted); cursor:pointer; }
+  .tabs span.actief { color:var(--primary); border-bottom:2px solid var(--primary); font-weight:600; }
+  .kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:18px; }
+  .kpi { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow); }
+  .kpi .l { font-size:11px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; }
+  .kpi .v { font-size:20px; font-weight:700; margin-top:2px; }
+  .kpi .s { font-size:11.5px; color:var(--muted); }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:18px; }
+  .card h3 { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); padding:12px 16px 0; }
+  .card p.uitleg { color:var(--muted); font-size:12.5px; padding:4px 16px 10px; }
+  .bar { display:flex; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .chip { display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); white-space:nowrap; }
+  .chip.ok { background:var(--ok-bg); color:var(--ok); border-color:transparent; }
+  .chip.warn { background:var(--warn-bg); color:var(--warn); border-color:transparent; }
+  .chip.info { background:var(--info-bg); color:var(--info); border-color:transparent; }
+  .chip.purple { background:var(--purple-bg); color:var(--purple); border-color:transparent; }
+  .chip.danger { background:var(--danger-bg); color:var(--danger); border-color:transparent; }
+  .chip.actief { background:var(--accent-bg); color:var(--primary); border-color:transparent; font-weight:600; }
+  .btn { padding:7px 12px; border-radius:var(--radius-sm); border:1px solid var(--primary); background:var(--primary); color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; }
+  .btn.secondary { background:var(--panel); color:var(--primary); }
+  .linkbtn { color:var(--primary); background:none; border:0; font-weight:600; cursor:pointer; font-size:12.5px; }
+  .spacer { flex:1; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; padding:9px 12px; border-bottom:1px solid var(--border); background:var(--panel); white-space:nowrap; }
+  td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:hover td { background:var(--panel-2); }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr.tot td { font-weight:700; background:var(--panel-2); }
+  tr.laag td { font-weight:700; border-top:2px solid var(--border); }
+  td.sub, tr.sub td { color:var(--muted); }
+  .pos { color:var(--ok); } .negt { color:var(--danger); }
+  .adres { font-weight:600; }
+  .klein { font-size:11.5px; color:var(--muted); }
+  .grid2 { display:grid; grid-template-columns:1.4fr 1fr; gap:18px; }
+  .balk { height:8px; border-radius:4px; background:var(--panel-2); overflow:hidden; border:1px solid var(--border); }
+  .balk i { display:block; height:100%; background:var(--primary); }
+  .balk i.o { background:var(--warn); }
+  .notities { background:var(--panel); border:1px dashed var(--border); border-radius:var(--radius); padding:16px 20px; margin-top:26px; }
+  .notities h3 { font-size:13px; margin-bottom:8px; }
+  .notities li { margin:6px 0 6px 18px; color:var(--text); }
+  .notities code { background:var(--panel-2); padding:1px 5px; border-radius:4px; font-size:12px; }
+  .scherm-titel { margin:38px 0 8px; font-size:11px; letter-spacing:.14em; color:var(--faint); text-transform:uppercase; border-top:2px solid var(--border); padding-top:16px; }
+  .rij-klik td:first-child { color:var(--primary); }
+  .voorstel { display:flex; gap:8px; align-items:center; }
+  .sel { border:1px solid var(--border); border-radius:6px; padding:4px 8px; background:var(--panel); font-size:12.5px; min-width:220px; }
+  input[type=checkbox] { accent-color:var(--primary); width:15px; height:15px; }
+  .melding { background:var(--warn-bg); border-left:3px solid var(--warn); padding:8px 12px; border-radius:8px; font-size:12.5px; margin:0 16px 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">Nijenhuis<small>Boekingsmodule</small></div>
+    <h6>WERK</h6><a>Werkvoorraad</a><a>Planning</a>
+    <h6>INZICHT</h6><a>Zoeken</a><a>Archief</a><a>Projecten</a><a class="actief">Panden</a><a>Reconciliatie</a><a>Crediteuren</a>
+    <h6>BEHEER</h6><a>Gebruikers</a><a>Instellingen</a>
+  </aside>
+  <main>
+
+    <!-- ============ SCHERM 1: PANDEN-OVERZICHT ============ -->
+    <div class="crumbs">Inzicht › <b>Panden</b></div>
+    <h1>Panden — Vastgoedgroep Nederland B.V.</h1>
+    <div class="sub">Handelsportefeuille per pand. Boekmodel: pand = handelsvoorraad op de balans (besluit Peter 10-09). Drie lagen: handelsmarge → bruto marge → netto marge (overhead analytisch "in handel per maand"). Boekhouding blijft zuiver — dit is een leeslaag over Odoo/RLZ.</div>
+
+    <div class="tabs"><span class="actief">Overzicht</span><span>Kostensoorten</span><span>Toewijzing <span class="chip warn">7</span></span><span>Register</span></div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">In bezit</div><div class="v">23 panden</div><div class="s">voorraadwaarde € 4.612.900 · sluit met balans ✓</div></div>
+      <div class="kpi"><div class="l">Kostprijs tot nu (analytisch)</div><div class="v">€ 4.812.340</div><div class="s">voorraad + periodekosten + overhead</div></div>
+      <div class="kpi"><div class="l">Verkocht 2026</div><div class="v">18 panden</div><div class="s">omzet € 4.523.103 · handelsmarge € 843.100</div></div>
+      <div class="kpi"><div class="l">Bruto marge 2026</div><div class="v pos">€ 612.480</div><div class="s">ná directe kosten + courtage · 13,5 %</div></div>
+      <div class="kpi"><div class="l">Netto marge 2026</div><div class="v pos">€ 157.919</div><div class="s">ná overhead € 454.561 · = W&amp;V ✓</div></div>
+      <div class="kpi"><div class="l">Break-even &lt; 3 mnd</div><div class="v negt">2 panden</div><div class="s">Kerkstraat 44 · Molenstraat 19</div></div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <span class="chip actief">Alle panden</span><span class="chip">In bezit (23)</span><span class="chip">Verkocht (18)</span>
+        <span class="chip">2026</span><span class="chip">2025</span><span class="chip">Alle jaren</span>
+        <span class="spacer"></span>
+        <button class="linkbtn">Kolommen</button><button class="linkbtn">Exporteren</button>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Pand</th><th>Status</th><th>Aankoop</th><th>Verkoop</th><th class="n">Dagen</th>
+          <th class="n">Voorraadwaarde / kostprijs verkopen</th><th class="n">Opbrengst</th><th class="n">Handelsmarge</th><th class="n">Directe kosten</th><th class="n">Courtage</th>
+          <th class="n">Bruto marge</th><th class="n">Overhead</th><th class="n">Netto marge</th><th class="n">Verwacht / break-even</th>
+        </tr></thead>
+        <tbody>
+          <tr class="rij-klik"><td class="adres">Goeverneurlaan 310, Den Haag<div class="klein">dossier 2025.079008.01 · Ouwerkerk</div></td><td><span class="chip ok">verkocht</span></td><td>09-01-2026</td><td>09-01-2026</td><td class="n">1</td>
+            <td class="n">176.862,91</td><td class="n">215.000,00</td><td class="n pos">38.137,09</td><td class="n">−182,56</td><td class="n">3.750,00</td><td class="n pos">34.569,65</td><td class="n">1.976,35</td><td class="n pos">32.593,30</td><td class="n klein">verwacht 210.000 · +5.000</td></tr>
+          <tr class="rij-klik"><td class="adres">Bleijeheiderstraat 1, Kerkrade<div class="klein">dossier 2026.014221.01 · Ouwerkerk</div></td><td><span class="chip info">in bezit · 57 d</span></td><td>15-07-2026</td><td>—</td><td class="n">57</td>
+            <td class="n">192.611,20</td><td class="n">—</td><td class="n">—</td><td class="n">4.380,00</td><td class="n">—</td><td class="n sub">kostprijs 196.991,20</td><td class="n">3.952,70</td><td class="n sub">200.943,90</td><td class="n klein">verwacht 235.000 · break-even mrt 2027</td></tr>
+          <tr class="rij-klik"><td class="adres">Gustaaf Gelderstraat 12, Rotterdam<div class="klein">dossier 2026.014305.01 · Ouwerkerk</div></td><td><span class="chip info">in bezit · 57 d</span></td><td>15-07-2026</td><td>—</td><td class="n">57</td>
+            <td class="n">443.402,10</td><td class="n">—</td><td class="n">—</td><td class="n">1.595,00</td><td class="n">—</td><td class="n sub">kostprijs 444.997,10</td><td class="n">3.952,70</td><td class="n sub">448.949,80</td><td class="n klein">verwacht 495.000 · break-even sep 2027</td></tr>
+          <tr class="rij-klik"><td class="adres">Jan Collongstraat 8, Arnhem<div class="klein">dossier 2025.061112.01 · Buma Algera</div></td><td><span class="chip ok">verkocht</span></td><td>24-10-2025</td><td>16-06-2026</td><td class="n">235</td>
+            <td class="n">352.758,95</td><td class="n">395.000,00</td><td class="n pos">42.241,05</td><td class="n">4.000,00</td><td class="n">4.235,00</td><td class="n pos">34.006,05</td><td class="n">15.810,80</td><td class="n pos">18.195,25</td><td class="n klein">verwacht 389.000 · +6.000</td></tr>
+          <tr class="rij-klik"><td class="adres">Kerkstraat 44, Ede<div class="klein">dossier 2025.058870.01 · Ouwerkerk</div></td><td><span class="chip danger">break-even okt 2026</span></td><td>02-09-2025</td><td>—</td><td class="n">341</td>
+            <td class="n">121.858,15</td><td class="n">—</td><td class="n">—</td><td class="n">9.870,00</td><td class="n">—</td><td class="n sub">kostprijs 131.728,15</td><td class="n">22.437,90</td><td class="n sub">154.166,05</td><td class="n klein negt">verwacht 160.000 · marge nú +2.930 · okt → negatief</td></tr>
+          <tr class="sub"><td colspan="14" class="klein" style="text-align:center">… 36 panden meer · sorteer op elke kolom · rij = pand-detail</td></tr>
+          <tr class="tot"><td>Totaal 2026 (verkocht)</td><td></td><td></td><td></td><td class="n">112 gem.</td><td class="n">3.680.003</td><td class="n">4.523.103</td><td class="n pos">843.100</td><td class="n">168.414</td><td class="n">62.206</td><td class="n pos">612.480</td><td class="n">454.561</td><td class="n pos">157.919</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============ SCHERM 2: PAND-DETAIL ============ -->
+    <div class="scherm-titel">Scherm 2 — pand-detail (klik op een rij)</div>
+    <div class="crumbs">Inzicht › Panden › <b>Goeverneurlaan 310, Den Haag</b></div>
+    <h1>Goeverneurlaan 310, Den Haag <span class="chip ok" style="vertical-align:middle">verkocht 09-01-2026</span></h1>
+    <div class="sub">Dossier 2025.079008.01 · Ouwerkerk Notariaat · A-B-C-levering (aankoop en verkoop zelfde dag) · Odoo-project <code>2025.079008 Goeverneurlaan 310</code> · verwachte verkoopprijs bij aankoop: € 210.000</div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Resultaat in drie lagen</h3>
+        <p class="uitleg">Elke regel komt rechtstreeks uit een geboekt document; klik = brondocument. Makelaar en notaris zijn altijd eigen regels. Balansposten staan apart en tellen niet mee.</p>
+        <table>
+          <thead><tr><th>Post</th><th>Bron · rekening</th><th class="n">Bedrag</th></tr></thead>
+          <tbody>
+            <tr><td>Verkoopopbrengst (koopsom)</td><td class="klein">nota 37865 · 8000 Opbrengst verkoop panden</td><td class="n pos">215.000,00</td></tr>
+            <tr><td><b>Kostprijs verkopen</b> — voorraadwaarde uitgeboekt bij levering<div class="klein">koopsom 175.000,00 + geactiveerde aankoopkosten 1.862,91 (honorarium, recherche, inschrijving; btw niet aftrekbaar → bruto) + verbouwing 0,00</div></td><td class="klein">nota 37863 · 3000 Voorraad panden → 7000 Kostprijs verkopen</td><td class="n">−176.862,91</td></tr>
+            <tr class="laag"><td>Handelsmarge</td><td class="klein">17,7 % van opbrengst</td><td class="n pos">38.137,09</td></tr>
+            <tr><td>Verrekende zakelijke lasten betaald bij aankoop (OZB, riool, waterschap, servicekosten)</td><td class="klein">nota 37863 · 4xxx periodekosten pand</td><td class="n">−441,74</td></tr>
+            <tr><td>Verrekende zakelijke lasten terugontvangen bij verkoop</td><td class="klein">nota 37865</td><td class="n pos">441,74</td></tr>
+            <tr><td>Schoonmaakkosten verrekend (ontvangen)</td><td class="klein">nota 37863</td><td class="n pos">624,30</td></tr>
+            <tr><td><b>Makelaarscourtage</b> DOEN NVM Makelaars</td><td class="klein">nota 37865 · bijlage courtagenota · 4xxx verkoopkosten pand</td><td class="n">−3.750,00</td></tr>
+            <tr class="laag"><td>Bruto marge pand</td><td class="klein">16,1 %</td><td class="n pos">35.011,39</td></tr>
+            <tr><td>Toegerekende overhead (1 maand in handel: jan 2026)</td><td class="klein">sleutel "in handel per maand" · 1/22 van € 43.480 · analytisch, niet geboekt</td><td class="n">−1.976,35</td></tr>
+            <tr class="laag"><td>Netto marge</td><td class="klein">15,2 % · verwacht was 210.000 → gerealiseerd +5.000 boven verwachting</td><td class="n pos">33.035,04</td></tr>
+            <tr class="sub"><td>Balans (geen resultaat): aanbetaling ontvangen 32.500 · onderlinge verrekening dossiers 144.180,35 · saldo van notaris 67.511,39</td><td class="klein">nota's 37863/37865 · bank 18-12-2025 en 12-01-2026</td><td class="n sub">—</td></tr>
+          </tbody>
+        </table>
+        <div class="bar"><span class="chip ok">saldo notaris € 67.511,39 sluit met bank 12-01-2026 ✓</span><span class="chip ok">voorraadmutatie sluit met 3000 ✓</span></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Verwachting &amp; break-even (voor onverkochte panden)</h3>
+          <p class="uitleg">Voorbeeld Kerkstraat 44: verwachte verkoopprijs 160.000 (bij aankoop vastgelegd). Verwachte marge nú = 160.000 − kostprijs tot nu 154.166 − verwachte verkoopkosten (courtage 1,2 % + notaris uit historie) 2.900 = <b>+2.930</b>. Overhead-portie ≈ 1.980/maand → <b>break-even oktober 2026</b>.</p>
+          <div class="melding">Signaal: "Kerkstraat 44 — bij verkoop ná oktober 2026 negatieve marge." Zichtbaar op Home (lijst break-even &lt; 3 mnd) en op het pand. Deterministisch, geen AI.</div>
+        </div>
+        <div class="card">
+          <h3>Tijdlijn</h3>
+          <table><tbody>
+            <tr><td class="klein">18-12-2025</td><td>Aanbetaling ontvangen € 32.500 (bank → balans)</td></tr>
+            <tr><td class="klein">09-01-2026</td><td>Levering aankoop — nota 37863 → voorraad 176.862,91</td></tr>
+            <tr><td class="klein">09-01-2026</td><td>Levering verkoop — nota 37865 → opbrengst, voorraad uitgeboekt</td></tr>
+            <tr><td class="klein">12-01-2026</td><td>Saldo € 67.511,39 ontvangen van derdengelden</td></tr>
+            <tr><td class="klein">jan 2026</td><td>Overhead toegerekend (1 maand)</td></tr>
+          </tbody></table>
+        </div>
+        <div class="card">
+          <h3>Dossier (alleen lezen)</h3>
+          <div class="bar"><span class="chip purple">Koopovereenkomst</span><span class="chip purple">Nota 37863 (definitief ✓)</span><span class="chip purple">Nota 37865</span><span class="chip purple">Courtagenota DOEN</span><span class="chip">Bank 18-12 · 12-01</span><span class="chip">Salesforce: bod, afspraken (later)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SCHERM 3: KOSTENSOORTEN ============ -->
+    <div class="scherm-titel">Scherm 3 — tab Kostensoorten (over alle panden)</div>
+    <div class="card">
+      <div class="bar"><span class="chip actief">2026</span><span class="chip">2025</span><span class="chip">Alle jaren</span><span class="spacer"></span><span class="chip">Per leverancier</span><span class="chip actief">Per kostensoort</span></div>
+      <table>
+        <thead><tr><th>Kostensoort</th><th>Behandeling</th><th>Leveranciers</th><th class="n">Transacties</th><th class="n">Totaal 2026</th><th class="n">Gem. per pand</th><th class="n">% van omzet</th><th>Aandeel</th></tr></thead>
+        <tbody>
+          <tr><td><b>Makelaarscourtage</b></td><td><span class="chip">verkoopkosten pand</span></td><td class="klein">DOEN NVM (14), Fer Haas (9), overig (3)</td><td class="n">26</td><td class="n">62.206,00</td><td class="n">3.455,89</td><td class="n">1,38 %</td><td><div class="balk"><i style="width:37%"></i></div></td></tr>
+          <tr><td><b>Notariskosten aankoop</b></td><td><span class="chip info">geactiveerd → voorraad</span></td><td class="klein">Ouwerkerk (31), Buma Algera (5)</td><td class="n">36</td><td class="n">48.190,55</td><td class="n">1.338,63</td><td class="n">1,07 %</td><td><div class="balk"><i style="width:29%"></i></div></td></tr>
+          <tr><td>Verbouwing / renovatie</td><td><span class="chip info">geactiveerd → voorraad</span></td><td class="klein">Mykhs, Dacon, overig</td><td class="n">22</td><td class="n">61.088,00</td><td class="n">2.776,73</td><td class="n">1,35 %</td><td><div class="balk"><i style="width:36%"></i></div></td></tr>
+          <tr><td>Styling &amp; meubelverhuur</td><td><span class="chip">periodekosten pand</span></td><td class="klein">Full House (38), Studio Lacy Lion (11)</td><td class="n">49</td><td class="n">71.302,40</td><td class="n">1.980,62</td><td class="n">1,58 %</td><td><div class="balk"><i style="width:42%"></i></div></td></tr>
+          <tr><td>Verrekende zakelijke lasten (netto)</td><td><span class="chip">periodekosten pand</span></td><td class="klein">via nota's</td><td class="n">36</td><td class="n">13.013,60</td><td class="n">361,49</td><td class="n">0,29 %</td><td><div class="balk"><i style="width:8%"></i></div></td></tr>
+          <tr><td>Keuring &amp; recherche</td><td><span class="chip">periodekosten pand</span></td><td class="klein">Homekeur (12), Lexence (6)</td><td class="n">18</td><td class="n">9.140,20</td><td class="n">253,90</td><td class="n">0,20 %</td><td><div class="balk"><i style="width:5%"></i></div></td></tr>
+          <tr><td>Onderhoud &amp; schoonmaak</td><td><span class="chip">periodekosten pand</span></td><td class="klein">Gimple, Verhagen VvE, overig</td><td class="n">63</td><td class="n">26.660,45</td><td class="n">740,57</td><td class="n">0,59 %</td><td><div class="balk"><i style="width:16%"></i></div></td></tr>
+          <tr class="sub"><td>Overhead (niet pand-gebonden)</td><td><span class="chip warn">analytisch toegerekend</span></td><td class="klein">personeel, marketing, software, kantoor, financiering</td><td class="n">312</td><td class="n">454.561,00</td><td class="n">—</td><td class="n">10,05 %</td><td><div class="balk"><i class="o" style="width:100%"></i></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============ SCHERM 4: TOEWIJZING ============ -->
+    <div class="scherm-titel">Scherm 4 — tab Toewijzing (boekingen zonder pand; migratie én dagelijks)</div>
+    <div class="card">
+      <div class="bar">
+        <span class="chip warn">7 boekingen zonder pand</span><span class="chip ok">1.004 toegewezen (98,7 %)</span>
+        <span class="spacer"></span>
+        <button class="btn secondary">Alle voorstellen "zeker" bevestigen (5)</button><button class="btn">Bevestig selectie (2)</button>
+      </div>
+      <p class="uitleg">Voorstel komt uit dossiernummer › adres in omschrijving › leverancier-standaard › datum-nabijheid. Per rij ook de behandeling (activeren / periodekost / overhead) — voorgesteld uit de kostensoort van de leverancier, mens wint. Bevestigen = analytic account (+ rekening) in Odoo, nooit een wijziging aan het bedrag.</p>
+      <table>
+        <thead><tr><th><input type="checkbox"></th><th>Datum</th><th>Boeking</th><th>Omschrijving / relatie</th><th class="n">Bedrag</th><th>Voorstel pand</th><th>Behandeling</th><th>Zekerheid</th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" checked></td><td>15-08-2026</td><td class="klein">RLZ-04-00000846</td><td>Overige kosten — bank-direct, geen relatie</td><td class="n">20.000,00</td><td><select class="sel"><option>Aanbetaling pand? → Bleijeheiderstraat 1</option><option>Gustaaf Gelderstraat 12</option><option>Overhead</option></select></td><td><select class="sel" style="min-width:150px"><option>balans (aanbetaling)</option><option>activeren</option><option>periodekost</option></select></td><td><span class="chip warn">twijfel — bedrag past bij 2 dossiers</span></td></tr>
+          <tr><td><input type="checkbox" checked></td><td>28-08-2026</td><td class="klein">RLZ-04-00000868</td><td>Homekeur B.V. · 95514 "keuring Kerkstraat 44"</td><td class="n">349,00</td><td><select class="sel"><option>Kerkstraat 44, Ede</option></select></td><td><select class="sel" style="min-width:150px"><option>periodekost</option><option>activeren</option></select></td><td><span class="chip ok">zeker — adres in omschrijving</span></td></tr>
+          <tr><td><input type="checkbox"></td><td>14-08-2026</td><td class="klein">RLZ-20-00000841</td><td>Mykhs · 2026.17 "verbouwing badkamer Bleijeheiderstraat"</td><td class="n">2.837,21</td><td><select class="sel"><option>Bleijeheiderstraat 1, Kerkrade</option></select></td><td><select class="sel" style="min-width:150px"><option>activeren (verbouwing)</option><option>periodekost</option></select></td><td><span class="chip ok">zeker — adres + leverancier</span></td></tr>
+          <tr><td><input type="checkbox"></td><td>01-09-2026</td><td class="klein">RLZ-17-00000853</td><td>Administratiekantoor Nijenhuis C.V. · 2026047</td><td class="n">59,90</td><td><select class="sel"><option>Overhead (leverancier-standaard)</option></select></td><td><select class="sel" style="min-width:150px"><option>overhead</option></select></td><td><span class="chip ok">zeker — standaard leverancier</span></td></tr>
+          <tr><td><input type="checkbox"></td><td>07-09-2026</td><td class="klein">RLZ-19-00000877</td><td>Verkoopkosten — bank-direct € 1.000</td><td class="n">1.000,00</td><td><select class="sel"><option>— kies pand —</option></select></td><td><select class="sel" style="min-width:150px"><option>—</option></select></td><td><span class="chip">geen voorstel — mens</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="notities">
+      <h3>Ontwerpnotities (Cowork-variant, 10-09-2026 — besluiten Peter van vandaag verwerkt)</h3>
+      <ol>
+        <li><b>Boekmodel: pand = handelsvoorraad op de balans (besluit Peter 10-09).</b> Bij levering aankoop: koopsom + aankoopkosten (notaris-honorarium, recherche, inschrijving, eventuele overdrachtsbelasting; btw niet aftrekbaar → bruto) → <code>3000 Voorraad panden</code>, analytic = pand. Waardeverhogende kosten tijdens bezit (verbouwing, renovatie) worden óók geactiveerd. Niet-waardeverhogende kosten (OZB/riool/waterschap-verrekening, servicekosten, styling &amp; meubelverhuur, schoonmaak, keuring) = periodekosten op het pand in de W&amp;V. Bij levering verkoop: opbrengst op <code>8000 Opbrengst verkoop panden</code> en de voorraadwaarde uitgeboekt naar <code>7000 Kostprijs verkopen panden</code>; courtage = verkoopkosten pand. <b>Besluit Peter 10-09: boeken conform RJ (RJ 220 Voorraden) — kosten worden genomen wanneer ze gemaakt zijn</b>; alleen verkrijgingsprijs + direct toerekenbare kosten om het pand in verkoopbare staat te brengen worden geactiveerd. De CC-variant "alle directe kosten activeren" vervalt daarmee. <b>Scheiding boekhouding ↔ MI:</b> Odoo/RLZ = de boekhouding voor de accountant (RJ-conform, geen analytische toerekeningen); de PWA en de tab Panden = management-informatie (kostprijs-tot-nu incl. periodekosten en overhead, verwachte marge, break-even) — een leeslaag die nooit terugschrijft.</li>
+        <li><b>Drie lagen, altijd in deze volgorde:</b> handelsmarge (opbrengst − kostprijs verkopen) → bruto marge pand (− periodekosten − courtage) → netto marge (− toegerekende overhead). Bij onverkochte panden: voorraadwaarde (balans) en kostprijs-tot-nu (analytisch) altijd apart gelabeld, nooit één getal.</li>
+        <li><b>Twee dagelijkse bewijsregels:</b> Σ netto marge = resultaat W&amp;V, en Σ voorraadwaarde in bezit = saldo 3000 in Odoo/RLZ. KPI toont "sluit ✓" of het verschil.</li>
+        <li><b>Sleutel overhead "in handel per maand" (besluit Peter):</b> overhead van maand M gelijk verdeeld over panden in bezit in M; maand van aankoop én verkoop tellen volledig; vanaf de maand ná verkoop niet meer. Nul panden → regel "niet toegerekend" (Peter akkoord, komt in de praktijk niet voor). Instelling, herrekenbaar, nooit geboekt.</li>
+        <li><b>Makelaar en notaris zijn altijd eigen regels</b>, per pand én op de tab Kostensoorten (per leverancier en per soort, per jaar, met aantal, gemiddelde per pand, % van omzet). De kolom "Behandeling" maakt zichtbaar wat geactiveerd is en wat periodekost.</li>
+        <li><b>Verwachte verkoopprijs + break-even (besluit Peter):</b> verplicht veld bij aankoop in het register (mensinvoer met herkomst en historie; later mogelijk uit Salesforce). Verwachte marge nú = verwachte opbrengst − kostprijs tot nu − verwachte verkoopkosten (courtage-% en notaris uit eigen historie). Vooruit: maandelijkse overhead-portie + lopende periodekosten → break-even-maand; signaal "bij verkoop ná &lt;maand&gt; negatieve marge", kantoorbreed als lijst met instelbare drempel. Deterministisch, geen AI.</li>
+        <li><b>Notarisafrekening = eigen documenttype</b> met deterministische ontleding: dossiernummer, adres (Betreft), notanummer, kruisverwijzing tegen-nota (A-B-C), koopsom, lasten per soort, honorarium/recherche/inschrijving + btw, courtage-bijlage, verrekeningen, per saldo. Conceptnota = voorlopig (chip) tot de definitieve binnen is; definitieve bedragen winnen.</li>
+        <li><b>Balansposten buiten het resultaat, wél in de tijdlijn:</b> aanbetalingen, onderlinge dossierverrekening via derdengelden, saldo-ontvangst. Sluit met de bankmutatie.</li>
+        <li><b>Register = 1 pand = 1 dossier-adres</b>, aangemaakt uit de aankoopnota, gesloten door de verkoopnota; status in bezit / in optie / verkocht; dagen in bezit als KPI.</li>
+        <li><b>Toewijzing:</b> voorstelvolgorde dossiernummer › adres in omschrijving › leverancier-standaardpand of -overhead › datum-/bedrag-nabijheid (alleen als "twijfel"). Per rij ook de behandeling (activeren / periodekost / balans / overhead) voorgesteld uit de kostensoort van de leverancier; mens wint; bulk bevestigen van "zeker"; storno/correctie zet terug op voorstel. Zelfde scherm voor de migratie (1.000+ boekingen) en de dagelijkse stroom.</li>
+        <li><b>Directie-weergave = lees-PWA in de huisstijl van Vastgoedgroep</b> (<code>mockup/pandenregister-app.html</code>): één berekening in de module, de app toont alleen; dossier per pand (koopovereenkomst, afspraken, nota's, later Salesforce) alleen lezen. Geen store-app (besluit Peter).</li>
+        <li><b>Schaal:</b> lijst server-side gepagineerd en sorteerbaar; werkt voor 40 en voor 4.000 panden; Vastgoedgroep is een filter, andere handelsentiteiten later dezelfde tab. Buiten scope v1: financieringsrente per pand, WOZ/kadaster-verrijking.</li>
+      </ol>
+      <p class="klein" style="margin-top:8px">Cijfers behalve Goeverneurlaan 310 zijn illustratief. Deze variant staat naast <code>mockup/pandenregister.html</code> (CC-versie blok D3, eigen notities ①–⑩); vóór de bouw worden beide tot één bouwnorm samengevoegd.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Vastgoedgroep Nederland pand-app (iPhone, voorstel 10-09-2026)</title>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Huisstijl vastgoedgroep-nederland.nl (uitgelezen 10-09): navy #15395d, oranje #e88b3a, grijs #56595a, crème #f7f5f0, font Urbanist */
+  :root {
+    --navy:#15395d; --navy-2:#0f2a45; --oranje:#e88b3a; --oranje-bg:#fdf1e6; --grijs:#56595a; --licht:#f7f5f0; --wit:#fff;
+    --lijn:#e8e6e1; --tekst:#0d0e13; --muted:#6b6f72; --ok:#1c7a54; --ok-bg:#e4f4ec; --rood:#b42318; --rood-bg:#fceceb; --info-bg:#e9eef5;
+    --font:'Urbanist',-apple-system,sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--font); background:#dcdad4; color:var(--tekst); padding:32px 24px 60px; }
+  h1.kop { font-size:18px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+  p.intro { color:#444; font-size:13px; margin-bottom:22px; max-width:1200px; }
+  .rij { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .tel { width:390px; }
+  .tel .label { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#555; margin:0 0 8px 6px; }
+  .scherm { width:390px; height:844px; background:var(--licht); border-radius:44px; border:10px solid #111; overflow:hidden; position:relative; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+  .status { height:48px; display:flex; align-items:flex-end; justify-content:space-between; padding:0 26px 4px; font-size:13px; font-weight:600; color:var(--wit); background:var(--navy); }
+  .top { background:var(--navy); color:var(--wit); padding:8px 18px 14px; }
+  .top .merk { font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:.75; }
+  .top h2 { font-size:22px; font-weight:800; margin-top:2px; }
+  .top .sub { font-size:12.5px; opacity:.8; margin-top:2px; }
+  .top .chips { margin-top:10px; display:flex; gap:6px; }
+  .top .chips span { font-size:11.5px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.14); }
+  .top .chips span.aan { background:var(--oranje); color:#fff; font-weight:700; }
+  .inhoud { flex:1; overflow:hidden; padding:14px 14px 0; }
+  .kaart { background:var(--wit); border-radius:16px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .kpi2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .kpi { background:var(--wit); border-radius:16px; padding:12px 14px; }
+  .kpi.navy { background:var(--navy); color:#fff; }
+  .kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .kpi.navy .l { color:rgba(255,255,255,.7); }
+  .kpi .v { font-size:22px; font-weight:800; margin-top:2px; }
+  .kpi .s { font-size:11.5px; color:var(--muted); margin-top:1px; }
+  .kpi.navy .s { color:rgba(255,255,255,.75); }
+  .kpi .v.ok { color:var(--ok); } .kpi .v.rood { color:var(--rood); }
+  .sectie { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--grijs); margin:8px 4px 6px; display:flex; justify-content:space-between; }
+  .sectie a { color:var(--navy); font-weight:700; letter-spacing:0; text-transform:none; font-size:12px; }
+  .pand { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--lijn); }
+  .pand:last-child { border-bottom:0; }
+  .pand .a { font-weight:700; font-size:14px; }
+  .pand .m { font-size:12px; color:var(--muted); margin-top:1px; }
+  .pand .r { text-align:right; }
+  .pand .r b { display:block; font-size:15px; font-variant-numeric:tabular-nums; }
+  .pand .r span { font-size:11.5px; color:var(--muted); }
+  .badge { display:inline-block; font-size:10.5px; padding:2px 7px; border-radius:999px; font-weight:700; }
+  .badge.ok { background:var(--ok-bg); color:var(--ok); } .badge.bezit { background:var(--info-bg); color:var(--navy); } .badge.oranje { background:var(--oranje-bg); color:#b4601a; } .badge.rood { background:var(--rood-bg); color:var(--rood); }
+  .groen { color:var(--ok); } .roodt { color:var(--rood); }
+  .tabbar { height:82px; background:var(--wit); border-top:1px solid var(--lijn); display:flex; justify-content:space-around; align-items:flex-start; padding-top:10px; }
+  .tabbar div { text-align:center; font-size:10.5px; color:var(--muted); width:70px; }
+  .tabbar div i { display:block; width:26px; height:26px; margin:0 auto 3px; border-radius:8px; background:#d9d7d1; }
+  .tabbar div.aan { color:var(--navy); font-weight:700; } .tabbar div.aan i { background:var(--oranje); }
+  .regel { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--lijn); font-size:13.5px; gap:8px; }
+  .regel:last-child { border-bottom:0; }
+  .regel .n { font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:600; }
+  .regel .k { color:var(--tekst); } .regel .k small { display:block; color:var(--muted); font-size:11.5px; font-weight:400; }
+  .regel.tot { font-weight:800; border-top:2px solid var(--navy); border-bottom:0; padding-top:10px; }
+  .regel.sub { color:var(--muted); }
+  .balk { height:6px; border-radius:3px; background:#eee; overflow:hidden; margin-top:6px; }
+  .balk i { display:block; height:100%; background:var(--navy); }
+  .balk i.o { background:var(--oranje); }
+  .terug { color:#fff; opacity:.85; font-size:13px; margin-bottom:4px; }
+  .seg { display:flex; background:#e9e7e1; border-radius:12px; padding:3px; margin-bottom:10px; }
+  .seg span { flex:1; text-align:center; font-size:12.5px; padding:7px 0; border-radius:10px; color:var(--muted); font-weight:600; }
+  .seg span.aan { background:var(--wit); color:var(--navy); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .mini { font-size:11.5px; color:var(--muted); }
+  .melding { background:var(--oranje-bg); border-left:3px solid var(--oranje); padding:8px 10px; border-radius:8px; font-size:12.5px; margin-bottom:10px; }
+  .notities { margin-top:34px; background:#fff; border-radius:14px; padding:18px 22px; max-width:1200px; }
+  .notities h3 { font-size:14px; color:var(--navy); margin-bottom:6px; }
+  .notities li { margin:6px 0 6px 18px; font-size:13px; }
+  .notities code { background:#f1f1ee; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<h1 class="kop">Vastgoedgroep Nederland — pand-app (iPhone)</h1>
+<p class="intro">Leesapp voor de directie: portefeuille, resultaat per pand, kostensoorten. Alle cijfers komen uit de boekingsmodule (RLZ/Odoo → pandenregister); de app boekt niets en wijst niets toe — dat blijft kantoorwerk in de module. Huisstijl van vastgoedgroep-nederland.nl (navy, oranje accent, Urbanist).</p>
+
+<div class="rij">
+
+  <!-- ===== 1 HOME ===== -->
+  <div class="tel"><div class="label">1 · Home — portefeuille</div>
+  <div class="scherm">
+    <div class="status"><span>9:41</span><span>●●● ᯤ ▮</span></div>
+    <div class="top">
+      <div class="merk">Vastgoedgroep Nederland</div>
+      <h2>Portefeuille</h2>
+      <div class="sub">bijgewerkt vannacht 07:04 · bron: boekhouding</div>
+      <div class="chips"><span class="aan">2026</span><span>2025</span><span>Alles</span></div>
+    </div>
+    <div class="inhoud">
+      <div class="kpi2">
+        <div class="kpi navy"><div class="l">Handelsvoorraad (balans)</div><div class="v">23</div><div class="s">€ 4,81 mln geactiveerd · sluit ✓</div></div>
+        <div class="kpi"><div class="l">Verkocht 2026</div><div class="v">18</div><div class="s">omzet € 4,52 mln</div></div>
+        <div class="kpi"><div class="l">Bruto marge</div><div class="v ok">€ 612k</div><div class="s">13,5 % · gem. € 34.027 / pand</div></div>
+        <div class="kpi"><div class="l">Netto marge</div><div class="v ok">€ 158k</div><div class="s">na overhead € 455k · sluit ✓</div></div>
+      </div>
+      <div class="kaart">
+        <div class="regel"><span class="k">Gem. dagen in bezit (verkocht)</span><span class="n">112</span></div>
+        <div class="regel"><span class="k">Langst in bezit nu <small>Kerkstraat 44, Ede</small></span><span class="n roodt">341 d</span></div>
+        <div class="regel"><span class="k">Overhead deze maand → per pand</span><span class="n">€ 1.976</span></div>
+      </div>
+      <div class="sectie"><span>Break-even binnen 3 maanden</span><a>2 panden ›</a></div>
+      <div class="kaart">
+        <div class="pand"><div><div class="a">Kerkstraat 44</div><div class="m">Ede · verwacht € 128.000 · kostprijs nu € 131.560</div></div><div class="r"><b class="roodt">al negatief</b><span>− € 3.560 · verkoop nu</span></div></div>
+        <div class="pand"><div><div class="a">Molenstraat 19</div><div class="m">Tilburg · verwacht € 285.000 · kostprijs € 262.115</div></div><div class="r"><b class="roodt">break-even okt</b><span>+ € 22.885 nu · − € 3.953/mnd</span></div></div>
+      </div>
+      <div class="sectie"><span>Laatste transacties</span><a>Alle panden ›</a></div>
+      <div class="kaart">
+        <div class="pand"><div><div class="a">Goeverneurlaan 310</div><div class="m">Den Haag · <span class="badge ok">verkocht 09-01</span></div></div><div class="r"><b class="groen">+ € 34.570</b><span>bruto · 1 dag</span></div></div>
+        <div class="pand"><div><div class="a">Jan Collongstraat 8</div><div class="m">Arnhem · <span class="badge ok">verkocht 16-06</span></div></div><div class="r"><b class="groen">+ € 34.006</b><span>bruto · 235 d</span></div></div>
+        <div class="pand"><div><div class="a">Kerkstraat 44</div><div class="m">Ede · <span class="badge ok">verkocht 13-02</span></div></div><div class="r"><b class="roodt">− € 9.262</b><span>bruto · 164 d</span></div></div>
+        <div class="pand"><div><div class="a">Bleijeheiderstraat 1</div><div class="m">Kerkrade · <span class="badge bezit">in bezit 57 d</span></div></div><div class="r"><b>€ 196.991</b><span>kostprijs tot nu</span></div></div>
+      </div>
+    </div>
+    <div class="tabbar"><div class="aan"><i></i>Home</div><div><i></i>Panden</div><div><i></i>Kosten</div><div><i></i>Meer</div></div>
+  </div></div>
+
+  <!-- ===== 2 PANDEN LIJST ===== -->
+  <div class="tel"><div class="label">2 · Panden — lijst</div>
+  <div class="scherm">
+    <div class="status"><span>9:41</span><span>●●● ᯤ ▮</span></div>
+    <div class="top">
+      <div class="merk">Vastgoedgroep Nederland</div>
+      <h2>Panden</h2>
+      <div class="sub">41 panden · sorteer op marge, dagen, kostprijs</div>
+    </div>
+    <div class="inhoud">
+      <div class="seg"><span class="aan">In bezit (23)</span><span>Verkocht (18)</span><span>Alles</span></div>
+      <div class="melding">3 panden langer dan 180 dagen in bezit — kostprijs loopt maandelijks op met overhead.</div>
+      <div class="kaart">
+        <div class="pand"><div><div class="a">Kerkstraat 44</div><div class="m">Ede · sinds 02-09-2025 · <span class="badge rood">341 d</span></div></div><div class="r"><b>€ 131.560</b><span>kostprijs tot nu</span></div></div>
+        <div class="pand"><div><div class="a">Bleijeheiderstraat 1</div><div class="m">Kerkrade · sinds 15-07 · <span class="badge bezit">57 d</span></div></div><div class="r"><b>€ 200.944</b><span>incl. overhead € 3.953</span></div></div>
+        <div class="pand"><div><div class="a">Gustaaf Gelderstraat 12</div><div class="m">Rotterdam · sinds 15-07 · <span class="badge bezit">57 d</span></div></div><div class="r"><b>€ 448.950</b><span>incl. overhead € 3.953</span></div></div>
+        <div class="pand"><div><div class="a">Molenstraat 19</div><div class="m">Tilburg · sinds 24-08 · <span class="badge bezit">17 d</span></div></div><div class="r"><b>€ 262.115</b><span>aanbetaling ontvangen</span></div></div>
+        <div class="pand"><div><div class="a">Rietdijkstraat 84b</div><div class="m">Groningen · sinds 01-09 · <span class="badge oranje">in optie</span></div></div><div class="r"><b>€ 178.400</b><span>koopovereenkomst getekend</span></div></div>
+        <div class="pand"><div><div class="a">Hoofdweg 212</div><div class="m">Hoofddorp · sinds 03-09 · <span class="badge bezit">7 d</span></div></div><div class="r"><b>€ 390.212</b><span>kostprijs tot nu</span></div></div>
+        <div class="pand"><div><div class="a">Stationsplein 4</div><div class="m">Zaltbommel · sinds 05-09 · <span class="badge bezit">5 d</span></div></div><div class="r"><b>€ 215.730</b><span>kostprijs tot nu</span></div></div>
+      </div>
+    </div>
+    <div class="tabbar"><div><i></i>Home</div><div class="aan"><i></i>Panden</div><div><i></i>Kosten</div><div><i></i>Meer</div></div>
+  </div></div>
+
+  <!-- ===== 3 PAND-DETAIL ===== -->
+  <div class="tel"><div class="label">3 · Pand — resultaat</div>
+  <div class="scherm">
+    <div class="status"><span>9:41</span><span>●●● ᯤ ▮</span></div>
+    <div class="top">
+      <div class="terug">‹ Panden</div>
+      <h2>Goeverneurlaan 310</h2>
+      <div class="sub">Den Haag · dossier 2025.079008.01 · Ouwerkerk · <span class="badge ok">verkocht 09-01-2026</span></div>
+    </div>
+    <div class="inhoud">
+      <div class="kpi2">
+        <div class="kpi navy"><div class="l">Bruto marge</div><div class="v">€ 34.570</div><div class="s">16,1 % · 1 dag in bezit</div></div>
+        <div class="kpi"><div class="l">Netto marge</div><div class="v ok">€ 32.593</div><div class="s">na overhead € 1.976</div></div>
+      </div>
+      <div class="melding">Verwacht bij aankoop: verkoop € 210.000 → gerealiseerd € 215.000 (+ € 5.000 boven verwachting).</div>
+      <div class="kaart">
+        <div class="regel"><span class="k">Verkoopopbrengst<small>nota 37865</small></span><span class="n groen">215.000</span></div>
+        <div class="regel"><span class="k">Kostprijs verkopen (uit voorraad)<small>koopsom 175.000 + aankoopkosten 1.863, geactiveerd 09-01</small></span><span class="n">− 176.863</span></div>
+        <div class="regel"><span class="k">Makelaarscourtage<small>DOEN NVM Makelaars</small></span><span class="n">− 3.750</span></div>
+        <div class="regel"><span class="k">Zakelijke lasten<small>betaald 442 · terugontvangen 442</small></span><span class="n">0</span></div>
+        <div class="regel"><span class="k">Schoonmaak verrekend<small>ontvangen</small></span><span class="n groen">+ 624</span></div>
+        <div class="regel sub"><span class="k">Aanbetaling 32.500 · saldo notaris 67.511<small>balans, geen resultaat</small></span><span class="n">—</span></div>
+        <div class="regel tot"><span class="k">Bruto marge</span><span class="n groen">34.570</span></div>
+        <div class="regel"><span class="k">Overhead <small>jan 2026 · 1 van 22 panden</small></span><span class="n">− 1.976</span></div>
+        <div class="regel tot"><span class="k">Netto marge</span><span class="n groen">32.593</span></div>
+      </div>
+      <div class="sectie"><span>Documenten</span><a>4 ›</a></div>
+      <div class="kaart"><div class="mini">Nota aankoop 37863 · Nota verkoop 37865 · Courtagenota DOEN · Bank 12-01 (€ 67.511,39 ontvangen ✓)</div></div>
+    </div>
+    <div class="tabbar"><div><i></i>Home</div><div class="aan"><i></i>Panden</div><div><i></i>Kosten</div><div><i></i>Meer</div></div>
+  </div></div>
+
+  <!-- ===== 4 KOSTEN ===== -->
+  <div class="tel"><div class="label">4 · Kosten — soorten &amp; leveranciers</div>
+  <div class="scherm">
+    <div class="status"><span>9:41</span><span>●●● ᯤ ▮</span></div>
+    <div class="top">
+      <div class="merk">Vastgoedgroep Nederland</div>
+      <h2>Kosten 2026</h2>
+      <div class="sub">direct per pand € 305k · overhead € 455k</div>
+      <div class="chips"><span class="aan">Per soort</span><span>Per leverancier</span><span>Per maand</span></div>
+    </div>
+    <div class="inhoud">
+      <div class="kaart">
+        <div class="regel"><span class="k">Styling &amp; meubelverhuur<small>Full House, Studio Lacy Lion · 49×</small></span><span class="n">€ 71.302</span></div><div class="balk"><i style="width:42%"></i></div>
+        <div class="regel"><span class="k">Makelaarscourtage<small>DOEN 14× · Fer Haas 9× · gem. € 3.456 / pand</small></span><span class="n">€ 62.206</span></div><div class="balk"><i style="width:37%"></i></div>
+        <div class="regel"><span class="k">Notariskosten<small>Ouwerkerk 31× · Buma Algera 5× · gem. € 1.339</small></span><span class="n">€ 48.191</span></div><div class="balk"><i style="width:29%"></i></div>
+        <div class="regel"><span class="k">Onderhoud &amp; schoonmaak<small>Gimple, Verhagen VvE · 63×</small></span><span class="n">€ 26.660</span></div><div class="balk"><i style="width:16%"></i></div>
+        <div class="regel"><span class="k">Zakelijke lasten (netto)<small>OZB, riool, waterschap via nota's</small></span><span class="n">€ 13.014</span></div><div class="balk"><i style="width:8%"></i></div>
+        <div class="regel"><span class="k">Keuring &amp; recherche<small>Homekeur, Lexence · 18×</small></span><span class="n">€ 9.140</span></div><div class="balk"><i style="width:5%"></i></div>
+      </div>
+      <div class="sectie"><span>Overhead (niet pand-gebonden)</span><a>detail ›</a></div>
+      <div class="kaart">
+        <div class="regel"><span class="k">Personeel &amp; inhuur</span><span class="n">€ 212.400</span></div>
+        <div class="regel"><span class="k">Marketing (DigiSwift, Basement PR)</span><span class="n">€ 88.150</span></div>
+        <div class="regel"><span class="k">Financiering &amp; rente</span><span class="n">€ 96.320</span></div>
+        <div class="regel"><span class="k">Kantoor, software, administratie</span><span class="n">€ 57.691</span></div>
+        <div class="regel tot"><span class="k">Toegerekend aan panden</span><span class="n">100 %</span></div>
+      </div>
+    </div>
+    <div class="tabbar"><div><i></i>Home</div><div><i></i>Panden</div><div class="aan"><i></i>Kosten</div><div><i></i>Meer</div></div>
+  </div></div>
+
+</div>
+
+<div class="notities">
+  <h3>Ontwerpnotities app (aanvulling op mockup/pandenregister.html — die notities blijven gelden)</h3>
+  <ol>
+    <li><b>Lees-app, geen boekapp.</b> Toewijzen van boekingen aan panden en alle correcties gebeuren in de kantoormodule; de app toont alleen. Daardoor geen schrijfrechten, geen geldrisico, eenvoudige review bij Apple/Google.</li>
+    <li><b>Dezelfde bron als de kantoormodule:</b> de module publiceert het pandenregister + resultaat per pand als leesroute (API, per administratie, nachtelijk ververst ná de bank-sync); de app is een dunne schil daarop. Nooit een tweede berekening in de app.</li>
+    <li><b>Schil:</b> zelfde Capacitor-fundament als de accordeur-app (toestelbinding + toegangscode, geen wachtwoord), eigen bundle-id en huisstijl Vastgoedgroep, eigen store-vermelding onder PDL Powerhouse. Alternatief met minder onderhoud: als PWA op de telefoon zetten — beslispunt.</li>
+    <li><b>Home = drie vragen in één oogopslag:</b> wat heb ik in bezit en wat kost dat tot nu, wat heb ik verdiend, klopt het (netto = W&amp;V ✓).</li>
+    <li><b>Signalen zonder handeling zijn hier wél op hun plaats</b> (directie-informatie, geen werkvoorraad): lang in bezit (&gt; 180 d, instelbaar), negatieve bruto marge, pand zonder verkoopdatum met verkoopnota in concept.</li>
+    <li><b>Makelaar en notaris altijd eigen regels</b> per pand én in de Kosten-tab, met aantal transacties en gemiddelde per pand; per leverancier doorklikbaar naar de panden.</li>
+    <li><b>Status "in optie"</b> (koopovereenkomst getekend, levering gepland) als extra registerstatus — beslispunt: bron is dan de koopovereenkomst/aanbetaling, niet de notarisnota.</li>
+    <li><b>Besluit Peter 10-09 — pand = handelsvoorraad op de balans.</b> Koopsom + aankoopkosten (notaris, recherche, OVB als op de nota) worden geactiveerd op "Voorraad panden"; directe kosten tijdens bezit (renovatie, styling, lasten) eveneens geactiveerd — de kostprijs-tot-nu is dus de balanswaarde per pand; bij levering gaat de volledige kostprijs als "Kostprijs verkopen" naar het resultaat tegenover de verkoopopbrengst. Overhead wordt NOOIT geactiveerd (analytisch). KPI "Handelsvoorraad" sluit met de voorraadrekening in Odoo/RLZ — tweede dagelijkse bewijsregel naast netto = W&amp;V.</li>
+    <li><b>Scope v1:</b> één administratie (Vastgoedgroep Nederland). Meerdere handelsentiteiten later als filter bovenin, niet als aparte app.</li>
+    <li><b>Besluit Peter 10-09 — PWA, geen store-app.</b> Huisstijl Vastgoedgroep, op het beginscherm; zelfde toestelbinding + toegangscode als de accordeur-app.</li>
+    <li><b>Dossier per pand (alleen lezen):</b> koopovereenkomst, afspraken met verkoper, notarisnota's aankoop/verkoop, courtagenota, aanbetaling, later Salesforce-gegevens (bod, contactmomenten, overdrachtsafspraken) via een leesbron-koppeling in de module. De module bundelt, de app toont; nooit schrijven vanuit de app.</li>
+    <li><b>Verwachte marge + break-even-signaal (Peter 10-09):</b> bij aankoop wordt in het register de <code>verwachte verkoopprijs</code> genoteerd (verplicht veld; later mogelijk uit Salesforce). Per pand: verwachte opbrengst − kostprijs tot nu − verwachte verkoopkosten (courtage-% en notaris uit historie) = verwachte marge nú. Vooruitkijkend: maandelijkse overhead-portie + lopende directe kosten doorgerekend → <b>break-even-maand</b>; signaal "bij verkoop ná &lt;maand&gt; negatieve marge" op Home (lijst "break-even binnen 3 maanden", instelbaar) en op het pand. Deterministisch, geen AI; verwachte prijs is een mensinvoer met herkomst en historie (wijzigingen zichtbaar).</li>
+  </ol>
+</div>
+</body>
+</html>

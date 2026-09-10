@@ -903,6 +903,72 @@ script miste de middelste `.spec`). Diagnose per job én op de laatste échte ex
 runtime. Bijvangst: het default-SA had hier al géén Editor-binding (stap 2 zal "al gedaan"
 melden); alleen stap 3 (disable) is nog te doen.
 
+## F7 — Productie-nametingen structureel: dedicated serviceaccount óf langere Workspace-sessie (voorbereiding 10-09-2026; niets aangemaakt)
+
+**Aanleiding.** De regel "Productie alleen via de bestaande Cloud Run-service of read-only scripts via Cloud Shell" (Peter 08-09,
+CLAUDE.md § Werkwijze) maakt élke nameting een `gcloud run jobs execute … --args="-m,app.cli,<lees-only-commando>,…"` op de
+gedeployde job-image. De gcloud-GEBRUIKERSsessie (Workspace-account) verloopt dagelijks; in de bundel 10-09 blokkeerde dat álle
+nametingen ("gcloud-sessie verlopen tijdens de run", zie BESLISSINGEN D1/D2). Twee routes; **Peter kiest**. Beide zijn hieronder
+zó uitgeschreven dat ze zonder nadenken uitgevoerd kunnen worden; er is op 10-09 niets in GCP of in de Workspace-console gewijzigd.
+
+**Belangrijke bevinding vooraf (geverifieerd 10-09 in de Cloud Run IAM-referentie):** `--args=` op `gcloud run jobs execute` is een
+*override* en vereist het permission **`run.jobs.runWithOverrides`**. Dat zit **alleen** in `roles/run.developer` ("Cloud Run
+Developer") — niet in `roles/run.invoker` ("Cloud Run Invoker": `run.instances.invoke`, `run.jobs.run`, `run.routes.invoke`) en niet
+in `roles/run.jobsExecutor` ("Cloud Run Jobs Executor": `run.jobs.run`, `run.executions.cancel`). Wie de job alleen met zijn
+vaste args mag starten heeft aan `run.jobsExecutor` genoeg; wie het huidige meetrecept mét `--args` wil draaien heeft
+`runWithOverrides` nodig — en `run.developer` is te ruim (read/write op álle Cloud Run-resources). Daarom hieronder een **custom
+rol** met precies de vier permissions, gebonden op de job, niet op het project.
+
+### F7.1 Optie A — dedicated serviceaccount `nameting@`
+
+| Stap | Wie | Commando / instelling | Toelichting |
+|---|---|---|---|
+| A1 SA aanmaken | Peter (owner) | `gcloud iam service-accounts create nameting --project=rlz-boekhouding --display-name="Nametingen (lees-only, Claude Code)"` → `nameting@rlz-boekhouding.iam.gserviceaccount.com` | Eén SA, één doel; nooit hergebruiken voor deploy/jobs-runtime (die hebben `deploy@`/`run-jobs@`). |
+| A2 custom rol | Peter | `gcloud iam roles create nametingJobsRunner --project=rlz-boekhouding --title="Nameting jobs runner" --permissions=run.jobs.run,run.jobs.runWithOverrides,run.jobs.get,run.executions.get,run.executions.list --stage=GA` | Minimaal voor `jobs execute --args --wait` (`--wait` pollt `executions.get`). Géén `run.jobs.update/create/delete`, géén `run.services.*`. |
+| A3 binding PER JOB | Peter | per nameting-job: `gcloud run jobs add-iam-policy-binding rlz-reconciliatie --region=europe-west4 --member="serviceAccount:nameting@rlz-boekhouding.iam.gserviceaccount.com" --role="projects/rlz-boekhouding/roles/nametingJobsRunner"` (herhalen voor bv. `rlz-sync` als een lees-CLI dáár draait) | Job-scoped, niet projectbreed: het SA kan alleen de expliciet gebonden jobs starten. |
+| A4 lezen + logs | Peter | projectbreed: `roles/run.viewer` (jobs/executies zien) + `roles/logging.viewer` (job-uitvoer in Cloud Logging — dáár landt het rapport, `/tmp` in de container is vluchtig) | Beide read-only. `roles/logging.viewer` toont ook backend-logs — acceptabel (zelfde kring die nu al leest via Cloud Shell); wie dat te ruim vindt: `roles/logging.viewsAccessor` op een log-view met alleen `run.googleapis.com/stdout` van de jobs (later, optioneel). |
+| A5 `roles/cloudsql.client` | — | **NIET geven.** Nametingen lopen via jobs op de gedeployde image; het SA hoeft nooit zelf met de database te praten. Alleen als een read-only Cloud-Shell-query ooit onder dít account moet lopen — dan apart motiveren in dit document (welke query, waarom geen CLI-commando) en pas dán binden. | Houdt de scheiding "job praat met de DB, mens/SA start de job" intact; het proxy-recept blijft historie. |
+| A6 key | Peter | `gcloud iam service-accounts keys create ~/Sleutels/gcp/nameting-rlz-boekhouding.json --iam-account=nameting@rlz-boekhouding.iam.gserviceaccount.com` | Bestand in de lokale sleutelmap BUITEN de repo (`~/Sleutels`, Read-deny voor de agent, zoals de Android-keystore). Nooit in de repo: `.gitignore` dekt `.env` maar geen `*.json`-keys — de bescherming is de locatie buiten de werkboom, niet de gitignore. Check vóór elke commit: `git -C <repo> status --porcelain | grep -i nameting` = leeg. |
+| A7 activeren | Claude Code / Peter | `gcloud auth activate-service-account nameting@rlz-boekhouding.iam.gserviceaccount.com --key-file=$HOME/Sleutels/gcp/nameting-rlz-boekhouding.json` → `gcloud config set account nameting@rlz-boekhouding.iam.gserviceaccount.com` → `gcloud config set project rlz-boekhouding` | Sessie verloopt niet (SA-key-tokens worden automatisch ververst). Advies: een aparte gcloud-configuratie `gcloud config configurations create nameting` zodat wisselen één commando is. |
+| A8 terugschakelen | Peter | `gcloud config set account <peter@…>` (of `gcloud config configurations activate default`); controle `gcloud auth list` (ster bij het actieve account) | Het gebruikersaccount blijft geautoriseerd staan; de SA-credential blijft in de gcloud-store tot `gcloud auth revoke nameting@…`. |
+
+**Risico's en grenzen (Optie A).**
+- *Key = langlevend geheim.* Een gelekt bestand geeft tot rotatie het recht om de gebonden jobs te starten. Maatregelen: alleen in
+  `~/Sleutels`, rotatie per kwartaal (`keys create` nieuw → oud `keys delete`; datum in dit document noteren), max. één actieve key,
+  en `gcloud iam service-accounts keys list` in de kwartaalcheck. Alternatief zonder key: `--impersonate-service-account` — maar dat
+  vereist een geldige gebruikerssessie en lost het dagelijkse verlopen dus níet op.
+- *Het SA kan élke gebonden job starten — ook met schrijvende `--args`.* Nameting-CLI's zijn lees-only (`bank-voorstellen-lezen`,
+  `autoboek-leren-rapport`, `migratie-schoonlijst`, `pandenregister-afleiden` dry-run), maar `rlz-reconciliatie` draagt óók
+  schrijvende commando's (`duplicaten-backfill`, `periode-backfill`, `--schrijf`-varianten) en `runWithOverrides` laat elk `-m
+  app.cli <commando>` toe. Dat is een procesgrens (regel Peter 08-09 blijft: schrijvende nazorg alleen op expliciete opdracht),
+  geen technische. **Latere optie, aanbevolen als de nametingen routine worden:** een aparte job `rlz-nameting` (zelfde image,
+  zelfde `run-jobs@`-runtime-SA, vaste `--args` per nameting of een `--args`-allowlist in `app/cli.py` via een omgevingsvariabele
+  `CLI_ALLOWLIST=bank-voorstellen-lezen,autoboek-leren-rapport,…` die de dispatcher fail-closed afdwingt) — dan volstaat
+  `roles/run.jobsExecutor` op alleen díe job en vervalt `runWithOverrides` helemaal.
+- *Audit.* Job-starts onder het SA staan in Cloud Audit Logs (`run.googleapis.com` Admin Activity, principal = het SA) — zichtbaar
+  wie/wat/wanneer, conform "niets verdwijnt stil"; app-audit blijft ongewijzigd (de CLI draait als `run-jobs@`).
+
+### F7.2 Optie B — Google Cloud-sessieduur in Workspace verlengen
+
+Admin console › Beveiliging › Toegangs- en gegevensbeheer › **Google Cloud-sessiebeheer** (privilege "Beveiligingsinstellingen-
+beheerder"). Geverifieerd 10-09 (Workspace Admin Help "Set session length for Google Cloud services"): herauthenticatie-frequentie
+**minimaal 1 uur, maximaal 24 uur** (vaste tijd sinds inloggen, inactiviteit telt niet mee); herauthenticatie-methode **Wachtwoord**
+of **Beveiligingssleutel**; optie **"Vertrouwde apps uitzonderen"** (apps gemarkeerd als trusted onder App-toegangsbeheer). De
+instelling geldt expliciet voor de gcloud CLI: bij wachtwoord-herauthenticatie eist gcloud een nieuwe `gcloud auth login`; bij
+beveiligingssleutel volstaat een tik op de sleutel in de CLI. Sinds juni 2026 hanteert Google voor een deel van de organisaties een
+standaard van 16 uur. **Te verifiëren in de console (niet zeker):** of de keuze "sessie verloopt nooit" nog bestaat voor Google
+Cloud-sessies (de 2023-wijziging verving een onbeperkte default door een eindige — of "onbeperkt" nog kiesbaar is, staat niet in
+de geraadpleegde help), en welke discrete waarden het menu tussen 1 en 24 uur biedt. De instelling is org-breed of per OE; een
+aparte OE voor het beheeraccount beperkt de impact.
+
+| | Voordeel | Nadeel |
+|---|---|---|
+| Optie A — SA | Geen dagelijkse herlogin; identiteit "nameting" apart zichtbaar in audit; rechten minimaal en job-scoped; onafhankelijk van Workspace-beleid; ook bruikbaar in een geplande routine | Langlevende key te beheren (rotatie, opslag); kan gebonden jobs met elke `--args` starten (procesgrens); initiële klikset 8 stappen |
+| Optie B — sessie 24 u | Niets nieuws in IAM; geen geheim; Peter's eigen identiteit blijft de actor | Maximaal 24 uur — verlopen verschuift naar "één keer per dag", verdwijnt niet; raakt álle Google Cloud-sessies van de OE (ook `vastly-504108`); beveiligingsbeleid wordt zwakker in plaats van rechten smaller; herlogin blijft een handmatige stap midden in een run |
+
+**Advies (niet beslist):** A, mét de latere `rlz-nameting`-job/allowlist zodra nametingen routine zijn; B alleen als tijdelijke
+verlichting (24 u) náást A, of als Peter geen extra geheim wil beheren. **Peter kiest; niets aangemaakt in GCP (10-09).**
+
 ## Kritieke pad & parallelsporen
 
 ```

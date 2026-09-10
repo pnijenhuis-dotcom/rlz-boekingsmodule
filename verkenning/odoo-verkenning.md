@@ -832,3 +832,49 @@ de bewijscyclus leest ze uitsluitend via het `lees_dev_env`-patroon; niets ervan
 8. **IBAN op dagboek BNK1 company 6** (klikpunt Peter in Odoo) vóór de eerste aanlevering — anders geen eigen-rekening-herkenning.
 9. **RLZ-VGG → Odoo kanteldatum**: zelfde overstap-patroon als Universal (blok A/B slotstuk: mapping gb/btw/project, kanteldatum,
    historie-dedup) — btw-mapping is hier triviaal (geen btw), grootboek-mapping niet (RLZ 4-cijferig → Odoo 6-cijferig).
+
+### 11.6 Rekeningmapping fase 2 — RJ 220 handelsvoorraad: drie rekeningen (10-09-2026 avond, ONTWERP/BESLUIT — niets gebouwd, geen Odoo-writes)
+
+**Status: ontwerpnotitie op basis van het besluit Peter 10-09 avond (BESLISSINGEN "VASTGOEDGROEP NEDERLAND → ODOO — RUN 1: MOCKUP
+PANDENREGISTER + ODOO-VERKENNING", addendum). Lees-only; er is niets in Odoo aangemaakt of gewijzigd. Rekeningnummers zijn hier
+bewust NIET ingevuld — vast te stellen bij run 2 met Peter (RLZ 4-cijferig ↔ Odoo 6-cijferig NL-template, zie 11.5 (f) punt 9).**
+Dit beantwoordt beslispunt 11.5 (f) 4 inhoudelijk: geen vaste activa, wél **handelsvoorraad (RJ 220)**; de marge wordt daarmee in
+Odoo zichtbaar (opbrengst − kostprijs verkopen) zonder analytische toerekening — overhead-toerekening en break-even blijven buiten
+de boekhouding (Vastgoedgroep-PWA).
+
+**De drie rekeningen (mapping fase 2, per administratie in de koppeling-rij — nooit hardcoden):**
+
+| Rol | Aard | Odoo `account.account.account_type` | Odoo-dagboek waar de regel landt | Nummer |
+|---|---|---|---|---|
+| **Voorraad panden** (handelsvoorraad) | balans, vlottende activa | `asset_current` (Current Assets) — **[aanname]**: Odoo kent ook een specifiek voorraad-type in de NL-template; welke `account_type` de accountantsrapportage het beste dient is een klikpunt bij run 2, geen bouwbesluit | LF (49) bij aankoop-/activeerbare nota's, MEM (50) bij memoriaal-correcties | vast te stellen bij run 2 met Peter |
+| **Opbrengst verkoop panden** | W&V, omzet | `income` (Income) | F (48), regel op de verkoopfactuur (11.3) | vast te stellen bij run 2 met Peter |
+| **Kostprijs verkopen panden** | W&V, directe kosten | `expense_direct_cost` (Cost of Revenue) | MEM (50) — uitboeking voorraad bij levering (of als tweede regel op de verkoopfactuur, zie hieronder) | vast te stellen bij run 2 met Peter |
+
+Alle regels op deze rekeningen dragen `analytic_distribution {"<analytic pand>": 100}` (plan Project, company 6 — notitie ⑦, ongewijzigd);
+overhead krijgt géén analytic. Vastgoedgroep is niet btw-plichtig: op élke regel `tax_ids = [[6,0,[]]]` (bewezen mechaniek §1.6/§4).
+
+**Hoe de vier boekingssoorten landen (ontwerp; Odoo-kant als `account.move`-vorm, RLZ-kant tot de kanteldatum als bestaand pad):**
+
+| Gebeurtenis | Boekhoudkundige regel (RJ 220) | Odoo `account.move` | Herkomst in de module |
+|---|---|---|---|
+| **Aankoop (levering, notarisafrekening)** | Voorraad panden **debet** (koopsom + direct toerekenbare aankoopkosten: honorarium, recherche, inschrijving, overdrachtsbelasting — btw niet aftrekbaar → bruto); tegenrekening crediteur notaris (of derdengelden-/notaris-saldo op de balans) | `in_invoice` op de notaris (journal LF 49, bewezen §4): regel(s) koopsom + aankoopkosten op *voorraad panden*, analytic pand; verrekende lasten op de nota → aparte regel(s) *periodekosten pand* (W&V); aanbetaling/derdengelden → balansregel. Alternatief bij een memoriaal-bron (RLZ-06-historie): `entry` op MEM 50 mét voorraad debet | pand_boeking soort `aankoop`, behandeling `activeren` (koopsom + kosten) / `periodekost` (lasten) / `balans` (aanbetaling, saldo) |
+| **Activeerbare kosten tijdens bezit** (verbouwing/renovatie om verkoopklaar te maken) | Voorraad panden **debet**; crediteur credit | `in_invoice` op de aannemer (LF 49), regel op *voorraad panden*, analytic pand, `tax_ids=[]` | soort `kosten`, behandeling `activeren` (voorstel uit kostensoort leverancier, mens wint) |
+| **Niet-activeerbare kosten** (courtage, styling & meubelverhuur, schoonmaak, keuring, verrekende zakelijke lasten, servicekosten) | Direct **W&V** in de periode van maken (kostenrekening per soort, analytic pand); nooit op voorraad | `in_invoice` (LF 49) of bankregel-tegenboeking (11.4 stap 5) op de bestaande kostenrekeningen (NL-template 4xxxxx/6xxxxx — bestaande gb-mapping, geen nieuwe rekening), analytic pand | soort `kosten`, behandeling `periodekost` |
+| **Verkoop (levering, notarisafrekening)** | Opbrengst verkoop panden **credit** (koopsom); Kostprijs verkopen panden **debet** / Voorraad panden **credit** (de geactiveerde waarde van dát pand — cent-exact de som van alle activeer-regels op het pand); verrekende lasten terugontvangen → periodekosten credit; courtage → W&V | (a) `out_invoice` op de notaris (F 48, 11.3): regel koopsom op *opbrengst verkoop panden*, `tax_ids=[]`, analytic pand; (b) uitboeking voorraad als `entry` op MEM 50: *kostprijs verkopen panden* debet / *voorraad panden* credit, analytic pand — of als tweede regelpaar op dezelfde factuur (Odoo staat regels op kosten-/balansrekeningen op een verkoopfactuur toe; welk van beide de accountant wil = klikpunt run 2). Bedrag (b) = deterministisch uit de module (Σ activeer-regels van het pand), nooit uit een LLM | soort `verkoop`; de uitboeking is een module-boeking gekoppeld aan hetzelfde pand (behandeling `activeren` met negatief teken, of eigen behandeling `uitboeking` — keuze run 2) |
+
+**Controles die de module kan leveren zonder te rekenen aan marges (bronregels, geen MI):** (1) per pand Σ activeer-regels
+(voorraadwaarde) = het bedrag van de uitboeking bij verkoop (cent-exact, harde check vóór het boeken van (b)); (2) Σ voorraadwaarde
+van panden in bezit = saldo *voorraad panden* in Odoo/RLZ (reconciliatie-bevinding, zelfde patroon als `rlz_dubbel`, lees-only);
+(3) een verkoopnota in concept laat de voorraad staan tot de definitieve nota. Marges, overhead-sleutel en break-even = PWA.
+
+**Odoo-kant, wat run 2 moet toetsen op de TESTdatabase (aanvulling op 11.4, alles `TEST-VGG-`):** `account.account.create` van de
+drie rekeningen op company 6 (`code`, `name`, `account_type`, `reconcile False`) — of aanmaken door Peter in de UI (klikpunt; advies:
+UI, dan staat het nummer meteen in het rekeningschema van de accountant); `in_invoice` mét een regel op een `asset_current`-rekening
+(Odoo accepteert kosten- én balansrekeningen op factuurregels — te bevestigen [aanname]); `entry` voorraad → kostprijs met
+`analytic_distribution` op beide regels; terugweg via reversal (§3.3). RLZ-kant tot de kanteldatum: dezelfde drie rekeningen als
+grootboekrekeningen in RLZ-VGG (bestaan er al? — de schoonlijst D1 leest Ledgers; controle bij run 2), memoriaal RLZ-06 blijft het
+aankoop-pad van de historie.
+
+**Wat dit NIET is:** geen gebouwde mapping, geen migratie, geen Odoo-write, geen bevestigde rekeningnummers. Het is het ontwerp dat
+de bewijscyclus 11.4 stap 3 en 5 en de mapping-tabel van fase 2 voeden; bouw ná akkoord Peter op de beslispunten in BESLISSINGEN
+(addendum D3, punten 4–8).

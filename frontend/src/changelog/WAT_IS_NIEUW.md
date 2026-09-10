@@ -6,6 +6,26 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-10 — Reconciliatie zonder ruis, overzichtelijker gebruikersscherm, autoboeken leert sneller, AI-controle valt niet meer stil
+
+<!-- vervolgrun-10-09-avond:1 -->
+- De controle "mogelijk dubbel geboekt in Reeleezee" meldt nu één regel per leverancier en factuurnummer met álle boekstuknummers erbij, in plaats van elke combinatie apart — en zwijgt over referenties die geen factuurnummer zijn (een IBAN of een klantnummer dat op elke factuur staat).
+- Twee concept-facturen met dezelfde referentie, dezelfde datum en hetzelfde bedrag staan nu bovenaan als "Waarschijnlijk dubbel"; de overige gevallen heten "Zelfde referentie, controleer".
+- Eerder geaccepteerde beoordelingen blijven gelden; een cluster waar een nieuw, nog niet beoordeeld exemplaar bij zit komt wél opnieuw ter controle.
+
+<!-- vervolgrun-10-09-avond:2 -->
+- Gebruikers & toegang: de tabellen op de tabs Kantoor, Veldwerkers en Klant-accordeurs zijn opnieuw ingedeeld — elke kolom heeft een vaste minimumbreedte, de koppen worden nooit meer afgekapt en de beveiligings- en statuslabels staan netjes op één regel.
+- Per gebruiker staat nog maar één knop direct in beeld (Opnieuw mailen of Herstel-link); de overige handelingen (e-mail wijzigen, scope, blokkeren, archiveren) vind je achter het ⋯-menu op de rij.
+
+<!-- vervolgrun-10-09-avond:3 -->
+- Autoboeken leert sneller: een leverancier wordt automatisch geboekt zodra een medewerker drie keer op rij exact hetzelfde heeft geboekt — de eerste boeking telt nu ook mee (voorheen waren er in de praktijk vier nodig).
+- De stand per leverancier heet nu "N identieke boekingen" in plaats van "N op rij ongewijzigd"; de teller "leert (n/3)" volgt dezelfde telling.
+
+<!-- vervolgrun-10-09-avond:4 -->
+- Een storing of ontbrekende instelling van de AI-controle zet het automatisch boeken niet meer stil: de vaste controles (rekening, btw, project, geheugen) blijven de eis, en een boeking die zonder AI-controle doorliep krijgt het label "zonder AI-toets" op de rij en in de tijdlijn.
+- In de reconciliatie ziet u per dag hoeveel boekingen zonder AI-controle doorliepen en waarom, met een melding "controleer steekproefsgewijs" en een directe link naar de bankrekening of documentenlijst.
+- Een AI-twijfel blijft zoals het was: die boeking wacht op een medewerker.
+
 ## 2026-09-10 — Autoboeken per administratie, slimmere bankvoorstellen met AI-controle, eerlijke activatie
 
 <!-- bundel-10-09:A -->
@@ -17,7 +37,7 @@
 
 <!-- bundel-10-09:B -->
 - Terugkerende bankafschrijvingen zonder factuur (huur, abonnementen, verzekeringen) krijgen nu automatisch een boekvoorstel uit de eigen historie: staat dezelfde tegenrekening met dezelfde omschrijving al minstens drie keer op één grootboekrekening, dan ziet u "historie-regel — 3 van 3 op …" en boekt het systeem die mutatie zelf zodra automatisch boeken voor de administratie aan staat. Wijkt de historie af, dan staat er "k van n" en bevestigt u zelf.
-- Vóór elke automatische bankboeking kijkt een AI-controle mee of het voorstel plausibel is voor deze omschrijving, tegenpartij en bedrag. De AI kiest nooit zelf een rekening; bij twijfel blijft de mutatie gewoon open in uw werkvoorraad met de reden als label. Is de AI niet beschikbaar, dan wordt er niet geboekt en ziet u dat ook.
+- Vóór elke automatische bankboeking kijkt een AI-controle mee of het voorstel plausibel is voor deze omschrijving, tegenpartij en bedrag. De AI kiest nooit zelf een rekening; bij twijfel blijft de mutatie gewoon open in uw werkvoorraad met de reden als label. Is de AI niet beschikbaar, dan wordt er niet geboekt en ziet u dat ook. (Herzien later op 10-09: zie de release hierboven — een storing van de AI-controle zet het boeken niet meer stil.)
 - Dezelfde plausibiliteitscontrole staat als extra poort op automatisch geboekte inkoopfacturen; een beheerder kan die onder Instellingen › Boeken uitzetten (standaard aan).
 
 <!-- bundel-10-09:F -->
