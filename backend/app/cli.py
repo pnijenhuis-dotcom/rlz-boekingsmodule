@@ -1624,7 +1624,7 @@ def _materiaal_seed_universal(args: argparse.Namespace) -> int:
 
 
 def _reconciliatie_alles(args: argparse.Namespace) -> int:
-    """Alle vier de reconciliaties in één run. Bestaat omdat de handmatige `&&`-keten precies
+    """Alle reconciliatie-blokken in één run. Bestaat omdat de handmatige `&&`-keten precies
     het verkeerde deed: viel de eerste om, dan draaiden de andere twee niet — juist op een dag
     waarop er iets aan de hand is verloor je zo de omzet-controle (half_geboekt) helemaal.
     Hier stopt niets vroegtijdig; de exit-code is 1 zodra één blok afwijkingen of fouten meldt.
@@ -1632,11 +1632,16 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     Sinds 06-09 (BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT") legt `app/reconciliatie/run.py`
     élke run vast (run-rij + bevindingen), bepaalt de delta t.o.v. de vorige run en mailt alleen
     als er iets te melden is; de CLI-regels zijn ongewijzigd, er komt één RUN-slotregel bij.
-    Een mail- of vastlegfout verandert de exit-code nooit."""
+    Een mail- of vastlegfout verandert de exit-code nooit.
+
+    Blok 1 vervolgrun 10-09 avond: `--alleen <blok>` (herhaalbaar), `--administratie <uuid|naamdeel>` (alleen
+    rlz_dubbel) en `--lees-only`/`--dry-run` (geen run-rij, geen bevindingen, geen mail, geen acceptatie-
+    overdracht). `--alleen` vereist `--lees-only`: een deel-run die als 'laatste afgeronde run' zou worden
+    vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
     from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
 
-    blokken = (
+    alle_blokken = (
         ("bank", _bank_reconciliatie),
         ("documenten", _reconciliatie),
         ("omzet", _omzet_reconciliatie),
@@ -1645,7 +1650,69 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # eigen blok, schrappen = deze regel + run.BLOKKEN.
         (rlz_dubbel.BLOK, rlz_dubbel.cli_blok),
     )
+    alleen = set(getattr(args, "alleen", None) or [])
+    lees_only = bool(getattr(args, "lees_only", False))
+    administratie = getattr(args, "administratie", None)
+    blokken = tuple(b for b in alle_blokken if not alleen or b[0] in alleen)
+
+    if alleen and not lees_only:
+        print(
+            "FOUT: --alleen werkt uitsluitend samen met --lees-only — een deel-run mag niet als laatste run worden "
+            "vastgelegd (kantoorbrede lijst + delta-mail lezen die).",
+            file=sys.stderr,
+        )
+        return 2
+    if administratie:
+        if not lees_only or any(naam != rlz_dubbel.BLOK for naam, _ in blokken):
+            print(
+                "FOUT: --administratie geldt alleen voor `--alleen rlz_dubbel --lees-only` (de andere blokken "
+                "kennen geen administratie-filter).",
+                file=sys.stderr,
+            )
+            return 2
+        gevonden = _zoek_administraties(administratie)
+        if len(gevonden) != 1:
+            if not gevonden:
+                print(f"FOUT: geen administratie gevonden voor {administratie!r}", file=sys.stderr)
+            else:
+                print(f"FOUT: {administratie!r} is niet eenduidig:", file=sys.stderr)
+                for aid, naam in gevonden:
+                    print(f"    {aid}  {naam}", file=sys.stderr)
+            return 2
+        args.administratie_ids = [gevonden[0][0]]
+        print(f"Administratie: {gevonden[0][1]} ({gevonden[0][0]})")
+
+    if lees_only:
+        print("LEES-ONLY: geen run-rij, geen bevindingen, geen acceptatie-overdracht, geen mail.")
+        exit_code = 0
+        for naam, functie in blokken:
+            print(f"\n=== {naam}-reconciliatie (lees-only) ===")
+            try:
+                code = functie(args, verzamelaar=None)
+            except Exception as exc:  # noqa: BLE001 — zichtbaar, en door met het volgende blok
+                print(f"FOUT       {naam}-reconciliatie viel om: {exc}", file=sys.stderr)
+                code = 1
+            exit_code = max(exit_code, 1 if code else 0)
+        print("\nLEES-ONLY afgerond — niets vastgelegd.")
+        return exit_code
+
     return reconciliatie_run.voer_uit(blokken=blokken, args=args)
+
+
+def _zoek_administraties(tekst: str) -> list[tuple[uuid.UUID, str]]:
+    """(id, naam) op exacte UUID óf naam-substring (hoofdletterongevoelig); meerdere treffers = niet eenduidig."""
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        try:
+            rij = session.get(Administratie, uuid.UUID(tekst))
+            return [(rij.id, rij.naam)] if rij is not None else []
+        except ValueError:
+            rijen = session.scalars(
+                select(Administratie).where(Administratie.naam.ilike(f"%{tekst}%")).order_by(Administratie.naam)
+            ).all()
+            return [(r.id, r.naam) for r in rijen]
 
 
 def _huidige_afwijkingen(*, bron: str, administratie_id: uuid.UUID) -> list[tuple[uuid.UUID, str, str]]:
@@ -2661,10 +2728,34 @@ def main(argv: list[str] | None = None) -> int:
     seed_mat_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
     seed_mat_parser.add_argument("--beheerder-id", required=True, dest="beheerder_id")
 
-    subparsers.add_parser(
+    alles_parser = subparsers.add_parser(
         "reconciliatie-alles",
-        help="Draai alle vier de reconciliaties (bank, documenten, omzet, doorbelasting) in één "
-        "run — stopt nooit vroegtijdig, exit 1 zodra één blok afwijkingen of fouten meldt.",
+        help="Draai alle reconciliatie-blokken (bank, documenten, omzet, doorbelasting, rlz_dubbel) in één "
+        "run — stopt nooit vroegtijdig, exit 1 zodra één blok afwijkingen of fouten meldt. Met --lees-only: "
+        "dry-run zonder run-rij, bevindingen of mail (blok 1 vervolgrun 10-09: vergelijking paren OUD → clusters NIEUW "
+        "voor rlz_dubbel).",
+    )
+    alles_parser.add_argument(
+        "--alleen",
+        action="append",
+        default=None,
+        choices=("bank", "documenten", "omzet", "doorbelasting", "rlz_dubbel"),
+        help="Alleen dit blok (herhaalbaar). Vereist --lees-only: een deel-run mag nooit als 'laatste run' worden "
+        "vastgelegd (de kantoorbrede lijst en de delta-mail lezen die).",
+    )
+    alles_parser.add_argument(
+        "--administratie",
+        default=None,
+        metavar="UUID|NAAMDEEL",
+        help="Beperk tot één administratie (UUID of deel van de naam; eenduidig). Alleen voor --alleen rlz_dubbel.",
+    )
+    alles_parser.add_argument(
+        "--lees-only",
+        "--dry-run",
+        action="store_true",
+        dest="lees_only",
+        help="Niets vastleggen: geen run-rij, geen bevindingen, geen acceptatie-overdracht, geen mail — alleen "
+        "printen.",
     )
 
     accepteer_parser = subparsers.add_parser(

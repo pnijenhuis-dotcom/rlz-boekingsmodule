@@ -8,26 +8,50 @@ Wat dit blok doet — en bewust níét:
   PurchaseInvoices van de laatste `VENSTER_DAGEN` dagen gelezen in ÉÉN gepagineerde lees-reeks ($top/$skip, zelfde
   vorm als `app/geheugen/seed.py::_facturen` — live bewezen op deze collectie; `$expand=Entity` omdat Entity op de
   collectie alleen mét expand zichtbaar is). Concepten (Status 1) komen mee (STAP-0 07-09) en worden gemarkeerd.
-- Binnen dezelfde crediteur (Entity) worden paren gezocht op UITSLUITEND gelijke GENORMALISEERDE referentie
-  (`duplicaat_afvoer.normaliseer_referentie` — één normalisatie in de hele module). Placeholder-referenties
+- Binnen dezelfde crediteur (Entity) worden REFERENTIEGROEPEN gevormd op UITSLUITEND gelijke GENORMALISEERDE
+  referentie (`duplicaat_afvoer.normaliseer_referentie` — één normalisatie in de hele module). Placeholder-referenties
   ("Ingescand document", alleen nullen, "factuur"/"invoice", zie `PLACEHOLDER_REFERENTIES`) tellen als LEEG en
   matchen nooit. **Herstelrun "Basis eerst" 08-09 (blok 7, besluit Peter 08-09): de vroegere variant (B) "gelijk
   bedrag + gelijke factuurdatum" is VOLLEDIG vervallen** — de Kempen-live-check gaf 516 paren, waarvan 508 op
-  bedrag+datum: reeksfacturen van Lusso-Design Interior Projects en Kempen Airco (identieke bedragen op één datum,
-  opeenvolgende nummers = echte losse facturen) en "Ingescand document"-referenties die elkaar matchten.
-  **Aanvaarde grens:** de aanleiding-casus BOOT 202632703/202632704 (RLZ-04-00004037/38, € 2.976,30 vs € 1.775,98,
-  beide 22-06-2026) heeft een ándere referentie én een ánder bedrag en wordt door deze toets bewust NIET gevangen
-  (viel ook onder (B) al buiten de criteria).
-- Een paar waarvan BEIDE documenten door de module zijn aangemaakt telt niet: die GUID's zijn deterministisch
-  (UUIDv5, `documenten/rlz_ids.py`) en worden per administratie uit de eigen DB afgeleid (document × boek_cyclus,
-  tegenboekingen, doorbelasting-spiegels, bank-relatieboekingen). Eén module-exemplaar + één handmatig exemplaar
-  IS een treffer (de mens typte in RLZ wat de module ook boekte). Een GUID-versie-4 is nooit van ons (A11-diagnose).
-- Uitkomst = bevinding `afwijking` soort `dubbel_in_rlz`, vingerafdruk stabiel per paar (acceptatie-vingerafdruk
-  over bron|soort|detail met detail = de twee RLZ-id's gesorteerd) → de delta-motor mailt één keer; acceptatie mét
-  reden via het bestaande pad (bron `documenten`: de DB-CHECK op `reconciliatie_acceptatie.bron` kent geen vijfde
-  waarde en dit blok brengt bewust GEEN migratie). GEEN automatische actie: de RLZ-kant is mensenwerk, de app
-  verwijdert nooit (kernprincipe 3). Er is geen bekende URL-vorm van de RLZ-web-UI per document → de handeling is
-  "open beide boekstuknummers in Reeleezee".
+  bedrag+datum. **Aanvaarde grens:** BOOT 202632703/202632704 (RLZ-04-00004037/38, € 2.976,30 vs € 1.775,98, beide
+  22-06-2026) heeft een ándere referentie én een ánder bedrag en wordt bewust NIET gevangen.
+- **Blok 1 vervolgrun 10-09 avond (besluit Peter; productie 10-09 06:32 gaf 907 paren over 14 administraties, vrijwel
+  allemaal op een referentie die géén factuurnummer is):**
+  (1) REFERENTIE-CLASSIFICATIE (`referentie_classificatie.py`, puur): een groep wordt uitgesloten als de referentie
+      (a) op een IBAN lijkt (Food service: NL86INGB0662462785 op 4 boekingen = 6 paren), (b) bij dezelfde crediteur
+      ≥ 3× voorkomt met ≥ 2 verschillende bedragen (BP Express: klantnummer 0817725528 op 7 bank-directe boekingen =
+      21 paren), (c) een placeholder is (blok 7). Tellers per reden per administratie staan in het rapport, de
+      CLI-regel en de lees-only-uitvoer.
+  (2) ÉÉN BEVINDING PER CLUSTER (crediteur + genormaliseerde referentie, álle exemplaren gesorteerd op datum), niet
+      meer per paar. Acceptatie-sleutel = `cluster=<rlz_admin>|<entity>|<genormaliseerde ref>` → vingerafdruk stabiel
+      per cluster (`service.vingerafdruk(documenten|dubbel_in_rlz|<sleutel>)`), record_id = UUIDv5 van die sleutel.
+      Een cluster waarvan ÁLLE exemplaren van de module zijn telt niet (UUIDv5 uit de eigen DB); één module-exemplaar
+      + één handmatig exemplaar IS een treffer; GUID-versie-4 is nooit van ons.
+  (3) RANGORDE: minstens twee exemplaren die beide concept zijn + zelfde factuurdatum + zelfde bedrag =
+      `waarschijnlijk_dubbel` (tekst "Waarschijnlijk dubbel", kantoorbreed urgenter), anders "Zelfde
+      referentie, controleer". De 6-Steps-casus (RLZ-04-00000069/00000072, beide concept, zelfde dag, zelfde bedrag)
+      is de testcasus voor "waarschijnlijk dubbel".
+  (4) OVERGANG OUD → CLUSTER ZONDER MIGRATIE (bestaande tabellen/JSONB):
+      - Open paar-bevindingen (`afwijking`, detail `rlz_id_a`/`rlz_id_b`) uit de VORIGE afgeronde run worden in de
+        eerstvolgende cluster-run opnieuw geregistreerd onder hun EIGEN vingerafdruk als soort `uitgesloten` met
+        uitsluiting "vervangen door cluster [vaf:…]" (beide id's in een cluster) of "referentie uitgesloten (<reden>)"
+        — zo ziet de delta-motor ze niet als "verdwenen/hersteld" (huidig_vafs is soort-agnostisch), verschijnen ze
+        niet als open afwijking, en verdwijnt de tussenstand vanzelf ná één run (de volgende run heeft geen open
+        paar-bevindingen meer als 'vorige'). Paren waarvan een document uit het venster/RLZ verdween worden NIET
+        opnieuw geregistreerd (dat is een echte "verdwenen"-melding).
+      - Actieve PAAR-ACCEPTATIES (`reconciliatie_acceptatie`, detail `rlz_a=… rlz_b=…`) blijven staan en worden
+        éénmalig op het cluster OVERGEDRAGEN als álle exemplaren van het cluster door geaccepteerde paren gedekt zijn
+        (strenger dan "één paar valt erin": een cluster mét een nieuw, niet-beoordeeld exemplaar blijft open — niets
+        verdwijnt stil). Overdracht = nieuwe acceptatie-rij op de cluster-sleutel (zelfde Beheerder als acceptant,
+        reden mét verwijzing naar het paar) + audit `reconciliatie_acceptatie_overgedragen` (systeem-actor). Nooit
+        opnieuw zodra er ooit een cluster-acceptatie bestond (ook een ingetrokken) — intrekken door een Beheerder
+        wint. Deels gedekt = open mét `acceptatie_gedeeltelijk` in het detail (zichtbaar in de tekst).
+- Uitkomst = bevinding `afwijking` soort `dubbel_in_rlz`; acceptatie mét reden via het bestaande pad (bron
+  `documenten`: de DB-CHECK op `reconciliatie_acceptatie.bron` kent geen vijfde waarde en dit blok brengt bewust
+  GEEN migratie). GEEN automatische actie: de RLZ-kant is mensenwerk, de app verwijdert nooit (kernprincipe 3). Er is
+  geen bekende URL-vorm van de RLZ-web-UI per document → de handeling is "open álle boekstuknummers in Reeleezee".
+- `vind_paren` (de OUDE paar-methode) blijft bestaan als MEETLAT voor de lees-only vergelijking "paren OUD → clusters
+  NIEUW" (`reconciliatie-alles --alleen rlz_dubbel --lees-only`) en voor de overgang hierboven.
 
 Geen AI, geen RLZ-writes. Alle geldvergelijking in Decimal."""
 
@@ -48,6 +72,7 @@ from app.db.session import scoped_session
 from app.documenten.duplicaat_afvoer import normaliseer_referentie
 from app.documenten.models import Boekvoorstel, Document, Tegenboeking
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
+from app.reconciliatie import referentie_classificatie as classificatie
 from app.rlz.client import RlzClient, bedrag_cent_exact
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 
@@ -64,6 +89,12 @@ ACCEPTATIE_BRON = "documenten"
 VENSTER_DAGEN = 400
 PAGINA_GROOTTE = 200
 REGEL_REFERENTIE = "referentie"
+#: Uitsluitingsreden op een vervangen paar-bevinding (overgang 10-09) — letterlijke tekst in detail `uitsluiting`.
+UITSLUITING_VERVANGEN = "vervangen door cluster"
+UITSLUITING_REFERENTIE = "referentie uitgesloten"
+#: Namespace voor het deterministische record_id van een cluster (UUIDv5 over de cluster-sleutel).
+_CLUSTER_NAMESPACE = uuid.UUID("6d7f2a3e-1b4c-5d6e-8f90-0a1b2c3d4e5f")
+_PAAR_DETAIL = re.compile(r"rlz_a=([0-9a-fA-F-]{36})\s+rlz_b=([0-9a-fA-F-]{36})")
 #: Genormaliseerde referenties (`normaliseer_referentie`) die geen factuurnummer zijn maar een plaatsvervanger van de
 #: RLZ-UI/scan-import — tellen als leeg, matchen nooit (blok 7 herstelrun 08-09). Alleen nullen (`0`, `000`, `00-00`)
 #: vallen er via `_ALLEEN_NULLEN` ook onder; "factuur"/"invoice" zijn ná normalisatie al leeg (voorvoegsel-strip).
@@ -123,17 +154,35 @@ class RlzDocument:
     def concept(self) -> bool:
         return self.status == 1
 
+    def als_dict(self) -> dict[str, Any]:
+        """Eén exemplaar in het bevinding-detail (0114-JSONB): alleen JSON-veilige waarden."""
+        return {
+            "rlz_id": str(self.rlz_id),
+            "boekstuk": self.boekstuk,
+            "referentie": self.referentie,
+            "datum": self.datum.isoformat() if self.datum else None,
+            "boekdatum": self.boekdatum.isoformat() if self.boekdatum else None,
+            "bedrag": str(self.bedrag) if self.bedrag is not None else None,
+            "status": self.status,
+            "concept": self.concept,
+            "van_module": self.van_module,
+        }
+
+
+def _sorteer_op_datum(documenten: Iterable[RlzDocument]) -> tuple[RlzDocument, ...]:
+    return tuple(sorted(documenten, key=lambda d: (d.datum or date.min, d.boekstuk or "", str(d.rlz_id))))
+
 
 @dataclass(frozen=True)
 class DubbelPaar:
+    """OUDE paar-vorm (blok 6/7) — sinds 10-09 alleen nog meetlat (lees-only vergelijking) en overgangsbrug."""
+
     a: RlzDocument  # a.rlz_id < b.rlz_id (sortering op tekst) — stabiel over runs
     b: RlzDocument
     regels: tuple[str, ...]  # sinds 08-09 altijd (REGEL_REFERENTIE,); oude bevindingen kunnen nog 'bedrag_datum' dragen
 
     @property
     def detail(self) -> str:
-        """De acceptatie-sleutel (bron|soort|detail) — uitsluitend de twee RLZ-id's, zodat het paar over runs
-        dezelfde vingerafdruk houdt (één mail; acceptatie blijft plakken zolang het paar bestaat)."""
         return f"rlz_a={self.a.rlz_id} rlz_b={self.b.rlz_id}"
 
     @property
@@ -145,8 +194,6 @@ class DubbelPaar:
         return self.a.concept or self.b.concept
 
     def context(self, *, administratie_naam: str | None = None, rlz_admin_id: str | None = None) -> dict[str, Any]:
-        """Naamvelden voor `teksten.py` + de UI-uitklap (contract A↔A8: titel/wat/doe zonder GUID's, GUID's in de
-        details)."""
         return {
             "leverancier_naam": self.a.entity_naam or self.b.entity_naam,
             "regel": "+".join(self.regels),
@@ -173,13 +220,145 @@ class DubbelPaar:
 
 
 @dataclass(frozen=True)
+class DubbelCluster:
+    """Alle exemplaren van dezelfde crediteur met dezelfde genormaliseerde referentie (≥ 2, niet álle van de module),
+    gesorteerd op factuurdatum. Sinds 10-09 DE bevinding-eenheid van dit blok."""
+
+    entity_id: uuid.UUID
+    entity_naam: str | None
+    referentie_norm: str
+    rlz_admin_id: str | None
+    documenten: tuple[RlzDocument, ...]
+
+    @property
+    def sleutel(self) -> str:
+        """De acceptatie-sleutel: stabiel zolang crediteur + referentie bestaan — een extra exemplaar verandert
+        de vingerafdruk NIET (beslispunt 10-09: alternatief is de id's in de sleutel)."""
+        return f"cluster={self.rlz_admin_id or ''}|{self.entity_id}|{self.referentie_norm}"
+
+    @property
+    def detail(self) -> str:
+        return self.sleutel
+
+    @property
+    def record_id(self) -> uuid.UUID:
+        return uuid.uuid5(_CLUSTER_NAMESPACE, self.sleutel)
+
+    @property
+    def rlz_ids(self) -> frozenset[uuid.UUID]:
+        return frozenset(d.rlz_id for d in self.documenten)
+
+    @property
+    def concept(self) -> bool:
+        return any(d.concept for d in self.documenten)
+
+    @property
+    def aantal_module(self) -> int:
+        return sum(1 for d in self.documenten if d.van_module)
+
+    @property
+    def waarschijnlijk_dubbel(self) -> bool:
+        """Minstens twee exemplaren die beide concept zijn + zelfde factuurdatum + zelfde bedrag (6-Steps-casus)."""
+        groepen: dict[tuple[date, Decimal], int] = {}
+        for d in self.documenten:
+            if d.concept and d.datum is not None and d.bedrag is not None:
+                groepen[(d.datum, d.bedrag)] = groepen.get((d.datum, d.bedrag), 0) + 1
+        return any(n >= 2 for n in groepen.values())
+
+    @property
+    def paren(self) -> frozenset[frozenset[uuid.UUID]]:
+        ids = sorted(self.rlz_ids, key=str)
+        return frozenset(frozenset((x, y)) for i, x in enumerate(ids) for y in ids[i + 1 :])
+
+    def context(
+        self,
+        *,
+        administratie_naam: str | None = None,
+        acceptatie_gedeeltelijk: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        """Naamvelden voor `teksten.py` + de UI-uitklap: exemplaren als lijst (N boekstukken), plus de A/B-velden van
+        de eerste twee exemplaren zodat oude lezers (frontend-terugval, details-labels) blijven werken."""
+        eerste, tweede = self.documenten[0], self.documenten[1]
+        uit: dict[str, Any] = {
+            "leverancier_naam": self.entity_naam,
+            "referentie": eerste.referentie,
+            "referentie_norm": self.referentie_norm,
+            "regel": REGEL_REFERENTIE,
+            "cluster": self.sleutel,
+            "aantal_exemplaren": len(self.documenten),
+            "aantal_module": self.aantal_module,
+            "concept": self.concept,
+            "waarschijnlijk_dubbel": self.waarschijnlijk_dubbel,
+            "exemplaren": [d.als_dict() for d in self.documenten],
+            "boekstukken": [d.boekstuk for d in self.documenten if d.boekstuk],
+            "rlz_ids": [str(d.rlz_id) for d in self.documenten],
+            "rlz_ids_tekst": ", ".join(str(d.rlz_id) for d in self.documenten),
+            "administratie_naam": administratie_naam,
+            "rlz_admin_id": self.rlz_admin_id,
+            # Terugval-velden (paar-vorm) — eerste twee exemplaren.
+            "referentie_a": eerste.referentie,
+            "referentie_b": tweede.referentie,
+            "boekstuk_a": eerste.boekstuk,
+            "boekstuk_b": tweede.boekstuk,
+            "bedrag_a": str(eerste.bedrag) if eerste.bedrag is not None else None,
+            "bedrag_b": str(tweede.bedrag) if tweede.bedrag is not None else None,
+            "datum_a": eerste.datum.isoformat() if eerste.datum else None,
+            "datum_b": tweede.datum.isoformat() if tweede.datum else None,
+            "status_a": eerste.status,
+            "status_b": tweede.status,
+            "van_module_a": eerste.van_module,
+            "van_module_b": tweede.van_module,
+            "rlz_id_a": str(eerste.rlz_id),
+            "rlz_id_b": str(tweede.rlz_id),
+        }
+        if acceptatie_gedeeltelijk:
+            uit["acceptatie_gedeeltelijk"] = list(acceptatie_gedeeltelijk)
+        return uit
+
+
+@dataclass(frozen=True)
+class UitgeslotenGroep:
+    """Eén referentiegroep die géén cluster werd, mét reden — voor tellers, CLI-regel en lees-only-uitvoer."""
+
+    entity_id: uuid.UUID
+    entity_naam: str | None
+    referentie: str | None
+    referentie_norm: str | None
+    reden: str
+    aantal_documenten: int
+    aantal_bedragen: int
+    rlz_ids: frozenset[uuid.UUID]
+
+
+@dataclass(frozen=True)
+class ClusterUitkomst:
+    clusters: tuple[DubbelCluster, ...]
+    uitgesloten: tuple[UitgeslotenGroep, ...]
+
+    def tellers(self) -> dict[str, dict[str, int]]:
+        """reden → {groepen, documenten}, in de vaste volgorde van `UITSLUITINGSREDENEN` (ook bij 0)."""
+        uit = {r: {"groepen": 0, "documenten": 0} for r in classificatie.UITSLUITINGSREDENEN}
+        for g in self.uitgesloten:
+            uit.setdefault(g.reden, {"groepen": 0, "documenten": 0})
+            uit[g.reden]["groepen"] += 1
+            uit[g.reden]["documenten"] += g.aantal_documenten
+        return uit
+
+
+@dataclass(frozen=True)
 class RlzDubbelRapport:
     administratie_id: uuid.UUID | None
     aantal_getoetst: int  # documenten in het venster
     aantal_module: int  # waarvan door de module aangemaakt
     aantal_zonder_crediteur: int  # zonder Entity — niet toetsbaar
-    paren: tuple[DubbelPaar, ...]
+    paren: tuple[DubbelPaar, ...]  # OUDE meetlat (paar-methode), alleen ter vergelijking
     venster_vanaf: date
+    clusters: tuple[DubbelCluster, ...] = ()
+    uitgesloten: tuple[UitgeslotenGroep, ...] = ()
+    rlz_admin_id: str | None = None
+
+    def uitsluiting_tellers(self) -> dict[str, dict[str, int]]:
+        return ClusterUitkomst(clusters=self.clusters, uitgesloten=self.uitgesloten).tellers()
 
 
 @dataclass(frozen=True)
@@ -273,14 +452,13 @@ def is_van_module(rlz_id: uuid.UUID, module_ids: set[uuid.UUID]) -> bool:
     return rlz_id in module_ids
 
 
-# ---- paren zoeken (puur) -------------------------------------------------------------------------
+# ---- paren zoeken (puur; OUDE meetlat) -------------------------------------------------------------
 
 
 def vind_paren(documenten: Iterable[RlzDocument]) -> list[DubbelPaar]:
-    """Paren binnen dezelfde crediteur op UITSLUITEND gelijke genormaliseerde referentie (placeholder-referenties zijn
-    al None, zie `toetsbare_referentie`). Bedrag en datum spelen sinds 08-09 GEEN rol meer (blok 7: 508 ruis-paren bij
-    Kempen). Beide-van-de-module = geen treffer. Documenten zonder Entity zijn niet toetsbaar. Elk paar hooguit één
-    keer, gesorteerd op RLZ-id (stabiele vingerafdruk)."""
+    """OUDE paar-methode (blok 6/7): paren binnen dezelfde crediteur op UITSLUITEND gelijke genormaliseerde referentie
+    (placeholder-referenties zijn al None). Sinds 10-09 alleen nog de meetlat "paren OUD" in de lees-only vergelijking
+    en de overgangsbrug voor bestaande paar-bevindingen/-acceptaties — de bevinding-eenheid is `vind_clusters`."""
     per_crediteur: dict[uuid.UUID, list[RlzDocument]] = {}
     for d in documenten:
         if d.entity_id is None:
@@ -313,6 +491,67 @@ def vind_paren(documenten: Iterable[RlzDocument]) -> list[DubbelPaar]:
     return uit
 
 
+# ---- clusters zoeken (puur) ----------------------------------------------------------------------
+
+
+def vind_clusters(documenten: Iterable[RlzDocument], *, rlz_admin_id: str | None = None) -> ClusterUitkomst:
+    """Referentiegroepen per crediteur → classificatie (`referentie_classificatie.classificeer_groep`) → cluster
+    (toetsbaar, ≥ 2 exemplaren, niet álle van de module) of uitgesloten groep mét reden. Documenten zonder Entity zijn
+    niet toetsbaar. Placeholder-groepen (referentie_norm None, ruwe referentie aanwezig) worden per crediteur op de
+    ruwe genormaliseerde tekst gegroepeerd zodat de teller "hoeveel groepen om welke reden" ook voor (c) klopt.
+    Clusters gesorteerd op crediteur-naam + referentie (stabiel), exemplaren op datum."""
+    documenten = list(documenten)
+    per_crediteur: dict[uuid.UUID, list[RlzDocument]] = {}
+    for d in documenten:
+        if d.entity_id is None:
+            continue
+        per_crediteur.setdefault(d.entity_id, []).append(d)
+
+    clusters: list[DubbelCluster] = []
+    uitgesloten: list[UitgeslotenGroep] = []
+    for entity_id, docs in per_crediteur.items():
+        groepen: dict[tuple[str, str], list[RlzDocument]] = {}
+        for d in docs:
+            if d.referentie_norm:
+                groepen.setdefault(("ref", d.referentie_norm), []).append(d)
+            elif d.referentie:
+                ruw = normaliseer_referentie(d.referentie) or d.referentie.strip().lower()
+                groepen.setdefault(("placeholder", ruw), []).append(d)
+        for (soort, norm), groep in groepen.items():
+            if len(groep) < 2:
+                continue
+            uitkomst = classificatie.classificeer_groep(groep)
+            naam = next((d.entity_naam for d in groep if d.entity_naam), None)
+            if not uitkomst.toetsbaar:
+                uitgesloten.append(
+                    UitgeslotenGroep(
+                        entity_id=entity_id,
+                        entity_naam=naam,
+                        referentie=groep[0].referentie,
+                        referentie_norm=norm if soort == "ref" else None,
+                        reden=uitkomst.reden or classificatie.REDEN_PLACEHOLDER,
+                        aantal_documenten=len(groep),
+                        aantal_bedragen=uitkomst.aantal_bedragen,
+                        rlz_ids=frozenset(d.rlz_id for d in groep),
+                    )
+                )
+                continue
+            if all(d.van_module for d in groep):
+                continue  # domein van de module-duplicaatcheck en de RLZ-duplicaatcheck vóór de PUT
+            clusters.append(
+                DubbelCluster(
+                    entity_id=entity_id,
+                    entity_naam=naam,
+                    referentie_norm=norm,
+                    rlz_admin_id=rlz_admin_id,
+                    documenten=_sorteer_op_datum(groep),
+                )
+            )
+    clusters.sort(key=lambda c: (c.entity_naam or "", c.referentie_norm, str(c.entity_id)))
+    uitgesloten.sort(key=lambda g: (g.reden, g.entity_naam or "", g.referentie or "", str(g.entity_id)))
+    return ClusterUitkomst(clusters=tuple(clusters), uitgesloten=tuple(uitgesloten))
+
+
 # ---- module-GUID's uit de eigen DB ----------------------------------------------------------------
 
 
@@ -320,7 +559,7 @@ def module_ids_voor(administratie_id: uuid.UUID) -> set[uuid.UUID]:
     """Alle RLZ-inkoopdocument-GUID's die de module voor deze administratie kan hebben aangemaakt — deterministisch
     afgeleid (rlz_ids.py bewaart ze bewust niet als kolom): élk inkoopdocument × élke boek_cyclus (herboekingen),
     tegenboekingen, doorbelasting-spiegels in deze (doel-)administratie en bank-relatieboekingen. Ruimer dan strikt
-    nodig is onschadelijk: de set bepaalt alleen "beide van de module → geen treffer"."""
+    nodig is onschadelijk: de set bepaalt alleen "álle van de module → geen treffer"."""
     uit: set[uuid.UUID] = set()
     with scoped_session(administratie_id) as session:
         rijen = session.execute(
@@ -374,11 +613,13 @@ def toets_met_client(
     module_ids: set[uuid.UUID],
     administratie_id: uuid.UUID | None = None,
     vandaag: date | None = None,
+    rlz_admin_id: str | None = None,
 ) -> RlzDubbelRapport:
     """De toets zelf, los van DB en credentials — ook het hart van het read-only live-script."""
     vanaf = venster_vanaf(vandaag)
     rijen = lees_purchase_invoices(client, vanaf=vanaf)
     documenten = [d for d in (naar_rlz_document(r, module_ids=module_ids) for r in rijen) if d is not None]
+    uitkomst = vind_clusters(documenten, rlz_admin_id=rlz_admin_id)
     return RlzDubbelRapport(
         administratie_id=administratie_id,
         aantal_getoetst=len(documenten),
@@ -386,6 +627,9 @@ def toets_met_client(
         aantal_zonder_crediteur=sum(1 for d in documenten if d.entity_id is None),
         paren=tuple(vind_paren(documenten)),
         venster_vanaf=vanaf,
+        clusters=uitkomst.clusters,
+        uitgesloten=uitkomst.uitgesloten,
+        rlz_admin_id=rlz_admin_id,
     )
 
 
@@ -399,15 +643,29 @@ def toets_administratie(
     module_ids = module_ids_voor(administratie_id)
     maak = client_factory or (lambda rid: client_voor_rlz_admin_id(rid).for_administration(rid))
     with maak(rlz_admin_id) as client:
-        return toets_met_client(client, module_ids=module_ids, administratie_id=administratie_id, vandaag=vandaag)
+        return toets_met_client(
+            client,
+            module_ids=module_ids,
+            administratie_id=administratie_id,
+            vandaag=vandaag,
+            rlz_admin_id=rlz_admin_id,
+        )
 
 
-def toets_alle(*, client_factory: Callable[[str], RlzClient] | None = None) -> RlzDubbelResultaat:
-    """Alle actieve RLZ-administraties; één kapotte administratie stopt de rest niet (zichtbaar als fout);
-    Odoo-administraties zichtbaar overgeslagen (A12-patroon)."""
+def toets_alle(
+    *,
+    client_factory: Callable[[str], RlzClient] | None = None,
+    administratie_ids: Sequence[uuid.UUID] | None = None,
+) -> RlzDubbelResultaat:
+    """Alle actieve RLZ-administraties (of alleen `administratie_ids`); één kapotte administratie stopt de rest niet
+    (zichtbaar als fout); Odoo-administraties zichtbaar overgeslagen (A12-patroon)."""
     from app.backends.registry import RLZ_ONLY_OVERGESLAGEN, actieve_administraties_per_backend
 
     rlz_ids, odoo_ids = actieve_administraties_per_backend()
+    if administratie_ids is not None:
+        keuze = set(administratie_ids)
+        rlz_ids = [aid for aid in rlz_ids if aid in keuze]
+        odoo_ids = [aid for aid in odoo_ids if aid in keuze]
     rapporten: dict[uuid.UUID, RlzDubbelRapport] = {}
     fouten: dict[uuid.UUID, str] = {}
     for aid in rlz_ids:
@@ -421,14 +679,246 @@ def toets_alle(*, client_factory: Callable[[str], RlzClient] | None = None) -> R
     )
 
 
+# ---- overgang paar → cluster: acceptaties ---------------------------------------------------------
+
+
+def paar_ids_uit_detail(detail: str | None) -> frozenset[uuid.UUID] | None:
+    """`rlz_a=<id> rlz_b=<id>` (acceptatie-detail van de oude paar-vorm) → {id, id}; None als het geen paar is."""
+    m = _PAAR_DETAIL.search(detail or "")
+    if not m:
+        return None
+    try:
+        return frozenset((uuid.UUID(m.group(1)), uuid.UUID(m.group(2))))
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class AcceptatieOverdracht:
+    cluster_sleutel: str
+    cluster_vingerafdruk: str
+    status: str  # overgedragen | dry_run | gedeeltelijk
+    paar_vingerafdrukken: tuple[str, ...]
+    reden: str | None
+    ongedekt: tuple[str, ...] = ()  # boekstuknummers/id's zonder geaccepteerd paar
+
+
+def draag_paar_acceptaties_over(
+    *, administratie_id: uuid.UUID, clusters: Sequence[DubbelCluster], dry_run: bool = False
+) -> list[AcceptatieOverdracht]:
+    """Bestaande PAAR-acceptaties (bron documenten, soort dubbel_in_rlz, detail `rlz_a=… rlz_b=…`) éénmalig op het
+    cluster overdragen — uitsluitend als álle exemplaren van het cluster door geaccepteerde paren gedekt zijn. Nooit
+    als er voor de cluster-sleutel ooit een acceptatie bestond (actief óf ingetrokken): een Beheerder die het cluster
+    intrekt wint. `dry_run` = alleen rapporteren wat er zou gebeuren (lees-only CLI)."""
+    from app.db.audit import record_audit_event
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.reconciliatie import service as acceptatie_service
+    from app.reconciliatie.models import ReconciliatieAcceptatie
+
+    if not clusters:
+        return []
+    uit: list[AcceptatieOverdracht] = []
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rijen = session.scalars(
+            select(ReconciliatieAcceptatie).where(
+                ReconciliatieAcceptatie.administratie_id == administratie_id,
+                ReconciliatieAcceptatie.bron == ACCEPTATIE_BRON,
+                ReconciliatieAcceptatie.soort == SOORT,
+            )
+        ).all()
+        cluster_vafs_bekend = {r.vingerafdruk for r in rijen if (r.detail or "").startswith("cluster=")}
+        actieve_paren = [
+            (r, ids) for r in rijen if r.ingetrokken_op is None and (ids := paar_ids_uit_detail(r.detail)) is not None
+        ]
+        if not actieve_paren:
+            return []
+        for cluster in clusters:
+            vaf = acceptatie_service.vingerafdruk(bron=ACCEPTATIE_BRON, soort=SOORT, detail=cluster.detail)
+            if vaf in cluster_vafs_bekend:
+                continue
+            ids = set(cluster.rlz_ids)
+            dekkend = [(r, p) for r, p in actieve_paren if p <= ids]
+            if not dekkend:
+                continue
+            gedekt: set[uuid.UUID] = set()
+            for _, p in dekkend:
+                gedekt |= p
+            if gedekt != ids:
+                ongedekt = tuple(d.boekstuk or str(d.rlz_id) for d in cluster.documenten if d.rlz_id not in gedekt)
+                uit.append(
+                    AcceptatieOverdracht(
+                        cluster_sleutel=cluster.sleutel,
+                        cluster_vingerafdruk=vaf,
+                        status="gedeeltelijk",
+                        paar_vingerafdrukken=tuple(r.vingerafdruk for r, _ in dekkend),
+                        reden=None,
+                        ongedekt=ongedekt,
+                    )
+                )
+                continue
+            eerste = dekkend[0][0]
+            boekstukken = " + ".join(d.boekstuk or "?" for d in cluster.documenten)
+            reden = (
+                f"{eerste.reden} (overgenomen van paar-acceptatie {boekstukken}, "
+                f"{eerste.geaccepteerd_op.date().isoformat()}; cluster-overgang 10-09)"
+            )[:1000]
+            if dry_run:
+                uit.append(
+                    AcceptatieOverdracht(
+                        cluster_sleutel=cluster.sleutel,
+                        cluster_vingerafdruk=vaf,
+                        status="dry_run",
+                        paar_vingerafdrukken=tuple(r.vingerafdruk for r, _ in dekkend),
+                        reden=reden,
+                    )
+                )
+                continue
+            nieuw = ReconciliatieAcceptatie(
+                id=uuid.uuid4(),
+                administratie_id=administratie_id,
+                bron=ACCEPTATIE_BRON,
+                record_id=cluster.record_id,
+                soort=SOORT,
+                vingerafdruk=vaf,
+                detail=cluster.detail,
+                reden=reden,
+                geaccepteerd_door=eerste.geaccepteerd_door,
+            )
+            session.add(nieuw)
+            record_audit_event(
+                session,
+                actor_id=SYSTEEM_ACTOR_ID,
+                module="boekhouding",
+                tabel="reconciliatie_acceptatie",
+                record_id=nieuw.id,
+                actie="reconciliatie_acceptatie_overgedragen",
+                correlatie_id=uuid.uuid4(),
+                oude_waarde={
+                    "paar_vingerafdrukken": [r.vingerafdruk for r, _ in dekkend],
+                    "paar_details": [r.detail for r, _ in dekkend],
+                },
+                nieuwe_waarde={
+                    "bron": ACCEPTATIE_BRON,
+                    "soort": SOORT,
+                    "vingerafdruk": vaf,
+                    "detail": cluster.detail,
+                    "reden": reden,
+                    "geaccepteerd_door": str(eerste.geaccepteerd_door),
+                },
+                administratie_id=administratie_id,
+            )
+            cluster_vafs_bekend.add(vaf)
+            uit.append(
+                AcceptatieOverdracht(
+                    cluster_sleutel=cluster.sleutel,
+                    cluster_vingerafdruk=vaf,
+                    status="overgedragen",
+                    paar_vingerafdrukken=tuple(r.vingerafdruk for r, _ in dekkend),
+                    reden=reden,
+                )
+            )
+    return uit
+
+
+# ---- overgang paar → cluster: open paar-bevindingen uit de vorige run ------------------------------
+
+
+@dataclass(frozen=True)
+class VervangenPaar:
+    vingerafdruk: str  # de OUDE paar-vingerafdruk (blijft, zodat de delta-motor geen "verdwenen" ziet)
+    rlz_ids: frozenset[uuid.UUID]
+    boekstuk_a: str | None
+    boekstuk_b: str | None
+    uitsluiting: str  # "vervangen door cluster [vaf:…]" | "referentie uitgesloten (<reden>)"
+    cluster_vingerafdruk: str | None
+    detail_oud: dict[str, Any]
+
+
+def vorige_paar_bevindingen(administratie_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[Any]]:
+    """Open paar-bevindingen (`afwijking`, blok rlz_dubbel, detail rlz_id_a/rlz_id_b) uit de laatste afgeronde run,
+    per administratie. Leeg als er nog geen run was."""
+    from app.reconciliatie import run as run_service
+
+    vorige = run_service.laatste_afgeronde_run()
+    if vorige is None or not administratie_ids:
+        return {}
+    uit: dict[uuid.UUID, list[Any]] = {}
+    for b in run_service.lees_bevindingen(vorige.run_id, administratie_ids=list(administratie_ids)):
+        d = b.detail or {}
+        if b.blok != BLOK or b.soort != "afwijking" or b.administratie_id is None:
+            continue
+        # Alleen de OUDE paar-vorm: acceptatie-detail `rlz_a=… rlz_b=…`. Een cluster-bevinding draagt de A/B-velden
+        # óók (terugval voor oude lezers) maar heeft `cluster=…` als detail — die is nooit "vorig paar".
+        if d.get("cluster") or not str(d.get("detail") or "").startswith("rlz_a="):
+            continue
+        if not (d.get("rlz_id_a") and d.get("rlz_id_b")):
+            continue
+        uit.setdefault(b.administratie_id, []).append(b)
+    return uit
+
+
+def vervang_paar_bevindingen(
+    *, vorige: Sequence[Any], clusters: Sequence[DubbelCluster], uitgesloten: Sequence[UitgeslotenGroep]
+) -> list[VervangenPaar]:
+    """Puur: koppel elke oude open paar-bevinding aan een cluster (beide id's erin) of aan een uitgesloten groep
+    (beide id's erin); paren waarvan een document niet meer in de toets zit worden NIET vervangen (echte
+    "verdwenen"-melding)."""
+    from app.reconciliatie import service as acceptatie_service
+
+    uit: list[VervangenPaar] = []
+    for b in vorige:
+        d = b.detail or {}
+        ids = {_als_uuid(d.get("rlz_id_a")), _als_uuid(d.get("rlz_id_b"))} - {None}
+        if len(ids) != 2:
+            continue
+        ids_f = frozenset(ids)  # type: ignore[arg-type]
+        cluster = next((c for c in clusters if ids_f <= c.rlz_ids), None)
+        if cluster is not None:
+            vaf = acceptatie_service.vingerafdruk(bron=ACCEPTATIE_BRON, soort=SOORT, detail=cluster.detail)
+            uitsluiting = f"{UITSLUITING_VERVANGEN} [vaf:{vaf}]"
+            cluster_vaf: str | None = vaf
+        else:
+            groep = next((g for g in uitgesloten if ids_f <= g.rlz_ids), None)
+            if groep is None:
+                continue
+            uitsluiting = f"{UITSLUITING_REFERENTIE} ({classificatie.REDEN_LABEL.get(groep.reden, groep.reden)})"
+            cluster_vaf = None
+        uit.append(
+            VervangenPaar(
+                vingerafdruk=b.vingerafdruk,
+                rlz_ids=ids_f,
+                boekstuk_a=d.get("boekstuk_a"),
+                boekstuk_b=d.get("boekstuk_b"),
+                uitsluiting=uitsluiting,
+                cluster_vingerafdruk=cluster_vaf,
+                detail_oud=dict(d),
+            )
+        )
+    return uit
+
+
 # ---- CLI-blok (reconciliatie-alles) -------------------------------------------------------------
 
 
-def _regel_tekst(administratie_id: uuid.UUID, paar: DubbelPaar, beoordeeld) -> str:  # noqa: ANN001
+def _tellers_tekst(rapport: RlzDubbelRapport) -> str:
+    delen = []
+    for reden, t in rapport.uitsluiting_tellers().items():
+        if t["groepen"]:
+            delen.append(f"{reden} {t['groepen']} groep(en)/{t['documenten']} doc")
+    return "uitgesloten: " + (", ".join(delen) if delen else "geen")
+
+
+def _cluster_regel_tekst(administratie_id: uuid.UUID, cluster: DubbelCluster, beoordeeld) -> str:  # noqa: ANN001
+    kenmerken = [REGEL_REFERENTIE, f"ref {cluster.referentie_norm}", f"{len(cluster.documenten)} exemplaren"]
+    if cluster.waarschijnlijk_dubbel:
+        kenmerken.append("waarschijnlijk dubbel")
+    if cluster.concept:
+        kenmerken.append("concept")
+    if cluster.aantal_module:
+        kenmerken.append(f"{cluster.aantal_module} via de module")
     kop = (
-        f"{administratie_id} rlz_a={paar.a.rlz_id} rlz_b={paar.b.rlz_id} soort={SOORT} "
-        f"[vaf:{beoordeeld.vingerafdruk}]: {paar.a.boekstuk or '?'} + {paar.b.boekstuk or '?'} "
-        f"({'+'.join(paar.regels)}{', concept' if paar.concept else ''})"
+        f"{administratie_id} {cluster.sleutel} soort={SOORT} [vaf:{beoordeeld.vingerafdruk}]: "
+        f"{' + '.join(d.boekstuk or '?' for d in cluster.documenten)} ({', '.join(kenmerken)})"
     )
     if beoordeeld.acceptatie is None:
         return kop
@@ -438,16 +928,55 @@ def _regel_tekst(administratie_id: uuid.UUID, paar: DubbelPaar, beoordeeld) -> s
     )
 
 
+def _lees_only_administratie(
+    aid: uuid.UUID, rapport: RlzDubbelRapport, *, naam: str | None, stdout: Callable[[str], None]
+) -> None:
+    """Lees-only vergelijking per administratie: paren OUD → clusters NIEUW + uitsluitingstellers + regels."""
+    from app.reconciliatie import service as acceptatie_service
+
+    beoordeeld = acceptatie_service.beoordeel(
+        bron=ACCEPTATIE_BRON,
+        administratie_id=aid,
+        afwijkingen=[(c.record_id, SOORT, c.detail) for c in rapport.clusters],
+    )
+    overdrachten = draag_paar_acceptaties_over(administratie_id=aid, clusters=rapport.clusters, dry_run=True)
+    zou_overdragen = {o.cluster_vingerafdruk for o in overdrachten if o.status == "dry_run"}
+    open_hier = sum(1 for b in beoordeeld if b.telt_mee and b.vingerafdruk not in zou_overdragen)
+    overdracht_tekst = f", waarvan {len(zou_overdragen)} via overdracht" if zou_overdragen else ""
+    waarschijnlijk = sum(1 for c in rapport.clusters if c.waarschijnlijk_dubbel)
+    stdout(
+        f"LEES-ONLY  {aid}{f' ({naam})' if naam else ''}: {rapport.aantal_getoetst} inkoopfacturen sinds "
+        f"{rapport.venster_vanaf.isoformat()} — paren OUD {len(rapport.paren)} → clusters NIEUW "
+        f"{len(rapport.clusters)} ({waarschijnlijk} waarschijnlijk dubbel, {open_hier} open, "
+        f"{len(beoordeeld) - open_hier} geaccepteerd{overdracht_tekst}); "
+        f"{_tellers_tekst(rapport)}"
+    )
+    for cluster, b in zip(rapport.clusters, beoordeeld, strict=True):
+        stdout(
+            f"    - {'GEACCEPTEERD ' if b.vingerafdruk in zou_overdragen else ''}"
+            f"{_cluster_regel_tekst(aid, cluster, b)}"
+        )
+    for g in rapport.uitgesloten:
+        stdout(
+            f"    · uitgesloten ({classificatie.REDEN_LABEL.get(g.reden, g.reden)}): {g.entity_naam or '?'} "
+            f"ref {g.referentie!r} — {g.aantal_documenten} documenten, {g.aantal_bedragen} verschillende bedragen"
+        )
+
+
 def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, stderr=None) -> int:  # noqa: ANN001
     """Blokfunctie voor `reconciliatie-alles` (zelfde contract als `_omzet_reconciliatie` in app/cli.py): print
-    dezelfde soort regels, registreer élke regel als bevinding, exit 1 zodra er een open paar of een fout is.
-    Losse aanroep zonder verzamelaar blijft werken (alleen printen)."""
+    dezelfde soort regels, registreer élke regel als bevinding, exit 1 zodra er een open cluster of een fout is.
+    Losse aanroep zonder verzamelaar blijft werken (alleen printen). `args.administratie_ids` beperkt de toets;
+    `args.lees_only` = dry-run-vergelijking paren OUD → clusters NIEUW zonder bevindingen en zonder
+    acceptatie-overdracht."""
     import sys
 
     from app.reconciliatie import service as acceptatie_service
     from app.reconciliatie import verrijking
 
     stderr = stderr or (lambda tekst: print(tekst, file=sys.stderr))
+    administratie_ids = getattr(args, "administratie_ids", None)
+    lees_only = bool(getattr(args, "lees_only", False))
 
     def meld(**kw) -> None:  # noqa: ANN003
         if verzamelaar is not None:
@@ -459,7 +988,7 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
         except Exception:  # noqa: BLE001
             return None
 
-    resultaat = toets_alle()
+    resultaat = toets_alle(administratie_ids=administratie_ids)
     for aid, reden in resultaat.overgeslagen.items():
         stdout(f"OVERGESLAGEN {aid}: {reden}")
     uitgesloten = acceptatie_service.uitgesloten_administraties()
@@ -482,43 +1011,108 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
         stderr(tekst)
         meld(soort="fout", administratie_id=aid, tekst=tekst, detail=verrijking.administratie(aid, fout=fout) or None)
 
+    if lees_only:
+        for aid, rapport in resultaat.rapporten.items():
+            _lees_only_administratie(aid, rapport, naam=naam_van(aid), stdout=stdout)
+        vorige = vorige_paar_bevindingen(list(resultaat.rapporten))
+        te_vervangen = sum(
+            len(vervang_paar_bevindingen(vorige=vorige.get(aid, []), clusters=r.clusters, uitgesloten=r.uitgesloten))
+            for aid, r in resultaat.rapporten.items()
+        )
+        totaal_oud = sum(len(r.paren) for r in resultaat.rapporten.values())
+        totaal_nieuw = sum(len(r.clusters) for r in resultaat.rapporten.values())
+        stdout(
+            f"\nLEES-ONLY: {len(resultaat.rapporten)} administratie(s) — paren OUD {totaal_oud} → clusters NIEUW "
+            f"{totaal_nieuw}; {sum(len(v) for v in vorige.values())} open paar-bevinding(en) in de vorige run, waarvan "
+            f"{te_vervangen} bij de eerstvolgende run vervangen worden. Niets geschreven, niets gemaild."
+        )
+        return 1 if echte_fouten else 0
+
+    # Overgang: open paar-bevindingen uit de vorige run → vervangen (eigen vingerafdruk, soort uitgesloten).
+    try:
+        vorige = vorige_paar_bevindingen(list(resultaat.rapporten))
+    except Exception:  # noqa: BLE001 — de overgang mag de toets nooit laten omvallen
+        logger.exception("vorige paar-bevindingen niet gelezen")
+        vorige = {}
+
     open_totaal = 0
     geaccepteerd_totaal = 0
     getoetst_totaal = 0
-    paren_totaal = 0
+    clusters_totaal = 0
+    vervangen_totaal = 0
     for aid, rapport in resultaat.rapporten.items():
         getoetst_totaal += rapport.aantal_getoetst
-        paren_totaal += len(rapport.paren)
+        clusters_totaal += len(rapport.clusters)
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(rapport.aantal_getoetst)
         uitsluiting = uitgesloten.get(aid)
-        if not rapport.paren:
+        administratie_naam = naam_van(aid)
+
+        try:
+            overdrachten = draag_paar_acceptaties_over(administratie_id=aid, clusters=rapport.clusters)
+        except Exception as exc:  # noqa: BLE001 — zichtbaar, nooit stil; de toets zelf gaat door
+            logger.exception("acceptatie-overdracht mislukt voor %s", aid)
+            stderr(f"FOUT       {aid}: acceptatie-overdracht paar → cluster mislukt: {exc}")
+            overdrachten = []
+        gedeeltelijk = {o.cluster_vingerafdruk: o for o in overdrachten if o.status == "gedeeltelijk"}
+        for o in overdrachten:
+            if o.status == "overgedragen":
+                stdout(
+                    f"    · acceptatie overgedragen op cluster [vaf:{o.cluster_vingerafdruk}] ← paar "
+                    f"{', '.join(o.paar_vingerafdrukken)}"
+                )
+
+        vervangen = vervang_paar_bevindingen(
+            vorige=vorige.get(aid, []), clusters=rapport.clusters, uitgesloten=rapport.uitgesloten
+        )
+        for v in vervangen:
+            vervangen_totaal += 1
+            tekst = (
+                f"UITGESLOTEN {aid}: paar {v.boekstuk_a or '?'} + {v.boekstuk_b or '?'} [vaf:{v.vingerafdruk}] "
+                f"(uitgesloten: {v.uitsluiting})"
+            )
+            stdout(f"    - {tekst}")
+            meld(
+                soort="uitgesloten",
+                administratie_id=aid,
+                tekst=tekst,
+                vingerafdruk=v.vingerafdruk,
+                detail={
+                    "afwijking_soort": SOORT,
+                    "uitsluiting": v.uitsluiting,
+                    "vervangen_door_vingerafdruk": v.cluster_vingerafdruk,
+                    "boekstuk_a": v.boekstuk_a,
+                    "boekstuk_b": v.boekstuk_b,
+                    "rlz_id_a": v.detail_oud.get("rlz_id_a"),
+                    "rlz_id_b": v.detail_oud.get("rlz_id_b"),
+                    "leverancier_naam": v.detail_oud.get("leverancier_naam"),
+                    "administratie_naam": administratie_naam,
+                },
+            )
+
+        if not rapport.clusters:
             stdout(
                 f"OK         {aid}: {rapport.aantal_getoetst} inkoopfacturen sinds {rapport.venster_vanaf.isoformat()} "
                 f"({rapport.aantal_module} van de module, {rapport.aantal_zonder_crediteur} zonder crediteur), "
-                "geen dubbele paren"
+                f"geen clusters met dezelfde referentie; {_tellers_tekst(rapport)}"
             )
             continue
         beoordeeld = acceptatie_service.beoordeel(
             bron=ACCEPTATIE_BRON,
             administratie_id=aid,
-            afwijkingen=[(p.record_id, SOORT, p.detail) for p in rapport.paren],
+            afwijkingen=[(c.record_id, SOORT, c.detail) for c in rapport.clusters],
         )
         open_hier = sum(1 for b in beoordeeld if b.telt_mee)
+        waarschijnlijk = sum(1 for c in rapport.clusters if c.waarschijnlijk_dubbel)
         kop = "UITGESLOTEN" if uitsluiting else ("AFWIJKING " if open_hier else "OK        ")
         stdout(
             f"{kop} {aid}: {rapport.aantal_getoetst} inkoopfacturen sinds {rapport.venster_vanaf.isoformat()}, "
-            f"{len(rapport.paren)} mogelijk dubbel paar/paren ({open_hier} open, {len(beoordeeld) - open_hier} "
-            f"geaccepteerd){f' — telt niet mee ({uitsluiting})' if uitsluiting else ''}"
+            f"{len(rapport.clusters)} cluster(s) met dezelfde referentie ({waarschijnlijk} waarschijnlijk dubbel; "
+            f"{open_hier} open, {len(beoordeeld) - open_hier} geaccepteerd); {_tellers_tekst(rapport)}"
+            f"{f' — telt niet mee ({uitsluiting})' if uitsluiting else ''}"
         )
-        administratie_naam = naam_van(aid)
-        rlz_admin_id: str | None
-        try:
-            rlz_admin_id = rlz_admin_id_voor(aid)
-        except Exception:  # noqa: BLE001
-            rlz_admin_id = None
-        for paar, b in zip(rapport.paren, beoordeeld, strict=True):
-            regel = _regel_tekst(aid, paar, b)
+        for cluster, b in zip(rapport.clusters, beoordeeld, strict=True):
+            regel = _cluster_regel_tekst(aid, cluster, b)
             if uitsluiting:
                 soort = "uitgesloten"
                 tekst = f"    - UITGESLOTEN {regel}"
@@ -533,6 +1127,7 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
                 geaccepteerd_totaal += 1
                 tekst = f"    - {regel}"
                 stdout(tekst)
+            deels = gedeeltelijk.get(b.vingerafdruk)
             meld(
                 soort=soort,
                 administratie_id=aid,
@@ -545,33 +1140,45 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
                     "detail": b.detail,
                     "geaccepteerd": not b.telt_mee,
                     "uitsluiting": uitsluiting,
-                    **paar.context(administratie_naam=administratie_naam, rlz_admin_id=rlz_admin_id),
+                    **cluster.context(
+                        administratie_naam=administratie_naam,
+                        acceptatie_gedeeltelijk=deels.ongedekt if deels else None,
+                    ),
                 },
             )
 
     stdout(
         f"\n{len(resultaat.rapporten)}/{len(resultaat.rapporten) + len(resultaat.fouten)} administraties getoetst, "
-        f"{getoetst_totaal} inkoopfacturen, {paren_totaal} mogelijk dubbel paar/paren "
-        f"({open_totaal} open, {geaccepteerd_totaal} geaccepteerd)."
+        f"{getoetst_totaal} inkoopfacturen, {clusters_totaal} cluster(s) met dezelfde referentie "
+        f"({open_totaal} open, {geaccepteerd_totaal} geaccepteerd)"
+        f"{f'; {vervangen_totaal} paar-bevinding(en) uit de vorige run vervangen' if vervangen_totaal else ''}."
     )
     if echte_fouten or open_totaal:
-        stderr(f"{open_totaal} open paar/paren en {echte_fouten} mislukte administratie(s) in de RLZ-dubbel-toets")
+        stderr(f"{open_totaal} open cluster(s) en {echte_fouten} mislukte administratie(s) in de RLZ-dubbel-toets")
         return 1
     return 0
 
 
 def paren_als_tekst(rapport: RlzDubbelRapport) -> Sequence[str]:
-    """Leesbare regels voor het live/dry-run-script (geen bevindingen, geen DB)."""
+    """Leesbare regels voor het live/dry-run-script (geen bevindingen, geen DB): clusters NIEUW + paren OUD."""
     uit = [
         f"{rapport.aantal_getoetst} inkoopfacturen sinds {rapport.venster_vanaf.isoformat()} "
         f"({rapport.aantal_module} van de module, {rapport.aantal_zonder_crediteur} zonder crediteur) — "
-        f"{len(rapport.paren)} mogelijk dubbel paar/paren"
+        f"{len(rapport.clusters)} cluster(s) (paren OUD: {len(rapport.paren)}); {_tellers_tekst(rapport)}"
     ]
-    for p in rapport.paren:
+    for c in rapport.clusters:
+        exemplaren = "; ".join(
+            f"{d.boekstuk or '?'} ({d.datum}, {d.bedrag}, status {d.status}{', module' if d.van_module else ''})"
+            for d in c.documenten
+        )
         uit.append(
-            f"  - {p.a.entity_naam or '?'}: {p.a.boekstuk or '?'} ({p.a.referentie}, {p.a.datum}, {p.a.bedrag}, "
-            f"status {p.a.status}{', module' if p.a.van_module else ''}) ↔ {p.b.boekstuk or '?'} "
-            f"({p.b.referentie}, {p.b.datum}, {p.b.bedrag}, status {p.b.status}{', module' if p.b.van_module else ''}) "
-            f"[{'+'.join(p.regels)}] rlz_a={p.a.rlz_id} rlz_b={p.b.rlz_id}"
+            f"  - {c.entity_naam or '?'} ref {c.referentie_norm}"
+            f"{' WAARSCHIJNLIJK DUBBEL' if c.waarschijnlijk_dubbel else ''}: "
+            f"{exemplaren} [{c.sleutel}]"
+        )
+    for g in rapport.uitgesloten:
+        uit.append(
+            f"  · uitgesloten ({g.reden}): {g.entity_naam or '?'} ref {g.referentie!r} — {g.aantal_documenten} doc, "
+            f"{g.aantal_bedragen} bedragen"
         )
     return uit

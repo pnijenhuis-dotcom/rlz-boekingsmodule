@@ -56,8 +56,11 @@ _URGENTIE_AFWIJKING_SOORT = {
     "aflettering_teruggedraaid_in_rlz": 1,
     "half_geboekt": 2,
     # Blok 6 (08-09): mogelijk dubbel in RLZ — beoordelen in Reeleezee, geen boekhoudkundig werk in de app.
+    # Blok 1 vervolgrun 10-09: "waarschijnlijk dubbel" (twee concepten, zelfde dag, zelfde bedrag) = 3, "zelfde
+    # referentie, controleer" = 4 — zie `_urgentie_binnen_soort`.
     "dubbel_in_rlz": 3,
 }
+_URGENTIE_DUBBEL_CONTROLEER = 4
 _MINIMALE_REDEN = 5
 
 
@@ -318,7 +321,11 @@ def _in_facet(rij: Rij, soort: str) -> bool:
 def _urgentie_binnen_soort(r: Rij) -> int:
     if r.soort != BevindingSoort.AFWIJKING.value:
         return 9
-    return _URGENTIE_AFWIJKING_SOORT.get(str((r.detail or {}).get("afwijking_soort") or ""), 5)
+    d = r.detail or {}
+    afwijking_soort = str(d.get("afwijking_soort") or "")
+    if afwijking_soort == "dubbel_in_rlz" and not teksten.rlz_dubbel_waarschijnlijk(d):
+        return _URGENTIE_DUBBEL_CONTROLEER
+    return _URGENTIE_AFWIJKING_SOORT.get(afwijking_soort, 5)
 
 
 def _sorteer(rijen: list[Rij]) -> list[Rij]:

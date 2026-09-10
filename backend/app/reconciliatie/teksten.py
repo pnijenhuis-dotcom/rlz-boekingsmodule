@@ -179,11 +179,17 @@ def _onderwerp_doorbelasting(d: dict) -> Segmenten:
 
 
 def _onderwerp_rlz_dubbel(d: dict) -> Segmenten:
-    """Blok 6 (08-09): leverancier · referentie(s) · beide boekstuknummers."""
-    ref_a, ref_b = _s(d, "referentie_a"), _s(d, "referentie_b")
-    refs = ref_a if ref_a and (ref_a == ref_b or not ref_b) else " / ".join(x for x in (ref_a, ref_b) if x)
-    boekstukken = " + ".join(x for x in (_s(d, "boekstuk_a"), _s(d, "boekstuk_b")) if x)
-    return [x for x in (_s(d, "leverancier_naam"), refs or None, boekstukken or None) if x]
+    """Blok 6 (08-09) / blok 1 10-09: leverancier · referentie · alle boekstuknummers (N ≥ 2)."""
+    boekstukken = _rlz_dubbel_boekstukken(d)
+    ref = _s(d, "referentie")
+    if not ref:
+        ref_a, ref_b = _s(d, "referentie_a"), _s(d, "referentie_b")
+        ref = ref_a if ref_a and (ref_a == ref_b or not ref_b) else " / ".join(x for x in (ref_a, ref_b) if x)
+    if len(boekstukken) > 2:
+        boekstuk_tekst: str | None = f"{len(boekstukken)} boekstukken"
+    else:
+        boekstuk_tekst = " + ".join(boekstukken) or None
+    return [x for x in (_s(d, "leverancier_naam"), ref or None, boekstuk_tekst) if x]
 
 
 _SCHEIDING = {"documenten": " ", "doorbelasting": " ", "bank": " · ", "omzet": " · ", "rlz_dubbel": " · "}
@@ -500,47 +506,135 @@ def _doorbelasting(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
-def _exemplaar(d: dict, kant: str) -> str:
-    """'RLZ-04-00004037 (22-06-2026, € 1.234,56, concept, via de module)' — één RLZ-exemplaar van het paar."""
+def _rlz_dubbel_exemplaren(d: dict) -> list[dict]:
+    """Exemplaren als lijst: sinds 10-09 `exemplaren` (N ≥ 2); oudere bevindingen dragen alleen de A/B-velden."""
+    ruw = d.get("exemplaren")
+    if isinstance(ruw, list) and len(ruw) >= 2 and all(isinstance(x, dict) for x in ruw):
+        return ruw
+    uit = []
+    for kant in ("a", "b"):
+        if any(d.get(f"{k}_{kant}") not in (None, "") for k in ("boekstuk", "rlz_id", "datum", "bedrag")):
+            uit.append(
+                {
+                    "boekstuk": d.get(f"boekstuk_{kant}"),
+                    "datum": d.get(f"datum_{kant}"),
+                    "bedrag": d.get(f"bedrag_{kant}"),
+                    "status": d.get(f"status_{kant}"),
+                    "concept": str(d.get(f"status_{kant}")) == "1",
+                    "van_module": bool(d.get(f"van_module_{kant}")),
+                }
+            )
+    return uit
+
+
+def _rlz_dubbel_boekstukken(d: dict) -> list[str]:
+    ruw = d.get("boekstukken")
+    if isinstance(ruw, list) and ruw:
+        return [str(x) for x in ruw if x not in (None, "")]
+    return [str(x["boekstuk"]) for x in _rlz_dubbel_exemplaren(d) if x.get("boekstuk") not in (None, "")]
+
+
+def _exemplaar_tekst(x: dict) -> str:
+    """'RLZ-04-00004037 (22-06-2026, € 1.234,56, concept, via de module geboekt)' — één RLZ-exemplaar."""
     delen = [
-        datum(_s(d, f"datum_{kant}")),
-        euro(_s(d, f"bedrag_{kant}")),
-        "concept" if str(d.get(f"status_{kant}")) == "1" else None,
-        "via de module geboekt" if d.get(f"van_module_{kant}") else None,
+        datum(x.get("datum")),
+        euro(x.get("bedrag")),
+        "concept" if x.get("concept") or str(x.get("status")) == "1" else None,
+        "via de module geboekt" if x.get("van_module") else None,
     ]
-    binnen = ", ".join(x for x in delen if x)
-    boekstuk = _s(d, f"boekstuk_{kant}") or "zonder boekstuknummer"
+    binnen = ", ".join(v for v in delen if v)
+    boekstuk = _s(x, "boekstuk") or "zonder boekstuknummer"
     return f"{boekstuk} ({binnen})" if binnen else boekstuk
 
 
+def _exemplaar(d: dict, kant: str) -> str:
+    """Terugval voor oude paar-bevindingen (A/B-velden)."""
+    return _exemplaar_tekst(
+        {
+            "boekstuk": d.get(f"boekstuk_{kant}"),
+            "datum": d.get(f"datum_{kant}"),
+            "bedrag": d.get(f"bedrag_{kant}"),
+            "status": d.get(f"status_{kant}"),
+            "van_module": d.get(f"van_module_{kant}"),
+        }
+    )
+
+
+def _opsomming(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " en " + items[-1]
+
+
+def rlz_dubbel_waarschijnlijk(d: dict) -> bool:
+    """Rangorde (blok 1 10-09): minstens twee exemplaren die beide concept zijn + zelfde factuurdatum + zelfde
+    bedrag. Uit het detail (`waarschijnlijk_dubbel`) of, voor oude paar-bevindingen, afgeleid uit de A/B-velden."""
+    if "waarschijnlijk_dubbel" in d:
+        return bool(d.get("waarschijnlijk_dubbel"))
+    groepen: dict[tuple[str, str], int] = {}
+    for x in _rlz_dubbel_exemplaren(d):
+        if (x.get("concept") or str(x.get("status")) == "1") and x.get("datum") and x.get("bedrag") not in (None, ""):
+            sleutel = (str(x["datum"]), str(x["bedrag"]))
+            groepen[sleutel] = groepen.get(sleutel, 0) + 1
+    return any(n >= 2 for n in groepen.values())
+
+
 def _rlz_dubbel(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
-    """Blok 6 (08-09): mogelijk dubbel geboekt in Reeleezee — twee inkoopfacturen van dezelfde crediteur met
-    dezelfde referentie, waarvan minstens één niet via de module kwam. De bedrag+datum-tak blijft alleen voor
-    bevindingen van vóór blok 7 (herstelrun 08-09) in de DB — nieuwe paren zijn altijd op referentie.
-    Handeling ligt in Reeleezee (de app verwijdert nooit); geen deeplink beschikbaar (geen bekende URL-vorm)."""
+    """Blok 6 (08-09) / blok 1 vervolgrun 10-09: één cluster inkoopfacturen van dezelfde crediteur met dezelfde
+    referentie in Reeleezee (N ≥ 2, minstens één niet via de module). Rangorde: "Waarschijnlijk dubbel" als minstens
+    twee exemplaren beide concept zijn met dezelfde factuurdatum en hetzelfde bedrag (6-Steps-casus), anders "Zelfde
+    referentie, controleer" (koppen kort: het blok-label zegt al "Dubbel in RLZ"). De bedrag+datum-tak blijft alleen
+    voor bevindingen van vóór blok 7
+    (herstelrun 08-09). Handeling ligt in Reeleezee (de app verwijdert nooit); geen deeplink (geen bekende URL-vorm)."""
     onderwerp = _onderwerp_rlz_dubbel(d)
     lev = _s(d, "leverancier_naam") or "dezelfde crediteur"
     regel = str(d.get("regel") or "")
+    exemplaren = _rlz_dubbel_exemplaren(d)
+    n = max(len(exemplaren), 2)
+    ref = _s(d, "referentie") or _s(d, "referentie_a") or _s(d, "referentie_b") or ""
     ref_a, ref_b = _s(d, "referentie_a"), _s(d, "referentie_b")
     if "referentie" in regel and "bedrag_datum" in regel:
-        waarom = f"dezelfde referentie {ref_a or ''} én hetzelfde bedrag op dezelfde datum".replace("  ", " ")
-    elif "referentie" in regel:
-        waarom = f"dezelfde referentie {ref_a or ref_b or ''}".strip()
+        waarom = f"dezelfde referentie {ref} én hetzelfde bedrag op dezelfde datum".replace("  ", " ")
+    elif "referentie" in regel or ref:
+        waarom = f"dezelfde referentie {ref}".strip()
     else:
         waarom = "hetzelfde bedrag op dezelfde factuurdatum" + (
             f" (referenties {ref_a} en {ref_b})" if ref_a and ref_b and ref_a != ref_b else ""
         )
-    handmatig = (
-        "geen van beide via de module geboekt (handmatig ingevoerd of geïmporteerd)"
-        if not d.get("van_module_a") and not d.get("van_module_b")
-        else "één ervan via de module, de andere handmatig ingevoerd"
-    )
-    concept = " Minstens één exemplaar is nog concept." if d.get("concept") else ""
+    aantal_module = sum(1 for x in exemplaren if x.get("van_module"))
+    if aantal_module == 0:
+        herkomst = (
+            "geen van beide via de module geboekt (handmatig ingevoerd of geïmporteerd)"
+            if n == 2
+            else "geen ervan via de module geboekt (handmatig ingevoerd of geïmporteerd)"
+        )
+    elif n == 2:
+        herkomst = "één ervan via de module, de andere handmatig ingevoerd"
+    else:
+        herkomst = f"{aantal_module} via de module, de andere handmatig ingevoerd"
+    waarschijnlijk = rlz_dubbel_waarschijnlijk(d)
+    if waarschijnlijk:
+        slot = (
+            " Twee exemplaren zijn concept met dezelfde factuurdatum en hetzelfde bedrag — waarschijnlijk dubbel "
+            "ingevoerd."
+        )
+    elif d.get("concept") or any(x.get("concept") or str(x.get("status")) == "1" for x in exemplaren):
+        slot = " Minstens één exemplaar is nog concept."
+    else:
+        slot = ""
+    deels = d.get("acceptatie_gedeeltelijk")
+    if isinstance(deels, list) and deels:
+        nieuw = _opsomming([str(x) for x in deels])
+        slot += f" Een eerder geaccepteerd paar zit in dit cluster; {nieuw} is/zijn nieuw."
+    # Korte koppen: mét het onderwerp moet de titel binnen 60 tekens blijven ("in RLZ" zegt het blok-label al).
+    kop = "Waarschijnlijk dubbel" if waarschijnlijk else "Zelfde referentie, controleer"
+    lijst = _opsomming([_exemplaar_tekst(x) for x in exemplaren]) if exemplaren else "(exemplaren onbekend)"
+    telwoord = {2: "twee", 3: "drie", 4: "vier", 5: "vijf"}.get(n, str(n))
+    welke = "beide" if n == 2 else f"alle {n}"
     return (
-        _titel("Mogelijk dubbel in RLZ", onderwerp, " · "),
-        f"In Reeleezee staan twee inkoopfacturen van {lev} met {waarom}: {_exemplaar(d, 'a')} en "
-        f"{_exemplaar(d, 'b')} — {handmatig}.{concept}",
-        "Open beide boekstuknummers in Reeleezee en beoordeel; is er één dubbel, corrigeer dáár (de app verwijdert "
+        _titel(kop, onderwerp, " · "),
+        f"In Reeleezee staan {telwoord} inkoopfacturen van {lev} met {waarom}: {lijst} — {herkomst}.{slot}",
+        f"Open {welke} boekstuknummers in Reeleezee en beoordeel; is er één dubbel, corrigeer dáár (de app verwijdert "
         "nooit). Klopt het zo, accepteer met reden.",
     )
 
@@ -737,6 +831,9 @@ _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
 
 def _details(bevinding: Any, d: dict) -> list[tuple[str, str]]:
     uit: list[tuple[str, str]] = []
+    ("rlz_ids_tekst", "RLZ-documenten (cluster)"),
+    ("cluster", "cluster-sleutel"),
+    ("vervangen_door_vingerafdruk", "vervangen door cluster"),
     vaf = getattr(bevinding, "vingerafdruk", None)
     if vaf:
         uit.append(("vingerafdruk", str(vaf)))
