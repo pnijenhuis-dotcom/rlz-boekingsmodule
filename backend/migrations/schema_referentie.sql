@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0127
+-- Migratie-head bij deze dump: 0130
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -612,6 +612,27 @@ ALTER TABLE ONLY boekhouding.bank_boeking_regel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: bank_historie_boeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.bank_historie_boeking (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    payment_transaction_id uuid NOT NULL,
+    datum date,
+    tegenrekening_iban text,
+    omschrijving text,
+    tegenpartij_naam text,
+    ledger_id uuid,
+    taxrate_id uuid,
+    bron text NOT NULL,
+    gelezen_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.bank_historie_boeking FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: bank_mutatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -630,7 +651,11 @@ CREATE TABLE boekhouding.bank_mutatie (
     rlz_create_date timestamp with time zone,
     brondata jsonb NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
-    verdwenen_uit_bron_op timestamp with time zone
+    verdwenen_uit_bron_op timestamp with time zone,
+    ai_toets_uitkomst text,
+    ai_toets_reden text,
+    ai_toets_op timestamp with time zone,
+    ai_toets_invoer_hash text
 );
 
 ALTER TABLE ONLY boekhouding.bank_mutatie FORCE ROW LEVEL SECURITY;
@@ -1520,7 +1545,11 @@ CREATE TABLE boekhouding.leverancier_voorkeur (
     regels_samenvoegen boolean NOT NULL,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
     autoboeken_ingeschakeld boolean DEFAULT false NOT NULL,
-    projectverdeling_pro_rato boolean DEFAULT false NOT NULL
+    projectverdeling_pro_rato boolean DEFAULT false NOT NULL,
+    autoboeken_uitgezonderd boolean DEFAULT false NOT NULL,
+    autoboeken_uitzondering_reden text,
+    autoboeken_bron text,
+    autoboeken_gereset_op timestamp with time zone
 );
 
 ALTER TABLE ONLY boekhouding.leverancier_voorkeur FORCE ROW LEVEL SECURITY;
@@ -1968,6 +1997,63 @@ CREATE TABLE boekhouding.omzet_voorstel_regel (
 );
 
 ALTER TABLE ONLY boekhouding.omzet_voorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: pand; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.pand (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    code text NOT NULL,
+    adres text NOT NULL,
+    plaats text,
+    postcode text,
+    aankoopdatum date,
+    verkoopdatum date,
+    notaris_dossiernummers jsonb DEFAULT '[]'::jsonb NOT NULL,
+    herkomst text NOT NULL,
+    status text NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pand_herkomst CHECK ((herkomst = ANY (ARRAY['afgeleid'::text, 'mens'::text]))),
+    CONSTRAINT ck_pand_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'bevestigd'::text, 'in_handel'::text, 'verkocht'::text, 'vervallen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.pand FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: pand_boeking; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.pand_boeking (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    pand_id uuid NOT NULL,
+    rlz_document_id uuid,
+    rlz_boekstuknummer text,
+    rlz_collectie text,
+    document_id uuid,
+    bron_sleutel text NOT NULL,
+    soort text NOT NULL,
+    herkomst text NOT NULL,
+    zekerheid text NOT NULL,
+    reden text,
+    datum date,
+    bedrag numeric(14,2),
+    bevestigd_door uuid,
+    bevestigd_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pand_boeking_bron_aanwezig CHECK (((rlz_document_id IS NOT NULL) OR (document_id IS NOT NULL))),
+    CONSTRAINT ck_pand_boeking_herkomst CHECK ((herkomst = ANY (ARRAY['voorstel'::text, 'mens'::text]))),
+    CONSTRAINT ck_pand_boeking_soort CHECK ((soort = ANY (ARRAY['aankoop'::text, 'verkoop'::text, 'kosten'::text, 'overhead'::text]))),
+    CONSTRAINT ck_pand_boeking_zekerheid CHECK ((zekerheid = ANY (ARRAY['hoog'::text, 'midden'::text, 'laag'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.pand_boeking FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -3355,6 +3441,7 @@ CREATE TABLE platform.administratie (
     standaard_taxrate_id uuid,
     mini_voorraad_ingeschakeld boolean DEFAULT false NOT NULL,
     voorkeurs_verlegd_taxrate_id uuid,
+    autoboeken_leren_ingeschakeld boolean DEFAULT false NOT NULL,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
@@ -3441,7 +3528,7 @@ COMMENT ON TABLE platform.audit_event IS 'Append-only audit-log (bron voor de WO
 
 CREATE TABLE platform.autoboek_instelling (
     singleton boolean DEFAULT true NOT NULL,
-    drempel_op_rij integer DEFAULT 5 NOT NULL,
+    drempel_op_rij integer DEFAULT 3 NOT NULL,
     laatste_run_op timestamp with time zone,
     gewijzigd_door uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
@@ -3490,6 +3577,7 @@ CREATE TABLE platform.boeken_instelling (
     globaal_ingeschakeld boolean DEFAULT true NOT NULL,
     gewijzigd_door uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    ai_toets_facturen_ingeschakeld boolean DEFAULT true NOT NULL,
     CONSTRAINT boeken_instelling_singleton CHECK (singleton)
 );
 
@@ -3902,6 +3990,14 @@ ALTER TABLE ONLY boekhouding.bank_boeking
 
 ALTER TABLE ONLY boekhouding.bank_boeking_regel
     ADD CONSTRAINT bank_boeking_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bank_historie_boeking bank_historie_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_historie_boeking
+    ADD CONSTRAINT bank_historie_boeking_pkey PRIMARY KEY (id);
 
 
 --
@@ -4406,6 +4502,22 @@ ALTER TABLE ONLY boekhouding.omzet_voorstel
 
 ALTER TABLE ONLY boekhouding.omzet_voorstel_regel
     ADD CONSTRAINT omzet_voorstel_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pand_boeking pand_boeking_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand_boeking
+    ADD CONSTRAINT pand_boeking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pand pand_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand
+    ADD CONSTRAINT pand_pkey PRIMARY KEY (id);
 
 
 --
@@ -5516,6 +5628,13 @@ CREATE INDEX ix_bank_boeking_regel_boeking_id ON boekhouding.bank_boeking_regel 
 
 
 --
+-- Name: ix_bank_historie_boeking_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_bank_historie_boeking_administratie_id ON boekhouding.bank_historie_boeking USING btree (administratie_id);
+
+
+--
 -- Name: ix_bank_mutatie_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -5912,6 +6031,27 @@ CREATE INDEX ix_omzet_boeking_document_id ON boekhouding.omzet_boeking USING btr
 --
 
 CREATE INDEX ix_omzet_voorstel_regel_document_id ON boekhouding.omzet_voorstel_regel USING btree (document_id);
+
+
+--
+-- Name: ix_pand_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_pand_administratie_id ON boekhouding.pand USING btree (administratie_id);
+
+
+--
+-- Name: ix_pand_boeking_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_pand_boeking_administratie_id ON boekhouding.pand_boeking USING btree (administratie_id);
+
+
+--
+-- Name: ix_pand_boeking_pand_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_pand_boeking_pand_id ON boekhouding.pand_boeking USING btree (pand_id);
 
 
 --
@@ -6426,6 +6566,13 @@ CREATE UNIQUE INDEX ux_bank_boeking_actief_per_mutatie ON boekhouding.bank_boeki
 
 
 --
+-- Name: ux_bank_historie_boeking_per_mutatie_rekening; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_bank_historie_boeking_per_mutatie_rekening ON boekhouding.bank_historie_boeking USING btree (administratie_id, payment_transaction_id, COALESCE(ledger_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+
+--
 -- Name: ux_bank_regel_actief_per_tegenpartij; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6486,6 +6633,20 @@ CREATE UNIQUE INDEX ux_omzet_boeking_actief_per_periode ON boekhouding.omzet_boe
 --
 
 CREATE UNIQUE INDEX ux_omzet_mapping_actief_per_categorie ON boekhouding.omzet_categorie_mapping USING btree (administratie_id, categorie_sleutel) WHERE actief;
+
+
+--
+-- Name: ux_pand_boeking_bron_pand; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_pand_boeking_bron_pand ON boekhouding.pand_boeking USING btree (administratie_id, bron_sleutel, pand_id);
+
+
+--
+-- Name: ux_pand_code; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_pand_code ON boekhouding.pand USING btree (administratie_id, code);
 
 
 --
@@ -6997,6 +7158,14 @@ ALTER TABLE ONLY boekhouding.bank_boeking
 
 ALTER TABLE ONLY boekhouding.bank_boeking_regel
     ADD CONSTRAINT bank_boeking_regel_bank_boeking_id_fkey FOREIGN KEY (bank_boeking_id) REFERENCES boekhouding.bank_boeking(id);
+
+
+--
+-- Name: bank_historie_boeking bank_historie_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.bank_historie_boeking
+    ADD CONSTRAINT bank_historie_boeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -8325,6 +8494,46 @@ ALTER TABLE ONLY boekhouding.omzet_voorstel
 
 ALTER TABLE ONLY boekhouding.omzet_voorstel_regel
     ADD CONSTRAINT omzet_voorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.omzet_voorstel(document_id);
+
+
+--
+-- Name: pand pand_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand
+    ADD CONSTRAINT pand_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: pand_boeking pand_boeking_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand_boeking
+    ADD CONSTRAINT pand_boeking_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: pand_boeking pand_boeking_bevestigd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand_boeking
+    ADD CONSTRAINT pand_boeking_bevestigd_door_fkey FOREIGN KEY (bevestigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: pand_boeking pand_boeking_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand_boeking
+    ADD CONSTRAINT pand_boeking_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: pand_boeking pand_boeking_pand_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.pand_boeking
+    ADD CONSTRAINT pand_boeking_pand_id_fkey FOREIGN KEY (pand_id) REFERENCES boekhouding.pand(id);
 
 
 --
@@ -9889,6 +10098,19 @@ CREATE POLICY bank_boeking_scope ON boekhouding.bank_boeking USING ((administrat
 
 
 --
+-- Name: bank_historie_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.bank_historie_boeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: bank_historie_boeking bank_historie_boeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY bank_historie_boeking_scope ON boekhouding.bank_historie_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: bank_mutatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10660,6 +10882,32 @@ CREATE POLICY omzet_voorstel_scope ON boekhouding.omzet_voorstel USING ((EXISTS 
   WHERE ((d.id = omzet_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = omzet_voorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: pand; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.pand ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pand_boeking; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.pand_boeking ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pand_boeking pand_boeking_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY pand_boeking_scope ON boekhouding.pand_boeking USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: pand pand_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY pand_scope ON boekhouding.pand USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

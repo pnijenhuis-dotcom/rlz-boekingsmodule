@@ -17,6 +17,9 @@ from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.berichten import herinneringen, nieuwe_facturen
 from app.credentialstore import service as credentialstore_service
+from app.bank.cli_cmd import BANK_COMMANDOS, register_bank, run_bank
+from app.migratie.cli_cmd import register_migratie, run_migratie
+from app.panden.cli_cmd import register_panden, run_panden
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
 from app.doorbelasting import factuur_herstel as doorbelasting_factuur_herstel
@@ -2572,18 +2575,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Alleen deze administratie (default: alle).",
     )
 
-    bank_voorstellen_parser = subparsers.add_parser(
-        "bank-voorstellen-lezen",
-        help="LEES-ONLY: print per onverwerkte bankmutatie van één administratie het huidige matchmotor-voorstel "
-        "(nameting-instrument, bundel 09-09 blok 0; geen schrijfacties, geen RLZ-calls).",
-    )
-    bank_voorstellen_parser.add_argument("--administratie", required=True, help="UUID of (deel van de) naam.")
-    bank_voorstellen_parser.add_argument(
-        "--rekening-iban", default=None, dest="rekening_iban", help="Alleen deze rekening."
-    )
-    bank_voorstellen_parser.add_argument(
-        "--filter", default=None, help="Toon alleen rijen waarvan tegenpartij/omschrijving/bedrag dit bevat."
-    )
+    register_bank(subparsers)  # blok B 10-09: bank-voorstellen-lezen + bank-historie-backfill (app/bank/cli_cmd.py)
+    register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
+    register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
 
     intake_postvak_parser = subparsers.add_parser(
         "intake-postvak-verwerken",
@@ -2872,8 +2866,12 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.commando == "intercompany-leverancier-markeren":
         return _intercompany_leverancier_markeren(args)
-    if args.commando == "bank-voorstellen-lezen":
-        return _bank_voorstellen_lezen(args)
+    if args.commando in BANK_COMMANDOS:
+        return run_bank(args)
+    if args.commando == "migratie-schoonlijst":
+        return run_migratie(args)  # blok D1 10-09
+    if args.commando == "pandenregister-afleiden":
+        return run_panden(args)  # blok D2 10-09
     if args.commando == "crediteuren-werklijst-nazorg":
         from app.crediteuren import afhandeling as crediteuren_afhandeling
 
