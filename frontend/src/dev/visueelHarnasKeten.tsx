@@ -4,27 +4,42 @@
 // src/dev/keten/<casus>.json — één stand voor backend en frontend. Gebruik:
 //   npx vite --port 5199  →  /harness-keten.html?casus=h_bdo&scherm=detail   (scherm=lijst voor de documentenlijst)
 //   casussen: a_universal_nederland | b_floor | c_spot_services | h_bdo (zie backend/tests/keten/casussen.py)
+//   scherm=bank (blok 3 nachtrun 10/11-09): het ECHTE bankscherm (BankDetailScreen) op de bank-casus l_bank_cv_08-09 —
+//   fixture-vorm `bank: { rekening_id, rekeningen, mutaties, afletter_opdrachten }` = exact de DTO's van
+//   GET …/bank/rekeningen, …/mutaties en …/afletter-opdrachten (zie KetenBankFixture hieronder).
 //   sweep + pixelvergelijking: scripts/keten_sweep.sh (baseline in scripts/keten_baseline/)
 // Markers voor headless verificatie: <body data-keten-klaar="ja"> zodra de fixture-data door het scherm geladen is,
 // data-keten-onbekend = API-paden die het harnas niet kende (leeg = alles gemockt). De OverflowBadge meet mee.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { BankDetailScreen } from '../bank/BankDetailScreen'
 import { DocumentDetailScreen } from '../document/DocumentDetailScreen'
 import { WerkvoorraadScreen } from '../werkvoorraad/WerkvoorraadScreen'
 import { OverflowBadge } from './overflowBadge'
 import '../index.css'
 
+/** Bank-casus (blok 3 nachtrun 10/11-09): de drie DTO's die het bankscherm bij openen ophaalt, zoals de backend-ketentest
+ * ze exporteert (`administratie_naam` optioneel — anders de vaste harnasnaam). */
+interface KetenBankFixture {
+  rekening_id: string
+  rekeningen: Record<string, unknown>
+  mutaties: { mutaties: Array<Record<string, unknown>> }
+  afletter_opdrachten?: Record<string, unknown>
+}
+
 interface KetenFixture {
   casus: string
   administratie_id: string
-  document_id: string
-  detail: Record<string, unknown>
-  boekvoorstel: Record<string, unknown>
-  checks: Record<string, unknown>
-  lijst: { documenten: Array<Record<string, unknown> & { status: string }>; [k: string]: unknown }
-  lijst_afgehandeld: { documenten: Array<Record<string, unknown> & { status: string }>; [k: string]: unknown }
+  administratie_naam?: string
+  document_id?: string
+  detail?: Record<string, unknown>
+  boekvoorstel?: Record<string, unknown>
+  checks?: Record<string, unknown>
+  lijst?: { documenten: Array<Record<string, unknown> & { status: string }>; [k: string]: unknown }
+  lijst_afgehandeld?: { documenten: Array<Record<string, unknown> & { status: string }>; [k: string]: unknown }
   stamgegevens?: Record<string, string>
+  bank?: KetenBankFixture
 }
 
 const FIXTURES = import.meta.glob('./keten/*.json', { eager: true }) as Record<string, { default: KetenFixture }>
@@ -39,8 +54,18 @@ if (!fixture) {
 }
 
 const ADMINISTRATIE_ID = fixture.administratie_id
-const DOCUMENT_ID = fixture.document_id
-const ADMINISTRATIE_NAAM = 'Universal Steigerbouw B.V.'
+const DOCUMENT_ID = fixture.document_id ?? ''
+const ADMINISTRATIE_NAAM = fixture.administratie_naam ?? 'Universal Steigerbouw B.V.'
+const BANK = fixture.bank ?? null
+if (SCHERM === 'bank' && !BANK) {
+  document.body.innerHTML = `<pre>Casus '${CASUS}' heeft geen bank-fixture (sleutel "bank").</pre>`
+  throw new Error(`gouden-set-harnas: casus ${CASUS} zonder bank-fixture`)
+}
+if (SCHERM !== 'bank' && (!fixture.detail || !fixture.lijst)) {
+  document.body.innerHTML = `<pre>Casus '${CASUS}' heeft geen document-fixture (detail/lijst) — gebruik scherm=bank.</pre>`
+  throw new Error(`gouden-set-harnas: casus ${CASUS} zonder document-fixture`)
+}
+const LEGE_LIJST = { documenten: [] as Array<Record<string, unknown> & { status: string }> }
 
 // Stamgegevens zoals tests/keten/conftest.py ze in de testadministratie zet (vaste id's).
 const GROOTBOEK = [
@@ -90,7 +115,7 @@ const onbekend: string[] = []
 let dataGeladen = 0
 
 function lijstVoor(url: URL): unknown {
-  const bron = url.searchParams.get('toon_afgehandeld') === 'true' ? fixture.lijst_afgehandeld : fixture.lijst
+  const bron = (url.searchParams.get('toon_afgehandeld') === 'true' ? fixture.lijst_afgehandeld : fixture.lijst) ?? LEGE_LIJST
   const groep = url.searchParams.get('groep')
   if (groep === 'wachten') return { ...bron, documenten: bron.documenten.filter((d) => WACHTEN_STATUSSEN.has(d.status)) }
   if (groep === 'kantoor') return { ...bron, documenten: bron.documenten.filter((d) => !WACHTEN_STATUSSEN.has(d.status)) }
@@ -104,6 +129,28 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   const pad = url.pathname
   const methode = (init?.method ?? 'GET').toUpperCase()
 
+  // Bank-casus (blok 3 nachtrun 10/11-09): de bank-routes vóór de generieke matches ('/rekeningen' hieronder geeft voor
+  // de document-schermen bewust een lege lijst). Achtergrond-sync = overgeslagen (geen ronde, geen toast), panelen leeg.
+  if (BANK) {
+    if (pad.endsWith('/bank/rekeningen')) return Promise.resolve(jsonResponse(BANK.rekeningen))
+    if (pad.includes('/bank/rekeningen/') && pad.endsWith('/mutaties') && methode === 'GET') {
+      dataGeladen++
+      return Promise.resolve(jsonResponse(BANK.mutaties))
+    }
+    if (pad.endsWith('/afletter-opdrachten')) {
+      return Promise.resolve(jsonResponse(BANK.afletter_opdrachten ?? { opdrachten: [], aantal_oud: 0, toon_oud: false, oud_na_dagen: 30 }))
+    }
+    if (pad.endsWith('/bank/sync-achtergrond') && methode === 'POST') {
+      return Promise.resolve(
+        jsonResponse(
+          { run_id: null, status: 'overgeslagen', overgeslagen: true, laatste_sync_op: (BANK.rekeningen as { laatste_sync_op?: string | null }).laatste_sync_op ?? null, resultaat: null, fout_reden: null },
+          202,
+        ),
+      )
+    }
+    if (pad.endsWith('/bank/aanbetalingen')) return Promise.resolve(jsonResponse({ aanbetalingen: [] }))
+    if (pad.endsWith('/splitsingen')) return Promise.resolve(jsonResponse({ splitsingen: [] }))
+  }
   if (pad.endsWith('/bestand')) {
     return Promise.resolve(new Response(MINI_PDF, { status: 200, headers: { 'Content-Type': 'application/pdf' } }))
   }
@@ -174,7 +221,7 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
     return Promise.resolve(jsonResponse({ administraties: [{ id: ADMINISTRATIE_ID, naam: ADMINISTRATIE_NAAM }] }))
   }
   if (pad.endsWith('/werkvoorraad/overzicht')) {
-    const kantoor = fixture.lijst.documenten.filter((d) => !WACHTEN_STATUSSEN.has(d.status)).length
+    const kantoor = (fixture.lijst ?? LEGE_LIJST).documenten.filter((d) => !WACHTEN_STATUSSEN.has(d.status)).length
     return Promise.resolve(
       jsonResponse({
         klanten: [
@@ -211,7 +258,7 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
 
 // Klaar-marker: de fixture-data is door het scherm opgehaald (detail + boekvoorstel, of de lijst) en React heeft
 // geschilderd — headless Chrome leest 'm uit de DOM (--dump-dom) vóór het de screenshot als bewijs telt.
-const NODIG = SCHERM === 'lijst' ? 1 : 2
+const NODIG = SCHERM === 'lijst' || SCHERM === 'bank' ? 1 : 2
 const wachter = window.setInterval(() => {
   if (dataGeladen >= NODIG) {
     window.clearInterval(wachter)
@@ -228,7 +275,11 @@ if (PARAMS.has('donker')) {
 }
 
 const START_URL =
-  SCHERM === 'lijst' ? `/?administratie=${ADMINISTRATIE_ID}` : `/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`
+  SCHERM === 'bank'
+    ? `/bank/${ADMINISTRATIE_ID}?rekening=${BANK?.rekening_id ?? ''}`
+    : SCHERM === 'lijst'
+      ? `/?administratie=${ADMINISTRATIE_ID}`
+      : `/documenten/${ADMINISTRATIE_ID}/${DOCUMENT_ID}`
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -250,6 +301,7 @@ createRoot(document.getElementById('root')!).render(
             <Routes>
               <Route path="/" element={<WerkvoorraadScreen />} />
               <Route path="/documenten/:administratieId/:documentId" element={<DocumentDetailScreen />} />
+              <Route path="/bank/:administratieId" element={<BankDetailScreen />} />
             </Routes>
           </div>
         </div>

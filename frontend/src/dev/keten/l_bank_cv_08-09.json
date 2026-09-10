@@ -1,0 +1,291 @@
+{
+ "casus": "l_bank_cv_08-09",
+ "administratie_id": "aaaaaaaa-0000-4000-8000-000000000001",
+ "administratie_naam": "Administratiekantoor Nijenhuis C.V.",
+ "bank": {
+  "rekening_id": "cccccccc-0000-4000-8000-0000000000f1",
+  "rekeningen": {
+   "rekeningen": [
+    {
+     "id": "cccccccc-0000-4000-8000-0000000000f1",
+     "naam": "ING zakelijk",
+     "iban": "NL36INGB0007654321",
+     "rekening_type": 1,
+     "is_kas": false,
+     "saldo": "48212.90",
+     "saldo_datum": "2026-09-08",
+     "open_mutaties": 7,
+     "heeft_aanlevering": true,
+     "laatste_import": {
+      "datum": "2026-09-08T06:00:00",
+      "bron": "1",
+      "type": "MT940",
+      "bestandsnaam": "afschrift.940"
+     },
+     "probe_fout": null
+    }
+   ],
+   "laatste_sync_op": null,
+   "ooit_gesynchroniseerd": false,
+   "heeft_bankaanlevering": true
+  },
+  "mutaties": {
+   "mutaties": [
+    {
+     "id": "cccccccc-0000-4000-8000-000000000b01",
+     "boekdatum": "2026-09-08",
+     "bedrag": "-2511.05",
+     "open_bedrag": "-2511.05",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "Debiteur Z Beheer B.V.",
+     "omschrijving": "retour dubbele betaling",
+     "tegenrekening_iban": "NL83RABO0198765432",
+     "voorstel": {
+      "soort": "handmatig",
+      "kleur": "oranje",
+      "bron": "handmatig",
+      "reden": "Geen regel en geen open-post-match",
+      "payment_item_id": null,
+      "open_post": null,
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-00000000000a",
+     "boekdatum": "2026-09-05",
+     "bedrag": "12500.00",
+     "open_bedrag": "12500.00",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "Hr P.W. N.-P.",
+     "omschrijving": "26247623521810",
+     "tegenrekening_iban": "NL02ABNA0123456789",
+     "voorstel": {
+      "soort": "handmatig",
+      "kleur": "oranje",
+      "bron": "handmatig",
+      "reden": "Geen regel en geen open-post-match",
+      "payment_item_id": null,
+      "open_post": null,
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-00000000000e",
+     "boekdatum": "2026-09-05",
+     "bedrag": "-1815.00",
+     "open_bedrag": "-1815.00",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "Vastgoed Beheer Oost B.V.",
+     "omschrijving": "Huur kantoor Deventer periode 09-2026 kenmerk 20260901",
+     "tegenrekening_iban": "NL02ABNA0123456789",
+     "voorstel": {
+      "soort": "historie_regel",
+      "kleur": "groen",
+      "bron": "historie: 3 van 3 op 4400 Huur onroerend goed",
+      "reden": "Historie-regel op NL02ABNA0123456789 · huur kantoor deventer: 3 eerdere boekingen, alle op dezelfde rekening en btw-behandeling",
+      "payment_item_id": null,
+      "open_post": null,
+      "regel_id": null,
+      "regels": [
+       {
+        "ledger_id": "ffffffff-0000-4000-8000-000000004400",
+        "netto_bedrag": "-1815.00",
+        "btw_bedrag": null,
+        "taxrate_id": null,
+        "project_id": null,
+        "omschrijving": "Historie-regel: Vastgoed Beheer Oost B.V."
+       }
+      ],
+      "ledger_id": "ffffffff-0000-4000-8000-000000004400",
+      "taxrate_id": null,
+      "historie_k": 3,
+      "historie_n": 3
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-00000000000b",
+     "boekdatum": "2026-09-04",
+     "bedrag": "-99.99",
+     "open_bedrag": "-99.99",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "DNA Notaris",
+     "omschrijving": "Declaratie 2337 kosten inschrijving",
+     "tegenrekening_iban": "NL39RABO0300065264",
+     "voorstel": {
+      "soort": "handmatig",
+      "kleur": "oranje",
+      "bron": "handmatig",
+      "reden": "Geen regel en geen open-post-match",
+      "payment_item_id": null,
+      "open_post": null,
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-00000000000d",
+     "boekdatum": "2026-09-01",
+     "bedrag": "-1815.00",
+     "open_bedrag": "-1815.00",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "NPG Administratiekantoor",
+     "omschrijving": "Factuur 2026053",
+     "tegenrekening_iban": "NL20INGB0001234567",
+     "voorstel": {
+      "soort": "exacte_match",
+      "kleur": "groen",
+      "bron": "naam + nummer + bedrag",
+      "reden": "Open post '2026053': teken klopt, naam matcht, factuurnummer als heel token in de mutatie én bedrag cent-exact gelijk",
+      "payment_item_id": "dddddddd-0000-4000-8000-000000002026",
+      "open_post": {
+       "id": "dddddddd-0000-4000-8000-000000002026",
+       "bedrag": "-1815.00",
+       "referentie": "2026053",
+       "referentie2": null,
+       "rlz_document_id": "dddddddd-0000-4000-8000-100000002026",
+       "tegenpartij_naam": "NPG Administratiekantoor B.V.",
+       "documentsoort": "Inkoopfactuur",
+       "boekstuknummer": null,
+       "factuurdatum": "2026-08-28"
+      },
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-00000000000c",
+     "boekdatum": "2026-08-24",
+     "bedrag": "-36.24",
+     "open_bedrag": "-36.24",
+     "deels_afgeletterd": false,
+     "rlz_koppelingen": [],
+     "tegenpartij_naam": "TransIP B.V.",
+     "omschrijving": "Factuur F0024082026 hosting ak-nijenhuis.nl",
+     "tegenrekening_iban": "NL91ABNA0417164300",
+     "voorstel": {
+      "soort": "exacte_match",
+      "kleur": "groen",
+      "bron": "naam + nummer + bedrag",
+      "reden": "Open post 'F0024082026': teken klopt, naam matcht, factuurnummer als heel token in de mutatie én bedrag cent-exact gelijk",
+      "payment_item_id": "dddddddd-0000-4000-8000-000000000824",
+      "open_post": {
+       "id": "dddddddd-0000-4000-8000-000000000824",
+       "bedrag": "-36.24",
+       "referentie": "F0024082026",
+       "referentie2": null,
+       "rlz_document_id": "dddddddd-0000-4000-8000-100000000824",
+       "tegenpartij_naam": "TransIP B.V.",
+       "documentsoort": "Inkoopfactuur",
+       "boekstuknummer": null,
+       "factuurdatum": "2026-08-20"
+      },
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    },
+    {
+     "id": "cccccccc-0000-4000-8000-000000000a01",
+     "boekdatum": "2026-07-01",
+     "bedrag": "5023.09",
+     "open_bedrag": "2511.05",
+     "deels_afgeletterd": true,
+     "rlz_koppelingen": [
+      {
+       "document_id": "eeeeeeee-0000-4000-8000-000000000800",
+       "boekstuknummer": "RLZ-01-00000800",
+       "referentie": "2024840",
+       "bedrag": "2512.04",
+       "document_type": 10,
+       "omschrijving": "Verkoopfactuur 2024840"
+      }
+     ],
+     "tegenpartij_naam": "Debiteur Z Beheer B.V.",
+     "omschrijving": "Factuur 2024840 en 2024841",
+     "tegenrekening_iban": "NL83RABO0198765432",
+     "voorstel": {
+      "soort": "handmatig",
+      "kleur": "oranje",
+      "bron": "handmatig",
+      "reden": "Geen regel en geen open-post-match",
+      "payment_item_id": null,
+      "open_post": null,
+      "regel_id": null,
+      "regels": [],
+      "ledger_id": null,
+      "taxrate_id": null,
+      "historie_k": null,
+      "historie_n": null
+     },
+     "afletter_opdracht": null,
+     "regel_voorstel": null,
+     "ai_toets_uitkomst": null,
+     "ai_toets_reden": null,
+     "ai_toets_op": null
+    }
+   ]
+  },
+  "afletter_opdrachten": {
+   "opdrachten": [],
+   "aantal_oud": 0,
+   "toon_oud": false,
+   "oud_na_dagen": 30
+  }
+ }
+}

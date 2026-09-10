@@ -48,6 +48,9 @@ logger = logging.getLogger(__name__)
 # $orderby/$top (STAP 0) — bewust géén $skip (nooit geverifieerd); de lus schuift de
 # CreateDate-watermark zelf op en ontdubbelt op id (ge-filter overlapt de laatste rij).
 _MUTATIE_BATCH = 500
+#: Expand van de per-id verversronde (blok 3 nachtrun 10/11-09): het leesspoor "waartegen afgeletterd" komt mee —
+#: geverifieerde vorm api-verkenning "Bankmodule schrijf-PoC" §5.
+VERVERS_EXPAND = "PaymentAccount,MatchedPaymentItem,PaymentReferenceList($expand=Document)"
 
 
 def _decimal(waarde: Any) -> Decimal | None:
@@ -197,9 +200,46 @@ def sync_payment_accounts(*, administratie_id: uuid.UUID, client: RlzClient) -> 
 # --- 2. mutaties (incrementeel + open-ververs) -------------------------------------------------
 
 
+def _koppelingen_uit_record(record: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Leesspoor `PaymentReferenceList($expand=Document)` → compacte koppelingen voor de cache (blok 3 nachtrun
+    10/11-09). None = het record draagt het leesspoor niet (lijst-GET zonder die expand) — de kolom blijft dan
+    ONGEWIJZIGD, zodat een incrementele batch nooit eerder gelezen koppelingen wist. Systeemhulzen (DocumentType 19 +
+    Status 1, fallback-PoC §5) tellen niet als koppeling; `bedrag` = het gekoppelde bedrag als grootte (RLZ geeft het
+    teken t.o.v. het document)."""
+    if "PaymentReferenceList" not in record:
+        return None
+    koppelingen: list[dict[str, Any]] = []
+    for ref in record.get("PaymentReferenceList") or []:
+        document = ref.get("Document") if isinstance(ref, dict) else None
+        if not isinstance(document, dict) or afletteren._is_systeemhuls(document):
+            continue
+        bedrag = _decimal(ref.get("Amount"))
+        koppelingen.append(
+            {
+                "document_id": str(document["id"]) if document.get("id") else None,
+                "boekstuknummer": document.get("ReceiptNumber"),
+                "referentie": document.get("Reference"),
+                "bedrag": str(abs(bedrag).quantize(Decimal("0.01"))) if bedrag is not None else None,
+                "document_type": document.get("DocumentType"),
+                "omschrijving": document.get("Description"),
+            }
+        )
+    return koppelingen
+
+
+def _is_deels_afgeletterd_record(record: dict[str, Any]) -> bool:
+    """Batch-record mét open bedrag ≠ 0 én ≠ totaal: in RLZ al deels gekoppeld — het leesspoor (koppelingen) is dan
+    de moeite van een extra per-id GET waard (de lijst-GET expandeert het niet)."""
+    waarden = _mutatie_waarden(record)
+    bedrag, open_bedrag = waarden["bedrag"], waarden["open_bedrag"]
+    return bedrag is not None and open_bedrag is not None and open_bedrag != 0 and open_bedrag != bedrag
+
+
 def _mutatie_waarden(record: dict[str, Any]) -> dict[str, Any]:
     create_date = record.get("CreateDate")
+    koppelingen = _koppelingen_uit_record(record)
     return {
+        **({"rlz_koppelingen": koppelingen} if koppelingen is not None else {}),
         "payment_account_id": _nav_id(record, "PaymentAccount"),
         "boekdatum": _datum(record.get("BookDate")),
         "bedrag": _decimal(record.get("Amount")),
@@ -248,6 +288,9 @@ def sync_payment_transactions(*, administratie_id: uuid.UUID, client: RlzClient)
     aangemaakt = 0
     bijgewerkt = 0
     verwerkte_ids: set[uuid.UUID] = set()
+    # Blok 3 nachtrun 10/11-09: batch-records die in RLZ al deels gekoppeld zijn (open ≠ 0 én ≠ totaal) krijgen
+    # in de verversronde alsnog de per-id GET mét leesspoor — anders kent de UI hun koppelingen pas een run later.
+    deels_afgeletterd_ids: set[uuid.UUID] = set()
     hoogste_create_date: datetime | None = watermark
     cursor = watermark
 
@@ -270,6 +313,8 @@ def sync_payment_transactions(*, administratie_id: uuid.UUID, client: RlzClient)
             for record in nieuwe_in_batch:
                 record_id = uuid.UUID(str(record["id"]))
                 verwerkte_ids.add(record_id)
+                if _is_deels_afgeletterd_record(record):
+                    deels_afgeletterd_ids.add(record_id)
                 if _upsert_mutatie(session, administratie_id=administratie_id, record=record, now=now):
                     aangemaakt += 1
                 else:
@@ -292,8 +337,13 @@ def sync_payment_transactions(*, administratie_id: uuid.UUID, client: RlzClient)
         cursor = hoogste_create_date
 
     # Verversronde: lokaal-open mutaties die niet in de verse batch zaten kunnen intussen in
-    # RLZ afgeletterd zijn (OpenAmount veranderd) — per id opnieuw ophalen. Het volume is klein
-    # (tientallen open mutaties), dus per-id GET's zijn hier de eenvoudige, betrouwbare vorm.
+    # RLZ afgeletterd zijn (OpenAmount veranderd — ⚠️ nooit IsComplete, stale na storno) — per id
+    # opnieuw ophalen. Het volume is klein (tientallen open mutaties), dus per-id GET's zijn hier de
+    # eenvoudige, betrouwbare vorm. Sinds blok 3 nachtrun 10/11-09 mét het leesspoor
+    # `PaymentReferenceList($expand=Document)`: een mutatie die in RLZ deels gekoppeld is (Zilver Beheer
+    # 01-07: gekoppeld 2.512,04 van 5.023,09) krijgt zo haar koppelingen in `rlz_koppelingen` — de UI toont
+    # "deels afgeletterd in RLZ" mét boekstuknummer/referentie/bedrag, en boeken/voorstellen werken op het
+    # open bedrag. Deels gekoppelde batch-records lezen we óók hier na (de lijst-GET expandeert niet).
     with scoped_session(administratie_id) as session:
         open_ids = [
             rij_id
@@ -304,12 +354,12 @@ def sync_payment_transactions(*, administratie_id: uuid.UUID, client: RlzClient)
                     BankMutatie.open_bedrag != 0,
                 )
             )
-            if rij_id not in verwerkte_ids
+            if rij_id not in verwerkte_ids or rij_id in deels_afgeletterd_ids
         ]
 
     open_ververst = 0
     for rij_id in open_ids:
-        record = client.get_payment_transaction(rij_id, expand="PaymentAccount,MatchedPaymentItem")
+        record = client.get_payment_transaction(rij_id, expand=VERVERS_EXPAND)
         with scoped_session(administratie_id) as session:
             _upsert_mutatie(session, administratie_id=administratie_id, record=record, now=now)
             open_ververst += 1

@@ -350,21 +350,24 @@ def maak_bank_mutatie(
     tegenrekening_iban: str | None = None,
     boekdatum: str | None = None,
     mutatie_id: uuid.UUID | None = None,
+    rlz_koppelingen: list[dict[str, Any]] | None = None,
 ) -> uuid.UUID:
     """Directe insert van een cache-rij (schema-owner) — de sync-tests dekken het vullen zelf.
     `tegenrekening_iban`/`boekdatum`/`mutatie_id` (blok 2 bundel 08-09): IBAN-been van de matchmotor,
-    vaste datum en vast id voor de gouden set."""
+    vaste datum en vast id voor de gouden set. `rlz_koppelingen` (blok 3 nachtrun 10/11-09, migratie 0131): de
+    koppelingen uit het RLZ-leesspoor zoals de verversronde ze bewaart (None = leesspoor nog niet gelezen)."""
     mutatie_id = mutatie_id or uuid.uuid4()
     with admin_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO boekhouding.bank_mutatie "
                 "(id, administratie_id, payment_account_id, boekdatum, bedrag, open_bedrag, "
-                " tegenpartij_naam, omschrijving, rlz_voorstel_item_id, tegenrekening_iban, brondata) "
+                " tegenpartij_naam, omschrijving, rlz_voorstel_item_id, tegenrekening_iban, brondata, rlz_koppelingen) "
                 "VALUES (:id, :aid, :account, COALESCE(CAST(:boekdatum AS date), CURRENT_DATE), :bedrag, "
-                ":open_bedrag, :naam, :oms, :voorstel, :iban, '{}')"
+                ":open_bedrag, :naam, :oms, :voorstel, :iban, '{}', CAST(:koppelingen AS jsonb))"
             ),
             {
+                "koppelingen": json.dumps(rlz_koppelingen) if rlz_koppelingen is not None else None,
                 "id": mutatie_id,
                 "aid": administratie_id,
                 "account": payment_account_id,

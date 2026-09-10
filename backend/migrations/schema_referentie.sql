@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0130
+-- Migratie-head bij deze dump: 0131
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -655,7 +655,8 @@ CREATE TABLE boekhouding.bank_mutatie (
     ai_toets_uitkomst text,
     ai_toets_reden text,
     ai_toets_op timestamp with time zone,
-    ai_toets_invoer_hash text
+    ai_toets_invoer_hash text,
+    rlz_koppelingen jsonb
 );
 
 ALTER TABLE ONLY boekhouding.bank_mutatie FORCE ROW LEVEL SECURITY;

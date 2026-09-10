@@ -112,7 +112,9 @@ def laad_matchcontext(
         )
         if payment_account_id is not None:
             mutatie_query = mutatie_query.where(BankMutatie.payment_account_id == payment_account_id)
-        mutaties = list(session.scalars(mutatie_query.order_by(BankMutatie.boekdatum.desc())))
+        # Stabiele volgorde (blok 3 nachtrun 10/11-09): bij gelijke boekdatum op id — de gouden-set-export van het
+        # bankscherm moet byte-gelijk blijven tussen runs.
+        mutaties = list(session.scalars(mutatie_query.order_by(BankMutatie.boekdatum.desc(), BankMutatie.id)))
 
         posten = list(
             session.scalars(
@@ -272,6 +274,13 @@ class MutatieMetVoorstel:
     afletter_opdracht: BankAfletterOpdracht | None
     # Blok B (10-09): opgeslagen AI-toets-stand (chip "AI-twijfel: …" / "AI-toets overgeslagen: …").
     ai_toets: AiToetsStand | None = None
+    # Blok 3 nachtrun 10/11-09: koppelingen uit het RLZ-leesspoor (bank_mutatie.rlz_koppelingen, 0131) — leeg als de
+    # sync het leesspoor nog niet las. Samen met bedrag/open_bedrag → chip "deels afgeletterd in RLZ".
+    rlz_koppelingen: list[dict] = field(default_factory=list)
+
+    @property
+    def deels_afgeletterd(self) -> bool:
+        return matchmotor.is_deels_afgeletterd(self.mutatie.bedrag, self.mutatie.open_bedrag)
 
 
 def open_mutaties_met_voorstellen(
@@ -287,8 +296,8 @@ def open_mutaties_met_voorstellen(
     post_per_id = {post.id: post for post in context.open_posten}
 
     with scoped_session(administratie_id) as session:
-        boekdatum_per_id = {
-            rij.id: rij.boekdatum
+        rij_per_id = {
+            rij.id: (rij.boekdatum, list(rij.rlz_koppelingen or []))
             for rij in session.scalars(
                 select(BankMutatie).where(
                     BankMutatie.administratie_id == administratie_id,
@@ -302,13 +311,15 @@ def open_mutaties_met_voorstellen(
         voorstel = bepaal_voorstel_in_context(context, mutatie)
         regel = context.regel_per_id.get(voorstel.regel_id) if voorstel.regel_id else None
         regel_boekregels = []
-        if regel is not None and mutatie.bedrag is not None:
+        # Concrete boekregels altijd op het OPEN bedrag (blok 3 nachtrun 10/11-09) — nooit op het totaal.
+        te_boeken = mutatie.te_verwerken_bedrag
+        if regel is not None and te_boeken is not None:
             regel_boekregels = regel_naar_boekregels(
                 regel=regel,
-                mutatie_bedrag=mutatie.bedrag,
+                mutatie_bedrag=te_boeken,
                 btw_percentage=context.btw_percentage_per_taxrate.get(regel.taxrate_id),
             )
-        elif voorstel.soort == matchmotor.VoorstelSoort.HISTORIE_REGEL and mutatie.bedrag is not None:
+        elif voorstel.soort == matchmotor.VoorstelSoort.HISTORIE_REGEL and te_boeken is not None:
             regel_boekregels = historie_naar_boekregels(
                 voorstel=voorstel,
                 mutatie=mutatie,
@@ -321,10 +332,12 @@ def open_mutaties_met_voorstellen(
                 historie=context.boekhistorie,
                 bestaande_sleutels=bestaande_sleutels,
             )
+        boekdatum, koppelingen = rij_per_id.get(mutatie.id, (None, []))
         resultaat.append(
             MutatieMetVoorstel(
                 mutatie=mutatie,
-                boekdatum=boekdatum_per_id.get(mutatie.id),
+                boekdatum=boekdatum,
+                rlz_koppelingen=koppelingen,
                 voorstel=voorstel,
                 open_post=post_per_id.get(voorstel.payment_item_id) if voorstel.payment_item_id else None,
                 regel=regel,

@@ -150,7 +150,7 @@ def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
 
     print(f"bank-voorstellen-lezen {administratie_naam} ({administratie_id}) — onverwerkte mutaties: {len(rijen)}")
     kop = (
-        f"{'mutatie':8} {'datum':10} {'bedrag':>12} {'tegenpartij':28} | {'voorstel → referentie':44} | "
+        f"{'mutatie':8} {'datum':10} {'bedrag':>22} {'tegenpartij':28} | {'voorstel → referentie':44} | "
         f"{'regel / bron':40} | ai_toets"
     )
     print(kop)
@@ -168,8 +168,12 @@ def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
         # `regel` = bron-label van de motor (bij vaste regel/historie de regel-uitkomst, bv. "historie: 3 van 3 op …").
         regel = str(rij.voorstel.bron)
         ai_toets = live_uitkomsten.get(rij.mutatie.id) or _ai_toets_tekst(getattr(rij, "ai_toets", None))
+        # Blok 3 nachtrun 10/11-09: een in RLZ deels gekoppelde mutatie toont "totaal/open restant" — het voorstel
+        # hierboven is op dat open bedrag getoetst (meetrecept Zilver Beheer: `5023.09/open 2511.05`).
+        deels = getattr(rij, "deels_afgeletterd", False)
+        bedrag_kolom = f"{rij.mutatie.bedrag}/open {rij.mutatie.open_bedrag}" if deels else str(rij.mutatie.bedrag)
         print(
-            f"{str(rij.mutatie.id)[:8]:8} {str(rij.boekdatum or ''):10} {str(rij.mutatie.bedrag):>12} "
+            f"{str(rij.mutatie.id)[:8]:8} {str(rij.boekdatum or ''):10} {bedrag_kolom:>22} "
             f"{(rij.mutatie.tegenpartij_naam or '')[:28]:28} | {(soort + ' → ' + referentie)[:44]:44} | "
             f"{regel[:40]:40} | {ai_toets}"
         )
@@ -178,6 +182,9 @@ def _bank_voorstellen_lezen(args: argparse.Namespace) -> int:
                 "mutatie_id": str(rij.mutatie.id),
                 "datum": str(rij.boekdatum or ""),
                 "bedrag": str(rij.mutatie.bedrag),
+                "open_bedrag": str(rij.mutatie.open_bedrag) if rij.mutatie.open_bedrag is not None else None,
+                "deels_afgeletterd": bool(deels),
+                "rlz_koppelingen": list(getattr(rij, "rlz_koppelingen", []) or []),
                 "tegenpartij": rij.mutatie.tegenpartij_naam,
                 "omschrijving": rij.mutatie.omschrijving,
                 "voorstel_soort": soort,

@@ -10,8 +10,9 @@ RLZ-document/koppeling, nooit een nieuwe boekvorm (seam-eis):
 Volgorde van uitvoering: open posten → relaties → grootboek (de posten eerst, zodat een
 grootboek-deel nooit "over" een open-post-match heen boekt — dezelfde lijn als de sync).
 
-App-regels (server-side blokkerend): Σ delen = mutatiebedrag exact, elk deel ≠ 0 en met het teken
-van de mutatie, één actieve splitsing per mutatie, geen splitsing over een mutatie die al een
+App-regels (server-side blokkerend): Σ delen = het OPEN bedrag van de mutatie exact (blok 3 nachtrun 10/11-09 —
+een in RLZ al deels gekoppelde mutatie wordt voor haar restant gesplitst, nooit voor het totaal), elk deel ≠ 0 en
+met het teken van de mutatie, één actieve splitsing per mutatie, geen splitsing over een mutatie die al een
 volledige boeking/koppeling draagt. Half-verwerkt-patroon: faalt een deel, dan stopt de run,
 het deel staat op `fout` mét reden, de rest op `wacht`, de splitsing op `half_verwerkt` — zichtbaar
 in de UI, nooit stil; `hervat_splitsing` verwerkt de open delen alsnog tegen de VERSE OpenAmount.
@@ -168,13 +169,20 @@ def start_splitsing(
             raise boeken.BankMutatieNietGevonden("Bankmutatie niet gevonden in de cache — draai eerst de bank-sync")
         if mutatie.open_bedrag is None or mutatie.open_bedrag == 0:
             raise SplitsingOngeldig("De mutatie staat lokaal niet (meer) open")
-        mutatie_bedrag = Decimal(mutatie.bedrag)
-        valideer_delen(delen, mutatie_bedrag=mutatie_bedrag)
-        if Decimal(mutatie.open_bedrag) != mutatie_bedrag:
-            raise SplitsingOngeldig(
-                f"De mutatie is al deels verwerkt (open {mutatie.open_bedrag} van {mutatie_bedrag}) — "
-                "splitsen kan alleen op een volledig open mutatie"
-            )
+        # Blok 3 nachtrun 10/11-09: de delen verdelen het OPEN bedrag (wat er in RLZ nog te verwerken staat), niet
+        # het totaal — een in RLZ al deels gekoppelde mutatie (Zilver Beheer) is gewoon splitsbaar voor haar restant.
+        # `BankSplitsing.mutatie_bedrag` draagt dat te verdelen (open) bedrag.
+        mutatie_bedrag = Decimal(mutatie.open_bedrag)
+        try:
+            valideer_delen(delen, mutatie_bedrag=mutatie_bedrag)
+        except SplitsingOngeldig as exc:
+            if Decimal(mutatie.bedrag) != mutatie_bedrag:
+                raise SplitsingOngeldig(
+                    f"{exc} (de mutatie is {mutatie.bedrag}; in Reeleezee al "
+                    f"{(Decimal(mutatie.bedrag) - mutatie_bedrag).copy_abs()} gekoppeld — te verdelen is het open "
+                    f"bedrag {mutatie_bedrag})"
+                ) from exc
+            raise
         bestaand = session.scalars(
             select(BankSplitsing).where(
                 BankSplitsing.administratie_id == administratie_id,

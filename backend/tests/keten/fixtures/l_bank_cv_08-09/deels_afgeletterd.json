@@ -1,0 +1,72 @@
+{
+ "_herkomst": "Blok 3 nachtrun 10/11-09 — bug Peter 10-09 avond (Zilver Beheer). Bewijs in RLZ: mutatie 01-07 +5.023,09 is gekoppeld aan verkoopfactuur 2024840 (€ 2.512,04, boekstuk RLZ-01-00000800), OpenAmount 2.511,05; mutatie 08-09 −2.511,05 'retour dubbele betaling' van dezelfde tegenpartij. De module toonde/toetste/boekte het TOTAAL. Geanonimiseerd: tegenpartij = placeholder (naam onbekend in de repo), IBAN's fictief (mod-97), bedragen/referentie/boekstuk exact. In de gouden set draait dit onder de C.V.-testadministratie (zelfde rekening als de vier 08-09-mutaties + huur).",
+ "rekening": {
+  "id": "cccccccc-0000-4000-8000-0000000000f1",
+  "naam": "ING zakelijk",
+  "iban": "NL36INGB0007654321",
+  "rekening_type": 1,
+  "saldo": "48212.90",
+  "saldo_datum": "2026-09-08",
+  "laatste_import": {
+   "Date": "2026-09-08T06:00:00",
+   "BankImportSource": 1,
+   "BankImportType": "MT940",
+   "FileName": "afschrift.940"
+  }
+ },
+ "mutaties": [
+  {
+   "sleutel": "A_ZILVER",
+   "id": "cccccccc-0000-4000-8000-000000000a01",
+   "boekdatum": "2026-07-01",
+   "bedrag": "5023.09",
+   "open_bedrag": "2511.05",
+   "tegenpartij_naam": "Debiteur Z Beheer B.V.",
+   "omschrijving": "Factuur 2024840 en 2024841",
+   "tegenrekening_iban": "NL83RABO0198765432",
+   "rlz_koppelingen": [
+    {
+     "document_id": "eeeeeeee-0000-4000-8000-000000000800",
+     "boekstuknummer": "RLZ-01-00000800",
+     "referentie": "2024840",
+     "bedrag": "2512.04",
+     "document_type": 10,
+     "omschrijving": "Verkoopfactuur 2024840"
+    }
+   ],
+   "rlz_payment_reference_list": [
+    {
+     "id": "11111111-0000-4000-8000-000000000001",
+     "Sequence": 1,
+     "Amount": -2512.04,
+     "PaymentReconciliationSource": 1,
+     "Document": {
+      "id": "eeeeeeee-0000-4000-8000-000000000800",
+      "ReceiptNumber": "RLZ-01-00000800",
+      "Reference": "2024840",
+      "DocumentType": 10,
+      "Status": 3,
+      "Description": "Verkoopfactuur 2024840",
+      "IsSystemGenerated": false
+     }
+    }
+   ]
+  },
+  {
+   "sleutel": "B_ZILVER",
+   "id": "cccccccc-0000-4000-8000-000000000b01",
+   "boekdatum": "2026-09-08",
+   "bedrag": "-2511.05",
+   "open_bedrag": "-2511.05",
+   "tegenpartij_naam": "Debiteur Z Beheer B.V.",
+   "omschrijving": "retour dubbele betaling",
+   "tegenrekening_iban": "NL83RABO0198765432",
+   "rlz_koppelingen": [],
+   "rlz_payment_reference_list": []
+  }
+ ],
+ "verwacht": {
+  "A_ZILVER": "deels_afgeletterd = true, open 2511.05, één koppeling RLZ-01-00000800/2024840/2512.04; voorstel HANDMATIG (geen open post voor het restant) getoetst op 2.511,05; direct-boeken 5023.09 = 409 'Bedrag dekt niet het open bedrag van de mutatie…', 2511.05 = 200 en mutatie dicht.",
+  "B_ZILVER": "handmatig — de verrekening-regel (A ↔ B, zelfde tegenpartij, tegengesteld restant) is blok 3.4 (alleen STAP-0/voorstel, niet gebouwd)."
+ }
+}

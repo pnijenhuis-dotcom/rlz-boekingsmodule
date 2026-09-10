@@ -1918,3 +1918,99 @@ keuze <1> expliciet zetten (readback van "Nog te betalen" is `null`; de motor ze
 die regels en bedragen niet raakt. Motor (blok 3b): `RlzClient.list_quick_payment_selections` +
 `set_quick_payment_selection`; `RlzInkoopPort.boek_inkoopfactuur` zet 'm tussen PUT en actie 17 (keuze op label
 gematcht per document; label niet gevonden = zichtbare boekfout, nooit stil boeken zonder status op een declaratie).
+
+## Verrekening tussen twee bankmutaties — STAP-0 (nachtrun 10/11-09, lees-only; `verkenning/stap0_verrekening_lezen.py`) — GEEN API-VORM VOOR BANK↔BANK; DRIE BOUWBARE OMWEGEN
+
+Aanleiding (Peter 10-09, casus Zilver Beheer, geanonimiseerd): mutatie A 01-07 **+5.023,09** is gekoppeld aan
+verkoopfactuur 2024840 (€ 2.512,04, RLZ-01-00000800), open rest **2.511,05**; mutatie B 08-09 **−2.511,05** "retour
+dubbele betaling" van dezelfde tegenpartij. Vraag: welke RLZ-vorm bestaat via de API om A-rest en B tegen elkaar weg te
+strepen? Uitgevoerd **uitsluitend met GET's** (Help, enumeraties, TEST-administratie `8dbfb856-…`; het script weigert
+élke niet-GET — `LeesClient`), géén schrijf-PoC. Rapporten: `verkenning/output/stap0_verrekening_{help,enums,test,test2,test3}.json`.
+
+### 1. Wat de API zelf zegt (Help + enumeraties, 10-09 21:05Z)
+
+- `$metadata` → **404** op root én admin-scoped (herbevestigd; 08-09 idem). Alleen de Help-pagina's beschrijven modellen.
+- Help: 2.135 routes. Rond bankmutaties: `GET/PUT PaymentTransactions/{id}`, `GET/POST …/{id}/Actions`, `GET …/{id}/
+  CancellationCandidates` ("Returns a list candidates for canceling a transaction"), `?search=`/`?searchstring=`. **Geen
+  route met Settle/Transfer/Cross/Kruispost** in de naam.
+- Model `PaymentTransaction` (PUT): o.a. `MatchedPaymentItem: PaymentItem`, `PaymentReferenceList`, **`ReturnReason:
+  string`** (retourreden — in de TEST-administratie nergens gevuld, `$filter=ReturnReason ne null` → count 0).
+- Model `PaymentItem` (GET-collectie): `Amount, BankRelation, BookDate, Document, DocumentCategory, DocumentType, DueDate,
+  ExportFile, PaymentAccount, PaymentInProgress, PaymentMethod, PaymentReferenceType, PaymentRefID, PaymentStatus,
+  PaymentTerm, Reference, Reference1, Reference2, ReturnReason` — **geen veld dat naar een PaymentTransaction verwijst**:
+  een betaal-item is per model een DOCUMENT-post.
+- Model `PaymentReference` (via CancellationCandidates-Help): `id, Amount, BaseAmount, Document, IsArchived, PaymentMethod,
+  PaymentReconciliationSource, PaymentTransaction, Sequence` — een koppeling kent één document én één mutatie.
+- `ActionKinds` (201 leden, top-level enum): 15 `LinkPaymentItems`, 16 `UnlinkPayment`, **34 `Settle` "Factuur
+  verrekenen"**, 114 `PaySalesInvoice`, **115 `CancelPayment` "Betaling storneren"**, 148 `BookExpectedPaymentTransaction`,
+  161 `LinkNewDocument`, 218 `PayPurchaseInvoice`. Geen actie voor overboeking/kruispost/"verreken twee bankregels".
+- `PaymentAccountTypes` (12): 1 Bank, 3 Cash, **4 `Settling` "Betaling" (= de Verrekeningen-rekening)**, 5 Balance, 6
+  Private, **7 `Intermediate` "Tussenrekening"**, 11 Tax, 12 PaymentServiceProvider. `PaymentReconciliationSources`: −1/1/2/3.
+  `PaymentReferenceTypes` (admin-scoped) = filterkeuzes "Alle mutaties / Inkoop Factuur / Openingsbalans / Declaratie /
+  Declaratie via CC / Salaris…" — een UI-filter-enum, geen koppelbron.
+
+### 2. TEST-administratie (alleen GET) — feiten
+
+| Meting | Uitkomst |
+|---|---|
+| `PaymentTransactions` top 200 | 104 mutaties (44 positief / 60 negatief — positieve komen alleen uit RLZ zelf: aanmaken via API is 400, 25-08); 8 open, **3 deels gekoppeld** (de −105,42 van 09-08 met drie huls-koppelingen), 93 dicht |
+| `GET PaymentTransactions/{id}/Actions` — open, deels gekoppeld, dicht, én op RLZ's eigen verrekeningsmutaties | **altijd dezelfde vijf**: 15, 16, 148, 160, 161 — 34 en 115 worden op een bankmutatie nooit aangeboden |
+| `PaymentItems?$expand=Document` | 3 items, alle met `Document` (DocumentType 1 en 7); **nul items met een bankmutatie of BMDB als bron** (een BMDB is direct Status 3 en kent geen open post). `$filter=Document/DocumentType eq 19` → `400 … incompatible types 'Reeleezee.DTO.DocumentType' and 'Edm.Int32'` (zelfde enum-typebug als `Type eq 2`, 02-08) |
+| **RLZ's eigen "verrekenen" (actie 34 in de UI)** | = **twee `PaymentTransactions` op de Type-4 Verrekeningen-rekening (GB 2001)**: 18 stuks, altijd paren op dezelfde `BookDate` met ±hetzelfde bedrag (bv. 2023-04-30: +1.357,57/−1.357,57 en −1.946,02/+1.946,02), `IsImported false`, `TransactionId null`, `Statement` = één vast "afschrift" (nr 9) van de verrekeningsrekening; elke helft draagt één `PaymentReference` (`PaymentReconciliationSource 2`) naar één DOCUMENT: verkoopfactuur RLZ-01-…391 (+1.946,02) ↔ creditfactuur RLZ-01-…392 (−1.946,02), inkoopfactuur ↔ creditnota, "Verrekening"-paar op een salarisadviseur. Beide documenten daarna Status 3, `BasePaidAmount` = bedrag, `QuickPaymentSelection null`. Journaal op 2001: D en C hetzelfde bedrag, saldo 0 (18 regels). **Verrekenen is in RLZ dus document ↔ document; een bankmutatie kan geen zijde zijn.** |
+| `CancellationCandidates` (`$expand=Document,PaymentTransaction`) | Leeg op alle TEST-mutaties zonder naam-tegenhanger. Gevuld op echte mutaties: **de lijst bevat `PaymentReference`s van ANDERE mutaties met een gelijkende tegenpartijnaam en TEGENGESTELD teken, ongeacht bedrag en datum** — +20.000 (2018, eigen naam) → kandidaat de −55,00-koppeling uit 2016 aan een inkoopfactuur; −21.453,72 ↔ +9.124,53 (zelfde dag, zelfde tegenpartij) wijzen wederzijds naar elkaars koppeling. Dit is RLZ's leesroute voor "Betaling storneren" (ActionKind 115): een tegengestelde mutatie van dezelfde partij kan een eerdere koppeling storneren. |
+| Tussenrekeningen (`Ledgers?search=`) | **1010 Kruisposten** (`UseForBankCashMutationDetails true`), 1011 Kruisposten cheques, 1012 Betalingen onderweg, **1405 Overige vooruitbetaalde bedragen** (bank-detail true), **1808 Overige vooruitontvangen bedragen** (bank-detail true), 2000/2100 Nog te rubriceren uitgaven/ontvangsten, 2001 Verrekeningen (bank-detail FALSE — géén BMDB-doel), 2101/2102 Tegenrekening balansposten/saldi. Journaal 1010 en 1808: 0 regels in de TEST-administratie; BMDB's met een regel op een tussenrekening: 0 in de top 80 (de kruispost-BMDB van de fallback-PoC is gestorneerd en door RLZ opgeruimd — cf. 25-08 "gestorneerde BMDB → 404") |
+| `BankMutationDirectBookings?$filter=PaymentAccount/id eq …` | `200` mét **HTML-body** (geen JSON) — filteren op PaymentAccount is op deze collectie geen geldige OData; per mutatie lezen blijft `PaymentReferenceList($expand=Document)` |
+
+### 3. Kandidaat-vormen voor "A-rest tegen B"
+
+| Vorm | Bewijs uit de API (lees-only) | Wat ontbreekt om zeker te zijn | Schrijf-PoC die dat bewijst (TEST-administratie, storno-terugweg) |
+|---|---|---|---|
+| **1. Actie 15 met een PaymentItem van de andere mutatie** | **Structureel onmogelijk**: `PaymentItem` verwijst per model uitsluitend naar een `Document`; geen enkele mutatie of BMDB komt als item voor; actie 15 vraagt `PaymentItemList` | niets — uitgesloten | geen |
+| **2. Kruispost-/tussenrekening aan beide kanten (twee BMDB's)** | Alle bouwstenen bewezen: deel-BMDB op een deels gekoppelde mutatie (25-08 §2 punt 2), BMDB op Kruisposten (fallback-PoC §4), storno per BMDB-deel komt exact terug (25-08 §2 punt 4), nieuw GUID per cyclus. Rekeningen mét `UseForBankCashMutationDetails true`: 1010 Kruisposten, 1808 (debiteur te veel ontvangen) / 1405 (crediteur te veel betaald) | (a) een POSITIEVE deels-gekoppelde mutatie is in de TEST-administratie niet te maken (PUT ontvangst = 400) → de debiteurkant is alleen als spiegel toetsbaar; (b) geen sub-administratiespoor: de debiteurenkaart ziet de te-veel-ontvangst niet — per-tegenpartij-saldo van 1808 is ónze boekhouding (zoals `bank_relatie_boeking`) | crediteur-spiegel: TX_A' −x deels gekoppeld aan inkoopfactuur, TX_B' … kan niet positief → PoC beperkt tot: deel-BMDB +rest op 1405 op een negatieve mutatie mét bestaande koppeling + tweede BMDB op een tweede negatieve mutatie; teken-symmetrie aannemen; storno beide → `OpenAmount` terug |
+| **2b. Aanbetalingsdocument-PAAR op de relatie + actie 15 per kant** | Relatie-PoC 25-08: PurchaseInvoice met één regel op 1403 = open post op de crediteur (H1), actie 15 koppelt (H2), storno 19 herstelt (H4). Spiegel verkoop: SalesInvoice met één regel op 1806 "Vooruitbetaalde verkoopfacturen"; hier: +2.511,05 (open post +) voor A-rest én creditverkoopfactuur −2.511,05 (open post −) voor B; 1806 loopt op 0, **debiteurenkaart toont beide** | de positieve/verkoopkant is niet live bewezen (25-08: "spiegelbeeld, geen positieve test-TX"); actie 15 op een creditpost (negatief item) niet eerder gedaan; twee extra documenten per verrekening (RLZ-01-reeks vervuilt) | crediteur-spiegel wél volledig toetsbaar: inkoopfactuur 1403 +x en inkoopcreditnota 1403 −x, actie 15 vanaf twee negatieve/… — de ontvangstkant blijft tot de eerste echte casus met storno-terugweg klaar |
+| **3. RLZ's eigen "verrekenen" (actie 34 `Settle`)** | Werkt in RLZ als paar settling-mutaties op GB 2001, uitsluitend document ↔ document (§2); via de API in élke body-vorm `400 _InvalidData` (fallback-PoC 02-08); op `PaymentTransactions/{id}/Actions` niet aangeboden | n.v.t. voor bank ↔ bank: A-rest en B zijn geen documenten. Pas relevant ná vorm 2b (dan zijn beide zijden documenten) — maar dan doet actie 15 het werk al | geen (dood spoor herbevestigd) |
+| **4. RLZ-eigen "Betaling storneren" (ActionKind 115 + `CancellationCandidates`)** | Leesroute bestaat en selecteert precies "andere mutatie, zelfde tegenpartij, tegengesteld teken" — RLZ kent de casus-vorm dus wél als concept (retour-/stornobetaling) | de schrijfvorm (waar POST je 115 met welke body — niet op `PaymentTransactions/{id}/Actions`), en de semantiek: storneert 115 de HELE koppeling (dan komt factuur 2024840 weer open — fout voor deze casus) of een deelbedrag? `ReturnReason` als spoor? | eerst een DevTools-capture van Peter in de RLZ-UI ("betaling storneren" op een retourmutatie), daarna STAP-0-replay zoals bij actie 15 (09-08) — nooit blind varianten POSTen |
+
+**Conclusie:** RLZ heeft géén API-vorm die twee bankmutaties rechtstreeks tegen elkaar wegstreept. Vorm 2 (twee BMDB's op
+één tussenrekening) is met bewezen bouwstenen direct bouwbaar en per deel storneerbaar; vorm 2b is boekhoudkundig het
+netst (relatie-spoor) maar half bewezen; vorm 4 is RLZ's eigen concept voor exact deze casus maar ongekraakt.
+
+### 4. Voorstel matchmotor-regel "verrekening" (alleen voorstel — NIET gebouwd, blok 3.4)
+
+- **Criteria (deterministisch, geld in code):** (1) zelfde tegenpartij: `CounterAccount` (IBAN) gelijk; terugval
+  genormaliseerde `Name` + IBAN↔entity-geheugen `bank_relatie_iban`; (2) tegengesteld teken; (3) **cent-exact op het OPEN
+  bedrag**: |B.`OpenAmount`| = |A.`OpenAmount`| (nooit op `Amount` — A is deels gekoppeld); (4) |BookDate A − BookDate B| ≤ 90
+  dagen; (5) beide nog open (`OpenAmount ≠ 0`); (6) stap 1/2 leverden voor B géén open post van de tegenpartij (een echte
+  factuur wint altijd van een verrekening); (7) precies één kandidaat-tegenmutatie — bij meer kandidaten nooit blind kiezen.
+- **Kleur:** alle zeven → **groen** `VoorstelSoort.VERREKENING` (autoboek-kandidaat achter `bank_autoboeken_ingeschakeld`,
+  de AI-plausibiliteitspoort en de volumerem; audit `bank_verrekening`, chip "verrekening met mutatie van <datum>");
+  (1)+(2)+(4)+(5) maar bedrag ≠ open (afronding ≤ € 0,05 of deelbedrag) of meerdere kandidaten → **oranje** "mogelijke
+  verrekening — bevestigen" mét de kandidatenlijst; RLZ's `CancellationCandidates` mag als extra bron getoond worden
+  ("RLZ ziet ook: …"), nooit als beslisser (bedrag-onafhankelijk).
+- **Plaats in de voorstel-volgorde:** ná stap 2 (deel-match op een open post) en vóór stap 3 (vaste regel) — het is een
+  match op een concrete tegenmutatie, geen rubriceringsregel. Beide mutaties krijgen hetzelfde voorstel (A-rest en B tonen
+  elkaar); boeken vanaf één van de twee verwerkt beide.
+- **Wat de boeking in RLZ doet, per vorm:** vorm 2 — twee `PUT BankMutationDirectBookings/{nieuw-guid}` (cyclus-GUID per
+  (mutatie, deel)), regel `NetAmount` = teken van de eigen mutatie op de gekozen tussenrekening (A-rest +2.511,05 → C 1808
+  "Overige vooruitontvangen bedragen"; B −2.511,05 → D 1808; crediteur-spiegel 1405; 1010 Kruisposten als Peter één
+  rekening voor alles wil), verificatie op verse `OpenAmount` = 0 per mutatie, eigen tabel `bank_verrekening` (A, B,
+  rekening, beide document-id's, status geboekt/gestorneerd, reconciliatie "saldo tussenrekening per tegenpartij = 0"),
+  storno = actie 19 per BMDB (komt exact terug). Vorm 2b — SalesInvoice +2.511,05 en creditverkoopfactuur −2.511,05, elk
+  één regel 1806/0 %-tarief, op de debiteur, actie 17, dan `link_payment_item` A→post+ en B→post−, storno 19 per document.
+  Vorm 4 — pas ná capture + replay.
+
+### 5. Vraag aan Peter (beslispunt "welke RLZ-vorm")
+
+1. **Welke vorm:** (2) twee BMDB's op een tussenrekening — technisch klaar, per deel storneerbaar, maar de RLZ-debiteuren-/
+   crediteurenkaart ziet de verrekening niet (ons spoor); (2b) aanbetalingsdocument-paar op de relatie — netste boekhouding
+   (kaart toont te veel ontvangen én terugbetaald), twee extra documenten per geval, ontvangstkant nog niet live bewezen;
+   (4) RLZ's eigen "betaling storneren" — vraagt eerst een DevTools-capture van jou in de RLZ-UI op een retourmutatie.
+2. **Rekeningkeuze bij vorm 2:** 1808/1405 (semantisch: te veel ontvangen/betaald) of 1010 Kruisposten (één rekening)?
+3. **Akkoord voor een schrijf-PoC op de TEST-administratie** (TEST-referenties, storno-terugweg): alleen de crediteur-spiegel
+   is daar volledig toetsbaar (positieve mutaties zijn via de API niet aan te maken); de debiteurkant (de Zilver-casus zelf)
+   wordt pas bij de eerste echte casus bewezen, mét de storno klaar.
+
+**Niet vast te stellen (lees-only):** het gedrag van een deel-BMDB op een POSITIEVE deels gekoppelde mutatie; de
+schrijfvorm en semantiek van ActionKind 115; of `ReturnReason` door RLZ bij SEPA-retouren gevuld wordt (geen enkele
+gevulde waarde in de TEST-administratie); of actie 15 een NEGATIEF PaymentItem (creditverkoopfactuur) op een negatieve
+mutatie accepteert.

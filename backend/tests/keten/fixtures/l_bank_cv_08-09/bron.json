@@ -6,7 +6,10 @@
   "A": "€ 12.500,00 BIJ van 'Hr P.W. N.-P.', kenmerk 26247623521810 → oude motor: verkoopfactuur 2352 Tupker Beheer (open € 26,56) als 'match op naam + referentie'. FOUT — '2352' is een substring van het kenmerk, naam nooit getoetst. Nieuw: geen open-post-voorstel (handmatig).",
   "B": "DNA Notaris € −99,99 AF → oude motor: verkoopfactuur 2337 Kempen Chalets (deelbetaling). FOUT — een verkoopfactuur hoort bij een bijschrijving (teken). Nieuw: teken-mismatch = nooit kandidaat (handmatig).",
   "TransIP_24-08": "Afschrijving TransIP B.V. 24-08 met factuurnummer in de omschrijving, inkoopfactuur open cent-exact → GROEN 'naam + nummer + bedrag'.",
-  "NPG_2026053": "Afschrijving NPG Administratiekantoor met factuur 2026053 in de omschrijving, inkoopfactuur 2026053 open cent-exact → GROEN 'naam + nummer + bedrag'."
+  "NPG_2026053": "Afschrijving NPG Administratiekantoor met factuur 2026053 in de omschrijving, inkoopfactuur 2026053 open cent-exact → GROEN 'naam + nummer + bedrag'.",
+  "A_ZILVER_10-09": "Blok 3 nachtrun 10/11-09 (deels_afgeletterd.json): +5.023,09 met OpenAmount 2.511,05 en één RLZ-koppeling (verkoopfactuur 2024840 € 2.512,04, RLZ-01-00000800) → chip 'deels afgeletterd in RLZ', voorstel/boeken op het open bedrag; 5.023,09 boeken = 409.",
+  "B_ZILVER_10-09": "−2.511,05 'retour dubbele betaling' zelfde tegenpartij → handmatig (verrekening-regel = blok 3.4, niet gebouwd)."
  },
- "tekenconventie": "RLZ PaymentItem.Amount: inkoop-post negatief, verkoop-post positief (api-verkenning H1, replay 09-08)."
+ "tekenconventie": "RLZ PaymentItem.Amount: inkoop-post negatief, verkoop-post positief (api-verkenning H1, replay 09-08).",
+ "export": "frontend/src/dev/keten/l_bank_cv_08-09.json (sleutel 'bank': rekening_id, rekeningen, mutaties, afletter_opdrachten) — geschreven door tests/keten/test_l_bank_matchmotor.py::TestExportBankscherm; datums bevroren op de referentiedag (2026-09-08), matchmotor-'vandaag' in de test gepind zodat de historie-regel deterministisch blijft."
 }

@@ -218,6 +218,24 @@ class MutatieGegevens:
     tegenrekening_iban: str | None
     rlz_voorstel_item_id: uuid.UUID | None
 
+    @property
+    def te_verwerken_bedrag(self) -> Decimal | None:
+        """Hét bedrag waarop voorstellen én boeken werken (blok 3 nachtrun 10/11-09, bug Zilver Beheer): het OPEN bedrag
+        van de mutatie (RLZ `OpenAmount`), terugval het totaal als de sync het open bedrag (nog) niet kent."""
+        return open_bedrag_van(self.bedrag, self.open_bedrag)
+
+
+def open_bedrag_van(bedrag: Decimal | None, open_bedrag: Decimal | None) -> Decimal | None:
+    """Eén bron voor 'wat staat er nog te verwerken': `open_bedrag` als de sync 'm kent, anders `bedrag`. Een
+    mutatie die in RLZ al deels is afgeletterd (Zilver Beheer 01-07: +5.023,09, gekoppeld 2.512,04, open 2.511,05)
+    wordt zo nooit meer op het totaal getoetst of geboekt."""
+    return open_bedrag if open_bedrag is not None else bedrag
+
+
+def is_deels_afgeletterd(bedrag: Decimal | None, open_bedrag: Decimal | None) -> bool:
+    """DTO-contract N3a↔N3b: open bekend, ≠ totaal en ≠ 0 — de mutatie is in RLZ al deels gekoppeld."""
+    return bedrag is not None and open_bedrag is not None and open_bedrag != bedrag and open_bedrag != 0
+
 
 @dataclass(frozen=True)
 class OpenPost:
@@ -270,12 +288,13 @@ class Voorstel:
 
 
 def teken_toets(mutatie: MutatieGegevens, post: OpenPost) -> str:
-    """TEKEN_OK / TEKEN_MISMATCH / TEKEN_ONBEKEND (documentsoort of bedrag onbekend)."""
-    if mutatie.bedrag is None or post.bedrag is None or mutatie.bedrag == 0 or post.bedrag == 0:
+    """TEKEN_OK / TEKEN_MISMATCH / TEKEN_ONBEKEND (documentsoort of bedrag onbekend). Toetst het OPEN bedrag."""
+    bedrag = mutatie.te_verwerken_bedrag
+    if bedrag is None or post.bedrag is None or bedrag == 0 or post.bedrag == 0:
         return TEKEN_ONBEKEND
     if post.documentsoort not in _TEKEN_TOETSBARE_SOORTEN:
         return TEKEN_ONBEKEND
-    return TEKEN_OK if (mutatie.bedrag > 0) == (post.bedrag > 0) else TEKEN_MISMATCH
+    return TEKEN_OK if (bedrag > 0) == (post.bedrag > 0) else TEKEN_MISMATCH
 
 
 def _naam_of_iban(
@@ -307,7 +326,10 @@ def _naam_of_iban(
 
 
 def _bedrag_exact(mutatie: MutatieGegevens, post: OpenPost) -> bool:
-    return mutatie.bedrag is not None and post.bedrag is not None and abs(post.bedrag) == abs(mutatie.bedrag)
+    """Cent-exact tegen het OPEN bedrag van de mutatie (blok 3 nachtrun 10/11-09): een deels afgeletterde
+    mutatie matcht op wat er nog open staat, nooit op het totaal."""
+    bedrag = mutatie.te_verwerken_bedrag
+    return bedrag is not None and post.bedrag is not None and abs(post.bedrag) == abs(bedrag)
 
 
 @dataclass(frozen=True)

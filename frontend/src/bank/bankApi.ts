@@ -134,10 +134,24 @@ export interface RegelVoorstelDto {
   aantal_boekingen: number
 }
 
+/** Blok 3 nachtrun 10/11-09 (migratie 0131): één RLZ-koppeling op een deels afgeletterde mutatie — uit
+ * `PaymentReferenceList($expand=Document)` van de verversronde. Alle velden optioneel-null: de sync kent ze niet altijd. */
+export interface RlzKoppelingDto {
+  document_id: string | null
+  boekstuknummer: string | null
+  referentie: string | null
+  /** Gekoppeld bedrag op déze mutatie (Decimal-string). */
+  bedrag: string | null
+  document_type: number | null
+  omschrijving: string | null
+}
+
 export interface MutatieDto {
   id: string
   boekdatum: string | null
   bedrag: string | null
+  /** Het in RLZ nog open bedrag van de mutatie (`OpenAmount`); null = onbekend → `bedrag` is de terugval. Sinds blok 3
+   * nachtrun 10/11-09 de ENIGE maat voor boeken/splitsen/voorstel: gebruik `openBedrag(mutatie)`. */
   open_bedrag: string | null
   tegenpartij_naam: string | null
   omschrijving: string | null
@@ -145,6 +159,12 @@ export interface MutatieDto {
   voorstel: VoorstelDto
   afletter_opdracht: AfletterOpdrachtDto | null
   regel_voorstel: RegelVoorstelDto | null
+  /** Blok 3 nachtrun 10/11-09 (bug Zilver Beheer: +5.023,09 waarvan 2.512,04 in RLZ al aan verkoopfactuur 2024840
+   * gekoppeld, open 2.511,05): `open_bedrag ≠ bedrag` én ≠ 0. Optioneel voor oudere antwoorden — `isDeelsAfgeletterd`
+   * leidt het dan zelf af uit de bedragen. */
+  deels_afgeletterd?: boolean
+  /** Wat in RLZ al aan deze mutatie hangt (leeg = de sync kent het (nog) niet; dan alleen de bedragen tonen). */
+  rlz_koppelingen?: RlzKoppelingDto[]
   /** Blok B bundel 10-09 (migratie 0129): uitkomst van de AI-plausibiliteitstoets als POORT vóór het automatisch boeken
    * van een vaste/historie-regel — `twijfel` = niet geboekt, blijft voorstel; `overgeslagen` = toets kon niet draaien
    * (AVG-gate, API-key, kostengrens, AI-fout) → niet geboekt. Optioneel voor oudere antwoorden. */
@@ -155,6 +175,30 @@ export interface MutatieDto {
 
 export interface MutatiesDto {
   mutaties: MutatieDto[]
+}
+
+type BedragVelden = Pick<MutatieDto, 'bedrag' | 'open_bedrag'> & Partial<Pick<MutatieDto, 'deels_afgeletterd' | 'rlz_koppelingen'>>
+
+/** Het te verwerken bedrag van een mutatie = het in RLZ nog OPEN bedrag (`open_bedrag`), terugval `bedrag` als de
+ * sync het open bedrag niet kent. Eén bron voor handmatig boeken, splitsen en de voorstel-kaart (blok 3 nachtrun
+ * 10/11-09) — een volledig afgeletterde mutatie (open 0) filtert de backend al uit de lijst. */
+export function openBedrag(mutatie: BedragVelden): string | null {
+  return mutatie.open_bedrag ?? mutatie.bedrag
+}
+
+function centen(bedrag: string | null | undefined): number | null {
+  if (bedrag === null || bedrag === undefined) return null
+  const n = Number(bedrag)
+  return Number.isFinite(n) ? Math.round(n * 100) : null
+}
+
+/** Deels afgeletterd in RLZ: het open bedrag is bekend, verschilt van het mutatiebedrag en is niet 0. De backend levert
+ * `deels_afgeletterd` (contract); oudere antwoorden zonder dat veld krijgen dezelfde toets cent-exact op de bedragen. */
+export function isDeelsAfgeletterd(mutatie: BedragVelden): boolean {
+  if (typeof mutatie.deels_afgeletterd === 'boolean') return mutatie.deels_afgeletterd
+  const open = centen(mutatie.open_bedrag)
+  const vol = centen(mutatie.bedrag)
+  return open !== null && vol !== null && open !== vol && open !== 0
 }
 
 export interface BankSyncResultaatDto {

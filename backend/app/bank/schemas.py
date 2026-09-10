@@ -155,11 +155,30 @@ class RegelVoorstelResponse(BaseModel):
     aantal_boekingen: int
 
 
+class RlzKoppelingResponse(BaseModel):
+    """Eén wérkelijke koppeling van de mutatie in RLZ (leesspoor `PaymentReferenceList($expand=Document)`, sync-
+    verversronde, kolom `bank_mutatie.rlz_koppelingen` — blok 3 nachtrun 10/11-09). `bedrag` = het op deze mutatie
+    gekoppelde bedrag (grootte); `document_type` = RLZ DocumentType (1 inkoop, 10 verkoop, 19 directe boeking …)."""
+
+    document_id: uuid.UUID | None = None
+    boekstuknummer: str | None = None
+    referentie: str | None = None
+    bedrag: Decimal | None = None
+    document_type: int | None = None
+    omschrijving: str | None = None
+
+
 class MutatieResponse(BaseModel):
+    """`bedrag` = het totaal van de mutatie, `open_bedrag` = wat er in RLZ nog open staat — sinds blok 3 nachtrun
+    10/11-09 (bug Zilver Beheer) DE maat voor voorstel, formulier, splitsen en boeken. `deels_afgeletterd` +
+    `rlz_koppelingen` (DTO-contract N3a↔N3b, additief): in RLZ al deels gekoppeld, en waaraan."""
+
     id: uuid.UUID
     boekdatum: date | None
     bedrag: Decimal | None
     open_bedrag: Decimal | None
+    deels_afgeletterd: bool = False
+    rlz_koppelingen: list[RlzKoppelingResponse] = []
     tegenpartij_naam: str | None
     omschrijving: str | None
     tegenrekening_iban: str | None

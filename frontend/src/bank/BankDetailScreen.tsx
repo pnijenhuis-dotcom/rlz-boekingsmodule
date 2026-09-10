@@ -9,6 +9,8 @@ import {
   haalAfletterOpdrachten,
   haalMutaties,
   haalRekeningen,
+  isDeelsAfgeletterd,
+  openBedrag,
   trekAfletterenIn,
   voerAfletterOpdrachtUit,
   zetAfletterenKlaar,
@@ -18,6 +20,7 @@ import {
   type BankSyncRunDto,
   type MutatieDto,
   type RekeningenDto,
+  type RlzKoppelingDto,
   type SplitsingDto,
   type VoorstelDto,
 } from './bankApi'
@@ -128,10 +131,47 @@ function afletterUitkomstMelding(resultaat: AfletterActieResultaatDto): { tekst:
   }
 }
 
+/** Eén RLZ-koppeling leesbaar: "RLZ-01-00000800 · 2024840 · € 2.512,04" (wat de sync kent; nooit een GUID). */
+export function koppelingTekst(k: RlzKoppelingDto): string {
+  const delen = [k.boekstuknummer, k.referentie ? `factuur ${k.referentie}` : null, k.bedrag !== null ? formatBedrag(k.bedrag) : null]
+    .filter((d): d is string => Boolean(d))
+  if (delen.length === 0) return k.omschrijving?.trim() || 'document zonder gegevens'
+  return delen.join(' · ')
+}
+
+/** Blok 3 nachtrun 10/11-09 (bug Zilver Beheer 10-09): een mutatie die in RLZ al DEELS is afgeletterd (01-07 +5.023,09
+ * gekoppeld aan verkoopfactuur 2024840 € 2.512,04, nog te boeken 2.511,05) toonde het volle bedrag en bood "handmatig
+ * € 5.023,09". Nu: volledig bedrag + secundaire regel "open € …" + chip "deels afgeletterd in RLZ" (info-blauw = stand;
+ * één regel) mét de gekoppelde documenten als tooltip én als regel zodra de sync ze kent — anders alleen de bedragen.
+ * Volledig afgeletterd (open 0) komt de lijst niet in (backend-filter). */
+export function DeelsAfgeletterdChip({ mutatie }: { mutatie: Pick<MutatieDto, 'bedrag' | 'open_bedrag' | 'deels_afgeletterd' | 'rlz_koppelingen'> }) {
+  if (!isDeelsAfgeletterd(mutatie)) return null
+  const koppelingen = mutatie.rlz_koppelingen ?? []
+  const basis = `In Reeleezee is van deze mutatie al een deel afgeletterd; nog open ${formatBedrag(openBedrag(mutatie))} van ${formatBedrag(mutatie.bedrag)}.`
+  const title =
+    koppelingen.length > 0
+      ? `${basis} Gekoppeld aan: ${koppelingen.map(koppelingTekst).join('; ')}.`
+      : `${basis} Welke documenten gekoppeld zijn, weet de sync (nog) niet — kijk in Reeleezee.`
+  return (
+    <>
+      <span className="chip klaar" title={title} data-testid="chip-deels-afgeletterd">
+        deels afgeletterd in RLZ
+      </span>
+      {koppelingen.length > 0 && (
+        <div className="bank-oms" style={{ textAlign: 'right', maxWidth: 260 }} data-testid="deels-afgeletterd-koppelingen">
+          gekoppeld: {koppelingen.map(koppelingTekst).join('; ')}
+        </div>
+      )}
+    </>
+  )
+}
+
 /** Handmatig-boeken-formulier per mutatie (voorstel-volgorde stap 5, of correctie op een
- * regel-voorstel): GB-combobox + btw-code, bedrag = het volledige mutatiebedrag (splitsen in
+ * regel-voorstel): GB-combobox + btw-code, bedrag = het OPEN bedrag van de mutatie (`openBedrag`, blok 3
+ * nachtrun 10/11-09 — bij een deels afgeletterde mutatie is dat kleiner dan het mutatiebedrag; splitsen in
  * meerdere regels blijft backend-mogelijk maar is geen v1-scherm-functie). Btw-splitsing doet
- * de backend — code rekent, dit formulier stuurt alleen keuzes. */
+ * de backend — code rekent, dit formulier stuurt alleen keuzes. Een 409 "Bedrag dekt niet het open bedrag van de
+ * mutatie …" van de backend blijft als tekst in het formulier staan (nooit stil). */
 function HandmatigBoekenForm({
   administratieId,
   mutatie,
@@ -151,21 +191,23 @@ function HandmatigBoekenForm({
   const [regelOpslaan, setRegelOpslaan] = useState(false)
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
+  const teBoeken = openBedrag(mutatie)
+  const deels = isDeelsAfgeletterd(mutatie)
 
   const boek = async () => {
-    if (!ledgerId || mutatie.bedrag === null) return
+    if (!ledgerId || teBoeken === null) return
     setBezig(true)
     setFout(null)
     try {
       // Bedragsplitsing (btw uit inclusief bedrag) gebeurt deterministisch in de backend voor
-      // vaste regels; voor het handmatige formulier sturen we netto = volledig bedrag zonder
+      // vaste regels; voor het handmatige formulier sturen we netto = het OPEN bedrag zonder
       // btw-splitsing, tenzij een btw-code is gekozen — dan rekent de client dezelfde formule
-      // die de backend hard controleert (som regels = mutatiebedrag).
+      // die de backend hard controleert (som regels = open bedrag van de mutatie, 409 anders).
       const percentage = btwCodes.opties.find((o) => o.id === taxrateId)?.percentage
-      let netto = mutatie.bedrag
+      let netto = teBoeken
       let btw: string | null = null
       if (taxrateId && percentage) {
-        const bedragGetal = Number(mutatie.bedrag)
+        const bedragGetal = Number(teBoeken)
         const nettoGetal = Math.round((bedragGetal / (1 + percentage)) * 100) / 100
         netto = nettoGetal.toFixed(2)
         btw = (Math.round((bedragGetal - nettoGetal) * 100) / 100).toFixed(2)
@@ -194,7 +236,13 @@ function HandmatigBoekenForm({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 8, padding: '8px 0' }}>
+    <div style={{ display: 'grid', gap: 8, padding: '8px 0' }} data-testid="handmatig-boeken-form">
+      <p className="hint" data-testid="handmatig-te-boeken">
+        Te boeken: <b>{formatBedrag(teBoeken)}</b>
+        {deels
+          ? ` — het open bedrag; van de mutatie (${formatBedrag(mutatie.bedrag)}) is de rest in Reeleezee al afgeletterd.`
+          : ' (het volledige mutatiebedrag).'}
+      </p>
       <SearchableCombobox
         label="Grootboekrekening"
         opties={grootboek.opties}
@@ -296,6 +344,9 @@ function MutatieRij({
     voorstel.payment_item_id !== null
 
   const bedragGetal = mutatie.bedrag !== null ? Number(mutatie.bedrag) : 0
+  // Blok 3 nachtrun 10/11-09: alles wat boekt/toetst rekent met het OPEN bedrag (één bron: openBedrag).
+  const teVerwerken = openBedrag(mutatie)
+  const deelsAfgeletterd = isDeelsAfgeletterd(mutatie)
 
   return (
     <tr style={opdracht ? { opacity: 0.75 } : undefined}>
@@ -304,14 +355,25 @@ function MutatieRij({
         <div className="bank-tp">{mutatie.tegenpartij_naam ?? 'Onbekende tegenpartij'}</div>
         {mutatie.omschrijving && <div className="bank-oms">{mutatie.omschrijving}</div>}
       </td>
-      <td className="amount" style={{ color: bedragGetal < 0 ? 'var(--red)' : 'var(--green)' }}>
+      <td className="amount" style={{ color: bedragGetal < 0 ? 'var(--red)' : 'var(--green)' }} data-testid="mutatie-bedrag">
+        {/* Deels afgeletterd: volledig bedrag + kleinere tweede regel "open € …" (de kolom wordt niet breder dan bij
+            het gewone geval; de chip staat op zijn eigen regel). */}
         {formatBedrag(mutatie.bedrag)}
+        {deelsAfgeletterd && (
+          <>
+            <div className="bank-oms" style={{ textAlign: 'right' }} data-testid="mutatie-open-bedrag">
+              open <b>{formatBedrag(teVerwerken)}</b>
+            </div>
+            <DeelsAfgeletterdChip mutatie={mutatie} />
+          </>
+        )}
       </td>
       <td>
         {/* Blok E5–E8 (mockup bank-voorstel-kaart.html): kaart mét doel-post-specs + match-chip; vaste regel =
-            eigen regel mét herkomst-chip; geen match = rustige tekstregel (geen lege kaart). */}
+            eigen regel mét herkomst-chip; geen match = rustige tekstregel (geen lege kaart). De kaart toetst het
+            OPEN bedrag (deelbetaling/restant), niet het volle mutatiebedrag. */}
         {isAfletterVoorstel ? (
-          <VoorstelKaart voorstel={voorstel} mutatieBedrag={mutatie.bedrag} />
+          <VoorstelKaart voorstel={voorstel} mutatieBedrag={teVerwerken} />
         ) : voorstel.soort === 'vaste_regel' ? (
           <span className={chipKlasse(voorstel)} title="Direct op grootboek volgens een vaste regel (boekingsgeheugen)">
             vaste regel · {voorstel.bron}
@@ -372,7 +434,7 @@ function MutatieRij({
                   void letterAf(() => zetAfletterenKlaar(administratieId, mutatie.id, voorstel.payment_item_id ?? ''))
                 }
               >
-                {isDeelbetaling(mutatie.bedrag, voorstel.open_post?.bedrag) ? 'Afletteren (deel) ✓' : 'Afletteren ✓'}
+                {isDeelbetaling(teVerwerken, voorstel.open_post?.bedrag) ? 'Afletteren (deel) ✓' : 'Afletteren ✓'}
               </button>
             ) : voorstel.soort === 'vaste_regel' && voorstel.regels.length > 0 ? (
               <button

@@ -106,6 +106,12 @@ class BankMutatie(Base):
     ai_toets_reden: Mapped[str | None] = mapped_column(default=None)
     ai_toets_op: Mapped[datetime | None] = mapped_column(default=None)
     ai_toets_invoer_hash: Mapped[str | None] = mapped_column(default=None)
+    # Blok 3 nachtrun 10/11-09 (migratie 0131): de wérkelijke koppelingen van de mutatie in RLZ uit het leesspoor
+    # `PaymentReferenceList($expand=Document)` (systeemhulzen uitgefilterd), per koppeling {document_id, boekstuknummer,
+    # referentie, bedrag, document_type, omschrijving}. NULL = de sync heeft het leesspoor voor deze rij nog niet
+    # gelezen (de incrementele lijst-GET expandeert het niet; de verversronde wel). Cache-kolom: de sync overschrijft
+    # 'm zodra het leesspoor meekomt. Samen met `bedrag`/`open_bedrag` de bron van "deels afgeletterd in RLZ" in de UI.
+    rlz_koppelingen: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), default=None)
 
 
 class PaymentItemCache(Base):

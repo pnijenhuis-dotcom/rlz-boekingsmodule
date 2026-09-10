@@ -18,6 +18,10 @@ BREEDTE="${KETEN_BREEDTE:-1440}"
 HOOGTE="${KETEN_HOOGTE:-1800}"
 CASUSSEN=(a_universal_nederland b_floor c_spot_services h_bdo m_incasso_factuur)
 SCHERMEN=(detail lijst)
+# Blok 3 nachtrun 10/11-09: de bank-casus rendert het echte bankscherm (scherm=bank) — één meting per casus.
+BANK_CASUSSEN=(l_bank_cv_08-09)
+# KETEN_ALLEEN=<casus> beperkt de sweep tot één casus (snelle deelroute, bv. alleen de bank-baseline verversen).
+ALLEEN="${KETEN_ALLEEN:-}"
 
 if [ ! -x "$CHROME" ]; then
   echo "Chrome niet gevonden op: $CHROME (zet CHROME=...)" >&2
@@ -29,7 +33,8 @@ BASELINE_DIR="scripts/keten_baseline"
 UIT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/keten_sweep.XXXXXX")"
 mkdir -p "$BASELINE_DIR"
 
-for casus in "${CASUSSEN[@]}"; do
+for casus in "${CASUSSEN[@]}" "${BANK_CASUSSEN[@]}"; do
+  [ -n "$ALLEEN" ] && [ "$casus" != "$ALLEEN" ] && continue
   if [ ! -f "src/dev/keten/${casus}.json" ]; then
     echo "❓ fixture ontbreekt: src/dev/keten/${casus}.json — draai eerst de backend-ketentests (tests/keten)" >&2
     exit 2
@@ -69,8 +74,9 @@ trap opruimen EXIT
 FOUTEN=0
 METINGEN=0
 NIEUW=0
-for casus in "${CASUSSEN[@]}"; do
-  for scherm in "${SCHERMEN[@]}"; do
+# Eén meting: casus × scherm → screenshot, klaar-marker, overflow, pixelvergelijking met de baseline.
+meet() {
+    local casus="$1" scherm="$2"
     naam="${casus}__${scherm}"
     url="${BASIS}/harness-keten.html?casus=${casus}&scherm=${scherm}"
     METINGEN=$((METINGEN + 1))
@@ -82,19 +88,19 @@ for casus in "${CASUSSEN[@]}"; do
       FOUTEN=$((FOUTEN + 1))
       echo "❓ ${naam} — harnas niet klaar (data niet geladen / render mislukt; zie ${UIT_DIR}/vite.log)"
       echo "$dom" | grep -o 'data-keten-onbekend="[^"]*"' | head -1 | sed 's/^/   /'
-      continue
+      return
     fi
     if echo "$dom" | grep -q 'OVERFLOW —'; then
       FOUTEN=$((FOUTEN + 1))
       echo "❌ ${naam} — horizontale overflow"
-      continue
+      return
     fi
     baseline="${BASELINE_DIR}/${naam}.png"
     if [ ! -f "$baseline" ] || [ "${KETEN_UPDATE_BASELINE:-}" = "1" ]; then
       cp "$shot" "$baseline"
       NIEUW=$((NIEUW + 1))
       echo "🆕 ${naam} — baseline gezet (${baseline})"
-      continue
+      return
     fi
     if uitkomst=$(node scripts/keten_compare.mjs "$baseline" "$shot"); then
       echo "✅ ${naam} — ${uitkomst}"
@@ -103,7 +109,17 @@ for casus in "${CASUSSEN[@]}"; do
       echo "❌ ${naam} — ${uitkomst}"
       echo "   nieuw: ${shot} · baseline: ${baseline} (gewilde wijziging? KETEN_UPDATE_BASELINE=1)"
     fi
+}
+
+for casus in "${CASUSSEN[@]}"; do
+  [ -n "$ALLEEN" ] && [ "$casus" != "$ALLEEN" ] && continue
+  for scherm in "${SCHERMEN[@]}"; do
+    meet "$casus" "$scherm"
   done
+done
+for casus in "${BANK_CASUSSEN[@]}"; do
+  [ -n "$ALLEEN" ] && [ "$casus" != "$ALLEEN" ] && continue
+  meet "$casus" bank
 done
 
 echo

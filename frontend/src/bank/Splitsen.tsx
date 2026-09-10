@@ -7,6 +7,8 @@ import { amountKlasse } from '../werkvoorraad/format'
 import {
   haalSplitsingen,
   hervatSplitsing,
+  isDeelsAfgeletterd,
+  openBedrag,
   splitsMutatie,
   stornoSplitsDeel,
   type MutatieDto,
@@ -102,7 +104,11 @@ export function SplitsenForm({
   const grootboek = useGrootboekOpties(administratieId)
   const btwCodes = useTaxrateOpties(administratieId)
   const openPost = mutatie.voorstel.open_post
-  const mutatieCenten = Math.round(Number(mutatie.bedrag ?? '0') * 100)
+  // Blok 3 nachtrun 10/11-09: de delen moeten optellen tot het OPEN bedrag van de mutatie (wat in RLZ nog te
+  // verdelen valt), niet tot het volle mutatiebedrag — één bron `openBedrag`.
+  const teVerdelen = openBedrag(mutatie)
+  const deelsAfgeletterd = isDeelsAfgeletterd(mutatie)
+  const mutatieCenten = Math.round(Number(teVerdelen ?? '0') * 100)
   const teken = mutatieCenten < 0 ? -1 : 1
 
   const [delen, setDelen] = useState<DeelInvoer[]>(() => {
@@ -180,9 +186,19 @@ export function SplitsenForm({
 
   return (
     <div style={{ display: 'grid', gap: 10, padding: '8px 0' }} data-testid="splitsen-form">
-      <p className="hint">
-        Mutatie {formatBedrag(mutatie.bedrag)} verdelen over meerdere bestemmingen. Bedragen positief invoeren —
-        het teken volgt de mutatie. De delen moeten exact optellen tot het mutatiebedrag.
+      <p className="hint" data-testid="splitsen-uitleg">
+        {deelsAfgeletterd ? (
+          <>
+            Open bedrag <b>{formatBedrag(teVerdelen)}</b> van mutatie {formatBedrag(mutatie.bedrag)} verdelen over
+            meerdere bestemmingen (de rest is in Reeleezee al afgeletterd). Bedragen positief invoeren — het teken
+            volgt de mutatie. De delen moeten exact optellen tot het open bedrag.
+          </>
+        ) : (
+          <>
+            Mutatie {formatBedrag(mutatie.bedrag)} verdelen over meerdere bestemmingen. Bedragen positief invoeren —
+            het teken volgt de mutatie. De delen moeten exact optellen tot het mutatiebedrag.
+          </>
+        )}
       </p>
       {delen.map((deel, index) => (
         <div
@@ -255,7 +271,7 @@ export function SplitsenForm({
           {deel.soort === 'open_post' && openPost && (
             <div className="hint" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {/* E9: dezelfde voorstel-kaart als in de mutatielijst (één component, twee plekken). */}
-              <VoorstelKaart voorstel={mutatie.voorstel} mutatieBedrag={deel.bedrag || mutatie.bedrag} compact />
+              <VoorstelKaart voorstel={mutatie.voorstel} mutatieBedrag={deel.bedrag || teVerdelen} compact />
               <span>De enige open post die de matchmotor bij deze mutatie kent.</span>
             </div>
           )}

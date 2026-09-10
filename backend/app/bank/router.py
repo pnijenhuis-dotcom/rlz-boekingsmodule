@@ -126,6 +126,24 @@ def _laatste_import_response(laatste_import: dict | None) -> schemas.LaatsteImpo
     )
 
 
+def _koppeling_response(koppeling: dict) -> schemas.RlzKoppelingResponse:
+    """Cache-JSON (bank_mutatie.rlz_koppelingen) → DTO; onleesbare waarden worden None, nooit een 500 op een lijst."""
+    document_id = koppeling.get("document_id")
+    try:
+        document_uuid = uuid.UUID(str(document_id)) if document_id else None
+    except ValueError:
+        document_uuid = None
+    bedrag = koppeling.get("bedrag")
+    return schemas.RlzKoppelingResponse(
+        document_id=document_uuid,
+        boekstuknummer=koppeling.get("boekstuknummer"),
+        referentie=koppeling.get("referentie"),
+        bedrag=bedrag if bedrag not in (None, "") else None,
+        document_type=koppeling.get("document_type"),
+        omschrijving=koppeling.get("omschrijving"),
+    )
+
+
 def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.VoorstelResponse:
     open_post = None
     if item.open_post is not None:
@@ -187,6 +205,8 @@ def mutaties(
                 boekdatum=item.boekdatum,
                 bedrag=item.mutatie.bedrag,
                 open_bedrag=item.mutatie.open_bedrag,
+                deels_afgeletterd=item.deels_afgeletterd,
+                rlz_koppelingen=[_koppeling_response(k) for k in item.rlz_koppelingen],
                 tegenpartij_naam=item.mutatie.tegenpartij_naam,
                 omschrijving=item.mutatie.omschrijving,
                 tegenrekening_iban=item.mutatie.tegenrekening_iban,

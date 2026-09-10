@@ -82,7 +82,14 @@ class BankVolumeremBereikt(BankBoekenFout):
 
 
 class RegelsDekkenMutatieNiet(BankBoekenFout):
-    """De som van de regelbedragen (netto + btw) wijkt af van het mutatiebedrag."""
+    """De som van de regelbedragen (netto + btw) wijkt af van het OPEN bedrag van de mutatie (blok 3 nachtrun
+    10/11-09: de maat is `open_bedrag`, nooit het totaal — een in RLZ deels gekoppelde mutatie mag alleen voor haar
+    restant geboekt worden). De router vertaalt dit naar 409; de tekst begint met het DTO-contract-voorvoegsel
+    `DEKKING_FOUT_PREFIX` dat de frontend letterlijk toont."""
+
+
+#: Contract N3a↔N3b (CONTRACT_NACHTRUN.md): élke dekkingsfout begint met deze tekst.
+DEKKING_FOUT_PREFIX = "Bedrag dekt niet het open bedrag van de mutatie"
 
 
 class BankBoekingBestaatAl(BankBoekenFout):
@@ -157,14 +164,25 @@ def _bankboekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> 
     )
 
 
-def _controleer_regels(regels: list[BankBoekRegelInput], *, mutatie_bedrag: Decimal) -> None:
+def _controleer_regels(
+    regels: list[BankBoekRegelInput], *, te_dekken: Decimal, mutatie_bedrag: Decimal, deel: bool = False
+) -> None:
+    """Geldlogica hard in code: Σ(netto + btw) = `te_dekken` cent-exact. Volle modus: te_dekken = het OPEN bedrag
+    van de mutatie; deelmodus: het deel. De foutzin noemt open én totaal zodat een mens ziet wáárom 5.023,09 niet
+    mag terwijl de mutatie wel 5.023,09 is (Zilver Beheer 10-09)."""
     if not regels:
-        raise RegelsDekkenMutatieNiet("Minstens één boekingsregel is verplicht")
+        raise RegelsDekkenMutatieNiet(f"{DEKKING_FOUT_PREFIX}: minstens één boekingsregel is verplicht")
     som = sum((regel.netto_bedrag + (regel.btw_bedrag or Decimal("0")) for regel in regels), Decimal("0"))
-    if som != mutatie_bedrag:
+    if som != te_dekken:
+        wat = f"dit deel is {te_dekken}" if deel else f"het open bedrag is {te_dekken}"
+        toelichting = (
+            f" (mutatie {mutatie_bedrag}, in Reeleezee al {(mutatie_bedrag - te_dekken).copy_abs()} gekoppeld)"
+            if not deel and te_dekken != mutatie_bedrag
+            else ""
+        )
         raise RegelsDekkenMutatieNiet(
-            f"Regels (netto + btw) tellen op tot {som}, maar de mutatie is {mutatie_bedrag} — "
-            "de boeking moet het mutatiebedrag exact dekken (regelbedragen dragen het teken van de mutatie)"
+            f"{DEKKING_FOUT_PREFIX}: de regels (netto + btw) tellen op tot {som}, {wat}{toelichting} — "
+            "boek exact het open bedrag (regelbedragen dragen het teken van de mutatie)"
         )
 
 
@@ -278,18 +296,27 @@ def boek_mutatie_direct(
             raise BankMutatieNietGevonden(f"Onbekende bankmutatie: {payment_transaction_id}")
         if mutatie.bedrag is None:
             raise BankBoekenFout("Mutatie zonder bedrag kan niet geboekt worden")
-        mutatie_bedrag = mutatie.bedrag
+        mutatie_bedrag = Decimal(mutatie.bedrag)
+        open_lokaal = matchmotor.open_bedrag_van(mutatie_bedrag, mutatie.open_bedrag)
+        assert open_lokaal is not None
+        if open_lokaal == 0:
+            # Lokaal al dicht (eigen boeking of RLZ-aflettering): niet hier op dekking afkeuren maar de specifieke
+            # poorten hieronder laten spreken (BankBoekingBestaatAl / verse RLZ-stand → MutatieAlAfgeletterd, of ná
+            # een storno in RLZ zelf gewoon weer boekbaar op het verse open bedrag).
+            open_lokaal = mutatie_bedrag
 
-        # Dekking: volledig = de regels dekken het mutatiebedrag; deelmodus = ze dekken het deel
-        # (zelfde teken als de mutatie, nooit groter dan de mutatie).
-        te_dekken = mutatie_bedrag if deel is None else deel.bedrag
+        # Dekking (blok 3 nachtrun 10/11-09): volledig = de regels dekken het OPEN bedrag van de mutatie (nooit het
+        # totaal — een in RLZ deels gekoppelde mutatie wordt alleen voor haar restant geboekt); deelmodus = ze dekken
+        # het deel (zelfde teken als de mutatie, nooit groter dan het open bedrag).
+        te_dekken = open_lokaal if deel is None else deel.bedrag
         if deel is not None and (
-            deel.bedrag == 0 or (deel.bedrag > 0) != (mutatie_bedrag > 0) or abs(deel.bedrag) > abs(mutatie_bedrag)
+            deel.bedrag == 0 or (deel.bedrag > 0) != (mutatie_bedrag > 0) or abs(deel.bedrag) > abs(open_lokaal)
         ):
             raise RegelsDekkenMutatieNiet(
-                f"Deelbedrag {deel.bedrag} past niet op de mutatie {mutatie_bedrag} (zelfde teken, niet groter)"
+                f"{DEKKING_FOUT_PREFIX}: deelbedrag {deel.bedrag} past niet op het open bedrag {open_lokaal} "
+                f"(mutatie {mutatie_bedrag}; zelfde teken, niet groter)"
             )
-        _controleer_regels(regels, mutatie_bedrag=te_dekken)
+        _controleer_regels(regels, te_dekken=te_dekken, mutatie_bedrag=mutatie_bedrag, deel=deel is not None)
 
         if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
             raise BankBoekenUitgeschakeld(
@@ -378,6 +405,14 @@ def boek_mutatie_direct(
     if open_vooraf is not None and open_vooraf == 0:
         raise MutatieAlAfgeletterd(
             "De mutatie is intussen in Reeleezee zelf afgeletterd — niet nogmaals boeken"
+        )
+    if deel is None and open_vooraf is not None and open_vooraf != te_dekken.quantize(Decimal("0.01")):
+        # De lokale cache loopt achter op RLZ (iemand koppelde/stornéérde intussen in RLZ): nooit op een
+        # verouderd open bedrag boeken — de eerstvolgende sync (verversronde) haalt de verse stand.
+        raise MutatieAlAfgeletterd(
+            f"{DEKKING_FOUT_PREFIX}: in Reeleezee staat nog {open_vooraf} open, lokaal {te_dekken} — "
+            "de mutatie is intussen in Reeleezee (deels) verwerkt; ververs de bankmutaties en boek het verse "
+            "open bedrag"
         )
     if deel is not None and open_vooraf is not None and abs(open_vooraf) < abs(deel.bedrag):
         raise MutatieAlAfgeletterd(
@@ -505,7 +540,8 @@ def regel_naar_boekregels(
     *, regel: BankRegel, mutatie_bedrag: Decimal, btw_percentage: Decimal | None
 ) -> list[BankBoekRegelInput]:
     """Vaste regel → concrete boekingsregels: btw-splitsing in code (splits_incl_bedrag — de som
-    is per constructie exact het mutatiebedrag)."""
+    is per constructie exact het meegegeven bedrag). Aanroepers geven sinds blok 3 nachtrun 10/11-09 het OPEN
+    bedrag mee (`MutatieGegevens.te_verwerken_bedrag`), nooit het totaal."""
     netto, btw = matchmotor.splits_incl_bedrag(mutatie_bedrag, btw_percentage)
     return [
         BankBoekRegelInput(
@@ -523,10 +559,11 @@ def historie_naar_boekregels(
     *, voorstel: matchmotor.Voorstel, mutatie: matchmotor.MutatieGegevens, btw_percentage: Decimal | None
 ) -> list[BankBoekRegelInput]:
     """Historie-regel-voorstel (stap 3b) → concrete boekingsregels: zelfde btw-splitsing in code als de vaste
-    regel; omschrijving "Historie-regel: ‹tegenpartij›"."""
-    if voorstel.ledger_id is None or mutatie.bedrag is None:
+    regel, op het OPEN bedrag van de mutatie; omschrijving "Historie-regel: ‹tegenpartij›"."""
+    bedrag = mutatie.te_verwerken_bedrag
+    if voorstel.ledger_id is None or bedrag is None:
         return []
-    netto, btw = matchmotor.splits_incl_bedrag(mutatie.bedrag, btw_percentage)
+    netto, btw = matchmotor.splits_incl_bedrag(bedrag, btw_percentage)
     return [
         BankBoekRegelInput(
             ledger_id=voorstel.ledger_id,
@@ -584,7 +621,7 @@ def bouw_ai_invoer(context, mutatie: matchmotor.MutatieGegevens, voorstel: match
         soort=soort,
         omschrijving=mutatie.omschrijving,
         tegenpartij=mutatie.tegenpartij_naam,
-        bedrag=mutatie.bedrag,
+        bedrag=mutatie.te_verwerken_bedrag,
         rekening_code=code_naam[0] if code_naam else None,
         rekening_naam=code_naam[1] if code_naam else (str(ledger_id)[:8] if ledger_id else None),
         btw_omschrijving=context.taxrate_naam_per_id.get(taxrate_id) if taxrate_id is not None else None,
@@ -649,13 +686,14 @@ def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> Au
     resultaat = AutomatischResultaat()
     for mutatie in context.open_mutaties:
         voorstel = bepaal_voorstel_in_context(context, mutatie)
-        if mutatie.bedrag is None:
+        te_boeken = mutatie.te_verwerken_bedrag  # het OPEN bedrag (blok 3 nachtrun 10/11-09)
+        if te_boeken is None:
             continue
         if voorstel.soort == matchmotor.VoorstelSoort.VASTE_REGEL and voorstel.regel_id is not None:
             regel = context.regel_per_id[voorstel.regel_id]
             regels = regel_naar_boekregels(
                 regel=regel,
-                mutatie_bedrag=mutatie.bedrag,
+                mutatie_bedrag=te_boeken,
                 btw_percentage=context.btw_percentage_per_taxrate.get(regel.taxrate_id),
             )
             omschrijving = regel.omschrijving or f"Vaste regel: {mutatie.tegenpartij_naam or ''}".strip()
