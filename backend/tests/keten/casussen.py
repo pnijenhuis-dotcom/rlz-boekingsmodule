@@ -132,7 +132,10 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
 
 
 def ai_uit_json(data: dict) -> AiFactuurExtractie:
-    kop = {naam: AiVeld(waarde=v.get("waarde"), zekerheid=float(v.get("zekerheid", 0.0))) for naam, v in data["kop"].items()}
+    kop = {
+        naam: AiVeld(waarde=v.get("waarde"), zekerheid=float(v.get("zekerheid", 0.0)))
+        for naam, v in data["kop"].items()
+    }
     regels = [
         AiRegel(
             omschrijving=r.get("omschrijving"),
@@ -157,6 +160,8 @@ def alle_casussen() -> list[Casus]:
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
 _TIJDSTIP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
+#: Hét vaste tijdstip in de frontend-fixtures — conftest.REFERENTIE_TIJDSTIP is dezelfde waarde (blok 5, 10-09 avond).
+EXPORT_TIJDSTIP = "2026-09-08T12:00:00Z"
 
 
 def normaliseer_voor_export(payload, *, vaste_ids: dict[str, str] | None = None):
@@ -181,7 +186,7 @@ def normaliseer_voor_export(payload, *, vaste_ids: dict[str, str] | None = None)
             return [_loop(v) for v in obj]
         if isinstance(obj, str):
             if _TIJDSTIP.match(obj):
-                return "2026-09-08T12:00:00Z"
+                return EXPORT_TIJDSTIP
             return _UUID.sub(lambda m: _id(m.group(0)), obj)
         return obj
 

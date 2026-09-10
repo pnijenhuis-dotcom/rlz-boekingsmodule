@@ -36,6 +36,23 @@ for casus in "${CASUSSEN[@]}"; do
   fi
 done
 
+# Blok 5 (10-09 avond): de fixtures zijn bevroren op de referentiedag van de gouden set (2026-09-08, zie
+# backend/tests/keten/conftest.py REFERENTIE_TIJDSTIP). Draagt een fixture de datum van vandaag, dan drijft er een veld
+# met de kalender mee en is de screenshot geen bewijs — zelfde toets als tests/keten/test_export_deterministisch.py,
+# met dezelfde eerlijke blinde vlek: op de referentiedag zelf is de toets niet onderscheidend en wordt hij overgeslagen.
+REFERENTIE_DAG="2026-09-08"
+VANDAAG="$(date +%F)"
+if [ "$VANDAAG" != "$REFERENTIE_DAG" ]; then
+  if drift=$(grep -n -- "$VANDAAG" src/dev/keten/*.json); then
+    echo "❌ fixture drijft met de kalender mee (datum van vandaag ${VANDAAG} in de export) — bevries de bron in" >&2
+    echo "   backend/tests/keten/conftest.py (_bevries_ontvangst) en exporteer opnieuw:" >&2
+    echo "$drift" | sed 's/^/   /' >&2
+    exit 2
+  fi
+else
+  echo "ℹ️  vandaag is de referentiedag (${REFERENTIE_DAG}) — kalender-drift-toets niet onderscheidend, overgeslagen"
+fi
+
 VITE_PID=""
 if ! curl -sf "${BASIS}/harness-keten.html" >/dev/null 2>&1; then
   echo "vite draait niet op ${POORT} — start dev-server…"

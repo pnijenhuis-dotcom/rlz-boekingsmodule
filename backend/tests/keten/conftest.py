@@ -9,7 +9,14 @@ De testadministratie heet 'Universal Steigerbouw B.V.' (de tenaamstelling op ál
 mét projectplicht, boeken aan, AI-extractie aan, intake-AI aan en ZONDER eigenaar (casus j: leeg = doorlopen).
 
 Doelgedrag van deze run dat nog niet staat is `@pytest.mark.xfail(strict=True, reason="blok N — …")` gemarkeerd;
-de agent van blok N haalt zijn xfail weg zodra zijn gedrag staat (grep op "blok N" in tests/keten)."""
+de agent van blok N haalt zijn xfail weg zodra zijn gedrag staat (grep op "blok N" in tests/keten).
+
+Deterministische export (blok 5 vervolgrun 10-09 avond): de frontend-fixtures onder frontend/src/dev/keten mogen
+niet met de kalender meelopen. Tijdstippen normaliseert `normaliseer_voor_export` al; DATUMS die de app uit een
+ontvangstmoment afleidt (de afwijsreden "… van <ontvangstdatum> …" op een module-duplicaat, casus b) niet — en
+`document.aangemaakt_op` is een DB-`now()` zonder Python-seam. Daarom bevriest `Keten` ná élke intake-stap het
+ontvangstmoment van verse documenten op REFERENTIE_TIJDSTIP (zie `_bevries_ontvangst`); guard:
+test_export_deterministisch.py."""
 
 from __future__ import annotations
 
@@ -18,7 +25,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -75,6 +82,14 @@ VENDORS: dict[str, tuple[uuid.UUID, str]] = {
 
 FRONTEND_KETEN_DIR = Path(__file__).resolve().parents[3] / "frontend" / "src" / "dev" / "keten"
 
+#: Referentietijdstip van de gouden set (blok 5 vervolgrun 10-09 avond): hetzelfde vaste tijdstip waarop de export élk
+#: tijdstip normaliseert (casussen.EXPORT_TIJDSTIP) en dezelfde dag als VANDAAG_NA_BOEKEN. Verse ontvangstmomenten
+#: (`document.aangemaakt_op`, DB-`now()`) worden hierop bevroren zodat afgeleide datums niet met de kalender meelopen.
+REFERENTIE_TIJDSTIP = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+REFERENTIE_DATUM = REFERENTIE_TIJDSTIP.date()
+#: Alles ná deze grens is een échte klokwaarde (de suite draait nooit op of vóór de referentiedag zelf).
+_VERS_VANAF = REFERENTIE_TIJDSTIP + timedelta(days=1)
+
 
 def _sha(inhoud: bytes) -> str:
     return hashlib.sha256(inhoud).hexdigest()
@@ -96,7 +111,9 @@ class AiStub:
     def registreer_op_marker(self, marker: str, antwoord: AiFactuurExtractie) -> None:
         self.op_marker.append((marker.encode("latin-1"), antwoord))
 
-    def __call__(self, pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None) -> AiFactuurExtractie:
+    def __call__(
+        self, pdf_bytes: bytes, *, client=None, verbruik_referentie=None, mail_context=None
+    ) -> AiFactuurExtractie:
         sleutel = _sha(pdf_bytes)
         self.aanroepen.append(sleutel)
         if sleutel in self.antwoorden:
@@ -119,7 +136,9 @@ class SplitsingStub:
     def registreer(self, pdf: bytes, segmenten: list[FactuurSegment]) -> None:
         self.antwoorden[_sha(pdf)] = segmenten
 
-    def __call__(self, inhoud: bytes, *, paginas: int, verbruik_referentie=None, mail_context=None) -> list[FactuurSegment]:
+    def __call__(
+        self, inhoud: bytes, *, paginas: int, verbruik_referentie=None, mail_context=None
+    ) -> list[FactuurSegment]:
         sleutel = _sha(inhoud)
         self.aanroepen.append(sleutel)
         if sleutel in self.antwoorden:
@@ -202,9 +221,24 @@ def stamgegevens(universal: uuid.UUID, admin_engine: Engine) -> dict[str, uuid.U
                 )
             )
         for id_, naam, pct, brondata in (
-            (TAXRATE_HOOG, "NL, Hoog Tarief", Decimal("0.2100"), {"IsRelayed": False, "IsFavorite": True, "Percentage": 0.21}),
-            (TAXRATE_VERLEGD_HOOG, "NL, BTW verlegd (hoog)", Decimal("0"), {"IsRelayed": True, "IsFavorite": False, "Percentage": 0.0}),
-            (TAXRATE_GEEN_BTW, "NL, Geen BTW (Vrijgesteld)", Decimal("0"), {"IsRelayed": False, "IsExcempt": True, "Percentage": 0.0}),
+            (
+                TAXRATE_HOOG,
+                "NL, Hoog Tarief",
+                Decimal("0.2100"),
+                {"IsRelayed": False, "IsFavorite": True, "Percentage": 0.21},
+            ),
+            (
+                TAXRATE_VERLEGD_HOOG,
+                "NL, BTW verlegd (hoog)",
+                Decimal("0"),
+                {"IsRelayed": True, "IsFavorite": False, "Percentage": 0.0},
+            ),
+            (
+                TAXRATE_GEEN_BTW,
+                "NL, Geen BTW (Vrijgesteld)",
+                Decimal("0"),
+                {"IsRelayed": False, "IsExcempt": True, "Percentage": 0.0},
+            ),
         ):
             session.add(
                 TaxRateCache(
@@ -218,7 +252,12 @@ def stamgegevens(universal: uuid.UUID, admin_engine: Engine) -> dict[str, uuid.U
         ):
             session.add(
                 Grootboekrekening(
-                    ledger_id=ledger_id, administratie_id=universal, code=code, naam=naam, soort=2, is_totaalrekening=False
+                    ledger_id=ledger_id,
+                    administratie_id=universal,
+                    code=code,
+                    naam=naam,
+                    soort=2,
+                    is_totaalrekening=False,
                 )
             )
         for project_id, naam in (
@@ -312,17 +351,46 @@ class Keten:
             message_id=message_id,
             bijlagen=[(naam, inhoud, *_mime(naam)) for naam, inhoud in bijlagen],
         )
-        return verwerking.verwerk_eml(eml, actor_id=self.actor, bron="imap", opslag=self.opslag, kanaal=kanaal)
+        uitkomst = verwerking.verwerk_eml(eml, actor_id=self.actor, bron="imap", opslag=self.opslag, kanaal=kanaal)
+        self._bevries_ontvangst()
+        return uitkomst
 
     def upload(self, bestandsnaam: str, inhoud: bytes):
         """Losse upload in de administratie (werkvoorraad-sleepzone mét klant)."""
-        return documenten_service.upload_document(
+        uitkomst = documenten_service.upload_document(
             administratie_id=self.administratie_id,
             bestandsnaam=bestandsnaam,
             inhoud=inhoud,
             actor_id=self.actor,
             opslag=self.opslag,
         )
+        self._bevries_ontvangst()
+        return uitkomst
+
+    def _bevries_ontvangst(self) -> None:
+        """Blok 5 (10-09 avond): zet het ontvangstmoment van élk vers document (echte DB-klok) op REFERENTIE_TIJDSTIP
+        + n seconden, in ontvangstvolgorde en mét behoud van gelijke tijdstippen (dense_rank — een tie blijft een tie,
+        dus élke ordening op `aangemaakt_op` blijft exact wat ze zonder bevriezing was). Al bevroren rijen tellen mee
+        zodat een volgende intake-stap ná de vorige landt. Alleen de datum die de app hieruit afleidt (afwijsreden
+        van een module-duplicaat) wordt zo deterministisch; tijdstippen normaliseert de export zelf al."""
+        with self.admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    WITH stand AS (
+                        SELECT count(DISTINCT aangemaakt_op) AS al
+                        FROM boekhouding.document WHERE aangemaakt_op < :grens
+                    ), vers AS (
+                        SELECT id, dense_rank() OVER (ORDER BY aangemaakt_op) AS rang
+                        FROM boekhouding.document WHERE aangemaakt_op >= :grens
+                    )
+                    UPDATE boekhouding.document d
+                    SET aangemaakt_op = :referentie + (stand.al + vers.rang) * interval '1 second'
+                    FROM vers, stand WHERE d.id = vers.id
+                    """
+                ),
+                {"grens": _VERS_VANAF, "referentie": REFERENTIE_TIJDSTIP},
+            )
 
     # ---- lezen ----------------------------------------------------------------------------------------------------
     def document(self, document_id: uuid.UUID):
@@ -336,8 +404,8 @@ class Keten:
             return dict(
                 conn.execute(
                     text(
-                        "SELECT status, toegewezen_aan, samengevoegd_in_id, mogelijk_duplicaat_van_id, bron_bestandsnaam, "
-                        "administratie_id FROM boekhouding.document WHERE id = :id"
+                        "SELECT status, toegewezen_aan, samengevoegd_in_id, mogelijk_duplicaat_van_id, "
+                        "bron_bestandsnaam, administratie_id, aangemaakt_op FROM boekhouding.document WHERE id = :id"
                     ),
                     {"id": document_id},
                 )
@@ -350,7 +418,9 @@ class Keten:
             return [
                 dict(d) if d else {}
                 for d in conn.execute(
-                    text("SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :id ORDER BY tijdstip"),
+                    text(
+                        "SELECT detail FROM boekhouding.document_gebeurtenis WHERE document_id = :id ORDER BY tijdstip"
+                    ),
                     {"id": document_id},
                 ).scalars()
             ]
@@ -419,16 +489,28 @@ class Keten:
         return resp.json()
 
     # ---- frontend-fixture-export ------------------------------------------------------------------------------------
-    def exporteer(self, casus: str, document_id: uuid.UUID, *, extra: dict | None = None) -> None:
+    def exporteer(
+        self, casus: str, document_id: uuid.UUID, *, extra: dict | None = None, doel: Path | None = None
+    ) -> Path | None:
         """Schrijft de DTO's die het controlescherm en de documentenlijst voor dit document tonen naar
-        frontend/src/dev/keten/<casus>.json — het frontend-harnas (harness-keten.html) rendert exact deze stand."""
-        if not FRONTEND_KETEN_DIR.parent.exists():
-            return
-        FRONTEND_KETEN_DIR.mkdir(exist_ok=True)
+        frontend/src/dev/keten/<casus>.json — het frontend-harnas (harness-keten.html) rendert exact deze stand.
+        `doel` (blok 5): een andere map (guard-test dubbele export); geeft het geschreven pad terug (None = geen
+        frontend-map in deze checkout, bv. een CI-artefact)."""
+        if doel is None and not FRONTEND_KETEN_DIR.parent.exists():
+            return None
+        map_ = doel if doel is not None else FRONTEND_KETEN_DIR
+        map_.mkdir(exist_ok=True, parents=True)
         # Stamgegevens (crediteuren, btw-tarieven, grootboek, projecten) houden hun vaste id — het harnas kent ze.
         stam = [v for v, _ in VENDORS.values()] + [
-            TAXRATE_HOOG, TAXRATE_VERLEGD_HOOG, TAXRATE_GEEN_BTW, GB_INHUUR, GB_HUUR_MATERIEEL, GB_ADVIES,
-            PROJECT_26049, PROJECT_25011, PROJECT_26084,
+            TAXRATE_HOOG,
+            TAXRATE_VERLEGD_HOOG,
+            TAXRATE_GEEN_BTW,
+            GB_INHUUR,
+            GB_HUUR_MATERIEEL,
+            GB_ADVIES,
+            PROJECT_26049,
+            PROJECT_25011,
+            PROJECT_26084,
         ]
         vaste = {str(x).lower(): str(x).lower() for x in stam}
         vaste[str(self.administratie_id).lower()] = "aaaaaaaa-0000-4000-8000-000000000001"
@@ -444,10 +526,12 @@ class Keten:
             "lijst_afgehandeld": self.lijst(toon_afgehandeld="true"),
             **(extra or {}),
         }
-        (FRONTEND_KETEN_DIR / f"{casus}.json").write_text(
+        pad = map_ / f"{casus}.json"
+        pad.write_text(
             json.dumps(normaliseer_voor_export(payload, vaste_ids=vaste), indent=1, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+        return pad
 
 
 def _mime(naam: str) -> tuple[str, str]:
@@ -459,4 +543,4 @@ def _mime(naam: str) -> tuple[str, str]:
     return "application", "octet-stream"
 
 
-VANDAAG_NA_BOEKEN = date(2026, 9, 8)
+VANDAAG_NA_BOEKEN: date = REFERENTIE_DATUM
