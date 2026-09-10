@@ -74,8 +74,9 @@ def _bestaande_mutatie_ids(session, *, administratie_id: uuid.UUID) -> set[uuid.
     )
 
 
-def _vul_module(session, *, administratie_id: uuid.UUID, bestaand: set[uuid.UUID]) -> int:
-    """Eigen geboekte, volledige bankboekingen → cache (bron 'module'). Idempotent op mutatie-id."""
+def _vul_module(session, *, administratie_id: uuid.UUID, bestaand: set[uuid.UUID], schrijf: bool = True) -> int:
+    """Eigen geboekte, volledige bankboekingen → cache (bron 'module'). Idempotent op mutatie-id.
+    `schrijf=False` (dry-run, ochtendrun 11-09): alleen tellen wat er toegevoegd zóu worden — geen rijen."""
     boekingen = list(
         session.scalars(
             select(BankBoeking).where(
@@ -105,6 +106,10 @@ def _vul_module(session, *, administratie_id: uuid.UUID, bestaand: set[uuid.UUID
         regel = eerste_regel.get(boeking.id)
         if regel is None or len(rekeningen_per_boeking.get(boeking.id, ())) != 1:
             continue  # zonder regels of over meerdere rekeningen: geen eenduidige historie
+        if not schrijf:
+            bestaand.add(boeking.payment_transaction_id)
+            toegevoegd += 1
+            continue
         mutatie = session.get(BankMutatie, (boeking.payment_transaction_id, administratie_id))
         session.add(
             BankHistorieBoeking(
@@ -160,16 +165,23 @@ def vul_historie_cache(
     client: RlzClient | None,
     max_rlz_lezingen: int = MAX_RLZ_LEZINGEN_PER_RUN,
     vandaag: date | None = None,
+    dry_run: bool = False,
 ) -> HistorieVulling:
     """Incrementele vulling (bank-sync) én backfill (CLI, hogere `max_rlz_lezingen`). `client=None` = alleen de
-    module-bron (geen RLZ-verbinding — zichtbaar in de telling, geen fout)."""
+    module-bron (geen RLZ-verbinding — zichtbaar in de telling, geen fout).
+
+    `dry_run=True` (nameting, ochtendrun 11-09): niets schrijven en géén RLZ-lezing — `module_toegevoegd` = wat de
+    module-bron zóu toevoegen, `rlz_resterend` = het aantal afgeletterde mutaties dat nog nagelezen zou worden;
+    `rlz_toegevoegd`/`rlz_gemarkeerd` blijven 0."""
     vandaag = vandaag or datetime.now(UTC).date()
     vanaf = vandaag - timedelta(days=HISTORIE_VENSTER_DAGEN)
     fouten: list[str] = []
 
     with scoped_session(administratie_id) as session:
         bestaand = _bestaande_mutatie_ids(session, administratie_id=administratie_id)
-        module_toegevoegd = _vul_module(session, administratie_id=administratie_id, bestaand=bestaand)
+        module_toegevoegd = _vul_module(
+            session, administratie_id=administratie_id, bestaand=bestaand, schrijf=not dry_run
+        )
         kandidaten = list(
             session.scalars(
                 select(BankMutatie)
@@ -184,7 +196,7 @@ def vul_historie_cache(
         )
         te_lezen = [(m.id, m.boekdatum, m.tegenrekening_iban, m.omschrijving, m.tegenpartij_naam) for m in kandidaten]
 
-    if client is None:
+    if client is None or dry_run:
         return HistorieVulling(module_toegevoegd, 0, 0, len(te_lezen), fouten)
 
     rlz_toegevoegd = rlz_gemarkeerd = 0

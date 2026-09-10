@@ -471,12 +471,76 @@ def _deploy_smoketest(args: argparse.Namespace) -> int:
         fouten.append(f"database onbereikbaar: {exc}")
     if not mail.is_geconfigureerd():
         fouten.append("mailkanaal niet geconfigureerd (BERICHTEN_SMTP_*) — alerts en meldingen liggen plat")
+    fouten.extend(_smoketest_deploy_drift())
     if fouten:
         for fout in fouten:
             print(f"deploy-smoketest FOUT: {fout}", file=sys.stderr)
         return 1
-    print("deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal)")
+    print("deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal, service ↔ jobs zelfde beeld)")
     return 0
+
+
+def _smoketest_deploy_drift() -> list[str]:
+    """Ochtendrun 11-09 blok 2.1: direct ná de deploy móeten service en álle jobs hetzelfde beeld dragen — zónder
+    gratieperiode (de F3-lus is dan al gelopen; deze job is de laatste stap). Geen BEWAKING_SERVICE_RESOURCE = de
+    toets kan niet en zegt dat (lokaal/dev); een leesfout (403 = roles/run.viewer ontbreekt op run-jobs@) is een
+    FOUT — een ontbrekende harde voorwaarde maakt de deploy zichtbaar rood, nooit stil groen."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.bewaking import deploy_drift
+    from app.config import settings
+
+    resource = settings.bewaking_service_resource
+    if not resource:
+        print("deploy-smoketest: deploy-drift-toets overgeslagen (geen BEWAKING_SERVICE_RESOURCE)")
+        return []
+    try:
+        stand = deploy_drift.lees_stand(service_resource=resource, token=deploy_drift.metadata_token())
+    except Exception as exc:  # noqa: BLE001 — élke leesfout hoort de deploy rood te maken
+        return [f"deploy-drift-toets onmogelijk (leesrecht roles/run.viewer op run-jobs@?): {exc}"]
+    oordeel = deploy_drift.beoordeel(stand, nu=datetime.now(UTC), gratie=timedelta(0))
+    print(f"deploy-smoketest: {deploy_drift.samenvatting(stand, oordeel)}")
+    if oordeel.achter:
+        return [f"service en jobs niet op hetzelfde beeld: {deploy_drift.samenvatting(stand, oordeel)}"]
+    return []
+
+
+def _deploy_mislukt(args: argparse.Namespace) -> int:
+    """Ochtendrun 11-09 blok 2.2: de deploy-workflow roept dit bij `if: failure()` aan via de bestaande job
+    rlz-bewaking (zelfde SMTP-config, geen secret in GitHub Actions) — één mail naar het beheer
+    (`reconciliatie_beheer_ontvangers`) met commit, run-URL en wat er dan NIET staat (jobs mogelijk op oud beeld).
+    Zeven rode deploys #173–#179 (09/10-09) zag niemand; dit is het vangnet vóór de deploy-drift-probe."""
+    from app.berichten import mail
+    from app.config import settings
+
+    ontvangers = [o.strip() for o in (settings.reconciliatie_beheer_ontvangers or "").split(",") if o.strip()]
+    sha = (args.sha or "?")[:7]
+    onderwerp = f"⛔ RLZ-deploy mislukt ({sha})"
+    tekst = (
+        f"De deploy-workflow voor commit {args.sha or '?'} is ROOD afgebroken.\n\n"
+        f"Run: {args.run_url or '(geen URL meegegeven)'}\n"
+        f"Stap/branch: {args.stap or 'onbekend'}\n\n"
+        "Gevolg: de Cloud Run-service en/of de F3-jobs staan mogelijk niet op het nieuwe beeld (de jobs worden ná de "
+        "service bijgewerkt). De bewakingsprobe 'deploy_drift' meldt het blijvend zolang service en jobs uiteenlopen; "
+        "de eerstvolgende groene push herstelt alles via de pijplijn — jobs nooit handmatig bijwerken "
+        "(regel 08-09).\n\n"
+        "Administratiekantoor Nijenhuis — automatisch bericht (deploy.yml → rlz-bewaking deploy-mislukt)"
+    )
+    if not ontvangers:
+        print("deploy-mislukt FOUT: geen reconciliatie_beheer_ontvangers", file=sys.stderr)
+        return 1
+    if not mail.is_geconfigureerd():
+        print("deploy-mislukt FOUT: mailkanaal niet geconfigureerd (BERICHTEN_SMTP_*)", file=sys.stderr)
+        return 1
+    fouten = 0
+    for naar in ontvangers:
+        try:
+            mail.verzend_mail(naar=naar, onderwerp=onderwerp, tekst=tekst)
+            print(f"deploy-mislukt: melding verstuurd naar {naar}")
+        except mail.MailFout as exc:
+            fouten += 1
+            print(f"deploy-mislukt FOUT: mail naar {naar} mislukt: {exc}", file=sys.stderr)
+    return 1 if fouten else 0
 
 
 def _sync_alles(args: argparse.Namespace) -> int:
@@ -2602,8 +2666,16 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "deploy-smoketest",
         help="Post-deploy-smoketest (deploy.yml, 31-08): AI-schema-zelftest + DB/migratieversie "
-        "+ mailkanaal-config; exit 1 = deploy-run rood.",
+        "+ mailkanaal-config + (11-09) service en jobs op hetzelfde beeld; exit 1 = deploy-run rood.",
     )
+    mislukt = subparsers.add_parser(
+        "deploy-mislukt",
+        help="Ochtendrun 11-09: mail naar het beheer dat de deploy-workflow rood is afgebroken (aangeroepen door "
+        "deploy.yml `if: failure()` via de job rlz-bewaking — bestaand SMTP-kanaal, geen secret in GitHub Actions).",
+    )
+    mislukt.add_argument("--sha", default=None, help="Commit-sha van de mislukte deploy.")
+    mislukt.add_argument("--run-url", default=None, dest="run_url", help="URL van de GitHub Actions-run.")
+    mislukt.add_argument("--stap", default=None, help="Optioneel: branch/stap-omschrijving.")
 
     subparsers.add_parser(
         "projecten-cijfers-wachtrij",
@@ -2992,6 +3064,8 @@ def main(argv: list[str] | None = None) -> int:
         return _bewaking_probe(args)
     if args.commando == "deploy-smoketest":
         return _deploy_smoketest(args)
+    if args.commando == "deploy-mislukt":
+        return _deploy_mislukt(args)
     if args.commando == "extractie-wachtrij-verwerken":
         return _extractie_wachtrij_verwerken(args)
     if args.commando == "extractie-heraanbieden":

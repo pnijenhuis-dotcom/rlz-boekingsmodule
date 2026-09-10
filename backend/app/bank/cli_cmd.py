@@ -58,6 +58,13 @@ def register_bank(subparsers) -> None:
     backfill.add_argument(
         "--max", type=int, default=2000, dest="max_lezingen", help="Maximaal aantal RLZ-lezingen (default 2000)."
     )
+    backfill.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="LEES-ONLY (nameting, ochtendrun 11-09): tel wat de module-bron zou toevoegen en hoeveel afgeletterde "
+        "mutaties nog nagelezen zouden worden — geen cache-rijen, geen RLZ-lezing, geen credential nodig.",
+    )
 
 
 def run_bank(args: argparse.Namespace) -> int:
@@ -208,6 +215,15 @@ def _bank_historie_backfill(args: argparse.Namespace) -> int:
         print(f"FOUT  administratie {args.administratie!r} onbekend", file=sys.stderr)
         return 2
     administratie_id, administratie_naam = gevonden
+    if getattr(args, "dry_run", False):
+        vulling = historie_bron.vul_historie_cache(administratie_id=administratie_id, client=None, dry_run=True)
+        print(
+            f"bank-historie-backfill DRY-RUN {administratie_naam} ({administratie_id}): module zou "
+            f"+{vulling.module_toegevoegd} toevoegen, RLZ nog na te lezen (afgeletterd, ≤ "
+            f"{historie_bron.HISTORIE_VENSTER_DAGEN} dagen, nog niet in de cache): {vulling.rlz_resterend} — niets "
+            "geschreven, geen RLZ-lezing"
+        )
+        return 0
     client = None
     try:
         client = client_voor_rlz_admin_id(rlz_admin_id_voor(administratie_id))

@@ -120,7 +120,12 @@ REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR})
 SA_KEY_ROTATIE = "nameting_sa_key_rotatie"
 SA_KEY_ROTATIE_MAANDEN = 12
 SA_KEY_ROTATIE_WAARSCHUWING_DAGEN = 30
-BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN, SA_KEY_ROTATIE})
+#: Ochtendrun 11-09 blok 2.1: de bewakingsprobe `deploy_drift` (app/bewaking/deploy_drift.py) heeft een OPEN
+#: storing — Cloud Run-jobs draaien op een ander beeld dan de service. Beheer-signaal (systeemmail), tekst
+#: "systeemfout — automatisch gemeld": de bewaking alarmeert zelf, de reconciliatie maakt het alleen zichtbaar op
+#: /reconciliatie.
+DEPLOY_DRIFT = "deploy_drift"
+BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN, SA_KEY_ROTATIE, DEPLOY_DRIFT})
 REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
 
 REDEN_LABEL: dict[str, str] = {
@@ -1394,6 +1399,52 @@ def sa_key_rotatie_bevinding(*, nu: datetime, aangemaakt_op: date | None) -> dic
     }
 
 
+def deploy_drift_bevinding(*, nu: datetime) -> dict[str, Any] | None:
+    """Ochtendrun 11-09 blok 2.1: staat er een OPEN bewakingsstoring `deploy_drift` (app/bewaking), dan één
+    platformbrede LET-OP (beheer → systeemmail) "systeemfout — automatisch gemeld" mét het laatste detail van de
+    probe (welke jobs op welk beeld achterlopen). Geen open storing = geen signaal. Stabiele vingerafdruk: de
+    delta-motor mailt één keer, de rij verdwijnt zodra de probe weer groen is (storing hersteld)."""
+    from sqlalchemy import select
+
+    from app.bewaking.models import BewakingStoring
+    from app.db.session import scoped_session
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        storing = session.scalars(
+            select(BewakingStoring)
+            .where(BewakingStoring.soort == DEPLOY_DRIFT, BewakingStoring.hersteld_op.is_(None))
+            .order_by(BewakingStoring.begonnen_op.desc())
+            .limit(1)
+        ).first()
+        if storing is None:
+            return None
+        begonnen = _utc(storing.begonnen_op)
+        laatste_detail = storing.laatste_detail or "(geen detail)"
+        fouten = int(storing.opeenvolgende_fouten or 0)
+        gealarmeerd = storing.alert_verzonden_op is not None
+    return {
+        "soort": "let_op",
+        "administratie_id": None,
+        "blok": BLOK,
+        "vingerafdruk": vingerafdruk_automatisering(sleutel="deploy", categorie=DEPLOY_DRIFT, administratie_id=None),
+        "tekst": (
+            f"LET-OP     automatisering deploy: Cloud Run-jobs draaien op een ander beeld dan de service sinds "
+            f"{begonnen:%d-%m-%Y %H:%M} UTC ({fouten} metingen) — {laatste_detail} — {REGRESSIE_TEKST}"
+        )[:1000],
+        "detail": {
+            "automatisering": "deploy",
+            "automatisering_label": "Deploy (service ↔ jobs)",
+            "reden": DEPLOY_DRIFT,
+            "aantal": fouten,
+            "sinds": begonnen.isoformat(),
+            "laatste_detail": laatste_detail[:500],
+            "gealarmeerd": gealarmeerd,
+            "doel_pad": "/reconciliatie",
+        },
+    }
+
+
 def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:  # noqa: ANN001
     """Ingang vanuit de run-motor: feiten lezen, tellers berekenen, LET-OPs als bevindingen op de
     verzamelaar zetten en de JSON-samenvatting teruggeven (die `Verzamelaar.samenvatting()` onder
@@ -1408,6 +1459,9 @@ def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:
     rotatie = sa_key_rotatie_bevinding(nu=nu, aangemaakt_op=settings.nameting_sa_aangemaakt_op)
     if rotatie is not None:
         verzamelaar.bevinding(**rotatie)
+    drift = deploy_drift_bevinding(nu=nu)
+    if drift is not None:
+        verzamelaar.bevinding(**drift)
     if stdout is not None:
         for regel in regels(tellers):
             stdout(regel)

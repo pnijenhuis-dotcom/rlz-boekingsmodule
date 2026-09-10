@@ -416,6 +416,12 @@ class Settings(BaseSettings):
     # RLZ-admin-id van de TEST-administratie voor de lichte leesprobe (GET Ledgers $top=1,
     # strikt read-only). Leeg = probe overgeslagen (dev/lokaal).
     bewaking_rlz_administratie_id: str | None = None
+    # Deploy-drift-probe (ochtendrun 11-09, blok 2.1 — aanleiding: zeven rode deploys #173–#179 onopgemerkt, F3-jobs
+    # 1,5 dag op een oud beeld): de Cloud Run-service als v2-resource `projects/…/locations/…/services/rlz-backend`.
+    # De probe vergelijkt het beeld van de service-template met dat van élke job in dezelfde locatie (lees-only via de
+    # runtime-SA; vereist roles/run.viewer op run-jobs@). Leeg = probe overgeslagen (dev/lokaal). Ook de
+    # post-deploy-smoketest leest 'm (zonder gratie).
+    bewaking_service_resource: str | None = None
     # Foutpiek-signaal: extractie-foutratio per uur boven de drempel bij minstens dit aantal
     # pogingen → alert (had de schema-limiet-bug van 30-08 binnen een uur gemeld).
     bewaking_extractie_foutratio_drempel: float = 0.5

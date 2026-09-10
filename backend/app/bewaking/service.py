@@ -17,6 +17,10 @@ toevallig ontdekt. Deze motor draait elk kwartier als Cloud Run-job (`rlz-bewaki
                   in de laatste 24 u: een automatisering wachtte op een voorwaarde die sinds 0121
                   geen poort meer mag zijn (bug-signaal, alleen voor het beheer — nooit in de
                   kantoor-actiemail);
+- deploy_drift  — (ochtendrun 11-09) het beeld van élke Cloud Run-job ≠ het beeld van de service,
+                  langer dan 30 min ná de jongste service-revisie (Cloud Run Admin API, lees-only via
+                  de runtime-SA): zeven rode deploys #173–#179 lieten de F3-jobs 1,5 dag op een oud
+                  beeld staan zonder dat iemand het zag — app/bewaking/deploy_drift.py;
 - ai            — 1× per uur: schema-zelftest (union-limiet, de 30-08-klasse) + een minimale
                   échte Claude-call op het goedkoopste gepinde model, onder de bestaande
                   kostenmeter (poort + registratie in app/aikosten);
@@ -363,6 +367,33 @@ def _probe_automatisering_regressie(nu: datetime) -> ProbeUitkomst:
     )
 
 
+def _probe_deploy_drift(nu: datetime) -> ProbeUitkomst:
+    """Ochtendrun 11-09 blok 2.1: service-beeld vs. job-beelden (Cloud Run Admin API v2, lees-only). Zonder
+    `BEWAKING_SERVICE_RESOURCE` overgeslagen (dev/lokaal); een leesfout (403 = run.viewer ontbreekt op run-jobs@) is
+    een 'fout' mét de letterlijke API-melding — een ontbrekende harde voorwaarde is zichtbaar, nooit stil. Drift
+    buiten de gratieperiode = 'fout' (alert via de statemachine) + audit `deploy_drift` (idempotent per situatie);
+    de reconciliatie leest de open storing als LET-OP "systeemfout — automatisch gemeld"."""
+    from app.bewaking import deploy_drift
+
+    resource = settings.bewaking_service_resource
+    if not resource:
+        return ProbeUitkomst(soort=deploy_drift.SOORT, status="overgeslagen", detail="geen BEWAKING_SERVICE_RESOURCE")
+    try:
+        stand = deploy_drift.lees_stand(service_resource=resource, token=deploy_drift.metadata_token())
+    except deploy_drift.DeployDriftLeesfout as exc:
+        return ProbeUitkomst(
+            soort=deploy_drift.SOORT,
+            status="fout",
+            detail=f"deploy-stand niet leesbaar (leesrecht roles/run.viewer op run-jobs@?): {exc}"[:500],
+        )
+    oordeel = deploy_drift.beoordeel(stand, nu=nu)
+    detail = deploy_drift.samenvatting(stand, oordeel)
+    if oordeel.is_drift:
+        deploy_drift.registreer_audit(stand, oordeel, nu=nu)
+        return ProbeUitkomst(soort=deploy_drift.SOORT, status="fout", detail=detail)
+    return ProbeUitkomst(soort=deploy_drift.SOORT, status="ok", detail=detail)
+
+
 # ---- storing-administratie + alerts --------------------------------------------------------------
 
 
@@ -469,6 +500,7 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
         _meet("rlz", _probe_rlz),
         _meet("reconciliatie_mail", _probe_reconciliatie_mail),
         _meet("automatisering_regressie", lambda: _probe_automatisering_regressie(nu)),
+        _meet("deploy_drift", lambda: _probe_deploy_drift(nu)),
     ]
     if met_ai:
         uitkomsten.append(_meet("ai", _probe_ai))

@@ -14,11 +14,15 @@ source "$HIER/nameting_env.sh"
 PROJECT="${PROJECT:-rlz-boekhouding}"
 REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden"
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden"
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 grep -qw -- "$CMD" <<<"$ALLOWLIST" || { echo "FOUT: '$CMD' staat niet in de lees-only allowlist ($ALLOWLIST)" >&2; exit 2; }
 if [[ "$CMD" == "reconciliatie-alles" ]]; then
   printf '%s\n' "$@" | grep -qx -- "--lees-only" || { echo "FOUT: reconciliatie-alles alleen mét --lees-only via dit script (de echte run is de scheduler/'Nu draaien')" >&2; exit 2; }
+fi
+if [[ "$CMD" == "bank-historie-backfill" ]]; then
+  # Ochtendrun 11-09: de backfill schrijft in de eigen cache — als nameting alleen de telling (--dry-run).
+  printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: bank-historie-backfill alleen mét --dry-run via dit script (de echte vulling is een expliciete opdracht van Peter)" >&2; exit 2; }
 fi
 if [[ "$CMD" == "pandenregister-afleiden" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf"; then
   echo "FOUT: --schrijf is geen nameting" >&2; exit 2

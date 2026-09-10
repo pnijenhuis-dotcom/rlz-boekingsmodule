@@ -711,6 +711,18 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             "Roteer volgens GCP_UITROL §F7: nieuwe key aanmaken en activeren, oude key verwijderen, "
             "NAMETING_SA_AANGEMAAKT_OP op de job bijwerken.",
         )
+    if reden == auto.DEPLOY_DRIFT:
+        # Ochtendrun 11-09 blok 2.1: open bewakingsstoring deploy_drift — beheer-signaal; de bewaking alarmeert zelf.
+        sinds = _s(d, "sinds") or "?"
+        return (
+            _titel("Deploy-drift: jobs achter op de service", "beheer"),
+            f"De Cloud Run-jobs draaien op een ander beeld dan de service (bewaking sinds "
+            f"{sinds[:16].replace('T', ' ')} UTC, {aantal} metingen): "
+            f"{zonder_guids(_s(d, 'laatste_detail') or '')[:300]}.",
+            auto.REGRESSIE_TEKST[0].upper() + auto.REGRESSIE_TEKST[1:] + ". Controleer de deploy-workflow (GitHub "
+            "Actions) — de eerstvolgende groene push zet jobs én service-envs weer gelijk; handmatig jobs bijwerken "
+            "hoort niet (regel 08-09).",
+        )
     if reden == auto.TOETS_UIT:
         # Blok 3.2 (10-09 avond): bewuste opt-out, geen storing — de keuze blijft zichtbaar tot iemand 'm terugdraait.
         sinds = _s(d, "voorbeeld") or "sinds onbekend moment"

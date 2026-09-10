@@ -127,3 +127,27 @@ def test_zonder_client_alleen_module_en_telling_resterend(administratie_id: uuid
     _afgeletterde_mutatie(admin_engine, administratie_id)
     vulling = historie_bron.vul_historie_cache(administratie_id=administratie_id, client=None)
     assert (vulling.rlz_toegevoegd, vulling.rlz_resterend) == (0, 1)
+
+
+def test_dry_run_telt_zonder_te_schrijven_en_zonder_rlz_lezing(
+    administratie_id: uuid.UUID, admin_engine: Engine
+) -> None:
+    """Ochtendrun 11-09: `bank-historie-backfill --dry-run` als nameting — telling van module-kandidaten en nog na te
+    lezen afgeletterde mutaties, géén cache-rij en géén RLZ-call (ook mét client)."""
+    _afgeletterde_mutatie(admin_engine, administratie_id, dagen_terug=30)
+    _afgeletterde_mutatie(admin_engine, administratie_id, dagen_terug=20)
+    client = FakeBankClient()
+    voor = len(_cache(admin_engine, administratie_id))
+
+    vulling = historie_bron.vul_historie_cache(administratie_id=administratie_id, client=client, dry_run=True)
+
+    assert (vulling.module_toegevoegd, vulling.rlz_toegevoegd, vulling.rlz_gemarkeerd, vulling.rlz_resterend) == (
+        0,
+        0,
+        0,
+        2,
+    )
+    assert len(_cache(admin_engine, administratie_id)) == voor, "dry-run schrijft geen cache-rijen"
+    # De echte vulling daarna ziet dezelfde twee kandidaten (dry-run heeft niets gemarkeerd).
+    echte = historie_bron.vul_historie_cache(administratie_id=administratie_id, client=None)
+    assert echte.rlz_resterend == 2

@@ -117,12 +117,13 @@ jobs:
       # afleveraar-lus); WebAuthn RP ID = het APEX-domein (F2-bouwvereiste — passkeys
       # blijven geldig op alle subdomeinen), origin = het app-subdomein; CORS leeg
       # (same-origin, beslispunt 4). ^@^ = gcloud's eigen delimiter-escape zodat
-      # JSON-lijstwaarden veilig zijn. --allow-unauthenticated: de app heeft eigen auth
-      # (JWT + TOTP/passkeys), de accordeur-PWA moet publiek bereikbaar zijn. NB (les
-      # run #2): deploy@ (run.developer) mist run.services.setIamPolicy — de flag kan
-      # de allUsers-binding niet zélf zetten (gcloud waarschuwt, run blijft groen); de
-      # binding wordt éénmalig gezet in f2_services.sh stap 3 (owner) en de flag vindt
-      # 'm daarna al staan.
+      # JSON-lijstwaarden veilig zijn. PUBLIEK BEREIKBAAR zonder `--allow-unauthenticated`
+      # (ochtendrun 11-09 blok 2.2): de allUsers-invoker-binding staat éénmalig gezet in
+      # f2_services.sh stap 3 (owner) en overleeft elke revisie; de vlag probeerde 'm elke
+      # deploy opnieuw te zetten en faalde dagelijks op run.services.setIamPolicy voor deploy@
+      # (run.developer) — een waarschuwing die een échte IAM-fout onzichtbaar maakte. De
+      # post-deploy-smoketest toetst nu expliciet dat de app publiek een 200 geeft. De app
+      # heeft eigen auth (JWT + TOTP/passkeys), de accordeur-PWA moet publiek bereikbaar zijn.
       # Native store-app (fase 2/4, kliktest-prep 2026-08-17): de apex-origin in
       # WEBAUTHN_ORIGINS (iOS-passkey-assertions dragen de rp_id-origin, niet het
       # app-subdomein) en de webview-origins in CORS: capacitor://localhost (iOS) én
@@ -164,7 +165,6 @@ jobs:
             --project "${PROJECT_ID}" \
             --service-account "run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
             --set-cloudsql-instances "${CLOUD_SQL}" \
-            --allow-unauthenticated \
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
@@ -362,10 +362,14 @@ jobs:
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest" \
             --quiet \
             || echo "LET OP: reconciliatie-mailconfig niet gezet — de run legt wél vast, de samenvattingsmail staat dan op niet_geconfigureerd (zichtbaar op Inzicht › Reconciliatie)."
+          # BEWAKING_SERVICE_RESOURCE (ochtendrun 11-09 blok 2.1): de deploy-drift-probe vergelijkt het beeld van
+          # de service met dat van élke job in deze locatie (Cloud Run Admin API, lees-only). Vereist
+          # roles/run.viewer op run-jobs@ (owner, eenmalig: scripts/gcp/bewaking_deploy_drift_iam.sh); zonder
+          # dat recht is de probe 'fout' mét de 403-melding (zichtbaar, nooit stil).
           gcloud run jobs update rlz-bewaking \
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl,BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5" \
+            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl,BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5,BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend" \
             --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
             --quiet \
           || echo "LET OP: bewaking-config niet volledig gezet — rlz-bewaking draait, maar alerts/AI-probe kunnen falen (fail-zichtbaar in platform.bewaking_probe_run)."
@@ -428,10 +432,16 @@ jobs:
       #    (bewijst dat de router live is én dat de auth-poort dichtzit — een 200 of een
       #    SPA-fallback is hier allebei fout);
       # 3. de rlz-smoketest-job (CLI deploy-smoketest, zelfde image): AI-schema-zelftest
-      #    (union-limiet, de 30-08-klasse), DB + migratieversie, mailkanaal-config.
-      - name: Post-deploy-smoketest (health + gepoorte route + schema-zelftest)
+      #    (union-limiet, de 30-08-klasse), DB + migratieversie, mailkanaal-config én (ochtendrun
+      #    11-09) service en álle jobs op hetzelfde beeld — zonder gratie, de F3-lus is dan gelopen.
+      # 0. (11-09) de app is PUBLIEK bereikbaar: een browser-navigatie naar de SPA geeft 200 zonder
+      #    token — dit vervangt de `--allow-unauthenticated`-vlag als bewijs dat de IAM-binding staat.
+      - name: Post-deploy-smoketest (publiek 200 + health + gepoorte route + schema-zelftest + zelfde beeld)
         run: |
           BASIS="https://app.administratiekantoornijenhuis.nl"
+          PUBLIEK="$(curl -s -o /dev/null -m 20 -w "%{http_code}" -H "Accept: text/html" -H "Sec-Fetch-Dest: document" "${BASIS}/")"
+          echo "publiek (SPA zonder token): ${PUBLIEK}"
+          [ "${PUBLIEK}" = "200" ] || { echo "FOUT: de app is niet publiek bereikbaar (verwachtte 200, kreeg ${PUBLIEK}) — allUsers-invoker-binding weg? (f2_services.sh stap 3)"; exit 1; }
           STATUS="$(curl -fsS -m 20 "${BASIS}/health")"
           echo "health: ${STATUS}"
           echo "${STATUS}" | grep -q '"status":[[:space:]]*"ok"' || { echo "FOUT: /health antwoordt niet ok"; exit 1; }
@@ -444,7 +454,7 @@ jobs:
             --project "${PROJECT_ID}" \
             --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
             --set-cloudsql-instances "${CLOUD_SQL}" \
-            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl" \
+            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest" \
             --command python \
             --args="-m,app.cli,deploy-smoketest" \
@@ -455,3 +465,20 @@ jobs:
             --region "${REGION}" \
             --project "${PROJECT_ID}" \
             --wait
+
+      # DEPLOY MISLUKT → MAIL (ochtendrun 11-09 blok 2.2). Zeven rode deploys #173–#179 (09/10-09) zag
+      # niemand. Gekozen: de bestaande job rlz-bewaking draait `deploy-mislukt` (CLI) — die job heeft
+      # het SMTP-kanaal al; deploy@ (run.developer) mag 'm mét args-override starten. Geen secret in
+      # GitHub Actions, geen tweede mailkanaal. Loopt óók als de fout vóór de job-lus viel (de job
+      # draait dan het vorige beeld — het commando bestaat sinds 11-09). Faalt dit zelf (gcloud-auth
+      # kapot), dan blijft alleen GitHub's eigen failed-workflow-notificatie over: GCP_UITROL §F3.8
+      # vraagt Peter die aan te zetten (Settings › Notifications › Actions).
+      - name: Deploy mislukt → mail naar beheer (job rlz-bewaking, deploy-mislukt)
+        if: failure()
+        run: |
+          gcloud run jobs execute rlz-bewaking \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --wait \
+            --args="^|^-m|app.cli|deploy-mislukt|--sha|${GITHUB_SHA}|--run-url|${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|--stap|${{ github.ref_name }}" \
+          || echo "LET OP: de mislukt-melding kon niet verstuurd worden — controleer deze run in GitHub Actions."
