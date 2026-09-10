@@ -404,6 +404,10 @@ class Settings(BaseSettings):
     # Goedkoopste gepinde model (ai_kosten_prijzen_usd_per_mtok) voor de uurlijkse minimale
     # echte AI-call — valt onder de bestaande kostenmeter/-poort (bron 'bewaking').
     bewaking_ai_model: str = "claude-haiku-4-5"
+    # AI-plausibiliteitstoets als poort vóór automatisch boeken (blok B bundel 10-09, app/aitoets/): een
+    # ja/nee-oordeel op een door code bepaald voorstel — het goedkoopste gepinde model volstaat; valt onder
+    # dezelfde kostenmeter/-poort (bron 'ai_toets_*').
+    ai_toets_model: str = "claude-haiku-4-5"
     # RLZ-admin-id van de TEST-administratie voor de lichte leesprobe (GET Ledgers $top=1,
     # strikt read-only). Leeg = probe overgeslagen (dev/lokaal).
     bewaking_rlz_administratie_id: str | None = None

@@ -213,6 +213,12 @@ def verwerk_wachtrij_voor(administratie_id: uuid.UUID, *, bron: str | None = Non
                 "automatisch_afgeletterd": resultaat.automatisch_afgeletterd,
                 "automatisch_geboekt": resultaat.automatisch_geboekt,
                 "fouten": list(resultaat.afletter_fouten) + list(resultaat.automatisch_fouten),
+                # Blok B (10-09): AI-poort-uitkomsten en historie-cache-telling — reconciliatie-tellers lezen hieruit.
+                "overgeslagen": list(getattr(resultaat, "automatisch_overgeslagen", [])),
+                "historie_toegevoegd": getattr(resultaat, "historie_module_toegevoegd", 0)
+                + getattr(resultaat, "historie_rlz_toegevoegd", 0),
+                "historie_rlz_resterend": getattr(resultaat, "historie_rlz_resterend", 0),
+                "historie_fouten": list(getattr(resultaat, "historie_fouten", [])),
             }
             fout: str | None = None
         except Exception as exc:  # noqa: BLE001 — de reden moet op de run, nooit stil

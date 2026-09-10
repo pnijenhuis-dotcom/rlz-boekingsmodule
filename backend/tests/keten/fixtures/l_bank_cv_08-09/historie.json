@@ -1,0 +1,18 @@
+{
+ "_herkomst": "Blok B bundel 10-09 — historie-regel. RECONSTRUCTIE van een terugkerende huur-afschrijving van de C.V. zonder open post (verhuurder factureert niet in RLZ): drie eerdere maanden zijn in RLZ direct op grootboek geboekt (BankMutationDirectBookings), dezelfde tegenrekening, dezelfde omschrijvingskern, wisselend kenmerk/periode, gelijk bedrag. IBAN fictief (mod-97), verhuurdernaam geanonimiseerd. Datums t.o.v. de testdatum: de oudste boeking ligt > 183 dagen terug (dekking).",
+ "grootboek": {"ledger_id": "ffffffff-0000-4000-8000-000000004400", "code": "4400", "naam": "Huur onroerend goed"},
+ "mutatie": {
+  "sleutel": "HUUR",
+  "id": "cccccccc-0000-4000-8000-00000000000e",
+  "dagen_terug": 3,
+  "bedrag": "-1815.00",
+  "tegenpartij_naam": "Vastgoed Beheer Oost B.V.",
+  "omschrijving": "Huur kantoor Deventer periode 09-2026 kenmerk 20260901",
+  "tegenrekening_iban": "NL02ABNA0123456789"
+ },
+ "boekingen": [
+  {"payment_transaction_id": "cccccccc-0000-4000-8000-0000000000e1", "dagen_terug": 95, "omschrijving": "Huur kantoor Deventer periode 06-2026 kenmerk 20260601", "bron": "rlz"},
+  {"payment_transaction_id": "cccccccc-0000-4000-8000-0000000000e2", "dagen_terug": 156, "omschrijving": "Huur kantoor Deventer periode 04-2026 kenmerk 20260401", "bron": "rlz"},
+  {"payment_transaction_id": "cccccccc-0000-4000-8000-0000000000e3", "dagen_terug": 217, "omschrijving": "HUUR KANTOOR DEVENTER periode 02-2026 kenmerk 20260201", "bron": "rlz"}
+ ]
+}

@@ -123,3 +123,102 @@ class TestGoedeMatchesBlijvenGroen:
             if rij.voorstel.soort == VoorstelSoort.EXACTE_MATCH and rij.voorstel.payment_item_id is not None
         }
         assert kandidaten == {"TRANSIP", "NPG"}
+
+
+# --- blok B bundel 10-09: historie-regel (stap 3b) op de C.V.-casus -----------------------------------------------
+
+
+@pytest.fixture
+def cv_historie(administratie_id: uuid.UUID, admin_engine: Engine, cv_bank: dict) -> uuid.UUID:
+    """Vijfde open mutatie (huur, geen open post) + drie eerdere RLZ-grootboekboekingen in de historie-cache
+    (`fixtures/l_bank_cv_08-09/historie.json`). De vier bestaande mutaties blijven ongewijzigd."""
+    from datetime import date, timedelta
+
+    data = CASUS.bank_historie()
+    gb = data["grootboek"]
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO platform.grootboekrekening "
+                "(ledger_id, administratie_id, code, naam, soort, is_totaalrekening) "
+                "VALUES (:id, :aid, :code, :naam, 2, false)"
+            ),
+            {"id": uuid.UUID(gb["ledger_id"]), "aid": administratie_id, "code": gb["code"], "naam": gb["naam"]},
+        )
+        for b in data["boekingen"]:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.bank_historie_boeking "
+                    "(id, administratie_id, payment_transaction_id, datum, "
+                    "tegenrekening_iban, omschrijving, tegenpartij_naam, ledger_id, taxrate_id, bron) VALUES "
+                    "(:id, :aid, :tx, :datum, :iban, :oms, :naam, :ledger, NULL, :bron)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "aid": administratie_id,
+                    "tx": uuid.UUID(b["payment_transaction_id"]),
+                    "datum": date.today() - timedelta(days=b["dagen_terug"]),
+                    "iban": data["mutatie"]["tegenrekening_iban"],
+                    "oms": b["omschrijving"],
+                    "naam": data["mutatie"]["tegenpartij_naam"],
+                    "ledger": uuid.UUID(gb["ledger_id"]),
+                    "bron": b["bron"],
+                },
+            )
+    m = data["mutatie"]
+    return maak_bank_mutatie(
+        admin_engine,
+        administratie_id=administratie_id,
+        mutatie_id=uuid.UUID(m["id"]),
+        bedrag=m["bedrag"],
+        tegenpartij_naam=m["tegenpartij_naam"],
+        omschrijving=m["omschrijving"],
+        tegenrekening_iban=m["tegenrekening_iban"],
+        boekdatum=(date.today() - timedelta(days=m["dagen_terug"])).isoformat(),
+    )
+
+
+class TestHistorieRegelOpDeCv:
+    def test_huur_zonder_open_post_krijgt_groene_historie_regel_3_van_3(
+        self, administratie_id: uuid.UUID, cv_bank: dict, cv_historie: uuid.UUID
+    ) -> None:
+        rij = next(
+            r
+            for r in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id)
+            if r.mutatie.id == cv_historie
+        )
+        assert rij.voorstel.soort == VoorstelSoort.HISTORIE_REGEL, rij.voorstel
+        assert rij.voorstel.kleur == "groen"
+        assert rij.voorstel.bron == "historie: 3 van 3 op 4400 Huur onroerend goed"
+        assert (rij.voorstel.historie_k, rij.voorstel.historie_n) == (3, 3)
+        assert rij.voorstel.ledger_id == uuid.UUID(CASUS.bank_historie()["grootboek"]["ledger_id"])
+        # Concrete boekregels (btw-splitsing in code): één regel die het mutatiebedrag exact dekt.
+        assert len(rij.regel_boekregels) == 1 and rij.regel_boekregels[0].netto_bedrag == Decimal("-1815.00")
+        assert rij.ai_toets is None  # nog niet getoetst — de nachtelijke autoflow doet dat
+
+    def test_de_vier_bestaande_cv_mutaties_krijgen_geen_historie_voorstel(
+        self, administratie_id: uuid.UUID, cv_bank: dict, cv_historie: uuid.UUID
+    ) -> None:
+        """A/B blijven handmatig, TransIP/NPG groen op de open post — de historie raakt ze niet (andere IBAN/kern)."""
+        per_sleutel = _per_sleutel(administratie_id, cv_bank)
+        assert per_sleutel["A"].voorstel.soort == VoorstelSoort.HANDMATIG
+        assert per_sleutel["B"].voorstel.soort == VoorstelSoort.HANDMATIG
+        assert per_sleutel["TRANSIP"].voorstel.soort == VoorstelSoort.EXACTE_MATCH
+        assert per_sleutel["NPG"].voorstel.soort == VoorstelSoort.EXACTE_MATCH
+
+    def test_dto_draagt_historie_velden_en_ai_toets_kolommen(
+        self, administratie_id: uuid.UUID, cv_bank: dict, cv_historie: uuid.UUID
+    ) -> None:
+        """Wat de frontend (VoorstelKaart/BankDetailScreen) krijgt: soort historie_regel, historie_k/n, ai_toets_*."""
+        from app.bank import schemas
+        from app.bank.router import _voorstel_response
+
+        rij = next(
+            r
+            for r in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id)
+            if r.mutatie.id == cv_historie
+        )
+        dto = _voorstel_response(rij)
+        assert (dto.soort, dto.historie_k, dto.historie_n) == ("historie_regel", 3, 3)
+        assert dto.ledger_id is not None and dto.regels[0].ledger_id == dto.ledger_id
+        assert set(schemas.MutatieResponse.model_fields) >= {"ai_toets_uitkomst", "ai_toets_reden", "ai_toets_op"}

@@ -23,14 +23,18 @@ Failsafes en waarborgen (zelfde lat als het documenten-boeken):
 - audit_event op boeken én storno; niets verdwijnt stil.
 
 Volautomatisch (opt-in per administratie, `bank_autoboeken_ingeschakeld`, default UIT):
-verwerk_vaste_regels_automatisch() past vaste regels toe op open mutaties — uitsluitend waar
-de matchmotor stap 3 (vaste regel) als voorstel geeft, dus nooit óver een open-post-match heen."""
+verwerk_automatisch() past vaste regels (stap 3) én — sinds blok B bundel 10-09 — groene historie-regel-
+voorstellen (stap 3b, 100 % dezelfde rekening/btw) toe op open mutaties, uitsluitend waar de matchmotor dat
+als voorstel geeft, dus nooit óver een open-post-match heen. Vóór élke automatische boeking loopt de
+AI-plausibiliteitstoets als POORT (app/aitoets/plausibiliteit.py): plausibel → boeken; twijfel/overgeslagen →
+NIET boeken, uitkomst + reden op de mutatie (chip in de werkvoorraad) en als regel in `overgeslagen`."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 from decimal import Decimal
 
@@ -512,53 +516,182 @@ def regel_naar_boekregels(
     ]
 
 
-def verwerk_vaste_regels_automatisch(
-    *, administratie_id: uuid.UUID, client: RlzClient
-) -> tuple[int, list[str]]:
-    """Volautomatische stap (opt-in `bank_autoboeken_ingeschakeld`, default UIT): boek open
-    mutaties waarvoor de matchmotor een vaste regel voorstelt, met de systeem-actor. De
-    matchmotor-volgorde garandeert dat een open-post-match (afletteren, mensenwerk) altijd
-    vóór een vaste regel gaat — automatisch boeken kan een afletterkandidaat dus nooit
-    wegkapen. Fouten per mutatie stoppen de rest niet en worden zichtbaar gerapporteerd."""
-    from app.bank.voorstellen import laad_matchcontext  # lokale import: voorstellen leest sync-stand
+def historie_naar_boekregels(
+    *, voorstel: matchmotor.Voorstel, mutatie: matchmotor.MutatieGegevens, btw_percentage: Decimal | None
+) -> list[BankBoekRegelInput]:
+    """Historie-regel-voorstel (stap 3b) → concrete boekingsregels: zelfde btw-splitsing in code als de vaste
+    regel; omschrijving "Historie-regel: ‹tegenpartij›"."""
+    if voorstel.ledger_id is None or mutatie.bedrag is None:
+        return []
+    netto, btw = matchmotor.splits_incl_bedrag(mutatie.bedrag, btw_percentage)
+    return [
+        BankBoekRegelInput(
+            ledger_id=voorstel.ledger_id,
+            netto_bedrag=netto,
+            btw_bedrag=btw if btw != 0 else None,
+            taxrate_id=voorstel.taxrate_id,
+            omschrijving=f"Historie-regel: {mutatie.tegenpartij_naam or ''}".strip(),
+        )
+    ]
+
+
+@dataclass
+class AutomatischResultaat:
+    """Uitkomst van één automatische verwerkingsronde: geboekt, fouten (boekpad) en overgeslagen (AI-poort —
+    tekst begint met "twijfel: …" of "overgeslagen: ‹oorzaak› — …" zodat de reconciliatie-tellers ze categoriseren)."""
+
+    geboekt: int = 0
+    fouten: list[str] = field(default_factory=list)
+    overgeslagen: list[str] = field(default_factory=list)
+
+
+def ai_toets_invoer_hash(invoer) -> str:
+    """Idempotentie-sleutel van de toets: verandert alleen als het voorstel (soort, rekening, btw, bedrag) verandert.
+    Een twijfel-mutatie wordt dus niet elke nacht opnieuw getoetst."""
+    basis = "|".join(
+        str(deel)
+        for deel in (invoer.soort, invoer.rekening_code, invoer.rekening_naam, invoer.btw_omschrijving, invoer.bedrag)
+    )
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+def bouw_ai_invoer(context, mutatie: matchmotor.MutatieGegevens, voorstel: matchmotor.Voorstel):
+    """Deterministische invoer voor de AI-plausibiliteitstoets uit de matchcontext (labels uit de caches, samenvatting
+    uit de historie of de vaste regel). Puur — geen I/O."""
+    from app.aitoets.plausibiliteit import SOORT_BANK_HISTORIE, SOORT_BANK_VASTE_REGEL, PlausibiliteitInvoer
+    from app.bank import historie_regel
+
+    if voorstel.soort == matchmotor.VoorstelSoort.VASTE_REGEL and voorstel.regel_id is not None:
+        regel = context.regel_per_id[voorstel.regel_id]
+        ledger_id, taxrate_id, soort = regel.ledger_id, regel.taxrate_id, SOORT_BANK_VASTE_REGEL
+        samenvatting = "vaste regel, door een mens bevestigd voor deze tegenpartij"
+    else:
+        ledger_id, taxrate_id, soort = voorstel.ledger_id, voorstel.taxrate_id, SOORT_BANK_HISTORIE
+        samenvatting = historie_regel.historie_samenvatting(
+            context.historie,
+            historie_regel.historie_sleutel(mutatie.tegenrekening_iban, mutatie.omschrijving),
+            rekening_label=context.rekening_label,
+        )
+    code_naam = context.ledger_label_per_id.get(ledger_id) if ledger_id is not None else None
+    return PlausibiliteitInvoer(
+        administratie_id=context.administratie_id,
+        soort=soort,
+        omschrijving=mutatie.omschrijving,
+        tegenpartij=mutatie.tegenpartij_naam,
+        bedrag=mutatie.bedrag,
+        rekening_code=code_naam[0] if code_naam else None,
+        rekening_naam=code_naam[1] if code_naam else (str(ledger_id)[:8] if ledger_id else None),
+        btw_omschrijving=context.taxrate_naam_per_id.get(taxrate_id) if taxrate_id is not None else None,
+        historie_samenvatting=samenvatting,
+        referentie_id=mutatie.id,
+    )
+
+
+def _schrijf_ai_toets(*, administratie_id: uuid.UUID, mutatie_id: uuid.UUID, uitkomst, invoer_hash: str) -> None:
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rij = session.get(BankMutatie, (mutatie_id, administratie_id))
+        if rij is None:
+            return
+        rij.ai_toets_uitkomst = uitkomst.uitkomst
+        rij.ai_toets_reden = uitkomst.reden
+        rij.ai_toets_op = datetime.now(UTC)
+        rij.ai_toets_invoer_hash = invoer_hash
+
+
+def voer_ai_toets_uit(
+    context, mutatie: matchmotor.MutatieGegevens, voorstel: matchmotor.Voorstel, *, hergebruik: bool = True
+):
+    """De AI-poort voor één kandidaat: bouwt de invoer, hergebruikt een eerdere twijfel-uitkomst bij een ongewijzigd
+    voorstel (hash), toetst anders live en schrijft uitkomst + hash op de mutatie. Geeft (uitkomst, hergebruikt)."""
+    from app.aitoets.plausibiliteit import UITKOMST_TWIJFEL, toets_plausibiliteit
+
+    invoer = bouw_ai_invoer(context, mutatie, voorstel)
+    invoer_hash = ai_toets_invoer_hash(invoer)
+    stand = context.ai_toets_per_mutatie.get(mutatie.id)
+    if hergebruik and stand is not None and stand.uitkomst == UITKOMST_TWIJFEL and stand.invoer_hash == invoer_hash:
+        from app.aitoets.plausibiliteit import PlausibiliteitUitkomst
+
+        return PlausibiliteitUitkomst(UITKOMST_TWIJFEL, stand.reden or "eerder getoetst"), True
+    uitkomst = toets_plausibiliteit(invoer)
+    _schrijf_ai_toets(
+        administratie_id=context.administratie_id, mutatie_id=mutatie.id, uitkomst=uitkomst, invoer_hash=invoer_hash
+    )
+    return uitkomst, False
+
+
+def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> AutomatischResultaat:
+    """Volautomatische stap (opt-in `bank_autoboeken_ingeschakeld`, default UIT): boek open mutaties waarvoor de
+    matchmotor een vaste regel (stap 3) of een GROENE historie-regel (stap 3b, 100 %) voorstelt, met de
+    systeem-actor — ná de AI-plausibiliteitstoets als poort. De matchmotor-volgorde garandeert dat een
+    open-post-match (afletteren) altijd vóór gaat — automatisch boeken kan een afletterkandidaat dus nooit
+    wegkapen. Fouten per mutatie stoppen de rest niet en worden zichtbaar gerapporteerd; niet-plausibel =
+    zichtbaar overgeslagen mét reden op de mutatie."""
+    from app.aitoets.plausibiliteit import UITKOMST_TWIJFEL
+    from app.bank.voorstellen import bepaal_voorstel_in_context, laad_matchcontext  # lokale import
 
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None or not administratie.bank_autoboeken_ingeschakeld:
-            return 0, []
+            return AutomatischResultaat()
 
     context = laad_matchcontext(administratie_id=administratie_id)
-    geboekt = 0
-    fouten: list[str] = []
+    resultaat = AutomatischResultaat()
     for mutatie in context.open_mutaties:
-        voorstel = matchmotor.bepaal_voorstel(
-            mutatie,
-            open_posten=context.open_posten,
-            vaste_regels=context.vaste_regels,
-            iban_relaties=context.iban_relaties,
-        )
-        if voorstel.soort != matchmotor.VoorstelSoort.VASTE_REGEL or voorstel.regel_id is None:
-            continue
-        regel = context.regel_per_id[voorstel.regel_id]
+        voorstel = bepaal_voorstel_in_context(context, mutatie)
         if mutatie.bedrag is None:
             continue
-        regels = regel_naar_boekregels(
-            regel=regel,
-            mutatie_bedrag=mutatie.bedrag,
-            btw_percentage=context.btw_percentage_per_taxrate.get(regel.taxrate_id),
-        )
+        if voorstel.soort == matchmotor.VoorstelSoort.VASTE_REGEL and voorstel.regel_id is not None:
+            regel = context.regel_per_id[voorstel.regel_id]
+            regels = regel_naar_boekregels(
+                regel=regel,
+                mutatie_bedrag=mutatie.bedrag,
+                btw_percentage=context.btw_percentage_per_taxrate.get(regel.taxrate_id),
+            )
+            omschrijving = regel.omschrijving or f"Vaste regel: {mutatie.tegenpartij_naam or ''}".strip()
+        elif voorstel.soort == matchmotor.VoorstelSoort.HISTORIE_REGEL and voorstel.kleur == "groen":
+            regels = historie_naar_boekregels(
+                voorstel=voorstel,
+                mutatie=mutatie,
+                btw_percentage=context.btw_percentage_per_taxrate.get(voorstel.taxrate_id),
+            )
+            omschrijving = f"Historie-regel: {mutatie.tegenpartij_naam or ''}".strip()
+        else:
+            continue
+        if not regels:
+            continue
+
+        # AI-plausibiliteitstoets als POORT — twijfel/overgeslagen = niet boeken, zichtbaar.
+        uitkomst, hergebruikt = voer_ai_toets_uit(context, mutatie, voorstel)
+        if not uitkomst.boeken_toegestaan:
+            if uitkomst.uitkomst == UITKOMST_TWIJFEL:
+                resultaat.overgeslagen.append(
+                    f"twijfel: {mutatie.id} ({voorstel.soort.value}) — {uitkomst.reden}"
+                    + (" [eerder getoetst, voorstel ongewijzigd]" if hergebruikt else "")
+                )
+            else:
+                resultaat.overgeslagen.append(f"overgeslagen: {uitkomst.reden} ({mutatie.id}, {voorstel.soort.value})")
+            continue
         try:
             boek_mutatie_direct(
                 administratie_id=administratie_id,
                 payment_transaction_id=mutatie.id,
                 regels=regels,
                 actor_id=SYSTEEM_ACTOR_ID,
-                omschrijving=regel.omschrijving or f"Vaste regel: {mutatie.tegenpartij_naam or ''}".strip(),
+                omschrijving=omschrijving,
                 bron=BankBoekingBron.AUTOMATISCH,
                 client=client,
             )
-            geboekt += 1
+            resultaat.geboekt += 1
         except BankBoekenFout as exc:
-            fouten.append(f"{mutatie.id}: {exc}")
+            resultaat.fouten.append(f"{mutatie.id}: {exc}")
             logger.warning("Automatische bankboeking voor mutatie %s mislukt: %s", mutatie.id, exc)
-    return geboekt, fouten
+    return resultaat
+
+
+def verwerk_vaste_regels_automatisch(
+    *, administratie_id: uuid.UUID, client: RlzClient
+) -> tuple[int, list[str]]:
+    """Compatibele vorm van `verwerk_automatisch` (geboekt, fouten) voor bestaande aanroepers/tests; de
+    overgeslagen-lijst van de AI-poort zit alleen in `verwerk_automatisch`."""
+    resultaat = verwerk_automatisch(administratie_id=administratie_id, client=client)
+    return resultaat.geboekt, resultaat.fouten

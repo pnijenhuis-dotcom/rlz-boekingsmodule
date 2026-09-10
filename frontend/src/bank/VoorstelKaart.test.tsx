@@ -3,7 +3,7 @@
 // die regel, nooit leeg/wachtend), compact-variant voor de splitsen-dialoog.
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { GEEN_MATCH_TEKST, isDeelbetaling, matchChip, restantCenten, VoorstelKaart } from './VoorstelKaart'
+import { AiToetsChip, GEEN_MATCH_TEKST, historieChip, isDeelbetaling, matchChip, restantCenten, VoorstelKaart } from './VoorstelKaart'
 
 const POST = {
   id: 'p1',
@@ -99,5 +99,39 @@ describe('VoorstelKaart', () => {
     rerender(<VoorstelKaart voorstel={{ soort: 'exacte_match', open_post: POST }} mutatieBedrag="4428.73" compact />)
     expect(screen.getByTestId('voorstel-kaart')).toHaveClass('vk-compact')
     expect(screen.getByTestId('voorstel-kaart')).not.toHaveTextContent('exacte match')
+  })
+})
+
+describe('historie-regel + AI-toets-chips (blok B bundel 10-09)', () => {
+  it('groen = "historie-regel — k van n op ‹rekening›"; oranje = "historie: k van n op ‹rekening› — bevestigen"; k/n uit de velden, rekening uit bron', () => {
+    expect(historieChip({ soort: 'historie_regel', kleur: 'groen', bron: 'historie: 12 van 12 op 4400 Huur', historie_k: 12, historie_n: 12 })).toEqual({
+      tekst: 'historie-regel — 12 van 12 op 4400 Huur',
+      kleur: 'groen',
+    })
+    expect(historieChip({ soort: 'historie_regel', kleur: 'oranje', bron: 'historie: 4 van 6 op 4300 Telefoon', historie_k: 4, historie_n: 6 })).toEqual({
+      tekst: 'historie: 4 van 6 op 4300 Telefoon — bevestigen',
+      kleur: 'oranje',
+    })
+    // Zonder k/n-velden (ouder antwoord): k van n uit de bron-tekst.
+    expect(historieChip({ soort: 'historie_regel', kleur: 'oranje', bron: 'historie: 3 van 5 op 4500 Kantoor' })?.tekst).toBe('historie: 3 van 5 op 4500 Kantoor — bevestigen')
+    expect(historieChip({ soort: 'vaste_regel', kleur: 'groen' })).toBeNull()
+    // matchChip kent de soort ook (kaart-pad).
+    expect(matchChip({ soort: 'historie_regel', kleur: 'groen', bron: 'historie: 3 van 3 op 4400 Huur', historie_k: 3, historie_n: 3 }, false)?.tekst).toBe('historie-regel — 3 van 3 op 4400 Huur')
+  })
+
+  it('AI-toets: twijfel = oranje chip mét reden, overgeslagen = grijze chip mét reden, plausibel/null = geen chip', () => {
+    const { rerender } = render(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'twijfel', ai_toets_reden: 'bedrag 3× hoger dan de historie', ai_toets_op: '2026-09-10T03:00:00Z' }} />)
+    const twijfel = screen.getByTestId('ai-toets-twijfel')
+    expect(twijfel).toHaveTextContent('AI-twijfel: bedrag 3× hoger dan de historie')
+    expect(twijfel).toHaveClass('chip', 'ai')
+    rerender(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'overgeslagen', ai_toets_reden: 'api_key — geen API-key geconfigureerd', ai_toets_op: null }} />)
+    const over = screen.getByTestId('ai-toets-overgeslagen')
+    expect(over).toHaveTextContent('AI-toets overgeslagen: api_key — geen API-key geconfigureerd')
+    expect(over).toHaveClass('chip')
+    expect(over).not.toHaveClass('ai')
+    rerender(<AiToetsChip mutatie={{ ai_toets_uitkomst: 'plausibel', ai_toets_reden: 'ok', ai_toets_op: null }} />)
+    expect(screen.queryByTestId(/ai-toets-/)).not.toBeInTheDocument()
+    rerender(<AiToetsChip mutatie={{}} />)
+    expect(screen.queryByTestId(/ai-toets-/)).not.toBeInTheDocument()
   })
 })

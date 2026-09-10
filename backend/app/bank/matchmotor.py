@@ -8,6 +8,9 @@ na de schrijf-PoC):
 2. gedeeltelijke match — geen teken-mismatch en twee van {naam/IBAN, nummer, bedrag}
    (deelbetaling/G-rekening-split, nummer zonder naam, naam+bedrag zonder nummer) → oranje, bevestigen;
 3. vaste regel uit het geheugen (tegenpartij → grootboek/btw) → direct-op-grootboek-voorstel;
+3b. historie-regel (blok B bundel 10-09, app/bank/historie_regel.py): IBAN + omschrijvingskern in de
+   historie ≥ 3× op dezelfde rekening/btw → groen (automatisch kandidaat achter de opt-in, mét de
+   AI-plausibiliteitstoets als poort) of oranje "k van n" — nooit als er open posten voor de tegenpartij zijn;
 4. RLZ's eigen voorstel (auto-gevuld MatchedPaymentItem bij exacte bedrag-match) — mét bron;
 5. handmatig.
 
@@ -200,6 +203,7 @@ class VoorstelSoort(enum.StrEnum):
     EXACTE_MATCH = "exacte_match"
     DEEL_MATCH = "deel_match"
     VASTE_REGEL = "vaste_regel"
+    HISTORIE_REGEL = "historie_regel"
     RLZ_VOORSTEL = "rlz_voorstel"
     HANDMATIG = "handmatig"
 
@@ -257,6 +261,12 @@ class Voorstel:
     payment_item_id: uuid.UUID | None = None
     rlz_document_id: uuid.UUID | None = None
     regel_id: uuid.UUID | None = None
+    # Stap 3b (blok B bundel 10-09): het grootboek-/btw-doel uit de historie + de k-van-n-telling. Alleen
+    # gevuld bij soort HISTORIE_REGEL; kleur "groen" = 100 % = automatisch kandidaat.
+    ledger_id: uuid.UUID | None = None
+    taxrate_id: uuid.UUID | None = None
+    historie_k: int | None = None
+    historie_n: int | None = None
 
 
 def teken_toets(mutatie: MutatieGegevens, post: OpenPost) -> str:
@@ -402,12 +412,20 @@ def bepaal_voorstel(
     open_posten: list[OpenPost],
     vaste_regels: list[VasteRegelGegevens],
     iban_relaties: list[IbanRelatie] | None = None,
+    historie: list | None = None,
+    vandaag: date | None = None,
+    rekening_label=None,
 ) -> Voorstel:
     """Het ene voorstel voor deze mutatie, in de vaste volgorde 1–5. Stap 1/2 sinds blok 2 (08-09)
     op de score per open post: GROEN = teken + naam/IBAN + nummer + bedrag (auto-afletteren-
     kandidaat), ORANJE = geen teken-mismatch + twee van {naam/IBAN, nummer, bedrag} (bevestigen),
     anders door naar vaste regel / RLZ-voorstel / handmatig. Bij meerdere gelijkwaardige
-    kandidaten binnen een kleur wordt er nooit blind één gekozen (handmatig mét reden)."""
+    kandidaten binnen een kleur wordt er nooit blind één gekozen (handmatig mét reden).
+
+    `historie` (blok B bundel 10-09, optioneel — bestaande aanroepers ongewijzigd): lijst
+    `historie_regel.HistorieBoeking`; stap 3b ná de vaste regel en vóór het RLZ-voorstel.
+    `rekening_label(ledger_id, taxrate_id) -> str` levert de leesbare rekening voor het bron-label
+    (default: de eerste 8 tekens van het ledger-id — de servicelaag geeft code + naam mee)."""
     relaties = iban_relaties or []
     scores = [score_post(mutatie, post, vaste_regels=vaste_regels, iban_relaties=relaties) for post in open_posten]
 
@@ -452,6 +470,34 @@ def bepaal_voorstel(
             reden="Tegenpartij matcht een door een mens bevestigde vaste regel",
             regel_id=regel.id,
         )
+
+    # Stap 3b: historie-regel (IBAN + omschrijvingskern, bedrag vrij) — lokale import: historie_regel
+    # bouwt op de types van deze module (geen kring op module-niveau).
+    if historie:
+        from app.bank import historie_regel
+
+        uitkomst = historie_regel.bepaal_historie_voorstel(
+            mutatie,
+            historie,
+            open_posten=open_posten,
+            iban_relaties=relaties,
+            vandaag=vandaag or date.today(),
+        )
+        if uitkomst.voorstel is not None:
+            h = uitkomst.voorstel
+            label = (
+                rekening_label(h.ledger_id, h.taxrate_id) if rekening_label is not None else str(h.ledger_id)[:8]
+            )
+            return Voorstel(
+                soort=VoorstelSoort.HISTORIE_REGEL,
+                kleur=h.kleur,
+                bron=h.label(label),
+                reden=f"Historie-regel op {h.sleutel.label()}: {uitkomst.reden}",
+                ledger_id=h.ledger_id,
+                taxrate_id=h.taxrate_id,
+                historie_k=h.k,
+                historie_n=h.n,
+            )
 
     # Stap 4: RLZ's eigen voorstel (MatchedPaymentItem — alleen exacte bedrag-match, schrijf-PoC).
     if mutatie.rlz_voorstel_item_id is not None:

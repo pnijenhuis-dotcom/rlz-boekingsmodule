@@ -553,6 +553,40 @@ describe('BankDetailScreen', () => {
     expect(body.regels[0]).toMatchObject({ ledger_id: ledgerId, netto_bedrag: '-24.50' })
   })
 
+  it('blok B (10-09): historie-regel op de rij — groen "historie-regel — k van n op ‹rekening›" of oranje "… — bevestigen"; AI-twijfel/overgeslagen als chip op de rij', async () => {
+    installFetchMock({
+      mutaties: [
+        mutatie({
+          id: 'm-groen',
+          tegenpartij_naam: 'Verhuurder Vastgoed B.V.',
+          voorstel: { soort: 'historie_regel', kleur: 'groen', bron: 'historie: 12 van 12 op 4400 Huur', reden: 'IBAN + omschrijvingskern, 12 eerdere boekingen', payment_item_id: null, open_post: null, regel_id: null, regels: [], ledger_id: 'l-4400', taxrate_id: null, historie_k: 12, historie_n: 12 },
+          ai_toets_uitkomst: 'twijfel',
+          ai_toets_reden: 'bedrag afwijkend van de historie',
+          ai_toets_op: '2026-09-10T03:00:00Z',
+        }),
+        mutatie({
+          id: 'm-oranje',
+          tegenpartij_naam: 'KPN B.V.',
+          voorstel: { soort: 'historie_regel', kleur: 'oranje', bron: 'historie: 4 van 6 op 4300 Telefoon', reden: 'gelijkstand', payment_item_id: null, open_post: null, regel_id: null, regels: [], historie_k: 4, historie_n: 6 },
+          ai_toets_uitkomst: 'overgeslagen',
+          ai_toets_reden: 'avg_gate — intake-AI staat uit',
+          ai_toets_op: null,
+        }),
+      ],
+    })
+    renderScherm()
+    await screen.findByText(/Verhuurder Vastgoed B.V./)
+    const chips = screen.getAllByTestId('voorstel-historie')
+    expect(chips[0]).toHaveTextContent('historie-regel — 12 van 12 op 4400 Huur')
+    expect(chips[0]).toHaveClass('geheugen')
+    expect(chips[1]).toHaveTextContent('historie: 4 van 6 op 4300 Telefoon — bevestigen')
+    expect(chips[1]).toHaveClass('ai')
+    expect(screen.getByTestId('ai-toets-twijfel')).toHaveTextContent('AI-twijfel: bedrag afwijkend van de historie')
+    expect(screen.getByTestId('ai-toets-overgeslagen')).toHaveTextContent('AI-toets overgeslagen: avg_gate — intake-AI staat uit')
+    // Geen lege/wachtende voorstel-kaart voor een historie-regel (open_post is null).
+    expect(screen.queryByTestId('voorstel-kaart')).not.toBeInTheDocument()
+  })
+
   it('toont het 3×-regelvoorstel als hint', async () => {
     installFetchMock({
       mutaties: [

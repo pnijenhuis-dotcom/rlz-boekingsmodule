@@ -1169,6 +1169,37 @@ def zet_globale_kill_switch(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:
         return ingeschakeld
 
 
+def haal_ai_toets_facturen_op() -> bool:
+    """Blok B bundel 10-09 (migratie 0129): AI-plausibiliteitstoets vóór automatische factuurboekingen — platformbreed,
+    default AAN. Geen rij = AAN (zie app/aitoets/plausibiliteit.py::ai_toets_facturen_ingeschakeld)."""
+    with scoped_session(None) as session:
+        instelling = session.get(BoekenInstelling, True)
+        return instelling is None or bool(instelling.ai_toets_facturen_ingeschakeld)
+
+
+def zet_ai_toets_facturen(*, actor_id: uuid.UUID, ingeschakeld: bool) -> bool:
+    """Beheerder-only (router); audit oud→nieuw op de boeken_instelling-singleton."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        instelling = session.get(BoekenInstelling, True)
+        if instelling is None:
+            raise BeheerFout("platform.boeken_instelling heeft geen rij — migratie 0008 niet toegepast?")
+        oud = bool(instelling.ai_toets_facturen_ingeschakeld)
+        instelling.ai_toets_facturen_ingeschakeld = ingeschakeld
+        instelling.gewijzigd_door = actor_id
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="boeken_instelling",
+            record_id=_BOEKEN_INSTELLING_RECORD_ID,
+            actie="ai_toets_facturen_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"ai_toets_facturen_ingeschakeld": oud},
+            nieuwe_waarde={"ai_toets_facturen_ingeschakeld": ingeschakeld},
+        )
+        return ingeschakeld
+
+
 def haal_uren_dagmax_op(*, administratie_id: uuid.UUID) -> Decimal:
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)

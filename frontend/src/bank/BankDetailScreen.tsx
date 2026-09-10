@@ -25,7 +25,7 @@ import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
 import { NOG_NIET_GESYNCHRONISEERD } from './BankOverzichtScreen'
-import { GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, isDeelbetaling } from './VoorstelKaart'
+import { AiToetsChip, GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, historieChip, isDeelbetaling } from './VoorstelKaart'
 import { amountKlasse } from '../werkvoorraad/format'
 
 function formatBedrag(bedrag: string | null): string {
@@ -316,9 +316,17 @@ function MutatieRij({
           <span className={chipKlasse(voorstel)} title="Direct op grootboek volgens een vaste regel (boekingsgeheugen)">
             vaste regel · {voorstel.bron}
           </span>
+        ) : voorstel.soort === 'historie_regel' ? (
+          // Blok B bundel 10-09 (stap 3b): historie-regel op IBAN + omschrijvingskern — groen = 100 % zelfde rekening
+          // (automatisch-kandidaat achter bank-autoboeken), oranje = k van n → bevestigen.
+          <span className={chipKlasse(voorstel)} title={voorstel.reden} data-testid="voorstel-historie">
+            {historieChip(voorstel)?.tekst}
+          </span>
         ) : (
           <HandmatigChip />
         )}
+        {/* Blok B 10-09: uitkomst van de AI-plausibiliteitstoets als poort — twijfel/overgeslagen = niet geboekt, zichtbaar. */}
+        <AiToetsChip mutatie={mutatie} />
         {mutatie.regel_voorstel && (
           <div className="hint">
             Al {mutatie.regel_voorstel.aantal_boekingen}× zo geboekt — vink bij het boeken “onthoud als vaste

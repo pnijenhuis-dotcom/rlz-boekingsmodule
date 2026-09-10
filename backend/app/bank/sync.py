@@ -102,6 +102,13 @@ class BankSyncResultaat:
     # 2026-08-09) — zelfde opt-in als het vaste-regels-autoboeken, eigen volumerem-teller.
     automatisch_afgeletterd: int = 0
     afletter_fouten: list[str] = field(default_factory=list)
+    # Blok B bundel 10-09: door de AI-plausibiliteitstoets NIET geboekte kandidaten ("twijfel: …" /
+    # "overgeslagen: ‹oorzaak› — …") + de incrementele vulling van de historie-cache (historie_bron.py).
+    automatisch_overgeslagen: list[str] = field(default_factory=list)
+    historie_module_toegevoegd: int = 0
+    historie_rlz_toegevoegd: int = 0
+    historie_rlz_resterend: int = 0
+    historie_fouten: list[str] = field(default_factory=list)
 
 
 # --- 1. rekeningen ---------------------------------------------------------------------------
@@ -378,9 +385,19 @@ def sync_bank_voor_administratie(
             administratie_id=administratie_id, client=client
         )
         vastly_gemeld = vastly.detecteer_en_meld_afgeletterd(administratie_id=administratie_id, client=client)
+        # Blok B (10-09): historie-cache incrementeel bijvullen (max N RLZ-lezingen per run) — vóór de autoflow,
+        # zodat de historie-regel vannacht al op de verse stand draait. Een fout hier stopt de sync niet.
+        from app.bank import historie_bron
+
+        try:
+            historie = historie_bron.vul_historie_cache(administratie_id=administratie_id, client=client)
+        except Exception as exc:  # noqa: BLE001 — zichtbaar in het resultaat, nooit de hele sync omver
+            logger.warning("Historie-cache vullen mislukt voor %s: %s", administratie_id, exc)
+            historie = historie_bron.HistorieVulling(0, 0, 0, 0, [f"historie-cache: {type(exc).__name__}: {exc}"])
 
         automatisch_geboekt = 0
         automatisch_fouten: list[str] = []
+        automatisch_overgeslagen: list[str] = []
         with scoped_session(None) as session:
             administratie = session.get(Administratie, administratie_id)
             if administratie is None:
@@ -398,11 +415,11 @@ def sync_bank_voor_administratie(
             # Import hier i.p.v. bovenaan: boeken.py importeert de matchmotor die op deze
             # module-laag niets nodig heeft, maar een top-level import zou een kringetje
             # sync -> boeken -> voorstellen -> sync riskeren zodra voorstellen sync-standen leest.
-            from app.bank.boeken import verwerk_vaste_regels_automatisch
+            from app.bank.boeken import verwerk_automatisch
 
-            automatisch_geboekt, automatisch_fouten = verwerk_vaste_regels_automatisch(
-                administratie_id=administratie_id, client=client
-            )
+            auto = verwerk_automatisch(administratie_id=administratie_id, client=client)
+            automatisch_geboekt, automatisch_fouten = auto.geboekt, auto.fouten
+            automatisch_overgeslagen = auto.overgeslagen
 
         return BankSyncResultaat(
             rekeningen=rekeningen,
@@ -415,6 +432,11 @@ def sync_bank_voor_administratie(
             automatisch_fouten=automatisch_fouten,
             automatisch_afgeletterd=automatisch_afgeletterd,
             afletter_fouten=afletter_fouten,
+            automatisch_overgeslagen=automatisch_overgeslagen,
+            historie_module_toegevoegd=historie.module_toegevoegd,
+            historie_rlz_toegevoegd=historie.rlz_toegevoegd,
+            historie_rlz_resterend=historie.rlz_resterend,
+            historie_fouten=historie.fouten,
         )
     finally:
         if eigen_client:

@@ -654,6 +654,11 @@ class BoekenInstelling(Base):
 
     singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
     globaal_ingeschakeld: Mapped[bool] = mapped_column(default=True)
+    # Blok B bundel 10-09 (migratie 0129): AI-plausibiliteitstoets als extra poort vóór automatische
+    # FACTUURboekingen (app/aitoets/plausibiliteit.py::toets_factuur_autoboeking) — platformbreed, default AAN.
+    # UIT = de toets geeft 'uit' en het autoboekpad boekt zoals vóór 10-09. De bank-variant kent geen
+    # schakelaar: daar is de toets onderdeel van `bank_autoboeken_ingeschakeld`.
+    ai_toets_facturen_ingeschakeld: Mapped[bool] = mapped_column(default=True, server_default="true")
     gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

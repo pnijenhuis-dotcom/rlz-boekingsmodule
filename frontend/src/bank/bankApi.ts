@@ -71,7 +71,9 @@ export interface BoekRegelDto {
 }
 
 export interface VoorstelDto {
-  soort: 'exacte_match' | 'deel_match' | 'vaste_regel' | 'rlz_voorstel' | 'handmatig'
+  /** `historie_regel` (blok B bundel 10-09, stap 3b ná vaste regel): deterministische historie-regel op IBAN +
+   * omschrijvingskern — groen = 100 % zelfde GB/btw (automatisch-kandidaat), oranje = k van n (bevestigen). */
+  soort: 'exacte_match' | 'deel_match' | 'vaste_regel' | 'historie_regel' | 'rlz_voorstel' | 'handmatig'
   kleur: 'groen' | 'oranje'
   bron: string
   reden: string
@@ -79,6 +81,11 @@ export interface VoorstelDto {
   open_post: OpenPostDto | null
   regel_id: string | null
   regels: BoekRegelDto[]
+  /** Blok B 10-09 (optioneel, alleen bij `historie_regel`): voorgestelde rekening/btw + k-van-n. */
+  ledger_id?: string | null
+  taxrate_id?: string | null
+  historie_k?: number | null
+  historie_n?: number | null
 }
 
 export interface AfletterKoppelingDto {
@@ -138,6 +145,12 @@ export interface MutatieDto {
   voorstel: VoorstelDto
   afletter_opdracht: AfletterOpdrachtDto | null
   regel_voorstel: RegelVoorstelDto | null
+  /** Blok B bundel 10-09 (migratie 0129): uitkomst van de AI-plausibiliteitstoets als POORT vóór het automatisch boeken
+   * van een vaste/historie-regel — `twijfel` = niet geboekt, blijft voorstel; `overgeslagen` = toets kon niet draaien
+   * (AVG-gate, API-key, kostengrens, AI-fout) → niet geboekt. Optioneel voor oudere antwoorden. */
+  ai_toets_uitkomst?: 'plausibel' | 'twijfel' | 'overgeslagen' | null
+  ai_toets_reden?: string | null
+  ai_toets_op?: string | null
 }
 
 export interface MutatiesDto {

@@ -221,6 +221,51 @@ export function zetLeverancierAutoboeken(
   )
 }
 
+/** Uitzonderen (blok A bundel 10-09): de mens sluit een leverancier uit van de systeem-activatie — reden verplicht
+ * (server 422 zonder), zet óók de opt-in uit; Beheerder-only. Response = de rij-DTO. */
+export function zonderLeverancierUit(administratieId: string, vendorId: string, reden: string): Promise<LeverancierAutoboekenDto> {
+  return apiJson<LeverancierAutoboekenDto>(`/administraties/${administratieId}/leveranciers/${vendorId}/autoboeken-uitzonderen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reden }),
+  })
+}
+
+/** Vrijgeven (blok A bundel 10-09): uitzondering weg; de server activeert direct als de reeks al ≥ drempel is. */
+export function geefLeverancierVrij(administratieId: string, vendorId: string): Promise<LeverancierAutoboekenDto> {
+  return apiJson<LeverancierAutoboekenDto>(`/administraties/${administratieId}/leveranciers/${vendorId}/autoboeken-vrijgeven`, {
+    method: 'POST',
+  })
+}
+
+/** Letterlijke 409-tekst van de Kempen-regel (CONTRACT_A): een doorbelastende administratie kan niet aan. De lijst-DTO
+ * draagt alleen `autoboeken_leren_toegestaan`; de chip-title en de rode hint gebruiken deze tekst tot de server 'm geeft. */
+export const AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST =
+  'Deze administratie doorbelast kosten aan andere entiteiten — de verdeling is mensenwerk, autoboeken (leren en boeken) kan hier niet aan.'
+
+/** Schakelaar "Autoboeken (leren en boeken)" per administratie (blok A bundel 10-09, migratie 0128) — Beheerder-only.
+ * `toegestaan=false` = doorbelasting-administratie: de PUT geeft dan 409 mét de uitleg als `detail` (ApiError.message). */
+export function haalAutoboekenLeren(administratieId: string): Promise<AutoboekenLerenStandDto> {
+  return apiJson<AutoboekenLerenStandDto>(`/administraties/${administratieId}/autoboeken-leren-instelling`)
+}
+
+export function zetAutoboekenLeren(administratieId: string, ingeschakeld: boolean): Promise<AutoboekenLerenStandDto> {
+  return apiJson<AutoboekenLerenStandDto>(`/administraties/${administratieId}/autoboeken-leren-instelling`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ ingeschakeld }),
+  })
+}
+
+/** Platformbreed: AI-plausibiliteitstoets vóór automatische FACTUURboekingen (blok B bundel 10-09, migratie 0129) —
+ * Beheerder-only, default AAN, audit oud→nieuw server-side. */
+export function haalAiToetsFacturen(): Promise<{ ingeschakeld: boolean }> {
+  return apiJson<{ ingeschakeld: boolean }>('/instellingen/boeken/ai-toets')
+}
+
+export function zetAiToetsFacturen(ingeschakeld: boolean): Promise<{ ingeschakeld: boolean }> {
+  return apiJson<{ ingeschakeld: boolean }>('/instellingen/boeken/ai-toets', { ...PUT_JSON, body: JSON.stringify({ ingeschakeld }) })
+}
+
 export function zetEigenaar(administratieId: string, eigenaarGebruikerId: string | null): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/eigenaar`, {
     ...PUT_JSON,

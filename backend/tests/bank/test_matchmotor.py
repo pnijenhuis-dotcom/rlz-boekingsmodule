@@ -435,3 +435,76 @@ def test_splits_incl_bedrag_weigert_ubl_percentagevorm() -> None:
         splits_incl_bedrag(Decimal("121.00"), Decimal("21.00"))
     with pytest.raises(ValueError, match="fractie"):
         splits_incl_bedrag(Decimal("121.00"), Decimal("1"))
+
+
+# --- stap 3b: historie-regel (blok B bundel 10-09) -------------------------------------------------------------
+
+
+class TestStap3bHistorieRegel:
+    """Volgorde: ná de vaste regel, vóór het RLZ-voorstel; parameter optioneel (bestaande aanroepers ongewijzigd)."""
+
+    IBAN = "NL91ABNA0417164300"
+
+    def _historie(self, n: int = 3, *, ledger: uuid.UUID | None = None):
+        from datetime import date, timedelta
+
+        from app.bank.historie_regel import HistorieBoeking
+
+        ledger = ledger or uuid.uuid4()
+        return [
+            HistorieBoeking(
+                payment_transaction_id=uuid.uuid4(), datum=date.today() - timedelta(days=200 + 30 * i),
+                tegenrekening_iban=self.IBAN, omschrijving="Huur kantoor Deventer periode 2026",
+                tegenpartij_naam="Vastgoed Oost",
+                ledger_id=ledger, taxrate_id=None, bron="rlz",
+            )
+            for i in range(n)
+        ]
+
+    def test_zonder_historie_parameter_ongewijzigd_handmatig(self) -> None:
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN)
+        assert bepaal_voorstel(mutatie, open_posten=[], vaste_regels=[]).soort == VoorstelSoort.HANDMATIG
+
+    def test_groene_historie_regel_met_label_en_velden(self) -> None:
+        ledger = uuid.uuid4()
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN)
+        voorstel = bepaal_voorstel(
+            mutatie, open_posten=[], vaste_regels=[], historie=self._historie(3, ledger=ledger),
+            rekening_label=lambda gb, btw: "4400 Huur",
+        )
+        assert voorstel.soort == VoorstelSoort.HISTORIE_REGEL and voorstel.kleur == "groen"
+        assert voorstel.bron == "historie: 3 van 3 op 4400 Huur"
+        assert (voorstel.ledger_id, voorstel.historie_k, voorstel.historie_n) == (ledger, 3, 3)
+        assert voorstel.regel_id is None and voorstel.payment_item_id is None
+
+    def test_vaste_regel_gaat_voor_historie(self) -> None:
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN)
+        regel = _regel(sleutel=matchmotor.tegenpartij_sleutel("Vastgoed Oost") or "")
+        voorstel = bepaal_voorstel(mutatie, open_posten=[], vaste_regels=[regel], historie=self._historie())
+        assert voorstel.soort == VoorstelSoort.VASTE_REGEL
+
+    def test_historie_gaat_voor_rlz_voorstel(self) -> None:
+        post = _post(bedrag="-121.00", referentie="9999", naam="Iemand Anders")
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN,
+                           rlz_voorstel=post.id)
+        voorstel = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[], historie=self._historie())
+        assert voorstel.soort == VoorstelSoort.HISTORIE_REGEL
+
+    def test_open_post_match_gaat_voor_historie(self) -> None:
+        post = _post(bedrag="-121.00", referentie="2026-0642", naam="Vastgoed Oost")
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer 2026-0642", iban=self.IBAN)
+        voorstel = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[], historie=self._historie())
+        assert voorstel.soort == VoorstelSoort.EXACTE_MATCH
+
+    def test_open_post_van_de_tegenpartij_zonder_match_blokkeert_historie(self) -> None:
+        post = _post(bedrag="-500.00", referentie="F-77", naam="Vastgoed Oost")
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN)
+        voorstel = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[], historie=self._historie())
+        assert voorstel.soort == VoorstelSoort.HANDMATIG
+
+    def test_k_van_n_is_oranje(self) -> None:
+        historie = self._historie(3) + self._historie(1)
+        mutatie = _mutatie(naam="Vastgoed Oost", omschrijving="Huur kantoor Deventer periode 2026", iban=self.IBAN)
+        voorstel = bepaal_voorstel(mutatie, open_posten=[], vaste_regels=[], historie=historie)
+        assert voorstel.soort == VoorstelSoort.HISTORIE_REGEL and voorstel.kleur == "oranje"
+        assert voorstel.bron.startswith("historie: 3 van 4 op ")

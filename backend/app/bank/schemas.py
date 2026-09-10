@@ -94,6 +94,11 @@ class VoorstelResponse(BaseModel):
     open_post: OpenPostResponse | None
     regel_id: uuid.UUID | None
     regels: list[BoekRegelResponse]
+    # Blok B bundel 10-09 (soort 'historie_regel'): grootboek/btw-doel uit de historie + k-van-n-telling.
+    ledger_id: uuid.UUID | None = None
+    taxrate_id: uuid.UUID | None = None
+    historie_k: int | None = None
+    historie_n: int | None = None
 
 
 class AfletterKoppelingResponse(BaseModel):
@@ -161,6 +166,10 @@ class MutatieResponse(BaseModel):
     voorstel: VoorstelResponse
     afletter_opdracht: AfletterOpdrachtResponse | None
     regel_voorstel: RegelVoorstelResponse | None
+    # Blok B bundel 10-09: opgeslagen AI-plausibiliteitstoets — 'plausibel' | 'twijfel' | 'overgeslagen' | None.
+    ai_toets_uitkomst: str | None = None
+    ai_toets_reden: str | None = None
+    ai_toets_op: datetime | None = None
 
 
 class MutatiesResponse(BaseModel):
@@ -231,6 +240,7 @@ class BankSyncResponse(BaseModel):
     vastly_gemeld: int
     automatisch_geboekt: int
     automatisch_fouten: list[str]
+    automatisch_overgeslagen: list[str] = []
 
 
 class BankRegelResponse(BaseModel):

@@ -97,6 +97,15 @@ class BankMutatie(Base):
     brondata: Mapped[dict] = mapped_column(JSONB)
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
+    # AI-plausibiliteitstoets als poort vóór automatisch boeken (blok B bundel 10-09, migratie 0129;
+    # app/aitoets/plausibiliteit.py). Werkstaat-uitzondering op de cache-regel hierboven: de sync overschrijft
+    # deze vier kolommen NIET (_upsert_mutatie raakt ze niet aan). `ai_toets_uitkomst` ∈ plausibel | twijfel |
+    # overgeslagen; `ai_toets_invoer_hash` = sha256 van de toets-invoer (voorstel-rekening/btw/bedrag) zodat een
+    # twijfel-mutatie niet elke nacht opnieuw getoetst wordt zolang het voorstel gelijk blijft.
+    ai_toets_uitkomst: Mapped[str | None] = mapped_column(default=None)
+    ai_toets_reden: Mapped[str | None] = mapped_column(default=None)
+    ai_toets_op: Mapped[datetime | None] = mapped_column(default=None)
+    ai_toets_invoer_hash: Mapped[str | None] = mapped_column(default=None)
 
 
 class PaymentItemCache(Base):
@@ -539,3 +548,46 @@ class BankRelatieIban(Base):
     eerste_bevestiging_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatste_bevestiging_op: Mapped[datetime] = mapped_column(server_default=func.now())
     laatste_opdracht_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+
+
+# --- blok B bundel 10-09 (migratie 0129): historie-cache voor de historie-regel ----------------------------
+
+
+class BankHistorieBoeking(Base):
+    """Cache van eerdere direct-op-grootboek-boekingen van bankmutaties — de bron van de historie-regel
+    (app/bank/historie_regel.py). Twee bronnen, één tabel: `bron='module'` = eigen `bank_boeking` (geboekt,
+    volledig), `bron='rlz'` = RLZ-historie (BankMutationDirectBookings via de PaymentReferenceList van een
+    afgeletterde PaymentTransaction, api-verkenning "Bankmodule schrijf-PoC" §5). Een module-boeking staat óók
+    in RLZ; de uniciteit per (administratie, mutatie, grootboek) voorkomt dubbeltelling.
+
+    Markeringsrijen (`ledger_id IS NULL`): `bron='rlz_geen_grootboek'` (mutatie afgeletterd tegen een factuur/
+    aanbetaling, geen grootboekboeking) en `bron='rlz_gesplitst'` (meer dan één rekening op de boeking) —
+    zodat de incrementele vulling (app/bank/historie_bron.py) een mutatie nooit twee keer bij RLZ ophaalt.
+    Lezers filteren op `ledger_id IS NOT NULL`. RLS per administratie (0071-patroon), GRANT zonder DELETE."""
+
+    __tablename__ = "bank_historie_boeking"
+    __table_args__ = (
+        Index("ix_bank_historie_boeking_administratie_id", "administratie_id"),
+        Index(
+            "ux_bank_historie_boeking_per_mutatie_rekening",
+            "administratie_id",
+            "payment_transaction_id",
+            text("COALESCE(ledger_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id")
+    )
+    payment_transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    datum: Mapped[date | None] = mapped_column(default=None)
+    tegenrekening_iban: Mapped[str | None] = mapped_column(default=None)
+    omschrijving: Mapped[str | None] = mapped_column(default=None)
+    tegenpartij_naam: Mapped[str | None] = mapped_column(default=None)
+    ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    bron: Mapped[str]
+    gelezen_op: Mapped[datetime] = mapped_column(server_default=func.now())

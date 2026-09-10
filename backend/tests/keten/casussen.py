@@ -97,6 +97,12 @@ class Casus:
         """Open posten zoals de sync ze in `payment_item_cache` zet (RLZ-teken: inkoop negatief, verkoop positief)."""
         return self._json("open_posten.json")
 
+    def bank_historie(self) -> dict:
+        """Blok B bundel 10-09: `{"mutatie", "grootboek", "boekingen"}` — een vijfde open mutatie
+        (huur, zonder open post) plus de historie-cache-rijen (`bank_historie_boeking`) waaruit de historie-regel 'm
+        moet herkennen. Additief: mutaties.json/open_posten.json blijven ongewijzigd."""
+        return self._json("historie.json")
+
     def xml_bestandsnaam(self) -> str:
         """Bestandsnaam zoals de leverancier/RLZ 'm meestuurde (uit bron.json-conventie: '<naam>.xml')."""
         return BESTANDSNAMEN[self.naam][0]

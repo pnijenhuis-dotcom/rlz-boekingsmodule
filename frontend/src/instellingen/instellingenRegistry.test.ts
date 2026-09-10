@@ -38,6 +38,22 @@ describe('instellingenRegistry — guard (élk nav-item en élke tab heeft een r
     }
   })
 
+  it('blok B bundel 10-09: de platformbrede AI-toets-schakelaar heeft een anker-entry op Boeken platformbreed', () => {
+    const entry = REGISTRY.find((e) => e.id === 'ai-toets-facturen')
+    expect(entry?.doel).toEqual({ soort: 'sectie', sectie: 'boeken', anker: 'ai-toets' })
+    expect(entry?.beheerder).toBe(true)
+    expect(zoekInstellingen('plausibiliteit', { rol: 'beheerder', administraties: [] })[0]?.pad).toBe('/instellingen/boeken#ai-toets')
+  })
+
+  it('blok A bundel 10-09: de schakelaar "Autoboeken (leren en boeken)" heeft een eigen anker-entry op de tab Boeken & AI', () => {
+    const entry = REGISTRY.find((e) => e.id === 'autoboeken-leren')
+    expect(entry?.doel).toEqual({ soort: 'tab', tab: 'boeken-ai', anker: 'autoboeken-leren' })
+    expect(entry?.beheerder).toBe(true)
+    // Zoeker: "leren arvum" → deep-link naar de tab mét anker.
+    const treffers = zoekInstellingen('leren arvum', { rol: 'beheerder', administraties: ADMINISTRATIES })
+    expect(treffers[0]?.pad).toBe('/instellingen/administraties/a1?tab=boeken-ai#autoboeken-leren')
+  })
+
   it('elke registry-entry wijst naar een bestaande sectie of tab; ids en synoniemen zijn gevuld en uniek', () => {
     const ids = new Set<string>()
     const tabPaden = new Set(DETAIL_TABS.map((t) => t.pad))

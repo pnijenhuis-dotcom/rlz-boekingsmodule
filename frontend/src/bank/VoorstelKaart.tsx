@@ -8,7 +8,7 @@
 // Puur presentatie: de matchmotor en de volgorde stap 1–5 zijn ongewijzigd.
 // Blok 2 bundel 08-09: de chip-tekst komt uit `bron` van de motor ("IBAN + nummer + bedrag", "nummer + bedrag, naam
 // onbekend") — de kaart verzint geen "naam + referentie" meer als de naam niet getoetst is.
-import type { OpenPostDto, VoorstelDto } from './bankApi'
+import type { MutatieDto, OpenPostDto, VoorstelDto } from './bankApi'
 
 export function formatBedrag(bedrag: string | number | null | undefined): string {
   if (bedrag === null || bedrag === undefined) return '—'
@@ -45,7 +45,7 @@ export interface MatchChip {
 /** Specifieke match-reden (E6) per voorstel-soort — de motor bepaalt wát matchte (`bron`, blok 2 08-09:
  * "naam + nummer + bedrag", "IBAN + nummer + bedrag", "nummer + bedrag, naam onbekend", "naam + nummer, bedrag
  * wijkt af"); dit vertaalt alleen naar klantleesbare copy. `deel` blijft de restant-indicatie (E7). */
-export function matchChip(voorstel: Pick<VoorstelDto, 'soort'> & Partial<Pick<VoorstelDto, 'bron'>>, deel: boolean): MatchChip | null {
+export function matchChip(voorstel: Pick<VoorstelDto, 'soort'> & Partial<Pick<VoorstelDto, 'bron' | 'kleur' | 'historie_k' | 'historie_n'>>, deel: boolean): MatchChip | null {
   const bron = voorstel.bron?.trim() || null
   switch (voorstel.soort) {
     case 'exacte_match':
@@ -57,9 +57,43 @@ export function matchChip(voorstel: Pick<VoorstelDto, 'soort'> & Partial<Pick<Vo
       }
     case 'rlz_voorstel':
       return { tekst: 'voorstel Reeleezee — alleen bedrag, geen naam of nummer — bevestigen', kleur: 'oranje' }
+    case 'historie_regel':
+      return historieChip({ ...voorstel, soort: 'historie_regel', kleur: (voorstel as { kleur?: 'groen' | 'oranje' }).kleur ?? 'oranje' })
     default:
       return null
   }
+}
+
+/** Historie-regel (blok B bundel 10-09, stap 3b): "k van n op ‹rekening›" uit `historie_k/_n` + de rekening uit `bron`
+ * ("historie: 3 van 3 op 4400 Huur"); groen = 100 % (automatisch-kandidaat), oranje = bevestigen. null = geen historie-regel. */
+export function historieChip(voorstel: Pick<VoorstelDto, 'soort' | 'kleur'> & Partial<Pick<VoorstelDto, 'bron' | 'historie_k' | 'historie_n'>>): MatchChip | null {
+  if (voorstel.soort !== 'historie_regel') return null
+  const bron = voorstel.bron?.trim() ?? ''
+  const opIndex = bron.indexOf(' op ')
+  const rekening = opIndex >= 0 ? bron.slice(opIndex + 4).trim() : null
+  const kvn =
+    voorstel.historie_k != null && voorstel.historie_n != null
+      ? `${voorstel.historie_k} van ${voorstel.historie_n}`
+      : bron.replace(/^historie:\s*/i, '').replace(/\s+op\s+.*$/, '').trim() || null
+  const kern = [kvn, rekening ? `op ${rekening}` : null].filter(Boolean).join(' ')
+  if (voorstel.kleur === 'groen') return { tekst: `historie-regel${kern ? ` — ${kern}` : ''}`, kleur: 'groen' }
+  return { tekst: `historie${kern ? `: ${kern}` : ''} — bevestigen`, kleur: 'oranje' }
+}
+
+/** AI-plausibiliteitstoets (blok B 10-09) op de rij/kaart: `twijfel` = oranje "AI-twijfel: ‹reden›" (niet automatisch
+ * geboekt, mens beoordeelt), `overgeslagen` = grijze "AI-toets overgeslagen: ‹reden›" (poort kon niet draaien);
+ * `plausibel`/null = geen chip (de boeking zelf draagt dan de chip "automatisch"). */
+export function AiToetsChip({ mutatie }: { mutatie: Pick<MutatieDto, 'ai_toets_uitkomst' | 'ai_toets_reden' | 'ai_toets_op'> }) {
+  const uitkomst = mutatie.ai_toets_uitkomst ?? null
+  if (uitkomst !== 'twijfel' && uitkomst !== 'overgeslagen') return null
+  const reden = mutatie.ai_toets_reden?.trim() || 'geen reden meegegeven'
+  const wanneer = formatDatum(mutatie.ai_toets_op ?? null)
+  const title = `${uitkomst === 'twijfel' ? 'De AI-toets twijfelde aan het voorstel — niet automatisch geboekt, een mens beoordeelt.' : 'De AI-toets kon niet draaien — niet automatisch geboekt.'}${wanneer ? ` (${wanneer})` : ''}`
+  return (
+    <span className={uitkomst === 'twijfel' ? 'chip ai' : 'chip'} title={title} data-testid={`ai-toets-${uitkomst}`}>
+      {uitkomst === 'twijfel' ? `AI-twijfel: ${reden}` : `AI-toets overgeslagen: ${reden}`}
+    </span>
+  )
 }
 
 function formatDatum(iso: string | null | undefined): string | null {

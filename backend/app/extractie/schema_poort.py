@@ -47,6 +47,7 @@ def live_schemas() -> dict[str, dict[str, Any]]:
     """Álle live schema's die naar de Claude API gaan — nieuw AI-schema? Hier toevoegen (de
     fail-closed sweep in tests/extractie/test_schema_unionlimiet.py dwingt dat af). Lazy
     imports: deze module moet importeerbaar blijven zonder de hele extractieketen te laden."""
+    from app.aitoets.plausibiliteit import PLAUSIBILITEIT_SCHEMA
     from app.bewaking.service import AI_PROBE_SCHEMA
     from app.extractie import contract, rapport, service, splitsing
     from app.extractie import verplichting as verplichting_extractie
@@ -64,6 +65,7 @@ def live_schemas() -> dict[str, dict[str, Any]]:
         "verplichting VERPLICHTING_SCHEMA": verplichting_extractie.VERPLICHTING_SCHEMA,
         "voorraad _NORMALISATIE_SCHEMA": normalisatie._NORMALISATIE_SCHEMA,
         "bewaking AI_PROBE_SCHEMA": AI_PROBE_SCHEMA,
+        "aitoets PLAUSIBILITEIT_SCHEMA": PLAUSIBILITEIT_SCHEMA,
     }
 
 

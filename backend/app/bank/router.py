@@ -159,6 +159,10 @@ def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.Voorstel
             )
             for regel in item.regel_boekregels
         ],
+        ledger_id=item.voorstel.ledger_id,
+        taxrate_id=item.voorstel.taxrate_id,
+        historie_k=item.voorstel.historie_k,
+        historie_n=item.voorstel.historie_n,
     )
 
 
@@ -202,6 +206,9 @@ def mutaties(
                     if item.regel_voorstel is not None
                     else None
                 ),
+                ai_toets_uitkomst=item.ai_toets.uitkomst if item.ai_toets is not None else None,
+                ai_toets_reden=item.ai_toets.reden if item.ai_toets is not None else None,
+                ai_toets_op=item.ai_toets.op if item.ai_toets is not None else None,
             )
             for item in items
         ]

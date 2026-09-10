@@ -22,11 +22,12 @@ from app.bank.models import (
     BankRegel,
     PaymentItemCache,
 )
+from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
 from app.sync.models import TaxRateCache
 
 
-def _specs(post) -> "doelpost.DoelPostSpecs":
+def _specs(post) -> doelpost.DoelPostSpecs:
     """Kaart-specs uit de cache-rij (blok E5): nooit een RLZ-call, ontbrekend = None."""
     return doelpost.specs_uit_cache(
         entity_naam=post.entity_naam, brondata=post.brondata, referentie2=post.referentie2, boekdatum=post.boekdatum
@@ -58,6 +59,34 @@ class MatchContext:
     # Blok 2 bundel 08-09: geleerde IBAN ↔ RLZ-entity-koppelingen (bank_relatie_iban, 0127) — het
     # naam/IBAN-been van de matchmotor-score.
     iban_relaties: list[matchmotor.IbanRelatie] = field(default_factory=list)
+    # Blok B bundel 10-09: historie-boekingen (bank_historie_boeking, 0129) voor stap 3b, leesbare rekening-labels
+    # (code + naam per ledger_id, naam per taxrate_id) voor het bron-label en de AI-toets, en de opgeslagen
+    # AI-toets-stand per mutatie (idempotentie + chip).
+    historie: list = field(default_factory=list)
+    ledger_label_per_id: dict[uuid.UUID, tuple[str, str]] = field(default_factory=dict)
+    taxrate_naam_per_id: dict[uuid.UUID, str] = field(default_factory=dict)
+    ai_toets_per_mutatie: dict[uuid.UUID, AiToetsStand] = field(default_factory=dict)
+    administratie_id: uuid.UUID | None = None
+
+    def rekening_label(self, ledger_id: uuid.UUID | None, taxrate_id: uuid.UUID | None = None) -> str:
+        """"4400 Huur" (+ " · NL, Hoog" als de btw bekend is) — valt terug op het id-begin als de cache leeg is."""
+        if ledger_id is None:
+            return "—"
+        code_naam = self.ledger_label_per_id.get(ledger_id)
+        label = f"{code_naam[0]} {code_naam[1]}".strip() if code_naam else str(ledger_id)[:8]
+        if taxrate_id is not None and taxrate_id in self.taxrate_naam_per_id:
+            label += f" · {self.taxrate_naam_per_id[taxrate_id]}"
+        return label
+
+
+@dataclass(frozen=True)
+class AiToetsStand:
+    """Opgeslagen uitkomst van de AI-plausibiliteitstoets op een mutatie (kolommen 0129)."""
+
+    uitkomst: str | None
+    reden: str | None
+    op: object
+    invoer_hash: str | None
 
 
 def _mutatie_gegevens(rij: BankMutatie) -> matchmotor.MutatieGegevens:
@@ -140,6 +169,25 @@ def laad_matchcontext(
         from app.bank.iban_geheugen import iban_relaties_voor
 
         iban_relaties = iban_relaties_voor(session, administratie_id=administratie_id)
+        # Blok B (10-09): historie-cache + labels + AI-toets-stand.
+        from app.bank.historie_bron import historie_voor
+
+        historie = historie_voor(session, administratie_id=administratie_id)
+        ledger_label_per_id = {
+            gb.ledger_id: (gb.code, gb.naam)
+            for gb in session.scalars(
+                select(Grootboekrekening).where(Grootboekrekening.administratie_id == administratie_id)
+            )
+        }
+        taxrate_naam_per_id = {t.id: t.naam for t in taxrates if t.naam}
+        ai_toets_per_mutatie = {
+            rij.id: AiToetsStand(
+                uitkomst=rij.ai_toets_uitkomst, reden=rij.ai_toets_reden, op=rij.ai_toets_op,
+                invoer_hash=rij.ai_toets_invoer_hash,
+            )
+            for rij in mutaties
+            if rij.ai_toets_uitkomst is not None
+        }
 
     eerste_regel_per_boeking: dict[uuid.UUID, BankBoekingRegel] = {}
     for regel_rij in sorted(regel_rijen, key=lambda r: (str(r.bank_boeking_id), r.volgnummer)):
@@ -191,6 +239,24 @@ def laad_matchcontext(
             b.payment_transaction_id: b for b in boekingen if b.status == BankBoekingStatus.GEBOEKT.value
         },
         iban_relaties=iban_relaties,
+        historie=historie,
+        ledger_label_per_id=ledger_label_per_id,
+        taxrate_naam_per_id=taxrate_naam_per_id,
+        ai_toets_per_mutatie=ai_toets_per_mutatie,
+        administratie_id=administratie_id,
+    )
+
+
+def bepaal_voorstel_in_context(context: MatchContext, mutatie: matchmotor.MutatieGegevens) -> matchmotor.Voorstel:
+    """Dé aanroep van de matchmotor met de volledige context (open posten, vaste regels, IBAN-geheugen,
+    historie + labels) — één plek voor scherm, autoflow en CLI."""
+    return matchmotor.bepaal_voorstel(
+        mutatie,
+        open_posten=context.open_posten,
+        vaste_regels=context.vaste_regels,
+        iban_relaties=context.iban_relaties,
+        historie=context.historie,
+        rekening_label=context.rekening_label,
     )
 
 
@@ -204,12 +270,17 @@ class MutatieMetVoorstel:
     regel_boekregels: list  # BankBoekRegelInput bij een vaste-regel-voorstel
     regel_voorstel: matchmotor.RegelVoorstel | None
     afletter_opdracht: BankAfletterOpdracht | None
+    # Blok B (10-09): opgeslagen AI-toets-stand (chip "AI-twijfel: …" / "AI-toets overgeslagen: …").
+    ai_toets: AiToetsStand | None = None
 
 
 def open_mutaties_met_voorstellen(
     *, administratie_id: uuid.UUID, payment_account_id: uuid.UUID | None = None
 ) -> list[MutatieMetVoorstel]:
-    from app.bank.boeken import regel_naar_boekregels  # lokale import — boeken importeert deze module ook
+    from app.bank.boeken import (  # lokale import — boeken importeert deze module ook
+        historie_naar_boekregels,
+        regel_naar_boekregels,
+    )
 
     context = laad_matchcontext(administratie_id=administratie_id, payment_account_id=payment_account_id)
     bestaande_sleutels = {regel.tegenpartij_sleutel for regel in context.vaste_regels}
@@ -228,12 +299,7 @@ def open_mutaties_met_voorstellen(
 
     resultaat: list[MutatieMetVoorstel] = []
     for mutatie in context.open_mutaties:
-        voorstel = matchmotor.bepaal_voorstel(
-            mutatie,
-            open_posten=context.open_posten,
-            vaste_regels=context.vaste_regels,
-            iban_relaties=context.iban_relaties,
-        )
+        voorstel = bepaal_voorstel_in_context(context, mutatie)
         regel = context.regel_per_id.get(voorstel.regel_id) if voorstel.regel_id else None
         regel_boekregels = []
         if regel is not None and mutatie.bedrag is not None:
@@ -241,6 +307,12 @@ def open_mutaties_met_voorstellen(
                 regel=regel,
                 mutatie_bedrag=mutatie.bedrag,
                 btw_percentage=context.btw_percentage_per_taxrate.get(regel.taxrate_id),
+            )
+        elif voorstel.soort == matchmotor.VoorstelSoort.HISTORIE_REGEL and mutatie.bedrag is not None:
+            regel_boekregels = historie_naar_boekregels(
+                voorstel=voorstel,
+                mutatie=mutatie,
+                btw_percentage=context.btw_percentage_per_taxrate.get(voorstel.taxrate_id),
             )
         regel_voorstel = None
         if voorstel.soort in (matchmotor.VoorstelSoort.HANDMATIG, matchmotor.VoorstelSoort.RLZ_VOORSTEL):
@@ -259,6 +331,7 @@ def open_mutaties_met_voorstellen(
                 regel_boekregels=regel_boekregels,
                 regel_voorstel=regel_voorstel,
                 afletter_opdracht=context.open_opdracht_per_mutatie.get(mutatie.id),
+                ai_toets=context.ai_toets_per_mutatie.get(mutatie.id),
             )
         )
     return resultaat

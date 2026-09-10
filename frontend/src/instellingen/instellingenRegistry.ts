@@ -373,6 +373,14 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
+    id: 'ai-toets-facturen',
+    naam: 'AI-plausibiliteitstoets vóór automatische factuurboekingen (platformbreed)',
+    waar: 'Boeken platformbreed › AI-plausibiliteitstoets',
+    synoniemen: ['ai-toets', 'ai toets', 'plausibiliteit', 'plausibiliteitstoets', 'autoboeken', 'poort', 'twijfel'],
+    doel: { soort: 'sectie', sectie: 'boeken', anker: 'ai-toets' },
+    beheerder: true,
+  },
+  {
     id: 'ai-kostenlimiet',
     naam: 'AI-kosten maandlimiet',
     waar: 'Intake-AI & kosten › AI-kosten',
