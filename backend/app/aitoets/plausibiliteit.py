@@ -120,6 +120,15 @@ class PlausibiliteitUitkomst:
         (bank/boeken.py, documenten/autoboeken.py) delen deze semantiek — nooit eigen string-vergelijkingen."""
         return self.uitkomst == UITKOMST_OVERGESLAGEN
 
+    @property
+    def ai_toets_uit(self) -> bool:
+        """True = de toets is bewust UIT gezet (platformbrede opt-out `boeken_instelling.ai_toets_facturen_
+        ingeschakeld`, blok 3.2 vervolgrun 10-09 avond, besluit Peter): geen technische uitval, maar ook geen AI-oordeel —
+        de boeking
+        draagt chip "AI-toets uit (platform)", de reconciliatie telt (`ai_toets_uit`) en meldt "staat uit sinds …".
+        Onderscheid met `zonder_ai_toets` (uitval) blijft: mens zette uit ≠ toets viel uit."""
+        return self.uitkomst == UITKOMST_UIT
+
 
 def _standaard_client_factory(referentie):
     from app.extractie.client import ClaudeExtractieClient

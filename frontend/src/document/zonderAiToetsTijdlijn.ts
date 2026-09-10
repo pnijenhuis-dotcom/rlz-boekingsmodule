@@ -12,6 +12,18 @@ export function isZonderAiToetsNotitie(detail: Record<string, unknown>): boolean
   return detail[ZONDER_AI_TOETS_SLEUTEL] === true
 }
 
+/** Blok 3.2 vervolgrun 10-09 avond: de toets stond platformbreed UIT (bewuste opt-out) — GEBOEKT-detail `ai_toets_uit`. */
+export const AI_TOETS_UIT_SLEUTEL = 'ai_toets_uit'
+
+export function isAiToetsUitNotitie(detail: Record<string, unknown>): boolean {
+  return detail[AI_TOETS_UIT_SLEUTEL] === true
+}
+
+/** "Automatisch geboekt met de AI-toets platformbreed uit (Instellingen › Boeken) — alleen de vaste controles liepen." */
+export function aiToetsUitTijdlijnTekst(): string {
+  return 'Automatisch geboekt met de AI-toets platformbreed uit (Instellingen › Boeken) — alleen de vaste controles liepen.'
+}
+
 /** "Automatisch geboekt zónder AI-toets — de toets viel technisch uit (AI staat uit (AVG-gate)); controleer steekproefsgewijs." */
 export function zonderAiToetsTijdlijnTekst(detail: Record<string, unknown>): string {
   const oorzaak = typeof detail.ai_toets_oorzaak === 'string' ? detail.ai_toets_oorzaak : null

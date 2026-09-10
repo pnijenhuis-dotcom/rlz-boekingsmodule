@@ -401,6 +401,11 @@ class Settings(BaseSettings):
     # meerdere). Het kantoor (`bewaking_alert_ontvanger`) krijgt alleen nog de ACTIEMAIL: bevindingen mét
     # handeling in mensentaal. Leeg = geen systeemmail (kanaal 'systeem' = niet_geconfigureerd, geen storing).
     reconciliatie_beheer_ontvangers: str = "p.nijenhuis@kempengroep.nl"
+    # Blok 1 nametingen-run 10-09 (GCP_UITROL §F7 route A): aanmaakdatum van de key van het nameting-serviceaccount
+    # (ISO-datum, env NAMETING_SA_AANGEMAAKT_OP op de job rlz-reconciliatie). Leeg = geen key (org-policy blokkeerde de
+    # aanmaak op 10-09) → geen signaal. Gezet = de reconciliatie meldt 30 dagen vóór 12 maanden ná aanmaak
+    # "roteer de nameting-key" (systeemmail, beheer) — de jaarlijkse rotatieregel wacht nooit op iemands geheugen.
+    nameting_sa_aangemaakt_op: date | None = None
     # Goedkoopste gepinde model (ai_kosten_prijzen_usd_per_mtok) voor de uurlijkse minimale
     # echte AI-call — valt onder de bestaande kostenmeter/-poort (bron 'bewaking').
     bewaking_ai_model: str = "claude-haiku-4-5"

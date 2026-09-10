@@ -675,6 +675,10 @@ def probeer_autoboeken_na_extractie(
         overgang_detail.update(
             {"zonder_ai_toets": True, "ai_toets_oorzaak": toets.oorzaak, "ai_toets_reden": toets.reden}
         )
+    if toets.ai_toets_uit:
+        # Blok 3.2 vervolgrun 10-09 avond: de platformbrede opt-out is niet meer stil — tijdlijn + lijst-chip
+        # "AI-toets uit (platform)"; de reconciliatie telt op het `automatisch_geboekt`-audit (veld ai_toets_uit).
+        overgang_detail.update({"ai_toets_uit": True, "ai_toets_reden": toets.reden})
 
     try:
         boeken_service.boek_document(
@@ -720,6 +724,7 @@ def probeer_autoboeken_na_extractie(
                 "bron": bron,
                 "zonder_ai_toets": toets.zonder_ai_toets,
                 "ai_toets_oorzaak": toets.oorzaak,
+                "ai_toets_uit": toets.ai_toets_uit,
             },
             administratie_id=administratie_id,
         )
@@ -732,4 +737,6 @@ def probeer_autoboeken_na_extractie(
     )
     if toets.zonder_ai_toets:
         return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron}) — zonder AI-toets ({toets.oorzaak})")
+    if toets.ai_toets_uit:
+        return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron}) — AI-toets uit (platform)")
     return AutoboekBesluit(geboekt=True, reden=f"automatisch geboekt ({bron})")

@@ -1037,6 +1037,20 @@ export function DocumentenDeelscherm({
                             </span>
                           </>
                         )}
+                        {/* Blok 3.2 (10-09 avond): de AI-toets stond platformbreed UIT (bewuste opt-out, Instellingen › Boeken) —
+                            niet meer stil: chip op elke automatische factuurboeking zolang de schakelaar uit staat. */}
+                        {d.automatisch_geboekt && d.ai_toets_uit && (
+                          <>
+                            {' '}
+                            <span
+                              className="chip"
+                              data-testid="chip-ai-toets-uit"
+                              title="De AI-plausibiliteitstoets stond platformbreed uit (Instellingen › Boeken) toen deze factuur automatisch werd geboekt — alleen de vaste controles liepen."
+                            >
+                              AI-toets uit (platform)
+                            </span>
+                          </>
+                        )}
                         {d.afwijzing && (
                           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                             {/* Duplicaat-afvoer (04-09): chip + link naar het origineel als de afwijzing een

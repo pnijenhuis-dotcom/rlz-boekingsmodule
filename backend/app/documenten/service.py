@@ -1465,6 +1465,9 @@ class DocumentMetDuplicaat:
     # (GEBOEKT-overgang-detail `zonder_ai_toets`) — chip "zonder AI-toets" naast "automatisch"; oorzaak als tooltip.
     zonder_ai_toets: bool = False
     ai_toets_oorzaak: str | None = None
+    # Blok 3.2 vervolgrun 10-09 avond: automatisch geboekt terwijl de AI-toets platformbreed UIT stond (bewuste
+    # opt-out, GEBOEKT-overgang-detail `ai_toets_uit`) — chip "AI-toets uit (platform)" naast "automatisch".
+    ai_toets_uit: bool = False
     # Factuurmatch (fase 2): de actuele matchstand van een veldwerker-factuur — None zolang
     # er geen match berekend is (crediteur niet gekoppeld / nog geen voorstel).
     factuurmatch: FactuurmatchKort | None = None
@@ -1641,6 +1644,7 @@ def lijst_documenten(
         automatisch_geboekt_ids: set[uuid.UUID] = set()
         # Blok 4 (10-09 avond): document_id → oorzaak van een boeking zónder AI-toets (zelfde GEBOEKT-overgang).
         zonder_ai_toets_per_doc: dict[uuid.UUID, str | None] = {}
+        ai_toets_uit_ids: set[uuid.UUID] = set()
         if document_ids:
             for doc_id, detail in session.execute(
                 select(DocumentGebeurtenis.document_id, DocumentGebeurtenis.detail).where(
@@ -1653,6 +1657,8 @@ def lijst_documenten(
                 if (detail or {}).get("zonder_ai_toets"):
                     oorzaak = (detail or {}).get("ai_toets_oorzaak")
                     zonder_ai_toets_per_doc[doc_id] = str(oorzaak) if oorzaak else None
+                if (detail or {}).get("ai_toets_uit"):
+                    ai_toets_uit_ids.add(doc_id)
         # Factuurmatch-chipdata (fase 2, bulk — zelfde geen-N+1-regel). Lazy import: app.uren
         # gebruikt de documenten-modellen, geen kringimport op moduleniveau.
         from app.uren.models import Factuurmatch
@@ -1766,6 +1772,7 @@ def lijst_documenten(
                     automatisch_geboekt=d.id in automatisch_geboekt_ids,
                     zonder_ai_toets=d.id in zonder_ai_toets_per_doc,
                     ai_toets_oorzaak=zonder_ai_toets_per_doc.get(d.id),
+                    ai_toets_uit=d.id in ai_toets_uit_ids,
                     factuurmatch=matches.get(d.id),
                     duplicaatsignaal=signalen.get(d.id),
                     accordeur_aan_de_beurt=beurt.get(d.id),

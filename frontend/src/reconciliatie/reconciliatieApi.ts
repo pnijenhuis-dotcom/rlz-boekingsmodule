@@ -285,6 +285,8 @@ export const REDEN_LABEL: Record<string, string> = {
   // Blok 4 (10-09 avond) — vangnet-teller `ai_toets_overgeslagen`: geboekt zónder AI-toets (technische uitval).
   ai_fout: 'AI-fout/timeout',
   zonder_ai_toets: 'geboekt zonder AI-toets — controleer steekproefsgewijs',
+  // Blok 3.2 (10-09 avond) — teller `ai_toets_uit`: de platformbrede opt-out is actief (Instellingen › Boeken).
+  ai_toets_uit: 'AI-toets facturen staat platformbreed uit (opt-out)',
 }
 
 /** Spiegel van DOEL_PAD in automatiseringen.py (blok 5, 08-09): waar de mens een ontbrekende harde voorwaarde
@@ -297,6 +299,7 @@ const DOEL_PAD_VOORWAARDE: Record<string, string> = {
   kostengrens: '/instellingen/intake-ai',
   geldpoort: '/instellingen/boeken',
   noodrem: '/instellingen/boeken',
+  ai_toets_uit: '/instellingen/boeken',
   volumerem: '/instellingen/autoboeken',
   vangnet_scheduler: '/reconciliatie',
 }

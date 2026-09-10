@@ -359,6 +359,9 @@ export interface DocumentListItemDto {
    * "zonder AI-toets" naast "automatisch"; `ai_toets_oorzaak` (avg_gate | api_key | kostengrens | ai_fout) als tooltip. */
   zonder_ai_toets?: boolean
   ai_toets_oorzaak?: string | null
+  /** Blok 3.2 vervolgrun 10-09 avond: automatisch geboekt terwijl de AI-toets platformbreed UIT stond (bewuste
+   * opt-out, Instellingen › Boeken) — chip "AI-toets uit (platform)" naast "automatisch". */
+  ai_toets_uit?: boolean
   /** Blok C 02-09: alleen gevuld bij status geboekt (lijst-tooltip). */
   geboekt_in_rlz?: GeboektInRlzDto | null
   /** Factuurmatch (fase 2): urenmatch-stand van een veldwerker-factuur — voedt de chip
@@ -923,6 +926,10 @@ export interface GeheugenVeldVoorstelDto {
   /** True zodra ≥1 app-observatie de winnende waarde dekt; false = uitsluitend rlz_seed →
    * altijd oranje met hint "uit historie, nog niet bevestigd" (Peters ontwerp 2026-07-14). */
   app_bevestigd: boolean
+  /** Blok 3 vervolgrun 10-09 avond ("recency wint"): de laatste drie mens-boekingen waren identiek → groen, ook al
+   * kende de historie eerder een andere waarde; die oudere waarden staan in `eerder_ook` (historie-chip). */
+  recent_consensus?: boolean
+  eerder_ook?: string[]
 }
 
 /** Boekingsgeheugen-voorstel (B6, backend/app/geheugen/router.py): per veld (GB/btw/project) een

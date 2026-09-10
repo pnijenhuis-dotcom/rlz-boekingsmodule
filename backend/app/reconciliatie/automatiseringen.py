@@ -29,7 +29,7 @@ import hashlib
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 BLOK = "automatisering"
@@ -83,6 +83,10 @@ KOSTENGRENS = "kostengrens"
 #: is daar de categorie — `ai_fout` heeft alleen een label (categoriseer_reden blijft `fout` geven op vrije tekst).
 ZONDER_AI_TOETS = "zonder_ai_toets"
 AI_FOUT = "ai_fout"
+#: Blok 3.2 vervolgrun 10-09 avond: de platformbrede opt-out `ai_toets_facturen_ingeschakeld` = UIT — categorie van de
+#: LET-OP op de teller `ai_toets_uit` ("AI-toets staat platformbreed uit sinds <datum>"); geen uitval, een keuze die
+#: zichtbaar blijft. Doel = Instellingen › Boeken (de schakelaar).
+TOETS_UIT = "ai_toets_uit"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -111,7 +115,12 @@ HARDE_VOORWAARDEN = frozenset(
 #: - de rest (credential, API-key, geldpoort, noodrem, volumerem) = een instelling die het kantoor zelf herstelt →
 #:   actiemail.
 REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR})
-BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN})
+#: Blok 1 nametingen-run 10-09 (§F7 route A): jaarlijkse rotatie van de key van het nameting-serviceaccount — beheer-signaal
+#: (systeemmail), 30 dagen vóór 12 maanden ná `settings.nameting_sa_aangemaakt_op`.
+SA_KEY_ROTATIE = "nameting_sa_key_rotatie"
+SA_KEY_ROTATIE_MAANDEN = 12
+SA_KEY_ROTATIE_WAARSCHUWING_DAGEN = 30
+BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN, SA_KEY_ROTATIE})
 REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
 
 REDEN_LABEL: dict[str, str] = {
@@ -143,6 +152,7 @@ REDEN_LABEL: dict[str, str] = {
     KOSTENGRENS: "AI-kostengrens bereikt",
     ZONDER_AI_TOETS: "geboekt zonder AI-toets — controleer steekproefsgewijs",
     AI_FOUT: "AI-fout/timeout",
+    TOETS_UIT: "AI-toets facturen staat platformbreed uit (opt-out)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -162,6 +172,11 @@ AI_PLAUSIBILITEIT = "ai_plausibiliteit"
 #: oorzaak; > 0 in het etmaal = LET-OP "N automatische boekingen zonder AI-toets (oorzaak …) — controleer
 #: steekproefsgewijs" mét deeplink naar de bankrekening/documentenlijst. Stand = aan zodra er in de week iets telde.
 AI_TOETS_OVERGESLAGEN = "ai_toets_overgeslagen"
+#: Blok 3.2 vervolgrun 10-09 avond (besluit Peter): de platformbrede opt-out van de factuur-AI-toets is niet meer stil —
+#: stand "aan" = de opt-out is actief (schakelaar UIT sinds `boeken_instelling.gewijzigd_op`), gedaan = automatische
+#: factuurboekingen die met de toets uit doorliepen (audit `automatisch_geboekt` veld `ai_toets_uit`), LET-OP
+#: "AI-toets staat platformbreed uit sinds <datum>" mét deeplink naar de schakelaar. Schakelaar AAN = teller uit.
+AI_TOETS_UIT = "ai_toets_uit"
 #: Verzoek blok C (10-09): eerste-sync-run (onboarding) met een RLZ-weigering 401/403 = harde voorwaarde `credential`
 #: mét deeplink naar de administratie; bron `administratie_sync_run` (status fout, onderdelen.*.http_status).
 EERSTE_SYNC = "eerste_sync"
@@ -183,6 +198,7 @@ VOLGORDE: tuple[str, ...] = (
     BANK,
     AI_PLAUSIBILITEIT,
     AI_TOETS_OVERGESLAGEN,
+    AI_TOETS_UIT,
     EERSTE_SYNC,
     DUPLICAAT_AFVOER,
     CREDITEUREN,
@@ -207,6 +223,7 @@ LABEL: dict[str, str] = {
     BANK_SYNC: "Bank-sync (dagelijks, alle administraties)",
     AI_PLAUSIBILITEIT: "AI-plausibiliteitstoets (poort vóór autoboeken)",
     AI_TOETS_OVERGESLAGEN: "Automatisch geboekt zonder AI-toets (vangnet)",
+    AI_TOETS_UIT: "AI-toets facturen uit (platform-opt-out)",
     EERSTE_SYNC: "Eerste sync (onboarding)",
     NABUNDEL: "Nabundel (UBL+PDF, dubbelen)",
     TERUGKEREND: "Terugkerende facturen (herberekening)",
@@ -226,6 +243,7 @@ DOEL_PAD: dict[str, str] = {
     # Geen instelling in de app: de wortel zit in Cloud Run/IAM; de rij op Inzicht › Reconciliatie ís de plek.
     VANGNET_SCHEDULER: "/reconciliatie",
     GEEN_SYNC_RUN: "/reconciliatie",
+    TOETS_UIT: "/instellingen/boeken",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -331,6 +349,10 @@ class Feiten:
     eerste_sync_runs: list[EersteSyncFeit] = field(default_factory=list)
     # Verzoek blok B (10-09): AVG-gate intake-AI (de stand van de AI-plausibiliteitstoets).
     intake_ai_aan: bool = False
+    # Blok 3.2 vervolgrun 10-09 avond: platformbrede schakelaar factuur-AI-toets (boeken_instelling) + moment van de
+    # laatste wijziging (= "uit sinds" zolang de schakelaar uit staat). Geen rij = AAN (migratie-default).
+    ai_toets_facturen_aan: bool = True
+    ai_toets_facturen_gewijzigd_op: datetime | None = None
     autoboek_kandidaten_laatste_run: datetime | None = None
     duplicaat_noodrem_aan: bool = True
     # opt-ins
@@ -572,6 +594,18 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
     )
     zonder_groepen: dict[tuple[uuid.UUID | None, str, str], list[str]] = {}
     zonder_detail: dict[str, Any] = {"bank_24u": 0, "factuur_24u": 0, "per_oorzaak_24u": {}}
+    # Blok 3.2 (10-09 avond): opt-out zichtbaar — stand "aan" betekent hier "de opt-out is actief" (schakelaar UIT).
+    uit_sinds = feiten.ai_toets_facturen_gewijzigd_op
+    uit_sinds_tekst = f"sinds {uit_sinds:%d-%m-%Y}" if uit_sinds is not None else "sinds onbekend moment"
+    toets_uit = maak(
+        AI_TOETS_UIT,
+        "uit" if feiten.ai_toets_facturen_aan else "aan",
+        "AI-toets facturen staat aan"
+        if feiten.ai_toets_facturen_aan
+        else f"AI-toets facturen staat platformbreed UIT {uit_sinds_tekst} — élke automatische factuurboeking "
+        "draagt chip 'AI-toets uit (platform)'",
+        "boeken_instelling.ai_toets_facturen_ingeschakeld + audit automatisch_geboekt (veld ai_toets_uit)",
+    )
     eerste_sync = maak(
         EERSTE_SYNC,
         "op_aanvraag",
@@ -654,6 +688,10 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             t = omzet if bron == "omzet_opt_in" else verkoop if bron == "verkoop_opt_in" else inkoop
             for v in vensters(t, f.tijdstip):
                 v.tel_gedaan()
+            if nw.get("ai_toets_uit") is True:
+                # Blok 3.2 (10-09 avond): factuurboeking die doorliep met de toets bewust uit — telt op de opt-out-rij.
+                for v in vensters(toets_uit, f.tijdstip):
+                    v.tel_gedaan()
             if t is inkoop and bron == "leverancier_opt_in" and in_leren:
                 for v in vensters(leren, f.tijdstip):
                     v.tel_gedaan()
@@ -841,6 +879,23 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             "vangnet, geen poort"
         )
     zonder_toets.detail = zonder_detail
+    if not feiten.ai_toets_facturen_aan:
+        # Blok 3.2 (10-09 avond): LET-OP zolang de opt-out actief is — óók bij 0 boekingen (de keuze zelf is het
+        # signaal); platformbreed (administratie-loos), deeplink naar de schakelaar.
+        toets_uit.detail = {
+            "uit_sinds": uit_sinds.isoformat() if uit_sinds else None,
+            "factuur_24u": toets_uit.dag.gedaan,
+        }
+        toets_uit.harde_voorwaarden.append(
+            HardeVoorwaarde(
+                categorie=TOETS_UIT,
+                aantal=toets_uit.dag.gedaan,
+                administratie_id=None,
+                voorbeeld=uit_sinds_tekst,
+                soort="factuur_autoboeking",
+                doel_pad=DOEL_PAD[TOETS_UIT],
+            )
+        )
     for (aid, soort, oorzaak), redenen in zonder_groepen.items():
         zonder_toets.harde_voorwaarden.append(
             HardeVoorwaarde(
@@ -912,6 +967,33 @@ def bevindingen(tellers: Sequence[Teller], *, namen: dict[uuid.UUID, str] | None
     for t in tellers:
         for hv in t.harde_voorwaarden:
             waar = f" in administratie {hv.administratie_id}" if hv.administratie_id else ""
+            if t.sleutel == AI_TOETS_UIT:
+                # Blok 3.2 (10-09 avond): de opt-out zelf is het signaal — tekst draagt het moment en het etmaal-aantal.
+                uit.append(
+                    {
+                        "soort": "let_op",
+                        "administratie_id": None,
+                        "blok": BLOK,
+                        "vingerafdruk": vingerafdruk_automatisering(
+                            sleutel=t.sleutel, categorie=TOETS_UIT, administratie_id=None
+                        ),
+                        "tekst": (
+                            f"LET-OP     automatisering {t.sleutel}: AI-toets staat platformbreed uit {hv.voorbeeld} — "
+                            f"{hv.aantal} automatische factuurboekingen zonder toets in het etmaal"
+                        ),
+                        "detail": {
+                            "automatisering": t.sleutel,
+                            "automatisering_label": t.label,
+                            "reden": TOETS_UIT,
+                            "uit_sinds": (t.detail or {}).get("uit_sinds"),
+                            "aantal": hv.aantal,
+                            "voorbeeld": hv.voorbeeld,
+                            "administratie_naam": None,
+                            "doel_pad": _doel_pad(hv),
+                        },
+                    }
+                )
+                continue
             if t.sleutel == AI_TOETS_OVERGESLAGEN:
                 # Blok 4 (10-09 avond): geen ontbrekende voorwaarde maar een vangnet — de boekingen zijn er, zonder
                 # AI-oordeel; de handeling is een steekproef op de plek van de boekingen (deeplink).
@@ -1019,7 +1101,12 @@ def regels(tellers: Sequence[Teller]) -> list[str]:
             regel += f" — {t.stand_detail}"
         if t.stil:
             regel += f" — LET-OP: {STIL_DAGEN} dagen stil bij {t.week.verwacht} kandidaten"
-        if t.harde_voorwaarden and t.sleutel == AI_TOETS_OVERGESLAGEN:
+        if t.harde_voorwaarden and t.sleutel == AI_TOETS_UIT:
+            regel += " — LET-OP: " + "; ".join(
+                f"AI-toets staat platformbreed uit {h.voorbeeld} ({h.aantal} factuurboeking(en) zonder toets)"
+                for h in t.harde_voorwaarden
+            )
+        elif t.harde_voorwaarden and t.sleutel == AI_TOETS_OVERGESLAGEN:
             regel += " — LET-OP: " + "; ".join(
                 f"{h.aantal}× geboekt zonder AI-toets ({REDEN_LABEL.get(h.categorie, h.categorie)}) — "
                 "controleer steekproefsgewijs"
@@ -1090,7 +1177,7 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
     from app.beheer.eerste_sync import RECHTEN_STATUSSEN
     from app.beheer.models import AdministratieSyncRun
     from app.config import settings
-    from app.db.models import Administratie, DuplicaatAfvoerInstelling, IntakeInstelling
+    from app.db.models import Administratie, BoekenInstelling, DuplicaatAfvoerInstelling, IntakeInstelling
     from app.db.session import scoped_session
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
     from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus, LeverancierVoorkeur
@@ -1127,6 +1214,12 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
         feiten.duplicaat_noodrem_aan = bool(noodrem is not None and noodrem.platformbreed_ingeschakeld)
         intake = session.get(IntakeInstelling, True)
         feiten.intake_ai_aan = bool(intake is not None and intake.ai_ingeschakeld)
+        # Blok 3.2 (10-09 avond): platformbrede opt-out factuur-AI-toets — geen rij = AAN (migratie-default).
+        boeken_inst = session.get(BoekenInstelling, True)
+        feiten.ai_toets_facturen_aan = boeken_inst is None or bool(boeken_inst.ai_toets_facturen_ingeschakeld)
+        feiten.ai_toets_facturen_gewijzigd_op = (
+            _utc(boeken_inst.gewijzigd_op) if boeken_inst is not None and boeken_inst.gewijzigd_op else None
+        )
         kand = session.get(AutoboekInstelling, True)
         feiten.autoboek_kandidaten_laatste_run = kand.laatste_run_op if kand is not None else None
         for r in session.scalars(
@@ -1265,15 +1358,56 @@ def _utc(t: datetime) -> datetime:
     return t if t.tzinfo is not None else t.replace(tzinfo=UTC)
 
 
+def sa_key_rotatie_bevinding(*, nu: datetime, aangemaakt_op: date | None) -> dict[str, Any] | None:
+    """Blok 1 nametingen-run 10-09 (§F7 route A, rotatieregel jaarlijks): eenvoudige datum-check op
+    `settings.nameting_sa_aangemaakt_op` — vanaf 30 dagen vóór 12 maanden ná aanmaak een platformbrede LET-OP
+    (beheer-signaal → systeemmail) "roteer de key van het nameting-serviceaccount"; ná de vervaldatum blijft hij staan
+    tot de nieuwe datum in de env staat. None = geen key geregistreerd → geen signaal (niets stil: de env is de bron)."""
+    if aangemaakt_op is None:
+        return None
+    vervalt = date(aangemaakt_op.year + SA_KEY_ROTATIE_MAANDEN // 12, aangemaakt_op.month, min(aangemaakt_op.day, 28))
+    vandaag = nu.date()
+    dagen_tot = (vervalt - vandaag).days
+    if dagen_tot > SA_KEY_ROTATIE_WAARSCHUWING_DAGEN:
+        return None
+    stand = f"vervalt over {dagen_tot} dagen" if dagen_tot >= 0 else f"{-dagen_tot} dagen over de rotatiedatum"
+    return {
+        "soort": "let_op",
+        "administratie_id": None,
+        "blok": BLOK,
+        "vingerafdruk": vingerafdruk_automatisering(sleutel="nameting_sa", categorie=SA_KEY_ROTATIE, administratie_id=None),
+        "tekst": (
+            f"LET-OP     automatisering nameting_sa: key van nameting@ aangemaakt {aangemaakt_op:%d-%m-%Y}, "
+            f"rotatie {vervalt:%d-%m-%Y} ({stand}) — roteer volgens GCP_UITROL §F7 (keys create → activeren → oude key "
+            "delete → NAMETING_SA_AANGEMAAKT_OP bijwerken)"
+        ),
+        "detail": {
+            "automatisering": "nameting_sa",
+            "automatisering_label": "Nameting-serviceaccount (key-rotatie)",
+            "reden": SA_KEY_ROTATIE,
+            "aangemaakt_op": aangemaakt_op.isoformat(),
+            "rotatie_op": vervalt.isoformat(),
+            "dagen_tot": dagen_tot,
+            "aantal": 1,
+            "doel_pad": "/reconciliatie",
+        },
+    }
+
+
 def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:  # noqa: ANN001
     """Ingang vanuit de run-motor: feiten lezen, tellers berekenen, LET-OPs als bevindingen op de
     verzamelaar zetten en de JSON-samenvatting teruggeven (die `Verzamelaar.samenvatting()` onder
     `automatiseringen` meeneemt). Print het compacte blok óók naar de CLI-uitvoer."""
+    from app.config import settings
+
     nu = nu or datetime.now(UTC)
     feiten = verzamel_feiten(nu=nu)
     tellers = bereken(feiten, nu=nu)
     for kw in bevindingen(tellers, namen=feiten.administraties):
         verzamelaar.bevinding(**kw)
+    rotatie = sa_key_rotatie_bevinding(nu=nu, aangemaakt_op=settings.nameting_sa_aangemaakt_op)
+    if rotatie is not None:
+        verzamelaar.bevinding(**rotatie)
     if stdout is not None:
         for regel in regels(tellers):
             stdout(regel)

@@ -702,6 +702,26 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             f"Controleer steekproefsgewijs of rekening en btw kloppen via {plek}; herstel zo nodig de oorzaak "
             "(Instellingen › Intake & AI) zodat de toets weer meeloopt.",
         )
+    if reden == auto.SA_KEY_ROTATIE:
+        # Blok 1 nametingen-run 10-09 (§F7): beheer-signaal (systeemmail) — jaarlijkse rotatie van de nameting-key.
+        return (
+            _titel("Nameting-serviceaccount: key roteren", "beheer"),
+            f"De key van het nameting-serviceaccount is aangemaakt op {_s(d, 'aangemaakt_op') or '?'}; de jaarlijkse "
+            f"rotatiedatum is {_s(d, 'rotatie_op') or '?'}.",
+            "Roteer volgens GCP_UITROL §F7: nieuwe key aanmaken en activeren, oude key verwijderen, "
+            "NAMETING_SA_AANGEMAAKT_OP op de job bijwerken.",
+        )
+    if reden == auto.TOETS_UIT:
+        # Blok 3.2 (10-09 avond): bewuste opt-out, geen storing — de keuze blijft zichtbaar tot iemand 'm terugdraait.
+        sinds = _s(d, "voorbeeld") or "sinds onbekend moment"
+        return (
+            _titel("AI-toets facturen staat uit", "platformbreed"),
+            f"De AI-plausibiliteitstoets vóór automatische factuurboekingen staat platformbreed uit {sinds}; "
+            f"{aantal} automatische factuurboeking(en) liepen het afgelopen etmaal door zonder toets (alleen de "
+            "vaste controles).",
+            "Zet de toets weer aan via Instellingen › Boeken, of laat 'm bewust uit — deze melding blijft dan staan "
+            "als herinnering.",
+        )
     reden_label = auto.REDEN_LABEL.get(reden, reden.replace("_", " "))
     voorbeeld = _s(d, "voorbeeld")
     wat = (

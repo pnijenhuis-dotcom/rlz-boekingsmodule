@@ -57,7 +57,8 @@ export function AiToetsFacturenRij() {
           Standaard <b>aan</b>: vlak vóór het systeem een factuur automatisch boekt, krijgt de AI één ja/nee-vraag over het
           voorstel (rekening, btw, bedrag tegen de historie). Twijfel of een toets die niet kan draaien (AI uit, geen sleutel,
           kostengrens) = <b>niet</b> boeken — de factuur blijft zichtbaar in de werkvoorraad. De AI kiest nooit zelf een rekening.{' '}
-          <b>Uit</b> = alleen de deterministische controles.
+          <b>Uit</b> = alleen de deterministische controles; elke automatische factuurboeking krijgt dan het label
+          &ldquo;AI-toets uit (platform)&rdquo; en de reconciliatie meldt dagelijks dat de toets uit staat.
         </p>
       </div>
       {laadFout ? (

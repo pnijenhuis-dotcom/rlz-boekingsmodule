@@ -480,6 +480,7 @@ def documenten_lijst(
                 automatisch_geboekt=item.automatisch_geboekt,
                 zonder_ai_toets=item.zonder_ai_toets,
                 ai_toets_oorzaak=item.ai_toets_oorzaak,
+                ai_toets_uit=item.ai_toets_uit,
                 geboekt_in_rlz=_naar_geboekt_in_rlz(item.geboekt_in_rlz),
                 factuurmatch=_naar_match_kort(item.factuurmatch),
                 accordering_boek_fout=item.accordering_boek_fout,
