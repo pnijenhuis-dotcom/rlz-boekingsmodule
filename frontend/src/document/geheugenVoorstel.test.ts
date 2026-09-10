@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GeheugenVeldVoorstelDto, GeheugenVoorstelDto } from '../api/types'
-import { bepaalGeheugenChip, bepaalPrefill, korteReden, omschrijvingSleutel } from './geheugenVoorstel'
+import { bepaalGeheugenChip, bepaalPrefill, eerderOokTekst, korteReden, omschrijvingSleutel } from './geheugenVoorstel'
 
 const GB = 'aaaaaaaa-0000-0000-0000-00000000000a'
 const BTW = 'bbbbbbbb-0000-0000-0000-00000000000b'
@@ -86,5 +86,18 @@ describe('korteReden', () => {
     expect(korteReden('alleen rlz-historie, nog geen app-bevestiging')).toBe('uit historie, nog niet bevestigd')
     expect(korteReden('leverancier-fallback; gesplitste stem')).toBe('btw via leverancier-niveau; gesplitste stem')
     expect(korteReden(null)).toBeNull()
+  })
+})
+
+describe('eerderOokTekst (blok 3 vervolgrun 10-09 avond — recency wint)', () => {
+  const namen = (id: string) => ({ a: '4400 Huur', b: '4600 Onderhoud' })[id] ?? id
+  it('toont de oudere afwijkende waarden alleen bij recency-consensus', () => {
+    expect(eerderOokTekst({ recent_consensus: true, eerder_ook: ['b'] }, namen)).toBe('eerder ook: 4600 Onderhoud')
+    expect(eerderOokTekst({ recent_consensus: true, eerder_ook: ['b', 'x'] }, namen)).toBe('eerder ook: 4600 Onderhoud, x')
+  })
+  it('geen regel zonder consensus, zonder eerdere waarden of bij een oude DTO zonder de velden', () => {
+    expect(eerderOokTekst({ recent_consensus: false, eerder_ook: ['b'] }, namen)).toBeNull()
+    expect(eerderOokTekst({ recent_consensus: true, eerder_ook: [] }, namen)).toBeNull()
+    expect(eerderOokTekst({}, namen)).toBeNull()
   })
 })

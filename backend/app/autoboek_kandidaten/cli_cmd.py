@@ -106,7 +106,14 @@ def _leren_rapport(args: argparse.Namespace) -> int:
     rijen = sorted(standen, key=lambda s: (-s.reeks_ongewijzigd, (namen.get(s.vendor_id) or "").lower()))
     if args.alleen_kwalificerend:
         rijen = [s for s in rijen if s.kwalificeert]
-    tellers = {"leert": 0, "boekt_automatisch": 0, "uitgezonderd": 0, "handmatig_aan": 0, "kwalificeert": 0}
+    tellers = {
+        "leert": 0,
+        "boekt_automatisch": 0,
+        "uitgezonderd": 0,
+        "handmatig_aan": 0,
+        "kwalificeert": 0,
+        "eerder_afwijkend": 0,
+    }
     print(f"{'leverancier':<48} {'identiek':>8} {'stand':<18} {'bron':<8} redenen")
     print("(identiek = opeenvolgende identieke mens-boekingen / drempel; telling herzien 10-09 avond, blok 3)")
     for s in rijen:
@@ -116,7 +123,11 @@ def _leren_rapport(args: argparse.Namespace) -> int:
         tellers[stand] += 1
         if s.kwalificeert and not s.actief:
             tellers["kwalificeert"] += 1
+        if s.eerder_afwijkend:
+            tellers["eerder_afwijkend"] += 1
         redenen = "; ".join(s.redenen) if s.redenen else ("—" if s.actief else "kwalificeert")
+        if s.eerder_afwijkend:
+            redenen += " · eerder ook een andere waarde (vóór 10-09: gesplitste stem)"
         if s.uitgezonderd and s.uitzondering_reden:
             redenen = f"uitgezonderd: {s.uitzondering_reden}"
         print(
@@ -127,6 +138,10 @@ def _leren_rapport(args: argparse.Namespace) -> int:
         f"totaal {len(rijen)} leveranciers met historie: leert {tellers['leert']} (waarvan {tellers['kwalificeert']} "
         f"kwalificerend), boekt automatisch {tellers['boekt_automatisch']}, uitgezonderd {tellers['uitgezonderd']}, "
         f"handmatig aan {tellers['handmatig_aan']}"
+    )
+    print(
+        f"recency-regel (blok 3 10-09 avond): {tellers['eerder_afwijkend']} leverancier(s) groen met eerder een andere "
+        "waarde in de historie — onder de regel vóór 10-09 geblokkeerd als 'gesplitste stem'"
     )
     if not leren_aan and tellers["kwalificeert"]:
         print(

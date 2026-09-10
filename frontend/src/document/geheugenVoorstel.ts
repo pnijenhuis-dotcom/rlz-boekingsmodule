@@ -87,6 +87,17 @@ export function bepaalGeheugenChip(
   return { soort: 'afwijkend', waarde: veld.waarde, telling: veld.telling, confidence: veld.confidence }
 }
 
+/** Blok 3 vervolgrun 10-09 avond ("recency wint"): historie-regel "eerder ook: <naam(s)>" onder een groene chip die
+ * via de laatste drie identieke mens-boekingen won terwijl de historie eerder een andere waarde kende. Null zonder
+ * consensus of zonder oudere afwijkende waarden. `namen` vertaalt een id naar de weergavenaam (onbekend id → id). */
+export function eerderOokTekst(
+  veld: Pick<GeheugenVeldVoorstelDto, 'recent_consensus' | 'eerder_ook'>,
+  namen: (id: string) => string,
+): string | null {
+  if (!veld.recent_consensus || !veld.eerder_ook || veld.eerder_ook.length === 0) return null
+  return `eerder ook: ${veld.eerder_ook.map(namen).join(', ')}`
+}
+
 /** Compacte hint-tekst naast een oranje chip — de volledige reden blijft in de tooltip staan. */
 export function korteReden(reden: string | null): string | null {
   if (!reden) return null

@@ -254,3 +254,46 @@ class TestProjectplichtBlijftBlokkeren:
         )
         assert not resultaat.ok
         assert "project (regel 1)" in resultaat.melding
+
+
+def test_automatische_boeking_legt_geen_observatie_vast(administratie_id: uuid.UUID, admin_engine) -> None:  # noqa: ANN001
+    """Blok 3 vervolgrun 10-09 avond: een automatische boeking is geen menselijke bevestiging — `automatisch=True`
+    schrijft niets, dezelfde aanroep zonder de vlag wél (regressie-anker)."""
+    from app.db.session import scoped_session
+    from app.documenten.boekvoorstel import BoekvoorstelRegelData
+    from app.geheugen.leerlus import leg_boeking_vast
+
+    vendor = uuid.uuid4()
+    regels = [
+        BoekvoorstelRegelData(
+            ledger_id=uuid.uuid4(),
+            taxrate_id=None,
+            project_id=None,
+            netto_bedrag=None,
+            btw_bedrag=None,
+            omschrijving="x",
+        )
+    ]
+    with scoped_session(administratie_id) as session:
+        auto = leg_boeking_vast(
+            session,
+            administratie_id=administratie_id,
+            document_id=uuid.uuid4(),
+            vendor_id=vendor,
+            boekdatum=date(2026, 9, 10),
+            boekstuk_ref="RLZ-04-00000001",
+            regels=regels,
+            regels_samenvoegen=True,
+            automatisch=True,
+        )
+        mens = leg_boeking_vast(
+            session,
+            administratie_id=administratie_id,
+            document_id=uuid.uuid4(),
+            vendor_id=vendor,
+            boekdatum=date(2026, 9, 10),
+            boekstuk_ref="RLZ-04-00000002",
+            regels=regels,
+            regels_samenvoegen=True,
+        )
+    assert (auto, mens) == (0, 1)

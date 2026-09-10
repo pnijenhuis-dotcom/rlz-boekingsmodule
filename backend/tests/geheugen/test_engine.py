@@ -206,3 +206,99 @@ class TestGbEnProjectVerfijning:
         voorstel = _voorstel(observaties)
         assert voorstel.project.waarde == PROJECT_P
         assert not voorstel.project.oranje  # 1 app-correctie volstaat
+
+
+class TestRecencyWint:
+    """Blok 3 vervolgrun 10-09 avond (besluit Peter): de laatste drie MENS-boekingen identiek → groen + app-bevestigd,
+    oudere afwijkende waarden tellen niet meer mee in de tie-break maar blijven zichtbaar als `eerder_ook`."""
+
+    @staticmethod
+    def _boeking(n: int, gb: uuid.UUID, *, bron: str = "app", regels: int = 1, btw: uuid.UUID | None = None) -> list:
+        # n = volgnummer in de tijd (oudere boekingen eerst); elke boeking een eigen boekstuk en dag.
+        return [
+            Observatie(
+                regel_sleutel=None,
+                gb_id=gb,
+                btw_id=btw,
+                project_id=None,
+                bron=bron,
+                bron_datum=date.fromordinal(VANDAAG.toordinal() - 100 + n),
+                boeking_sleutel=f"RLZ-04-{n:05d}",
+            )
+            for _ in range(regels)
+        ]
+
+    def test_B_A_A_A_is_groen_A_met_eerder_ook_B(self) -> None:
+        obs = self._boeking(1, GB_B) + self._boeking(2, GB_A) + self._boeking(3, GB_A) + self._boeking(4, GB_A)
+        v = _voorstel(obs).gb
+        assert v.waarde == GB_A and not v.oranje and v.app_bevestigd and v.recent_consensus
+        assert v.reden is None
+        assert v.eerder_ook == (GB_B,)
+        assert v.telling == 3
+
+    def test_A_A_B_blijft_oranje_gesplitst(self) -> None:
+        obs = self._boeking(1, GB_A) + self._boeking(2, GB_A) + self._boeking(3, GB_B)
+        v = _voorstel(obs).gb
+        assert v.oranje and not v.recent_consensus and v.eerder_ook == ()
+        assert "gesplitste stem" in (v.reden or "")
+
+    def test_A_B_A_A_blijft_oranje_pas_A_B_A_A_A_groen(self) -> None:
+        obs = self._boeking(1, GB_A) + self._boeking(2, GB_B) + self._boeking(3, GB_A) + self._boeking(4, GB_A)
+        v = _voorstel(obs).gb
+        assert v.waarde == GB_A and v.oranje and not v.recent_consensus
+        v5 = _voorstel(obs + self._boeking(5, GB_A)).gb
+        assert v5.waarde == GB_A and not v5.oranje and v5.recent_consensus and v5.eerder_ook == (GB_B,)
+
+    def test_seed_only_blijft_oranje_ook_bij_drie_identieke_seed_boekingen(self) -> None:
+        obs = (
+            self._boeking(1, GB_A, bron="rlz_seed")
+            + self._boeking(2, GB_A, bron="rlz_seed")
+            + self._boeking(3, GB_A, bron="rlz_seed")
+        )
+        v = _voorstel(obs).gb
+        assert v.waarde == GB_A and v.oranje and not v.app_bevestigd and not v.recent_consensus
+
+    def test_seed_B_met_drie_app_A_is_groen_en_toont_B_als_eerder_ook(self) -> None:
+        obs = self._boeking(0, GB_B, bron="rlz_seed") * 5
+        obs += self._boeking(1, GB_A) + self._boeking(2, GB_A) + self._boeking(3, GB_A)
+        v = _voorstel(obs).gb
+        assert v.waarde == GB_A and not v.oranje and v.recent_consensus and v.eerder_ook == (GB_B,)
+
+    def test_gesplitste_boeking_in_de_staart_geeft_geen_consensus(self) -> None:
+        # Boeking 3 draagt twee GB's (gesplitste regels op verschillende rekeningen) → niet identiek.
+        obs = self._boeking(1, GB_A) + self._boeking(2, GB_A) + self._boeking(3, GB_A) + self._boeking(3, GB_B)
+        v = _voorstel(obs).gb
+        assert v.oranje and not v.recent_consensus
+
+    def test_meerdere_regels_van_een_boeking_tellen_als_een_boeking(self) -> None:
+        # Twee boekingen met elk drie identieke regels = twee boekingen, geen drie → geen consensus.
+        obs = self._boeking(1, GB_B) + self._boeking(2, GB_A, regels=3) + self._boeking(3, GB_A, regels=3)
+        v = _voorstel(obs).gb
+        assert v.oranje and not v.recent_consensus
+        assert _voorstel(obs + self._boeking(4, GB_A)).gb.recent_consensus
+
+    def test_zonder_boeking_sleutel_groepeert_per_dag_conservatief(self) -> None:
+        # Oude rijen zonder boekstuknummer: alle observaties van één dag = één boeking → hooguit een KORTERE reeks.
+        zelfde_dag = [_obs(gb=GB_A, bron="app") for _ in range(6)]
+        assert not _voorstel([_obs(gb=GB_B, bron="app", dagen_oud=9)] + zelfde_dag).gb.recent_consensus
+        per_dag = [_obs(gb=GB_A, bron="app", dagen_oud=d) for d in (3, 2, 1)]
+        v = _voorstel([_obs(gb=GB_B, bron="app", dagen_oud=9)] + per_dag).gb
+        assert v.recent_consensus and v.waarde == GB_A and v.eerder_ook == (GB_B,)
+
+    def test_btw_leverancier_fallback_blijft_oranje_ook_met_consensus(self) -> None:
+        obs = (
+            self._boeking(1, GB_A, btw=BTW_VERLEGD)
+            + self._boeking(2, GB_A, btw=BTW_HOOG)
+            + self._boeking(3, GB_A, btw=BTW_HOOG)
+            + self._boeking(4, GB_A, btw=BTW_HOOG)
+        )
+        zonder_sleutel = _voorstel(obs).btw
+        assert zonder_sleutel.waarde == BTW_HOOG and not zonder_sleutel.oranje and zonder_sleutel.recent_consensus
+        met_sleutel = _voorstel(obs, sleutel=SLEUTEL_DIESEL).btw
+        assert met_sleutel.waarde == BTW_HOOG and met_sleutel.oranje and met_sleutel.reden == "leverancier-fallback"
+        assert met_sleutel.app_bevestigd and met_sleutel.eerder_ook == (BTW_VERLEGD,)
+
+    def test_confidence_is_het_gewogen_aandeel_van_de_consensuswaarde(self) -> None:
+        obs = self._boeking(1, GB_B) + self._boeking(2, GB_A) + self._boeking(3, GB_A) + self._boeking(4, GB_A)
+        v = _voorstel(obs).gb
+        assert 0.7 < v.confidence < 0.8  # 3 van 4 gelijkzwaar-ige app-stemmen, licht recency-verval

@@ -21,6 +21,10 @@
 - Autoboeken leert sneller: een leverancier wordt automatisch geboekt zodra een medewerker drie keer op rij exact hetzelfde heeft geboekt — de eerste boeking telt nu ook mee (voorheen waren er in de praktijk vier nodig).
 - De stand per leverancier heet nu "N identieke boekingen" in plaats van "N op rij ongewijzigd"; de teller "leert (n/3)" volgt dezelfde telling.
 
+<!-- nametingen-run-10-09:3.1 -->
+- Het boekingsgeheugen kijkt nu vooral naar wat een medewerker de laatste keren koos: zijn de laatste drie boekingen van een leverancier identiek, dan is dat voorstel groen — ook als er lang geleden één keer iets anders geboekt is. Die oudere keuze blijft zichtbaar als "eerder ook: …" onder het voorstel.
+- Automatisch geboekte facturen tellen daarbij niet mee als bevestiging; alleen boekingen door een medewerker doen dat.
+
 <!-- vervolgrun-10-09-avond:4 -->
 - Een storing of ontbrekende instelling van de AI-controle zet het automatisch boeken niet meer stil: de vaste controles (rekening, btw, project, geheugen) blijven de eis, en een boeking die zonder AI-controle doorliep krijgt het label "zonder AI-toets" op de rij en in de tijdlijn.
 - In de reconciliatie ziet u per dag hoeveel boekingen zonder AI-controle doorliepen en waarom, met een melding "controleer steekproefsgewijs" en een directe link naar de bankrekening of documentenlijst.

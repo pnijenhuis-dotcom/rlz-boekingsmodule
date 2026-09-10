@@ -13,8 +13,8 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
-from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten import veldvoorstel_regels
+from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
@@ -589,6 +589,8 @@ def boek_document(
             boekstuk_ref=rlz_boekstuknummer,
             regels=voorstel.regels,
             regels_samenvoegen=voorstel.regels_samenvoegen,
+            # Blok 3 vervolgrun 10-09 avond: een automatische boeking is geen menselijke bevestiging → geen observatie.
+            automatisch=bool((extra_overgang_detail or {}).get("automatisch_geboekt")),
         )
         # Blok 10 07-09 (project uit de factuur): boeken ís de menselijke bevestiging — de (leverancier, gelezen
         # projecttekst) → gekozen-project-mapping gaat in `leverancier_werknummer` (bron 'factuur', bevestigd),

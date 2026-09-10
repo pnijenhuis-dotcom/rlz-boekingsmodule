@@ -131,6 +131,7 @@ def _observaties_van(boeking: Boeking) -> list[Observatie]:
                 project_id=regel.project_id,
                 bron=ObservatieBron.APP.value,
                 bron_datum=boeking.geboekt_op.date(),
+                boeking_sleutel=str(boeking.document_id),
             )
         )
     return uit

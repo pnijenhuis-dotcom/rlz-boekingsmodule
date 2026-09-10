@@ -51,6 +51,8 @@ def laad_engine_observaties(session: Session, *, administratie_id: uuid.UUID, ve
             project_id=rij.project_id,
             bron=rij.bron,
             bron_datum=rij.bron_datum,
+            # Blok 3 (10-09 avond): boekstuknummer = identiteit van de boeking voor de recency-regel.
+            boeking_sleutel=rij.boekstuk_ref,
         )
         for rij in rijen
     ]

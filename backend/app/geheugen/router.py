@@ -22,6 +22,8 @@ def _naar_veld_response(veld: VeldVoorstel) -> schemas.VeldVoorstelResponse:
         oranje=veld.oranje,
         reden=veld.reden,
         app_bevestigd=veld.app_bevestigd,
+        recent_consensus=veld.recent_consensus,
+        eerder_ook=list(veld.eerder_ook),
     )
 
 

@@ -207,6 +207,7 @@ def _verzamel(
             project_id=obs.project_id,
             bron=obs.bron,
             bron_datum=obs.bron_datum,
+            boeking_sleutel=obs.boekstuk_ref,  # blok 3 (10-09 avond): recency-regel groepeert per boeking
         )
         vd(obs.vendor_id).observaties.append(o)
         if obs.bron == ObservatieBron.RLZ_SEED.value:
@@ -355,6 +356,10 @@ class StandData:
     bron: str | None = None
     gereset_op: datetime | None = None
     veldwerker: bool = False
+    # Blok 3 vervolgrun 10-09 avond ("recency wint"): het geheugen kende voor deze leverancier eerder een ANDERE waarde
+    # (GB/btw/project) dan de huidige groene — onder de regel vóór 10-09 ("gesplitste stem" = blijvend oranje) was deze
+    # leverancier geblokkeerd. Meetlat voor de nameting (autoboek-leren-rapport, teller `eerder_afwijkend`).
+    eerder_afwijkend: bool = False
 
 
 def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUID, drempel: int, project_verplicht: bool, nu: datetime) -> StandData:
@@ -370,6 +375,7 @@ def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUI
     bevestigd, reden = _geheugen_bevestigd(
         d.observaties, project_verplicht=project_verplicht, vandaag=nu.date(), reeks_waarden=reeks.reeks_waarden
     )
+    eerder_afwijkend = _eerder_afwijkend(d.observaties, project_verplicht=project_verplicht, vandaag=nu.date())
     kwal = motor.kwalificeer(
         reeks,
         drempel=drempel,
@@ -404,7 +410,16 @@ def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUI
         bron=d.bron,
         gereset_op=d.gereset_op,
         veldwerker=d.veldwerker,
+        eerder_afwijkend=eerder_afwijkend,
     )
+
+
+def _eerder_afwijkend(observaties: list[Observatie], *, project_verplicht: bool, vandaag) -> bool:  # noqa: ANN001
+    """True als een groen veld via de recency-regel won terwijl de historie een andere waarde kende (`eerder_ook`).
+    Puur meetinstrument (blok 3, 10-09 avond) — beïnvloedt de kwalificatie niet."""
+    voorstel = bepaal_voorstel(observaties, regel_sleutel=None, vandaag=vandaag)
+    velden = [voorstel.gb, voorstel.btw] + ([voorstel.project] if project_verplicht else [])
+    return any(v.recent_consensus and v.eerder_ook for v in velden)
 
 
 def _upsert(session: Session, stand: StandData) -> AutoboekKandidaatStand:

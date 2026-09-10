@@ -206,7 +206,7 @@ class TestLeerregel:
         tellers = service.herbereken_administratie(administratie_id=leren_aan)
         assert tellers["geactiveerd"] == 0 and tellers["actief"] == 1
 
-    def test_correctie_in_de_reeks_activeert_niet(
+    def test_correctie_in_de_reeks_activeert_pas_na_drie_identieke_recente(
         self, leren_aan: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, opslag
     ) -> None:
         # Telling herzien 10-09: A, B, A — de middelste wijkt af, de laatste start een nieuwe reeks (1/3).
@@ -217,16 +217,23 @@ class TestLeerregel:
         assert u.status == "overgeslagen" and "1 identieke boeking (drempel 3)" in (u.reden or "")
         assert u.reeks_ongewijzigd == 1
         assert _voorkeur(leren_aan) is None
-        # Vier waarvan de eerste afwijkt: B, A, A, A → de REEKS is 3/3 (telling herzien 10-09), maar de onverkorte
-        # kwalificatie-eis "geheugen volledig app-bevestigd" blijft blokkeren: de ene B-observatie maakt de
-        # leverancier-stem "gesplitst" (engine: len(per_waarde) > 1, gewicht-onafhankelijk) → oranje → géén activatie,
-        # leesbaar in de reden. Beslispunt voor Peter in BESLISSINGEN (blok 3 10-09).
+        # A, B, A, A → reeks 2/3 en de geheugen-stem is nog gesplitst (laatste drie mens-boekingen B, A, A niet
+        # identiek) → géén activatie, leesbaar in de reden.
         _geboekt(leren_aan, beheerder_id, opslag, n=3)
+        [u] = service.activeer_kwalificerend(administratie_id=leren_aan, vendor_id=vendor)
+        assert u.status == "overgeslagen" and u.reeks_ongewijzigd == 2
+        assert "gesplitste stem" in (u.reden or "")
+        assert _voorkeur(leren_aan) is None
+        # A, B, A, A, A → reeks 3/3 én de recency-regel (blok 3 vervolgrun 10-09 avond, besluit Peter "recency wint")
+        # maakt de leverancier-stem groen: de laatste drie mens-boekingen zijn identiek, de ene oude B telt niet meer
+        # mee in de tie-break (wél zichtbaar als "eerder ook"). Vóór 10-09 avond bleef dit blijvend "gesplitst" —
+        # de activatie-motor zelf is ongewijzigd, de engine levert het.
         _geboekt(leren_aan, beheerder_id, opslag, n=4)
         [u] = service.activeer_kwalificerend(administratie_id=leren_aan, vendor_id=vendor)
-        assert u.status == "overgeslagen" and u.reeks_ongewijzigd == 3
-        assert "identieke" not in (u.reden or "") and "gesplitste stem" in (u.reden or "")
-        assert _voorkeur(leren_aan) is None
+        assert u.status == "geactiveerd" and u.reeks_ongewijzigd == 3, u.reden
+        assert _voorkeur(leren_aan).autoboeken_ingeschakeld is True
+        stand = next(s for s in service.bereken_standen(administratie_id=leren_aan) if s.vendor_id == vendor)
+        assert stand.eerder_afwijkend is True
 
     def test_aanzetten_van_de_schakelaar_activeert_direct(
         self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, opslag, drempel_3: int

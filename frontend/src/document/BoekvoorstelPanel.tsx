@@ -19,6 +19,7 @@ import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { crediteurSuggesties } from './crediteurSuggesties'
 import { toetsRegelsom } from './regelsom'
 import {
+  eerderOokTekst,
   bepaalGeheugenChip,
   bepaalPrefill,
   haalGeheugenVoorstel,
@@ -523,6 +524,9 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
     )
   }
   const hint = stand.oranje ? korteReden(stand.reden) : null
+  // Blok 3 vervolgrun 10-09 avond ("recency wint"): groen via de laatste drie identieke mens-boekingen, maar de historie
+  // kende eerder een andere waarde — zichtbaar als rustige historie-regel, nooit als oranje signaal.
+  const eerderOok = eerderOokTekst(veld, (id) => optieWeergave(opties, id))
   return (
     <div style={{ marginTop: 4 }}>
       <span
@@ -532,6 +536,15 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
         Geheugen {pct}
       </span>
       {hint && <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 2 }}>{hint}</div>}
+      {eerderOok && (
+        <div
+          data-testid="geheugen-eerder-ook"
+          style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}
+          title="De laatste drie boekingen door een medewerker waren identiek; deze oudere keuze telt niet meer mee, maar blijft zichtbaar."
+        >
+          {eerderOok}
+        </div>
+      )}
     </div>
   )
 }

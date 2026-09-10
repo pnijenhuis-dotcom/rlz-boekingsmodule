@@ -25,8 +25,15 @@ def leg_boeking_vast(
     boekstuk_ref: str | None,
     regels: list[BoekvoorstelRegelData],
     regels_samenvoegen: bool,
+    automatisch: bool = False,
 ) -> int:
-    """Legt de geboekte regels vast als observaties. Samengevoegde boeking -> leverancier-niveau
+    """Legt de geboekte regels vast als observaties. `automatisch=True` (autoboek-pad) legt NIETS vast (blok 3
+    vervolgrun 10-09 avond, besluit Peter "automatische boekingen tellen niet en breken niet"): een automatische
+    boeking reproduceert het geheugen en is geen menselijke bevestiging — zou ze meetellen, dan verlengt het systeem
+    zijn eigen reeks. Observaties van automatische boekingen vóór 10-09 blijven staan (ongemarkeerd, geen migratie);
+    ze droegen per definitie de toen groene waarde en kunnen de recency-regel dus alleen bevestigen, nooit breken.
+
+    Samengevoegde boeking -> leverancier-niveau
     (regel_sleutel NULL: één samengevoegde regel zegt niets over regelsoorten); gesplitste
     boeking -> regel-niveau met de genormaliseerde omschrijving als sleutel.
 
@@ -36,6 +43,8 @@ def leg_boeking_vast(
     met de nieuwe boekdatum, zodat de recency-weging de gecorrigeerde waarde laat winnen.
     `bron_datum` = boekdatum (het moment van menselijke bevestiging), bewust niet de factuurdatum:
     een correctie op een oude factuur is verse kennis. Retourneert het aantal nieuwe observaties."""
+    if automatisch:
+        return 0
     nieuw = 0
     for volgnummer, regel in enumerate(regels, start=1):
         if regel.ledger_id is None:
