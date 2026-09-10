@@ -273,6 +273,54 @@ describe('AccordeurApp — legacy native toestel (plain refresh-token, geen slot
     expect(opslag.get('refresh_token')).toMatch(/^slot\.v1\./)
   })
 
+  it('eerste opslag van de code mislukt (Keystore weigert appslot_slot) → melding + diagnoseregel, NIET door naar de flow; "Opnieuw proberen" → PincodeKiezen → tweede poging slaagt → flow (bugfix 10-09 (2))', async () => {
+    const opslag = new Map<string, string>([['refresh_token', 'rt-plain']])
+    let weigerSlotSchrijf = true
+    vi.stubGlobal('Capacitor', {
+      isNativePlatform: () => true,
+      getPlatform: () => 'android',
+      Plugins: {
+        VeiligeOpslag: {
+          zet: ({ sleutel, waarde }: { sleutel: string; waarde: string }) => {
+            if (sleutel === 'appslot_slot' && weigerSlotSchrijf) return Promise.reject(new Error('KeyStoreException: write failed'))
+            opslag.set(sleutel, waarde)
+            return Promise.resolve()
+          },
+          haal: ({ sleutel }: { sleutel: string }) => Promise.resolve({ waarde: opslag.get(sleutel) ?? null }),
+          verwijder: ({ sleutel }: { sleutel: string }) => {
+            opslag.delete(sleutel)
+            return Promise.resolve()
+          },
+        },
+      },
+    })
+    stubFetch()
+    renderApp()
+    expect(await screen.findByText('Kies een code')).toBeInTheDocument()
+    await tikCode('13579')
+    await screen.findByText('Nog één keer')
+    await tikCode('13579')
+    expect(await screen.findByText('Toegangscode niet opgeslagen')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('De toegangscode kon niet veilig op dit toestel worden opgeslagen')
+    const diagnose = screen.getByTestId('acc-diagnose').textContent ?? ''
+    expect(diagnose).toContain('laatste slotfout: schrijf appslot_slot (Error: KeyStoreException: write failed)')
+    expect(diagnose).not.toContain('13579')
+    // Niet door: geen wachtrij, token nog plain (de stille refresh roteerde 'm, maar hij is NIET met een nergens
+    // bewaard anker versleuteld — anders was hij ná de koude start onleesbaar), geen slot.
+    expect(screen.queryByText('Alles is bij')).toBeNull()
+    expect(opslag.get('refresh_token')).not.toMatch(/^slot\.v1\./)
+    expect(opslag.has('appslot_slot')).toBe(false)
+    weigerSlotSchrijf = false
+    await userEvent.click(screen.getByRole('button', { name: 'Opnieuw proberen' }))
+    expect(await screen.findByText('Kies een code')).toBeInTheDocument()
+    await tikCode('13579')
+    await screen.findByText('Nog één keer')
+    await tikCode('13579')
+    expect(await screen.findByText('Alles is bij', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(opslag.get('refresh_token')).toMatch(/^slot\.v1\./)
+    expect(opslag.get('appslot_slot')).toMatch(/^v2\./)
+  })
+
   it('negeert ontgrendeling_nodig: true van de server (upgrade 89 → 90 op een passkey-rij): geen ceremonie, wél PincodeKiezen', async () => {
     // Migratie 0125 zet bestaande app-credentials niet om; de server rekent op zo'n rij het oude
     // 24-uursvenster nog uit. Build 90 kent geen ontgrendel-ceremonie meer en mag daar niets mee doen.

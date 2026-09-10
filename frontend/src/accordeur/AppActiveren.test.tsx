@@ -15,6 +15,16 @@ import { SLOT_MODUS_SLEUTEL } from '../api/webVeiligeOpslag'
 import type { TokenPaarResponseDto } from '../api/types'
 import { GEEN_VERBINDING_MELDING } from './appAuthApi'
 import { AppActiveren } from './AppActiveren'
+import { SLOT_OPSLAG_MISLUKT_MELDING } from './appslot/SlotOpslagFout'
+
+// Bugfix 10-09 (2): `stelCodeIn` moet per test kunnen falen (false = slot-waarde staat niet aantoonbaar). Partiële
+// mock mét doorval naar de echte functie, zodat alle bestaande tests het echte slot blijven gebruiken.
+const stelCodeInSpion = vi.hoisted(() => vi.fn<(code: string) => Promise<boolean>>())
+vi.mock('../api/appSlot', async (origineel) => {
+  const echt = await origineel<typeof import('../api/appSlot')>()
+  stelCodeInSpion.mockImplementation((code) => echt.stelCodeIn(code))
+  return { ...echt, stelCodeIn: stelCodeInSpion }
+})
 
 if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true })
@@ -50,6 +60,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await wisAppSlotLokaal()
+  stelCodeInSpion.mockClear()
   vi.unstubAllGlobals()
   delete (window as { Capacitor?: unknown }).Capacitor
   idb.herstel()
@@ -311,5 +322,47 @@ describe('AppActiveren — doorloop code → toegangscode → slot → sessie', 
     await userEvent.type(screen.getByLabelText('Activatiecode'), 'ABCDEFGH')
     await userEvent.click(screen.getByRole('button', { name: 'Activeren' }))
     expect(await screen.findByText('Kies een code')).toBeInTheDocument()
+  })
+})
+
+describe('AppActiveren — mislukte eerste opslag van de toegangscode (bugfix 10-09 (2), blok F)', () => {
+  it('stelCodeIn → false: eerlijke melding + diagnoseregel, GEEN naGeactiveerd, geen voorwaarden-POST; "Opnieuw proberen" → code kiezen op hetzelfde activatieresultaat → tweede stelCodeIn slaagt → door', async () => {
+    const aanroepen = stubFetch()
+    const naGeactiveerd = renderScherm()
+    await userEvent.type(screen.getByLabelText('Activatiecode'), 'ABCDEFGH')
+    await userEvent.click(screen.getByRole('button', { name: 'Activeren' }))
+    expect(await screen.findByText('Welkom, Jan')).toBeInTheDocument()
+    // Eerste poging faalt "in de opslag" (zoals een ZTE die de Keystore-schrijfactie weigert).
+    stelCodeInSpion.mockResolvedValueOnce(false)
+    localStorage.setItem(
+      'accordeur-laatste-slotfout',
+      JSON.stringify({ versie: 1, tijdstip: '2026-09-10T09:15:00.000Z', handeling: 'instellen', sleutel: 'appslot_slot', reden: 'terugleescontrole mislukt' }),
+    )
+    await tikCode('13579')
+    await screen.findByText('Nog één keer')
+    await tikCode('13579')
+    expect(await screen.findByRole('alert')).toHaveTextContent(SLOT_OPSLAG_MISLUKT_MELDING)
+    expect(screen.getByText('Toegangscode niet opgeslagen')).toBeInTheDocument()
+    // De diagnoseregel noemt handeling + sleutelnaam + reden — nooit de code.
+    const diagnose = screen.getByTestId('acc-diagnose').textContent ?? ''
+    expect(diagnose).toContain('laatste slotfout: instellen appslot_slot (terugleescontrole mislukt)')
+    expect(diagnose).not.toContain('13579')
+    expect(naGeactiveerd).not.toHaveBeenCalled()
+    expect(aanroepen.some((a) => a.pad === '/auth/accordeur/voorwaarden-akkoord')).toBe(false)
+    expect(stelCodeInSpion).toHaveBeenCalledTimes(1)
+    // Lokale audit zonder code.
+    expect(localStorage.getItem('appslot_audit') ?? '').toContain('toegangscode_opslag_mislukt')
+    // Opnieuw proberen: terug naar PincodeKiezen, géén tweede POST /auth/app/activeren (de uitnodiging is éénmalig).
+    await userEvent.click(screen.getByRole('button', { name: 'Opnieuw proberen' }))
+    expect(await screen.findByText('Kies een code van 5 cijfers. Hiermee open je voortaan de app.')).toBeInTheDocument()
+    await tikCode('24680')
+    await screen.findByText('Nog één keer')
+    await tikCode('24680')
+    await waitFor(() => expect(naGeactiveerd).toHaveBeenCalledTimes(1))
+    expect(stelCodeInSpion).toHaveBeenCalledTimes(2)
+    expect(stelCodeInSpion.mock.calls[1][0]).toBe('24680')
+    expect(aanroepen.filter((a) => a.pad === '/auth/app/activeren')).toHaveLength(1)
+    expect(await isAppSlotIngesteld()).toBe(true)
+    expect(isOntgrendeld()).toBe(true)
   })
 })

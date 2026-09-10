@@ -259,6 +259,22 @@ function ms(waarde: number | undefined): string {
  * `appBuild` = native "versie (build)" uit Capacitor App.getInfo() als die er is; buiten de schil
  * (PWA/browser) toont de regel de marketingversie uit `appVersie.ts` als `app <versie> (web)`
  * (mini-run 09-09) — zo staat overal dezelfde versie, ook zonder native plugin. */
+/** Native "versie (build)" uit Capacitor's App-plugin (`@capacitor/app`, sinds E1 06-09 gebundeld);
+ * null buiten de schil of zonder plugin — dan toont de diagnoseregel alleen de web-bundelversie.
+ * (Verhuisd uit ToegangInstellingen op 10-09 zodat SlotOpslagFout dezelfde regel toont.) */
+export async function nativeAppBuild(): Promise<string | null> {
+  try {
+    const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { App?: { getInfo?: () => Promise<{ version?: string; build?: string }> } } } })
+      .Capacitor
+    if (!cap?.isNativePlatform?.() || typeof cap.Plugins?.App?.getInfo !== 'function') return null
+    const info = await cap.Plugins.App.getInfo()
+    if (!info?.version && !info?.build) return null
+    return `${info.version ?? '?'} (${info.build ?? '?'})`
+  } catch {
+    return null
+  }
+}
+
 export function diagnoseRegel(
   meting: BewaardeKoudeStart | null,
   appBuild: string | null = null,

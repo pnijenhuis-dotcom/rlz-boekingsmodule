@@ -32,7 +32,9 @@ import {
 import { webSlotOnmogelijkOpAccordeur } from '../api/webVeiligeOpslag'
 import { AppSlotScherm } from './appslot/AppSlotScherm'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
+import { SlotOpslagFout } from './appslot/SlotOpslagFout'
 import { ToegangInstellingen } from './appslot/ToegangInstellingen'
+import { schrijfAppSlotAudit } from './appAuthApi'
 import { markeer } from './koudeStart'
 import { wisAlleStanden } from './standCache'
 
@@ -122,6 +124,8 @@ export default function AccordeurApp() {
     slotKan ? 'laden' : 'geen',
   )
   const [toegangOpen, setToegangOpen] = useState(false)
+  // Legacy-pad (PincodeKiezen zonder slot): eerste opslag van de code mislukt → melding i.p.v. doorgang (10-09 (2)).
+  const [legacySlotFout, setLegacySlotFout] = useState(false)
   // Melding op het activatiescherm ná een server-side dode sessie (kill-switch / 7-dagen-TTL).
   const [toegangVerlopen, setToegangVerlopen] = useState(false)
 
@@ -303,10 +307,20 @@ export default function AccordeurApp() {
   } else if (slotStatus === 'geen') {
     // Legacy toestel (plain token in de Keychain/Keystore van vóór 31-08) mét levende sessie: de
     // toegangscode is verplicht vóór de app verdergaat (het refresh-token gaat erachter).
-    inhoud = (
+    // Bugfix 10-09 (2): staat de slot-waarde niet aantoonbaar (stelCodeIn → false), dan niet door naar de
+    // flow maar de eerlijke melding + diagnoseregel; "Opnieuw proberen" toont PincodeKiezen opnieuw.
+    inhoud = legacySlotFout ? (
+      <SlotOpslagFout opnieuw={() => setLegacySlotFout(false)} />
+    ) : (
       <PincodeKiezen
         onGekozen={(codeNieuw) => {
-          void stelCodeIn(codeNieuw).then(() => setSlotStatus('ontgrendeld'))
+          void stelCodeIn(codeNieuw).then((opgeslagen) => {
+            if (opgeslagen) setSlotStatus('ontgrendeld')
+            else {
+              schrijfAppSlotAudit('toegangscode_opslag_mislukt')
+              setLegacySlotFout(true)
+            }
+          })
         }}
       />
     )

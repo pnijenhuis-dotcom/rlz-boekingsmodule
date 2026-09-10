@@ -20,24 +20,9 @@ import { apiFetch } from '../../api/client'
 import { leesLaatsteSlotfout } from '../../api/slotDiagnose'
 import { zetWebSlotModus } from '../../api/webVeiligeOpslag'
 import { laatsteCodeWijziging, meldToegangscodeGewijzigd, schrijfAppSlotAudit } from '../appAuthApi'
-import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout } from '../koudeStart'
+import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout, nativeAppBuild } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
-
-/** Native "versie (build)" uit Capacitor's App-plugin (`@capacitor/app`, sinds E1 06-09 gebundeld);
- * null buiten de schil of zonder plugin — dan toont de regel alleen de web-bundelversie. */
-async function nativeAppBuild(): Promise<string | null> {
-  try {
-    const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { App?: { getInfo?: () => Promise<{ version?: string; build?: string }> } } } })
-      .Capacitor
-    if (!cap?.isNativePlatform?.() || typeof cap.Plugins?.App?.getInfo !== 'function') return null
-    const info = await cap.Plugins.App.getInfo()
-    if (!info?.version && !info?.build) return null
-    return `${info.version ?? '?'} (${info.build ?? '?'})`
-  } catch {
-    return null
-  }
-}
 
 interface Props {
   sluit: () => void

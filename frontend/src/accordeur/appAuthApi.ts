@@ -202,7 +202,8 @@ const APPSLOT_AUDIT_MAX = 20
 
 export interface AppSlotAuditRegel {
   tijdstip: string
-  actie: 'toegangscode_gewijzigd'
+  /** `toegangscode_opslag_mislukt` (bugfix 10-09 (2)): de eerste opslag van de code stond niet aantoonbaar — nooit de code zelf. */
+  actie: 'toegangscode_gewijzigd' | 'toegangscode_opslag_mislukt'
 }
 
 export function leesAppSlotAudit(): AppSlotAuditRegel[] {

@@ -856,6 +856,30 @@ def kill_switch_zetten(
 
 
 @router.get(
+    "/instellingen/boeken/ai-toets",
+    response_model=schemas.BoekenIngeschakeldDto,
+)
+def ai_toets_facturen_ophalen(actor: CurrentGebruiker = Depends(require_beheerder)) -> schemas.BoekenIngeschakeldDto:
+    """Blok B bundel 10-09: AI-plausibiliteitstoets vóór automatische FACTUURboekingen — platformbreed, default AAN
+    (Instellingen › Boeken). De bank-variant heeft geen schakelaar (onderdeel van bank_autoboeken_ingeschakeld)."""
+    return schemas.BoekenIngeschakeldDto(ingeschakeld=service.haal_ai_toets_facturen_op())
+
+
+@router.put(
+    "/instellingen/boeken/ai-toets",
+    response_model=schemas.BoekenIngeschakeldDto,
+)
+def ai_toets_facturen_zetten(
+    invoer: schemas.BoekenIngeschakeldDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.BoekenIngeschakeldDto:
+    try:
+        ingeschakeld = service.zet_ai_toets_facturen(actor_id=actor.id, ingeschakeld=invoer.ingeschakeld)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    return schemas.BoekenIngeschakeldDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
     "/administraties/{administratie_id}/btw-default",
     response_model=btw_default.BtwDefaultDto,
 )

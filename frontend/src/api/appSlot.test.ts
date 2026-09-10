@@ -255,6 +255,26 @@ describe('refresh-token achter het slot', () => {
     expect(await haalNatiefRefreshToken()).toBe('token-123')
   })
 
+  it('mislukte eerste opslag (10-09 (2)): false, slot NIET ontgrendeld, plain token blijft plain, geen slot-waarde, diagnose gevuld', async () => {
+    await bewaarNatiefRefreshToken('legacy-token')
+    const zet = (window as unknown as { Capacitor: { Plugins: { VeiligeOpslag: { zet: (o: { sleutel: string; waarde: string }) => Promise<void> } } } }).Capacitor.Plugins
+      .VeiligeOpslag
+    const echteZet = zet.zet
+    zet.zet = ({ sleutel, waarde }) => (sleutel === 'appslot_slot' ? Promise.reject(new Error('Keystore weigert')) : echteZet({ sleutel, waarde }))
+    expect(await stelCodeIn('13579')).toBe(false)
+    expect(isOntgrendeld()).toBe(false)
+    expect(await isAppSlotIngesteld()).toBe(false)
+    expect(opslag.has('appslot_slot')).toBe(false)
+    // Het plain token is NIET met een nergens bewaard anker versleuteld — anders was het ná de koude start onleesbaar.
+    expect(opslag.get('refresh_token')).toBe('legacy-token')
+    expect(leesLaatsteSlotfout()).toMatchObject({ handeling: 'schrijf', sleutel: 'appslot_slot' })
+    // Tweede poging mét werkende opslag slaagt gewoon.
+    zet.zet = echteZet
+    expect(await stelCodeIn('13579')).toBe(true)
+    expect(isOntgrendeld()).toBe(true)
+    expect(opslag.get('refresh_token')).toMatch(/^slot\.v1\./)
+  })
+
   it('zet een bestaand plain token (legacy) om bij het instellen van het slot', async () => {
     await bewaarNatiefRefreshToken('legacy-token')
     expect(opslag.get('refresh_token')).toBe('legacy-token')

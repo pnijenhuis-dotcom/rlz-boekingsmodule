@@ -286,14 +286,21 @@ export function vergrendel(): void {
 /** Nieuw slot: vers anker + code-wrap; een eventueel al aanwezig (plain) refresh-token gaat
  * direct achter het slot. Laat het slot ONTGRENDELD achter (het anker in geheugen), zodat de
  * lopende sessie gewoon doorwerkt en rotaties versleuteld opgeslagen worden. Sinds 10-09 met
- * bewezen opslag: false = de slot-waarde staat niet aantoonbaar in de opslag (de sessie werkt
- * dan wél, maar de volgende koude start kent geen slot — de aanroeper mag dat melden). */
+ * bewezen opslag: false = de slot-waarde staat niet aantoonbaar in de opslag; het slot blijft dan
+ * DICHT/ongewijzigd en een bestaand plain token blijft plain (10-09 (2)) — de aanroeper MOET dat melden
+ * en niet doorlopen (AppActiveren/AccordeurApp → SlotOpslagFout). */
 export async function stelCodeIn(code: string): Promise<boolean> {
   const anker = crypto.getRandomValues(new Uint8Array(32))
   const vorige = await lees(SLOT_SLEUTEL)
   const gelukt = await schrijfSlotBewezen(code, anker, 'instellen')
-  if (!gelukt) await herstelSlotWaarde(vorige)
-  else await verwijderLegacySleutels()
+  if (!gelukt) {
+    // Bugfix 10-09 (2): het anker staat NIET in de opslag — het mag dan ook niet het ontgrendelde anker worden
+    // en zeker geen bestaand plain token versleutelen (dat zou ná de volgende koude start onleesbaar zijn: het
+    // anker bestaat nergens meer). Oude stand terug, slot blijft zoals het was; de aanroeper meldt het.
+    await herstelSlotWaarde(vorige)
+    return false
+  }
+  await verwijderLegacySleutels()
   await verwijder(FOUTEN_SLEUTEL)
   ankerInGeheugen = anker
   // Bestaand plain token (legacy-sessie van vóór het slot) meteen omzetten.
@@ -302,7 +309,7 @@ export async function stelCodeIn(code: string): Promise<boolean> {
     const versleuteld = await versleutelAlsSlotActief(bestaand)
     if (versleuteld) await schrijf(REFRESH_SLEUTEL, versleuteld)
   }
-  return gelukt
+  return true
 }
 
 export type OntgrendelUitkomst = 'ok' | 'fout' | 'uitgesloten'

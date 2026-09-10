@@ -31,10 +31,12 @@ import {
   meldActivatieProbleem,
   meldAppLock,
   normaliseerActivatiecode,
+  schrijfAppSlotAudit,
   type AppActiverenResponseDto,
   type AppConfigDto,
 } from './appAuthApi'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
+import { SlotOpslagFout } from './appslot/SlotOpslagFout'
 
 interface Props {
   /** Uitnodigings-/herstel-token uit de universal link; null = het activatiecode-scherm. */
@@ -46,7 +48,7 @@ interface Props {
   naGeactiveerd: (paar: TokenPaarResponseDto) => void
 }
 
-type Fase = 'code' | 'link_laden' | 'link_klaar' | 'link_ongeldig' | 'bezig' | 'toegangscode' | 'slot_bezig'
+type Fase = 'code' | 'link_laden' | 'link_klaar' | 'link_ongeldig' | 'bezig' | 'toegangscode' | 'slot_bezig' | 'slot_fout'
 
 export const TOEGANG_VERLOPEN_MELDING =
   'Je toegang is verlopen of ingetrokken — activeer de app opnieuw met een nieuwe uitnodiging van het kantoor.'
@@ -122,13 +124,25 @@ export function AppActiveren({ token = null, herstel = false, melding = null, na
   }
 
   /** Ná de toegangscode: toestel-id bewaren → slot instellen (anker + code-wrap) → sessie starten
-   * (AuthContext bewaart het refresh-token versleuteld) → voorwaarden-akkoord best-effort → door. */
+   * (AuthContext bewaart het refresh-token versleuteld) → voorwaarden-akkoord best-effort → door.
+   *
+   * Bugfix 10-09 (2): `stelCodeIn` geeft false als de slot-waarde NIET aantoonbaar in de opslag staat (de oude
+   * stand is dan hersteld, de slot-diagnose gevuld). Dan GEEN `naGeactiveerd` en geen wachtrij — fase `slot_fout`
+   * met de melding + diagnoseregel; "Opnieuw proberen" gaat terug naar de code-kiezen-stap op HETZELFDE
+   * `resultaat`. Dat moet: de server-activatie is niet idempotent (de uitnodiging/activatiecode is éénmalig —
+   * een tweede POST /auth/app/activeren geeft 409 "al op een ander toestel gebruikt"), maar het toestel-token in
+   * `resultaat` is al uitgegeven en blijft geldig zolang het niet aan de server is gemeld als sessie. Er is nog
+   * niets lokaal vastgelegd waar een sessie op rust (het refresh-token gaat pas bij `naGeactiveerd` de opslag in). */
   const toegangscodeGekozen = async (toegangscode: string) => {
     if (!resultaat) return
     setFase('slot_bezig')
     if (slotModus() === 'web') zetWebSlotModus(true)
     await bewaarCredentialId(resultaat.apparaat_credential_id)
-    await stelCodeIn(toegangscode)
+    if (!(await stelCodeIn(toegangscode))) {
+      schrijfAppSlotAudit('toegangscode_opslag_mislukt')
+      setFase('slot_fout')
+      return
+    }
     try {
       await kaleAuthFetch('/auth/accordeur/voorwaarden-akkoord', {
         method: 'POST',
@@ -172,6 +186,10 @@ export function AppActiveren({ token = null, herstel = false, melding = null, na
       Nijenhuis <span>Boekingsmodule</span>
     </div>
   )
+
+  if (fase === 'slot_fout' && resultaat) {
+    return <SlotOpslagFout opnieuw={() => setFase('toegangscode')} />
+  }
 
   if (fase === 'toegangscode' && resultaat) {
     return <PincodeKiezen naam={herstel || resultaat.herstel ? null : resultaat.naam} onGekozen={(c) => void toegangscodeGekozen(c)} />
