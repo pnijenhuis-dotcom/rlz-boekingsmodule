@@ -343,6 +343,24 @@ export function voerSchrijftestUit(administratieId: string): Promise<Schrijftest
   return apiJson<SchrijftestResultaatDto>(`/instellingen/administraties/${administratieId}/schrijftest`, { method: 'POST' })
 }
 
+/** RLZ-check (nachtrun 10/11-09 blok 1; route van blok C 10-09): read-only rechten-probe met de OPGESLAGEN
+ * webservice-login over exact de leesroutes van de eerste sync. `rapport` = route → 'ok' | HTTP-status,
+ * `meldingen` = letterlijk RLZ-antwoord (≤ 300 tekens) per rode route, `rechten` = RLZ-recht per route,
+ * `administraties_zichtbaar` = wat de login via GET Administrations ziet (leeg + `administraties_fout` als die
+ * call zelf faalde), `rlz_admin_id` = het geprobeerde id. */
+export interface RlzCheckResultaatDto {
+  rapport: Record<string, string>
+  meldingen: Record<string, string>
+  rechten: Record<string, string>
+  administraties_zichtbaar: { id: string; naam: string | null }[]
+  administraties_fout: string | null
+  rlz_admin_id: string
+}
+
+export function voerRlzCheckUit(administratieId: string): Promise<RlzCheckResultaatDto> {
+  return apiJson<RlzCheckResultaatDto>(`/administraties/${administratieId}/rlz-check`, { method: 'POST' })
+}
+
 /* De per-administratie dubbelen-/KvK-calls (punt 14, 28-08) zijn per 03-09 vervangen door het kantoorbrede
  * scherm Inzicht › Crediteuren (frontend/src/crediteuren/api.ts); de backend-routes blijven bestaan. */
 

@@ -8,7 +8,7 @@
 // data blijft; dearchiveren mét nieuwe webservice-login. NOOIT verwijderen. Bulk-selectie blijft (checkbox).
 import { Fragment, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AdministratieInstellingenDto } from '../api/types'
+import type { AdministratieInstellingenDto, EersteSyncRunDto } from '../api/types'
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
 import { EersteSyncStatus } from './AdministratieWizard'
 import { ArchiveerDialog } from './ArchiveerDialog'
@@ -98,6 +98,16 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   return chips
 }
 
+/** Tooltip van de rij-chip "sync-fout" (nachtrun 10/11-09 blok 1): de eerste regel van de laatste rode
+ * onderdeel-stand — sinds blok C 10-09 draagt die het letterlijke RLZ-antwoord ('Reeleezee weigert GET Ledgers
+ * (HTTP 403) — <recht>. RLZ zegt: "…"') — terugval `fout_reden`, daarna een vaste tekst. Dezelfde eerste regel
+ * die de knop "RLZ-check" op de detailpagina toont. */
+export function syncFoutTooltip(run: EersteSyncRunDto | null | undefined): string {
+  const rood = Object.values(run?.onderdelen ?? {}).find((stand) => stand.status === 'fout' && stand.fout)
+  const bron = rood?.fout ?? run?.fout_reden ?? 'eerste sync mislukt'
+  return bron.split('\n')[0].trim()
+}
+
 function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
   if (a.gearchiveerd_op) return <Badge variant="stil">gearchiveerd {datumKort(a.gearchiveerd_op)}</Badge>
   const isOdoo = a.boekhoud_backend === 'odoo'
@@ -125,7 +135,7 @@ function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
   }
   if (a.eerste_sync && a.eerste_sync.status === 'fout') {
     return (
-      <Badge variant="warn" title={a.eerste_sync.fout_reden ?? 'eerste sync mislukt'}>
+      <Badge variant="warn" title={syncFoutTooltip(a.eerste_sync)}>
         ⚠ sync-fout
       </Badge>
     )

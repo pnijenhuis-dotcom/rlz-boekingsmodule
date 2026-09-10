@@ -2,8 +2,8 @@
 // daarna de werkelijke stand "aan volgens default" als gedempte (stil) chip — nooit beide voor
 // hetzelfde veld. Pure unit-tests op chipsVoor; de tabel-rendering zit in InstellingenScreen.test.tsx.
 import { describe, expect, it } from 'vitest'
-import type { AdministratieInstellingenDto } from '../api/types'
-import { chipsVoor } from './AdministratiesV2'
+import type { AdministratieInstellingenDto, EersteSyncRunDto } from '../api/types'
+import { chipsVoor, syncFoutTooltip } from './AdministratiesV2'
 import { AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST } from './instellingenApi'
 
 function administratie(overrides: Partial<AdministratieInstellingenDto> = {}): AdministratieInstellingenDto {
@@ -89,5 +89,29 @@ describe('chipsVoor — Autoboeken (leren en boeken) per administratie (blok A b
   it('uit + toegestaan (of ouder antwoord zonder velden) = geen chip — alleen een afwijking krijgt een chip', () => {
     expect(chipsVoor(administratie({ autoboeken_leren_ingeschakeld: false, autoboeken_leren_toegestaan: true })).some((c) => /autoboeken|doorbelasting/.test(c.tekst))).toBe(false)
     expect(chipsVoor(administratie({})).some((c) => c.tekst === 'autoboeken' || c.tekst === 'n.v.t. — doorbelasting')).toBe(false)
+  })
+})
+
+describe('syncFoutTooltip — rij-chip "sync-fout" (nachtrun 10/11-09 blok 1)', () => {
+  const run: EersteSyncRunDto = {
+    run_id: 'r1',
+    status: 'fout',
+    onderdelen: {
+      taxrates: { status: 'klaar', aangemaakt: 3, bijgewerkt: 0 },
+      ledgers: { status: 'fout', fout: 'Reeleezee weigert GET Ledgers (HTTP 403) — leesrecht Grootboek. RLZ zegt: "Actie niet toegestaan bij huidige gebruikersrechten"\ntweede regel' },
+    },
+    aangevraagd_op: null,
+    beeindigd_op: null,
+    fout_reden: 'Niet alle onderdelen gelukt: ledgers — zie details per onderdeel',
+  }
+
+  it('= eerste regel van de eerste rode onderdeel-stand (mét het letterlijke RLZ-antwoord), niet de run-samenvatting', () => {
+    expect(syncFoutTooltip(run)).toBe('Reeleezee weigert GET Ledgers (HTTP 403) — leesrecht Grootboek. RLZ zegt: "Actie niet toegestaan bij huidige gebruikersrechten"')
+  })
+
+  it('zonder rode onderdeel-tekst: fout_reden; zonder alles: vaste tekst', () => {
+    expect(syncFoutTooltip({ ...run, onderdelen: null })).toBe('Niet alle onderdelen gelukt: ledgers — zie details per onderdeel')
+    expect(syncFoutTooltip({ ...run, onderdelen: null, fout_reden: null })).toBe('eerste sync mislukt')
+    expect(syncFoutTooltip(null)).toBe('eerste sync mislukt')
   })
 })

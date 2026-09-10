@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -185,10 +185,20 @@ RLZ_MELDING_MAX = 300
 class ProbeUitkomst:
     """Rechtenrapport (`rapport`: route → 'ok' | HTTP-status als string — de bestaande DTO-/opslagvorm) plús per rode
     route het LETTERLIJKE RLZ-antwoord (`meldingen`: route → "HTTP <status> — <body, afgekapt>"), zodat de Beheerder
-    ziet wát RLZ zegt en niet alleen de statuscode (blok C 10-09)."""
+    ziet wát RLZ zegt en niet alleen de statuscode (blok C 10-09).
+
+    Nachtrun 10/11-09 blok 1 (RLZ-check als knop) — additief: `rechten` (route → het RLZ-recht uit
+    app/rlz/leesroutes.py, óók voor groene routes), `administraties_zichtbaar` (de administraties die de login via
+    `GET Administrations` ziet — dezelfde call als de probe-route, geen tweede request; `{"id", "naam"}` per rij),
+    `administraties_fout` (letterlijke RLZ-melding ≤ 300 tekens als díe call zelf faalde — dan is de lijst leeg) en
+    `rlz_admin_id` (het geprobeerde administratie-id, zodat de UI kan tonen of het in de lijst staat)."""
 
     rapport: dict[str, str]
     meldingen: dict[str, str]
+    rechten: dict[str, str] = field(default_factory=dict)
+    administraties_zichtbaar: list[dict[str, str | None]] = field(default_factory=list)
+    administraties_fout: str | None = None
+    rlz_admin_id: str = ""
 
 
 def _rlz_melding(exc: RlzApiError) -> str:
@@ -206,18 +216,48 @@ def voer_probe_uit(client: RlzClient, rlz_admin_id: str) -> ProbeUitkomst:
     scoped_client = client.for_administration(rlz_admin_id)
     rapport: dict[str, str] = {}
     meldingen: dict[str, str] = {}
+    rechten: dict[str, str] = {}
+    administraties_zichtbaar: list[dict[str, str | None]] = []
+    administraties_fout: str | None = None
     for route in leesroutes.PROBE_LEESROUTES:
         actieve_client = client if route.scope == "root" else scoped_client
+        rechten[route.naam] = route.rlz_recht
         try:
             if route.params:
-                actieve_client.get(route.pad, params=dict(route.params))
+                antwoord = actieve_client.get(route.pad, params=dict(route.params))
             else:
-                actieve_client.get(route.pad)
+                antwoord = actieve_client.get(route.pad)
             rapport[route.naam] = "ok"
         except RlzApiError as exc:
             rapport[route.naam] = str(exc.status_code)
             meldingen[route.naam] = _rlz_melding(exc)
-    return ProbeUitkomst(rapport=rapport, meldingen=meldingen)
+            if route is leesroutes.ADMINISTRATIONS:
+                administraties_fout = meldingen[route.naam]
+            continue
+        if route is leesroutes.ADMINISTRATIONS:
+            administraties_zichtbaar = _administraties_uit_antwoord(antwoord)
+    return ProbeUitkomst(
+        rapport=rapport,
+        meldingen=meldingen,
+        rechten=rechten,
+        administraties_zichtbaar=administraties_zichtbaar,
+        administraties_fout=administraties_fout,
+        rlz_admin_id=rlz_admin_id,
+    )
+
+
+def _administraties_uit_antwoord(antwoord: object) -> list[dict[str, str | None]]:
+    """`GET Administrations` → `[{"id", "naam"}]` (zelfde veldvorm als onboarding._administraties_via: `id` +
+    `Name`). Een onverwacht antwoord (geen dict/`value`-lijst) telt als "geen administraties zichtbaar" — de
+    rapport-stand van de route blijft 'ok', want RLZ antwoordde wél."""
+    rijen = antwoord.get("value", []) if isinstance(antwoord, dict) else []
+    uit: list[dict[str, str | None]] = []
+    for rij in rijen if isinstance(rijen, list) else []:
+        if not isinstance(rij, dict) or rij.get("id") is None:
+            continue
+        naam = rij.get("Name") or rij.get("name")
+        uit.append({"id": str(rij["id"]), "naam": str(naam) if naam is not None else None})
+    return uit
 
 
 def probe_rapport(client: RlzClient, rlz_admin_id: str) -> dict[str, str]:

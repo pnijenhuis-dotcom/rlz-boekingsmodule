@@ -68,4 +68,14 @@ def rlz_rechten_check(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GeenRlzCredentials as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    return schemas.RechtenProbeResponse(rapport=uitkomst.rapport, meldingen=uitkomst.meldingen)
+    return schemas.RechtenProbeResponse(
+        rapport=uitkomst.rapport,
+        meldingen=uitkomst.meldingen,
+        rechten=uitkomst.rechten,
+        administraties_zichtbaar=[
+            schemas.ZichtbareAdministratieDto(id=str(a["id"]), naam=a.get("naam"))
+            for a in uitkomst.administraties_zichtbaar
+        ],
+        administraties_fout=uitkomst.administraties_fout,
+        rlz_admin_id=uitkomst.rlz_admin_id,
+    )

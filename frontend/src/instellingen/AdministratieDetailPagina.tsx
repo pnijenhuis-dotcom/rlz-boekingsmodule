@@ -21,6 +21,7 @@ import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './ProjectverdelingInstellingen'
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
+import { RlzCheck } from './RlzCheck'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
 interface Props {
@@ -205,12 +206,16 @@ export function AdministratieDetailPagina({
                   )}
                 </span>
               </InstellingRij>
-              <InstellingRij
+              {/* Nachtrun 10/11-09 blok 1: de rij draagt de knop "RLZ-check" (herprobe met de opgeslagen login) mét het
+                  resultaat per leesroute eronder; ná groen + rode eerste sync óók "Sync opnieuw starten". */}
+              <RlzCheck
+                administratie={a}
+                onHerlaad={onHerlaad}
                 titel="Webservice-gegevens"
                 uitleg={
                   a.verkoopmodule_afwezig
                     ? 'Reeleezee-facturatiemodule niet afgenomen (SalesInvoices gaf 403 bij de rechten-probe) — verkoop-rakende leesroutes slaan deze administratie over. Later wél afgenomen? Draai de probe opnieuw via "Webservice"; bij SalesInvoices ok verdwijnt dit kenmerk vanzelf.'
-                    : 'Login van de RLZ-webservice — wijzigen is probe-gated (10 leesroutes groen).'
+                    : 'Login van de RLZ-webservice — wijzigen is probe-gated (10 leesroutes groen). "RLZ-check" toetst de opgeslagen login op exact de leesroutes van de eerste sync en toont wat Reeleezee zegt.'
                 }
               >
                 {a.webservice_username ? (
@@ -220,7 +225,7 @@ export function AdministratieDetailPagina({
                 ) : (
                   <span className="chip afwijking">geen credentials</span>
                 )}
-              </InstellingRij>
+              </RlzCheck>
               <InstellingRij titel="Eerste sync" uitleg={a.eerste_sync && a.eerste_sync.status !== 'klaar' ? 'Bij een rode stand: foutreden + "Sync opnieuw starten".' : 'Alle onderdelen groen.'}>
                 {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' ? (
                   <EersteSyncStatus compact administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }} initieel={a.eerste_sync} onAfgerond={onHerlaad} />

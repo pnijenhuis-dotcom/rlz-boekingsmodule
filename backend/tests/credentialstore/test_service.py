@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.credentialstore import service
+from app.rlz import leesroutes
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import resolve_credentials
 from tests.sync.conftest import FakeRlzClient
@@ -328,3 +329,68 @@ class TestProbeMeldingen:
         assert nieuw["bron"] == "herprobe_opgeslagen_login"
         assert nieuw["meldingen"] == {"Projects": "HTTP 403 — _Forbidden: Projects"}
         assert nieuw["rapport"]["Projects"] == "403" and nieuw["aantal_ok"] == 9
+
+
+# --- RLZ-check als knop (nachtrun 10/11-09 blok 1): rechten, zichtbare administraties, eigen id ------------------
+
+
+class TestRlzCheckVelden:
+    def test_voer_probe_uit_geeft_recht_per_route_ook_bij_groen(self) -> None:
+        uitkomst = service.voer_probe_uit(FakeRlzClient({}), "adm-1")
+        assert set(uitkomst.rechten) == set(uitkomst.rapport) and len(uitkomst.rechten) == 10
+        assert uitkomst.rechten["Ledgers"].startswith("leesrecht Grootboek")
+        assert uitkomst.rechten["Administrations"] == leesroutes.ADMINISTRATIONS.rlz_recht
+        assert uitkomst.rlz_admin_id == "adm-1"
+
+    def test_administraties_zichtbaar_komt_uit_dezelfde_administrations_call(self) -> None:
+        """De lijst is het antwoord van de probe-route `Administrations` zelf — geen tweede request."""
+        client = FakeRlzClient(
+            {"Administrations": [{"id": "adm-1", "Name": "Baard beheer"}, {"id": "adm-2", "Name": "Box Beheer B.V."}]}
+        )
+        uitkomst = service.voer_probe_uit(client, "adm-1")
+        assert uitkomst.administraties_zichtbaar == [
+            {"id": "adm-1", "naam": "Baard beheer"},
+            {"id": "adm-2", "naam": "Box Beheer B.V."},
+        ]
+        assert uitkomst.administraties_fout is None
+        assert client.opgevraagde_paden.count("Administrations") == 1
+
+    def test_administrations_fout_geeft_lege_lijst_met_letterlijke_melding(self) -> None:
+        fout = RlzApiError(401, "GET", "/Administrations", '{"Message":"Unauthorized"}')
+        uitkomst = service.voer_probe_uit(FakeRlzClient({}, fouten={"Administrations": fout}), "adm-1")
+        assert uitkomst.rapport["Administrations"] == "401"
+        assert uitkomst.administraties_zichtbaar == []
+        assert uitkomst.administraties_fout == 'HTTP 401 — {"Message":"Unauthorized"}'
+        # De andere routes lopen gewoon door (per route zichtbaar, niets valt stil weg).
+        assert uitkomst.rapport["Ledgers"] == "ok"
+
+    def test_eigen_id_niet_in_de_lijst_is_zichtbaar_via_rlz_admin_id(self) -> None:
+        """Verkeerd administratie-id: RLZ ziet wél administraties, maar niet de geprobeerde — de UI legt
+        `rlz_admin_id` naast `administraties_zichtbaar`."""
+        client = FakeRlzClient({"Administrations": [{"id": "adm-2", "Name": "Andere B.V."}]})
+        uitkomst = service.voer_probe_uit(client, "adm-1")
+        assert uitkomst.rlz_admin_id == "adm-1"
+        assert "adm-1" not in {a["id"] for a in uitkomst.administraties_zichtbaar}
+
+    def test_onverwacht_antwoord_zonder_value_geeft_lege_lijst_zonder_fout(self) -> None:
+        class RaarAntwoord(FakeRlzClient):
+            def get(self, path: str) -> dict:  # type: ignore[override]
+                if path == "Administrations":
+                    return {"geen": "value"}
+                return super().get(path)
+
+        uitkomst = service.voer_probe_uit(RaarAntwoord({}), "adm-1")
+        assert uitkomst.rapport["Administrations"] == "ok"
+        assert uitkomst.administraties_zichtbaar == [] and uitkomst.administraties_fout is None
+
+    def test_herprobe_met_opgeslagen_login_draagt_de_velden_door(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        rlz_admin_id = _rlz_admin_id(admin_engine, administratie_id)
+        client = FakeRlzClient({"Administrations": [{"id": rlz_admin_id, "Name": "Eigen"}]})
+        uitkomst = service.voer_herprobe_met_opgeslagen_login(
+            administratie_id=administratie_id, actor_id=beheerder_id, client=client
+        )
+        assert uitkomst.rlz_admin_id == rlz_admin_id
+        assert uitkomst.administraties_zichtbaar == [{"id": rlz_admin_id, "naam": "Eigen"}]
+        assert uitkomst.rechten["PaymentAccounts"] == leesroutes.PAYMENT_ACCOUNTS.rlz_recht

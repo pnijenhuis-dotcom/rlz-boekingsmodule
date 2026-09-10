@@ -81,3 +81,45 @@ def test_rlz_check_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:
         headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
     )
     assert resp.status_code == 403
+
+
+def test_rlz_check_response_draagt_rechten_administraties_en_eigen_id(
+    monkeypatch: pytest.MonkeyPatch, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    """Knop "RLZ-check" (nachtrun 10/11-09 blok 1): naast rapport + meldingen ook het RLZ-recht per route, de
+    administraties die de login ziet (uit dezelfde Administrations-call) en het eigen rlz_admin_id."""
+    from app.rlz.client import RlzApiError
+
+    rlz_body = '{"Message":"Actie niet toegestaan bij huidige gebruikersrechten"}'
+    fake = FakeRlzClient(
+        {"Administrations": [{"id": "rlz-a", "Name": "Baard beheer & management"}, {"id": "rlz-b", "Name": "Box"}]},
+        fouten={"Ledgers": RlzApiError(403, "GET", "u", rlz_body)},
+    )
+    monkeypatch.setattr("app.credentialstore.service.open_root_client", lambda rlz_admin_id: fake)
+    resp = client.post(f"/administraties/{administratie_id}/rlz-check", headers=_bearer(beheerder_id, rol="beheerder"))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["rapport"]["Ledgers"] == "403" and body["rapport"]["TaxRates"] == "ok"
+    assert body["meldingen"]["Ledgers"] == f"HTTP 403 — {rlz_body}"
+    assert body["rechten"]["Ledgers"].startswith("leesrecht Grootboek")
+    assert body["rechten"]["TaxRates"]  # óók voor een groene route
+    assert body["administraties_zichtbaar"] == [
+        {"id": "rlz-a", "naam": "Baard beheer & management"},
+        {"id": "rlz-b", "naam": "Box"},
+    ]
+    assert body["administraties_fout"] is None
+    assert body["rlz_admin_id"]  # het rlz_admin_id van de administratie-rij
+
+
+def test_rlz_check_zonder_credential_geeft_leesbare_503(
+    monkeypatch: pytest.MonkeyPatch, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+) -> None:
+    from app.rlz.credentials import GeenRlzCredentials
+
+    def geen(rlz_admin_id: str) -> None:
+        raise GeenRlzCredentials(f"Geen webservice-login voor {rlz_admin_id}")
+
+    monkeypatch.setattr("app.credentialstore.service.open_root_client", geen)
+    resp = client.post(f"/administraties/{administratie_id}/rlz-check", headers=_bearer(beheerder_id, rol="beheerder"))
+    assert resp.status_code == 503
+    assert "Geen webservice-login" in resp.json()["detail"]
