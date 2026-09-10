@@ -397,6 +397,13 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
                                 </Badge>
                               ))}
                         {tab === 'actief' && r.heroverweeg_signalen.length > 0 && <Badge variant="warn">{r.heroverweeg_signalen.length} signaal · zie Heroverwegen</Badge>}
+                        {/* Blok A bundel 10-09: de administratie heeft "Autoboeken (leren en boeken)" aan — het systeem activeert
+                            deze leverancier zelf zodra de reeks de drempel haalt; de mens hoeft hier niets aan te klikken. */}
+                        {r.administratie_leren_aan && (
+                          <Badge variant="info" title="Autoboeken (leren en boeken) staat aan voor deze administratie — activatie gebeurt automatisch bij de drempel">
+                            administratie leert zelf
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="hint" style={{ fontSize: 11.5 }}>

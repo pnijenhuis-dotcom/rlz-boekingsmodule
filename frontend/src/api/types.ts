@@ -420,10 +420,30 @@ export interface DocumentListResponseDto {
 /** Autoboeken-opt-in per leverancier (Instellingen, Beheerder-only — CLAUDE.md-poort vóór het
  * eerste autoboeken van inkoopfacturen). Naam kan null zijn zolang de vendor-sync geen naam
  * kent. */
+/** Stand van één leverancier binnen "Autoboeken (leren en boeken)" (blok A bundel 10-09): `leert` (reeks < drempel),
+ * `boekt_automatisch` (opt-in aan door systeem, of door mens onder een aan-schakelaar), `uitgezonderd` (mens sloot 'm uit),
+ * `handmatig_aan` (opt-in door een mens zónder administratie-schakelaar — de oude flow). */
+export type LeverancierAutoboekStand = 'leert' | 'boekt_automatisch' | 'uitgezonderd' | 'handmatig_aan'
+
 export interface LeverancierAutoboekenDto {
   vendor_id: string
   naam: string | null
   autoboeken_ingeschakeld: boolean
+  /** Blok A bundel 10-09 (optioneel voor oudere antwoorden — de UI leidt `stand` dan af uit `autoboeken_ingeschakeld`). */
+  stand?: LeverancierAutoboekStand
+  /** Mens-boekingen op rij ongewijzigd (telt alleen ná `gereset_op`). */
+  reeks?: number
+  drempel?: number
+  bron?: 'mens' | 'systeem' | null
+  gereset_op?: string | null
+  uitzondering_reden?: string | null
+}
+
+/** GET/PUT /administraties/{id}/autoboeken-leren-instelling (blok A bundel 10-09). */
+export interface AutoboekenLerenStandDto {
+  ingeschakeld: boolean
+  toegestaan: boolean
+  reden_niet_toegestaan: string | null
 }
 
 export interface LeverancierAutoboekenLijstDto {
@@ -586,6 +606,10 @@ export interface AutoboekKandidaatRijDto {
   snooze_reden: string | null
   snooze_op: string | null
   berekend_op: string
+  /** Blok A bundel 10-09: de administratie heeft de schakelaar "Autoboeken (leren en boeken)" aan → chip
+   * "administratie leert zelf"; `stand` = dezelfde enum als op de leverancierslijst. */
+  administratie_leren_aan?: boolean
+  stand?: LeverancierAutoboekStand
 }
 
 export interface AutoboekTellersDto {
@@ -1051,6 +1075,11 @@ export interface AdministratieInstellingenDto {
   doorbelasting_doel?: boolean
   /** Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles groen is. */
   omzet_autoboeken_ingeschakeld?: boolean
+  /** Autoboeken (leren en boeken) per administratie (blok A bundel 10-09, migratie 0128): Beheerder-schakelaar; het
+   * systeem activeert leveranciers zelf ná ≥ drempel mens-boekingen op rij. `toegestaan=false` = doorbelasting-
+   * administratie (Kempen-regel, 409 bij aanzetten) → chip "n.v.t. — doorbelasting". */
+  autoboeken_leren_ingeschakeld?: boolean
+  autoboeken_leren_toegestaan?: boolean
   bank_autoboeken_ingeschakeld?: boolean
   accordering_ingeschakeld?: boolean
   laatste_sync_op?: string | null

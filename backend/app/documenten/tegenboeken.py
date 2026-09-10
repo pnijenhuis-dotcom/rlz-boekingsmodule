@@ -646,6 +646,14 @@ def voer_tegenboeking_uit(
             actor_id=actor_id,
             reden=f"tegengeboekt ({soort}): {reden.strip()}",
         )
+        # Autoboeken per administratie (blok A bundel 10-09): was dit document AUTOMATISCH geboekt, dan is deze
+        # tegenboeking een correctie van het systeem → leverancier terug op "leert 0/N" (opt-in uit, reset-moment,
+        # audit + tijdlijnregel) — ín deze transactie. Lazy import: geen kring (autoboeken importeert boeken).
+        from app.documenten import autoboeken as autoboeken_service
+
+        autoboeken_service.reset_na_correctie_in_sessie(
+            session, administratie_id=administratie_id, document_id=document_id, reden="storno", actor_id=actor_id
+        )
         _sla_tegenboek_webhook_op(
             session,
             administratie_id=administratie_id,

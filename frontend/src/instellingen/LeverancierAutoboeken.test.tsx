@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LeverancierAutoboeken } from './LeverancierAutoboeken'
+import { LeverancierAutoboeken, standVan } from './LeverancierAutoboeken'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const VENDOR_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -158,5 +158,114 @@ describe('LeverancierAutoboeken — opt-in per leverancier (Beheerder)', () => {
     await renderMetAdministratie()
 
     await waitFor(() => expect(screen.getByText(/Nog geen leveranciers bekend/)).toBeInTheDocument())
+  })
+})
+
+// Blok A bundel 10-09: administratie-schakelaar AAN → uitzonderingenlijst (chips per stand, Uitzonderen… mét verplichte
+// reden, Vrijgeven); de kale switch alleen bij schakelaar UIT.
+function installLerenMock(aanroepen: { url: string; body: unknown }[], opties: { uitzonderStatus?: number } = {}) {
+  const leveranciers = [
+    { vendor_id: VENDOR_ID, naam: 'Bouwmaat Nederland B.V.', autoboeken_ingeschakeld: false, stand: 'leert', reeks: 2, drempel: 3, bron: null, gereset_op: null, uitzondering_reden: null },
+    { vendor_id: TWEEDE_VENDOR_ID, naam: 'Technische Unie', autoboeken_ingeschakeld: true, stand: 'boekt_automatisch', reeks: 7, drempel: 3, bron: 'systeem', gereset_op: null, uitzondering_reden: null },
+    { vendor_id: 'dddddddd-0000-0000-0000-000000000004', naam: 'Labo Derva', autoboeken_ingeschakeld: false, stand: 'uitgezonderd', reeks: 0, drempel: 3, bron: null, gereset_op: null, uitzondering_reden: 'buitenlandse btw, altijd handwerk' },
+    { vendor_id: 'eeeeeeee-0000-0000-0000-000000000005', naam: 'Transip B.V.', autoboeken_ingeschakeld: true, stand: 'handmatig_aan', reeks: 1, drempel: 3, bron: 'mens', gereset_op: null, uitzondering_reden: null },
+  ]
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/leveranciers-autoboeken') && (!init || init.method === undefined)) return Promise.resolve(jsonResponse({ leveranciers }))
+      if (url.endsWith('/autoboeken-uitzonderen') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { reden: string }
+        aanroepen.push({ url, body })
+        if (opties.uitzonderStatus === 422) return Promise.resolve(jsonResponse({ detail: 'Reden is verplicht.' }, 422))
+        return Promise.resolve(jsonResponse({ ...leveranciers[0], autoboeken_ingeschakeld: false, stand: 'uitgezonderd', uitzondering_reden: body.reden }))
+      }
+      if (url.endsWith('/autoboeken-vrijgeven') && init?.method === 'POST') {
+        aanroepen.push({ url, body: null })
+        return Promise.resolve(jsonResponse({ ...leveranciers[2], stand: 'boekt_automatisch', bron: 'systeem', autoboeken_ingeschakeld: true, uitzondering_reden: null }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    }),
+  )
+}
+
+describe('LeverancierAutoboeken — uitzonderingenlijst als de administratie-schakelaar aan staat (blok A 10-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont per leverancier een stand-chip (leert n/3 · boekt automatisch · uitgezonderd mét reden-title · handmatig aan) en GEEN switches', async () => {
+    installLerenMock([])
+    render(<LeverancierAutoboeken administraties={[{ id: ADMINISTRATIE_ID, naam: 'Testklant B.V.' }]} vasteAdministratieId={ADMINISTRATIE_ID} administratieLerenAan />)
+    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
+    expect(screen.getByTestId('leverancier-autoboeken')).toHaveAttribute('data-modus', 'uitzonderingen')
+    expect(screen.getByText('leert (2/3)')).toBeInTheDocument()
+    expect(screen.getByText('boekt automatisch')).toBeInTheDocument()
+    expect(screen.getByText('uitgezonderd')).toHaveAttribute('title', 'buitenlandse btw, altijd handwerk')
+    expect(screen.getByText('handmatig aan')).toBeInTheDocument()
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    // Acties: Uitzonderen… op niet-uitgezonderde rijen, Vrijgeven op de uitgezonderde.
+    expect(screen.getAllByRole('button', { name: 'Uitzonderen…' })).toHaveLength(3)
+    expect(screen.getAllByRole('button', { name: 'Vrijgeven' })).toHaveLength(1)
+    // Zoekveld filtert op naam.
+    await userEvent.setup().type(screen.getByLabelText('Zoek leverancier'), 'labo')
+    expect(screen.queryByText('Bouwmaat Nederland B.V.')).not.toBeInTheDocument()
+    expect(screen.getByText('Labo Derva')).toBeInTheDocument()
+  })
+
+  it('Uitzonderen… opent een dialoog; zonder reden is de knop uitgeschakeld (geen POST); mét reden → POST {reden} → chip "uitgezonderd"', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installLerenMock(aanroepen)
+    const gebruiker = userEvent.setup()
+    render(<LeverancierAutoboeken administraties={[]} vasteAdministratieId={ADMINISTRATIE_ID} administratieLerenAan />)
+    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
+    await gebruiker.click(within(screen.getByTestId(`leverancier-rij-${VENDOR_ID}`)).getByRole('button', { name: 'Uitzonderen…' }))
+    const dialoog = await screen.findByTestId('uitzonder-dialoog')
+    expect(dialoog).toHaveTextContent('Uitzonderen — Bouwmaat Nederland B.V.')
+    expect(within(dialoog).getByRole('button', { name: 'Uitzonderen' })).toBeDisabled()
+    await gebruiker.type(within(dialoog).getByLabelText('Reden'), 'wisselende projecten per factuur')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Uitzonderen' }))
+    await waitFor(() => expect(screen.queryByTestId('uitzonder-dialoog')).not.toBeInTheDocument())
+    expect(aanroepen).toEqual([{ url: `/administraties/${ADMINISTRATIE_ID}/leveranciers/${VENDOR_ID}/autoboeken-uitzonderen`, body: { reden: 'wisselende projecten per factuur' } }])
+    const rij = screen.getByTestId(`leverancier-rij-${VENDOR_ID}`)
+    expect(within(rij).getByText('uitgezonderd')).toHaveAttribute('title', 'wisselende projecten per factuur')
+    expect(within(rij).getByRole('button', { name: 'Vrijgeven' })).toBeInTheDocument()
+  })
+
+  it('Vrijgeven → POST …/autoboeken-vrijgeven → nieuwe stand uit de server (direct "boekt automatisch" als de reeks al aan de drempel zit)', async () => {
+    const aanroepen: { url: string; body: unknown }[] = []
+    installLerenMock(aanroepen)
+    const gebruiker = userEvent.setup()
+    render(<LeverancierAutoboeken administraties={[]} vasteAdministratieId={ADMINISTRATIE_ID} administratieLerenAan />)
+    await waitFor(() => expect(screen.getByText('Labo Derva')).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('button', { name: 'Vrijgeven' }))
+    await waitFor(() => expect(aanroepen).toHaveLength(1))
+    expect(aanroepen[0].url).toBe(`/administraties/${ADMINISTRATIE_ID}/leveranciers/dddddddd-0000-0000-0000-000000000004/autoboeken-vrijgeven`)
+    const rij = screen.getByTestId('leverancier-rij-dddddddd-0000-0000-0000-000000000004')
+    await waitFor(() => expect(within(rij).getByText('boekt automatisch')).toBeInTheDocument())
+    expect(within(rij).getByRole('button', { name: 'Uitzonderen…' })).toBeInTheDocument()
+  })
+
+  it('422 op uitzonderen blijft in de dialoog zichtbaar', async () => {
+    installLerenMock([], { uitzonderStatus: 422 })
+    const gebruiker = userEvent.setup()
+    render(<LeverancierAutoboeken administraties={[]} vasteAdministratieId={ADMINISTRATIE_ID} administratieLerenAan />)
+    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
+    await gebruiker.click(within(screen.getByTestId(`leverancier-rij-${VENDOR_ID}`)).getByRole('button', { name: 'Uitzonderen…' }))
+    const dialoog = await screen.findByTestId('uitzonder-dialoog')
+    await gebruiker.type(within(dialoog).getByLabelText('Reden'), 'x')
+    await gebruiker.click(within(dialoog).getByRole('button', { name: 'Uitzonderen' }))
+    expect(await within(dialoog).findByText('Reden is verplicht.')).toBeInTheDocument()
+  })
+
+  it('schakelaar UIT (oude flow): switches blijven, geen Uitzonderen/Vrijgeven; standVan leidt de stand af zonder server-veld', async () => {
+    installLerenMock([])
+    render(<LeverancierAutoboeken administraties={[]} vasteAdministratieId={ADMINISTRATIE_ID} />)
+    await waitFor(() => expect(screen.getByText('Bouwmaat Nederland B.V.')).toBeInTheDocument())
+    expect(screen.getByTestId('leverancier-autoboeken')).toHaveAttribute('data-modus', 'opt-in')
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Uitzonderen…' })).not.toBeInTheDocument()
+    expect(standVan({ vendor_id: 'v', naam: null, autoboeken_ingeschakeld: true }, false)).toBe('handmatig_aan')
+    expect(standVan({ vendor_id: 'v', naam: null, autoboeken_ingeschakeld: true }, true)).toBe('boekt_automatisch')
+    expect(standVan({ vendor_id: 'v', naam: null, autoboeken_ingeschakeld: false }, true)).toBe('leert')
+    expect(standVan({ vendor_id: 'v', naam: null, autoboeken_ingeschakeld: false, stand: 'uitgezonderd' }, true)).toBe('uitgezonderd')
   })
 })

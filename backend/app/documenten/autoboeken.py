@@ -25,10 +25,14 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
 
+from app.autoboek_kandidaten.models import DREMPEL_DEFAULT, AutoboekInstelling, AutoboekKandidaatStand
 from app.db.audit import record_audit_event
+from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import boeken as boeken_service
@@ -38,7 +42,14 @@ from app.documenten.boekvoorstel import (
     haal_boekvoorstel_op,
     sla_boekvoorstel_op,
 )
-from app.documenten.models import Document, DocumentSoort, DocumentStatus, LeverancierVoorkeur
+from app.documenten.models import (
+    Boekvoorstel,
+    Document,
+    DocumentGebeurtenis,
+    DocumentSoort,
+    DocumentStatus,
+    LeverancierVoorkeur,
+)
 from app.geheugen.engine import GeheugenVoorstel
 from app.geheugen.service import voorstel_voor
 from app.sync.models import VendorCache
@@ -56,19 +67,47 @@ class VeldwerkerKoppelingBlokkeertOptIn(Exception):
     veldwerker-koppeling (besluit 4, activatie = fase 4, strikt groen incl. bedrag)."""
 
 
+class RedenVerplicht(Exception):
+    """Uitzonderen (blok A bundel 10-09) vraagt een reden — nooit stil (422 in de router)."""
+
+
 @dataclass(frozen=True)
 class LeverancierAutoboeken:
+    """Eén rij in de UITZONDERINGENLIJST (blok A bundel 10-09): opt-in-stand + stand-chip (`leert` n/drempel |
+    `boekt_automatisch` | `uitgezonderd` | `handmatig_aan`), herkomst (`bron` mens/systeem) en reset-moment."""
+
     vendor_id: uuid.UUID
     naam: str | None
     autoboeken_ingeschakeld: bool
+    stand: str = "leert"
+    reeks: int = 0
+    drempel: int = DREMPEL_DEFAULT
+    bron: str | None = None
+    gereset_op: datetime | None = None
+    uitgezonderd: bool = False
+    uitzondering_reden: str | None = None
+
+
+def _drempel(session: Session) -> int:
+    rij = session.get(AutoboekInstelling, True)
+    return int(rij.drempel_op_rij) if rij is not None else DREMPEL_DEFAULT
 
 
 def lijst_leverancier_autoboeken(*, administratie_id: uuid.UUID) -> list[LeverancierAutoboeken]:
     """Alle actieve leveranciers van de administratie mét hun opt-in-stand (Instellingen-UI); verliezers van een
-    afgehandeld dubbel-cluster staan er niet in (B13 07-09 — opt-in hoort op de voorkeur)."""
+    afgehandeld dubbel-cluster staan er niet in (B13 07-09 — opt-in hoort op de voorkeur). Sinds blok A 10-09 mét
+    stand-chip, reeks n/drempel (uit `autoboek_kandidaat_stand`, de laatst berekende stand), bron en reset-moment."""
+    from app.autoboek_kandidaten.service import stand_label
     from app.crediteuren.voorkeur import BRUIKBAAR
 
     with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        leren_aan = bool(
+            administratie is not None
+            and administratie.autoboeken_leren_ingeschakeld
+            and not administratie.doorbelasting_ingeschakeld
+        )
+        drempel = _drempel(session)
         vendors = session.scalars(
             select(VendorCache)
             .where(
@@ -79,29 +118,59 @@ def lijst_leverancier_autoboeken(*, administratie_id: uuid.UUID) -> list[Leveran
             .order_by(VendorCache.naam)
         ).all()
         voorkeuren = {
-            v.vendor_id: v.autoboeken_ingeschakeld
+            v.vendor_id: v
             for v in session.scalars(
                 select(LeverancierVoorkeur).where(LeverancierVoorkeur.administratie_id == administratie_id)
             )
         }
-        return [
-            LeverancierAutoboeken(
-                vendor_id=vendor.id,
-                naam=vendor.naam,
-                autoboeken_ingeschakeld=voorkeuren.get(vendor.id, False),
+        reeksen = dict(
+            session.execute(
+                select(AutoboekKandidaatStand.vendor_id, AutoboekKandidaatStand.reeks_ongewijzigd).where(
+                    AutoboekKandidaatStand.administratie_id == administratie_id
+                )
+            ).all()
+        )
+        uit: list[LeverancierAutoboeken] = []
+        for vendor in vendors:
+            voorkeur = voorkeuren.get(vendor.id)
+            actief = bool(voorkeur and voorkeur.autoboeken_ingeschakeld)
+            uitgezonderd = bool(voorkeur and voorkeur.autoboeken_uitgezonderd)
+            bron = voorkeur.autoboeken_bron if voorkeur else None
+            uit.append(
+                LeverancierAutoboeken(
+                    vendor_id=vendor.id,
+                    naam=vendor.naam,
+                    autoboeken_ingeschakeld=actief,
+                    stand=stand_label(
+                        actief=actief, bron=bron, uitgezonderd=uitgezonderd, administratie_leren_aan=leren_aan
+                    ),
+                    reeks=int(reeksen.get(vendor.id, 0) or 0),
+                    drempel=drempel,
+                    bron=bron,
+                    gereset_op=voorkeur.autoboeken_gereset_op if voorkeur else None,
+                    uitgezonderd=uitgezonderd,
+                    uitzondering_reden=voorkeur.autoboeken_uitzondering_reden if voorkeur else None,
+                )
             )
-            for vendor in vendors
-        ]
+        return uit
 
 
 def zet_leverancier_autoboeken(
-    *, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uuid.UUID, ingeschakeld: bool
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    ingeschakeld: bool,
+    bron: str = "mens",
 ) -> bool:
     """Zet de opt-in per leverancier. Beheerder-only wordt in de router afgedwongen
     (require_beheerder); elke zetting — óók een herbevestiging — gaat het audit_event in
     (zelfde bewuste conventie als de beheer-toggles, app/beheer/service.py). AANzetten wordt
     geweigerd voor een crediteur mét veldwerker-koppeling (factuurmatch fase 2 — het
-    veldwerker-autoboekpad, fase 4, is daar het enige kanaal); UITzetten mag altijd."""
+    veldwerker-autoboekpad, fase 4, is daar het enige kanaal); UITzetten mag altijd.
+    `bron` (blok A 10-09): 'mens' (default — de Beheerder-switch/bulk) of 'systeem' (de leerregel via
+    `autoboek_kandidaten.service.activeer_kwalificerend`); landt in `autoboeken_bron` en het audit-event. Een mens die
+    AANzet heft daarmee een eerdere uitzondering op (mens wint, zichtbaar in het audit-event)."""
     from app.uren.factuurmatch import vind_veldwerker_koppeling
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -114,6 +183,8 @@ def zet_leverancier_autoboeken(
             )
         voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
         oud = voorkeur.autoboeken_ingeschakeld if voorkeur else False
+        oud_bron = voorkeur.autoboeken_bron if voorkeur else None
+        oud_uitgezonderd = bool(voorkeur and voorkeur.autoboeken_uitgezonderd)
         if voorkeur is None:
             # regels_samenvoegen default AAN — zelfde default als het boekvoorstel hanteert
             # zolang er geen voorkeur bestaat (app/documenten/boekvoorstel.py).
@@ -126,6 +197,10 @@ def zet_leverancier_autoboeken(
             session.add(voorkeur)
         else:
             voorkeur.autoboeken_ingeschakeld = ingeschakeld
+        voorkeur.autoboeken_bron = bron if ingeschakeld else None
+        if ingeschakeld and bron == "mens" and oud_uitgezonderd:
+            voorkeur.autoboeken_uitgezonderd = False
+            voorkeur.autoboeken_uitzondering_reden = None
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -134,11 +209,217 @@ def zet_leverancier_autoboeken(
             record_id=vendor_id,
             actie="leverancier_autoboeken_gewijzigd",
             correlatie_id=uuid.uuid4(),
-            oude_waarde={"autoboeken_ingeschakeld": oud},
-            nieuwe_waarde={"autoboeken_ingeschakeld": ingeschakeld},
+            oude_waarde={"autoboeken_ingeschakeld": oud, "bron": oud_bron, "uitgezonderd": oud_uitgezonderd},
+            nieuwe_waarde={
+                "autoboeken_ingeschakeld": ingeschakeld,
+                "bron": voorkeur.autoboeken_bron,
+                "uitgezonderd": voorkeur.autoboeken_uitgezonderd,
+            },
             administratie_id=administratie_id,
         )
     return ingeschakeld
+
+
+def _leverancier_naam(session: Session, vendor_id: uuid.UUID) -> str | None:
+    return session.scalar(select(VendorCache.naam).where(VendorCache.id == vendor_id))
+
+
+def zonder_leverancier_uit(
+    *, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uuid.UUID, reden: str
+) -> None:
+    """Uitzonderen (blok A bundel 10-09): de enige menselijke ingreep als de administratie-schakelaar aan staat —
+    het systeem activeert deze leverancier nooit (meer). Zet óók de opt-in uit (via de bestaande schrijver, eigen
+    audit) en legt de VERPLICHTE reden vast (audit `autoboek_leverancier_uitgezonderd`; `RedenVerplicht` → 422)."""
+    reden = (reden or "").strip()
+    if not reden:
+        raise RedenVerplicht("Een reden is verplicht bij het uitzonderen van een leverancier")
+    if _autoboeken_ingeschakeld(administratie_id=administratie_id, vendor_id=vendor_id):
+        zet_leverancier_autoboeken(
+            administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, ingeschakeld=False
+        )
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
+        if voorkeur is None:
+            voorkeur = LeverancierVoorkeur(
+                administratie_id=administratie_id,
+                vendor_id=vendor_id,
+                regels_samenvoegen=True,
+                autoboeken_ingeschakeld=False,
+            )
+            session.add(voorkeur)
+        oud = {"uitgezonderd": voorkeur.autoboeken_uitgezonderd, "reden": voorkeur.autoboeken_uitzondering_reden}
+        voorkeur.autoboeken_uitgezonderd = True
+        voorkeur.autoboeken_uitzondering_reden = reden
+        stand = session.get(AutoboekKandidaatStand, (administratie_id, vendor_id))
+        if stand is not None:
+            stand.actief = False
+            stand.actief_sinds = None
+            stand.heroverweeg_signalen = []
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="leverancier_voorkeur",
+            record_id=vendor_id,
+            actie="autoboek_leverancier_uitgezonderd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde=oud,
+            nieuwe_waarde={
+                "uitgezonderd": True,
+                "reden": reden,
+                "leverancier_naam": _leverancier_naam(session, vendor_id),
+            },
+            administratie_id=administratie_id,
+        )
+
+
+def geef_leverancier_vrij(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    """Vrijgeven (blok A bundel 10-09): heft de uitzondering op (audit `autoboek_leverancier_vrijgegeven`) en laat
+    het systeem direct toetsen — haalt de reeks de drempel al, dan is de leverancier meteen weer actief."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
+        oud = {
+            "uitgezonderd": bool(voorkeur and voorkeur.autoboeken_uitgezonderd),
+            "reden": voorkeur.autoboeken_uitzondering_reden if voorkeur else None,
+        }
+        if voorkeur is not None:
+            voorkeur.autoboeken_uitgezonderd = False
+            voorkeur.autoboeken_uitzondering_reden = None
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="leverancier_voorkeur",
+            record_id=vendor_id,
+            actie="autoboek_leverancier_vrijgegeven",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde=oud,
+            nieuwe_waarde={
+                "uitgezonderd": False,
+                "reden": None,
+                "leverancier_naam": _leverancier_naam(session, vendor_id),
+            },
+            administratie_id=administratie_id,
+        )
+    from app.autoboek_kandidaten import service as kandidaten_service  # lokaal: geen kring
+
+    kandidaten_service.activeer_kwalificerend_stil(administratie_id=administratie_id, vendor_id=vendor_id)
+
+
+# ----------------------------------------------------------------------------- reset ná storno/correctie
+
+
+def laatste_boeking_was_automatisch(session: Session, *, document_id: uuid.UUID) -> bool:
+    """Draagt de jongste GEBOEKT-overgang van dit document `automatisch_geboekt`? (tegenboeken/herboeken/storno-detectie
+    lezen dit ín hun transactie — de zojuist toegevoegde vervolg-overgang is geen GEBOEKT-overgang en stoort niet.)"""
+    gebeurtenis = session.scalars(
+        select(DocumentGebeurtenis)
+        .where(
+            DocumentGebeurtenis.document_id == document_id,
+            DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
+            # Echte overgang, geen tijdlijn-notitie (van = naar, bv. de activatie-/reset-regel zelf).
+            or_(
+                DocumentGebeurtenis.van_status.is_(None),
+                DocumentGebeurtenis.van_status != DocumentGebeurtenis.naar_status,
+            ),
+        )
+        .order_by(DocumentGebeurtenis.tijdstip.desc())
+        .limit(1)
+    ).first()
+    return bool(gebeurtenis is not None and (gebeurtenis.detail or {}).get("automatisch_geboekt"))
+
+
+RESET_REDENEN = ("storno", "correctie")
+
+
+def reset_na_correctie_in_sessie(
+    session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID, reden: str, actor_id: uuid.UUID
+) -> bool:
+    """Blok A bundel 10-09 (besluit Peter 10-09): een storno of correctie van een AUTOMATISCHE boeking zet de
+    leverancier terug op "leert 0/N" — opt-in uit (via de bestaande schrijver, eigen sessie ná deze transactie is
+    niet nodig: we schrijven hier ín de transactie van de tegenboeking/herboeking, samen of samen niet),
+    `autoboeken_gereset_op = now()`, `autoboeken_bron = None`, audit `autoboek_leverancier_gereset` (reden +
+    document) en een tijdlijnregel op het document. False = het document was niet automatisch geboekt (niets te
+    resetten; een menselijke boeking corrigeren raakt de leerregel niet)."""
+    if reden not in RESET_REDENEN:
+        raise ValueError(f"Onbekende reset-reden: {reden}")
+    if not laatste_boeking_was_automatisch(session, document_id=document_id):
+        return False
+    vendor_id = session.scalar(select(Boekvoorstel.vendor_id).where(Boekvoorstel.document_id == document_id))
+    document = session.get(Document, document_id)
+    if vendor_id is None or document is None:
+        return False
+    voorkeur = session.get(LeverancierVoorkeur, (administratie_id, vendor_id))
+    if voorkeur is None:
+        voorkeur = LeverancierVoorkeur(
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            regels_samenvoegen=True,
+            autoboeken_ingeschakeld=False,
+        )
+        session.add(voorkeur)
+    nu = datetime.now(UTC)
+    oud = {
+        "autoboeken_ingeschakeld": voorkeur.autoboeken_ingeschakeld,
+        "bron": voorkeur.autoboeken_bron,
+        "gereset_op": voorkeur.autoboeken_gereset_op.isoformat() if voorkeur.autoboeken_gereset_op else None,
+    }
+    voorkeur.autoboeken_ingeschakeld = False
+    voorkeur.autoboeken_bron = None
+    voorkeur.autoboeken_gereset_op = nu
+    stand = session.get(AutoboekKandidaatStand, (administratie_id, vendor_id))
+    if stand is not None:
+        stand.actief = False
+        stand.actief_sinds = None
+        stand.reeks_ongewijzigd = 0
+        stand.kwalificeert = False
+        stand.heroverweeg_signalen = []
+    drempel = _drempel(session)
+    naam = _leverancier_naam(session, vendor_id)
+    detail = {
+        "reden": reden,
+        "document_id": str(document_id),
+        "vendor_id": str(vendor_id),
+        "leverancier_naam": naam,
+        "gereset_op": nu.isoformat(),
+        "drempel": drempel,
+    }
+    if voorkeur.autoboeken_ingeschakeld != oud["autoboeken_ingeschakeld"]:
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="leverancier_voorkeur",
+            record_id=vendor_id,
+            actie="leverancier_autoboeken_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"autoboeken_ingeschakeld": True, "bron": oud["bron"]},
+            nieuwe_waarde={"autoboeken_ingeschakeld": False, "bron": None, "aanleiding": f"reset ná {reden}"},
+            administratie_id=administratie_id,
+        )
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="leverancier_voorkeur",
+        record_id=vendor_id,
+        actie="autoboek_leverancier_gereset",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde=oud,
+        nieuwe_waarde={"autoboeken_ingeschakeld": False, "bron": None, **detail},
+        administratie_id=administratie_id,
+    )
+    tekst = f"Autoboeken voor {naam or 'deze leverancier'} teruggezet naar leren (0/{drempel}) — {reden}"
+    session.add(
+        DocumentGebeurtenis(
+            document_id=document_id,
+            van_status=document.status,
+            naar_status=document.status,
+            actor_id=actor_id,
+            detail={"autoboek_reset": detail, "reden": tekst},
+        )
+    )
+    return True
 
 
 def _autoboeken_ingeschakeld(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> bool:
@@ -351,6 +632,38 @@ def probeer_autoboeken_na_extractie(
         totaalbedrag=voorstel.totaalbedrag,
         regels=gevulde_regels,
     )
+
+    # B3-poort (blok B bundel 10-09, CONTRACT_A/CONTRACT_B §B3): AI-plausibiliteitstoets op het voorgestelde
+    # GB/btw — de AI krijgt géén keuze, alleen ja/nee. 'plausibel' of 'uit' (platformbrede setting uit) → boeken;
+    # 'twijfel' of 'overgeslagen' (AVG-gate, API-key, kostengrens, AI-fout) → NIET boeken, zichtbaar geweigerd
+    # (categorie twijfel/api_key/avg_gate/kostengrens in de reconciliatie-tellers). Lazy import: pakket van agent B.
+    from app.aitoets.plausibiliteit import toets_factuur_autoboeking
+
+    toets = toets_factuur_autoboeking(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        invoer_velden={
+            "vendor_id": str(voorstel.vendor_id),
+            "referentie": voorstel.referentie,
+            "totaalbedrag": str(voorstel.totaalbedrag),
+            "regels": [
+                {
+                    "omschrijving": r.omschrijving,
+                    "ledger_id": str(r.ledger_id) if r.ledger_id else None,
+                    "taxrate_id": str(r.taxrate_id) if r.taxrate_id else None,
+                    "project_id": str(r.project_id) if r.project_id else None,
+                    "netto_bedrag": str(r.netto_bedrag) if r.netto_bedrag is not None else None,
+                }
+                for r in gevulde_regels
+            ],
+        },
+    )
+    if toets.uitkomst not in ("plausibel", "uit"):
+        return _weiger(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            reden=f"AI-plausibiliteitstoets: {toets.uitkomst} — {toets.reden}",
+        )
 
     try:
         boeken_service.boek_document(

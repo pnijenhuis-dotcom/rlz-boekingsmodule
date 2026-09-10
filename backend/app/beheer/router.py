@@ -64,6 +64,8 @@ def administratie_instellingen_lijst(
                 doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
                 doorbelasting_doel=r.doorbelasting_doel,
                 omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
+                autoboeken_leren_ingeschakeld=r.autoboeken_leren_ingeschakeld,
+                autoboeken_leren_toegestaan=r.autoboeken_leren_toegestaan,
                 bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
                 accordering_ingeschakeld=r.accordering_ingeschakeld,
                 laatste_sync_op=r.laatste_sync_op,
@@ -665,6 +667,45 @@ def omzet_autoboeken_instelling_zetten(
     except service.BeheerFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return schemas.OmzetAutoboekenDto(ingeschakeld=ingeschakeld)
+
+
+@router.get(
+    "/administraties/{administratie_id}/autoboeken-leren-instelling",
+    response_model=schemas.AutoboekenLerenStandDto,
+)
+def autoboeken_leren_instelling_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.AutoboekenLerenStandDto:
+    try:
+        stand = service.haal_autoboeken_leren_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.AutoboekenLerenStandDto(**stand.__dict__)
+
+
+@router.put(
+    "/administraties/{administratie_id}/autoboeken-leren-instelling",
+    response_model=schemas.AutoboekenLerenStandDto,
+)
+def autoboeken_leren_instelling_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.AutoboekenLerenDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AutoboekenLerenStandDto:
+    """Schakelaar "Autoboeken (leren en boeken)" (blok A bundel 10-09, besluit Peter 10-09, migratie 0128) —
+    Beheerder-only,
+    default UIT, audit oud→nieuw. Kempen-regel: doorbelasting-administratie → 409 mét uitleg (ook in bulk zichtbaar per
+    rij, geen stille no-op); uitzetten mag altijd. Het pad zelf activeert leveranciers pas ná ≥ N mens-boekingen op rij
+    en boekt alleen als álles groen is (app/documenten/autoboeken.py, app/autoboek_kandidaten/service.py)."""
+    try:
+        stand = service.zet_autoboeken_leren(
+            actor_id=actor.id, administratie_id=administratie_id, ingeschakeld=invoer.ingeschakeld
+        )
+    except service.AutoboekenLerenNietToegestaan as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.AutoboekenLerenStandDto(**stand.__dict__)
 
 
 @router.get(

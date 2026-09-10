@@ -546,14 +546,80 @@ def leveranciers_autoboeken_lijst(
 
     return schemas.LeverancierAutoboekenLijstResponse(
         leveranciers=[
-            schemas.LeverancierAutoboekenDto(
-                vendor_id=rij.vendor_id,
-                naam=rij.naam,
-                autoboeken_ingeschakeld=rij.autoboeken_ingeschakeld,
-            )
+            _leverancier_autoboeken_dto(rij)
             for rij in autoboeken.lijst_leverancier_autoboeken(administratie_id=administratie_id)
         ]
     )
+
+
+def _leverancier_autoboeken_dto(rij) -> schemas.LeverancierAutoboekenDto:  # noqa: ANN001
+    return schemas.LeverancierAutoboekenDto(
+        vendor_id=rij.vendor_id,
+        naam=rij.naam,
+        autoboeken_ingeschakeld=rij.autoboeken_ingeschakeld,
+        stand=rij.stand,
+        reeks=rij.reeks,
+        drempel=rij.drempel,
+        bron=rij.bron,
+        gereset_op=rij.gereset_op,
+        uitzondering_reden=rij.uitzondering_reden,
+    )
+
+
+def _leverancier_rij(administratie_id: uuid.UUID, vendor_id: uuid.UUID) -> schemas.LeverancierAutoboekenDto:
+    from app.documenten import autoboeken
+
+    rij = next(
+        (
+            r
+            for r in autoboeken.lijst_leverancier_autoboeken(administratie_id=administratie_id)
+            if r.vendor_id == vendor_id
+        ),
+        None,
+    )
+    if rij is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onbekende leverancier in deze administratie")
+    return _leverancier_autoboeken_dto(rij)
+
+
+@router.post(
+    "/administraties/{administratie_id}/leveranciers/{vendor_id}/autoboeken-uitzonderen",
+    response_model=schemas.LeverancierAutoboekenDto,
+)
+def leverancier_autoboeken_uitzonderen(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    invoer: schemas.LeverancierUitzonderenInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierAutoboekenDto:
+    """Uitzonderen (blok A bundel 10-09): het systeem activeert deze leverancier nooit (meer); opt-in gaat uit; reden
+    verplicht (422 zonder) — Beheerder-only."""
+    from app.documenten import autoboeken
+
+    try:
+        autoboeken.zonder_leverancier_uit(
+            administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor.id, reden=invoer.reden
+        )
+    except autoboeken.RedenVerplicht as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return _leverancier_rij(administratie_id, vendor_id)
+
+
+@router.post(
+    "/administraties/{administratie_id}/leveranciers/{vendor_id}/autoboeken-vrijgeven",
+    response_model=schemas.LeverancierAutoboekenDto,
+)
+def leverancier_autoboeken_vrijgeven(
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierAutoboekenDto:
+    """Vrijgeven (blok A bundel 10-09): uitzondering opheffen; het systeem toetst direct en activeert als de reeks de
+    drempel al haalt — Beheerder-only."""
+    from app.documenten import autoboeken
+
+    autoboeken.geef_leverancier_vrij(administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor.id)
+    return _leverancier_rij(administratie_id, vendor_id)
 
 
 @router.put(
@@ -584,11 +650,9 @@ def leverancier_autoboeken_zetten(
         ),
         None,
     )
-    return schemas.LeverancierAutoboekenDto(
-        vendor_id=vendor_id,
-        naam=with_naam.naam if with_naam else None,
-        autoboeken_ingeschakeld=ingeschakeld,
-    )
+    if with_naam is not None:
+        return _leverancier_autoboeken_dto(with_naam)
+    return schemas.LeverancierAutoboekenDto(vendor_id=vendor_id, naam=None, autoboeken_ingeschakeld=ingeschakeld)
 
 
 @router.get(

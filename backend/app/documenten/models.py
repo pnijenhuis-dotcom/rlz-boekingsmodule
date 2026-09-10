@@ -336,6 +336,14 @@ class LeverancierVoorkeur(Base):
     # wijzigen, elke wijziging in audit_event. De harde checks + failsafes blijven bij het
     # automatisch boeken onverkort blokkerend (app/documenten/autoboeken.py).
     autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False)
+    # Autoboeken per administratie (blok A bundel 10-09, migratie 0128): de per-leverancier-lijst is een
+    # UITZONDERINGENLIJST — `autoboeken_uitgezonderd` (mens, mét verplichte reden) = het systeem activeert nooit;
+    # `autoboeken_bron` 'mens' | 'systeem' = wie de opt-in aanzette; `autoboeken_gereset_op` = reset-moment ná
+    # storno/correctie van een automatische boeking — de reeks "N op rij" telt alleen mens-boekingen ná dit moment.
+    autoboeken_uitgezonderd: Mapped[bool] = mapped_column(default=False, server_default="false")
+    autoboeken_uitzondering_reden: Mapped[str | None] = mapped_column(default=None)
+    autoboeken_bron: Mapped[str | None] = mapped_column(default=None)
+    autoboeken_gereset_op: Mapped[datetime | None] = mapped_column(default=None)
     # Projectverdeling pro rato omzet (migratie 0107, blok C 04-09, ④): AAN = élk document van deze crediteur
     # krijgt automatisch een verdeelvoorstel mét alleen de restant-regel (app/projectverdeling/). Beheerder-only.
     projectverdeling_pro_rato: Mapped[bool] = mapped_column(default=False, server_default="false")

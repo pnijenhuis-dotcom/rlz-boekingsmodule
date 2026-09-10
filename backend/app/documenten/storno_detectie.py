@@ -138,6 +138,17 @@ def detecteer_en_meld_gestorneerd(*, administratie_id: uuid.UUID, client: RlzCli
                     actor_id=SYSTEEM_ACTOR_ID,
                     reden="storno gedetecteerd in de RLZ-UI (actie 19)",
                 )
+                # Autoboeken per administratie (blok A bundel 10-09): storno van een AUTOMATISCHE boeking →
+                # leverancier terug op "leert 0/N" (ín deze transactie; lazy import, geen kring).
+                from app.documenten import autoboeken as autoboeken_service
+
+                autoboeken_service.reset_na_correctie_in_sessie(
+                    session,
+                    administratie_id=administratie_id,
+                    document_id=document_id,
+                    reden="storno",
+                    actor_id=SYSTEEM_ACTOR_ID,
+                )
                 # Mini-voorraad speciale producten (blok F 06-09): de instroom van deze boekcyclus spiegelen als
                 # storno — zelfde idempotentie (al gespiegeld = no-op). NB dit pad dekt alleen vastgoed-
                 # administraties (zie moduledocstring); voor de overige is de RLZ-UI-storno alleen een

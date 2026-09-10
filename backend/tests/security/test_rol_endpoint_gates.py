@@ -148,6 +148,10 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling/herverdelen"),
+        ("GET", f"/administraties/{aid}/autoboeken-leren-instelling"),  # blok A 10-09: schakelaar (beheerder-only)
+        ("PUT", f"/administraties/{aid}/autoboeken-leren-instelling"),  # blok A 10-09 (beheerder-only)
+        ("POST", f"/administraties/{aid}/leveranciers/{DUMMY_ID}/autoboeken-uitzonderen"),  # blok A 10-09 (beheerder-only)
+        ("POST", f"/administraties/{aid}/leveranciers/{DUMMY_ID}/autoboeken-vrijgeven"),  # blok A 10-09 (beheerder-only)
         ("GET", f"/administraties/{aid}/leveranciers-projectverdeling"),  # beheerder-only
         ("PUT", f"/administraties/{aid}/leveranciers/{DUMMY_ID}/projectverdeling-instelling"),  # beheerder-only
         ("GET", f"/administraties/{aid}/projectverdeling-instellingen"),  # beheerder-only
@@ -302,6 +306,8 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/verlegd-voorkeur")
                 or pad.endswith("/duplicaat-autoafvoer")
                 or pad.endswith("/leveranciers-projectverdeling")
+                or pad.endswith("/autoboeken-leren-instelling")  # blok A 10-09: Beheerder-only
+                or pad.endswith(("/autoboeken-uitzonderen", "/autoboeken-vrijgeven"))  # blok A 10-09: Beheerder-only
                 or pad.endswith("/projectverdeling-instelling")
                 or pad.endswith("/projectverdeling-instellingen")
                 or "/odoo" in pad

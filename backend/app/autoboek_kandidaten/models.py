@@ -16,7 +16,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base
 
-DREMPEL_DEFAULT = 5
+# Platformbreed 3 sinds blok A bundel 10-09 (besluit Peter 10-09; was 5 op 01-09). De productie-rij gaat via CLI
+# `autoboek-drempel-zetten --drempel 3` mét audit naar 3 (migratie 0128 = alleen de server_default).
+DREMPEL_DEFAULT = 3
 
 
 class AutoboekKandidaatStand(Base):

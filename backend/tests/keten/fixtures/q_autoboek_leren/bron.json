@@ -1,0 +1,6 @@
+{
+ "casus": "q_autoboek_leren — autoboeken per administratie: leren en boeken (blok A bundel 10-09, besluit Peter 10-09)",
+ "basis": "h_bdo_6088744 (BDO Accountancy, Tax & Legal B.V. → Universal Steigerbouw B.V.): dezelfde geanonimiseerde UBL + vervang-PDF, per exemplaar met een ander factuurnummer (6088744 → 6088751…6088755) zodat noch de duplicaatcheck (module) noch de beeld-sha (blok D 07-09) de exemplaren als dubbel ziet.",
+ "flow": "schakelaar 'Autoboeken (leren en boeken)' aan → vier mens-boekingen op GB 4700 / NL Hoog / project 26049 (de eerste legt de basis, drie bevestigen: reeks 3 = drempel 3) → het systeem activeert de leverancier (bron systeem, audit + tijdlijnregel) → vijfde exemplaar boekt automatisch bij intake (chip automatisch) → tegenboeking (storno geblokkeerd door een ingediende aangifte) zet de leverancier terug op leert 0/3. Zelfde flow zonder schakelaar = alleen nominatie. Doorbelasting-administratie → 409.",
+ "geen_echte_bytes": "de PDF wordt gegenereerd uit pdf_tekst.json van casus h met het factuurnummer vervangen; geen BSN's, geen echte PDF-bytes."
+}

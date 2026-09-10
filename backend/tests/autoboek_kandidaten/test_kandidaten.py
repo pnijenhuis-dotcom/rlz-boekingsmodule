@@ -288,10 +288,13 @@ class TestKeten:
     def test_vijf_op_rij_maakt_een_kandidaat_en_bulk_aanzetten_hertoetst_live(
         self, administratie_id: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, opslag, admin_engine: Engine
     ) -> None:
+        # Deze test toetst de motor op de oorspronkelijke drempel 5 (01-09); de platformbrede default is sinds blok A
+        # 10-09 3 — expliciet terugzetten zodat "3 op rij bij drempel 5" hier zijn betekenis houdt.
+        service.zet_drempel(actor_id=beheerder_id, drempel=5)
         for n in range(4):
             _geboekt(administratie_id, beheerder_id, opslag, n=n)
         tellers = service.herbereken_administratie(administratie_id=administratie_id)
-        assert tellers == {"kandidaten": 0, "actief": 0, "heroverwegen": 0, "verborgen": 0, "rijen": 1}
+        assert tellers == {"kandidaten": 0, "actief": 0, "heroverwegen": 0, "verborgen": 0, "rijen": 1, "geactiveerd": 0}
         lijst = service.lijst(tab="kandidaten")
         assert lijst.totaal == 0
         # Niet-kwalificerend blijft leesbaar in de stand (3 op rij: de eerste boeking bevestigt niets).

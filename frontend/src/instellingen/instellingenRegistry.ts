@@ -196,16 +196,19 @@ export function zichtbareTabs(a: AdministratieTabStand): DetailTabDef[] {
   return DETAIL_TABS.filter((t) => t.zichtbaar(a))
 }
 
-export function detailPad(administratieId: string, tab?: DetailTab): string {
+export function detailPad(administratieId: string, tab?: DetailTab, anker?: string): string {
   const basis = `/instellingen/administraties/${administratieId}`
-  return tab && tab !== 'algemeen' ? `${basis}?tab=${tab}` : basis
+  const pad = tab && tab !== 'algemeen' ? `${basis}?tab=${tab}` : basis
+  return anker ? `${pad}#${anker}` : pad
 }
 
 // --- Zoek-registry (deterministisch) ------------------------------------------------------
 
 export type RegistryDoel =
   | { soort: 'sectie'; sectie: InstellingenSectie; anker?: string }
-  | { soort: 'tab'; tab: DetailTab }
+  /** `anker` (blok A bundel 10-09): een losse instelling bínnen een tab (deep-link `…?tab=x#anker`) — de guard telt
+   * alleen tab-entries zónder anker als "de" tab-entry, zoals bij secties. */
+  | { soort: 'tab'; tab: DetailTab; anker?: string }
 
 export interface RegistryEntry {
   id: string
@@ -341,6 +344,15 @@ export const REGISTRY: readonly RegistryEntry[] = [
     waar: 'Administraties › <administratie> › tab Voorraad',
     synoniemen: ['voorraad', 'aansluiting', 'telling', 'tolerantie', 'artikelgroep', 'normalisatie'],
     doel: { soort: 'tab', tab: 'voorraad' },
+    beheerder: true,
+  },
+  // Losse instelling bínnen een tab (blok A bundel 10-09): de administratie-schakelaar "Autoboeken (leren en boeken)".
+  {
+    id: 'autoboeken-leren',
+    naam: 'Autoboeken (leren en boeken) — schakelaar per administratie + uitzonderingen',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › Autoboeken',
+    synoniemen: ['autoboeken', 'leren', 'leren en boeken', 'automatisch boeken', 'uitzonderen', 'uitzondering', 'vrijgeven', 'drie op rij', '3 op rij'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'autoboeken-leren' },
     beheerder: true,
   },
   // Losse instellingen bínnen een sectie (deep-link mét anker).
@@ -481,7 +493,7 @@ export function zoekInstellingen(
           sleutel: `${e.id}:${a.id}`,
           naam: `${e.naam.split(' — ')[0]} — ${a.naam}`,
           waar: e.waar.replace('<administratie>', a.naam),
-          pad: detailPad(a.id, e.doel.tab),
+          pad: detailPad(a.id, e.doel.tab, e.doel.anker),
           administratie: a,
         })
       }

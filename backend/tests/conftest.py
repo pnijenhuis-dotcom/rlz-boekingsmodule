@@ -197,6 +197,19 @@ def _clean_tables() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
+def _ai_toets_facturen_standaard_uit(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Blok A+B bundel 10-09: de AI-plausibiliteitstoets op factuur-autoboekingen (B3) staat platformbreed standaard AAN,
+    maar in de suite staat de AVG-gate (intake-AI) standaard UIT → élke autoboeking zou 'overgeslagen' worden. Buiten
+    tests/aitoets (die de poort zélf toetsen) leest de suite de setting daarom als UIT ('uit' = de aanroeper boekt gewoon);
+    een test die de poort wil zien stubt `toets_factuur_autoboeking` zelf (tests/documenten/test_autoboeken_b3_poort.py)."""
+    if "tests/aitoets" in str(request.node.fspath).replace("\\", "/"):
+        return
+    from app.aitoets import plausibiliteit
+
+    monkeypatch.setattr(plausibiliteit, "ai_toets_facturen_ingeschakeld", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _extractie_wachtrij_direct() -> Generator[None, None, None]:
     """Blok 1c verbreed (08-09): élke AI-extractie gaat via de wachtrij. In de suite is de
     procesbrede default-wachtrij een DirecteExtractieWachtrij (de worker draait meteen, in de

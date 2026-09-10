@@ -389,6 +389,13 @@ def opnieuw_boeken_na_verdwijnen(
             actor_id=actor_id,
             reden=f"extern document verdwenen — opnieuw boeken: {reden}",
         )
+        # Autoboeken per administratie (blok A bundel 10-09): een verdwenen AUTOMATISCHE boeking die opnieuw langs de
+        # mens gaat = correctie → leverancier terug op "leert 0/N" (ín deze transactie; lazy import, geen kring).
+        from app.documenten import autoboeken as autoboeken_service
+
+        autoboeken_service.reset_na_correctie_in_sessie(
+            session, administratie_id=administratie_id, document_id=document_id, reden="correctie", actor_id=actor_id
+        )
         detail["opnieuw_boeken"]["webhook_gestorneerd"] = _meld_gestorneerd_voor_vastgoed(
             session,
             administratie_id=administratie_id,

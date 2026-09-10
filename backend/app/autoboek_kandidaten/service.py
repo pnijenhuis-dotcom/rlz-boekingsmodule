@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.autoboek_kandidaten import motor
@@ -116,10 +116,19 @@ class _VendorData:
     actief_sinds: datetime | None = None
     regels_samenvoegen: bool = True
     veldwerker: bool = False
+    # Blok A bundel 10-09 (uitzonderingenlijst + reset-stand, migratie 0128).
+    uitgezonderd: bool = False
+    uitzondering_reden: str | None = None
+    bron: str | None = None
+    gereset_op: datetime | None = None
 
 
-def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, _VendorData]:
-    """Alle invoer van de motor voor één administratie, in één RLS-gescoopte sessie."""
+def _verzamel(
+    session: Session, administratie_id: uuid.UUID, *, vendor_ids: set[uuid.UUID] | None = None
+) -> dict[uuid.UUID, _VendorData]:
+    """Alle invoer van de motor voor één administratie, in één RLS-gescoopte sessie. `vendor_ids` (blok A 10-09)
+    beperkt de documentquery tot die leveranciers (incl. hun cluster-verliezers) — de live activatie ná élke
+    mens-boeking leest zo niet de hele administratie."""
     from app.crediteuren.voorkeur import verliezers as verliezers_kaart  # B13 07-09
 
     data: dict[uuid.UUID, _VendorData] = {}
@@ -128,6 +137,11 @@ def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, 
 
     def vd(vendor_id: uuid.UUID) -> _VendorData:
         return data.setdefault(kaart.get(vendor_id, vendor_id), _VendorData())
+
+    doc_filter = []
+    if vendor_ids is not None:
+        bereik = set(vendor_ids) | {verliezer for verliezer, winnaar in kaart.items() if winnaar in vendor_ids}
+        doc_filter.append(Boekvoorstel.vendor_id.in_(list(bereik)))
 
     taxrate_namen = dict(
         session.execute(
@@ -142,6 +156,7 @@ def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, 
             Document.soort == DocumentSoort.INKOOPFACTUUR.value,
             Document.status != DocumentStatus.VERWIJDERD,
             Boekvoorstel.vendor_id.is_not(None),
+            *doc_filter,
         )
     ).all()
     doc_ids = [d.id for d, _ in docs]
@@ -160,6 +175,10 @@ def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, 
     for vendor_id, voorkeur in voorkeuren.items():
         vd(vendor_id).actief = bool(voorkeur.autoboeken_ingeschakeld)
         vd(vendor_id).regels_samenvoegen = bool(voorkeur.regels_samenvoegen)
+        vd(vendor_id).uitgezonderd = bool(voorkeur.autoboeken_uitgezonderd)
+        vd(vendor_id).uitzondering_reden = voorkeur.autoboeken_uitzondering_reden
+        vd(vendor_id).bron = voorkeur.autoboeken_bron
+        vd(vendor_id).gereset_op = voorkeur.autoboeken_gereset_op
         if voorkeur.autoboeken_ingeschakeld:
             vd(vendor_id).actief_sinds = voorkeur.gewijzigd_op
     # Activatiemoment uit het audit log (nauwkeuriger dan gewijzigd_op, dat óók op regels_samenvoegen reageert).
@@ -208,6 +227,12 @@ def _verzamel(session: Session, administratie_id: uuid.UUID) -> dict[uuid.UUID, 
                 DocumentGebeurtenis.document_id.in_(doc_ids),
                 DocumentGebeurtenis.naar_status.in_(
                     [DocumentStatus.GEBOEKT, DocumentStatus.VRAAG_OPEN, DocumentStatus.AFGEWEZEN]
+                ),
+                # Alleen échte overgangen: een tijdlijn-NOTITIE (van = naar, bv. "autoboeken geactiveerd/gereset",
+                # blok A 10-09) is geen boeking en telt nooit als bevestiging.
+                or_(
+                    DocumentGebeurtenis.van_status.is_(None),
+                    DocumentGebeurtenis.van_status != DocumentGebeurtenis.naar_status,
                 ),
             )
             .order_by(DocumentGebeurtenis.tijdstip)
@@ -297,11 +322,23 @@ class StandData:
     laatste_factuur_datum: object
     laatste_factuur_bedrag: Decimal | None
     laatste_document_id: uuid.UUID | None
+    # Blok A bundel 10-09: uitzonderingenlijst + herkomst van de opt-in + reset-moment (voor DTO, rapport en activatie).
+    uitgezonderd: bool = False
+    uitzondering_reden: str | None = None
+    bron: str | None = None
+    gereset_op: datetime | None = None
+    veldwerker: bool = False
 
 
 def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUID, drempel: int, project_verplicht: bool, nu: datetime) -> StandData:
     reeks = motor.analyseer_reeks(
-        d.boekingen, seed_observaties=d.seed, project_verplicht=project_verplicht, vanaf=d.actief_sinds if d.actief else None
+        d.boekingen,
+        seed_observaties=d.seed,
+        project_verplicht=project_verplicht,
+        vanaf=d.actief_sinds if d.actief else None,
+        # Reset ná storno/correctie (blok A 10-09): zolang de opt-in uit staat telt de reeks alleen boekingen ná de
+        # reset.
+        reeks_vanaf=None if d.actief else d.gereset_op,
     )
     bevestigd, reden = _geheugen_bevestigd(d.observaties, project_verplicht=project_verplicht, vandaag=nu.date())
     kwal = motor.kwalificeer(
@@ -333,6 +370,11 @@ def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUI
         laatste_factuur_datum=reeks.laatste_factuur_datum,
         laatste_factuur_bedrag=reeks.laatste_factuur_bedrag,
         laatste_document_id=reeks.laatste_document_id,
+        uitgezonderd=d.uitgezonderd,
+        uitzondering_reden=d.uitzondering_reden,
+        bron=d.bron,
+        gereset_op=d.gereset_op,
+        veldwerker=d.veldwerker,
     )
 
 
@@ -369,9 +411,11 @@ def herbereken_administratie(*, administratie_id: uuid.UUID, drempel: int | None
         if administratie is None:
             raise AutoboekKandidaatFout(f"Onbekende administratie: {administratie_id}")
         project_verplicht = administratie.project_verplicht
+        leren_aan = _leren_aan(administratie)
         data = _verzamel(session, administratie_id)
         relevant: set[uuid.UUID] = set()
-        tellers = {"kandidaten": 0, "actief": 0, "heroverwegen": 0, "verborgen": 0, "rijen": 0}
+        tellers = {"kandidaten": 0, "actief": 0, "heroverwegen": 0, "verborgen": 0, "rijen": 0, "geactiveerd": 0}
+        te_activeren: list[StandData] = []
         for vendor_id, d in data.items():
             if not d.boekingen and not d.actief:
                 continue
@@ -379,6 +423,8 @@ def herbereken_administratie(*, administratie_id: uuid.UUID, drempel: int | None
             stand = _bereken(vendor_id, d, administratie_id=administratie_id, drempel=drempel, project_verplicht=project_verplicht, nu=nu)
             rij = _upsert(session, stand)
             tellers["rijen"] += 1
+            if leren_aan and _activatie_blokkade(stand) is None:
+                te_activeren.append(stand)
             if rij.actief:
                 tellers["actief"] += 1
                 if rij.heroverweeg_signalen:
@@ -392,7 +438,14 @@ def herbereken_administratie(*, administratie_id: uuid.UUID, drempel: int | None
         ).all():
             if rij.vendor_id not in relevant:
                 session.delete(rij)
-        return tellers
+    # Blok A bundel 10-09: schakelaar aan → het systeem ACTIVEERT i.p.v. nomineert (ná de commit van de standen; elke
+    # activatie zijn eigen transactie, één kapotte leverancier stopt de rest niet).
+    for stand in te_activeren:
+        if _activeer_vendor(stand, nu=nu, drempel=drempel) is not None:
+            tellers["geactiveerd"] += 1
+            tellers["kandidaten"] -= 1
+            tellers["actief"] += 1
+    return tellers
 
 
 def herbereken_alle(*, nu: datetime | None = None) -> dict[uuid.UUID, dict[str, int] | str]:
@@ -430,6 +483,223 @@ def hertoets_vendor(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, nu: da
         return stand
 
 
+# ----------------------------------------------------------------------------- activeren (blok A bundel 10-09)
+
+#: Stand-enum voor de uitzonderingenlijst en de kandidaten-rijen (CONTRACT_A): leert | boekt_automatisch |
+#: uitgezonderd |
+#: handmatig_aan (opt-in aan door een mens zonder administratie-schakelaar — de oude opt-in-flow van 01-09).
+STAND_LEERT = "leert"
+STAND_BOEKT_AUTOMATISCH = "boekt_automatisch"
+STAND_UITGEZONDERD = "uitgezonderd"
+STAND_HANDMATIG_AAN = "handmatig_aan"
+
+BRON_MENS = "mens"
+BRON_SYSTEEM = "systeem"
+
+
+def stand_label(*, actief: bool, bron: str | None, uitgezonderd: bool, administratie_leren_aan: bool) -> str:
+    """Eén bron voor de chip per leverancier (lijst, kandidaten-scherm, rapport-CLI)."""
+    if uitgezonderd:
+        return STAND_UITGEZONDERD
+    if actief:
+        return STAND_BOEKT_AUTOMATISCH if (bron == BRON_SYSTEEM or administratie_leren_aan) else STAND_HANDMATIG_AAN
+    return STAND_LEERT
+
+
+def _leren_aan(administratie: Administratie) -> bool:
+    """Schakelaar aan én de Kempen-regel niet van toepassing (een doorbelastende administratie activeert nooit —
+    ook niet als de kolom ooit tóch op true zou staan)."""
+    return bool(administratie.autoboeken_leren_ingeschakeld) and not administratie.doorbelasting_ingeschakeld
+
+
+def _activatie_blokkade(stand: StandData) -> str | None:
+    """Leesbare reden waarom het systeem deze leverancier (nog) niet activeert; None = activeren."""
+    if stand.actief:
+        return "autoboeken staat al aan"
+    if stand.uitgezonderd:
+        return "door een mens uitgezonderd" + (f" ({stand.uitzondering_reden})" if stand.uitzondering_reden else "")
+    if stand.veldwerker:
+        return "crediteur gekoppeld aan een veldwerker — autoboeken loopt via de urenmatch-opt-in (fase 4)"
+    if not stand.kwalificeert:
+        return "kwalificeert niet: " + "; ".join(stand.redenen)
+    return None
+
+
+@dataclass(frozen=True)
+class ActivatieUitkomst:
+    administratie_id: uuid.UUID
+    vendor_id: uuid.UUID
+    status: str  # 'geactiveerd' | 'overgeslagen'
+    reden: str | None
+    reeks_ongewijzigd: int
+    drempel: int
+
+
+def _activeer_vendor(stand: StandData, *, nu: datetime, drempel: int) -> ActivatieUitkomst | None:
+    """Zet de opt-in aan namens het systeem via de BESTAANDE schrijver (zelfde audit `leverancier_autoboeken_gewijzigd`,
+    zelfde veldwerker-weigering) mét `autoboeken_bron='systeem'`, werkt de stand bij, schrijft het eigen audit-event
+    `autoboek_leverancier_geactiveerd` (onderbouwing = chips + reeks + drempel) en een tijdlijnregel op het document dat
+    de drempel haalde. None = niet geactiveerd (veldwerker-weigering — zichtbaar in de log, nooit stil)."""
+    from app.documenten import autoboeken
+
+    try:
+        autoboeken.zet_leverancier_autoboeken(
+            administratie_id=stand.administratie_id,
+            vendor_id=stand.vendor_id,
+            actor_id=SYSTEEM_ACTOR_ID,
+            ingeschakeld=True,
+            bron=BRON_SYSTEEM,
+        )
+    except autoboeken.VeldwerkerKoppelingBlokkeertOptIn as exc:
+        logger.info("Autoboeken-activatie overgeslagen voor %s/%s: %s", stand.administratie_id, stand.vendor_id, exc)
+        return None
+    onderbouwing = {
+        "onderbouwing": stand.chips,
+        "reeks_ongewijzigd": stand.reeks_ongewijzigd,
+        "drempel": drempel,
+        "bron": BRON_SYSTEEM,
+        "document_id": str(stand.laatste_document_id) if stand.laatste_document_id else None,
+    }
+    with scoped_session(stand.administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rij = session.get(AutoboekKandidaatStand, (stand.administratie_id, stand.vendor_id))
+        if rij is not None:
+            rij.actief = True
+            rij.actief_sinds = nu
+            rij.kwalificeert = False
+            rij.heroverweeg_signalen = []
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="leverancier_voorkeur",
+            record_id=stand.vendor_id,
+            actie="autoboek_leverancier_geactiveerd",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde=onderbouwing,
+            administratie_id=stand.administratie_id,
+        )
+        if stand.laatste_document_id is not None:
+            document = session.get(Document, stand.laatste_document_id)
+            if document is not None:
+                naam = session.scalar(select(VendorCache.naam).where(VendorCache.id == stand.vendor_id))
+                session.add(
+                    DocumentGebeurtenis(
+                        document_id=document.id,
+                        van_status=document.status,
+                        naar_status=document.status,
+                        actor_id=SYSTEEM_ACTOR_ID,
+                        detail={
+                            "autoboek_geactiveerd": {**onderbouwing, "leverancier_naam": naam},
+                            "reden": (
+                                f"Autoboeken voor {naam or 'deze leverancier'} geactiveerd — "
+                                f"{stand.reeks_ongewijzigd} op rij ongewijzigd geboekt (drempel {drempel})"
+                            ),
+                        },
+                    )
+                )
+    return ActivatieUitkomst(
+        administratie_id=stand.administratie_id,
+        vendor_id=stand.vendor_id,
+        status="geactiveerd",
+        reden=None,
+        reeks_ongewijzigd=stand.reeks_ongewijzigd,
+        drempel=drempel,
+    )
+
+
+def activeer_kwalificerend(
+    *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None = None, nu: datetime | None = None
+) -> list[ActivatieUitkomst]:
+    """Blok A bundel 10-09 (besluit Peter 10-09): staat de administratie-schakelaar "Autoboeken (leren en boeken)" aan,
+    dan ACTIVEERT het systeem élke leverancier die kwalificeert (bestaande poort `motor.kwalificeer` — ≥ drempel mens-
+    boekingen op rij ongewijzigd, geheugen volledig app-bevestigd, geen open vraag/afwijzing/duplicaatsignaal, geen
+    veldwerker-koppeling) en niet door een mens is uitgezonderd. Zonder schakelaar (of bij doorbelasting): lege lijst —
+    het gedrag van 01-09 (nomineren) blijft. Aangeroepen (1) post-commit ná élke GEBOEKT-overgang door een mens
+    (documenten/boeken.py), (2) in `herbereken_administratie` (dagelijks), (3) bij aanzetten van de schakelaar en bij
+    vrijgeven van een uitzondering. Lees-only voor niet-kwalificerende leveranciers (uitkomst 'overgeslagen' mét
+    reden)."""
+    nu = nu or datetime.now(UTC)
+    drempel, _ = haal_instelling_op()
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise AutoboekKandidaatFout(f"Onbekende administratie: {administratie_id}")
+        if not _leren_aan(administratie):
+            return []
+        data = _verzamel(session, administratie_id, vendor_ids={vendor_id} if vendor_id is not None else None)
+        standen = [
+            _bereken(
+                v, d, administratie_id=administratie_id, drempel=drempel, project_verplicht=administratie.project_verplicht, nu=nu
+            )
+            for v, d in data.items()
+            if d.boekingen or d.actief
+        ]
+        for stand in standen:
+            _upsert(session, stand)
+    uit: list[ActivatieUitkomst] = []
+    for stand in standen:
+        blokkade = _activatie_blokkade(stand)
+        if blokkade is not None:
+            uit.append(
+                ActivatieUitkomst(
+                    administratie_id, stand.vendor_id, "overgeslagen", blokkade, stand.reeks_ongewijzigd, drempel
+                )
+            )
+            continue
+        uitkomst = _activeer_vendor(stand, nu=nu, drempel=drempel)
+        uit.append(
+            uitkomst
+            or ActivatieUitkomst(
+                administratie_id, stand.vendor_id, "overgeslagen", "veldwerker-koppeling", stand.reeks_ongewijzigd, drempel
+            )
+        )
+    return uit
+
+
+def activeer_kwalificerend_stil(
+    *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None = None
+) -> list[ActivatieUitkomst]:
+    """Post-commit-variant: een fout hier blokkeert nooit de boeking/instelling (gelogd, niet stil: de dagelijkse
+    herberekening haalt het in)."""
+    try:
+        return activeer_kwalificerend(administratie_id=administratie_id, vendor_id=vendor_id)
+    except Exception:  # noqa: BLE001 — optimalisatie, nooit een blokkade van de boeking
+        logger.exception("Autoboeken-activatie mislukt voor administratie %s (vendor %s)", administratie_id, vendor_id)
+        return []
+
+
+def activeer_na_boeking_stil(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> list[ActivatieUitkomst]:
+    """Hook ná een GEBOEKT-overgang door een MENS (documenten/boeken.py, post-commit): herleidt de leverancier van het
+    document en toetst alleen díe. Goedkoop als de schakelaar uit staat (één administratie-read)."""
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None or not _leren_aan(administratie):
+            return []
+        vendor_id = session.scalar(select(Boekvoorstel.vendor_id).where(Boekvoorstel.document_id == document_id))
+    if vendor_id is None:
+        return []
+    return activeer_kwalificerend_stil(administratie_id=administratie_id, vendor_id=vendor_id)
+
+
+def bereken_standen(*, administratie_id: uuid.UUID, nu: datetime | None = None) -> list[StandData]:
+    """LEES-ONLY: de stand per leverancier uit de bestaande historie in de module, zonder iets te schrijven —
+    het nameting-instrument (CLI `autoboek-leren-rapport`)."""
+    nu = nu or datetime.now(UTC)
+    drempel, _ = haal_instelling_op()
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise AutoboekKandidaatFout(f"Onbekende administratie: {administratie_id}")
+        data = _verzamel(session, administratie_id)
+        return [
+            _bereken(
+                v, d, administratie_id=administratie_id, drempel=drempel, project_verplicht=administratie.project_verplicht, nu=nu
+            )
+            for v, d in data.items()
+            if d.boekingen or d.actief
+        ]
+
+
 # ----------------------------------------------------------------------------- lezen
 
 
@@ -454,6 +724,9 @@ class KandidaatRij:
     snooze_reden: str | None
     snooze_op: datetime | None
     berekend_op: datetime
+    # Blok A bundel 10-09: staat de administratie-schakelaar aan (chip "administratie leert zelf") + de stand-enum.
+    administratie_leren_aan: bool = False
+    stand: str = STAND_LEERT
 
 
 @dataclass(frozen=True)
@@ -483,11 +756,19 @@ def _alle_rijen() -> list[KandidaatRij]:
     with scoped_session(None) as session:
         administraties = list(
             session.execute(
-                select(Administratie.id, Administratie.naam).where(Administratie.actief.is_(True)).order_by(Administratie.naam)
+                select(
+                    Administratie.id,
+                    Administratie.naam,
+                    Administratie.autoboeken_leren_ingeschakeld,
+                    Administratie.doorbelasting_ingeschakeld,
+                )
+                .where(Administratie.actief.is_(True))
+                .order_by(Administratie.naam)
             ).all()
         )
     uit: list[KandidaatRij] = []
-    for aid, naam in administraties:
+    for aid, naam, leren, doorbelasting in administraties:
+        leren_aan = bool(leren) and not doorbelasting
         with scoped_session(aid) as session:
             rijen = session.scalars(select(AutoboekKandidaatStand).where(AutoboekKandidaatStand.administratie_id == aid)).all()
             if not rijen:
@@ -497,7 +778,12 @@ def _alle_rijen() -> list[KandidaatRij]:
                     select(VendorCache.id, VendorCache.naam).where(VendorCache.id.in_([r.vendor_id for r in rijen]))
                 ).all()
             )
+            voorkeuren = {
+                v.vendor_id: v
+                for v in session.scalars(select(LeverancierVoorkeur).where(LeverancierVoorkeur.administratie_id == aid))
+            }
             for r in rijen:
+                voorkeur = voorkeuren.get(r.vendor_id)
                 uit.append(
                     KandidaatRij(
                         administratie_id=aid,
@@ -519,6 +805,13 @@ def _alle_rijen() -> list[KandidaatRij]:
                         snooze_reden=r.snooze_reden,
                         snooze_op=r.snooze_op,
                         berekend_op=r.berekend_op,
+                        administratie_leren_aan=leren_aan,
+                        stand=stand_label(
+                            actief=r.actief,
+                            bron=voorkeur.autoboeken_bron if voorkeur else None,
+                            uitgezonderd=bool(voorkeur and voorkeur.autoboeken_uitgezonderd),
+                            administratie_leren_aan=leren_aan,
+                        ),
                     )
                 )
     return uit
@@ -694,9 +987,22 @@ def uitzetten(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, actor_id: uu
     verschijnt pas weer als kandidaat als de reeks opnieuw aan de drempel komt."""
     from app.documenten import autoboeken
 
-    autoboeken.zet_leverancier_autoboeken(
-        administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, ingeschakeld=False
-    )
+    with scoped_session(administratie_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        leren_aan = administratie is not None and _leren_aan(administratie)
+    if leren_aan:
+        # Blok A bundel 10-09: met de administratie-schakelaar aan zou het systeem de leverancier bij de volgende run
+        # meteen weer activeren — "uitzetten" ís dan uitzonderen (mét reden, zichtbaar in de uitzonderingenlijst).
+        autoboeken.zonder_leverancier_uit(
+            administratie_id=administratie_id,
+            vendor_id=vendor_id,
+            actor_id=actor_id,
+            reden="uitgezet via Heroverwegen (Instellingen › Autoboeken)",
+        )
+    else:
+        autoboeken.zet_leverancier_autoboeken(
+            administratie_id=administratie_id, vendor_id=vendor_id, actor_id=actor_id, ingeschakeld=False
+        )
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         rij = session.get(AutoboekKandidaatStand, (administratie_id, vendor_id))
         if rij is not None:

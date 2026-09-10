@@ -17,6 +17,7 @@ import { EersteSyncStatus } from './AdministratieWizard'
 import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
+import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './ProjectverdelingInstellingen'
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
@@ -303,6 +304,9 @@ export function AdministratieDetailPagina({
               'Omzet-autoboeken (kassarapporten)',
               'Boekt een omzetrapport automatisch zodra álles groen is: harde checks (incl. memoriaal-saldo-0 en marge-plausibiliteit), categorie-mapping volledig door een mens bevestigd, geen duplicaat per periode, geen vraag of afwijzing. Anders gewoon werkvoorraad; volumerem 20/dag; chip "automatisch" + audit.',
             )}
+            {/* Blok A bundel 10-09: administratie-schakelaar "Autoboeken (leren en boeken)" — eigen GET/PUT + 409-hint;
+                ná een wijziging herlaadt de lijst zodat chip + uitzonderingenlijst dezelfde stand zien. */}
+            <AutoboekenLerenRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} onGewijzigd={onHerlaad} />
             <BtwDefaultRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
             {a.afdelingen_ingeschakeld && (
               <div style={{ padding: '4px 16px 12px' }}>
@@ -310,7 +314,7 @@ export function AdministratieDetailPagina({
               </div>
             )}
           </div>
-          <LeverancierAutoboeken administraties={enkel} vasteAdministratieId={a.id} />
+          <LeverancierAutoboeken administraties={enkel} vasteAdministratieId={a.id} administratieLerenAan={Boolean(a.autoboeken_leren_ingeschakeld)} />
           {/* Projectverdeling pro rato omzet (blok C 04-09): opt-in per leverancier + hercontrole-drempel /
               wachttijd "inkoop zonder omzet" — Beheerder-only. */}
           <LeverancierProjectverdeling administratieId={a.id} />

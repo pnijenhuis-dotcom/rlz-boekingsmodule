@@ -73,13 +73,20 @@ GEEN_CREDENTIAL_GEREGISTREERD = "geen_credential_geregistreerd"
 #: Bank-sync: administratie mét RLZ-verbinding maar zonder enige run (klaar óf fout) in het venster — de nachtelijke
 #: `sync-alles` heeft 'm niet bereikt (job niet gedraaid/afgebroken): LET-OP, platformbreed (administratie-loos).
 GEEN_SYNC_RUN = "geen_sync_run"
+#: AI-plausibiliteitstoets (blok B bundel 10-09) overgeslagen omdat de intake-AI (AVG-gate) uit staat resp. de
+#: AI-kostengrens bereikt is — beide een menselijke instelling (harde voorwaarde, deeplink Instellingen › Intake-AI).
+AVG_GATE = "avg_gate"
+KOSTENGRENS = "kostengrens"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
 #: komt de reden tóch voor, dan wacht een automatisering op een menselijke instelling (regressie, zichtbaar mét actie).
 #: `vangnet_scheduler` (08-09): ≥ 1 mislukte job-trigger in het etmaal = LET-OP (platformbreed, administratie-loos).
 HARDE_VOORWAARDEN = frozenset(
-    {CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER, GEEN_SYNC_RUN}
+    {
+        CREDENTIAL, API_KEY, GELDPOORT, VOLUMEREM, NOODREM, GEEN_EIGENAAR, VANGNET_SCHEDULER, GEEN_SYNC_RUN,
+        AVG_GATE, KOSTENGRENS,
+    }
 )
 
 #: Bundel 09-09 blok 1 (feedback Peter over de reconciliatiemail). Drie klassen LET-OP op dit blok:
@@ -118,6 +125,8 @@ REDEN_LABEL: dict[str, str] = {
     ODOO_ADMINISTRATIE: "Odoo-administratie (bank niet via Reeleezee)",
     GEEN_CREDENTIAL_GEREGISTREERD: "geen webservice-login geregistreerd (niet onboarded)",
     GEEN_SYNC_RUN: "geen bank-sync-run in het venster (sync-alles niet gedraaid?)",
+    AVG_GATE: "AI staat uit (AVG-gate intake-AI)",
+    KOSTENGRENS: "AI-kostengrens bereikt",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -125,6 +134,16 @@ DUPLICAAT_AFVOER = "duplicaat_afvoer"
 CREDITEUREN = "crediteuren_afhandeling"
 AUTOBOEK_INKOOP = "autoboeken_inkoop"
 AUTOBOEK_KANDIDATEN = "autoboek_kandidaten"
+#: Blok A bundel 10-09: de administratie-schakelaar "Autoboeken (leren en boeken)" — per administratie mét schakelaar
+#: leveranciers lerend/actief/uitgezonderd + automatisch geboekt vandaag (detail-veld), activaties/resets in het etmaal.
+AUTOBOEK_LEREN = "autoboek_leren"
+#: Verzoek blok B (10-09): de AI-plausibiliteitstoets als eigen teller — bron audit `ai_plausibiliteitstoets` (bank én
+#: factuur); stand = AVG-gate intake-AI; gedaan = plausibel + twijfel; overgeslagen per oorzaak. Geen eigen LET-OP (die
+#: hangt al op het pad dat overgeslagen werd).
+AI_PLAUSIBILITEIT = "ai_plausibiliteit"
+#: Verzoek blok C (10-09): eerste-sync-run (onboarding) met een RLZ-weigering 401/403 = harde voorwaarde `credential`
+#: mét deeplink naar de administratie; bron `administratie_sync_run` (status fout, onderdelen.*.http_status).
+EERSTE_SYNC = "eerste_sync"
 AUTOBOEK_OMZET = "autoboeken_omzet"
 AUTOBOEK_VERKOOP = "autoboeken_verkoop"
 BANK = "bank_autoboeken"
@@ -141,9 +160,12 @@ VOLGORDE: tuple[str, ...] = (
     AUTOBOEK_VERKOOP,
     BANK_SYNC,
     BANK,
+    AI_PLAUSIBILITEIT,
+    EERSTE_SYNC,
     DUPLICAAT_AFVOER,
     CREDITEUREN,
     AUTOBOEK_KANDIDATEN,
+    AUTOBOEK_LEREN,
     TERUGKEREND,
     NABUNDEL,
     MINI_VOORRAAD,
@@ -156,10 +178,13 @@ LABEL: dict[str, str] = {
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
     AUTOBOEK_INKOOP: "Autoboeken inkoop",
     AUTOBOEK_KANDIDATEN: "Autoboek-kandidaten (nominatie)",
+    AUTOBOEK_LEREN: "Autoboeken per administratie (leren en boeken)",
     AUTOBOEK_OMZET: "Autoboeken omzet",
     AUTOBOEK_VERKOOP: "Autoboeken verkoop",
     BANK: "Bank-autoboeken/afletteren",
     BANK_SYNC: "Bank-sync (dagelijks, alle administraties)",
+    AI_PLAUSIBILITEIT: "AI-plausibiliteitstoets (poort vóór autoboeken)",
+    EERSTE_SYNC: "Eerste sync (onboarding)",
     NABUNDEL: "Nabundel (UBL+PDF, dubbelen)",
     TERUGKEREND: "Terugkerende facturen (herberekening)",
     MINI_VOORRAAD: "Mini-voorraad instroom",
@@ -173,6 +198,8 @@ DOEL_PAD: dict[str, str] = {
     GELDPOORT: "/instellingen/boeken",
     NOODREM: "/instellingen/boeken",
     VOLUMEREM: "/instellingen/autoboeken",
+    AVG_GATE: "/instellingen/intake-ai",
+    KOSTENGRENS: "/instellingen/intake-ai",
     # Geen instelling in de app: de wortel zit in Cloud Run/IAM; de rij op Inzicht › Reconciliatie ís de plek.
     VANGNET_SCHEDULER: "/reconciliatie",
     GEEN_SYNC_RUN: "/reconciliatie",
@@ -183,6 +210,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     AUTOBOEK_INKOOP: (GEEN_EIGENAAR, HARDE_CHECKS),
     AUTOBOEK_OMZET: (GEEN_EIGENAAR, HARDE_CHECKS),
     AUTOBOEK_VERKOOP: (GEEN_EIGENAAR, HARDE_CHECKS),
+    AUTOBOEK_LEREN: (HARDE_CHECKS, TWIJFEL),
     DUPLICAAT_AFVOER: (VOLUMEREM,),
     CREDITEUREN: (TWIJFEL,),
     BANK: (VOLUMEREM,),
@@ -199,6 +227,9 @@ _ACTIES: tuple[str, ...] = (
     "automatisch_geboekt",
     "autoboeken_geweigerd",
     "autoboeken_half_geboekt",
+    "autoboek_leverancier_geactiveerd",
+    "autoboek_leverancier_gereset",
+    "ai_plausibiliteitstoets",
     "document_nagebundeld",
     "document_dubbel_samengevouwen",
     "mini_voorraad_instroom",
@@ -234,6 +265,21 @@ class BankSyncRunFeit:
     status: str  # klaar | fout
     fout_reden: str | None = None
     bron: str | None = None
+    # Verzoek blok B (10-09): historie-cache-vulling — niet-lege `resultaat["historie_fouten"]` telt als `fout` op
+    # bank_sync.
+    historie_fouten: int = 0
+
+
+@dataclass(frozen=True)
+class EersteSyncFeit:
+    """Verzoek blok C (10-09): één afgeronde eerste-sync-run (onboarding) — `geweigerd` = ≥ 1 onderdeel met
+    HTTP 401/403."""
+
+    administratie_id: uuid.UUID
+    tijdstip: datetime
+    status: str  # klaar | fout
+    geweigerd: bool = False
+    fout_reden: str | None = None
 
 
 @dataclass(frozen=True)
@@ -257,12 +303,20 @@ class Feiten:
     bank_odoo: set[uuid.UUID] = field(default_factory=set)
     bank_rlz_verbinding: set[uuid.UUID] = field(default_factory=set)
     terugkerend_runs: list[TerugkerendRunFeit] = field(default_factory=list)
+    # Verzoek blok C (10-09): eerste-sync-runs (klaar/fout) van de afgelopen week.
+    eerste_sync_runs: list[EersteSyncFeit] = field(default_factory=list)
+    # Verzoek blok B (10-09): AVG-gate intake-AI (de stand van de AI-plausibiliteitstoets).
+    intake_ai_aan: bool = False
     autoboek_kandidaten_laatste_run: datetime | None = None
     duplicaat_noodrem_aan: bool = True
     # opt-ins
     leverancier_optins: dict[uuid.UUID, int] = field(default_factory=dict)  # administratie → n leveranciers aan
     veldwerker_optins: dict[uuid.UUID, int] = field(default_factory=dict)
     omzet_aan: set[uuid.UUID] = field(default_factory=set)
+    # Blok A bundel 10-09: administraties mét de schakelaar "Autoboeken (leren en boeken)" aan (Kempen-regel al
+    # toegepast) en per zo'n administratie de leveranciers-stand {lerend, actief, uitgezonderd}.
+    autoboek_leren_aan: set[uuid.UUID] = field(default_factory=set)
+    autoboek_leren_detail: dict[uuid.UUID, dict[str, int]] = field(default_factory=dict)
     verkoop_aan: set[uuid.UUID] = field(default_factory=set)  # is_vastgoed
     bank_aan: set[uuid.UUID] = field(default_factory=set)
     mini_voorraad_aan: set[uuid.UUID] = field(default_factory=set)
@@ -316,6 +370,9 @@ class Teller:
     week: Venster = field(default_factory=Venster)
     harde_voorwaarden: list[HardeVoorwaarde] = field(default_factory=list)
     stil: bool = False  # 7 dagen: aan, kandidaten, 0 gedaan, 0 overgeslagen
+    # Additief (blok A bundel 10-09): automatisering-specifieke standen (autoboek_leren: lerend/actief/uitgezonderd,
+    # geactiveerd_24u, gereset_24u, per_administratie[]). None voor tellers zonder detail — FE sleutel-agnostisch.
+    detail: dict[str, Any] | None = None
 
     @property
     def is_uit(self) -> bool:
@@ -349,6 +406,13 @@ def categoriseer_reden(reden: str | None) -> str:
     t = (reden or "").lower()
     if not t:
         return MENS_BEOORDEELT
+    # AI-plausibiliteitstoets (blok B bundel 10-09): "overgeslagen: api_key/avg_gate/kostengrens/ai_fout — …".
+    if "avg_gate" in t or "avg-gate" in t or "ai staat platformbreed uit" in t:
+        return AVG_GATE
+    if "kostengrens" in t or "maandlimiet" in t:
+        return KOSTENGRENS
+    if "api_key" in t:
+        return API_KEY
     if "eigenaar" in t or ("toegewezen" in t and "geen" in t):
         return GEEN_EIGENAAR
     if "volumerem" in t or "dagelijkse limiet" in t:
@@ -423,11 +487,19 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
 
     hard: dict[tuple[str, str, uuid.UUID | None], list[str]] = {}
 
-    def tel_over(t: Teller, tijdstip: datetime, categorie: str, aid: uuid.UUID | None, voorbeeld: str | None) -> None:
+    def tel_over(
+        t: Teller,
+        tijdstip: datetime,
+        categorie: str,
+        aid: uuid.UUID | None,
+        voorbeeld: str | None,
+        *,
+        hard_registreren: bool = True,
+    ) -> None:
         vs = vensters(t, tijdstip)
         for v in vs:
             v.tel_overgeslagen(categorie)
-        if categorie in HARDE_VOORWAARDEN and tijdstip >= dag_vanaf:
+        if hard_registreren and categorie in HARDE_VOORWAARDEN and tijdstip >= dag_vanaf:
             hard.setdefault((t.sleutel, categorie, aid), []).append(voorbeeld or "")
 
     # --- opt-in-standen
@@ -455,6 +527,18 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "bank_sync_run (status klaar/fout) + administratie-kenmerken (Odoo / credential)",
     )
     bank = maak(BANK, *_stand_per_administratie(feiten.bank_aan, adm), "bank_sync_run.resultaat")
+    ai_toets = maak(
+        AI_PLAUSIBILITEIT,
+        "aan" if feiten.intake_ai_aan else "uit",
+        "AVG-gate intake-AI " + ("aan" if feiten.intake_ai_aan else "UIT — élke toets wordt overgeslagen (avg_gate)"),
+        "audit ai_plausibiliteitstoets (bank én factuur; gedaan = plausibel + twijfel)",
+    )
+    eerste_sync = maak(
+        EERSTE_SYNC,
+        "op_aanvraag",
+        "onboarding-wizard / herstart per administratie",
+        "administratie_sync_run (status klaar/fout; onderdelen.*.http_status 401/403 = credential)",
+    )
     dup = maak(
         DUPLICAAT_AFVOER,
         "aan" if feiten.duplicaat_noodrem_aan else "uit",
@@ -468,6 +552,43 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "dagelijks in sync-alles" if feiten.autoboek_kandidaten_laatste_run is not None else "nog nooit gedraaid",
         "autoboek_instelling.laatste_run_op (1 run/dag verwacht)",
     )
+    # Blok A bundel 10-09: de schakelaar per administratie; "gedaan" = automatisch geboekt (bron leverancier_opt_in) in
+    # een administratie mét schakelaar, "overgeslagen" = de weigeringen dáár (zonder dubbele LET-OP: de
+    # harde-voorwaarde-
+    # bevinding staat al op `autoboeken_inkoop`). Detail = leveranciers lerend/actief/uitgezonderd + activaties/resets.
+    leren_detail: dict[str, Any] = {
+        "lerend": sum(
+            d.get("lerend", 0) for a, d in feiten.autoboek_leren_detail.items() if a in feiten.autoboek_leren_aan
+        ),
+        "actief": sum(
+            d.get("actief", 0) for a, d in feiten.autoboek_leren_detail.items() if a in feiten.autoboek_leren_aan
+        ),
+        "uitgezonderd": sum(
+            d.get("uitgezonderd", 0) for a, d in feiten.autoboek_leren_detail.items() if a in feiten.autoboek_leren_aan
+        ),
+        "geactiveerd_24u": 0,
+        "gereset_24u": 0,
+        "per_administratie": [
+            {
+                "administratie_id": str(a),
+                "naam": adm.get(a),
+                **{
+                    k: int(feiten.autoboek_leren_detail.get(a, {}).get(k, 0))
+                    for k in ("lerend", "actief", "uitgezonderd")
+                },
+                "automatisch_geboekt_24u": 0,
+            }
+            for a in sorted(feiten.autoboek_leren_aan & set(adm), key=lambda x: adm.get(x) or "")
+        ],
+    }
+    leren = maak(
+        AUTOBOEK_LEREN,
+        *_stand_per_administratie(feiten.autoboek_leren_aan, adm),
+        "administratie.autoboeken_leren_ingeschakeld + leverancier_voorkeur/autoboek_kandidaat_stand + audit "
+        "automatisch_geboekt / autoboek_leverancier_geactiveerd / autoboek_leverancier_gereset",
+    )
+    leren.detail = leren_detail
+    per_adm_leren = {r["administratie_id"]: r for r in leren_detail["per_administratie"]}
     terug = maak(TERUGKEREND, "altijd", "alle actieve administraties (sync-alles)", "terugkerend_herbereken_run")
     nab = maak(
         NABUNDEL, "op_aanvraag", "intake + nazorg-CLI", "audit document_nagebundeld / document_dubbel_samengevouwen"
@@ -489,14 +610,43 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             continue
         nw = _nw(f)
         bron = str(nw.get("bron") or "")
+        in_leren = f.administratie_id in feiten.autoboek_leren_aan
         if f.actie == "automatisch_geboekt":
             t = omzet if bron == "omzet_opt_in" else verkoop if bron == "verkoop_opt_in" else inkoop
             for v in vensters(t, f.tijdstip):
                 v.tel_gedaan()
+            if t is inkoop and bron == "leverancier_opt_in" and in_leren:
+                for v in vensters(leren, f.tijdstip):
+                    v.tel_gedaan()
+                if f.tijdstip >= dag_vanaf and str(f.administratie_id) in per_adm_leren:
+                    per_adm_leren[str(f.administratie_id)]["automatisch_geboekt_24u"] += 1
         elif f.actie in ("autoboeken_geweigerd", "autoboeken_half_geboekt"):
             t = omzet if bron == "omzet_opt_in" else verkoop if bron == "verkoop_opt_in" else inkoop
             cat = HALF_GEBOEKT if f.actie == "autoboeken_half_geboekt" else categoriseer_reden(nw.get("reden"))
             tel_over(t, f.tijdstip, cat, f.administratie_id, str(nw.get("reden") or ""))
+            if t is inkoop and in_leren and bron != "veldwerker_opt_in":
+                tel_over(leren, f.tijdstip, cat, f.administratie_id, str(nw.get("reden") or ""), hard_registreren=False)
+        elif f.actie == "ai_plausibiliteitstoets":
+            uitkomst = str(nw.get("uitkomst") or "")
+            if uitkomst in ("plausibel", "twijfel"):
+                for v in vensters(ai_toets, f.tijdstip):
+                    v.tel_gedaan()
+            elif uitkomst == "overgeslagen":
+                # De LET-OP hangt al op het pad dat overgeslagen werd (bank/inkoop) — hier alleen de teller.
+                tel_over(
+                    ai_toets,
+                    f.tijdstip,
+                    categoriseer_reden(nw.get("reden")),
+                    f.administratie_id,
+                    str(nw.get("reden") or ""),
+                    hard_registreren=False,
+                )
+        elif f.actie == "autoboek_leverancier_geactiveerd":
+            if f.tijdstip >= dag_vanaf:
+                leren_detail["geactiveerd_24u"] += 1
+        elif f.actie == "autoboek_leverancier_gereset":
+            if f.tijdstip >= dag_vanaf:
+                leren_detail["gereset_24u"] += 1
         elif f.actie == "duplicaat_afgevoerd":
             if nw.get("automatisch"):
                 for v in vensters(dup, f.tijdstip):
@@ -557,6 +707,10 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
             v.tel_gedaan(n_gedaan)
         for fout in res.get("fouten") or []:
             tel_over(bank, r.beeindigd_op, categoriseer_reden(str(fout)), r.administratie_id, str(fout))
+        # Verzoek blok B (10-09): kandidaten die de AI-plausibiliteitstoets NIET boekte ("twijfel: …" /
+        # "overgeslagen: avg_gate|api_key|kostengrens|ai_fout — …") — verwacht = gedaan + overgeslagen.
+        for regel in res.get("overgeslagen") or []:
+            tel_over(bank, r.beeindigd_op, categoriseer_reden(str(regel)), r.administratie_id, str(regel))
 
     # --- bank-sync (blok 1, 08-09): per administratie per venster precies één uitkomst
     #     (verwacht = alle actieve administraties; gedaan = ≥ 1 geslaagde run in het venster)
@@ -572,6 +726,10 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         runs = sorted((r for r in feiten.bank_sync_runs if r.administratie_id == aid), key=lambda r: r.beeindigd_op)
         for v, vanaf in ((bank_sync.dag, dag_vanaf), (bank_sync.week, week_vanaf)):
             in_venster = [r for r in runs if r.beeindigd_op >= vanaf]
+            historie_fouten = sum(r.historie_fouten for r in in_venster)
+            if historie_fouten:
+                # Verzoek blok B (10-09): mislukte historie-cache-vulling is zichtbaar als `fout`, geen LET-OP.
+                v.overgeslagen[FOUT] = v.overgeslagen.get(FOUT, 0) + historie_fouten
             if any(r.status == "klaar" for r in in_venster):
                 v.tel_gedaan()
             elif in_venster:
@@ -589,6 +747,19 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
                 v.tel_overgeslagen(GEEN_SYNC_RUN)
                 if v is bank_sync.dag:
                     hard.setdefault((BANK_SYNC, GEEN_SYNC_RUN, None), []).append(f"administratie {aid}")
+
+    # --- eerste sync / onboarding (verzoek blok C, 10-09): klaar = gedaan; fout mét 401/403 = harde voorwaarde
+    #     `credential` (LET-OP mét deeplink naar de administratie, tekst = fout_reden); andere fout = `fout`.
+    for es in feiten.eerste_sync_runs:
+        if es.tijdstip < week_vanaf:
+            continue
+        if es.status == "klaar":
+            for v in vensters(eerste_sync, es.tijdstip):
+                v.tel_gedaan()
+        elif es.geweigerd:
+            tel_over(eerste_sync, es.tijdstip, CREDENTIAL, es.administratie_id, es.fout_reden)
+        else:
+            tel_over(eerste_sync, es.tijdstip, FOUT, es.administratie_id, es.fout_reden)
 
     # --- terugkerend (run-tabel, platformbreed)
     for r in feiten.terugkerend_runs:
@@ -752,6 +923,7 @@ def uit_samenvatting(samenvatting: dict) -> list[Teller]:
             dag=_venster(d.get("dag")),
             week=_venster(d.get("week")),
             stil=bool(d.get("stil")),
+            detail=d.get("detail") if isinstance(d.get("detail"), dict) else None,
         )
         for h in d.get("harde_voorwaarden") or []:
             aid = h.get("administratie_id")
@@ -788,10 +960,12 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
     administratie-loze audit-rijen en de platformbrede run-tabellen in de scope-loze sessie."""
     from sqlalchemy import func, or_, select
 
-    from app.autoboek_kandidaten.models import AutoboekInstelling
+    from app.autoboek_kandidaten.models import AutoboekInstelling, AutoboekKandidaatStand
     from app.bank.models import BankSyncRun, BankSyncRunStatus
+    from app.beheer.eerste_sync import RECHTEN_STATUSSEN
+    from app.beheer.models import AdministratieSyncRun
     from app.config import settings
-    from app.db.models import Administratie, DuplicaatAfvoerInstelling
+    from app.db.models import Administratie, DuplicaatAfvoerInstelling, IntakeInstelling
     from app.db.session import scoped_session
     from app.db.systeem_actor import SYSTEEM_ACTOR_ID
     from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus, LeverancierVoorkeur
@@ -816,6 +990,8 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                 feiten.bank_rlz_verbinding.add(a.id)
             if a.omzet_autoboeken_ingeschakeld:
                 feiten.omzet_aan.add(a.id)
+            if a.autoboeken_leren_ingeschakeld and not a.doorbelasting_ingeschakeld:
+                feiten.autoboek_leren_aan.add(a.id)
             if a.is_vastgoed:
                 feiten.verkoop_aan.add(a.id)
             if a.bank_autoboeken_ingeschakeld:
@@ -824,6 +1000,8 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                 feiten.mini_voorraad_aan.add(a.id)
         noodrem = session.get(DuplicaatAfvoerInstelling, True)
         feiten.duplicaat_noodrem_aan = bool(noodrem is not None and noodrem.platformbreed_ingeschakeld)
+        intake = session.get(IntakeInstelling, True)
+        feiten.intake_ai_aan = bool(intake is not None and intake.ai_ingeschakeld)
         kand = session.get(AutoboekInstelling, True)
         feiten.autoboek_kandidaten_laatste_run = kand.laatste_run_op if kand is not None else None
         for r in session.scalars(
@@ -855,6 +1033,24 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                 )
                 or 0
             )
+            if aid in feiten.autoboek_leren_aan:
+                voorkeuren = session.scalars(
+                    select(LeverancierVoorkeur).where(LeverancierVoorkeur.administratie_id == aid)
+                ).all()
+                uitgezonderd_ids = {v.vendor_id for v in voorkeuren if v.autoboeken_uitgezonderd}
+                actief_ids = {v.vendor_id for v in voorkeuren if v.autoboeken_ingeschakeld}
+                lerend_ids = set(
+                    session.scalars(
+                        select(AutoboekKandidaatStand.vendor_id).where(
+                            AutoboekKandidaatStand.administratie_id == aid, AutoboekKandidaatStand.actief.is_(False)
+                        )
+                    )
+                )
+                feiten.autoboek_leren_detail[aid] = {
+                    "lerend": len(lerend_ids - uitgezonderd_ids - actief_ids),
+                    "actief": len(actief_ids),
+                    "uitgezonderd": len(uitgezonderd_ids),
+                }
             feiten.veldwerker_optins[aid] = int(
                 session.scalar(
                     select(func.count()).where(
@@ -876,13 +1072,37 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                     feiten.bank_runs.append(
                         BankRunFeit(administratie_id=aid, beeindigd_op=_utc(r.beeindigd_op), resultaat=r.resultaat)
                     )
+                res = r.resultaat if isinstance(r.resultaat, dict) else {}
                 feiten.bank_sync_runs.append(
                     BankSyncRunFeit(
                         administratie_id=aid,
                         beeindigd_op=_utc(r.beeindigd_op),
                         status=r.status,
                         fout_reden=r.fout_reden,
-                        bron=(r.resultaat or {}).get("bron") if isinstance(r.resultaat, dict) else None,
+                        bron=res.get("bron"),
+                        historie_fouten=len(res.get("historie_fouten") or []),
+                    )
+                )
+            # Eerste-sync-runs (verzoek blok C): afgerond in de week; 401/403 in een onderdeel = credential-weigering.
+            for es in session.scalars(
+                select(AdministratieSyncRun).where(
+                    AdministratieSyncRun.administratie_id == aid,
+                    AdministratieSyncRun.status.in_(("klaar", "fout")),
+                    AdministratieSyncRun.beeindigd_op.is_not(None),
+                    AdministratieSyncRun.beeindigd_op >= week_vanaf,
+                )
+            ):
+                onderdelen = es.onderdelen if isinstance(es.onderdelen, dict) else {}
+                geweigerd = any(
+                    isinstance(o, dict) and o.get("http_status") in RECHTEN_STATUSSEN for o in onderdelen.values()
+                )
+                feiten.eerste_sync_runs.append(
+                    EersteSyncFeit(
+                        administratie_id=aid,
+                        tijdstip=_utc(es.beeindigd_op),
+                        status=es.status,
+                        geweigerd=geweigerd,
+                        fout_reden=es.fout_reden,
                     )
                 )
             # Overgangen naar de extractie-wachtrij (upload/intake/herextractie) — herstel-overgangen

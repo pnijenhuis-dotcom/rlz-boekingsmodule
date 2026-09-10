@@ -83,6 +83,21 @@ class OmzetAutoboekenDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class AutoboekenLerenDto(StrikteInvoer):
+    """Schakelaar "Autoboeken (leren en boeken)" per administratie (blok A bundel 10-09, migratie 0128)."""
+
+    ingeschakeld: bool
+
+
+class AutoboekenLerenStandDto(BaseModel):
+    """Stand + Kempen-regel: `toegestaan=false` (doorbelasting) → switch disabled, `reden_niet_toegestaan` = de
+    409-tekst."""
+
+    ingeschakeld: bool
+    toegestaan: bool
+    reden_niet_toegestaan: str | None = None
+
+
 class DuplicaatAutoafvoerDto(StrikteInvoer):
     """Platformbrede noodrem duplicaat-auto-afvoer (blok A1 04-09, migratie 0109): harde duplicaten gaan
     standaard automatisch naar Afgewezen mét kruisverwijzing; UIT = noodrem. Beheerder-only, default AAN."""
@@ -161,7 +176,10 @@ class AdministratieInstellingenDto(BaseModel):
     doorbelasting_doel: bool = False
     # Omzet-autoboeken (GO 01-09, migratie 0096): opt-in per administratie, default UIT.
     omzet_autoboeken_ingeschakeld: bool = False
-    # Duplicaat-auto-afvoer (04-09, migratie 0105): opt-in per administratie, default UIT.
+    # Autoboeken (leren en boeken) per administratie (blok A bundel 10-09, migratie 0128): kolom/chip in de tabel;
+    # `autoboeken_leren_toegestaan=false` = doorbelasting-administratie (chip "n.v.t. — doorbelasting").
+    autoboeken_leren_ingeschakeld: bool = False
+    autoboeken_leren_toegestaan: bool = True
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None

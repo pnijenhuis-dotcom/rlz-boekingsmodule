@@ -37,6 +37,25 @@ function redenTekst(t: AutomatiseringTellerDto): string {
   return delen.join(', ')
 }
 
+/** Blok A bundel 10-09: extra standen uit `detail` (additief, sleutel-agnostisch) — alleen getallen mét een bekend label
+ * worden getoond ("lerend 4 · actief 2 · uitgezonderd 1 · vandaag geactiveerd 1"); onbekende sleutels en niet-getallen
+ * worden overgeslagen, nooit een crash. */
+const DETAIL_LABEL: Record<string, string> = {
+  lerend: 'lerend',
+  actief: 'actief',
+  uitgezonderd: 'uitgezonderd',
+  geactiveerd_24u: 'vandaag geactiveerd',
+  automatisch_geboekt_24u: 'vandaag automatisch geboekt',
+}
+
+export function detailTekst(detail: Record<string, unknown> | null | undefined): string | null {
+  if (!detail) return null
+  const delen = Object.entries(DETAIL_LABEL)
+    .filter(([k]) => typeof detail[k] === 'number')
+    .map(([k, label]) => `${label} ${String(detail[k])}`)
+  return delen.length > 0 ? delen.join(' · ') : null
+}
+
 function overgeslagenTotaal(t: AutomatiseringTellerDto): number {
   return Object.values(t.dag.overgeslagen).reduce((s, n) => s + n, 0)
 }
@@ -141,6 +160,11 @@ export function AutomatiseringenBlok({ data }: { data: AutomatiseringenDto | nul
                         {' '}
                         ({t.stand_detail})
                       </span>
+                    ) : null}
+                    {detailTekst(t.detail) ? (
+                      <div className="hint" style={{ margin: 0 }} data-testid={`automatisering-detail-${t.sleutel}`}>
+                        {detailTekst(t.detail)}
+                      </div>
                     ) : null}
                   </td>
                   <td style={{ textAlign: 'right' }}>{t.dag.verwacht}</td>

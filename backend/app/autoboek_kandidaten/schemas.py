@@ -31,6 +31,9 @@ class KandidaatRijDto(BaseModel):
     snooze_reden: str | None
     snooze_op: datetime | None
     berekend_op: datetime
+    # Blok A bundel 10-09: chip "administratie leert zelf" + stand-enum leert | boekt_automatisch | uitgezonderd | handmatig_aan.
+    administratie_leren_aan: bool = False
+    stand: str = "leert"
 
 
 class TellersDto(BaseModel):

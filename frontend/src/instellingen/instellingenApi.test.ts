@@ -3,9 +3,15 @@ import viteConfig from '../../vite.config'
 import { haalIbanAccordeursOp, zetIbanAccordeurs } from '../document/ibanAccorderingApi'
 import { haalMedewerkersOp } from '../vragen/vragenApi'
 import {
+  geefLeverancierVrij,
+  haalAiToetsFacturen,
+  haalAutoboekenLeren,
   haalBoekenKillSwitchOp,
   haalInstellingenAdministratiesOp,
   haalLeveranciersAutoboeken,
+  zetAiToetsFacturen,
+  zetAutoboekenLeren,
+  zonderLeverancierUit,
   zetAiExtractieInstelling,
   zetBoekenInstelling,
   zetBoekenKillSwitch,
@@ -44,6 +50,14 @@ const HELPER_AANROEPEN: Array<{ naam: string; roep: () => Promise<unknown> }> = 
     naam: 'zetLeverancierAutoboeken',
     roep: () => zetLeverancierAutoboeken(ADMINISTRATIE_ID, 'bbbbbbbb-0000-0000-0000-000000000002', true),
   },
+  // Blok A bundel 10-09: schakelaar per administratie + uitzonderen/vrijgeven per leverancier.
+  { naam: 'haalAutoboekenLeren', roep: () => haalAutoboekenLeren(ADMINISTRATIE_ID) },
+  { naam: 'zetAutoboekenLeren', roep: () => zetAutoboekenLeren(ADMINISTRATIE_ID, true) },
+  { naam: 'zonderLeverancierUit', roep: () => zonderLeverancierUit(ADMINISTRATIE_ID, 'bbbbbbbb-0000-0000-0000-000000000002', 'reden') },
+  { naam: 'geefLeverancierVrij', roep: () => geefLeverancierVrij(ADMINISTRATIE_ID, 'bbbbbbbb-0000-0000-0000-000000000002') },
+  // Blok B bundel 10-09: platformbrede AI-toets-schakelaar.
+  { naam: 'haalAiToetsFacturen', roep: () => haalAiToetsFacturen() },
+  { naam: 'zetAiToetsFacturen', roep: () => zetAiToetsFacturen(true) },
   { naam: 'haalIbanAccordeursOp', roep: () => haalIbanAccordeursOp(ADMINISTRATIE_ID) },
   { naam: 'zetIbanAccordeurs', roep: () => zetIbanAccordeurs(ADMINISTRATIE_ID, []) },
   { naam: 'haalMedewerkersOp', roep: () => haalMedewerkersOp(ADMINISTRATIE_ID) },

@@ -31,9 +31,9 @@ describe('instellingenRegistry — guard (élk nav-item en élke tab heeft een r
     }
   })
 
-  it('elke detailpagina-tab heeft precies één tab-entry', () => {
+  it('elke detailpagina-tab heeft precies één tab-entry zonder anker (anker-entries = losse instellingen bínnen de tab)', () => {
     for (const tab of DETAIL_TABS) {
-      const entries = REGISTRY.filter((e) => e.doel.soort === 'tab' && e.doel.tab === tab.pad)
+      const entries = REGISTRY.filter((e) => e.doel.soort === 'tab' && e.doel.tab === tab.pad && !e.doel.anker)
       expect(entries, `tab "${tab.pad}" mist een registry-entry (of heeft er meerdere)`).toHaveLength(1)
     }
   })

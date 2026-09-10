@@ -1,5 +1,6 @@
 import { ApiError, apiJson } from '../api/client'
 import type {
+  AutoboekenLerenStandDto,
   ArchiveringResultaatDto,
   AutoboekBulkAanzettenResultaatDto,
   AutoboekBulkVerbergenResultaatDto,

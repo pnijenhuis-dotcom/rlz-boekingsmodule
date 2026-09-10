@@ -134,11 +134,15 @@ def analyseer_reeks(
     seed_observaties: list[Observatie],
     project_verplicht: bool,
     vanaf: datetime | None = None,
+    reeks_vanaf: datetime | None = None,
 ) -> Reeks:
     """Loopt de boekingen chronologisch af en herleidt per boeking of het voorstel ongewijzigd is
     geboekt. De teller telt uitsluitend mens-boekingen; een automatisch geboekt document voegt zijn
     waarden wél toe aan het geheugen (dat doet de leerlus ook) maar bevestigt niets. `vanaf` telt de
-    correcties ná dat moment apart (heroverwegen: "N correcties ná activatie")."""
+    correcties ná dat moment apart (heroverwegen: "N correcties ná activatie"). `reeks_vanaf` (blok A
+    bundel 10-09: reset ná storno/correctie van een automatische boeking) = boekingen op of vóór dat
+    moment voeden alleen nog het geheugen — de reeks en de mens-teller starten bij 0 en tellen uitsluitend
+    boekingen erná ("leert 0/N")."""
     observaties = list(seed_observaties)
     reeks = 0
     correcties = 0
@@ -152,7 +156,7 @@ def analyseer_reeks(
     for boeking in sorted(boekingen, key=lambda b: b.geboekt_op):
         if any(is_buitenland_tarief(r.btw_naam) for r in boeking.regels):
             buitenland = True
-        if boeking.automatisch:
+        if boeking.automatisch or (reeks_vanaf is not None and boeking.geboekt_op <= reeks_vanaf):
             observaties.extend(_observaties_van(boeking))
             laatste = boeking
             continue

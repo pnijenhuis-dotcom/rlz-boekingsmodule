@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
-import { AutomatiseringenBlok, AutomatiseringenInstellingenBlok, samenvattingTekst } from './AutomatiseringenBlok'
+import { AutomatiseringenBlok, AutomatiseringenInstellingenBlok, detailTekst, samenvattingTekst } from './AutomatiseringenBlok'
 import { ReconciliatieScreen } from './ReconciliatieScreen'
 import type { AutomatiseringenDto, AutomatiseringTellerDto, BevindingDto, BevindingenLijstDto, ReconciliatieRunDto } from './reconciliatieApi'
 
@@ -218,6 +218,32 @@ function renderInstellingenBlok(laatste: ReconciliatieRunDto | null | Response) 
     </MemoryRouter>,
   )
 }
+
+describe('AutomatiseringenBlok — teller autoboek_leren mét detail (blok A bundel 10-09, additief)', () => {
+  it('toont lerend/actief/uitgezonderd/vandaag geactiveerd uit `detail`; onbekende sleutels en niet-getallen worden overgeslagen; null = niets', () => {
+    const data: AutomatiseringenDto = {
+      ...AUTOMATISERINGEN,
+      tellers: [
+        teller('autoboek_leren', 'Autoboeken per administratie (leren en boeken)', {
+          stand: 'deels',
+          stand_detail: 'aan 2 van 12 administraties',
+          dag: { verwacht: 3, gedaan: 3, overgeslagen: {} },
+          detail: { lerend: 4, actief: 2, uitgezonderd: 1, geactiveerd_24u: 1, per_administratie: [{ naam: 'x' }], onbekend: 'tekst' },
+        }),
+        teller('autoboeken_inkoop', 'Autoboeken inkoop', { detail: null }),
+      ],
+    }
+    render(
+      <MemoryRouter>
+        <AutomatiseringenBlok data={data} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('automatisering-detail-autoboek_leren')).toHaveTextContent('lerend 4 · actief 2 · uitgezonderd 1 · vandaag geactiveerd 1')
+    expect(screen.queryByTestId('automatisering-detail-autoboeken_inkoop')).not.toBeInTheDocument()
+    expect(detailTekst(null)).toBeNull()
+    expect(detailTekst({ onbekend: 3 })).toBeNull()
+  })
+})
 
 describe('AutomatiseringenInstellingenBlok (Instellingen › Boeken platformbreed)', () => {
   afterEach(() => vi.unstubAllGlobals())

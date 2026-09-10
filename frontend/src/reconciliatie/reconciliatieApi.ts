@@ -51,6 +51,9 @@ export interface AutomatiseringTellerDto {
   harde_voorwaarden: HardeVoorwaardeDto[]
   /** Zeven dagen aan + kandidaten, maar 0 gedaan en 0 overgeslagen = "stil" (LET-OP-bevinding). */
   stil: boolean
+  /** Blok A bundel 10-09 (additief, sleutel-agnostisch): extra standen per automatisering. Voor `autoboek_leren`:
+   * `{ lerend, actief, uitgezonderd, geactiveerd_24u, per_administratie: [...] }`. Bestaande tellers: null/ontbreekt. */
+  detail?: Record<string, unknown> | null
 }
 
 export interface AutomatiseringenDto {
@@ -272,6 +275,9 @@ export const REDEN_LABEL: Record<string, string> = {
   odoo_administratie: 'Odoo-administratie (bank niet via Reeleezee)',
   geen_credential_geregistreerd: 'geen webservice-login geregistreerd',
   geen_sync_run: 'geen bank-sync-run in het venster',
+  // Blok A/B bundel 10-09 — AI-plausibiliteitstoets als poort: beide harde voorwaarde mét deeplink Intake-AI.
+  avg_gate: 'AI staat uit (AVG-gate intake-AI)',
+  kostengrens: 'AI-kostengrens bereikt',
 }
 
 /** Spiegel van DOEL_PAD in automatiseringen.py (blok 5, 08-09): waar de mens een ontbrekende harde voorwaarde
@@ -280,6 +286,8 @@ const DOEL_PAD_VOORWAARDE: Record<string, string> = {
   credential: '/instellingen/administraties/{aid}',
   geen_eigenaar: '/instellingen/administraties/{aid}',
   api_key: '/instellingen/intake-ai',
+  avg_gate: '/instellingen/intake-ai',
+  kostengrens: '/instellingen/intake-ai',
   geldpoort: '/instellingen/boeken',
   noodrem: '/instellingen/boeken',
   volumerem: '/instellingen/autoboeken',

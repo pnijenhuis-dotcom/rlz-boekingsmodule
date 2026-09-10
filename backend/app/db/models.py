@@ -147,6 +147,12 @@ class Administratie(Base):
     # Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles
     # groen is — opt-in per administratie, default UIT, Beheerder-only (app/omzet/autoboeken.py).
     omzet_autoboeken_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Autoboeken per administratie "leren en boeken" (blok A bundel 10-09, besluit Peter 10-09, migratie 0128):
+    # AAN = het systeem activeert de per-leverancier-opt-in zélf zodra ≥ N (platformbreed 3) mens-boekingen op rij
+    # ongewijzigd zijn (app/autoboek_kandidaten/service.py::activeer_kwalificerend); UIT = gedrag van 01-09
+    # (nomineren, mens klikt aan). Default UIT, Beheerder-only. Kempen-regel (deterministisch): een administratie
+    # mét doorbelasting_ingeschakeld kan nooit aan — de verdeling is mensenwerk (beheer-service → 409).
+    autoboeken_leren_ingeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Duplicaat-auto-afvoer (migratie 0105) — VERVALLEN sinds 04-09 (blok A1, besluit Peter): geen
     # lezer meer — het automatische pad, de UI, de API en de CLI lezen/schrijven deze kolom niet
     # meer; alleen de platformbrede noodrem `DuplicaatAfvoerInstelling.platformbreed_ingeschakeld`

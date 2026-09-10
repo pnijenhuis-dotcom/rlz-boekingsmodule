@@ -5,7 +5,7 @@ import { Button, Select, useToastOptioneel } from '../ui/basis'
 import { useMedewerkers } from '../vragen/useMedewerkers'
 import { BevestigDialog } from './BevestigDialog'
 import { BulkAccorderingDialog } from './BulkAccorderingDialog'
-import { zetAiExtractieInstelling, zetBoekenInstelling, zetEigenaar } from './instellingenApi'
+import { zetAiExtractieInstelling, zetAutoboekenLeren, zetBoekenInstelling, zetEigenaar } from './instellingenApi'
 
 /* Bulkbediening administraties (fase 3 modernisering 15-08, mockup #scherm-instellingen):
  * rijselectie + bulkbalk. Bewust client-side over de bestaande per-administratie-endpoints —
@@ -15,11 +15,13 @@ import { zetAiExtractieInstelling, zetBoekenInstelling, zetEigenaar } from './in
 type BulkActie =
   | { soort: 'boeken'; ingeschakeld: boolean }
   | { soort: 'ai_extractie'; ingeschakeld: boolean }
+  | { soort: 'autoboeken_leren'; ingeschakeld: boolean }
   | { soort: 'eigenaar'; eigenaarId: string | null; eigenaarNaam: string }
 
 function actieLabel(actie: BulkActie): string {
   if (actie.soort === 'boeken') return `Boeken ${actie.ingeschakeld ? 'AAN' : 'UIT'}`
   if (actie.soort === 'ai_extractie') return `AI-extractie ${actie.ingeschakeld ? 'AAN' : 'UIT'}`
+  if (actie.soort === 'autoboeken_leren') return `Autoboeken (leren en boeken) ${actie.ingeschakeld ? 'AAN' : 'UIT'}`
   return actie.eigenaarId ? `Eigenaar → ${actie.eigenaarNaam}` : 'Eigenaar verwijderen'
 }
 
@@ -64,10 +66,15 @@ export function BulkBediening({
       try {
         if (actie.soort === 'boeken') await zetBoekenInstelling(a.id, actie.ingeschakeld)
         else if (actie.soort === 'ai_extractie') await zetAiExtractieInstelling(a.id, actie.ingeschakeld)
+        else if (actie.soort === 'autoboeken_leren') await zetAutoboekenLeren(a.id, actie.ingeschakeld)
         else await zetEigenaar(a.id, actie.eigenaarId)
         gelukt += 1
       } catch (err) {
-        fouten.push(`${a.naam}: ${err instanceof ApiError ? err.message : 'wijzigen mislukt'}`)
+        // Autoboeken (leren en boeken), blok A 10-09: een 409 = de server weigert met uitleg (Kempen-regel "doorbelasting")
+        // → per rij zichtbaar als "overgeslagen: ‹detail›", nooit stil (geen stille no-op). Andere acties: bestaande tekst.
+        const overgeslagen = actie.soort === 'autoboeken_leren' && err instanceof ApiError && err.status === 409
+        const tekst = err instanceof ApiError ? (overgeslagen ? `overgeslagen: ${err.message}` : err.message) : 'wijzigen mislukt'
+        fouten.push(`${a.naam}: ${tekst}`)
       }
     }
     setBezig(false)
@@ -112,6 +119,12 @@ export function BulkBediening({
               onClick={() => setActie({ soort: 'ai_extractie', ingeschakeld: false })}
             >
               AI uit
+            </Button>
+            <Button variant="secundair" maat="klein" onClick={() => setActie({ soort: 'autoboeken_leren', ingeschakeld: true })}>
+              Autoboeken aan
+            </Button>
+            <Button variant="secundair" maat="klein" onClick={() => setActie({ soort: 'autoboeken_leren', ingeschakeld: false })}>
+              Autoboeken uit
             </Button>
             <Button variant="secundair" maat="klein" onClick={() => setEigenaarKiezen(true)}>
               Eigenaar toewijzen…

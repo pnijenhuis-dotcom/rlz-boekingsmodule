@@ -643,6 +643,15 @@ def boek_document(
 
     template_service.leer_na_boeking_stil(administratie_id=administratie_id, document_id=document_id)
 
+    # Autoboeken per administratie — leerregel (blok A bundel 10-09, besluit Peter 10-09): ná élke GEBOEKT-overgang
+    # door een MENS toetst het systeem alleen déze leverancier en activeert de opt-in zodra ≥ N op rij ongewijzigd is
+    # geboekt — uitsluitend als de administratie-schakelaar aan staat (anders één goedkope read). Post-commit,
+    # systeem-actor, nooit een blokkade van de boeking. Een automatische boeking bevestigt niets (geen mens erop).
+    if not (extra_overgang_detail or {}).get("automatisch_geboekt"):
+        from app.autoboek_kandidaten import service as autoboek_kandidaten_service  # lokaal: geen kring
+
+        autoboek_kandidaten_service.activeer_na_boeking_stil(administratie_id=administratie_id, document_id=document_id)
+
     return BoekResultaat(
         document_id=document_id,
         status=DocumentStatus.GEBOEKT,

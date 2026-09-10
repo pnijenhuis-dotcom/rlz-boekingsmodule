@@ -2338,6 +2338,9 @@ def main(argv: list[str] | None = None) -> int:
         "iets te melden, idempotent per ISO-week, opt-out per gebruiker (job rlz-kantoor-digest, ma 07:30).",
     )
 
+    from app.autoboek_kandidaten.cli_cmd import dispatch as dispatch_autoboek_leren, register as register_autoboek_leren  # blok A 10-09
+
+    register_autoboek_leren(subparsers)  # autoboek-drempel-zetten, autoboek-leren-rapport
     subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
@@ -2900,6 +2903,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if (uitkomst_autoboek_leren := dispatch_autoboek_leren(args)) is not None:  # blok A 10-09
+        return uitkomst_autoboek_leren
     if args.commando == "bootstrap-beheerder":
         return _bootstrap_beheerder(args)
     if args.commando == "kantoor-digest":

@@ -487,9 +487,23 @@ class DocumentListItemResponse(BaseModel):
 
 
 class LeverancierAutoboekenDto(BaseModel):
+    """Rij in de uitzonderingenlijst (blok A bundel 10-09): `stand` leert | boekt_automatisch | uitgezonderd |
+    handmatig_aan, `reeks`/`drempel` = "leert (n/3)", `bron` mens | systeem, `gereset_op` = reset ná
+    storno/correctie."""
+
     vendor_id: uuid.UUID
     naam: str | None
     autoboeken_ingeschakeld: bool
+    stand: str = "leert"
+    reeks: int = 0
+    drempel: int = 3
+    bron: str | None = None
+    gereset_op: datetime | None = None
+    uitzondering_reden: str | None = None
+
+
+class LeverancierUitzonderenInput(StrikteInvoer):
+    reden: str = Field(min_length=1, max_length=500)
 
 
 class LeverancierAutoboekenLijstResponse(BaseModel):

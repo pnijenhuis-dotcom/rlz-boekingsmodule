@@ -188,6 +188,9 @@ class AdministratieInstellingen:
     doorbelasting_ingeschakeld: bool = False
     doorbelasting_doel: bool = False
     omzet_autoboeken_ingeschakeld: bool = False
+    # Autoboeken (leren en boeken) per administratie (blok A bundel 10-09, migratie 0128) + de Kempen-regel als vlag.
+    autoboeken_leren_ingeschakeld: bool = False
+    autoboeken_leren_toegestaan: bool = True
     bank_autoboeken_ingeschakeld: bool = False
     accordering_ingeschakeld: bool = False
     laatste_sync_op: datetime | None = None
@@ -322,6 +325,8 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             doorbelasting_ingeschakeld=r.doorbelasting_ingeschakeld,
             doorbelasting_doel=r.id in doelen,
             omzet_autoboeken_ingeschakeld=r.omzet_autoboeken_ingeschakeld,
+            autoboeken_leren_ingeschakeld=r.autoboeken_leren_ingeschakeld,
+            autoboeken_leren_toegestaan=not r.doorbelasting_ingeschakeld,
             bank_autoboeken_ingeschakeld=r.bank_autoboeken_ingeschakeld,
             accordering_ingeschakeld=r.accordering_ingeschakeld,
             laatste_sync_op=laatste_sync.get(r.id),
@@ -719,6 +724,73 @@ def zet_omzet_autoboeken_ingeschakeld(*, actor_id: uuid.UUID, administratie_id: 
             nieuwe_waarde={"omzet_autoboeken_ingeschakeld": ingeschakeld},
         )
         return ingeschakeld
+
+
+# --- Autoboeken per administratie "leren en boeken" (blok A bundel 10-09, besluit Peter 10-09, migratie 0128) ---------
+
+#: Kempen-regel (deterministisch, geen naam-hardcode): een doorbelastende administratie kan de schakelaar niet aan.
+AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST = (
+    "Deze administratie doorbelast kosten aan andere entiteiten — de verdeling is mensenwerk, autoboeken "
+    "(leren en boeken) kan hier niet aan."
+)
+
+
+class AutoboekenLerenNietToegestaan(BeheerFout):
+    """Aanzetten geweigerd (router → 409 mét deze tekst als detail); uitzetten mag altijd."""
+
+
+@dataclass(frozen=True)
+class AutoboekenLerenStand:
+    ingeschakeld: bool
+    toegestaan: bool
+    reden_niet_toegestaan: str | None
+
+
+def haal_autoboeken_leren_op(*, administratie_id: uuid.UUID) -> AutoboekenLerenStand:
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        toegestaan = not administratie.doorbelasting_ingeschakeld
+        return AutoboekenLerenStand(
+            ingeschakeld=administratie.autoboeken_leren_ingeschakeld,
+            toegestaan=toegestaan,
+            reden_niet_toegestaan=None if toegestaan else AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST,
+        )
+
+
+def zet_autoboeken_leren(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, ingeschakeld: bool
+) -> AutoboekenLerenStand:
+    """De schakelaar "Autoboeken (leren en boeken)" — Beheerder-only (router), default UIT, audit oud→nieuw
+    `autoboeken_leren_gewijzigd`. Kempen-regel: `doorbelasting_ingeschakeld` → aanzetten geweigerd
+    (`AutoboekenLerenNietToegestaan`, 409 mét uitleg — ook in bulk zichtbaar per rij); uitzetten mag altijd.
+    Ná aanzetten activeert het systeem direct de leveranciers die de drempel al halen (post-commit,
+    `autoboek_kandidaten.service.activeer_kwalificerend`) — geen wachten op de nachtelijke run."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        if ingeschakeld and administratie.doorbelasting_ingeschakeld:
+            raise AutoboekenLerenNietToegestaan(AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST)
+        oud = administratie.autoboeken_leren_ingeschakeld
+        administratie.autoboeken_leren_ingeschakeld = ingeschakeld
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="autoboeken_leren_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"autoboeken_leren_ingeschakeld": oud},
+            nieuwe_waarde={"autoboeken_leren_ingeschakeld": ingeschakeld},
+        )
+    if ingeschakeld:
+        from app.autoboek_kandidaten import service as kandidaten_service  # lokaal: geen kring
+
+        kandidaten_service.activeer_kwalificerend_stil(administratie_id=administratie_id)
+    return haal_autoboeken_leren_op(administratie_id=administratie_id)
 
 
 def haal_duplicaat_autoafvoer_platform_op() -> bool:

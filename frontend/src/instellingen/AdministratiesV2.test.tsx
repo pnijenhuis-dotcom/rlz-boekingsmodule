@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AdministratieInstellingenDto } from '../api/types'
 import { chipsVoor } from './AdministratiesV2'
+import { AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST } from './instellingenApi'
 
 function administratie(overrides: Partial<AdministratieInstellingenDto> = {}): AdministratieInstellingenDto {
   return {
@@ -71,5 +72,22 @@ describe('chipsVoor — facturatiemodule niet afgenomen (spoedopdracht 01-09 blo
 
   it('zonder het kenmerk bestaat de chip niet', () => {
     expect(chipsVoor(administratie({})).some((c) => c.tekst === 'geen facturatiemodule')).toBe(false)
+  })
+})
+
+describe('chipsVoor — Autoboeken (leren en boeken) per administratie (blok A bundel 10-09)', () => {
+  it('schakelaar aan = groene STATUS-chip "autoboeken"; niet toegestaan (doorbelasting) = stille chip mét de 409-tekst als title', () => {
+    const aan = chipsVoor(administratie({ autoboeken_leren_ingeschakeld: true, autoboeken_leren_toegestaan: true }))
+    expect(aan.find((c) => c.tekst === 'autoboeken')?.variant).toBe('ok')
+    const kempen = chipsVoor(administratie({ doorbelasting_ingeschakeld: true, autoboeken_leren_ingeschakeld: false, autoboeken_leren_toegestaan: false }))
+    const chip = kempen.find((c) => c.tekst === 'n.v.t. — doorbelasting')
+    expect(chip?.variant).toBe('stil')
+    expect(chip?.titel).toBe(AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST)
+    expect(kempen.some((c) => c.tekst === 'autoboeken')).toBe(false)
+  })
+
+  it('uit + toegestaan (of ouder antwoord zonder velden) = geen chip — alleen een afwijking krijgt een chip', () => {
+    expect(chipsVoor(administratie({ autoboeken_leren_ingeschakeld: false, autoboeken_leren_toegestaan: true })).some((c) => /autoboeken|doorbelasting/.test(c.tekst))).toBe(false)
+    expect(chipsVoor(administratie({})).some((c) => c.tekst === 'autoboeken' || c.tekst === 'n.v.t. — doorbelasting')).toBe(false)
   })
 })

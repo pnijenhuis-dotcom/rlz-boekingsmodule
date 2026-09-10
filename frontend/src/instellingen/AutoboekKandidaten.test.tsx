@@ -248,3 +248,36 @@ describe('AutoboekKandidaten', () => {
     expect(aanroepen[0]).toEqual({ url: '/instellingen/autoboeken/instelling', body: { drempel_op_rij: 8 } })
   })
 })
+
+describe('AutoboekKandidaten — chip "administratie leert zelf" (blok A bundel 10-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('rij met administratie_leren_aan draagt de chip; zonder het veld niet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.startsWith('/instellingen/autoboeken/kandidaten?')) {
+          return Promise.resolve(
+            json({
+              rijen: [rij({ administratie_leren_aan: true, stand: 'leert' }), rij({ vendor_id: 'v-2', leverancier_naam: 'Transip B.V.' })],
+              totaal: 2,
+              pagina: 1,
+              per_pagina: 25,
+              tellers: TELLERS,
+            }),
+          )
+        }
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <AutoboekKandidaten />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('Ebbers Salarisadvies B.V.')).toBeInTheDocument())
+    const chips = screen.getAllByText('administratie leert zelf')
+    expect(chips).toHaveLength(1)
+    expect(chips[0]).toHaveAttribute('title', expect.stringContaining('Autoboeken (leren en boeken) staat aan'))
+  })
+})
