@@ -18,7 +18,10 @@ BASIS="http://localhost:${POORT}"
 # Instellingen v3 (01-09): twee-paneel-layout — de administraties-lijst, de detailpagina (alle tabs
 # zichtbaar, incl. de brede Boeken & AI-tab) en het autoboeken-item meten mee.
 # C9 (07-09): ?twijfel=1 = verzamelbak-rij mét twijfelchip + soort-toggle + lange tenaamstelling + picker.
-HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
+# Blok 2 (10-09): harness-gebruikers ?breed=1 = brede variant (langste namen/e-mails, "Opnieuw mailen", alle
+# beveiligings-/statuschips en Rechten-switches aan) op de drie tabs — kolomminima uit gebruikersKolommen.ts;
+# op 1170/1024/768 scrolt de tabel intern in .tabel-scroll (sticky acties), de pagina zelf nooit.
+HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html "harness-gebruikers.html?breed=1" "harness-gebruikers.html?breed=1&groep=veldwerkers" "harness-gebruikers.html?breed=1&groep=accordeurs" harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
 BREEDTES=(1440 1170 1024 768)
 
 if [ ! -x "$CHROME" ]; then

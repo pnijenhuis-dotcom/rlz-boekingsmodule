@@ -28,6 +28,7 @@ import {
 } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
 import { DossierModal, dossierBadge } from './DossierModal'
+import { GebruikersTabelKop, gebruikersTabelStijl } from './GebruikersTabelKop'
 import { kiesStandaardAdministratie, standaardRedenLabel, urenMeerwerkOptIns } from './standaardAdministratie'
 import {
   formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
@@ -94,23 +95,20 @@ export function VeldwerkersPanel({
         <p className="hint">Nog geen veldwerkers — nodig een ZZP'er, uitvoerder of detacheerder uit.</p>
       )}
       {gebruikers.length > 0 && (
-        <div className="tabel-scroll">
-          <table>
+        <div className="tabel-scroll sticky-koppen">
+          {/* Blok 2 (10-09): kolomminima uit één bron (gebruikersKolommen.ts) + ⋯-actiekolom, zelfde behandeling als Kantoor. */}
+          <table className="gebruikers-tabel" style={gebruikersTabelStijl('veldwerkers')} data-testid="gebruikers-tabel-veldwerkers">
+            <GebruikersTabelKop tab="veldwerkers" />
             <tbody>
-              <tr>
-                <th>Veldwerker</th>
-                <th>Rol</th>
-                <th>Koppelingen</th>
-                <th>Status</th>
-                <th className="acties" />
-              </tr>
               {gebruikers.map((g) => {
                 const info = veldPer.get(g.id)
                 return (
                   <tr key={g.id}>
                     <td>
                       <b>{g.naam}</b>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
+                      <div className="gebruiker-email" title={g.e_mail}>
+                        {g.e_mail}
+                      </div>
                     </td>
                     <td>
                       <Badge variant="paars">{rolLabel(g.rol)}</Badge>
@@ -180,25 +178,22 @@ export function VeldwerkersPanel({
                       )}
                     </td>
                     <td>
-                      {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
-                      {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
-                      {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
-                      {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
-                      {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
-                      {g.half_geactiveerd && (
-                        <Badge variant="warn" title="Activatie niet afgerond, geen gekoppeld toestel — stuur een herstel-link">
-                          half geactiveerd — geen toestel
-                        </Badge>
-                      )}
-                      {g.open_herstel_verloopt_op && (
-                        <Badge variant="stil">herstel-link — {formatVerloop(g.open_herstel_verloopt_op)}</Badge>
-                      )}
-                      {/* ZZP-dossier (A1, 25-08 — mockup: "📁 dossier 4/6"): klik opent het dossier. */}
-                      {info !== undefined && g.rol !== 'detacheerder' && (() => {
-                        const badge = dossierBadge(info)
-                        return (
-                          <>
-                            {' '}
+                      {/* Statuschips op één regel (blok 2 10-09); herstel-link en ⚠-correcties als detailregels eronder. */}
+                      <div className="chips-regel">
+                        {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
+                        {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                        {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
+                        {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
+                        {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
+                        {g.half_geactiveerd && (
+                          <Badge variant="warn" title="Activatie niet afgerond, geen gekoppeld toestel — stuur een herstel-link">
+                            half geactiveerd — geen toestel
+                          </Badge>
+                        )}
+                        {/* ZZP-dossier (A1, 25-08 — mockup: "📁 dossier 4/6"): klik opent het dossier. */}
+                        {info !== undefined && g.rol !== 'detacheerder' && (() => {
+                          const badge = dossierBadge(info)
+                          return (
                             <button
                               type="button"
                               className="linkbtn"
@@ -208,9 +203,12 @@ export function VeldwerkersPanel({
                             >
                               {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : <Badge variant="stil">📁 dossier</Badge>}
                             </button>
-                          </>
-                        )
-                      })()}
+                          )
+                        })()}
+                      </div>
+                      {g.open_herstel_verloopt_op && (
+                        <div className="cel-detail">herstel-link {formatVerloop(g.open_herstel_verloopt_op)}</div>
+                      )}
                       {info !== undefined && info.uren_afwijking_aantal > 0 && (
                         <div
                           style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}
@@ -222,9 +220,7 @@ export function VeldwerkersPanel({
                         </div>
                       )}
                     </td>
-                    <td className="acties" style={{ whiteSpace: 'nowrap' }}>
-                      {actieKolom(g)}
-                    </td>
+                    <td className="acties">{actieKolom(g)}</td>
                   </tr>
                 )
               })}

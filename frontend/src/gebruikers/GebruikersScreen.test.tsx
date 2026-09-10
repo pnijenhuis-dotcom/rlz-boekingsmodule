@@ -199,6 +199,14 @@ function renderScherm(pad = '/gebruikers') {
   )
 }
 
+/** Blok 2 (10-09): handelingen zitten achter het ⋯-rijmenu (UX-norm "één primaire knop + ⋯") — menu van de
+ * rij openen en het item kiezen. `naam` = de gebruikersnaam op de rij. */
+async function kiesMenuItem(naam: string, item: string | RegExp) {
+  const gebruikerEvent = userEvent.setup()
+  await gebruikerEvent.click(screen.getByRole('button', { name: `Meer acties voor ${naam}` }))
+  await gebruikerEvent.click(await screen.findByRole('menuitem', { name: item }))
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -638,8 +646,13 @@ describe('GebruikersScreen', () => {
     renderScherm('/gebruikers?groep=accordeurs')
     await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
     expect(screen.getByText('11 administraties')).toBeInTheDocument()
-    // Actieknoppen staan in de sticky actiekolom (3e).
-    expect(screen.getByRole('button', { name: 'Blokkeren' }).closest('td')).toHaveClass('acties')
+    // De ⋯-knop staat in de sticky actiekolom (3e); Blokkeren zit sinds blok 2 (10-09) in het menu, niet los.
+    expect(screen.getByRole('button', { name: 'Meer acties voor R. de Groot' }).closest('td')).toHaveClass('acties')
+    expect(screen.queryByRole('button', { name: /Blokkeren/ })).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Meer acties voor R. de Groot' }))
+    expect(await screen.findByRole('menuitem', { name: 'Blokkeren…' })).toBeInTheDocument()
+    await userEvent.setup().keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('Molenhof Beheer B.V.')
@@ -672,9 +685,12 @@ describe('GebruikersScreen — archiveren (feedbackronde 26-08 punt 1)', () => {
     expect(screen.queryByText('Actieve Collega')).not.toBeInTheDocument()
     expect(screen.getByText('gearchiveerd')).toBeInTheDocument()
     expect(screen.getByText(/gearchiveerd sinds .* door Peter/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Dearchiveren' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Blokkeren' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Archiveren' })).not.toBeInTheDocument()
+    // Blok 2 (10-09): het ⋯-menu van een gearchiveerde biedt E-mail wijzigen + Dearchiveren, nooit Blokkeren/Archiveren.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Meer acties voor Oud Account' }))
+    expect(await screen.findByRole('menuitem', { name: 'Dearchiveren…' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'E-mail wijzigen…' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Blokkeren/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Archiveren…/ })).not.toBeInTheDocument()
   })
 
   it('archiveren toont een bevestiging mét open-werk-aantallen en POST naar /archiveren', async () => {
@@ -686,7 +702,7 @@ describe('GebruikersScreen — archiveren (feedbackronde 26-08 punt 1)', () => {
     })
     renderScherm('/gebruikers?groep=accordeurs')
     await waitFor(() => expect(screen.getByText('Test Accordeur')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: 'Archiveren' }))
+    await kiesMenuItem('Test Accordeur', 'Archiveren…')
     await waitFor(() => expect(screen.getByText(/open werk: 2 open accorderingen/)).toBeInTheDocument())
     expect(screen.getByText(/er wordt niets verwijderd/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))

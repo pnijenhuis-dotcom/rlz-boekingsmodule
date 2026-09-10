@@ -2532,3 +2532,132 @@ tr.geselecteerd td.acties {
   font-size: 11px;
   color: var(--muted);
 }
+
+/* Gebruikers & toegang — tabel-layout (blok 2 vervolgrun 10-09 avond, kliktest Peter 10-09): kolomminima
+ * uit één bron (gebruikers/gebruikersKolommen.ts → <colgroup> px + th min-width + tabel min-width = som),
+ * table-layout fixed zodat extra ruimte evenredig verdeelt en een te smal venster horizontaal scrolt
+ * bínnen .tabel-scroll (actiekolom sticky, 25-08 3e) — nooit meer kop "BE…" of iconen over elkaar.
+ * Koppen nooit afgekapt; celpadding 8 px horizontaal (6 kolommen × 12 px winst t.o.v. 14 px — de minima
+ * in gebruikersKolommen.ts rekenen mét deze 2 × 8 px). */
+.gebruikers-tabel {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.gebruikers-tabel th,
+.gebruikers-tabel td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.gebruikers-tabel th {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.gebruikers-tabel td {
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+/* E-mail onder de naam: één regel, ellipsis mét title — een lange login mag de kolom niet verbreden. */
+.gebruikers-tabel .gebruiker-email {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gebruikers-tabel .naam-met-avatar > div {
+  min-width: 0;
+}
+
+/* Beveiliging-/statuschips op één regel: flex met gap, elke chip nowrap. Wrapt alleen als de chips
+ * sámen breder zijn dan het kolomminimum (niets verdwijnt stil) — de minima zijn zo gemeten dat het
+ * harnas ?breed=1 op één regel blijft. */
+.gebruikers-tabel .chips-regel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+}
+
+.gebruikers-tabel .chips-regel .apparaat-chip {
+  margin-right: 0;
+}
+
+.gebruikers-tabel .cel-detail {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Rechten: twee gelabelde switches onder elkaar (was: twee losse kolommen "Meerwerk & urenstaten" en
+ * "Veldwerkerbeheer" met alleen een switch). */
+.gebruikers-tabel .rechten-regels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gebruikers-tabel .recht-regel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Apparaten (accordeurs): per apparaat één regel — chip met ellipsis + Kill-switch als tekstknop. */
+.gebruikers-tabel .apparaat-rij {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gebruikers-tabel .apparaat-rij + .apparaat-rij {
+  margin-top: 4px;
+}
+
+.gebruikers-tabel .apparaat-rij .apparaat-chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  margin-right: 0;
+}
+
+/* Actiekolom: één primaire knop + ⋯ op één regel, rechts uitgelijnd. De ⋯-knop is een tekstknop
+ * (patroon TerugkerendScreen) — compact, groot genoeg als klikdoel via padding. */
+.gebruikers-tabel .rij-acties {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.gebruikers-tabel .rij-meer {
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.gebruikers-tabel .rij-meer:hover,
+.gebruikers-tabel .rij-meer[aria-expanded='true'] {
+  background: var(--panel-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.gebruikers-tabel .apparaat-blok + .apparaat-blok {
+  margin-top: 6px;
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -56,6 +56,9 @@ import {
   zetVeldwerkerbeheerRecht,
 } from '../meerwerk/meerwerkApi'
 import { AccordeurAdministraties } from './AccordeurAdministraties'
+import { GebruikerRijMenu, type RijMenuItem } from './GebruikerRijMenu'
+import { GebruikersTabelKop, gebruikersTabelStijl } from './GebruikersTabelKop'
+import type { GebruikersTab } from './gebruikersKolommen'
 import { ScopeModal } from './ScopeModal'
 import { UitnodigModal } from './UitnodigModal'
 import { VeldwerkersPanel } from './VeldwerkersPanel'
@@ -112,39 +115,57 @@ function groepeerApparaten(apparaten: ApparaatDto[]): ApparaatGroep[] {
   return groepen
 }
 
-/** Eén apparaat-rij in de apparatenkolom (contract §6): toestel = "Toestel · naam (platform) · gekoppeld dd-mm ·
- * laatst gebruikt dd-mm"; passkey = "🔑 naam", grijs mét "passkey — niet meer gebruikt" als de CLI 'm zo markeerde.
- * De kill-switch-knop staat bij beide — zelfde endpoint, zelfde bevestiging. */
-function ApparaatChip({ groep }: { groep: ApparaatGroep }) {
+/** Eén apparaat in de apparatenkolom (contract §6): toestel = chip "📱 Toestel · naam (platform)" mét de
+ * detailregel "gekoppeld dd-mm · laatst gebruikt dd-mm" eronder (blok 2 10-09: twee regels i.p.v. één
+ * chip van ~500 px — de chip krijgt anders een ellipsis binnen het kolomminimum); passkey = "🔑 naam",
+ * grijs mét "passkey — niet meer gebruikt" als de CLI 'm zo markeerde. De kill-switch (tekstknop) staat
+ * bij beide op de chipregel — zelfde endpoint, zelfde bevestiging. */
+function ApparaatChip({ groep, onKillSwitch }: { groep: ApparaatGroep; onKillSwitch: () => void }) {
   const nietMeer = groep.nietMeerGebruiktOp !== null
+  const killSwitch = (
+    <button type="button" className="linkbtn" onClick={onKillSwitch} title={`"${groep.naam}" per direct blokkeren (bevestiging volgt)`}>
+      Kill-switch
+    </button>
+  )
   if (groep.soort === 'toestel') {
     const platform = platformLabel(groep.platform)
-    const delen = [
-      `📱 Toestel · ${groep.naam}${platform ? ` (${platform})` : ''}`,
+    const kop = `📱 Toestel · ${groep.naam}${platform ? ` (${platform})` : ''}`
+    const detail = [
       formatDag(groep.aangemaaktOp) ? `gekoppeld ${formatDag(groep.aangemaaktOp)}` : null,
       formatDag(groep.laatstGebruiktOp) ? `laatst gebruikt ${formatDag(groep.laatstGebruiktOp)}` : null,
     ].filter((d): d is string => d !== null)
     return (
-      <span className="apparaat-chip" data-testid="apparaat-toestel">
-        {delen.join(' · ')}
-      </span>
+      <div className="apparaat-blok" data-testid="apparaat-toestel">
+        <div className="apparaat-rij">
+          <span className="apparaat-chip" title={kop}>
+            {kop}
+          </span>
+          {killSwitch}
+        </div>
+        {detail.length > 0 && <div className="cel-detail">{detail.join(' · ')}</div>}
+      </div>
     )
   }
+  const tekst = `🔑 ${groep.naam}${groep.isDevStub ? ' (dev-stub)' : ''}${nietMeer ? ' · passkey — niet meer gebruikt' : ''}`
   return (
-    <span
-      className="apparaat-chip"
-      data-testid={nietMeer ? 'apparaat-passkey-oud' : 'apparaat-passkey'}
-      style={nietMeer ? { color: 'var(--muted)', opacity: 0.75 } : undefined}
-      title={nietMeer ? `Passkey — niet meer gebruikt sinds ${formatDag(groep.nietMeerGebruiktOp) ?? '?'}; nooit verwijderd` : undefined}
-    >
-      🔑 {groep.naam}
-      {groep.isDevStub ? ' (dev-stub)' : ''}
-      {nietMeer ? ' · passkey — niet meer gebruikt' : ''}
-    </span>
+    <div className="apparaat-blok">
+      <div className="apparaat-rij">
+        <span
+          className="apparaat-chip"
+          data-testid={nietMeer ? 'apparaat-passkey-oud' : 'apparaat-passkey'}
+          style={nietMeer ? { color: 'var(--muted)', opacity: 0.75 } : undefined}
+          title={nietMeer ? `Passkey — niet meer gebruikt sinds ${formatDag(groep.nietMeerGebruiktOp) ?? '?'}; nooit verwijderd` : tekst}
+        >
+          {tekst}
+        </span>
+        {killSwitch}
+      </div>
+    </div>
   )
 }
 
-export type GebruikersGroep = 'kantoor' | 'veldwerkers' | 'accordeurs'
+export type GebruikersGroep = GebruikersTab
+
 const GROEPEN: { key: GebruikersGroep; label: string }[] = [
   { key: 'kantoor', label: 'Kantoor' },
   { key: 'veldwerkers', label: 'Veldwerkers' },
@@ -402,27 +423,64 @@ export function GebruikersScreen() {
     }
   }
 
-  /** Knop in de actiekolom van accordeurs/veldwerkers — alleen bij een account dat een
-   * wachtwoord heeft gehad (server-side dezelfde poort; geblokkeerd = eerst heractiveren). */
-  function herstelKnop(g: GebruikerOverzichtDto) {
-    if (!kanHerstelLinkKrijgen(g)) return null
-    return (
-      <Button variant="secundair" maat="klein" onClick={() => setHerstelVoor(g)}>
-        Herstel-link
-      </Button>
-    )
+  /** De ENE zichtbare knop in de actiekolom (UX-norm "één primaire knop + ⋯", blok 2 10-09): een open
+   * uitnodiging → "Opnieuw mailen"; een actieve externe app-gebruiker → "Herstel-link" (alleen bij een
+   * account dat een wachtwoord heeft gehad — server-side dezelfde poort; geblokkeerd = eerst
+   * heractiveren). Anders geen knop: alles overige zit in het ⋯-menu. */
+  function primaireKnop(g: GebruikerOverzichtDto): ReactNode {
+    if (g.status === 'uitgenodigd') {
+      return (
+        <Button variant="secundair" maat="klein" disabled={opnieuwBezig === g.id} onClick={() => void opnieuwMailen(g)}>
+          {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
+        </Button>
+      )
+    }
+    if (kanHerstelLinkKrijgen(g)) {
+      return (
+        <Button variant="secundair" maat="klein" onClick={() => setHerstelVoor(g)}>
+          Herstel-link
+        </Button>
+      )
+    }
+    return null
   }
 
-  /** A5 (25-08, Beheerder-only): e-mailadres = login wijzigen — uniciteit server-side (409),
-   * niet-geactiveerd account krijgt direct een verse uitnodiging op het nieuwe adres.
-   * Punt 22 (opruimrun 28-08, casus Haci): óók bij geblokkeerd/gearchiveerd én op de Kantoor-tab —
-   * een adres vrijmaken hoeft niet meer via dearchiveren → wijzigen → archiveren. */
-  function eMailKnop(g: GebruikerOverzichtDto) {
-    return (
-      <Button variant="ghost" maat="klein" onClick={() => { setEMailVoor(g); setNieuwEMail(g.e_mail) }}>
-        E-mail wijzigen
-      </Button>
-    )
+  /** ⋯-menu-items per rij — dezelfde handelingen als vóór 10-09, alleen niet meer als losse knoppen:
+   * - E-mail wijzigen (A5 25-08, Beheerder-only; punt 22 opruimrun 28-08: óók geblokkeerd/gearchiveerd én
+   *   op de Kantoor-tab — een adres vrijmaken hoeft niet via dearchiveren → wijzigen → archiveren);
+   * - Scope wijzigen (alleen Kantoor, niet-Beheerder, niet de eigen rij);
+   * - Blokkeren/Heractiveren en Archiveren/Dearchiveren — nooit bij het eigen account (server-side
+   *   eveneens geweigerd); een gearchiveerde heeft alleen "Dearchiveren". */
+  function menuItems(g: GebruikerOverzichtDto, opties: { scope?: boolean } = {}): RijMenuItem[] {
+    const isZelf = g.id === gebruikerId
+    const items: RijMenuItem[] = [
+      {
+        label: 'E-mail wijzigen…',
+        onClick: () => {
+          setEMailVoor(g)
+          setNieuwEMail(g.e_mail)
+        },
+      },
+    ]
+    if (opties.scope && g.rol !== 'beheerder' && !isZelf) {
+      items.push({ label: 'Scope wijzigen…', onClick: () => setScopeVoor(g) })
+    }
+    if (isZelf) return items
+    if (g.status === 'gearchiveerd') {
+      items.push({ label: 'Dearchiveren…', onClick: () => setArchivering({ gebruiker: g, actie: 'dearchiveren' }) })
+      return items
+    }
+    if (g.status === 'geblokkeerd') {
+      items.push({ label: 'Heractiveren…', onClick: () => setBlokkade({ gebruiker: g, actie: 'heractiveren' }) })
+    } else {
+      items.push({ label: 'Blokkeren…', gevaar: true, onClick: () => setBlokkade({ gebruiker: g, actie: 'blokkeren' }) })
+    }
+    items.push({ label: 'Archiveren…', onClick: () => openArchivering(g) })
+    return items
+  }
+
+  function actieKolom(g: GebruikerOverzichtDto, opties: { scope?: boolean } = {}): ReactNode {
+    return <GebruikerRijMenu naam={g.naam} primair={primaireKnop(g)} items={menuItems(g, opties)} />
   }
 
   async function bevestigEMailWijziging() {
@@ -467,14 +525,10 @@ export function GebruikersScreen() {
     )
   }
 
-  function herstelBadge(g: GebruikerOverzichtDto) {
+  /** Open herstel-link als detailregel onder de statuschips (blok 2 10-09: was een badge van ~200 px). */
+  function herstelDetail(g: GebruikerOverzichtDto) {
     if (!g.open_herstel_verloopt_op) return null
-    return (
-      <>
-        {' '}
-        <Badge variant="stil">herstel-link — {formatVerloop(g.open_herstel_verloopt_op)}</Badge>
-      </>
-    )
+    return <div className="cel-detail">herstel-link {formatVerloop(g.open_herstel_verloopt_op)}</div>
   }
 
   async function bevestigRolWijziging() {
@@ -571,23 +625,6 @@ export function GebruikersScreen() {
     }
   }
 
-  /** Archiveer-/dearchiveer-knop in de actiekolom — nooit bij het eigen account. */
-  function archiveerKnop(g: GebruikerOverzichtDto) {
-    if (g.id === gebruikerId) return null
-    if (g.status === 'gearchiveerd') {
-      return (
-        <Button variant="secundair" maat="klein" onClick={() => setArchivering({ gebruiker: g, actie: 'dearchiveren' })}>
-          Dearchiveren
-        </Button>
-      )
-    }
-    return (
-      <Button variant="ghost" maat="klein" onClick={() => openArchivering(g)}>
-        Archiveren
-      </Button>
-    )
-  }
-
   function archiveringDetail(g: GebruikerOverzichtDto) {
     if (g.status !== 'gearchiveerd' || !g.gearchiveerd_op) return null
     return (
@@ -595,25 +632,6 @@ export function GebruikersScreen() {
         gearchiveerd sinds {new Date(g.gearchiveerd_op).toLocaleDateString('nl-NL')}
         {g.gearchiveerd_door_naam ? ` door ${g.gearchiveerd_door_naam}` : ''}
       </div>
-    )
-  }
-
-  /** Blokkeer-/heractiveer-knop in de actiekolom — nooit bij het eigen account (server-side
-   * eveneens geweigerd; de UI biedt de onmogelijke actie niet aan). Een gearchiveerde heeft
-   * alleen "Dearchiveren" (server weigert blokkeren op een archief-account). */
-  function blokkadeKnop(g: GebruikerOverzichtDto) {
-    if (g.id === gebruikerId || g.status === 'gearchiveerd') return null
-    if (g.status === 'geblokkeerd') {
-      return (
-        <Button variant="secundair" maat="klein" onClick={() => setBlokkade({ gebruiker: g, actie: 'heractiveren' })}>
-          Heractiveren
-        </Button>
-      )
-    }
-    return (
-      <Button variant="warn-omlijnd" maat="klein" onClick={() => setBlokkade({ gebruiker: g, actie: 'blokkeren' })}>
-        Blokkeren
-      </Button>
     )
   }
 
@@ -749,18 +767,12 @@ export function GebruikersScreen() {
             <>
               {zoekveld}
           <div className="tabel-scroll sticky-koppen">
-            <table>
+            {/* Blok 2 (10-09): kolomminima uit één bron (gebruikersKolommen.ts), koppen nooit afgekapt,
+                Rol · scope en Rechten samengevoegd zodat de tabel op 1440 zonder interne scroll past;
+                acties = één primaire knop + ⋯-menu. */}
+            <table className="gebruikers-tabel" style={gebruikersTabelStijl('kantoor')} data-testid="gebruikers-tabel-kantoor">
+              <GebruikersTabelKop tab="kantoor" />
               <tbody>
-                <tr>
-                  <th>Gebruiker</th>
-                  <th>Rol</th>
-                  <th>Scope</th>
-                  <th>Meerwerk &amp; urenstaten</th>
-                  <th>Veldwerkerbeheer</th>
-                  <th>Beveiliging</th>
-                  <th>Status</th>
-                  <th className="acties" />
-                </tr>
                 {kantoorPagina.map((g) => {
                   const isZelf = g.id === gebruikerId
                   const openUitnodiging = g.status === 'uitgenodigd' && g.open_uitnodiging_verloopt_op
@@ -769,15 +781,20 @@ export function GebruikersScreen() {
                       <td>
                         <div className="naam-met-avatar">
                           <Avatar id={g.id} naam={g.naam} />
-                          <div>
+                          <div style={{ minWidth: 0 }}>
                             <b>{g.naam}</b>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
+                            <div className="gebruiker-email" title={g.e_mail}>
+                              {g.e_mail}
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td>
                         {isZelf ? (
-                          <Badge variant="paars">{rolLabel(g.rol)}</Badge>
+                          <>
+                            <Badge variant="paars">{rolLabel(g.rol)}</Badge>
+                            <div className="cel-detail">eigen rol/scope wijzigt alleen een ándere Beheerder</div>
+                          </>
                         ) : (
                           <Select
                             aria-label={`Rol van ${g.naam}`}
@@ -789,23 +806,15 @@ export function GebruikersScreen() {
                             <option value="beheerder">Beheerder</option>
                           </Select>
                         )}
-                      </td>
-                      <td>
-                        {g.rol === 'beheerder' ? (
-                          <Badge variant="stil">alle administraties</Badge>
-                        ) : (
-                          <>
+                        <div className="chips-regel" style={{ marginTop: 4 }}>
+                          {g.rol === 'beheerder' ? (
+                            <Badge variant="stil">alle administraties</Badge>
+                          ) : (
                             <Badge variant="info">
-                              {g.administratie_ids.length}{' '}
-                              {g.administratie_ids.length === 1 ? 'administratie' : 'administraties'}
-                            </Badge>{' '}
-                            {!isZelf && (
-                              <Button variant="ghost" maat="klein" onClick={() => setScopeVoor(g)}>
-                                wijzig
-                              </Button>
-                            )}
-                          </>
-                        )}
+                              {g.administratie_ids.length} {g.administratie_ids.length === 1 ? 'administratie' : 'administraties'}
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td>
                         {g.rol === 'beheerder' ? (
@@ -813,94 +822,62 @@ export function GebruikersScreen() {
                             altijd (Beheerder)
                           </span>
                         ) : (
-                          <Switch
-                            aria-label={`Meerwerk & urenstaten voor ${g.naam}`}
-                            checked={rechtHouders.has(g.id)}
-                            disabled={rechtBezig === g.id}
-                            onChange={(e) => void toggleMeerwerkRecht(g, e.target.checked)}
-                          />
+                          <div className="rechten-regels">
+                            <label className="recht-regel">
+                              <Switch
+                                aria-label={`Meerwerk & urenstaten voor ${g.naam}`}
+                                checked={rechtHouders.has(g.id)}
+                                disabled={rechtBezig === g.id}
+                                onChange={(e) => void toggleMeerwerkRecht(g, e.target.checked)}
+                              />
+                              <span>Meerwerk &amp; urenstaten</span>
+                            </label>
+                            <label
+                              className="recht-regel"
+                              title="Mag uitsluitend veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en archiveren binnen de eigen scope — nooit kantoorrollen of rol-/scope-mutaties"
+                            >
+                              <Switch
+                                aria-label={`Veldwerkerbeheer voor ${g.naam}`}
+                                checked={vwbHouders.has(g.id)}
+                                disabled={rechtBezig === g.id}
+                                onChange={(e) => void toggleVeldwerkerbeheer(g, e.target.checked)}
+                              />
+                              <span>Veldwerkerbeheer</span>
+                            </label>
+                          </div>
                         )}
                       </td>
                       <td>
-                        {g.rol === 'beheerder' ? (
-                          <span className="hint" style={{ margin: 0, fontSize: 11.5 }}>
-                            altijd (Beheerder)
-                          </span>
-                        ) : (
-                          <Switch
-                            aria-label={`Veldwerkerbeheer voor ${g.naam}`}
-                            title="Mag uitsluitend veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en archiveren binnen de eigen scope — nooit kantoorrollen of rol-/scope-mutaties"
-                            checked={vwbHouders.has(g.id)}
-                            disabled={rechtBezig === g.id}
-                            onChange={(e) => void toggleVeldwerkerbeheer(g, e.target.checked)}
-                          />
-                        )}
+                        <div className="chips-regel">
+                          {g.aantal_passkeys > 0 && (
+                            <span className="apparaat-chip">
+                              🔑 {g.aantal_passkeys} passkey{g.aantal_passkeys === 1 ? '' : 's'}
+                            </span>
+                          )}
+                          {g.heeft_totp ? (
+                            <span className="apparaat-chip">🔐 TOTP</span>
+                          ) : (
+                            g.status === 'actief' && <Badge variant="warn">geen TOTP</Badge>
+                          )}
+                          {g.aantal_passkeys === 0 && g.status === 'actief' && <Badge variant="warn">geen passkey</Badge>}
+                        </div>
                       </td>
                       <td>
-                        {g.aantal_passkeys > 0 && (
-                          <span className="apparaat-chip">
-                            🔑 {g.aantal_passkeys} passkey{g.aantal_passkeys === 1 ? '' : 's'}
-                          </span>
-                        )}{' '}
-                        {g.heeft_totp ? (
-                          <span className="apparaat-chip">🔐 TOTP</span>
-                        ) : (
-                          g.status === 'actief' && <Badge variant="warn">geen TOTP</Badge>
-                        )}
-                        {g.aantal_passkeys === 0 && g.status === 'actief' && (
-                          <>
-                            {' '}
-                            <Badge variant="warn">geen passkey</Badge>
-                          </>
-                        )}
+                        <div className="chips-regel">
+                          {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
+                          {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                          {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
+                          {openUitnodiging && <Badge variant="stil">uitgenodigd</Badge>}
+                          {g.status === 'uitgenodigd' && !openUitnodiging && <Badge variant="warn">uitnodiging verlopen</Badge>}
+                          {(g.status === 'wacht_op_totp' || g.status === 'wacht_op_passkey') && (
+                            <Badge variant="warn">activatie onderbroken</Badge>
+                          )}
+                        </div>
+                        {g.status === 'geblokkeerd' && blokkadeDetail(g)}
+                        {g.status === 'gearchiveerd' && archiveringDetail(g)}
+                        {openUitnodiging && <div className="cel-detail">uitnodiging {formatVerloop(g.open_uitnodiging_verloopt_op!)}</div>}
                       </td>
-                      <td>
-                        {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
-                        {g.status === 'geblokkeerd' && (
-                          <>
-                            <Badge variant="danger">geblokkeerd</Badge>
-                            {blokkadeDetail(g)}
-                          </>
-                        )}
-                        {g.status === 'gearchiveerd' && (
-                          <>
-                            <Badge variant="stil">gearchiveerd</Badge>
-                            {archiveringDetail(g)}
-                          </>
-                        )}
-                        {openUitnodiging && (
-                          <Badge variant="stil">uitnodiging — {formatVerloop(g.open_uitnodiging_verloopt_op!)}</Badge>
-                        )}
-                        {g.status === 'uitgenodigd' && !openUitnodiging && (
-                          <Badge variant="warn">uitnodiging verlopen</Badge>
-                        )}
-                        {(g.status === 'wacht_op_totp' || g.status === 'wacht_op_passkey') && (
-                          <Badge variant="warn">activatie onderbroken</Badge>
-                        )}
-                      </td>
-                      <td className="acties" style={{ whiteSpace: 'nowrap' }}>
-                        {g.status === 'uitgenodigd' && (
-                          <Button
-                            variant="secundair"
-                            maat="klein"
-                            disabled={opnieuwBezig === g.id}
-                            onClick={() => void opnieuwMailen(g)}
-                          >
-                            {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
-                          </Button>
-                        )}
-                        {isZelf && (
-                          <span
-                            className="hint"
-                            style={{ margin: 0, fontSize: 11.5, whiteSpace: 'normal', display: 'inline-block', maxWidth: 180 }}
-                          >
-                            eigen rol/scope wijzigt alleen een ándere Beheerder
-                          </span>
-                        )}{' '}
-                        {eMailKnop(g)}{' '}
-                        {blokkadeKnop(g)}{' '}
-                        {archiveerKnop(g)}
-                      </td>
+                      <td className="acties">{actieKolom(g, { scope: true })}</td>
                     </tr>
                   )
                 })}
@@ -920,25 +897,7 @@ export function GebruikersScreen() {
         gebruikers={veldwerkersPagina}
         administraties={administraties ?? []}
         onUitnodigen={() => setUitnodigSoort('veldwerker')}
-        actieKolom={(g) => (
-          <>
-            {g.status === 'uitgenodigd' && (
-              <Button
-                variant="secundair"
-                maat="klein"
-                disabled={opnieuwBezig === g.id}
-                onClick={() => void opnieuwMailen(g)}
-              >
-                {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
-              </Button>
-            )}{' '}
-            {herstelKnop(g)}{' '}
-            {eMailKnop(g)}
-            {herstelBadge(g)}{' '}
-            {blokkadeKnop(g)}{' '}
-            {archiveerKnop(g)}
-          </>
-        )}
+        actieKolom={(g) => actieKolom(g)}
       />
           <Paginering pagina={pagina} totaal={gefilterd.veldwerkers.length} onPagina={setPagina} label="veldwerkers" />
         </div>
@@ -959,15 +918,9 @@ export function GebruikersScreen() {
             <>
               {zoekveld}
           <div className="tabel-scroll sticky-koppen">
-            <table>
+            <table className="gebruikers-tabel" style={gebruikersTabelStijl('accordeurs')} data-testid="gebruikers-tabel-accordeurs">
+              <GebruikersTabelKop tab="accordeurs" />
               <tbody>
-                <tr>
-                  <th>Accordeur</th>
-                  <th>Administraties</th>
-                  <th>Apparaten</th>
-                  <th>Staande goedkeuringen</th>
-                  <th className="acties" />
-                </tr>
                 {accordeursPagina.map((g) => {
                   const apparaten = groepeerApparaten(
                     (apparatenPer[g.id] ?? []).filter((a) => a.ingetrokken_op === null),
@@ -976,25 +929,23 @@ export function GebruikersScreen() {
                   return (
                     <tr key={g.id}>
                       <td>
-                        <Avatar id={g.id} naam={g.naam} klein />{' '}
-                        <b>{g.naam}</b>
-                        {g.status === 'geblokkeerd' && (
-                          <>
-                            {' '}
-                            <Badge variant="danger">geblokkeerd</Badge>
-                            {blokkadeDetail(g)}
-                          </>
-                        )}
-                        {g.status === 'gearchiveerd' && (
-                          <>
-                            {' '}
-                            <Badge variant="stil">gearchiveerd</Badge>
-                            {archiveringDetail(g)}
-                          </>
-                        )}
-                        {halfGeactiveerdBadge(g)}
-                        {herstelBadge(g)}
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{g.e_mail}</div>
+                        <div className="naam-met-avatar">
+                          <Avatar id={g.id} naam={g.naam} klein />
+                          <div style={{ minWidth: 0 }}>
+                            <b>{g.naam}</b>
+                            <div className="chips-regel">
+                              {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                              {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
+                              {halfGeactiveerdBadge(g)}
+                            </div>
+                            {g.status === 'geblokkeerd' && blokkadeDetail(g)}
+                            {g.status === 'gearchiveerd' && archiveringDetail(g)}
+                            {herstelDetail(g)}
+                            <div className="gebruiker-email" title={g.e_mail}>
+                              {g.e_mail}
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         {/* Blok 5 (08-09): scope vanuit de accordeur — toevoegen (bulk-route, accordeur vooringevuld),
@@ -1013,35 +964,11 @@ export function GebruikersScreen() {
                           </span>
                         )}
                         {apparaten.map((groep) => (
-                          <span key={groep.ids[0]} style={{ whiteSpace: 'nowrap' }}>
-                            <ApparaatChip groep={groep} />{' '}
-                            <Button
-                              variant="ghost"
-                              maat="klein"
-                              onClick={() => setKillSwitchVoor({ gebruiker: g, groep })}
-                            >
-                              Kill-switch
-                            </Button>{' '}
-                          </span>
+                          <ApparaatChip key={groep.ids[0]} groep={groep} onKillSwitch={() => setKillSwitchVoor({ gebruiker: g, groep })} />
                         ))}
                       </td>
                       <td className="amount">{g.staande_goedkeuringen}</td>
-                      <td className="acties" style={{ whiteSpace: 'nowrap' }}>
-                        {g.status === 'uitgenodigd' && (
-                          <Button
-                            variant="secundair"
-                            maat="klein"
-                            disabled={opnieuwBezig === g.id}
-                            onClick={() => void opnieuwMailen(g)}
-                          >
-                            {opnieuwBezig === g.id ? 'Bezig…' : 'Opnieuw mailen'}
-                          </Button>
-                        )}{' '}
-                        {herstelKnop(g)}{' '}
-                        {eMailKnop(g)}{' '}
-                        {blokkadeKnop(g)}{' '}
-                        {archiveerKnop(g)}
-                      </td>
+                      <td className="acties">{actieKolom(g)}</td>
                     </tr>
                   )
                 })}
