@@ -212,6 +212,8 @@ class AangemaakteAdministratieDto(BaseModel):
     rlz_admin_id: str
     probe: dict[str, str]
     sync_run_id: uuid.UUID | None
+    #: 10-09 blok C: letterlijke RLZ-meldingen per rode probe-route (leeg bij groen).
+    probe_meldingen: dict[str, str] = {}
 
 
 class AdministratiesAangemaaktDto(BaseModel):
@@ -246,6 +248,8 @@ class SchrijftestResultaatDto(BaseModel):
 
 class ProbeRapportDto(BaseModel):
     rapport: dict[str, str]
+    #: 10-09 blok C: per rode route "HTTP <status> — <letterlijk RLZ-antwoord, ≤ 300 tekens>".
+    meldingen: dict[str, str] = {}
 
 
 class MedewerkerDto(BaseModel):

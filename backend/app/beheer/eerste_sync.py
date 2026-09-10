@@ -209,6 +209,57 @@ def _telling(resultaat) -> dict:
     }
 
 
+#: HTTP-statussen die "Reeleezee weigert deze login/dit recht" betekenen — géén tijdelijke fout, een instelling in RLZ.
+RECHTEN_STATUSSEN = (401, 403)
+
+
+def _fout_stand(naam: str, exc: Exception) -> dict:
+    """Zichtbare stand van een mislukt onderdeel (blok C 10-09): bij een RLZ-weigering (401/403) een leesbare regel
+    mét de route, het RLZ-recht dat ontbreekt (app/rlz/leesroutes.py) en het LETTERLIJKE RLZ-antwoord (≤ 300
+    tekens) — zodat de Beheerder weet wat hij in Reeleezee moet zetten. Andere fouten: het bestaande
+    `TypeNaam: tekst`-spoor (afgekapt 500)."""
+    from app.rlz import leesroutes
+    from app.rlz.client import RlzApiError
+
+    stand: dict = {"status": "fout", "fout": f"{type(exc).__name__}: {exc}"[:500]}
+    if not isinstance(exc, RlzApiError):
+        return stand
+    route = leesroutes.SYNC_LEESROUTES.get(naam) or leesroutes.route_voor_pad(exc.url)
+    melding = " ".join((exc.body or "").split())
+    if len(melding) > 300:
+        melding = melding[:299] + "…"
+    stand.update({"http_status": exc.status_code, "rlz_melding": melding, "rlz_url": exc.url})
+    routenaam = route.naam if route is not None else exc.url
+    if exc.status_code in RECHTEN_STATUSSEN:
+        recht = route.rlz_recht if route is not None else "controleer de rechten van de webservice-gebruiker in RLZ"
+        stand["rlz_recht"] = recht
+        stand["fout"] = (
+            f"Reeleezee weigert GET {routenaam} (HTTP {exc.status_code}) — {recht}. "
+            f'RLZ zegt: "{melding or "(leeg antwoord)"}"'
+        )[:700]
+    else:
+        stand["fout"] = f'Reeleezee antwoordt HTTP {exc.status_code} op GET {routenaam}: "{melding or "(leeg)"}"'[:700]
+    return stand
+
+
+def _fout_reden(uitkomsten: dict[str, dict]) -> str | None:
+    mislukt = [naam for naam, stand in uitkomsten.items() if stand.get("status") != "klaar"]
+    if not mislukt:
+        return None
+    reden = "Niet alle onderdelen gelukt: " + ", ".join(mislukt) + " — zie details per onderdeel"
+    geweigerd = [naam for naam in mislukt if uitkomsten[naam].get("http_status") in RECHTEN_STATUSSEN]
+    if geweigerd:
+        statussen = sorted({str(uitkomsten[n]["http_status"]) for n in geweigerd})
+        reden += (
+            f". LET OP: Reeleezee weigert de opgeslagen webservice-login (HTTP {'/'.join(statussen)}) op "
+            + ", ".join(geweigerd)
+            + " — geef de webservice-gebruiker in RLZ de ontbrekende leesrechten (per onderdeel staat welk recht) en "
+            "start de sync opnieuw; de rechten-probe (Instellingen › Administraties › Webservice-gegevens) toont "
+            "dezelfde routes"
+        )
+    return reden
+
+
 def _voer_onderdelen_uit(administratie_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, dict]:
     from app.bank import sync as bank_sync
     from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
@@ -230,7 +281,7 @@ def _voer_onderdelen_uit(administratie_id: uuid.UUID, run_id: uuid.UUID) -> dict
                 uitkomsten[naam] = _telling(stappen[naam]())
             except Exception as exc:  # noqa: BLE001 — per onderdeel zichtbaar, de rest gaat door
                 logger.exception("Eerste sync: onderdeel %s mislukt voor %s", naam, administratie_id)
-                uitkomsten[naam] = {"status": "fout", "fout": f"{type(exc).__name__}: {exc}"[:500]}
+                uitkomsten[naam] = _fout_stand(naam, exc)
             _schrijf_onderdeel(administratie_id, run_id, naam, uitkomsten[naam])
     finally:
         client.close()
@@ -243,12 +294,7 @@ def verwerk_wachtrij_voor(administratie_id: uuid.UUID) -> int:
         aantal += 1
         try:
             uitkomsten = _voer_onderdelen_uit(administratie_id, run_id)
-            mislukt = [naam for naam, stand in uitkomsten.items() if stand.get("status") != "klaar"]
-            fout: str | None = (
-                None
-                if not mislukt
-                else "Niet alle onderdelen gelukt: " + ", ".join(mislukt) + " — zie details per onderdeel"
-            )
+            fout: str | None = _fout_reden(uitkomsten)
         except Exception as exc:  # noqa: BLE001 — bv. geen credentials: reden op de run, nooit stil
             logger.exception("Eerste sync mislukt voor %s", administratie_id)
             fout = f"{type(exc).__name__}: {exc}"

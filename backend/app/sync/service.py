@@ -14,6 +14,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import rlz_vendor_id
+from app.rlz import leesroutes
 from app.rlz.client import RlzClient
 from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
@@ -24,6 +25,10 @@ from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 # koppeling"-item, kanttekening (b)). Gearchiveerde/inactieve crediteuren/projecten worden hier
 # NIET uitgefilterd — een al geboekte historische regel kan naar een inmiddels gearchiveerde
 # crediteur/project wijzen, en de controleur moet die nog kunnen zien/kiezen bij het narekenen.
+
+
+#: Sync-pad per eerste-sync-onderdeel — één bron met de rechten-probe (app/rlz/leesroutes.py, blok C 10-09).
+_sync_pad = leesroutes.pad_voor_sync_onderdeel
 
 
 class SyncFout(Exception):
@@ -194,7 +199,7 @@ def sync_ledgers(*, administratie_id: uuid.UUID, client: RlzClient | None = None
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
-            administratie_id=administratie_id, client=client, pad="Ledgers", model=Grootboekrekening,
+            administratie_id=administratie_id, client=client, pad=_sync_pad("ledgers"), model=Grootboekrekening,
             id_kolom="ledger_id", kolom_waarden=_grootboek_waarden,
         )
     finally:
@@ -208,7 +213,7 @@ def sync_taxrates(*, administratie_id: uuid.UUID, client: RlzClient | None = Non
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
-            administratie_id=administratie_id, client=client, pad="TaxRates", model=TaxRateCache,
+            administratie_id=administratie_id, client=client, pad=_sync_pad("taxrates"), model=TaxRateCache,
             id_kolom="id", kolom_waarden=_taxrate_waarden,
         )
     finally:
@@ -222,7 +227,7 @@ def sync_vendors(*, administratie_id: uuid.UUID, client: RlzClient | None = None
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
-            administratie_id=administratie_id, client=client, pad="Vendors", model=VendorCache,
+            administratie_id=administratie_id, client=client, pad=_sync_pad("vendors"), model=VendorCache,
             id_kolom="id", kolom_waarden=_vendor_waarden,
         )
     finally:
@@ -236,7 +241,7 @@ def sync_projects(*, administratie_id: uuid.UUID, client: RlzClient | None = Non
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
         return _sync_generiek(
-            administratie_id=administratie_id, client=client, pad="Projects", model=ProjectCache,
+            administratie_id=administratie_id, client=client, pad=_sync_pad("projects"), model=ProjectCache,
             id_kolom="id", kolom_waarden=_project_waarden,
         )
     finally:
@@ -254,19 +259,19 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
     try:
         return SyncResultaat(
             ledgers=_sync_generiek(
-                administratie_id=administratie_id, client=client, pad="Ledgers", model=Grootboekrekening,
+                administratie_id=administratie_id, client=client, pad=_sync_pad("ledgers"), model=Grootboekrekening,
                 id_kolom="ledger_id", kolom_waarden=_grootboek_waarden,
             ),
             taxrates=_sync_generiek(
-                administratie_id=administratie_id, client=client, pad="TaxRates", model=TaxRateCache,
+                administratie_id=administratie_id, client=client, pad=_sync_pad("taxrates"), model=TaxRateCache,
                 id_kolom="id", kolom_waarden=_taxrate_waarden,
             ),
             vendors=_sync_generiek(
-                administratie_id=administratie_id, client=client, pad="Vendors", model=VendorCache,
+                administratie_id=administratie_id, client=client, pad=_sync_pad("vendors"), model=VendorCache,
                 id_kolom="id", kolom_waarden=_vendor_waarden,
             ),
             projects=_sync_generiek(
-                administratie_id=administratie_id, client=client, pad="Projects", model=ProjectCache,
+                administratie_id=administratie_id, client=client, pad=_sync_pad("projects"), model=ProjectCache,
                 id_kolom="id", kolom_waarden=_project_waarden,
             ),
         )

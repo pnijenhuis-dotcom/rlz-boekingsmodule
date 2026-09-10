@@ -58,13 +58,14 @@ def rlz_rechten_check(
     administratie_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.RechtenProbeResponse:
-    """Koppel-flow: read-only rechten-probe over de endpoints die de boekingsmodule daadwerkelijk
-    gebruikt. Administratie-scope (niet Beheerder-only) — zelfde autorisatie als document-upload
-    en de sync-trigger, want dit hoort bij het aansluiten van een klant, geen platformbeheer."""
+    """Koppel-flow: read-only rechten-probe met de OPGESLAGEN webservice-login over exact de leesroutes die de
+    eerste sync gebruikt (app/rlz/leesroutes.py) — dit is de herprobe-route van blok C 10-09 (Baard): de uitkomst zegt
+    wat de sync ziet, mét het letterlijke RLZ-antwoord per rode route. Administratie-scope (niet Beheerder-only) —
+    zelfde autorisatie als document-upload en de sync-trigger: aansluiten van een klant, geen platformbeheer."""
     try:
-        rapport = service.voer_rechten_probe_uit(administratie_id=administratie_id, actor_id=actor.id)
+        uitkomst = service.voer_herprobe_met_opgeslagen_login(administratie_id=administratie_id, actor_id=actor.id)
     except service.CredentialStoreFout as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except GeenRlzCredentials as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    return schemas.RechtenProbeResponse(rapport=rapport)
+    return schemas.RechtenProbeResponse(rapport=uitkomst.rapport, meldingen=uitkomst.meldingen)

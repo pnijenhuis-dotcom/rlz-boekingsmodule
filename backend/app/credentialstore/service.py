@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, RlzCredential, RlzRechtenProbe
 from app.db.session import scoped_session
+from app.rlz import leesroutes
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import BEKENDE_ADMINISTRATIES, BekendeAdministratie, lees_env_login, open_root_client
 from app.security.envelope import wrap_secret
@@ -173,35 +174,55 @@ def importeer_env_credentials(*, actor_id: uuid.UUID) -> dict[str, str]:
     return resultaten
 
 
-_TE_PROBEREN_ENDPOINTS = (
-    "Administrations",
-    "Ledgers",
-    "TaxRates",
-    "Vendors",
-    "Customers",
-    "Projects",
-    "SalesInvoices",
-    "PurchaseInvoices",
-    "JournalEntries",
-    "PaymentAccounts",
-)
+#: Compat-alias: de probe-set leeft sinds 10-09 in app/rlz/leesroutes.py (één bron mét de sync-paden).
+_TE_PROBEREN_ENDPOINTS = tuple(r.naam for r in leesroutes.PROBE_LEESROUTES)
+
+#: Maximale lengte van het letterlijke RLZ-antwoord dat we in rapport/melding/audit bewaren (blok C 10-09).
+RLZ_MELDING_MAX = 300
+
+
+@dataclass(frozen=True)
+class ProbeUitkomst:
+    """Rechtenrapport (`rapport`: route → 'ok' | HTTP-status als string — de bestaande DTO-/opslagvorm) plús per rode
+    route het LETTERLIJKE RLZ-antwoord (`meldingen`: route → "HTTP <status> — <body, afgekapt>"), zodat de Beheerder
+    ziet wát RLZ zegt en niet alleen de statuscode (blok C 10-09)."""
+
+    rapport: dict[str, str]
+    meldingen: dict[str, str]
+
+
+def _rlz_melding(exc: RlzApiError) -> str:
+    body = " ".join((exc.body or "").split())
+    if len(body) > RLZ_MELDING_MAX:
+        body = body[: RLZ_MELDING_MAX - 1] + "…"
+    return f"HTTP {exc.status_code}" + (f" — {body}" if body else " — (leeg antwoord)")
+
+
+def voer_probe_uit(client: RlzClient, rlz_admin_id: str) -> ProbeUitkomst:
+    """Het rechtenrapport voor één RLZ-administratie met een gegeven (root-)client — herbruikbaar vóór er een
+    administratie-rij bestaat (onboarding-wizard, punt 5 26-08). De set komt uit `leesroutes.PROBE_LEESROUTES`:
+    `Administrations` via de root-client, de rest via de gescoped variant met EXACT het pad (+ params) dat de sync-
+    motoren gebruiken — bewaakt door tests/rlz/test_leesroutes.py."""
+    scoped_client = client.for_administration(rlz_admin_id)
+    rapport: dict[str, str] = {}
+    meldingen: dict[str, str] = {}
+    for route in leesroutes.PROBE_LEESROUTES:
+        actieve_client = client if route.scope == "root" else scoped_client
+        try:
+            if route.params:
+                actieve_client.get(route.pad, params=dict(route.params))
+            else:
+                actieve_client.get(route.pad)
+            rapport[route.naam] = "ok"
+        except RlzApiError as exc:
+            rapport[route.naam] = str(exc.status_code)
+            meldingen[route.naam] = _rlz_melding(exc)
+    return ProbeUitkomst(rapport=rapport, meldingen=meldingen)
 
 
 def probe_rapport(client: RlzClient, rlz_admin_id: str) -> dict[str, str]:
-    """Het kale rechtenrapport (per endpoint 'ok' of de HTTP-status als string) voor één RLZ-
-    administratie met een gegeven (root-)client — herbruikbaar vóór er een administratie-rij
-    bestaat (onboarding-wizard, punt 5 26-08). `Administrations` via de root-client, de rest via
-    de gescoped variant, exact zoals de rest van de app RLZ aanspreekt."""
-    scoped_client = client.for_administration(rlz_admin_id)
-    rapport: dict[str, str] = {}
-    for endpoint in _TE_PROBEREN_ENDPOINTS:
-        actieve_client = client if endpoint == "Administrations" else scoped_client
-        try:
-            actieve_client.get(endpoint)
-            rapport[endpoint] = "ok"
-        except RlzApiError as exc:
-            rapport[endpoint] = str(exc.status_code)
-    return rapport
+    """Compat: alleen het kale rapport (route → 'ok' | status). Nieuwe aanroepers gebruiken `voer_probe_uit`."""
+    return voer_probe_uit(client, rlz_admin_id).rapport
 
 
 def verkoopmodule_afwezig_in(rapport: dict[str, str]) -> bool:
@@ -222,23 +243,41 @@ def probe_is_groen(rapport: dict[str, str]) -> bool:
     )
 
 
-def beschrijf_probe_fouten(rapport: dict[str, str]) -> str:
-    """Rode regels mét handelingsperspectief (blok A punt 3): een 403 op een gewone leesroute is
-    vrijwel altijd een rechtenkwestie op de webservice-gebruiker — zeg dat er dan bij. De
-    SalesInvoices-403 is geen fout (zie probe_is_groen) en staat hier dus nooit tussen."""
+def beschrijf_probe_fouten(rapport: dict[str, str], meldingen: dict[str, str] | None = None) -> str:
+    """Rode regels mét handelingsperspectief (blok A punt 3 01-09; blok C 10-09 verrijkt): per rode route het
+    RLZ-recht dat de Beheerder in Reeleezee moet zetten (`leesroutes.rlz_recht_voor`) én, als bekend, het
+    letterlijke RLZ-antwoord. De SalesInvoices-403 is geen fout (zie probe_is_groen) en staat hier nooit tussen."""
+    meldingen = meldingen or {}
     regels = []
     for endpoint, v in rapport.items():
         if v == "ok" or (endpoint == "SalesInvoices" and v == "403"):
             continue
+        recht = leesroutes.rlz_recht_voor(endpoint)
         if v == "403":
-            regels.append(f"{endpoint}=403 (geef de webservice-gebruiker in RLZ leesrecht op {endpoint})")
+            regel = f"{endpoint}=403 (geef de webservice-gebruiker in RLZ leesrecht op {endpoint}"
+            regel += f": {recht})" if recht else ")"
+        elif v == "401":
+            regel = f"{endpoint}=401 (Reeleezee weigert de login zelf — controleer gebruikersnaam/wachtwoord)"
         else:
-            regels.append(f"{endpoint}={v}")
+            regel = f"{endpoint}={v}"
+        if endpoint in meldingen:
+            regel += f' — RLZ zegt: "{meldingen[endpoint]}"'
+        regels.append(regel)
     return ", ".join(regels)
 
 
-def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str], actor_id: uuid.UUID) -> None:
-    """Rapport op platform.rlz_rechten_probe (overschrijft; historie in audit) + geaggregeerde audit.
+def sla_probe_op(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    rapport: dict[str, str],
+    actor_id: uuid.UUID,
+    meldingen: dict[str, str] | None = None,
+    bron: str = "probe",
+) -> None:
+    """Rapport op platform.rlz_rechten_probe (overschrijft; historie in audit) + geaggregeerde audit — sinds 10-09
+    mét de letterlijke RLZ-meldingen per rode route en de `bron` (probe met invoer | herprobe met opgeslagen login)
+    in het audit-event, zodat een latere 403 in de eerste sync tegen de probe-stand gelegd kan worden.
     Onderhoudt óók het kenmerk `verkoopmodule_afwezig` (01-09): SalesInvoices "403" zet 'm,
     SalesInvoices "ok" (geslaagde herprobe) wist 'm; élke andere uitkomst laat 'm staan (geen
     uitspraak). Wijziging = eigen audit-event oud→nieuw."""
@@ -262,6 +301,9 @@ def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str
             "aantal_ok": sum(1 for v in rapport.values() if v == "ok"),
             "aantal_totaal": len(rapport),
             "verkoopmodule_afwezig": verkoopmodule_afwezig_in(rapport),
+            "rapport": rapport,
+            "meldingen": meldingen or {},
+            "bron": bron,
         },
     )
     sales_stand = rapport.get("SalesInvoices")
@@ -288,13 +330,14 @@ def sla_probe_op(session, *, administratie_id: uuid.UUID, rapport: dict[str, str
     )
 
 
-def voer_rechten_probe_uit(
+def voer_herprobe_met_opgeslagen_login(
     *, administratie_id: uuid.UUID, actor_id: uuid.UUID, client: RlzClient | None = None
-) -> dict[str, str]:
-    """Read-only rechtenrapport voor de koppel-flow (nieuwe administratie aansluiten): per
-    endpoint 'ok' of de HTTP-statuscode als string. `Administrations` gaat via de onbescoped
-    root-client (top-level endpoint, geen adminId-routing — zie open_root_client); de overige
-    endpoints via de administratie-gescoped client, exact zoals de rest van de app RLZ aanspreekt."""
+) -> ProbeUitkomst:
+    """Read-only rechtenrapport met de OPGESLAGEN login (koppel-flow + `POST /administraties/{id}/rlz-check`):
+    `open_root_client(rlz_admin_id)` loopt door dezelfde credential-resolutie als de sync-motoren
+    (`resolve_credentials`: store-first op rlz_admin_id, KMS-unwrap), dus de uitkomst zegt wat de EERSTE SYNC gaat
+    zien — niet wat de wizard-invoer zag. `Administrations` via de root-client, de rest gescoped. Rapport + letterlijke
+    RLZ-meldingen worden opgeslagen (`sla_probe_op`, bron 'herprobe_opgeslagen_login')."""
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None:
@@ -305,11 +348,26 @@ def voer_rechten_probe_uit(
     if client is None:
         client = open_root_client(rlz_admin_id)
     try:
-        rapport = probe_rapport(client, rlz_admin_id)
+        uitkomst = voer_probe_uit(client, rlz_admin_id)
     finally:
         if eigen_client:
             client.close()
 
     with scoped_session(None, actor_id=actor_id) as session:
-        sla_probe_op(session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id)
-    return rapport
+        sla_probe_op(
+            session,
+            administratie_id=administratie_id,
+            rapport=uitkomst.rapport,
+            actor_id=actor_id,
+            meldingen=uitkomst.meldingen,
+            bron="herprobe_opgeslagen_login",
+        )
+    return uitkomst
+
+
+def voer_rechten_probe_uit(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, client: RlzClient | None = None
+) -> dict[str, str]:
+    """Compat-vorm van `voer_herprobe_met_opgeslagen_login`: alleen het kale rapport."""
+    uitkomst = voer_herprobe_met_opgeslagen_login(administratie_id=administratie_id, actor_id=actor_id, client=client)
+    return uitkomst.rapport

@@ -367,3 +367,144 @@ class TestEersteSyncOpDeLijstRij:
     def test_herstart_is_beheerder_only(self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
         resp = client.post(f"/instellingen/administraties/{administratie_id}/eerste-sync", headers=_bearer(gescoopte_gebruiker, rol="boekhouding"))
         assert resp.status_code == 403
+
+
+# --- Blok C 10-09 (Baard): herprobe met de opgeslagen login + leesbare 403-stand in de eerste sync ----------------
+
+
+class TestHerprobeMetOpgeslagenLogin:
+    def test_herprobe_rood_slaat_niets_op_en_noemt_het_rlz_antwoord(self, beheerder_id: uuid.UUID, admin_engine: Engine) -> None:
+        """De invoer-probe is groen, maar de probe in de opgeslagen vorm (wrap → unwrap → verse client) ziet 403 op
+        precies de Baard-routes: niets opgeslagen, melding mét RLZ-tekst + recht, statuscode én meldingen in de fout."""
+        groen = FakeRlzClient(_rlz_data())
+        body = '{"error":{"code":"_Forbidden","message":"User has no access to this administration"}}'
+        rood = FakeRlzClient(
+            _rlz_data(),
+            fouten={p: RlzApiError(403, "GET", f"/{ADMIN_A}/{p}", body) for p in ("Ledgers", "Vendors", "Projects", "PaymentAccounts")},
+        )
+        with pytest.raises(onboarding.OnboardingFout, match="Herprobe met de opgeslagen login niet groen") as exc:
+            onboarding.maak_administraties_aan(
+                actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim", rlz_admin_ids=[ADMIN_A],
+                client=groen, herprobe_client=rood, start_sync=False,
+            )
+        tekst = str(exc.value)
+        assert "Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers: leesrecht Grootboek" in tekst
+        assert 'RLZ zegt: "HTTP 403 — {"error":{"code":"_Forbidden"' in tekst
+        assert "de invoer-probe was wél groen" in tekst
+        assert exc.value.rapporten[ADMIN_A]["Vendors"] == "403" and exc.value.rapporten[ADMIN_A]["TaxRates"] == "ok"
+        assert exc.value.meldingen[ADMIN_A]["PaymentAccounts"].startswith("HTTP 403 — ")
+        assert "geheim" not in tekst
+        with admin_engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM platform.administratie WHERE rlz_admin_id = :r"), {"r": ADMIN_A}).scalar_one() == 0
+
+    def test_herprobe_gebruikt_de_opgeslagen_bytes_en_de_probe_stand_is_de_herprobe(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Zonder testseam bouwt de herprobe een verse root-client uit het ONTSLEUTELDE opgeslagen wachtwoord —
+        dezelfde resolutie als de sync. Hier: `_nieuwe_root_client` vastgelegd; de opgeslagen probe draagt bron
+        'herprobe_opgeslagen_login' en de credential is met dezelfde envelope-bytes opgeslagen (resolve → 'ws'/'geheim')."""
+        gezien: list[tuple[str, str]] = []
+        fake = FakeRlzClient(_rlz_data())
+
+        def _root(u: str, w: str):
+            gezien.append((u, w))
+            return fake
+
+        monkeypatch.setattr(onboarding, "_nieuwe_root_client", _root)
+        [nieuw] = onboarding.maak_administraties_aan(
+            actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim", rlz_admin_ids=[ADMIN_A], start_sync=False
+        )
+        assert gezien == [("ws", "geheim"), ("ws", "geheim")]  # invoer-probe + herprobe uit de ontsleutelde store-vorm
+        assert nieuw.probe_meldingen == {}
+        assert resolve_credentials(ADMIN_A) == ("ws", "geheim")
+        with admin_engine.connect() as conn:
+            bron = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde->>'bron' FROM platform.audit_event WHERE tabel = 'rlz_rechten_probe' "
+                    "AND record_id = :id"
+                ),
+                {"id": nieuw.id},
+            ).scalar_one()
+        assert bron == "herprobe_opgeslagen_login"
+
+    def test_wijzigen_herprobe_rood_wijzigt_niets(self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine) -> None:
+        with admin_engine.connect() as conn:
+            rlz_id = conn.execute(text("SELECT rlz_admin_id FROM platform.administratie WHERE id = :id"), {"id": administratie_id}).scalar_one()
+        groen = FakeRlzClient(_rlz_data((rlz_id, "Test")))
+        rood = FakeRlzClient(_rlz_data((rlz_id, "Test")), fouten={"Ledgers": RlzApiError(403, "GET", "u", "_Forbidden")})
+        with pytest.raises(onboarding.OnboardingFout, match="Herprobe met de opgeslagen login niet groen"):
+            onboarding.wijzig_webservice_gegevens(
+                actor_id=beheerder_id, administratie_id=administratie_id, webservice_username="nieuw", wachtwoord="nw",
+                client=groen, herprobe_client=rood,
+            )
+        with admin_engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM platform.rlz_credential WHERE administratie_id = :id AND webservice_username = 'nieuw'"), {"id": administratie_id}).scalar_one() == 0
+
+    def test_endpoint_422_draagt_meldingen(self, beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = FakeRlzClient(_rlz_data(), fouten={"Vendors": RlzApiError(403, "GET", "u", "_Forbidden vendors")})
+        monkeypatch.setattr(onboarding, "_nieuwe_root_client", lambda u, w: fake)
+        resp = client.post(
+            "/instellingen/administraties/aanmaken",
+            json={"webservice_username": "ws", "wachtwoord": "heel-geheim", "rlz_admin_ids": [ADMIN_A]},
+            headers=_bearer(beheerder_id),
+        )
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["meldingen"][ADMIN_A]["Vendors"] == "HTTP 403 — _Forbidden vendors"
+        assert "Crediteuren" in resp.json()["detail"]["bericht"]
+        assert "heel-geheim" not in resp.text
+
+    def test_rlz_check_route_geeft_meldingen_met_de_opgeslagen_login(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = FakeRlzClient({}, fouten={"Ledgers": RlzApiError(403, "GET", "u", "_Forbidden ledgers")})
+        monkeypatch.setattr("app.credentialstore.service.open_root_client", lambda rlz_admin_id: fake)
+        resp = client.post(f"/administraties/{administratie_id}/rlz-check", headers=_bearer(beheerder_id))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rapport"]["Ledgers"] == "403"
+        assert resp.json()["meldingen"] == {"Ledgers": "HTTP 403 — _Forbidden ledgers"}
+
+
+class TestEersteSync403Leesbaar:
+    def test_403_in_de_eerste_sync_is_een_leesbare_stand_met_recht_en_rlz_antwoord(
+        self, beheerder_id: uuid.UUID, geen_voertuig: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """De Baard-casus nagespeeld: TaxRates ok, Ledgers/Vendors/Projects/PaymentAccounts 403. Per onderdeel staat
+        HTTP-status, het letterlijke RLZ-antwoord en het RLZ-recht; de run-reden zegt LET OP + wat te doen."""
+        [nieuw] = onboarding.maak_administraties_aan(
+            actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim", rlz_admin_ids=[ADMIN_A],
+            client=FakeRlzClient(_rlz_data()), start_sync=False,
+        )
+        eerste_sync.start_run(administratie_id=nieuw.id, actor_id=beheerder_id)
+        body = '{"error":{"code":"_Forbidden","message":"No access"}}'
+        sync_client = FakeRlzClient(
+            {"TaxRates": []},
+            fouten={p: RlzApiError(403, "GET", f"/{ADMIN_A}/{p}", body) for p in ("Ledgers", "Vendors", "Projects")},
+        )
+        sync_client.list_payment_accounts = lambda: (_ for _ in ()).throw(
+            RlzApiError(403, "GET", f"/{ADMIN_A}/PaymentAccounts", body)
+        )
+        monkeypatch.setattr("app.rlz.credentials.client_voor_rlz_admin_id", lambda rlz_admin_id: sync_client)
+        assert eerste_sync.verwerk_wachtrij_voor(nieuw.id) == 1
+        info = eerste_sync.laatste_run(nieuw.id)
+        assert info.status == "fout"
+        assert info.onderdelen["taxrates"]["status"] == "klaar"
+        ledgers = info.onderdelen["ledgers"]
+        assert ledgers["status"] == "fout" and ledgers["http_status"] == 403
+        assert ledgers["rlz_melding"] == body
+        assert ledgers["rlz_recht"].startswith("leesrecht Grootboek")
+        assert ledgers["fout"].startswith("Reeleezee weigert GET Ledgers (HTTP 403) — leesrecht Grootboek")
+        assert f'RLZ zegt: "{body}"' in ledgers["fout"]
+        assert info.onderdelen["payment_accounts"]["rlz_recht"].startswith("leesrecht Bank/Kas")
+        assert "LET OP: Reeleezee weigert de opgeslagen webservice-login (HTTP 403) op ledgers, vendors, projects, payment_accounts" in (info.fout_reden or "")
+        assert "geef de webservice-gebruiker in RLZ de ontbrekende leesrechten" in (info.fout_reden or "")
+        # de stand reist mee in de status-DTO (UI toont `fout` per onderdeel)
+        resp = client.get(f"/instellingen/administraties/{nieuw.id}/eerste-sync/status", headers=_bearer(beheerder_id))
+        assert resp.status_code == 200 and resp.json()["onderdelen"]["vendors"]["rlz_melding"] == body
+
+    def test_niet_rechten_fout_houdt_het_bestaande_spoor(self) -> None:
+        stand = eerste_sync._fout_stand("ledgers", ValueError("kapot"))
+        assert stand == {"status": "fout", "fout": "ValueError: kapot"}
+        stand = eerste_sync._fout_stand("vendors", RlzApiError(500, "GET", "/a/Vendors", "boom"))
+        assert stand["http_status"] == 500 and "rlz_recht" not in stand
+        assert stand["fout"] == 'Reeleezee antwoordt HTTP 500 op GET Vendors: "boom"'
+        assert eerste_sync._fout_reden({"a": {"status": "klaar"}}) is None

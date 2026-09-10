@@ -41,7 +41,7 @@ from app.db.models import Administratie, Grootboekrekening, RlzCredential, RlzRe
 from app.db.session import scoped_session
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, open_root_client
-from app.security.envelope import wrap_secret
+from app.security.envelope import unwrap_secret, wrap_secret
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache, VendorCache
 
@@ -54,9 +54,17 @@ class OnboardingFout(Exception):
     """Zichtbare domeinfout in de wizard (login geweigerd, probe niet groen, al aangesloten, …).
     Bevat NOOIT het wachtwoord."""
 
-    def __init__(self, bericht: str, *, rapporten: dict[str, dict[str, str]] | None = None) -> None:
+    def __init__(
+        self,
+        bericht: str,
+        *,
+        rapporten: dict[str, dict[str, str]] | None = None,
+        meldingen: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         super().__init__(bericht)
         self.rapporten = rapporten or {}
+        #: 10-09 blok C: per administratie per rode route het letterlijke RLZ-antwoord (naast de statuscode).
+        self.meldingen = meldingen or {}
 
 
 @dataclass(frozen=True)
@@ -73,6 +81,7 @@ class AangemaakteAdministratie:
     rlz_admin_id: str
     probe: dict[str, str]
     sync_run_id: uuid.UUID | None
+    probe_meldingen: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -104,6 +113,50 @@ def _vertaal_verbindingsfout(exc: Exception) -> OnboardingFout:
     if isinstance(exc, httpx.HTTPError):
         return OnboardingFout(f"Reeleezee niet bereikbaar: {type(exc).__name__}")
     return OnboardingFout(f"Verbinding testen mislukt: {type(exc).__name__}")
+
+
+@dataclass(frozen=True)
+class _OpgeslagenVorm:
+    """Wat er ná opslaan in de store staat (envelope-bytes) + de herprobe die met precies die bytes is gedaan."""
+
+    ciphertext: bytes
+    wrapped_data_key: bytes
+    herprobe: credentialstore.ProbeUitkomst
+
+
+def _herprobe_in_opgeslagen_vorm(
+    *, webservice_username: str, wachtwoord: str, rlz_admin_id: str, herprobe_client: RlzClient | None
+) -> _OpgeslagenVorm:
+    """Blok C 10-09 (Baard): de wizard probede alleen met de INVOER; de eerste sync leest de login uit de store
+    (`resolve_credentials` → KMS-unwrap → `RlzClient`). Hier wrappen we het wachtwoord zoals de store 'm bewaart,
+    unwrappen 'm weer en proben met een verse root-client op die bytes — exact de credential-resolutie van de sync,
+    vóórdat er iets opgeslagen is. De aanroeper slaat dezelfde `ciphertext`/`wrapped_data_key` op, zodat de bytes
+    in de store letterlijk de bytes zijn waarmee groen bewezen is. `herprobe_client` = testseam."""
+    ciphertext, wrapped_data_key = wrap_secret(wachtwoord.encode())
+    eigen = herprobe_client is None
+    if herprobe_client is None:
+        opgeslagen_wachtwoord = unwrap_secret(ciphertext, wrapped_data_key).decode()
+        herprobe_client = _nieuwe_root_client(webservice_username, opgeslagen_wachtwoord)
+    try:
+        herprobe = credentialstore.voer_probe_uit(herprobe_client, rlz_admin_id)
+    finally:
+        if eigen:
+            herprobe_client.close()
+    return _OpgeslagenVorm(ciphertext=ciphertext, wrapped_data_key=wrapped_data_key, herprobe=herprobe)
+
+
+def _rode_probe_fout(
+    kop: str, *, per_administratie: dict[str, tuple[str, credentialstore.ProbeUitkomst]], staart: str
+) -> OnboardingFout:
+    samenvatting = "; ".join(
+        f"{naam}: {credentialstore.beschrijf_probe_fouten(u.rapport, u.meldingen)}"
+        for naam, u in per_administratie.values()
+    )
+    return OnboardingFout(
+        f"{kop} {samenvatting}{staart}",
+        rapporten={rlz_id: u.rapport for rlz_id, (_, u) in per_administratie.items()},
+        meldingen={rlz_id: u.meldingen for rlz_id, (_, u) in per_administratie.items()},
+    )
 
 
 def _administraties_via(client: RlzClient) -> dict[str, str]:
@@ -147,9 +200,13 @@ def maak_administraties_aan(
     rlz_admin_ids: list[str],
     client: RlzClient | None = None,
     start_sync: bool = True,
+    herprobe_client: RlzClient | None = None,
 ) -> list[AangemaakteAdministratie]:
-    """Stap b+d: admin-pin → probe per administratie (alles groen of niets opslaan) → in één
-    transactie administratie + credential + probe-rapport + audit → eerste-sync-run."""
+    """Stap b+d: admin-pin → probe per administratie met de INVOER (alles groen of niets opslaan) → herprobe per
+    administratie met de OPGESLAGEN vorm van de login (blok C 10-09: wrap → unwrap → verse client, exact de
+    credential-resolutie van de eerste sync; rood = niets opgeslagen, mét het letterlijke RLZ-antwoord) → in één
+    transactie administratie + credential (dezelfde bytes als de herprobe) + probe-rapport + audit → eerste-sync-run.
+    `client`/`herprobe_client` zijn testseams; zonder `herprobe_client` hergebruikt een test-`client` zichzelf."""
     if not rlz_admin_ids:
         raise OnboardingFout("Kies minstens één administratie")
     gekozen = list(dict.fromkeys(rlz_admin_ids))
@@ -167,19 +224,44 @@ def maak_administraties_aan(
             raise OnboardingFout(
                 f"Deze login ziet administratie(s) {', '.join(onbekend)} niet (admin-pin) — niets opgeslagen"
             )
-        rapporten = {rlz_id: credentialstore.probe_rapport(client, rlz_id) for rlz_id in gekozen}
+        uitkomsten = {rlz_id: credentialstore.voer_probe_uit(client, rlz_id) for rlz_id in gekozen}
     finally:
         if eigen:
             client.close()
 
-    rood = {rlz_id: r for rlz_id, r in rapporten.items() if not credentialstore.probe_is_groen(r)}
+    rood = {
+        rlz_id: (gevonden[rlz_id], u)
+        for rlz_id, u in uitkomsten.items()
+        if not credentialstore.probe_is_groen(u.rapport)
+    }
     if rood:
-        samenvatting = "; ".join(
-            f"{gevonden[rlz_id]}: {credentialstore.beschrijf_probe_fouten(r)}" for rlz_id, r in rood.items()
-        )
-        raise OnboardingFout(f"Rechten-probe niet groen — niets opgeslagen. {samenvatting}", rapporten=rapporten)
+        fout = _rode_probe_fout("Rechten-probe niet groen — niets opgeslagen.", per_administratie=rood, staart="")
+        fout.rapporten = {rlz_id: u.rapport for rlz_id, u in uitkomsten.items()}
+        raise fout
 
-    ciphertext, wrapped_data_key = wrap_secret(wachtwoord.encode())
+    # Herprobe met de opgeslagen vorm (blok C 10-09) — per administratie, met de bytes die ook opgeslagen worden.
+    if herprobe_client is None and not eigen:
+        herprobe_client = client  # testseam: dezelfde fake als de invoer-probe (productie: eigen client → verse client)
+    opgeslagen: dict[str, _OpgeslagenVorm] = {}
+    for rlz_id in gekozen:
+        opgeslagen[rlz_id] = _herprobe_in_opgeslagen_vorm(
+            webservice_username=webservice_username,
+            wachtwoord=wachtwoord,
+            rlz_admin_id=rlz_id,
+            herprobe_client=herprobe_client,
+        )
+    rood_herprobe = {
+        rlz_id: (gevonden[rlz_id], v.herprobe)
+        for rlz_id, v in opgeslagen.items()
+        if not credentialstore.probe_is_groen(v.herprobe.rapport)
+    }
+    if rood_herprobe:
+        raise _rode_probe_fout(
+            "Herprobe met de opgeslagen login niet groen — niets opgeslagen.",
+            per_administratie=rood_herprobe,
+            staart=" (de invoer-probe was wél groen: dit is wat de eerste sync zou zien)",
+        )
+
     resultaten: list[AangemaakteAdministratie] = []
     with scoped_session(None, actor_id=actor_id) as session:
         for rlz_id in gekozen:
@@ -201,8 +283,8 @@ def maak_administraties_aan(
                 RlzCredential(
                     administratie_id=administratie_id,
                     webservice_username=webservice_username,
-                    wachtwoord_ciphertext=ciphertext,
-                    wrapped_data_key=wrapped_data_key,
+                    wachtwoord_ciphertext=opgeslagen[rlz_id].ciphertext,
+                    wrapped_data_key=opgeslagen[rlz_id].wrapped_data_key,
                     aangemaakt_door=actor_id,
                 )
             )
@@ -229,12 +311,23 @@ def maak_administraties_aan(
                 correlatie_id=uuid.uuid4(),
                 nieuwe_waarde={"webservice_username": webservice_username},
             )
+            herprobe = opgeslagen[rlz_id].herprobe
             credentialstore.sla_probe_op(
-                session, administratie_id=administratie_id, rapport=rapporten[rlz_id], actor_id=actor_id
+                session,
+                administratie_id=administratie_id,
+                rapport=herprobe.rapport,
+                actor_id=actor_id,
+                meldingen=herprobe.meldingen,
+                bron="herprobe_opgeslagen_login",
             )
             resultaten.append(
                 AangemaakteAdministratie(
-                    id=administratie_id, naam=naam, rlz_admin_id=rlz_id, probe=rapporten[rlz_id], sync_run_id=None
+                    id=administratie_id,
+                    naam=naam,
+                    rlz_admin_id=rlz_id,
+                    probe=herprobe.rapport,
+                    sync_run_id=None,
+                    probe_meldingen=herprobe.meldingen,
                 )
             )
 
@@ -251,7 +344,12 @@ def maak_administraties_aan(
             logger.exception("Eerste sync starten mislukt voor %s — zichtbaar op de run", r.id)
         met_run.append(
             AangemaakteAdministratie(
-                id=r.id, naam=r.naam, rlz_admin_id=r.rlz_admin_id, probe=r.probe, sync_run_id=run_id
+                id=r.id,
+                naam=r.naam,
+                rlz_admin_id=r.rlz_admin_id,
+                probe=r.probe,
+                sync_run_id=run_id,
+                probe_meldingen=r.probe_meldingen,
             )
         )
     return met_run
@@ -264,9 +362,11 @@ def wijzig_webservice_gegevens(
     webservice_username: str,
     wachtwoord: str,
     client: RlzClient | None = None,
+    herprobe_client: RlzClient | None = None,
 ) -> dict[str, str]:
-    """Stappen a-b op een bestaande administratie: admin-pin + probe groen met de NIEUWE login,
-    dan pas de upsert in de credential-store (bestaande `zet_credential`, audit zonder secret)."""
+    """Stappen a-b op een bestaande administratie: admin-pin + probe groen met de NIEUWE login + herprobe in de
+    opgeslagen vorm (blok C 10-09), dan pas de upsert in de credential-store (bestaande `zet_credential`, audit
+    zonder secret). Rapport = de herprobe (wat de sync ziet)."""
     with scoped_session(None) as session:
         administratie = session.get(Administratie, administratie_id)
         if administratie is None:
@@ -281,13 +381,30 @@ def wijzig_webservice_gegevens(
             raise OnboardingFout(
                 f"Deze login ziet administratie '{naam}' niet in Reeleezee (admin-pin) — niets gewijzigd"
             )
-        rapport = credentialstore.probe_rapport(client, rlz_admin_id)
+        uitkomst = credentialstore.voer_probe_uit(client, rlz_admin_id)
     finally:
         if eigen:
             client.close()
-    if not credentialstore.probe_is_groen(rapport):
-        rood = credentialstore.beschrijf_probe_fouten(rapport)
-        raise OnboardingFout(f"Rechten-probe niet groen ({rood}) — niets gewijzigd", rapporten={rlz_admin_id: rapport})
+    if not credentialstore.probe_is_groen(uitkomst.rapport):
+        rood = credentialstore.beschrijf_probe_fouten(uitkomst.rapport, uitkomst.meldingen)
+        raise OnboardingFout(
+            f"Rechten-probe niet groen ({rood}) — niets gewijzigd",
+            rapporten={rlz_admin_id: uitkomst.rapport},
+            meldingen={rlz_admin_id: uitkomst.meldingen},
+        )
+    herprobe = _herprobe_in_opgeslagen_vorm(
+        webservice_username=webservice_username,
+        wachtwoord=wachtwoord,
+        rlz_admin_id=rlz_admin_id,
+        herprobe_client=herprobe_client if herprobe_client is not None else (client if not eigen else None),
+    ).herprobe
+    if not credentialstore.probe_is_groen(herprobe.rapport):
+        rood = credentialstore.beschrijf_probe_fouten(herprobe.rapport, herprobe.meldingen)
+        raise OnboardingFout(
+            f"Herprobe met de opgeslagen login niet groen ({rood}) — niets gewijzigd",
+            rapporten={rlz_admin_id: herprobe.rapport},
+            meldingen={rlz_admin_id: herprobe.meldingen},
+        )
 
     credentialstore.zet_credential(
         actor_id=actor_id,
@@ -296,15 +413,29 @@ def wijzig_webservice_gegevens(
         wachtwoord=wachtwoord,
     )
     with scoped_session(None, actor_id=actor_id) as session:
-        credentialstore.sla_probe_op(session, administratie_id=administratie_id, rapport=rapport, actor_id=actor_id)
-    return rapport
+        credentialstore.sla_probe_op(
+            session,
+            administratie_id=administratie_id,
+            rapport=herprobe.rapport,
+            actor_id=actor_id,
+            meldingen=herprobe.meldingen,
+            bron="herprobe_opgeslagen_login",
+        )
+    return herprobe.rapport
 
 
 def probe_nieuwe_login(
-    *, rlz_admin_id: str, naam: str, webservice_username: str, wachtwoord: str, client: RlzClient | None = None
+    *,
+    rlz_admin_id: str,
+    naam: str,
+    webservice_username: str,
+    wachtwoord: str,
+    client: RlzClient | None = None,
+    herprobe_client: RlzClient | None = None,
 ) -> dict[str, str]:
-    """Admin-pin + rechten-probe met een NIEUWE login, zonder iets op te slaan (dearchiveren v2 30-08 —
-    zelfde poort als `wijzig_webservice_gegevens`). Geeft het groene rapport terug, anders OnboardingFout."""
+    """Admin-pin + rechten-probe met een NIEUWE login + herprobe in de opgeslagen vorm (blok C 10-09), zonder iets
+    op te slaan (dearchiveren v2 30-08 — zelfde poort als `wijzig_webservice_gegevens`). Geeft het groene
+    herprobe-rapport terug, anders OnboardingFout mét het letterlijke RLZ-antwoord."""
     eigen = client is None
     client = client or _nieuwe_root_client(webservice_username, wachtwoord)
     try:
@@ -313,14 +444,31 @@ def probe_nieuwe_login(
             raise OnboardingFout(
                 f"Deze login ziet administratie '{naam}' niet in Reeleezee (admin-pin) — niets gewijzigd"
             )
-        rapport = credentialstore.probe_rapport(client, rlz_admin_id)
+        uitkomst = credentialstore.voer_probe_uit(client, rlz_admin_id)
     finally:
         if eigen:
             client.close()
-    if not credentialstore.probe_is_groen(rapport):
-        rood = credentialstore.beschrijf_probe_fouten(rapport)
-        raise OnboardingFout(f"Rechten-probe niet groen ({rood}) — niets gewijzigd", rapporten={rlz_admin_id: rapport})
-    return rapport
+    if not credentialstore.probe_is_groen(uitkomst.rapport):
+        rood = credentialstore.beschrijf_probe_fouten(uitkomst.rapport, uitkomst.meldingen)
+        raise OnboardingFout(
+            f"Rechten-probe niet groen ({rood}) — niets gewijzigd",
+            rapporten={rlz_admin_id: uitkomst.rapport},
+            meldingen={rlz_admin_id: uitkomst.meldingen},
+        )
+    herprobe = _herprobe_in_opgeslagen_vorm(
+        webservice_username=webservice_username,
+        wachtwoord=wachtwoord,
+        rlz_admin_id=rlz_admin_id,
+        herprobe_client=herprobe_client if herprobe_client is not None else (client if not eigen else None),
+    ).herprobe
+    if not credentialstore.probe_is_groen(herprobe.rapport):
+        rood = credentialstore.beschrijf_probe_fouten(herprobe.rapport, herprobe.meldingen)
+        raise OnboardingFout(
+            f"Herprobe met de opgeslagen login niet groen ({rood}) — niets gewijzigd",
+            rapporten={rlz_admin_id: herprobe.rapport},
+            meldingen={rlz_admin_id: herprobe.meldingen},
+        )
+    return herprobe.rapport
 
 
 def _kies_schrijftest_bouwstenen(administratie_id: uuid.UUID) -> tuple[uuid.UUID, str, uuid.UUID, str, uuid.UUID]:

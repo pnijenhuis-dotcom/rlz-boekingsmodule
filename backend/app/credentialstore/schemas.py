@@ -23,4 +23,8 @@ class CredentialMetadataResponse(BaseModel):
 
 
 class RechtenProbeResponse(BaseModel):
+    """`rapport` = route → 'ok' | HTTP-status; `meldingen` (10-09) = per rode route het letterlijke RLZ-antwoord
+    ("HTTP 403 — <body, ≤ 300 tekens>") zodat de Beheerder ziet wát Reeleezee zegt."""
+
     rapport: dict[str, str]
+    meldingen: dict[str, str] = {}

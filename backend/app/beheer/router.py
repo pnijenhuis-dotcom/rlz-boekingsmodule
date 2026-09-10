@@ -136,7 +136,7 @@ def _onboarding_fout(exc: Exception) -> HTTPException:
     if isinstance(exc, OnboardingFout):
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"bericht": str(exc), "rapporten": exc.rapporten},
+            detail={"bericht": str(exc), "rapporten": exc.rapporten, "meldingen": exc.meldingen},
         )
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
@@ -190,7 +190,12 @@ def administraties_aanmaken(
     return schemas.AdministratiesAangemaaktDto(
         administraties=[
             schemas.AangemaakteAdministratieDto(
-                id=r.id, naam=r.naam, rlz_admin_id=r.rlz_admin_id, probe=r.probe, sync_run_id=r.sync_run_id
+                id=r.id,
+                naam=r.naam,
+                rlz_admin_id=r.rlz_admin_id,
+                probe=r.probe,
+                sync_run_id=r.sync_run_id,
+                probe_meldingen=r.probe_meldingen,
             )
             for r in resultaten
         ]

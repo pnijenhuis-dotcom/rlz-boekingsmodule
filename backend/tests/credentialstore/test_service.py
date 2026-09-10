@@ -222,7 +222,8 @@ class TestProbeIsGroenMetFacturatiemoduleUitzondering:
 
     def test_beschrijf_probe_fouten_geeft_handelingsperspectief_bij_echte_403(self) -> None:
         tekst = service.beschrijf_probe_fouten(_rapport(Ledgers="403", JournalEntries="500", SalesInvoices="403"))
-        assert "Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers)" in tekst
+        # 10-09 blok C: mét het RLZ-recht dat gezet moet worden (leesroutes.rlz_recht)
+        assert "Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers: leesrecht Grootboek" in tekst
         assert "JournalEntries=500" in tekst
         # De SalesInvoices-403 is geen fout (facturatiemodule) en hoort hier niet tussen.
         assert "SalesInvoices" not in tekst
@@ -276,3 +277,54 @@ class TestKenmerkVerkoopmoduleAfwezig:
         service.voer_rechten_probe_uit(administratie_id=administratie_id, actor_id=beheerder_id, client=met_500)
         # 500 = geen uitspraak over de facturatiemodule — het kenmerk blijft staan.
         assert self._kenmerk(admin_engine, administratie_id) is True
+
+
+# --- Blok C 10-09 (Baard): letterlijk RLZ-antwoord + RLZ-recht in rapport, melding en audit --------------------
+
+
+class TestProbeMeldingen:
+    def test_voer_probe_uit_bewaart_het_letterlijke_rlz_antwoord_afgekapt(self) -> None:
+        lang = "x" * 400
+        fouten = {
+            "Ledgers": RlzApiError(403, "GET", "/a/Ledgers", '{"error":{"code":"_Forbidden","message":"Geen recht"}}'),
+            "Vendors": RlzApiError(403, "GET", "/a/Vendors", lang),
+        }
+        uitkomst = service.voer_probe_uit(FakeRlzClient({}, fouten=fouten), "a")
+        assert uitkomst.rapport["Ledgers"] == "403" and uitkomst.rapport["TaxRates"] == "ok"
+        assert uitkomst.meldingen["Ledgers"] == 'HTTP 403 — {"error":{"code":"_Forbidden","message":"Geen recht"}}'
+        assert len(uitkomst.meldingen["Vendors"]) == service.RLZ_MELDING_MAX + len("HTTP 403 — ")
+        assert uitkomst.meldingen["Vendors"].endswith("…")
+        assert "TaxRates" not in uitkomst.meldingen
+
+    def test_beschrijf_probe_fouten_noemt_rlz_recht_en_rlz_antwoord(self) -> None:
+        tekst = service.beschrijf_probe_fouten(
+            _rapport(Ledgers="403", PaymentAccounts="403", JournalEntries="401"),
+            {"Ledgers": "HTTP 403 — _Forbidden", "PaymentAccounts": "HTTP 403 — (leeg antwoord)"},
+        )
+        assert "Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers: leesrecht Grootboek" in tekst
+        assert 'RLZ zegt: "HTTP 403 — _Forbidden"' in tekst
+        assert "PaymentAccounts=403" in tekst and "Bank/Kas" in tekst
+        assert "JournalEntries=401 (Reeleezee weigert de login zelf" in tekst
+
+    def test_herprobe_met_opgeslagen_login_auditeert_rapport_meldingen_en_bron(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        fout = RlzApiError(403, "GET", "/x/Projects", "_Forbidden: Projects")
+        uitkomst = service.voer_herprobe_met_opgeslagen_login(
+            administratie_id=administratie_id,
+            actor_id=beheerder_id,
+            client=FakeRlzClient({}, fouten={"Projects": fout}),
+        )
+        assert uitkomst.rapport["Projects"] == "403"
+        assert uitkomst.meldingen == {"Projects": "HTTP 403 — _Forbidden: Projects"}
+        with admin_engine.connect() as conn:
+            nieuw = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde FROM platform.audit_event WHERE tabel = 'rlz_rechten_probe' "
+                    "AND record_id = :id ORDER BY tijdstip DESC LIMIT 1"
+                ),
+                {"id": administratie_id},
+            ).scalar_one()
+        assert nieuw["bron"] == "herprobe_opgeslagen_login"
+        assert nieuw["meldingen"] == {"Projects": "HTTP 403 — _Forbidden: Projects"}
+        assert nieuw["rapport"]["Projects"] == "403" and nieuw["aantal_ok"] == 9

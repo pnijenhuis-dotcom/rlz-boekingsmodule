@@ -252,8 +252,11 @@ class RlzClient:
     # "Bankmodule schrijf-PoC", 2 augustus 2026) ---------------------------------------------
 
     def list_payment_accounts(self) -> list[dict[str, Any]]:
-        """Alle rekeningen incl. kas (Type 3) — één leesroute voor bank én kas."""
-        return self.get("PaymentAccounts").get("value", [])
+        """Alle rekeningen incl. kas (Type 3) — één leesroute voor bank én kas. Pad uit app/rlz/leesroutes.py
+        (zelfde bron als de rechten-probe, blok C 10-09)."""
+        from app.rlz import leesroutes  # lokaal: leesroutes is pure data, geen kring
+
+        return self.get(leesroutes.PAYMENT_ACCOUNTS.pad).get("value", [])
 
     def get_last_bank_import(self, account_id: uuid.UUID | str) -> dict[str, Any] | None:
         """Versheid-probe per rekening (STAP 0 §3): bestandsnaam, datum, BankImportSource/-Type.
