@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Inzicht › Panden (pandenregister, toewijzing, dashboard) — blok D3 10-09-2026, wacht op akkoord Peter</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ===== TOKENS 1-op-1 uit kantoor-designpass-v2.html (akkoord Peter 26-08) — teal = ACTIE, groen = STATUS ===== */
+  :root {
+    --bg: #f6f7f8; --panel: #ffffff; --panel-2: #fafbfb; --border: #e6e8ea;
+    --text: #12181f; --muted: #5b6470; --faint: #687180;
+    --primary: #0e7a6e; --primary-hover: #0a635a; --primary-fg: #ffffff; --accent-bg: #e6f4f2; --ring: rgba(14,122,110,.30);
+    --ok: #1c7a54; --ok-bg: #e4f4ec; --warn: #b45309; --warn-bg: #fdf3e3; --danger: #b42318; --danger-bg: #fceceb;
+    --info: #3548a5; --info-bg: #eaeefb; --purple: #6941c6; --purple-bg: #f1ecfb;
+    --rail: #101b19; --rail-text: #c7d2cf; --rail-muted: #7d8c88; --rail-actief: #16332e; --rail-accent: #4fd1c0;
+    --radius: 12px; --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(18,24,31,.06), 0 4px 14px rgba(18,24,31,.06);
+    --shadow-hover: 0 2px 4px rgba(18,24,31,.08), 0 10px 28px rgba(18,24,31,.12);
+    --font: 'Inter', -apple-system, sans-serif;
+  }
+  [data-thema="donker"] {
+    --bg: #0b0d0e; --panel: #151719; --panel-2: #111314; --border: #242729; --text: #f0f3f2; --muted: #98a0a5; --faint: #7f878d;
+    --primary: #3ec9b8; --primary-hover: #58d6c7; --primary-fg: #06211d; --accent-bg: #12302c; --ring: rgba(62,201,184,.35);
+    --ok: #4ecb94; --ok-bg: #12291e; --warn: #e5a04c; --warn-bg: #2e2310; --danger: #f08579; --danger-bg: #331714;
+    --info: #93a6f5; --info-bg: #1a2038; --purple: #b39af0; --purple-bg: #241d38;
+    --rail: #0e1011; --rail-text: #c6cdd0; --rail-muted: #737d82; --rail-actief: #17322d; --rail-accent: #4fd1c0;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.35); --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  [data-thema="donker"] .rail { border-right: 1px solid var(--border); }
+
+  body { font-family: var(--font); font-size: 13.5px; line-height: 1.45; letter-spacing: -.01em; background: var(--bg); color: var(--text); }
+
+  .mockbalk { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 12px; background: #12181f; color: #e7ecf1; padding: 10px 18px; font-size: 12.5px; }
+  .mockbalk .knoppen { display: flex; gap: 6px; margin-left: auto; }
+  .mockbalk button { border: 1px solid #3a4553; background: transparent; color: #e7ecf1; border-radius: 8px; padding: 6px 14px; font-weight: 700; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+  .mockbalk button.actief { background: #0e7a6e; border-color: #0e7a6e; }
+
+  .app { display: flex; min-height: calc(100vh - 41px); }
+
+  /* ===== inkt-zijbalk ===== */
+  .rail { width: 216px; background: var(--rail); color: var(--rail-text); padding: 18px 12px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .rail .logo { font-size: 15px; font-weight: 800; color: #fff; padding: 0 10px 16px; }
+  .rail .logo b { color: var(--rail-accent); }
+  .rail .sectie { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--rail-muted); padding: 14px 10px 6px; }
+  .rail a { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; color: var(--rail-text); text-decoration: none; font-weight: 500; font-size: 13px; position: relative; }
+  .rail a:hover { background: color-mix(in srgb, var(--rail-actief) 60%, transparent); color: #fff; }
+  .rail a.actief { background: var(--rail-actief); color: #fff; font-weight: 700; }
+  .rail a.actief::before { content: ''; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--rail-accent); }
+  .rail .teller { margin-left: auto; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--rail-accent) 22%, transparent); color: var(--rail-accent); border-radius: 99px; padding: 1px 8px; }
+
+  /* ===== content ===== */
+  .main { flex: 1; padding: 26px 30px; min-width: 0; }
+  .kruimels { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .kruimels a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .paginakop { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+  .paginakop h1 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; }
+  .paginakop .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; background: var(--primary); color: var(--primary-fg); border: none; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; box-shadow: 0 1px 2px rgba(18,24,31,.15); transition: background .12s, transform .06s; white-space: nowrap; }
+  .btn:hover { background: var(--primary-hover); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+  .btn.secondary:hover { background: var(--panel-2); border-color: var(--faint); }
+  .btn.klein { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+  .linkbtn { background: none; border: none; color: var(--primary); font-weight: 600; font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 0; text-decoration: none; }
+  .linkbtn:hover { text-decoration: underline; }
+
+  /* filterbalk — administratie = FILTER, nooit poort */
+  .filterbalk { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .combobox { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px; font-size: 13px; min-width: 260px; cursor: pointer; }
+  .combobox:focus-within { outline: 2px solid var(--ring); }
+  .combobox select { border: none; background: transparent; font-family: inherit; font-size: 13px; color: var(--text); flex: 1; cursor: pointer; outline: none; }
+  .zoek { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px; font-size: 13px; font-family: inherit; color: var(--text); min-width: 220px; }
+  .telregel { font-size: 12.5px; color: var(--muted); margin-left: auto; }
+
+  /* tabs = schermen (nav-regel/tab, nooit tegel) */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tabs a { padding: 9px 14px; font-weight: 600; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+  .tabs a:hover { color: var(--text); }
+  .tabs a.actief { color: var(--primary); border-bottom-color: var(--primary); }
+  .tabs .teller { font-size: 11px; font-weight: 700; background: var(--accent-bg); color: var(--primary); border-radius: 99px; padding: 1px 7px; }
+  .tabs .teller.warn { background: var(--warn-bg); color: var(--warn); }
+  .scherm { display: none; } .scherm.actief { display: block; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; min-width: 0; }
+  .kpi .label { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .kpi .waarde { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi .delta { font-size: 11.5px; font-weight: 600; margin-top: 3px; color: var(--muted); }
+  .kpi.ok .waarde { color: var(--ok); } .kpi.neg .waarde { color: var(--danger); }
+
+  .paneel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 18px; }
+  .paneel .kop { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 13.5px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .paneel .kop .sub { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+  .tabel-scroll { overflow-x: auto; }                 /* overflow-sweep-regel: tabellen scrollen intern, de pagina nooit */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px; }
+  th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr.klik { cursor: pointer; } tbody tr.klik:hover { background: var(--panel-2); }
+  tfoot td { font-weight: 700; background: var(--panel-2); }
+  .bedrag { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  th.bedrag { text-align: right; }
+  .bedrag.neg { color: var(--danger); }
+  .stil { color: var(--muted); font-weight: 500; }
+  .klein { font-size: 12px; color: var(--muted); }
+  td.grijs, tr.grijs td { color: var(--faint); }
+  td.nowrap { white-space: nowrap; }
+  .twee table { min-width: 520px; }
+
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status.verkocht { color: var(--ok); } .status.handel { color: var(--info); } .status.voorstel { color: var(--warn); }
+
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.neutraal { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+  .chip.info { background: var(--info-bg); color: var(--info); } .chip.doc { background: var(--accent-bg); color: var(--primary); }
+  .chip.danger { background: var(--danger-bg); color: var(--danger); }
+
+  /* voorstel-kaart in de toewijzingsrij (UX-norm "Voorstel-kaart") */
+  .voorstel { display: flex; flex-direction: column; gap: 4px; min-width: 260px; }
+  .voorstel .doel { font-weight: 700; }
+  .voorstel .reden { font-size: 12px; color: var(--muted); }
+  .uitkomst { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rijacties { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .rijacties select { font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .bulkbalk { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel-2); flex-wrap: wrap; }
+  .bulkbalk .rest { color: var(--muted); font-size: 12.5px; }
+
+  .leeg { padding: 34px 20px; text-align: center; color: var(--muted); }
+  .leeg b { display: block; color: var(--text); font-size: 15px; margin-bottom: 6px; }
+  .leeg .btn { margin-top: 12px; }
+
+  /* dashboard */
+  .pandkop { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+  .pandkop h2 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .pandkop .meta { color: var(--muted); font-size: 12.5px; margin-top: 3px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .twee { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+  @media (max-width: 1100px) { .twee { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  details.rekenregel { font-size: 12px; color: var(--muted); }
+  details.rekenregel summary { cursor: pointer; color: var(--primary); font-weight: 600; list-style: none; }
+  details.rekenregel summary::-webkit-details-marker { display: none; }
+  details.rekenregel[open] summary { margin-bottom: 4px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+  .margeblok { padding: 14px 16px; display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
+  .margeblok .rij { display: flex; justify-content: space-between; gap: 12px; }
+  .margeblok .rij.totaal { border-top: 1px solid var(--border); padding-top: 6px; font-weight: 800; font-size: 15px; }
+  .margeblok .rij .w { font-weight: 600; white-space: nowrap; }
+
+  .noot { max-width: 980px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; margin-top: 26px; font-size: 13px; line-height: 1.65; }
+  .noot h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+  .noot ol { margin: 6px 0 0 20px; } .noot li { margin-bottom: 9px; } .noot li b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="mockbalk">
+  <b>Mockup pandenregister — blok D3 (10-09-2026)</b> · klikbaar, fictieve data, overheadsleutel wordt ín de pagina berekend · <b>wacht op akkoord Peter</b>
+  <div class="knoppen">
+    <button id="t-licht" class="actief" onclick="thema('licht')">☀ Licht</button>
+    <button id="t-donker" onclick="thema('donker')">☾ Donker</button>
+  </div>
+</div>
+
+<div class="app">
+  <nav class="rail">
+    <div class="logo">Nijenhuis <b>RLZ</b></div>
+    <div class="sectie">Verwerken</div>
+    <a href="#">📥 Werkvoorraad <span class="teller">23</span></a>
+    <a href="#">🏦 Bank <span class="teller">7</span></a>
+    <a href="#">🗂 Verzamelbak <span class="teller">3</span></a>
+    <div class="sectie">Inzicht</div>
+    <a href="#">🧭 Reconciliatie</a>
+    <a href="#">📁 Projecten</a>
+    <a href="#">🥧 Projectverdeling</a>
+    <a href="#" class="actief">🏠 Panden <span class="teller" id="rail-teller">7</span></a>
+    <div class="sectie">Beheer</div>
+    <a href="#">🔍 Zoeken</a>
+    <a href="#">👥 Gebruikers</a>
+    <a href="#">⚙️ Instellingen</a>
+  </nav>
+
+  <main class="main">
+    <div class="kruimels"><a href="#">Inzicht</a> › Panden</div>
+    <div class="paginakop">
+      <div>
+        <h1>Panden</h1>
+        <div class="sub" id="pagina-sub">kantoorbreed · handel in panden (aankoop → directe kosten → toegerekende overhead → verkoop)</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn secondary" onclick="alert('Mockup: leest de laatste sync-tijd; geen handmatige knop nodig in de bouw (bank-sync draait in sync-alles 07:00).')">⟳ Laatste sync 07:02</button>
+        <button class="btn" onclick="alert('Mockup: pand registreren = aankoopdatum, adres, aankoopprijs, notarisafrekening koppelen. Normaal ontstaat een pand als VOORSTEL uit een notarisafrekening (zie rij Hoofdstraat 21).')">＋ Pand registreren</button>
+      </div>
+    </div>
+
+    <div class="filterbalk">
+      <label class="combobox" title="AdministratieCombobox — filter, nooit poort">
+        <span>🏢</span>
+        <select id="f-admin" onchange="render()">
+          <option value="">Alle administraties (1 met panden)</option>
+          <option value="VGG">Vastgoedgroep Nederland B.V. · Odoo</option>
+          <option value="LEEG">Kempen Facilities B.V. · RLZ (geen panden)</option>
+        </select>
+      </label>
+      <input class="zoek" id="f-zoek" placeholder="Zoek adres, code, notaris, leverancier…" oninput="render()">
+      <div class="telregel" id="telregel"></div>
+    </div>
+
+    <div class="tabs">
+      <a id="tab-register" class="actief" onclick="toonTab('register')">Register <span class="teller" id="tel-register">4</span></a>
+      <a id="tab-toewijzing" onclick="toonTab('toewijzing')">Toewijzing <span class="teller warn" id="tel-toewijzing">7</span></a>
+      <a id="tab-dashboard" onclick="toonTab('dashboard')">Dashboard per pand</a>
+    </div>
+
+    <!-- ===================== (1) REGISTER ===================== -->
+    <section id="scherm-register" class="scherm actief">
+      <div class="kpis" id="register-kpis"></div>
+      <div class="paneel">
+        <div class="kop">Pandenregister <span class="sub" id="register-sub"></span></div>
+        <div class="tabel-scroll">
+          <table id="register-tabel">
+            <thead><tr>
+              <th>Code / adres</th><th>Administratie</th><th>Status</th><th>Aankoop</th><th>Verkoop</th>
+              <th>Dossiers</th><th>Boekingen</th><th class="bedrag">Marge tot nu</th><th></th>
+            </tr></thead>
+            <tbody id="register-body"></tbody>
+          </table>
+        </div>
+        <div class="leeg" id="register-leeg" hidden></div>
+      </div>
+    </section>
+
+    <!-- ===================== (2) TOEWIJZING ===================== -->
+    <section id="scherm-toewijzing" class="scherm">
+      <div class="paneel">
+        <div class="kop">Niet-toegewezen boekingen <span class="sub" id="toewijzing-sub"></span></div>
+        <div class="bulkbalk" id="bulkbalk">
+          <label style="display:flex;gap:8px;align-items:center;font-weight:600;"><input type="checkbox" id="alles" onchange="selecteerAlles(this.checked)"> Selecteer alle rijen met een voorstel</label>
+          <button class="btn" id="bevestig" onclick="bevestigSelectie()">Bevestig voorstellen (0)</button>
+          <span class="rest" id="bulk-rest"></span>
+        </div>
+        <div class="tabel-scroll">
+          <table id="toewijzing-tabel" style="min-width:1040px;">
+            <thead><tr>
+              <th style="width:34px;"></th><th>Boeking</th><th>Omschrijving</th><th class="bedrag">Bedrag</th>
+              <th>Voorstel</th><th>Zekerheid</th><th>Uitkomst / acties</th>
+            </tr></thead>
+            <tbody id="toewijzing-body"></tbody>
+          </table>
+        </div>
+        <div class="leeg" id="toewijzing-leeg" hidden>
+          <b>Alles toegewezen</b> Er staan geen boekingen zonder pand of overhead-markering. De bank-sync van 07:00 en nieuwe inkoopfacturen vullen deze lijst automatisch; voorstellen mét zekerheid <i>hoog</i> blijven bevestigd worden door een mens (run 2: opt-in auto-bevestigen, default UIT).
+          <br><button class="linkbtn" onclick="toonTab('register')">Naar het register →</button>
+        </div>
+      </div>
+      <div class="paneel">
+        <div class="kop">Vandaag bevestigd <span class="sub" id="log-sub">niets verdwijnt stil — elke bevestiging staat hier met terugweg</span></div>
+        <div class="tabel-scroll"><table style="min-width:640px;"><tbody id="log-body"><tr><td class="stil">Nog niets bevestigd in deze sessie.</td></tr></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===================== (3) DASHBOARD PER PAND ===================== -->
+    <section id="scherm-dashboard" class="scherm">
+      <div class="filterbalk" style="margin-bottom:10px;">
+        <label class="combobox" style="min-width:340px;"><span>🏠</span>
+          <select id="d-pand" onchange="renderDashboard()"></select>
+        </label>
+        <span class="klein">Peildatum 10-09-2026 · overhead t/m juli 2026 (augustus nog niet afgesloten)</span>
+      </div>
+      <div id="dashboard-inhoud"></div>
+    </section>
+
+    <!-- ===================== ONTWERPNOTITIES ===================== -->
+    <div class="noot">
+      <h2>Ontwerpnotities ①–⑧ — te bevestigen door Peter (onderdeel van het akkoord; bouw in run 2 pas ná akkoord)</h2>
+      <ol>
+        <li><b>① Sleutel "in handel per maand".</b> Per kalendermaand: <code>overhead(maand) ÷ aantal panden in handel(maand)</code>. Een pand is "in handel" in maand M als <code>aankoopmaand ≤ M ≤ verkoopmaand</code> (onverkocht: t/m de laatste afgesloten maand). <b>Maand van aankoop én maand van verkoop tellen VOL</b> — geen dag-pro-rato. Deling in centen; afrondingsrest (max. n−1 cent) naar het pand met de laagste code, zodat Σ toerekening = overhead van die maand. Alleen bevestigde panden tellen; een pand-VOORSTEL (Hoofdstraat 21) telt pas ná bevestiging — met terugwerkende kracht op de maanden vanaf zijn aankoopmaand (herberekening zichtbaar in de tijdlijn).</li>
+        <li><b>② Aankoop en verkoop in dezelfde maand.</b> Het pand telt die maand als 1 pand in handel (één volle maand), krijgt dus zijn aandeel van díe maand en daarna niets. Alternatief (niet gekozen): zulke "flitspanden" buiten de sleutel houden — dat maakt de deler kleiner en de overhead van de overige panden hoger; de rekenregel per maand toont het verschil niet, dus wij kiezen de eenvoudigste regel.</li>
+        <li><b>③ Overhead vóór het eerste pand / in maanden zonder panden.</b> Nul panden in handel → de overhead van die maand wordt <b>niet toegerekend</b> en blijft als bedrag zichtbaar in élk dashboard (rij "niet toegerekend", zie augustus 2025) én in een kantoorbrede teller "€ X overhead niet toegerekend (n maanden)". Nooit doorschuiven naar de eerstvolgende maand of het eerstvolgende pand — dat vervuilt de marge van dat pand met kosten van een periode waarin het niet bestond. Te bevestigen: akkoord, of alsnog toerekenen aan het eerstvolgende aangekochte pand?</li>
+        <li><b>④ Wat is "overhead"?</b> Elke boeking van Vastgoedgroep op een kostenrekening zónder pand-toewijzing én mét de markering "Overhead" (mens of bevestigd voorstel). Een boeking die nog in de Toewijzing-lijst staat is géén overhead maar <i>onbeslist</i> en telt nergens mee — de lijst is dus een werkvoorraad met teller in de zijbalk, geen archief. Aankoopprijs en verkoopprijs komen uit de notarisafrekening (koopsom), niet uit bankmutaties (die bevatten ook waarborgsommen, verrekeningen en notariskosten).</li>
+        <li><b>⑤ Hoe een mens een voorstel corrigeert.</b> Per rij: "Ander pand…" (combobox alle panden + Overhead) of "Overhead" — het voorstel blijft zichtbaar als doorgestreepte herkomst ("voorstel was Marktplein 7 · midden"), de correctie voedt het geheugen (leverancier→pand, IBAN→pand, adres-tokens). Geen voorstel (rij Hoveniersbedrijf: het pand waaraan deze leverancier eerder hing is verkocht) = de rij toont expliciet waarom niet, en de mens kiest. Zekerheid: <b>hoog</b> = adres/notaris-afrekening/eigen kenmerk letterlijk in de boeking; <b>midden</b> = alleen plaats of leverancier-historie (één kandidaat); <b>laag</b> = alleen historie mét tegenindicatie. Code voor cijfers: de zekerheid is deterministisch (regelset), geen AI-score.</li>
+        <li><b>⑥ Terugdraaien van een bevestiging.</b> "Ongedaan maken" op de bevestigde rij (zelfde sessie) én in de tijdlijn van de boeking (later): de toewijzing wordt vervangen door een nieuwe toewijzing (append-only, oud→nieuw in audit_event); de overhead- en margecijfers worden herberekend en tonen "herberekend op <datum>". Verwijderen bestaat niet; een pand verdwijnt nooit — een pand zonder boekingen kan worden GEARCHIVEERD (status "gearchiveerd", uit de sleutel vanaf de archiveringsmaand — te bevestigen).</li>
+        <li><b>⑦ Odoo-mapping.</b> Pand = <code>account.analytic.account</code> in plan <b>Project</b> (id 1) op company 6, naam "P-2026-02 Marktplein 7, Oss"; toewijzing = <code>analytic_distribution {"&lt;id&gt;": 100}</code> op de kostenregel / de tegenrekeningregel van de bankmutatie; overhead = géén analytic (of een vast analytic "Overhead Vastgoedgroep" — te bevestigen; het eerste houdt de Odoo-rapportage schoon, het tweede maakt "onbeslist" en "overhead" in Odoo onderscheidbaar). Register en dashboard lezen uit onze eigen tabellen (pand, toewijzing) + de Odoo-boekingen via de bestaande adapter; Odoo blijft de boekhoudkundige waarheid, onze toerekening is een analytische laag die NOOIT als memoriaal in Odoo wordt geboekt (zelfde lijn als de integrale projectmarge).</li>
+        <li><b>⑧ Geen RLZ-/Odoo-write vanuit dit scherm in run 2.</b> Register, toewijzing en dashboard schrijven in run 2 alleen in onze eigen DB (pand, toewijzing, audit). Het zetten van <code>analytic_distribution</code> op de Odoo-boeking (⑦) en het aanmaken van analytic accounts zijn run-3-kandidaten, gepland áchter het bewijs op de Odoo-TESTdatabase (verkenning §11). Tot die tijd toont het dashboard de chip "toerekening alleen in de module" zodat niemand denkt dat Odoo het al weet. Te bevestigen: akkoord met deze fasering?</li>
+        <li><b>⑨ Boekmodel: pand = HANDELSVOORRAAD op de balans (besluit Peter 10-09).</b> Bij levering aankoop: koopsom + geactiveerde aankoopkosten (notaris-honorarium, recherche, inschrijving, overdrachtsbelasting; btw is niet aftrekbaar → bruto) + latere verbouwings-/renovatiekosten → balansrekening <b>Voorraad panden</b>, mét pand als analytic. Kosten tijdens bezit die géén waarde toevoegen (OZB/riool/waterschap-verrekening, servicekosten, styling &amp; meubelverhuur, schoonmaak, keuring) = periodekosten op het pand (W&amp;V, analytic = pand). Bij levering verkoop: opbrengst op <b>Opbrengst verkoop panden</b> én de voorraadwaarde uitgeboekt naar <b>Kostprijs verkopen panden</b>; courtage = verkoopkosten op het pand. Aanbetalingen, derdengelden-verrekeningen en het notaris-saldo zijn balansposten (nooit resultaat; wél in de pand-tijdlijn). Gevolg voor het dashboard, drie lagen: <b>handelsmarge</b> = opbrengst − kostprijs verkopen (voorraadwaarde); <b>bruto marge pand</b> = handelsmarge − directe periodekosten − courtage; <b>netto marge</b> = bruto − toegerekende overhead (①). Onverkocht pand: "kostprijs tot nu" = voorraadwaarde (balans) + periodekosten + overhead tot nu — de balanswaarde en de analytische kostprijs worden apart getoond, nooit opgeteld in één getal zonder label. Odoo company 6 krijgt dus drie extra rekeningen (voorraad panden, opbrengst verkoop panden, kostprijs verkopen panden) in de mapping van fase 2; de RLZ-historie 2025–2026 wordt bij de migratie in dít model geplaatst (kop-omschrijving/dossiernummer bepaalt of een notarispost activering of periodekost is). De KPI "bruto marge = verkoop − aankoop" in de huidige voorbeelddata wordt bij de bouw vervangen door deze drie lagen.</li>
+        <li><b>⑩ Dashboard-eisen Peter 10-09 (aanvulling op ⑨).</b> Makelaarscourtage en notariskosten zijn ALTIJD eigen regels — per pand én op een tab "Kostensoorten" over alle panden (per leverancier en per soort, per jaar, met aantal transacties, gemiddelde per pand en % van omzet; doorklikbaar naar de panden). Bij aankoop wordt de <code>verwachte verkoopprijs</code> vastgelegd (verplicht veld in het register, mensinvoer met herkomst en historie; later mogelijk uit Salesforce); per pand toont het dashboard de verwachte marge nú (verwachte opbrengst − kostprijs tot nu − verwachte verkoopkosten uit historie: courtage-% en notaris) en, vooruitkijkend met de maandelijkse overhead-portie en lopende periodekosten, de <b>break-even-maand</b>: signaal "bij verkoop ná &lt;maand&gt; negatieve marge" (kantoorbreed als lijst "break-even binnen 3 maanden", drempel instelbaar). Deterministisch, geen AI. De directie-weergave is een aparte lees-PWA in de huisstijl van Vastgoedgroep (<code>mockup/pandenregister-app.html</code>): één berekening in de module, de app toont alleen; dossier per pand (koopovereenkomst, afspraken, nota's, later Salesforce) alleen lezen.</li>
+      </ol>
+      <p style="margin-top:10px;color:var(--muted);">Voorbeelddata is fictief; overdrachtsbelasting illustratief (10,4 % aankopen 2025, 8 % woning-aankopen 2026). Kolombreedtes: tabellen staan in <code>.tabel-scroll</code> — de pagina zelf krijgt geen horizontale overflow (overflow-sweep-regel). Componenten: <code>btn</code>/<code>btn secondary</code>/<code>linkbtn</code>, statusdot + label, chips; teal = actie, groen = status.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================== FICTIEVE DATA ============================== */
+const ADMIN = { id: 'VGG', naam: 'Vastgoedgroep Nederland B.V.', backend: 'Odoo · company 6' };
+const PEIL_MAAND = '2026-07'; // laatste afgesloten maand (peildatum 10-09-2026; augustus nog niet afgesloten in de mockup)
+
+const PANDEN = [
+  { code: 'P-2025-07', adres: 'Dorpsstraat 12, Boxtel', aankoop: '2025-09-15', aankoopPrijs: 285000, verkoop: '2026-03-20', verkoopPrijs: 342500, notaris: 'Notariskantoor Van Loon', analytic: 'aa-201',
+    dossiers: ['Notarisafrekening aankoop 15-09-2025', 'Taxatierapport 02-09-2025', 'Notarisafrekening verkoop 20-03-2026'],
+    kosten: [
+      { datum: '2025-09-15', bron: 'Notarisafrekening', wat: 'Overdrachtsbelasting 10,4 %', bedrag: 29640, herkomst: 'notaris' },
+      { datum: '2025-09-15', bron: 'Notarisafrekening', wat: 'Notariskosten + kadaster', bedrag: 1185, herkomst: 'notaris' },
+      { datum: '2025-10-08', bron: 'Inkoop · Bouwbedrijf Smits F-25-0442', wat: 'Renovatie badkamer + schilderwerk', bedrag: 8450, herkomst: 'mens' },
+      { datum: '2025-10-21', bron: 'Bank · EP-Label B.V.', wat: 'Energielabel', bedrag: 325, herkomst: 'voorstel hoog' },
+      { datum: '2026-03-20', bron: 'Notarisafrekening verkoop', wat: 'Courtage verkopend makelaar 1,2 %', bedrag: 4110, herkomst: 'notaris' },
+    ] },
+  { code: 'P-2025-11', adres: 'Kerkstraat 4a, Eindhoven', aankoop: '2025-11-03', aankoopPrijs: 410000, verkoop: '2026-06-10', verkoopPrijs: 455000, notaris: 'Notariaat Brabant Zuid', analytic: 'aa-202',
+    dossiers: ['Notarisafrekening aankoop 03-11-2025', 'Notarisafrekening verkoop 10-06-2026'],
+    kosten: [
+      { datum: '2025-11-03', bron: 'Notarisafrekening', wat: 'Overdrachtsbelasting 10,4 %', bedrag: 42640, herkomst: 'notaris' },
+      { datum: '2025-11-03', bron: 'Notarisafrekening', wat: 'Notariskosten + kadaster', bedrag: 1260, herkomst: 'notaris' },
+      { datum: '2026-01-14', bron: 'Inkoop · Keukenstudio Zuid F26-0031', wat: 'Nieuwe keuken incl. montage', bedrag: 12900, herkomst: 'mens' },
+      { datum: '2026-02-02', bron: 'Inkoop · Hoveniersbedrijf De Groene Hand', wat: 'Tuin opknappen voor verkoop', bedrag: 1740, herkomst: 'voorstel midden' },
+      { datum: '2026-06-10', bron: 'Notarisafrekening verkoop', wat: 'Courtage verkopend makelaar 1,2 %', bedrag: 5460, herkomst: 'notaris' },
+    ] },
+  { code: 'P-2026-02', adres: 'Marktplein 7, Oss', aankoop: '2026-02-18', aankoopPrijs: 198000, verkoop: null, verkoopPrijs: null, notaris: 'Notariskantoor Van Loon', analytic: 'aa-203',
+    dossiers: ['Notarisafrekening aankoop 18-02-2026', 'Bouwkundige keuring 05-02-2026'],
+    kosten: [
+      { datum: '2026-02-18', bron: 'Notarisafrekening', wat: 'Overdrachtsbelasting 8 %', bedrag: 15840, herkomst: 'notaris' },
+      { datum: '2026-02-18', bron: 'Notarisafrekening', wat: 'Notariskosten + kadaster', bedrag: 1095, herkomst: 'notaris' },
+      { datum: '2026-04-09', bron: 'Inkoop · Dakdekkers Maasland 2026-118', wat: 'Dakreparatie + goten', bedrag: 2780, herkomst: 'mens' },
+    ] },
+  { code: 'P-2026-05', adres: 'Stationsweg 88, Tilburg', aankoop: '2026-05-27', aankoopPrijs: 520000, verkoop: null, verkoopPrijs: null, notaris: 'Notariskantoor Van Loon', analytic: 'aa-204',
+    dossiers: ['Notarisafrekening aankoop 27-05-2026'],
+    kosten: [
+      { datum: '2026-05-27', bron: 'Notarisafrekening', wat: 'Overdrachtsbelasting 8 %', bedrag: 41600, herkomst: 'notaris' },
+      { datum: '2026-05-27', bron: 'Notarisafrekening', wat: 'Notariskosten + kadaster', bedrag: 1340, herkomst: 'notaris' },
+      { datum: '2026-06-03', bron: 'Bank · Interpolis', wat: 'Opstalverzekering jaarpremie', bedrag: 640, herkomst: 'voorstel hoog' },
+    ] },
+];
+// Pand-VOORSTEL uit een notarisafrekening (nog geen pand; telt niet in de sleutel — notitie ①)
+const PAND_VOORSTEL = { code: 'voorstel', adres: 'Hoofdstraat 21, Veghel', aankoop: '2026-08-28', aankoopPrijs: 265000, bron: 'Notarisafrekening 28-08-2026 (declaraties@) — koopsom € 265.000, notaris Van Loon' };
+
+// Overhead per maand (bedragen = som van boekingen mét markering Overhead in die maand). Augustus 2025 = vóór het eerste pand.
+const OVERHEAD = [
+  ['2025-08', 1800], ['2025-09', 2150], ['2025-10', 1980], ['2025-11', 2310], ['2025-12', 2045], ['2026-01', 2200],
+  ['2026-02', 1975], ['2026-03', 2120], ['2026-04', 2260], ['2026-05', 2090], ['2026-06', 2180], ['2026-07', 2240],
+];
+
+let BOEKINGEN = [
+  { id: 1, soort: 'Bank', ref: '02-09-2026 · BNK1', wie: 'Notariskantoor Van Loon', oms: 'Afrekening dossier 2026.4471 Stationsweg 88 Tilburg — restant kosten', bedrag: -1245.00, voorstel: 'P-2026-05', zekerheid: 'hoog', reden: 'adres "Stationsweg 88" letterlijk in de omschrijving · notaris van de aankoopafrekening' },
+  { id: 2, soort: 'Inkoop', ref: 'Van Dijk Schilderwerken · F-2026-0912', wie: 'Van Dijk Schilderwerken', oms: 'Schilderwerk buitenzijde Marktplein 7 te Oss', bedrag: -3860.00, voorstel: 'P-2026-02', zekerheid: 'hoog', reden: 'adres "Marktplein 7" in de factuurregel' },
+  { id: 3, soort: 'Bank', ref: '05-09-2026 · BNK1', wie: 'Essent', oms: 'Energielevering Marktplein 7 Oss periode 08-2026', bedrag: -412.50, voorstel: 'P-2026-02', zekerheid: 'hoog', reden: 'adres in de omschrijving · IBAN eerder 2× aan dit pand toegewezen' },
+  { id: 4, soort: 'Inkoop', ref: 'Taxatiebureau Brabant · 26-1188', wie: 'Taxatiebureau Brabant', oms: 'Taxatierapport woning te Oss', bedrag: -695.00, voorstel: 'P-2026-02', zekerheid: 'midden', reden: 'alleen plaats "Oss" — één pand in Oss in handel' },
+  { id: 5, soort: 'Bank', ref: '01-09-2026 · BNK1', wie: 'Gemeente Tilburg', oms: 'Aanslag OZB/rioolheffing 2026 aanslagnr 88213', bedrag: -89.00, voorstel: 'P-2026-05', zekerheid: 'midden', reden: 'gemeente = plaats van één pand in handel; geen adres in de omschrijving' },
+  { id: 6, soort: 'Inkoop', ref: 'Hoveniersbedrijf De Groene Hand · 2026-207', wie: 'Hoveniersbedrijf De Groene Hand', oms: 'Tuinonderhoud augustus', bedrag: -1150.00, voorstel: null, zekerheid: 'laag', reden: 'geen adres; leverancier eerder 2× toegewezen aan Kerkstraat 4a — dat pand is verkocht op 10-06-2026 → geen voorstel' },
+  { id: 7, soort: 'Bank', ref: '03-09-2026 · BNK1', wie: 'Exact Online', oms: 'Abonnement boekhoudsoftware september', bedrag: -149.00, voorstel: 'OVERHEAD', zekerheid: 'hoog', reden: 'periodieke kosten zonder pandkenmerk · 6× eerder als overhead gemarkeerd' },
+].map(b => ({ ...b, gekozen: false, uitkomst: null, uitkomstBron: null }));
+
+/* ============================== REKENLAAG (code voor cijfers) ============================== */
+const maandVan = iso => iso.slice(0, 7);
+const eur = n => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n);
+const dat = iso => iso ? iso.split('-').reverse().join('-') : '';
+const maandLabel = m => { const [j, mm] = m.split('-'); return ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'][+mm - 1] + ' ' + j; };
+const pand = code => PANDEN.find(p => p.code === code);
+
+function inHandel(p, maand) {                       // notitie ①: maand van aankoop én verkoop tellen VOL
+  const van = maandVan(p.aankoop), tot = p.verkoop ? maandVan(p.verkoop) : PEIL_MAAND;
+  return maand >= van && maand <= tot;
+}
+// Toerekening per maand: centen, deling, restcent naar laagste code. Σ per maand = overhead (of 0 als niemand in handel is).
+function toerekeningPerMaand() {
+  return OVERHEAD.map(([maand, bedrag]) => {
+    const dragers = PANDEN.filter(p => inHandel(p, maand)).sort((a, b) => a.code.localeCompare(b.code));
+    const centen = Math.round(bedrag * 100);
+    const deel = {}; let rest = 0;
+    if (dragers.length) {
+      const basis = Math.floor(centen / dragers.length); rest = centen - basis * dragers.length;
+      dragers.forEach((p, i) => { deel[p.code] = (basis + (i === 0 ? rest : 0)) / 100; });
+    }
+    return { maand, bedrag, dragers: dragers.map(p => p.code), deel, restCent: rest, nietToegerekend: dragers.length === 0 };
+  });
+}
+function overheadVoorPand(code) {
+  const rijen = toerekeningPerMaand();
+  const totaal = rijen.reduce((s, r) => s + (r.deel[code] || 0), 0);
+  return { rijen, totaal: Math.round(totaal * 100) / 100 };
+}
+function cijfers(p) {
+  const direct = p.kosten.reduce((s, k) => s + k.bedrag, 0);
+  const overhead = overheadVoorPand(p.code).totaal;
+  if (p.verkoop) {
+    const bruto = p.verkoopPrijs - p.aankoopPrijs;
+    return { direct, overhead, bruto, netto: bruto - direct - overhead, kostprijs: null };
+  }
+  return { direct, overhead, bruto: null, netto: null, kostprijs: p.aankoopPrijs + direct + overhead };
+}
+
+/* ============================== RENDER: REGISTER ============================== */
+function filterActief() { return document.getElementById('f-admin').value; }
+function zoekTerm() { return document.getElementById('f-zoek').value.trim().toLowerCase(); }
+function pastZoek(tekst) { const z = zoekTerm(); return !z || tekst.toLowerCase().includes(z); }
+
+function renderRegister() {
+  const body = document.getElementById('register-body'), leeg = document.getElementById('register-leeg');
+  const adminFilter = filterActief();
+  const zichtbaar = adminFilter === 'LEEG' ? [] : PANDEN.filter(p => pastZoek(p.code + ' ' + p.adres + ' ' + p.notaris));
+  const voorstelZichtbaar = adminFilter !== 'LEEG' && pastZoek(PAND_VOORSTEL.adres + ' notaris van loon voorstel');
+  body.innerHTML = '';
+  const nietToeg = toerekeningPerMaand().filter(r => r.nietToegerekend);
+  let sumMarge = 0, sumKostprijs = 0, inHandelN = 0, verkochtN = 0;
+  zichtbaar.forEach(p => {
+    const c = cijfers(p);
+    if (p.verkoop) { verkochtN++; sumMarge += c.netto; } else { inHandelN++; sumKostprijs += c.kostprijs; }
+    const open = BOEKINGEN.filter(b => (b.uitkomst || b.voorstel) === p.code && !b.uitkomst).length;
+    const tr = document.createElement('tr'); tr.className = 'klik';
+    tr.onclick = () => openDashboard(p.code);
+    tr.innerHTML = `
+      <td><b>${p.code}</b><div class="klein">${p.adres}</div></td>
+      <td class="nowrap">${ADMIN.naam}<div class="klein">${ADMIN.backend}</div></td>
+      <td>${p.verkoop ? '<span class="status verkocht"><span class="dot"></span>Verkocht</span>' : '<span class="status handel"><span class="dot"></span>In handel</span>'}</td>
+      <td>${dat(p.aankoop)}<div class="klein">${eur(p.aankoopPrijs)}</div></td>
+      <td>${p.verkoop ? dat(p.verkoop) + '<div class="klein">' + eur(p.verkoopPrijs) + '</div>' : '<span class="stil">onverkocht</span>'}</td>
+      <td>${p.dossiers.length} <span class="klein">dossiers</span></td>
+      <td>${p.kosten.length} <span class="klein">gekoppeld</span>${open ? ` · <span class="chip warn">${open} voorstel</span>` : ''}</td>
+      <td class="bedrag ${p.verkoop ? (c.netto < 0 ? 'neg' : '') : 'stil'}">${p.verkoop ? eur(c.netto) + '<div class="klein">netto · bruto ' + eur(c.bruto) + '</div>' : 'kostprijs tot nu<div>' + eur(c.kostprijs) + '</div>'}</td>
+      <td class="nowrap"><button class="linkbtn" onclick="event.stopPropagation(); openDashboard('${p.code}')">Dashboard →</button></td>`;
+    body.appendChild(tr);
+  });
+  if (voorstelZichtbaar) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><b>—</b><div class="klein">${PAND_VOORSTEL.adres}</div></td>
+      <td class="nowrap">${ADMIN.naam}<div class="klein">${ADMIN.backend}</div></td>
+      <td><span class="status voorstel"><span class="dot"></span>Voorstel</span></td>
+      <td>${dat(PAND_VOORSTEL.aankoop)}<div class="klein">${eur(PAND_VOORSTEL.aankoopPrijs)}</div></td>
+      <td class="stil">—</td>
+      <td>1 <span class="klein">dossier</span></td>
+      <td class="klein" style="min-width:220px;">${PAND_VOORSTEL.bron}</td>
+      <td class="bedrag stil">telt pas ná bevestiging</td>
+      <td><div class="rijacties"><button class="btn klein" onclick="alert('Mockup: bevestigt het pand (code P-2026-08 wordt toegekend, aankoopmaand aug-2026 gaat in de sleutel zodra augustus is afgesloten).')">Bevestig pand</button><button class="linkbtn" onclick="alert('Mockup: afwijzen met verplichte reden (bv. afrekening hoort bij een andere administratie) — blijft zichtbaar als afgewezen voorstel.')">Afwijzen…</button></div></td>`;
+    body.appendChild(tr);
+  }
+  const leegStand = zichtbaar.length === 0 && !voorstelZichtbaar;
+  document.getElementById('register-tabel').hidden = leegStand; leeg.hidden = !leegStand;
+  if (leegStand) leeg.innerHTML = adminFilter === 'LEEG'
+    ? `<b>Geen panden in deze administratie</b> Kempen Facilities handelt niet in panden. Kies "Alle administraties" of registreer het eerste pand.<br><button class="btn" onclick="document.getElementById('f-admin').value=''; render();">Alle administraties tonen</button>`
+    : `<b>Geen pand gevonden voor "${zoekTerm()}"</b> Zoek op code, adres of notaris — of registreer een nieuw pand.<br><button class="btn secondary" onclick="document.getElementById('f-zoek').value=''; render();">Zoekopdracht wissen</button>`;
+
+  document.getElementById('register-kpis').innerHTML = `
+    <div class="kpi"><div class="label">In handel</div><div class="waarde">${inHandelN}</div><div class="delta">kostprijs tot nu ${eur(sumKostprijs)}</div></div>
+    <div class="kpi ${sumMarge < 0 ? 'neg' : 'ok'}"><div class="label">Netto marge verkocht (${verkochtN})</div><div class="waarde">${eur(sumMarge)}</div><div class="delta">ná directe kosten + toegerekende overhead</div></div>
+    <div class="kpi"><div class="label">Overhead niet toegerekend</div><div class="waarde">${eur(nietToeg.reduce((s, r) => s + r.bedrag, 0))}</div><div class="delta">${nietToeg.length} maand(en) zonder pand in handel (${nietToeg.map(r => maandLabel(r.maand)).join(', ') || '—'})</div></div>
+    <div class="kpi"><div class="label">Te beslissen</div><div class="waarde">${BOEKINGEN.filter(b => !b.uitkomst).length}</div><div class="delta"><button class="linkbtn" onclick="toonTab('toewijzing')">boekingen zonder pand of overhead →</button></div></div>`;
+  document.getElementById('register-sub').textContent = `${zichtbaar.length} panden${voorstelZichtbaar ? ' + 1 voorstel' : ''} over ${zichtbaar.length ? 1 : 0} administratie · peildatum 10-09-2026`;
+  document.getElementById('tel-register').textContent = zichtbaar.length + (voorstelZichtbaar ? 1 : 0);
+}
+
+/* ============================== RENDER: TOEWIJZING ============================== */
+function zekerheidChip(z) {
+  return z === 'hoog' ? '<span class="chip ok">● hoog</span>' : z === 'midden' ? '<span class="chip warn">● midden</span>' : '<span class="chip neutraal">● laag</span>';
+}
+function doelLabel(code) {
+  if (code === 'OVERHEAD') return 'Overhead';
+  const p = pand(code); return p ? `${p.code} · ${p.adres}` : code;
+}
+function renderToewijzing() {
+  const body = document.getElementById('toewijzing-body');
+  const open = BOEKINGEN.filter(b => filterActief() !== 'LEEG' && pastZoek(b.wie + ' ' + b.oms + ' ' + b.ref));
+  body.innerHTML = '';
+  open.forEach(b => {
+    const tr = document.createElement('tr');
+    if (b.uitkomst) tr.className = 'grijs';
+    const opties = ['<option value="">Ander pand…</option>']
+      .concat(PANDEN.map(p => `<option value="${p.code}" ${b.voorstel === p.code ? 'disabled' : ''}>${p.code} · ${p.adres}${p.verkoop ? ' (verkocht)' : ''}</option>`))
+      .concat(['<option value="OVERHEAD">Overhead</option>']).join('');
+    tr.innerHTML = `
+      <td>${b.uitkomst ? '' : `<input type="checkbox" ${b.gekozen ? 'checked' : ''} ${b.voorstel ? '' : 'disabled title="geen voorstel — kies handmatig"'} onchange="kies(${b.id}, this.checked)">`}</td>
+      <td><span class="chip ${b.soort === 'Bank' ? 'info' : 'doc'}">${b.soort}</span><div class="klein">${b.ref}</div></td>
+      <td><b>${b.wie}</b><div class="klein">${b.oms}</div></td>
+      <td class="bedrag ${b.bedrag < 0 ? 'neg' : ''}">${eur(b.bedrag)}</td>
+      <td><div class="voorstel">
+            <div class="doel">${b.voorstel ? doelLabel(b.voorstel) : '<span class="stil">geen voorstel</span>'}</div>
+            <div class="reden">${b.reden}</div>
+          </div></td>
+      <td>${zekerheidChip(b.zekerheid)}</td>
+      <td>${b.uitkomst
+        ? `<div class="uitkomst"><span class="chip ok">✓ ${b.uitkomst === 'OVERHEAD' ? 'Overhead' : 'Toegewezen aan ' + doelLabel(b.uitkomst)}</span><span class="klein">${b.uitkomstBron}</span><button class="linkbtn" onclick="ongedaan(${b.id})">Ongedaan maken</button></div>`
+        : `<div class="rijacties">
+             ${b.voorstel ? `<button class="btn klein" onclick="bevestig(${b.id}, '${b.voorstel}', 'voorstel bevestigd')">Bevestig</button>` : ''}
+             <select onchange="if(this.value){bevestig(${b.id}, this.value, 'handmatig gekozen' + (${b.voorstel ? 'true' : 'false'} ? ' · voorstel was ${b.voorstel ? doelLabel(b.voorstel).replace(/'/g, '') : ''} (${b.zekerheid})' : ''))}">${opties}</select>
+             ${b.voorstel !== 'OVERHEAD' ? `<button class="btn secondary klein" onclick="bevestig(${b.id}, 'OVERHEAD', 'handmatig: overhead${b.voorstel ? ' · voorstel was ' + doelLabel(b.voorstel) : ''}')">Overhead</button>` : ''}
+           </div>`}</td>`;
+    body.appendChild(tr);
+  });
+  const nogOpen = BOEKINGEN.filter(b => !b.uitkomst);
+  const gekozen = nogOpen.filter(b => b.gekozen && b.voorstel);
+  document.getElementById('bevestig').textContent = `Bevestig voorstellen (${gekozen.length})`;
+  document.getElementById('bevestig').disabled = gekozen.length === 0;
+  document.getElementById('alles').checked = nogOpen.filter(b => b.voorstel).length > 0 && nogOpen.filter(b => b.voorstel).every(b => b.gekozen);
+  const zonder = nogOpen.filter(b => !b.voorstel).length;
+  document.getElementById('bulk-rest').textContent = `${nogOpen.length} open · ${nogOpen.filter(b => b.voorstel).length} met voorstel (${nogOpen.filter(b => b.zekerheid === 'hoog' && b.voorstel).length} hoog) · ${zonder} zonder voorstel — die kies je per rij`;
+  document.getElementById('toewijzing-sub').textContent = `${nogOpen.length} van ${BOEKINGEN.length} nog te beslissen · bank + inkoop · Vastgoedgroep Nederland B.V.`;
+  const alles = nogOpen.length === 0;
+  document.getElementById('toewijzing-tabel').hidden = alles; document.getElementById('bulkbalk').hidden = alles; document.getElementById('toewijzing-leeg').hidden = !alles;
+  document.getElementById('tel-toewijzing').textContent = nogOpen.length; document.getElementById('rail-teller').textContent = nogOpen.length;
+  document.getElementById('tel-toewijzing').className = 'teller' + (nogOpen.length ? ' warn' : '');
+}
+function kies(id, aan) { const b = BOEKINGEN.find(x => x.id === id); b.gekozen = aan; renderToewijzing(); }
+function selecteerAlles(aan) { BOEKINGEN.forEach(b => { if (!b.uitkomst && b.voorstel) b.gekozen = aan; }); renderToewijzing(); }
+function bevestig(id, doel, bron) {
+  const b = BOEKINGEN.find(x => x.id === id);
+  b.uitkomst = doel; b.uitkomstBron = bron; b.gekozen = false;
+  log(`${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} · ${b.wie} ${eur(b.bedrag)} → <b>${doelLabel(doel)}</b> <span class="klein">(${bron}; audit_event pand_toewijzing oud: geen → nieuw: ${doel}; geheugen bijgewerkt)</span>`);
+  render();
+}
+function bevestigSelectie() {
+  const gekozen = BOEKINGEN.filter(b => !b.uitkomst && b.gekozen && b.voorstel);
+  gekozen.forEach(b => bevestig(b.id, b.voorstel, 'bulk bevestigd · voorstel ' + b.zekerheid));
+}
+function ongedaan(id) {
+  const b = BOEKINGEN.find(x => x.id === id);
+  log(`teruggedraaid · ${b.wie} ${eur(b.bedrag)}: ${doelLabel(b.uitkomst)} → <b>onbeslist</b> <span class="klein">(audit_event oud: ${b.uitkomst} → nieuw: geen; cijfers herberekend)</span>`);
+  b.uitkomst = null; b.uitkomstBron = null; render();
+}
+function log(html) {
+  const body = document.getElementById('log-body');
+  if (body.querySelector('.stil')) body.innerHTML = '';
+  const tr = document.createElement('tr'); tr.innerHTML = `<td>${html}</td>`; body.prepend(tr);
+}
+
+/* ============================== RENDER: DASHBOARD ============================== */
+function openDashboard(code) { document.getElementById('d-pand').value = code; toonTab('dashboard'); }
+function renderDashboard() {
+  const sel = document.getElementById('d-pand');
+  if (!sel.options.length) PANDEN.forEach(p => { const o = document.createElement('option'); o.value = p.code; o.textContent = `${p.code} · ${p.adres}${p.verkoop ? ' · verkocht' : ' · in handel'}`; sel.appendChild(o); });
+  const p = pand(sel.value) || PANDEN[0];
+  const c = cijfers(p), oh = overheadVoorPand(p.code);
+  const openVoorstellen = BOEKINGEN.filter(b => !b.uitkomst && b.voorstel === p.code);
+  const kpis = p.verkoop ? `
+    <div class="kpi"><div class="label">Aankoop</div><div class="waarde">${eur(p.aankoopPrijs)}</div><div class="delta">${dat(p.aankoop)} · ${p.notaris}</div></div>
+    <div class="kpi"><div class="label">Verkoop</div><div class="waarde">${eur(p.verkoopPrijs)}</div><div class="delta">${dat(p.verkoop)}</div></div>
+    <div class="kpi ${c.bruto < 0 ? 'neg' : 'ok'}"><div class="label">Bruto marge</div><div class="waarde">${eur(c.bruto)}</div><div class="delta">verkoop − aankoop</div></div>
+    <div class="kpi ${c.netto < 0 ? 'neg' : 'ok'}"><div class="label">Netto marge</div><div class="waarde">${eur(c.netto)}</div><div class="delta">bruto − directe kosten − toegerekende overhead</div></div>` : `
+    <div class="kpi"><div class="label">Aankoop</div><div class="waarde">${eur(p.aankoopPrijs)}</div><div class="delta">${dat(p.aankoop)} · ${p.notaris}</div></div>
+    <div class="kpi"><div class="label">Verkoop</div><div class="waarde stil">onverkocht</div><div class="delta">in handel sinds ${maandLabel(maandVan(p.aankoop))} (${oh.rijen.filter(r => r.deel[p.code] !== undefined).length} maanden)</div></div>
+    <div class="kpi"><div class="label">Directe kosten + overhead</div><div class="waarde">${eur(c.direct + c.overhead)}</div><div class="delta">${eur(c.direct)} direct · ${eur(c.overhead)} overhead</div></div>
+    <div class="kpi"><div class="label">Kostprijs tot nu</div><div class="waarde">${eur(c.kostprijs)}</div><div class="delta">aankoop + directe kosten + toegerekende overhead</div></div>`;
+
+  const kostenRijen = p.kosten.map(k => `<tr><td>${dat(k.datum)}</td><td>${k.bron}</td><td>${k.wat}</td><td>${k.herkomst === 'notaris' ? '<span class="chip neutraal">uit notarisafrekening</span>' : k.herkomst === 'mens' ? '<span class="chip neutraal">handmatig</span>' : '<span class="chip ok">' + k.herkomst + '</span>'}</td><td class="bedrag">${eur(k.bedrag)}</td></tr>`).join('');
+  const openRijen = openVoorstellen.map(b => `<tr class="grijs"><td>${b.ref.split(' · ')[0]}</td><td>${b.soort} · ${b.wie}</td><td>${b.oms}</td><td><span class="chip warn">voorstel ${b.zekerheid} — nog niet bevestigd</span></td><td class="bedrag stil">${eur(-b.bedrag)}</td></tr>`).join('');
+
+  const ohRijen = oh.rijen.map(r => {
+    const mijn = r.deel[p.code];
+    const inH = mijn !== undefined;
+    let regel;
+    if (r.nietToegerekend) regel = `<span class="chip danger">niet toegerekend</span> <span class="klein">0 panden in handel — ${eur(r.bedrag)} blijft overhead van de administratie</span>`;
+    else if (!inH) regel = `<span class="klein">dit pand niet in handel · verdeeld over ${r.dragers.length}: ${r.dragers.join(', ')}</span>`;
+    else regel = `<details class="rekenregel"><summary>${eur(r.bedrag)} ÷ ${r.dragers.length} = ${eur(mijn)}</summary>
+        <div>overhead ${maandLabel(r.maand)} = <b>${eur(r.bedrag)}</b> · in handel (aankoop- en verkoopmaand tellen vol): ${r.dragers.map(d => d === p.code ? '<b>' + d + '</b>' : d).join(', ')} → per pand ${eur(Math.floor(r.bedrag * 100 / r.dragers.length) / 100)}${r.restCent ? ` + restcent ${r.restCent} ct naar ${r.dragers[0]}` : ''} · Σ = ${eur(r.bedrag)} ✓</div></details>`;
+    return `<tr class="${inH ? '' : 'grijs'}"><td>${maandLabel(r.maand)}</td><td class="bedrag ${inH ? '' : 'stil'}">${eur(r.bedrag)}</td><td>${r.nietToegerekend ? '<span class="stil">0</span>' : r.dragers.length}</td><td>${regel}</td><td class="bedrag">${inH ? eur(mijn) : '<span class="stil">—</span>'}</td></tr>`;
+  }).join('');
+
+  document.getElementById('dashboard-inhoud').innerHTML = `
+    <div class="pandkop">
+      <div>
+        <h2>${p.code} · ${p.adres}</h2>
+        <div class="meta"><span>${ADMIN.naam} · ${ADMIN.backend}</span><span>Odoo analytic (plan Project): <code>${p.analytic}</code> <span class="chip neutraal">toerekening alleen in de module</span></span><span>${p.dossiers.length} dossiers</span></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        ${p.verkoop ? '' : '<button class="btn" onclick="alert(\'Mockup: verkoop registreren = notarisafrekening verkoop koppelen (verkoopdatum, koopsom, courtage).\')">Verkoop registreren…</button>'}
+        <button class="btn secondary" onclick="alert('Mockup: ⋯-menu = Dossiers openen · Tijdlijn · Pand archiveren (alleen zonder boekingen) · Open in Odoo (analytic account).')">⋯</button>
+      </div>
+    </div>
+    <div class="kpis">${kpis}</div>
+    <div class="twee">
+      <div>
+        <div class="paneel">
+          <div class="kop">Directe kosten <span class="sub">${p.kosten.length} boekingen · ${eur(c.direct)}${openVoorstellen.length ? ` · ${openVoorstellen.length} voorstel nog te bevestigen` : ''}</span></div>
+          <div class="tabel-scroll"><table style="min-width:560px;">
+            <thead><tr><th>Datum</th><th>Bron</th><th>Omschrijving</th><th>Herkomst</th><th class="bedrag">Bedrag</th></tr></thead>
+            <tbody>${kostenRijen}${openRijen}</tbody>
+            <tfoot><tr><td colspan="4">Totaal directe kosten (bevestigd)</td><td class="bedrag">${eur(c.direct)}</td></tr></tfoot>
+          </table></div>
+          ${openVoorstellen.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);"><button class="linkbtn" onclick="toonTab('toewijzing')">Voorstellen bevestigen in Toewijzing →</button></div>` : ''}
+        </div>
+        <div class="paneel">
+          <div class="kop">${p.verkoop ? 'Marge' : 'Kostprijs tot nu'}</div>
+          <div class="margeblok">
+            ${p.verkoop ? `<div class="rij"><span>Verkoopprijs (notarisafrekening ${dat(p.verkoop)})</span><span class="w">${eur(p.verkoopPrijs)}</span></div>` : ''}
+            <div class="rij"><span>Aankoopprijs (notarisafrekening ${dat(p.aankoop)})</span><span class="w">${p.verkoop ? '− ' : ''}${eur(p.aankoopPrijs)}</span></div>
+            ${p.verkoop ? `<div class="rij totaal"><span>Bruto marge</span><span class="w ${c.bruto < 0 ? 'bedrag neg' : ''}">${eur(c.bruto)}</span></div>` : ''}
+            <div class="rij"><span>Directe kosten (${p.kosten.length})</span><span class="w">${p.verkoop ? '− ' : '+ '}${eur(c.direct)}</span></div>
+            <div class="rij"><span>Toegerekende overhead (sleutel "in handel per maand", ${oh.rijen.filter(r => r.deel[p.code] !== undefined).length} maanden)</span><span class="w">${p.verkoop ? '− ' : '+ '}${eur(c.overhead)}</span></div>
+            <div class="rij totaal"><span>${p.verkoop ? 'Netto marge' : 'Kostprijs tot nu'}</span><span class="w ${p.verkoop && c.netto < 0 ? 'bedrag neg' : ''}">${eur(p.verkoop ? c.netto : c.kostprijs)}</span></div>
+            ${p.verkoop && c.netto < 0 ? '<div class="klein" style="color:var(--danger);font-weight:600;">Netto verlies: de directe kosten (o.a. overdrachtsbelasting en verbouwing) overtreffen de bruto marge.</div>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="paneel">
+        <div class="kop">Toegerekende overhead per maand <span class="sub">sleutel "in handel per maand" · rekenregel per maand uitklapbaar</span></div>
+        <div class="tabel-scroll"><table style="min-width:560px;">
+          <thead><tr><th>Maand</th><th class="bedrag">Overhead</th><th>Panden in handel</th><th>Rekenregel</th><th class="bedrag">Dit pand</th></tr></thead>
+          <tbody>${ohRijen}</tbody>
+          <tfoot><tr><td>Totaal</td><td class="bedrag">${eur(OVERHEAD.reduce((s, r) => s + r[1], 0))}</td><td colspan="2" class="klein">waarvan ${eur(oh.rijen.filter(r => r.nietToegerekend).reduce((s, r) => s + r.bedrag, 0))} niet toegerekend (geen pand in handel)</td><td class="bedrag">${eur(c.overhead)}</td></tr></tfoot>
+        </table></div>
+      </div>
+    </div>`;
+}
+
+/* ============================== NAV ============================== */
+function toonTab(naam) {
+  ['register', 'toewijzing', 'dashboard'].forEach(t => {
+    document.getElementById('scherm-' + t).classList.toggle('actief', t === naam);
+    document.getElementById('tab-' + t).classList.toggle('actief', t === naam);
+  });
+  if (naam === 'dashboard') renderDashboard();
+  window.scrollTo({ top: 0 });
+}
+function render() { renderRegister(); renderToewijzing(); if (document.getElementById('scherm-dashboard').classList.contains('actief')) renderDashboard(); }
+function thema(t) {
+  if (t === 'donker') document.body.dataset.thema = 'donker'; else delete document.body.dataset.thema;
+  document.getElementById('t-licht').classList.toggle('actief', t === 'licht');
+  document.getElementById('t-donker').classList.toggle('actief', t === 'donker');
+}
+// Zelftest van de sleutel (controleerbaar in de console): Σ per maand = overhead of 0.
+(function zelftest() {
+  toerekeningPerMaand().forEach(r => {
+    const som = Math.round(Object.values(r.deel).reduce((s, v) => s + v, 0) * 100);
+    const verwacht = r.nietToegerekend ? 0 : Math.round(r.bedrag * 100);
+    if (som !== verwacht) console.error('Sleutel sluit niet in', r.maand, som, verwacht);
+  });
+  console.log('Sleutel-zelftest: Σ toerekening per maand = overhead (of 0 zonder panden) ✓');
+})();
+render();
+</script>
+</body>
+</html>

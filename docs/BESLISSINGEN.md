@@ -6737,3 +6737,468 @@ uitsluiten; AI-sub-budgetten € 25/€ 20; dagmaximum onderzoek 50; RGS STAP-0 
 **Aangrenzende gaten:** §8 (lifecycle regels/mappings/administratie-archief/Odoo-overstap; consistentie drie leerdrempels in één
 instellingenblok + één tekstbron + tellers-sleutels + één opt-in-schrijver; UX standChip + vijf mockup-aanvullingen; compliance
 AVG-regel, audit zonder prompt, bewaarplicht, nooit verwijderen extern, sub-budgetten).
+
+<!-- bundel-10-09:A -->
+## AUTOBOEKEN PER ADMINISTRATIE — LEREN EN BOEKEN (bundel 10-09 blok A; besluit Peter 10-09; migratie 0128)
+
+**Aanleiding (besluit Peter 10-09, herziet "kandidaten → mens klikt aan" van 01-09):** de kandidaten-motor nomineerde, maar
+een mens moest per leverancier aanzetten — een lijst die iemand moet bijhouden. Nieuw: één Beheerder-schakelaar per
+administratie "Autoboeken (leren en boeken)", default UIT; staat hij aan, dan ACTIVEERT het systeem een leverancier zélf
+zodra ≥ N (platformbreed 3) mens-boekingen op rij exact hetzelfde zijn geboekt (grootboek, btw, project op
+leveranciersniveau; regelteksten tellen niet; RLZ-historie telt niet — app-bevestigd blijft de eis). De per-leverancier-
+lijst wordt een UITZONDERINGENLIJST. Storno/correctie van een automatische boeking = leverancier terug op "leert 0/3".
+Kempen Facilities (doorbelasting = menselijke verdeling) kan nooit aan → 409 mét uitleg.
+
+**Pre-feature-check:** hergebruik van `app/autoboek_kandidaten/` (motor `analyseer_reeks`/`kwalificeer`, stand 0095,
+drempel-instelling) en de bestaande opt-in-schrijver `documenten/autoboeken.py::zet_leverancier_autoboeken` (0036); alle
+autoboek-poorten (`probeer_autoboeken_na_extractie`) onverkort. Geen tweede schrijver, geen tweede waarheid.
+**UX-review:** past in de bestaande IA — kolom/chip op Instellingen › Administraties, switch + uitzonderingenlijst op de tab
+Boeken & AI, chip "administratie leert zelf" op het Autoboeken-nav-item; geen nieuw scherm (frontend: agent FE, CONTRACT_A).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Schakelaar per administratie | `platform.administratie.autoboeken_leren_ingeschakeld` (0128, default false). `GET/PUT /administraties/{id}/autoboeken-leren-instelling` → `{ingeschakeld, toegestaan, reden_niet_toegestaan}`; lijst-DTO `GET /instellingen/administraties` + `autoboeken_leren_ingeschakeld`/`autoboeken_leren_toegestaan`. Audit oud→nieuw `autoboeken_leren_gewijzigd`. Aanzetten activeert direct wat de drempel al haalt. | GEBOUWD + GETEST 10-09 | `beheer/service.py::zet_autoboeken_leren`, `beheer/router.py`; tests `tests/autoboek_kandidaten/test_autoboeken_leren.py::TestSchakelaar` |
+| Kempen-regel | Deterministisch, geen naam-hardcode: `doorbelasting_ingeschakeld` → `AutoboekenLerenNietToegestaan` → HTTP 409, detail letterlijk "Deze administratie doorbelast kosten aan andere entiteiten — de verdeling is mensenwerk, autoboeken (leren en boeken) kan hier niet aan." Uitzetten mag altijd; `toegestaan=false` in het DTO (switch disabled, bulk "overgeslagen: …"). De motor toetst de regel óók zelf (`_leren_aan`): een doorbelastende administratie activeert nooit. | GEBOUWD + GETEST | `beheer/service.py::AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST`; keten-casus q |
+| Leerregel = activatie door het systeem | `autoboek_kandidaten/service.py::activeer_kwalificerend(administratie_id, vendor_id=None)`: schakelaar aan én `motor.kwalificeer` groen (≥ drempel op rij, geheugen volledig app-bevestigd, geen open vraag/afwijzing/duplicaatsignaal) én niet uitgezonderd én geen veldwerker-koppeling → `zet_leverancier_autoboeken(actor=SYSTEEM, bron='systeem')` + audit `autoboek_leverancier_geactiveerd` (chips + reeks + drempel) + tijdlijnregel op het document dat de drempel haalde. Aangeroepen (1) post-commit ná élke GEBOEKT-overgang door een mens (`boeken.py`, alleen díe leverancier — vendor-gefilterde `_verzamel`), (2) in `herbereken_administratie` (dagelijks; teller `geactiveerd`), (3) bij aanzetten van de schakelaar, (4) bij vrijgeven. Zonder schakelaar: gedrag van 01-09 (nomineren). | GEBOUWD + GETEST | `service.py::activeer_kwalificerend/_activeer_vendor/activeer_na_boeking_stil`; `documenten/boeken.py` (hook) |
+| Telling "n/3" | Motor-semantiek van 01-09 blijft: de eerste boeking zonder enige historie legt de basis en bevestigt niets; élke volgende gelijke mens-boeking telt. Zonder RLZ-seed zijn dus 4 boekingen nodig voor "3 op rij"; mét RLZ-seed die dezelfde waarde voorstelt telt de eerste al mee. Drempel platformbreed `DREMPEL_DEFAULT = 3` (0128 server_default 3; productie-rij staat op 5 → CLI). | GEBOUWD + GETEST (`TestMotorReeks`) | `autoboek_kandidaten/motor.py`, `models.py` |
+| Uitzonderingenlijst | `leverancier_voorkeur.autoboeken_uitgezonderd` + `autoboeken_uitzondering_reden` + `autoboeken_bron` ('mens'/'systeem') + `autoboeken_gereset_op` (0128). Lijst-DTO per rij `stand` leert \| boekt_automatisch \| uitgezonderd \| handmatig_aan, `reeks`, `drempel`, `bron`, `gereset_op`, `uitzondering_reden`. `POST …/leveranciers/{vendor}/autoboeken-uitzonderen` (reden verplicht → 422; zet óók de opt-in uit; audit `autoboek_leverancier_uitgezonderd`), `POST …/autoboeken-vrijgeven` (audit `autoboek_leverancier_vrijgegeven` + directe hertoets). Mens-PUT aan = bron 'mens' en heft een uitzondering op. "Uitzetten" op Heroverwegen wordt uitzonderen zodra de schakelaar aan staat (anders activeert de nachtrun 'm meteen weer). | GEBOUWD + GETEST | `documenten/autoboeken.py::zonder_leverancier_uit/geef_leverancier_vrij/lijst_leverancier_autoboeken`; `documenten/router.py` |
+| Reset ná storno/correctie | `documenten/autoboeken.py::reset_na_correctie_in_sessie` — ín de transactie van tegenboeken (volledig én vervang), herboeken (`opnieuw_boeken_na_verdwijnen`) en de RLZ-UI-storno-detectie: was de jongste GEBOEKT-overgang automatisch → opt-in uit, `autoboeken_gereset_op = now()`, `autoboeken_bron = None`, stand 0/3, audit `autoboek_leverancier_gereset` (reden storno\|correctie + document), tijdlijnregel "Autoboeken voor ‹leverancier› teruggezet naar leren (0/3) — ‹reden›". De reeks telt daarna alleen boekingen ná de reset (`analyseer_reeks(reeks_vanaf=)`); eerdere boekingen voeden alleen het geheugen. Een correctie op een MENS-boeking raakt de leerregel niet. Tijdlijn-NOTITIES (van = naar) tellen nooit als boeking (les uit de bouw: de activatieregel telde eerst als 4e boeking). | GEBOUWD + GETEST | `tegenboeken.py`, `herboeken.py`, `storno_detectie.py`; `motor.py::analyseer_reeks` |
+| Onverkort | Alle poorten in `probeer_autoboeken_na_extractie` (harde checks, duplicaat/vraag, volumerem, chip automatisch + audit, klant-accordering = ter accordering, veldwerker = fase 4). NIEUW als extra poort: B3 (blok B) `aitoets.plausibiliteit.toets_factuur_autoboeking` vlak vóór `boek_document` — `plausibel`/`uit` → boeken, `twijfel`/`overgeslagen` → `autoboeken_geweigerd` "AI-plausibiliteitstoets: ‹uitkomst› — ‹reden›" (categorie twijfel/api_key/avg_gate/kostengrens). | GEBOUWD + GETEST (`tests/documenten/test_autoboeken_b3_poort.py`) | `documenten/autoboeken.py` |
+| Tellers reconciliatie (A5) | Teller `autoboek_leren` "Autoboeken per administratie (leren en boeken)" ná `autoboek_kandidaten`: stand aan N van M administraties; gedaan = automatisch geboekt (bron leverancier_opt_in) in administraties mét schakelaar; overgeslagen = de weigeringen dáár (zonder dubbele LET-OP — die staat op `autoboeken_inkoop`); `detail` (additief op élke teller) = lerend/actief/uitgezonderd, geactiveerd_24u, gereset_24u, per_administratie[]. Guard afwezig-pad: marker `afwezig_pad("administratie.autoboeken_leren_ingeschakeld")`. | GEBOUWD + GETEST | `reconciliatie/automatiseringen.py`; `tests/reconciliatie/test_automatiseringen_autoboek_leren.py` |
+| Verzoeken B en C verwerkt | B: `bank_sync_run.resultaat["overgeslagen"]` telt onder `bank_autoboeken` (verwacht = gedaan + overgeslagen); nieuwe categorieën `avg_gate` en `kostengrens` (harde voorwaarde, deeplink `/instellingen/intake-ai`; fragmenten avg_gate/"ai staat platformbreed uit", kostengrens/"maandlimiet", api_key); eigen teller `ai_plausibiliteit` (audit `ai_plausibiliteitstoets`, stand = AVG-gate, gedaan = plausibel + twijfel, geen eigen LET-OP); `historie_fouten` = `fout` op `bank_sync`. C: teller `eerste_sync` — `administratie_sync_run` fout mét onderdeel http_status 401/403 = LET-OP `credential` mét deeplink naar de administratie en `fout_reden` als tekst. | GEBOUWD + GETEST (`TestVerzoekenBlokBEnC`) | `reconciliatie/automatiseringen.py` |
+| CLI | `autoboek-drempel-zetten --drempel N` (via `service.zet_drempel`, audit, actor systeem) en LEES-ONLY `autoboek-leren-rapport --administratie <uuid> [--alleen-kwalificerend]` (per leverancier n/drempel, stand, bron, redenen; niets geschreven). Module `autoboek_kandidaten/cli_cmd.py`, cli.py 2+2 regels. | GEBOUWD + GETEST (`TestCli`) | `app/autoboek_kandidaten/cli_cmd.py` |
+| Gouden set | Casus q `tests/keten/test_q_autoboek_leren.py` (BDO-UBL van casus h met per exemplaar een ander factuurnummer, `fixtures/q_autoboek_leren/bron.json`): schakelaar aan → vier mens-boekingen → activatie (bron systeem, audit + tijdlijn) → vijfde exemplaar boekt bij intake automatisch (chip) → tegenboeking → leert 0/3 → zesde blijft mensenwerk; zonder schakelaar alleen nominatie; doorbelasting → 409. | GROEN 10-09 | `tests/keten/test_q_autoboek_leren.py` |
+| Testsuite-afspraak B3 | De B3-toets staat platformbreed standaard AAN maar de AVG-gate in de suite standaard UIT → élke autoboeking zou 'overgeslagen' zijn. `tests/conftest.py` leest de setting buiten `tests/aitoets` als UIT; een test die de poort wil zien stubt `toets_factuur_autoboeking` zelf. | GEBOUWD | `tests/conftest.py::_ai_toets_facturen_standaard_uit` |
+
+**Meetrecept (Peter kiest één administratie; ná deploy van de commit, uitsluitend op de gedeployde job-image):**
+1. Drempel platformbreed naar 3 (productie-rij staat op 5):
+   `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --args="-m,app.cli,autoboek-drempel-zetten,--drempel,3" --wait`
+   → uitvoer `autoboek-drempel: 5 -> 3 (audit autoboek_drempel_gewijzigd, actor systeem)`.
+2. Nulmeting VÓÓR aanzetten (lees-only): `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --args="-m,app.cli,autoboek-leren-rapport,--administratie,<uuid>" --wait`
+   → regel "schakelaar: uit · drempel 3", per leverancier `n/3`, stand `leert`, en onderaan "NB schakelaar uit: K leverancier(s) zou(den) bij aanzetten direct geactiveerd worden".
+3. Schakelaar aan via Instellingen › Administraties › ‹administratie› › Boeken & AI (of `PUT /administraties/<uuid>/autoboeken-leren-instelling {"ingeschakeld": true}`) → direct daarna hetzelfde rapport: precies die K leveranciers staan op `boekt_automatisch` / bron `systeem`; in het audit-log K × `autoboek_leverancier_geactiveerd`.
+4. Volgende dag: reconciliatie-blok Automatiseringen toont `autoboek_leren` "aan 1 van M administraties" met detail lerend/actief/uitgezonderd; de eerste automatische boeking van een geactiveerde leverancier draagt de chip "automatisch" en telt in `automatisch_geboekt_24u`.
+5. Kempen Facilities: `PUT … {"ingeschakeld": true}` → 409 met de letterlijke tekst; in de tabel chip "n.v.t. — doorbelasting".
+
+**Werkt in productie:** nog niet gemeten (gcloud-token verlopen op 10-09; meetrecept klaar, uitvoering ná deploy).
+
+**Beslispunten Peter**
+1. **"3 op rij" telt bevestigingen, niet boekingen.** De motor van 01-09 laat de eerste boeking zonder historie de basis leggen (bevestigt niets); zonder RLZ-seed zijn dus 4 identieke mens-boekingen nodig vóór activatie. Wil je dat de eerste boeking óók telt (3 identieke boekingen = actief), dan is dat één regel in `motor.analyseer_reeks` — maar dan activeert het systeem ook op basis van een gok van de mens zonder eerdere referentie. Voorstel: laten zoals nu.
+2. **"Uitzetten" op Heroverwegen = uitzonderen** zodra de schakelaar aan staat (anders staat de leverancier de volgende nacht weer aan). Reden is dan vast "uitgezet via Heroverwegen". Akkoord, of moet de Heroverwegen-tab een reden vragen?
+3. **Post-commit-activatie ná élke mens-boeking** leest per boeking de historie van díe leverancier (vendor-gefilterd). Bij zeer grote leveranciers (duizenden documenten) kost dat ~seconden ná de boek-klik; alternatief is alleen de nachtrun. Voorstel: laten (direct zichtbaar effect voor de mens).
+4. **B3 standaard AAN** (blok B) betekent dat in een administratie waar de intake-AI (AVG-gate) uit staat élke automatische factuurboeking wordt overgeslagen met `avg_gate` (LET-OP). Dat is precies het besluit van blok B, maar het maakt "autoboeken per administratie" afhankelijk van de AVG-stap. Bewust?
+
+**Aangrenzende gaten**
+- Lifecycle: een crediteur die via B13 (dubbelen) verliezer wordt, neemt zijn opt-in/uitzondering niet mee naar de winnaar-voorkeur — bestaande situatie sinds 07-09, nu zichtbaarder (stand-chip op de winnaar).
+- Consistentie: `autoboek_kandidaat_stand.actief_sinds` en `leverancier_voorkeur.autoboeken_bron` zijn twee sporen van hetzelfde moment; de audit blijft de waarheid.
+- UX (FE): de kolom "Autoboeken" op de administratietabel + uitzonderingenlijst-chips — CONTRACT_A; afwijkingen in `contract_afwijkingen_A.md`.
+- Compliance: alle activaties/resets/uitzonderingen zijn append-only geauditeerd (systeem-actor waar het systeem handelt); geen RLZ-writes buiten het bestaande boekpad.
+
+<!-- bundel-10-09:A:frontend -->
+<!-- Rijen voor de BESLISSINGEN-sectie van blok A (agent FE) — coördinator voegt ze in de tabel van A in. -->
+| Frontend — chip in de administraties-tabel | `chipsVoor` (AdministratiesV2): schakelaar aan = groene STATUS-chip "autoboeken" (title: "het systeem activeert leveranciers ná 3 op rij…"); `autoboeken_leren_toegestaan=false` = stille chip "n.v.t. — doorbelasting" mét de letterlijke 409-tekst als title (`AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST` in `instellingenApi.ts`); uit + toegestaan = geen chip (alleen afwijkingen krijgen een chip). | GEBOUWD + GETEST | `frontend/src/instellingen/AdministratiesV2.tsx`, `AdministratiesV2.test.tsx` |
+| Frontend — bulk | `BulkBediening`: knoppen "Autoboeken aan/uit" → één bevestigingsdialoog → per administratie de bestaande PUT `/administraties/{id}/autoboeken-leren-instelling`; een 409 staat per rij als "‹naam›: overgeslagen: ‹detail›" in het bestaande "Niet alles gelukt"-blok (andere acties ongewijzigd). Geen nieuw bulk-endpoint. | GEBOUWD + GETEST | `BulkBediening.tsx`, `BulkBediening.test.tsx` (nieuw) |
+| Frontend — schakelaar op de detailpagina | Nieuw `AutoboekenLerenRij` (tab Boeken & AI, vóór de btw-default-rij, `id="autoboeken-leren"`): eigen GET/PUT (patroon BtwDefaultRij) + `BevestigDialog`; uitleg één regel "Het systeem activeert een leverancier ná 3 op rij ongewijzigde boekingen; hieronder alleen uitzonderingen."; `toegestaan=false` → switch disabled + rode hint (`reden_niet_toegestaan`); 409 op de PUT → dialoog dicht, hint met de servertekst, switch blijft uit + disabled; gearchiveerd = disabled; ná een geslaagde PUT `onHerlaad` (chip + uitzonderingenlijst zien dezelfde stand). | GEBOUWD + GETEST | `AutoboekenLerenRij.tsx` (nieuw), `AutoboekenLerenRij.test.tsx` (5), `AdministratieDetailPagina.tsx` |
+| Frontend — uitzonderingenlijst | `LeverancierAutoboeken` krijgt `administratieLerenAan`: AAN = uitzonderingenlijst (kop "Autoboeken per leverancier — uitzonderingen", kolom Stand mét chip `leert (n/3)` stil · `boekt automatisch` groen (title bron systeem/mens) · `uitgezonderd` stil mét reden als title · `handmatig aan` info; `linkbtn` "Uitzonderen…" (Radix-dialoog, reden verplicht — knop disabled zonder, POST `…/autoboeken-uitzonderen {reden}`, 422 zichtbaar in de dialoog) en "Vrijgeven" (POST `…/autoboeken-vrijgeven`, nieuwe stand uit de server — kan direct "boekt automatisch" zijn); UIT = de oude per-leverancier-switch. Zoekveld op naam in beide standen. `standVan()` leidt de stand af als een ouder antwoord `stand` mist. | GEBOUWD + GETEST | `LeverancierAutoboeken.tsx`, `LeverancierAutoboeken.test.tsx` (6 bestaand + 5 nieuw) |
+| Frontend — kandidaten + registry + tellers | `AutoboekKandidaten`: chip "administratie leert zelf" (info) op rijen met `administratie_leren_aan`. Registry: tab-doel kent nu `anker` (`{soort:'tab', tab, anker?}`; `detailPad(id, tab, anker)` → `…?tab=boeken-ai#autoboeken-leren`), entry `autoboeken-leren`; guard-test telt per tab alleen entries zónder anker (zelfde regel als secties). `reconciliatieApi`: `AutomatiseringTellerDto.detail?` + `REDEN_LABEL` `avg_gate`/`kostengrens` (+ deeplink `/instellingen/intake-ai`); `AutomatiseringenBlok.detailTekst` toont "lerend N · actief N · uitgezonderd N · vandaag geactiveerd N" onder de stand — alleen getallen mét bekend label, sleutel-agnostisch. | GEBOUWD + GETEST | `AutoboekKandidaten.tsx/.test.tsx`, `instellingenRegistry.ts/.test.ts`, `reconciliatieApi.ts`, `AutomatiseringenBlok.tsx/.test.tsx`, `api/types.ts` (`LeverancierAutoboekStand`, `AutoboekenLerenStandDto`) |
+
+<!-- bundel-10-09:B -->
+## BANK — HISTORIE-REGEL + AI-PLAUSIBILITEITSTOETS ALS POORT (bundel 10-09 blok B; besluit Peter 10-09; migratie 0129)
+
+**Aanleiding (besluit Peter 10-09):** groene open-post-matches worden al automatisch afgeletterd en vaste regels al
+automatisch geboekt achter `bank_autoboeken_ingeschakeld` (Peter zet die zelf aan). Wat bleef liggen: terugkerende
+mutaties ZONDER open post (huur, abonnementen, verzekeringen, leasetermijnen — de verhuurder/aanbieder factureert niet
+in RLZ) én de wens dat een automatisering nooit blind boekt. Twee toevoegingen: (1) een deterministische HISTORIE-REGEL
+(stap 3b) die uit de eigen RLZ-/module-historie leert wat er op déze tegenrekening met déze omschrijvingskern altijd
+geboekt is; (2) een AI-PLAUSIBILITEITSTOETS als POORT vóór élke automatische bankboeking (vaste regel én historie) —
+de AI kiest niets, zegt alleen ja/nee op het door code bepaalde voorstel; twijfel = mutatie blijft open mét de reden
+als chip. Dezelfde toets staat als optionele extra poort op factuur-autoboekingen (platformbreed, default AAN).
+
+**Pre-feature-check:** bouwt 1-op-1 voort op "MATCHMOTOR BANK — NAAM/IBAN + NUMMER + BEDRAG + TEKEN" (volgorde 1–5,
+score-definitie, `IbanRelatie`, `laad_matchcontext`), "Bankmodule — GEBOUWD + GETEST" (direct-op-grootboek
+`boek_mutatie_direct`, `verwerk_vaste_regels_automatisch`), "BANK-SYNC AUTOMATISCH, GEEN KNOPPEN" (nachtelijke lus,
+`bank_sync_run.resultaat`), "AI-KOSTENGRENS INTAKE" (kostenpoort ín de client — de toets loopt door dezelfde meter),
+"BUGFIX 31-08" (sentinel-schema's ≤ 16 unions; het toets-schema heeft 0 unions en staat in `live_schemas`), "TELLERS PER
+AUTOMATISERING IN DE RECONCILIATIE" (categorieën `twijfel`/`api_key`/`fout` op tekstfragmenten) en "BUNDEL 09-09 —
+BLOK 0" (nameting-instrument `bank-voorstellen-lezen`). Het 3×-regelvoorstel (`stel_regel_voor`, mens bevestigt een
+vaste regel) blijft bestaan; de historie-regel is er de automatische, IBAN-gebonden tegenhanger van. RLZ-feiten:
+api-verkenning "Bankmodule schrijf-PoC" §3 (BMDB-regels dragen `Account`/`TaxRate`) en §5 (leesspoor
+`PaymentReferenceList($expand=Document)`, hulzen = DocumentType 19 + Status 1 / IsSystemGenerated).
+**UX-review:** past in de bestaande IA — alleen chips op de bestaande voorstel-kaart/mutatierij (groen "historie-regel —
+k van n op ‹rekening›", oranje "historie: k van n … — bevestigen", oranje "AI-twijfel: ‹reden›", grijs "AI-toets
+overgeslagen: ‹reden›") en één Switch op Instellingen › Boeken; geen nieuw scherm, geen mockup-aanpassing.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **B1 Historie-regel (puur)** | Sleutel = `normaliseer_iban(tegenrekening)` + `omschrijvingskern(omschrijving)` (lowercase; IBAN's, datums, bedragen, élk token mét cijfers (kenmerken/factuurnummers/periodes) en SEPA-opmaakwoorden weg; woorden ≥ 3 letters, ontdubbeld; lege kern = geen sleutel). BEDRAG VRIJ. Kandidaat pas bij dekking ≥ 183 dagen (oudste boeking in de bron), ≥ 3 boekingen op de sleutel, 100 % dezelfde `(ledger_id, taxrate_id)` → groen + `automatisch_kandidaat`; < 100 % → oranje "historie: k van n op ‹rekening›" (k/n van de meest voorkomende combinatie); gelijkstand = oranje. NOOIT als er open posten voor de tegenpartij zijn (naam-overlap met een open post óf een geleerde `IbanRelatie` op dit IBAN) — open-post-match gaat vóór. Elke afwijzing draagt een leesbare reden (`HistorieUitkomst.reden`). | GEBOUWD + GETEST (16 unit-tests) | `backend/app/bank/historie_regel.py` (`omschrijvingskern`, `historie_sleutel`, `HistorieBoeking`, `HistorieVoorstel`, `bepaal_historie_voorstel`, `historie_samenvatting`); `tests/bank/test_historie_regel.py` |
+| **B1 Matchmotor stap 3b** | `bepaal_voorstel(…, historie=None, vandaag=None, rekening_label=None)` — parameter optioneel, bestaande aanroepers ongewijzigd; stap 3b ná de vaste regel (stap 3) en vóór het RLZ-voorstel (stap 4). Nieuw `VoorstelSoort.HISTORIE_REGEL = "historie_regel"`, `Voorstel.bron = "historie: k van n op ‹code naam›"`, velden `ledger_id`, `taxrate_id`, `historie_k`, `historie_n`. Servicelaag: `voorstellen.bepaal_voorstel_in_context(context, mutatie)` = de ene aanroep voor scherm, autoflow en CLI; `MatchContext.rekening_label` levert "4400 Huur · NL, Hoog" uit de caches. | GEBOUWD + GETEST (7 additieve matchmotor-tests) | `app/bank/matchmotor.py`, `app/bank/voorstellen.py`; `tests/bank/test_matchmotor.py::TestStap3bHistorieRegel` |
+| **B1 Historie-bron + cache** | Tabel `boekhouding.bank_historie_boeking` (0129): administratie, payment_transaction_id, datum, IBAN, omschrijving, tegenpartij, ledger_id (NULL = markering), taxrate_id, bron `module`/`rlz`/`rlz_geen_grootboek`/`rlz_gesplitst`, gelezen_op; uniek per (administratie, mutatie, COALESCE(ledger, nil)); RLS 0071-patroon; GRANT zonder DELETE. Vulling `historie_bron.vul_historie_cache`: (a) module = eigen `bank_boeking` geboekt/volledig/één rekening (lokaal, altijd compleet); (b) RLZ = afgeletterde mutaties (`open_bedrag == 0`, boekdatum ≤ 400 dagen terug) die nog niet in de cache staan → `GET PaymentTransactions/{id}?$expand=PaymentReferenceList($expand=Document)`, alleen BMDB-koppelingen (DocumentType 19, Status ≠ 1, niet IsSystemGenerated) → `GET BankMutationDirectBookings/{id}` → `DocumentLineList[].Account/TaxRate`; géén grootboek (afgeletterd tegen factuur) of > 1 rekening = markeringsrij, nooit opnieuw opgehaald. Max `MAX_RLZ_LEZINGEN_PER_RUN = 40` per sync-run (1–2 GET's per mutatie), rest volgt de volgende nacht (`rlz_resterend` in het resultaat). Draait in `sync_bank_voor_administratie` vóór de autoflow; een fout stopt de sync niet (`historie_fouten`). Eerste vulling = CLI `bank-historie-backfill --administratie ‹uuid|naam› [--max 2000]`. | GEBOUWD + GETEST (4 DB-tests) | `app/bank/historie_bron.py`, `app/bank/models.py::BankHistorieBoeking`, `app/bank/sync.py` (velden `historie_*` op `BankSyncResultaat`), `sync_run.py` (samenvatting `historie_toegevoegd`/`historie_rlz_resterend`/`historie_fouten`); `tests/bank/test_historie_bron.py` |
+| **B2 AI-plausibiliteitstoets (pakket)** | `app/aitoets/plausibiliteit.py`: `PlausibiliteitInvoer` (soort `bank_historie`/`bank_vaste_regel`/`factuur_autoboeking`, omschrijving, tegenpartij, bedrag, rekening code+naam, btw-omschrijving, deterministische historie-samenvatting, referentie_id) → `PlausibiliteitUitkomst(uitkomst ∈ plausibel/twijfel/overgeslagen/uit, reden)`; `boeken_toegestaan` alleen bij plausibel/uit. Poorten in vaste volgorde, elk `overgeslagen` mét oorzaak-prefix: (1) `avg_gate` — `intake_ai_effectief_ingeschakeld()` (zelfde platformgate als de intake-AI), (2) `api_key` — `AiExtractieNietGeconfigureerd`, (3) `kostengrens` — `AiKostenFout` uit de client (die draait `controleer_poort` vóór en `registreer_verbruik` ná de call, bron `ai_toets_‹soort›`), (4) `ai_fout` — timeout/API-fout/afkap/geen JSON/onbekende uitkomst/onverwachte exception. Model `settings.ai_toets_model` (default `claude-haiku-4-5`, goedkoopste gepinde model; ja/nee-taak). Schema `PLAUSIBILITEIT_SCHEMA` = sentinel (`uitkomst` enum plausibel/twijfel + `reden` string, `additionalProperties:false`, 0 unions), geregistreerd in `extractie/schema_poort.py::live_schemas` en de unionlimiet-sweep. Prompt (`bouw_opdracht`) deterministisch: alleen tegenpartijnaam/omschrijving (bankgegevens onder de AVG-gate), het voorstel en de telling — geen historie-rijen, geen IBAN's, geen keuzelijst van rekeningen. Audit per toets (ook bij overgeslagen): `ai_plausibiliteitstoets` op `bank_mutatie`/`document` met `{soort, uitkomst, reden, model}` — nooit de prompt. Testseam `_client_factory` (monkeypatch) + `tests/aitoets/stub.py::StubPlausibiliteitClient`. | GEBOUWD + GETEST (11 tests) | `app/aitoets/__init__.py`, `app/aitoets/plausibiliteit.py`, `app/config.py::ai_toets_model`, `app/extractie/schema_poort.py`; `tests/aitoets/test_plausibiliteit.py`, `tests/extractie/test_schema_unionlimiet.py` (gedekte module) |
+| **B2 Toepassing bank (autoflow)** | `boeken.verwerk_automatisch(administratie_id, client) → AutomatischResultaat(geboekt, fouten, overgeslagen)` vervangt de kern van `verwerk_vaste_regels_automatisch` (die blijft als compatibele `(geboekt, fouten)`-wrapper). Kandidaten: VASTE_REGEL én HISTORIE_REGEL mét kleur groen (oranje = mens bevestigt, geen AI-call, geen kosten). Vóór `boek_mutatie_direct`: `voer_ai_toets_uit` → `plausibel` = boeken (bron AUTOMATISCH, omschrijving "Historie-regel: ‹tegenpartij›" resp. vaste-regel-omschrijving); `twijfel`/`overgeslagen` = NIET boeken, kolommen `bank_mutatie.ai_toets_uitkomst/ai_toets_reden/ai_toets_op/ai_toets_invoer_hash` (0129; de sync overschrijft ze niet), regel in `overgeslagen` ("twijfel: ‹mutatie› (‹soort›) — ‹reden›" resp. "overgeslagen: ‹oorzaak› — ‹detail› (‹mutatie›, ‹soort›)"). Idempotent: hash = sha256(soort, rekening code+naam, btw, bedrag); een twijfel-mutatie met ongewijzigd voorstel wordt niet opnieuw getoetst (wél gemeld "[eerder getoetst, voorstel ongewijzigd]"). `BankSyncResultaat.automatisch_overgeslagen` + `bank_sync_run.resultaat["overgeslagen"]`. Bestaande autoflow-tests aangepast op de nieuwe voorwaarde (AVG-gate aan + stub plausibel). | GEBOUWD + GETEST (5 nieuwe + 3 aangepaste autoflow-tests) | `app/bank/boeken.py` (`verwerk_automatisch`, `historie_naar_boekregels`, `bouw_ai_invoer`, `ai_toets_invoer_hash`, `voer_ai_toets_uit`, `AutomatischResultaat`), `app/bank/sync.py`, `app/bank/sync_run.py`; `tests/bank/test_boeken.py` |
+| **B3 Facturen — platformbrede setting + route** | `platform.boeken_instelling.ai_toets_facturen_ingeschakeld bool not null default true` (0129, model `BoekenInstelling`; conftest-herstel-INSERT ongewijzigd — de kolom-default vult). `GET/PUT /instellingen/boeken/ai-toets` (Beheerder, `{ "ingeschakeld": bool }`, audit `ai_toets_facturen_gewijzigd` oud→nieuw) op de beheer-router. `toets_factuur_autoboeking(administratie_id, document_id, invoer_velden)` leest de setting (uit → `'uit'`, boeken door), bouwt anders de invoer uit `haal_boekvoorstel_op` (eerste regel → rekening/btw via `Grootboekrekening`/`TaxRateCache`, leverancier via `VendorCache`) + optionele `invoer_velden` (`leverancier`, `omschrijving`, `bedrag`, `geheugen_samenvatting`, `ledger_id`, `taxrate_id`) en roept `toets_plausibiliteit`; onleesbaar boekvoorstel = `overgeslagen ai_fout` (nooit doorlaten). De AANROEP in `documenten/autoboeken.py` is blok A (CONTRACT_A). Guard-marker `afwezig_pad("boeken_instelling.ai_toets_facturen_ingeschakeld")` op de uit-pad-test. | GEBOUWD + GETEST (route 2, functie 3) | `app/db/models.py::BoekenInstelling`, `app/beheer/service.py` (`haal_ai_toets_facturen_op`, `zet_ai_toets_facturen`), `app/beheer/router.py`, `app/aitoets/plausibiliteit.py::toets_factuur_autoboeking`; `tests/aitoets/test_instelling_route.py`, `tests/aitoets/test_plausibiliteit.py` |
+| **DTO (frontend-contract)** | `VoorstelResponse` + `ledger_id`, `taxrate_id`, `historie_k`, `historie_n` (soort `'historie_regel'`, `regels` gevuld met de concrete boekregel); `MutatieResponse` + `ai_toets_uitkomst` (`'plausibel'|'twijfel'|'overgeslagen'|null`), `ai_toets_reden`, `ai_toets_op`; `BankSyncResponse` + `automatisch_overgeslagen`. Frontend-deel (chips VoorstelKaart/BankDetailScreen, Switch Instellingen › Boeken, registry `ai-toets-facturen`) = agent FE volgens CONTRACT_B. | GEBOUWD (backend) | `app/bank/schemas.py`, `app/bank/router.py`; gouden set `test_dto_draagt_historie_velden_en_ai_toets_kolommen` |
+| **Nameting-instrument** | CLI `bank-voorstellen-lezen` verhuisd naar `app/bank/cli_cmd.py` (cli.py: import + `register_bank(subparsers)` + dispatch op `BANK_COMMANDOS`); extra kolommen `regel` (soort · bron-label, bij historie "k van n op …") en `ai_toets` (opgeslagen uitkomst + reden, of "—"); `--met-ai-toets` toetst LIVE voor de kandidaten zonder te boeken (help: "KOST AI-TEGOED", audit + kostenmeter wél, uitkomst op de mutatie); `--json-uit ‹pad›` schrijft dezelfde tabel als JSON. Nieuw `bank-historie-backfill`. | GEBOUWD (CLI-argparse geladen in de app-import; body via servicelaag gedekt) | `app/bank/cli_cmd.py`, `app/cli.py` |
+| **Gouden set (casus l)** | Fixture `l_bank_cv_08-09/historie.json` (RECONSTRUCTIE huur-afschrijving C.V. zonder open post: drie eerdere BMDB-boekingen op IBAN + kern "huur kantoor deventer", oudste > 183 dagen) + `casussen.Casus.bank_historie()`; tests: vijfde mutatie → `historie_regel` groen "historie: 3 van 3 op 4400 Huur onroerend goed", boekregel dekt −1815,00; de vier bestaande C.V.-mutaties ongewijzigd (A/B handmatig, TransIP/NPG groen); DTO-velden. mutaties.json/open_posten.json onaangeraakt. | GEBOUWD + GETEST (3) | `tests/keten/fixtures/l_bank_cv_08-09/historie.json`, `tests/keten/test_l_bank_matchmotor.py::TestHistorieRegelOpDeCv` |
+| **Reconciliatie-tellers** | NIET door B (eigenaar A): wensen in `<S>/verzoeken_B_automatiseringen.md` — `bank_autoboeken` leest `resultaat["overgeslagen"]` en categoriseert `twijfel`/`api_key`/`avg_gate`/`kostengrens`/`ai_fout`. | VERZOEK AAN A | `<S>/verzoeken_B_automatiseringen.md` |
+
+**Meetrecept (Peter, ná deploy van deze commit — productie alleen via de gedeployde job-image, regel 08-09):**
+De administratie-uuid van "Administratiekantoor Nijenhuis C.V." staat niet lokaal: Instellingen › Administraties → klik de
+C.V. → de UUID staat in de URL (`/instellingen/administraties/<uuid CV>`).
+1. Historie-cache vullen: `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --args="-m,app.cli,bank-historie-backfill,--administratie,<uuid CV>" --wait`
+   → regel `bank-historie-backfill Administratiekantoor Nijenhuis C.V. (…): module +M, rlz +R (gemarkeerd …: G), resterend: 0`, exit 0.
+2. Voorstellen + AI-toets lezen: `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --args="-m,app.cli,bank-voorstellen-lezen,--administratie,<uuid CV>,--met-ai-toets" --wait`
+   → tabel `mutatie | datum | bedrag | tegenpartij | voorstel → referentie | regel | ai_toets`; verwacht: terugkerende
+   afschrijvingen zonder open post (huur/abonnementen) met ≥ 3 eerdere grootboekboekingen tonen `historie_regel · historie: k van n op ‹rekening›`
+   en `ai_toets = plausibel: …` of `twijfel: …`; open-post-gevallen (TransIP/NPG-type) blijven `exacte_match`; A/B-gevallen `handmatig`.
+   Vereist AVG-gate AAN (Instellingen › Intake-AI) en API-key — anders toont de kolom `overgeslagen: avg_gate — …` (dat is óók een geldige nameting).
+3. Ná de run van 07:00 (`sync-alles`): `GET /reconciliatie/run/laatste` → `samenvatting.automatiseringen.bank_autoboeken`: gedaan = automatisch
+   geboekt, overgeslagen per categorie `twijfel` / `api_key` / `avg_gate` (zodra A de teller uitbreidt; tot dan zichtbaar in
+   `bank_sync_run.resultaat.overgeslagen` via `GET /administraties/<uuid CV>/bank/sync-runs/laatste`).
+**Werkt in productie: nog niet gemeten** (geen deploy in deze run; gcloud-token verlopen).
+
+**Beslispunten Peter**
+1. **Omschrijvingskern-stopwoorden.** SEPA-opmaakwoorden (naam/omschrijving/kenmerk/machtiging/incasso/…) en tokens mét cijfers tellen
+   niet mee. Te ruim (twee verschillende betalingen op één kern) of te krap (kern leeg → nooit een voorstel)? Uitbreiden = één regel.
+2. **Historie-venster 400 dagen / dekking 183 dagen / ≥ 3.** De dekking geldt voor de héle bron (oudste boeking van de administratie), niet
+   per sleutel — een nieuwe verhuurder ná 3 maanden krijgt dus wél een voorstel als de administratie zelf al > 6 maanden historie heeft.
+   Alternatief: dekking per sleutel (strenger). Voorstel: houden.
+3. **Model voor de toets** = `claude-haiku-4-5` (goedkoop, ja/nee). Sonnet is één setting (`AI_TOETS_MODEL`).
+4. **Twijfel-hergebruik.** Een twijfel wordt pas opnieuw getoetst als het voorstel (rekening/btw/bedrag) verandert. Alternatief: ook na N dagen.
+5. **Bank-toets zonder schakelaar.** Bank-autoboeken zonder AI-toets bestaat niet meer (de toets zit in `bank_autoboeken_ingeschakeld`);
+   AVG-gate uit = niets boekt automatisch (zichtbaar `overgeslagen: avg_gate`). Akkoord, of een aparte bank-schakelaar zoals bij facturen?
+
+**Aangrenzende gaten**
+- lifecycle: een gestorneerde module-boeking blijft in `bank_historie_boeking` (bron `module`) staan — de cache leert dan van een teruggedraaide
+  keuze. Volgende stap: bij storno de cache-rij markeren (kolom `gestorneerd_op`) en uitsluiten. Niet in dit blok.
+- consistentie: `automatiseringen.py` telt `overgeslagen` nog niet (verzoek aan A); tot die tijd is de AI-poort alleen zichtbaar in
+  `bank_sync_run.resultaat`, de mutatie-chip en het audit-spoor.
+- UX: een twijfel-mutatie draagt de reden als chip maar nog geen actie "toch boeken volgens voorstel" op de rij (het bestaande
+  direct-boeken-pad met de voorstel-regels is die actie; label kan scherper — agent FE).
+- compliance: de prompt bevat tegenpartijnaam + omschrijving (bankgegevens) — gedekt door de bestaande AVG-gate `intake_ai_ingeschakeld`
+  en de ZDR-afspraak (AVG stap 1); geen IBAN's, geen historie-rijen in de prompt.
+
+<!-- bundel-10-09:B:frontend -->
+<!-- Rijen voor de BESLISSINGEN-sectie van blok B (agent FE) — coördinator voegt ze in de tabel van B in. -->
+| Frontend — DTO's | `bankApi.ts`: `VoorstelDto.soort` + `'historie_regel'`, optioneel `ledger_id`/`taxrate_id`/`historie_k`/`historie_n`; `MutatieDto` + `ai_toets_uitkomst` (`plausibel`\|`twijfel`\|`overgeslagen`\|null), `ai_toets_reden`, `ai_toets_op` — alle optioneel (oudere antwoorden blijven werken). | GEBOUWD + GETEST | `frontend/src/bank/bankApi.ts` |
+| Frontend — chips historie-regel | `VoorstelKaart.historieChip`: groen "historie-regel — k van n op ‹rekening›" (automatisch-kandidaat), oranje "historie: k van n op ‹rekening› — bevestigen"; k/n uit de velden, rekening uit `bron` ("… op 4400 Huur"), terugval op de bron-tekst; `matchChip` kent de soort. `BankDetailScreen`-rij: eigen chip (`chip geheugen`/`chip ai`, title = `reden`) — géén lege voorstel-kaart (open_post is null). | GEBOUWD + GETEST | `VoorstelKaart.tsx/.test.tsx`, `BankDetailScreen.tsx/.test.tsx` |
+| Frontend — AI-toets op de rij | `AiToetsChip`: `twijfel` = oranje "AI-twijfel: ‹reden›", `overgeslagen` = grijze "AI-toets overgeslagen: ‹reden›" (title = uitleg + tijdstip); `plausibel`/null = geen chip. Op élke mutatierij onder het voorstel. | GEBOUWD + GETEST | `VoorstelKaart.tsx`, `BankDetailScreen.tsx` |
+| Frontend — platformbrede schakelaar | Nieuw `AiToetsFacturenRij` op Instellingen › Boeken platformbreed (derde blok, vóór "Automatiseringen", `id="ai-toets"`): GET/PUT `/instellingen/boeken/ai-toets` (default aan), `BevestigDialog` mét consequentietekst (aan: "kost AI-tegoed per toets"; uit: "alleen de deterministische poorten"), fout blijft in de dialoog, laadfout = één hint-regel zonder de noodstop-schakelaars te raken. API-helpers `haalAiToetsFacturen`/`zetAiToetsFacturen` in de proxy-guard-test. Registry-entry `ai-toets-facturen` (sectie boeken, anker `ai-toets`; zoeker "plausibiliteit" → `/instellingen/boeken#ai-toets`). | GEBOUWD + GETEST | `AiToetsFacturenRij.tsx/.test.tsx` (nieuw), `InstellingenScreen.tsx`, `instellingenApi.ts/.test.ts`, `instellingenRegistry.ts/.test.ts` |
+
+<!-- bundel-10-09:C -->
+## RECHTEN-PROBE = EERSTE-SYNC-ROUTES + HERPROBE MET DE OPGESLAGEN LOGIN (bundel 10-09 blok C; bevinding Peter 10-09 Baard beheer & management; geen migratie)
+
+**Aanleiding.** Wizard "Administratie toevoegen" meldde voor Baard beheer & management "10 leesroutes groen"; de eerste
+sync gaf daarna 403 op Ledgers/Vendors/Projects/PaymentAccounts (TaxRates wél). Opdracht Peter: vaststellen waarom de
+probe dit niet vangt (uit code + sporen, niet raden), de probe exact de sync-routes laten toetsen mét dezelfde credential,
+het letterlijke RLZ-foutbericht tonen, en de probe voor Baard herhalen via de service-route.
+
+**Pre-feature-check.** Probe: "RLZ-FEEDBACKRONDE 26-08" punt 5 (wizard, 10 leesroutes verplicht groen), "SPOEDOPDRACHT
+01-09" blok A (SalesInvoices-403 = facturatiemodule afwezig, `beschrijf_probe_fouten` handelingsperspectief), "VERZAMELRUN
+27-08" punt 5 (eerste sync op de lijst-rij), "AVONDRUN 26-08" (is_vastgoed-toggle wizard). Eerste sync: `app/beheer/
+eerste_sync.py` (status per onderdeel, migratie 0076). Reconciliatie-teller `credential`: "TELLERS PER AUTOMATISERING IN DE
+RECONCILIATIE" (07-09) — niet geraakt door C (wens in `verzoeken_C_automatiseringen.md`).
+**UX-review.** Geen nieuw scherm: bestaande wizard-/dialoog-foutregel en de bestaande "Eerste sync per onderdeel"-lijst
+tonen nu méér tekst (RLZ-bericht + recht). DTO groeit additief (`meldingen`/`probe_meldingen`, default `{}`) — frontend
+werkt ongewijzigd; verrijking van de weergave is een kleine FE-wijziging (zie `contract_afwijkingen_C.md`). Past in de IA.
+
+### Wat vaststaat uit de CODE (10-09, stand main `5ed9e04`)
+
+| Kandidaat-oorzaak | Toets | Uitkomst |
+|---|---|---|
+| (a) probe-routes ≠ sync-routes (query-params, `$expand`, `search=`, andere collectie) | `credentialstore/service.py::probe_rapport` deed `GET <collectie>` kaal via `client.for_administration(id)`; `sync/service.py::_sync_generiek(pad="Ledgers"/"TaxRates"/"Vendors"/"Projects")` doet `client.get(pad)` kaal; `RlzClient.list_payment_accounts` = `GET PaymentAccounts` kaal (+ per rekening `PaymentAccounts/{id}/LastBankImport`, 404/400 = geen fout) | **VERVALT** — paden op 10-09 letterlijk identiek (`/{adminId}/Ledgers` enz.). Maar: twee losse literal-sets, niets bewaakte de gelijkheid → gefixt (leesroutes.py + fail-closed test) |
+| (b) sync gebruikt een andere credential dan de probe | wizard: probe met `RlzClient(username, wachtwoord)` uit de INVOER; opslag `wrap_secret(wachtwoord)` → `platform.rlz_credential` in dezelfde transactie; sync: `client_voor_rlz_admin_id(rlz_admin_id)` → `resolve_credentials` = store-first op `rlz_admin_id` (unique kolom) → `unwrap_secret` → `RlzClient(username, wachtwoord, admin_id)`. `.env`-fallback alleen als er GEEN store-rij is (Baard staat niet in `BEKENDE_ADMINISTRATIES`, dus die fallback kan voor Baard niet eens iets opleveren) | **VERVALT in de code** — zelfde username + zelfde wachtwoord, tenzij ná de wizard "Webservice-gegevens wijzigen" is gebruikt (audit `credential_bijgewerkt`) of de KMS-unwrap iets anders oplevert dan gewrapt (dan 401 op álles, niet 403 op vier; TaxRates was ok). Gat dat wél bestond: er was GEEN probe met de OPGESLAGEN vorm vóór "groen" — gefixt |
+| (c) 403 afhankelijk van administratie-scope in het pad | probe `for_administration(id)` → `_path` = `/{id}/X`; sync `RlzClient(admin_id=id)` → zelfde `_path` | **VERVALT** |
+| (d) rechten/licentie in RLZ gewijzigd tussen probe en sync-run | niet uit code te bepalen; venster is reëel als de eerste-sync-job niet direct liep (run blijft `wachtrij` → na 15 min stale → "Sync opnieuw starten" later) | **OPEN — alleen sporen** (zie leesrecept). Aanwijzing: TaxRates ok + de vier administratie-gebonden collecties 403 past bij "webservice-gebruiker heeft (nog/niet meer) geen rechten op déze administratie" — TaxRates lijkt administratie-onafhankelijk geserveerd |
+| (e) RLZ-zijdig, alleen zichtbaar in het 403-body | het body staat al in `administratie_sync_run.onderdelen.<naam>.fout` als `RlzApiError: GET /<adm>/Ledgers -> 403: <body[:500]>` | **OPEN — leesrecept** |
+
+**Conclusie code-analyse:** de probe kon dit niet vangen omdat (1) de probe alleen met de invoer draaide en nooit met de
+opgeslagen vorm die de sync gebruikt, (2) de probe en sync losse literal-sets hadden (toevallig gelijk), (3) alleen de
+statuscode werd bewaard — het RLZ-bericht dat zegt wát er mis is verdween. De oorzaak van de Baard-403 zélf staat niet
+in de code; die staat in de sporen (leesrecept hieronder).
+
+### Gebouwd (10-09)
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Eén bron van waarheid leesroutes | `app/rlz/leesroutes.py`: `Leesroute(naam, pad, params, scope, sync_onderdeel, rlz_recht, afgeleide_paden)`; `PROBE_LEESROUTES` (10) en `SYNC_LEESROUTES` (per `eerste_sync.ONDERDELEN`). `sync/service.py` leest `pad=_sync_pad("ledgers")` enz., `RlzClient.list_payment_accounts` leest `PAYMENT_ACCOUNTS.pad`, de probe itereert `PROBE_LEESROUTES` (params meegegeven als de route ze heeft) | gebouwd + getest | `app/rlz/leesroutes.py`; `tests/rlz/test_leesroutes.py` |
+| Fail-closed dekkingstest | statisch: élk `eerste_sync.ONDERDELEN` heeft een Leesroute in de probe-set; dynamisch: élke sync-motor draait tegen een registrerende httpx-stub (500-sentinel vóór de DB) en élk opgevraagd pad moet via `route_voor_pad` op de probe-route van dat onderdeel uitkomen; omgekeerd vraagt de probe exact `/Administrations` + `/{adm}/<pad>` ×9 op. Nieuw sync-onderdeel zonder probe-route = rood | gebouwd + getest | `tests/rlz/test_leesroutes.py` |
+| Herprobe met de OPGESLAGEN vorm vóór "groen" | `onboarding._herprobe_in_opgeslagen_vorm`: `wrap_secret` → `unwrap_secret` → verse root-client (`_nieuwe_root_client`) → `voer_probe_uit` — exact de credential-resolutie van de sync (store-bytes → KMS-unwrap → RlzClient), vóór er iets opgeslagen is; de wizard slaat DEZELFDE `ciphertext`/`wrapped_data_key` op waarmee groen bewezen is. Rood = `OnboardingFout("Herprobe met de opgeslagen login niet groen — niets opgeslagen. … (de invoer-probe was wél groen: dit is wat de eerste sync zou zien)")`. Zelfde poort in `wijzig_webservice_gegevens` en `probe_nieuwe_login` (dearchiveren; daar re-wrapt `zet_credential` — zelfde plaintext, roundtrip bewezen door de herprobe). De opgeslagen probe-stand = de herprobe, audit `bron="herprobe_opgeslagen_login"` | gebouwd + getest | `app/beheer/onboarding.py`; `tests/beheer/test_onboarding.py::TestHerprobeMetOpgeslagenLogin` |
+| Letterlijk RLZ-antwoord in rapport/melding/audit | `credentialstore.voer_probe_uit → ProbeUitkomst(rapport, meldingen)`; `meldingen[route] = "HTTP <status> — <body, whitespace genormaliseerd, ≤ 300 tekens>"`; audit `rechten_probe_uitgevoerd.nieuwe_waarde` draagt nu `rapport`, `meldingen`, `bron`; DTO's `ProbeRapportDto.meldingen`, `RechtenProbeResponse.meldingen`, `AangemaakteAdministratieDto.probe_meldingen`, 422-detail `meldingen` per administratie. `probe_rapport`/`voer_rechten_probe_uit` blijven als compat-vorm | gebouwd + getest | `app/credentialstore/service.py`, `schemas.py`, `router.py`; `app/beheer/schemas.py`, `router.py`; `tests/credentialstore/test_service.py::TestProbeMeldingen` |
+| Handelingsperspectief per route | `beschrijf_probe_fouten(rapport, meldingen)`: `Ledgers=403 (geef de webservice-gebruiker in RLZ leesrecht op Ledgers: leesrecht Grootboek/Financieel (rekeningschema) …) — RLZ zegt: "HTTP 403 — …"`; 401 = "Reeleezee weigert de login zelf — controleer gebruikersnaam/wachtwoord". Rechten-teksten per route in `leesroutes.rlz_recht` (RLZ-menupaden zijn een beste inschatting — Peter toetst ze bij Baard, zie beslispunt 2) | gebouwd + getest | `app/rlz/leesroutes.py::rlz_recht_voor`; `credentialstore/service.py::beschrijf_probe_fouten` |
+| Herprobe-route met de opgeslagen login | `POST /administraties/{id}/rlz-check` → `voer_herprobe_met_opgeslagen_login` (`open_root_client(rlz_admin_id)` = `resolve_credentials`, dus de STORE) → `{rapport, meldingen}`; slaat rapport + audit op. Dit is de service-route voor Peters Baard-herprobe (geen knop in de UI — wens FE, `contract_afwijkingen_C.md`) | gebouwd + getest | `app/credentialstore/router.py`; `tests/beheer/test_onboarding.py::test_rlz_check_route_geeft_meldingen_met_de_opgeslagen_login` |
+| Eerste-sync-403 = zichtbare LET-OP | `eerste_sync._fout_stand`: bij `RlzApiError` 401/403 stand `{status:'fout', http_status, rlz_melding (≤300), rlz_url, rlz_recht, fout:'Reeleezee weigert GET Ledgers (HTTP 403) — <recht>. RLZ zegt: "<body>"'}`; andere HTTP-fouten `Reeleezee antwoordt HTTP <n> op GET <route>: "<body>"`; niet-RLZ-fouten ongewijzigd. `_fout_reden`: bestaande regel + `LET OP: Reeleezee weigert de opgeslagen webservice-login (HTTP 403) op ledgers, vendors, … — geef de webservice-gebruiker in RLZ de ontbrekende leesrechten … start de sync opnieuw`. UI toont `stand.fout` al per onderdeel (`AdministratieWizard.tsx::EersteSyncStatus`) en `fout_reden` als Badge-title op de lijst-rij → geen FE-wijziging nodig voor zichtbaarheid | gebouwd + getest | `app/beheer/eerste_sync.py`; `tests/beheer/test_onboarding.py::TestEersteSync403Leesbaar` |
+| Reconciliatie-teller `credential` | NIET door C geraakt (afspraak). Wens: eerste-sync-run met `http_status` 401/403 in `onderdelen` → LET-OP-regel `credential` per administratie | wens genoteerd | `<S>/verzoeken_C_automatiseringen.md` |
+
+### Sporen — wat GELEZEN moest worden (gcloud-token verlopen op 10-09: "wacht op herlogin Peter")
+
+Zelf getoetst: `gcloud auth print-access-token` → FAIL. Niets uit productie gelezen; geen lokale backend/proxy (regel 08-09).
+
+**Leesrecept (read-only, Cloud Shell, psql op rlz-sql2 — als DB-owner-rol zodat RLS op `administratie_sync_run` en
+`audit_event` niet in de weg zit; anders vóór elke query `SELECT set_config('app.current_administratie_id','<id>',true);`
+in dezelfde transactie):**
+
+```sql
+-- 1. de administratie
+SELECT id, naam, rlz_admin_id, actief, verkoopmodule_afwezig, gearchiveerd_op
+FROM platform.administratie WHERE naam ILIKE '%Baard%';
+
+-- 2. laatste probe-stand (rapport = route → 'ok' | status) — verwacht: alles 'ok' (wizard zei 10/10)
+SELECT rapport, uitgevoerd_op, uitgevoerd_door FROM platform.rlz_rechten_probe
+WHERE administratie_id = (SELECT id FROM platform.administratie WHERE naam ILIKE '%Baard%');
+
+-- 3. audit rond aanmaken / credential / probe (tijdlijn!) — let op credential_bijgewerkt (= login later gewijzigd)
+SELECT tijdstip, tabel, actie, nieuwe_waarde, oude_waarde FROM platform.audit_event
+WHERE record_id = (SELECT id FROM platform.administratie WHERE naam ILIKE '%Baard%')
+  AND tabel IN ('administratie','rlz_credential','rlz_rechten_probe')
+ORDER BY tijdstip;
+
+-- 4. de eerste-sync-runs mét de 403-teksten per onderdeel (body van RLZ zit in ->>'fout' ná "-> 403: ")
+SELECT aangevraagd_op, gestart_op, beeindigd_op, status, fout_reden,
+       jsonb_pretty(onderdelen) AS onderdelen
+FROM boekhouding.administratie_sync_run
+WHERE administratie_id = (SELECT id FROM platform.administratie WHERE naam ILIKE '%Baard%')
+ORDER BY aangevraagd_op;
+
+-- 5. huidige credential-metadata (NOOIT het wachtwoord — ciphertext niet selecteren)
+SELECT webservice_username, aangemaakt_op, bijgewerkt_op FROM platform.rlz_credential
+WHERE administratie_id = (SELECT id FROM platform.administratie WHERE naam ILIKE '%Baard%');
+```
+
+**Lezen van de uitkomst:** (i) verschil `rlz_rechten_probe.uitgevoerd_op` ↔ `administratie_sync_run.gestart_op` = het venster
+voor kandidaat (d); (ii) `credential_bijgewerkt` tussen probe en run = kandidaat (b) alsnog; (iii) `onderdelen.ledgers.fout`
+bevat het letterlijke RLZ-body — dát is de tekst voor Peter; (iv) `rlz_credential.webservice_username` vs. de username die
+Peter in de wizard typte.
+
+**Herprobe met de opgeslagen login (service-route, ná deploy van deze commit voor de `meldingen`; vóór deploy geeft dezelfde
+route alleen statuscodes):** ingelogd als Beheerder in de kantoor-web → `POST /administraties/<baard-id>/rlz-check` (Bearer-
+token van de sessie; bv. in de browser-console van de ingelogde app:
+`fetch('/administraties/<id>/rlz-check',{method:'POST',headers:{Authorization:'Bearer '+<token>}}).then(r=>r.json()).then(console.log)`).
+Verwacht bij ongewijzigde RLZ-rechten: `rapport` = Ledgers/Vendors/Projects/PaymentAccounts "403", rest "ok";
+`meldingen` = het letterlijke RLZ-antwoord per route. Verwacht ná het zetten van de rechten in RLZ: alles "ok" → dan
+"Sync opnieuw starten" op de administratie-rij.
+
+### Meetrecept (ná deploy)
+1. Leesrecept 1–5 uitvoeren, uitkomst letterlijk in BESLISSINGEN bijschrijven (RLZ-body!).
+2. `POST /administraties/<baard-id>/rlz-check` → `meldingen` gevuld met het RLZ-bericht; audit-rij `rechten_probe_uitgevoerd`
+   met `bron = 'herprobe_opgeslagen_login'`.
+3. Peter zet het recht in RLZ → herprobe groen → "Sync opnieuw starten" → run `klaar`, alle vijf onderdelen `klaar`.
+4. Regressie wizard: een nieuwe administratie aansluiten → audit-rij draagt `bron='herprobe_opgeslagen_login'`,
+   `rlz_credential` aanwezig, eerste sync `klaar`.
+
+**Werkt in productie: nog niet gemeten** (gcloud-token verlopen; niets gedeployd in deze run).
+
+### Beslispunten Peter
+1. **Twee probes per administratie bij aansluiten (invoer + opgeslagen vorm) = 2× 10 RLZ-GETs + 1 extra KMS-wrap/unwrap.**
+   Voorstel: accepteren (eenmalig per aansluiting; de KMS-roundtrip is precies wat we willen bewijzen).
+2. **RLZ-rechten-teksten per route** (`leesroutes.rlz_recht`: "leesrecht Grootboek/Financieel", "Relaties › Crediteuren",
+   "Projecten", "Bank/Kas", "Inkoop", "Financieel › Journaalposten", "Verkoop + facturatiemodule") zijn een beste inschatting
+   van de RLZ-menupaden — graag toetsen aan wat je bij Baard daadwerkelijk moest zetten, dan pas ik de teksten aan.
+3. **Knop "Rechten opnieuw toetsen" in de UI** (nu alleen de API-route `rlz-check`): wens voor agent FE / een volgende run —
+   akkoord?
+
+### Aangrenzende gaten
+- **Lifecycle:** de eerste-sync-job (`eerste-sync-wachtrij`) verwerkt álle actieve administraties; als de Cloud Run-trigger
+  faalt blijft de run 15 min `wachtrij` en wordt stale → Peter start handmatig. Dat venster is precies waar kandidaat (d)
+  kan toeslaan; een LET-OP in de reconciliatie ("eerste sync ouder dan 15 min zonder start") bestaat niet (wens, niet gebouwd).
+- **Consistentie:** `rlz_rechten_probe.rapport` bewaart alleen statuscodes (kolomvorm ongewijzigd — `probe_is_groen` leest 'm);
+  de meldingen leven in `audit_event.nieuwe_waarde` en de API-response. Wil Peter de laatste meldingen ook op de lijst-rij,
+  dan is een kolom (migratie) of een audit-lookup nodig.
+- **UX:** `AdministratiesV2.tsx` toont `fout_reden` alleen als Badge-*title* (hover) — de LET-OP-tekst is er wel, maar niet
+  zonder muis. `EersteSyncStatus` (uitgeklapt/wizard) toont 'm wél als tekst. Verrijking = FE-wens.
+- **Compliance:** het RLZ-body kan in theorie PII bevatten (RLZ-foutteksten zijn technisch, geen boekhouddata) — afgekapt op
+  300 tekens, alleen in audit + Beheerder-responses; wachtwoord komt nergens in (tests `"geheim" not in tekst`).
+- **Odoo-administraties:** de herprobe is RLZ-only (Odoo heeft z'n eigen probe in `app/odoo`) — niet geraakt.
+
+<!-- bundel-10-09:D_backend -->
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 1: SCHOONLIJST + PANDENREGISTER-DATALAAG (bundel 10-09 blok D1/D2; besluit Peter 10-09; migratie 0130)
+
+**Aanleiding.** Besluit Peter 10-09: Vastgoedgroep Nederland (administratie `cc07e461…`, RLZ-VGG, niet btw-plichtig, handel
+in panden via notarisafrekeningen) gaat als tweede administratie naar Odoo (company 6, leeg — odoo-verkenning §1.3). Run 1
+van 3 levert (D1) een lees-only schoonlijst waarmee een mens de RLZ-kant opruimt vóór de kanteldatum en (D2) de datalaag
++ deterministische afleiding van het pandenregister. Geen scherm (mockup `mockup/pandenregister.html` door D-docs), geen
+Odoo-writes, geen RLZ-writes, niets automatisch bevestigd.
+
+**Pre-feature-check.** Geen bestaand pandenregister in code of register; `ProjectAanvraag.pand_referentie` (route A vastgoed)
+is een ander domein (Vastly-huurpanden, RLZ-projectaanmaak) en blijft ongemoeid. Het lees-only-patroon volgt
+`app/reconciliatie/rlz_dubbel.py` (gepagineerd $top/$skip, geen writes, fout per administratie zichtbaar); de
+credential-route is `rlz_admin_id_voor` + `client_voor_rlz_admin_id(rid).for_administration(rid)` (er bestaat geen
+`client_voor_administratie`). RLZ-feiten hergebruikt: `Status eq 1` = 400 (enum) → concept-filter client-side;
+`GET …/{id}/Uploads` = betrouwbare aanwezigheidscheck op Purchase/Sales/ManualJournals (16-08); collecties dragen geen
+`AttachmentCount`/`HasAttachments`-veld (veldset PoC-audits); ManualJournals dragen `BaseInvoiceAmount` maar geen Entity;
+`Receipts` alleen als collectie; de SalesInvoices-collectie ziet API-aangemaakte documenten niet — voor VGG irrelevant
+(alles is UI-/importwerk). Odoo-kant: niets nieuws nodig in run 1 (adapter-huiswerk §3 geldt pas bij de kanteldatum).
+**UX-review:** geen scherm-impact in deze run; de mockup van D-docs is de UX-norm voor run 2 (pandenregister + toewijs-
+scherm). Bevestigd door de mockup: dossiernummer-vorm `2025.058870.01`, notaris "Ouwerkerk" (opdracht schrijft "Ouwekerk"
+— beide herkend) en "Buma Algera".
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **D1 Schoonlijst — lees-only rapport** | CLI `migratie-schoonlijst --administratie <uuid|naam> [--json-uit pad] [--max-bijlage-checks 200] [--verwacht "concepten=17,dubbelen=3,open_bankregels=44,dubbele_iban=1"]`. Vijf categorieën, elk tabel boekstuk \| datum \| bedrag \| entity \| omschrijving \| bevinding: (a) concepten = Status 1 in PurchaseInvoices/SalesInvoices/ManualJournals (+ Receipts als leesbaar, ontdubbeld tegen SalesInvoices); (b) vermoedelijke dubbelen = zelfde collectie + cent-exact bedrag + datum + Entity (of beide zonder) → groepen mét boekstuknummers, concept gemarkeerd; (c) open bankregels = PaymentTransactions `OpenAmount ≠ 0` (nooit `IsComplete`), per rekening met tegenrekening; (d) PaymentAccounts met gelijke genormaliseerde IBAN — beide rekeningen, gearchiveerd gemarkeerd; (e) documenten zonder Entity mét bijlage via `GET …/{id}/Uploads?$top=1`, nieuwste eerst, begrensd (`--max-bijlage-checks`), buiten de grens = zichtbaar "NIET gecontroleerd". Tellers bovenaan als gevonden \| verwacht door Peter \| verschil — verwachtingen nooit hardgecodeerd. Eén weigerende route (403/404/5xx) = regel onder "Fouten", categorie loopt door; `$expand` geweigerd → zelfde reeks zonder expand, zichtbaar als OVERGESLAGEN. JSON stabiel gesorteerd. Exit 1 bij fouten. | GEBOUWD + GETEST (18 tests); productie nog niet gemeten | `backend/app/migratie/schoonlijst.py`, `cli_cmd.py`; `tests/migratie/test_schoonlijst.py` |
+| **Gedeelde RLZ-lezer** | `app/rlz/lezen.py::lees_collectie` — één gepagineerde reeks ($top/$skip, 200), `$expand`-terugval bij 400, fout als waarde (nooit crash), `heeft_bijlage` (Uploads-check, None = niet vast te stellen). Alleen GET. | GEBOUWD (getest via D1/D2) | `backend/app/rlz/lezen.py` |
+| **D2 Migratie 0130 — `boekhouding.pand`** | id, administratie_id (FK), `code` = genormaliseerde adres-sleutel (uniek per administratie: `ux_pand_code`), adres, plaats, postcode, aankoopdatum, verkoopdatum, `notaris_dossiernummers` jsonb `[]`, herkomst (`afgeleid`\|`mens`, CHECK), status (`voorstel`\|`bevestigd`\|`in_handel`\|`verkocht`\|`vervallen`, CHECK), aangemaakt_op/gewijzigd_op. RLS 0071-patroon, GRANT zonder DELETE. | GEBOUWD; metadata-guard groen; `make migrate` dev = coördinator | `backend/migrations/versions/0130_pandenregister.py`, `app/panden/models.py` |
+| **D2 Migratie 0130 — `boekhouding.pand_boeking`** | id, administratie_id, pand_id (FK, NOT NULL), rlz_document_id, rlz_boekstuknummer, rlz_collectie, document_id (FK document), **`bron_sleutel`** = `rlz:<id>`/`doc:<id>` — de uitvoerbare vorm van "uniek op (administratie, coalesce(rlz_document_id, document_id), pand)" zonder expressie-index (`ux_pand_boeking_bron_pand`); CHECK "één van beide bronnen gevuld"; soort (`aankoop`\|`verkoop`\|`kosten`\|`overhead`), herkomst (`voorstel`\|`mens`), zekerheid (`hoog`\|`midden`\|`laag`), reden, datum, bedrag, bevestigd_door/op. RLS, GRANT zonder DELETE. | GEBOUWD | idem |
+| **D2 Afleiding (puur, geen AI)** | `app/panden/afleiding.py`: `adres_uit_tekst` (NL straat op suffixlijst + huisnummer + toevoeging + optioneel postcode/plaats; vulwoorden gestript; twee adressen = meerduidig → None, nooit gokken), `dossiernummers_uit_tekst` (`2025.058870.01`, `2026/014221`, "dossier …"; datums uitgesloten), `notaris_herkenning` (Ouwerkerk/Ouwekerk, Buma Algera = bekend; generiek "notaris/notariaat/notarissen"), `classificeer`: memoriaal RLZ-06 mét adres + notaris-PDF/dossier → **aankoop hoog**, adres alleen → midden, alleen dossier → laag; verkoopfactuur op notaris mét adres → **verkoop hoog**, adres zonder notaris → midden, alleen dossier → laag; inkoop adres+dossier/notaris → kosten hoog, adres → midden, dossier → laag; niets → geen pand-signaal (kandidaat Overhead, mens in run 2). | GEBOUWD + GETEST (59 parametrische tests) | `backend/app/panden/afleiding.py`; `tests/panden/test_afleiding.py` |
+| **D2 Service `leid_af`** | Leest ManualJournals (`$expand=JournalEntryDiary`, terugval), SalesInvoices en PurchaseInvoices (`$expand=Entity`) gepagineerd; bijlagecheck alleen op memorialen mét adres/dossier (begrensd); bundelt per pand-code (aankoopdatum = vroegste aankoop, verkoopdatum = laatste verkoop, dossiers samengevoegd, plaats/postcode uit het eerste document dat ze draagt); alleen-dossier-documenten haken aan bij het pand dat het dossier al draagt, anders dossier-pand `dossier-<nr>` (adres onbekend) voor de mens. **Default dry-run** (leest DB, schrijft niets, rapporteert "zou nieuw zijn / bestaand voorstel / mens_beschermd"); `--schrijf` = upsert van VOORSTELLEN (pand status `voorstel` herkomst `afgeleid`; koppeling herkomst `voorstel`), idempotent, **mens wint** (herkomst `mens` of status ≠ voorstel of bevestigd_op gevuld = nooit overschreven, geteld als beschermd), audit `pand_voorstel_aangemaakt/bijgewerkt` + `pand_boeking_voorstel_aangemaakt/bijgewerkt` (oud → nieuw). Overhead-project: alleen gerapporteerd uit `project_cache` (aanwezig / ontbreekt — aanmaken in run 2; projectaanmaak = RLZ-write via `put_project`, bewust niet in deze run). AI-aanvulling uit de PDF: niet gebouwd — seam = `BoekingsFeit.tekst` (run 2, mét mens-bevestiging). | GEBOUWD + GETEST (10 DB-tests) | `backend/app/panden/service.py`, `cli_cmd.py`; `tests/panden/test_service.py` |
+| **CLI-registratie** | `app/cli.py`: `register_migratie`/`register_panden` + twee dispatch-regels; `migrations/env.py` importeert `app.panden.models`. | GEBOUWD | `backend/app/cli.py`, `backend/migrations/env.py` |
+
+**Meetrecept (productie, ná deploy van de commit die 0130 + beide commando's draagt; regel Peter 08-09 — alleen op de
+gedeployde job-image).** De administratie-UUID vindt Peter via Instellingen › Administraties › Vastgoedgroep Nederland (de
+detailpagina-URL draagt de uuid, begint met `cc07e461`); het commando accepteert óók een naamdeel, dus de uuid is niet
+nodig:
+```
+gcloud run jobs execute rlz-reconciliatie --region europe-west4 --wait \
+  --args="-m,app.cli,migratie-schoonlijst,--administratie,Vastgoedgroep,--json-uit,/tmp/schoonlijst.json,--verwacht,concepten=17\,dubbelen=3\,open_bankregels=44\,dubbele_iban=1"
+gcloud run jobs execute rlz-reconciliatie --region europe-west4 --wait \
+  --args="-m,app.cli,pandenregister-afleiden,--administratie,Vastgoedgroep,--json-uit,/tmp/pandenregister.json"
+```
+(De komma's binnen `--verwacht` moeten voor gcloud ontsnapt of via `--args=^:^…` met een andere scheider meegegeven
+worden; zonder `--verwacht` toont het rapport "—" in de kolom "verwacht".) Verwachte uitkomst schoonlijst: tellers 17 / 3
+(3× € 20.000 op 15-08, één groep) / 44 / 1 (spaarrekening) naast "gevonden"; categorie (e) hangt af van de Uploads-checks
+(default 200 — bij meer memorialen `--max-bijlage-checks` verhogen). Verwachte uitkomst afleiding (dry-run): panden uit de
+mockup (Goeverneurlaan 310, Bleijeheiderstraat 1, Gustaaf Gelderstraat 12, Jan Collongstraat 8, Kerkstraat 44) als
+voorstel mét dossiers en aankoop-/verkoopdatum, regel "Overhead-project ontbreekt — aanmaken in run 2", geen enkele
+DB-schrijfactie. Leesbaar in de job-logs (Cloud Logging); `/tmp` in de job is vluchtig — de JSON is alleen leesbaar als de
+run 'm ook print of naar een bucket schrijft (open punt, zie beslispunten).
+
+**Werkt in productie: nog niet gemeten** (gcloud-sessie verlopen tijdens de run; productie mag pas ná de deploy geraakt
+worden).
+
+**Beslispunten Peter.**
+1. Dubbelen-criterium in de schoonlijst is bewust ruimer dan `rlz_dubbel` (bedrag + datum + relatie i.p.v. referentie) —
+   akkoord dat de opruimlijst ruis mag dragen?
+2. `pand_boeking.pand_id` is NOT NULL: een boeking "overhead" bestaat in run 1 niet als rij (overhead = geen pand). Voor run 2
+   óf een pseudo-pand "Overhead" per administratie, óf `pand_id` nullable + andere uniekheid — keuze vóór het toewijs-scherm.
+3. Statussen `in_handel`/`verkocht` worden in run 1 niet gezet (alles blijft `voorstel`); afleiding uit aankoop-/verkoopdatum
+   bij bevestiging (run 2) of al bij het voorstel?
+4. JSON-uitvoer van een Cloud Run-job landt in `/tmp` van de container: rapport alleen via logs. Wil Peter een bucket-pad
+   (documentenbucket, map `migratie/`) als `--json-uit`-doel in run 2?
+5. Alleen-dossier-panden (`dossier-<nr>`, adres onbekend): mens vult adres in run 2 — akkoord dat die als apart voorstel
+   verschijnen i.p.v. verborgen te blijven?
+
+**Aangrenzende gaten.**
+- *Lifecycle:* pand `vervallen` en koppeling terug-naar-voorstel (na storno/correctie in RLZ/Odoo) hebben nog geen pad
+  (run 2/3); geen verwijderen (GRANT zonder DELETE). Een pand dat in RLZ verdwijnt (document gestorneerd) blijft als
+  voorstel staan tot een mens 'm laat vervallen.
+- *Consistentie:* koppelcontract/registers ongewijzigd; `bron_sleutel`-patroon is nieuw (elders geen coalesce-uniekheid) —
+  bij hergebruik in andere tabellen als conventie opnemen in Platform `conventies.md`. De schoonlijst gebruikt `Header`/
+  `Description`/`Reference` als omschrijving — op PurchaseInvoices is `Description` = regel-1-tekst (07-09-feit), dus de
+  kop-omschrijving is `Header`.
+- *UX:* geen scherm in run 1; het toewijs-scherm (mockup) moet de zekerheid-chips, "mens wint" en de dossier-panden tonen.
+- *Compliance:* geen PII-velden in `pand`/`pand_boeking` (adressen zijn objectgegevens); audit op elke schrijfactie; de
+  Uploads-check leest alleen metadata, nooit bijlage-inhoud; geen AI-call in deze run (AVG-gate niet geraakt).
+
+<!-- bundel-10-09:D_docs -->
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 1: MOCKUP PANDENREGISTER + ODOO-VERKENNING (bundel 10-09 blok D3/D4; wacht op akkoord Peter; geen migratie)
+
+**Aanleiding:** besluit Peter 10-09 — Vastgoedgroep Nederland B.V. (administratie `cc07e461…`, RLZ-VGG, niet btw-plichtig, handel in
+panden via notarisafrekeningen) gaat in drie runs naar Odoo company 6 (leeg). Run 1, delen 3 + 4: (D3) het toewijzingsscherm en het
+pand-dashboard hebben SCHERMIMPACT → in deze run uitsluitend een klikbare mockup, bouw in run 2 ná akkoord; (D4) lees-only verkenning
+voor run 2 (bankafschriften, reconciliatiemodellen, verkoopfactuur met notaris) in `verkenning/odoo-verkenning.md`. Geen Odoo-writes,
+geen code, geen migratie.
+
+**Pre-feature-check:** (1) BESLISSINGEN "ODOO-ADAPTER BLOK E", "ODOO-AFRONDINGSRUN 04-09", "ODOO-SLOTSTUK 04-09 — OVERZICHT" — de
+adapter (inkoop, memoriaal, tegenboeken, projectmapping = analytic account in plan Project, kanteldatum, lock-date-verschuiving) staat
+en is live bewezen op company 1; bank/verkoop in Odoo waren tot nu expliciet buiten scope (§2.4 "alleen mapping", §2.6). (2) "INZICHT ›
+PROJECTEN KANTOORBREED" = het lijstpatroon (kop met chips, AdministratieCombobox als filter, tabel, tellers "N over M administraties",
+lege stand) waarop het pandenregister voortbouwt; "UX-PATRONEN ALS NORM" = voorstel-kaart (alle specs + zekerheid-chip + reden),
+lege stand = actie, één primaire knop + ⋯, bundelen vóór tonen. (3) Kernprincipe 7: administratie = filter, nooit poort; nav-regel/tab,
+nooit tegel. (4) Het autoboek-kandidaten-scherm en de bank-voorstel-kaart zijn de referentiepatronen voor "bulk bevestigen mét uitkomst
+per rij". Nergens stond al een panden-/overheadmodel — dit is nieuw domein (analytische laag, nooit geboekt, zelfde lijn als de
+integrale projectmarge).
+
+**UX-review (verplicht bij schermimpact):** past in de bestaande IA als nav-regel Inzicht › Panden (naast Reconciliatie, Projecten,
+Projectverdeling) met drie tabs; geen nieuwe tegel, geen verplichte administratie-picker; geen bestaande mockup hoeft aangepast —
+`pandenregister.html` is de nieuwe bouwnorm ná akkoord; ontwerpnotities ①–⑧ zijn onderdeel van het akkoord.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| D3 mockup — IA + tokens | Eén zelfstandig HTML-bestand, vanilla JS, tokens + componentklassen 1-op-1 uit `kantoor-designpass-v2.html` (inkt-zijbalk, teal = actie, groen = status, licht + donker). Nav-regel Inzicht › Panden mét teller (= niet-toegewezen boekingen). Tabs Register / Toewijzing / Dashboard per pand. Administratie-combobox = filter (lege administratie → lege stand mét actie, nooit poort). Tabellen in `.tabel-scroll`; headless-Chrome-toets 1440/1024 px, licht + donker, drie schermen: `scrollWidth = innerWidth` (geen pagina-overflow). | MOCKUP KLAAR — wacht op akkoord Peter | `mockup/pandenregister.html` |
+| D3 (1) Register | Tabel code/adres · administratie · status (in handel / verkocht / **voorstel** uit een notarisafrekening) · aankoop (datum + koopsom) · verkoop of "onverkocht" · dossiers · gekoppelde boekingen (+ chip "n voorstel") · marge tot nu (verkocht = netto mét bruto eronder; onverkocht = "kostprijs tot nu"). KPI's: in handel, netto marge verkocht, **overhead niet toegerekend** (maanden zonder pand), te beslissen. Rij-klik → dashboard. Pand-voorstel = rij met "Bevestig pand"/"Afwijzen…" en telt pas ná bevestiging. | MOCKUP KLAAR | idem, `#scherm-register` |
+| D3 (2) Toewijzing | Lijst niet-toegewezen boekingen (bank + inkoop) met voorstel-kaart per rij: pand-voorstel of "Overhead" of expliciet "geen voorstel" + reden, zekerheid-chip **hoog** (adres/notaris/kenmerk letterlijk) / **midden** (alleen plaats of leverancier-historie, één kandidaat) / **laag** (historie mét tegenindicatie) — deterministische regelset, geen AI-score. Bulk: "Selecteer alle rijen met een voorstel" + "Bevestig voorstellen (n)"; per rij "Bevestig", "Ander pand…" (combobox alle panden + Overhead), "Overhead". Uitkomst per rij (chip + herkomst + "Ongedaan maken"), log "Vandaag bevestigd" (audit oud→nieuw, geheugen). Alles toegewezen → lege stand mét uitleg (bank-sync vult, opt-in auto-bevestigen run 2 default UIT). | MOCKUP KLAAR | idem, `#scherm-toewijzing` |
+| D3 (3) Dashboard per pand | Kop: adres, administratie/backend, Odoo-analytic + chip "toerekening alleen in de module", dossiers; KPI's aankoop / verkoop of onverkocht / bruto / netto (of directe kosten + overhead / kostprijs tot nu). Blok directe kosten (tabel mét herkomst-chip notaris/handmatig/voorstel; open voorstellen grijs eronder). Blok **toegerekende overhead per maand** (12 maanden) mét de sleutel "in handel per maand": `overhead(maand) ÷ panden in handel(maand)`, aankoop- én verkoopmaand tellen VOL, daarna niet; nul panden → rij "niet toegerekend" mét bedrag; rekenregel per maand in een uitklap (bedrag ÷ n = deel, dragers, restcent, Σ ✓). Margeblok: bruto = verkoop − aankoop; netto = bruto − directe kosten − overhead; onverkocht → kostprijs tot nu = aankoop + directe kosten + overhead. **Sleutel wordt ín de mockup berekend** (JS-rekenlaag, centen, restcent naar laagste code) met console-zelftest Σ per maand = overhead. Node-run: 12/12 maanden OK; voorbeeld: Dorpsstraat 12 netto € 5.017,48 (bruto 57.500 − 43.710 − 8.772,52), Kerkstraat 4a netto **−€ 26.195,85** (bewust: OVB + keuken > bruto), Marktplein 7 kostprijs tot nu € 222.753,31. | MOCKUP KLAAR | idem, `#scherm-dashboard`, functies `inHandel`, `toerekeningPerMaand`, `cijfers` |
+| D3 ontwerpnotities ①–⑧ | ① sleutel-definitie (vol/vol, centen, restcent, alleen bevestigde panden, voorstel met terugwerkende kracht); ② aankoop + verkoop in dezelfde maand = één volle maand; ③ overhead vóór het eerste pand / nul panden = niet toegerekend, nooit doorschuiven (te bevestigen); ④ definitie overhead (gemarkeerd, onbeslist telt nergens; koopsommen uit de notarisafrekening); ⑤ corrigeren van een voorstel + zekerheidsregels; ⑥ terugdraaien = nieuwe toewijzing append-only, pand nooit verwijderen (archiveren, uit de sleutel vanaf archiveringsmaand — te bevestigen); ⑦ Odoo-mapping pand = analytic account plan Project company 6, toerekening nooit als memoriaal geboekt; ⑧ geen RLZ-/Odoo-write vanuit dit scherm in run 2 (analytic_distribution + analytic-aanmaak = run 3 ná testdatabase-bewijs). | TE BEVESTIGEN DOOR PETER | mockup, blok "Ontwerpnotities" |
+| D4 verkenning §11 — stand company 6 [live] | Dagboeken F(48)/LF(49)/BNK1(53, default 2175 `103001`, suspense 398)/MEM(50); `bank_statements_source undefined` overal; 0 moves/statements/regels (ook company 1 heeft 0 bankregels); lock dates leeg; analytic Intern(105)/Buitendienst(106); partner "Vastgoedgroep Nederland B.V." (65) bestaat, geen notaris-partners; geen `account.online.link`; BNK1 zonder IBAN (klikpunt). 47 read-only calls, geen 429. | UITGEVOERD | `verkenning/odoo-verkenning.md` §11.0 |
+| D4 (a) bankafschriften | `account.bank.statement.line`: `date` + `journal_id` verplicht, `payment_ref` (Label, docs: verplicht), `amount`, `partner_id`/`partner_name`, `account_number`, `statement_id` optioneel, `ref`, `narration`, `unique_import_id` (readonly-vlag — via create zetbaar = AANNAME, bewijsstap 1), `move_id` ro (Odoo maakt de move zelf: 103001 ↔ suspense 103002). Statements optioneel, wél saldocontrole (`balance_end_real` → `is_valid`). Odoo Online: synchronisatie (Salt Edge/Ponto/Enable Banking, 12 u) + UI-import CAMT/CSV/OFX/QIF/CODA = niet-API. Idempotentie = zoek-vóór-create (company, journal, date, amount, ref) + lokale mapping; geen gepubliceerde rate limit. | UITGEVOERD (docs + live) | §11.1 |
+| D4 (b) reconciliatiemodellen | **Live correctie op de opdrachttekst:** Odoo 19 kent geen `rule_type`/`counterpart_type`/`match_partner`/`auto_reconcile`/tolerantie-velden meer (500 "Invalid field 'rule_type'"); alleen `trigger` (`manual`/`auto_reconcile`), dagboek/bedrag/label/partner-voorwaarden, `line_ids` (amount_type fixed/percentage/percentage_st_line/regex, `analytic_distribution`), `mapped_partner_id`. Factuur-matching is ingebouwd (label ↔ nummer/kenmerk). Widget `bank.rec.widget` bestaat niet als API-model. Standaardmodellen 13/14 ongebruikt. **Advies: onze matchmotor + AI-poort blijft leidend, Odoo-modellen alleen lezen; nooit `auto_reconcile` (Odoo-kant automatisering buiten audit/volumerem).** | UITGEVOERD (docs + live) — advies = beslispunt | §11.2 |
+| D4 (c) verkoopfactuur notaris | `account.move` `out_invoice`, journal 48, partner notaris (zoek-vóór-create KvK → naam), `invoice_date = date` expliciet, `invoice_date_due` + termijn False, `ref`/`payment_reference` dossier, regel `quantity 1 × price_unit` koopsom, **`tax_ids = [[6,0,[]]]`** (niet btw-plichtig → geen btw-regel, geen rubriek), `analytic_distribution` = pand; omzetrekening + partner-keuze (notaris vs koper) = beslispunten. Inkoopkant notarisafrekening AANKOOP = bewezen `in_invoice`-mechaniek [§4]. | UITGEVOERD (mapping; geen bewijs-boeking) | §11.3 |
+| D4 (d) bewijscyclus TESTdatabase | 7 stappen op company 6 van de gedupliceerde TESTdatabase ("test"-modus): IBAN-klikpunt → 3× statement line create (incl. dubbele `unique_import_id`) → statement + saldocontrole → notaris-partner + verkoopfactuur + post (analytic line +koopsom, `amount_tax 0`) → reconcile bank ↔ factuur (routes i/ii/iii, eerste werkende vastleggen) → directe kosten via bankregel + pand-analytic → terugweg (reversal, reconcile losmaken; nooit unlink) → nameting. Alles `TEST-VGG-`, kill-switch, audit-log. | VOORBEREID — wacht op secrets | §11.4 |
+| D4 (e) vraag aan Peter | `ODOO_TEST_URL` + `ODOO_TEST_API_KEY` als Secret Manager-secrets (+ lokaal `verkenning/.env`), nooit in code/git/chat; key max. 3 maanden, geen productiekey hergebruiken. | OPEN — klikpunt Peter | §11.5 (e) |
+| D4 (f) beslispunten run 2 | 1 wie levert de bank aan Odoo (A wij schrijven / B Odoo-sync + wij lezen; advies B eindbeeld, A brug); 2 statements per dag mét saldocontrole; 3 partner notaris of koper; 4 omzet-/activarekening panden (voorraad vs vaste activa); 5 pand = analytic in plan Project (advies) of eigen plan; 6 modellen alleen lezen + tonen in probe; 7 reconcile-route pas ná bewijs, geen `app/odoo/bank.py` ervoor; 8 IBAN op BNK1; 9 RLZ-VGG-overstap volgt het Universal-patroon (btw-mapping triviaal, gb-mapping niet). | OPEN — beslispunten Peter | §11.5 (f) |
+
+**Meetrecept:** n.v.t. voor productie (mockup + verkenning, geen code). Mockup: open `mockup/pandenregister.html`, tab Dashboard,
+pand P-2025-07 → overhead-uitklap "feb 2026": € 1.975,00 ÷ 3 = € 658,34 (restcent naar P-2025-07), totaal overhead € 8.772,52, netto
+€ 5.017,48; tab Register KPI "Overhead niet toegerekend" = € 1.800,00 (aug 2025); Toewijzing: "Selecteer alle" → "Bevestig voorstellen
+(6)" → zes uitkomst-chips + log, rij Hoveniersbedrijf blijft (geen voorstel), "Ongedaan maken" zet terug. Console: "Sleutel-zelftest …
+✓". Verkenning: `git diff verkenning/odoo-verkenning.md` = alleen §11 aangehecht (append-only). Bewijscyclus (d): pas ná secrets, op de
+TESTdatabase, rapportregel per stap "werkt op de testdatabase: ja/nee".
+
+**Werkt in productie:** n.v.t. (geen productiecode; geen Odoo-writes; testdatabase nog niet beschikbaar).
+
+**Beslispunten Peter:** akkoord mockup incl. ontwerpnotities ①–⑧ (bouw run 2); de negen run-2-beslispunten uit §11.5 (f); secrets voor
+de testdatabase (e); klikpunten in Odoo: IBAN op BNK1 company 6, notaris-partners, keuze omzet-/activarekening.
+
+**Aangrenzende gaten:** *lifecycle* — pand archiveren (nooit verwijderen) en uit de sleutel vanaf de archiveringsmaand; een verkocht
+pand dat later wordt teruggekocht = nieuw pand-record (zelfde adres, nieuwe code) — te bevestigen; verkoopregistratie ná verkoop
+corrigeren = nieuwe notarisafrekening koppelen, oude blijft in de tijdlijn. *Consistentie* — de overheadsleutel is een analytische
+laag naast de integrale projectmarge (nooit geboekt): dezelfde regel als "integrale marge = analytische laag" bij projecten; de
+zekerheid-chips volgen de bank-matchmotor (GROEN/ORANJE + `bron`); de Odoo-pand-mapping hergebruikt de projectmapping (analytic plan
+Project) — een eigen plan zou een derde mapping-soort worden. *UX* — Inzicht-groep groeit naar vier regels (Reconciliatie, Projecten,
+Projectverdeling, Panden): nog geen schaalprobleem, wél de vraag of "Panden" alleen zichtbaar moet zijn met een administratie-opt-in
+`panden_ingeschakeld` (zoals uren/voorraad) — advies: ja, opt-in per administratie, nav-regel verborgen zonder één administratie mét
+opt-in in scope. *Compliance* — koopsommen uit notarisafrekeningen bevatten persoonsgegevens van kopers/verkopers (AVG: pseudonimiseren
+ná relatie-einde + 7 jaar); de reconciliatiemail krijgt een teller "boekingen zonder pand > 7 dagen" zodat toewijzing nooit stil
+achterloopt; geen BSN's uit notarisstukken extraheren (hard principe).
+
+<!-- bundel-10-09:F -->
+## BUGFIX 10-09 (2) — ACTIVATIEFLOW: MISLUKTE OPSLAG TOEGANGSCODE EERLIJK GEMELD (bundel 10-09 blok F; besluit Peter 10-09; geen migratie)
+
+**Aanleiding (Peter 10-09, letterlijk):** "Klein: activatieflow toont een mislukte eerste opslag van de toegangscode eerlijk
+(stelCodeIn geeft al true/false; nu de melding + geen doorgang naar de wachtrij zonder bewezen opslag). Zelfde klasse als de
+bugfix van vanmorgen." De ochtend-bugfix ("BUGFIX 10-09 — TOEGANGSCODE WIJZIGEN ANDROID") liet `stelCodeIn` al true/false
+teruggeven, maar noteerde expliciet onder "Niet gewijzigd": "`AppActiveren` toont dat nog niet — bewust buiten deze bugfix".
+
+**Pre-feature-check:** het gat stond genoteerd in de sectie van vanmorgen; geen mockup-impact (bestaande acc-schermtaal:
+`acc-bio` + `acc-fout` + `acc-diag` + `acc-btn primair`, zelfde bouwstenen als het link-ongeldig-scherm en Toegang ›
+Diagnose). **UX-review:** past in de bestaande IA van de app-activatie (één extra fase tussen code-kiezen en wachtrij);
+geen nieuwe navigatie, geen nieuw scherm-type.
+
+**Gevonden tijdens de bouw — tweede gat in dezelfde klasse (`api/appSlot.ts::stelCodeIn`):** bij een mislukte schrijfactie
+zette de functie het NIET-opgeslagen anker tóch als ontgrendeld anker in het geheugen én versleutelde ze een bestaand plain
+refresh-token (legacy-toestel) met dat anker. Het anker bestond nergens in de opslag → ná de eerstvolgende koude start was
+het token onleesbaar en stond de gebruiker buiten. De RTL-test op het legacy-pad van `AccordeurApp` legde dit bloot
+(`refresh_token` kreeg een `slot.v1.`-prefix terwijl `appslot_slot` ontbrak). Gefixt: `false` = oude stand hersteld, anker
+NIET in geheugen, plain token blijft plain, return vóór de token-omzetting.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Nieuwe fase `slot_fout` in de activatieflow | `stelCodeIn` → false: GEEN `naGeactiveerd`, GEEN voorwaarden-POST, GEEN wachtrij; scherm "Toegangscode niet opgeslagen" met de melding "De toegangscode kon niet veilig op dit toestel worden opgeslagen — probeer het opnieuw. Lukt het niet, neem contact op met het kantoor." (`role="alert"`) | GEBOUWD + GETEST | `frontend/src/accordeur/AppActiveren.tsx` (`toegangscodeGekozen`, fase `slot_fout`) |
+| Gedeeld foutscherm | `SlotOpslagFout` — melding + diagnoseregel (`koudeStart.diagnoseRegel` incl. koude start, verbindingsfout én laatste slotfout: handeling + sleutelNAAM + reden, nooit een waarde; native app-build via `nativeAppBuild`, verhuisd uit `ToegangInstellingen` naar `koudeStart.ts`) + knop "Opnieuw proberen" | GEBOUWD + GETEST | `frontend/src/accordeur/appslot/SlotOpslagFout.tsx` (`SLOT_OPSLAG_MISLUKT_MELDING`) |
+| "Opnieuw proberen" hergebruikt het activatieresultaat | Terug naar `PincodeKiezen` op hetzelfde `resultaat` (state). **Waarom geen tweede `activeerApp`:** `POST /auth/app/activeren` is NIET idempotent — de uitnodiging/activatiecode is éénmalig (een tweede POST geeft 409 "al op een ander toestel gebruikt"); het toestel-token in `resultaat` is al uitgegeven en blijft geldig. Er staat nog niets lokaal waar een sessie op rust (het refresh-token gaat pas bij `naGeactiveerd` de opslag in), dus opnieuw proberen is puur lokaal en veilig. | GEBOUWD + GETEST | `AppActiveren.tsx` (commentaar boven `toegangscodeGekozen`) |
+| Zelfde patroon legacy-pad | `AccordeurApp` (legacy native toestel met plain token, `slotStatus === 'geen'` + levende sessie): `stelCodeIn` → false → `SlotOpslagFout` i.p.v. `setSlotStatus('ontgrendeld')`; "Opnieuw proberen" toont `PincodeKiezen` opnieuw | GEBOUWD + GETEST | `frontend/src/accordeur/AccordeurApp.tsx` (`legacySlotFout`) |
+| `stelCodeIn` bij false | Oude stand hersteld, anker NIET in geheugen (`isOntgrendeld()` false), bestaand plain token NIET omgezet, foutenteller onaangeraakt; diagnose gevuld door `schrijf()`/`schrijfSlotBewezen` | GEBOUWD + GETEST | `frontend/src/api/appSlot.ts::stelCodeIn` |
+| Lokale audit | `schrijfAppSlotAudit('toegangscode_opslag_mislukt')` (localStorage `appslot_audit`, nooit de code, nooit naar de server); type `AppSlotAuditRegel['actie']` uitgebreid | GEBOUWD + GETEST | `frontend/src/accordeur/appAuthApi.ts` |
+| Niet gewijzigd | Android-/iOS-plugins, biometrie-laag, `wijzigCode`-pad van vanmorgen, servercontract §5b | — | — |
+
+**Tests (letterlijk):** `appSlot.test.ts` 18 (nieuw: "mislukte eerste opslag (10-09 (2)): false, slot NIET ontgrendeld, plain
+token blijft plain, geen slot-waarde, diagnose gevuld" + tweede poging slaagt); `AppActiveren.test.tsx` 16 (nieuw: false →
+alert-melding, diagnoseregel bevat "laatste slotfout: instellen appslot_slot (…)" en NIET de code, `naGeactiveerd` 0×, geen
+voorwaarden-POST, audit-regel; "Opnieuw proberen" → code kiezen → tweede `stelCodeIn` met de nieuwe code → `naGeactiveerd` 1×,
+`/auth/app/activeren` precies 1×); `AccordeurApp.test.tsx` 9 (nieuw: Keystore weigert `appslot_slot` → melding + diagnose
+"schrijf appslot_slot (Error: KeyStoreException: write failed)", geen "Alles is bij", token niet `slot.v1.`, geen
+`appslot_slot`; herstel → flow + token achter het slot); `ToegangInstellingen.test.tsx` 10 + `koudeStart.test.ts` groen
+(`nativeAppBuild`-verhuizing). `npx tsc -b` groen.
+
+**Meetrecept (Peter, ZTE of emulator — productie-nameting kan alleen op een toestel):** (1) verse installatie van de
+eerstvolgende build ná deze commit; (2) activeren met een code/link; (3) om het faalpad te forceren in de emulator: Keystore
+tijdelijk onbruikbaar maken is niet reproduceerbaar zonder debug-hook → alternatief = PWA-slotmodus in Chrome mét IndexedDB
+geblokkeerd (Site-instellingen › Gegevens blokkeren) → code kiezen → verwacht: scherm "Toegangscode niet opgeslagen" mét
+diagnoseregel "laatste slotfout: schrijf appslot_slot (…)", géén wachtrij; (4) IndexedDB weer toestaan → "Opnieuw proberen" →
+code kiezen → wachtrij; force-stop → koude start → ontgrendelen met die code werkt. **Werkt in productie: nog niet gemeten**
+(geen deploy in deze run).
+
+**Beslispunten Peter:** geen.
+
+**Aangrenzende gaten:** (lifecycle) een mislukte opslag ná een geslaagde server-activatie laat de toestel-rij server-side
+"actief" staan zonder dat het toestel bruikbaar is; herstel = nieuwe uitnodiging (bestaand pad, kantoor ziet de rij in
+Toestellen) — geen automatische intrekking gebouwd, want de gebruiker kan meteen opnieuw proberen. (consistentie) `AppSlotScherm`
+(ontgrendelen) toont bij een leesfout geen diagnoseregel — buiten deze opdracht. (UX) geen mockup-wijziging nodig.

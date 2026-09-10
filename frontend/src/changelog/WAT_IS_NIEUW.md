@@ -6,6 +6,23 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-10 — Autoboeken per administratie, slimmere bankvoorstellen met AI-controle, eerlijke activatie
+
+<!-- bundel-10-09:A -->
+- Per administratie kunt u nu één schakelaar "Autoboeken (leren en boeken)" aanzetten. Het systeem leert dan zelf: heeft u van een leverancier drie keer op rij precies dezelfde boeking gemaakt (zelfde grootboekrekening, btw en project), dan boekt de volgende factuur van die leverancier automatisch — mits alle controles groen zijn. U hoeft geen lijst met leveranciers meer bij te houden.
+- De lijst per leverancier op de tab Boeken & AI is nu een uitzonderingenlijst: u ziet per leverancier "leert (n/3)", "boekt automatisch" of "uitgezonderd". Wilt u een leverancier nooit automatisch laten boeken, dan zondert u hem uit met een reden; vrijgeven kan altijd.
+- Draait u een automatische boeking terug (tegenboeken of opnieuw boeken), dan begint het leren voor die leverancier opnieuw bij 0 van 3; dat staat in de tijdlijn van de factuur.
+- Een administratie die kosten doorbelast aan andere entiteiten kan deze schakelaar niet aanzetten: daar blijft de verdeling mensenwerk en het systeem zegt dat er ook bij.
+- In het overzicht Automatiseringen (Instellingen › Boeken en Inzicht › Reconciliatie) ziet u per administratie hoeveel leveranciers leren, automatisch boeken of zijn uitgezonderd, en hoeveel facturen vandaag automatisch zijn geboekt.
+
+<!-- bundel-10-09:B -->
+- Terugkerende bankafschrijvingen zonder factuur (huur, abonnementen, verzekeringen) krijgen nu automatisch een boekvoorstel uit de eigen historie: staat dezelfde tegenrekening met dezelfde omschrijving al minstens drie keer op één grootboekrekening, dan ziet u "historie-regel — 3 van 3 op …" en boekt het systeem die mutatie zelf zodra automatisch boeken voor de administratie aan staat. Wijkt de historie af, dan staat er "k van n" en bevestigt u zelf.
+- Vóór elke automatische bankboeking kijkt een AI-controle mee of het voorstel plausibel is voor deze omschrijving, tegenpartij en bedrag. De AI kiest nooit zelf een rekening; bij twijfel blijft de mutatie gewoon open in uw werkvoorraad met de reden als label. Is de AI niet beschikbaar, dan wordt er niet geboekt en ziet u dat ook.
+- Dezelfde plausibiliteitscontrole staat als extra poort op automatisch geboekte inkoopfacturen; een beheerder kan die onder Instellingen › Boeken uitzetten (standaard aan).
+
+<!-- bundel-10-09:F -->
+- Lukt het bij het activeren van de goedkeur-app een keer niet om uw nieuwe toegangscode veilig op het toestel op te slaan, dan zegt de app dat nu eerlijk en gaat hij niet door naar uw facturen. U ziet de melding, een korte diagnoseregel om naar het kantoor te sturen (zonder uw code) en een knop "Opnieuw proberen" — u hoeft de activatiecode of link niet opnieuw in te voeren.
+
 ## 2026-09-10 — Toegangscode wijzigen in de app werkt weer betrouwbaar
 
 <!-- bugfix 10-09: toegangscode wijzigen Android (ZTE), één codepad native + PWA -->

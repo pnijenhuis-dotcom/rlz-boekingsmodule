@@ -653,3 +653,182 @@ Zelfde dev-administratie `faae29c5` (Odoo company 1, oud RLZ-id = TESTADMIN `8db
 `controle_mislukt` "RLZ-verleden niet toetsbaar: geen bewaarde RLZ-credential" — leesbaar als "Reeleezee-verleden niet
 controleerbaar" mét handelingsperspectief (login opnieuw registreren); (d) `OdooInkoopPort.toets_geboekt` houdt zijn
 `van_toepassing=False`-vangnet voor rechtstreekse aanroepen, de reconciliatie raakt die tak niet meer.
+
+## §11 Vastgoedgroep Nederland → Odoo — verkenning run 1 (10-09-2026, lees-only)
+
+**Status: UITGEVOERD, strikt read-only — feitenbasis voor run 2 (bankafschriften, reconciliatie, verkoopfactuur met notaris als partner).**
+Aanleiding: besluit Peter 10-09 (bundel 10-09 blok D) — Vastgoedgroep Nederland B.V. (administratie `cc07e461…`, RLZ-VGG, niet
+btw-plichtig, handel in panden via notarisafrekeningen) gaat naar Odoo company 6 (leeg). Deze sectie is blok D4: geen Odoo-writes,
+geen instellingen gewijzigd. Bronnen per feit gemarkeerd: **[docs]** = officiële Odoo 19.0-documentatie (URL genoemd), **[live]** =
+`fields_get`/`search_read`/`search_count`/`read_group` met `limit` op universal-steigers.odoo.com (script
+`scratchpad/d4_odoo_readonly.py`, 47 JSON-2-calls, 63/188/944 ms min/mediaan/max, geen 429; key nergens geprint), **[aanname]** =
+niet geverifieerd, te bewijzen in de bewijscyclus (d), **[§n]** = eerder vastgesteld in deze verkenning.
+
+### 11.0 Stand company 6 en de API-randvoorwaarden [live]
+
+| Feit | Waarneming |
+|---|---|
+| Company 6 | `Vastgoedgroep Nederland B.V.`, EUR, NL, `chart_template nl`, `round_globally`; **alle lock dates False**; `account_journal_suspense_account_id` = 398 `103002 Bank Suspense Account` (gedeeld id met company 1), `transfer_account_id` 401 `106001 Liquidity Transfer`, `bank_account_code_prefix 103` |
+| Dagboeken company 6 | **48 `F` sale** (default 365 `800100 Turnover NL trade goods 1`, `refund_sequence` True), **49 `LF` purchase** (default 336 `700100`), **53 `BNK1` bank** (default **2175** `103001 Bank` — eigen rekening-id per company!, suspense 398), 50 `MEM` general, 51 EXCH, 52 CABA, 54 TAX, 55 STJ. **`bank_statements_source` = `undefined` op álle dagboeken** (nog geen import of synchronisatie ooit ingesteld); `bank_account_id`/`bank_acc_number` False → er hangt nog géén IBAN aan BNK1 (klikpunt Peter vóór run 2: bankrekening op het dagboek zetten, anders geen `account_number`-match op eigen rekening). Codes verschillen van company 1 (`INV`/`BILL`/`MISC` vs `F`/`LF`/`MEM`) → dagboek-id's altijd uit de koppeling-rij, nooit hardcoden [§1.7]. |
+| Boekingen | `account.move` 0, `account.bank.statement` 0, `account.bank.statement.line` 0 — company 6 is leeg; company 1 heeft óók 0 afschriften/regels (alleen onze 20 TEST-moves: 10 in_invoice / 8 in_refund / 2 entry) → **bank in Odoo is voor de hele groep nog onbetreden terrein; geen voorbeelddata om tegen te lezen** |
+| Stamgegevens | 356 rekeningen (company 1: 355), 31 btw-codes — zelfde NL-template; analytic plan Project (1) met `Intern` (105) en `Buitendienst` (106) op company 6 + gedeelde `Test Thomas` (758); geen enkele `account.online.link` (bank-synchronisatie nergens geactiveerd) |
+| Partners | `Vastgoedgroep Nederland B.V.` bestaat al als partner 65 (groepsgedeeld, `vat NL868049025B01`, `company_registry 97433861`, customer/supplier_rank 0); **geen enkele partner met "notar" in de naam** → notarissen moeten als `res.partner` worden aangemaakt (zoek-vóór-create op KvK/naam, §2.1) |
+| API-vorm | JSON-2 `POST /json/2/<model>/<method>`, header `Authorization: bearer <key>`, `X-Odoo-Database` optioneel [docs external_api.html §Request]; **"Access to data via the external API is only available on Custom Odoo pricing plans"** [docs]; API-keys: "it is not possible to create keys that last for more than three months" → kwartaalrotatie [docs, §1.1]; programmatisch max 10 keys per gebruiker (`base.programmatic_api_keys_limit`, 422 erboven) [docs]; XML-RPC/JSON-RPC "scheduled for removal in Odoo 22 (fall 2028)" [docs]. Rate limit: docs noemen er geen; live 47 calls sequentieel zonder 429 [live] |
+| Rechten | de API-gebruiker heeft `create/write/unlink` op `account.bank.statement.line` [§1.2] — genoeg voor run 2; de hygiëne-vraag (aparte technische gebruiker per company) blijft beslispunt §5.2 (1) |
+
+### 11.1 (a) Bankafschriften in Odoo — `account.bank.statement.line`
+
+**Hoe transacties Odoo binnenkomen [docs bank/transactions.html + bank_synchronization.html]:** (1) bank-synchronisatie via
+providers (Salt Edge wereldwijd, Ponto EU, Enable Banking Scandinavië, Plaid VS/CA, Yodlee, Basiq AU), standaard elke 12 uur,
+"Fetch Transactions" handmatig, Enterprise vereist, sommige banken alleen 3 maanden terug — **een UI-/odoofin-koppeling, niet via
+onze API aan te sturen**; (2) bestandsimport via de UI: SEPA CAMT.053, CSV, XLSX, OFX, QIF, CODA (modules
+`account_bank_statement_import_camt/csv/ofx` geïnstalleerd [§1.10]); (3) handmatig/via API aanmaken van transacties. Docs: "The
+Partner field is optional to ease the reconciliation process, but the Label and Date fields are mandatory." Afschriften
+(`account.bank.statement`) zijn OPTIONEEL: "Bank statements are optional" — transacties kunnen los bestaan, een statement groepeert ze
+achteraf (knop "Statement" op een scheidingsregel in de Bank Matching-view). Odoo's eigen duplicaat-signaal: "Find Duplicate
+Transactions" (Actions-menu) op bedrag + datum + rekeningnummer; providers zetten een transactie-id.
+
+**Velden `account.bank.statement.line` [live fields_get]:**
+
+| Veld | Type | Verplicht | Readonly | Gebruik voor onze bank-sync → Odoo |
+|---|---|---|---|---|
+| `date` | date | **ja** | nee | mutatiedatum (RLZ `PaymentTransactions.Date`-equivalent) |
+| `journal_id` | m2o `account.journal` | **ja** | nee | 53 (BNK1 company 6) — uit de koppeling-rij |
+| `payment_ref` | char "Label" | nee (technisch) — docs: verplicht | nee | omschrijving van de mutatie; **Odoo matcht hierop tegen factuurnummer/betalingskenmerk** (11.2) |
+| `amount` | monetary | nee | nee | mutatiebedrag mét teken (bij = +, af = −) |
+| `partner_id` / `partner_name` | m2o / char | nee | nee | tegenpartij als bekend (IBAN↔partner-geheugen `bank_relatie_iban` hergebruiken); `partner_name` = ruwe naam uit de bank |
+| `account_number` | char "Bank Account Number" | nee | nee | tegenrekening-IBAN — voedt Odoo's partner-mapping via `res.partner.bank` |
+| `statement_id` | m2o `account.bank.statement` | nee | nee | optioneel; wij kunnen per dag/periode een statement aanmaken of weglaten (11.4 beslispunt) |
+| `unique_import_id` | char "Import ID" | nee | **ja (readonly-vlag)** | de idempotentie-sleutel van de bestandsimport (Odoo weigert een tweede import met dezelfde id). **[aanname]** via `create` wél zetbaar (readonly in `fields_get` = UI-vlag; de importmodule zet 'm zelf via create) — te bewijzen in (d) stap 1; alternatief eigen anker `ref` = onze mutatie-UUID + zoek-vóór-create op (journal, date, amount, ref) |
+| `ref` | char | nee | nee | vrij referentieveld → onze deterministische mutatie-id (UUIDv5 administratie+rekening+bank-id) |
+| `narration` | html | nee | nee | ruwe banktekst/extra details |
+| `transaction_type` | char | nee | nee | banktype (SEPA-code) |
+| `partner_bank_id` | m2o `res.partner.bank` | nee | nee | gekoppelde IBAN-rij |
+| `foreign_currency_id` / `amount_currency` | m2o / monetary | nee | nee | n.v.t. (EUR) |
+| `move_id` | m2o `account.move` | ja | **ja** | **Odoo maakt bij `create` zelf de journal entry** (bank-rekening 103001 ↔ suspense 103002) [docs reconciliation.html: "debits/credits the journal's main account and its suspense account until it is fully reconciled"] |
+| `is_reconciled`, `running_balance`, `internal_index`, `transaction_details` (json), `online_*` | — | — | ja | leesvelden; `is_reconciled` = ons "afgeletterd"-signaal (RLZ `IsComplete`/`OpenAmount`-equivalent, [§2.6]) |
+
+`account.bank.statement` [live]: `name` (Reference), `date`, `journal_id` (ro, afgeleid van de regels), `line_ids`, `balance_start`,
+`balance_end_real` (opgegeven eindsaldo), `balance_end` (berekend, ro), `is_complete`/`is_valid` (ro — sluit het saldo?),
+`reference`, `attachment_ids`. Saldo-controle (RLZ heeft geen equivalent) is dus gratis: `balance_end_real` = saldo uit de
+bankaanlevering → `is_valid` toont of onze regels sluiten.
+
+**Idempotentie & foutsemantiek:** geen client-GUID's [§3.1] → zoek-vóór-create op `(company_id, journal_id, date, amount, ref)` +
+lokale mapping mutatie-UUID ↔ `statement_line_id`; `unique_import_id` als tweede slot (Odoo-kant) zodra (d)-stap 1 bewijst dat hij
+via create landt. Een create met `date`+`journal_id`+`amount` is één transactie (move + 2 regels) — atomair per regel, niet per
+afschrift → bulk = regel voor regel of `create(vals_list=[…])` (één call, één transactie voor de hele lijst — te bewijzen; docs
+noemen de `vals_list`-vorm generiek). Limieten: geen gepubliceerde rate limit [docs]; Odoo Online worker-time-outs → batches van
+≤ 100 regels [aanname, lijn met §3.7].
+
+### 11.2 (b) Reconciliatie-modellen — `account.reconcile.model` in Odoo 19 is KLEINER dan de 16/17-docs suggereren [live]
+
+**Live feit dat de opdrachttekst corrigeert:** `search_read` op `rule_type` gaf `500 builtins.ValueError: Invalid field 'rule_type'
+on 'account.reconcile.model'`. In 19.0 bestaan de soorten `writeoff_button` / `writeoff_suggestion` / `invoice_matching` **niet meer als
+veld**; ook `counterpart_type`, `match_partner`, `auto_reconcile`, `to_check`, `match_nature`, `match_note*`,
+`match_transaction_type*`, `match_same_currency`, `allow_payment_tolerance`, `payment_tolerance_*`, `past_months_limit`,
+`partner_mapping_line_ids`, `decimal_separator`, `matching_order`, `match_text_location_*` ontbreken. **Wat er wél is** (volledige
+niet-mail-velden): `name` (req), `trigger` (req, selection **`manual` "Manual" / `auto_reconcile` "Automated"**), `match_journal_ids`,
+`match_amount` (`lower`/`greater`/`between`) + `match_amount_min`/`_max`, `match_label` (`contains`/`not_contains`/`match_regex`) +
+`match_label_param`, `match_partner_ids`, `line_ids` (→ `account.reconcile.model.line`), `mapped_partner_id` (ro),
+`can_be_proposed`, `created_automatically`, `active`, `sequence`, `company_id` (req, ro). Docs 19.0 [reconciliation_models.html]
+bevestigen dit beeld: twee categorieën — "Manual Models – appear as action buttons during bank reconciliation" en "Automated Models –
+apply automatically to transactions meeting specified conditions"; voorwaarden Journals / Partners / Amount / Label ("All conditions
+must be satisfied"); tegenboekingsregels met Partner, Account, Amount Type (`fixed` / `percentage` "Percentage of balance" /
+`percentage_st_line` "Percentage of statement line" / `regex` "From label" [live]), `amount_string` (req), `label`, `tax_ids`,
+`analytic_distribution` (json — **hier past ons pand-analytic**), `sequence`; "At least one of Partner or Account must be specified";
+modellen met alleen een Partner (geen Account) doen partner-mapping.
+
+**Factuur-matching is in 19 ingebouwd, geen modelsoort meer** [docs reconciliation.html]: "the transaction's Label is compared with
+the Number, Customer Reference, Bill Reference, and Payment Reference"; mét partner ook op bedrag (exact, met kortingstermijn, of
+bedrag in het label). Standaardmodellen op company 6 [live]: 13 `Internal Transfers` (manual, geen voorwaarden) en 14 `Bank Fees`
+(manual, label contains "Bank Fees") — identiek aan company 1 (3/4), ongebruikt. De reconciliatie-widget (`bank.rec.widget`,
+`bank.rec.widget.line`) **bestaat niet als API-model** (404 "the model 'bank.rec.widget' does not exist") — de UI-wizard is dus geen
+route; programmatisch afletteren loopt via de `account.move.line`-kant (11.4).
+
+**Verhouding tot onze matchmotor + AI-poort (blok B, bank) — advies: onze poort blijft leidend, Odoo-modellen alleen LEZEN.**
+Redenen: (1) onze motor is deterministisch én uitlegbaar per rij (`bron`-label naam/IBAN + nummer als heel token + bedrag cent-exact
++ teken, GROEN/ORANJE — BESLISSINGEN "MATCHMOTOR BANK"), Odoo's automated model kent alleen label/partner/bedrag/dagboek zonder
+teken- of token-regel en zonder herkomst-uitleg; (2) een `auto_reconcile`-model in Odoo boekt ZELF (Odoo-kant automatisering
+buiten onze audit, opt-in-guard en dagtellers om — in strijd met "niets stil" en met de volumerem); (3) voor Vastgoedgroep is het
+tegenboekingsdoel bijna altijd een kostenrekening + pand-analytic of een notarisafrekening (samengesteld: koopsom, overdrachts-
+belasting, notariskosten, waarborg) — dat is een verdeel-voorstel dat onze motor levert en een mens bevestigt (mockup
+`pandenregister.html` Toewijzing), niet een 1-op-1 label-regel. Odoo-modellen worden daarom alleen gelezen als **extra signaal**
+(`trigger`, voorwaarden, `line_ids`) en gerapporteerd in de koppeling-probe; wij maken er geen en zetten er geen op
+`auto_reconcile`. Open: of wij de standaardmodellen 13/14 in de probe als "aanwezig, ongebruikt" tonen (klikpunt).
+
+### 11.3 (c) Verkoopfactuur met partner = notaris (niet btw-plichtig) — `account.move` `out_invoice` [live fields_get + §2.4]
+
+| Veld | Waarde voor Vastgoedgroep | Bron / status |
+|---|---|---|
+| `move_type` | `out_invoice` (selection: entry, out_invoice, out_refund, in_invoice, in_refund, out_receipt, in_receipt) | [live] |
+| `partner_id` | de notaris (`res.partner`, `customer_rank` ≥ 1, KvK in `company_registry`, `is_company` True) — zoek-vóór-create op KvK → naam [§2.1]; **de koper is de wederpartij, de notaris de betalende partij**: beslispunt 11.5 (3) wie als `partner_id` geldt | [live] veld; keuze = beslispunt |
+| `journal_id` | 48 (`F`, sale) uit de koppeling-rij | [live] |
+| `company_id` + context `allowed_company_ids [6]` | verplicht in de multi-company-db | [§0 punt 2] |
+| `invoice_date` / `date` | leveringsdatum notarisafrekening / boekdatum = `invoice_date` expliciet (anders maandeinde, [§0 punt 4]) | [§0] |
+| `invoice_date_due` + `invoice_payment_term_id False` | vervaldatum = passeerdatum; termijn expliciet leeg | [§2.2 bewezen op inkoop] ≈ voor verkoop |
+| `ref` / `payment_reference` | notarisdossiernummer / ons kenmerk (`payment_reference` wordt bij posten anders automatisch = `name` [§1.7]) | [§1.7] |
+| `narration` | omschrijving ("Verkoop Dorpsstraat 12 Boxtel, akte 20-03-2026, dossier …") | [live] |
+| `invoice_line_ids[]` | `name`, `quantity 1`, `price_unit` = koopsom (cent-exact [§0 punt 5]), `account_id` = omzet-/verkoopresultaat-rekening (beslispunt: 800100 default van F, of een aparte "Verkoop panden"-rekening/`income` — klikpunt Peter), **`tax_ids = [[6,0,[]]]` (leeg: niet btw-plichtig → geen btw-regel, geen rubriek** — docs/§1.6: zonder `tax_ids` boekt Odoo geen btw), `analytic_distribution = {"<analytic-id pand>": 100}` (plan Project, company 6) | [live] velden; `tax_ids=[]`-gedrag [§1.6 (a)] bewezen op inkoop, verkoop ≈ |
+| `fiscal_position_id` | leeg (geen btw-positie nodig; eventueel "btw-vrijgesteld"-positie als Peter een aangifte-spoor wil — niet btw-plichtig = geen aangifte) | [live] veld |
+| `state` / `payment_state` | draft → `action_post` → posted / `not_paid` … `paid` bij aflettering tegen de bankregel | [§3.2] |
+| `duplicated_ref_ids` | gratis tweede lijn op dezelfde partner + ref | [§3.6] |
+| PDF | `invoice_pdf_report_id` ontstaat bij "verzenden" — rendering via `ir.actions.report` privaat → **open** zoals §2.4 | [§2.4] |
+
+Aandachtspunt niet-btw-plichtig: Odoo's `l10n_nl`-aangifterapport telt alleen tags; met `tax_ids=[]` komt er niets in de aangifte —
+correct voor Vastgoedgroep. De **inkoopkant** (notarisafrekening AANKOOP als `in_invoice` op de notaris/verkoper, regels koopsom →
+activa/voorraad panden, overdrachtsbelasting → kosten, óók `tax_ids=[]`) volgt hetzelfde patroon en is bewezen mechaniek [§4].
+
+### 11.4 (d) Bewijscyclus op de Odoo-TESTdatabase (Peter heeft dupliceren goedgekeurd; niets op productie)
+
+Voorwaarden: (1) Peter dupliceert `universal-steigers.odoo.com` naar een TESTdatabase (Odoo Online: Databasebeheer › Duplicate;
+**kies "test" (geen mail/cron), niet "production"**), (2) URL + API-key van die testdatabase als Secret `ODOO_TEST_URL` /
+`ODOO_TEST_API_KEY` in Google Secret Manager + lokaal alleen via `lees_dev_env`-patroon — **nooit in code/git/chat** (zie 11.5 (1)),
+(3) script `verkenning/odoo_vgg_bewijs.py` met kill-switch `POC_STOP`, audit-log, `TEST-VGG-`-prefix op élke referentie, company 6.
+Alles wordt gereversed/geannuleerd, nooit `unlink`. Meetpunten per stap = terug-lezen mét `search_read`.
+
+| # | Stap (company 6) | Meetpunt (verwacht) |
+|---|---|---|
+| 0 | `res.company` read company 6, `account.journal` 53 → `bank_account_id`; zo leeg: **klikpunt Peter** IBAN op BNK1 zetten (UI) | `bank_acc_number` gevuld; lock dates False |
+| 1 | `account.bank.statement.line.create` ×3: (a) −€ 1.245,00 `payment_ref "TEST-VGG Notaris Van Loon afrekening Stationsweg 88"`, `account_number` fictief IBAN, `partner_name`, `ref "TEST-VGG-MUT-001"`, **`unique_import_id "TEST-VGG-UIID-001"`**; (b) +€ 342.500,00 koopsom-ontvangst (verkoop); (c) tweede create mét dezelfde `unique_import_id` | (a) `move_id` gevuld, `is_reconciled False`, regels 2175 (`103001`) / 398 (`103002`), `running_balance`; `unique_import_id` **terug-leesbaar = gezet via create** (anders: aanname 11.1 vervalt → `ref`-anker); (c) **verwacht `UserError`/422 of `ValidationError` "already imported"** — anders bewijst het dat Odoo dubbels NIET weigert en is zoek-vóór-create de enige poort |
+| 2 | `account.bank.statement.create({name "TEST-VGG-AFSCHRIFT-2026-09", journal_id 53, line_ids [[6,0,[ids]]], balance_start 0, balance_end_real Σ})` | `is_valid True` bij kloppend saldo; `is_complete`; daarna `write balance_end_real` +0,01 → `is_valid False` (saldocontrole werkt) |
+| 3 | notaris-partner `res.partner.create({name "TEST-VGG Notariskantoor", is_company, company_registry "12345678", customer_rank 1})` → verkoopfactuur `account.move.create` `out_invoice`, journal 48, partner, `invoice_date = date = 2026-09-01`, regel `price_unit 342500`, `tax_ids [[6,0,[]]]`, `account_id` <omzetrekening>, `analytic_distribution {"<TEST-VGG pand-analytic>": 100}` (analytic account eerst aanmaken in plan 1, company 6) → `action_post` | `name F/2026/…`, `amount_tax 0.0`, `amount_total 342500.00`, `amount_residual 342500.00`, géén tax-regel in `line_ids`, `account.analytic.line` 1 rij +342.500 op het pand; `date` = 01-09 (niet maandeinde) |
+| 4 | **Reconcile bankregel (b) ↔ factuur**: kandidaat-routes, in volgorde proberen en de eerste werkende vastleggen: (i) `account.bank.statement.line` methode `set_line_bank_statement_line`/`action_reconcile`-achtige publieke methoden — via `fields_get`/`/doc` per methode toetsen (privaat = 403 [§1.11]); (ii) generieke weg: `write` op de suspense-regel van `move_id` (account 398 → 110000 Debtors + `partner_id`), daarna `account.move.line.reconcile(ids=[debiteurenregel factuur, tegenregel bankmove])` [§2.6 noemt `reconcile` als bewezen mechaniek A]; (iii) reconciliatiemodel `trigger manual` toepassen — alleen als (i)/(ii) falen | bankregel `is_reconciled True`; factuur `payment_state paid`, `amount_residual 0.0`; `matched_*_ids`/`full_reconcile_id` gevuld; suspense 398 saldo 0 |
+| 5 | Directe kosten via bankregel (a): tegenboeking naar kostenrekening + pand-analytic zonder factuur (route ii met `account_id` kosten + `analytic_distribution`) | `is_reconciled True`; `account.analytic.line` −1.245 op het pand |
+| 6 | Terugweg: factuur → `account.move.reversal` wizard (`out_refund` concept → posten; tax-regel n.v.t. want geen btw) [§3.3]; bankregels: reconcile losmaken (`account.move.line.remove_move_reconcile` — publiek? te toetsen) of de statement line via `button_draft`/`unlink`? **NOOIT unlink**: bij falen blijven de TEST-regels staan (testdatabase) | origineel `payment_state reversed`; creditnota `RINV/…`; analytic lines gespiegeld |
+| 7 | Nameting: `search_count` statement lines company 6 = 3 (of 2 als (c) geweigerd), `read_group` moves per type, alle namen `TEST-VGG-` | rapportregel "werkt op de testdatabase: ja/nee" per stap |
+
+Wat de cyclus NIET bewijst en waar het bouwplan op moet rekenen: (a) bankaanlevering zelf — Vastgoedgroep's bank levert niet via onze
+API aan Odoo; **wij** zijn de aanleverende partij (RLZ-`PaymentTransactions`-lezer → Odoo-`statement.line`-schrijver) óf Peter zet
+Odoo's synchronisatie/CAMT-import aan en wij LEZEN alleen (beslispunt 11.5 (2)); (b) gedrag van Odoo's ingebouwde factuur-matching
+op onze `payment_ref` (alleen zichtbaar in de UI-widget) — geen API-signaal gevonden [live: geen `matching`-veld op de regel];
+(c) PDF-uitdraai van de verkoopfactuur [§2.4 open].
+
+### 11.5 (e)+(f) Vraag aan Peter en open beslispunten voor run 2
+
+**(e) Vraag aan Peter — URL + API-key van de Odoo-TESTdatabase.** Zet `ODOO_TEST_URL` en `ODOO_TEST_API_KEY` als twee secrets in Google
+Secret Manager (project rlz-boekhouding, zelfde patroon als `KVK_API_KEY` in deploy.yml) én lokaal in `verkenning/.env` (gitignored) —
+de bewijscyclus leest ze uitsluitend via het `lees_dev_env`-patroon; niets ervan komt in code, docs, logs of chat. De key mag max.
+3 maanden leven (Odoo-eis) — kies bij aanmaken "Nijenhuis Module TEST" + einddatum, en géén key van de productiedatabase hergebruiken
+(een gedupliceerde database kopieert de gebruikers, maar API-keys werken per database — te verifiëren bij de eerste call).
+
+**(f) Open beslispunten run 2 (niet zelf beslist):**
+1. **Wie levert de bank aan Odoo?** (A) wij schrijven `statement.line`s vanuit onze bank-sync (bron = bankaanlevering van Vastgoedgroep
+   via RLZ-`PaymentTransactions` zolang RLZ-VGG bestaat, daarna CAMT/CSV aan ons) — volledige controle + idempotentie, maar wij worden
+   bron van Odoo's bankboek; (B) Odoo-synchronisatie/import door Peter, wij lezen `statement.line`s en schrijven alleen de
+   tegenboeking/analytic — kleinste schrijfoppervlak, maar afhankelijk van een UI-klikpunt en Odoo's eigen dubbelcheck. Advies: **B
+   als eindbeeld, A als testfase-brug** zolang de synchronisatie niet staat (past bij "opt-ins zijn testfase-drempels").
+2. **Statements: per dag, per maand of geen?** Odoo heeft ze niet nodig; wél nuttig voor de saldocontrole (`is_valid`). Advies: één
+   statement per aanleverbestand/dag mét `balance_end_real` uit de bank — gratis saldo-poort (harde check "saldo sluit").
+3. **`partner_id` op de verkoopfactuur: notaris of koper?** Fiscaal/juridisch is de koper de wederpartij; de notaris betaalt. Optie: koper
+   als `partner_id`, notaris als `partner_bank_id`/`payment_reference`-drager; of notaris als partner met de koper in `narration`.
+   Peter's opdracht zegt "partner notaris" — bevestigen vóór de bouw (raakt debiteurenhistorie en Odoo's factuur-matching op partner).
+4. **Omzetrekening panden**: 800100 (default dagboek F) of een aparte `income`-rekening "Verkoop onroerend goed" + tegenhanger
+   "Kostprijs verkochte panden"/activa-rekening voor de aankoop (voorraad panden vs vaste activa — accountantskeuze Peter; bepaalt of
+   de aankoop een `in_invoice` op activa of op kostprijs wordt en of de marge in Odoo zichtbaar is of alleen in ons dashboard).
+5. **Pand = analytic account in plan Project (id 1)** op company 6, naam "P-JJJJ-NN Adres" (mockup ⑦) — of een eigen plan "Panden"
+   (schoner in Odoo-rapportage, maar afwijking van de bestaande projectmapping blok B slotstuk). Advies: plan Project, één mapping-code.
+6. **Odoo-reconciliatiemodellen**: alleen lezen (11.2) — bevestigen; en tonen wij 13/14 in de koppeling-probe?
+7. **Reconcile-route** (11.4 stap 4 i/ii/iii) wordt pas ná de cyclus vastgelegd — geen bouw van `app/odoo/bank.py` vóór dat bewijs.
+8. **IBAN op dagboek BNK1 company 6** (klikpunt Peter in Odoo) vóór de eerste aanlevering — anders geen eigen-rekening-herkenning.
+9. **RLZ-VGG → Odoo kanteldatum**: zelfde overstap-patroon als Universal (blok A/B slotstuk: mapping gb/btw/project, kanteldatum,
+   historie-dedup) — btw-mapping is hier triviaal (geen btw), grootboek-mapping niet (RLZ 4-cijferig → Odoo 6-cijferig).
