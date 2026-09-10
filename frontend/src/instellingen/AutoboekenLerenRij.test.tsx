@@ -40,7 +40,7 @@ describe('AutoboekenLerenRij — schakelaar per administratie (blok A 10-09)', (
     const onGewijzigd = vi.fn()
     const gebruiker = userEvent.setup()
     render(<AutoboekenLerenRij administratieId={ADM} naam="Testklant B.V." onGewijzigd={onGewijzigd} />)
-    expect(screen.getByText('Het systeem activeert een leverancier ná 3 op rij ongewijzigde boekingen; hieronder alleen uitzonderingen.')).toBeInTheDocument()
+    expect(screen.getByText('Het systeem activeert een leverancier ná 3 identieke boekingen op rij; hieronder alleen uitzonderingen.')).toBeInTheDocument()
     const sw = screen.getByRole('checkbox', { name: 'Autoboeken (leren en boeken) voor Testklant B.V.' })
     await waitFor(() => expect(sw).toBeEnabled())
     expect(sw).not.toBeChecked()

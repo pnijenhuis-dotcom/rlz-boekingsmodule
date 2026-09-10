@@ -80,7 +80,7 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
   if (a.omzet_autoboeken_ingeschakeld) chips.push({ tekst: 'Omzet-autoboeken', variant: 'info', titel: 'Kassarapporten boeken automatisch zodra álles groen is (GO 01-09)' })
   // Blok A bundel 10-09: schakelaar "Autoboeken (leren en boeken)" — aan = groene STATUS-chip; een doorbelastende
   // administratie (Kempen-regel) kan niet aan en toont dat als gedempte chip mét de 409-tekst als title.
-  if (a.autoboeken_leren_ingeschakeld) chips.push({ tekst: 'autoboeken', variant: 'ok', titel: 'Autoboeken (leren en boeken) aan — het systeem activeert leveranciers ná 3 op rij ongewijzigde boekingen' })
+  if (a.autoboeken_leren_ingeschakeld) chips.push({ tekst: 'autoboeken', variant: 'ok', titel: 'Autoboeken (leren en boeken) aan — het systeem activeert leveranciers ná 3 identieke boekingen op rij' })
   else if (a.autoboeken_leren_toegestaan === false) chips.push({ tekst: 'n.v.t. — doorbelasting', variant: 'stil', titel: AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST })
   if (a.accordering_ingeschakeld) chips.push({ tekst: 'Klant-accordering', variant: 'info' })
   if (a.verkoopmodule_afwezig)

@@ -2,7 +2,8 @@
 """Autoboeken per administratie — "leren en boeken" (blok A bundel 10-09; besluit Peter 10-09; migratie 0128).
 
 Schakelaar per administratie (Beheerder, default UIT, Kempen-regel → 409), leerregel (het systeem ACTIVEERT i.p.v.
-nomineert zodra ≥ drempel mens-boekingen op rij ongewijzigd zijn), uitzonderingenlijst (uitzonderen mét reden /
+nomineert zodra ≥ drempel IDENTIEKE mens-boekingen op rij staan — telling herzien 10-09 avond, blok 3: de eerste boeking
+telt als 1), uitzonderingenlijst (uitzonderen mét reden /
 vrijgeven), reset ná storno/correctie van een automatische boeking ("leert 0/N"), post-commit-hook ná een mens-boeking,
 rolpoorten en het afwezig-pad (geen eigenaar = doorlopen)."""
 
@@ -155,11 +156,15 @@ class TestLeerregel:
         self, leren_aan: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, opslag, admin_engine: Engine
     ) -> None:
         aid = leren_aan
-        docs = [_geboekt(aid, beheerder_id, opslag, n=n) for n in range(3)]
-        # 3 boekingen = reeks 2 (de eerste legt de basis, bevestigt niets): nog niet.
-        assert [u.status for u in service.activeer_kwalificerend(administratie_id=aid)] == ["overgeslagen"]
+        docs = [_geboekt(aid, beheerder_id, opslag, n=n) for n in range(2)]
+        # Telling herzien 10-09 (blok 3): twee identieke boekingen = "leert 2/3", nog niet actief.
+        [u] = service.activeer_kwalificerend(administratie_id=aid)
+        assert u.status == "overgeslagen" and "2 identieke boekingen (drempel 3)" in (u.reden or "")
         assert _voorkeur(aid) is None
-        docs.append(_geboekt(aid, beheerder_id, opslag, n=3))
+        rij = next(r for r in autoboeken.lijst_leverancier_autoboeken(administratie_id=aid) if r.vendor_id == vendor)
+        assert (rij.stand, rij.reeks, rij.drempel) == ("leert", 2, 3)
+        # Precies drie identieke mens-boekingen → actief.
+        docs.append(_geboekt(aid, beheerder_id, opslag, n=2))
         [uitkomst] = service.activeer_kwalificerend(administratie_id=aid, vendor_id=vendor)
         assert (uitkomst.status, uitkomst.reeks_ongewijzigd, uitkomst.drempel) == ("geactiveerd", 3, 3)
         voorkeur = _voorkeur(aid)
@@ -204,11 +209,23 @@ class TestLeerregel:
     def test_correctie_in_de_reeks_activeert_niet(
         self, leren_aan: uuid.UUID, beheerder_id: uuid.UUID, vendor: uuid.UUID, opslag
     ) -> None:
-        for n in range(3):
-            _geboekt(leren_aan, beheerder_id, opslag, n=n)
-        _geboekt(leren_aan, beheerder_id, opslag, n=3, gb=GB_B)  # correctie → teller opnieuw
+        # Telling herzien 10-09: A, B, A — de middelste wijkt af, de laatste start een nieuwe reeks (1/3).
+        _geboekt(leren_aan, beheerder_id, opslag, n=0)
+        _geboekt(leren_aan, beheerder_id, opslag, n=1, gb=GB_B)
+        _geboekt(leren_aan, beheerder_id, opslag, n=2)
         [u] = service.activeer_kwalificerend(administratie_id=leren_aan, vendor_id=vendor)
-        assert u.status == "overgeslagen" and "op rij ongewijzigd (drempel 3)" in (u.reden or "")
+        assert u.status == "overgeslagen" and "1 identieke boeking (drempel 3)" in (u.reden or "")
+        assert u.reeks_ongewijzigd == 1
+        assert _voorkeur(leren_aan) is None
+        # Vier waarvan de eerste afwijkt: B, A, A, A → de REEKS is 3/3 (telling herzien 10-09), maar de onverkorte
+        # kwalificatie-eis "geheugen volledig app-bevestigd" blijft blokkeren: de ene B-observatie maakt de
+        # leverancier-stem "gesplitst" (engine: len(per_waarde) > 1, gewicht-onafhankelijk) → oranje → géén activatie,
+        # leesbaar in de reden. Beslispunt voor Peter in BESLISSINGEN (blok 3 10-09).
+        _geboekt(leren_aan, beheerder_id, opslag, n=3)
+        _geboekt(leren_aan, beheerder_id, opslag, n=4)
+        [u] = service.activeer_kwalificerend(administratie_id=leren_aan, vendor_id=vendor)
+        assert u.status == "overgeslagen" and u.reeks_ongewijzigd == 3
+        assert "identieke" not in (u.reden or "") and "gesplitste stem" in (u.reden or "")
         assert _voorkeur(leren_aan) is None
 
     def test_aanzetten_van_de_schakelaar_activeert_direct(
@@ -365,7 +382,75 @@ class TestMotorReeksVanaf:
         # Boekingen 4 en 5 tellen; het geheugen kende GB_A al uit 0–3, dus beide bevestigen.
         assert reeks.reeks_ongewijzigd == 2 and reeks.mens_boekingen == 2
         zonder = motor.analyseer_reeks(boekingen, seed_observaties=[], project_verplicht=False)
-        assert zonder.reeks_ongewijzigd == 5
+        assert zonder.reeks_ongewijzigd == 6  # telling herzien 10-09 (was 5)
+
+
+class TestGeheugenPoortGelijkAanReeks:
+    """Blok 3 10-09: nu de reeks identieke boekingen telt (niet meer "ongewijzigd t.o.v. het voorstel"), bewaakt de
+    service-poort dat het geheugen dezelfde waarden voorstelt als de reeks — anders zou het autoboek-pad iets anders
+    boeken dan de mens de laatste N keer deed. Nooit gokken."""
+
+    def _obs(self, gb, n: int, dag_offset: int) -> list:
+        from datetime import date
+
+        from app.geheugen.engine import Observatie
+        from app.geheugen.models import ObservatieBron
+
+        return [
+            Observatie(None, gb, BTW, None, ObservatieBron.APP.value, date(2026, 1, 1) + timedelta(days=dag_offset + i))
+            for i in range(n)
+        ]
+
+    def test_geheugen_dat_nog_de_oude_waarde_voorstelt_blokkeert_leesbaar(self) -> None:
+        from datetime import date
+
+        # A recent en talrijk → voorstel A (gesplitst/oranje, maar dat toetst de eerste poort al — hier gaat het om
+        # de gelijkheidstoets; daarom alleen A-observaties voor het groene pad hieronder).
+        observaties = self._obs(GB_A, 10, 200)
+        ok, reden = service._geheugen_bevestigd(
+            observaties,
+            project_verplicht=False,
+            vandaag=date(2026, 9, 10),
+            reeks_waarden=frozenset({(None, GB_B, BTW, None)}),
+        )
+        assert ok is False
+        assert reden == "geheugen stelt voor grootboek nog een andere waarde voor dan de laatste identieke boekingen"
+        ok, reden = service._geheugen_bevestigd(
+            observaties,
+            project_verplicht=False,
+            vandaag=date(2026, 9, 10),
+            reeks_waarden=frozenset({(None, GB_A, BTW, None)}),
+        )
+        assert (ok, reden) == (True, None)
+        # Zonder reeks-handtekening (geen mens-boeking in de reeks) blijft alleen de app-bevestigd-poort over.
+        vandaag = date(2026, 9, 10)
+        assert service._geheugen_bevestigd(observaties, project_verplicht=False, vandaag=vandaag) == (True, None)
+
+    def test_projectplicht_toetst_ook_het_project_van_de_reeks(self) -> None:
+        from datetime import date
+
+        from app.geheugen.engine import Observatie
+        from app.geheugen.models import ObservatieBron
+
+        p1, p2 = uuid.uuid4(), uuid.uuid4()
+        observaties = [
+            Observatie(None, GB_A, BTW, p1, ObservatieBron.APP.value, date(2026, 8, 1) + timedelta(days=i))
+            for i in range(4)
+        ]
+        ok, reden = service._geheugen_bevestigd(
+            observaties,
+            project_verplicht=True,
+            vandaag=date(2026, 9, 10),
+            reeks_waarden=frozenset({(None, GB_A, BTW, p2)}),
+        )
+        assert ok is False and "project" in (reden or "")
+        ok, _ = service._geheugen_bevestigd(
+            observaties,
+            project_verplicht=False,
+            vandaag=date(2026, 9, 10),
+            reeks_waarden=frozenset({(None, GB_A, BTW, None)}),
+        )
+        assert ok is True
 
 
 class TestAfwezigPad:
@@ -422,13 +507,21 @@ class TestCli:
         assert service.haal_instelling_op()[0] == 3
         assert _audit_acties(admin_engine, "autoboek_drempel_gewijzigd") == 1
         assert main(["autoboek-drempel-zetten", "--drempel", "0"]) == 1
-        for n in range(4):
+        # Telling herzien 10-09 (blok 3): het rapport volgt dezelfde telling als de motor — twee identieke = 2/3.
+        for n in range(2):
             _geboekt(administratie_id, beheerder_id, opslag, n=n)
         capsys.readouterr()
         assert main(["autoboek-leren-rapport", "--administratie", str(administratie_id)]) == 0
         uit = capsys.readouterr().out
-        assert "schakelaar: uit" in uit and "drempel 3" in uit
-        assert "Ebbers Salarisadvies B.V." in uit and "3/3" in uit and "leert" in uit and "kwalificeert" in uit
+        assert "schakelaar: uit" in uit and "drempel 3" in uit and "identiek" in uit
+        assert "Ebbers Salarisadvies B.V." in uit and "2/3" in uit and "leert" in uit
+        assert "2 identieke boekingen (drempel 3)" in uit and "NB schakelaar uit" not in uit
+        # Derde identieke boeking → 3/3, kwalificeert.
+        _geboekt(administratie_id, beheerder_id, opslag, n=2)
+        capsys.readouterr()
+        assert main(["autoboek-leren-rapport", "--administratie", str(administratie_id)]) == 0
+        uit = capsys.readouterr().out
+        assert "3/3" in uit and "kwalificeert" in uit
         assert "NB schakelaar uit: 1 leverancier(s)" in uit
         # Lees-only: niets aangezet.
         assert _voorkeur(administratie_id) is None

@@ -4,12 +4,17 @@ zoeken). Het systeem nomineert deterministisch leveranciers waarvoor autoboeken 
 AANZETTEN blijft een menselijk besluit (de bestaande opt-in is de enige schrijver).
 
 Kwalificatie per (administratie, leverancier), zonder AI en zonder RLZ-calls:
-1. ≥ N opeenvolgende MENS-boekingen waarbij het voorstel ONGEWIJZIGD is geboekt (N = Beheerder-
-   instelling, default 5). "Ongewijzigd" = de door de mens geboekte waarden (GB, btw, project bij
-   projectplicht) zijn per regel gelijk aan wat het boekingsgeheugen vóór die boeking voorstelde —
-   herleid uit de boekingen zelf, chronologisch (zelfde engine `bepaal_voorstel`). Een afwijking is
-   een correctie: de teller start opnieuw (ontwerpnotitie ⑦/"teller start opnieuw ná elke
-   correctie"). Automatisch geboekte documenten tellen niet als bevestiging (geen mens erop).
+1. ≥ N opeenvolgende IDENTIEKE MENS-boekingen (N = Beheerder-instelling, platformbreed 3 sinds blok A
+   10-09). Telling herzien 10-09 avond (blok 3, besluit Peter "3× exact hetzelfde = drie identieke
+   boekingen"): de reeks is de langste staart van opeenvolgende mens-boekingen waarvan de vergelijkbare
+   velden (GB, btw, project bij projectplicht — per regel, op leveranciersniveau) onderling gelijk zijn;
+   de eerste boeking van een reeks telt als 1, een afwijkende boeking start een nieuwe reeks (en telt
+   zelf als 1). Tot 10-09 telde de motor "ongewijzigd t.o.v. het geheugen-voorstel" — de eerste boeking
+   was referentiepunt en telde niet, zodat "3 op rij" in feite vier boekingen vroeg. Het VOORSTEL blijft
+   wél de maat voor CORRECTIES (heroverwegen: mens wijkt af van wat het systeem zou boeken) en de service
+   toetst dat het actuele geheugen-voorstel gelijk is aan de reeks-waarden (`Reeks.reeks_waarden`) —
+   nooit activeren op een reeks die het geheugen nog niet zelf voorstelt. Automatisch geboekte
+   documenten tellen niet als bevestiging (geen mens erop) en breken de reeks niet.
 2. Het ACTUELE geheugen-voorstel is volledig app-bevestigd en groen (zelfde poort als het
    autoboek-pad, app/documenten/autoboeken.py::_geheugen_veld_geblokkeerd) — dit toetst de service
    met `voorstel_voor`; de motor krijgt de uitkomst als invoer.
@@ -79,14 +84,17 @@ class Reeks:
     bedrag_vast: bool | None
     buitenland: bool
     correcties_na: dict[str, int] = field(default_factory=dict)
+    #: Handtekening van de reeks (blok 3 10-09): de vergelijkbare velden per regel van de laatste mens-boeking —
+    #: tuples (regel_sleutel | None, gb_id, btw_id, project_id | None). Leeg zonder mens-boeking in de reeks.
+    reeks_waarden: frozenset[tuple[str | None, uuid.UUID | None, uuid.UUID | None, uuid.UUID | None]] = frozenset()
 
 
 def _voorstel_regels(
     observaties: list[Observatie], boeking: Boeking, *, project_verplicht: bool
 ) -> list[tuple[str, ...]]:
     """Per regel de afwijkende velden t.o.v. het geheugen-voorstel vóór deze boeking (leeg = ongewijzigd).
-    Zonder enig voorstel (eerste boeking ooit, geen historie) is er niets bevestigd — telt als 'geen
-    voorstel' (reeks start pas ná de tweede gelijke boeking)."""
+    Sinds 10-09 (blok 3) alleen nog de maat voor CORRECTIES (heroverwegen), niet voor de reeks-teller.
+    Zonder enig voorstel (eerste boeking ooit, geen historie) is er niets om van af te wijken — 'geen_voorstel'."""
     afwijkingen: list[tuple[str, ...]] = []
     gesplitst = not boeking.regels_samenvoegen and len(boeking.regels) > 1
     for regel in boeking.regels:
@@ -128,6 +136,26 @@ def _observaties_van(boeking: Boeking) -> list[Observatie]:
     return uit
 
 
+Handtekening = frozenset[tuple[str | None, uuid.UUID | None, uuid.UUID | None, uuid.UUID | None]]
+
+
+def _handtekening(boeking: Boeking, *, project_verplicht: bool) -> Handtekening:
+    """De vergelijkbare velden van een boeking op leveranciersniveau: per regel (regel_sleutel, GB, btw, project).
+    Regelteksten tellen niet — de regel_sleutel komt alleen mee als de leverancier regels gesplitst boekt
+    (`regels_samenvoegen=False`), precies zoals het geheugen dan per regel-sleutel voorstelt; het project telt
+    alleen bij projectplicht. Volgorde en aantal gelijke regels zijn irrelevant (set)."""
+    gesplitst = not boeking.regels_samenvoegen and len(boeking.regels) > 1
+    return frozenset(
+        (
+            normaliseer_regel_sleutel(regel.omschrijving) if gesplitst else None,
+            regel.gb_id,
+            regel.btw_id,
+            regel.project_id if project_verplicht else None,
+        )
+        for regel in boeking.regels
+    )
+
+
 def analyseer_reeks(
     boekingen: list[Boeking],
     *,
@@ -136,13 +164,25 @@ def analyseer_reeks(
     vanaf: datetime | None = None,
     reeks_vanaf: datetime | None = None,
 ) -> Reeks:
-    """Loopt de boekingen chronologisch af en herleidt per boeking of het voorstel ongewijzigd is
-    geboekt. De teller telt uitsluitend mens-boekingen; een automatisch geboekt document voegt zijn
-    waarden wél toe aan het geheugen (dat doet de leerlus ook) maar bevestigt niets. `vanaf` telt de
-    correcties ná dat moment apart (heroverwegen: "N correcties ná activatie"). `reeks_vanaf` (blok A
-    bundel 10-09: reset ná storno/correctie van een automatische boeking) = boekingen op of vóór dat
-    moment voeden alleen nog het geheugen — de reeks en de mens-teller starten bij 0 en tellen uitsluitend
-    boekingen erná ("leert 0/N")."""
+    """Loopt de boekingen chronologisch af en bepaalt de reeks identieke mens-boekingen.
+
+    DEFINITIE (besluit Peter 10-09 avond, blok 3 — "3× exact hetzelfde" = drie identieke mens-boekingen):
+    - `reeks_ongewijzigd` = de lengte van de langste STAART van opeenvolgende mens-boekingen waarvan de
+      vergelijkbare velden onderling gelijk zijn (`_handtekening`: per regel GB, btw, project bij projectplicht;
+      regel-sleutel alleen bij gesplitst boeken). De eerste boeking van een reeks telt als 1; een afwijkende
+      boeking start een nieuwe reeks en telt zelf als 1. Drie identieke boekingen = 3 (tot 10-09: 2, omdat de
+      eerste boeking referentiepunt was en niet telde).
+    - Automatisch geboekte documenten tellen niet (geen mens erop) en breken de reeks niet: ze voegen hun
+      waarden wél toe aan het geheugen (dat doet de leerlus ook) en aan de laatste-document-velden.
+    - `reeks_vanaf` (blok A bundel 10-09: reset ná storno/correctie van een automatische boeking) = boekingen
+      op of vóór dat moment voeden alleen nog het geheugen — de reeks en de mens-teller starten bij 0 en tellen
+      uitsluitend boekingen erná ("leert 0/N").
+    - `correcties`, `laatste_correctie(_velden)` en `correcties_na` blijven gemeten t.o.v. het geheugen-
+      VOORSTEL vóór de boeking (`_voorstel_regels`): dát is wat het autoboek-pad zou boeken, dus een afwijking
+      dáárvan is de correctie die heroverwegen moet zien. `vanaf` telt de correcties ná dat moment apart
+      ("N correcties ná activatie").
+    - `reeks_waarden` = de handtekening van de reeks; de service toetst daarmee dat het actuele geheugen-
+      voorstel dezelfde waarden voorstelt (kwalificatiecriterium "geheugen bevestigd" blijft onverkort)."""
     observaties = list(seed_observaties)
     reeks = 0
     correcties = 0
@@ -153,6 +193,7 @@ def analyseer_reeks(
     buitenland = False
     bedragen: list[Decimal] = []
     laatste: Boeking | None = None
+    vorige_handtekening: Handtekening | None = None
     for boeking in sorted(boekingen, key=lambda b: b.geboekt_op):
         if any(is_buitenland_tarief(r.btw_naam) for r in boeking.regels):
             buitenland = True
@@ -163,19 +204,19 @@ def analyseer_reeks(
         mens += 1
         afwijkingen = _voorstel_regels(observaties, boeking, project_verplicht=project_verplicht)
         gewijzigd = sorted({v for velden in afwijkingen for v in velden if v != "geen_voorstel"})
-        geen_voorstel = any("geen_voorstel" in velden for velden in afwijkingen)
         if gewijzigd:
             correcties += 1
-            reeks = 0
             laatste_correctie = boeking.geboekt_op
             laatste_velden = tuple(gewijzigd)
             if vanaf is not None and boeking.geboekt_op > vanaf:
                 for v in gewijzigd:
                     correcties_na[v] = correcties_na.get(v, 0) + 1
-        elif geen_voorstel:
-            reeks = 0  # eerste boeking zonder enige historie: niets bevestigd, wél de basis
-        else:
+        handtekening = _handtekening(boeking, project_verplicht=project_verplicht)
+        if vorige_handtekening is not None and handtekening == vorige_handtekening:
             reeks += 1
+        else:
+            reeks = 1  # eerste boeking van een (nieuwe) reeks telt zelf mee
+        vorige_handtekening = handtekening
         if boeking.totaalbedrag is not None:
             bedragen.append(boeking.totaalbedrag)
         observaties.extend(_observaties_van(boeking))
@@ -194,14 +235,20 @@ def analyseer_reeks(
         bedrag_vast=bedrag_vast,
         buitenland=buitenland,
         correcties_na=correcties_na,
+        reeks_waarden=vorige_handtekening or frozenset(),
     )
+
+
+def reeks_tekst(n: int) -> str:
+    """Leesbare telling (blok 3 10-09): "3 identieke boekingen" / "1 identieke boeking" / "0 identieke boekingen"."""
+    return f"{n} identieke boeking{'' if n == 1 else 'en'}"
 
 
 @dataclass(frozen=True)
 class Kwalificatie:
     kwalificeert: bool
     redenen: tuple[str, ...]  # leesbare blokkades (leeg = kandidaat)
-    chips: tuple[str, ...]  # onderbouwing (mockup: "12 op rij ongewijzigd", "geheugen bevestigd", …)
+    chips: tuple[str, ...]  # onderbouwing (mockup: "12 identieke boekingen", "geheugen bevestigd", …)
 
 
 def kwalificeer(
@@ -219,7 +266,7 @@ def kwalificeer(
     hiermee live en slaat een rij die niet meer kwalificeert over mét deze reden."""
     redenen: list[str] = []
     if reeks.reeks_ongewijzigd < drempel:
-        redenen.append(f"{reeks.reeks_ongewijzigd} op rij ongewijzigd (drempel {drempel})")
+        redenen.append(f"{reeks_tekst(reeks.reeks_ongewijzigd)} (drempel {drempel})")
     if not geheugen_bevestigd:
         redenen.append(f"geheugen niet volledig app-bevestigd ({geheugen_reden or 'oranje'})")
     if open_vragen:
@@ -231,7 +278,7 @@ def kwalificeer(
     if veldwerker_gekoppeld:
         redenen.append("crediteur gekoppeld aan een veldwerker — autoboeken loopt via de urenmatch-opt-in")
     chips = [
-        f"{reeks.reeks_ongewijzigd} op rij ongewijzigd",
+        reeks_tekst(reeks.reeks_ongewijzigd),
         "geheugen bevestigd" if geheugen_bevestigd else "geheugen nog oranje",
         f"{open_vragen} vragen / {reeks.correcties} correcties",
     ]

@@ -431,7 +431,8 @@ export interface LeverancierAutoboekenDto {
   autoboeken_ingeschakeld: boolean
   /** Blok A bundel 10-09 (optioneel voor oudere antwoorden — de UI leidt `stand` dan af uit `autoboeken_ingeschakeld`). */
   stand?: LeverancierAutoboekStand
-  /** Mens-boekingen op rij ongewijzigd (telt alleen ná `gereset_op`). */
+  /** Opeenvolgende IDENTIEKE mens-boekingen (telling herzien 10-09 avond, blok 3: de eerste telt als 1; telt alleen ná
+   * `gereset_op`). Kolomnaam server-side blijft `reeks_ongewijzigd`. */
   reeks?: number
   drempel?: number
   bron?: 'mens' | 'systeem' | null
@@ -1076,7 +1077,7 @@ export interface AdministratieInstellingenDto {
   /** Omzet-autoboeken (GO Peter 01-09, migratie 0096): kassarapporten automatisch boeken als álles groen is. */
   omzet_autoboeken_ingeschakeld?: boolean
   /** Autoboeken (leren en boeken) per administratie (blok A bundel 10-09, migratie 0128): Beheerder-schakelaar; het
-   * systeem activeert leveranciers zelf ná ≥ drempel mens-boekingen op rij. `toegestaan=false` = doorbelasting-
+   * systeem activeert leveranciers zelf ná ≥ drempel identieke mens-boekingen op rij. `toegestaan=false` = doorbelasting-
    * administratie (Kempen-regel, 409 bij aanzetten) → chip "n.v.t. — doorbelasting". */
   autoboeken_leren_ingeschakeld?: boolean
   autoboeken_leren_toegestaan?: boolean

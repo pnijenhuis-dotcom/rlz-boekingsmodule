@@ -148,7 +148,8 @@ def instelling_ophalen(actor: CurrentGebruiker = Depends(require_beheerder)) -> 
 def instelling_zetten(
     invoer: schemas.DrempelDto, actor: CurrentGebruiker = Depends(require_beheerder)
 ) -> schemas.InstellingDto:
-    """Drempel "N op rij ongewijzigd" — Beheerder-only, default 5, audit oud→nieuw."""
+    """Drempel "N identieke mens-boekingen op rij" (blok 3 10-09: de eerste boeking telt mee) — Beheerder-only, audit
+    oud→nieuw."""
     try:
         drempel = service.zet_drempel(actor_id=actor.id, drempel=invoer.drempel_op_rij)
     except service.AutoboekKandidaatFout as exc:

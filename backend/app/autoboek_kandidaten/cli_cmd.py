@@ -1,6 +1,7 @@
 """CLI-commando's autoboeken per administratie (blok A bundel 10-09) — geregistreerd vanuit app/cli.py (2 regels).
 
-- `autoboek-drempel-zetten --drempel N`        — platformbrede drempel "N op rij" via `service.zet_drempel` (audit
+- `autoboek-drempel-zetten --drempel N`        — platformbrede drempel "N identieke boekingen" via `service.zet_drempel`
+                                                 (audit
                                                  `autoboek_drempel_gewijzigd`, actor = systeem). Post-deploy-stap: de
                                                  productie-rij staat op 5, het besluit van 10-09 zegt 3.
 - `autoboek-leren-rapport --administratie <uuid>` — LEES-ONLY nameting-instrument: per leverancier reeks
@@ -27,7 +28,8 @@ COMMANDOS = (COMMANDO_DREMPEL, COMMANDO_RAPPORT)
 def register(subparsers) -> None:  # noqa: ANN001 — argparse-subparsers-actie
     drempel = subparsers.add_parser(
         COMMANDO_DREMPEL,
-        help="Autoboeken per administratie (blok A 10-09): platformbrede drempel 'N op rij ongewijzigd' zetten (1–50, "
+        help="Autoboeken per administratie (blok A 10-09): platformbrede drempel 'N identieke mens-boekingen' zetten "
+        "(1–50, "
         "audit oud→nieuw, actor = systeem). Post-deploy: productie van 5 naar 3.",
     )
     drempel.add_argument("--drempel", type=int, required=True, help="Nieuwe drempel (1–50); besluit Peter 10-09 = 3.")
@@ -105,7 +107,8 @@ def _leren_rapport(args: argparse.Namespace) -> int:
     if args.alleen_kwalificerend:
         rijen = [s for s in rijen if s.kwalificeert]
     tellers = {"leert": 0, "boekt_automatisch": 0, "uitgezonderd": 0, "handmatig_aan": 0, "kwalificeert": 0}
-    print(f"{'leverancier':<48} {'reeks':>7} {'stand':<18} {'bron':<8} redenen")
+    print(f"{'leverancier':<48} {'identiek':>8} {'stand':<18} {'bron':<8} redenen")
+    print("(identiek = opeenvolgende identieke mens-boekingen / drempel; telling herzien 10-09 avond, blok 3)")
     for s in rijen:
         stand = service.stand_label(
             actief=s.actief, bron=s.bron, uitgezonderd=s.uitgezonderd, administratie_leren_aan=leren_aan

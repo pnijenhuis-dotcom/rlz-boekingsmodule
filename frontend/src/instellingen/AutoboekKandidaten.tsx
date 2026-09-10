@@ -236,7 +236,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
       <div className="p-kop" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 14.5 }}>Autoboeken</h2>
         <span className="hint" style={{ margin: 0, flex: '1 1 320px' }}>
-          criteria: ≥ {drempel} boekingen op rij waarbij het voorstel ongewijzigd is geboekt · volledig app-bevestigd geheugen · geen open vraag,
+          criteria: ≥ {drempel} identieke mens-boekingen op rij (grootboek, btw, project — de eerste telt mee) · volledig app-bevestigd geheugen · geen open vraag,
           correctie of duplicaatsignaal. Stand van {tijd(tellers?.laatste_run_op ?? null)}.
         </span>
         <Button variant="secundair" maat="klein" onClick={() => void herbereken()} disabled={bezig}>
@@ -335,7 +335,7 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
           {tab === 'kandidaten'
             ? verborgen
               ? 'Geen verborgen kandidaten.'
-              : `Geen kandidaten — geen leverancier voldoet nu aan ≥ ${drempel} ongewijzigde boekingen op rij mét bevestigd geheugen.`
+              : `Geen kandidaten — geen leverancier voldoet nu aan ≥ ${drempel} identieke boekingen op rij mét bevestigd geheugen.`
             : tab === 'actief'
               ? 'Nog geen leveranciers met autoboeken aan.'
               : 'Geen signalen ná activatie — niets te heroverwegen.'}
@@ -471,11 +471,11 @@ export function AutoboekKandidaten({ onStand }: { onStand?: (t: AutoboekTellersD
 
       <div id="drempel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <span className="hint" style={{ margin: 0, flex: '1 1 320px' }}>
-          Drempel &ldquo;N op rij ongewijzigd&rdquo; (Beheerder-instelling, default 5): geldt bij de volgende herberekening én bij elke live hertoets.
+          Drempel &ldquo;N identieke boekingen&rdquo; (Beheerder-instelling, platformbreed 3; telling herzien 10-09: drie identieke boekingen = actief): geldt bij de volgende herberekening én bij elke live hertoets.
         </span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
           N =
-          <input type="number" aria-label="Drempel op rij ongewijzigd" min={1} max={50} step={1} style={{ width: 70 }} value={drempelInvoer} onChange={(e) => setDrempelInvoer(e.target.value)} />
+          <input type="number" aria-label="Drempel identieke boekingen" min={1} max={50} step={1} style={{ width: 70 }} value={drempelInvoer} onChange={(e) => setDrempelInvoer(e.target.value)} />
           <Button variant="secundair" maat="klein" disabled={drempelBezig || !drempelInvoer || Number(drempelInvoer) === drempel} onClick={() => void drempelOpslaan()}>
             Drempel opslaan
           </Button>

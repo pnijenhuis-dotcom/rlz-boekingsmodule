@@ -1,6 +1,7 @@
 """Autoboek-kandidaten (mockup autoboek-kandidaten.html, besluit Peter 01-09; migratie 0095): afgeleide,
 herrekenbare stand per (administratie, leverancier) — dagelijks in sync-alles én live bij aanzetten —
-plus de Beheerder-instelling voor de drempel "N op rij". Snooze ("Kandidaat verbergen") is de enige
+plus de Beheerder-instelling voor de drempel "N identieke boekingen op rij" (telling herzien 10-09 avond, blok 3).
+Snooze ("Kandidaat verbergen") is de enige
 menskeuze in deze tabel en overleeft de herberekening. De opt-in zelf leeft ongewijzigd op
 `leverancier_voorkeur.autoboeken_ingeschakeld` (ene schrijver: documenten/autoboeken.py)."""
 
@@ -59,7 +60,7 @@ class AutoboekKandidaatStand(Base):
 
 
 class AutoboekInstelling(Base):
-    """Beheerder-instelling drempel "N op rij ongewijzigd" (default 5) + tijdstip van de laatste
+    """Beheerder-instelling drempel "N identieke mens-boekingen op rij" (platformbreed 3) + tijdstip van de laatste
     motor-run (de tabs tonen "stand van HH:MM"). Singleton, patroon IntakeInstelling."""
 
     __tablename__ = "autoboek_instelling"

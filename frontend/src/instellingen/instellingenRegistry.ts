@@ -390,9 +390,9 @@ export const REGISTRY: readonly RegistryEntry[] = [
   },
   {
     id: 'autoboek-drempel',
-    naam: 'Autoboeken: drempel "N op rij ongewijzigd"',
+    naam: 'Autoboeken: drempel "N identieke boekingen"',
     waar: 'Autoboeken › criteria',
-    synoniemen: ['drempel', 'op rij', 'criteria', 'kandidaat', 'autoboeken'],
+    synoniemen: ['drempel', 'op rij', 'identiek', 'identieke boekingen', 'criteria', 'kandidaat', 'autoboeken'],
     doel: { soort: 'sectie', sectie: 'autoboeken', anker: 'drempel' },
     beheerder: true,
   },

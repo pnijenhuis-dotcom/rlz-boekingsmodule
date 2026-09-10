@@ -8,7 +8,8 @@ import { AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST, haalAutoboekenLeren, zetAutoboe
 
 /** Schakelaar "Autoboeken (leren en boeken)" per administratie (blok A bundel 10-09, besluit Peter 10-09, migratie 0128;
  * herziet "kandidaten → mens klikt aan" 01-09): default UIT, Beheerder-only. Aan = het systeem activeert een leverancier
- * zelf ná ≥ 3 (drempel) op rij ongewijzigde mens-boekingen en boekt daarna automatisch achter alle bestaande poorten;
+ * zelf ná ≥ 3 (drempel) identieke mens-boekingen op rij (telling herzien 10-09 avond, blok 3: de eerste boeking telt
+ * mee — drie identieke boekingen = actief) en boekt daarna automatisch achter alle bestaande poorten;
  * de per-leverancier-lijst eronder wordt een UITZONDERINGENLIJST. Kempen-regel: een doorbelastende administratie kan
  * niet aan — de server geeft 409 mét uitleg, de switch staat disabled mét die tekst als rode hint. Eigen GET/PUT
  * (patroon BtwDefaultRij) mét de bestaande bevestigingsdialoog; ná een geslaagde wijziging herlaadt de pagina de
@@ -77,7 +78,7 @@ export function AutoboekenLerenRij({
     <div id="autoboeken-leren">
       <InstellingRij
         titel="Autoboeken (leren en boeken)"
-        uitleg="Het systeem activeert een leverancier ná 3 op rij ongewijzigde boekingen; hieronder alleen uitzonderingen."
+        uitleg="Het systeem activeert een leverancier ná 3 identieke boekingen op rij; hieronder alleen uitzonderingen."
       >
         {laadFout ? (
           <span className="text-[12px] text-orange" role="alert">

@@ -25,7 +25,7 @@ function rij(over: Record<string, unknown>) {
     actief: false,
     actief_sinds: null,
     redenen: [],
-    chips: ['12 op rij ongewijzigd', 'geheugen bevestigd', '0 vragen / 0 correcties', 'vast maandbedrag'],
+    chips: ['12 identieke boekingen', 'geheugen bevestigd', '0 vragen / 0 correcties', 'vast maandbedrag'],
     heroverweeg_signalen: [],
     laatste_factuur_datum: '2026-08-25',
     laatste_factuur_bedrag: '2721.83',
@@ -52,7 +52,7 @@ function installFetch(aanroepen: { url: string; body: unknown }[], opties: { tot
           tab === 'kandidaten'
             ? params.get('verborgen') === 'true'
               ? [rij({ vendor_id: 'v-9', leverancier_naam: 'Verborgen B.V.', snooze_reden: 'wil ik handmatig houden', snooze_op: '2026-08-30T10:00:00Z' })]
-              : [rij({}), rij({ vendor_id: 'v-2', leverancier_naam: 'Transip B.V.', reeks_ongewijzigd: 9, chips: ['9 op rij ongewijzigd', 'geheugen bevestigd', '0 vragen / 0 correcties'] })]
+              : [rij({}), rij({ vendor_id: 'v-2', leverancier_naam: 'Transip B.V.', reeks_ongewijzigd: 9, chips: ['9 identieke boekingen', 'geheugen bevestigd', '0 vragen / 0 correcties'] })]
             : tab === 'heroverwegen'
               ? [rij({ vendor_id: 'v-3', leverancier_naam: 'Bouwmaat Eindhoven', actief: true, actief_sinds: '2026-08-12T09:00:00Z', kwalificeert: false, heroverweeg_signalen: ['2 correcties ná activatie', 'GB-code gewijzigd door mens (28 Aug)'] })]
               : [rij({ vendor_id: 'v-3', leverancier_naam: 'Bouwmaat Eindhoven', actief: true, actief_sinds: '2026-08-12T09:00:00Z', heroverweeg_signalen: ['2 correcties ná activatie'] })]
@@ -117,9 +117,9 @@ describe('AutoboekKandidaten', () => {
     expect(screen.getByRole('tab', { name: 'Kandidaten (2)' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: 'Actief (1)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Heroverwegen (1)' })).toBeInTheDocument()
-    expect(screen.getByText(/criteria: ≥ 5 boekingen op rij/)).toBeInTheDocument()
+    expect(screen.getByText(/criteria: ≥ 5 identieke mens-boekingen op rij/)).toBeInTheDocument()
     expect(screen.getByText(/Stand van 01-09/)).toBeInTheDocument()
-    expect(screen.getByText('12 op rij ongewijzigd')).toBeInTheDocument()
+    expect(screen.getByText('12 identieke boekingen')).toBeInTheDocument()
     expect(screen.getByText('vast maandbedrag')).toBeInTheDocument()
     expect(screen.getAllByText('€ 2.721,83')).toHaveLength(2)
     expect(screen.getByText('2 kandidaten over 1 administraties')).toBeInTheDocument()
@@ -239,7 +239,7 @@ describe('AutoboekKandidaten', () => {
     installFetch(aanroepen)
     renderScherm()
     await screen.findByText('Ebbers Salarisadvies B.V.')
-    const invoer = screen.getByRole('spinbutton', { name: 'Drempel op rij ongewijzigd' })
+    const invoer = screen.getByRole('spinbutton', { name: 'Drempel identieke boekingen' })
     expect(invoer).toHaveValue(5)
     await gebruiker.clear(invoer)
     await gebruiker.type(invoer, '8')

@@ -2,10 +2,11 @@
 """Gouden set — casus q: autoboeken per administratie, "leren en boeken" (blok A bundel 10-09; besluit Peter 10-09;
 migratie 0128). Basis = casus h (BDO-UBL) met per exemplaar een ander factuurnummer (fixtures/q_autoboek_leren/bron.json).
 
-Doelgedrag: schakelaar aan → vier mens-boekingen met dezelfde GB/btw/project (reeks 3 = drempel 3) → het systeem
-activeert de leverancier zelf (bron systeem, audit + tijdlijnregel) → het vijfde exemplaar boekt bij intake automatisch
+Doelgedrag (telling herzien 10-09 avond, blok 3 — besluit Peter "3× exact hetzelfde = drie identieke boekingen"):
+schakelaar aan → DRIE identieke mens-boekingen (GB/btw/project; de eerste telt als 1) → het systeem activeert de
+leverancier zelf ná de derde (bron systeem, audit + tijdlijnregel) → het vierde exemplaar boekt bij intake automatisch
 (chip automatisch, alle poorten onverkort) → een tegenboeking van die automatische boeking zet de leverancier terug op
-"leert 0/3". Zonder schakelaar: dezelfde vier boekingen leveren alleen een nominatie (gedrag 01-09). Kempen-regel:
+"leert 0/3". Zonder schakelaar: dezelfde drie boekingen leveren alleen een nominatie (gedrag 01-09). Kempen-regel:
 een doorbelastende administratie krijgt 409 mét uitleg."""
 
 from __future__ import annotations
@@ -113,36 +114,43 @@ def leren_aan(keten: Keten, beheer_headers: dict[str, str], drempel_3: int) -> N
 
 
 class TestLerenEnBoeken:
-    def test_vier_mens_boekingen_activeren_en_het_vijfde_exemplaar_boekt_automatisch(
+    def test_drie_identieke_mens_boekingen_activeren_en_het_vierde_exemplaar_boekt_automatisch(
         self, keten: Keten, leren_aan: None, beheer_headers: dict[str, str], admin_engine: Engine
     ) -> None:
-        docs = [_intake(keten, n) for n in range(4)]
+        docs = [_intake(keten, n) for n in range(3)]
         assert {keten.status(d) for d in docs} == {DocumentStatus.TE_CONTROLEREN}
-        for d in docs[:3]:
+        for d in docs[:2]:
             _boek_als_mens(keten, d)
-        assert _voorkeur(keten) is None, "drie boekingen = reeks 2: nog niet actief"
-        _boek_als_mens(keten, docs[3])
+        assert _voorkeur(keten) is None, "twee identieke boekingen = leert 2/3: nog niet actief"
+        lijst = keten.api.get(
+            f"/administraties/{keten.administratie_id}/leveranciers-autoboeken", headers=beheer_headers
+        ).json()
+        bdo = next(r for r in lijst["leveranciers"] if r["vendor_id"] == str(keten.vendors["bdo"]))
+        assert (bdo["stand"], bdo["reeks"], bdo["drempel"]) == ("leert", 2, 3)
+        # Derde identieke boeking (telling herzien 10-09: de eerste telt als 1) → het systeem activeert.
+        _boek_als_mens(keten, docs[2])
         voorkeur = _voorkeur(keten)
         assert (
             voorkeur is not None and voorkeur.autoboeken_ingeschakeld is True and voorkeur.autoboeken_bron == "systeem"
         )
         assert _audit(admin_engine, "autoboek_leverancier_geactiveerd") == 1
-        assert any("autoboek_geactiveerd" in (regel or {}) for regel in keten.tijdlijn(docs[3]))
+        assert any("autoboek_geactiveerd" in (regel or {}) for regel in keten.tijdlijn(docs[2]))
         lijst = keten.api.get(
             f"/administraties/{keten.administratie_id}/leveranciers-autoboeken", headers=beheer_headers
         ).json()
         bdo = next(r for r in lijst["leveranciers"] if r["vendor_id"] == str(keten.vendors["bdo"]))
         assert (bdo["stand"], bdo["reeks"], bdo["drempel"], bdo["bron"]) == ("boekt_automatisch", 3, 3, "systeem")
 
-        # Vijfde exemplaar: intake → autoboekpad (harde checks, geheugen app-bevestigd incl. project, geen signaal) → geboekt.
-        vijfde = _intake(keten, 4)
+        # Vierde exemplaar: intake → autoboekpad (harde checks, geheugen app-bevestigd incl. project, geen signaal)
+        # → geboekt.
+        vijfde = _intake(keten, 3)
         assert keten.status(vijfde) == DocumentStatus.GEBOEKT
         geboekt = next(r for r in keten.tijdlijn(vijfde) if "rlz_boekstuknummer" in (r or {}))
         assert geboekt["automatisch_geboekt"] is True and geboekt["bron"] == "leverancier_opt_in"
         assert _audit(admin_engine, "automatisch_geboekt") == 1
         rij = keten.lijst_rij(vijfde, toon_afgehandeld="true")
         assert rij is not None and rij["status"] == "geboekt" and rij["automatisch_geboekt"] is True
-        assert len(keten.rlz.puts) == 5
+        assert len(keten.rlz.puts) == 4
 
         # Tegenboeking van de automatische boeking (storno geblokkeerd door een ingediende aangifte) → leert 0/3.
         keten.rlz.aangiften = [AANGIFTE_Q3_INGEDIEND]
@@ -167,12 +175,12 @@ class TestLerenEnBoeken:
         ).json()
         bdo = next(r for r in lijst["leveranciers"] if r["vendor_id"] == str(keten.vendors["bdo"]))
         assert (bdo["stand"], bdo["reeks"], bdo["gereset_op"] is not None) == ("leert", 0, True)
-        # Een zesde exemplaar blijft nu mensenwerk (weigering geauditeerd — de opt-in staat uit, dus geen audit-ruis).
-        zesde = _intake(keten, 5)
-        assert keten.status(zesde) == DocumentStatus.TE_CONTROLEREN
+        # Een vijfde exemplaar blijft nu mensenwerk (weigering geauditeerd — de opt-in staat uit, dus geen audit-ruis).
+        vijfde_na_reset = _intake(keten, 4)
+        assert keten.status(vijfde_na_reset) == DocumentStatus.TE_CONTROLEREN
 
     def test_zonder_schakelaar_alleen_nominatie(self, keten: Keten, drempel_3: int, admin_engine: Engine) -> None:
-        docs = [_intake(keten, n) for n in range(4)]
+        docs = [_intake(keten, n) for n in range(3)]
         for d in docs:
             _boek_als_mens(keten, d)
         assert _voorkeur(keten) is None
@@ -181,8 +189,8 @@ class TestLerenEnBoeken:
             administratie_id=keten.administratie_id, vendor_id=keten.vendors["bdo"]
         )
         assert stand.kwalificeert is True and stand.reeks_ongewijzigd == 3 and stand.actief is False
-        vijfde = _intake(keten, 4)
-        assert keten.status(vijfde) == DocumentStatus.TE_CONTROLEREN
+        vierde = _intake(keten, 3)
+        assert keten.status(vierde) == DocumentStatus.TE_CONTROLEREN
 
     def test_doorbelasting_administratie_krijgt_409_met_uitleg(
         self, keten: Keten, beheer_headers: dict[str, str], admin_engine: Engine

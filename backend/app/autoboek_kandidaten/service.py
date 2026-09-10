@@ -75,11 +75,12 @@ def haal_instelling_op() -> tuple[int, datetime | None]:
 
 
 def zet_drempel(*, actor_id: uuid.UUID, drempel: int) -> int:
-    """Beheerder-instelling "N op rij" (default 5): 1–50, audit oud→nieuw. De stand wordt niet direct
+    """Beheerder-instelling "N identieke boekingen op rij" (platformbreed 3): 1–50, audit oud→nieuw. De stand wordt niet
+    direct
     herberekend — de eerstvolgende run (of "Herbereken") past de nieuwe drempel toe; de bulk-aanzet
     hertoetst sowieso live."""
     if not 1 <= drempel <= 50:
-        raise AutoboekKandidaatFout("De drempel moet tussen 1 en 50 boekingen op rij liggen")
+        raise AutoboekKandidaatFout("De drempel moet tussen 1 en 50 identieke boekingen op rij liggen")
     with scoped_session(None, actor_id=actor_id) as session:
         rij = _instelling(session)
         oud = rij.drempel_op_rij
@@ -290,9 +291,21 @@ def _verzamel(
     return data
 
 
-def _geheugen_bevestigd(observaties: list[Observatie], *, project_verplicht: bool, vandaag) -> tuple[bool, str | None]:
+_VELD_NAAM = {1: "grootboek", 2: "btw", 3: "project"}
+
+
+def _geheugen_bevestigd(
+    observaties: list[Observatie],
+    *,
+    project_verplicht: bool,
+    vandaag,
+    reeks_waarden: motor.Handtekening = frozenset(),
+) -> tuple[bool, str | None]:
     """Zelfde poort als het autoboek-pad (_geheugen_veld_geblokkeerd): élk veld app-bevestigd + groen,
-    op leverancier-niveau."""
+    op leverancier-niveau. Sinds blok 3 10-09 (telling = identieke mens-boekingen, niet meer "ongewijzigd t.o.v.
+    het voorstel") toetst deze poort óók dat het geheugen dezelfde waarden voorstelt als de reeks
+    (`reeks_waarden`, per regel-sleutel): activeert het systeem, dan boekt het autoboek-pad het VOORSTEL — dat
+    moet exact zijn wat de mens de laatste N keer boekte. Nooit gokken."""
     voorstel = bepaal_voorstel(observaties, regel_sleutel=None, vandaag=vandaag)
     velden = [("grootboek", voorstel.gb), ("btw", voorstel.btw)]
     if project_verplicht:
@@ -302,6 +315,20 @@ def _geheugen_bevestigd(observaties: list[Observatie], *, project_verplicht: boo
             return False, f"geen voorstel voor {naam}"
         if veld.oranje or not veld.app_bevestigd:
             return False, f"{naam}: {veld.reden or 'oranje'}"
+    for sleutel, gb_id, btw_id, project_id in sorted(reeks_waarden, key=lambda t: (t[0] or "", str(t[1]))):
+        per_regel = (
+            voorstel if sleutel is None else bepaal_voorstel(observaties, regel_sleutel=sleutel, vandaag=vandaag)
+        )
+        verwacht = [(1, gb_id, per_regel.gb.waarde), (2, btw_id, per_regel.btw.waarde)]
+        if project_verplicht:
+            verwacht.append((3, project_id, per_regel.project.waarde))
+        afwijkend = [_VELD_NAAM[i] for i, geboekt, voorgesteld in verwacht if geboekt != voorgesteld]
+        if afwijkend:
+            return (
+                False,
+                f"geheugen stelt voor {'/'.join(afwijkend)} nog een andere waarde voor "
+                "dan de laatste identieke boekingen",
+            )
     return True, None
 
 
@@ -340,7 +367,9 @@ def _bereken(vendor_id: uuid.UUID, d: _VendorData, *, administratie_id: uuid.UUI
         # reset.
         reeks_vanaf=None if d.actief else d.gereset_op,
     )
-    bevestigd, reden = _geheugen_bevestigd(d.observaties, project_verplicht=project_verplicht, vandaag=nu.date())
+    bevestigd, reden = _geheugen_bevestigd(
+        d.observaties, project_verplicht=project_verplicht, vandaag=nu.date(), reeks_waarden=reeks.reeks_waarden
+    )
     kwal = motor.kwalificeer(
         reeks,
         drempel=drempel,
@@ -592,7 +621,7 @@ def _activeer_vendor(stand: StandData, *, nu: datetime, drempel: int) -> Activat
                             "autoboek_geactiveerd": {**onderbouwing, "leverancier_naam": naam},
                             "reden": (
                                 f"Autoboeken voor {naam or 'deze leverancier'} geactiveerd — "
-                                f"{stand.reeks_ongewijzigd} op rij ongewijzigd geboekt (drempel {drempel})"
+                                f"{motor.reeks_tekst(stand.reeks_ongewijzigd)} op rij door een mens (drempel {drempel})"
                             ),
                         },
                     )
@@ -611,8 +640,9 @@ def activeer_kwalificerend(
     *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None = None, nu: datetime | None = None
 ) -> list[ActivatieUitkomst]:
     """Blok A bundel 10-09 (besluit Peter 10-09): staat de administratie-schakelaar "Autoboeken (leren en boeken)" aan,
-    dan ACTIVEERT het systeem élke leverancier die kwalificeert (bestaande poort `motor.kwalificeer` — ≥ drempel mens-
-    boekingen op rij ongewijzigd, geheugen volledig app-bevestigd, geen open vraag/afwijzing/duplicaatsignaal, geen
+    dan ACTIVEERT het systeem élke leverancier die kwalificeert (bestaande poort `motor.kwalificeer` — ≥ drempel
+    IDENTIEKE mens-boekingen op rij (telling herzien 10-09 avond, blok 3: de eerste boeking telt als 1), geheugen
+    volledig app-bevestigd én gelijk aan de reeks, geen open vraag/afwijzing/duplicaatsignaal, geen
     veldwerker-koppeling) en niet door een mens is uitgezonderd. Zonder schakelaar (of bij doorbelasting): lege lijst —
     het gedrag van 01-09 (nomineren) blijft. Aangeroepen (1) post-commit ná élke GEBOEKT-overgang door een mens
     (documenten/boeken.py), (2) in `herbereken_administratie` (dagelijks), (3) bij aanzetten van de schakelaar en bij

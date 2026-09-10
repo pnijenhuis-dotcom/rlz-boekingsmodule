@@ -225,7 +225,7 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       actief: heroverwegen,
       actief_sinds: heroverwegen ? '2026-08-12T09:00:00Z' : null,
       redenen: [],
-      chips: [`${reeks} op rij ongewijzigd`, 'geheugen bevestigd', '0 vragen / 0 correcties', ...extra],
+      chips: [`${reeks} identieke boekingen`, 'geheugen bevestigd', '0 vragen / 0 correcties', ...extra],
       heroverweeg_signalen: signalen,
       laatste_factuur_datum: '2026-08-25',
       laatste_factuur_bedrag: bedrag,
