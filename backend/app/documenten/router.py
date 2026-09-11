@@ -396,7 +396,15 @@ def werkvoorraad_overzicht(
     GET /auth/administraties; zelfde patroon als GET /bank/overzicht). Alle administraties komen
     mee; de frontend toont alleen klanten mét openstaand werk en vermeldt het aantal verborgen."""
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
-    klanten = service.werkvoorraad_overzicht(administratie_ids_met_naam=[(a.id, a.naam) for a in administraties])
+    if groep_id is not None:
+        from app.beheer.groepen import administratie_ids_in_groep
+
+        in_groep = administratie_ids_in_groep(groep_id)
+        administraties = [a for a in administraties if a.id in in_groep]
+    # Blok 6 (11-09): mét actor_id leest de service de tellers-cache set-based (één statement over de hele scope).
+    klanten = service.werkvoorraad_overzicht(
+        administratie_ids_met_naam=[(a.id, a.naam) for a in administraties], actor_id=actor.id
+    )
     return schemas.WerkvoorraadOverzichtResponse(
         klanten=[
             schemas.WerkvoorraadKlantResponse(
@@ -418,6 +426,7 @@ def werkvoorraad_overzicht(
             for k in klanten
         ]
     )
+                spiegel_taken=k.spiegel_taken,
 
 
 @router.get(

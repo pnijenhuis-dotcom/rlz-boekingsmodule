@@ -624,6 +624,12 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     print("\nProjectverdeling-hercontrole (geboekte pro-rato-verdelingen, alle actieve administraties):")
     projectverdeling_exit = _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle())
+    # Werkvoorraad-tellers-cache (blok 6 11-09): nachtelijke volledige herberekening NÁ de signaalmotoren hierboven
+    # (terugkerend/voorraad/planning schrijven hun signalen eerst), zodat de klantenlijst 's ochtends exact klopt.
+    from app.werkvoorraad.cli_cmd import rapporteer_herrekenen
+
+    print("\nWerkvoorraad-tellers herrekenen (alle actieve administraties):")
+    tellers_exit = rapporteer_herrekenen(dry_run=False)
     return (
         1
         if fouten
@@ -634,6 +640,7 @@ def _sync_alles(args: argparse.Namespace) -> int:
         or kandidaten_exit
         or werklijst_exit
         or projectverdeling_exit
+        or tellers_exit
         else 0
     )
 
@@ -2415,6 +2422,10 @@ def main(argv: list[str] | None = None) -> int:
     from app.autoboek_kandidaten.cli_cmd import dispatch as dispatch_autoboek_leren, register as register_autoboek_leren  # blok A 10-09
 
     register_autoboek_leren(subparsers)  # autoboek-drempel-zetten, autoboek-leren-rapport
+    from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
+    from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
+
+    register_werkvoorraad_tellers(subparsers)  # werkvoorraad-tellers-herrekenen
     subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
@@ -2717,8 +2728,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     register_bank(subparsers)  # blok B 10-09: bank-voorstellen-lezen + bank-historie-backfill (app/bank/cli_cmd.py)
+    register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
     register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
+    register_rlz_lezen(subparsers)  # blok 10 11-09: rlz-lezen, LEES-ONLY OData-GET (app/rlz/lezen_cli.py)
 
     intake_postvak_parser = subparsers.add_parser(
         "intake-postvak-verwerken",
@@ -2729,9 +2742,7 @@ def main(argv: list[str] | None = None) -> int:
     # Blok 3 bundel 08-09 (B3): tweede postvak declaraties@ak-nijenhuis.nl (INTAKE_DECLARATIES_IMAP_*-envs).
     intake_postvak_parser.add_argument(
         "--kanaal",
-    register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
         choices=("facturen", "declaraties"),
-    register_rlz_lezen(subparsers)  # blok 10 11-09: rlz-lezen, LEES-ONLY OData-GET (app/rlz/lezen_cli.py)
         default="facturen",
         help="Welk postvak: facturen (default, facturen@) of declaraties (declaraties@ — documenten krijgen "
         "betaalstatus 'Betaald per bank').",
@@ -3004,6 +3015,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if (uitkomst_autoboek_leren := dispatch_autoboek_leren(args)) is not None:  # blok A 10-09
         return uitkomst_autoboek_leren
+    if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09
+        return uitkomst_werkvoorraad_tellers
     if args.commando == "bootstrap-beheerder":
         return _bootstrap_beheerder(args)
     if args.commando == "kantoor-digest":
@@ -3035,10 +3048,14 @@ def main(argv: list[str] | None = None) -> int:
         return _intercompany_leverancier_markeren(args)
     if args.commando in BANK_COMMANDOS:
         return run_bank(args)
+    if args.commando in ACCORDERING_COMMANDOS:
+        return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "migratie-schoonlijst":
         return run_migratie(args)  # blok D1 10-09
     if args.commando == "pandenregister-afleiden":
         return run_panden(args)  # blok D2 10-09
+    if args.commando == RLZ_LEZEN_COMMANDO:
+        return run_rlz_lezen(args)  # blok 10 11-09, lees-only
     if args.commando == "crediteuren-werklijst-nazorg":
         from app.crediteuren import afhandeling as crediteuren_afhandeling
 
@@ -3050,12 +3067,8 @@ def main(argv: list[str] | None = None) -> int:
         from app.projectverdeling import hercontrole as projectverdeling_hercontrole
 
         return _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle(forceer=args.forceer))
-    if args.commando in ACCORDERING_COMMANDOS:
-        return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "sync-alles":
         return _sync_alles(args)
-    if args.commando == RLZ_LEZEN_COMMANDO:
-        return run_rlz_lezen(args)  # blok 10 11-09, lees-only
     if args.commando == "voorraad-rlz-sync":
         return _voorraad_rlz_sync(args)
     if args.commando == "odoo-leesbron":

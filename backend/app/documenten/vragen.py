@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerAdministratie, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
+from app.werkvoorraad import tellers as werkvoorraad_tellers
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import (
     Boekvoorstel,
@@ -336,6 +337,8 @@ def stel_vraag(
             status_voor_vraag=document.status.value,
         )
         session.add(vraag)
+        session.flush()
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.VRAGEN,))  # blok 6 11-09
         overgang_detail = {
             "vraag_id": str(vraag.id),
             "toegewezen_aan": str(toegewezene) if toegewezene is not None else None,
@@ -537,6 +540,7 @@ def handel_vraag_af(
             detail={"vraag_id": str(vraag.id), "vraag_afgehandeld": True},
         )
         document.toegewezen_aan = None
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.VRAGEN,))  # blok 6 11-09
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -615,6 +619,7 @@ def sluit_vraag_wegens_duplicaat(
             },
         )
         document.toegewezen_aan = None
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.VRAGEN,))  # blok 6 11-09
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -661,6 +666,7 @@ def trek_vraag_in(
             detail={"vraag_id": str(vraag.id), "vraag_ingetrokken": True, "reden": vraag.ingetrokken_reden},
         )
         document.toegewezen_aan = None
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.VRAGEN,))  # blok 6 11-09
         record_audit_event(
             session,
             actor_id=actor_id,

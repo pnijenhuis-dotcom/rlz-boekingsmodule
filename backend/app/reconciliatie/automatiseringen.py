@@ -1514,27 +1514,6 @@ def deploy_drift_bevinding(*, nu: datetime) -> dict[str, Any] | None:
     }
 
 
-def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:  # noqa: ANN001
-    """Ingang vanuit de run-motor: feiten lezen, tellers berekenen, LET-OPs als bevindingen op de
-    verzamelaar zetten en de JSON-samenvatting teruggeven (die `Verzamelaar.samenvatting()` onder
-    `automatiseringen` meeneemt). Print het compacte blok óók naar de CLI-uitvoer."""
-    from app.config import settings
-
-    nu = nu or datetime.now(UTC)
-    feiten = verzamel_feiten(nu=nu)
-    tellers = bereken(feiten, nu=nu)
-    for kw in bevindingen(tellers, namen=feiten.administraties):
-        verzamelaar.bevinding(**kw)
-    rotatie = sa_key_rotatie_bevinding(nu=nu, aangemaakt_op=settings.nameting_sa_aangemaakt_op)
-    if rotatie is not None:
-        verzamelaar.bevinding(**rotatie)
-    drift = deploy_drift_bevinding(nu=nu)
-    if drift is not None:
-        verzamelaar.bevinding(**drift)
-    if stdout is not None:
-        for regel in regels(tellers):
-            stdout(regel)
-    return als_samenvatting(tellers, nu=nu)
 def rls_weigering_bevindingen(*, nu: datetime) -> list[dict[str, Any]]:
     """Blok 1 run 11-09: één platformbrede LET-OP (beheer → systeemmail) per route-patroon waarop in de laatste 24 u
     een RLS-weigering is geregistreerd (audit `rls_weigering`, app/db/rls_weigering.py): "Systeemfout — automatisch
@@ -1653,8 +1632,29 @@ def werkvoorraad_tellers_bevinding(*, nu: datetime, rapport=None) -> dict[str, A
     }
 
 
+def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:  # noqa: ANN001
+    """Ingang vanuit de run-motor: feiten lezen, tellers berekenen, LET-OPs als bevindingen op de
+    verzamelaar zetten en de JSON-samenvatting teruggeven (die `Verzamelaar.samenvatting()` onder
+    `automatiseringen` meeneemt). Print het compacte blok óók naar de CLI-uitvoer."""
+    from app.config import settings
+
+    nu = nu or datetime.now(UTC)
+    feiten = verzamel_feiten(nu=nu)
+    tellers = bereken(feiten, nu=nu)
+    for kw in bevindingen(tellers, namen=feiten.administraties):
+        verzamelaar.bevinding(**kw)
+    rotatie = sa_key_rotatie_bevinding(nu=nu, aangemaakt_op=settings.nameting_sa_aangemaakt_op)
+    if rotatie is not None:
+        verzamelaar.bevinding(**rotatie)
+    drift = deploy_drift_bevinding(nu=nu)
+    if drift is not None:
+        verzamelaar.bevinding(**drift)
     tellers_cache = werkvoorraad_tellers_bevinding(nu=nu)  # blok 6 11-09
     if tellers_cache is not None:
         verzamelaar.bevinding(**tellers_cache)
     for kw in rls_weigering_bevindingen(nu=nu):
         verzamelaar.bevinding(**kw)
+    if stdout is not None:
+        for regel in regels(tellers):
+            stdout(regel)
+    return als_samenvatting(tellers, nu=nu)

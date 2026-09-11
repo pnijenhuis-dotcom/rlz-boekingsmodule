@@ -24,11 +24,14 @@ export function Klantenlijst({
   fout,
   onHerlaad,
   totaalAdministraties,
+  groepFilter,
 }: {
   klanten: KlantRij[] | null
   fout: string | null
   onHerlaad: () => void
   totaalAdministraties: number
+  /** Blok 8 run 11-09: groepskenmerk-filter (GroepFilter) in de kopregel — rendert zelf niets zonder groepen. */
+  groepFilter?: React.ReactNode
 }) {
   const navigate = useNavigate()
   /** Klik op een statuskolom → documentenlijst voorgefilterd op die status (punt 1a); een lege
@@ -64,7 +67,10 @@ export function Klantenlijst({
 
   return (
     <div className="panel">
-      <h2>Overzicht per klant</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ marginRight: 'auto' }}>Overzicht per klant</h2>
+        {groepFilter}
+      </div>
       {fout && <FoutMelding melding="De klantenlijst kon niet geladen worden." detail={fout} onOpnieuw={onHerlaad} />}
       {!fout && (
         // .tabel-scroll (responsive-fix 2026-08-15): de tellerkolommen + nowrap-chips maken de
@@ -141,7 +147,14 @@ export function Klantenlijst({
                       navigate(`/bank/${k.administratie_id}`)
                     }}
                   >
-                    {k.bank_open === null ? '—' : <Teller waarde={k.bank_open} chipKlasse="ai" />}
+                    {k.bank_open === undefined ? (
+                      // Blok 6 (11-09): de lijst staat er vóór /bank/overzicht binnen is — skeleton tot de eerste bytes.
+                      <span className="skeleton" style={{ width: 28, height: 18 }} aria-label="Laden" />
+                    ) : k.bank_open === null ? (
+                      '—'
+                    ) : (
+                      <Teller waarde={k.bank_open} chipKlasse="ai" />
+                    )}
                   </td>
                   {toonSpiegel && (
                     <td title="Open spiegel-taken (doorbelasting): bron geboekt, spiegel-inkoopfactuur in de doel-administratie nog niet">

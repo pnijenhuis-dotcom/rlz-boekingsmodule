@@ -545,6 +545,9 @@ class WerkvoorraadKlantResponse(BaseModel):
     # Geplande week zonder weekstaat (blok A 06-09): gepland maar niet ingediend, ouder dan het
     # app-venster; 0 zonder de uren-opt-in. Kolom/KPI "Weekstaten ontbreken" — signaal, geen status.
     planning_signalen: int = 0
+    # Open spiegel-taken doorbelasting (blok 6 11-09): vervangt de per-administratie-call
+    # GET /doorbelasting/{id}/spiegel-taken vanuit de klantenlijst; signaal-teller (geen status).
+    spiegel_taken: int = 0
 
 
 class WerkvoorraadOverzichtResponse(BaseModel):

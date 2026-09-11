@@ -5,6 +5,7 @@
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen rlz_dubbel --lees-only
 #   scripts/gcp/nameting.sh autoboek-leren-rapport --administratie <uuid>
 #   scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis" --met-ai-toets
+#   scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentTransactions --filter "PaymentBatchId ne null" --expand "Batch,PaymentReferenceList(\$expand=Document)" --top 5
 # Alleen commando's uit de allowlist hieronder (lees-only); schrijvende nazorg blijft een expliciete opdracht van Peter
 # via de bestaande scripts. Argumenten mét komma's zijn veilig: gcloud's ^|^-scheidingsteken.
 set -euo pipefail
@@ -14,7 +15,9 @@ source "$HIER/nameting_env.sh"
 PROJECT="${PROJECT:-rlz-boekhouding}"
 REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden"
+# rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
+# niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen"
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 grep -qw -- "$CMD" <<<"$ALLOWLIST" || { echo "FOUT: '$CMD' staat niet in de lees-only allowlist ($ALLOWLIST)" >&2; exit 2; }
 if [[ "$CMD" == "reconciliatie-alles" ]]; then
@@ -23,6 +26,10 @@ fi
 if [[ "$CMD" == "bank-historie-backfill" ]]; then
   # Ochtendrun 11-09: de backfill schrijft in de eigen cache — als nameting alleen de telling (--dry-run).
   printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: bank-historie-backfill alleen mét --dry-run via dit script (de echte vulling is een expliciete opdracht van Peter)" >&2; exit 2; }
+fi
+if [[ "$CMD" == "werkvoorraad-tellers-herrekenen" ]]; then
+  # Blok 6 11-09: de herberekening schrijft de tellers-cache — als nameting alleen de vergelijking (--dry-run).
+  printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: werkvoorraad-tellers-herrekenen alleen mét --dry-run via dit script (de echte herberekening loopt in sync-alles)" >&2; exit 2; }
 fi
 if [[ "$CMD" == "pandenregister-afleiden" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf"; then
   echo "FOUT: --schrijf is geen nameting" >&2; exit 2

@@ -35,6 +35,7 @@ from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
+from app.werkvoorraad import tellers as werkvoorraad_tellers
 from app.documenten.boeken import (
     BoekenUitgeschakeld,
     VolumeremBereikt,
@@ -90,8 +91,8 @@ from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync.models import TaxRateCache, VendorCache
-
 from app.tijd import vandaag_nl
+
 logger = logging.getLogger(__name__)
 
 _MODULE = "boekhouding"
@@ -731,6 +732,12 @@ def _boek_voor_doelentiteit(
                 factuur_pdf_op=datetime.now(UTC) if factuur_bytes is not None else None,
             )
             session.add(boeking)
+            if status == DoorbelastingBoekingStatus.SPIEGEL_OPEN:
+                # Werkvoorraad-teller "spiegel-taken" (blok 6 11-09): open taak ontstaan → cache hertellen.
+                session.flush()
+                werkvoorraad_tellers.ververs_signalen(
+                    session, administratie_id, (werkvoorraad_tellers.SPIEGEL_TAKEN,)
+                )
             if webhook_payload is not None:
                 # Outbox in dezelfde transactie als de boeking (patroon documenten/boeken.py):
                 # document_id = het bron-document (FK + traceerbaarheid), administratie_id =
@@ -1132,6 +1139,8 @@ def boek_spiegel_alsnog(
             administratie_id=administratie_id,
         )
         session.flush()
+        # Werkvoorraad-teller "spiegel-taken" (blok 6 11-09): taak dicht → cache hertellen.
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.SPIEGEL_TAKEN,))
         session.expunge(boeking)
         return boeking
 

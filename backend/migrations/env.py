@@ -39,6 +39,7 @@ import app.uren.models  # noqa: F401
 import app.verkoop.models  # noqa: F401
 import app.verplichting.models  # noqa: F401
 import app.voorraad.models  # noqa: F401
+import app.werkvoorraad.models  # noqa: F401
 import app.waarborg.models  # noqa: F401
 from app.db.models import Base
 

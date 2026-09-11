@@ -701,6 +701,9 @@ export interface DocumentGebeurtenisDto {
   tijdstip: string
 }
 
+  /** Open spiegel-taken doorbelasting (blok 6 11-09): server-side teller in dezelfde rij — vervangt de
+   * per-administratie-call GET /doorbelasting/{id}/spiegel-taken vanuit de klantenlijst. */
+  spiegel_taken?: number
 export interface DocumentDetailDto {
   id: string
   administratie_id: string | null

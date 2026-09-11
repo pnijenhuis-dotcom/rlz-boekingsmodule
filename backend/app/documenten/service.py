@@ -30,8 +30,6 @@ from app.documenten.models import (
     DocumentGebeurtenis,
     DocumentSoort,
     DocumentStatus,
-    DuplicaatSignaal,
-    DuplicaatSignaalUitkomst,
     Vraag,
     VraagStatus,
 )
@@ -50,7 +48,7 @@ from app.extractie import service as extractie_service
 from app.extractie import template_service
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
-from app.vragen import service as vragen_kpi
+from app.werkvoorraad import tellers as werkvoorraad_tellers
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +196,8 @@ def _schrijf_overgang(
     valideer_overgang(van, naar)
     detail = _borg_systeem_reden(actor_id=actor_id, document_id=document.id, van=van, naar=naar, detail=detail)
     document.status = naar
+    # Werkvoorraad-tellers-cache (blok 6 run 11-09): incrementeel in dezelfde transactie — oude bucket −1, nieuwe +1.
+    werkvoorraad_tellers.verwerk_statusovergang(session, document.administratie_id, van, naar)
     session.add(
         DocumentGebeurtenis(
             id=uuid.uuid4(),
@@ -1136,6 +1136,7 @@ def upload_document(
         )
         session.add(document)
         session.flush()
+        werkvoorraad_tellers.verwerk_nieuw_document(session, administratie_id, DocumentStatus.ONTVANGEN)  # blok 6 11-09
 
         session.add(
             DocumentGebeurtenis(
@@ -1830,17 +1831,9 @@ def tel_groepen(*, administratie_id: uuid.UUID, per_status: dict[DocumentStatus,
     }
 
 
-# Statusbuckets voor de werkvoorraad-klantenlijst (mockup #werkvoorraad "Overzicht per klant").
-# boeken_mislukt telt bewust mee als "te controleren": het vraagt om menselijke actie en mag
-# nooit stil in een verborgen bucket vallen.
-_TE_CONTROLEREN_STATUSSEN = {
-    DocumentStatus.ONTVANGEN,
-    DocumentStatus.EXTRACTIE_WACHTRIJ,
-    DocumentStatus.EXTRACTIE_BEZIG,
-    DocumentStatus.TE_CONTROLEREN,
-    DocumentStatus.HANDMATIG_AFMAKEN,
-    DocumentStatus.BOEKEN_MISLUKT,
-}
+# Statusbuckets + terminale statussen voor de werkvoorraad-klantenlijst: één bron sinds blok 6 (11-09) in
+# app/werkvoorraad/tellers.py (de cache-motor en deze module tellen met dezelfde definitie).
+_TE_CONTROLEREN_STATUSSEN = werkvoorraad_tellers.TE_CONTROLEREN_STATUSSEN
 
 
 @dataclass(frozen=True)
@@ -1881,6 +1874,10 @@ class WerkvoorraadKlant:
     # ingediend, ouder dan het app-venster — alleen berekend bij de uren-opt-in (anders 0); zelfde
     # signaal-patroon, geen document erachter, telt niet mee in heeft_openstaand_werk.
     planning_signalen: int = 0
+    # Open spiegel-taken doorbelasting (blok 6 11-09): tot nu haalde de klantenlijst dit per administratie op
+    # (`GET /doorbelasting/{id}/spiegel-taken` × N = 3.826 requests in drie dagen); nu een teller in dezelfde rij.
+    # Signaal-patroon: telt niet mee in heeft_openstaand_werk (de frontend telt 'm wél, ongewijzigd gedrag).
+    spiegel_taken: int = 0
 
     @property
     def heeft_openstaand_werk(self) -> bool:
@@ -1894,117 +1891,55 @@ class WerkvoorraadKlant:
         ) > 0
 
 
-#: Terminale statussen voor de werkvoorraad-tellers (zie werkvoorraad_overzicht).
-_TERMINAAL_VOOR_TELLERS = [
-    DocumentStatus.VERWIJDERD,
-    DocumentStatus.GEBOEKT,
-    DocumentStatus.GESPLITST,
-    DocumentStatus.SAMENGEVOEGD,
-    # Verplichtingen (04-09): geaccordeerd is terminaal — de offerte is goedgekeurd, er volgt geen
-    # boeking; het werk zit dan in de verbruiksstand, niet in de werkvoorraad.
-    DocumentStatus.GEACCORDEERD,
-    # Duplicaten-UI (blok 3, fixrun 08-09): een afgevoerd duplicaat is GEEN openstaand werk en telt
-    # in GEEN werkvoorraad-teller/-tab mee (ook niet als "afgewezen") — anders dan afgewezen zelf
-    # (dat wél een eigen bucket "Afgewezen — ter controle" heeft). Zonder deze uitsluiting zouden
-    # stale factuurmatch-/duplicaatsignaal-rijen op een afgevoerd document toch nog meetellen in de
-    # signaaltellers hieronder.
-    DocumentStatus.AFGEVOERD_DUPLICAAT,
-]
+#: Terminale statussen voor de werkvoorraad-tellers (één bron: app/werkvoorraad/tellers.py).
+_TERMINAAL_VOOR_TELLERS = list(werkvoorraad_tellers.TERMINAAL_VOOR_TELLERS)
 
 
-def werkvoorraad_overzicht(*, administratie_ids_met_naam: list[tuple[uuid.UUID, str]]) -> list[WerkvoorraadKlant]:
-    """Tellers per administratie voor de werkvoorraad-klantenlijst (mockup #werkvoorraad). De
-    aanroeper (router) levert uitsluitend administraties binnen de scope van de gebruiker aan —
-    zelfde patroon als bank_overzicht. Alle administraties komen mee (ook zonder openstaand
-    werk); de frontend verbergt de lege en toont alleen het aantal verborgen klanten."""
-    from app.uren.models import Factuurmatch  # lazy: geen kringimport op moduleniveau
+def _klant_uit_tellers(administratie_id: uuid.UUID, naam: str, t: dict[str, int]) -> WerkvoorraadKlant:
+    return WerkvoorraadKlant(
+        administratie_id=administratie_id,
+        naam=naam,
+        te_controleren=t.get(werkvoorraad_tellers.TE_CONTROLEREN, 0),
+        klaar_om_te_boeken=t.get(werkvoorraad_tellers.KLAAR_OM_TE_BOEKEN, 0),
+        vragen=t.get(werkvoorraad_tellers.VRAGEN, 0),
+        afgewezen=t.get(werkvoorraad_tellers.AFGEWEZEN, 0),
+        bij_klant=t.get(werkvoorraad_tellers.BIJ_KLANT, 0),
+        iban_wachtend=t.get(werkvoorraad_tellers.IBAN_WACHTEND, 0),
+        match_afwijkingen=t.get(werkvoorraad_tellers.MATCH_AFWIJKINGEN, 0),
+        duplicaat_signalen=t.get(werkvoorraad_tellers.DUPLICAAT_SIGNALEN, 0),
+        terugkerend_signalen=t.get(werkvoorraad_tellers.TERUGKEREND_SIGNALEN, 0),
+        voorraad_verschillen=t.get(werkvoorraad_tellers.VOORRAAD_VERSCHILLEN, 0),
+        buiten_offerte=t.get(werkvoorraad_tellers.BUITEN_OFFERTE, 0),
+        planning_signalen=t.get(werkvoorraad_tellers.PLANNING_SIGNALEN, 0),
+        spiegel_taken=t.get(werkvoorraad_tellers.SPIEGEL_TAKEN, 0),
+    )
 
+
+def werkvoorraad_overzicht(
+    *, administratie_ids_met_naam: list[tuple[uuid.UUID, str]], actor_id: uuid.UUID | None = None
+) -> list[WerkvoorraadKlant]:
+    """Tellers per administratie voor de werkvoorraad-klantenlijst (mockup #werkvoorraad). De aanroeper (router)
+    levert uitsluitend administraties binnen de scope van de gebruiker aan — zelfde patroon als bank_overzicht. Alle
+    administraties komen mee (ook zonder openstaand werk); de frontend verbergt de lege.
+
+    Sinds blok 6 (11-09) SET-BASED: mét `actor_id` leest de route de tellers-cache in ÉÉN statement over alle
+    administraties in de scope (`app/werkvoorraad/tellers.py::lees_voor_scope`; RLS op de cache = scope-waarheid),
+    fail-safe direct tellen + rij aanmaken waar de cache ontbreekt. Zónder `actor_id` (servicelaag-aanroepers en
+    definitietests) telt de functie direct per administratie — de DEFINITIE van elke teller — en ververst de cache
+    meteen mee, zodat beide paden dezelfde waarheid schrijven."""
+    if actor_id is not None:
+        return [
+            _klant_uit_tellers(r.administratie_id, r.naam, r.tellers)
+            for r in werkvoorraad_tellers.lees_voor_scope(
+                actor_id=actor_id, administratie_ids_met_naam=administratie_ids_met_naam
+            )
+        ]
     klanten: list[WerkvoorraadKlant] = []
     for administratie_id, naam in administratie_ids_met_naam:
-        with scoped_session(administratie_id) as session:
-            per_status = dict(
-                session.execute(
-                    select(Document.status, func.count())
-                    .where(
-                        Document.administratie_id == administratie_id,
-                        # Terminale statussen tellen niet als openstaand werk: geboekt,
-                        # verwijderd, gesplitst (de kinderen van een splitsing tellen zelf) en
-                        # samengevoegd (nabundel-dubbelpaar 03-09: het exemplaar leeft door in het
-                        # leidende document).
-                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
-                    )
-                    .group_by(Document.status)
-                ).all()
-            )
-            # Factuurmatch-signaalteller (fase 2, besluit 3): afwijkingen op nog-open
-            # documenten — géén status (de documenten tellen hierboven al mee), wel een
-            # eigen teller/chip volgens het duplicaat-patroon.
-            match_afwijkingen = (
-                session.scalar(
-                    select(func.count())
-                    .select_from(Factuurmatch)
-                    .join(Document, Document.id == Factuurmatch.document_id)
-                    .where(
-                        Factuurmatch.administratie_id == administratie_id,
-                        Factuurmatch.uitkomst == "afwijking",
-                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
-                    )
-                )
-                or 0
-            )
-            duplicaat_signalen = (
-                session.scalar(
-                    select(func.count())
-                    .select_from(DuplicaatSignaal)
-                    .join(Document, Document.id == DuplicaatSignaal.document_id)
-                    .where(
-                        DuplicaatSignaal.administratie_id == administratie_id,
-                        DuplicaatSignaal.uitkomst == DuplicaatSignaalUitkomst.MOGELIJK_DUPLICAAT.value,
-                        Document.status.notin_(_TERMINAAL_VOOR_TELLERS),
-                    )
-                )
-                or 0
-            )
-            from app.terugkerend import service as terugkerend_service
-
-            terugkerend_signalen = terugkerend_service.tel_ontbrekend(session, administratie_id)
-            # Voorraadverschil (C2 03-09): twee aggregaatqueries, uitsluitend bij de voorraad-opt-in —
-            # dezelfde motorfunctie als de kantoorbrede lijst (één definitie).
-            from app.voorraad import service as voorraad_service  # lokaal: houdt de importgraaf klein
-
-            voorraad_verschillen = voorraad_service.tel_verschillen(session, administratie_id)
-            # Open vragen (G1 03-09): de KPI-definitie uit app.vragen.service — één bron met de kaart
-            # "Open vragen"; dezelfde gescoopte sessie als de overige tellers (RLS op vraag = administratie).
-            vragen = vragen_kpi.tel_open_vragen(session, administratie_id)
-            # Buiten offerte (⑤, 04-09): één aggregaatquery op verplichting_match — signaal, geen status.
-            from app.verplichting import match_pipeline as verplichting_match  # lokaal: geen kring
-
-            buiten_offerte = verplichting_match.tel_buiten_offerte(session, administratie_id)
-            # Geplande week zonder weekstaat (blok A 06-09): één definitie mét de kantoorbrede lijst
-            # (/uren/kantoor/planning-signalen); 0 zonder de uren-opt-in.
-            from app.uren import planning_signaal  # lokaal: houdt de importgraaf klein
-
-            planning_signalen = planning_signaal.tel_signalen(session, administratie_id)
-        klanten.append(
-            WerkvoorraadKlant(
-                administratie_id=administratie_id,
-                naam=naam,
-                te_controleren=sum(per_status.get(s, 0) for s in _TE_CONTROLEREN_STATUSSEN),
-                klaar_om_te_boeken=per_status.get(DocumentStatus.KLAAR_OM_TE_BOEKEN, 0),
-                vragen=vragen,
-                afgewezen=per_status.get(DocumentStatus.AFGEWEZEN, 0),
-                # Klant-accordering (migratie 0033): "Bij klant" = documenten die op één of
-                # meer accorderingslagen wachten.
-                bij_klant=per_status.get(DocumentStatus.TER_ACCORDERING, 0),
-                iban_wachtend=per_status.get(DocumentStatus.WACHT_OP_IBAN_ACCORDERING, 0),
-                match_afwijkingen=match_afwijkingen,
-                duplicaat_signalen=duplicaat_signalen,
-                terugkerend_signalen=terugkerend_signalen,
-                voorraad_verschillen=voorraad_verschillen,
-                buiten_offerte=buiten_offerte,
-                planning_signalen=planning_signalen,
-            )
-        )
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            tellers = werkvoorraad_tellers.tel_direct(session, administratie_id)
+            werkvoorraad_tellers.schrijf_cache(session, administratie_id, tellers)
+        klanten.append(_klant_uit_tellers(administratie_id, naam, tellers))
     return klanten
 
 
