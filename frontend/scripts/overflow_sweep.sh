@@ -26,6 +26,12 @@ BASIS="http://localhost:${POORT}"
 # "OVERFLOW — scope-dialoog …" in de body als de dialooginhoud intern horizontaal overloopt (de badge meet alleen de pagina).
 HARNASSEN=(harness.html "harness.html?project=1" harness-werkvoorraad.html "harness-werkvoorraad.html?twijfel=1" "harness-werkvoorraad.html?klant=1" "harness-werkvoorraad.html?projecten=1" harness-gebruikers.html "harness-gebruikers.html?breed=1" "harness-gebruikers.html?breed=1&groep=veldwerkers" "harness-gebruikers.html?breed=1&groep=accordeurs" "harness-gebruikers.html?scope=71" "harness-gebruikers.html?scope=71&variant=accordeur" harness-instellingen.html "harness-instellingen.html?pad=/instellingen/administraties" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d" "harness-instellingen.html?pad=/instellingen/administraties/dddddddd-0000-0000-0000-00000000000d&tab=boeken-ai" "harness-instellingen.html?pad=/instellingen/autoboeken")
 BREEDTES=(1440 1170 1024 768)
+# HARNASSEN_ALLEEN=<substring> meet alleen de harnassen waarvan de naam die substring bevat (herdraai van één groep).
+if [ -n "${HARNASSEN_ALLEEN:-}" ]; then
+  _sel=()
+  for h in "${HARNASSEN[@]}"; do [[ "$h" == *"${HARNASSEN_ALLEEN}"* ]] && _sel+=("$h"); done
+  HARNASSEN=("${_sel[@]}")
+fi
 
 if [ ! -x "$CHROME" ]; then
   echo "Chrome niet gevonden op: $CHROME (zet CHROME=...)" >&2
@@ -65,7 +71,10 @@ for harnas in "${HARNASSEN[@]}"; do
         extra=(--screenshot="${SCREENSHOT_DIR}/${naam}.png")
       fi
       # ${extra[@]+…}: macOS bash 3.2 ziet een lege array onder set -u als unbound.
-      dom=$("$CHROME" --headless=new --disable-gpu --hide-scrollbars \
+      # Blok 4b (11-09): één meting hing 37 min (Chrome --dump-dom + --screenshot op harness-gebruikers donker 1440)
+      # → harde tijdsgrens per meting via perl alarm (macOS heeft geen `timeout`); een hangende meting telt als ❓, nooit eeuwig.
+      # Het gebruikers-harnas (71 administraties/brede tabel) heeft ~2 min CPU nodig onder --virtual-time-budget → default 300 s.
+      dom=$(perl -e 'alarm shift; exec @ARGV' "${MEET_TIMEOUT:-300}" "$CHROME" --headless=new --disable-gpu --hide-scrollbars \
         --window-size="${breedte},1600" --virtual-time-budget=5000 \
         ${extra[@]+"${extra[@]}"} --dump-dom "$url" 2>/dev/null)
 
