@@ -2014,3 +2014,74 @@ netst (relatie-spoor) maar half bewezen; vorm 4 is RLZ's eigen concept voor exac
 schrijfvorm en semantiek van ActionKind 115; of `ReturnReason` door RLZ bij SEPA-retouren gevuld wordt (geen enkele
 gevulde waarde in de TEST-administratie); of actie 15 een NEGATIEF PaymentItem (creditverkoopfactuur) op een negatieve
 mutatie accepteert.
+
+## Incasso-/betaalbatches — STAP-0 11-09 (lees-only) — `verkenning/stap0_batches_lezen.py` — RLZ ZET ÉÉN SLEUTEL OP FACTUUR ÉN BANKREGEL
+
+Aanleiding (Peter 11-09, blok 10 run 11-09 middag): "RLZ herkent zijn eigen batches, wij niet." Een bankregel die het
+totaal van een SEPA-betaal- of incassobatch draagt, hangt in de RLZ-UI aan álle onderliggende facturen; onze matchmotor
+ziet één bedrag zonder passende open post en valt terug op "handmatig". Uitgevoerd **uitsluitend met GET's** (`LeesClient`
+weigert élke andere methode; `…/Actions` alleen als GET-lijst, nooit als POST) tegen de Help-pagina's, de enumeraties, de
+TEST-administratie (`8dbfb856-…`, 104 mutaties) en Universal Steigerbouw B.V. (échte administratie mét RLZ-betaalbatches
+2025). Rapporten (gitignored, geanonimiseerd): `verkenning/output/stap0_batches_{help,enums,admins,verdieping,sleutel}.json`.
+Namen hieronder = initialen, IBAN's = laatste 4, GUID's = eerste 8; bedragen en RLZ-batch-id's letterlijk.
+
+### 1. Wat de API zelf zegt (Help 2.135 routes; `$metadata` = 404, herbevestigd)
+
+| Route / model | Bestaat? | Wat het is | Batch-relevant? |
+|---|---|---|---|
+| `GET {adminId}/Remittances` (+`/{id}`, `/{id}/Actions` GET+POST, `/{id}/DocumentTaskHistory`, `/{id}/Export`), enum `RemittanceStatuses` | Help ja; live **403** op beide logins | **Kasafsluiting/afstorting** — model `Remittance` = `CashRegister`, `CashRegisterGroup`, `SalesTotal`, `TentativeTableTotal`, `WithdrawnAmount`, `PaymentDifference`, `RemittancePaymentMethodList`; `Export` levert een `ManualJournal`; statussen 1 Geboekt · 2 Wachtend op export · 3 Export geslaagd · 4 Export mislukt | **Nee** — kassa, geen SEPA |
+| `GET {adminId}/DirectDebits?expectedPaymentsFilter=` | **200** | "Returns a list of Payment Items for Direct Debit" = de **incassolijst-kandidaten** (PaymentItem-model); filter `ExpectedPaymentsFilters` 0 = zonder / 1 = mét "betalingen onderweg" (PaymentStatus 2) | Kandidatenlijst, geen batch |
+| `GET {adminId}/CreditTransfers?paymentRecommendationCreditSalesinvoicesFilter=&expectedPaymentsFilter=` | **200** | "… for Credit Transfer" = de **betaallijst-kandidaten**; tweede filter 0/1/2 = geen / alleen / ook credit-verkoopfacturen | Kandidatenlijst, geen batch |
+| `PaymentBatches`, `DirectDebitBatches`, `PaymentTransactionBatches`, `Batches`, `PaymentOrders`, `CollectionOrders`, `SepaFiles`, `TransmittedFiles`, `Mandates`, `DirectDebitMandates`, `Files`, `ReeleezeeFiles` (collectie) | alle **404** | — | Er is **géén batch-collectie**; alleen `Files/{id}/Download`/`ReeleezeeFiles/{id}/Download` per id (Help) |
+| **`PaymentTransaction.Batch : PaymentTransactionBatch`** + **`PaymentTransaction.PaymentBatchId : string`** + `ReturnReason : string` | model + live | `PaymentTransactionBatch {id, BatchId, Date, FileName, IsDeleted, RemainingAmount}` — RLZ's eigen batch-entiteit, alleen als navigatie op de bankregel (`$expand=Batch`) | **JA — dit is de batch** |
+| **`PaymentTerm.PaymentBatchInformation : string`** (+ `IsPaymentProcessed`, `PaymentDate`, `PaymentRefID`, `PaymentReference1/2`, `BasePayedAmount`, `OpenAmountBase`, `PaymentItem`, `BankRelation`, `PaymentMethod`, `Sequence`) | model + live via `…Invoices/{id}?$expand=PaymentTermList` | de batch-sleutel **op het document** (08-09 al gezien op de C.V.: Exact/Reeleezee RLZ-16-00003154 → `RLZEE_CT_20260908_192438_3097_0001`) | **JA — dezelfde sleutel** (§3) |
+| `PaymentItem` {…, `ExportFile : Upload`, `PaymentInProgress` (eigen enum-type), `PaymentRefID`, `ReturnReason`} | model + live | `$filter=PaymentInProgress eq true` → `400 incompatible types 'Reeleezee.DTO.Bank.PaymentInProgress' and 'Edm.Boolean'` (zelfde enum-typebug als `Type eq 2`); `ExportFile ne null` → count 0 op beide; `PaymentItems?$expand=PaymentTerm` geeft overal `null` — de term is alleen via het DOCUMENT leesbaar | items dragen de sleutel niet rechtstreeks |
+| `BankRelation` {`MandateID`, `DefaultMandateID`, `SequenceType`/`LastSequenceType` (`SepaDirectDebitSequenceTypes` 0 Unknown · 1 Final · 2 Eerste · 3 Eenmalig · 4 Doorlopend), `DateOfSignature`, `MaximumDirectDebitAmount`, `DirectDebitAuthorization`, `ElectronicSignature`} | live op `Customers/{id}/BankRelations` | SEPA-machtigingsgegevens per relatie; TEST/Universal: `MandateID` gevuld (`00000056-001`-vorm), `DirectDebitAuthorization false`, `SequenceType 0` — geen enkele incasso-relatie | incasso-kant leesbaar |
+| `PaymentAccount` {`CanExport`, `CanReceiveDirectDebits`, `CanReceivePayments`, `SepaLimits`, `ExportReference`, `SepaCreditorID`, `SepaDirectDebitType` (1 EURO-incasso · 2 EURO bedrijven incasso), `SepaMaxAmountPerBatch/PerItem`, `SepaMaxItemsPerBatch`} | live | per bankrekening óf RLZ er batches uit exporteert (`CanExport`) en óf incasso is ingericht (`SepaCreditorID`); TEST `CanExport true`, Universal `CanExport false` (huidige rekening), beide `SepaCreditorID null` | onboarding-/nametingprobe |
+| `ActionKinds` | enum | **20 `Exporteerbank betalingen`** (= batch-export), **116 `Koppel batch`** (LinkBatch), 115 `Betaling storneren`, 122 `Voltooi ontbrekende betaling`, 128/129/130 fiatteer/afkeur/wijzig betaling, 139 `Repareer betalingen`, 148 `Boek verwachte bankregel`. `GET PaymentTransactions/{id}/Actions` op een batch-bankregel biedt onveranderd alleen 15/16/148/160/161 — 116 staat er niet bij (09-08-sweep: kale POST 116 → 204 zonder effect; **nooit herhaald, ook nu niet**) | RLZ hééft een batch-koppelactie, body onbekend |
+
+OData-grenzen: `$filter=PaymentBatchId ne null` en `ne ''` werken (mét `$count`); `$filter=Batch ne null` → 400;
+`$filter=Batch/id ne null` → `200` mét HTML-body (geen geldige query); `$expand=Batch` werkt op de collectie én per id.
+
+### 2. Hoe RLZ een batch-bankregel koppelt (Universal Steigerbouw, 400 recentste mutaties + `PaymentBatchId ne null` = 34)
+
+| Soort | Aantal | Kenmerken |
+|---|---|---|
+| **Eigen RLZ-betaalbatch (SEPA CT, afschrijving)** | **28** | `PaymentBatchId` = `RLZEE_CT_<jjjjmmdd>_<uummss>_<n>_0001`, **`Batch` gevuld**: `BatchId` identiek, `FileName` `RLZEE_CT_…_<n>.xml` (pain.001), `Date` = exportmoment (bv. 2025-10-17 15:37:22), `RemainingAmount null` (volledig gekoppeld), `IsDeleted false`; `TransactionId '00200'`; `Reference` "TOTAAL 26 VZ / betaalkenmerk: PREF"; **4–26 `PaymentReference`s per bankregel, Σ = |Amount| cent-exact** (−41.362,85 = 26 inkoopfacturen; −43.038,25 = 17; −33.085,34 = 14), `OpenAmount 0`, `MatchedPaymentItem null`, alle koppelingen `PaymentReconciliationSource 2` (Manual — óók deze), géén systeemhulzen |
+| **Verzamelbetaling van een debiteur (bijschrijving)** | **6** | `PaymentBatchId` komt uit het bankbestand van de BETALER (bv. `INGBE2600921`, `3001612BD0000ING`), **`Batch` null**, 1–3 koppelingen (Source 2), `Reference` noemt de factuurnummers ("Factuur 808010869 808010870 808010864" → drie verkoopfacturen 41,01 + 264,00 + 13.200,00 = 13.505,01) |
+| Meervoudige koppelingen zónder `PaymentBatchId` | 5 (Universal) / 3 (TEST) | handmatig in de UI: "Debnr: Ref: 808010883,808010885", "342 / 341", factuur + creditnota (3.962,75 − 363,00) — Source 2, Sequence overal 1 |
+| `PaymentBatchId` herhaald op meerdere regels | 0 | één batch = één bankregel (geen splitsing over afschriften gezien) |
+| Verwachte bankregels (Type 2, `showExpectedPaymentTransactions=true`) | 0 op beide | een geëxporteerde batch levert dus GEEN verwachte regel op; de items gaan naar PaymentStatus 2 |
+| TEST-administratie | 0 batches | geen batch ooit geëxporteerd — schema wél via `$expand=Batch` (veld aanwezig, null) |
+
+### 3. DE SLEUTEL: factuur en bankregel dragen dezelfde batch-id (`stap0_batches_lezen.py sleutel`, 12/12 documenten op 3 batches)
+
+`PurchaseInvoices/{id}?$expand=PaymentTermList` van élk gekoppeld document van de batches 2025-10-17 / 2025-04-04 /
+2025-03-28: **`PaymentTermList[0].PaymentBatchInformation == PaymentTransaction.PaymentBatchId == Batch.BatchId`**
+(bv. `RLZEE_CT_20251017_153722_9221_0001`), `PaymentDate` = batchdatum, `OpenAmountBase 0`, `BasePayedAmount` = regelbedrag,
+`IsPaymentProcessed null`, document Status 3. Vóór de bankregel binnenkomt staat de factuur al zó (C.V. 08-09: Exact
+RLZ-16-00003154, Status 2, `PaymentBatchInformation RLZEE_CT_20260908_192438_3097_0001`, PaymentItem PaymentStatus 2
+"onderweg"). **Consequentie: een eigen RLZ-batch is deterministisch te herkennen zónder bedrag- of naamheuristiek —
+sleutel-gelijkheid + Σ(items met die sleutel) = |bankregel| cent-exact.** Debiteur-verzamelbetalingen hebben die sleutel
+niet (hun `PaymentBatchId` is van de betaler) en vallen op factuurnummers-als-tokens + som.
+
+### 4. R-transacties (storno/afkeuring) — geen route, één veld
+
+- Geen route, actie of enum met Return/Reversal/Reject in de naam; **het enige spoor is `ReturnReason : string`** op
+  `PaymentTransaction` én `PaymentItem` (Help), `$filter=ReturnReason ne null` → **count 0** op TEST én Universal (34
+  batches, 0 R's zichtbaar — of RLZ vult het veld niet bij import, of Universal had geen R-transacties).
+- `searchstring=` op `storno|stornering|terugboeking|RETURN|RTRN|reversal|afgekeurd|incasso|SEPA|batch|verzameld|MD06|AC04|
+  AM04|MS03|AC01|AG01|MD01|SL01|geweigerd` → 0 SEPA-treffers; "retour" (retour RC, artikel geretourneerd) en "terug"
+  (Belastingdienst TERUGGAAF) zijn geen R-transacties.
+- RLZ's eigen mechanisme voor een teruggedraaide betaling blijft **ActionKind 115 `Betaling storneren` + leesroute
+  `CancellationCandidates`** (STAP-0 10/11-09 §2: tegengestelde mutatie van dezelfde tegenpartij, bedrag-onafhankelijk;
+  leeg op de batch-bankregels hier). Schrijfvorm en semantiek (héle koppeling of één item uit een batch?) ongekraakt —
+  DevTools-capture Peter nodig, zelfde vraag als verrekening-vorm 4.
+
+### 5. Wat NIET vast te stellen was (lees-only)
+
+Of één actie 15 méérdere `PaymentItemList`-entries verwerkt (capture 09-08 droeg één item; `LinkedAmount` is één
+scalar → per-item-calls zijn de bewezen vorm); de body van actie 116 `Koppel batch`; of `ReturnReason` bij een échte
+SEPA-R gevuld wordt; de `PaymentInProgress`-enumwaarden (geen enumeratie-route); de incasso-kant (DD) op een
+administratie mét `SepaCreditorID` — geen enkele test-login heeft er één. Productiebewijs C.V. via `rlz-lezen`
+(BESLISSINGEN "INCASSO-/BETAALBATCHES UIT RLZ — STAP-0 LEES-ONLY", meetrecept) ná deploy.

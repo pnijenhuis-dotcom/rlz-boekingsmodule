@@ -33,6 +33,7 @@ from app.omzet import reconciliatie as omzet_reconciliatie
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
 from app.rlz.credentials import GeenRlzCredentials
+from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
@@ -2730,6 +2731,7 @@ def main(argv: list[str] | None = None) -> int:
         "--kanaal",
     register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
         choices=("facturen", "declaraties"),
+    register_rlz_lezen(subparsers)  # blok 10 11-09: rlz-lezen, LEES-ONLY OData-GET (app/rlz/lezen_cli.py)
         default="facturen",
         help="Welk postvak: facturen (default, facturen@) of declaraties (declaraties@ — documenten krijgen "
         "betaalstatus 'Betaald per bank').",
@@ -3052,6 +3054,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "sync-alles":
         return _sync_alles(args)
+    if args.commando == RLZ_LEZEN_COMMANDO:
+        return run_rlz_lezen(args)  # blok 10 11-09, lees-only
     if args.commando == "voorraad-rlz-sync":
         return _voorraad_rlz_sync(args)
     if args.commando == "odoo-leesbron":
