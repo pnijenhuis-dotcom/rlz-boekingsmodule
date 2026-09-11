@@ -4,11 +4,12 @@ markeringsrijen, max-per-run, geen dubbele lezing, en de matchcontext leest 'm t
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import Engine, text
 
 from app.bank import historie_bron, voorstellen
+from app.tijd import vandaag_nl
 from tests.bank.conftest import FakeBankClient, maak_bank_mutatie
 
 
@@ -32,7 +33,7 @@ def _afgeletterde_mutatie(admin_engine, administratie_id, *, dagen_terug: int = 
         tegenpartij_naam="KPN B.V.",
         omschrijving="KPN abonnement",
         tegenrekening_iban="NL20INGB0001234567",
-        boekdatum=(date.today() - timedelta(days=dagen_terug)).isoformat(),
+        boekdatum=(vandaag_nl() - timedelta(days=dagen_terug)).isoformat(),
     )
 
 

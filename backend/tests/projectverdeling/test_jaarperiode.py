@@ -26,17 +26,11 @@ from app.projectverdeling.omzet import omzet_per_project
 from app.security.tokens import create_access_token
 from tests.documenten.fake_rlz_client import FakeBoekClient
 from tests.projectverdeling.conftest import na_boekmaand, seed_omzet
-from tests.projectverdeling.test_service import AANGIFTE_Q3_INGEDIEND, _rij, _VasteDatum
+from tests.projectverdeling.test_service import _VASTE_DATUM, AANGIFTE_Q3_INGEDIEND, _rij, pin_vandaag
 
 VANDAAG = date(2026, 9, 15)  # → lopend jaar 2026 = afgesloten t/m augustus
 JAAR_2026 = pv.Periode.jaar(2026)
 JAAR_2025 = pv.Periode.jaar(2025)
-
-
-class _Sept15(date):
-    @classmethod
-    def today(cls) -> date:  # type: ignore[override]
-        return VANDAAG
 
 
 class TestPeriodePuur:
@@ -144,7 +138,7 @@ class TestOpslaanJaar:
     def test_sla_op_jaar_terugleesbaar_en_januari_blijft_een_maand(
         self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, admin_engine, monkeypatch
     ) -> None:
-        monkeypatch.setattr(service, "date", _Sept15)
+        pin_vandaag(monkeypatch, VANDAAG)
         data = service.sla_op(
             administratie_id=administratie_id,
             document_id=document_zonder_project,
@@ -207,7 +201,7 @@ class TestRouterJaar:
     def test_put_jaar_200_en_ongeldige_codes_422(
         self, administratie_id, gescoopte_gebruiker, document_zonder_project, projecten, monkeypatch
     ) -> None:
-        monkeypatch.setattr(service, "date", _Sept15)
+        pin_vandaag(monkeypatch, VANDAAG)
         client = TestClient(app)
         pad = f"/administraties/{administratie_id}/documenten/{document_zonder_project}/projectverdeling"
         headers = {"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"}
@@ -236,7 +230,7 @@ def geboekt_met_jaarverdeling(
     """Floorbeheer geboekt op 12-08-2026 (gepind): € 600 vast Tilburg + € 1.400 pro rato jaaromzet 2026 —
     op dat moment afgesloten t/m juli (Eindhoven 105.999 / Tilburg 2.500 / Venlo 1.500)."""
     beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
-    monkeypatch.setattr(service, "date", _VasteDatum)  # today() = 12-08-2026
+    pin_vandaag(monkeypatch, _VASTE_DATUM)  # vandaag = 12-08-2026
     service.sla_op(
         administratie_id=administratie_id,
         document_id=document_zonder_project,

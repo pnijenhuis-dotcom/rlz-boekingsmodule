@@ -13,6 +13,7 @@ from app.documenten.checks import (
     voer_harde_checks_uit,
 )
 from app.rlz.client import RlzApiError
+from app.tijd import vandaag_nl
 
 
 class _NepRlzClient:
@@ -54,7 +55,7 @@ class TestVerplichteVelden:
         resultaat = check_verplichte_velden(
             vendor_id=uuid.uuid4(),
             referentie="F-1",
-            factuurdatum=date.today(),
+            factuurdatum=vandaag_nl(),
             totaalbedrag=Decimal("121.00"),
             regels=[_regel()],
         )
@@ -64,7 +65,7 @@ class TestVerplichteVelden:
         resultaat = check_verplichte_velden(
             vendor_id=uuid.uuid4(),
             referentie="F-1",
-            factuurdatum=date.today(),
+            factuurdatum=vandaag_nl(),
             totaalbedrag=Decimal("121.00"),
             regels=[],
         )
@@ -270,7 +271,7 @@ class TestVoerHardeChecksUit:
             client=client,
             vendor_id=uuid.uuid4(),
             referentie="F-1",
-            factuurdatum=date.today(),
+            factuurdatum=vandaag_nl(),
             totaalbedrag=Decimal("121.00"),
             regels=[_regel()],
             eigen_rlz_document_id=uuid.uuid4(),
@@ -293,7 +294,7 @@ class TestVoerHardeChecksUit:
             client=client,
             vendor_id=uuid.uuid4(),
             referentie="F-1",
-            factuurdatum=date.today(),
+            factuurdatum=vandaag_nl(),
             totaalbedrag=Decimal("999.00"),
             regels=[_regel()],
             eigen_rlz_document_id=uuid.uuid4(),
@@ -458,7 +459,7 @@ class TestRegeltellingBasis:
             client=client,
             vendor_id=uuid.uuid4(),
             referentie="HUV-1",
-            factuurdatum=date.today(),
+            factuurdatum=vandaag_nl(),
             totaalbedrag=self._INCL,
             regels=self._REGELS,
             eigen_rlz_document_id=uuid.uuid4(),

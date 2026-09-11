@@ -35,6 +35,7 @@ from app.geheugen.models import BoekingObservatie
 from app.sync.models import VendorCache
 from app.terugkerend.models import TerugkerendSignaal
 
+from app.tijd import vandaag_nl
 logger = logging.getLogger(__name__)
 
 MIN_FACTUREN = 3
@@ -140,7 +141,7 @@ def herbereken_administratie(*, administratie_id: uuid.UUID, vandaag: date | Non
     """Dagelijkse herberekening (sync-alles) én op verzoek: per crediteur patroon → upsert; leveranciers
     zonder patroon verdwijnen uit de signaallaag (afgeleid, herrekenbaar). Snooze/afmelden blijven
     staan. Retourneert tellers voor de rapportage."""
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     telling = {"terugkerend": 0, "ontbreekt": 0, "prijsstijging": 0, "vervallen": 0}
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         administratie = session.get(Administratie, administratie_id)
@@ -232,7 +233,7 @@ def actief_signaal(rij: TerugkerendSignaal, vandaag: date) -> bool:
 
 def tel_ontbrekend(session: Session, administratie_id: uuid.UUID, vandaag: date | None = None) -> int:
     """Werkvoorraad-teller (duplicaat-patroon): leveranciers met een actief 'ontbreekt'-signaal."""
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     rijen = session.scalars(
         select(TerugkerendSignaal).where(
             TerugkerendSignaal.administratie_id == administratie_id,
@@ -279,7 +280,7 @@ def _status(rij: TerugkerendSignaal, vandaag: date) -> str:
 
 def overzicht(*, administratie_id: uuid.UUID, vandaag: date | None = None) -> list[SignaalData]:
     """Signaal-overzicht per administratie: ontbrekend eerst, dan prijsstijgingen, dan op schema."""
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     with scoped_session(administratie_id) as session:
         rijen = list(
             session.scalars(select(TerugkerendSignaal).where(TerugkerendSignaal.administratie_id == administratie_id))
@@ -365,7 +366,7 @@ def snooze(*, administratie_id: uuid.UUID, vendor_id: uuid.UUID, tot: date | Non
         ).first()
         if rij is None:
             raise TerugkerendFout("Geen terugkerend patroon bekend voor deze leverancier")
-        if tot is not None and tot <= datetime.now(UTC).date():
+        if tot is not None and tot <= vandaag_nl():
             raise TerugkerendFout("Snooze-datum moet in de toekomst liggen")
         oud = rij.snooze_tot
         rij.snooze_tot = tot

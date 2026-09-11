@@ -39,6 +39,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from app.tijd import vandaag_nl
+
 HERKOMST_FACTUUR = "factuur"
 HERKOMST_FACTUUR_MAAND = "factuur_maand"
 HERKOMST_AFGELEID_FACTUURDATUM = "afgeleid_van_factuurdatum"
@@ -217,7 +219,7 @@ def normaliseer_periode(
     niet eenduidig te herkennen is — dan kiest de aanroeper de terugval (`bepaal_periode`). Puur."""
     if not tekst or not tekst.strip():
         return None
-    anker = factuurdatum or vandaag or date.today()
+    anker = factuurdatum or vandaag or vandaag_nl()
     schoon = _schoon(tekst)
     if not schoon:
         return None

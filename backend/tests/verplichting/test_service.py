@@ -4,17 +4,19 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app import tijd
 from app.db.session import scoped_session
 from app.documenten.models import DocumentSoort, DocumentStatus
 from app.main import app
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.verplichting import service
 from app.verplichting.models import Verplichting
 from tests.verplichting.conftest import (
@@ -158,12 +160,18 @@ class TestChecks:
         assert geldigheid.ok is False
 
     def test_verstreken_geldigheid_is_een_signaal_geen_blokkade(
-        self, administratie_id, gescoopte_gebruiker, opslag, vendors
+        self, administratie_id, gescoopte_gebruiker, opslag, vendors, monkeypatch
     ):
+        # Blok 2 (11-09): klok vast in het middernacht-venster (22:30 UTC = 00:30 NL op 11-09). De geldigheid t/m
+        # 10-09 is naar Nederlandse kalender VERSTREKEN (signaal); op de UTC-dag 10-09 zou ze nog geldig zijn — de
+        # flake van 10/11-09. `vandaag_nl()` moet dus 11-09 geven.
+        monkeypatch.setattr(tijd, "_klok", lambda: datetime(2026, 9, 10, 22, 30, tzinfo=UTC))
+        assert vandaag_nl() == date(2026, 9, 11)
         document_id = upload_verplichting(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag
         )
-        gisteren = date.today() - timedelta(days=1)
+        gisteren = vandaag_nl() - timedelta(days=1)
+        assert gisteren == date(2026, 9, 10)
         voorstel = sla_offerte_op(
             administratie_id=administratie_id,
             document_id=document_id,

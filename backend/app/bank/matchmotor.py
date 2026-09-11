@@ -36,6 +36,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
+from app.tijd import vandaag_nl
 
 # --- referentie (factuurnummer) als HEEL token ------------------------------------------------------
 #
@@ -503,7 +504,7 @@ def bepaal_voorstel(
             historie,
             open_posten=open_posten,
             iban_relaties=relaties,
-            vandaag=vandaag or date.today(),
+            vandaag=vandaag or vandaag_nl(),
         )
         if uitkomst.voorstel is not None:
             h = uitkomst.voorstel

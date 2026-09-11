@@ -24,6 +24,7 @@ from app.auth import service as auth_service
 from app.db.models import Administratie, DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 from app.uren import service
 from app.uren.models import (
     Meerwerk,
@@ -275,7 +276,7 @@ def _vereis_namens_of_zelf(actor_id: uuid.UUID, zzper_id: uuid.UUID) -> tuple[Ge
 def mijn_projecten_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID, vandaag: date | None = None) -> list[ProjectKaart]:
     """Mijn-projectenlijst (mockup zzpProjecten / detaWeken): toewijzingen van de ZZP'er over
     alle administraties in de scope van de actor, met open-week-teller en laatste invoer."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
     kaarten: list[ProjectKaart] = []
     for administratie in _administraties_met_opt_in(scope_actor, rol):
@@ -327,7 +328,7 @@ def weken_overzicht_zzp(
 ) -> list[WeekKaart]:
     """Weken van één project (mockup zzpProject): venster-weken (nieuwste eerst) aangevuld met
     álle bestaande staten daarbuiten (bv. een oude corrigeren-week of goedgekeurde historie)."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         service._administratie_met_opt_in(session, administratie_id)
         zzper = _gebruiker(session, zzper_id)
@@ -700,7 +701,7 @@ def _weken_kaarten(zzper_id: uuid.UUID, administraties: list[Administratie], van
 
 def weken_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID, vandaag: date | None = None) -> list[WeekOverzichtKaart]:
     """Beginscherm ZZP'er / detacheerder-namens: de weken die er toe doen (A2), nieuwste eerst."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
     return _weken_kaarten(zzper_id, _administraties_met_opt_in(scope_actor, rol), vandaag)
 
@@ -806,7 +807,7 @@ def mijn_zzpers(*, detacheerder_id: uuid.UUID, vandaag: date | None = None) -> l
     open_weken (weken mét ≥ 1 handeling), aantal_projecten (projecten in de zichtbare weken) —
     binnen de administratie-scope van de detacheerder. De app filtert op te_doen > 0; wie niets te
     doen heeft blijft bereikbaar via "Ook zonder werk" (uren buiten planning blijven invoerbaar)."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     with scoped_session(None, actor_id=detacheerder_id) as session:
         actor = _gebruiker(session, detacheerder_id)
         if actor.rol != GebruikerRol.DETACHEERDER:

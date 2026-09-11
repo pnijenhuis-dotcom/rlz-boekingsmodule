@@ -61,6 +61,7 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.rlz_ids import rlz_bank_boeking_cyclus_id, rlz_bank_deel_boeking_id
 from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
+from app.tijd import TIJDZONE_NL, vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ def _is_boeken_toegestaan(session: Session, *, administratie_id: uuid.UUID) -> b
 
 
 def _bankboekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
-    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
     return (
         session.scalar(
             select(func.count())

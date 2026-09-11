@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 from app.config import settings
 from app.db.session import scoped_session
@@ -11,6 +11,7 @@ from app.geheugen.models import BoekingObservatie, ObservatieBron, seed_observat
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ def seed_boekingsgeheugen(
     factuurdatum). Alleen inkoopdocumenten; facturen zonder bruikbare Entity of regels worden
     geteld overgeslagen — nooit stil. Logt uitsluitend aantallen en id's, nooit omschrijvingen."""
     maanden = maanden if maanden is not None else settings.boekingsgeheugen_seed_maanden
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     vanaf = vandaag - timedelta(days=maanden * 31)
 
     eigen_client = client is None

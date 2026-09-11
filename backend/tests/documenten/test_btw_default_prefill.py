@@ -5,7 +5,6 @@ samengevoegde regel volgt dezelfde regel, opgeslagen voorstel wordt nooit geraak
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -19,6 +18,7 @@ from app.documenten.storage import LokaleBestandsopslag
 from app.extractie.service import AiFactuurExtractie, AiRegel, AiVeld
 from app.geheugen.models import BoekingObservatie
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 
 VENDOR_ID = uuid.UUID("33333333-3333-3333-3333-333333333332")
 HOOG_ID = uuid.UUID("55555555-0000-0000-0000-000000000021")
@@ -212,7 +212,7 @@ def test_leverancier_geheugen_wint_van_default(
                 btw_id=GEHEUGEN_BTW_ID,
                 project_id=None,
                 bron="app",
-                bron_datum=datetime.now(UTC).date(),
+                bron_datum=vandaag_nl(),
             )
         )
     document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)

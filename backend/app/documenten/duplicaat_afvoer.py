@@ -52,7 +52,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time
+from datetime import datetime, time
 from decimal import Decimal
 
 from sqlalchemy import func, or_, select
@@ -78,6 +78,7 @@ from app.documenten.models import (
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.documenten.vragen import ToegewezeneBuitenScope
+from app.tijd import TIJDZONE_NL, vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -764,7 +765,7 @@ def _afgevoerd_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
     """Volumerem-teller: automatische afvoer-overgangen van vandaag (tijdlijn-detail `automatisch_afgevoerd`).
     Blok 3 (fixrun 08-09): de doelstatus is sindsdien `afgevoerd_duplicaat`, niet meer `afgewezen` — een
     "vandaag"-teller hoeft geen legacy-terugval (alles ná deze deploy schrijft de nieuwe status)."""
-    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
     return (
         session.scalar(
             select(func.count())

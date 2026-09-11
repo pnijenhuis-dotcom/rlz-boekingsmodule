@@ -40,6 +40,7 @@ from app.documenten.models import (
     Vraag,
 )
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 from app.verkoop.models import VerkoopVoorstel
 
 _MAX_DOCUMENTEN_PER_ADMINISTRATIE = 50
@@ -543,7 +544,7 @@ def _maanden_terug(vandaag: date, maanden: int) -> date:
 
 def standaard_datumvenster(vandaag: date | None = None) -> tuple[date, date]:
     """Default venster = de laatste 12 maanden t/m vandaag."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     return _maanden_terug(vandaag, ARCHIEF_VENSTER_MAANDEN), vandaag
 
 

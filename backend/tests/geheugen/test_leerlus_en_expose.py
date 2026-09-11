@@ -4,7 +4,7 @@ waarborg dat een geheugen-voorstel nooit de projectplicht-check opheft."""
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -16,6 +16,7 @@ from app.documenten import boeken, boekvoorstel, service
 from app.documenten.checks import CheckRegel, check_verplichte_velden
 from app.geheugen import service as geheugen_service
 from app.geheugen.leerlus import leg_boeking_vast
+from app.tijd import vandaag_nl
 from tests.documenten.fake_rlz_client import FakeBoekClient
 
 VENDOR = uuid.uuid4()
@@ -114,7 +115,7 @@ class TestLeerlus:
         assert str(rij.gb_id) == str(GB)
         # bron_datum = boekdatum (moment van menselijke bevestiging), niet de factuurdatum —
         # zo wint een latere correctie via recency.
-        assert rij.bron_datum == datetime.now(UTC).date()
+        assert rij.bron_datum == vandaag_nl()
         assert rij.boekstuk_ref == "RLZ-TEST-00001"
 
     def test_gesplitste_boeking_legt_regel_niveau_vast(
@@ -198,7 +199,7 @@ class TestLeerlus:
                 administratie_id=administratie_id,
                 document_id=document_id,
                 vendor_id=VENDOR,
-                boekdatum=datetime.now(UTC).date(),
+                boekdatum=vandaag_nl(),
                 boekstuk_ref="RLZ-TEST-00001",
                 regels=[_regel(ledger_id=gecorrigeerd_gb)],
                 regels_samenvoegen=True,

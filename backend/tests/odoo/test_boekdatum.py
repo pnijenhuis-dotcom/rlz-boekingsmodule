@@ -26,6 +26,7 @@ from app.odoo import inkoop
 from app.odoo.credentials import OdooVerbinding
 from app.odoo.fouten import LOCK_LABELS, BoekdatumBesluit, bepaal_boekdatum, lock_date_melding
 from app.odoo.inkoop import OdooInkoopPort, _Regel
+from app.tijd import vandaag_nl
 
 LOCK_2025 = {
     "fiscalyear_lock_date": date(2025, 12, 31),
@@ -297,7 +298,7 @@ class TestAdapterBoekdatum:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """De reversal draagt boekdatum vandaag; ligt vandaag op/vóór een lock date, dan blijft dat een weigering."""
-        vandaag = date.today()
+        vandaag = vandaag_nl()
         client = _FakeOdoo(lock_dates={"fiscalyear_lock_date": vandaag, "hard_lock_date": None})
         port = _port(monkeypatch, client)
         with pytest.raises(BackendBoekFout, match="vergrendelde periode"):

@@ -31,6 +31,7 @@ from app.db.audit import record_audit_event
 from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
+from app.tijd import vandaag_nl
 from app.uren.models import (
     PlanningDagdeel,
     PlanningToewijzing,
@@ -521,7 +522,7 @@ def planning_overzicht(
     geplande dagen (besluit C) en de controle-meldingen + dubbele-dag-teller (uitsluitend
     kantoor). Eén request levert alles incl. specs-metadata voor de rijkoppen — geen aparte
     zoekroute meer. `vandaag` is injecteerbaar voor deterministische tests."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     maandag, zondag = week_grenzen(jaar, weeknummer)
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)

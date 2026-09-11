@@ -50,6 +50,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.rlz.client import RlzClient
 from app.rlz.credentials import GeenRlzCredentials
+from app.tijd import vandaag_nl
 from app.voorraad import normalisatie
 from app.voorraad.models import VoorraadRegel
 
@@ -140,7 +141,7 @@ def _vanaf_datum(administratie_id: uuid.UUID, *, volledig: bool) -> date:
     """Eerste run / volledig: 1 januari van het lopende jaar. Incrementeel: de jongste al
     geregistreerde factuurdatum minus het herlees-venster (een afgebroken run — gesorteerd op
     Date asc — hervat daarmee vanzelf; latere storno's/correcties binnen 14 dagen worden gezien)."""
-    jaarstart = date(date.today().year, 1, 1)
+    jaarstart = date(vandaag_nl().year, 1, 1)
     if volledig:
         return jaarstart
     with scoped_session(administratie_id) as session:
@@ -151,7 +152,7 @@ def _vanaf_datum(administratie_id: uuid.UUID, *, volledig: bool) -> date:
         )
     if laatste is None:
         return jaarstart
-    return min(laatste - HERLEES_VENSTER, date.today())
+    return min(laatste - HERLEES_VENSTER, vandaag_nl())
 
 
 def lees_koppen(client: RlzClient, *, vanaf: date) -> Iterator[dict[str, Any]]:

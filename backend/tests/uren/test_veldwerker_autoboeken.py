@@ -8,7 +8,6 @@ ná extractie én ná een weekstaat-goedkeuring die de match groen maakt."""
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +21,7 @@ from app.documenten.storage import LokaleBestandsopslag
 from app.geheugen.models import BoekingObservatie
 from app.main import app
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.uren import service as uren_service
 from app.uren.service import NietGevonden
 from tests.documenten.fake_rlz_client import FakeBoekClient
@@ -81,7 +81,7 @@ def _geheugen(administratie_id: uuid.UUID, vendor_id: uuid.UUID, *, bron: str = 
                     btw_id=BTW_ID,
                     project_id=None,
                     bron=bron,
-                    bron_datum=datetime.now(UTC).date(),
+                    bron_datum=vandaag_nl(),
                 )
             )
 

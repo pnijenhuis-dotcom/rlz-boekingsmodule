@@ -20,6 +20,7 @@ from app.db.session import scoped_session
 from app.main import app
 from app.projecten import cijfers, kantoorbreed
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from tests.auth.conftest import beheerder_id  # noqa: F401
 from tests.documenten.conftest import gescoopte_gebruiker  # noqa: F401
 from tests.uren.conftest import administratie_id, maak_gebruiker, maak_project  # noqa: F401
@@ -158,7 +159,7 @@ def _verplichting(
 def scenario(admin_engine: Engine, administratie_id, tweede_administratie, beheerder_id, gescoopte_gebruiker):
     """Administratie A (uren-opt-in, in scope van de boekhouder): project P1 mét álle signalen, P2 schoon.
     Administratie B (geen opt-in, buiten scope): project P3 zonder cijfers."""
-    vandaag = date.today()
+    vandaag = vandaag_nl()
     vorige_week_ma = _maandag_van(vandaag) - timedelta(weeks=1)
     twee_weken_ma = vorige_week_ma - timedelta(weeks=1)
     drie_weken_ma = twee_weken_ma - timedelta(weeks=1)
@@ -323,7 +324,7 @@ class TestChipsSluitenOpDeRekenlaag:
     ) -> None:
         # De lopende week gepland zonder staat → nooit "ontbrekend".
         _plan(
-            admin_engine, administratie_id, scenario["zzper"], scenario["p2"], _maandag_van(date.today()), beheerder_id
+            admin_engine, administratie_id, scenario["zzper"], scenario["p2"], _maandag_van(vandaag_nl()), beheerder_id
         )
         # Vorige week op P1 afgemeld (actieve afmelding) → telt niet meer.
         jaar, week = scenario["vorige_week"]

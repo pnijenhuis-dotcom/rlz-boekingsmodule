@@ -29,6 +29,7 @@ from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, D
 from app.mini_voorraad import service
 from app.mini_voorraad.models import SOORT_INSTROOM, SOORT_STORNO, MiniProduct, MiniVoorraadMutatie
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 from app.voorraad import service as voorraad_service
 from app.voorraad.models import ONBEKENDE_LEVERANCIER
 from app.voorraad.normalisatie import classificeer_soort
@@ -151,7 +152,7 @@ def registreer_bij_boeking(
     veldvoorstel = voorraad_service._laatste_veldvoorstel(session, document_id) or {}
     leverancier = leverancier or veldvoorstel.get("leverancier_naam")
     # Boekingsdatum = factuurdatum (BookDate-lijn 28-08); zonder factuurdatum de dag van boeken.
-    datum: date = (voorstel.factuurdatum if voorstel is not None and voorstel.factuurdatum else None) or date.today()
+    datum: date = (voorstel.factuurdatum if voorstel is not None and voorstel.factuurdatum else None) or vandaag_nl()
 
     uitkomsten = beoordeel_regels(veldvoorstel.get("regels") or [])
     nieuwe: list[str] = []
@@ -268,7 +269,7 @@ def registreer_storno(
     )
     if al_gestorneerd is not None:
         return 0
-    vandaag = date.today()
+    vandaag = vandaag_nl()
     toelichting = (reden or "boeking teruggedraaid").strip()[:1000]
     for m in instroom:
         session.add(

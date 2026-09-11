@@ -19,7 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from app.bank import matchmotor, voorstellen
+from app import tijd
+from app.bank import voorstellen
 from app.bank.boeken import DEKKING_FOUT_PREFIX
 from app.bank.matchmotor import VoorstelSoort
 from app.main import app
@@ -27,7 +28,7 @@ from app.security.tokens import create_access_token
 from tests.bank.conftest import FakeBankClient, boeken_aan, maak_bank_mutatie, maak_payment_item  # noqa: F401
 from tests.keten import casussen
 from tests.keten.casussen import Casus, normaliseer_voor_export
-from tests.keten.conftest import FRONTEND_KETEN_DIR, REFERENTIE_DATUM
+from tests.keten.conftest import FRONTEND_KETEN_DIR, REFERENTIE_DATUM, REFERENTIE_TIJDSTIP, echte_vandaag_nl
 
 CASUS = Casus(casussen.L_BANK_CV)
 CV_NAAM = "Administratiekantoor Nijenhuis C.V."
@@ -39,19 +40,14 @@ REKENING_ID = uuid.UUID(DEELS["rekening"]["id"])
 EXPORT_ADMINISTRATIE_ID = "aaaaaaaa-0000-4000-8000-000000000001"
 
 
-class _BevrorenDatum(date):
-    """`date.today()` = de referentiedag van de gouden set: de historie-regel (dekking ≥ 183 dagen, `vandaag`) en de
-    export blijven zo deterministisch — geen datum van de echte klok in de fixture (guard
-    test_export_deterministisch)."""
-
-    @classmethod
-    def today(cls) -> date:  # type: ignore[override]
-        return REFERENTIE_DATUM
-
-
 @pytest.fixture
 def bevroren_vandaag(monkeypatch: pytest.MonkeyPatch) -> date:
-    monkeypatch.setattr(matchmotor, "date", _BevrorenDatum)
+    """`app.tijd._klok` = het referentietijdstip van de gouden set (blok 2, 11-09: één anker voor élke kalenderdag —
+    `vandaag_nl()` in matchmotor, historie-regel en boeken volgt vanzelf): de historie-regel (dekking ≥ 183 dagen,
+    `vandaag`) en de export blijven zo deterministisch — geen datum van de echte klok in de fixture (guard
+    test_export_deterministisch)."""
+    monkeypatch.setattr(tijd, "_klok", lambda: REFERENTIE_TIJDSTIP)
+    assert tijd.vandaag_nl() == REFERENTIE_DATUM
     return REFERENTIE_DATUM
 
 
@@ -502,8 +498,8 @@ class TestExportBankscherm:
         tweede = _exporteer_bank(api, headers, administratie_id, doel=tmp_path / "2")
         assert eerste.read_bytes() == tweede.read_bytes()
         tekst = eerste.read_text(encoding="utf-8")
-        if date.today() != REFERENTIE_DATUM:
-            assert date.today().isoformat() not in tekst
+        if echte_vandaag_nl() != REFERENTIE_DATUM:
+            assert echte_vandaag_nl().isoformat() not in tekst
         data = json.loads(tekst)
         assert data["administratie_id"] == EXPORT_ADMINISTRATIE_ID and data["bank"]["rekening_id"] == str(REKENING_ID)
         mutaties = {m["id"]: m for m in data["bank"]["mutaties"]["mutaties"]}

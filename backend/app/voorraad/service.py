@@ -29,6 +29,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 from app.voorraad import normalisatie
 from app.voorraad.models import (
     ONBEKENDE_LEVERANCIER,
@@ -753,7 +754,7 @@ def tel_verschillen(session: Session, administratie_id: uuid.UUID, *, tot: date 
         return 0
     return len(
         verschillen_in_sessie(
-            session, administratie_id=administratie_id, administratie_naam=administratie.naam, tot=tot or date.today()
+            session, administratie_id=administratie_id, administratie_naam=administratie.naam, tot=tot or vandaag_nl()
         )
     )
 
@@ -801,7 +802,7 @@ def _alle_verschillen(
 def verschillen_tellers(
     *, administraties: list[tuple[uuid.UUID, str]], actor_id: uuid.UUID, tot: date | None = None
 ) -> VerschilTellers:
-    rijen = _alle_verschillen(administraties=administraties, actor_id=actor_id, tot=tot or date.today())
+    rijen = _alle_verschillen(administraties=administraties, actor_id=actor_id, tot=tot or vandaag_nl())
     return VerschilTellers(
         groepen=len(rijen),
         administraties=len({r.administratie_id for r in rijen}),
@@ -822,7 +823,7 @@ def verschillen_kantoorbreed(
     """Landing Inzicht › Voorraad (kandidaten-patroon): alle voorraad-administraties in scope in één
     lijst, zwaarste afwijking eerst, administratie = facet (nooit poort), zoekterm op artikelgroep,
     server-side paginering. Tellers en facetwaarden gaan over de ongefilterde stand."""
-    tot = tot or date.today()
+    tot = tot or vandaag_nl()
     van = date(tot.year, 1, 1)
     alle = _alle_verschillen(administraties=administraties, actor_id=actor_id, tot=tot)
     per_administratie: dict[uuid.UUID, int] = defaultdict(int)

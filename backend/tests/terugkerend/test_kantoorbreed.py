@@ -9,13 +9,14 @@ fail-zichtbaar). Puur code — geen AI, geen RLZ-writes."""
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app import tijd
 from app.berichten import mail
 from app.db.models import GebruikerRol
 from app.main import app
@@ -23,6 +24,10 @@ from app.terugkerend import herbereken_run, kantoorbreed, service
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
 from tests.documenten.conftest import _opslag_naar_tmp, gescoopte_gebruiker, opslag  # noqa: F401
 from tests.terugkerend.test_terugkerend import VENDOR_A, VENDOR_B, _bearer, _factuur, vendors  # noqa: F401
+
+#: Middernacht-venster (blok 2, 11-09): 22:30 UTC = 00:30 CEST op 11-09 — UTC-dag en NL-dag verschillen.
+FLAKE_VENSTER_UTC = datetime(2026, 9, 10, 22, 30, tzinfo=UTC)
+FLAKE_VENSTER_NL_DAG = date(2026, 9, 11)
 
 client = TestClient(app)
 VANDAAG = date(2026, 8, 30)
@@ -153,8 +158,11 @@ class TestKantoorbredeLijst:
             kantoorbreed.lijst(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER, status="boem")
 
     def test_scope_niet_beheerder_ziet_alleen_eigen_administratie(
-        self, administratie_id, tweede_administratie, gescoopte_gebruiker, beheerder_id, opslag, vendors
+        self, administratie_id, tweede_administratie, gescoopte_gebruiker, beheerder_id, opslag, vendors, monkeypatch
     ) -> None:
+        # Blok 2 (11-09): de klok staat vast in het middernacht-venster — 22:30 UTC = 00:30 NL van de VOLGENDE dag.
+        # `dagen_te_laat` moet de Nederlandse kalenderdag volgen (11-09), niet de UTC-dag (10-09).
+        monkeypatch.setattr(tijd, "_klok", lambda: FLAKE_VENSTER_UTC)
         _signalen_opzetten(administratie_id, tweede_administratie, gescoopte_gebruiker, beheerder_id, opslag)
         resp = client.get("/terugkerend/signalen", headers=_bearer(gescoopte_gebruiker, rol="boekhouding"))
         assert resp.status_code == 200, resp.text
@@ -171,9 +179,10 @@ class TestKantoorbredeLijst:
         # Beheerder: beide administraties, urgentste bovenaan, status-facet in de URL.
         resp = client.get("/terugkerend/signalen?status=alle&pagina=1", headers=_bearer(beheerder_id, rol="beheerder"))
         assert resp.status_code == 200 and resp.json()["totaal"] == 3 and resp.json()["per_pagina"] == 25
-        # Via HTTP telt de echte kalender (geen vandaag-injectie): uiterlijk 13-05-2026 → dagen te laat t.o.v. vandaag.
+        # Via HTTP telt de kalender van `app.tijd` (geen vandaag-injectie): uiterlijk 13-05-2026 → dagen te laat
+        # t.o.v. de NEDERLANDSE dag 11-09-2026 (121); de UTC-dag zou 120 geven — de flake van 10/11-09.
         assert resp.json()["rijen"][0]["leverancier"] == "Ziggo Zakelijk"
-        assert resp.json()["rijen"][0]["dagen_te_laat"] == (date.today() - date(2026, 5, 13)).days
+        assert resp.json()["rijen"][0]["dagen_te_laat"] == (FLAKE_VENSTER_NL_DAG - date(2026, 5, 13)).days == 121
         assert (
             client.get("/terugkerend/signalen?status=boem", headers=_bearer(beheerder_id, rol="beheerder")).status_code
             == 422

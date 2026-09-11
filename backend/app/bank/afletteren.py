@@ -38,6 +38,7 @@ from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.rlz.client import RlzApiError, RlzClient
+from app.tijd import TIJDZONE_NL, vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -517,7 +518,7 @@ def voer_bestaande_opdracht_uit(
 def _api_afletteringen_vandaag(session, *, administratie_id: uuid.UUID) -> int:
     """Eigen volumerem-teller voor de automatische afletter-stap (zelfde daglimiet als
     boekingen; elke geldstroom-actie zijn eigen teller — zelfde afweging als de bank-boekingen)."""
-    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
     return (
         session.scalar(
             select(func.count())

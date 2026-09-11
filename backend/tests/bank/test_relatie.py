@@ -66,9 +66,9 @@ def test_vooruitbetaling_crediteur_volledige_cyclus(
     assert regel["TaxRate"]["id"] == str(ref["nul_tarief"]) and regel["TaxAmount"] == 0.0
     assert doc["Status"] == 2
     # Punt 15 (28-08): aanbetalingsdocument op de mutatiedatum (fixture: CURRENT_DATE) als Date + BookDate.
-    from datetime import date as _date
+    from app.tijd import vandaag_nl
 
-    assert doc["Date"] == doc["BookDate"] == f"{_date.today().isoformat()}T00:00:00"
+    assert doc["Date"] == doc["BookDate"] == f"{vandaag_nl().isoformat()}T00:00:00"
     assert client.links[-1]["linked_amount"] == -100.0 and r.open_restant == Decimal("0")
     status, bedrag, boekstuk, _, _ = _rij(admin_engine, r.boeking_id)
     assert status == "geboekt" and bedrag == Decimal("-100.00") and boekstuk == doc["ReceiptNumber"]

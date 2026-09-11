@@ -17,6 +17,7 @@ from app.auth import service as auth_service
 from app.auth import voorwaarden
 from app.main import app
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.uren import overzichten, planning, service
 from tests.uren.conftest import maak_gebruiker, maak_project
 
@@ -301,7 +302,7 @@ class TestVeldApi:
         detacheerder_met_scope,
         beheerder_id,
     ):
-        vandaag = date.today()
+        vandaag = vandaag_nl()
         jaar, week = vandaag.isocalendar()[0], vandaag.isocalendar()[1]
         maandag = date.fromisocalendar(jaar, week, 1)
         _plan(administratie_id, zzper_met_scope, project_id, maandag, beheerder_id)

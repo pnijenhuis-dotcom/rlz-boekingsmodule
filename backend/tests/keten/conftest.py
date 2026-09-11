@@ -544,3 +544,12 @@ def _mime(naam: str) -> tuple[str, str]:
 
 
 VANDAAG_NA_BOEKEN: date = REFERENTIE_DATUM
+
+
+def echte_vandaag_nl() -> date:
+    """De Nederlandse kalenderdag van de ÉCHTE klok, ook als een test `app.tijd._klok` op het referentietijdstip heeft
+    gepind (blok 2, 11-09). Voor de drift-sweeps ("de datum van vandaag staat nergens in een export"): die moeten de
+    werkelijke dag toetsen, niet de bevroren."""
+    from app.tijd import kalenderdag_nl
+
+    return kalenderdag_nl(datetime.now(UTC))

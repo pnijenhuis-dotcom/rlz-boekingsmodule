@@ -5,7 +5,7 @@ een klaar boekvoorstel zónder projecten op de regels (de Floorbeheer-casus: €
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,6 +13,7 @@ from sqlalchemy import Engine, text
 
 from app.documenten import boekvoorstel, service
 from app.documenten.storage import LokaleBestandsopslag
+from app.tijd import kalenderdag_nl
 from tests.documenten.conftest import (  # noqa: F401 — fixtures her-exporteren
     _opslag_naar_tmp,
     actieve_gebruiker,
@@ -28,8 +29,10 @@ PERIODE = date(2026, 7, 1)  # omzetmaand juli 2026 (mockup-casus)
 def na_boekmaand(dag: int = 2, maanden: int = 1) -> date:
     """Peildatum voor de hercontrole (cadans blok 10 08-09): de fixtures boeken 'nu', en een document wordt nooit in
     zijn boekmaand hercontroleerd — dus altijd een dag in een LATERE kalendermaand kiezen (nooit een vaste datum:
-    die loopt bij de volgende maandwissel tegen de boekmaand-regel aan)."""
-    eerste = date.today().replace(day=1)
+    die loopt bij de volgende maandwissel tegen de boekmaand-regel aan). Blok 2 (11-09): bewust de ÉCHTE klok
+    (`geboekt_op` = DB-`now()`), ook als een test `app.tijd._klok` op een vaste dag heeft gepind — anders valt de
+    peildatum in de echte boekmaand en slaat de hercontrole 'm over."""
+    eerste = kalenderdag_nl(datetime.now(UTC)).replace(day=1)
     for _ in range(maanden):
         eerste = (eerste.replace(day=28) + timedelta(days=4)).replace(day=1)
     return eerste.replace(day=dag)

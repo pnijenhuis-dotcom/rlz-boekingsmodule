@@ -24,6 +24,7 @@ from app.berichten import mail as berichten_mail
 from app.berichten import uitnodigingsmail
 from app.config import settings
 from app.db.models import GebruikerRol
+from app.tijd import vandaag_nl
 
 # --- sunset legacy-app-auth (besluit Peter 08-09; parkeerpost: verwijderen ná settings.app_legacy_auth_sunset_op)
 #
@@ -55,7 +56,7 @@ def _sunset_headers() -> dict[str, str]:
 
 
 def _sunset_verstreken() -> bool:
-    return datetime.now(UTC).date() > settings.app_legacy_auth_sunset_op
+    return vandaag_nl() > settings.app_legacy_auth_sunset_op
 
 
 def _pas_sunset_toe(response: Response) -> None:

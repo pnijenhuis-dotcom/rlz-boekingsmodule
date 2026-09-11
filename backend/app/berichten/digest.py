@@ -24,6 +24,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import service as documenten_service
 from app.documenten.service import WerkvoorraadKlant
+from app.tijd import vandaag_nl
 
 TIJDZONE = ZoneInfo("Europe/Amsterdam")
 KANTOOR_ROLLEN = (GebruikerRol.BEHEERDER, GebruikerRol.BOEKHOUDING_PROJECTEN, GebruikerRol.BOEKHOUDING)
@@ -50,7 +51,7 @@ def iso_week(dag: date) -> str:
 
 
 def _vandaag() -> date:
-    return datetime.now(TIJDZONE).date()
+    return vandaag_nl()
 
 
 # ----------------------------------------------------------------------------- inhoud (puur)

@@ -4,7 +4,6 @@ door een mens geveld is — elke weiger-reden getest, plus de opt-in-beheerlaag.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine, text
@@ -16,6 +15,7 @@ from app.documenten import autoboeken, boeken, service
 from app.documenten.storage import LokaleBestandsopslag
 from app.geheugen.models import BoekingObservatie
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 from tests.documenten.fake_rlz_client import FakeBoekClient
 from tests.documenten.test_ubl import _VOORBEELD_UBL
 
@@ -50,7 +50,7 @@ def _observatie(administratie_id: uuid.UUID, *, bron: str) -> BoekingObservatie:
         btw_id=BTW_ID,
         project_id=None,
         bron=bron,
-        bron_datum=datetime.now(UTC).date(),
+        bron_datum=vandaag_nl(),
     )
 
 

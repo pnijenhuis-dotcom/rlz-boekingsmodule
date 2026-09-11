@@ -62,7 +62,7 @@ import re
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -75,6 +75,7 @@ from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.reconciliatie import referentie_classificatie as classificatie
 from app.rlz.client import RlzClient, bedrag_cent_exact
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +373,7 @@ class RlzDubbelResultaat:
 
 
 def venster_vanaf(vandaag: date | None = None) -> date:
-    return (vandaag or datetime.now(UTC).date()) - timedelta(days=VENSTER_DAGEN)
+    return (vandaag or vandaag_nl()) - timedelta(days=VENSTER_DAGEN)
 
 
 def lees_purchase_invoices(client: RlzClient, *, vanaf: date) -> list[dict[str, Any]]:

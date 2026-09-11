@@ -49,6 +49,7 @@ from app.db.models import (
     GebruikerStatus,
 )
 from app.db.session import scoped_session
+from app.tijd import vandaag_nl
 from app.uren.models import (
     DossierDocument,
     DossierDocumentStatus,
@@ -276,7 +277,7 @@ class DossierStand:
 
 
 def _vandaag() -> date:
-    return datetime.now(TIJDZONE).date()
+    return vandaag_nl()
 
 
 def _dossier_rij(session, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID) -> VeldwerkerDossier:

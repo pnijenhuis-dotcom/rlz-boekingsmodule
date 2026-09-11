@@ -21,6 +21,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.doorbelasting.verdeelhulp import VerdeelFout, verdeel_naar_gewicht
+from app.tijd import vandaag_nl
 
 CENT = Decimal("0.01")
 _AANDEEL = Decimal("0.000001")
@@ -230,7 +231,7 @@ def periode_eind(periode: Periode | date, vandaag: date | None = None) -> date:
     assert periode is not None
     if not periode.is_jaar:
         return _volgende_maand(periode.start)
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     volledig = date(periode.start.year + 1, 1, 1)
     return min(volledig, max(vandaag.replace(day=1), periode.start))
 

@@ -33,6 +33,7 @@ from app.mini_voorraad.models import (
     MiniVoorraadMutatie,
 )
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 from app.voorraad.models import ONBEKENDE_LEVERANCIER
 from app.voorraad.normalisatie import normaliseer_code, normaliseer_tekst
 
@@ -583,7 +584,7 @@ def meld_beschadiging(
     `project_cache` van deze administratie), wanneer (datum) — vastgelegd als append-only mutatie −aantal. Nooit een
     getal-correctie: er is geen route om een stand te zetten, alleen deze registratie."""
     hoeveel = parse_aantal(aantal)
-    if datum > date.today():
+    if datum > vandaag_nl():
         raise OngeldigeInvoer("De datum van een beschadiging kan niet in de toekomst liggen")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _vereis_ingeschakeld(session, administratie_id)

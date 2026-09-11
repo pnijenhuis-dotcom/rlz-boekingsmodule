@@ -38,6 +38,7 @@ from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import ProjectCache
+from app.tijd import vandaag_nl
 from app.uren.models import (
     Meerwerk,
     MeerwerkStatus,
@@ -545,7 +546,7 @@ def bereken_project_cijfers(
 def trend_over_vier_weken(cijfers: ProjectCijfers, *, vandaag: date | None = None) -> str:
     """4-weken-trend (mockup-kolom): het weeksaldo-totaal van de laatste 4 ISO-weken t.o.v. de
     4 weken ervoor — 'stijgend' | 'dalend' | 'stabiel'. Deterministisch; `vandaag` injecteerbaar."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     huidige = _iso_week(vandaag)
 
     def week_index(jaar: int, week: int) -> int:
@@ -615,7 +616,7 @@ def overzicht_alle_projecten(*, administratie_id: uuid.UUID, vandaag: date | Non
 
     from app.uren.service import BEWAKING_DAGEN
 
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     with scoped_session(administratie_id) as session:
         projecten = list(
             session.scalars(

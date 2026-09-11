@@ -31,6 +31,7 @@ from app.projecten.naamconventie import OngeldigeProjectnaam, vorm_projectnaam
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 from app.uren.models import (
     MeerwerkEenheid,
     ProjectDocument,
@@ -907,7 +908,7 @@ def volgende_projectnummer(*, administratie_id: uuid.UUID, vandaag: date | None 
     """Voorstel voor het volgende vrije nummer in de Universal-naamconventie "26xxx …": het
     hoogste bestaande nummer met de jaar-prefix + 1, anders {jj}001. Puur een voorstel —
     de mens kan overschrijven."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     prefix = f"{vandaag.year % 100:02d}"
     hoogste = 0
     with scoped_session(administratie_id) as session:

@@ -30,6 +30,7 @@ from app.auth.deps import (
     vereis_kantoorrol,
 )
 from app.auth.rollen import is_veldrol
+from app.tijd import vandaag_nl
 from app.uren import dossier as dossier_service
 from app.uren import overzichten, planning, schemas, service
 from app.uren import planning_signaal as planning_signaal_service
@@ -419,7 +420,7 @@ def eigen_stempels(
     from app.uren import stempels as stempel_service
 
     try:
-        rijen = stempel_service.eigen_stempels(actor_id=actor.id, dag=datum or date.today())
+        rijen = stempel_service.eigen_stempels(actor_id=actor.id, dag=datum or vandaag_nl())
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return [

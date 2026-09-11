@@ -26,6 +26,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
+from app.tijd import vandaag_nl
 from app.uren.models import PlanningToewijzing, ProjectSpecificatie, Werkstempel
 from app.uren.service import GeenToegang, OngeldigeInvoer, UrenFout
 
@@ -257,7 +258,7 @@ def zones_voor_veldwerker(*, actor_id: uuid.UUID, vandaag: date | None = None) -
             for a in auth_service.mijn_administraties(actor_id=actor_id, rol=actor.rol)
             if a.uren_meerwerk_ingeschakeld
         ]
-    dag = vandaag or date.today()
+    dag = vandaag or vandaag_nl()
     iso = dag.isocalendar()
     maandag = date.fromisocalendar(iso[0], iso[1], 1)
     tot_en_met = maandag + timedelta(days=13)  # deze + volgende week (zondagavond-verversing)

@@ -10,7 +10,6 @@ blijven niet-opgeslagen. Regressiecasus: creditnota BOOT 202633199 (negatieve re
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -31,6 +30,7 @@ from app.extractie.service import AiFactuurExtractie, AiRegel, AiVeld
 from app.geheugen.models import BoekingObservatie
 from app.security.tokens import create_access_token
 from app.sync.models import TaxRateCache, VendorCache
+from app.tijd import vandaag_nl
 from tests.sync.conftest import FakeRlzClient
 
 VENDOR_BOOT = uuid.UUID("33333333-0000-0000-0000-00000000b007")
@@ -113,7 +113,7 @@ def geheugen_boot(administratie_id: uuid.UUID, stamgegevens: None) -> None:
                 btw_id=HOOG_ID,
                 project_id=None,
                 bron="app",
-                bron_datum=datetime.now(UTC).date(),
+                bron_datum=vandaag_nl(),
             )
         )
 

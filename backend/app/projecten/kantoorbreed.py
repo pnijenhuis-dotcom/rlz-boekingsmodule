@@ -42,6 +42,7 @@ from app.documenten.models import Document, DocumentStatus
 from app.projecten.cijfers import _tarief_voor
 from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 from app.uren.models import (
     Meerwerk,
     MeerwerkStatus,
@@ -596,7 +597,7 @@ def lijst(
 ) -> Lijst:
     if status not in STATUS_FACETTEN:
         raise ProjectenKantoorbreedFout(f"Onbekend status-facet: {status}")
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     alle = _alle_rijen(actor_id=actor_id, rol=rol, vandaag=vandaag)
 
     tellers = Tellers(
@@ -645,7 +646,7 @@ def detail_verrijking(
 ) -> DetailVerrijking:
     """Verplichtingen mét verbruiksstand + weekstaten-/planningstand per week voor één project — additief
     op het bestaande projectdetail (zelfde helpers als de kantoorbrede lijst, dus dezelfde cijfers)."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     huidige_week = _week_sleutel(vandaag)
     with scoped_session(administratie_id) as session:
         administratie = session.get(Administratie, administratie_id)

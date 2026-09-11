@@ -31,6 +31,7 @@ from app.db.session import scoped_session
 from app.sync.models import VendorCache
 from app.terugkerend.models import TerugkerendSignaal
 from app.terugkerend.service import TerugkerendFout
+from app.tijd import vandaag_nl
 
 PER_PAGINA = 25
 STATUSSEN = ("aandacht", "gesnoozed", "afgemeld", "alle")
@@ -188,7 +189,7 @@ def lijst(
 ) -> KantoorLijst:
     if status not in STATUSSEN:
         raise TerugkerendFout(f"Onbekende status: {status}")
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     alles = _alle_rijen(actor_id=actor_id, rol=rol, vandaag=vandaag)
     aandacht = [r for r in alles if r.status == "aandacht"]
     tellers = Tellers(

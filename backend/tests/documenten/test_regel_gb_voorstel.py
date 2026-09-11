@@ -6,7 +6,6 @@ wordt nooit groen op een AI-voorstel."""
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import Engine, text
@@ -23,6 +22,7 @@ from app.geheugen import regel_gb
 from app.geheugen.models import BoekingObservatie, RegelGbClassificatie
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 
 VENDOR_ID = uuid.UUID("33333333-3333-3333-3333-333333333331")
 GB_4110 = uuid.UUID("44444444-0000-0000-0000-000000004110")
@@ -153,7 +153,7 @@ def _observatie(
         btw_id=BTW_ID,
         project_id=None,
         bron=bron,
-        bron_datum=datetime.now(UTC).date(),
+        bron_datum=vandaag_nl(),
     )
 
 
@@ -216,7 +216,7 @@ class TestPrefillVolgorde:
         assert data.opgeslagen is False and data.vendor_id == VENDOR_ID
         bekend, nieuw = data.regels
         assert bekend.ledger_id == GB_4110 and bekend.gb_bron == "geheugen"
-        assert bekend.gb_voorstel_detail == f"2× bevestigd, laatst {date.today():%d-%m-%Y}"
+        assert bekend.gb_voorstel_detail == f"2× bevestigd, laatst {vandaag_nl():%d-%m-%Y}"
         assert nieuw.ledger_id == GB_4112 and nieuw.gb_bron == "ai"
         assert nieuw.gb_voorstel_detail == "AI koos uit 2 grootboeken van deze leverancier — bevestig of corrigeer"
         # De samengevoegde regel krijgt nooit een regel-GB (synthetische omschrijving) — wél het leverancier-geheugen

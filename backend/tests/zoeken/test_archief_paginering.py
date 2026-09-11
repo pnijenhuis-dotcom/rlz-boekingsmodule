@@ -21,6 +21,7 @@ from app.documenten.storage import LokaleBestandsopslag
 from app.main import app
 from app.security.tokens import create_access_token
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 from app.zoeken import service as zoeken_service
 from app.zoeken.service import ArchiefFout, ArchiefSortering
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
@@ -174,7 +175,7 @@ class TestDatumvenster:
         maak_geboekt_document(
             administratie_id=administratie_id, actor_id=gescoopte_gebruiker, opslag=opslag, referentie="F-NU"
         )
-        vandaag = date.today()
+        vandaag = vandaag_nl()
         # Vandaag geboekt: binnen [vandaag, vandaag] — ook al ligt de factuurdatum (2026-07-01) erbuiten.
         assert zoeken_service.archief(administratie_id=administratie_id, van=vandaag, tot=vandaag).totaal == 1
         # Venster vóór resp. ná het boekmoment: niets.

@@ -28,6 +28,7 @@ from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.rlz.fouten import vertaal_rlz_boekfout  # noqa: F401 — re-export (accordering-herstel-CLI, tests)
 from app.sync.models import VendorCache
+from app.tijd import TIJDZONE_NL, vandaag_nl
 
 _KAN_BOEKPOGING_STARTEN_VANUIT = frozenset(
     {
@@ -121,7 +122,7 @@ def _boekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
     """Volumerem-teller: alleen ÉCHTE statusovergangen niet-geboekt → geboekt vandaag. Teller-bug
     (punt 23, opruimrun 28-08): tijdlijn-notities ná het boeken (geboekt → geboekt, bv. webhook-
     of doorbelastingsnotities) telden mee en lieten de rem te vroeg bijten."""
-    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
     return (
         session.scalar(
             select(func.count())
@@ -585,7 +586,7 @@ def boek_document(
             administratie_id=administratie_id,
             document_id=document_id,
             vendor_id=voorstel.vendor_id,
-            boekdatum=datetime.now(UTC).date(),
+            boekdatum=vandaag_nl(),
             boekstuk_ref=rlz_boekstuknummer,
             regels=voorstel.regels,
             regels_samenvoegen=voorstel.regels_samenvoegen,

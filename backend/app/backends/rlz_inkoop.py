@@ -31,6 +31,7 @@ from app.rlz.aangifte import AangiftePoort, KantToets
 from app.rlz.bijlage import zorg_voor_bijlage
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.fouten import vertaal_rlz_boekfout
+from app.tijd import vandaag_nl
 
 # RLZ: geboekt = Status 2 óf 3 (CLAUDE.md — nooit alleen op 2 toetsen).
 _RLZ_GEBOEKT = frozenset({2, 3})
@@ -309,7 +310,7 @@ class RlzInkoopPort:
                     vendor_id=voorstel.vendor_id,
                     lines=tegenboek_lines(voorstel, omschrijving),
                     reference=referentie,
-                    Date=f"{date.today().isoformat()}T00:00:00",
+                    Date=f"{vandaag_nl().isoformat()}T00:00:00",
                     # Blok 9: de herkenbare tegenboek-omschrijving ("TEGENBOEKING ‹nr› · ‹leverancier›") die al op
                     # élke regel staat, óók als document-kop (`Header` + `Description`, STAP-0 07-09).
                     **koptekst_velden(omschrijving),

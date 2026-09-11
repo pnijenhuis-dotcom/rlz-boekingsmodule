@@ -60,6 +60,7 @@ from app.documenten.rlz_ids import rlz_bank_aanbetaling_id
 from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
 from app.sync.models import TaxRateCache, VendorCache
+from app.tijd import TIJDZONE_NL, vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,7 @@ def _relatieboekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) 
 
     from sqlalchemy import func
 
-    vandaag_begin = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
     return (
         session.scalar(
             select(func.count())

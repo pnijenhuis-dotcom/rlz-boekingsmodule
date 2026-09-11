@@ -43,6 +43,7 @@ from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.odoo.credentials import GeenOdooKoppeling, OdooVerbinding, koppeling_voor, odoo_client_voor
 from app.odoo.ids import odoo_uuid
+from app.tijd import vandaag_nl
 from app.voorraad.models import VoorraadRegel
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,7 @@ def _leesbron_voor(administratie_id: uuid.UUID) -> tuple[OdooVerbinding | None, 
 def _vanaf_datum(administratie_id: uuid.UUID, *, knip: date | None, volledig: bool) -> date:
     """Ondergrens = knip (of 1 januari van het lopende jaar). Incrementeel: jongste geregistreerde Odoo-datum −
     venster, maar nooit vóór de ondergrens."""
-    ondergrens = knip or date(date.today().year, 1, 1)
+    ondergrens = knip or date(vandaag_nl().year, 1, 1)
     if volledig:
         return ondergrens
     with scoped_session(administratie_id) as session:
@@ -181,7 +182,7 @@ def _vanaf_datum(administratie_id: uuid.UUID, *, knip: date | None, volledig: bo
         )
     if laatste is None:
         return ondergrens
-    return max(ondergrens, min(laatste - HERLEES_VENSTER, date.today()))
+    return max(ondergrens, min(laatste - HERLEES_VENSTER, vandaag_nl()))
 
 
 def _rlz_referenties(administratie_id: uuid.UUID) -> set[str]:

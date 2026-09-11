@@ -46,6 +46,7 @@ from app.materiaal.models import (
     MateriaalTransport,
     TransportStatus,
 )
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 MODULE = "boekhouding"
@@ -199,7 +200,7 @@ def bereken_materiaalmatch_in_sessie(
     stand = None
     if project_id is not None:
         stand = materiaalstand_in_sessie(
-            session, administratie_id=administratie_id, project_id=project_id, tot_en_met=factuurdatum or date.today()
+            session, administratie_id=administratie_id, project_id=project_id, tot_en_met=factuurdatum or vandaag_nl()
         )
         per_product = {r.product_id: r for r in stand.regels}
         if not stand.regels:

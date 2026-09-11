@@ -44,6 +44,7 @@ from app.rlz.credentials import client_voor_rlz_admin_id, open_root_client
 from app.security.envelope import unwrap_secret, wrap_secret
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache, VendorCache
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -574,7 +575,7 @@ def voer_schrijftest_uit(
                     "Description": "TEST schrijftest onboarding — wordt direct gestorneerd",
                 }
             ],
-            Date=date.today().isoformat(),
+            Date=vandaag_nl().isoformat(),
         )
         stappen.append(SchrijftestStap("put", "ok", f"crediteur '{vendor_naam}', kosten-GB {kosten_code}, € 1,21"))
 

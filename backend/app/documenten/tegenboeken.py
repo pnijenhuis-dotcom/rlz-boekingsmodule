@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -62,6 +62,7 @@ from app.rlz.aangifte import KantToets
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.sync.models import VendorCache
+from app.tijd import vandaag_nl
 
 MIN_REDEN_LENGTE = 5  # zelfde ondergrens als de storno-redenen (en de DB-CHECK op de tabel)
 
@@ -401,7 +402,7 @@ def _harde_checks_op_tegenboeking(
         client=client,
         vendor_id=voorstel.vendor_id,
         referentie=referentie,
-        factuurdatum=date.today(),
+        factuurdatum=vandaag_nl(),
         totaalbedrag=-(voorstel.totaalbedrag or Decimal("0")),
         regels=regels,
         eigen_rlz_document_id=rlz_tegenboeking_id(document_id, voorstel.boek_cyclus),
@@ -469,7 +470,7 @@ def _sla_tegenboek_webhook_op(
         rlz_admin_id=rlz_admin_id_voor(administratie_id),
         rlz_document_id=rlz_tegenboeking_id_,
         rlz_boekstuknummer=rlz_boekstuknummer,
-        factuurdatum=date.today(),
+        factuurdatum=vandaag_nl(),
         vendor_id=voorstel.vendor_id,
         vendor_naam=leverancier_naam,
         referentie=referentie,

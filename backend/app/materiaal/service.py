@@ -45,6 +45,7 @@ from app.materiaal.pdf import TekstRegel, bouw_pdf, paginering
 from app.materiaal.seed import UNIVERSAL_CATALOGUS, UNIVERSAL_LEVERANCIER
 from app.odoo.models import OdooKoppeling
 from app.sync.models import ProjectCache
+from app.tijd import vandaag_nl
 from app.uren.models import ProjectSpecificatie
 from app.uren.service import (
     MODULE,
@@ -2148,7 +2149,7 @@ def _tijdlijn(events: list[tuple[date, int]], tot_en_met: date) -> tuple[int, De
 def materiaalstand_in_sessie(
     session, *, administratie_id: uuid.UUID, project_id: uuid.UUID, tot_en_met: date | None = None
 ) -> MateriaalStand:
-    tot_en_met = tot_en_met or date.today()
+    tot_en_met = tot_en_met or vandaag_nl()
     project = session.get(ProjectCache, (project_id, administratie_id))
     transporten = session.scalars(
         select(MateriaalTransport).where(

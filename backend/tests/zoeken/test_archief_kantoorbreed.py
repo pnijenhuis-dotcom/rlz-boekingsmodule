@@ -19,6 +19,7 @@ from app.db.session import scoped_session
 from app.documenten.storage import LokaleBestandsopslag
 from app.main import app
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.zoeken import archief_kantoorbreed as kb
 from app.zoeken import service as zoeken_service
 from app.zoeken.service import ArchiefFout, ArchiefSortering
@@ -250,7 +251,7 @@ class TestPaginering:
     def test_datumvenster_en_zoekterm_werken_kantoorbreed(self, beheerder_id, twee_administraties_gevuld) -> None:  # noqa: F811
         assert kb.blader(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER, q="mid").totaal == 1
         assert kb.blader(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER, q="IF-000").totaal == 3
-        vandaag = date.today()
+        vandaag = vandaag_nl()
         assert kb.blader(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER, van=vandaag, tot=vandaag).totaal == 5
         assert (
             kb.blader(

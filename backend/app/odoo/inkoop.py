@@ -69,6 +69,7 @@ from app.odoo.probe import lees_lock_dates
 from app.projectverdeling.data import analytic_percentages, gewichten_per_project
 from app.rlz.aangifte import KantToets
 from app.sync.models import TaxRateCache
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -947,7 +948,7 @@ class OdooInkoopPort:
             verlegd_ids = {self._odoo_id("account.tax", t) for t in self._verlegde_taxrates()}
             refund = self._bestaande_move(document_id, voorstel.boek_cyclus, "tegenboeking")
             if refund is None:
-                vandaag = date.today()
+                vandaag = vandaag_nl()
                 self._toets_lock_dates(vandaag)
                 wizard_id = self.client.create(
                     MODEL_REVERSAL,

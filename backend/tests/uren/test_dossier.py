@@ -21,11 +21,11 @@ from app.auth import service as auth_service
 from app.auth import voorwaarden
 from app.berichten import verzending
 from app.berichten.models import HerinneringKanaal, HerinneringStatus
-from app.db.session import scoped_session
 from app.documenten import storage
 from app.integraties import kvk
 from app.main import app
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.uren import dossier, service
 from tests.uren.conftest import maak_gebruiker
 
@@ -34,7 +34,7 @@ client = TestClient(app)
 JAAR, WEEK = 2026, 34
 MAANDAG = date.fromisocalendar(JAAR, WEEK, 1)
 PDF = b"%PDF-1.4 test"
-OVER_EEN_JAAR = date.today() + timedelta(days=365)
+OVER_EEN_JAAR = vandaag_nl() + timedelta(days=365)
 
 
 def _bearer(gebruiker_id: uuid.UUID, *, rol: str) -> dict[str, str]:
@@ -98,9 +98,9 @@ def _herinner(administratie_id, gebruiker_id, beheerder_id, n, monkeypatch):
     """N herinneringen op N verschillende dagen (dagrem)."""
     resultaten = []
     for i in range(n):
-        monkeypatch.setattr(dossier, "_vandaag", lambda i=i: date.today() + timedelta(days=i))
+        monkeypatch.setattr(dossier, "_vandaag", lambda i=i: vandaag_nl() + timedelta(days=i))
         resultaten.append(dossier.stuur_herinnering(administratie_id=administratie_id, gebruiker_id=gebruiker_id, actor_id=beheerder_id))
-    monkeypatch.setattr(dossier, "_vandaag", lambda: date.today())
+    monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl())
     return resultaten
 
 
@@ -183,18 +183,18 @@ class TestStatusmodel:
         with pytest.raises(service.OngeldigeInvoer):
             _upload(administratie_id, zzper, "vca_vol", zzper, geldig_tot=None)
         with pytest.raises(service.OngeldigeInvoer):
-            _upload(administratie_id, zzper, "vca_vol", zzper, geldig_tot=date.today() - timedelta(days=1))
+            _upload(administratie_id, zzper, "vca_vol", zzper, geldig_tot=vandaag_nl() - timedelta(days=1))
 
     def test_verlopen_en_vooraankondiging(self, administratie_id, zzper, beheerder_id, monkeypatch):
-        _upload(administratie_id, zzper, "vca_vol", zzper, geldig_tot=date.today() + timedelta(days=20))
-        _upload(administratie_id, zzper, "avb", zzper, geldig_tot=date.today() + timedelta(days=200))
+        _upload(administratie_id, zzper, "vca_vol", zzper, geldig_tot=vandaag_nl() + timedelta(days=20))
+        _upload(administratie_id, zzper, "avb", zzper, geldig_tot=vandaag_nl() + timedelta(days=200))
         stand = _keur_alles_goed(administratie_id, zzper, beheerder_id)
         per = {d.code: d for d in stand.documenten}
         assert per["vca_vol"].status == "verloopt_binnenkort" and per["vca_vol"].verloopt_over_dagen == 20
         assert per["avb"].status == "goedgekeurd"
         assert stand.aantal_verloopt_binnenkort == 1
         # Tijd verstrijkt: 25 dagen later is de VCA verlopen (afgeleide toestand, geen mutatie nodig).
-        monkeypatch.setattr(dossier, "_vandaag", lambda: date.today() + timedelta(days=25))
+        monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl() + timedelta(days=25))
         stand = dossier.dossier_van(administratie_id=administratie_id, gebruiker_id=zzper, actor_id=beheerder_id)
         per = {d.code: d for d in stand.documenten}
         assert per["vca_vol"].status == "verlopen" and stand.aantal_verlopen == 1
@@ -265,14 +265,14 @@ class TestHandhaving:
         assert "1 van 3" in push_ok[0]["pushtekst"] and push_ok[0]["url"] == "/accordeur?dossier=1"
         # Dagrem: tweede herinnering op dezelfde dag weigert.
         with pytest.raises(dossier.AlHerinnerdVandaag):
-            monkeypatch.setattr(dossier, "_vandaag", lambda: date.today() + timedelta(days=1))
+            monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl() + timedelta(days=1))
             dossier.stuur_herinnering(administratie_id=administratie_id, gebruiker_id=zzper, actor_id=beheerder_id)
-        monkeypatch.setattr(dossier, "_vandaag", lambda: date.today())
+        monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl())
         # Nog niet geblokkeerd → indienen kan.
         staat = service.dien_week_in(administratie_id=administratie_id, zzper_id=zzper, project_id=project_id, jaar=JAAR, weeknummer=WEEK, actor_id=zzper)
         assert staat.status == "ingediend"
 
-        monkeypatch.setattr(dossier, "_vandaag", lambda: date.today() + timedelta(days=2))
+        monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl() + timedelta(days=2))
         r3 = dossier.stuur_herinnering(administratie_id=administratie_id, gebruiker_id=zzper, actor_id=beheerder_id)
         assert r3.volgnummer == 3 and r3.geblokkeerd is True
         stand = dossier.dossier_van(administratie_id=administratie_id, gebruiker_id=zzper, actor_id=beheerder_id)
@@ -331,12 +331,12 @@ class TestHandhaving:
     ):
         zzper = gekoppelde_zzper
         for code in ("kopie_id", "steigerpas", "vca_vol", "avb", "kvk_uittreksel"):
-            _upload(administratie_id, zzper, code, zzper, geldig_tot=date.today() + timedelta(days=40))
+            _upload(administratie_id, zzper, code, zzper, geldig_tot=vandaag_nl() + timedelta(days=40))
         # Alles ter controle → compleet_incl; kantoor keurt goed → compleet, teller 0.
         _keur_alles_goed(administratie_id, zzper, beheerder_id)
         # Drie herinneringen kunnen niet (compleet) — dus zónder herinneringen nooit een blokkade,
         # ook niet als alles verloopt: de handhaving start altijd met de herinner-knop.
-        monkeypatch.setattr(dossier, "_vandaag", lambda: date.today() + timedelta(days=60))
+        monkeypatch.setattr(dossier, "_vandaag", lambda: vandaag_nl() + timedelta(days=60))
         service.zet_dag(administratie_id=administratie_id, zzper_id=zzper, project_id=project_id, jaar=JAAR, weeknummer=WEEK,
                         datum=MAANDAG, uren=Decimal("8"), m2=None, actor_id=zzper)
         staat = service.dien_week_in(administratie_id=administratie_id, zzper_id=zzper, project_id=project_id, jaar=JAAR, weeknummer=WEEK, actor_id=zzper)

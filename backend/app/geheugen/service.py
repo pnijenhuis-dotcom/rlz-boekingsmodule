@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +9,7 @@ from app.db.session import scoped_session
 from app.geheugen.engine import GeheugenVoorstel, Observatie, bepaal_voorstel
 from app.geheugen.models import BoekingObservatie
 from app.geheugen.normalisatie import normaliseer_regel_sleutel
+from app.tijd import vandaag_nl
 
 
 def voorstel_voor(
@@ -24,7 +24,7 @@ def voorstel_voor(
     return bepaal_voorstel(
         observaties,
         regel_sleutel=normaliseer_regel_sleutel(regel_omschrijving),
-        vandaag=datetime.now(UTC).date(),
+        vandaag=vandaag_nl(),
     )
 
 

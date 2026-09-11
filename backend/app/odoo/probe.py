@@ -26,6 +26,7 @@ from datetime import date
 from typing import Any
 
 from app.odoo.client import OdooClient, OdooFout
+from app.tijd import vandaag_nl
 
 LEES_MODELLEN = (
     "res.company",
@@ -194,7 +195,7 @@ def voer_probe_uit(client: OdooClient) -> ProbeUitkomst:
     try:
         sleutels = client.search_read("res.users.apikeys", [], ["name", "expiration_date"])
         vervaldata = [_datum(s.get("expiration_date")) for s in sleutels]
-        geldig = [d for d in vervaldata if d is None or (d - date.today()).days >= 14]
+        geldig = [d for d in vervaldata if d is None or (d - vandaag_nl()).days >= 14]
         if not sleutels:
             rapport["api_key"] = "geen API-keys zichtbaar voor deze gebruiker"
         elif geldig:

@@ -17,6 +17,7 @@ from app.bank.matchmotor import (
     splits_incl_bedrag,
     stel_regel_voor,
 )
+from app.tijd import vandaag_nl
 
 
 def _mutatie(
@@ -446,14 +447,14 @@ class TestStap3bHistorieRegel:
     IBAN = "NL91ABNA0417164300"
 
     def _historie(self, n: int = 3, *, ledger: uuid.UUID | None = None):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from app.bank.historie_regel import HistorieBoeking
 
         ledger = ledger or uuid.uuid4()
         return [
             HistorieBoeking(
-                payment_transaction_id=uuid.uuid4(), datum=date.today() - timedelta(days=200 + 30 * i),
+                payment_transaction_id=uuid.uuid4(), datum=vandaag_nl() - timedelta(days=200 + 30 * i),
                 tegenrekening_iban=self.IBAN, omschrijving="Huur kantoor Deventer periode 2026",
                 tegenpartij_naam="Vastgoed Oost",
                 ledger_id=ledger, taxrate_id=None, bron="rlz",

@@ -71,7 +71,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
@@ -87,6 +87,7 @@ from app.geheugen.service import laad_engine_observaties
 from app.projecten import match as project_match
 from app.sync.btw import taxrate_vlaggen
 from app.sync.models import TaxRateCache
+from app.tijd import vandaag_nl
 
 if TYPE_CHECKING:  # boekvoorstel.py importeert deze module (lazy) — geen runtime-cyclus
     from app.documenten.boekvoorstel import BoekvoorstelRegelData
@@ -171,7 +172,7 @@ def bepaal_verlegd_taxrate(
 
     De uitkomst draagt haar herkomst (`VerlegdKeuze.detail`) zodat het controlescherm toont waaróm dit tarief
     voorstaat. Geen AI, geen toeval."""
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     rijen = list(
         session.scalars(
             select(TaxRateCache).where(
@@ -317,7 +318,7 @@ def _engine_observaties(session: Session, *, administratie_id: uuid.UUID, vendor
 def _engine_heeft_btw(engine_observaties: list[Observatie], *, regel_sleutel: str | None) -> bool:
     if not engine_observaties:
         return False
-    voorstel = bepaal_voorstel(engine_observaties, regel_sleutel=regel_sleutel, vandaag=datetime.now(UTC).date())
+    voorstel = bepaal_voorstel(engine_observaties, regel_sleutel=regel_sleutel, vandaag=vandaag_nl())
     return voorstel.btw.waarde is not None
 
 
@@ -357,7 +358,7 @@ def verrijk_prefill(
     regels dragen hun eigen tekst al). `factuur_verlegd` = de factuur vermeldt "btw verlegd" én de factuur-btw is 0."""
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
-    vandaag = datetime.now(UTC).date()
+    vandaag = vandaag_nl()
     verlegd = (
         bepaal_verlegd_taxrate(session, administratie_id=administratie_id, vandaag=vandaag) if factuur_verlegd else None
     )

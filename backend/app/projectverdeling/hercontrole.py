@@ -38,6 +38,7 @@ from app.documenten.models import Document, DocumentGebeurtenis, DocumentStatus,
 from app.projectverdeling import data as pv
 from app.projectverdeling.models import Projectverdeling
 from app.projectverdeling.omzet import omzet_per_project, projectnamen
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def herbereken_administratie(
     # `hercontrole_op` volgt de peildatum (in productie = vandaag; een expliciete `vandaag` — CLI/tests — schuift het
     # tijdstip mee zodat de regel "één keer per kalendermaand" tegen dezelfde kalender toetst).
     nu = datetime.now(UTC) if vandaag is None else datetime.combine(vandaag, datetime.now(UTC).timetz())
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     tellers = {"beoordeeld": 0, "herrekend": 0, "signalen": 0, "overgeslagen": 0, "omzet_ontbreekt": 0}
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         administratie = session.get(Administratie, administratie_id)

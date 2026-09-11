@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -34,6 +34,7 @@ from app.bank.models import (
 )
 from app.db.session import scoped_session
 from app.rlz.client import RlzApiError, RlzClient
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +174,7 @@ def vul_historie_cache(
     `dry_run=True` (nameting, ochtendrun 11-09): niets schrijven en géén RLZ-lezing — `module_toegevoegd` = wat de
     module-bron zóu toevoegen, `rlz_resterend` = het aantal afgeletterde mutaties dat nog nagelezen zou worden;
     `rlz_toegevoegd`/`rlz_gemarkeerd` blijven 0."""
-    vandaag = vandaag or datetime.now(UTC).date()
+    vandaag = vandaag or vandaag_nl()
     vanaf = vandaag - timedelta(days=HISTORIE_VENSTER_DAGEN)
     fouten: list[str] = []
 

@@ -6,7 +6,6 @@ wint van verlegd; meerduidig verlegd = leeg; EU-verlegd telt niet mee."""
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -22,6 +21,7 @@ from app.documenten.regel_prefill import BTW_BRON_FACTUUR_VERLEGD, verlegd_taxra
 from app.documenten.storage import LokaleBestandsopslag
 from app.geheugen.models import BoekingObservatie
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
+from app.tijd import vandaag_nl
 from tests.extractie.test_nulregels_spot_services import spot_services_extractie
 
 VENDOR_SPOT = uuid.UUID("33333333-0000-0000-0000-00000000570b")
@@ -218,7 +218,7 @@ class TestBtwVerlegd4c:
                     btw_id=NUL_ID,
                     project_id=None,
                     bron="app",
-                    bron_datum=datetime.now(UTC).date(),
+                    bron_datum=vandaag_nl(),
                 )
             )
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)

@@ -18,6 +18,7 @@ from app.auth import voorwaarden
 from app.main import app
 from app.projecten import kantoor
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.uren import service, stempels
 from app.uren.stempels import (
     STEMPEL_AFWIJKING_DREMPEL_UREN,
@@ -30,7 +31,7 @@ from tests.uren.conftest import maak_gebruiker
 
 client = TestClient(app)
 
-VANDAAG = date.today()
+VANDAAG = vandaag_nl()
 JAAR, WEEK = VANDAAG.isocalendar()[0], VANDAAG.isocalendar()[1]
 MAANDAG = date.fromisocalendar(JAAR, WEEK, 1)
 

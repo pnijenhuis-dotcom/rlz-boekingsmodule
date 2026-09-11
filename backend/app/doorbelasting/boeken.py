@@ -91,6 +91,7 @@ from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync.models import TaxRateCache, VendorCache
 
+from app.tijd import vandaag_nl
 logger = logging.getLogger(__name__)
 
 _MODULE = "boekhouding"
@@ -488,7 +489,7 @@ def boek_doorbelasting_run(
                 raise BoekenUitgeschakeld(f"Boeken staat uit voor doel-administratie {mapping.doelentiteit_naam}")
 
     bestand = _standaard_opslag().lezen(pad=opslag_pad)
-    datum_iso = f"{(bron_factuurdatum or datetime.now(UTC).date()).isoformat()}T00:00:00"
+    datum_iso = f"{(bron_factuurdatum or vandaag_nl()).isoformat()}T00:00:00"
 
     eigen_bron_client = bron_client is None
     if bron_client is None:
@@ -1044,7 +1045,7 @@ def boek_spiegel_alsnog(
                 _standaard_opslag().opslaan(pad=factuur_pad, inhoud=factuur_bytes)
         # Punt 15: het inhaalpad boekt de spiegel op de factuurdatum van het bron-document (zelfde
         # datum als de bron-verkoop), niet op de dag van de inhaalactie.
-        boekdatum = bron_factuurdatum or datetime.now(UTC).date()
+        boekdatum = bron_factuurdatum or vandaag_nl()
         spiegel_boekstuknummer = _boek_spiegel_inkoop(
             client=doel_client,
             rlz_id=boeking.spiegel_rlz_id,

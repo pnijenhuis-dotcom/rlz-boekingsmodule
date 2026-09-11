@@ -5,12 +5,13 @@ omzetstanden, tegenboek-spiegel, hercontrole boven/onder de drempel (idempotent)
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, text
 
+from app import tijd
 from app.beheer import service as beheer_service
 from app.db.session import scoped_session
 from app.documenten import boeken, boekvoorstel, tegenboeken
@@ -105,7 +106,7 @@ class TestVoorstelEnPrefill:
             administratie_id=administratie_id, vendor_id=vendor_id, actor_id=beheerder_id, ingeschakeld=True
         )
         # Periode-default = vorige maand t.o.v. vandaag → pin 'vandaag' op augustus 2026 zodat juli de maand is.
-        monkeypatch.setattr(service, "date", _VasteDatum)
+        pin_vandaag(monkeypatch, _VASTE_DATUM)
         voorstel = boekvoorstel.haal_boekvoorstel_op(
             administratie_id=administratie_id, document_id=document_zonder_project
         )
@@ -222,10 +223,13 @@ class TestVoorstelEnPrefill:
         assert service.check(data).ok
 
 
-class _VasteDatum(date):
-    @classmethod
-    def today(cls) -> date:  # type: ignore[override]
-        return date(2026, 8, 12)
+#: Blok 2 (11-09): "vandaag" = 12-08-2026 via het ene klok-anker `app.tijd._klok` (12:00 UTC = 14:00 NL, zelfde dag).
+_VASTE_DATUM = date(2026, 8, 12)
+
+
+def pin_vandaag(monkeypatch: pytest.MonkeyPatch, dag: date) -> None:
+    monkeypatch.setattr(tijd, "_klok", lambda: datetime(dag.year, dag.month, dag.day, 12, 0, tzinfo=UTC))
+    assert tijd.vandaag_nl() == dag
 
 
 @pytest.fixture

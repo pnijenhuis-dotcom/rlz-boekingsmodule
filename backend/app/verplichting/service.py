@@ -25,6 +25,7 @@ from app.documenten.checks import CheckRapport, CheckResultaat
 from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.extractie.verplichting import HERKOMST_VELDEN, SOORT_LABELS
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 from app.verplichting import match as match_motor
 from app.verplichting import match_pipeline
 from app.verplichting.models import Verplichting, VerplichtingMatch
@@ -460,7 +461,7 @@ def _checks(
         )
     )
 
-    vandaag = datetime.now(UTC).date()
+    vandaag = vandaag_nl()
     if voorstel.geldig_tot is None:
         resultaten.append(
             CheckResultaat(

@@ -26,6 +26,7 @@ from app.projectverdeling import hercontrole as hercontrole_regels
 from app.projectverdeling.models import Projectverdeling
 from app.projectverdeling.omzet import omzet_per_project, projectnamen
 from app.sync.models import ProjectCache, VendorCache
+from app.tijd import vandaag_nl
 
 if TYPE_CHECKING:
     from app.documenten.boekvoorstel import BoekvoorstelData
@@ -110,7 +111,7 @@ def _live(
     boek_cyclus: int | None,
     vandaag: date | None = None,
 ) -> pv.ProjectverdelingData:
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     basis = pv.basisbedrag_van(regels)
     selectie = (
         omzet_per_project(session, administratie_id=administratie_id, periode=periode, vandaag=vandaag)
@@ -226,7 +227,7 @@ def lees(
     """De verdeling zoals het boekvoorstel 'm draagt: bevroren (geboekt, zelfde boek_cyclus), live herrekend
     (voorstel — óók een bevroren rij van een vórige cyclus ná tegenboeken-én-opnieuw-boeken), de
     opt-in-prefill (④: alleen de restant-regel, niets opgeslagen) of None (geen verdeling van toepassing)."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     row = _row(session, document_id)
     if row is None:
         if not _opt_in_pro_rato(session, administratie_id=administratie_id, vendor_id=vendor_id):
@@ -389,7 +390,7 @@ def sla_op(
     huidige of vorige jaar, met minstens één afgesloten maand — anders 422); `vervallen=True` = de mens haalt de
     verdeling weg (status vervallen — de prefill komt dan niet terug; nooit een DELETE). Audit oud→nieuw op élke
     wijziging."""
-    vandaag = vandaag or date.today()
+    vandaag = vandaag or vandaag_nl()
     try:
         pv.valideer_vaste_regels(vaste_regels)
         periode = pv.als_periode(pro_rato_periode)

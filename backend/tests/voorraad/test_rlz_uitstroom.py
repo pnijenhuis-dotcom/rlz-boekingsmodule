@@ -20,6 +20,7 @@ from sqlalchemy import select, text
 from app.main import app
 from app.rlz.credentials import GeenRlzCredentials
 from app.security.tokens import create_access_token
+from app.tijd import vandaag_nl
 from app.voorraad import rlz_uitstroom, service
 from app.voorraad.models import VoorraadRegel
 from tests.auth.conftest import administratie_id, beheerder_id  # noqa: F401
@@ -197,7 +198,7 @@ class TestLeesroute:
             )
 
         telling = rlz_uitstroom.sync_rlz_verkoopregels(administratie_id=administratie_id)
-        assert telling.vanaf == date(date.today().year, 1, 1)
+        assert telling.vanaf == date(vandaag_nl().year, 1, 1)
         assert telling.facturen_gelezen == 4
         assert telling.facturen_verwerkt == 2 and telling.overgeslagen_concept == 1 and telling.overgeslagen_in_app == 1
         assert telling.regels == 6
@@ -273,7 +274,7 @@ class TestLeesroute:
         assert telling["rlz_regels"] == 7  # incl. de F_IN_APP-factuur (hier geen in-app-boeking)
         assert len(fake_rlz.aanroepen) == aanroepen_na_sync  # herreken = lokaal, nooit een RLZ-lees-lus
         volledig = rlz_uitstroom.sync_rlz_verkoopregels(administratie_id=administratie_id, volledig=True)
-        assert volledig.vanaf == date(date.today().year, 1, 1)
+        assert volledig.vanaf == date(vandaag_nl().year, 1, 1)
 
     def test_endpoint_regels_met_rlz_herkomst(
         self, administratie_id, gescoopte_gebruiker, voorraad_aan, fake_ai, fake_rlz

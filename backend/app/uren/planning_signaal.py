@@ -49,6 +49,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerStatus
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
+from app.tijd import vandaag_nl
 from app.uren import overzichten
 from app.uren.dossier import AlHerinnerdVandaag, HerinneringMislukt
 from app.uren.models import (
@@ -85,7 +86,7 @@ _HEEL = Decimal("1")
 
 
 def _vandaag() -> date:
-    return datetime.now(TIJDZONE).date()
+    return vandaag_nl()
 
 
 def oudste_vensterweek(vandaag: date) -> tuple[int, int]:

@@ -15,6 +15,7 @@ from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.rlz_ids import rlz_bank_boeking_id
 from app.rlz.aangifte import StornoGeblokkeerdDoorAangifte
+from app.tijd import vandaag_nl
 from tests.aitoets.stub import StubPlausibiliteitClient, zet_ai_toets_stub, zet_intake_ai
 from tests.bank.conftest import FakeBankClient, maak_bank_mutatie
 
@@ -579,7 +580,7 @@ def test_historie_regel_groen_boekt_automatisch_na_plausibel(
 ) -> None:
     """Stap 3b in de autoflow: ≥ 3 eerdere boekingen (≥ 6 maanden dekking) op IBAN + kern, 100 % zelfde rekening →
     direct-op-grootboek met bron AUTOMATISCH en omschrijving "Historie-regel: …"."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     zet_intake_ai(admin_engine, True)
     stub = zet_ai_toets_stub(monkeypatch)
@@ -604,7 +605,7 @@ def test_historie_regel_groen_boekt_automatisch_na_plausibel(
                 ),
                 {
                     "id": uuid.uuid4(), "aid": administratie_id, "tx": uuid.uuid4(),
-                    "datum": date.today() - timedelta(days=200 + 30 * i), "iban": iban,
+                    "datum": vandaag_nl() - timedelta(days=200 + 30 * i), "iban": iban,
                     "oms": f"Huur kantoor Deventer periode 0{6 - i}-2026", "ledger": ledger,
                 },
             )
@@ -634,7 +635,7 @@ def test_historie_regel_groen_boekt_automatisch_na_plausibel(
 def test_historie_regel_oranje_boekt_niet_automatisch(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, boeken_aan: None, monkeypatch
 ) -> None:
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     zet_intake_ai(admin_engine, True)
     stub = zet_ai_toets_stub(monkeypatch)
@@ -649,7 +650,7 @@ def test_historie_regel_oranje_boekt_niet_automatisch(
                     "(:id, :aid, :tx, :datum, :iban, 'Huur kantoor Deventer', 'Vastgoed Oost B.V.', :ledger, NULL, 'module')"
                 ),
                 {"id": uuid.uuid4(), "aid": administratie_id, "tx": uuid.uuid4(),
-                 "datum": date.today() - timedelta(days=200 + 30 * i), "iban": iban, "ledger": ledger},
+                 "datum": vandaag_nl() - timedelta(days=200 + 30 * i), "iban": iban, "ledger": ledger},
             )
     mutatie_id = maak_bank_mutatie(
         admin_engine, administratie_id=administratie_id, bedrag="-1250.00", tegenpartij_naam="Vastgoed Oost B.V.",

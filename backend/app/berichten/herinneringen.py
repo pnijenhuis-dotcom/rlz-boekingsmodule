@@ -37,6 +37,7 @@ from app.config import settings
 from app.db.models import Administratie, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.tijd import vandaag_nl
 
 TIJDZONE = ZoneInfo("Europe/Amsterdam")
 
@@ -62,7 +63,7 @@ class HerinneringRapport:
 
 
 def _vandaag() -> date:
-    return datetime.now(TIJDZONE).date()
+    return vandaag_nl()
 
 
 def bericht_teksten(aantal: int) -> tuple[str, str, str]:

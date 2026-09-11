@@ -14,7 +14,6 @@ de referentiedatum, dan kan hij drift niet van bevroren waarden onderscheiden en
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -22,7 +21,7 @@ import pytest
 from app.documenten.models import DocumentStatus
 from tests.keten import casussen
 from tests.keten.casussen import Casus
-from tests.keten.conftest import FRONTEND_KETEN_DIR, REFERENTIE_DATUM, REFERENTIE_TIJDSTIP, Keten
+from tests.keten.conftest import FRONTEND_KETEN_DIR, REFERENTIE_DATUM, REFERENTIE_TIJDSTIP, Keten, echte_vandaag_nl
 
 CASUS = Casus(casussen.B_FLOOR)
 XML, PDF = CASUS.xml_bestandsnaam(), CASUS.pdf_bestandsnaam()
@@ -63,8 +62,8 @@ class TestOntvangstBevroren:
         assert keten.status(tweede) == DocumentStatus.AFGEVOERD_DUPLICAAT
         reden = keten.afwijzing(tweede)["reden"]
         assert f"van {REFERENTIE_DATUM.isoformat()} in de werkvoorraad" in reden, reden
-        if date.today() != REFERENTIE_DATUM:
-            assert date.today().isoformat() not in reden, reden
+        if echte_vandaag_nl() != REFERENTIE_DATUM:
+            assert echte_vandaag_nl().isoformat() not in reden, reden
 
 
 class TestExportDeterministisch:
@@ -101,7 +100,7 @@ def test_sweep_geen_export_draagt_de_datum_van_vandaag() -> None:
     melding."""
     if not FRONTEND_KETEN_DIR.exists():
         pytest.skip("geen frontend-map in deze checkout (CI-artefact)")
-    vandaag = date.today()
+    vandaag = echte_vandaag_nl()
     if vandaag == REFERENTIE_DATUM:
         pytest.skip(
             f"vandaag ({vandaag.isoformat()}) is de referentiedatum van de gouden set — de sweep kan drift niet van "
