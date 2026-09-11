@@ -8496,3 +8496,14 @@ automatiseringen`-filter: gebruik de dagelijkse run 06:30 of "Nu draaien" op Inz
    Wil Peter een vers venster per klik, dan moet start_run een nieuwe run aanmaken en de oude op `fout` zetten.
 4. Alleen 403 herprobeerbaar; 401 blijft direct fout (login zelf geweigerd — geen vertragingsverschijnsel gezien).
 5. Alleen-klare-onderdelen-hergebruik geldt binnen één run; een handmatige nieuwe run (ná fout) draait alles.
+
+<!-- run11-09middag:blok4 -->
+## NAZORG BLOK 4 RUN 11-09 MIDDAG — IAM-SCRIPT + OVERFLOW-SWEEP
+
+| Onderdeel | Status | Vindplaats |
+|---|---|---|
+| **4a `bewaking_deploy_drift_iam.sh`** — controlestap gebruikte een ongeldige `--format`-transform (`members.flatten`); nu `get-iam-policy --flatten="bindings[].members" --filter=… --format="value(bindings.members)"` vóór én ná de binding; idempotent (al aanwezig = melding + exit 0, geen mutatie). Live geverifieerd 11-09 (lees-only): binding `run-jobs@ → roles/run.viewer` staat (Peter 11-09 handmatig); bewakingsprobe `deploy_drift=ok` in élke kwartierrun sinds 09:45 | GEDAAN + LIVE GEVERIFIEERD | `scripts/gcp/bewaking_deploy_drift_iam.sh`, commit 812ea42 |
+| **4b overflow-sweep scope-dialoog** (norm: geen schermwerk zonder sweep) — volledige sweep over álle 17 harnassen × licht/donker × 1440/1170/1024/768 op de werkboom van deze run: `harness.html`/`?project=1`/werkvoorraad-varianten **48/48 groen**, instellingen-varianten (lijst, detailpagina, boeken-ai-tab, autoboeken) **40/40 groen**, gebruikers-varianten incl. `?breed=1` (×3 groepen) en `?scope=71` + `&variant=accordeur` **48/48 groen** — totaal 136 metingen, 0 overflow | GEMETEN, GROEN | `frontend/scripts/overflow_sweep.sh`, logs scratchpad run 11-09 |
+| **Sweep-hardening** — één meting (gebruikers-harnas donker 1440, `--dump-dom` + `--screenshot`) hing 37 min; het gebruikers-harnas kost ~2 min CPU per meting onder `--virtual-time-budget`. Nu: perl-alarm per meting (`MEET_TIMEOUT`, default 300 s; macOS heeft geen `timeout`) — een hangende meting telt als ❓, nooit eeuwig — en `HARNASSEN_ALLEEN=<substring>` voor een herdraai van één groep. Recept: gebruikers-groep apart in de achtergrond (48 metingen ≈ 100 min), de rest in minuten; zonder `SCREENSHOT_DIR` | GEBOUWD | idem |
+
+Beslispunt: het gebruikers-harnas is traag omdat 71 administraties + brede tabel onder virtual-time renderen; een lichtere sweep-variant (minder rijen) is mogelijk maar meet dan niet de echte kliktest-stand — niet gedaan.
