@@ -12,6 +12,7 @@ import type { AdministratieInstellingenDto, EersteSyncRunDto } from '../api/type
 import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FormField } from '../ui/basis'
 import { EersteSyncStatus } from './AdministratieWizard'
 import { ArchiveerDialog } from './ArchiveerDialog'
+import { isRechtenOnderweg, rechtenOnderwegTekst, rechtenOnderwegTooltip } from './eersteSyncStand'
 import { BulkBediening } from './BulkBediening'
 import { AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST, dearchiveerAdministratie } from './instellingenApi'
 import { koppelFoutTekst, ProbeRapport } from './KoppelingDialogen'
@@ -103,7 +104,9 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
  * (HTTP 403) — <recht>. RLZ zegt: "…"') — terugval `fout_reden`, daarna een vaste tekst. Dezelfde eerste regel
  * die de knop "RLZ-check" op de detailpagina toont. */
 export function syncFoutTooltip(run: EersteSyncRunDto | null | undefined): string {
-  const rood = Object.values(run?.onderdelen ?? {}).find((stand) => stand.status === 'fout' && stand.fout)
+  const rood = Object.values(run?.onderdelen ?? {}).find(
+    (stand) => (stand.status === 'fout' || stand.status === 'rechten_onderweg') && stand.fout,
+  )
   const bron = rood?.fout ?? run?.fout_reden ?? 'eerste sync mislukt'
   return bron.split('\n')[0].trim()
 }
@@ -149,6 +152,14 @@ function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
       <Badge variant="ok" title={`laatste sync ${new Date(a.laatste_sync_op).toLocaleString('nl-NL')}`}>
         ✓ {tijd(a.laatste_sync_op)}
       </Badge>
+  if (isRechtenOnderweg(a.eerste_sync)) {
+    // Blok 3 run 11-09: geen fout — RLZ zet de rechten nog door, het systeem herprobeert zelf (tooltip = RLZ-antwoord).
+    return (
+      <Badge variant="info" title={rechtenOnderwegTooltip(a.eerste_sync)} data-testid="sync-chip-rechten-onderweg">
+        ⏳ {rechtenOnderwegTekst(a.eerste_sync)}
+      </Badge>
+    )
+  }
     )
   }
   return <Badge variant="stil">nog niet gesynct</Badge>

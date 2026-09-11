@@ -1034,8 +1034,22 @@ export interface IsVastgoedResultaatDto {
 /** Eerste-sync-run (wizard 26-08 punt 5 / rij-status 27-08) — spiegel van beheer/schemas.py. */
 export interface EersteSyncRunDto {
   run_id: string | null
-  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout' | string
-  onderdelen: Record<string, { status: string; aangemaakt?: number | null; bijgewerkt?: number | null; fout?: string }> | null
+  /** `rechten_onderweg` (blok 3 run 11-09): 403 op een route die de rechten-probe groen had — RLZ zet de rechten
+   * nog door; de backend herprobeert zelf (5/15/60 min, daarna elk uur, max 24 u), daarna `fout`. */
+  status: 'geen' | 'wachtrij' | 'bezig' | 'klaar' | 'fout' | 'rechten_onderweg' | string
+  onderdelen: Record<
+    string,
+    {
+      status: string
+      aangemaakt?: number | null
+      bijgewerkt?: number | null
+      fout?: string
+      /** Blok C 10-09: letterlijk RLZ-antwoord (≤ 300 tekens) + HTTP-status + ontbrekend RLZ-recht bij een weigering. */
+      rlz_melding?: string
+      http_status?: number
+      rlz_recht?: string
+    }
+  > | null
   aangevraagd_op: string | null
   beeindigd_op: string | null
   fout_reden: string | null
@@ -1059,6 +1073,9 @@ export interface AdministratieInstellingenDto {
   uren_dagmax_uren: string
   /** Afdelingen (blok A 28-08, migratie 0084): AAN = afdeling verplicht op élk inkoopdocument +
    * accorderingsroute per afdeling; UIT = veld onzichtbaar. */
+  /** Blok 3 run 11-09 (additief): afgeronde pogingen + wanneer de wekker opnieuw probeert (alleen bij rechten_onderweg). */
+  pogingen?: number
+  volgende_poging_op?: string | null
   afdelingen_ingeschakeld: boolean
   /** Voorraad bijhouden (blok D 28-08, migratie 0086): opt-in controle-laag mi-schema. */
   voorraad_ingeschakeld: boolean

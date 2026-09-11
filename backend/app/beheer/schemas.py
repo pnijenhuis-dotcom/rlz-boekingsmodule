@@ -282,9 +282,13 @@ class MedewerkerDto(BaseModel):
 class MedewerkersLijstDto(BaseModel):
     medewerkers: list[MedewerkerDto]
 
+    #: geen | wachtrij | bezig | klaar | fout | rechten_onderweg (blok 3 run 11-09: 403 op een probe-groene route wordt
+    #: herprobeerd — 5/15/60 min, daarna elk uur, max 24 u; `volgende_poging_op` + `pogingen` additief).
 
 class EigenaarDto(StrikteInvoer):
     """Mockup Instellingen "Eigenaar (krijgt vragen)": default-toewijzing voor nieuwe vragen.
     None = geen eigenaar (vraag stellen vereist dan een expliciete toewijzing)."""
 
+    pogingen: int = 0
+    volgende_poging_op: datetime | None = None
     eigenaar_gebruiker_id: uuid.UUID | None = None

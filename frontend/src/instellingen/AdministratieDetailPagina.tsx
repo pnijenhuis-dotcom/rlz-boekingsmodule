@@ -226,7 +226,13 @@ export function AdministratieDetailPagina({
                   <span className="chip afwijking">geen credentials</span>
                 )}
               </RlzCheck>
-              <InstellingRij titel="Eerste sync" uitleg={a.eerste_sync && a.eerste_sync.status !== 'klaar' ? 'Bij een rode stand: foutreden + "Sync opnieuw starten".' : 'Alle onderdelen groen.'}>
+              <InstellingRij titel="Eerste sync" uitleg={
+                  a.eerste_sync?.status === 'rechten_onderweg'
+                    ? 'Reeleezee zet de rechten van de koppeling nog door — het systeem probeert zelf opnieuw (tot 24 uur); "Sync opnieuw starten" probeert direct.'
+                    : a.eerste_sync && a.eerste_sync.status !== 'klaar'
+                      ? 'Bij een rode stand: foutreden + "Sync opnieuw starten".'
+                      : 'Alle onderdelen groen.'
+                }>
                 {a.eerste_sync && a.eerste_sync.status !== 'klaar' && a.eerste_sync.status !== 'geen' ? (
                   <EersteSyncStatus compact administratie={{ id: a.id, naam: a.naam, rlz_admin_id: a.rlz_admin_id ?? null }} initieel={a.eerste_sync} onAfgerond={onHerlaad} />
                 ) : (

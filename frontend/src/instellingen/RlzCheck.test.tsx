@@ -166,6 +166,15 @@ describe('RlzCheck — knop "RLZ-check" op de Webservice-gegevens-rij (nachtrun 
     expect(regel).toHaveTextContent('HTTP 401 — {"Message":"Unauthorized"}')
   })
 
+  it('groene check terwijl de eerste sync op RLZ wacht (rechten_onderweg, blok 3 run 11-09): "Sync opnieuw starten" direct beschikbaar', async () => {
+    mockFetch((url) => (url.endsWith('/rlz-check') ? json(GROEN) : json({}, 404)))
+    const gebruiker = userEvent.setup()
+    renderCheck(administratie({ eerste_sync: { ...RODE_SYNC, status: 'rechten_onderweg', fout_reden: null, pogingen: 1, volgende_poging_op: '2026-09-11T12:05:00Z' } }))
+    await gebruiker.click(screen.getByRole('button', { name: /RLZ-check voor/ }))
+    await screen.findByTestId('rlz-check-resultaat')
+    expect(screen.getByRole('button', { name: 'Sync opnieuw starten voor Baard beheer & management' })).toBeEnabled()
+  })
+
   it('groene check ná een rode eerste sync: primaire knop "Sync opnieuw starten" → POST …/eerste-sync, daarna herlaad + status', async () => {
     const fetchMock = mockFetch((url) => {
       if (url.endsWith('/rlz-check')) return json(GROEN)

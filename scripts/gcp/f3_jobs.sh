@@ -313,6 +313,16 @@ if gcloud run jobs describe rlz-eerste-sync --region="${REGION}" --format="value
     --role="roles/run.invoker" \
     --quiet >/dev/null
   echo "   run-backend@ mag rlz-eerste-sync uitvoeren (roles/run.invoker, job-niveau)."
+  # Blok 3 run 11-09 (eerste sync ná groene probe: 403 = herproberen): de WEKKER in de kwartier-job rlz-bewaking
+  # (run-jobs@) zet vervallen herpogingen terug in de wachtrij en triggert dezelfde job. Zonder deze binding valt de
+  # wekker zichtbaar terug op in-process verwerken (log "voertuig starten mislukt"), dus dit is een optimalisatie,
+  # geen poort. Owner-commando, eenmalig (KLIKPUNT).
+  gcloud run jobs add-iam-policy-binding rlz-eerste-sync \
+    --region="${REGION}" \
+    --member="serviceAccount:${JOBS_SA}" \
+    --role="roles/run.invoker" \
+    --quiet >/dev/null
+  echo "   run-jobs@ mag rlz-eerste-sync uitvoeren (wekker eerste-sync-herproberen, blok 3 11-09)."
 else
   echo "   LET OP: job rlz-eerste-sync bestaat nog niet (eerste deploy-run maakt 'm) —"
   echo "   draai dit script daarna opnieuw; tot dan toont de wizard 'Achtergrondrun starten"

@@ -521,6 +521,18 @@ def _ai_beurt(nu: datetime) -> bool:
     return laatste is None or nu - laatste > AI_VENSTER
 
 
+def _wekker_eerste_sync(nu: datetime) -> ProbeUitkomst:
+    """Blok 3 run 11-09 middag: geen probe maar de WEKKER van het eerste-sync-herproberen (403 op een probe-groene
+    route = "RLZ zet rechten door"). De kwartiercadans van deze job is het bestaande frequente achtergrondmechanisme;
+    `herprobeer_vervallen` zet vervallen runs terug in de wachtrij en start het bestaande voertuig (job rlz-eerste-sync,
+    fallback in-process). Een exception hier wordt via `_meet` een 'fout'-uitkomst → alert ná twee metingen op rij —
+    het herproberen kan dus nooit stil uitvallen."""
+    from app.beheer import eerste_sync
+
+    aantal = eerste_sync.herprobeer_vervallen(nu)
+    return ProbeUitkomst(soort="eerste_sync_wekker", status="ok", detail=f"{aantal} herpoging(en) gestart")
+
+
 def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
     """Eén bewakingsrun (kwartiercadans). Geeft {soort: status} terug voor de CLI-samenvatting."""
     nu = nu or datetime.now(UTC)
@@ -535,6 +547,8 @@ def voer_probes_uit(nu: datetime | None = None) -> dict[str, str]:
         _meet("reconciliatie_mail", _probe_reconciliatie_mail),
         _meet("automatisering_regressie", lambda: _probe_automatisering_regressie(nu)),
         _meet("deploy_drift", lambda: _probe_deploy_drift(nu)),
+        _meet("rls_weigering", lambda: _probe_rls_weigering(nu)),
+        _meet("eerste_sync_wekker", lambda: _wekker_eerste_sync(nu)),
     ]
     if met_ai:
         uitkomsten.append(_meet("ai", _probe_ai))

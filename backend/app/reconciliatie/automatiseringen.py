@@ -87,6 +87,12 @@ AI_FOUT = "ai_fout"
 #: LET-OP op de teller `ai_toets_uit` ("AI-toets staat platformbreed uit sinds <datum>"); geen uitval, een keuze die
 #: zichtbaar blijft. Doel = Instellingen › Boeken (de schakelaar).
 TOETS_UIT = "ai_toets_uit"
+#: Blok 3 run 11-09 middag (Baard / Box Beheer / Kempen B.V.): een eerste-sync-run die op een probe-groene route 403
+#: kreeg wacht op RLZ ("RLZ zet rechten door") en wordt herprobeerd — zichtbaar als overgeslagen `rechten_onderweg`
+#: (géén LET-OP: het systeem handelt zelf). Ná 24 u herproberen nog rood = `rechten_na_24u`: harde voorwaarde mét
+#: deeplink naar Instellingen › Administraties › ‹administratie› (de Beheerder zet het recht in RLZ / RLZ-check).
+RECHTEN_ONDERWEG = "rechten_onderweg"
+RECHTEN_NA_24U = "rechten_na_24u"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -104,6 +110,7 @@ HARDE_VOORWAARDEN = frozenset(
         GEEN_SYNC_RUN,
         AVG_GATE,
         KOSTENGRENS,
+        RECHTEN_NA_24U,
     }
 )
 
@@ -135,6 +142,8 @@ BEHEER_CATEGORIEEN = frozenset(
 REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
 
 REDEN_LABEL: dict[str, str] = {
+    RECHTEN_ONDERWEG: "RLZ zet rechten door — wordt herprobeerd",
+    RECHTEN_NA_24U: "na 24 uur herproberen weigert RLZ nog steeds (403)",
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
     VOLUMEREM: "volumerem bereikt",
     GELDPOORT: "boeken staat uit (kill-switch/administratie)",
@@ -191,6 +200,8 @@ AI_TOETS_UIT = "ai_toets_uit"
 #: Verzoek blok C (10-09): eerste-sync-run (onboarding) met een RLZ-weigering 401/403 = harde voorwaarde `credential`
 #: mét deeplink naar de administratie; bron `administratie_sync_run` (status fout, onderdelen.*.http_status).
 EERSTE_SYNC = "eerste_sync"
+#: Blok 3 run 11-09: het herproberen ná een 403 op een probe-groene route (wekker in rlz-bewaking, elk kwartier).
+EERSTE_SYNC_HERPROBEREN = "eerste_sync_herproberen"
 AUTOBOEK_OMZET = "autoboeken_omzet"
 AUTOBOEK_VERKOOP = "autoboeken_verkoop"
 BANK = "bank_autoboeken"
@@ -211,6 +222,7 @@ VOLGORDE: tuple[str, ...] = (
     AI_TOETS_OVERGESLAGEN,
     AI_TOETS_UIT,
     EERSTE_SYNC,
+    EERSTE_SYNC_HERPROBEREN,
     DUPLICAAT_AFVOER,
     CREDITEUREN,
     AUTOBOEK_KANDIDATEN,
@@ -236,6 +248,7 @@ LABEL: dict[str, str] = {
     AI_TOETS_OVERGESLAGEN: "Automatisch geboekt zonder AI-toets (vangnet)",
     AI_TOETS_UIT: "AI-toets facturen uit (platform-opt-out)",
     EERSTE_SYNC: "Eerste sync (onboarding)",
+    EERSTE_SYNC_HERPROBEREN: "Eerste sync — RLZ zet rechten door (herproberen ná 403)",
     NABUNDEL: "Nabundel (UBL+PDF, dubbelen)",
     TERUGKEREND: "Terugkerende facturen (herberekening)",
     MINI_VOORRAAD: "Mini-voorraad instroom",
@@ -244,6 +257,7 @@ LABEL: dict[str, str] = {
 #: Waar de mens de harde voorwaarde herstelt (deeplink); per-administratie-varianten vullen `{aid}`.
 DOEL_PAD: dict[str, str] = {
     CREDENTIAL: "/instellingen/administraties/{aid}",
+    RECHTEN_NA_24U: "/instellingen/administraties/{aid}",
     GEEN_EIGENAAR: "/instellingen/administraties/{aid}",
     API_KEY: "/instellingen/intake-ai",
     GELDPOORT: "/instellingen/boeken",
@@ -268,6 +282,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     BANK: (VOLUMEREM,),
     BANK_SYNC: (FOUT,),
     TERUGKEREND: (FOUT,),
+    EERSTE_SYNC_HERPROBEREN: (RECHTEN_ONDERWEG,),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -287,6 +302,8 @@ _ACTIES: tuple[str, ...] = (
     "document_dubbel_samengevouwen",
     "mini_voorraad_instroom",
     "extractie_wachtrij_trigger",
+    # blok 3 run 11-09: herpogingen eerste sync (gestart = gedaan op de teller `eerste_sync_herproberen`)
+    "eerste_sync_herpoging_gestart",
 )
 
 
@@ -330,9 +347,12 @@ class EersteSyncFeit:
 
     administratie_id: uuid.UUID
     tijdstip: datetime
-    status: str  # klaar | fout
+    status: str  # klaar | fout | rechten_onderweg (blok 3 run 11-09: wacht op de wekker)
     geweigerd: bool = False
     fout_reden: str | None = None
+    # Blok 3 run 11-09 (additief): afgeronde pogingen; `fout` mét geweigerd én pogingen > 1 = ná 24 u opgegeven.
+    pogingen: int = 1
+    volgende_poging_op: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -623,6 +643,14 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "onboarding-wizard / herstart per administratie",
         "administratie_sync_run (status klaar/fout; onderdelen.*.http_status 401/403 = credential)",
     )
+    herproberen = maak(
+        EERSTE_SYNC_HERPROBEREN,
+        "altijd",
+        "wekker in rlz-bewaking (elk kwartier): 5, 15, 60 min ná een 403 op een probe-groene route, daarna elk uur, "
+        "max 24 u",
+        "administratie_sync_run (status rechten_onderweg / fout mét pogingen > 1) + audit "
+        "eerste_sync_herpoging_gestart",
+    )
     dup = maak(
         DUPLICAAT_AFVOER,
         "aan" if feiten.duplicaat_noodrem_aan else "uit",
@@ -853,13 +881,28 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
     for es in feiten.eerste_sync_runs:
         if es.tijdstip < week_vanaf:
             continue
+        if es.status == RECHTEN_ONDERWEG:
+            # Blok 3 run 11-09: wacht op RLZ — het systeem herprobeert zelf; zichtbaar, geen LET-OP. Een wachtende run
+            # telt in het etmaal (stand nú), ongeacht wanneer de laatste poging was.
+            for v in (herproberen.dag, herproberen.week):
+                v.tel_overgeslagen(RECHTEN_ONDERWEG)
+            continue
         if es.status == "klaar":
             for v in vensters(eerste_sync, es.tijdstip):
                 v.tel_gedaan()
+        elif es.geweigerd and es.pogingen > 1:
+            # Ná 24 u herproberen nog steeds 403 → harde voorwaarde mét deeplink naar de administratie (LET-OP).
+            tel_over(herproberen, es.tijdstip, RECHTEN_NA_24U, es.administratie_id, es.fout_reden)
         elif es.geweigerd:
             tel_over(eerste_sync, es.tijdstip, CREDENTIAL, es.administratie_id, es.fout_reden)
         else:
             tel_over(eerste_sync, es.tijdstip, FOUT, es.administratie_id, es.fout_reden)
+    for f in feiten.audit:
+        if f.actie == "eerste_sync_herpoging_gestart":
+            # Elke door de wekker (of mens) gestarte herpoging = gedaan (de automatisering deed haar werk); de uitkomst
+            # staat op de run (wachtend → `rechten_onderweg`, opgegeven → `rechten_na_24u`, geslaagd → teller eerste_sync).
+            for v in vensters(herproberen, f.tijdstip):
+                v.tel_gedaan()
 
     # --- terugkerend (run-tabel, platformbreed)
     for r in feiten.terugkerend_runs:
@@ -1185,6 +1228,7 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
 
     from app.autoboek_kandidaten.models import AutoboekInstelling, AutoboekKandidaatStand
     from app.bank.models import BankSyncRun, BankSyncRunStatus
+    from app.beheer.eerste_sync import RECHTEN_ONDERWEG as _RECHTEN_ONDERWEG
     from app.beheer.eerste_sync import RECHTEN_STATUSSEN
     from app.beheer.models import AdministratieSyncRun
     from app.config import settings
@@ -1332,6 +1376,25 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
                         status=es.status,
                         geweigerd=geweigerd,
                         fout_reden=es.fout_reden,
+                        pogingen=max(es.pogingen or 0, 1),
+                    )
+                )
+            # Blok 3 run 11-09: runs die op de wekker wachten ("RLZ zet rechten door") — stand nú, geen beeindigd_op.
+            for es in session.scalars(
+                select(AdministratieSyncRun).where(
+                    AdministratieSyncRun.administratie_id == aid,
+                    AdministratieSyncRun.status == _RECHTEN_ONDERWEG,
+                )
+            ):
+                feiten.eerste_sync_runs.append(
+                    EersteSyncFeit(
+                        administratie_id=aid,
+                        tijdstip=_utc(es.laatst_actief_op or es.aangevraagd_op),
+                        status=_RECHTEN_ONDERWEG,
+                        geweigerd=True,
+                        fout_reden=None,
+                        pogingen=max(es.pogingen or 0, 1),
+                        volgende_poging_op=_utc(es.volgende_poging_op) if es.volgende_poging_op else None,
                     )
                 )
             # Overgangen naar de extractie-wachtrij (upload/intake/herextractie) — herstel-overgangen

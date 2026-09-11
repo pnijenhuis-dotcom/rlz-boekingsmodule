@@ -102,7 +102,8 @@ export function RlzCheck({
   }
 
   const groen = resultaat !== null && rlzCheckIsGroen(resultaat.rapport)
-  const eersteSyncFout = a.eerste_sync?.status === 'fout'
+  // Blok 3 run 11-09: ook een run die op RLZ wacht (`rechten_onderweg`) mag direct opnieuw — zelfde route, zelfde run.
+  const eersteSyncFout = a.eerste_sync?.status === 'fout' || a.eerste_sync?.status === 'rechten_onderweg'
   const toonSyncKnop = groen && eersteSyncFout && syncGestart === null
   const eigenInLijst = resultaat ? resultaat.administraties_zichtbaar.some((z) => z.id === resultaat.rlz_admin_id) : false
   const routes = resultaat ? Object.keys(resultaat.rapport) : []

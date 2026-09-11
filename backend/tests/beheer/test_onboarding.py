@@ -18,6 +18,7 @@ from app.main import app
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import resolve_credentials
 from app.security.tokens import create_access_token
+from tests.beheer.conftest import Klok
 from tests.sync.conftest import FakeRlzClient
 
 client = TestClient(app)
@@ -146,6 +147,54 @@ class TestAanmaken:
             ).scalar_one()
         assert kenmerk is True
 
+    def test_wizard_groep_optioneel_leeg_is_geen_blokkade_en_gezet_wordt_geaudit(
+        self, beheerder_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        """Blok 8 run 11-09: het wizard-veld Groep is optioneel (leeg = geen groep, nooit een blokkade); gezet →
+        `administratie.groep_id` + groep_code in het `administratie_aangemaakt`-audit-spoor; onbekend/gearchiveerd =
+        422 vóór er één RLZ-call gedaan is (niets opgeslagen)."""
+        from app.beheer import groepen
+
+        g = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        zonder = onboarding.maak_administraties_aan(
+            actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+            rlz_admin_ids=[ADMIN_A], client=FakeRlzClient(_rlz_data()), start_sync=False,
+        )
+        met = onboarding.maak_administraties_aan(
+            actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+            rlz_admin_ids=[ADMIN_B], client=FakeRlzClient(_rlz_data()), start_sync=False, groep_id=g.id,
+        )
+        with admin_engine.connect() as conn:
+            rijen = dict(
+                conn.execute(text("SELECT rlz_admin_id, groep_id FROM platform.administratie WHERE rlz_admin_id IN (:a, :b)"), {"a": ADMIN_A, "b": ADMIN_B}).all()
+            )
+            assert rijen[ADMIN_A] is None and rijen[ADMIN_B] == g.id
+            spoor = conn.execute(
+                text("SELECT nieuwe_waarde FROM platform.audit_event WHERE actie = 'administratie_aangemaakt' AND record_id = :r"),
+                {"r": met[0].id},
+            ).scalar_one()
+            assert spoor["groep_code"] == "KEMPENGROEP" and spoor["groep_id"] == str(g.id)
+            assert conn.execute(
+                text("SELECT nieuwe_waarde FROM platform.audit_event WHERE actie = 'administratie_aangemaakt' AND record_id = :r"),
+                {"r": zonder[0].id},
+            ).scalar_one()["groep_id"] is None
+
+        class NooitAanroepen(FakeRlzClient):
+            def get(self, *a, **k):  # noqa: ANN001, ANN002, ANN003
+                raise AssertionError("RLZ mag niet aangeroepen worden bij een ongeldige groep")
+
+        with pytest.raises(onboarding.OnboardingFout, match="Onbekende groep"):
+            onboarding.maak_administraties_aan(
+                actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+                rlz_admin_ids=["33333333-cccc-4ccc-8ccc-cccccccccccc"], client=NooitAanroepen(_rlz_data()), groep_id=uuid.uuid4(),
+            )
+        groepen.wijzig_groep(actor_id=beheerder_id, groep_id=g.id, actief=False)
+        with pytest.raises(onboarding.OnboardingFout, match="gearchiveerd"):
+            onboarding.maak_administraties_aan(
+                actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim",
+                rlz_admin_ids=["33333333-cccc-4ccc-8ccc-cccccccccccc"], client=NooitAanroepen(_rlz_data()), groep_id=g.id,
+            )
+
     def test_admin_pin_weigert_onbekende_id(self, beheerder_id: uuid.UUID) -> None:
         with pytest.raises(onboarding.OnboardingFout, match="admin-pin"):
             onboarding.maak_administraties_aan(
@@ -209,7 +258,9 @@ class TestAanmaken:
 
 
 class TestEersteSync:
-    def test_run_met_status_per_onderdeel(self, beheerder_id: uuid.UUID, geen_voertuig: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_met_status_per_onderdeel(
+        self, beheerder_id: uuid.UUID, geen_voertuig: None, monkeypatch: pytest.MonkeyPatch, klok: Klok
+    ) -> None:
         fake = FakeRlzClient(_rlz_data())
         [nieuw] = onboarding.maak_administraties_aan(
             actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim", rlz_admin_ids=[ADMIN_A], client=fake, start_sync=False
@@ -229,12 +280,15 @@ class TestEersteSync:
         monkeypatch.setattr("app.rlz.credentials.client_voor_rlz_admin_id", lambda rlz_admin_id: sync_client)
         assert eerste_sync.verwerk_wachtrij_voor(nieuw.id) == 1
         info = eerste_sync.laatste_run(nieuw.id)
-        assert info.status == "fout"  # één onderdeel faalde → zichtbaar, de rest wél klaar
+        # Blok 3 run 11-09: een 403 op een route die de probe (10/10 groen) net groen had is geen fout maar "RLZ zet
+        # rechten door" — de run wacht op de wekker; de rest is wél klaar en wordt niet opnieuw gedraaid.
+        assert info.status == "rechten_onderweg"
+        assert info.pogingen == 1 and info.volgende_poging_op is not None and info.fout_reden is None
         assert info.onderdelen["ledgers"]["status"] == "klaar", info.onderdelen
         assert info.onderdelen["ledgers"]["aangemaakt"] == 1
         assert info.onderdelen["taxrates"]["status"] == "klaar"
-        assert info.onderdelen["payment_accounts"]["status"] == "fout"
-        assert "payment_accounts" in (info.fout_reden or "")
+        assert info.onderdelen["payment_accounts"]["status"] == "rechten_onderweg"
+        assert info.onderdelen["payment_accounts"]["http_status"] == 403
 
     def test_status_endpoint_beheerder_only_en_404_op_onbekende(self, beheerder_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
         pad = f"/instellingen/administraties/{administratie_id}/eerste-sync/status"
@@ -466,10 +520,11 @@ class TestHerprobeMetOpgeslagenLogin:
 
 class TestEersteSync403Leesbaar:
     def test_403_in_de_eerste_sync_is_een_leesbare_stand_met_recht_en_rlz_antwoord(
-        self, beheerder_id: uuid.UUID, geen_voertuig: None, monkeypatch: pytest.MonkeyPatch
+        self, beheerder_id: uuid.UUID, geen_voertuig: None, monkeypatch: pytest.MonkeyPatch, klok: Klok
     ) -> None:
         """De Baard-casus nagespeeld: TaxRates ok, Ledgers/Vendors/Projects/PaymentAccounts 403. Per onderdeel staat
-        HTTP-status, het letterlijke RLZ-antwoord en het RLZ-recht; de run-reden zegt LET OP + wat te doen."""
+        HTTP-status, het letterlijke RLZ-antwoord en het RLZ-recht. Sinds blok 3 run 11-09 wacht de run eerst 24 u op
+        RLZ (`rechten_onderweg`, herproberen); pas daarna zegt de run-reden LET OP + wat te doen."""
         [nieuw] = onboarding.maak_administraties_aan(
             actor_id=beheerder_id, webservice_username="ws", wachtwoord="geheim", rlz_admin_ids=[ADMIN_A],
             client=FakeRlzClient(_rlz_data()), start_sync=False,
@@ -486,7 +541,17 @@ class TestEersteSync403Leesbaar:
         monkeypatch.setattr("app.rlz.credentials.client_voor_rlz_admin_id", lambda rlz_admin_id: sync_client)
         assert eerste_sync.verwerk_wachtrij_voor(nieuw.id) == 1
         info = eerste_sync.laatste_run(nieuw.id)
-        assert info.status == "fout"
+        assert info.status == "rechten_onderweg"  # blok 3 run 11-09: de probe had deze routes groen → herproberen
+        assert info.onderdelen["ledgers"]["status"] == "rechten_onderweg"
+        assert info.onderdelen["ledgers"]["rlz_melding"] == body
+        # 24 u herproberen zonder resultaat (klok vooruit, wekker + verwerker) → nu wél rood, mét dezelfde reden
+        while eerste_sync.laatste_run(nieuw.id).status == "rechten_onderweg":
+            klok.nu = eerste_sync.laatste_run(nieuw.id).volgende_poging_op
+            assert eerste_sync.herprobeer_vervallen(klok.nu) == 1
+            assert eerste_sync.verwerk_wachtrij_voor(nieuw.id) == 1
+        info = eerste_sync.laatste_run(nieuw.id)
+        assert info.status == "fout" and info.pogingen == 27
+        assert (info.fout_reden or "").startswith(eerste_sync.OPGEGEVEN_PREFIX)
         assert info.onderdelen["taxrates"]["status"] == "klaar"
         ledgers = info.onderdelen["ledgers"]
         assert ledgers["status"] == "fout" and ledgers["http_status"] == 403

@@ -217,6 +217,8 @@ def _eerste_sync_dto(info) -> schemas.EersteSyncRunDto:
 
 @router.post(
     "/instellingen/administraties/{administratie_id}/eerste-sync",
+        pogingen=getattr(info, "pogingen", 0) or 0,
+        volgende_poging_op=getattr(info, "volgende_poging_op", None),
     response_model=schemas.EersteSyncRunDto,
     status_code=status.HTTP_202_ACCEPTED,
 )

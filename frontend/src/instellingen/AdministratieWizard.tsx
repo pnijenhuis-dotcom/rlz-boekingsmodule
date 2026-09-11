@@ -4,6 +4,9 @@ import { Badge, Button, Checkbox, Dialog, DialogContent, DialogDescription, Dial
 import { KeuzeKaarten } from './KeuzeKaarten'
 import { OdooKoppelWizard } from './OdooKoppelWizard'
 import { odooProbeSamenvatting } from './odooProbe'
+import { GroepVeld } from './GroepVeld'
+import { useGroepen } from './groepen'
+import { isRechtenOnderweg, rechtenOnderwegTekst, rechtenOnderwegTooltip, RECHTEN_ONDERWEG } from './eersteSyncStand'
 import {
   haalEersteSyncStatusOp,
   maakAdministratiesAan,
@@ -127,6 +130,14 @@ export function EersteSyncStatus({
   }
 
   const statusChip = (status: string) => {
+    // Blok 3 run 11-09: `rechten_onderweg` = oranje "rechten onderweg" — geen fout, RLZ zet de rechten nog door.
+    if (status === RECHTEN_ONDERWEG) {
+      return (
+        <span className="chip afwijking" title={rechtenOnderwegTooltip(run)}>
+          rechten onderweg
+        </span>
+      )
+    }
     const klasse = status === 'klaar' ? 'ok' : status === 'fout' ? 'blokkerend' : status === 'bezig' ? 'ai' : 'stil'
     return <span className={`chip ${klasse}`}>{status}</span>
   }
@@ -140,7 +151,13 @@ export function EersteSyncStatus({
       {compact ? (
         <div className="hint" style={{ marginTop: 0 }}>
           <b>Eerste sync</b> {run && statusChip(run.status === 'geen' ? 'wachtrij' : run.status)}{' '}
-          {run?.status === 'fout' ? '— niet volledig gelukt; herstart hieronder (zelfde run als in de wizard).' : run && isLopend(run) ? '— loopt nog…' : ''}
+          {run?.status === 'fout'
+            ? '— niet volledig gelukt; herstart hieronder (zelfde run als in de wizard).'
+            : isRechtenOnderweg(run)
+              ? `— ${rechtenOnderwegTekst(run)}${run?.pogingen ? ` (poging ${run.pogingen})` : ''}.`
+              : run && isLopend(run)
+                ? '— loopt nog…'
+                : ''}
         </div>
       ) : (
         <>
@@ -181,11 +198,24 @@ export function EersteSyncStatus({
                 </span>
               )}
               {stand?.status === 'fout' && stand.fout && <span className="fout" style={{ marginLeft: 6 }}>{stand.fout}</span>}
+              {stand?.status === RECHTEN_ONDERWEG && (stand.rlz_melding || stand.fout) && (
+                <span className="hint" style={{ margin: '0 0 0 6px', fontSize: 11 }} title={stand.fout}>
+                  RLZ zegt: {stand.rlz_melding ?? stand.fout}
+                </span>
+              )}
             </li>
           )
         })}
       </ul>
       {run?.status === 'fout' && run.fout_reden && <div className="fout" style={{ marginTop: 6 }}>{run.fout_reden}</div>}
+      {isRechtenOnderweg(run) && !compact && (
+        <div className="hint" style={{ marginTop: 6 }} data-testid="eerste-sync-rechten-onderweg">
+          {rechtenOnderwegTekst(run)}
+          {run?.pogingen ? ` (poging ${run.pogingen})` : ''} — Reeleezee zet de rechten van een nieuwe koppeling soms met
+          vertraging door; het systeem probeert zelf opnieuw (5, 15, 60 min, daarna elk uur, tot 24 uur). Pas daarna wordt
+          de sync rood.
+        </div>
+      )}
       {fout && <div className="fout" style={{ marginTop: 6 }}>{fout}</div>}
       {run && !isLopend(run) && (
         <div style={{ marginTop: 6 }}>
