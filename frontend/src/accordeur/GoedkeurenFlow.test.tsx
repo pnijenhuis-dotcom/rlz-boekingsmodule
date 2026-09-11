@@ -277,12 +277,12 @@ describe('GoedkeurenFlow', () => {
     await waitFor(() => expect(afgewezenMet).toBe('Werk nog niet opgeleverd'))
   })
 
-  it('stelt ná akkoord op een identieke factuur de staande goedkeuring voor (mockup-flow)', async () => {
-    let staandeVlag: boolean | null = null
-    const kandidaat = { ...ITEM, staande_regel_kandidaat: true }
+  it('stelt ná akkoord op een PERIODIEKE factuur de staande goedkeuring voor — "Ja, sta toe" stuurt antwoord ja (blok 7)', async () => {
+    let body: { staande_regel_aanmaken: boolean; staande_regel_voorstel_antwoord?: string } | null = null
+    const kandidaat = { ...ITEM, staande_regel_kandidaat: true, staande_regel_patroon: 'maand' }
     const routes = basisRoutes([kandidaat])
     routes['/administraties/a1/accordering/documenten/d1/akkoord'] = (init) => {
-      staandeVlag = (JSON.parse(String(init?.body)) as { staande_regel_aanmaken: boolean }).staande_regel_aanmaken
+      body = JSON.parse(String(init?.body))
       return jsonResponse({
         accordering: { id: 'x', document_id: 'd1', status: 'afgerond', aangeboden_op: '', afgerond_op: null, stappen: [] },
         alles_akkoord: true,
@@ -294,17 +294,115 @@ describe('GoedkeurenFlow', () => {
     stubFetch(routes)
     renderFlow()
 
-    // Chip in de wachtrij + hint in het review-scherm.
-    expect(await screen.findByText('zelfde bedrag als vorige')).toBeInTheDocument()
+    // Chip in de wachtrij + hint in het review-scherm (mét het patroon).
+    expect(await screen.findByText('terugkerend · zelfde bedrag')).toBeInTheDocument()
     await userEvent.click(screen.getByText('Essent Zakelijk'))
-    expect(await screen.findByText(/exact hetzelfde bedrag/)).toBeInTheDocument()
+    expect(await screen.findByText(/elke maand een factuur met/)).toBeInTheDocument()
 
-    // Akkoord → eerst de voorstel-sheet (nog géén API-call), dan "Ja, sta toe" → vlag mee.
+    // Akkoord → eerst de voorstel-sheet (nog géén API-call), dan "Ja, sta toe" → vlag + antwoord mee.
     await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
-    expect(staandeVlag).toBeNull()
+    expect(body).toBeNull()
     expect(await screen.findByText('Voortaan automatisch akkoord?')).toBeInTheDocument()
+    expect(screen.getAllByText(/stuurt elke maand een factuur/).length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole('button', { name: 'Ja, sta toe' }))
-    await waitFor(() => expect(staandeVlag).toBe(true))
+    await waitFor(() => expect(body).toEqual({ staande_regel_aanmaken: true, staande_regel_voorstel_antwoord: 'ja' }))
+  })
+
+  it.each([
+    ['Niet nu', 'niet_nu', /90 dagen niet opnieuw/],
+    ['Nooit voor deze leverancier', 'nooit', /niet meer voor/],
+  ])('"%s" in de voorstel-sheet stuurt antwoord %s zonder regel aan te maken', async (knop, antwoord, toast) => {
+    let body: { staande_regel_aanmaken: boolean; staande_regel_voorstel_antwoord?: string } | null = null
+    const kandidaat = { ...ITEM, staande_regel_kandidaat: true, staande_regel_patroon: 'kwartaal' }
+    const routes = basisRoutes([kandidaat])
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = (init) => {
+      body = JSON.parse(String(init?.body))
+      return jsonResponse({
+        accordering: { id: 'x', document_id: 'd1', status: 'afgerond', aangeboden_op: '', afgerond_op: null, stappen: [] },
+        alles_akkoord: true,
+        geboekt: true,
+        boek_fout: null,
+        staande_regel_id: null,
+      })
+    }
+    stubFetch(routes)
+    renderFlow()
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+    expect((await screen.findAllByText(/stuurt elk kwartaal een factuur/)).length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('button', { name: knop }))
+    await waitFor(() =>
+      expect(body).toEqual({ staande_regel_aanmaken: false, staande_regel_voorstel_antwoord: antwoord }),
+    )
+    expect(await screen.findByText(toast)).toBeInTheDocument()
+  })
+
+  it('zonder kandidaat-vlag (batch/geen patroon) komt er géén voorstel-sheet — akkoord gaat direct', async () => {
+    let body: { staande_regel_aanmaken: boolean; staande_regel_voorstel_antwoord?: string } | null = null
+    const routes = basisRoutes([{ ...ITEM, staande_regel_kandidaat: false }])
+    routes['/administraties/a1/accordering/documenten/d1/akkoord'] = (init) => {
+      body = JSON.parse(String(init?.body))
+      return jsonResponse({
+        accordering: { id: 'x', document_id: 'd1', status: 'afgerond', aangeboden_op: '', afgerond_op: null, stappen: [] },
+        alles_akkoord: true,
+        geboekt: true,
+        boek_fout: null,
+        staande_regel_id: null,
+      })
+    }
+    stubFetch(routes)
+    renderFlow()
+    await userEvent.click(await screen.findByText('Essent Zakelijk'))
+    await userEvent.click(screen.getByRole('button', { name: 'Akkoord ✓' }))
+    await waitFor(() => expect(body).toEqual({ staande_regel_aanmaken: false }))
+    expect(screen.queryByText('Voortaan automatisch akkoord?')).not.toBeInTheDocument()
+  })
+
+  it('beheer toont een kantoor-uitzondering als "nooit voorstellen" zonder opheffen-knop; andermans rijen niet', async () => {
+    // In deze test is er geen ingelogde gebruiker-id (AuthProvider zonder token): alleen administratiebrede rijen
+    // (accordeur null) horen zichtbaar te zijn en die zijn NIET door de accordeur op te heffen.
+    const routes = basisRoutes([ITEM])
+    routes['/administraties/a1/accordering/staande-regels'] = () =>
+      jsonResponse({
+        regels: [],
+        uitzonderingen: [
+          {
+            id: 'u1',
+            accordeur_gebruiker_id: 'g-ander',
+            accordeur_naam: 'Ander',
+            vendor_id: 'v1',
+            leverancier_naam: 'Lusso Chalets B.V.',
+            soort: 'nooit',
+            stil_tot: null,
+            reden: null,
+            actief: true,
+            aangemaakt_op: '2026-09-11T10:00:00Z',
+            opgeheven_op: null,
+          },
+          {
+            id: 'u2',
+            accordeur_gebruiker_id: null,
+            accordeur_naam: null,
+            vendor_id: 'v2',
+            leverancier_naam: 'BOOT Steigers',
+            soort: 'nooit',
+            stil_tot: null,
+            reden: 'kantoor',
+            actief: true,
+            aangemaakt_op: '2026-09-11T10:00:00Z',
+            opgeheven_op: null,
+          },
+        ],
+      })
+    stubFetch(routes)
+    renderFlow()
+    await screen.findByText('1 factuur wacht op je akkoord')
+    await userEvent.click(screen.getByTitle('Staande goedkeuringen'))
+    expect(await screen.findByText('BOOT Steigers')).toBeInTheDocument()
+    expect(screen.getByText('nooit voorstellen')).toBeInTheDocument()
+    expect(screen.getByText(/Ingesteld door het kantoor/)).toBeInTheDocument()
+    expect(screen.queryByText('Lusso Chalets B.V.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Opheffen' })).not.toBeInTheDocument()
   })
 
   it('gaat na akkoord per direct door naar de volgende factuur — vóór de server antwoordt (optimistisch pad)', async () => {

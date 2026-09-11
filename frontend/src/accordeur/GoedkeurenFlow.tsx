@@ -45,8 +45,11 @@ import {
   eurWeergave,
   haalMijnAdministraties,
   haalStaandeRegels,
+  hefVoorstelUitzonderingOp,
   isVoorwaardenVereist,
   trekStaandeRegelIn,
+  type VoorstelAntwoord,
+  type VoorstelUitzonderingDto,
   type AccordeurVraagDto,
   type WachtrijItemDto,
 } from './accordeurApi'
@@ -173,7 +176,13 @@ function AfwijsSheet({ onAnnuleer, onBevestig }: AfwijsSheetProps) {
 
 interface StaandSheetProps {
   item: WachtrijItemDto
-  onKeuze: (staandeRegel: boolean) => void
+  onKeuze: (antwoord: VoorstelAntwoord) => void
+}
+
+/** Patroon-tekst bij het voorstel (blok 7 11-09): het voorstel komt alleen bij een periodiek patroon. */
+export function patroonTekst(patroon: string | null | undefined): string {
+  if (patroon === 'kwartaal') return 'elk kwartaal'
+  return 'elke maand'
 }
 
 function StaandSheet({ item, onKeuze }: StaandSheetProps) {
@@ -183,24 +192,35 @@ function StaandSheet({ item, onKeuze }: StaandSheetProps) {
       <div className="acc-sheet" ref={sheetRef}>
         <h2>Voortaan automatisch akkoord?</h2>
         <div className="acc-uitleg">
-          Je keurde eerder een factuur van <b>{item.leverancier_naam ?? 'deze leverancier'}</b> met exact{' '}
-          <b>{eurWeergave(item.totaalbedrag)}</b> goed. Wil je een staande goedkeuring instellen? Elke
-          volgende factuur van deze leverancier met <b>exact {eurWeergave(item.totaalbedrag)}</b> wordt dan
-          automatisch namens jou geaccordeerd. Elk ander bedrag komt gewoon bij je terug.
+          <b>{item.leverancier_naam ?? 'Deze leverancier'}</b> stuurt {patroonTekst(item.staande_regel_patroon)} een
+          factuur van exact <b>{eurWeergave(item.totaalbedrag)}</b> en je keurde die eerder al goed. Wil je een staande
+          goedkeuring instellen? Elke volgende factuur van deze leverancier met{' '}
+          <b>exact {eurWeergave(item.totaalbedrag)}</b> wordt dan automatisch namens jou geaccordeerd. Elk ander bedrag
+          komt gewoon bij je terug.
         </div>
         <div className="acc-uitlegblok" style={{ marginBottom: 0 }}>
           De controles van het kantoor (duplicaat, IBAN-wissel, regels) blijven élke factuur toetsen — een
           staande goedkeuring vervangt alleen jouw klik. Elk automatisch akkoord komt met vermelding in de
-          tijdlijn en het audit log. Je kunt de regel altijd intrekken.
+          tijdlijn en het audit log. Je kunt de regel altijd intrekken. Kies je "Niet nu", dan stellen we deze
+          vraag 90 dagen niet opnieuw; "Nooit voor deze leverancier" kun je later onder Staande goedkeuringen
+          opheffen.
         </div>
         <div className="acc-rij">
-          <button className="acc-btn secundair" onClick={() => onKeuze(false)}>
-            Nee, alleen deze
+          <button className="acc-btn secundair" onClick={() => onKeuze('niet_nu')}>
+            Niet nu
           </button>
-          <button className="acc-btn paars" onClick={() => onKeuze(true)}>
+          <button className="acc-btn paars" onClick={() => onKeuze('ja')}>
             Ja, sta toe
           </button>
         </div>
+        <button
+          type="button"
+          className="acc-tekstlink"
+          style={{ marginTop: 10, alignSelf: 'center' }}
+          onClick={() => onKeuze('nooit')}
+        >
+          Nooit voor deze leverancier
+        </button>
       </div>
     </div>
   )
@@ -476,6 +496,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
   const [doorbelastOpen, setDoorbelastOpen] = useState(false)
   const [factuurLos, setFactuurLos] = useState(false)
   const [staandeRegels, setStaandeRegels] = useState<(StaandeRegelDto & { administratie_id: string })[]>([])
+  const [uitzonderingen, setUitzonderingen] = useState<(VoorstelUitzonderingDto & { administratie_id: string })[]>(
+    [],
+  )
   const [meldingen, setMeldingen] = useState<MeldingenStatus | null>(null)
   const [meldingenVoorstel, setMeldingenVoorstel] = useState(false)
   const [meldingenBezig, setMeldingenBezig] = useState(false)
@@ -773,19 +796,33 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
 
   const binnenOvergangsGuard = () => Date.now() - laatsteOvergang.current < OVERGANGS_GUARD_MS
 
-  const akkoord = (staandeRegelAanmaken: boolean) => {
+  const akkoord = (staandeRegelAanmaken: boolean, antwoord: VoorstelAntwoord | null = null) => {
     // D2: nooit een geldbesluit op een item dat alleen uit de cache komt — de verse stand
     // bepaalt of het document nog van deze accordeur is.
     if (!huidige || uitCache || besluitVerzender.isOnderweg(huidige.document_id)) return
     const { verzend_fout: _weg, ...schoon } = huidige
-    besluitVerzender.verstuur({ item: schoon, soort: 'akkoord', staandeRegelAanmaken, reden: null })
-    naVerwerking(staandeRegelAanmaken ? 'Akkoord ✓ · staande goedkeuring ingesteld' : 'Akkoord ✓', huidige)
+    besluitVerzender.verstuur({
+      item: schoon,
+      soort: 'akkoord',
+      staandeRegelAanmaken,
+      staandeRegelAntwoord: antwoord,
+      reden: null,
+    })
+    const toastTekst =
+      antwoord === 'ja' || staandeRegelAanmaken
+        ? 'Akkoord ✓ · staande goedkeuring ingesteld'
+        : antwoord === 'nooit'
+          ? 'Akkoord ✓ · we stellen dit voor deze leverancier niet meer voor'
+          : antwoord === 'niet_nu'
+            ? 'Akkoord ✓ · we vragen het 90 dagen niet opnieuw'
+            : 'Akkoord ✓'
+    naVerwerking(toastTekst, huidige)
   }
 
   const akkoordKnop = () => {
     if (!huidige || binnenOvergangsGuard()) return
-    // Staande-goedkeuring-voorstel ná de akkoord-keuze op de 2e identieke factuur (mockup):
-    // één API-call, de keuze in de sheet bepaalt de staande_regel_aanmaken-vlag.
+    // Staande-goedkeuring-voorstel ná de akkoord-keuze (blok 7 11-09: alleen bij een periodiek patroon — de
+    // backend bepaalt dat): één API-call, de keuze in de sheet reist als antwoord mee.
     if (huidige.staande_regel_kandidaat) setStaandOpen(true)
     else akkoord(false)
   }
@@ -803,14 +840,24 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
       const { administraties } = await haalMijnAdministraties()
       const alles = await Promise.all(
         administraties.map(async (a) => {
-          const { regels } = await haalStaandeRegels(a.id)
-          return regels.map((r) => ({ ...r, administratie_id: a.id }))
+          const { regels, uitzonderingen: uitz } = await haalStaandeRegels(a.id)
+          return {
+            regels: regels.map((r) => ({ ...r, administratie_id: a.id })),
+            uitzonderingen: (uitz ?? []).map((u) => ({ ...u, administratie_id: a.id })),
+          }
         }),
       )
       // Alleen de eigen, actieve regels — het beheer van andermans regels is kantoor-werk.
-      setStaandeRegels(alles.flat().filter((r) => r.actief && r.accordeur_gebruiker_id === gebruikerId))
+      setStaandeRegels(alles.flatMap((x) => x.regels).filter((r) => r.actief && r.accordeur_gebruiker_id === gebruikerId))
+      // "Nooit voorstellen" (blok 7 11-09): eigen rijen én administratiebrede rijen van het kantoor (accordeur null).
+      setUitzonderingen(
+        alles
+          .flatMap((x) => x.uitzonderingen)
+          .filter((u) => u.actief && (u.accordeur_gebruiker_id === gebruikerId || u.accordeur_gebruiker_id === null)),
+      )
     } catch {
       setStaandeRegels([])
+      setUitzonderingen([])
     }
   }, [gebruikerId])
 
@@ -827,6 +874,16 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
       // Backend onbereikbaar (of andere fout): de sessie is dan niet ingetrokken — blijf in
       // de app en meld het, in lijn met "niets verdwijnt stil".
       toon('Vergrendelen mislukte — probeer het opnieuw')
+    }
+  }
+
+  const hefOp = async (u: VoorstelUitzonderingDto & { administratie_id: string }) => {
+    try {
+      await hefVoorstelUitzonderingOp(u.administratie_id, u.id)
+      toon('Opgeheven — we stellen het weer voor bij een terugkerende factuur')
+      void laadStaandeRegels()
+    } catch {
+      toon('Opheffen mislukte — probeer het opnieuw')
     }
   }
 
@@ -1069,7 +1126,7 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                         {item.staande_regel_kandidaat && (
                           <>
                             {' · '}
-                            <span className="acc-chip staand">zelfde bedrag als vorige</span>
+                            <span className="acc-chip staand">terugkerend · zelfde bedrag</span>
                           </>
                         )}
                       </div>
@@ -1277,8 +1334,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
               <div className="acc-staandnote">
                 <span>✓✓</span>
                 <div>
-                  Je keurde eerder een factuur van deze leverancier met <b>exact hetzelfde bedrag</b> goed. Na
-                  dit akkoord kun je een staande goedkeuring instellen.
+                  Deze leverancier stuurt {patroonTekst(huidige.staande_regel_patroon)} een factuur met{' '}
+                  <b>exact hetzelfde bedrag</b> en je keurde die eerder goed. Na dit akkoord kun je een staande
+                  goedkeuring instellen.
                 </div>
               </div>
             )}
@@ -1361,6 +1419,26 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
                 Je kunt er een instellen bij het akkoord op een terugkerende factuur met een vast bedrag.
               </div>
             )}
+            {uitzonderingen.map((u) => (
+              <div key={u.id} className="acc-sg-item" data-uitzondering={u.soort}>
+                <div className="acc-kop">
+                  <span className="acc-lev">{u.leverancier_naam ?? 'Onbekende leverancier'}</span>
+                  <span className="acc-chip staand">{u.soort === 'nooit' ? 'nooit voorstellen' : 'even stil'}</span>
+                </div>
+                <div className="acc-meta">
+                  {u.soort === 'nooit'
+                    ? u.accordeur_gebruiker_id === null
+                      ? 'Ingesteld door het kantoor voor alle accordeurs — de vraag "voortaan automatisch akkoord?" komt niet.'
+                      : 'Je koos "nooit voor deze leverancier" — de vraag komt niet meer.'
+                    : `Je koos "niet nu" — we vragen het pas weer na ${datumWeergave(u.stil_tot ?? u.aangemaakt_op)}.`}
+                </div>
+                {gebruikerId !== null && u.accordeur_gebruiker_id === gebruikerId && (
+                  <button className="acc-btn klein secundair" onClick={() => void hefOp(u)}>
+                    Opheffen
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1388,9 +1466,9 @@ export function GoedkeurenFlow({ wisselThema, uitloggen, openToegang }: Props) {
       {staandOpen && huidige && (
         <StaandSheet
           item={huidige}
-          onKeuze={(staandeRegel) => {
+          onKeuze={(antwoord) => {
             setStaandOpen(false)
-            akkoord(staandeRegel)
+            akkoord(antwoord === 'ja', antwoord)
           }}
         />
       )}

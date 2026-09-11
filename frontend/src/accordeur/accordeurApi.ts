@@ -54,6 +54,9 @@ export interface WachtrijItemDto {
   laag_volgnummer: number
   boeking_omschrijving: string | null
   staande_regel_kandidaat: boolean
+  /** Blok 7 (11-09): het patroon achter het voorstel ('maand' | 'kwartaal'); alleen gevuld bij een kandidaat. Het
+   * voorstel komt alleen nog bij een PERIODIEK patroon — nooit bij een batch (12 chalets in één week). */
+  staande_regel_patroon?: string | null
   /** Klaargezette doorbelasting (besluit 25-08, A3): ALLEEN-LEZEN per doelentiteit; null =
    * geen doorbelasting bij dit document. Fout = de gewone afwijsknop met reden. */
   doorbelasting?: WachtrijDoorbelastingRegelDto[] | null
@@ -142,13 +145,19 @@ export function haalWachtrij(): Promise<{ items: WachtrijItemDto[] }> {
   return leesMetTiming('/accordering/wachtrij', 'wachtrij')
 }
 
+/** Antwoord op het staande-goedkeuring-voorstel, in dezelfde akkoord-call (blok 7 11-09): 'ja' = regel
+ * aanmaken, 'niet_nu' = 90 dagen stil voor deze leverancier, 'nooit' = nooit meer voorstellen. */
+export type VoorstelAntwoord = 'ja' | 'niet_nu' | 'nooit'
+
 export function geefAkkoord(
   administratieId: string,
   documentId: string,
   staandeRegelAanmaken: boolean,
+  voorstelAntwoord: VoorstelAntwoord | null = null,
 ): Promise<BesluitResultaatDto> {
   return apiPostJson(`/administraties/${administratieId}/accordering/documenten/${documentId}/akkoord`, {
     staande_regel_aanmaken: staandeRegelAanmaken,
+    ...(voorstelAntwoord ? { staande_regel_voorstel_antwoord: voorstelAntwoord } : {}),
   })
 }
 
@@ -177,8 +186,39 @@ export function haalMijnAdministraties(): Promise<{ administraties: { id: string
   return apiJson('/auth/administraties')
 }
 
-export function haalStaandeRegels(administratieId: string): Promise<{ regels: StaandeRegelDto[] }> {
+/** Stilte/uitzondering op het voorstel (blok 7 11-09): soort 'nooit' (chip "nooit voorstellen") of 'stil_tot'
+ * (lopende 90-dagen-stilte). accordeur_gebruiker_id null = administratiebreed (Beheerder). */
+export interface VoorstelUitzonderingDto {
+  id: string
+  accordeur_gebruiker_id: string | null
+  accordeur_naam: string | null
+  vendor_id: string
+  leverancier_naam: string | null
+  soort: 'nooit' | 'stil_tot' | string
+  stil_tot: string | null
+  reden: string | null
+  actief: boolean
+  aangemaakt_op: string
+  opgeheven_op: string | null
+}
+
+export function haalStaandeRegels(
+  administratieId: string,
+): Promise<{ regels: StaandeRegelDto[]; uitzonderingen?: VoorstelUitzonderingDto[] }> {
   return apiJson(`/administraties/${administratieId}/accordering/staande-regels`)
+}
+
+export function zetVoorstelNooit(administratieId: string, vendorId: string): Promise<VoorstelUitzonderingDto> {
+  return apiPostJson(`/administraties/${administratieId}/accordering/staande-regels/voorstel-uitzonderingen`, {
+    vendor_id: vendorId,
+  })
+}
+
+export function hefVoorstelUitzonderingOp(administratieId: string, rijId: string): Promise<void> {
+  return apiJson(
+    `/administraties/${administratieId}/accordering/staande-regels/voorstel-uitzonderingen/${rijId}/opheffen`,
+    { method: 'POST' },
+  )
 }
 
 export function trekStaandeRegelIn(administratieId: string, regelId: string): Promise<void> {

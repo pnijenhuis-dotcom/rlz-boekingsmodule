@@ -51,6 +51,10 @@ def _vertaal(exc: service.AccorderingFout) -> HTTPException:
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     if isinstance(exc, service.GeenOpenAccordering):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, service.VoorstelUitzonderingFout):
+        # Blok 7 (11-09): onbekende/opgeheven rij of een accordeur die aan een ander zit — 404 zoals de
+        # staande-regel-routes (DocumentNietGevonden), nooit een 500.
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, service.KlantAkkoordAlCompleet):
         # Punt 24 (opruimrun 28-08): conflict met de actuele stand — boeken is de juiste actie.
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
@@ -428,6 +432,7 @@ def akkoord(
             document_id=document_id,
             actor_id=actor.id,
             staande_regel_aanmaken=invoer.staande_regel_aanmaken,
+            staande_regel_voorstel_antwoord=invoer.staande_regel_voorstel_antwoord,
         )
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc
@@ -675,6 +680,7 @@ def wachtrij(response: Response, actor: CurrentGebruiker = Depends(get_current_g
                 laag_volgnummer=item.laag_volgnummer,
                 boeking_omschrijving=item.boeking_omschrijving,
                 staande_regel_kandidaat=item.staande_regel_kandidaat,
+                staande_regel_patroon=item.staande_regel_patroon,
                 afdeling_id=item.afdeling_id,
                 afdeling_naam=item.afdeling_naam,
                 soort=item.soort,
@@ -769,6 +775,7 @@ def staande_regels(
     akkoord. Kantoor-rollen raakt de poort niet."""
     _vereis_voorwaarden_akkoord(actor)
     regels, namen = service.staande_regels(administratie_id=administratie_id)
+    uitzonderingen = service.voorstel_uitzonderingen(administratie_id=administratie_id)
     return schemas.StaandeRegelsResponse(
         regels=[
             schemas.StaandeRegelResponse(
@@ -783,8 +790,73 @@ def staande_regels(
                 ingetrokken_op=r.ingetrokken_op,
             )
             for r in regels
-        ]
+        ],
+        uitzonderingen=[_voorstel_uitzondering_response(u) for u in uitzonderingen],
     )
+
+
+def _voorstel_uitzondering_response(u: service.VoorstelUitzonderingData) -> schemas.VoorstelUitzonderingResponse:
+    return schemas.VoorstelUitzonderingResponse(
+        id=u.id,
+        accordeur_gebruiker_id=u.accordeur_gebruiker_id,
+        accordeur_naam=u.accordeur_naam,
+        vendor_id=u.vendor_id,
+        leverancier_naam=u.leverancier_naam,
+        soort=u.soort,
+        stil_tot=u.stil_tot,
+        reden=u.reden,
+        actief=u.actief,
+        aangemaakt_op=u.aangemaakt_op,
+        opgeheven_op=u.opgeheven_op,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/staande-regels/voorstel-uitzonderingen",
+    response_model=schemas.VoorstelUitzonderingResponse,
+)
+def voorstel_uitzondering_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.VoorstelUitzonderingInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
+) -> schemas.VoorstelUitzonderingResponse:
+    """"Nooit voorstellen" voor een leverancier (blok 7 11-09): de accordeur zelf (app, alleen voor zichzelf) of de
+    Beheerder (kantoor-web, administratiebreed of per accordeur). Andere kantoorrollen: 403. Raakt de staande
+    goedkeuring zelf niet — alleen of de app de vraag nog stelt."""
+    _vereis_voorwaarden_akkoord(actor)
+    try:
+        data = service.zet_voorstel_nooit(
+            administratie_id=administratie_id,
+            vendor_id=invoer.vendor_id,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+            accordeur_gebruiker_id=invoer.accordeur_gebruiker_id,
+            reden=invoer.reden,
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
+    return _voorstel_uitzondering_response(data)
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/staande-regels/voorstel-uitzonderingen/{rij_id}/opheffen",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def voorstel_uitzondering_opheffen(
+    administratie_id: uuid.UUID,
+    rij_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _rol: CurrentGebruiker = Depends(vereis_kantoor_of_accordeur),
+) -> None:
+    """Opheffen van 'nooit voorstellen'/stilte: accordeur alleen eigen rijen, Beheerder alle — nooit een DELETE."""
+    _vereis_voorwaarden_akkoord(actor)
+    try:
+        service.hef_voorstel_uitzondering_op(
+            administratie_id=administratie_id, rij_id=rij_id, actor_id=actor.id, actor_rol=actor.rol.value
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal(exc) from exc
 
 
 @router.post(

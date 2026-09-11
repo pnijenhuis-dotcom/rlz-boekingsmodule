@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, select
@@ -45,8 +45,10 @@ from app.accordering.models import (
     AccorderingStatus,
     DocumentAccordering,
     StaandeGoedkeuring,
+    StaandeGoedkeuringVoorstelStil,
     StapBesluit,
     StapBesluitBron,
+    VoorstelStilSoort,
 )
 from app.afdelingen.models import Afdeling
 from app.auth.rollen import is_externe_app_rol
@@ -69,6 +71,9 @@ from app.documenten.service import DocumentNietGevonden, _schrijf_overgang
 from app.documenten.vragen import open_vragen_aan_accordeur_per_document
 from app.doorbelasting.intercompany import OVERGESLAGEN_REDEN_INTERCOMPANY, intercompany_tegenpartij
 from app.sync.models import VendorCache
+from app.terugkerend import service as _terugkerend
+from app.terugkerend.service import ReeksClassificatie, classificeer_reeks, gelijke_facturen_per_vendor_bedrag
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +125,20 @@ class StaandeRegelNietMogelijk(AccorderingFout):
 
 class KantoorActieVereist(AccorderingFout):
     """Aanbieden/intrekken/instellingen zijn kantoor-acties — niet voor de rol klant-accordeur."""
+
+
+class VoorstelUitzonderingFout(AccorderingFout):
+    """Onbekende of al opgeheven voorstel-uitzondering, of een accordeur die aan een ander zit."""
+
+
+#: "Nee"/"niet nu" op het staande-goedkeuring-voorstel = zoveel dagen stil voor deze accordeur + leverancier
+#: (blok 7 run 11-09 middag).
+VOORSTEL_STIL_DAGEN = 90
+VOORSTEL_ANTWOORDEN = ("ja", "niet_nu", "nooit")
+# Leesbare drempels voor de nameting-CLI (één bron: app/terugkerend/service.py).
+PERIODIEK_MIN_FACTUREN_TEKST = str(_terugkerend.PERIODIEK_MIN_FACTUREN)
+PERIODIEK_MIN_TUSSENPOOS_TEKST = str(_terugkerend.PERIODIEK_MIN_TUSSENPOOS_DAGEN)
+BATCH_VENSTER_TEKST = str(_terugkerend.BATCH_VENSTER_DAGEN)
 
 
 class ChecksNietGroen(AccorderingFout):
@@ -2115,11 +2134,21 @@ def geef_akkoord(
     document_id: uuid.UUID,
     actor_id: uuid.UUID,
     staande_regel_aanmaken: bool = False,
+    staande_regel_voorstel_antwoord: str | None = None,
 ) -> AkkoordResultaat:
     """Akkoord van de accordeur die aan de beurt is. `staande_regel_aanmaken` legt het besluit
     2026-08-08 vast: akkoord voor toekomstige facturen van deze leverancier bij exact dit
-    bedrag (zichtbaar + intrekbaar; harde checks blijven onverkort)."""
+    bedrag (zichtbaar + intrekbaar; harde checks blijven onverkort).
+    `staande_regel_voorstel_antwoord` (blok 7 11-09) = het antwoord op het voorstel in de app, in dezelfde call:
+    'ja' (= aanmaken), 'niet_nu' → 90 dagen stil voor deze accordeur + leverancier, 'nooit' → uitzondering per
+    leverancier; None = de vraag is niet gesteld. Bestaande aanroepers zonder antwoord gedragen zich ongewijzigd."""
     staande_regel_id: uuid.UUID | None = None
+    if staande_regel_voorstel_antwoord is not None and staande_regel_voorstel_antwoord not in VOORSTEL_ANTWOORDEN:
+        raise AccorderingFout(
+            f"Onbekend antwoord op het staande-goedkeuring-voorstel: {staande_regel_voorstel_antwoord}"
+        )
+    if staande_regel_voorstel_antwoord == "ja":
+        staande_regel_aanmaken = True
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         herhaald = _herhaald_besluit(session, document_id=document_id, actor_id=actor_id, besluit=StapBesluit.AKKOORD)
         if herhaald is not None:
@@ -2191,6 +2220,20 @@ def geef_akkoord(
                 administratie_id=administratie_id,
             )
 
+        if staande_regel_voorstel_antwoord in ("niet_nu", "nooit") and detail.get("vendor_id"):
+            _leg_voorstel_stilte_vast(
+                session,
+                administratie_id=administratie_id,
+                accordeur_gebruiker_id=actor_id,
+                vendor_id=uuid.UUID(str(detail["vendor_id"])),
+                soort=(
+                    VoorstelStilSoort.NOOIT
+                    if staande_regel_voorstel_antwoord == "nooit"
+                    else VoorstelStilSoort.STIL_TOT
+                ),
+                reden=f"antwoord '{staande_regel_voorstel_antwoord}' in de accordeur-app bij document {document_id}",
+                actor_id=actor_id,
+            )
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -2203,6 +2246,7 @@ def geef_akkoord(
                 "document_id": str(document_id),
                 "laag": stap.volgnummer,
                 "staande_regel_id": str(staande_regel_id) if staande_regel_id else None,
+                "staande_regel_voorstel_antwoord": staande_regel_voorstel_antwoord,
             },
             administratie_id=administratie_id,
         )
@@ -2753,6 +2797,9 @@ class WachtrijItem:
     # Mockup-flow "staande goedkeuring na 2e identieke factuur": déze accordeur gaf eerder
     # handmatig akkoord op zelfde leverancier + exact bedrag, en er is nog geen actieve regel.
     staande_regel_kandidaat: bool = False
+    # Blok 7 (11-09): het patroon achter het voorstel ('maand' | 'kwartaal'); None zonder voorstel. Het voorstel
+    # komt sinds dit blok alleen bij een PERIODIEK patroon (gedeelde motor app/terugkerend), nooit bij een batch.
+    staande_regel_patroon: str | None = None
     # Klaargezette doorbelasting (besluit 25-08, A3): ALLEEN-LEZEN weergave per doelentiteit
     # (naam, aandeel-%, bedrag excl., provisie); None = geen doorbelasting bij dit document.
     # Fout = de bestaande afwijsknop met verplichte reden (geen aparte doorbelasting-afwijzing).
@@ -2986,18 +3033,28 @@ def _staande_regel_kandidaten(
     administratie_id: uuid.UUID,
     accordeur_id: uuid.UUID,
     kandidaten: list[tuple[uuid.UUID, uuid.UUID | None, Decimal | None, uuid.UUID | None]],
-) -> set[uuid.UUID]:
-    """Voor welke wachtrij-documenten stelt de PWA ná het akkoord de staande goedkeuring voor:
-    déze accordeur gaf eerder HANDMATIG akkoord op een ánder document van dezelfde leverancier met
-    exact hetzelfde bedrag (binnen dezelfde afdeling — blok A 28-08) en er bestaat nog geen actieve
-    staande regel voor die combinatie. `kandidaten` = (document_id, vendor_id, totaalbedrag,
-    afdeling_id). Bulk (08-09): één query op de actieve regels van deze accordeur + één join-query
-    rondes×stappen beperkt tot de leveranciers in de wachtrij — de oude vorm liep per item ALLE
-    rondes van de administratie door mét een stappen-query per ronde (kwadratisch)."""
+    vandaag: date | None = None,
+) -> dict[uuid.UUID, str]:
+    """Voor welke wachtrij-documenten stelt de PWA ná het akkoord de staande goedkeuring voor →
+    {document_id: patroon ('maand' | 'kwartaal')}. Voorwaarden (alle): déze accordeur gaf eerder HANDMATIG
+    akkoord op een ánder document van dezelfde leverancier met exact hetzelfde bedrag (binnen dezelfde afdeling —
+    blok A 28-08); er bestaat nog geen actieve staande regel voor die combinatie; de reeks gelijke facturen van
+    die leverancier is PERIODIEK (blok 7 run 11-09 middag — gedeelde motor `app/terugkerend`: maand-/
+    kwartaalpatroon, geen twee gelijke facturen < 21 d uit elkaar; een batch zoals Lusso's 12 chalets in één week
+    krijgt NOOIT het voorstel); en er staat geen stilte/uitzondering (`staande_goedkeuring_voorstel_stil`: "niet nu"
+    = 90 d stil, "nooit" per leverancier — voor deze accordeur of administratiebreed).
+    `kandidaten` = (document_id, vendor_id, totaalbedrag, afdeling_id). Bulk (08-09): één query op de actieve
+    regels van deze accordeur + één join-query rondes×stappen beperkt tot de leveranciers in de wachtrij, sinds
+    blok 7 + één query gelijke facturen + één query stilte — constant per administratie."""
     relevant = [(d, v, t, a) for d, v, t, a in kandidaten if v is not None and t is not None]
     if not relevant:
-        return set()
+        return {}
     vendor_ids = {v for _, v, _, _ in relevant}
+    vandaag = vandaag or vandaag_nl()
+    reeksen = gelijke_facturen_per_vendor_bedrag(session, administratie_id=administratie_id, vendor_ids=vendor_ids)
+    stil_vendors = _stille_vendors(
+        session, administratie_id=administratie_id, accordeur_id=accordeur_id, vendor_ids=vendor_ids, vandaag=vandaag
+    )
     actieve_regels = {
         (r.vendor_id, r.bedrag, r.afdeling_id)
         for r in session.scalars(
@@ -3038,16 +3095,51 @@ def _staande_regel_kandidaten(
         except ValueError:
             afdeling_id = None
         handmatig_eerder.add((vendor_id, bedrag, afdeling_id, document_id))
-    uitkomst: set[uuid.UUID] = set()
+    uitkomst: dict[uuid.UUID, str] = {}
+    # De vraag één keer per leverancier + patroon (blok 7): staan er méér gelijke facturen tegelijk in de wachtrij,
+    # dan draagt alleen de eerste (lijstvolgorde = aangeboden_op) het voorstel — nooit N× dezelfde vraag.
+    al_voorgesteld: set[tuple[uuid.UUID, Decimal, uuid.UUID | None]] = set()
     for document_id, vendor_id, totaalbedrag, afdeling_id in relevant:
-        if (vendor_id, totaalbedrag, afdeling_id) in actieve_regels:
+        sleutel = (vendor_id, totaalbedrag, afdeling_id)
+        if sleutel in actieve_regels or vendor_id in stil_vendors or sleutel in al_voorgesteld:
             continue
-        if any(
+        if not any(
             v == vendor_id and b == totaalbedrag and a == afdeling_id and d != document_id
             for v, b, a, d in handmatig_eerder
         ):
-            uitkomst.add(document_id)
+            continue
+        reeks = classificeer_reeks(reeksen.get((vendor_id, totaalbedrag), []))
+        if reeks.classificatie is not ReeksClassificatie.PERIODIEK or reeks.patroon is None:
+            continue
+        uitkomst[document_id] = reeks.patroon.soort
+        al_voorgesteld.add(sleutel)
     return uitkomst
+
+
+def _stille_vendors(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    accordeur_id: uuid.UUID,
+    vendor_ids: set[uuid.UUID],
+    vandaag: date,
+) -> set[uuid.UUID]:
+    """Leveranciers waarvoor het voorstel voor déze accordeur zwijgt: actieve rij voor deze accordeur óf
+    administratiebreed (accordeur NULL), soort `nooit` altijd, soort `stil_tot` zolang stil_tot > vandaag."""
+    rijen = session.scalars(
+        select(StaandeGoedkeuringVoorstelStil).where(
+            StaandeGoedkeuringVoorstelStil.administratie_id == administratie_id,
+            StaandeGoedkeuringVoorstelStil.vendor_id.in_(vendor_ids),
+            StaandeGoedkeuringVoorstelStil.actief.is_(True),
+            (StaandeGoedkeuringVoorstelStil.accordeur_gebruiker_id == accordeur_id)
+            | StaandeGoedkeuringVoorstelStil.accordeur_gebruiker_id.is_(None),
+        )
+    )
+    stil: set[uuid.UUID] = set()
+    for rij in rijen:
+        if rij.soort == VoorstelStilSoort.NOOIT.value or (rij.stil_tot is not None and rij.stil_tot > vandaag):
+            stil.add(rij.vendor_id)
+    return stil
 
 
 def _is_staande_regel_kandidaat(
@@ -3109,16 +3201,17 @@ def _open_rondes_met_volgende_stap(
 # Bovengrens (documentatie + test `test_wachtrij_querytelling.py`): aantal SQL-statements per
 # administratie in `wachtrij_voor_accordeur`, ONAFHANKELIJK van het aantal rondes. Opbouw:
 # 2 set_config + 1 rondes (EXISTS) + 1 stappen + 1 administratie + 1 documenten + 1 voorstellen
-# + 1 vendors + 3 boekingsomschrijving + 2 staande-regel + 1 vragen (+3 als er vragen zijn)
+# + 1 vendors + 3 boekingsomschrijving + 4 staande-regel (2 + gelijke facturen + stilte, blok 7 11-09)
+# + 1 vragen (+3 als er vragen zijn)
 # + 3 verplichting-kaarten (alleen bij verplichting-items) + 1 doorbelasting-runs (+3 bulk-verdeling
 # als er klaargezette runs zijn: regelsommen, mappingnamen, instelling — herstelrun "Basis eerst"
 # 08-09 blok 1; vóór die run kwam hier per doorbelasting-document `review_data` bij met 17 queries
 # + checks-rapport, 55× bij Kempen Facilities → 5–12 s voor Peter)
-# + 1 offerte-match (+4 als er treffers zijn) = 15 zonder verrijkingstreffers, 28 met álle.
+# + 1 offerte-match (+4 als er treffers zijn) = 17 zonder verrijkingstreffers, 30 met álle.
 # Zonder rondes voor deze actor: 3 (2 set_config + rondes-query). Sinds 08-09 is er GEEN per-item-
 # uitzondering meer: ook doorbelasting schaalt niet met het aantal items (test
 # `test_querytelling_doorbelasting_schaalt_niet_met_items`).
-WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE = 28
+WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE = 30
 
 
 def _wachtrij_administratie(
@@ -3216,6 +3309,7 @@ def _wachtrij_administratie(
                 laag_volgnummer=volgende.volgnummer,
                 boeking_omschrijving=omschrijvingen.get(ronde.document_id),
                 staande_regel_kandidaat=ronde.document_id in kandidaten,
+                staande_regel_patroon=kandidaten.get(ronde.document_id),
                 # Bulk gelezen in déze sessie (blok 1 herstelrun 08-09); None = geen klaargezette run.
                 doorbelasting=doorbelastingen.get(ronde.document_id),
                 vraag=vragen.get(ronde.document_id),
@@ -3388,3 +3482,202 @@ def trek_staande_regel_in(*, administratie_id: uuid.UUID, regel_id: uuid.UUID, a
             nieuwe_waarde={"actief": False},
             administratie_id=administratie_id,
         )
+
+
+# --- voorstel-stilte / "nooit voorstellen" (blok 7 run 11-09 middag) ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class VoorstelUitzonderingData:
+    id: uuid.UUID
+    accordeur_gebruiker_id: uuid.UUID | None
+    accordeur_naam: str | None
+    vendor_id: uuid.UUID
+    leverancier_naam: str | None
+    soort: str  # stil_tot | nooit
+    stil_tot: date | None
+    reden: str | None
+    actief: bool
+    aangemaakt_op: datetime
+    aangemaakt_door: uuid.UUID
+    opgeheven_op: datetime | None
+
+
+def _leg_voorstel_stilte_vast(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    accordeur_gebruiker_id: uuid.UUID | None,
+    vendor_id: uuid.UUID,
+    soort: VoorstelStilSoort,
+    reden: str | None,
+    actor_id: uuid.UUID,
+) -> StaandeGoedkeuringVoorstelStil:
+    """Eén actieve rij per (administratie, accordeur|NULL, leverancier): een bestaande actieve rij wordt
+    bijgewerkt (stil_tot verlengd / stil_tot → nooit), nooit gedupliceerd; `nooit` wint altijd van `stil_tot`.
+    Audit oud→nieuw op elke zetting."""
+    bestaande = session.scalars(
+        select(StaandeGoedkeuringVoorstelStil).where(
+            StaandeGoedkeuringVoorstelStil.administratie_id == administratie_id,
+            StaandeGoedkeuringVoorstelStil.vendor_id == vendor_id,
+            StaandeGoedkeuringVoorstelStil.actief.is_(True),
+            (
+                StaandeGoedkeuringVoorstelStil.accordeur_gebruiker_id == accordeur_gebruiker_id
+                if accordeur_gebruiker_id is not None
+                else StaandeGoedkeuringVoorstelStil.accordeur_gebruiker_id.is_(None)
+            ),
+        )
+    ).first()
+    stil_tot = vandaag_nl() + timedelta(days=VOORSTEL_STIL_DAGEN) if soort is VoorstelStilSoort.STIL_TOT else None
+    vendor = session.get(VendorCache, (vendor_id, administratie_id))
+    if bestaande is None:
+        rij = StaandeGoedkeuringVoorstelStil(
+            administratie_id=administratie_id,
+            accordeur_gebruiker_id=accordeur_gebruiker_id,
+            vendor_id=vendor_id,
+            leverancier_naam=vendor.naam if vendor else None,
+            soort=soort.value,
+            stil_tot=stil_tot,
+            reden=reden,
+            aangemaakt_door=actor_id,
+        )
+        session.add(rij)
+        session.flush()
+        oud: dict | None = None
+    else:
+        rij = bestaande
+        oud = {"soort": rij.soort, "stil_tot": rij.stil_tot.isoformat() if rij.stil_tot else None, "reden": rij.reden}
+        if rij.soort == VoorstelStilSoort.NOOIT.value and soort is VoorstelStilSoort.STIL_TOT:
+            return rij  # nooit wint — niets te wijzigen
+        rij.soort = soort.value
+        rij.stil_tot = stil_tot
+        rij.reden = reden
+        rij.aangemaakt_door = actor_id
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module="boekhouding",
+        tabel="staande_goedkeuring_voorstel_stil",
+        record_id=rij.id,
+        actie="staande_goedkeuring_voorstel_stil_gezet",
+        correlatie_id=uuid.uuid4(),
+        oude_waarde=oud,
+        nieuwe_waarde={
+            "soort": rij.soort,
+            "stil_tot": rij.stil_tot.isoformat() if rij.stil_tot else None,
+            "reden": rij.reden,
+            "vendor_id": str(vendor_id),
+            "leverancier": rij.leverancier_naam,
+            "accordeur_gebruiker_id": str(accordeur_gebruiker_id) if accordeur_gebruiker_id else None,
+        },
+        administratie_id=administratie_id,
+    )
+    return rij
+
+
+def zet_voorstel_nooit(
+    *,
+    administratie_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+    accordeur_gebruiker_id: uuid.UUID | None,
+    reden: str | None,
+) -> VoorstelUitzonderingData:
+    """Instelt "nooit voorstellen" voor een leverancier. De accordeur zelf (app): alleen voor zichzelf
+    (`accordeur_gebruiker_id` = eigen id of None → eigen id). Beheerder (kantoor-web): administratiebreed (None)
+    of voor één accordeur. Andere kantoorrollen: KantoorActieVereist (Beheerder-instelling, zoals de lagen)."""
+    rol = GebruikerRol(actor_rol)
+    if rol == GebruikerRol.KLANT_ACCORDEUR:
+        if accordeur_gebruiker_id not in (None, actor_id):
+            raise VoorstelUitzonderingFout("Een accordeur kan alleen voor zichzelf 'nooit voorstellen' instellen")
+        accordeur_gebruiker_id = actor_id
+    elif rol != GebruikerRol.BEHEERDER:
+        raise KantoorActieVereist("'Nooit voorstellen' instellen is een Beheerder-actie")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = _leg_voorstel_stilte_vast(
+            session,
+            administratie_id=administratie_id,
+            accordeur_gebruiker_id=accordeur_gebruiker_id,
+            vendor_id=vendor_id,
+            soort=VoorstelStilSoort.NOOIT,
+            reden=reden,
+            actor_id=actor_id,
+        )
+        namen = _gebruikersnamen(session, {rij.accordeur_gebruiker_id} if rij.accordeur_gebruiker_id else set())
+        data = _voorstel_uitzondering_data(rij, namen)
+    return data
+
+
+def hef_voorstel_uitzondering_op(
+    *, administratie_id: uuid.UUID, rij_id: uuid.UUID, actor_id: uuid.UUID, actor_rol: str
+) -> None:
+    """Opheffen = actief=False mét wie/wanneer (nooit een DELETE). Accordeur: alleen eigen rijen; Beheerder: alle;
+    andere kantoorrollen: geen."""
+    rol = GebruikerRol(actor_rol)
+    if rol not in (GebruikerRol.KLANT_ACCORDEUR, GebruikerRol.BEHEERDER):
+        raise KantoorActieVereist("Opheffen van 'nooit voorstellen' is een Beheerder-actie")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        rij = session.get(StaandeGoedkeuringVoorstelStil, rij_id)
+        if rij is None or rij.administratie_id != administratie_id:
+            raise VoorstelUitzonderingFout(f"Onbekende voorstel-uitzondering: {rij_id}")
+        if rol == GebruikerRol.KLANT_ACCORDEUR and rij.accordeur_gebruiker_id != actor_id:
+            raise VoorstelUitzonderingFout("Alleen je eigen 'nooit voorstellen' kun je opheffen")
+        if not rij.actief:
+            raise VoorstelUitzonderingFout("Deze voorstel-uitzondering is al opgeheven")
+        rij.actief = False
+        rij.opgeheven_door = actor_id
+        rij.opgeheven_op = datetime.now(UTC)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="staande_goedkeuring_voorstel_stil",
+            record_id=rij.id,
+            actie="staande_goedkeuring_voorstel_stil_opgeheven",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"actief": True, "soort": rij.soort},
+            nieuwe_waarde={"actief": False, "vendor_id": str(rij.vendor_id)},
+            administratie_id=administratie_id,
+        )
+
+
+def voorstel_uitzonderingen(
+    *, administratie_id: uuid.UUID, alleen_actief: bool = True
+) -> list[VoorstelUitzonderingData]:
+    """Lijst voor de staande-goedkeuringen-weergave (kantoor-web + app): actieve `nooit`-rijen en lopende
+    `stil_tot`-rijen (verstreken stiltes tellen niet meer, tenzij `alleen_actief=False`)."""
+    vandaag = vandaag_nl()
+    with scoped_session(administratie_id) as session:
+        q = select(StaandeGoedkeuringVoorstelStil).where(
+            StaandeGoedkeuringVoorstelStil.administratie_id == administratie_id
+        )
+        if alleen_actief:
+            q = q.where(StaandeGoedkeuringVoorstelStil.actief.is_(True))
+        rijen = list(session.scalars(q.order_by(StaandeGoedkeuringVoorstelStil.aangemaakt_op.desc())))
+        namen = _gebruikersnamen(session, {r.accordeur_gebruiker_id for r in rijen if r.accordeur_gebruiker_id})
+        uit = [
+            _voorstel_uitzondering_data(r, namen)
+            for r in rijen
+            if not alleen_actief or r.soort == VoorstelStilSoort.NOOIT.value or (r.stil_tot and r.stil_tot > vandaag)
+        ]
+    return uit
+
+
+def _voorstel_uitzondering_data(
+    rij: StaandeGoedkeuringVoorstelStil, namen: dict[uuid.UUID, str]
+) -> VoorstelUitzonderingData:
+    return VoorstelUitzonderingData(
+        id=rij.id,
+        accordeur_gebruiker_id=rij.accordeur_gebruiker_id,
+        accordeur_naam=namen.get(rij.accordeur_gebruiker_id) if rij.accordeur_gebruiker_id else None,
+        vendor_id=rij.vendor_id,
+        leverancier_naam=rij.leverancier_naam,
+        soort=rij.soort,
+        stil_tot=rij.stil_tot,
+        reden=rij.reden,
+        actief=rij.actief,
+        aangemaakt_op=rij.aangemaakt_op,
+        aangemaakt_door=rij.aangemaakt_door,
+        opgeheven_op=rij.opgeheven_op,
+    )

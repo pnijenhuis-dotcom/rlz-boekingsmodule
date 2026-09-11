@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -198,3 +198,45 @@ class StaandeGoedkeuring(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class VoorstelStilSoort(enum.StrEnum):
+    """STIL_TOT = "nee"/"niet nu" van de accordeur → het voorstel zwijgt tot `stil_tot` (90 dagen); NOOIT =
+    uitzondering per leverancier (accordeur zelf in de app, of de Beheerder administratiebreed)."""
+
+    STIL_TOT = "stil_tot"
+    NOOIT = "nooit"
+
+
+class StaandeGoedkeuringVoorstelStil(Base):
+    """Stilte/uitzondering op het staande-goedkeuring-VOORSTEL (blok 7 run 11-09 middag, migratie 0134; casus
+    Lusso). Raakt de staande goedkeuring zelf niet — alleen of de app de vraag "voortaan automatisch akkoord?"
+    stelt. `accordeur_gebruiker_id` NULL = geldt voor álle accordeurs van de administratie (Beheerder-uitzondering
+    vanuit de kantoor-web). Opheffen = `actief=False` mét wie/wanneer — nooit een DELETE; elke zetting geauditeerd
+    oud→nieuw."""
+
+    __tablename__ = "staande_goedkeuring_voorstel_stil"
+    __table_args__ = (
+        Index("ix_staande_goedkeuring_voorstel_stil_administratie_id", "administratie_id"),
+        Index("ix_staande_goedkeuring_voorstel_stil_vendor", "administratie_id", "vendor_id"),
+        CheckConstraint("soort IN ('stil_tot', 'nooit')", name="ck_staande_goedkeuring_voorstel_stil_soort"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    accordeur_gebruiker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    leverancier_naam: Mapped[str | None] = mapped_column(default=None)
+    soort: Mapped[str]
+    stil_tot: Mapped[date | None] = mapped_column(default=None)
+    reden: Mapped[str | None] = mapped_column(default=None)
+    actief: Mapped[bool] = mapped_column(default=True)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    opgeheven_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    opgeheven_op: Mapped[datetime | None] = mapped_column(default=None)

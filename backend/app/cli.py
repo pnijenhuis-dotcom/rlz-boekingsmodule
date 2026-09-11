@@ -17,6 +17,7 @@ from app.bank import sync as bank_sync_service
 from app.beheer import service as beheer_service
 from app.berichten import herinneringen, nieuwe_facturen
 from app.credentialstore import service as credentialstore_service
+from app.accordering.cli_cmd import ACCORDERING_COMMANDOS, register_accordering, run_accordering
 from app.bank.cli_cmd import BANK_COMMANDOS, register_bank, run_bank
 from app.migratie.cli_cmd import register_migratie, run_migratie
 from app.panden.cli_cmd import register_panden, run_panden
@@ -2727,6 +2728,7 @@ def main(argv: list[str] | None = None) -> int:
     # Blok 3 bundel 08-09 (B3): tweede postvak declaraties@ak-nijenhuis.nl (INTAKE_DECLARATIES_IMAP_*-envs).
     intake_postvak_parser.add_argument(
         "--kanaal",
+    register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
         choices=("facturen", "declaraties"),
         default="facturen",
         help="Welk postvak: facturen (default, facturen@) of declaraties (declaraties@ — documenten krijgen "
@@ -3046,6 +3048,8 @@ def main(argv: list[str] | None = None) -> int:
         from app.projectverdeling import hercontrole as projectverdeling_hercontrole
 
         return _rapporteer_projectverdeling(projectverdeling_hercontrole.herbereken_alle(forceer=args.forceer))
+    if args.commando in ACCORDERING_COMMANDOS:
+        return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "sync-alles":
         return _sync_alles(args)
     if args.commando == "voorraad-rlz-sync":

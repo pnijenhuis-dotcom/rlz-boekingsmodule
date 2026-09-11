@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -188,6 +189,10 @@ class VervallenMeldingDto(BaseModel):
 
 class AkkoordInput(StrikteInvoer):
     staande_regel_aanmaken: bool = False
+    # Blok 7 (11-09): antwoord op het staande-goedkeuring-voorstel in dezelfde call — 'ja' (= aanmaken),
+    # 'niet_nu' (90 dagen stil voor deze accordeur + leverancier), 'nooit' (uitzondering per leverancier);
+    # None = de vraag is niet gesteld (oude app-versies sturen alleen de vlag).
+    staande_regel_voorstel_antwoord: Literal["ja", "niet_nu", "nooit"] | None = None
 
 
 class AfwijsInput(StrikteInvoer):
@@ -260,6 +265,8 @@ class WachtrijItemResponse(BaseModel):
     laag_volgnummer: int
     boeking_omschrijving: str | None = None
     staande_regel_kandidaat: bool = False
+    # Blok 7 (11-09): 'maand' | 'kwartaal' achter het voorstel; alleen gevuld als staande_regel_kandidaat.
+    staande_regel_patroon: str | None = None
     doorbelasting: list[WachtrijDoorbelastingRegelResponse] | None = None
     # Open vraag aan déze accordeur op dit document (blok B5) — None = geen.
     vraag: AccordeurVraagResponse | None = None
@@ -314,5 +321,32 @@ class StaandeRegelResponse(BaseModel):
     ingetrokken_op: datetime | None
 
 
+class VoorstelUitzonderingResponse(BaseModel):
+    """Stilte/uitzondering op het staande-goedkeuring-VOORSTEL (blok 7 11-09): `soort` 'nooit' (chip "nooit
+    voorstellen", opheffen mogelijk) of 'stil_tot' (lopende 90-dagen-stilte). `accordeur_gebruiker_id` None =
+    administratiebreed (Beheerder)."""
+
+    id: uuid.UUID
+    accordeur_gebruiker_id: uuid.UUID | None
+    accordeur_naam: str | None
+    vendor_id: uuid.UUID
+    leverancier_naam: str | None
+    soort: str
+    stil_tot: date | None
+    reden: str | None
+    actief: bool
+    aangemaakt_op: datetime
+    opgeheven_op: datetime | None
+
+
+class VoorstelUitzonderingInput(StrikteInvoer):
+    vendor_id: uuid.UUID
+    reden: str | None = None
+    # Alleen de Beheerder mag dit zetten: None = administratiebreed. Een accordeur krijgt altijd zichzelf.
+    accordeur_gebruiker_id: uuid.UUID | None = None
+
+
 class StaandeRegelsResponse(BaseModel):
     regels: list[StaandeRegelResponse]
+    # Additief (blok 7 11-09): oude clients negeren het veld.
+    uitzonderingen: list[VoorstelUitzonderingResponse] = []

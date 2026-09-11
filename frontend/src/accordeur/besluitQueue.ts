@@ -7,7 +7,13 @@
 // _herhaald_besluit — kernprincipe 5).
 
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
-import { geefAkkoord, isVoorwaardenVereist, wijsAf, type WachtrijItemDto } from './accordeurApi'
+import {
+  geefAkkoord,
+  isVoorwaardenVereist,
+  wijsAf,
+  type VoorstelAntwoord,
+  type WachtrijItemDto,
+} from './accordeurApi'
 
 export type BesluitSoort = 'akkoord' | 'afwijzen'
 
@@ -15,6 +21,8 @@ export interface BesluitOpdracht {
   item: WachtrijItemDto
   soort: BesluitSoort
   staandeRegelAanmaken: boolean
+  /** Blok 7 (11-09): antwoord op het staande-goedkeuring-voorstel — reist mee in dezelfde akkoord-call. */
+  staandeRegelAntwoord?: VoorstelAntwoord | null
   reden: string | null
 }
 
@@ -126,7 +134,12 @@ export class BesluitVerzender {
   private async voerUit(opdracht: BesluitOpdracht): Promise<void> {
     const { item } = opdracht
     if (opdracht.soort === 'akkoord') {
-      await this.deps.geefAkkoord(item.administratie_id, item.document_id, opdracht.staandeRegelAanmaken)
+      await this.deps.geefAkkoord(
+        item.administratie_id,
+        item.document_id,
+        opdracht.staandeRegelAanmaken,
+        opdracht.staandeRegelAntwoord ?? null,
+      )
     } else {
       await this.deps.wijsAf(item.administratie_id, item.document_id, opdracht.reden ?? '')
     }

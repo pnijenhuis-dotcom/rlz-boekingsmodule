@@ -221,8 +221,42 @@ export function haalLaatstHerinnerd(administratieId: string): Promise<{ laatst_h
   return apiJson(`/administraties/${administratieId}/accordering/herinneringen`)
 }
 
-export function haalStaandeRegels(administratieId: string): Promise<{ regels: StaandeRegelDto[] }> {
+/** Stilte/uitzondering op het staande-goedkeuring-VOORSTEL in de accordeur-app (blok 7 11-09): 'nooit' =
+ * chip "nooit voorstellen" (opheffen mogelijk), 'stil_tot' = lopende 90-dagen-stilte na "niet nu".
+ * accordeur_gebruiker_id null = administratiebreed (Beheerder). */
+export interface VoorstelUitzonderingDto {
+  id: string
+  accordeur_gebruiker_id: string | null
+  accordeur_naam: string | null
+  vendor_id: string
+  leverancier_naam: string | null
+  soort: 'nooit' | 'stil_tot' | string
+  stil_tot: string | null
+  reden: string | null
+  actief: boolean
+  aangemaakt_op: string
+  opgeheven_op: string | null
+}
+
+export function haalStaandeRegels(
+  administratieId: string,
+): Promise<{ regels: StaandeRegelDto[]; uitzonderingen?: VoorstelUitzonderingDto[] }> {
   return apiJson(`/administraties/${administratieId}/accordering/staande-regels`)
+}
+
+/** Beheerder: "nooit voorstellen" voor een leverancier — administratiebreed (accordeurId null) of per accordeur. */
+export function zetVoorstelNooit(
+  administratieId: string,
+  invoer: { vendor_id: string; reden?: string | null; accordeur_gebruiker_id?: string | null },
+): Promise<VoorstelUitzonderingDto> {
+  return apiPostJson(`/administraties/${administratieId}/accordering/staande-regels/voorstel-uitzonderingen`, invoer)
+}
+
+export function hefVoorstelUitzonderingOp(administratieId: string, rijId: string): Promise<void> {
+  return apiJson(
+    `/administraties/${administratieId}/accordering/staande-regels/voorstel-uitzonderingen/${rijId}/opheffen`,
+    { method: 'POST' },
+  )
 }
 
 export function trekStaandeRegelIn(administratieId: string, regelId: string): Promise<void> {

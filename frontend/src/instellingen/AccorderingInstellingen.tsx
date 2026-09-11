@@ -5,13 +5,18 @@ import {
   haalAccorderingKandidaten,
   haalApparaten,
   haalStaandeRegels,
+  hefVoorstelUitzonderingOp,
   trekApparaatIn,
   trekStaandeRegelIn,
   zetAccorderingInstellingen,
+  zetVoorstelNooit,
   type ApparaatDto,
   type KandidaatDto,
   type StaandeRegelDto,
+  type VoorstelUitzonderingDto,
 } from '../accordering/accorderingApi'
+import { apiJson } from '../api/client'
+import type { VendorLijstDto, VendorOptieDto } from '../api/types'
 import { Select, Switch, SkeletonRegels } from '../ui/basis'
 import { rondesTekst } from '../accordering/rondesTekst'
 import { IntercompanyLeveranciers } from './IntercompanyLeveranciers'
@@ -147,6 +152,10 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
   const [lagen, setLagen] = useState<LaagInvoer[]>([])
   const [kandidaten, setKandidaten] = useState<KandidaatDto[]>([])
   const [staandeRegels, setStaandeRegels] = useState<StaandeRegelDto[]>([])
+  const [uitzonderingen, setUitzonderingen] = useState<VoorstelUitzonderingDto[]>([])
+  const [crediteuren, setCrediteuren] = useState<VendorOptieDto[]>([])
+  const [nooitVendor, setNooitVendor] = useState('')
+  const [nooitReden, setNooitReden] = useState('')
   const [fout, setFout] = useState<string | null>(null)
   const [melding, setMelding] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -168,9 +177,14 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
         )
         setKandidaten(kandidatenDto.kandidaten)
         setStaandeRegels(regelsDto.regels)
+        setUitzonderingen(regelsDto.uitzonderingen ?? [])
         setGeladen(true)
       })
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
+    // Crediteurenlijst voor "Nooit voorstellen…" (blok 7 11-09) — verrijking, nooit blokkerend voor het scherm.
+    apiJson<VendorLijstDto>(`/administraties/${administratieId}/crediteuren`)
+      .then((lijst) => setCrediteuren(lijst.crediteuren))
+      .catch(() => setCrediteuren([]))
   }, [administratieId])
 
   const opslaan = async () => {
@@ -197,6 +211,28 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
       setFout(err instanceof Error ? err.message : 'Opslaan mislukt')
     } finally {
       setBezig(false)
+    }
+  }
+
+  const nooitVoorstellen = async (vendorId: string, reden: string | null) => {
+    setFout(null)
+    try {
+      await zetVoorstelNooit(administratieId, { vendor_id: vendorId, reden, accordeur_gebruiker_id: null })
+      setNooitVendor('')
+      setNooitReden('')
+      laad()
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Instellen mislukt')
+    }
+  }
+
+  const uitzonderingOpheffen = async (rijId: string) => {
+    setFout(null)
+    try {
+      await hefVoorstelUitzonderingOp(administratieId, rijId)
+      laad()
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : 'Opheffen mislukt')
     }
   }
 
@@ -320,6 +356,16 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
                             Intrekken
                           </button>
                         )}
+                        {!uitzonderingen.some((u) => u.vendor_id === regel.vendor_id && u.soort === 'nooit') && (
+                          <button
+                            type="button"
+                            className="linkbtn"
+                            style={{ marginLeft: 8 }}
+                            onClick={() => void nooitVoorstellen(regel.vendor_id, null)}
+                          >
+                            Nooit voorstellen
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -332,6 +378,16 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
               </div>
             </>
           )}
+          <VoorstelUitzonderingen
+            uitzonderingen={uitzonderingen}
+            crediteuren={crediteuren}
+            nooitVendor={nooitVendor}
+            nooitReden={nooitReden}
+            onVendor={setNooitVendor}
+            onReden={setNooitReden}
+            onZet={() => nooitVendor && void nooitVoorstellen(nooitVendor, nooitReden || null)}
+            onOpheffen={(id) => void uitzonderingOpheffen(id)}
+          />
           <AccordeurApparaten kandidaten={kandidaten} />
         </div>
       ) : null}
@@ -359,6 +415,102 @@ export function AccorderingInstellingen({
       {administraties.length === 1 && (
         <IntercompanyLeveranciers administratieId={administraties[0].id} naam={administraties[0].naam} />
       )}
+    </div>
+  )
+}
+
+
+/** "Nooit voorstellen" per leverancier (blok 7 run 11-09 middag, casus Lusso): het staande-goedkeuring-voorstel in de
+ * accordeur-app zwijgt voor deze leverancier — administratiebreed (Beheerder) of door de accordeur zelf. Raakt de
+ * staande goedkeuringen niet. Lopende "niet nu"-stiltes (90 dagen) staan er ter informatie bij. */
+function VoorstelUitzonderingen({
+  uitzonderingen,
+  crediteuren,
+  nooitVendor,
+  nooitReden,
+  onVendor,
+  onReden,
+  onZet,
+  onOpheffen,
+}: {
+  uitzonderingen: VoorstelUitzonderingDto[]
+  crediteuren: VendorOptieDto[]
+  nooitVendor: string
+  nooitReden: string
+  onVendor: (v: string) => void
+  onReden: (v: string) => void
+  onZet: () => void
+  onOpheffen: (id: string) => void
+}) {
+  const alGezet = new Set(uitzonderingen.filter((u) => u.soort === 'nooit').map((u) => u.vendor_id))
+  return (
+    <div data-testid="voorstel-uitzonderingen" style={{ display: 'grid', gap: 8 }}>
+      <h3 style={{ margin: '6px 0 0' }}>Voorstel "voortaan automatisch akkoord?" in de app</h3>
+      <div className="hint" style={{ margin: 0 }}>
+        De app stelt een staande goedkeuring alleen voor bij een terugkerend patroon (elke maand of elk kwartaal
+        hetzelfde bedrag) — nooit bij een reeks gelijke facturen binnen een paar weken, zoals twaalf chalets in één
+        week. Hier zet u een leverancier op "nooit voorstellen" voor alle accordeurs van deze administratie.
+      </div>
+      {uitzonderingen.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Leverancier</th>
+              <th>Geldt voor</th>
+              <th>Status</th>
+              <th>Reden</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {uitzonderingen.map((u) => (
+              <tr key={u.id} data-uitzondering={u.soort}>
+                <td>{u.leverancier_naam ?? u.vendor_id}</td>
+                <td>{u.accordeur_gebruiker_id ? (u.accordeur_naam ?? u.accordeur_gebruiker_id) : 'alle accordeurs'}</td>
+                <td>
+                  {u.soort === 'nooit' ? (
+                    <span className="chip">nooit voorstellen</span>
+                  ) : (
+                    <span className="chip">stil tot {u.stil_tot ?? '—'}</span>
+                  )}
+                </td>
+                <td>{u.reden ?? ''}</td>
+                <td>
+                  <button type="button" className="btn secondary" onClick={() => onOpheffen(u.id)}>
+                    Opheffen
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Select
+          aria-label="Leverancier voor nooit voorstellen"
+          value={nooitVendor}
+          onChange={(e) => onVendor(e.target.value)}
+        >
+          <option value="">Leverancier kiezen…</option>
+          {crediteuren
+            .filter((c) => !alGezet.has(c.id))
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.naam ?? c.id}
+              </option>
+            ))}
+        </Select>
+        <input
+          aria-label="Reden nooit voorstellen"
+          placeholder="Reden (optioneel)"
+          value={nooitReden}
+          onChange={(e) => onReden(e.target.value)}
+          style={{ minWidth: 220 }}
+        />
+        <button type="button" className="btn secondary" disabled={!nooitVendor} onClick={onZet}>
+          Nooit voorstellen
+        </button>
+      </div>
     </div>
   )
 }

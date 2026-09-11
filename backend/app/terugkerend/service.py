@@ -15,10 +15,11 @@ Alleen signaleren — nooit blokkeren of muteren; géén AI. Dagelijks meeliften
 
 from __future__ import annotations
 
+import enum
 import logging
 import statistics
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -34,8 +35,8 @@ from app.documenten.models import Boekvoorstel, Document, DocumentSoort, Documen
 from app.geheugen.models import BoekingObservatie
 from app.sync.models import VendorCache
 from app.terugkerend.models import TerugkerendSignaal
-
 from app.tijd import vandaag_nl
+
 logger = logging.getLogger(__name__)
 
 MIN_FACTUREN = 3
@@ -54,6 +55,112 @@ class Patroon:
     soort: str  # maand | kwartaal
     interval_dagen: int  # mediaan van de waargenomen tussenpozen
     aantal: int
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Periodiek vs batch (blok 7 run 11-09 middag; casus Lusso: 12 gelijke facturen voor 12 chalets in één week).
+# Eén gedeelde motor voor het staande-goedkeuring-voorstel in de accordeur-app: het voorstel "voortaan automatisch
+# akkoord?" is alleen zinvol bij een PERIODIEK patroon (maandhuur, energie), nooit bij een batch/deellevering — dáár
+# moet de accordeur élk exemplaar zien. Drempels als benoemde constanten; puur code, geen AI.
+# ---------------------------------------------------------------------------------------------------------------
+
+#: Minimale tussenpoos tussen twee gelijke facturen om nog "periodiek" te kunnen zijn (≈ 3 weken). Korter — óók
+#: dezelfde dag — is per definitie een batch/deellevering.
+PERIODIEK_MIN_TUSSENPOOS_DAGEN = 21
+#: Venster waarbinnen ≥ BATCH_MIN_AANTAL gelijke facturen zónder bewezen patroon als batch gelden.
+BATCH_VENSTER_DAGEN = 30
+BATCH_MIN_AANTAL = 2
+#: Minimaal aantal gelijke facturen voor een periodiek patroon (= de terugkerend-drempel).
+PERIODIEK_MIN_FACTUREN = MIN_FACTUREN
+
+
+class ReeksClassificatie(enum.StrEnum):
+    PERIODIEK = "periodiek"
+    BATCH = "batch"
+    ONBEPAALD = "onbepaald"
+
+
+@dataclass(frozen=True)
+class ReeksUitkomst:
+    classificatie: ReeksClassificatie
+    patroon: Patroon | None
+    reden: str
+
+
+def classificeer_reeks(datums: Iterable[date]) -> ReeksUitkomst:
+    """Pure functie over de factuurdatums van GELIJKE facturen (zelfde leverancier + exact zelfde bedrag),
+    dubbele datums tellen mee (niet uniek maken — 12 chalets op één dag zijn 12 facturen).
+
+    Exacte definitie:
+    - BATCH: twee facturen met een tussenpoos < PERIODIEK_MIN_TUSSENPOOS_DAGEN (21 d, ook 0 d), óf ≥ BATCH_MIN_AANTAL
+      facturen binnen BATCH_VENSTER_DAGEN (30 d) zonder bewezen periodiek patroon.
+    - PERIODIEK: ≥ PERIODIEK_MIN_FACTUREN facturen, élke tussenpoos ≥ 21 d én `detecteer_patroon` herkent maand/
+      kwartaal (elke tussenpoos ±35 % van het nominale interval).
+    - ONBEPAALD: alles anders (één factuur, twee ver uit elkaar, onregelmatig) — géén voorstel.
+    De batch-toets op korte tussenpozen gaat vóór: een maandpatroon mét een zelfde-dag-dubbel is géén periodiek
+    patroon (Lusso-variant "12 chalets elke maand")."""
+    gesorteerd = sorted(datums)
+    if len(gesorteerd) < BATCH_MIN_AANTAL:
+        return ReeksUitkomst(ReeksClassificatie.ONBEPAALD, None, "minder dan twee gelijke facturen")
+    gaten = [(b - a).days for a, b in zip(gesorteerd, gesorteerd[1:], strict=False)]
+    kortste = min(gaten)
+    if kortste < PERIODIEK_MIN_TUSSENPOOS_DAGEN:
+        return ReeksUitkomst(
+            ReeksClassificatie.BATCH,
+            None,
+            f"twee gelijke facturen {kortste} dagen uit elkaar (< {PERIODIEK_MIN_TUSSENPOOS_DAGEN} d)",
+        )
+    patroon = detecteer_patroon(gesorteerd)
+    if patroon is not None:
+        return ReeksUitkomst(
+            ReeksClassificatie.PERIODIEK, patroon, f"{patroon.soort}-patroon over {patroon.aantal} facturen"
+        )
+    if kortste <= BATCH_VENSTER_DAGEN:
+        return ReeksUitkomst(
+            ReeksClassificatie.BATCH,
+            None,
+            f"twee gelijke facturen binnen {BATCH_VENSTER_DAGEN} dagen zonder bewezen patroon",
+        )
+    if len(gesorteerd) < PERIODIEK_MIN_FACTUREN:
+        return ReeksUitkomst(
+            ReeksClassificatie.ONBEPAALD, None, f"nog geen {PERIODIEK_MIN_FACTUREN} gelijke facturen"
+        )
+    return ReeksUitkomst(ReeksClassificatie.ONBEPAALD, None, "onregelmatige tussenpozen")
+
+
+def gelijke_facturen_per_vendor_bedrag(
+    session: Session, *, administratie_id: uuid.UUID, vendor_ids: Iterable[uuid.UUID]
+) -> dict[tuple[uuid.UUID, Decimal], list[date]]:
+    """Factuurdatums per (leverancier, exact totaalbedrag) uit de app-documenthistorie — de invoer van
+    `classificeer_reeks` voor het staande-goedkeuring-voorstel. Eén query; afgehandelde exemplaren die geen echte
+    factuur zijn (verwijderd, gesplitst, samengevoegd-huls, afgevoerd duplicaat) tellen niet mee — een duplicaat
+    is geen deellevering. RLZ-historie (BoekingObservatie) draagt geen bedrag en doet hier dus niet mee."""
+    ids = list(set(vendor_ids))
+    if not ids:
+        return {}
+    rijen = session.execute(
+        select(Boekvoorstel.vendor_id, Boekvoorstel.totaalbedrag, Boekvoorstel.factuurdatum)
+        .join(Document, Document.id == Boekvoorstel.document_id)
+        .where(
+            Document.administratie_id == administratie_id,
+            Document.soort == DocumentSoort.INKOOPFACTUUR.value,
+            Document.status.notin_(
+                [
+                    DocumentStatus.VERWIJDERD,
+                    DocumentStatus.GESPLITST,
+                    DocumentStatus.SAMENGEVOEGD,
+                    DocumentStatus.AFGEVOERD_DUPLICAAT,
+                ]
+            ),
+            Boekvoorstel.vendor_id.in_(ids),
+            Boekvoorstel.totaalbedrag.is_not(None),
+            Boekvoorstel.factuurdatum.is_not(None),
+        )
+    ).all()
+    per: dict[tuple[uuid.UUID, Decimal], list[date]] = {}
+    for vendor_id, bedrag, datum in rijen:
+        per.setdefault((vendor_id, bedrag), []).append(datum)
+    return per
 
 
 def detecteer_patroon(datums: list[date]) -> Patroon | None:
@@ -451,7 +558,15 @@ def tel_signalen(session: Session, administratie_id: uuid.UUID) -> int:
 
 
 __all__ = [
+    "BATCH_MIN_AANTAL",
+    "BATCH_VENSTER_DAGEN",
+    "PERIODIEK_MIN_FACTUREN",
+    "PERIODIEK_MIN_TUSSENPOOS_DAGEN",
+    "ReeksClassificatie",
+    "ReeksUitkomst",
+    "classificeer_reeks",
     "detecteer_patroon",
+    "gelijke_facturen_per_vendor_bedrag",
     "herbereken_administratie",
     "herbereken_alle",
     "overzicht",

@@ -297,6 +297,22 @@ class TestKantoorBlijftWerken:
     """Kantoorrollen worden nergens door de nieuwe rolpoort geraakt."""
 
     def test_kantoor_endpoints_geen_403_rolpoort(self, boekhouder, administratie_id):
+    def test_voorstel_uitzondering_accordeur_zelf_200_en_opheffen_204(self, accordeur, administratie_id):
+        """Blok 7 (11-09): 'nooit voorstellen' — de accordeur voor zichzelf via vereis_kantoor_of_accordeur (de
+        veldrol-weigering zit in de fail-closed sweep)."""
+        resp = client.post(
+            f"/administraties/{administratie_id}/accordering/staande-regels/voorstel-uitzonderingen",
+            json={"vendor_id": str(DUMMY_ID)},
+            headers=_bearer(accordeur, rol="klant_accordeur"),
+        )
+        assert resp.status_code == 200, resp.text
+        resp = client.post(
+            f"/administraties/{administratie_id}/accordering/staande-regels/voorstel-uitzonderingen/"
+            f"{resp.json()['id']}/opheffen",
+            headers=_bearer(accordeur, rol="klant_accordeur"),
+        )
+        assert resp.status_code == 204, resp.text
+
         for methode, pad in _kantoor_endpoints(administratie_id):
             if (
                 pad.startswith("/auth/gebruikers")

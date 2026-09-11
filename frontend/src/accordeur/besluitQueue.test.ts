@@ -63,7 +63,7 @@ describe('BesluitVerzender', () => {
     verzender.verstuur(opdracht('d1'))
     expect(verzender.isOnderweg('d1')).toBe(true)
     await laatRijLeeglopen(verzender)
-    expect(geefAkkoord).toHaveBeenCalledWith('a1', 'd1', false)
+    expect(geefAkkoord).toHaveBeenCalledWith('a1', 'd1', false, null)
     expect(mislukt).toEqual([])
     expect(aantallen).toEqual([1, 0])
   })
