@@ -136,6 +136,9 @@ def _clean_tables() -> Generator[None, None, None]:
         conn.execute(
             text("TRUNCATE TABLE platform.audit_event, platform.administratie, platform.gebruiker CASCADE")
         )
+        # Groepen (migratie 0135): de FK loopt van administratie NAAR groep — de CASCADE hierboven raakt groep dus
+        # niet; apart legen zodat een code (uniek) van de ene test de volgende nooit een 409 geeft.
+        conn.execute(text("TRUNCATE TABLE platform.groep CASCADE"))
         # AI-kostenmeter (migratie 0047): FK-loos, dus buiten de CASCADE — apart legen zodat
         # verbruik/meldingen van de ene test nooit de poort van de volgende dichtzetten.
         conn.execute(text("TRUNCATE TABLE platform.ai_gebruik, platform.ai_kosten_maandstatus"))

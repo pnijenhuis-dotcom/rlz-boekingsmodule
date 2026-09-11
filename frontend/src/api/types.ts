@@ -4,6 +4,23 @@ export interface AdministratieDto {
   /** Uren & meerwerk-opt-in (fixrun 07-09 blok C3, additief op /auth/administraties): voedt de
    * standaard-administratie van de veldwerker-dialogen (regel 3) — optioneel, oudere mocks missen 'm. */
   uren_meerwerk_ingeschakeld?: boolean
+  /** Groepskenmerk (blok 8 run 11-09, migratie 0135, additief): hoogstens één groep per administratie; null = geen. */
+  groep_id?: string | null
+  groep_naam?: string | null
+}
+
+/** Groep van administraties (blok 8 run 11-09, migratie 0135): filter op de kantoorbrede overzichten, nooit een poort.
+ * `actief=false` = gearchiveerd (nooit verwijderd); code is kort, uniek, hoofdletters/cijfers. */
+export interface GroepDto {
+  id: string
+  naam: string
+  code: string
+  actief: boolean
+  aantal_administraties: number
+}
+
+export interface GroepenLijstDto {
+  groepen: GroepDto[]
 }
 
 export interface MijnAdministratiesResponseDto {
@@ -684,6 +701,9 @@ export interface WerkvoorraadKlantDto {
   /** Weekstaten ontbreken (blok A 06-09): geplande (veldwerker, project, week) zonder ingediende
    * weekstaat, ouder dan het venster van de veld-app; 0 zonder de uren-opt-in. Signaal, geen status. */
   planning_signalen?: number
+  /** Open spiegel-taken doorbelasting (blok 6 11-09): server-side teller in dezelfde rij — vervangt de
+   * per-administratie-call GET /doorbelasting/{id}/spiegel-taken vanuit de klantenlijst. */
+  spiegel_taken?: number
 }
 
 export interface WerkvoorraadOverzichtDto {
@@ -701,9 +721,6 @@ export interface DocumentGebeurtenisDto {
   tijdstip: string
 }
 
-  /** Open spiegel-taken doorbelasting (blok 6 11-09): server-side teller in dezelfde rij — vervangt de
-   * per-administratie-call GET /doorbelasting/{id}/spiegel-taken vanuit de klantenlijst. */
-  spiegel_taken?: number
 export interface DocumentDetailDto {
   id: string
   administratie_id: string | null
@@ -1056,6 +1073,9 @@ export interface EersteSyncRunDto {
   aangevraagd_op: string | null
   beeindigd_op: string | null
   fout_reden: string | null
+  /** Blok 3 run 11-09 (additief): afgeronde pogingen + wanneer de wekker opnieuw probeert (alleen bij rechten_onderweg). */
+  pogingen?: number
+  volgende_poging_op?: string | null
 }
 
 export interface AdministratieInstellingenDto {
@@ -1076,9 +1096,6 @@ export interface AdministratieInstellingenDto {
   uren_dagmax_uren: string
   /** Afdelingen (blok A 28-08, migratie 0084): AAN = afdeling verplicht op élk inkoopdocument +
    * accorderingsroute per afdeling; UIT = veld onzichtbaar. */
-  /** Blok 3 run 11-09 (additief): afgeronde pogingen + wanneer de wekker opnieuw probeert (alleen bij rechten_onderweg). */
-  pogingen?: number
-  volgende_poging_op?: string | null
   afdelingen_ingeschakeld: boolean
   /** Voorraad bijhouden (blok D 28-08, migratie 0086): opt-in controle-laag mi-schema. */
   voorraad_ingeschakeld: boolean
@@ -1117,6 +1134,12 @@ export interface AdministratieInstellingenDto {
   laatste_sync_op?: string | null
   gearchiveerd_op?: string | null
   gearchiveerd_door_naam?: string | null
+  /** Groepskenmerk (blok 8 run 11-09, migratie 0135): chip + filter in de tabel, veld "Groep" op tab Algemeen.
+   * `groep_actief=false` = de groep is gearchiveerd (lid blijft lid, chip toont "(gearchiveerd)"). */
+  groep_id?: string | null
+  groep_naam?: string | null
+  groep_code?: string | null
+  groep_actief?: boolean | null
   /** Boekhoud-backend (Odoo-adapter fase 1, migraties 0101/0102 — Platform-besluit 0016): 'rlz' (default,
    * ook als het veld ontbreekt) of 'odoo' = volledige backend (boeken in Odoo). `odoo_alleen_lezen` =
    * een RLZ-administratie mét Odoo als LEESBRON voor de voorraad-uitstroom vanaf `odoo_voorraad_knip_datum`

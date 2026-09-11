@@ -351,11 +351,19 @@ def lijst(
     administratie_id: uuid.UUID | None = None,
     soort: str = "aandacht",
     nu: datetime | None = None,
+    groep_id: uuid.UUID | None = None,
 ) -> Lijst:
     if soort not in SOORT_FACETTEN:
         raise ReconciliatieFout(f"Onbekend soort-facet: {soort}")
     nu = nu or datetime.now(UTC)
     alle, run = _alle_rijen(actor_id=actor_id, rol=rol, nu=nu)
+    # Blok 8 run 11-09 (migratie 0135): groep = één filter meer op de administratie-set (Kernprincipe 7). Platformbrede
+    # bevindingen (administratie_id None) vallen buiten een groepsfilter — die horen bij geen enkele groep.
+    if groep_id is not None:
+        from app.beheer.groepen import administratie_ids_in_groep
+
+        in_groep = administratie_ids_in_groep(groep_id)
+        alle = [r for r in alle if r.administratie_id is not None and r.administratie_id in in_groep]
 
     tellers = Tellers(
         afwijkingen=sum(1 for r in alle if r.soort == "afwijking"),

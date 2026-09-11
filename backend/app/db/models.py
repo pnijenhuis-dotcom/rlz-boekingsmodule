@@ -113,10 +113,18 @@ class Administratie(Base):
     stille default)."""
 
     __tablename__ = "administratie"
+    # Groepskenmerk (blok 8 run 11-09, migratie 0135): het filter op de kantoorbrede overzichten leest op groep_id.
+    __table_args__ = (Index("ix_administratie_groep_id", "groep_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     naam: Mapped[str]
     rlz_admin_id: Mapped[str] = mapped_column(unique=True)
+    # Groep (blok 8 run 11-09, opdracht Peter 11-09, migratie 0135): hoogstens één groep per administratie
+    # (bv. "Kempen groep"); NULL = geen groep. Een FILTER op kantoorbrede overzichten (Kernprincipe 7), nooit een poort;
+    # Beheerder-only te wijzigen (app/beheer/groepen.py, audit `administratie_groep_gewijzigd` oud→nieuw).
+    groep_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.groep.id", name="fk_administratie_groep_id"), default=None
+    )
     # `actief` = niet gearchiveerd (v2 30-08): archiveren zet 'm op false; álle RLZ-rakende jobs en de
     # UI-lijsten filteren erop. Archiveringsspoor (0089, 0075-patroon) hieronder.
     actief: Mapped[bool] = mapped_column(default=True)
@@ -241,6 +249,27 @@ class Administratie(Base):
     reconciliatie_uitgesloten_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Groep(Base):
+    """Groep van administraties (blok 8 run 11-09, opdracht Peter 11-09; migratie 0135): platformbrede
+    referentietabel — een administratie hoort tot hoogstens één groep (`Administratie.groep_id`). `code` is kort,
+    uniek en alleen hoofdletters/cijfers (CHECK; voorstel afgeleid uit de naam, bewerkbaar); archiveren = `actief`
+    false, nooit verwijderen (geen DELETE-policy, geen DELETE-grant). RLS: iedere ingelogde leest, muteren alleen
+    `platform.current_actor_is_beheerder()` — server-side bovendien `require_beheerder` op de routes."""
+
+    __tablename__ = "groep"
+    __table_args__ = (
+        CheckConstraint("code ~ '^[A-Z0-9]{2,12}$'", name="ck_groep_code_vorm"),
+        CheckConstraint("length(btrim(naam)) > 0", name="ck_groep_naam_niet_leeg"),
+        UniqueConstraint("code", name="uq_groep_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    naam: Mapped[str]
+    code: Mapped[str]
+    actief: Mapped[bool] = mapped_column(default=True, server_default="true")
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

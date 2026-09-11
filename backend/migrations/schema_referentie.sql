@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0131
+-- Migratie-head bij deze dump: 0136
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -144,6 +144,11 @@ BEGIN
         RAISE EXCEPTION 'verplaats_document: document staat op %, verwacht ontvangen', v_status;
     END IF;
 
+    -- 0132: de verplaatsing-policies (<tabel>_verplaatsing) laten binnen deze SECURITY DEFINER-context
+    -- uitsluitend de rijen van dít document van administratie wisselen. Transactie-lokaal (is_local),
+    -- dus een EXCEPTION rolt de GUC mee terug.
+    PERFORM set_config('app.verplaatsing_document_id', p_document_id::text, true);
+
     UPDATE boekhouding.document SET administratie_id = p_naar WHERE id = p_document_id;
 
     -- Kindtabellen mét eigen administratie_id: rijen van dit document volgen mee, zodat ze in de
@@ -173,6 +178,14 @@ BEGIN
         WHERE document_id = p_document_id AND administratie_id = p_van;
     UPDATE boekhouding.document_herinnering SET administratie_id = p_naar
         WHERE document_id = p_document_id AND administratie_id = p_van;
+
+    -- 0132: kindtabellen die ná 0080 zijn toegevoegd (0108/0110) volgen óók mee.
+    UPDATE boekhouding.verplichting_match SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    UPDATE boekhouding.regel_gb_classificatie SET administratie_id = p_naar
+        WHERE document_id = p_document_id AND administratie_id = p_van;
+    PERFORM set_config('app.verplaatsing_document_id', '', true);
+
 END
 $$;
 
@@ -393,6 +406,17 @@ CREATE FUNCTION platform.veldwerker_scope_binnen_actor(p_doel uuid, p_actor uuid
             $$;
 
 
+--
+-- Name: verplaatsing_document_id(); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.verplaatsing_document_id() RETURNS uuid
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT nullif(current_setting('app.verplaatsing_document_id', true), '')::uuid
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -455,7 +479,9 @@ CREATE TABLE boekhouding.administratie_sync_run (
     beeindigd_op timestamp with time zone,
     onderdelen jsonb,
     fout_reden text,
-    CONSTRAINT ck_administratie_sync_run_status CHECK ((status = ANY (ARRAY['wachtrij'::text, 'bezig'::text, 'klaar'::text, 'fout'::text])))
+    pogingen integer DEFAULT 0 NOT NULL,
+    volgende_poging_op timestamp with time zone,
+    CONSTRAINT ck_administratie_sync_run_status CHECK ((status = ANY (ARRAY['wachtrij'::text, 'bezig'::text, 'klaar'::text, 'fout'::text, 'rechten_onderweg'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.administratie_sync_run FORCE ROW LEVEL SECURITY;
@@ -2565,6 +2591,30 @@ ALTER TABLE ONLY boekhouding.staande_goedkeuring FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: staande_goedkeuring_voorstel_stil; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.staande_goedkeuring_voorstel_stil (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    accordeur_gebruiker_id uuid,
+    vendor_id uuid NOT NULL,
+    leverancier_naam text,
+    soort text NOT NULL,
+    stil_tot date,
+    reden text,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    opgeheven_door uuid,
+    opgeheven_op timestamp with time zone,
+    CONSTRAINT ck_staande_goedkeuring_voorstel_stil_soort CHECK ((soort = ANY (ARRAY['stil_tot'::text, 'nooit'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: taxrate_cache; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -3156,6 +3206,21 @@ ALTER TABLE ONLY boekhouding.werkstempel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: werkvoorraad_teller_cache; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.werkvoorraad_teller_cache (
+    administratie_id uuid NOT NULL,
+    teller text NOT NULL,
+    waarde integer DEFAULT 0 NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_werkvoorraad_teller_cache_waarde CHECK ((waarde >= 0))
+);
+
+ALTER TABLE ONLY boekhouding.werkvoorraad_teller_cache FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: artikelcode_koppeling; Type: TABLE; Schema: mi; Owner: -
 --
 
@@ -3443,6 +3508,7 @@ CREATE TABLE platform.administratie (
     mini_voorraad_ingeschakeld boolean DEFAULT false NOT NULL,
     voorkeurs_verlegd_taxrate_id uuid,
     autoboeken_leren_ingeschakeld boolean DEFAULT false NOT NULL,
+    groep_id uuid,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_uren_dagmax CHECK (((uren_dagmax_uren > (0)::numeric) AND (uren_dagmax_uren <= (24)::numeric)))
@@ -3678,6 +3744,23 @@ CREATE TABLE platform.gebruiker_module_rol (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT ck_gebruiker_module_rol_geldig CHECK ((((module = 'vastgoed'::text) AND (rol = ANY (ARRAY['superadmin'::text, 'eigenaar'::text, 'kantoor'::text]))) OR ((module = 'boekhouding'::text) AND (rol = 'meerwerk_urenstaten'::text)) OR ((module = 'boekhouding.veldwerkerbeheer'::text) AND (rol = 'veldwerkerbeheer'::text))))
 );
+
+
+--
+-- Name: groep; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.groep (
+    id uuid NOT NULL,
+    naam text NOT NULL,
+    code text NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_groep_code_vorm CHECK ((code ~ '^[A-Z0-9]{2,12}$'::text)),
+    CONSTRAINT ck_groep_naam_niet_leeg CHECK ((length(btrim(naam)) > 0))
+);
+
+ALTER TABLE ONLY platform.groep FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4714,6 +4797,14 @@ ALTER TABLE ONLY boekhouding.staande_goedkeuring
 
 
 --
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil
+    ADD CONSTRAINT staande_goedkeuring_voorstel_stil_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: taxrate_cache taxrate_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5098,6 +5189,14 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: werkvoorraad_teller_cache werkvoorraad_teller_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkvoorraad_teller_cache
+    ADD CONSTRAINT werkvoorraad_teller_cache_pkey PRIMARY KEY (administratie_id, teller);
+
+
+--
 -- Name: artikelcode_koppeling artikelcode_koppeling_pkey; Type: CONSTRAINT; Schema: mi; Owner: -
 --
 
@@ -5362,6 +5461,14 @@ ALTER TABLE ONLY platform.gebruiker
 
 
 --
+-- Name: groep groep_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.groep
+    ADD CONSTRAINT groep_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: grootboekrekening grootboekrekening_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -5490,6 +5597,14 @@ ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
 
 
 --
+-- Name: groep uq_groep_code; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.groep
+    ADD CONSTRAINT uq_groep_code UNIQUE (code);
+
+
+--
 -- Name: kantoor_digest uq_kantoor_digest_week; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -5605,6 +5720,13 @@ CREATE INDEX ix_administratie_sync_run_administratie_id ON boekhouding.administr
 --
 
 CREATE INDEX ix_administratie_sync_run_administratie_status ON boekhouding.administratie_sync_run USING btree (administratie_id, status);
+
+
+--
+-- Name: ix_administratie_sync_run_volgende_poging; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_administratie_sync_run_volgende_poging ON boekhouding.administratie_sync_run USING btree (status, volgende_poging_op);
 
 
 --
@@ -6266,6 +6388,20 @@ CREATE INDEX ix_staande_goedkeuring_administratie_id ON boekhouding.staande_goed
 
 
 --
+-- Name: ix_staande_goedkeuring_voorstel_stil_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_staande_goedkeuring_voorstel_stil_administratie_id ON boekhouding.staande_goedkeuring_voorstel_stil USING btree (administratie_id);
+
+
+--
+-- Name: ix_staande_goedkeuring_voorstel_stil_vendor; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_staande_goedkeuring_voorstel_stil_vendor ON boekhouding.staande_goedkeuring_voorstel_stil USING btree (administratie_id, vendor_id);
+
+
+--
 -- Name: ix_taxrate_cache_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6774,6 +6910,13 @@ CREATE INDEX ix_accordeur_nieuw_gemeld_gebruiker_id ON platform.accordeur_nieuw_
 --
 
 CREATE INDEX ix_activatiecode_poging_ip_tijdstip ON platform.activatiecode_poging USING btree (ip, tijdstip);
+
+
+--
+-- Name: ix_administratie_groep_id; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_administratie_groep_id ON platform.administratie USING btree (groep_id);
 
 
 --
@@ -8906,6 +9049,38 @@ ALTER TABLE ONLY boekhouding.staande_goedkeuring
 
 
 --
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil
+    ADD CONSTRAINT staande_goedkeuring_voorstel_stil_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_accordeur_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil
+    ADD CONSTRAINT staande_goedkeuring_voorstel_stil_accordeur_gebruiker_id_fkey FOREIGN KEY (accordeur_gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil
+    ADD CONSTRAINT staande_goedkeuring_voorstel_stil_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_opgeheven_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.staande_goedkeuring_voorstel_stil
+    ADD CONSTRAINT staande_goedkeuring_voorstel_stil_opgeheven_door_fkey FOREIGN KEY (opgeheven_door) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: taxrate_cache taxrate_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -9450,6 +9625,14 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: werkvoorraad_teller_cache werkvoorraad_teller_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.werkvoorraad_teller_cache
+    ADD CONSTRAINT werkvoorraad_teller_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id) ON DELETE CASCADE;
+
+
+--
 -- Name: artikelcode_koppeling artikelcode_koppeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: mi; Owner: -
 --
 
@@ -9762,6 +9945,14 @@ ALTER TABLE ONLY platform.duplicaat_afvoer_instelling
 
 
 --
+-- Name: administratie fk_administratie_groep_id; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.administratie
+    ADD CONSTRAINT fk_administratie_groep_id FOREIGN KEY (groep_id) REFERENCES platform.groep(id);
+
+
+--
 -- Name: gebruiker_administratie gebruiker_administratie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -10004,6 +10195,17 @@ CREATE POLICY accordering_stap_scope ON boekhouding.accordering_stap USING ((adm
 
 
 --
+-- Name: accordering_stap accordering_stap_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY accordering_stap_verplaatsing ON boekhouding.accordering_stap USING (((EXISTS ( SELECT 1
+   FROM boekhouding.document_accordering a
+  WHERE ((a.id = accordering_stap.accordering_id) AND (a.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((EXISTS ( SELECT 1
+   FROM boekhouding.document_accordering a
+  WHERE ((a.id = accordering_stap.accordering_id) AND (a.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: administratie_sync_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10040,6 +10242,13 @@ ALTER TABLE boekhouding.afwijzing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY afwijzing_scope ON boekhouding.afwijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: afwijzing afwijzing_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY afwijzing_verplaatsing ON boekhouding.afwijzing USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --
@@ -10334,6 +10543,13 @@ CREATE POLICY document_accordering_scope ON boekhouding.document_accordering USI
 
 
 --
+-- Name: document_accordering document_accordering_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY document_accordering_verplaatsing ON boekhouding.document_accordering USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: document document_administratie_scope; Type: POLICY; Schema: boekhouding; Owner: -
 --
 
@@ -10368,6 +10584,20 @@ ALTER TABLE boekhouding.document_herinnering ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY document_herinnering_scope ON boekhouding.document_herinnering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: document_herinnering document_herinnering_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY document_herinnering_verplaatsing ON boekhouding.document_herinnering USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
+-- Name: document document_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY document_verplaatsing ON boekhouding.document USING (((id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --
@@ -10501,6 +10731,13 @@ CREATE POLICY duplicaat_signaal_scope ON boekhouding.duplicaat_signaal USING ((a
 
 
 --
+-- Name: duplicaat_signaal duplicaat_signaal_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY duplicaat_signaal_verplaatsing ON boekhouding.duplicaat_signaal USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: factuurmatch; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10527,6 +10764,20 @@ CREATE POLICY factuurmatch_staat_scope ON boekhouding.factuurmatch_staat USING (
 
 
 --
+-- Name: factuurmatch_staat factuurmatch_staat_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY factuurmatch_staat_verplaatsing ON boekhouding.factuurmatch_staat USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
+-- Name: factuurmatch factuurmatch_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY factuurmatch_verplaatsing ON boekhouding.factuurmatch USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: iban_accordering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10537,6 +10788,13 @@ ALTER TABLE boekhouding.iban_accordering ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY iban_accordering_scope ON boekhouding.iban_accordering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: iban_accordering iban_accordering_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY iban_accordering_verplaatsing ON boekhouding.iban_accordering USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --
@@ -10745,6 +11003,13 @@ ALTER TABLE boekhouding.materiaalmatch ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY materiaalmatch_scope ON boekhouding.materiaalmatch USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: materiaalmatch materiaalmatch_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY materiaalmatch_verplaatsing ON boekhouding.materiaalmatch USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --
@@ -11146,6 +11411,13 @@ CREATE POLICY regel_gb_classificatie_scope ON boekhouding.regel_gb_classificatie
 
 
 --
+-- Name: regel_gb_classificatie regel_gb_classificatie_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY regel_gb_classificatie_verplaatsing ON boekhouding.regel_gb_classificatie USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: staande_goedkeuring; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -11156,6 +11428,19 @@ ALTER TABLE boekhouding.staande_goedkeuring ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY staande_goedkeuring_scope ON boekhouding.staande_goedkeuring USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: staande_goedkeuring_voorstel_stil; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.staande_goedkeuring_voorstel_stil ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: staande_goedkeuring_voorstel_stil staande_goedkeuring_voorstel_stil_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY staande_goedkeuring_voorstel_stil_scope ON boekhouding.staande_goedkeuring_voorstel_stil USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --
@@ -11342,6 +11627,13 @@ CREATE POLICY verplichting_match_scope ON boekhouding.verplichting_match USING (
 
 
 --
+-- Name: verplichting_match verplichting_match_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY verplichting_match_verplaatsing ON boekhouding.verplichting_match USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: verplichting verplichting_scope; Type: POLICY; Schema: boekhouding; Owner: -
 --
 
@@ -11368,10 +11660,28 @@ CREATE POLICY vraag_bericht_scope ON boekhouding.vraag_bericht USING ((administr
 
 
 --
+-- Name: vraag_bericht vraag_bericht_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY vraag_bericht_verplaatsing ON boekhouding.vraag_bericht USING (((EXISTS ( SELECT 1
+   FROM boekhouding.vraag v
+  WHERE ((v.id = vraag_bericht.vraag_id) AND (v.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((EXISTS ( SELECT 1
+   FROM boekhouding.vraag v
+  WHERE ((v.id = vraag_bericht.vraag_id) AND (v.document_id = platform.verplaatsing_document_id())))) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
 -- Name: vraag vraag_scope; Type: POLICY; Schema: boekhouding; Owner: -
 --
 
 CREATE POLICY vraag_scope ON boekhouding.vraag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: vraag vraag_verplaatsing; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY vraag_verplaatsing ON boekhouding.vraag USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
 
 
 --
@@ -11480,6 +11790,21 @@ ALTER TABLE boekhouding.werkstempel ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY werkstempel_scope ON boekhouding.werkstempel USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: werkvoorraad_teller_cache; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.werkvoorraad_teller_cache ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: werkvoorraad_teller_cache werkvoorraad_teller_cache_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY werkvoorraad_teller_cache_scope ON boekhouding.werkvoorraad_teller_cache USING (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder() OR (EXISTS ( SELECT 1
+   FROM platform.gebruiker_administratie ga
+  WHERE ((ga.gebruiker_id = platform.current_actor_id()) AND (ga.administratie_id = werkvoorraad_teller_cache.administratie_id)))))) WITH CHECK (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder()));
 
 
 --
@@ -11692,6 +12017,33 @@ CREATE POLICY gebruiker_module_rol_lees ON platform.gebruiker_module_rol FOR SEL
 --
 
 CREATE POLICY gebruiker_module_rol_update ON platform.gebruiker_module_rol FOR UPDATE USING ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id()))) WITH CHECK ((platform.actor_is_module_beheerder(module) AND (gebruiker_id IS DISTINCT FROM platform.current_actor_id())));
+
+
+--
+-- Name: groep; Type: ROW SECURITY; Schema: platform; Owner: -
+--
+
+ALTER TABLE platform.groep ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: groep groep_lees; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY groep_lees ON platform.groep FOR SELECT USING (true);
+
+
+--
+-- Name: groep groep_muteren; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY groep_muteren ON platform.groep FOR UPDATE USING (platform.current_actor_is_beheerder()) WITH CHECK (platform.current_actor_is_beheerder());
+
+
+--
+-- Name: groep groep_toevoegen; Type: POLICY; Schema: platform; Owner: -
+--
+
+CREATE POLICY groep_toevoegen ON platform.groep FOR INSERT WITH CHECK (platform.current_actor_is_beheerder());
 
 
 --

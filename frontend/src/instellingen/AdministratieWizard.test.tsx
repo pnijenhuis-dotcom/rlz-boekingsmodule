@@ -14,13 +14,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-function installMock(opties: { aanmaakStatus?: number; syncStatussen?: unknown[]; posts?: { url: string; body: unknown }[] }) {
+function installMock(opties: { aanmaakStatus?: number; syncStatussen?: unknown[]; posts?: { url: string; body: unknown }[]; groepen?: unknown[] }) {
   const syncStatussen = [...(opties.syncStatussen ?? [])]
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null
       if (init?.method === 'POST' || init?.method === 'PUT') opties.posts?.push({ url, body })
+      if (url === '/groepen' && (!init?.method || init.method === 'GET')) {
+        return Promise.resolve(jsonResponse({ groepen: opties.groepen ?? [] }))
+      }
       if (url.endsWith('/verbinding-testen')) {
         if (body?.wachtwoord === 'fout') return Promise.resolve(jsonResponse({ detail: { bericht: 'Reeleezee weigert deze login (HTTP 401) — controleer webservice-gebruiker en wachtwoord', rapporten: {} } }, 422))
         return Promise.resolve(
@@ -121,7 +124,8 @@ describe('AdministratieWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aansluiten \(1\)/ }))
     await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 4 van 4')).toBeInTheDocument())
     const aanmaak = posts.find((p) => p.url.endsWith('/aanmaken'))
-    expect(aanmaak?.body).toEqual({ webservice_username: 'ws_nijenhuis', wachtwoord: 'geheim', rlz_admin_ids: [ADMIN_A] })
+    // Blok 8 run 11-09: het optionele groepskenmerk reist mee — leeg = null (geen groep, geen blokkade).
+    expect(aanmaak?.body).toEqual({ webservice_username: 'ws_nijenhuis', wachtwoord: 'geheim', rlz_admin_ids: [ADMIN_A], groep_id: null })
     // Eerste sync per onderdeel, incl. een zichtbaar mislukt onderdeel.
     await waitFor(() => expect(screen.getByText(/412 nieuw/)).toBeInTheDocument())
     expect(screen.getByText('RlzApiError: 403')).toBeInTheDocument()
@@ -129,6 +133,36 @@ describe('AdministratieWizard', () => {
     expect(screen.getByRole('button', { name: 'Sync opnieuw starten' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
     expect(onAangemaakt).toHaveBeenCalledTimes(1)
+  })
+
+  it('blok 8 (11-09): veld "Groep (optioneel)" op de keuzestap — gekozen groep reist als groep_id mee in het aanmaken', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock({
+      posts,
+      groepen: [
+        { id: 'gggggggg-0000-0000-0000-000000000001', naam: 'Kempen groep', code: 'KEMPENGROEP', actief: true, aantal_administraties: 2 },
+        { id: 'gggggggg-0000-0000-0000-000000000002', naam: 'Oud', code: 'OUD', actief: false, aantal_administraties: 0 },
+      ],
+    })
+    render(<AdministratieWizard open onSluiten={() => undefined} onAangemaakt={() => undefined} />)
+    naarReeleezee()
+    fireEvent.change(screen.getByLabelText('Webservice-gebruiker'), { target: { value: 'ws_nijenhuis' } })
+    fireEvent.change(screen.getByLabelText('Wachtwoord'), { target: { value: 'geheim' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Verbinding testen →' }))
+    const groep = await screen.findByLabelText('Groep (optioneel)')
+    // Alleen actieve groepen kiesbaar; leeg blijft de default (geen blokkade).
+    expect(screen.getByRole('option', { name: '— geen groep —' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Kempen groep' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Oud/ })).not.toBeInTheDocument()
+    fireEvent.change(groep, { target: { value: 'gggggggg-0000-0000-0000-000000000001' } })
+    fireEvent.click(screen.getByRole('button', { name: /Aansluiten \(1\)/ }))
+    await waitFor(() => expect(posts.some((p) => p.url.endsWith('/aanmaken'))).toBe(true))
+    expect(posts.find((p) => p.url.endsWith('/aanmaken'))?.body).toEqual({
+      webservice_username: 'ws_nijenhuis',
+      wachtwoord: 'geheim',
+      rlz_admin_ids: [ADMIN_A],
+      groep_id: 'gggggggg-0000-0000-0000-000000000001',
+    })
   })
 
   it('login geweigerd = duidelijke fout op stap 1 (niets opgeslagen)', async () => {

@@ -245,6 +245,9 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
   const [gevonden, setGevonden] = useState<GevondenAdministratieDto[]>([])
   const [gekozen, setGekozen] = useState<string[]>([])
   const [aangemaakt, setAangemaakt] = useState<AangemaakteAdministratieDto[]>([])
+  // Blok 8 run 11-09: optioneel groepskenmerk voor álle gekozen administraties — leeg = geen groep, nooit een blokkade.
+  const [groepId, setGroepId] = useState<string | null>(null)
+  const { groepen, zet: zetGroepInLijst } = useGroepen(false)
 
   const reset = () => {
     setStap(1)
@@ -258,6 +261,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
     setGevonden([])
     setGekozen([])
     setAangemaakt([])
+    setGroepId(null)
   }
 
   const sluit = () => {
@@ -288,7 +292,7 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
     setFout(null)
     setRapporten(null)
     try {
-      const resp = await maakAdministratiesAan(gebruiker.trim(), wachtwoord, gekozen)
+      const resp = await maakAdministratiesAan(gebruiker.trim(), wachtwoord, gekozen, groepId)
       setAangemaakt(resp.administraties)
       setWachtwoord('') // niet langer nodig in het geheugen van de pagina
       setStap(4)
@@ -420,6 +424,19 @@ export function AdministratieWizard({ open, onSluiten, onAangemaakt }: { open: b
                 </li>
               ))}
             </ul>
+            <FormField label="Groep (optioneel)" htmlFor="wizard-groep">
+              <GroepVeld
+                ariaLabel="Groep (optioneel)"
+                waarde={groepId}
+                groepen={groepen ?? []}
+                uitgeschakeld={bezig}
+                onWijzig={setGroepId}
+                onGroepAangemaakt={zetGroepInLijst}
+              />
+            </FormField>
+            <p className="hint" style={{ marginTop: 0 }}>
+              Kenmerk voor filters (klantenlijst, reconciliatie) — leeg laten mag altijd; later aanpassen via ⚙ › Algemeen.
+            </p>
             {fout && <div className="fout">{fout}</div>}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => { setStap(2); setFout(null); setRapporten(null) }} disabled={bezig}>

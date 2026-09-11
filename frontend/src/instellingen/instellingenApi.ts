@@ -9,6 +9,8 @@ import type {
   AdministratieInstellingenLijstDto,
   BoekenIngeschakeldDto,
   EersteSyncRunDto,
+  GroepDto,
+  GroepenLijstDto,
   IsVastgoedResultaatDto,
   LeverancierAutoboekenDto,
   LeverancierAutoboekenLijstDto,
@@ -313,10 +315,42 @@ export function maakAdministratiesAan(
   webservice_username: string,
   wachtwoord: string,
   rlz_admin_ids: string[],
+  groep_id: string | null = null,
 ): Promise<{ administraties: AangemaakteAdministratieDto[] }> {
+  // Blok 8 run 11-09: optioneel groepskenmerk voor álle gekozen administraties — null = geen groep, nooit een blokkade.
   return apiJson('/instellingen/administraties/aanmaken', {
     ...POST_JSON,
-    body: JSON.stringify({ webservice_username, wachtwoord, rlz_admin_ids }),
+    body: JSON.stringify({ webservice_username, wachtwoord, rlz_admin_ids, groep_id }),
+  })
+}
+
+// --- Groepen (blok 8 run 11-09 middag, migratie 0135) -------------------------------------------------------------
+// Lezen = élke kantoorrol (filter-keuzelijsten); muteren = Beheerder-only; nooit verwijderen (archiveren = actief=false).
+
+export function haalGroepenOp(): Promise<GroepenLijstDto> {
+  // Altijd de volledige lijst (incl. gearchiveerd) — afnemers filteren zelf (useGroepen), zodat een lid van een
+  // gearchiveerde groep zijn groep blijft zien.
+  return apiJson<GroepenLijstDto>('/groepen')
+}
+
+export function maakGroepAan(naam: string, code: string | null): Promise<GroepDto> {
+  return apiJson<GroepDto>('/groepen', { ...POST_JSON, body: JSON.stringify({ naam, code: code || null }) })
+}
+
+export function wijzigGroep(groepId: string, wijziging: { naam?: string; actief?: boolean }): Promise<GroepDto> {
+  return apiJson<GroepDto>(`/groepen/${groepId}`, { ...PUT_JSON, body: JSON.stringify(wijziging) })
+}
+
+export interface AdministratieGroepDto {
+  groep_id: string | null
+  groep_naam: string | null
+  groep_code: string | null
+}
+
+export function zetAdministratieGroep(administratieId: string, groepId: string | null): Promise<AdministratieGroepDto> {
+  return apiJson<AdministratieGroepDto>(`/administraties/${administratieId}/groep`, {
+    ...PUT_JSON,
+    body: JSON.stringify({ groep_id: groepId }),
   })
 }
 

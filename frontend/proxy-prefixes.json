@@ -10,6 +10,7 @@
     "/bank",
     "/crediteuren",
     "/doorbelasting",
+    "/groepen",
     "/health",
     "/instellingen",
     "/intake",
@@ -31,6 +32,7 @@
   ],
   "exacte_paden": [
     "/archief",
+    "/groepen",
     "/health",
     "/verplichtingen",
     "/verzamelbak",

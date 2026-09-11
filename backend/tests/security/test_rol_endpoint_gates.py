@@ -211,6 +211,11 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/mini-voorraad/{aid}/producten/{DUMMY_ID}/dearchiveren"),  # beheerder-only
         ("POST", f"/mini-voorraad/{aid}/beschadigingen"),
         ("PATCH", f"/administraties/{aid}/mini-voorraad"),  # opt-in-toggle (beheerder-only)
+        # Groepskenmerk (blok 8 run 11-09, migratie 0135): lezen = kantoorrol (filter-keuzelijst), muteren Beheerder-only.
+        ("GET", "/groepen"),
+        ("POST", "/groepen"),  # beheerder-only
+        ("PUT", f"/groepen/{DUMMY_ID}"),  # beheerder-only
+        ("PUT", f"/administraties/{aid}/groep"),  # beheerder-only
     ]
 
 
@@ -292,11 +297,6 @@ class TestAccordeurPadenBlijvenOpen:
         )
         assert resp.status_code == 200
 
-
-class TestKantoorBlijftWerken:
-    """Kantoorrollen worden nergens door de nieuwe rolpoort geraakt."""
-
-    def test_kantoor_endpoints_geen_403_rolpoort(self, boekhouder, administratie_id):
     def test_voorstel_uitzondering_accordeur_zelf_200_en_opheffen_204(self, accordeur, administratie_id):
         """Blok 7 (11-09): 'nooit voorstellen' — de accordeur voor zichzelf via vereis_kantoor_of_accordeur (de
         veldrol-weigering zit in de fail-closed sweep)."""
@@ -313,6 +313,11 @@ class TestKantoorBlijftWerken:
         )
         assert resp.status_code == 204, resp.text
 
+
+class TestKantoorBlijftWerken:
+    """Kantoorrollen worden nergens door de nieuwe rolpoort geraakt."""
+
+    def test_kantoor_endpoints_geen_403_rolpoort(self, boekhouder, administratie_id):
         for methode, pad in _kantoor_endpoints(administratie_id):
             if (
                 pad.startswith("/auth/gebruikers")
@@ -333,6 +338,8 @@ class TestKantoorBlijftWerken:
                 or pad == "/reconciliatie/run"
                 or pad.endswith("/mini-voorraad")
                 or ("/mini-voorraad/" in pad and pad.endswith(("/archiveren", "/dearchiveren")))
+                or pad.endswith("/groep")  # blok 8 11-09: groep van een administratie zetten = Beheerder-only
+                or (pad.startswith("/groepen") and methode != "GET")  # blok 8 11-09: groepen muteren = Beheerder-only
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
                 # (materiaalcatalogus schrijven; lezen sinds 06-09 óók mét meerwerk-recht) resp. module-recht

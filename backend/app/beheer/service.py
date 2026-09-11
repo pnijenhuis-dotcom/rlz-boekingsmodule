@@ -196,6 +196,11 @@ class AdministratieInstellingen:
     laatste_sync_op: datetime | None = None
     gearchiveerd_op: datetime | None = None
     gearchiveerd_door_naam: str | None = None
+    # Groepskenmerk (blok 8 run 11-09, migratie 0135): None = geen groep.
+    groep_id: uuid.UUID | None = None
+    groep_naam: str | None = None
+    groep_code: str | None = None
+    groep_actief: bool | None = None
 
 
 def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
@@ -288,6 +293,9 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
     # korte query per rij is prima voor het Beheerder-scherm.
     syncs = {r.id: laatste_run(r.id) for r in rijen}
     doelen = _doorbelasting_doelen([r.id for r in rijen if r.doorbelasting_ingeschakeld])
+    from app.beheer.groepen import groep_per_administratie
+
+    groepen = groep_per_administratie([r.id for r in rijen if r.groep_id])
     return [
         AdministratieInstellingen(
             administratie_id=r.id,
@@ -332,6 +340,10 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             laatste_sync_op=laatste_sync.get(r.id),
             gearchiveerd_op=r.gearchiveerd_op,
             gearchiveerd_door_naam=namen.get(r.gearchiveerd_door) if r.gearchiveerd_door else None,
+            groep_id=r.groep_id,
+            groep_naam=groepen[r.id].naam if r.id in groepen else None,
+            groep_code=groepen[r.id].code if r.id in groepen else None,
+            groep_actief=groepen[r.id].actief if r.id in groepen else None,
         )
         for r in rijen
     ]

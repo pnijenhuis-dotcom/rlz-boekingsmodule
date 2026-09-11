@@ -185,6 +185,12 @@ class AdministratieInstellingenDto(BaseModel):
     laatste_sync_op: datetime | None = None
     gearchiveerd_op: datetime | None = None
     gearchiveerd_door_naam: str | None = None
+    # Groepskenmerk (blok 8 run 11-09, migratie 0135): chip + filter in de tabel, veld op tab Algemeen. None = geen
+    # groep; `groep_actief=false` = de groep is gearchiveerd (lid blijft lid, chip toont "(gearchiveerd)").
+    groep_id: uuid.UUID | None = None
+    groep_naam: str | None = None
+    groep_code: str | None = None
+    groep_actief: bool | None = None
 
 
 class AdministratieInstellingenLijstDto(BaseModel):
@@ -222,6 +228,42 @@ class VerbindingTestDto(BaseModel):
 
 class AdministratiesAanmakenDto(WebserviceGegevensDto):
     rlz_admin_ids: list[str] = Field(min_length=1)
+    # Blok 8 run 11-09: optioneel groepskenmerk voor álle gekozen administraties — leeg = geen groep, nooit een blokkade.
+    groep_id: uuid.UUID | None = None
+
+
+# --- Groepen (blok 8 run 11-09 middag, migratie 0135) -------------------------------------------------------------
+
+
+class GroepDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+    code: str
+    actief: bool
+    aantal_administraties: int = 0
+
+
+class GroepenLijstDto(BaseModel):
+    groepen: list[GroepDto]
+
+
+class GroepAanmakenDto(BaseModel):
+    naam: str = Field(min_length=1, max_length=80)
+    #: Leeg = code-voorstel uit de naam (server-side `groepen.code_voorstel`, zelfde regel als de UI).
+    code: str | None = Field(default=None, max_length=12)
+
+
+class GroepWijzigenDto(BaseModel):
+    naam: str | None = Field(default=None, min_length=1, max_length=80)
+    actief: bool | None = None
+
+
+class AdministratieGroepDto(BaseModel):
+    """PUT-body én antwoord: null = geen groep."""
+
+    groep_id: uuid.UUID | None = None
+    groep_naam: str | None = None
+    groep_code: str | None = None
 
 
 class AangemaakteAdministratieDto(BaseModel):
@@ -240,11 +282,15 @@ class AdministratiesAangemaaktDto(BaseModel):
 
 class EersteSyncRunDto(BaseModel):
     run_id: uuid.UUID | None
+    #: geen | wachtrij | bezig | klaar | fout | rechten_onderweg (blok 3 run 11-09: 403 op een probe-groene route wordt
+    #: herprobeerd — 5/15/60 min, daarna elk uur, max 24 u; `volgende_poging_op` + `pogingen` additief).
     status: str
     onderdelen: dict[str, dict] | None = None
     aangevraagd_op: datetime | None = None
     beeindigd_op: datetime | None = None
     fout_reden: str | None = None
+    pogingen: int = 0
+    volgende_poging_op: datetime | None = None
 
 
 # Forward-ref: AdministratieInstellingenDto verwijst naar EersteSyncRunDto dat hieronder staat.
@@ -282,13 +328,9 @@ class MedewerkerDto(BaseModel):
 class MedewerkersLijstDto(BaseModel):
     medewerkers: list[MedewerkerDto]
 
-    #: geen | wachtrij | bezig | klaar | fout | rechten_onderweg (blok 3 run 11-09: 403 op een probe-groene route wordt
-    #: herprobeerd — 5/15/60 min, daarna elk uur, max 24 u; `volgende_poging_op` + `pogingen` additief).
 
 class EigenaarDto(StrikteInvoer):
     """Mockup Instellingen "Eigenaar (krijgt vragen)": default-toewijzing voor nieuwe vragen.
     None = geen eigenaar (vraag stellen vereist dan een expliciete toewijzing)."""
 
-    pogingen: int = 0
-    volgende_poging_op: datetime | None = None
     eigenaar_gebruiker_id: uuid.UUID | None = None

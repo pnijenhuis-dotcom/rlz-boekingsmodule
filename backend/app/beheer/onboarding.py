@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -193,6 +193,21 @@ def test_verbinding(
     ]
 
 
+def _groep_code_voor(groep_id: uuid.UUID | None) -> str | None:
+    """Wizard-veld Groep (blok 8): None = geen groep; onbekend/gearchiveerd = OnboardingFout (422, niets opgeslagen)."""
+    if groep_id is None:
+        return None
+    from app.beheer import groepen
+
+    try:
+        info = groepen.haal_groep_op(groep_id)
+    except groepen.GroepOnbekend as exc:
+        raise OnboardingFout("Onbekende groep — kies een bestaande groep of laat het veld leeg") from exc
+    if not info.actief:
+        raise OnboardingFout(f"Groep {info.naam} is gearchiveerd — kies een actieve groep of laat het veld leeg")
+    return info.code
+
+
 def maak_administraties_aan(
     *,
     actor_id: uuid.UUID,
@@ -202,6 +217,7 @@ def maak_administraties_aan(
     client: RlzClient | None = None,
     start_sync: bool = True,
     herprobe_client: RlzClient | None = None,
+    groep_id: uuid.UUID | None = None,
 ) -> list[AangemaakteAdministratie]:
     """Stap b+d: admin-pin → probe per administratie met de INVOER (alles groen of niets opslaan) → herprobe per
     administratie met de OPGESLAGEN vorm van de login (blok C 10-09: wrap → unwrap → verse client, exact de
@@ -210,6 +226,9 @@ def maak_administraties_aan(
     `client`/`herprobe_client` zijn testseams; zonder `herprobe_client` hergebruikt een test-`client` zichzelf."""
     if not rlz_admin_ids:
         raise OnboardingFout("Kies minstens één administratie")
+    # Blok 8 run 11-09: optioneel groepskenmerk — leeg = geen groep (nooit een blokkade); een onbekende of
+    # gearchiveerde groep is wél een zichtbare fout, vóór er ook maar één RLZ-call gedaan is.
+    groep_code = _groep_code_voor(groep_id)
     gekozen = list(dict.fromkeys(rlz_admin_ids))
     aangesloten = _aangesloten_ids()
     al = [rlz_id for rlz_id in gekozen if rlz_id in aangesloten]
@@ -278,6 +297,7 @@ def maak_administraties_aan(
                     rlz_admin_id=rlz_id,
                     boeken_ingeschakeld=True,
                     ai_extractie_ingeschakeld=True,
+                    groep_id=groep_id,
                 )
             )
             session.add(
@@ -300,7 +320,13 @@ def maak_administraties_aan(
                 correlatie_id=uuid.uuid4(),
                 # Platform-niveau-event (geen administratie-scope in de sessie): record_id ís de
                 # administratie; audit_event-RLS laat administratie_id hier leeg.
-                nieuwe_waarde={"naam": naam, "rlz_admin_id": rlz_id, "bron": "wizard"},
+                nieuwe_waarde={
+                    "naam": naam,
+                    "rlz_admin_id": rlz_id,
+                    "bron": "wizard",
+                    "groep_id": str(groep_id) if groep_id else None,
+                    "groep_code": groep_code,
+                },
             )
             record_audit_event(
                 session,

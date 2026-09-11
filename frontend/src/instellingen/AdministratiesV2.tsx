@@ -15,6 +15,8 @@ import { ArchiveerDialog } from './ArchiveerDialog'
 import { isRechtenOnderweg, rechtenOnderwegTekst, rechtenOnderwegTooltip } from './eersteSyncStand'
 import { BulkBediening } from './BulkBediening'
 import { AUTOBOEKEN_LEREN_NIET_TOEGESTAAN_TEKST, dearchiveerAdministratie } from './instellingenApi'
+import { GroepenBeheer } from './GroepenBeheer'
+import { groepLabel, useGroepen } from './groepen'
 import { koppelFoutTekst, ProbeRapport } from './KoppelingDialogen'
 import { detailPad } from './instellingenRegistry'
 
@@ -69,6 +71,13 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
     })
   else if (a.odoo_alleen_lezen)
     chips.push({ tekst: 'Odoo · leesbron', variant: 'paars', titel: 'Reeleezee blijft de backend; Odoo levert alleen-lezen de voorraad-uitstroom vanaf de knipdatum' })
+  // Groepskenmerk (blok 8 run 11-09, migratie 0135): direct ná de platform-herkomst — een kenmerk, geen module/status.
+  if (a.groep_naam)
+    chips.push({
+      tekst: `groep: ${a.groep_naam}${a.groep_actief === false ? ' (gearchiveerd)' : ''}`,
+      variant: 'stil',
+      titel: `Groep ${a.groep_naam}${a.groep_code ? ` (${a.groep_code})` : ''} — filter op klantenlijst en reconciliatie${a.groep_actief === false ? '; de groep is gearchiveerd, deze administratie blijft lid' : ''}`,
+    })
   if (a.is_vastgoed) chips.push({ tekst: 'Vastgoed + autoboeken', variant: 'info', titel: 'Vastgoed-koppeling (Vastly) — autoboeken verkoop volgt de koppeling' })
   if (a.afgeletterd_event_ingeschakeld) chips.push({ tekst: 'afgeletterd-events', variant: 'info' })
   if (a.doorbelasting_ingeschakeld) chips.push({ tekst: 'Doorbelasting', variant: 'info' })
@@ -143,6 +152,14 @@ function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
       </Badge>
     )
   }
+  if (isRechtenOnderweg(a.eerste_sync)) {
+    // Blok 3 run 11-09: geen fout — RLZ zet de rechten nog door, het systeem herprobeert zelf (tooltip = RLZ-antwoord).
+    return (
+      <Badge variant="info" title={rechtenOnderwegTooltip(a.eerste_sync)} data-testid="sync-chip-rechten-onderweg">
+        ⏳ {rechtenOnderwegTekst(a.eerste_sync)}
+      </Badge>
+    )
+  }
   if (a.eerste_sync && (a.eerste_sync.status === 'bezig' || a.eerste_sync.status === 'wachtrij')) {
     return <Badge variant="stil">sync bezig…</Badge>
   }
@@ -152,14 +169,6 @@ function SyncChip({ a }: { a: AdministratieInstellingenDto }) {
       <Badge variant="ok" title={`laatste sync ${new Date(a.laatste_sync_op).toLocaleString('nl-NL')}`}>
         ✓ {tijd(a.laatste_sync_op)}
       </Badge>
-  if (isRechtenOnderweg(a.eerste_sync)) {
-    // Blok 3 run 11-09: geen fout — RLZ zet de rechten nog door, het systeem herprobeert zelf (tooltip = RLZ-antwoord).
-    return (
-      <Badge variant="info" title={rechtenOnderwegTooltip(a.eerste_sync)} data-testid="sync-chip-rechten-onderweg">
-        ⏳ {rechtenOnderwegTekst(a.eerste_sync)}
-      </Badge>
-    )
-  }
     )
   }
   return <Badge variant="stil">nog niet gesynct</Badge>
@@ -176,10 +185,16 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
   const [melding, setMelding] = useState<string | null>(null)
   const [wsGebruiker, setWsGebruiker] = useState('')
   const [wsWachtwoord, setWsWachtwoord] = useState('')
+  // Groepskenmerk (blok 8 run 11-09): filter "Groep" boven de tabel (alleen zichtbaar zodra er groepen zijn) + het blok
+  // Groepen (hernoemen/archiveren). De filterwaarde leeft lokaal — dit is een Beheerder-scherm, geen deeplink-doel.
+  const { groepen, herlaad: herlaadGroepen } = useGroepen(true)
+  const [groepFilter, setGroepFilter] = useState<string>('')
 
   const actieve = administraties.filter((a) => !a.gearchiveerd_op)
   const gearchiveerd = administraties.filter((a) => a.gearchiveerd_op)
-  const rijen = toonGearchiveerd ? gearchiveerd : actieve
+  const inGroep = (a: AdministratieInstellingenDto) =>
+    groepFilter === '' || (groepFilter === '__geen__' ? !a.groep_id : a.groep_id === groepFilter)
+  const rijen = (toonGearchiveerd ? gearchiveerd : actieve).filter(inGroep)
   const dearchiveer = async () => {
     if (!dearchiveerVoor) return
     setBezig(true)
@@ -217,7 +232,35 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
             {toonGearchiveerd ? '← actieve administraties' : `gearchiveerd (${gearchiveerd.length})`}
           </button>
         )}
+        {groepen && groepen.length > 0 && (
+          <select
+            aria-label="Groep"
+            data-testid="administraties-groep-filter"
+            value={groepFilter}
+            onChange={(e) => setGroepFilter(e.target.value)}
+            style={{ width: 'auto', marginLeft: 'auto' }}
+          >
+            <option value="">Groep: alle</option>
+            <option value="__geen__">Groep: zonder groep</option>
+            {groepen.map((g) => (
+              <option key={g.id} value={g.id}>
+                Groep: {groepLabel(g)} ({g.aantal_administraties})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
+      {groepen !== null && (
+        <div style={{ marginBottom: 8 }}>
+          <GroepenBeheer
+            groepen={groepen}
+            onGewijzigd={() => {
+              herlaadGroepen()
+              onHerlaad()
+            }}
+          />
+        </div>
+      )}
       {!toonGearchiveerd && (
         <BulkBediening administraties={actieve} geselecteerd={selectie} onWisSelectie={() => setSelectie(() => [])} onGereed={onHerlaad} />
       )}
@@ -321,7 +364,11 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
             {rijen.length === 0 && (
               <tr>
                 <td colSpan={5} className="hint">
-                  {toonGearchiveerd ? 'Geen gearchiveerde administraties.' : 'Geen actieve administraties.'}
+                  {groepFilter !== ''
+                    ? 'Geen administraties in deze groep.'
+                    : toonGearchiveerd
+                      ? 'Geen gearchiveerde administraties.'
+                      : 'Geen actieve administraties.'}
                 </td>
               </tr>
             )}

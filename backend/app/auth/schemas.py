@@ -314,6 +314,9 @@ class AdministratieResponse(BaseModel):
     # veldwerker-dialogen zonder picker-poort een standaard-administratie kunnen kiezen
     # (regel 3: de administratie mét opt-in — nooit hardcoded Universal).
     uren_meerwerk_ingeschakeld: bool = False
+    # Blok 8 run 11-09 (additief): groepskenmerk — zichtbaar voor iedereen met scope (filter-chip in de kantoor-UI).
+    groep_id: uuid.UUID | None = None
+    groep_naam: str | None = None
 
 
 class MijnAdministratiesResponse(BaseModel):

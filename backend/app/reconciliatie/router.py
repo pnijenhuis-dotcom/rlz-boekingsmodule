@@ -73,14 +73,21 @@ def reconciliatie_bevindingen(
     q: str = Query(""),
     administratie_id: uuid.UUID | None = Query(None),
     soort: str = Query("aandacht"),
+    groep_id: uuid.UUID | None = Query(None),
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.BevindingenLijstDto:
     """Bevindingen van de laatste afgeronde run over de administraties in scope, urgentste bovenaan;
     soort = facet (aandacht | afwijking | let_op | fout | geaccepteerd | uitgesloten | gezien | alle),
-    administratie = facet, q = tekst/administratie; paginering 25."""
+    administratie = facet, groep = facet (blok 8 run 11-09), q = tekst/administratie; paginering 25."""
     try:
         lijst = kantoorbreed.lijst(
-            actor_id=actor.id, rol=actor.rol, pagina=pagina, q=q, administratie_id=administratie_id, soort=soort
+            actor_id=actor.id,
+            rol=actor.rol,
+            pagina=pagina,
+            q=q,
+            administratie_id=administratie_id,
+            soort=soort,
+            groep_id=groep_id,
         )
     except kantoorbreed.ReconciliatieFout as exc:
         raise _vertaal(exc) from exc

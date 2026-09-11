@@ -117,6 +117,45 @@ def run_met_bevindingen(administratie_id, tweede_administratie, gescoopte_gebrui
     return afwijkingen
 
 
+class TestGroepFilter:
+    """Blok 8 run 11-09 (migratie 0135): `groep_id` = één filter meer op de administratie-set (Kernprincipe 7)."""
+
+    def test_groep_id_beperkt_bevindingen_facetten_en_tellers_tot_de_leden(
+        self, run_met_bevindingen, administratie_id, tweede_administratie, beheerder_id
+    ) -> None:
+        from app.beheer import groepen
+
+        g = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=tweede_administratie, groep_id=g.id)
+        bh = _bearer(beheerder_id, rol="beheerder")
+
+        alles = client.get("/reconciliatie/bevindingen", params={"soort": "alle"}, headers=bh).json()
+        # Relatief getoetst (platformbrede LET-OP-regels van andere blokken kunnen meetellen): de leden-rijen van de
+        # ongefilterde lijst zijn exact wat het groepsfilter oplevert; platformbrede rijen (administratie_id None)
+        # vallen buiten élk groepsfilter.
+        van_lid = [r for r in alles["rijen"] if r["administratie_id"] == str(tweede_administratie)]
+        assert len(van_lid) == 1 and alles["administraties_in_selectie"] >= 2
+
+        d = client.get("/reconciliatie/bevindingen", params={"groep_id": str(g.id), "soort": "alle"}, headers=bh).json()
+        assert d["totaal"] == 1 and d["administraties_in_selectie"] == 1
+        assert [r["id"] for r in d["rijen"]] == [r["id"] for r in van_lid]
+        assert {r["administratie_id"] for r in d["rijen"]} == {str(tweede_administratie)}
+        assert [f["administratie_id"] for f in d["facetten"]["administraties"]] == [str(tweede_administratie)]
+        assert d["tellers"]["afwijkingen"] == 1 and d["tellers"]["let_op"] == 0
+
+        # Onbekende groep = lege lijst, geen fout; groep + administratie buiten de groep = leeg.
+        leeg = client.get(
+            "/reconciliatie/bevindingen", params={"groep_id": str(uuid.uuid4()), "soort": "alle"}, headers=bh
+        )
+        assert leeg.status_code == 200 and leeg.json()["totaal"] == 0
+        kruis = client.get(
+            "/reconciliatie/bevindingen",
+            params={"groep_id": str(g.id), "administratie_id": str(administratie_id)},
+            headers=bh,
+        ).json()
+        assert kruis["totaal"] == 0
+
+
 class TestLijstEnScope:
     def test_beheerder_ziet_alles_boekhouder_alleen_eigen_scope(
         self, run_met_bevindingen, administratie_id, tweede_administratie, gescoopte_gebruiker, beheerder_id

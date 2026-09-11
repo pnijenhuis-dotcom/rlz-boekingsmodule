@@ -115,3 +115,19 @@ describe('syncFoutTooltip — rij-chip "sync-fout" (nachtrun 10/11-09 blok 1)', 
     expect(syncFoutTooltip(null)).toBe('eerste sync mislukt')
   })
 })
+
+
+describe('chipsVoor — groepskenmerk (blok 8 run 11-09)', () => {
+  it('lid van een groep = stille chip "groep: <naam>" mét code in de titel; zonder groep geen chip', () => {
+    const chips = chipsVoor(administratie({ groep_id: 'g1', groep_naam: 'Kempen groep', groep_code: 'KEMPENGROEP', groep_actief: true }))
+    const chip = chips.find((c) => c.tekst === 'groep: Kempen groep')
+    expect(chip?.variant).toBe('stil')
+    expect(chip?.titel).toContain('KEMPENGROEP')
+    expect(chipsVoor(administratie()).some((c) => c.tekst.startsWith('groep:'))).toBe(false)
+  })
+
+  it('gearchiveerde groep: lid blijft lid, chip zegt het', () => {
+    const chips = chipsVoor(administratie({ groep_id: 'g1', groep_naam: 'Kempen groep', groep_code: 'KEMPENGROEP', groep_actief: false }))
+    expect(chips.map((c) => c.tekst)).toContain('groep: Kempen groep (gearchiveerd)')
+  })
+})

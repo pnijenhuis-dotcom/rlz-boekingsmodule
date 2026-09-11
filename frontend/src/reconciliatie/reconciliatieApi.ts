@@ -166,12 +166,15 @@ export function haalBevindingen(params: {
   q?: string
   administratieId?: string | null
   soort?: SoortFacet
+  /** Blok 8 run 11-09: groepskenmerk als extra filter op de administratie-set (server-side `groep_id`). */
+  groepId?: string | null
 }): Promise<BevindingenLijstDto> {
   const p = new URLSearchParams()
   p.set('pagina', String(params.pagina))
   p.set('soort', params.soort ?? 'aandacht')
   if (params.q) p.set('q', params.q)
   if (params.administratieId) p.set('administratie_id', params.administratieId)
+  if (params.groepId) p.set('groep_id', params.groepId)
   return apiJson(`/reconciliatie/bevindingen?${p.toString()}`)
 }
 

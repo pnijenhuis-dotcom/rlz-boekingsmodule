@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
-from app.beheer import btw_default, schemas, service
+from app.beheer import btw_default, groepen, schemas, service
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
@@ -71,6 +71,10 @@ def administratie_instellingen_lijst(
                 laatste_sync_op=r.laatste_sync_op,
                 gearchiveerd_op=r.gearchiveerd_op,
                 gearchiveerd_door_naam=r.gearchiveerd_door_naam,
+                groep_id=r.groep_id,
+                groep_naam=r.groep_naam,
+                groep_code=r.groep_code,
+                groep_actief=r.groep_actief,
             )
             for r in overzicht
         ]
@@ -186,6 +190,7 @@ def administraties_aanmaken(
             webservice_username=invoer.webservice_username,
             wachtwoord=invoer.wachtwoord,
             rlz_admin_ids=invoer.rlz_admin_ids,
+            groep_id=invoer.groep_id,
         )
     except onboarding.OnboardingFout as exc:
         raise _onboarding_fout(exc) from exc
@@ -212,13 +217,13 @@ def _eerste_sync_dto(info) -> schemas.EersteSyncRunDto:
         aangevraagd_op=info.aangevraagd_op,
         beeindigd_op=info.beeindigd_op,
         fout_reden=info.fout_reden,
+        pogingen=getattr(info, "pogingen", 0) or 0,
+        volgende_poging_op=getattr(info, "volgende_poging_op", None),
     )
 
 
 @router.post(
     "/instellingen/administraties/{administratie_id}/eerste-sync",
-        pogingen=getattr(info, "pogingen", 0) or 0,
-        volgende_poging_op=getattr(info, "volgende_poging_op", None),
     response_model=schemas.EersteSyncRunDto,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -980,3 +985,80 @@ def verlegd_voorkeur_zetten(
     except btw_default.BtwDefaultOnbekendTarief as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return btw_default.naar_dto(stand)
+
+
+# --- Groepen (blok 8 run 11-09 middag, opdracht Peter 11-09, migratie 0135) -----------------------------------------
+# Lezen = élke kantoorrol (filter-keuzelijst op klantenlijst/reconciliatie); muteren = Beheerder-only, net als de
+# andere administratie-instellingen. Nooit verwijderen: archiveren = actief=false.
+
+
+def _groep_dto(g: groepen.GroepInfo) -> schemas.GroepDto:
+    return schemas.GroepDto(
+        id=g.id, naam=g.naam, code=g.code, actief=g.actief, aantal_administraties=g.aantal_administraties
+    )
+
+
+def _groep_fout(exc: groepen.GroepFout) -> HTTPException:
+    if isinstance(exc, groepen.GroepOnbekend):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, groepen.GroepOngeldig):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@router.get("/groepen", response_model=schemas.GroepenLijstDto)
+def groepen_lijst(
+    inclusief_gearchiveerd: bool = True, actor: CurrentGebruiker = Depends(vereis_kantoorrol)
+) -> schemas.GroepenLijstDto:
+    """Alle groepen mét ledental — voor de filter-keuzelijsten (klantenlijst, Inzicht › Reconciliatie) en het blok
+    "Groepen" op Instellingen › Administraties. Kantoorrol volstaat: een groep is een filter, geen gevoelige
+    instelling."""
+    return schemas.GroepenLijstDto(
+        groepen=[_groep_dto(g) for g in groepen.lijst_groepen(inclusief_gearchiveerd=inclusief_gearchiveerd)]
+    )
+
+
+@router.post("/groepen", response_model=schemas.GroepDto, status_code=status.HTTP_201_CREATED)
+def groep_aanmaken(
+    invoer: schemas.GroepAanmakenDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.GroepDto:
+    """Nieuwe groep (ook inline vanuit het veld "Groep" op de detailpagina/wizard): naam verplicht, code leeg =
+    voorstel uit de naam; code bezet = 409, ongeldige code = 422. Audit `groep_aangemaakt`."""
+    try:
+        return _groep_dto(groepen.maak_groep(actor_id=actor.id, naam=invoer.naam, code=invoer.code))
+    except groepen.GroepFout as exc:
+        raise _groep_fout(exc) from exc
+
+
+@router.put("/groepen/{groep_id}", response_model=schemas.GroepDto)
+def groep_wijzigen(
+    groep_id: uuid.UUID, invoer: schemas.GroepWijzigenDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.GroepDto:
+    """Hernoemen / archiveren (actief=false) / heractiveren — nooit verwijderen. Audit `groep_gewijzigd` oud→nieuw."""
+    try:
+        return _groep_dto(
+            groepen.wijzig_groep(actor_id=actor.id, groep_id=groep_id, naam=invoer.naam, actief=invoer.actief)
+        )
+    except groepen.GroepFout as exc:
+        raise _groep_fout(exc) from exc
+
+
+@router.put("/administraties/{administratie_id}/groep", response_model=schemas.AdministratieGroepDto)
+def administratie_groep_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.AdministratieGroepDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AdministratieGroepDto:
+    """Veld "Groep" op Instellingen › Administraties › ‹administratie› › Algemeen — Beheerder-only; null = geen
+    groep; gearchiveerde groep = 409; onbekende groep = 404. Audit `administratie_groep_gewijzigd` oud→nieuw."""
+    try:
+        g = groepen.zet_administratie_groep(
+            actor_id=actor.id, administratie_id=administratie_id, groep_id=invoer.groep_id
+        )
+    except groepen.GroepFout as exc:
+        raise _groep_fout(exc) from exc
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if g is None:
+        return schemas.AdministratieGroepDto()
+    return schemas.AdministratieGroepDto(groep_id=g.id, groep_naam=g.naam, groep_code=g.code)

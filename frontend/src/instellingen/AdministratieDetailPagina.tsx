@@ -22,6 +22,7 @@ import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './ProjectverdelingInstellingen'
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
 import { RlzCheck } from './RlzCheck'
+import { GroepRij } from './GroepRij'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
 interface Props {
@@ -264,6 +265,9 @@ export function AdministratieDetailPagina({
               }
             />
           </InstellingRij>
+          {/* Groepskenmerk (blok 8 run 11-09, migratie 0135): keuzelijst + inline "Nieuwe groep…", eigen PUT + audit;
+              `key` op de groep zodat een herlaad van de lijst de rij synchroon houdt. */}
+          <GroepRij key={a.groep_id ?? 'geen'} administratie={a} onGewijzigd={onHerlaad} />
           <InstellingRij titel="IBAN-accordeurs" uitleg="Vier-ogen-flow bij een IBAN-wissel van een crediteur.">
             <IbanAccordeursCell
               administratie={a}

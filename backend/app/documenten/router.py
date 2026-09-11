@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
-
 from sqlalchemy.exc import DBAPIError
+
 from app.auth import service as auth_service
 from app.auth.deps import (
     CurrentGebruiker,
@@ -18,8 +19,8 @@ from app.auth.deps import (
     vereis_kantoorrol,
 )
 from app.config import settings
-from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.db import rls_weigering
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import (
     afwijzen,
     boeken,
@@ -48,9 +49,9 @@ from app.rlz.credentials import GeenRlzCredentials
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
 # administratie-scope. Eén uitzondering leeft in `bestand_router` hieronder: het
 # PDF-bestand-endpoint, dat de accordeur-PWA zelf nodig heeft (factuurbeeld centraal).
-router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)])
 _logger = logging.getLogger(__name__)
 
+router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)])
 
 # Aparte router zonder de kantoor-poort: alleen /bestand, met de eigen kantoor-óf-accordeur-poort
 # (veldrollen 403 — hun projectdocument-leesroute is /uren/projectdocumenten, vereis_veldrol).
@@ -389,12 +390,15 @@ async def document_uploaden(
 
 @router.get("/werkvoorraad/overzicht", response_model=schemas.WerkvoorraadOverzichtResponse)
 def werkvoorraad_overzicht(
+    groep_id: uuid.UUID | None = None,
     actor: CurrentGebruiker = Depends(get_current_gebruiker),
 ) -> schemas.WerkvoorraadOverzichtResponse:
     """Werkvoorraad-klantenlijst met tellers (mockup #werkvoorraad "Overzicht per klant") —
     uitsluitend administraties binnen de scope van de gebruiker (zelfde bron als
     GET /auth/administraties; zelfde patroon als GET /bank/overzicht). Alle administraties komen
-    mee; de frontend toont alleen klanten mét openstaand werk en vermeldt het aantal verborgen."""
+    mee; de frontend toont alleen klanten mét openstaand werk en vermeldt het aantal verborgen.
+    `groep_id` (blok 8 run 11-09, migratie 0135): filter op het groepskenmerk — administratie is een filter
+    (Kernprincipe 7), dit is er één meer; onbekende groep = lege lijst, geen fout."""
     administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
     if groep_id is not None:
         from app.beheer.groepen import administratie_ids_in_groep
@@ -422,11 +426,11 @@ def werkvoorraad_overzicht(
                 voorraad_verschillen=k.voorraad_verschillen,
                 buiten_offerte=k.buiten_offerte,
                 planning_signalen=k.planning_signalen,
+                spiegel_taken=k.spiegel_taken,
             )
             for k in klanten
         ]
     )
-                spiegel_taken=k.spiegel_taken,
 
 
 @router.get(
@@ -887,19 +891,6 @@ def document_verplaatsen(
         ) from exc
     except verplaatsen.VerplaatsenNietToegestaan as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return schemas.DocumentVerplaatsResponse(
-        document_id=resultaat.document_id,
-        status=resultaat.status.value,
-        van_administratie_id=resultaat.van_administratie_id,
-        van_administratie_naam=resultaat.van_administratie_naam,
-        naar_administratie_id=resultaat.naar_administratie_id,
-        naar_administratie_naam=resultaat.naar_administratie_naam,
-        leerregels_gecorrigeerd=list(resultaat.leerregels_gecorrigeerd),
-        vragen_verhuisd=resultaat.vragen_verhuisd,
-        vragen_hertoegewezen=resultaat.vragen_hertoegewezen,
-        tenaamstelling_geleerd=resultaat.tenaamstelling_geleerd,
-    )
-
     except DBAPIError as exc:
         # Blok 1 run 11-09: een RLS-weigering in de DB-functie (productie 11-09, 0080 op Cloud SQL) is een
         # systeemfout, geen handeling voor de gebruiker — leesbare 500 mét code, en het systeem meldt zichzelf
@@ -927,6 +918,19 @@ def document_verplaatsen(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Verplaatsen is mislukt — automatisch gemeld (code {correlatie_id}).",
         ) from exc
+    return schemas.DocumentVerplaatsResponse(
+        document_id=resultaat.document_id,
+        status=resultaat.status.value,
+        van_administratie_id=resultaat.van_administratie_id,
+        van_administratie_naam=resultaat.van_administratie_naam,
+        naar_administratie_id=resultaat.naar_administratie_id,
+        naar_administratie_naam=resultaat.naar_administratie_naam,
+        leerregels_gecorrigeerd=list(resultaat.leerregels_gecorrigeerd),
+        vragen_verhuisd=resultaat.vragen_verhuisd,
+        vragen_hertoegewezen=resultaat.vragen_hertoegewezen,
+        tenaamstelling_geleerd=resultaat.tenaamstelling_geleerd,
+    )
+
 
 @router.get(
     "/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",

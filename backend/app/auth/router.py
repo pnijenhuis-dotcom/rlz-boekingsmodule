@@ -405,9 +405,19 @@ def logout_overal(
 @router.get("/administraties", response_model=schemas.MijnAdministratiesResponse)
 def mijn_administraties(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> schemas.MijnAdministratiesResponse:
     administraties = service.mijn_administraties(actor_id=actor.id, rol=actor.rol)
+    # Blok 8 run 11-09 (additief): groepsnaam per administratie — één query, alleen voor leden van een groep.
+    from app.beheer.groepen import groep_per_administratie
+
+    groepen = groep_per_administratie([a.id for a in administraties if a.groep_id])
     return schemas.MijnAdministratiesResponse(
         administraties=[
-            schemas.AdministratieResponse(id=a.id, naam=a.naam, uren_meerwerk_ingeschakeld=a.uren_meerwerk_ingeschakeld)
+            schemas.AdministratieResponse(
+                id=a.id,
+                naam=a.naam,
+                uren_meerwerk_ingeschakeld=a.uren_meerwerk_ingeschakeld,
+                groep_id=a.groep_id,
+                groep_naam=groepen[a.id].naam if a.id in groepen else None,
+            )
             for a in administraties
         ]
     )

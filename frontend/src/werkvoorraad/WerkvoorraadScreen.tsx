@@ -15,6 +15,7 @@ import { VragenScreen } from '../vragen/VragenScreen'
 import { DocumentenDeelscherm } from './DocumentenDeelscherm'
 import { FilterWeergave, type WerkvoorraadFilter } from './FilterWeergave'
 import { Klantenlijst } from './Klantenlijst'
+import { GroepFilter } from '../ui/GroepFilter'
 import { KlantStanden } from './KlantStanden'
 import { KpiRij } from './KpiRij'
 import { UploadZone } from './UploadZone'
@@ -116,7 +117,17 @@ function WerkvoorraadIngang({
   filter: string | null
 }) {
   const navigate = useNavigate()
-  const { klanten, openVragen, fout, herlaad } = useWerkvoorraadData(administraties)
+  // Blok 8 run 11-09: groepskenmerk als filter op de klantenlijst (deeplink `?groep=<id>`) — server-side `groep_id`;
+  // de KPI-rij telt over dezelfde (gefilterde) rijen, zodat kaart en lijst nooit uiteenlopen.
+  const [zoekParams, setZoekParams] = useSearchParams()
+  const groepId = zoekParams.get('groep') ?? null
+  const zetGroep = (id: string | null) => {
+    const p = new URLSearchParams(zoekParams)
+    if (id) p.set('groep', id)
+    else p.delete('groep')
+    setZoekParams(p, { replace: true })
+  }
+  const { klanten, openVragen, fout, herlaad } = useWerkvoorraadData(administraties, groepId)
   // Hersleutel voor het verzamelbak-paneel: ophogen forceert een refetch (na .eml-upload).
   const [verzamelbakVersie, setVerzamelbakVersie] = useState(0)
   // Crediteur-dubbelen (v2 03-09, ontwerpnotitie ⑧): kantoorbrede teller uit dezelfde bron als Inzicht ›
@@ -295,7 +306,13 @@ function WerkvoorraadIngang({
 
       <VerzamelbakPaneel key={verzamelbakVersie} administraties={administraties} onGewijzigd={herlaad} />
 
-      <Klantenlijst klanten={klanten} fout={fout} onHerlaad={herlaad} totaalAdministraties={administraties.length} />
+      <Klantenlijst
+        klanten={klanten}
+        fout={fout}
+        onHerlaad={herlaad}
+        totaalAdministraties={administraties.length}
+        groepFilter={<GroepFilter waarde={groepId} onWijzig={zetGroep} />}
+      />
     </div>
   )
 }

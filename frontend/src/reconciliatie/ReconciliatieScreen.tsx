@@ -12,6 +12,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
+import { GroepFilter } from '../ui/GroepFilter'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   Badge,
@@ -96,6 +97,8 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
   const toast = useToastOptioneel()
   const [zoekParams, setZoekParams] = useSearchParams()
   const administratieId = zoekParams.get('administratie_id') ?? zoekParams.get('administratie') ?? ''
+  // Blok 8 run 11-09: groepskenmerk als filter (deeplink `?groep_id=`), naast administratie en soort.
+  const groepId = zoekParams.get('groep_id') ?? ''
   const soortParam = zoekParams.get('soort')
   const soort: SoortFacet = isSoortFacet(soortParam) ? soortParam : 'aandacht'
   const [zoek, setZoek] = useState('')
@@ -115,7 +118,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
   useEffect(() => {
     let actueel = true
     setLaadFout(null)
-    haalBevindingen({ pagina, q: zoek, administratieId: administratieId || null, soort })
+    haalBevindingen({ pagina, q: zoek, administratieId: administratieId || null, soort, groepId: groepId || null })
       .then((d) => {
         if (actueel) setData(d)
       })
@@ -125,7 +128,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
     return () => {
       actueel = false
     }
-  }, [pagina, zoek, administratieId, soort, versie])
+  }, [pagina, zoek, administratieId, soort, groepId, versie])
 
   // Stand van de laatste run bij binnenkomst (en een nog lopende run oppikken).
   useEffect(() => {
@@ -421,6 +424,7 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             </>
           )}
           <span style={{ marginLeft: 'auto' }} />
+          <GroepFilter waarde={groepId || null} onWijzig={(id) => zetParam('groep_id', id)} />
           <div style={{ minWidth: 220 }}>
             <AdministratieCombobox
               label="Administratie"
