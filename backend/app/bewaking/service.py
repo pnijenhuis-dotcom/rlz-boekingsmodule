@@ -21,6 +21,9 @@ toevallig ontdekt. Deze motor draait elk kwartier als Cloud Run-job (`rlz-bewaki
                   langer dan 30 min ná de jongste service-revisie (Cloud Run Admin API, lees-only via
                   de runtime-SA): zeven rode deploys #173–#179 lieten de F3-jobs 1,5 dag op een oud
                   beeld staan zonder dat iemand het zag — app/bewaking/deploy_drift.py;
+- rls_weigering — (blok 1 run 11-09) een audit-event `rls_weigering` in de laatste 24 u: een schrijfpad van
+                  de app werd door Row-Level Security geweigerd (productie 11-09: verplaatsen, migratie 0080 op
+                  Cloud SQL) — altijd een bug in de app-laag, gemeld door app/db/rls_weigering.py; alleen beheer;
 - ai            — 1× per uur: schema-zelftest (union-limiet, de 30-08-klasse) + een minimale
                   échte Claude-call op het goedkoopste gepinde model, onder de bestaande
                   kostenmeter (poort + registratie in app/aikosten);
@@ -392,6 +395,37 @@ def _probe_deploy_drift(nu: datetime) -> ProbeUitkomst:
         deploy_drift.registreer_audit(stand, oordeel, nu=nu)
         return ProbeUitkomst(soort=deploy_drift.SOORT, status="fout", detail=detail)
     return ProbeUitkomst(soort=deploy_drift.SOORT, status="ok", detail=detail)
+
+
+def _probe_rls_weigering(nu: datetime) -> ProbeUitkomst:
+    """Blok 1 run 11-09: audit-events `rls_weigering` (app/db/rls_weigering.py — geschreven door de centrale
+    onverwachte-fout-handler en de verplaats-router zodra een `InsufficientPrivilege` in de keten zit) in de laatste
+    24 u. Eén of meer = 'fout' (alert via de statemachine) mét route, tabel en correlatie-id per rij; de
+    reconciliatie toont dezelfde rijen als LET-OP "systeemfout — automatisch gemeld". Scope-loos als systeem-actor
+    (patroon `_probe_automatisering_regressie`)."""
+    from app.db.models import AuditEvent
+    from app.db.rls_weigering import AUDIT_ACTIE
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rijen = session.execute(
+            select(AuditEvent.correlatie_id, AuditEvent.nieuwe_waarde)
+            .where(AuditEvent.actie == AUDIT_ACTIE, AuditEvent.tijdstip >= nu - timedelta(hours=24))
+            .order_by(AuditEvent.tijdstip.desc())
+        ).all()
+    if not rijen:
+        return ProbeUitkomst(soort="rls_weigering", status="ok", detail="geen RLS-weigering in 24 u")
+    delen = [
+        f"{(nw or {}).get('methode')} {(nw or {}).get('route')} · tabel {(nw or {}).get('tabel') or '?'} · code {cid}"
+        for cid, nw in rijen[:5]
+    ]
+    return ProbeUitkomst(
+        soort="rls_weigering",
+        status="fout",
+        detail=(
+            f"{len(rijen)} RLS-weigering(en) in de laatste 24 u — een schrijfpad van de app werd door Row-Level "
+            f"Security geweigerd (bug in de app-laag, zie audit `rls_weigering`): " + "; ".join(delen)
+        )[:1000],
+    )
 
 
 # ---- storing-administratie + alerts --------------------------------------------------------------

@@ -19,6 +19,7 @@ from app.berichten.router import router as berichten_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
 from app.crediteuren.router import router as crediteuren_router
+from app.db import rls_weigering
 from app.db import session as db_session
 from app.db.migratie_guard import controleer_migratie_versie
 from app.documenten import service as documenten_service
@@ -84,11 +85,31 @@ def _actie_omschrijving(request: Request) -> str:
     return "het verwerken van je aanvraag"
 
 
-def _bouw_onverwachte_fout_response(request: Request) -> JSONResponse:
+def _bouw_onverwachte_fout_response(request: Request, exc: BaseException | None = None) -> JSONResponse:
     """Nette Nederlandse 500 + correlatie-id; volledige traceback uitsluitend naar de server-log
-    (logger.exception leest sys.exc_info(), dus aanroepen vanuit een except-blok)."""
+    (logger.exception leest sys.exc_info(), dus aanroepen vanuit een except-blok).
+
+    Blok 1 run 11-09: zit er een `InsufficientPrivilege` (RLS-weigering) in de exception-keten, dan meldt het
+    systeem zichzelf — audit `rls_weigering` mét route, correlatie-id, tabel en de aangemelde gebruiker; de
+    bewakingsprobe `rls_weigering` en de reconciliatie-LET-OP "systeemfout — automatisch gemeld" lezen die rij.
+    De melding aan de client zegt dat ook, i.p.v. alleen een code."""
     correlatie_id = uuid.uuid4()
     logger.exception("Onverwachte fout bij %s %s (correlatie-id %s)", request.method, request.url.path, correlatie_id)
+    if exc is not None and rls_weigering.vind_insufficient_privilege(exc) is not None:
+        rls_weigering.registreer(
+            exc=exc,
+            route=request.url.path,
+            methode=request.method,
+            correlatie_id=correlatie_id,
+            gebruiker_id=rls_weigering.gebruiker_uit_bearer(request.headers.get("authorization")),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Er ging iets mis bij {_actie_omschrijving(request)} — automatisch gemeld "
+                f"(code {correlatie_id})."
+            },
+        )
     return JSONResponse(
         status_code=500,
         content={"detail": f"Er ging iets mis bij {_actie_omschrijving(request)} — code {correlatie_id}."},
@@ -121,10 +142,10 @@ class OnverwachteFoutVangnet:
 
         try:
             await self._app(scope, receive, bewaakte_send)
-        except Exception:
+        except Exception as exc:
             if response_gestart:
                 raise
-            response = _bouw_onverwachte_fout_response(Request(scope))
+            response = _bouw_onverwachte_fout_response(Request(scope), exc)
             await response(scope, receive, send)
 
 
@@ -220,7 +241,7 @@ async def onverwachte_fout_handler(request: Request, exc: Exception) -> JSONResp
     blijft ongewijzigd werken. In de praktijk vangt OnverwachteFoutVangnet (binnen de CORS-laag)
     de fout al eerder af — dit blijft staan als laatste redmiddel voor wat daar ooit langs zou
     glippen."""
-    return _bouw_onverwachte_fout_response(request)
+    return _bouw_onverwachte_fout_response(request, exc)
 
 
 @app.get("/health")

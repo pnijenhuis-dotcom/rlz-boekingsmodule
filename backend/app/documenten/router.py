@@ -7,6 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
+from sqlalchemy.exc import DBAPIError
 from app.auth import service as auth_service
 from app.auth.deps import (
     CurrentGebruiker,
@@ -18,6 +19,7 @@ from app.auth.deps import (
 )
 from app.config import settings
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.db import rls_weigering
 from app.documenten import (
     afwijzen,
     boeken,
@@ -47,6 +49,8 @@ from app.rlz.credentials import GeenRlzCredentials
 # administratie-scope. Eén uitzondering leeft in `bestand_router` hieronder: het
 # PDF-bestand-endpoint, dat de accordeur-PWA zelf nodig heeft (factuurbeeld centraal).
 router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)])
+_logger = logging.getLogger(__name__)
+
 
 # Aparte router zonder de kantoor-poort: alleen /bestand, met de eigen kantoor-óf-accordeur-poort
 # (veldrollen 403 — hun projectdocument-leesroute is /uren/projectdocumenten, vereis_veldrol).
@@ -869,7 +873,9 @@ def document_verplaatsen(
     except verplaatsen.OnbekendeDoelAdministratie as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except verplaatsen.GeenScopeOpDoel as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=f"Verplaatsen niet toegestaan voor jouw scope — {exc}"
+        ) from exc
     except verplaatsen.VerplaatsenNietToegestaan as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.DocumentVerplaatsResponse(
@@ -885,6 +891,33 @@ def document_verplaatsen(
         tenaamstelling_geleerd=resultaat.tenaamstelling_geleerd,
     )
 
+    except DBAPIError as exc:
+        # Blok 1 run 11-09: een RLS-weigering in de DB-functie (productie 11-09, 0080 op Cloud SQL) is een
+        # systeemfout, geen handeling voor de gebruiker — leesbare 500 mét code, en het systeem meldt zichzelf
+        # (audit `rls_weigering` → bewakingsprobe + reconciliatie-LET-OP). Elke andere DB-fout blijft het
+        # algemene vangnet (main.py) volgen.
+        if rls_weigering.vind_insufficient_privilege(exc) is None:
+            raise
+        correlatie_id = uuid.uuid4()
+        _logger.exception(
+            "RLS-weigering bij verplaatsen van document %s (%s → %s), correlatie-id %s",
+            document_id,
+            administratie_id,
+            invoer.doel_administratie_id,
+            correlatie_id,
+        )
+        rls_weigering.registreer(
+            exc=exc,
+            route=f"/administraties/{administratie_id}/documenten/{document_id}/verplaats",
+            methode="POST",
+            correlatie_id=correlatie_id,
+            gebruiker_id=actor.id,
+            extra={"doel_administratie_id": str(invoer.doel_administratie_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Verplaatsen is mislukt — automatisch gemeld (code {correlatie_id}).",
+        ) from exc
 
 @router.get(
     "/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",

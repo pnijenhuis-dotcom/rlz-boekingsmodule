@@ -130,4 +130,35 @@ describe('VerplaatsModal (addendum 27-08 punt 5)', () => {
     expect(onVerplaatst).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
+
+  // Blok 1 run 11-09: de server-detail komt LETTERLIJK in de modal — ook bij 403 (scope op het doel) en bij de
+  // leesbare 500 "automatisch gemeld" (RLS-weigering, productie 11-09) — nooit een kale code of "Fout (500)".
+  it.each([
+    [403, 'Verplaatsen niet toegestaan voor jouw scope — Geen toegang tot de doeladministratie Universal Verkoop'],
+    [500, 'Verplaatsen is mislukt — automatisch gemeld (code 2fa4a61b-1a0d-4921-8e22-7c17089707af).'],
+  ])('toont de server-detail letterlijk bij %i en blijft open', async (status, detail) => {
+    const gebruiker = userEvent.setup()
+    installFetchMock({ verplaatsStatus: status, detail })
+    const onVerplaatst = vi.fn()
+    render(
+      <VerplaatsModal
+        administratieId={BRON}
+        administratieNaam="Kempen Facilities B.V."
+        documentId={DOCUMENT_ID}
+        bestandsnaam="inv26010471 (1).pdf"
+        openVragen={0}
+        onVerplaatst={onVerplaatst}
+        onAnnuleren={() => {}}
+      />,
+    )
+    await gebruiker.click(screen.getByRole('combobox', { name: /Doeladministratie/ }))
+    await gebruiker.click(await screen.findByRole('option', { name: 'Port of Rotterdam N.V.' }))
+    await gebruiker.click(screen.getByRole('button', { name: /^Verplaatsen naar/ }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(detail)
+    expect(alert).not.toHaveTextContent(/Fout \(\d+\)/)
+    expect(onVerplaatst).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Verplaatsen naar/ })).toBeEnabled()
+  })
 })

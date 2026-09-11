@@ -138,6 +138,7 @@ class TestProbeRunCadans:
         monkeypatch.setattr(service, "_probe_reconciliatie_mail", lambda: stub("reconciliatie_mail"))
         monkeypatch.setattr(service, "_probe_automatisering_regressie", lambda nu: stub("automatisering_regressie"))
         monkeypatch.setattr(service, "_probe_deploy_drift", lambda nu: stub("deploy_drift"))
+        monkeypatch.setattr(service, "_probe_rls_weigering", lambda nu: stub("rls_weigering"))
 
         def ai_stub() -> ProbeUitkomst:
             tellers["ai"] += 1
@@ -180,6 +181,8 @@ class TestProbeRunCadans:
                 "reconciliatie_mail",
                 "automatisering_regressie",
                 "deploy_drift",
+                "rls_weigering",
+                "eerste_sync_wekker",
                 "ai",
                 "extractie_foutratio",
                 "intake_verwerpingsratio",

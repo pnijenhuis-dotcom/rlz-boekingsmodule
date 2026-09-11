@@ -723,6 +723,34 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
             "Actions) — de eerstvolgende groene push zet jobs én service-envs weer gelijk; handmatig jobs bijwerken "
             "hoort niet (regel 08-09).",
         )
+    if reden == auto.RLS_WEIGERING:
+        # Blok 1 run 11-09: een schrijfpad van de app werd door Row-Level Security geweigerd — bug in de app-laag,
+        # beheer-signaal; de bewakingsprobe `rls_weigering` alarmeert zelf. Deeplink = het geraakte document.
+        patroon = _s(d, "route_patroon") or _s(d, "route") or "onbekende route"
+        tabel = _s(d, "tabel") or "?"
+        laatste = (_s(d, "laatste_op") or "")[:16].replace("T", " ")
+        return (
+            _titel("RLS-weigering op een schrijfpad", "beheer"),
+            f"Een handeling via {patroon} werd {aantal}× in {auto.VENSTER_UREN} u door Row-Level Security geweigerd "
+            f"(tabel {tabel}{f', jongste {laatste} UTC' if laatste else ''}) — de gebruiker zag een leesbare "
+            "foutmelding, er is niets gewijzigd.",
+            auto.REGRESSIE_TEKST[0].upper() + auto.REGRESSIE_TEKST[1:] + ": RLS-weigering op " + patroon + ". "
+            "Zoek in de server-log op de code uit de melding (correlatie-id) en herstel het schrijfpad of het "
+            "beleid; de rij verdwijnt zodra er een etmaal geen weigering meer is.",
+        )
+    if reden == auto.RECHTEN_NA_24U:
+        # Blok 3 run 11-09: de eerste sync kreeg 403 op een route die de rechten-probe groen had en is 24 u lang
+        # herprobeerd (5/15/60 min, daarna elk uur) — RLZ weigert nog steeds. Handeling = het recht in RLZ + RLZ-check.
+        voorbeeld = _s(d, "voorbeeld")
+        return (
+            _titel("Eerste sync: RLZ weigert na 24 uur nog steeds", waar or ""),
+            f"De eerste sync{f' van {waar}' if waar else ''} kreeg een dag lang HTTP 403 op leesroutes die de "
+            "rechten-probe groen had — RLZ heeft de rechten van de webservice-gebruiker niet doorgezet"
+            + (f" ({zonder_guids(voorbeeld)[:300]})" if voorbeeld else "")
+            + ".",
+            "Controleer in Reeleezee de leesrechten van de webservice-gebruiker op deze administratie, klik dan "
+            "'RLZ-check' en 'Sync opnieuw starten' op Instellingen › Administraties › ‹administratie›.",
+        )
     if reden == auto.TOETS_UIT:
         # Blok 3.2 (10-09 avond): bewuste opt-out, geen storing — de keuze blijft zichtbaar tot iemand 'm terugdraait.
         sinds = _s(d, "voorbeeld") or "sinds onbekend moment"

@@ -125,7 +125,13 @@ SA_KEY_ROTATIE_WAARSCHUWING_DAGEN = 30
 #: "systeemfout — automatisch gemeld": de bewaking alarmeert zelf, de reconciliatie maakt het alleen zichtbaar op
 #: /reconciliatie.
 DEPLOY_DRIFT = "deploy_drift"
-BEHEER_CATEGORIEEN = frozenset({VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN, SA_KEY_ROTATIE, DEPLOY_DRIFT})
+#: Blok 1 run 11-09: audit-event `rls_weigering` (app/db/rls_weigering.py) in de laatste 24 u — een schrijfpad van de
+#: app werd door Row-Level Security geweigerd (productie 11-09: verplaatsen). Altijd een bug in de app-laag →
+#: beheer-signaal (systeemmail) "systeemfout — automatisch gemeld"; de bewakingsprobe `rls_weigering` alarmeert zelf.
+RLS_WEIGERING = "rls_weigering"
+BEHEER_CATEGORIEEN = frozenset(
+    {VANGNET_SCHEDULER, GEEN_SYNC_RUN, STIL_7_DAGEN, SA_KEY_ROTATIE, DEPLOY_DRIFT, RLS_WEIGERING}
+)
 REGRESSIE_TEKST = "systeemfout — automatisch gemeld"
 
 REDEN_LABEL: dict[str, str] = {
@@ -1466,3 +1472,126 @@ def registreer(verzamelaar, *, nu: datetime | None = None, stdout=None) -> dict:
         for regel in regels(tellers):
             stdout(regel)
     return als_samenvatting(tellers, nu=nu)
+def rls_weigering_bevindingen(*, nu: datetime) -> list[dict[str, Any]]:
+    """Blok 1 run 11-09: één platformbrede LET-OP (beheer → systeemmail) per route-patroon waarop in de laatste 24 u
+    een RLS-weigering is geregistreerd (audit `rls_weigering`, app/db/rls_weigering.py): "Systeemfout — automatisch
+    gemeld: RLS-weigering op <route>" mét aantal, tabel, jongste correlatie-id en deeplink naar het geraakte document
+    (of /reconciliatie). Stabiele vingerafdruk per route-patroon: de delta-motor mailt één keer; de rij verdwijnt
+    zodra het etmaal zonder nieuwe weigering voorbij is."""
+    from sqlalchemy import select
+
+    from app.db.models import AuditEvent
+    from app.db.rls_weigering import AUDIT_ACTIE, doel_pad_voor_route, route_patroon
+    from app.db.session import scoped_session
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        rijen = session.execute(
+            select(AuditEvent.tijdstip, AuditEvent.correlatie_id, AuditEvent.nieuwe_waarde)
+            .where(AuditEvent.actie == AUDIT_ACTIE, AuditEvent.tijdstip >= nu - timedelta(hours=VENSTER_UREN))
+            .order_by(AuditEvent.tijdstip.asc())
+        ).all()
+    per_patroon: dict[str, dict[str, Any]] = {}
+    for tijdstip, correlatie_id, nw in rijen:
+        d = nw or {}
+        route = str(d.get("route") or "?")
+        patroon = f"{d.get('methode') or '?'} {route_patroon(route)}"
+        groep = per_patroon.setdefault(patroon, {"aantal": 0, "tabellen": set()})
+        groep["aantal"] += 1
+        if d.get("tabel"):
+            groep["tabellen"].add(str(d["tabel"]))
+        # De rijen lopen oplopend in tijd: de laatste wint als "jongste".
+        groep["laatste_route"] = route
+        groep["laatste_op"] = _utc(tijdstip)
+        groep["laatste_correlatie_id"] = str(correlatie_id)
+        groep["laatste_gebruiker_id"] = d.get("gebruiker_id")
+    uit: list[dict[str, Any]] = []
+    for patroon, g in sorted(per_patroon.items()):
+        tabellen = ", ".join(sorted(g["tabellen"])) or "?"
+        uit.append(
+            {
+                "soort": "let_op",
+                "administratie_id": None,
+                "blok": BLOK,
+                "vingerafdruk": vingerafdruk_automatisering(
+                    sleutel=f"rls|{patroon}", categorie=RLS_WEIGERING, administratie_id=None
+                ),
+                "tekst": (
+                    f"LET-OP     automatisering rls: RLS-weigering op {patroon} ({g['aantal']}× in {VENSTER_UREN} u, "
+                    f"tabel {tabellen}, jongste code {g['laatste_correlatie_id']}) — {REGRESSIE_TEKST}"
+                )[:1000],
+                "detail": {
+                    "automatisering": "rls",
+                    "automatisering_label": "Row-Level Security (schrijfpad)",
+                    "reden": RLS_WEIGERING,
+                    "route_patroon": patroon,
+                    "route": g["laatste_route"],
+                    "tabel": tabellen,
+                    "aantal": g["aantal"],
+                    "laatste_op": g["laatste_op"].isoformat(),
+                    "correlatie_id": g["laatste_correlatie_id"],
+                    "gebruiker_id": g["laatste_gebruiker_id"],
+                    "doel_pad": doel_pad_voor_route(g["laatste_route"]),
+                },
+            }
+        )
+    return uit
+
+
+WERKVOORRAAD_TELLERS = "werkvoorraad_tellers"
+
+
+def werkvoorraad_tellers_bevinding(*, nu: datetime, rapport=None) -> dict[str, Any] | None:  # noqa: ANN001
+    """Blok 6 run 11-09: de tellers-cache van de werkvoorraad-klantenlijst (`werkvoorraad_teller_cache`, 0136) wordt
+    incrementeel bijgehouden en nachtelijk herrekend; deze LEES-ONLY vergelijking cache ↔ telling (dezelfde motor
+    als `werkvoorraad-tellers-herrekenen --dry-run`) is het vangnet: ≥ 1 afwijking = één platformbrede LET-OP mét het
+    aantal afwijkende tellers/administraties en de eerste voorbeelden. Geen afwijking = geen signaal. Stabiele
+    vingerafdruk per dag: de rij verdwijnt zodra de nachtelijke herberekening de cache weer gelijk heeft getrokken.
+    `rapport` = een al berekend `HerrekenRapport` (tests); anders wordt de dry-run hier gedraaid."""
+    if rapport is None:
+        from app.werkvoorraad import tellers as werkvoorraad_tellers
+
+        rapport = werkvoorraad_tellers.herreken_alle(dry_run=True)
+    if not rapport.afwijkingen and not rapport.fouten:
+        return None
+    voorbeelden = [
+        f"{a.naam}: {a.teller} cache={'ontbreekt' if a.cache is None else a.cache} telling={a.telling}"
+        for a in rapport.afwijkingen[:5]
+    ]
+    n_tellers = len(rapport.afwijkingen)
+    n_adm = rapport.administraties_met_afwijking
+    tekst = (
+        f"LET-OP     automatisering werkvoorraad-tellers: {n_tellers} teller(s) bij {n_adm} administratie(s) wijken "
+        f"af van de telling (cache ↔ brontabellen) — voorbeelden: {'; '.join(voorbeelden) or '—'}"
+        + (f" — {len(rapport.fouten)} administratie(s) konden niet geteld worden" if rapport.fouten else "")
+        + " — de nachtelijke herberekening (sync-alles) trekt de cache gelijk; blijft dit terugkomen, dan mist een "
+        "mutatiepunt een hook (systeemfout, automatisch gemeld)."
+    )
+    return {
+        "soort": "let_op",
+        "administratie_id": None,
+        "blok": BLOK,
+        "vingerafdruk": vingerafdruk_automatisering(
+            sleutel=WERKVOORRAAD_TELLERS, categorie=f"afwijking-{nu:%Y-%m-%d}", administratie_id=None
+        ),
+        "tekst": tekst[:1000],
+        "detail": {
+            "automatisering": WERKVOORRAAD_TELLERS,
+            "automatisering_label": "Werkvoorraad-tellers (cache ↔ telling)",
+            "reden": "afwijking",
+            "aantal": n_tellers,
+            "administraties": n_adm,
+            "administraties_gecontroleerd": rapport.administraties,
+            "zonder_cache": rapport.ontbrekend,
+            "voorbeelden": voorbeelden,
+            "fouten": rapport.fouten[:5],
+            "doel_pad": "/reconciliatie",
+        },
+    }
+
+
+    tellers_cache = werkvoorraad_tellers_bevinding(nu=nu)  # blok 6 11-09
+    if tellers_cache is not None:
+        verzamelaar.bevinding(**tellers_cache)
+    for kw in rls_weigering_bevindingen(nu=nu):
+        verzamelaar.bevinding(**kw)
