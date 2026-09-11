@@ -31,7 +31,9 @@ from app.rlz.client import RlzApiError, RlzClient
 RLZ_LEZEN_COMMANDO = "rlz-lezen"
 MAX_TOP = 50
 GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{8,30}\b")
+# Nameting 11-09: een IBAN in een bestandsnaam (`NL..INGB…_260908.xml`, Batch.FileName op de C.V.) eindigt op `_` — een
+# woordteken — waardoor `\b` niet matchte en de IBAN leesbaar in Cloud Logging landde. Grenzen daarom als "geen letter/cijfer".
+IBAN_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}[A-Z0-9]{8,30}(?![A-Za-z0-9])")
 NAAM_SLEUTELS = frozenset(
     {
         "Name",

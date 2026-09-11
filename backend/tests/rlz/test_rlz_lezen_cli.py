@@ -160,6 +160,9 @@ def test_anonimiseer_iban_naam_guid_maar_niet_bedrag_of_enum() -> None:
     assert uit["Status"]["Name"] == "Open"  # enum-lid: geen persoon
     assert uit["Ledger"]["AccountNumber"] == "1010"  # grootboeknummer is geen IBAN
     assert anonimiseer([{"Name": "Piet"}, "NL02RABO0123456789"]) == [{"Name": "P."}, "…6789"]
+    # Nameting 11-09 (C.V.): een IBAN ín een bestandsnaam eindigt op `_` (woordteken) — moet óók gemaskeerd worden.
+    assert anonimiseer({"FileName": "NL91ABNA0417164300_260908205648.xml"}) == {"FileName": "…4300_260908205648.xml"}
+    assert anonimiseer("batch NL91ABNA0417164300/2026") == "batch …4300/2026"
 
 
 def test_uitvoer_is_altijd_geanonimiseerd_ook_zonder_vlag() -> None:
