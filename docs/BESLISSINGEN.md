@@ -8019,3 +8019,480 @@ storno klaar).
 `scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie <Zilver Beheer>` toont soort `verrekening` op A en B.
 **Werkt in productie:** n.v.t. — niets gebouwd (STAP-0).
 
+<!-- run11-09middag:blok2 -->
+## KALENDERDAG = NEDERLANDSE DAG (blok 2 run 11-09 middag)
+
+**Aanleiding (Peter 11-09, middernacht-flake 10/11-09):** twee tests rood tussen 00:00–02:00 CEST —
+`tests/terugkerend/test_kantoorbreed.py::TestKantoorbreed::test_scope_niet_beheerder_ziet_alleen_eigen_administratie`
+(`dagen_te_laat` één dag te laag) en `tests/verplichting/test_service.py::TestChecks::test_verstreken_geldigheid_is_een_signaal_geen_blokkade`
+(geldig t/m "gisteren" was op de UTC-dag nog "vandaag" → geen signaal). Wortel: tests rekenden met `date.today()` (lokale
+Mac-klok, Europe/Amsterdam), de app met `datetime.now(UTC).date()` (UTC-dag). Dat is geen testprobleem maar een domeinfout:
+in productie (Cloud Run, UTC) verschoof élke kalenderdag-afleiding tussen middernacht en 02:00 een dag naar achteren.
+
+**Regel (bindend):** geldigheids-, verval-, factuur-, boek- en periodedatums én dagtellers ("N per etmaal") zijn NEDERLANDSE
+kalenderdagen. Tijdstempels (audit, `aangemaakt_op`, sync-momenten) blijven `datetime.now(UTC)` — zónder `.date()`.
+Wie een kalenderdag bedoelt, gebruikt `app.tijd.vandaag_nl()`; een kalenderdag van een bewaard moment = `kalenderdag_nl(moment)`.
+
+**Helper `backend/app/tijd.py`** (bestond al, ongewijzigd): `TIJDZONE_NL`, `_klok()` (het ENIGE `now()`-punt — monkeypatch-anker),
+`nu_nl()`, `vandaag_nl()`, `kalenderdag_nl(moment)` (naïef = UTC).
+
+| Onderdeel | Status | Vindplaats |
+|---|---|---|
+| Sweep app/ — 66 call-sites in 45 bestanden → `vandaag_nl()` / NL-etmaal | GEBOUWD 11-09 | zie tabel hieronder |
+| Guard-test (verbiedt `date.today(`, `datetime.today(`, `.now(UTC).date(`, `.now(timezone.utc).date(`, `utcnow().date(`, `now(tz=UTC).date(`, `.now(<eigen tijdzone>).date(` in app/ buiten app/tijd.py; whitelist LEEG; app/tijd.py = precies één `now`-aanroep) | GEBOUWD 11-09 | `backend/tests/unit/test_kalenderdag_guard.py` |
+| Flake-reproductie als test (klok gepind op 2026-09-10T22:30Z = 11-09 00:30 CEST; NL-dag verwacht) | GEBOUWD 11-09 | `test_kalenderdag_guard.py::TestHelperInHetMiddernachtVenster`, `tests/terugkerend/test_kantoorbreed.py` (assert 121 dagen, UTC zou 120 geven), `tests/verplichting/test_service.py` |
+| Gouden set: één pin voor álles | GEBOUWD 11-09 | `tests/keten/test_l_bank_matchmotor.py::bevroren_vandaag` pint `app.tijd._klok` op `REFERENTIE_TIJDSTIP` (verving de `matchmotor.date`-subclass-pin); `tests/keten/conftest.py::echte_vandaag_nl()` voor de drift-sweeps ("datum van vandaag staat nergens in een export") |
+| Tests-sweep: 26 testbestanden `date.today()`/`now(UTC).date()` → `vandaag_nl()` | GEBOUWD 11-09 | fixture-datums én verwachtingswaarden rekenen nu met dezelfde klok als de app |
+
+### Geclassificeerde call-sites (sweep 11-09; alles KALENDERDAG — geen enkele `.date()` bleek een bewuste UTC-dag)
+
+| Module | Bestand(en) | Sites | Betekenis | Nieuw |
+|---|---|---|---|---|
+| verplichting | `service.py` | 1 | geldigheid offerte verstreken? | `vandaag_nl()` |
+| terugkerend (blok 7-bestand) | `service.py` ×4, `kantoorbreed.py` ×1 | 5 | verwacht-datum, dagen te laat, einddatum verplichting | `vandaag_nl()` |
+| projectverdeling | `service.py` ×3, `hercontrole.py`, `data.py` | 5 | pro-rato-periode, hercontrole ná afsluiting referentiemaand | `vandaag_nl()` |
+| projecten | `kantoor.py`, `kantoorbreed.py` ×2, `cijfers.py` ×2 | 5 | weekanalyse, cijfers-venster, signalen | `vandaag_nl()` |
+| geheugen | `seed.py`, `service.py` | 2 | recency-weging boekingsgeheugen | `vandaag_nl()` |
+| documenten | `regel_prefill.py` ×3, `periode.py`, `tegenboeken.py` ×2 (factuurdatum tegenboeking = vandaag), `boeken.py` (boekdatum automatische boeking + dagteller) , `duplicaat_afvoer.py` (dagteller) | 9 | regelvoorstel-recency, periode-anker, tegenboek-/boekdatum, volumerem per etmaal | `vandaag_nl()`; dagteller `datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)` |
+| bank | `matchmotor.py` (referentiedag "vandaag"), `historie_bron.py` (dekking ≥ 6 mnd), `boeken.py`/`afletteren.py`/`relatie.py` (dagtellers) | 5 | match-/historie-referentiedag, volumerem per etmaal | idem |
+| doorbelasting | `boeken.py` ×2 | 2 | boekdatum spiegel zonder bronfactuurdatum | `vandaag_nl()` |
+| backends / odoo | `backends/rlz_inkoop.py` (Date tegenboeking), `odoo/inkoop.py` (lock-date-toets tegenboeking), `odoo/probe.py` (API-key-verval ≥ 14 dagen), `odoo/verkoop_uitstroom.py` ×2 (jaarstart, herlees-venster) | 5 | boekdatum "vandaag" = NL-dag, vervalcheck | `vandaag_nl()` |
+| beheer (blok 3/8-bestand) | `onboarding.py` | 1 | Date schrijftest-PUT | `vandaag_nl()` |
+| auth | `router.py` | 1 | sunset legacy-app-routes verstreken? (2026-10-08 = NL-dag) | `vandaag_nl()` |
+| reconciliatie | `rlz_dubbel.py` | 1 | venster 400 dagen | `vandaag_nl()` |
+| zoeken | `service.py` | 1 | archief-venster | `vandaag_nl()` |
+| uren | `stempels.py`, `overzichten.py` ×4, `planning.py`, `router.py`, `dossier.py`*, `planning_signaal.py`* | 9 | weekstaten, planning, stempel-dag, dossier-geldigheid | `vandaag_nl()` |
+| voorraad / mini_voorraad / materiaal | `voorraad/service.py` ×3, `voorraad/rlz_uitstroom.py` ×2, `mini_voorraad/instroom.py` ×2, `mini_voorraad/service.py`, `materiaal/service.py`, `materiaal/match.py` | 10 | stand-tot-datum, jaarstart, mutatiedatum, toekomst-check | `vandaag_nl()` |
+| berichten / accordering (blok 7-bestand) | `berichten/digest.py`*, `berichten/herinneringen.py`*, `accordering/herinnering.py`* | 3 | dag van digest/herinnering | `vandaag_nl()` |
+
+\* = was al NL (`datetime.now(TIJDZONE).date()`, eigen `TIJDZONE`) — inhoudelijk ongewijzigd, maar nu via het ene anker
+zodat één monkeypatch op `app.tijd._klok` álles pint; de guard verbiedt zo'n tweede anker voortaan.
+
+**Dagtellers (volumerem 20/dag):** "vandaag" = het Nederlandse etmaal (00:00 CEST/CET), niet 00:00 UTC — anders begint de
+dagteller in de zomer om 02:00 en telt hij boekingen van 00:00–02:00 bij gisteren. Vergelijking blijft tz-aware tegen
+`timestamptz`-kolommen.
+
+**Flake-reproductie:** `monkeypatch.setattr(app.tijd, "_klok", lambda: datetime(2026, 9, 10, 22, 30, tzinfo=UTC))` →
+`VENSTER.date()` = 2026-09-10 (de bug), `vandaag_nl()` = 2026-09-11. Terugkerend: `dagen_te_laat` t.o.v. 13-05-2026 = 121
+(UTC: 120). Verplichting: geldig t/m 10-09 is op 11-09 00:30 NL verstreken → signaal (UTC-dag: nog geldig, geen signaal).
+
+**Meetrecept productie:** géén functionele wijziging bij daglicht; het verschil is alleen meetbaar tussen 00:00 en 02:00 CEST.
+Recept: (1) `scripts/gcp/nameting.sh` requestlog rond 00:00–02:00 op een `/terugkerend/signalen`-aanroep → `dagen_te_laat`
+moet de NL-dag volgen; (2) een automatische boeking in dat venster draagt `boekdatum` = NL-dag (RLZ `BookDate`); (3) de
+dagteller (`_boekingen_vandaag`) reset om 00:00 NL, niet om 02:00. Werkt in productie: nog niet gemeten (deploy volgt).
+
+**Beslispunten (zelf beslist, ter bevestiging):**
+1. Dagtellers volgen het NL-etmaal (zie boven) — herziet stilzwijgend het UTC-etmaal van vóór 11-09.
+2. `auth/router.py` sunset-datum 2026-10-08 = NL-kalenderdag (410 vanaf 00:00 NL, niet 02:00).
+3. `datetime.now(TIJDZONE).date()` in berichten/uren/accordering is óók vervangen (was correct) — omwille van één anker;
+   de lokale `TIJDZONE`-constanten blijven staan waar ze nog voor tijdweergave dienen.
+4. Tests met pure fixture-datums zijn óók op `vandaag_nl()` gezet (consistentie; geen inhoudelijke reden om twee klokken
+   in de suite te houden).
+
+<!-- run11-09middag:blok6 -->
+## BEGINSCHERM KANTOOR-WEB — SET-BASED + TELLERS-CACHE (blok 6 run 11-09 middag)
+
+Aanleiding (kliktest Peter 11-09; 34 → 71 administraties in twee dagen): het beginscherm van de kantoor-web laadt traag.
+Cloud-Logging-vóór-meting (lees-only, 11-09 ±13:00 CEST, venster 3 dagen 08-09 t/m 11-09, service `rlz-backend`, paden zonder
+`/api/`-prefix, p50/p95 lineair geïnterpoleerd op `httpRequest.latency`):
+
+```
+route                                    n   p50 ms   p95 ms   max ms
+/werkvoorraad/overzicht                102     2816     6087    19797
+/crediteuren/dubbelen/stand             95     2440     5034    20447
+/reconciliatie/stand                    95     1937     4088    19685
+/bank/overzicht                        104     1796     3847     5137
+/vragen/stand                          103     1569     3363     4393
+/projectverdeling/hercontrole-signalen 100     1545     3357     4420
+/instellingen/ai-kosten                137     1439     2899     4587
+/doorbelasting/{id}/spiegel-taken     3826      606     1625    23252
+/auth/administraties                   795       51      175     1055
+```
+Wortel: `werkvoorraad_overzicht` liep per administratie een `scoped_session`-wissel + ±10 queries (status-GROUP BY, zeven
+signaaltellers waarvan voorraad/planning/terugkerend Python-motoren) — lineair in N; en de klantenlijst deed dáárnaast per
+administratie een aparte `GET /doorbelasting/{id}/spiegel-taken` (±71 requests per schermopening, 3.826 in drie dagen).
+Pre-feature-check: "WACHTRIJ ACCORDEUR-APP 10 S" (statement-teller-patroon), "LIJST-AANVULLING" (klantenlijst-tellers tellen
+alles — definitie ongewijzigd). UX-review: geen nieuw scherm; de lijst verschijnt eerder, de Bank-kolom krijgt een skeleton.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Migratie 0136** | `boekhouding.werkvoorraad_teller_cache` (administratie_id FK CASCADE, teller TEXT, waarde INT ≥ 0, bijgewerkt_op; PK (administratie, teller)); RLS USING = gescoopte administratie ÓF Beheerder ÓF `EXISTS gebruiker_administratie(actor, administratie)` (zelf-leesbaar sinds 0007 — zelf-referentie, geen cross-tenant-lek); WITH CHECK strikt (gescoopt/Beheerder). Schema-only. | gebouwd | `migrations/versions/0136_werkvoorraad_tellers_cache.py`, `app/werkvoorraad/models.py` |
+| **Motor** | `app/werkvoorraad/tellers.py`: `tel_direct` = de enige definitie van élke teller (oude logica, betekenis ongewijzigd); statussets `TE_CONTROLEREN_STATUSSEN`/`TERMINAAL_VOOR_TELLERS` verhuisd hiernaartoe (service.py houdt aliassen); cache-upsert; `verwerk_statusovergang` (bucket −1/+1 + hertelling van de vier documentafhankelijke signaaltellers bij een wissel van/naar terminaal), `verwerk_nieuw_document`, `ververs_signalen` (vragen, spiegel-taken); `lees_voor_scope` = ÉÉN statement over de hele scope in `scoped_session(None, actor_id)` + fail-safe (ontbrekende/halve cache → direct tellen + rij aanmaken, nooit een lege teller); `herreken`/`herreken_alle(dry_run)`. | gebouwd | `app/werkvoorraad/tellers.py` |
+| **Hooks (additief, kleine hunks)** | `documenten/service.py::_schrijf_overgang` (de ENIGE statusmutatie) + aanmaak in `upload_document`; `documenten/vragen.py` ná stel/afhandel/intrekken (×2) — de hook staat ná de COMPLETE mutatie (een autoflush midden in de rij brak de check `vraag_antwoord_consistent`, gevonden door de test); `doorbelasting/boeken.py` bij spiegel-taak ontstaan/alsnog geboekt. NIET geraakt: `documenten/verplaatsen.py`/`router.py`-hunks van blok 1, `intake/verzamelbak.py`/`herlezen.py` (toewijzing loopt via `_schrijf_overgang` → +1 op de nieuwe administratie; de nachtelijke herberekening dekt de rest). | gebouwd | idem |
+| **Route** | `GET /werkvoorraad/overzicht` geeft `actor_id` mee → set-based; `WerkvoorraadKlant`/`WerkvoorraadKlantResponse`/`WerkvoorraadKlantDto` additief `spiegel_taken`. Service-signatuur additief: `werkvoorraad_overzicht(administratie_ids_met_naam, actor_id=None)` — zonder actor = directe telling (definitietests) die de cache meeschrijft. **Blok 8's `groep_id`-filter landt vóór de service-call door de lijst `administraties` te filteren (staat al in de werkboom; beide hunks gaan samen).** | gebouwd | `app/documenten/router.py`, `schemas.py` |
+| **Meetlat statements** | `tests/werkvoorraad/test_tellers_querytelling.py`: N=5 → 3 statements, N=200 → 3 (set_config ×2 + één SELECT), scope-wissels = 1, voor Beheerder én niet-Beheerder mét scope (tolerantie ≤ +3); RLS-bewijs onder de app-rol: niet-Beheerder ziet in de set-based lezing alleen zijn scope, zonder scope nul rijen. Lokale latency N=200: direct per administratie 862 ms → cache 10 ms. | groen | idem |
+| **Nachtelijk + CLI** | `werkvoorraad-tellers-herrekenen [--dry-run] [--administratie UUID]` (`app/werkvoorraad/cli_cmd.py`, register/dispatch-patroon, 3 regels in `cli.py`); loopt in `sync-alles` NÁ de signaalmotoren (terugkerend/voorraad/planning). `--dry-run` = lees-only vergelijking cache ↔ telling, exit 1 bij afwijking; in `scripts/gcp/nameting.sh`-allowlist uitsluitend mét `--dry-run`. | gebouwd | `app/werkvoorraad/cli_cmd.py`, `app/cli.py`, `scripts/gcp/nameting.sh` |
+| **Reconciliatie** | `automatiseringen.werkvoorraad_tellers_bevinding(nu)` (patroon `deploy_drift_bevinding`, additief in `registreer`): dry-run over alle actieve administraties; ≥ 1 afwijking = één platformbrede LET-OP mét aantallen + vijf voorbeelden, vingerafdruk stabiel per dag, verdwijnt zodra de nachtelijke run de cache gelijktrekt; geen afwijking = geen signaal. | gebouwd | `app/reconciliatie/automatiseringen.py` |
+| **Frontend** | `useWerkvoorraadData`: N spiegel-calls weg (`spiegel_taken` uit het overzicht), lijst zodra het overzicht binnen is, Bank-kolom skeleton (`.skeleton`, designpass v2) tot `/bank/overzicht` er is (`bank_open === undefined` = laadt, `null` = fout); `groepId` (blok 8) wordt doorgegeven. Verder geen schermwijziging. | gebouwd | `frontend/src/werkvoorraad/useWerkvoorraadData.ts`, `Klantenlijst.tsx`, `useWerkvoorraadData.test.tsx` |
+| **Gouden set** | `tests/keten/test_t_werkvoorraad_tellers.py`: op échte casussen (Spot upload, Universal Nederland UBL-bundel geboekt, vraag op Spot gesteld/afgehandeld) is de cache ná élke stap exact de telling (`herreken_alle(dry_run)` = 0 afwijkingen) en de set-based lezing gelijk aan de lijst. | groen | idem |
+
+**Bekende versheid (bewust):** signalen die door hun eigen motor worden geschreven buiten een statusovergang (terugkerend
+snooze/afmelden, voorraadtelling, planning-afmelding, duplicaat-/match-/offertesignaal ná extractie) staan in de klantenlijst
+hooguit één nacht oud; de kantoorbrede lijsten achter die tellers tellen live. Verplaatsen naar een andere administratie
+(blok 1) en intake-toewijzing worden via `_schrijf_overgang` bijgewerkt; residu dekt de nachtelijke herberekening + LET-OP.
+
+**Meetrecept productie (ná deploy + eerste `sync-alles` óf eerste schermopening = fail-safe vult de cache):**
+1. Zelfde query als de vóór-meting, zelfde vensterlengte (3 dagen), alleen de ná-periode:
+   `gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="rlz-backend" AND logName="projects/rlz-boekhouding/logs/run.googleapis.com%2Frequests" AND (httpRequest.requestUrl:"/werkvoorraad/overzicht" OR httpRequest.requestUrl:"/spiegel-taken" OR httpRequest.requestUrl:"/bank/overzicht" OR httpRequest.requestUrl:"/vragen/stand")' --project rlz-boekhouding --freshness=3d --limit=8000 --format=json` → p50/p95 met `latency_stats.py` (scratchpad). Verwacht: `/werkvoorraad/overzicht` p95 < 1 s bij 71 administraties; `/spiegel-taken` vanuit de klantenlijst → 0 nieuwe requests (alleen nog vanuit `DoorbelastenSectie`).
+2. `scripts/gcp/nameting.sh werkvoorraad-tellers-herrekenen --dry-run` → "0 afwijkende tellers" (of de afwijkingen letterlijk).
+3. Reconciliatiemail volgende ochtend: geen LET-OP `werkvoorraad-tellers`.
+
+**Werkt in productie: nog niet gemeten (deploy volgt) — meetrecept hierboven.**
+
+**Beslispunten Peter:**
+1. De overige kaart-routes van het beginscherm lopen óók lineair in N (`/bank/overzicht` p95 3,8 s, `/vragen/stand` 3,4 s, `/crediteuren/dubbelen/stand` 5,0 s, `/reconciliatie/stand` 4,1 s, `/projectverdeling/hercontrole-signalen` 3,4 s, `/instellingen/ai-kosten` 2,9 s). Ze remmen de klantenlijst niet meer (lijst rendert op het overzicht), maar de KPI-kaarten wachten erop. Voorstel: zelfde patroon in een vervolgblok, te beginnen met `/bank/overzicht` (`bank_open` als 14e teller in dezelfde cache).
+2. Versheid signaaltellers (zie hierboven): accepteren als dag-signalen, óf een geamortiseerde verversing (per request max. K oudste administraties hertellen) — niet gebouwd.
+3. Post-deploy: de eerste schermopening vult de cache via de fail-safe (eenmalig even traag als vóór) — óf de coördinator draait eenmalig `gcloud run jobs execute rlz-reconciliatie --args="-m,app.cli,werkvoorraad-tellers-herrekenen"` ná de deploy.
+
+<!-- run11-09middag:blok8 -->
+## GROEPSKENMERK OP ADMINISTRATIE (blok 8 run 11-09 middag)
+
+**Opdracht Peter 11-09:** een datalaag-kenmerk "groep" op administraties (bv. "Kempen groep"), schaalbaar — geen lijstonderhoud in code. Een groep is een FILTER op de kantoorbrede overzichten (Kernprincipe 7: administratie is een filter, dit is er één meer), nooit een poort: niemand ziet door een groep meer of minder. Consolidatie/eliminatie zélf hoort bij de liquiditeit-mockup en is bewust NIET in deze run gebouwd.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| Migratie 0135: `platform.groep` (id, naam, code uniek — CHECK `^[A-Z0-9]{2,12}$`, actief, aangemaakt_op) + `platform.administratie.groep_id` (nullable FK `fk_administratie_groep_id`, index `ix_administratie_groep_id`) | GEBOUWD (schema-only, `sa.Text()`) | `backend/migrations/versions/0135_groep_op_administratie.py` |
+| RLS op `groep`: ENABLE + FORCE; `groep_lees` SELECT `USING (true)` (platformbrede referentietabel, zoals `platform.administratie` zelf dat zonder policy is); `groep_toevoegen` INSERT en `groep_muteren` UPDATE alleen `platform.current_actor_is_beheerder()` (patroon `detacheerder_koppeling` 0056); GEEN DELETE-policy, GRANT SELECT/INSERT/UPDATE zonder DELETE | GEBOUWD + GETEST (echte niet-Beheerder mét scope: lezen ok, INSERT = RLS-fout, UPDATE = 0 rijen) | migratie 0135; `tests/beheer/test_groepen.py::TestRls` |
+| Model `Groep` + `Administratie.groep_id` (+ `__table_args__` index) | GEBOUWD | `backend/app/db/models.py` |
+| Service: `code_voorstel(naam)` (accenten weg, alleen A-Z0-9, max 12; < 2 = leeg), `normaliseer_code`, `lijst_groepen`, `haal_groep_op`, `maak_groep`, `wijzig_groep` (naam/actief; code onveranderlijk), `zet_administratie_groep` (alleen ACTIEVE groep toekenbaar; lid van een gearchiveerde groep blijft lid), `administratie_ids_in_groep`, `groep_per_administratie` | GEBOUWD + GETEST | `backend/app/beheer/groepen.py`; `tests/beheer/test_groepen.py` |
+| Audit oud→nieuw: `groep_aangemaakt`, `groep_gewijzigd` (tabel `groep`), `administratie_groep_gewijzigd` (tabel `administratie`, mét groep_id/code/naam oud én nieuw); wizard-spoor `administratie_aangemaakt` draagt `groep_id` + `groep_code` | GEBOUWD + GETEST | idem; `tests/beheer/test_onboarding.py::test_wizard_groep_optioneel…` |
+| Routes: `GET /groepen` (kantoorrol — filter-keuzelijst), `POST /groepen` (201; code bezet 409, ongeldig 422), `PUT /groepen/{id}` (naam/actief; onbekend 404), `PUT /administraties/{id}/groep` (null = geen groep; gearchiveerde groep 409; onbekend 404) — muteren `require_beheerder`; rijen in `test_rol_endpoint_gates.py` | GEBOUWD + GETEST | `backend/app/beheer/router.py`, `schemas.py`; `tests/security/test_rol_endpoint_gates.py` |
+| DTO's additief: `AdministratieInstellingenDto.groep_id/groep_naam/groep_code/groep_actief` (Beheerder-lijst) en `AdministratieResponse.groep_id/groep_naam` op `GET /auth/administraties` (iedereen met scope) | GEBOUWD + GETEST | `app/beheer/schemas.py`, `app/auth/schemas.py` + `router.py` |
+| Wizard "+ Administratie toevoegen": `AdministratiesAanmakenDto.groep_id` optioneel → `maak_administraties_aan(groep_id=)`; leeg = geen groep (nooit een blokkade); onbekend/gearchiveerd = 422 vóór de eerste RLZ-call (niets opgeslagen) | GEBOUWD + GETEST | `app/beheer/onboarding.py::_groep_code_voor` |
+| Filter klantenlijst: `GET /werkvoorraad/overzicht?groep_id=` — router-hunk vóór de service-call (`administraties = [a for a in administraties if a.id in in_groep]`), onbekende groep = lege lijst | GEBOUWD + GETEST (unit + gouden set casus t) | `app/documenten/router.py::werkvoorraad_overzicht`; `tests/keten/test_t_groep_filter_klantenlijst.py` |
+| Filter reconciliatie: `GET /reconciliatie/bevindingen?groep_id=` → `kantoorbreed.lijst(groep_id=)` filtert de administratie-set (platformbrede bevindingen zonder administratie vallen buiten een groepsfilter); tellers/facetten volgen | GEBOUWD + GETEST | `app/reconciliatie/kantoorbreed.py`, `router.py`; `tests/reconciliatie/test_kantoorbreed.py::TestGroepFilter` |
+| Frontend: veld "Groep" op tab Algemeen (`GroepRij` — eigen PUT, keuzelijst + inline "+ Nieuwe groep…" mét code-voorstel `groepen.ts::codeVoorstel` = spiegel van de Python-regel), wizard-veld "Groep (optioneel)" op de keuzestap, chip `groep: <naam>` (stil; "(gearchiveerd)" bij inactieve groep) + filter-select + blok `GroepenBeheer` (hernoemen/archiveren/heractiveren/aanmaken) op Instellingen › Administraties, `GroepFilter` op klantenlijst (`?groep=`) en Inzicht › Reconciliatie (`?groep_id=`); rendert niets zonder groepen | GEBOUWD + GETEST (vitest) | `frontend/src/instellingen/{groepen.ts,GroepVeld.tsx,GroepRij.tsx,GroepenBeheer.tsx}`, `ui/GroepFilter.tsx`, `AdministratieDetailPagina.tsx`, `AdministratieWizard.tsx`, `AdministratiesV2.tsx`, `werkvoorraad/{Klantenlijst,WerkvoorraadScreen,useWerkvoorraadData,werkvoorraadApi}`, `reconciliatie/{ReconciliatieScreen,reconciliatieApi}` |
+| Proxy-dekking: `/groepen` in `frontend/proxy-prefixes.json` (gegenereerd) | GEDAAN | `python -m app.proxy_prefixes`; `proxyDekking.test.ts` groen |
+| Instellingen-registry | n.v.t. — geen nieuw nav-item/tab (veld op bestaande tab Algemeen; blok Groepen op de bestaande lijstpagina) | `instellingenRegistry.test.ts` ongewijzigd groen |
+| Eerste groep "Kempen groep" | NIET in code — Peter maakt 'm via de UI en kent leden toe | — |
+
+**Besluiten (zelf genomen, ter bevestiging):**
+1. **RLS-vorm `groep`:** lezen voor elke ingelogde (het is een naslagtabel, net als `platform.administratie` zonder policy), muteren uitsluitend Beheerder op DB-niveau (naast de router-poort), geen DELETE-pad. Alternatief (geen RLS zoals `administratie`) verworpen: de mutatie-eis "alleen Beheerder" hoort ook op DB-niveau afgedwongen (conventies §RLS).
+2. **Code onveranderlijk ná aanmaken** (hernoemen mag, code niet): filter-deeplinks werken op id, maar audit-sporen en de CSV-/rapportlaag verwijzen leesbaar naar de code. Nieuwe code nodig = nieuwe groep + oude archiveren.
+3. **Gearchiveerde groep:** niet meer toekenbaar (409), bestaande leden blijven lid en tonen "(gearchiveerd)" — niets verdwijnt stil; de filters blijven 'm kiesbaar houden als hij al gekozen is (deeplink).
+4. **Platformbrede reconciliatiebevindingen** (administratie_id NULL) vallen buiten élk groepsfilter — ze horen bij geen groep.
+5. **Klantenlijst-filter leeft in de URL** (`?groep=`), zodat de KPI-rij en de lijst dezelfde (gefilterde) set tellen en de link deelbaar is; de administratielijst-filter (Beheerder-scherm) is lokale state.
+6. **Code-voorstel** = genormaliseerde naam (KEMPENGROEP), niet initialen (KG — te kort/collision-gevoelig); de Beheerder past 'm aan in het veld.
+
+**Beslispunten voor Peter:**
+- De Odoo-wizard (`OdooKoppelWizard`, ingang "nieuw") heeft géén groep-veld; groep zetten kan daarna via ⚙ › Algemeen. Meenemen in de Odoo-wizard = kleine vervolgstap als gewenst.
+- Bulk-toekennen ("N geselecteerde administraties → groep X" via `BulkBediening`) is niet gebouwd; met 71 administraties is per-rij toekennen op de detailpagina werkbaar maar niet snel. Voorstel: bulk-actie in een vervolgblok.
+- `GET /auth/administraties` draagt nu `groep_naam`; de klantenlijst toont die (nog) niet als kolom/chip per rij — bewust, om het lijstpatroon van blok 6 niet te kruisen. Eventueel later een gedempte chip achter de klantnaam.
+
+**Meetrecept nameting (ná deploy, lees-only via `scripts/gcp/nameting.sh` waar mogelijk):** Peter maakt als Beheerder op Instellingen › Administraties › ‹Kempen Facilities› › Algemeen › Groep "+ Nieuwe groep…" → "Kempen groep" (code-voorstel KEMPENGROEP) en kent de overige leden toe; daarna (1) `GET /groepen` toont 1 groep mét het juiste ledental, (2) klantenlijst met filter "Groep: Kempen groep" toont uitsluitend die leden en dezelfde tellers als ongefilterd, (3) Inzicht › Reconciliatie `?groep_id=` idem, (4) `audit_event` bevat per toegekende administratie één `administratie_groep_gewijzigd` (oud null → nieuw KEMPENGROEP) en één `groep_aangemaakt`.
+
+werkt in productie: nog niet gemeten (deploy volgt) — meetrecept hierboven.
+
+<!-- run11-09middag:blok10 -->
+## INCASSO-/BETAALBATCHES UIT RLZ — STAP-0 LEES-ONLY (blok 10 run 11-09 middag)
+
+**Aanleiding (Peter 11-09):** "RLZ herkent zijn eigen batches, wij niet." Een bankregel met het totaal van een SEPA-betaal-
+of incassobatch hangt in de RLZ-UI aan álle onderliggende facturen; onze matchmotor (stappen 1–5 + historie-regel) zoekt één
+open post en valt terug op "handmatig". Opdracht: lees-only vaststellen wat de API over batches prijsgeeft, een lees-only
+productie-instrument bouwen voor het bewijs op de C.V., en een VOORSTEL (geen bouw) voor matchmotor-stap "batch".
+
+**Pre-feature-check:** bouwt voort op "Bankmodule — GEBOUWD + GETEST" (voorstel-volgorde), "Afletteren-tegen-open-post:
+GEKRAAKT" (actie 15 op de PaymentTransaction mét `PaymentItemList`/`LinkedAmount`), "MATCHMOTOR BANK — NAAM/IBAN + NUMMER +
+BEDRAG + TEKEN" (`score_post`, tokens), "BANK — DEELS AFGELETTERDE MUTATIES" (open bedrag, `rlz_koppelingen` uit
+`PaymentReferenceList`), "RLZ-BETAALSTATUS INKOOPFACTUUR" (08-09: `PaymentTermList.PaymentBatchInformation` al gezien op de
+C.V.) en api-verkenning "Verrekening tussen twee bankmutaties — STAP-0" (ActionKind 115 + `CancellationCandidates`). Geen
+schermimpact in dit blok (STAP-0 + CLI); de stap "batch" krijgt bij bouw een UX-review (voorstel-kaart toont N items).
+
+| Onderdeel | Bevinding / besluit | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Lees-only script** | `verkenning/stap0_batches_lezen.py` — `LeesClient` weigert élke niet-GET (SystemExit), stappen `help` · `enums` · `admins` · `verdieping` · `sleutel`; laadt `verkenning/.env` zelf, uitvoer geanonimiseerd (GUID 8, IBAN laatste 4, naam initialen); gedraaid 11-09 op TEST + Universal Steigerbouw | GEDAAN 11-09 | script + `verkenning/output/stap0_batches_*.json` (gitignored) |
+| **Batch-collectie in de API** | Bestaat NIET: `PaymentBatches`/`DirectDebitBatches`/`PaymentOrders`/`CollectionOrders`/`SepaFiles`/`TransmittedFiles`/`Mandates`/`Files` = 404. `Remittances` = KASAFSLUITING (CashRegister, SalesTotal, Export = ManualJournal), niet SEPA, bovendien 403. `DirectDebits`/`CreditTransfers` = kandidatenlijsten (PaymentItems voor incasso/betaling, filter 0/1 zonder/mét "onderweg") | GEMETEN | api-verkenning "Incasso-/betaalbatches — STAP-0 11-09" §1 |
+| **De batch leeft op de bankregel** | `PaymentTransaction.PaymentBatchId : string` + navigatie `Batch : PaymentTransactionBatch {BatchId, Date, FileName (.xml), IsDeleted, RemainingAmount}` (`$expand=Batch`); `$filter=PaymentBatchId ne null` werkt mét `$count`. Universal: 34 regels, 28 = eigen RLZ-betaalbatch (`RLZEE_CT_<datum>_<tijd>_<n>_0001`, Batch gevuld, 4–26 koppelingen, Σ = bedrag cent-exact, OpenAmount 0), 6 = verzamelbetaling van een debiteur (`PaymentBatchId` van de betaler, Batch null, factuurnummers in de omschrijving) | GEMETEN | idem §2 |
+| **DE SLEUTEL** | `PurchaseInvoices/{id}?$expand=PaymentTermList` → `PaymentBatchInformation` == `PaymentBatchId` == `Batch.BatchId` (12/12 documenten op 3 batches); de factuur draagt de sleutel al vóór de bankregel binnenkomt (C.V. 08-09: Exact RLZ-16-00003154 → `RLZEE_CT_20260908_192438_3097_0001`, item PaymentStatus 2 "onderweg"). `PaymentItems?$expand=PaymentTerm` geeft null — de sleutel is alleen via het DOCUMENT leesbaar | GEMETEN | idem §3 |
+| **R-transacties** | Geen route/actie/enum; enige veld `ReturnReason` op PaymentTransaction + PaymentItem — count 0 op beide administraties; RLZ's mechanisme = ActionKind 115 "Betaling storneren" + `CancellationCandidates` (ongekraakt, zelfde capture-vraag als verrekening-vorm 4) | GEMETEN — open | idem §4 |
+| **RLZ-eigen acties** | ActionKinds 20 "Exporteerbank betalingen", **116 "Koppel batch"**, 122 "Voltooi ontbrekende betaling", 128/129/130 fiatteer/afkeur/wijzig, 139 "Repareer betalingen"; `GET …/Actions` op een batch-bankregel biedt alleen 15/16/148/160/161 — 116 niet; nooit gePOST (09-08 kaal 204 zonder effect blijft de enige waarneming) | GEMETEN | idem §1 |
+| **CLI `rlz-lezen` (lees-only nameting-instrument)** | `python -m app.cli rlz-lezen --administratie "<naam|UUID>" --pad "<relatief OData-pad>" [--expand] [--filter] [--orderby] [--top ≤ 50] [--count] [--anonimiseer]`: credential via `resolve_credentials` (store-first), `LeesOnlyClient` weigert élke niet-GET (`SchrijfGeweigerd`), pad-validatie weigert `Actions`/`Download`/`$metadata`/query-tekens/`..` (exit 2) vóór de eerste call, `--top` buiten 1–50 = exit 2, uitvoer ALTIJD geanonimiseerd (`--anonimiseer` = expliciete no-op; bewust geen uit-schakelaar — de uitvoer landt in Cloud Logging), RLZ-4xx/geen credential = leesbaar exit 1. Allowlist `scripts/gcp/nameting.sh` (commentaar noteert de waarborgen) | GEBOUWD + GETEST 11-09 (`tests/rlz/test_rlz_lezen_cli.py` 14 tests; tests/rlz 34 groen) | `backend/app/rlz/lezen_cli.py`, `app/cli.py` (additief), `scripts/gcp/nameting.sh` |
+| **Voorstel matchmotor-stap "batch"** | zie hieronder — NIET gebouwd, wacht op akkoord Peter | VOORSTEL | deze sectie |
+
+**Voorstel matchmotor-stap "batch" (geen bouw; plaats: ná stap 2 deel-match, vóór stap 3 vaste regel — het is een match op
+concrete open posten, geen rubricering):**
+
+1. **Eigen RLZ-batch (sleutel-match) → GROEN, `VoorstelSoort.BATCH`.** Criteria (geld in code): (a) `mutatie.payment_batch_id`
+   gevuld; (b) ≥ 1 open post in de cache draagt `payment_batch_information == payment_batch_id`; (c) Σ(bedragen van álle
+   open posten met die sleutel) = |open bedrag van de mutatie| cent-exact; (d) teken klopt (betaalbatch = afschrijving +
+   inkoopposten, incassobatch = bijschrijving + verkoopposten). Voorstel-kaart: "batch RLZ `RLZEE_CT_…` — N facturen, Σ € …",
+   itemlijst uitklapbaar, bron-label "batch-sleutel + som". Boeken = auto-afletteren-kandidaat achter
+   `bank_autoboeken_ingeschakeld` + volumerem + AI-plausibiliteitspoort: **N × `RlzClient.link_payment_item`** (één actie 15
+   per item op de PaymentTransaction, `LinkedAmount` = itembedrag mét het teken van de mutatie, verse open-items vóór élke
+   call, verificatie `OpenAmount` → 0 ná de laatste; halverwege een API-fout = zichtbare fout mét "k van N gekoppeld", nooit
+   stil). Storno = actie 19 per gekoppeld document (bestaand pad). Eén-call-variant (`PaymentItemList` met N id's,
+   `LinkedAmount` = totaal) is NIET bewezen — alleen ná een schrijf-PoC op de TEST-administratie (beslispunt 2).
+2. **Verzamelbetaling zonder sleutel (debiteur betaalt N facturen in één regel) → GROEN als alle drie:** zelfde tegenpartij
+   (naam-tokens of IBAN-geheugen, bestaande `score_post`-regels), álle factuurnummers van de gekozen posten komen als HEEL
+   token in de omschrijving voor (`referentie_als_token`) en Σ = |open bedrag| cent-exact; **anders ORANJE** "mogelijke
+   verzamelbetaling — bevestigen" mét de kandidatenlijst en het restant (Σ ≠ bedrag, of nummers ontbreken). Nooit
+   subset-sum-gokken zonder nummer-bewijs (geld in code, geen heuristiek op alleen bedragen).
+3. **Deel-batch / afwijkend totaal** (`Batch.RemainingAmount ≠ 0`, of sleutel-match maar Σ ≠ bedrag) → ORANJE mét
+   restant-balk (bestaand UX-patroon) en de items die wél passen; mens kiest, deelkoppeling per item met bestaande
+   `LinkedAmount`-deelvorm.
+4. **R-transactie** (tegengesteld teken t.o.v. de batch, zelfde tegenpartij als één item, |bedrag| = één itembedrag van een
+   ≤ 30 dagen eerder gekoppelde batch, factuurnummer/EndToEndId of SEPA-redencode in de omschrijving) → ORANJE "R-transactie
+   — betaling van factuur X teruggedraaid", géén automatische actie. RLZ-vorm om de post te heropenen = actie 115 (capture
+   nodig); tot die tijd handmatig in RLZ + signaal in de reconciliatie ("factuur X staat betaald maar de bank draaide terug").
+5. **Datalaag (bij bouw):** `bank_mutatie.payment_batch_id` + `batch_bestandsnaam`/`batch_datum`/`batch_restant` uit
+   `$expand=Batch` in de bank-sync (lijst-GET, geen extra call); `payment_item_cache.payment_batch_information` gevuld via
+   één extra `…Invoices/{id}?$expand=PaymentTermList` per item mét PaymentStatus 2 (onderweg) — begrensd (Universal: 34
+   items), nooit voor álle open posten. Migratie = volgende run.
+
+**Beslispunten Peter**
+1. Akkoord op bouw van stap "batch" met de regels 1–3 (groen alleen bij sleutel + som, of nummers + som + tegenpartij)? En
+   valt de batch-aflettering onder dezelfde autoboek-opt-in als stap 1 (advies: ja, zelfde poorten)?
+2. Schrijf-PoC op de TEST-administratie (TEST-referenties, storno-terugweg): twee facturen + één mutatie van de som →
+   (a) 2 × actie 15 met deelbedragen — bewijst de N-calls-vorm en dat de andere item-id's ná een koppeling geldig blijven;
+   (b) één actie 15 met `PaymentItemList` = beide id's — als dat werkt is het één call per batch. Een echte RLZ-batch
+   (actie 20) maakt de PoC niet aan: dat is een export naar de bank.
+3. Welke administratie draait incasso (DD) in RLZ (`PaymentAccounts.SepaCreditorID` gevuld)? Geen test-login heeft er één;
+   zonder casus blijft de incasso-kant een spiegelaanname (positief teken, verkoopposten).
+4. R-transacties: DevTools-capture van "Betaling storneren" (actie 115) in de RLZ-UI — dezelfde capture beantwoordt
+   verrekening-vorm 4 (10/11-09). Tot die tijd alleen signaal, geen actie.
+5. `rlz-lezen` anonimiseert altijd (geen uit-schakelaar) — akkoord, of wil je voor eigen gebruik in Cloud Shell een
+   `--ruw` mét expliciete reden in de audit?
+
+**Vragen voor RLZ-support (alleen ter bevestiging, niets blokkeert):** accepteert actie 15 méér dan één `PaymentItemList`-
+entry, en hoe verhoudt `LinkedAmount` zich dan tot de items; wat is de body van actie 116 "Koppel batch"; wordt
+`ReturnReason` gevuld bij CAMT-R-transacties (en met welke waarden); wat zijn de waarden van het enum-type
+`PaymentInProgress`; waarom staan RLZ's eigen batch-koppelingen op `PaymentReconciliationSource 2` (Manual).
+
+**Meetrecept productie (Administratiekantoor Nijenhuis C.V., ná deploy van de commit met `rlz-lezen`; lees-only via het
+nameting-SA):**
+```
+scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentTransactions --filter "PaymentBatchId ne null" --expand "Batch,PaymentReferenceList(\$expand=Document)" --orderby "BookDate desc" --top 5 --count
+scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentAccounts --top 10
+scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentItems --expand Document --top 50 --count
+scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad CreditTransfers --top 5
+scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad DirectDebits --top 5
+```
+Verwacht: (1) `@odata.count` ≥ 1 en de recentste regel(s) met `PaymentBatchId` van de vorm `RLZEE_CT_2026…_0001`, `Batch.FileName
+RLZEE_CT_…xml`, `PaymentReferenceList` met N documenten waarvan Σ `Amount` = |`Amount`| — waaronder, zodra de batch van 08-09
+19:24 door de bank is verwerkt, `RLZEE_CT_20260908_192438_3097_0001` mét RLZ-16-00003154 (€ 45,92); (2) de bankrekening met
+`CanExport true`, `SepaCreditorID` (leeg = geen incasso); (3) items met `PaymentStatus 2` = onderweg in een batch; (4)/(5) de
+betaal-/incassolijst-kandidaten. Geen enkele schrijfactie.
+
+**Werkt in productie:** nog niet gemeten — meetrecept hierboven ná deploy; het STAP-0-bewijs (sleutel-gelijkheid) is op
+Universal Steigerbouw (échte RLZ-administratie) al gemeten: ja.
+
+<!-- run11-09middag:blok7 -->
+## STAANDE GOEDKEURING — PERIODIEK VS BATCH (blok 7 run 11-09 middag)
+
+**Aanleiding (feedback accordeur-app, Peter 11-09; casus Lusso):** twaalf gelijke facturen voor twaalf chalets in één
+week gaven twaalf keer de vraag "voortaan automatisch akkoord?". De mockup-flow "voorstel op de 2e identieke factuur"
+(besluit 2026-08-08) is hiermee HERZIEN: het voorstel komt alleen nog bij een PERIODIEK patroon, één keer per
+leverancier + patroon, en de accordeur kan "niet nu" (90 dagen stil) of "nooit voor deze leverancier" kiezen. De
+staande goedkeuring zélf (regel per accordeur + leverancier + exact bedrag, automatisch akkoord, intrekbaar) is
+ongewijzigd; alleen het VOORSTEL is aangescherpt.
+
+| Onderdeel | Status / besluit | Vindplaats |
+|---|---|---|
+| Eén gedeelde patroonmotor | GEBOUWD — `classificeer_reeks(datums)` bovenop de bestaande `detecteer_patroon` van het terugkerend-signaal; geen tweede detector. Invoer = factuurdatums van GELIJKE facturen (zelfde leverancier + exact zelfde totaalbedrag, app-documenten; verwijderd/gesplitst/samengevoegd/afgevoerd-duplicaat tellen niet mee), dubbele datums tellen mee (niet uniek maken) | `app/terugkerend/service.py::classificeer_reeks`, `gelijke_facturen_per_vendor_bedrag`; `tests/terugkerend/test_classificatie.py` (15) |
+| Definitie "periodiek" (exact) | ≥ `PERIODIEK_MIN_FACTUREN` (= 3) gelijke facturen, geen twee facturen korter dan `PERIODIEK_MIN_TUSSENPOOS_DAGEN` (= 21 d, ≈ 3 weken; ook niet dezelfde dag) ná elkaar, én `detecteer_patroon` herkent maand (30,44 d) of kwartaal (91,31 d) met élke tussenpoos binnen ±35 %. De 21-dagengrens ligt bewust bóven de maand-tolerantie-ondergrens (19,8 d) — guard-test | constanten in `app/terugkerend/service.py` |
+| Definitie "batch" | twee gelijke facturen < 21 d uit elkaar (Lusso: 12 op één dag) óf ≥ `BATCH_MIN_AANTAL` (= 2) gelijke facturen binnen `BATCH_VENSTER_DAGEN` (= 30 d) zonder bewezen patroon. Korte tussenpoos wint van het maandritme ("12 chalets élke maand" = batch). Gevolg: de TWEEDE maandhuur (30 d ná de eerste) krijgt nog geen voorstel, de derde wél — precies één voorstel per patroon | idem |
+| "Onbepaald" | één factuur, twee ver uit elkaar, onregelmatig — nooit een voorstel (nooit gokken) | idem |
+| Voorstel in de wachtrij | HERZIEN: `_staande_regel_kandidaten` eist naast "eerder handmatig akkoord op zelfde leverancier + bedrag (+ afdeling) en geen actieve regel" nu ook PERIODIEK én geen stilte/uitzondering; staan er meerdere gelijke facturen tegelijk in de wachtrij, dan draagt alleen de EERSTE (lijstvolgorde) het voorstel. Nieuw additief DTO-veld `staande_regel_patroon` ('maand'/'kwartaal', null zonder voorstel). Querytelling constant per administratie: +2 (gelijke facturen, stilte) → `WACHTRIJ_MAX_STATEMENTS_PER_ADMINISTRATIE` 28 → 30 | `app/accordering/service.py`, `schemas.py::WachtrijItemResponse`; `tests/accordering/test_wachtrij_querytelling.py` |
+| Antwoord in dezelfde akkoord-call | `AkkoordInput.staande_regel_voorstel_antwoord: 'ja' \| 'niet_nu' \| 'nooit' \| None` (additief; oude app-versies sturen alleen de vlag). 'ja' = regel aanmaken (bestaand pad), 'niet_nu' → rij `stil_tot` = vandaag_nl + `VOORSTEL_STIL_DAGEN` (90) voor deze accordeur + leverancier, 'nooit' → rij `nooit`. Eén actieve rij per (administratie, accordeur|NULL, leverancier): bijwerken, nooit dupliceren; `nooit` wint van `stil_tot`. Audit `staande_goedkeuring_voorstel_stil_gezet` oud→nieuw; het antwoord staat ook in het `accordering_akkoord`-audit | `service.geef_akkoord`, `_leg_voorstel_stilte_vast` |
+| Tabel stilte/uitzondering (migratie 0134) | `boekhouding.staande_goedkeuring_voorstel_stil`: accordeur_gebruiker_id (NULL = alle accordeurs van de administratie), administratie_id, vendor_id + leverancier_naam (op zet-moment), soort `stil_tot`/`nooit` (CHECK), stil_tot, reden, actief, aangemaakt_door/op, opgeheven_door/op. RLS op administratie (ENABLE + FORCE, policy `_scope` op `platform.current_administratie_id()`), grant SELECT/INSERT/UPDATE — géén DELETE (opheffen = actief=False). Schema-only, geen backfill | `migrations/versions/0134_staande_goedkeuring_voorstel_stil.py`, `app/accordering/models.py::StaandeGoedkeuringVoorstelStil` |
+| "Nooit voorstellen" — wie mag wat | Accordeur (app): alleen voor zichzelf (een ander accordeur-id → 404), alleen eigen rijen opheffen. Beheerder (kantoor-web): administratiebreed (accordeur NULL) of per accordeur, heft alles op. Overige kantoorrollen: 403 (`KantoorActieVereist`) — Beheerder-instelling, zoals de lagen | `service.zet_voorstel_nooit`, `hef_voorstel_uitzondering_op` |
+| Routes | `POST /administraties/{a}/accordering/staande-regels/voorstel-uitzonderingen {vendor_id, reden?, accordeur_gebruiker_id?}` → 200 DTO; `POST …/voorstel-uitzonderingen/{id}/opheffen` → 204; beide `vereis_administratie_scope` + `vereis_kantoor_of_accordeur` + voorwaarden-poort (rolfijnslijping in de service). `GET …/staande-regels` krijgt additief `uitzonderingen[]` (actieve `nooit`-rijen + lopende stiltes). Gates: accordeur-test + fail-closed sweep | `app/accordering/router.py`; `tests/security/test_rol_endpoint_gates.py::test_voorstel_uitzondering_accordeur_zelf_200_en_opheffen_204` |
+| Accordeur-app | Chip "terugkerend · zelfde bedrag" + hint mét patroon ("stuurt elke maand / elk kwartaal een factuur met exact hetzelfde bedrag"); sheet "Voortaan automatisch akkoord?" met **Niet nu** (90 dagen stil), **Ja, sta toe** en tekstlink **Nooit voor deze leverancier**; antwoord reist mee in de offline besluit-wachtrij (`BesluitOpdracht.staandeRegelAntwoord`); Staande goedkeuringen toont uitzonderingen als aparte regel met chip "nooit voorstellen" (eigen rij: Opheffen; kantoor-rij: alleen lezen) of "even stil" (tot datum) | `frontend/src/accordeur/GoedkeurenFlow.tsx`, `accordeurApi.ts`, `besluitQueue.ts`; `GoedkeurenFlow.test.tsx` (+4), `besluitQueue.test.ts` |
+| Kantoor-web | Instellingen › Administraties › ‹administratie› › Klant-accordering: tabel staande goedkeuringen krijgt per rij linkbtn "Nooit voorstellen"; nieuw blok "Voorstel 'voortaan automatisch akkoord?' in de app" met tabel (leverancier · geldt voor · chip "nooit voorstellen"/"stil tot …" · reden · Opheffen) en Beheerder-formulier leverancier-select (uit `/administraties/{a}/crediteuren`) + reden + "Nooit voorstellen" (administratiebreed) | `frontend/src/instellingen/AccorderingInstellingen.tsx`; `AccorderingVoorstelUitzonderingen.test.tsx` (2) |
+| Bestaande staande goedkeuringen | ONGEWIJZIGD — `staande_regel_aanmaken=True` blijft server-side toegestaan zonder periodiek-eis (kantoor/tests); toepassing, intrekken, afdelingen, verplichting-uitsluiting ongewijzigd; `tests/accordering/test_service.py` groen | — |
+| Lees-only nameting-instrument | CLI `staande-goedkeuring-voorstellen-lezen --administratie <uuid\|naam>`: per open ronde leverancier · bedrag · reeks (n gelijke facturen → periodiek/batch/onbepaald + reden) · staande regel ja/nee · stil ja/nee · voorstel JA(patroon)/nee, plus de actieve uitzonderingen; in de `nameting.sh`-allowlist | `app/accordering/cli_cmd.py`, `app/cli.py` (additief), `scripts/gcp/nameting.sh` |
+| Gouden set | accordeur-DTO geraakt → keten-casus (t): BDO 6088744 via intake → aanbieden → wachtrij: eerste factuur = geen voorstel, `staande_regel_patroon` null in service én API-DTO; akkoord zonder antwoord legt geen stilte-rij aan. Export ongewijzigd (wachtrij zit niet in de export) | `tests/keten/test_t_staande_goedkeuring_voorstel.py` |
+
+**Meetrecept productie-nameting (Lusso):** ná deploy, zodra de volgende chalet-batch ter accordering staat:
+`scripts/gcp/nameting.sh staande-goedkeuring-voorstellen-lezen --administratie "Lusso"` → élke rij van de batch toont
+`reeks N gelijke facturen → batch (…)` en `voorstel: nee`; de totaalregel zegt `voorstel bij 0`. Controle-tegenhanger:
+een administratie met maandhuur toont bij de derde gelijke factuur `→ periodiek (maand-patroon over 3 facturen)` en
+`voorstel: JA (maand)` op precies één rij. Aanvullend lees-only: `gcloud logging read` op `POST …/akkoord` met
+`staande_regel_voorstel_antwoord` in het audit-event (`accordering_akkoord`) en `staande_goedkeuring_voorstel_stil_gezet`.
+
+**Werkt in productie: nog niet gemeten (deploy volgt)** — meetrecept hierboven.
+
+**Beslispunten voor Peter:**
+1. Drempel batch-venster: exact 30 dagen betekent dat de tweede maandhuur (1 juni → 1 juli) nog geen voorstel geeft
+   (de derde wél). Alternatief: venster 21 d → voorstel al bij de tweede maandfactuur, maar dan zonder bewezen patroon
+   (n = 2). Gebouwd: 30 d, "precies één voorstel per bewezen patroon".
+2. `staande_regel_aanmaken=True` blijft server-side toegestaan zonder periodiek-eis (alleen de app biedt het niet aan).
+   Aanscherpen naar een harde poort raakt bestaande kantoortests en is een apart besluit.
+3. Crediteuren-dubbelen-voorkeur (B13 07-09) wordt in `gelijke_facturen_per_vendor_bedrag` niet toegepast (de
+   wachtrij werkt op de ruwe vendor van het voorstel); een verliezer-vendor levert dus een eigen reeks. Bewust
+   simpel gehouden; bij behoefte één regel toevoegen (kaart uit `crediteuren/voorkeur.py`).
+4. Verstreken `stil_tot`-rijen blijven staan (actief=True) maar tellen niet meer; geen opruimjob nodig — wel zichtbaar
+   via `voorstel_uitzonderingen(alleen_actief=False)` als dat ooit gewenst is.
+
+<!-- run11-09middag:blok1 -->
+## VERPLAATSEN — RLS-UITZONDERING BINNEN DE SECURITY DEFINER-FUNCTIE (blok 1 run 11-09 middag)
+
+**Aanleiding (bug Peter 11-09 11:55, correlatie-id 2fa4a61b-1a0d-4921-8e22-7c17089707af, tweemaal 500):**
+`POST /administraties/66e1e296-…/documenten/9f0d112f-…/verplaats` ("inv26010471 (1).pdf", Kempen Facilities →
+Universal Verkoop) strandde op `psycopg.errors.InsufficientPrivilege: new row violates row-level security policy for
+table "document"` in de aanroep van `boekhouding.verplaats_document(uuid, uuid, uuid)` (migratie 0080, 27-08).
+
+**Wortel (geverifieerd):** 0080 nam aan "SECURITY DEFINER, eigenaar = migratierol, dus RLS-vrij binnen de functie".
+Dat geldt alleen voor een superuser of een rol mét BYPASSRLS. Álle 124 RLS-tabellen dragen `FORCE ROW LEVEL SECURITY`
+(document sinds 0004), dus ook de tabel-eigenaar is aan het beleid onderworpen. Lokaal en in CI migreert `postgres`
+(echte superuser → bypass, alle tests groen); op Cloud SQL is de eigenaarsrol géén superuser en BYPASSRLS is daar niet
+toekenbaar (vereist superuser). **De verplaats-functie heeft in productie dus nooit gewerkt.** `UPDATE document SET
+administratie_id = p_naar` valt in de bron-scope op WITH CHECK (`administratie_id IS NULL OR = current`); de elf
+kindtabellen mét `administratie_id NOT NULL` + policy `administratie_id = current` bieden geen NULL-hop.
+
+**Verworpen alternatieven:**
+| Alternatief | Waarom niet |
+|---|---|
+| `SET row_security = off` in de functie | zonder BYPASSRLS weigert Postgres: "query would be affected by row-level security policy" |
+| BYPASSRLS voor de eigenaarsrol | vereist superuser (onmogelijk op Cloud SQL) én is de generieke bypass die 0001 bewust als "aparte beslissing" buiten de deur hield |
+| FORCE weghalen op de twaalf tabellen | breekt de conventie (alles FORCE); de eigenaar wordt dan overal RLS-vrij, niet alleen in deze functie |
+| DELETE + INSERT in het doel | verboden ("niets verwijderen"), triggergevoelig, document-id zou wisselen |
+
+**Gekozen (migratie 0132, schema-only):** de kleinste, expliciete policy-wijziging.
+1. Helper `platform.verplaatsing_document_id()` (SQL STABLE) leest de transactie-lokale GUC `app.verplaatsing_document_id`
+   — zelfde patroon als `platform.current_administratie_id()`; EXECUTE aan `boekhouding_app` (policies worden als
+   current_user geëvalueerd, ook buiten de functie — dan is de policy dood, maar de helper moet aanroepbaar zijn).
+2. Per geraakte tabel één extra PERMISSIVE policy `<tabel>_verplaatsing` FOR ALL, USING én WITH CHECK:
+   `<document-kolom> = platform.verplaatsing_document_id() AND current_user IS DISTINCT FROM session_user`. De tweede
+   voorwaarde maakt de uitzondering uitsluitend actief BINNEN een SECURITY DEFINER-context (current_user = functie-
+   eigenaar ≠ session_user = `boekhouding_app`). De app-rol is nergens lid van en kan `current_user` niet wisselen;
+   zet ze zélf de GUC, dan blijft de policy dood (test). `vraag_bericht` en `accordering_stap` (geen document_id)
+   toetsen via `EXISTS` op `vraag` resp. `document_accordering`; die sub-select loopt zelf óók door RLS, maar binnen
+   de definer-context geldt dáár dezelfde verplaatsing-policy — de keten sluit ongeacht de UPDATE-volgorde.
+   Tabellen (14): document, vraag, vraag_bericht, afwijzing, iban_accordering, duplicaat_signaal, factuurmatch,
+   factuurmatch_staat, materiaalmatch, accordering_stap, document_accordering, document_herinnering **+ twee die ná
+   0080 kwamen en nooit meeverhuisden: `verplichting_match` (0110, PK = document_id — de her-extractie in het doel
+   botste op de bron-rij die ze onder RLS niet zag: "Verplichting-match mislukt" in de log, match stil afwezig in
+   het doel) en `regel_gb_classificatie` (0108, per-document-cache).**
+3. `CREATE OR REPLACE FUNCTION boekhouding.verplaats_document`: identieke poorten als 0080 (aanroeper gescoped op de
+   bron, status `ontvangen`, doel bestaat), `set_config('app.verplaatsing_document_id', p_document_id, true)` aan het
+   begin en leegzetten aan het eind (EXCEPTION rolt transactie én lokale GUC terug), de twee extra kindtabellen mee.
+   REVOKE/GRANT EXECUTE ongewijzigd. Downgrade = policies + helper droppen, letterlijke 0080-tekst terug
+   (`functie_tekst(met_verplaatsing_guc=False)` in de migratie is die tekst — de regressie-test gebruikt 'm ook).
+
+**Bevinding `platform.administratie`:** draagt géén RLS (relrowsecurity = false) — de `EXISTS (… WHERE id = p_naar)`-
+poort werkt voor Beheerder én niet-Beheerder. De Beheerder-bypass in het platform loopt via
+`platform.current_actor_is_beheerder()` (rol-lookup op `app.current_actor_id`, 0002) en zit alleen op
+`gebruiker_administratie`/module-rollen, niet op boekhouding-tabellen; de scope-toets op het doel gebeurt in de
+servicelaag (`_heeft_scope` in `scoped_session(<doel>, actor_id=actor)`, RLS-les 25-08).
+
+**Router/UI (`app/documenten/router.py::document_verplaatsen`, `frontend/src/document/VerplaatsModal.tsx`):**
+`DBAPIError` mét `InsufficientPrivilege` in de keten → HTTP 500 `"Verplaatsen is mislukt — automatisch gemeld (code
+<correlatie-id>)."` + audit `rls_weigering`; andere DB-fouten blijven het algemene vangnet volgen. `GeenScopeOpDoel`
+→ 403 `"Verplaatsen niet toegestaan voor jouw scope — Geen toegang tot de doeladministratie <naam>"`. De modal toonde
+de server-detail al letterlijk (`ApiError.message` = `detail`); vitest bewijst dat nu voor 403 én 500 (nooit "Fout (500)").
+
+**Bewaking: RLS-weigering = systeemfout "automatisch gemeld" (nieuw `app/db/rls_weigering.py`):**
+| Onderdeel | Wat | Vindplaats |
+|---|---|---|
+| Herkenning | `vind_insufficient_privilege(exc)` loopt `__cause__`/`__context__` én SQLAlchemy `.orig` af | `app/db/rls_weigering.py` |
+| Audit | `platform.audit_event` actie `rls_weigering` (module platform, systeem-actor, administratie-loos): route, methode, tabel uit de melding, melding ≤ 500, `gebruiker_id` uit het bearer-token (zonder DB-lookup), correlatie-id = record_id; nooit een tweede fout richting client | `registreer(...)` |
+| Centrale handler | `app/main.py::_bouw_onverwachte_fout_response(request, exc)` (middleware + exception_handler geven `exc` mee): bij RLS-weigering audit + detail "… — automatisch gemeld (code …)" | `app/main.py` |
+| Bewakingsprobe | `rls_weigering` in de kwartierrun: audit-rijen laatste 24 u > 0 = `fout` (alert bij de 2e meting, herstelmelding zodra het etmaal schoon is) mét route · tabel · code per rij (max 5) | `app/bewaking/service.py::_probe_rls_weigering` |
+| Reconciliatie | `automatiseringen.rls_weigering_bevindingen(nu)`: één LET-OP per route-patroon (UUID's → `{id}`), categorie `RLS_WEIGERING` ∈ `BEHEER_CATEGORIEEN` (systeemmail, nooit de actiemail), tekst "… — systeemfout — automatisch gemeld", deeplink `/documenten/<adm>/<doc>` bij een document-route anders `/reconciliatie`; leesbare tekst `teksten._automatisering` ("RLS-weigering op een schrijfpad — beheer") | `app/reconciliatie/automatiseringen.py`, `teksten.py` |
+
+**Tests:**
+| Test | Dekt |
+|---|---|
+| `tests/security/rls_eigenaar.py` (helper) | `productie_eigenaar(admin_engine)`: `CREATE ROLE rls_toets_eigenaar NOLOGIN` + `GRANT <migratierol> TO …` (erft privileges, NIET superuser/BYPASSRLS — asserted) + `ALTER FUNCTION … OWNER TO`, herstel in finally |
+| `tests/security/test_verplaats_rls.py` (11) | regressie-vangst: letterlijke 0080-tekst onder `boekhouding._verplaats_document_0080_toets` faalt met `InsufficientPrivilege … table "document"`; niet-Beheerder mét scope bron+doel verhuist document + afwijzing (heropend) + vraag + bericht + duplicaat_signaal + verplichting_match, tijdlijn van→naar, GUC leeg ná de functie, geen "Verplichting-match mislukt"; Beheerder zonder scoperijen groen; scope alleen bron → `GeenScopeOpDoel` → 403 leesbaar; HTTP-route 200 onder de productie-eigenaar; app-rol die zelf de GUC zet ziet 0 rijen/0 geraakt in een andere scope en krijgt in de eigen scope nog steeds InsufficientPrivilege op de administratie-wissel; router → 500 "automatisch gemeld" + audit (route, tabel, gebruiker, doel); andere DB-fout = algemeen vangnet zonder audit; centrale handler herkent de weigering door een wrapper-exception heen en schrijft de gebruiker uit het token weg; zonder weigering geen audit |
+| `tests/bewaking/test_rls_weigering.py` (8) | herkenning/tabel-regex/route-patroon/deeplink/token; probe ok → fout mét route+code → ná 24 u ok; probe in de kwartierrun; één LET-OP per route-patroon (aantal, tabellen, jongste code), beheer ≠ regressie, leesbaar zonder technische sleutels, vingerafdruk stabiel, weg ná het etmaal; `registreer()` zet 'm op de verzamelaar |
+| `tests/keten/test_t_verplaatsen_rls.py` (2) | gouden-set-document (casus a) via de échte route onder de productie-eigenaar: 200, rij in het doel, tijdlijn van→naar, geen audit; RLS-weigering in de route = leesbare 500 + audit |
+| `tests/bewaking/test_bewaking.py` | probe-lijst uitgebreid met `rls_weigering` (gedeeld bestand, additief) |
+| `frontend/src/document/VerplaatsModal.test.tsx` (+2) | server-detail letterlijk in de modal bij 403 en 500, modal blijft open, knop weer actief |
+
+**Meetrecept productie (ná deploy + `make migrate` 0132):** Peter herhaalt als Beheerder de verplaatsing van
+"inv26010471 (1).pdf" (Kempen Facilities → Universal Verkoop). Verwacht: 200, document in de documentenlijst van
+Universal Verkoop op `te_controleren`/`extractie_wachtrij` (her-extractie), en in `GET /administraties/<Universal
+Verkoop>/documenten/<id>` een tijdlijnregel met `detail.verplaatst.van_administratie_naam = "Kempen Facilities"` en
+`naar_administratie_naam = "Universal Verkoop"`. Lees-only nameting: `scripts/gcp/nameting.sh` op de requestlog
+(`POST …/verplaats` = 200) en `SELECT count(*) FROM platform.audit_event WHERE actie = 'rls_weigering'` = 0 in
+Cloud Shell; de bewakingsprobe `rls_weigering` staat op ok in de eerstvolgende kwartierrun.
+**werkt in productie: nog niet gemeten — deploy volgt; meetrecept hierboven.**
+
+**Beslispunten / open punten:**
+1. `projectverdeling` (0111-klasse, `id`-PK, verdeling verwijst naar bron-projecten) verhuist bewust NIET mee: in het
+   doel is die verdeling betekenisloos en de doel-writer maakt een eigen rij; de bron-rij blijft als historie (zelfde
+   keuze als `doorbelasting_run` → vervallen in 0080). Wil Peter 'm wél mee of expliciet "vervallen", dan is dat één
+   UPDATE-regel + policy in een volgende migratie.
+2. De verplaatsing-policies zijn per definitie dood voor een sessie waarvan `current_user = session_user` — ook voor een
+   niet-superuser eigenaar die de functie zélf aanroept (bv. een CLI als de eigenaarsrol). De app doet dat nooit;
+   Cloud-Shell-nazorg via de eigenaarsrol zou dan de 0080-fout krijgen. Geaccepteerd (lees-only-regel Peter 08-09).
+3. Frontend-detail bij 500 draagt bewust de correlatie-code ("… automatisch gemeld (code …)") — geen kale code, maar
+   Peter kan 'm noemen; wil hij 'm liever niet in de UI, dan alleen de zin.
+4. Test-DB-race in parallelle runs: sibling-stubs die ná een testrun gevuld worden breken de downgrade-keten
+   (`alembic_version` staat dan vóór op de feitelijke schema-stand). Viermaal opgelost met een detectie per migratie op een
+   kenmerkend object (`scratchpad/herstel_alembic_versie_1.py`). Aanbeveling coördinator: stubs mét `op.execute("SELECT 1")` of
+   een detectie-stap in de preambule van de volgende parallelle run.
+
+<!-- run11-09middag:blok3 -->
+## EERSTE SYNC NÁ GROENE PROBE — 403 = HERPROBEREN (blok 3 run 11-09 middag)
+
+**Aanleiding (bevinding Peter 11-09, Baard beheer & management / Box Beheer B.V. / Kempen B.V.).** De wizard/herprobe
+meldde "10 leesroutes groen" om 11:5x, de eerste sync direct erna kreeg HTTP 403 `{"Message":"Actie niet toegestaan bij
+huidige gebruikersrechten"}` op Ledgers/Vendors/Projects/PaymentAccounts, en de RLZ-check was de volgende ochtend groen
+zonder dat iemand iets in RLZ wijzigde. Conclusie: RLZ zet de rechten van een verse API-koppeling met vertraging door.
+Een 403 op een route die de probe net groen had is dus geen fout maar een wachtstand — het bestaande gedrag ("fout,
+start de sync opnieuw") legde het herproberen bij de mens (kernprincipe 7: automatisering wacht nooit op een mens).
+
+**Pre-feature-check.** "RECHTEN-PROBE = EERSTE-SYNC-ROUTES + HERPROBE MET DE OPGESLAGEN LOGIN" (blok C 10-09: probe-set =
+sync-paden, `platform.rlz_rechten_probe` bewaart het rapport, `_fout_stand` mét letterlijk RLZ-antwoord ≤ 300 tekens +
+RLZ-recht), "RLZ-CHECK ALS KNOP" (knop + "Sync opnieuw starten" over `POST /instellingen/administraties/{id}/eerste-sync`),
+"TELLERS PER AUTOMATISERING IN DE RECONCILIATIE" (teller `eerste_sync`, categorie `credential`), "SYNTHETISCHE BEWAKING +
+ALERTING" (kwartier-job `rlz-bewaking`). Geen nieuwe route, geen nieuw scherm. **UX-review:** de bestaande sync-chip op
+Instellingen › Administraties krijgt één extra stand (info-badge "⏳ RLZ zet rechten door — opnieuw over N min", tooltip =
+het letterlijke RLZ-antwoord + poging + volgende tijdstip); de bestaande "Eerste sync per onderdeel"-lijst toont per
+wachtend onderdeel de chip "rechten onderweg" + "RLZ zegt: …"; geen mockup nodig, past in de IA.
+
+**Hoe liep de eerste sync al (gelezen, niet geraden).** `app/beheer/eerste_sync.py`: rij `administratie_sync_run`
+(wachtrij → bezig → klaar/fout, status per onderdeel), voertuig dev = thread, cloud = on-demand Cloud Run-job
+`rlz-eerste-sync` (`EERSTE_SYNC_JOB_RESOURCE`, géén scheduler — `f3_jobs.sh` stap 9, alleen run-backend@ heeft
+`run.invoker`). Frequente jobs mét scheduler: `rlz-bewaking` (*/15, `bewaking-probe`), `rlz-extractie-wachtrij` (*/10),
+`rlz-intake-imap` (*/10), `rlz-webhook-afleveraar` (*/5). Gekozen: de wekker hangt aan `rlz-bewaking` (kleinste wijziging,
+kwartier past bij de reeks 5/15/60, en een kapotte wekker is dáár automatisch een bewakingsfout mét alert).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Statusmodel | `AdministratieSyncRunStatus.RECHTEN_ONDERWEG = "rechten_onderweg"` (run én onderdeel-stand), kolommen `pogingen` (int, default 0) en `volgende_poging_op` (timestamptz) + index (status, volgende_poging_op); check-constraint `ck_administratie_sync_run_status` (0076) uitgebreid met `rechten_onderweg`; `aangevraagd_op` wordt nu expliciet door de app gezet (klok-anker) | GEBOUWD | `app/beheer/models.py`, migratie `0133_eerste_sync_herproberen.py` |
+| Herprobeer-regel | `is_herprobeerbaar(uitkomsten, probe_rapport)` (puur): ÉLK mislukt onderdeel heeft HTTP 403 én de route staat 'ok' in het laatst opgeslagen probe-rapport (`platform.rlz_rechten_probe`). Geen rapport / 401 / 5xx / niet-RLZ-fout / 403 op een probe-rode route → direct `fout` (bestaand gedrag, incl. LET OP-reden) | GEBOUWD | `app/beheer/eerste_sync.py::is_herprobeerbaar`, `_probe_rapport` |
+| Reeks + venster | `herprobeer_interval(pogingen)`: 5, 15, 60 min ná poging 1/2/3, daarna 60 min; `HERPROBEER_MAX` = 24 u vanaf `aangevraagd_op` (24 u = 27 pogingen). Daarna `fout` mét `fout_reden` "Na 24 uur herproberen (N pogingen sinds …) weigert Reeleezee nog steeds. <bestaande LET OP-reden>" — het letterlijke RLZ-antwoord staat per onderdeel (`rlz_melding`, ≤ 300) | GEBOUWD | `eerste_sync.py::_sluit_run_af`, `OPGEGEVEN_PREFIX` |
+| Alleen niet-klare onderdelen opnieuw | `_claim` levert de al-`klaar`-standen mee; `_voer_onderdelen_uit(eerder_klaar=…)` draait alleen de rest (TaxRates wordt bij de Baard-casus niet opnieuw opgevraagd) | GEBOUWD | `eerste_sync.py::_Geclaimd` |
+| Wekker | `herprobeer_vervallen(nu)`: per actieve administratie (RLS-scope) élke `rechten_onderweg`-run met `volgende_poging_op ≤ nu` → `wachtrij` (+ audit) → `_start_voertuig` (cloud: job-trigger, dev: thread); trigger mislukt (bv. IAM) → `verwerk_wachtrij_voor` in-process, gelogd — nooit stil. Aangeroepen als stap `eerste_sync_wekker` in `voer_probes_uit` (detail "N herpoging(en) gestart"; exception = bewakingsfout → alert ná 2 op rij) | GEBOUWD | `eerste_sync.py::herprobeer_vervallen`, `app/bewaking/service.py::_wekker_eerste_sync` |
+| "Sync opnieuw starten" | `start_run` op een `rechten_onderweg`-run zet DEZELFDE run direct in de wachtrij (zelfde 24-uursvenster, poging telt door, audit `aanleiding=handmatig`); knop in `RlzCheck` verschijnt ook bij `rechten_onderweg` + groene check | GEBOUWD | `eerste_sync.py::start_run`, `frontend/src/instellingen/RlzCheck.tsx` |
+| Audit per herpoging | systeem-actor, tabel `administratie_sync_run`: `eerste_sync_herpoging_gepland` {poging, volgende_poging_op, onderdelen, rlz_melding}, `eerste_sync_herpoging_gestart` {poging, aanleiding wekker/handmatig}, `eerste_sync_herproberen_opgegeven` {pogingen, onderdelen, rlz_melding} | GEBOUWD | `eerste_sync.py` |
+| DTO | `EersteSyncRunDto` additief: `pogingen`, `volgende_poging_op`; onderdeel-stand droeg al `http_status`/`rlz_melding`/`rlz_recht` (nu in `types.ts` getypeerd) | GEBOUWD | `app/beheer/schemas.py`, `router.py::_eerste_sync_dto`, `frontend/src/api/types.ts` |
+| Frontend | helper `eersteSyncStand.ts` (`rechtenOnderwegTekst` "RLZ zet rechten door — opnieuw over N min" / "zo dadelijk", `rechtenOnderwegTooltip` = RLZ-antwoord · poging · volgende tijdstip · 24-uursgrens); sync-chip `info` op de rij (`AdministratiesV2`), `EersteSyncStatus` chip "rechten onderweg" (`chip afwijking`) + regel per onderdeel "RLZ zegt: …" + uitlegblok in de wizard, `syncFoutTooltip` leest ook wachtende standen, detailpagina-uitleg; run pollt NIET (niet lopend) — mens ziet de stand, wekker doet het werk | GEBOUWD | `frontend/src/instellingen/eersteSyncStand.ts`, `AdministratiesV2.tsx`, `AdministratieWizard.tsx`, `AdministratieDetailPagina.tsx` |
+| Reconciliatie-teller | nieuw `eerste_sync_herproberen` (stand `altijd`): overgeslagen `rechten_onderweg` = runs die nú wachten (geen LET-OP — systeem handelt), gedaan = audit `eerste_sync_herpoging_gestart` (elke gestarte herpoging), uitkomst op de run; harde voorwaarde `rechten_na_24u` (fout + 403 + pogingen > 1) → LET-OP mét deeplink `/instellingen/administraties/{aid}` (actiemail, niet beheer); de oude teller `eerste_sync` telt zo'n run niet dubbel als `credential`. Leesbare tekst in `teksten.py` ("Eerste sync: RLZ weigert na 24 uur nog steeds" + handeling RLZ-check / Sync opnieuw starten) | GEBOUWD | `app/reconciliatie/automatiseringen.py`, `teksten.py::_automatisering` |
+| IAM | run-jobs@ krijgt `roles/run.invoker` op `rlz-eerste-sync` zodat de wekker de job kan triggeren — additief in `f3_jobs.sh` stap 9 (owner, KLIKPUNT); zonder binding werkt het herproberen óók (in-process fallback, zichtbaar in de log) | SCRIPT KLAAR, KLIKPUNT OPEN | `scripts/gcp/f3_jobs.sh` |
+
+**Tests (letterlijke tellingen in rapport_3.md).** `tests/beheer/test_eerste_sync_herproberen.py` (puur: intervallen +
+herprobeerbaar-matrix; DB: 403→403→200 via de wekker mét audit en DTO, 403 op probe-rode route = direct fout, 401 = direct
+fout, 24 u → fout mét letterlijk antwoord (27 pogingen, 26× gestart, 1× opgegeven), "Sync opnieuw starten" = zelfde run,
+wekker-fallback in-process, bewakingsstap ok/fout), bestaande Baard-test in `test_onboarding.py` speelt nu de 24 u
+door, `tests/reconciliatie/test_automatiseringen_eerste_sync_herproberen.py` (bereken/bevindingen/teksten + verzamel_feiten
+uit de DB), `tests/bewaking/test_bewaking.py` verwacht de nieuwe stap; frontend `eersteSyncStand.test.tsx` (helpers +
+EersteSyncStatus compact/volledig), `RlzCheck.test.tsx` (+1). Klok: `app.tijd._klok` gemonkeypatcht (fixture `klok` in
+`tests/beheer/conftest.py`).
+
+**Meetrecept productie (ná deploy #… met 0133).** (1) Peter voegt een administratie toe via de wizard óf klikt "Sync
+opnieuw starten" bij een administratie met verse RLZ-rechten; verwacht: rij-chip "⏳ RLZ zet rechten door — opnieuw over
+5 min" (tooltip = RLZ-antwoord) i.p.v. "⚠ sync-fout", en binnen 24 u "✓ <tijd>". (2) Lees-only:
+`scripts/gcp/nameting.sh` → Cloud Logging job `rlz-bewaking`: regel `bewaking-probe: … eerste_sync_wekker=ok` elk
+kwartier; job `rlz-eerste-sync` toont een uitvoering ~5 min ná de eerste 403. (3) Reconciliatie: het blok
+Automatiseringen (Instellingen › Boeken / systeemmail) toont teller "Eerste sync — RLZ zet rechten door (herproberen ná
+403)" met overgeslagen `rechten_onderweg` = 1 zolang de run wacht (`reconciliatie-alles` heeft géén `--alleen
+automatiseringen`-filter: gebruik de dagelijkse run 06:30 of "Nu draaien" op Inzicht › Reconciliatie). (4) Audit:
+`platform.audit_event` acties `eerste_sync_herpoging_gepland`/`_gestart` op de run (read-only Cloud Shell).
+**Werkt in productie: nog niet gemeten (deploy volgt) — meetrecept hierboven.**
+
+**Beslispunten (zelf beslist, ter bevestiging).**
+1. Wekker in `rlz-bewaking` (kwartier) i.p.v. een eigen scheduler op `rlz-eerste-sync`: kleinste wijziging, geen nieuwe
+   Cloud-resource; nadeel = herpoging kan tot 15 min later vallen dan gepland ("over 5 min" is dus "over 5–20 min").
+   Alternatief: scheduler */5 op `rlz-eerste-sync` (owner-klikpunt).
+2. IAM-klikpunt run-jobs@ → `run.invoker` op `rlz-eerste-sync` (f3_jobs.sh stap 9 aangevuld); tot die tijd verwerkt de
+   wekker in-process binnen de 300 s-timeout van `rlz-bewaking` — bij een grote administratie (duizenden crediteuren)
+   kan dat de bewakingsrun vertragen; ná de binding niet meer.
+3. Handmatig "Sync opnieuw starten" op een wachtende run reset het 24-uursvenster NIET (zelfde run, poging telt door).
+   Wil Peter een vers venster per klik, dan moet start_run een nieuwe run aanmaken en de oude op `fout` zetten.
+4. Alleen 403 herprobeerbaar; 401 blijft direct fout (login zelf geweigerd — geen vertragingsverschijnsel gezien).
+5. Alleen-klare-onderdelen-hergebruik geldt binnen één run; een handmatige nieuwe run (ná fout) draait alles.

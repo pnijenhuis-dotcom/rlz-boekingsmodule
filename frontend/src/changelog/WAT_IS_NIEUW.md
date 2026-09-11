@@ -6,6 +6,37 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-11 — Sneller beginscherm, verplaatsen hersteld, groepen, slimmere goedkeur-vraag, geduldige eerste sync
+
+<!-- run11-09middag -->
+
+### Beginscherm
+- Het beginscherm met de klantenlijst laadt veel sneller, ook nu er ruim zeventig administraties zijn: de tellers per klant komen uit één voorbereide stand in plaats van een berekening per administratie.
+- De klantenlijst verschijnt zodra de tellers binnen zijn; de kolom Bank toont een laadbalkje tot de bankgegevens er zijn — geen leeg scherm meer.
+- De kolom Spiegel-taken wordt in dezelfde slag meegeleverd; de losse ophaalactie per administratie is verdwenen.
+- De tellers worden bij elke wijziging direct bijgewerkt en elke nacht volledig nagerekend; wijkt de stand af van de werkelijke telling, dan meldt de dagelijkse controle dat automatisch.
+
+### Verplaatsen
+- Een document verplaatsen naar een andere administratie werkt weer. De verhuizing strandde in de praktijk op een beveiligingsregel in de database; die regel kent nu één bewuste, afgeschermde uitzondering voor precies deze handeling. Open vragen, afwijzingen en signalen verhuizen mee, en de tijdlijn toont "verplaatst van … naar …".
+- Mag u een document niet naar een administratie verplaatsen waar u geen toegang toe heeft, dan zegt de melding dat nu duidelijk ("Verplaatsen niet toegestaan voor jouw scope").
+- Gaat er bij het verplaatsen tóch iets mis in de beveiliging, dan ziet u een leesbare melding met een code en meldt het systeem de storing zelf bij het beheer — u hoeft niets te doen.
+
+### Groepen
+- Administraties kunnen nu in een groep (bijvoorbeeld "Kempen groep"). Een beheerder kiest de groep per administratie op de detailpagina (tab Algemeen) of direct bij het toevoegen van een nieuwe administratie; het veld mag leeg blijven.
+- Een nieuwe groep maak je ter plekke aan: naam invullen, de korte code wordt voorgesteld en is aan te passen. Groepen worden nooit verwijderd, alleen gearchiveerd — bestaande leden blijven zichtbaar.
+- Op het overzicht per klant en op Inzicht › Reconciliatie staat een filter "Groep": kies een groep en je ziet alleen die administraties, met dezelfde tellers als altijd. Het filter reist mee in de link, zodat je 'm kunt delen.
+- In Instellingen › Administraties zie je per administratie de groep als chip, kun je op groep filteren en beheer je de groepen (hernoemen, archiveren) in een klein blok bovenaan.
+
+### Goedkeur-app
+- **Goedkeur-app: de vraag "voortaan automatisch akkoord?" komt alleen nog bij écht terugkerende facturen.** Stuurt een leverancier elke maand of elk kwartaal een factuur met hetzelfde bedrag, dan stelt de app ná uw akkoord één keer voor om die voortaan automatisch goed te keuren. Krijgt u in één week twaalf gelijke facturen (bijvoorbeeld voor twaalf chalets), dan is dat een levering in delen: u ziet elke factuur gewoon zelf en de vraag komt niet.
+- **"Niet nu" en "Nooit voor deze leverancier".** Kiest u "Niet nu", dan stelt de app het 90 dagen niet opnieuw voor; met "Nooit voor deze leverancier" komt de vraag voor die leverancier niet meer terug. Beide staan onder Staande goedkeuringen in de app, waar u ze ook weer kunt opheffen.
+- **Kantoor: "nooit voorstellen" per leverancier.** Op de administratiepagina, tab Klant-accordering, kan de Beheerder een leverancier voor alle accordeurs op "nooit voorstellen" zetten en ziet hij welke leveranciers stil staan — met opheffen. Bestaande staande goedkeuringen werken precies zoals voorheen.
+
+### Eerste sync
+- Nieuwe administratie aangesloten en Reeleezee weigert de eerste sync toch (rechten nog niet doorgezet)? De module ziet dat nu zelf: de rij toont "RLZ zet rechten door — opnieuw over N min" en probeert automatisch opnieuw (na 5, 15 en 60 minuten, daarna elk uur, tot 24 uur). U hoeft niets te doen.
+- Pas als het na 24 uur nog niet lukt wordt de sync rood, mét het letterlijke antwoord van Reeleezee en de melding in de dagelijkse actiemail (met een link naar de administratie).
+- "Sync opnieuw starten" werkt ook terwijl de module wacht: die probeert dan direct, zonder een nieuwe run.
+
 ## 2026-09-11 — RLZ-check met één knop, scope kiezen uit een lijst, bankmutaties met een open bedrag
 
 <!-- nachtrun-10-11-09:1 -->
