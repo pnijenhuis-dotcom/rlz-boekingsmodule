@@ -546,6 +546,29 @@ def _mime(naam: str) -> tuple[str, str]:
 VANDAAG_NA_BOEKEN: date = REFERENTIE_DATUM
 
 
+_ISO_DATUM = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+
+
+def fixture_datums() -> frozenset[date]:
+    """Álle kalenderdatums die letterlijk in de casusmappen staan (UBL, `ai_antwoord.json`, `pdf_tekst.json`,
+    `bron.json`, bank-casussen) — factuur-, verval-, periode- en mutatiedatums van échte documenten. Blok 7 run 2
+    12-09: de drift-sweeps ("de datum van vandaag staat nergens in een export") sluiten deze datums uit — een
+    fixture-datum die toevallig op vandaag valt (12-09-2026: vervaldatum van een casus) is geen klok-drift. Alleen
+    run-tijdstempels tellen."""
+    from tests.keten.casussen import FIXTURES
+
+    gevonden: set[date] = set()
+    for pad in sorted(FIXTURES.rglob("*")):
+        if not pad.is_file() or pad.suffix.lower() not in {".json", ".xml", ".txt", ".md", ".csv"}:
+            continue
+        for treffer in _ISO_DATUM.findall(pad.read_text(encoding="utf-8", errors="replace")):
+            try:
+                gevonden.add(date.fromisoformat(treffer))
+            except ValueError:
+                continue
+    return frozenset(gevonden)
+
+
 def echte_vandaag_nl() -> date:
     """De Nederlandse kalenderdag van de ÉCHTE klok, ook als een test `app.tijd._klok` op het referentietijdstip heeft
     gepind (blok 2, 11-09). Voor de drift-sweeps ("de datum van vandaag staat nergens in een export"): die moeten de

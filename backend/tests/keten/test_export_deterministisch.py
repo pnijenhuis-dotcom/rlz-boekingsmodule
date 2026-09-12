@@ -14,6 +14,7 @@ de referentiedatum, dan kan hij drift niet van bevroren waarden onderscheiden en
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,14 @@ import pytest
 from app.documenten.models import DocumentStatus
 from tests.keten import casussen
 from tests.keten.casussen import Casus
-from tests.keten.conftest import FRONTEND_KETEN_DIR, REFERENTIE_DATUM, REFERENTIE_TIJDSTIP, Keten, echte_vandaag_nl
+from tests.keten.conftest import (
+    FRONTEND_KETEN_DIR,
+    REFERENTIE_DATUM,
+    REFERENTIE_TIJDSTIP,
+    Keten,
+    echte_vandaag_nl,
+    fixture_datums,
+)
 
 CASUS = Casus(casussen.B_FLOOR)
 XML, PDF = CASUS.xml_bestandsnaam(), CASUS.pdf_bestandsnaam()
@@ -95,9 +103,10 @@ class TestExportDeterministisch:
 
 def test_sweep_geen_export_draagt_de_datum_van_vandaag() -> None:
     """Over álle geëxporteerde casus-JSON's: de datum van vandaag komt nergens voor. Fixture-datums (factuur-,
-    verval-, periode-datums) liggen vast in de casusmappen; een waarde gelijk aan vandaag kan alleen uit de klok komen.
-    Eerlijk over de blinde vlek: op de referentiedag zelf is 'vandaag' ook de bevroren waarde → overslaan mét
-    melding."""
+    verval-, periode-datums) liggen vast in de casusmappen en tellen NIET mee (blok 7 run 2 12-09: op 12-09-2026 viel
+    de vervaldatum van een casus op vandaag en kleurde de guard rood zonder drift) — alleen een waarde die uit de klok
+    kan komen telt. Eerlijk over de blinde vlek: op de referentiedag zelf, of op een dag die letterlijk in een fixture
+    staat, kan de sweep drift niet van vaste waarden onderscheiden → overslaan mét melding."""
     if not FRONTEND_KETEN_DIR.exists():
         pytest.skip("geen frontend-map in deze checkout (CI-artefact)")
     vandaag = echte_vandaag_nl()
@@ -105,6 +114,11 @@ def test_sweep_geen_export_draagt_de_datum_van_vandaag() -> None:
         pytest.skip(
             f"vandaag ({vandaag.isoformat()}) is de referentiedatum van de gouden set — de sweep kan drift niet van "
             "bevroren waarden onderscheiden; morgen is hij weer scherp"
+        )
+    if vandaag in fixture_datums():
+        pytest.skip(
+            f"vandaag ({vandaag.isoformat()}) staat letterlijk in een casus-fixture (factuur-/verval-/periodedatum) — "
+            "de sweep kan drift niet van die vaste waarde onderscheiden; morgen is hij weer scherp"
         )
     exports = sorted(FRONTEND_KETEN_DIR.glob("*.json"))
     assert exports, f"geen exports in {FRONTEND_KETEN_DIR} — draai eerst tests/keten"
@@ -119,3 +133,14 @@ def test_sweep_geen_export_draagt_de_datum_van_vandaag() -> None:
         "(_bevries_ontvangst / normaliseer_voor_export), nooit door de assert te verzachten:\n  - "
         + "\n  - ".join(treffers)
     )
+
+
+def test_fixture_datums_kent_de_casusdatums_en_niet_de_referentiedag_zelf() -> None:
+    """De uitsluitlijst is gevuld uit de casusmappen (factuur.xml/ai_antwoord/pdf_tekst/bron/bank-casussen) — een
+    lege set zou de sweep boven stil blind maken. Casus b (Floor 26219) draagt een factuurdatum in juli 2026; de
+    referentiedag zelf mag er wel in staan (bron.json noteert de export-dag) maar dat is dan een fixture-feit, geen
+    klok."""
+    datums = fixture_datums()
+    assert datums, "geen enkele ISO-datum in tests/keten/fixtures — casusmappen leeg of hernoemd?"
+    assert any(d.year == 2026 and d.month in (7, 8) for d in datums), sorted(datums)[:5]
+    assert all(isinstance(d, date) for d in datums)

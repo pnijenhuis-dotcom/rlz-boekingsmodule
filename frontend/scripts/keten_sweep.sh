@@ -47,7 +47,13 @@ done
 # met dezelfde eerlijke blinde vlek: op de referentiedag zelf is de toets niet onderscheidend en wordt hij overgeslagen.
 REFERENTIE_DAG="2026-09-08"
 VANDAAG="$(date +%F)"
-if [ "$VANDAAG" != "$REFERENTIE_DAG" ]; then
+# Blok 7 run 2 (12-09): fixture-datums (factuur-/verval-/periodedatums in backend/tests/keten/fixtures) tellen niet —
+# op 12-09-2026 viel een vervaldatum van een casus op vandaag en kleurde de sweep rood zonder drift. Zelfde uitsluiting
+# als tests/keten/test_export_deterministisch.py::test_sweep_geen_export_draagt_de_datum_van_vandaag.
+FIXTURES_DIR="$(cd "$(dirname "$0")/../../backend/tests/keten/fixtures" && pwd)"
+if grep -rhoE -- '[0-9]{4}-[0-9]{2}-[0-9]{2}' "$FIXTURES_DIR" 2>/dev/null | grep -qx -- "$VANDAAG"; then
+  echo "ℹ️  vandaag (${VANDAAG}) staat letterlijk in een casus-fixture — kalender-drift-toets niet onderscheidend, overgeslagen"
+elif [ "$VANDAAG" != "$REFERENTIE_DAG" ]; then
   if drift=$(grep -n -- "$VANDAAG" src/dev/keten/*.json); then
     echo "❌ fixture drijft met de kalender mee (datum van vandaag ${VANDAAG} in de export) — bevries de bron in" >&2
     echo "   backend/tests/keten/conftest.py (_bevries_ontvangst) en exporteer opnieuw:" >&2
