@@ -162,10 +162,17 @@ class TestPostWriteVerificatie:
         assert t.requests[-1][0].endswith("account.move/button_cancel") and t.requests[-1][1]["ids"] == [9001]
 
     def test_niet_bewaakt_model_krijgt_geen_terug_lees(self) -> None:
+        # blok 7: res.partner is sinds de partners-stap óók bewaakt — een niet-bewaakt model is bv. een notitie
         t = _Transport({"/create": [5]})
         c = _client(t)
-        assert c.create("res.partner", {"name": "Notaris", "company_id": PIN}) == 5
+        assert c.create("mail.message", {"body": "x", "company_id": PIN}) == 5
         assert t.methoden() == ["create"]
+
+    def test_res_partner_is_bewaakt_sinds_de_partners_stap(self) -> None:
+        t = _Transport({"/create": [5], "/read": [{"id": 5, "company_id": [PIN, "VGG"]}]})
+        c = _client(t)
+        assert c.create("res.partner", {"name": "Notaris", "company_id": PIN}) == 5
+        assert t.methoden() == ["create", "read"]
 
     def test_read_only_weigert_ook_remove_move_reconcile(self) -> None:
         t = _Transport()

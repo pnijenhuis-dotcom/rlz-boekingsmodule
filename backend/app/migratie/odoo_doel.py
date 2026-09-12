@@ -32,7 +32,7 @@ from app.security.envelope import unwrap_secret
 
 #: Modellen waarvan ná `create` de `company_id` verplicht terug-gelezen wordt.
 BEWAAKTE_CREATE_MODELLEN = frozenset(
-    {"account.move", "account.bank.statement.line", "account.account", "account.analytic.account"}
+    {"account.move", "account.bank.statement.line", "account.account", "account.analytic.account", "res.partner"}
 )
 #: Sleutel in `odoo_koppeling.probe_rapport` waaronder de migratiedoel-CLI het bankdagboek (BNK1) vastlegt —
 #: de koppeling-rij heeft (0101/0138) geen kolom voor een bankdagboek; de waarde is altijd gelezen, nooit hardgecodeerd.

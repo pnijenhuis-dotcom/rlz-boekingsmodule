@@ -3,7 +3,12 @@
 Regels (besluit Peter 12-09 punt 1):
 - KILL-SWITCH: `settings.migratie_odoo_writes_ingeschakeld` (default UIT) — élke primitief weigert VÓÓR de eerste call
   met `MigratieWritesUit`, ook vóór het zoeken. Alleen per job-run expliciet AAN via env.
-- Alles landt als CONCEPT (`state == 'draft'`, terug-gelezen); posten = run 3.
+- Alles landt als CONCEPT (`state == 'draft'`, terug-gelezen). Blok 7 (besluit Peter 12-09 punt 2): ÉÉN bewuste
+  uitzondering — `post_move` post het ene reconcile-bewijspaar (eerste echte factuur juli 2025 + bankregel); de massa
+  posten = run 3.
+- Partners (besluit Peter 12-09 punt 3): `zoek_of_maak_partner` = aparte stap vóór de concepten, zoek-vóór-create op
+  KvK → btw → IBAN → naam, >1 treffer = `PartnerMeerduidig` (nooit gokken), audit per partner "aangemaakt/hergebruikt";
+  een concept-factuur draagt altijd een partner.
 - Fout = `button_cancel` (of tegenboeken) — NOOIT `unlink`. Dit bestand bevat het woord unlink alleen in deze zin.
 - Idempotentie = zoek-vóór-create op het anker (`ref ilike 'mig:<anker>'` bij moves, `unique_import_id`/`ref` bij
   statement lines); meerdere treffers = `AnkerMeerduidig` (meerduidig = nooit invullen).
@@ -22,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -40,6 +45,9 @@ MODEL_MOVE_LINE = "account.move.line"
 MODEL_STATEMENT_LINE = "account.bank.statement.line"
 MODEL_RECONCILE_MODEL = "account.reconcile.model"
 MODEL_JOURNAL = "account.journal"
+MODEL_PARTNER = "res.partner"
+MODEL_PARTNER_BANK = "res.partner.bank"
+_PARTNER_VELDEN = ["id", "name", "vat", "company_registry", "company_id"]
 
 _MOVE_VELDEN = ["id", "name", "state", "company_id", "ref", "move_type", "journal_id", "date", "amount_total"]
 _STL_VELDEN = [
@@ -69,6 +77,14 @@ class ConceptNietDraft(Exception):
 
 class NietEenConcept(Exception):
     """`annuleer_concept` op een geposte move: dat is tegenboeken (run 3), geen annulering."""
+
+
+class PartnerMeerduidig(Exception):
+    """Meer dan één `res.partner` past op dezelfde sleutel (KvK/btw/IBAN/naam) — nooit gokken, mens kijkt."""
+
+
+class PartnerOnbekend(Exception):
+    """Het voorstel draagt geen enkele sleutel én geen naam — een concept zonder partner mag niet (besluit 3)."""
 
 
 def anker_marker(anker: str | uuid.UUID) -> str:
@@ -203,6 +219,198 @@ def _cancel_stil(client: CompanyGepindeClient, move_id: int) -> None:
         client.call(MODEL_MOVE, "button_cancel", ids=[int(move_id)])
     except OdooFout as exc:  # noqa: BLE001 — de oorspronkelijke fout blijft leidend, dit is nazorg
         logger.warning("button_cancel op account.move %s mislukte: %s", move_id, exc)
+
+
+# --- partner (besluit Peter 12-09 punt 3) -----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PartnerUitkomst:
+    partner_id: int
+    herkomst: str  # "aangemaakt" | "hergebruikt"
+    sleutel: str  # kvk | btw | iban | naam | nieuw
+    naam: str | None
+    detail: str
+
+
+def _schoon(waarde: Any) -> str | None:
+    if not isinstance(waarde, str):
+        return None
+    tekst = "".join(waarde.split()).upper()
+    return tekst or None
+
+
+def _partner_domein(sleutel: str, waarde: str) -> list[Any]:
+    if sleutel == "kvk":
+        return [["company_registry", "=", waarde]]
+    if sleutel == "btw":
+        return [["vat", "=", waarde]]
+    if sleutel == "naam":
+        return [["name", "=ilike", waarde]]
+    raise ValueError(sleutel)
+
+
+def zoek_partner(client: CompanyGepindeClient, voorstel: Mapping[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    """Zoek-vóór-create in de volgorde KvK → btw → IBAN → naam; de EERSTE sleutel met ≥ 1 treffer bepaalt de uitkomst
+    (sleutel, treffers). Geen enkele treffer → ("nieuw", []). Partners zijn in Odoo groepsgedeeld (`company_id`
+    meestal leeg) — daarom géén company-filter in het zoeken; de create pint wél op de doelcompany."""
+    kvk, btw, iban, naam = (
+        _schoon(voorstel.get("kvk")),
+        _schoon(voorstel.get("btw")),
+        _schoon(voorstel.get("iban")),
+        (voorstel.get("naam") or "").strip() or None,
+    )
+    for sleutel, waarde in (("kvk", kvk), ("btw", btw)):
+        if waarde:
+            treffers = client.search_read(MODEL_PARTNER, _partner_domein(sleutel, waarde), _PARTNER_VELDEN, limit=5)
+            if treffers:
+                return sleutel, treffers
+    if iban:
+        rekeningen = client.search_read(
+            MODEL_PARTNER_BANK, [["sanitized_acc_number", "=", iban]], ["id", "partner_id"], limit=5
+        )
+        partner_ids = sorted({_m2o_id(r.get("partner_id")) for r in rekeningen if _m2o_id(r.get("partner_id"))})
+        if partner_ids:
+            treffers = client.read(MODEL_PARTNER, [int(i) for i in partner_ids], _PARTNER_VELDEN)
+            if treffers:
+                return "iban", treffers
+    if naam:
+        treffers = client.search_read(MODEL_PARTNER, _partner_domein("naam", naam), _PARTNER_VELDEN, limit=5)
+        if treffers:
+            return "naam", treffers
+    return "nieuw", []
+
+
+def zoek_of_maak_partner(
+    client: CompanyGepindeClient, voorstel: Mapping[str, Any], *, audit: AuditSchrijver
+) -> PartnerUitkomst:
+    """Eén partner voor één voorstel (`vertaling.PartnerVoorstel` als dict): hergebruik bij precies één treffer,
+    `PartnerMeerduidig` bij meer, anders `res.partner.create` gepind op de doelcompany (post-write company terug-
+    gelezen door de client). Een btw-nummer dat Odoo weigert (formaatcontrole) wordt weggelaten en gemeld — de
+    partner ontstaat dan zónder `vat`, zichtbaar in audit en rapport. Audit per partner."""
+    eis_writes_aan()
+    naam = (voorstel.get("naam") or "").strip() or None
+    sleutel, treffers = zoek_partner(client, voorstel)
+    if len(treffers) > 1:
+        raise PartnerMeerduidig(
+            f"{len(treffers)} res.partner-records op {sleutel}={voorstel.get(sleutel)!r}: {[t['id'] for t in treffers]}"
+        )
+    if treffers:
+        bestaand = treffers[0]
+        audit.leg_vast(
+            "odoo_migratie_partner_hergebruikt",
+            nieuwe_waarde=_audit_basis(
+                client, MODEL_PARTNER, "search_read", odoo_id=bestaand["id"], sleutel=sleutel, naam=bestaand.get("name")
+            ),
+        )
+        return PartnerUitkomst(
+            int(bestaand["id"]), "hergebruikt", sleutel, bestaand.get("name"), f"gevonden op {sleutel}"
+        )
+    if naam is None:
+        raise PartnerOnbekend("partner-voorstel zonder naam en zonder KvK/btw/IBAN — geen partner aan te maken")
+    vals: dict[str, Any] = {"name": naam, "is_company": True, "company_id": client.pin}
+    kvk, btw, iban = _schoon(voorstel.get("kvk")), _schoon(voorstel.get("btw")), _schoon(voorstel.get("iban"))
+    if kvk:
+        vals["company_registry"] = kvk
+    if btw:
+        vals["vat"] = btw
+    if iban:
+        vals["bank_ids"] = [[0, 0, {"acc_number": iban}]]
+    detail = "nieuw"
+    try:
+        partner_id = client.create(MODEL_PARTNER, vals)
+    except OdooFout as exc:
+        if "vat" not in vals or "vat" not in (exc.melding or "").lower():
+            raise
+        vals.pop("vat")
+        partner_id = client.create(MODEL_PARTNER, vals)
+        detail = f"nieuw; btw-nummer {btw!r} door Odoo geweigerd en weggelaten ({exc.melding[:120]})"
+    rij = client.read_een(MODEL_PARTNER, partner_id, _PARTNER_VELDEN) or {}
+    audit.leg_vast(
+        "odoo_migratie_partner_aangemaakt",
+        nieuwe_waarde=_audit_basis(
+            client,
+            MODEL_PARTNER,
+            "create",
+            odoo_id=partner_id,
+            naam=rij.get("name"),
+            kvk=kvk,
+            btw=vals.get("vat"),
+            iban=iban,
+            detail=detail,
+        ),
+    )
+    return PartnerUitkomst(int(partner_id), "aangemaakt", "nieuw", rij.get("name") or naam, detail)
+
+
+# --- posten (besluit Peter 12-09 punt 2 — één bewijspaar) -----------------------------------------------------------
+
+
+def post_move(client: CompanyGepindeClient, move_id: int, *, audit: AuditSchrijver) -> dict[str, Any]:
+    """`action_post` op één CONCEPT; `state == 'posted'` + `name` terug-gelezen. Al gepost = idempotent (audit
+    'bestaat'); `cancel` = `NietEenConcept`. Bewust de enige geposte boeking van run 2."""
+    eis_writes_aan()
+    move = client.read_een(MODEL_MOVE, move_id, _MOVE_VELDEN)
+    if move is None:
+        raise OdooFout(404, None, f"account.move {move_id} bestaat niet", model=MODEL_MOVE, methode="read")
+    if move.get("state") == "posted":
+        audit.leg_vast(
+            "odoo_migratie_move_al_gepost",
+            nieuwe_waarde=_audit_basis(client, MODEL_MOVE, "read", odoo_id=int(move_id), name=move.get("name")),
+        )
+        return move
+    if move.get("state") != "draft":
+        raise NietEenConcept(f"account.move {move_id} staat op {move.get('state')!r} — alleen een concept is te posten")
+    client.call(MODEL_MOVE, "action_post", ids=[int(move_id)])
+    na = client.read_een(MODEL_MOVE, move_id, _MOVE_VELDEN) or {}
+    audit.leg_vast(
+        "odoo_migratie_move_gepost",
+        oude_waarde={"state": move.get("state"), "name": move.get("name")},
+        nieuwe_waarde=_audit_basis(
+            client,
+            MODEL_MOVE,
+            "action_post",
+            odoo_id=int(move_id),
+            state=na.get("state"),
+            name=na.get("name"),
+            date=na.get("date"),
+            amount_total=na.get("amount_total"),
+        ),
+    )
+    if na.get("state") != "posted":
+        raise OdooFout(
+            422,
+            None,
+            f"account.move {move_id} staat ná action_post op {na.get('state')!r}",
+            model=MODEL_MOVE,
+            methode="action_post",
+        )
+    return na
+
+
+def zet_terug_naar_concept(client: CompanyGepindeClient, move_id: int, *, audit: AuditSchrijver) -> None:
+    """`button_draft` op een geannuleerde move → `state == 'draft'` terug-gelezen (terugweg-bewijs blok 7 stap 6:
+    cancel → concept, nooit unlink). Een geposte move wordt hier NIET teruggezet (dat is tegenboeken, run 3)."""
+    eis_writes_aan()
+    move = client.read_een(MODEL_MOVE, move_id, _MOVE_VELDEN) or {}
+    if move.get("state") == "posted":
+        raise NietEenConcept(f"account.move {move_id} is gepost — tegenboeken, niet terugzetten")
+    if move.get("state") != "draft":
+        client.call(MODEL_MOVE, "button_draft", ids=[int(move_id)])
+    na = client.read_een(MODEL_MOVE, move_id, ["state"]) or {}
+    audit.leg_vast(
+        "odoo_migratie_move_terug_naar_concept",
+        oude_waarde={"state": move.get("state")},
+        nieuwe_waarde=_audit_basis(client, MODEL_MOVE, "button_draft", odoo_id=int(move_id), state=na.get("state")),
+    )
+    if na.get("state") != "draft":
+        raise OdooFout(
+            422,
+            None,
+            f"account.move {move_id} staat ná button_draft op {na.get('state')!r}",
+            model=MODEL_MOVE,
+            methode="button_draft",
+        )
 
 
 # --- statement line ---------------------------------------------------------------------------------------------------

@@ -34,7 +34,7 @@ Geld in Decimal; datums ISO-strings."""
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -128,6 +128,10 @@ class MoveVoorstel:
     bank: dict[str, Any] | None
     status: str
     reden: str
+    #: Blok 7 run 2 (besluit Peter 12-09 punt 3): het partner-VOORSTEL (naam/kvk/btw/iban/sleutel) reist mee op de
+    #: move zodat de partners-stap van `vgg-odoo-stap0` zoek-vóór-create kan doen; None = geen partner nodig (entry,
+    #: bank_direct). `vals["partner_id"]` blijft None tot die stap 'm invult.
+    partner: dict[str, Any] | None = None
 
     def als_dict(self) -> dict[str, Any]:
         return {
@@ -140,6 +144,7 @@ class MoveVoorstel:
             "bank": self.bank,
             "status": self.status,
             "reden": self.reden,
+            "partner": self.partner,
         }
 
 
@@ -414,7 +419,18 @@ def vertaal_document(
     pand = ctx.panden.get(uuid.UUID(rlz_id)) if _is_uuid(rlz_id) else None
     partner = partner_voorstel(rij, nodig=move_type not in ("entry", "bank_direct"))
     uit = Vertaald(
-        move=MoveVoorstel(str(anker), rlz_id, boekstuk, move_type, datum, {}, None, STATUS_VERTAALBAAR, ""),
+        move=MoveVoorstel(
+            str(anker),
+            rlz_id,
+            boekstuk,
+            move_type,
+            datum,
+            {},
+            None,
+            STATUS_VERTAALBAAR,
+            "",
+            partner=asdict(partner) if partner.voorstel != "n.v.t." else None,
+        ),
         partner=partner,
         pand=pand,
         bedrag=bedrag,

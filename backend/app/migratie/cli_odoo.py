@@ -290,14 +290,18 @@ def maak_migratiedoel(
 # =====================================================================================================================
 
 STAP_NAMEN = {
-    1: "in_invoice-concepten (notaris/verkoper, voorraad-/vooruitbetaald-regels + analytic)",
-    2: "entry-concepten (memoriaal met analytic)",
-    3: "out_invoice-concepten (notaris, tax-vrij)",
-    4: "statement lines eerste bankdag (fase 1 bank — alleen ná groen 1–3)",
-    5: "reconcile één echt paar factuur ↔ bankregel (eerste werkende route)",
-    6: "terugweg: button_cancel op één concept + koppel_los op de reconcile",
+    0: "partners: zoek-vóór-create (KvK → btw → IBAN → naam) voor de partijen van stap 1–3",
+    1: "eerste echte inkoopfactuur juli 2025 mét bankregel(s): concept → GEPOST (de enige geposte boeking)",
+    2: "memoriaal juli 2025 als concept (blijft concept)",
+    3: "eerste echte verkoopfactuur juli 2025 als concept (blijft concept)",
+    4: "statement line(s) voor de bankregel(s) die factuur (1) betalen — klikpunt IBAN op BNK1",
+    5: "reconcile factuur (1) ↔ bankregel(s): routes i → ii → iii, de eerste werkende = DE route",
+    6: "terugweg: button_cancel → button_draft op concept (2); koppel_los + opnieuw reconcile op (5)",
 }
 _TYPE_PER_STAP = {1: "in_invoice", 2: "entry", 3: "out_invoice"}
+#: Blok 7 (besluit Peter 12-09 punt 2): het bewijspaar is de eerste échte inkoopfactuur van juli 2025 mét bankregel(s)
+#: uit PaymentReferenceList; is er geen inkoopfactuur met betaling, dan de eerste verkoopfactuur mét ontvangst.
+PAAR_TYPES: tuple[str, ...] = ("in_invoice", "out_invoice")
 
 
 @dataclass
@@ -324,9 +328,11 @@ class Stap0Rapport:
     stappen: dict[int, StapUitkomst]
     meldingen: list[str] = field(default_factory=list)
     replay_beschikbaar: bool = True
+    #: Blok 7: wat er ná de run in de doelcompany staat (voor het rapport "wat staat er nu in company 6").
+    stand: dict[str, Any] = field(default_factory=dict)
 
     def als_markdown(self) -> str:
-        modus = f"SCHRIJF (concepten op company {self.company_id})" if self.schrijf else "DRY-RUN — geen Odoo-writes"
+        modus = f"SCHRIJF (company {self.company_id})" if self.schrijf else "DRY-RUN — geen Odoo-writes"
         r = [f"# vgg-odoo-stap0 — {self.administratie_naam} — {modus}", ""]
         r.extend(f"- {m}" for m in self.meldingen)
         if self.meldingen:
@@ -336,6 +342,9 @@ class Stap0Rapport:
             s = self.stappen[n]
             detail = "<br>".join(s.regels) if s.regels else "—"
             r.append(f"| {n} | {s.naam} | **{s.oordeel}** | {detail} |")
+        if self.stand:
+            r.extend(["", "**Stand in de doelcompany ná deze run:**", ""])
+            r.extend(f"- {k}: {v}" for k, v in self.stand.items())
         return "\n".join(r)
 
 
@@ -363,29 +372,75 @@ def _laad_replay() -> Any | None:
     return replay
 
 
+@dataclass
+class Selectie:
+    """Uitkomst van `selecteer_moves`: per type de concept-kandidaten (het paar-document vooraan in zijn type),
+    `paar` = (factuur, bankregels die 'm betalen) of None."""
+
+    per_type: dict[str, list[Any]]
+    paar: tuple[Any, list[Any]] | None
+    paar_reden: str
+
+    def __getitem__(self, sleutel: str) -> list[Any]:  # bestaande aanroepen `selectie["in_invoice"]`
+        return self.per_type[sleutel]
+
+
+def bankregels_per_anker(moves: Sequence[Any]) -> dict[str, list[Any]]:
+    """anker van een document → de vertaalbare bankregels (élke datum) die volgens PaymentReferenceList aan dat
+    document gekoppeld zijn."""
+    uit: dict[str, list[Any]] = {}
+    for m in moves:
+        if not is_bankregel(m) or getattr(m, "status", None) != "vertaalbaar":
+            continue
+        for anker in reconcile_ankers(m):
+            uit.setdefault(anker, []).append(m)
+    for lijst in uit.values():
+        lijst.sort(key=lambda m: (str(getattr(m, "date", "")), str(getattr(m, "anker", ""))))
+    return uit
+
+
 def selecteer_moves(
     moves: Sequence[Any], *, max_per_type: int, jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND
-) -> dict[str, list[Any]]:
-    """Eerste `max_per_type` VERTAALBARE documenten per type uit de opgegeven maand; bankregels apart onder 'bank'
-    (alleen de EERSTE bankdag). Stabiele volgorde op datum, dan anker."""
-    per_type: dict[str, list[Any]] = {"in_invoice": [], "entry": [], "out_invoice": [], "bank": []}
+) -> Selectie:
+    """Per type de eerste `max_per_type` VERTAALBARE documenten uit de opgegeven maand (datum, dan anker) — mét het
+    bewijspaar vooraan (besluit Peter 12-09 punt 2): de eerste inkoopfactuur van die maand die volgens
+    PaymentReferenceList door ≥ 1 bankregel betaald wordt; geen inkoopfactuur met betaling → de eerste verkoopfactuur
+    met ontvangst; ook die niet → geen paar (zichtbaar). Bankregels komen uitsluitend via het paar mee — niet meer
+    'de eerste bankdag'."""
+    per_type: dict[str, list[Any]] = {"in_invoice": [], "entry": [], "out_invoice": []}
     kandidaten = [
         m
         for m in moves
-        if getattr(m, "status", None) == "vertaalbaar" and _in_maand(getattr(m, "date", None), jaar_maand)
+        if getattr(m, "status", None) == "vertaalbaar"
+        and _in_maand(getattr(m, "date", None), jaar_maand)
+        and not is_bankregel(m)
     ]
-    kandidaten.sort(key=lambda m: str(getattr(m, "date", "")))  # stabiel: replay-volgorde binnen een dag blijft
+    kandidaten.sort(key=lambda m: (str(getattr(m, "date", "")), str(getattr(m, "anker", ""))))
+    per_anker = bankregels_per_anker(moves)
+    paar: tuple[Any, list[Any]] | None = None
+    for soort in PAAR_TYPES:
+        for m in kandidaten:
+            if getattr(m, "move_type", None) == soort and per_anker.get(str(getattr(m, "anker", ""))):
+                paar = (m, per_anker[str(m.anker)])
+                break
+        if paar is not None:
+            break
+    if paar is not None:
+        per_type[paar[0].move_type].append(paar[0])
+        paar_reden = (
+            f"paar: {paar[0].move_type} {paar[0].boekstuk} ↔ {len(paar[1])} bankregel(s) "
+            f"({', '.join(str(getattr(b, 'date', '?')) for b in paar[1])})"
+        )
+    else:
+        paar_reden = (
+            f"geen factuur in {jaar_maand[0]}-{jaar_maand[1]:02d} met gekoppelde bankregel(s) in PaymentReferenceList "
+            "— niets te posten, stap 4/5 niet uitvoerbaar"
+        )
     for m in kandidaten:
-        if is_bankregel(m):
-            per_type["bank"].append(m)
-        else:
-            soort = getattr(m, "move_type", None)
-            if soort in per_type and len(per_type[soort]) < max_per_type:
-                per_type[soort].append(m)
-    if per_type["bank"]:
-        eerste_dag = str(getattr(per_type["bank"][0], "date", ""))[:10]
-        per_type["bank"] = [m for m in per_type["bank"] if str(getattr(m, "date", ""))[:10] == eerste_dag]
-    return per_type
+        soort = getattr(m, "move_type", None)
+        if soort in per_type and len(per_type[soort]) < max_per_type and m not in per_type[soort]:
+            per_type[soort].append(m)
+    return Selectie(per_type=per_type, paar=paar, paar_reden=paar_reden)
 
 
 BANK_MOVE_TYPES = frozenset({"bank", "bank_direct"})
@@ -415,6 +470,23 @@ def reconcile_ankers(m: Any) -> list[str]:
     return ankers
 
 
+def lees_bank_iban(client: CompanyGepindeClient, journal_id: int | None) -> tuple[bool, str]:
+    """Klikpunt Peter (blok 7): staat er een IBAN op het bankdagboek (BNK1)? (gevuld?, leesbare stand). Lees-only."""
+    if journal_id is None:
+        return False, "geen bankdagboek bekend (journal_id ontbreekt in de bankregel-vals)"
+    journal = client.read_een("account.journal", int(journal_id), ["code", "bank_account_id", "bank_acc_number"]) or {}
+    nummer = journal.get("bank_acc_number") if isinstance(journal.get("bank_acc_number"), str) else None
+    rekening = _m2o(journal.get("bank_account_id"))
+    if rekening is None and not nummer:
+        return False, f"IBAN op dagboek {journal.get('code') or journal_id} is LEEG — klikpunt Peter"
+    return True, f"IBAN op dagboek {journal.get('code') or journal_id}: {nummer or f'bank_account_id {rekening}'}"
+
+
+def _partner_voorstel(m: Any) -> dict[str, Any] | None:
+    voorstel = getattr(m, "partner", None)
+    return dict(voorstel) if isinstance(voorstel, dict) else None
+
+
 def voer_stap0_uit(
     administratie_id: uuid.UUID,
     *,
@@ -427,9 +499,11 @@ def voer_stap0_uit(
     audit: Any,
     writes_aan: bool,
 ) -> Stap0Rapport:
-    """De bewijscyclus. `schrijf=False` = print wat er zou gebeuren. Elke stap meldt 'werkt op company 6: ja/nee/niet
-    uitgevoerd'. Stap 4 alleen ná groen 1–3; stap 5 alleen ná groen 4; stap 6 alleen als er iets is om terug te
-    draaien."""
+    """De bewijscyclus (blok 7 run 2, besluiten Peter 12-09 punt 2 + 3). `schrijf=False` = print wat er zou gebeuren.
+    Elke stap meldt 'werkt op company 6: ja/nee/niet uitgevoerd'. Volgorde en poorten:
+    0 partners → 1 inkoopfactuur (paar) concept → GEPOST → 2 memoriaal → 3 verkoopfactuur → 4 statement lines van de
+    betalende bankregels (alleen mét IBAN op BNK1, anders overgeslagen + gemeld) → 5 reconcile (alleen ná groen 4) →
+    6 terugweg (concept (2) cancel → draft; koppeling los en opnieuw gelegd)."""
     from app.migratie import odoo_schrijf  # noqa: PLC0415
 
     gekozen = set(stappen)
@@ -471,15 +545,70 @@ def voer_stap0_uit(
         )
         return rapport
     selectie = selecteer_moves(moves, max_per_type=max_per_type)
+    paar_factuur = selectie.paar[0] if selectie.paar else None
+    bankregels = selectie.paar[1] if selectie.paar else []
     rapport.meldingen.append(
         f"replay: {len(moves)} moves, selectie juli 2025: in_invoice {len(selectie['in_invoice'])} · "
-        f"entry {len(selectie['entry'])} · out_invoice {len(selectie['out_invoice'])} · bank {len(selectie['bank'])} "
-        "(eerste bankdag)"
+        f"entry {len(selectie['entry'])} · out_invoice {len(selectie['out_invoice'])} · {selectie.paar_reden}"
+    )
+    schrijf_fouten: tuple[type[Exception], ...] = (
+        OdooFout,
+        CompanyPinGeschonden,
+        odoo_schrijf.AnkerMeerduidig,
+        odoo_schrijf.ConceptNietDraft,
+        odoo_schrijf.NietEenConcept,
+        odoo_schrijf.PartnerMeerduidig,
+        odoo_schrijf.PartnerOnbekend,
     )
 
     with client:
-        aangemaakt_moves: list[int] = []
-        # --- stappen 1–3: concepten ---
+        # --- stap 0: partners (besluit 3) — alleen de partijen die stap 1–3 nodig hebben ---
+        partner_per_anker: dict[str, int] = {}
+        zonder_partner: set[str] = set()
+        if 0 in gekozen:
+            s = rapport.stappen[0]
+            nodig = [
+                m
+                for n in (1, 3)
+                if n in gekozen
+                for m in selectie[_TYPE_PER_STAP[n]]
+                if getattr(m, "move_type", None) != "entry"
+            ]
+            if not nodig:
+                s.regels.append("geen factuur-concepten gekozen — geen partners nodig")
+            for m in nodig:
+                voorstel = _partner_voorstel(m)
+                if voorstel is None:
+                    zonder_partner.add(str(m.anker))
+                    s.regels.append(f"{m.boekstuk}: GEEN partner-voorstel in de replay — concept wordt overgeslagen")
+                    if schrijf:
+                        s.uitgevoerd, s.werkt = True, False
+                    continue
+                omschr = f"{m.boekstuk}: {voorstel.get('naam') or '?'} [{voorstel.get('sleutel')}]"
+                if not schrijf:
+                    s.regels.append(f"ZOU zoeken/aanmaken: {omschr}")
+                    continue
+                s.uitgevoerd = True
+                if s.werkt is None:
+                    s.werkt = True
+                try:
+                    uit = odoo_schrijf.zoek_of_maak_partner(client, voorstel, audit=audit)
+                    partner_per_anker[str(m.anker)] = uit.partner_id
+                    s.odoo_ids.append(uit.partner_id)
+                    s.regels.append(
+                        f"{uit.herkomst} partner {uit.partner_id} ({uit.naam}) — {uit.detail} voor {omschr}"
+                    )
+                except schrijf_fouten as exc:
+                    s.werkt = False
+                    zonder_partner.add(str(m.anker))
+                    s.regels.append(f"FOUT {omschr}: {exc}")
+            if schrijf and nodig:
+                rapport.stand["partners aangemaakt"] = sum(1 for r in s.regels if r.startswith("aangemaakt partner"))
+                rapport.stand["partners hergebruikt"] = sum(1 for r in s.regels if r.startswith("hergebruikt partner"))
+
+        # --- stappen 1–3: concepten (+ posten van het paar in stap 1/3) ---
+        aangemaakt_moves: dict[int, list[int]] = {1: [], 2: [], 3: []}
+        gepost_move_id: int | None = None
         for n in (1, 2, 3):
             if n not in gekozen:
                 continue
@@ -488,154 +617,204 @@ def voer_stap0_uit(
             if not kandidaten:
                 s.regels.append("geen vertaalbaar document van dit type in juli 2025")
                 continue
-            if not schrijf:
-                for m in kandidaten:
-                    n_regels = len(m.vals.get("invoice_line_ids") or m.vals.get("line_ids") or [])
-                    s.regels.append(f"ZOU aanmaken: {m.boekstuk} (rlz {m.rlz_id}) anker {m.anker} — {n_regels} regels")
-                continue
-            s.uitgevoerd = True
-            s.werkt = True
             for m in kandidaten:
+                is_paar = paar_factuur is not None and m is paar_factuur
+                n_regels = len(m.vals.get("invoice_line_ids") or m.vals.get("line_ids") or [])
+                omschr = f"{m.boekstuk} (rlz {m.rlz_id}) anker {m.anker} — {n_regels} regels"
+                if not schrijf:
+                    s.regels.append(f"ZOU aanmaken: {omschr}" + (" → ZOU POSTEN (bewijspaar)" if is_paar else ""))
+                    continue
+                if n != 2 and str(m.anker) in zonder_partner:
+                    s.uitgevoerd, s.werkt = True, False
+                    s.regels.append(f"overgeslagen {omschr}: geen partner (concept draagt altijd een partner)")
+                    continue
+                s.uitgevoerd = True
+                if s.werkt is None:
+                    s.werkt = True
                 vals = dict(m.vals)
-                omschr = f"{m.boekstuk} (rlz {m.rlz_id}) anker {m.anker}"
+                if n != 2:
+                    if 0 in gekozen:
+                        vals["partner_id"] = partner_per_anker.get(str(m.anker))
+                    if not vals.get("partner_id"):
+                        s.werkt = False
+                        s.regels.append(f"overgeslagen {omschr}: partner_id leeg (stap 0 niet gedraaid of mislukt)")
+                        continue
                 try:
                     move_id = odoo_schrijf.maak_concept_move(client, vals, anker=str(m.anker), audit=audit)
                     s.odoo_ids.append(move_id)
-                    aangemaakt_moves.append(move_id)
-                    s.regels.append(f"concept {move_id}: {omschr}")
-                except (
-                    OdooFout,
-                    CompanyPinGeschonden,
-                    odoo_schrijf.AnkerMeerduidig,
-                    odoo_schrijf.ConceptNietDraft,
-                ) as exc:
+                    aangemaakt_moves[n].append(move_id)
+                    regel = f"concept {move_id}: {omschr}"
+                    if is_paar:
+                        na = odoo_schrijf.post_move(client, move_id, audit=audit)
+                        gepost_move_id = move_id
+                        regel += f" → GEPOST als {na.get('name')} (state {na.get('state')})"
+                    s.regels.append(regel)
+                except schrijf_fouten as exc:
                     s.werkt = False
                     s.regels.append(f"FOUT {omschr}: {exc}")
         groen_1_3 = all(rapport.stappen[n].werkt for n in (1, 2, 3) if n in gekozen and rapport.stappen[n].uitgevoerd)
 
-        # --- stap 4: statement lines ---
+        # --- stap 4: statement lines van de betalende bankregels (klikpunt IBAN) ---
         stl_ids: list[int] = []
-        paar: tuple[int, Any] | None = None  # (statement_line_id, MoveVoorstel bank)
+        iban_ok = True
         if 4 in gekozen:
             s = rapport.stappen[4]
-            if not groen_1_3:
+            if paar_factuur is None:
+                s.regels.append("overgeslagen: geen bewijspaar (zie melding)")
+            elif schrijf and not groen_1_3:
                 s.regels.append("overgeslagen: stap 1–3 niet groen")
-            elif not selectie["bank"]:
-                s.regels.append("geen vertaalbare bankregel in juli 2025")
+            elif schrijf and gepost_move_id is None:
+                s.regels.append("overgeslagen: de paar-factuur is niet gepost")
             else:
-                if schrijf:
-                    s.uitgevoerd = True
-                    s.werkt = True
-                for m in selectie["bank"]:
-                    vals = dict(m.vals)
-                    omschr = (
-                        f"{m.date} {vals.get('amount')} {str(vals.get('payment_ref') or '')[:40]!r} anker {m.anker}"
+                journal_id = bankregels[0].vals.get("journal_id") if bankregels else None
+                try:
+                    iban_ok, iban_stand = lees_bank_iban(client, journal_id)
+                except OdooFout as exc:
+                    iban_ok, iban_stand = False, f"IBAN-stand niet leesbaar: {exc}"
+                s.regels.append(iban_stand)
+                if not iban_ok:
+                    rapport.meldingen.append(
+                        "KLIKPUNT PETER: IBAN op BNK1 is leeg — stap 4 en 5 overgeslagen, rest doorgelopen"
                     )
-                    if not schrijf:
-                        s.regels.append(f"ZOU aanmaken: {omschr}")
-                        if paar is None and reconcile_ankers(m):
-                            paar = (0, m)
-                        continue
-                    try:
-                        stl_id = odoo_schrijf.maak_statement_line(client, vals, anker=str(m.anker), audit=audit)
-                        stl_ids.append(stl_id)
-                        s.odoo_ids.append(stl_id)
-                        s.regels.append(f"statement line {stl_id}: {omschr}")
-                        if paar is None and reconcile_ankers(m):
-                            paar = (stl_id, m)
-                    except (OdooFout, CompanyPinGeschonden, odoo_schrijf.AnkerMeerduidig) as exc:
-                        s.werkt = False
-                        s.regels.append(f"FOUT {omschr}: {exc}")
+                    s.regels.append("overgeslagen: IBAN op BNK1 leeg (klikpunt Peter) — stap 5 ook overgeslagen")
+                else:
+                    if schrijf:
+                        s.uitgevoerd = True
+                        s.werkt = True
+                    for m in bankregels:
+                        vals = dict(m.vals)
+                        omschr = (
+                            f"{m.date} {vals.get('amount')} {str(vals.get('payment_ref') or '')[:40]!r} anker {m.anker}"
+                        )
+                        if not schrijf:
+                            s.regels.append(f"ZOU aanmaken: {omschr}")
+                            continue
+                        try:
+                            stl_id = odoo_schrijf.maak_statement_line(client, vals, anker=str(m.anker), audit=audit)
+                            stl_ids.append(stl_id)
+                            s.odoo_ids.append(stl_id)
+                            s.regels.append(f"statement line {stl_id}: {omschr}")
+                        except schrijf_fouten as exc:
+                            s.werkt = False
+                            s.regels.append(f"FOUT {omschr}: {exc}")
 
         # --- stap 5: reconcile ---
         reconcile_regels: list[int] = []
+        reconcile_params: dict[str, Any] | None = None
         if 5 in gekozen:
             s = rapport.stappen[5]
-            if schrijf and 4 in gekozen and not (rapport.stappen[4].uitgevoerd and rapport.stappen[4].werkt):
+            if paar_factuur is None:
+                s.regels.append("overgeslagen: geen bewijspaar")
+            elif not iban_ok:
+                s.regels.append("overgeslagen: IBAN op BNK1 leeg (klikpunt Peter)")
+            elif not schrijf:
+                s.regels.append(
+                    f"ZOU reconcilen: {len(bankregels)} statement line(s) ↔ geposte factuur {paar_factuur.boekstuk} "
+                    "via routes i → ii → iii"
+                )
+            elif 4 in gekozen and not (rapport.stappen[4].uitgevoerd and rapport.stappen[4].werkt):
                 s.regels.append("overgeslagen: stap 4 niet groen")
-            elif paar is None:
-                s.regels.append("geen bankregel met een reconcile-paar (PaymentReferenceList) op de eerste bankdag")
+            elif gepost_move_id is None or not stl_ids:
+                s.regels.append("overgeslagen: geen geposte factuur of geen statement line")
             else:
-                stl_id, m = paar
-                ankers = reconcile_ankers(m)
-                doc_anker = ankers[0] if ankers else None
-                if not schrijf:
-                    s.regels.append(
-                        f"ZOU reconcilen: statement line ↔ document-anker {doc_anker} via routes i → ii → iii"
+                s.uitgevoerd = True
+                try:
+                    regels = client.search_read(
+                        odoo_schrijf.MODEL_MOVE_LINE,
+                        [
+                            ["move_id", "=", gepost_move_id],
+                            ["company_id", "=", client.pin],
+                            ["account_id.account_type", "in", ["asset_receivable", "liability_payable"]],
+                        ],
+                        ["id", "account_id", "partner_id"],
                     )
-                elif doc_anker is None:
-                    s.regels.append("paar zonder document-anker — niet uitgevoerd")
-                else:
-                    s.uitgevoerd = True
-                    try:
-                        treffers = odoo_schrijf.zoek_move_op_anker(client, doc_anker)
-                        if len(treffers) != 1:
-                            s.werkt = False
-                            s.regels.append(
-                                f"document-anker {doc_anker}: {len(treffers)} moves gevonden — verwacht precies één"
-                            )
-                        else:
-                            doc_move_id = int(treffers[0]["id"])
-                            regels = client.search_read(
-                                odoo_schrijf.MODEL_MOVE_LINE,
-                                [
-                                    ["move_id", "=", doc_move_id],
-                                    ["company_id", "=", client.pin],
-                                    ["account_id.account_type", "in", ["asset_receivable", "liability_payable"]],
-                                ],
-                                ["id", "account_id", "partner_id"],
-                            )
-                            if len(regels) != 1:
-                                s.werkt = False
-                                s.regels.append(
-                                    f"move {doc_move_id}: {len(regels)} debiteuren-/crediteurenregels — verwacht "
-                                    "precies één"
-                                )
-                            else:
-                                uitkomst = odoo_schrijf.reconcile(
-                                    client,
-                                    move_line_ids=[int(regels[0]["id"])],
-                                    statement_line_id=stl_id,
-                                    tegenrekening_id=_m2o(regels[0].get("account_id")),
-                                    partner_id=_m2o(regels[0].get("partner_id")),
-                                    audit=audit,
-                                )
-                                s.werkt = bool(uitkomst.geslaagd and uitkomst.is_reconciled)
-                                s.regels.append(
-                                    f"route {uitkomst.route or 'geen'}; is_reconciled={uitkomst.is_reconciled}; "
-                                    f"pogingen={uitkomst.pogingen}"
-                                )
-                                if uitkomst.geslaagd:
-                                    reconcile_regels = [int(regels[0]["id"])]
-                    except (OdooFout, CompanyPinGeschonden) as exc:
+                    if len(regels) != 1:
                         s.werkt = False
-                        s.regels.append(f"FOUT: {exc}")
+                        s.regels.append(
+                            f"move {gepost_move_id}: {len(regels)} debiteuren-/crediteurenregels — verwacht precies één"
+                        )
+                    else:
+                        s.werkt = True
+                        reconcile_params = {
+                            "move_line_ids": [int(regels[0]["id"])],
+                            "tegenrekening_id": _m2o(regels[0].get("account_id")),
+                            "partner_id": _m2o(regels[0].get("partner_id")),
+                        }
+                        for stl_id in stl_ids:
+                            uitkomst = odoo_schrijf.reconcile(
+                                client, statement_line_id=stl_id, audit=audit, **reconcile_params
+                            )
+                            s.regels.append(
+                                f"statement line {stl_id}: route {uitkomst.route or 'geen'}; "
+                                f"is_reconciled={uitkomst.is_reconciled}; pogingen={uitkomst.pogingen}"
+                            )
+                            if not (uitkomst.geslaagd and uitkomst.is_reconciled):
+                                s.werkt = False
+                        if s.werkt:
+                            reconcile_regels = list(reconcile_params["move_line_ids"])
+                except schrijf_fouten as exc:
+                    s.werkt = False
+                    s.regels.append(f"FOUT: {exc}")
 
         # --- stap 6: terugweg ---
         if 6 in gekozen:
             s = rapport.stappen[6]
+            concept_2 = aangemaakt_moves[2][0] if aangemaakt_moves[2] else None
             if not schrijf:
                 s.regels.append(
-                    "ZOU: koppel_los op de reconcile-regels (regel blijft staan) + button_cancel op het eerste concept "
-                    "van stap 1–3"
+                    "ZOU: button_cancel → button_draft op concept (2) (memoriaal; nooit unlink) + koppel_los op de "
+                    "reconcile-regels en de koppeling opnieuw leggen (bewijs remove_move_reconcile)"
                 )
-            elif not aangemaakt_moves and not reconcile_regels:
-                s.regels.append("niets om terug te draaien")
+            elif concept_2 is None and not reconcile_regels:
+                s.regels.append("niets om terug te draaien (geen concept (2), geen reconcile)")
             else:
                 s.uitgevoerd = True
                 s.werkt = True
-                try:
-                    if reconcile_regels:
-                        odoo_schrijf.koppel_los(client, move_line_ids=reconcile_regels, audit=audit)
-                        s.regels.append(f"koppel_los op {reconcile_regels} — statement line blijft staan")
-                    if aangemaakt_moves:
+                if concept_2 is not None:
+                    try:
                         odoo_schrijf.annuleer_concept(
-                            client, aangemaakt_moves[0], reden="STAP-0 terugweg (bewijscyclus)", audit=audit
+                            client, concept_2, reden="STAP-0 terugweg (bewijscyclus blok 7)", audit=audit
                         )
-                        s.regels.append(f"button_cancel op concept {aangemaakt_moves[0]} (state cancel terug-gelezen)")
-                except (OdooFout, CompanyPinGeschonden, odoo_schrijf.NietEenConcept) as exc:
-                    s.werkt = False
-                    s.regels.append(f"FOUT: {exc}")
+                        odoo_schrijf.zet_terug_naar_concept(client, concept_2, audit=audit)
+                        s.regels.append(
+                            f"concept {concept_2}: button_cancel → cancel → button_draft → draft (terug-gelezen)"
+                        )
+                    except schrijf_fouten as exc:
+                        s.werkt = False
+                        s.regels.append(f"FOUT terugweg concept {concept_2}: {exc}")
+                if reconcile_regels and reconcile_params is not None:
+                    try:
+                        odoo_schrijf.koppel_los(client, move_line_ids=reconcile_regels, audit=audit)
+                        s.regels.append(f"koppel_los op {reconcile_regels} — statement line(s) blijven staan")
+                        opnieuw = [
+                            odoo_schrijf.reconcile(client, statement_line_id=stl_id, audit=audit, **reconcile_params)
+                            for stl_id in stl_ids
+                        ]
+                        s.regels.append(
+                            "opnieuw gelegd: "
+                            + ", ".join(f"route {u.route or 'geen'} is_reconciled={u.is_reconciled}" for u in opnieuw)
+                        )
+                        if not all(u.geslaagd and u.is_reconciled for u in opnieuw):
+                            s.werkt = False
+                    except schrijf_fouten as exc:
+                        s.werkt = False
+                        s.regels.append(f"FOUT terugweg reconcile: {exc}")
+
+        if schrijf:
+            rapport.stand["geposte boekingen (deze run)"] = 1 if gepost_move_id is not None else 0
+            rapport.stand["concepten (deze run)"] = sum(len(v) for v in aangemaakt_moves.values()) - (
+                1 if gepost_move_id is not None else 0
+            )
+            rapport.stand["statement lines (deze run)"] = len(stl_ids)
+            try:
+                rapport.stand["account.move op de company (totaal, niet cancel)"] = client.search_count(
+                    odoo_schrijf.MODEL_MOVE, [["company_id", "=", client.pin], ["state", "!=", "cancel"]]
+                )
+                rapport.stand["account.bank.statement.line op de company (totaal)"] = client.search_count(
+                    odoo_schrijf.MODEL_STATEMENT_LINE, [["company_id", "=", client.pin]]
+                )
+            except OdooFout as exc:
+                rapport.stand["nameting"] = f"niet leesbaar: {exc}"
     return rapport
 
 
@@ -677,17 +856,22 @@ def register_odoo_migratie(subparsers: argparse._SubParsersAction) -> None:  # t
     b = subparsers.add_parser(
         STAP0_COMMANDO,
         help=(
-            "SCHRIJVEND (Odoo, alleen mét --schrijf én MIGRATIE_ODOO_WRITES_INGESCHAKELD=true): bewijscyclus stap 1–6 "
-            "op de doelcompany met de eerste vertaalbare documenten van juli 2025 uit de replay (alles concept; "
-            "terugweg = button_cancel/"
-            "koppel_los, nooit unlink). Default --dry-run."
+            "SCHRIJVEND (Odoo, alleen mét --schrijf én MIGRATIE_ODOO_WRITES_INGESCHAKELD=true): bewijscyclus stap 0–6 "
+            "op de doelcompany (blok 7: partners → eerste inkoopfactuur juli 2025 mét bankregel(s) GEPOST → memoriaal/"
+            "verkoopfactuur concept → statement lines → reconcile → terugweg; nooit unlink). Default --dry-run."
         ),
     )
     b.add_argument("--administratie", required=True, help="UUID of naam(deel) van de administratie (VGG).")
     b.add_argument("--dry-run", dest="dry_run", action="store_true", default=True, help="Alleen tonen (default).")
     b.add_argument("--schrijf", dest="dry_run", action="store_false", help="Echte writes (vereist de kill-switch AAN).")
-    b.add_argument("--stap", default="1-6", help="Stappen, bv. '1-3' of '1,2,4' (default 1-6).")
-    b.add_argument("--max-per-type", dest="max_per_type", type=int, default=3, help="Documenten per type (default 3).")
+    b.add_argument("--stap", default="0-6", help="Stappen, bv. '0-3' of '0,1,4' (default 0-6).")
+    b.add_argument(
+        "--max-per-type",
+        dest="max_per_type",
+        type=int,
+        default=1,
+        help="Documenten per type (default 1 — besluit Peter 12-09: één inkoop, één memoriaal, één verkoop).",
+    )
 
 
 def parse_stappen(tekst: str) -> set[int]:
@@ -702,7 +886,7 @@ def parse_stappen(tekst: str) -> set[int]:
         else:
             gekozen.add(int(deel))
     if not gekozen or not gekozen <= set(STAP_NAMEN):
-        raise ValueError(f"--stap moet binnen 1-6 liggen, kreeg {tekst!r}")
+        raise ValueError(f"--stap moet binnen 0-6 liggen, kreeg {tekst!r}")
     return gekozen
 
 

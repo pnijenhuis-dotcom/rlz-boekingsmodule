@@ -43,11 +43,16 @@ from app.migratie.odoo_schrijf import (
     GeheugenAudit,
     MigratieWritesUit,
     NietEenConcept,
+    PartnerMeerduidig,
+    PartnerOnbekend,
     annuleer_concept,
     koppel_los,
     maak_concept_move,
     maak_statement_line,
+    post_move,
     reconcile,
+    zet_terug_naar_concept,
+    zoek_of_maak_partner,
 )
 from app.odoo.client import OdooFout
 from app.odoo.models import OdooKoppeling
@@ -751,10 +756,22 @@ class _Move:
     bank: dict | None
     status: str
     reden: str = ""
+    partner: dict | None = None
+
+
+def _partner(naam: str, **sleutels: str) -> dict:
+    return {
+        "naam": naam,
+        "kvk": sleutels.get("kvk"),
+        "btw": sleutels.get("btw"),
+        "iban": sleutels.get("iban"),
+        "sleutel": next((k for k in ("kvk", "btw", "iban") if sleutels.get(k)), "naam"),
+        "voorstel": "nieuw",
+    }
 
 
 def _moves() -> list[_Move]:
-    def mv(n: int, soort: str, dag: str, status: str = "vertaalbaar", bank: dict | None = None) -> _Move:
+    def mv(n: int, soort: str, dag: str, status: str = "vertaalbaar", bank: dict | None = None, partner=None) -> _Move:
         # E's vorm (vertaling.py): bankregel = move_type 'bank', vals = statement-line-vals, bank = extra blok mét
         # `reconcile`
         if bank is not None:
@@ -783,28 +800,32 @@ def _moves() -> list[_Move]:
             date=dag,
             vals={
                 "move_type": soort,
-                "journal_id": 49,
+                "journal_id": 49 if soort != "entry" else 50,
                 "date": dag,
                 "ref": f"RLZ-{n:05d}",
+                "partner_id": None,
                 "invoice_line_ids": [[0, 0, {"name": "r", "tax_ids": [[6, 0, []]]}]],
             },
             bank=None,
             status=status,
+            partner=partner if soort != "entry" else None,
         )
 
+    notaris = _partner("Notaris X", kvk="12345678")
     return [
-        mv(1, "in_invoice", "2025-07-03"),
-        mv(2, "in_invoice", "2025-07-01"),
-        mv(3, "in_invoice", "2025-07-05"),
-        mv(4, "in_invoice", "2025-07-06"),
-        mv(5, "in_invoice", "2025-06-30"),  # buiten juli
+        mv(1, "in_invoice", "2025-07-03", partner=_partner("Verkoper A", iban="NL01BANK0123456789")),
+        mv(2, "in_invoice", "2025-07-01", partner=notaris),
+        mv(3, "in_invoice", "2025-07-05", partner=_partner("Verkoper C")),
+        mv(4, "in_invoice", "2025-07-06", partner=notaris),
+        mv(5, "in_invoice", "2025-06-30", partner=notaris),  # buiten juli
         mv(6, "entry", "2025-07-02"),
-        mv(7, "out_invoice", "2025-07-10"),
-        mv(8, "out_invoice", "2025-07-11", status="zonder_pand"),
+        mv(7, "out_invoice", "2025-07-10", partner=_partner("Koper K", btw="NL123456789B01")),
+        mv(8, "out_invoice", "2025-07-11", status="zonder_pand", partner=notaris),
+        # de betaling van RLZ-00002 valt op 15-07 — het paar volgt de factuur, niet 'de eerste bankdag'
         mv(
             9,
             "bank",
-            "2025-07-02",
+            "2025-07-15",
             bank={
                 "payment_ref": "Notaris X",
                 "amount": -1000.0,
@@ -838,21 +859,52 @@ class _Replay:
         return type("Rapport", (), {"moves": self.moves})()
 
 
-class TestStap0:
-    def test_selectie_juli_max_per_type_en_eerste_bankdag(self) -> None:
+class TestSelectie:
+    def test_paar_is_de_eerste_inkoopfactuur_met_bankregel_en_staat_vooraan(self) -> None:
         sel = selecteer_moves(_moves(), max_per_type=3)
         assert [m.boekstuk for m in sel["in_invoice"]] == ["RLZ-00002", "RLZ-00001", "RLZ-00003"]
         assert [m.boekstuk for m in sel["entry"]] == ["RLZ-00006"]
         assert [m.boekstuk for m in sel["out_invoice"]] == ["RLZ-00007"]  # zonder_pand niet
-        assert [m.boekstuk for m in sel["bank"]] == ["RLZ-00009", "RLZ-00010"]  # alleen 02-07
+        assert sel.paar is not None and sel.paar[0].boekstuk == "RLZ-00002"
+        assert [b.boekstuk for b in sel.paar[1]] == ["RLZ-00009"]  # 15-07, niet de eerste bankdag
+        assert sel.paar_reden == "paar: in_invoice RLZ-00002 ↔ 1 bankregel(s) (2025-07-15)"
 
+    def test_max_per_type_1_houdt_het_paar(self) -> None:
+        sel = selecteer_moves(_moves(), max_per_type=1)
+        assert [m.boekstuk for m in sel["in_invoice"]] == ["RLZ-00002"]
+
+    def test_paar_valt_terug_op_verkoopfactuur_met_ontvangst(self) -> None:
+        moves = [m for m in _moves() if m.boekstuk != "RLZ-00009"]
+        moves.append(
+            _Move(
+                anker="anker-bank-12",
+                rlz_id="rlz-12",
+                boekstuk="RLZ-00012",
+                move_type="bank",
+                date="2025-08-01",
+                vals={"date": "2025-08-01", "journal_id": 53, "payment_ref": "Koper K", "amount": 500.0},
+                bank={"reconcile": [{"anker": "anker-out_invoice-7"}]},
+                status="vertaalbaar",
+            )
+        )
+        sel = selecteer_moves(moves, max_per_type=1)
+        assert sel.paar is not None and sel.paar[0].boekstuk == "RLZ-00007"
+        assert [m.boekstuk for m in sel["in_invoice"]] == ["RLZ-00002"]  # gewoon de eerste, niet gepost
+
+    def test_zonder_paar_is_dat_zichtbaar(self) -> None:
+        moves = [m for m in _moves() if not m.bank]
+        sel = selecteer_moves(moves, max_per_type=1)
+        assert sel.paar is None and "geen factuur in 2025-07 met gekoppelde bankregel(s)" in sel.paar_reden
+
+
+class TestStap0:
     def test_e_nog_niet_klaar_wordt_gemeld(self) -> None:
         r = voer_stap0_uit(
             uuid.uuid4(),
             administratie_naam="VGG",
             schrijf=False,
-            stappen=range(1, 7),
-            max_per_type=3,
+            stappen=range(0, 7),
+            max_per_type=1,
             client_factory=lambda aid: FakeClient(),
             replay_module=None,
             audit=GeheugenAudit(),
@@ -867,27 +919,52 @@ class TestStap0:
         monkeypatch.setitem(sys.modules, "app.migratie.replay", None)  # importeren geeft dan ImportError
         assert cli_odoo._laad_replay() is None
 
-    def test_dry_run_doet_geen_odoo_call_en_toont_plan(self) -> None:
-        c = FakeClient(read_only=True)
+    def test_dry_run_leest_alleen_de_iban_en_toont_plan(self) -> None:
+        c = FakeClient(
+            lambda model, methode, body: [
+                {"id": 53, "code": "BNK1", "bank_account_id": [7, "NL00"], "bank_acc_number": "NL00BANK0"}
+            ],
+            read_only=True,
+        )
         replay = _Replay(_moves())
         r = voer_stap0_uit(
             uuid.uuid4(),
             administratie_naam="VGG",
             schrijf=False,
-            stappen=range(1, 7),
-            max_per_type=3,
+            stappen=range(0, 7),
+            max_per_type=1,
             client_factory=lambda aid: c,
             replay_module=replay,
             audit=GeheugenAudit(),
             writes_aan=False,
         )
         md = r.als_markdown()
-        assert c.calls == [] and r.company_id == PIN and len(replay.aanroepen) == 1
-        assert "ZOU aanmaken: RLZ-00002" in md and "ZOU reconcilen" in md and "DRY-RUN" in md
+        assert c.methoden() == ["account.journal.read"] and r.company_id == PIN and len(replay.aanroepen) == 1
+        assert "ZOU zoeken/aanmaken: RLZ-00002: Notaris X [kvk]" in md
+        assert "ZOU aanmaken: RLZ-00002" in md and "ZOU POSTEN (bewijspaar)" in md
+        assert "ZOU aanmaken: 2025-07-15 -1000.0" in md and "ZOU reconcilen: 1 statement line(s)" in md
+        assert "IBAN op dagboek BNK1: NL00BANK0" in md and "DRY-RUN" in md
         assert all(s.oordeel == "niet uitgevoerd" for s in r.stappen.values())
 
+    def test_dry_run_meldt_lege_iban_als_klikpunt(self) -> None:
+        c = FakeClient(lambda m, meth, b: [{"id": 53, "code": "BNK1", "bank_account_id": False}], read_only=True)
+        r = voer_stap0_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=False,
+            stappen=range(0, 7),
+            max_per_type=1,
+            client_factory=lambda aid: c,
+            replay_module=_Replay(_moves()),
+            audit=GeheugenAudit(),
+            writes_aan=False,
+        )
+        assert any("KLIKPUNT PETER: IBAN op BNK1 is leeg" in m for m in r.meldingen)
+        assert "overgeslagen: IBAN op BNK1 leeg" in r.stappen[4].regels[-1]
+        assert r.stappen[5].regels == ["overgeslagen: IBAN op BNK1 leeg (klikpunt Peter)"]
+
     def test_schrijf_zonder_kill_switch_valt_terug_op_dry_run(self) -> None:
-        c = FakeClient(read_only=True)
+        c = FakeClient(lambda m, meth, b: [{"id": 53, "code": "BNK1", "bank_account_id": [7, "x"]}], read_only=True)
         r = voer_stap0_uit(
             uuid.uuid4(),
             administratie_naam="VGG",
@@ -918,93 +995,378 @@ class TestStap0:
         )
         assert any("geen migratiedoel" in m for m in r.meldingen) and r.company_id is None
 
-    def test_schrijf_cyclus_1_tot_6_op_fake_client(self, writes_aan: None) -> None:
-        odoo: dict[str, Any] = {"moves": {}, "stl": {}, "volgend": 3000, "reconciled": False}
 
-        def handler(model, methode, body):
-            if model == "account.move" and methode == "search_read":
-                ref = body["domain"][1][2]
-                return [dict(m, id=i) for i, m in odoo["moves"].items() if ref in m["ref"] and m["state"] != "cancel"]
-            if model == "account.move" and methode == "create":
-                odoo["volgend"] += 1
-                vals = body["vals_list"][0]
-                odoo["moves"][odoo["volgend"]] = {
-                    "state": "draft",
-                    "company_id": [PIN, "VGG"],
-                    "ref": vals["ref"],
-                    "move_type": vals["move_type"],
-                    "name": "/",
-                }
-                return [odoo["volgend"]]
-            if model == "account.move" and methode == "read":
-                return [dict(odoo["moves"][i], id=i) for i in body["ids"] if i in odoo["moves"]]
-            if model == "account.move" and methode == "button_cancel":
-                for i in body["ids"]:
-                    odoo["moves"][i]["state"] = "cancel"
-                return True
-            if model == "account.bank.statement.line" and methode == "search_read":
-                return []
-            if model == "account.bank.statement.line" and methode == "create":
-                odoo["volgend"] += 1
-                odoo["stl"][odoo["volgend"]] = {
-                    "company_id": [PIN, "VGG"],
-                    "move_id": [9000 + odoo["volgend"], "BNK1/…"],
-                    "journal_id": [53, "BNK1"],
-                    "unique_import_id": body["vals_list"][0]["unique_import_id"],
-                }
-                return [odoo["volgend"]]
-            if model == "account.bank.statement.line" and methode == "read":
-                return [dict(odoo["stl"][i], id=i, is_reconciled=odoo["reconciled"]) for i in body["ids"]]
-            if model == "account.bank.statement.line" and methode == "set_line_bank_statement_line":
-                return _fout(403, "private method", model=model, methode=methode)
-            if model == "account.move.line" and methode == "search_read":
-                if any(t[0] == "account_id.account_type" for t in body["domain"] if isinstance(t, list)):
-                    return [{"id": 4001, "account_id": [110, "110000 Debtors"], "partner_id": [65, "Notaris"]}]
+def _nep_odoo() -> tuple[dict[str, Any], Callable[[str, str, dict], Any]]:
+    """Een minimale Odoo-nabootsing voor de volledige cyclus 0–6: partners, moves (draft/posted/cancel), statement
+    lines, reconcile-toestand, IBAN op BNK1."""
+    odoo: dict[str, Any] = {
+        "partners": {
+            65: {"name": "Notaris X", "company_registry": "12345678", "vat": False, "company_id": [PIN, "VGG"]}
+        },
+        "moves": {},
+        "stl": {},
+        "volgend": 3000,
+        "reconciled": False,
+        "posted": [],
+        "iban": "NL91ABNA0417164300",
+    }
+
+    def handler(model, methode, body):
+        if model == "res.partner" and methode == "search_read":
+            veld, _, waarde = body["domain"][0]
+            return [
+                dict(p, id=i)
+                for i, p in odoo["partners"].items()
+                if (veld == "company_registry" and p.get("company_registry") == waarde)
+                or (veld == "vat" and p.get("vat") == waarde)
+                or (veld == "name" and p["name"].lower() == str(waarde).lower())
+            ]
+        if model == "res.partner.bank" and methode == "search_read":
+            return []
+        if model == "res.partner" and methode == "create":
+            odoo["volgend"] += 1
+            vals = body["vals_list"][0]
+            odoo["partners"][odoo["volgend"]] = {
+                "name": vals["name"],
+                "company_registry": vals.get("company_registry", False),
+                "vat": vals.get("vat", False),
+                "company_id": [vals["company_id"], "VGG"],
+            }
+            return [odoo["volgend"]]
+        if model == "res.partner" and methode == "read":
+            return [dict(odoo["partners"][i], id=i) for i in body["ids"] if i in odoo["partners"]]
+        if model == "account.move" and methode == "search_read":
+            ref = body["domain"][1][2]
+            return [dict(m, id=i) for i, m in odoo["moves"].items() if ref in m["ref"] and m["state"] != "cancel"]
+        if model == "account.move" and methode == "search_count":
+            return sum(1 for m in odoo["moves"].values() if m["state"] != "cancel")
+        if model == "account.move" and methode == "create":
+            odoo["volgend"] += 1
+            vals = body["vals_list"][0]
+            assert vals["move_type"] == "entry" or vals.get("partner_id"), "concept zonder partner"
+            odoo["moves"][odoo["volgend"]] = {
+                "state": "draft",
+                "company_id": [PIN, "VGG"],
+                "ref": vals["ref"],
+                "move_type": vals["move_type"],
+                "name": "/",
+                "partner_id": vals.get("partner_id"),
+            }
+            return [odoo["volgend"]]
+        if model == "account.move" and methode == "read":
+            return [dict(odoo["moves"][i], id=i) for i in body["ids"] if i in odoo["moves"]]
+        if model == "account.move" and methode == "action_post":
+            for i in body["ids"]:
+                odoo["moves"][i]["state"] = "posted"
+                odoo["moves"][i]["name"] = f"LF/2025/07/{i}"
+                odoo["posted"].append(i)
+            return False
+        if model == "account.move" and methode == "button_cancel":
+            for i in body["ids"]:
+                odoo["moves"][i]["state"] = "cancel"
+            return True
+        if model == "account.move" and methode == "button_draft":
+            for i in body["ids"]:
+                odoo["moves"][i]["state"] = "draft"
+            return True
+        if model == "account.bank.statement.line" and methode == "search_read":
+            return []
+        if model == "account.bank.statement.line" and methode == "search_count":
+            return len(odoo["stl"])
+        if model == "account.bank.statement.line" and methode == "create":
+            odoo["volgend"] += 1
+            odoo["stl"][odoo["volgend"]] = {
+                "company_id": [PIN, "VGG"],
+                "move_id": [9000 + odoo["volgend"], "BNK1/…"],
+                "journal_id": [53, "BNK1"],
+                "unique_import_id": body["vals_list"][0]["unique_import_id"],
+            }
+            return [odoo["volgend"]]
+        if model == "account.bank.statement.line" and methode == "read":
+            return [dict(odoo["stl"][i], id=i, is_reconciled=odoo["reconciled"]) for i in body["ids"]]
+        if model == "account.bank.statement.line" and methode == "set_line_bank_statement_line":
+            return _fout(403, "private method", model=model, methode=methode)
+        if model == "account.move.line" and methode == "search_read":
+            if any(t[0] == "account_id.account_type" for t in body["domain"] if isinstance(t, list)):
+                return [{"id": 4001, "account_id": [130, "130000 Creditors"], "partner_id": [65, "Notaris X"]}]
+            return [
+                {"id": 71, "account_id": [2175, "103001"], "reconciled": False},
+                {"id": 72, "account_id": [398, "103002"], "reconciled": False},
+            ]
+        if model == "account.journal" and methode == "read":
+            if "bank_account_id" in body["fields"]:
+                iban = odoo["iban"]
                 return [
-                    {"id": 71, "account_id": [2175, "103001"], "reconciled": False},
-                    {"id": 72, "account_id": [398, "103002"], "reconciled": False},
+                    {
+                        "id": 53,
+                        "code": "BNK1",
+                        "bank_account_id": [7, iban] if iban else False,
+                        "bank_acc_number": iban or False,
+                    }
                 ]
-            if model == "account.journal" and methode == "read":
-                return [{"id": 53, "default_account_id": [2175, "103001"]}]
-            if model == "account.move.line" and methode == "write":
-                return True
-            if model == "account.move.line" and methode == "reconcile":
-                odoo["reconciled"] = True
-                return {}
-            if model == "account.move.line" and methode == "remove_move_reconcile":
-                odoo["reconciled"] = False
-                return True
-            if model == "account.move.line" and methode == "read":
-                return [{"id": i, "reconciled": False} for i in body["ids"]]
-            raise AssertionError((model, methode, body))
+            return [{"id": 53, "default_account_id": [2175, "103001"]}]
+        if model == "account.move.line" and methode == "write":
+            return True
+        if model == "account.move.line" and methode == "reconcile":
+            odoo["reconciled"] = True
+            return {}
+        if model == "account.move.line" and methode == "remove_move_reconcile":
+            odoo["reconciled"] = False
+            return True
+        if model == "account.move.line" and methode == "read":
+            return [{"id": i, "reconciled": False} for i in body["ids"]]
+        raise AssertionError((model, methode, body))
 
+    return odoo, handler
+
+
+class TestStap0Schrijf:
+    def test_schrijf_cyclus_0_tot_6_op_fake_client(self, writes_aan: None) -> None:
+        odoo, handler = _nep_odoo()
         c = FakeClient(handler)
         a = GeheugenAudit()
         r = voer_stap0_uit(
             uuid.uuid4(),
             administratie_naam="VGG",
             schrijf=True,
-            stappen=range(1, 7),
-            max_per_type=3,
+            stappen=range(0, 7),
+            max_per_type=1,
             client_factory=lambda aid: c,
             replay_module=_Replay(_moves()),
             audit=a,
             writes_aan=True,
         )
-        assert [r.stappen[n].oordeel for n in range(1, 7)] == ["ja", "ja", "ja", "ja", "ja", "ja"], r.als_markdown()
-        assert len(r.stappen[1].odoo_ids) == 3 and len(r.stappen[4].odoo_ids) == 2
+        md = r.als_markdown()
+        assert [r.stappen[n].oordeel for n in range(0, 7)] == ["ja"] * 7, md
+        # stap 0: notaris (kvk 12345678) hergebruikt, Koper K (btw) aangemaakt — en niets méér dan die twee
+        assert r.stappen[0].odoo_ids == [65, 3001] and "hergebruikt partner 65" in r.stappen[0].regels[0]
+        assert r.stand["partners aangemaakt"] == 1 and r.stand["partners hergebruikt"] == 1
+        # stap 1: het paar RLZ-00002 is concept → GEPOST, precies één geposte boeking
+        gepost = r.stappen[1].odoo_ids[0]
+        assert odoo["moves"][gepost]["state"] == "posted" and odoo["posted"] == [gepost]
+        assert odoo["moves"][gepost]["partner_id"] == 65 and "GEPOST als LF/2025/07/" in r.stappen[1].regels[0]
+        # stap 2/3 blijven concept; concept (3) draagt de nieuwe partner
+        concept_2 = r.stappen[2].odoo_ids[0]
+        assert odoo["moves"][r.stappen[3].odoo_ids[0]]["partner_id"] == 3001
+        assert odoo["moves"][r.stappen[3].odoo_ids[0]]["state"] == "draft"
+        # stap 4: één statement line (15-07), stap 5 route ii
+        assert len(r.stappen[4].odoo_ids) == 1 and "IBAN op dagboek BNK1: NL91ABNA0417164300" in r.stappen[4].regels[0]
         assert "route ii" in r.stappen[5].regels[0]
-        assert odoo["moves"][r.stappen[1].odoo_ids[0]]["state"] == "cancel"  # terugweg op het eerste concept
+        # stap 6: concept (2) cancel → draft (nooit unlink), koppeling los en opnieuw gelegd
+        assert odoo["moves"][concept_2]["state"] == "draft" and odoo["reconciled"] is True
+        assert "button_cancel → cancel → button_draft → draft" in r.stappen[6].regels[0]
+        assert "opnieuw gelegd: route ii is_reconciled=True" in r.stappen[6].regels[-1]
         assert all(m["company_id"][0] == PIN for m in odoo["moves"].values())
         assert not any("unlink" in m for m in c.methoden())
         acties = [x["actie"] for x in a.regels]
+        assert acties.count("odoo_migratie_move_aangemaakt") == 3 and acties.count("odoo_migratie_move_gepost") == 1
         assert (
-            acties.count("odoo_migratie_move_aangemaakt") == 5
-            and acties.count("odoo_migratie_statement_line_aangemaakt") == 2
+            acties.count("odoo_migratie_partner_aangemaakt") == 1
+            and acties.count("odoo_migratie_partner_hergebruikt") == 1
         )
+        assert acties.count("odoo_migratie_reconcile") == 2 and "odoo_migratie_koppel_los" in acties
+        assert "odoo_migratie_move_geannuleerd" in acties and "odoo_migratie_move_terug_naar_concept" in acties
+        assert r.stand["geposte boekingen (deze run)"] == 1 and r.stand["concepten (deze run)"] == 2
+        assert r.stand["account.move op de company (totaal, niet cancel)"] == 3
+
+    def test_lege_iban_slaat_4_en_5_over_en_loopt_6_door(self, writes_aan: None) -> None:
+        odoo, handler = _nep_odoo()
+        odoo["iban"] = None
+        c = FakeClient(handler)
+        r = voer_stap0_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=True,
+            stappen=range(0, 7),
+            max_per_type=1,
+            client_factory=lambda aid: c,
+            replay_module=_Replay(_moves()),
+            audit=GeheugenAudit(),
+            writes_aan=True,
+        )
+        assert [r.stappen[n].oordeel for n in range(0, 7)] == [
+            "ja",
+            "ja",
+            "ja",
+            "ja",
+            "niet uitgevoerd",
+            "niet uitgevoerd",
+            "ja",
+        ]
+        assert any("KLIKPUNT PETER" in m for m in r.meldingen) and odoo["stl"] == {}
+        assert not any(meth == "reconcile" for _, meth, _ in c.calls)
+        assert odoo["posted"] == [r.stappen[1].odoo_ids[0]]  # het paar wordt wél gepost
+        assert odoo["moves"][r.stappen[2].odoo_ids[0]]["state"] == "draft"
+
+    def test_zonder_partner_voorstel_geen_concept(self, writes_aan: None) -> None:
+        odoo, handler = _nep_odoo()
+        moves = _moves()
+        next(m for m in moves if m.boekstuk == "RLZ-00002").partner = None
+        c = FakeClient(handler)
+        r = voer_stap0_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=True,
+            stappen={0, 1, 2},
+            max_per_type=1,
+            client_factory=lambda aid: c,
+            replay_module=_Replay(moves),
+            audit=GeheugenAudit(),
+            writes_aan=True,
+        )
+        assert r.stappen[0].oordeel == "nee" and r.stappen[1].oordeel == "nee"
+        assert "geen partner (concept draagt altijd een partner)" in r.stappen[1].regels[0]
+        assert odoo["posted"] == [] and all(m["move_type"] == "entry" for m in odoo["moves"].values())
+
+    def test_meerduidige_partner_wordt_nooit_gegokt(self, writes_aan: None) -> None:
+        odoo, handler = _nep_odoo()
+        odoo["partners"][66] = dict(odoo["partners"][65])  # tweede notaris met dezelfde KvK
+        c = FakeClient(handler)
+        r = voer_stap0_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=True,
+            stappen={0, 1},
+            max_per_type=1,
+            client_factory=lambda aid: c,
+            replay_module=_Replay(_moves()),
+            audit=GeheugenAudit(),
+            writes_aan=True,
+        )
+        assert r.stappen[0].oordeel == "nee" and "2 res.partner-records op kvk" in r.stappen[0].regels[0]
+        assert odoo["moves"] == {}
+
+
+class TestPartnerPrimitief:
+    def test_zoekvolgorde_kvk_btw_iban_naam(self, writes_aan: None) -> None:
+        gezien: list[list] = []
+
+        def handler(model, methode, body):
+            if methode == "search_read":
+                gezien.append(body["domain"])
+                if model == "res.partner.bank":
+                    return [{"id": 9, "partner_id": [77, "Via IBAN"]}]
+                return []
+            if model == "res.partner" and methode == "read":
+                return [{"id": 77, "name": "Via IBAN", "vat": False, "company_registry": False, "company_id": False}]
+            raise AssertionError((model, methode))
+
+        c = FakeClient(handler)
+        uit = zoek_of_maak_partner(
+            c, {"naam": "X", "kvk": "1234 5678", "btw": "nl001b01", "iban": "NL01 BANK 0123"}, audit=GeheugenAudit()
+        )
+        assert uit.herkomst == "hergebruikt" and uit.sleutel == "iban" and uit.partner_id == 77
+        assert gezien == [
+            [["company_registry", "=", "12345678"]],
+            [["vat", "=", "NL001B01"]],
+            [["sanitized_acc_number", "=", "NL01BANK0123"]],
+        ]
+
+    def test_nieuw_gepind_op_company_en_btw_weigering_zichtbaar(self, writes_aan: None) -> None:
+        pogingen: list[dict] = []
+
+        def handler(model, methode, body):
+            if methode == "search_read":
+                return []
+            if model == "res.partner" and methode == "create":
+                pogingen.append(body["vals_list"][0])
+                if "vat" in body["vals_list"][0]:
+                    return _fout(500, "The VAT number [NL1] does not seem to be valid.", model=model, methode=methode)
+                return [501]
+            if model == "res.partner" and methode == "read":
+                return [
+                    {"id": 501, "name": "Nieuw BV", "company_id": [PIN, "VGG"], "vat": False, "company_registry": False}
+                ]
+            raise AssertionError((model, methode))
+
+        c = FakeClient(handler)
+        a = GeheugenAudit()
+        uit = zoek_of_maak_partner(c, {"naam": "Nieuw BV", "btw": "NL1", "iban": "NL02BANK1"}, audit=a)
+        assert uit.herkomst == "aangemaakt" and uit.partner_id == 501 and "geweigerd en weggelaten" in uit.detail
+        assert pogingen[0]["company_id"] == PIN and pogingen[0]["is_company"] is True
+        assert pogingen[1].get("vat") is None and pogingen[1]["bank_ids"] == [[0, 0, {"acc_number": "NL02BANK1"}]]
         assert (
-            "odoo_migratie_reconcile" in acties
-            and "odoo_migratie_koppel_los" in acties
-            and acties[-1] == "odoo_migratie_move_geannuleerd"
+            a.regels[-1]["actie"] == "odoo_migratie_partner_aangemaakt" and a.regels[-1]["nieuwe_waarde"]["btw"] is None
         )
-        assert "werkt" not in r.als_markdown().lower() or "| **ja** |" in r.als_markdown()
+
+    def test_meerduidig_en_onbekend(self, writes_aan: None) -> None:
+        c = FakeClient(
+            lambda m, meth, b: [{"id": 1, "name": "A"}, {"id": 2, "name": "A"}] if meth == "search_read" else []
+        )
+        with pytest.raises(PartnerMeerduidig):
+            zoek_of_maak_partner(c, {"naam": "A", "kvk": "1"}, audit=GeheugenAudit())
+        c2 = FakeClient(lambda m, meth, b: [])
+        with pytest.raises(PartnerOnbekend):
+            zoek_of_maak_partner(c2, {"naam": None, "kvk": None, "btw": None, "iban": None}, audit=GeheugenAudit())
+        assert c2.calls == []
+
+    def test_kill_switch_ook_hier(self) -> None:
+        c = FakeClient()
+        with pytest.raises(MigratieWritesUit):
+            zoek_of_maak_partner(c, {"naam": "A"}, audit=GeheugenAudit())
+        assert c.calls == []
+
+
+class TestPostenEnTerug:
+    def test_post_move_leest_posted_terug(self, writes_aan: None) -> None:
+        stand = {"state": "draft", "name": "/"}
+
+        def handler(model, methode, body):
+            if methode == "read":
+                return [
+                    {
+                        "id": 1,
+                        **stand,
+                        "ref": "mig:a",
+                        "company_id": [PIN, "x"],
+                        "date": "2025-07-01",
+                        "amount_total": 1,
+                    }
+                ]
+            if methode == "action_post":
+                stand.update(state="posted", name="LF/2025/07/0001")
+                return False
+            raise AssertionError(methode)
+
+        c = FakeClient(handler)
+        a = GeheugenAudit()
+        na = post_move(c, 1, audit=a)
+        assert na["state"] == "posted" and c.methoden() == [
+            "account.move.read",
+            "account.move.action_post",
+            "account.move.read",
+        ]
+        assert a.regels[-1]["actie"] == "odoo_migratie_move_gepost" and a.regels[-1]["oude_waarde"]["state"] == "draft"
+
+    def test_post_move_is_idempotent_en_weigert_cancel(self, writes_aan: None) -> None:
+        c = FakeClient(lambda m, meth, b: [{"id": 1, "state": "posted", "name": "LF/1"}])
+        assert post_move(c, 1, audit=GeheugenAudit())["name"] == "LF/1" and c.methoden() == ["account.move.read"]
+        c2 = FakeClient(lambda m, meth, b: [{"id": 1, "state": "cancel", "name": "/"}])
+        with pytest.raises(NietEenConcept):
+            post_move(c2, 1, audit=GeheugenAudit())
+
+    def test_post_move_zonder_kill_switch(self) -> None:
+        c = FakeClient()
+        with pytest.raises(MigratieWritesUit):
+            post_move(c, 1, audit=GeheugenAudit())
+        assert c.calls == []
+
+    def test_terug_naar_concept_is_button_draft(self, writes_aan: None) -> None:
+        stand = {"state": "cancel"}
+
+        def handler(model, methode, body):
+            if methode == "read":
+                return [{"id": 1, "state": stand["state"], "name": "/", "ref": "mig:a", "company_id": [PIN, "x"]}]
+            if methode == "button_draft":
+                stand["state"] = "draft"
+                return True
+            raise AssertionError(methode)
+
+        c = FakeClient(handler)
+        zet_terug_naar_concept(c, 1, audit=GeheugenAudit())
+        assert c.methoden() == ["account.move.read", "account.move.button_draft", "account.move.read"]
+
+    def test_terug_naar_concept_weigert_gepost(self, writes_aan: None) -> None:
+        c = FakeClient(lambda m, meth, b: [{"id": 1, "state": "posted", "name": "LF/1"}])
+        with pytest.raises(NietEenConcept):
+            zet_terug_naar_concept(c, 1, audit=GeheugenAudit())

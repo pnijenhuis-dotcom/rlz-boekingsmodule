@@ -452,8 +452,11 @@ class TestMiniVgg:
             "bank",
             "status",
             "reden",
+            "partner",  # blok 7: partner-voorstel reist mee (None bij entry/bank_direct)
         }
         mj1 = per[MJ1]
+        assert mj1.partner is None
+        assert per[PI1].partner is not None and per[PI1].partner["sleutel"] in {"kvk", "btw", "iban", "naam"}
         assert mj1.move_type == "entry" and mj1.date == "2025-07-10" and mj1.anker == str(anker_voor(ADMIN, MJ1))
         assert mj1.vals["ref"] == f"RLZ-06-00000026 · mig:{mj1.anker}" and mj1.vals["journal_id"] == 50
         regels = [r for _, _, r in mj1.vals["line_ids"]]
