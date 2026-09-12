@@ -32,10 +32,17 @@ class PandStatus(enum.StrEnum):
 
 
 class PandBoekingSoort(enum.StrEnum):
+    """Run 2 VGG (12-09, migratie 0137, RJ 220): `aanbetaling` = vooruitbetaald op voorraad (balans, bij levering in de
+    kostprijs), `vaste_lasten` = lasten voor de verkoper (W&V op mutatiedatum), `balans` = jaareinde-/balansboeking
+    (31-12-memoriaal mét adres — zichtbaar, nooit een aankoopdatum)."""
+
     AANKOOP = "aankoop"
     VERKOOP = "verkoop"
     KOSTEN = "kosten"
     OVERHEAD = "overhead"
+    AANBETALING = "aanbetaling"
+    VASTE_LASTEN = "vaste_lasten"
+    BALANS = "balans"
 
 
 class PandBoekingHerkomst(enum.StrEnum):
@@ -89,7 +96,10 @@ class PandBoeking(Base):
 
     __tablename__ = "pand_boeking"
     __table_args__ = (
-        CheckConstraint("soort IN ('aankoop', 'verkoop', 'kosten', 'overhead')", name="ck_pand_boeking_soort"),
+        CheckConstraint(
+            "soort IN ('aankoop', 'verkoop', 'kosten', 'overhead', 'aanbetaling', 'vaste_lasten', 'balans')",
+            name="ck_pand_boeking_soort",
+        ),
         CheckConstraint("herkomst IN ('voorstel', 'mens')", name="ck_pand_boeking_herkomst"),
         CheckConstraint("zekerheid IN ('hoog', 'midden', 'laag')", name="ck_pand_boeking_zekerheid"),
         CheckConstraint("rlz_document_id IS NOT NULL OR document_id IS NOT NULL", name="ck_pand_boeking_bron_aanwezig"),
