@@ -45,6 +45,13 @@ class OdooVerbinding:
     #: zo nodig ná de lock date, `fouten.bepaal_boekdatum`); wat al in Reeleezee geboekt was filtert de
     #: duplicaatcheck over de backend-grens (`documenten/duplicaat_historie.py`). None = geen RLZ-verleden.
     overgangsdatum: date | None = None
+    #: Run 2 VGG blok 4 (migratie 0138): RJ-220-rollen + migratiedoel-vlag — additief, default leeg/False.
+    rekening_voorraad_panden_id: int | None = None
+    rekening_vooruitbetaald_voorraad_id: int | None = None
+    rekening_opbrengst_panden_id: int | None = None
+    rekening_kostprijs_panden_id: int | None = None
+    analytic_overhead_id: int | None = None
+    migratie_doel: bool = False
 
 
 def lees_dev_env() -> tuple[str | None, str | None]:
@@ -72,6 +79,9 @@ def koppeling_voor(administratie_id: uuid.UUID) -> OdooVerbinding:
         # Blok D: een ALLEEN-LEZEN-koppeling mag óók bij een RLZ-administratie (Odoo is dan uitsluitend
         # leesbron, bv. de voorraad-uitstroom van Universal Verkoop); een schrijvende koppeling vereist
         # backend 'odoo' — het domein boekt nooit in twee systemen.
+        # Run 2 VGG blok 4 (0138): een MIGRATIEDOEL-rij (`migratie_doel=True`, backend nog 'rlz', niet alleen_lezen)
+        # blijft hier bewust GEWEIGERD — de dagelijkse adapter mag nooit op company 6 schrijven vóór de kanteling;
+        # alleen `app/migratie/odoo_doel.py::doelkoppeling_voor` leest zo'n rij (contract run 2 §Datamodel).
         if administratie.boekhoud_backend != "odoo" and not (rij is not None and rij.alleen_lezen):
             raise GeenOdooKoppeling(
                 f"Administratie {administratie.naam} draait niet op Odoo (backend {administratie.boekhoud_backend})"
@@ -90,6 +100,12 @@ def koppeling_voor(administratie_id: uuid.UUID) -> OdooVerbinding:
             alleen_lezen=bool(rij.alleen_lezen),
             voorraad_knip_datum=rij.voorraad_knip_datum,
             overgangsdatum=rij.overgangsdatum,
+            rekening_voorraad_panden_id=rij.rekening_voorraad_panden_id,
+            rekening_vooruitbetaald_voorraad_id=rij.rekening_vooruitbetaald_voorraad_id,
+            rekening_opbrengst_panden_id=rij.rekening_opbrengst_panden_id,
+            rekening_kostprijs_panden_id=rij.rekening_kostprijs_panden_id,
+            analytic_overhead_id=rij.analytic_overhead_id,
+            migratie_doel=bool(rij.migratie_doel),
         )
 
 

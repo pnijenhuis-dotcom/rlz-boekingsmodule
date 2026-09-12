@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0136
+-- Migratie-head bij deze dump: 0138
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2076,7 +2076,7 @@ CREATE TABLE boekhouding.pand_boeking (
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT ck_pand_boeking_bron_aanwezig CHECK (((rlz_document_id IS NOT NULL) OR (document_id IS NOT NULL))),
     CONSTRAINT ck_pand_boeking_herkomst CHECK ((herkomst = ANY (ARRAY['voorstel'::text, 'mens'::text]))),
-    CONSTRAINT ck_pand_boeking_soort CHECK ((soort = ANY (ARRAY['aankoop'::text, 'verkoop'::text, 'kosten'::text, 'overhead'::text]))),
+    CONSTRAINT ck_pand_boeking_soort CHECK ((soort = ANY (ARRAY['aankoop'::text, 'verkoop'::text, 'kosten'::text, 'overhead'::text, 'aanbetaling'::text, 'vaste_lasten'::text, 'balans'::text]))),
     CONSTRAINT ck_pand_boeking_zekerheid CHECK ((zekerheid = ANY (ARRAY['hoog'::text, 'midden'::text, 'laag'::text])))
 );
 
@@ -3835,6 +3835,12 @@ CREATE TABLE platform.odoo_koppeling (
     voorraad_knip_datum date,
     overgangsdatum date,
     rlz_admin_id_voor_overstap text,
+    rekening_voorraad_panden_id integer,
+    rekening_vooruitbetaald_voorraad_id integer,
+    rekening_opbrengst_panden_id integer,
+    rekening_kostprijs_panden_id integer,
+    analytic_overhead_id integer,
+    migratie_doel boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_odoo_koppeling_company CHECK ((company_id > 0))
 );
 

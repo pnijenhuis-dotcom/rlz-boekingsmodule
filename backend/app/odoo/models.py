@@ -51,6 +51,18 @@ class OdooKoppeling(Base):
     overgangsdatum: Mapped[date | None] = mapped_column(default=None)
     #: Het oude RLZ-administratie-id vóór de overstap (`administratie.rlz_admin_id` draagt daarna de sentinel).
     rlz_admin_id_voor_overstap: Mapped[str | None] = mapped_column(default=None)
+    #: Run 2 VGG blok 4 (migratie 0138; besluit Peter 12-09): de vier RJ-220-rollen per administratie — Odoo
+    #: `account.account`-id's, NOOIT hardgecodeerd. NULL = rol nog niet vastgesteld (replay meldt "niet vertaalbaar").
+    rekening_voorraad_panden_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    rekening_vooruitbetaald_voorraad_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    rekening_opbrengst_panden_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    rekening_kostprijs_panden_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Het ene vaste analytic account "Overhead" (plan Project) op de company.
+    analytic_overhead_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Deze rij is het DOEL van een RLZ → Odoo-migratie terwijl `administratie.boekhoud_backend` nog 'rlz' is.
+    #: `credentials.koppeling_voor` blijft zo'n rij WEIGEREN voor de dagelijkse adapter; alleen
+    #: `app/migratie/odoo_doel.py::doelkoppeling_voor` leest 'm (company-pin bovenop de client-poort).
+    migratie_doel: Mapped[bool] = mapped_column(default=False, server_default="false")
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
     bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
