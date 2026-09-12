@@ -780,6 +780,13 @@ activa/voorraad panden, overdrachtsbelasting → kosten, óók `tax_ids=[]`) vol
 
 ### 11.4 (d) Bewijscyclus op de Odoo-TESTdatabase (Peter heeft dupliceren goedgekeurd; niets op productie)
 
+> **HERZIEN 12-09-2026 (besluit Peter 12-09, run 2 punt 1): er komt GEEN Odoo-testdatabase.** De migratie gaat direct naar de live
+> database, company 6 (leeg), met de bestaande Odoo-koppeling/API-key (één gebruiker, tien companies). De bewijscyclus hieronder
+> blijft als stappenplan geldig maar verhuist naar §12 ("Bewijscyclus company 6 op echte data"): geen `TEST-VGG-`-records, wél de
+> eerste échte boekingen van de replay (juli 2025), alles als CONCEPT, statement lines alleen ná groen op stap 1–3, terugweg =
+> `button_cancel`/reconcile losmaken, nooit `unlink`; harde company-pin (`app/migratie/odoo_doel.py`) bovenop de client-poort.
+> De tekst hieronder is historie.
+
 Voorwaarden: (1) Peter dupliceert `universal-steigers.odoo.com` naar een TESTdatabase (Odoo Online: Databasebeheer › Duplicate;
 **kies "test" (geen mail/cron), niet "production"**), (2) URL + API-key van die testdatabase als Secret `ODOO_TEST_URL` /
 `ODOO_TEST_API_KEY` in Google Secret Manager + lokaal alleen via `lees_dev_env`-patroon — **nooit in code/git/chat** (zie 11.5 (1)),
@@ -805,7 +812,7 @@ op onze `payment_ref` (alleen zichtbaar in de UI-widget) — geen API-signaal ge
 
 ### 11.5 (e)+(f) Vraag aan Peter en open beslispunten voor run 2
 
-**(e) Vraag aan Peter — URL + API-key van de Odoo-TESTdatabase.** Zet `ODOO_TEST_URL` en `ODOO_TEST_API_KEY` als twee secrets in Google
+**(e) Vraag aan Peter — URL + API-key van de Odoo-TESTdatabase.** *[VERVALLEN 12-09-2026: geen testdatabase, dus geen `ODOO_TEST_URL`/`ODOO_TEST_API_KEY`; de koppeling-rij voor VGG (company 6, `migratie_doel`) kopieert de bestaande Universal-credential — zie §12 en BESLISSINGEN run 2.]* Zet `ODOO_TEST_URL` en `ODOO_TEST_API_KEY` als twee secrets in Google
 Secret Manager (project rlz-boekhouding, zelfde patroon als `KVK_API_KEY` in deploy.yml) én lokaal in `verkenning/.env` (gitignored) —
 de bewijscyclus leest ze uitsluitend via het `lees_dev_env`-patroon; niets ervan komt in code, docs, logs of chat. De key mag max.
 3 maanden leven (Odoo-eis) — kies bij aanmaken "Nijenhuis Module TEST" + einddatum, en géén key van de productiedatabase hergebruiken
@@ -878,3 +885,54 @@ aankoop-pad van de historie.
 **Wat dit NIET is:** geen gebouwde mapping, geen migratie, geen Odoo-write, geen bevestigde rekeningnummers. Het is het ontwerp dat
 de bewijscyclus 11.4 stap 3 en 5 en de mapping-tabel van fase 2 voeden; bouw ná akkoord Peter op de beslispunten in BESLISSINGEN
 (addendum D3, punten 4–8).
+
+## §12 Bewijscyclus company 6 op ECHTE data (run 2 blok 5, 12-09-2026) — GEBOUWD, wacht op uitvoering ná deploy
+
+**Status: GEBOUWD (code + tests), NIET UITGEVOERD — geen enkele Odoo-write in run 2.** Besluit Peter 12-09 punt 1: geen
+Odoo-TESTdatabase (§11.4 vervalt als plan), de bewijscyclus draait direct op de LIVE database company 6 (leeg) — alles CONCEPT,
+fout = `button_cancel`/tegenboeken, NOOIT `unlink`. Input = de eerste `--max-per-type` (default 3) VERTAALBARE documenten van
+**juli 2025** per type uit de replay van blok 6 (`app.migratie.replay.dry_run` → `ReplayRapport.moves`), dus échte VGG-boekingen
+(geen `TEST-`-fictie meer). Voertuig = CLI `vgg-odoo-stap0` (`app/migratie/cli_odoo.py`) op de gedeployde job-image.
+
+**Vastgestelde vorm van de twee poorten (code, getest):**
+
+| Poort | Vorm | Waar |
+|---|---|---|
+| Kill-switch | `settings.migratie_odoo_writes_ingeschakeld: bool = False` — élke primitief (`maak_concept_move`, `maak_statement_line`, `reconcile`, `annuleer_concept`, `koppel_los`) weigert VÓÓR de eerste Odoo-call met `MigratieWritesUit`; alleen per job-run AAN via `--update-env-vars MIGRATIE_ODOO_WRITES_INGESCHAKELD=true`; nooit in deploy.yml/.env; de dagelijkse adapter kijkt er niet naar | `app/config.py`, `app/migratie/odoo_schrijf.py::eis_writes_aan` |
+| Company-pin 1(c) | `CompanyGepindeClient(OdooClient)`: `call()` inspecteert VÓÓR verzending recursief `vals`, `vals_list[*]`, ORM-commando's `(0,0,vals)`/`(4,id)`/`(6,0,[ids])`, `domain`-triples (veld eindigt op `company_id`/`company_ids`; `=`/`in` moet ⊆ {pin}, `!=`/`not in` mag de pin niet noemen, andere operatoren geweigerd) en `context.allowed_company_ids` (moet exact `[pin]`); elke afwijking = `CompanyPinGeschonden` zonder HTTP-verkeer (MockTransport telt 0 requests). Ná élke `create` op `account.move`, `account.bank.statement.line`, `account.account`, `account.analytic.account` wordt `company_id` verplicht terug-gelezen; mismatch op een move (of de move achter een statement line) = directe `button_cancel` + `CompanyPinGeschonden`. Bovenop de bestaande client-poort (`allowed_company_ids`) en de `read_only`-poort (uitgebreid met `remove_move_reconcile`) | `app/migratie/odoo_doel.py` |
+| Doelkoppeling | `doelkoppeling_voor(administratie_id)` leest `platform.odoo_koppeling` óók bij backend 'rlz' maar EIST `migratie_doel=true` (0138) én niet-alleen-lezen; `koppeling_voor()` (dagelijkse adapter) blijft die rij weigeren (getest). Bankdagboek staat in `probe_rapport["migratie:journal_bank_id"]` (geen kolom) | `app/migratie/odoo_doel.py`, CLI `odoo-koppeling-migratiedoel` |
+| Idempotentie | zoek-vóór-create: move op `ref ilike 'mig:<anker>'` (+ `company_id = pin`, `state != cancel`), statement line op `unique_import_id = anker` óf `ref = anker`; >1 treffer = `AnkerMeerduidig` (nooit gokken) | `odoo_schrijf.py` |
+| Audit | per call `audit_event(module="boekhouding", tabel="odoo_migratie", actie=odoo_migratie_*)` met model/methode/odoo-id/company/anker/route — nooit de key; injecteerbaar (`DbAudit` in `scoped_session(administratie, actor=SYSTEEM)`, `GeheugenAudit` voor dry-run) | `odoo_schrijf.py` |
+
+**Stappen en meetpunten (kolom "uitkomst" leeg — wacht op uitvoering ná deploy):**
+
+| # | Stap (company 6, echte juli-2025-documenten) | Meetpunt (verwacht) | Uitkomst |
+|---|---|---|---|
+| 0 | `odoo-koppeling-migratiedoel --administratie VGG --bron-administratie "Universal Steigerbouw" --company 6` (eerst `--dry-run`, dan `--schrijf`) | dagboek-probe lees-only: precies één sale/purchase/bank-dagboek, general op code MEM bij meerdere, plan "Project" ×1 → verwacht F 48 / LF 49 / MEM 50 / BNK1 53 / plan 1 (gelezen, niet hardgecodeerd); rij met `migratie_doel=true`, audit `odoo_koppeling_migratiedoel_aangemaakt` zonder key | wacht op uitvoering ná deploy |
+| 1 | `in_invoice`-concepten (notaris/verkoper; voorraad-/vooruitbetaald-regels, `tax_ids=[[6,0,[]]]`, `analytic_distribution` pand) via `maak_concept_move` | `state == 'draft'` terug-gelezen, `company_id == 6`, `ref` eindigt op ` · mig:<anker>`, geen tax-regel; herhaling = zelfde id (zoek-vóór-create) | wacht op uitvoering ná deploy |
+| 2 | `entry`-concepten (memoriaal met analytic) | idem; `journal_id` 50 | wacht op uitvoering ná deploy |
+| 3 | `out_invoice`-concepten (notaris, tax-vrij) | idem; `journal_id` 48, `amount_tax 0.0` | wacht op uitvoering ná deploy |
+| 4 | statement lines van de EERSTE bankdag van juli 2025 (fase 1 bank — alleen ná groen 1–3) via `maak_statement_line` (`unique_import_id` = `ref` = anker) | `move_id` gevuld (Odoo maakt de move 103001 ↔ suspense 398 zelf), `is_reconciled False`, `unique_import_id` **terug-leesbaar = zetbaar via create** (anders vervalt aanname §11.1 → `ref`-anker blijft de poort); tweede aanroep = geen tweede regel | wacht op uitvoering ná deploy |
+| 5 | reconcile van ÉÉN echt paar factuur ↔ bankregel (uit `PaymentReferenceList` → `bank["reconcile"][0]["anker"]`), route-registry (i) `account.bank.statement.line.set_line_bank_statement_line` [AANNAME naam; 403/404 = bestaat niet] → (ii) `write` suspense-regel (rekening ≠ default-rekening dagboek) → debiteuren-/crediteurenrekening + partner, dan `account.move.line.reconcile` → (iii) `account.reconcile.model` `trigger manual` + `action_reconcile` [AANNAME] | bankregel `is_reconciled True`; `ReconcileUitkomst.route` ∈ {i, ii, iii} = DE route, in audit `odoo_migratie_reconcile`; **NB: reconcile tegen een CONCEPT-factuur zal Odoo waarschijnlijk weigeren (422 "posted") — dan is de uitkomst "route ii bestaat, factuur eerst posten = run 3"**, ook dát is een meetpunt | wacht op uitvoering ná deploy |
+| 6 | terugweg: `koppel_los` (`account.move.line.remove_move_reconcile`) op de reconcile-regels — de bankregel BLIJFT staan; `annuleer_concept` (`button_cancel`) op het eerste concept van stap 1–3 | `is_reconciled False`; concept `state == 'cancel'` terug-gelezen; nergens `unlink` in de audit | wacht op uitvoering ná deploy |
+| 7 | nameting: `search_count account.move company 6` = aantal concepten (max 9) − 1 cancel; `account.bank.statement.line` = aantal regels eerste bankdag; alle `ref` bevatten `mig:`; audit-rijen `odoo_migratie_*` = aantal calls | rapportregel per stap "werkt op company 6: ja/nee/niet uitgevoerd" (stdout md van `vgg-odoo-stap0`) | wacht op uitvoering ná deploy |
+
+**Wat de cyclus NIET bewijst:** posten (run 3), saldibalans-toets op concepten (E's rapport), partner-aanmaak (E's replay levert
+`partner_id`-voorstellen; een `res.partner.create` zit niet in de primitieven — beslispunt: eerst partners aanmaken via een aparte
+stap of `partner_id` leeg laten in het concept), `account.bank.statement`-koppen (§11.5 (2)), IBAN op BNK1 (klikpunt Peter blijft).
+
+### 12.1 `account.account` op company 6 — vorm en stand [live]
+
+| Feit | Waarneming |
+|---|---|
+| Company-binding | `account.account.company_ids` = **many2many, required** (`fields_get`); er is GÉÉN `company_id`-veld op `account.account` in Odoo 19 (de 04-09-adapter zette `company_id` in create-vals van `account.analytic.account`/`account.move` — dat blijft daar geldig; voor rekeningen is de vorm `company_ids: [[6,0,[<cid>]]]`). Lezen per company: domain `[["company_ids","in",[6]]]` → 356 rijen. |
+| Overige velden | `code` char NIET required (opslag in `code_store`; `code` is per-company afgeleid), `name` char required, `account_type` selection required, `reconcile` boolean, `non_trade` boolean, `tag_ids` m2m `account.account.tag`, `code_mapping_ids` o2m `account.code.mapping`, `note` text, `currency_id` m2o. Geen `deprecated`-veld meer (500 "Invalid field 'deprecated'"); `active` bestaat. |
+| `account_type`-selectie (19) | asset_receivable, asset_cash, asset_current, asset_non_current, asset_prepayments, asset_fixed, liability_payable, liability_credit_card, liability_current, liability_non_current, equity, equity_unaffected, income, income_other, expense, expense_other, expense_depreciation, expense_direct_cost, off_balance |
+| Typeverdeling company 6 | expense 119 · liability_current 75 · asset_fixed 48 · expense_direct_cost 29 · income 24 · asset_current 19 · liability_non_current 16 · income_other 7 · equity 6 · expense_depreciation 5 · asset_cash 2 · asset_receivable 2 (110000 Debtors, 110100 Debtors PoS) · liability_payable 2 (130000 Creditors, 159000 VAT tax liabilities) · asset_prepayments 1 (121000 Deposit) · equity_unaffected 1 |
+| Gedeeld vs eigen | Vrijwel álle rekeningen dragen `company_ids = [1..10]` (gedeeld over de hele groep — hernoemen/hertypen raakt tien companies). Uitzonderingen: 2969 `120500 Prepaid expenses` (companies 5–10) en 2154 `802300 Turnover outside EU trade goods 3` (alleen company 6). |
+| Voorraadreeks (asset_current) | 300100/300200 Raw materials 1/2 · 310000/311000 Excipients 1/2 · **320000 Stock 1 · 321000 Stock 2** · 330000/331000 Packaging (material). 322000–329000 vrij → RJ-220-rollen voorraad panden 325000, vooruitbetaald op voorraad panden 326000. |
+| Omzetreeks (income) | 800100 NL goods 1 (default dagboek F) · 800110/120/130 installation EU · 800200/300/400 EU/buiten-EU/IC goods 1 · 800500 NL services 1 · 801100–801500 goods 2 · 802100–802500 goods 3 · 804100–804400 third-party work · 809000 sundry · 892000 exchange. 803xxx vrij → opbrengst verkoop panden 803100. |
+| Kostprijsreeks (expense_direct_cost) | 700100 NL goods 1 (default dagboek LF) … 701200 IC goods 3 · 702000 direct salary · 703000 production results · 704000 third-party · 705000–705200 provisions · 706000–706500 purchasing · 707000/707100 warranty · 708000 price differences · 709000/709100 stock adjustment/rejected. 701300 vrij → kostprijs verkochte panden 701300. |
+| 12xxxx/13xxxx | 120500 Prepaid expenses (asset_current) · 121000 Deposit (asset_prepayments) · 122000/123000/125000/129000 vorderingen (asset_current) · **130000 Creditors (liability_payable)** · 135000 Payments in transit · 140500–149000 kortlopende schulden · 150000–159900 btw-rekeningen. → Het RLZ-decimaalstelsel (1300 debiteuren, 1600 crediteuren) loopt NIET parallel aan de NL-template (110000 Debtors, 130000 Creditors): `code_verlengd` is een valse vriend op balanskaarten. |
+| Analytic plan Project (1) op company 6 | 105 Intern, 106 Buitendienst (company 6); 758 "Test Thomas" (company False, gedeeld). Geen "Overhead". `account.analytic.account`: `name` + `plan_id` required, `company_id` m2o optioneel, `code` "Reference" optioneel. |
+| Rate limit | 12 sequentiële read-only calls zonder 429 (consistent met §11.0: 47 calls). |

@@ -1,0 +1,224 @@
+### Pandenregister-afleiding Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, 2026-09-11T15:47:19+00:00)
+- Gelezen: ManualJournals 229, PurchaseInvoices 794, SalesInvoices 4
+- Panden (voorstel): 214 · koppelingen: 309
+- Geen pand-signaal (kandidaat Overhead, mens beslist in run 2): ManualJournals 150, PurchaseInvoices 564, SalesInvoices 4 · meerduidig adres: 1
+- Bijlagechecks memoriaal: 81 gedaan, 0 niet (grens)
+- Overhead-project ontbreekt — aanmaken in run 2 (projectaanmaak = RLZ-write, niet in deze run)
+| Pand | Plaats | Aankoop | Verkoop | Dossiers | Koppelingen (soort: hoog/midden/laag) | DB |
+|---|---|---|---|---|---|---|
+| A zielaan 334 | Utrecht | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Aanbetaling Azielaan 334 | — | 2025-09-02 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Aanbetaling Groenhoven 214 | Amst | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Aanbetaling Kapershoek 34 | — | 2025-09-02 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Aanbetaling Rhijnauwensingel 93 | — | 2025-09-02 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Aanbetaling Sluisdijkstraat 10A | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Appollolaan 644 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Az ielaan 334 | Utrecht | 2025-09-30 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Azielaan 334 | Utrec | 2025-12-31 | — | — | aankoop: 0/2/0; kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Ba rendrechtstraat 30 | Tilburg | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Benzenraderweg 69 | — | — | — | — | kosten: 1/0/0 | dry-run: zou nieuw zijn |
+| Bl eijeheiderstraat 123B | — | 2025-10-30 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Bleijeheiderstraat 1 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Bleijeheiderstraat 123B | Kerkrade | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Bleijerheiderstraat 123B | Kerkrade | 2026-06-16 | — | 2025 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Bo rnholmstraat 49 | Almere | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Bordeauxdreef 79 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Bornholmstraat 49 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Brinklaan 165 | — | — | — | — | kosten: 0/3/0 | dry-run: zou nieuw zijn |
+| Burgemeester Norbrui Burgemeester Norbruislaan 422 | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| C hevremontstraat 68 | Kerkrade | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Ch evremontstraat 68 | Kerkrade | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Chevr emontstraat 68 | Kerkrade | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Chevre montstraat 68 | Kerkrade | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Chevremontstraat 68 | Kerkrade | 2025-12-31 | — | — | aankoop: 0/1/0; kosten: 0/4/0 | dry-run: zou nieuw zijn |
+| D warsweg 22 | — | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Dautzenbergstraat 18F | He | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| De Butstraat 7 | Hulst | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Donkerslootstraat 10 | — | 2026-02-18 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Donkerslootstraat 105B | — | — | — | 2026-0022 | kosten: 2/0/0 | dry-run: zou nieuw zijn |
+| dossier 118261 (adres onbekend) | — | — | — | 118261 | kosten: 0/0/2 | dry-run: zou nieuw zijn |
+| dossier 2024-0105 (adres onbekend) | — | — | — | 2024-0105 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0012 (adres onbekend) | — | — | — | 2025-0012 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0016 (adres onbekend) | — | — | — | 2025-0016 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0020 (adres onbekend) | — | — | — | 2025-0020 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0024 (adres onbekend) | — | — | — | 2025-0024 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0027 (adres onbekend) | — | — | — | 2025-0027 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0168 (adres onbekend) | — | — | — | 2025-0168 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0195 (adres onbekend) | — | — | — | 2025-0195 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0228 (adres onbekend) | — | — | — | 2025-0228 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0285 (adres onbekend) | — | — | — | 2025-0285 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0355 (adres onbekend) | — | — | — | 2025-0355 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0391 (adres onbekend) | — | — | — | 2025-0391 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0393 (adres onbekend) | — | — | — | 2025-0393 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0413 (adres onbekend) | — | — | — | 2025-0413 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0429 (adres onbekend) | — | — | — | 2025-0429 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0475 (adres onbekend) | — | — | — | 2025-0475 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0487 (adres onbekend) | — | — | — | 2025-0487 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0553 (adres onbekend) | — | — | — | 2025-0553 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0564 (adres onbekend) | — | — | — | 2025-0564 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0628 (adres onbekend) | — | — | — | 2025-0628 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0630 (adres onbekend) | — | — | — | 2025-0630 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-0700 (adres onbekend) | — | — | — | 2025-0700 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025.079202.01 (adres onbekend) | — | 2026-05-04 | — | 2025.079202.01 | aankoop: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025.079507 (adres onbekend) | — | — | — | 2025.079507 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2025-5525 (adres onbekend) | — | — | — | 2025-5525 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0001 (adres onbekend) | — | — | — | 2026-0001 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0005 (adres onbekend) | — | — | — | 2026-0005 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0006 (adres onbekend) | — | — | — | 2026-0006 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0007 (adres onbekend) | — | — | — | 2026-0007 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0008 (adres onbekend) | — | — | — | 2026-0008 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-00084 (adres onbekend) | — | — | — | 2026-00084 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-00088 (adres onbekend) | — | — | — | 2026-00088 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0009 (adres onbekend) | — | — | — | 2026-0009 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-00096 (adres onbekend) | — | — | — | 2026-00096 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0010 (adres onbekend) | — | — | — | 2026-0010 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0011 (adres onbekend) | — | — | — | 2026-0011 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0012 (adres onbekend) | — | — | — | 2026-0012 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0014 (adres onbekend) | — | — | — | 2026-0014 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0015 (adres onbekend) | — | — | — | 2026-0015 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0017 (adres onbekend) | — | — | — | 2026-0017 | kosten: 0/0/2 | dry-run: zou nieuw zijn |
+| dossier 2026-0024 (adres onbekend) | — | — | — | 2026-0024 | kosten: 0/0/2 | dry-run: zou nieuw zijn |
+| dossier 2026-0025 (adres onbekend) | — | — | — | 2026-0025 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0026 (adres onbekend) | — | — | — | 2026-0026 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0034 (adres onbekend) | — | — | — | 2026-0034 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0035 (adres onbekend) | — | — | — | 2026-0035 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0036 (adres onbekend) | — | — | — | 2026-0036 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0048 (adres onbekend) | — | — | — | 2026-0048 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0049 (adres onbekend) | — | — | — | 2026-0049 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0050 (adres onbekend) | — | — | — | 2026-0050 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0053 (adres onbekend) | — | — | — | 2026-0053 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0057 (adres onbekend) | — | — | — | 2026-0057 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0063 (adres onbekend) | — | — | — | 2026-0063 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0074 (adres onbekend) | — | — | — | 2026-0074 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0075 (adres onbekend) | — | — | — | 2026-0075 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0093 (adres onbekend) | — | — | — | 2026-0093 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0097 (adres onbekend) | — | — | — | 2026-0097 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0104 (adres onbekend) | — | — | — | 2026-0104 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0109 (adres onbekend) | — | — | — | 2026-0109 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0128 (adres onbekend) | — | — | — | 2026-0128 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0148 (adres onbekend) | — | — | — | 2026-0148 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0169 (adres onbekend) | — | — | — | 2026-0169 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0173 (adres onbekend) | — | — | — | 2026-0173 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0200 (adres onbekend) | — | — | — | 2026-0200 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-021018 (adres onbekend) | — | — | — | 2026-021018 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0244 (adres onbekend) | — | — | — | 2026-0244 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0245 (adres onbekend) | — | — | — | 2026-0245 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0318 (adres onbekend) | — | — | — | 2026-0318 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0325 (adres onbekend) | — | — | — | 2026-0325 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0347 (adres onbekend) | — | — | — | 2026-0347 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0389 (adres onbekend) | — | — | — | 2026-0389 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0402 (adres onbekend) | — | — | — | 2026-0402 | kosten: 0/0/2 | dry-run: zou nieuw zijn |
+| dossier 2026-0471 (adres onbekend) | — | — | — | 2026-0471 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0533 (adres onbekend) | — | — | — | 2026-0533 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0534 (adres onbekend) | — | — | — | 2026-0534 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0618 (adres onbekend) | — | — | — | 2026-0618 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0652 (adres onbekend) | — | — | — | 2026-0652 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0695 (adres onbekend) | — | — | — | 2026-0695 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| dossier 2026-0731 (adres onbekend) | — | — | — | 2026-0731 | kosten: 0/0/1 | dry-run: zou nieuw zijn |
+| Dwarsweg 22 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Dwartsweg 22 | Zeis | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| F2026-0083 Lidwinahof 47 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Fazanstraat 79A | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Fazantstraat 77 | — | — | — | — | kosten: 0/13/0 | dry-run: zou nieuw zijn |
+| Fazantstraat 79a | — | — | — | — | kosten: 0/7/0 | dry-run: zou nieuw zijn |
+| Gelderstraat 60 | Almere | 2025-09-05 | — | — | aankoop: 0/1/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Go everneurlaan 310 | — | 2025-08-28 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Goeveneurlaan 310 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Goeverneurlaan 310 | Den Haag | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Goevernourlaan 310D | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Gr oenhoven 214 | Amsterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Groenhoven 214 | Ams Groenhoven | 2026-03-20 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Groningenstraat 203 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Gustaaf Gelderstraat 60 | Almere | 2025-11-19 | — | 2025.07 | aankoop: 1/1/0 | dry-run: zou nieuw zijn |
+| Gustaaf Gelderstraat Gustaaf Gelderstraat 60 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Hanssenlaan 38 | Hoensbroek | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Harlingvlietstraat 4 | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| He elsumstraat 75 | Den Haag | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Henri Dunantstraat 301 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Henri Dunantstraat 38 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Henri Dunantstraat Henri Dunantstraat 301 | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Hilledijk 87D | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| HL Arnhem Papaverstraat 44 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| htegaallaan 47 | Goes | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Hulshorststraat 301A | — | 2025-12-31 | — | — | aankoop: 0/2/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Kapershoek 34 | Rot | — | — | — | kosten: 1/1/0 | dry-run: zou nieuw zijn |
+| Kasteel Hillenraedst Kasteel Hillenraedstraat 152 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Kl inkenbergerweg 84D | — | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Kleiweg 667 | Rotterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Koekoekstraat 19 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Koekoestraat 19 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Koraalerf 45 | Heerl en | 2025-08-12 | — | — | aankoop: 0/1/0; kosten: 0/3/0 | dry-run: zou nieuw zijn |
+| Kouvenderstraat 34B | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Kouvenderstraat 43b | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Kr uidenlaan 72 | Venray | 2026-01-28 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Kruidenlaan 72 | Ve | 2025-12-31 | — | 2026.080367.01 | aankoop: 1/2/0; kosten: 0/3/0 | dry-run: zou nieuw zijn |
+| L ivingstonelaan 144 | Utrecht | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Linieweg 21 | Leusde Linieweg | 2026-03-18 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Livingstonelaan 14 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Livingstonelaan 144 | Utrecht | 2025-12-31 | — | — | aankoop: 0/2/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Lo evesteinsingel 9 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Loevesteinsingel 9R | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| M eekrapstraat 34A | Rotterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Me ekrapstraat 34A | Rotterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Meekrapstraat 34A | — | 2025-12-31 | — | — | aankoop: 0/1/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| MGR. Hanssenlaan 38 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Molenstraat 13 | Bru | — | — | — | kosten: 0/5/0 | dry-run: zou nieuw zijn |
+| Mondriaanplantsoen 1 | — | 2026-03-12 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Mu izenberglaan 83 | Breda | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Nac htegaallaan 47 | Goes | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Nachteg aallaan 47 | Goes | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Nachtegaallaan 47 | Goes | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Norbruislaan 422 | Utr | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Oo sterdiepswal 7 | Kollum | 2025-08-22 | — | — | aankoop: 0/2/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Oosterduinplein 18 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Overdracht Azielaan 334 | Utrec | 2026-01-12 | — | 2025.078804.01 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Goeverneurlaan 310 | Den Haag | 2026-01-12 | — | 2025.079 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Heelsumstraat 75 | — | 2026-05-21 | — | 2026.0 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Koraalerf 45 | Heerl en | 2025-12-09 | — | 2025.079469.01 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Oosterdiepswal 7 | — | 2025-11-17 | — | 2025.078955 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Rhijnauwensingel 93t | — | 2025-12-08 | — | 2025.0 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overdracht Vlamingstraat 19 | — | 2026-02-17 | — | 2025.079 | aankoop: 1/0/0 | dry-run: zou nieuw zijn |
+| Overschiese Kleiweg 667 | Rotterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| P apaverstraat 44 | Utrecht | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Patmosdreef 140 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Piet Heinstraat 53D | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Provincialeweg 63 | — | 2025-09-02 | — | — | aankoop: 0/1/0; kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| R hijnauwensingel 93 | Rotterdam | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Rhijnauwensingel 93 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Ri etvelderf 44 | Amersfoort | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Rijswijkseweg 409 | — | — | — | — | kosten: 1/0/0 | dry-run: zou nieuw zijn |
+| Ripperdastraat 13 | — | 2026-03-05 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Ro nhaarstraat 45 | Amersfoort | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Ro oseveltstraat 13 | Hulst | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Rooseveltstraat 13 | Hulst | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Rooseveltweg 13 | — | 2026-03-12 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Ruyghweg 71 | Den Helder | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Ruygweg 71 | — | — | — | — | kosten: 1/0/0 | dry-run: zou nieuw zijn |
+| S choffelstraat 29 | Purmerend | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| S portlaan 180 | Purmerend | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Sc hoffelstraat 29 | Purmerend | 2025-08-29 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Schoffelstraat 29 | Purmerend | 2025-12-31 | — | 2026.07995 | aankoop: 1/2/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Sl uisdijkstraat 10A | Den Helder | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Sluisdijkstraat 10A | Den Helder | — | — | — | kosten: 0/4/0 | dry-run: zou nieuw zijn |
+| Sp aakstraat 13 | Zevenaar | — | — | — | kosten: 0/3/0 | dry-run: zou nieuw zijn |
+| Sp ortlaan 180 | Purmerend | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Spaakstraat 13 | Zevenaar | 2025-12-31 | — | — | aankoop: 0/1/0; kosten: 0/4/0 | dry-run: zou nieuw zijn |
+| Speelmanstraat 44 | Den Ha | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Sportlaan 180 | — | 2025-12-31 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Tapuitstraat 5 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Tapuitstraat 52 | — | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Terugbetaling Kasteel Hillenraed tstraat 152 | Roermond | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Van de spiegelstraat 42 | Bergen op Zoom | 2026-04-23 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Van Dortmondstraat 1 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+| Vastelasten Hilledijk 87D | Rotte | — | — | — | kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Verhuizing Rotterdam Tapuitstraat 52A | — | — | — | 2025-02494 | kosten: 1/0/0 | dry-run: zou nieuw zijn |
+| Verschoorstraat 70-02 | — | — | — | — | kosten: 1/0/0 | dry-run: zou nieuw zijn |
+| Vl amingstraat 19 | Den Helder | 2025-11-13 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Vlamingstraat 19 | Den Helder | 2025-12-31 | — | — | aankoop: 0/2/0; kosten: 0/1/0 | dry-run: zou nieuw zijn |
+| Vo ndelstraat 14 | Roermond | 2026-01-19 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Von delstraat 14 | Roermond | 2026-03-23 | — | — | aankoop: 0/1/0 | dry-run: zou nieuw zijn |
+| Vondelstraat 14 | Roermond | 2025-12-31 | — | 2026.079949.0 | aankoop: 1/2/0; kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Voorterstraat 100A | Kerkrade | — | — | — | kosten: 0/2/0 | dry-run: zou nieuw zijn |
+| Wolweversgaarde 495 | — | 2025-12-31 | — | — | aankoop: 0/2/0 | dry-run: zou nieuw zijn |
+Container called exit(0).
+

@@ -1,0 +1,631 @@
+### Schoonlijst Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, gegenereerd 2026-09-11T15:45:51+00:00)
+| Categorie | Gevonden | Verwacht door Peter | Verschil |
+|---|---|---|---|
+| Concepten in RLZ (Status 1) | 62 | 17 | +45 |
+| Vermoedelijke dubbelen (zelfde collectie, bedrag, datum, relatie) | 51 | 3 | +48 |
+| Open bankregels (OpenAmount ≠ 0) | 44 | 44 | gelijk |
+| Bankrekeningen met dubbele IBAN | 1 | 1 | gelijk |
+| Boekingen zonder relatie mét bijlage | 1 | — | — |
+Gelezen: ManualJournals 229, PaymentAccounts 8, PaymentTransactions 1002, PurchaseInvoices 794, Receipts 1151, SalesInvoices 4. Bijlagechecks: 200 gedaan, 389 niet gecontroleerd (grens).
+#### Concepten in RLZ (Status 1) — 62
+| Boekstuk | Datum | Bedrag | Entity | Omschrijving | Bevinding |
+|---|---|---|---|---|---|
+| RLZ-28-00000054 | 2025-10-20 | € 85,49 | — | Voorschot tanken | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000062 | 2025-08-22 | € 65.000,00 | — | Aanbetaling volgens afspraak: Oo sterdiepswal 7 te Kollum | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000243 | 2025-11-10 | € 56,18 | Verhagen VvE Beheer B.V. | 25010051 RLZ-04-00000216 1-11-2025 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-16-00000309 | 2025-12-16 | € 219,00 | — | GJLDDTPWV9KGLMZ32GKII 7180895093 482084 trnsnr:797062166 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000338 | 2026-01-19 | € 10.600,00 | — | Aanbetaling volgens afspraak Gou dreinetgaard 59, Arnhem | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000444 | 2026-03-03 | € 7,40 | — | 3774900 8030664778822344 Kadaste r webwinkel producten | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-17-00000464 | 2026-03-09 | € 1.500,00 | — | Dossiernummer: 118261 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000576 | 2026-05-04 | € 1.324,26 | — | Maandelijkse aanbetaling: maand mei 2026 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-25-00000568 | 2026-05-04 | € 230,99 | — | Vaste lasten: Dwartsweg 22, Zeis t maand mei | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000625 | 2026-05-22 | € 25.000,00 | — | Aanbetaling volgens afspraal: Kl inkenbergerweg 84D Ede | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000732 | 2026-07-06 | € 20.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000793 | 2026-07-25 | € 25.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000845 | 2026-08-15 | € 20.000,00 | — | Aanbetaling volgens afspraak: Ba rendrechtstraat 30, Tilburg | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-04-00000875 | 2026-09-08 | € 750,00 | — | Ingescand document | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-01-00000006 | 2025-08-13 | € 43.666,14 | — | Overdracht Rijswijkseweg 409 te Den Haag, ons dossier: 2025.0787 58.01 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00000582 | 2026-02-21 | € -187.144,23 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-64-00000075 | 2026-02-24 | € 879,00 | — | maart 2026 | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-01-00000077 | 2026-02-25 | € 770,83 | — | Haringvlietstraat 44 Dordrecht R ente | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001056 | 2026-08-03 | € 21.388,37 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001062 | 2026-08-04 | € 89.023,39 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001066 | 2026-08-05 | € 38.423,39 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001068 | 2026-08-06 | € 30.831,89 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001069 | 2026-08-06 | € 56.153,28 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001092 | 2026-08-15 | € -1,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001099 | 2026-08-20 | € -531,13 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001101 | 2026-08-21 | € -49,30 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001102 | 2026-08-21 | € -330,10 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001104 | 2026-08-21 | € -2.500,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001105 | 2026-08-21 | € -2.500,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001106 | 2026-08-21 | € -345,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001116 | 2026-08-25 | € -67,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001118 | 2026-08-26 | € 2.674,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001120 | 2026-08-26 | € -6.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001121 | 2026-08-26 | € -2.500,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001122 | 2026-08-26 | € -20.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001123 | 2026-08-26 | € -1.141,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001124 | 2026-08-29 | € -26.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001125 | 2026-08-29 | € -800,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001126 | 2026-08-31 | € 770,83 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001127 | 2026-08-31 | € -973,97 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001129 | 2026-08-31 | € -599,20 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001130 | 2026-08-31 | € -3.291,98 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001131 | 2026-08-31 | € -20.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001132 | 2026-08-31 | € -777,42 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001134 | 2026-09-01 | € -56,18 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001135 | 2026-09-01 | € -686,20 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001136 | 2026-09-02 | € -195,76 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001137 | 2026-09-02 | € -503,42 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001138 | 2026-09-03 | € -50,85 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001139 | 2026-09-03 | € -1.300,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001140 | 2026-09-03 | € -814,09 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001142 | 2026-09-03 | € 139.834,74 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001144 | 2026-09-04 | € -64,90 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001167 | 2026-09-04 | € -13.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001168 | 2026-09-04 | € -10.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001173 | 2026-09-04 | € -140,00 | — | 407683 7R-4729303687348224-NGZMC | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001171 | 2026-09-05 | € -750,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001174 | 2026-09-08 | € -49,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001175 | 2026-09-08 | € -217,56 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001176 | 2026-09-08 | € -20.000,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| RLZ-09-00001177 | 2026-09-09 | € -500,00 | — | — | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+| — | 2025-09-24 | € 0,00 | — | Betreft: | concept (Status 1) — boeken of laten vervallen vóór de overstap |
+#### Vermoedelijke dubbelen (zelfde collectie, bedrag, datum, relatie) — 51
+| Boekstuk | Datum | Bedrag | Entity | Omschrijving | Bevinding |
+|---|---|---|---|---|---|
+| RLZ-06-00000026 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Kapershoek 34 Rotter dam | 3× € -20000.00 op 2025-09-02 zonder relatie: RLZ-06-00000026, RLZ-06-00000074, RLZ-06-00000076 |
+| RLZ-06-00000074 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Rhijnauwensingel 93 Rotterdam | 3× € -20000.00 op 2025-09-02 zonder relatie: RLZ-06-00000026, RLZ-06-00000074, RLZ-06-00000076 |
+| RLZ-06-00000076 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Heidebeemd 3 Weert | 3× € -20000.00 op 2025-09-02 zonder relatie: RLZ-06-00000026, RLZ-06-00000074, RLZ-06-00000076 |
+| RLZ-06-00000033 | 2025-09-10 | € 3.000,00 | — | Rc | 2× € 3000.00 op 2025-09-10 zonder relatie: RLZ-06-00000033, RLZ-06-00000035 |
+| RLZ-06-00000035 | 2025-09-10 | € 3.000,00 | — | Afbetaling RC | 2× € 3000.00 op 2025-09-10 zonder relatie: RLZ-06-00000033, RLZ-06-00000035 |
+| RLZ-06-00000057 | 2025-10-23 | € 185.000,00 | — | rc | 2× € 185000.00 op 2025-10-23 zonder relatie: RLZ-06-00000057, RLZ-46-00000124 |
+| RLZ-46-00000124 | 2025-10-23 | € 185.000,00 | — | lening volgens afspraak | 2× € 185000.00 op 2025-10-23 zonder relatie: RLZ-06-00000057, RLZ-46-00000124 |
+| RLZ-06-00000069 | 2025-10-30 | € -10.000,00 | — | Aanbetaling volgens afspraak: Oo sterdiepswal 7 te Kollum | 2× € -10000.00 op 2025-10-30 zonder relatie: RLZ-06-00000069, RLZ-06-00000250 |
+| RLZ-06-00000250 | 2025-10-30 | € -10.000,00 | — | Aanbetaling volgens afspraak: Bl eijeheiderstraat 123B, te Kerkra de | 2× € -10000.00 op 2025-10-30 zonder relatie: RLZ-06-00000069, RLZ-06-00000250 |
+| RLZ-28-00000061 | 2025-11-07 | € 135.000,00 | — | rc | 2× € 135000.00 op 2025-11-07 zonder relatie: RLZ-28-00000061, RLZ-28-00000062 |
+| RLZ-28-00000062 | 2025-11-07 | € 135.000,00 | — | rc | 2× € 135000.00 op 2025-11-07 zonder relatie: RLZ-28-00000061, RLZ-28-00000062 |
+| RLZ-06-00000111 | 2025-12-31 | € 290.000,00 | — | Chevremontstraat 68 Kerkrade | 2× € 290000.00 op 2025-12-31 zonder relatie: RLZ-06-00000111, RLZ-06-00000129 |
+| RLZ-06-00000129 | 2025-12-31 | € 290.000,00 | — | Loevesteinsingel 9 Rotterdam | 2× € 290000.00 op 2025-12-31 zonder relatie: RLZ-06-00000111, RLZ-06-00000129 |
+| RLZ-06-00000137 | 2026-02-13 | € 1.434,00 | — | TEVEELBET. NR. 868049025L015100 LOONH. OKT. 2025 (VASTGOEDGROE) | 2× € 1434.00 op 2026-02-13 zonder relatie: RLZ-06-00000137, RLZ-06-00000147 |
+| RLZ-06-00000147 | 2026-02-13 | € 1.434,00 | — | TEVEELBET. NR. 868049025L015110 LOONH. NOV. 2025 (VASTGOEDGROE) | 2× € 1434.00 op 2026-02-13 zonder relatie: RLZ-06-00000137, RLZ-06-00000147 |
+| RLZ-46-00000166 | 2026-02-20 | € 70.000,00 | — | Lening | 2× € 70000.00 op 2026-02-20 zonder relatie: RLZ-46-00000166, RLZ-46-00000167 |
+| RLZ-46-00000167 | 2026-02-20 | € 70.000,00 | — | Lening | 2× € 70000.00 op 2026-02-20 zonder relatie: RLZ-46-00000166, RLZ-46-00000167 |
+| RLZ-28-00000157 | 2026-04-07 | € 1.500,00 | — | RC | 3× € 1500.00 op 2026-04-07 zonder relatie: RLZ-28-00000157, RLZ-60-00000158, RLZ-60-00000159 |
+| RLZ-60-00000158 | 2026-04-07 | € 1.500,00 | — | RC | 3× € 1500.00 op 2026-04-07 zonder relatie: RLZ-28-00000157, RLZ-60-00000158, RLZ-60-00000159 |
+| RLZ-60-00000159 | 2026-04-07 | € 1.500,00 | — | Terugstorten RC | 3× € 1500.00 op 2026-04-07 zonder relatie: RLZ-28-00000157, RLZ-60-00000158, RLZ-60-00000159 |
+| RLZ-06-00000220 | 2026-06-22 | € 20.000,00 | — | betreft: Kruidenlaan 72 te Venra y, ons dossier: 2026.080367.01 | 2× € 20000.00 op 2026-06-22 zonder relatie: RLZ-06-00000220, RLZ-60-00000208 |
+| RLZ-60-00000208 | 2026-06-22 | € 20.000,00 | — | RC | 2× € 20000.00 op 2026-06-22 zonder relatie: RLZ-06-00000220, RLZ-60-00000208 |
+| RLZ-04-00000016 | 2025-07-01 | € 26,56 | Administratiekantoor Nijenhuis C.V. | 2025303 | 2× € 26.56 op 2025-07-01: RLZ-04-00000016, RLZ-04-00000017 |
+| RLZ-04-00000017 | 2025-07-01 | € 26,56 | Administratiekantoor Nijenhuis C.V. | 2025302 | 2× € 26.56 op 2025-07-01: RLZ-04-00000016, RLZ-04-00000017 |
+| RLZ-04-00000127 | 2025-09-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2025-09-01: RLZ-04-00000127, RLZ-19-00000106 |
+| RLZ-19-00000106 | 2025-09-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2025-09-01: RLZ-04-00000127, RLZ-19-00000106 |
+| RLZ-04-00000162 | 2025-10-03 | € 749,99 | Consten Vastgoed B.V. | Molenstraat 13 | 3× € 749.99 op 2025-10-03: RLZ-04-00000162, RLZ-04-00000163, RLZ-04-00000164 |
+| RLZ-04-00000163 | 2025-10-03 | € 749,99 | Consten Vastgoed B.V. | Dautzenbergstraat 18F | 3× € 749.99 op 2025-10-03: RLZ-04-00000162, RLZ-04-00000163, RLZ-04-00000164 |
+| RLZ-04-00000164 | 2025-10-03 | € 749,99 | Consten Vastgoed B.V. | Koraalerf 45 | 3× € 749.99 op 2025-10-03: RLZ-04-00000162, RLZ-04-00000163, RLZ-04-00000164 |
+| RLZ-25-00000177 | 2025-10-04 | € 758,74 | — | Vaste lasten: Schoonegge 98, Rot terdam | 2× € 758.74 op 2025-10-04 zonder relatie: RLZ-25-00000177, RLZ-25-00000182 |
+| RLZ-25-00000182 | 2025-10-04 | € 758,74 | — | Vaste lasten volgens afspraak: S choonegge 98, Rotterdam | 2× € 758.74 op 2025-10-04 zonder relatie: RLZ-25-00000177, RLZ-25-00000182 |
+| RLZ-04-00000208 | 2025-10-27 | € 299,95 | Full House Meubelverhuur | 2522781 | 2× € 299.95 op 2025-10-27: RLZ-04-00000208, RLZ-04-00000209 |
+| RLZ-04-00000209 | 2025-10-27 | € 299,95 | Full House Meubelverhuur | 2522771 | 2× € 299.95 op 2025-10-27: RLZ-04-00000208, RLZ-04-00000209 |
+| RLZ-25-00000205 | 2025-10-30 | € 500,00 | — | Vaste lasten Molenstraat 13, Bru nssum | 2× € 500.00 op 2025-10-30 zonder relatie: RLZ-25-00000205, RLZ-25-00000206 |
+| RLZ-25-00000206 | 2025-10-30 | € 500,00 | — | Vaste lasten volgens afspraak: A zielaan 334 te Utrecht | 2× € 500.00 op 2025-10-30 zonder relatie: RLZ-25-00000205, RLZ-25-00000206 |
+| RLZ-04-00000243 | 2025-11-10 | € 56,18 | Verhagen VvE Beheer B.V. | 25010051 RLZ-04-00000216 1-11-2025 | 2× € 56.18 op 2025-11-10: RLZ-04-00000243, RLZ-04-00000244 (concept) |
+| RLZ-04-00000244 | 2025-11-10 | € 56,18 | Verhagen VvE Beheer B.V. | 25010051 RLZ-04-00000216 1-11-2025 | 2× € 56.18 op 2025-11-10: RLZ-04-00000243, RLZ-04-00000244 |
+| RLZ-25-00000312 | 2025-12-19 | € 415,00 | — | Vaste lasten Gustaaf Gelderstraa t 60, Almere | 2× € 415.00 op 2025-12-19 zonder relatie: RLZ-25-00000312, RLZ-25-00000313 |
+| RLZ-25-00000313 | 2025-12-19 | € 415,00 | — | Vaste lasten Gustaaf Gelderstraa t 60, Almere | 2× € 415.00 op 2025-12-19 zonder relatie: RLZ-25-00000312, RLZ-25-00000313 |
+| RLZ-04-00000319 | 2026-01-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2026-01-01: RLZ-04-00000319, RLZ-04-00000359 |
+| RLZ-04-00000359 | 2026-01-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2026-01-01: RLZ-04-00000319, RLZ-04-00000359 |
+| RLZ-04-00000355 | 2026-01-06 | € 7,40 | — | 3683610 8030944792761523 Kadaste r webwinkel producten | 2× € 7.40 op 2026-01-06 zonder relatie: RLZ-04-00000355, RLZ-04-00000357 |
+| RLZ-04-00000357 | 2026-01-06 | € 7,40 | — | 3683467 8030745989851064 Kadaste r webwinkel producten | 2× € 7.40 op 2026-01-06 zonder relatie: RLZ-04-00000355, RLZ-04-00000357 |
+| RLZ-04-00000332 | 2026-01-09 | € 299,95 | Full House Meubelverhuur | 2620138 | 2× € 299.95 op 2026-01-09: RLZ-04-00000332, RLZ-04-00000333 |
+| RLZ-04-00000333 | 2026-01-09 | € 299,95 | Full House Meubelverhuur | 2620139 | 2× € 299.95 op 2026-01-09: RLZ-04-00000332, RLZ-04-00000333 |
+| RLZ-04-00000338 | 2026-01-19 | € 10.600,00 | — | Aanbetaling volgens afspraak Gou dreinetgaard 59, Arnhem | 2× € 10600.00 op 2026-01-19 zonder relatie: RLZ-04-00000338, RLZ-04-00000339 (concept) |
+| RLZ-04-00000339 | 2026-01-19 | € 10.600,00 | — | Aanbetaling volgens afspraak Gou dreinetgaard 59, Arnhem | 2× € 10600.00 op 2026-01-19 zonder relatie: RLZ-04-00000338, RLZ-04-00000339 |
+| RLZ-04-00000391 | 2026-02-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2026-02-01: RLZ-04-00000391, RLZ-04-00000407 |
+| RLZ-04-00000407 | 2026-02-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2026-02-01: RLZ-04-00000391, RLZ-04-00000407 |
+| RLZ-04-00000402 | 2026-02-10 | € 299,95 | Full House Meubelverhuur | 2620480 | 2× € 299.95 op 2026-02-10: RLZ-04-00000402, RLZ-04-00000403 |
+| RLZ-04-00000403 | 2026-02-10 | € 299,95 | Full House Meubelverhuur | 2620481 | 2× € 299.95 op 2026-02-10: RLZ-04-00000402, RLZ-04-00000403 |
+| RLZ-04-00000444 | 2026-03-03 | € 7,40 | — | 3774900 8030664778822344 Kadaste r webwinkel producten | 3× € 7.40 op 2026-03-03 zonder relatie: RLZ-04-00000444, RLZ-04-00000445, RLZ-04-00000446 (concept) |
+| RLZ-04-00000445 | 2026-03-03 | € 7,40 | — | 3774900 8030664778822344 Kadaste r webwinkel producten | 3× € 7.40 op 2026-03-03 zonder relatie: RLZ-04-00000444, RLZ-04-00000445, RLZ-04-00000446 |
+| RLZ-04-00000446 | 2026-03-03 | € 7,40 | — | 3774961 8030204464031738 Kadaste r webwinkel producten | 3× € 7.40 op 2026-03-03 zonder relatie: RLZ-04-00000444, RLZ-04-00000445, RLZ-04-00000446 |
+| RLZ-17-00000464 | 2026-03-09 | € 1.500,00 | — | Dossiernummer: 118261 | 2× € 1500.00 op 2026-03-09 zonder relatie: RLZ-17-00000464, RLZ-17-00000465 (concept) |
+| RLZ-17-00000465 | 2026-03-09 | € 1.500,00 | — | Dossiernummer: 118261 | 2× € 1500.00 op 2026-03-09 zonder relatie: RLZ-17-00000464, RLZ-17-00000465 |
+| RLZ-04-00000456 | 2026-03-12 | € 7,40 | — | 3791263 8030474175524303 Kadaste r webwinkel producten | 2× € 7.40 op 2026-03-12 zonder relatie: RLZ-04-00000456, RLZ-04-00000457 |
+| RLZ-04-00000457 | 2026-03-12 | € 7,40 | — | 3791259 8030834472795638 Kadaste r webwinkel producten | 2× € 7.40 op 2026-03-12 zonder relatie: RLZ-04-00000456, RLZ-04-00000457 |
+| RLZ-04-00000475 | 2026-03-17 | € 299,95 | Full House Meubelverhuur | Full House Meubelverhuur 2620822 | 2× € 299.95 op 2026-03-17: RLZ-04-00000475, RLZ-04-00000476 |
+| RLZ-04-00000476 | 2026-03-17 | € 299,95 | Full House Meubelverhuur | Full House Meubelverhuur 2620829 | 2× € 299.95 op 2026-03-17: RLZ-04-00000475, RLZ-04-00000476 |
+| RLZ-04-00000500 | 2026-03-24 | € 1.595,00 | Full House Meubelverhuur | 2621000 | 2× € 1595.00 op 2026-03-24: RLZ-04-00000500, RLZ-04-00000501 |
+| RLZ-04-00000501 | 2026-03-24 | € 1.595,00 | Full House Meubelverhuur | 2621001 | 2× € 1595.00 op 2026-03-24: RLZ-04-00000500, RLZ-04-00000501 |
+| RLZ-04-00000510 | 2026-04-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2026-04-01: RLZ-04-00000510, RLZ-04-00000531 |
+| RLZ-04-00000531 | 2026-04-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2026-04-01: RLZ-04-00000510, RLZ-04-00000531 |
+| RLZ-04-00000522 | 2026-04-19 | € 484,00 | Fer Haas Makelaardij | 2026054 | 2× € 484.00 op 2026-04-19: RLZ-04-00000522, RLZ-04-00000523 |
+| RLZ-04-00000523 | 2026-04-19 | € 484,00 | Fer Haas Makelaardij | 2026055 | 2× € 484.00 op 2026-04-19: RLZ-04-00000522, RLZ-04-00000523 |
+| RLZ-04-00000576 | 2026-05-04 | € 1.324,26 | — | Maandelijkse aanbetaling: maand mei 2026 | 2× € 1324.26 op 2026-05-04 zonder relatie: RLZ-04-00000576, RLZ-04-00000577 (concept) |
+| RLZ-04-00000577 | 2026-05-04 | € 1.324,26 | — | Maandelijkse aanbetaling: maand mei 2026 | 2× € 1324.26 op 2026-05-04 zonder relatie: RLZ-04-00000576, RLZ-04-00000577 |
+| RLZ-04-00000587 | 2026-05-04 | € 625,00 | DOEN Makelaars & Taxateurs B.V. | 202634820 | 2× € 625.00 op 2026-05-04: RLZ-04-00000587, RLZ-04-00000588 |
+| RLZ-04-00000588 | 2026-05-04 | € 625,00 | DOEN Makelaars & Taxateurs B.V. | 202634920 | 2× € 625.00 op 2026-05-04: RLZ-04-00000587, RLZ-04-00000588 |
+| RLZ-25-00000568 | 2026-05-04 | € 230,99 | — | Vaste lasten: Dwartsweg 22, Zeis t maand mei | 2× € 230.99 op 2026-05-04 zonder relatie: RLZ-25-00000568, RLZ-25-00000569 (concept) |
+| RLZ-25-00000569 | 2026-05-04 | € 230,99 | — | Vaste lasten: Dwartsweg 22, Zeis t maand mei | 2× € 230.99 op 2026-05-04 zonder relatie: RLZ-25-00000568, RLZ-25-00000569 |
+| RLZ-04-00000592 | 2026-05-08 | € 299,95 | Full House Meubelverhuur | 2621533 | 2× € 299.95 op 2026-05-08: RLZ-04-00000592, RLZ-04-00000593 |
+| RLZ-04-00000593 | 2026-05-08 | € 299,95 | Full House Meubelverhuur | 2621534 | 2× € 299.95 op 2026-05-08: RLZ-04-00000592, RLZ-04-00000593 |
+| RLZ-04-00000625 | 2026-05-22 | € 25.000,00 | — | Aanbetaling volgens afspraal: Kl inkenbergerweg 84D Ede | 2× € 25000.00 op 2026-05-22 zonder relatie: RLZ-04-00000625, RLZ-04-00000626 (concept) |
+| RLZ-04-00000626 | 2026-05-22 | € 25.000,00 | — | Aanbetaling volgens afspraal: Kl inkenbergerweg 84D Ede | 2× € 25000.00 op 2026-05-22 zonder relatie: RLZ-04-00000625, RLZ-04-00000626 |
+| RLZ-04-00000649 | 2026-06-08 | € 299,95 | Full House Meubelverhuur | 2621954 | 2× € 299.95 op 2026-06-08: RLZ-04-00000649, RLZ-04-00000651 |
+| RLZ-04-00000651 | 2026-06-08 | € 299,95 | Full House Meubelverhuur | 2621958 | 2× € 299.95 op 2026-06-08: RLZ-04-00000649, RLZ-04-00000651 |
+| RLZ-04-00000665 | 2026-06-16 | € 2.500,00 | — | Maandelijkse aanbetaling: 2500 e uro Nachtegaallaan 47, Goes | 2× € 2500.00 op 2026-06-16 zonder relatie: RLZ-04-00000665, RLZ-04-00000666 |
+| RLZ-04-00000666 | 2026-06-16 | € 2.500,00 | — | Aanbetaling Groenhoven 214, Amst erdam | 2× € 2500.00 op 2026-06-16 zonder relatie: RLZ-04-00000665, RLZ-04-00000666 |
+| RLZ-04-00000713 | 2026-07-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2026-07-01: RLZ-04-00000713, RLZ-04-00000719 |
+| RLZ-04-00000719 | 2026-07-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2026-07-01: RLZ-04-00000713, RLZ-04-00000719 |
+| RLZ-04-00000732 | 2026-07-06 | € 20.000,00 | — | — | 2× € 20000.00 op 2026-07-06 zonder relatie: RLZ-04-00000732, RLZ-04-00000737 (concept) |
+| RLZ-04-00000737 | 2026-07-06 | € 20.000,00 | — | Aanbetaling volgens afspraak: Ri etvelderf 44, Amersfoort | 2× € 20000.00 op 2026-07-06 zonder relatie: RLZ-04-00000732, RLZ-04-00000737 |
+| RLZ-04-00000734 | 2026-07-07 | € 1.000,00 | — | SJLX5QCPKFJVVNX32MXMP 7180086239 384320 Meta Ads | 2× € 1000.00 op 2026-07-07 zonder relatie: RLZ-04-00000734, RLZ-25-00000739 |
+| RLZ-25-00000739 | 2026-07-07 | € 1.000,00 | — | Vaste lasten volgens afspraak: P apaverstraat 44, Utrecht | 2× € 1000.00 op 2026-07-07 zonder relatie: RLZ-04-00000734, RLZ-25-00000739 |
+| RLZ-04-00000793 | 2026-07-25 | € 25.000,00 | — | — | 2× € 25000.00 op 2026-07-25 zonder relatie: RLZ-04-00000793, RLZ-04-00000794 (concept) |
+| RLZ-04-00000794 | 2026-07-25 | € 25.000,00 | — | aanbetaling volgens: Bovenpolder 49, de Meern | 2× € 25000.00 op 2026-07-25 zonder relatie: RLZ-04-00000793, RLZ-04-00000794 |
+| RLZ-04-00000797 | 2026-07-27 | € 1.595,00 | Full House Meubelverhuur | Kouvenderstraat34b Hoensbroek | 2× € 1595.00 op 2026-07-27: RLZ-04-00000797, RLZ-04-00000798 |
+| RLZ-04-00000798 | 2026-07-27 | € 1.595,00 | Full House Meubelverhuur | Groningenstraat 203 leeuwarden | 2× € 1595.00 op 2026-07-27: RLZ-04-00000797, RLZ-04-00000798 |
+| RLZ-04-00000814 | 2026-08-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 79a Rotterdam Vve k osten | 2× € 56.18 op 2026-08-01: RLZ-04-00000814, RLZ-04-00000823 |
+| RLZ-04-00000823 | 2026-08-01 | € 56,18 | Verhagen VvE Beheer B.V. | Fazantstraat 77 en 79 | 2× € 56.18 op 2026-08-01: RLZ-04-00000814, RLZ-04-00000823 |
+| RLZ-04-00000806 | 2026-08-04 | € 1.000,00 | — | BT45GHN994T399Z32MXMP 7180476538 521115 Meta Ads | 2× € 1000.00 op 2026-08-04 zonder relatie: RLZ-04-00000806, RLZ-25-00000817 |
+| RLZ-25-00000817 | 2026-08-04 | € 1.000,00 | — | Vaste lasten volgens afspraak: P apaverstraat 44, Utrecht | 2× € 1000.00 op 2026-08-04 zonder relatie: RLZ-04-00000806, RLZ-25-00000817 |
+| RLZ-04-00000837 | 2026-08-11 | € 261,36 | SaaSIT B.V. | 2026-0050 | 2× € 261.36 op 2026-08-11: RLZ-04-00000837, RLZ-04-00000838 |
+| RLZ-04-00000838 | 2026-08-11 | € 261,36 | SaaSIT B.V. | 2026-0049 | 2× € 261.36 op 2026-08-11: RLZ-04-00000837, RLZ-04-00000838 |
+| RLZ-04-00000845 | 2026-08-15 | € 20.000,00 | — | Aanbetaling volgens afspraak: Ba rendrechtstraat 30, Tilburg | 3× € 20000.00 op 2026-08-15 zonder relatie: RLZ-04-00000845, RLZ-04-00000846, RLZ-04-00000847 (concept) |
+| RLZ-04-00000846 | 2026-08-15 | € 20.000,00 | — | Aanbetaling volgens afspraak: Ba rendrechtstraat 30, Tilburg | 3× € 20000.00 op 2026-08-15 zonder relatie: RLZ-04-00000845, RLZ-04-00000846, RLZ-04-00000847 |
+| RLZ-04-00000847 | 2026-08-15 | € 20.000,00 | — | Aanbetaling volgens afspraak: Mu izenberglaan 83,Breda | 3× € 20000.00 op 2026-08-15 zonder relatie: RLZ-04-00000845, RLZ-04-00000846, RLZ-04-00000847 |
+| RLZ-04-00000868 | 2026-08-28 | € 349,00 | Homekeur B.V. | 95514 | 2× € 349.00 op 2026-08-28: RLZ-04-00000868, RLZ-04-00000869 |
+| RLZ-04-00000869 | 2026-08-28 | € 349,00 | Homekeur B.V. | 95513 | 2× € 349.00 op 2026-08-28: RLZ-04-00000868, RLZ-04-00000869 |
+| RLZ-64-00000075 | 2026-02-24 | € 879,00 | — | maart 2026 | 2× € 879.00 op 2026-02-24 zonder relatie: RLZ-64-00000075, RLZ-64-00000076 (concept) |
+| RLZ-64-00000076 | 2026-02-24 | € 879,00 | — | maart 2026 | 2× € 879.00 op 2026-02-24 zonder relatie: RLZ-64-00000075, RLZ-64-00000076 |
+| RLZ-01-00000077 | 2026-02-25 | € 770,83 | — | Haringvlietstraat 44 Dordrecht R ente | 2× € 770.83 op 2026-02-25 zonder relatie: RLZ-01-00000077, RLZ-29-00000731 (concept) |
+| RLZ-29-00000731 | 2026-02-25 | € 770,83 | — | — | 2× € 770.83 op 2026-02-25 zonder relatie: RLZ-01-00000077, RLZ-29-00000731 |
+| RLZ-09-00001104 | 2026-08-21 | € -2.500,00 | — | — | 2× € -2500.00 op 2026-08-21 zonder relatie: RLZ-09-00001104, RLZ-09-00001105 (concept) |
+| RLZ-09-00001105 | 2026-08-21 | € -2.500,00 | — | — | 2× € -2500.00 op 2026-08-21 zonder relatie: RLZ-09-00001104, RLZ-09-00001105 (concept) |
+#### Open bankregels (OpenAmount ≠ 0) — 44
+| Boekstuk | Datum | Bedrag | Entity | Omschrijving | Bevinding |
+|---|---|---|---|---|---|
+| 00100 | 2026-02-21 | € -187.144,23 | Ouwerkerk Notariaat | hypotheekgelden dossier 2026.080 038.01 | open € -187144.23 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-03 | € 21.388,37 | Ouwerkerk Notariaat | Overdracht hogevecht 123 te Amst erdam, ons dossier: 2026.080369. 01 | open € 21388.37 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-04 | € 89.023,39 | Ouwerkerk Notariaat | Overdracht van de Spiegelstraat 42 te Bergen op Zoom, ons dossie r: 2026.080912.01 | open € 89023.39 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-05 | € 38.423,39 | Ouwerkerk Notariaat | Overdracht Apollolaan 644 te Lei den, ons dossier: 2026.081052.01 | open € 38423.39 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-06 | € 56.153,28 | Ouwerkerk Notariaat | Overdracht Duifhuis 11 te Berlic um, ons dossier: 2026.080906.01 | open € 56153.28 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-06 | € 30.831,89 | Ouwerkerk Notariaat | Overdracht Sportlaan 180 te Purm erend, ons dossier: 2026.080301. 01 | open € 30831.89 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-08-15 | € -1,00 | J. Koppe en of W.L.J.F. Koppe | test | open € -1.00 op Vastgoedgroep Nederland BV (NL17KNAB0800484533) |
+| 00106 | 2026-08-20 | € -531,13 | Track Jack Europe B.V. via Stichting Mol | 5d2c6ee1bdabfaa3f085e0b0807ea8bf 8152364092993817 710054127 shop .trackjackeurope.com Track Jack Europe B.V. | open € -531.13 op Vastgoedgroep Nederland BV (NL51DEUT0265262461) |
+| 00106 | 2026-08-21 | € -49,30 | TOP SHOPS B.V. | 51428355044X1414 737024530771924 2 ORDTA2605563 | open € -49.30 op Vastgoedgroep Nederland BV (NL35RABO0117713678) |
+| 00112 | 2026-08-21 | € -2.500,00 | M.A. Bogert | Maandelijkse aanbetaling: Nachte gaallaan 47, Goes | open € -2500.00 op Vastgoedgroep Nederland BV (NL21RABO0115752978) |
+| 00112 | 2026-08-21 | € -2.500,00 | JGM Janssen | Extra aanbetaling volgens afspra ak: Mgr. Hanssenlaan 38, Hoensbr oek | open € -2500.00 op Vastgoedgroep Nederland BV (NL66RABO0109908597) |
+| 00112 | 2026-08-21 | € -330,10 | G Kazimier | Vaste lasten volgens afspraak: G roningerstraatweg 203, Leeuwarde n | open € -330.10 op Vastgoedgroep Nederland BV (NL54INGB0002028676) |
+| 00112 | 2026-08-21 | € -345,00 | T.A.J. Jacobs- van Aarle | Laatste vaste lasten: Duifhuis 1 1, Berlicum | open € -345.00 op Vastgoedgroep Nederland BV (NL41RABO0153395311) |
+| 00112 | 2026-08-25 | € -67,00 | BELASTINGDIENST | 26237043809773 betaalkenmerk: 7868049020601030 | open € -67.00 op Vastgoedgroep Nederland BV (NL04RABO0200112244) |
+| 00100 | 2026-08-26 | € 2.674,00 | UWV | W Begunstigde: 00000025316563490 101Betaaldatum: 24-08-2026 Kenme rk aanlevering: | open € 2674.00 op Vastgoedgroep Nederland BV (NL02INGB0702712701) |
+| 00112 | 2026-08-26 | € -1.141,00 | Rodrigues Soares A | Vaste lasten maand september: Me ekrapstraat 34A Rotterdam | open € -1141.00 op Vastgoedgroep Nederland BV (NL35ASNB0708719392) |
+| 00112 | 2026-08-26 | € -6.000,00 | JD Janssen | Aanbetaling volgens afspraak: He nri Dunantstraat 301, Brunssum | open € -6000.00 op Vastgoedgroep Nederland BV (NL80INGB0007180460) |
+| 00112 | 2026-08-26 | € -20.000,00 | J. Elsinga | Aanbetaling volgens afspraak: Ko renstraat 28, Olst | open € -20000.00 op Vastgoedgroep Nederland BV (NL98ABNA0548624879) |
+| 00112 | 2026-08-26 | € -2.500,00 | R.B.M de Keyser | Extra aanbetaling volgens afspra ak: Rooseveltweg 13, Hulst | open € -2500.00 op Vastgoedgroep Nederland BV (NL26ABNA0614144922) |
+| 00112 | 2026-08-29 | € -26.000,00 | R.kovacevic | extra aanbetaling volgens afspra ak Merwede 43, Heerhugowaard | open € -26000.00 op Vastgoedgroep Nederland BV (NL26RABO0326984453) |
+| 00112 | 2026-08-29 | € -800,00 | Assen J M H H | Vaste lasten augustus: Knopkruid 45, Venray | open € -800.00 op Vastgoedgroep Nederland BV (NL95ASNB8844808749) |
+| 00106 | 2026-08-31 | € -973,97 | Coolblue | P3T57J98RBLJ6SP92GKII 7180864104 628894 trnsnr:859443406 | open € -973.97 op Vastgoedgroep Nederland BV (NL04ADYB2017400157) |
+| 00112 | 2026-08-31 | € -20.000,00 | I.E. Bekman | Aanbetaling volgens afspraak: Wa dden 66, Zwijndrecht | open € -20000.00 op Vastgoedgroep Nederland BV (NL19RABO0397670710) |
+| 00112 | 2026-08-31 | € -777,42 | M.H. van den Brom-Bakker | Vaste lasten maand september: Oo sterduinplein 18, IJmuiden | open € -777.42 op Vastgoedgroep Nederland BV (NL79RABO0304178217) |
+| 00112 | 2026-08-31 | € 770,83 | B.A. van de Sanden | Haringvlietstraat 44 Dordrecht R ente | open € 770.83 op Vastgoedgroep Nederland BV (NL34RABO0181209993) |
+| 00112 | 2026-08-31 | € -599,20 | HR NYS Anamopa | Vaste lasten t/m 17 september Sp aakstraat 13, Zevenaar | open € -599.20 op Vastgoedgroep Nederland BV (NL49INGB0683651064) |
+| 00112 | 2026-08-31 | € -3.291,98 | Linda van der Heijden | Aanbetaling volgens afspraak: Ar chipel 15-17, Lelystad | open € -3291.98 op Vastgoedgroep Nederland BV (NL09ABNA0607671254) |
+| 00100 | 2026-09-01 | € -56,18 | Vereniging van Eigenaars Fazantstraat | Fazantstraat 79a Rotterdam Vve k osten | open € -56.18 op Vastgoedgroep Nederland BV (NL71ABNA0611806703) |
+| 00112 | 2026-09-01 | € -686,20 | JGM Janssen | Vaste lasten maand september: Mg r Hanssenlaan 38, Hoensbroek | open € -686.20 op Vastgoedgroep Nederland BV (NL66RABO0109908597) |
+| 01018 | 2026-09-02 | € -195,76 | VVE BORDEAUXDREEF 1 T M 111(ONEVEN NUMME | VvE-bijdrage sep-2026 | open € -195.76 op Vastgoedgroep Nederland BV (NL51INGB0650413687) |
+| 01028 | 2026-09-02 | € -503,42 | MULTI TANK CARD BV | D5009639 265083438 | open € -503.42 op Vastgoedgroep Nederland BV (NL44ABNA0548041814) |
+| 00112 | 2026-09-03 | € -814,09 | R.kovacevic | vaste lasten augustus: Merwede 4 3, Heerhugowaard | open € -814.09 op Vastgoedgroep Nederland BV (NL26RABO0326984453) |
+| 00112 | 2026-09-03 | € 139.834,74 | Ouwerkerk Notariaat | Overdracht Knopkruid 45, ons dos sier 2025.079458.01 | open € 139834.74 op Vastgoedgroep Nederland BV (NL71RABO0360567371) |
+| 00112 | 2026-09-03 | € -1.300,00 | YJM ter Beek -de Groot | Vaste lasten: Papaverstraat 44, Utrecht | open € -1300.00 op Vastgoedgroep Nederland BV (NL82INGB0002751016) |
+| 02001 | 2026-09-03 | € -50,85 | 26246464156661 | BCK*Shell De Lucht Oos BRUCHEM 0 2-09-2026 20:25 TERMINALID: 0279 9612 PASVOLGNR: 900 TRANSACTIENR : P00009 | open € -50.85 op Vastgoedgroep Nederland BV |
+| 00106 | 2026-09-04 | € -140,00 | Cafe In The City Amsterdam | MBC6F9CD9K7J3WF38G3AO 7180435016 407683 7R-4729303687348224-NGZMC 3MJ9R5 | open € -140.00 op Vastgoedgroep Nederland BV (NL04ADYB2017400157) |
+| 00112 | 2026-09-04 | € -10.000,00 | M. Ossendorp | 2/2 aanbetaling Bornholmstraat 4 9, Almere | open € -10000.00 op Vastgoedgroep Nederland BV (NL74RABO0385633475) |
+| 00112 | 2026-09-04 | € -13.000,00 | J.F. de Moed | Aanbetaling volgens afspraak: St adhoudersring 374, Zoetermeer | open € -13000.00 op Vastgoedgroep Nederland BV (NL90INGB0009487716) |
+| 01018 | 2026-09-04 | € -64,90 | Swapfiets | SWAPFIETS | open € -64.90 op Vastgoedgroep Nederland BV (IE30CITI99005132956548) |
+| 02002 | 2026-09-05 | € -750,00 | 26248385869807 | The SIREN Amsterdam NLD 05-09-20 26 00:07 TERMINALID: 32348215 PA SVOLGNR: 001 TRANSACTIENR: C0001 1 | open € -750.00 op Vastgoedgroep Nederland BV |
+| 00112 | 2026-09-08 | € -20.000,00 | k.j visser | Aanbetaling volgens afspraak All ard Piersonlaan 20, Den Haag | open € -20000.00 op Vastgoedgroep Nederland BV (NL98ABNA0885006135) |
+| 01018 | 2026-09-08 | € -217,56 | Kadastralekaart.com via Mollie | Kadastralekaart.com - Enterprise abonnement. Maandelijks betalen. Vastgoedgroep Nederland B.V. | open € -217.56 op Vastgoedgroep Nederland BV (NL75DEUT7022188521) |
+| 01018 | 2026-09-08 | € -49,00 | Huispedia | n41569021 | open € -49.00 op Vastgoedgroep Nederland BV (IE30CITI99005132956548) |
+| 01018 | 2026-09-09 | € -500,00 | Google Ireland Limited | ADWORDS:5600916770:GG104IN2RL | open € -500.00 op Vastgoedgroep Nederland BV (IE07CITI99005111475051) |
+#### Bankrekeningen met dubbele IBAN — 1
+| Boekstuk | Datum | Bedrag | Entity | Omschrijving | Bevinding |
+|---|---|---|---|---|---|
+| — | 2025-09-03 | € 0,00 | Vastgoedgroep | type 1 · IBAN NL95INGB0114119295 | IBAN NL95INGB0114119295 op 2 rekeningen: Vastgoedgroep + Vastgoedgroep Nederland BV |
+| — | 2026-09-10 | € 129.230,67 | Vastgoedgroep Nederland BV | type 1 · IBAN NL95INGB0114119295 | IBAN NL95INGB0114119295 op 2 rekeningen: Vastgoedgroep + Vastgoedgroep Nederland BV |
+#### Boekingen zonder relatie mét bijlage — 1
+| Boekstuk | Datum | Bedrag | Entity | Omschrijving | Bevinding |
+|---|---|---|---|---|---|
+| RLZ-52-00000045 | 2025-06-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000038 | 2025-06-30 | € 4.666,67 | — | JP juni | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000001 | 2025-07-15 | € 70,00 | — | Aandelenkapitaal 70 procent Vast goedgroep Nederland | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000002 | 2025-07-15 | € 30,00 | — | Aandelenkapitaal 30 procent aan Vastgoedgroep Nederland | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000046 | 2025-07-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000006 | 2025-07-30 | € 9.600,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000039 | 2025-07-31 | € 4.666,67 | — | JP juli | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000017 | 2025-07-31 | € 9.880,00 | — | Belasting verkoop Verschoorstraa t 70-2 te Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000005 | 2025-08-04 | € 1.600,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000004 | 2025-08-05 | € 1.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000003 | 2025-08-09 | € 1.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000072 | 2025-08-12 | € -5.000,00 | — | Aanbetaling: Koraalerf 45 - Heer len | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000016 | 2025-08-12 | € 1.000,00 | — | Aanbetaling Koraalerf 45- Heerle n | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000015 | 2025-08-13 | € 12.000,00 | — | Rijswijkseweg te den haag + 1000 aanbetaling | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000028 | 2025-08-22 | € 65.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000070 | 2025-08-22 | € -65.000,00 | — | Aanbetaling volgens afspraak: Oo sterdiepswal 7 te Kollum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000014 | 2025-08-22 | € 8.100,00 | — | Belasting Kapershoek 34 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000047 | 2025-08-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000011 | 2025-08-26 | € 2.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000098 | 2025-08-28 | € -20.000,00 | — | Aanbetaling volgens afspraak: Go everneurlaan 310 teDen Haag | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000240 | 2025-08-29 | € -15.000,00 | — | Aanbetaling volgens afspraak: Sc hoffelstraat 29, Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000013 | 2025-08-29 | € 20.000,00 | — | Van ZakelijkeOranje Spaarrekenin g | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000040 | 2025-08-31 | € 4.666,67 | — | JP aug | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000019 | 2025-09-02 | € 3.517,86 | — | doorstorten saldo Provincialeweg 63 Heiligerlee | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000020 | 2025-09-02 | € -3.517,86 | — | Vooruitbetaling Provincialeweg ( 3x) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000026 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Kapershoek 34 Rotter dam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000074 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Rhijnauwensingel 93 Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000076 | 2025-09-02 | € -20.000,00 | — | Aanbetaling Heidebeemd 3 Weert | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000101 | 2025-09-02 | € -15.000,00 | — | Aanbetaling Azielaan 334 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000018 | 2025-09-02 | € 90.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000025 | 2025-09-03 | € 20.000,00 | — | Aanbetaling Kapershoek 34 Rotter dam dubbel retour | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000027 | 2025-09-03 | € -65.000,00 | — | retour RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-26-00000030 | 2025-09-03 | € 8.980,00 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000029 | 2025-09-03 | € 125.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000031 | 2025-09-04 | € 35.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000034 | 2025-09-05 | € -3.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000235 | 2025-09-05 | € -50.000,00 | — | Aanbetaling volgens afspraak: Gu staaf Gelderstraat 60, Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000032 | 2025-09-09 | € 5.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000033 | 2025-09-10 | € 3.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000035 | 2025-09-10 | € 3.000,00 | — | Afbetaling RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000238 | 2025-09-10 | € -5.000,00 | — | Aanbetaling volgens afspraak: Ka steel Hillenraedtstraat144, Roer mond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000036 | 2025-09-20 | € 2.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000037 | 2025-09-22 | € 15.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000041 | 2025-09-24 | € 4.666,67 | — | JP sept | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000052 | 2025-09-24 | € 2.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000048 | 2025-09-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000097 | 2025-09-30 | € -12.500,00 | — | Aanbetaling volgens afspraak: Go everneurlaan 310 teDen Haag | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000100 | 2025-09-30 | € -7.000,00 | — | Aanbetaling volgens afspraak: Az ielaan 334 te Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000053 | 2025-10-13 | € 2.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000055 | 2025-10-17 | € 8.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000054 | 2025-10-20 | € 85,49 | — | Voorschot tanken | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000056 | 2025-10-23 | € -185.000,00 | — | foutieve boeking verkeerde omsch rijving | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000057 | 2025-10-23 | € 185.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-46-00000124 | 2025-10-23 | € 185.000,00 | — | lening volgens afspraak | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000042 | 2025-10-24 | € 4.666,67 | — | JP okt | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000049 | 2025-10-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000237 | 2025-10-25 | € -15.000,00 | — | Aanbetaling volgens afspraak: Ka steel Hillenraedtstraat144, Roer mond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000138 | 2025-10-27 | € -1.434,00 | — | 0868 0490 2650 1100 RLZ-35-00000188 23-10-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000077 | 2025-10-28 | € 20.000,00 | — | 20252122.01 - Verkoopsaldo Heide beemd 3 te Weert | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000058 | 2025-10-28 | € 2.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000069 | 2025-10-30 | € -10.000,00 | — | Aanbetaling volgens afspraak: Oo sterdiepswal 7 te Kollum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000239 | 2025-10-30 | € -5.000,00 | — | Aanbetaling volgens afspraak: Sc hoffelstraat 29, Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000250 | 2025-10-30 | € -10.000,00 | — | Aanbetaling volgens afspraak: Bl eijeheiderstraat 123B, te Kerkra de | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000059 | 2025-11-03 | € -5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000060 | 2025-11-03 | € 5.000,00 | — | Afbetaling RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000061 | 2025-11-07 | € 135.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000062 | 2025-11-07 | € 135.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000065 | 2025-11-12 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000241 | 2025-11-13 | € -10.000,00 | — | Aanbetaling volgens afspraak: Vl amingstraat 19, Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000068 | 2025-11-17 | € 75.000,00 | — | Overdracht Oosterdiepswal 7 te K ollum, ons dossier: 2025.078955. 01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000236 | 2025-11-19 | € -50.000,00 | — | 2/2Aanbetaling volgens afspraak Gustaaf Gelderstraat 60, Almere. Totale aanbetaling 100k | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000105 | 2025-11-21 | € 11.797,50 | — | INV-PLS-20251030 RLZ-04-00000212 30-10-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000043 | 2025-11-24 | € 7.413,15 | — | JP nov | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000064 | 2025-11-24 | € 7.500,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000050 | 2025-11-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000063 | 2025-11-25 | € 2.046,00 | — | Periode 11 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000143 | 2025-11-26 | € -1.352,00 | — | 7868049026501110 RLZ-04-00000141 30-11-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000066 | 2025-11-27 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000067 | 2025-12-01 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000073 | 2025-12-08 | € 20.000,00 | — | Overdracht Rhijnauwensingel 93 t e Rotterdam, ons dossier: 2025.0 78234.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000071 | 2025-12-09 | € 5.000,00 | — | Overdracht Koraalerf 45 te Heerl en, ons dossier: 2025.079469.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000078 | 2025-12-15 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000080 | 2025-12-23 | € 7.413,15 | — | JP December 2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000079 | 2025-12-23 | € 2.046,00 | — | Periode 12 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000148 | 2025-12-24 | € -1.434,00 | — | 3868049026501120 RLZ-04-00000142 31-12-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000051 | 2025-12-24 | € 3.231,95 | — | — | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000081 | 2025-12-25 | € 30.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000106 | 2025-12-31 | € 175.000,00 | — | Goevernourlaan 310 D | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000107 | 2025-12-31 | € 267.000,00 | — | Azielaan 334 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000108 | 2025-12-31 | € 100.000,00 | — | Vlamingstraat 19 Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000109 | 2025-12-31 | € 227.000,00 | — | Van Dortmondstraat 1 Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000110 | 2025-12-31 | € 365.000,00 | — | Schoffelstraat 29 Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000111 | 2025-12-31 | € 290.000,00 | — | Chevremontstraat 68 Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000112 | 2025-12-31 | € 190.000,00 | — | Bleijeheiderstraat 123B Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000113 | 2025-12-31 | € 335.000,00 | — | Patmosdreef 140 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000114 | 2025-12-31 | € 282.000,00 | — | Livingstonelaan 144 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000115 | 2025-12-31 | € 215.000,00 | — | Meekrapstraat 34A Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000116 | 2025-12-31 | € 440.000,00 | — | Gustaaf Gelderstraat 60 Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000117 | 2025-12-31 | € 221.000,00 | — | Kasteel Hillenraedstraat 152 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000118 | 2025-12-31 | € 275.000,00 | — | Knopkruid 45 Venray | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000119 | 2025-12-31 | € 180.000,00 | — | Vondelstraat 14 Roermond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000120 | 2025-12-31 | € 370.000,00 | — | Dwarsweg 22 Zeist | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000121 | 2025-12-31 | € 112.500,00 | — | Henri Dunantstraat 301 Brunssum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000122 | 2025-12-31 | € 503.179,30 | — | verkocht in 2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000125 | 2025-12-31 | € 405.000,00 | — | Sportlaan 180 Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000126 | 2025-12-31 | € 222.500,00 | — | Hulshorststraat 301A 'S-Gravenhage | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000127 | 2025-12-31 | € 210.000,00 | — | Wolweversgaarde 495 Den Haag | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000128 | 2025-12-31 | € 255.000,00 | — | Burgemeester Norbruislaan 422 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000129 | 2025-12-31 | € 290.000,00 | — | Loevesteinsingel 9 Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000130 | 2025-12-31 | € 260.000,00 | — | Goudreinetgaard 59 Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000132 | 2025-12-31 | € 250.000,00 | — | Kruidenlaan 72 Venray | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000133 | 2025-12-31 | € 325.000,00 | — | Spaakstraat 13 Zevenaar | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000134 | 2025-12-31 | € 155.000,00 | — | Piet Heinstraat 53 Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000135 | 2025-12-31 | € 200.000,00 | — | Harlingvlietstraat 44 Dordrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000123 | 2026-01-01 | € 503.179,30 | — | verkocht in 2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000226 | 2026-01-01 | € 370.000,00 | — | Dwarsweg 22 Zeist | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000227 | 2026-01-01 | € 260.000,00 | — | Goudreinetgaard 59 Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000229 | 2026-01-01 | € 222.500,00 | — | Hulshorststraat 301A 'S-Gravenhage | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000230 | 2026-01-01 | € 221.000,00 | — | Kasteel Hillenraedstraat 152 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000231 | 2026-01-01 | € 250.000,00 | — | Kruidenlaan 72 Venray | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000232 | 2026-01-01 | € 282.000,00 | — | Livingstonelaan 144 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000233 | 2026-01-01 | € 180.000,00 | — | Vondelstraat 14 Roermond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000234 | 2026-01-01 | € 210.000,00 | — | Wolweversgaarde 495 Den Haag | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000170 | 2026-01-05 | € -1.595,00 | — | 2523417 RLZ-04-00000324 22-12-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000082 | 2026-01-07 | € 20.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000099 | 2026-01-12 | € 32.500,00 | — | Overdracht Goeverneurlaan 310 te Den Haag, ons dossier: 2025.079 008.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000102 | 2026-01-12 | € 22.000,00 | — | Overdracht Azielaan 334 te Utrec ht, ons dossier: 2025.078804.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000173 | 2026-01-12 | € 175.000,00 | — | Goevernourlaan 310 D | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000176 | 2026-01-12 | € 267.000,00 | — | Azielaan 334 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000171 | 2026-01-13 | € 1.595,00 | — | Terugbetaling factuur 2523417 iv m annulering opdracht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000224 | 2026-01-19 | € -10.000,00 | — | Aanbetaling volgens afspraak: Vo ndelstraat 14, Roermond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000096 | 2026-01-24 | € 7.573,43 | — | JP Januari 2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000083 | 2026-01-24 | € 3.357,83 | — | Periode 1 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000095 | 2026-01-24 | € 2.058,33 | — | Periode 1 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000249 | 2026-01-28 | € -20.000,00 | — | Aanbetaling volgens afspraak: Kr uidenlaan 72, Venray | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000103 | 2026-01-31 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000139 | 2026-02-03 | € -92,00 | — | 4868 0490 2550 1270 RLZ-04-00000377 4-2-2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000104 | 2026-02-09 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000136 | 2026-02-11 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000140 | 2026-02-12 | € 92,00 | — | TEVEELBET. NR. 868049025F015270 OB.3EKWART25 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000137 | 2026-02-13 | € 1.434,00 | — | TEVEELBET. NR. 868049025L015100 LOONH. OKT. 2025 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000147 | 2026-02-13 | € 1.434,00 | — | TEVEELBET. NR. 868049025L015110 LOONH. NOV. 2025 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000188 | 2026-02-13 | € 265.000,00 | — | Hogevecht 123, Amsterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000150 | 2026-02-17 | € 10.000,00 | — | Overdracht Vlamingstraat 19 te D en Helder, ons dossier: 2025.079 525.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000168 | 2026-02-17 | € -995,00 | — | 43833 RLZ-04-00000398 22-1-2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000177 | 2026-02-17 | € 100.000,00 | — | Vlamingstraat 19 Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000189 | 2026-02-18 | € 185.000,00 | — | Donkerslootstraat 101A, Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-46-00000166 | 2026-02-20 | € 70.000,00 | — | Lening | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-46-00000167 | 2026-02-20 | € 70.000,00 | — | Lening | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000145 | 2026-02-21 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000151 | 2026-02-23 | € 7.573,43 | — | JP Februari 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000144 | 2026-02-24 | € 3.357,83 | — | Periode 2 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000146 | 2026-02-24 | € 2.058,33 | — | Periode 2 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000190 | 2026-03-05 | € 150.000,00 | — | ​Ripperdastraat 13 , Farmsum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000251 | 2026-03-05 | € -800,00 | — | 400 euro vaste lasten en 400 eur o aanbetaling | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000191 | 2026-03-12 | € 110.000,00 | — | ​Rooseveltweg 13 , Hulst​ | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000195 | 2026-03-12 | € 245.000,00 | — | Mondriaanplantsoen 11 , Vlissingen | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000149 | 2026-03-13 | € 1.434,00 | — | TEVEELBET. NR. 868049025L015120 LOONH. DEC. 2025 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000180 | 2026-03-16 | € 642.500,00 | — | Duifhuis 11 , Berlicum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000183 | 2026-03-18 | € 485.000,00 | — | Linieweg 21 , Leusden | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000192 | 2026-03-18 | € 500.000,00 | — | ​Klinkenbergerweg 84D , Ede | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000155 | 2026-03-20 | € 20.000,00 | — | Betreft: schoffelstraat 29 te Pu rmerend, ons dossier: 2026.07995 0.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000174 | 2026-03-20 | € 365.000,00 | — | Schoffelstraat 29 Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000193 | 2026-03-20 | € 250.000,00 | — | Groenhoven 214 , Amsterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000154 | 2026-03-22 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000169 | 2026-03-23 | € 995,00 | — | dubbele betaling factuur 43833 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000223 | 2026-03-23 | € -3.000,00 | — | Aanbetaling volgens afspraak Von delstraat 14 te Roermond | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000152 | 2026-03-23 | € 3.357,83 | — | Periode 3 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000153 | 2026-03-23 | € 2.058,33 | — | Periode 3 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000160 | 2026-03-31 | € 20.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000194 | 2026-04-03 | € 185.000,00 | — | ​De Hieming 14 , Oosterwolde​ | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000156 | 2026-04-04 | € 1.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000157 | 2026-04-07 | € 1.500,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000158 | 2026-04-07 | € 1.500,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000159 | 2026-04-07 | € 1.500,00 | — | Terugstorten RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000175 | 2026-04-21 | € 335.000,00 | — | Patmosdreef 140 Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000178 | 2026-04-22 | € 227.000,00 | — | Van Dortmondstraat 1 Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000161 | 2026-04-22 | € 5.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000181 | 2026-04-23 | € 411.500,00 | — | Van de spiegelstraat 42 , Bergen op Zoom | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000164 | 2026-04-24 | € 7.580,25 | — | JP April 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000165 | 2026-04-24 | € 7.573,43 | — | JP Maart 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000162 | 2026-04-24 | € 3.357,83 | — | Periode 4 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000163 | 2026-04-24 | € 2.058,33 | — | Periode 4 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000218 | 2026-05-04 | € 20.000,00 | — | Betreft: Kasteel Hillenraedstraa t 152 te Roermond, ons dossier: 2025.079202.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000197 | 2026-05-04 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000198 | 2026-05-05 | € 8.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000199 | 2026-05-05 | € 7.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000200 | 2026-05-14 | € 1.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000244 | 2026-05-18 | € -300,00 | — | 26138075898718 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000215 | 2026-05-21 | € -104,00 | — | 26141396229595 betaalkenmerk: 2868049025501300 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000219 | 2026-05-21 | € 15.000,00 | — | Overdracht Heelsumstraat 75 te ' s-Gravenhage, ons dossier:2026.0 80234.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000201 | 2026-05-22 | € 3.357,83 | — | Periode 5 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000202 | 2026-05-22 | € 2.873,92 | — | Periode 5 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000203 | 2026-05-26 | € 9.019,97 | — | JP Mei 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000204 | 2026-05-28 | € 6.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000206 | 2026-06-03 | € 2.000,00 | — | Teruggave RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000205 | 2026-06-09 | € 2.000,00 | — | Terug betaling RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000252 | 2026-06-16 | € 10.800,00 | — | betreft: Bleijerheiderstraat 123 B te Kerkrade, ons dossier:2025. 079527.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000207 | 2026-06-16 | € 10.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000243 | 2026-06-21 | € -1.000,00 | — | Rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000220 | 2026-06-22 | € 20.000,00 | — | betreft: Kruidenlaan 72 te Venra y, ons dossier: 2026.080367.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000221 | 2026-06-22 | € 13.000,00 | — | betreft: Vondelstraat 14 te Roer mond, ons dossier: 2026.079949.0 1 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000208 | 2026-06-22 | € 20.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000211 | 2026-06-23 | € 7.580,25 | — | JP Juni 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000209 | 2026-06-23 | € 3.357,83 | — | Periode 6 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000210 | 2026-06-23 | € 2.058,33 | — | Periode 6 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000212 | 2026-06-24 | € 15.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000214 | 2026-06-26 | € 82,00 | — | TERUGGAAF NR. 868049025F015270 O B.3EKWART25 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000222 | 2026-06-29 | € 100.000,00 | — | betreft: Gustaaf Gelderstraat 60 te Almere, ons dossier: 2025.07 8957.01 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000242 | 2026-06-29 | € 1.300,00 | — | Terugbetaling RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000216 | 2026-06-30 | € 10,00 | — | TERUGGAAF NR. 868049025F015300 O B.4EKWART25 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000248 | 2026-07-07 | € -448,51 | — | X87JCHCP88STNCP92GKII 7180446836 413555 trnsnr:845938016 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000213 | 2026-07-07 | € 15.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000217 | 2026-07-09 | € 12,00 | — | TEVEELBET. NR. 868049025L016040 LOONH. APRIL 2026 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000247 | 2026-07-10 | € 236,52 | — | TX2290575250XT Refund trnsnr:845 938016 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000253 | 2026-07-12 | € -41,43 | — | BCK*Etos Oosterbeek OOSTERBEEK 1 1-07-2026 12:48 TERMINALID: BS17 2786 PASVOLGNR: 900 TRANSACTIENR : C00009 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000245 | 2026-07-13 | € 174,00 | — | TX2292136450XT Refund trnsnr:845 938016 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000246 | 2026-07-13 | € 37,99 | — | TX2293247250XT Refund trnsnr:845 938016 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000225 | 2026-07-15 | € 190.000,00 | — | Bleijeheiderstraat 123B Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000228 | 2026-07-15 | € 440.000,00 | — | Gustaaf Gelderstraat 60 Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000254 | 2026-07-15 | € 41,43 | — | Terugstorten prive betaling Etos | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000257 | 2026-07-23 | € 7.580,25 | — | JP Juli 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000255 | 2026-07-23 | € 3.357,83 | — | Periode 7 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000256 | 2026-07-23 | € 2.058,33 | — | Periode 7 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-28-00000258 | 2026-08-13 | € 25.000,00 | — | RC | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-06-00000261 | 2026-08-24 | € 7.580,25 | — | JP Augustus 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000259 | 2026-08-24 | € 3.357,83 | — | Periode 8 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-52-00000260 | 2026-08-24 | € 2.058,33 | — | Periode 8 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-60-00000262 | 2026-09-03 | € 30.000,00 | — | rc | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000041 | 2025-08-01 | € 56,18 | — | Fazantstraat 79a Rotterdam Vve k osten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000048 | 2025-08-01 | € 1.177,09 | — | Vastelasten: Ruyghweg 71 te Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000049 | 2025-08-01 | € 440,47 | — | Vaste lasten: Kapershoek 34, Rot terdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000038 | 2025-08-04 | € -0,12 | — | GG10428969 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000042 | 2025-08-06 | € 5.000,00 | — | aanbetaling conform afspraak: Sl uisdijkstraat 10A, Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000045 | 2025-08-06 | € 264,34 | — | D5007083 255032186 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000050 | 2025-08-06 | € 1.000,00 | — | Vaste lasten: Sluisdijkstraat 10 A, Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000051 | 2025-08-11 | € 119,16 | — | ADWORDS:5600916770:GG1042EPBE | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000052 | 2025-08-11 | € 500,00 | — | ADWORDS:5600916770:GG1042QHUY | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000043 | 2025-08-18 | € 68,97 | — | 25NL096318 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000044 | 2025-08-20 | € 500,00 | — | ADWORDS:5600916770:GG1042K7QN | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000061 | 2025-08-21 | € 795,00 | — | Fotos Funda | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000062 | 2025-08-22 | € 65.000,00 | — | Aanbetaling volgens afspraak: Oo sterdiepswal 7 te Kollum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000069 | 2025-08-26 | € 1.000,00 | — | Vaste lasten: Sluisdijkstraat 10 A te Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000070 | 2025-08-26 | € 956,82 | — | Vaste lasten volgens afspraak: M usschenbroek 26 te Heerlen | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000115 | 2025-09-01 | € 74,33 | — | BP Vissers De IJssel NIEUWEGEIN 31-08-2025 10:06TERMINALID: 3ZGX 6R PASVOLGNR: 900 TRANSACTIENR: C00002 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-19-00000079 | 2025-09-01 | € 500,00 | — | ADWORDS:5600916770:GG1043I4O4 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000089 | 2025-09-02 | € 2.389,53 | — | Bordeauxdreef 79 Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000091 | 2025-09-02 | € 2.325,35 | — | 112 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000098 | 2025-09-02 | € 10.000,00 | — | Aanbetaling Sluisdijkstraat 10A Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000109 | 2025-09-02 | € 182.442,39 | — | doorstorten saldo Tapuitstraat 5 2-A Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000110 | 2025-09-02 | € 192.260,99 | — | doorstorten saldo Koekoekstraat 19 Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000117 | 2025-09-02 | € 1.264,45 | — | doorstorten saldo Provincialeweg 63 Heiligerlee | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000114 | 2025-09-02 | € 171,09 | — | D5007083 255039100 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000111 | 2025-09-02 | € 239.202,65 | — | doorstorten saldo Brinklaan 165 Bussum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000112 | 2025-09-02 | € 160.457,46 | — | doorstorten saldo Provincialeweg 63 Heiligerlee | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000116 | 2025-09-02 | € 1.121,44 | — | doorstorten saldo Brinklaan 165 Bussum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000113 | 2025-09-04 | € 758,74 | — | Vaste lasten volgens afspraak: S choonegge 98, Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000108 | 2025-09-05 | € 244,71 | — | ADWORDS:5600916770:GG1043JETR | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-19-00000134 | 2025-09-17 | € 500,00 | — | ADWORDS:5600916770:GG1043ZWFV | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000144 | 2025-09-18 | € 68,97 | — | 25NL109851 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000151 | 2025-09-24 | € 50,13 | — | Schimmel Tankstation VEGHEL NLD 23-09-2025 20:44TERMINALID: Y63L 67 PASVOLGNR: 900 TRANSACTIENR: D00003 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000152 | 2025-09-25 | € 993,27 | — | Vaste lasten Koraalerf 45, Heerl en | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000153 | 2025-09-25 | € 500,00 | — | Vaste lasten Molenstraat 13, Bru nssum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000154 | 2025-09-25 | € 320,04 | — | Vastelasten Hilledijk 87D, Rotte rdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000172 | 2025-10-01 | € 192,73 | — | VvE-bijdrage okt-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000179 | 2025-10-01 | € 274,48 | — | factuur 142537990 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000180 | 2025-10-02 | € 148,24 | — | D5007083 255048598 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000181 | 2025-10-02 | € 1,82 | — | D5009639 255049073 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000185 | 2025-10-02 | € 73,68 | — | Voorgeschoten tanken | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000177 | 2025-10-04 | € 758,74 | — | Vaste lasten: Schoonegge 98, Rot terdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000178 | 2025-10-04 | € 1.000,00 | — | Vaste lasten: Sluisdijkstraat 10 A te Den Helder | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000182 | 2025-10-04 | € 758,74 | — | Vaste lasten volgens afspraak: S choonegge 98, Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-19-00000165 | 2025-10-07 | € 374,96 | — | ADWORDS:5600916770:GG1044QY20 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000173 | 2025-10-09 | € 1.000,00 | — | S8B99L84TH9KFZG32MXMP 7180445128 517962 Meta Ads | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000176 | 2025-10-09 | € 1.176,81 | — | Vaste lasten volgens afspraak: R hijnauwensingel 93 te Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000175 | 2025-10-10 | € 6,82 | — | 25NL120348 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000174 | 2025-10-17 | € 99,22 | — | 25NL124008 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000195 | 2025-10-21 | € 75,00 | — | Vaste lasten: Musschenbroek 26 t e heerlen | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000194 | 2025-10-22 | € 37,10 | — | Voorschot boodschappen kantoor | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000228 | 2025-10-30 | € 13.700,00 | — | Ontbinden koopovereenkomst 10 pr ocent boete: Voorterstraat 100A te Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000202 | 2025-10-30 | € 993,27 | — | Vaste lasten: Koraalerf 45, Heer len | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000203 | 2025-10-30 | € 250,00 | — | Vaste lasten: Schoonegge 98, Rot terdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000205 | 2025-10-30 | € 500,00 | — | Vaste lasten Molenstraat 13, Bru nssum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000206 | 2025-10-30 | € 500,00 | — | Vaste lasten volgens afspraak: A zielaan 334 te Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000223 | 2025-10-31 | € 1.000,00 | — | ZJZXXS5495PXDWP92MXMP 7180325706 910813 Meta Ads | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000220 | 2025-10-31 | € 3.789,34 | — | 2025.079507 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000231 | 2025-11-03 | € 192,73 | — | VvE-bijdrage nov-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000232 | 2025-11-03 | € 76,97 | — | BCK*SHELL HAARRIJN BREUKELEN UT 02-11-2025 14:31TERMINALID: 0213 9016 PASVOLGNR: 900 TRANSACTIENR : W00005 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000227 | 2025-11-04 | € 1.000,00 | — | KT73MJVQK4TC62X32MXMP 7180895409 538597 Meta Ads | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000221 | 2025-11-04 | € 200,68 | — | D5009639 255056119 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000222 | 2025-11-04 | € 9,08 | — | D5007083 255053991 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000230 | 2025-11-04 | € 49,00 | — | V17QLIF 0220684482568426 HUISPED IA | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000224 | 2025-11-05 | € 203,93 | — | ADWORDS:5600916770:GG1045VAOT | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000225 | 2025-11-05 | € 1.176,00 | — | Vaste lasten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000229 | 2025-11-07 | € 1.500,00 | — | Betaling volgens afspraak ontbin ding | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000241 | 2025-11-10 | € 7,40 | — | 3614528 8030614191582943 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000242 | 2025-11-10 | € 68,53 | — | Total Nn001448 Ede Out Ede NLD 0 8-11-2025 11:41 TERMINALID: 1814 4811 PASVOLGNR: 001 TRANSACTIENR : D00006 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000245 | 2025-11-10 | € 50,00 | — | kosten volmacht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000246 | 2025-11-13 | € 76,30 | — | L4S36R4KQTKDKSX32JQZJ 7180004791 183106 MD97817715-6286563ed22708 d839739d2b | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000252 | 2025-11-18 | € 3,70 | — | 3625619 8030306291348439 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000249 | 2025-11-19 | € 1.000,00 | — | Q2M5CNPHXF4WCFH62MXMP 7180356603 165124 Meta Ads | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000251 | 2025-11-19 | € 500,00 | — | ADWORDS:5600916770:GG1046I64M | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000247 | 2025-11-20 | € 25.000,00 | — | Aanbetaling volgens afspraak: Bu rgemeester Norbruislaan 422, Utr echt | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000248 | 2025-11-20 | € 99,22 | — | 25NL138127 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000239 | 2025-11-24 | € 50.000,00 | — | Aanbetaling volgens afspraak: Kn opkruid 45, Venray | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000240 | 2025-11-24 | € 610,15 | — | Vaste lasten oktober: Overschies e Kleiweg 667, Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000255 | 2025-11-25 | € 50,00 | — | Betaling | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000294 | 2025-11-27 | € -735,00 | — | Credit 20251363 Hilledijk 87D | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000273 | 2025-11-28 | € 500,00 | — | Vaste lasten Azielaan 334, Utrec ht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000274 | 2025-12-01 | € 7,40 | — | 3643511 8030005384769592 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000276 | 2025-12-02 | € 192,73 | — | VvE-bijdrage dec-2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000270 | 2025-12-02 | € 9,08 | — | D5007083 255064650 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000271 | 2025-12-02 | € 392,33 | — | D5009639 255065440 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000272 | 2025-12-02 | € 500,00 | — | vaste lasten molenstraat 13, Bru nssum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000269 | 2025-12-03 | € 500,00 | — | ADWORDS:5600916770:GG10470AUL | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000277 | 2025-12-03 | € 3,70 | — | 3646730 8030505702552029 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000268 | 2025-12-03 | € 194,98 | — | QI7WRJV 0220495699792587 a404-76 28883-6413960 Amazon | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000267 | 2025-12-05 | € 107,75 | — | ADWORDS:5600916770:GG10475MD9 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000266 | 2025-12-08 | € 49,00 | — | n32413677 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000279 | 2025-12-12 | € 500,00 | — | ADWORDS:5600916770:GG1047AZ9T | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000280 | 2025-12-13 | € 10.000,00 | — | Aanbetaling volgens afspraak: Ch evremontstraat 68, Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000305 | 2025-12-15 | € 1.000,00 | — | 7I98NEK 7140646584276284 Meta Ad s Meta Platforms Ltd | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000308 | 2025-12-15 | € 3,70 | — | 3661547 8030024490487970 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000306 | 2025-12-15 | € 2,85 | — | I251215130933535CB88EB36ND 70511 26281247874 Tegoed ophogen Kamer van Koophandel | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000307 | 2025-12-15 | € 9,25 | — | I251215131234067CB88EB64NC 70511 44205365582 Uittreksel HR digita algewaarmerkt Kamer van Koophand el | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000309 | 2025-12-16 | € 219,00 | — | GJLDDTPWV9KGLMZ32GKII 7180895093 482084 trnsnr:797062166 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000314 | 2025-12-16 | € 595,00 | — | Vaste lasten volgens afspraak: S choffelstraat 29, Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000312 | 2025-12-19 | € 415,00 | — | Vaste lasten Gustaaf Gelderstraa t 60, Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000313 | 2025-12-19 | € 415,00 | — | Vaste lasten Gustaaf Gelderstraa t 60, Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000311 | 2025-12-20 | € 7,40 | — | 3667482 8030294499232772 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000310 | 2025-12-22 | € 99,22 | — | 25NL152862 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000320 | 2025-12-23 | € 500,00 | — | ADWORDS:5600916770:GG1047M3EO | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000317 | 2025-12-27 | € -4,01 | — | Kosten Zakelijk Betalingsverkeer Factuurnr. 2358540700 Betreft IBAN: NL95INGB0114 119295 Periode: 01-11-2025 / 3 0-11… | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000321 | 2025-12-31 | € 500,00 | — | ADWORDS:5600916770:GG10483VPE | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000318 | 2026-01-02 | € 192,73 | — | VvE-bijdrage jan-2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000341 | 2026-01-05 | € 9,08 | — | D5007083 255072761 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000342 | 2026-01-05 | € 297,22 | — | D5009639 255073862 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000343 | 2026-01-05 | € 1.009,67 | — | Vaste lasten Overschiese Kleiweg 667, Rotterdam | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000344 | 2026-01-05 | € 145,16 | — | vaste lasten Azielaan 334, Utrec ht tot 9 januari 2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000345 | 2026-01-05 | € 500,00 | — | vaste lasten Molenstraat 13 Brun ssum | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000346 | 2026-01-05 | € 595,00 | — | vaste lasten december | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000355 | 2026-01-06 | € 7,40 | — | 3683610 8030944792761523 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000357 | 2026-01-06 | € 7,40 | — | 3683467 8030745989851064 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-17-00000351 | 2026-01-06 | € 49,00 | — | n58578037 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000347 | 2026-01-07 | € 323,87 | — | ADWORDS:5600916770:GG1048H3OI | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000358 | 2026-01-09 | € 100,00 | — | Verrekende kosten uit 2025 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000349 | 2026-01-10 | € 1.000,00 | — | 7IGEAT4 7140475392449349 Meta Ad s Meta Platforms Ltd | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000350 | 2026-01-10 | € 290,00 | — | 7IGEB5K 7140115989448629 Meta Ad s Meta Platforms Ltd | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-19-00000337 | 2026-01-14 | € 500,00 | — | ADWORDS:5600916770:GG1048M91O | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000338 | 2026-01-19 | € 10.600,00 | — | Aanbetaling volgens afspraak Gou dreinetgaard 59, Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000339 | 2026-01-19 | € 10.600,00 | — | Aanbetaling volgens afspraak Gou dreinetgaard 59, Arnhem | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000353 | 2026-01-20 | € 7,40 | — | 3704617 8030115401179265 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000352 | 2026-01-20 | € 99,22 | — | 26NL005900 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000348 | 2026-01-21 | € 500,00 | — | ADWORDS:5600916770:GG1048S4WL | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000354 | 2026-01-21 | € 415,00 | — | Vaste lasten januari 2026 Gustaa f Gelderstraat 60, Almere | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000369 | 2026-01-22 | € 1.000,00 | — | 7IJO24F 7140496286262380 Meta Ad s Meta Platforms Ltd | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000370 | 2026-01-22 | € 14,80 | — | 3707812 8030365701261648 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000386 | 2026-01-28 | € 500,00 | — | ADWORDS:5600916770:GG1049DW63 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000393 | 2026-01-28 | € 7,40 | — | 3717820 8030084804093765 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000388 | 2026-01-29 | € 415,00 | — | vaste lasten januari | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000394 | 2026-02-02 | € 7,40 | — | 3726992 8030234452809692 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000385 | 2026-02-03 | € 10.000,00 | — | Aanbetaling volgens afspraak: De Butstraat 7, Hulst | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000390 | 2026-02-03 | € 192,73 | — | VvE-bijdrage feb-2026 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000392 | 2026-02-03 | € 7,40 | — | 3730099 8030584773985612 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000389 | 2026-02-03 | € 595,00 | — | vaste lasten Schoffelstraat 29, Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000395 | 2026-02-04 | € 7,40 | — | 3731957 8030334179862090 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000379 | 2026-02-04 | € 9,08 | — | D5007083 265006620 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-15-00000384 | 2026-02-04 | € 445,88 | — | D5009639 265004827 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000383 | 2026-02-05 | € 464,11 | — | ADWORDS:5600916770:GG1049RU71 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000397 | 2026-02-06 | € 49,00 | — | n65052807 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000381 | 2026-02-06 | € 624,76 | — | Vaste lasten volgens afspraak: L ivingstonelaan 144, Utrecht | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-25-00000382 | 2026-02-06 | € 750,00 | — | Vaste lasten volgens afspraak: C hevremontstraat 68, Kerkrade | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000396 | 2026-02-10 | € 7,40 | — | 3741862 8030766573606559 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000411 | 2026-02-11 | € 500,00 | — | ADWORDS:5600916770:GG1049Z2AY | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000412 | 2026-02-13 | € 7,40 | — | 3746747 8030524467686473 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000455 | 2026-02-13 | € 82,00 | — | TEVEELBET. NR. 868049025L015110 LOONH. NOV. 2025 (VASTGOEDGROE) | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000413 | 2026-02-16 | € 7,40 | — | 3750829 8030005058618802 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000414 | 2026-02-16 | € 3,70 | — | 3751429 8030586867437233 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000415 | 2026-02-17 | € 500,00 | — | ADWORDS:5600916770:GG1049XA39 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000417 | 2026-02-17 | € 856,68 | — | 40c524e00cf8214268c5681b43d591cc 8152446852614800 Verificatiebet aling Kadastralekaart Kadastrale kaart.com | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-16-00000416 | 2026-02-17 | € 99,22 | — | 26NL020374 | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000458 | 2026-02-18 | € 7,40 | — | 3754247 8030635667641926 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000459 | 2026-02-18 | € 1.000,00 | — | 7IUK95V 7140284767580867 Meta Ad s Meta Platforms Ltd | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000451 | 2026-02-19 | € 20.000,00 | — | Aanbetaling volgens afspraak: Sp aakstraat 13, Zevenaar | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000460 | 2026-02-20 | € 3,70 | — | 3758740 8030265067304621 Kadaste r webwinkel producten | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000453 | 2026-02-24 | € 1.000,00 | — | GN3LR77DBS45P9Z32MXMP 7180055079 383911 Meta Ads | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000454 | 2026-02-24 | € 20.000,00 | — | Aanbetaling volgens afspraak: Sp ortlaan 180, Purmerend | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000461 | 2026-02-24 | € 500,00 | — | ADWORDS:5600916770:GG104A0C5T | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+| RLZ-04-00000875 | 2026-09-08 | € 750,00 | — | Ingescand document | zonder relatie mét bijlage — bijlage suggereert een factuur: relatie toekennen of bevestigen dat het een bank-directe… |
+| — | 2025-09-24 | € 0,00 | — | Betreft: | zonder relatie — bijlage NIET gecontroleerd (grens --max-bijlage-checks 200) |
+Container called exit(0).
+

@@ -2085,3 +2085,49 @@ scalar → per-item-calls zijn de bewezen vorm); de body van actie 116 `Koppel b
 SEPA-R gevuld wordt; de `PaymentInProgress`-enumwaarden (geen enumeratie-route); de incasso-kant (DD) op een
 administratie mét `SepaCreditorID` — geen enkele test-login heeft er één. Productiebewijs C.V. via `rlz-lezen`
 (BESLISSINGEN "INCASSO-/BETAALBATCHES UIT RLZ — STAP-0 LEES-ONLY", meetrecept) ná deploy.
+
+## Regelknip op 32 tekens in `Description`/`Reference` — STAP-0 12-09-2026 (lees-only, run 2 VGG blok 0)
+
+**Status: FEIT, live geverifieerd op 120 records van Vastgoedgroep Nederland (RLZ-VGG) via `scripts/gcp/nameting.sh rlz-lezen`
+(gedeployde job-image 5b6270c, geanonimiseerd; uitvoer `verkenning/nameting-vgg-stap0-knip-12-09.txt`): ManualJournals 40,
+PurchaseInvoices 30, PaymentTransactions 30, Receipts 20.**
+
+Aanleiding: de nameting 11-09 toonde adressen met een "spatie op positie 32" ("Oo sterdiepswal 7", "Utrec", "Heerl en",
+"Kerkra de") en 214 onbruikbare pandvoorstellen. Vraag: is dat een vast knippatroon van RLZ?
+
+| Feit | Waarneming |
+|---|---|
+| Er staat geen spatie | RLZ geeft bank-geïmporteerde omschrijvingen terug als **`\n`-gescheiden regels**: `"betreft: Gustaaf Gelderstraat 60\nte Almere, ons dossier: 2025.07\n8957.01"`, `"Aanbetaling volgens afspraak: Oo\nsterdiepswal 7 te Kollum"`. De module vouwde `\n` tot een spatie (`" ".join(w.split())`) — dát was de "spatie op 32". |
+| Vaste regellengte | Van de 47 velden mét `\n` zijn de niet-laatste regels in **31 gevallen exact 32 tekens**, in 3 gevallen 31 (RLZ stripte een spatie aan het regelbegin/-einde: `"te Almere, ons dossier: 2025.07"`), de overige 28 korter — dat zijn échte regelovergangen (betaalkenmerk-regel + documentregel: `"2026-0731\nRLZ-04-00000856 1-9-2026"`, terminal-/pintransacties). |
+| Waar het optreedt | `Description` op ManualJournals (14/40), PurchaseInvoices (4/30) en Receipts (1/20); **`Reference` op PaymentTransactions (28/30)** — dezelfde knip, dus de bankomschrijving is de bron en de documenten erven 'm bij het boeken vanuit de bankmodule. |
+| Niet-bankvelden | UI-ingevoerde omschrijvingen op PurchaseInvoices zijn tot 43 tekens zónder `\n` — de knip is een importkenmerk, geen veldlimiet van RLZ. Langste veld zonder `\n` op MJ/Receipts = 32, op PaymentTransactions 29. |
+| Woord midden in de knip | Ja: `"Venra\ny"`, `"Roer\nmond"`, `"Bleijerheiderstraat 123\nB te Kerkrade"`, `"te '\ns-Gravenhage"`, `"2025.07\n8957.01"`, `"Bornholmstraat 4\n9, Almere"`. Een spatie op de grens is weg: `"…Gelderstraat 60\nte Almere"`. |
+| Repareerbaar zonder woordenboek | Deterministische regel per 32-grens (letter\|letter en cijfer\|cijfer aaneen; cijfer\|één hoofdletter = toevoeging aaneen; cijfer\|woord = spatie; leesteken `.:/-'` aaneen; `,`/`;` = spatie; letter\|cijfer = spatie als bewuste rest-ambiguïteit) — gebouwd als `backend/app/rlz/tekst.py::ontknip`, 21 parametrische tests op deze records. Regels ≠ 32 (31 alleen binnen een al geopende knip) blijven een spatie. |
+| Velden per collectie (geanonimiseerd zichtbaar) | ManualJournals: BalanceAmount, BaseInvoiceAmount, BaseRemainingAmount, BookDate, Date, Description, DocumentType, DueDate, PaymentReference, ReceiptNumber, Reference, Status, TotalNetAmount/TaxAmount/PaidAmount/PayableAmount. PaymentTransactions: Amount, BaseOpenAmount, BookDate, CounterAccount, CreateDate, IsComplete, IsImported, Name, OpenAmount, PaymentBatchId, Reference, ReturnReason, TransactionId, Type. PurchaseInvoices/Receipts: BaseInvoiceAmount, BasePaidAmount, BaseRemainingAmount, Date, Description, DocumentType, DueDate, InvoiceReference, Origin, ReceiptNumber, Reference, Status, TotalPayableAmount, Type. |
+
+Gevolg voor de module: élke lezer van RLZ-tekst (schoonlijst, pandenregister, replay, bank-omschrijvingen) gebruikt `ontknip`;
+nooit meer een eigen witruimte-normalisatie op RLZ-velden. Wat NIET vaststaat (lees-only): of RLZ de `\n` zelf zet of het bank-
+bestand (MT940/CAMT-regel van 32 tekens) — voor de reparatie irrelevant.
+
+### Aanvulling replay-motor (blok 6 run 2 VGG, 12-09, lees-only op dezelfde 120 records + nametingen 11-09)
+
+1. **`Receipts` is op VGG een UNIE-collectie van álle documenten**, niet alleen "verkoop zonder Entity": de eerste
+   Receipts-rij (top 20, `$orderby=Date desc`) is de PurchaseInvoice RLZ-04-00000887 (DocumentType 1, zelfde id als in de
+   PurchaseInvoices-collectie); daarna volgen de RLZ-09-boekingen met `DocumentType 19` en `IsSystemGenerated`. De 1151
+   Receipts van 11-09 omvatten dus de 794 + 4 + 229 andere documenten plús de bank-directe boekingen. Ontdubbelen tegen
+   de drie collecties (zoals de schoonlijst al deed) laat precies de DocumentType-19-documenten over.
+2. **Systeemhuls-vorm bevestigd:** RLZ-09-00001177 (Status 1, `IsSystemGenerated: true`, −500,00, BookDate 09-09) matcht de
+   OPEN PaymentTransaction 7628b690 (−500,00, 09-09, OpenAmount −500). Huls = concept + IsSystemGenerated, óf concept
+   zonder Entity met |bedrag| + datum gelijk aan een open mutatie.
+3. **`TotalTaxAmount` op ManualJournals is GEEN btw-signaal:** RLZ-60-00000262 draagt `BaseInvoiceAmount 30000`,
+   `TotalTaxAmount 30000`, `TotalPaidAmount 60000` — het veld spiegelt het totaal. Btw-detectie voor de niet-btw-plichtige
+   VGG moet op regelniveau (`TaxRate`/`TaxAmount` op Lines) of op `TotalTaxAmount` van DocumentType 1/10.
+4. **PaymentTransactions-velden op VGG (top 30):** `Amount`, `OpenAmount`/`BaseOpenAmount`, `BookDate`, `CreateDate`,
+   `CounterAccount`, `Name`, `Reference` (32-tekens-regels, `\n`), `TransactionId` (5 cijfers), `Type 1`, `PaymentBatchId`,
+   `ReturnReason`, `IsComplete`, `IsImported` — géén `Date`-veld op de collectie; de replay leest daarom BookDate → Date.
+5. **Ledgers** dragen `AccountNumber`, `Description`, `AccountType` (1 opbrengst, 2 kosten, 3 activa, 4 passiva),
+   `IsTotalAccount` (sync/service.py `_grootboek_waarden`) — bruikbaar als deterministische kant-keuze voor de RJ 220-rol.
+
+Nog te bewijzen in productie (het rapport maakt ze zichtbaar, zie contract_afwijkingen_E.md): JournalEntryLines-velden
+(DebitAmount/CreditAmount, JournalEntry.EventID = bron-id), `/Statements`-saldoveldnamen, de regels-route van een
+DocumentType-19-document (`BankMutationDirectBookings/{id}/Lines`).
