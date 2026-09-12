@@ -17,8 +17,12 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen"
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
+# run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
+for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0; do
+  [[ "$CMD" == "$schrijvend" ]] && { echo "FOUT: $CMD is een schrijvend commando — expliciete opdracht Peter via gcloud run jobs execute, niet via nameting.sh" >&2; exit 2; }
+done
 grep -qw -- "$CMD" <<<"$ALLOWLIST" || { echo "FOUT: '$CMD' staat niet in de lees-only allowlist ($ALLOWLIST)" >&2; exit 2; }
 if [[ "$CMD" == "reconciliatie-alles" ]]; then
   printf '%s\n' "$@" | grep -qx -- "--lees-only" || { echo "FOUT: reconciliatie-alles alleen mét --lees-only via dit script (de echte run is de scheduler/'Nu draaien')" >&2; exit 2; }
@@ -33,6 +37,14 @@ if [[ "$CMD" == "werkvoorraad-tellers-herrekenen" ]]; then
 fi
 if [[ "$CMD" == "pandenregister-afleiden" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf"; then
   echo "FOUT: --schrijf is geen nameting" >&2; exit 2
+fi
+if [[ "$CMD" == "vgg-rekeningen" ]] && printf '%s\n' "$@" | grep -qx -- "--maak-aan"; then
+  # run 2 VGG blok 4: de rol-aanmaak is een Odoo-write (kill-switch + akkoord Peter) — geen nameting.
+  echo "FOUT: --maak-aan is geen nameting (Odoo-write; alleen ná akkoord Peter via de expliciete job-opdracht)" >&2; exit 2
+fi
+if [[ "$CMD" == "vgg-replay" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf-concept"; then
+  # run 2 VGG blok 6: --schrijf-concept is run 3 (Odoo-writes) — nooit via het nameting-instrument.
+  echo "FOUT: vgg-replay --schrijf-concept is run 3 en geen nameting — alleen --dry-run via dit script" >&2; exit 2
 fi
 ARGS="-m|app.cli"; for a in "$@"; do ARGS="$ARGS|$a"; done
 echo ">> gcloud run jobs execute $JOB ($CMD) onder ${NAMETING_SA:-gebruikerssessie}" >&2

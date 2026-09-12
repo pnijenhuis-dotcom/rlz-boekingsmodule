@@ -20,6 +20,8 @@ from app.credentialstore import service as credentialstore_service
 from app.accordering.cli_cmd import ACCORDERING_COMMANDOS, register_accordering, run_accordering
 from app.bank.cli_cmd import BANK_COMMANDOS, register_bank, run_bank
 from app.migratie.cli_cmd import register_migratie, run_migratie
+from app.migratie.cli_odoo import ODOO_MIGRATIE_COMMANDOS, register_odoo_migratie, run_odoo_migratie  # run 2 VGG blok 5
+from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, run_vgg_replay  # run 2 VGG blok 6
 from app.panden.cli_cmd import register_panden, run_panden
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
@@ -33,6 +35,7 @@ from app.omzet import reconciliatie as omzet_reconciliatie
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
 from app.rlz.credentials import GeenRlzCredentials
+from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
 from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
 
@@ -2732,6 +2735,10 @@ def main(argv: list[str] | None = None) -> int:
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
     register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
     register_rlz_lezen(subparsers)  # blok 10 11-09: rlz-lezen, LEES-ONLY OData-GET (app/rlz/lezen_cli.py)
+    register_vgg_replay(subparsers)  # run 2 VGG blok 6: vgg-replay, LEES-ONLY dry-run (app/migratie/cli_replay.py)
+    # run 2 VGG blok 5: odoo-koppeling-migratiedoel + vgg-odoo-stap0 (SCHRIJVEND, app/migratie/cli_odoo.py)
+    register_odoo_migratie(subparsers)
+    register_vgg_rekeningen(subparsers)  # run 2 VGG blok 4: vgg-rekeningen, RJ-220-rollen (app/odoo/cli_rj220.py)
 
     intake_postvak_parser = subparsers.add_parser(
         "intake-postvak-verwerken",
@@ -3056,6 +3063,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_panden(args)  # blok D2 10-09
     if args.commando == RLZ_LEZEN_COMMANDO:
         return run_rlz_lezen(args)  # blok 10 11-09, lees-only
+    if args.commando == VGG_REPLAY_COMMANDO:
+        return run_vgg_replay(args)  # run 2 VGG blok 6, lees-only dry-run
+    if args.commando in ODOO_MIGRATIE_COMMANDOS:
+        return run_odoo_migratie(args)  # run 2 VGG blok 5, schrijvend — nooit via nameting.sh
+    if args.commando == VGG_REKENINGEN_COMMANDO:
+        return run_vgg_rekeningen(args)  # run 2 VGG blok 4 (default lees-only; --maak-aan achter kill-switch)
     if args.commando == "crediteuren-werklijst-nazorg":
         from app.crediteuren import afhandeling as crediteuren_afhandeling
 
