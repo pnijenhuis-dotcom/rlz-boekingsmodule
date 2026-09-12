@@ -16,9 +16,12 @@ LEES-ONLY rapport per administratie — elk een tabel boekstuk | datum | bedrag 
 (a2) concept = kopie van geboekt — een concept met cent-exact |bedrag| + datum + genormaliseerde omschrijving gelijk
     aan een GEBOEKT document (Status 2/3) in dezelfde óf een andere collectie (VGG: RLZ-04-00000062 concept
     € 65.000 ↔ RLZ-06-00000070 memoriaal € −65.000, zelfde tekst "Aanbetaling volgens afspraak: Oosterdiepswal 7 te
-    Kollum", zelfde dag → daarom |bedrag|). Een concept ZONDER omschrijving is kopie als er in dezelfde collectie
-    precies één geboekt document met hetzelfde |bedrag| op dezelfde dag staat (meerduidig = geen kopie, blijft
-    concept). Bevinding "niet migreren, kopie van <boekstuk>"; zulke concepten verdwijnen uit (a) én uit (b).
+    Kollum", zelfde dag → daarom |bedrag|). Een concept ZONDER omschrijving met precies één geboekt document met
+    hetzelfde |bedrag| op dezelfde dag in dezelfde collectie is ALLEEN kopie als de bank-leidend-regel het bevestigt
+    (besluit Peter 12-09 blok 7 punt 4): precies ÉÉN bankmutatie voor dat bedrag/die datum (±BANK_VENSTER_DAGEN)
+    tegenover de twee boekingen. Twee of meer mutaties = twee echte boekingen (blijft gewoon concept); nul mutaties,
+    bank niet gelezen of teken onbekend = categorie `concept_kopie_onbeslist` — zichtbaar, geen stille keuze.
+    Bevinding "niet migreren, kopie van <boekstuk>"; kopieën én onbesliste verdwijnen uit (a) én uit (b).
 (b) vermoedelijke dubbelen — binnen dezelfde collectie gelijk cent-exact bedrag + gelijke datum + dezelfde Entity
     (of beide zonder Entity); groepen mét boekstuknummers. Bewust ruimer dan `rlz_dubbel` (referentie-only): dit is
     een opruimlijst voor een mens, geen dagelijkse bevinding. Sinds 12-09 twee poorten eróverheen:
@@ -94,6 +97,7 @@ CATEGORIEEN: tuple[tuple[str, str], ...] = (
     ("concepten", "Concepten in RLZ (Status 1)"),
     ("systeemhulzen_open_bank", "Systeemhulzen open bank (concept-huls per open bankmutatie)"),
     ("concept_kopie_van_geboekt", "Concept = kopie van geboekt"),
+    ("concept_kopie_onbeslist", "Concept zonder omschrijving — kopie onbeslist (bank bevestigt niet)"),
     ("dubbelen", "Vermoedelijke dubbelen (zelfde collectie, bedrag, datum, relatie; bank-tekort)"),
     ("zelfde_bedrag_verschillend_kenmerk", "Zelfde bedrag, verschillend kenmerk"),
     ("bank_bevestigd", "Bank-bevestigd (evenveel of meer bankmutaties dan boekingen)"),
@@ -435,10 +439,19 @@ def systeemhulzen_open_bank(
     return uit
 
 
-def concept_kopieen(documenten: dict[str, list[dict[str, Any]]], *, uitsluiten: Iterable[str] = ()) -> list[Rij]:
+def concept_kopieen(
+    documenten: dict[str, list[dict[str, Any]]],
+    *,
+    uitsluiten: Iterable[str] = (),
+    bank: Sequence[BankMutatie] | None = None,
+    venster_dagen: int = BANK_VENSTER_DAGEN,
+) -> list[Rij]:
     """(a2) Concepten die een kopie zijn van een GEBOEKT document (Status 2/3): |bedrag| + datum + genormaliseerde
     omschrijving gelijk, over alle collecties heen. Lege omschrijving: alleen bij precies één geboekt exemplaar met
-    hetzelfde |bedrag| op dezelfde dag in DEZELFDE collectie (meerduidig = geen kopie)."""
+    hetzelfde |bedrag| op dezelfde dag in DEZELFDE collectie (meerduidig = geen kopie) ÉN bank-bevestigd (besluit
+    Peter 12-09 blok 7 punt 4): precies één bankmutatie voor de twee boekingen → `concept_kopie_van_geboekt`;
+    twee of meer → geen kopie (blijft concept); nul / bank niet gelezen / teken onbekend → `concept_kopie_onbeslist`.
+    Geeft rijen van beide categorieën terug (`Rij.categorie` onderscheidt)."""
     weg = set(uitsluiten)
     op_tekst: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
     op_bedrag: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
@@ -463,25 +476,53 @@ def concept_kopieen(documenten: dict[str, list[dict[str, Any]]], *, uitsluiten: 
             if bedrag is None or datum is None:
                 continue
             tekst = normaliseer_omschrijving(_omschrijving(r))
+            categorie = "concept_kopie_van_geboekt"
             if tekst:
                 treffers = op_tekst.get((str(abs(bedrag)), datum.isoformat(), tekst)) or []
                 zeker = "zelfde |bedrag|, datum en omschrijving"
+                dekking: Dekking | None = None
             else:
                 treffers = op_bedrag.get((collectie, str(abs(bedrag)), datum.isoformat())) or []
                 if len(treffers) != 1:
                     continue
-                zeker = "omschrijving leeg — zelfde |bedrag| en datum, enige geboekte exemplaar in deze collectie"
+                # bank leidend (blok 7 punt 4): twee boekingen (concept + geboekt), hoeveel mutaties staan ertegenover?
+                teken = bankdekking.teken_van(collectie, bedrag)
+                dekking = bankdekking.dekking_voor(
+                    [(bedrag, datum, teken), (bedrag, datum, teken)], bank, venster_dagen=venster_dagen
+                )
+                if not dekking.bank_gelezen or teken is None:
+                    categorie = "concept_kopie_onbeslist"
+                    zeker = f"omschrijving leeg, zelfde |bedrag| en datum — {dekking.detail}"
+                elif dekking.bankmutaties >= 2:
+                    continue  # twee echte betalingen → twee echte boekingen, geen kopie
+                elif dekking.bankmutaties == 1:
+                    zeker = (
+                        "omschrijving leeg — zelfde |bedrag| en datum, enige geboekte exemplaar in deze collectie, "
+                        f"bank bevestigt: 1 mutatie tegenover 2 boekingen (±{venster_dagen} d)"
+                    )
+                else:
+                    categorie = "concept_kopie_onbeslist"
+                    zeker = (
+                        "omschrijving leeg, zelfde |bedrag| en datum, maar geen bankmutatie voor dit bedrag "
+                        f"(±{venster_dagen} d) — bank bevestigt de kopie niet"
+                    )
             if not treffers:
                 continue
             namen = sorted({f"{b} ({c})" if c != collectie else b for c, b in treffers})
+            bevinding = (
+                f"niet migreren, kopie van {', '.join(namen)} — {zeker}"
+                if categorie == "concept_kopie_van_geboekt"
+                else f"onbeslist — mogelijk kopie van {', '.join(namen)}: {zeker}; mens beslist"
+            )
             uit.append(
                 _document_rij(
-                    "concept_kopie_van_geboekt",
+                    categorie,
                     collectie,
                     r,
-                    f"niet migreren, kopie van {', '.join(namen)} — {zeker}",
+                    bevinding,
                     kopie_van=[b for _, b in sorted(set(treffers))],
                     kopie_van_collecties=sorted({c for c, _ in treffers}),
+                    **({"bank_mutaties": dekking.bankmutaties} if dekking is not None else {}),
                 )
             )
     return uit
@@ -747,8 +788,9 @@ def maak_schoonlijst(
     hulzen = systeemhulzen_open_bank(documenten, open_bank)
     lijst.rijen["systeemhulzen_open_bank"].extend(hulzen)
     afgevangen = {r.rlz_id for r in hulzen if r.rlz_id}
-    kopieen = concept_kopieen(documenten, uitsluiten=afgevangen)
-    lijst.rijen["concept_kopie_van_geboekt"].extend(kopieen)
+    kopieen = concept_kopieen(documenten, uitsluiten=afgevangen, bank=mutaties)
+    for rij in kopieen:
+        lijst.rijen[rij.categorie].append(rij)
     afgevangen |= {r.rlz_id for r in kopieen if r.rlz_id}
 
     ruwe_dubbelen: list[Rij] = []

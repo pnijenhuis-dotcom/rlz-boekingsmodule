@@ -12,10 +12,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.migratie import schoonlijst
+from app.migratie import bankdekking, schoonlijst
 from app.migratie.schoonlijst import (
     Schoonlijst,
     als_markdown,
+    concept_kopieen,
     dubbele_iban,
     dubbelen,
     maak_schoonlijst,
@@ -238,6 +239,7 @@ class TestMaakSchoonlijst:
             "concepten": 0,
             "systeemhulzen_open_bank": 0,
             "concept_kopie_van_geboekt": 0,
+            "concept_kopie_onbeslist": 0,
             "dubbelen": 0,
             "zelfde_bedrag_verschillend_kenmerk": 0,
             "bank_bevestigd": 0,
@@ -340,6 +342,7 @@ class TestMaakSchoonlijst:
             "concepten": 17,
             "systeemhulzen_open_bank": None,
             "concept_kopie_van_geboekt": None,
+            "concept_kopie_onbeslist": None,
             "dubbelen": 1,
             "zelfde_bedrag_verschillend_kenmerk": None,
             "bank_bevestigd": None,
@@ -591,7 +594,8 @@ class TestVggNameting:
         assert lijst.tellers == {
             "concepten": 4,
             "systeemhulzen_open_bank": 5,
-            "concept_kopie_van_geboekt": 7,
+            "concept_kopie_van_geboekt": 6,
+            "concept_kopie_onbeslist": 1,
             "dubbelen": 3,
             "zelfde_bedrag_verschillend_kenmerk": 7,
             "bank_bevestigd": 4,
@@ -640,18 +644,21 @@ class TestVggNameting:
             "RLZ-04-00000243",
             "RLZ-04-00000338",
             "RLZ-04-00000444",
-            "RLZ-04-00000732",
             "RLZ-04-00000845",
             "RLZ-25-00000568",
         ]
+        # besluit Peter 12-09 blok 7 punt 4: zonder omschrijving alleen kopie als de bank het bevestigt — in deze
+        # nabootsing staat er géén € 20.000-mutatie rond 06-07 → onbeslist, zichtbaar, niet in concepten/dubbelen
+        assert _boekstukken(lijst, "concept_kopie_onbeslist") == ["RLZ-04-00000732"]
+        onbeslist = lijst.rijen["concept_kopie_onbeslist"][0]
+        assert onbeslist.bevinding.startswith("onbeslist — mogelijk kopie van RLZ-04-00000737")
+        assert "geen bankmutatie" in onbeslist.bevinding and onbeslist.extra["bank_mutaties"] == 0
         kopie = {r.boekstuk: r for r in lijst.rijen["concept_kopie_van_geboekt"]}
         assert kopie["RLZ-04-00000062"].bevinding.startswith(
             "niet migreren, kopie van RLZ-06-00000070 (ManualJournals)"
         )
         assert kopie["RLZ-04-00000062"].extra["kopie_van"] == ["RLZ-06-00000070"]
         assert kopie["RLZ-04-00000243"].bevinding.startswith("niet migreren, kopie van RLZ-04-00000244 —")
-        assert "omschrijving leeg" in kopie["RLZ-04-00000732"].bevinding
-        assert kopie["RLZ-04-00000732"].extra["kopie_van"] == ["RLZ-04-00000737"]
         # echte concepten die blijven
         assert _boekstukken(lijst, "concepten") == ["RLZ-01-00000006", "RLZ-01-00000077", "RLZ-28-00000054", "—"]
         # kopieën en hulzen staan nergens meer als dubbel
@@ -901,3 +908,55 @@ class TestKenmerk:
             "aanbetalingvolgensafspraakoosterdiepswal7tekollum"
         )
         assert schoonlijst.normaliseer_omschrijving("  ") is None and schoonlijst.normaliseer_omschrijving(None) is None
+
+
+class TestKopieZonderOmschrijvingBankLeidend:
+    """Besluit Peter 12-09 (blok 7 punt 4): concept zonder omschrijving = kopie van geboekt op bedrag + datum ALLEEN
+    als één bankmutatie tegenover de twee boekingen staat; anders onbeslist (zichtbaar); twee mutaties = geen kopie."""
+
+    @staticmethod
+    def _paar() -> dict[str, list[dict]]:
+        return {
+            "PurchaseInvoices": [
+                _d("RLZ-04-00000732", 20000.0, "2026-07-06", None, status=1),
+                _d("RLZ-04-00000737", 20000.0, "2026-07-06", "Aanbetaling Rietvelderf 44"),
+            ]
+        }
+
+    @staticmethod
+    def _bank(n: int) -> list[bankdekking.BankMutatie]:
+        return bankdekking.bankmutaties_uit_rijen(
+            [_btx(-20000.0, "2026-07-08", "Rietvelderf", open_=False, tx_id=f"b{i}") for i in range(n)]
+        )
+
+    def test_een_mutatie_bevestigt_de_kopie(self) -> None:
+        uit = concept_kopieen(self._paar(), bank=self._bank(1))
+        assert [r.categorie for r in uit] == ["concept_kopie_van_geboekt"]
+        assert "bank bevestigt: 1 mutatie tegenover 2 boekingen" in uit[0].bevinding
+        assert uit[0].extra["kopie_van"] == ["RLZ-04-00000737"] and uit[0].extra["bank_mutaties"] == 1
+
+    def test_twee_mutaties_is_geen_kopie(self) -> None:
+        assert concept_kopieen(self._paar(), bank=self._bank(2)) == []
+
+    def test_geen_mutatie_is_onbeslist(self) -> None:
+        uit = concept_kopieen(self._paar(), bank=self._bank(0))
+        assert [r.categorie for r in uit] == ["concept_kopie_onbeslist"]
+        assert "bank bevestigt de kopie niet" in uit[0].bevinding
+
+    def test_bank_niet_gelezen_is_onbeslist_met_reden(self) -> None:
+        uit = concept_kopieen(self._paar(), bank=None)
+        assert [r.categorie for r in uit] == ["concept_kopie_onbeslist"] and "bank niet gelezen" in uit[0].bevinding
+
+    def test_mutatie_buiten_het_venster_telt_niet(self) -> None:
+        bank = bankdekking.bankmutaties_uit_rijen([_btx(-20000.0, "2026-07-20", "x", open_=False, tx_id="ver")])
+        assert [r.categorie for r in concept_kopieen(self._paar(), bank=bank)] == ["concept_kopie_onbeslist"]
+
+    def test_met_omschrijving_blijft_de_tekstregel_zonder_bankpoort(self) -> None:
+        docs = {
+            "PurchaseInvoices": [
+                _d("RLZ-04-00000243", 56.18, "2025-11-10", "25010051", status=1),
+                _d("RLZ-04-00000244", 56.18, "2025-11-10", "25010051"),
+            ]
+        }
+        uit = concept_kopieen(docs, bank=None)
+        assert [r.categorie for r in uit] == ["concept_kopie_van_geboekt"] and "bank_mutaties" not in uit[0].extra
