@@ -455,6 +455,14 @@ class Settings(BaseSettings):
     kvk_api_key: str | None = None
     kvk_base_url: str | None = None
 
+    # Run 2 VGG blok 5 (12-09-2026, besluit Peter 12-09 punt 1): KILL-SWITCH voor de Odoo-MIGRATIE-writes
+    # (app/migratie/odoo_schrijf.py — concept-moves, statement lines, reconcile, button_cancel op company 6).
+    # Default UIT, óók in productie: elke primitief weigert zichtbaar (`MigratieWritesUit`) zolang dit uit
+    # staat. Alleen expliciet AAN per job-run via env `MIGRATIE_ODOO_WRITES_INGESCHAKELD=true` op
+    # `gcloud run jobs execute … --update-env-vars` (run-3-poort); nooit in deploy.yml, nooit in .env.
+    # De dagelijkse Odoo-adapter (app/odoo/*) kijkt hier NIET naar — dit is uitsluitend de migratiepoort.
+    migratie_odoo_writes_ingeschakeld: bool = False
+
     apns_key_p8: str | None = None
     apns_key_id: str = ""
     apns_sandbox: bool = False
