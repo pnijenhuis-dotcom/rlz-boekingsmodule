@@ -46,6 +46,16 @@ Wat dit blok doet — en bewust níét:
         reden mét verwijzing naar het paar) + audit `reconciliatie_acceptatie_overgedragen` (systeem-actor). Nooit
         opnieuw zodra er ooit een cluster-acceptatie bestond (ook een ingetrokken) — intrekken door een Beheerder
         wint. Deels gedekt = open mét `acceptatie_gedeeltelijk` in het detail (zichtbaar in de tekst).
+- **Run 2 VGG 12-09 blok 2 (besluit Peter 12-09, CONTRACT_RUN2 besluit 4 + 6) — SNEDE 2, ALLEEN LEES-ONLY:**
+  `reconciliatie-alles --alleen rlz_dubbel --lees-only` toetst óók paren binnen dezelfde crediteur met cent-exact
+  gelijk bedrag en `BookDate` (terugval `Date`) binnen ±3 dagen, ONGEACHT referentie (Zenvoices × module: dezelfde
+  factuur twee keer ingevoerd onder een andere referentie). Alleen paren die snede 1 niet al als cluster meldt; nooit
+  als beide van de module. BANK IS LEIDEND: in lees-only-modus worden de PaymentTransactions van de administratie
+  gelezen (zelfde venster; `$filter=BookDate ge …`, bij 400 zonder filter) en een paar wordt alleen gemeld als er
+  minder dan twee bankmutaties (|bedrag|, teken −1 voor inkoop, ±3 dagen; `app/migratie/bankdekking.py`) tegenover
+  staan; anders teller `bank_bevestigd`. Bank niet leesbaar → paren gemeld mét markering "bank niet gelezen". De
+  DAGELIJKSE run leest GEEN PaymentTransactions en meldt niets van snede 2 — of snede 2 een bevinding-rij wordt is
+  een beslispunt voor Peter (meetlat eerst).
 - Uitkomst = bevinding `afwijking` soort `dubbel_in_rlz`; acceptatie mét reden via het bestaande pad (bron
   `documenten`: de DB-CHECK op `reconciliatie_acceptatie.bron` kent geen vijfde waarde en dit blok brengt bewust
   GEEN migratie). GEEN automatische actie: de RLZ-kant is mensenwerk, de app verwijdert nooit (kernprincipe 3). Er is
@@ -72,9 +82,11 @@ from app.db.session import scoped_session
 from app.documenten.duplicaat_afvoer import normaliseer_referentie
 from app.documenten.models import Boekvoorstel, Document, Tegenboeking
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
+from app.migratie import bankdekking
 from app.reconciliatie import referentie_classificatie as classificatie
-from app.rlz.client import RlzClient, bedrag_cent_exact
+from app.rlz.client import RlzApiError, RlzClient, bedrag_cent_exact
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.rlz.lezen_cli import _initialen as initialen
 from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
@@ -90,6 +102,10 @@ ACCEPTATIE_BRON = "documenten"
 VENSTER_DAGEN = 400
 PAGINA_GROOTTE = 200
 REGEL_REFERENTIE = "referentie"
+#: Snede 2 (run 2 VGG blok 2): zelfde crediteur + zelfde bedrag + boekdatum binnen dit venster, ongeacht referentie.
+SNEDE2_VENSTER_DAGEN = 3
+LABEL_MODULE_X_NIET = "module×niet-module"
+LABEL_NIET_X_NIET = "niet-module×niet-module"
 #: Uitsluitingsreden op een vervangen paar-bevinding (overgang 10-09) — letterlijke tekst in detail `uitsluiting`.
 UITSLUITING_VERVANGEN = "vervangen door cluster"
 UITSLUITING_REFERENTIE = "referentie uitgesloten"
@@ -332,6 +348,65 @@ class UitgeslotenGroep:
 
 
 @dataclass(frozen=True)
+class Snede2Paar:
+    """Eén snede-2-paar (run 2 VGG blok 2, lees-only meetlat): zelfde crediteur, zelfde bedrag, boekdatum binnen
+    ±`SNEDE2_VENSTER_DAGEN`, ongeacht referentie; niet al in een cluster; niet beide van de module."""
+
+    a: RlzDocument  # a.rlz_id < b.rlz_id (tekstsortering) — stabiel over runs
+    b: RlzDocument
+    bank_mutaties: int  # k: gevonden bankmutaties (|bedrag|, teken, ±3 d), elke mutatie één keer
+    bank_gelezen: bool
+
+    @property
+    def bedrag(self) -> Decimal | None:
+        return self.a.bedrag
+
+    @property
+    def label(self) -> str:
+        return LABEL_MODULE_X_NIET if (self.a.van_module or self.b.van_module) else LABEL_NIET_X_NIET
+
+    @property
+    def bank_bevestigd(self) -> bool:
+        """Evenveel (of meer) bankmutaties als boekingen (2) → echt, niet melden; bank niet gelezen → nooit."""
+        return self.bank_gelezen and self.bank_mutaties >= 2
+
+    @property
+    def dagen_verschil(self) -> int | None:
+        da, db = _snede2_datum(self.a), _snede2_datum(self.b)
+        return None if da is None or db is None else abs((da - db).days)
+
+    def regel(self, aid: object) -> str:
+        """`SNEDE2 <admin> <A> + <B> | <initialen> | € <bedrag> | <datum A>/<datum B> | <label> | bank k/2`."""
+        naam = self.a.entity_naam or self.b.entity_naam or ""
+        da, db = _snede2_datum(self.a), _snede2_datum(self.b)
+        bank = f"bank {self.bank_mutaties}/2" if self.bank_gelezen else "bank niet gelezen"
+        return (
+            f"SNEDE2 {aid} {self.a.boekstuk or '?'} + {self.b.boekstuk or '?'} | {initialen(naam) or '?'} | "
+            f"€ {self.bedrag} | {da.isoformat() if da else '?'}/{db.isoformat() if db else '?'} | {self.label} | {bank}"
+        )
+
+
+@dataclass(frozen=True)
+class Snede2Uitkomst:
+    paren: tuple[Snede2Paar, ...]  # gemeld (bank-tekort of bank niet gelezen)
+    bank_bevestigd: int  # kandidaten die door de bank als echt zijn bevestigd (niet gemeld, wél geteld)
+    bank_gelezen: bool
+    gedraaid: bool = True
+
+    def tellers(self) -> dict[str, int]:
+        return {
+            "paren": len(self.paren),
+            LABEL_MODULE_X_NIET: sum(1 for p in self.paren if p.label == LABEL_MODULE_X_NIET),
+            LABEL_NIET_X_NIET: sum(1 for p in self.paren if p.label == LABEL_NIET_X_NIET),
+            "bank_bevestigd": self.bank_bevestigd,
+        }
+
+
+def _snede2_datum(d: RlzDocument) -> date | None:
+    return d.boekdatum or d.datum
+
+
+@dataclass(frozen=True)
 class ClusterUitkomst:
     clusters: tuple[DubbelCluster, ...]
     uitgesloten: tuple[UitgeslotenGroep, ...]
@@ -357,6 +432,8 @@ class RlzDubbelRapport:
     clusters: tuple[DubbelCluster, ...] = ()
     uitgesloten: tuple[UitgeslotenGroep, ...] = ()
     rlz_admin_id: str | None = None
+    #: Snede 2 (run 2 VGG blok 2) — alleen gevuld in lees-only-modus (`toets_met_client(..., snede2=True)`).
+    snede2: Snede2Uitkomst | None = None
 
     def uitsluiting_tellers(self) -> dict[str, dict[str, int]]:
         return ClusterUitkomst(clusters=self.clusters, uitgesloten=self.uitgesloten).tellers()
@@ -553,6 +630,111 @@ def vind_clusters(documenten: Iterable[RlzDocument], *, rlz_admin_id: str | None
     return ClusterUitkomst(clusters=tuple(clusters), uitgesloten=tuple(uitgesloten))
 
 
+# ---- snede 2 (run 2 VGG blok 2; puur + één lezer) --------------------------------------------------
+
+
+def lees_payment_transactions(client: RlzClient, *, vanaf: date) -> list[dict[str, Any]] | None:
+    """Alle bankmutaties sinds `vanaf`, gepagineerd. Eerst `$filter=BookDate ge <vanaf>`; een 400 (filter op deze
+    collectie niet ondersteund) → dezelfde reeks zónder filter en client-side gefilterd; elke andere fout (403
+    rechten, 404, 5xx ná retries) → None = "bank niet gelezen" (de aanroeper markeert, filtert niets). Alleen GET's."""
+
+    def _lees(filter_: str | None) -> list[dict[str, Any]]:
+        uit: list[dict[str, Any]] = []
+        skip = 0
+        while True:
+            params: dict[str, Any] = {"$top": str(PAGINA_GROOTTE), "$skip": str(skip)}
+            if filter_:
+                params["$filter"] = filter_
+            batch = client.get("PaymentTransactions", params=params).get("value", [])
+            uit.extend(r for r in batch if isinstance(r, dict))
+            if len(batch) < PAGINA_GROOTTE:
+                return uit
+            skip += PAGINA_GROOTTE
+
+    try:
+        return _lees(f"BookDate ge {vanaf.isoformat()}")
+    except RlzApiError as exc:
+        if exc.status_code != 400:
+            logger.warning("PaymentTransactions niet leesbaar voor snede 2: %s", exc)
+            return None
+    try:
+        alles = _lees(None)
+    except RlzApiError as exc:
+        logger.warning("PaymentTransactions niet leesbaar voor snede 2 (zonder filter): %s", exc)
+        return None
+    return [r for r in alles if (_als_datum(r.get("BookDate")) or _als_datum(r.get("Date")) or date.min) >= vanaf]
+
+
+def _snede2_kandidaten(
+    documenten: Iterable[RlzDocument],
+    *,
+    clusters: Sequence[DubbelCluster],
+    bank: Sequence[bankdekking.BankMutatie] | None,
+    venster_dagen: int = SNEDE2_VENSTER_DAGEN,
+) -> list[Snede2Paar]:
+    """Alle snede-2-paren (ook de bank-bevestigde), gesorteerd op (rlz_id a, rlz_id b)."""
+    al_gemeld: set[frozenset[uuid.UUID]] = set()
+    for c in clusters:
+        al_gemeld |= c.paren
+    per_crediteur: dict[uuid.UUID, list[RlzDocument]] = {}
+    for d in documenten:
+        if d.entity_id is None or d.bedrag is None or _snede2_datum(d) is None:
+            continue
+        per_crediteur.setdefault(d.entity_id, []).append(d)
+    uit: list[Snede2Paar] = []
+    for docs in per_crediteur.values():
+        docs = sorted(docs, key=lambda d: (_snede2_datum(d), str(d.rlz_id)))  # type: ignore[arg-type,return-value]
+        for i, x in enumerate(docs):
+            for y in docs[i + 1 :]:
+                dx, dy = _snede2_datum(x), _snede2_datum(y)
+                assert dx is not None and dy is not None
+                if (dy - dx).days > venster_dagen:
+                    break  # gesorteerd op datum: verder weg wordt het alleen groter
+                if x.bedrag != y.bedrag or (x.van_module and y.van_module):
+                    continue
+                if frozenset((x.rlz_id, y.rlz_id)) in al_gemeld:
+                    continue
+                a, b = (x, y) if str(x.rlz_id) < str(y.rlz_id) else (y, x)
+                teken = bankdekking.teken_van("PurchaseInvoices", x.bedrag)
+                dekking = bankdekking.dekking_voor(
+                    [(x.bedrag, dx, teken), (y.bedrag, dy, teken)],  # type: ignore[list-item]
+                    bank,
+                    venster_dagen=venster_dagen,
+                )
+                uit.append(Snede2Paar(a=a, b=b, bank_mutaties=dekking.bankmutaties, bank_gelezen=dekking.bank_gelezen))
+    uit.sort(key=lambda p: (str(p.a.rlz_id), str(p.b.rlz_id)))
+    return uit
+
+
+def vind_snede2(
+    documenten: Iterable[RlzDocument],
+    *,
+    clusters: Sequence[DubbelCluster],
+    bank: Sequence[bankdekking.BankMutatie] | None,
+    venster_dagen: int = SNEDE2_VENSTER_DAGEN,
+) -> list[Snede2Paar]:
+    """Puur: de te MELDEN snede-2-paren — zelfde crediteur, cent-exact gelijk bedrag, boekdatum (terugval datum)
+    binnen ±`venster_dagen`, ongeacht referentie; niet al door snede 1 (cluster) gemeld; niet beide van de module;
+    en bank-tekort (minder dan twee bankmutaties, of bank niet gelezen → gemeld mét markering). Bank-bevestigde
+    paren (k ≥ 2) worden NIET teruggegeven — `snede2_uitkomst` telt ze."""
+    kandidaten = _snede2_kandidaten(documenten, clusters=clusters, bank=bank, venster_dagen=venster_dagen)
+    return [p for p in kandidaten if not p.bank_bevestigd]
+
+
+def snede2_uitkomst(
+    documenten: Iterable[RlzDocument],
+    *,
+    clusters: Sequence[DubbelCluster],
+    bank: Sequence[bankdekking.BankMutatie] | None,
+) -> Snede2Uitkomst:
+    kandidaten = _snede2_kandidaten(documenten, clusters=clusters, bank=bank)
+    return Snede2Uitkomst(
+        paren=tuple(p for p in kandidaten if not p.bank_bevestigd),
+        bank_bevestigd=sum(1 for p in kandidaten if p.bank_bevestigd),
+        bank_gelezen=bank is not None,
+    )
+
+
 # ---- module-GUID's uit de eigen DB ----------------------------------------------------------------
 
 
@@ -615,12 +797,20 @@ def toets_met_client(
     administratie_id: uuid.UUID | None = None,
     vandaag: date | None = None,
     rlz_admin_id: str | None = None,
+    snede2: bool = False,
 ) -> RlzDubbelRapport:
-    """De toets zelf, los van DB en credentials — ook het hart van het read-only live-script."""
+    """De toets zelf, los van DB en credentials — ook het hart van het read-only live-script. `snede2=True` (alleen
+    vanuit de lees-only CLI) leest óók de PaymentTransactions en voegt de snede-2-meetlat toe; de dagelijkse run
+    laat dat op False."""
     vanaf = venster_vanaf(vandaag)
     rijen = lees_purchase_invoices(client, vanaf=vanaf)
     documenten = [d for d in (naar_rlz_document(r, module_ids=module_ids) for r in rijen) if d is not None]
     uitkomst = vind_clusters(documenten, rlz_admin_id=rlz_admin_id)
+    snede2_resultaat: Snede2Uitkomst | None = None
+    if snede2:
+        bank_rijen = lees_payment_transactions(client, vanaf=vanaf)
+        bank = bankdekking.bankmutaties_uit_rijen(bank_rijen) if bank_rijen is not None else None
+        snede2_resultaat = snede2_uitkomst(documenten, clusters=uitkomst.clusters, bank=bank)
     return RlzDubbelRapport(
         administratie_id=administratie_id,
         aantal_getoetst=len(documenten),
@@ -631,6 +821,7 @@ def toets_met_client(
         clusters=uitkomst.clusters,
         uitgesloten=uitkomst.uitgesloten,
         rlz_admin_id=rlz_admin_id,
+        snede2=snede2_resultaat,
     )
 
 
@@ -639,6 +830,7 @@ def toets_administratie(
     *,
     client_factory: Callable[[str], RlzClient] | None = None,
     vandaag: date | None = None,
+    snede2: bool = False,
 ) -> RlzDubbelRapport:
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
     module_ids = module_ids_voor(administratie_id)
@@ -650,6 +842,7 @@ def toets_administratie(
             administratie_id=administratie_id,
             vandaag=vandaag,
             rlz_admin_id=rlz_admin_id,
+            snede2=snede2,
         )
 
 
@@ -657,6 +850,7 @@ def toets_alle(
     *,
     client_factory: Callable[[str], RlzClient] | None = None,
     administratie_ids: Sequence[uuid.UUID] | None = None,
+    snede2: bool = False,
 ) -> RlzDubbelResultaat:
     """Alle actieve RLZ-administraties (of alleen `administratie_ids`); één kapotte administratie stopt de rest niet
     (zichtbaar als fout); Odoo-administraties zichtbaar overgeslagen (A12-patroon)."""
@@ -671,7 +865,7 @@ def toets_alle(
     fouten: dict[uuid.UUID, str] = {}
     for aid in rlz_ids:
         try:
-            rapporten[aid] = toets_administratie(aid, client_factory=client_factory)
+            rapporten[aid] = toets_administratie(aid, client_factory=client_factory, snede2=snede2)
         except Exception as exc:  # noqa: BLE001 — rapporteren en door
             logger.exception("rlz_dubbel-toets mislukt voor administratie %s", aid)
             fouten[aid] = str(exc)
@@ -962,6 +1156,39 @@ def _lees_only_administratie(
             f"    · uitgesloten ({classificatie.REDEN_LABEL.get(g.reden, g.reden)}): {g.entity_naam or '?'} "
             f"ref {g.referentie!r} — {g.aantal_documenten} documenten, {g.aantal_bedragen} verschillende bedragen"
         )
+    if rapport.snede2 is not None:
+        _lees_only_snede2(aid, rapport.snede2, stdout=stdout)
+
+
+def _snede2_tellers_tekst(t: dict[str, int]) -> str:
+    return (
+        f"paren {t['paren']}, {LABEL_MODULE_X_NIET} {t[LABEL_MODULE_X_NIET]}, "
+        f"{LABEL_NIET_X_NIET} {t[LABEL_NIET_X_NIET]}, bank-bevestigd {t['bank_bevestigd']}"
+    )
+
+
+def _lees_only_snede2(aid: uuid.UUID, snede2: Snede2Uitkomst, *, stdout: Callable[[str], None]) -> None:
+    """Snede 2 per administratie (run 2 VGG blok 2): regel per gemeld paar + tellers; bank niet gelezen zichtbaar."""
+    for p in snede2.paren:
+        stdout(f"    - {p.regel(aid)}")
+    bank = "" if snede2.bank_gelezen else " — BANK NIET GELEZEN (PaymentTransactions weigerde; niets gefilterd)"
+    stdout(f"    SNEDE2 tellers {aid}: {_snede2_tellers_tekst(snede2.tellers())}{bank}")
+
+
+def _snede2_totaal(rapporten: dict[uuid.UUID, RlzDubbelRapport]) -> str | None:
+    gedraaid = [r.snede2 for r in rapporten.values() if r.snede2 is not None]
+    if not gedraaid:
+        return None
+    totaal = {"paren": 0, LABEL_MODULE_X_NIET: 0, LABEL_NIET_X_NIET: 0, "bank_bevestigd": 0}
+    for u in gedraaid:
+        for k, v in u.tellers().items():
+            totaal[k] += v
+    niet_gelezen = sum(1 for u in gedraaid if not u.bank_gelezen)
+    return (
+        f"SNEDE2 totaal over {len(gedraaid)} administratie(s): {_snede2_tellers_tekst(totaal)}"
+        f"{f'; bank niet gelezen bij {niet_gelezen} administratie(s)' if niet_gelezen else ''}. "
+        "Alleen meetlat — de dagelijkse run meldt snede 2 niet (beslispunt Peter)."
+    )
 
 
 def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, stderr=None) -> int:  # noqa: ANN001
@@ -989,7 +1216,8 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
         except Exception:  # noqa: BLE001
             return None
 
-    resultaat = toets_alle(administratie_ids=administratie_ids)
+    # Snede 2 (run 2 VGG blok 2) leest PaymentTransactions en draait UITSLUITEND in lees-only-modus.
+    resultaat = toets_alle(administratie_ids=administratie_ids, snede2=lees_only)
     for aid, reden in resultaat.overgeslagen.items():
         stdout(f"OVERGESLAGEN {aid}: {reden}")
     uitgesloten = acceptatie_service.uitgesloten_administraties()
@@ -1027,6 +1255,9 @@ def cli_blok(args, verzamelaar=None, *, stdout: Callable[[str], None] = print, s
             f"{totaal_nieuw}; {sum(len(v) for v in vorige.values())} open paar-bevinding(en) in de vorige run, waarvan "
             f"{te_vervangen} bij de eerstvolgende run vervangen worden. Niets geschreven, niets gemaild."
         )
+        totaal_snede2 = _snede2_totaal(resultaat.rapporten)
+        if totaal_snede2:
+            stdout(totaal_snede2)
         return 1 if echte_fouten else 0
 
     # Overgang: open paar-bevindingen uit de vorige run → vervangen (eigen vingerafdruk, soort uitgesloten).

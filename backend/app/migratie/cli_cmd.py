@@ -34,8 +34,9 @@ def register_migratie(subparsers: argparse._SubParsersAction) -> None:  # type: 
     p = subparsers.add_parser(
         "migratie-schoonlijst",
         help=(
-            "LEES-ONLY schoonlijst vóór een RLZ → Odoo-overstap: concepten, vermoedelijke dubbelen, open bankregels, "
-            "dubbele IBAN's, boekingen zonder relatie mét bijlage (markdown op stdout, optioneel JSON)."
+            "LEES-ONLY schoonlijst vóór een RLZ → Odoo-overstap: concepten (zonder systeemhulzen en kopieën van "
+            "geboekt), vermoedelijke dubbelen (bank leidend; verschillend kenmerk en bank-bevestigd apart), open "
+            "bankregels, dubbele IBAN's, boekingen zonder relatie mét bijlage (markdown op stdout, optioneel JSON)."
         ),
     )
     p.add_argument("--administratie", required=True, help="UUID of (deel van de) naam van de administratie.")
@@ -50,7 +51,11 @@ def register_migratie(subparsers: argparse._SubParsersAction) -> None:  # type: 
     p.add_argument(
         "--verwacht",
         default=None,
-        help='Verwachtingen van Peter, bv. "concepten=17,dubbelen=3,open_bankregels=44,dubbele_iban=1".',
+        help=(
+            'Verwachtingen van Peter, bv. "concepten=17,dubbelen=3,open_bankregels=44,dubbele_iban=1". '
+            "Sinds run 2 VGG (12-09) ook systeemhulzen_open_bank, concept_kopie_van_geboekt, "
+            "zelfde_bedrag_verschillend_kenmerk en bank_bevestigd."  # run 2 VGG blok 1
+        ),
     )
 
 
