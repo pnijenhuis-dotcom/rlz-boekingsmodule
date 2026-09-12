@@ -8523,3 +8523,372 @@ Deploy-check 11-09 ±16:00 CEST: service `rlz-backend` revisie 00521 op beeld `6
 | 10 batches | `rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentTransactions --filter "PaymentBatchId ne null" --expand "Batch,PaymentReferenceList($expand=Document)" --top 5 --count` | `@odata.count` **70** batch-bankregels; nieuwste (BookDate 10-09): **incasso**-batch Type 1, € 3.096,36, `Reference` "TOTAAL 22 POSTEN", `PaymentBatchId` = `Batch.BatchId` in GUID-vorm (`RLZ<32 hex>`, dus níet alleen `RLZEE_CT_…`), `Batch.FileName` `<IBAN>_<datumtijd>.xml`, `RemainingAmount` null, 22 `PaymentReferenceList`-items elk mét `Document` (verkoopfacturen DocumentType 10, `PaymentReconciliationSource` 2), `OpenAmount` 0 | **ja** — het sleutel-bewijs staat ook op de C.V. én voor de INCASSO-kant (debiteuren); aanvulling op het voorstel: de sleutel heeft twee vormen (`RLZEE_CT_…` bij betaalbatches, `RLZ<hex>` bij incassobatches), matchen op gelijkheid, nooit op vorm |
 
 Bijvangst nameting: de anonimisering van `rlz-lezen` maskeerde een IBAN ín een bestandsnaam niet (`\b` matcht niet vóór `_`) — gefixt (grenzen "geen letter/cijfer", test `NL..…_260908.xml` → `…4300_…`), de uitvoer van de eerste run staat in Cloud Logging (eigen IBAN van het kantoor, geen derde).
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 (12-09-2026): BESLUITEN PETER, BEWIJSGROND NAMETINGEN 11-09, STAP-0 KNIP (blok 0)
+
+**Aanleiding.** Opdracht Peter 12-09 (run 2 van 3): de schoonlijst en het pandenregister uit run 1 zijn op 11-09 voor het eerst
+tegen productie gemeten (`verkenning/nameting-vgg-schoonlijst-11-09.txt`, `verkenning/nameting-vgg-panden-11-09.txt`); de uitkomst
+was bruikbaar als diagnose maar niet als migratiebasis. Run 2 herbouwt op die bewijsgrond, zonder nieuwe schermen (besluit 10-09
+avond) en zonder één Odoo-post. Volledige tekst van de zeven blokken staat in de secties hierna ("RUN 2 — BLOK 1…6"); dit blok legt
+de besluiten en de bewijsgrond vast.
+
+**Besluiten Peter 12-09 (canoniek — niet heroverwegen):**
+1. **Geen Odoo-testdatabase.** Migratie direct naar de live database, company 6 (leeg), met de bestaande Odoo-koppeling/API-key (één
+   gebruiker, tien companies). `ODOO_TEST_URL`/`ODOO_TEST_API_KEY` komen er niet (odoo-verkenning §11.4/§11.5(e) herzien).
+   Voorwaarden: (a) eerst volledige dry-run zonder Odoo-writes mét reconciliatierapport; (b) alles landt als CONCEPT in company 6,
+   saldibalans-toets op de concepten, posten in één aparte stap (run 3); fout = annuleren/tegenboeken, nooit unlink; (c) harde
+   company-pin: de migratiecode weigert elke call waarvan company_id ≠ de company uit de koppeling-rij (VGG = 6), bovenop de
+   bestaande company-poort in `app/odoo/client.py`; (d) bank in twee fasen: afschriftregels aanleveren los van afletteren,
+   afletteren pas ná groen op fase 1.
+2. **RJ 220 aangescherpt — vier rollen:** voorraad panden, vooruitbetaald op voorraad, opbrengst verkoop panden, kostprijs verkochte
+   panden. Aanbetalingen aan verkopers ("aanbetaling volgens afspraak", "extra aanbetaling", "maandelijkse aanbetaling") =
+   VOORUITBETAALD OP HANDELSVOORRAAD (balans), bij levering in de kostprijs van het pand. "Vaste lasten (volgens afspraak)" die VGG
+   voor de verkoper betaalt = W&V op factuur-/mutatiedatum (kosten pand, niet activeren).
+3. **Pandenlijst:** Salesforce levert later de canonieke lijst panden (lees-lijst om tegen te matchen, nooit bron van boeking of
+   pand-aanmaak). Nu een seam voor een externe pandenlijst (CSV als eerste bron); Salesforce-adapter = run 3+.
+4. **Tweede dubbel-snede over ALLE administraties** (vermoeden Peter: Zenvoices × module dubbel geboekt) — lees-only meetlat;
+   opname als echte reconciliatie-bevinding = beslispunt ná zicht op de ruis.
+5. **Peters huiswerk** (niet bouwen): IBAN op dagboek BNK1 company 6 zetten (odoo-verkenning 11.5 f 8); Salesforce-toegang. *De
+   drie RLZ-paren (RLZ-25-00000312/313, RLZ-28-00000061/062, RLZ-46-00000166/167) VERVALLEN als huiswerk (aanvulling 12-09): het
+   zijn bank-directe boekingen en dus echt.*
+6. **Aanvulling 12-09 — bank is leidend bij dubbelen** (blok 1 en blok 2): een paar/groep is alleen "vermoedelijk dubbel" als er
+   MINDER bankmutaties (PaymentTransactions, cent-exact bedrag, datum ±3 dagen, zelfde teken) tegenover staan dan boekingen.
+   Evenveel bankmutaties als boekingen = echt, niet melden (wel tellen als "bank-bevestigd"). Bank-directe boekingen (Receipts/
+   bankdagboeken) zijn per definitie bank-bevestigd.
+
+**Bewijsgrond — bevindingen nametingen 11-09 (uit de twee txt-bestanden, lees-only op de gedeployde job-image):**
+
+| Bevinding | Cijfer | Gevolg voor run 2 |
+|---|---|---|
+| Concepten (Status 1) | 62 gevonden vs 17 verwacht: **44 zijn RLZ-09-bankhulzen** (concept zonder Entity, zonder omschrijving, bedrag/datum = open PaymentTransaction) + **18 echte** | hulzen apart tellen als "systeemhulzen open bank", buiten de concepten-teller (blok 1) |
+| Echte concepten | **≥ 11 van de 17** zijn een kopie van een al geboekte boeking (RLZ-04-00000062 ↔ RLZ-06-00000070 € 65.000 Oosterdiepswal; RLZ-04-00000338 ↔ 339; RLZ-04-00000444 ↔ 445; RLZ-17-00000464 ↔ 465; RLZ-04-00000243 ↔ 244; …) | categorie "concept = kopie van geboekt → niet migreren" (blok 1) |
+| Dubbelen | 51 rijen vs 3 verwacht; **3× € 20.000 op 15-08 (RLZ-06-26/74/76) = drie verschillende panden** (Kapershoek 34, Rhijnauwensingel 93, Heidebeemd 3) — Peter had gelijk; verder Verhagen/Full House/Kadaster/Consten met verschillende kenmerken | degraderen naar "zelfde bedrag, verschillend kenmerk" (ingeklapt); bank leidend (besluit 6) |
+| Open bankregels | 44 = verwacht; **zes Ouwerkerk-ontvangsten aug/sep** (Hogevecht 123, Van de Spiegelstraat 42, Apollolaan 644, Duifhuis 11, Sportlaan 180, Knopkruid 45 — samen ≈ € 375.655) + **hypotheekgelden 21-02 (−€ 187.144,23)** staan open | verkopen moeten uit notaris-ontvangsten komen (blok 3); replay meldt open posten (blok 6) |
+| Dubbele IBAN | 1 = verwacht (spaarrekening NL95INGB…9295 op "Vastgoedgroep" én "Vastgoedgroep Nederland BV") | ongewijzigd |
+| Pandenregister | **214 voorstellen, onbruikbaar**: 32-tekens-knip ("Oo sterdiepswal", "Az ielaan", "Utrec", "Bru", "Heerl en"), prefixen als straat ("Aanbetaling Azielaan 334", "Overdracht Koraalerf 45", "Vastelasten Hilledijk 87D"), spelvarianten (Bleijeheider/Bleijerheider, Goeverneur/Goeveneur/Goevernour), **~70 leveranciers-factuurnummers als dossier** (`dossier 2026-0050`, `F2026-0083`), **nul verkopen**, **31-12-memorialen als aankoop** (Azielaan, Chevremontstraat, Dwarsweg, … alle "aankoop 2025-12-31") | blok 3 herbouwt: ontknip, vulwoorden, dossierformaat, verkopen uit notaris-ontvangsten, 31-12 = balans, clustering/pandenlijst; meetlat < 80 clusters |
+
+**STAP-0 knip (blok 0, uitgevoerd 12-09, lees-only via `scripts/gcp/nameting.sh rlz-lezen`, 120 VGG-records — canoniek in
+api-verkenning "Regelknip op 32 tekens in Description/Reference — STAP-0 12-09"):** de "spatie op positie 32" bestaat niet in RLZ.
+RLZ geeft bank-geïmporteerde omschrijvingen terug als `\n`-gescheiden REGELS van exact 32 tekens (31 gevallen van 47; 3× 31 waar
+RLZ een grensspatie stripte; de rest korter = echte regelovergangen), in `Description` (ManualJournals/PurchaseInvoices/Receipts) én
+`Reference` (PaymentTransactions — 28 van 30). Onze normalisatie `" ".join(w.split())` maakte er een spatie van. Gebouwd:
+`backend/app/rlz/tekst.py::ontknip` (deterministische samenvoegregel per 32-grens, geen woordenboek; 21 parametrische tests op de
+letterlijke records; `tests/rlz/test_tekst_ontknip.py`). Uitvoer bewaard: `verkenning/nameting-vgg-stap0-knip-12-09.txt`.
+Zonder dit bewijs was geen knip-reparatie gebouwd (opdrachtregel).
+
+**Wat deze run NIET doet:** posten in Odoo, massa-bankaflettering, kantelen via de overstap-wizard, Salesforce-adapter, PWA,
+pandenschermen. WAT_IS_NIEUW: geen klantzichtbaar gedrag → geen release-regel.
+
+**Werkt in productie: nog niet gemeten** — blok 7 (nametingen ná deploy: schoonlijst nieuwe tellers, pandenregister dry-run
+< 80 clusters, `vgg-replay --dry-run` reconciliatierapport, `rlz_dubbel --lees-only` mét snede 2 over alle administraties, daarna
+`odoo-koppeling-migratiedoel` + `vgg-odoo-stap0 --schrijf` als expliciete Cloud Run-job) loopt in de volgende beurt: de deploy
+volgt op de push van deze commits (Stop-hook), productie mag pas ná de deploy geraakt worden (regel Peter 08-09).
+
+<!-- run2-vgg:blok0 -->
+
+## SCHOONLIJST VGG HERZIEN — SYSTEEMHULZEN, KOPIEËN, VERSCHILLEND KENMERK, BANK LEIDEND (run 2 VGG 12-09, blok 1)
+
+Aanleiding: de nameting 11-09 (`verkenning/nameting-vgg-schoonlijst-11-09.txt`) gaf 62 concepten en 51 dubbelen-groepen
+waar Peter 17 en 3 verwachtte. Vier oorzaken, alle deterministisch weggenomen — lees-only, geen migratie, geen AI.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Omschrijving = ontknipt | Álle document-omschrijvingen via `ontknip_velden(rij, "Description", "Header", "Reference")`, bankregels via `ontknip(Reference)`; geen eigen `" ".join(x.split())` meer ("Oo sterdiepswal" → "Oosterdiepswal"). | GEBOUWD + GETEST 12-09 | `app/migratie/schoonlijst.py::_omschrijving`, `open_bankregels`; blok 0 `app/rlz/tekst.py` |
+| Systeemhulzen open bank (a1) | RLZ maakt per open bankmutatie een concept-huls (VGG RLZ-09: 44 = exact de 44 open bankregels). Herkenning op GEDRAG, niet op dagboekcode: Status 1 + geen Entity + \|bedrag\| + teken (`teken_van`) + datum = een OPEN PaymentTransaction (OpenAmount ≠ 0) + omschrijving leeg óf genormaliseerd bevat in de ontknipte bank-Reference (RLZ-09-00001173 "407683 7R-…" ⊂ Adyen-referentie). Eén huls per mutatie (twee × € −2.500 op 21-08 = twee hulzen). Eigen categorie `systeemhulzen_open_bank`, BUITEN de concepten-teller, ingeklapt in de md. Bank niet leesbaar → geen hulzen herkenbaar, alles blijft zichtbaar concept. | GEBOUWD + GETEST | `schoonlijst.py::systeemhulzen_open_bank` |
+| Concept = kopie van geboekt (a2) | Concept met \|bedrag\| + datum + genormaliseerde omschrijving (kleine letters, alleen letters/cijfers) gelijk aan een GEBOEKT document (Status 2/3), over collecties heen (RLZ-04-00000062 € 65.000 ↔ RLZ-06-00000070 € −65.000 "Oosterdiepswal 7", zelfde dag — daarom \|bedrag\|). Concept ZONDER omschrijving alleen als er in dezelfde collectie precies één geboekt exemplaar met dat \|bedrag\| op die dag staat (RLZ-04-00000732 ↔ 737); meerduidig = blijft concept. Bevinding "niet migreren, kopie van <boekstuk>"; kopieën verdwijnen uit concepten én uit dubbelen (één bevinding per feit). | GEBOUWD + GETEST | `schoonlijst.py::concept_kopieen` |
+| Zelfde bedrag, verschillend kenmerk (b1) | Kenmerk = adres-codes (pandenregister-`adressen_uit_tekst` alleen-lezen ∪ eigen terugval zonder straat-suffix-eis: "Koraalerf 45", "Heidebeemd 3") + nummers ≥ 4 cijfers (geen los jaartal). Twee omschrijvingen conflicteren als BEIDE een kenmerk dragen en die kenmerken verschillen; leeg ("Rc", "RC", —) is compatibel met alles. Per groep kenmerk-componenten (transitief): losse exemplaren → `zelfde_bedrag_verschillend_kenmerk` (ingeklapt, "waarschijnlijk echt"), componenten ≥ 2 blijven dubbel-kandidaat. VGG: drie panden à € 20.000 (15-08), Full House 2522781/2522771, Kadaster-ordernummers, Consten drie adressen, Fazantstraat 77/79 vs 79a, loonheffing OKT/NOV → hierheen. | GEBOUWD + GETEST | `schoonlijst.py::Kenmerk`, `kenmerk_van`, `beoordeel_dubbelen` |
+| BANK IS LEIDEND (b2) — aanvulling Peter 12-09 (CONTRACT_RUN2 besluit 6) | Nieuwe pure module `app/migratie/bankdekking.py` (gedeeld met blok 2): `BankMutatie`, `bankmutaties_uit_rijen`, `teken_van` (inkoop → −1, verkoop → +1, memoriaal/Receipts → teken bedrag; creditnota's gespiegeld), `is_bank_direct` (Receipts, afgeleide bankdagboek-reeks, of onmiskenbare bankdagboeknaam), `dekking_voor` (greedy: elke mutatie één keer, \|bedrag\| + teken + BookDate ±3 d), `leid_bank_reeksen_af` (reeks `RLZ-NN` met ≥ 3 Entity-loze documenten waarvan ≥ 80 % 1-op-1 op de bank valt — op VGG RLZ-09/25/28/46/60 = `BANK_REEKSEN_VGG`, alleen documentatie, nooit default). Een dubbelen-component wordt alleen gemeld als bankmutaties < boekingen; evenveel/meer of bank-direct = `bank_bevestigd` (ingeklapt). PaymentTransactions niet leesbaar → niets gefilterd, "BANK NIET GELEZEN" in kop én per rij. De drie paren RLZ-25-00000312/313, RLZ-28-00000061/062, RLZ-46-00000166/167 zijn hierdoor bank-bevestigd (bank-directe reeks) en geen dubbel meer. | GEBOUWD + GETEST | `app/migratie/bankdekking.py`, `schoonlijst.py::beoordeel_dubbelen`, `maak_schoonlijst` |
+| Tellers, `--verwacht`, JSON, md | `CATEGORIEEN` uitgebreid (9): concepten, systeemhulzen_open_bank, concept_kopie_van_geboekt, dubbelen, zelfde_bedrag_verschillend_kenmerk, bank_bevestigd, open_bankregels, dubbele_iban, zonder_relatie_met_bijlage; `parse_verwacht` accepteert ze; JSON krijgt `bank {gelezen, mutaties, reeksen}`; md: bank-kop ("Bank leidend: N mutaties; bank-directe reeksen RLZ-09 (8/8), …" of **BANK NIET GELEZEN**), ingeklapte `<details><summary>` voor hulzen/verschillend kenmerk/bank-bevestigd (lege regel erin zodat de markdown rendert). | GEBOUWD + GETEST | `schoonlijst.py::als_markdown`, `Schoonlijst.als_dict` |
+| Tests | `tests/migratie/test_bankdekking.py` (nieuw, 40) + `tests/migratie/test_schoonlijst.py` (44: bestaande + VGG-fixture met LETTERLIJKE 32-tekens-`\n`-omschrijvingen uit de nameting, persoonsnamen → initialen; guards gelijk/minder/niet gelezen/bank-directe reeks; kenmerk-parametrisch). | 84 groen via `pytest_blok.sh a` | — |
+
+**Meetrecept (blok 7, ná deploy, lees-only via nameting-SA):**
+`scripts/gcp/nameting.sh migratie-schoonlijst --administratie Vastgoedgroep --verwacht "concepten=17,systeemhulzen_open_bank=44,concept_kopie_van_geboekt=11,dubbelen=3,zelfde_bedrag_verschillend_kenmerk=40,bank_bevestigd=5,open_bankregels=44,dubbele_iban=1"`
+— **werkt in productie: nog niet gemeten**. Verwacht t.o.v. de nameting 11-09: systeemhulzen = 44 (= open bankregels, RLZ-09), concepten ≈ 18 − kopieën ≈ 6–7 (28-54 Voorschot tanken, 16-309 Coolblue?, 04-875 Ingescand document, 01-06 Rijswijkseweg, 01-77 Haringvlietstraat, 09-582-achtige als de bank toch niet leest, "Betreft:" € 0), kopieën ≥ 11 (062, 243, 338, 444, 464, 576, 568, 625, 845, 075 + 732/793 via lege-omschrijving-regel), verschillend kenmerk ≈ 35–40 rijen / ≈ 20 groepen, bank-bevestigd ≥ 5 groepen (25-312/313, 25-177/182, 28-61/62, 46-166/167, 28-157/60-158/159, 06-220/60-208, 04-734/25-739, 04-806/25-817 als de bank ze dekt), dubbelen (echt, bank-tekort) 0–5 (kandidaten: 06-33/35 "Rc"/"Afbetaling RC", 06-57/46-124 € 185.000, 01-77/29-731 € 770,83, 06-111/129 valt naar kenmerk). Bank-directe reeksen in de kop: RLZ-09, RLZ-25, RLZ-28, RLZ-46, RLZ-60 verwacht; een reeks die ontbreekt = 80 %-drempel te streng voor die reeks → melden, niet stil verlagen.
+
+**Beslispunten Peter**
+1. Concept ZONDER omschrijving als kopie op alleen \|bedrag\| + datum + collectie (RLZ-04-00000732 → 737, 793 → 794): akkoord, of alleen mét tekst?
+2. Kopie over collecties heen op \|bedrag\| (inkoopconcept € 65.000 ↔ memoriaal € −65.000): akkoord?
+3. 80 %-drempel en ≥ 3 documenten voor een bankdagboek-reeks: op VGG passend (RLZ-25 5/6 in de fixture); bij een kleine administratie kan een echte bankreeks onder de drempel blijven → dan gewone bankdekking (nooit stil).
+4. Bankvenster ±3 dagen (besluit 6) ook voor de reeksafleiding? Nu: afleiding op ZELFDE DAG (strenger, want het gaat om 1-op-1-identiteit), dekking op ±3.
+
+**Aangrenzende gaten**
+- Lifecycle: de hulzen verdwijnen pas als de 44 open bankregels zijn afgeletterd — de schoonlijst moet ná het afletteren opnieuw draaien (open_bankregels → 0, hulzen → 0).
+- Consistentie: `app/panden/afleiding.py` (B) wordt herbouwd; de kenmerk-vergelijking leunt op de UNIE met de eigen terugval, zodat B's wijzigingen de schoonlijst niet breken (try/except + debug-log). Als B's `AdresVoorstel.code` een andere vorm krijgt blijft de vergelijking geldig (beide zijden dezelfde functie).
+- UX: de md is een BESLISSINGEN-tabelvorm; een kantoor-scherm bestaat bewust niet (eenmalige migratielijst).
+- Compliance: geen persoonsnamen in de tests (initialen/fictief), alleen adressen en boekstuknummers; lees-only, geen RLZ-writes.
+
+## DUBBEL-SNEDE 2 OVER ALLE ADMINISTRATIES — LEES-ONLY MEETLAT, BANK LEIDEND (run 2 VGG 12-09, blok 2)
+
+Besluit Peter 12-09 (CONTRACT_RUN2 besluit 4 + 6): snede 2 = zelfde crediteur + cent-exact gelijk bedrag + BookDate
+(terugval Date) binnen ±3 dagen, ONGEACHT referentie (Zenvoices × module) — als lees-only meetlat, GEEN bevinding-rij.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Pure motor | `Snede2Paar` (a/b, bank_mutaties, bank_gelezen; label `module×niet-module` / `niet-module×niet-module`, `bank_bevestigd` = bank gelezen én k ≥ 2, `regel(aid)` = `SNEDE2 <admin> <A> + <B> \| <initialen> \| € <bedrag> \| <datum A>/<datum B> \| <label> \| bank k/2`) + `vind_snede2(documenten, *, clusters, bank) -> list[Snede2Paar]` (alleen te melden paren) + `snede2_uitkomst` (paren + teller bank_bevestigd + bank_gelezen). Uitgesloten: paren die snede 1 als cluster meldt (`DubbelCluster.paren`), beide van de module (`is_van_module`), > 3 dagen, ander bedrag, geen Entity. Crediteur geanonimiseerd via `lezen_cli._initialen`. | GEBOUWD + GETEST | `app/reconciliatie/rlz_dubbel.py` (sectie "snede 2") |
+| Bank leidend | Lees-only leest `PaymentTransactions` van de administratie: `$filter=BookDate ge <venster>`, bij 400 zonder filter (client-side gefilterd), bij 403/404/5xx → None = "bank niet gelezen" (paren gemeld mét markering, niets gefilterd). Dekking via `bankdekking.dekking_voor` met teken −1 voor inkoop (creditnota → +1). | GEBOUWD + GETEST | `rlz_dubbel.py::lees_payment_transactions` |
+| Alleen lees-only | `toets_met_client(..., snede2=False)` default; `toets_administratie`/`toets_alle` threaden `snede2`; `cli_blok` geeft `snede2=lees_only` — de DAGELIJKSE run leest GEEN PaymentTransactions en print/meldt niets van snede 2 (guard-test). Rapportveld `RlzDubbelRapport.snede2: Snede2Uitkomst \| None`. | GEBOUWD + GETEST | `rlz_dubbel.py::toets_met_client`, `cli_blok` |
+| Uitvoer | Per administratie ná de clusters: regel per paar, dan `SNEDE2 tellers <aid>: paren N, module×niet-module a, niet-module×niet-module b, bank-bevestigd c[ — BANK NIET GELEZEN …]`; onderaan `SNEDE2 totaal over M administratie(s): … [; bank niet gelezen bij k administratie(s)]. Alleen meetlat — de dagelijkse run meldt snede 2 niet (beslispunt Peter).` | GEBOUWD + GETEST | `rlz_dubbel.py::_lees_only_snede2`, `_snede2_totaal` |
+| CLI/allowlist | Geen nieuwe vlag: `reconciliatie-alles --alleen rlz_dubbel --lees-only [--administratie …]` staat al in `scripts/gcp/nameting.sh`. | ongewijzigd | — |
+| Tests | `tests/reconciliatie/test_rlz_dubbel_snede2.py` (nieuw, 22): ±3 d wel / 4 d niet, boekdatum vóór factuurdatum, cluster-uitsluiting, beide module, bank 2/2 niet gemeld + teller, 1/2 gemeld, teken, bank None, initialen, lezer (filter → 400-terugval → 403), dagelijkse run leest geen bank, CLI-uitvoer + totaal + `snede2=True/False`-guard. Bestaande `test_rlz_dubbel.py` (58) ongewijzigd groen. | 80 groen | — |
+
+**Meetrecept (blok 7, ná deploy):** `scripts/gcp/nameting.sh reconciliatie-alles --alleen rlz_dubbel --lees-only` (alle
+RLZ-administraties) en `… --administratie Vastgoedgroep` — tel `SNEDE2 totaal …`; per paar staan beide boekstuknummers,
+zodat Peter ze in RLZ kan naslaan. **Werkt in productie: nog niet gemeten.** Verwachting: bij Kempen Facilities (516
+bedrag+datum-paren in de herstelrun 08-09, meest bank-direct/echt) drukt de bankdekking het aantal fors; label
+`module×niet-module` is het Zenvoices-signaal waar het om gaat.
+
+**Beslispunten Peter**
+1. Wordt snede 2 (bank-tekort) een bevinding-rij `dubbel_in_rlz` in de dagelijkse run (dan leest die run ook
+   PaymentTransactions per administratie — extra RLZ-verkeer, en acceptaties per paar)? Nu bewust alleen meetlat.
+2. Venster ±3 dagen: BookDate van de factuur vs betaaldatum — een factuur die 14 dagen later wordt betaald telt niet als
+   bank-bevestigd (k = 0) en wordt dus gemeld. Groter venster voor de BANKDEKKING (bv. 30 d) terwijl het PAAR-venster
+   ±3 d blijft? Nu identiek (besluit 6 letterlijk).
+
+**Aangrenzende gaten**
+- Consistentie: snede 2 kent geen acceptaties (geen bevinding-rij) — een door Peter beoordeeld echt paar komt bij elke
+  meting terug totdat beslispunt 1 valt.
+- Lifecycle: `lees_payment_transactions` leest het 400-dagen-venster van de hele administratie per lees-only-run; bij
+  grote banken (Universal) is dat één extra gepagineerde reeks — acceptabel voor een meetlat, niet voor de nacht-run.
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 3: PANDENREGISTER-AFLEIDING HERBOUWD (12-09-2026; besluiten Peter 12-09; migratie 0137)
+
+**Aanleiding.** De nameting 11-09 (`verkenning/nameting-vgg-panden-11-09.txt`) gaf 214 pand-voorstellen voor een
+portefeuille van naar schatting < 80 panden: knip-restanten ("Oo sterdiepswal", "Az ielaan", "Heerl en"), vulwoorden als
+straat ("Aanbetaling Azielaan 334", "Overdracht Koraalerf 45"), herhaalde straatnamen ("Burgemeester Norbrui
+Burgemeester Norbruislaan 422"), 84 "dossier 2026-0050"-panden uit leveranciers-factuurnummers, 31-12-memorialen als
+aankoop mét aankoopdatum 31-12, en geen enkele verkoop (de zes open Ouwerkerk-ontvangsten leven op de bank, niet in een
+document). Blok 0 bewees de wortel van de knip (RLZ `\n` op 32 tekens, `app/rlz/tekst.py::ontknip`).
+
+**Pre-feature-check.** Run 1 D2 ("VASTGOEDGROEP NEDERLAND → ODOO — RUN 1: SCHOONLIJST + PANDENREGISTER-DATALAAG") =
+datalaag 0130 + eerste afleiding; RJ 220-besluit 10-09 avond (vier rollen, aanbetaling = vooruitbetaald op voorraad,
+vaste lasten = W&V); `PandenlijstBron`-seam is besluit Peter 12-09 punt 3 (Salesforce = lees-lijst, run 3+). Geen
+scherm-impact (CLI + rapport), UX-review n.v.t.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **Tekstbron = ontknipt** | `RlzBoeking.tekst` = spatie-gescheiden samenvoeging van `ontknip(Reference)`, `ontknip(Description)`, `ontknip(Header)` (`service.tekst_uit_rij`); een veld dat letterlijk in een ander veld zit (RLZ's op 20 tekens afgekapte Reference "Burgemeester Norbrui", "Bleijeheiderstraat 1") telt één keer; nergens meer `" ".join(x.split())` op RLZ-tekst. | GEBOUWD + GETEST | `backend/app/panden/service.py::tekst_uit_rij` |
+| **Adresherkenning** | Twee herkenners: (1) straat-suffixlijst (uitgebreid met huis/kruid/vecht/hoven/polder/beemd/gaard/…), `\s*` tussen straat en nummer ("Kouvenderstraat34b"); (2) ná een trigger (aanbetaling/overdracht/afrekening/vaste lasten/afspraak/betreft/":") een gecapitaliseerd woord + nummer ("Merwede 43", "Wadden 66", "Archipel 15-17"). Vulwoordenlijst uitgebreid (aanbetaling, extra, maandelijkse, 2/2, overdracht, terugbetaling, vaste lasten, vastelasten, verhuizing, betreft, volgens afspraak/afspraal, ons dossier, dubbel retour, verkoopsaldo, doorstorten saldo, commissie, hypotheekgelden, belasting, laatste, maand, t/m, maandnamen). Plaatsnaam-restant vóór de straat ("Verhuizing Rotterdam Tapuitstraat 52A") en postcode-restant ("HL Arnhem Papaverstraat 44") vallen weg via een deterministische `PLAATSNAMEN`-lijst (casus + grotere gemeenten; géén straatwoordenboek); een plaats is nooit een straat ("Cafe … Amsterdam 7R-…"), een 0-nummer nooit een huisnummer. Herhaalde straatnaam gevouwen (`_vouw_herhaling`). Plaats ná het nummer: bij komma/"te"/postcode tot het eerste vulwoord ("Dordrecht Rente" → Dordrecht), anders alleen een bekende plaats; ", te Kerkrade" en "de Meern" herkend. Meerduidig (twee adressen) = nooit invullen. | GEBOUWD + GETEST (212 parametrische tests op de letterlijke omschrijvingen in RLZ-vorm mét `\n`) | `backend/app/panden/afleiding.py`; `tests/panden/test_afleiding.py` |
+| **Dossiernummers** | ALLEEN het notarisformaat `JJJJ.NNNNNN.NN` is een sleutel (`Classificatie.dossiers`). Afgekapt ("2025.079", "2026.0", "2025.079507", "2026.079949.0") = `dossiers_onvolledig`: telt als tweede signaal voor de zekerheid, nooit als sleutel; haakt alleen aan bij een bekend pand als het ≥ 10 tekens is én precies één bekend dossier ermee begint. Expliciet "dossier(nummer): <nummer>" in een ander formaat = `dossiers_overig` (informatie, nooit een pand — "Dossiernummer: 118261" → geen pand). Leveranciers-factuurnummers (`JJJJ-NNNN`, `F2026-0083`, `2026-00084`, `2025-02494`, `2026-021018`) nooit, ook niet achter het woord "dossier". Een dossier-pand zonder adres ontstaat alleen bij een volledig notarisdossier mét het woord "dossier" in de tekst; anders zichtbaar in `rapport.dossier_zonder_pand`. | GEBOUWD + GETEST | `afleiding.dossiers_uit_tekst`; `service.bouw_voorstellen` |
+| **Soorten (RJ 220) + migratie 0137** | `PandBoekingSoort` + CHECK `ck_pand_boeking_soort`: `aankoop, verkoop, kosten, overhead, aanbetaling, vaste_lasten, balans`. Stub 0137 van de coördinator ongewijzigd overgenomen (schema-only; downgrade verwijdert alleen de nieuwe waarden in de test-DB); model-CHECK gelijkgetrokken, metadata-guard groen. | GEBOUWD; `make migrate` dev + `dump_schema.sh` = coördinator | `backend/migrations/versions/0137_pand_boeking_soorten_rj220.py`; `app/panden/models.py` |
+| **Classificatie-regels** | Volgorde: (1) collectie onbekend → geen signaal; (2) geen adres én geen (on)volledig dossier → geen signaal (ook notaris zonder adres, kale factuurnummers, "Maandelijkse aanbetaling: maand mei 2026"); (3) 31-12-memoriaal (RLZ-06) mét adres → `balans` midden (zonder adres laag) — NOOIT aankoop; (4) "aanbetaling" (alle varianten, alle collecties) → `aanbetaling`; (5) "vaste lasten"/"vastelasten" → `vaste_lasten`; (6) verkoop-woorden (verkoopsaldo, belasting verkoop, hypotheekgeld(en), doorstorten saldo, "verkoop"/"verkocht") → `verkoop` ("Belasting verkoop Verschoorstraat 70-2" RLZ-28 = verkoop midden); (7) SalesInvoices: "rente"/"huur" → `kosten` (opbrengst per pand, geen verkoop), notaris → verkoop hoog, adres → midden, dossier → laag; (8) bank-directe boeking (Receipts, PaymentTransactions, ManualJournals buiten RLZ-06) van/aan notaris of met overdracht/afrekening: TEKEN beslist — positief = `verkoop`, negatief = `aankoop`; anders adres → `kosten`; (9) memoriaal RLZ-06 mét adres → `aankoop` (hoog mét notaris-PDF of dossier(-signaal), midden anders, laag alleen dossier) — de zeven "Overdracht …"-memorialen uit de nameting zijn notaris-afrekeningen bij AANKOOP (zie contract-afwijking 1); (10) PurchaseInvoices → `kosten` (hoog mét dossier/notaris). Zekerheid generiek: hoog = adres + tweede signaal (notaris/dossier/bijlage/plaats), midden = alleen adres, laag = alleen dossier. | GEBOUWD + GETEST | `afleiding.classificeer`, `classificeer_bankmutatie`, `is_bank_direct`, `is_jaareinde` |
+| **Bankmutaties als feit (seam)** | `service.lees_bankmutaties` leest `PaymentTransactions` (Name = tegenpartij, ontknipte Reference = tekst, Amount mét teken, BookDate) → `RlzBoeking(collectie="PaymentTransactions")`; weigerende route = OVERGESLAGEN, afleiding op documenten loopt door; `--zonder-bankmutaties` zet 'm uit. Een bankregel telt alleen mee als GEEN geclassificeerd document hetzelfde \|bedrag\| binnen ±3 dagen draagt (`bankmutaties_document_aanwezig`): de bankregel vult een tekstloze RLZ-09-huls aan, verdubbelt nooit een bank-geïmporteerd document. Receipts wordt óók gelezen (optioneel, ontdubbeld op id tegen de andere collecties). De zes open Ouwerkerk-ontvangsten (Hogevecht 123, Van de Spiegelstraat 42, Apollolaan 644, Duifhuis 11, Sportlaan 180, Knopkruid 45) = `verkoop` hoog (notaris + adres + dossier) via `classificeer_bankmutatie`. | GEBOUWD + GETEST | `service.lees_bankmutaties`, `_naar_bankmutatie`, `bouw_voorstellen`; `tests/panden/test_afleiding.py::TestBankmutatie`, `test_service.py::TestRun2` |
+| **Clustering + pandenlijst-seam** | `app/panden/pandenlijst.py`: Protocol `PandenlijstBron.panden() -> list[PandenlijstPand(straat, huisnummer, toevoeging, postcode, plaats, salesforce_id)]`, eerste implementatie `CsvPandenlijst(pad)` (UTF-8(-sig), `;` of `,`, kolomaliassen adres\|straat, huisnummer, toevoeging, postcode, plaats, salesforce_id; onleesbare rijen zichtbaar in `overgeslagen`; ontbrekende verplichte kolommen = `PandenlijstFout`). Drempel (één plek, `straat_gelijk`): huisnummer exact + toevoeging verenigbaar ("70-02" = "70-2", "34b" = "34B", óf één leeg) + genormaliseerde straat `SequenceMatcher.ratio() ≥ 0,85` óf prefix/suffix ≥ 6 tekens. Zonder lijst: union-find-clusters → één pand-voorstel per cluster, representant = meest voorkomende variant (tie: langste genormaliseerde naam, minste woorden), varianten in `PandVoorstel.varianten` + reden ("… · varianten: Chevremontstraat, C hevremontstraat, …"). Mét lijst (`--pandenlijst <csv>`): cluster → precies één lijst-pand (plaats als tie-break, dan exacte toevoeging, dan hoogste score); code = lijst-code (`sf-<salesforce_id>` of adres-code), `salesforce_id` in rapport/JSON; twee even goede kandidaten = MEERDUIDIG → niet gebonden, regel "MEERDUIDIG (lijst) …" in het rapport. | GEBOUWD + GETEST (31 tests) | `backend/app/panden/pandenlijst.py`; `tests/panden/test_pandenlijst.py` |
+| **Upsert stabiel over runs** | `schrijf_voorstellen` zoekt een bestaand pand op de voorstel-code óf op een variant-code van hetzelfde cluster (`PandVoorstel.variant_codes`) — als een latere run een andere representant kiest wint de bestaande rij (geen tweede pand); audit `pand_voorstel_aangemaakt` draagt `varianten`. Mens wint ongewijzigd. | GEBOUWD + GETEST | `service._zoek_pand`; `test_service.py::test_variant_code_vindt_bestaand_pand_terug` |
+| **Datums** | Aankoopdatum = vroegste échte `aankoop` (nooit balans, nooit aanbetaling); verkoopdatum = laatste `verkoop`. | GEBOUWD + GETEST | `service._voeg_koppeling_toe` |
+| **Contract B → E** | `pand_per_document(administratie_id, *, boekingen=None, pandenlijst_bron=None) -> dict[uuid.UUID, PandToewijzing(pand_code, adres, soort, zekerheid, herkomst)]`: DB-rijen mét herkomst `mens` of `bevestigd_op` → "mens" (altijd leidend), overige DB-rijen → "voorstel", aangevuld met `bouw_voorstellen(boekingen)` → "afgeleid" voor documenten zonder DB-rij; vervallen panden alleen via mens-rijen. Sleutel = RLZ-document-id, óók PaymentTransaction-id's. | GEBOUWD + GETEST | `service.pand_per_document`; `test_service.py::TestRun2::test_pand_per_document` |
+| **Rapport + CLI** | Nieuwe tellers (clusters_met_varianten, lijst_gebonden/-meerduidig, bankmutaties gelezen/gebruikt/document_aanwezig, dossier_zonder_pand, soorten) in md + JSON; tabelkolommen Varianten en Lijst; blok "Dossier zonder pand". CLI `pandenregister-afleiden --administratie … [--pandenlijst <csv>] [--zonder-bankmutaties] [--schrijf] [--json-uit] [--max-bijlage-checks]`; onleesbare lijst = exit 2 mét reden. Al in de nameting-allowlist (`--schrijf` geweigerd). | GEBOUWD + GETEST | `app/panden/cli_cmd.py`; `service.als_markdown` |
+
+**Meetrecept (blok 7, ná deploy van deze commit op de job-image):**
+`scripts/gcp/nameting.sh pandenregister-afleiden --administratie Vastgoedgroep` (dry-run, lees-only; optioneel
+`--json-uit` niet in de nameting — lees de md). Meetlat (verwachting, komt letterlijk in het blok-7-rapport):
+- "Panden (voorstel): N" met **N < 80** (was 214); "clusters met varianten" > 0 (Chevremontstraat, Bleijeheiderstraat,
+  Goeverneurlaan, Kleiweg, …);
+- **geen** rij die met "dossier " begint behalve volledige notarisdossiers mét dossier-woord (geen "dossier 2026-0050",
+  geen "dossier 118261", geen "dossier 2025.079507"); tellers `dossier_zonder_pand` > 0 (de afgekapte);
+- **geen enkele aankoopdatum 2025-12-31**; soorten-regel toont `balans` > 0, `aanbetaling` > 0, `vaste_lasten` > 0;
+- verkopen gevonden voor ten minste **Heidebeemd 3** (als een notaris-ontvangst in RLZ staat — anders beslispunt 2),
+  **Verschoorstraat 70-2** (verkoop midden) en de **zes Ouwerkerk-ontvangsten** (verkoop hoog, collectie
+  PaymentTransactions; "Bankmutaties: 1002 gelezen, k gebruikt, m overgeslagen");
+- geen "Oo sterdiepswal"/"Az ielaan"/"Heerl en"/"Bru"/"Kerkra de"/"Utrec" in de Pand-/Plaats-kolom.
+Herhaal zonder `--zonder-bankmutaties` en mét als controle op de bank-bijdrage. Mét een CSV van Salesforce (zodra Peter
+'m heeft): `--pandenlijst <csv>` → "Pandenlijst: P panden, G gebonden, M meerduidig".
+
+**Werkt in productie: nog niet gemeten — meetrecept hierboven; nameting = blok 7 (volgende beurt coördinator).**
+
+**Beslispunten Peter**
+1. Memoriaal RLZ-06 met "overdracht" + adres = AANKOOP (afwijking van eis 4, zie `contract_afwijkingen_B.md`): de zeven
+   "Overdracht …"-memorialen uit de nameting volgen op aanbetalingen en dragen de notaris-PDF — dat is de afrekening bij
+   aankoop. Akkoord, of moet het teken van `BaseInvoiceAmount` op memorialen ook beslissen?
+2. Heidebeemd 3 Weert: de afleiding vindt de verkoop zodra er een positieve notaris-bankregel/-ontvangst met het adres
+   is; staat die niet in RLZ (alleen de −20.000 aanbetaling), dan blijft het pand zonder verkoop — dan is het een
+   RLZ-opruimpunt, geen afleidingsfout.
+3. Suffix-match ("Kleiweg" ⊂ "Overschiese Kleiweg") toegevoegd aan de contract-drempel (prefix); nodig voor de casus uit
+   eis 2 — akkoord op deze verruiming?
+4. Toevoeging leeg vs gevuld telt als hetzelfde pand ("Goeverneurlaan 310" = "Goevernourlaan 310D"); bij een
+   appartementencomplex met meerdere units (Verschoorstraat 70-2 vs 70) kan dat te grof zijn — Salesforce-lijst lost dit
+   op (toevoeging exact in de lijst).
+5. `PLAATSNAMEN`-lijst is een deterministische guard; een nieuwe plaats buiten de lijst wordt gewoon niet als plaats
+   herkend (adres blijft goed, plaats leeg) — uitbreiden per nameting of via de pandenlijst (plaats-kolom)?
+6. Bankmutaties standaard AAN in de afleiding (PaymentTransaction-id's als `pand_boeking.rlz_document_id`): E krijgt zo
+   óók bankregels in `pand_per_document`. Alternatief: alleen open (`OpenAmount ≠ 0`) regels — nu bewust álle, met de
+   ±3-dagen-dekkingsregel als ontdubbeling.
+
+**Aangrenzende gaten**
+- Lifecycle: `pand_boeking`-rijen van een eerdere run met soort `aankoop` op een 31-12-memoriaal worden bij herdraai
+  bijgewerkt naar `balans` (audit oud→nieuw) — alleen als herkomst `voorstel`; mens-rijen blijven. Productie heeft nog
+  geen rijen (alleen dry-runs) → geen backfill nodig.
+- Consistentie: `bank_mutatie` in de module kent het pand niet; koppeling bank ↔ pand loopt nu uitsluitend via de
+  afleiding (PaymentTransaction-id). Een `pand_id` op `bank_mutatie` is run 3-werk als de Toewijzing-tab dat vraagt.
+- UX: rapport is CLI/md; het toewijs-scherm (mockup `pandenregister-cowork.html`, tab Toewijzing) toont later
+  `varianten`, `lijst_gebonden`, `salesforce_id` en `dossiers_onvolledig` — DTO-velden liggen klaar in `als_dict`.
+- Compliance: geen persoonsgegevens nieuw opgeslagen; `entity_naam` van bankregels (tegenpartij) komt in `reden`
+  niet terecht, wél in het JSON-rapport (`entity`) — zelfde als run 1 voor documenten.
+
+## RJ-220-ROLLEN OP ODOO COMPANY 6 — VIER REKENINGEN + OVERHEAD IN DE KOPPELING-RIJ (run 2 VGG blok 4, 12-09-2026; migratie 0138)
+
+**Aanleiding:** besluit Peter 12-09 (contract run 2 §2): RJ 220 aangescherpt naar VIER rollen per administratie — voorraad panden,
+vooruitbetaald op voorraad (alle aanbetalingen aan verkopers; bij levering in de kostprijs van het pand), opbrengst verkoop panden,
+kostprijs verkochte panden — plus het ene analytic account "Overhead" (plan Project). Rekeningnummers NOOIT hardgecodeerd: alles
+via `platform.odoo_koppeling` (0138). Herziet odoo-verkenning §11.6 (drie rekeningen → vier).
+
+**Pre-feature-check:** (1) "VASTGOEDGROEP NEDERLAND → ODOO — RUN 1" (addendum 10-09 avond: boekmodel RJ 220, nummers run 2);
+(2) "ODOO-ADAPTER BLOK E"/"ODOO-AFRONDINGSRUN 04-09": `mapping.bepaal_grootboek_voorstel` (zelfde_code/code_verlengd) en
+`maak_odoo_projecten_aan` (lookup-vóór-create + post-write-verificatie) zijn de hergebruikte patronen; (3) `credentials.koppeling_voor`
+blijft de enige poort van de dagelijkse adapter — een migratiedoel-rij op een RLZ-administratie is daar bewust GEWEIGERD.
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Datamodel 0138 | `platform.odoo_koppeling` + `rekening_voorraad_panden_id`, `rekening_vooruitbetaald_voorraad_id`, `rekening_opbrengst_panden_id`, `rekening_kostprijs_panden_id`, `analytic_overhead_id` (int NULL) + `migratie_doel` bool NOT NULL default false; model `OdooKoppeling` + `OdooVerbinding` additief; NULL = rol niet vastgesteld → replay meldt "niet vertaalbaar". | GEBOUWD + GETEST (metadata-guard groen) | `migrations/versions/0138_…`, `app/odoo/models.py`, `app/odoo/credentials.py` |
+| Migratiedoel-rij geweigerd voor de adapter | `koppeling_voor()` weigert een rij met backend 'rlz' zonder `alleen_lezen` — óók bij `migratie_doel=True` (test: `GeenOdooKoppeling "draait niet op Odoo"`); `rj220.rollen_voor` leest de rij direct; alleen `app/migratie/odoo_doel.py::doelkoppeling_voor` (agent D) mag 'm gebruiken. | GEBOUWD + GETEST | `app/odoo/credentials.py`, `tests/odoo/test_rj220.py::TestKoppelingRij` |
+| Voorstel-motor (lees-only) | `stel_rollen_voor(client, company_id)`: leest `account.account` via `company_ids in [cid]` (Odoo 19: m2m, geen `company_id`), per rol (a) precies één bestaande rekening mét de voorkeursnaam én het juiste type = hergebruik, (b) anders eerste VRIJE code uit een vaste kandidatenreeks in de NL-template (bezet = overgeslagen mét melding), (c) alles bezet/meerdere naamtreffers = lege code + "kies handmatig". Bestaande rekeningen in de buurt (Stock 1/2, Prepaid expenses, Deposit, Turnover NL trade goods 1, Cost price NL 1) worden als OPTIE gemeld mét "gedeeld over N companies", nooit gekozen (Engelse templatenaam, gedeeld → hernoemen raakt tien companies). | GEBOUWD + GETEST + LIVE GELEZEN (12-09, 356 rekeningen, 0 writes) | `app/odoo/rj220.py::bepaal_rolvoorstellen` |
+| **Live voorstel company 6 (12-09)** | voorraad_panden **325000** "Voorraad panden" (asset_current) · vooruitbetaald_voorraad **326000** "Vooruitbetaald op voorraad panden" (asset_current; BW 2:369 sub d: vooruitbetalingen op voorraden = voorraden, dus 3xxxxx en níet 12xxxx/13xxxx — 13xxxx is in deze template de schuldenreeks) · opbrengst_panden **803100** "Opbrengst verkoop panden" (income; 80x100 = Turnover NL n, 800100/801100/802100 bezet) · kostprijs_panden **701300** "Kostprijs verkochte panden" (expense_direct_cost; 700100/700500/700900 bezet, 701200 = IC 3). Alle vier vrij; geen bestaande naamtreffers; analytic "Overhead" bestaat nog niet (plan 1 heeft 105 Intern, 106 Buitendienst). | GEMETEN (dev, read-only client) — ter akkoord Peter | `scratchpad/rapport_C.md` §3 → deze rij |
+| Aanmaken (`--maak-aan`) | `maak_rollen_aan`: kill-switch `settings.migratie_odoo_writes_ingeschakeld` (default UIT) vóór de eerste call; harde company-pin (client.company_id == argument == koppeling-rij) + read-only-client geweigerd; lookup-vóór-create op code binnen de company (herdraai idempotent); `account.account.create {code, name, account_type, reconcile False, company_ids [[6,0,[cid]]]}` + post-write read toetst code/type/company; analytic "Overhead" lookup-vóór-create in plan Project (gearchiveerd-alleen = fout, nooit een tweede); koppeling-rij bijwerken; audit `odoo_rj220_rollen_vastgesteld` oud→nieuw (tabel `odoo_koppeling`, record = administratie, codes + hergebruikt, nooit de key). Odoo-writes vóór de DB-transactie: mislukt = hooguit lege rekeningen, zichtbaar in de fout, nooit unlink. **In run 2 NIET uitgevoerd tegen company 6.** | GEBOUWD + GETEST (fake client) — write wacht op akkoord Peter | `app/odoo/rj220.py::maak_rollen_aan` |
+| Grootboekvertaling C → E | `vertaal_grootboek(rlz_ledgers, odoo_accounts) -> list[GrootboekVertaling]`: zelfde_code (groen) → code_verlengd → **rgs** (oranje: genormaliseerde naam gelijk ÉN zelfde klasse = leidend cijfer, precies één kandidaat, alleen mét beide codes) → None. **Type-compatibiliteitspoort (bevinding live proef 12-09):** `code_verlengd` maakte van RLZ 1300 "Debiteuren" → 130000 "Creditors" (NL-template: 110000 Debtors, 130000 Creditors — de stelsels lopen niet parallel) → deterministische tabel RLZ-klasse ↔ toegestane Odoo `account_type`s + kaartregel (naam met "debiteur" alleen op asset_receivable, "crediteur" alleen op liability_payable, en een Odoo-kaartrekening alleen voor een RLZ-rekening die zich zo noemt); onverenigbaar = None. Zonder `account_type` in de Odoo-rij valt de poort weg (E levert search_read-dicts mét `account_type`). Ongemapt = E's tabel "ongemapte rekeningen", geen gok. | GEBOUWD + GETEST | `app/odoo/rj220.py::vertaal_grootboek`, `TYPES_PER_RLZ_KLASSE` |
+| Btw VGG | Niet btw-plichtig → GEEN btw-mapping in dit blok; élke Odoo-regel `tax_ids = [[6,0,[]]]` (bewezen §1.6/§4/§11.3). Bewijs "nul btw-regels in de RLZ-historie" = teller in E's replay-rapport (`TaxAmount`/`TotalTaxAmount ≠ 0`, `TaxRate` op regels — moet 0 zijn). | BESLOTEN (contract §Interfaces) — teller bij E | `app/migratie/rapport.py` (E) |
+| CLI `vgg-rekeningen` | `--administratie <uuid\|naam> [--company-id N] [--maak-aan] [--json-uit]`; default lees-only tabel + huidige koppeling-rij-waarden; client store-first uit de koppeling-rij (read-only tenzij `--maak-aan`), zonder rij alleen in dev via `lees_dev_env()` + `--company-id`; `--maak-aan` weigert zonder rij, zonder migratiedoel of bij kill-switch UIT. Registratie additief in `app/cli.py`; `nameting.sh` allowlist + hard weigerblok `--maak-aan`. | GEBOUWD + GETEST | `app/odoo/cli_rj220.py`, `scripts/gcp/nameting.sh` |
+
+**Meetrecept:** (1) `pytest tests/odoo/test_rj220.py` → 31 groen; (2) productie lees-only ná deploy: `scripts/gcp/nameting.sh
+vgg-rekeningen --administratie "Vastgoedgroep Nederland" --company-id 6` → dezelfde vier regels als de live rij hierboven zolang
+niemand in Odoo iets aanmaakt (vergt D's koppeling-rij buiten dev); (3) ná `--maak-aan` (pas ná akkoord): `rollen_voor` compleet,
+audit-rij `odoo_rj220_rollen_vastgesteld`, en in Odoo vier rekeningen mét `company_ids = [6]` + analytic "Overhead" in plan 1.
+
+**Werkt in productie:** nog niet gemeten — meetrecept (2) hierboven; de dev-lezing van 12-09 is de voormeting.
+
+**Beslispunten Peter:**
+1. **Nummers per rol** akkoord? 325000 / 326000 / 803100 / 701300 (allemaal vrij, NL-templatereeks). Alternatieven: bestaande
+   320000 "Stock 1" hernoemen (gedeeld over tien companies → NIET geadviseerd), 120500 "Prepaid expenses" voor de aanbetalingen
+   (asset_current, maar boekhoudkundig hoort de vooruitbetaling op voorraden onder de voorraden — niet geadviseerd).
+2. **Aanmaken via CLI (`--maak-aan`, kill-switch aan, audit, post-write) of door Peter in de Odoo-UI** (§11.6 adviseerde UI: nummer
+   staat dan direct in het schema van de accountant). Advies nu: CLI — zelfde uitkomst, mét audit, idempotent, en de koppeling-rij
+   wordt in dezelfde run gevuld (UI-route = nummers daarna handmatig in de rij zetten via D's `odoo-koppeling-migratiedoel`).
+3. Analytic "Overhead" als één vast account in plan Project op company 6 — akkoord? (odoo-verkenning §11.6 zei "overhead géén
+   analytic"; contract run 2 §Datamodel vraagt `analytic_overhead_id` — dit blok volgt het contract; E gebruikt 'm alleen voor
+   overhead-boekingen zonder pand.)
+4. Vooruitbetaald op voorraad: één rekening voor álle aanbetalingsvormen ("aanbetaling volgens afspraak", "extra", "maandelijkse",
+   "2/2") — akkoord, of per pand een aparte sub-rekening (advies: één rekening + analytic pand).
+5. Grootboekmapping VGG: de code_verlengd-regel is voor het NL-template onbetrouwbaar op balanskaarten (1300 → 130000); accepteren
+   dat E's dry-run een substantiële tabel "ongemapte rekeningen" toont die Peter/kantoor handmatig invult (mens wint), of een
+   VGG-specifieke handmapping als CSV-seam bouwen (run 3)?
+
+**Aangrenzende gaten:** lifecycle — `maak_rollen_aan` maakt aan maar er is bewust geen "verwijder/hernoem"-pad (nooit unlink; hernoemen =
+Odoo-UI, koppeling-rij ongewijzigd); consistentie — de rollen staan per administratie, een tweede vastgoed-administratie op dezelfde
+company zou dezelfde rekeningen moeten hergebruiken (naamtreffer-regel vangt dat); UX — geen scherm (CLI + koppeling-rij), een
+Beheerder-blok "RJ-220-rollen" op Instellingen › Administraties › ‹VGG› › Odoo is een run-3-kandidaat (registry-entry verplicht);
+compliance — audit oud→nieuw op de rij, geen key in audit/log, writes achter kill-switch + company-pin + productie-alleen-via-job.
+
+## ODOO-SCHRIJFPAD STAP-0 OP COMPANY 6 + HARDE COMPANY-PIN (run 2 VGG blok 5, 12-09-2026; besluit Peter 12-09 punt 1 canoniek; geen migratie door D — kolom `migratie_doel` = 0138 van blok 4)
+
+**Besluit Peter 12-09 punt 1 (canoniek):** GEEN Odoo-testdatabase; de migratie gaat direct naar de live database company 6 (leeg).
+Voorwaarden: (a) eerst een volledige dry-run zonder Odoo-writes mét reconciliatierapport (blok 6); (b) alles landt als CONCEPT,
+saldibalans-toets op de concepten, posten = run 3; fout = annuleren (`button_cancel`)/tegenboeken, NOOIT `unlink`; (c) HARDE
+COMPANY-PIN: de migratiecode weigert élke call waarvan company_id ≠ de company uit de koppeling-rij (VGG = 6), bovenop de bestaande
+company-poort in `app/odoo/client.py`; (d) bank in twee fasen: afschriftregels aanleveren los van afletteren, afletteren pas ná groen
+op fase 1. Dit blok bouwt de schrijfprimitieven, de pin en de kill-switch; de echte bewijscyclus draait de coördinator ná deploy.
+
+**Pre-feature-check:** ODOO-ADAPTER (inkoop.py: `_move_vals`, `_verifieer_company`, `_annuleer_concept` — patronen hergebruikt, geen
+halve motor gekopieerd), "VASTGOEDGROEP NEDERLAND → ODOO — RUN 1" (§11.4-bewijscyclus op een TESTdatabase = VERVALLEN door dit besluit;
+§11.5 (7) "reconcile-route pas ná bewijs, geen `app/odoo/bank.py` ervoor" = gehonoreerd: de route-registry legt de route vast, er is
+geen bankmotor gebouwd), kernprincipes 3 (nooit verwijderen extern), 4 (niets stil), 5 (idempotentie eigen verantwoordelijkheid),
+7(6) (geen stille no-op: kill-switch UIT = zichtbare weigering).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Kill-switch | `settings.migratie_odoo_writes_ingeschakeld: bool = False`; élke primitief weigert VÓÓR de eerste call (`MigratieWritesUit`); AAN alleen per job-run via env `MIGRATIE_ODOO_WRITES_INGESCHAKELD=true`; nooit deploy.yml/.env; dagelijkse adapter onaangeraakt. Guard: `test_vaste_testconfig` (code-default in de suite) + `TestKillSwitch` | GEBOUWD + GETEST | `app/config.py`, `app/migratie/odoo_schrijf.py` |
+| Company-pin 1(c) | `CompanyGepindeClient(OdooClient)`: inspecterende poort vóór élke call (vals / vals_list[*] / ORM-commando's / domain-triples incl. `x.company_id` / `context.allowed_company_ids`), `CompanyPinGeschonden` zonder HTTP-call; post-write terug-lezen van `company_id` ná create op move / statement line / account / analytic account, mismatch = directe `button_cancel` op de (achterliggende) move + exception; read-only weigert óók `remove_move_reconcile`. Vier contract-guards + geneste varianten getest (requests = 0) | GEBOUWD + GETEST | `app/migratie/odoo_doel.py`, `tests/migratie/test_odoo_doel.py` |
+| Doelkoppeling | `doelkoppeling_voor` eist `odoo_koppeling.migratie_doel=true` (0138) + niet-alleen-lezen, werkt bij backend 'rlz'; `koppeling_voor()` blijft die rij weigeren (getest); `doelclient_voor` = gepinde client, API-key uitsluitend uit de store (geen dev-env-terugval); bankdagboek in `probe_rapport["migratie:journal_bank_id"]` | GEBOUWD + GETEST | `app/migratie/odoo_doel.py` |
+| Primitieven D → E | `maak_concept_move` (zoek-vóór-create `ref ilike 'mig:<anker>'`, company = pin, `state=='draft'` terug-gelezen, anders cancel + `ConceptNietDraft`), `maak_statement_line` (`unique_import_id` = `ref` = anker, `move_id`/`is_reconciled` terug), `reconcile` (route-registry i → ii → iii, eerste werkende = `ReconcileUitkomst.route` + audit), `annuleer_concept` (`button_cancel`, gepost = `NietEenConcept`, state 'cancel' terug), `koppel_los` (`remove_move_reconcile`); `AnkerMeerduidig` bij >1 treffer; audit per call `boekhouding/odoo_migratie` (`DbAudit`/`GeheugenAudit`), nooit de key | GEBOUWD + GETEST (fake client, 'unlink' nergens in de calls) | `app/migratie/odoo_schrijf.py`, `tests/migratie/test_odoo_schrijf.py` |
+| CLI `odoo-koppeling-migratiedoel` | `--administratie <VGG> --bron-administratie <Universal Steigerbouw> --company 6 [--dry-run (default) \| --schrijf] [--bijwerken]`: kopieert URL + versleutelde key (unwrap → wrap), leest dagboeken/plan lees-only (sale/purchase/bank precies één, general op code MEM/MISC bij meerdere, plan "Project" ×1 — nooit hardgecodeerd, meerduidig = rood = niets opgeslagen), weigert backend 'odoo' en bestaande koppeling zonder `--bijwerken`, audit `odoo_koppeling_migratiedoel_aangemaakt` zonder key | GEBOUWD + GETEST (fake envelope, DB) | `app/migratie/cli_odoo.py::maak_migratiedoel` |
+| CLI `vgg-odoo-stap0` | `--administratie <VGG> [--dry-run (default) \| --schrijf] [--stap 1-6] [--max-per-type 3]`: leest E's `replay.dry_run` lazy (afwezig = zichtbaar "E nog niet klaar", exit 2), selecteert de eerste N vertaalbare documenten van juli 2025 per type + bankregels van de eerste bankdag, stap 1–3 concepten, 4 alleen ná groen 1–3, 5 één echt paar (route vastleggen), 6 terugweg; rapport per stap "werkt op company 6: ja/nee/niet uitgevoerd" (md op stdout); `--schrijf` zonder kill-switch = zichtbaar terug naar dry-run | GEBOUWD + GETEST (fake replay + fake client, cyclus 1–6 groen) | `app/migratie/cli_odoo.py::voer_stap0_uit` |
+| nameting.sh | beide commando's HARD geweigerd vóór de allowlist-check: "FOUT: <cmd> is een schrijvend commando — expliciete opdracht Peter via gcloud run jobs execute, niet via nameting.sh" (exit 2, geen gcloud-call); getest door het script echt te draaien | GEBOUWD + GETEST | `scripts/gcp/nameting.sh`, `TestCliRegistratie` |
+| Bewijscyclus op echte data | zeven stappen + meetpunten in odoo-verkenning §12-concept (`verkenning_D.md`); kolom uitkomst leeg | VOORBEREID — uitvoering ná deploy door de coördinator | `verkenning/odoo-verkenning.md` §12 (coördinator neemt op) |
+
+**Meetrecept (ná deploy van deze commit; job-image = service-image toetsen):**
+1. `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --wait --args="^|^-m|app.cli|odoo-koppeling-migratiedoel|--administratie|Vastgoedgroep Nederland|--bron-administratie|Universal Steigerbouw|--company|6"` → dry-run-rapport: dagboeken F 48 / LF 49 / MEM 50 / BNK1 53 / plan 1 groen; daarna zelfde commando mét `|--schrijf` → "GESCHREVEN — probe groen"; `GET /instellingen/administraties/<VGG>` toont géén Odoo-backend-wissel (backend blijft rlz).
+2. `… --args="^|^-m|app.cli|vgg-odoo-stap0|--administratie|Vastgoedgroep Nederland"` (dry-run) → "ZOU aanmaken" per document, 0 Odoo-writes (audit `odoo_migratie_*` = 0 rijen).
+3. `gcloud run jobs execute rlz-reconciliatie --region europe-west4 --wait --update-env-vars MIGRATIE_ODOO_WRITES_INGESCHAKELD=true --args="^|^-m|app.cli|vgg-odoo-stap0|--administratie|Vastgoedgroep Nederland|--schrijf"` → tabel stap 1–6 "werkt op company 6: ja/nee"; daarna de env-var weer verwijderen (`--remove-env-vars MIGRATIE_ODOO_WRITES_INGESCHAKELD`) en toetsen dat een herhaling zonder env "kill-switch staat UIT" meldt.
+4. Nameting lees-only: `scripts/gcp/nameting.sh vgg-odoo-stap0 …` → exit 2 "schrijvend commando"; Odoo: `search_count account.move` company 6 = concepten − 1 cancel, `account.bank.statement.line` = regels eerste bankdag; `audit_event` `tabel='odoo_migratie'` = aantal calls, nergens een key-fragment.
+
+**Werkt in productie: nog niet gemeten — meetrecept hierboven; de uitkomst per stap komt in odoo-verkenning §12 (kolom "uitkomst").**
+
+**Beslispunten Peter:**
+1. Reconcile tegen een CONCEPT-factuur zal Odoo vermoedelijk weigeren (posted vereist) — accepteren we in de cyclus "route ii bestaat, factuur eerst posten = run 3" als groen voor stap 5, of posten we in de cyclus één factuur (dan is dat de eerste post op company 6)?
+2. Partners: `res.partner.create` voor notarissen/verkopers vóór de concepten (aparte primitief + zoek-vóór-create op KvK/naam) of concepten zonder `partner_id`? (E rapporteert nu "bestaat (id)"/"nieuw".)
+3. Kolom `journal_bank_id` op `odoo_koppeling` (nu in `probe_rapport`) — meenemen in een latere migratie van blok 4/C?
+4. Kill-switch-env op de job: per run via `--update-env-vars` (advies; nooit blijvend) — akkoord?
+
+**Aangrenzende gaten (lifecycle/consistentie/UX/compliance):**
+- Lifecycle: een concept dat ná de cyclus blijft staan is zichtbaar in Odoo maar niet in de module (geen `odoo_document_koppeling`-rij: de migratie-anker-mapping leeft alleen in `ref` + audit) — run 3 moet een mapping-tabel of hergebruik van `OdooDocumentKoppeling` kiezen.
+- Consistentie: `EXTRA_SCHRIJFMETHODEN` in odoo_doel vult `client.SCHRIJFMETHODEN` aan; als de adapter later zelf `remove_move_reconcile` gaat gebruiken hoort 'm in `app/odoo/client.py` (één bron).
+- UX: geen scherm; alles CLI + audit. Instellingen › Administraties › VGG toont de migratiedoel-koppeling niet (DTO kent `migratie_doel` niet) — kleine UI-chip "migratiedoel Odoo company 6" is wenselijk zodat een Beheerder ziet dat er een tweede boekhouding aan hangt.
+- Compliance: alle writes append-only geauditeerd, key nooit in audit/rapport (getest); de bewijscyclus schrijft échte klantdata (juli 2025) als concept naar Odoo — verwerkersovereenkomst Odoo Online geldt al voor Universal, VGG hoort in dezelfde lijst (AVG-register controleren).
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 6: REPLAY-MOTOR DRY-RUN `vgg-replay` (12-09-2026; besluit Peter 12-09 punt 1a; geen migratie, geen writes)
+
+**Aanleiding.** Besluit Peter 12-09: geen Odoo-testdatabase, migratie direct naar company 6 — mits (a) eerst een VOLLEDIGE
+dry-run zonder Odoo-writes mét reconciliatierapport. Blok 6 is die dry-run: élk geboekt RLZ-document en élke bankregel
+van VGG wordt naar de Odoo-move-vorm vertaald (contract D → E `MoveVoorstel`), de saldibalans RLZ (JournalEntryLines)
+wordt naast de berekende Odoo-saldibalans gelegd, en pas bij GROEN (alle verschillen 0,00, niets niet-vertaalbaar, geen
+leesfout) mag run 3 (`--schrijf-concept`) bestaan. Niets schrijft: geen RLZ, geen Odoo, geen DB.
+
+**Pre-feature-check.** Bouwt 1-op-1 voort op run 1 (schoonlijst `app/migratie/schoonlijst.py`, lezers `app/rlz/lezen.py`,
+pandenregister `app/panden/service.py`), blok 0 (`app/rlz/tekst.py::ontknip` — élke omschrijving/payment_ref ontknipt),
+de bewezen Odoo-move-vorm (`app/odoo/inkoop.py::_move_vals/_regel_vals`, odoo-verkenning §11.1 statement lines, §11.3
+verkoopfactuur notaris, §11.6 RJ 220) en de RLZ-feiten (BookDate = boekdatum; Status 2/3 = geboekt; PaymentReferenceList
+($expand=Document) = "waartegen afgeletterd"; Statements = alleen koppen; Ledgers AccountType 1/2/3/4). Nieuw feit uit de
+STAP-0 knip 12-09 (120 records): op VGG is `Receipts` een UNIE-collectie van álle documenten (eerste rij = PurchaseInvoice
+RLZ-04-00000887) — ná ontdubbeling blijven de bank-directe boekingen (DocumentType 19) over; `TotalTaxAmount` op
+ManualJournals spiegelt `BaseInvoiceAmount` (30000 = 30000) en is dus GEEN btw-signaal. UX-review: geen scherm-impact
+(CLI + rapport; het toewijs-scherm van B blijft de UX-plek voor "zonder pand").
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **RLZ-bron (lees-only)** | `rlz_bron.lees_bron(client)`: PurchaseInvoices/SalesInvoices (`$expand=Entity`), ManualJournals (`$expand=JournalEntryDiary`), Receipts (ontdubbeld → bank-direct), PaymentTransactions (`$expand=PaymentAccount,PaymentReferenceList($expand=Document)`, terugval zichtbaar), PaymentAccounts + `/{id}/Statements` (koppen), JournalEntryLines (`$expand=Account,JournalEntry`, volledig — geen BookDate-filter nodig), Ledgers, TaxRates. Geboekt = Status 2/3; concept = 1; systeemhuls = concept + `IsSystemGenerated` óf concept zonder Entity met \|bedrag\|+datum = open PaymentTransaction (A's regel, `bankdekking.is_bank_direct` lazy). Regels per GEBOEKT document = één call `{collectie}/{id}/Lines?$expand=Account,TaxRate,Project` (DocumentType 19: `BankMutationDirectBookings/{id}/Lines`, terugval `…/{id}?$expand=DocumentLineList`), voortgang per 100 op stderr; 800+ calls = traag maar acceptabel in de job. Weigerende route = regel onder Fouten, nooit een crash. | GEBOUWD + GETEST | `backend/app/migratie/rlz_bron.py` |
+| **Vertaling → `MoveVoorstel`** | Veldnamen bindend (anker, rlz_id, boekstuk, move_type, date, vals, bank, status, reden). `anker` = uuid5(NAMESPACE_MIGRATIE = uuid5(NAMESPACE_URL, "rlz-boekingsmodule/migratie"), f"{administratie_id}:{rlz_id}") in `ref` als `"<boekstuk> · mig:<anker>"`; `date` = `invoice_date` = BookDate (terugval Date zichtbaar in reden); grootboek via C `rj220.vertaal_grootboek` (lazy, fallback `mapping.bepaal_grootboek_voorstel`), ongemapt = geen gok → `niet_vertaalbaar`; RJ 220-rollen via C `rj220.rollen_voor` (fallback alles None → "rol-rekening niet ingesteld"): aankoop → voorraad_panden, aanbetaling → vooruitbetaald_voorraad, verkoop → opbrengst_panden (uitboeking kostprijs = rapportregel), kosten/vaste_lasten → mapping + pand-analytic, balans → mapping zonder analytic; de rol vervangt deterministisch één regel (activa-regel AccountType 3 grootste debet resp. opbrengst-regel AccountType 1 grootste credit); pand via B `pand_per_document` (lazy; alleen mens/hoog telt, midden/laag → `zonder_pand`; mens wint over zekerheid), analytic-sleutel `pand:<code>` (id volgt run 3); partner = voorstel KvK → btw → IBAN → naam ("nieuw (res.partner)"/"onbekend"/"n.v.t."), Odoo niet gelezen; `tax_ids=[[6,0,[]]]` op élke regel, btw-teller op regelniveau; negatieve factuur = `in_refund`/`out_refund`. Bankregel = statement.line-vals (date, journal_id, payment_ref = ontknip(Reference), amount mét teken, partner_name, account_number = CounterAccount, ref + unique_import_id = anker) + `bank`-blok (tegenregel uit de DocumentType-19-regels óf reconcile-paar anker/boekstuk/bedrag; deelkoppeling = deelbedrag, óók als de koppeling kleiner is dan het document; huls-referentie = open). Geld Decimal, datums ISO. | GEBOUWD + GETEST | `backend/app/migratie/vertaling.py` |
+| **Replay + rapport** | `replay.dry_run(administratie_id, *, client=None, tot=None, pandenlijst=None, …) -> ReplayRapport` (`.moves`, `.als_markdown()`, `.als_json()`, `.groen`). Doelkoppeling via D `odoo_doel.doelkoppeling_voor` (lazy; ontbreekt → lege `Doel` + LET OP). Rapport: tellers per collectie (gelezen/geboekt/concept/huls/niet migreren) en per move-type; saldibalans RLZ per 31-12-2025 én per `tot` NAAST berekend Odoo per Odoo-rekening (RLZ-ledger → Odoo via dezelfde vertaling; ongemapt = `ongemapt:<code>`; impliciete zijden `impliciet:…`/`bank:…` tot de doelkoppeling Odoo-id's kent) → verschil per rekening, RJ 220-herclassificaties apart en het GESCHOONDE verschil telt (top 10 + volledige tabel); teller journaalregels mét/zonder herkend brondocument (`JournalEntry.EventID`, aanname zichtbaar); open posten RLZ (BaseRemainingAmount) vs berekend (bedrag − Σ reconcile) + open bankmutaties; per pand aankoop/aanbetalingen/kosten/verkoop/marge; tabellen niet vertaalbaar / zonder pand / ongemapte rekeningen / partners; statements per maand mét `balance_end_real` uit /Statements en "sluit ja/NEE/veld ontbreekt"; beslispunten; blok "EXPORT 2025-07" (eerste 3 vertaalbare per in_invoice/entry/out_invoice/bank, compacte JSON; terugval vroegste 3 zichtbaar). GROEN = 0 verschillen (geschoond) én 0 niet-vertaalbaar én 0 leesfouten én 0 documenten zonder regels. | GEBOUWD + GETEST | `backend/app/migratie/replay.py`, `rapport.py` |
+| **CLI `vgg-replay`** | `vgg-replay --administratie <uuid\|naam> [--dry-run] [--json-uit pad] [--tot JJJJ-MM-DD] [--odoo-rekeningen pad.json] [--schrijf-concept]`; default = enige modus dry-run; `--schrijf-concept` = run 3 → melding + exit 2 vóór élke DB-/RLZ-toegang; `--odoo-rekeningen` = account.account-rijen (id/code/name) van company 6 (zonder = alles ongemapt, zichtbaar). Exit 0 GROEN / 1 ROOD / 2 invoerfout. Registratie additief in `app/cli.py`; `scripts/gcp/nameting.sh` allowlist + harde weigering van `--schrijf-concept`. | GEBOUWD + GETEST | `backend/app/migratie/cli_replay.py`, `app/cli.py`, `scripts/gcp/nameting.sh` |
+| **Tests** | `tests/migratie/test_replay.py` (mini-VGG dict-client: 2 notaris-aankopen, aanbetaling, vaste-lasten-inkoop, verkoopfactuur notaris, 3 bank-directe boekingen, 7 bankregels mét deelkoppeling, concept, huls + open regel, 22 sluitende JournalEntryLines → GROEN; varianten ongemapt/rol ontbreekt/BookDate-terugval/btw/expand-terugval/403/regels onleesbaar/tot-filter/bank-direct zonder mutatie/lader-fallbacks) + `test_replay_cli.py` (exit 0/1/2, `--schrijf-concept`, dispatch, nameting.sh-gedrag met stub-gcloud). | 45 tests groen (+ schoonlijst 33 groen, geen regressie) | `backend/tests/migratie/test_replay*.py` |
+
+**Meetrecept (productie, ná deploy van de commit die dit blok draagt; alleen via het nameting-instrument):**
+```
+scripts/gcp/nameting.sh vgg-replay --administratie Vastgoedgroep --dry-run
+scripts/gcp/nameting.sh vgg-replay --administratie Vastgoedgroep --dry-run --tot 2025-12-31 --json-uit /tmp/vgg-replay.json
+```
+Verwacht: Gelezen ≈ ManualJournals 229, PurchaseInvoices 794, SalesInvoices 4, Receipts 1151 (→ ná ontdubbeling de RLZ-09/-25/-28/
+-46-boekingen), PaymentTransactions 1002, PaymentAccounts 8, JournalEntryLines N (eerste échte meting), Ledgers, TaxRates; tellers
+concept ≈ 62 (schoonlijst 11-09) waarvan de RLZ-09-hulzen als "systeemhuls"; regel-calls ≈ aantal geboekte documenten (voortgang per
+100 in de job-log); btw-teller 0; oordeel op de eerste run naar verwachting ROOD met een leesbare reden (doelkoppeling van D nog niet
+gezet → dagboeken leeg; Odoo-rekeningen niet meegegeven → ongemapt; impliciete zijden zonder Odoo-id) — dát is de bedoeling: het
+rapport benoemt exact wat vóór run 3 moet staan. Tweede meting ná `odoo-koppeling-migratiedoel` (D) + `vgg-rekeningen --maak-aan` (C,
+ná akkoord) mét `--odoo-rekeningen` uit een lees-only `account.account`-dump. `--schrijf-concept` via nameting.sh = exit 2 (guard).
+JSON in `/tmp` van de job is vluchtig (bekend beslispunt run 1: bucket-pad).
+
+**Werkt in productie: nog niet gemeten** — meetrecept hierboven; eerste meting = blok 7 (volgende beurt, ná deploy).
+
+**Beslispunten Peter.**
+1. Statements per maand: één `account.bank.statement` per maand mét `balance_end_real` uit RLZ `/Statements` (saldocontrole gratis,
+   dry-run rekent 'm door: som regels vs eindsaldo) — of alleen losse regels zonder statement?
+2. Bank-aanlevering ná de kanteling: A = wij schrijven statement lines (brug — dit pad rekent A door) / B = Odoo-banksynchronisatie +
+   wij lezen (eindbeeld). Niet beslist in deze run.
+3. Anker in Odoo-veld `ref` als `<boekstuk> · mig:<anker>`: `ref` is daarmee niet meer het kale factuurnummer (Odoo's duplicaat-
+   signaal `duplicated_ref_ids` en label-matching kijken naar `ref`/`payment_reference`). Alternatief: anker in `invoice_origin`
+   (inkoop/verkoop) + `narration`/`ref` (entry/bank). Advies: `ref` houden voor entry + bank, `invoice_origin` voor facturen — één
+   regel in `vertaling.ref_voor` + D's zoek-vóór-create.
+4. Impliciete zijden: de doelkoppeling kent geen Odoo-id voor crediteuren/debiteuren/bankrekening(en) → pseudo-sleutels in de
+   saldibalans; GROEN vereist óf die id's in de koppeling-rij (kolommen run 3) óf C's mapping van de RLZ-ledgers 1300/1600/11xx.
+5. RJ 220-rolregel: de rol vervangt de activa-regel met het grootste debetbedrag (aankoop/aanbetaling) resp. de opbrengstregel met
+   het grootste creditbedrag (verkoop) — akkoord als deterministische regel, of per document de mens via de Toewijzing (B)?
+6. Uitboeking kostprijs verkochte panden bij verkoop = rapportregel in run 2; run 3 als `entry` (kostprijs debet / voorraad credit,
+   Σ activeer-regels van het pand) — akkoord op die vorm (odoo-verkenning §11.6 optie (b))?
+
+**Aangrenzende gaten.**
+- *Lifecycle:* een document dat ná de dry-run in RLZ gestorneerd wordt (Status 1) valt bij de volgende run uit de set — het anker
+  blijft deterministisch, dus run 3 kan een eerder aangemaakt concept herkennen (`ref ilike 'mig:…'`) en annuleren (`button_cancel`,
+  nooit unlink). Correcties in RLZ ná de kanteling zijn buiten scope (kanteldatum-besluit).
+- *Consistentie:* `JournalEntry.EventID` als brondocument-koppeling is een aanname — het rapport telt `met_bron`/`zonder_bron`; bij 0
+  `met_bron` in productie de regel herzien (api-verkenning-feit toevoegen). `/Statements`-saldoveldnamen idem (regel "veld ontbreekt"
+  noemt de aanwezige velden). Receipts = unie-collectie op VGG (schoonlijst dedupliceerde al zo) — feit voor api-verkenning.
+- *UX:* geen scherm; "zonder pand" en "niet vertaalbaar" horen in B's Toewijzing terug te komen (herkomst-chip + reden) zodat de
+  mens dáár beslist en de replay bij de volgende run groen kan worden.
+- *Compliance:* rapport naar stdout/Cloud Logging draagt boekstuknummers, bedragen, partner-namen/KvK (bedrijfsgegevens, geen PII
+  buiten notaris-/relatie-namen); geen IBAN-maskering in het rapport (anders dan `rlz-lezen`) — beslispunt of de nameting-uitvoer
+  gemaskeerd moet worden. Geen AI-call; AVG-gate niet geraakt.
