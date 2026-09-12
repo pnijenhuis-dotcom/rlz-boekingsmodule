@@ -936,3 +936,22 @@ stap of `partner_id` leeg laten in het concept), `account.bank.statement`-koppen
 | 12xxxx/13xxxx | 120500 Prepaid expenses (asset_current) · 121000 Deposit (asset_prepayments) · 122000/123000/125000/129000 vorderingen (asset_current) · **130000 Creditors (liability_payable)** · 135000 Payments in transit · 140500–149000 kortlopende schulden · 150000–159900 btw-rekeningen. → Het RLZ-decimaalstelsel (1300 debiteuren, 1600 crediteuren) loopt NIET parallel aan de NL-template (110000 Debtors, 130000 Creditors): `code_verlengd` is een valse vriend op balanskaarten. |
 | Analytic plan Project (1) op company 6 | 105 Intern, 106 Buitendienst (company 6); 758 "Test Thomas" (company False, gedeeld). Geen "Overhead". `account.analytic.account`: `name` + `plan_id` required, `company_id` m2o optioneel, `code` "Reference" optioneel. |
 | Rate limit | 12 sequentiële read-only calls zonder 429 (consistent met §11.0: 47 calls). |
+
+### 12.2 Herziening blok 7 (12-09 avond, besluiten Peter op de vijf beslispunten) — stappen 0–6, nog NIET uitgevoerd
+
+De stappentabel van §12 is herzien (code `app/migratie/cli_odoo.py`, tests groen; uitvoering wacht op herlogin gcloud + deploy):
+
+| # | Stap (company 6, echte juli-2025-documenten) | Meetpunt | Uitkomst |
+|---|---|---|---|
+| a | `odoo-koppeling-migratiedoel … --schrijf` + `vgg-rekeningen --maak-aan` (kill-switch als executie-override) | koppeling-rij `migratie_doel=true`; 325000/326000/803100/701300 + analytic "Overhead" (plan Project) aangemaakt óf hergebruikt, `company_ids=[6]` terug-gelezen, audit per rekening | wacht op uitvoering |
+| 0 | partners: zoek-vóór-create KvK → btw → IBAN → naam voor de partijen van stap 1–3 (`res.partner.create` mét `company_id=6`, post-write terug-gelezen) | rapport "aangemaakt / hergebruikt" per partner; > 1 treffer = stop (`PartnerMeerduidig`) | wacht |
+| 1 | eerste echte inkoopfactuur juli 2025 mét bankregel(s) in `PaymentReferenceList`: concept → **`action_post`** | `state == 'posted'`, `name` (LF/2025/07/…) terug-gelezen — de ENIGE geposte boeking van run 2 (besluit 2) | wacht |
+| 2 | memoriaal juli 2025 als concept | `state == 'draft'`, journal MEM 50 | wacht |
+| 3 | eerste echte verkoopfactuur juli 2025 als concept (mét partner) | `draft`, journal F 48, `amount_tax 0.0` | wacht |
+| 4 | statement line(s) voor precies de bankregel(s) die factuur (1) betalen — **alleen als `account.journal` BNK1 een `bank_account_id` heeft** (klikpunt Peter; leeg → 4+5 overgeslagen en gemeld, rest loopt) | `move_id` gevuld, `is_reconciled False`, `unique_import_id` terug-leesbaar | wacht |
+| 5 | reconcile geposte factuur (1) ↔ statement line(s): routes i → ii → iii, eerste werkende = DE route (per statement line één aanroep) | `is_reconciled True`; route in audit `odoo_migratie_reconcile`; tegen een GEPOSTE factuur — de §12-aanname "422 posted" is hiermee ontweken | wacht |
+| 6 | terugweg: `button_cancel` → `button_draft` op concept (2) (memoriaal) + `remove_move_reconcile` op (5) en de koppeling opnieuw gelegd | concept (2) terug op `draft`; `is_reconciled` False → True; nergens `unlink` | wacht |
+| 7 | stand ná de run (`Stap0Rapport.stand`): partners aangemaakt/hergebruikt, 1 gepost, N concepten, N statement lines, `search_count` moves/statement lines company 6 | rapportregel "wat staat er nu in company 6" | wacht |
+
+Vast te leggen ná uitvoering (hier, §12.2): de werkende reconcile-route mét exacte payloads (zonder keys), de partner-payload zoals
+Odoo 'm accepteerde (vat-formaatweigering ja/nee), het `action_post`-antwoord en de `name`-reeks van dagboek LF op company 6.

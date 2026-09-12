@@ -8892,3 +8892,77 @@ JSON in `/tmp` van de job is vluchtig (bekend beslispunt run 1: bucket-pad).
 - *Compliance:* rapport naar stdout/Cloud Logging draagt boekstuknummers, bedragen, partner-namen/KvK (bedrijfsgegevens, geen PII
   buiten notaris-/relatie-namen); geen IBAN-maskering in het rapport (anders dan `rlz-lezen`) — beslispunt of de nameting-uitvoer
   gemaskeerd moet worden. Geen AI-call; AVG-gate niet geraakt.
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 7: NAMETING PRODUCTIE + EERSTE ODOO-WRITES (12-09-2026; antwoorden Peter 12-09 op de vijf beslispunten; geen migratie)
+
+**Aanleiding.** Opdracht Peter 12-09 avond: blok 7 van run 2 — de vier lees-only nametingen op productie, dan de eerste
+Odoo-writes op company 6 (rekeningen, partners, één gepost bewijspaar), plus nazorg op de gouden-set-guard. Voorwaarde: deploy
+van `b5cff89` (of later) groen en service én F3-jobs op hetzelfde image. Pre-feature-check: alles bouwt 1-op-1 voort op "RUN 2 …
+(blok 0)" t/m "RUN 2 BLOK 6" hierboven; nieuw zijn alleen de vijf besluiten hieronder en de code die ze nodig hebben. Geen scherm-
+impact (geen UX-review nodig).
+
+**Besluiten Peter 12-09 op de vijf beslispunten (canoniek — niet heroverwegen):**
+1. **Rekeningen** 325000 voorraad panden / 326000 vooruitbetaald op voorraad / 803100 opbrengst verkoop panden / 701300 kostprijs
+   verkochte panden: **AKKOORD.** Aanmaken in company 6 via de CLI (`odoo-koppeling-migratiedoel --schrijf` voor de koppeling-rij,
+   daarna `vgg-rekeningen --maak-aan` voor de vier rekeningen + analytic "Overhead" in plan Project) met de kill-switch alleen voor
+   die executie aan, audit per rekening, post-write terug-lezen. Niet via de Odoo-UI. Bestaat een rekening al met dat nummer:
+   hergebruiken (lookup-vóór-create, blok 4), nooit dubbel.
+2. **Reconcile-bewijs: ÉÉN echt paar POSTEN** — de eerste echte inkoop-/verkoopfactuur van juli 2025 met de bijbehorende
+   bankregel(s) uit RLZ `PaymentReferenceList`. Dit is de **enige geposte boeking van run 2**; alle andere blijven concept (run 3).
+   Vastgelegd als **bewuste afwijking** van voorwaarde 1(b) "alles concept" uit blok 0.
+3. **Partners** (notarissen, verkopers, crediteuren): **aparte aanmaakstap vóór de concepten** — zoek-vóór-create op KvK → btw →
+   IBAN → naam, audit per partner, rapport "aangemaakt / hergebruikt". **Concepten dragen altijd een partner.**
+4. **Concept zonder omschrijving** = kopie van geboekt op bedrag + datum **ALLEEN als de bank-leidend-regel het bevestigt** (één
+   bankmutatie voor dat bedrag/die datum tegenover twee boekingen). Anders **"onbeslist", zichtbaar** — herziet de regel "enige
+   geboekte exemplaar in dezelfde collectie = kopie" uit "SCHOONLIJST VGG HERZIEN" (blok 1).
+5. **Snede 2 als nachtelijke bevinding: BESLISPUNT BLIJFT OPEN** tot het ruisniveau uit deze nameting bekend is — niet bouwen.
+   **Statements: JA**, één `account.bank.statement` per maand met `balance_end_real` uit RLZ `/Statements` (zit al in de replay-vorm
+   van blok 6; schrijven = run 3). **Bank ná kanteling: B** (Odoo-banksynchronisatie) als eindbeeld, **A** (wij leveren statement
+   lines) als brug zolang B niet staat — vastgelegd, niets gebouwd.
+
+**Gebouwd in deze beurt (code + tests; geen migratie):**
+
+| Onderdeel | Wat | Waar |
+|---|---|---|
+| Besluit 3 — partners | `MoveVoorstel.partner` (het `PartnerVoorstel` reist als dict mee op elke factuur-move; None bij entry/bank_direct). Primitief `zoek_of_maak_partner`: zoekvolgorde KvK (`company_registry`) → btw (`vat`) → IBAN (`res.partner.bank.sanitized_acc_number`) → naam (`=ilike`); precies één treffer = hergebruikt, > 1 = `PartnerMeerduidig` (nooit gokken), nul = `res.partner.create` gepind op de doelcompany (`company_id` = pin, `is_company`, KvK/btw/IBAN mee; een door Odoo geweigerd btw-nummer wordt weggelaten én gemeld); `res.partner` staat sinds deze beurt onder de post-write-verificatie van `CompanyGepindeClient`. Audit `odoo_migratie_partner_aangemaakt` / `_hergebruikt`. Stap 0 van `vgg-odoo-stap0` doet dit uitsluitend voor de partijen die stap 1–3 nodig hebben; een factuur zonder partner-voorstel of met een mislukte partner-stap krijgt GEEN concept ("concept draagt altijd een partner") | `app/migratie/vertaling.py`, `app/migratie/odoo_schrijf.py`, `app/migratie/odoo_doel.py::BEWAAKTE_CREATE_MODELLEN`, `app/migratie/cli_odoo.py` (stap 0) |
+| Besluit 2 — één gepost paar | Selectie (`selecteer_moves` → `Selectie`): het paar = de eerste inkoopfactuur van juli 2025 die volgens `PaymentReferenceList` door ≥ 1 vertaalbare bankregel (élke datum) betaald wordt; geen inkoopfactuur met betaling → eerste verkoopfactuur met ontvangst; ook die niet → geen paar, zichtbaar ("niets te posten, stap 4/5 niet uitvoerbaar"). Bankregels komen alleen nog via het paar mee (niet meer "de eerste bankdag"). Primitief `post_move` (`action_post`, `state == 'posted'` + `name` terug-gelezen, idempotent bij al-gepost, weigert cancel), audit `odoo_migratie_move_gepost`. Stap 1 post het paar direct ná het concept; `--max-per-type` default 3 → **1** | `odoo_schrijf.py::post_move`, `cli_odoo.py::selecteer_moves`/`voer_stap0_uit` |
+| Klikpunt IBAN op BNK1 | `lees_bank_iban` leest `account.journal.bank_account_id`/`bank_acc_number` van het bankdagboek uit de bankregel-vals; leeg → melding "KLIKPUNT PETER: IBAN op BNK1 is leeg — stap 4 en 5 overgeslagen, rest doorgelopen", stap 4/5 niet uitgevoerd, stap 6 loopt door (ook in de dry-run zichtbaar) | `cli_odoo.py::lees_bank_iban` |
+| Stap 6 terugweg herzien | `button_cancel` → `cancel` → `button_draft` → `draft` op **concept (2)** (het memoriaal; nooit de geposte factuur, nooit unlink) via nieuw primitief `zet_terug_naar_concept` (audit `odoo_migratie_move_terug_naar_concept`); `koppel_los` op de reconcile-regels én de koppeling **opnieuw gelegd** (bewijs `remove_move_reconcile` + herhaalbaarheid van DE route) | `odoo_schrijf.py::zet_terug_naar_concept`, `cli_odoo.py` (stap 6) |
+| Rapport | `Stap0Rapport.stand`: partners aangemaakt/hergebruikt, geposte boekingen, concepten, statement lines van deze run + `search_count` account.move (niet cancel) en statement lines op de company — de regel "wat staat er nu in company 6" | `cli_odoo.py::Stap0Rapport` |
+| Besluit 4 — kopie alleen bank-bevestigd | `concept_kopieen(…, bank=…)`: bij lege omschrijving en precies één geboekt exemplaar (zelfde |bedrag|, dag, collectie) telt `bankdekking.dekking_voor` de mutaties tegenover de TWEE boekingen (teken via `teken_van`, ±`BANK_VENSTER_DAGEN` = 3): **1 = kopie**, **≥ 2 = geen kopie** (twee echte betalingen; blijft gewoon concept), **0 / bank niet gelezen / teken onbekend = nieuwe categorie `concept_kopie_onbeslist`** ("onbeslist — mogelijk kopie van …; mens beslist", `extra.bank_mutaties`). Kopieën én onbesliste verdwijnen uit "concepten" en "dubbelen". De tekst-regel (zelfde omschrijving) blijft zonder bankpoort. `--verwacht` kent de nieuwe sleutel | `app/migratie/schoonlijst.py`, `tests/migratie/test_schoonlijst.py::TestKopieZonderOmschrijvingBankLeidend` (VGG-nabootsing: RLZ-04-00000732 → onbeslist, want geen € 20.000-mutatie rond 06-07 in de testdata) |
+| Gouden-set-guard (STAP 3) | `tests/keten/conftest.py::fixture_datums()` verzamelt élke ISO-datum uit de casusmappen; `test_sweep_geen_export_draagt_de_datum_van_vandaag` en `frontend/scripts/keten_sweep.sh` slaan over mét melding als vandaag een fixture-datum is (12-09-2026 = vervaldatum van een casus → de guard was rood zonder drift); alleen run-tijdstempels tellen. Nieuwe test `test_fixture_datums_kent_de_casusdatums_…` bewaakt dat de uitsluitlijst gevuld is | `backend/tests/keten/conftest.py`, `test_export_deterministisch.py`, `frontend/scripts/keten_sweep.sh` |
+| Uitvoerrecepten | `scripts/gcp/vgg_blok7_nameting.sh [a|b|c|d|alles]` — deploy-check (service = álle jobs, anders exit 3) + de vier nametingen via `nameting.sh` naar `verkenning/nameting-vgg-<onderdeel>-<dd-mm>.txt`; `scripts/gcp/vgg_blok7_odoo_writes.sh plan` (drie dry-runs) en `… SCHRIJF a` (koppeling-rij + rekeningen) / `… SCHRIJF c` (stap 0–6) — kill-switch uitsluitend als executie-override `--update-env-vars` op `gcloud run jobs execute` (raakt de job-definitie niet) | `scripts/gcp/` |
+| Tests | tests/migratie 214 → 226 groen (stap0-cyclus 0–6 op een Odoo-nabootsing: 1 gepost, 2 concepten, partners 1 nieuw/1 hergebruikt, route ii, terugweg cancel→draft, lege-IBAN-pad, zonder-partner-pad, meerduidige partner); tests/migratie/test_schoonlijst 90 groen; tests/odoo/test_rj220 groen; keten-guard groen/skip mét melding | — |
+
+**Meetrecept blok 7 (STAP 1, lees-only; meetlat niet gehaald = benoemen mét oorzaak, nooit stil bijstellen):**
+
+| # | Commando (via `vgg_blok7_nameting.sh`) | Meetlat |
+|---|---|---|
+| a | `migratie-schoonlijst --administratie Vastgoedgroep --verwacht …` | systeemhulzen 44 apart; concepten ≈ 18 waarvan ≥ 11 kopie-van-geboekt (nu: kopie + onbeslist samen, besluit 4); dubbelen zonder de drie bank-bevestigde paren; "verschillend kenmerk" ingeklapt |
+| b | `pandenregister-afleiden --administratie Vastgoedgroep --dry-run` | < 80 clusters; verkopen voor Heidebeemd 3, Verschoorstraat 70-2 en de zes Ouwerkerk-ontvangsten; geen factuurnummer-"dossiers"; geen 31-12-aankopen |
+| c | `vgg-replay --dry-run --administratie Vastgoedgroep` | saldibalans RLZ vs berekend per 31-12-2025 en per vandaag (top-10 verschillen), niet-vertaalbaar, zonder pand, per pand |
+| d | `reconciliatie-alles --alleen rlz_dubbel --lees-only` (snede 2 staat aan in lees-only) | tellers per administratie, top-10, ruisinschatting voor beslispunt 5 |
+
+**STAP 2 (Odoo-writes company 6, expliciete job-executies, ná deploy van deze commit):** `vgg_blok7_odoo_writes.sh plan` →
+`SCHRIJF a` (koppeling-rij VGG `migratie_doel=true` + vier rekeningen + Overhead, audit per rekening) → `SCHRIJF c` (stap 0 partners,
+stap 1 eerste inkoopfactuur juli 2025 concept → GEPOST, stap 2 memoriaal concept, stap 3 verkoopfactuur concept, stap 4 statement
+line(s) van de betalende bankregel(s) — alleen mét IBAN op BNK1 —, stap 5 reconcile routes i → ii → iii, stap 6 terugweg). Uitkomst
+(werkende route, exacte payloads zonder keys) → odoo-verkenning §12.2.
+
+**Werkt in productie: NIET GEMETEN (12-09 avond).** Blokkade: de gcloud-gebruikerssessie (`info@vastly.software`) was verlopen
+("Reauthentication failed. cannot prompt during non-interactive execution") — herlogin is een handeling van Peter (het nameting-SA
+heeft door org-policy geen key; zie "NAMETINGEN-RUN 10-09"). Daardoor is ook de voorwaarde (deploy `b5cff89` groen, service = jobs)
+niet toetsbaar geweest vanuit deze sessie. Alles wat niet van productie afhing is gebouwd, getest en gecommit; STAP 1 kan direct ná
+`gcloud auth login` met `vgg_blok7_nameting.sh` (a/b/d lopen ook op het `b5cff89`-image, a mét de nieuwe categorie pas ná deze
+deploy), STAP 2 pas ná de deploy van déze commit (stap 0 partners en het posten bestaan pas nu op de job-image).
+
+**Beslispunten voor run 3 (open):** posten van de massa (volgorde: partners → concepten → saldibalans-toets → posten per maand?);
+bank fase 2 (afletteren massa: N × route uit §12.2); kanteldatum + moment waarop RLZ read-only wordt; statements per maand
+(besloten JA) schrijven; snede 2 als bevinding (wacht op ruis uit STAP 1d); Overhead-analytic vullen vanuit het pandenregister.
+
+**Aangrenzende gaten:** (1) `vgg-rekeningen --maak-aan` eist de koppeling-rij — volgorde a1 → a2 is hard; (2) een `PartnerMeerduidig`
+op de notaris (twee res.partner met dezelfde KvK in de groep) blokkeert stap 1 — dan is de oplossing een mens die samenvoegt in Odoo,
+niet een gok in de code; (3) het IBAN-klikpunt is nu een leesbare stop, geen automatische aanmaak (bewust: bankrekening op het
+dagboek is Peters instelling).
+
+<!-- run2-vgg:blok7 -->
