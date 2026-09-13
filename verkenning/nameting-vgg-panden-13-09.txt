@@ -1,7 +1,7 @@
-### Pandenregister-afleiding Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, 2026-09-13T07:52:47+00:00)
+### Pandenregister-afleiding Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, 2026-09-13T12:19:07+00:00)
 - Gelezen: ManualJournals 229, PaymentTransactions 1003, PurchaseInvoices 794, Receipts 1152, SalesInvoices 4
 - Panden (voorstel): 94 · koppelingen: 395 · clusters met varianten: 16
-- Soorten: aanbetaling 93, aankoop 39, balans 26, kosten 113, vaste_lasten 70, verkoop 54
+- Soorten: aanbetaling 93, aankoop 40, balans 26, kosten 113, vaste_lasten 70, verkoop 53
 - Geen pand-signaal (kandidaat Overhead, mens beslist in run 2): ManualJournals 137, PurchaseInvoices 588, Receipts 93, SalesInvoices 4
 - Bankmutaties: 1003 gelezen, 80 gebruikt, 215 overgeslagen (document draagt de tekst al)
 - Bijlagechecks memoriaal: 89 gedaan, 0 niet (grens)
@@ -30,7 +30,7 @@
 | DeButstraat 7 | Hulst | — | — | — | aanbetaling: 2/0/0 | De Butstraat | — | dry-run: zou nieuw zijn |
 | Donkerslootstraat 101A | Rotterdam | 2026-02-18 | — | — | aankoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Donkerslootstraat 105B | Rotterdam | — | — | — | kosten: 1/1/0 | — | — | dry-run: zou nieuw zijn |
-| dossier 2026.080038.01 (adres onbekend) | — | — | 2026-02-21 | 2026.080038.01 | verkoop: 0/0/1 | — | — | dry-run: zou nieuw zijn |
+| dossier 2026.080038.01 (adres onbekend) | — | 2026-02-21 | — | 2026.080038.01 | aankoop: 0/0/1 | — | — | dry-run: zou nieuw zijn |
 | Duifhuis 11 | Berlicum | 2026-03-16 | 2026-08-06 | 2026.080906.01 | aanbetaling: 2/0/0; aankoop: 0/1/0; kosten: 0/2/0; vaste_lasten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Dwarsweg 22 | Zeist | 2026-01-01 | 2026-06-30 | 2026.079951.01 | aankoop: 0/1/0; balans: 0/1/0; vaste_lasten: 2/2/0; verkoop: 1/0/0 | Dwartsweg | — | dry-run: zou nieuw zijn |
 | Eikenlaan 5 | 's Gravenzande | — | 2025-09-22 | — | aanbetaling: 0/1/0; kosten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
@@ -120,5 +120,14 @@ Dossier zonder pand:
 - 00100: 2026.10 — onvolledig dossiernummer, geen pand
 - 00100: 2026.13 — onvolledig dossiernummer, geen pand
 - 00100: 2026.18 — onvolledig dossiernummer, geen pand
+Cluster-kandidaten (mens beslist) — 2
+- Groningenstraat 203 (plaats onbekend) ↔ Groningerstraatweg 203 (Leeuwarden) — zelfde huisnummer (plaats bij één onbekend), straat lijkt; mens beslist
+- Rooseveltstraat 13 (Hulst) ↔ Rooseveltweg 13 (Hulst) — zelfde huisnummer + plaats, straat lijkt; mens beslist
+Huisnummer-varianten (alleen signaal, geen actie) — 5
+- Donkerslootstraat 101A (Rotterdam) ↔ Donkerslootstraat 105B (Rotterdam) — zelfde straat + plaats, ander huisnummer; alleen signaal
+- Fazantstraat 77 (plaats onbekend) ↔ Fazantstraat 79a (Rotterdam) — zelfde straat (plaats bij één onbekend), ander huisnummer; alleen signaal
+- Henri Dunantstraat 301 (Brunssum) ↔ Henri Dunantstraat 38 (plaats onbekend) — zelfde straat (plaats bij één onbekend), ander huisnummer; alleen signaal
+- Kasteel Hillenraedstraat 152 (Roermond) ↔ Kasteel Hillenraedtstraat 144 (Roermond) — zelfde straat + plaats, ander huisnummer; alleen signaal
+- Kouvenderstraat 34b (Hoensbroek) ↔ Kouvenderstraat 43b (Hoensbroek) — zelfde straat + plaats, ander huisnummer; alleen signaal
 Container called exit(0).
 

@@ -9047,3 +9047,69 @@ commit (push via de Stop-hook) en Peters gcloud-sessie. Per punt: 1–9 "gebouwd
    toetst de twee saldi uit "Saldo-toets bank" tegen het echte banksaldo vóór run 3 schrijft.
 
 <!-- run2-vgg:blok7b -->
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 7c: MEMORIALEN, PANDENMODEL, BOEKDATUM, BTW-TELLER, SNEDE 2 (13-09-2026; fixes uit de productienameting 13-09 op `efe3fb7`; besluit Peter 13-09: eerst deze fixes, dan opnieuw meten, dan pas SCHRIJF a; geen Odoo-/RLZ-writes, geen migratie)
+
+**Aanleiding.** De tweede productienameting van 13-09 (`verkenning/nameting-vgg-{schoonlijst,panden,replay,rlz-dubbel-snede2}-13-09.txt`)
+bewees de blok-7b-fixes (webfilter: 1.150 calls, 0 treffers; bank cent-exact € 146.543,16 / € 128.980,67; RLZ-kolom uit 3.718
+JournalEntryLines) maar het replay-oordeel bleef terecht ROOD: 228 memorialen zonder regels (`ManualJournals/{id}/Lines` 404-HTML),
+0 journaalregels met herkend brondocument, élke factuur op `Date` i.p.v. `BookDate`, notaris-ontvangsten als "verkoop" (Rijswijkseweg
+409 marge −297.667,72), btw-teller 883 → 0 onverklaard, 415 partners onbekend, crediteuren/debiteuren −5,9 M/+4,6 M door de niet
+gesimuleerde reconcile, en 3.003 snede-2-paren bij Molenhof Verhuur op één dag. Pre-feature-check: bouwt 1-op-1 voort op "RUN 2 BLOK
+7" en "RUN 2 BLOK 7b"; geen scherm-impact.
+
+**STAP-0 13-09 (lees-only via `nameting.sh rlz-lezen`, letterlijk in api-verkenning "Memoriaalregels + EventID/BookDate — STAP-0
+13-09"):** (1) `ManualJournals/{id}/Lines` **bestaat niet** — 404 mét HTML, óók zonder `$expand`; de Help-lijst kent geen Lines-route
+voor memorialen (de TaxRate-hypothese is fout). (2) `JournalEntry.EventID` is een **soortcode (int: 71 inkoop, 51 verkoop)**, geen
+document-id (`eq <guid>` = 400 "incompatible types 'JournalEvent' and 'Edm.Guid'"); `JournalEntry.id ≠ document-id` (0 treffers);
+het document kent geen JournalEntry-navigatie → **een koppeling journaalregel ↔ document bestaat niet in de RLZ-API.** (3) De
+PurchaseInvoices-COLLECTIE draagt géén `BookDate`; de ManualJournals-collectie wél; de document-vorm `X/{id}` wél (STAP 0 28-08).
+(4) De collectie-vorm `$expand=DocumentLineList(…)` wordt op alle drie de collecties **stil genegeerd** (200 zonder de sleutel).
+(5) **0 journaalregels op een btw-grootboek** (1300/1700/1707/130/170, `$count` 0) — RLZ boekte nooit btw; blok 7's "883" telde
+regels mét een `TaxRate`-verwijzing (0 %/"Geen BTW"). (6) `rlz-lezen` kon route (c) `ManualJournals/{id}?$expand=…` niet lezen
+(het gaf altijd `$top` mee → 400 "not a collection"); gefixt (recordpad → alleen `$expand`), de document-vorm voor memorialen is
+daardoor pas in de nameting ná deploy live bewezen.
+
+| # | Punt | Gebouwd / uitkomst | Waar |
+|---|---|---|---|
+| 1 | BLOKKER memorialen | Regelroute herzien: **document-vorm** `{collectie}/{id}?$expand=DocumentLineList($expand=Account,TaxRate)` = kop (mét BookDate) + regels in ÉÉN call per geboekt document (zelfde aantal calls als de oude /Lines-route, token-bucket blijft); terugval `…/{id}/Lines` alleen voor PurchaseInvoices/SalesInvoices/BankMutationDirectBookings (Help-lijst), **géén terugval voor ManualJournals** (route bestaat niet). `RlzBron.koppen` bewaart de kop-aanvulling. Rapport: ≥ 1 geboekt document zonder leesbare regels = **oordeel "ONVOLLEDIG — niet doorrekenen"** mét tabel (boekstuk/type/datum/bedrag/letterlijk RLZ-antwoord); saldibalans, open posten, per pand, statements, btw en export worden dan bewust niet berekend; CLI-statusregel `UITKOMST: ONVOLLEDIG …`. Docstring `rlz_bron.py` herschreven: JournalEntryLines is géén alternatief (geen koppeling), de collectie-expand is nutteloos en wordt niet meer gevraagd | `app/migratie/rlz_bron.py` (`regel_routes`, `lees_regels`, `documentpad_van`, `LINES_ROUTE_COLLECTIES`, `ONVOLLEDIG_TEKST`), `replay.py::_onvolledig`, `rapport.py` (`ONVOLLEDIG_OORDEEL`, `onvolledig`), `cli_replay.py::statusregel`; tests `TestBlok7c`, herziene `TestBlok7b` (NepClient gedraagt zich als RLZ: 404-HTML op `ManualJournals/{id}/Lines`) |
+| 2 | EventID-koppeling | Bestaat niet (STAP-0). `journaalregel_bron_id` telt EventID niet meer (alleen een expliciete `Document`/`DocumentId` als RLZ die ooit geeft); rapport zegt letterlijk "koppeling journaalregel ↔ document bestaat niet in de RLZ-API …" en toont **per DocumentType** journaalposten (unieke `JournalEntry.id`) ↔ journaalregels ↔ geboekte documenten als volledigheidstoets | `rlz_bron.py` (`journaalregel_documenttype`, `journaalregel_journaalpost_id`), `replay.py::_journaal`, `rapport.py` |
+| 3 | Boekdatum | `date` = `BookDate` uit de document-vorm (`bron.rij_met_kop` vult de collectie-rij aan); terugval `Date` alleen als ook de document-vorm 'm mist, zichtbaar in `reden` én geteld: rapportkop "BookDate: N documenten uit het document, M terugval op Date" (`Vertaald.boekdatum_herkomst`) | `vertaling.py::_datum_met_herkomst`, `replay.py::_tellers`, `rapport.py` |
+| 4 | Pandenmodel | Deterministisch op **grootboek-regels**: aankoop = regels op 7000 "Inkopen vastgoed" + de koopsom-regel (rol voorraad_panden, activa) van een aankoop-memoriaal; verkoop = opbrengst-regels (AccountType 1) op documenten; kosten = overige kostenregels (4601/4612/7001 …); aanbetalingen = documenten mét soort aanbetaling; **notaris-ontvangst = alleen bank** (eigen kolom, nooit verkoop of kosten); regels op **vaste activa** (`Ledgers.IsFixedAssetAccount`, anders AccountType 3 + rubriek 0 — 0101 Gebouwen en terreinen) tellen nergens. Controle per verkocht pand: verkoop − aankoop − kosten − notaris-ontvangst = 0 → "sluit"; = ± aanbetalingen → "sluit ná aanbetalingen"; anders SIGNAAL; negatieve marge zonder verklaring = signaal; notaris-ontvangst zonder geboekte verkoopfactuur = signaal. Afleiding (`pandenregister-afleiden` én de replay, één bron): een inkoopfactuur mét 7000-regel = **`aankoop`** (was "kosten" — de vier notaris-nota's), een document met ALLE regels op vaste activa = geen pand; de CLI leest daarvoor begrensd de regels van inkoopfacturen mét pand-signaal (`--max-regel-checks`, default 300, grootste bedragen eerst, teller in het rapport). Tests: Rijswijkseweg 409 (341.333,86 / 385.000 / 43.666,14 → sluit, marge 43.666,14), Kapershoek 34 (aanbetalingen 40.000 → "sluit ná aanbetalingen"), Ruyghweg 71, Verschoorstraat 70-02 (282.500 − 229.859,89 = 52.640,11 → sluit), Donkerslootstraat 105B (0101 → 0) | `replay.py::_per_pand` (`AANKOOP_GROOTBOEKEN`), `vertaling.py` (`vaste_activa_uit`, `Vertaald.koopsom_regel`), `app/panden/afleiding.py` (`BoekingsFeit.grootboeken/vaste_activa`, `AANKOOP_GROOTBOEKEN`), `app/panden/service.py` (`grootboeken_uit_regels`, regelchecks), `cli_cmd.py`; tests panden +7, `TestBlok7c` |
+| 5 | Btw-teller | Verklaard: blok 7 telde `TaxRate`-ref óf TaxAmount ≠ 0 (883), blok 7b alleen TaxAmount ≠ 0 (0) — STAP-0: 0 journaalregels op btw-grootboeken, dus 0 is juist. Rapport toont nu **beide bronnen**: regels mét TaxAmount ≠ 0, regels mét btw-code zonder bedrag (`btw_code_zonder_bedrag`), en journaalregels op de RLZ-btw-grootboeken (aantal, Σ, laatste datum) + restsaldo per 31-12-2025 en per vandaag; "0,00 is alleen echt als beide bronnen 0 zijn" | `vertaling.py`, `replay.py::_btw`, `rapport.py` |
+| 6 | Partners | Geen Entity → **tegenpartij van de gekoppelde bankmutatie** (Name + CounterAccount via `PaymentReferenceList`; verschillende namen op één document = niet gegokt, mét reden) → `PartnerVoorstel.herkomst == "bank"`, sleutel iban/naam, zoek-vóór-create in `vgg-odoo-stap0` werkt ongewijzigd (dict-contract uitgebreid met `herkomst`/`bron_tekst`). Tellers `partners_uit_bank` / `partners_onbekend`; rapport + reden per move noemen het beslispunt | `vertaling.py` (`BankTegenpartij`, `bank_tegenpartijen`, `partner_voorstel`), `replay.py`, `rapport.py` (BESLISPUNTEN 6) |
+| 7 | Saldibalans | **Keuze (b):** rekeningen in een afletter-/tegenzijde-**groep** tellen niet per rekening maar per groep in het oordeel: `crediteuren` (RLZ-grootboek op naam "crediteuren" + `impliciet:crediteuren` + doel-id), `debiteuren` (idem), `tussenrekening` (nog te rubriceren/kruisposten/tussenrekening + `impliciet:bank-tussenrekening`), `bank` (`UseForPaymentAccount`/bank-naam/IBAN + `bank:<naam>` + doel-bank-ids) — de dry-run simuleert geen reconcile, maar de SOM per groep moet wél sluiten. Tabel "Groepstoets", kolom Groep in de volledige tabel, top-10 alleen buiten de groepen. GROEN = alle rekeningen buiten de groepen cent-exact én alle groepen sluitend | `replay.py::afletter_groepen`/`_saldibalans`, `rapport.py::verschillen` |
+| 8 | Snede 2 | **Dag-batch-uitsluiting**: ≥ 3 documenten van dezelfde crediteur, hetzelfde cent-exacte bedrag en dezelfde datum (boekdatum-as óf factuurdatum-as) = batch, geen dubbel; ná de periodiek-uitsluiting, nooit dubbel geteld; regel "· uitgesloten (dag-batch): <initialen> € <bedrag> — N documenten op <datum> (<as>), P paren", tellers "dag-batch uitgesloten G groepen/P paren" (per administratie en totaal). Molenhof-casus als test (78 × € 4.886,32 op 2026-01-01 → 0 paren, 3.003 weggenomen); twee documenten op één dag (de KF-paren) blijven staan | `app/reconciliatie/rlz_dubbel.py` (`Snede2DagBatchGroep`, `SNEDE2_DAGBATCH_MIN_DOCUMENTEN`), tests 33 → 39 |
+| 9 | Kleinere waarnemingen | Collectie-expand `DocumentLineList(…)` = stil genegeerd → expliciet in docstring + api-verkenning, niet meer gevraagd, geen OVERGESLAGEN-ruis; een **concept-verkoopfactuur** op een pand mét notaris-ontvangst geeft in de per-pand-tabel het signaal "verkoopfactuur RLZ-01-00000006 nog concept in RLZ — boeken vóór replay" (`_rlz_boekingen` geeft ook concepten aan de pand-afleiding) | `rlz_bron.py`, `replay.py::_per_pand` |
+| + | `rlz-lezen` | Recordpad (laatste segment GUID) → alleen `$expand`, melding op stderr; de STAP-0 op route (c) is daarmee herhaalbaar | `app/rlz/lezen_cli.py::is_recordpad`; test |
+
+**Tests:** tests/migratie 206 groen (`TestBlok7c` 8 nieuw, `TestBlok7b` herzien), tests/panden 274 → 281 + service-tests, snede 2
+33 → 39, rlz-lezen +1, guard CLAUDE.md groen; ruff schoon op alle geraakte bestanden. Geen migratie, geen schema-wijziging.
+
+**BESLISPUNT PETER (punt 6, bewust niet ingevuld):** wat gebeurt er met de partners die ná de bank-afleiding onbekend blijven
+(geen Entity, geen betalende bankmutatie) — (a) één vaste partner "Bank-direct (onbekend)" op company 6, óf (b) het concept
+blokkeren tot een mens de partner kiest? Het rapport toont de omvang als teller `onbekend` en herhaalt het beslispunt in
+"Beslispunten Peter" (6).
+
+**Open punten uit de bouw:** (1) de document-vorm `ManualJournals/{id}?$expand=DocumentLineList(…)` is voor memorialen nog niet live
+gelezen — bewezen voor SalesInvoices/BankMutationDirectBookings; blijkt hij tóch geen `DocumentLineList` te geven, dan is het
+rapport ONVOLLEDIG mét de letterlijke reden en is de enige overgebleven route het RLZ-UI-export-pad (buiten de API); (2) memoriaal-
+regels op 1100/1601 (voorraadmutaties) tellen per besluit Peter niet in "aankoop" (alleen 7000 + koopsom-regel van een aankoop-
+memoriaal) — beoordelen zodra de memoriaalregels voor het eerst zichtbaar zijn; (3) `TotalTaxAmount` op de ManualJournals-kop is
+gelijk aan het netto-totaal (70,00) en dus geen btw-veld — nergens gebruikt; (4) de bank-groep leunt op `UseForPaymentAccount` óf
+een naam-/IBAN-regex op de Ledgers-rij; (5) enum-filters op `JournalEntry/DocumentType` vergen een enum-literal — niet nodig gebleken.
+
+**Meetrecept (ná deploy; service = jobs, het script toetst dat):** `scripts/gcp/vgg_blok7_nameting.sh alles` →
+`verkenning/nameting-vgg-*-<dd-mm>.txt` committen. Meetlatten: c replay: `0 document(en) zonder leesbare regels` (anders staat het
+oordeel ONVOLLEDIG mét de route-lijst en is punt 1 niet af), `regels per document: N calls — N via de document-vorm, 0 via /Lines`,
+BookDate-teller "0 terugval op Date", journaal per DocumentType 11: journaalposten = 228 = geboekte memorialen, 7000/8000/4106/
+4601/4612 cent-exact per 31-12-2025 (nu Δ 442.000 / 502.555 / 624,30 / 3.725,82 / 8.939,02), per pand geen SIGNAAL zonder
+verklarende regel en Rijswijkseweg 409 "sluit" (385.000 − 341.333,86 = 43.666,14) mét het concept-signaal RLZ-01-00000006,
+btw beide bronnen 0, partners "waarvan N uit de tegenpartij van de bankmutatie" en de rest als teller voor het beslispunt,
+groepstoets crediteuren/debiteuren/bank/tussenrekening sluitend en de saldibalans buiten de groepen GROEN; d snede 2: Molenhof
+Verhuur (d2e7f9f6) 0 paren mét één dag-batch-regel, totaal 3.485 → < 500, de twee KF-paren blijven module×niet-module; b panden:
+de vier notaris-nota's als `aankoop`, Donkerslootstraat 105B zonder 0101-koppeling, "Regelchecks inkoopfacturen: N gedaan".
+
+**Werkt in productie: nog niet gemeten.**
+
+<!-- run2-vgg:blok7c -->
