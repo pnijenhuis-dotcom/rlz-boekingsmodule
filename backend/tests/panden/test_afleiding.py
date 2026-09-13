@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from app.panden.afleiding import (
+    REDEN_NEGATIEF_NOTARIS,
     AdresVoorstel,
     BoekingsFeit,
     adres_uit_tekst,
@@ -964,8 +965,9 @@ class TestBankmutatie:
         c = classificeer_bankmutatie(feit)
         assert c is not None and (c.soort, c.zekerheid) == ("aankoop", "hoog")
 
-    def test_hypotheekgelden_aan_notaris_is_verkoop_signaal_zonder_adres(self) -> None:
-        # schoonlijst: "hypotheekgelden dossier 2026.080038.01" −187.144,23 op Ouwerkerk — verkoop-woord, alleen dossier
+    def test_hypotheekgelden_aan_notaris_negatief_is_aankoop_nooit_verkoop(self) -> None:
+        # blok 7b punt 7 (Peter 13-09): "hypotheekgelden dossier 2026.080038.01" −187.144,23 ÁÁN Ouwerkerk stond in de
+        # nameting 13-09 als "verkoop laag" — geld naar de notaris is aankoop of financiering, nooit verkoop
         feit = BoekingsFeit(
             collectie="PaymentTransactions",
             boekstuk="00100",
@@ -974,7 +976,88 @@ class TestBankmutatie:
             bedrag=Decimal("-187144.23"),
         )
         c = classificeer_bankmutatie(feit)
-        assert c is not None and (c.soort, c.zekerheid, c.dossiers) == ("verkoop", "laag", ("2026.080038.01",))
+        assert c is not None and (c.soort, c.zekerheid, c.dossiers) == ("aankoop", "laag", ("2026.080038.01",))
+        assert REDEN_NEGATIEF_NOTARIS in c.reden and "Ouwerkerk" in c.reden
+        assert c.reden.startswith("betaling aan notaris/dossier (negatief) — aankoop of financiering, nooit verkoop")
+
+    def test_hypotheekgelden_zonder_notaris_negatief_is_aankoop(self) -> None:
+        # ook zonder notaris als tegenpartij: het hypotheekgeld-woord + negatief teken = financiering van een aankoop
+        feit = BoekingsFeit(
+            collectie="PaymentTransactions",
+            boekstuk="00100",
+            entity_naam="Stichting Derdengelden",
+            tekst="hypotheekgeld Kerkstraat 44 te Ede",
+            bedrag=Decimal("-150000"),
+        )
+        c = classificeer_bankmutatie(feit)
+        # adres zonder notaris/dossier = midden (zelfde `_zekerheid`-regel als de bank-ontvangst)
+        assert c is not None and (c.soort, c.zekerheid) == ("aankoop", "midden")
+        assert c.adres is not None and c.adres.code == "kerkstraat-44" and REDEN_NEGATIEF_NOTARIS in c.reden
+
+    def test_alleen_dossier_aan_notaris_negatief_is_aankoop_laag(self) -> None:
+        feit = BoekingsFeit(
+            collectie="PaymentTransactions",
+            boekstuk="00100",
+            entity_naam=OUWERKERK,
+            tekst="ons dossier 2026.080038.01",
+            bedrag=Decimal("-50000"),
+        )
+        c = classificeer_bankmutatie(feit)
+        assert c is not None and (c.soort, c.zekerheid) == ("aankoop", "laag")
+        assert REDEN_NEGATIEF_NOTARIS in c.reden
+
+    def test_alleen_dossier_zonder_notaris_negatief_is_aankoop(self) -> None:
+        # dossier-signaal alléén (geen notaris, geen overdracht-woord) volstaat bij een negatieve bankmutatie
+        feit = BoekingsFeit(
+            collectie="PaymentTransactions",
+            boekstuk="00100",
+            entity_naam="J.B.",
+            tekst="dossier 2026.080038.01",
+            bedrag=Decimal("-1000"),
+        )
+        c = classificeer_bankmutatie(feit)
+        assert c is not None and c.soort == "aankoop" and REDEN_NEGATIEF_NOTARIS in c.reden
+
+    def test_hypotheekgelden_positief_blijft_verkoop(self) -> None:
+        feit = BoekingsFeit(
+            collectie="PaymentTransactions",
+            boekstuk="00112",
+            entity_naam=OUWERKERK,
+            tekst=ontknip("hypotheekgelden dossier 2026.080\n038.01") or "",
+            bedrag=Decimal("187144.23"),
+        )
+        c = classificeer_bankmutatie(feit)
+        assert c is not None and (c.soort, c.zekerheid) == ("verkoop", "laag")
+        assert REDEN_NEGATIEF_NOTARIS not in c.reden and "verkoop-signaal" in c.reden
+
+    def test_receipt_negatief_met_hypotheekgeld_is_aankoop(self) -> None:
+        # bank-directe boeking in de Receipts-collectie volgt dezelfde regel als een PaymentTransaction
+        c = classificeer(
+            _feit("Receipts", "hypotheekgelden dossier 2026.080038.01", entity=OUWERKERK, bedrag="-187144.23")
+        )
+        assert c is not None and c.soort == "aankoop" and REDEN_NEGATIEF_NOTARIS in c.reden
+
+    def test_hypotheekgeld_op_inkoopfactuur_ongewijzigd(self) -> None:
+        # documenten (PurchaseInvoices/SalesInvoices/ManualJournals RLZ-06) vallen buiten de teken-regel: het
+        # verkoop-woord wint zoals vóór 13-09
+        c = classificeer(
+            _feit("PurchaseInvoices", "hypotheekgelden dossier 2026.080038.01", entity=OUWERKERK, bedrag="-187144.23")
+        )
+        assert c is not None and (c.soort, c.zekerheid) == ("verkoop", "laag")
+        assert REDEN_NEGATIEF_NOTARIS not in c.reden
+        c = classificeer(
+            _feit("ManualJournals", "hypotheekgelden dossier 2026.080038.01", entity=OUWERKERK, bedrag="-187144.23")
+        )
+        assert c is not None and c.soort == "verkoop" and REDEN_NEGATIEF_NOTARIS not in c.reden
+
+    def test_belasting_verkoop_in_bankreeks_blijft_verkoop(self) -> None:
+        # negatief, bank-direct, maar zonder notaris/dossier/overdracht/hypotheekgeld → de teken-regel raakt 'm niet
+        c = classificeer(
+            _feit(
+                "ManualJournals", "Belasting verkoop Verschoorstraat 70-2", boekstuk="RLZ-28-00000090", bedrag="-2100"
+            )
+        )
+        assert c is not None and (c.soort, c.zekerheid) == ("verkoop", "midden")
 
     @pytest.mark.parametrize(
         ("reference", "naam", "bedrag", "soort"),

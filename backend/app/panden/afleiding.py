@@ -24,9 +24,12 @@ ontknip` — RLZ knipt bank-geïmporteerde omschrijvingen op 32 tekens met `\\n`
   * 31-12-memoriaal mét adres = `balans` (jaareinde), NOOIT aankoop/aankoopdatum;
   * "aanbetaling" (alle varianten) = `aanbetaling` (vooruitbetaald op voorraad), "vaste lasten"/"vastelasten" =
     `vaste_lasten` (W&V), ongeacht collectie;
+  * bank-directe boeking (Receipts, PaymentTransactions, bankdagboek-reeks) mét NEGATIEF bedrag ÁÁN een notaris, of
+    met een dossier-, overdracht-/afrekening- of hypotheekgeld-signaal = `aankoop` (aankoop of financiering, NOOIT
+    verkoop — blok 7b punt 7, besluit Peter 13-09: dossier 2026.080038.01 −187.144,23 stond als "verkoop laag");
+    deze regel gaat vóór de verkoop-woorden;
   * verkoop-woorden (verkoopsaldo, belasting verkoop, hypotheekgelden, doorstorten saldo, "verkoop") = `verkoop`;
-  * bank-directe boeking (Receipts, PaymentTransactions, bankdagboek-reeks) van/aan een notaris of met "overdracht"/
-    "afrekening": TEKEN beslist — positief = `verkoop`, negatief = `aankoop`;
+  * bank-directe boeking van een notaris of met "overdracht"/"afrekening" en POSITIEF bedrag = `verkoop`;
   * memoriaal RLZ-06 mét adres = `aankoop` (hoog mét notaris-PDF/dossier); verkoopfactuur op notaris = `verkoop` hoog;
     inkoopfactuur mét adres = `kosten`; "rente"/"huur" op een verkoopfactuur = `kosten` (opbrengst per pand, geen
     verkoop).
@@ -411,6 +414,8 @@ _SIG_VERKOOP = re.compile(
     r"verkoopsaldo|belasting\s+verkoop|hypotheekgeld|doorstorten\s+saldo|\bverkoop\b|\bverkocht\b", re.IGNORECASE
 )
 _SIG_OVERDRACHT = re.compile(r"\boverdracht|\bafrekening|\bnotaris|\blevering\b", re.IGNORECASE)
+_SIG_HYPOTHEEKGELD = re.compile(r"hypotheekgeld", re.IGNORECASE)
+REDEN_NEGATIEF_NOTARIS = "betaling aan notaris/dossier (negatief) — aankoop of financiering, nooit verkoop"
 _SIG_RENTE = re.compile(r"\brente\b|\bhuur\b|\bhuurpenningen\b", re.IGNORECASE)
 
 
@@ -761,6 +766,17 @@ def classificeer(feit: BoekingsFeit) -> Classificatie | None:
         )
     if _SIG_VASTE_LASTEN.search(t):
         return _maak("vaste_lasten", _zekerheid(*tweede_signaal), "vaste lasten voor de verkoper (W&V)")
+    bank_direct = is_bank_direct(feit)
+    overdracht = bool(_SIG_OVERDRACHT.search(t))
+    if (
+        bank_direct
+        and _teken(feit.bedrag) == -1
+        and (notaris or dossier_signaal or overdracht or _SIG_HYPOTHEEKGELD.search(t))
+    ):
+        # blok 7b punt 7 (Peter 13-09): geld dat naar de notaris gaat is nooit een verkoop — ook als de omschrijving
+        # "hypotheekgelden" zegt (dat was de financiering van een aankoop).
+        wie = f" · notaris {notaris.naam}" if notaris else ""
+        return _maak("aankoop", _zekerheid(notaris, dossier_signaal), f"{REDEN_NEGATIEF_NOTARIS}{wie}")
     if _SIG_VERKOOP.search(t):
         wie = f" · notaris {notaris.naam}" if notaris else ""
         return _maak("verkoop", _zekerheid(notaris, dossier_signaal), f"verkoop-signaal in de omschrijving{wie}")
@@ -776,15 +792,13 @@ def classificeer(feit: BoekingsFeit) -> Classificatie | None:
             return _maak("verkoop", "midden", "verkoopfactuur met adres, geen notaris als relatie")
         return _maak("verkoop", "laag", "verkoopfactuur met alleen een dossiernummer")
 
-    if is_bank_direct(feit):
-        overdracht = bool(_SIG_OVERDRACHT.search(t))
+    if bank_direct:
         if notaris or overdracht:
+            # het negatieve teken is hierboven al afgehandeld (aankoop, nooit verkoop)
             teken = _teken(feit.bedrag)
             bron = f"notaris {notaris.naam}" if notaris else "overdracht/afrekening"
             if teken == 1:
                 return _maak("verkoop", _zekerheid(notaris, dossier_signaal), f"bank-ontvangst van {bron} (positief)")
-            if teken == -1:
-                return _maak("aankoop", _zekerheid(notaris, dossier_signaal), f"betaling aan {bron} (negatief)")
             if notaris:
                 return _maak("verkoop", "midden" if adres else "laag", f"bankboeking {bron}, teken onbekend")
         return _maak("kosten", _zekerheid(*tweede_signaal), "bank-directe boeking met adres/dossier")
@@ -810,7 +824,8 @@ def classificeer(feit: BoekingsFeit) -> Classificatie | None:
 def classificeer_bankmutatie(feit: BoekingsFeit) -> Classificatie | None:
     """Eén PaymentTransaction als feit (collectie "PaymentTransactions", `entity_naam` = tegenpartij `Name`, `tekst` =
     ontknipte `Reference`, `bedrag` mét teken). Positief van een notaris of met "overdracht" + adres = VERKOOP; negatief
-    aan een notaris met overdracht/afrekening = AANKOOP; "aanbetaling"/"vaste lasten" = die soorten."""
+    aan een notaris of met dossier-/overdracht-/hypotheekgeld-signaal = AANKOOP (nooit verkoop); "aanbetaling"/"vaste
+    lasten" = die soorten."""
     if feit.collectie != "PaymentTransactions":
         return None
     return classificeer(feit)

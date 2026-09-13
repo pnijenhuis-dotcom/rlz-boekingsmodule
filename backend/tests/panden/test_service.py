@@ -780,6 +780,122 @@ class TestRun2:
         assert service.tekst_uit_rij({"Reference": None, "Description": 12}) == ""
 
 
+def _adres_signalen_data() -> dict[str, list[dict]]:
+    """Blok 7b punt 7 (13-09): de straatnaam-varianten en huisnummer-typo's uit de productienameting 13-09 — de
+    clusterdrempel voegt ze NIET samen; het rapport moet ze als kandidaat resp. signaal noemen."""
+    return {
+        "ManualJournals": [],
+        "SalesInvoices": [],
+        "PurchaseInvoices": [
+            # B: Rooseveltstraat 13 / Rooseveltweg 13, beide Hulst → één cluster-kandidaat, twee panden
+            _doc("RLZ-04-00000901", "Aanbetaling Rooseveltstraat 13, Hulst", datum="2026-02-02", bedrag=2500.0),
+            _doc(
+                "RLZ-04-00000902",
+                "Extra aanbetaling volgens afspraak: Rooseveltweg 13, Hulst",
+                datum="2026-03-02",
+                bedrag=2500.0,
+            ),
+            # B: Groningenstraat 203 (plaats onbekend) / Groningerstraatweg 203 Leeuwarden → kandidaat (plaats bij één
+            # onbekend)
+            _doc("RLZ-04-00000903", "Groningenstraat 203", datum="2026-04-01", bedrag=120.0, entity=CONSTEN),
+            _doc(
+                "RLZ-04-00000904",
+                "Vaste lasten volgens afspraak: Groningerstraatweg 203, Leeuwarden",
+                datum="2026-04-02",
+                bedrag=330.1,
+            ),
+            # C: Kouvenderstraat 34b / 43b Hoensbroek → huisnummer-signaal
+            _doc("RLZ-04-00000905", "Kouvenderstraat34b Hoensbroek", datum="2026-07-27", bedrag=1595.0),
+            _doc("RLZ-04-00000906", "Kouvenderstraat 43b Hoensbroek", datum="2026-07-28", bedrag=150.0),
+            # C: Donkerslootstraat 101A / 105B Rotterdam
+            _doc("RLZ-04-00000907", "Aankoop Donkerslootstraat 101A Rotterdam", datum="2026-02-18", bedrag=100.0),
+            _doc("RLZ-04-00000908", "Donkerslootstraat 105B Rotterdam", datum="2026-02-19", bedrag=100.0),
+            # geen regel: twee gewone, ongelijke panden
+            _doc("RLZ-04-00000909", "Aanbetaling Azielaan 334 Utrecht", datum="2025-09-02", bedrag=10000.0),
+            _doc("RLZ-04-00000910", "Aanbetaling Barendrechtstraat 30, Tilburg", datum="2025-09-03", bedrag=10000.0),
+            # geen regel: zelfde huisnummer + lijkende straat maar ANDERE plaats
+            _doc("RLZ-04-00000911", "Kerkstraat 44 Ede", datum="2026-05-01", bedrag=100.0),
+            _doc("RLZ-04-00000912", "Kerklaan 44 Zeist", datum="2026-05-02", bedrag=100.0),
+        ],
+    }
+
+
+class TestAdresSignalen:
+    def test_straat_lijkt_drempel(self) -> None:
+        assert service.straat_lijkt("Rooseveltstraat", "Rooseveltweg")  # kern "roosevelt" gelijk
+        assert service.straat_lijkt("Groningenstraat", "Groningerstraatweg")  # voorvoegsel "groning" ≥ 6
+        assert service.straat_lijkt("Kerkstraat", "Kerklaan")  # kern "kerk" gelijk ná suffix-strip
+        assert not service.straat_lijkt("Azielaan", "Barendrechtstraat")
+        assert not service.straat_lijkt("Kerkstraat", "Kerkstraat")  # identiek = zelfde cluster, geen kandidaat
+        assert not service.straat_lijkt("", "Kerkstraat")
+        assert service._straat_kern("Groningerstraatweg") == "groninger"
+        assert service._straat_kern("Rooseveltstraat") == "roosevelt" and service._straat_kern("Weg") == "weg"
+
+    def test_cluster_kandidaten_en_huisnummer_signalen_in_rapport(self, administratie_id: uuid.UUID) -> None:
+        rapport = service.leid_af(administratie_id, dry_run=True, client=NepClient(_adres_signalen_data()))
+        codes = {p.code for p in rapport.panden}
+        # de kandidaten blijven TWEE panden — nooit automatisch samengevoegd
+        assert {"rooseveltstraat-13", "rooseveltweg-13", "groningenstraat-203", "groningerstraatweg-203"} <= codes
+        assert {
+            "kouvenderstraat-34-b",
+            "kouvenderstraat-43-b",
+            "donkerslootstraat-101-a",
+            "donkerslootstraat-105-b",
+        } <= codes
+        assert rapport.cluster_kandidaten == [
+            "Groningenstraat 203 (plaats onbekend) ↔ Groningerstraatweg 203 (Leeuwarden) — "
+            "zelfde huisnummer (plaats bij één onbekend), straat lijkt; mens beslist",
+            "Rooseveltstraat 13 (Hulst) ↔ Rooseveltweg 13 (Hulst) — zelfde huisnummer + plaats, straat lijkt; "
+            "mens beslist",
+        ]
+        assert rapport.huisnummer_signalen == [
+            "Donkerslootstraat 101A (Rotterdam) ↔ Donkerslootstraat 105B (Rotterdam) — "
+            "zelfde straat + plaats, ander huisnummer; alleen signaal",
+            "Kouvenderstraat 34b (Hoensbroek) ↔ Kouvenderstraat 43b (Hoensbroek) — "
+            "zelfde straat + plaats, ander huisnummer; alleen signaal",
+        ]
+        # Azielaan/Barendrechtstraat en Kerkstraat 44 Ede/Kerklaan 44 Zeist (andere plaats) leveren geen regel
+        alles = "\n".join(rapport.cluster_kandidaten + rapport.huisnummer_signalen)
+        assert "Azielaan" not in alles and "Barendrechtstraat" not in alles and "Kerk" not in alles
+        md = service.als_markdown(rapport, administratie_naam="VGG")
+        assert "Cluster-kandidaten (mens beslist) — 2" in md
+        assert "Huisnummer-varianten (alleen signaal, geen actie) — 2" in md
+        assert "- Rooseveltstraat 13 (Hulst) ↔ Rooseveltweg 13 (Hulst)" in md
+        d = rapport.als_dict()
+        assert d["cluster_kandidaten"] == rapport.cluster_kandidaten
+        assert d["huisnummer_signalen"] == rapport.huisnummer_signalen
+        assert d["tellers"]["cluster_kandidaten"] == 2 and d["tellers"]["huisnummer_signalen"] == 2
+
+    def test_zonder_rapport_geen_berekening_en_lege_secties(self, administratie_id: uuid.UUID) -> None:
+        # pand_per_document (contract B → E) bouwt zonder rapport — geen signalen nodig, geen fout
+        rapport = service.AfleidingRapport(
+            administratie_id=str(administratie_id), rlz_admin_id=None, dry_run=True, gegenereerd_op=""
+        )
+        boekingen = service.lees_boekingen(NepClient(_adres_signalen_data()), rapport, max_bijlage_checks=0)
+        assert rapport.cluster_kandidaten == [] and rapport.huisnummer_signalen == []
+        panden = service.bouw_voorstellen(boekingen, None)
+        assert "rooseveltstraat-13" in panden and "rooseveltweg-13" in panden
+        md = service.als_markdown(rapport)
+        assert "Cluster-kandidaten (mens beslist) — 0" in md
+        assert "Huisnummer-varianten (alleen signaal, geen actie) — 0" in md
+
+    def test_aan_zelfde_lijstpand_gebonden_clusters_zijn_geen_kandidaat(self, tmp_path: Path) -> None:
+        from app.panden.afleiding import AdresVoorstel
+        from app.panden.pandenlijst import cluster_adressen
+
+        clusters = cluster_adressen(
+            [
+                AdresVoorstel("Rooseveltstraat", "13", plaats="Hulst"),
+                AdresVoorstel("Rooseveltweg", "13", plaats="Hulst"),
+            ]
+        )
+        assert len(clusters) == 2
+        kandidaten, signalen = service.adres_signalen(clusters, {0: "sf-a001", 1: "sf-a001"})
+        assert kandidaten == [] and signalen == []
+        kandidaten, _ = service.adres_signalen(clusters)
+        assert len(kandidaten) == 1
+
+
 class TestCli:
     def _parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()

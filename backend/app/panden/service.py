@@ -14,7 +14,10 @@ systeemhuls aan, verdubbelt nooit een bank-geïmporteerd document).
 Adressen worden geclusterd (`pandenlijst.cluster_adressen`: huisnummer + straat-gelijkenis) — één cluster = één pand-
 voorstel mét varianten in de reden; mét `--pandenlijst <csv>` wordt élk cluster aan precies één lijst-pand gebonden
 (code = lijst-code, `salesforce_id` in het rapport), meerduidig = niet gebonden en apart gemeld. Aankoopdatum = vroegste
-échte aankoop (nooit een 31-12-balansboeking, nooit een aanbetaling).
+échte aankoop (nooit een 31-12-balansboeking, nooit een aanbetaling). Ná het clusteren rapporteert `adres_signalen`
+(blok 7b punt 7, 13-09) cluster-KANDIDATEN (zelfde huisnummer + plaats, straat lijkt — "Rooseveltstraat 13" ↔
+"Rooseveltweg 13"; mens beslist, nooit automatisch samengevoegd) en huisnummer-varianten (zelfde straat + plaats, ander
+huisnummer — alleen signaal).
 
 Schrijft — alleen mét `dry_run=False` — `pand`-voorstellen (status `voorstel`, herkomst `afgeleid`) en `pand_boeking`-
 voorstellen (herkomst `voorstel`). Idempotent: upsert op (administratie, code — óf een eerdere variant-code van
@@ -177,6 +180,11 @@ class AfleidingRapport:
     dossier_zonder_pand: list[str] = field(default_factory=list)  # onvolledig/zonder dossier-woord → geen pand
     lijst_meerduidig: list[str] = field(default_factory=list)
     lijst_panden: int | None = None  # None = geen lijst meegegeven
+    # blok 7b punt 7 (13-09): adres-signalen ná het clusteren — nooit een automatische samenvoeging
+    cluster_kandidaten: list[str] = field(
+        default_factory=list
+    )  # straat lijkt, zelfde huisnummer + plaats; mens beslist
+    huisnummer_signalen: list[str] = field(default_factory=list)  # zelfde straat + plaats, ander huisnummer; signaal
 
     @property
     def aantal_koppelingen(self) -> int:
@@ -222,6 +230,8 @@ class AfleidingRapport:
                 "bankmutaties_gebruikt": self.bankmutaties_gebruikt,
                 "bankmutaties_document_aanwezig": self.bankmutaties_document_aanwezig,
                 "dossier_zonder_pand": len(self.dossier_zonder_pand),
+                "cluster_kandidaten": len(self.cluster_kandidaten),
+                "huisnummer_signalen": len(self.huisnummer_signalen),
                 "soorten": self.soorten,
             },
             "gelezen": dict(sorted(self.gelezen.items())),
@@ -232,6 +242,8 @@ class AfleidingRapport:
             "lijst_panden": self.lijst_panden,
             "lijst_meerduidig": list(self.lijst_meerduidig),
             "dossier_zonder_pand": list(self.dossier_zonder_pand),
+            "cluster_kandidaten": list(self.cluster_kandidaten),
+            "huisnummer_signalen": list(self.huisnummer_signalen),
             "geschreven": dict(self.geschreven),
             "fouten": list(self.fouten),
             "overgeslagen": list(self.overgeslagen),
@@ -484,6 +496,8 @@ def bouw_voorstellen(
     for i, cl in enumerate(clusters):
         for lid in cl.leden:
             adres_naar_code[lid] = cluster_naar_code[i]
+    if rapport is not None:
+        rapport.cluster_kandidaten, rapport.huisnummer_signalen = adres_signalen(clusters, cluster_naar_code)
 
     dossier_naar_code: dict[str, str] = {}
     uitgesteld: list[tuple[RlzBoeking, afleiding.Classificatie]] = []
@@ -516,6 +530,103 @@ def bouw_voorstellen(
             continue
         _voeg_koppeling_toe(panden[code], b, c, dossier_naar_code)
     return panden
+
+
+CLUSTER_KANDIDAAT_PREFIX_MIN = 6  # gemeenschappelijk voorvoegsel van de genormaliseerde straatnamen
+STRAAT_KERN_MIN = 3  # ná het strippen van straat-suffixen moet er een kern overblijven ("Kerk", "Roosevelt")
+
+
+def _straat_kern(straat: str) -> str:
+    """Genormaliseerde straatnaam zonder straat-suffix(en): "Groningerstraatweg" → "groninger", "Rooseveltstraat" →
+    "roosevelt". Strippen stopt zodra er minder dan `STRAAT_KERN_MIN` tekens zouden overblijven."""
+    kern = pandenlijst.normaliseer_straat(straat)
+    gestript = True
+    while gestript:
+        gestript = False
+        for suffix in sorted(afleiding.STRAAT_SUFFIXEN, key=len, reverse=True):
+            if kern.endswith(suffix) and len(kern) - len(suffix) >= STRAAT_KERN_MIN:
+                kern = kern[: -len(suffix)]
+                gestript = True
+                break
+    return kern
+
+
+def _gemeenschappelijk_voorvoegsel(a: str, b: str) -> int:
+    n = 0
+    for x, y in zip(a, b, strict=False):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def straat_lijkt(a: str, b: str) -> bool:
+    """Cluster-kandidaat-drempel (blok 7b punt 7) — bewust RUIMER dan `pandenlijst.straat_gelijk`, en daarom nooit
+    een automatische samenvoeging: de genormaliseerde namen delen een voorvoegsel van ≥ 6 tekens ("roosevelt…",
+    "groning…") óf de ene kern is een voorvoegsel van de andere ná het strippen van straat-suffixen ("roosevelt" =
+    "roosevelt")."""
+    na, nb = pandenlijst.normaliseer_straat(a), pandenlijst.normaliseer_straat(b)
+    if not na or not nb or na == nb:
+        return False
+    if _gemeenschappelijk_voorvoegsel(na, nb) >= CLUSTER_KANDIDAAT_PREFIX_MIN:
+        return True
+    ka, kb = _straat_kern(a), _straat_kern(b)
+    if len(ka) < STRAAT_KERN_MIN or len(kb) < STRAAT_KERN_MIN:
+        return False
+    return ka.startswith(kb) or kb.startswith(ka)
+
+
+def _plaats_verenigbaar(a: str | None, b: str | None) -> bool:
+    if not a or not b:
+        return True
+    return pandenlijst.normaliseer_straat(a) == pandenlijst.normaliseer_straat(b)
+
+
+def _plaats_tekst(a: afleiding.AdresVoorstel) -> str:
+    return f"({a.plaats})" if a.plaats else "(plaats onbekend)"
+
+
+def adres_signalen(
+    clusters: Sequence[pandenlijst.AdresCluster], cluster_naar_code: dict[int, str] | None = None
+) -> tuple[list[str], list[str]]:
+    """Ná het clusteren (blok 7b punt 7, Peter 13-09) — twee lijsten, beide alleen rapportage:
+
+    - cluster-kandidaten (MENS BESLIST, nooit automatisch samenvoegen): twee clusters met hetzelfde huisnummer (+
+      dezelfde toevoeging), plaats gelijk of bij één onbekend, en straatnamen die `straat_lijkt` ("Rooseveltstraat 13" ↔
+      "Rooseveltweg 13", "Groningenstraat 203" ↔ "Groningerstraatweg 203") — de clusterdrempel voegde ze niet samen;
+    - huisnummer-varianten (ALLEEN SIGNAAL, geen actie): dezelfde straat (clusterdrempel `pandenlijst.straat_gelijk`,
+      dus ook de tikfout-variant "Hillenraedstraat"/"Hillenraedtstraat"), plaats gelijk of bij één onbekend, ander
+      huisnummer ("Kouvenderstraat 34b" ↔ "43b", "Donkerslootstraat 101A" ↔ "105B").
+    Twee clusters die aan hetzelfde lijst-pand gebonden zijn (zelfde code) zijn één pand en worden overgeslagen."""
+    kandidaten: list[str] = []
+    signalen: list[str] = []
+    reps = sorted(((cl.representant, i) for i, cl in enumerate(clusters)), key=lambda x: x[0].code)
+    for x in range(len(reps)):
+        for y in range(x + 1, len(reps)):
+            a, i = reps[x]
+            b, j = reps[y]
+            if cluster_naar_code is not None and cluster_naar_code.get(i) == cluster_naar_code.get(j):
+                continue
+            if not _plaats_verenigbaar(a.plaats, b.plaats):
+                continue
+            beide = bool(a.plaats and b.plaats)
+            plaats = "zelfde huisnummer + plaats" if beide else "zelfde huisnummer (plaats bij één onbekend)"
+            if (
+                a.huisnummer == b.huisnummer
+                and pandenlijst.normaliseer_toevoeging(a.toevoeging) == pandenlijst.normaliseer_toevoeging(b.toevoeging)
+                and straat_lijkt(a.straat, b.straat)
+            ):
+                kandidaten.append(
+                    f"{a.weergave_kort} {_plaats_tekst(a)} ↔ {b.weergave_kort} {_plaats_tekst(b)} — "
+                    f"{plaats}, straat lijkt; mens beslist"
+                )
+            elif a.huisnummer != b.huisnummer and pandenlijst.straat_gelijk(a.straat, b.straat):
+                waar = "zelfde straat + plaats" if beide else "zelfde straat (plaats bij één onbekend)"
+                signalen.append(
+                    f"{a.weergave_kort} {_plaats_tekst(a)} ↔ {b.weergave_kort} {_plaats_tekst(b)} — "
+                    f"{waar}, ander huisnummer; alleen signaal"
+                )
+    return kandidaten, signalen
 
 
 def _voeg_koppeling_toe(
@@ -942,4 +1053,8 @@ def als_markdown(rapport: AfleidingRapport, *, administratie_naam: str | None = 
         regels.append("| _geen_ | | | | | | | | |")
     if rapport.dossier_zonder_pand:
         regels += ["", "Dossier zonder pand:"] + [f"- {d}" for d in rapport.dossier_zonder_pand]
+    regels += ["", f"Cluster-kandidaten (mens beslist) — {len(rapport.cluster_kandidaten)}"]
+    regels += [f"- {k}" for k in rapport.cluster_kandidaten]
+    regels += ["", f"Huisnummer-varianten (alleen signaal, geen actie) — {len(rapport.huisnummer_signalen)}"]
+    regels += [f"- {s}" for s in rapport.huisnummer_signalen]
     return "\n".join(regels) + "\n"
