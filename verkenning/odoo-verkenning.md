@@ -955,3 +955,21 @@ De stappentabel van §12 is herzien (code `app/migratie/cli_odoo.py`, tests groe
 
 Vast te leggen ná uitvoering (hier, §12.2): de werkende reconcile-route mét exacte payloads (zonder keys), de partner-payload zoals
 Odoo 'm accepteerde (vat-formaatweigering ja/nee), het `action_post`-antwoord en de `name`-reeks van dagboek LF op company 6.
+
+### 12.3 Blok 7b (13-09-2026) — fixes uit de productienameting vóór de eerste writes; anker-vorm en btw-rol definitief
+
+Uitkomst STAP 1 (13-09, `verkenning/nameting-vgg-*-13-09.txt`): a/b/d gedraaid, c (replay) ROOD en deels onbetrouwbaar
+door de RLZ-webfilter-blokkering (api-verkenning "Webfilter-blokkering bij >N calls"). STAP 2 NIET gedraaid. Wat voor de
+Odoo-kant verandert (code, tests groen; uitvoering wacht op deploy + herhaling STAP 1):
+
+| Onderdeel | Was (§12.2) | Nu (blok 7b, besluiten Peter 13-09) |
+|---|---|---|
+| Anker op `account.move` | `ref = "<boekstuk> · mig:<anker>"`, zoek `ref ilike` | **Facturen:** `ref` = kaal RLZ-factuur-/boekstuknummer (`Reference`, anders `ReceiptNumber`), anker `mig:<anker>` in **`invoice_origin`** (zoek exact). **Memorialen:** anker in `ref` (exact), boekstuk in `narration`. **Bankregels:** `unique_import_id` (ongewijzigd), `ref` = kale TransactionId. `odoo_schrijf.ANKERVELD_PER_MOVE_TYPE` + `zoek_move_op_anker(…, move_type=…)` |
+| Btw | `tax_ids=[[6,0,[]]]`, teller "moet 0 zijn" | Vijfde rol **`btw_afwikkeling_historisch`** ("Btw-afwikkeling historisch", `liability_current`, kandidaat 159000; kolom `rekening_btw_afwikkeling_historisch_id`, migratie 0139; `vgg-rekeningen --maak-aan` maakt 'm mee in stap 2a). Élke RLZ-regel met `TaxAmount ≠ 0` → netto-regel op de eigen rekening + één balansregel voor het btw-bedrag op de rol, zonder tax_ids; regels op een RLZ-btw-grootboek (OB-aangifte/-teruggaaf via memoriaal of bank) → herclassificatie naar dezelfde rol. Rapportblok "Btw-afwikkeling historisch": afmeldingsdatum uit de data (laatste btw-regel / laatste OB-mutatie) + restsaldo per 31-12-2025 en per vandaag. |
+| Statements | `balance_end_real` uit RLZ `/Statements` | RLZ heeft voor VGG géén afschrift-koppen → één `account.bank.statement` per **maand per journal (IBAN)** met `balance_end_real` = lopend saldo uit de PaymentTransactions (beginsaldo 0); twee RLZ-rekeningen met dezelfde IBAN (NL95INGB0114119295) = één journal; rapporttabel "Saldo-toets bank" (berekend saldo per 31-12-2025 en per vandaag) voor Peters handmatige toets tegen het echte banksaldo. Besluit-vorm — schrijven = run 3. |
+| Open posten | bedrag − Σ bankkoppelingen | Factuur↔creditnota-verrekening als PAAR afgeleid (zelfde relatie, RLZ open 0, berekend ±X) → beide 0 + `verrekeningen`-lijst (run 3 = reconcile beide moves); Σ koppelingen ≠ totaal → kolom "Oorzaak" (mogelijk betalingsverschil-afboeking), nooit stil afgerond; Σ regels ≠ documenttotaal → tabel "Regelsom ≠ totaal" (blokkeert GROEN). ⚠️ RLZ's eigen verrekeningsspoor (actie 34) is niet als leesroute bewezen — STAP-0 via `rlz-lezen` op zo'n document als Peter dat spoor wil. |
+| Per pand | alleen documenten → 0 verkopen | zelfde bron als het pandenregister (documenten + bankmutaties via `_naar_bankmutatie`) — verkopen zijn notaris-ontvangsten op de bank |
+
+Stappentabel §12.2 blijft; stap a maakt nu **vijf** rekeningen (+ Overhead). Uitvoeringsvolgorde ongewijzigd: STAP 1 (a–d)
+opnieuw ná deploy → recept SCHRIJF a (incl. Btw-afwikkeling historisch) → GO Peter → SCHRIJF c.
+

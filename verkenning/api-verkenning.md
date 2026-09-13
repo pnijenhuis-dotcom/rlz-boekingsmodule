@@ -2131,3 +2131,43 @@ bestand (MT940/CAMT-regel van 32 tekens) — voor de reparatie irrelevant.
 Nog te bewijzen in productie (het rapport maakt ze zichtbaar, zie contract_afwijkingen_E.md): JournalEntryLines-velden
 (DebitAmount/CreditAmount, JournalEntry.EventID = bron-id), `/Statements`-saldoveldnamen, de regels-route van een
 DocumentType-19-document (`BankMutationDirectBookings/{id}/Lines`).
+
+## Webfilter-blokkering bij >N calls — 13-09-2026 (productienameting VGG-replay, run 2 blok 7 STAP 1c) — GEEN RECHTENFOUT MAAR VOLUMEBLOKKERING
+
+**Waarneming (lees-only, job `rlz-reconciliatie`, `vgg-replay --dry-run` op Vastgoedgroep Nederland, 07:5x UTC):** de
+replay las eerst de collecties (~30 gepagineerde GET's) en daarna de regels **per document** (`{collectie}/{id}/Lines`,
+1.089 losse calls in enkele minuten, ≈ 9 calls/s). Tot call ~700 antwoordde RLZ normaal; daarna gaf **élke** route —
+óók `PaymentAccounts`, `JournalEntryLines`, `Ledgers`, `TaxRates` — een `403` met een **HTML-body**:
+
+```
+<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY><H1>Access Denied</H1>
+You don't have permission to access "http://apps.reeleezee.nl/api/v1/…" on this server.
+```
+
+Kenmerken: (1) HTML, niet RLZ's JSON-foutvorm; (2) treft alle routes van die login tegelijk; (3) de eerdere run van
+dezelfde ochtend (schoonlijst + pandenregister: ~230 losse `Uploads`-checks in een lager tempo) liep wél door. Conclusie:
+een **webfilter/edge-blokkering op call-volume in korte tijd** (Akamai-achtige "Access Denied"-pagina), geen 403 van de
+webservice-rechten (die komt als JSON en per route). De precieze drempel is niet gemeten; de blokkering kwam ná ~700
+calls binnen ~2 minuten. Hoe lang hij aanhoudt is evenmin gemeten (de run stopte niet en telde 305 documenten "zonder
+regels" — halve data, rapport onbetrouwbaar; zie `verkenning/nameting-vgg-replay-13-09.txt`).
+
+**Gevolg voor de module (blok 7b 13-09, opdracht Peter):**
+- `RlzClient` herkent `403` + HTML als `RlzWebfilterError` (`app/rlz/client.py::is_webfilter_antwoord`), herhaalt
+  `rlz_webfilter_pogingen`× (default 3) met verdubbelende wachttijd vanaf `rlz_webfilter_backoff_seconden` (20 → 40 s)
+  en hervat waar hij gebleven was; blijft de blokkering, dan is de fout zichtbaar (nooit stil als "geen rechten").
+- Élke `RlzClient`-verbinding houdt een **token-bucket** bij: `rlz_burst_calls` (50) direct, daarna
+  `rlz_max_calls_per_seconde` (3,0; 0 = uit) — `for_administration` deelt de bucket per login.
+- **Regels lezen per document is afgeschaft** voor de replay: `PurchaseInvoices`/`SalesInvoices`/`ManualJournals` worden
+  gelezen met `$expand=Entity,DocumentLineList($expand=Account,TaxRate)` (resp. `JournalEntryDiary,…`) op de
+  collectie-reeks; weigert RLZ die vorm (400) dan valt de lezer zichtbaar terug op de oude expand en leest alleen de
+  documenten zónder `DocumentLineList` per document, in tempo. ⚠️ De collectie-vorm van `DocumentLineList(…)` is op
+  13-09 **nog niet live bewezen** (alleen de document-vorm `…/{id}?$expand=DocumentLineList(…)` is bewezen, zie
+  "Receipts-verkenning" en "ManualJournals"); de terugval-keten maakt een weigering zichtbaar én ongevaarlijk. De
+  Receipts-collectie expandeert `DocumentLineList` niet (bewezen) → bank-directe boekingen (DocumentType 19) blijven per
+  document via `BankMutationDirectBookings/{id}/Lines`.
+- Een webfilter-403 die de client ná backoff nog ziet = **"RLZ-blokkering — meting ongeldig"**: het rapport wordt ROOD
+  met die regel en rekent NIETS door (geen saldibalans op halve data).
+
+**Meetlat productie (ná deploy):** `vgg-replay --dry-run` leest 100 % van de regels (0 "zonder regels"), 0 leesfouten,
+`RLZ-calls: N (webfilter-treffers hervat: 0)` in de rapportkop. Meetrecept: `scripts/gcp/vgg_blok7_nameting.sh c`.
+

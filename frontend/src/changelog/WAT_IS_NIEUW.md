@@ -6,6 +6,21 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-13 — Rustiger lezen uit Reeleezee, migratie-voorbereiding Vastgoedgroep
+
+<!-- run2-vgg:blok7b -->
+
+### Reeleezee
+- De koppeling met Reeleezee houdt zich nu aan een vast tempo en herkent een tijdelijke blokkering van Reeleezee ("Access Denied") als wat het is: geen rechtenprobleem, maar te veel verzoeken in korte tijd. De koppeling wacht dan even en gaat verder waar ze was.
+- Grote leesrondes halen de boekingsregels in één keer mee met de documenten in plaats van per document; dat is sneller en voorkomt die blokkering.
+
+### Vastgoedgroep Nederland (voorbereiding overstap)
+- Het proefrapport van de overstap toont nu eerlijk "meting ongeldig" als Reeleezee halverwege blokkeerde, in plaats van te rekenen met halve gegevens.
+- Btw uit het verleden (de administratie is niet btw-plichtig) gaat straks als één afwikkelpost mee; het rapport laat de afmelddatum en het restsaldo zien.
+- Verrekende facturen en creditnota's worden als paar herkend, en elk verschil van een cent wordt benoemd in plaats van afgerond.
+- Het banksaldo per maand wordt berekend uit de bankregels zodat u het naast het echte saldo kunt leggen.
+- Het pandenregister ziet een betaling aan de notaris niet meer als verkoop en wijst op straatnaam-varianten en huisnummer-tikfouten; u beslist.
+
 ## 2026-09-11 — Sneller beginscherm, verplaatsen hersteld, groepen, slimmere goedkeur-vraag, geduldige eerste sync
 
 <!-- run11-09middag -->

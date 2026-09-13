@@ -8966,3 +8966,84 @@ niet een gok in de code; (3) het IBAN-klikpunt is nu een leesbare stop, geen aut
 dagboek is Peters instelling).
 
 <!-- run2-vgg:blok7 -->
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 7b: FIXES UIT DE PRODUCTIENAMETING 13-09 VÓÓR DE EERSTE ODOO-WRITES (13-09-2026; besluiten Peter 13-09; migratie 0139)
+
+**Aanleiding.** Blok 7 STAP 1 gedraaid op 13-09 (`verkenning/nameting-vgg-{schoonlijst,panden,replay}-13-09.txt`,
+`nameting-rlzdubbel-snede2-13-09.txt`): a/b/d leverden bruikbare uitkomsten, c (`vgg-replay`) een ROOD rapport dat deels
+onbetrouwbaar was — ná ~700 losse regel-calls antwoordde RLZ's webfilter `403` + HTML "Access Denied" op élke route
+(305 documenten zonder regels, PaymentAccounts/JournalEntryLines/Ledgers/TaxRates dicht). STAP 2 (Odoo-writes) is NIET
+gedraaid. Opdracht Peter 13-09: tien fixes, daarna STAP 1 opnieuw; SCHRIJF a pas ná de fixes, SCHRIJF c pas als 1–5
+groen zijn. Pre-feature-check: bouwt 1-op-1 voort op "RUN 2 … (blok 0)" t/m "RUN 2 BLOK 7"; geen scherm-impact.
+
+**Besluiten Peter 13-09 (canoniek — niet heroverwegen):**
+1. **Vastgoedgroep is NIET btw-plichtig.** De 883 btw-regels in 784 RLZ-documenten en de OB-aangifte-bankregels
+   (TEVEELBET/TERUGGAAF OB 3e/4e kwartaal 2025) zijn het gevolg van een foute registratie door de Belastingdienst, later
+   afgemeld. Replay: élke RLZ-btw-regel gaat naar Odoo als gewone balansregel op één rekening **"Btw-afwikkeling
+   historisch"** (vijfde rol in de koppeling-rij, `liability_current`, aanmaken in stap 2a), ZONDER tax_ids; de
+   OB-bankmutaties letteren daar tegen af. Geen enkele Odoo-move krijgt een btw-code. Het rapport noemt de
+   afmeldingsdatum zoals die uit de data blijkt (laatste btw-regel / laatste OB-mutatie) en het restsaldo per vandaag.
+2. **Bank leidend blijft;** statements per maand in de vorm van punt 3 hieronder (besluit-vorm voorbereid, Peter toetst).
+3. **Anker (beslispunt 3 van blok 6, advies overgenomen):** facturen `ref` = kaal RLZ-factuur-/boekstuknummer + anker
+   `mig:<uuid>` in `invoice_origin`; memorialen anker in `ref`; bankregels `unique_import_id`. Zoek-vóór-create op het
+   anker-veld per type.
+
+**Gebouwd (code + tests; migratie 0139 = één kolom `rekening_btw_afwikkeling_historisch_id` op `platform.odoo_koppeling`,
+gedraaid tegen dev; `alembic check` schoon):**
+
+| # | Punt | Gebouwd | Waar |
+|---|---|---|---|
+| 1 | RLZ-blokkering | (a) regels komen mee op de COLLECTIE-reeks: `$expand=Entity,DocumentLineList($expand=Account,TaxRate)` (ManualJournals: `JournalEntryDiary,…`); `lees_collectie` kreeg een terugval-KETEN (`expand_terugval`: 400 → volgende variant → zonder expand, `expand_gebruikt` zichtbaar); alleen documenten zónder `DocumentLineList` (Receipts/bank-direct, of ná een geweigerde expand) nog per document, in tempo. (b) `RlzClient.tempo` = token-bucket per verbinding (`rlz_burst_calls` 50 direct, daarna `rlz_max_calls_per_seconde` 3,0; 0 = uit; `for_administration` deelt 'm) + `RlzWebfilterError` (403 + HTML-body ≠ RLZ's JSON-403): `rlz_webfilter_pogingen` 3× met verdubbelende wachttijd vanaf `rlz_webfilter_backoff_seconden` 20 s, hervat waar gebleven; 429 blijft Retry-After. (c) blokkering ná backoff = `RlzBron.blokkering`, lezen STOPT, rapport `Oordeel: ROOD — RLZ-blokkering — meting ongeldig`, niets doorgerekend (geen saldibalans/open posten/per pand/export op halve data). Rapportkop toont `RLZ-calls: N (webfilter-treffers hervat: k, gewacht s)` + `regels via collectie-expand: M documenten, per document: P calls` | `app/rlz/client.py` (`Tempo`, `is_webfilter_antwoord`, `_stop`), `app/config.py` (4 settings), `app/rlz/lezen.py`, `app/migratie/rlz_bron.py`, `replay.py`, `rapport.py`; tests `tests/unit/test_rlz_client_tempo.py` (8), `tests/rlz/test_lezen_expand_terugval.py` (4), `tests/migratie/test_replay.py::TestBlok7b` (11); api-verkenning "Webfilter-blokkering bij >N calls" |
+| 2 | Saldibalans-bron | De RLZ-kolom = som per grootboek uit JournalEntryLines — de EventID-koppeling is daarvoor niet nodig; het rapport zegt nu letterlijk óf de aanname klopt ("EventID-koppeling herkend op k/N" / "KLOPT NIET (0 treffen een bekend document)") en, als JournalEntryLines niet leesbaar is: "RLZ-kolom NIET beschikbaar … een terugval op Ledgers-saldi per datum kent de RLZ-API niet als bewezen route (STAP-0 nodig)". Ná fix 1 opnieuw meten | `replay.py::_saldibalans` (`rapport.journaal.rlz_kolom`) |
+| 3 | Statements | RLZ heeft voor VGG géén `/Statements`-koppen → één `account.bank.statement` per **maand per journal** met `balance_end_real` = lopend saldo uit de PaymentTransactions (beginsaldo 0 bij start administratie); journal = IBAN (twee RLZ-rekeningen met NL95INGB0114119295 = één journal); nieuwe tabel **"Saldo-toets bank"**: berekend saldo per 31-12-2025 en per vandaag per journal + aantal RLZ-afschrift-koppen + eerste/laatste mutatie — Peter legt dat naast het echte banksaldo. Bestaat er wél een RLZ-kop en sluit begin + som op eind, dan wint het RLZ-saldo (offset = beginsaldo vóór de eerste mutatie, zichtbaar). Bankregel-`bank`-blok draagt `statement_maand` + `journal_sleutel`. Schrijven = run 3 | `replay.py::_statements`/`_journals_per_rekening`, `rapport.py` |
+| 4 | Open posten | Factuur↔creditnota-verrekening als PAAR (zelfde relatie, zelfde kant in/out, RLZ open 0, berekend +X en −X) → beide berekend 0, lijst `verrekeningen` mét ankers (run 3 = reconcile beide moves), herkomst "afgeleid uit bedrag + relatie (RLZ-verrekeningsspoor niet gelezen)". Kolom **"Oorzaak"** bij elk verschil: "koppelingen som € X ≠ documenttotaal € Y (Δ …) — mogelijk betalingsverschil-afboeking in RLZ; niet stil afgerond" (de −0,02 op € 220.667,05). Cent-exacte **regelsom** per document (Σ netto+btw in boekrichting vs `BaseInvoiceAmount`; memoriaal debet − credit; bank-direct op |bedrag|) → `Vertaald.som_verschil`, tabel "Regelsom ≠ documenttotaal", blokkeert GROEN | `replay.py::_open_posten`, `vertaling.py` (`som_verschil`, `entity_id`), `rapport.py` |
+| 5 | Per-pand-tabel | Eén bron: `_rlz_boekingen` geeft nu óók de bankmutaties (`panden.service._naar_bankmutatie`) aan `pand_per_document`, exact de afleiding van `pandenregister-afleiden` (dry-run in-memory; ná `--schrijf` de `pand_boeking`-rijen); `vertaal_bankregel` draagt de pand-toewijzing, `_per_pand` telt documenten + bankregels (verkopen = notaris-ontvangsten), marge alleen bij verkoop | `replay.py`, `vertaling.py::vertaal_bankregel` |
+| 6 | Anker | `vertaling`: facturen `ref` = `Reference` (ontknipt) → `ReceiptNumber` → id, `invoice_origin` = `mig:<anker>`; memoriaal `ref` = `mig:<anker>`, boekstuk vooraan in `narration`; bankregel `ref` = kale TransactionId, `unique_import_id` = `mig:<anker>`. `odoo_schrijf.ANKERVELD_PER_MOVE_TYPE` + `zoek_move_op_anker(…, move_type=)` exact op dat veld (zonder type: `invoice_origin = ` óf `ref ilike` — oude concepten blijven vindbaar); `maak_concept_move` zet het anker in het juiste veld en muteert `ref` van een factuur nooit tot anker | `app/migratie/vertaling.py`, `odoo_schrijf.py`; `tests/migratie/test_odoo_schrijf.py` (+ `test_memoriaal_anker_in_ref`) |
+| 7 | Pandenregister (agent P) | (A) bank-directe boeking/bankmutatie met teken −1 én (notaris óf dossier-signaal óf overdracht óf "hypotheekgeld") = **`aankoop`** met reden "betaling aan notaris/dossier (negatief) — aankoop of financiering, nooit verkoop" (vóór de verkoop-woorden; positief blijft verkoop; documenten ongewijzigd — dossier 2026.080038.01 −€187.144,23 stond als verkoop laag). (B) **Cluster-kandidaten (mens beslist)**: zelfde huisnummer(+toevoeging), plaats gelijk of één leeg, `straat_lijkt` (gemeenschappelijk voorvoegsel ≥ 6 óf straat-kern na suffix-strip is voorvoegsel) → regel "Rooseveltstraat 13 (Hulst) ↔ Rooseveltweg 13 (Hulst) — zelfde huisnummer + plaats, straat lijkt; mens beslist" (ook Groningenstraat/Groningerstraatweg 203). (C) **Huisnummer-varianten (alleen signaal, geen actie)**: zelfde straat (clusterdrempel `straat_gelijk`, zodat Hillenraed/Hillenraedt 144/152 meedoet) + plaats verenigbaar + ander huisnummer → "Kouvenderstraat 34b (Hoensbroek) ↔ Kouvenderstraat 43b (Hoensbroek) — zelfde straat + plaats, ander huisnummer; alleen signaal". Beide in `AfleidingRapport` (+ `als_dict`, markdown-secties), alleen berekend mét rapport. Sanitycheck op de 14 nameting-adressen: 2 kandidaten, 4 signalen, Azielaan/Barendrechtstraat niets | `app/panden/afleiding.py` (`_SIG_HYPOTHEEKGELD`, `REDEN_NEGATIEF_NOTARIS`), `app/panden/service.py` (`adres_signalen`, `straat_lijkt`); tests/panden 263 → 274 |
+| 8 | Snede 2 (agent S) | Uitgesloten: **periodieke reeksen** — groep (crediteur, cent-exact bedrag) met ≥ 3 documenten over ≥ 2 kalendermaanden (maand-span = maximum over boekdatum- én factuurdatum-as) → álle paren van de groep weg, patroon via `terugkerend.service.classificeer_reeks` over de unieke datums ("maand-patroon over N facturen" / anders "≥ 3 gelijke bedragen over M maanden"); bank-bevestigd (k ≥ 2) blijft. Rapport: per administratie eerst "· uitgesloten (periodiek): <initialen> € <bedrag> — N documenten over M maanden, <patroon>, P paren", dan alleen module×niet-module + niet-module×niet-module mét bank-tekort; tellers + totaal mét "periodiek uitgesloten G groepen/P paren". NIET als nachtelijke bevinding. **Testcasus KF-paren** `TestKFParenDoorbelastingAansluiting` (RLZ-04-00004412+4314 € 12.600 / 4312+4415 € 16.250, 10-08-2026, bank 0/2) bewijst dat ze ná de uitsluiting module×niet-module blijven — input voor de doorbelasting-aansluiting-mini-run | `app/reconciliatie/rlz_dubbel.py` (`Snede2PeriodiekeGroep`, `Snede2Uitkomst.periodiek_groepen`), tests 80 → 91 |
+| 9 | Scripts | `vgg_blok7_nameting.sh`: SERVICE default **`rlz-backend`**, helper `stap` — rapport altijd weggeschreven, exit-code van de job = STATUS-regel, altijd door naar de volgende stap (alleen de deploy-check stopt vooraf). `vgg_blok7_odoo_writes.sh`: SERVICE `rlz-backend` + `deploy_check` (service-image = job-image, anders exit 3) vóór élke modus; `plan` loopt door mét status per stap; SCHRIJF a maakt nu vijf rekeningen. `nameting.sh`: logs ALTIJD gelezen (ook ná een rode executie), exit volgt de executie behalve `vgg-replay` (uitkomst, exit 0). CLI `vgg-replay`: GROEN én ROOD (incl. blokkering) = exit 0 + statusregel `UITKOMST: …`; alleen invoerfouten exit 2 | `scripts/gcp/*.sh`, `app/migratie/cli_replay.py::statusregel` |
+| 10 | Nameting ná deploy | Voorbereid (recept hieronder); NIET uitgevoerd in deze beurt (deploy = push via de Stop-hook, ná deze commit) | — |
+| btw | Besluit 1 | Rol `btw_afwikkeling_historisch` (`rj220.ROLLEN` = 5; naam "Btw-afwikkeling historisch", `liability_current`, kandidaten 159000/159100/…; `vgg-rekeningen --maak-aan` maakt 'm mee, lookup-vóór-create). `vertaling`: regel met `TaxAmount ≠ 0` → netto-regel op de eigen rekening + één balansregel `bron="btw"` voor het btw-bedrag op de rol (zonder tax_ids; `price_unit` = btw-bedrag), `Context.btw_ledgers` (naam-regex op Ledgers: btw/omzetbelasting/OB/voorbelasting + Account-refs van TaxRates) → regels op een RLZ-btw-grootboek (OB-aangifte/-teruggaaf via memoriaal/bank) herclassificeren naar de rol; rol niet ingesteld = niet vertaalbaar (zichtbaar), restsaldo blijft berekend op pseudo-rekening `rol:btw_afwikkeling_historisch`. Rapportblok **"Btw-afwikkeling historisch"**: rol, btw-regels/documenten, Σ btw, OB-afwikkelboekingen, afmeldingsdatum uit de data (max van laatste btw-regel en laatste OB-mutatie), restsaldo per 31-12-2025 en per vandaag (0,00 = volledig afgewikkeld), herkende RLZ-btw-grootboeken | migratie 0139; `app/odoo/rj220.py`, `app/odoo/models.py`, `app/migratie/vertaling.py` (`btw_ledgers_uit`, `_netto_en_btw`), `replay.py::_btw`, `rapport.py`; tests/odoo/test_rj220 31 groen |
+
+**Live-200 (migratieroutine):** `make migrate` dev → `Running upgrade 0138 -> 0139`; `alembic check` "No new upgrade
+operations detected"; uvicorn 8011: `GET /administraties/{dev-id}/odoo` = 404 uit de handler zelf ("Geen Odoo-koppeling",
+de dev-DB heeft geen koppeling-rij — géén DB-fout) + ORM-select op `OdooKoppeling.rekening_btw_afwikkeling_historisch_id`
+tegen dev = ok (kolom `integer`); schema-dump ververst ná de volledige suite.
+
+**Meetrecept STAP 1 opnieuw (ná deploy; service = jobs — het script toetst dat zelf):** `scripts/gcp/vgg_blok7_nameting.sh alles`
+→ `verkenning/nameting-vgg-{schoonlijst,panden,replay,rlz-dubbel-snede2}-<dd-mm>.txt` committen. Meetlatten:
+
+| Onderdeel | Meetlat |
+|---|---|
+| c replay | rapportkop `webfilter-treffers hervat: 0`, `0 document(en) zonder leesbare regels`, `0 leesfout(en)`; `regels via collectie-expand` ≈ 1.012 (781 + 3 + 228) — is dat 0 dan weigerde RLZ de collectie-expand (OVERGESLAGEN-regel "gaf geen DocumentLineList") en liep alles per document in tempo; saldibalans mét gevulde RLZ-kolom (JournalEntryLines > 0, EventID-regel leesbaar); per pand mét verkopen; blok Btw-afwikkeling historisch mét afmeldingsdatum + restsaldo; Saldo-toets bank per journal (Peter legt de twee saldi naast het echte banksaldo); open posten: 46,51/700-paren onder "Verrekeningen", −0,02 mét oorzaak |
+| b panden | secties "Cluster-kandidaten (mens beslist)" (verwacht: Roosevelt 13, Groningen 203) en "Huisnummer-varianten" (verwacht 4); dossier 2026.080038.01 niet meer als verkoop |
+| d snede 2 | tellers + totaal mét "periodiek uitgesloten G groepen/P paren"; d2e7f9f6 ≥ 1 regel "· uitgesloten (periodiek)"; de twee KF-paren blijven module×niet-module |
+| a schoonlijst | ongewijzigd t.o.v. 13-09 (geen code-wijziging in de schoonlijst) |
+
+Daarna het recept **SCHRIJF a** (`vgg_blok7_odoo_writes.sh plan` → `SCHRIJF a`: koppeling-rij + vijf rekeningen incl.
+"Btw-afwikkeling historisch" + Overhead) en pas ná Peters GO **SCHRIJF c**.
+
+**Werkt in productie: NEE — NIET GEMETEN (13-09).** Alles is gebouwd, getest (tests/migratie 199 + TestBlok7b, tests/odoo 31,
+tests/panden 274, snede 2 91, client-tempo 8, lezen 4) en gecommit; de productie-nameting vergt de deploy van deze
+commit (push via de Stop-hook) en Peters gcloud-sessie. Per punt: 1–9 "gebouwd, productie ongemeten", 10 "nog te doen".
+
+**Beslispunten / open punten voor Peter (uit de bouw en de agent-rapporten):**
+1. **Snede 2 — dag-batches:** de 3.003 paren € 4.886,32 bij d2e7f9f6 dragen ALLE boekdatum 2026-01-01 (78 documenten op
+   één boekdag = C(78,2)); de regel "≥ 3 gelijke bedragen over ≥ 2 maanden" vangt die alleen als de factuurdatum `Date`
+   wél over de maanden spreidt (de motor neemt het maximum over beide assen). Staat `Date` óók op 01-01, dan blijven ze
+   staan en is een aparte categorie "dag-batch" (≥ N gelijke bedragen op één dag = batch, geen dubbel) de enige
+   deterministische uitweg — niet gebouwd, Peter beslist ná de nieuwe telling. Corner: drie facturen van 30-01/31-01/02-02
+   die op 03-02 geboekt zijn tellen als twee maanden op de factuurdatum-as.
+2. **Cluster-kandidaten** zijn bewust ruim (`STRAAT_KERN_MIN` 3: ook Kerkstraat 44 / Kerklaan 44 in dezelfde plaats);
+   mens beslist, dus veilig — minder ruis = drempel 5.
+3. **RLZ-verrekeningsspoor** (actie 34 factuur↔creditnota) is niet als leesroute bewezen; het paar is afgeleid uit
+   bedrag + relatie. Wil Peter het RLZ-spoor zelf: STAP-0 via `nameting.sh rlz-lezen --pad PurchaseInvoices/<id>
+   --expand "PaymentTermList"` op RLZ-04-00000068.
+4. **Collectie-expand `DocumentLineList(…)`** is nog niet live bewezen; de terugval maakt een weigering zichtbaar
+   (OVERGESLAGEN-regel) en de per-document-route loopt dan in tempo (≈ 1.089 calls / 3 per s ≈ 6 min).
+5. **Tempo-defaults** (3 calls/s, burst 50) zijn een schatting op de ene meting (≈ 9 calls/s → blokkering ná ~700); ze
+   gelden voor élke RlzClient-verbinding, ook de dagelijkse syncs — bij een te trage sync-alles is het één setting.
+6. **Statements-vorm** (punt 3) is een besluit-vorm: `balance_end_real` = berekend lopend saldo, beginsaldo 0 — Peter
+   toetst de twee saldi uit "Saldo-toets bank" tegen het echte banksaldo vóór run 3 schrijft.
+
+<!-- run2-vgg:blok7b -->
