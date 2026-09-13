@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0138
+-- Migratie-head bij deze dump: 0139
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3841,6 +3841,7 @@ CREATE TABLE platform.odoo_koppeling (
     rekening_kostprijs_panden_id integer,
     analytic_overhead_id integer,
     migratie_doel boolean DEFAULT false NOT NULL,
+    rekening_btw_afwikkeling_historisch_id integer,
     CONSTRAINT ck_odoo_koppeling_company CHECK ((company_id > 0))
 );
 

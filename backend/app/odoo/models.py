@@ -57,6 +57,9 @@ class OdooKoppeling(Base):
     rekening_vooruitbetaald_voorraad_id: Mapped[int | None] = mapped_column(Integer, default=None)
     rekening_opbrengst_panden_id: Mapped[int | None] = mapped_column(Integer, default=None)
     rekening_kostprijs_panden_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Blok 7b 13-09 (0139): "Btw-afwikkeling historisch" — VGG niet btw-plichtig; historische btw-regels + OB-
+    #: bankregels landen als gewone balansregels op deze ene rekening (besluit Peter 13-09).
+    rekening_btw_afwikkeling_historisch_id: Mapped[int | None] = mapped_column(Integer, default=None)
     #: Het ene vaste analytic account "Overhead" (plan Project) op de company.
     analytic_overhead_id: Mapped[int | None] = mapped_column(Integer, default=None)
     #: Deze rij is het DOEL van een RLZ → Odoo-migratie terwijl `administratie.boekhoud_backend` nog 'rlz' is.

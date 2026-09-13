@@ -205,7 +205,8 @@ class TestRolVoorstellen:
     def test_stel_rollen_voor_leest_company_via_company_ids(self) -> None:
         fake = FakeOdoo({"account.account": COMPANY6}, read_only=True)
         uit = rj220.stel_rollen_voor(fake, company_id=COMPANY)  # type: ignore[arg-type]
-        assert len(uit) == 4 and _per_rol(uit)["opbrengst_panden"].voorstel_code == "803100"
+        assert len(uit) == 5 and _per_rol(uit)["opbrengst_panden"].voorstel_code == "803100"
+        assert _per_rol(uit)["btw_afwikkeling_historisch"].voorstel_code == "159000"  # blok 7b 13-09
         model, methode, domain = fake.calls[0]
         assert (model, methode) == ("account.account", "search_read")
         assert domain == [["company_ids", "in", [COMPANY]]]
@@ -327,10 +328,15 @@ class TestMaakRollenAan:
         )
         creates = [(m, v) for m, methode, v in fake.calls if methode == "create"]
         rekening_creates = [v for m, v in creates if m == "account.account"]
-        assert [v["code"] for v in rekening_creates] == ["325000", "326000", "803100", "701300"]
+        assert [v["code"] for v in rekening_creates] == ["325000", "326000", "803100", "701300", "159000"]
         for v in rekening_creates:
             assert v["company_ids"] == [[6, 0, [COMPANY]]] and v["reconcile"] is False and "company_id" not in v
-        assert {v["account_type"] for v in rekening_creates} == {"asset_current", "income", "expense_direct_cost"}
+        assert {v["account_type"] for v in rekening_creates} == {
+            "asset_current",
+            "income",
+            "expense_direct_cost",
+            "liability_current",
+        }
         # Lookup-vóór-create op code, ná elke create een read (post-write-verificatie).
         volgorde = [(m, methode) for m, methode, _ in fake.calls]
         idx_create = volgorde.index(("account.account", "create"))
@@ -366,12 +372,12 @@ class TestMaakRollenAan:
             fake, company_id=COMPANY, voorstellen=voorstellen, actor_id=beheerder_id, administratie_id=administratie_id
         )
         n_creates = sum(1 for _, methode, _ in fake.calls if methode == "create")
-        assert n_creates == 5
+        assert n_creates == 6  # vijf rekeningen (incl. btw-afwikkeling, blok 7b) + analytic Overhead
         # Tweede run mét dezelfde voorstellen: de codes bestaan nu → lookup vindt ze, geen create meer.
         tweede = rj220.maak_rollen_aan(
             fake, company_id=COMPANY, voorstellen=voorstellen, actor_id=beheerder_id, administratie_id=administratie_id
         )
-        assert sum(1 for _, methode, _ in fake.calls if methode == "create") == 5
+        assert sum(1 for _, methode, _ in fake.calls if methode == "create") == 6
         assert tweede == eerste
 
     def test_postwrite_company_mismatch_is_fout(self, administratie_id, beheerder_id, writes_aan) -> None:
@@ -602,7 +608,7 @@ class TestCli:
         assert "kostprijs_panden: — (niet vastgesteld)" in tekst
         data = json.loads(json_pad.read_text())
         assert data["company_id"] == COMPANY and data["maak_aan"] is False
-        assert [v["voorstel_code"] for v in data["voorstellen"]] == ["325000", "326000", "803100", "701300"]
+        assert [v["voorstel_code"] for v in data["voorstellen"]] == ["325000", "326000", "803100", "701300", "159000"]
         assert not any(m == "create" for _, m, _ in fake.calls)
 
     def test_maak_aan_achter_kill_switch_exit_1(self, monkeypatch: pytest.MonkeyPatch, capsys) -> None:

@@ -43,7 +43,18 @@ from app.odoo.models import OdooKoppeling
 
 logger = logging.getLogger(__name__)
 
-ROLLEN = ("voorraad_panden", "vooruitbetaald_voorraad", "opbrengst_panden", "kostprijs_panden")
+#: Vijf rollen: vier RJ 220-rollen (besluit Peter 12-09) + `btw_afwikkeling_historisch` (besluit Peter 13-09, blok 7b):
+#: Vastgoedgroep is NIET btw-plichtig; de btw-regels in de RLZ-historie en de OB-aangifte-bankregels stammen van een
+#: foute registratie door de Belastingdienst (later afgemeld). Élke RLZ-btw-regel gaat als gewone balansregel zónder
+#: tax_ids naar deze ene rekening (liability_current); de OB-bankmutaties letteren daar tegen af. Geen enkele Odoo-move
+#: krijgt een btw-code.
+ROLLEN = (
+    "voorraad_panden",
+    "vooruitbetaald_voorraad",
+    "opbrengst_panden",
+    "kostprijs_panden",
+    "btw_afwikkeling_historisch",
+)
 
 #: Odoo-kolom in de koppeling-rij per rol (0138).
 KOLOM_PER_ROL = {
@@ -51,6 +62,7 @@ KOLOM_PER_ROL = {
     "vooruitbetaald_voorraad": "rekening_vooruitbetaald_voorraad_id",
     "opbrengst_panden": "rekening_opbrengst_panden_id",
     "kostprijs_panden": "rekening_kostprijs_panden_id",
+    "btw_afwikkeling_historisch": "rekening_btw_afwikkeling_historisch_id",
 }
 
 ACCOUNT_TYPE_PER_ROL = {
@@ -58,6 +70,7 @@ ACCOUNT_TYPE_PER_ROL = {
     "vooruitbetaald_voorraad": "asset_current",
     "opbrengst_panden": "income",
     "kostprijs_panden": "expense_direct_cost",
+    "btw_afwikkeling_historisch": "liability_current",
 }
 
 #: Voorkeursnaam per rol (Nederlands, zoals de accountant 'm in het rekeningschema wil zien).
@@ -66,6 +79,7 @@ NAAM_PER_ROL = {
     "vooruitbetaald_voorraad": "Vooruitbetaald op voorraad panden",
     "opbrengst_panden": "Opbrengst verkoop panden",
     "kostprijs_panden": "Kostprijs verkochte panden",
+    "btw_afwikkeling_historisch": "Btw-afwikkeling historisch",
 }
 
 #: Kandidaat-codes per rol, in voorkeursvolgorde binnen de NL-templatereeks (live gelezen company 6, 12-09):
@@ -79,6 +93,9 @@ KANDIDAAT_CODES_PER_ROL = {
     "vooruitbetaald_voorraad": ("326000", "327000", "328000", "329000"),
     "opbrengst_panden": ("803100", "803000", "803200", "805100"),
     "kostprijs_panden": ("701300", "701400", "701500", "701600"),
+    #: 15xxxx = btw-/belastingreeks in de NL-template (te betalen/te vorderen OB); 1590xx als vrije afwikkelrekening —
+    #: lookup-vóór-create toetst live of de code vrij is, anders de volgende.
+    "btw_afwikkeling_historisch": ("159000", "159100", "159200", "159300"),
 }
 
 #: Bestaande rekeningen die inhoudelijk in de buurt komen — gemeld als optie (nooit gekozen), zodat Peter ze kan
@@ -88,6 +105,7 @@ NABIJE_BESTAANDE_CODES_PER_ROL = {
     "vooruitbetaald_voorraad": ("320000", "321000", "120500", "121000"),
     "opbrengst_panden": ("800100", "800500"),
     "kostprijs_panden": ("700100",),
+    "btw_afwikkeling_historisch": ("150000", "151000", "152000", "153000"),
 }
 
 ANALYTIC_OVERHEAD_NAAM = "Overhead"
@@ -114,6 +132,8 @@ class RolRekeningen:
     opbrengst_panden: int | None
     kostprijs_panden: int | None
     analytic_overhead: int | None
+    #: blok 7b 13-09 (0139); keyword mét default zodat bestaande positionele aanroepen blijven werken
+    btw_afwikkeling_historisch: int | None = None
 
     @property
     def compleet(self) -> bool:
@@ -163,6 +183,7 @@ def rollen_uit_rij(rij: OdooKoppeling | None) -> RolRekeningen:
         opbrengst_panden=rij.rekening_opbrengst_panden_id,
         kostprijs_panden=rij.rekening_kostprijs_panden_id,
         analytic_overhead=rij.analytic_overhead_id,
+        btw_afwikkeling_historisch=getattr(rij, "rekening_btw_afwikkeling_historisch_id", None),
     )
 
 
@@ -302,6 +323,10 @@ def _reeks_uitleg(rol: str) -> str:
         "vooruitbetaald_voorraad": "vooruitbetalingen op voorraden = voorraden, BW 2:369 sub d / RJ 220, asset_current",
         "opbrengst_panden": "80x100-reeks 'Turnover NL' — eerstvolgende vrije NL-omzetreeks, income",
         "kostprijs_panden": "70xx00-reeks 'Cost price NL trade goods' — eerstvolgende vrije, expense_direct_cost",
+        "btw_afwikkeling_historisch": (
+            "15xxxx-btw-reeks — afwikkelrekening voor de historische (onterechte) btw-registratie, liability_current, "
+            "besluit Peter 13-09"
+        ),
     }[rol]
 
 
