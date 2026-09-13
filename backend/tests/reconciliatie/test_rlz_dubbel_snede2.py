@@ -5,7 +5,13 @@ als LEES-ONLY meetlat in `rlz_dubbel` — bank leidend (CONTRACT_RUN2 besluit 4 
 Puur: paren binnen ±3 dagen wel, 4 dagen niet; zelfde referentie al in cluster → niet; beide module → niet; bank 2/2
 → niet gemeld (teller); bank 1/2 → gemeld; bank niet gelezen → gemeld mét markering. Lezer: `$filter=BookDate ge`,
 400 → zonder filter, 403 → None. Guard: de dagelijkse run (snede2=False) leest GEEN PaymentTransactions en meldt niets
-van snede 2; de lees-only CLI wél, mét regel per paar, tellers per administratie en totaal."""
+van snede 2; de lees-only CLI wél, mét regel per paar, tellers per administratie en totaal.
+
+Punt 8 blok 7b (opdracht Peter 13-09; meetlat 13-09: 4.380 paren, 3.003× € 4.886,32 = 12 chalets × maand): een
+PERIODIEKE REEKS (crediteur + cent-exact bedrag, ≥ 3 documenten over ≥ 2 kalendermaanden) is geen dubbel — álle paren
+van die groep vallen weg, per groep geteld en in de lees-only-uitvoer vermeld; ≥ 3 gelijke bedragen binnen één maand
+blijven paren. De KF-paren (module×niet-module, 2 documenten per bedrag) blijven gemeld — testcasus voor de
+doorbelasting-aansluiting-mini-run."""
 
 from __future__ import annotations
 
@@ -152,7 +158,14 @@ class TestVindSnede2:
         assert vind_snede2(_paar_zenvoices_module(), clusters=(), bank=bank) == []
         u = snede2_uitkomst(_paar_zenvoices_module(), clusters=(), bank=bank)
         assert u.paren == () and u.bank_bevestigd == 1 and u.bank_gelezen is True
-        assert u.tellers() == {"paren": 0, LABEL_MODULE_X_NIET: 0, LABEL_NIET_X_NIET: 0, "bank_bevestigd": 1}
+        assert u.tellers() == {
+            "paren": 0,
+            LABEL_MODULE_X_NIET: 0,
+            LABEL_NIET_X_NIET: 0,
+            "bank_bevestigd": 1,
+            "periodiek_groepen": 0,
+            "periodiek_paren": 0,
+        }
 
     def test_bank_een_van_twee_is_gemeld_met_k_van_n(self) -> None:
         bank = _bank(("1234.56", "2026-06-23"), ("1234.56", "2026-07-10"))  # tweede buiten het venster
@@ -188,6 +201,148 @@ class TestVindSnede2:
         paren = vind_snede2(docs, clusters=(), bank=bank)
         assert len(paren) == 3 and all(p.bank_mutaties == 1 for p in paren)
         assert paren == sorted(paren, key=lambda p: (str(p.a.rlz_id), str(p.b.rlz_id)))
+
+
+# ---- periodieke reeksen (punt 8 blok 7b, 13-09) ------------------------------------------------------------
+
+
+CHALETS = uuid.UUID("c4a1e750-0000-4000-8000-00000000c4a1")
+
+
+def _chalets(maand_datums: list[str], *, per_maand: int = 12, bedrag: float = 4886.32) -> list[RlzDocument]:
+    """`per_maand` gelijke facturen op élke gegeven datum (12 chalets × maand), zelfde verhuurder + bedrag."""
+    docs: list[RlzDocument] = []
+    n = 0
+    for datum in maand_datums:
+        for _ in range(per_maand):
+            n += 1
+            docs.append(
+                _doc(
+                    _v4(500 + n),
+                    ref=f"CH-{n:04d}",
+                    boekdatum=datum,
+                    bedrag=bedrag,
+                    boekstuk=f"RLZ-14-{n:08d}",
+                    entity=CHALETS,
+                    naam="Vakantiepark Recreatie Beheer B.V.",
+                )
+            )
+    return docs
+
+
+class TestPeriodiekeReeksUitgesloten:
+    def test_twaalf_per_maand_over_twee_maanden_is_een_periodieke_groep_zonder_paren(self) -> None:
+        docs = _chalets(["2026-01-01", "2026-02-01"])
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.paren == () and vind_snede2(docs, clusters=(), bank=[]) == []
+        (g,) = u.periodiek_groepen
+        assert g.entity_id == CHALETS and g.bedrag == Decimal("4886.32")
+        assert g.aantal_documenten == 24 and g.aantal_maanden == 2
+        assert g.aantal_paren == 2 * 66  # 2 × C(12, 2): alle paren binnen de dag, over de maandgrens geen (> 3 d)
+        assert g.patroon  # gevuld — twee unieke datums is nog geen bewezen maandpatroon, wél de kale telling
+        assert g.patroon == "≥ 3 gelijke bedragen over 2 maanden"
+        assert u.tellers()["periodiek_groepen"] == 1 and u.tellers()["periodiek_paren"] == 132
+        assert u.bank_bevestigd == 0
+        assert g.regel() == (
+            "· uitgesloten (periodiek): V.R.B.B. € 4886.32 — 24 documenten over 2 maanden, "
+            "≥ 3 gelijke bedragen over 2 maanden, 132 paren"
+        )
+        assert "Vakantiepark" not in g.regel()
+
+    def test_maandpatroon_wordt_via_classificeer_reeks_gelabeld(self) -> None:
+        docs = _chalets(["2026-01-01", "2026-02-01", "2026-03-01"], per_maand=2)
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        (g,) = u.periodiek_groepen
+        assert u.paren == () and g.aantal_paren == 3 and g.aantal_documenten == 6 and g.aantal_maanden == 3
+        assert g.patroon == "maand-patroon over 3 facturen"
+
+    def test_drie_gelijke_bedragen_binnen_een_maand_blijven_paren(self) -> None:
+        docs = _chalets(["2026-01-05"], per_maand=3)
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.periodiek_groepen == () and len(u.paren) == 3
+        assert u.tellers()["periodiek_groepen"] == 0 and u.tellers()["periodiek_paren"] == 0
+
+    def test_maanden_tellen_ook_op_factuurdatum_bij_een_gedeelde_boekdatum(self) -> None:
+        """Meetlat 13-09: de 78 chaletfacturen droegen álle boekdatum 2026-01-01 (jaarlijkse boekdag); de factuurdatum
+        (Date) spreidt over de maanden. Op boekdatum alleen zou de reeks nooit periodiek zijn."""
+        docs = [
+            _doc(_v4(600 + i), ref=f"J{i}", boekdatum="2026-01-01", datum=f"2026-{m:02d}-01", entity=CHALETS)
+            for i, m in enumerate((1, 1, 2, 2, 3, 3))
+        ]
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        (g,) = u.periodiek_groepen
+        assert u.paren == () and g.aantal_paren == 15 and g.aantal_maanden == 3
+
+    def test_periodieke_groep_neemt_ook_bank_bevestigde_paren_weg_en_telt_ze_niet_dubbel(self) -> None:
+        docs = _chalets(["2026-01-01", "2026-02-01"], per_maand=2)
+        bank = _bank(("4886.32", "2026-01-01"), ("4886.32", "2026-01-02"))
+        u = snede2_uitkomst(docs, clusters=(), bank=bank)
+        assert u.paren == () and u.bank_bevestigd == 0
+        assert u.periodiek_groepen[0].aantal_paren == 2
+
+    def test_periodieke_groep_zonder_paren_wordt_niet_vermeld(self) -> None:
+        # drie maanden, één factuur per maand: een reeks, maar geen snede-2-paar (> 3 dagen) — niets weggenomen
+        docs = _chalets(["2026-01-01", "2026-02-01", "2026-03-01"], per_maand=1)
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.paren == () and u.periodiek_groepen == ()
+
+    def test_ander_bedrag_bij_dezelfde_crediteur_valt_niet_mee_weg(self) -> None:
+        docs = _chalets(["2026-01-01", "2026-02-01"]) + [
+            _doc(_v4(901), ref="X1", boekdatum="2026-01-01", bedrag=99.0, entity=CHALETS),
+            _doc(_v4(902), ref="X2", boekdatum="2026-01-01", bedrag=99.0, entity=CHALETS),
+        ]
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert [p.bedrag for p in u.paren] == [Decimal("99.00")] and len(u.periodiek_groepen) == 1
+
+
+HKD = uuid.UUID("aaaa0000-0000-4000-8000-00000000d0e1")
+V5_KF_A = uuid.uuid5(uuid.NAMESPACE_URL, "kf-doorbelasting-12600")
+V5_KF_B = uuid.uuid5(uuid.NAMESPACE_URL, "kf-doorbelasting-16250")
+
+
+class TestKFParenDoorbelastingAansluiting:
+    """Testcasus voor de DOORBELASTING-AANSLUITING-MINI-RUN (opdracht Peter 13-09, punt 8 blok 7b): de twee
+    module×niet-module-paren uit de nameting 13-09 bij Kempen Facilities — crediteur "H.K.D. B.V.", boekdatum
+    2026-08-10, RLZ-04-00004412 + RLZ-04-00004314 € 12.600,00 en RLZ-04-00004312 + RLZ-04-00004415 € 16.250,00,
+    telkens één exemplaar van de module (doorbelasting-spiegel) en één handmatig, bank 0/2. Twee documenten per bedrag
+    zijn géén reeks: ze blijven ná de periodiek-uitsluiting gemeld. De mini-run moet verklaren waarom de spiegel én
+    een handmatige factuur naast elkaar staan."""
+
+    @staticmethod
+    def _docs() -> list[RlzDocument]:
+        ids = {V5_KF_A, V5_KF_B}
+        kw = dict(boekdatum="2026-08-10", entity=HKD, naam="Hekade Kempen Diensten B.V.")  # initialen H.K.D.B.
+        return [
+            _doc(V5_KF_A, module_ids=ids, ref="DB-2026-0812", bedrag=12600.0, boekstuk="RLZ-04-00004412", **kw),
+            _doc(_v4(4314), ref="HKD-2026-091", bedrag=12600.0, boekstuk="RLZ-04-00004314", **kw),
+            _doc(_v4(4312), ref="HKD-2026-090", bedrag=16250.0, boekstuk="RLZ-04-00004312", **kw),
+            _doc(V5_KF_B, module_ids=ids, ref="DB-2026-0813", bedrag=16250.0, boekstuk="RLZ-04-00004415", **kw),
+        ]
+
+    def test_kf_paren_blijven_module_x_niet_module_na_periodiek_uitsluiting(self) -> None:
+        u = snede2_uitkomst(self._docs(), clusters=(), bank=[])
+        assert u.periodiek_groepen == ()
+        gemeld = sorted(({p.a.boekstuk, p.b.boekstuk}, p.bedrag, p.label, p.bank_mutaties) for p in u.paren)
+        assert gemeld == sorted(
+            [
+                ({"RLZ-04-00004412", "RLZ-04-00004314"}, Decimal("12600.00"), LABEL_MODULE_X_NIET, 0),
+                ({"RLZ-04-00004312", "RLZ-04-00004415"}, Decimal("16250.00"), LABEL_MODULE_X_NIET, 0),
+            ]
+        )
+        assert u.tellers()[LABEL_MODULE_X_NIET] == 2 and u.tellers()[LABEL_NIET_X_NIET] == 0
+
+    def test_kf_paren_blijven_staan_naast_een_periodieke_reeks_in_dezelfde_administratie(self) -> None:
+        docs = self._docs() + _chalets(["2026-01-01", "2026-02-01"])
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert len(u.periodiek_groepen) == 1 and len(u.paren) == 2
+        assert all(p.label == LABEL_MODULE_X_NIET for p in u.paren)
+
+    def test_kf_regels_anoniem_in_de_uitvoer(self) -> None:
+        u = snede2_uitkomst(self._docs(), clusters=(), bank=[])
+        regels = [p.regel("kf") for p in u.paren]
+        assert all("| H.K.D.B. | " in r and r.endswith("| module×niet-module | bank 0/2") for r in regels)
+        assert any("RLZ-04-00004412" in r and "RLZ-04-00004314" in r and "€ 12600.00" in r for r in regels)
+        assert any("RLZ-04-00004312" in r and "RLZ-04-00004415" in r and "€ 16250.00" in r for r in regels)
 
 
 # ---- lezer + toets_met_client ------------------------------------------------------------------------------
@@ -323,13 +478,42 @@ class TestCliLeesOnlySnede2:
         )
         assert (
             f"    SNEDE2 tellers {administratie_id}: paren 1, module×niet-module 1, niet-module×niet-module 0, "
-            "bank-bevestigd 0" in out
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren" in out
         )
         assert (
             "SNEDE2 totaal over 1 administratie(s): paren 1, module×niet-module 1, niet-module×niet-module 0, "
-            "bank-bevestigd 0. Alleen meetlat — de dagelijkse run meldt snede 2 niet (beslispunt Peter)." in out
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren. Alleen meetlat — de dagelijkse run meldt "
+            "snede 2 niet (beslispunt Peter)." in out
         )
         assert "Jansen" not in out
+
+    def test_lees_only_print_periodieke_groep_voor_de_paren_en_telt_in_tellers_en_totaal(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], administratie_id: uuid.UUID
+    ) -> None:
+        docs = _paar_zenvoices_module() + _chalets(["2026-01-01", "2026-02-01"])
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        monkeypatch.setattr(
+            rlz_dubbel,
+            "toets_alle",
+            lambda **kw: rlz_dubbel.RlzDubbelResultaat(
+                rapporten={administratie_id: _rapport(administratie_id, docs, snede2=u)}
+            ),
+        )
+        assert cli.main(["reconciliatie-alles", "--alleen", "rlz_dubbel", "--lees-only"]) == 0
+        out = capsys.readouterr().out
+        groep = (
+            "    · uitgesloten (periodiek): V.R.B.B. € 4886.32 — 24 documenten over 2 maanden, "
+            "≥ 3 gelijke bedragen over 2 maanden, 132 paren"
+        )
+        paar = f"    - SNEDE2 {administratie_id} RLZ-04-00000100 + RLZ-04-00000107 |"
+        assert groep in out and paar in out and out.index(groep) < out.index(paar)
+        assert (
+            f"    SNEDE2 tellers {administratie_id}: paren 1, module×niet-module 1, niet-module×niet-module 0, "
+            "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren" in out
+        )
+        assert "SNEDE2 totaal over 1 administratie(s): paren 1, " in out
+        assert "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren. Alleen meetlat" in out
+        assert "Vakantiepark" not in out and "Jansen" not in out
 
     def test_lees_only_bank_niet_gelezen_zichtbaar_in_tellers_en_totaal(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], administratie_id: uuid.UUID
@@ -346,7 +530,10 @@ class TestCliLeesOnlySnede2:
         assert cli.main(["reconciliatie-alles", "--alleen", "rlz_dubbel", "--lees-only"]) == 0
         out = capsys.readouterr().out
         assert "| module×niet-module | bank niet gelezen" in out
-        assert "bank-bevestigd 0 — BANK NIET GELEZEN (PaymentTransactions weigerde; niets gefilterd)" in out
+        assert (
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren — BANK NIET GELEZEN "
+            "(PaymentTransactions weigerde; niets gefilterd)" in out
+        )
         assert "bank niet gelezen bij 1 administratie(s)" in out
 
     def test_dagelijkse_run_vraagt_snede2_false_en_print_niets_van_snede2(

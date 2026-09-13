@@ -87,6 +87,7 @@ from app.reconciliatie import referentie_classificatie as classificatie
 from app.rlz.client import RlzApiError, RlzClient, bedrag_cent_exact
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.rlz.lezen_cli import _initialen as initialen
+from app.terugkerend import service as terugkerend
 from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,10 @@ PAGINA_GROOTTE = 200
 REGEL_REFERENTIE = "referentie"
 #: Snede 2 (run 2 VGG blok 2): zelfde crediteur + zelfde bedrag + boekdatum binnen dit venster, ongeacht referentie.
 SNEDE2_VENSTER_DAGEN = 3
+#: Snede 2 — periodieke reeks (punt 8 blok 7b, 13-09): een groep (crediteur, cent-exact bedrag) met minstens zoveel
+#: documenten over minstens zoveel kalendermaanden is een terugkerende gelijke factuur, geen dubbel.
+SNEDE2_PERIODIEK_MIN_DOCUMENTEN = 3
+SNEDE2_PERIODIEK_MIN_MAANDEN = 2
 LABEL_MODULE_X_NIET = "module×niet-module"
 LABEL_NIET_X_NIET = "niet-module×niet-module"
 #: Uitsluitingsreden op een vervangen paar-bevinding (overgang 10-09) — letterlijke tekst in detail `uitsluiting`.
@@ -387,11 +392,37 @@ class Snede2Paar:
 
 
 @dataclass(frozen=True)
+class Snede2PeriodiekeGroep:
+    """Eén uitgesloten PERIODIEKE REEKS (punt 8 blok 7b, opdracht Peter 13-09; meetlat 13-09: 3.003 van de 4.380 paren
+    waren 78× € 4.886,32 bij één verhuurder — 12 chalets × maand): zelfde crediteur + cent-exact gelijk bedrag,
+    ≥ `SNEDE2_PERIODIEK_MIN_DOCUMENTEN` documenten over ≥ `SNEDE2_PERIODIEK_MIN_MAANDEN` kalendermaanden. Álle
+    snede-2-paren van die groep vallen weg; alleen groepen die daadwerkelijk paren wegnamen worden vermeld."""
+
+    entity_id: uuid.UUID
+    entity_naam: str | None
+    bedrag: Decimal
+    aantal_documenten: int
+    aantal_maanden: int
+    patroon: str  # "maand-patroon over N facturen" (classificeer_reeks) of "≥ 3 gelijke bedragen over M maanden"
+    aantal_paren: int  # weggevallen snede-2-paren (incl. wat de bank anders bevestigd had)
+
+    def regel(self) -> str:
+        """`· uitgesloten (periodiek): <initialen> € <bedrag> — N documenten over M maanden, <patroon>, P paren`."""
+        return (
+            f"· uitgesloten (periodiek): {initialen(self.entity_naam or '') or '?'} € {self.bedrag} — "
+            f"{self.aantal_documenten} documenten over {self.aantal_maanden} maanden, {self.patroon}, "
+            f"{self.aantal_paren} paren"
+        )
+
+
+@dataclass(frozen=True)
 class Snede2Uitkomst:
     paren: tuple[Snede2Paar, ...]  # gemeld (bank-tekort of bank niet gelezen)
     bank_bevestigd: int  # kandidaten die door de bank als echt zijn bevestigd (niet gemeld, wél geteld)
     bank_gelezen: bool
     gedraaid: bool = True
+    #: Periodieke reeksen (13-09) die paren wegnamen — gesorteerd op (crediteur, bedrag), nooit gemeld als paar.
+    periodiek_groepen: tuple[Snede2PeriodiekeGroep, ...] = ()
 
     def tellers(self) -> dict[str, int]:
         return {
@@ -399,6 +430,8 @@ class Snede2Uitkomst:
             LABEL_MODULE_X_NIET: sum(1 for p in self.paren if p.label == LABEL_MODULE_X_NIET),
             LABEL_NIET_X_NIET: sum(1 for p in self.paren if p.label == LABEL_NIET_X_NIET),
             "bank_bevestigd": self.bank_bevestigd,
+            "periodiek_groepen": len(self.periodiek_groepen),
+            "periodiek_paren": sum(g.aantal_paren for g in self.periodiek_groepen),
         }
 
 
@@ -665,14 +698,54 @@ def lees_payment_transactions(client: RlzClient, *, vanaf: date) -> list[dict[st
     return [r for r in alles if (_als_datum(r.get("BookDate")) or _als_datum(r.get("Date")) or date.min) >= vanaf]
 
 
+def _snede2_maanden(docs: Sequence[RlzDocument]) -> int:
+    """Aantal kalendermaanden (jaar+maand) dat een groep omspant — het MAXIMUM over de boekdatum-as (terugval datum) en
+    de factuurdatum-as (terugval boekdatum). Meetlat 13-09: de 78 chaletfacturen droegen alle boekdatum 2026-01-01
+    (jaarlijkse boekdag) — op boekdatum alleen zou de reeks nooit als periodiek herkend worden."""
+    boek = {(d.year, d.month) for d in (_snede2_datum(x) for x in docs) if d is not None}
+    factuur = {(d.year, d.month) for d in ((x.datum or x.boekdatum) for x in docs) if d is not None}
+    return max(len(boek), len(factuur))
+
+
+def _snede2_patroon_tekst(docs: Sequence[RlzDocument], aantal_maanden: int) -> str:
+    """Patroonlabel via de gedeelde motor `terugkerend.service.classificeer_reeks` over de UNIEKE factuurdatums
+    (terugval boekdatum) van de groep: PERIODIEK → "maand-/kwartaal-patroon over N facturen", anders de kale telling."""
+    datums = {d for d in ((x.datum or x.boekdatum) for x in docs) if d is not None}
+    uitkomst = terugkerend.classificeer_reeks(datums)
+    if uitkomst.classificatie == terugkerend.ReeksClassificatie.PERIODIEK and uitkomst.patroon is not None:
+        return f"{uitkomst.patroon.soort}-patroon over {uitkomst.patroon.aantal} facturen"
+    return f"≥ {SNEDE2_PERIODIEK_MIN_DOCUMENTEN} gelijke bedragen over {aantal_maanden} maanden"
+
+
+def _snede2_periodieke_groepen(
+    per_crediteur: dict[uuid.UUID, list[RlzDocument]],
+) -> dict[tuple[uuid.UUID, Decimal], tuple[list[RlzDocument], int]]:
+    """(crediteur, bedrag) → (documenten, aantal maanden) voor élke groep die als periodieke reeks telt."""
+    uit: dict[tuple[uuid.UUID, Decimal], tuple[list[RlzDocument], int]] = {}
+    for eid, docs in per_crediteur.items():
+        per_bedrag: dict[Decimal, list[RlzDocument]] = {}
+        for d in docs:
+            assert d.bedrag is not None
+            per_bedrag.setdefault(d.bedrag, []).append(d)
+        for bedrag, groep in per_bedrag.items():
+            if len(groep) < SNEDE2_PERIODIEK_MIN_DOCUMENTEN:
+                continue
+            maanden = _snede2_maanden(groep)
+            if maanden >= SNEDE2_PERIODIEK_MIN_MAANDEN:
+                uit[(eid, bedrag)] = (groep, maanden)
+    return uit
+
+
 def _snede2_kandidaten(
     documenten: Iterable[RlzDocument],
     *,
     clusters: Sequence[DubbelCluster],
     bank: Sequence[bankdekking.BankMutatie] | None,
     venster_dagen: int = SNEDE2_VENSTER_DAGEN,
-) -> list[Snede2Paar]:
-    """Alle snede-2-paren (ook de bank-bevestigde), gesorteerd op (rlz_id a, rlz_id b)."""
+) -> tuple[list[Snede2Paar], list[Snede2PeriodiekeGroep]]:
+    """(kandidaten, periodieke groepen): alle snede-2-paren (ook de bank-bevestigde) gesorteerd op (rlz_id a, rlz_id b),
+    ZONDER de paren die in een periodieke reeks vallen — die staan per groep geteld in het tweede element (alleen
+    groepen die ≥ 1 paar wegnamen, gesorteerd op (crediteur, bedrag))."""
     al_gemeld: set[frozenset[uuid.UUID]] = set()
     for c in clusters:
         al_gemeld |= c.paren
@@ -681,6 +754,8 @@ def _snede2_kandidaten(
         if d.entity_id is None or d.bedrag is None or _snede2_datum(d) is None:
             continue
         per_crediteur.setdefault(d.entity_id, []).append(d)
+    periodiek = _snede2_periodieke_groepen(per_crediteur)
+    weggevallen: dict[tuple[uuid.UUID, Decimal], int] = {}
     uit: list[Snede2Paar] = []
     for docs in per_crediteur.values():
         docs = sorted(docs, key=lambda d: (_snede2_datum(d), str(d.rlz_id)))  # type: ignore[arg-type,return-value]
@@ -694,6 +769,10 @@ def _snede2_kandidaten(
                     continue
                 if frozenset((x.rlz_id, y.rlz_id)) in al_gemeld:
                     continue
+                sleutel = (x.entity_id, x.bedrag)
+                if sleutel in periodiek:
+                    weggevallen[sleutel] = weggevallen.get(sleutel, 0) + 1
+                    continue
                 a, b = (x, y) if str(x.rlz_id) < str(y.rlz_id) else (y, x)
                 teken = bankdekking.teken_van("PurchaseInvoices", x.bedrag)
                 dekking = bankdekking.dekking_voor(
@@ -703,7 +782,21 @@ def _snede2_kandidaten(
                 )
                 uit.append(Snede2Paar(a=a, b=b, bank_mutaties=dekking.bankmutaties, bank_gelezen=dekking.bank_gelezen))
     uit.sort(key=lambda p: (str(p.a.rlz_id), str(p.b.rlz_id)))
-    return uit
+    groepen = [
+        Snede2PeriodiekeGroep(
+            entity_id=eid,
+            entity_naam=next((d.entity_naam for d in docs if d.entity_naam), None),
+            bedrag=bedrag,
+            aantal_documenten=len(docs),
+            aantal_maanden=maanden,
+            patroon=_snede2_patroon_tekst(docs, maanden),
+            aantal_paren=aantal,
+        )
+        for (eid, bedrag), aantal in weggevallen.items()
+        for docs, maanden in (periodiek[(eid, bedrag)],)
+    ]
+    groepen.sort(key=lambda g: (str(g.entity_id), g.bedrag))
+    return uit, groepen
 
 
 def vind_snede2(
@@ -716,8 +809,9 @@ def vind_snede2(
     """Puur: de te MELDEN snede-2-paren — zelfde crediteur, cent-exact gelijk bedrag, boekdatum (terugval datum)
     binnen ±`venster_dagen`, ongeacht referentie; niet al door snede 1 (cluster) gemeld; niet beide van de module;
     en bank-tekort (minder dan twee bankmutaties, of bank niet gelezen → gemeld mét markering). Bank-bevestigde
-    paren (k ≥ 2) worden NIET teruggegeven — `snede2_uitkomst` telt ze."""
-    kandidaten = _snede2_kandidaten(documenten, clusters=clusters, bank=bank, venster_dagen=venster_dagen)
+    paren (k ≥ 2) worden NIET teruggegeven — `snede2_uitkomst` telt ze. Paren in een PERIODIEKE REEKS (13-09) ook
+    niet — `snede2_uitkomst.periodiek_groepen` telt die per groep."""
+    kandidaten, _ = _snede2_kandidaten(documenten, clusters=clusters, bank=bank, venster_dagen=venster_dagen)
     return [p for p in kandidaten if not p.bank_bevestigd]
 
 
@@ -727,11 +821,12 @@ def snede2_uitkomst(
     clusters: Sequence[DubbelCluster],
     bank: Sequence[bankdekking.BankMutatie] | None,
 ) -> Snede2Uitkomst:
-    kandidaten = _snede2_kandidaten(documenten, clusters=clusters, bank=bank)
+    kandidaten, periodiek = _snede2_kandidaten(documenten, clusters=clusters, bank=bank)
     return Snede2Uitkomst(
         paren=tuple(p for p in kandidaten if not p.bank_bevestigd),
         bank_bevestigd=sum(1 for p in kandidaten if p.bank_bevestigd),
         bank_gelezen=bank is not None,
+        periodiek_groepen=tuple(periodiek),
     )
 
 
@@ -1160,15 +1255,29 @@ def _lees_only_administratie(
         _lees_only_snede2(aid, rapport.snede2, stdout=stdout)
 
 
+SNEDE2_TELLER_SLEUTELS = (
+    "paren",
+    LABEL_MODULE_X_NIET,
+    LABEL_NIET_X_NIET,
+    "bank_bevestigd",
+    "periodiek_groepen",
+    "periodiek_paren",
+)
+
+
 def _snede2_tellers_tekst(t: dict[str, int]) -> str:
     return (
         f"paren {t['paren']}, {LABEL_MODULE_X_NIET} {t[LABEL_MODULE_X_NIET]}, "
-        f"{LABEL_NIET_X_NIET} {t[LABEL_NIET_X_NIET]}, bank-bevestigd {t['bank_bevestigd']}"
+        f"{LABEL_NIET_X_NIET} {t[LABEL_NIET_X_NIET]}, bank-bevestigd {t['bank_bevestigd']}, "
+        f"periodiek uitgesloten {t['periodiek_groepen']} groepen/{t['periodiek_paren']} paren"
     )
 
 
 def _lees_only_snede2(aid: uuid.UUID, snede2: Snede2Uitkomst, *, stdout: Callable[[str], None]) -> None:
-    """Snede 2 per administratie (run 2 VGG blok 2): regel per gemeld paar + tellers; bank niet gelezen zichtbaar."""
+    """Snede 2 per administratie (run 2 VGG blok 2): eerst één regel per uitgesloten periodieke reeks (13-09), dan een
+    regel per gemeld paar + tellers; bank niet gelezen zichtbaar."""
+    for g in snede2.periodiek_groepen:
+        stdout(f"    {g.regel()}")
     for p in snede2.paren:
         stdout(f"    - {p.regel(aid)}")
     bank = "" if snede2.bank_gelezen else " — BANK NIET GELEZEN (PaymentTransactions weigerde; niets gefilterd)"
@@ -1179,7 +1288,7 @@ def _snede2_totaal(rapporten: dict[uuid.UUID, RlzDubbelRapport]) -> str | None:
     gedraaid = [r.snede2 for r in rapporten.values() if r.snede2 is not None]
     if not gedraaid:
         return None
-    totaal = {"paren": 0, LABEL_MODULE_X_NIET: 0, LABEL_NIET_X_NIET: 0, "bank_bevestigd": 0}
+    totaal = dict.fromkeys(SNEDE2_TELLER_SLEUTELS, 0)
     for u in gedraaid:
         for k, v in u.tellers().items():
             totaal[k] += v
