@@ -10,13 +10,18 @@ Receipts —
   (DocumentType 19, `IsSystemGenerated`) over. Geboekt = Status 2/3; Status 1 = concept; een systeemhuls = concept +
   `IsSystemGenerated` óf concept zonder Entity met |bedrag| + datum gelijk aan een OPEN PaymentTransaction (regel A,
   `bankdekking.is_bank_direct` lazy geïmporteerd — anders de minimale eigen versie hieronder).
-- regels per GEBOEKT document: `{collectie}/{id}/Lines?$expand=Account,TaxRate,Project` (bewezen op Purchase/Sales/
-  ManualJournals: seed.py, poc voorraad-uitstroom); DocumentType 19 via `BankMutationDirectBookings/{id}/Lines` met
-  terugval
-  `…/{id}?$expand=DocumentLineList($expand=Account,TaxRate)`. Per document één call — 800+ calls in een job is traag
-  maar
-  acceptabel (voortgang per 100 via `voortgang`-callback/logger). JournalEntryLines per document is géén alternatief:
-  `JournalEntry` draagt alleen id/BookDate/DocumentType/EventID (api-verkenning "Boekingsdatum = BookDate").
+- regels per GEBOEKT document — BLOK 7b 13-09 (api-verkenning "Webfilter-blokkering bij >N calls"): NIET meer per
+  document. De 1.089 losse regel-calls van de nameting 13-09 lieten RLZ's webfilter ná ~700 calls elke route weigeren
+  (403 + HTML "Access Denied"; 305 documenten zonder regels, daarna ook PaymentAccounts/JournalEntryLines/Ledgers/
+  TaxRates dicht). Regels komen nu mee op de COLLECTIE-reeks: `$expand=Entity,DocumentLineList($expand=Account,
+  TaxRate)` (resp. `JournalEntryDiary,…`); weigert RLZ die expand (400) dan valt `lees_collectie` zichtbaar terug op de
+  oude expand en worden alleen de documenten zónder `DocumentLineList` per document gelezen (`{collectie}/{id}/Lines`,
+  DocumentType 19 via `BankMutationDirectBookings/{id}/Lines` met terugval `…/{id}?$expand=DocumentLineList(…)`) —
+  door de token-bucket van `RlzClient` (`rlz_max_calls_per_seconde`) in tempo. De Receipts-collectie expandeert
+  `DocumentLineList` niet (api-verkenning "Receipts-verkenning") → bank-directe boekingen blijven per document.
+  Een webfilter-403 die de client ná backoff nog ziet = `RlzBron.blokkering` gezet, lezen STOPT, het rapport wordt
+  ROOD mét "RLZ-blokkering — meting ongeldig" — nooit doorrekenen met halve data. JournalEntryLines per document is
+  géén alternatief: `JournalEntry` draagt alleen id/BookDate/DocumentType/EventID.
 - PaymentTransactions `$expand=PaymentAccount,PaymentReferenceList($expand=Document)` (terugval zichtbaar),
 PaymentAccounts +
   `PaymentAccounts/{id}/Statements` (alleen koppen: Number, Date, Debits, Credits, saldi), JournalEntryLines
@@ -35,7 +40,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.rlz.client import RlzApiError
+from app.rlz.client import RlzApiError, RlzWebfilterError
 from app.rlz.lezen import LeesClient, LeesUitkomst, als_bedrag, als_datum, als_int, entity_van, lees_collectie
 
 logger = logging.getLogger(__name__)
@@ -50,11 +55,21 @@ DOCTYPE_BANK_DIRECT = 19
 #: Boekstukreeksen van bankdagboeken op VGG (contract §Besluiten 6) — alleen gebruikt als `bankdekking` ontbreekt.
 BANK_REEKSEN: frozenset[str] = frozenset({"RLZ-09", "RLZ-25", "RLZ-28", "RLZ-46", "RLZ-60"})
 
+#: Per collectie de basis-expand (relaties) — de regels komen er als `DocumentLineList(…)` bij (blok 7b 13-09).
 DOCUMENT_COLLECTIES: tuple[tuple[str, str | None], ...] = (
     ("PurchaseInvoices", "Entity"),
     ("SalesInvoices", "Entity"),
     ("ManualJournals", "JournalEntryDiary"),
 )
+REGELS_EXPAND_COLLECTIE = "DocumentLineList($expand=Account,TaxRate)"
+ROUTE_COLLECTIE_EXPAND = "collectie $expand=DocumentLineList"
+BLOKKERING_TEKST = "RLZ-blokkering — meting ongeldig"
+
+
+def collectie_expand(basis: str | None) -> str:
+    return f"{basis},{REGELS_EXPAND_COLLECTIE}" if basis else REGELS_EXPAND_COLLECTIE
+
+
 RECEIPTS = "Receipts"
 BANK_EXPAND = "PaymentAccount,PaymentReferenceList($expand=Document)"
 JOURNAALREGEL_EXPAND = "Account,JournalEntry"
@@ -91,6 +106,14 @@ class RlzBron:
     overgeslagen: list[str] = field(default_factory=list)
     regel_calls: int = 0
     regel_fouten: dict[str, str] = field(default_factory=dict)  # per rlz_id: melding
+    #: Blok 7b 13-09: documenten waarvan de regels via de collectie-expand meekwamen (geen losse call).
+    regels_via_collectie: int = 0
+    #: Gezet zodra de RLZ-webfilter ná backoff nog blokkeert: "<route>: <melding>". Lezen stopt; rapport = ongeldig.
+    blokkering: str | None = None
+    #: Tempo-tellers van de client (als die een `Tempo` draagt): calls, webfilter-treffers (hervat), gewacht (s).
+    client_calls: int | None = None
+    webfilter_treffers: int | None = None
+    gewacht_seconden: float | None = None
 
     def alle_documenten(self) -> list[tuple[str, dict[str, Any]]]:
         return [(pad, r) for pad, rijen in self.documenten.items() for r in rijen]
@@ -226,6 +249,8 @@ def lees_regels(client: LeesClient, collectie: str, rij: dict[str, Any]) -> tupl
     for pad, params in regel_routes(collectie, rij):
         try:
             regels = _waarde_lijst(client.get(pad, params=params))
+        except RlzWebfilterError:
+            raise  # blokkering: de aanroeper stopt de hele run (nooit doorrekenen met halve data)
         except RlzApiError as exc:
             laatste = f"{pad}: {exc.status_code} {exc.body[:80]}"
             continue
@@ -241,6 +266,10 @@ def lees_regels(client: LeesClient, collectie: str, rij: dict[str, Any]) -> tupl
 def _registreer(bron: RlzBron, uitkomst: LeesUitkomst, *, optioneel: bool = False) -> bool:
     if uitkomst.fout is not None:
         melding = f"{uitkomst.fout.status_code}: {uitkomst.fout.body[:160]}"
+        if isinstance(uitkomst.fout, RlzWebfilterError):
+            bron.blokkering = f"{uitkomst.pad}: webfilter 403 ná backoff — {melding}"
+            bron.fouten.append(Fout(route=uitkomst.pad, status=403, melding=f"{BLOKKERING_TEKST}: {melding}"))
+            return False
         if optioneel:
             bron.overgeslagen.append(f"{uitkomst.pad}: niet leesbaar ({melding}) — overgeslagen")
         else:
@@ -252,37 +281,100 @@ def _registreer(bron: RlzBron, uitkomst: LeesUitkomst, *, optioneel: bool = Fals
     return True
 
 
+def _regels_uit_rij(rij: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """`DocumentLineList` zoals de collectie-expand 'm geeft: lijst = regels (ook leeg), anders None (niet mee)."""
+    lijst = rij.get("DocumentLineList")
+    if isinstance(lijst, list):
+        return [r for r in lijst if isinstance(r, dict)]
+    return None
+
+
+def _tempo_tellers(bron: RlzBron, client: LeesClient) -> None:
+    tempo = getattr(client, "tempo", None)
+    if tempo is None:
+        return
+    bron.client_calls = int(getattr(tempo, "calls", 0))
+    bron.webfilter_treffers = int(getattr(tempo, "webfilter_treffers", 0))
+    bron.gewacht_seconden = round(float(getattr(tempo, "gewacht_seconden", 0.0)), 1)
+
+
 def lees_bron(
     client: LeesClient,
     *,
     regels_lezen: bool = True,
     voortgang: Callable[[str], None] | None = None,
 ) -> RlzBron:
-    """Alles lezen, niets schrijven. Volgorde: documenten → bank (voor de huls-regel) → regels van GEBOEKTE documenten →
-    rekeningen + statements → journaalregels → ledgers/taxrates."""
+    """Alles lezen, niets schrijven. Volgorde: documenten (mét regels via de collectie-expand) → bank (voor de huls-
+    regel) → regels per document alleen voor GEBOEKTE documenten zónder meegekomen regels → rekeningen + statements →
+    journaalregels → ledgers/taxrates. Een webfilter-blokkering stopt de reeks direct (`bron.blokkering`)."""
     bron = RlzBron()
     melden = voortgang or (lambda t: logger.info("vgg-replay: %s", t))
 
-    for pad, expand in DOCUMENT_COLLECTIES:
-        uitkomst = lees_collectie(client, pad, expand=expand)
-        if _registreer(bron, uitkomst):
-            bron.documenten[pad] = uitkomst.rijen
+    def geblokkeerd() -> bool:
+        if bron.blokkering:
+            melden(f"{BLOKKERING_TEKST}: {bron.blokkering} — lezen gestopt")
+            _tempo_tellers(bron, client)
+            return True
+        return False
+
+    for pad, basis in DOCUMENT_COLLECTIES:
+        uitkomst = lees_collectie(client, pad, expand=collectie_expand(basis), expand_terugval=(basis,))
+        if not _registreer(bron, uitkomst):
+            if geblokkeerd():
+                return bron
+            continue
+        bron.documenten[pad] = uitkomst.rijen
+        if regels_lezen:
+            met_regels = 0
+            for r in uitkomst.rijen:
+                rid = doc_id(r)
+                if not rid or not is_geboekt(r):
+                    continue
+                regels = _regels_uit_rij(r)
+                if regels is not None:
+                    bron.regels[rid] = regels
+                    bron.regels_route[rid] = ROUTE_COLLECTIE_EXPAND
+                    met_regels += 1
+            bron.regels_via_collectie += met_regels
+            geboekt = sum(1 for r in uitkomst.rijen if is_geboekt(r) and doc_id(r))
+            if geboekt and met_regels == 0:
+                bron.overgeslagen.append(
+                    f"{pad}: $expand={uitkomst.expand_gebruikt or '—'} gaf geen DocumentLineList — regels per document "
+                    f"gelezen ({geboekt} calls, in tempo)"
+                )
     receipts = lees_collectie(client, RECEIPTS)
     if _registreer(bron, receipts, optioneel=True):
         bekend = {doc_id(r) for rijen in bron.documenten.values() for r in rijen}
         bron.documenten[RECEIPTS] = [r for r in receipts.rijen if doc_id(r) not in bekend]
+    elif geblokkeerd():
+        return bron
 
     bank = lees_collectie(client, "PaymentTransactions", expand=BANK_EXPAND)
     if _registreer(bron, bank):
         bron.bank = bank.rijen
         bron.bank_expand_gelukt = bank.expand_gelukt
+    elif geblokkeerd():
+        return bron
 
     if regels_lezen:
-        te_lezen = [(pad, r) for pad, r in bron.alle_documenten() if is_geboekt(r) and doc_id(r)]
-        melden(f"regels lezen voor {len(te_lezen)} geboekte documenten")
+        te_lezen = [
+            (pad, r)
+            for pad, r in bron.alle_documenten()
+            if is_geboekt(r) and doc_id(r) and doc_id(r) not in bron.regels
+        ]
+        melden(
+            f"regels: {bron.regels_via_collectie} documenten via de collectie-expand; "
+            f"{len(te_lezen)} per document te lezen (in tempo)"
+        )
         for n, (pad, r) in enumerate(te_lezen, start=1):
             rid = doc_id(r) or ""
-            regels, route = lees_regels(client, pad, r)
+            try:
+                regels, route = lees_regels(client, pad, r)
+            except RlzWebfilterError as exc:
+                bron.blokkering = f"{pad}/{rid}/Lines: webfilter 403 ná backoff — {exc.body[:160]}"
+                bron.fouten.append(Fout(route=f"{pad}/{{id}}/Lines", status=403, melding=BLOKKERING_TEKST))
+                geblokkeerd()
+                return bron
             bron.regel_calls += 1
             if regels is None:
                 bron.regel_fouten[rid] = route
@@ -290,7 +382,7 @@ def lees_bron(
                 bron.regels[rid] = regels
                 bron.regels_route[rid] = route
             if n % VOORTGANG_STAP == 0 or n == len(te_lezen):
-                melden(f"regels: {n}/{len(te_lezen)} documenten ({len(bron.regel_fouten)} zonder regels)")
+                melden(f"regels: {n}/{len(te_lezen)} documenten per document ({len(bron.regel_fouten)} zonder regels)")
 
     rekeningen = lees_collectie(client, "PaymentAccounts")
     if _registreer(bron, rekeningen):
@@ -300,17 +392,27 @@ def lees_bron(
             if not rid:
                 continue
             st = lees_collectie(client, f"PaymentAccounts/{rid}/Statements")
-            if _registreer(bron, st, optioneel=True):
-                bron.statements[rid] = st.rijen
+            if not _registreer(bron, st, optioneel=True):
+                if geblokkeerd():
+                    return bron
+                continue
+            bron.statements[rid] = st.rijen
+    elif geblokkeerd():
+        return bron
 
     jr = lees_collectie(client, "JournalEntryLines", expand=JOURNAALREGEL_EXPAND)
     if _registreer(bron, jr):
         bron.journaalregels = jr.rijen
+    elif geblokkeerd():
+        return bron
 
     for pad in ("Ledgers", "TaxRates"):
         uitkomst = lees_collectie(client, pad)
         if _registreer(bron, uitkomst):
             setattr(bron, pad.lower(), uitkomst.rijen)
+        elif geblokkeerd():
+            return bron
+    _tempo_tellers(bron, client)
     return bron
 
 

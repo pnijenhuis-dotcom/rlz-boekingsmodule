@@ -121,8 +121,17 @@ class TestConceptMove:
     def test_zoek_voor_create_bestaand_anker_geen_tweede_create(self, writes_aan: None) -> None:
         def handler(model, methode, body):
             if methode == "search_read":
-                assert body["domain"][1] == ["ref", "ilike", "mig:anker-1"]
-                return [{"id": 3001, "state": "draft", "company_id": [PIN, "VGG"], "ref": "RLZ-04-1 · mig:anker-1"}]
+                # blok 7b punt 6: factuur → anker-veld invoice_origin (exact), ref blijft het kale nummer
+                assert body["domain"][1] == ["invoice_origin", "=", "mig:anker-1"]
+                return [
+                    {
+                        "id": 3001,
+                        "state": "draft",
+                        "company_id": [PIN, "VGG"],
+                        "ref": "RLZ-04-1",
+                        "invoice_origin": "mig:anker-1",
+                    }
+                ]
             raise AssertionError(f"onverwacht {methode}")
 
         c = FakeClient(handler)
@@ -137,7 +146,8 @@ class TestConceptMove:
                 return []
             if methode == "create":
                 vals = body["vals_list"][0]
-                assert vals["company_id"] == PIN and vals["ref"] == "RLZ-04-00000123 · mig:anker-2"
+                assert vals["company_id"] == PIN and vals["ref"] == "RLZ-04-00000123"  # kaal factuurnummer
+                assert vals["invoice_origin"] == "mig:anker-2"  # anker in invoice_origin (blok 7b punt 6)
                 return [3002]
             if methode == "read":
                 return [
@@ -146,7 +156,8 @@ class TestConceptMove:
                         "state": "draft",
                         "company_id": [PIN, "VGG"],
                         "name": "/",
-                        "ref": "RLZ-04-00000123 · mig:anker-2",
+                        "ref": "RLZ-04-00000123",
+                        "invoice_origin": "mig:anker-2",
                     }
                 ]
             raise AssertionError(methode)
@@ -178,10 +189,30 @@ class TestConceptMove:
             "move_type": "in_invoice",
             "journal_id": 49,
             "date": "2025-07-03",
-            "ref": "RLZ-04-00000123 · mig:anker-2",
+            "ref": "RLZ-04-00000123",
+            "ankerveld": "invoice_origin",
             "state": "draft",
         }
-        assert vals["ref"] == "RLZ-04-00000123"  # invoer niet gemuteerd
+        assert vals["ref"] == "RLZ-04-00000123" and "invoice_origin" not in vals  # invoer niet gemuteerd
+
+    def test_memoriaal_anker_in_ref(self, writes_aan: None) -> None:
+        """Blok 7b punt 6: memorialen dragen het anker in `ref` (zoek-vóór-create exact op ref)."""
+
+        def handler(model, methode, body):
+            if methode == "search_read":
+                assert body["domain"][1] == ["ref", "=", "mig:anker-3"]
+                return []
+            if methode == "create":
+                vals = body["vals_list"][0]
+                assert vals["ref"] == "mig:anker-3" and "invoice_origin" not in vals
+                return [3003]
+            if methode == "read":
+                return [{"id": 3003, "state": "draft", "company_id": [PIN, "VGG"], "name": "/", "ref": "mig:anker-3"}]
+            raise AssertionError(methode)
+
+        c = FakeClient(handler)
+        vals = {"move_type": "entry", "journal_id": 50, "date": "2025-07-03", "ref": "mig:anker-3", "line_ids": []}
+        assert maak_concept_move(c, vals, anker="anker-3", audit=GeheugenAudit()) == 3003
 
     def test_meerdere_treffers_is_meerduidig(self, writes_aan: None) -> None:
         c = FakeClient(lambda m, meth, b: [{"id": 1, "state": "draft"}, {"id": 2, "state": "draft"}])
@@ -1036,8 +1067,12 @@ def _nep_odoo() -> tuple[dict[str, Any], Callable[[str, str, dict], Any]]:
         if model == "res.partner" and methode == "read":
             return [dict(odoo["partners"][i], id=i) for i in body["ids"] if i in odoo["partners"]]
         if model == "account.move" and methode == "search_read":
-            ref = body["domain"][1][2]
-            return [dict(m, id=i) for i, m in odoo["moves"].items() if ref in m["ref"] and m["state"] != "cancel"]
+            veld, _op, marker = body["domain"][1]
+            return [
+                dict(m, id=i)
+                for i, m in odoo["moves"].items()
+                if (m.get(veld) or "") == marker and m["state"] != "cancel"
+            ]
         if model == "account.move" and methode == "search_count":
             return sum(1 for m in odoo["moves"].values() if m["state"] != "cancel")
         if model == "account.move" and methode == "create":
@@ -1047,7 +1082,8 @@ def _nep_odoo() -> tuple[dict[str, Any], Callable[[str, str, dict], Any]]:
             odoo["moves"][odoo["volgend"]] = {
                 "state": "draft",
                 "company_id": [PIN, "VGG"],
-                "ref": vals["ref"],
+                "ref": vals.get("ref"),
+                "invoice_origin": vals.get("invoice_origin"),
                 "move_type": vals["move_type"],
                 "name": "/",
                 "partner_id": vals.get("partner_id"),

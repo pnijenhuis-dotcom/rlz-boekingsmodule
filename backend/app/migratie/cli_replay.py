@@ -5,8 +5,9 @@
 
 Productie-regel Peter 08-09: alleen op de gedeployde job-image via `scripts/gcp/nameting.sh vgg-replay …` (allowlist);
 `--schrijf-concept` is run 3 — in deze run alleen argparse + melding "run 3 — geweigerd" (exit 2), nooit een write;
-nameting.sh weigert de vlag bovendien hard. Exit 0 = GROEN, 1 = verschillen/niet-vertaalbaar/leesfouten, 2 =
-invoerfout."""
+nameting.sh weigert de vlag bovendien hard. Exit-codes (blok 7b punt 9): een dry-run-RAPPORT is een UITKOMST — GROEN
+én ROOD (incl. "RLZ-blokkering — meting ongeldig") geven exit 0 mét één statusregel `UITKOMST: …` op stderr; alleen een
+invoerfout (administratie onbekend, geen credential, ongeldige vlag) geeft exit 2."""
 
 from __future__ import annotations
 
@@ -120,11 +121,18 @@ def run_vgg_replay(args: argparse.Namespace, *, zoek: Any = None, client_factory
     if args.json_uit:
         Path(args.json_uit).write_text(rapport.als_json(), encoding="utf-8")
         print(f"JSON geschreven: {args.json_uit}")
+    print(statusregel(rapport), file=sys.stderr)
+    return 0
+
+
+def statusregel(rapport: Any) -> str:
+    """Eén regel voor de aanroeper/het script: een niet-groen rapport is een uitkomst, geen storing."""
+    if rapport.blokkering:
+        return f"UITKOMST: {rapport.oordeel} — {rapport.blokkering}"
     if rapport.groen:
-        return 0
-    print(
-        f"ROOD: {rapport.verschillen} verschil(len), {len(rapport.niet_vertaalbaar)} niet vertaalbaar, "
-        f"{len(rapport.fouten)} leesfout(en) — zie rapport",
-        file=sys.stderr,
+        return "UITKOMST: GROEN"
+    return (
+        f"UITKOMST: ROOD — {rapport.verschillen} verschil(len), {len(rapport.niet_vertaalbaar)} niet vertaalbaar, "
+        f"{len(rapport.fouten)} leesfout(en), {rapport.tellers.get('regel_fouten', 0)} zonder regels, "
+        f"{len(rapport.som_verschillen)} regelsom ≠ totaal — zie rapport"
     )
-    return 1

@@ -16,7 +16,7 @@ from decimal import Decimal
 import pytest
 
 from app.migratie import replay, rlz_bron, vertaling
-from app.migratie.vertaling import Doel, PandToewijzing, RolRekeningen, anker_voor, ref_voor
+from app.migratie.vertaling import Doel, PandToewijzing, RolRekeningen, anker_marker, anker_voor
 from app.rlz.client import RlzApiError
 
 ADMIN = uuid.UUID("cc07e461-0000-4000-8000-000000000001")
@@ -378,8 +378,7 @@ class TestAnker:
 
     def test_ref_vorm(self) -> None:
         a = anker_voor(ADMIN, MJ1)
-        assert ref_voor("RLZ-06-00000026", a) == f"RLZ-06-00000026 · mig:{a}"
-        assert ref_voor(None, a).startswith("— · mig:")
+        assert anker_marker(a) == f"mig:{a}"  # blok 7b punt 6: het anker staat kaal in het anker-veld per type
 
 
 # ---- de mini-VGG ----------------------------------------------------------------
@@ -438,7 +437,12 @@ class TestMiniVgg:
         assert herc[("300", "3000")]["documenten"] == 1 and herc[("300", "3000")]["bedrag"] == Decimal("200000.00")
         assert herc[("300", "3010")]["bedrag"] == Decimal("20000.00")  # aanbetaling: mens wint over zekerheid midden
         assert herc[("8000", "8010")]["bedrag"] == Decimal("-260000.00")
-        assert rapport.journaal == {"regels": 22, "met_bron": 22, "zonder_bron": 0}
+        assert (rapport.journaal["regels"], rapport.journaal["met_bron"], rapport.journaal["zonder_bron"]) == (
+            22,
+            22,
+            0,
+        )
+        assert rapport.journaal["rlz_kolom"].startswith("EventID-koppeling herkend op 22/22")
 
     def test_moves_vorm_contract(self, rapport) -> None:  # noqa: ANN001
         per = {m.rlz_id: m for m in rapport.moves}
@@ -458,7 +462,10 @@ class TestMiniVgg:
         assert mj1.partner is None
         assert per[PI1].partner is not None and per[PI1].partner["sleutel"] in {"kvk", "btw", "iban", "naam"}
         assert mj1.move_type == "entry" and mj1.date == "2025-07-10" and mj1.anker == str(anker_voor(ADMIN, MJ1))
-        assert mj1.vals["ref"] == f"RLZ-06-00000026 · mig:{mj1.anker}" and mj1.vals["journal_id"] == 50
+        assert mj1.vals["ref"] == f"mig:{mj1.anker}" and mj1.vals["journal_id"] == 50  # memoriaal: anker in ref
+        assert mj1.vals["narration"].startswith("RLZ-06-00000026")
+        pi1 = per[PI1]
+        assert pi1.vals["invoice_origin"] == f"mig:{pi1.anker}" and "mig:" not in pi1.vals["ref"]  # factuur: ref kaal
         regels = [r for _, _, r in mj1.vals["line_ids"]]
         assert (
             regels[0]["account_id"] == 3000
@@ -515,11 +522,17 @@ class TestMiniVgg:
         assert g["marge"] == Decimal("59769.01")  # aanbetaling apart (balans tot levering)
         assert "rhijnauwensingel-93" not in pand  # midden/voorstel telt niet
         assert {p["sleutel"] for p in rapport.partners} == {"kvk", "naam"}
-        assert [(s["maand"], s["sluit"]) for s in rapport.statements] == [
-            ("2025-07", "ja"),
-            ("2025-08", "ja"),
-            ("2026-09", "geen afschrift-kop in RLZ voor deze maand"),
-        ]
+        sluit = [(s["maand"], s["sluit"]) for s in rapport.statements]
+        assert sluit[0][0] == "2025-07" and sluit[0][1].startswith("ja (RLZ-kop sluit op de som")
+        assert sluit[1][0] == "2025-08" and sluit[1][1].startswith("ja (RLZ-kop sluit op de som")
+        assert sluit[2] == ("2026-09", "geen afschrift-kop in RLZ — balance_end_real = berekend lopend saldo")
+        # blok 7b punt 3: balance_end_real = lopend saldo (beginsaldo 0), saldo-toets per journal
+        assert rapport.statements[0]["beginsaldo"] == Decimal("0.00")
+        assert rapport.statements[1]["beginsaldo"] == rapport.statements[0]["eindsaldo"]
+        assert rapport.statements[0]["balance_end_real"] == rapport.statements[0]["eindsaldo_rlz_kop"]  # RLZ-kop wint
+        [toets] = rapport.saldo_toets
+        assert toets["saldo_jaareinde"] == Decimal("-110230.99") == toets["saldo_tot"]  # de 2026-09-09-regel > tot
+        assert toets["rlz_rekeningen"] == 1 and toets["afschrift_koppen_rlz"] == 2
         assert rapport.export_melding is None
         assert {k: len(v) for k, v in rapport.export.items()} == {
             "in_invoice": 1,
@@ -532,7 +545,7 @@ class TestMiniVgg:
     def test_markdown_en_json(self, rapport) -> None:  # noqa: ANN001
         md = rapport.als_markdown()
         assert "**Oordeel: GROEN**" in md and "_alle verschillen 0,00_" in md and "EXPORT 2025-07" in md
-        assert "RLZ-06-00000026 · mig:" in md and "Beslispunten Peter" in md
+        assert "Saldo-toets bank" in md and "Beslispunten Peter" in md and "Btw-afwikkeling historisch" in md
         data = json.loads(rapport.als_json())
         assert data["groen"] is True and data["tellers"]["moves"] == 15 == len(data["moves"])
         assert data["saldibalans"][0]["rlz_tot"].count(".") == 1  # Decimal → string, cent-exact
@@ -583,11 +596,31 @@ class TestVarianten:
         collecties, regels, statements = mini_vgg()
         regels[PI1][0]["TaxRate"] = {"id": str(uuid.uuid4())}
         regels[PI1][0]["TaxAmount"] = 48.51
+        # zonder rol-rekening: zichtbaar niet vertaalbaar; het restsaldo blijft berekend op de pseudo-rekening
         rapport = _run(NepClient(collecties, regels, statements))
         assert rapport.tellers["btw_regels"] == 1 and rapport.tellers["btw_documenten"] == 1
         m = next(x for x in rapport.moves if x.rlz_id == PI1)
-        assert "mét btw" in m.reden and m.vals["invoice_line_ids"][0][2]["price_unit"] == Decimal("279.50")
-        assert "moet 0 zijn" in rapport.als_markdown()
+        assert m.status == "niet_vertaalbaar" and "btw_afwikkeling_historisch niet ingesteld" in m.reden
+        assert rapport.btw["rekening"] == "rol:btw_afwikkeling_historisch"
+        assert rapport.btw["restsaldo_tot"] == Decimal("48.51") and rapport.btw["laatste_btw_regel"] == "2025-07-20"
+        assert rapport.btw["afmeldingsdatum_uit_data"] == "2025-07-20"
+        # mét rol-rekening (besluit Peter 13-09): netto-regel + één balansregel btw zonder tax_ids, geen btw-code
+        rollen = RolRekeningen(
+            voorraad_panden=3000,
+            vooruitbetaald_voorraad=3010,
+            opbrengst_panden=8010,
+            kostprijs_panden=7000,
+            btw_afwikkeling_historisch=1590,
+        )
+        rapport = _run(NepClient(collecties, regels, statements), rollen=rollen)
+        m = next(x for x in rapport.moves if x.rlz_id == PI1)
+        assert m.status == "vertaalbaar" and "Btw-afwikkeling historisch" in m.reden
+        netto, btw = m.vals["invoice_line_ids"][0][2], m.vals["invoice_line_ids"][1][2]
+        assert netto["price_unit"] == Decimal("230.99") and netto["account_id"] == 4400
+        assert btw["price_unit"] == Decimal("48.51") and btw["account_id"] == 1590 and btw["tax_ids"] == [[6, 0, []]]
+        assert rapport.btw["rol_ingesteld"] == 1590 and rapport.btw["restsaldo_tot"] == Decimal("48.51")
+        md = rapport.als_markdown()
+        assert "besluit Peter 13-09" in md and "Restsaldo rekening" in md and "moet 0 zijn" not in md
 
     def test_expand_terugval_zichtbaar(self) -> None:
         collecties, regels, statements = mini_vgg()
@@ -697,3 +730,193 @@ class TestLadersZonderRij:
         doel, melding = replay.laad_doel(onbekend)
         assert doel.compleet is False and melding is not None
         assert vertaling.laad_panden(onbekend, boekingen=[]) == {}
+
+
+# ---- blok 7b 13-09 ------------------------------------------------------------
+
+
+class TestBlok7b:
+    """Fixes uit de productienameting 13-09 (opdracht Peter): regels via de collectie-expand, webfilter-blokkering =
+    meting ongeldig, verrekening factuur↔creditnota als paar, per pand mét bankmutaties, regelsom cent-exact."""
+
+    def test_regels_via_collectie_expand_geen_losse_calls(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        # RLZ geeft DocumentLineList mee op de collectie → geen enkele `X/{id}/Lines`-call meer (punt 1a)
+        for pad in ("PurchaseInvoices", "SalesInvoices", "ManualJournals"):
+            for rij in collecties[pad]:
+                if rij["id"] in regels:
+                    rij["DocumentLineList"] = regels[rij["id"]]
+        client = NepClient(collecties, regels, statements)
+        rapport = _run(client)
+        assert rapport.groen is True
+        assert rapport.tellers["regels_via_collectie"] == 5 and rapport.tellers["regel_calls"] == 3  # 3 bank-direct
+        lines_calls = [p for p, _ in client.calls if p.endswith("/Lines")]
+        assert len(lines_calls) == 3 and all(p.startswith("BankMutationDirectBookings/") for p in lines_calls)
+        eerste_pi = next(p for p, _ in client.calls if p == "PurchaseInvoices")
+        assert eerste_pi == "PurchaseInvoices"
+        assert any(
+            p == "PurchaseInvoices" and prm.get("$expand") == "Entity,DocumentLineList($expand=Account,TaxRate)"
+            for p, prm in client.calls
+        )
+        assert "regels via collectie-expand: 5 documenten" in rapport.als_markdown()
+
+    def test_collectie_expand_geweigerd_valt_terug_op_entity_en_per_document(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        client = NepClient(collecties, regels, statements, expand_weigeren={"PurchaseInvoices"})
+        rapport = _run(client)
+        assert rapport.groen is True and rapport.tellers["regel_calls"] == 8
+        expands = [prm.get("$expand") for p, prm in client.calls if p == "PurchaseInvoices"]
+        assert expands[:2] == ["Entity,DocumentLineList($expand=Account,TaxRate)", "Entity"]
+        assert any("gaf geen DocumentLineList — regels per document gelezen" in o for o in rapport.overgeslagen)
+
+    def test_webfilter_blokkering_is_meting_ongeldig_niets_doorgerekend(self) -> None:
+        from app.rlz.client import RlzWebfilterError
+
+        collecties, regels, statements = mini_vgg()
+        html = "<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>You don't have permission</BODY></HTML>"
+        client = NepClient(
+            collecties,
+            regels,
+            statements,
+            fouten={"PaymentAccounts": RlzWebfilterError(403, "GET", "PaymentAccounts", html)},
+        )
+        rapport = _run(client)
+        assert rapport.blokkering is not None and rapport.blokkering.startswith("PaymentAccounts: webfilter 403")
+        assert rapport.oordeel == "ROOD — RLZ-blokkering — meting ongeldig" and rapport.groen is False
+        assert rapport.saldibalans == [] and rapport.moves == [] and rapport.per_pand == []  # niets doorgerekend
+        assert not any(p in ("JournalEntryLines", "Ledgers", "TaxRates") for p, _ in client.calls)  # lezen gestopt
+        md = rapport.als_markdown()
+        assert "**RLZ-blokkering — meting ongeldig:**" in md and "Niets doorgerekend" in md
+        assert any("meting ongeldig" in f["melding"] for f in rapport.fouten)
+        assert json.loads(rapport.als_json())["blokkering"] == rapport.blokkering
+
+    def test_webfilter_midden_in_de_regel_calls_stopt_direct(self) -> None:
+        from app.rlz.client import RlzWebfilterError
+
+        collecties, regels, statements = mini_vgg()
+        client = NepClient(collecties, regels, statements)
+        pad = f"BankMutationDirectBookings/{BD2}/Lines"
+        client.fouten = {pad: RlzWebfilterError(403, "GET", pad, "<HTML>Access Denied</HTML>")}
+        rapport = _run(client)
+        assert rapport.blokkering and "webfilter 403" in rapport.blokkering
+        assert not any(p == "PaymentAccounts" for p, _ in client.calls)
+
+    def test_verrekening_factuur_creditnota_als_paar(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        # factuur € 46,51 + creditnota € −46,51 op dezelfde crediteur, beide in RLZ open 0, geen bankmutatie
+        f_id, c_id = str(uuid.uuid4()), str(uuid.uuid4())
+        f = _doc(f_id, "RLZ-04-00000068", "2025-07-05", 46.51, dt=1, Entity=VVE)
+        c = _doc(c_id, "RLZ-04-00000088", "2025-07-09", -46.51, dt=1, Entity=VVE)
+        collecties["PurchaseInvoices"] += [f, c]
+        regels[f_id] = [_regel(L_KOSTEN, net=46.51)]
+        regels[c_id] = [_regel(L_KOSTEN, net=-46.51)]
+        rapport = _run(NepClient(collecties, regels, statements))
+        assert rapport.verrekeningen == [
+            {
+                "factuur": "RLZ-04-00000068",
+                "factuur_anker": str(anker_voor(ADMIN, f_id)),
+                "creditnota": "RLZ-04-00000088",
+                "creditnota_anker": str(anker_voor(ADMIN, c_id)),
+                "bedrag": Decimal("46.51"),
+                "herkomst": "afgeleid uit bedrag + relatie (RLZ-verrekeningsspoor niet gelezen)",
+            }
+        ]
+        assert not [r for r in rapport.open_posten if r["boekstuk"] in ("RLZ-04-00000068", "RLZ-04-00000088")]
+        assert "RLZ-04-00000068" in rapport.als_markdown() and rapport.verschillen == 0
+
+    def test_koppelingen_som_ongelijk_totaal_is_zichtbare_oorzaak_nooit_stil_afgerond(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        # de bank koppelt € 231,01 op een factuur van € 230,99 (betalingsverschil-afboeking in RLZ)
+        collecties["PaymentTransactions"][3]["PaymentReferenceList"][0]["Amount"] = 231.01
+        rapport = _run(NepClient(collecties, regels, statements))
+        rij = next(r for r in rapport.open_posten if r["boekstuk"] == "RLZ-04-00000100")
+        assert (
+            rij["verschil"] == Decimal("-0.02")
+            and "koppelingen som € 231.01 ≠ documenttotaal € 230.99" in rij["oorzaak"]
+        )
+        assert "betalingsverschil" in rij["oorzaak"] and rapport.groen is False
+
+    def test_regelsom_ongelijk_documenttotaal_wordt_gemeld(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        regels[PI1][0]["NetAmount"] = 230.97  # twee cent te weinig op de regels
+        rapport = _run(NepClient(collecties, regels, statements))
+        assert rapport.som_verschillen == [
+            {
+                "boekstuk": "RLZ-04-00000100",
+                "move_type": "in_invoice",
+                "bedrag": Decimal("230.99"),
+                "som_verschil": Decimal("-0.02"),
+            }
+        ]
+        m = next(x for x in rapport.moves if x.rlz_id == PI1)
+        assert "regelsom € 230.97 ≠ documenttotaal € 230.99 (Δ -0.02)" in m.reden and rapport.groen is False
+        assert "1 regelsom ≠ totaal" in rapport.als_markdown()
+
+    def test_per_pand_telt_bankmutaties_uit_dezelfde_bron(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        # de notaris-ontvangst 00105 (€ 60.000) krijgt in de afleiding een verkoop-toewijzing (hoog) op een ander pand
+        panden = dict(PANDEN)
+        panden[uuid.UUID(PT[5])] = PandToewijzing(
+            "koraalerf-45", "Koraalerf 45, Heerlen", "verkoop", "hoog", "afgeleid"
+        )
+        rapport = _run(NepClient(collecties, regels, statements), panden=panden)
+        pand = {p["pand"].split(" — ")[0]: p for p in rapport.per_pand}
+        assert pand["koraalerf-45"]["verkoop"] == Decimal("60000.00") and pand["koraalerf-45"]["documenten"] == 1
+        assert pand["koraalerf-45"]["marge"] == Decimal("60000.00")  # marge alleen bij verkoop
+        b5 = next(x for x in rapport.moves if x.rlz_id == PT[5])
+        assert b5.status == "vertaalbaar"
+
+    def test_rlz_boekingen_bevat_bankmutaties(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        bron = rlz_bron.lees_bron(NepClient(collecties, regels, statements))
+        boekingen = replay._rlz_boekingen(bron)
+        assert boekingen is not None
+        assert sum(1 for b in boekingen if b.collectie == "PaymentTransactions") == 7
+
+    def test_statements_zonder_koppen_lopend_saldo_per_iban_journal(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        statements.clear()  # VGG: géén /Statements-koppen
+        rek2 = str(uuid.uuid4())
+        collecties["PaymentAccounts"].append({"id": rek2, "Name": "Spaar", "IBAN": "NL20 INGB 0001 2345 67", "Type": 1})
+        collecties["PaymentTransactions"][5]["PaymentAccount"] = {"id": rek2, "Name": "Spaar"}
+        rapport = _run(NepClient(collecties, regels, statements))
+        [toets] = rapport.saldo_toets  # twee RLZ-rekeningen, één IBAN = één journal
+        assert toets["rlz_rekeningen"] == 2 and toets["afschrift_koppen_rlz"] == 0
+        assert toets["saldo_jaareinde"] == Decimal("-110230.99")
+        assert all(s["sluit"].startswith("geen afschrift-kop in RLZ") for s in rapport.statements)
+        assert rapport.statements[0]["beginsaldo"] == Decimal("0.00")
+        assert [s["balance_end_real"] for s in rapport.statements] == [
+            Decimal("-20230.99"),
+            Decimal("-110230.99"),
+            Decimal("-110730.99"),
+        ]
+        m = next(x for x in rapport.moves if x.rlz_id == PT[5])
+        assert m.bank["statement_maand"] == "2025-08" and m.bank["journal_sleutel"] == "NL20INGB0001234567"
+
+    def test_ob_afwikkeling_op_btw_grootboek_gaat_naar_de_rol(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        l_ob = str(uuid.uuid4())
+        collecties["Ledgers"].append(
+            {
+                "id": l_ob,
+                "AccountNumber": "1520",
+                "Description": "Te betalen OB",
+                "AccountType": 4,
+                "IsTotalAccount": False,
+            }
+        )
+        # bank-directe boeking BD3 boekt op het OB-grootboek (teruggaaf/aangifte)
+        regels[BD3] = [_regel(l_ob, net=20000.0, omschrijving="TERUGGAAF OB 3e kw 2025")]
+        rollen = RolRekeningen(
+            voorraad_panden=3000,
+            vooruitbetaald_voorraad=3010,
+            opbrengst_panden=8010,
+            kostprijs_panden=7000,
+            btw_afwikkeling_historisch=1590,
+        )
+        rapport = _run(NepClient(collecties, regels, statements), rollen=rollen)
+        m = next(x for x in rapport.moves if x.rlz_id == BD3)
+        assert m.status == "vertaalbaar" and "btw-grootboek) → btw_afwikkeling_historisch (1590)" in m.reden
+        assert m.vals["regels"][0][2]["account_id"] == 1590
+        assert rapport.btw["documenten_ob_afwikkeling"] == 1 and rapport.btw["laatste_ob_mutatie"] == "2025-07-15"
+        assert rapport.btw["btw_ledgers"] == [{"code": "1520", "naam": "Te betalen OB"}]

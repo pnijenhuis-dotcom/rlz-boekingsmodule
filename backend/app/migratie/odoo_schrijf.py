@@ -10,7 +10,8 @@ Regels (besluit Peter 12-09 punt 1):
   KvK → btw → IBAN → naam, >1 treffer = `PartnerMeerduidig` (nooit gokken), audit per partner "aangemaakt/hergebruikt";
   een concept-factuur draagt altijd een partner.
 - Fout = `button_cancel` (of tegenboeken) — NOOIT `unlink`. Dit bestand bevat het woord unlink alleen in deze zin.
-- Idempotentie = zoek-vóór-create op het anker (`ref ilike 'mig:<anker>'` bij moves, `unique_import_id`/`ref` bij
+- Idempotentie = zoek-vóór-create op het anker-VELD per type (blok 7b 13-09: `invoice_origin = 'mig:<anker>'` bij
+  facturen mét kale `ref`, `ref = 'mig:<anker>'` bij memorialen, `unique_import_id`/`ref` bij
   statement lines); meerdere treffers = `AnkerMeerduidig` (meerduidig = nooit invullen).
 - Elke call krijgt een append-only audit-rij (`module="boekhouding"`, `tabel="odoo_migratie"`) met model / methode /
   odoo-id / company / anker / route — nooit de key. De audit-schrijver is injecteerbaar (`AuditSchrijver`) zodat de
@@ -49,7 +50,33 @@ MODEL_PARTNER = "res.partner"
 MODEL_PARTNER_BANK = "res.partner.bank"
 _PARTNER_VELDEN = ["id", "name", "vat", "company_registry", "company_id"]
 
-_MOVE_VELDEN = ["id", "name", "state", "company_id", "ref", "move_type", "journal_id", "date", "amount_total"]
+_MOVE_VELDEN = [
+    "id",
+    "name",
+    "state",
+    "company_id",
+    "ref",
+    "invoice_origin",
+    "move_type",
+    "journal_id",
+    "date",
+    "amount_total",
+]
+#: Blok 7b 13-09 (beslispunt 3, advies overgenomen): het anker-VELD per move-type — facturen `invoice_origin` (zodat
+#: `ref` het kale RLZ-factuur-/boekstuknummer blijft), memorialen `ref`; bankregels `unique_import_id` (statement line).
+ANKERVELD_PER_MOVE_TYPE = {
+    "entry": "ref",
+    "in_invoice": "invoice_origin",
+    "in_refund": "invoice_origin",
+    "out_invoice": "invoice_origin",
+    "out_refund": "invoice_origin",
+}
+
+
+def ankerveld_voor(move_type: str | None) -> str:
+    return ANKERVELD_PER_MOVE_TYPE.get(move_type or "", "ref")
+
+
 _STL_VELDEN = [
     "id",
     "move_id",
@@ -149,21 +176,32 @@ def _audit_basis(client: CompanyGepindeClient, model: str, methode: str, **extra
 # --- concept-move -----------------------------------------------------------------------------------------------------
 
 
-def zoek_move_op_anker(client: CompanyGepindeClient, anker: str) -> list[dict[str, Any]]:
+def zoek_move_op_anker(
+    client: CompanyGepindeClient, anker: str, *, move_type: str | None = None
+) -> list[dict[str, Any]]:
+    """Zoek-vóór-create op het anker-veld van het type (`invoice_origin` = exact voor facturen, `ref` = exact voor
+    memorialen); zonder type: beide velden (`|`), zodat een oud concept in de oude `ref`-vorm ook gevonden wordt."""
+    marker = anker_marker(anker)
+    if move_type is None:
+        anker_domein: list[Any] = ["|", ["invoice_origin", "=", marker], ["ref", "ilike", marker]]
+    else:
+        anker_domein = [[ankerveld_voor(move_type), "=", marker]]
     return client.search_read(
         MODEL_MOVE,
-        [["company_id", "=", client.pin], ["ref", "ilike", anker_marker(anker)], ["state", "!=", "cancel"]],
+        [["company_id", "=", client.pin], *anker_domein, ["state", "!=", "cancel"]],
         _MOVE_VELDEN,
         limit=5,
     )
 
 
 def maak_concept_move(client: CompanyGepindeClient, vals: dict[str, Any], *, anker: str, audit: AuditSchrijver) -> int:
-    """Zoek-vóór-create op `ref ilike 'mig:<anker>'`; `company_id` verplicht = pin; ná create `state == 'draft'`
+    """Zoek-vóór-create op het anker-veld van het move-type (blok 7b punt 6: facturen `invoice_origin = 'mig:<anker>'`
+    mét kale `ref`, memorialen `ref = 'mig:<anker>'`); `company_id` verplicht = pin; ná create `state == 'draft'`
     terug-gelezen (anders `button_cancel` + `ConceptNietDraft`). Geeft het move-id (bestaand of nieuw)."""
     eis_writes_aan()
     marker = anker_marker(anker)
-    treffers = zoek_move_op_anker(client, anker)
+    move_type = str(vals.get("move_type") or "entry")
+    treffers = zoek_move_op_anker(client, anker, move_type=move_type)
     if len(treffers) > 1:
         raise AnkerMeerduidig(f"{len(treffers)} account.move-records dragen {marker}: {[t['id'] for t in treffers]}")
     if treffers:
@@ -178,8 +216,16 @@ def maak_concept_move(client: CompanyGepindeClient, vals: dict[str, Any], *, ank
 
     vals = dict(vals)
     vals["company_id"] = client.pin
-    ref = str(vals.get("ref") or "").strip()
-    vals["ref"] = ref if marker in ref else (f"{ref} · {marker}" if ref else marker)
+    veld = ankerveld_voor(move_type)
+    if veld == "ref":
+        vals["ref"] = marker  # memoriaal: anker in ref (boekstuk staat in narration)
+    else:
+        vals["invoice_origin"] = marker
+        ref_kaal = str(vals.get("ref") or "").strip()  # kaal factuur-/boekstuknummer, nooit het anker
+        if ref_kaal:
+            vals["ref"] = ref_kaal
+        else:
+            vals.pop("ref", None)
     move_id = client.create(MODEL_MOVE, vals)
     move = client.read_een(MODEL_MOVE, move_id, _MOVE_VELDEN) or {}
     if move.get("state") != "draft":
@@ -207,7 +253,8 @@ def maak_concept_move(client: CompanyGepindeClient, vals: dict[str, Any], *, ank
             move_type=vals.get("move_type"),
             journal_id=vals.get("journal_id"),
             date=vals.get("date"),
-            ref=vals["ref"],
+            ref=vals.get("ref"),
+            ankerveld=veld,
             state=move.get("state"),
         ),
     )

@@ -2,8 +2,10 @@
 
 Per GEBOEKT RLZ-document één `MoveVoorstel` (veldnamen bindend voor D: anker, rlz_id, boekstuk, move_type, date, vals,
 bank, status, reden):
-- `anker` = uuid5(NAMESPACE_MIGRATIE, f"{administratie_id}:{rlz_id}") — in Odoo-veld `ref` als
-  `"<boekstuk> · mig:<anker>"` (zoek-vóór-create op `ref ilike 'mig:<anker>'`; geen Studio-/x_-veld nodig).
+- `anker` = uuid5(NAMESPACE_MIGRATIE, f"{administratie_id}:{rlz_id}") — BLOK 7b 13-09 (beslispunt 3, advies
+  overgenomen): facturen dragen `ref` = het KALE RLZ-factuur-/boekstuknummer (`Reference`, anders `ReceiptNumber`) en
+  het anker `mig:<anker>` in `invoice_origin`; memorialen dragen het anker in `ref`; bankregels in `unique_import_id`
+  (`ref` = kale TransactionId). Zoek-vóór-create per type op dát veld (`odoo_schrijf.zoek_move_op_anker`).
 - `date` = `invoice_date` = RLZ `BookDate`; terugval `Date` is zichtbaar in `reden` ("BookDate ontbreekt → Date").
 - grootboek per regel via `app.odoo.rj220.vertaal_grootboek` (agent C, lazy) — fallback
 `mapping.bepaal_grootboek_voorstel`
@@ -22,8 +24,14 @@ bank, status, reden):
   lookup-vóór-create).
 - partner = VOORSTEL zoek-vóór-create op KvK → btw → IBAN → naam; de dry-run leest Odoo NIET ("nieuw (res.partner)" /
   "onbekend" / "n.v.t.").
-- `tax_ids = [[6, 0, []]]` op élke regel (VGG niet btw-plichtig); regels mét TaxRate of TaxAmount ≠ 0 tellen in de
-btw-teller.
+- BTW (besluit Peter 13-09, blok 7b): VGG is NIET btw-plichtig — de btw in de RLZ-historie stamt van een foute
+  registratie door de Belastingdienst (later afgemeld). Élke regel mét `TaxAmount` ≠ 0 splitst in de netto-regel op de
+  eigen rekening + één balansregel voor het btw-bedrag op de rol `btw_afwikkeling_historisch` (zonder tax_ids); regels
+  waarvan het RLZ-grootboek een btw-rekening is (`Context.btw_ledgers`: OB-afwikkeling via memoriaal/bank) gaan als
+  herclassificatie naar dezelfde rol. Zonder rol-rekening = niet vertaalbaar (zichtbaar). `tax_ids = [[6, 0, []]]` op
+  élke regel — geen enkele Odoo-move krijgt een btw-code. De btw-teller telt regels mét TaxAmount ≠ 0.
+- Regelsom cent-exact (blok 7b punt 4): Σ regels (netto + btw, in boekrichting) ≠ `BaseInvoiceAmount` → `som_verschil`
+  in `Vertaald` + reden; nooit stil afronden.
 - Bankregel = `account.bank.statement.line`-vals (date, journal_id, payment_ref = `ontknip(Reference)`, amount mét
 teken,
   partner_name, account_number = CounterAccount, ref/unique_import_id = anker) + `bank`-blok: tegenregel (bank-directe
@@ -33,6 +41,7 @@ Geld in Decimal; datums ISO-strings."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
@@ -60,6 +69,9 @@ LEDGERTYPE_ACTIVA = 3
 IMPLICIET_CREDITEUREN = "impliciet:crediteuren"
 IMPLICIET_DEBITEUREN = "impliciet:debiteuren"
 IMPLICIET_TUSSENREKENING = "impliciet:bank-tussenrekening"
+#: Pseudo-rekening voor de btw-afwikkelrol zolang die geen Odoo-id heeft — het restsaldo blijft zo berekenbaar.
+ROL_BTW_PSEUDO = "rol:btw_afwikkeling_historisch"
+BRON_BTW = "btw"
 
 
 # ---- contract-dataclasses (eigen spiegel; C/B leveren de echte) ---------------------------------------------
@@ -72,6 +84,7 @@ class RolRekeningen:
     opbrengst_panden: int | None = None
     kostprijs_panden: int | None = None
     analytic_overhead: int | None = None
+    btw_afwikkeling_historisch: int | None = None  # blok 7b 13-09
 
 
 @dataclass(frozen=True)
@@ -181,6 +194,11 @@ class Vertaald:
     ongemapt: list[str] = field(default_factory=list)  # RLZ-ledger-id's zonder Odoo-rekening
     bedrag: Decimal | None = None
     open_bedrag: Decimal | None = None
+    #: Blok 7b 13-09
+    entity_id: str | None = None  # RLZ Entity-id (voor verrekening factuur↔creditnota binnen dezelfde relatie)
+    btw_bedrag: Decimal = NUL  # Σ btw (debet − credit) naar de afwikkelrol
+    ob_afwikkeling: bool = False  # een regel op een RLZ-btw-grootboek (OB-aangifte/-teruggaaf) → afwikkelrol
+    som_verschil: Decimal | None = None  # Σ regels − documenttotaal (≠ 0 = melden, nooit stil afronden)
 
 
 @dataclass
@@ -191,6 +209,8 @@ class Context:
     ledgers: dict[str, tuple[str | None, str | None, int | None]]  # id → (code, naam, AccountType)
     rollen: RolRekeningen
     panden: dict[uuid.UUID, PandToewijzing]
+    #: RLZ-ledger-id's die een btw-rekening zijn (naam-regex op Ledgers + Account-refs van TaxRates) — blok 7b 13-09.
+    btw_ledgers: frozenset[str] = frozenset()
 
 
 # ---- ankers ----------------------------------------------------------------------------------------------
@@ -200,8 +220,33 @@ def anker_voor(administratie_id: uuid.UUID | str, rlz_id: uuid.UUID | str) -> uu
     return uuid.uuid5(NAMESPACE_MIGRATIE, f"{administratie_id}:{rlz_id}")
 
 
-def ref_voor(boekstuk: str | None, anker: uuid.UUID | str) -> str:
-    return f"{boekstuk or '—'} · mig:{anker}"
+def anker_marker(anker: uuid.UUID | str) -> str:
+    return f"mig:{anker}"
+
+
+def ref_kaal(rij: dict[str, Any], boekstuk: str | None, rlz_id: str) -> str:
+    """Het kale RLZ-factuur-/boekstuknummer voor Odoo-veld `ref` (blok 7b punt 6): `Reference` (ontknipt), anders
+    het boekstuknummer, anders het RLZ-id."""
+    return ontknip(rij.get("Reference")) or boekstuk or rlz_id
+
+
+_BTW_LEDGER_NAAM = re.compile(r"\bbtw\b|omzetbelasting|\bo\.?b\.?\b|voorbelasting|af te dragen ob|te vorderen ob", re.I)
+
+
+def btw_ledgers_uit(ledgers: list[dict[str, Any]], taxrates: list[dict[str, Any]]) -> frozenset[str]:
+    """RLZ-grootboekrekeningen die btw zijn: naam-regex op `Ledgers.Description` + élke `Account`/`Ledger`-ref op de
+    TaxRates-rijen (RLZ hangt het aangifte-grootboek aan het tarief). Deterministisch; het rapport noemt de lijst."""
+    uit: set[str] = set()
+    for r in ledgers:
+        rid = rlz_bron.doc_id(r)
+        naam = str(r.get("Description") or r.get("Name") or "")
+        if rid and _BTW_LEDGER_NAAM.search(naam):
+            uit.add(rid)
+    for t in taxrates:
+        for sleutel, waarde in t.items():
+            if ("Account" in sleutel or "Ledger" in sleutel) and isinstance(waarde, dict) and waarde.get("id"):
+                uit.add(str(waarde["id"]))
+    return frozenset(uit)
 
 
 # ---- laders (lazy naar C en B; fallback zonder afhankelijkheid) --------------------------------------------------
@@ -297,6 +342,7 @@ def laad_rollen(administratie_id: uuid.UUID) -> RolRekeningen:
             opbrengst_panden=r.opbrengst_panden,
             kostprijs_panden=r.kostprijs_panden,
             analytic_overhead=r.analytic_overhead,
+            btw_afwikkeling_historisch=getattr(r, "btw_afwikkeling_historisch", None),
         )
     except ImportError:
         return RolRekeningen()
@@ -374,9 +420,22 @@ def _datum(rij: dict[str, Any]) -> tuple[str | None, str | None]:
     return None, "geen BookDate en geen Date"
 
 
-def _regel_btw(regel: dict[str, Any]) -> bool:
-    tax = als_bedrag(regel.get("TaxAmount"))
-    return rlz_bron.ref_id(regel.get("TaxRate")) is not None or (tax is not None and tax != 0)
+def _netto_en_btw(regel: dict[str, Any]) -> tuple[Decimal, Decimal] | None:
+    """(NetAmount, TaxAmount) mét teken voor factuurregels; None voor memoriaal-/journaalregels (Debit/CreditAmount,
+    daar zit de btw als eigen regel op een btw-grootboek)."""
+    net = als_bedrag(regel.get("NetAmount"))
+    if net is None:
+        return None  # memoriaal-/journaalregel (Debit/CreditAmount of CreditOrDebit+Amount): geen netto/btw-splitsing
+    tax = als_bedrag(regel.get("TaxAmount")) or NUL
+    return net, tax
+
+
+def _orienteer_bedrag(bedrag: Decimal, move_type: str) -> tuple[Decimal, Decimal]:
+    """(debet, credit) van één bedrag mét teken in boekrichting: inkoop positief = debet, verkoop positief = credit."""
+    b = bedrag.quantize(Decimal("0.01"))
+    if move_type in ("out_invoice", "out_refund"):
+        return (NUL, b) if b >= 0 else (-b, NUL)
+    return (b, NUL) if b >= 0 else (NUL, -b)
 
 
 def orienteer(regels: list[dict[str, Any]], move_type: str) -> list[tuple[Decimal, Decimal]]:
@@ -435,6 +494,7 @@ def vertaal_document(
         pand=pand,
         bedrag=bedrag,
         open_bedrag=als_bedrag(rij.get("BaseRemainingAmount")),
+        entity_id=entity_van(rij)[0],
     )
     status = STATUS_VERTAALBAAR
     if datum is None:
@@ -473,10 +533,22 @@ def vertaal_document(
     # regels
     omkeren = move_type in ("in_refund", "out_refund")
     regel_vals: list[dict[str, Any]] = []
-    for i, (r, (d, c)) in enumerate(zip(regels, orienteer(regels, move_type), strict=True)):
+    btw_rol_id = ctx.rollen.btw_afwikkeling_historisch
+    btw_rek = str(btw_rol_id) if btw_rol_id is not None else ROL_BTW_PSEUDO
+    btw_rol_gemeld = False
+    som = NUL
+    for i, (r, (d_tot, c_tot)) in enumerate(zip(regels, orienteer(regels, move_type), strict=True)):
         ledger_id = rlz_bron.ref_id(r.get("Account"))
         vert = ctx.grootboek.get(ledger_id or "")
         odoo_id: int | None = vert.odoo_account_id if vert else None
+        netto_btw = _netto_en_btw(r)
+        if netto_btw is None:
+            d, c = d_tot, c_tot
+            t_d = t_c = NUL
+        else:
+            d, c = _orienteer_bedrag(netto_btw[0], move_type)
+            t_d, t_c = _orienteer_bedrag(netto_btw[1], move_type)
+        som += (d_tot - c_tot) if move_type in ("in_invoice", "in_refund", "entry", "bank_direct") else (c_tot - d_tot)
         if rol_index is not None and i == rol_index and rol_naam:
             rol_id = getattr(ctx.rollen, rol_naam)
             if rol_id is not None:
@@ -484,15 +556,31 @@ def vertaal_document(
                     uit.herclassificaties.append((str(odoo_id), str(rol_id), (d - c).quantize(Decimal("0.01"))))
                 odoo_id = rol_id
                 redenen.append(f"regel {i + 1} → {rol_naam} ({rol_id})")
-        if odoo_id is None:
-            if ledger_id and ledger_id not in uit.ongemapt:
-                uit.ongemapt.append(ledger_id)
-            status = STATUS_NIET
-        if _regel_btw(r):
-            uit.btw_regels += 1
-        rekening = (
-            str(odoo_id) if odoo_id is not None else f"ongemapt:{(vert.rlz_code if vert else None) or ledger_id or '?'}"
-        )
+        if ledger_id and ledger_id in ctx.btw_ledgers:
+            # OB-afwikkeling (aangifte/teruggaaf via memoriaal of bank) → de afwikkelrol, herclassificatie zichtbaar
+            uit.ob_afwikkeling = True
+            uit.btw_bedrag += d - c
+            if odoo_id is not None:
+                uit.herclassificaties.append((str(odoo_id), btw_rek, (d - c).quantize(Decimal("0.01"))))
+            odoo_id = btw_rol_id
+            rekening = btw_rek
+            if btw_rol_id is None:
+                status = STATUS_NIET
+                if not btw_rol_gemeld:
+                    redenen.append("rol-rekening btw_afwikkeling_historisch niet ingesteld")
+                    btw_rol_gemeld = True
+            else:
+                redenen.append(f"regel {i + 1} (btw-grootboek) → btw_afwikkeling_historisch ({btw_rol_id})")
+        else:
+            if odoo_id is None:
+                if ledger_id and ledger_id not in uit.ongemapt:
+                    uit.ongemapt.append(ledger_id)
+                status = STATUS_NIET
+            rekening = (
+                str(odoo_id)
+                if odoo_id is not None
+                else f"ongemapt:{(vert.rlz_code if vert else None) or ledger_id or '?'}"
+            )
         uit.regels.append(BalansRegel(rekening, ledger_id, d, c, datum, "regel"))
         naam = ontknip(r.get("Description")) or boekstuk or rlz_id
         rv: dict[str, Any] = {"name": naam, "account_id": odoo_id, "tax_ids": LEGE_TAX}
@@ -506,6 +594,41 @@ def vertaal_document(
             rv["quantity"] = 1
             rv["price_unit"] = (-netto if omkeren else netto).quantize(Decimal("0.01"))
         regel_vals.append([0, 0, rv])
+        if t_d or t_c:
+            # btw-bedrag = gewone balansregel op de afwikkelrol, zónder tax_ids (besluit Peter 13-09)
+            uit.btw_regels += 1
+            uit.btw_bedrag += t_d - t_c
+            uit.regels.append(BalansRegel(btw_rek, None, t_d, t_c, datum, BRON_BTW))
+            if btw_rol_id is None:
+                status = STATUS_NIET
+                if not btw_rol_gemeld:
+                    redenen.append("rol-rekening btw_afwikkeling_historisch niet ingesteld")
+                    btw_rol_gemeld = True
+            btw_netto = (t_d - t_c) if move_type in ("in_invoice", "in_refund") else (t_c - t_d)
+            rv_btw: dict[str, Any] = {
+                "name": f"btw historisch — {naam}",
+                "account_id": btw_rol_id,
+                "tax_ids": LEGE_TAX,
+                "quantity": 1,
+                "price_unit": (-btw_netto if omkeren else btw_netto).quantize(Decimal("0.01")),
+            }
+            regel_vals.append([0, 0, rv_btw])
+
+    # regelsom cent-exact tegen het documenttotaal (blok 7b punt 4) — melden, nooit stil afronden
+    if regels:
+        if move_type == "entry":
+            uit.som_verschil = som.quantize(Decimal("0.01"))
+            if uit.som_verschil != 0:
+                redenen.append(f"memoriaal sluit niet: debet − credit = € {uit.som_verschil}")
+        elif bedrag is not None:
+            # bank-directe boeking: het documenttotaal draagt het teken van de MUTATIE, de regels de boekrichting
+            uit.som_verschil = ((abs(som) - abs(bedrag)) if move_type == "bank_direct" else (som - bedrag)).quantize(
+                Decimal("0.01")
+            )
+            if uit.som_verschil != 0:
+                redenen.append(
+                    f"regelsom € {som.quantize(Decimal('0.01'))} ≠ documenttotaal € {bedrag} (Δ {uit.som_verschil})"
+                )
 
     # impliciete tegenzijde (crediteuren/debiteuren) voor de saldibalans
     if move_type in ("in_invoice", "in_refund") and regels:
@@ -521,8 +644,9 @@ def vertaal_document(
             BalansRegel(rek, None, tot if tot >= 0 else NUL, NUL if tot >= 0 else -tot, datum, "impliciet")
         )
 
-    # vals
-    ref = ref_voor(boekstuk, anker)
+    # vals — anker (blok 7b punt 6): facturen `ref` kaal + `invoice_origin` = mig:<anker>; memoriaal anker in `ref`
+    marker = anker_marker(anker)
+    kaal = ref_kaal(rij, boekstuk, rlz_id)
     omschrijving = ontknip_velden(rij, "Header", "Description", "Reference")
     if move_type == "entry":
         vals: dict[str, Any] = {
@@ -530,11 +654,12 @@ def vertaal_document(
             "company_id": ctx.doel.company_id,
             "journal_id": ctx.doel.journal_general_id,
             "date": datum,
-            "ref": ref,
+            "ref": marker,
             "line_ids": regel_vals,
         }
+        omschrijving = f"{boekstuk or rlz_id}" + (f" — {omschrijving}" if omschrijving else "")
     elif move_type == "bank_direct":
-        vals = {"move_type": "bank_direct", "ref": ref, "date": datum, "regels": regel_vals}
+        vals = {"move_type": "bank_direct", "ref": kaal, "anker": marker, "date": datum, "regels": regel_vals}
         redenen.append("tegenregel van een bankregel — geen eigen move")
     else:
         inkoop = move_type in ("in_invoice", "in_refund")
@@ -543,7 +668,8 @@ def vertaal_document(
             "company_id": ctx.doel.company_id,
             "journal_id": ctx.doel.journal_purchase_id if inkoop else ctx.doel.journal_sale_id,
             "partner_id": None,
-            "ref": ref,
+            "ref": kaal,
+            "invoice_origin": marker,
             "invoice_date": datum,
             "date": datum,
             "invoice_line_ids": regel_vals,
@@ -561,7 +687,10 @@ def vertaal_document(
         codes = [(ctx.grootboek.get(x).rlz_code if ctx.grootboek.get(x) else None) or x for x in uit.ongemapt]
         redenen.insert(0, f"grootboek zonder Odoo-rekening: {', '.join(str(c) for c in codes)}")
     if uit.btw_regels:
-        redenen.append(f"{uit.btw_regels} regel(s) mét btw — VGG is niet btw-plichtig, controleren")
+        btw_som = uit.btw_bedrag.quantize(Decimal("0.01"))
+        redenen.append(
+            f"{uit.btw_regels} btw-regel(s) → Btw-afwikkeling historisch (€ {btw_som}, zonder tax_ids; besluit 13-09)"
+        )
     uit.move.vals = vals
     uit.move.status = status
     uit.move.reden = "; ".join(redenen) if redenen else "1-op-1 vertaald"
@@ -604,8 +733,8 @@ def vertaal_bankregel(
         "amount": bedrag,
         "partner_name": tx.get("Name") if isinstance(tx.get("Name"), str) else None,
         "account_number": tx.get("CounterAccount") if isinstance(tx.get("CounterAccount"), str) else None,
-        "ref": ref_voor(boekstuk, anker),
-        "unique_import_id": f"mig:{anker}",
+        "ref": boekstuk or rlz_id,  # kaal (blok 7b punt 6); het anker zit in unique_import_id
+        "unique_import_id": anker_marker(anker),
     }
     reconcile: list[dict[str, Any]] = []
     tegenregels: list[dict[str, Any]] = []
@@ -714,6 +843,7 @@ def vertaal_bankregel(
         regels=regels,
         bedrag=bedrag,
         open_bedrag=open_bedrag,
+        pand=ctx.panden.get(uuid.UUID(rlz_id)) if _is_uuid(rlz_id) else None,  # blok 7b punt 5: één bron
     )
     return uit
 

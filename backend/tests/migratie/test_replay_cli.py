@@ -91,7 +91,7 @@ def test_groen_exit_0_met_odoo_rekeningen_en_json(
     assert client.gesloten is True
     data = json.loads(uit.read_text(encoding="utf-8"))
     assert data["groen"] is True and data["administratie_naam"] == "Vastgoedgroep Nederland B.V."
-    assert "regels lezen voor 8 geboekte documenten" in out.err  # voortgang naar stderr
+    assert "8 per document te lezen (in tempo)" in out.err  # voortgang naar stderr
 
 
 def test_rood_exit_1_bij_ongemapte_rekening(
@@ -109,7 +109,8 @@ def test_rood_exit_1_bij_ongemapte_rekening(
         _args(odoo_rekeningen=str(rek)), zoek=_zoek, client_factory=lambda _r: NepClient(collecties, regels, statements)
     )
     out = capsys.readouterr()
-    assert code == 1 and "ROOD: 0 verschil(len), 1 niet vertaalbaar" in out.err
+    # blok 7b punt 9: een niet-groen rapport is een UITKOMST (exit 0 + statusregel), geen storing
+    assert code == 0 and "UITKOMST: ROOD — 0 verschil(len), 1 niet vertaalbaar" in out.err
     assert "**Oordeel: ROOD**" in out.out
 
 
