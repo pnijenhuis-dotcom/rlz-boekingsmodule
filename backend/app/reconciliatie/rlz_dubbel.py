@@ -55,7 +55,12 @@ Wat dit blok doet — en bewust níét:
   minder dan twee bankmutaties (|bedrag|, teken −1 voor inkoop, ±3 dagen; `app/migratie/bankdekking.py`) tegenover
   staan; anders teller `bank_bevestigd`. Bank niet leesbaar → paren gemeld mét markering "bank niet gelezen". De
   DAGELIJKSE run leest GEEN PaymentTransactions en meldt niets van snede 2 — of snede 2 een bevinding-rij wordt is
-  een beslispunt voor Peter (meetlat eerst).
+  een beslispunt voor Peter (meetlat eerst). **Blok 7b/7c punt 8 (13-09): twee uitsluitingen** — een PERIODIEKE
+  REEKS (≥ 3 documenten van dezelfde crediteur mét hetzelfde bedrag over ≥ 2 kalendermaanden) en een DAG-BATCH
+  (≥ `SNEDE2_DAGBATCH_MIN_DOCUMENTEN` documenten van dezelfde crediteur, cent-exact hetzelfde bedrag én dezelfde
+  datum op de boekdatum- óf de factuurdatum-as) zijn nooit dubbel; meetlat 13-09 Molenhof Verhuur: 78 × € 4.886,32
+  álle op 2026-01-01 = C(78,2) = 3.003 paren die de periodiek-uitsluiting niet ving omdat het één dag is. Twee
+  documenten op één dag (de KF-paren) blijven een paar.
 - Uitkomst = bevinding `afwijking` soort `dubbel_in_rlz`; acceptatie mét reden via het bestaande pad (bron
   `documenten`: de DB-CHECK op `reconciliatie_acceptatie.bron` kent geen vijfde waarde en dit blok brengt bewust
   GEEN migratie). GEEN automatische actie: de RLZ-kant is mensenwerk, de app verwijdert nooit (kernprincipe 3). Er is
@@ -109,6 +114,12 @@ SNEDE2_VENSTER_DAGEN = 3
 #: documenten over minstens zoveel kalendermaanden is een terugkerende gelijke factuur, geen dubbel.
 SNEDE2_PERIODIEK_MIN_DOCUMENTEN = 3
 SNEDE2_PERIODIEK_MIN_MAANDEN = 2
+#: Snede 2 — dag-batch (punt 8 blok 7c, 13-09; meetlat Molenhof 78 × € 4.886,32 op 2026-01-01): minstens zoveel
+#: documenten van dezelfde crediteur met hetzelfde bedrag op dezelfde datum (boek- óf factuurdatum-as) zijn een batch,
+#: nooit dubbel (analoog aan `terugkerend.service.classificeer_reeks`: een batch is nooit dubbel); twee = een paar.
+SNEDE2_DAGBATCH_MIN_DOCUMENTEN = 3
+SNEDE2_AS_BOEKDATUM = "boekdatum"
+SNEDE2_AS_FACTUURDATUM = "factuurdatum"
 LABEL_MODULE_X_NIET = "module×niet-module"
 LABEL_NIET_X_NIET = "niet-module×niet-module"
 #: Uitsluitingsreden op een vervangen paar-bevinding (overgang 10-09) — letterlijke tekst in detail `uitsluiting`.
@@ -394,7 +405,8 @@ class Snede2Paar:
 @dataclass(frozen=True)
 class Snede2PeriodiekeGroep:
     """Eén uitgesloten PERIODIEKE REEKS (punt 8 blok 7b, opdracht Peter 13-09; meetlat 13-09: 3.003 van de 4.380 paren
-    waren 78× € 4.886,32 bij één verhuurder — 12 chalets × maand): zelfde crediteur + cent-exact gelijk bedrag,
+    waren 78× € 4.886,32 bij één verhuurder — die bleken álle op 2026-01-01 te staan en vallen sinds blok 7c onder
+    `Snede2DagBatchGroep`, niet hier): zelfde crediteur + cent-exact gelijk bedrag,
     ≥ `SNEDE2_PERIODIEK_MIN_DOCUMENTEN` documenten over ≥ `SNEDE2_PERIODIEK_MIN_MAANDEN` kalendermaanden. Álle
     snede-2-paren van die groep vallen weg; alleen groepen die daadwerkelijk paren wegnamen worden vermeld."""
 
@@ -416,6 +428,30 @@ class Snede2PeriodiekeGroep:
 
 
 @dataclass(frozen=True)
+class Snede2DagBatchGroep:
+    """Eén uitgesloten DAG-BATCH (punt 8 blok 7c, opdracht Peter 13-09; meetlat 13-09: Molenhof Verhuur 78 × € 4.886,32
+    álle op 2026-01-01 = 3.003 paren): zelfde crediteur + cent-exact gelijk bedrag + dezelfde datum op één as
+    (boekdatum = `_snede2_datum`, of factuurdatum = `datum` met terugval boekdatum), ≥ `SNEDE2_DAGBATCH_MIN_DOCUMENTEN`
+    documenten. Alleen groepen die daadwerkelijk paren wegnamen worden vermeld; een paar dat al periodiek wegviel telt
+    hier niet nog eens."""
+
+    entity_id: uuid.UUID
+    entity_naam: str | None
+    bedrag: Decimal
+    datum: date
+    as_: str  # SNEDE2_AS_BOEKDATUM | SNEDE2_AS_FACTUURDATUM
+    aantal_documenten: int
+    aantal_paren: int  # weggevallen snede-2-paren (incl. wat de bank anders bevestigd had)
+
+    def regel(self) -> str:
+        """`· uitgesloten (dag-batch): <initialen> € <bedrag> — N documenten op <datum> (<as>), P paren`."""
+        return (
+            f"· uitgesloten (dag-batch): {initialen(self.entity_naam or '') or '?'} € {self.bedrag} — "
+            f"{self.aantal_documenten} documenten op {self.datum.isoformat()} ({self.as_}), {self.aantal_paren} paren"
+        )
+
+
+@dataclass(frozen=True)
 class Snede2Uitkomst:
     paren: tuple[Snede2Paar, ...]  # gemeld (bank-tekort of bank niet gelezen)
     bank_bevestigd: int  # kandidaten die door de bank als echt zijn bevestigd (niet gemeld, wél geteld)
@@ -423,6 +459,8 @@ class Snede2Uitkomst:
     gedraaid: bool = True
     #: Periodieke reeksen (13-09) die paren wegnamen — gesorteerd op (crediteur, bedrag), nooit gemeld als paar.
     periodiek_groepen: tuple[Snede2PeriodiekeGroep, ...] = ()
+    #: Dag-batches (13-09, ná de periodiek-uitsluiting) die paren wegnamen — gesorteerd op (crediteur, bedrag, datum).
+    dagbatch_groepen: tuple[Snede2DagBatchGroep, ...] = ()
 
     def tellers(self) -> dict[str, int]:
         return {
@@ -432,11 +470,17 @@ class Snede2Uitkomst:
             "bank_bevestigd": self.bank_bevestigd,
             "periodiek_groepen": len(self.periodiek_groepen),
             "periodiek_paren": sum(g.aantal_paren for g in self.periodiek_groepen),
+            "dagbatch_groepen": len(self.dagbatch_groepen),
+            "dagbatch_paren": sum(g.aantal_paren for g in self.dagbatch_groepen),
         }
 
 
 def _snede2_datum(d: RlzDocument) -> date | None:
     return d.boekdatum or d.datum
+
+
+def _snede2_factuurdatum(d: RlzDocument) -> date | None:
+    return d.datum or d.boekdatum
 
 
 @dataclass(frozen=True)
@@ -736,16 +780,56 @@ def _snede2_periodieke_groepen(
     return uit
 
 
+_DagBatchSleutel = tuple[uuid.UUID, Decimal, str, date]  # (crediteur, bedrag, as, datum)
+
+
+def _snede2_dagbatch_groepen(
+    per_crediteur: dict[uuid.UUID, list[RlzDocument]],
+) -> dict[_DagBatchSleutel, list[RlzDocument]]:
+    """(crediteur, bedrag, as, datum) → documenten voor élke groep van ≥ `SNEDE2_DAGBATCH_MIN_DOCUMENTEN` documenten
+    met hetzelfde bedrag op dezelfde datum, op de boekdatum-as én op de factuurdatum-as apart."""
+    groepen: dict[_DagBatchSleutel, list[RlzDocument]] = {}
+    for eid, docs in per_crediteur.items():
+        for d in docs:
+            assert d.bedrag is not None
+            for as_, datum in (
+                (SNEDE2_AS_BOEKDATUM, _snede2_datum(d)),
+                (SNEDE2_AS_FACTUURDATUM, _snede2_factuurdatum(d)),
+            ):
+                if datum is not None:
+                    groepen.setdefault((eid, d.bedrag, as_, datum), []).append(d)
+    return {k: v for k, v in groepen.items() if len(v) >= SNEDE2_DAGBATCH_MIN_DOCUMENTEN}
+
+
+def _snede2_dagbatch_sleutel(
+    x: RlzDocument, y: RlzDocument, dagbatch: dict[_DagBatchSleutel, list[RlzDocument]]
+) -> _DagBatchSleutel | None:
+    """De dag-batch waarin x én y samen zitten — eerst de boekdatum-as (de as waarop de paren gevormd worden), dan de
+    factuurdatum-as; None als het paar op geen van beide in een batch valt."""
+    assert x.entity_id is not None and x.bedrag is not None
+    for as_, dx, dy in (
+        (SNEDE2_AS_BOEKDATUM, _snede2_datum(x), _snede2_datum(y)),
+        (SNEDE2_AS_FACTUURDATUM, _snede2_factuurdatum(x), _snede2_factuurdatum(y)),
+    ):
+        if dx is not None and dx == dy and (x.entity_id, x.bedrag, as_, dx) in dagbatch:
+            return (x.entity_id, x.bedrag, as_, dx)
+    return None
+
+
 def _snede2_kandidaten(
     documenten: Iterable[RlzDocument],
     *,
     clusters: Sequence[DubbelCluster],
     bank: Sequence[bankdekking.BankMutatie] | None,
     venster_dagen: int = SNEDE2_VENSTER_DAGEN,
-) -> tuple[list[Snede2Paar], list[Snede2PeriodiekeGroep]]:
-    """(kandidaten, periodieke groepen): alle snede-2-paren (ook de bank-bevestigde) gesorteerd op (rlz_id a, rlz_id b),
-    ZONDER de paren die in een periodieke reeks vallen — die staan per groep geteld in het tweede element (alleen
-    groepen die ≥ 1 paar wegnamen, gesorteerd op (crediteur, bedrag))."""
+) -> tuple[list[Snede2Paar], list[Snede2PeriodiekeGroep], list[Snede2DagBatchGroep]]:
+    """(kandidaten, periodieke groepen, dag-batch-groepen): alle snede-2-paren (ook de bank-bevestigde) gesorteerd op
+    (rlz_id a, rlz_id b), ZONDER de paren die in een periodieke reeks vallen — die staan per groep geteld in het tweede
+    element (alleen groepen die ≥ 1 paar wegnamen, gesorteerd op (crediteur, bedrag)) — en ZONDER de paren die daarna
+    nog in een DAG-BATCH vallen (≥ `SNEDE2_DAGBATCH_MIN_DOCUMENTEN` documenten, zelfde bedrag, zelfde datum op de
+    boekdatum- óf factuurdatum-as; meetlat 13-09 Molenhof: 78 × € 4.886,32 op 2026-01-01 = C(78,2) = 3.003 paren) —
+    per groep geteld in het derde element (alleen groepen die ≥ 1 paar wegnamen, gesorteerd op (crediteur, bedrag,
+    datum)). Volgorde: eerst periodiek, dan dag-batch — een paar telt maar één keer."""
     al_gemeld: set[frozenset[uuid.UUID]] = set()
     for c in clusters:
         al_gemeld |= c.paren
@@ -755,7 +839,9 @@ def _snede2_kandidaten(
             continue
         per_crediteur.setdefault(d.entity_id, []).append(d)
     periodiek = _snede2_periodieke_groepen(per_crediteur)
+    dagbatch = _snede2_dagbatch_groepen(per_crediteur)
     weggevallen: dict[tuple[uuid.UUID, Decimal], int] = {}
+    weggevallen_dagbatch: dict[_DagBatchSleutel, int] = {}
     uit: list[Snede2Paar] = []
     for docs in per_crediteur.values():
         docs = sorted(docs, key=lambda d: (_snede2_datum(d), str(d.rlz_id)))  # type: ignore[arg-type,return-value]
@@ -772,6 +858,10 @@ def _snede2_kandidaten(
                 sleutel = (x.entity_id, x.bedrag)
                 if sleutel in periodiek:
                     weggevallen[sleutel] = weggevallen.get(sleutel, 0) + 1
+                    continue
+                batch = _snede2_dagbatch_sleutel(x, y, dagbatch)
+                if batch is not None:
+                    weggevallen_dagbatch[batch] = weggevallen_dagbatch.get(batch, 0) + 1
                     continue
                 a, b = (x, y) if str(x.rlz_id) < str(y.rlz_id) else (y, x)
                 teken = bankdekking.teken_van("PurchaseInvoices", x.bedrag)
@@ -796,7 +886,20 @@ def _snede2_kandidaten(
         for docs, maanden in (periodiek[(eid, bedrag)],)
     ]
     groepen.sort(key=lambda g: (str(g.entity_id), g.bedrag))
-    return uit, groepen
+    batches = [
+        Snede2DagBatchGroep(
+            entity_id=eid,
+            entity_naam=next((d.entity_naam for d in dagbatch[(eid, bedrag, as_, datum)] if d.entity_naam), None),
+            bedrag=bedrag,
+            datum=datum,
+            as_=as_,
+            aantal_documenten=len(dagbatch[(eid, bedrag, as_, datum)]),
+            aantal_paren=aantal,
+        )
+        for (eid, bedrag, as_, datum), aantal in weggevallen_dagbatch.items()
+    ]
+    batches.sort(key=lambda g: (str(g.entity_id), g.bedrag, g.datum, g.as_))
+    return uit, groepen, batches
 
 
 def vind_snede2(
@@ -810,8 +913,10 @@ def vind_snede2(
     binnen ±`venster_dagen`, ongeacht referentie; niet al door snede 1 (cluster) gemeld; niet beide van de module;
     en bank-tekort (minder dan twee bankmutaties, of bank niet gelezen → gemeld mét markering). Bank-bevestigde
     paren (k ≥ 2) worden NIET teruggegeven — `snede2_uitkomst` telt ze. Paren in een PERIODIEKE REEKS (13-09) ook
-    niet — `snede2_uitkomst.periodiek_groepen` telt die per groep."""
-    kandidaten, _ = _snede2_kandidaten(documenten, clusters=clusters, bank=bank, venster_dagen=venster_dagen)
+    niet — `snede2_uitkomst.periodiek_groepen` telt die per groep. Paren in een DAG-BATCH (≥ 3 documenten, zelfde
+    bedrag, zelfde datum op de boek- óf factuurdatum-as; meetlat Molenhof 78 × € 4.886,32 op 2026-01-01 = 3.003
+    paren) evenmin — `snede2_uitkomst.dagbatch_groepen` telt die per groep."""
+    kandidaten, _, _ = _snede2_kandidaten(documenten, clusters=clusters, bank=bank, venster_dagen=venster_dagen)
     return [p for p in kandidaten if not p.bank_bevestigd]
 
 
@@ -821,12 +926,13 @@ def snede2_uitkomst(
     clusters: Sequence[DubbelCluster],
     bank: Sequence[bankdekking.BankMutatie] | None,
 ) -> Snede2Uitkomst:
-    kandidaten, periodiek = _snede2_kandidaten(documenten, clusters=clusters, bank=bank)
+    kandidaten, periodiek, dagbatch = _snede2_kandidaten(documenten, clusters=clusters, bank=bank)
     return Snede2Uitkomst(
         paren=tuple(p for p in kandidaten if not p.bank_bevestigd),
         bank_bevestigd=sum(1 for p in kandidaten if p.bank_bevestigd),
         bank_gelezen=bank is not None,
         periodiek_groepen=tuple(periodiek),
+        dagbatch_groepen=tuple(dagbatch),
     )
 
 
@@ -1262,6 +1368,8 @@ SNEDE2_TELLER_SLEUTELS = (
     "bank_bevestigd",
     "periodiek_groepen",
     "periodiek_paren",
+    "dagbatch_groepen",
+    "dagbatch_paren",
 )
 
 
@@ -1269,15 +1377,18 @@ def _snede2_tellers_tekst(t: dict[str, int]) -> str:
     return (
         f"paren {t['paren']}, {LABEL_MODULE_X_NIET} {t[LABEL_MODULE_X_NIET]}, "
         f"{LABEL_NIET_X_NIET} {t[LABEL_NIET_X_NIET]}, bank-bevestigd {t['bank_bevestigd']}, "
-        f"periodiek uitgesloten {t['periodiek_groepen']} groepen/{t['periodiek_paren']} paren"
+        f"periodiek uitgesloten {t['periodiek_groepen']} groepen/{t['periodiek_paren']} paren, "
+        f"dag-batch uitgesloten {t['dagbatch_groepen']} groepen/{t['dagbatch_paren']} paren"
     )
 
 
 def _lees_only_snede2(aid: uuid.UUID, snede2: Snede2Uitkomst, *, stdout: Callable[[str], None]) -> None:
-    """Snede 2 per administratie (run 2 VGG blok 2): eerst één regel per uitgesloten periodieke reeks (13-09), dan een
-    regel per gemeld paar + tellers; bank niet gelezen zichtbaar."""
+    """Snede 2 per administratie (run 2 VGG blok 2): eerst één regel per uitgesloten periodieke reeks (13-09), dan één
+    per uitgesloten dag-batch (13-09), dan een regel per gemeld paar + tellers; bank niet gelezen zichtbaar."""
     for g in snede2.periodiek_groepen:
         stdout(f"    {g.regel()}")
+    for b in snede2.dagbatch_groepen:
+        stdout(f"    {b.regel()}")
     for p in snede2.paren:
         stdout(f"    - {p.regel(aid)}")
     bank = "" if snede2.bank_gelezen else " — BANK NIET GELEZEN (PaymentTransactions weigerde; niets gefilterd)"

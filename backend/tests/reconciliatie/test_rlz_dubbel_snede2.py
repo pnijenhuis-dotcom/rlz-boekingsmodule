@@ -11,7 +11,12 @@ Punt 8 blok 7b (opdracht Peter 13-09; meetlat 13-09: 4.380 paren, 3.003× € 4.
 PERIODIEKE REEKS (crediteur + cent-exact bedrag, ≥ 3 documenten over ≥ 2 kalendermaanden) is geen dubbel — álle paren
 van die groep vallen weg, per groep geteld en in de lees-only-uitvoer vermeld; ≥ 3 gelijke bedragen binnen één maand
 blijven paren. De KF-paren (module×niet-module, 2 documenten per bedrag) blijven gemeld — testcasus voor de
-doorbelasting-aansluiting-mini-run."""
+doorbelasting-aansluiting-mini-run.
+
+Punt 8 blok 7c (opdracht Peter 13-09; nameting 13-09 Molenhof Verhuur: 78 × € 4.886,32 ÁLLE op 2026-01-01 = C(78,2) =
+3.003 paren die de periodiek-uitsluiting niet ving): een DAG-BATCH (≥ 3 documenten, zelfde crediteur, zelfde bedrag,
+zelfde datum op de boekdatum- óf factuurdatum-as) is nooit dubbel — eerst periodiek, dan dag-batch, een paar telt één
+keer; twee documenten op één dag (KF-vorm) blijven een paar."""
 
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ from app.reconciliatie.rlz_dubbel import (
     LABEL_MODULE_X_NIET,
     LABEL_NIET_X_NIET,
     RlzDocument,
+    Snede2DagBatchGroep,
     Snede2Paar,
     lees_payment_transactions,
     naar_rlz_document,
@@ -165,6 +171,8 @@ class TestVindSnede2:
             "bank_bevestigd": 1,
             "periodiek_groepen": 0,
             "periodiek_paren": 0,
+            "dagbatch_groepen": 0,
+            "dagbatch_paren": 0,
         }
 
     def test_bank_een_van_twee_is_gemeld_met_k_van_n(self) -> None:
@@ -196,7 +204,10 @@ class TestVindSnede2:
         assert "Jansen" not in regel
 
     def test_drie_exemplaren_geven_drie_paren_elke_bankmutatie_een_keer(self) -> None:
-        docs = [_doc(_v4(i), ref=f"R{i}", boekdatum="2026-06-22", boekstuk=f"RLZ-04-{i:08d}") for i in range(1, 4)]
+        # drie opeenvolgende dagen (geen dag-batch, geen reeks): alle drie de paren binnen ±3 d
+        docs = [
+            _doc(_v4(i), ref=f"R{i}", boekdatum=f"2026-06-{21 + i}", boekstuk=f"RLZ-04-{i:08d}") for i in range(1, 4)
+        ]
         bank = _bank(("1234.56", "2026-06-22"))
         paren = vind_snede2(docs, clusters=(), bank=bank)
         assert len(paren) == 3 and all(p.bank_mutaties == 1 for p in paren)
@@ -256,11 +267,25 @@ class TestPeriodiekeReeksUitgesloten:
         assert u.paren == () and g.aantal_paren == 3 and g.aantal_documenten == 6 and g.aantal_maanden == 3
         assert g.patroon == "maand-patroon over 3 facturen"
 
-    def test_drie_gelijke_bedragen_binnen_een_maand_blijven_paren(self) -> None:
+    def test_drie_gelijke_bedragen_op_een_dag_zijn_dag_batch(self) -> None:
+        # blok 7c: géén periodieke reeks (één maand), wél een dag-batch — 0 paren gemeld, 3 weggenomen
         docs = _chalets(["2026-01-05"], per_maand=3)
         u = snede2_uitkomst(docs, clusters=(), bank=[])
-        assert u.periodiek_groepen == () and len(u.paren) == 3
+        assert u.periodiek_groepen == () and u.paren == ()
         assert u.tellers()["periodiek_groepen"] == 0 and u.tellers()["periodiek_paren"] == 0
+        (b,) = u.dagbatch_groepen
+        assert b.aantal_documenten == 3 and b.aantal_paren == 3 and b.as_ == "boekdatum"
+        assert u.tellers()["dagbatch_groepen"] == 1 and u.tellers()["dagbatch_paren"] == 3
+
+    def test_drie_gelijke_bedragen_op_drie_dagen_binnen_een_maand_blijven_paren(self) -> None:
+        # geen periodiek (één maand), geen dag-batch (drie verschillende dagen), wél binnen ±3 d: drie paren
+        docs = [
+            _doc(_v4(700 + i), ref=f"D{i}", boekdatum=f"2026-01-0{5 + i}", bedrag=4886.32, entity=CHALETS)
+            for i in range(3)
+        ]
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.periodiek_groepen == () and u.dagbatch_groepen == () and len(u.paren) == 3
+        assert u.tellers()["dagbatch_groepen"] == 0 and u.tellers()["dagbatch_paren"] == 0
 
     def test_maanden_tellen_ook_op_factuurdatum_bij_een_gedeelde_boekdatum(self) -> None:
         """Meetlat 13-09: de 78 chaletfacturen droegen álle boekdatum 2026-01-01 (jaarlijkse boekdag); de factuurdatum
@@ -295,6 +320,93 @@ class TestPeriodiekeReeksUitgesloten:
         assert [p.bedrag for p in u.paren] == [Decimal("99.00")] and len(u.periodiek_groepen) == 1
 
 
+# ---- dag-batches (punt 8 blok 7c, 13-09) -------------------------------------------------------------------
+
+
+MOLENHOF = uuid.UUID("a0d4e750-0000-4000-8000-0000000a0d4e")
+
+
+def _molenhof(n: int = 78, *, boekdatum: str = "2026-01-01", datum: str | None = None) -> list[RlzDocument]:
+    return [
+        _doc(
+            _v4(2000 + i),
+            ref=f"MH-{i:04d}",
+            boekdatum=boekdatum,
+            datum=datum,
+            bedrag=4886.32,
+            boekstuk=f"RLZ-21-{i:08d}",
+            entity=MOLENHOF,
+            naam="Molenhof Verhuur B.V.",
+        )
+        for i in range(1, n + 1)
+    ]
+
+
+class TestDagBatchUitgesloten:
+    def test_molenhof_78_op_een_dag_is_een_dag_batch_zonder_paren(self) -> None:
+        """Nameting 13-09 (administratie d2e7f9f6…): 78 × € 4.886,32 álle op 2026-01-01 = C(78,2) = 3.003 paren; de
+        periodiek-uitsluiting ving ze niet (één dag, één maand)."""
+        docs = _molenhof()
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.paren == () and vind_snede2(docs, clusters=(), bank=[]) == []
+        assert u.periodiek_groepen == () and u.bank_bevestigd == 0
+        (b,) = u.dagbatch_groepen
+        assert isinstance(b, Snede2DagBatchGroep)
+        assert b.entity_id == MOLENHOF and b.bedrag == Decimal("4886.32") and b.datum == date(2026, 1, 1)
+        assert b.aantal_documenten == 78 and b.aantal_paren == 3003 == 78 * 77 // 2 and b.as_ == "boekdatum"
+        assert u.tellers()["dagbatch_groepen"] == 1 and u.tellers()["dagbatch_paren"] == 3003
+        assert (
+            b.regel()
+            == "· uitgesloten (dag-batch): M.V.B. € 4886.32 — 78 documenten op 2026-01-01 (boekdatum), 3003 paren"
+        )
+        assert "78 documenten op 2026-01-01" in b.regel() and "Molenhof" not in b.regel()
+
+    def test_twee_op_een_dag_blijven_een_paar(self) -> None:
+        # de KF-vorm: twee documenten per bedrag op dezelfde dag zijn geen batch
+        u = snede2_uitkomst(_molenhof(2), clusters=(), bank=[])
+        assert len(u.paren) == 1 and u.dagbatch_groepen == () and u.periodiek_groepen == ()
+
+    def test_factuurdatum_as_bij_verschillende_boekdatums(self) -> None:
+        # boekdatums 05/06/07 (paren binnen ±3 d), factuurdatum álle 2026-01-05 → dag-batch op de factuurdatum-as
+        docs = [
+            _doc(
+                _v4(2100 + i),
+                ref=f"F{i}",
+                boekdatum=f"2026-01-0{5 + i}",
+                datum="2026-01-05",
+                bedrag=4886.32,
+                entity=MOLENHOF,
+            )
+            for i in range(3)
+        ]
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert u.paren == () and u.periodiek_groepen == ()
+        (b,) = u.dagbatch_groepen
+        assert (
+            b.as_ == "factuurdatum" and b.datum == date(2026, 1, 5) and b.aantal_documenten == 3 and b.aantal_paren == 3
+        )
+        assert "(factuurdatum)" in b.regel()
+
+    def test_periodiek_weggevallen_paar_telt_niet_nog_eens_als_dag_batch(self) -> None:
+        # chalets 2 maanden × 12: periodiek wint (132 paren), de dag-batches (12 op één dag) nemen niets meer weg
+        u = snede2_uitkomst(_chalets(["2026-01-01", "2026-02-01"]), clusters=(), bank=[])
+        assert u.paren == () and u.tellers()["periodiek_paren"] == 132
+        assert u.dagbatch_groepen == () and u.tellers()["dagbatch_groepen"] == 0 and u.tellers()["dagbatch_paren"] == 0
+
+    def test_dag_batch_neemt_ook_bank_bevestigde_paren_weg(self) -> None:
+        bank = _bank(("4886.32", "2026-01-01"), ("4886.32", "2026-01-01"), ("4886.32", "2026-01-01"))
+        u = snede2_uitkomst(_molenhof(3), clusters=(), bank=bank)
+        assert u.paren == () and u.bank_bevestigd == 0 and u.dagbatch_groepen[0].aantal_paren == 3
+
+    def test_ander_bedrag_op_dezelfde_dag_blijft_een_paar(self) -> None:
+        docs = _molenhof(3) + [
+            _doc(_v4(2201), ref="X1", boekdatum="2026-01-01", bedrag=99.0, entity=MOLENHOF),
+            _doc(_v4(2202), ref="X2", boekdatum="2026-01-01", bedrag=99.0, entity=MOLENHOF),
+        ]
+        u = snede2_uitkomst(docs, clusters=(), bank=[])
+        assert [p.bedrag for p in u.paren] == [Decimal("99.00")] and len(u.dagbatch_groepen) == 1
+
+
 HKD = uuid.UUID("aaaa0000-0000-4000-8000-00000000d0e1")
 V5_KF_A = uuid.uuid5(uuid.NAMESPACE_URL, "kf-doorbelasting-12600")
 V5_KF_B = uuid.uuid5(uuid.NAMESPACE_URL, "kf-doorbelasting-16250")
@@ -321,7 +433,7 @@ class TestKFParenDoorbelastingAansluiting:
 
     def test_kf_paren_blijven_module_x_niet_module_na_periodiek_uitsluiting(self) -> None:
         u = snede2_uitkomst(self._docs(), clusters=(), bank=[])
-        assert u.periodiek_groepen == ()
+        assert u.periodiek_groepen == () and u.dagbatch_groepen == ()  # twee per bedrag op één dag: geen batch
         gemeld = sorted(({p.a.boekstuk, p.b.boekstuk}, p.bedrag, p.label, p.bank_mutaties) for p in u.paren)
         assert gemeld == sorted(
             [
@@ -478,19 +590,19 @@ class TestCliLeesOnlySnede2:
         )
         assert (
             f"    SNEDE2 tellers {administratie_id}: paren 1, module×niet-module 1, niet-module×niet-module 0, "
-            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren" in out
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren" in out
         )
         assert (
             "SNEDE2 totaal over 1 administratie(s): paren 1, module×niet-module 1, niet-module×niet-module 0, "
-            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren. Alleen meetlat — de dagelijkse run meldt "
-            "snede 2 niet (beslispunt Peter)." in out
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren. "
+            "Alleen meetlat — de dagelijkse run meldt snede 2 niet (beslispunt Peter)." in out
         )
         assert "Jansen" not in out
 
     def test_lees_only_print_periodieke_groep_voor_de_paren_en_telt_in_tellers_en_totaal(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], administratie_id: uuid.UUID
     ) -> None:
-        docs = _paar_zenvoices_module() + _chalets(["2026-01-01", "2026-02-01"])
+        docs = _paar_zenvoices_module() + _chalets(["2026-01-01", "2026-02-01"]) + _molenhof(3, boekdatum="2026-03-03")
         u = snede2_uitkomst(docs, clusters=(), bank=[])
         monkeypatch.setattr(
             rlz_dubbel,
@@ -505,15 +617,21 @@ class TestCliLeesOnlySnede2:
             "    · uitgesloten (periodiek): V.R.B.B. € 4886.32 — 24 documenten over 2 maanden, "
             "≥ 3 gelijke bedragen over 2 maanden, 132 paren"
         )
+        batch = "    · uitgesloten (dag-batch): M.V.B. € 4886.32 — 3 documenten op 2026-03-03 (boekdatum), 3 paren"
         paar = f"    - SNEDE2 {administratie_id} RLZ-04-00000100 + RLZ-04-00000107 |"
-        assert groep in out and paar in out and out.index(groep) < out.index(paar)
+        assert groep in out and batch in out and paar in out
+        assert out.index(groep) < out.index(batch) < out.index(paar)
         assert (
             f"    SNEDE2 tellers {administratie_id}: paren 1, module×niet-module 1, niet-module×niet-module 0, "
-            "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren" in out
+            "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren, dag-batch uitgesloten 1 groepen/3 paren"
+            in out
         )
         assert "SNEDE2 totaal over 1 administratie(s): paren 1, " in out
-        assert "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren. Alleen meetlat" in out
-        assert "Vakantiepark" not in out and "Jansen" not in out
+        assert (
+            "bank-bevestigd 0, periodiek uitgesloten 1 groepen/132 paren, dag-batch uitgesloten 1 groepen/3 paren. "
+            "Alleen meetlat" in out
+        )
+        assert "Vakantiepark" not in out and "Jansen" not in out and "Molenhof" not in out
 
     def test_lees_only_bank_niet_gelezen_zichtbaar_in_tellers_en_totaal(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], administratie_id: uuid.UUID
@@ -531,8 +649,8 @@ class TestCliLeesOnlySnede2:
         out = capsys.readouterr().out
         assert "| module×niet-module | bank niet gelezen" in out
         assert (
-            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren — BANK NIET GELEZEN "
-            "(PaymentTransactions weigerde; niets gefilterd)" in out
+            "bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren "
+            "— BANK NIET GELEZEN (PaymentTransactions weigerde; niets gefilterd)" in out
         )
         assert "bank niet gelezen bij 1 administratie(s)" in out
 
