@@ -656,6 +656,8 @@ def _feit(
     dagboek: str | None = None,
     bedrag: str | None = None,
     datum: str | None = None,
+    grootboeken: frozenset[str] = frozenset(),
+    vaste_activa: frozenset[str] = frozenset(),
 ) -> BoekingsFeit:
     if boekstuk is None:
         boekstuk = {
@@ -674,6 +676,8 @@ def _feit(
         dagboek=dagboek,
         bedrag=Decimal(bedrag) if bedrag is not None else None,
         datum=date.fromisoformat(datum) if datum else None,
+        grootboeken=grootboeken,
+        vaste_activa=vaste_activa,
     )
 
 
@@ -1098,3 +1102,53 @@ class TestBankmutatie:
         assert is_bank_direct(_feit("ManualJournals", "x", boekstuk="RLZ-25-00000001"))
         assert not is_bank_direct(_feit("ManualJournals", "x", boekstuk="RLZ-06-00000001"))
         assert not is_bank_direct(_feit("PurchaseInvoices", "x"))
+
+
+class TestGrootboekClassificatie:
+    """Blok 7c punt 4 (besluit Peter 13-09): de grootboek-regels sturen de soort — een notaris-inkoopfactuur mét een
+    7000-regel is de AANKOOPNOTA (Rijswijkseweg 409, Kapershoek 34, Ruyghweg 71, Verschoorstraat 70-02: nu 'kosten'),
+    een factuur die alleen op 0101 Gebouwen en terreinen boekt (Donkerslootstraat 105B) hangt aan geen pand."""
+
+    def test_notaris_nota_met_7000_regel_is_aankoop_hoog(self) -> None:
+        c = classificeer(
+            _feit(
+                "PurchaseInvoices",
+                "Nota van afrekening Rijswijkseweg 409 Den Haag, dossier 2025.078758.01",
+                entity="Buma Algera Notarissen",
+                grootboeken=frozenset({"7000", "4612", "7001"}),
+            )
+        )
+        assert c is not None and (c.soort, c.zekerheid) == ("aankoop", "hoog")
+        assert c.reden.startswith("inkoopfactuur met een regel op 7000 Inkopen vastgoed") and "Buma Algera" in c.reden
+
+    def test_notaris_factuur_zonder_7000_blijft_kosten(self) -> None:
+        c = classificeer(
+            _feit(
+                "PurchaseInvoices",
+                "honorarium Kapershoek 34 dossier 2025.078175.01",
+                entity="Buma Algera Notarissen",
+                grootboeken=frozenset({"4601"}),
+            )
+        )
+        assert c is not None and (c.soort, c.zekerheid) == ("kosten", "hoog")
+
+    def test_zonder_gelezen_regels_gelden_de_tekstregels(self) -> None:
+        c = classificeer(_feit("PurchaseInvoices", "Nota Rijswijkseweg 409 Den Haag", entity="Buma Algera Notarissen"))
+        assert c is not None and c.soort == "kosten"  # grootboek onbekend → oude tekstregel, zichtbaar in de reden
+
+    def test_alleen_vaste_activa_is_geen_pand(self) -> None:
+        feit = _feit(
+            "PurchaseInvoices",
+            "Donkerslootstraat 105B Rotterdam",
+            grootboeken=frozenset({"0101"}),
+            vaste_activa=frozenset({"0101"}),
+        )
+        assert feit.alleen_vaste_activa and classificeer(feit) is None
+        # gemengd (0101 + 4102 onderhoud) is géén vast-actief-document: het adres telt gewoon
+        gemengd = _feit(
+            "PurchaseInvoices",
+            "Donkerslootstraat 105B Rotterdam",
+            grootboeken=frozenset({"0101", "4102"}),
+            vaste_activa=frozenset({"0101"}),
+        )
+        assert not gemengd.alleen_vaste_activa and classificeer(gemengd) is not None

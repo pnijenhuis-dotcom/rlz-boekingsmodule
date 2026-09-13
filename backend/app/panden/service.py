@@ -54,13 +54,18 @@ from app.panden.models import (
     PandStatus,
     bron_sleutel_voor,
 )
-from app.rlz.client import RlzClient
+from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.lezen import LeesClient, als_bedrag, als_datum, entity_van, heeft_bijlage, lees_collectie
 from app.rlz.tekst import ontknip
 
 logger = logging.getLogger(__name__)
 
 MAX_BIJLAGE_CHECKS_DEFAULT = 200
+#: Blok 7c punt 4: regelchecks op inkoopfacturen mét pand-signaal (`PurchaseInvoices/{id}/Lines?$expand=Account`) zodat
+#: de afleiding een notaris-aankoopnota (7000) van kosten onderscheidt en een vast actief (0101) overslaat — begrensd,
+#: in tempo (token-bucket van de client).
+MAX_REGEL_CHECKS_DEFAULT = 300
+REGELS_EXPAND = "Account"
 OVERHEAD_PROJECTNAAM = "Overhead"
 OVERHEAD_ONTBREEKT = "Overhead-project ontbreekt — aanmaken in run 2 (projectaanmaak = RLZ-write, niet in deze run)"
 #: (collectie, $expand) — Entity is alleen mét expand zichtbaar; het memoriaal-dagboek idem (valt terug zonder expand,
@@ -94,6 +99,9 @@ class RlzBoeking:
     tekst: str
     dagboek: str | None = None
     heeft_bijlage: bool | None = None
+    #: Blok 7c: grootboekcodes van de regels (leeg = niet gelezen) en welke daarvan vaste activa zijn.
+    grootboeken: frozenset[str] = frozenset()
+    vaste_activa: frozenset[str] = frozenset()
 
     def feit(self) -> afleiding.BoekingsFeit:
         return afleiding.BoekingsFeit(
@@ -105,6 +113,8 @@ class RlzBoeking:
             dagboek=self.dagboek,
             bedrag=self.bedrag,
             datum=self.datum,
+            grootboeken=self.grootboeken,
+            vaste_activa=self.vaste_activa,
         )
 
 
@@ -169,6 +179,8 @@ class AfleidingRapport:
     meerduidig: int = 0
     bijlage_checks: int = 0
     bijlage_niet_gecontroleerd: int = 0
+    regel_checks: int = 0  # blok 7c: inkoopfacturen waarvan de regels gelezen zijn (grootboek-classificatie)
+    regel_niet_gecontroleerd: int = 0
     fouten: list[str] = field(default_factory=list)
     overgeslagen: list[str] = field(default_factory=list)
     overhead_project: str = OVERHEAD_ONTBREEKT
@@ -238,6 +250,8 @@ class AfleidingRapport:
             "geen_signaal": dict(sorted(self.geen_signaal.items())),
             "bijlage_checks": self.bijlage_checks,
             "bijlage_niet_gecontroleerd": self.bijlage_niet_gecontroleerd,
+            "regel_checks": self.regel_checks,
+            "regel_niet_gecontroleerd": self.regel_niet_gecontroleerd,
             "overhead_project": self.overhead_project,
             "lijst_panden": self.lijst_panden,
             "lijst_meerduidig": list(self.lijst_meerduidig),
@@ -337,9 +351,42 @@ def _naar_bankmutatie(rij: dict[str, Any]) -> RlzBoeking | None:
     )
 
 
-def lees_boekingen(client: LeesClient, rapport: AfleidingRapport, *, max_bijlage_checks: int) -> list[RlzBoeking]:
+def grootboeken_uit_regels(regels: list[dict[str, Any]]) -> tuple[frozenset[str], frozenset[str]]:
+    """(grootboekcodes, vaste-activa-codes) uit `…/Lines?$expand=Account`-regels: `Account.AccountNumber`;
+    vast actief = `Account.IsFixedAssetAccount` óf activa (AccountType 3) met rubriek-0-code (0101 …)."""
+    codes: set[str] = set()
+    vast: set[str] = set()
+    for r in regels:
+        acc = r.get("Account") if isinstance(r.get("Account"), dict) else {}
+        code = acc.get("AccountNumber")
+        if code is None:
+            continue
+        code = str(code)
+        codes.add(code)
+        if acc.get("IsFixedAssetAccount") is True or (acc.get("AccountType") == 3 and code[:1] == "0"):
+            vast.add(code)
+    return frozenset(codes), frozenset(vast)
+
+
+def _lees_regels(client: LeesClient, collectie: str, rlz_id: str) -> list[dict[str, Any]] | None:
+    try:
+        antwoord = client.get(f"{collectie}/{rlz_id}/Lines", params={"$expand": REGELS_EXPAND})
+    except RlzApiError:
+        return None
+    waarde = antwoord.get("value") if isinstance(antwoord, dict) else None
+    return [r for r in waarde if isinstance(r, dict)] if isinstance(waarde, list) else None
+
+
+def lees_boekingen(
+    client: LeesClient,
+    rapport: AfleidingRapport,
+    *,
+    max_bijlage_checks: int,
+    max_regel_checks: int = MAX_REGEL_CHECKS_DEFAULT,
+) -> list[RlzBoeking]:
     """Alle documenten van de drie collecties (+ Receipts als leesbaar, ontdubbeld op id); memorialen mét adres/dossier
-    krijgen een bijlagecheck (begrensd)."""
+    krijgen een bijlagecheck (begrensd); inkoopfacturen mét een pand-signaal een regelcheck (blok 7c, begrensd) zodat de
+    grootboek-regels (7000 = aankoop, 0101 = vast actief) de classificatie sturen."""
     uit: list[RlzBoeking] = []
     gezien: set[uuid.UUID] = set()
     for pad, expand in COLLECTIES + OPTIONELE_COLLECTIES:
@@ -374,9 +421,29 @@ def lees_boekingen(client: LeesClient, rapport: AfleidingRapport, *, max_bijlage
             continue
         rapport.bijlage_checks += 1
         gecheckt[b.rlz_id] = heeft_bijlage(client, b.collectie, str(b.rlz_id))
-    return [
+    uit = [
         RlzBoeking(**{**asdict(b), "heeft_bijlage": gecheckt.get(b.rlz_id, b.heeft_bijlage)})
         if b.rlz_id in gecheckt
+        else b
+        for b in uit
+    ]
+    regel_budget = max(0, int(max_regel_checks))
+    regel_kandidaten = [
+        b for b in uit if b.collectie == "PurchaseInvoices" and afleiding.classificeer(b.feit()) is not None
+    ]
+    regel_kandidaten.sort(key=lambda b: (-(abs(b.bedrag) if b.bedrag is not None else 0), str(b.rlz_id)))
+    grootboeken: dict[uuid.UUID, tuple[frozenset[str], frozenset[str]]] = {}
+    for b in regel_kandidaten:
+        if rapport.regel_checks >= regel_budget:
+            rapport.regel_niet_gecontroleerd += 1
+            continue
+        rapport.regel_checks += 1
+        regels = _lees_regels(client, b.collectie, str(b.rlz_id))
+        if regels is not None:
+            grootboeken[b.rlz_id] = grootboeken_uit_regels(regels)
+    return [
+        RlzBoeking(**{**asdict(b), "grootboeken": grootboeken[b.rlz_id][0], "vaste_activa": grootboeken[b.rlz_id][1]})
+        if b.rlz_id in grootboeken
         else b
         for b in uit
     ]
@@ -885,6 +952,7 @@ def leid_af(
     nu: datetime | None = None,
     pandenlijst_bron: pandenlijst.PandenlijstBron | None = None,
     met_bankmutaties: bool = True,
+    max_regel_checks: int = MAX_REGEL_CHECKS_DEFAULT,
 ) -> AfleidingRapport:
     """Default dry-run: leest RLZ + DB, schrijft niets. `dry_run=False` (CLI `--schrijf`) schrijft voorstellen —
     nooit bevestigingen. Een meegegeven `client` (tests) omzeilt de credential-store."""
@@ -910,7 +978,9 @@ def leid_af(
         maak = client_factory or (lambda rid: client_voor_rlz_admin_id(rid).for_administration(rid))
         client = maak(rlz_admin_id)
     try:
-        boekingen = lees_boekingen(client, rapport, max_bijlage_checks=max_bijlage_checks)
+        boekingen = lees_boekingen(
+            client, rapport, max_bijlage_checks=max_bijlage_checks, max_regel_checks=max_regel_checks
+        )
         if met_bankmutaties:
             boekingen = boekingen + lees_bankmutaties(client, rapport)
     finally:
@@ -1010,6 +1080,8 @@ def als_markdown(rapport: AfleidingRapport, *, administratie_naam: str | None = 
         f"{rapport.bankmutaties_document_aanwezig} overgeslagen (document draagt de tekst al)",
         f"- Bijlagechecks memoriaal: {rapport.bijlage_checks} gedaan, "
         f"{rapport.bijlage_niet_gecontroleerd} niet (grens)",
+        f"- Regelchecks inkoopfacturen (grootboek 7000 = aankoop, vaste activa = geen pand): {rapport.regel_checks} "
+        f"gedaan, {rapport.regel_niet_gecontroleerd} niet (grens)",
         "- Pandenlijst: "
         + (
             f"{rapport.lijst_panden} panden, {sum(1 for p in rapport.panden if p.lijst_gebonden)} gebonden, "

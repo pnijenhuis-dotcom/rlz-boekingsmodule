@@ -84,10 +84,12 @@ class NepClient:
         *,
         uploads: dict[str, list] | None = None,
         fouten: dict[str, RlzApiError] | None = None,
+        regels: dict[str, list[dict]] | None = None,
     ) -> None:
         self.collecties = collecties
         self.uploads = uploads or {}
         self.fouten = fouten or {}
+        self.regels = regels or {}  # blok 7c: `PurchaseInvoices/{id}/Lines` → regels mét Account.AccountNumber
         self.calls: list[tuple[str, dict]] = []
         self.closed = False
 
@@ -99,6 +101,9 @@ class NepClient:
         if path.endswith("/Uploads"):
             _, doc_id, _ = path.split("/")
             return {"value": self.uploads.get(doc_id, [])}
+        if path.endswith("/Lines"):
+            _, doc_id, _ = path.split("/")
+            return {"value": self.regels.get(doc_id, [])}
         rijen = self.collecties.get(path, [])
         skip, top = int(params.get("$skip", 0)), int(params.get("$top", 200))
         return {"value": rijen[skip : skip + top]}
@@ -931,3 +936,85 @@ class TestCli:
         )
         assert run_panden(args) == 2
         assert "pandenlijst niet leesbaar" in capsys.readouterr().err
+
+
+class TestRegelchecksGrootboek:
+    """Blok 7c punt 4: `lees_boekingen` leest voor inkoopfacturen mét pand-signaal de regels (begrensd, in tempo) en
+    de afleiding classificeert op grootboek: 7000 = aankoop (notaris-nota), alleen 0101 = geen pand."""
+
+    def _client(self) -> NepClient:
+        nota_id = _id("RLZ-04-00000077")
+        vast_id = _id("RLZ-24-00000770")
+        kosten_id = _id("RLZ-04-00000010")
+        collecties = {
+            "ManualJournals": [],
+            "SalesInvoices": [],
+            "PurchaseInvoices": [
+                _doc(
+                    "RLZ-04-00000077",
+                    "Nota van afrekening Rijswijkseweg 409 Den Haag, dossier 2025.078758.01",
+                    datum="2025-08-11",
+                    bedrag=341333.86,
+                    entity=NOTARIS,
+                ),
+                _doc("RLZ-24-00000770", "Donkerslootstraat 105B Rotterdam", datum="2025-10-23", bedrag=183871.22),
+                _doc(
+                    "RLZ-04-00000010",
+                    "honorarium Kapershoek 34 dossier 2025.078175.01",
+                    datum="2025-07-11",
+                    bedrag=1352.18,
+                    entity=NOTARIS,
+                ),
+            ],
+        }
+        regels = {
+            nota_id: [
+                {"Account": {"AccountNumber": "7000", "AccountType": 2}, "NetAmount": 330000.0},
+                {"Account": {"AccountNumber": "4612", "AccountType": 2}, "NetAmount": 9500.0},
+                {"Account": {"AccountNumber": "7001", "AccountType": 2}, "NetAmount": 1833.86},
+            ],
+            vast_id: [
+                {
+                    "Account": {"AccountNumber": "0101", "AccountType": 3, "IsFixedAssetAccount": True},
+                    "NetAmount": 183871.22,
+                }
+            ],
+            kosten_id: [{"Account": {"AccountNumber": "4601", "AccountType": 2}, "NetAmount": 1352.18}],
+        }
+        return NepClient(collecties, regels=regels)
+
+    def test_regels_sturen_de_soort(self, administratie_id: uuid.UUID) -> None:
+        client = self._client()
+        rapport = service.leid_af(administratie_id, dry_run=True, client=client, met_bankmutaties=False)
+        codes = {p.code: p for p in rapport.panden}
+        assert codes["rijswijkseweg-409"].tel() == {"aankoop": {"hoog": 1}}
+        assert codes["kapershoek-34"].tel() == {"kosten": {"hoog": 1}}
+        assert "donkerslootstraat-105-b" not in codes  # vast actief → geen pand
+        assert rapport.regel_checks == 3 and rapport.regel_niet_gecontroleerd == 0
+        lines = [p for p, prm in client.calls if p.endswith("/Lines")]
+        assert len(lines) == 3 and all(
+            prm.get("$expand") == "Account" for p, prm in client.calls if p.endswith("/Lines")
+        )
+        assert "Regelchecks inkoopfacturen" in service.als_markdown(rapport)
+        assert rapport.als_dict()["regel_checks"] == 3
+
+    def test_regelchecks_begrensd_en_grootste_bedragen_eerst(self, administratie_id: uuid.UUID) -> None:
+        client = self._client()
+        rapport = service.leid_af(
+            administratie_id, dry_run=True, client=client, met_bankmutaties=False, max_regel_checks=1
+        )
+        codes = {p.code: p for p in rapport.panden}
+        assert rapport.regel_checks == 1 and rapport.regel_niet_gecontroleerd == 2
+        assert codes["rijswijkseweg-409"].tel() == {"aankoop": {"hoog": 1}}  # grootste bedrag eerst gecontroleerd
+        assert "donkerslootstraat-105-b" in codes  # niet gecontroleerd → tekstregel (kosten), zichtbaar in de teller
+
+    def test_grootboeken_uit_regels(self) -> None:
+        codes, vast = service.grootboeken_uit_regels(
+            [
+                {"Account": {"AccountNumber": "0107", "AccountType": 3}},
+                {"Account": {"AccountNumber": "1405", "AccountType": 3}},
+                {"Account": {"AccountNumber": "7000", "AccountType": 2}},
+                {"Description": "zonder account"},
+            ]
+        )
+        assert codes == frozenset({"0107", "1405", "7000"}) and vast == frozenset({"0107"})

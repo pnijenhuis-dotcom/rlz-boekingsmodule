@@ -33,6 +33,11 @@ ontknip` — RLZ knipt bank-geïmporteerde omschrijvingen op 32 tekens met `\\n`
   * memoriaal RLZ-06 mét adres = `aankoop` (hoog mét notaris-PDF/dossier); verkoopfactuur op notaris = `verkoop` hoog;
     inkoopfactuur mét adres = `kosten`; "rente"/"huur" op een verkoopfactuur = `kosten` (opbrengst per pand, geen
     verkoop).
+  * GROOTBOEK-regels (blok 7c punt 4, besluit Peter 13-09; `BoekingsFeit.grootboeken` als de regels gelezen zijn):
+    een inkoopfactuur mét een regel op 7000 "Inkopen vastgoed" is de notaris-AANKOOPNOTA → `aankoop` (hoog mét adres +
+    notaris/dossier), geen `kosten`; een document waarvan ALLE regels op vaste activa staan (`vaste_activa`, bv. 0101
+    Gebouwen en terreinen — Donkerslootstraat 105B) hangt aan GEEN pand (None). Zonder gelezen regels gelden de
+    tekstregels (het rapport meldt dat de grootboeken onbekend zijn).
   Zekerheid: hoog = adres + tweede signaal (notaris/dossier/bijlage/plaats), midden = alleen adres, laag = alleen
   dossier.
 AI-extractie uit de PDF komt hier bewust NIET voor."""
@@ -417,6 +422,10 @@ _SIG_OVERDRACHT = re.compile(r"\boverdracht|\bafrekening|\bnotaris|\blevering\b"
 _SIG_HYPOTHEEKGELD = re.compile(r"hypotheekgeld", re.IGNORECASE)
 REDEN_NEGATIEF_NOTARIS = "betaling aan notaris/dossier (negatief) — aankoop of financiering, nooit verkoop"
 _SIG_RENTE = re.compile(r"\brente\b|\bhuur\b|\bhuurpenningen\b", re.IGNORECASE)
+#: RLZ-grootboeken die de koopsom van een pand dragen op een notaris-inkoopfactuur (besluit Peter 13-09: 7000).
+AANKOOP_GROOTBOEKEN: frozenset[str] = frozenset({"7000"})
+REDEN_AANKOOP_GROOTBOEK = "inkoopfactuur met een regel op 7000 Inkopen vastgoed — notaris-aankoopnota"
+REDEN_VASTE_ACTIVA = "alle regels op vaste activa (0101 e.d.) — vast actief, geen handelsvoorraad, geen pand"
 
 
 @dataclass(frozen=True)
@@ -467,6 +476,14 @@ class BoekingsFeit:
     dagboek: str | None = None
     bedrag: Decimal | None = None  # mét teken (bank-direct: teken van de mutatie)
     datum: date | None = None
+    #: Blok 7c: grootboekcodes van de gelezen regels (leeg = regels niet gelezen → tekstregels) en welke daarvan vaste
+    #: activa zijn (Ledgers.IsFixedAssetAccount / rubriek 0).
+    grootboeken: frozenset[str] = frozenset()
+    vaste_activa: frozenset[str] = frozenset()
+
+    @property
+    def alleen_vaste_activa(self) -> bool:
+        return bool(self.grootboeken) and self.grootboeken <= self.vaste_activa
 
 
 @dataclass(frozen=True)
@@ -728,6 +745,8 @@ def classificeer(feit: BoekingsFeit) -> Classificatie | None:
     dossier_signaal = bool(d.volledig or d.onvolledig)
     if adres is None and not meerduidig and not dossier_signaal:
         return None  # ook: notaris zonder adres/dossier, "Dossiernummer: 118261", kale factuurnummers
+    if feit.alleen_vaste_activa:
+        return None  # blok 7c punt 4: 0101 Gebouwen en terreinen is een vast actief, nooit een pand
 
     def _maak(soort: str, zekerheid: str, reden: str) -> Classificatie:
         if meerduidig:
@@ -812,6 +831,9 @@ def classificeer(feit: BoekingsFeit) -> Classificatie | None:
         return _maak("aankoop", "laag", "memoriaal met alleen een dossiernummer")
 
     if feit.collectie == "PurchaseInvoices":
+        if feit.grootboeken & AANKOOP_GROOTBOEKEN:
+            wie = f" · notaris {notaris.naam}" if notaris else ""
+            return _maak("aankoop", _zekerheid(notaris, dossier_signaal), f"{REDEN_AANKOOP_GROOTBOEK}{wie}")
         if adres and (dossier_signaal or notaris):
             return _maak("kosten", "hoog", "inkoopfactuur met adres + dossier/notaris")
         if adres:

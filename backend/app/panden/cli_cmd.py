@@ -33,6 +33,14 @@ def register_panden(subparsers: argparse._SubParsersAction) -> None:  # type: ig
         help="Maximaal aantal GET …/Uploads-checks op memorialen met adres/dossier (default 200).",
     )
     p.add_argument(
+        "--max-regel-checks",
+        dest="max_regel_checks",
+        type=int,
+        default=300,
+        help="Maximaal aantal GET …/Lines-checks op inkoopfacturen mét pand-signaal (blok 7c: 7000 = aankoop, vaste "
+        "activa = geen pand; default 300).",
+    )
+    p.add_argument(
         "--pandenlijst",
         dest="pandenlijst",
         default=None,
@@ -83,6 +91,7 @@ def run_panden(args: argparse.Namespace) -> int:
             administratie_id,
             dry_run=not args.schrijf,
             max_bijlage_checks=args.max_bijlage_checks,
+            max_regel_checks=getattr(args, "max_regel_checks", 300),
             pandenlijst_bron=lijst,
             met_bankmutaties=not getattr(args, "zonder_bankmutaties", False),
         )
