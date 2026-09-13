@@ -129,6 +129,11 @@ def statusregel(rapport: Any) -> str:
     """Eén regel voor de aanroeper/het script: een niet-groen rapport is een uitkomst, geen storing."""
     if rapport.blokkering:
         return f"UITKOMST: {rapport.oordeel} — {rapport.blokkering}"
+    if rapport.onvolledig_oordeel:
+        return (
+            f"UITKOMST: {rapport.oordeel} — {rapport.tellers.get('regel_fouten', 0)} geboekt(e) document(en) zonder "
+            "leesbare regels; saldibalans/open posten/per pand niet berekend — zie rapport"
+        )
     if rapport.groen:
         return "UITKOMST: GROEN"
     return (

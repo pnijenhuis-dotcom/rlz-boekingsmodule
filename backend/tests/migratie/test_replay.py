@@ -4,7 +4,14 @@ Mini-VGG: 2 notaris-aankopen (memoriaal RLZ-06), 1 aanbetaling, 1 vaste-lasten-i
 directe boekingen (DocumentType 19, RLZ-09) + 7 bankregels mét PaymentReferenceList waarvan één deelkoppeling (2 × op de
 verkoopfactuur), 1 concept, 1 systeemhuls + open bankregel, JournalEntryLines die sluiten → saldibalans verschil 0,00 =
 GROEN. Varianten: ongemapte rekening → niet-vertaalbaar + exit 1; anker deterministisch; BookDate-terugval zichtbaar;
-btw-regel → teller; $expand-terugval zichtbaar; 403 op een route = fout + ROOD; JSON-roundtrip."""
+btw-regel → teller; $expand-terugval zichtbaar; 403 op een route = fout + ROOD; JSON-roundtrip.
+
+Blok 7c 13-09 (`TestBlok7c`): regelroute = document-vorm `{collectie}/{id}?$expand=DocumentLineList(…)` (kop mét
+BookDate + regels in één call; `ManualJournals/{id}/Lines` bestaat niet — de NepClient geeft daar zoals RLZ 404-HTML);
+BookDate uit de document-vorm stuurt de saldibalans per 31-12; > 0 documenten zonder regels = "ONVOLLEDIG — niet
+doorrekenen"; EventID = soortcode (int) en telt niet; partner uit de tegenpartij van de bankmutatie; btw tweede bron;
+afletter- groepen; pandenmodel op grootboek-regels (Rijswijkseweg-/Kapershoek-/Ruyghweg-/Verschoorstraat-casussen uit
+de echte bedragen van de nameting 13-09, Donkerslootstraat 0101 = vast actief, concept-verkoopfactuur = signaal)."""
 
 from __future__ import annotations
 
@@ -32,7 +39,13 @@ L_CRED = str(uuid.uuid4())
 L_DEB = str(uuid.uuid4())
 L_OMZET = str(uuid.uuid4())
 LEDGERS = [
-    {"id": L_PANDEN, "AccountNumber": "0300", "Description": "Panden", "AccountType": 3, "IsTotalAccount": False},
+    {
+        "id": L_PANDEN,
+        "AccountNumber": "3100",
+        "Description": "Voorraad panden",
+        "AccountType": 3,
+        "IsTotalAccount": False,
+    },
     {"id": L_BANK, "AccountNumber": "1100", "Description": "Bank", "AccountType": 3, "IsTotalAccount": False},
     {
         "id": L_NOTARIS,
@@ -59,7 +72,7 @@ LEDGERS = [
     },
 ]
 ODOO_ACCOUNTS = [
-    {"id": 300, "code": "0300", "name": "Panden (oud)"},
+    {"id": 300, "code": "3100", "name": "Voorraad panden (oud)"},
     {"id": 1100, "code": "1100", "name": "Bank"},
     {"id": 1650, "code": "1650", "name": "Notaris"},
     {"id": 4400, "code": "4400", "name": "Vaste lasten"},
@@ -149,18 +162,36 @@ def _tx(
     }
 
 
+_JOURNAALPOSTEN: dict[str, str] = {}
+#: JournalEntry.DocumentType per fixture-document (RLZ: 1 inkoop, 10 verkoop, 11 memoriaal, 19 bank-direct; bank = None)
+_JR_DOCTYPE: dict[str, int | None] = {}
+
+
 def _jr(ledger: str, bron_id: str, datum: str, *, debet: float = 0.0, credit: float = 0.0) -> dict:
+    """Eén JournalEntryLine zoals RLZ 'm geeft (STAP-0 13-09): `JournalEntry` draagt alleen id/BookDate/DocumentType/
+    EventID — en EventID is een SOORTCODE (71 inkoop, 51 verkoop), géén document-id. Regels van hetzelfde document delen
+    één JournalEntry.id (de fixture onthoudt die per bron-document)."""
+    dt = _JR_DOCTYPE.get(bron_id)
+    jid = _JOURNAALPOSTEN.setdefault(bron_id, str(uuid.uuid4()))
     return {
         "id": str(uuid.uuid4()),
         "Account": {"id": ledger},
         "DebitAmount": debet,
         "CreditAmount": credit,
-        "JournalEntry": {"id": str(uuid.uuid4()), "BookDate": f"{datum}T00:00:00", "EventID": bron_id},
+        "VatAmount": 0.0,
+        "JournalEntry": {
+            "id": jid,
+            "BookDate": f"{datum}T00:00:00",
+            "DocumentType": dt,
+            "EventID": {1: 71, 10: 51, 11: 61, 19: 81}.get(dt or 0, 91),
+        },
     }
 
 
 def mini_vgg() -> tuple[dict[str, list[dict]], dict[str, list[dict]], dict[str, list[dict]]]:
     """(collecties, regels per document-id, statements per rekening-id)."""
+    _JOURNAALPOSTEN.clear()
+    _JR_DOCTYPE.update({MJ1: 11, MJ2: 11, MJ3: 11, PI1: 1, SI1: 10, BD1: 19, BD2: 19, BD3: 19})
     mj1 = _doc(
         MJ1,
         "RLZ-06-00000026",
@@ -314,16 +345,45 @@ PANDEN = {
 }
 
 
-class NepClient:
-    """Dict-client: collecties gepagineerd; `X/{id}/Lines` uit `regels`; `PaymentAccounts/{id}/Statements` uit
-    `statements`; `fouten` per pad; `expand_weigeren` per pad → 400 bij $expand. Registreert élke GET."""
+HTML_404 = "<html>\n<head>\n\t<style>\n\t\tbody {\n\t\t\tmargin: 0;"  # RLZ's 404-pagina (STAP-0 13-09)
+RECORD_COLLECTIES = ("PurchaseInvoices", "SalesInvoices", "ManualJournals", "BankMutationDirectBookings")
 
-    def __init__(self, collecties, regels, statements, *, fouten=None, expand_weigeren=None) -> None:  # noqa: ANN001
+
+class NepClient:
+    """Dict-client zoals RLZ zich op 13-09 gedroeg: collecties gepagineerd (een `DocumentLineList(…)`-expand op de
+    collectie wordt STIL genegeerd); de DOCUMENT-vorm `X/{id}` geeft de kop (+ `koppen[id]`, bv. een BookDate die de
+    collectie niet draagt) mét `DocumentLineList` uit `regels` als `$expand` die vraagt; `X/{id}/Lines` uit `regels`
+    behalve `ManualJournals/{id}/Lines` = 404-HTML (route bestaat niet); `PaymentAccounts/{id}/Statements` uit
+    `statements`; `fouten` per pad; `expand_weigeren` per pad → 400 bij $expand; `documentvorm_weigeren` per collectie →
+    404 op `X/{id}` (test van de /Lines-terugval). Registreert élke GET."""
+
+    def __init__(
+        self,
+        collecties,  # noqa: ANN001
+        regels,  # noqa: ANN001
+        statements,  # noqa: ANN001
+        *,
+        fouten=None,  # noqa: ANN001
+        expand_weigeren=None,  # noqa: ANN001
+        documentvorm_weigeren=None,  # noqa: ANN001
+        koppen=None,  # noqa: ANN001
+    ) -> None:
         self.collecties, self.regels, self.statements = collecties, regels, statements
         self.fouten = fouten or {}
         self.expand_weigeren = expand_weigeren or set()
+        self.documentvorm_weigeren = documentvorm_weigeren or set()
+        self.koppen = koppen or {}
         self.calls: list[tuple[str, dict]] = []
         self.gesloten = False
+
+    def _rij(self, rlz_id: str) -> dict | None:
+        for rijen in self.collecties.values():
+            if not isinstance(rijen, list):
+                continue
+            for r in rijen:
+                if isinstance(r, dict) and r.get("id") == rlz_id:
+                    return r
+        return None
 
     def get(self, path: str, *, params: dict | None = None) -> dict:
         params = dict(params or {})
@@ -332,9 +392,22 @@ class NepClient:
             raise self.fouten[path]
         delen = path.split("/")
         if len(delen) == 3 and delen[2] == "Lines":
+            if delen[0] == "ManualJournals":
+                raise RlzApiError(404, "GET", path, HTML_404)  # route bestaat niet in RLZ (STAP-0 13-09)
             if delen[1] not in self.regels:
                 raise RlzApiError(404, "GET", path, "_NotFound")
             return {"value": self.regels[delen[1]]}
+        if len(delen) == 2 and delen[0] in RECORD_COLLECTIES:
+            if delen[0] in self.documentvorm_weigeren:
+                raise RlzApiError(404, "GET", path, HTML_404)
+            rij = self._rij(delen[1])
+            if rij is None:
+                raise RlzApiError(404, "GET", path, '{"Message":"NotFound"}')
+            uit = {**rij, **self.koppen.get(delen[1], {})}
+            uit.pop("DocumentLineList", None)
+            if "DocumentLineList" in params.get("$expand", "") and delen[1] in self.regels:
+                uit["DocumentLineList"] = self.regels[delen[1]]
+            return uit
         if len(delen) == 3 and delen[0] == "PaymentAccounts" and delen[2] == "Statements":
             rijen = self.statements.get(delen[1], [])
         elif path in self.collecties:
@@ -415,14 +488,17 @@ class TestMiniVgg:
         assert t["per_type"]["bank"] == {"vertaalbaar": 7, "zonder_pand": 0, "niet_vertaalbaar": 0}
         assert t["per_type"]["entry"] == {"vertaalbaar": 2, "zonder_pand": 1, "niet_vertaalbaar": 0}  # MJ2 midden
         assert t["btw_regels"] == 0 and t["regel_calls"] == 8 and t["regel_fouten"] == 0
-        assert t["partners_nieuw"] == 2
+        assert t["regels_via_documentvorm"] == 8 and t["regels_via_lines"] == 0  # blok 7c: één call per document
+        assert t["bookdate_uit_document"] == 8 and t["bookdate_terugval_date"] == 0
+        assert t["partners_nieuw"] == 2 and t["partners_uit_bank"] == 0 and t["partners_onbekend"] == 0
         assert rapport.gelezen["Receipts"] == 6 and rapport.gelezen["JournalEntryLines"] == 22
 
     def test_saldibalans_per_rekening(self, rapport) -> None:  # noqa: ANN001
         per = {r["rekening"]: r for r in rapport.saldibalans}
         # bank: RLZ én Odoo −110.230,99 per 31-12-2025 (alles 2025); de open regel van 2026-09-09 valt buiten `tot`
         assert per["1100"]["rlz_jaareinde"] == Decimal("-110230.99") == per["1100"]["odoo_jaareinde"]
-        # RJ 220: panden 0300 → rol 3000/3010, opbrengst 8000 → 8010 — geschoond 0, ongeschoond zichtbaar
+        # RJ 220: voorraad panden 3100 (rubriek 3 = voorraad; rubriek 0 = vast actief) → rol 3000/3010, opbrengst
+        # 8000 → 8010 — geschoond 0, ongeschoond zichtbaar
         assert (
             per["300"]["verschil_jaareinde"] == Decimal("-220000.00")
             and per["300"]["verschil_jaareinde_geschoond"] == 0
@@ -437,12 +513,23 @@ class TestMiniVgg:
         assert herc[("300", "3000")]["documenten"] == 1 and herc[("300", "3000")]["bedrag"] == Decimal("200000.00")
         assert herc[("300", "3010")]["bedrag"] == Decimal("20000.00")  # aanbetaling: mens wint over zekerheid midden
         assert herc[("8000", "8010")]["bedrag"] == Decimal("-260000.00")
-        assert (rapport.journaal["regels"], rapport.journaal["met_bron"], rapport.journaal["zonder_bron"]) == (
-            22,
-            22,
-            0,
-        )
-        assert rapport.journaal["rlz_kolom"].startswith("EventID-koppeling herkend op 22/22")
+        assert rapport.journaal["regels"] == 22
+        assert rapport.journaal["rlz_kolom"].startswith("koppeling journaalregel ↔ document bestaat niet in de RLZ-API")
+        per_dt = {x["documenttype"]: x for x in rapport.journaal["per_documenttype"]}
+        assert per_dt[11] == {
+            "documenttype": 11,
+            "naam": "memoriaal (11)",
+            "journaalposten": 3,
+            "journaalregels": 6,
+            "documenten_geboekt": 3,
+        }
+        assert per_dt[1]["journaalposten"] == 1 and per_dt[1]["documenten_geboekt"] == 1
+        assert per_dt[None]["journaalregels"] == 6 and per_dt[None]["documenten_geboekt"] == 0  # bankjournaal
+        # blok 7c punt 7 (b): 1600/1300/1100 zitten in een groep, de groepen sluiten
+        assert per["1600"]["groep"] == "crediteuren" and per["1300"]["groep"] == "debiteuren"
+        assert per["1100"]["groep"] == "bank" and per["3000"]["groep"] is None
+        groepen = {g["groep"]: g for g in rapport.afletter_groepen}
+        assert groepen["crediteuren"]["verschil_tot"] == 0 and groepen["bank"]["rekeningen"] == ["1100"]
 
     def test_moves_vorm_contract(self, rapport) -> None:  # noqa: ANN001
         per = {m.rlz_id: m for m in rapport.moves}
@@ -520,6 +607,7 @@ class TestMiniVgg:
             Decimal("260000.00"),
         )
         assert g["marge"] == Decimal("59769.01")  # aanbetaling apart (balans tot levering)
+        assert g["notaris_ontvangst"] == 0 and g["controle"].startswith("SIGNAAL")  # geen bank op het pand
         assert "rhijnauwensingel-93" not in pand  # midden/voorstel telt niet
         assert {p["sleutel"] for p in rapport.partners} == {"kvk", "naam"}
         sluit = [(s["maand"], s["sluit"]) for s in rapport.statements]
@@ -650,7 +738,13 @@ class TestVarianten:
         rapport = _run(NepClient(collecties, regels, statements))
         assert rapport.tellers["regel_fouten"] == 1
         m = next(x for x in rapport.moves if x.rlz_id == MJ2)
-        assert m.status == "niet_vertaalbaar" and "regels niet leesbaar" in m.reden and "404" in m.reden
+        assert m.status == "niet_vertaalbaar" and "regels niet leesbaar" in m.reden
+        assert "zonder DocumentLineList" in m.reden and "bestaat niet in RLZ" in m.reden
+        # blok 7c punt 1: één memoriaal zonder regels = ONVOLLEDIG, geen saldibalans-toets
+        assert rapport.oordeel == "ONVOLLEDIG — niet doorrekenen" and rapport.groen is False
+        assert rapport.saldibalans == [] and rapport.per_pand == [] and rapport.open_posten == []
+        assert [x["boekstuk"] for x in rapport.onvolledig] == ["RLZ-06-00000074"]
+        assert "ONVOLLEDIG — niet doorrekenen — 1 geboekt(e) document(en)" in rapport.als_markdown()
 
     def test_tot_begrenst_de_saldibalans(self) -> None:
         collecties, regels, statements = mini_vgg()
@@ -674,7 +768,7 @@ class TestVarianten:
         assert any("doelkoppeling incompleet" in x for x in rapport.let_op)
         assert any("--odoo-rekeningen" in x for x in rapport.let_op)
         assert rapport.groen is False
-        assert {o["rlz_code"] for o in rapport.ongemapt} == {"0300", "1650", "4400"}  # rol-regels (3000/3010/8010) niet
+        assert {o["rlz_code"] for o in rapport.ongemapt} == {"3100", "1650", "4400"}  # rol-regels (3000/3010/8010) niet
 
 
 # ---- pure helpers ----------------------------------------------------------------
@@ -707,8 +801,11 @@ class TestBron:
         assert rlz_bron.debet_credit({"DebitAmount": 10.0, "CreditAmount": 0}) == (Decimal("10.00"), Decimal("0.00"))
         assert rlz_bron.debet_credit({"CreditOrDebit": 2, "Amount": 5}) == (Decimal("0.00"), Decimal("5.00"))
         assert rlz_bron.debet_credit({"NetAmount": -7.5, "TaxAmount": 0}) == (Decimal("0.00"), Decimal("7.50"))
-        jr = {"JournalEntry": {"BookDate": "2025-07-10T00:00:00", "EventID": "abc"}}
-        assert rlz_bron.journaalregel_datum(jr) == date(2025, 7, 10) and rlz_bron.journaalregel_bron_id(jr) == "abc"
+        jr = {"JournalEntry": {"id": "j1", "BookDate": "2025-07-10T00:00:00", "DocumentType": 1, "EventID": 71}}
+        assert rlz_bron.journaalregel_datum(jr) == date(2025, 7, 10)
+        assert rlz_bron.journaalregel_bron_id(jr) is None  # EventID is een soortcode, geen bron-id (STAP-0 13-09)
+        assert rlz_bron.journaalregel_documenttype(jr) == 1 and rlz_bron.journaalregel_journaalpost_id(jr) == "j1"
+        assert rlz_bron.journaalregel_bron_id({"Document": {"id": "d1"}}) == "d1"
 
     def test_ontknip_in_de_bron(self) -> None:
         """De 32-tekens-knip uit RLZ komt nooit als spatie of `\\n` in payment_ref/narration (blok 0)."""
@@ -739,35 +836,41 @@ class TestBlok7b:
     """Fixes uit de productienameting 13-09 (opdracht Peter): regels via de collectie-expand, webfilter-blokkering =
     meting ongeldig, verrekening factuur↔creditnota als paar, per pand mét bankmutaties, regelsom cent-exact."""
 
-    def test_regels_via_collectie_expand_geen_losse_calls(self) -> None:
+    def test_documentvorm_geeft_kop_en_regels_in_een_call_geen_collectie_expand(self) -> None:
+        """Blok 7c (herziet 7b 1a): de collectie-expand `DocumentLineList(…)` wordt door RLZ stil genegeerd — de replay
+        vraagt 'm niet meer; kop + regels komen per document uit `X/{id}?$expand=DocumentLineList(…)`, nul
+        /Lines-calls."""
         collecties, regels, statements = mini_vgg()
-        # RLZ geeft DocumentLineList mee op de collectie → geen enkele `X/{id}/Lines`-call meer (punt 1a)
-        for pad in ("PurchaseInvoices", "SalesInvoices", "ManualJournals"):
-            for rij in collecties[pad]:
-                if rij["id"] in regels:
-                    rij["DocumentLineList"] = regels[rij["id"]]
         client = NepClient(collecties, regels, statements)
         rapport = _run(client)
         assert rapport.groen is True
-        assert rapport.tellers["regels_via_collectie"] == 5 and rapport.tellers["regel_calls"] == 3  # 3 bank-direct
-        lines_calls = [p for p, _ in client.calls if p.endswith("/Lines")]
-        assert len(lines_calls) == 3 and all(p.startswith("BankMutationDirectBookings/") for p in lines_calls)
-        eerste_pi = next(p for p, _ in client.calls if p == "PurchaseInvoices")
-        assert eerste_pi == "PurchaseInvoices"
-        assert any(
-            p == "PurchaseInvoices" and prm.get("$expand") == "Entity,DocumentLineList($expand=Account,TaxRate)"
+        assert rapport.tellers["regels_via_documentvorm"] == 8 and rapport.tellers["regel_calls"] == 8
+        assert not any(p.endswith("/Lines") for p, _ in client.calls)
+        assert [prm.get("$expand") for p, prm in client.calls if p == "PurchaseInvoices"] == ["Entity"]
+        assert [prm.get("$expand") for p, prm in client.calls if p == "ManualJournals"] == ["JournalEntryDiary"]
+        assert all(
+            prm.get("$expand") == "DocumentLineList($expand=Account,TaxRate)"
             for p, prm in client.calls
+            if p.startswith(("ManualJournals/", "PurchaseInvoices/", "SalesInvoices/", "BankMutationDirectBookings/"))
         )
-        assert "regels via collectie-expand: 5 documenten" in rapport.als_markdown()
+        assert (
+            "8 via de document-vorm (kop mét BookDate + DocumentLineList), 0 via /Lines-terugval"
+            in rapport.als_markdown()
+        )
+        assert not any("gaf geen DocumentLineList" in o for o in rapport.overgeslagen)
 
-    def test_collectie_expand_geweigerd_valt_terug_op_entity_en_per_document(self) -> None:
+    def test_documentvorm_geweigerd_valt_terug_op_lines_behalve_memoriaal(self) -> None:
         collecties, regels, statements = mini_vgg()
-        client = NepClient(collecties, regels, statements, expand_weigeren={"PurchaseInvoices"})
+        client = NepClient(collecties, regels, statements, documentvorm_weigeren={"PurchaseInvoices"})
         rapport = _run(client)
-        assert rapport.groen is True and rapport.tellers["regel_calls"] == 8
-        expands = [prm.get("$expand") for p, prm in client.calls if p == "PurchaseInvoices"]
-        assert expands[:2] == ["Entity,DocumentLineList($expand=Account,TaxRate)", "Entity"]
-        assert any("gaf geen DocumentLineList — regels per document gelezen" in o for o in rapport.overgeslagen)
+        assert rapport.groen is True and rapport.tellers["regels_via_lines"] == 1
+        assert any(p == f"PurchaseInvoices/{PI1}/Lines" for p, _ in client.calls)
+        # ManualJournals kent géén /Lines-route: document-vorm weg = document zonder regels = ONVOLLEDIG
+        client = NepClient(collecties, regels, statements, documentvorm_weigeren={"ManualJournals"})
+        rapport = _run(client)
+        assert rapport.oordeel == "ONVOLLEDIG — niet doorrekenen" and rapport.tellers["regel_fouten"] == 3
+        assert not any(p.startswith("ManualJournals/") and p.endswith("/Lines") for p, _ in client.calls)
+        assert all("bestaat niet in RLZ (404-HTML" in x["route"] for x in rapport.onvolledig)
 
     def test_webfilter_blokkering_is_meting_ongeldig_niets_doorgerekend(self) -> None:
         from app.rlz.client import RlzWebfilterError
@@ -795,7 +898,7 @@ class TestBlok7b:
 
         collecties, regels, statements = mini_vgg()
         client = NepClient(collecties, regels, statements)
-        pad = f"BankMutationDirectBookings/{BD2}/Lines"
+        pad = f"BankMutationDirectBookings/{BD2}"  # blok 7c: de document-vorm is de eerste regelroute
         client.fouten = {pad: RlzWebfilterError(403, "GET", pad, "<HTML>Access Denied</HTML>")}
         rapport = _run(client)
         assert rapport.blokkering and "webfilter 403" in rapport.blokkering
@@ -861,8 +964,12 @@ class TestBlok7b:
         )
         rapport = _run(NepClient(collecties, regels, statements), panden=panden)
         pand = {p["pand"].split(" — ")[0]: p for p in rapport.per_pand}
-        assert pand["koraalerf-45"]["verkoop"] == Decimal("60000.00") and pand["koraalerf-45"]["documenten"] == 1
-        assert pand["koraalerf-45"]["marge"] == Decimal("60000.00")  # marge alleen bij verkoop
+        # blok 7c punt 4: de notaris-ONTVANGST is geen verkoop maar de netto-uitkering — eigen kolom, signaal zonder
+        # geboekte verkoopfactuur
+        k = pand["koraalerf-45"]
+        assert k["notaris_ontvangst"] == Decimal("60000.00") and k["verkoop"] == 0 and k["documenten"] == 1
+        assert k["marge"] == Decimal("0.00") and k["controle"].startswith("SIGNAAL")
+        assert any("notaris-ontvangst zonder geboekte verkoopfactuur" in sg for sg in k["signalen"])
         b5 = next(x for x in rapport.moves if x.rlz_id == PT[5])
         assert b5.status == "vertaalbaar"
 
@@ -920,3 +1027,382 @@ class TestBlok7b:
         assert m.vals["regels"][0][2]["account_id"] == 1590
         assert rapport.btw["documenten_ob_afwikkeling"] == 1 and rapport.btw["laatste_ob_mutatie"] == "2025-07-15"
         assert rapport.btw["btw_ledgers"] == [{"code": "1520", "naam": "Te betalen OB"}]
+        assert rapport.btw["journaalregels_btw_grootboek"] == 0  # de journaalregels boeken op L_NOTARIS, niet op OB
+
+
+# ---- blok 7c 13-09 ------------------------------------------------------------
+
+
+L_7000 = str(uuid.uuid4())
+L_7001 = str(uuid.uuid4())
+L_4612 = str(uuid.uuid4())
+L_4601 = str(uuid.uuid4())
+L_0101 = str(uuid.uuid4())
+L_1405 = str(uuid.uuid4())
+L_OB = str(uuid.uuid4())
+LEDGERS_7C = [
+    {
+        "id": L_7000,
+        "AccountNumber": "7000",
+        "Description": "Inkopen vastgoed",
+        "AccountType": 2,
+        "IsTotalAccount": False,
+    },
+    {
+        "id": L_7001,
+        "AccountNumber": "7001",
+        "Description": "Inkoop vaste lasten",
+        "AccountType": 2,
+        "IsTotalAccount": False,
+    },
+    {"id": L_4612, "AccountNumber": "4612", "Description": "Kosten bemiddeling makelaar", "AccountType": 2},
+    {"id": L_4601, "AccountNumber": "4601", "Description": "Notariskosten", "AccountType": 2},
+    {"id": L_0101, "AccountNumber": "0101", "Description": "Gebouwen en terreinen", "AccountType": 3},
+    {"id": L_1405, "AccountNumber": "1405", "Description": "Aanbetaling Pand/Projecten", "AccountType": 3},
+]
+ODOO_7C = [
+    {"id": 7000, "code": "7000", "name": "Inkopen vastgoed"},
+    {"id": 7001, "code": "7001", "name": "Inkoop vaste lasten"},
+    {"id": 4612, "code": "4612", "name": "Makelaar"},
+    {"id": 4601, "code": "4601", "name": "Notaris"},
+    {"id": 101, "code": "0101", "name": "Gebouwen en terreinen"},
+    {"id": 1405, "code": "1405", "name": "Aanbetaling"},
+]
+NOTARIS_BUMA = {"id": str(uuid.uuid4()), "Name": "Buma Algera Notarissen"}
+
+
+def _pand(code: str, adres: str, soort: str) -> PandToewijzing:
+    return PandToewijzing(code, adres, soort, "hoog", "afgeleid")
+
+
+def _casus_panden() -> tuple[dict, dict, dict, dict[uuid.UUID, PandToewijzing]]:
+    """De vier verkochte panden uit de nameting 13-09 mét de échte totalen (verdeling over de grootboeken is fixture):
+    Rijswijkseweg 409 (notaris-nota € 341.333,86 op 7000/4612/7001, verkoop € 385.000 als Receipt, notaris-ontvangst
+    € 43.666,14, concept-verkoopfactuur RLZ-01-00000006 € 43.666,14), Kapershoek 34 (nota € 212.556,86 + vaste lasten
+    € 440,47, aanbetalingen € 40.000, ontvangst € 52.443,14), Ruyghweg 71 (nota € 220.667,05 + vaste lasten € 1.177,09,
+    aanbetaling € 1.500, ontvangst € 31.232,93), Verschoorstraat 70-02 (nota € 229.859,89, verkoopfactuur
+    RLZ-01-00000013 € 282.500, ontvangst € 52.640,11) en Donkerslootstraat 105B (RLZ-24-00000770 € 183.871,22 op 0101 =
+    vast actief)."""
+    collecties, regels, statements = mini_vgg()
+    collecties["Ledgers"] = LEDGERS + LEDGERS_7C
+    panden = dict(PANDEN)
+    docs: list[tuple[str, dict, list[dict], str, str, str]] = []  # (collectie, rij, regels, code, adres, soort)
+
+    def nota(
+        boekstuk: str, datum: str, totaal: float, verdeling: list[tuple[str, float]], code: str, adres: str
+    ) -> None:
+        rid = str(uuid.uuid4())
+        rij = _doc(rid, boekstuk, datum, totaal, dt=1, Entity=NOTARIS_BUMA, Description=f"Nota van afrekening {adres}")
+        docs.append(("PurchaseInvoices", rij, [_regel(led, net=b) for led, b in verdeling], code, adres, "aankoop"))
+
+    nota(
+        "RLZ-04-00000077",
+        "2025-08-11",
+        341333.86,
+        [(L_7000, 330000.0), (L_4612, 9500.0), (L_7001, 1833.86)],
+        "rijswijkseweg-409",
+        "Rijswijkseweg 409",
+    )
+    nota(
+        "RLZ-04-00000075",
+        "2025-08-20",
+        212556.86,
+        [(L_7000, 205000.0), (L_4612, 6000.0), (L_7001, 1556.86)],
+        "kapershoek-34",
+        "Kapershoek 34",
+    )
+    nota(
+        "RLZ-04-00000073",
+        "2025-08-27",
+        220667.05,
+        [(L_7000, 212000.0), (L_4612, 6400.0), (L_4601, 1200.0), (L_7001, 1067.05)],
+        "ruyghweg-71",
+        "Ruyghweg 71",
+    )
+    nota(
+        "RLZ-17-00000076",
+        "2025-07-25",
+        229859.89,
+        [(L_7000, 222000.0), (L_4612, 7859.89)],
+        "verschoorstraat-70-02",
+        "Verschoorstraat 70-02",
+    )
+    # vaste lasten (kosten) + aanbetalingen (soort aanbetaling, documentbedrag)
+    for boekstuk, datum, bedrag, code, adres in (
+        ("RLZ-25-00000049", "2025-08-01", 440.47, "kapershoek-34", "Kapershoek 34"),
+        ("RLZ-25-00000048", "2025-08-01", 1177.09, "ruyghweg-71", "Ruyghweg 71"),
+    ):
+        rid = str(uuid.uuid4())
+        docs.append(
+            (
+                "PurchaseInvoices",
+                _doc(rid, boekstuk, datum, bedrag, dt=1),
+                [_regel(L_7001, net=bedrag)],
+                code,
+                adres,
+                "vaste_lasten",
+            )
+        )
+    for boekstuk, datum, bedrag, code, adres in (
+        ("RLZ-04-00000201", "2025-07-01", 40000.0, "kapershoek-34", "Kapershoek 34"),
+        ("RLZ-04-00000202", "2025-07-02", 1500.0, "ruyghweg-71", "Ruyghweg 71"),
+    ):
+        rid = str(uuid.uuid4())
+        docs.append(
+            (
+                "PurchaseInvoices",
+                _doc(rid, boekstuk, datum, bedrag, dt=1),
+                [_regel(L_1405, net=bedrag)],
+                code,
+                adres,
+                "aanbetaling",
+            )
+        )
+    # verkopen: Rijswijkseweg als Receipt (out_invoice zonder Entity), Verschoorstraat als echte SalesInvoice
+    rid_rv = str(uuid.uuid4())
+    docs.append(
+        (
+            "Receipts",
+            _doc(rid_rv, "RLZ-01-00000009", "2025-08-13", 385000.0, dt=10, Description="Verkoop Rijswijkseweg 409"),
+            [_regel(L_OMZET, net=385000.0)],
+            "rijswijkseweg-409",
+            "Rijswijkseweg 409",
+            "verkoop",
+        )
+    )
+    rid_vs = str(uuid.uuid4())
+    docs.append(
+        (
+            "SalesInvoices",
+            _doc(rid_vs, "RLZ-01-00000013", "2025-07-28", 282500.0, dt=10, Description="Verkoop Verschoorstraat 70-02"),
+            [_regel(L_OMZET, net=282500.0)],
+            "verschoorstraat-70-02",
+            "Verschoorstraat 70-02",
+            "verkoop",
+        )
+    )
+    # Donkerslootstraat 105B: vast actief op 0101 — nooit aan een pand
+    rid_dk = str(uuid.uuid4())
+    docs.append(
+        (
+            "PurchaseInvoices",
+            _doc(rid_dk, "RLZ-24-00000770", "2025-10-23", 183871.22, dt=1, Entity=VVE),
+            [_regel(L_0101, net=183871.22)],
+            "donkerslootstraat-105-b",
+            "Donkerslootstraat 105B",
+            "kosten",
+        )
+    )
+    for coll, rij, rgl, code, adres, soort in docs:
+        collecties[coll].append(rij)
+        regels[rij["id"]] = rgl
+        panden[uuid.UUID(rij["id"])] = _pand(code, adres, soort)
+    # concept-verkoopfactuur Rijswijkseweg (Status 1) — niet migreren, wél signaal
+    rid_c = str(uuid.uuid4())
+    collecties["SalesInvoices"].append(
+        _doc(
+            rid_c,
+            "RLZ-01-00000006",
+            "2025-08-13",
+            43666.14,
+            status=1,
+            dt=10,
+            Description="Overdracht Rijswijkseweg 409",
+        )
+    )
+    panden[uuid.UUID(rid_c)] = _pand("rijswijkseweg-409", "Rijswijkseweg 409", "verkoop")
+    # notaris-ontvangsten op de bank (positief, verkoop-toewijzing) — netto-uitkering, nooit verkoop
+    for nr, (tx_id, datum, bedrag, code, adres) in enumerate(
+        (
+            (str(uuid.uuid4()), "2025-08-13", 43666.14, "rijswijkseweg-409", "Rijswijkseweg 409"),
+            (str(uuid.uuid4()), "2025-08-21", 52443.14, "kapershoek-34", "Kapershoek 34"),
+            (str(uuid.uuid4()), "2025-08-28", 31232.93, "ruyghweg-71", "Ruyghweg 71"),
+            (str(uuid.uuid4()), "2025-07-31", 52640.11, "verschoorstraat-70-02", "Verschoorstraat 70-02"),
+        )
+    ):
+        collecties["PaymentTransactions"].append(_tx(tx_id, f"0020{nr}", datum, bedrag, naam="B.A.N."))
+        panden[uuid.UUID(tx_id)] = _pand(code, adres, "verkoop")
+    return collecties, regels, statements, panden
+
+
+class TestBlok7c:
+    """Fixes uit de productienameting 13-09 (opdracht Peter, blok 7c): document-vorm mét BookDate, ONVOLLEDIG-oordeel,
+    journaal zonder koppeling, partner uit bank, btw tweede bron, afletter-groepen, pandenmodel op grootboek-regels."""
+
+    def test_bookdate_uit_documentvorm_stuurt_de_saldibalans_per_jaareinde(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        pi1 = collecties["PurchaseInvoices"][0]
+        del pi1["BookDate"]
+        pi1["Date"] = (
+            "2026-01-05T00:00:00"  # factuurdatum in 2026, geboekt in 2025 (BookDate alleen op de document-vorm)
+        )
+        rapport = _run(NepClient(collecties, regels, statements, koppen={PI1: {"BookDate": "2025-07-20T00:00:00"}}))
+        m = next(x for x in rapport.moves if x.rlz_id == PI1)
+        assert m.date == "2025-07-20" and m.vals["invoice_date"] == "2025-07-20" and "BookDate ontbreekt" not in m.reden
+        assert rapport.tellers["bookdate_uit_document"] == 8 and rapport.tellers["bookdate_terugval_date"] == 0
+        assert rapport.groen is True
+        # zonder de kop valt de datum terug op Date → 4400 per 31-12 sluit niet en de teller toont dat
+        rapport = _run(NepClient(collecties, regels, statements))
+        m = next(x for x in rapport.moves if x.rlz_id == PI1)
+        assert m.date == "2026-01-05" and "BookDate ontbreekt → Date" in m.reden
+        assert rapport.tellers["bookdate_terugval_date"] == 1 and rapport.groen is False
+        per = {r["rekening"]: r for r in rapport.saldibalans}
+        assert per["4400"]["verschil_jaareinde_geschoond"] == Decimal("-230.99")
+        assert "1 terugval op Date" in rapport.als_markdown()
+
+    def test_partner_uit_de_tegenpartij_van_de_bankmutatie_en_beslispunt_voor_de_rest(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        # RLZ-15-reeks: inkoopfactuur zónder Entity, betaald door een bankmutatie van "Shell" — tegenpartij = partner
+        shell_id, los_id = str(uuid.uuid4()), str(uuid.uuid4())
+        collecties["PurchaseInvoices"].append(_doc(shell_id, "RLZ-15-00000045", "2025-08-06", 264.34, dt=1))
+        regels[shell_id] = [_regel(L_KOSTEN, net=264.34)]
+        tx = _tx(
+            str(uuid.uuid4()),
+            "00107",
+            "2025-08-06",
+            -264.34,
+            refs=[(collecties["PurchaseInvoices"][-1], 264.34)],
+            naam="Shell",
+        )
+        tx["CounterAccount"] = "NL55INGB0000000055"
+        collecties["PaymentTransactions"].append(tx)
+        # RLZ-17-reeks: zonder Entity én zonder bankmutatie — blijft onbekend (beslispunt Peter)
+        collecties["PurchaseInvoices"].append(_doc(los_id, "RLZ-17-00000061", "2025-08-21", 795.0, dt=1))
+        regels[los_id] = [_regel(L_KOSTEN, net=795.0)]
+        rapport = _run(NepClient(collecties, regels, statements))
+        per = {m.rlz_id: m for m in rapport.moves}
+        assert per[shell_id].partner == {
+            "naam": "Shell",
+            "kvk": None,
+            "btw": None,
+            "iban": "NL55INGB0000000055",
+            "sleutel": "iban",
+            "voorstel": "nieuw (res.partner)",
+            "herkomst": "bank",
+            "bron_tekst": "bankmutatie 00107",
+        }
+        assert "uit bankmutatie 00107" in per[shell_id].reden
+        assert per[los_id].partner["voorstel"] == "onbekend" and "beslispunt Peter" in per[los_id].reden
+        assert rapport.tellers["partners_uit_bank"] == 1 and rapport.tellers["partners_onbekend"] == 1
+        md = rapport.als_markdown()
+        assert "waarvan 1 uit de tegenpartij van de bankmutatie" in md and "BESLISPUNT PETER" in md
+        assert any(p["voorstel"] == "onbekend" for p in rapport.partners)
+        assert any("Bank-direct (onbekend)" in b for b in json.loads(rapport.als_json())["beslispunten"])
+
+    def test_btw_tweede_bron_en_btw_code_zonder_bedrag(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        collecties["Ledgers"].append(
+            {"id": L_OB, "AccountNumber": "1520", "Description": "Te betalen OB", "AccountType": 4}
+        )
+        _JR_DOCTYPE[MJ1] = 11
+        collecties["JournalEntryLines"].append(_jr(L_OB, MJ1, "2025-07-10", debet=100.0))
+        collecties["JournalEntryLines"].append(_jr(L_NOTARIS, MJ1, "2025-07-10", credit=100.0))
+        regels[PI1][0]["TaxRate"] = {"id": str(uuid.uuid4())}  # btw-code "Geen BTW" mét TaxAmount 0 → geen btw
+        rapport = _run(NepClient(collecties, regels, statements))
+        assert rapport.tellers["btw_regels"] == 0 and rapport.tellers["btw_code_zonder_bedrag"] == 1
+        assert rapport.btw["journaalregels_btw_grootboek"] == 1 and rapport.btw["journaalregels_btw_som"] == Decimal(
+            "100.00"
+        )
+        assert rapport.btw["laatste_journaalregel_btw"] == "2025-07-10" == rapport.btw["afmeldingsdatum_uit_data"]
+        md = rapport.als_markdown()
+        assert "1 regel(s) dragen een btw-code (TaxRate) met bedrag 0" in md and "Tweede bron (JournalEntryLines" in md
+
+    def test_afletter_groepen_tellen_per_groep_niet_per_rekening(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        collecties["PaymentTransactions"][3]["PaymentReferenceList"] = []  # PI1 niet gekoppeld → open aan beide kanten
+        rapport = _run(
+            NepClient(collecties, regels, statements),
+            doel=Doel(
+                company_id=6, journal_sale_id=48, journal_purchase_id=49, journal_general_id=50, journal_bank_id=53
+            ),
+        )
+        per = {r["rekening"]: r for r in rapport.saldibalans}
+        assert per["impliciet:crediteuren"]["groep"] == "crediteuren" and per["1600"]["groep"] == "crediteuren"
+        assert per["impliciet:bank-tussenrekening"]["groep"] == "tussenrekening"
+        assert per["bank:Betaalrekening"]["groep"] == "bank" and per["1100"]["groep"] == "bank"
+        groepen = {g["groep"]: g for g in rapport.afletter_groepen}
+        assert groepen["bank"]["verschil_tot"] == 0  # RLZ 1100 ↔ bank:Betaalrekening sluiten als groep
+        assert groepen["crediteuren"]["verschil_tot"] == Decimal("-230.99")  # factuur open in Odoo, in RLZ betaald
+        assert groepen["tussenrekening"]["verschil_tot"] == Decimal("230.99")
+        # oordeel: per groep (2: crediteuren + tussenrekening) plús de open post van PI1 — niet per rekening (dat
+        # zouden 4 rijen zijn: impliciet:crediteuren, 1600, impliciet:bank-tussenrekening en bank:/1100)
+        open_met_verschil = sum(1 for r in rapport.open_posten if r["verschil"] != 0)
+        assert open_met_verschil == 1 and rapport.verschillen == 2 + open_met_verschil and rapport.groen is False
+        assert sum(1 for r in rapport.saldibalans if r["groep"] is None and r["verschil_tot_geschoond"] != 0) == 0
+        assert "Groepstoets afletter-/tegenzijde-rekeningen" in rapport.als_markdown()
+
+    def test_pandenmodel_op_grootboekregels_vier_casussen_nameting_13_09(self) -> None:
+        collecties, regels, statements, panden = _casus_panden()
+        rapport = _run(NepClient(collecties, regels, statements), panden=panden, odoo_accounts=ODOO_ACCOUNTS + ODOO_7C)
+        assert rapport.oordeel != "ONVOLLEDIG — niet doorrekenen"
+        pand = {p["pand"].split(" — ")[0]: p for p in rapport.per_pand}
+        r = pand["rijswijkseweg-409"]
+        assert (r["aankoop"], r["kosten"], r["verkoop"], r["notaris_ontvangst"]) == (
+            Decimal("330000.00"),
+            Decimal("11333.86"),
+            Decimal("385000.00"),
+            Decimal("43666.14"),
+        )
+        assert r["marge"] == Decimal("43666.14") and r["controle"] == "sluit"  # 385.000 − 341.333,86 = de bankontvangst
+        assert r["signalen"] == ["verkoopfactuur RLZ-01-00000006 nog concept in RLZ — boeken vóór replay"]
+        k = pand["kapershoek-34"]
+        assert (k["aankoop"], k["aanbetalingen"], k["kosten"], k["notaris_ontvangst"]) == (
+            Decimal("205000.00"),
+            Decimal("40000.00"),
+            Decimal("7997.33"),
+            Decimal("52443.14"),
+        )
+        assert k["verkoop"] == 0 and k["marge"] == Decimal("-212997.33")  # geen verkoopfactuur in de fixture → signaal
+        assert any("notaris-ontvangst zonder geboekte verkoopfactuur" in sg for sg in k["signalen"])
+        ru = pand["ruyghweg-71"]
+        assert (ru["aankoop"], ru["aanbetalingen"], ru["kosten"]) == (
+            Decimal("212000.00"),
+            Decimal("1500.00"),
+            Decimal("9844.14"),
+        )
+        v = pand["verschoorstraat-70-02"]
+        assert (v["aankoop"], v["kosten"], v["verkoop"], v["notaris_ontvangst"]) == (
+            Decimal("222000.00"),
+            Decimal("7859.89"),
+            Decimal("282500.00"),
+            Decimal("52640.11"),
+        )
+        assert v["marge"] == Decimal("52640.11") and v["controle"] == "sluit" and v["signalen"] == []
+        d = pand["donkerslootstraat-105-b"]
+        assert d["kosten"] == 0 and d["aankoop"] == 0 and d["marge"] is None  # 0101 = vast actief, telt nergens
+        md = rapport.als_markdown()
+        assert "Notaris-ontvangst (bank)" in md and "Panden mét signaal:" in md
+        # geen negatieve marge zonder verklarende regel op een pand mét verkoopfactuur én ontvangst
+        assert not any("negatieve marge" in sg for p in (r, v) for sg in p["signalen"])
+
+    def test_pandenmodel_controle_sluit_na_aanbetalingen(self) -> None:
+        collecties, regels, statements, panden = _casus_panden()
+        # Kapershoek krijgt zijn verkoopfactuur: 225.440,47 = aankoop + kosten + ontvangst − aanbetalingen (40.000 al
+        # rechtstreeks aan de verkoper betaald → de notaris keert dat méér uit)
+        rid = str(uuid.uuid4())
+        collecties["SalesInvoices"].append(_doc(rid, "RLZ-01-00000014", "2025-08-21", 225440.47, dt=10))
+        regels[rid] = [_regel(L_OMZET, net=225440.47)]
+        panden[uuid.UUID(rid)] = _pand("kapershoek-34", "Kapershoek 34", "verkoop")
+        rapport = _run(NepClient(collecties, regels, statements), panden=panden, odoo_accounts=ODOO_ACCOUNTS + ODOO_7C)
+        k = {p["pand"].split(" — ")[0]: p for p in rapport.per_pand}["kapershoek-34"]
+        assert k["verkoop"] == Decimal("225440.47") and k["marge"] == Decimal("12443.14")
+        assert k["controle"] == "sluit ná aanbetalingen (Δ -40000.00 = aanbetalingen)" and k["signalen"] == []
+
+    def test_rlz_boekingen_dragen_grootboeken_en_concepten(self) -> None:
+        collecties, regels, statements, _ = _casus_panden()
+        bron = rlz_bron.lees_bron(NepClient(collecties, regels, statements))
+        boekingen = replay._rlz_boekingen(bron)
+        assert boekingen is not None
+        per = {b.boekstuk: b for b in boekingen}
+        assert per["RLZ-04-00000077"].grootboeken == frozenset({"7000", "4612", "7001"})
+        assert per["RLZ-24-00000770"].grootboeken == frozenset({"0101"}) == per["RLZ-24-00000770"].vaste_activa
+        assert per["RLZ-01-00000006"].grootboeken == frozenset()  # concept: geen regels gelezen, wél in de lijst
+        assert bron.koppen[PI1]["BookDate"] == "2025-07-20T00:00:00"  # kop uit de document-vorm
+
+    def test_statusregel_onvolledig(self) -> None:
+        from app.migratie.cli_replay import statusregel
+
+        collecties, regels, statements = mini_vgg()
+        del regels[MJ2]
+        rapport = _run(NepClient(collecties, regels, statements))
+        assert statusregel(rapport).startswith("UITKOMST: ONVOLLEDIG — niet doorrekenen — 1 geboekt(e) document(en)")

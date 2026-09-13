@@ -1,33 +1,39 @@
-"""RLZ-bron voor de replay (run 2 VGG 12-09, blok 6) — LEES-ONLY lezers op alle collecties die de migratie nodig heeft.
+"""RLZ-bron voor de replay (run 2 VGG 12-09, blok 6; herzien blok 7b 13-09 en blok 7c 13-09) — LEES-ONLY lezers op alle
+collecties die de migratie nodig heeft.
 
 Eén gepagineerde reeks per collectie via `app/rlz/lezen.py::lees_collectie` (alleen GET's; een 400 op `$expand` valt
 zichtbaar terug zónder expand; 403/404/5xx = één regel onder `fouten`, nooit een crash):
 
 - documenten: PurchaseInvoices/SalesInvoices (`$expand=Entity`), ManualJournals (`$expand=JournalEntryDiary`),
-Receipts —
-  op VGG is Receipts een UNIE-collectie van álle documenten (STAP-0 knip 12-09: de eerste Receipts-rij is de
+  Receipts — op VGG is Receipts een UNIE-collectie van álle documenten (STAP-0 knip 12-09: de eerste Receipts-rij is de
   PurchaseInvoice RLZ-04-00000887); ná ontdubbeling tegen de drie andere collecties blijven de bank-directe boekingen
   (DocumentType 19, `IsSystemGenerated`) over. Geboekt = Status 2/3; Status 1 = concept; een systeemhuls = concept +
   `IsSystemGenerated` óf concept zonder Entity met |bedrag| + datum gelijk aan een OPEN PaymentTransaction (regel A,
   `bankdekking.is_bank_direct` lazy geïmporteerd — anders de minimale eigen versie hieronder).
-- regels per GEBOEKT document — BLOK 7b 13-09 (api-verkenning "Webfilter-blokkering bij >N calls"): NIET meer per
-  document. De 1.089 losse regel-calls van de nameting 13-09 lieten RLZ's webfilter ná ~700 calls elke route weigeren
-  (403 + HTML "Access Denied"; 305 documenten zonder regels, daarna ook PaymentAccounts/JournalEntryLines/Ledgers/
-  TaxRates dicht). Regels komen nu mee op de COLLECTIE-reeks: `$expand=Entity,DocumentLineList($expand=Account,
-  TaxRate)` (resp. `JournalEntryDiary,…`); weigert RLZ die expand (400) dan valt `lees_collectie` zichtbaar terug op de
-  oude expand en worden alleen de documenten zónder `DocumentLineList` per document gelezen (`{collectie}/{id}/Lines`,
-  DocumentType 19 via `BankMutationDirectBookings/{id}/Lines` met terugval `…/{id}?$expand=DocumentLineList(…)`) —
-  door de token-bucket van `RlzClient` (`rlz_max_calls_per_seconde`) in tempo. De Receipts-collectie expandeert
-  `DocumentLineList` niet (api-verkenning "Receipts-verkenning") → bank-directe boekingen blijven per document.
-  Een webfilter-403 die de client ná backoff nog ziet = `RlzBron.blokkering` gezet, lezen STOPT, het rapport wordt
-  ROOD mét "RLZ-blokkering — meting ongeldig" — nooit doorrekenen met halve data. JournalEntryLines per document is
-  géén alternatief: `JournalEntry` draagt alleen id/BookDate/DocumentType/EventID.
+- **regels + kop per GEBOEKT document = de DOCUMENT-vorm, één call per document (blok 7c 13-09, STAP-0 13-09 in
+  api-verkenning "Memoriaalregels + EventID/BookDate — STAP-0 13-09"):** `{collectie}/{id}?$expand=DocumentLineList(
+  $expand=Account,TaxRate)` geeft de kop (mét `BookDate`, dat op de PurchaseInvoices-COLLECTIE ontbreekt) én de regels.
+  Bewezen feiten: (1) de collectie-vorm `…?$expand=DocumentLineList(…)` wordt door RLZ op PurchaseInvoices,
+  SalesInvoices én ManualJournals STIL GENEGEERD (200, de sleutel ontbreekt; blok 7b probeerde 'm, 13-09 live: 0 van
+  1.012 documenten) — de per-document-route is de facto de enige route en wordt niet meer als uitzondering gelogd;
+  (2) de route `ManualJournals/{id}/Lines` BESTAAT NIET (404 mét HTML, ook zonder `$expand`; de Help-lijst kent alleen
+  `ManualJournals/{id}`, `/Actions`, `/Uploads`, `/DocumentTaskHistory`, `/QuickPaymentSelections`) — voor memorialen is
+  de document-vorm de enige regelroute; (3) `PurchaseInvoices/{id}/Lines` en `SalesInvoices/{id}/Lines` bestaan (Help)
+  en blijven de zichtbare TERUGVAL als de document-vorm geen `DocumentLineList` geeft (dan zonder kop-aanvulling);
+  (4) bank-directe boekingen (DocumentType 19): `BankMutationDirectBookings/{id}?$expand=DocumentLineList(…)` (bewezen,
+  schrijf-PoC 02-08), terugval `…/{id}/Lines`. Alles door de token-bucket van `RlzClient` (`rlz_max_calls_per_seconde`)
+  in tempo; een webfilter-403 die de client ná backoff nog ziet = `RlzBron.blokkering` gezet, lezen STOPT, het rapport
+  wordt ROOD mét "RLZ-blokkering — meting ongeldig" — nooit doorrekenen met halve data. Een document zónder leesbare
+  regels staat in `regel_fouten`; > 0 daarvan = rapport "ONVOLLEDIG — niet doorrekenen" (blok 7c punt 1).
+- JournalEntryLines (`$expand=Account,JournalEntry`, volledig): per regel `DebitAmount`/`CreditAmount`/`VatAmount`/
+  `Description`/`Account`; `JournalEntry` draagt ALLEEN `id`, `BookDate`, `DocumentType` en `EventID` — en **`EventID`
+  is een klein geheel getal (soortcode van het type `JournalEvent`: 71 bij DocumentType 1, 51 bij 10), GEEN document-
+  id** (STAP-0 13-09: `$filter=JournalEntry/EventID eq <guid>` = 400 "incompatible types 'JournalEvent' and 'Edm.Guid'";
+  `JournalEntry/id eq <document-id>` = 0 treffers; het document zelf kent geen JournalEntry-navigatie). Een koppeling
+  journaalregel ↔ document bestaat dus NIET in de RLZ-API; de RLZ-kolom van de saldibalans is de som per grootboek en
+  de BookDate per document komt van de document-vorm (hierboven), niet van de journaalpost.
 - PaymentTransactions `$expand=PaymentAccount,PaymentReferenceList($expand=Document)` (terugval zichtbaar),
-PaymentAccounts +
-  `PaymentAccounts/{id}/Statements` (alleen koppen: Number, Date, Debits, Credits, saldi), JournalEntryLines
-  (`$expand=Account,JournalEntry`, volledig — een BookDate-filter is niet nodig: het rapport heeft 31-12-2025 én
-  vandaag),
-  Ledgers, TaxRates.
+  PaymentAccounts + `PaymentAccounts/{id}/Statements` (alleen koppen), Ledgers, TaxRates.
 
 Geen writes, geen AI, geld in Decimal (`als_bedrag`)."""
 
@@ -52,23 +58,31 @@ DOCTYPE_INKOOP = 1
 DOCTYPE_VERKOOP = 10
 DOCTYPE_MEMORIAAL = 11
 DOCTYPE_BANK_DIRECT = 19
+DOCTYPE_NAMEN: dict[int, str] = {
+    DOCTYPE_INKOOP: "inkoop (1)",
+    DOCTYPE_VERKOOP: "verkoop/receipt (10)",
+    DOCTYPE_MEMORIAAL: "memoriaal (11)",
+    DOCTYPE_BANK_DIRECT: "bank-direct (19)",
+}
 #: Boekstukreeksen van bankdagboeken op VGG (contract §Besluiten 6) — alleen gebruikt als `bankdekking` ontbreekt.
 BANK_REEKSEN: frozenset[str] = frozenset({"RLZ-09", "RLZ-25", "RLZ-28", "RLZ-46", "RLZ-60"})
 
-#: Per collectie de basis-expand (relaties) — de regels komen er als `DocumentLineList(…)` bij (blok 7b 13-09).
+#: Per collectie de basis-expand (relaties). Géén `DocumentLineList(…)` meer op de collectie: RLZ negeert die stil
+#: (bewezen 13-09) — de regels komen per document via `regel_routes`.
 DOCUMENT_COLLECTIES: tuple[tuple[str, str | None], ...] = (
     ("PurchaseInvoices", "Entity"),
     ("SalesInvoices", "Entity"),
     ("ManualJournals", "JournalEntryDiary"),
 )
-REGELS_EXPAND_COLLECTIE = "DocumentLineList($expand=Account,TaxRate)"
-ROUTE_COLLECTIE_EXPAND = "collectie $expand=DocumentLineList"
+DOCUMENTVORM_EXPAND = "DocumentLineList($expand=Account,TaxRate)"
+ROUTE_DOCUMENTVORM = "documentvorm"
+ROUTE_LINES = "lines"
 BLOKKERING_TEKST = "RLZ-blokkering — meting ongeldig"
-
-
-def collectie_expand(basis: str | None) -> str:
-    return f"{basis},{REGELS_EXPAND_COLLECTIE}" if basis else REGELS_EXPAND_COLLECTIE
-
+ONVOLLEDIG_TEKST = "ONVOLLEDIG — niet doorrekenen"
+#: Collecties mét een bewezen `…/{id}/Lines`-route (Help-lijst); ManualJournals staat er bewust NIET in (404-HTML).
+LINES_ROUTE_COLLECTIES: frozenset[str] = frozenset({"PurchaseInvoices", "SalesInvoices", "BankMutationDirectBookings"})
+#: Kop-velden die de document-vorm aanvult op de collectie-rij (de collectie draagt bij PurchaseInvoices geen BookDate).
+KOP_AANVULLING_VELDEN: tuple[str, ...] = ("BookDate", "Date", "DueDate", "BaseInvoiceAmount", "BaseRemainingAmount")
 
 RECEIPTS = "Receipts"
 BANK_EXPAND = "PaymentAccount,PaymentReferenceList($expand=Document)"
@@ -94,6 +108,8 @@ class RlzBron:
     documenten: dict[str, list[dict[str, Any]]] = field(default_factory=dict)  # per collectie, Receipts = rest
     regels: dict[str, list[dict[str, Any]]] = field(default_factory=dict)  # per rlz_id (alleen geboekt)
     regels_route: dict[str, str] = field(default_factory=dict)  # per rlz_id: de route waarmee de regels kwamen
+    #: Blok 7c: kop-aanvulling uit de document-vorm per rlz_id (o.a. `BookDate`, dat op de collectie kan ontbreken).
+    koppen: dict[str, dict[str, Any]] = field(default_factory=dict)
     bank: list[dict[str, Any]] = field(default_factory=list)
     bank_expand_gelukt: bool = True
     rekeningen: list[dict[str, Any]] = field(default_factory=list)
@@ -106,8 +122,9 @@ class RlzBron:
     overgeslagen: list[str] = field(default_factory=list)
     regel_calls: int = 0
     regel_fouten: dict[str, str] = field(default_factory=dict)  # per rlz_id: melding
-    #: Blok 7b 13-09: documenten waarvan de regels via de collectie-expand meekwamen (geen losse call).
-    regels_via_collectie: int = 0
+    #: Blok 7c 13-09: documenten waarvan kop + regels via de document-vorm kwamen resp. via de `/Lines`-terugval.
+    regels_via_documentvorm: int = 0
+    regels_via_lines: int = 0
     #: Gezet zodra de RLZ-webfilter ná backoff nog blokkeert: "<route>: <melding>". Lezen stopt; rapport = ongeldig.
     blokkering: str | None = None
     #: Tempo-tellers van de client (als die een `Tempo` draagt): calls, webfilter-treffers (hervat), gewacht (s).
@@ -117,6 +134,16 @@ class RlzBron:
 
     def alle_documenten(self) -> list[tuple[str, dict[str, Any]]]:
         return [(pad, r) for pad, rijen in self.documenten.items() for r in rijen]
+
+    def rij_met_kop(self, rij: dict[str, Any]) -> dict[str, Any]:
+        """De collectie-rij aangevuld met de kop-velden uit de document-vorm (BookDate …); de rij zelf wint alleen als
+        de document-vorm het veld niet kent."""
+        rid = doc_id(rij)
+        kop = self.koppen.get(rid or "")
+        if not kop:
+            return rij
+        aanvulling = {k: kop[k] for k in KOP_AANVULLING_VELDEN if kop.get(k) is not None}
+        return {**rij, **aanvulling}
 
 
 # ---- classificatie van een document-rij (puur) -------------------------------------------------------
@@ -213,6 +240,8 @@ def documenttype_van(collectie: str, rij: dict[str, Any]) -> int | None:
 
 
 def _waarde_lijst(antwoord: Any) -> list[dict[str, Any]] | None:
+    """Regels uit een `/Lines`-antwoord (`value`-lijst) of uit een document-vorm (`DocumentLineList`); None = niet
+    mee."""
     if isinstance(antwoord, list):
         return [r for r in antwoord if isinstance(r, dict)]
     if isinstance(antwoord, dict):
@@ -223,41 +252,59 @@ def _waarde_lijst(antwoord: Any) -> list[dict[str, Any]] | None:
     return None
 
 
-def regel_routes(collectie: str, rij: dict[str, Any]) -> list[tuple[str, dict[str, str]]]:
-    """Kandidaat-routes (pad, params) voor de regels van één document, in volgorde van bewijs."""
-    rlz_id = doc_id(rij) or ""
+def _kop_uit(antwoord: Any) -> dict[str, Any] | None:
+    """De kop-velden van een document-vorm-antwoord (alles behalve de regel-lijst); None bij een `/Lines`-antwoord."""
+    if isinstance(antwoord, dict) and "value" not in antwoord and antwoord.get("id"):
+        return {k: v for k, v in antwoord.items() if k != "DocumentLineList"}
+    return None
+
+
+def documentpad_van(collectie: str, rij: dict[str, Any]) -> str:
+    """De collectie waaronder het document als record leeft (Receipts heeft geen record-route: DocumentType beslist)."""
     dt = documenttype_van(collectie, rij)
     if collectie in ("PurchaseInvoices", "SalesInvoices", "ManualJournals"):
-        return [(f"{collectie}/{rlz_id}/Lines", {"$expand": REGEL_EXPAND})]
-    if dt == DOCTYPE_BANK_DIRECT:
-        return [
-            (f"BankMutationDirectBookings/{rlz_id}/Lines", {"$expand": REGEL_EXPAND}),
-            (f"BankMutationDirectBookings/{rlz_id}", {"$expand": "DocumentLineList($expand=Account,TaxRate)"}),
-        ]
-    if dt == DOCTYPE_VERKOOP:
-        return [(f"SalesInvoices/{rlz_id}/Lines", {"$expand": REGEL_EXPAND})]
-    if dt == DOCTYPE_INKOOP:
-        return [(f"PurchaseInvoices/{rlz_id}/Lines", {"$expand": REGEL_EXPAND})]
-    if dt == DOCTYPE_MEMORIAAL:
-        return [(f"ManualJournals/{rlz_id}/Lines", {"$expand": REGEL_EXPAND})]
-    return [(f"SalesInvoices/{rlz_id}/Lines", {"$expand": REGEL_EXPAND})]
+        return collectie
+    return {
+        DOCTYPE_BANK_DIRECT: "BankMutationDirectBookings",
+        DOCTYPE_INKOOP: "PurchaseInvoices",
+        DOCTYPE_MEMORIAAL: "ManualJournals",
+    }.get(dt, "SalesInvoices")
 
 
-def lees_regels(client: LeesClient, collectie: str, rij: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, str]:
-    """(regels, route) — None = geen enkele route gaf regels (melding in de route-tekst)."""
+def regel_routes(collectie: str, rij: dict[str, Any]) -> list[tuple[str, dict[str, str], str]]:
+    """Kandidaat-routes (pad, params, soort) voor kop + regels van één document, in volgorde van bewijs: eerst de
+    document-vorm (kop mét BookDate + `DocumentLineList`), dan — alleen waar de Help-lijst 'm kent — `…/{id}/Lines`.
+    ManualJournals heeft géén Lines-route (404-HTML, STAP-0 13-09)."""
+    rlz_id = doc_id(rij) or ""
+    pad = documentpad_van(collectie, rij)
+    routes: list[tuple[str, dict[str, str], str]] = [
+        (f"{pad}/{rlz_id}", {"$expand": DOCUMENTVORM_EXPAND}, ROUTE_DOCUMENTVORM)
+    ]
+    if pad in LINES_ROUTE_COLLECTIES:
+        routes.append((f"{pad}/{rlz_id}/Lines", {"$expand": REGEL_EXPAND}, ROUTE_LINES))
+    return routes
+
+
+def lees_regels(
+    client: LeesClient, collectie: str, rij: dict[str, Any]
+) -> tuple[list[dict[str, Any]] | None, str, dict[str, Any] | None, str | None]:
+    """(regels, route-tekst, kop, soort) — regels None = geen enkele route gaf regels (melding in de route-tekst)."""
     laatste = "geen route"
-    for pad, params in regel_routes(collectie, rij):
+    for pad, params, soort in regel_routes(collectie, rij):
         try:
-            regels = _waarde_lijst(client.get(pad, params=params))
+            antwoord = client.get(pad, params=params)
         except RlzWebfilterError:
             raise  # blokkering: de aanroeper stopt de hele run (nooit doorrekenen met halve data)
         except RlzApiError as exc:
             laatste = f"{pad}: {exc.status_code} {exc.body[:80]}"
             continue
+        regels = _waarde_lijst(antwoord)
         if regels is not None:
-            return regels, pad
-        laatste = f"{pad}: antwoord zonder regels"
-    return None, laatste
+            return regels, pad, _kop_uit(antwoord) if soort == ROUTE_DOCUMENTVORM else None, soort
+        laatste = f"{pad}: antwoord zonder DocumentLineList/regels"
+    if documentpad_van(collectie, rij) == "ManualJournals":
+        laatste += " — ManualJournals/{id}/Lines bestaat niet in RLZ (404-HTML, STAP-0 13-09); geen terugval"
+    return None, laatste, None, None
 
 
 # ---- de bron -------------------------------------------------------------------------------------------
@@ -281,14 +328,6 @@ def _registreer(bron: RlzBron, uitkomst: LeesUitkomst, *, optioneel: bool = Fals
     return True
 
 
-def _regels_uit_rij(rij: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """`DocumentLineList` zoals de collectie-expand 'm geeft: lijst = regels (ook leeg), anders None (niet mee)."""
-    lijst = rij.get("DocumentLineList")
-    if isinstance(lijst, list):
-        return [r for r in lijst if isinstance(r, dict)]
-    return None
-
-
 def _tempo_tellers(bron: RlzBron, client: LeesClient) -> None:
     tempo = getattr(client, "tempo", None)
     if tempo is None:
@@ -304,9 +343,9 @@ def lees_bron(
     regels_lezen: bool = True,
     voortgang: Callable[[str], None] | None = None,
 ) -> RlzBron:
-    """Alles lezen, niets schrijven. Volgorde: documenten (mét regels via de collectie-expand) → bank (voor de huls-
-    regel) → regels per document alleen voor GEBOEKTE documenten zónder meegekomen regels → rekeningen + statements →
-    journaalregels → ledgers/taxrates. Een webfilter-blokkering stopt de reeks direct (`bron.blokkering`)."""
+    """Alles lezen, niets schrijven. Volgorde: documenten (collecties, alleen relaties) → bank (voor de huls-regel) →
+    kop + regels per GEBOEKT document via de document-vorm (in tempo) → rekeningen + statements → journaalregels →
+    ledgers/taxrates. Een webfilter-blokkering stopt de reeks direct (`bron.blokkering`)."""
     bron = RlzBron()
     melden = voortgang or (lambda t: logger.info("vgg-replay: %s", t))
 
@@ -318,30 +357,12 @@ def lees_bron(
         return False
 
     for pad, basis in DOCUMENT_COLLECTIES:
-        uitkomst = lees_collectie(client, pad, expand=collectie_expand(basis), expand_terugval=(basis,))
+        uitkomst = lees_collectie(client, pad, expand=basis)
         if not _registreer(bron, uitkomst):
             if geblokkeerd():
                 return bron
             continue
         bron.documenten[pad] = uitkomst.rijen
-        if regels_lezen:
-            met_regels = 0
-            for r in uitkomst.rijen:
-                rid = doc_id(r)
-                if not rid or not is_geboekt(r):
-                    continue
-                regels = _regels_uit_rij(r)
-                if regels is not None:
-                    bron.regels[rid] = regels
-                    bron.regels_route[rid] = ROUTE_COLLECTIE_EXPAND
-                    met_regels += 1
-            bron.regels_via_collectie += met_regels
-            geboekt = sum(1 for r in uitkomst.rijen if is_geboekt(r) and doc_id(r))
-            if geboekt and met_regels == 0:
-                bron.overgeslagen.append(
-                    f"{pad}: $expand={uitkomst.expand_gebruikt or '—'} gaf geen DocumentLineList — regels per document "
-                    f"gelezen ({geboekt} calls, in tempo)"
-                )
     receipts = lees_collectie(client, RECEIPTS)
     if _registreer(bron, receipts, optioneel=True):
         bekend = {doc_id(r) for rijen in bron.documenten.values() for r in rijen}
@@ -357,32 +378,36 @@ def lees_bron(
         return bron
 
     if regels_lezen:
-        te_lezen = [
-            (pad, r)
-            for pad, r in bron.alle_documenten()
-            if is_geboekt(r) and doc_id(r) and doc_id(r) not in bron.regels
-        ]
-        melden(
-            f"regels: {bron.regels_via_collectie} documenten via de collectie-expand; "
-            f"{len(te_lezen)} per document te lezen (in tempo)"
-        )
+        te_lezen = [(pad, r) for pad, r in bron.alle_documenten() if is_geboekt(r) and doc_id(r)]
+        melden(f"regels: {len(te_lezen)} geboekte documenten per document te lezen (document-vorm, in tempo)")
         for n, (pad, r) in enumerate(te_lezen, start=1):
             rid = doc_id(r) or ""
             try:
-                regels, route = lees_regels(client, pad, r)
+                regels, route, kop, soort = lees_regels(client, pad, r)
             except RlzWebfilterError as exc:
-                bron.blokkering = f"{pad}/{rid}/Lines: webfilter 403 ná backoff — {exc.body[:160]}"
-                bron.fouten.append(Fout(route=f"{pad}/{{id}}/Lines", status=403, melding=BLOKKERING_TEKST))
+                bron.blokkering = f"{documentpad_van(pad, r)}/{rid}: webfilter 403 ná backoff — {exc.body[:160]}"
+                bron.fouten.append(
+                    Fout(route=f"{documentpad_van(pad, r)}/{{id}}", status=403, melding=BLOKKERING_TEKST)
+                )
                 geblokkeerd()
                 return bron
             bron.regel_calls += 1
             if regels is None:
                 bron.regel_fouten[rid] = route
+                continue
+            bron.regels[rid] = regels
+            bron.regels_route[rid] = route
+            if soort == ROUTE_DOCUMENTVORM:
+                bron.regels_via_documentvorm += 1
+                if kop:
+                    bron.koppen[rid] = kop
             else:
-                bron.regels[rid] = regels
-                bron.regels_route[rid] = route
+                bron.regels_via_lines += 1
             if n % VOORTGANG_STAP == 0 or n == len(te_lezen):
-                melden(f"regels: {n}/{len(te_lezen)} documenten per document ({len(bron.regel_fouten)} zonder regels)")
+                melden(
+                    f"regels: {n}/{len(te_lezen)} documenten ({bron.regels_via_documentvorm} document-vorm, "
+                    f"{bron.regels_via_lines} via /Lines, {len(bron.regel_fouten)} zonder regels)"
+                )
 
     rekeningen = lees_collectie(client, "PaymentAccounts")
     if _registreer(bron, rekeningen):
@@ -452,20 +477,28 @@ def journaalregel_datum(regel: dict[str, Any]) -> date | None:
     )
 
 
+def journaalregel_documenttype(regel: dict[str, Any]) -> int | None:
+    """`JournalEntry.DocumentType` (1 inkoop, 10 verkoop/receipt, 11 memoriaal, …) — het enige soort-kenmerk dat een
+    journaalregel draagt (STAP-0 13-09)."""
+    je = regel.get("JournalEntry")
+    if isinstance(je, dict):
+        return als_int(je.get("DocumentType"))
+    return als_int(regel.get("DocumentType"))
+
+
+def journaalregel_journaalpost_id(regel: dict[str, Any]) -> str | None:
+    je = regel.get("JournalEntry")
+    return ref_id(je) if isinstance(je, dict) else None
+
+
 def journaalregel_bron_id(regel: dict[str, Any]) -> str | None:
-    """Het document/de mutatie waar de journaalregel bij hoort: `Document.id`, `DocumentId`, anders
-    `JournalEntry.EventID` (AANNAME: EventID = bron-id; het rapport meldt hoeveel regels géén bekend brondocument
-    treffen, dus een verkeerde aanname is zichtbaar, nooit stil)."""
+    """Het document/de mutatie waar de journaalregel bij hoort — ALLEEN als RLZ ooit een expliciete verwijzing
+    (`Document.id`, `SourceDocument.id`, `DocumentId`) zou meegeven. `JournalEntry.EventID` is GEEN bron-id maar een
+    soortcode (int; STAP-0 13-09) en telt hier bewust niet — op de huidige API geeft dit dus altijd None."""
     for sleutel in ("Document", "SourceDocument"):
         rid = ref_id(regel.get(sleutel))
         if rid:
             return rid
-    for sleutel in ("DocumentId", "EventID", "EventId"):
-        if regel.get(sleutel):
-            return str(regel[sleutel])
-    je = regel.get("JournalEntry")
-    if isinstance(je, dict):
-        for sleutel in ("EventID", "EventId", "DocumentId"):
-            if je.get(sleutel):
-                return str(je[sleutel])
+    if regel.get("DocumentId"):
+        return str(regel["DocumentId"])
     return None

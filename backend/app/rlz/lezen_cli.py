@@ -9,7 +9,10 @@ Waarborgen (hard, getest in tests/rlz/test_rlz_lezen_cli.py):
   * UITSLUITEND GET — `LeesOnlyClient` weigert élke andere methode met `SchrijfGeweigerd`; `put`/`post_action` bestaan
     niet meer als werkend pad. Een pad met een `Actions`-segment (RLZ's actie-route, óók de GET-lijst), `Download`
     (binair), `$metadata`, een `?`/`$`-query of `..` wordt vóór de eerste call geweigerd (exit 2).
-  * `--top` ≤ 50 (afgedwongen, exit 2 daarboven) — een nameting is een steekproef, geen export.
+  * `--top` ≤ 50 (afgedwongen, exit 2 daarboven) — een nameting is een steekproef, geen export. Een RECORD-pad
+    (laatste segment is een GUID, bv. `ManualJournals/<guid>`) krijgt GEEN `$top`/`$filter`/`$orderby`/`$count` mee —
+    RLZ weigert die op een record (400 "The requested resource is not a collection", STAP-0 13-09); alleen `$expand`
+    gaat mee en de melding daarover staat op stderr (blok 7c 13-09).
   * Uitvoer ALTIJD geanonimiseerd (de uitvoer landt in Cloud Logging): GUID's → eerste 8 tekens, IBAN's → laatste 4,
     naamvelden → initialen; bedragen, datums, enum-waarden en referenties blijven. `--anonimiseer` is een expliciete
     (no-op) bevestiging — er is bewust geen schakelaar om het uit te zetten.
@@ -32,7 +35,8 @@ RLZ_LEZEN_COMMANDO = "rlz-lezen"
 MAX_TOP = 50
 GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 # Nameting 11-09: een IBAN in een bestandsnaam (`NL..INGB…_260908.xml`, Batch.FileName op de C.V.) eindigt op `_` — een
-# woordteken — waardoor `\b` niet matchte en de IBAN leesbaar in Cloud Logging landde. Grenzen daarom als "geen letter/cijfer".
+# woordteken — waardoor `\b` niet matchte en de IBAN leesbaar in Cloud Logging landde. Grenzen daarom als "geen
+# letter/cijfer".
 IBAN_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}[A-Z0-9]{8,30}(?![A-Za-z0-9])")
 NAAM_SLEUTELS = frozenset(
     {
@@ -129,10 +133,22 @@ def anonimiseer(obj: Any, sleutel: str | None = None) -> Any:
     return obj
 
 
+def is_recordpad(pad: str) -> bool:
+    """`Collectie/<guid>` (laatste segment een GUID) = één record; `Collectie/<guid>/Lines` blijft een collectie."""
+    laatste = pad.strip("/").split("/")[-1]
+    return GUID_RE.fullmatch(laatste) is not None
+
+
 def bouw_params(args: argparse.Namespace) -> dict[str, str]:
     top = int(args.top)
     if top < 1 or top > MAX_TOP:
         raise OngeldigPad(f"--top moet tussen 1 en {MAX_TOP} liggen (nameting = steekproef), kreeg {top}")
+    if is_recordpad(getattr(args, "pad", "") or ""):
+        # blok 7c 13-09: op een record weigert RLZ élke collectie-optie (400) — alleen $expand is zinvol
+        params_record: dict[str, str] = {}
+        if getattr(args, "expand", None):
+            params_record["$expand"] = args.expand
+        return params_record
     params: dict[str, str] = {"$top": str(top)}
     if getattr(args, "expand", None):
         params["$expand"] = args.expand
@@ -207,6 +223,12 @@ def run_rlz_lezen(args: argparse.Namespace, *, zoek=None, client_factory=None, u
     except OngeldigPad as exc:
         print(f"rlz-lezen: {exc}", file=sys.stderr)
         return 2
+    if is_recordpad(pad):
+        print(
+            "rlz-lezen: recordpad — $top/$filter/$orderby/$count niet meegegeven (RLZ weigert die op één record); "
+            "alleen $expand",
+            file=sys.stderr,
+        )
     treffers = zoek(args.administratie)
     if len(treffers) != 1:
         namen = ", ".join(n for _, n, _ in treffers[:10]) or "geen"

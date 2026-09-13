@@ -91,7 +91,7 @@ def test_groen_exit_0_met_odoo_rekeningen_en_json(
     assert client.gesloten is True
     data = json.loads(uit.read_text(encoding="utf-8"))
     assert data["groen"] is True and data["administratie_naam"] == "Vastgoedgroep Nederland B.V."
-    assert "8 per document te lezen (in tempo)" in out.err  # voortgang naar stderr
+    assert "regels: 8 geboekte documenten per document te lezen (document-vorm, in tempo)" in out.err  # voortgang
 
 
 def test_rood_exit_1_bij_ongemapte_rekening(

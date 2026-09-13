@@ -6,7 +6,14 @@ bank, status, reden):
   overgenomen): facturen dragen `ref` = het KALE RLZ-factuur-/boekstuknummer (`Reference`, anders `ReceiptNumber`) en
   het anker `mig:<anker>` in `invoice_origin`; memorialen dragen het anker in `ref`; bankregels in `unique_import_id`
   (`ref` = kale TransactionId). Zoek-vóór-create per type op dát veld (`odoo_schrijf.zoek_move_op_anker`).
-- `date` = `invoice_date` = RLZ `BookDate`; terugval `Date` is zichtbaar in `reden` ("BookDate ontbreekt → Date").
+- `date` = `invoice_date` = RLZ `BookDate` — die staat NIET op de PurchaseInvoices-collectie maar wél op de
+  document-vorm (`rlz_bron.RlzBron.koppen`, blok 7c 13-09); de replay geeft de collectie-rij aangevuld met die kop
+  door. Terugval `Date` blijft zichtbaar in `reden` ("BookDate ontbreekt → Date") én telt
+  (`Vertaald.boekdatum_herkomst`).
+- partner (blok 7c punt 6): uit `Entity`; ontbreekt die (bank-directe reeksen RLZ-15/16/17/19/25, Receipts zonder
+  Entity) dan uit de TEGENPARTIJ van de gekoppelde bankmutatie (naam + IBAN, `PartnerVoorstel.herkomst == "bank"`);
+  blijft hij onbekend dan is dat een BESLISPUNT voor Peter (vaste partner "Bank-direct (onbekend)" óf concept
+  blokkeren), nooit een gok.
 - grootboek per regel via `app.odoo.rj220.vertaal_grootboek` (agent C, lazy) — fallback
 `mapping.bepaal_grootboek_voorstel`
   (zelfde code / code+"00"); ongemapt = geen gok → `niet_vertaalbaar`.
@@ -181,6 +188,21 @@ class PartnerVoorstel:
     iban: str | None
     sleutel: str  # kvk | btw | iban | naam | geen
     voorstel: str  # "nieuw (res.partner)" | "onbekend" | "n.v.t."
+    #: Blok 7c punt 6: waar de partner vandaan komt — "entity" (RLZ-relatie), "bank" (tegenpartij van de gekoppelde
+    #: bankmutatie: naam + IBAN), "geen".
+    herkomst: str = "entity"
+    bron_tekst: str | None = None  # bv. "bankmutatie 00106"
+
+
+@dataclass(frozen=True)
+class BankTegenpartij:
+    """Tegenpartij (Name + CounterAccount) van de bankmutatie(s) die een document betalen — één deterministische waarde:
+    alle mutaties dezelfde naam → die naam; verschillende namen → None mét reden (nooit gokken)."""
+
+    naam: str | None
+    iban: str | None
+    boekstuk: str | None  # TransactionId van de (eerste) mutatie
+    reden: str | None = None  # gevuld als er géén eenduidige tegenpartij is
 
 
 @dataclass
@@ -199,6 +221,11 @@ class Vertaald:
     btw_bedrag: Decimal = NUL  # Σ btw (debet − credit) naar de afwikkelrol
     ob_afwikkeling: bool = False  # een regel op een RLZ-btw-grootboek (OB-aangifte/-teruggaaf) → afwikkelrol
     som_verschil: Decimal | None = None  # Σ regels − documenttotaal (≠ 0 = melden, nooit stil afronden)
+    #: Blok 7c 13-09
+    boekdatum_herkomst: str | None = None  # "BookDate" | "Date" (terugval) | None (geen datum)
+    btw_code_zonder_bedrag: int = 0  # regels mét een TaxRate-verwijzing maar TaxAmount 0 (de teller van blok 7)
+    koopsom_regel: int | None = None  # index van de koopsom-regel (rol voorraad_panden) bij soort aankoop
+    zonder_regels: bool = False  # regels niet leesbaar (document telt in "ONVOLLEDIG")
 
 
 @dataclass
@@ -211,6 +238,25 @@ class Context:
     panden: dict[uuid.UUID, PandToewijzing]
     #: RLZ-ledger-id's die een btw-rekening zijn (naam-regex op Ledgers + Account-refs van TaxRates) — blok 7b 13-09.
     btw_ledgers: frozenset[str] = frozenset()
+    #: RLZ-ledger-id's van VASTE ACTIVA (Ledgers.IsFixedAssetAccount, anders AccountType 3 mét rubriek-0-code zoals 0101
+    #: Gebouwen en terreinen) — regels daarop koppelen NOOIT aan een pand (blok 7c punt 4, besluit Peter 13-09).
+    vaste_activa_ledgers: frozenset[str] = frozenset()
+
+
+def vaste_activa_uit(ledgers: list[dict[str, Any]]) -> frozenset[str]:
+    """Deterministisch: `IsFixedAssetAccount` True, óf activa (AccountType 3) met een rubriek-0-code (NL-schema: vaste
+    activa). Voorraad 1100, aanbetalingen 1405 en bank 1001 vallen er dus buiten."""
+    uit: set[str] = set()
+    for r in ledgers:
+        rid = rlz_bron.doc_id(r)
+        if not rid:
+            continue
+        code = str(r.get("AccountNumber") or "")
+        if r.get("IsFixedAssetAccount") is True or (
+            als_int(r.get("AccountType")) == LEDGERTYPE_ACTIVA and code[:1] == "0"
+        ):
+            uit.add(rid)
+    return frozenset(uit)
 
 
 # ---- ankers ----------------------------------------------------------------------------------------------
@@ -381,17 +427,60 @@ def _eerste(entity: dict[str, Any], *sleutels: str) -> str | None:
     return None
 
 
-def partner_voorstel(rij: dict[str, Any], *, nodig: bool) -> PartnerVoorstel:
+def partner_voorstel(
+    rij: dict[str, Any], *, nodig: bool, bank_tegenpartij: BankTegenpartij | None = None
+) -> PartnerVoorstel:
     entity = rij.get("Entity") if isinstance(rij.get("Entity"), dict) else {}
     _, naam = entity_van(rij)
     if not nodig and not entity:
-        return PartnerVoorstel(None, None, None, None, "geen", "n.v.t.")
+        return PartnerVoorstel(None, None, None, None, "geen", "n.v.t.", herkomst="geen")
     kvk = _eerste(entity, "ChamberOfCommerceNumber", "CoCNumber", "KvkNumber", "RegistrationNumber")
     btw = _eerste(entity, "VatNumber", "TaxNumber", "VATNumber")
     iban = _eerste(entity, "IBAN", "BankAccount", "BankAccountNumber")
     sleutel = "kvk" if kvk else "btw" if btw else "iban" if iban else "naam" if naam else "geen"
-    voorstel = "nieuw (res.partner)" if sleutel != "geen" else "onbekend"
-    return PartnerVoorstel(naam=naam, kvk=kvk, btw=btw, iban=iban, sleutel=sleutel, voorstel=voorstel)
+    if sleutel != "geen":
+        return PartnerVoorstel(naam=naam, kvk=kvk, btw=btw, iban=iban, sleutel=sleutel, voorstel="nieuw (res.partner)")
+    # blok 7c punt 6: geen Entity → de tegenpartij van de bankmutatie die dit document betaalt (naam + IBAN)
+    if bank_tegenpartij is not None and (bank_tegenpartij.naam or bank_tegenpartij.iban):
+        b_sleutel = "iban" if bank_tegenpartij.iban else "naam"
+        return PartnerVoorstel(
+            naam=bank_tegenpartij.naam,
+            kvk=None,
+            btw=None,
+            iban=bank_tegenpartij.iban,
+            sleutel=b_sleutel,
+            voorstel="nieuw (res.partner)",
+            herkomst="bank",
+            bron_tekst=f"bankmutatie {bank_tegenpartij.boekstuk or '?'}",
+        )
+    reden = bank_tegenpartij.reden if bank_tegenpartij is not None else None
+    return PartnerVoorstel(None, None, None, None, "geen", "onbekend", herkomst="geen", bron_tekst=reden)
+
+
+def bank_tegenpartijen(bank: list[dict[str, Any]]) -> dict[str, BankTegenpartij]:
+    """Per document-id (uit `PaymentReferenceList.Document`) de tegenpartij van de betalende bankmutatie(s):
+    één naam → die naam + IBAN (eerste mutatie op datum); meerdere verschillende namen → geen tegenpartij, mét reden."""
+    per_doc: dict[str, list[tuple[str, str | None, str | None, str | None]]] = {}
+    for tx in bank:
+        naam = tx.get("Name") if isinstance(tx.get("Name"), str) and tx.get("Name").strip() else None
+        iban = tx.get("CounterAccount") if isinstance(tx.get("CounterAccount"), str) and tx["CounterAccount"] else None
+        boekstuk = str(tx.get("TransactionId") or "") or None
+        datum = str(tx.get("BookDate") or tx.get("Date") or "")
+        for pr in tx.get("PaymentReferenceList") or []:
+            doc = pr.get("Document") if isinstance(pr, dict) and isinstance(pr.get("Document"), dict) else None
+            did = rlz_bron.doc_id(doc) if doc else None
+            if did:
+                per_doc.setdefault(did, []).append((datum, " ".join(naam.split()) if naam else None, iban, boekstuk))
+    uit: dict[str, BankTegenpartij] = {}
+    for did, lijst in per_doc.items():
+        lijst.sort()
+        namen = {n.lower() for _, n, _, _ in lijst if n}
+        if len(namen) > 1:
+            uit[did] = BankTegenpartij(None, None, lijst[0][3], reden=f"tegenpartijen verschillen ({len(namen)} namen)")
+            continue
+        _, naam, iban, boekstuk = next(((d, n, i, b) for d, n, i, b in lijst if n or i), lijst[0])
+        uit[did] = BankTegenpartij(naam, iban, boekstuk)
+    return uit
 
 
 # ---- document → move -------------------------------------------------------------------------------------------
@@ -411,13 +500,20 @@ def move_type_voor(collectie: str, rij: dict[str, Any]) -> str:
 
 def _datum(rij: dict[str, Any]) -> tuple[str | None, str | None]:
     """(iso-datum, terugval-melding)."""
+    datum, melding, _herkomst = _datum_met_herkomst(rij)
+    return datum, melding
+
+
+def _datum_met_herkomst(rij: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    """(iso-datum, terugval-melding, herkomst "BookDate"/"Date"/None) — blok 7c punt 3: de herkomst telt in het
+    rapport."""
     bd = als_datum(rij.get("BookDate"))
     if bd:
-        return bd.isoformat(), None
+        return bd.isoformat(), None, "BookDate"
     d = als_datum(rij.get("Date"))
     if d:
-        return d.isoformat(), "BookDate ontbreekt → Date"
-    return None, "geen BookDate en geen Date"
+        return d.isoformat(), "BookDate ontbreekt → Date", "Date"
+    return None, "geen BookDate en geen Date", None
 
 
 def _netto_en_btw(regel: dict[str, Any]) -> tuple[Decimal, Decimal] | None:
@@ -464,19 +560,24 @@ def _kies_rolregel(
 
 
 def vertaal_document(
-    ctx: Context, collectie: str, rij: dict[str, Any], regels: list[dict[str, Any]] | None
+    ctx: Context,
+    collectie: str,
+    rij: dict[str, Any],
+    regels: list[dict[str, Any]] | None,
+    *,
+    bank_tegenpartij: BankTegenpartij | None = None,
 ) -> Vertaald:
     rlz_id = rlz_bron.doc_id(rij) or ""
     boekstuk = rlz_bron.boekstuk_van(rij)
     anker = anker_voor(ctx.administratie_id, rlz_id)
     move_type = move_type_voor(collectie, rij)
-    datum, datum_melding = _datum(rij)
+    datum, datum_melding, datum_herkomst = _datum_met_herkomst(rij)
     bedrag = als_bedrag(rij.get("BaseInvoiceAmount"))
     redenen: list[str] = []
     if datum_melding:
         redenen.append(datum_melding)
     pand = ctx.panden.get(uuid.UUID(rlz_id)) if _is_uuid(rlz_id) else None
-    partner = partner_voorstel(rij, nodig=move_type not in ("entry", "bank_direct"))
+    partner = partner_voorstel(rij, nodig=move_type not in ("entry", "bank_direct"), bank_tegenpartij=bank_tegenpartij)
     uit = Vertaald(
         move=MoveVoorstel(
             str(anker),
@@ -495,12 +596,14 @@ def vertaal_document(
         bedrag=bedrag,
         open_bedrag=als_bedrag(rij.get("BaseRemainingAmount")),
         entity_id=entity_van(rij)[0],
+        boekdatum_herkomst=datum_herkomst,
     )
     status = STATUS_VERTAALBAAR
     if datum is None:
         status = STATUS_NIET
     if regels is None:
         status = STATUS_NIET
+        uit.zonder_regels = True
         redenen.append("regels niet leesbaar")
         regels = []
     elif not regels:
@@ -518,6 +621,8 @@ def vertaal_document(
             rol_naam = ROL_PER_SOORT.get(pand.soort)
             if rol_naam:
                 rol_index = _kies_rolregel(regels, orienteer(regels, move_type), ctx, pand.soort)
+                if pand.soort == "aankoop":
+                    uit.koopsom_regel = rol_index
                 if getattr(ctx.rollen, rol_naam) is None:
                     status = STATUS_NIET
                     redenen.append(f"rol-rekening {rol_naam} niet ingesteld")
@@ -548,6 +653,8 @@ def vertaal_document(
         else:
             d, c = _orienteer_bedrag(netto_btw[0], move_type)
             t_d, t_c = _orienteer_bedrag(netto_btw[1], move_type)
+            if not (t_d or t_c) and rlz_bron.ref_id(r.get("TaxRate")) is not None:
+                uit.btw_code_zonder_bedrag += 1  # btw-code (bv. "Geen BTW"/0 %) zonder bedrag — blok 7 telde dit mee
         som += (d_tot - c_tot) if move_type in ("in_invoice", "in_refund", "entry", "bank_direct") else (c_tot - d_tot)
         if rol_index is not None and i == rol_index and rol_naam:
             rol_id = getattr(ctx.rollen, rol_naam)
@@ -678,9 +785,15 @@ def vertaal_document(
         if vervaldatum:
             vals["invoice_date_due"] = vervaldatum.isoformat()
             vals["invoice_payment_term_id"] = False
-        redenen.append(
-            f"partner {partner.voorstel}" + (f" [{partner.sleutel}: {partner.naam}]" if partner.naam else "")
-        )
+        p_tekst = f"partner {partner.voorstel}"
+        if partner.naam:
+            p_tekst += f" [{partner.sleutel}: {partner.naam}]"
+        if partner.herkomst == "bank":
+            p_tekst += f" — uit {partner.bron_tekst}"
+        elif partner.voorstel == "onbekend":
+            p_tekst += " — geen Entity" + (f", {partner.bron_tekst}" if partner.bron_tekst else ", geen bankmutatie")
+            p_tekst += " (beslispunt Peter: vaste partner 'Bank-direct (onbekend)' of concept blokkeren)"
+        redenen.append(p_tekst)
     if omschrijving:
         vals["narration"] = omschrijving
     if uit.ongemapt:
@@ -716,7 +829,7 @@ def vertaal_bankregel(
 ) -> Vertaald:
     rlz_id = rlz_bron.doc_id(tx) or ""
     anker = anker_voor(ctx.administratie_id, rlz_id)
-    datum, datum_melding = _datum(tx)
+    datum, datum_melding, datum_herkomst = _datum_met_herkomst(tx)
     bedrag = als_bedrag(tx.get("Amount")) or NUL
     open_bedrag = als_bedrag(tx.get("OpenAmount"))
     rekening = tx.get("PaymentAccount") if isinstance(tx.get("PaymentAccount"), dict) else {}
@@ -844,6 +957,7 @@ def vertaal_bankregel(
         bedrag=bedrag,
         open_bedrag=open_bedrag,
         pand=ctx.panden.get(uuid.UUID(rlz_id)) if _is_uuid(rlz_id) else None,  # blok 7b punt 5: één bron
+        boekdatum_herkomst=datum_herkomst,
     )
     return uit
 

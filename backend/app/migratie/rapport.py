@@ -10,7 +10,16 @@ aanbetalingen/kosten/verkoop/marge; tabellen niet vertaalbaar / zonder pand / on
 btw-teller;
 voorstel `account.bank.statement` per maand met `balance_end_real` uit /Statements (beslispunt Peter); blok
 "EXPORT juli 2025" (eerste 3 vertaalbare per type als compacte JSON). GROEN alleen als álle geschoonde verschillen 0,00,
-niets niet-vertaalbaar, geen leesfouten. Geen writes."""
+niets niet-vertaalbaar, geen leesfouten. Geen writes.
+
+Blok 7c 13-09: oordeel **"ONVOLLEDIG — niet doorrekenen"** zodra ≥ 1 geboekt document geen leesbare regels heeft
+(lijst `onvolledig`; saldibalans/open posten/per pand/statements/btw/export ontbreken dan bewust). Saldibalans:
+rekeningen in een afletter-/tegenzijde-GROEP (crediteuren, debiteuren, bank, tussenrekening — `afletter_groepen`)
+tellen niet per rekening maar per groep in het oordeel (de dry-run simuleert geen reconcile; keuze (b) van punt 7).
+Per pand: aankoop/kosten/ verkoop uit grootboek-regels, notaris-ontvangst apart (alleen bank), controle + signalen.
+Partners: teller "uit bankmutatie" + BESLISPUNT Peter voor de rest. Btw: tweede bron (journaalregels op btw-
+grootboeken) + btw-code-zonder- bedrag. Journaal: per DocumentType journaalposten ↔ geboekte documenten (er is geen
+koppeling per regel)."""
 
 from __future__ import annotations
 
@@ -40,7 +49,11 @@ BESLISPUNTEN = (
     "Verrekening factuur↔creditnota: het paar is AFGELEID uit bedrag + relatie (RLZ open 0, berekend ±X); de RLZ-"
     "leesroute van actie 34 is niet bewezen — STAP-0 via `rlz-lezen` op zo'n document (PaymentTermList/expand) "
     "als Peter het spoor uit RLZ zelf wil.",
+    "Partners zonder Entity én zonder bankmutatie (blok 7c punt 6, BESLISPUNT PETER — niet zelf ingevuld): één vaste "
+    "partner 'Bank-direct (onbekend)' óf het concept blokkeren tot een mens de partner kiest. De teller 'onbekend' in "
+    "het rapport is de omvang; de tegenpartij van de bankmutatie is al benut waar die er is.",
 )
+ONVOLLEDIG_OORDEEL = "ONVOLLEDIG — niet doorrekenen"
 
 
 @dataclass
@@ -77,24 +90,35 @@ class ReplayRapport:
     som_verschillen: list[dict[str, Any]] = field(default_factory=list)  # Σ regels ≠ documenttotaal (punt 4)
     saldo_toets: list[dict[str, Any]] = field(default_factory=list)  # berekend banksaldo per journal (punt 3)
     btw: dict[str, Any] = field(default_factory=dict)  # afwikkelrol: afmeldingsdatum + restsaldo (besluit 13-09)
+    # ---- blok 7c 13-09 ----
+    onvolledig: list[dict[str, Any]] = field(default_factory=list)  # geboekte documenten zonder leesbare regels
+    afletter_groepen: list[dict[str, Any]] = field(default_factory=list)  # groepstoets (punt 7, keuze b)
 
     # ---- oordeel ----
     @property
     def verschillen(self) -> int:
+        """Rekeningen buiten een groep per rekening; groepsleden alleen op groepsniveau (blok 7c punt 7 b)."""
         n = sum(
-            1 for r in self.saldibalans if r["verschil_jaareinde_geschoond"] != 0 or r["verschil_tot_geschoond"] != 0
+            1
+            for r in self.saldibalans
+            if r.get("groep") is None and (r["verschil_jaareinde_geschoond"] != 0 or r["verschil_tot_geschoond"] != 0)
         )
+        n += sum(1 for g in self.afletter_groepen if g["verschil_jaareinde"] != 0 or g["verschil_tot"] != 0)
         n += sum(1 for r in self.open_posten if r["verschil"] != 0)
         return n
+
+    @property
+    def onvolledig_oordeel(self) -> bool:
+        return self.blokkering is None and (bool(self.onvolledig) or int(self.tellers.get("regel_fouten", 0)) > 0)
 
     @property
     def groen(self) -> bool:
         return (
             self.blokkering is None
+            and not self.onvolledig_oordeel
             and not self.fouten
             and not self.niet_vertaalbaar
             and self.verschillen == 0
-            and int(self.tellers.get("regel_fouten", 0)) == 0
             and not self.som_verschillen
         )
 
@@ -102,6 +126,8 @@ class ReplayRapport:
     def oordeel(self) -> str:
         if self.blokkering:
             return "ROOD — RLZ-blokkering — meting ongeldig"
+        if self.onvolledig_oordeel:
+            return ONVOLLEDIG_OORDEEL
         return "GROEN" if self.groen else "ROOD"
 
     # ---- uitvoer ----
@@ -138,6 +164,8 @@ class ReplayRapport:
             "verrekeningen": self.verrekeningen,
             "som_verschillen": self.som_verschillen,
             "btw": self.btw,
+            "onvolledig": self.onvolledig,
+            "afletter_groepen": self.afletter_groepen,
             "export": self.export,
             "export_melding": self.export_melding,
             "beslispunten": list(BESLISPUNTEN),
@@ -215,8 +243,10 @@ def als_markdown(r: ReplayRapport) -> str:
     L.append(
         f"RLZ-calls: {_of(t0.get('rlz_calls'))} (webfilter-treffers hervat: {_of(t0.get('webfilter_treffers'))}, "
         f"gewacht {_of(t0.get('gewacht_seconden'))} s); "
-        f"regels via collectie-expand: {t0.get('regels_via_collectie', 0)} documenten, per document: "
-        f"{t0.get('regel_calls', 0)} calls ({t0.get('regel_fouten', 0)} zonder regels)."
+        f"regels per document: {t0.get('regel_calls', 0)} calls — {t0.get('regels_via_documentvorm', 0)} via de "
+        f"document-vorm (kop mét BookDate + DocumentLineList), {t0.get('regels_via_lines', 0)} via /Lines-terugval, "
+        f"{t0.get('regel_fouten', 0)} zonder regels. BookDate: {t0.get('bookdate_uit_document', 0)} documenten uit het "
+        f"document, {t0.get('bookdate_terugval_date', 0)} terugval op Date."
     )
     if r.doel:
         L.append("Doel: " + ", ".join(f"{k} {v if v is not None else '—'}" for k, v in r.doel.items()) + ".")
@@ -230,6 +260,21 @@ def als_markdown(r: ReplayRapport) -> str:
         L.append("")
         L.append("_Niets doorgerekend: saldibalans, open posten, per pand en export ontbreken bewust (halve data)._")
         return "\n".join(L).rstrip() + "\n"
+    if r.onvolledig:
+        L += ["", f"#### {ONVOLLEDIG_OORDEEL} — {len(r.onvolledig)} geboekt(e) document(en) zonder leesbare regels", ""]
+        L.append(
+            "_Geen saldibalans-toets, open posten, per pand, statements, btw of export op halve regel-data. Eerst de "
+            "regelroute herstellen (rlz_bron.regel_routes), dan opnieuw meten._"
+        )
+        L.append("")
+        _tabel(
+            L,
+            ["Boekstuk", "Type", "Datum", "Bedrag", "Route (letterlijk RLZ-antwoord)"],
+            [
+                [_md(x["boekstuk"]), _md(x["move_type"]), _md(x["date"]), _eur(x["bedrag"]), _md(x["route"])]
+                for x in r.onvolledig
+            ],
+        )
 
     t = r.tellers
     L += ["", "#### Tellers", ""]
@@ -256,8 +301,13 @@ def als_markdown(r: ReplayRapport) -> str:
     L.append(
         f"Btw-teller: {t.get('btw_regels', 0)} regel(s) mét TaxAmount ≠ 0 in {t.get('btw_documenten', 0)} document(en) "
         "→ allemaal als balansregel naar 'Btw-afwikkeling historisch' zonder tax_ids (besluit Peter 13-09: VGG niet "
-        "btw-plichtig, foute registratie Belastingdienst). "
-        f"Partners: {t.get('partners_nieuw', 0)} nieuw (res.partner), {t.get('partners_onbekend', 0)} onbekend."
+        f"btw-plichtig, foute registratie Belastingdienst); {t.get('btw_code_zonder_bedrag', 0)} regel(s) dragen een "
+        "btw-code (TaxRate) met bedrag 0 — dat was de teller van blok 7 (883), geen btw."
+    )
+    L.append(
+        f"Partners: {t.get('partners_nieuw', 0)} nieuw (res.partner), waarvan {t.get('partners_uit_bank', 0)} uit de "
+        f"tegenpartij van de bankmutatie (naam + IBAN); {t.get('partners_onbekend', 0)} onbekend (geen Entity, geen "
+        "bankmutatie) — BESLISPUNT PETER: vaste partner 'Bank-direct (onbekend)' óf concept blokkeren (niet ingevuld)."
     )
     b = r.btw
     if b:
@@ -273,6 +323,12 @@ def als_markdown(r: ReplayRapport) -> str:
             f"- Btw-regels: {b.get('btw_regels', 0)} in {b.get('documenten_met_btw', 0)} document(en), "
             f"Σ btw (debet − credit) {_eur(b.get('btw_bedrag_totaal'))}; OB-afwikkelboekingen op een "
             f"RLZ-btw-grootboek: {b.get('documenten_ob_afwikkeling', 0)} document(en)"
+        )
+        L.append(
+            f"- Tweede bron (JournalEntryLines op de RLZ-btw-grootboeken): {b.get('journaalregels_btw_grootboek', 0)} "
+            f"journaalregel(s), Σ {_eur(b.get('journaalregels_btw_som'))}, laatste "
+            f"{b.get('laatste_journaalregel_btw') or '—'}; regels mét btw-code zonder bedrag: "
+            f"{b.get('btw_code_zonder_bedrag', 0)} (0,00 is alleen echt als beide bronnen 0 zijn)"
         )
         L.append(
             f"- Afmeldingsdatum zoals uit de data blijkt: {b.get('afmeldingsdatum_uit_data') or '—'} "
@@ -294,15 +350,25 @@ def als_markdown(r: ReplayRapport) -> str:
         "",
     ]
     j = r.journaal
-    L.append(
-        f"Journaalregels: {j.get('regels', 0)} gelezen, {j.get('met_bron', 0)} met herkend brondocument/-mutatie, "
-        f"{j.get('zonder_bron', 0)} zonder. {j.get('rlz_kolom', 'koppeling via JournalEntry.EventID = aanname')}."
-    )
+    L.append(f"Journaalregels: {j.get('regels', 0)} gelezen. {j.get('rlz_kolom', '')}.")
     L.append("")
+    if j.get("per_documenttype"):
+        L.append("Journaalposten per documentsoort (volledigheidstoets zonder koppeling per regel):")
+        L.append("")
+        _tabel(
+            L,
+            ["DocumentType", "Journaalposten (RLZ)", "Journaalregels", "Geboekte documenten (vertaald)"],
+            [
+                [_md(x["naam"]), str(x["journaalposten"]), str(x["journaalregels"]), str(x["documenten_geboekt"])]
+                for x in j["per_documenttype"]
+            ],
+        )
+        L.append("")
     top = sorted(
-        r.saldibalans, key=lambda x: -max(abs(x["verschil_jaareinde_geschoond"]), abs(x["verschil_tot_geschoond"]))
+        (x for x in r.saldibalans if x.get("groep") is None),
+        key=lambda x: -max(abs(x["verschil_jaareinde_geschoond"]), abs(x["verschil_tot_geschoond"])),
     )[:10]
-    L.append("Top 10 verschillen (geschoond voor RJ 220-herclassificatie):")
+    L.append("Top 10 verschillen buiten de afletter-/tegenzijde-groepen (geschoond voor RJ 220-herclassificatie):")
     L.append("")
     kop_sb = [
         "Rekening",
@@ -333,10 +399,40 @@ def als_markdown(r: ReplayRapport) -> str:
         ],
         leeg="_alle verschillen 0,00_",
     )
-    L += ["", "Volledige tabel:", ""]
+    L += ["", "Groepstoets afletter-/tegenzijde-rekeningen (blok 7c punt 7 b — telt per GROEP in het oordeel):", ""]
     _tabel(
         L,
-        kop_sb,
+        [
+            "Groep",
+            "Rekeningen",
+            f"RLZ {PEILDATUM_JAAREINDE}",
+            f"Odoo {PEILDATUM_JAAREINDE}",
+            "Verschil",
+            f"RLZ {r.tot}",
+            f"Odoo {r.tot}",
+            "Verschil",
+            "Reden",
+        ],
+        [
+            [
+                _md(g["groep"]),
+                _md(", ".join(g["rekeningen"])),
+                _eur(g["rlz_jaareinde"]),
+                _eur(g["odoo_jaareinde"]),
+                _eur(g["verschil_jaareinde"]),
+                _eur(g["rlz_tot"]),
+                _eur(g["odoo_tot"]),
+                _eur(g["verschil_tot"]),
+                _md(g["reden"]),
+            ]
+            for g in r.afletter_groepen
+        ],
+        leeg="_geen groepsrekeningen in deze saldibalans_",
+    )
+    L += ["", "Volledige tabel (kolom Groep = telt alleen op groepsniveau):", ""]
+    _tabel(
+        L,
+        [*kop_sb, "Groep"],
         [
             [
                 _md(x["rekening"]),
@@ -347,6 +443,7 @@ def als_markdown(r: ReplayRapport) -> str:
                 _eur(x["rlz_tot"]),
                 _eur(x["odoo_tot"]),
                 _eur(x["verschil_tot_geschoond"]),
+                _md(x.get("groep") or ""),
             ]
             for x in r.saldibalans
         ],
@@ -411,12 +508,23 @@ def als_markdown(r: ReplayRapport) -> str:
 
     L += [
         "",
-        "#### Per pand (toewijzingen mens/hoog; één bron: pandenregister-afleiding incl. bankmutaties)",
+        "#### Per pand (toewijzingen mens/hoog; grootboek-regels: aankoop = 7000/koopsom, verkoop = opbrengst-regels, "
+        "kosten = overige kostenregels; notaris-ontvangst = alleen bank; vaste activa nooit — blok 7c punt 4)",
         "",
     ]
     _tabel(
         L,
-        ["Pand", "Aankoop", "Aanbetalingen", "Kosten", "Verkoop", "Marge (verkoop − aankoop − kosten)"],
+        [
+            "Pand",
+            "Aankoop",
+            "Aanbetalingen",
+            "Kosten",
+            "Verkoop",
+            "Notaris-ontvangst (bank)",
+            "Marge (verkoop − aankoop − kosten)",
+            "Controle",
+            "Signalen",
+        ],
         [
             [
                 _md(p["pand"]),
@@ -424,11 +532,17 @@ def als_markdown(r: ReplayRapport) -> str:
                 _eur(p["aanbetalingen"]),
                 _eur(p["kosten"]),
                 _eur(p["verkoop"]),
+                _eur(p.get("notaris_ontvangst")),
                 _eur(p["marge"]) if p["marge"] is not None else "— (niet verkocht)",
+                _md(p.get("controle") or ""),
+                _md("; ".join(p.get("signalen") or [])),
             ]
             for p in r.per_pand
         ],
     )
+    n_sig = sum(1 for p in r.per_pand if p.get("signalen"))
+    L.append("")
+    L.append(f"Panden mét signaal: {n_sig} van {len(r.per_pand)}.")
 
     L += ["", f"#### Niet vertaalbaar — {len(r.niet_vertaalbaar)}", ""]
     _tabel(

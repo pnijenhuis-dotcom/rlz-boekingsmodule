@@ -294,3 +294,27 @@ def test_leesonly_client_geeft_rlz_api_error_door_bij_4xx() -> None:
     with pytest.raises(RlzApiError):
         client.get("Remittances")
     assert lezen_cli.MAX_TOP == 50
+
+
+def test_recordpad_krijgt_alleen_expand_geen_top(capsys: pytest.CaptureFixture[str]) -> None:
+    """Blok 7c 13-09 (STAP-0): `ManualJournals/<guid>` is één record — RLZ weigert `$top`/`$filter` daarop met 400 "The
+    requested resource is not a collection"; rlz-lezen laat ze weg en meldt dat, `$expand` gaat wél mee."""
+    assert lezen_cli.is_recordpad("ManualJournals/bfae5951-fa8e-4329-ad1d-9c8f228fa8b6")
+    assert not lezen_cli.is_recordpad("ManualJournals/bfae5951-fa8e-4329-ad1d-9c8f228fa8b6/Lines")
+    assert not lezen_cli.is_recordpad("PaymentTransactions")
+    vastlegger = _Vastlegger(body={"id": "bfae5951-fa8e-4329-ad1d-9c8f228fa8b6", "BookDate": "2025-07-15T00:00:00"})
+    code = run_rlz_lezen(
+        _args(
+            pad="ManualJournals/bfae5951-fa8e-4329-ad1d-9c8f228fa8b6",
+            expand="DocumentLineList($expand=Account)",
+            filter="Status eq 3",
+            top=5,
+            count=True,
+        ),
+        zoek=_zoek_een,
+        client_factory=lambda _rid: _client_met(vastlegger),
+    )
+    assert code == 0
+    [req] = vastlegger.requests
+    assert dict(req.url.params) == {"$expand": "DocumentLineList($expand=Account)"}
+    assert "recordpad" in capsys.readouterr().err
