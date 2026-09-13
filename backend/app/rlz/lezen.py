@@ -8,6 +8,7 @@ terug op dezelfde reeks zónder expand — zichtbaar in de uitkomst (`expand_gel
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -31,6 +32,9 @@ class LeesUitkomst:
     expand_gelukt: bool = True
     fout: RlzApiError | None = None
     paginas: int = 0
+    #: De `$expand` waarmee de rijen uiteindelijk gelezen zijn (None = zonder); bij een terugval-keten (blok 7b 13-09)
+    #: is dit de eerste variant die RLZ accepteerde. `expand_gelukt` blijft: True alleen als de EERSTE variant lukte.
+    expand_gebruikt: str | None = None
 
     @property
     def gelukt(self) -> bool:
@@ -44,25 +48,35 @@ def lees_collectie(
     filter_: str | None = None,
     expand: str | None = None,
     pagina_grootte: int | None = None,
+    expand_terugval: Sequence[str | None] = (),
 ) -> LeesUitkomst:
-    """Alle rijen van een collectie in één gepagineerde reeks. Een 400 op `$expand` → opnieuw zonder expand
-    (`expand_gelukt=False`); elke andere `RlzApiError` (403 rechten, 404 route bestaat niet, 5xx ná retries) komt
-    als `fout` terug — de aanroeper maakt er een ZICHTBARE regel van, geen crash."""
+    """Alle rijen van een collectie in één gepagineerde reeks. Een 400 op `$expand` → opnieuw met de volgende variant
+    uit `expand_terugval` (blok 7b 13-09: bv. `Entity,DocumentLineList($expand=…)` → `Entity`), uiteindelijk zónder
+    expand (`expand_gelukt=False`, `expand_gebruikt` zegt welke vorm het werd); elke andere `RlzApiError` (403 rechten,
+    404 route bestaat niet, 5xx ná retries, webfilter-403 ná backoff) komt als `fout` terug — de aanroeper maakt er
+    een ZICHTBARE regel van, geen crash."""
     uit = LeesUitkomst(pad=pad)
     if pagina_grootte is None:
         pagina_grootte = PAGINA_GROOTTE  # runtime gelezen (tests pinnen de module-constante)
-    try:
-        uit.rijen, uit.paginas = _lees_alles(client, pad, filter_=filter_, expand=expand, pagina_grootte=pagina_grootte)
-        return uit
-    except RlzApiError as exc:
-        if expand is None or exc.status_code != 400:
-            uit.fout = exc
+    varianten: list[str | None] = [expand]
+    if expand is not None:
+        varianten.extend(v for v in expand_terugval if v not in varianten)
+        if None not in varianten:
+            varianten.append(None)
+    for n, variant in enumerate(varianten):
+        try:
+            uit.rijen, uit.paginas = _lees_alles(
+                client, pad, filter_=filter_, expand=variant, pagina_grootte=pagina_grootte
+            )
+            uit.expand_gebruikt = variant
+            uit.expand_gelukt = n == 0
+            uit.fout = None
             return uit
-    uit.expand_gelukt = False
-    try:
-        uit.rijen, uit.paginas = _lees_alles(client, pad, filter_=filter_, expand=None, pagina_grootte=pagina_grootte)
-    except RlzApiError as exc:
-        uit.fout = exc
+        except RlzApiError as exc:
+            uit.fout = exc
+            if variant is None or exc.status_code != 400:
+                return uit
+            uit.expand_gelukt = False
     return uit
 
 

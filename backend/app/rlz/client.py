@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import base64
 import logging
+import threading
+import time
 import uuid
+from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +48,116 @@ class RlzRateLimitError(RlzApiError):
         self.retry_after = retry_after
 
 
+class RlzWebfilterError(RlzApiError):
+    """RLZ's webfilter (Akamai) antwoordt `403` met een HTML-pagina "Access Denied" — géén rechtenfout van de
+    webservice-login maar een VOLUMEBLOKKERING (nameting 13-09: ná ~700 losse regel-calls in enkele minuten; daarna
+    weigerde óók elke collectie-GET). Wordt `rlz_webfilter_pogingen`× herhaald met verdubbelende wachttijd; komt hij
+    daarna nog, dan is de meting ongeldig — de aanroeper rekent NOOIT door met halve data."""
+
+
+WEBFILTER_KENMERK = "Access Denied"
+
+
+def is_webfilter_antwoord(status_code: int, body: str) -> bool:
+    """`403` + HTML-body (niet RLZ's JSON-foutvorm) = webfilter. Een echte 403 van de webservice is JSON/tekst."""
+    if status_code != 403:
+        return False
+    kop = body.lstrip()[:400]
+    return kop.upper().startswith("<HTML") or kop.startswith("<!DOCTYPE") or WEBFILTER_KENMERK in kop
+
+
 def _is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, RlzWebfilterError):
         return True
     if isinstance(exc, RlzApiError):
         return exc.status_code == 429 or exc.status_code >= 500
     return False
 
 
+MAX_POGINGEN = 5
+
+
+def _tempo_instellingen() -> tuple[float, int, float, int]:
+    """(max calls/s, burst, webfilter-backoff s, webfilter-pogingen) uit settings — lazy, zodat tests ze pinnen via
+    monkeypatch en dit bestand geen import-kring met app.config krijgt."""
+    try:
+        from app.config import settings  # noqa: PLC0415
+
+        return (
+            float(settings.rlz_max_calls_per_seconde),
+            int(settings.rlz_burst_calls),
+            float(settings.rlz_webfilter_backoff_seconden),
+            int(settings.rlz_webfilter_pogingen),
+        )
+    except Exception:  # noqa: BLE001 — zonder settings (losse scripts) de code-defaults
+        return 3.0, 50, 20.0, 3
+
+
+def _stop(retry_state: Any) -> bool:
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    if isinstance(exc, RlzWebfilterError):
+        return retry_state.attempt_number >= max(1, _tempo_instellingen()[3])
+    return retry_state.attempt_number >= MAX_POGINGEN
+
+
 def _wait_for_rate_limit_or_backoff(retry_state: Any) -> float:
     exc = retry_state.outcome.exception() if retry_state.outcome else None
     if isinstance(exc, RlzRateLimitError) and exc.retry_after is not None:
         return exc.retry_after
+    if isinstance(exc, RlzWebfilterError):
+        basis = _tempo_instellingen()[2]
+        return basis * (2 ** (retry_state.attempt_number - 1))
     return wait_exponential(multiplier=1, min=1, max=30)(retry_state)
+
+
+class Tempo:
+    """Token-bucket per verbinding (blok 7b 13-09): `burst` calls direct, daarna `calls_per_seconde`; 0 = uit.
+    Thread-veilig (de bank-sync en de wachtrij-worker delen soms één client). Telt calls en webfilter-treffers zodat
+    een rapport kan zeggen hoeveel er gelezen is en of de blokkering optrad."""
+
+    def __init__(
+        self,
+        calls_per_seconde: float | None = None,
+        burst: int | None = None,
+        *,
+        slaap: Callable[[float], None] = time.sleep,
+        klok: Callable[[], float] = time.monotonic,
+    ) -> None:
+        cps, b, _w, _p = _tempo_instellingen()
+        self.calls_per_seconde = cps if calls_per_seconde is None else calls_per_seconde
+        self.burst = max(1, b if burst is None else burst)
+        self._slaap = slaap
+        self._klok = klok
+        self._tokens = float(self.burst)
+        self._laatst = klok()
+        self._lock = threading.Lock()
+        self.calls = 0
+        self.webfilter_treffers = 0
+        self.gewacht_seconden = 0.0
+
+    def wacht(self) -> None:
+        """Blokkeert tot er een token is; telt de call."""
+        while True:
+            with self._lock:
+                if self.calls_per_seconde <= 0:
+                    self.calls += 1
+                    return
+                nu = self._klok()
+                self._tokens = min(float(self.burst), self._tokens + (nu - self._laatst) * self.calls_per_seconde)
+                self._laatst = nu
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    self.calls += 1
+                    return
+                tekort = (1.0 - self._tokens) / self.calls_per_seconde
+            self.gewacht_seconden += tekort
+            self._slaap(tekort)
+
+    def webfilter_getroffen(self) -> None:
+        with self._lock:
+            self.webfilter_treffers += 1
 
 
 class RlzClient:
@@ -80,9 +180,12 @@ class RlzClient:
         base_url: str = BASE_URL,
         timeout: float = 30.0,
         client: httpx.Client | None = None,
+        tempo: Tempo | None = None,
     ) -> None:
         self._admin_id = admin_id
         self._owns_client = client is None
+        #: Eén token-bucket per VERBINDING — `for_administration` deelt 'm, zodat het tempo per login geldt.
+        self.tempo = tempo if tempo is not None else Tempo()
         if client is not None:
             self._client = client
         else:
@@ -105,7 +208,7 @@ class RlzClient:
 
     def for_administration(self, admin_id: str) -> RlzClient:
         """Zelfde login/verbinding, gescoped op een andere administratie-id."""
-        return RlzClient(username="", password="", admin_id=admin_id, client=self._client)
+        return RlzClient(username="", password="", admin_id=admin_id, client=self._client, tempo=self.tempo)
 
     def _path(self, path: str) -> str:
         path = path.lstrip("/")
@@ -113,17 +216,22 @@ class RlzClient:
 
     @retry(
         retry=retry_if_exception(_is_retryable),
-        stop=stop_after_attempt(5),
+        stop=_stop,
         wait=_wait_for_rate_limit_or_backoff,
         reraise=True,
     )
     def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         url = self._path(path)
+        self.tempo.wacht()
         response = self._client.request(method, url, **kwargs)
         _log_rate_limit_headers(method, url, response)
         if response.status_code == 429:
             retry_after = _parse_retry_after(response.headers.get("Retry-After"))
             raise RlzRateLimitError(response.status_code, method, url, response.text, retry_after)
+        if is_webfilter_antwoord(response.status_code, response.text):
+            self.tempo.webfilter_getroffen()
+            logger.warning("RLZ-webfilter blokkeert %s %s (calls tot nu %s) — backoff", method, url, self.tempo.calls)
+            raise RlzWebfilterError(response.status_code, method, url, response.text)
         if response.status_code >= 400:
             raise RlzApiError(response.status_code, method, url, response.text)
         return response
@@ -159,9 +267,7 @@ class RlzClient:
     def list_administrations(self) -> list[dict[str, Any]]:
         return self.get("Administrations").get("value", [])
 
-    def put_vendor(
-        self, vendor_id: uuid.UUID, *, name: str, payment_due_days: int | None = None
-    ) -> httpx.Response:
+    def put_vendor(self, vendor_id: uuid.UUID, *, name: str, payment_due_days: int | None = None) -> httpx.Response:
         body: dict[str, Any] = {"id": str(vendor_id), "Name": name}
         if payment_due_days is not None:
             body["PaymentDueDays"] = payment_due_days
@@ -398,9 +504,7 @@ class RlzClient:
         veilig = name.replace("'", "''")
         return self.get("Projects", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
 
-    def put_project(
-        self, project_id: uuid.UUID, *, name: str, is_active: bool = True
-    ) -> httpx.Response:
+    def put_project(self, project_id: uuid.UUID, *, name: str, is_active: bool = True) -> httpx.Response:
         """Project aanmaken/bijwerken — klant-loze TOP-LEVEL route (hertest 2026-08-14 ná
         browsercapture Peter, poc_projects_toplevel.py): `PUT {adminId}/Projects/{id}` werkt
         gewoon via Basic Auth, zónder Customer ($expand=Customer → null). ⚠️ De Help-lijst
@@ -506,9 +610,7 @@ class RlzClient:
         (verkoop-STAP-0) — de deterministische marker staat daarom als PREFIX in regel 1 en de
         check filtert op startswith; een vreemde hit = duplicaat."""
         veilig = prefix.replace("'", "''")
-        return self.get(
-            "Receipts", params={"$filter": f"startswith(Description,'{veilig}')"}
-        ).get("value", [])
+        return self.get("Receipts", params={"$filter": f"startswith(Description,'{veilig}')"}).get("value", [])
 
     def list_journal_entry_diaries(self) -> list[dict[str, Any]]:
         """Dagboeken per administratie — het memoriaal-dagboek-GUID wordt hieruit gekozen

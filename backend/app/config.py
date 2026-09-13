@@ -260,6 +260,17 @@ class Settings(BaseSettings):
     # job-uitvoering — géén in-process run op Cloud Run (request-based CPU valt stil); leeg = dev-thread.
     reconciliatie_job_resource: str | None = None
     bank_auto_ververs_drempel_minuten: int = 5
+    # RLZ-tempo (blok 7b run 2 VGG, 13-09; api-verkenning "Webfilter-blokkering bij >N calls"): de RLZ-webfilter
+    # (Akamai) antwoordt ná ~700 losse calls in enkele minuten met `403` + HTML "Access Denied" — geen rechtenfout
+    # maar een volumeblokkering. Elke `RlzClient`-verbinding houdt daarom een token-bucket bij: `rlz_burst_calls`
+    # calls direct, daarna hoogstens `rlz_max_calls_per_seconde` (0 = geen begrenzing). Een webfilter-403 wordt
+    # `rlz_webfilter_pogingen`× herhaald met verdubbelende wachttijd vanaf `rlz_webfilter_backoff_seconden`
+    # (hervatten waar gebleven); daarna komt `RlzWebfilterError` bij de aanroeper — een replay/nameting maakt daar
+    # "RLZ-blokkering — meting ongeldig" van, nooit doorrekenen met halve data.
+    rlz_max_calls_per_seconde: float = 3.0
+    rlz_burst_calls: int = 50
+    rlz_webfilter_backoff_seconden: float = 20.0
+    rlz_webfilter_pogingen: int = 3
 
     boekingsgeheugen_seed_maanden: int = 36
     boekingsgeheugen_halfwaardetijd_dagen: int = 365
