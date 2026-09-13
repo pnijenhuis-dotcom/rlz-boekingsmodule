@@ -48,11 +48,25 @@ if [[ "$CMD" == "vgg-replay" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf-c
 fi
 ARGS="-m|app.cli"; for a in "$@"; do ARGS="$ARGS|$a"; done
 echo ">> gcloud run jobs execute $JOB ($CMD) onder ${NAMETING_SA:-gebruikerssessie}" >&2
+# Blok 7b 13-09 (punt 9): een niet-groene job-executie (het CLI gaf exit ≠ 0) is bij een dry-run/lees-only een UITKOMST —
+# de logs worden ALTIJD gelezen en getoond; de exit-code van dit script volgt de executie, behalve voor vgg-replay
+# (dry-run-rapport = uitkomst, exit 0 mét statusregel).
+set +o pipefail
 UITVOER="$(gcloud run jobs execute "$JOB" --project "$PROJECT" --region "$REGION" --wait --format="value(metadata.name)" \
   "${NAMETING_GCLOUD_FLAGS[@]}" --args="^|^$ARGS" 2>&1 | tee /dev/stderr | tail -1)"
+RC="${PIPESTATUS[0]:-0}"
+set -o pipefail
 EXEC="$(grep -o 'rlz-[a-z-]*-[a-z0-9]\{5\}' <<<"$UITVOER" | tail -1)"
 [[ -n "$EXEC" ]] || { echo "FOUT: geen executie-naam gevonden in de gcloud-uitvoer" >&2; exit 1; }
 echo ">> uitvoer van $EXEC (Cloud Logging, chronologisch):" >&2
 sleep 5
 gcloud logging read "resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/execution_name\"=\"$EXEC\"" \
   --project "$PROJECT" --limit 5000 --order=asc --format="value(textPayload)" "${NAMETING_GCLOUD_FLAGS[@]}"
+if [[ "$RC" -ne 0 ]]; then
+  if [[ "$CMD" == "vgg-replay" ]]; then
+    echo "STATUS: vgg-replay-executie eindigde met code $RC — het rapport is de uitkomst (zie hierboven), geen storing" >&2
+    exit 0
+  fi
+  echo "STATUS: job-executie eindigde met code $RC (uitvoer hierboven)" >&2
+  exit "$RC"
+fi
