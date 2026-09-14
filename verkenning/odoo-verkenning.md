@@ -157,6 +157,30 @@ Waarnemingen: (a) er is **geen inkoop-0%-code** — "btw-vrijgesteld/nul" op een
 
 Nummering: **geen `ir.sequence` voor boekingen** (94 sequences zijn voor stock/expenses/batches); de naam wordt bij posten afgeleid van het dagboek + de laatste naam in het dagboek: `BILL/2026/08/0001` (maandreset, `sequence_prefix "BILL/2026/08/"`, `sequence_number 1`), creditnota `RBILL/2026/09/0001`, memoriaal `MISC/2026/08/0001`. Company 3 gebruikt jaarreset (`F/2026/00027`) — het resetpatroon volgt de eerste boeking in het dagboek. Concept = `name False` (UI toont "Draft"). `payment_reference` op verkoopfacturen wordt automatisch = `name`.
 
+### Dagboekcodes per company — 14-09 (Odoo-UI, Boekhouding › Configuratie › Dagboeken; vastgesteld door Peter, alle tien companies)
+
+Elke company heeft precies deze general-dagboeken: het memoriaal (code **MISC** bij de Universal-companies 1–4; **MEM** bij
+de NL-template-companies 5, 7, 8, 9; company 10 Camping Nieuwenhoven stond op MEM en is 14-09 handmatig op MISC gezet om
+door te kunnen — 5/7/8/9 blijven bewust op MEM: de module past zich aan, niet Odoo), plus de vier systeemdagboeken
+**EXCH** (Koersverschillen), **CABA** (Kasstelsel btw), **TAX** (Btw-aangiften / Tax Returns) en **STJ**
+(Voorraadwaardering). Inkoop = **LF** (NL-template) of **BILL** (Universal), verkoop = **F** of **INV**, bank = **BNK1**.
+
+| Company | Memoriaal (general) | Inkoop | Verkoop | Bank | Overige general (systeem) |
+|---|---|---|---|---|---|
+| 1 Universal Steigerbouw | MISC (id 10) | BILL (9) | INV (8) | BNK1 (13) | EXCH 11 · CABA 12 · TAX 14 · STJ 36 |
+| 2, 3, 4 (Universal-groep) | MISC | BILL | INV | BNK1 | EXCH · CABA · TAX · STJ |
+| 5 Caravanpark "De Visotter" | MEM | LF | F | BNK1 | EXCH · CABA · TAX · STJ |
+| 6 Vastgoedgroep Nederland B.V. | MEM (id 50) | LF (49) | F (48) | BNK1 (53) | EXCH 51 · TAX 54 · CABA · STJ (§11.0) |
+| 7, 8, 9 (NL-template) | MEM | LF | F | BNK1 | EXCH · CABA · TAX · STJ |
+| 10 Camping Nieuwenhoven | MISC (sinds 14-09, was MEM) | LF | F | BNK1 | EXCH · CABA · TAX · STJ |
+
+**Gevolg voor de adapter (BESLISSINGEN "ODOO-KOPPELWIZARD NAZORG 14-09"):** de rechten-probe kiest het memoriaal op TYPE —
+alle general-dagboeken van de company minus `SYSTEEM_GENERAL_DAGBOEKCODES = {EXCH, CABA, TAX, STJ}` (`app/odoo/probe.py`,
+constante mét toelichting, uitbreidbaar). Precies één kandidaat = groen mét de code in het rapport ("memoriaal-dagboek:
+MEM"); nul of meerdere = leesbare melding mét codes en namen, nooit stil de eerste. De migratiedoel-CLI (`lees_dagboeken`)
+gebruikt dezelfde functie; de eerdere code-voorkeur (MEM, MISC) is vervallen. De id's per company zijn Odoo-server-id's en
+worden altijd gelezen, nooit hardgecodeerd (deze tabel is documentatie, geen configuratie).
+
 ### 1.8 Partners (`res.partner`)
 
 135 partners; 127 bedrijfsgedeeld (`company_id False`), de rest = de bedrijfspartners zelf. Velden: `vat` (btw-nummer, formaatcheck base_vat), `company_registry` (KvK — er is géén `l10n_nl_kvk`), `supplier_rank`/`customer_rank`, `property_supplier_payment_term_id`, `property_account_payable_id` (auto 130000), `bank_ids` (IBAN's), `peppol_eas` (auto **`0106`** = KvK-schema) + `peppol_endpoint`, `autopost_bills`, `invoice_sending_method`, `invoice_edi_format`, `ref`, `is_company`, `country_id`. → ons `crediteur_kenmerk` (btw > KvK) heeft in Odoo een natuurlijk thuis dat RLZ mist (btw-nummer is in RLZ niet leesbaar via de API — casus Labo Derva).
