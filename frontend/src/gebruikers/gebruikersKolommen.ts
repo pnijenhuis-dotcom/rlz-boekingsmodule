@@ -65,15 +65,15 @@ export const GEBRUIKERS_KOLOMMEN: Record<GebruikersTab, readonly GebruikersKolom
     { sleutel: 'status', kop: 'Status', minPx: 166 },
     ACTIES,
   ],
+  /** Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2): de tab is een compacte ACCOUNT-tabel — koppelingen,
+   * tarieven en dossiers leven op /veldwerkers (`veldwerkers/veldwerkersKolommen.ts`). Som 180+112+240+164 = 696 px:
+   * past óók op 1170 (824 px netto) zonder interne scroll — de enige van de drie tabs. */
   veldwerkers: [
     { sleutel: 'veldwerker', kop: 'Veldwerker', minPx: 180 },
     /** Rol-badge ("Detacheerder"). */
     { sleutel: 'rol', kop: 'Rol', minPx: 112 },
-    /** Projecttoegang / ZZP'ers / crediteur-badges + linkbtns — wrapt binnen de kolom, de rest-kolom. */
-    { sleutel: 'koppelingen', kop: 'Koppelingen', minPx: 280 },
-    /** Statusbadge + "half geactiveerd — geen toestel" + dossier-badge op één regel (gemeten uitvoerder-rij: chips ≈ 332 px
-     * + celpadding 16); herstel-/⚠-details eronder. */
-    { sleutel: 'status', kop: 'Status', minPx: 348 },
+    /** Statusbadge + "half geactiveerd — geen toestel" op één regel (≈ 224 px + celpadding 16); herstel-link-detail eronder. */
+    { sleutel: 'status', kop: 'Status', minPx: 240 },
     ACTIES,
   ],
   accordeurs: [

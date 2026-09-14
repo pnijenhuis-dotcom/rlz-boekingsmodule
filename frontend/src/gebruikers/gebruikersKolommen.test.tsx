@@ -58,7 +58,12 @@ describe('gebruikersKolommen — de bron', () => {
     )
   })
 
-  it.each(TABS)(
+  it('veldwerkers-run 14-09: de Veldwerkers-tab is een compacte account-tabel (Veldwerker · Rol · Status · acties) die óók op 1170 past', () => {
+    expect(GEBRUIKERS_KOLOMMEN.veldwerkers.map((k) => k.sleutel)).toEqual(['veldwerker', 'rol', 'status', 'acties'])
+    expect(minimaleTabelbreedte('veldwerkers')).toBeLessThanOrEqual(beschikbareBreedte(1170))
+  })
+
+  it.each(TABS.filter((t) => t !== 'veldwerkers'))(
     'op 1170 past de %s-tabel NIET zonder interne scroll (documenteerd feit, geen wens) — de tabel-min-width = som borgt dat geen kolom onder zijn minimum komt',
     (tab) => {
       // Zou dit ooit wél passen (kolommen geschrapt/versmald), dan mag deze assertie omgekeerd worden — hij
@@ -204,6 +209,9 @@ describe('gebruikers-tabellen dragen de kolomminima uit de bron (render)', () =>
     expect(within(veld).getByText('actief').parentElement).toHaveClass('chips-regel')
     expect(within(veld).getByRole('button', { name: 'Herstel-link' })).toBeInTheDocument()
     expect(within(veld).getByRole('button', { name: 'Meer acties voor Z. Zzp' })).toHaveAttribute('aria-haspopup', 'menu')
+    // Veldwerkers-run 14-09: geen koppelingen-/dossier-kolom meer op deze tab — die staan op /veldwerkers (link bovenaan).
+    expect(within(veld).queryByText('Koppelingen')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Koppelingen, tarieven en dossiers beheer je op Veldwerkers/ })).toHaveAttribute('href', '/veldwerkers')
     unmount()
 
     renderScherm('/gebruikers?groep=accordeurs')

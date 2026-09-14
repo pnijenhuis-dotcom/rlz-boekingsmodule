@@ -37,6 +37,7 @@ function installMock({
   rekeningen = [] as unknown[],
   vragen = [] as unknown[],
   laatstHerinnerd = {} as Record<string, string>,
+  urenStand = null as Record<string, number> | null,
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -50,6 +51,7 @@ function installMock({
         )
       if (url.includes('/vragen')) return Promise.resolve(jsonResponse({ vragen }))
       if (url.endsWith('/medewerkers')) return Promise.resolve(jsonResponse({ medewerkers: [] }))
+      if (url.startsWith('/uren/kantoor/stand') && urenStand) return Promise.resolve(jsonResponse(urenStand))
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
   )
@@ -74,6 +76,7 @@ function renderStanden() {
           }
         />
         <Route path="/bank/:administratieId" element={<LocatieProbe />} />
+        <Route path="/veldwerkers" element={<LocatieProbe />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -187,5 +190,26 @@ describe('KlantStanden (klantpagina = standen)', () => {
 
     await waitFor(() => expect(screen.getByText('Openstaande vragen')).toBeInTheDocument())
     expect(screen.getByText('Welk grootboek voor servicekosten?')).toBeInTheDocument()
+  })
+
+  it('veldwerkers-run 14-09: de rij "ZZP-dossiers — signaal" deeplinkt naar /veldwerkers mét deze administratie als filter en "dossier onvolledig" aan', async () => {
+    installMock({
+      urenStand: {
+        meerwerk_te_beoordelen: 0,
+        meerwerk_nog_doorbelasten: 0,
+        meerwerk_te_lang_niet_doorbelast: 0,
+        urenstaten_wachten_op_keuring: 0,
+        dossier_veldwerkers_met_signaal: 2,
+        dossier_ter_controle: 1,
+        dossier_geblokkeerd: 0,
+      },
+    })
+    renderStanden()
+    const rij = await screen.findByTestId('stand-zzp-dossiers')
+    expect(rij).toHaveTextContent('2 veldwerker(s) met ontbrekend/verlopen document · 1 document(en) ter controle')
+    await userEvent.setup().click(rij)
+    await waitFor(() =>
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/veldwerkers?filter=dossier_onvolledig&administratie=${ADMINISTRATIE_ID}`),
+    )
   })
 })

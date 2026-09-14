@@ -35,6 +35,7 @@ export type InstellingenSectie =
   | 'boeken'
   | 'intake-ai'
   | 'gebruikers'
+  | 'veldwerkers'
   | 'beveiliging'
   | 'materiaal'
 
@@ -94,6 +95,17 @@ export const NAV_GROEPEN: readonly NavGroep[] = [
         uitleg: 'Medewerkers, accordeurs en veldwerkers uitnodigen, rollen en scope, blokkeren.',
         beheerder: true,
         extern: '/gebruikers',
+      },
+      {
+        pad: 'veldwerkers',
+        titel: 'Veldwerkers',
+        uitleg: "Koppelingen (detacheerder ↔ ZZP'er, crediteur), tarieven en ZZP-dossiers — kantoorbreed, administratie als filter.",
+        // Veldwerkers-run 14-09: de backend opent /uren/beheer/veldgebruikers óók voor houders van het recht
+        // 'veldwerkerbeheer' (per gebruiker, niet per rol). De rol×sectie-matrix kan een recht niet uitdrukken,
+        // dus hier Beheerder-only (fail-closed); recht-houders bereiken de pagina via het Shell-nav-item, dat het
+        // recht wél kent (`auth/rollen.ts::toontVeldwerkersNav`). Het scherm toont een 403 leesbaar.
+        beheerder: true,
+        extern: '/veldwerkers',
       },
       {
         pad: 'beveiliging',
@@ -276,8 +288,16 @@ export const REGISTRY: readonly RegistryEntry[] = [
     id: 'nav-gebruikers',
     naam: 'Gebruikers & toegang',
     waar: 'nav-item Gebruikers & toegang',
-    synoniemen: ['gebruikers', 'gebruiker', 'medewerker', 'uitnodigen', 'rol', 'scope', 'blokkeren', 'veldwerker', 'zzp', 'toegang'],
+    synoniemen: ['gebruikers', 'gebruiker', 'medewerker', 'uitnodigen', 'rol', 'scope', 'blokkeren', 'account', 'accounts', 'toegang'],
     doel: { soort: 'sectie', sectie: 'gebruikers' },
+    beheerder: true,
+  },
+  {
+    id: 'nav-veldwerkers',
+    naam: 'Veldwerkers — koppelingen, tarieven, dossiers',
+    waar: 'nav-item Veldwerkers',
+    synoniemen: ['veldwerkers', 'veldwerker', 'zzp', "zzp'er", 'zzper', 'detacheerder', 'bureau', 'uitvoerder', 'dossier', 'tarief', 'tarieven', 'crediteur koppelen', 'koppeling', 'kvk'],
+    doel: { soort: 'sectie', sectie: 'veldwerkers' },
     beheerder: true,
   },
   {

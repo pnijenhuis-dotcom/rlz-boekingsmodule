@@ -149,6 +149,9 @@ export interface VeldgebruikerDto {
   // dossier-/crediteur-dialoog — jongste planningsdag resp. laatst gewijzigde koppeling.
   recentste_planning_administratie_id?: string | null
   recentste_koppeling_administratie_id?: string | null
+  // Veldwerkers-run 14-09 (additief): de scope-administraties van de veldwerker — het administratie-FILTER op
+  // /veldwerkers leest dit; ontbreekt het veld (oudere response) dan telt de veldwerker als "zonder scope".
+  administratie_ids?: string[]
 }
 
 /* --- ZZP-dossier per veldwerker (steigerbouw-run blok A, migratie 0072) ---------------------- */

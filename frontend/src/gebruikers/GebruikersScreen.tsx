@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
@@ -61,7 +61,6 @@ import { GebruikersTabelKop, gebruikersTabelStijl } from './GebruikersTabelKop'
 import type { GebruikersTab } from './gebruikersKolommen'
 import { ScopeModal } from './ScopeModal'
 import { UitnodigModal } from './UitnodigModal'
-import { VeldwerkersPanel } from './VeldwerkersPanel'
 
 /* Gebruikers & toegang (fase 3 modernisering 15-08, mockup #scherm-gebruikers; rollenmodel
  * 0019 ongewijzigd): kantoorgebruikers (rol, scope, apparaten/passkeys, TOTP-status),
@@ -712,7 +711,7 @@ export function GebruikersScreen() {
           </div>
         </div>
         {groep === 'kantoor' && <Button onClick={() => setUitnodigSoort('medewerker')}>+ Medewerker uitnodigen</Button>}
-        {/* Veldwerkers: de uitnodig-knop zit in het paneel zelf (VeldwerkersPanel, eigen kop). */}
+        {groep === 'veldwerkers' && <Button onClick={() => setUitnodigSoort('veldwerker')}>+ Veldwerker uitnodigen</Button>}
         {groep === 'accordeurs' && <Button onClick={() => setUitnodigSoort('accordeur')}>+ Accordeur uitnodigen</Button>}
       </div>
 
@@ -891,15 +890,66 @@ export function GebruikersScreen() {
       )}
 
       {groep === 'veldwerkers' && (
-        <div role="tabpanel">
-          {gebruikers !== null && <div className="panel" style={{ paddingBottom: 4 }}>{zoekveld}</div>}
-      <VeldwerkersPanel
-        gebruikers={veldwerkersPagina}
-        administraties={administraties ?? []}
-        onUitnodigen={() => setUitnodigSoort('veldwerker')}
-        actieKolom={(g) => actieKolom(g)}
-      />
-          <Paginering pagina={pagina} totaal={gefilterd.veldwerkers.length} onPagina={setPagina} label="veldwerkers" />
+        <div className="panel" role="tabpanel">
+          <h2 style={{ margin: 0 }}>Veldwerkers — accounts</h2>
+          {/* Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2): deze tab is alleen nog het ACCOUNT (status,
+              uitnodiging, blokkade, e-mail, herstel-link, archiveren — Beheerder-only). Koppelingen, tarieven en
+              ZZP-dossiers leven op /veldwerkers (Beheerder óf recht 'veldwerkerbeheer') — geen dubbele tabel meer. */}
+          <p className="hint" style={{ marginTop: 6 }}>
+            <Link to="/veldwerkers" className="linkbtn" style={{ padding: 0 }}>
+              Koppelingen, tarieven en dossiers beheer je op Veldwerkers →
+            </Link>
+          </p>
+          {gebruikers !== null && veldwerkers.length === 0 && (
+            <p className="hint">Nog geen veldwerkers — nodig een ZZP'er, uitvoerder of detacheerder uit.</p>
+          )}
+          {veldwerkers.length > 0 && (
+            <>
+              {zoekveld}
+              <div className="tabel-scroll sticky-koppen">
+                <table className="gebruikers-tabel" style={gebruikersTabelStijl('veldwerkers')} data-testid="gebruikers-tabel-veldwerkers">
+                  <GebruikersTabelKop tab="veldwerkers" />
+                  <tbody>
+                    {veldwerkersPagina.map((g) => {
+                      const openUitnodiging = g.status === 'uitgenodigd' && g.open_uitnodiging_verloopt_op
+                      return (
+                        <tr key={g.id}>
+                          <td>
+                            <b>{g.naam}</b>
+                            <div className="gebruiker-email" title={g.e_mail}>
+                              {g.e_mail}
+                            </div>
+                          </td>
+                          <td>
+                            <Badge variant="paars">{rolLabel(g.rol)}</Badge>
+                          </td>
+                          <td>
+                            <div className="chips-regel">
+                              {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
+                              {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
+                              {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
+                              {openUitnodiging && <Badge variant="stil">uitgenodigd</Badge>}
+                              {g.status === 'uitgenodigd' && !openUitnodiging && <Badge variant="warn">uitnodiging verlopen</Badge>}
+                              {(g.status === 'wacht_op_totp' || g.status === 'wacht_op_passkey') && (
+                                <Badge variant="warn">activatie onderbroken</Badge>
+                              )}
+                              {halfGeactiveerdBadge(g)}
+                            </div>
+                            {g.status === 'geblokkeerd' && blokkadeDetail(g)}
+                            {g.status === 'gearchiveerd' && archiveringDetail(g)}
+                            {openUitnodiging && <div className="cel-detail">uitnodiging {formatVerloop(g.open_uitnodiging_verloopt_op!)}</div>}
+                            {herstelDetail(g)}
+                          </td>
+                          <td className="acties">{actieKolom(g)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Paginering pagina={pagina} totaal={gefilterd.veldwerkers.length} onPagina={setPagina} label="veldwerkers" />
+            </>
+          )}
         </div>
       )}
 

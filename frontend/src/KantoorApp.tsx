@@ -61,6 +61,9 @@ const VerplichtingReviewScreen = lazy(() =>
   import('./verplichting/VerplichtingReviewScreen').then((m) => ({ default: m.VerplichtingReviewScreen })),
 )
 // Crediteuren-dubbelen v2 (03-09): kantoorbreed mét actie — vervangt het per-administratie-scherm.
+// Veldwerkers (veldwerkers-run 14-09): koppelingen, tarieven en ZZP-dossiers kantoorbreed — lazy, alleen
+// relevant mét de uren-&-meerwerk-tak (Beheerder óf recht 'veldwerkerbeheer'; het scherm toont een 403 leesbaar).
+const VeldwerkersScreen = lazy(() => import('./veldwerkers/VeldwerkersScreen').then((m) => ({ default: m.VeldwerkersScreen })))
 const CrediteurenDubbelenScreen = lazy(() =>
   import('./crediteuren/CrediteurenDubbelenScreen').then((m) => ({ default: m.CrediteurenDubbelenScreen })),
 )
@@ -243,6 +246,14 @@ function BeschermdeRoutes() {
           }
         />
         <Route path="/gebruikers" element={<GebruikersScreen />} />
+        <Route
+          path="/veldwerkers"
+          element={
+            <Suspense fallback={<SkeletonPaneel />}>
+              <VeldwerkersScreen />
+            </Suspense>
+          }
+        />
         {/* Instellingen v3 (01-09): geen landing meer — /instellingen redirect naar het eerste zichtbare
             nav-item van de rol; administratie-detail is een eigen pagina (vervangt de v2-dialoog). */}
         <Route path="/instellingen" element={<InstellingenScreen />} />

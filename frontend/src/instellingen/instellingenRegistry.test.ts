@@ -70,7 +70,7 @@ describe('instellingenRegistry — guard (élk nav-item en élke tab heeft een r
     expect(NAV_GROEPEN.map((g) => g.titel)).toEqual(['Administraties', 'Platform', 'Kantoor'])
     expect(NAV_GROEPEN[0].items.map((i) => i.pad)).toEqual(['administraties', 'accordering', 'autoboeken', 'doorbelasting'])
     expect(NAV_GROEPEN[1].items.map((i) => i.pad)).toEqual(['boeken', 'intake-ai'])
-    expect(NAV_GROEPEN[2].items.map((i) => i.pad)).toEqual(['gebruikers', 'beveiliging', 'materiaal'])
+    expect(NAV_GROEPEN[2].items.map((i) => i.pad)).toEqual(['gebruikers', 'veldwerkers', 'beveiliging', 'materiaal'])
     // Crediteuren is géén instelling meer (→ Inzicht); de oude URL redirect.
     expect(SECTIE_PADEN.has('crediteuren')).toBe(false)
     expect(OUDE_SECTIE_REDIRECTS.crediteuren).toBe('/crediteuren')
@@ -137,6 +137,11 @@ describe('instellingenRegistry — deterministische zoeker', () => {
     expect(zoek('tellers')[0].pad).toBe('/instellingen/boeken')
     expect(zoek('passk')[0].pad).toBe('/instellingen/beveiliging')
     expect(zoek('Gebruikers')[0].pad).toBe('/gebruikers')
+    // Veldwerkers-run 14-09: koppelingen/tarieven/dossiers leven op /veldwerkers (extern item, Beheerder-only in
+    // de registry; recht-houders via het Shell-nav-item) — de zoeker landt daar, niet meer op Gebruikers & toegang.
+    expect(zoek('dossier')[0].pad).toBe('/veldwerkers')
+    expect(zoek('detacheerder')[0].pad).toBe('/veldwerkers')
+    expect(zoek('veldwerkers', 'boekhouding_projecten')).toEqual([])
     expect(zoek('provisie').map((t) => t.pad)).toContain('/instellingen/doorbelasting')
     expect(zoek('limiet').map((t) => t.pad)).toContain('/instellingen/intake-ai#kosten')
     expect(zoek('provisie')).toEqual(zoek('provisie'))

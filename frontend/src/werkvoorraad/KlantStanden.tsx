@@ -426,7 +426,13 @@ export function KlantStanden({
                     </tr>
                   )}
                   {((urenStand.dossier_veldwerkers_met_signaal ?? 0) > 0 || (urenStand.dossier_ter_controle ?? 0) > 0) && (
-                    <tr className="clickable" onClick={() => navigate('/gebruikers?groep=veldwerkers')}>
+                    // Veldwerkers-run 14-09: dossiers leven op /veldwerkers — deeplink mét deze administratie als FILTER
+                    // (nooit poort) en het filter "dossier onvolledig" al aan.
+                    <tr
+                      className="clickable"
+                      data-testid="stand-zzp-dossiers"
+                      onClick={() => navigate(`/veldwerkers?filter=dossier_onvolledig&administratie=${administratieId}`)}
+                    >
                       <td>
                         <b>ZZP-dossiers — signaal</b>
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>

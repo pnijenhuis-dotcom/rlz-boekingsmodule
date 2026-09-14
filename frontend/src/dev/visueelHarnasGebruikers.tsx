@@ -335,7 +335,7 @@ const SCOPE_ACCORDEUR = {
   administraties: [...SCOPE_ACTIEF.slice(0, 5).map((a) => ({ ...a, actief: true })), ...SCOPE_GEARCHIVEERD.slice(0, 1)],
 }
 
-/** Veldgebruikers-mock (VeldwerkersPanel haalt /uren/beheer/veldgebruikers): koppelingen mét tarieven,
+/** Veldgebruikers-mock (sinds 14-09 alleen nog door /veldwerkers gelezen — harness-veldwerkers.html; hier onschadelijk): koppelingen mét tarieven,
  * dossier-samenvatting en de kantoor-only correctie-⚠. */
 const VELDGEBRUIKERS = [
   {

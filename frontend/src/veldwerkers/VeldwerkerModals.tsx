@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+// Dialogen van het veldwerkers-beheer (veldwerkers-run 14-09): één-op-één verhuisd uit gebruikers/VeldwerkersPanel.tsx
+// (22-08 crediteur & tarieven, 07-09 C3 voorgeselecteerde administratie) — de tabel leeft nu op /veldwerkers
+// (VeldwerkersScreen), het paneel op Gebruikers & toegang is een account-tabel. Nieuw: ZzperBureausModal (de
+// omgekeerde koppeling: vanaf een ZZP'er-rij "Detacheerder koppelen…", zelfde API-routes).
+import { useEffect, useState } from 'react'
 import { ApiError, apiJson } from '../api/client'
-import type { AdministratieDto } from '../api/types'
+import type { AdministratieDto, VendorLijstDto } from '../api/types'
 import {
-  haalVeldgebruikers,
   koppelDetacheerder,
   koppelVeldwerkerCrediteur,
   ontkoppelDetacheerder,
@@ -11,7 +14,6 @@ import {
   zetVeldwerkerAutoboeken,
   type VeldgebruikerDto,
 } from '../meerwerk/meerwerkApi'
-import type { VendorLijstDto } from '../api/types'
 import {
   Badge,
   Button,
@@ -24,255 +26,11 @@ import {
   MultiSelect,
   Select,
   Switch,
-  useToastOptioneel,
 } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
-import { DossierModal, dossierBadge } from './DossierModal'
-import { GebruikersTabelKop, gebruikersTabelStijl } from './GebruikersTabelKop'
-import { kiesStandaardAdministratie, standaardRedenLabel, urenMeerwerkOptIns } from './standaardAdministratie'
-import {
-  formatVerloop, rolLabel, type GebruikerOverzichtDto } from './gebruikersApi'
+import { kiesStandaardAdministratie, standaardRedenLabel, urenMeerwerkOptIns } from '../gebruikers/standaardAdministratie'
 
-/* Veldwerkers-paneel (Gebruikers & toegang, fase 3 uren & meerwerk — mockup meerwerk-kantoor
- * "Gebruikers & toegang" + bouwopdracht 21-08): kantoor beheert hier de koppeling detacheerder↔zzp'er,
- * crediteur + tarieven — Beheerder-only, elke wijziging in het audit_event. De projecttoegang van
- * ZZP'ers/uitvoerders is sinds het addendum Peter 04-09 (C1/C2) volledig PLANNING-GESTUURD: de
- * koppeling ontstaat bij plannen (bron 'planning') of bij uren buiten planning ("+ ander project",
- * bron 'weekstaat'); het paneel toont die afgeleide toegang alleen-lezen ("actief op N projecten
- * (via planning)" mét uitklap). Bestaande handmatige koppelingen blijven staan, er komen geen nieuwe bij. */
-
-export function VeldwerkersPanel({
-  gebruikers,
-  administraties,
-  onUitnodigen,
-  actieKolom,
-}: {
-  /** De veldrol-gebruikers uit de algemene gebruikerslijst (status/uitnodiging/blokkade). */
-  gebruikers: GebruikerOverzichtDto[]
-  administraties: AdministratieDto[]
-  onUitnodigen: () => void
-  /** Actiekolom (opnieuw mailen / blokkeren) — gedeeld met de andere panelen. */
-  actieKolom: (g: GebruikerOverzichtDto) => ReactNode
-}) {
-  const { meld } = useToastOptioneel()
-  const [veld, setVeld] = useState<VeldgebruikerDto[] | null>(null)
-  const [fout, setFout] = useState<string | null>(null)
-  const [projectenUitgeklapt, setProjectenUitgeklapt] = useState<Set<string>>(() => new Set())
-  const [zzperModal, setZzperModal] = useState<VeldgebruikerDto | null>(null)
-  const [crediteurModal, setCrediteurModal] = useState<VeldgebruikerDto | null>(null)
-  const [tarievenModal, setTarievenModal] = useState<VeldgebruikerDto | null>(null)
-  const [dossierModal, setDossierModal] = useState<VeldgebruikerDto | null>(null)
-
-  const laad = useCallback(() => {
-    setFout(null)
-    haalVeldgebruikers()
-      .then(setVeld)
-      .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
-  }, [])
-
-  useEffect(() => {
-    laad()
-  }, [laad, gebruikers])
-
-  const veldPer = new Map((veld ?? []).map((v) => [v.gebruiker_id, v]))
-
-  return (
-    <div className="panel">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Veldwerkers — uren &amp; meerwerk</h2>
-        <div style={{ marginLeft: 'auto' }}>
-          <Button variant="secundair" maat="klein" onClick={onUitnodigen}>
-            + Veldwerker uitnodigen
-          </Button>
-        </div>
-      </div>
-      <p className="hint" style={{ marginTop: 6 }}>
-        ZZP'ers schrijven weekstaten, uitvoerders keuren per week, detacheerders vullen in namens gekoppelde
-        ZZP'ers — crediteur + tarieven voeden de factuurmatch.
-      </p>
-      {fout && <div className="fout">{fout}</div>}
-      {gebruikers.length === 0 && (
-        <p className="hint">Nog geen veldwerkers — nodig een ZZP'er, uitvoerder of detacheerder uit.</p>
-      )}
-      {gebruikers.length > 0 && (
-        <div className="tabel-scroll sticky-koppen">
-          {/* Blok 2 (10-09): kolomminima uit één bron (gebruikersKolommen.ts) + ⋯-actiekolom, zelfde behandeling als Kantoor. */}
-          <table className="gebruikers-tabel" style={gebruikersTabelStijl('veldwerkers')} data-testid="gebruikers-tabel-veldwerkers">
-            <GebruikersTabelKop tab="veldwerkers" />
-            <tbody>
-              {gebruikers.map((g) => {
-                const info = veldPer.get(g.id)
-                return (
-                  <tr key={g.id}>
-                    <td>
-                      <b>{g.naam}</b>
-                      <div className="gebruiker-email" title={g.e_mail}>
-                        {g.e_mail}
-                      </div>
-                    </td>
-                    <td>
-                      <Badge variant="paars">{rolLabel(g.rol)}</Badge>
-                    </td>
-                    <td>
-                      {g.rol !== 'detacheerder' && info !== undefined && (
-                        <ProjectToegang
-                          info={info}
-                          rol={g.rol}
-                          uitgeklapt={projectenUitgeklapt.has(g.id)}
-                          toggle={() =>
-                            setProjectenUitgeklapt((huidig) => {
-                              const volgende = new Set(huidig)
-                              if (volgende.has(g.id)) volgende.delete(g.id)
-                              else volgende.add(g.id)
-                              return volgende
-                            })
-                          }
-                        />
-                      )}
-                      {g.rol === 'detacheerder' && (
-                        <>
-                          {(info?.zzpers ?? []).map((z) => (
-                            <span key={z.gebruiker_id}>
-                              <Badge variant="info">
-                                {z.naam}
-                                {z.uurtarief !== null ? ` · ${tariefLabel(z.uurtarief)}` : ' · geen tarief'}
-                              </Badge>{' '}
-                            </span>
-                          ))}
-                          {info !== undefined && (
-                            <Button variant="ghost" maat="klein" onClick={() => setZzperModal(info)}>
-                              {info.zzpers.length === 0 ? "ZZP'ers koppelen" : 'wijzig'}
-                            </Button>
-                          )}
-                          {info !== undefined && info.zzpers.length > 0 && (
-                            <Button variant="ghost" maat="klein" onClick={() => setTarievenModal(info)}>
-                              tarieven…
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      {info !== undefined && g.rol !== 'uitvoerder' && (
-                        <div style={{ marginTop: 4 }}>
-                          {info.crediteuren.map((c) => (
-                            <span key={`${c.administratie_id}-${c.vendor_id}`}>
-                              <Badge variant="stil">
-                                € {c.vendor_naam ?? c.vendor_id}
-                                {c.uurtarief !== null && ` · ${tariefLabel(c.uurtarief)}`}
-                              </Badge>{' '}
-                              {c.autoboeken_ingeschakeld && (
-                                <Badge variant="ok" title="Autoboeken bij een groene urenmatch (fase 4) staat aan voor deze koppeling">
-                                  ⚡ autoboeken
-                                </Badge>
-                              )}{' '}
-                            </span>
-                          ))}
-                          <Button variant="ghost" maat="klein" onClick={() => setCrediteurModal(info)}>
-                            {info.crediteuren.length === 0 ? 'crediteur koppelen' : 'crediteur/tarief'}
-                          </Button>
-                          {info.crediteuren.length === 0 && (
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                              zonder crediteur-koppeling geen factuurmatch
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {/* Statuschips op één regel (blok 2 10-09); herstel-link en ⚠-correcties als detailregels eronder. */}
-                      <div className="chips-regel">
-                        {g.status === 'actief' && <Badge variant="ok">actief</Badge>}
-                        {g.status === 'geblokkeerd' && <Badge variant="danger">geblokkeerd</Badge>}
-                        {g.status === 'gearchiveerd' && <Badge variant="stil">gearchiveerd</Badge>}
-                        {g.status === 'uitgenodigd' && <Badge variant="stil">uitgenodigd</Badge>}
-                        {g.status === 'wacht_op_passkey' && <Badge variant="warn">activatie onderbroken</Badge>}
-                        {g.half_geactiveerd && (
-                          <Badge variant="warn" title="Activatie niet afgerond, geen gekoppeld toestel — stuur een herstel-link">
-                            half geactiveerd — geen toestel
-                          </Badge>
-                        )}
-                        {/* ZZP-dossier (A1, 25-08 — mockup: "📁 dossier 4/6"): klik opent het dossier. */}
-                        {info !== undefined && g.rol !== 'detacheerder' && (() => {
-                          const badge = dossierBadge(info)
-                          return (
-                            <button
-                              type="button"
-                              className="linkbtn"
-                              style={{ padding: 0 }}
-                              onClick={() => setDossierModal(info)}
-                              title="ZZP-dossier openen (documenten, KvK/btw, herinneringen)"
-                            >
-                              {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : <Badge variant="stil">📁 dossier</Badge>}
-                            </button>
-                          )
-                        })()}
-                      </div>
-                      {g.open_herstel_verloopt_op && (
-                        <div className="cel-detail">herstel-link {formatVerloop(g.open_herstel_verloopt_op)}</div>
-                      )}
-                      {info !== undefined && info.uren_afwijking_aantal > 0 && (
-                        <div
-                          style={{ fontSize: 11, color: 'var(--warn)', marginTop: 2 }}
-                          title="Afkeuringen mét correctievoorstel; delta = ingediend − uiteindelijk goedgekeurd. Alleen zichtbaar voor kantoor — de veldwerker ziet dit niet."
-                        >
-                          ⚠ {info.uren_afwijking_aantal}× correctie bij keuring ·{' '}
-                          {Number(info.uren_afwijking_som).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} u
-                          meer ingediend dan goedgekeurd
-                        </div>
-                      )}
-                    </td>
-                    <td className="acties">{actieKolom(g)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {zzperModal && (
-        <DetacheerderKoppelModal
-          detacheerder={zzperModal}
-          zzpers={(veld ?? []).filter((v) => v.rol === 'zzper')}
-          onSluiten={() => setZzperModal(null)}
-          onGewijzigd={() => {
-            meld("ZZP'er-koppelingen bijgewerkt — geauditeerd.")
-            laad()
-          }}
-        />
-      )}
-      {crediteurModal && (
-        <CrediteurModal
-          veldwerker={crediteurModal}
-          administraties={administraties}
-          onSluiten={() => setCrediteurModal(null)}
-          onGewijzigd={() => {
-            meld('Crediteur-koppeling bijgewerkt — geauditeerd.')
-            laad()
-          }}
-        />
-      )}
-      {dossierModal && (
-        <DossierModal
-          veldwerker={dossierModal}
-          administraties={administraties}
-          onSluiten={() => setDossierModal(null)}
-          onGewijzigd={laad}
-        />
-      )}
-      {tarievenModal && (
-        <BureauTarievenModal
-          detacheerder={tarievenModal}
-          onSluiten={() => setTarievenModal(null)}
-          onGewijzigd={() => {
-            meld('Bureau-tarieven bijgewerkt — geauditeerd.')
-            laad()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function tariefLabel(uurtarief: string): string {
+export function tariefLabel(uurtarief: string): string {
   return `€ ${Number(uurtarief).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/u`
 }
 
@@ -281,7 +39,7 @@ const BRON_LABEL: Record<string, string> = { planning: 'via planning', weekstaat
 /** Afgeleide projecttoegang, alleen-lezen (C2 04-09): "actief op N projecten (via planning)" mét uitklap
  * per project + herkomst. Geen selectie-UI meer — koppelingen ontstaan uitsluitend via de planning
  * (of uren buiten planning); bestaande handmatige koppelingen blijven zichtbaar en staan. */
-function ProjectToegang({
+export function ProjectToegang({
   info,
   rol,
   uitgeklapt,
@@ -322,7 +80,7 @@ function ProjectToegang({
   )
 }
 
-function DetacheerderKoppelModal({
+export function DetacheerderKoppelModal({
   detacheerder,
   zzpers,
   onSluiten,
@@ -398,7 +156,7 @@ function DetacheerderKoppelModal({
  * Peter 21-08): welke RLZ-crediteur factureert het werk van deze veldwerker. Eén crediteur
  * per veldwerker per administratie (upsert); het uurtarief hoort alleen bij een ZZP'er —
  * bureau-tarieven staan per detacheerder↔zzp'er-koppeling (BureauTarievenModal). */
-function CrediteurModal({
+export function CrediteurModal({
   veldwerker,
   administraties,
   onSluiten,
@@ -606,7 +364,7 @@ function CrediteurModal({
 /** Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, 21-08: hét hoofdmechanisme van
  * de bureaufactuurmatch — bureaus factureren per ZZP'er verschillende tarieven). Leeg laten =
  * "geen tarief bekend" (match alleen op uren, oranje — geen blokkade). */
-function BureauTarievenModal({
+export function BureauTarievenModal({
   detacheerder,
   onSluiten,
   onGewijzigd,
@@ -674,6 +432,79 @@ function BureauTarievenModal({
           </Button>
           <Button onClick={() => void opslaan()} disabled={bezig || gewijzigd.length === 0}>
             {bezig ? 'Bezig…' : 'Tarieven opslaan'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+
+/** Omgekeerde koppeling (veldwerkers-run 14-09): vanaf een ZZP'er-rij de bureaus kiezen die namens deze ZZP'er
+ * invullen — dezelfde routes als DetacheerderKoppelModal (koppel/ontkoppel per paar), geaudit. */
+export function ZzperBureausModal({
+  zzper,
+  detacheerders,
+  onSluiten,
+  onGewijzigd,
+}: {
+  zzper: VeldgebruikerDto
+  detacheerders: VeldgebruikerDto[]
+  onSluiten: () => void
+  onGewijzigd: () => void
+}) {
+  const huidige = detacheerders.filter((d) => d.zzpers.some((z) => z.gebruiker_id === zzper.gebruiker_id)).map((d) => d.gebruiker_id)
+  const [selectie, setSelectie] = useState<string[]>(huidige)
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+  const erbij = selectie.filter((id) => !huidige.includes(id))
+  const eraf = huidige.filter((id) => !selectie.includes(id))
+
+  async function opslaan() {
+    setBezig(true)
+    setFout(null)
+    try {
+      for (const id of erbij) await koppelDetacheerder(id, zzper.gebruiker_id)
+      for (const id of eraf) await ontkoppelDetacheerder(id, zzper.gebruiker_id)
+      onGewijzigd()
+      onSluiten()
+    } catch (err) {
+      setFout(err instanceof ApiError ? err.message : 'Koppelen mislukt.')
+      onGewijzigd()
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !bezig && onSluiten()}>
+      <DialogContent>
+        <DialogTitle>Detacheerder van {zzper.naam}</DialogTitle>
+        <DialogDescription>
+          Een gekoppelde detacheerder (bureau) vult weekstaten in NAMENS deze ZZP'er en factureert het werk per
+          bureau-tarief (knop "Bureau-tarieven…" op de detacheerder-rij). Elke wijziging wordt geauditeerd.
+        </DialogDescription>
+        {detacheerders.length === 0 && <p className="hint">Er zijn nog geen detacheerders om te koppelen.</p>}
+        <MultiSelect
+          opties={detacheerders.map((d) => ({ waarde: d.gebruiker_id, label: d.naam }))}
+          waarden={selectie}
+          onChange={setSelectie}
+          zoekPlaceholder="Zoek detacheerder…"
+        />
+        {(erbij.length > 0 || eraf.length > 0) && (
+          <p className="hint">
+            {erbij.length > 0 && `${erbij.length} erbij`}
+            {erbij.length > 0 && eraf.length > 0 && ' · '}
+            {eraf.length > 0 && `${eraf.length} eraf`}
+          </p>
+        )}
+        {fout && <div className="fout">{fout}</div>}
+        <DialogFooter>
+          <Button variant="secundair" onClick={onSluiten} disabled={bezig}>
+            Annuleren
+          </Button>
+          <Button onClick={() => void opslaan()} disabled={bezig || (erbij.length === 0 && eraf.length === 0)}>
+            {bezig ? 'Bezig…' : 'Koppelingen opslaan'}
           </Button>
         </DialogFooter>
       </DialogContent>

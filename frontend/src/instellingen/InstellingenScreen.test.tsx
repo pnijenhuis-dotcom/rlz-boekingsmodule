@@ -548,8 +548,9 @@ describe('InstellingenScreen — rol×sectie-matrix (blok B 31-08, fail-closed)'
   })
 
   it('élke andere beheer-sectie (en de detailpagina) valt voor B+P fail-closed terug op de eigen landing (Materiaalcatalogus)', async () => {
-    // 'gebruikers' uitgezonderd: dat item redirect extern naar /gebruikers (eigen rol-gate).
-    const beheerSecties = INSTELLINGEN_SECTIES.filter((k) => k.beheerder && k.pad !== 'materiaal' && k.pad !== 'gebruikers')
+    // 'gebruikers' en 'veldwerkers' uitgezonderd: die items redirecten extern naar /gebruikers resp. /veldwerkers
+    // (eigen rol-gate; /veldwerkers toont de 403 leesbaar — veldwerkers-run 14-09).
+    const beheerSecties = INSTELLINGEN_SECTIES.filter((k) => k.beheerder && k.pad !== 'materiaal' && !k.extern)
     expect(beheerSecties.length).toBeGreaterThan(5)
     for (const pad of [...beheerSecties.map((k) => `/instellingen/${k.pad}`), `/instellingen/administraties/${ADMINISTRATIE_ID}`]) {
       vi.unstubAllGlobals()

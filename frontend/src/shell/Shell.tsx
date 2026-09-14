@@ -5,6 +5,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { PasskeyToevoegenBanner } from '../auth/PasskeyToevoegenBanner'
 import { isMonoKlant, planningMenuPad, useMijnToegang } from '../auth/useMijnToegang'
+import { toontVeldwerkersNav } from '../auth/rollen'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { ThemaKnop } from '../ui/ThemaKnop'
 import { WatIsNieuwKnop } from '../changelog/WatIsNieuw'
@@ -85,6 +86,10 @@ export function Shell() {
           {/* Gebruikers & toegang (fase 3, 15-08) is Beheerder-only — het endpoint weigert
               andere rollen, dus het menu-item verschijnt daar ook niet. */}
           {rol === 'beheerder' && <NavItem to="/gebruikers">Gebruikers</NavItem>}
+          {/* Veldwerkers (veldwerkers-run 14-09, besluiten Peter 14-09 punt 1+2): koppelingen, tarieven en
+              ZZP-dossiers kantoorbreed — Beheerder óf houder van het recht 'veldwerkerbeheer' (backend-poort op
+              /uren/beheer/veldgebruikers). Fail-closed: geen toegang-data = niet tonen, behalve voor de Beheerder. */}
+          {toontVeldwerkersNav(rol, toegang) && <NavItem to="/veldwerkers">Veldwerkers</NavItem>}
           {/* Sinds kantoor-passkeys (besluit 0020) voor élke kantoor-rol: niet-Beheerders zien
               er alleen de Beveiliging-sectie (eigen passkeys). */}
           <NavItem to="/instellingen">Instellingen</NavItem>

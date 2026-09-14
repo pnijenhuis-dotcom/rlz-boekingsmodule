@@ -26,3 +26,23 @@ export const PROJECT_AANMAAK_ROLLEN = ['beheerder', 'boekhouding_projecten', 'bo
 export function magProjectAanmaken(rol: string | null): boolean {
   return rol !== null && (PROJECT_AANMAAK_ROLLEN as readonly string[]).includes(rol)
 }
+
+/** /veldwerkers (veldwerkers-run 14-09, besluiten Peter 14-09 punt 1+2): kantoorbrede pagina voor koppelingen,
+ * tarieven en dossiers van veldwerkers. Routing-allowlist = de kantoorrollen (de backend blijft de waarheid:
+ * `GET /uren/beheer/veldgebruikers` = Beheerder ÓF houder van het recht 'veldwerkerbeheer', anders 403 — het
+ * scherm toont die 403 leesbaar). Het nav-item is strenger dan de route: alleen Beheerder óf een bewezen
+ * recht-houder (`MijnToegangDto.heeft_veldwerkerbeheer_recht === true`); geen toegang-data = niet tonen. */
+export const VELDWERKERS_ROUTE_ROLLEN = KANTOOR_ROLLEN
+
+export function magVeldwerkersRoute(rol: string | null): boolean {
+  return rol !== null && (VELDWERKERS_ROUTE_ROLLEN as readonly string[]).includes(rol)
+}
+
+export function toontVeldwerkersNav(
+  rol: string | null,
+  toegang: { heeft_veldwerkerbeheer_recht?: boolean } | null | undefined,
+): boolean {
+  if (rol === 'beheerder') return true
+  if (!magVeldwerkersRoute(rol)) return false
+  return toegang?.heeft_veldwerkerbeheer_recht === true
+}
