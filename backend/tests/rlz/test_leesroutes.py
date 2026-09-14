@@ -92,7 +92,13 @@ def test_probe_vraagt_precies_de_probe_set_op_met_adminid_prefix() -> None:
     root = RlzClient(username="u", password="p", client=http)  # type: ignore[arg-type]
     uitkomst = credentialstore.voer_probe_uit(root, "ADM")
     assert list(uitkomst.rapport) == [r.naam for r in leesroutes.PROBE_LEESROUTES]
-    assert http.urls == [("/" if r.scope == "root" else "/ADM/") + r.pad for r in leesroutes.PROBE_LEESROUTES]
+    # 14-09: een route mét params (Ledgers $expand=PreferentialTaxRate) proben mét exact die query — één bron.
+    assert http.urls == [
+        ("/" if r.scope == "root" else "/ADM/")
+        + r.pad
+        + ("?" + "&".join(f"{k}={v}" for k, v in r.params) if r.params else "")
+        for r in leesroutes.PROBE_LEESROUTES
+    ]
     # sentinel-403 overal → per route status + letterlijke melding
     assert set(uitkomst.rapport.values()) == {"403"}
     assert all(m == "HTTP 403 — sentinel" for m in uitkomst.meldingen.values())

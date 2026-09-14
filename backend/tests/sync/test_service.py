@@ -234,3 +234,67 @@ class TestLeeslijstenVoorControlescherm:
 
         assert [v.id for v in service.lijst_vendors(administratie_id=administratie_id)] == [vendor_id]
         assert [p.id for p in service.lijst_projects(administratie_id=administratie_id)] == [project_id]
+
+
+# --- Btw-default uit de grootboekrekening (opdracht Peter 14-09, migratie 0142) ---------------------------------------
+
+
+def _grootboek_default_rijen(admin_engine: Engine, administratie_id: uuid.UUID) -> dict[str, str | None]:
+    with admin_engine.connect() as conn:
+        rijen = conn.execute(
+            text(
+                "SELECT code, standaard_taxrate_id::text FROM platform.grootboekrekening "
+                "WHERE administratie_id = :aid ORDER BY code"
+            ),
+            {"aid": administratie_id},
+        ).all()
+    return {code: taxrate for code, taxrate in rijen}
+
+
+def test_sync_ledgers_vraagt_preferentialtaxrate_expand_op_en_schrijft_de_default(
+    administratie_id: uuid.UUID, admin_engine: Engine
+) -> None:
+    """STAP-0 14-09: `PreferentialTaxRate` staat alleen in het antwoord mét `$expand` (leesroutes.LEDGERS.params) en is
+    een navigatie `{id: <VatRate-guid>}` óf null. Mét waarde → kolom gevuld; null/ontbrekend/rommel → NULL."""
+    tarief = uuid.uuid4()
+    met = {**_ledger_record(code="4404", naam="Kosten mobiele telefonie"), "PreferentialTaxRate": {"id": str(tarief)}}
+    zonder = {**_ledger_record(code="4403", naam="Telefoonkosten"), "PreferentialTaxRate": None}
+    ontbreekt = _ledger_record(code="4400", naam="Kantoorartikelen")
+    rommel = {**_ledger_record(code="4405", naam="Internetkosten"), "PreferentialTaxRate": {"id": "geen-guid"}}
+    client = FakeRlzClient({"Ledgers": [met, zonder, ontbreekt, rommel]})
+
+    service.sync_ledgers(administratie_id=administratie_id, client=client)
+
+    assert client.opgevraagde_paden == ["Ledgers"]
+    assert client.opgevraagde_params == [{"$expand": "PreferentialTaxRate"}]
+    assert _grootboek_default_rijen(admin_engine, administratie_id) == {
+        "4400": None,
+        "4403": None,
+        "4404": str(tarief),
+        "4405": None,
+    }
+
+
+def test_sync_ledgers_herschrijft_de_default_bij_elke_sync(administratie_id: uuid.UUID, admin_engine: Engine) -> None:
+    """Zet Peter het voorkeurstarief in RLZ (of haalt hij 'm weg), dan volgt de kolom bij de eerstvolgende sync."""
+    record = _ledger_record(code="4404")
+    tarief = uuid.uuid4()
+    service.sync_ledgers(administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [record]}))
+    assert _grootboek_default_rijen(admin_engine, administratie_id) == {"4404": None}
+
+    service.sync_ledgers(
+        administratie_id=administratie_id,
+        client=FakeRlzClient({"Ledgers": [{**record, "PreferentialTaxRate": {"id": str(tarief)}}]}),
+    )
+    assert _grootboek_default_rijen(admin_engine, administratie_id) == {"4404": str(tarief)}
+
+    service.sync_ledgers(administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [record]}))
+    assert _grootboek_default_rijen(admin_engine, administratie_id) == {"4404": None}
+
+
+def test_grootboek_lijst_dto_draagt_de_default(administratie_id: uuid.UUID) -> None:
+    tarief = uuid.uuid4()
+    record = {**_ledger_record(code="4404"), "PreferentialTaxRate": {"id": str(tarief)}}
+    service.sync_ledgers(administratie_id=administratie_id, client=FakeRlzClient({"Ledgers": [record]}))
+    rekeningen = service.lijst_grootboek(administratie_id=administratie_id)
+    assert [(r.code, r.standaard_taxrate_id) for r in rekeningen] == [("4404", tarief)]

@@ -310,3 +310,36 @@ class TestVerlegdeTaxratesNaOverstap:
         )  # fmt: skip
         port = OdooInkoopPort(aid, verbinding, client=types.SimpleNamespace(company_id=1))  # type: ignore[arg-type]
         assert port._verlegde_taxrates() == {odoo_verlegd.id}
+
+
+class TestBtwDefaultUitDeRekening:
+    """14-09 (btw-default uit de grootboekrekening): Odoo-tegenhanger van RLZ `PreferentialTaxRate` =
+    `account.account.tax_ids`, alleen de INKOOP-belastingen die `lees_btw` óók las; precies één → default."""
+
+    def test_precies_een_inkoopbelasting_is_de_default_meerdere_of_geen_is_leeg(self) -> None:
+        import uuid as _uuid
+
+        t14, t20 = _uuid.uuid4(), _uuid.uuid4()
+        inkoop = {14: t14, 20: t20}
+        assert odoo_sync.standaard_taxrate_voor_account([14], inkoop_taxes=inkoop) == t14
+        assert odoo_sync.standaard_taxrate_voor_account([14, 7], inkoop_taxes=inkoop) == t14  # 7 = verkoop: telt niet
+        assert odoo_sync.standaard_taxrate_voor_account([14, 20], inkoop_taxes=inkoop) is None  # meerduidig
+        assert odoo_sync.standaard_taxrate_voor_account([], inkoop_taxes=inkoop) is None
+        assert odoo_sync.standaard_taxrate_voor_account([7], inkoop_taxes=inkoop) is None
+
+    def test_verrijk_grootboek_zet_de_default_uit_de_gelezen_inkoop_btw(self) -> None:
+        from app.odoo.ids import odoo_uuid
+
+        btw = [
+            {"id": str(odoo_uuid(1, "account.tax", 14)), "odoo_id": 14, "type_tax_use": "purchase"},
+            {"id": str(odoo_uuid(1, "account.tax", 0)), "odoo_id": 0, "type_tax_use": "purchase", "synthetisch": True},
+        ]
+        grootboek = [
+            {"code": "440000", "naam": "Telefoon", "soort": 2, "tax_ids": [14, 7], "standaard_taxrate_id": None},
+            {"code": "440100", "naam": "Porti", "soort": 2, "tax_ids": [], "standaard_taxrate_id": None},
+            # de synthetische nulcode telt nooit als default
+            {"code": "440200", "naam": "Internet", "soort": 2, "tax_ids": [0], "standaard_taxrate_id": None},
+        ]
+        odoo_sync.verrijk_grootboek_met_btw_default(grootboek, btw)
+        assert [r["standaard_taxrate_id"] for r in grootboek] == [odoo_uuid(1, "account.tax", 14), None, None]
+        assert odoo_sync._grootboek_waarden(grootboek[0])["standaard_taxrate_id"] == odoo_uuid(1, "account.tax", 14)

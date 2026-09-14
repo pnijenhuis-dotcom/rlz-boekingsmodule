@@ -61,10 +61,10 @@ class SchrijfFakeClient(FakeRlzClient):
     def put_purchase_invoice(self, invoice_id, *, vendor_id, lines, reference=None, **extra):
         self.documenten[str(invoice_id)] = {"id": str(invoice_id), "Reference": reference, "Status": 1, "lines": lines}
 
-    def get(self, path: str):
+    def get(self, path: str, *, params: dict | None = None):
         if path.startswith("PurchaseInvoices/"):
             return self.documenten[path.split("/", 1)[1]]
-        return super().get(path)
+        return super().get(path, params=params)
 
     def book_purchase_invoice(self, invoice_id):
         self.acties.append((str(invoice_id), 17))

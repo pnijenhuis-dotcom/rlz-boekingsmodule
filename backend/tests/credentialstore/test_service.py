@@ -374,10 +374,10 @@ class TestRlzCheckVelden:
 
     def test_onverwacht_antwoord_zonder_value_geeft_lege_lijst_zonder_fout(self) -> None:
         class RaarAntwoord(FakeRlzClient):
-            def get(self, path: str) -> dict:  # type: ignore[override]
+            def get(self, path: str, *, params: dict | None = None) -> dict:  # type: ignore[override]
                 if path == "Administrations":
                     return {"geen": "value"}
-                return super().get(path)
+                return super().get(path, params=params)
 
         uitkomst = service.voer_probe_uit(RaarAntwoord({}), "adm-1")
         assert uitkomst.rapport["Administrations"] == "ok"

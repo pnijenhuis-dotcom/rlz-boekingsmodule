@@ -92,7 +92,9 @@ class BoekvoorstelRegelData:
     # netto/btw van de gelezen regel afgeleid (prefill, nog niet opgeslagen). None = leeg of van
     # de mens/het geheugen. Alleen gevuld op prefill-regels — ná opslaan is de keuze van de
     # controleur (zelfde regel als de AI-zekerheidschips). Sinds blok E 04-09 óók "standaard" = de
-    # btw-default van de administratie (vult alleen wat factuur én leverancier-geheugen leeg lieten).
+    # btw-default van de administratie (vult alleen wat factuur én leverancier-geheugen leeg lieten);
+    # sinds 14-09 óók "grootboek" = het standaard-tarief van de grootboekrekening uit RLZ/Odoo
+    # (`grootboekrekening.standaard_taxrate_id`, wint van "standaard").
     btw_bron: str | None = None
     # Blok 6 herstelrun 08-09: leesbare herkomst van de verlegd-keuze bij `btw_bron='factuur_verlegd'` ("voorkeur
     # beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …, regel_prefill.VerlegdKeuze) —
@@ -825,8 +827,10 @@ _AUTOSAVE_STATUSSEN = frozenset(
 # engine) en de btw-default van de administratie; plus een template-veldvoorstel (kop). AI-classificatie
 # ("ai") en de uit de factuur afgeleide btw ("factuur") triggeren níét — een AI-only prefill blijft
 # zoals voorheen niet-opgeslagen (de checks zagen die al).
+# 14-09: "grootboek" = btw-default uit de grootboekrekening (regel_prefill.BTW_BRON_GROOTBOEK) — deterministisch, dus
+# ook een autosave-trigger (de checks moeten dezelfde btw zien als de mens).
 _AUTOSAVE_HERKOMSTEN = frozenset(
-    {"geheugen", "geheugen_seed", "geheugen_conflict", "leverancier_geheugen", "standaard"}
+    {"geheugen", "geheugen_seed", "geheugen_conflict", "leverancier_geheugen", "standaard", "grootboek"}
 )
 # Blok 10 07-09: een project uit de factuur (exacte code, werknummer-mapping of fuzzy — ingevuld) triggert de autosave
 # óók (opdracht: "via het A10-prefill-/autosave-pad") — de projectplicht-check en het doorbelasten-blok zien dan

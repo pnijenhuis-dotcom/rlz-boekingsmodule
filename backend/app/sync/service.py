@@ -29,6 +29,7 @@ from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 
 #: Sync-pad per eerste-sync-onderdeel — één bron met de rechten-probe (app/rlz/leesroutes.py, blok C 10-09).
 _sync_pad = leesroutes.pad_voor_sync_onderdeel
+_sync_params = leesroutes.params_voor_sync_onderdeel
 
 
 class SyncFout(Exception):
@@ -112,12 +113,27 @@ def _upsert_en_markeer_verdwenen(
     return SyncTelling(aangemaakt=aangemaakt, bijgewerkt=bijgewerkt, verdwenen=verdwenen)
 
 
+def standaard_taxrate_uit_ledger(record: dict[str, Any]) -> uuid.UUID | None:
+    """Het standaard-btw-tarief van een RLZ-rekening: `PreferentialTaxRate` = navigatie naar een VatRate, alleen
+    aanwezig mét `$expand=PreferentialTaxRate` (leesroutes.LEDGERS.params). Ontbreekt de sleutel, is hij null of
+    draagt hij geen leesbaar id → None = geen default (fail-safe: hetzelfde gedrag als vóór 14-09)."""
+    nav = record.get("PreferentialTaxRate")
+    if not isinstance(nav, dict):
+        return None
+    try:
+        return uuid.UUID(str(nav["id"]))
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def _grootboek_waarden(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "code": str(record["AccountNumber"]),
         "naam": record["Description"],
         "soort": int(record["AccountType"]),
         "is_totaalrekening": bool(record["IsTotalAccount"]),
+        # Opdracht Peter 14-09: btw-default uit de grootboekrekening (migratie 0142) — elke sync herschrijft 'm.
+        "standaard_taxrate_id": standaard_taxrate_uit_ledger(record),
     }
 
 
@@ -151,8 +167,11 @@ def _sync_generiek(
     model: type,
     id_kolom: str,
     kolom_waarden: Callable[[dict[str, Any]], dict[str, Any]],
+    params: dict[str, str] | None = None,
 ) -> SyncTelling:
-    verse_rijen = client.get(pad).get("value", [])
+    # `params` = de exacte query van de Leesroute (14-09: Ledgers mét $expand=PreferentialTaxRate) — één bron met de
+    # rechten-probe, zodat de probe hetzelfde antwoord ziet als de sync.
+    verse_rijen = (client.get(pad, params=params) if params else client.get(pad)).get("value", [])
     now = datetime.now(UTC)
     with scoped_session(administratie_id) as session:
         return _upsert_en_markeer_verdwenen(
@@ -200,7 +219,7 @@ def sync_ledgers(*, administratie_id: uuid.UUID, client: RlzClient | None = None
     try:
         return _sync_generiek(
             administratie_id=administratie_id, client=client, pad=_sync_pad("ledgers"), model=Grootboekrekening,
-            id_kolom="ledger_id", kolom_waarden=_grootboek_waarden,
+            id_kolom="ledger_id", kolom_waarden=_grootboek_waarden, params=_sync_params("ledgers"),
         )
     finally:
         if eigen_client:
@@ -260,7 +279,7 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
         return SyncResultaat(
             ledgers=_sync_generiek(
                 administratie_id=administratie_id, client=client, pad=_sync_pad("ledgers"), model=Grootboekrekening,
-                id_kolom="ledger_id", kolom_waarden=_grootboek_waarden,
+                id_kolom="ledger_id", kolom_waarden=_grootboek_waarden, params=_sync_params("ledgers"),
             ),
             taxrates=_sync_generiek(
                 administratie_id=administratie_id, client=client, pad=_sync_pad("taxrates"), model=TaxRateCache,

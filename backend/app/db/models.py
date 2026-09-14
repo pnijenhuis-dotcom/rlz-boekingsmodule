@@ -618,7 +618,13 @@ class Grootboekrekening(Base):
     Platform/contracten/KOPPELCONTRACT_RLZ_VASTGOED.md §2c). `verdwenen_uit_bron_op` is GEEN
     RLZ-brongegeven maar een sync-afleiding: de nachtelijke/on-demand sync zet dit op een rij
     zodra hij niet meer in de meest recente `GET Ledgers`-respons voorkomt (nooit hard
-    verwijderen; komt hij terug, gaat de kolom terug naar NULL)."""
+    verwijderen; komt hij terug, gaat de kolom terug naar NULL).
+    `standaard_taxrate_id` (migratie 0142, opdracht Peter 14-09 "btw-code uit de grootboekrekening"): het
+    standaard-btw-tarief dat RLZ op de rekening draagt (`Account.PreferentialTaxRate`, gelezen via
+    `Ledgers?$expand=PreferentialTaxRate` — api-verkenning "Ledgers — standaard btw-code, STAP-0 14-09"); Odoo:
+    de enige inkoop-belasting in `account.account.tax_ids`. NULL = geen default in de bron. Bewust geen FK naar
+    `taxrate_cache` (zelfde overweging als `administratie.standaard_taxrate_id`, 0108): de sync-volgorde en een
+    verdwenen tarief mogen de grootboek-sync nooit blokkeren — de prefill toetst het tarief tegen de cache."""
 
     __tablename__ = "grootboekrekening"
     __table_args__ = (Index("ix_grootboekrekening_administratie_id", "administratie_id"),)
@@ -633,6 +639,7 @@ class Grootboekrekening(Base):
     is_totaalrekening: Mapped[bool]
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
+    standaard_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
 
 
 class RlzCredential(Base):

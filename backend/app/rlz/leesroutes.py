@@ -48,6 +48,10 @@ ADMINISTRATIONS = Leesroute(
 LEDGERS = Leesroute(
     naam="Ledgers",
     pad="Ledgers",
+    # Opdracht Peter 14-09 (btw-default uit de grootboekrekening): het standaard-btw-tarief van een rekening is de
+    # navigatie `PreferentialTaxRate` op het Account-DTO — alleen zichtbaar mét $expand (STAP-0 14-09, api-verkenning
+    # "Ledgers — standaard btw-code"). Eén bron: probe én sync vragen exact dit pad + deze params op.
+    params=(("$expand", "PreferentialTaxRate"),),
     sync_onderdeel="ledgers",
     rlz_recht="leesrecht Grootboek/Financieel (rekeningschema) voor de webservice-gebruiker op deze administratie",
 )
@@ -127,6 +131,14 @@ def pad_voor_sync_onderdeel(onderdeel: str) -> str:
         return SYNC_LEESROUTES[onderdeel].pad
     except KeyError as exc:
         raise KeyError(f"Sync-onderdeel {onderdeel!r} heeft geen Leesroute in app/rlz/leesroutes.py") from exc
+
+
+def params_voor_sync_onderdeel(onderdeel: str) -> dict[str, str] | None:
+    """De exacte query-parameters van een eerste-sync-onderdeel (None = kale collectie) — zelfde bron als de probe."""
+    route = SYNC_LEESROUTES.get(onderdeel)
+    if route is None:
+        raise KeyError(f"Sync-onderdeel {onderdeel!r} heeft geen Leesroute in app/rlz/leesroutes.py")
+    return dict(route.params) or None
 
 
 def route_voor(naam: str) -> Leesroute | None:

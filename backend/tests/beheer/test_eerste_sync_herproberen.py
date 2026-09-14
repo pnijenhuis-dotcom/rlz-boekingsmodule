@@ -58,7 +58,8 @@ class ReeksClient(FakeRlzClient):
         self._reeks = reeks
         self.list_payment_accounts = lambda: []  # type: ignore[method-assign]
 
-    def get(self, path: str) -> dict[str, Any]:
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        # 14-09: de Ledgers-sync stuurt `$expand=PreferentialTaxRate` mee — de reeks sleutelt op het kale pad.
         self.opgevraagde_paden.append(path)
         reeks = self._reeks.get(path)
         if reeks:

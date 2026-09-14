@@ -96,7 +96,13 @@ def grootboek_lijst(
     rekeningen = service.lijst_grootboek(administratie_id=administratie_id)
     return schemas.GrootboekLijstResponse(
         rekeningen=[
-            schemas.GrootboekOptieResponse(ledger_id=r.ledger_id, code=r.code, naam=r.naam, soort=r.soort)
+            schemas.GrootboekOptieResponse(
+                ledger_id=r.ledger_id,
+                code=r.code,
+                naam=r.naam,
+                soort=r.soort,
+                standaard_taxrate_id=r.standaard_taxrate_id,
+            )
             for r in rekeningen
         ]
     )

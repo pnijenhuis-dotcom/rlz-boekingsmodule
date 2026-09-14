@@ -19,6 +19,9 @@ class GrootboekOptieResponse(BaseModel):
     code: str
     naam: str
     soort: int
+    #: Opdracht Peter 14-09: het standaard-btw-tarief dat de bron op deze rekening draagt (RLZ `PreferentialTaxRate`,
+    #: Odoo `tax_ids`); None = geen default. Het controlescherm laat de btw-code bij een grootboek-wissel volgen.
+    standaard_taxrate_id: uuid.UUID | None = None
 
 
 class GrootboekLijstResponse(BaseModel):

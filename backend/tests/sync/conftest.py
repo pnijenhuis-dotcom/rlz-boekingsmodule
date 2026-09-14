@@ -27,10 +27,12 @@ class FakeRlzClient:
         self.closed = False
         self.admin_id: str | None = None
         self.opgevraagde_paden: list[str] = []
+        self.opgevraagde_params: list[dict[str, Any] | None] = []
         self.aangemaakte_vendors: list[tuple[Any, str]] = []
 
-    def get(self, path: str) -> dict[str, Any]:
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self.opgevraagde_paden.append(path)
+        self.opgevraagde_params.append(params)
         if path in self._fouten:
             raise self._fouten[path]
         return {"value": self._data.get(path, [])}

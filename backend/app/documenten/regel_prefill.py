@@ -59,8 +59,16 @@ Twee onafhankelijke verrijkingen, één aanroep vanuit `boekvoorstel.haal_boekvo
     2. uit de factuur BEREKEND (`btw_bron='factuur'`, netto × tarief ≈ btw, groen) — `_regels_prefill`;
     3. leverancier-GEHEUGEN (kop-niveau-engine, ook oranje/seed) — `_met_leverancier_geheugen`;
     4. uit de factuur VERLEGD (`btw_bron='factuur_verlegd'`, oranje) — `_met_factuur_verlegd`;
-    5. administratie-DEFAULT (`btw_bron='standaard'`, grijs) — `_met_btw_default`;
-    6. leeg = de mens kiest.
+    5. GROOTBOEK-DEFAULT uit de bron (`btw_bron='grootboek'`, grijs, chip "standaard grootboek") —
+       `_met_grootboek_default` (opdracht Peter 14-09, casus L.H.G. Holding "Kosten mobiele telefonie"): het
+       standaard-btw-tarief dat RLZ op de gekozen rekening draagt (`Account.PreferentialTaxRate` →
+       `grootboekrekening.standaard_taxrate_id`, migratie 0142; Odoo `account.account.tax_ids`). Alleen als de
+       regel een grootboek HEEFT; het tarief moet in de actuele `taxrate_cache` staan (niet verdwenen). De
+       A3-regel "0 %/ambigu bewust leeg = leeg laten" geldt NIET voor deze stap: de default is een expliciete
+       keuze in RLZ, geen afleiding uit de scan. Wisselt de mens in het controlescherm van grootboek, dan volgt
+       de btw dezelfde default client-side (`BoekvoorstelPanel.wijzigRegel`) zolang de btw niet van de mens is.
+    6. administratie-DEFAULT (`btw_bron='standaard'`, grijs) — `_met_btw_default`;
+    7. leeg = de mens kiest.
   Elke stap vult uitsluitend een nog leeg veld; de harde checks blijven de poort.
 
 Opgeslagen keuzes van de mens worden hier nooit geraakt: de aanroeper roept dit uitsluitend op het
@@ -77,7 +85,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Administratie
+from app.db.models import Administratie, Grootboekrekening
 from app.documenten.checks import is_buitenland_tarief
 from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
@@ -93,6 +101,8 @@ if TYPE_CHECKING:  # boekvoorstel.py importeert deze module (lazy) — geen runt
     from app.documenten.boekvoorstel import BoekvoorstelRegelData
 
 BTW_BRON_STANDAARD = "standaard"
+# Opdracht Peter 14-09: btw-code uit het standaard-tarief van de grootboekrekening (RLZ PreferentialTaxRate).
+BTW_BRON_GROOTBOEK = "grootboek"
 # Blok 4c (08-09): btw-code uit de verleggings-vermelding op de factuur — oranje tot het geheugen bevestigt.
 BTW_BRON_FACTUUR_VERLEGD = "factuur_verlegd"
 
@@ -322,6 +332,48 @@ def _engine_heeft_btw(engine_observaties: list[Observatie], *, regel_sleutel: st
     return voorstel.btw.waarde is not None
 
 
+def grootboek_defaults_voor(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+    """{ledger_id: standaard_taxrate_id} van déze administratie — alleen rekeningen mét een default die nog in de
+    bron staan, en alleen tarieven die in de actuele `taxrate_cache` staan (een verdwenen tarief vult nooit)."""
+    actieve_tarieven = set(
+        session.scalars(
+            select(TaxRateCache.id).where(
+                TaxRateCache.administratie_id == administratie_id, TaxRateCache.verdwenen_uit_bron_op.is_(None)
+            )
+        )
+    )
+    rijen = session.execute(
+        select(Grootboekrekening.ledger_id, Grootboekrekening.standaard_taxrate_id).where(
+            Grootboekrekening.administratie_id == administratie_id,
+            Grootboekrekening.standaard_taxrate_id.is_not(None),
+            Grootboekrekening.verdwenen_uit_bron_op.is_(None),
+        )
+    ).all()
+    return {ledger_id: taxrate_id for ledger_id, taxrate_id in rijen if taxrate_id in actieve_tarieven}
+
+
+def _met_grootboek_default(
+    regel: BoekvoorstelRegelData,
+    *,
+    grootboek_defaults: dict[uuid.UUID, uuid.UUID],
+    engine_observaties: list[Observatie],
+    regel_sleutel: str | None,
+) -> BoekvoorstelRegelData:
+    """Stap 5 van de winnaarsvolgorde: het standaard-btw-tarief van de (al gevulde) grootboekrekening. Vult alleen
+    een leeg btw-veld; het leverancier-geheugen wint (de UI vult 'm dan mét geheugen-chip); `btw_bewust_leeg` is
+    hier bewust GEEN rem (de default is een expliciete RLZ-keuze op de rekening, geen scan-afleiding)."""
+    if regel.taxrate_id is not None or regel.ledger_id is None:
+        return regel
+    default = grootboek_defaults.get(regel.ledger_id)
+    if default is None:
+        return regel
+    if _engine_heeft_btw(engine_observaties, regel_sleutel=regel_sleutel):
+        return regel
+    return _met_herkomst(
+        replace(regel, taxrate_id=default, btw_bron=BTW_BRON_GROOTBOEK), **{VELD_BTW: BTW_BRON_GROOTBOEK}
+    )
+
+
 def _met_btw_default(
     regel: BoekvoorstelRegelData,
     *,
@@ -358,6 +410,7 @@ def verrijk_prefill(
     regels dragen hun eigen tekst al). `factuur_verlegd` = de factuur vermeldt "btw verlegd" én de factuur-btw is 0."""
     administratie = session.get(Administratie, administratie_id)
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
+    grootboek_defaults = grootboek_defaults_voor(session, administratie_id=administratie_id)
     vandaag = vandaag_nl()
     verlegd = (
         bepaal_verlegd_taxrate(session, administratie_id=administratie_id, vandaag=vandaag) if factuur_verlegd else None
@@ -425,6 +478,9 @@ def verrijk_prefill(
             vandaag=vandaag,
         )
         regel = _met_factuur_verlegd(regel, verlegd=verlegd)
+        regel = _met_grootboek_default(
+            regel, grootboek_defaults=grootboek_defaults, engine_observaties=engine_observaties, regel_sleutel=sleutel
+        )
         regel = _met_btw_default(
             regel,
             standaard_taxrate_id=standaard_taxrate_id,
@@ -452,6 +508,12 @@ def verrijk_prefill(
             vandaag=vandaag,
         )
         samengevoegde_regel = _met_factuur_verlegd(samengevoegde_regel, verlegd=verlegd)
+        samengevoegde_regel = _met_grootboek_default(
+            samengevoegde_regel,
+            grootboek_defaults=grootboek_defaults,
+            engine_observaties=engine_observaties,
+            regel_sleutel=None,
+        )
         samengevoegde_regel = _met_btw_default(
             samengevoegde_regel,
             standaard_taxrate_id=standaard_taxrate_id,

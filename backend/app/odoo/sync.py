@@ -121,7 +121,10 @@ def lees_grootboek(client: OdooClient, vertaler: _Vertaler) -> list[dict[str, An
         # Odoo 19 kent op account.account geen `deprecated` meer (live 03-09: ValueError "Invalid field") — alleen
         # `active`; de STAP-0-veldenlijst (§1.5) was op dat punt onjuist. Inactieve rekeningen = verdwenen.
         [["company_ids", "in", [client.company_id]], ["active", "=", True]],
-        ["code", "name", "account_type", "reconcile", "active", "internal_group"],
+        # 14-09 (btw-default uit de grootboekrekening): `tax_ids` = de standaard-belastingen van de rekening (Odoo:
+        # "Default Taxes" op account.account, many2many → lijst id's); de inkoopkant wordt in `sync_alles_voor_odoo_
+        # administratie` tegen de gelezen inkoop-btw gelegd (`standaard_taxrate_voor_account`).
+        ["code", "name", "account_type", "reconcile", "active", "internal_group", "tax_ids"],
         order="code",
     )
     records: list[dict[str, Any]] = []
@@ -137,9 +140,32 @@ def lees_grootboek(client: OdooClient, vertaler: _Vertaler) -> list[dict[str, An
                 "soort": soort,
                 "odoo_id": int(rij["id"]),
                 "account_type": rij.get("account_type"),
+                "tax_ids": [int(t) for t in (rij.get("tax_ids") or []) if str(t).lstrip("-").isdigit()],
+                "standaard_taxrate_id": None,
             }
         )
     return records
+
+
+def standaard_taxrate_voor_account(tax_ids: Iterable[int], *, inkoop_taxes: dict[int, uuid.UUID]) -> uuid.UUID | None:
+    """Odoo-tegenhanger van RLZ `PreferentialTaxRate` (14-09): `account.account.tax_ids` mengt verkoop- en
+    inkoop-belastingen; alleen de INKOOP-belastingen (die `lees_btw` óók las, dus actief + percent) tellen. Precies
+    één → dat lokale tarief-id; nul of meerdere → None (meerduidig = nooit invullen, regel controlescherm)."""
+    kandidaten = {inkoop_taxes[int(t)] for t in tax_ids if int(t) in inkoop_taxes}
+    return next(iter(kandidaten)) if len(kandidaten) == 1 else None
+
+
+def verrijk_grootboek_met_btw_default(grootboek: list[dict[str, Any]], btw: list[dict[str, Any]]) -> None:
+    """Zet `standaard_taxrate_id` op elke gelezen rekening uit haar `tax_ids` × de gelezen inkoop-btw (in place)."""
+    inkoop_taxes = {
+        int(t["odoo_id"]): uuid.UUID(str(t["id"]))
+        for t in btw
+        if not t.get("synthetisch") and t.get("type_tax_use") == "purchase" and t.get("odoo_id") is not None
+    }
+    for rekening in grootboek:
+        rekening["standaard_taxrate_id"] = standaard_taxrate_voor_account(
+            rekening.get("tax_ids") or [], inkoop_taxes=inkoop_taxes
+        )
 
 
 def lees_btw(client: OdooClient, vertaler: _Vertaler) -> list[dict[str, Any]]:
@@ -282,7 +308,13 @@ def _schrijf_id_koppelingen(session, *, administratie_id: uuid.UUID, rijen: Iter
 
 
 def _grootboek_waarden(record: dict[str, Any]) -> dict[str, Any]:
-    return {"code": record["code"], "naam": record["naam"], "soort": record["soort"], "is_totaalrekening": False}
+    return {
+        "code": record["code"],
+        "naam": record["naam"],
+        "soort": record["soort"],
+        "is_totaalrekening": False,
+        "standaard_taxrate_id": record.get("standaard_taxrate_id"),
+    }
 
 
 def _taxrate_waarden(record: dict[str, Any]) -> dict[str, Any]:
@@ -309,6 +341,7 @@ def sync_alles_voor_odoo_administratie(
     try:
         grootboek = lees_grootboek(client, vertaler)
         btw = lees_btw(client, vertaler)
+        verrijk_grootboek_met_btw_default(grootboek, btw)
         crediteuren = lees_crediteuren(client, vertaler)
         projecten = lees_projecten(client, vertaler, plan_id=verbinding.analytic_plan_id)
     finally:
