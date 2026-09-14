@@ -1,12 +1,13 @@
-### Pandenregister-afleiding Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, 2026-09-13T12:19:07+00:00)
+### Pandenregister-afleiding Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, DRY-RUN — niets geschreven, 2026-09-13T19:31:33+00:00)
 - Gelezen: ManualJournals 229, PaymentTransactions 1003, PurchaseInvoices 794, Receipts 1152, SalesInvoices 4
-- Panden (voorstel): 94 · koppelingen: 395 · clusters met varianten: 16
-- Soorten: aanbetaling 93, aankoop 40, balans 26, kosten 113, vaste_lasten 70, verkoop 53
-- Geen pand-signaal (kandidaat Overhead, mens beslist in run 2): ManualJournals 137, PurchaseInvoices 588, Receipts 93, SalesInvoices 4
-- Bankmutaties: 1003 gelezen, 80 gebruikt, 215 overgeslagen (document draagt de tekst al)
+- Panden (voorstel): 94 · koppelingen: 385 · clusters met varianten: 16
+- Soorten: aanbetaling 93, aankoop 44, balans 26, kosten 108, vaste_lasten 67, verkoop 47
+- Geen pand-signaal (kandidaat Overhead, mens beslist in run 2): ManualJournals 137, PurchaseInvoices 656, Receipts 93, SalesInvoices 4
+- Bankmutaties: 1003 gelezen, 139 gebruikt, 151 overgeslagen (document draagt de tekst al)
 - Bijlagechecks memoriaal: 89 gedaan, 0 niet (grens)
+- Regelchecks inkoopfacturen (grootboek 7000 = aankoop, vaste activa = geen pand): 206 gedaan, 0 niet (grens)
 - Pandenlijst: geen lijst meegegeven (clusteren op adres)
-- Dossier zonder pand (onvolledig / zonder dossier-woord): 15
+- Dossier zonder pand (onvolledig / zonder dossier-woord): 16
 - Overhead-project ontbreekt — aanmaken in run 2 (projectaanmaak = RLZ-write, niet in deze run)
 | Pand | Plaats | Aankoop | Verkoop | Dossiers | Koppelingen (soort: hoog/midden/laag) | Varianten | Lijst | DB |
 |---|---|---|---|---|---|---|---|---|
@@ -21,7 +22,7 @@
 | Bornholmstraat 49 | Almere | — | — | — | aanbetaling: 2/0/0; kosten: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Bovenpolder 49 | de Meern | — | — | — | aanbetaling: 1/0/0; kosten: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Brasemermeer 3 | Zaandam | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Brinklaan 165 | Bussum | — | 2025-09-02 | — | aanbetaling: 1/0/0; kosten: 0/1/0; verkoop: 0/4/0 | — | — | dry-run: zou nieuw zijn |
+| Brinklaan 165 | Bussum | — | 2025-09-02 | — | aanbetaling: 1/0/0; kosten: 0/1/0; verkoop: 0/2/0 | — | — | dry-run: zou nieuw zijn |
 | Burgemeester Norbruislaan 422 | Utrecht | — | — | — | aanbetaling: 1/0/0; balans: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Chevremontstraat 68 | Kerkrade | — | — | — | aanbetaling: 5/0/0; balans: 0/1/0; vaste_lasten: 4/0/0 | — | — | dry-run: zou nieuw zijn |
 | Cornelis Speelmanstraat 44 | Den Haag | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
@@ -29,10 +30,10 @@
 | Dautzenbergstraat 18F | Heerlen | — | 2025-08-21 | — | kosten: 0/2/0; verkoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | DeButstraat 7 | Hulst | — | — | — | aanbetaling: 2/0/0 | De Butstraat | — | dry-run: zou nieuw zijn |
 | Donkerslootstraat 101A | Rotterdam | 2026-02-18 | — | — | aankoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
-| Donkerslootstraat 105B | Rotterdam | — | — | — | kosten: 1/1/0 | — | — | dry-run: zou nieuw zijn |
+| Donkerslootstraat 105B | Rotterdam | — | — | — | kosten: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | dossier 2026.080038.01 (adres onbekend) | — | 2026-02-21 | — | 2026.080038.01 | aankoop: 0/0/1 | — | — | dry-run: zou nieuw zijn |
 | Duifhuis 11 | Berlicum | 2026-03-16 | 2026-08-06 | 2026.080906.01 | aanbetaling: 2/0/0; aankoop: 0/1/0; kosten: 0/2/0; vaste_lasten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Dwarsweg 22 | Zeist | 2026-01-01 | 2026-06-30 | 2026.079951.01 | aankoop: 0/1/0; balans: 0/1/0; vaste_lasten: 2/2/0; verkoop: 1/0/0 | Dwartsweg | — | dry-run: zou nieuw zijn |
+| Dwarsweg 22 | Zeist | 2026-01-01 | 2026-06-30 | 2026.079951.01 | aankoop: 0/1/0; balans: 0/1/0; vaste_lasten: 1/2/0; verkoop: 1/0/0 | Dwartsweg | — | dry-run: zou nieuw zijn |
 | Eikenlaan 5 | 's Gravenzande | — | 2025-09-22 | — | aanbetaling: 0/1/0; kosten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Fazantstraat 77 | — | — | — | — | kosten: 0/13/0 | — | — | dry-run: zou nieuw zijn |
 | Fazantstraat 79a | Rotterdam | — | — | — | kosten: 9/8/0 | Fazanstraat | — | dry-run: zou nieuw zijn |
@@ -50,13 +51,13 @@
 | Hilledijk 87D | Rotterdam | — | 2025-10-17 | 2025.078802.01 | kosten: 0/1/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Hogevecht 123 | Amsterdam | 2026-02-13 | 2026-08-03 | 2026.080369.01 | aanbetaling: 3/0/0; aankoop: 0/1/0; kosten: 0/1/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Hulshorststraat 301A | 'S-Gravenhage | 2026-01-01 | 2026-07-13 | 2026.080368.01 | aankoop: 0/1/0; balans: 0/1/0; kosten: 0/1/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Kapershoek 34 | Rotterdam | — | 2025-08-21 | 2025.078175.01 | aanbetaling: 2/1/0; kosten: 1/2/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | Karpershoek | — | dry-run: zou nieuw zijn |
+| Kapershoek 34 | Rotterdam | 2025-08-20 | 2025-08-21 | 2025.078175.01 | aanbetaling: 2/1/0; aankoop: 1/0/0; kosten: 0/2/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | Karpershoek | — | dry-run: zou nieuw zijn |
 | Kasteel Hillenraedstraat 152 | Roermond | 2026-01-01 | 2026-05-04 | 2025.079202.01 | aankoop: 1/1/0; balans: 0/1/0; kosten: 0/1/0; verkoop: 1/0/0 | Kasteel Hillenraedtstraat | — | dry-run: zou nieuw zijn |
 | Kasteel Hillenraedtstraat 144 | Roermond | — | — | — | aanbetaling: 2/0/0 | — | — | dry-run: zou nieuw zijn |
 | Klinkenbergerweg 84D | Ede | 2026-03-18 | — | — | aanbetaling: 2/0/0; aankoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Knoopkruid 1 | Diemen | — | — | — | aanbetaling: 1/0/0; kosten: 0/2/0; vaste_lasten: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Knopkruid 45 | Venray | — | 2026-09-03 | 2025.079458.01 | aanbetaling: 1/0/0; balans: 0/1/0; kosten: 0/2/0; vaste_lasten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Koekoekstraat 19 | Den Helder | — | 2025-09-02 | — | kosten: 0/1/0; verkoop: 0/3/0 | Koekoestraat | — | dry-run: zou nieuw zijn |
+| Koekoekstraat 19 | Den Helder | — | 2025-09-02 | — | kosten: 0/1/0; verkoop: 0/2/0 | Koekoestraat | — | dry-run: zou nieuw zijn |
 | Koraalerf 45 | Heerlen | 2025-12-09 | 2025-12-09 | 2025.079469.01 | aanbetaling: 0/2/0; aankoop: 1/0/0; kosten: 0/1/0; vaste_lasten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Korenstraat 28 | Olst | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Kouvenderstraat 34b | Hoensbroek | — | — | — | kosten: 0/5/0 | — | — | dry-run: zou nieuw zijn |
@@ -80,27 +81,27 @@
 | Papaverstraat 44 | Utrecht | — | — | — | aanbetaling: 1/0/0; kosten: 0/1/0; vaste_lasten: 3/0/0 | — | — | dry-run: zou nieuw zijn |
 | Patmosdreef 140 | Utrecht | 2026-04-21 | 2026-04-21 | 2025.079200.01 | aankoop: 0/1/0; balans: 0/1/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Piet Heinstraat 53 | Den Helder | — | — | — | balans: 0/1/0 | — | — | dry-run: zou nieuw zijn |
-| Provincialeweg 63 | — | — | 2025-09-02 | — | verkoop: 0/5/0 | — | — | dry-run: zou nieuw zijn |
+| Provincialeweg 63 | — | — | 2025-09-02 | — | verkoop: 0/3/0 | — | — | dry-run: zou nieuw zijn |
 | Rhijnauwensingel 93 | Rotterdam | 2025-12-08 | 2025-12-08 | 2025.078234.01 | aanbetaling: 1/0/0; aankoop: 1/0/0; kosten: 0/1/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Rietvelderf 44 | Amersfoort | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Rijswijkseweg 409 | Den Haag | — | 2025-08-13 | 2025.078758.01 | kosten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
+| Rijswijkseweg 409 | Den Haag | 2025-08-11 | 2025-08-13 | 2025.078758.01 | aankoop: 1/0/0; kosten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Ripperdastraat 13 | Farmsum | 2026-03-05 | — | — | aankoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Ronhaarstraat 45 | Amersfoort | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Rooseveltstraat 13 | Hulst | — | — | — | aanbetaling: 2/0/0 | — | — | dry-run: zou nieuw zijn |
 | Rooseveltweg 13 | Hulst | 2026-03-12 | — | — | aanbetaling: 1/0/0; aankoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
-| Ruyghweg 71 | Den Helder | — | 2025-08-28 | 2025.078902.01 | aanbetaling: 1/1/0; kosten: 2/0/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | Ruygweg | — | dry-run: zou nieuw zijn |
+| Ruyghweg 71 | Den He | 2025-08-27 | 2025-08-28 | 2025.078902.01 | aanbetaling: 1/1/0; aankoop: 1/0/0; kosten: 1/0/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | Ruygweg | — | dry-run: zou nieuw zijn |
 | Schoffelstraat 29 | Purmerend | 2026-03-20 | 2026-03-20 | 2026.079950.01 | aanbetaling: 2/0/0; aankoop: 1/1/0; balans: 0/1/0; vaste_lasten: 2/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Schoonegge 98 | Rotterdam | — | 2025-11-24 | — | vaste_lasten: 4/0/0; verkoop: 1/0/0 | Schonegge | — | dry-run: zou nieuw zijn |
-| Sluisdijkstraat 10A | Den Helder | — | — | — | aanbetaling: 2/0/0; kosten: 0/1/0; vaste_lasten: 3/0/0 | — | — | dry-run: zou nieuw zijn |
+| Sluisdijkstraat 10A | Den Helder | — | — | — | aanbetaling: 2/0/0; kosten: 0/1/0; vaste_lasten: 2/0/0 | — | — | dry-run: zou nieuw zijn |
 | Spaakstraat 13 | Zevenaar | — | — | — | aanbetaling: 6/0/0; balans: 0/1/0; kosten: 0/1/0; vaste_lasten: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Sportlaan 180 | Purmerend | — | 2026-08-06 | 2026.080301.01 | aanbetaling: 1/0/0; balans: 0/1/0; vaste_lasten: 3/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Stadhoudersring 374 | Zoetermeer | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Tapuitstraat 52A | — | — | 2025-09-02 | — | kosten: 0/3/0; verkoop: 0/2/0 | — | — | dry-run: zou nieuw zijn |
+| Tapuitstraat 52A | — | — | 2025-09-02 | — | kosten: 0/3/0; verkoop: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Van de Spiegelstraat 42 | Bergen op Zoom | 2026-04-23 | 2026-08-04 | 2026.080912.01 | aankoop: 0/1/0; verkoop: 1/0/0 | Van de spiegelstraat | — | dry-run: zou nieuw zijn |
 | Van Dortmondstraat 1 | Arnhem | 2026-04-22 | 2026-04-22 | 2025.078806.01 | aankoop: 0/1/0; balans: 0/1/0; verkoop: 1/0/0 | Van Dortmondtstraat | — | dry-run: zou nieuw zijn |
-| Verschoorstraat 70-02 | Rotterdam | — | 2025-07-31 | 2025.078247.01 | kosten: 2/0/0; verkoop: 1/1/0 | — | — | dry-run: zou nieuw zijn |
+| Verschoorstraat 70-02 | Rotterdam | 2025-07-25 | 2025-07-31 | 2025.078247.01 | aankoop: 1/0/0; kosten: 1/0/0; verkoop: 1/1/0 | — | — | dry-run: zou nieuw zijn |
 | Vlamingstraat 19 | Den Helder | 2026-02-17 | 2026-02-17 | 2025.079525.01 | aanbetaling: 1/0/0; aankoop: 1/1/0; balans: 0/1/0; vaste_lasten: 1/0/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
-| Vondelstraat 14 | Roermond | 2026-01-01 | 2026-06-22 | 2026.079949.01 | aanbetaling: 2/0/0; aankoop: 1/1/0; balans: 0/1/0; vaste_lasten: 0/2/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
+| Vondelstraat 14 | Roermond | 2026-01-01 | 2026-06-22 | 2026.079949.01 | aanbetaling: 2/0/0; aankoop: 1/1/0; balans: 0/1/0; vaste_lasten: 0/1/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Voorterstraat 100A | — | — | — | — | kosten: 0/1/0 | — | — | dry-run: zou nieuw zijn |
 | Wadden 66 | Zwijndrecht | — | — | — | aanbetaling: 1/0/0 | — | — | dry-run: zou nieuw zijn |
 | Wolweversgaarde 495 | Den Haag | 2026-01-01 | 2026-06-16 | 2026.080357.01 | aankoop: 0/1/0; balans: 0/1/0; verkoop: 1/0/0 | — | — | dry-run: zou nieuw zijn |
@@ -114,6 +115,7 @@ Dossier zonder pand:
 - RLZ-04-00000676: 2026.13 — onvolledig dossiernummer, geen pand
 - RLZ-20-00000841: 2026.17 — onvolledig dossiernummer, geen pand
 - RLZ-04-00000865: 2026.18 — onvolledig dossiernummer, geen pand
+- 00112: 2025.079195.01 — geen dossier-woord in de tekst, geen pand
 - 00112: 2025.079879.01 — geen dossier-woord in de tekst, geen pand
 - 00100: 2026.2 — onvolledig dossiernummer, geen pand
 - 00100: 2026.8 — onvolledig dossiernummer, geen pand
