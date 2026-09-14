@@ -56,6 +56,21 @@ function installMock(posts: { url: string; body: unknown }[]) {
       if (init?.method === 'POST' || init?.method === 'PUT') posts.push({ url, body })
       if (url === '/instellingen/odoo/verbinding-testen') {
         if (body?.api_key === 'fout') return Promise.resolve(jsonResponse({ detail: { bericht: 'Odoo weigert deze sleutel (HTTP 401) — controleer de API-sleutel', rapport: { verbinding: 'HTTP 401' } } }, 422))
+        if (body?.api_key === 'tien' || body?.api_key === 'traag') {
+          // Nazorg 14-09: de stand van universal-steigers.odoo.com — company 3 al gekoppeld, 6 gereserveerd als
+          // migratiedoel, 5 matcht een Reeleezee-administratie (signaal), 7 vrij.
+          return Promise.resolve(
+            jsonResponse({
+              odoo_url: 'https://universal-steigers.odoo.com',
+              companies: [
+                { company_id: 3, naam: 'Universal Verkoop', al_gekoppeld: true, gekoppeld_aan: 'al gekoppeld (Universal Verkoop)', migratie_doel: false, rlz_administratie: null },
+                { company_id: 5, naam: 'Caravanpark "De Visotter"', al_gekoppeld: false, gekoppeld_aan: null, migratie_doel: false, rlz_administratie: 'De Visotter' },
+                { company_id: 6, naam: 'Vastgoedgroep Nederland B.V.', al_gekoppeld: true, gekoppeld_aan: 'migratiedoel (Vastgoedgroep Nederland)', migratie_doel: true, rlz_administratie: null },
+                { company_id: 7, naam: 'Lusso Chalets', al_gekoppeld: false, gekoppeld_aan: null, migratie_doel: false, rlz_administratie: null },
+              ],
+            }),
+          )
+        }
         return Promise.resolve(
           jsonResponse({
             companies: [
@@ -64,6 +79,15 @@ function installMock(posts: { url: string; body: unknown }[]) {
             ],
           }),
         )
+      }
+      if (url === '/instellingen/odoo/probe') {
+        // Punt 3 (14-09): één company per request; rood = 200 mét rapport. Company 7 mét sleutel 'traag' = time-out
+        // (de api-laag vertaalt een AbortError naar BackendOnbereikbaarError 'timeout').
+        if (body?.api_key === 'traag' && body?.company_id === 7) return Promise.reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }))
+        if (body?.api_key === 'rood') {
+          return Promise.resolve(jsonResponse({ groen: false, rapport: { ...PROBE_OK, boeken: 'geen schrijfrecht op account.move — geef de API-gebruiker boekhoudrechten in Odoo' }, company_naam: 'Universal Steigerbouw', versie: '19.0+e', lock_dates: {}, onderbroken: false, company_id: body.company_id }))
+        }
+        return Promise.resolve(jsonResponse({ groen: true, rapport: { ...PROBE_OK, 'dagboek:memoriaal': 'ok (memoriaal-dagboek: MEM)' }, company_naam: 'Lusso Chalets', versie: '19.0+e', lock_dates: {}, onderbroken: false, company_id: body?.company_id }))
       }
       if (url === '/instellingen/odoo/koppelen') {
         if (body?.api_key === 'rood') {
@@ -79,7 +103,9 @@ function installMock(posts: { url: string; body: unknown }[]) {
             ),
           )
         }
-        return Promise.resolve(jsonResponse({ administraties: [{ id: NIEUW_ID, naam: 'Universal Steigerbouw', company_id: 1, probe: PROBE_OK, sync_run_id: 'run-1', sync: {} }] }, 201))
+        const ids = (body?.company_ids as number[] | undefined) ?? [1]
+        if (ids[0] === 6 || body?.api_key === 'conflict') return Promise.resolve(jsonResponse({ detail: { bericht: 'company 6 (Vastgoedgroep Nederland B.V.) is gereserveerd als migratiedoel voor administratie ‹Vastgoedgroep Nederland›', rapport: {} } }, 409))
+        return Promise.resolve(jsonResponse({ administraties: ids.map((id) => ({ id: id === 1 ? NIEUW_ID : `nieuw-${id}`, naam: id === 1 ? 'Universal Steigerbouw' : `Company ${id}`, company_id: id, probe: PROBE_OK, sync_run_id: 'run-1', sync: {} })) }, 201))
       }
       if (url === `/administraties/${ADMIN_ID}/odoo/overstap/voorbereiden`) {
         if (body?.api_key === 'rood') {
@@ -176,6 +202,8 @@ describe('OdooKoppelWizard — ingang A (Odoo-tak van "+ Administratie toevoegen
 
     fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ }))
     await waitFor(() => expect(screen.getByText('Administratie toevoegen — stap 4 van 4')).toBeInTheDocument())
+    // Punt 3 (14-09): eerst de probe als eigen request per company, dan koppelen per company.
+    expect(posts.find((p) => p.url === '/instellingen/odoo/probe')?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'geheim', company_id: 1 })
     expect(posts.find((p) => p.url === '/instellingen/odoo/koppelen')?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'geheim', company_ids: [1] })
     // Resultaat: company i.p.v. RLZ-id, probe-samenvatting in Odoo-vorm, vier onderdelen (geen bankrekeningen).
     expect(screen.getByText(/company Universal Steigerbouw \(1\)/)).toBeInTheDocument()
@@ -197,10 +225,13 @@ describe('OdooKoppelWizard — ingang A (Odoo-tak van "+ Administratie toevoegen
     await vulVerbinding('rood')
     fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ }))
     await waitFor(() => expect(screen.getByText(/Rechten-probe niet groen — niets opgeslagen/)).toBeInTheDocument())
+    // Punt 3: het rapport staat op de RIJ (probe per company), koppelen is nooit aangeroepen.
+    expect(within(screen.getByTestId('odoo-company-1')).getByText('probe rood')).toBeInTheDocument()
     expect(screen.getByText(/geen schrijfrecht op account.move — geef de API-gebruiker boekhoudrechten in Odoo/)).toBeInTheDocument()
     expect(screen.getByText(/Opslaan is geblokkeerd tot de probe groen is/)).toBeInTheDocument()
     expect(screen.getByText('Administratie toevoegen — stap 3 van 4')).toBeInTheDocument()
     expect(screen.queryByTestId('odoo-wizard-resultaat')).not.toBeInTheDocument()
+    expect(posts.some((p) => p.url === '/instellingen/odoo/koppelen')).toBe(false)
     // Sluiten zónder resultaat = niets aangemaakt → geen herlaad.
     fireEvent.click(screen.getByRole('button', { name: '← Terug' }))
     expect(onAangemaakt).not.toHaveBeenCalled()
@@ -216,6 +247,126 @@ describe('OdooKoppelWizard — ingang A (Odoo-tak van "+ Administratie toevoegen
     fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
     await waitFor(() => expect(screen.getByText(/weigert deze sleutel \(HTTP 401\)/)).toBeInTheDocument())
     expect(screen.getByText('Administratie toevoegen — stap 2 van 4')).toBeInTheDocument()
+  })
+})
+
+describe('OdooKoppelWizard — nazorg 14-09 (URL-normalisatie, grijs mét reden, Reeleezee-signaal, probe per company)', () => {
+  async function naarCompanyStap(sleutel: string, url = 'https://universal-steigers.odoo.com/odoo') {
+    render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={() => {}} />)
+    fireEvent.click(screen.getByLabelText('Odoo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
+    fireEvent.change(screen.getByLabelText('Odoo-URL'), { target: { value: url } })
+    fireEvent.change(screen.getByLabelText('API-sleutel'), { target: { value: sleutel } })
+    fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
+    await waitFor(() => expect(screen.getByLabelText('Koppelen Lusso Chalets')).toBeInTheDocument())
+  }
+
+  it('punt 4: URL mét /odoo-pad → "we gebruiken https://…" vóór het testen; probe en koppelen dragen de genormaliseerde URL', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={() => {}} />)
+    fireEvent.click(screen.getByLabelText('Odoo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
+    fireEvent.change(screen.getByLabelText('Odoo-URL'), { target: { value: 'https://Universal-Steigers.odoo.com/odoo/action-123?debug=1' } })
+    expect(screen.getByTestId('odoo-url-genormaliseerd')).toHaveTextContent('We gebruiken https://universal-steigers.odoo.com (alleen het domein')
+    fireEvent.change(screen.getByLabelText('Odoo-URL'), { target: { value: 'onzin' } })
+    expect(screen.getByTestId('odoo-url-genormaliseerd')).toHaveTextContent('Geen geldige Odoo-URL')
+    fireEvent.change(screen.getByLabelText('Odoo-URL'), { target: { value: 'https://universal-steigers.odoo.com/odoo' } })
+    fireEvent.change(screen.getByLabelText('API-sleutel'), { target: { value: 'tien' } })
+    fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
+    await waitFor(() => expect(screen.getByLabelText('Koppelen Lusso Chalets')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('Koppelen Lusso Chalets'))
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ }))
+    await waitFor(() => expect(screen.getByTestId('odoo-wizard-resultaat')).toBeInTheDocument())
+    expect(posts.find((p) => p.url === '/instellingen/odoo/probe')?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'tien', company_id: 7 })
+    expect(posts.find((p) => p.url === '/instellingen/odoo/koppelen')?.body).toEqual({ odoo_url: 'https://universal-steigers.odoo.com', api_key: 'tien', company_ids: [7] })
+  })
+
+  it('punt 2c: company 3 grijs "al gekoppeld (…)", company 6 grijs "migratiedoel (…)" — niet aan te vinken', async () => {
+    installMock([])
+    await naarCompanyStap('tien')
+    expect(screen.getByLabelText('Koppelen Universal Verkoop')).toBeDisabled()
+    expect(within(screen.getByTestId('odoo-company-3')).getByText('al gekoppeld (Universal Verkoop)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Koppelen Vastgoedgroep Nederland B.V.')).toBeDisabled()
+    expect(within(screen.getByTestId('odoo-company-6')).getByText('migratiedoel (Vastgoedgroep Nederland)')).toBeInTheDocument()
+    // Meerdere vrije companies → niets vooraf aangevinkt.
+    expect(screen.getByLabelText('Koppelen Lusso Chalets')).not.toBeChecked()
+  })
+
+  it('punt 2c: Reeleezee-signaal op company 5 — opslaan pas ná de vink "toch als nieuwe administratie aanmaken" mét reden; de reden reist mee', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    await naarCompanyStap('tien')
+    fireEvent.click(screen.getByLabelText('Koppelen Caravanpark "De Visotter"'))
+    const blok = screen.getByTestId('odoo-rlz-signaal-5')
+    expect(within(blok).getByText('bestaat al als Reeleezee-administratie')).toBeInTheDocument()
+    expect(within(blok).getByText(/‹De Visotter› — voor een overstap gebruik "Odoo koppelen…"/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ })).toBeDisabled()
+    fireEvent.click(screen.getByLabelText('Toch als nieuwe administratie aanmaken Caravanpark "De Visotter"'))
+    expect(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ })).toBeDisabled() // reden verplicht
+    fireEvent.change(screen.getByLabelText('Reden nieuwe administratie Caravanpark "De Visotter"'), { target: { value: 'bewust apart: nieuwe BV' } })
+    expect(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ }))
+    await waitFor(() => expect(screen.getByTestId('odoo-wizard-resultaat')).toBeInTheDocument())
+    expect(posts.find((p) => p.url === '/instellingen/odoo/koppelen')?.body).toEqual({
+      odoo_url: 'https://universal-steigers.odoo.com',
+      api_key: 'tien',
+      company_ids: [5],
+      rlz_signaal_bevestigd: { '5': 'bewust apart: nieuwe BV' },
+    })
+  })
+
+  it('punt 3: twee companies = twee probe-requests en twee koppel-requests, resultaat per rij; nooit één lange request', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    await naarCompanyStap('tien')
+    fireEvent.click(screen.getByLabelText('Koppelen Lusso Chalets'))
+    fireEvent.click(screen.getByLabelText('Koppelen Caravanpark "De Visotter"'))
+    fireEvent.click(screen.getByLabelText('Toch als nieuwe administratie aanmaken Caravanpark "De Visotter"'))
+    fireEvent.change(screen.getByLabelText('Reden nieuwe administratie Caravanpark "De Visotter"'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(2\)/ }))
+    await waitFor(() => expect(screen.getByTestId('odoo-wizard-resultaat')).toBeInTheDocument())
+    const probes = posts.filter((p) => p.url === '/instellingen/odoo/probe').map((p) => (p.body as { company_id: number }).company_id)
+    const koppel = posts.filter((p) => p.url === '/instellingen/odoo/koppelen').map((p) => (p.body as { company_ids: number[] }).company_ids)
+    expect(probes).toEqual([7, 5])
+    expect(koppel).toEqual([[7], [5]])
+  })
+
+  it('punt 3: time-out op één company = die rij rood mét "probe onderbroken … company 7 (Lusso Chalets)", de andere rij blijft staan, niets opgeslagen — nooit de kale "backend niet bereikbaar"', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    await naarCompanyStap('traag')
+    fireEvent.click(screen.getByLabelText('Koppelen Lusso Chalets'))
+    fireEvent.click(screen.getByLabelText('Koppelen Caravanpark "De Visotter"'))
+    fireEvent.click(screen.getByLabelText('Toch als nieuwe administratie aanmaken Caravanpark "De Visotter"'))
+    fireEvent.change(screen.getByLabelText('Reden nieuwe administratie Caravanpark "De Visotter"'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(2\)/ }))
+    await waitFor(() => expect(screen.getByText(/Rechten-probe niet groen — niets opgeslagen/)).toBeInTheDocument())
+    const rij7 = screen.getByTestId('odoo-company-7-fout')
+    expect(rij7).toHaveTextContent(/company 7 \(Lusso Chalets\)/)
+    expect(rij7).toHaveTextContent(/probeer deze company los/)
+    expect(screen.queryByText(/De backend is momenteel niet bereikbaar/)).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('odoo-company-5')).getByText('probe groen')).toBeInTheDocument()
+    expect(posts.some((p) => p.url === '/instellingen/odoo/koppelen')).toBe(false)
+  })
+
+  it('punt 2b: 409 bij koppelen (company inmiddels gereserveerd) toont de leesbare reden op de rij, geen resultaatstap', async () => {
+    const posts: { url: string; body: unknown }[] = []
+    installMock(posts)
+    const onAangemaakt = vi.fn()
+    render(<AdministratieWizard open onSluiten={() => {}} onAangemaakt={onAangemaakt} />)
+    fireEvent.click(screen.getByLabelText('Odoo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Verder →' }))
+    fireEvent.change(screen.getByLabelText('Odoo-URL'), { target: { value: 'https://universal-steigers.odoo.com' } })
+    fireEvent.change(screen.getByLabelText('API-sleutel'), { target: { value: 'conflict' } })
+    fireEvent.click(screen.getByRole('button', { name: /Verbinding testen/ }))
+    await waitFor(() => expect(screen.getByLabelText('Koppelen Universal Steigerbouw')).toBeChecked())
+    fireEvent.click(screen.getByRole('button', { name: /Koppeling opslaan \(1\)/ }))
+    await waitFor(() => expect(screen.getByTestId('odoo-company-1-fout')).toBeInTheDocument())
+    expect(screen.getByTestId('odoo-company-1-fout')).toHaveTextContent('is gereserveerd als migratiedoel voor administratie ‹Vastgoedgroep Nederland›')
+    expect(screen.getByText(/0 van 1 companies gekoppeld/)).toBeInTheDocument()
+    expect(screen.queryByTestId('odoo-wizard-resultaat')).not.toBeInTheDocument()
+    expect(onAangemaakt).not.toHaveBeenCalled()
   })
 })
 

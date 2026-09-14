@@ -496,6 +496,9 @@ export interface OdooProbeDto {
   company_naam: string | null
   versie: string | null
   lock_dates: Record<string, string | null>
+  /** Punt 3 (14-09): het tijdbudget van de probe was op — rapport draagt "probe onderbroken (time-out na N s) …". */
+  onderbroken?: boolean
+  company_id?: number | null
 }
 
 export interface OdooSyncResultaatDto {
@@ -507,6 +510,12 @@ export interface OdooCompanyDto {
   company_id: number
   naam: string
   al_gekoppeld: boolean
+  /** Punt 2c (14-09): grijs-reden — "al gekoppeld (‹administratie›)" of "migratiedoel (‹administratie›)". */
+  gekoppeld_aan?: string | null
+  migratie_doel?: boolean
+  /** Signaal (geen blokkade): naam van een bestaande Reeleezee-administratie die met deze company overeenkomt —
+   * de wizard eist dan de vink "toch als nieuwe administratie aanmaken" mét reden. */
+  rlz_administratie?: string | null
 }
 
 /** Resultaat van koppelen/overstap: probe-rapport + eerste-sync-run (zelfde subrij-patroon als RLZ). Slotstuk
@@ -551,20 +560,40 @@ export function startOdooSync(administratieId: string): Promise<OdooSyncResultaa
   return apiJson<OdooSyncResultaatDto>(`/administraties/${administratieId}/odoo/sync`, { method: 'POST' })
 }
 
-/** Wizard-stap Verbinding: URL + sleutel proberen → companies van die database (nooit een id typen). */
-export function testOdooVerbinding(body: { odoo_url: string; api_key: string; api_gebruiker?: string }): Promise<{ companies: OdooCompanyDto[] }> {
+/** Wizard-stap Verbinding: URL + sleutel proberen → companies van die database (nooit een id typen). `odoo_url` in het
+ * antwoord = de genormaliseerde URL (scheme + host) die de module gebruikt (punt 4, 14-09). */
+export function testOdooVerbinding(body: { odoo_url: string; api_key: string; api_gebruiker?: string }): Promise<{ companies: OdooCompanyDto[]; odoo_url?: string | null }> {
   return apiJson('/instellingen/odoo/verbinding-testen', { ...POST_JSON, body: JSON.stringify(body) })
 }
 
-/** Ingang A: nieuwe Odoo-administratie(s) — probe groen vereist, daarna eerste sync als achtergrondrun. */
+/** Punt 3 (14-09): de Odoo-probe en het koppelen lopen per company als eigen request en duren langer dan de
+ * standaard 10 s van de api-laag (≈ 25 Odoo-calls per company). Eigen AbortController i.p.v. AbortSignal.timeout()
+ * zodat tests met fake timers kunnen sturen; het budget ligt boven de server-side probe-timeout (45 s). */
+export const ODOO_PROBE_REQUEST_TIMEOUT_MS = 90_000
+
+export function odooLangeRequestSignal(ms: number = ODOO_PROBE_REQUEST_TIMEOUT_MS): AbortSignal {
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), ms)
+  return controller.signal
+}
+
+/** Punt 3 (14-09): rechten-probe van ÉÉN company als eigen request — rood of onderbroken = 200 mét rapport. */
+export function probeOdooCompany(body: { odoo_url: string; api_key: string; api_gebruiker?: string; company_id: number }): Promise<OdooProbeDto> {
+  return apiJson('/instellingen/odoo/probe', { ...POST_JSON, body: JSON.stringify(body), signal: odooLangeRequestSignal() })
+}
+
+/** Ingang A: nieuwe Odoo-administratie(s) — probe groen vereist, daarna eerste sync als achtergrondrun. De wizard roept
+ * 'm sinds 14-09 per company aan (één request per rij). `rlz_signaal_bevestigd` = company-id → reden waarom de
+ * Beheerder de company TOCH als nieuwe administratie aanmaakt terwijl de naam een Reeleezee-administratie matcht. */
 export function koppelOdooNieuw(body: {
   odoo_url: string
   api_key: string
   api_gebruiker?: string
   company_ids: number[]
   namen?: Record<string, string>
+  rlz_signaal_bevestigd?: Record<string, string>
 }): Promise<{ administraties: OdooGekoppeldeAdministratieDto[] }> {
-  return apiJson('/instellingen/odoo/koppelen', { ...POST_JSON, body: JSON.stringify(body) })
+  return apiJson('/instellingen/odoo/koppelen', { ...POST_JSON, body: JSON.stringify(body), signal: odooLangeRequestSignal() })
 }
 
 /** Ingang B, alleen-lezen leesbron (voorraad-uitstroom vanaf de knip; backend blijft RLZ). */

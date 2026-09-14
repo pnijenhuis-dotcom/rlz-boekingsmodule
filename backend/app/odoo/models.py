@@ -6,11 +6,12 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base
+from app.odoo.ids import ODOO_HOST_SQL
 
 
 class OdooKoppeling(Base):
@@ -21,7 +22,20 @@ class OdooKoppeling(Base):
     vastgesteld en hier vastgelegd — de boekmotor raadt nooit een dagboek."""
 
     __tablename__ = "odoo_koppeling"
-    __table_args__ = (CheckConstraint("company_id > 0", name="ck_odoo_koppeling_company"),)
+    __table_args__ = (
+        CheckConstraint("company_id > 0", name="ck_odoo_koppeling_company"),
+        # Failsafe dubbele Odoo-koppeling, laag 1 (besluit Peter 14-09, migratie 0140): één (host, company) hoort bij
+        # precies één administratie — leesbron, volledige backend én migratiedoel tellen alle mee. Host = dezelfde
+        # normalisatie als `app/odoo/ids.py::odoo_host` (ODOO_HOST_SQL). Bewust GEEN partial index op
+        # "gearchiveerd": een koppeling-rij kent geen inactieve stand en een gearchiveerde administratie houdt haar
+        # claim (het sentinel-`rlz_admin_id` is al UNIQUE) — dearchiveren is de weg, nooit een tweede rij.
+        Index(
+            "uq_odoo_koppeling_host_company",
+            text(ODOO_HOST_SQL),
+            "company_id",
+            unique=True,
+        ),
+    )
 
     administratie_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True

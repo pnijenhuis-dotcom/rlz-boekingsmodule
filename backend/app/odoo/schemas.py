@@ -21,16 +21,32 @@ class GevondenCompanyDto(BaseModel):
     company_id: int
     naam: str
     al_gekoppeld: bool
+    #: Punt 2c (14-09): grijs-reden "al gekoppeld (‹administratie›)" / "migratiedoel (‹administratie›)".
+    gekoppeld_aan: str | None = None
+    migratie_doel: bool = False
+    #: Signaal (geen blokkade): naam van een bestaande Reeleezee-administratie die met deze company overeenkomt.
+    rlz_administratie: str | None = None
 
 
 class OdooVerbindingTestDto(BaseModel):
     companies: list[GevondenCompanyDto]
+    #: Punt 4 (14-09): de genormaliseerde URL (scheme + host) die de module gebruikt — de wizard toont 'm.
+    odoo_url: str | None = None
 
 
 class OdooKoppelenDto(OdooGegevensDto):
     company_ids: list[int] = Field(min_length=1)
     #: optionele eigen administratienaam per company-id (string-sleutels: JSON) — default de Odoo-companynaam
     namen: dict[str, str] = Field(default_factory=dict)
+    #: Punt 2c: per company-id de reden waarom de Beheerder 'm TOCH als nieuwe administratie aanmaakt terwijl de
+    #: naam een bestaande Reeleezee-administratie matcht (verplicht zodra het signaal er is; audit).
+    rlz_signaal_bevestigd: dict[str, str] = Field(default_factory=dict)
+
+
+class OdooProbeCompanyDto(OdooGegevensDto):
+    """Punt 3 (14-09): rechten-probe van ÉÉN company als eigen request (wizard stap 3, sequentieel per rij)."""
+
+    company_id: int = Field(gt=0)
 
 
 class GekoppeldeAdministratieDto(BaseModel):
@@ -67,6 +83,10 @@ class OdooProbeDto(BaseModel):
     company_naam: str | None = None
     versie: str | None = None
     lock_dates: dict[str, str | None] = Field(default_factory=dict)
+    #: Punt 3 (14-09): het tijdbudget was op — rapport draagt "probe onderbroken (time-out na N s) — probeer deze
+    #: company los"; de wizard toont die rij rood en laat de andere rijen staan.
+    onderbroken: bool = False
+    company_id: int | None = None
 
 
 class OdooStamgegevensDto(BaseModel):

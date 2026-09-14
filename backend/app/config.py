@@ -474,6 +474,14 @@ class Settings(BaseSettings):
     # De dagelijkse Odoo-adapter (app/odoo/*) kijkt hier NIET naar — dit is uitsluitend de migratiepoort.
     migratie_odoo_writes_ingeschakeld: bool = False
 
+    # Odoo-koppelwizard (punt 3 opdracht Peter 14-09): tijdbudget van de rechten-probe PER COMPANY — de wizard doet
+    # één request per aangevinkte company (nooit één lange request voor zes companies; kliktest 14-09: zes probes
+    # in één POST liepen over de time-out heen en gaven "backend niet bereikbaar"). Ruim onder de Cloud Run-
+    # request-timeout (300 s) en ruim boven één normale probe (~25 Odoo-calls ≈ 5–8 s). Overschrijding = zichtbaar
+    # "probe onderbroken (time-out na N s) — probeer deze company los" + warning-log, nooit een stille halve stand.
+    # Dezelfde waarde is de httpx-timeout per Odoo-call van de probe-client.
+    odoo_probe_timeout_seconds: float = 45.0
+
     apns_key_p8: str | None = None
     apns_key_id: str = ""
     apns_sandbox: bool = False

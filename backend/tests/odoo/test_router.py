@@ -302,9 +302,10 @@ class TestOverstap:
         assert _administratie(admin_engine, administratie_id)[0] == "rlz"
         assert _koppeling(administratie_id).alleen_lezen is True  # ongewijzigd
 
-    def test_company_al_elders_gekoppeld_422(
+    def test_company_al_elders_gekoppeld_409_met_naam_en_audit(
         self, administratie_id, beheerder_id, probe_groen, sync_gefaked, admin_engine: Engine
     ) -> None:
+        """Failsafe laag 2 (14-09): 409 mét de naam van de bezettende administratie + audit-regel."""
         assert _overstap(administratie_id, beheerder_id).status_code == 201
         andere = uuid.uuid4()
         with admin_engine.begin() as conn:
@@ -313,8 +314,19 @@ class TestOverstap:
                 {"id": andere, "rlz": f"rlz-{andere}"},
             )
         r = _overstap(andere, beheerder_id)
-        assert r.status_code == 422 and "al gekoppeld aan een andere administratie" in r.text
+        assert r.status_code == 409, r.text
+        bericht = r.json()["detail"]["bericht"]
+        assert f"company {COMPANY} (Universal Steigerbouw) is al gekoppeld aan administratie ‹" in bericht
         assert _administratie(admin_engine, andere) == ("rlz", f"rlz-{andere}")
+        with admin_engine.begin() as conn:
+            n = conn.execute(
+                text(
+                    "SELECT count(*) FROM platform.audit_event WHERE actie = 'odoo_koppeling_dubbel_geweigerd' "
+                    "AND record_id = :id"
+                ),
+                {"id": administratie_id},
+            ).scalar()
+        assert n == 1
 
     def test_gearchiveerde_administratie_422(self, administratie_id, beheerder_id, probe_groen, admin_engine) -> None:
         with admin_engine.begin() as conn:
@@ -457,9 +469,9 @@ class TestStand:
 class TestKoppelenSentinelConflict:
     """Live keten-cyclus 04-09: een (gearchiveerde) administratie die het sentinel-`rlz_admin_id` van een company
     nog draagt zónder koppeling-rij liet `POST /instellingen/odoo/koppelen` stranden op een UniqueViolation (500).
-    Het sentinel is uniek — de wizard moet dat vooraf zien: leesbare 422, niets opgeslagen."""
+    Het sentinel is uniek — de wizard moet dat vooraf zien: leesbare 409 (sinds 14-09), niets opgeslagen."""
 
-    def test_sentinel_zonder_koppeling_geeft_422_en_slaat_niets_op(
+    def test_sentinel_zonder_koppeling_geeft_409_en_slaat_niets_op(
         self, administratie_id, beheerder_id, probe_groen, sync_gefaked, admin_engine: Engine
     ) -> None:
         with admin_engine.begin() as conn:
@@ -472,7 +484,7 @@ class TestKoppelenSentinelConflict:
             json={"odoo_url": URL, "api_key": KEY, "api_gebruiker": "n-module", "company_ids": [COMPANY]},
             headers=_bearer(beheerder_id, rol="beheerder"),
         )
-        assert r.status_code == 422, r.text
+        assert r.status_code == 409, r.text
         assert "al gekoppeld" in r.json()["detail"]["bericht"] and "dearchiveer" in r.json()["detail"]["bericht"]
         assert sync_gefaked == []
         with scoped_session(None) as session:
@@ -517,3 +529,274 @@ def select_koppelingen_voor(company_id: int):
     from sqlalchemy import select
 
     return select(OdooKoppeling).where(OdooKoppeling.company_id == company_id)
+
+
+# --- Odoo-koppelwizard nazorg 14-09: failsafe dubbele koppeling (drie lagen), probe per company, URL-normalisatie ---
+
+
+def _verbinding_gefaked(monkeypatch: pytest.MonkeyPatch, companies: list[dict[str, Any]]) -> None:
+    class _Client:
+        def __init__(self, **kw: Any) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a: object) -> None:
+            pass
+
+        def versie(self) -> dict:
+            return {"server_version": "19.0+e"}
+
+    monkeypatch.setattr(odoo_service, "OdooClient", _Client)
+    monkeypatch.setattr(odoo_service, "lees_companies", lambda c: companies)
+
+
+def _koppelen(beheerder: uuid.UUID, company_ids: list[int], **extra: Any):
+    body = {"odoo_url": URL, "api_key": KEY, "api_gebruiker": "n-module", "company_ids": company_ids, **extra}
+    return client.post("/instellingen/odoo/koppelen", json=body, headers=_bearer(beheerder, rol="beheerder"))
+
+
+def _audit_telling(admin_engine: Engine, actie: str) -> int:
+    with admin_engine.begin() as conn:
+        return int(
+            conn.execute(text("SELECT count(*) FROM platform.audit_event WHERE actie = :a"), {"a": actie}).scalar()
+        )
+
+
+def _reserveer_migratiedoel(admin_engine: Engine, beheerder: uuid.UUID, aid: uuid.UUID, company: int) -> None:
+    """Zoals `odoo-koppeling-migratiedoel` (2d): alleen een DB-rij mét migratie_doel=True, geen Odoo-write."""
+    ct, wk = wrap_secret(b"key")
+    with scoped_session(None, actor_id=beheerder) as session:
+        session.add(
+            OdooKoppeling(
+                administratie_id=aid,
+                odoo_url=URL.rstrip("/"),
+                company_id=company,
+                company_naam="Vastgoedgroep Nederland B.V.",
+                api_key_ciphertext=ct,
+                wrapped_data_key=wk,
+                migratie_doel=True,
+                aangemaakt_door=beheerder,
+            )
+        )
+
+
+class TestFailsafeDubbeleKoppeling:
+    """Besluit Peter 14-09, drie lagen: (1) unieke index (host, company) — vangnet; (2) 409 mét leesbare reden +
+    audit op koppelen/overstap/leesbron; (3) wizard grijs mét reden + Reeleezee-signaal mét verplichte bevestiging."""
+
+    def test_laag1_unieke_index_host_company(self, administratie_id, beheerder_id, admin_engine: Engine) -> None:
+        from sqlalchemy.exc import IntegrityError
+
+        _reserveer_migratiedoel(admin_engine, beheerder_id, administratie_id, 6)
+        andere = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Tweede', :rlz)"),
+                {"id": andere, "rlz": f"rlz-{andere}"},
+            )
+        ct, wk = wrap_secret(b"key")
+        with (
+            pytest.raises(IntegrityError, match="uq_odoo_koppeling_host_company"),
+            scoped_session(None, actor_id=beheerder_id) as session,
+        ):
+            # Zelfde host in een ANDERE spelling (hoofdletters + pad-loze trailing slash) — de index normaliseert.
+            session.add(
+                OdooKoppeling(
+                    administratie_id=andere,
+                    odoo_url="https://Universal-Steigers.odoo.com",
+                    company_id=6,
+                    api_key_ciphertext=ct,
+                    wrapped_data_key=wk,
+                    aangemaakt_door=beheerder_id,
+                )
+            )
+            session.flush()
+
+    def test_laag2_koppelen_op_migratiedoel_409_met_reden_en_audit(
+        self, administratie_id, beheerder_id, probe_groen, sync_gefaked, admin_engine: Engine
+    ) -> None:
+        _reserveer_migratiedoel(admin_engine, beheerder_id, administratie_id, 6)
+        r = _koppelen(beheerder_id, [6])
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["bericht"].startswith(
+            "company 6 (Vastgoedgroep Nederland B.V.) is gereserveerd als migratiedoel voor administratie ‹"
+        )
+        assert sync_gefaked == []
+        assert _audit_telling(admin_engine, "odoo_koppeling_dubbel_geweigerd") == 1
+
+    def test_laag2_koppelen_op_leesbron_company_409(
+        self, administratie_id, beheerder_id, monkeypatch: pytest.MonkeyPatch, sync_gefaked
+    ) -> None:
+        _leesbron(monkeypatch, administratie_id, beheerder_id)  # company 3 = alleen-lezen leesbron
+        monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: _groene_probe())
+        r = _koppelen(beheerder_id, [3])
+        assert r.status_code == 409, r.text
+        assert "is al gekoppeld aan administratie ‹" in r.json()["detail"]["bericht"]
+        assert "(alleen-lezen leesbron)" in r.json()["detail"]["bericht"]
+        assert sync_gefaked == []
+
+    def test_laag2_leesbron_op_bezette_company_409(
+        self, administratie_id, beheerder_id, probe_groen, sync_gefaked, admin_engine: Engine
+    ) -> None:
+        assert _koppelen(beheerder_id, [COMPANY]).status_code == 201
+        r = client.post(
+            f"/administraties/{administratie_id}/odoo/leesbron",
+            json={"odoo_url": URL, "api_key": KEY, "company_id": COMPANY, "voorraad_knip_datum": None},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 409, r.text
+        assert _koppeling(administratie_id) is None
+
+    def test_laag2_migratiedoel_cli_weigert_bezette_company(
+        self, administratie_id, beheerder_id, probe_groen, sync_gefaked, admin_engine: Engine
+    ) -> None:
+        from app.migratie.cli_odoo import MigratiedoelFout, maak_migratiedoel
+
+        assert _koppelen(beheerder_id, [COMPANY]).status_code == 201  # company 1 = een Odoo-administratie
+        with scoped_session(None) as session:
+            bron = session.scalars(select_koppelingen_voor(COMPANY)).one().administratie_id
+        with pytest.raises(MigratiedoelFout, match="is al gekoppeld aan administratie"):
+            maak_migratiedoel(doel_id=administratie_id, bron_id=bron, company_id=COMPANY, dry_run=False)
+        assert _koppeling(administratie_id) is None
+        assert _audit_telling(admin_engine, "odoo_koppeling_dubbel_geweigerd") == 1
+
+    def test_laag3_verbinding_testen_draagt_reden_en_rlz_signaal(
+        self, administratie_id, beheerder_id, monkeypatch: pytest.MonkeyPatch, admin_engine: Engine
+    ) -> None:
+        _reserveer_migratiedoel(admin_engine, beheerder_id, administratie_id, 6)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'De Visotter', :rlz)"),
+                {"id": uuid.uuid4(), "rlz": f"rlz-{uuid.uuid4()}"},
+            )
+        _verbinding_gefaked(
+            monkeypatch,
+            [
+                {"id": 5, "naam": 'Caravanpark "De Visotter"'},
+                {"id": 6, "naam": "Vastgoedgroep Nederland B.V."},
+                {"id": 7, "naam": "Lusso Chalets"},
+            ],
+        )
+        r = client.post(
+            "/instellingen/odoo/verbinding-testen",
+            json={"odoo_url": "https://Universal-Steigers.odoo.com/odoo/action-123?debug=1", "api_key": KEY},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["odoo_url"] == "https://universal-steigers.odoo.com"
+        per = {c["company_id"]: c for c in r.json()["companies"]}
+        assert per[6]["al_gekoppeld"] and per[6]["migratie_doel"]
+        assert per[6]["gekoppeld_aan"].startswith("migratiedoel (") and per[6]["rlz_administratie"] is None
+        assert per[5] == {
+            "company_id": 5,
+            "naam": 'Caravanpark "De Visotter"',
+            "al_gekoppeld": False,
+            "gekoppeld_aan": None,
+            "migratie_doel": False,
+            "rlz_administratie": "De Visotter",
+        }
+        assert per[7]["rlz_administratie"] is None and not per[7]["al_gekoppeld"]
+
+    def test_laag3_rlz_signaal_vereist_bevestiging_met_reden_en_audit(
+        self, administratie_id, beheerder_id, monkeypatch: pytest.MonkeyPatch, sync_gefaked, admin_engine: Engine
+    ) -> None:
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'De Visotter', :rlz)"),
+                {"id": uuid.uuid4(), "rlz": f"rlz-{uuid.uuid4()}"},
+            )
+        from dataclasses import replace
+
+        visotter = replace(_groene_probe(), company_naam='Caravanpark "De Visotter"')
+        monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: visotter)
+        monkeypatch.setattr(odoo_mapping, "lees_live_odoo_stamgegevens", lambda **kw: ([], [], []))
+        r = _koppelen(beheerder_id, [5])
+        assert r.status_code == 422, r.text
+        assert "bestaat al als Reeleezee-administratie ‹De Visotter›" in r.json()["detail"]["bericht"]
+        assert sync_gefaked == []
+        r = _koppelen(beheerder_id, [5], rlz_signaal_bevestigd={"5": "bewust apart: nieuwe BV vanaf 2026"})
+        assert r.status_code == 201, r.text
+        assert _audit_telling(admin_engine, "odoo_koppeling_rlz_signaal_overruled") == 1
+        with admin_engine.begin() as conn:
+            reden = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde->>'reden' FROM platform.audit_event "
+                    "WHERE actie = 'odoo_koppeling_rlz_signaal_overruled'"
+                )
+            ).scalar()
+        assert reden == "bewust apart: nieuwe BV vanaf 2026"
+
+    def test_koppelen_slaat_genormaliseerde_url_op(
+        self, administratie_id, beheerder_id, probe_groen, sync_gefaked
+    ) -> None:
+        r = client.post(
+            "/instellingen/odoo/koppelen",
+            json={"odoo_url": "https://universal-steigers.odoo.com/odoo", "api_key": KEY, "company_ids": [COMPANY]},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 201, r.text
+        with scoped_session(None) as session:
+            rij = session.scalars(select_koppelingen_voor(COMPANY)).one()
+            assert rij.odoo_url == "https://universal-steigers.odoo.com"
+
+    def test_onleesbare_url_422_zonder_call(self, beheerder_id) -> None:
+        r = client.post(
+            "/instellingen/odoo/verbinding-testen",
+            json={"odoo_url": "ftp://x.odoo.com", "api_key": KEY},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 422 and "onbekend schema" in r.json()["detail"]["bericht"]
+
+
+class TestProbePerCompany:
+    """Punt 3 (14-09): `POST /instellingen/odoo/probe` = één company per request; rood/onderbroken = 200 mét rapport."""
+
+    def test_groen(self, beheerder_id, monkeypatch: pytest.MonkeyPatch) -> None:
+        gezien: dict[str, Any] = {}
+
+        def fake(**kw: Any) -> ProbeUitkomst:
+            gezien.update(kw)
+            return _groene_probe()
+
+        monkeypatch.setattr(odoo_service, "probe_voor", fake)
+        r = client.post(
+            "/instellingen/odoo/probe",
+            json={"odoo_url": URL + "odoo", "api_key": KEY, "company_id": 7},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["groen"] is True and r.json()["company_id"] == 7 and r.json()["onderbroken"] is False
+        assert gezien["odoo_url"] == "https://universal-steigers.odoo.com" and gezien["company_id"] == 7
+        assert gezien["timeout_s"] == 45.0  # settings.odoo_probe_timeout_seconds (code-default)
+
+    def test_rood_en_onderbroken_zijn_200_met_rapport(self, beheerder_id, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: _rode_probe())
+        r = client.post(
+            "/instellingen/odoo/probe",
+            json={"odoo_url": URL, "api_key": KEY, "company_id": 7},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 200 and r.json()["groen"] is False
+        assert "geen schrijfrecht" in r.json()["rapport"]["account.move:write"]
+        onderbroken = ProbeUitkomst(
+            rapport={"verbinding": "ok", "probe": "probe onderbroken (time-out na 45 s) — probeer deze company los"},
+            onderbroken=True,
+        )
+        monkeypatch.setattr(odoo_service, "probe_voor", lambda **kw: onderbroken)
+        r = client.post(
+            "/instellingen/odoo/probe",
+            json={"odoo_url": URL, "api_key": KEY, "company_id": 7},
+            headers=_bearer(beheerder_id, rol="beheerder"),
+        )
+        assert r.status_code == 200 and r.json()["onderbroken"] is True and r.json()["groen"] is False
+        assert r.json()["rapport"]["probe"].startswith("probe onderbroken (time-out na 45 s)")
+
+    def test_boekhouder_403(self, gescoopte_gebruiker) -> None:
+        r = client.post(
+            "/instellingen/odoo/probe",
+            json={"odoo_url": URL, "api_key": KEY, "company_id": 7},
+            headers=_bearer(gescoopte_gebruiker, rol="boekhouding"),
+        )
+        assert r.status_code == 403

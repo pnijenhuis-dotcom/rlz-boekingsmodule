@@ -737,7 +737,9 @@ class TestMigratiedoelCli:
                 == 0
             )
 
-    def test_lees_dagboeken_kiest_mem_bij_meerdere_general_en_meldt_meerduidig(self) -> None:
+    def test_lees_dagboeken_kiest_memoriaal_op_type_en_meldt_meerduidig(self) -> None:
+        """14-09: memoriaal = het ene general-dagboek dat geen systeemdagboek (EXCH/CABA/TAX/STJ) is — op type, nooit
+        op code (company 6 heeft MEM, company 1 MISC)."""
         journals = [
             {"id": 48, "code": "F", "name": "Verkoop", "type": "sale"},
             {"id": 49, "code": "LF", "name": "Inkoop", "type": "purchase"},
@@ -766,7 +768,7 @@ class TestMigratiedoelCli:
             p.journal_bank_id,
             p.analytic_plan_id,
         ) == (48, 49, 50, 53, 1)
-        assert p.groen and "gekozen op code" in p.rapport["dagboek:general"]
+        assert p.groen and "memoriaal-dagboek: MEM" in p.rapport["dagboek:general"]
         journals.append({"id": 60, "code": "BNK2", "name": "Bank 2", "type": "bank"})
         p2 = lees_dagboeken(FakeClient(handler, read_only=True))
         assert p2.journal_bank_id is None and "meerduidig" in p2.rapport["dagboek:bank"] and not p2.groen

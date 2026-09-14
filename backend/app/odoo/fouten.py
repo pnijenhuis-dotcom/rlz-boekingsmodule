@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import httpx
+
 from app.odoo.client import OdooFout
 
 _LOCK_RE = re.compile(r"lock|vergrendel|afgesloten|locked|closed", re.IGNORECASE)
@@ -121,3 +123,55 @@ def lock_date_melding(*, boekdatum: date, lock_dates: dict[str, date | None]) ->
         "boeken geweigerd. Kies een latere boekdatum (bv. de eerste dag ná de lock date, mét reden in de "
         "tijdlijn) of laat de Beheerder de lock date in Odoo aanpassen."
     )
+
+
+# --- verbindings-/HTTP-fouten van de wizard en de probe (punt 4 opdracht 14-09) -------------------------------------
+
+_URL_HINT = "controleer of de URL alleen het domein is (bv. https://naam.odoo.com)"
+
+
+def _pad_van(exc: httpx.HTTPError) -> str:
+    verzoek = getattr(exc, "request", None)
+    try:
+        return verzoek.url.raw_path.decode() if verzoek is not None else ""
+    except Exception:  # noqa: BLE001 — een leesbare melding mag nooit zelf omvallen
+        return ""
+
+
+def vertaal_verbindingsfout(exc: BaseException, *, timeout_s: float | None = None) -> str:
+    """Eén leesbare zin voor een fout uit de Odoo-client bij verbinden/proben: HTTP-status + pad + wat te doen —
+    NOOIT de exception-naam (kliktest Peter 14-09: "Odoo niet bereikbaar: HTTPStatusError" op een URL mét
+    `/odoo`-webclientpad). Onbekende fouten blijven leesbaar generiek mét de fouttekst, zonder klassenaam."""
+    if isinstance(exc, OdooFout):
+        pad = f"/json/2/{exc.model}/{exc.methode}"
+        if exc.status == 401:
+            return f"401 op {pad} — Odoo weigert deze API-key, controleer de sleutel"
+        if exc.status == 403:
+            return f"403 op {pad} — de API-gebruiker mist rechten op dit model in Odoo"
+        if exc.status == 404:
+            return f"404 op {pad} — {_URL_HINT}"
+        if exc.status >= 500:
+            return f"{exc.status} op {pad} — Odoo geeft een serverfout, probeer het later opnieuw"
+        return f"{exc.status} op {pad} — {(exc.melding or exc.naam or 'onbekende fout')[:200]}"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        pad = _pad_van(exc) or "/"
+        if status == 404:
+            return f"404 op {pad} — {_URL_HINT}"
+        if status in (401, 403):
+            return f"{status} op {pad} — Odoo weigert de toegang, controleer de API-key"
+        if status >= 500:
+            return f"{status} op {pad} — Odoo geeft een serverfout, probeer het later opnieuw"
+        if 300 <= status < 400:
+            return f"{status} op {pad} — Odoo stuurt door; {_URL_HINT}"
+        return f"{status} op {pad} — onverwacht antwoord van Odoo"
+    if isinstance(exc, httpx.TimeoutException):
+        na = f" na {timeout_s:.0f} s" if timeout_s else ""
+        return f"time-out{na} — Odoo antwoordde niet op tijd, probeer het opnieuw"
+    if isinstance(exc, httpx.ConnectError):
+        return f"geen verbinding met de host — controleer het domein en of de omgeving online is ({str(exc)[:120]})"
+    if isinstance(exc, httpx.TransportError):
+        return f"netwerkfout richting Odoo ({str(exc)[:120]}) — probeer het opnieuw"
+    if isinstance(exc, ValueError):
+        return str(exc)[:300]
+    return f"onverwachte fout bij het verbinden met Odoo: {str(exc)[:200] or 'geen details'}"

@@ -31,11 +31,46 @@ def odoo_uuid(company_id: int, model: str, odoo_id: int) -> uuid.UUID:
     return uuid.uuid5(_NAMESPACE, f"{company_id}:{model}:{int(odoo_id)}")
 
 
+#: Uitgeschreven in SQL voor de unieke index `uq_odoo_koppeling_host_company` (migratie 0140) — MOET dezelfde
+#: uitkomst geven als `odoo_host()` voor élke URL die de service opslaat (de service slaat sinds 14-09 alleen
+#: nog genormaliseerde `scheme://host`-URL's op; voor legacy-rijen zonder pad is de uitkomst identiek).
+ODOO_HOST_SQL = "lower(split_part(split_part(odoo_url, '//', 2), '/', 1))"
+
+
+def odoo_host(odoo_url: str) -> str:
+    """DE host-normalisatie van een Odoo-URL — de enige variant in de codebase (opdracht Peter 14-09, punt 2a):
+    alles ná `//` tot het eerste `/`, `?` of `#`, kleine letters, zonder witruimte. Zonder scheme telt de hele
+    invoer tot het eerste pad-teken als host. Een poort blijft onderdeel van de host (`x.odoo.com:8069`)."""
+    rest = odoo_url.strip()
+    if "//" in rest:
+        rest = rest.split("//", 1)[1]
+    for scheider in ("/", "?", "#"):
+        rest = rest.split(scheider, 1)[0]
+    return rest.strip().lower()
+
+
+def normaliseer_odoo_url(odoo_url: str) -> str:
+    """Invoer mét webclient-pad (`/odoo`, `/web`, `/odoo/action-…`), trailing slash of query wordt `scheme://host`
+    (punt 4 opdracht 14-09): de JSON-2-client plakt `/json/2/…` achter de URL en een pad geeft dan een 404. Zonder
+    scheme = https. Lege host = ValueError (leesbaar, geen HTTP-call)."""
+    invoer = odoo_url.strip()
+    scheme = "https"
+    if "://" in invoer:
+        kop, _rest = invoer.split("://", 1)
+        if kop.lower() in ("http", "https"):
+            scheme = kop.lower()
+        else:
+            raise ValueError(f"Odoo-URL heeft een onbekend schema '{kop}' — gebruik https://<host>")
+    host = odoo_host(invoer)
+    if not host or " " in host or "." not in host and host != "localhost" and not host.startswith("localhost:"):
+        raise ValueError("Odoo-URL mist een geldige host — gebruik bv. https://naam.odoo.com")
+    return f"{scheme}://{host}"
+
+
 def odoo_admin_sentinel(odoo_url: str, company_id: int) -> str:
     """Waarde voor `administratie.rlz_admin_id` van een Odoo-administratie: leesbaar, uniek per
     (host, company) en herkenbaar aan het prefix."""
-    host = odoo_url.split("//", 1)[-1].rstrip("/").lower()
-    return f"{SENTINEL_PREFIX}{host}:{int(company_id)}"
+    return f"{SENTINEL_PREFIX}{odoo_host(odoo_url)}:{int(company_id)}"
 
 
 def is_odoo_sentinel(rlz_admin_id: str | None) -> bool:

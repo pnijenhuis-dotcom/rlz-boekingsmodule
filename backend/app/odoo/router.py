@@ -16,6 +16,9 @@ router = APIRouter(tags=["odoo"], dependencies=[Depends(vereis_kantoorrol)])
 
 
 def _koppel_fout(exc: Exception) -> HTTPException:
+    if isinstance(exc, service.OdooKoppelConflict):
+        # Failsafe dubbele koppeling laag 2 (14-09): company al gekoppeld / gereserveerd als migratiedoel.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"bericht": str(exc), "rapport": {}})
     if isinstance(exc, service.OdooKoppelFout):
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -30,16 +33,47 @@ def _koppel_fout(exc: Exception) -> HTTPException:
 def odoo_verbinding_testen(
     invoer: schemas.OdooGegevensDto, actor: CurrentGebruiker = Depends(require_beheerder)
 ) -> schemas.OdooVerbindingTestDto:
-    """Stap a: sleutel proberen → companies (mét 'al gekoppeld'). Niets opgeslagen."""
+    """Stap a: URL normaliseren, sleutel proberen → companies mét grijs-reden (al gekoppeld / migratiedoel) en het
+    Reeleezee-signaal. Niets opgeslagen."""
     try:
-        gevonden = service.test_verbinding(odoo_url=invoer.odoo_url, api_key=invoer.api_key)
+        uitkomst = service.test_verbinding(odoo_url=invoer.odoo_url, api_key=invoer.api_key)
     except service.OdooKoppelFout as exc:
         raise _koppel_fout(exc) from exc
     return schemas.OdooVerbindingTestDto(
+        odoo_url=uitkomst.odoo_url,
         companies=[
-            schemas.GevondenCompanyDto(company_id=g.company_id, naam=g.naam, al_gekoppeld=g.al_gekoppeld)
-            for g in gevonden
-        ]
+            schemas.GevondenCompanyDto(
+                company_id=g.company_id,
+                naam=g.naam,
+                al_gekoppeld=g.al_gekoppeld,
+                gekoppeld_aan=g.gekoppeld_aan,
+                migratie_doel=g.migratie_doel,
+                rlz_administratie=g.rlz_administratie,
+            )
+            for g in uitkomst.companies
+        ],
+    )
+
+
+@router.post("/instellingen/odoo/probe", response_model=schemas.OdooProbeDto)
+def odoo_probe_company(
+    invoer: schemas.OdooProbeCompanyDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OdooProbeDto:
+    """Punt 3 (14-09): de rechten-probe van ÉÉN company als eigen request — de wizard roept 'm sequentieel per
+    aangevinkte rij aan. Rood of onderbroken (tijdbudget op) = 200 mét rapport, zodat de rij het toont en de andere
+    rijen blijven staan; alleen een onleesbare URL of key is een 422. Niets opgeslagen."""
+    try:
+        p = service.probe_company(odoo_url=invoer.odoo_url, api_key=invoer.api_key, company_id=invoer.company_id)
+    except service.OdooKoppelFout as exc:
+        raise _koppel_fout(exc) from exc
+    return schemas.OdooProbeDto(
+        groen=p.groen,
+        rapport=p.rapport,
+        company_naam=p.company_naam,
+        versie=p.versie,
+        lock_dates=p.lock_dates,
+        onderbroken=p.onderbroken,
+        company_id=invoer.company_id,
     )
 
 
@@ -59,6 +93,7 @@ def odoo_koppelen(
             api_gebruiker=invoer.api_gebruiker,
             company_ids=invoer.company_ids,
             namen={int(k): v for k, v in invoer.namen.items() if v.strip()},
+            rlz_signaal_bevestigd={int(k): v for k, v in invoer.rlz_signaal_bevestigd.items() if v.strip()},
         )
     except service.OdooKoppelFout as exc:
         raise _koppel_fout(exc) from exc

@@ -1213,8 +1213,10 @@ def voorbereid_overstap(
     grootboek/-btw → RLZ in-gebruik-rijen → deterministisch voorstel. Niets persistent, geen sync."""
     from app.odoo import service  # lokaal: service importeert deze module in koppel_overstap
 
-    url = odoo_url.rstrip("/")
-    service.toets_overstap_voorwaarden(administratie_id=administratie_id, url=url, company_id=int(company_id))
+    url = service._normaliseer_url(odoo_url)  # noqa: SLF001 — één normalisatie (punt 4, 14-09)
+    service.toets_overstap_voorwaarden(
+        administratie_id=administratie_id, url=url, company_id=int(company_id), actor_id=actor_id
+    )
     p = service.probe_voor(odoo_url=url, api_key=api_key, company_id=int(company_id))
     if not p.groen:
         raise service.OdooKoppelFout(

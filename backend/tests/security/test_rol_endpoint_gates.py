@@ -176,6 +176,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/administraties/{aid}/odoo/sync"),  # stamgegevens opnieuw syncen (beheerder-only)
         ("POST", "/instellingen/odoo/verbinding-testen"),  # Odoo-wizard stap a (beheerder-only)
         ("POST", "/instellingen/odoo/koppelen"),  # Odoo-wizard stap b+c+d (beheerder-only)
+        ("POST", "/instellingen/odoo/probe"),  # Odoo-wizard probe per company (14-09, beheerder-only)
         (
             "GET",
             "/instellingen/duplicaat-autoafvoer",

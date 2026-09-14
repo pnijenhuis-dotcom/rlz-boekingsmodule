@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0139
+-- Migratie-head bij deze dump: 0140
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -7043,6 +7043,13 @@ CREATE INDEX ix_webauthn_credential_gebruiker_id ON platform.webauthn_credential
 --
 
 CREATE UNIQUE INDEX uq_bewaking_storing_open_soort ON platform.bewaking_storing USING btree (soort) WHERE (hersteld_op IS NULL);
+
+
+--
+-- Name: uq_odoo_koppeling_host_company; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_odoo_koppeling_host_company ON platform.odoo_koppeling USING btree (lower(split_part(split_part(odoo_url, '//'::text, 2), '/'::text, 1)), company_id);
 
 
 --

@@ -10,6 +10,9 @@
 
 <!-- run2-vgg:blok7d -->
 
+### Odoo koppelen
+- Duidelijkere meldingen bij het koppelen van een Odoo-omgeving: een adres met een pad erachter wordt automatisch teruggebracht tot het domein en vooraf getoond, een bedrijf dat al gekoppeld of als overstapdoel gereserveerd is staat grijs met de reden erbij, een bedrijf dat al als Reeleezee-administratie bestaat krijgt een waarschuwing met een bewuste bevestiging, en de rechtencontrole loopt per bedrijf zodat één trage omgeving de andere niet meer blokkeert. Het memoriaaldagboek wordt nu herkend ongeacht de code (MEM of MISC).
+
 ### Vastgoedgroep Nederland (voorbereiding overstap)
 - Memoriaalboekingen gaan nu op de juiste kant (debet/credit) mee in het proefrapport; een memoriaal die niet in balans is wordt benoemd en houdt het rapport rood, in plaats van stil door te rekenen.
 - De controle "aantal journaalposten = aantal geboekte documenten" telt alleen de echte documentposten en zet betalingen en afletteringen apart; kan dat voor een soort nog niet, dan zegt het rapport dat letterlijk.

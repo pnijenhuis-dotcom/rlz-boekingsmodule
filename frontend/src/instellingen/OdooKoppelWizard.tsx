@@ -7,6 +7,7 @@ import {
   koppelOdooNieuw,
   ODOO_SYNC_ONDERDELEN,
   odooOverstap,
+  probeOdooCompany,
   testOdooVerbinding,
   voorbereidOdooOverstap,
   type OdooCompanyDto,
@@ -15,7 +16,7 @@ import {
   type OdooProbeDto,
 } from './instellingenApi'
 import { mappingCompleet, mappingInvoer, mappingSleutel, OdooMappingTabel, rijenUitVoorbereiding, type MappingTabelRij } from './OdooMappingTabel'
-import { datumNl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSamenvatting } from './odooProbe'
+import { datumNl, normaliseerOdooUrl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSamenvatting } from './odooProbe'
 
 /** Odoo-koppelwizard — één component, twee ingangen (besluit Peter 03-09, mockup odoo-koppeling-ui.html §2;
  * de RLZ-wizard in Odoo-vorm, notitie ③):
@@ -40,9 +41,25 @@ import { datumNl, odooKoppelFout, odooProbeGroen, OdooProbeRapport, odooProbeSam
  * Odoo analytic account; leeg = vervalt, "Aanmaken in Odoo" = de server maakt bij de overstap een analytic account aan
  * op het RLZ-projectnummer — mislukt = zichtbaar overgeslagen op het resultaat, nooit stil); (2) de overgangsdatum is
  * een KANTELDATUM, geen poort: facturen van vóór die datum die nog binnenkomen boeken óók in Odoo, al in Reeleezee
- * geboekte facturen worden als duplicaat afgevoerd. */
+ * geboekte facturen worden als duplicaat afgevoerd.
+ *
+ * Nazorg 14-09 (kliktest Peter, besluit failsafe drie lagen): (a) de URL wordt genormaliseerd naar scheme + host en vóór
+ * het testen getoond ("we gebruiken https://…"); (b) companies die al gekoppeld of als migratiedoel gereserveerd zijn staan
+ * grijs mét reden, een company waarvan de naam een bestaande Reeleezee-administratie matcht draagt een SIGNAAL en vereist
+ * de vink "toch als nieuwe administratie aanmaken" mét reden (mens wint, nooit stil); (c) ingang A draait de rechten-
+ * probe PER COMPANY als eigen request (sequentieel, resultaat per rij zichtbaar terwijl de volgende loopt) en koppelt
+ * daarna per company — nooit één lange request voor zes companies; een time-out raakt één rij ("probe onderbroken …"),
+ * de andere rijen blijven staan. Alles groen = opslaan; één rood = niets opgeslagen (zelfde poort als eerder). */
 
 export type OdooKoppelvorm = 'volledig' | 'leesbron'
+
+/** Stand van één company-rij in de per-company-flow van ingang A (punt 3, 14-09). */
+export type RijFase = 'wacht' | 'probe' | 'groen' | 'rood' | 'fout' | 'opslaan' | 'gekoppeld'
+export interface RijStand {
+  fase: RijFase
+  rapport?: Record<string, string> | null
+  bericht?: string | null
+}
 type StapId = 'koppelvorm' | 'verbinding' | 'company' | 'mapping' | 'knip' | 'resultaat'
 
 export const ODOO_KNIP_DEFAULT = '2026-09-01'
@@ -99,6 +116,15 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
   const [leesbronProbe, setLeesbronProbe] = useState<OdooProbeDto | null>(null)
   const [voorbereiding, setVoorbereiding] = useState<OdooOverstapVoorbereidingDto | null>(null)
   const [mappingRijen, setMappingRijen] = useState<MappingTabelRij[]>([])
+  /** Punt 4: de genormaliseerde URL (server-antwoord wint; tot dan de client-spiegel). */
+  const [serverUrl, setServerUrl] = useState<string | null>(null)
+  /** Punt 3: per company de stand van probe → opslaan (ingang A). */
+  const [rijStand, setRijStand] = useState<Record<number, RijStand>>({})
+  /** Punt 2c: per company mét Reeleezee-signaal de bevestiging "toch als nieuwe administratie aanmaken" + reden. */
+  const [rlzBevestiging, setRlzBevestiging] = useState<Record<number, { aan: boolean; reden: string }>>({})
+
+  const genormaliseerdeUrl = normaliseerOdooUrl(odooUrl)
+  const effectieveUrl = serverUrl ?? genormaliseerdeUrl ?? odooUrl.trim()
 
   const index = stappen.indexOf(stap)
   const titel =
@@ -121,6 +147,9 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
     try {
       const resp = await testOdooVerbinding({ odoo_url: odooUrl.trim(), api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
       setCompanies(resp.companies)
+      setServerUrl(resp.odoo_url ?? null)
+      setRijStand({})
+      setRlzBevestiging({})
       const vrij = resp.companies.filter((c) => !c.al_gekoppeld)
       setGekozen(vrij.length === 1 ? [vrij[0].company_id] : [])
       naar('company')
@@ -131,7 +160,69 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
     }
   }
 
-  const verbinding = () => ({ odoo_url: odooUrl.trim(), api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
+  const verbinding = () => ({ odoo_url: effectieveUrl, api_key: apiKey, ...(apiGebruiker.trim() ? { api_gebruiker: apiGebruiker.trim() } : {}) })
+
+  const zetRij = (companyId: number, stand: RijStand) => setRijStand((h) => ({ ...h, [companyId]: stand }))
+  const rijStandVan = (id: number): RijStand => rijStand[id] ?? { fase: 'wacht' }
+
+  /** Ingang A (punt 3, 14-09): fase 1 = rechten-probe per company als eigen request, sequentieel, resultaat per rij;
+   * alles groen → fase 2 = koppelen per company (server draait de probe opnieuw als poort en slaat op). Eén rode of
+   * onderbroken probe = niets opgeslagen; de rij zegt wat er misging en welke company het was. */
+  const koppelPerCompany = async () => {
+    setBezig(true)
+    setFout(null)
+    const naamVan = (id: number) => companies.find((c) => c.company_id === id)?.naam ?? null
+    let allesGroen = true
+    for (const c of gekozen) {
+      zetRij(c, { fase: 'probe' })
+      try {
+        const p = await probeOdooCompany({ ...verbinding(), company_id: c })
+        if (p.groen) zetRij(c, { fase: 'groen', rapport: p.rapport })
+        else {
+          allesGroen = false
+          zetRij(c, { fase: 'rood', rapport: p.rapport, bericht: p.onderbroken ? (p.rapport.probe ?? 'probe onderbroken') : null })
+        }
+      } catch (err) {
+        allesGroen = false
+        const f = odooKoppelFout(err, { companyId: c, naam: naamVan(c) })
+        zetRij(c, { fase: 'fout', rapport: f.rapport, bericht: f.bericht })
+      }
+    }
+    if (!allesGroen) {
+      setFout({ bericht: 'Rechten-probe niet groen — niets opgeslagen', rapport: null })
+      setBezig(false)
+      return
+    }
+    const resultaten: OdooGekoppeldeAdministratieDto[] = []
+    const gekoppeldeIds: number[] = []
+    for (const c of gekozen) {
+      zetRij(c, { fase: 'opslaan' })
+      try {
+        const bevestiging = rlzBevestiging[c]
+        const resp = await koppelOdooNieuw({
+          ...verbinding(),
+          company_ids: [c],
+          ...(bevestiging?.aan && bevestiging.reden.trim() ? { rlz_signaal_bevestigd: { [String(c)]: bevestiging.reden.trim() } } : {}),
+        })
+        resultaten.push(...resp.administraties)
+        gekoppeldeIds.push(c)
+        zetRij(c, { fase: 'gekoppeld' })
+      } catch (err) {
+        const f = odooKoppelFout(err, { companyId: c, naam: naamVan(c) })
+        zetRij(c, { fase: 'fout', rapport: f.rapport, bericht: f.bericht })
+      }
+    }
+    setGekoppeld(resultaten)
+    if (resultaten.length > 0) onKlaar?.()
+    if (gekoppeldeIds.length === gekozen.length) {
+      setApiKey('')
+      naar('resultaat')
+    } else {
+      setGekozen((h) => h.filter((id) => !gekoppeldeIds.includes(id)))
+      setFout({ bericht: `${gekoppeldeIds.length} van ${gekozen.length} companies gekoppeld — zie de rijen hieronder`, rapport: null })
+    }
+    setBezig(false)
+  }
 
   /** Volledige overstap: probe + mappingvoorstel ophalen (niets persistent) en door naar de mapping-stap. */
   const voorbereiden = async () => {
@@ -182,8 +273,7 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
     setFout(null)
     try {
       if (ingang === 'nieuw') {
-        const resp = await koppelOdooNieuw({ ...verbinding(), company_ids: gekozen })
-        setGekoppeld(resp.administraties)
+        throw new Error('ingang A koppelt per company (koppelPerCompany)')
       } else if (!administratie) {
         throw new Error('Geen administratie')
       } else if (vorm === 'volledig') {
@@ -204,7 +294,17 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
   }
 
   const companyNaam = (id: number) => companies.find((c) => c.company_id === id)?.naam ?? null
-  const kanOpslaan = gekozen.length > 0 && !(ingang === 'bestaand' && vorm === 'volledig' && !overgangsdatum)
+  /** Punt 2c: élke aangevinkte company mét Reeleezee-signaal heeft de vink + een reden nodig. */
+  const signaalOnbevestigd = gekozen.filter((id) => {
+    const c = companies.find((x) => x.company_id === id)
+    if (!c?.rlz_administratie) return false
+    const b = rlzBevestiging[id]
+    return !(b?.aan && b.reden.trim())
+  })
+  const kanOpslaan =
+    gekozen.length > 0 &&
+    !(ingang === 'bestaand' && vorm === 'volledig' && !overgangsdatum) &&
+    !(ingang === 'nieuw' && signaalOnbevestigd.length > 0)
   const mappingKlaar = mappingCompleet(mappingRijen)
 
   return (
@@ -277,6 +377,13 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
           <FormField label="Odoo-URL" htmlFor="odoo-url" hint="bv. https://universal-steigers.odoo.com — de URL bindt de database">
             <input id="odoo-url" type="url" autoComplete="off" placeholder="https://…odoo.com" value={odooUrl} onChange={(e) => setOdooUrl(e.target.value)} required />
           </FormField>
+          {odooUrl.trim() && (
+            <p className="hint" style={{ margin: '-4px 0 8px' }} data-testid="odoo-url-genormaliseerd">
+              {genormaliseerdeUrl
+                ? `We gebruiken ${genormaliseerdeUrl}${genormaliseerdeUrl !== odooUrl.trim() ? ' (alleen het domein — een pad zoals /odoo of /web wordt weggelaten)' : ''}`
+                : 'Geen geldige Odoo-URL — gebruik alleen het domein, bv. https://naam.odoo.com'}
+            </p>
+          )}
           <FormField label="API-sleutel" htmlFor="odoo-api-key">
             <input id="odoo-api-key" type="password" autoComplete="new-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} required />
           </FormField>
@@ -314,12 +421,12 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
           {companies.length === 0 && <p className="hint">Deze sleutel ziet geen companies.</p>}
           <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px' }}>
             {companies.map((c) => (
-              <li key={c.company_id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0, opacity: c.al_gekoppeld ? 0.6 : 1 }}>
+              <li key={c.company_id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }} data-testid={`odoo-company-${c.company_id}`}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0, opacity: c.al_gekoppeld || rijStandVan(c.company_id).fase === 'gekoppeld' ? 0.6 : 1 }}>
                   {ingang === 'nieuw' ? (
                     <Checkbox
                       aria-label={`Koppelen ${c.naam}`}
-                      disabled={c.al_gekoppeld || bezig}
+                      disabled={c.al_gekoppeld || bezig || rijStandVan(c.company_id).fase === 'gekoppeld'}
                       checked={gekozen.includes(c.company_id)}
                       onChange={(e) => setGekozen((h) => (e.target.checked ? [...h, c.company_id] : h.filter((id) => id !== c.company_id)))}
                     />
@@ -341,14 +448,34 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                     {c.al_gekoppeld && (
                       <>
                         {' '}
-                        <span className="chip stil">al gekoppeld</span>
+                        <span className={`chip ${c.migratie_doel ? 'afwijking' : 'stil'}`}>{c.gekoppeld_aan ?? 'al gekoppeld'}</span>
                       </>
                     )}
+                    <RijStandChip stand={rijStandVan(c.company_id)} />
                   </span>
                 </label>
+                {ingang === 'nieuw' && c.rlz_administratie && !c.al_gekoppeld && gekozen.includes(c.company_id) && (
+                  <RlzSignaalBlok
+                    company={c}
+                    stand={rlzBevestiging[c.company_id] ?? { aan: false, reden: '' }}
+                    disabled={bezig}
+                    onChange={(stand) => setRlzBevestiging((h) => ({ ...h, [c.company_id]: stand }))}
+                  />
+                )}
+                {(rijStandVan(c.company_id).fase === 'rood' || rijStandVan(c.company_id).fase === 'fout') && (
+                  <div className="fout" style={{ marginLeft: 26, fontSize: 12 }} data-testid={`odoo-company-${c.company_id}-fout`}>
+                    {rijStandVan(c.company_id).bericht}
+                    {rijStandVan(c.company_id).rapport && <OdooProbeRapport rapport={rijStandVan(c.company_id).rapport ?? {}} alleenRood />}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+          {ingang === 'nieuw' && signaalOnbevestigd.length > 0 && (
+            <p className="hint" style={{ margin: '0 0 8px' }}>
+              Bevestig eerst per gemarkeerde company dat je 'm toch als nieuwe administratie aanmaakt, mét reden — of gebruik "Odoo koppelen…" op de detailpagina van de bestaande Reeleezee-administratie.
+            </p>
+          )}
           {ingang === 'bestaand' && vorm === 'volledig' && (
             <FormField
               label="Overgangsdatum (kanteldatum)"
@@ -380,8 +507,8 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
                 {bezig ? 'Rechten-probe en mappingvoorstel…' : 'Verder →'}
               </Button>
             ) : (
-              <Button type="button" onClick={() => void opslaan()} disabled={bezig || !kanOpslaan}>
-                {bezig ? 'Rechten-probe en opslaan…' : ingang === 'nieuw' ? `Koppeling opslaan (${gekozen.length}) →` : 'Koppeling opslaan →'}
+              <Button type="button" onClick={() => void (ingang === 'nieuw' ? koppelPerCompany() : opslaan())} disabled={bezig || !kanOpslaan}>
+                {bezig ? 'Rechten-probe per company…' : ingang === 'nieuw' ? `Koppeling opslaan (${gekozen.length}) →` : 'Koppeling opslaan →'}
               </Button>
             )}
           </DialogFooter>
@@ -493,6 +620,65 @@ export function OdooKoppelWizard({ ingang, administratie, stapOffset = 0, onTeru
         </div>
       )}
     </>
+  )
+}
+
+/** Punt 3 (14-09): stand van een company-rij tijdens de per-company-flow. */
+function RijStandChip({ stand }: { stand: RijStand }) {
+  switch (stand.fase) {
+    case 'probe':
+      return <span className="chip stil" style={{ marginLeft: 6 }}>rechten-probe…</span>
+    case 'groen':
+      return <span className="chip ok" style={{ marginLeft: 6 }}>probe groen</span>
+    case 'rood':
+      return <span className="chip blokkerend" style={{ marginLeft: 6 }}>probe rood</span>
+    case 'fout':
+      return <span className="chip blokkerend" style={{ marginLeft: 6 }}>niet gelukt</span>
+    case 'opslaan':
+      return <span className="chip stil" style={{ marginLeft: 6 }}>opslaan…</span>
+    case 'gekoppeld':
+      return <span className="chip ok" style={{ marginLeft: 6 }}>gekoppeld</span>
+    default:
+      return null
+  }
+}
+
+/** Punt 2c (14-09): signaal (geen blokkade) — de company-naam matcht een bestaande Reeleezee-administratie. Mens wint,
+ * maar nooit stil: expliciete vink + reden (server-side audit `odoo_koppeling_rlz_signaal_overruled`). */
+function RlzSignaalBlok({
+  company,
+  stand,
+  disabled,
+  onChange,
+}: {
+  company: OdooCompanyDto
+  stand: { aan: boolean; reden: string }
+  disabled: boolean
+  onChange: (stand: { aan: boolean; reden: string }) => void
+}) {
+  return (
+    <div style={{ marginLeft: 26, marginTop: 4, fontSize: 12 }} data-testid={`odoo-rlz-signaal-${company.company_id}`}>
+      <div>
+        <span className="chip afwijking">bestaat al als Reeleezee-administratie</span>{' '}
+        <span className="hint" style={{ margin: 0, fontSize: 12 }}>
+          ‹{company.rlz_administratie}› — voor een overstap gebruik "Odoo koppelen…" op de detailpagina van die administratie.
+        </span>
+      </div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 0' }}>
+        <Checkbox aria-label={`Toch als nieuwe administratie aanmaken ${company.naam}`} disabled={disabled} checked={stand.aan} onChange={(e) => onChange({ ...stand, aan: e.target.checked })} />
+        <span>Toch als nieuwe administratie aanmaken</span>
+      </label>
+      {stand.aan && (
+        <input
+          aria-label={`Reden nieuwe administratie ${company.naam}`}
+          placeholder="Reden (verplicht, komt in het audit-log)"
+          value={stand.reden}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...stand, reden: e.target.value })}
+          style={{ marginTop: 4, width: '100%' }}
+        />
+      )}
+    </div>
   )
 }
 

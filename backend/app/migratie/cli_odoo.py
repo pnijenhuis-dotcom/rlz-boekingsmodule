@@ -36,6 +36,7 @@ from app.migratie.odoo_doel import (
 )
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.models import OdooKoppeling
+from app.odoo.probe import kies_memoriaal_dagboek
 from app.security.envelope import unwrap_secret, wrap_secret
 
 MIGRATIEDOEL_COMMANDO = "odoo-koppeling-migratiedoel"
@@ -82,23 +83,19 @@ class DagboekProbe:
         )
 
 
-def _een_dagboek(
-    rijen: Iterable[dict[str, Any]], soort: str, rapport: dict[str, str], *, voorkeur_codes: Sequence[str] = ()
-) -> int | None:
+def _een_dagboek(rijen: Iterable[dict[str, Any]], soort: str, rapport: dict[str, str]) -> int | None:
     kandidaten = [r for r in rijen if r.get("type") == soort]
+    if soort == "general":
+        # Memoriaal OP TYPE minus de systeemdagboeken — dezelfde bron als de wizard-probe (punt 1 opdracht 14-09).
+        gekozen, tekst = kies_memoriaal_dagboek(kandidaten)
+        rapport["dagboek:general"] = tekst
+        return gekozen
     if len(kandidaten) == 1:
         rapport[f"dagboek:{soort}"] = f"ok ({kandidaten[0].get('code')} id {kandidaten[0]['id']})"
         return int(kandidaten[0]["id"])
     if not kandidaten:
         rapport[f"dagboek:{soort}"] = f"geen {soort}-dagboek in deze company"
         return None
-    for code in voorkeur_codes:
-        treffers = [r for r in kandidaten if str(r.get("code") or "").upper() == code]
-        if len(treffers) == 1:
-            rapport[f"dagboek:{soort}"] = (
-                f"ok ({code} id {treffers[0]['id']}; {len(kandidaten)} {soort}-dagboeken, gekozen op code)"
-            )
-            return int(treffers[0]["id"])
     codes = ", ".join(str(r.get("code")) for r in kandidaten)
     rapport[f"dagboek:{soort}"] = f"{len(kandidaten)} {soort}-dagboeken ({codes}) — meerduidig, niet gekozen"
     return None
@@ -106,14 +103,15 @@ def _een_dagboek(
 
 def lees_dagboeken(client: OdooClient) -> DagboekProbe:
     """Directe `account.journal`-/`account.analytic.plan`-/`res.company`-lezing op de company van de client (read-only).
-    Company 6 heeft méér general-dagboeken (MEM, EXCH, CABA, TAX, STJ) → memoriaal op code MEM (company 1: MISC)."""
+    Memoriaal = het ene general-dagboek dat geen systeemdagboek is (company 6: MEM; company 1: MISC) — via
+    `app.odoo.probe.kies_memoriaal_dagboek`, nooit op code."""
     rapport: dict[str, str] = {}
     rijen = client.search_read(
         "account.journal", [["company_id", "=", client.company_id]], ["id", "code", "name", "type"], order="id"
     )
     sale = _een_dagboek(rijen, "sale", rapport)
     purchase = _een_dagboek(rijen, "purchase", rapport)
-    general = _een_dagboek(rijen, "general", rapport, voorkeur_codes=("MEM", "MISC"))
+    general = _een_dagboek(rijen, "general", rapport)
     bank = _een_dagboek(rijen, "bank", rapport)
     plannen = client.search_read("account.analytic.plan", [["name", "=", "Project"]], ["id", "name"])
     plan = int(plannen[0]["id"]) if len(plannen) == 1 else None
@@ -206,6 +204,20 @@ def maak_migratiedoel(
         doel_naam, bron_naam = doel.naam, bron.naam
         bestaat = bestaande is not None
     api_key, odoo_url, api_gebruiker = _bron_key_en_url(bron_id, unwrap=unwrap)
+    # Failsafe dubbele koppeling laag 2 (14-09): de company mag niet al bij een ANDERE administratie horen (ook niet
+    # als leesbron of als eerder migratiedoel) — 409-equivalent in de CLI, mét audit op de bezettende administratie.
+    from app.odoo import service as odoo_service
+
+    try:
+        odoo_service.toets_company_vrij(
+            url=odoo_url,
+            company_id=int(company_id),
+            actor_id=SYSTEEM_ACTOR_ID,
+            uitgezonderd_administratie_id=doel_id,
+            bron="migratiedoel-cli",
+        )
+    except odoo_service.OdooKoppelConflict as exc:
+        raise MigratiedoelFout(str(exc)) from exc
     with client_factory(url=odoo_url, api_key=api_key, company_id=int(company_id), read_only=True) as client:
         uitkomst_probe = probe(client)
     uitkomst = MigratiedoelUitkomst(
