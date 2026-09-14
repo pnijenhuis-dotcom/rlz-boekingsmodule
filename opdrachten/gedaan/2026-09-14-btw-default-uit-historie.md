@@ -1,0 +1,10 @@
+uitgevoerd 2026-09-14, rapport: docs/rapporten/2026-09-14-btw-default-historie.md
+
+OPDRACHT — BTW-DEFAULT PER GROOTBOEKREKENING AFLEIDEN UIT RLZ-HISTORIE (vervolg op 2026-09-14-btw-default-grootboek; besluit Cowork/Peter 14-09: geen invulwerk in RLZ)
+
+Aanleiding: STAP-0 14-09 — `Account.PreferentialTaxRate` is in álle gecheckte administraties null. De gebouwde grootboek-default (migratie 0142, `btw_bron='grootboek'`) vult dus niets. Peter gaat dat niet in RLZ voor 71 administraties invullen.
+
+1. Afleiding uit historie: per administratie × grootboekrekening de verdeling van TaxRate over inkoopregels (`JournalEntryLines`/PurchaseInvoice-regels, laatste 24 maanden — bron die de boekingsgeheugen-seed al leest, geen extra RLZ-verkeer als de cache volstaat). Regel: ≥ 5 regels én één tarief op ≥ 90 % → `grootboekrekening.historie_taxrate_id` + `historie_taxrate_dekking` (n, aandeel). Deterministisch, geen AI. Nightly in `sync-alles`, plus bij de eerste sync. Migratie + afsluitroutine.
+2. Winnaarsvolgorde (regel_prefill.py, één plek): … → grootboek-default uit RLZ (`grootboek`) → **grootboek-default uit historie (`btw_bron='grootboek_historie'`, chip "meestal op deze rekening (n×)")** → administratie-default → leeg. Zelfde grootboek-wissel-gedrag als 0142. ORANJE (seed-only-regel): wordt groen na app-bevestiging via het bestaande geheugen — geen nieuwe kleurregel.
+3. Meetrecept: lees-only CLI `btw-default-rapport --administratie <naam>` (in nameting-allowlist) toont per rekening RLZ-default / historie-default / dekking / "geen". Draai 'm ná deploy voor L.H.G. Holding en Universal Steigerbouw via scripts/gcp/nameting.sh en zet de uitkomst in het rapport: staat op LHG 4404 nu een historie-default? Dat is "werkt in productie: ja/nee".
+4. Docs: BESLISSINGEN-aanvulling op "BTW-DEFAULT UIT DE RLZ-GROOTBOEKREKENING", CLAUDE.md-verwijsregel bijwerken, WAT_IS_NIEUW. Gouden set (controlescherm) + tests op drempels (4 regels = niets, 5/5 = ja, 9/10 = ja, 8/10 = nee). Rapport docs/rapporten/2026-09-14-btw-default-historie.md + INDEX; dit bestand naar gedaan/.

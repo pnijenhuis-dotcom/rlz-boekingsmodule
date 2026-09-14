@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default]
 
 env:
   PROJECT_ID: rlz-boekhouding
@@ -70,7 +70,7 @@ jobs:
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -90,6 +90,24 @@ jobs:
             fi
             [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_rec)" >> "$UIT"
             echo "STATUS reconciliatie: rapport in $UIT (job-exit $rc_rec = uitkomst)"
+          fi
+          if [[ "$ONDERDEEL" == "alles" || "$ONDERDEEL" == "btw-default" ]]; then
+            # Btw-default per grootboekrekening uit de historie (vervolg 14-09, migratie 0143) — lees-only meetrecept
+            # "werkt in productie": staat op LHG 4404 een historie-default? Twee administraties uit de opdracht; een
+            # rode job-executie (bv. administratie onbekend) is een uitkomst, alleen auth/IAM maakt de run rood.
+            for adm in "L.H.G. Holding" "Universal Steigerbouw"; do
+              SLUG="$(tr '[:upper:] .' '[:lower:]--' <<<"$adm" | tr -s '-' | sed 's/-$//')"
+              UIT="verkenning/nameting-btw-default-$SLUG-$DATUM.txt"
+              rc_btw=0
+              scripts/gcp/nameting.sh btw-default-rapport --administratie "$adm" > "$UIT" 2> nameting-btw-default.stderr || rc_btw=$?
+              cat nameting-btw-default.stderr >&2
+              if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-btw-default.stderr; then
+                echo "::error::btw-default-rapport ($adm) kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+                exit 1
+              fi
+              [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_btw)" >> "$UIT"
+              echo "STATUS btw-default ($adm): rapport in $UIT (job-exit $rc_btw = uitkomst)"
+            done
           fi
           # Oordeelregel voor het commitbericht: uit het rapport van het GEDRAAIDE onderdeel (werkloop-nazorg 14-09 — run
           # f4c702c droeg de replay-oordeelregel bij een reconciliatie-meting, misleidend): reconciliatie → het

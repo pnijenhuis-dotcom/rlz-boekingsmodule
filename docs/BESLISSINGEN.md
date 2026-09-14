@@ -9466,3 +9466,67 @@ bewijspunt: de collectie-vorm mét een GEVULDE `PreferentialTaxRate` is live nie
 waarde in vijf administraties) — de eerste positieve meting is het meetrecept hierboven; blijkt de collectie de
 navigatie ook gevuld niet mee te geven, dan is de terugval de record-vorm per rekening mét default (webfilter-budget!)
 of `Ledgers?$filter=PreferentialTaxRate ne null` als aparte kleine call (dat filter werkt, zie STAP-0 k).
+
+## BTW-DEFAULT UIT HISTORIE PER GROOTBOEKREKENING (Cowork/Peter 14-09) — vervolg op 0142, "geen invulwerk in RLZ"; migratie 0143
+
+**Aanleiding (besluit Cowork/Peter 14-09):** STAP-0 14-09 liet zien dat `Account.PreferentialTaxRate` in álle gemeten
+administraties null is — de RLZ-default van 0142 (`btw_bron='grootboek'`) vult in de praktijk niets, en Peter vult dat
+niet in RLZ in voor 71 administraties. De module leidt de default daarom zelf af uit de eigen boekingshistorie. **Status:
+GEBOUWD + GETEST 14-09; werkt in productie: niet gemeten** (bouw vóór deploy; meetrecept hieronder is de eerste meting).
+
+**Afleiding (1), `app/geheugen/grootboek_btw_historie.py` (bindend):** per administratie × grootboekrekening de verdeling
+van het btw-tarief over de inkoopregels in `boekhouding.boeking_observatie` (RLZ-seed + app-boekingen — dezelfde cache
+die de boekingsgeheugen-seed vult; géén extra RLZ-verkeer), `bron_datum` in de laatste 24 maanden (`HISTORIE_DAGEN` =
+24 × 31). Regel: **n ≥ 5 én het meest voorkomende tarief ≥ 90 % → `grootboekrekening.historie_taxrate_id`**; `n` en het
+hoogste aandeel worden áltijd vastgelegd (`historie_taxrate_n`, `historie_taxrate_aandeel` NUMERIC(5,4),
+`historie_berekend_op`) zodat het rapport "geen — 10 regels, hoogste 80 %" kan zeggen. Regels zonder btw-tarief tellen
+niet (een leeg tarief is geen keuze). Deterministisch, geen AI. Alleen gewijzigde rijen worden geschreven; een
+rekening zonder regels in het venster gaat terug naar NULL (nooit een stale default). Loopt **nachtelijk in `sync-alles`**
+(direct ná de Ledgers-sync, eigen regel "btw-historie <administratie>" + exit-telling) en **ná de eerste sync**
+(`eerste_sync._btw_default_uit_historie_na_sync`, alleen bij Ledgers "klaar"; puur code, buiten ONDERDELEN en de
+herprobeer-logica; een fout maakt de eerste sync nooit rood). Keuze zonder Peter: twee typed kolommen (`_n`, `_aandeel`)
+i.p.v. één JSON-"dekking" — queryable, zelfde betekenis als "(n, aandeel)" uit de opdracht. Kanttekening: direct ná
+onboarding is het boekingsgeheugen leeg (de seed `seed-boekingsgeheugen` is een los CLI-commando, niet in de wizard) —
+dan is "geen default" terecht en vult de eerste nacht ná de seed 'm.
+
+**Winnaarsvolgorde (2), `regel_prefill.py` (bindend, één plek):** 1 mens · 2 factuur berekend · 3 leverancier-geheugen ·
+4 factuur verlegd · 5 grootboek-default uit RLZ (`grootboek`, grijs) · **5b grootboek-default uit historie
+(`btw_bron='grootboek_historie'`, ORANJE, chip "meestal op deze rekening (n×)" via `btw_bron_detail`,
+`_met_grootboek_historie_default`)** · 6 administratie-default (`standaard`, grijs) · 7 leeg. Alleen op een regel MÉT
+grootboek, tarief in de actuele `taxrate_cache` (`grootboek_historie_defaults_voor`), het leverancier-geheugen wint,
+**`btw_bewust_leeg` (A3, 0 %/ambigu) remt deze stap WÉL** — anders dan bij 5: de historie-default is een afleiding, geen
+expliciete RLZ-keuze, dus dezelfde regel als de administratie-default. Oranje volgens de bestaande seed-only-regel: pas
+een app-bevestiging (boeken) via het leverancier-geheugen maakt 'm voor die leverancier groen — geen nieuwe kleurregel.
+Herkomst is een A10-autosave-trigger (`_AUTOSAVE_HERKOMSTEN`). **Grootboek-wissel in het controlescherm** (zelfde gedrag
+als 0142): `GrootboekOptieDto.historie_taxrate_id` + `historie_taxrate_n`; de client-map neemt per rekening de RLZ-default
+en anders de historie-default (`BoekvoorstelPanel.grootboekDefaultMap` → `{taxrateId, bron, detail}`); een gevolgde
+historie-btw geldt als "van de rekening" en gaat weg bij een rekening zonder default; mens/factuur/geheugen winnen.
+
+**Meetrecept (3), lees-only CLI `btw-default-rapport --administratie <naam|uuid> [--alles]`
+(`app/geheugen/btw_default_cli.py`, in de allowlist van `scripts/gcp/nameting.sh`):** kop mét observaties totaal,
+inkoopregels mét tarief in het venster en de datum van de laatste afleiding; per rekening RLZ-default / historie-default
+(tarief, n×, aandeel) of "geen (n regels, hoogste x %)" + de verdeling; naam-match ilike én zonder leestekens ("lhg
+holding" = "L.H.G. Holding B.V."). Ná deploy: `scripts/gcp/nameting.sh btw-default-rapport --administratie "L.H.G.
+Holding"` en `… --administratie "Universal Steigerbouw"` — **werkt in productie = staat op LHG 4404 een
+historie-default** (ná de eerste `sync-alles` ná de deploy; direct ná deploy is de kolom nog leeg, het rapport zegt dan
+"geen (nog niet afgeleid; n regels nu)" — dat is óók een uitkomst: het aantal regels zegt of de nacht 'm gaat vullen).
+
+**Af (4):** `tests/geheugen/test_grootboek_btw_historie.py` (9: drempels 4 = niets / 5/5 ja / 9/10 ja / 8/10 nee, geen
+regels, None-tarief telt niet; herberekening mét venster, regels zonder tarief, idempotent, default vervalt bij 8/10,
+terug naar NULL buiten venster, `herbereken_alle` isoleert fouten); `tests/documenten/test_btw_grootboek_historie_
+default.py` (5: filter actieve tarieven, vult mét oranje herkomst + detail, RLZ-default wint van historie, historie wint
+van administratie-default, bewust-leeg remt, factuur en geheugen winnen, samengevoegde regel + autosave-trigger);
+`tests/beheer/test_eerste_sync_btw_historie.py` (2); `tests/geheugen/test_btw_default_cli.py` (1); gouden set: casus (v)
+`tests/keten/test_v_btw_grootboek_historie.py` (3: Floor-PDF, regel-geheugen zet "Huur materieel", historie van een
+andere leverancier 9/10 → prefill/DTO/autosave/checks/heropenen + grootboek-lijst-DTO; 8/10 blijft leeg); frontend
+`regelVoorstelChips.test.ts` +1, `BoekvoorstelPanel.btwgrootboek.test.tsx` +2 (server-chip oranje mét n; wissel →
+historie volgt oranje, RLZ-default wint, zonder default weg); `tsc -b` groen. Migratie-afsluitroutine: `make migrate`
+dev-DB 0142 → 0143, `alembic check` schoon, live 200 op `GET /administraties/{id}/grootboek` (8011),
+`schema_referentie.sql` ververst (head 0143).
+
+**Beslispunten/vervolg Peter:** (a) de seed van het boekingsgeheugen voor een nieuwe administratie is nog een los
+CLI-commando — automatisch meenemen in de onboarding (ná de eerste sync, RLZ-verkeer N+1 Lines-calls binnen het
+webfilter-budget) zou de historie-default voor nieuwe administraties de eerste nacht al vullen; (b) heeft LHG in productie
+géén observaties (rapport "0 observaties totaal"), dan is de eerste stap `seed-boekingsgeheugen` voor LHG als expliciete
+job-opdracht — pas daarna kan 4404 een historie-default krijgen; (c) drempels 5/90 % zijn constanten
+(`MIN_REGELS`/`MIN_AANDEEL`), geen instelling — bewust, tot de productiecijfers anders zeggen.

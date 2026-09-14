@@ -64,7 +64,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     tekst = _tekst()
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
-    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie\]", tekst)
+    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default\]", tekst)
     assert len(_run_stappen()) >= 2, "verwacht minstens de meet- en de commit-stap als run-blok"
 
 
