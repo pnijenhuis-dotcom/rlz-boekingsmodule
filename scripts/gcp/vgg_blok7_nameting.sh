@@ -69,6 +69,10 @@ run_d() {  # rlz_dubbel lees-only over ALLE administraties — --lees-only zet s
 # Blok 7d 14-09 — STAP 0 memoriaalregels (punt 1) + JournalEntryLines-waarheid per rekening: lees-only via
 # `rlz-lezen --record-via-filter` (geen GUID's nodig — de uitvoer is geanonimiseerd). Eén bestand, alle calls achter
 # elkaar; letterlijk overnemen in api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09".
+# Datumfilters = NL-kalenderdag in UTC uitgedrukt (nazorg 14-09): RLZ slaat BookDate op als lokale middernacht (Europe/
+# Amsterdam) en toont 'm zonder offset; `ge <dag>T00:00:00Z` schuift daardoor één dag (nameting 14-09: 31-12 gaf alleen
+# posten van 01-01, 30-06 en 09-08 gaven 0). Een literal zónder `Z` is een 400 (api-verkenning "Filters/paging":
+# DateTimeOffset-format) — daarom hier de bewezen `Z`-vorm, verschoven naar 23:00Z (CET) / 22:00Z (CEST) van de dag ervóór.
 run_e() {
   local bestand; bestand="$(uit memoriaalregels)"
   : > "$bestand"
@@ -82,10 +86,10 @@ run_e() {
   local f
   for f in \
     "Account/AccountNumber eq '0500'" \
-    "(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-31T00:00:00Z and JournalEntry/BookDate lt 2026-01-01T00:00:00Z" \
-    "(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-30T00:00:00Z and JournalEntry/BookDate lt 2025-07-01T00:00:00Z" \
-    "Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-09T00:00:00Z and JournalEntry/BookDate lt 2025-08-10T00:00:00Z" \
-    "Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-31T00:00:00Z and JournalEntry/BookDate lt 2026-01-02T00:00:00Z" \
+    "(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2025-12-31T23:00:00Z" \
+    "(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-29T22:00:00Z and JournalEntry/BookDate lt 2025-06-30T22:00:00Z" \
+    "Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-08T22:00:00Z and JournalEntry/BookDate lt 2025-08-09T22:00:00Z" \
+    "Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2026-01-01T23:00:00Z" \
     "Account/AccountNumber eq '4900'"; do
     printf '\n##### JournalEntryLines $filter=%s\n' "$f" | tee -a "$bestand"
     "$HIER/nameting.sh" rlz-lezen --administratie "$ADMIN" --pad JournalEntryLines --filter "$f" \

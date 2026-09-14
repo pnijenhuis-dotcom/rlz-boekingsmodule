@@ -169,8 +169,9 @@ _JR_DOCTYPE: dict[str, int | None] = {}
 
 def _jr(ledger: str, bron_id: str, datum: str, *, debet: float = 0.0, credit: float = 0.0) -> dict:
     """Eén JournalEntryLine zoals RLZ 'm geeft (STAP-0 13-09): `JournalEntry` draagt alleen id/BookDate/DocumentType/
-    EventID — en EventID is een SOORTCODE (71 inkoop, 51 verkoop), géén document-id. Regels van hetzelfde document delen
-    één JournalEntry.id (de fixture onthoudt die per bron-document)."""
+    EventID — en EventID is een SOORTCODE (71 inkoop, 51 verkoop, 21 memoriaal, 240 bank-direct — productienameting
+    14-09), géén document-id. Regels van hetzelfde document delen één JournalEntry.id (de fixture onthoudt die per
+    bron-document)."""
     dt = _JR_DOCTYPE.get(bron_id)
     jid = _JOURNAALPOSTEN.setdefault(bron_id, str(uuid.uuid4()))
     return {
@@ -183,7 +184,7 @@ def _jr(ledger: str, bron_id: str, datum: str, *, debet: float = 0.0, credit: fl
             "id": jid,
             "BookDate": f"{datum}T00:00:00",
             "DocumentType": dt,
-            "EventID": {1: 71, 10: 51, 11: 61, 19: 81}.get(dt or 0, 91),
+            "EventID": {1: 71, 10: 51, 11: 21, 19: 240}.get(dt or 0, 91),
         },
     }
 
@@ -191,7 +192,7 @@ def _jr(ledger: str, bron_id: str, datum: str, *, debet: float = 0.0, credit: fl
 def mini_vgg() -> tuple[dict[str, list[dict]], dict[str, list[dict]], dict[str, list[dict]]]:
     """(collecties, regels per document-id, statements per rekening-id)."""
     _JOURNAALPOSTEN.clear()
-    _JR_DOCTYPE.update({MJ1: 11, MJ2: 11, MJ3: 11, PI1: 1, SI1: 10, BD1: 19, BD2: 19, BD3: 19})
+    _JR_DOCTYPE.update({MJ1: 11, MJ2: 11, MJ3: 11, PI1: 1, SI1: 10, BD1: 19, BD2: 19, BD3: 19, HULS: 19})
     mj1 = _doc(
         MJ1,
         "RLZ-06-00000026",
@@ -291,6 +292,9 @@ def mini_vgg() -> tuple[dict[str, list[dict]], dict[str, list[dict]], dict[str, 
             _jr(L_DEB, PT[4], "2025-07-28", credit=200000.0),
             _jr(L_BANK, PT[5], "2025-08-10", debet=60000.0),
             _jr(L_DEB, PT[5], "2025-08-10", credit=60000.0),
+            # RLZ journaliseert óók de systeemhuls (EventID 240, productie 14-09: 54 = 9 + 45) — bedrag 0 in de fixture;
+            # achteraan zodat bestaande index-verwijzingen ([12] = inkoop-documentpost) blijven kloppen
+            _jr(L_BANK, HULS, "2026-09-09"),
         ],
         "Ledgers": LEDGERS,
         "TaxRates": [],
@@ -496,7 +500,7 @@ class TestMiniVgg:
         assert t["regels_via_documentvorm"] == 8 and t["regels_via_lines"] == 0  # blok 7c: één call per document
         assert t["bookdate_uit_document"] == 8 and t["bookdate_terugval_date"] == 0
         assert t["partners_nieuw"] == 2 and t["partners_uit_bank"] == 0 and t["partners_onbekend"] == 0
-        assert rapport.gelezen["Receipts"] == 6 and rapport.gelezen["JournalEntryLines"] == 22
+        assert rapport.gelezen["Receipts"] == 6 and rapport.gelezen["JournalEntryLines"] == 23
 
     def test_saldibalans_per_rekening(self, rapport) -> None:  # noqa: ANN001
         per = {r["rekening"]: r for r in rapport.saldibalans}
@@ -518,7 +522,7 @@ class TestMiniVgg:
         assert herc[("300", "3000")]["documenten"] == 1 and herc[("300", "3000")]["bedrag"] == Decimal("200000.00")
         assert herc[("300", "3010")]["bedrag"] == Decimal("20000.00")  # aanbetaling: mens wint over zekerheid midden
         assert herc[("8000", "8010")]["bedrag"] == Decimal("-260000.00")
-        assert rapport.journaal["regels"] == 22
+        assert rapport.journaal["regels"] == 23  # incl. de huls-post (bedrag 0)
         assert rapport.journaal["rlz_kolom"].startswith("koppeling journaalregel ↔ document bestaat niet in de RLZ-API")
         per_dt = {x["documenttype"]: x for x in rapport.journaal["per_documenttype"]}
         assert {k: per_dt[11][k] for k in ("documenttype", "naam", "journaalposten", "journaalregels")} == {
@@ -528,8 +532,13 @@ class TestMiniVgg:
             "journaalregels": 6,
         }
         assert per_dt[11]["documenten_geboekt"] == 3
-        # blok 7d punt 2: DocumentType 11 heeft nog geen bewezen document-EventID → "niet uitvoerbaar", nooit stil
-        assert per_dt[11]["oordeel"].startswith("toets niet uitvoerbaar met deze API") and "61" in per_dt[11]["oordeel"]
+        # nazorg 7d 14-09: EventID 21 = memoriaal-documentpost (bewezen 228 = 228) → de toets sluit
+        assert per_dt[11]["documentposten"] == 3 and per_dt[11]["oordeel"].startswith(
+            "sluit (3 documentposten = 3 geboekt"
+        )
+        # bank-direct: EventID 240 telt geboekt + systeemhulzen, hulzen apart benoemd (productie 14-09: 54 = 9 + 45)
+        assert per_dt[19]["documentposten"] == 4 and per_dt[19]["documenten_geboekt"] == 3
+        assert per_dt[19]["oordeel"].startswith("sluit (4 documentposten = 3 geboekt + 1 systeemhulzen")
         assert per_dt[1]["journaalposten"] == 1 and per_dt[1]["documenten_geboekt"] == 1
         assert per_dt[1]["documentposten"] == 1 and per_dt[1]["oordeel"].startswith("sluit (1 documentposten = 1")
         assert per_dt[None]["journaalregels"] == 6 and per_dt[None]["documenten_geboekt"] == 0  # bankjournaal

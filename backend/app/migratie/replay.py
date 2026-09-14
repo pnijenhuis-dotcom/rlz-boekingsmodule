@@ -442,6 +442,7 @@ def _journaal(ctx: Context, rapport: ReplayRapport, bron: rlz_bron.RlzBron, docu
                 posten_per_event.get(dt, {}),
                 regels_per_type.get(dt, 0),
                 docs_per_type.get(dt, 0),
+                hulzen=int(rapport.tellers.get("huls") or 0),
             )
         )
     jr_gelezen = "JournalEntryLines" in bron.gelezen
@@ -476,11 +477,14 @@ def _volledigheid_per_type(
     per_event: dict[int | None, set[str]],
     regels: int,
     documenten_geboekt: int,
+    hulzen: int = 0,
 ) -> dict[str, Any]:
     """Blok 7d punt 2: per DocumentType tellen alleen de journaalposten mét een DOCUMENT-EventID (`rlz_bron.
     DOCUMENT_EVENTIDS`) tegen de geboekte documenten; de overige posten (betalingen/afletteringen/correcties) staan
     apart mét hun code. Onbekende soortcodes voor dit DocumentType = "toets niet uitvoerbaar met deze API" mét reden —
-    nooit stil weggelaten. DocumentType 0 = RLZ-resultaatposten (punt 3): geen documenten, eigen blok."""
+    nooit stil weggelaten. DocumentType 0 = RLZ-resultaatposten (punt 3): geen documenten, eigen blok.
+    Bank-direct (19, nazorg 14-09): RLZ journaliseert óók de systeemhuls (EventID 240 per open bankmutatie) — de toets
+    telt geboekte documenten + hulzen en benoemt de hulzen apart (productie 14-09: 54 = 9 + 45)."""
     naam = rlz_bron.DOCTYPE_NAMEN.get(dt, f"overig ({dt})") if dt is not None else "onbekend"
     codes = rlz_bron.DOCUMENT_EVENTIDS.get(dt) if dt is not None else None
     per_eventid = [
@@ -512,13 +516,20 @@ def _volledigheid_per_type(
     else:
         documentposten = sum(x["posten"] for x in per_eventid if x["soort"] == "documentpost")
         overige = sum(x["posten"] for x in per_eventid if x["soort"] != "documentpost")
-        if documentposten == documenten_geboekt:
-            oordeel = f"{VOLLEDIGHEID_SLUIT} ({documentposten} documentposten = {documenten_geboekt} geboekt; "
+        hulzen_tellen = hulzen if dt == rlz_bron.DOCTYPE_BANK_DIRECT else 0
+        verwacht = documenten_geboekt + hulzen_tellen
+        verwacht_tekst = (
+            f"{documenten_geboekt} geboekt + {hulzen_tellen} systeemhulzen"
+            if hulzen_tellen
+            else f"{documenten_geboekt} geboekt"
+        )
+        if documentposten == verwacht:
+            oordeel = f"{VOLLEDIGHEID_SLUIT} ({documentposten} documentposten = {verwacht_tekst}; "
             oordeel += f"betalings-/afletterposten {overige})"
         else:
             oordeel = (
-                f"VERSCHIL {documentposten - documenten_geboekt:+d}: {documentposten} documentposten (EventID "
-                f"{', '.join(str(c) for c in sorted(codes))}) ≠ {documenten_geboekt} geboekte documenten; "
+                f"VERSCHIL {documentposten - verwacht:+d}: {documentposten} documentposten (EventID "
+                f"{', '.join(str(c) for c in sorted(codes))}) ≠ {verwacht_tekst}; "
                 f"betalings-/afletterposten {overige}"
             )
     return {

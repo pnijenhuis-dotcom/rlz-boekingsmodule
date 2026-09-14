@@ -67,15 +67,21 @@ DOCTYPE_NAMEN: dict[int, str] = {
     DOCTYPE_BANK_DIRECT: "bank-direct (19)",
 }
 #: Blok 7d punt 2 — `JournalEntry.EventID` (soortcode `JournalEvent`, STAP-0 13-09) per DocumentType: welke codes de
-#: DOCUMENTPOST zelf zijn (bewezen: 71 = inkoopfactuur geboekt, 51 = verkoop/receipt geboekt). Alle andere codes bij dat
-#: DocumentType telt de volledigheidstoets apart als "betalings-/afletter-/correctieposten". Een DocumentType dat hier
-#: NIET in staat (11 memoriaal, 19 bank-direct) is nog niet vastgesteld → de toets meldt "niet uitvoerbaar" mét de
-#: codes die RLZ gaf, nooit stil (STAP-0 14-09 vult deze tabel aan; api-verkenning "Memoriaalregels — teken per regel,
-#: STAP-0 14-09").
+#: DOCUMENTPOST zelf zijn. Bewezen: 71 = inkoopfactuur geboekt, 51 = verkoop/receipt geboekt (13-09); 21 = memoriaal-
+#: documentpost (productienameting 14-09: 228 posten = 228 geboekte memorialen), 240 = bank-directe boeking (14-09: 54
+#: posten = 9 geboekte documenten + 45 systeemhulzen — RLZ journaliseert óók de huls; de toets telt geboekt + hulzen en
+#: benoemt de hulzen apart). Alle andere codes bij dat DocumentType telt de volledigheidstoets apart als
+#: "betalings-/afletter-/correctieposten" (72/73 inkoop, 53 verkoop, 22 = memoriaal overig: 214 posten zonder document,
+#: STAP-0-feit 14-09). Een DocumentType dat hier NIET in staat → de toets meldt "niet uitvoerbaar" mét de codes die RLZ
+#: gaf, nooit stil (api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09").
 DOCUMENT_EVENTIDS: dict[int, frozenset[int]] = {
     DOCTYPE_INKOOP: frozenset({71}),
     DOCTYPE_VERKOOP: frozenset({51}),
+    DOCTYPE_MEMORIAAL: frozenset({21}),
+    DOCTYPE_BANK_DIRECT: frozenset({240}),
 }
+#: EventID 22 = memoriaal-post zónder document (RLZ-eigen memoriaalboeking; 14-09: 214) — bewust GEEN documentpost.
+EVENTID_MEMORIAAL_OVERIG = 22
 #: Boekstukreeksen van bankdagboeken op VGG (contract §Besluiten 6) — alleen gebruikt als `bankdekking` ontbreekt.
 BANK_REEKSEN: frozenset[str] = frozenset({"RLZ-09", "RLZ-25", "RLZ-28", "RLZ-46", "RLZ-60"})
 

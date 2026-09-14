@@ -290,10 +290,57 @@ class TestPunt2VolledigheidEventID:
             (71, "documentpost"),
             (72, "betalings-/afletter-/correctiepost"),
         }
-        # memoriaal (11): geen bewezen document-EventID → niet uitvoerbaar, mét de gevonden codes
-        assert per_dt[11]["documentposten"] is None and "gevonden codes: 61" in per_dt[11]["oordeel"]
+        # memoriaal (11): EventID 21 = documentpost (nazorg 14-09) → sluit
+        assert per_dt[11]["documentposten"] == 3 and per_dt[11]["oordeel"].startswith("sluit (3 documentposten = 3")
         md = rapport.als_markdown()
-        assert "Journaalposten per EventID (soortcode) per DocumentType" in md and "toets niet uitvoerbaar" in md
+        assert "Journaalposten per EventID (soortcode) per DocumentType" in md
+        memo_rij = next(r for r in md.splitlines() if r.startswith("| memoriaal (11) |"))
+        assert "sluit (3 documentposten" in memo_rij and "niet uitvoerbaar" not in memo_rij
+
+    def test_memoriaal_eventid_22_is_overig_en_bank_direct_telt_hulzen_apart(self) -> None:
+        """Productienameting 14-09: memoriaal 21 = 228 documentposten (= 228 geboekt) + 22 = 214 posten zónder
+        document; bank-direct 240 = 54 posten = 9 documenten + 45 systeemhulzen. De toets telt documenten en benoemt
+        hulzen apart."""
+        collecties, regels, statements = mini_vgg()
+        extra = dict(next(jr for jr in collecties["JournalEntryLines"] if jr["JournalEntry"]["DocumentType"] == 11))
+        extra["JournalEntry"] = {
+            **extra["JournalEntry"],
+            "id": str(uuid.uuid4()),
+            "EventID": rlz_bron.EVENTID_MEMORIAAL_OVERIG,
+        }
+        collecties["JournalEntryLines"].append(extra)
+        rapport = _run(NepClient(collecties, regels, statements))
+        per_dt = {x["documenttype"]: x for x in rapport.journaal["per_documenttype"]}
+        memo = per_dt[11]
+        assert memo["documentposten"] == 3 and memo["overige_posten"] == 1
+        assert memo["oordeel"] == "sluit (3 documentposten = 3 geboekt; betalings-/afletterposten 1)"
+        assert {(e["eventid"], e["soort"]) for e in memo["per_eventid"]} == {
+            (21, "documentpost"),
+            (22, "betalings-/afletter-/correctiepost"),
+        }
+        bank = per_dt[19]
+        assert bank["documentposten"] == 4 and bank["documenten_geboekt"] == 3 and rapport.tellers["huls"] == 1
+        assert bank["oordeel"] == "sluit (4 documentposten = 3 geboekt + 1 systeemhulzen; betalings-/afletterposten 0)"
+        # zonder de huls-post: het verschil wordt tegen geboekt + hulzen benoemd, nooit tegen het ruwe aantal
+        collecties["JournalEntryLines"] = [
+            jr
+            for jr in collecties["JournalEntryLines"]
+            if jr["JournalEntry"]["DocumentType"] != 19 or jr["DebitAmount"] or jr["CreditAmount"]
+        ]
+        rapport = _run(NepClient(collecties, regels, statements))
+        bank = next(x for x in rapport.journaal["per_documenttype"] if x["documenttype"] == 19)
+        assert bank["oordeel"].startswith("VERSCHIL -1: 3 documentposten (EventID 240) ≠ 3 geboekt + 1 systeemhulzen")
+
+    def test_onbekend_documenttype_blijft_niet_uitvoerbaar_met_codes(self) -> None:
+        collecties, regels, statements = mini_vgg()
+        jr = next(x for x in collecties["JournalEntryLines"] if x["JournalEntry"]["DocumentType"] == 11)
+        jr["JournalEntry"]["DocumentType"] = 12
+        jr["JournalEntry"]["EventID"] = 61
+        rapport = _run(NepClient(collecties, regels, statements))
+        per_dt = {x["documenttype"]: x for x in rapport.journaal["per_documenttype"]}
+        assert per_dt[12]["documentposten"] is None and "gevonden codes: 61" in per_dt[12]["oordeel"]
+        assert per_dt[12]["oordeel"].startswith("toets niet uitvoerbaar met deze API")
+        assert "toets niet uitvoerbaar" in rapport.als_markdown()
 
     def test_verschil_wordt_benoemd_niet_het_ruwe_aantal(self) -> None:
         collecties, regels, statements = mini_vgg()
