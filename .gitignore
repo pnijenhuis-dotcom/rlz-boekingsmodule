@@ -12,3 +12,7 @@ frontend/dist/
 
 # Word-lockbestanden (tijdelijk, ontstaan zolang een docx open staat)
 ~$*
+
+# werkloop automatisch 14-09: runtime-artefacten van scripts/cc_inbox.sh
+opdrachten/log/
+opdrachten/.lock
