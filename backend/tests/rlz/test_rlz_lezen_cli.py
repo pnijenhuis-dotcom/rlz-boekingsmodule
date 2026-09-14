@@ -318,3 +318,110 @@ def test_recordpad_krijgt_alleen_expand_geen_top(capsys: pytest.CaptureFixture[s
     [req] = vastlegger.requests
     assert dict(req.url.params) == {"$expand": "DocumentLineList($expand=Account)"}
     assert "recordpad" in capsys.readouterr().err
+
+
+def test_record_via_filter_leest_collectie_dan_record_en_lekt_geen_guid(capsys: pytest.CaptureFixture[str]) -> None:
+    """Blok 7d 14-09 (STAP-0 zonder GUID's): `--record-via-filter` = collectie-GET met $filter + $top=2 → precies één
+    treffer → record-GET met alleen $expand; het id staat nergens in de uitvoer (geanonimiseerd), 0/≥ 2 treffers =
+    exit 2."""
+    guid = "bfae5951-fa8e-4329-ad1d-9c8f228fa8b6"
+
+    class _TweeStappen(_Vastlegger):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            if request.url.path.endswith(f"/{guid}"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": guid,
+                        "ReceiptNumber": "RLZ-06-00000106",
+                        "DocumentLineList": [{"DebitAmount": 175000.0, "CreditAmount": 0.0, "CreditOrDebit": 1}],
+                    },
+                )
+            return httpx.Response(200, json={"value": [{"id": guid, "ReceiptNumber": "RLZ-06-00000106"}]})
+
+    vastlegger = _TweeStappen()
+    uit = io.StringIO()
+    code = run_rlz_lezen(
+        _args(
+            pad="ManualJournals",
+            expand="DocumentLineList($expand=Account)",
+            record_via_filter="ReceiptNumber eq 'RLZ-06-00000106'",
+            top=5,
+            count=True,
+        ),
+        zoek=_zoek_een,
+        client_factory=lambda _rid: _client_met(vastlegger),
+        uit=uit,
+    )
+    assert code == 0 and len(vastlegger.requests) == 2
+    eerste, tweede = vastlegger.requests
+    assert eerste.url.path.endswith("/ManualJournals")
+    assert dict(eerste.url.params) == {"$top": "2", "$filter": "ReceiptNumber eq 'RLZ-06-00000106'"}
+    assert tweede.url.path.endswith(f"/ManualJournals/{guid}")
+    assert dict(tweede.url.params) == {"$expand": "DocumentLineList($expand=Account)"}
+    tekst = uit.getvalue()
+    assert guid not in tekst and "bfae5951…" in tekst
+    data = json.loads(tekst)
+    assert data["rlz_lezen"]["record_via_filter"] == "ReceiptNumber eq 'RLZ-06-00000106'"
+    assert data["antwoord"]["DocumentLineList"][0]["DebitAmount"] == 175000.0
+    assert "record gevonden via filter" in capsys.readouterr().err
+    # 0 treffers → exit 2, géén record-GET
+    leeg = _Vastlegger(body={"value": []})
+    assert (
+        run_rlz_lezen(
+            _args(pad="ManualJournals", record_via_filter="ReceiptNumber eq 'X'"),
+            zoek=_zoek_een,
+            client_factory=lambda _rid: _client_met(leeg),
+            uit=io.StringIO(),
+        )
+        == 2
+    )
+    assert len(leeg.requests) == 1 and "precies één vereist" in capsys.readouterr().err
+    # twee treffers → exit 2
+    twee = _Vastlegger(body={"value": [{"id": guid}, {"id": guid}]})
+    assert (
+        run_rlz_lezen(
+            _args(pad="ManualJournals", record_via_filter="Status eq 3"),
+            zoek=_zoek_een,
+            client_factory=lambda _rid: _client_met(twee),
+            uit=io.StringIO(),
+        )
+        == 2
+    )
+    # op een recordpad is de vlag zinloos → exit 2 zonder call
+    geen = _Vastlegger()
+    assert (
+        run_rlz_lezen(
+            _args(pad=f"ManualJournals/{guid}", record_via_filter="Status eq 3"),
+            zoek=_zoek_een,
+            client_factory=lambda _rid: _client_met(geen),
+            uit=io.StringIO(),
+        )
+        == 2
+    )
+    assert geen.requests == []
+    # de parser kent de vlag (dispatch via cli.main, zoals test_cli_dispatch_kent_rlz_lezen)
+    gezien: list[argparse.Namespace] = []
+    import app.cli as app_cli
+
+    origineel = app_cli.run_rlz_lezen
+    app_cli.run_rlz_lezen = lambda a: gezien.append(a) or 0  # type: ignore[assignment]
+    try:
+        assert (
+            app_cli.main(
+                [
+                    "rlz-lezen",
+                    "--administratie",
+                    "x",
+                    "--pad",
+                    "ManualJournals",
+                    "--record-via-filter",
+                    "ReceiptNumber eq 'a'",
+                ]
+            )
+            == 0
+        )
+    finally:
+        app_cli.run_rlz_lezen = origineel  # type: ignore[assignment]
+    assert gezien[0].record_via_filter == "ReceiptNumber eq 'a'"

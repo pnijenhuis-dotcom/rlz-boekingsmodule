@@ -485,8 +485,13 @@ class TestMiniVgg:
             "niet_migreren": 1,
         }
         assert t["geboekt"] == 8 and t["niet_migreren"] == 2
-        assert t["per_type"]["bank"] == {"vertaalbaar": 7, "zonder_pand": 0, "niet_vertaalbaar": 0}
-        assert t["per_type"]["entry"] == {"vertaalbaar": 2, "zonder_pand": 1, "niet_vertaalbaar": 0}  # MJ2 midden
+        assert t["per_type"]["bank"] == {"vertaalbaar": 7, "zonder_pand": 0, "niet_vertaalbaar": 0, "geblokkeerd": 0}
+        assert t["per_type"]["entry"] == {
+            "vertaalbaar": 2,
+            "zonder_pand": 1,
+            "niet_vertaalbaar": 0,
+            "geblokkeerd": 0,
+        }  # MJ2 midden
         assert t["btw_regels"] == 0 and t["regel_calls"] == 8 and t["regel_fouten"] == 0
         assert t["regels_via_documentvorm"] == 8 and t["regels_via_lines"] == 0  # blok 7c: één call per document
         assert t["bookdate_uit_document"] == 8 and t["bookdate_terugval_date"] == 0
@@ -516,14 +521,17 @@ class TestMiniVgg:
         assert rapport.journaal["regels"] == 22
         assert rapport.journaal["rlz_kolom"].startswith("koppeling journaalregel ↔ document bestaat niet in de RLZ-API")
         per_dt = {x["documenttype"]: x for x in rapport.journaal["per_documenttype"]}
-        assert per_dt[11] == {
+        assert {k: per_dt[11][k] for k in ("documenttype", "naam", "journaalposten", "journaalregels")} == {
             "documenttype": 11,
             "naam": "memoriaal (11)",
             "journaalposten": 3,
             "journaalregels": 6,
-            "documenten_geboekt": 3,
         }
+        assert per_dt[11]["documenten_geboekt"] == 3
+        # blok 7d punt 2: DocumentType 11 heeft nog geen bewezen document-EventID → "niet uitvoerbaar", nooit stil
+        assert per_dt[11]["oordeel"].startswith("toets niet uitvoerbaar met deze API") and "61" in per_dt[11]["oordeel"]
         assert per_dt[1]["journaalposten"] == 1 and per_dt[1]["documenten_geboekt"] == 1
+        assert per_dt[1]["documentposten"] == 1 and per_dt[1]["oordeel"].startswith("sluit (1 documentposten = 1")
         assert per_dt[None]["journaalregels"] == 6 and per_dt[None]["documenten_geboekt"] == 0  # bankjournaal
         # blok 7c punt 7 (b): 1600/1300/1100 zitten in een groep, de groepen sluiten
         assert per["1600"]["groep"] == "crediteuren" and per["1300"]["groep"] == "debiteuren"
@@ -608,7 +616,9 @@ class TestMiniVgg:
         )
         assert g["marge"] == Decimal("59769.01")  # aanbetaling apart (balans tot levering)
         assert g["notaris_ontvangst"] == 0 and g["controle"].startswith("SIGNAAL")  # geen bank op het pand
-        assert "rhijnauwensingel-93" not in pand  # midden/voorstel telt niet
+        # midden/voorstel telt niet in de sommen — blok 7d punt 5: wél zichtbaar als "wacht op Toewijzing"
+        assert pand["rhijnauwensingel-93"]["midden_wachtend"] == 1 and pand["rhijnauwensingel-93"]["documenten"] == 0
+        assert pand["rhijnauwensingel-93"]["aankoop"] == 0 and g["midden_wachtend"] == 0
         assert {p["sleutel"] for p in rapport.partners} == {"kvk", "naam"}
         sluit = [(s["maand"], s["sluit"]) for s in rapport.statements]
         assert sluit[0][0] == "2025-07" and sluit[0][1].startswith("ja (RLZ-kop sluit op de som")
@@ -799,7 +809,14 @@ class TestBron:
 
     def test_debet_credit_en_journaal_bron(self) -> None:
         assert rlz_bron.debet_credit({"DebitAmount": 10.0, "CreditAmount": 0}) == (Decimal("10.00"), Decimal("0.00"))
-        assert rlz_bron.debet_credit({"CreditOrDebit": 2, "Amount": 5}) == (Decimal("0.00"), Decimal("5.00"))
+        # blok 7d punt 1: de CreditOrDebit-code is GEEN richting meer — zonder Debit/CreditAmount is een memoriaalregel
+        # onvertaalbaar (None), en debet_credit valt niet stil op de code terug
+        assert rlz_bron.memoriaal_debet_credit({"CreditOrDebit": 2, "Amount": 5}) is None
+        assert rlz_bron.debet_credit({"CreditOrDebit": 2, "Amount": 5}) == (Decimal("0.00"), Decimal("0.00"))
+        assert rlz_bron.memoriaal_debet_credit({"CreditOrDebit": 1, "CreditAmount": 70.0, "NetAmount": 70.0}) == (
+            Decimal("0.00"),
+            Decimal("70.00"),
+        )
         assert rlz_bron.debet_credit({"NetAmount": -7.5, "TaxAmount": 0}) == (Decimal("0.00"), Decimal("7.50"))
         jr = {"JournalEntry": {"id": "j1", "BookDate": "2025-07-10T00:00:00", "DocumentType": 1, "EventID": 71}}
         assert rlz_bron.journaalregel_datum(jr) == date(2025, 7, 10)
@@ -932,12 +949,17 @@ class TestBlok7b:
         # de bank koppelt € 231,01 op een factuur van € 230,99 (betalingsverschil-afboeking in RLZ)
         collecties["PaymentTransactions"][3]["PaymentReferenceList"][0]["Amount"] = 231.01
         rapport = _run(NepClient(collecties, regels, statements))
-        rij = next(r for r in rapport.open_posten if r["boekstuk"] == "RLZ-04-00000100")
-        assert (
-            rij["verschil"] == Decimal("-0.02")
-            and "koppelingen som € 231.01 ≠ documenttotaal € 230.99" in rij["oorzaak"]
-        )
-        assert "betalingsverschil" in rij["oorzaak"] and rapport.groen is False
+        # blok 7d punt 4: RLZ toont de post volledig betaald (open 0) → write-off op Betalingsverschillen, open 0
+        assert not [r for r in rapport.open_posten if r["boekstuk"] == "RLZ-04-00000100"]
+        [wo] = rapport.betalingsverschillen
+        assert wo["boekstuk"] == "RLZ-04-00000100" and wo["write_off"] == Decimal("0.02")
+        assert wo["restant"] == Decimal("-0.02") and wo["betaald"] == Decimal("231.01") and wo["datum"] == "2025-07-21"
+        assert wo["rekening"] == "ongemapt:4900"  # mini-VGG kent geen 4900-ledger: zichtbaar, nooit stil
+        # de saldibalans draagt de write-off (Odoo-kant) — zonder RLZ-journaalregel op 4900 blijft dat een verschil
+        per = {r["rekening"]: r for r in rapport.saldibalans}
+        assert per["ongemapt:4900"]["odoo_tot"] == Decimal("0.02") and rapport.groen is False
+        bank = next(m for m in rapport.moves if m.boekstuk == "00103")
+        assert bank.bank["reconcile"][0]["write_off"]["bedrag"] == Decimal("0.02")
 
     def test_regelsom_ongelijk_documenttotaal_wordt_gemeld(self) -> None:
         collecties, regels, statements = mini_vgg()
@@ -1282,12 +1304,20 @@ class TestBlok7c:
             "bron_tekst": "bankmutatie 00107",
         }
         assert "uit bankmutatie 00107" in per[shell_id].reden
-        assert per[los_id].partner["voorstel"] == "onbekend" and "beslispunt Peter" in per[los_id].reden
+        # blok 7d punt 6 (besluit Peter 14-09): geen dummy-partner — geblokkeerd concept, eigen tabel, niet "niet
+        # vertaalbaar"
+        assert per[los_id].partner["voorstel"] == "onbekend" and vertaling.PARTNER_ONBEKEND_REDEN in per[los_id].reden
+        assert per[los_id].status == vertaling.STATUS_GEBLOKKEERD
+        assert [g["boekstuk"] for g in rapport.geblokkeerd] == ["RLZ-17-00000061"]
+        assert not [x for x in rapport.niet_vertaalbaar if x["boekstuk"] == "RLZ-17-00000061"]
         assert rapport.tellers["partners_uit_bank"] == 1 and rapport.tellers["partners_onbekend"] == 1
+        assert rapport.tellers["geblokkeerd_partner"] == 1
         md = rapport.als_markdown()
-        assert "waarvan 1 uit de tegenpartij van de bankmutatie" in md and "BESLISPUNT PETER" in md
+        assert "waarvan 1 uit de tegenpartij van de bankmutatie" in md and "BESLISPUNT PETER" not in md
+        assert "#### Geblokkeerd — partner onbekend — 1" in md
         assert any(p["voorstel"] == "onbekend" for p in rapport.partners)
-        assert any("Bank-direct (onbekend)" in b for b in json.loads(rapport.als_json())["beslispunten"])
+        assert any("GEEN dummy-partner" in b for b in json.loads(rapport.als_json())["beslispunten"])
+        assert rapport.tellers["per_type"]["in_invoice"]["geblokkeerd"] == 1
 
     def test_btw_tweede_bron_en_btw_code_zonder_bedrag(self) -> None:
         collecties, regels, statements = mini_vgg()

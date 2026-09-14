@@ -58,11 +58,23 @@ DOCTYPE_INKOOP = 1
 DOCTYPE_VERKOOP = 10
 DOCTYPE_MEMORIAAL = 11
 DOCTYPE_BANK_DIRECT = 19
+DOCTYPE_RESULTAAT = 0  # RLZ's eigen resultaatboekingen (7999 Winst / 8999 Verlies / 0509 Resultaat lopend boekjaar)
 DOCTYPE_NAMEN: dict[int, str] = {
+    DOCTYPE_RESULTAAT: "RLZ-resultaatposten (0)",
     DOCTYPE_INKOOP: "inkoop (1)",
     DOCTYPE_VERKOOP: "verkoop/receipt (10)",
     DOCTYPE_MEMORIAAL: "memoriaal (11)",
     DOCTYPE_BANK_DIRECT: "bank-direct (19)",
+}
+#: Blok 7d punt 2 — `JournalEntry.EventID` (soortcode `JournalEvent`, STAP-0 13-09) per DocumentType: welke codes de
+#: DOCUMENTPOST zelf zijn (bewezen: 71 = inkoopfactuur geboekt, 51 = verkoop/receipt geboekt). Alle andere codes bij dat
+#: DocumentType telt de volledigheidstoets apart als "betalings-/afletter-/correctieposten". Een DocumentType dat hier
+#: NIET in staat (11 memoriaal, 19 bank-direct) is nog niet vastgesteld → de toets meldt "niet uitvoerbaar" mét de
+#: codes die RLZ gaf, nooit stil (STAP-0 14-09 vult deze tabel aan; api-verkenning "Memoriaalregels — teken per regel,
+#: STAP-0 14-09").
+DOCUMENT_EVENTIDS: dict[int, frozenset[int]] = {
+    DOCTYPE_INKOOP: frozenset({71}),
+    DOCTYPE_VERKOOP: frozenset({51}),
 }
 #: Boekstukreeksen van bankdagboeken op VGG (contract §Besluiten 6) — alleen gebruikt als `bankdekking` ontbreekt.
 BANK_REEKSEN: frozenset[str] = frozenset({"RLZ-09", "RLZ-25", "RLZ-28", "RLZ-46", "RLZ-60"})
@@ -450,18 +462,34 @@ def ref_id(waarde: Any) -> str | None:
     return None
 
 
+def heeft_debet_credit_velden(regel: dict[str, Any]) -> bool:
+    """Draagt de regel `DebitAmount` en/of `CreditAmount` (memoriaal-/journaalregel)?"""
+    return als_bedrag(regel.get("DebitAmount")) is not None or als_bedrag(regel.get("CreditAmount")) is not None
+
+
+def memoriaal_debet_credit(regel: dict[str, Any]) -> tuple[Decimal, Decimal] | None:
+    """(debet, credit) van een MEMORIAALREGEL — UITSLUITEND uit `DebitAmount`/`CreditAmount` (blok 7d 14-09, punt 1).
+
+    Nooit uit `CreditOrDebit` (RLZ geeft die code op lezen gespiegeld/rekeningzijde-afhankelijk terug — api-verkenning
+    "Memoriaalregels — teken per regel, STAP-0 14-09" en de lees-observatie onder "Bank fallback-PoC") en nooit uit
+    `NetAmount`: de saldibalans-nameting 13-09 klapte precies de regels op passiva- en opbrengstrekeningen om (0500,
+    1601–1606, 0899, 1710, 8000, 8199) terwijl activa- en kostenregels (1100, 1011, 4000, 7000) klopten — een teken dat
+    NIET debet/credit is maar de "normale zijde" van de rekening volgt. None = de regel draagt geen van beide
+    bedragvelden → de aanroeper maakt het document ZICHTBAAR niet vertaalbaar (nooit een gok via een code)."""
+    if not heeft_debet_credit_velden(regel):
+        return None
+    d = als_bedrag(regel.get("DebitAmount")) or Decimal("0.00")
+    c = als_bedrag(regel.get("CreditAmount")) or Decimal("0.00")
+    return d.quantize(Decimal("0.01")), c.quantize(Decimal("0.01"))
+
+
 def debet_credit(regel: dict[str, Any]) -> tuple[Decimal, Decimal]:
     """(debet, credit) uit een document- of journaalregel: `DebitAmount`/`CreditAmount` als ze er zijn (memoriaal,
     JournalEntryLines), anders `NetAmount` (+ `TaxAmount`) mét teken: positief = debet (inkoop) — de aanroeper keert
-    voor verkoopregels om."""
-    d = als_bedrag(regel.get("DebitAmount"))
-    c = als_bedrag(regel.get("CreditAmount"))
-    if d is not None or c is not None:
-        return (d or Decimal("0.00")), (c or Decimal("0.00"))
-    cod = als_int(regel.get("CreditOrDebit"))
-    bedrag = als_bedrag(regel.get("Amount"))
-    if cod is not None and bedrag is not None:
-        return (bedrag, Decimal("0.00")) if cod == 1 else (Decimal("0.00"), bedrag)
+    voor verkoopregels om. De `CreditOrDebit`-code wordt sinds blok 7d (14-09) NERGENS meer als richting gelezen."""
+    dc = memoriaal_debet_credit(regel)
+    if dc is not None:
+        return dc
     net = als_bedrag(regel.get("NetAmount")) or Decimal("0.00")
     tax = als_bedrag(regel.get("TaxAmount")) or Decimal("0.00")
     tot = (net + tax).quantize(Decimal("0.01"))
@@ -489,6 +517,20 @@ def journaalregel_documenttype(regel: dict[str, Any]) -> int | None:
 def journaalregel_journaalpost_id(regel: dict[str, Any]) -> str | None:
     je = regel.get("JournalEntry")
     return ref_id(je) if isinstance(je, dict) else None
+
+
+def journaalregel_eventid(regel: dict[str, Any]) -> int | None:
+    """`JournalEntry.EventID` als soortcode (int); een dict-vorm (`{id: n}` of `{Name: …}`) wordt op `id` gelezen."""
+    je = regel.get("JournalEntry")
+    ev = je.get("EventID") if isinstance(je, dict) else regel.get("EventID")
+    if isinstance(ev, dict):
+        ev = ev.get("id")
+    return als_int(ev)
+
+
+def is_resultaatpost(regel: dict[str, Any]) -> bool:
+    """Blok 7d punt 3: DocumentType 0 = RLZ's eigen resultaatboeking — nooit gemigreerd, Odoo berekent het resultaat."""
+    return journaalregel_documenttype(regel) == DOCTYPE_RESULTAAT
 
 
 def journaalregel_bron_id(regel: dict[str, Any]) -> str | None:

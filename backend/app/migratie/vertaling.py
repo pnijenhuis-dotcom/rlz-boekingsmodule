@@ -65,6 +65,25 @@ LEGE_TAX: list[list[Any]] = [[6, 0, []]]
 STATUS_VERTAALBAAR = "vertaalbaar"
 STATUS_ZONDER_PAND = "zonder_pand"
 STATUS_NIET = "niet_vertaalbaar"
+#: Blok 7d punt 6 (besluit Peter 14-09): een factuur zonder Entity én zonder eenduidige bank-tegenpartij is een
+#: GEBLOKKEERD concept — geen dummy-partner; een mens geeft de partner in de Toewijzing. Telt niet als "niet
+#: vertaalbaar" (de vertaling is compleet), wél als aparte teller/tabel; nooit geschreven tot de blokkade weg is.
+STATUS_GEBLOKKEERD = "geblokkeerd"
+ALLE_STATUSSEN = (STATUS_VERTAALBAAR, STATUS_ZONDER_PAND, STATUS_NIET, STATUS_GEBLOKKEERD)
+PARTNER_ONBEKEND_REDEN = "partner onbekend — toewijzen in Toewijzing"
+
+#: Blok 7d punt 5 — blokkade-codes op `Vertaald.blokkades`. De DOEL-codes verdwijnen vanzelf zodra de Odoo-doelkoppeling
+#: (dagboeken, rekeningmapping, rol-rekeningen) er is; alle andere codes zijn doel-onafhankelijk en houden het oordeel
+#: ROOD, óók in de stand "GROEN ZONDER DOEL".
+BLOKKADE_ONGEMAPT = "ongemapt_grootboek"
+BLOKKADE_ROL = "rol_niet_ingesteld"
+BLOKKADE_BTW_ROL = "btw_rol_niet_ingesteld"
+BLOKKADE_GEEN_DATUM = "geen_datum"
+BLOKKADE_ZONDER_REGELS = "zonder_regels"
+BLOKKADE_MEMORIAAL_ZONDER_BEDRAG = "memoriaalregel_zonder_debet_credit"
+BLOKKADE_MEMORIAAL_UIT_BALANS = "memoriaal_uit_balans"
+BLOKKADE_PARTNER = "partner_onbekend"
+DOEL_BLOKKADES: frozenset[str] = frozenset({BLOKKADE_ONGEMAPT, BLOKKADE_ROL, BLOKKADE_BTW_ROL})
 
 ROLLEN = ("voorraad_panden", "vooruitbetaald_voorraad", "opbrengst_panden", "kostprijs_panden")
 ROL_PER_SOORT = {"aankoop": "voorraad_panden", "aanbetaling": "vooruitbetaald_voorraad", "verkoop": "opbrengst_panden"}
@@ -226,6 +245,16 @@ class Vertaald:
     btw_code_zonder_bedrag: int = 0  # regels mét een TaxRate-verwijzing maar TaxAmount 0 (de teller van blok 7)
     koopsom_regel: int | None = None  # index van de koopsom-regel (rol voorraad_panden) bij soort aankoop
     zonder_regels: bool = False  # regels niet leesbaar (document telt in "ONVOLLEDIG")
+    #: Blok 7d 14-09
+    blokkades: list[str] = field(default_factory=list)  # codes (zie BLOKKADE_*), doel- vs doel-onafhankelijk
+    uit_balans: Decimal | None = None  # memoriaal: Σ debet − Σ credit van de VERTAALDE regels (≠ 0 = ROOD, punt 1)
+
+    @property
+    def alleen_doel_blokkades(self) -> bool:
+        """Blokkades uitsluitend door het ontbreken van de Odoo-doelkoppeling (mapping/rol) en/of de partner-blokkade
+        (die een mens in de Toewijzing opheft) — de stand "GROEN ZONDER DOEL" telt zo'n document niet als ROOD."""
+        toegestaan = DOEL_BLOKKADES | {BLOKKADE_PARTNER}
+        return bool(self.blokkades) and all(b in toegestaan for b in self.blokkades)
 
 
 @dataclass
@@ -601,13 +630,16 @@ def vertaal_document(
     status = STATUS_VERTAALBAAR
     if datum is None:
         status = STATUS_NIET
+        uit.blokkades.append(BLOKKADE_GEEN_DATUM)
     if regels is None:
         status = STATUS_NIET
         uit.zonder_regels = True
+        uit.blokkades.append(BLOKKADE_ZONDER_REGELS)
         redenen.append("regels niet leesbaar")
         regels = []
     elif not regels:
         status = STATUS_NIET
+        uit.blokkades.append(BLOKKADE_ZONDER_REGELS)
         redenen.append("document zonder regels")
 
     # pand / rol
@@ -625,6 +657,7 @@ def vertaal_document(
                     uit.koopsom_regel = rol_index
                 if getattr(ctx.rollen, rol_naam) is None:
                     status = STATUS_NIET
+                    uit.blokkades.append(BLOKKADE_ROL)
                     redenen.append(f"rol-rekening {rol_naam} niet ingesteld")
             if pand.soort == "verkoop":
                 redenen.append("uitboeking kostprijs verkochte panden = rapportregel (geen tweede move in run 2)")
@@ -642,13 +675,26 @@ def vertaal_document(
     btw_rek = str(btw_rol_id) if btw_rol_id is not None else ROL_BTW_PSEUDO
     btw_rol_gemeld = False
     som = NUL
+    memoriaal_zonder_bedrag = 0
     for i, (r, (d_tot, c_tot)) in enumerate(zip(regels, orienteer(regels, move_type), strict=True)):
         ledger_id = rlz_bron.ref_id(r.get("Account"))
         vert = ctx.grootboek.get(ledger_id or "")
         odoo_id: int | None = vert.odoo_account_id if vert else None
-        netto_btw = _netto_en_btw(r)
+        if move_type == "entry":
+            # Blok 7d punt 1: een memoriaalregel UITSLUITEND op DebitAmount/CreditAmount — nooit NetAmount (dat volgt de
+            # normale zijde van de rekening en klapte passiva/opbrengst om), nooit de CreditOrDebit-code.
+            dc = rlz_bron.memoriaal_debet_credit(r)
+            if dc is None:
+                memoriaal_zonder_bedrag += 1
+                dc = (NUL, NUL)
+            d, c = dc
+            t_d = t_c = NUL
+            netto_btw = None
+        else:
+            netto_btw = _netto_en_btw(r)
         if netto_btw is None:
-            d, c = d_tot, c_tot
+            if move_type != "entry":
+                d, c = d_tot, c_tot
             t_d = t_c = NUL
         else:
             d, c = _orienteer_bedrag(netto_btw[0], move_type)
@@ -659,8 +705,14 @@ def vertaal_document(
         if rol_index is not None and i == rol_index and rol_naam:
             rol_id = getattr(ctx.rollen, rol_naam)
             if rol_id is not None:
-                if odoo_id is not None:
-                    uit.herclassificaties.append((str(odoo_id), str(rol_id), (d - c).quantize(Decimal("0.01"))))
+                # herclassificatie altijd zichtbaar — óók zonder rekeningmapping (van = `ongemapt:<code>`), anders kan
+                # de saldibalans het rol-bedrag niet schonen en lijkt de stand ZONDER DOEL rood (blok 7d punt 5)
+                van = (
+                    str(odoo_id)
+                    if odoo_id is not None
+                    else f"ongemapt:{(vert.rlz_code if vert else None) or ledger_id or '?'}"
+                )
+                uit.herclassificaties.append((van, str(rol_id), (d - c).quantize(Decimal("0.01"))))
                 odoo_id = rol_id
                 redenen.append(f"regel {i + 1} → {rol_naam} ({rol_id})")
         if ledger_id and ledger_id in ctx.btw_ledgers:
@@ -674,6 +726,7 @@ def vertaal_document(
             if btw_rol_id is None:
                 status = STATUS_NIET
                 if not btw_rol_gemeld:
+                    uit.blokkades.append(BLOKKADE_BTW_ROL)
                     redenen.append("rol-rekening btw_afwikkeling_historisch niet ingesteld")
                     btw_rol_gemeld = True
             else:
@@ -683,6 +736,8 @@ def vertaal_document(
                 if ledger_id and ledger_id not in uit.ongemapt:
                     uit.ongemapt.append(ledger_id)
                 status = STATUS_NIET
+                if BLOKKADE_ONGEMAPT not in uit.blokkades:
+                    uit.blokkades.append(BLOKKADE_ONGEMAPT)
             rekening = (
                 str(odoo_id)
                 if odoo_id is not None
@@ -709,6 +764,7 @@ def vertaal_document(
             if btw_rol_id is None:
                 status = STATUS_NIET
                 if not btw_rol_gemeld:
+                    uit.blokkades.append(BLOKKADE_BTW_ROL)
                     redenen.append("rol-rekening btw_afwikkeling_historisch niet ingesteld")
                     btw_rol_gemeld = True
             btw_netto = (t_d - t_c) if move_type in ("in_invoice", "in_refund") else (t_c - t_d)
@@ -722,20 +778,34 @@ def vertaal_document(
             regel_vals.append([0, 0, rv_btw])
 
     # regelsom cent-exact tegen het documenttotaal (blok 7b punt 4) — melden, nooit stil afronden
-    if regels:
-        if move_type == "entry":
-            uit.som_verschil = som.quantize(Decimal("0.01"))
-            if uit.som_verschil != 0:
-                redenen.append(f"memoriaal sluit niet: debet − credit = € {uit.som_verschil}")
-        elif bedrag is not None:
-            # bank-directe boeking: het documenttotaal draagt het teken van de MUTATIE, de regels de boekrichting
-            uit.som_verschil = ((abs(som) - abs(bedrag)) if move_type == "bank_direct" else (som - bedrag)).quantize(
-                Decimal("0.01")
+    if move_type == "entry":
+        if memoriaal_zonder_bedrag:
+            status = STATUS_NIET
+            uit.blokkades.append(BLOKKADE_MEMORIAAL_ZONDER_BEDRAG)
+            redenen.append(
+                f"{memoriaal_zonder_bedrag} memoriaalregel(s) zonder DebitAmount/CreditAmount — niet vertaald "
+                "(nooit via de CreditOrDebit-code, blok 7d punt 1)"
             )
-            if uit.som_verschil != 0:
-                redenen.append(
-                    f"regelsom € {som.quantize(Decimal('0.01'))} ≠ documenttotaal € {bedrag} (Δ {uit.som_verschil})"
-                )
+        # Blok 7d punt 1: HARDE balanscontrole op de VERTAALDE regels (Σ debet = Σ credit cent-exact) — de som over
+        # `orienteer` (bron-velden) is niet genoeg: precies dáár zat de tekenfout van 13-09 verborgen.
+        uit.uit_balans = sum((rg.debet - rg.credit for rg in uit.regels), NUL).quantize(Decimal("0.01"))
+        uit.som_verschil = uit.uit_balans
+        if regels and uit.uit_balans != 0:
+            status = STATUS_NIET
+            uit.blokkades.append(BLOKKADE_MEMORIAAL_UIT_BALANS)
+            redenen.append(
+                f"memoriaal uit balans: Σ debet − Σ credit van de vertaalde regels = € {uit.uit_balans} — "
+                "niet doorgerekend (blok 7d punt 1)"
+            )
+    elif regels and bedrag is not None:
+        # bank-directe boeking: het documenttotaal draagt het teken van de MUTATIE, de regels de boekrichting
+        uit.som_verschil = ((abs(som) - abs(bedrag)) if move_type == "bank_direct" else (som - bedrag)).quantize(
+            Decimal("0.01")
+        )
+        if uit.som_verschil != 0:
+            redenen.append(
+                f"regelsom € {som.quantize(Decimal('0.01'))} ≠ documenttotaal € {bedrag} (Δ {uit.som_verschil})"
+            )
 
     # impliciete tegenzijde (crediteuren/debiteuren) voor de saldibalans
     if move_type in ("in_invoice", "in_refund") and regels:
@@ -792,7 +862,13 @@ def vertaal_document(
             p_tekst += f" — uit {partner.bron_tekst}"
         elif partner.voorstel == "onbekend":
             p_tekst += " — geen Entity" + (f", {partner.bron_tekst}" if partner.bron_tekst else ", geen bankmutatie")
-            p_tekst += " (beslispunt Peter: vaste partner 'Bank-direct (onbekend)' of concept blokkeren)"
+            p_tekst += (
+                f" → {PARTNER_ONBEKEND_REDEN} (besluit Peter 14-09: geen dummy-partner; concept geblokkeerd tot een "
+                "mens de partner geeft)"
+            )
+            uit.blokkades.append(BLOKKADE_PARTNER)
+            if status in (STATUS_VERTAALBAAR, STATUS_ZONDER_PAND):
+                status = STATUS_GEBLOKKEERD
         redenen.append(p_tekst)
     if omschrijving:
         vals["narration"] = omschrijving

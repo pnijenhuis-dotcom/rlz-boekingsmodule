@@ -13,6 +13,12 @@ Waarborgen (hard, getest in tests/rlz/test_rlz_lezen_cli.py):
     (laatste segment is een GUID, bv. `ManualJournals/<guid>`) krijgt GEEN `$top`/`$filter`/`$orderby`/`$count` mee —
     RLZ weigert die op een record (400 "The requested resource is not a collection", STAP-0 13-09); alleen `$expand`
     gaat mee en de melding daarover staat op stderr (blok 7c 13-09).
+  * `--record-via-filter "<OData-filter>"` (blok 7d 14-09): de uitvoer is geanonimiseerd, dus een GUID uit de ene call
+    is in de volgende niet bruikbaar. Deze vlag leest eerst de COLLECTIE (`--pad`) met dat filter (`$top=2`, precies
+    één treffer vereist — 0 of ≥ 2 = exit 2, niets gegokt), neemt het volledige id server-side over en leest daarna
+    het RECORD `--pad/<id>` met alleen `--expand`. Twee GET's, beide lees-only; het id komt nooit in de uitvoer.
+    Voorbeeld: `--pad ManualJournals --record-via-filter "ReceiptNumber eq 'RLZ-06-00000106'" --expand
+    "DocumentLineList($expand=Account)"`.
   * Uitvoer ALTIJD geanonimiseerd (de uitvoer landt in Cloud Logging): GUID's → eerste 8 tekens, IBAN's → laatste 4,
     naamvelden → initialen; bedragen, datums, enum-waarden en referenties blijven. `--anonimiseer` is een expliciete
     (no-op) bevestiging — er is bewust geen schakelaar om het uit te zetten.
@@ -180,6 +186,13 @@ def register_rlz_lezen(subparsers) -> None:  # noqa: ANN001
     p.add_argument("--top", type=int, default=5, help=f"$top (1–{MAX_TOP}, default 5).")
     p.add_argument("--count", action="store_true", help="Voeg $count=true toe (totaal in '@odata.count').")
     p.add_argument(
+        "--record-via-filter",
+        dest="record_via_filter",
+        default=None,
+        help='Lees het RECORD dat precies één treffer van dit $filter op --pad oplevert (bv. "ReceiptNumber eq '
+        "'RLZ-06-00000106'\"); alleen --expand gaat mee op het record. 0 of ≥ 2 treffers = exit 2.",
+    )
+    p.add_argument(
         "--anonimiseer", action="store_true", help="Expliciete bevestiging; uitvoer is ALTIJD geanonimiseerd."
     )
 
@@ -243,13 +256,46 @@ def run_rlz_lezen(args: argparse.Namespace, *, zoek=None, client_factory=None, u
     except GeenRlzCredentials as exc:
         print(f"rlz-lezen: geen Reeleezee-verbinding voor {naam!r}: {exc}", file=sys.stderr)
         return 1
+    record_filter = getattr(args, "record_via_filter", None)
     try:
         try:
+            if record_filter:
+                if is_recordpad(pad):
+                    print(
+                        "rlz-lezen: --record-via-filter hoort bij een COLLECTIE-pad, niet bij een record",
+                        file=sys.stderr,
+                    )
+                    return 2
+                zoek_params = {"$top": "2", "$filter": record_filter}
+                treffers_raw = client.request_raw("GET", pad, params=zoek_params).json()
+                rijen = treffers_raw.get("value") if isinstance(treffers_raw, dict) else None
+                if (
+                    not isinstance(rijen, list)
+                    or len(rijen) != 1
+                    or not isinstance(rijen[0], dict)
+                    or not rijen[0].get("id")
+                ):
+                    n = len(rijen) if isinstance(rijen, list) else "?"
+                    print(
+                        f"rlz-lezen: --record-via-filter {record_filter!r} op {pad} gaf {n} treffer(s) — precies één "
+                        "vereist (niets gegokt)",
+                        file=sys.stderr,
+                    )
+                    return 2
+                pad = f"{pad}/{rijen[0]['id']}"
+                params = {"$expand": args.expand} if getattr(args, "expand", None) else {}
+                print(
+                    f"rlz-lezen: record gevonden via filter — GET {pad.split('/')[0]}/<id> met alleen $expand",
+                    file=sys.stderr,
+                )
             response = client.request_raw("GET", pad, params=params)
         finally:
             client.close()
     except RlzApiError as exc:
-        print(f"rlz-lezen: GET {pad} → HTTP {exc.status_code}: {_tekst_anon(exc.body[:300])}", file=sys.stderr)
+        print(
+            f"rlz-lezen: GET {_tekst_anon(pad)} → HTTP {exc.status_code}: {_tekst_anon(exc.body[:300])}",
+            file=sys.stderr,
+        )
         return 1
     try:
         data = response.json()
@@ -263,10 +309,12 @@ def run_rlz_lezen(args: argparse.Namespace, *, zoek=None, client_factory=None, u
     kop = {
         "administratie": naam,
         "administratie_id": str(administratie_id)[:8] + "…",
-        "pad": pad,
+        "pad": _tekst_anon(pad),
         "params": params,
         "status": response.status_code,
     }
+    if record_filter:
+        kop["record_via_filter"] = record_filter
     print(
         json.dumps({"rlz_lezen": kop, "antwoord": anonimiseer(data)}, indent=2, ensure_ascii=False, default=str),
         file=uit,

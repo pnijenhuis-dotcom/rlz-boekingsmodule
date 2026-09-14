@@ -41,7 +41,17 @@ from typing import Any
 
 from app.migratie import rlz_bron, vertaling
 from app.migratie.rapport import EXPORT_MAAND, EXPORT_TYPES, PEILDATUM_JAAREINDE, ReplayRapport
-from app.migratie.vertaling import Context, Doel, MoveVoorstel, PandToewijzing, RolRekeningen, Vertaald
+from app.migratie.vertaling import (
+    IMPLICIET_CREDITEUREN,
+    IMPLICIET_DEBITEUREN,
+    BalansRegel,
+    Context,
+    Doel,
+    MoveVoorstel,
+    PandToewijzing,
+    RolRekeningen,
+    Vertaald,
+)
 from app.rlz.lezen import LeesClient, als_bedrag, als_datum
 from app.tijd import vandaag_nl
 
@@ -177,6 +187,14 @@ def dry_run(
     }
     if not bron.bank_expand_gelukt:
         let_op.append("PaymentTransactions zonder PaymentReferenceList ($expand geweigerd) — reconcile-paren onbekend")
+    # Blok 7d punt 5: zonder complete doelkoppeling (dagboeken) óf zonder rekeningmapping kent het oordeel de derde
+    # stand "GROEN ZONDER DOEL" — groepstoets en per-pand-controle zijn dan "niet meetbaar", alle andere toetsen tellen.
+    rapport.doel_afwezig = (not doel.compleet) or not odoo_accounts
+    if rapport.doel_afwezig:
+        let_op.append(
+            "stand GROEN ZONDER DOEL mogelijk: doelkoppeling/rekeningmapping ontbreekt — groepstoets en per-pand-"
+            "controle 'niet meetbaar — doelkoppeling ontbreekt'; alle andere toetsen tellen onverkort (blok 7d punt 5)"
+        )
     _vertaal_en_rapporteer(ctx, bron, rapport, tot=tot)
     return rapport
 
@@ -299,8 +317,9 @@ def _vertaal_en_rapporteer(ctx: Context, bron: rlz_bron.RlzBron, rapport: Replay
             "saldibalans, open posten, per pand, statements, btw en export niet berekend"
         )
         return
-    _saldibalans(ctx, bron, rapport, alle, tot=tot)
-    _open_posten(rapport, documenten, bankregels)
+    _uit_balans(rapport, documenten)
+    extra = _open_posten(rapport, documenten, bankregels, ctx=ctx)
+    _saldibalans(ctx, bron, rapport, alle, tot=tot, extra_regels=extra)
     _per_pand(ctx, rapport, alle, concepten)
     _statements(rapport, bron, bankregels, tot=tot)
     _btw(ctx, rapport, alle, bron, tot=tot)
@@ -335,9 +354,22 @@ def _tellers(
     p_onbekend = 0
     bookdate = 0
     date_terugval = 0
+    uit_balans = 0
+    geblokkeerd_partner = 0
+    niet_doel = 0
+    niet_overig = 0
     for v in alle:
-        t = per_type.setdefault(v.move.move_type, {"vertaalbaar": 0, "zonder_pand": 0, "niet_vertaalbaar": 0})
+        t = per_type.setdefault(v.move.move_type, dict.fromkeys(vertaling.ALLE_STATUSSEN, 0))
         t[v.move.status] += 1
+        if v.uit_balans is not None and v.uit_balans != 0:
+            uit_balans += 1
+        if vertaling.BLOKKADE_PARTNER in v.blokkades:
+            geblokkeerd_partner += 1
+        if v.move.status == vertaling.STATUS_NIET:
+            if v.alleen_doel_blokkades:
+                niet_doel += 1
+            else:
+                niet_overig += 1
         if v.btw_regels:
             btw_regels += v.btw_regels
             btw_docs += 1
@@ -371,6 +403,11 @@ def _tellers(
         "bookdate_uit_document": bookdate,
         "bookdate_terugval_date": date_terugval,
         "bank_expand_gelukt": bron.bank_expand_gelukt,
+        # blok 7d 14-09
+        "memoriaal_uit_balans": uit_balans,
+        "geblokkeerd_partner": geblokkeerd_partner,
+        "niet_vertaalbaar_doel": niet_doel,
+        "niet_vertaalbaar_overig": niet_overig,
     }
 
 
@@ -381,6 +418,7 @@ def _journaal(ctx: Context, rapport: ReplayRapport, bron: rlz_bron.RlzBron, docu
     regel."""
     n_jr = len(bron.journaalregels)
     posten: dict[int | None, set[str]] = {}
+    posten_per_event: dict[int | None, dict[int | None, set[str]]] = {}
     regels_per_type: dict[int | None, int] = {}
     for jr in bron.journaalregels:
         dt = rlz_bron.journaalregel_documenttype(jr)
@@ -388,22 +426,24 @@ def _journaal(ctx: Context, rapport: ReplayRapport, bron: rlz_bron.RlzBron, docu
         jid = rlz_bron.journaalregel_journaalpost_id(jr)
         if jid:
             posten.setdefault(dt, set()).add(jid)
+            posten_per_event.setdefault(dt, {}).setdefault(rlz_bron.journaalregel_eventid(jr), set()).add(jid)
     docs_per_type: dict[int | None, int] = {}
     for v in documenten:
         dt = {"in_invoice": 1, "in_refund": 1, "out_invoice": 10, "out_refund": 10, "entry": 11, "bank_direct": 19}.get(
             v.move.move_type
         )
         docs_per_type[dt] = docs_per_type.get(dt, 0) + 1
-    per_type = [
-        {
-            "documenttype": dt,
-            "naam": rlz_bron.DOCTYPE_NAMEN.get(dt, f"overig ({dt})") if dt is not None else "onbekend",
-            "journaalposten": len(posten.get(dt, set())),
-            "journaalregels": regels_per_type.get(dt, 0),
-            "documenten_geboekt": docs_per_type.get(dt, 0),
-        }
-        for dt in sorted(set(regels_per_type) | set(docs_per_type), key=lambda x: (x is None, x or 0))
-    ]
+    per_type = []
+    for dt in sorted(set(regels_per_type) | set(docs_per_type), key=lambda x: (x is None, x or 0)):
+        per_type.append(
+            _volledigheid_per_type(
+                dt,
+                posten.get(dt, set()),
+                posten_per_event.get(dt, {}),
+                regels_per_type.get(dt, 0),
+                docs_per_type.get(dt, 0),
+            )
+        )
     jr_gelezen = "JournalEntryLines" in bron.gelezen
     if not jr_gelezen:
         rlz_kolom = (
@@ -424,6 +464,90 @@ def _journaal(ctx: Context, rapport: ReplayRapport, bron: rlz_bron.RlzBron, docu
         "rlz_kolom": rlz_kolom,
         "per_documenttype": per_type,
     }
+
+
+VOLLEDIGHEID_SLUIT = "sluit"
+VOLLEDIGHEID_NIET_UITVOERBAAR = "toets niet uitvoerbaar met deze API"
+
+
+def _volledigheid_per_type(
+    dt: int | None,
+    posten: set[str],
+    per_event: dict[int | None, set[str]],
+    regels: int,
+    documenten_geboekt: int,
+) -> dict[str, Any]:
+    """Blok 7d punt 2: per DocumentType tellen alleen de journaalposten mét een DOCUMENT-EventID (`rlz_bron.
+    DOCUMENT_EVENTIDS`) tegen de geboekte documenten; de overige posten (betalingen/afletteringen/correcties) staan
+    apart mét hun code. Onbekende soortcodes voor dit DocumentType = "toets niet uitvoerbaar met deze API" mét reden —
+    nooit stil weggelaten. DocumentType 0 = RLZ-resultaatposten (punt 3): geen documenten, eigen blok."""
+    naam = rlz_bron.DOCTYPE_NAMEN.get(dt, f"overig ({dt})") if dt is not None else "onbekend"
+    codes = rlz_bron.DOCUMENT_EVENTIDS.get(dt) if dt is not None else None
+    per_eventid = [
+        {
+            "eventid": ev,
+            "posten": len(ids),
+            "soort": (
+                "documentpost"
+                if codes is not None and ev in codes
+                else "betalings-/afletter-/correctiepost"
+                if codes is not None
+                else "resultaatpost (RLZ)"
+                if dt == rlz_bron.DOCTYPE_RESULTAAT
+                else "soort onbekend — STAP-0 nodig"
+            ),
+        }
+        for ev, ids in sorted(per_event.items(), key=lambda kv: (kv[0] is None, kv[0] or 0))
+    ]
+    documentposten: int | None = None
+    overige: int | None = None
+    if dt == rlz_bron.DOCTYPE_RESULTAAT:
+        oordeel = "RLZ-resultaatposten — niet gemigreerd, Odoo berekent het resultaat zelf (eigen blok)"
+    elif codes is None:
+        oordeel = (
+            f"{VOLLEDIGHEID_NIET_UITVOERBAAR}: document-EventID voor dit DocumentType niet vastgesteld "
+            f"(gevonden codes: {', '.join(str(x['eventid']) for x in per_eventid) or 'geen'}) — STAP-0 14-09 "
+            "(api-verkenning 'Memoriaalregels — teken per regel, STAP-0 14-09') vult rlz_bron.DOCUMENT_EVENTIDS aan"
+        )
+    else:
+        documentposten = sum(x["posten"] for x in per_eventid if x["soort"] == "documentpost")
+        overige = sum(x["posten"] for x in per_eventid if x["soort"] != "documentpost")
+        if documentposten == documenten_geboekt:
+            oordeel = f"{VOLLEDIGHEID_SLUIT} ({documentposten} documentposten = {documenten_geboekt} geboekt; "
+            oordeel += f"betalings-/afletterposten {overige})"
+        else:
+            oordeel = (
+                f"VERSCHIL {documentposten - documenten_geboekt:+d}: {documentposten} documentposten (EventID "
+                f"{', '.join(str(c) for c in sorted(codes))}) ≠ {documenten_geboekt} geboekte documenten; "
+                f"betalings-/afletterposten {overige}"
+            )
+    return {
+        "documenttype": dt,
+        "naam": naam,
+        "journaalposten": len(posten),
+        "journaalregels": regels,
+        "documenten_geboekt": documenten_geboekt,
+        "per_eventid": per_eventid,
+        "documentposten": documentposten,
+        "overige_posten": overige,
+        "oordeel": oordeel,
+    }
+
+
+def _uit_balans(rapport: ReplayRapport, documenten: list[Vertaald]) -> None:
+    """Blok 7d punt 1: memorialen waarvan de VERTAALDE regels niet sluiten (Σ debet ≠ Σ credit) — teller + tabel."""
+    rapport.uit_balans = [
+        {
+            "boekstuk": v.move.boekstuk,
+            "rlz_id": v.move.rlz_id,
+            "date": v.move.date,
+            "bedrag": v.bedrag,
+            "uit_balans": v.uit_balans,
+            "reden": v.move.reden,
+        }
+        for v in documenten
+        if v.move.move_type == "entry" and v.uit_balans is not None and v.uit_balans != 0
+    ]
 
 
 #: RLZ-bankgrootboeken zonder `UseForPaymentAccount`-vlag op de Ledgers-rij: naam mét IBAN/bank/ING/spaar-/betaalrek.
@@ -470,13 +594,25 @@ def afletter_groepen(ctx: Context, sleutel_voor_ledger: Callable[[str | None], s
     return groepen
 
 
+RESULTAAT_CODES: tuple[str, ...] = ("7999", "8999", "0509")  # Winst / Verlies / Resultaat lopend boekjaar (RLZ)
+
+
 def _saldibalans(
-    ctx: Context, bron: rlz_bron.RlzBron, rapport: ReplayRapport, alle: list[Vertaald], *, tot: date
+    ctx: Context,
+    bron: rlz_bron.RlzBron,
+    rapport: ReplayRapport,
+    alle: list[Vertaald],
+    *,
+    tot: date,
+    extra_regels: list[BalansRegel] | None = None,
 ) -> None:
     jaareinde = date.fromisoformat(PEILDATUM_JAAREINDE)
     rlz: dict[str, list[Decimal]] = {}
     odoo: dict[str, list[Decimal]] = {}
     omschr: dict[str, str] = {}
+    resultaat: dict[str, list[Decimal]] = {}
+    resultaat_posten: set[str] = set()
+    resultaat_regels = 0
 
     def sleutel_voor_ledger(ledger_id: str | None) -> str:
         vert = ctx.grootboek.get(ledger_id or "")
@@ -509,9 +645,23 @@ def _saldibalans(
         ledger_id = rlz_bron.ref_id(jr.get("Account"))
         d, c = rlz_bron.debet_credit(jr)
         datum = rlz_bron.journaalregel_datum(jr)
+        if rlz_bron.is_resultaatpost(jr):
+            # Blok 7d punt 3: RLZ's eigen resultaatboekingen (DocumentType 0) tellen NOOIT als verschil — eigen blok
+            resultaat_regels += 1
+            jid = rlz_bron.journaalregel_journaalpost_id(jr)
+            if jid:
+                resultaat_posten.add(jid)
+            tel(resultaat, sleutel_voor_ledger(ledger_id), d - c, datum)
+            continue
         tel(rlz, sleutel_voor_ledger(ledger_id), d - c, datum)
+    rapport.resultaatposten = _resultaatposten(ctx, resultaat, omschr, len(resultaat_posten), resultaat_regels)
 
     herclass: dict[tuple[str, str], list[Any]] = {}
+    for r in extra_regels or []:
+        # blok 7d punt 4: write-off-regels (betalingsverschil) horen bij de Odoo-kant van de saldibalans
+        s = sleutel_voor_ledger(r.rlz_ledger_id) if r.rlz_ledger_id else r.rekening
+        omschr.setdefault(s, s)
+        tel(odoo, s, r.debet - r.credit, date.fromisoformat(r.datum) if r.datum else None)
     for v in alle:
         if v.move.move_type == "bank_direct":
             continue  # telt via de bankregel (tegenregel)
@@ -585,27 +735,119 @@ def _saldibalans(
         o_tot = sum((r["odoo_tot"] for r in leden), NUL)
         s_je = sum((schoon_je.get(r["rekening"], NUL) for r in leden), NUL)
         s_tot = sum((schoon_tot.get(r["rekening"], NUL) for r in leden), NUL)
-        groep_rijen.append(
-            {
-                "groep": g,
-                "reden": info["reden"],
-                "rekeningen": [r["rekening"] for r in leden],
-                "rlz_jaareinde": r_je.quantize(Decimal("0.01")),
-                "odoo_jaareinde": o_je.quantize(Decimal("0.01")),
-                "verschil_jaareinde": (o_je - r_je + s_je).quantize(Decimal("0.01")),
-                "rlz_tot": r_tot.quantize(Decimal("0.01")),
-                "odoo_tot": o_tot.quantize(Decimal("0.01")),
-                "verschil_tot": (o_tot - r_tot + s_tot).quantize(Decimal("0.01")),
-            }
-        )
+        rij_g: dict[str, Any] = {
+            "groep": g,
+            "reden": info["reden"],
+            "rekeningen": [r["rekening"] for r in leden],
+            "rlz_jaareinde": r_je.quantize(Decimal("0.01")),
+            "odoo_jaareinde": o_je.quantize(Decimal("0.01")),
+            "verschil_jaareinde": (o_je - r_je + s_je).quantize(Decimal("0.01")),
+            "rlz_tot": r_tot.quantize(Decimal("0.01")),
+            "odoo_tot": o_tot.quantize(Decimal("0.01")),
+            "verschil_tot": (o_tot - r_tot + s_tot).quantize(Decimal("0.01")),
+            "stand": None,
+        }
+        if rapport.doel_afwezig:
+            # blok 7d punt 5: zonder doelkoppeling zijn de impliciete zijden/bank-pseudo's niet aan Odoo-rekeningen te
+            # leggen → geen verschil-getallen, alleen de stand; telt niet in het oordeel
+            rij_g.update({"stand": NIET_MEETBAAR, "verschil_jaareinde": None, "verschil_tot": None})
+        groep_rijen.append(rij_g)
     rapport.afletter_groepen = groep_rijen
 
 
-def _open_posten(rapport: ReplayRapport, documenten: list[Vertaald], bankregels: list[Vertaald]) -> None:
+NIET_MEETBAAR = "niet meetbaar — doelkoppeling ontbreekt"
+
+
+def _resultaatposten(
+    ctx: Context, resultaat: dict[str, list[Decimal]], omschr: dict[str, str], posten: int, regels: int
+) -> dict[str, Any]:
+    """Blok 7d punt 3: het blok "RLZ-resultaatposten (niet gemigreerd, Odoo berekent zelf)" mét sluitcontrole: de
+    posten zijn in zichzelf sluitend (Σ debet − credit = 0) én 7999 Winst + 8999 Verlies = −0509 Resultaat lopend
+    boekjaar. Rood = de RLZ-kolom is onvolledig gelezen → oordeel ROOD (nooit stil)."""
+    rijen = [
+        {
+            "rekening": s,
+            "omschrijving": omschr.get(s, s),
+            "rlz_jaareinde": w[0].quantize(Decimal("0.01")),
+            "rlz_tot": w[1].quantize(Decimal("0.01")),
+        }
+        for s, w in sorted(resultaat.items())
+    ]
+    som_je = sum((w[0] for w in resultaat.values()), NUL).quantize(Decimal("0.01"))
+    som_tot = sum((w[1] for w in resultaat.values()), NUL).quantize(Decimal("0.01"))
+
+    def per_code(code: str) -> tuple[Decimal, Decimal] | None:
+        for s, w in resultaat.items():
+            if (
+                s == f"ongemapt:{code}"
+                or omschr.get(s, "").startswith(f"RLZ {code} ")
+                or f"← RLZ {code} " in omschr.get(s, "")
+            ):
+                return w[0].quantize(Decimal("0.01")), w[1].quantize(Decimal("0.01"))
+        return None
+
+    winst, verlies, lopend = (per_code(c) for c in RESULTAAT_CODES)
+    driehoek: dict[str, Any] | None = None
+    if winst and verlies and lopend:
+        driehoek = {
+            "7999_plus_8999_jaareinde": (winst[0] + verlies[0]).quantize(Decimal("0.01")),
+            "min_0509_jaareinde": (-lopend[0]).quantize(Decimal("0.01")),
+            "7999_plus_8999_tot": (winst[1] + verlies[1]).quantize(Decimal("0.01")),
+            "min_0509_tot": (-lopend[1]).quantize(Decimal("0.01")),
+        }
+        driehoek["sluit"] = (
+            driehoek["7999_plus_8999_jaareinde"] == driehoek["min_0509_jaareinde"]
+            and driehoek["7999_plus_8999_tot"] == driehoek["min_0509_tot"]
+        )
+    sluit = som_je == 0 and som_tot == 0 and (driehoek is None or driehoek["sluit"])
+    return {
+        "posten": posten,
+        "regels": regels,
+        "rekeningen": rijen,
+        "som_jaareinde": som_je,
+        "som_tot": som_tot,
+        "sluitcontrole_7999_8999_0509": driehoek,
+        "sluit": sluit,
+        "toelichting": (
+            "RLZ boekt het resultaat zelf (7999 Winst / 8999 Verlies → 0509 Resultaat lopend boekjaar); Odoo bepaalt "
+            "het resultaat uit de gemigreerde moves — deze posten worden NIET gemigreerd en tellen nooit als verschil. "
+            "Sluitcontrole rood = RLZ-kolom onvolledig gelezen → oordeel ROOD."
+        ),
+    }
+
+
+_BETALINGSVERSCHIL_REGEX = re.compile(r"betalingsverschil", re.I)
+BETALINGSVERSCHIL_CODE = "4900"
+
+
+def betalingsverschil_ledger(ctx: Context) -> tuple[str | None, str]:
+    """(RLZ-ledger-id, saldibalans-sleutel) van de rekening Betalingsverschillen: RLZ-code 4900 óf naam-regex; de
+    Odoo-kant volgt de BESTAANDE grootboek-mapping (blok 7d punt 4 — geen nieuwe RJ 220-rol; zonder mapping blijft de
+    sleutel `ongemapt:4900` zichtbaar)."""
+    for lid, (code, naam, _t) in ctx.ledgers.items():
+        if code == BETALINGSVERSCHIL_CODE or _BETALINGSVERSCHIL_REGEX.search(naam or ""):
+            vert = ctx.grootboek.get(lid)
+            sleutel = str(vert.odoo_account_id) if vert and vert.odoo_account_id is not None else f"ongemapt:{code}"
+            return lid, sleutel
+    return None, f"ongemapt:{BETALINGSVERSCHIL_CODE}"
+
+
+def _open_posten(
+    rapport: ReplayRapport, documenten: list[Vertaald], bankregels: list[Vertaald], *, ctx: Context | None = None
+) -> list[BalansRegel]:
+    """Open posten RLZ vs berekend; verrekeningsparen (7b) en — blok 7d punt 4 — de BETALINGSVERSCHIL-afboeking: een
+    factuur die RLZ als volledig betaald toont (open 0) terwijl de gekoppelde betalingen cent-exact een restant laten,
+    krijgt een write-off op de rekening Betalingsverschillen (RLZ 4900 via de bestaande mapping) op de datum van de
+    laatste betaling; de write-off reist mee op de reconcile-regel van die bankmutatie. Geeft de write-off-BalansRegels
+    terug voor de saldibalans."""
     gekoppeld: dict[str, Decimal] = {}
+    laatste_betaling: dict[str, tuple[str, dict[str, Any]]] = {}  # anker → (datum, reconcile-dict)
     for b in bankregels:
         for rc in (b.move.bank or {}).get("reconcile", []):
             gekoppeld[rc["anker"]] = gekoppeld.get(rc["anker"], NUL) + (rc["bedrag"] or NUL)
+            d = b.move.date or ""
+            if rc["anker"] not in laatste_betaling or d >= laatste_betaling[rc["anker"]][0]:
+                laatste_betaling[rc["anker"]] = (d, rc)
     kandidaten: list[dict[str, Any]] = []
     for v in documenten:
         if v.move.move_type in ("entry", "bank_direct") or v.bedrag is None:
@@ -662,6 +904,74 @@ def _open_posten(rapport: ReplayRapport, documenten: list[Vertaald], bankregels:
                 k["berekend_open"] = NUL
                 k["oorzaak"] = f"verrekend factuur↔creditnota met {k['verrekend_met']} (afgeleid)"
             break
+    # blok 7d punt 4: betalingsverschil-afboeking (RLZ open 0, wél betalingen, restant ≠ 0 en géén verrekeningspaar)
+    write_offs: list[BalansRegel] = []
+    betalingsverschillen: list[dict[str, Any]] = []
+    bv_ledger, bv_sleutel = (
+        betalingsverschil_ledger(ctx) if ctx is not None else (None, f"ongemapt:{BETALINGSVERSCHIL_CODE}")
+    )
+    for k in kandidaten:
+        if k["rlz_open"] != 0 or k["berekend_open"] == 0 or not k["som_koppelingen"] or k["anker"] in gebruikt:
+            continue
+        restant = k["berekend_open"]  # factuur − betalingen: negatief = te veel betaald, positief = te weinig
+        inkoop = k["move_type"].startswith("in_")
+        # kosten (debet 4900) als: inkoop te veel betaald (restant < 0) óf verkoop te weinig ontvangen (restant > 0)
+        kosten = (-restant) if inkoop else restant
+        datum_wo = (laatste_betaling.get(k["anker"], ("", {}))[0]) or None
+        tegen = (
+            (
+                str(ctx.doel.rekening_crediteuren_id)
+                if ctx and ctx.doel.rekening_crediteuren_id
+                else IMPLICIET_CREDITEUREN
+            )
+            if inkoop
+            else (
+                str(ctx.doel.rekening_debiteuren_id)
+                if ctx and ctx.doel.rekening_debiteuren_id
+                else IMPLICIET_DEBITEUREN
+            )
+        )
+        write_offs.append(
+            BalansRegel(
+                bv_sleutel,
+                bv_ledger,
+                kosten if kosten > 0 else NUL,
+                -kosten if kosten < 0 else NUL,
+                datum_wo,
+                "write_off",
+            )
+        )
+        write_offs.append(
+            BalansRegel(
+                tegen, None, -kosten if kosten < 0 else NUL, kosten if kosten > 0 else NUL, datum_wo, "write_off"
+            )
+        )
+        wo = {
+            "boekstuk": k["boekstuk"],
+            "anker": k["anker"],
+            "move_type": k["move_type"],
+            "bedrag": k["bedrag"],
+            "betaald": k["som_koppelingen"],
+            "restant": restant,
+            "write_off": kosten.quantize(Decimal("0.01")),
+            "rekening": bv_sleutel,
+            "rlz_ledger_id": bv_ledger,
+            "datum": datum_wo,
+            "herkomst": (
+                "RLZ toont de post volledig betaald (open 0); koppelingen ≠ documenttotaal — cent-exact, nooit afgerond"
+            ),
+        }
+        betalingsverschillen.append(wo)
+        rc = laatste_betaling.get(k["anker"], ("", None))[1]
+        if rc is not None:
+            rc["write_off"] = {"bedrag": wo["write_off"], "rekening": bv_sleutel, "rlz_ledger_id": bv_ledger}
+        k["berekend_open"] = NUL
+        k["oorzaak"] = (
+            f"betalingsverschil afgeboekt € {wo['write_off']} → {bv_sleutel} (write-off op de laatste betaling)"
+        )
+    rapport.betalingsverschillen = sorted(
+        betalingsverschillen, key=lambda r: (-abs(r["write_off"]), r["boekstuk"] or "")
+    )
     rijen = []
     for k in kandidaten:
         verschil = (k["berekend_open"] - k["rlz_open"]).quantize(Decimal("0.01"))
@@ -710,8 +1020,9 @@ def _open_posten(rapport: ReplayRapport, documenten: list[Vertaald], bankregels:
             "som_verschil": v.som_verschil,
         }
         for v in documenten
-        if v.som_verschil is not None and v.som_verschil != 0
+        if v.som_verschil is not None and v.som_verschil != 0 and v.move.move_type != "entry"  # entry → uit_balans
     ]
+    return write_offs
 
 
 AANKOOP_GROOTBOEKEN: frozenset[str] = frozenset({"7000"})  # RLZ "Inkopen vastgoed" (besluit Peter 13-09)
@@ -787,10 +1098,39 @@ def _per_pand(
         rij["signalen"].append(
             f"verkoopfactuur {rlz_bron.boekstuk_van(rij_c) or rid} nog concept in RLZ — boeken vóór replay"
         )
+    # blok 7d punt 5: midden-koppelingen (zekerheid midden, geen mens) tellen niet in de sommen — het rapport zegt per
+    # pand hoeveel er nog op de Toewijzing wachten
+    midden: dict[str, int] = {}
+    for p in ctx.panden.values():
+        if not vertaling.pand_telt(p) and p.zekerheid == "midden":
+            midden[p.pand_code] = midden.get(p.pand_code, 0) + 1
+    for code, n in midden.items():
+        if code in per:
+            per[code]["midden_wachtend"] = n
+        else:
+            per[code] = {
+                "pand": code,
+                "aankoop": NUL,
+                "aanbetalingen": NUL,
+                "kosten": NUL,
+                "verkoop": NUL,
+                "notaris_ontvangst": NUL,
+                "documenten": 0,
+                "zonder_regels": 0,
+                "signalen": [],
+                "midden_wachtend": n,
+            }
     for rij in per.values():
+        rij.setdefault("midden_wachtend", 0)
         verkocht = rij["verkoop"] != 0 or rij["notaris_ontvangst"] > 0
         rij["marge"] = (rij["verkoop"] - rij["aankoop"] - rij["kosten"]).quantize(Decimal("0.01")) if verkocht else None
-        if rij["zonder_regels"]:
+        if rapport.doel_afwezig:
+            # punt 5: per-pand "sluit" is een GO-eis bij SCHRIJF c, niet bij SCHRIJF a; zonder doelkoppeling geen
+            # verschil-getallen — alleen de stand
+            rij["controle"] = NIET_MEETBAAR
+            rij["marge"] = None
+            rij["signalen"] = [s for s in rij["signalen"] if "concept" in s]  # RLZ-feiten blijven zichtbaar
+        elif rij["zonder_regels"]:
             rij["controle"] = f"onvolledig — {rij['zonder_regels']} document(en) zonder regels"
         elif not verkocht:
             rij["controle"] = "— (niet verkocht)"
@@ -807,7 +1147,7 @@ def _per_pand(
                 rij["signalen"].append(f"verkoop − aankoop − kosten − notaris-ontvangst = {verschil} (≠ 0)")
             if rij["verkoop"] == 0 and rij["notaris_ontvangst"] > 0:
                 rij["signalen"].append("notaris-ontvangst zonder geboekte verkoopfactuur (opbrengst-regel ontbreekt)")
-        if rij["marge"] is not None and rij["marge"] < 0 and not rij["signalen"]:
+        if rij["marge"] is not None and rij["marge"] < 0 and not rij["signalen"] and not rapport.doel_afwezig:
             rij["signalen"].append(f"negatieve marge {rij['marge']} zonder verklarende regel")
         rij["aankoop"] = rij["aankoop"].quantize(Decimal("0.01"))
         rij["kosten"] = rij["kosten"].quantize(Decimal("0.01"))
@@ -830,6 +1170,12 @@ def _tabellen(ctx: Context, rapport: ReplayRapport, alle: list[Vertaald], bron: 
 
     rapport.niet_vertaalbaar = [rij(v) for v in alle if v.move.status == vertaling.STATUS_NIET]
     rapport.zonder_pand = [rij(v) for v in alle if v.move.status == vertaling.STATUS_ZONDER_PAND]
+    # blok 7d punt 6: geblokkeerde concepten (partner onbekend) — eigen tabel, ongeacht de overige status
+    rapport.geblokkeerd = [
+        {**rij(v), "blokkade": vertaling.PARTNER_ONBEKEND_REDEN}
+        for v in alle
+        if vertaling.BLOKKADE_PARTNER in v.blokkades
+    ]
     ongemapt: dict[str, dict[str, Any]] = {}
     for v in alle:
         for lid in v.ongemapt:

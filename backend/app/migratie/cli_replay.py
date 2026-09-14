@@ -136,8 +136,15 @@ def statusregel(rapport: Any) -> str:
         )
     if rapport.groen:
         return "UITKOMST: GROEN"
+    if rapport.groen_zonder_doel:
+        return (
+            f"UITKOMST: {rapport.oordeel} — {rapport.tellers.get('niet_vertaalbaar_doel', 0)} document(en) wachten op "
+            f"de doelkoppeling, {rapport.tellers.get('geblokkeerd_partner', 0)} geblokkeerd (partner) — zie rapport"
+        )
     return (
-        f"UITKOMST: ROOD — {rapport.verschillen} verschil(len), {len(rapport.niet_vertaalbaar)} niet vertaalbaar, "
+        f"UITKOMST: ROOD — {rapport.verschillen} verschil(len), {len(rapport.niet_vertaalbaar)} niet vertaalbaar "
+        f"({rapport.tellers.get('niet_vertaalbaar_overig', 0)} niet door de doelkoppeling), "
         f"{len(rapport.fouten)} leesfout(en), {rapport.tellers.get('regel_fouten', 0)} zonder regels, "
-        f"{len(rapport.som_verschillen)} regelsom ≠ totaal — zie rapport"
+        f"{len(rapport.som_verschillen)} regelsom ≠ totaal, {rapport.memoriaal_uit_balans} memoriaal uit balans, "
+        f"resultaatposten {'sluiten' if rapport.resultaat_sluit else 'sluiten NIET'} — zie rapport"
     )
