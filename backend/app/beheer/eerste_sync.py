@@ -542,6 +542,22 @@ def _sluit_run_af(
             rij.fout_reden = fout
 
 
+def _btw_default_uit_historie_na_sync(administratie_id: uuid.UUID, uitkomsten: dict[str, dict]) -> None:
+    """Vervolg 14-09 (migratie 0143): ná een geslaagde Ledgers-sync de btw-default per rekening uit de eigen
+    boekingshistorie afleiden — puur code, geen RLZ-call, geen onderdeel mét rechten (dus buiten ONDERDELEN en de
+    herprobeer-logica). Een fout hier maakt de eerste sync nooit rood: loggen, de nachtelijke `sync-alles` herhaalt 'm.
+    NB: direct ná onboarding is het boekingsgeheugen meestal nog leeg (de seed is een los CLI-commando) — dan is de
+    uitkomst terecht "geen default" en vult de eerstvolgende nacht ná de seed 'm."""
+    if uitkomsten.get("ledgers", {}).get("status") != "klaar":
+        return
+    from app.geheugen import grootboek_btw_historie
+
+    try:
+        grootboek_btw_historie.herbereken_voor(administratie_id)
+    except Exception:  # noqa: BLE001 — nooit de eerste sync laten struikelen op een afleiding zonder RLZ-verkeer
+        logger.exception("Btw-default uit historie ná eerste sync mislukt voor %s", administratie_id)
+
+
 def verwerk_wachtrij_voor(administratie_id: uuid.UUID) -> int:
     aantal = 0
     while (geclaimd := _claim(administratie_id)) is not None:
@@ -550,6 +566,7 @@ def verwerk_wachtrij_voor(administratie_id: uuid.UUID) -> int:
         herprobeer = False
         try:
             uitkomsten = _voer_onderdelen_uit(administratie_id, geclaimd.run_id, eerder_klaar=geclaimd.eerder_klaar)
+            _btw_default_uit_historie_na_sync(administratie_id, uitkomsten)
             fout: str | None = _fout_reden(uitkomsten)
             if fout is not None:
                 herprobeer = is_herprobeerbaar(uitkomsten, _probe_rapport(administratie_id))

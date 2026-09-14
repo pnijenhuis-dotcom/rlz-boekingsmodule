@@ -102,6 +102,8 @@ def grootboek_lijst(
                 naam=r.naam,
                 soort=r.soort,
                 standaard_taxrate_id=r.standaard_taxrate_id,
+                historie_taxrate_id=r.historie_taxrate_id,
+                historie_taxrate_n=r.historie_taxrate_n if r.historie_taxrate_id is not None else None,
             )
             for r in rekeningen
         ]

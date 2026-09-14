@@ -576,6 +576,13 @@ def _sync_alles(args: argparse.Namespace) -> int:
         kern += f" ({overgeslagen} overgeslagen: geen credential geregistreerd)"
     print(f"\n{kern}")
 
+    # Vervolg 14-09 (migratie 0143): btw-default per grootboekrekening uit de eigen boekingshistorie — puur code, geen
+    # RLZ-calls; direct ná de Ledgers-sync zodat een nieuwe/verdwenen rekening dezelfde nacht meegaat. Eigen telling.
+    from app.geheugen import grootboek_btw_historie
+
+    print("\nBtw-default uit historie per grootboekrekening (alle actieve administraties):")
+    btw_historie_exit = _rapporteer_btw_historie(grootboek_btw_historie.herbereken_alle())
+
     # BLOK 1 (besluit Peter 08-09, "bank-sync automatisch, geen knoppen"): de dagelijkse sync ververst óók
     # de bankcache van ÁLLE actieve administraties (07:00, ná RLZ's eigen bankimport) — tot 08-09 kwamen
     # mutaties alleen bij het openen van het bankscherm (29 van 33 administraties "nog nooit gesynchroniseerd").
@@ -636,6 +643,7 @@ def _sync_alles(args: argparse.Namespace) -> int:
     return (
         1
         if fouten
+        or btw_historie_exit
         or bank_exit
         or cijfers_exit
         or voorraad_exit
@@ -646,6 +654,30 @@ def _sync_alles(args: argparse.Namespace) -> int:
         or tellers_exit
         else 0
     )
+
+
+def _rapporteer_btw_historie(resultaten: dict) -> int:
+    """Vervolg 14-09 (0143): één regel per administratie — rekeningen mét historie-default / mét regels zonder default /
+    gewijzigd / inkoopregels in het venster; FOUT = leesbare exception-tekst (exit 1). Meetrecept in Cloud Logging
+    (job rlz-sync): grep op "btw-historie " per administratie."""
+    from app.geheugen.grootboek_btw_historie import HistorieRapport
+
+    fouten = 0
+    if not resultaten:
+        print("OK    geen actieve administraties")
+    for administratie_id, r in resultaten.items():
+        if isinstance(r, HistorieRapport):
+            voorbeelden = f" — o.a. {'; '.join(r.voorbeelden)}" if r.voorbeelden else ""
+            print(
+                f"OK    btw-historie {administratie_id}: {r.met_default}/{r.rekeningen} rekeningen mét default, "
+                f"{r.zonder_default_met_regels} mét regels zonder default, {r.gewijzigd} gewijzigd, "
+                f"{r.observaties} inkoopregels in het venster{voorbeelden}"
+            )
+        else:
+            fouten += 1
+            print(f"FOUT  btw-historie {administratie_id}: {r}", file=sys.stderr)
+    print(f"{len(resultaten) - fouten}/{len(resultaten)} administraties afgeleid.")
+    return 1 if fouten else 0
 
 
 def _rapporteer_bank_runs(resultaten: dict) -> int:
@@ -2425,6 +2457,9 @@ def main(argv: list[str] | None = None) -> int:
     from app.autoboek_kandidaten.cli_cmd import dispatch as dispatch_autoboek_leren, register as register_autoboek_leren  # blok A 10-09
 
     register_autoboek_leren(subparsers)  # autoboek-drempel-zetten, autoboek-leren-rapport
+    from app.geheugen.btw_default_cli import dispatch as dispatch_btw_default, register as register_btw_default  # 14-09 (0143)
+
+    register_btw_default(subparsers)  # btw-default-rapport (lees-only)
     from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
     from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
 
@@ -3022,6 +3057,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if (uitkomst_autoboek_leren := dispatch_autoboek_leren(args)) is not None:  # blok A 10-09
         return uitkomst_autoboek_leren
+    if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
+        return uitkomst_btw_default
     if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09
         return uitkomst_werkvoorraad_tellers
     if args.commando == "bootstrap-beheerder":

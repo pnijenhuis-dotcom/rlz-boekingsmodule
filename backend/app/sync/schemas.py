@@ -22,6 +22,11 @@ class GrootboekOptieResponse(BaseModel):
     #: Opdracht Peter 14-09: het standaard-btw-tarief dat de bron op deze rekening draagt (RLZ `PreferentialTaxRate`,
     #: Odoo `tax_ids`); None = geen default. Het controlescherm laat de btw-code bij een grootboek-wissel volgen.
     standaard_taxrate_id: uuid.UUID | None = None
+    #: Vervolg 14-09 (migratie 0143): dezelfde default AFGELEID uit de boekingshistorie van de rekening (≥ 5 regels, één
+    #: tarief ≥ 90 %, 24 maanden) + het aantal regels; None = geen. Bij een grootboek-wissel volgt de btw deze default
+    #: ná de RLZ-default, mét oranje chip "meestal op deze rekening (n×)".
+    historie_taxrate_id: uuid.UUID | None = None
+    historie_taxrate_n: int | None = None
 
 
 class GrootboekLijstResponse(BaseModel):

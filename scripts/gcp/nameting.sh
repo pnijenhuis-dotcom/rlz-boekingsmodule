@@ -4,6 +4,7 @@
 # Voorbeelden:
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen rlz_dubbel --lees-only
 #   scripts/gcp/nameting.sh autoboek-leren-rapport --administratie <uuid>
+#   scripts/gcp/nameting.sh btw-default-rapport --administratie "L.H.G. Holding"   # lees-only, 14-09 (0143)
 #   scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis" --met-ai-toets
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Administratiekantoor Nijenhuis C.V." --pad PaymentTransactions --filter "PaymentBatchId ne null" --expand "Batch,PaymentReferenceList(\$expand=Document)" --top 5
 # Alleen commando's uit de allowlist hieronder (lees-only); schrijvende nazorg blijft een expliciete opdracht van Peter
@@ -17,7 +18,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0; do

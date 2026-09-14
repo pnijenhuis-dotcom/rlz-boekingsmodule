@@ -829,8 +829,17 @@ _AUTOSAVE_STATUSSEN = frozenset(
 # zoals voorheen niet-opgeslagen (de checks zagen die al).
 # 14-09: "grootboek" = btw-default uit de grootboekrekening (regel_prefill.BTW_BRON_GROOTBOEK) — deterministisch, dus
 # ook een autosave-trigger (de checks moeten dezelfde btw zien als de mens).
+# Vervolg 14-09 (0143): "grootboek_historie" = dezelfde default afgeleid uit de eigen historie — ook deterministisch.
 _AUTOSAVE_HERKOMSTEN = frozenset(
-    {"geheugen", "geheugen_seed", "geheugen_conflict", "leverancier_geheugen", "standaard", "grootboek"}
+    {
+        "geheugen",
+        "geheugen_seed",
+        "geheugen_conflict",
+        "leverancier_geheugen",
+        "standaard",
+        "grootboek",
+        "grootboek_historie",
+    }
 )
 # Blok 10 07-09: een project uit de factuur (exacte code, werknummer-mapping of fuzzy — ingevuld) triggert de autosave
 # óók (opdracht: "via het A10-prefill-/autosave-pad") — de projectplicht-check en het doorbelasten-blok zien dan

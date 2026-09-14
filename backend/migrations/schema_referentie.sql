@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0142
+-- Migratie-head bij deze dump: 0143
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3797,7 +3797,11 @@ CREATE TABLE platform.grootboekrekening (
     is_totaalrekening boolean NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
     verdwenen_uit_bron_op timestamp with time zone,
-    standaard_taxrate_id uuid
+    standaard_taxrate_id uuid,
+    historie_taxrate_id uuid,
+    historie_taxrate_n integer,
+    historie_taxrate_aandeel numeric(5,4),
+    historie_berekend_op timestamp with time zone
 );
 
 ALTER TABLE ONLY platform.grootboekrekening FORCE ROW LEVEL SECURITY;

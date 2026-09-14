@@ -619,6 +619,9 @@ class Grootboekrekening(Base):
     RLZ-brongegeven maar een sync-afleiding: de nachtelijke/on-demand sync zet dit op een rij
     zodra hij niet meer in de meest recente `GET Ledgers`-respons voorkomt (nooit hard
     verwijderen; komt hij terug, gaat de kolom terug naar NULL).
+    `historie_taxrate_id` + `historie_taxrate_n`/`_aandeel`/`historie_berekend_op` (migratie 0143, vervolg 14-09): dezelfde
+    default maar AFGELEID uit de eigen boekingshistorie — zie `app/geheugen/grootboek_btw_historie.py`; de prefill
+    gebruikt 'm ná de RLZ-default (`btw_bron='grootboek_historie'`, oranje "meestal op deze rekening (n×)").
     `standaard_taxrate_id` (migratie 0142, opdracht Peter 14-09 "btw-code uit de grootboekrekening"): het
     standaard-btw-tarief dat RLZ op de rekening draagt (`Account.PreferentialTaxRate`, gelezen via
     `Ledgers?$expand=PreferentialTaxRate` — api-verkenning "Ledgers — standaard btw-code, STAP-0 14-09"); Odoo:
@@ -640,6 +643,13 @@ class Grootboekrekening(Base):
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
     standaard_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Migratie 0143 (vervolg 14-09, "geen invulwerk in RLZ"): btw-default AFGELEID uit de inkoopregels in het
+    # boekingsgeheugen (app/geheugen/grootboek_btw_historie.py — ≥ 5 regels én één tarief op ≥ 90 % in 24 maanden).
+    # `historie_taxrate_n`/`_aandeel` zijn ook gevuld als er géén default uit volgt (rapport "geen — n regels, hoogste x %").
+    historie_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    historie_taxrate_n: Mapped[int | None] = mapped_column(default=None)
+    historie_taxrate_aandeel: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), default=None)
+    historie_berekend_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class RlzCredential(Base):
