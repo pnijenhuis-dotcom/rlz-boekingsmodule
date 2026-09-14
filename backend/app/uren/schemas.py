@@ -450,6 +450,9 @@ class VeldgebruikerDto(BaseModel):
     # gewijzigde crediteur-koppeling; None zonder planning/koppeling.
     recentste_planning_administratie_id: uuid.UUID | None = None
     recentste_koppeling_administratie_id: uuid.UUID | None = None
+    # Veldwerkers-run 14-09 (additief): administraties waarop deze veldwerker scope heeft — de bron voor het
+    # administratie-FILTER op /veldwerkers (kernprincipe 7: administratie is een filter, geen poort).
+    administratie_ids: list[uuid.UUID] = []
 
 
 class ProjectKoppelingRequest(StrikteInvoer):

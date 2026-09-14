@@ -25,7 +25,9 @@ from app.auth.deps import (
     CurrentGebruiker,
     get_current_gebruiker,
     require_beheerder,
+    require_beheerder_of_veldwerkerbeheer,
     require_meerwerk_urenstaten_recht,
+    require_veldwerkerbeheer_of_meerwerk_recht,
     vereis_administratie_scope,
     vereis_kantoorrol,
 )
@@ -1118,14 +1120,14 @@ def kantoor_mijn_toegang(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -
     )
 
 
-# --- ZZP-dossier: kantoorkant (module-recht + klantscope) -------------------------------------------
+# --- ZZP-dossier: kantoorkant (module-recht ÓF veldwerkerbeheer + klantscope; verbreed 14-09) -------------------
 
 
 @router.get("/kantoor/dossier/{administratie_id}/{gebruiker_id}", response_model=schemas.DossierDto)
 def kantoor_dossier(
     administratie_id: uuid.UUID,
     gebruiker_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierDto:
     try:
@@ -1144,7 +1146,7 @@ async def kantoor_dossier_upload(
     type_code: str = Form(...),
     geldig_tot: date | None = Form(default=None),
     bestand: UploadFile = File(...),
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierDto:
     try:
@@ -1168,7 +1170,7 @@ def kantoor_dossier_beoordelen(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     payload: schemas.DossierBeoordelenRequest,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierDto:
     try:
@@ -1188,7 +1190,7 @@ def kantoor_dossier_beoordelen(
 def kantoor_dossier_bestand(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> Response:
     """Inzage; een bsn-gevoelig document (kopie ID) wordt per inzage geauditeerd en de UI toont
@@ -1209,7 +1211,7 @@ def kantoor_dossier_bestand(
 def kantoor_dossier_herinneren(
     administratie_id: uuid.UUID,
     gebruiker_id: uuid.UUID,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierHerinneringResultaatDto:
     """Herinner-knop (A2): push, anders mail; max 1/dag; teller "N van 3"; ná de 3e blokkeert
@@ -1336,7 +1338,7 @@ def kantoor_planning_signaal_afmelden_intrekken(
 
 @router.get("/kantoor/kvk/{kvk_nummer}", response_model=schemas.KvkLookupDto)
 def kantoor_kvk_lookup(
-    kvk_nummer: str, actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht)
+    kvk_nummer: str, actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht)
 ) -> schemas.KvkLookupDto:
     """KvK Basisprofiel-lookup (A3, Vastly-patroon): ter bevestiging door een mens — schrijft niets."""
     from app.integraties import kvk
@@ -1369,7 +1371,7 @@ def kantoor_dossier_bedrijfsgegevens(
     administratie_id: uuid.UUID,
     gebruiker_id: uuid.UUID,
     payload: schemas.BedrijfsgegevensBevestigenRequest,
-    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.DossierDto:
     try:
@@ -1388,12 +1390,39 @@ def kantoor_dossier_bedrijfsgegevens(
     return _dossier_response(stand)
 
 
-# --- beheer (Beheerder-only): koppelingen + module-recht ------------------------------------------
+# --- beheer: veldwerkers-overzicht + koppelingen (Beheerder ÓF veldwerkerbeheer, 14-09); rechten toekennen en
+# dossier-documenttypen blijven Beheerder-only ---------------------------------------------------------------
+#
+# Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2): een niet-Beheerder mét het recht komt door de poort, maar
+# blijft binnen de eigen administratie-scope — server-side getoetst per aanroep (RLS dekt de administratie-tabellen;
+# de persoonsniveau-tabel detacheerder_koppeling kent sinds migratie 0141 dezelfde rechthouder in haar policies).
+
+
+def _toets_scope_administratie(actor: CurrentGebruiker, administratie_id: uuid.UUID) -> None:
+    """Administratie-gebonden koppeling: Beheerder platform-breed, anders een eigen scope-rij (403)."""
+    vereis_administratie_scope(administratie_id, actor)
+
+
+def _toets_scope_veldwerker(actor: CurrentGebruiker, gebruiker_id: uuid.UUID) -> None:
+    """Persoonsniveau-koppeling (detacheerder↔ZZP'er): de VOLLEDIGE scope van beide veldwerkers moet binnen die van
+    de actor vallen (zelf-gepoorte SECURITY DEFINER `platform.veldwerker_scope_binnen_actor`, fail-closed) —
+    dezelfde begrenzing als archiveren onder het recht (31-08)."""
+    from app.auth import service as auth_service
+
+    try:
+        auth_service.toets_veldwerkerbeheer_doel(actor_id=actor.id, actor_rol=actor.rol, doel_gebruiker_id=gebruiker_id)
+    except auth_service.VeldwerkerbeheerBegrenzing as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
 
 
 @router.get("/beheer/veldgebruikers", response_model=list[schemas.VeldgebruikerDto])
-def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) -> list[schemas.VeldgebruikerDto]:
-    kaarten = overzichten.veldgebruikers_overzicht(actor_id=actor.id)
+def beheer_veldgebruikers(
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
+) -> list[schemas.VeldgebruikerDto]:
+    """Kantoorbreed veldwerkers-overzicht (/veldwerkers, 14-09): Beheerder ziet alle veldwerkers, een houder van het
+    recht 'veldwerkerbeheer' alleen de veldwerkers mét scope op een van zijn eigen administraties."""
+    kaarten = overzichten.veldgebruikers_overzicht(actor_id=actor.id, rol=actor.rol)
     return [
         schemas.VeldgebruikerDto(
             gebruiker_id=k.gebruiker_id,
@@ -1409,6 +1438,7 @@ def beheer_veldgebruikers(actor: CurrentGebruiker = Depends(require_beheerder)) 
             dossiers=[schemas.DossierSamenvattingDto(**d.__dict__) for d in k.dossiers],
             recentste_planning_administratie_id=k.recentste_planning_administratie_id,
             recentste_koppeling_administratie_id=k.recentste_koppeling_administratie_id,
+            administratie_ids=k.administratie_ids,
         )
         for k in kaarten
     ]
@@ -1465,8 +1495,10 @@ def beheer_dossier_documenttypen_zetten(
 # Ontkoppelen blijft als Beheerder-only noodroute zonder UI (nooit stil, altijd geauditeerd).
 @router.post("/beheer/projectkoppelingen/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_projectkoppeling_verwijderen(
-    payload: schemas.ProjectKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.ProjectKoppelingRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
+    _toets_scope_administratie(actor, payload.administratie_id)
     try:
         service.ontkoppel_project(
             administratie_id=payload.administratie_id,
@@ -1480,8 +1512,11 @@ def beheer_projectkoppeling_verwijderen(
 
 @router.post("/beheer/detacheerderkoppelingen", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_detacheerderkoppeling_toevoegen(
-    payload: schemas.DetacheerderKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.DetacheerderKoppelingRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
+    _toets_scope_veldwerker(actor, payload.detacheerder_id)
+    _toets_scope_veldwerker(actor, payload.zzper_id)
     try:
         service.koppel_detacheerder(
             detacheerder_id=payload.detacheerder_id, zzper_id=payload.zzper_id, actor_id=actor.id
@@ -1492,8 +1527,11 @@ def beheer_detacheerderkoppeling_toevoegen(
 
 @router.post("/beheer/detacheerderkoppelingen/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_detacheerderkoppeling_verwijderen(
-    payload: schemas.DetacheerderKoppelingRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.DetacheerderKoppelingRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
+    _toets_scope_veldwerker(actor, payload.detacheerder_id)
+    _toets_scope_veldwerker(actor, payload.zzper_id)
     try:
         service.ontkoppel_detacheerder(
             detacheerder_id=payload.detacheerder_id, zzper_id=payload.zzper_id, actor_id=actor.id
@@ -1504,9 +1542,11 @@ def beheer_detacheerderkoppeling_verwijderen(
 
 @router.post("/beheer/veldwerkercrediteuren", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_veldwerker_crediteur_koppelen(
-    payload: schemas.VeldwerkerCrediteurRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.VeldwerkerCrediteurRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
     """Crediteur-koppeling + los ZZP-uurtarief (factuurmatch fase 3, upsert, geaudit)."""
+    _toets_scope_administratie(actor, payload.administratie_id)
     try:
         service.koppel_veldwerker_crediteur(
             administratie_id=payload.administratie_id,
@@ -1521,8 +1561,10 @@ def beheer_veldwerker_crediteur_koppelen(
 
 @router.post("/beheer/veldwerkercrediteuren/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_veldwerker_crediteur_verwijderen(
-    payload: schemas.VeldwerkerCrediteurVerwijderRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.VeldwerkerCrediteurVerwijderRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
+    _toets_scope_administratie(actor, payload.administratie_id)
     try:
         service.ontkoppel_veldwerker_crediteur(
             administratie_id=payload.administratie_id, gebruiker_id=payload.gebruiker_id, actor_id=actor.id
@@ -1533,11 +1575,13 @@ def beheer_veldwerker_crediteur_verwijderen(
 
 @router.post("/beheer/veldwerkercrediteuren/autoboeken", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_veldwerker_autoboeken(
-    payload: schemas.VeldwerkerAutoboekenRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.VeldwerkerAutoboekenRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
-    """Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, besluit 4 — Beheerder-
-    only, default UIT, geaudit). Het slot blijft strikt: alleen een GROENE match incl. bedrag
+    """Autoboek-opt-in per veldwerker-koppeling (factuurmatch fase 4, besluit 4; sinds 14-09 óók onder
+    'veldwerkerbeheer', default UIT, geaudit). Het slot blijft strikt: alleen een GROENE match incl. bedrag
     + álle bestaande poorten van het inkoop-autoboekpad boekt automatisch."""
+    _toets_scope_administratie(actor, payload.administratie_id)
     try:
         service.zet_veldwerker_autoboeken(
             administratie_id=payload.administratie_id,
@@ -1551,9 +1595,13 @@ def beheer_veldwerker_autoboeken(
 
 @router.post("/beheer/detacheerderkoppelingen/tarief", status_code=status.HTTP_204_NO_CONTENT)
 def beheer_detacheerder_tarief(
-    payload: schemas.DetacheerderTariefRequest, actor: CurrentGebruiker = Depends(require_beheerder)
+    payload: schemas.DetacheerderTariefRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder_of_veldwerkerbeheer),
 ) -> None:
-    """Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, hoofdmechanisme match)."""
+    """Bureau-tarief per detacheerder↔zzp'er-koppeling (besluit 1, hoofdmechanisme match; sinds 14-09 óók onder
+    'veldwerkerbeheer' — besluit Peter 14-09 "tarief ook", audit oud→nieuw in `service.zet_detacheerder_tarief`)."""
+    _toets_scope_veldwerker(actor, payload.detacheerder_id)
+    _toets_scope_veldwerker(actor, payload.zzper_id)
     try:
         service.zet_detacheerder_tarief(
             detacheerder_id=payload.detacheerder_id,

@@ -67,6 +67,7 @@ from app.uren.service import (
     _administratie_met_opt_in,
     _gebruiker,
     heeft_meerwerk_urenstaten_recht,
+    heeft_veldwerkerbeheer_recht,
 )
 
 TIJDZONE = ZoneInfo("Europe/Amsterdam")
@@ -482,15 +483,24 @@ def _vereis_toegang(session, *, administratie_id: uuid.UUID, gebruiker_id: uuid.
         if session.get(DetacheerderKoppeling, (actor_id, gebruiker_id)) is None:
             raise GeenToegang("Deze detacheerder is niet aan deze veldwerker gekoppeld")
         return veldwerker
-    if heeft_meerwerk_urenstaten_recht(gebruiker_id=actor_id, rol=actor.rol):
+    if _heeft_kantoor_dossierrecht(actor_id=actor_id, rol=actor.rol):
         return veldwerker
     raise GeenToegang("Geen toegang tot dit dossier")
 
 
+def _heeft_kantoor_dossierrecht(*, actor_id: uuid.UUID, rol: GebruikerRol) -> bool:
+    """Kantoor-toegang tot een ZZP-dossier (veldwerkers-run 14-09, besluit Peter 14-09 punt 2): het
+    module-recht 'Meerwerk & urenstaten' ÓF het recht 'veldwerkerbeheer' — wie veldwerkers beheert,
+    bewaakt ook hun dossier. Beheerder altijd, externe rollen nooit (beide functies fail-closed)."""
+    return heeft_meerwerk_urenstaten_recht(gebruiker_id=actor_id, rol=rol) or heeft_veldwerkerbeheer_recht(
+        gebruiker_id=actor_id, rol=rol
+    )
+
+
 def _vereis_kantoor(session, actor_id: uuid.UUID) -> Gebruiker:
     actor = _gebruiker(session, actor_id)
-    if not heeft_meerwerk_urenstaten_recht(gebruiker_id=actor_id, rol=actor.rol):
-        raise GeenToegang("Vereist het module-recht 'Meerwerk & urenstaten'")
+    if not _heeft_kantoor_dossierrecht(actor_id=actor_id, rol=actor.rol):
+        raise GeenToegang("Vereist het module-recht 'Meerwerk & urenstaten' of het recht 'veldwerkerbeheer'")
     return actor
 
 

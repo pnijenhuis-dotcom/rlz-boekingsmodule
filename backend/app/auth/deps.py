@@ -125,17 +125,46 @@ def require_beheerder_of_veldwerkerbeheer(
 ) -> CurrentGebruiker:
     """Gebruikersbeheer blijft exclusief Beheerder, mét één fijnmazige uitzondering (besluit
     Peter 31-08, 0019-patroon, migratie 0091): een kantoormedewerker mét het module-recht
-    'veldwerkerbeheer' mag UITSLUITEND veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en
-    archiveren binnen de eigen administratie-scope — nooit kantoorrollen, nooit rol-/scope-
-    mutaties. Die inhoudelijke begrenzing dwingt de service af (app/auth/service.py); deze
-    dependency opent alleen de deur voor houders van het recht."""
+    'veldwerkerbeheer' mag veldwerkers (ZZP'er/uitvoerder/detacheerder) aanmaken en archiveren
+    binnen de eigen administratie-scope — nooit kantoorrollen, nooit rol-/scope-mutaties.
+    **Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2):** onder hetzelfde recht vallen sinds
+    14-09 óók het veldwerkers-overzicht en de koppelingen (detacheerder↔ZZP'er incl. bureau-tarief,
+    veldwerker↔crediteur incl. autoboek-opt-in, projectkoppeling verwijderen) — `/uren/beheer/…`;
+    toekennen van rechten en de dossier-documenttypen blijven Beheerder-only. De inhoudelijke
+    begrenzing (alleen veldwerkers, alleen binnen de eigen scope) dwingen de services af
+    (app/auth/service.py::toets_veldwerkerbeheer_doel, uren/router `_toets_scope_*`); deze dependency
+    opent alleen de deur voor houders van het recht. Fail-closed: externe rollen nooit."""
     if current.rol == GebruikerRol.BEHEERDER:
         return current
     from app.uren.service import heeft_veldwerkerbeheer_recht
 
     if not heeft_veldwerkerbeheer_recht(gebruiker_id=current.id, rol=current.rol):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Alleen toegestaan voor Beheerder")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen toegestaan voor Beheerder of een medewerker met het recht 'veldwerkerbeheer'",
+        )
     return current
+
+
+def require_veldwerkerbeheer_of_meerwerk_recht(
+    current: CurrentGebruiker = Depends(get_current_gebruiker),
+) -> CurrentGebruiker:
+    """ZZP-dossier kantoorkant (veldwerkers-run 14-09, besluit Peter 14-09 punt 2): dossier lezen,
+    uploaden, beoordelen, herinneren en bedrijfsgegevens bevestigen onder het module-recht
+    'Meerwerk & urenstaten' ÓF het recht 'veldwerkerbeheer' (wie veldwerkers beheert, bewaakt ook
+    hun dossier). Beheerder altijd; externe rollen nooit (beide rechten-functies geven voor hen
+    False). De klantscope blijft eronder gelden (`vereis_administratie_scope`) en de dossier-service
+    toetst hetzelfde recht nog eens op de veldwerker (`dossier._vereis_toegang`)."""
+    from app.uren.service import heeft_meerwerk_urenstaten_recht, heeft_veldwerkerbeheer_recht
+
+    if heeft_meerwerk_urenstaten_recht(gebruiker_id=current.id, rol=current.rol) or heeft_veldwerkerbeheer_recht(
+        gebruiker_id=current.id, rol=current.rol
+    ):
+        return current
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Vereist het module-recht 'Meerwerk & urenstaten' of het recht 'veldwerkerbeheer'",
+    )
 
 
 def require_meerwerk_urenstaten_recht(

@@ -276,7 +276,9 @@ class TestBeheerKoppelingen:
         assert per_naam["Karin S."]["recentste_planning_administratie_id"] is None
         assert per_naam["Karin S."]["recentste_koppeling_administratie_id"] is None
 
-    def test_beheer_is_beheerder_only(self, admin_engine: Engine, administratie_id):
+    def test_beheer_zonder_veldwerkerbeheer_recht_403(self, admin_engine: Engine, administratie_id):
+        """Sinds 14-09 Beheerder ÓF 'veldwerkerbeheer' (tests/auth/test_veldwerkerbeheer.py::TestKoppelingenOnderHetRecht);
+        een kantoorrol zónder dat recht blijft 403."""
         medewerker = maak_gebruiker(admin_engine, "boekhouding", "Rob T.")
         resp = client.get("/uren/beheer/veldgebruikers", headers=_bearer(medewerker, rol="boekhouding"))
         assert resp.status_code == 403
@@ -553,7 +555,7 @@ class TestVeldwerkerCrediteurBeheer:
         )
         assert resp.status_code == 422
 
-    def test_niet_beheerder_geweigerd(self, administratie_id, gekoppelde_zzper, admin_engine):
+    def test_zonder_veldwerkerbeheer_recht_geweigerd(self, administratie_id, gekoppelde_zzper, admin_engine):
         medewerker = maak_gebruiker(admin_engine, "boekhouding", "Kantoor M.")
         resp = client.post(
             "/uren/beheer/veldwerkercrediteuren",

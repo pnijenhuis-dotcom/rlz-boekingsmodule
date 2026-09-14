@@ -21,7 +21,14 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from app.auth import service as auth_service
-from app.db.models import Administratie, DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
+from app.db.models import (
+    Administratie,
+    DetacheerderKoppeling,
+    Gebruiker,
+    GebruikerAdministratie,
+    GebruikerRol,
+    GebruikerStatus,
+)
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache, VendorCache
 from app.tijd import vandaag_nl
@@ -1080,24 +1087,52 @@ class VeldgebruikerKaart:
     # dialogen (dossier/crediteur) — jongste planningsdag resp. laatst gewijzigde koppeling.
     recentste_planning_administratie_id: uuid.UUID | None = None
     recentste_koppeling_administratie_id: uuid.UUID | None = None
+    # Veldwerkers-run 14-09: scope-administraties van de veldwerker (filterbron op /veldwerkers).
+    administratie_ids: list[uuid.UUID] = field(default_factory=list)
 
 
-def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]:
-    """Beheerscherm Gebruikers & toegang: alle veldrol-gebruikers mét hun project-toewijzingen
-    (over alle uren-administraties), voor detacheerders de gekoppelde ZZP'ers, en per ZZP'er
-    de opgetelde uren-afwijking uit de correctie-registratie (nooit zichtbaar in de veld-API)."""
+def veldgebruikers_overzicht(
+    *, actor_id: uuid.UUID, rol: GebruikerRol = GebruikerRol.BEHEERDER
+) -> list[VeldgebruikerKaart]:
+    """Veldwerkers-overzicht (/veldwerkers sinds 14-09; daarvóór het paneel op Gebruikers & toegang): veldrol-
+    gebruikers mét hun project-toewijzingen (over alle uren-administraties), voor detacheerders de gekoppelde
+    ZZP'ers, en per ZZP'er de opgetelde uren-afwijking uit de correctie-registratie (nooit zichtbaar in de veld-API).
+
+    Scope (veldwerkers-run 14-09): een Beheerder ziet álle veldwerkers; een houder van het recht 'veldwerkerbeheer'
+    (`rol` ≠ Beheerder) alleen de veldwerkers mét een scope-rij op een van zijn EIGEN administraties — gelezen bínnen
+    `scoped_session(<administratie>, actor)` (RLS-les 25-08: de scope-tabel geeft buiten die sessie nul rijen). De
+    per-administratie-lus loopt over de eigen administraties (Beheerder: alle actieve), niet meer hardgecodeerd als
+    Beheerder."""
     from app.auth.rollen import VELD_ROLLEN
+
+    eigen_administraties = auth_service.mijn_administraties(actor_id=actor_id, rol=rol)
+    scope_per_gebruiker: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for administratie in eigen_administraties:
+        with scoped_session(administratie.id, actor_id=actor_id) as session:
+            for gid in session.scalars(
+                select(GebruikerAdministratie.gebruiker_id)
+                .join(Gebruiker, Gebruiker.id == GebruikerAdministratie.gebruiker_id)
+                .where(
+                    GebruikerAdministratie.administratie_id == administratie.id,
+                    Gebruiker.rol.in_(list(VELD_ROLLEN)),
+                )
+            ):
+                scope_per_gebruiker.setdefault(gid, []).append(administratie.id)
 
     with scoped_session(None, actor_id=actor_id) as session:
         # Gearchiveerde veldwerkers (0075) blijven buiten het paneel — terugvinden via
         # /gebruikers → filter "gearchiveerd (N)".
-        gebruikers = list(
-            session.scalars(
-                select(Gebruiker)
-                .where(Gebruiker.rol.in_(list(VELD_ROLLEN)), Gebruiker.status != GebruikerStatus.GEARCHIVEERD)
-                .order_by(Gebruiker.naam)
-            )
+        query = (
+            select(Gebruiker)
+            .where(Gebruiker.rol.in_(list(VELD_ROLLEN)), Gebruiker.status != GebruikerStatus.GEARCHIVEERD)
+            .order_by(Gebruiker.naam)
         )
+        if rol != GebruikerRol.BEHEERDER:
+            # Rechthouder: uitsluitend veldwerkers binnen de eigen scope (lege scope = lege lijst, nooit alles).
+            query = query.where(Gebruiker.id.in_(list(scope_per_gebruiker) or [uuid.UUID(int=0)]))
+        gebruikers = list(session.scalars(query))
+        # detacheerder_koppeling: RLS-leespolicy = Beheerder, de detacheerder zelf, systeem-actor én (0141) een
+        # houder van 'veldwerkerbeheer' — een lege lijst bij een niet-rechthouder is dus RLS, geen bug.
         koppelingen = list(session.scalars(select(DetacheerderKoppeling)))
         zzper_namen = {g.id: g.naam for g in gebruikers}
 
@@ -1111,7 +1146,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
     recentste_planning: dict[uuid.UUID, tuple[date, uuid.UUID]] = {}
     recentste_koppeling: dict[uuid.UUID, tuple[datetime, uuid.UUID]] = {}
 
-    for administratie in _administraties_met_opt_in(actor_id, GebruikerRol.BEHEERDER):
+    for administratie in (a for a in eigen_administraties if a.uren_meerwerk_ingeschakeld):
         with scoped_session(administratie.id, actor_id=actor_id) as session:
             # ZZP-dossier (A1): veldwerkers mét scope op deze administratie — de scope-tabel heeft
             # RLS, dus binnen de administratie-sessie mét actor (RLS-les 25-08).
@@ -1219,6 +1254,7 @@ def veldgebruikers_overzicht(*, actor_id: uuid.UUID) -> list[VeldgebruikerKaart]
             dossiers=dossiers_per_gebruiker.get(g.id, []),
             recentste_planning_administratie_id=(recentste_planning.get(g.id) or (None, None))[1],
             recentste_koppeling_administratie_id=(recentste_koppeling.get(g.id) or (None, None))[1],
+            administratie_ids=sorted(scope_per_gebruiker.get(g.id, []), key=str),
         )
         for g in gebruikers
     ]

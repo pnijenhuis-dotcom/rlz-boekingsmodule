@@ -108,7 +108,10 @@ class TestAanmaken:
         assert resp.status_code == 403
 
     def test_met_recht_alleen_veldwerkers_binnen_scope(
-        self, bp_met_recht, administratie_id, tweede_administratie  # noqa: F811
+        self,
+        bp_met_recht,
+        administratie_id,
+        tweede_administratie,  # noqa: F811
     ):
         headers = _bearer(bp_met_recht, rol="boekhouding_projecten")
         # Veldrol binnen eigen scope, incl. uitnodiging_later-flow → OK.
@@ -129,8 +132,16 @@ class TestAanmaken:
         assert resp.status_code == 403
         # Rol- en scope-mutaties blijven dicht (require_beheerder ongewijzigd).
         doel = uuid.uuid4()
-        assert client.patch(f"/auth/gebruikers/{doel}/rol", json={"rol": "boekhouding"}, headers=headers).status_code == 403
-        assert client.post(f"/auth/gebruikers/{doel}/scope", json={"administratie_id": str(administratie_id)}, headers=headers).status_code == 403
+        assert (
+            client.patch(f"/auth/gebruikers/{doel}/rol", json={"rol": "boekhouding"}, headers=headers).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                f"/auth/gebruikers/{doel}/scope", json={"administratie_id": str(administratie_id)}, headers=headers
+            ).status_code
+            == 403
+        )
 
     def test_beheerder_ongewijzigd(self, beheerder_id, administratie_id):  # noqa: F811
         resp = client.post(
@@ -145,14 +156,21 @@ class TestArchiveren:
     def test_veldwerker_binnen_scope(self, admin_engine: Engine, bp_met_recht, beheerder_id, administratie_id):  # noqa: F811
         headers = _bearer(bp_met_recht, rol="boekhouding_projecten")
         veldwerker = maak_gebruiker(admin_engine, "zzper", "Milan K.")
-        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=veldwerker, administratie_id=administratie_id)
+        auth_service.voeg_scope_toe(
+            actor_id=beheerder_id, doel_gebruiker_id=veldwerker, administratie_id=administratie_id
+        )
         assert client.get(f"/auth/gebruikers/{veldwerker}/open-werk", headers=headers).status_code == 200
         assert client.post(f"/auth/gebruikers/{veldwerker}/archiveren", headers=headers).status_code == 204
         # Dearchiveren blijft Beheerder-only.
         assert client.post(f"/auth/gebruikers/{veldwerker}/dearchiveren", headers=headers).status_code == 403
 
     def test_kantoorrol_of_buiten_scope_403(
-        self, admin_engine: Engine, bp_met_recht, beheerder_id, administratie_id, tweede_administratie  # noqa: F811
+        self,
+        admin_engine: Engine,
+        bp_met_recht,
+        beheerder_id,
+        administratie_id,
+        tweede_administratie,  # noqa: F811
     ):
         headers = _bearer(bp_met_recht, rol="boekhouding_projecten")
         # Kantoormedewerker archiveren → nooit.
@@ -161,7 +179,9 @@ class TestArchiveren:
         # Veldwerker mét een administratie búiten de scope van de actor → fail-closed 403.
         buiten = maak_gebruiker(admin_engine, "zzper", "Buiten Scope")
         auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=buiten, administratie_id=administratie_id)
-        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=buiten, administratie_id=tweede_administratie)
+        auth_service.voeg_scope_toe(
+            actor_id=beheerder_id, doel_gebruiker_id=buiten, administratie_id=tweede_administratie
+        )
         assert client.post(f"/auth/gebruikers/{buiten}/archiveren", headers=headers).status_code == 403
         # Veldwerker zónder enige scope → fail-closed 403.
         los = maak_gebruiker(admin_engine, "zzper", "Zonder Scope")
@@ -196,7 +216,10 @@ class TestRolgroepBijIngang:
         assert resp.status_code == 422
 
     def test_passende_rolgroep_per_ingang_en_audit_draagt_bron(
-        self, beheerder_id, administratie_id, admin_engine: Engine  # noqa: F811
+        self,
+        beheerder_id,
+        administratie_id,
+        admin_engine: Engine,  # noqa: F811
     ):
         gevallen = [
             ("veldwerkers", "zzper"),
@@ -226,3 +249,236 @@ class TestRolgroepBijIngang:
         assert resp.status_code == 200, resp.text
         resp = self._post(beheerder_id, "zzper", None, [administratie_id])
         assert resp.status_code == 200, resp.text
+
+
+# --- Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2): koppelingen + dossier onder het recht -------------------
+
+
+@pytest.fixture
+def zzper_in_scope(admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID:  # noqa: F811
+    gid = maak_gebruiker(admin_engine, "zzper", "Milan K.")
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
+    return gid
+
+
+@pytest.fixture
+def detacheerder_in_scope(admin_engine: Engine, beheerder_id, administratie_id) -> uuid.UUID:  # noqa: F811
+    gid = maak_gebruiker(admin_engine, "detacheerder", "Karin S.")
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=administratie_id)
+    return gid
+
+
+@pytest.fixture
+def zzper_buiten_scope(admin_engine: Engine, beheerder_id, tweede_administratie) -> uuid.UUID:  # noqa: F811
+    gid = maak_gebruiker(admin_engine, "zzper", "Buiten Scope")
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=gid, administratie_id=tweede_administratie)
+    return gid
+
+
+class TestKoppelingenOnderHetRecht:
+    """Een houder van 'veldwerkerbeheer' (niet Beheerder) koppelt detacheerders aan ZZP'ers, zet het bureau-tarief
+    (mét audit oud→nieuw) en koppelt crediteuren — uitsluitend binnen de eigen scope. Dit toetst tegelijk migratie
+    0141: zonder de verbrede RLS-policies op detacheerder_koppeling zou de INSERT stil weigeren en de lezing nul
+    rijen geven (kernprincipe 7.6 'geen stille no-op')."""
+
+    def test_detacheerder_koppelen_tarief_met_audit_en_ontkoppelen(
+        self,
+        admin_engine: Engine,
+        bp_met_recht,
+        zzper_in_scope,
+        detacheerder_in_scope,  # noqa: F811
+    ):
+        h = _bearer(bp_met_recht, rol="boekhouding_projecten")
+        body = {"detacheerder_id": str(detacheerder_in_scope), "zzper_id": str(zzper_in_scope)}
+        assert client.post("/uren/beheer/detacheerderkoppelingen", json=body, headers=h).status_code == 204
+
+        # Lezen als rechthouder: de koppeling is zichtbaar (RLS-leespolicy 0141), de scope-administraties reizen mee.
+        resp = client.get("/uren/beheer/veldgebruikers", headers=h)
+        assert resp.status_code == 200, resp.text
+        per_id = {k["gebruiker_id"]: k for k in resp.json()}
+        assert per_id[str(detacheerder_in_scope)]["zzpers"] == [
+            {"gebruiker_id": str(zzper_in_scope), "naam": "Milan K.", "uurtarief": None}
+        ]
+        assert per_id[str(zzper_in_scope)]["administratie_ids"] == [
+            str(a) for a in per_id[str(zzper_in_scope)]["administratie_ids"]
+        ]
+        assert len(per_id[str(zzper_in_scope)]["administratie_ids"]) == 1
+
+        # Tarief (besluit Peter 14-09 "tarief ook"): 204 + audit oud→nieuw.
+        resp = client.post(
+            "/uren/beheer/detacheerderkoppelingen/tarief", json={**body, "uurtarief": "51.00"}, headers=h
+        )
+        assert resp.status_code == 204, resp.text
+        resp = client.post(
+            "/uren/beheer/detacheerderkoppelingen/tarief", json={**body, "uurtarief": "53.50"}, headers=h
+        )
+        assert resp.status_code == 204, resp.text
+        with admin_engine.begin() as conn:
+            rijen = conn.execute(
+                text(
+                    "SELECT actor_id, oude_waarde->>'uurtarief', nieuwe_waarde->>'uurtarief' FROM platform.audit_event "
+                    "WHERE actie = 'detacheerder_tarief_gezet' AND record_id = :d ORDER BY tijdstip, id"
+                ),
+                {"d": detacheerder_in_scope},
+            ).all()
+        assert [(r[1], r[2]) for r in rijen] == [(None, "51.00"), ("51.00", "53.50")]
+        assert {r[0] for r in rijen} == {bp_met_recht}
+        resp = client.get("/uren/beheer/veldgebruikers", headers=h)
+        assert (
+            next(k for k in resp.json() if k["gebruiker_id"] == str(detacheerder_in_scope))["zzpers"][0]["uurtarief"]
+            == "53.50"
+        )
+
+        assert client.post("/uren/beheer/detacheerderkoppelingen/verwijderen", json=body, headers=h).status_code == 204
+        resp = client.get("/uren/beheer/veldgebruikers", headers=h)
+        assert next(k for k in resp.json() if k["gebruiker_id"] == str(detacheerder_in_scope))["zzpers"] == []
+
+    def test_buiten_scope_403_en_overzicht_alleen_eigen_scope(
+        self,
+        bp_met_recht,
+        zzper_in_scope,
+        detacheerder_in_scope,
+        zzper_buiten_scope,  # noqa: F811
+    ):
+        h = _bearer(bp_met_recht, rol="boekhouding_projecten")
+        body = {"detacheerder_id": str(detacheerder_in_scope), "zzper_id": str(zzper_buiten_scope)}
+        assert client.post("/uren/beheer/detacheerderkoppelingen", json=body, headers=h).status_code == 403
+        assert (
+            client.post(
+                "/uren/beheer/detacheerderkoppelingen/tarief", json={**body, "uurtarief": "1"}, headers=h
+            ).status_code
+            == 403
+        )
+        # Overzicht: alleen veldwerkers mét scope op een eigen administratie.
+        ids = {k["gebruiker_id"] for k in client.get("/uren/beheer/veldgebruikers", headers=h).json()}
+        assert str(zzper_in_scope) in ids and str(detacheerder_in_scope) in ids
+        assert str(zzper_buiten_scope) not in ids
+
+    def test_crediteur_koppelen_binnen_scope_ok_buiten_scope_403(
+        self,
+        admin_engine: Engine,
+        bp_met_recht,
+        zzper_in_scope,
+        administratie_id,
+        tweede_administratie,  # noqa: F811
+    ):
+        h = _bearer(bp_met_recht, rol="boekhouding_projecten")
+        vendor_id = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boekhouding.vendor_cache (id, administratie_id, naam, brondata) "
+                    "VALUES (:id, :aid, 'Milan K. Montage', '{}')"
+                ),
+                {"id": vendor_id, "aid": administratie_id},
+            )
+        body = {
+            "administratie_id": str(administratie_id),
+            "gebruiker_id": str(zzper_in_scope),
+            "vendor_id": str(vendor_id),
+            "uurtarief": "42.50",
+        }
+        assert client.post("/uren/beheer/veldwerkercrediteuren", json=body, headers=h).status_code == 204
+        kaart = next(
+            k
+            for k in client.get("/uren/beheer/veldgebruikers", headers=h).json()
+            if k["gebruiker_id"] == str(zzper_in_scope)
+        )
+        assert (
+            kaart["crediteuren"][0]["vendor_naam"] == "Milan K. Montage"
+            and kaart["crediteuren"][0]["uurtarief"] == "42.50"
+        )
+        assert (
+            client.post(
+                "/uren/beheer/veldwerkercrediteuren/autoboeken",
+                json={
+                    "administratie_id": str(administratie_id),
+                    "gebruiker_id": str(zzper_in_scope),
+                    "ingeschakeld": True,
+                },
+                headers=h,
+            ).status_code
+            == 204
+        )
+        # Administratie buiten de eigen scope: 403 vóór de service (geen RLS-ruis).
+        buiten = {**body, "administratie_id": str(tweede_administratie)}
+        assert client.post("/uren/beheer/veldwerkercrediteuren", json=buiten, headers=h).status_code == 403
+        assert (
+            client.post(
+                "/uren/beheer/veldwerkercrediteuren/verwijderen",
+                json={"administratie_id": str(tweede_administratie), "gebruiker_id": str(zzper_in_scope)},
+                headers=h,
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                "/uren/beheer/veldwerkercrediteuren/verwijderen",
+                json={"administratie_id": str(administratie_id), "gebruiker_id": str(zzper_in_scope)},
+                headers=h,
+            ).status_code
+            == 204
+        )
+
+    def test_rechten_toekennen_en_documenttypen_blijven_beheerder_only(self, bp_met_recht, administratie_id):  # noqa: F811
+        h = _bearer(bp_met_recht, rol="boekhouding_projecten")
+        assert client.get("/uren/beheer/module-recht", headers=h).status_code == 403
+        assert client.get("/uren/beheer/veldwerkerbeheer-recht", headers=h).status_code == 403
+        assert (
+            client.put(
+                "/uren/beheer/veldwerkerbeheer-recht",
+                json={"gebruiker_id": str(uuid.uuid4()), "ingeschakeld": True},
+                headers=h,
+            ).status_code
+            == 403
+        )
+        assert (
+            client.put(
+                "/uren/beheer/module-recht", json={"gebruiker_id": str(uuid.uuid4()), "ingeschakeld": True}, headers=h
+            ).status_code
+            == 403
+        )
+        assert (
+            client.put(
+                f"/uren/beheer/dossier-documenttypen/{administratie_id}", json={"typen": []}, headers=h
+            ).status_code
+            == 403
+        )
+
+    def test_dossier_lezen_onder_veldwerkerbeheer_zonder_meerwerk_recht(
+        self,
+        bp_met_recht,
+        zzper_in_scope,
+        administratie_id,
+        tweede_administratie,  # noqa: F811
+    ):
+        """A3: dossier kantoorkant onder 'veldwerkerbeheer' ÓF meerwerk-recht; klantscope blijft (tweede administratie 403)."""
+        h = _bearer(bp_met_recht, rol="boekhouding_projecten")
+        assert not uren_service.heeft_meerwerk_urenstaten_recht(gebruiker_id=bp_met_recht, rol="boekhouding_projecten")
+        resp = client.get(f"/uren/kantoor/dossier/{administratie_id}/{zzper_in_scope}", headers=h)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["gebruiker_id"] == str(zzper_in_scope)
+        assert (
+            client.get(f"/uren/kantoor/dossier/{tweede_administratie}/{zzper_in_scope}", headers=h).status_code == 403
+        )
+        resp = client.post(
+            f"/uren/kantoor/dossier/{administratie_id}/{zzper_in_scope}/bedrijfsgegevens",
+            json={"kvk_nummer": "68750110", "naam": "Milan Montage"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_zonder_recht_blijft_alles_403(self, admin_engine: Engine, beheerder_id, administratie_id, zzper_in_scope):  # noqa: F811
+        bp = maak_gebruiker(admin_engine, "boekhouding_projecten", "Zonder Recht")
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=bp, administratie_id=administratie_id)
+        h = _bearer(bp, rol="boekhouding_projecten")
+        assert client.get("/uren/beheer/veldgebruikers", headers=h).status_code == 403
+        assert (
+            client.post(
+                "/uren/beheer/detacheerderkoppelingen",
+                json={"detacheerder_id": str(uuid.uuid4()), "zzper_id": str(zzper_in_scope)},
+                headers=h,
+            ).status_code
+            == 403
+        )
+        assert client.get(f"/uren/kantoor/dossier/{administratie_id}/{zzper_in_scope}", headers=h).status_code == 403
