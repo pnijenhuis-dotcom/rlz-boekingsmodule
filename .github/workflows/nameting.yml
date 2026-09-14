@@ -91,12 +91,19 @@ jobs:
             [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_rec)" >> "$UIT"
             echo "STATUS reconciliatie: rapport in $UIT (job-exit $rc_rec = uitkomst)"
           fi
-          # Oordeelregel voor het commitbericht: uit het replay-rapport van vandaag als dat er is, anders een telling.
-          OORDEEL=""
-          if [[ -f "verkenning/nameting-vgg-replay-$DATUM.txt" ]]; then
-            OORDEEL="$(grep -m1 -o 'Oordeel: [^*]*' "verkenning/nameting-vgg-replay-$DATUM.txt" | cut -c1-140 || true)"
+          # Oordeelregel voor het commitbericht: uit het rapport van het GEDRAAIDE onderdeel (werkloop-nazorg 14-09 — run
+          # f4c702c droeg de replay-oordeelregel bij een reconciliatie-meting, misleidend): reconciliatie → het
+          # reconciliatie-rapport van vandaag, anders het replay-rapport. Geen oordeelregel gevonden = "geen oordeelregel".
+          if [[ "$ONDERDEEL" == "reconciliatie" ]]; then
+            OORDEEL_BRON="verkenning/nameting-reconciliatie-$DATUM.txt"
+          else
+            OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi
-          [[ -n "$OORDEEL" ]] || OORDEEL="$(ls verkenning/nameting-*-"$DATUM".txt 2>/dev/null | wc -l | tr -d ' ') rapport(en) van $DATUM"
+          OORDEEL=""
+          if [[ -f "$OORDEEL_BRON" ]]; then
+            OORDEEL="$(grep -m1 -o 'Oordeel: [^*]*' "$OORDEEL_BRON" | cut -c1-140 || true)"
+          fi
+          [[ -n "$OORDEEL" ]] || OORDEEL="geen oordeelregel ($(ls verkenning/nameting-*-"$DATUM".txt 2>/dev/null | wc -l | tr -d ' ') rapport(en) van $DATUM)"
           echo "datum=$DATUM" >> "$GITHUB_OUTPUT"
           echo "oordeel=$OORDEEL" >> "$GITHUB_OUTPUT"
 

@@ -14,6 +14,15 @@
 # Afronding: exit 0 van claude én het bestand staat nog in lopend/ → het script verplaatst het naar gedaan/ mét kopregel
 # "uitgevoerd <datum>, rapport: docs/rapporten/<bestand>" (nieuwste rapport dat tijdens de run is bijgekomen, anders "geen").
 # Exit ≠ 0 → bestand blijft in lopend/ (zichtbaar), melding "CC MISLUKT".
+# Lokale pull (werkloop-nazorg 14-09): vóór het oppakken van een opdracht én bij elke launchd-tick zonder werk doet het
+# script `git pull --ff-only origin main` in de repo-root, zodat bot-commits van de nameting-workflow (nameting-bot) vanzelf
+# op deze Mac landen en Cowork ze kan lezen. Alleen als er geen lock is en de werkboom schoon is (geen gewijzigde
+# TRACKED bestanden — `git status --porcelain --untracked-files=no` leeg; een nieuwe opdracht in inbox/ is untracked en
+# mag de pull niet tegenhouden, git weigert een ff-pull die een untracked bestand zou overschrijven toch zelf). Anders,
+# of als de branch gedivergeerd is (ff-only faalt), wordt de pull OVERGESLAGEN mét logregel — nooit rebase, merge of
+# stash; een gedivergeerde stand is voor Peter (of de CC-run zelf) om te beoordelen. Een tick zonder werk logt alleen
+# als er iets binnenkwam of overgeslagen is (geen "Already up to date" om de vijf minuten). CC_INBOX_GEEN_PULL=1 slaat
+# de pull over (handmatige start/test).
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet aangevuld voor een handmatige start.
 set -uo pipefail
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
@@ -37,6 +46,25 @@ if [[ -f "$LOCK" ]]; then
   echo ">> cc_inbox: verweesde lock (pid ${pid:-?} leeft niet) opgeruimd" >&2
   rm -f "$LOCK"
 fi
+# ---- lokale pull (ff-only, alleen schoon + geen lock — zie kop) -------------------------------------------------------
+pull_ff_only() {
+  [[ "${CC_INBOX_GEEN_PULL:-}" == "1" ]] && return 0
+  local vuil; vuil="$(git -C "$REPO" status --porcelain --untracked-files=no 2>/dev/null || echo '?')"
+  if [[ -n "$vuil" ]]; then
+    echo ">> cc_inbox: pull overgeslagen — werkboom niet schoon ($(printf '%s\n' "$vuil" | wc -l | tr -d ' ') gewijzigd bestand(en))" >&2
+    return 0
+  fi
+  local voor na uitvoer
+  voor="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+  if ! uitvoer="$(git -C "$REPO" pull --ff-only origin main 2>&1)"; then
+    echo ">> cc_inbox: pull overgeslagen — ff-only mislukt (gedivergeerd of geen netwerk): $(printf '%s' "$uitvoer" | tail -1 | cut -c1-200)" >&2
+    return 0
+  fi
+  na="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$voor" != "$na" ]] && echo ">> cc_inbox: pull ff-only $(git -C "$REPO" rev-list --count "$voor..$na" 2>/dev/null || echo '?') commit(s) binnen → ${na:0:7} ($(date +%FT%T))" >&2
+  return 0
+}
+pull_ff_only
 # oudste bestand (mtime) — niets in de inbox = niets doen
 OPDRACHT="$(find "$INBOX" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)"
 [[ -n "$OPDRACHT" ]] || exit 0

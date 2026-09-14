@@ -3,12 +3,19 @@ LEES-ONLY instrument onder het nameting-serviceaccount. Bewaakt: (1) uitsluitend
 `deploy@`), (2) productie-aanroepen alleen via `scripts/gcp/nameting.sh` of `scripts/gcp/vgg_blok7_nameting.sh` — geen
 directe `gcloud run jobs execute`/`gcloud run deploy`/`gcloud run jobs deploy` in de workflow, (3) de commit-stap raakt
 alleen `verkenning/nameting-*.txt`, (4) dezelfde WIF-provider als deploy.yml, (5) `nameting_env.sh` slaat impersonatie
-over onder GITHUB_ACTIONS=true."""
+over onder GITHUB_ACTIONS=true, (6) (werkloop-nazorg 14-09) de oordeelregel in het commitbericht komt uit het rapport
+van het GEDRAAIDE onderdeel — reconciliatie → `nameting-reconciliatie-<dd-mm>.txt`, anders replay — en zonder
+oordeelregel staat er letterlijk "geen oordeelregel" (run f4c702c droeg de replay-regel bij een reconciliatie-
+meting)."""
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO / ".github" / "workflows" / "nameting.yml"
@@ -120,3 +127,87 @@ def test_nameting_env_slaat_impersonatie_over_onder_github_actions() -> None:
     tak = tekst.split('if [[ "${GITHUB_ACTIONS:-}" == "true" ]]', 1)[1].split("elif", 1)[0]
     assert "--impersonate-service-account" not in tak
     assert "activate-service-account" not in tak
+
+
+# ---- (6) oordeelregel per gedraaid onderdeel ---------------------------------------------------------------------
+
+
+def _oordeel_fragment() -> str:
+    """Het stuk van de meet-stap vanaf de oordeel-berekening t/m de GITHUB_OUTPUT-regels — letterlijk uit de workflow,
+    zodat de test het échte shellscript draait en niet een kopie."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    regels = meet.splitlines()
+    start = next(i for i, r in enumerate(regels) if "OORDEEL_BRON=" in r) - 1  # de if-regel erboven
+    assert regels[start].strip().startswith('if [[ "$ONDERDEEL" == "reconciliatie" ]]'), regels[start]
+    eind = next(i for i, r in enumerate(regels) if 'echo "oordeel=$OORDEEL"' in r)
+    return "\n".join(regels[start : eind + 1])
+
+
+def _draai_oordeel(tmp_path: Path, onderdeel: str, bestanden: dict[str, str]) -> str:
+    (tmp_path / "verkenning").mkdir(exist_ok=True)
+    for naam, inhoud in bestanden.items():
+        (tmp_path / "verkenning" / naam).write_text(inhoud, encoding="utf-8")
+    uit = tmp_path / "github_output"
+    uit.write_text("", encoding="utf-8")
+    script = "set -uo pipefail\nDATUM=14-09\n" + _oordeel_fragment()
+    subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={**os.environ, "ONDERDEEL": onderdeel, "GITHUB_OUTPUT": str(uit)},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    regels = dict(r.split("=", 1) for r in uit.read_text(encoding="utf-8").splitlines() if "=" in r)
+    return regels["oordeel"]
+
+
+REPLAY = "kop\n**Oordeel: GROEN ZONDER DOEL — groepstoets niet meetbaar**\n"
+RECONCILIATIE_ZONDER = (
+    "LEES-ONLY: geen run-rij\n71/71 administraties gecontroleerd, 0 afwijking(en) totaal\nLEES-ONLY afgerond\n"
+)
+
+
+def test_oordeel_reconciliatie_neemt_niet_de_replay_regel(tmp_path: Path) -> None:
+    """De f4c702c-situatie: replay-rapport van vandaag aanwezig, maar het gedraaide onderdeel is reconciliatie."""
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "reconciliatie",
+        {"nameting-vgg-replay-14-09.txt": REPLAY, "nameting-reconciliatie-14-09.txt": RECONCILIATIE_ZONDER},
+    )
+    assert "GROEN ZONDER DOEL" not in oordeel, oordeel
+    assert oordeel.startswith("geen oordeelregel"), oordeel
+    assert "2 rapport(en) van 14-09" in oordeel
+
+
+def test_oordeel_reconciliatie_met_eigen_oordeelregel(tmp_path: Path) -> None:
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "reconciliatie",
+        {
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+            "nameting-reconciliatie-14-09.txt": "x\nOordeel: ROOD — 3 bevindingen\n",
+        },
+    )
+    assert oordeel == "Oordeel: ROOD — 3 bevindingen"
+
+
+@pytest.mark.parametrize("onderdeel", ["alles", "c", "a"])
+def test_oordeel_overige_onderdelen_uit_replay(tmp_path: Path, onderdeel: str) -> None:
+    oordeel = _draai_oordeel(
+        tmp_path,
+        onderdeel,
+        {"nameting-vgg-replay-14-09.txt": REPLAY, "nameting-reconciliatie-14-09.txt": "Oordeel: ROOD — niet deze\n"},
+    )
+    assert oordeel == "Oordeel: GROEN ZONDER DOEL — groepstoets niet meetbaar"
+
+
+def test_oordeel_zonder_rapport_is_geen_oordeelregel(tmp_path: Path) -> None:
+    oordeel = _draai_oordeel(tmp_path, "alles", {})
+    assert oordeel == "geen oordeelregel (0 rapport(en) van 14-09)"
+
+
+def test_commitbericht_draagt_onderdeel_en_oordeel() -> None:
+    assert re.search(r'git commit -m "nameting \$DATUM \$ONDERDEEL — \$OORDEEL"', _tekst())
+    assert 'OORDEEL_BRON="verkenning/nameting-reconciliatie-$DATUM.txt"' in _tekst()
+    assert 'OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"' in _tekst()
