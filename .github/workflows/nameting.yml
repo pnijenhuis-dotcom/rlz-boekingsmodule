@@ -1,0 +1,119 @@
+# Nameting-workflow (werkloop automatisch — besluit Peter 14-09: "alles wat automatisch kan gaat automatisch").
+# Draait de lees-only productie-nametingen dagelijks (05:30 UTC = 07:30 NL) en op verzoek (workflow_dispatch met
+# input "onderdeel") en commit de uitkomstbestanden als nameting-bot terug naar main.
+#
+# Auth: Workload Identity Federation met DEZELFDE provider als deploy.yml, maar als serviceaccount
+# nameting@rlz-boekhouding (lees-only: run.viewer + logging.viewer + custom rol nametingUitvoerder job-scoped op
+# rlz-reconciliatie — nooit deploy@, nooit een SA-key). De WIF-binding op nameting@ zet Peter eenmalig als owner met
+# scripts/gcp/nameting_wif_iam.sh --apply; daarmee vervalt het beslispunt "SA-key" van 10-09 (org-policy) definitief.
+#
+# Alle productie-aanroepen lopen UITSLUITEND via scripts/gcp/vgg_blok7_nameting.sh en scripts/gcp/nameting.sh
+# (lees-only allowlist) — nooit een directe `gcloud run jobs execute` in deze file (guard:
+# backend/tests/unit/test_nameting_workflow.py). scripts/gcp/nameting_env.sh herkent GITHUB_ACTIONS=true en zet dan
+# géén impersonatie-vlag (de runner IS het SA).
+#
+# Een ROOD rapport is een uitkomst, geen workflow-fout (exit 0). Alleen de deploy-check (service ≠ jobs, exit 3 uit
+# vgg_blok7_nameting.sh) en auth-/executiefouten (geen job-executie gestart) maken de run rood.
+#
+# Commit: alleen verkenning/nameting-*.txt, gebruiker nameting-bot, push met GITHUB_TOKEN (contents: write). Een push
+# met GITHUB_TOKEN start geen nieuwe workflow-run (GitHub-regel) — de deploy-workflow blijft dus stil op zo'n commit.
+# Geen wijzigingen = geen commit. Uitzetten: GitHub → Actions → nameting → "Disable workflow".
+
+name: nameting
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+    inputs:
+      onderdeel:
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie)"
+        type: choice
+        default: alles
+        options: [alles, a, b, c, d, e, reconciliatie]
+
+env:
+  PROJECT_ID: rlz-boekhouding
+  PROJECT_NUMBER: "652591056217"
+  REGION: europe-west4
+
+permissions:
+  contents: write # commit + push van verkenning/nameting-*.txt
+  id-token: write # vereist voor WIF (OIDC-token richting Google STS)
+
+concurrency:
+  group: nameting-production
+  cancel-in-progress: false
+
+jobs:
+  nameting:
+    runs-on: ubuntu-latest
+    # Elk onderdeel = één of meer Cloud Run-job-executies mét --wait; "alles" doet er ~17 (e alleen al 12 rlz-lezen-calls).
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticatie via WIF als nameting@ (geen SA-keys, nooit het deploy-SA)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: nameting@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Nameting draaien (lees-only, via de nameting-scripts)
+        id: meting
+        env:
+          ONDERDEEL: ${{ inputs.onderdeel || 'alles' }}
+        run: |
+          set -uo pipefail
+          DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
+          echo "onderdeel=$ONDERDEEL datum=$DATUM"
+          rc_vgg=0
+          if [[ "$ONDERDEEL" != "reconciliatie" ]]; then
+            # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
+            scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
+            if [[ $rc_vgg -ne 0 ]]; then
+              echo "::error::vgg_blok7_nameting.sh eindigde met code $rc_vgg (3 = deploy-drift, anders auth-/executiefout)"
+              exit "$rc_vgg"
+            fi
+          fi
+          if [[ "$ONDERDEEL" == "alles" || "$ONDERDEEL" == "reconciliatie" ]]; then
+            UIT="verkenning/nameting-reconciliatie-$DATUM.txt"
+            rc_rec=0
+            scripts/gcp/nameting.sh reconciliatie-alles --lees-only > "$UIT" 2> nameting-reconciliatie.stderr || rc_rec=$?
+            cat nameting-reconciliatie.stderr >&2
+            # Auth-/executiefout = geen job-executie gestart → rood. Een rode job-executie (afwijkingen gemeld) = uitkomst.
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-reconciliatie.stderr; then
+              echo "::error::reconciliatie-alles --lees-only kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_rec)" >> "$UIT"
+            echo "STATUS reconciliatie: rapport in $UIT (job-exit $rc_rec = uitkomst)"
+          fi
+          # Oordeelregel voor het commitbericht: uit het replay-rapport van vandaag als dat er is, anders een telling.
+          OORDEEL=""
+          if [[ -f "verkenning/nameting-vgg-replay-$DATUM.txt" ]]; then
+            OORDEEL="$(grep -m1 -o 'Oordeel: [^*]*' "verkenning/nameting-vgg-replay-$DATUM.txt" | cut -c1-140 || true)"
+          fi
+          [[ -n "$OORDEEL" ]] || OORDEEL="$(ls verkenning/nameting-*-"$DATUM".txt 2>/dev/null | wc -l | tr -d ' ') rapport(en) van $DATUM"
+          echo "datum=$DATUM" >> "$GITHUB_OUTPUT"
+          echo "oordeel=$OORDEEL" >> "$GITHUB_OUTPUT"
+
+      - name: Uitkomsten committen als nameting-bot (alleen verkenning/nameting-*.txt)
+        env:
+          ONDERDEEL: ${{ inputs.onderdeel || 'alles' }}
+          DATUM: ${{ steps.meting.outputs.datum }}
+          OORDEEL: ${{ steps.meting.outputs.oordeel }}
+        run: |
+          set -euo pipefail
+          git config user.name "nameting-bot"
+          git config user.email "nameting@rlz-boekhouding.iam.gserviceaccount.com"
+          git add -- 'verkenning/nameting-*.txt'
+          if git diff --cached --quiet; then
+            echo "geen wijzigingen in verkenning/nameting-*.txt — geen commit"
+            exit 0
+          fi
+          git commit -m "nameting $DATUM $ONDERDEEL — $OORDEEL"
+          # Peter kan intussen gepusht hebben: één keer rebasen en opnieuw proberen (alleen onze txt-bestanden raken).
+          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }

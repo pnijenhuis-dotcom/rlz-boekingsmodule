@@ -16,10 +16,17 @@
 #      aanroep. Vereist een geldige GEBRUIKERSsessie (info@vastly.software heeft roles/iam.serviceAccountTokenCreator op
 #      het SA) — de dagelijkse herlogin blijft dan bestaan, maar élke job-start staat in de audit op naam van het SA.
 #   3. Geen env-bestand → huidig gedrag (gebruikerssessie, geen impersonatie) mét melding.
+#   0. (werkloop automatisch 14-09) GITHUB_ACTIONS=true → de runner is via WIF (google-github-actions/auth) al ALS het
+#      SA ingelogd; geen impersonatie-vlag, geen env-bestand, geen key. Alleen NAMETING_SA gezet voor de meldingen.
+#      Lokaal gedrag (1–3) ongewijzigd.
 set -euo pipefail
 NAMETING_ENV="${NAMETING_ENV:-$HOME/Sleutels/nameting.env}"
 NAMETING_GCLOUD_FLAGS=()
-if [[ -f "$NAMETING_ENV" ]]; then
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  : "${NAMETING_SA:=nameting@rlz-boekhouding.iam.gserviceaccount.com}"
+  export NAMETING_SA
+  echo ">> nameting: GitHub Actions — runner is via WIF al ingelogd als ${NAMETING_SA} (geen impersonatie, geen key)" >&2
+elif [[ -f "$NAMETING_ENV" ]]; then
   # shellcheck disable=SC1090
   source "$NAMETING_ENV"
   : "${NAMETING_SA:=nameting@rlz-boekhouding.iam.gserviceaccount.com}"
