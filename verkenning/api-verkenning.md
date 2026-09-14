@@ -2172,6 +2172,73 @@ regels" — halve data, rapport onbetrouwbaar; zie `verkenning/nameting-vgg-repl
 `RLZ-calls: N (webfilter-treffers hervat: 0)` in de rapportkop. Meetrecept: `scripts/gcp/vgg_blok7_nameting.sh c`.
 
 
+## Memoriaalregels — teken per regel, STAP-0 14-09 (run 2 VGG blok 7d; administratie Vastgoedgroep Nederland B.V.; lees-only via `nameting.sh rlz-lezen`)
+
+**Status 14-09: NIET UITGEVOERD — de gcloud-gebruikerssessie (`info@vastly.software`) was verlopen; alle tien calls faalden
+vóór de job-start met `ERROR: (gcloud.run.jobs.execute) There was a problem refreshing your current auth tokens:
+Reauthentication failed. cannot prompt during non-interactive execution.` Alleen Peter kan `gcloud auth login` doen; de
+STAP 0 is daarom als meetrecept klaargezet (`scripts/gcp/vgg_blok7_nameting.sh e`, onderdeel van `alles`) en de uitkomst
+landt in `verkenning/nameting-vgg-memoriaalregels-<dd-mm>.txt` → letterlijk hieronder overnemen (tabel per regel:
+Account, CreditOrDebit, DebitAmount, CreditAmount, NetAmount, en wat de vertaler ervan maakt).**
+
+Aanleiding (nameting 13-09, `verkenning/nameting-vgg-replay-13-09.txt`): saldibalans RLZ vs berekend Odoo klapt om op 0500
+(−100 / +100), 1601 (−6.217.000 / +6.217.000) terwijl 1100 in hetzelfde document klopt, 1602 (+257.497,50 / −257.497,50),
+1603, 1604, 0899, 1606, 1710, 8199, en 8000 per 31-12 Δ 1.005.110 (RLZ-06-00000122) dat 123 op 01-01 terugdraait (Δ 0 per
+13-09); 1011, 4000/4001/4009, 7000, 4601/4612/4106, 1201, 0101 klappen NIET om.
+
+**Afgeleid bewijs uit de 13-09-data (géén live call nodig, tabel "Ongemapte RLZ-rekeningen" = `Ledgers.AccountType`):**
+
+| Rekening | AccountType | Omgeklapt? |
+|---|---|---|
+| 0500, 0899, 1601, 1602, 1603, 1604, 1606, 1710 | 4 (passiva) | JA — alle |
+| 8000, 8199 | 1 (opbrengst) | JA — alle |
+| 1001, 1011, 1100, 1201, 0101 | 3 (activa) | NEE — alle (1001 alleen via de bank-groep) |
+| 4000, 4001, 4009, 4106, 4601, 4612, 7000 | 2 (kosten) | NEE — alle |
+
+Het patroon is dus **niet** "debet ↔ credit gewisseld" en **niet** "alles debet": het volgt exact de NORMALE ZIJDE van de
+rekening (passiva/opbrengst = credit-normaal klapt om, activa/kosten = debet-normaal blijft). Dat verklaart óók 122/123:
+8000 credit op 31-12 → debet (Δ 2 × 502.555), 8000 debet op 01-01 → credit (Δ weer 0). Een gewone D/C-wissel of de
+`CreditOrDebit`-code (gespiegeld op lezen, zie "Bank fallback-PoC" hierboven) kan dit patroon niet maken.
+
+**Oorzaak in de code (bewezen op de code, niet op de live regel):** `vertaling.vertaal_document` las per regel EERST
+`NetAmount` (`_netto_en_btw`) en oriënteerde die met "positief = debet" (`_orienteer_bedrag(…, "entry")`); alleen als
+`NetAmount` ontbrak viel hij terug op `DebitAmount`/`CreditAmount`. De regelsom-controle liep intussen wél over
+`orienteer()` (Debit/CreditAmount) en was dus altijd 0 — de fout bleef onzichtbaar. Hypothese over RLZ (te bevestigen in
+de STAP 0): de memoriaalregel in de document-vorm draagt naast `DebitAmount`/`CreditAmount` een `NetAmount` waarvan het
+teken de normale zijde van de rekening volgt (credit op passiva = +). Het live antwoord op RLZ-06-00000001 (13-09) toonde
+al `CreditOrDebit 1` samen met `CreditAmount` — consistent met "1 = bedrag op de normale zijde", niet met "1 = debet".
+
+**Fix (blok 7d punt 1, onafhankelijk van welk veld RLZ precies zo vult):** `rlz_bron.memoriaal_debet_credit` — een
+memoriaalregel wordt UITSLUITEND uit `DebitAmount`/`CreditAmount` vertaald; `NetAmount` en `CreditOrDebit` tellen niet;
+ontbreken beide bedragvelden → document zichtbaar niet vertaalbaar. Plus harde balanscontrole op de VERTAALDE regels
+(Σ debet = Σ credit cent-exact) → teller "memoriaal uit balans", oordeel ROOD. De `CreditOrDebit`-code wordt nergens meer
+als richting gelezen (`debet_credit` kent dat pad niet meer).
+
+**Uit te voeren calls (stap e van het nameting-script; per call ~1 min):**
+
+| # | Doel | Call |
+|---|---|---|
+| a | RLZ-06-00000001 (0500/1001) regels | `rlz-lezen --pad ManualJournals --record-via-filter "ReceiptNumber eq 'RLZ-06-00000001'" --expand "DocumentLineList($expand=Account)"` |
+| b | RLZ-06-00000106 (1100/1601) | idem, `'RLZ-06-00000106'` |
+| c | RLZ-06-00000038 (loonjournaal 1710/1605/4000/8199) | idem, `'RLZ-06-00000038'` |
+| d | RLZ-60-00000003 (1602/1001) | idem, `'RLZ-60-00000003'` |
+| e | RLZ-06-00000122 + 123 (jaarafsluiting 8000, terugdraai) | idem |
+| f | RLZ-kolom-waarheid: JournalEntryLines 0500; 1601+1100 op 2025-12-31; 1710/8199/1605/4000 op 2025-06-30; 1602 op 2025-08-09; 8000 op 31-12/01-01; 4900 | `rlz-lezen --pad JournalEntryLines --filter "…" --expand "Account,JournalEntry" --top 50 --count` |
+
+Bij het invullen: per regel `Account.AccountNumber | CreditOrDebit | DebitAmount | CreditAmount | NetAmount | vertaler
+(debit/credit) | JournalEntryLine (debit/credit)`; klopt de hypothese (NetAmount volgt de normale zijde) dan de CLAUDE.md-
+regel onder "ManualJournals" corrigeren ("`CreditOrDebit` is op lezen géén richting"); klopt hij niet, dan staat de
+werkelijke oorzaak hier en blijft de fix (Debit/CreditAmount-only) geldig zolang de regels die velden dragen.
+
+**Punt 2 (EventID-volledigheid) — zelfde status.** Bewezen (13-09): 71 = inkoopdocument, 51 = verkoop/receipt-document.
+Onbekend: de codes bij DocumentType 11 (442 posten vs 228 documenten) en 19 (54 vs 9), en welke codes bij DocumentType 1
+(1163 vs 781) en 10 (98 vs 71) betalingen/afletteringen zijn. Het replay-rapport toont sinds 7d per DocumentType álle
+EventID-codes mét aantallen (tabel "Journaalposten per EventID") — dat IS de STAP-0-lezing voor punt 2; de vastgestelde
+document-codes gaan daarna in `rlz_bron.DOCUMENT_EVENTIDS`. Tot dan meldt de toets voor 11/19 letterlijk "toets niet
+uitvoerbaar met deze API" mét de gevonden codes. Los te proberen (niet gelukt door de sessie): `JournalEntries?$filter=
+EventID eq 71&$count=true`, `JournalEvents?$top=50` (bestaat de lookup-collectie?), `JournalEntries?$filter=DocumentType eq
+Reeleezee.DTO.DocumentType'11'` (enum-literal-vorm).
+
 ## Memoriaalregels + EventID/BookDate — STAP-0 13-09 (run 2 VGG blok 7c; lees-only via `nameting.sh rlz-lezen`, administratie Vastgoedgroep Nederland B.V., memoriaal RLZ-06-00000001 `bfae5951-fa8e-4329-ad1d-9c8f228fa8b6`, factuur RLZ-04-00000094)
 
 Aanleiding: de replay-nameting 13-09 (`verkenning/nameting-vgg-replay-13-09.txt`) gaf voor álle 228 geboekte memorialen

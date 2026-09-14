@@ -6,6 +6,18 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-14 — Proefrapport overstap Vastgoedgroep: memorialen op het juiste teken
+
+<!-- run2-vgg:blok7d -->
+
+### Vastgoedgroep Nederland (voorbereiding overstap)
+- Memoriaalboekingen gaan nu op de juiste kant (debet/credit) mee in het proefrapport; een memoriaal die niet in balans is wordt benoemd en houdt het rapport rood, in plaats van stil door te rekenen.
+- De controle "aantal journaalposten = aantal geboekte documenten" telt alleen de echte documentposten en zet betalingen en afletteringen apart; kan dat voor een soort nog niet, dan zegt het rapport dat letterlijk.
+- De eigen resultaatposten van Reeleezee (winst, verlies, resultaat lopend boekjaar) staan in een apart blok met een sluitcontrole; ze tellen nooit meer als verschil.
+- Een betalingsverschil van een cent wordt als afboeking op Betalingsverschillen meegenomen, zodat de open post op nul uitkomt.
+- Het rapport kent nu de stand "groen zonder doel": alles wat zonder Odoo-koppeling te toetsen is, is in orde; de groepstoets en de controle per pand melden dan "niet meetbaar" in plaats van rood.
+- Een factuur zonder bekende relatie blijft een geblokkeerd concept ("partner onbekend — toewijzen") tot iemand de relatie kiest; er komt geen verzamelrelatie.
+
 ## 2026-09-13 — Rustiger lezen uit Reeleezee, migratie-voorbereiding Vastgoedgroep
 
 <!-- run2-vgg:blok7b -->

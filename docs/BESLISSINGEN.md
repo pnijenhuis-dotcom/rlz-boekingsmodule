@@ -9113,3 +9113,68 @@ de vier notaris-nota's als `aankoop`, Donkerslootstraat 105B zonder 0101-koppeli
 **Werkt in productie: nog niet gemeten.**
 
 <!-- run2-vgg:blok7c -->
+
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 7d: TEKENFOUT MEMORIALEN, VOLLEDIGHEIDSTOETS, RESULTAATPOSTEN, BETALINGSVERSCHIL (14-09-2026; opdracht Peter 14-09 op de productienameting 13-09 (image `7c3d56a`); besluiten Peter 14-09 punt 5 + 6 canoniek; geen Odoo-/RLZ-writes, geen migratie)
+
+**Aanleiding.** De nameting 13-09 op `7c3d56a` (`verkenning/nameting-vgg-{replay,schoonlijst,panden,rlz-dubbel-snede2}-13-09.txt`)
+bewees blok 7c (1089/1089 via de document-vorm, 0 zonder regels, 0 webfilter, regelsom cent-exact, 7000/4106/4601/4612
+cent-exact, Molenhof 3.003 paren uitgesloten, partners onbekend 415 → 2) maar het oordeel bleef ROOD om vier oorzaken:
+(1) tekenfout in de memoriaal-vertaling, (2) volledigheidstoets journaalposten sluit nooit op ruwe aantallen, (3) RLZ's
+resultaatposten (DocumentType 0) telden als verschil, (4) betalingsverschil-afboeking zonder tegenhanger; plus (5) de
+rapportstand zonder doelkoppeling en (6) het partner-beslispunt. Pre-feature-check: bouwt 1-op-1 voort op "RUN 2 BLOK 7c";
+geen scherm-impact.
+
+**Besluiten Peter 14-09 (canoniek hier):**
+- **Punt 6 — partners:** GEEN dummy-partner "Bank-direct (onbekend)". Een document zonder Entity en zonder eenduidige
+  bank-tegenpartij blijft een GEBLOKKEERD concept met reden "partner onbekend — toewijzen in Toewijzing" tot een mens de
+  partner geeft (productie 13-09: RLZ-04-00000109 en RLZ-25-00000111). Status `geblokkeerd` (nieuw), eigen tabel + teller;
+  telt niet als ROOD; beslispunt uit het rapport.
+- **Punt 5 — per pand:** de per-pand-toets "sluit" is een GO-eis bij SCHRIJF c, niet bij SCHRIJF a. Zonder doelkoppeling
+  dragen groepstoets en per-pand de stand "niet meetbaar — doelkoppeling ontbreekt" (geen verschil-getallen); bedragen met
+  zekerheid "midden" blijven buiten de sommen (mens wint) en het rapport zegt per pand hoeveel midden-koppelingen op de
+  Toewijzing wachten. Het oordeel kent drie standen: ROOD, GROEN, GROEN ZONDER DOEL; de derde vervalt automatisch zodra de
+  doelkoppeling er is. Geen andere toets valt onder die stand.
+
+**STAP 0 (punt 1 + 2) — NIET UITGEVOERD op 14-09.** Alle tien lees-only calls via `scripts/gcp/nameting.sh rlz-lezen`
+faalden vóór de job-start: `ERROR: (gcloud.run.jobs.execute) There was a problem refreshing your current auth tokens:
+Reauthentication failed. cannot prompt during non-interactive execution.` (gebruikerssessie `info@vastly.software`
+verlopen; herlogin is een handeling van Peter). Wat wél is vastgesteld, uit de 13-09-data zelf (api-verkenning
+"Memoriaalregels — teken per regel, STAP-0 14-09"): de omgeklapte rekeningen zijn EXACT de rekeningen met `AccountType` 4
+(passiva) en 1 (opbrengst); alle rekeningen met type 3 (activa) en 2 (kosten) klopten — het teken volgde de normale
+zijde van de rekening, niet debet/credit. In de code: `vertaal_document` las een memoriaalregel eerst op `NetAmount` mét
+"positief = debet" en viel pas zonder `NetAmount` terug op `DebitAmount`/`CreditAmount`; de regelsom-controle liep over
+de bronvelden en was daardoor altijd 0. De fix (Debit/CreditAmount-only) is geldig ongeacht welk veld RLZ precies
+zijde-afhankelijk vult; de STAP 0 blijft verplicht om de letterlijke RLZ-waarden vast te leggen en de CLAUDE.md-regel
+over `CreditOrDebit` (1 = debet, 2 = credit) alleen dán te corrigeren — die regel is op 14-09 bewust NIET aangepast.
+Instrument: `rlz-lezen --record-via-filter "ReceiptNumber eq '…'"` (collectie → precies één treffer → record met alleen
+`$expand`; geen GUID nodig, uitvoer geanonimiseerd) + stap `e` in `vgg_blok7_nameting.sh` (zes memorialen + zes
+JournalEntryLines-waarheden → `verkenning/nameting-vgg-memoriaalregels-<dd-mm>.txt`).
+
+| # | Punt | Gebouwd / uitkomst | Waar |
+|---|---|---|---|
+| 1 | Tekenfout memorialen (BLOKKER) | `rlz_bron.memoriaal_debet_credit`: UITSLUITEND `DebitAmount`/`CreditAmount`; beide afwezig → document niet vertaalbaar mét reden "memoriaalregel(s) zonder DebitAmount/CreditAmount — nooit via de CreditOrDebit-code"; `debet_credit` kent het `CreditOrDebit`-pad niet meer. Harde balansguard op de VERTAALDE regels: Σ debet ≠ Σ credit → `Vertaald.uit_balans`, status niet vertaalbaar, teller `memoriaal_uit_balans`, tabel "Memoriaal uit balans", oordeel ROOD, statusregel "N memoriaal uit balans". Herclassificaties (rol-rekening) ook zonder rekeningmapping zichtbaar (`van = ongemapt:<code>`) zodat de saldibalans schoont | `rlz_bron.py`, `vertaling.py::vertaal_document`, `replay.py::_uit_balans`, `rapport.py`, `cli_replay.py::statusregel`; tests `tests/migratie/test_blok7d.py::TestPunt1TekenMemorialen` (vijf STAP-0-documenten als fixture — regelmodel 13-09, letterlijke RLZ-waarden volgen uit STAP 0; verwachte Odoo-kant = JournalEntryLines; balans per move; regressiebewijs dat de oude NetAmount-route precies 0500/1601/1602 omklapt en 1100/4000/7000 heel laat) |
+| 2 | Volledigheidstoets EventID | Per DocumentType: journaalposten per `EventID` (`rlz_bron.journaalregel_eventid`), documentposten = codes in `rlz_bron.DOCUMENT_EVENTIDS` (bewezen 1 → {71}, 10 → {51}), overige = "betalings-/afletter-/correctieposten N"; oordeel "sluit (N documentposten = N geboekt)" / "VERSCHIL ±n" / voor 11 en 19 letterlijk "toets niet uitvoerbaar met deze API: document-EventID … niet vastgesteld (gevonden codes: …)". Tabel "Journaalposten per EventID (soortcode) per DocumentType" = de STAP-0-lezing voor punt 2 ná deploy | `replay.py::_volledigheid_per_type`, `rlz_bron.DOCUMENT_EVENTIDS`; tests `TestPunt2VolledigheidEventID` |
+| 3 | RLZ-resultaatposten | JournalEntryLines met `JournalEntry.DocumentType` 0 vallen uit de RLZ-kolom van de verschiltoets en staan in het blok "RLZ-resultaatposten (niet gemigreerd, Odoo berekent zelf)" mét sluitcontrole: Σ debet − credit = 0 én 7999 + 8999 = −0509 (per 31-12 én per vandaag); rood = "RLZ-kolom onvolledig gelezen" → oordeel ROOD (`ReplayRapport.resultaat_sluit`) | `replay.py::_saldibalans`/`_resultaatposten`, `rlz_bron.is_resultaatpost`; tests `TestPunt3Resultaatposten` |
+| 4 | Betalingsverschil | Open post mét RLZ open 0, wél koppelingen, restant ≠ 0, geen verrekeningspaar → write-off op de rekening Betalingsverschillen (RLZ-code 4900 of naam-regex) via de BESTAANDE grootboek-mapping (zonder mapping `ongemapt:4900`, zichtbaar; geen nieuwe rol → geen beslispunt), tegenzijde crediteuren/debiteuren, datum = laatste betaling, cent-exact; `reconcile[].write_off` op de betalende bankregel (input run 3); open berekend → 0; tabel + teller "betalingsverschillen N / Σ" | `replay.py::_open_posten`/`betalingsverschil_ledger`; tests `TestPunt4Betalingsverschil` |
+| 5 | GROEN ZONDER DOEL | `ReplayRapport.doel_afwezig` (doel incompleet óf geen `--odoo-rekeningen`); `groen_zonder_doel` = alle doel-onafhankelijke toetsen groen én `niet_vertaalbaar_overig` 0 (blokkade-codes op `Vertaald.blokkades`: DOEL = ongemapt/rol/btw-rol; partner apart; alles anders = ROOD); groepstoets en per-pand → stand + geen verschil-getallen; kolom "Midden-koppelingen (wachten op Toewijzing)"; oordeeltekst "GROEN ZONDER DOEL — groepstoets en per pand niet meetbaar — doelkoppeling ontbreekt" | `rapport.py` (`oordeel`, `groen_zonder_doel`), `replay.py::dry_run`/`_saldibalans`/`_per_pand`; tests `TestPunt5GroenZonderDoel` |
+| 6 | Partner-blokkade | Status `geblokkeerd` (nieuw in `ALLE_STATUSSEN`), reden `PARTNER_ONBEKEND_REDEN`, tabel "Geblokkeerd — partner onbekend", teller `geblokkeerd_partner`, kolom in de move-type-tabel; BESLISPUNTEN 6 herschreven als besluit; tekst "BESLISPUNT PETER" weg | `vertaling.py`, `replay.py::_tabellen`, `rapport.py`; tests `TestPunt6PartnerGeblokkeerd` + herziene `TestBlok7c` |
+| + | Instrument | `rlz-lezen --record-via-filter` (twee GET's, precies één treffer, id nooit in de uitvoer); `vgg_blok7_nameting.sh e` (STAP-0 memoriaalregels) in `alles` | `app/rlz/lezen_cli.py`, `scripts/gcp/vgg_blok7_nameting.sh`; test `test_record_via_filter_…` |
+
+**Tests:** tests/migratie 206 → 227 groen (nieuw `test_blok7d.py` 21; `test_replay.py` 5 herzien), tests/rlz/test_rlz_lezen_cli
++1, CLAUDE.md-guard groen; ruff schoon. `tests/accordering/test_staande_voorstel_periodiek.py` draaide groen (9 passed) — niet
+rood, dus niet aangeraakt. Geen migratie, geen schema-wijziging, geen Odoo-/RLZ-writes.
+
+**Meetrecept (ná deploy; Peter):** `scripts/gcp/vgg_blok7_nameting.sh alles` → `verkenning/nameting-vgg-*-<dd-mm>.txt`
+committen (nu incl. `memoriaalregels`). Meetlatten: oordeel **GROEN ZONDER DOEL**; saldibalans 0500 = −100, 1601 =
+−6.217.000, 1602 = +257.497,50, 1603 = −385.000, 0899 = −185.000, 1710 = −4,40, 8199 = −3,60, 8000 per 31-12-2025 verschil 0,
+1100/1011/4000 ongewijzigd correct; teller memoriaal uit balans 0; volledigheidstoets per DocumentType sluitend (1: 781,
+10: 71) of letterlijk verklaard, 11/19 "niet uitvoerbaar" mét codes → codes hier vastleggen en `DOCUMENT_EVENTIDS`
+aanvullen; resultaatposten eigen blok, sluitcontrole GROEN (661.529,12 − 265.262,40 = 396.266,72); 4900 verschil 0,00 en
+RLZ-04-00000073 open berekend 0,00 (betalingsverschillen 1 / Σ 0,02); groepstoets en per pand "niet meetbaar —
+doelkoppeling ontbreekt"; partners onbekend 2 als geblokkeerd concept (RLZ-04-00000109, RLZ-25-00000111); stap e: per
+regel de letterlijke RLZ-waarden → api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09" invullen en pas dán
+de CLAUDE.md-regel over `CreditOrDebit` aanpassen.
+
+**Werkt in productie: nog niet gemeten.**
+
+<!-- run2-vgg:blok7d -->

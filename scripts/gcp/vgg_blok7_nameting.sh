@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run 2 VGG blok 7 — STAP 1: lees-only nametingen productie (opdracht Peter 12-09), ná een groene deploy.
-#   scripts/gcp/vgg_blok7_nameting.sh [a|b|c|d|alles]        (default: alles)
+#   scripts/gcp/vgg_blok7_nameting.sh [a|b|c|d|e|alles]      (default: alles; e = STAP-0 memoriaalregels, blok 7d)
 # Voorwaarde (voorwaarde-regel blok 7): service én álle jobs draaien hetzelfde image; anders stoppen en melden.
 # Uitvoer: verkenning/nameting-vgg-<onderdeel>-<datum>.txt (committen). Alles via scripts/gcp/nameting.sh (allowlist,
 # nameting-SA/impersonatie) — niets schrijft.
@@ -66,10 +66,37 @@ run_c() {  # replay dry-run — meetlat 13-09: 0 regels ontbrekend, 0 leesfouten
 run_d() {  # rlz_dubbel lees-only over ALLE administraties — --lees-only zet snede 2 aan; meetlat 13-09: nieuwe tellers (periodiek uitgesloten)
   stap rlz-dubbel-snede2 reconciliatie-alles --alleen rlz_dubbel --lees-only
 }
+# Blok 7d 14-09 — STAP 0 memoriaalregels (punt 1) + JournalEntryLines-waarheid per rekening: lees-only via
+# `rlz-lezen --record-via-filter` (geen GUID's nodig — de uitvoer is geanonimiseerd). Eén bestand, alle calls achter
+# elkaar; letterlijk overnemen in api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09".
+run_e() {
+  local bestand; bestand="$(uit memoriaalregels)"
+  : > "$bestand"
+  local nr
+  for nr in RLZ-06-00000001 RLZ-06-00000106 RLZ-06-00000038 RLZ-60-00000003 RLZ-06-00000122 RLZ-06-00000123; do
+    printf '\n##### %s — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)\n' "$nr" | tee -a "$bestand"
+    "$HIER/nameting.sh" rlz-lezen --administratie "$ADMIN" --pad ManualJournals \
+      --record-via-filter "ReceiptNumber eq '$nr'" --expand 'DocumentLineList($expand=Account)' 2>&1 | tee -a "$bestand" || true
+  done
+  printf '\n##### JournalEntryLines-waarheid per rekening/datum (RLZ-kolom)\n' | tee -a "$bestand"
+  local f
+  for f in \
+    "Account/AccountNumber eq '0500'" \
+    "(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-31T00:00:00Z and JournalEntry/BookDate lt 2026-01-01T00:00:00Z" \
+    "(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-30T00:00:00Z and JournalEntry/BookDate lt 2025-07-01T00:00:00Z" \
+    "Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-09T00:00:00Z and JournalEntry/BookDate lt 2025-08-10T00:00:00Z" \
+    "Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-31T00:00:00Z and JournalEntry/BookDate lt 2026-01-02T00:00:00Z" \
+    "Account/AccountNumber eq '4900'"; do
+    printf '\n##### JournalEntryLines $filter=%s\n' "$f" | tee -a "$bestand"
+    "$HIER/nameting.sh" rlz-lezen --administratie "$ADMIN" --pad JournalEntryLines --filter "$f" \
+      --expand "Account,JournalEntry" --top 50 --count 2>&1 | tee -a "$bestand" || true
+  done
+  echo "STATUS memoriaalregels: uitkomst weggeschreven naar $bestand" >&2
+}
 
 case "$KEUZE" in
-  a) run_a ;; b) run_b ;; c) run_c ;; d) run_d ;;
-  alles) run_a; run_b; run_c; run_d ;;
-  *) echo "gebruik: $0 [a|b|c|d|alles]" >&2; exit 2 ;;
+  a) run_a ;; b) run_b ;; c) run_c ;; d) run_d ;; e) run_e ;;
+  alles) run_a; run_b; run_c; run_d; run_e ;;
+  *) echo "gebruik: $0 [a|b|c|d|e|alles]" >&2; exit 2 ;;
 esac
 echo ">> klaar — uitvoer in verkenning/nameting-vgg-*-$DATUM.txt (committen)" >&2
