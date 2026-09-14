@@ -16,6 +16,9 @@ export interface ComboboxOptie {
    * door useGrootboekOpties, doorgeefluik voor BoekvoorstelPanel's "btw volgt de rekening" bij een grootboek-wissel.
    * SearchableCombobox zelf doet niets met dit veld. */
   standaardTaxrateId?: string | null
+  /** Idem, afgeleid uit de historie (0143, `historie_taxrate_id` + `historie_taxrate_n`) — volgt ná de RLZ-default. */
+  historieTaxrateId?: string | null
+  historieTaxrateN?: number | null
 }
 
 function weergaveTekst(optie: ComboboxOptie): string {

@@ -690,11 +690,22 @@ export function BoekvoorstelPanel({
   }, [taxrateOpties])
   // 14-09 (btw-default uit de grootboekrekening): {ledgerId: standaard taxrateId} uit de sync-cache, alleen tarieven
   // die in de btw-lijst van deze administratie staan (een verdwenen tarief vult nooit).
+  // 0143 (vervolg 14-09): per rekening de RLZ-default ('grootboek', grijs) óf — als die ontbreekt — de uit de eigen
+  // historie afgeleide default ('grootboek_historie', oranje mét "meestal op deze rekening (n×)"); zelfde volgorde als
+  // server-side (regel_prefill.py stap 5 → 5b).
   const grootboekDefaultMap = useMemo(() => {
-    const map: Record<string, string> = {}
+    const map: Record<string, { taxrateId: string; bron: 'grootboek' | 'grootboek_historie'; detail: string | null }> = {}
     const bekendeTarieven = new Set(taxrateOpties.map((t) => t.id))
     for (const optie of grootboekOpties) {
-      if (optie.standaardTaxrateId && bekendeTarieven.has(optie.standaardTaxrateId)) map[optie.id] = optie.standaardTaxrateId
+      if (optie.standaardTaxrateId && bekendeTarieven.has(optie.standaardTaxrateId)) {
+        map[optie.id] = { taxrateId: optie.standaardTaxrateId, bron: 'grootboek', detail: null }
+      } else if (optie.historieTaxrateId && bekendeTarieven.has(optie.historieTaxrateId)) {
+        map[optie.id] = {
+          taxrateId: optie.historieTaxrateId,
+          bron: 'grootboek_historie',
+          detail: optie.historieTaxrateN ? `meestal op deze rekening (${optie.historieTaxrateN}×)` : null,
+        }
+      }
     }
     return map
   }, [grootboekOpties, taxrateOpties])
@@ -1081,8 +1092,8 @@ export function BoekvoorstelPanel({
           bijgewerkt.handmatigeVelden = { ...r.handmatigeVelden, [veld]: true }
         }
         let btwVolgtRekening = false
-        const btwMagVolgen =
-          !r.handmatigeVelden.taxrateId && (r.taxrateId === null || r.btwBron === 'grootboek' || r.btwBron === 'standaard')
+        const volgdeRekening = r.btwBron === 'grootboek' || r.btwBron === 'grootboek_historie'
+        const btwMagVolgen = !r.handmatigeVelden.taxrateId && (r.taxrateId === null || volgdeRekening || r.btwBron === 'standaard')
         if (veld === 'ledgerId' && btwMagVolgen) {
           // 14-09 (opdracht Peter, casus L.H.G. Holding): kiest de mens een andere grootboekrekening, dan volgt de
           // btw-code de standaard van die rekening (RLZ PreferentialTaxRate) — zolang de btw niet van de mens is én
@@ -1091,11 +1102,11 @@ export function BoekvoorstelPanel({
           // gaat weg (nooit de default van een ándere rekening laten staan); een administratie-default blijft.
           const standaard = waarde ? grootboekDefaultMap[waarde] : undefined
           if (standaard) {
-            bijgewerkt.taxrateId = standaard
-            bijgewerkt.btwBron = 'grootboek'
-            bijgewerkt.btwDetail = null
+            bijgewerkt.taxrateId = standaard.taxrateId
+            bijgewerkt.btwBron = standaard.bron
+            bijgewerkt.btwDetail = standaard.detail
             btwVolgtRekening = true
-          } else if (r.btwBron === 'grootboek') {
+          } else if (volgdeRekening) {
             bijgewerkt.taxrateId = null
             bijgewerkt.btwBron = null
             bijgewerkt.btwDetail = null

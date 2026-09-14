@@ -12,7 +12,8 @@
 
 - De btw-code volgt nu de standaard van de grootboekrekening: staat er in Reeleezee (of Odoo) op een rekening een standaard btw-tarief, dan vult het controlescherm dat in zodra de rekening gekozen is — met de grijze chip "standaard grootboek". Kies je een andere rekening, dan volgt de btw-code mee; kies je zelf een btw-code, dan blijft die staan.
 - De volgorde blijft: een btw-code die uit de factuur is berekend of uit het leverancier-geheugen komt wint altijd van deze standaard; de standaard van de rekening wint van de standaard van de administratie.
-- Let op: de module neemt de standaard over uit Reeleezee. Staat er in Reeleezee op de rekening geen standaard btw-tarief (zoals nu op "Kosten mobiele telefonie" bij L.H.G. Holding), dan blijft het veld leeg tot dat tarief daar is gezet; de eerstvolgende nachtelijke synchronisatie neemt het over.
+- Staat er in Reeleezee op de rekening geen standaard btw-tarief (in de praktijk bijna altijd), dan leidt de module de standaard zelf af uit de eigen boekingen: staat op een grootboekrekening in de laatste 24 maanden op minstens vijf inkoopregels in minstens 90 % van de gevallen hetzelfde btw-tarief, dan vult het controlescherm dat tarief in met de oranje chip "meestal op deze rekening (n×)". Oranje betekent: afgeleid, controleer even; boeken maakt het tarief voor die leverancier voortaan groen. De afleiding wordt elke nacht opnieuw berekend, zonder extra verkeer naar Reeleezee.
+- De volgorde blijft: een btw-code uit de factuur of het leverancier-geheugen wint; daarna de standaard van de rekening uit Reeleezee, dan de afgeleide standaard uit de historie, dan de standaard van de administratie. Laat de scan de btw bewust leeg (0 % of onduidelijk), dan vult de afgeleide standaard niets — de mens kiest.
 
 ## 2026-09-14 — Eigen pagina Veldwerkers, doorbelasting-instellingen openen weer
 

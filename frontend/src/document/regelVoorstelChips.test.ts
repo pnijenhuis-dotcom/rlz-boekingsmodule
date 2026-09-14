@@ -64,6 +64,19 @@ describe('regelVoorstelChips — btw-default administratie (blok E 04-09, mockup
     expect(btwBronUitDto('grootboek', 'btw-1')).toBe('grootboek')
   })
 
+  it('grootboek_historie (0143) = ORANJE chip mét de n uit het detail, weg zodra de mens de btw zelf koos', () => {
+    expect(bepaalBtwStandaardChip('grootboek_historie', 'btw-1', false, 'meestal op deze rekening (12×)')).toMatchObject({
+      klasse: 'afwijking',
+      tekst: 'meestal op deze rekening (12×)',
+    })
+    expect(bepaalBtwStandaardChip('grootboek_historie', 'btw-1', false)?.tekst).toBe('meestal op deze rekening')
+    expect(bepaalBtwStandaardChip('grootboek_historie', 'btw-1', false)?.titel).toContain('90 %')
+    expect(bepaalBtwStandaardChip('grootboek_historie', 'btw-1', true)).toBeNull()
+    expect(bepaalBtwStandaardChip('grootboek_historie', null, false)).toBeNull()
+    expect(btwBronUitDto('grootboek_historie', 'btw-1')).toBe('grootboek_historie')
+    expect(btwBronUitDto('grootboek_historie', null)).toBeNull()
+  })
+
   it('btw-bron uit de DTO alleen mét een taxrate in het veld', () => {
     expect(btwBronUitDto('standaard', 'btw-1')).toBe('standaard')
     expect(btwBronUitDto('factuur', 'btw-1')).toBe('factuur')

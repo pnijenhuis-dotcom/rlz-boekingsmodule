@@ -13,7 +13,10 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 /** 'factuur' = door code berekend uit netto/btw (groen, chip in het paneel); 'standaard' = btw-default van de
  * administratie (grijs); 'factuur_verlegd' (blok 4c 08-09) = de factuur vermeldt "btw verlegd" en de btw is 0 → het
  * verlegd-tarief van de administratie, ORANJE tot het leverancier-geheugen 'm bevestigt (seed-only-regel). */
-export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd' | 'grootboek'
+/** 'grootboek' (14-09) = standaard-tarief van de rekening in RLZ/Odoo (grijs); 'grootboek_historie' (0143) = dezelfde default
+ * afgeleid uit de eigen boekingshistorie van de rekening — ORANJE "meestal op deze rekening (n×)" tot het
+ * leverancier-geheugen 'm bevestigt (seed-only-regel, geen nieuwe kleurregel). */
+export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd' | 'grootboek' | 'grootboek_historie'
 
 /** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
@@ -77,7 +80,11 @@ export function bepaalProjectFactuurChip(
 
 export function btwBronUitDto(waarde: string | null | undefined, taxrateId: string | null): BtwBron | null {
   if (!taxrateId) return null
-  return waarde === 'factuur' || waarde === 'standaard' || waarde === 'factuur_verlegd' || waarde === 'grootboek'
+  return waarde === 'factuur' ||
+    waarde === 'standaard' ||
+    waarde === 'factuur_verlegd' ||
+    waarde === 'grootboek' ||
+    waarde === 'grootboek_historie'
     ? waarde
     : null
 }
@@ -121,9 +128,10 @@ export function bepaalGbChip(
 }
 
 /** Chip-besluit voor de btw-herkomst náást de berekende factuur-chip (die blijft in het paneel zelf, percentage in de
- * tekst): grijs "standaard administratie" (blok E) of oranje "uit factuur: btw verlegd" (blok 4c 08-09 — winnaarsvolgorde
- * mens > factuur berekend > leverancier-geheugen > factuur verlegd > administratie-default > leeg, zie
- * backend regel_prefill.py). Weg zodra de mens het veld aanraakt of een andere waarde in het veld staat. */
+ * tekst): grijs "standaard administratie" (blok E), grijs "standaard grootboek" (14-09), oranje "meestal op deze rekening
+ * (n×)" (0143) of oranje "uit factuur: btw verlegd" (blok 4c 08-09 — winnaarsvolgorde mens > factuur berekend >
+ * leverancier-geheugen > factuur verlegd > grootboek-default RLZ > grootboek-default historie > administratie-default >
+ * leeg, zie backend regel_prefill.py). Weg zodra de mens het veld aanraakt of een andere waarde in het veld staat. */
 export function bepaalBtwHerkomstChip(
   bron: BtwBron | null,
   huidigTaxrateId: string | null,
@@ -139,6 +147,17 @@ export function bepaalBtwHerkomstChip(
       tekst: 'standaard grootboek',
       titel:
         'Standaard btw-tarief van deze grootboekrekening in Reeleezee (of Odoo) — de module neemt die over zolang factuur en leverancier-geheugen niets zeggen. Kies je een andere rekening, dan volgt de btw-code die rekening; kies je zelf een btw-code, dan wint die. De harde checks blijven de poort.',
+    }
+  }
+  if (bron === 'grootboek_historie') {
+    // Vervolg 14-09 (0143, "geen invulwerk in RLZ"): RLZ draagt in de praktijk geen standaard-tarief op de rekening; de
+    // module leidt 'm af uit de eigen inkoopregels op die rekening (≥ 5 regels, één tarief ≥ 90 %, 24 maanden). Oranje:
+    // afgeleid, nog niet door het leverancier-geheugen bevestigd — boeken maakt 'm voortaan groen.
+    return {
+      klasse: 'afwijking',
+      tekst: detail ?? 'meestal op deze rekening',
+      titel:
+        "Btw-code afgeleid uit de boekingshistorie van deze grootboekrekening: op minstens vijf inkoopregels in de laatste 24 maanden stond in minstens 90 % van de gevallen dit tarief (code, geen AI). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt 'm voor deze leverancier voortaan groen. Kies je een andere rekening, dan volgt de btw-code die rekening; kies je zelf een btw-code, dan wint die. De harde checks blijven de poort.",
     }
   }
   if (bron === 'standaard') {

@@ -803,6 +803,11 @@ export interface GrootboekOptieDto {
    * Odoo `tax_ids`); null = geen default. Het controlescherm laat de btw-code bij een grootboek-wissel volgen zolang
    * de btw niet van de mens is (chip "standaard grootboek"). */
   standaard_taxrate_id?: string | null
+  /** Vervolg 14-09 (0143): dezelfde default AFGELEID uit de boekingshistorie van de rekening (≥ 5 regels, één tarief
+   * ≥ 90 %, 24 maanden) + het aantal regels; null = geen. Volgt bij een grootboek-wissel ná de RLZ-default, mét oranje
+   * chip "meestal op deze rekening (n×)". */
+  historie_taxrate_id?: string | null
+  historie_taxrate_n?: number | null
 }
 
 export interface GrootboekLijstDto {
@@ -853,7 +858,9 @@ export interface BoekvoorstelRegelDto {
   /** Herkomst van de btw-code (feedbackronde 26-08 punt 3): 'factuur' = door code afgeleid uit
    * netto/btw van de gelezen regel (prefill); 'standaard' = btw-default van de administratie (blok E
    * 04-09, chip "standaard administratie"); 'grootboek' = standaard-tarief van de grootboekrekening uit RLZ/Odoo
-   * (14-09, chip "standaard grootboek", wint van 'standaard'); null = leeg, of van de mens/het geheugen. */
+   * (14-09, chip "standaard grootboek", wint van 'standaard'); 'grootboek_historie' = dezelfde default afgeleid uit de
+   * eigen boekingshistorie van de rekening (0143, ORANJE chip "meestal op deze rekening (n×)" via `btw_bron_detail`,
+   * ná 'grootboek', vóór 'standaard'); null = leeg, of van de mens/het geheugen. */
   btw_bron?: string | null
   /** Blok 6 herstelrun 08-09: bij 'factuur_verlegd' de leesbare herkomst van de gekozen verlegd-code ("voorkeur
    * beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — chip-tekst, informatief. */

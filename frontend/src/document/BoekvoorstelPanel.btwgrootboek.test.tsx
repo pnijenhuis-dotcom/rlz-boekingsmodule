@@ -13,6 +13,8 @@ const DOCUMENT_ID = 'bbbbbbbb-0000-0000-0000-000000000002'
 const GB_4403 = 'cccccccc-0000-0000-0000-000000004403' // Telefoonkosten — geen default in RLZ
 const GB_4404 = 'cccccccc-0000-0000-0000-000000004404' // Kosten mobiele telefonie — default hoog
 const GB_4405 = 'cccccccc-0000-0000-0000-000000004405' // Internetkosten — default verwijst naar een verdwenen tarief
+const GB_4407 = 'cccccccc-0000-0000-0000-000000004407' // Autokosten — geen RLZ-default, wél historie-default (0143)
+const GB_4408 = 'cccccccc-0000-0000-0000-000000004408' // Kantoorkosten — RLZ-default laag én historie hoog → RLZ wint
 const TAXRATE_HOOG = 'dddddddd-0000-0000-0000-000000000021'
 const TAXRATE_LAAG = 'dddddddd-0000-0000-0000-000000000009'
 const TAXRATE_VERDWENEN = 'dddddddd-0000-0000-0000-000000000099'
@@ -50,6 +52,8 @@ function installFetchMock(regels: unknown[]) {
               { ledger_id: GB_4403, code: '4403', naam: 'Telefoonkosten', soort: 2, standaard_taxrate_id: null },
               { ledger_id: GB_4404, code: '4404', naam: 'Kosten mobiele telefonie', soort: 2, standaard_taxrate_id: TAXRATE_HOOG },
               { ledger_id: GB_4405, code: '4405', naam: 'Internetkosten', soort: 2, standaard_taxrate_id: TAXRATE_VERDWENEN },
+              { ledger_id: GB_4407, code: '4407', naam: 'Autokosten', soort: 2, standaard_taxrate_id: null, historie_taxrate_id: TAXRATE_HOOG, historie_taxrate_n: 12 },
+              { ledger_id: GB_4408, code: '4408', naam: 'Kantoorkosten', soort: 2, standaard_taxrate_id: TAXRATE_LAAG, historie_taxrate_id: TAXRATE_HOOG, historie_taxrate_n: 30 },
             ],
           }),
         )
@@ -133,6 +137,44 @@ describe('BoekvoorstelPanel — btw volgt de standaard van de grootboekrekening 
     expect(screen.getAllByLabelText('Btw bedrag')[0]).toHaveValue('21,00')
 
     // Wissel naar een rekening zónder default: de gevolgde btw gaat weg (nooit de default van een andere rekening).
+    await kiesGrootboek(gebruiker, /Telefoonkosten/)
+    await waitFor(() => expect(btwVeld).toHaveValue(''))
+    expect(screen.queryByTestId('regel-btw-standaard-chip')).toBeNull()
+  })
+
+  it('0143: server-prefill mét btw_bron grootboek_historie = ORANJE chip "meestal op deze rekening (n×)"', async () => {
+    installFetchMock([
+      regel({ ledger_id: GB_4407, taxrate_id: TAXRATE_HOOG, btw_bron: 'grootboek_historie', btw_bron_detail: 'meestal op deze rekening (12×)', btw_bedrag: '21.00' }),
+    ])
+    renderPanel()
+    const btwVeld = (await screen.findAllByLabelText('Btw-code', { exact: false }))[0]
+    await waitFor(() => expect(btwVeld).toHaveValue('21% · NL, Hoog Tarief'))
+    const chip = screen.getByTestId('regel-btw-standaard-chip')
+    expect(chip).toHaveTextContent('meestal op deze rekening (12×)')
+    expect(chip).toHaveClass('chip', 'afwijking')
+    expect(chip).toHaveAttribute('data-bron', 'grootboek_historie')
+  })
+
+  it('0143: wissel naar een rekening mét alleen een historie-default → btw volgt mét oranje chip; RLZ-default wint van historie', async () => {
+    installFetchMock([regel({})])
+    const gebruiker = userEvent.setup()
+    renderPanel()
+    await screen.findAllByLabelText('Grootboek', { exact: false })
+    await waitFor(() => expect(screen.queryByText('Grootboek laden…')).toBeNull())
+    await kiesGrootboek(gebruiker, /Autokosten/)
+    const btwVeld = screen.getAllByLabelText('Btw-code', { exact: false })[0]
+    await waitFor(() => expect(btwVeld).toHaveValue('21% · NL, Hoog Tarief'))
+    const chip = screen.getByTestId('regel-btw-standaard-chip')
+    expect(chip).toHaveTextContent('meestal op deze rekening (12×)')
+    expect(chip).toHaveClass('afwijking')
+    expect(screen.getAllByLabelText('Btw bedrag')[0]).toHaveValue('21,00')
+
+    // Rekening mét RLZ-default én historie: de RLZ-default wint (grijs, laag) — zelfde volgorde als server-side.
+    await kiesGrootboek(gebruiker, /Kantoorkosten/)
+    await waitFor(() => expect(btwVeld).toHaveValue('9% · NL, Laag Tarief'))
+    expect(screen.getByTestId('regel-btw-standaard-chip')).toHaveTextContent('standaard grootboek')
+
+    // Rekening zonder enige default: de gevolgde btw gaat weg.
     await kiesGrootboek(gebruiker, /Telefoonkosten/)
     await waitFor(() => expect(btwVeld).toHaveValue(''))
     expect(screen.queryByTestId('regel-btw-standaard-chip')).toBeNull()
