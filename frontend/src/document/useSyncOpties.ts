@@ -50,7 +50,7 @@ function useLijst<T>(pad: string, herlaadSleutel: number, naarOpties: (data: T) 
  * `herlaadSleutel` ophogen (bv. na "Nu synchroniseren", design-pass taak 3) forceert een refetch. */
 export function useGrootboekOpties(administratieId: string, herlaadSleutel = 0): LijstResultaat {
   return useLijst<GrootboekLijstDto>(`/administraties/${administratieId}/grootboek`, herlaadSleutel, (d) =>
-    d.rekeningen.map((r) => ({ id: r.ledger_id, code: r.code, label: r.naam })),
+    d.rekeningen.map((r) => ({ id: r.ledger_id, code: r.code, label: r.naam, standaardTaxrateId: r.standaard_taxrate_id ?? null })),
   )
 }
 

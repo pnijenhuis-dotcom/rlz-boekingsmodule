@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-14 — Btw-code volgt de standaard van de grootboekrekening
+
+<!-- btw-default-grootboek-14-09 -->
+
+- De btw-code volgt nu de standaard van de grootboekrekening: staat er in Reeleezee (of Odoo) op een rekening een standaard btw-tarief, dan vult het controlescherm dat in zodra de rekening gekozen is — met de grijze chip "standaard grootboek". Kies je een andere rekening, dan volgt de btw-code mee; kies je zelf een btw-code, dan blijft die staan.
+- De volgorde blijft: een btw-code die uit de factuur is berekend of uit het leverancier-geheugen komt wint altijd van deze standaard; de standaard van de rekening wint van de standaard van de administratie.
+- Let op: de module neemt de standaard over uit Reeleezee. Staat er in Reeleezee op de rekening geen standaard btw-tarief (zoals nu op "Kosten mobiele telefonie" bij L.H.G. Holding), dan blijft het veld leeg tot dat tarief daar is gezet; de eerstvolgende nachtelijke synchronisatie neemt het over.
+
 ## 2026-09-14 — Eigen pagina Veldwerkers, doorbelasting-instellingen openen weer
 
 <!-- veldwerkers-run-14-09 + bugfix-doorbelasting-14-09 -->

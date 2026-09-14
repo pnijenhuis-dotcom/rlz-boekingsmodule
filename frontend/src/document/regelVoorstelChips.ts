@@ -13,7 +13,7 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 /** 'factuur' = door code berekend uit netto/btw (groen, chip in het paneel); 'standaard' = btw-default van de
  * administratie (grijs); 'factuur_verlegd' (blok 4c 08-09) = de factuur vermeldt "btw verlegd" en de btw is 0 → het
  * verlegd-tarief van de administratie, ORANJE tot het leverancier-geheugen 'm bevestigt (seed-only-regel). */
-export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd'
+export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd' | 'grootboek'
 
 /** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
@@ -77,7 +77,9 @@ export function bepaalProjectFactuurChip(
 
 export function btwBronUitDto(waarde: string | null | undefined, taxrateId: string | null): BtwBron | null {
   if (!taxrateId) return null
-  return waarde === 'factuur' || waarde === 'standaard' || waarde === 'factuur_verlegd' ? waarde : null
+  return waarde === 'factuur' || waarde === 'standaard' || waarde === 'factuur_verlegd' || waarde === 'grootboek'
+    ? waarde
+    : null
 }
 
 /** Chip-besluit voor het grootboek-veld: alleen zolang het voorstel nog in het veld staat én de mens het
@@ -129,6 +131,16 @@ export function bepaalBtwHerkomstChip(
   detail: string | null = null,
 ): RegelChip | null {
   if (!bron || !huidigTaxrateId || handmatig) return null
+  if (bron === 'grootboek') {
+    // 14-09 (opdracht Peter, casus L.H.G. Holding "Kosten mobiele telefonie"): het standaard-btw-tarief dat de
+    // grootboekrekening in Reeleezee/Odoo draagt — stap 5 van de winnaarsvolgorde, vóór de administratie-default.
+    return {
+      klasse: 'handmatig',
+      tekst: 'standaard grootboek',
+      titel:
+        'Standaard btw-tarief van deze grootboekrekening in Reeleezee (of Odoo) — de module neemt die over zolang factuur en leverancier-geheugen niets zeggen. Kies je een andere rekening, dan volgt de btw-code die rekening; kies je zelf een btw-code, dan wint die. De harde checks blijven de poort.',
+    }
+  }
   if (bron === 'standaard') {
     return {
       klasse: 'handmatig',

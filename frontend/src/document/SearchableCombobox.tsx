@@ -12,6 +12,10 @@ export interface ComboboxOptie {
    * doorgeefluik voor BoekvoorstelPanel's automatische btw-afleiding (design-pass taak 3).
    * SearchableCombobox zelf doet niets met dit veld. */
   percentage?: number
+  /** Standaard-btw-tarief van een grootboekrekening (14-09, `GrootboekOptieDto.standaard_taxrate_id`) — alleen gezet
+   * door useGrootboekOpties, doorgeefluik voor BoekvoorstelPanel's "btw volgt de rekening" bij een grootboek-wissel.
+   * SearchableCombobox zelf doet niets met dit veld. */
+  standaardTaxrateId?: string | null
 }
 
 function weergaveTekst(optie: ComboboxOptie): string {

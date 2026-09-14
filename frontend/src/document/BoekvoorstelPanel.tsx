@@ -688,6 +688,16 @@ export function BoekvoorstelPanel({
     for (const optie of taxrateOpties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
     return map
   }, [taxrateOpties])
+  // 14-09 (btw-default uit de grootboekrekening): {ledgerId: standaard taxrateId} uit de sync-cache, alleen tarieven
+  // die in de btw-lijst van deze administratie staan (een verdwenen tarief vult nooit).
+  const grootboekDefaultMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    const bekendeTarieven = new Set(taxrateOpties.map((t) => t.id))
+    for (const optie of grootboekOpties) {
+      if (optie.standaardTaxrateId && bekendeTarieven.has(optie.standaardTaxrateId)) map[optie.id] = optie.standaardTaxrateId
+    }
+    return map
+  }, [grootboekOpties, taxrateOpties])
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
@@ -1070,11 +1080,33 @@ export function BoekvoorstelPanel({
           // Vanaf nu is dit veld van de mens: het boekingsgeheugen vult of markeert het nooit meer.
           bijgewerkt.handmatigeVelden = { ...r.handmatigeVelden, [veld]: true }
         }
+        let btwVolgtRekening = false
+        const btwMagVolgen =
+          !r.handmatigeVelden.taxrateId && (r.taxrateId === null || r.btwBron === 'grootboek' || r.btwBron === 'standaard')
+        if (veld === 'ledgerId' && btwMagVolgen) {
+          // 14-09 (opdracht Peter, casus L.H.G. Holding): kiest de mens een andere grootboekrekening, dan volgt de
+          // btw-code de standaard van die rekening (RLZ PreferentialTaxRate) — zolang de btw niet van de mens is én
+          // niet uit de factuur of het geheugen komt (dezelfde winnaarsvolgorde als server-side: factuur > geheugen >
+          // grootboek-default > administratie-default). Rekening zonder default: een eerder gevolgde grootboek-default
+          // gaat weg (nooit de default van een ándere rekening laten staan); een administratie-default blijft.
+          const standaard = waarde ? grootboekDefaultMap[waarde] : undefined
+          if (standaard) {
+            bijgewerkt.taxrateId = standaard
+            bijgewerkt.btwBron = 'grootboek'
+            bijgewerkt.btwDetail = null
+            btwVolgtRekening = true
+          } else if (r.btwBron === 'grootboek') {
+            bijgewerkt.taxrateId = null
+            bijgewerkt.btwBron = null
+            bijgewerkt.btwDetail = null
+            btwVolgtRekening = true
+          }
+        }
         if (veld === 'btw') {
           // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
           // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
           bijgewerkt.btwHandmatig = waarde !== ''
-        } else if ((veld === 'netto' || veld === 'taxrateId') && !bijgewerkt.btwHandmatig) {
+        } else if ((veld === 'netto' || veld === 'taxrateId' || btwVolgtRekening) && !bijgewerkt.btwHandmatig) {
           // Nog niet handmatig aangeraakt: btw-bedrag blijft live meebewegen met netto/percentage.
           const percentage = bijgewerkt.taxrateId ? percentageMap[bijgewerkt.taxrateId] : undefined
           const netto = bedragAlsGetal(bijgewerkt.netto)

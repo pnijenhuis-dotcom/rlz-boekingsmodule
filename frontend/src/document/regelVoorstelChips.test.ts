@@ -57,6 +57,13 @@ describe('regelVoorstelChips — btw-default administratie (blok E 04-09, mockup
     expect(bepaalBtwStandaardChip('factuur_verlegd', 'btw-1', true, 'voorkeur beheerder')).toBeNull()
   })
 
+  it('grootboek (14-09) = neutrale grijze chip "standaard grootboek", weg zodra de mens de btw zelf koos', () => {
+    expect(bepaalBtwStandaardChip('grootboek', 'btw-1', false)).toMatchObject({ klasse: 'handmatig', tekst: 'standaard grootboek' })
+    expect(bepaalBtwStandaardChip('grootboek', 'btw-1', true)).toBeNull()
+    expect(bepaalBtwStandaardChip('grootboek', null, false)).toBeNull()
+    expect(btwBronUitDto('grootboek', 'btw-1')).toBe('grootboek')
+  })
+
   it('btw-bron uit de DTO alleen mét een taxrate in het veld', () => {
     expect(btwBronUitDto('standaard', 'btw-1')).toBe('standaard')
     expect(btwBronUitDto('factuur', 'btw-1')).toBe('factuur')
