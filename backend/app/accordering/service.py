@@ -3182,7 +3182,11 @@ def _open_rondes_met_volgende_stap(
             )
             .exists()
         )
-    rondes = list(session.scalars(rondes_q))
+    # Lijstvolgorde = aangeboden_op (tie-break id): de wachtrij, de teller én het staande-goedkeuring-voorstel ("alleen
+    # de EERSTE gelijke factuur draagt de vraag") lezen deze volgorde. Zonder ORDER BY volgt de lijst de heap-volgorde
+    # van Postgres, die ná een UPDATE van een ronde-rij kan verschuiven — de flake in
+    # tests/accordering/test_staande_voorstel_periodiek.py (nazorg 14-09).
+    rondes = list(session.scalars(rondes_q.order_by(DocumentAccordering.aangeboden_op.asc(), DocumentAccordering.id)))
     if not rondes:
         return []
     stappen_per_ronde: dict[uuid.UUID, list[AccorderingStap]] = {}
