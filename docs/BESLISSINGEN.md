@@ -9226,3 +9226,54 @@ signaalblok onder de rij, stand-chip per rij, URL-hint) — geen mockup-wijzigin
 
 **Meetrecept ná deploy (Peter, in de UI):** (1) + Administratie toevoegen → Odoo → URL mét "/odoo" → wizard toont "We gebruiken https://universal-steigers.odoo.com" en test groen; (2) stap 3: company 6 grijs "migratiedoel (Vastgoedgroep Nederland …)" zodra de reservering staat (anders "al gekoppeld"/aanvinkbaar mét RLZ-signaal), company 5 toont het RLZ-signaal, company 3 grijs "al gekoppeld (…)"; (3) company 7 (MEM) aanvinken → probe groen op "memoriaal-dagboek: MEM" zonder iets in Odoo te wijzigen; (4) drie companies tegelijk → drie losse probe-resultaten, geen "backend niet bereikbaar". **Werkt in productie: nog niet gemeten.**
 
+
+<!-- werkloop-automatisch-14-09 -->
+## WERKLOOP AUTOMATISCH — NAMETING-WORKFLOW, RAPPORTEN- EN OPDRACHTENMAP, CC-INBOX (besluit Peter 14-09; geen migratie, geen klantfeature)
+
+**Aanleiding + besluit Peter 14-09.** "Alles wat automatisch kan gaat automatisch; Peter test en meldt, geen plakwerk meer." Tot 14-09
+liep de werkloop op handwerk: Peter logde dagelijks opnieuw in bij gcloud (impersonatie van `nameting@`, want de SA-key is door org-policy
+`iam.managed.disableServiceAccountKeyCreation` geblokkeerd — beslispunt 1 in "NAMETINGEN-RUN 10-09"), startte de nametingen zelf, plakte
+eindrapporten uit de chat over en gaf Cowork-opdrachten met de hand door aan Claude Code. Dit blok haalt die vier plakstappen weg.
+**Het beslispunt "SA-key toestaan?" van 10-09 VERVALT:** de workflow authenticeert via Workload Identity Federation — geen key, geen herlogin,
+geen projectuitzondering op de beveiligingspolicy nodig.
+
+**Pre-feature-check.** "NAMETINGEN-RUN 10-09" (SA/rol/bindingen bestaan, key geblokkeerd), "PRODUCTIE-NAMETINGEN STRUCTUREEL" (routes A/B),
+GCP_UITROL §F7.3 (intrekrecept), deploy.yml r.66–80 (WIF-provider `github`/`github-oidc` mét repo-conditie, f0_fundament.sh stap 5),
+regel Peter 08-09 "productie alleen via de bestaande Cloud Run-jobs of read-only scripts". **UX-review:** geen scherm, geen klantfeature
+(WAT_IS_NIEUW leeg).
+
+| Onderdeel | Besluit + bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| **A1 Workflow** | `.github/workflows/nameting.yml`: schedule `30 5 * * *` (07:30 NL) + `workflow_dispatch` input `onderdeel` (alles\|a\|b\|c\|d\|e\|reconciliatie); concurrency-groep, timeout 120 min. | GEBOUWD | `.github/workflows/nameting.yml` |
+| **A2 Auth** | `google-github-actions/auth@v2`, DEZELFDE `workload_identity_provider` als deploy.yml, `service_account: nameting@rlz-boekhouding`. Geen keys, geen `credentials_json`. `permissions: contents: write, id-token: write`. | GEBOUWD | idem |
+| **A3 Stappen** | `scripts/gcp/vgg_blok7_nameting.sh <onderdeel>` (niet bij `reconciliatie`) + `scripts/gcp/nameting.sh reconciliatie-alles --lees-only > verkenning/nameting-reconciliatie-<dd-mm>.txt` (bij `alles`/`reconciliatie`). `nameting_env.sh` heeft een nieuwe tak 0: `GITHUB_ACTIONS=true` → geen impersonatie-vlag, geen env-bestand, geen key (de runner IS het SA); lokaal gedrag (key → impersonatie → gebruikerssessie) ongewijzigd. | GEBOUWD | `scripts/gcp/nameting_env.sh` |
+| **A4 Commit** | git user `nameting-bot <nameting@rlz-boekhouding.iam.gserviceaccount.com>`, `git add -- 'verkenning/nameting-*.txt'` (niets anders), bericht `nameting <dd-mm> <onderdeel> — <Oordeel-regel uit het replay-rapport van die dag>` (terugval: "N rapport(en) van <dd-mm>"), push `HEAD:main` met GITHUB_TOKEN, één `pull --rebase`-retry. Geen wijzigingen = geen commit. **Een push met GITHUB_TOKEN start geen nieuwe workflow-run** (GitHub-regel) → de deploy-workflow blijft stil op een nameting-commit. Rood rapport = exit 0; alleen exit 3 (deploy-drift uit vgg_blok7_nameting.sh) en "geen executie-naam gevonden"/PERMISSION_DENIED (auth) maken de run rood. | GEBOUWD | `.github/workflows/nameting.yml` |
+| **A5 IAM** | `scripts/gcp/nameting_wif_iam.sh [--dry-run\|--apply]` (default dry-run, idempotent, exit 1 bij ontbrekende items): (a) `roles/iam.workloadIdentityUser` op `nameting@` voor `principalSet://…/workloadIdentityPools/github/attribute.repository/pnijenhuis-dotcom/rlz-boekingsmodule`; (b) controle attribute-condition op de GEDEELDE provider (raakt óók deploy@ — expliciet gemeld; zet 'm alleen als hij ontbreekt); (c) toont de rollen van nameting@ en vergelijkt met run.viewer/logging.viewer/nametingUitvoerder job-scoped — voegt niets toe. **Dry-run 14-09 uitgevoerd:** (a) ONTBREEKT, (b) conditie `assertion.repository == 'pnijenhuis-dotcom/rlz-boekingsmodule'` staat (ACTIVE), (c) exact de drie verwachte rollen, geen extra. | GEBOUWD; --apply = Peter | `scripts/gcp/nameting_wif_iam.sh` |
+| **A6 Guard** | `tests/unit/test_nameting_workflow.py` (7): alleen `nameting@` als service_account, `deploy@` alleen in commentaar, zelfde provider als deploy.yml, geen directe `gcloud run jobs execute/deploy`/`gcloud sql|secrets|iam` in run-blokken, alleen de twee nameting-scripts, `git add` beperkt tot `verkenning/nameting-*.txt` (geen -A/.), geen force, permissions exact, `nameting_env.sh`-GitHub-tak zonder impersonatie/key. Zonder PyYAML (geen nieuwe testafhankelijkheid). | GEBOUWD + GROEN | `backend/tests/unit/test_nameting_workflow.py` |
+| **B1 Rapporten** | `docs/rapporten/<jjjj-mm-dd>-<blok-slug>.md` per CC-eindrapport (zelfde inhoud als de chat, incl. "werkt in productie: ja/nee/niet gemeten"), `docs/rapporten/INDEX.md` nieuwste bovenaan, CC vult beide zelf in de laatste commit van de run. Guard `tests/unit/test_rapporten_index.py` (4): naamvorm, bestand ⇄ indexregel, volgorde, verplichte productieregel. Regel in CLAUDE.md § Werkwijze. | GEBOUWD + GROEN | `docs/rapporten/INDEX.md` |
+| **B2 Opdrachtenmap** | `opdrachten/inbox/` (Cowork schrijft één .md per opdracht) → `lopend/` bij start → `gedaan/` bij afronding mét kopregel "uitgevoerd <datum>, rapport: docs/rapporten/<bestand>"; mappen gecommit (`.gitkeep`), `opdrachten/log/` + `.lock` in `.gitignore`. | GEBOUWD | `opdrachten/` |
+| **B3 Kickoff** | `scripts/cc_inbox.sh`: oudste .md (mtime) uit inbox → lopend, `claude -p "<inhoud> + werkloop-afsluitregels" --permission-mode acceptEdits` vanuit de repo-root (settings.local.json geldt: deny op git push/secrets; Stop-hook pusht), log `opdrachten/log/<datum>-<slug>.log`, macOS-melding "CC klaar: <slug> — <laatste regel>" / "CC MISLUKT: …". Lock `opdrachten/.lock` mét pid: levend proces = niets doen; verweesde lock (dood pid) = gemeld + opgeruimd (anders staat de inbox voor altijd stil). Exit 0 én bestand nog in lopend/ → het SCRIPT verplaatst naar gedaan/ mét kopregel (rapport = nieuwste docs/rapporten-bestand dat tijdens de run bijkwam, anders "geen"); exit ≠ 0 → blijft zichtbaar in lopend/. `CC_INBOX_PERMISSION_MODE` overschrijft de modus. | GEBOUWD + GETEST (dummy) | `scripts/cc_inbox.sh` |
+| **B4 launchd** | `~/Library/LaunchAgents/nl.aknijenhuis.cc-inbox.plist`: WatchPaths `opdrachten/inbox/` + StartInterval 300 + RunAtLoad, PATH expliciet `$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`, HOME/LANG gezet, log `~/Library/Logs/cc-inbox.log`. `scripts/cc_inbox_install.sh` (idempotent: toolcheck claude/git/gcloud/osascript op dat PATH mét gevonden paden, plist herschrijven, bootout + bootstrap) en `--uninstall` (aan/uit-knop). **Geïnstalleerd + getest 14-09 op deze Mac:** toolcheck ✓ (`~/.local/bin/claude`, `/usr/bin/git`, `/opt/homebrew/bin/gcloud`); dummy-opdracht `2026-09-14-dummy-test.md` binnen 1 s na het neerzetten opgepikt (WatchPaths), `claude -p` 13 s, exit 0, slotregel "test — dummy geslaagd", bestand → `gedaan/` mét kopregel, melding via osascript verstuurd (exit 0). | GEBOUWD + GETEST | `scripts/cc_inbox_install.sh` |
+| **B5 Terminal** | `scripts/zsh/rlz.zsh`: `rlz` (cd), `rlz plan` (`vgg_blok7_odoo_writes.sh plan`), `rlz meting [onderdeel]` (`gh workflow run nameting.yml -f onderdeel=…`), `rlz status` (git status + laatste 5 rapporten), `rlz inbox` (cc_inbox.sh direct). Installatie: één `source`-regel in `~/.zshrc`. | GEBOUWD | `scripts/zsh/rlz.zsh` |
+
+**Aan/uit-knoppen.** Nameting-workflow: GitHub → Actions → nameting → "Disable workflow" (of `gh workflow disable nameting.yml`); de
+binding intrekken: `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member="principalSet://…/attribute.repository/pnijenhuis-dotcom/rlz-boekingsmodule" --role=roles/iam.workloadIdentityUser`.
+CC-inbox: `scripts/cc_inbox_install.sh --uninstall` (agent uit, plist weg; inbox blijft staan) — `scripts/cc_inbox_install.sh` zet 'm weer aan.
+
+**Aandachtspunten (eerlijk).** (1) `--permission-mode acceptEdits` in `claude -p` laat Bash-aanroepen buiten de allow-lijst van
+settings.local.json onbeantwoord → geweigerd (geen mens om te antwoorden). Voor een échte bouwopdracht betekent dat: pytest/tsc/git status
+wél, maar `git commit`, `mv`, `make migrate` níét — CC kan dan niet zelf committen; het script vangt de verplaatsing naar gedaan/ op, maar
+de commit blijft dan liggen voor Peter of een volgende interactieve sessie. Advies: `CC_INBOX_PERMISSION_MODE=auto` (classifier
+keurt veilige acties goed, deny-lijst blijft gelden — dezelfde modus als de interactieve sessies sinds 08-09) zodra Peter dat wil; de
+default volgt de opdracht (acceptEdits). (2) Een nameting-commit door nameting-bot start géén deploy (GITHUB_TOKEN-regel) — bewust; wil
+Peter ooit dat een nameting-push wél iets triggert, dan is een PAT of GitHub App nodig. (3) De workflow gebruikt `vgg_blok7_nameting.sh`
+ongewijzigd; de VGG-onderdelen a–e zijn dus dagelijks mee — als run 2 VGG afgerond is, `alles` inkorten of de schedule op
+`reconciliatie` zetten (één regel in de cron-stap). (4) `stat -f` in cc_inbox.sh is macOS-specifiek (bewust: het script draait alleen op
+deze Mac).
+
+**Meetrecept "werkt in productie".** (1) Peter: `scripts/gcp/nameting_wif_iam.sh --apply` als owner (zet alleen (a)); (2) `rlz meting
+reconciliatie` óf GitHub → Actions → nameting → Run workflow; (3) verwacht: stap "Authenticatie via WIF" groen als nameting@, stap
+"Nameting draaien" logt `>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@…`, commit `nameting <dd-mm>
+reconciliatie — 1 rapport(en) van <dd-mm>` door nameting-bot op main, GEEN deploy-run erachter; (4) de volgende ochtend 07:30 NL een
+commit `nameting <dd-mm> alles — Oordeel: …`. **Werkt in productie: niet gemeten, wacht op IAM (--apply door Peter).** CC-inbox: ja
+(dummy 14-09, deze Mac).
