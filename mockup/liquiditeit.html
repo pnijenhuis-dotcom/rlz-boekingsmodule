@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Inzicht › Liquiditeit (liquiditeitsprognose mét reservering nog-niet-geboekt, voorstel 11-09-2026)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#f6f7f8; --panel:#fff; --panel-2:#fafbfb; --border:#e6e8ea; --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-fg:#fff; --accent-bg:#e6f4f2;
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3; --danger:#b42318; --danger-bg:#fceceb;
+    --info:#3548a5; --info-bg:#eaeefb; --purple:#6941c6; --purple-bg:#f1ecfb;
+    --rail:#101b19; --rail-text:#c7d2cf; --rail-muted:#7d8c88; --rail-actief:#16332e; --rail-accent:#4fd1c0;
+    --radius:12px; --radius-sm:8px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,sans-serif;
+  }
+  body { font-family:var(--font); background:var(--bg); color:var(--text); font-size:13.5px; line-height:1.45; }
+  .app { display:grid; grid-template-columns:200px 1fr; min-height:100vh; }
+  .rail { background:var(--rail); color:var(--rail-text); padding:18px 12px; }
+  .rail .brand { color:#fff; font-weight:700; margin-bottom:22px; font-size:15px; }
+  .rail .brand small { display:block; font-weight:400; color:var(--rail-muted); font-size:11px; }
+  .rail h6 { font-size:10px; letter-spacing:.12em; color:var(--rail-muted); margin:14px 10px 6px; }
+  .rail a { display:block; padding:7px 10px; border-radius:8px; color:var(--rail-text); text-decoration:none; font-size:13px; }
+  .rail a.actief { background:var(--rail-actief); color:#fff; border-left:3px solid var(--rail-accent); }
+  main { padding:22px 28px 60px; max-width:1360px; }
+  .crumbs { color:var(--muted); font-size:12px; margin-bottom:6px; } .crumbs b { color:var(--text); }
+  h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .sub { color:var(--muted); margin-bottom:16px; }
+  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px; }
+  .kpi { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow); }
+  .kpi .l { font-size:11px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; }
+  .kpi .v { font-size:20px; font-weight:700; margin-top:2px; } .kpi .s { font-size:11.5px; color:var(--muted); }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:18px; }
+  .card h3 { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); padding:12px 16px 0; }
+  .card p.uitleg { color:var(--muted); font-size:12.5px; padding:4px 16px 10px; }
+  .bar { display:flex; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .chip { display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); white-space:nowrap; }
+  .chip.ok { background:var(--ok-bg); color:var(--ok); border-color:transparent; }
+  .chip.warn { background:var(--warn-bg); color:var(--warn); border-color:transparent; }
+  .chip.danger { background:var(--danger-bg); color:var(--danger); border-color:transparent; }
+  .chip.info { background:var(--info-bg); color:var(--info); border-color:transparent; }
+  .chip.purple { background:var(--purple-bg); color:var(--purple); border-color:transparent; }
+  .chip.actief { background:var(--accent-bg); color:var(--primary); border-color:transparent; font-weight:600; }
+  .linkbtn { color:var(--primary); background:none; border:0; font-weight:600; cursor:pointer; font-size:12.5px; }
+  .btn { padding:7px 12px; border-radius:var(--radius-sm); border:1px solid var(--primary); background:var(--primary); color:#fff; font-weight:600; font-size:12.5px; }
+  .btn.secondary { background:var(--panel); color:var(--primary); }
+  .spacer { flex:1; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; color:var(--faint); letter-spacing:.06em; text-transform:uppercase; padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:hover td { background:var(--panel-2); }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr.tot td { font-weight:700; background:var(--panel-2); }
+  .pos { color:var(--ok); } .negt { color:var(--danger); } .klein { font-size:11.5px; color:var(--muted); }
+  .rij-klik td:first-child { color:var(--primary); font-weight:600; }
+  .grafiek { padding:14px 16px 6px; }
+  .weken { display:grid; grid-template-columns:repeat(13,1fr); gap:6px; align-items:end; height:150px; border-bottom:1px solid var(--border); position:relative; }
+  .weken .nul { position:absolute; left:0; right:0; border-top:1px dashed var(--danger); opacity:.5; }
+  .wk { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; }
+  .wk i { display:block; width:70%; background:var(--primary); border-radius:4px 4px 0 0; }
+  .wk i.res { background:var(--warn); border-radius:0; }
+  .wk i.neg { background:var(--danger); }
+  .wk small { font-size:10.5px; color:var(--faint); margin-top:4px; }
+  .legenda { display:flex; gap:14px; padding:8px 16px 12px; font-size:11.5px; color:var(--muted); }
+  .legenda i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+  .notities { background:var(--panel); border:1px dashed var(--border); border-radius:var(--radius); padding:16px 20px; margin-top:26px; }
+  .notities h3 { font-size:13px; margin-bottom:8px; } .notities li { margin:6px 0 6px 18px; } .notities code { background:var(--panel-2); padding:1px 5px; border-radius:4px; font-size:12px; }
+  .scherm-titel { margin:38px 0 8px; font-size:11px; letter-spacing:.14em; color:var(--faint); text-transform:uppercase; border-top:2px solid var(--border); padding-top:16px; }
+  .melding { background:var(--danger-bg); border-left:3px solid var(--danger); padding:8px 12px; border-radius:8px; font-size:12.5px; margin:0 16px 12px; }
+  .melding.warn { background:var(--warn-bg); border-color:var(--warn); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">Nijenhuis<small>Boekingsmodule</small></div>
+    <h6>WERK</h6><a>Werkvoorraad</a><a>Planning</a>
+    <h6>INZICHT</h6><a>Zoeken</a><a>Archief</a><a>Projecten</a><a class="actief">Liquiditeit</a><a>Reconciliatie</a><a>Crediteuren</a>
+    <h6>BEHEER</h6><a>Gebruikers</a><a>Instellingen</a>
+  </aside>
+  <main>
+
+    <!-- ===== SCHERM 1: KANTOORBREED ===== -->
+    <div class="crumbs">Inzicht › <b>Liquiditeit</b></div>
+    <h1>Liquiditeit — 71 administraties</h1>
+    <div class="sub">Verwacht saldoverloop per week uit banksaldo + open posten in Reeleezee/Odoo + alles wat al in de module zit maar nog niet geboekt is (gereserveerd). Signaleren, nooit boeken. Stand van vannacht 07:04.</div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">Onder nul binnen 13 weken</div><div class="v negt">4 administraties</div><div class="s">eerste: Zilver Beheer, week 39</div></div>
+      <div class="kpi"><div class="l">Krap (&lt; 1 maand kosten)</div><div class="v" style="color:var(--warn)">7</div><div class="s">buffer onder de maandnorm</div></div>
+      <div class="kpi"><div class="l">Gereserveerd, nog niet in RLZ</div><div class="v">€ 486.120</div><div class="s">312 facturen in de module</div></div>
+      <div class="kpi"><div class="l">Open crediteuren (RLZ/Odoo)</div><div class="v">€ 1.842.300</div><div class="s">waarvan vervallen € 212.480</div></div>
+      <div class="kpi"><div class="l">Open debiteuren</div><div class="v">€ 2.310.775</div><div class="s">waarvan &gt; 30 dagen € 318.900</div></div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <span class="chip actief">Alle</span><span class="chip danger">Onder nul (4)</span><span class="chip warn">Krap (7)</span><span class="chip">Vastgoed</span><span class="chip">Steigerbouw</span>
+        <span class="spacer"></span>
+        <span class="chip">4 wk</span><span class="chip">8 wk</span><span class="chip actief">13 wk</span>
+        <button class="linkbtn">Exporteren</button>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Administratie</th><th class="n">Saldo nu</th><th class="n">Laagste punt</th><th>Wanneer</th><th class="n">Gereserveerd (module)</th><th class="n">Open cred. RLZ</th><th class="n">Open deb.</th><th>Signaal</th>
+        </tr></thead>
+        <tbody>
+          <tr class="rij-klik"><td>Zilver Beheer B.V.</td><td class="n">53.255</td><td class="n negt">−18.420</td><td>wk 39 (22-09)</td><td class="n">41.900</td><td class="n">62.310</td><td class="n">2.777</td><td><span class="chip danger">onder nul · huur 1-10 niet gedekt</span></td></tr>
+          <tr class="rij-klik"><td>Universal Steigerbouw B.V.</td><td class="n">212.410</td><td class="n negt">−96.200</td><td>wk 41 (06-10)</td><td class="n">228.600</td><td class="n">418.900</td><td class="n">612.300</td><td><span class="chip danger">onder nul · 3 incassobatches verwacht wk 40</span></td></tr>
+          <tr class="rij-klik"><td>Molenhof Verhuur B.V.</td><td class="n">18.960</td><td class="n" style="color:var(--warn)">4.120</td><td>wk 42</td><td class="n">9.870</td><td class="n">14.200</td><td class="n">31.400</td><td><span class="chip warn">krap · debiteur &gt; 60 dagen € 12.000</span></td></tr>
+          <tr class="rij-klik"><td>Vastgoedgroep Nederland B.V.</td><td class="n">129.290</td><td class="n pos">61.400</td><td>wk 44</td><td class="n">24.180</td><td class="n">4.493</td><td class="n">2.777</td><td><span class="chip ok">ruim · notarisontvangst wk 38 € 260.000</span></td></tr>
+          <tr class="rij-klik"><td>Kempen Facilities B.V.</td><td class="n">88.100</td><td class="n pos">71.900</td><td>wk 40</td><td class="n">37.500</td><td class="n">52.100</td><td class="n">95.300</td><td><span class="chip ok">ruim</span></td></tr>
+          <tr><td colspan="8" class="klein" style="text-align:center">… 66 administraties meer · sorteer op laagste punt (standaard), saldo, gereserveerd</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ===== SCHERM 2: ADMINISTRATIE ===== -->
+    <div class="scherm-titel">Scherm 2 — administratie (klik op een rij)</div>
+    <div class="crumbs">Inzicht › Liquiditeit › <b>Zilver Beheer B.V.</b></div>
+    <h1>Zilver Beheer B.V. <span class="chip danger" style="vertical-align:middle">onder nul in week 39</span></h1>
+    <div class="sub">ING NL64INGB0100797679 · saldo € 53.255,54 (bank-sync 07:01) · horizon 13 weken · alle bedragen incl. btw (kasstroom)</div>
+
+    <div class="card">
+      <h3>Verwacht saldo per week</h3>
+      <div class="melding">Week 39: saldo −€ 18.420. Oorzaak: huur Q4 € 45.000 (RLZ, vervalt 1-10) én 6 facturen ter accordering € 41.900 vallen samen; debiteur Teerink € 2.777 dekt het niet. Actie: accordering versnellen of huurbetaling afstemmen.</div>
+      <div class="grafiek">
+        <div class="weken">
+          <div class="nul" style="bottom:18%"></div>
+          <div class="wk"><i style="height:62%"></i><small>37</small></div>
+          <div class="wk"><i style="height:55%"></i><small>38</small></div>
+          <div class="wk"><i class="neg" style="height:8%"></i><small>39</small></div>
+          <div class="wk"><i class="neg" style="height:12%"></i><small>40</small></div>
+          <div class="wk"><i style="height:30%"></i><small>41</small></div>
+          <div class="wk"><i style="height:34%"></i><small>42</small></div>
+          <div class="wk"><i style="height:40%"></i><small>43</small></div>
+          <div class="wk"><i style="height:46%"></i><small>44</small></div>
+          <div class="wk"><i style="height:44%"></i><small>45</small></div>
+          <div class="wk"><i style="height:50%"></i><small>46</small></div>
+          <div class="wk"><i style="height:52%"></i><small>47</small></div>
+          <div class="wk"><i style="height:58%"></i><small>48</small></div>
+          <div class="wk"><i style="height:60%"></i><small>49</small></div>
+        </div>
+        <div class="legenda"><span><i style="background:var(--primary)"></i>verwacht saldo einde week</span><span><i style="background:var(--danger)"></i>onder nul</span><span>--- nullijn</span></div>
+      </div>
+      <table>
+        <thead><tr><th>Week</th><th class="n">Begin</th><th class="n">In: debiteuren</th><th class="n">In: incasso/overig</th><th class="n">Uit: crediteuren RLZ</th><th class="n">Uit: gereserveerd (module)</th><th class="n">Uit: terugkerend/vast</th><th class="n">Einde</th></tr></thead>
+        <tbody>
+          <tr><td>37 (deze week)</td><td class="n">53.255</td><td class="n pos">2.777</td><td class="n">—</td><td class="n">−4.493</td><td class="n">−1.595</td><td class="n">−2.180</td><td class="n">47.764</td></tr>
+          <tr><td>38</td><td class="n">47.764</td><td class="n">—</td><td class="n">—</td><td class="n">−3.176</td><td class="n">−8.400</td><td class="n">−1.080</td><td class="n">35.108</td></tr>
+          <tr class="rij-klik"><td>39 ▸</td><td class="n">35.108</td><td class="n">—</td><td class="n">—</td><td class="n">−45.000</td><td class="n">−6.348</td><td class="n">−2.180</td><td class="n negt">−18.420</td></tr>
+          <tr><td>40</td><td class="n">−18.420</td><td class="n pos">14.900</td><td class="n">—</td><td class="n">−2.100</td><td class="n">−7.200</td><td class="n">−1.080</td><td class="n negt">−13.900</td></tr>
+          <tr><td>41</td><td class="n">−13.900</td><td class="n pos">31.400</td><td class="n">—</td><td class="n">—</td><td class="n">−4.850</td><td class="n">−2.180</td><td class="n">10.470</td></tr>
+          <tr><td colspan="8" class="klein" style="text-align:center">… t/m week 49</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Week 39 — waar komt het vandaan</h3>
+      <p class="uitleg">Elke regel is een echte post met herkomst. Gereserveerd = zit in de module, nog niet in Reeleezee; verwachte betaaldatum = vervaldatum van de factuur, anders betaaltermijn van de crediteur. Klik = naar het document.</p>
+      <table>
+        <thead><tr><th>Datum</th><th>Post</th><th>Herkomst</th><th>Status</th><th class="n">Bedrag</th></tr></thead>
+        <tbody>
+          <tr class="rij-klik"><td>01-10</td><td>Huur Q4 kantoor — Vastgoed Beheer Oost</td><td><span class="chip">RLZ open post RLZ-04-00001180</span></td><td>geboekt · vervalt 01-10</td><td class="n">−45.000,00</td></tr>
+          <tr class="rij-klik"><td>28-09</td><td>VHK Kantoorservice 319790</td><td><span class="chip purple">module · ter accordering (laag 2 van 2)</span></td><td>gereserveerd · vervaldatum uit factuur</td><td class="n">−423,50</td></tr>
+          <tr class="rij-klik"><td>29-09</td><td>Full House Meubelverhuur 2623009</td><td><span class="chip purple">module · te controleren</span></td><td>gereserveerd · betaaltermijn crediteur 14 d</td><td class="n">−1.595,00</td></tr>
+          <tr class="rij-klik"><td>30-09</td><td>Michgelsen mxx14</td><td><span class="chip purple">module · ter accordering (laag 1 van 2)</span></td><td>gereserveerd</td><td class="n">−3.176,25</td></tr>
+          <tr class="rij-klik"><td>26-09</td><td>Delta Energie termijn okt</td><td><span class="chip info">terugkerend · verwacht (incasso)</span></td><td>patroon 12 maanden · niet in RLZ</td><td class="n">−149,00</td></tr>
+          <tr class="rij-klik"><td>25-09</td><td>ING bankkosten</td><td><span class="chip info">terugkerend · verwacht</span></td><td>historie-regel</td><td class="n">−31,00</td></tr>
+          <tr class="rij-klik"><td>—</td><td>Jan Collong 187226</td><td><span class="chip">RLZ open debiteur</span></td><td>56 dagen over tijd · <b>niet meegeteld</b></td><td class="n klein">+1.276,60</td></tr>
+          <tr class="tot"><td colspan="4">Netto week 39</td><td class="n negt">−53.528,75</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="notities">
+      <h3>Ontwerpnotities (te bevestigen door Peter; onderdeel van het akkoord)</h3>
+      <ol>
+        <li><b>Doel en plek.</b> Liquiditeitsprognose als kantoorwerk onder Inzicht › Liquiditeit: kantoorbreed (administratie = filter, standaard gesorteerd op laagste punt) en per administratie. De klant-/accordeur-app krijgt hem NIET in v1; later eventueel als lees-tab. Nooit een boeking, nooit een RLZ/Odoo-write.</li>
+        <li><b>Bronnen, alle deterministisch:</b> (a) banksaldo uit de bank-sync (RLZ) — Odoo-administraties via de adapter zodra het bankpad in Odoo bestaat, tot die tijd chip "geen banksaldo"; (b) open crediteuren/debiteuren uit RLZ/Odoo (open posten mét vervaldatum); (c) <b>gereserveerd</b> = alle inkoopfacturen in de module met status te controleren / vraag open / ter accordering / klaar om te boeken / boekfout — verwachte betaaldatum = vervaldatum uit de factuur (harde check bestaat), anders factuurdatum + betaaltermijn crediteur (RLZ `PaymentDueDays`), anders 30 dagen; volledig meegeteld (100 %), want een niet-geaccordeerde factuur is een zekere uitgave die alleen nog niet geboekt is; (d) terugkerende facturen (bestaand signaal) en historie-regel-patronen als verwachte uitgaven mét chip "verwacht"; (e) incasso-/betaalbatches uit RLZ (ná de batch-STAP-0) op verwachte uitvoerdatum; (f) omzet/kassarapporten alleen als er een terugkerend patroon is.</li>
+        <li><b>Debiteuren voorzichtig:</b> open debiteur telt op vervaldatum; &gt; 30 dagen over tijd = verschoven naar "onzeker" en NIET meegeteld in het saldo (wel zichtbaar in de weekregel als grijze regel). Instelbaar per administratie (Beheerder), default 30 dagen.</li>
+        <li><b>Horizon</b> 4 / 8 / 13 weken (default 13), per week; dag-niveau alleen in de weekdetail. Alles incl. btw (kasstroom), btw-afdracht/-teruggave als aparte verwachte post op de aangiftedatum uit de RLZ-aangiftestand (bestaat: `app/rlz/aangifte.py`).</li>
+        <li><b>Signalen mét handeling (principe 7.2):</b> "onder nul in week N" (actie: accordering versnellen → link naar de betreffende documenten; of betaling afstemmen), "krap" = laagste punt &lt; gemiddelde maandkosten (instelbaar), "vervallen crediteur", "debiteur &gt; 60 dagen". Signalen komen in de actiemail (max 10-regel), niet als aparte mail.</li>
+        <li><b>Twee bewijsregels zichtbaar op het scherm:</b> Σ open posten in het overzicht = saldo crediteuren-/debiteurenrekening in RLZ (reconciliatie-blok), en het weekverloop start altijd op het écht gesynchroniseerde banksaldo mét tijdstip.</li>
+        <li><b>Schaal:</b> berekening nachtelijk ná de bank-sync + bij elke statuswijziging in de module incrementeel (geen live berekening over 71 administraties bij openen — les beginscherm 11-09); server-side paginering.</li>
+        <li><b>Buiten v1:</b> scenario's ("wat als huur uitgesteld"), meerdere bankrekeningen samengevoegd per administratie (v1: som over alle rekeningen incl. spaar), groepsconsolidatie (Kempen), export naar Excel (wel als knop, standaard-export).</li>
+      </ol>
+      <p class="klein" style="margin-top:8px">Cijfers zijn illustratief; Zilver Beheer-saldo en Van Bommel/Teerink-posten komen uit de kliktest van 10-09.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

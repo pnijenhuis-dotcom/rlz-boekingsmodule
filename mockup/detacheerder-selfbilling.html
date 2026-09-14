@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Self-billing detacheerder — automatische inkoopfactuur ná uren-accordering</title>
+<!-- ============================================================
+     WENS DETACHEERDER 04-09 + VEREENVOUDIGING PETER 05-09:
+     ná goedkeuring van de uren maakt de module automatisch de
+     factuur en mailt een kopie. Facturatie VANUIT DE DETACHEERDER
+     (het bureau) — één self-billing-relatie, per ZZP'er × werkweek
+     een aparte factuur. Motor = de bestaande bureaufactuur-logica
+     (goedgekeurde weekstaat-uren × bureau-tarief per koppeling)
+     omgekeerd: wij genereren wat we voorheen alleen toetsten.
+     Match is daarmee per constructie groen. Geld in code, geen AI.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101917; --panel:#16211f; --panel-2:#121b1a; --border:#263431;
+    --text:#e6ecea; --muted:#93a4a0; --faint:#6a7a76;
+    --teal:#57b3a7; --teal-donker:#0c1513;
+    --ok:#5ec792; --warn:#e2b25e; --warn-bg:rgba(226,178,94,.12); --rood:#f08579;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#0b100f;color:var(--text);font-size:13.5px;line-height:1.5;padding:26px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px;max-width:1000px}
+  .blok{background:var(--panel);border:1px solid var(--border);border-radius:12px;width:100%;padding:16px 18px;margin-bottom:26px}
+  .blok h2{font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:10px}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--teal) 14%,transparent);color:var(--teal)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+  .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .chip.grijs{background:none;border:1px solid var(--border);color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+  .btn{display:inline-block;padding:7px 13px;border-radius:9px;background:var(--teal);color:var(--teal-donker);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .btn.sec{background:none;border:1px solid var(--border);color:var(--text);font-weight:600}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .rij{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+  .rij:last-child{border-bottom:none}
+  .rij .lbl{width:200px;color:var(--muted);flex-shrink:0}
+  .switch{width:40px;height:23px;border-radius:13px;background:var(--teal);position:relative;flex-shrink:0}
+  .switch:after{content:"";position:absolute;top:2.5px;right:3px;width:18px;height:18px;border-radius:50%;background:var(--teal-donker)}
+  .noot{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;color:var(--muted);line-height:1.75}
+  .noot b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>Self-billing detacheerder — automatische inkoopfactuur ná uren-accordering</h1>
+<p class="sub">Wij reiken de factuur uit namens de detacheerder (self-billing): per ZZP'er × goedgekeurde werkweek
+één inkoopfactuur, berekend als goedgekeurde uren × bureau-tarief — dezelfde formule waarmee we bureaufacturen nu
+al tóétsen, dus de factuurmatch is per constructie groen. Kopie automatisch gemaild aan de detacheerder.</p>
+
+<!-- 1. Instelling -->
+<div class="blok">
+  <h2>1 · Beheer: self-billing-leveranciers (meerdere detacheerders, elk mét volledige bedrijfsgegevens)</h2>
+  <table>
+    <tr><th style="width:26%">Leverancier</th><th>Gegevens</th><th style="width:150px">ZZP'ers</th><th style="width:130px">Reeks</th><th style="width:110px"></th></tr>
+    <tr>
+      <td><b>Spot Services B.V.</b> <span class="chip ok">self-billing ✓</span></td>
+      <td style="color:var(--muted)">KvK 92288626 · btw NL865978967B01 · IBAN NL57 REVO … · Rotterdam</td>
+      <td style="color:var(--muted)">28 gekoppeld</td>
+      <td style="color:var(--muted)">SB-SPOT-2026-…</td>
+      <td><span class="btn sec">Tariefkaart ▸</span></td>
+    </tr>
+    <tr>
+      <td><b>Delta Steigers</b> <span class="chip ok">self-billing ✓</span></td>
+      <td style="color:var(--muted)">KvK 81636539 · btw NL003587377B33 · IBAN NL88 RABO … · Wijchen</td>
+      <td style="color:var(--muted)">4 gekoppeld</td>
+      <td style="color:var(--muted)">SB-DELTA-2026-…</td>
+      <td><span class="btn sec">Tariefkaart ▸</span></td>
+    </tr>
+  </table>
+  <div class="rij" style="margin-top:8px"><span class="lbl">Per leverancier</span><span style="color:var(--muted)">overeenkomst-akkoord (verplicht vóór de eerste factuur) · gekoppelde ZZP'ers (bestaande detacheerder↔zzp'er-koppelingen) · eigen doorlopende SB-nummerreeks · bedrijfsgegevens vooringevuld uit de RLZ-crediteurkaart + KvK-check</span></div>
+  <p class="hint" style="margin-top:8px"><b style="color:var(--text)">Tariefkaart ▸</b> — tarieven per WERKSOORT (zoals de bureaus zelf factureren, vb. Spot/Delta):<br>
+  <span style="color:var(--muted)">montage € 6,00/m² · demontage € 3,25/m² · gaas € —/m² · grondslag € 3,25/m¹ · regie € 45,00/uur · eenmalig (startbedrag, parkeergeld: alleen via goedgekeurd meerwerk)</span><br>
+  Resolutie per klus (bestaand 0073-patroon, uitgebreid): <b style="color:var(--text)">PROJECT-TARIEFKAART wint</b>
+  (per project × leverancier — evt. per ZZP'er — een eigen kaart per werksoort, mét week-venster = "per klus"; zelfde
+  ZZP'er op twee projecten = twee tarieven) → anders de leverancier-tariefkaart → geen tarief = geen factuur, signaal
+  mét actie. De project-tariefkaart ís de vastgelegde inkoop op projectniveau: goedgekeurde eenheid × dat tarief wordt
+  gefactureerd.<br>
+  <b style="color:var(--text)">Aanneemsom (besluit Peter 05-09):</b> vaste prijs = afspraak-soort op de
+  project-tariefkaart mét termijnschema (bv. 50% bij start · 50% bij gereed); facturatie-trigger = de uitvoerder
+  keurt de mijlpaal ("gereed"-keuring, zelfde keuringsflow) — mens keurt het feit, module factureert het gevolg.
+  Uren/m² worden op zo'n klus wél geregistreerd (controle + marge) maar bepalen het bedrag niet. Aanneemsom-facturen
+  zijn per project (een termijn is geen ZZP'er-prestatie); eenheid-werk blijft per ZZP'er × week.</p>
+</div>
+
+<!-- 2. Werklijst -->
+<div class="blok">
+  <h2>2 · De keten — geen knoppen (goedkeuring uitvoerder = hét besluit)</h2>
+  <div class="rij"><span class="chip grijs">1</span><span>Detacheerder vult de uren in (namens de ZZP'er, bestaande flow)</span></div>
+  <div class="rij"><span class="chip grijs">2</span><span>Onze uitvoerder keurt de week goed (bestaande keuring — dit is het mens-moment: de goedgekeurde uren bepálen het geld)</span></div>
+  <div class="rij"><span class="chip grijs">3</span><span><b>Automatisch, in één gang:</b> factuur 1-op-1 uit de goedgekeurde staat — per werksoort een regel (goedgekeurde m² montage/demontage, m¹ grondslag, regie-uren × de tariefkaart/projectafspraak, verlegd; vb. Delta Groesbeek wk 24: 110 m² montage × € 6,00 + 36 u regie × € 47,50) → geboekt in de administratie (normale harde checks) → PDF gemaild aan het bureau → week verrekend. Chip "automatisch" + audit op elke stap. Geparkeerde uren ("regie wacht op akkoord opdrachtgever") factureren pas mee ná dat akkoord — bestaande status.</span></div>
+  <table style="margin-top:12px">
+    <tr><th style="width:22%">Uitzondering</th><th>Wat de module doet</th></tr>
+    <tr>
+      <td style="color:var(--warn)">geen bureau-tarief (S. Bouali, wk 36)</td>
+      <td style="color:var(--muted)">factuur kan niet berekend worden → zichtbaar signaal mét actie "Tarief instellen…" (eenmalig beheer); ná het instellen loopt de keten alsnog automatisch — nooit een handmatige factuur</td>
+    </tr>
+    <tr>
+      <td style="color:var(--warn)">harde check rood bij boeken</td>
+      <td style="color:var(--muted)">factuur staat klaar in de werkvoorraad mét foutreden (boek_fout-patroon) — nooit stil</td>
+    </tr>
+  </table>
+  <p class="hint">Bedrag = exact de goedgekeurde weekstaat-uren × het bureau-tarief van de koppeling (projectafspraak
+  wint, bestaande tariefresolutie) — geen invoerveld, geen bulk-knop, niets te klikken. De factuur-PDF vermeldt
+  "factuur uitgereikt door afnemer", de bureau-gegevens, de eigen SB-reeks en per regel week/project/uren/tarief.</p>
+</div>
+
+<!-- 3. Resultaat -->
+<div class="blok">
+  <h2>3 · Resultaat — geboekt mét kopie naar het bureau</h2>
+  <div class="rij"><span class="chip ok">Geboekt</span><b>PAL-ondersteuning B.V.</b><span style="color:var(--muted)">SB-PAL-2026-0041 · M. Kaya wk 36 · € 1.615,00 excl · verlegd</span><span class="chip">self-billing</span><span style="margin-left:auto;color:var(--muted)">kopie gemaild 05-09 08:12 ✓</span></div>
+  <p class="hint">De factuur doorloopt het normale inkoop-boekpad (harde checks, factuurmatch = groen per
+  constructie, RLZ/Odoo via de actieve backend, week wordt verrekend zoals nu). Afgekeurde/heropende week ná
+  facturatie = creditfactuur via hetzelfde mechanisme, nooit een aanpassing van de bestaande factuur.</p>
+</div>
+
+<p class="noot"><b>Ontwerpnotities (onderdeel van het akkoord):</b>
+① <b>Vanuit de detacheerder</b> (besluit Peter 05-09): één self-billing-relatie per bureau; per ZZP'er × werkweek
+een aparte factuur; het bureau blijft de crediteur, ZZP'ers hebben er geen rol in. ② <b>Afspraak-registratie (besluit Peter 05-09 — geen formele overeenkomst voor de testfase)</b>: de
+uitreiking-door-afnemer is mondeling met de bureaus afgesproken; het vinkje op de leverancier registreert alleen
+dát en wanneer dat is afgesproken (audit) — geen documentflow, geen jurist-gate. De PDF draagt wél de vermelding
+"factuur uitgereikt door afnemer" en álle factuurvereisten van het bureau (KvK, btw-nummer, eigen doorlopende
+SB-reeks) — dat kost niets en houdt de facturen zelf correct. ③ <b>Geld in code</b>:
+bedrag = goedgekeurde uren × bureau-tarief via de bestaande tariefresolutie — geen vrij bedragveld, geen AI;
+btw verlegd (bouw). ④ <b>Volledig automatisch (besluit Peter 05-09)</b>: er bestaat géén factuur-knop — de goedkeuring door de
+uitvoerder is het enige en voldoende mens-moment ("mens voor de knop op geld" zit in de keuring: de goedgekeurde
+uren bepálen deterministisch het bedrag); direct daarna genereert, boekt en mailt de module in één gang, mét chip
+"automatisch", audit en de bestaande volumerem. Uitzonderingen (geen tarief, rode check) worden nooit stil:
+signaal mét handelingsperspectief, en ná herstel loopt de keten alsnog vanzelf. ⑤ <b>Onmuteerbaar</b>: een verstuurde self-billing-factuur wordt
+nooit aangepast — correctie = creditfactuur via hetzelfde mechanisme (gedreven door afkeuring/heropening van de
+week); weekstaat-verrekening en dubbeltelling-preventie blijven exact zoals bij gewone bureaufacturen.
+⑥ <b>Kopie-mail</b> via het bestaande SMTP-kanaal (PDF-bijlage, "voor uw administratie"), mailfout = zichtbare
+status op de factuur, nooit stil. ⑦ De bestaande factuurmatch blijft draaien als vangnet: stuurt het bureau
+óók zelf een factuur, dan vangt de duplicaat-/matchmachinerie die als dubbel. ⑧ <b>(voorbeelden Spot Services +
+Delta Steigers, 05-09)</b> Tariefmodel = per WERKSOORT (montage/demontage per m², grondslag per m¹, gaas per m²,
+regie per uur), niet alleen uur × tarief — de hoeveelheden komen exact uit de goedgekeurde weekstaat (uren + m²
+zitten daar al in); eenmalige posten (startbedrag, parkeergeld) lopen uitsluitend via goedgekeurd meerwerk, nooit
+vrij. Tariefresolutie = het bestaande prijsafspraken-patroon (0073): projectafspraak (evt. mét week-venster = "per
+klus") wint van de leverancier-tariefkaart; tarieven per ZZP'er kunnen via een afspraak op de koppeling. Granulariteit (besluit Peter 05-09):
+eenheid-werk per ZZP'er × week (m²/uren via de weekstaat van de ZZP'er); aanneemsom-termijnen per project.
+⑨ <b>(besluiten Peter 05-09)</b> PROJECT-TARIEFKAART = de inkoopafspraak op projectniveau (per werksoort een
+tarief; zelfde ZZP'er op twee projecten = twee tarieven; week-venster = per klus); AANNEEMSOM = afspraak-soort mét
+termijnschema, gefactureerd op uitvoerder-keuring van de mijlpaal — nooit uit de weekstaat berekend, uren blijven
+registratie voor controle/marge.</p>
+</body>
+</html>
