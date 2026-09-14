@@ -9303,5 +9303,24 @@ deze Mac).
 reconciliatie` óf GitHub → Actions → nameting → Run workflow; (3) verwacht: stap "Authenticatie via WIF" groen als nameting@, stap
 "Nameting draaien" logt `>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@…`, commit `nameting <dd-mm>
 reconciliatie — 1 rapport(en) van <dd-mm>` door nameting-bot op main, GEEN deploy-run erachter; (4) de volgende ochtend 07:30 NL een
-commit `nameting <dd-mm> alles — Oordeel: …`. **Werkt in productie: niet gemeten, wacht op IAM (--apply door Peter).** CC-inbox: ja
-(dummy 14-09, deze Mac).
+commit `nameting <dd-mm> alles — Oordeel: …`. **Werkt in productie: JA (nameting 14-09):** Peter deed `--apply`; workflow-run
+34845170512 (`workflow_dispatch reconciliatie`, 12:45 UTC, op `353ee68`) groen, commit `f4c702c` door nameting-bot met
+`verkenning/nameting-reconciliatie-14-09.txt` (738 regels) op main, geen deploy erachter. Stap (4) (eerste cron `alles`) volgt 15-09.
+CC-inbox: ja (dummy 14-09 + eerste twee echte opdrachten 14-09, deze Mac).
+
+**Nazorg 14-09 (Cowork-opdracht "werkloop-nazorg-pull-en-commitbericht"; rapport `docs/rapporten/2026-09-14-werkloop-nazorg.md`).**
+(a) **Lokale pull:** `scripts/cc_inbox.sh` doet ná de lock-check en vóór het zoeken van een opdracht — dus vóór élk oppakken én bij
+élke launchd-tick zonder werk — `git pull --ff-only origin main` in de repo-root, zodat bot-commits vanzelf op de Mac landen en Cowork
+ze kan lezen. Alleen bij een schone werkboom (geen gewijzigde TRACKED bestanden — een untracked opdracht in inbox/ mag de pull niet
+tegenhouden, git weigert overschrijven van untracked toch zelf); anders, of bij een mislukte ff-only (gedivergeerd/geen netwerk):
+overslaan mét logregel, nooit rebase/merge/stash. Logt alleen bij binnengekomen commits of overslaan. `CC_INBOX_GEEN_PULL=1` = uit.
+Guard `backend/tests/unit/test_cc_inbox_pull.py` (échte script tegen wegwerp-repo's: ff-only binnen, vuil = overgeslagen zonder stash,
+untracked inbox = pull + oppakken, gedivergeerd = HEAD ongewijzigd 0 merges, levende lock = niets, statisch geen stash/merge/rebase).
+(b) **Commitbericht per gedraaid onderdeel:** `nameting.yml` neemt de `Oordeel:`-regel uit het rapport van het GEDRAAIDE onderdeel
+(`reconciliatie` → `nameting-reconciliatie-<dd-mm>.txt`, anders `nameting-vgg-replay-<dd-mm>.txt`); niets gevonden = `geen oordeelregel
+(N rapport(en) van <dd-mm>)`. Aanleiding: f4c702c droeg "Oordeel: GROEN ZONDER DOEL …" (replay) bij een reconciliatie-meting —
+misleidend. Guard: `test_nameting_workflow.py` knipt het oordeel-fragment letterlijk uit de workflow en draait het met bash tegen
+fixture-rapporten. (c) **Aandachtspunt Stop-hook:** de hook pusht met een kale `git push origin main`; pusht de bot tussen commit en
+push, dan faalt die zichtbaar ("push handmatig") — bewust geen automatische rebase in een hook; de tick-pull verkleint het venster. Op
+14-09 stond de Mac zo `ahead 3, behind 1`; de CC-run heeft dat éénmalig met `git pull --rebase` opgelost (alleen het bot-txt, geen
+conflict).
