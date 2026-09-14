@@ -9397,3 +9397,72 @@ Beheer › Veldwerkers, geen tegel; bestaande dialogen en het dossier-patroon 1-
 **Keuzes zonder Peter (14-09):** (1) migratie 0141 tóch, om de stille RLS-weigering (zie A1) — zonder is het besluit niet uitvoerbaar;
 (2) de rechthouder ziet in het overzicht ALLEEN veldwerkers binnen de eigen scope (administratie is een filter, maar scope is de grens
 — zelfde regel als elk kantoorbreed overzicht); (3) de bestaande dialogen (C3) ongewijzigd verhuisd, geen nieuwe mockup.
+
+## BTW-DEFAULT UIT DE RLZ-GROOTBOEKREKENING (Peter 14-09) — casus L.H.G. Holding "Kosten mobiele telefonie"; opdracht via opdrachten/inbox; migratie 0142
+
+**Aanleiding (bug/wens Peter 14-09):** inkoopfactuur L.H.G. Holding, grootboek "mobiele kosten" gekozen → het btw-veld
+blijft leeg, Peter kiest zelf. Verwachting: RLZ draagt op die rekening een standaard btw-code en de module neemt die
+over. **Status: GEBOUWD + GETEST 14-09; werkt in productie: niet gemeten (meetrecept hieronder; zie ook de STAP-0-
+kanttekening).**
+
+**STAP 0 (lees-only, productie, `nameting.sh rlz-lezen`, 16 calls over vijf administraties) — canoniek api-verkenning
+"Ledgers — standaard btw-code, STAP-0 14-09":** het veld bestaat — `Account.PreferentialTaxRate` (navigatie naar
+`VatRate`), alleen zichtbaar mét `$expand=PreferentialTaxRate`; op de collectie verschijnt een null-navigatie NIET als
+sleutel, op de record-vorm wél (`null`). **Op LHG 4404 "Kosten mobiele telefonie" is het veld null**, en in geen van
+de vijf gemeten administraties (LHG, Universal Steigerbouw, Nijenhuis C.V., Kempen Facilities, Zilver Beheer) draagt
+een rekening een waarde (`$filter=PreferentialTaxRate ne null` = leeg, filter-semantiek gecontroleerd via `eq null`).
+Keuze zonder Peter: de opdracht zegt "bestaat het veld niet, dan stoppen" — het veld bestaat wél, alleen de waarde
+ontbreekt in de casus; daarom gebouwd zoals gevraagd, fail-safe (geen waarde = geen default = gedrag van vóór 14-09),
+en de waarneming van Peter eerlijk als beslispunt teruggelegd (hieronder).
+
+**Datalaag (2):** `platform.grootboekrekening.standaard_taxrate_id` UUID NULL (migratie 0142, schema-only; bewust geen
+FK naar `taxrate_cache`, zelfde overweging als 0108). Gevuld door de bestaande Ledgers-sync: `leesroutes.LEDGERS` draagt
+nu `params=(("$expand","PreferentialTaxRate"),)` — één bron voor probe én sync (`_sync_generiek(params=…)`,
+`credentialstore.voer_probe_uit` stuurt dezelfde query; `tests/rlz/test_leesroutes.py` bewaakt beide);
+`sync/service.py::standaard_taxrate_uit_ledger` leest `{id}` of None (sleutel ontbreekt / null / rommel = None). Elke
+sync herschrijft de kolom (voorkeurstarief in RLZ gezet of weggehaald = volgt bij de eerstvolgende `sync-alles`; geen
+aparte backfill). DTO `GrootboekOptieResponse.standaard_taxrate_id` (route `GET /administraties/{id}/grootboek`).
+
+**Winnaarsvolgorde (3), `regel_prefill.py` (bindend):** 1 mens · 2 factuur berekend · 3 leverancier-geheugen · 4
+factuur verlegd · **5 grootboek-default (`btw_bron='grootboek'`, chip "standaard grootboek", `_met_grootboek_default`)**
+· 6 administratie-default · 7 leeg. Alleen op een regel MÉT grootboek; het tarief moet in de actuele `taxrate_cache`
+staan (`grootboek_defaults_voor`); het leverancier-geheugen wint als het een btw heeft; **`btw_bewust_leeg` (A3, 0 %/
+ambigu) remt deze stap NIET** — de default is een expliciete RLZ-keuze, geen scan-afleiding (opdrachttekst). Herkomst
+"grootboek" is een A10-autosave-trigger (`_AUTOSAVE_HERKOMSTEN`) zodat checks en doorbelasten-blok dezelfde btw zien;
+de chip komt na heropenen terug via de snapshot-waarde-gelijkheid. **Grootboek-wissel in het controlescherm
+(`BoekvoorstelPanel.wijzigRegel`):** kiest de mens (een andere) rekening, dan volgt de btw de default van die rekening
+mét chip — alleen als de btw leeg is óf zelf een grootboek-/administratie-default was; een btw van de mens, uit de
+factuur (berekend/verlegd) of uit het geheugen blijft staan (zelfde volgorde als server-side). Rekening zonder default:
+een eerder gevolgde grootboek-default gaat weg (nooit de default van een ándere rekening laten staan); btw-bedrag
+rekent mee zolang het niet handmatig is. Client-side map = grootboek-lijst × btw-lijst (verdwenen tarief vult nooit).
+
+**Odoo (4):** géén parkeerpost — `account.account.tax_ids` (Default Taxes) wordt nu meegelezen in `lees_grootboek`;
+`verrijk_grootboek_met_btw_default` legt 'm tegen de gelezen inkoop-btw (`type_tax_use='purchase'`, actief, percent;
+de synthetische "Geen btw (0%)" telt nooit): precies één inkoop-belasting = default, nul of meerdere = None
+(meerduidig = nooit invullen). Live tegen een Odoo-company niet gemeten.
+
+**Af (5):** gouden set: nieuwe casus (u) `tests/keten/test_u_btw_grootboek_default.py` (Floor-PDF, regel-geheugen zet
+"Huur materieel", rekening draagt default → prefill/DTO/autosave/checks/heropenen; zonder default blijft leeg) — 3
+groen, `keten_sweep.sh` 11 metingen gelijk (geen baseline-wijziging); `tests/documenten/test_btw_grootboek_default.py`
+(6: filter actieve tarieven/rekeningen, vult alleen mét grootboek, negeert bewust-leeg, wint van administratie-default,
+factuur en geheugen winnen, samengevoegde regel); `tests/sync/test_service.py` +3 (expand-params, waarde/null/ontbreekt/
+rommel, herschrijven, DTO); `tests/odoo/test_basis.py` +2; `tests/rlz/test_leesroutes.py` aangepast (probe mét query);
+frontend `regelVoorstelChips.test.ts` +1, nieuw `BoekvoorstelPanel.btwgrootboek.test.tsx` (4: server-chip, wissel →
+volgt + bedrag + weg bij rekening zonder default, mens wint, factuur wint/verdwenen tarief vult nooit); `tsc -b` groen.
+Migratie-afsluitroutine: `make migrate` dev-DB 0141 → 0142, `alembic check` schoon, live 200 op
+`GET /administraties/{id}/grootboek` (uvicorn 8011), `schema_referentie.sql` ververst (head 0142).
+
+**Meetrecept ná deploy (werkt in productie: ja/nee):** (1) `sync-alles` van de nacht ná de deploy (of de on-demand
+grootboek-sync van LHG) — `GET /administraties/<LHG>/grootboek` toont per rekening `standaard_taxrate_id`; (2) LHG
+Holding, nieuw document, kies "4404 Kosten mobiele telefonie" → btw gevuld mét chip "standaard grootboek". **Vereist
+eerst dat Peter in Reeleezee op 4404 het voorkeurs-btw-tarief zet** (STAP-0: null) — anders blijft het veld leeg en is
+dat het correcte gedrag. Lees-only controle van de RLZ-kant: `nameting.sh rlz-lezen --administratie "L.H.G. Holding"
+--pad Ledgers --record-via-filter "AccountNumber eq '4404'" --expand PreferentialTaxRate`.
+
+**Beslispunten Peter:** (a) waar komt de "standaard btw-code" die Peter in RLZ ziet vandaan — het voorkeurstarief op de
+rekening (dan zetten in RLZ), het favoriete tarief als UI-default, of de laatste boeking op de crediteur? Voor LHG is
+het snelste alternatief de administratie-default (blok E, Instellingen › Boeken & AI) op "NL, Hoog Tarief". (b) Open
+bewijspunt: de collectie-vorm mét een GEVULDE `PreferentialTaxRate` is live niet gezien (geen enkele rekening met
+waarde in vijf administraties) — de eerste positieve meting is het meetrecept hierboven; blijkt de collectie de
+navigatie ook gevuld niet mee te geven, dan is de terugval de record-vorm per rekening mét default (webfilter-budget!)
+of `Ledgers?$filter=PreferentialTaxRate ne null` als aparte kleine call (dat filter werkt, zie STAP-0 k).

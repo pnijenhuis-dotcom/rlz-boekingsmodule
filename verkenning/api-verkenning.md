@@ -2329,3 +2329,55 @@ LETTERLIJK:
 4. Ledger-vlaggen `IsFixedAssetAccount` en `UseForPaymentAccount` staan op het `Account`-DTO (en dus op `Ledgers`):
    de replay gebruikt ze voor "vast actief = nooit een pand" (0101 Gebouwen en terreinen) en voor de bank-groep in de
    saldibalans, mét naam-/rubriek-terugval als de vlag ontbreekt.
+
+## Ledgers — standaard btw-code, STAP-0 14-09 (opdracht Peter 14-09 "btw-code uit de RLZ-grootboekrekening"; lees-only via `nameting.sh rlz-lezen`, administraties L.H.G. Holding B.V., Universal Steigerbouw B.V., Administratiekantoor Nijenhuis C.V., Kempen Facilities B.V., Zilver Beheer B.V.)
+
+**Vraag:** welk veld op `Ledgers` draagt het standaard-btw-tarief van een grootboekrekening (casus L.H.G. Holding,
+inkoopfactuur, grootboek "Kosten mobiele telefonie" gekozen → btw-veld blijft leeg in de module)?
+
+**Antwoord: `PreferentialTaxRate` (type `VatRate`, navigatie) op het `Account`-DTO — bestaat, is expandbaar, maar in
+géén van de vijf gemeten administraties draagt een rekening een waarde; op LHG 4404 "Kosten mobiele telefonie" is hij
+`null`.**
+
+| # | Call (allemaal `GET`, 200) | Uitkomst |
+|---|---|---|
+| a | `Ledgers?$filter=contains(Description,'obiele')&$top=3` (LHG) | één rekening: `AccountNumber "4404"`, `Description "Kosten mobiele telefonie"`, `AccountType 2`, `ExternalGeneralLedgerNumber "4404"`, `IndentLevel 3`, vlaggen `UseForPurchaseInvoiceDetails true`, `UseForManualJournalDetails true`, overige `Is*`/`Use*` false — **géén btw-veld in de kale collectie-vorm** |
+| b | idem mét `$expand=TaxRate,VatCode,DefaultTaxRate,Tax` | identiek antwoord, geen enkele sleutel bij — onbekende expand-namen worden stil genegeerd (bekende RLZ-eigenaardigheid) |
+| c | `Ledgers/<id 4404>` (record-vorm via `--record-via-filter "AccountNumber eq '4404'"`) mét dezelfde bogus expands | record-vorm geeft extra `HasJournalEntry true`, verder identiek; geen btw-sleutel |
+| — | Help-pagina's `PUT {adminId}/Ledgers/{id}` en `GET {adminId}/Ledgers` (publiek, `/api/v1/Help/Api/…`) | het `Account`-model noemt o.a. `PreferentialTaxRate VatRate`, `TaxReturnComponent VATReturnComponent`, `DefaultDocumentCategory DocumentCategory`, `Parent Account`, `BalanceAccount Account`, `SystemAccountList`, `DimensionAccountList`, `DepreciationMethod`, `HasJournalEntry`; het GET-sample toont `"PreferentialTaxRate":null` op de collectie |
+| d | `Ledgers/PurchaseAccounts?$filter=contains(Description,'obiele')` (LHG) | `value: []` — de subset "inkooprekeningen" bevat 4404 niet (subset-semantiek onbekend, niet relevant) |
+| e | `Ledgers?$filter=AccountNumber eq '4404'&$expand=PreferentialTaxRate` (LHG, collectie) | rij zonder sleutel `PreferentialTaxRate` — **op de collectie verschijnt een null-navigatie niet** (vgl. h) |
+| f | `Ledgers?$filter=AccountNumber ge '4400' and AccountNumber lt '4420' and IsTotalAccount eq false&$expand=PreferentialTaxRate&$top=8` (LHG) | 4400 Kantoorartikelen, 4401 Drukwerk, 4402 Portikosten, 4403 Telefoonkosten, 4404 Kosten mobiele telefonie, 4405 Internetkosten, 4406 Faxkosten, 4407 Privé-gedeelte telefoon- en faxkosten — allemaal zónder de sleutel |
+| g | `Ledgers/<id 4404>?$expand=PreferentialTaxRate` (record-vorm) | **`"PreferentialTaxRate": null`** — de sleutel verschijnt (dus de navigatie bestaat en de expand werkt), de waarde is leeg: RLZ draagt op 4404 in LHG géén standaard-btw-tarief |
+| h | `Ledgers?$filter=AccountNumber eq '4404'&$expand=PreferentialTaxRate($select=id),DefaultDocumentCategory,TaxReturnComponent,Parent,BalanceAccount,SystemAccountList` (LHG) | `Parent {id}`, `BalanceAccount null`, `TaxReturnComponent null`, `DefaultDocumentCategory null`, `SystemAccountList [{Code "RGS.WBedKanTef", RgsCode "WBedKanTef", Description "Telefoon- en faxkosten", AccountType 2, AllowBothTypes/AllowDetailAndTotal/AllowMultipleAccounts true}]` — andere null-navigaties verschijnen op de collectie WÉL; `PreferentialTaxRate` niet (mét `($select=id)`; kaal in e óók niet) |
+| i | `Ledgers?$filter=PreferentialTaxRate ne null&$expand=PreferentialTaxRate,Parent&$top=5` (LHG) | `value: []` |
+| j | `Ledgers?$filter=PreferentialTaxRate/id ne null&$expand=PreferentialTaxRate&$top=5` (LHG) | `value: []` |
+| k | `Ledgers?$filter=PreferentialTaxRate eq null&$expand=PreferentialTaxRate&$top=2` (LHG) | ACT Activa, 00 Vaste activa — het navigatie-filter wordt geëvalueerd (controle op de filter-semantiek) |
+| l | `Ledgers?$filter=PreferentialTaxRate ne null&$expand=PreferentialTaxRate&$top=5` op Universal Steigerbouw B.V., Administratiekantoor Nijenhuis C.V., Kempen Facilities B.V., Zilver Beheer B.V. | vier keer `value: []` |
+| m | `Ledgers?$filter=PreferentialTaxRate/Percentage ge 0&$expand=PreferentialTaxRate&$top=5` (LHG) | `value: []` |
+| n | `Ledgers?$orderby=PreferentialTaxRate/Percentage desc&$expand=PreferentialTaxRate&$top=4` (LHG) | ACT, 00, 000, 0001 — de standaardvolgorde (orderby op de navigatie wordt genegeerd óf alles is null) |
+
+**Conclusies (bindend voor de bouw):**
+1. Het veld bestaat: `Account.PreferentialTaxRate` → `VatRate` (= dezelfde entiteit als `TaxRates/{id}`; het `id` is de
+   `taxrate_cache.id`). Lezen = `Ledgers?$expand=PreferentialTaxRate`; een rekening mét tarief krijgt dan `{id: …}`,
+   een rekening zonder krijgt op de collectie GEEN sleutel (record-vorm: `null`). De sync leest de collectie-vorm en
+   behandelt "sleutel ontbreekt" én `null` identiek als "geen default" (`sync/service.py::standaard_taxrate_uit_ledger`).
+2. **Op LHG 4404 "Kosten mobiele telefonie" staat in RLZ géén standaard-btw-tarief** (g). Peters waarneming "in RLZ
+   heeft die rekening een standaard btw-code" komt dus niet uit dit veld — mogelijke andere bron in de RLZ-UI (niet
+   via de API zichtbaar): het favoriete tarief (`IsFavorite`) als UI-default, de laatste boeking op de crediteur, of de
+   btw-rubriek (`TaxReturnComponent`, óók null op 4404). Beslispunt Peter: (a) het voorkeurstarief in RLZ op de
+   rekening zetten (Instellingen › Grootboekrekening › btw-tarief) — de module neemt 'm bij de eerstvolgende
+   `sync-alles` over; óf (b) voor LHG de administratie-default (blok E, Instellingen › Boeken & AI) op "NL, Hoog Tarief"
+   zetten.
+3. **Open bewijspunt:** in geen van de vijf gemeten administraties kon een rekening MÉT waarde worden gevonden (i, j, l,
+   m). Dat de collectie-vorm een gevulde `PreferentialTaxRate` daadwerkelijk als `{id}` meegeeft is daarmee niet live
+   bewezen — alleen dat de expand op de collectie de navigatie kent (k: filter werkt) en op het record de sleutel
+   toont (g). De sync is daarom fail-safe (geen sleutel = geen default = gedrag van vóór 14-09); het meetrecept ná
+   deploy (rapport 2026-09-14-btw-default-grootboek.md) is de eerste échte positieve meting zodra Peter op één rekening
+   een voorkeurstarief zet.
+4. Onbekende `$expand`-namen blijven stil genegeerd (b, c) — een ontbrekende sleutel is het enige signaal. Nieuw
+   geleerd: een null-navigatie verschijnt op de collectie-vorm alleen voor sómmige navigaties (h vs e); de record-vorm
+   toont 'm altijd. Voor een STAP-0 op "bestaat dit veld" dus altijd óók de record-vorm lezen.
+5. `rlz-lezen` matcht de administratie op `ilike '%tekst%'` — "LHG Holding" is 0 treffers, de rij heet "L.H.G. Holding
+   B.V."; een niet-eenduidige zoekterm ("Holding") geeft de kandidatenlijst terug (9 treffers), dat is de snelste weg
+   naar de exacte naam.

@@ -1,0 +1,11 @@
+uitgevoerd 2026-09-14, rapport: docs/rapporten/2026-09-14-btw-default-grootboek.md
+
+BUG/WENS (Peter 14-09) — btw-code automatisch uit de RLZ-grootboekrekening
+
+Casus: LHG Holding, inkoopfactuur, grootboek "mobiele kosten" gekozen → btw-veld blijft leeg, Peter moet zelf de btw-code kiezen. In RLZ heeft die grootboekrekening een standaard btw-code; die moet de module gewoon overnemen.
+
+1. STAP 0 (lees-only, productie via scripts/gcp/nameting.sh rlz-lezen): welk veld op `Ledgers` draagt de standaard btw-code (verwacht een TaxRate-/VatCode-verwijzing; ook `$expand` proberen). Bewijs op LHG Holding "mobiele kosten" + één rekening zonder default. Vastleggen in api-verkenning "Ledgers — standaard btw-code, STAP-0 14-09". Bestaat zo'n veld niet, dan stoppen en dat rapporteren (niet zelf iets verzinnen).
+2. Datalaag: `Grootboekrekening` (app/db/models.py r.613) krijgt `standaard_taxrate_id` (nullable; migratie + afsluitroutine), gevuld door de Ledgers-sync (app/sync, leesroute `Ledgers` in app/rlz/leesroutes.py — één bron). Backfill = eerstvolgende sync-alles, geen aparte job.
+3. Winnaarsvolgorde btw-code in regel_prefill.py (r.57 "één plek, bindend") uitbreiden: factuur → leverancier-/regel-geheugen → **grootboek-default uit RLZ (nieuw, `btw_bron='grootboek'`, chip "standaard grootboek")** → administratie-default → leeg. Ook bij het WISSELEN van grootboek in het controlescherm (mens kiest een andere rekening → btw volgt de default als de btw niet door de mens is gezet; mens wint altijd). Regel "0 %/verlegd ambigu blijft leeg" blijft gelden voor de factuur-afleiding, niet voor deze default (de default is een expliciete keuze in RLZ).
+4. Odoo-administraties: zelfde patroon via account.account default tax (`tax_ids`) als de adapter dat al leest; anders parkeerpost mét reden.
+5. Af: gouden set (controlescherm raakt — casus toevoegen of xfail weghalen), tests op de winnaarsvolgorde incl. wissel-gedrag, tsc -b; BESLISSINGEN "BTW-DEFAULT UIT DE RLZ-GROOTBOEKREKENING (Peter 14-09)" + CLAUDE.md-verwijsregel + WAT_IS_NIEUW ("btw-code volgt nu de standaard van de grootboekrekening"); rapport docs/rapporten/2026-09-14-btw-default-grootboek.md + INDEX; meetrecept ná deploy: LHG Holding, nieuw document, kies "mobiele kosten" → btw gevuld met chip. Dit bestand naar gedaan/.
