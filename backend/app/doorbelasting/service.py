@@ -30,6 +30,7 @@ from app.doorbelasting.checks import (
 from app.doorbelasting.geld import provisie_over, verdeel_grootste_rest
 from app.doorbelasting.models import (
     INACTIEVE_RUN_STATUSSEN,
+    STANDAARD_PROVISIE_PERCENTAGE,
     DoorbelastingBoeking,
     DoorbelastingBoekingStatus,
     DoorbelastingInstelling,
@@ -529,7 +530,9 @@ def haal_instelling_op(*, administratie_id: uuid.UUID) -> DoorbelastingInstellin
     with scoped_session(administratie_id) as session:
         instelling = session.get(DoorbelastingInstelling, administratie_id)
         if instelling is None:
-            return DoorbelastingInstelling(administratie_id=administratie_id)
+            # Nooit `DoorbelastingInstelling(administratie_id=…)` kaal: dan is provisie_percentage None
+            # (kolom-default geldt pas bij INSERT) en gaf de route een 500 (bug Peter 14-09).
+            return DoorbelastingInstelling.standaard(administratie_id)
         session.expunge(instelling)
         return instelling
 
@@ -1249,8 +1252,8 @@ def _check_invoer(
         )
         for m in mapping_rijen
     }
-    instelling = session.get(DoorbelastingInstelling, run.administratie_id) or DoorbelastingInstelling(
-        administratie_id=run.administratie_id
+    instelling = session.get(DoorbelastingInstelling, run.administratie_id) or DoorbelastingInstelling.standaard(
+        run.administratie_id
     )
     invoer = [
         VerdeelRegelInvoer(
@@ -1416,7 +1419,7 @@ def verdeling_per_doelentiteit_bulk(
         ).all()
     )
     instelling = session.get(DoorbelastingInstelling, administratie_id)
-    provisie_pct = instelling.provisie_percentage if instelling is not None else Decimal("5.00")
+    provisie_pct = instelling.provisie_percentage if instelling is not None else STANDAARD_PROVISIE_PERCENTAGE
     per_run: dict[uuid.UUID, dict[uuid.UUID, Decimal]] = {}
     for run_id, mapping_id, netto in sommen:
         per_run.setdefault(run_id, {})[mapping_id] = Decimal(netto or 0)

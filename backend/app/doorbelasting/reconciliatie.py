@@ -322,17 +322,25 @@ def verzamel_opruimlijst(administratie_id: uuid.UUID) -> OpruimlijstResultaat:
             )
         )
 
-    # Bron-kant: verkoop-concepten.
-    rlz_admin_id = rlz_admin_id_voor(administratie_id)
-    with client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id) as bron_client:
-        for document_id, verkoop_rlz_id, _spiegel, _doel, referentie, reden, detail in te_controleren:
-            try:
-                status = _rlz_status(bron_client, "SalesInvoices", verkoop_rlz_id)
-            except RlzApiError as exc:
-                fouten.append(f"verkoop {verkoop_rlz_id} niet controleerbaar: {exc}")
-                continue
-            if status == 1:
-                voeg_toe("verkoop_bron", administratie_id, verkoop_rlz_id, document_id, referentie, reden, detail)
+    # Bron-kant: verkoop-concepten. Sweep bug 14-09: een bron zonder RLZ-credential (Odoo-administratie,
+    # nog niet gekoppeld, credential ingetrokken) mét gestorneerde/vervallen runs gaf hier een onafgevangen
+    # GeenRlzCredentials → 500 op de "Scan"-knop; nu dezelfde zichtbare fout-regel als de doel-kant.
+    try:
+        rlz_admin_id = rlz_admin_id_voor(administratie_id)
+        with client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id) as bron_client:
+            for document_id, verkoop_rlz_id, _spiegel, _doel, referentie, reden, detail in te_controleren:
+                try:
+                    status = _rlz_status(bron_client, "SalesInvoices", verkoop_rlz_id)
+                except RlzApiError as exc:
+                    fouten.append(f"verkoop {verkoop_rlz_id} niet controleerbaar: {exc}")
+                    continue
+                if status == 1:
+                    voeg_toe("verkoop_bron", administratie_id, verkoop_rlz_id, document_id, referentie, reden, detail)
+    except GeenRlzCredentials:
+        fouten.append(
+            f"bron-administratie heeft geen RLZ-credentials (meer) — "
+            f"{len(te_controleren)} verkoop-concept(en) niet controleerbaar"
+        )
 
     # Doel-kant: spiegel-concepten, per doel-administratie één client.
     per_doel: dict[uuid.UUID, list[tuple[uuid.UUID, uuid.UUID, str | None, str, str]]] = {}

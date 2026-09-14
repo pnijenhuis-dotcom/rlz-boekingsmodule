@@ -80,6 +80,10 @@ class DoorbelastingMapping(Base):
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
+# Standaard provisie-% zolang een bron-administratie nog geen instellingen-rij heeft (mockup: 5 %).
+STANDAARD_PROVISIE_PERCENTAGE = Decimal("5.00")
+
+
 class DoorbelastingInstelling(Base):
     """Config per BRON-administratie (mockup #centraleinkoopmodal; §2: provisie-% en btw-tarief
     zijn config, nooit hardcoded — huidige praktijk 5% en vlak 21% hoog).
@@ -93,11 +97,20 @@ class DoorbelastingInstelling(Base):
     administratie_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.administratie.id"), primary_key=True
     )
-    provisie_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("5.00"))
+    provisie_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=STANDAARD_PROVISIE_PERCENTAGE)
     btw_taxrate_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     omzet_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     provisie_omzet_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    @classmethod
+    def standaard(cls, administratie_id: uuid.UUID) -> DoorbelastingInstelling:
+        """De niet-opgeslagen standaardstand voor een administratie ZONDER rij (bug 14-09, Peter:
+        Instellingen › Doorbelasting gaf een 500). Een kolom-`default=` werkt pas bij INSERT — op een
+        kaal geconstrueerd object is `provisie_percentage` None, en dat liep stuk in de response
+        (pydantic) én zou in `provisie_over` stuklopen. Dit is de ENIGE plek die een transient
+        instelling maakt; alle lezers (route, checks, bulk-verdeling) gaan hier doorheen."""
+        return cls(administratie_id=administratie_id, provisie_percentage=STANDAARD_PROVISIE_PERCENTAGE)
 
 
 class IntercompanyTegenpartij(Base):

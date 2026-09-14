@@ -228,3 +228,27 @@ def test_gestorneerd_en_vervallen_run_op_zelfde_concept_worden_samengevoegd(
     assert [k.kant for k in resultaat.kandidaten] == ["verkoop_bron"]
     assert resultaat.kandidaten[0].reden == "gestorneerd+vervallen_run"
     assert resultaat.kandidaten[0].referentie == "V26-0001"
+
+
+def test_bron_zonder_credentials_geeft_zichtbare_fout_geen_500(
+    gestorneerde_boeking: DoorbelastingBoeking, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sweep bug 14-09: de bron-kant ving GeenRlzCredentials níét af (de doel-kant wel) — een bron zonder
+    RLZ-credential (Odoo-administratie, nog niet gekoppeld, ingetrokken) mét gestorneerde boekingen gaf een 500 op
+    de Scan-knop. Nu een zichtbare fout-regel; de doel-kant blijft wél gecontroleerd."""
+    fake = _FakeRlz({gestorneerde_boeking.spiegel_rlz_id: 1})
+
+    def _admin_id_voor(administratie_id: uuid.UUID) -> str:
+        if administratie_id == gestorneerde_boeking.administratie_id:
+            raise GeenRlzCredentials(f"geen credentials voor {administratie_id}")
+        return str(administratie_id)
+
+    monkeypatch.setattr(reconciliatie, "rlz_admin_id_voor", _admin_id_voor)
+    monkeypatch.setattr(reconciliatie, "client_voor_rlz_admin_id", lambda rid: fake)
+
+    resultaat = reconciliatie.verzamel_opruimlijst(gestorneerde_boeking.administratie_id)
+
+    assert [k.kant for k in resultaat.kandidaten] == ["spiegel_doel"]
+    assert len(resultaat.fouten) == 1
+    assert "bron-administratie heeft geen RLZ-credentials" in resultaat.fouten[0]
+    assert "1 verkoop-concept(en)" in resultaat.fouten[0]
