@@ -2174,12 +2174,60 @@ regels" — halve data, rapport onbetrouwbaar; zie `verkenning/nameting-vgg-repl
 
 ## Memoriaalregels — teken per regel, STAP-0 14-09 (run 2 VGG blok 7d; administratie Vastgoedgroep Nederland B.V.; lees-only via `nameting.sh rlz-lezen`)
 
-**Status 14-09: NIET UITGEVOERD — de gcloud-gebruikerssessie (`info@vastly.software`) was verlopen; alle tien calls faalden
-vóór de job-start met `ERROR: (gcloud.run.jobs.execute) There was a problem refreshing your current auth tokens:
-Reauthentication failed. cannot prompt during non-interactive execution.` Alleen Peter kan `gcloud auth login` doen; de
-STAP 0 is daarom als meetrecept klaargezet (`scripts/gcp/vgg_blok7_nameting.sh e`, onderdeel van `alles`) en de uitkomst
-landt in `verkenning/nameting-vgg-memoriaalregels-<dd-mm>.txt` → letterlijk hieronder overnemen (tabel per regel:
-Account, CreditOrDebit, DebitAmount, CreditAmount, NetAmount, en wat de vertaler ervan maakt).**
+**UITGEVOERD 14-09 (middag, ná herlogin Peter; productienameting op de image van `7c3d56a`+7d; bewijs letterlijk in
+`verkenning/nameting-vgg-memoriaalregels-14-09.txt` en `nameting-vgg-replay-14-09.txt`). De ochtendpoging faalde op een
+verlopen gcloud-sessie (`Reauthentication failed. cannot prompt during non-interactive execution.`) — historie.**
+
+**Uitkomst per regel (6 memorialen, 34 regels, `GET ManualJournals/{id}?$expand=DocumentLineList($expand=Account)` via
+`rlz-lezen --record-via-filter "ReceiptNumber eq '…'"`) — alle 34 regels volgen exact hetzelfde patroon:**
+
+| Boekstuk (BookDate) | Rekening (AccountType) | CreditOrDebit | DebitAmount | CreditAmount | NetAmount |
+|---|---|---|---|---|---|
+| RLZ-06-00000001 (2025-07-15) | 0500 Geplaatst aandelenkapitaal (4) | 1 | null | 70,00 | **+70,00** |
+| | 1001 ING (3) | 2 | 70,00 | null | +70,00 |
+| RLZ-06-00000106 (2025-12-31) | 1100 Voorraad vastgoed (3) | 2 | 175.000,00 | null | +175.000,00 |
+| | 1601 N.t.b. vastgoed (4) | 1 | null | 175.000,00 | **+175.000,00** |
+| RLZ-06-00000038 (2025-06-30) | 1710 Loonbelasting (4) | 1 | null | 1.434,00 | +1.434,00 |
+| | 1605 Nettolonen (4) | 1 | null | 3.231,95 | +3.231,95 |
+| | 4000 Brutosalarissen (2) | 2 | 4.666,67 | null | +4.666,67 |
+| | 8199 Diverse opbrengsten (1) | 1 | null | 0,72 | +0,72 |
+| RLZ-60-00000003 (2025-08-09) | 1602 RC Tupker Beheer (4) | 2 | 1.000,00 | null | **−1.000,00** |
+| | 1001 ING (3) | 1 | null | 1.000,00 | **−1.000,00** |
+| RLZ-06-00000122 (2025-12-31) | 7000 Inkopen vastgoed (2) ×2 | 2 | 267.000,00 / 175.000,00 | null | +267.000,00 / +175.000,00 |
+| | 4601 Notariskosten (2) ×2 | 2 | 1.862,91 ×2 | null | +1.862,91 ×2 |
+| | 4612 Kosten bemiddeling (2) ×2 | 2 | 5.189,02 / 3.750,00 | null | +5.189,02 / +3.750,00 |
+| | 8000 Omzet verkopen (1) ×2 | 1 | null | 287.555,00 / 215.000,00 | +287.555,00 / +215.000,00 |
+| | 4106 Schoonmaakkosten (2) | 1 | null | 624,30 | **−624,30** |
+| | 1201 Overige vorderingen (3) | 2 | 48.514,46 | null | +48.514,46 |
+| RLZ-06-00000123 (2026-01-01, terugdraai van 122) | zelfde tien rekeningen, alle zijden gewisseld | 1↔2 | ↔ | ↔ | alle tekens omgeklapt (7000 −267.000,00, 8000 −287.555,00, 4106 +624,30, 1201 −48.514,46, …) |
+
+**Bewezen feiten (34/34):**
+1. **`CreditOrDebit` 1 = CREDIT, 2 = DEBET** op lezen — elke regel met `CreditOrDebit 1` draagt uitsluitend `CreditAmount`,
+   elke regel met 2 uitsluitend `DebitAmount`. De CLAUDE.md-regel "1=debet, 2=credit" (schrijfmodel PoC juli) is daarmee
+   op lezen bewezen fout en op 14-09 gecorrigeerd. Onze eigen PUT's (omzet-kostprijs, waarborg) sturen 1 mét `DebitAmount`
+   en 2 mét `CreditAmount` en boeken correct → RLZ volgt bij schrijven de BEDRAGVELDEN, niet de code (de "gespiegelde
+   CreditOrDebit"-observatie hierboven is dus geen spiegeling maar RLZ's eigen codering).
+2. **`DebitAmount`/`CreditAmount` zijn eenduidig** (de andere is `null`) — de enige leesbare richting. Fix 7d punt 1 blijft.
+3. **`NetAmount` is getekend naar de NORMALE ZIJDE van de rekening:** credit op AccountType 4 (passiva) en 1 (opbrengst) =
+   positief, debet op type 3 (activa) en 2 (kosten) = positief; de tegengestelde zijde = negatief (RLZ-60-00000003: 1602
+   debet → −1.000,00, 1001 credit → −1.000,00; RLZ-06-00000122: 4106 credit → −624,30). Dat verklaart exact de 13-09-
+   omklap (alle type-4/1-rekeningen), en `TotalNetAmount` = Σ van de normale-zijde-bedragen (RLZ-06-00000122: 503.179,30).
+4. **`EventID` (soortcode) per DocumentType, replay 14-09:** 21 = memoriaal-documentpost (228 = 228 geboekte memorialen),
+   22 = memoriaal overig zónder document (214 — RLZ-eigen memoriaalposten, geen document), 71 = inkoopfactuur (788 = 788),
+   72 (4) / 73 (378) = inkoop betalings-/afletter-/correctieposten, 51 = verkoop/receipt (71 = 71), 53 (27) = verkoop-
+   betalingsposten, 191 (17) = RLZ-resultaatposten (DocumentType 0), 240 = bank-directe boeking (54 = 9 geboekte
+   documenten + 45 systeemhulzen — RLZ journaliseert óók de huls). `rlz_bron.DOCUMENT_EVENTIDS` = {1: 71, 10: 51, 11: 21,
+   19: 240}; de toets telt voor 19 geboekt + hulzen en benoemt de hulzen apart.
+5. **Valkuil datumfilter:** `JournalEntry/BookDate ge 2025-12-31T00:00:00Z and lt 2026-01-01T00:00:00Z` gaf 16 regels,
+   ALLE met `BookDate 2026-01-01T00:00:00` (de 31-12-memorialen 106/122 ontbraken); 30-06 en 09-08 gaven `@odata.count 0`.
+   RLZ slaat `BookDate` op als lokale middernacht (Europe/Amsterdam; 01-01 00:00 CET = 31-12 23:00Z) en toont 'm zonder
+   offset — een `Z`-literal op middernacht selecteert dus de VOLGENDE dag. Een literal zónder `Z` is een 400
+   (DateTimeOffset-format, zie "Filters/paging"). Werkende vorm = NL-dag in UTC: `ge 2025-12-30T23:00:00Z and lt
+   2025-12-31T23:00:00Z` (CET) resp. `…T22:00:00Z` (CEST) — zo staat het sinds 14-09 in `vgg_blok7_nameting.sh` stap e.
+   `JournalEntryLines` zonder datumfilter (0500: 3 regels, 4900: 1 regel) leverden zoals verwacht.
+
+_Historie (ochtend 14-09, vóór de meting):_ de status was "NIET UITGEVOERD — gcloud-sessie verlopen; meetrecept klaar
+(`scripts/gcp/vgg_blok7_nameting.sh e`)"; de analyse hieronder is van vóór de meting en door de meting bevestigd.**
 
 Aanleiding (nameting 13-09, `verkenning/nameting-vgg-replay-13-09.txt`): saldibalans RLZ vs berekend Odoo klapt om op 0500
 (−100 / +100), 1601 (−6.217.000 / +6.217.000) terwijl 1100 in hetzelfde document klopt, 1602 (+257.497,50 / −257.497,50),

@@ -9175,7 +9175,31 @@ doelkoppeling ontbreekt"; partners onbekend 2 als geblokkeerd concept (RLZ-04-00
 regel de letterlijke RLZ-waarden → api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09" invullen en pas dán
 de CLAUDE.md-regel over `CreditOrDebit` aanpassen.
 
-**Werkt in productie: nog niet gemeten.**
+**PRODUCTIENAMETING 14-09 (nazorg 7d, middag; image ná 7d; `verkenning/nameting-vgg-replay-14-09.txt` +
+`nameting-vgg-memoriaalregels-14-09.txt`; uitgevoerd als eerste echte inbox-opdracht `opdrachten/gedaan/2026-09-14-nazorg-7d-en-inbox-auto.md`):**
+oordeel **GROEN ZONDER DOEL** — 0 verschillen, 1096 niet vertaalbaar uitsluitend door de ontbrekende doelkoppeling, 0 leesfouten,
+0 zonder regels, 0 regelsom ≠ totaal, memoriaal uit balans 0, resultaatposten sluiten (7999 + 8999 = −0509: 396.266,72 per 31-12,
+562.666,89 per 14-09), betalingsverschillen 1, geblokkeerd (partner) 2 (RLZ-04-00000109, RLZ-25-00000111). Alle meetlatten van
+het meetrecept gehaald: 0500 −100, 1601 −6.217.000, 1602 +257.497,50, 1603 −385.000, 0899 −185.000, 1710 −4,40, 8000 per 31-12 Δ 0,
+1100/1011/4000 correct. **Werkt in productie: ja.**
+
+Nazorg (14-09, geen migratie, geen writes): (a) `rlz_bron.DOCUMENT_EVENTIDS` aangevuld: 11 → {21} (228 = 228), 19 → {240} (54 =
+9 documenten + 45 systeemhulzen — de toets telt geboekt + hulzen, hulzen apart benoemd; `EVENTID_MEMORIAAL_OVERIG` = 22, 214 posten
+zonder document); de volledigheidstoets zegt nu voor álle vier de typen "sluit" in plaats van "toets niet uitvoerbaar" (die stand
+blijft voor een onbekend type, mét codes — test). (b) CLAUDE.md § Reeleezee API ManualJournals gecorrigeerd: op lezen is
+`CreditOrDebit` 1 = CREDIT, 2 = DEBET (34/34 regels), bedragvelden leidend; onze PUT's ongewijzigd (RLZ volgt bij schrijven de
+bedragvelden). (c) api-verkenning "Memoriaalregels — teken per regel, STAP-0 14-09" gevuld met de letterlijke waarden: `NetAmount`
+getekend naar de normale zijde van de rekening (1602 debet −1.000, 4106 credit −624,30), EventID-tabel, datum-valkuil. (d) stap `e`
+van `vgg_blok7_nameting.sh`: datumfilters als NL-dag in UTC (`…T23:00:00Z` CET / `…T22:00:00Z` CEST) — de opdracht vroeg "zonder
+`Z`", maar een literal zonder offset is een bewezen 400 (api-verkenning "Filters/paging"); de verschoven `Z`-vorm is de bewezen
+syntaxis én de juiste dag. (e) **Bevinding `ongemapt:1001`** (−85.376,31 per 31-12 / +71.343,31 per 14-09): de PaymentTransactions
+dekken RLZ 1001 al exact (146.543,16 per 31-12); de 1001-poot van memorialen (RC-boekingen, aandelenkapitaal, kruisposten) telt in
+de replay dubbel. **Open modelpunt voor SCHRIJF b (geen code nu):** memoriaal-1001-regels die tegen een statement line
+reconciliëren gaan in Odoo naar de outstanding-/suspense-rekening van het bankdagboek, niet naar de bankrekening zelf; de
+bankrekening wordt uitsluitend door statement lines gevoed. (f) Flake `tests/accordering/test_staande_voorstel_periodiek.py`:
+oorzaak = de rondes-query in `_open_rondes_met_volgende_stap` had geen ORDER BY, terwijl het voorstel "alleen de EERSTE gelijke
+factuur in lijstvolgorde" daarop leunt — heap-volgorde verschuift ná een UPDATE van een ronde-rij; fix = `ORDER BY aangeboden_op,
+id` in de gedeelde aan-de-beurt-bron (wachtrij, teller, meldingen en voorstel lezen nu dezelfde volgorde). Geen skip.
 
 <!-- run2-vgg:blok7d -->
 
@@ -9252,7 +9276,7 @@ regel Peter 08-09 "productie alleen via de bestaande Cloud Run-jobs of read-only
 | **A6 Guard** | `tests/unit/test_nameting_workflow.py` (7): alleen `nameting@` als service_account, `deploy@` alleen in commentaar, zelfde provider als deploy.yml, geen directe `gcloud run jobs execute/deploy`/`gcloud sql|secrets|iam` in run-blokken, alleen de twee nameting-scripts, `git add` beperkt tot `verkenning/nameting-*.txt` (geen -A/.), geen force, permissions exact, `nameting_env.sh`-GitHub-tak zonder impersonatie/key. Zonder PyYAML (geen nieuwe testafhankelijkheid). | GEBOUWD + GROEN | `backend/tests/unit/test_nameting_workflow.py` |
 | **B1 Rapporten** | `docs/rapporten/<jjjj-mm-dd>-<blok-slug>.md` per CC-eindrapport (zelfde inhoud als de chat, incl. "werkt in productie: ja/nee/niet gemeten"), `docs/rapporten/INDEX.md` nieuwste bovenaan, CC vult beide zelf in de laatste commit van de run. Guard `tests/unit/test_rapporten_index.py` (4): naamvorm, bestand ⇄ indexregel, volgorde, verplichte productieregel. Regel in CLAUDE.md § Werkwijze. | GEBOUWD + GROEN | `docs/rapporten/INDEX.md` |
 | **B2 Opdrachtenmap** | `opdrachten/inbox/` (Cowork schrijft één .md per opdracht) → `lopend/` bij start → `gedaan/` bij afronding mét kopregel "uitgevoerd <datum>, rapport: docs/rapporten/<bestand>"; mappen gecommit (`.gitkeep`), `opdrachten/log/` + `.lock` in `.gitignore`. | GEBOUWD | `opdrachten/` |
-| **B3 Kickoff** | `scripts/cc_inbox.sh`: oudste .md (mtime) uit inbox → lopend, `claude -p "<inhoud> + werkloop-afsluitregels" --permission-mode acceptEdits` vanuit de repo-root (settings.local.json geldt: deny op git push/secrets; Stop-hook pusht), log `opdrachten/log/<datum>-<slug>.log`, macOS-melding "CC klaar: <slug> — <laatste regel>" / "CC MISLUKT: …". Lock `opdrachten/.lock` mét pid: levend proces = niets doen; verweesde lock (dood pid) = gemeld + opgeruimd (anders staat de inbox voor altijd stil). Exit 0 én bestand nog in lopend/ → het SCRIPT verplaatst naar gedaan/ mét kopregel (rapport = nieuwste docs/rapporten-bestand dat tijdens de run bijkwam, anders "geen"); exit ≠ 0 → blijft zichtbaar in lopend/. `CC_INBOX_PERMISSION_MODE` overschrijft de modus. | GEBOUWD + GETEST (dummy) | `scripts/cc_inbox.sh` |
+| **B3 Kickoff** | `scripts/cc_inbox.sh`: oudste .md (mtime) uit inbox → lopend, `claude -p "<inhoud> + werkloop-afsluitregels" --permission-mode auto` (default sinds 14-09 middag, Cowork; `CC_INBOX_PERMISSION_MODE` overschrijft) vanuit de repo-root (settings.local.json geldt: deny op git push/secrets; Stop-hook pusht), log `opdrachten/log/<datum>-<slug>.log`, macOS-melding "CC klaar: <slug> — <laatste regel>" / "CC MISLUKT: …". Lock `opdrachten/.lock` mét pid: levend proces = niets doen; verweesde lock (dood pid) = gemeld + opgeruimd (anders staat de inbox voor altijd stil). Exit 0 én bestand nog in lopend/ → het SCRIPT verplaatst naar gedaan/ mét kopregel (rapport = nieuwste docs/rapporten-bestand dat tijdens de run bijkwam, anders "geen"); exit ≠ 0 → blijft zichtbaar in lopend/. `CC_INBOX_PERMISSION_MODE` overschrijft de modus. | GEBOUWD + GETEST (dummy) | `scripts/cc_inbox.sh` |
 | **B4 launchd** | `~/Library/LaunchAgents/nl.aknijenhuis.cc-inbox.plist`: WatchPaths `opdrachten/inbox/` + StartInterval 300 + RunAtLoad, PATH expliciet `$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`, HOME/LANG gezet, log `~/Library/Logs/cc-inbox.log`. `scripts/cc_inbox_install.sh` (idempotent: toolcheck claude/git/gcloud/osascript op dat PATH mét gevonden paden, plist herschrijven, bootout + bootstrap) en `--uninstall` (aan/uit-knop). **Geïnstalleerd + getest 14-09 op deze Mac:** toolcheck ✓ (`~/.local/bin/claude`, `/usr/bin/git`, `/opt/homebrew/bin/gcloud`); dummy-opdracht `2026-09-14-dummy-test.md` binnen 1 s na het neerzetten opgepikt (WatchPaths), `claude -p` 13 s, exit 0, slotregel "test — dummy geslaagd", bestand → `gedaan/` mét kopregel, melding via osascript verstuurd (exit 0). | GEBOUWD + GETEST | `scripts/cc_inbox_install.sh` |
 | **B5 Terminal** | `scripts/zsh/rlz.zsh`: `rlz` (cd), `rlz plan` (`vgg_blok7_odoo_writes.sh plan`), `rlz meting [onderdeel]` (`gh workflow run nameting.yml -f onderdeel=…`), `rlz status` (git status + laatste 5 rapporten), `rlz inbox` (cc_inbox.sh direct). Installatie: één `source`-regel in `~/.zshrc`. | GEBOUWD | `scripts/zsh/rlz.zsh` |
 
@@ -9260,7 +9284,11 @@ regel Peter 08-09 "productie alleen via de bestaande Cloud Run-jobs of read-only
 binding intrekken: `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member="principalSet://…/attribute.repository/pnijenhuis-dotcom/rlz-boekingsmodule" --role=roles/iam.workloadIdentityUser`.
 CC-inbox: `scripts/cc_inbox_install.sh --uninstall` (agent uit, plist weg; inbox blijft staan) — `scripts/cc_inbox_install.sh` zet 'm weer aan.
 
-**Aandachtspunten (eerlijk).** (1) `--permission-mode acceptEdits` in `claude -p` laat Bash-aanroepen buiten de allow-lijst van
+**Aandachtspunten (eerlijk).** (0) **Default is sinds 14-09 middag `auto`** (Cowork zette 'm om vóór de eerste echte inbox-opdracht
+"nazorg 7d"; gedocumenteerd in de kopcommentaar van `scripts/cc_inbox.sh` + CLAUDE.md § Werkwijze "Werkloop automatisch (14-09)") —
+de deny-lijst van `.claude/settings.local.json` blijft onverkort gelden (geen git push door de agent, geen secrets; de Stop-hook
+pusht). Punt (1) hieronder beschrijft de oude default en blijft relevant als iemand `CC_INBOX_PERMISSION_MODE=acceptEdits` zet.
+(1) `--permission-mode acceptEdits` in `claude -p` laat Bash-aanroepen buiten de allow-lijst van
 settings.local.json onbeantwoord → geweigerd (geen mens om te antwoorden). Voor een échte bouwopdracht betekent dat: pytest/tsc/git status
 wél, maar `git commit`, `mv`, `make migrate` níét — CC kan dan niet zelf committen; het script vangt de verplaatsing naar gedaan/ op, maar
 de commit blijft dan liggen voor Peter of een volgende interactieve sessie. Advies: `CC_INBOX_PERMISSION_MODE=auto` (classifier

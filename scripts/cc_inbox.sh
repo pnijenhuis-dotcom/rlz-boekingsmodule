@@ -5,8 +5,12 @@
 #                                    opdrachten/log/<datum>-<slug>.log en stuurt een macOS-melding "CC klaar: <slug> — <laatste regel>".
 # Eén tegelijk: lock opdrachten/.lock (mét pid). Staat er een lock van een levend proces → niets doen (exit 0). Een lock
 # van een dood proces (crash/reboot) wordt gemeld en opgeruimd — anders zou de inbox voor altijd stilstaan.
-# Permissies: --permission-mode ${CC_INBOX_PERMISSION_MODE:-acceptEdits} + de bestaande .claude/settings.local.json van de
+# Permissies: --permission-mode ${CC_INBOX_PERMISSION_MODE:-auto} + de bestaande .claude/settings.local.json van de
 # repo (deny-lijst geldt: geen git push door de agent, geen secrets; de Stop-hook pusht ná de run zoals altijd).
+# Default `auto` sinds 14-09 middag (Cowork, vóór de eerste echte inbox-opdracht): de classifier keurt veilige acties goed
+# zodat CC zelf kan committen/verplaatsen/testen; `acceptEdits` liet elke Bash-aanroep buiten de allow-lijst onbeantwoord
+# → geweigerd (geen mens om te antwoorden). Zet CC_INBOX_PERMISSION_MODE=acceptEdits om terug te vallen. Vastgelegd in
+# CLAUDE.md § Werkwijze "Werkloop automatisch (14-09)" + BESLISSINGEN "WERKLOOP AUTOMATISCH …" aandachtspunt (0).
 # Afronding: exit 0 van claude én het bestand staat nog in lopend/ → het script verplaatst het naar gedaan/ mét kopregel
 # "uitgevoerd <datum>, rapport: docs/rapporten/<bestand>" (nieuwste rapport dat tijdens de run is bijgekomen, anders "geen").
 # Exit ≠ 0 → bestand blijft in lopend/ (zichtbaar), melding "CC MISLUKT".
@@ -57,7 +61,7 @@ Werkloop automatisch (CLAUDE.md § Werkwijze \"Werkloop automatisch (14-09)\"): 
 RAPPORTEN_VOOR="$(ls -1 "$REPO/docs/rapporten"/*.md 2>/dev/null | sort || true)"
 cd "$REPO"
 rc=0
-claude -p "$PROMPT" --permission-mode "${CC_INBOX_PERMISSION_MODE:-acceptEdits}" </dev/null 2>&1 | tee -a "$LOG"
+claude -p "$PROMPT" --permission-mode "${CC_INBOX_PERMISSION_MODE:-auto}" </dev/null 2>&1 | tee -a "$LOG"
 rc="${PIPESTATUS[0]:-1}"
 echo ">> cc_inbox: claude eindigde met code $rc ($(date +%FT%T))" | tee -a "$LOG" >&2
 
