@@ -6,6 +6,20 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-14 — Eigen pagina Veldwerkers, doorbelasting-instellingen openen weer
+
+<!-- veldwerkers-run-14-09 + bugfix-doorbelasting-14-09 -->
+
+### Veldwerkers
+- Nieuw menu-item Beheer › Veldwerkers: alle ZZP'ers, uitvoerders en detacheerders van het kantoor op één pagina, met een kolom Dossier (compleet, N ontbreekt, verlopen, ter controle) en een filter "dossier onvolledig". De administratie is een filter, geen verplichte keuze vooraf.
+- Een medewerker met het recht Veldwerkerbeheer ziet die pagina ook en kan nu zelf detacheerders aan ZZP'ers koppelen, het bureautarief zetten en crediteuren koppelen — alles binnen de eigen administraties en met een spoor in het audit-log. Rechten toekennen en de dossier-documenttypen blijven aan de Beheerder.
+- Het dossier van een ZZP'er is voor die medewerker ook te openen en bij te werken; het werkvoorraad-signaal "ZZP-dossiers" op de klantpagina springt nu rechtstreeks naar de betreffende veldwerkers.
+- Gebruikers & toegang toont voor veldwerkers alleen nog de accounts en verwijst voor koppelingen en dossiers naar de nieuwe pagina.
+
+### Doorbelasting
+- Instellingen › Doorbelasting opent nu ook voor een administratie waar nog nooit doorbelasting-instellingen zijn opgeslagen (gaf een foutmelding).
+- De scan-knop van de doorbelasting meldt leesbaar als de bron-administratie geen Reeleezee-login (meer) heeft, in plaats van een foutmelding.
+
 ## 2026-09-14 — Proefrapport overstap Vastgoedgroep: memorialen op het juiste teken
 
 <!-- run2-vgg:blok7d -->

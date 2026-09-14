@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0140
+-- Migratie-head bij deze dump: 0141
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -345,6 +345,27 @@ CREATE FUNCTION platform.audit_gebruiker_rol_wijziging() RETURNS trigger
             RETURN NEW;
         END;
         $$;
+
+
+--
+-- Name: current_actor_heeft_veldwerkerbeheer(); Type: FUNCTION; Schema: platform; Owner: -
+--
+
+CREATE FUNCTION platform.current_actor_heeft_veldwerkerbeheer() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'platform', 'pg_temp'
+    AS $$
+        SELECT EXISTS (
+            SELECT 1
+            FROM platform.gebruiker_module_rol r
+            JOIN platform.gebruiker g ON g.id = r.gebruiker_id
+            WHERE r.gebruiker_id = platform.current_actor_id()
+              AND r.module = 'boekhouding.veldwerkerbeheer'
+              AND r.rol = 'veldwerkerbeheer'
+              AND g.status = 'actief'
+              AND g.rol IN ('beheerder', 'boekhouding_projecten', 'boekhouding')
+        )
+    $$;
 
 
 --
@@ -11935,28 +11956,28 @@ ALTER TABLE platform.detacheerder_koppeling ENABLE ROW LEVEL SECURITY;
 -- Name: detacheerder_koppeling detacheerder_koppeling_lees; Type: POLICY; Schema: platform; Owner: -
 --
 
-CREATE POLICY detacheerder_koppeling_lees ON platform.detacheerder_koppeling FOR SELECT USING (((detacheerder_gebruiker_id = platform.current_actor_id()) OR platform.current_actor_is_beheerder() OR (platform.current_actor_id() = '00000000-0000-0000-0000-000000000001'::uuid)));
+CREATE POLICY detacheerder_koppeling_lees ON platform.detacheerder_koppeling FOR SELECT USING (((detacheerder_gebruiker_id = platform.current_actor_id()) OR (platform.current_actor_is_beheerder() OR platform.current_actor_heeft_veldwerkerbeheer()) OR (platform.current_actor_id() = '00000000-0000-0000-0000-000000000001'::uuid)));
 
 
 --
 -- Name: detacheerder_koppeling detacheerder_koppeling_muteren; Type: POLICY; Schema: platform; Owner: -
 --
 
-CREATE POLICY detacheerder_koppeling_muteren ON platform.detacheerder_koppeling FOR UPDATE USING (platform.current_actor_is_beheerder()) WITH CHECK (platform.current_actor_is_beheerder());
+CREATE POLICY detacheerder_koppeling_muteren ON platform.detacheerder_koppeling FOR UPDATE USING ((platform.current_actor_is_beheerder() OR platform.current_actor_heeft_veldwerkerbeheer())) WITH CHECK ((platform.current_actor_is_beheerder() OR platform.current_actor_heeft_veldwerkerbeheer()));
 
 
 --
 -- Name: detacheerder_koppeling detacheerder_koppeling_toevoegen; Type: POLICY; Schema: platform; Owner: -
 --
 
-CREATE POLICY detacheerder_koppeling_toevoegen ON platform.detacheerder_koppeling FOR INSERT WITH CHECK (platform.current_actor_is_beheerder());
+CREATE POLICY detacheerder_koppeling_toevoegen ON platform.detacheerder_koppeling FOR INSERT WITH CHECK ((platform.current_actor_is_beheerder() OR platform.current_actor_heeft_veldwerkerbeheer()));
 
 
 --
 -- Name: detacheerder_koppeling detacheerder_koppeling_verwijderen; Type: POLICY; Schema: platform; Owner: -
 --
 
-CREATE POLICY detacheerder_koppeling_verwijderen ON platform.detacheerder_koppeling FOR DELETE USING (platform.current_actor_is_beheerder());
+CREATE POLICY detacheerder_koppeling_verwijderen ON platform.detacheerder_koppeling FOR DELETE USING ((platform.current_actor_is_beheerder() OR platform.current_actor_heeft_veldwerkerbeheer()));
 
 
 --
