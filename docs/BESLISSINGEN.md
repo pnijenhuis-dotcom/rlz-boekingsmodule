@@ -9745,3 +9745,30 @@ factuurdatum 29-8-2026 bij RLZ-01-00000706. Bijvangst: Reference2 blijkt "RLZ-<f
 boekstuk-terugval in `doelpost.boekstuknummer_uit` (regex `RLZ-\d{2}-\d+`) matcht daar dus terecht niet op; `Document.ReceiptNumber`
 uit de expand blijft de bron.
 
+## BTW VERLEGD — HERKENNING OP KOLOMCODE EN ONDERAANNEMER (Peter 15-09) — casus Olieman/Bouwadvies Oost Nederland factuur 32948; opdracht via opdrachten/inbox; geen migratie
+
+**Aanleiding (Peter 15-09, "btw wordt weer niet ingevuld, kost te veel tijd"):** inkoopfactuur 32948 (03-09-2026, "1e termijn
+werkzaamheden", werk Uitweg 30 Woerdense Verlaat), één regel 20.000,00 met "V" in de BTW-kolom, "BTW 0,00 % over 20000,00", nergens
+het woord verlegd → `_factuur_is_verlegd` (alleen vermelding) sloeg niet aan, `leid_btw_af` laat 0 % bewust leeg. Regel blijft:
+0 % ≠ verlegd; verlegd heeft een deterministische basis nodig.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **AI levert alleen de kolomtekst.** Regel-key `bc` in het inkoopschema (sentinel-string, geen union — limiet ≤ 16 ongewijzigd), `AiRegel.btw_kolom`, prompt: "de tekst in de btw-kolom LETTERLIJK ("V", "VL", "verl.", "21%", "0%", "vrij"), nooit vertalen". | GEBOUWD + GETEST | `app/extractie/service.py`; `tests/extractie/test_verlegd_kolomcode.py` |
+| **(b) Kolomcode deterministisch.** `controle.is_verlegd_kolomcode` (letters-kern ∈ {v, vl, verl, verlegd, btwverlegd, verlegging(sregeling), rc, reversecharge}; "0%", "vrij", "H"/"L" nooit) + `verlegd_kolomcode_voor_factuur` (élke regel mét netto ≠ 0 draagt een verlegd-code → de code, anders None). Veldvoorstel: per regel `btw_kolom` + `btw_kolom_verlegd`, kop `btw_verlegd_kolom`. `boekvoorstel._factuur_is_verlegd` = (vermelding óf kolomcode) én factuur-btw 0. | GEBOUWD + GETEST | `app/extractie/controle.py`, `app/documenten/boekvoorstel.py` |
+| **(c) Verlegd-leverancier.** `boekvoorstel.bepaal_verlegd_basis(session, administratie, vendor, veldvoorstel)` → `VerlegdBasis(soort, detail)`: vermelding → kolomcode → **leverancier-geheugen** (`regel_prefill.leverancier_verlegd_boekingen`: boekingen van deze leverancier op een `IsRelayed`-tarief in `boeking_observatie`, 400 dagen anders alles; ≥ 1) → **KvK-SBI 41/42/43** via de bestaande lookup (`kvk.verwerk_basisprofiel` levert nu `sbi_codes`, `kvk.is_bouw_sbi`; alleen mét échte KvK-configuratie — nooit vanuit de testomgeving, élke fout = None) — telkens ÉN factuur-btw 0. Uitkomst = verlegd-tarief via `bepaal_verlegd_taxrate` (ongewijzigd), `btw_bron='factuur_verlegd'` ORANJE, `btw_bron_detail` = 'kolomcode "V" op alle regels · <tariefherkomst>' / 'leverancier eerder verlegd geboekt (n×) · …' / 'KvK SBI 4312 (bouw) · …'; ná één mens-boeking groen via de bestaande seed-regel. In de winnaarsvolgorde staat het leverancier-geheugen (stap 3) vóór factuur-verlegd (stap 4): de eerste boeking maakt de volgende termijn dus al verlegd via de engine; (c) is de terugval. | GEBOUWD + GETEST | `app/documenten/boekvoorstel.py`, `app/documenten/regel_prefill.py`, `app/integraties/kvk.py`; `tests/documenten/test_verlegd_basis.py` |
+| **Vrijgesteld blijft leeg.** Zonder (a)/(b)/(c) blijft 0 % leeg; negatieve casus (telecom-leverancier, kolom "vrij", 0 %) in de gouden set. | GETEST | casus z |
+| **Project uit "Betreft: werk Uitweg 30 Woerdense Verlaat".** STAP-0 lees-only (`rlz-lezen --administratie "Bouwadvies Oost" --pad Projects`, executie `2jwlb`): **0 projecten in RLZ** — er is niets om tegen te matchen; de motor (`app/projecten/match.py`) vult nooit zonder kandidaat. Geen bouw; zodra Bouwadvies projecten in RLZ heeft, werkt het bestaande fuzzy-pad (oranje) op de `proj`-tekst. | UITGEZOCHT, geen bouw | rapport |
+| **Gouden-set-casus z** `tests/keten/fixtures/z_verlegd_kolomcode_v/` (geanonimiseerd "Grondwerken Reeuwijk B.V.", kolom "V" behouden, bedragen/nummer/datum exact; varianten tweede termijn zonder kolomcode + vrijgesteld) + `tests/keten/test_z_verlegd_kolomcode.py` (veldvoorstel + prefill + controlescherm-DTO; geheugen-pad; negatief). | GEBOUWD + GETEST | — |
+| Docs: CLAUDE.md-verwijsregel, WAT_IS_NIEUW-blok, dit register, rapport + INDEX, opdracht → gedaan | GEDAAN | — |
+
+**Meetlat (Peter):** bij de tweede Olieman-termijn staat alles ingevuld en is alleen "Boeken" nodig — btw via het leverancier-geheugen
+(ná de eerste boeking) of via de kolomcode; grootboek via geheugen/GB-historie; kop-omschrijving bestaand; project alleen als
+Bouwadvies er in RLZ één aanmaakt.
+
+**Beslispunten (default gekozen):** (1) "administratie is btw-plichtig ondernemer" heeft geen eigen vlag — zonder verlegd-tarief in
+de administratie kiest `bepaal_verlegd_taxrate` sowieso niets (dat is de poort); een expliciete vlag = apart besluit. (2) De KvK-lookup
+in de prefill is één externe call per document zónder (a)/(b)/geheugen, alleen bij een leverancier mét KvK-nummer en échte KvK-
+configuratie; uitval = doorlopen zonder KvK (zichtbaar in het rapport? nee — stil leeg btw-veld, zoals vóór 15-09). Wil Peter dat
+zichtbaar, dan een chip "KvK niet bereikbaar" (niet gebouwd).
+
