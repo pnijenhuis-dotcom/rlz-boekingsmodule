@@ -29,6 +29,7 @@
      "omschrijving": "Montage",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
@@ -43,6 +44,7 @@
      "omschrijving": "Demontage",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -57,6 +59,7 @@
      "omschrijving": "Regie",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
@@ -71,6 +74,7 @@
      "omschrijving": "Montage Grondslag",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -85,6 +89,7 @@
      "omschrijving": "Demontage Grondslag",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -99,6 +104,7 @@
      "omschrijving": "Mon Balkon",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -113,6 +119,7 @@
      "omschrijving": "Demo Balkon",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -127,6 +134,7 @@
      "omschrijving": "Toren",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -141,6 +149,7 @@
      "omschrijving": "Demo trap",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -155,6 +164,7 @@
      "omschrijving": "Post",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
@@ -169,6 +179,7 @@
      "omschrijving": "Net",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
@@ -183,6 +194,7 @@
      "omschrijving": "Binnen leuningen",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     }
    ],
@@ -253,6 +265,14 @@
    },
    "betaalwijze_tekst": null,
    "zekerheid_drempel": 0.8,
+   "btw_factuur_totaal": {
+    "reden": "geen_regels_zonder_btw",
+    "regels": [],
+    "rest_btw": null,
+    "percentage": null,
+    "rest_netto": null,
+    "taxrate_id": null
+   },
    "incasso_datum_tekst": null,
    "vendor_waarschuwing": null,
    "tariefstaffel_aantal": 9,
@@ -323,6 +343,7 @@
         "omschrijving": "Montage",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
@@ -337,6 +358,7 @@
         "omschrijving": "Demontage",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -351,6 +373,7 @@
         "omschrijving": "Regie",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
@@ -365,6 +388,7 @@
         "omschrijving": "Montage Grondslag",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -379,6 +403,7 @@
         "omschrijving": "Demontage Grondslag",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -393,6 +418,7 @@
         "omschrijving": "Mon Balkon",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -407,6 +433,7 @@
         "omschrijving": "Demo Balkon",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -421,6 +448,7 @@
         "omschrijving": "Toren",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -435,6 +463,7 @@
         "omschrijving": "Demo trap",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -449,6 +478,7 @@
         "omschrijving": "Post",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
@@ -463,6 +493,7 @@
         "omschrijving": "Net",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
@@ -477,6 +508,7 @@
         "omschrijving": "Binnen leuningen",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        }
       ],
@@ -547,6 +579,14 @@
       },
       "betaalwijze_tekst": null,
       "zekerheid_drempel": 0.8,
+      "btw_factuur_totaal": {
+       "reden": "geen_regels_zonder_btw",
+       "regels": [],
+       "rest_btw": null,
+       "percentage": null,
+       "rest_netto": null,
+       "taxrate_id": null
+      },
       "incasso_datum_tekst": null,
       "vendor_waarschuwing": null,
       "tariefstaffel_aantal": 9,

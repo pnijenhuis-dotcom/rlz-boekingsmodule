@@ -1,6 +1,7 @@
 """Casus (u) — btw-code uit de standaard van de grootboekrekening (opdracht Peter 14-09, casus L.H.G. Holding "Kosten
-mobiele telefonie"; migratie 0142). Gespeeld op de Floor-PDF (casus b/g: drie regels zónder leesbaar btw-bedrag, dus
-geen factuur-afleiding): het regel-geheugen zet de rekening "Huur materieel" op regel 1, die rekening draagt in de
+mobiele telefonie"; migratie 0142). Gespeeld op de Floor-PDF (casus b/g: drie regels zónder leesbaar btw-bedrag) in
+de variant ZONDER leesbaar btw-/incl-totaal (`casussen.zonder_btw_totaal`, 15-09 — mét totaal wint sinds 15-09 de
+factuur-afleiding, casus w): het regel-geheugen zet de rekening "Huur materieel" op regel 1, die rekening draagt in de
 bron een standaard-btw-tarief (RLZ `PreferentialTaxRate` → `grootboekrekening.standaard_taxrate_id`) → de btw volgt
 mét herkomst 'grootboek' (chip "standaard grootboek"), de autosave persisteert 'm en de checks zien dezelfde btw."""
 
@@ -48,7 +49,7 @@ def floor_met_grootboek_default(keten: Keten) -> uuid.UUID:
             )
         )
     pdf = CASUS.pdf()
-    keten.ai.registreer(pdf, CASUS.ai_antwoord())
+    keten.ai.registreer(pdf, casussen.zonder_btw_totaal(CASUS.ai_antwoord()))
     return keten.upload(PDF, pdf).document_id
 
 
@@ -100,7 +101,7 @@ class TestBtwVolgtDeGrootboekrekening:
                 )
             )
         pdf = CASUS.pdf()
-        keten.ai.registreer(pdf, CASUS.ai_antwoord())
+        keten.ai.registreer(pdf, casussen.zonder_btw_totaal(CASUS.ai_antwoord()))
         document_id = keten.upload(PDF, pdf).document_id
         huur = keten.prefill(document_id).regels[0]
         assert huur.ledger_id == GB_HUUR_MATERIEEL and huur.taxrate_id is None and huur.btw_bron is None

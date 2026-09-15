@@ -145,3 +145,63 @@ def test_herbereken_alle_loopt_alle_actieve_administraties_en_isoleert_fouten(
     uit = motor.herbereken_alle(vandaag=VANDAAG)
     assert isinstance(uit[administratie_id], motor.HistorieRapport)
     assert all(isinstance(v, motor.HistorieRapport) or v == "RuntimeError: kapot" for v in uit.values())
+
+
+def test_bank_direct_boekingen_van_een_mens_tellen_mee_automatisch_en_gestorneerd_niet(
+    administratie_id: uuid.UUID, beheerder_id: uuid.UUID, stam: None
+) -> None:
+    """15-09 (casus L.H.G. Holding: KPN-incasso vanuit het bankscherm op 4404 geboekt, nul inkoopregels in het
+    boekingsgeheugen): de regels van directe bankboekingen tellen mee in de verdeling per rekening — alleen GEBOEKTE,
+    niet-automatische boekingen binnen het venster."""
+    from datetime import UTC, datetime
+
+    from app.bank.models import BankBoeking, BankBoekingBron, BankBoekingRegel, BankBoekingStatus
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+
+    recent = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    oud = datetime.combine(VANDAAG - timedelta(days=motor.HISTORIE_DAGEN + 1), datetime.min.time(), tzinfo=UTC)
+
+    def boeking(bron: BankBoekingBron, status: BankBoekingStatus, geboekt_op: datetime, btw: uuid.UUID | None) -> None:
+        with scoped_session(administratie_id, actor_id=beheerder_id) as session:
+            rij = BankBoeking(
+                administratie_id=administratie_id,
+                payment_transaction_id=uuid.uuid4(),
+                rlz_document_id=uuid.uuid4(),
+                bron=bron.value,
+                status=status.value,
+                geboekt_door=SYSTEEM_ACTOR_ID if bron is BankBoekingBron.AUTOMATISCH else beheerder_id,
+                geboekt_op=geboekt_op,
+                **(
+                    {"gestorneerd_door": beheerder_id, "gestorneerd_op": geboekt_op, "storno_reden": "test"}
+                    if status is BankBoekingStatus.GESTORNEERD
+                    else {}
+                ),
+            )
+            session.add(rij)
+            session.flush()
+            session.add(
+                BankBoekingRegel(
+                    bank_boeking_id=rij.id,
+                    volgnummer=1,
+                    ledger_id=GB_4404,
+                    taxrate_id=btw,
+                    netto_bedrag=Decimal("-69.41"),
+                    btw_bedrag=Decimal("-14.58"),
+                )
+            )
+
+    for _ in range(4):
+        boeking(BankBoekingBron.HANDMATIG, BankBoekingStatus.GEBOEKT, recent, HOOG)
+    boeking(BankBoekingBron.VASTE_REGEL, BankBoekingStatus.GEBOEKT, recent, HOOG)  # mens bevestigde de regel: telt
+    boeking(BankBoekingBron.AUTOMATISCH, BankBoekingStatus.GEBOEKT, recent, LAAG)  # systeem: telt niet
+    boeking(BankBoekingBron.HANDMATIG, BankBoekingStatus.GESTORNEERD, recent, LAAG)  # teruggedraaid: telt niet
+    boeking(BankBoekingBron.HANDMATIG, BankBoekingStatus.GEBOEKT, oud, LAAG)  # buiten het venster: telt niet
+    boeking(BankBoekingBron.HANDMATIG, BankBoekingStatus.GEBOEKT, recent, None)  # zonder tarief: telt niet
+    with scoped_session(administratie_id) as session:
+        session.add(
+            _observatie(administratie_id, GB_4404, HOOG, VANDAAG - timedelta(days=10))
+        )  # inkoopregel telt gewoon mee
+
+    rapport = motor.herbereken_voor(administratie_id, vandaag=VANDAAG)
+    assert rapport.observaties == 6 and rapport.voorbeelden == ["4404: 6× 100 %"]
+    assert _stand(administratie_id)["4404"] == (HOOG, 6, Decimal("1.0000"), True)

@@ -45,6 +45,9 @@ L_BANK_CV = "l_bank_cv_08-09"
 # Blok A bundel 10-09 (autoboeken per administratie — leerregel): géén eigen UBL maar varianten van casus h (BDO) met een
 # ander factuurnummer per exemplaar — zie fixtures/q_autoboek_leren/bron.json; `alle_casussen()` slaat de map over.
 Q_AUTOBOEK_LEREN = "q_autoboek_leren"
+# Bug-onderzoek 15-09 (LHG/KPN-patroon): regels excl. btw + één btw-totaal — zie
+# fixtures/w_telefonie_btw_totaal/bron.json.
+W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
 
 AFZENDER_UNIVERSAL = "administratie@universal-steigerbouw.example"
 
@@ -128,6 +131,7 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
     K1_DCTE: ("DCTE B.V - 202611050 - 2026-07-27.xml", "DCTE B.V - 202611050 - 2026-07-27.pdf"),
     K2_KADER: ("Factuur F212604921.xml", "Projectfactuur F212604921.PDF"),
     M_INCASSO: ("", "Factuur KTD-2026-09-0417.pdf"),
+    W_TELEFONIE_BTW_TOTAAL: ("", "Factuur KTD-2026-09-0904.pdf"),
 }
 
 
@@ -151,6 +155,25 @@ def ai_uit_json(data: dict) -> AiFactuurExtractie:
         for r in data.get("regels", [])
     ]
     return AiFactuurExtractie(kop=kop, regels=regels, bsn_verwijderd=0, volledig=bool(data.get("volledig", True)))
+
+
+def zonder_btw_totaal(extractie: AiFactuurExtractie) -> AiFactuurExtractie:
+    """Variant van een AI-uitkomst waarin de factuur géén leesbaar btw-totaal en géén incl-totaal draagt (15-09):
+    sinds de
+    factuur-niveau-afleiding (controle.py::leid_btw_af_uit_totaal) krijgen regels zonder regel-btw anders de code uit
+    het
+    btw-totaal — casussen u/v testen juist de stappen ná de factuur (grootboek-default, historie) en spelen daarom deze
+    variant af ("Floor-PDF zonder leesbaar btw-totaal")."""
+    kop = dict(extractie.kop)
+    for veld in ("btw_bedrag", "totaal_incl"):
+        kop[veld] = AiVeld(waarde=None, zekerheid=0.0)
+    return AiFactuurExtractie(
+        kop=kop,
+        regels=extractie.regels,
+        bsn_verwijderd=extractie.bsn_verwijderd,
+        volledig=extractie.volledig,
+        metriek=extractie.metriek,
+    )
 
 
 def alle_casussen() -> list[Casus]:

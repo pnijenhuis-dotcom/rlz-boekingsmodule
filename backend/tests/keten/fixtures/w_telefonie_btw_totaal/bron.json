@@ -1,0 +1,6 @@
+{
+ "administratie": "Universal Steigerbouw B.V. (testadministratie in de keten)",
+ "herkomst": "GERECONSTRUEERD (bug-onderzoek 15-09, Peter 14/15-09, L.H.G. Holding 'Kosten mobiele telefonie'): de echte casus was géén document maar een KPN-incasso (mutatie 11-09, -83,99 incl.) die op 14-09 13:47 vanuit het bankscherm direct op 4404 geboekt is (RLZ-07-00002805: netto -69,41, btw -14,58 = 21 %) — gelezen via Cloud Logging + rlz-lezen, zie docs/rapporten/2026-09-15-btw-uit-factuur-leeg.md. Deze casus speelt het factuur-equivalent van dat KPN-patroon: regels EXCL. btw, één btw-totaal onderaan. Bedragen exact die van de bankboeking; leverancier/nummers/IBAN fictief (zelfde synthetische telecom-leverancier als casus m).",
+ "doel": "Casus (w): per regel is de btw 'onbepaalbaar' (geen regel-btw gelezen); het factuurtotaal is het tweede bewijs — restant-netto × 21 % = 14,58 → beide regels krijgen 'NL, Hoog Tarief' mét herkomst 'factuur' (groen) en een deterministisch berekend regel-btw-bedrag (9,45 + 5,13 = 14,58, cent-exact); regelsom-toets sluit op incl; grootboek- en administratie-default winnen NIET van de factuur; samengevoegde regel draagt dezelfde code.",
+ "opmerking": "Geen persoonsgegevens; klantnummer en IBAN fictief."
+}

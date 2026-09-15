@@ -55,7 +55,7 @@ def test_rapport_per_rekening(administratie_id: uuid.UUID, admin_engine, capsys)
 
     assert btw_default_cli.rapport(_args(administratie="lhg holding")) == 0
     uit = capsys.readouterr().out
-    assert "L.H.G. Holding B.V." in uit and "12 inkoopregels mét tarief" in uit
+    assert "L.H.G. Holding B.V." in uit and "12 boekingsregels (inkoop + bank) mét tarief" in uit
     assert "4404" in uit and "NL, Hoog Tarief (10×, 90 %)" in uit and "NL, Hoog Tarief 9×, NL, Laag Tarief 1×" in uit
     assert "geen (2 regels, hoogste 100 %)" in uit
     assert "4000" in uit and "NL, Laag Tarief" in uit  # RLZ-default zichtbaar

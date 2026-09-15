@@ -4,7 +4,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from difflib import SequenceMatcher
 
 from app.documenten.regelsom import REDEN_GEEN_REGELS, toets_regelsom
@@ -227,7 +227,13 @@ def match_vendor_met_waarschuwing(
     return met_guard(besten[0], "fuzzy")
 
 
-def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]) -> BtwAfleiding:
+def leid_btw_af(
+    netto: Decimal | None,
+    btw: Decimal | None,
+    kandidaten: list[TaxRateKandidaat],
+    *,
+    tolerantie: Decimal = _ROND_TOLERANTIE,
+) -> BtwAfleiding:
     """Btw-code deterministisch uit de regel afleiden (CODE, geen AI — feedbackronde 26-08 punt 3):
     netto × tarief ≈ btw-bedrag (tolerantie ±1 cent per regel) tegen de gesyncte TaxRates van de
     administratie (percentage = fractie, bv. 0.21 — zie app/sync/btw.py voor de eenheidsregel).
@@ -239,7 +245,10 @@ def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[Tax
 
     Meerdere tarieven met hetzélfde percentage (RLZ: "Hoog Tarief" én "Hoog Tarief (vooruit)"):
     precies één RLZ-favoriet → die; anders meerduidig = leeg. Twee verschillende percentages die
-    beide binnen de tolerantie vallen (alleen bij centbedragen) = meerduidig = leeg."""
+    beide binnen de tolerantie vallen (alleen bij centbedragen) = meerduidig = leeg.
+
+    `tolerantie` (15-09, btw-uit-factuur-totaal): de factuur-niveau-afleiding rekent over de som van meerdere regels en
+    krijgt één cent speling per regel mee — per regel blijft de default ±1 cent."""
     if netto is None or btw is None or netto == 0:
         return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="onbepaalbaar")
     if btw == 0:
@@ -250,7 +259,7 @@ def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[Tax
         if kandidaat.percentage is not None
         and kandidaat.percentage > 0
         and not (kandidaat.is_verlegd or kandidaat.is_vrijgesteld or kandidaat.is_gemengd)
-        and abs(netto * kandidaat.percentage - btw) <= _ROND_TOLERANTIE
+        and abs(netto * kandidaat.percentage - btw) <= tolerantie
     ]
     if not passend:
         return BtwAfleiding(taxrate_id=None, percentage=None, bron=None, reden="geen_match")
@@ -267,11 +276,126 @@ def leid_btw_af(netto: Decimal | None, btw: Decimal | None, kandidaten: list[Tax
     return BtwAfleiding(taxrate_id=None, percentage=percentage, bron=None, reden="meerduidig")
 
 
-def match_taxrate(
-    netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]
-) -> uuid.UUID | None:
+def match_taxrate(netto: Decimal | None, btw: Decimal | None, kandidaten: list[TaxRateKandidaat]) -> uuid.UUID | None:
     """Alleen het tarief-id uit `leid_btw_af` (compat-vorm voor bestaande aanroepers/tests)."""
     return leid_btw_af(netto, btw, kandidaten).taxrate_id
+
+
+@dataclass(frozen=True)
+class FactuurBtwAfleiding:
+    """Uitkomst van `leid_btw_af_uit_totaal` (bugfix 15-09, casus L.H.G. Holding / patroon KPN-, telecom- en
+    energiefacturen: regels excl. btw, één btw-totaal onderaan). `taxrate_id` None = niets ingevuld, `reden` zegt
+    waarom; `regel_indexen` (0-gebaseerd) zijn de regels die het tarief kregen, `btw_per_regel` hun deterministisch
+    berekende btw-bedragen (som = het restant van de factuur-btw, cent-exact)."""
+
+    taxrate_id: uuid.UUID | None
+    percentage: Decimal | None
+    reden: str | None = None
+    regel_indexen: tuple[int, ...] = ()
+    btw_per_regel: tuple[Decimal, ...] = ()
+    # Het bewijs: restant-netto × tarief ≈ restant-btw (leesbaar in tests/tijdlijn).
+    rest_netto: Decimal | None = None
+    rest_btw: Decimal | None = None
+
+
+REDEN_TOTAAL_GEEN_KANDIDATEN = "geen_regels_zonder_btw"
+REDEN_TOTAAL_NETTO_ONBEKEND = "netto_onbekend"
+REDEN_TOTAAL_GEEN_FACTUUR_BTW = "geen_factuur_btw"
+REDEN_TOTAAL_REGELSOM_SLUIT_NIET = "regelsom_sluit_niet"
+REDEN_TOTAAL_REST_NEGATIEF = "rest_btw_tegengesteld"
+
+
+def _rond_cent(bedrag: Decimal) -> Decimal:
+    return bedrag.quantize(_ROND_TOLERANTIE, rounding=ROUND_HALF_UP)
+
+
+def leid_btw_af_uit_totaal(
+    *,
+    netto: list[Decimal | None],
+    btw: list[Decimal | None],
+    totaal_excl: Decimal | None,
+    totaal_incl: Decimal | None,
+    factuur_btw: Decimal | None,
+    kandidaten: list[TaxRateKandidaat],
+) -> FactuurBtwAfleiding:
+    """Tweede bewijs op FACTUURNIVEAU (bugfix 15-09; opdrachttekst: "bij één btw-percentage op de factuur geldt dat voor
+    álle regels zonder eigen btw"): veel facturen (telecom, energie, abonnementen) zetten de regels excl. btw en één
+    btw-totaal onderaan — per regel is de btw dan "onbepaalbaar" en bleef de code leeg, terwijl de factuur het
+    percentage wél bewijst. Puur code, geen AI-keuze:
+
+    1. kandidaten = regels mét netto (≠ 0) en ZONDER eigen btw-bedrag; regels mét eigen btw houden hun regel-afleiding;
+    2. álle netto's moeten gelezen zijn en — als het excl-totaal er is — cent-exact op dat totaal sluiten (anders is er
+       geen bewijs dat het percentage óók voor deze regels geldt);
+    3. factuur-btw = gelezen btw-totaal, anders incl − excl; restant-btw = factuur-btw − Σ btw van de regels mét eigen
+       btw; restant-netto = Σ netto van de kandidaten;
+    4. `leid_btw_af(restant-netto, restant-btw)` mét één cent speling per kandidaat-regel (afronding per regel op de
+       factuur) — 0/geen match/meerduidig blijft leeg (dezelfde harde regels als per regel; 0 % is ambigu);
+    5. per kandidaat-regel btw = netto × tarief (half-up op de cent); het afrondingsrestant landt op de regel met het
+       grootste |netto| zodat Σ regel-btw exact het restant is (de regelsom-toets sluit dan cent-exact).
+
+    Zonder regels (`netto` leeg) is de uitkomst alleen de factuur-niveau-afleiding uit excl/btw — voeding voor de
+    één-regel-terugval in documenten/boekvoorstel.py."""
+    if len(netto) != len(btw):
+        raise ValueError("netto en btw moeten per regel gepaard zijn (zelfde lengte)")
+    if not netto:
+        if totaal_excl is None:
+            return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_NETTO_ONBEKEND)
+        f_btw = (
+            factuur_btw if factuur_btw is not None else (totaal_incl - totaal_excl if totaal_incl is not None else None)
+        )
+        if f_btw is None:
+            return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_GEEN_FACTUUR_BTW)
+        afleiding = leid_btw_af(totaal_excl, f_btw, kandidaten)
+        return FactuurBtwAfleiding(
+            afleiding.taxrate_id, afleiding.percentage, afleiding.reden, rest_netto=totaal_excl, rest_btw=f_btw
+        )
+    kandidaat_indexen = tuple(
+        i for i, (n, b) in enumerate(zip(netto, btw, strict=True)) if b is None and n is not None and n != 0
+    )
+    if not kandidaat_indexen:
+        return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_GEEN_KANDIDATEN)
+    if any(n is None for n in netto):
+        return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_NETTO_ONBEKEND, regel_indexen=kandidaat_indexen)
+    netto_som = sum((n for n in netto if n is not None), Decimal(0))
+    factuur_netto = totaal_excl if totaal_excl is not None else netto_som
+    if totaal_excl is not None and abs(netto_som - totaal_excl) > _ROND_TOLERANTIE:
+        return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_REGELSOM_SLUIT_NIET, regel_indexen=kandidaat_indexen)
+    f_btw = factuur_btw
+    if f_btw is None and totaal_incl is not None:
+        f_btw = totaal_incl - factuur_netto
+    if f_btw is None:
+        return FactuurBtwAfleiding(None, None, REDEN_TOTAAL_GEEN_FACTUUR_BTW, regel_indexen=kandidaat_indexen)
+    bekende_btw = sum((b for b in btw if b is not None), Decimal(0))
+    rest_btw = f_btw - bekende_btw
+    rest_netto = sum((netto[i] for i in kandidaat_indexen), Decimal(0))  # type: ignore[misc]
+    if rest_btw != 0 and rest_netto != 0 and (rest_btw > 0) != (rest_netto > 0):
+        return FactuurBtwAfleiding(
+            None,
+            None,
+            REDEN_TOTAAL_REST_NEGATIEF,
+            regel_indexen=kandidaat_indexen,
+            rest_netto=rest_netto,
+            rest_btw=rest_btw,
+        )
+    afleiding = leid_btw_af(rest_netto, rest_btw, kandidaten, tolerantie=_ROND_TOLERANTIE * len(kandidaat_indexen))
+    if afleiding.taxrate_id is None or afleiding.percentage is None:
+        return FactuurBtwAfleiding(
+            None, None, afleiding.reden, regel_indexen=kandidaat_indexen, rest_netto=rest_netto, rest_btw=rest_btw
+        )
+    per_regel = [_rond_cent(netto[i] * afleiding.percentage) for i in kandidaat_indexen]  # type: ignore[operator]
+    restant = rest_btw - sum(per_regel, Decimal(0))
+    if restant != 0:
+        grootste = max(range(len(kandidaat_indexen)), key=lambda k: (abs(netto[kandidaat_indexen[k]]), -k))  # type: ignore[arg-type]
+        per_regel[grootste] += restant
+    return FactuurBtwAfleiding(
+        afleiding.taxrate_id,
+        afleiding.percentage,
+        None,
+        regel_indexen=kandidaat_indexen,
+        btw_per_regel=tuple(per_regel),
+        rest_netto=rest_netto,
+        rest_btw=rest_btw,
+    )
 
 
 def is_verlegd_vermelding(tekst: str | None) -> bool:
@@ -424,11 +548,40 @@ def bouw_veldvoorstel(
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
                 "btw_bron": afleiding.bron,
                 "btw_afleiding_reden": afleiding.reden,
+                # 15-09: waarop de btw-code steunt — "regel" (netto × tarief ≈ regel-btw), "factuur_totaal" (hieronder)
+                # of None (leeg gelaten).
+                "btw_afleiding_basis": "regel" if afleiding.taxrate_id else None,
             }
         )
         regel_zekerheid.append(regel.zekerheid)
         if regel.zekerheid < zekerheid_drempel:
             lage_zekerheid.append(f"regel {index}")
+
+    # Tweede bewijs op factuurniveau (bugfix 15-09, casus L.H.G. Holding "Kosten mobiele telefonie" / KPN-patroon):
+    # regels zonder eigen btw-bedrag krijgen het ene percentage dat het btw-totaal van de factuur bewijst — code
+    # rekent (leid_btw_af_uit_totaal), de AI leverde alleen bedragen. Vult óók de regel-btw-bedragen (som cent-exact =
+    # factuur-btw) zodat de regelsom-toets hieronder op incl kan sluiten. Regels mét eigen btw houden hun uitkomst.
+    factuur_afleiding = leid_btw_af_uit_totaal(
+        netto=netto_per_regel,
+        btw=btw_per_regel,
+        totaal_excl=totaal_excl,
+        totaal_incl=totaal_incl,
+        factuur_btw=btw_bedrag,
+        kandidaten=taxrates,
+    )
+    if factuur_afleiding.taxrate_id is not None and factuur_afleiding.regel_indexen:
+        for index, regel_btw in zip(factuur_afleiding.regel_indexen, factuur_afleiding.btw_per_regel, strict=True):
+            regels[index].update(
+                {
+                    "taxrate_id": str(factuur_afleiding.taxrate_id),
+                    "btw_bron": "factuur",
+                    "btw_afleiding_reden": None,
+                    "btw_afleiding_basis": "factuur_totaal",
+                    "btw_bedrag": _bedrag_str(regel_btw),
+                    "btw_bedrag_berekend": True,
+                }
+            )
+            btw_per_regel[index] = regel_btw
 
     # Regelsom-toets (C3 26-08, casus AddGuests 1.328,14 + 278,91 = 1.607,05): EXACT dezelfde
     # netto+btw=incl-logica als de boekingsregels-toets onderin het controlescherm. Een scan
@@ -455,6 +608,16 @@ def bouw_veldvoorstel(
 
     return {
         "bron": "ai",
+        # 15-09: de factuur-niveau-afleiding (ook zonder regels — voeding voor de één-regel-terugval in
+        # boekvoorstel.py).
+        "btw_factuur_totaal": {
+            "taxrate_id": str(factuur_afleiding.taxrate_id) if factuur_afleiding.taxrate_id else None,
+            "percentage": _bedrag_str(factuur_afleiding.percentage),
+            "reden": factuur_afleiding.reden,
+            "regels": [i + 1 for i in factuur_afleiding.regel_indexen],
+            "rest_netto": _bedrag_str(factuur_afleiding.rest_netto),
+            "rest_btw": _bedrag_str(factuur_afleiding.rest_btw),
+        },
         "leverancier_naam": leverancier_naam,
         "factuurnummer": factuurnummer,
         "factuurdatum": factuurdatum.isoformat() if factuurdatum else None,
@@ -486,9 +649,7 @@ def bouw_veldvoorstel(
         # De drempel reist mee zodat de frontend exact dezelfde grens markeert als de backend
         # hanteerde — geen tweede, hardcoded drempel die stil uit de pas kan lopen.
         "zekerheid_drempel": zekerheid_drempel,
-        "vendor_suggestie": (
-            {"vendor_id": str(vendor_id), "match": vendor_match} if vendor_id is not None else None
-        ),
+        "vendor_suggestie": ({"vendor_id": str(vendor_id), "match": vendor_match} if vendor_id is not None else None),
         # KvK-/btw-mismatch-guard (v2 ⑥): de naam-match die bewust níét is voorgesteld.
         "vendor_waarschuwing": vendor_waarschuwing.als_dict() if vendor_waarschuwing is not None else None,
         "controle": {

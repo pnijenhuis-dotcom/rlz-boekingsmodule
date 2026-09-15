@@ -1,5 +1,6 @@
 """Casus (v) — btw-code uit de HISTORIE van de grootboekrekening (vervolg-opdracht Cowork/Peter 14-09; migratie 0143).
-Gespeeld op de Floor-PDF (casus b/g: drie regels zónder leesbaar btw-bedrag, dus geen factuur-afleiding): het
+Gespeeld op de Floor-PDF (casus b/g: drie regels zónder leesbaar btw-bedrag) in de variant ZONDER leesbaar btw-/incl-
+totaal (`casussen.zonder_btw_totaal`, 15-09 — mét totaal wint sinds 15-09 de factuur-afleiding, casus w): het
 regel-geheugen zet "Huur materieel" op regel 1 (observatie van Floor zonder btw), RLZ draagt op die rekening géén
 PreferentialTaxRate (STAP-0 14-09: overal null), maar ándere leveranciers boekten er in 24 maanden ≥ 5 regels op met
 één tarief ≥ 90 % → de nachtelijke afleiding zet de historie-default en de prefill volgt mét herkomst
@@ -65,7 +66,7 @@ def _historie(keten: Keten, *, hoog: int, verlegd: int) -> None:
 def floor_met_historie(keten: Keten) -> uuid.UUID:
     _historie(keten, hoog=9, verlegd=1)  # 9/10 = 90 % → default
     pdf = CASUS.pdf()
-    keten.ai.registreer(pdf, CASUS.ai_antwoord())
+    keten.ai.registreer(pdf, casussen.zonder_btw_totaal(CASUS.ai_antwoord()))
     return keten.upload(PDF, pdf).document_id
 
 
@@ -103,7 +104,7 @@ class TestBtwVolgtDeHistorieVanDeRekening:
     def test_acht_van_tien_blijft_leeg(self, keten: Keten) -> None:
         _historie(keten, hoog=8, verlegd=2)
         pdf = CASUS.pdf()
-        keten.ai.registreer(pdf, CASUS.ai_antwoord())
+        keten.ai.registreer(pdf, casussen.zonder_btw_totaal(CASUS.ai_antwoord()))
         document_id = keten.upload(PDF, pdf).document_id
         huur = keten.prefill(document_id).regels[0]
         assert huur.ledger_id == GB_HUUR_MATERIEEL and huur.taxrate_id is None and huur.btw_bron is None

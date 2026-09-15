@@ -419,3 +419,168 @@ class TestKortingsregels:
         voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=[hoog], zekerheid_drempel=0.8)
         assert [r["taxrate_id"] for r in voorstel["regels"]] == [str(hoog.id), str(hoog.id)]
         assert voorstel["controle"]["regelsom"] == "52.71" and voorstel["controle"]["regelsom_wijkt_af"] is False
+
+
+class TestLeidBtwAfUitTotaal:
+    """Bugfix 15-09 (casus L.H.G. Holding "Kosten mobiele telefonie", KPN-/telecom-patroon): regels excl. btw + één
+    btw-totaal onderaan. Per regel is de btw dan "onbepaalbaar"; het FACTUURTOTAAL is het tweede bewijs —
+    restant-netto ×
+    tarief ≈ restant-btw (één cent speling per regel) → dat ene percentage geldt voor álle regels zonder eigen btw.
+    Code rekent, de AI leverde alleen bedragen; 0 %/geen match/meerduidig blijft leeg."""
+
+    def _tarieven(self) -> dict[str, TaxRateKandidaat]:
+        return TestLeidBtwAf()._tarieven()
+
+    def _kpn(self, regels: list[AiRegel], **kop) -> AiFactuurExtractie:
+        basis = {"totaal_excl": _veld("69.41"), "totaal_incl": _veld("83.99"), "btw_bedrag": _veld("14.58")}
+        basis.update(kop)
+        return _extractie(kop_overrides=basis, regels=regels)
+
+    def test_regels_zonder_eigen_btw_krijgen_het_ene_percentage_van_de_factuur(self) -> None:
+        t = self._tarieven()
+        extractie = self._kpn(
+            [
+                _regel(omschrijving="Abonnement Zakelijk Onbeperkt", netto="45.00", btw=None),
+                _regel(omschrijving="Extra data", netto="24.41", btw=None),
+            ]
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        for regel in voorstel["regels"]:
+            assert regel["taxrate_id"] == str(t["hoog"].id)
+            assert regel["btw_bron"] == "factuur" and regel["btw_afleiding_reden"] is None
+            assert regel["btw_afleiding_basis"] == "factuur_totaal" and regel["btw_bedrag_berekend"] is True
+        # Regel-btw deterministisch berekend, som cent-exact = factuur-btw (45,00 × 0,21 = 9,45; 24,41 × 0,21 = 5,13
+        # → 14,58).
+        assert [r["btw_bedrag"] for r in voorstel["regels"]] == ["9.45", "5.13"]
+        assert voorstel["btw_factuur_totaal"] == {
+            "taxrate_id": str(t["hoog"].id),
+            "percentage": "0.21",
+            "reden": None,
+            "regels": [1, 2],
+            "rest_netto": "69.41",
+            "rest_btw": "14.58",
+        }
+        # De regelsom-toets sluit nu op incl (Σnetto + Σbtw = 83,99), geen valse afwijking.
+        assert voorstel["controle"]["regelsom_basis"] == "incl" and voorstel["controle"]["regelsom_wijkt_af"] is False
+
+    def test_afrondingsrestant_landt_op_de_grootste_regel_som_blijft_exact(self) -> None:
+        t = self._tarieven()
+        # 3 × 33,33 = 99,99; per regel 7,00 (6,9993) → 21,00 maar de factuur zegt 21,01 (afgerond over het totaal).
+        extractie = _extractie(
+            kop_overrides={"totaal_excl": _veld("99.99"), "totaal_incl": _veld("121.00"), "btw_bedrag": _veld("21.01")},
+            regels=[_regel(netto="33.33", btw=None), _regel(netto="33.33", btw=None), _regel(netto="33.33", btw=None)],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert [r["btw_bedrag"] for r in voorstel["regels"]] == ["7.01", "7.00", "7.00"]
+        assert all(r["taxrate_id"] == str(t["hoog"].id) for r in voorstel["regels"])
+        assert voorstel["controle"]["regelsom_wijkt_af"] is False
+
+    def test_regel_met_eigen_btw_houdt_haar_afleiding_rest_gaat_naar_de_andere_regels(self) -> None:
+        t = self._tarieven()
+        # Regel 1 draagt 9 % (eigen btw 4,50 op 50,00); de factuur-btw 25,50 = 4,50 + 21 % over de resterende 100,00.
+        extractie = _extractie(
+            kop_overrides={
+                "totaal_excl": _veld("150.00"),
+                "totaal_incl": _veld("175.50"),
+                "btw_bedrag": _veld("25.50"),
+            },
+            regels=[
+                _regel(netto="50.00", btw="4.50"),
+                _regel(netto="60.00", btw=None),
+                _regel(netto="40.00", btw=None),
+            ],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] == str(t["laag"].id)
+        assert voorstel["regels"][0]["btw_afleiding_basis"] == "regel"
+        assert [r["taxrate_id"] for r in voorstel["regels"][1:]] == [str(t["hoog"].id)] * 2
+        assert [r["btw_bedrag"] for r in voorstel["regels"][1:]] == ["12.60", "8.40"]
+        assert voorstel["btw_factuur_totaal"]["regels"] == [2, 3]
+
+    def test_regel_met_expliciete_nul_btw_blijft_bewust_leeg(self) -> None:
+        t = self._tarieven()
+        # Regel 2 zegt zelf "0" — die heeft eigen btw (ambigu 0 %) en krijgt níét het factuur-percentage.
+        extractie = _extractie(
+            kop_overrides={
+                "totaal_excl": _veld("110.00"),
+                "totaal_incl": _veld("131.00"),
+                "btw_bedrag": _veld("21.00"),
+            },
+            regels=[_regel(netto="100.00", btw=None), _regel(omschrijving="Statiegeld", netto="10.00", btw="0")],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] == str(t["hoog"].id)
+        assert voorstel["regels"][1]["taxrate_id"] is None and voorstel["regels"][1]["btw_afleiding_reden"] == "btw_nul"
+
+    def test_regelsom_die_niet_op_het_excl_totaal_sluit_is_geen_bewijs(self) -> None:
+        t = self._tarieven()
+        extractie = self._kpn([_regel(netto="45.00", btw=None), _regel(netto="20.00", btw=None)])  # 65,00 ≠ 69,41
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert all(r["taxrate_id"] is None and r["btw_afleiding_reden"] == "onbepaalbaar" for r in voorstel["regels"])
+        assert voorstel["btw_factuur_totaal"]["reden"] == "regelsom_sluit_niet"
+        assert all(r["btw_bedrag"] is None for r in voorstel["regels"])
+
+    def test_btw_totaal_dat_op_geen_tarief_past_blijft_leeg_en_nul_blijft_ambigu(self) -> None:
+        t = self._tarieven()
+        geen_match = self._kpn([_regel(netto="69.41", btw=None)], btw_bedrag=_veld("10.00"), totaal_incl=_veld("79.41"))
+        voorstel = bouw_veldvoorstel(geen_match, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] is None and voorstel["btw_factuur_totaal"]["reden"] == "geen_match"
+        nul = self._kpn([_regel(netto="69.41", btw=None)], btw_bedrag=_veld("0.00"), totaal_incl=_veld("69.41"))
+        voorstel = bouw_veldvoorstel(nul, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] is None and voorstel["btw_factuur_totaal"]["reden"] == "btw_nul"
+
+    def test_twee_tarieven_met_hetzelfde_percentage_favoriet_wint_anders_meerduidig(self) -> None:
+        t = self._tarieven()
+        extractie = self._kpn([_regel(netto="69.41", btw=None)])
+        voorstel = bouw_veldvoorstel(
+            extractie, vendors=[], taxrates=[t["hoog"], t["hoog_vooruit"]], zekerheid_drempel=0.8
+        )
+        assert voorstel["regels"][0]["taxrate_id"] == str(t["hoog"].id)  # LHG: "Hoog" favoriet, "Hoog (vooruit)" niet
+        a = TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"))
+        b = TaxRateKandidaat(id=uuid.uuid4(), percentage=Decimal("0.21"))
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=[a, b], zekerheid_drempel=0.8)
+        assert voorstel["regels"][0]["taxrate_id"] is None and voorstel["btw_factuur_totaal"]["reden"] == "meerduidig"
+
+    def test_zonder_btw_totaal_maar_met_incl_en_excl_rekent_de_code_het_verschil(self) -> None:
+        t = self._tarieven()
+        extractie = self._kpn([_regel(netto="69.41", btw=None)], btw_bedrag=_veld(None))
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert (
+            voorstel["regels"][0]["taxrate_id"] == str(t["hoog"].id) and voorstel["regels"][0]["btw_bedrag"] == "14.58"
+        )
+
+    def test_zonder_regels_is_de_factuur_afleiding_beschikbaar_voor_de_een_regel_terugval(self) -> None:
+        t = self._tarieven()
+        extractie = self._kpn([])
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert voorstel["regels"] == []
+        assert voorstel["btw_factuur_totaal"]["taxrate_id"] == str(t["hoog"].id)
+        assert voorstel["btw_factuur_totaal"]["regels"] == []
+
+    def test_creditnota_negatieve_regels_zonder_btw(self) -> None:
+        t = self._tarieven()
+        extractie = _extractie(
+            kop_overrides={
+                "totaal_excl": _veld("-100.00"),
+                "totaal_incl": _veld("-121.00"),
+                "btw_bedrag": _veld("-21.00"),
+            },
+            regels=[_regel(netto="-60.00", btw=None), _regel(netto="-40.00", btw=None)],
+        )
+        voorstel = bouw_veldvoorstel(extractie, vendors=[], taxrates=list(t.values()), zekerheid_drempel=0.8)
+        assert [r["btw_bedrag"] for r in voorstel["regels"]] == ["-12.60", "-8.40"]
+        assert all(r["taxrate_id"] == str(t["hoog"].id) for r in voorstel["regels"])
+
+    def test_pure_functie_ongelezen_netto_is_geen_bewijs(self) -> None:
+        from app.extractie.controle import leid_btw_af_uit_totaal
+
+        t = self._tarieven()
+        uitkomst = leid_btw_af_uit_totaal(
+            netto=[Decimal("50.00"), None],
+            btw=[None, None],
+            totaal_excl=Decimal("100.00"),
+            totaal_incl=Decimal("121.00"),
+            factuur_btw=Decimal("21.00"),
+            kandidaten=list(t.values()),
+        )
+        assert uitkomst.taxrate_id is None and uitkomst.reden == "netto_onbekend"

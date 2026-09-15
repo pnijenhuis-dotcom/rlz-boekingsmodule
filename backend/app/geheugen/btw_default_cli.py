@@ -3,8 +3,9 @@ app/cli.py (2 regels), zelfde patroon als app/autoboek_kandidaten/cli_cmd.py.
 
 - `btw-default-rapport --administratie <naam|uuid> [--alles]` — LEES-ONLY nameting-instrument (in de allowlist van
   scripts/gcp/nameting.sh): per grootboekrekening de RLZ-default (0142, `PreferentialTaxRate`), de historie-default
-  (0143: tarief, n, aandeel) of "geen" mét de verdeling; kop mét het aantal inkoopregels in het venster en de datum
-  van de laatste afleiding. Schrijft niets. Standaard alleen rekeningen mét een default óf mét regels; `--alles` toont
+  (0143: tarief, n, aandeel) of "geen" mét de verdeling; kop mét het aantal boekingsregels (inkoop + bank, 15-09) in
+  het venster en de datum van de laatste afleiding. Schrijft niets. Standaard alleen rekeningen mét een default óf
+  mét regels; `--alles` toont
   ook de rest. Meetrecept "werkt in productie": staat op LHG 4404 een historie-default?
 
 Productie-uitvoering (regel Peter 08-09): uitsluitend op de gedeployde job-image via
@@ -118,7 +119,7 @@ def rapport(args: argparse.Namespace) -> int:
     print(f"Btw-default per grootboekrekening — {naam} ({administratie_id})")
     print(
         f"boekingsgeheugen: {totaal_observaties} observaties totaal (laatste {laatste_datum or '—'}), "
-        f"{in_venster} inkoopregels mét tarief in het venster van {HISTORIE_DAGEN} dagen; "
+        f"{in_venster} boekingsregels (inkoop + bank) mét tarief in het venster van {HISTORIE_DAGEN} dagen; "
         f"regel: ≥ {MIN_REGELS} regels én één tarief ≥ {MIN_AANDEEL * 100:.0f} %; "
         f"laatste afleiding: {berekend_op.isoformat(timespec='minutes') if berekend_op else 'nog nooit'}"
     )

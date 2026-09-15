@@ -10,7 +10,14 @@ administraties null en Peter vult dat niet in RLZ voor 71 administraties. De mod
     Anders geen default; `n` en het hoogste aandeel worden wél vastgelegd (rapport "geen — 10 regels, hoogste 80 %").
 
 Deterministisch (code, geen AI). Geen extra RLZ-verkeer: dezelfde cache die de boekingsgeheugen-seed vult. Regels
-zonder btw-tarief (btw_id NULL) tellen niet mee — een leeg tarief is geen keuze. Loopt nachtelijk in `sync-alles`
+zonder btw-tarief (btw_id NULL) tellen niet mee — een leeg tarief is geen keuze.
+
+Aanvulling 15-09 (bug-onderzoek L.H.G. Holding "Kosten mobiele telefonie" — de casus bleek een BANK-direct-boeking, geen
+factuur; LHG heeft nul inkoopregels in het boekingsgeheugen): óók de regels van directe bankboekingen mét btw-tarief
+(`bank_boeking_regel` van een GEBOEKTE, niet-automatische `bank_boeking` — mens koos zelf of bevestigde een vaste regel;
+`geboekt_op` in het venster) tellen mee in de verdeling per rekening. Zelfde drempels, zelfde bron-label; een
+administratie die vooral via de bank boekt krijgt zo dezelfde "meestal op deze rekening (n×)" — in het controlescherm én
+in het bank-direct-boeken-formulier (frontend volgt de gekozen rekening, blok 15-09). Loopt nachtelijk in `sync-alles`
 (`herbereken_alle`) en ná de eerste sync van een administratie (`herbereken_voor`); alleen gewijzigde rijen worden
 geschreven, een rekening zonder regels in het venster gaat terug naar NULL (nooit een stale default).
 
@@ -30,6 +37,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.bank.models import BankBoeking, BankBoekingBron, BankBoekingRegel, BankBoekingStatus
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
 from app.geheugen.models import BoekingObservatie
@@ -73,7 +81,8 @@ def bepaal_default(tellingen: dict[uuid.UUID, int]) -> HistorieDefault | None:
 def tellingen_per_rekening(
     session: Session, *, administratie_id: uuid.UUID, vandaag: date
 ) -> dict[uuid.UUID, dict[uuid.UUID, int]]:
-    """{gb_id: {taxrate_id: n}} over de inkoopregels in het venster — één groepsquery, geen N+1."""
+    """{gb_id: {taxrate_id: n}} over de inkoopregels (boekingsgeheugen) én de directe bankboekingsregels van een mens in
+    het venster — twee groepsquery's, geen N+1."""
     vanaf = vandaag - timedelta(days=HISTORIE_DAGEN)
     rijen = session.execute(
         select(BoekingObservatie.gb_id, BoekingObservatie.btw_id, func.count())
@@ -87,6 +96,22 @@ def tellingen_per_rekening(
     uit: dict[uuid.UUID, dict[uuid.UUID, int]] = {}
     for gb_id, btw_id, n in rijen:
         uit.setdefault(gb_id, {})[btw_id] = int(n)
+    # 15-09: bank-direct-boekingen (mens: handmatig of bevestigde vaste regel; gestorneerd en automatisch tellen niet).
+    bank_rijen = session.execute(
+        select(BankBoekingRegel.ledger_id, BankBoekingRegel.taxrate_id, func.count())
+        .join(BankBoeking, BankBoeking.id == BankBoekingRegel.bank_boeking_id)
+        .where(
+            BankBoeking.administratie_id == administratie_id,
+            BankBoeking.status == BankBoekingStatus.GEBOEKT.value,
+            BankBoeking.bron != BankBoekingBron.AUTOMATISCH.value,
+            BankBoeking.geboekt_op >= datetime.combine(vanaf, datetime.min.time(), tzinfo=UTC),
+            BankBoekingRegel.taxrate_id.is_not(None),
+        )
+        .group_by(BankBoekingRegel.ledger_id, BankBoekingRegel.taxrate_id)
+    ).all()
+    for gb_id, btw_id, n in bank_rijen:
+        per_rekening = uit.setdefault(gb_id, {})
+        per_rekening[btw_id] = per_rekening.get(btw_id, 0) + int(n)
     return uit
 
 

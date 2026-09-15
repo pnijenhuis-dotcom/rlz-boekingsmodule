@@ -29,6 +29,7 @@
      "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_afleiding_basis": "regel",
      "btw_afleiding_reden": null
     },
     {
@@ -43,6 +44,7 @@
      "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_afleiding_basis": "regel",
      "btw_afleiding_reden": null
     }
    ],
@@ -108,6 +110,14 @@
    },
    "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
    "zekerheid_drempel": 0.8,
+   "btw_factuur_totaal": {
+    "reden": "geen_regels_zonder_btw",
+    "regels": [],
+    "rest_btw": null,
+    "percentage": null,
+    "rest_netto": null,
+    "taxrate_id": null
+   },
    "incasso_datum_tekst": "25-09-2026",
    "vendor_waarschuwing": null,
    "tariefstaffel_aantal": 0,
@@ -178,6 +188,7 @@
         "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_afleiding_basis": "regel",
         "btw_afleiding_reden": null
        },
        {
@@ -192,6 +203,7 @@
         "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_afleiding_basis": "regel",
         "btw_afleiding_reden": null
        }
       ],
@@ -257,6 +269,14 @@
       },
       "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
       "zekerheid_drempel": 0.8,
+      "btw_factuur_totaal": {
+       "reden": "geen_regels_zonder_btw",
+       "regels": [],
+       "rest_btw": null,
+       "percentage": null,
+       "rest_netto": null,
+       "taxrate_id": null
+      },
       "incasso_datum_tekst": "25-09-2026",
       "vendor_waarschuwing": null,
       "tariefstaffel_aantal": 0,

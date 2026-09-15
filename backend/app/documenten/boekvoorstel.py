@@ -390,14 +390,20 @@ def _regel_prefill_uit_ubl(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
     totaal_incl = _als_decimal(veldvoorstel.get("totaal_incl"))
     if totaal_excl is None or totaal_incl is None:
         return []
+    # 15-09 (btw uit het factuur-totaal): een AI-voorstel zónder regels draagt de factuur-niveau-afleiding
+    # (`btw_factuur_totaal`, controle.py::leid_btw_af_uit_totaal — excl × tarief ≈ btw-totaal) — die btw-code hoort ook
+    # op de één-regel-terugval; UBL-voorstellen kennen de sleutel niet en blijven ongewijzigd.
+    totaal_afleiding = veldvoorstel.get("btw_factuur_totaal")
+    totaal_taxrate = _als_uuid(totaal_afleiding.get("taxrate_id")) if isinstance(totaal_afleiding, dict) else None
     een_regel = [
         BoekvoorstelRegelData(
             ledger_id=None,
-            taxrate_id=None,
+            taxrate_id=totaal_taxrate,
             project_id=None,
             netto_bedrag=totaal_excl,
             btw_bedrag=totaal_incl - totaal_excl,
             omschrijving=None,
+            btw_bron="factuur" if totaal_taxrate is not None else None,
         )
     ]
     ubl_regels = veldvoorstel.get("ubl_regels")
