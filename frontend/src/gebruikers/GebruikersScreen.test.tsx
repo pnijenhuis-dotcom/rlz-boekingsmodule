@@ -360,6 +360,31 @@ describe('GebruikersScreen', () => {
     await waitFor(() => expect(posts).toContain('/auth/apparaten/app-1/intrekken'))
   })
 
+  it('lange gearchiveerde administratienaam krijgt een ellipsis-chip mét title; demo-herstel-link "verloopt niet" (bug 15-09)', async () => {
+    const lang = 'Test-administratie (passkey-test, verdwijnt bij tranche-uitrol)'
+    installMock({
+      gebruikers: [
+        gebruiker({
+          id: ACCORDEUR_ID,
+          naam: 'App-review (demo)',
+          e_mail: 'app-review-demo@ak-nijenhuis.nl',
+          rol: 'klant_accordeur',
+          half_geactiveerd: true,
+          open_herstel_verloopt_op: '2099-01-01T00:00:00Z',
+          administratie_ids: ['99999999-0000-0000-0000-000000000099'],
+          administraties: [{ id: '99999999-0000-0000-0000-000000000099', naam: lang, actief: false }],
+        }),
+      ],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('App-review (demo)')).toBeInTheDocument())
+    const chip = screen.getByTitle(`${lang} — gearchiveerd`)
+    expect(chip).toHaveClass('admin-badge')
+    expect(chip).toHaveTextContent(`${lang} — gearchiveerd`)
+    expect(screen.getByText(/herstel-link verloopt niet/)).toBeInTheDocument()
+    expect(screen.queryByText(/633724 uur/)).not.toBeInTheDocument()
+  })
+
   it('dubbele dev-stub-credentials tonen als één apparaat en de kill-switch trekt ze állemaal in', async () => {
     const posts: string[] = []
     const stub = {

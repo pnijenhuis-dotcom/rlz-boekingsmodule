@@ -124,9 +124,22 @@ export function kanHerstelLinkKrijgen(g: { rol: string; status: string }): boole
   return isExterneAppRol(g.rol) && (g.status === 'actief' || g.status === 'wacht_op_passkey')
 }
 
-export function formatVerloop(iso: string): string {
-  const uren = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000))
-  return uren <= 1 ? 'verloopt binnen een uur' : `verloopt over ${uren} uur`
+/** Vervaltekst van een uitnodiging/herstel-link (bug Peter 15-09: "verloopt over 633724 uur" bij een demo-link
+ * tot 2099). Regel: < 48 u → uren ("verloopt binnen een uur" ≤ 1 u); ≤ 30 dagen → dagen; > 30 dagen → de datum
+ * "verloopt op dd-mm-jjjj"; ≥ 2099 (demo-herbruikbaar, App-review) → "verloopt niet". Verstreken → "verlopen". */
+export function formatVerloop(iso: string, nu: Date = new Date()): string {
+  const ms = new Date(iso).getTime() - nu.getTime()
+  if (Number.isNaN(ms)) return ''
+  if (ms <= 0) return 'verlopen'
+  const uren = Math.round(ms / 3_600_000)
+  if (uren < 48) return uren <= 1 ? 'verloopt binnen een uur' : `verloopt over ${uren} uur`
+  const dagen = Math.round(ms / 86_400_000)
+  if (dagen <= 30) return `verloopt over ${dagen} dagen`
+  const datum = new Date(iso)
+  if (datum.getFullYear() >= 2099) return 'verloopt niet'
+  const dd = String(datum.getDate()).padStart(2, '0')
+  const mm = String(datum.getMonth() + 1).padStart(2, '0')
+  return `verloopt op ${dd}-${mm}-${datum.getFullYear()}`
 }
 
 /** De link zoals de mail 'm draagt — terugval om handmatig te delen als de mail mislukt. */

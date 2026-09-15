@@ -2595,6 +2595,17 @@ tr.geselecteerd td.acties {
   margin-top: 2px;
 }
 
+/* Administratie-chips op Klant-accordeurs (bug Peter 15-09): een lange (gearchiveerde) naam blijft bínnen het
+ * kolomminimum — ellipsis mét de volledige naam als title, nooit over de apparatenkolom heen. */
+.gebruikers-tabel .admin-badge {
+  display: inline-block !important; /* wint van de inline-flex-utility van Badge: ellipsis vraagt een blok-context */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 /* Rechten: twee gelabelde switches onder elkaar (was: twee losse kolommen "Meerwerk & urenstaten" en
  * "Veldwerkerbeheer" met alleen een switch). */
 .gebruikers-tabel .rechten-regels {

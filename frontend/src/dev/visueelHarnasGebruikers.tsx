@@ -284,6 +284,31 @@ const GEBRUIKERS_BREED = [
     open_uitnodiging_verloopt_op: over(60),
     staande_goedkeuringen: 0,
   },
+  // Bug Peter 15-09 (screenshot 1440): demo-account mét één GEARCHIVEERDE administratie met een lange naam — de
+  // chip liep over de apparatenkolom heen ("Kill-switch"/"geen actieve apparaten" onleesbaar) — en een
+  // herstel-link tot 2099 ("verloopt over 633724 uur").
+  {
+    ...BASIS,
+    id: 'a4a4a4a4-0000-0000-0000-0000000000a4',
+    naam: 'App-review (demo)',
+    e_mail: 'app-review-demo@ak-nijenhuis.nl',
+    rol: 'klant_accordeur',
+    status: 'actief',
+    half_geactiveerd: true,
+    open_herstel_verloopt_op: '2099-01-01T00:00:00Z',
+    administratie_ids: ['99999999-0000-0000-0000-000000000099'],
+    administraties: [
+      {
+        id: '99999999-0000-0000-0000-000000000099',
+        naam: 'Test-administratie (passkey-test, verdwijnt bij tranche-uitrol)',
+        actief: false,
+      },
+    ],
+    heeft_totp: false,
+    aantal_passkeys: 0,
+    open_uitnodiging_verloopt_op: null,
+    staande_goedkeuringen: 0,
+  },
 ]
 
 const ADMINISTRATIES_BASIS = [

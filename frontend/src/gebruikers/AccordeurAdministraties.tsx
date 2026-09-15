@@ -227,7 +227,11 @@ export function AccordeurAdministraties({
         <>
           {lijst.map((a) => (
             <span key={a.id}>
-              <Badge variant={a.actief ? 'info' : 'stil'}>{administratieLabel(a)}</Badge>{' '}
+              {/* Bug Peter 15-09: een lange (gearchiveerde) naam liep over de apparatenkolom heen → ellipsis binnen de
+                  kolom (`.admin-badge`, max-width 100 %) mét de volledige naam als title. */}
+              <Badge variant={a.actief ? 'info' : 'stil'} className="admin-badge" title={administratieLabel(a)}>
+                {administratieLabel(a)}
+              </Badge>{' '}
             </span>
           ))}
         </>

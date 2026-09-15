@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Klant-accordeurs: nette chips en leesbare vervaltekst
+
+<!-- gebruikers-klantaccordeurs-15-09 -->
+
+- Op Beheer › Gebruikers › Klant-accordeurs loopt een lange administratienaam niet meer over de kolom Apparaten heen: de chip wordt afgekapt met puntjes en toont de volledige naam als je erop blijft staan.
+- De tekst bij een uitnodiging of herstel-link zegt nu iets zinnigs: uren tot 48 uur, daarna dagen tot 30 dagen, daarna de datum, en "verloopt niet" voor een demo-link die nooit verloopt (was: "verloopt over 633724 uur").
+
 ## 2026-09-15 — Offerte-melding ook als de offerte nog op akkoord wacht
 
 <!-- offerte-match-wachtend-15-09 -->
