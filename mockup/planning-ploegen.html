@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning met ploegen — mockup (ter beoordeling Peter/Haci)</title>
+<!-- ============================================================
+     MOCKUP planning-agenda steigerbouw: PLOEGEN (Cowork 15-09-2026, eerste versie;
+     15-09 avond door CC naar de designpass-v2-tokens en het planning-steigerbouw-
+     raster gebracht — inhoud en keuzes K1–K3 ONGEWIJZIGD).
+     STATUS: TER BEOORDELING Peter/Haci — GEEN bouwnorm tot akkoord.
+     Ontwerp: rijen blijven PROJECTEN (zoals planning-steigerbouw.html); rechts een
+     tweede zijbalk-tab "Ploegen": een ploeg op een projectregel slepen = héle week
+     voor alle leden; lidmaatschap per week; "Kopieer vorige week"; urenstatus-stippen
+     per blokje (uit de opdracht urenstatus-in-het-grid). Klikbaar (JS-demo, geen
+     backend): ploeg slepen naar een projectregel, blokje weghalen, "Kopieer week 36 → 37",
+     thema-toggle. Desktop-first (kantoor-console).
+     Tokens = mockup/kantoor-designpass-v2.html (neutrale fundering, teal = ACTIE, groen = STATUS).
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f7f8; --panel:#ffffff; --panel-2:#fafbfb; --border:#e6e8ea;
+    --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-hover:#0a635a; --primary-fg:#ffffff;
+    --accent-bg:#e6f4f2; --ring:rgba(14,122,110,.30);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --purple:#6941c6; --purple-bg:#f1ecfb;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  html.dark{
+    --bg:#0b0d0e; --panel:#151719; --panel-2:#111314; --border:#242729;
+    --text:#f0f3f2; --muted:#98a0a5; --faint:#7f878d;
+    --primary:#3ec9b8; --primary-hover:#5ad6c7; --primary-fg:#0a1513;
+    --accent-bg:#13231f; --ring:rgba(62,201,184,.35);
+    --ok:#4ecb94; --ok-bg:#132a1f; --warn:#e5a04c; --warn-bg:#2c2214;
+    --danger:#f08579; --danger-bg:#331715; --info:#93a6f5; --info-bg:#191d30;
+    --purple:#b39af0; --purple-bg:#221b36;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45;padding:22px}
+  button{font-family:inherit}
+  .kop{display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+  .kop h1{font-size:19px;letter-spacing:-.02em}
+  .kop .sub{color:var(--muted);font-size:12.5px}
+  .kop .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .status{display:inline-flex;align-items:center;gap:6px;background:var(--warn-bg);color:var(--warn);border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--primary-hover)}
+  .btn.secundair{background:var(--panel);color:var(--text);border-color:var(--border)}
+  .btn.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+  .linkbtn{background:none;border:0;color:var(--primary);font-weight:600;cursor:pointer;font-size:12px;padding:0}
+  .linkbtn:hover{text-decoration:underline}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px}
+  .weeknav{display:flex;align-items:center;gap:6px;font-weight:700}
+  .tabs{display:inline-flex;gap:4px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .tabs button{border:0;background:transparent;color:var(--muted);font-weight:600;font-size:12.5px;padding:6px 12px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
+  .filters{display:flex;gap:6px;align-items:center;margin:8px 0 12px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--panel);border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer}
+  .chip.on{border-color:var(--primary);color:var(--primary);background:var(--accent-bg)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-left:auto}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .layout{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+  /* ---- planner-grid: PROJECTEN als rijen (zelfde raster als planning-steigerbouw.html) ---- */
+  .planner{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{border-bottom:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));border-right:1px solid color-mix(in srgb,var(--border) 55%,var(--muted));vertical-align:top}
+  th:last-child,td:last-child{border-right:none}
+  thead th{background:var(--panel-2);padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:center}
+  thead th:first-child{text-align:left;width:196px}
+  thead th small{display:block;text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+  th.vandaag,td.vandaag{background:color-mix(in srgb,var(--accent-bg) 55%,transparent)}
+  thead th.vandaag{color:var(--primary);font-weight:800}
+  tbody th{background:var(--panel-2);padding:10px;font-size:12.5px;text-align:left;vertical-align:top}
+  tbody th .pl{display:block;font-weight:400;font-size:10.5px;color:var(--faint)}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap}
+  .badge.info{background:var(--info-bg);color:var(--info)}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .badge.stil{background:var(--panel-2);color:var(--muted);border:1px solid var(--border)}
+  .badge.ploeg{background:var(--purple-bg);color:var(--purple)}
+  .urenchip{display:block;margin-top:6px;font-size:10.5px;color:var(--muted)}
+  .urenchip b{color:var(--ok)}
+  .urenchip .open{color:var(--warn);font-weight:700}
+  .rijacties{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  td.cel{padding:5px;min-height:52px;height:1px;position:relative}
+  td.cel.dragover{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--accent-bg)}
+  .kaart{background:var(--info-bg);border:1px solid color-mix(in srgb,var(--info) 30%,transparent);border-radius:9px;padding:4px 8px;font-size:11.5px;line-height:1.3;margin-bottom:5px;user-select:none;display:flex;align-items:center;gap:6px}
+  .kaart b{font-size:12px;font-weight:600}
+  .kaart .init{width:20px;height:20px;border-radius:99px;background:var(--panel);border:1px solid var(--border);display:grid;place-items:center;font-size:9.5px;font-weight:800;color:var(--primary);flex-shrink:0}
+  .kaart .pl{font-size:9.5px;font-weight:800;color:var(--purple);border:1px dashed color-mix(in srgb,var(--purple) 45%,transparent);border-radius:4px;padding:0 4px}
+  .kaart .x{margin-left:auto;color:var(--faint);cursor:pointer;font-size:12px;background:none;border:0;padding:0 2px}
+  .kaart .x:hover{color:var(--danger)}
+  .kaart.ghost{opacity:.5;text-decoration:line-through}
+  .kaart.los{background:var(--panel-2);border-color:var(--border)}
+  .stip{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+  .stip.geen{background:var(--faint)} .stip.ingevuld{background:var(--info)} .stip.gekeurd{background:var(--ok)} .stip.vraag{background:var(--warn)}
+  .drop{border:2px dashed var(--primary);border-radius:9px;padding:8px 6px;color:var(--primary);font-size:11px;text-align:center;background:var(--accent-bg)}
+  .drop small{display:block;color:var(--muted);font-weight:500}
+  /* ---- zijbalk ---- */
+  .zij{display:flex;flex-direction:column;gap:14px;position:sticky;top:16px}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .paneel h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+  .paneel .body{padding:10px 12px}
+  .hint{color:var(--muted);font-size:12px;line-height:1.5}
+  .team{border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;background:var(--panel-2);cursor:grab}
+  .team:active{cursor:grabbing}
+  .team.dragging{opacity:.6}
+  .team h4{margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .team h4 span{color:var(--muted);font-weight:400;font-size:11px}
+  .team .kaart{margin-bottom:4px;cursor:default}
+  .team.nieuw{border-style:dashed;cursor:default}
+  .melding{display:flex;gap:9px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;line-height:1.45}
+  .melding:last-child{border-bottom:none}
+  .toast{position:fixed;right:22px;bottom:22px;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:12.5px;box-shadow:var(--shadow);display:none;max-width:420px}
+  .notes{margin-top:26px;max-width:1000px}
+  .notes h2{font-size:15px;margin:22px 0 8px}
+  .notes ol{padding-left:20px;line-height:1.6;font-size:13px}
+  .keuze{background:var(--warn-bg);border-left:3px solid var(--warn);padding:9px 12px;margin:6px 0;border-radius:6px;font-size:13px;line-height:1.5}
+  .keuze b{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="kop">
+  <h1>Planning — Universal Steigerbouw B.V.</h1>
+  <span class="sub">week 37 · ma 7-9 – vr 11-9</span>
+  <span class="status">MOCKUP · ter beoordeling Peter/Haci · geen bouwnorm tot akkoord</span>
+  <div class="rechts">
+    <div class="tabs"><button class="on">👷 Personeel</button><button>🚚 Transport</button></div>
+    <div class="weeknav"><button class="icon-btn" title="vorige week">‹</button><span>Week 37, 2026</span><button class="icon-btn" title="volgende week">›</button></div>
+    <button class="btn secundair klein" id="kopieerWeek" title="Alle projectregels van week 36 kopiëren naar week 37; botsingen (persoon al elders gepland) worden getoond, niets stil overschreven">⧉ Kopieer week 36 → 37</button>
+    <button class="btn klein">+ Project aanmaken</button>
+    <button class="icon-btn" id="thema" title="thema">◐</button>
+  </div>
+</div>
+
+<div class="filters">
+  <span class="chip on">alle projecten met planning</span>
+  <span class="chip">alleen zonder uren</span>
+  <span class="chip">alleen ongekeurd</span>
+  <div class="legend">
+    <span><i class="stip geen"></i> geen uren</span>
+    <span><i class="stip ingevuld"></i> ingevuld (tooltip: tijdstip · m²)</span>
+    <span><i class="stip gekeurd"></i> gekeurd</span>
+    <span><i class="stip vraag"></i> afgekeurd / vraag open</span>
+    <span><span class="kaart" style="margin:0;padding:1px 6px;background:none;border:0"><span class="pl">A</span></span> = via ploeg A gepland</span>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="planner">
+    <table id="grid">
+      <thead><tr>
+        <th>Project</th>
+        <th>Ma<small>7-9</small></th><th>Di<small>8-9</small></th><th>Wo<small>9-9</small></th><th class="vandaag">Do<small>10-9</small></th><th>Vr<small>11-9</small></th>
+      </tr></thead>
+      <tbody>
+        <tr data-project="25058">
+          <th>25058 Haarlem<span class="pl">Slokker · steigerwerk</span>
+            <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap"><span class="badge info">deze week: 3 man</span><span class="badge ploeg">ploeg A</span></div>
+            <span class="urenchip"><b>24 u gekeurd</b> · 16 u ingevuld · 0 open · <button class="linkbtn">weekstaten →</button></span>
+            <div class="rijacties"><button class="linkbtn" data-kopieer="25058">⧉ kopieer vorige week</button><button class="linkbtn">⋯</button></div>
+          </th>
+          <td class="cel" data-dag="ma"></td><td class="cel" data-dag="di"></td><td class="cel" data-dag="wo"></td><td class="cel vandaag" data-dag="do"></td><td class="cel" data-dag="vr"></td>
+        </tr>
+        <tr data-project="25061">
+          <th>25061 Naaldwijk<span class="pl">Vink en Veenman · steigerwerk</span>
+            <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap"><span class="badge info">deze week: 4 man</span><span class="badge ploeg">ploeg B</span></div>
+            <span class="urenchip"><b>32 u gekeurd</b> · 32 u ingevuld · <span class="open">1 vraag</span> · <button class="linkbtn">weekstaten →</button></span>
+            <div class="rijacties"><button class="linkbtn" data-kopieer="25061">⧉ kopieer vorige week</button><button class="linkbtn">⋯</button></div>
+          </th>
+          <td class="cel" data-dag="ma"></td><td class="cel" data-dag="di"></td><td class="cel" data-dag="wo"></td><td class="cel vandaag" data-dag="do"></td><td class="cel" data-dag="vr"></td>
+        </tr>
+        <tr data-project="25149">
+          <th>25149 Zoeterwoude<span class="pl">Vink en Veenman · steigerwerk</span>
+            <div style="margin-top:5px"><span class="badge info">deze week: 3 man</span></div>
+            <span class="urenchip">0 u ingevuld · <span class="open">3 zonder uren</span> · <button class="linkbtn">weekstaten →</button></span>
+            <div class="rijacties"><button class="linkbtn" data-kopieer="25149">⧉ kopieer vorige week</button><button class="linkbtn">⋯</button></div>
+          </th>
+          <td class="cel" data-dag="ma"></td><td class="cel" data-dag="di"></td><td class="cel" data-dag="wo"></td><td class="cel vandaag" data-dag="do"></td><td class="cel" data-dag="vr"></td>
+        </tr>
+        <tr data-project="26007">
+          <th>26007 Leiden<span class="pl">Heembouw · nog geen planning</span>
+            <div class="rijacties"><button class="linkbtn" data-kopieer="26007">⧉ kopieer vorige week</button></div>
+          </th>
+          <td class="cel" data-dag="ma"></td><td class="cel" data-dag="di"></td><td class="cel" data-dag="wo"></td><td class="cel vandaag" data-dag="do"></td><td class="cel" data-dag="vr"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="zij">
+    <div class="paneel">
+      <h2 style="justify-content:space-between"><span>Zijbalk</span>
+        <span class="tabs" style="padding:2px"><button id="tabMensen">👷 ZZP'ers & uitvoerders</button><button id="tabPloegen" class="on">👥 Ploegen</button></span>
+      </h2>
+      <div class="body" id="ploegenPaneel">
+        <p class="hint">Sleep een <b>ploeg</b> op een projectregel = alle leden ma–vr. Sleep een <b>persoon</b> in of uit een ploeg. Lidmaatschap geldt per week; <button class="linkbtn" id="neemOver">neem week 36 over</button>.</p>
+        <div class="team" draggable="true" data-ploeg="A">
+          <h4>Ploeg A <span>3 man · leider Hakim Lali · <button class="linkbtn">⋯</button></span></h4>
+          <div class="kaart"><span class="init">HL</span><b>Hakim Lali</b><span class="pl">leider</span></div>
+          <div class="kaart"><span class="init">VP</span><b>V. Ponchev</b></div>
+          <div class="kaart"><span class="init">ZP</span><b>Z.V. Panchev</b></div>
+          <div class="hint" style="margin-top:6px" data-inzet="A">deze week: 25058 Haarlem (ma–vr, do 2 man)</div>
+        </div>
+        <div class="team" draggable="true" data-ploeg="B">
+          <h4>Ploeg B <span>4 man · leider Baki Genc. · <button class="linkbtn">⋯</button></span></h4>
+          <div class="kaart"><span class="init">BG</span><b>Baki Genc.</b><span class="pl">leider</span></div>
+          <div class="kaart"><span class="init">RC</span><b>R. Ciftci</b></div>
+          <div class="kaart"><span class="init">AG</span><b>A.B Guzel</b></div>
+          <div class="kaart"><span class="init">SG</span><b>S. Gencer</b></div>
+          <div class="hint" style="margin-top:6px" data-inzet="B">deze week: 25061 Naaldwijk (ma–wo, vr) · <span style="color:var(--warn);font-weight:700">do niet gepland</span></div>
+        </div>
+        <div class="team nieuw">
+          <h4>+ Nieuwe ploeg <span>naam kiezen, mensen erin slepen</span></h4>
+          <div class="drop">personen hier neerzetten</div>
+        </div>
+        <p class="hint">Niet in een ploeg (deze week): H. Parviz, I. Onel, S. Hasanov, M. Sanli, R. Yücetaş, M. Demir, R. Demir, … — blijven los planbaar zoals nu.</p>
+      </div>
+      <div class="body" id="mensenPaneel" style="display:none">
+        <p class="hint">De bestaande pool (planning-steigerbouw.html): sleep een persoon op een dag. Ongewijzigd.</p>
+      </div>
+    </div>
+    <div class="paneel">
+      <h2>Controle</h2>
+      <div class="melding"><span>⚠</span><span><b>S. Gencer</b> — ma 7-9 afgekeurd door Haci (10 u i.p.v. 8 u), vraag open.<span class="hint" style="display:block">25061 Naaldwijk</span></span></div>
+      <div class="melding"><span>⚠</span><span><b>3 zonder uren</b> op 25149 Zoeterwoude (di–vr).</span></div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="notes">
+  <h2>Drie keuzes voor Peter/Haci (ja/nee volstaat)</h2>
+  <div class="keuze"><b>K1 — Ploeg = snelkoppeling, geen harde structuur.</b> Onder water blijft alles per persoon per dag (de veld-app verandert niet). Een wisselaar op donderdag verplaats je gewoon; de ploeg "breekt" niet. Alternatief (afgeraden): ploeg als vaste eenheid die je alleen als geheel kunt plannen.</div>
+  <div class="keuze"><b>K2 — Lidmaatschap per week</b> mét één klik "neem vorige week over". Alternatief: vaste ploegen die je handmatig wijzigt (sneller als de ploegen zelden wisselen; kies dit als dat bij Universal zo is).</div>
+  <div class="keuze"><b>K3 — "Kopieer vorige week"</b> per project én voor de hele week; bij een conflict (persoon al ergens anders gepland) toont de module de botsing en kiest niet zelf.</div>
+
+  <h2>Ontwerpnotities</h2>
+  <ol>
+    <li><b>Rijen blijven projecten</b> — dat is de eenheid van de veld-app, de weekstaat en de facturatie. Ploegen als rijen zou uren en meterstaten losmaken van het project.</li>
+    <li><b>Ploeg-label op elk blokje</b> (▭ A) zodat je ziet waarom iemand daar staat; losse toevoegingen hebben geen label.</li>
+    <li><b>Ploegleider</b> = de uitvoerder in de ploeg; die keurt de uren van zijn ploeg in de app (bestaande keuringsrol, geen nieuw recht).</li>
+    <li><b>Urenstatus-stippen</b> komen uit de opdracht van vandaag (weekstaat/keuring); klik op een blokje opent de weekstaat van die persoon-week.</li>
+    <li><b>Conflicten</b>: persoon al gepland op een ander project dezelfde dag → oranje botsing, module kiest niet (huidige regel blijft).</li>
+    <li><b>Schaal</b>: 78 projecten / 20 mét planning — filter "alleen met planning" en "alleen zonder uren" bovenaan; ploegen-paneel toont hoogstens ±10 ploegen, daarna zoeken.</li>
+    <li><b>Designpass v2</b> (15-09 avond): neutrale fundering, teal uitsluitend voor acties (slepen, kopiëren, knoppen), groen uitsluitend voor status (gekeurd); paars = ploeg-label, zoals werkopdrachten in het echte grid.</li>
+  </ol>
+</div>
+
+<script>
+  // ---- demo-data: personen per ploeg + urenstatus per (project, dag, persoon) ----
+  const PLOEGEN = {
+    A: [{i:'HL',n:'Hakim Lali'},{i:'VP',n:'V. Ponchev'},{i:'ZP',n:'Z.V. Panchev'}],
+    B: [{i:'BG',n:'Baki Genc.'},{i:'RC',n:'R. Ciftci'},{i:'AG',n:'A.B Guzel'},{i:'SG',n:'S. Gencer'}],
+  };
+  const DAGEN = ['ma','di','wo','do','vr'];
+  // status per project/dag/initialen; default 'geen'
+  const STATUS = {
+    '25058': {ma:{HL:'gekeurd',VP:'gekeurd',ZP:'gekeurd'}, di:{HL:'gekeurd',VP:'gekeurd',ZP:'gekeurd'}, wo:{HL:'ingevuld',VP:'ingevuld',ZP:'geen'}},
+    '25061': {ma:{BG:'gekeurd',RC:'gekeurd',AG:'gekeurd',SG:'vraag'}, di:{BG:'gekeurd',RC:'gekeurd',AG:'gekeurd',SG:'gekeurd'}, wo:{BG:'ingevuld',RC:'ingevuld',AG:'ingevuld',SG:'ingevuld'}},
+  };
+  const TIP = {geen:'geen uren ingevuld', ingevuld:'ingevuld wo 17:42 · 8 u · 42 m²', gekeurd:'gekeurd door Haci · 8 u', vraag:'afgekeurd door Haci: 10 u i.p.v. 8 u — vraag open'};
+  const START = {
+    '25058': {ma:[['A','HL'],['A','VP'],['A','ZP']], di:[['A','HL'],['A','VP'],['A','ZP']], wo:[['A','HL'],['A','VP'],['A','ZP']], do:[['A','HL'],['A','VP'],['A','ZP','ghost']], vr:[['A','HL'],['A','VP'],['A','ZP']]},
+    '25061': {ma:[['B','BG'],['B','RC'],['B','AG'],['B','SG']], di:[['B','BG'],['B','RC'],['B','AG'],['B','SG']], wo:[['B','BG'],['B','RC'],['B','AG'],['B','SG']], do:'drop', vr:[['B','BG'],['B','RC'],[null,'MS','M. Sanli']]},
+    '25149': {di:[[null,'HP','H. Parviz'],[null,'IO','I. Onel'],[null,'SH','S. Hasanov']], wo:[[null,'HP','H. Parviz'],[null,'IO','I. Onel'],[null,'SH','S. Hasanov']], do:[[null,'HP','H. Parviz'],[null,'IO','I. Onel'],[null,'SH','S. Hasanov']], vr:[[null,'IO','I. Onel'],[null,'SH','S. Hasanov']]},
+  };
+  const naam = (pl, ini, fallback) => (pl ? PLOEGEN[pl].find(p=>p.i===ini)?.n : fallback) || fallback || ini;
+  function kaartHtml(project, dag, pl, ini, extra, fallback){
+    const st = (STATUS[project]?.[dag]?.[ini]) || 'geen';
+    return `<div class="kaart${pl?'':' los'}${extra==='ghost'?' ghost':''}" title="${extra==='ghost'?'donderdag weggehaald door Haci — ploeg blijft intact':TIP[st]} — klik = weekstaat openen">
+      <i class="stip ${st}" title="${TIP[st]}"></i><span class="init">${ini}</span><b>${naam(pl,ini,fallback)}</b>${pl?`<span class="pl">${pl}</span>`:''}<button class="x" title="weghalen (alleen deze dag)">✕</button></div>`;
+  }
+  function render(){
+    document.querySelectorAll('tbody tr').forEach(tr=>{
+      const project = tr.dataset.project;
+      tr.querySelectorAll('td.cel').forEach(td=>{
+        const dag = td.dataset.dag, inhoud = START[project]?.[dag];
+        if(inhoud==='drop'){ td.innerHTML = `<div class="drop">⤓ ploeg B hier neerzetten<small>slepen vanuit rechts = héle week; hier alleen deze dag</small></div>`; return; }
+        // losse kaarten: [null, initialen, naam]; ploegkaarten: [ploeg, initialen, 'ghost'?]
+        td.innerHTML = (inhoud||[]).map(([pl,ini,a])=>kaartHtml(project,dag,pl,ini, pl?a:undefined, pl?undefined:a)).join('');
+      });
+    });
+  }
+  render();
+  // weghalen per dag (demo)
+  document.getElementById('grid').addEventListener('click', e=>{
+    const x = e.target.closest('.x'); if(!x) return;
+    const kaart = x.closest('.kaart'); const td = kaart.closest('td'); const tr = td.closest('tr');
+    const ini = kaart.querySelector('.init').textContent;
+    const lijst = START[tr.dataset.project][td.dataset.dag];
+    if(Array.isArray(lijst)){ START[tr.dataset.project][td.dataset.dag] = lijst.filter(k=>k[1]!==ini); }
+    render(); toast(`${ini} weggehaald op ${td.dataset.dag} — audit + tijdlijn; de ploeg blijft intact (K1).`);
+  });
+  // ploeg slepen naar een projectregel = hele week
+  let sleepPloeg = null;
+  document.querySelectorAll('.team[draggable]').forEach(t=>{
+    t.addEventListener('dragstart', e=>{ sleepPloeg = t.dataset.ploeg; t.classList.add('dragging'); e.dataTransfer.setData('text/plain', sleepPloeg); });
+    t.addEventListener('dragend', ()=>{ sleepPloeg=null; t.classList.remove('dragging'); });
+  });
+  document.querySelectorAll('tbody tr').forEach(tr=>{
+    tr.addEventListener('dragover', e=>{ if(!sleepPloeg) return; e.preventDefault(); tr.querySelectorAll('td.cel').forEach(td=>td.classList.add('dragover')); });
+    tr.addEventListener('dragleave', e=>{ if(!tr.contains(e.relatedTarget)) tr.querySelectorAll('td.cel').forEach(td=>td.classList.remove('dragover')); });
+    tr.addEventListener('drop', e=>{
+      e.preventDefault(); tr.querySelectorAll('td.cel').forEach(td=>td.classList.remove('dragover'));
+      const pl = sleepPloeg || e.dataTransfer.getData('text/plain'); if(!PLOEGEN[pl]) return;
+      const project = tr.dataset.project; START[project] = START[project] || {};
+      const botsingen = [];
+      DAGEN.forEach(dag=>{
+        const bestaand = Array.isArray(START[project][dag]) ? START[project][dag] : [];
+        PLOEGEN[pl].forEach(p=>{
+          const elders = Object.entries(START).some(([pr,dagen])=> pr!==project && Array.isArray(dagen[dag]) && dagen[dag].some(k=>k[1]===p.i && k[2]!=='ghost'));
+          if(elders){ botsingen.push(`${p.n} ${dag}`); return; }
+          if(!bestaand.some(k=>k[1]===p.i)) bestaand.push([pl,p.i]);
+        });
+        START[project][dag] = bestaand;
+      });
+      render();
+      toast(botsingen.length ? `Ploeg ${pl} gepland ma–vr op ${project}; ${botsingen.length} botsing(en) NIET gepland (module kiest niet, K3): ${botsingen.slice(0,3).join(', ')}${botsingen.length>3?'…':''}` : `Ploeg ${pl} gepland ma–vr op ${project} (alle leden, per persoon per dag onder water — K1).`);
+    });
+  });
+  // kopieer vorige week (per project en hele week) — demo: vult lege dagen met de ma-bezetting
+  function kopieer(project){
+    const d = START[project] || {}; const bron = Array.isArray(d.ma) ? d.ma : (Object.values(d).find(Array.isArray) || []);
+    if(bron.length===0){ toast(`${project}: vorige week had geen planning — niets gekopieerd.`); return 0; }
+    let n=0; DAGEN.forEach(dag=>{ if(!Array.isArray(d[dag]) || d[dag].length===0){ d[dag] = bron.map(k=>[k[0],k[1]]); n++; } });
+    START[project]=d; return n;
+  }
+  document.querySelectorAll('[data-kopieer]').forEach(b=>b.addEventListener('click', ()=>{ const n=kopieer(b.dataset.kopieer); render(); if(n) toast(`${b.dataset.kopieer}: ${n} dag(en) gevuld vanuit week 36 — botsingen zouden oranje verschijnen (K3).`); }));
+  document.getElementById('kopieerWeek').addEventListener('click', ()=>{ let n=0; Object.keys(START).forEach(p=>{ n+=kopieer(p); }); render(); toast(`Week 36 → 37: ${n} dag(en) gevuld over alle projecten; niets stil overschreven (K3).`); });
+  document.getElementById('neemOver').addEventListener('click', ()=>toast('Ploeg-lidmaatschap van week 36 overgenomen (K2) — demo.'));
+  // zijbalk-tabs + thema
+  document.getElementById('tabPloegen').addEventListener('click', ()=>{ document.getElementById('ploegenPaneel').style.display=''; document.getElementById('mensenPaneel').style.display='none'; document.getElementById('tabPloegen').classList.add('on'); document.getElementById('tabMensen').classList.remove('on'); });
+  document.getElementById('tabMensen').addEventListener('click', ()=>{ document.getElementById('ploegenPaneel').style.display='none'; document.getElementById('mensenPaneel').style.display=''; document.getElementById('tabMensen').classList.add('on'); document.getElementById('tabPloegen').classList.remove('on'); });
+  document.getElementById('thema').addEventListener('click', ()=>document.documentElement.classList.toggle('dark'));
+  let toastTimer; function toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.style.display='none', 4200); }
+</script>
+</body>
+</html>
