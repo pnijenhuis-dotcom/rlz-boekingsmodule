@@ -1,0 +1,29 @@
+[
+ {
+  "sleutel": "DOC",
+  "id": "cccccccc-0000-4000-8000-00000000010a",
+  "boekdatum": "2026-09-14",
+  "bedrag": "1261.43",
+  "tegenpartij_naam": "Department of Cosmetics",
+  "omschrijving": "Factuur 2025689 Week 32",
+  "tegenrekening_iban": "NL91ABNA0417164300"
+ },
+ {
+  "sleutel": "VAC",
+  "id": "cccccccc-0000-4000-8000-00000000010b",
+  "boekdatum": "2026-09-14",
+  "bedrag": "91.05",
+  "tegenpartij_naam": "VA Climate B.V.",
+  "omschrijving": "2025682",
+  "tegenrekening_iban": "NL39RABO0300065264"
+ },
+ {
+  "sleutel": "S2G",
+  "id": "cccccccc-0000-4000-8000-00000000010c",
+  "boekdatum": "2026-09-14",
+  "bedrag": "1594.18",
+  "tegenpartij_naam": "Secure2Go",
+  "omschrijving": "Betaling factuur 2025696",
+  "tegenrekening_iban": "NL02ABNA0123456789"
+ }
+]

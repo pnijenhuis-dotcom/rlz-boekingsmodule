@@ -1,0 +1,12 @@
+{
+ "administratie": "Clean Care Arnhem B.V. (in de gouden set draait de testadministratie onder deze naam)",
+ "herkomst": "Productie 15-09-2026 (Peter): bankrekening NL02ABNA0141230487, mutaties 14-09 — drie bijschrijvingen waarvan module en RLZ dezelfde verkoopfactuur aanwijzen, maar de module ORANJE 'match op naam + bedrag, nummer niet gevonden' zei omdat de bankomschrijving de KLANTREFERENTIE (Document.Reference/InvoiceNumber) noemt en niet RLZ's volgnummer van de open post (PaymentItem.Reference). STAP-0 15-09 op RLZ-01-00000706: PaymentItem.Reference '706', Reference2 'RLZ-2025689 29-8-2026', BookDate = DueDate 12-9-2026; Document.Reference = InvoiceNumber = 2025689, Document.Date = 29-8-2026.",
+ "anonimisering": "Tegenpartij-namen exact (bedrijven), IBAN's fictief maar mod-97-geldig, bedragen exact uit de melding (1.261,43 / 91,05 / 1.594,18), klantreferenties exact (2025689 / 2025682 / 2025696), omschrijvingen gereconstrueerd naar de vorm 'Factuur <referentie>' + weekaanduiding.",
+ "gevallen": {
+  "DOC": "Department of Cosmetics +1.261,43 'Factuur 2025689 Week 32' → verkoopfactuur RLZ-01-00000706 (post-referentie 706, klantreferentie 2025689) → GROEN 'naam + referentie 2025689 + bedrag'.",
+  "VAC": "VA Climate +91,05 '2025682' → RLZ-01-00000698 (post 698, klantreferentie 2025682) → GROEN.",
+  "S2G": "Secure2Go +1.594,18 'Betaling factuur 2025696' → RLZ-01-00000714 (post 714, klantreferentie 2025696) → GROEN.",
+  "DATUM": "De kaart toont factuurdatum 29-8-2026 (Document.Date), niet 12-9-2026 (PaymentItem.BookDate = vervaldatum)."
+ },
+ "tekenconventie": "RLZ PaymentItem.Amount: verkoop-post positief; bijschrijving positief → teken klopt."
+}

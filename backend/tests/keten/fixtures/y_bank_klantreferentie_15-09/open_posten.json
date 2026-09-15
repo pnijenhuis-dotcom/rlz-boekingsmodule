@@ -1,0 +1,44 @@
+[
+ {
+  "sleutel": "DOC",
+  "id": "dddddddd-0000-4000-8000-000000000706",
+  "bedrag": "1261.43",
+  "referentie": "706",
+  "referentie2": "RLZ-2025689 29-8-2026",
+  "klantreferentie": "2025689",
+  "factuurdatum": "2026-08-29",
+  "documentsoort": "Verkoopfactuur",
+  "entity_naam": "Department of Cosmetics B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000000706",
+  "boekdatum": "2026-09-12",
+  "rlz_document_id": "dddddddd-0000-4000-8000-100000000706"
+ },
+ {
+  "sleutel": "VAC",
+  "id": "dddddddd-0000-4000-8000-000000000698",
+  "bedrag": "91.05",
+  "referentie": "698",
+  "referentie2": "RLZ-2025682 27-8-2026",
+  "klantreferentie": "2025682",
+  "factuurdatum": "2026-08-27",
+  "documentsoort": "Verkoopfactuur",
+  "entity_naam": "VA Climate B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000000698",
+  "boekdatum": "2026-09-10",
+  "rlz_document_id": "dddddddd-0000-4000-8000-100000000698"
+ },
+ {
+  "sleutel": "S2G",
+  "id": "dddddddd-0000-4000-8000-000000000714",
+  "bedrag": "1594.18",
+  "referentie": "714",
+  "referentie2": "RLZ-2025696 1-9-2026",
+  "klantreferentie": "2025696",
+  "factuurdatum": "2026-09-01",
+  "documentsoort": "Verkoopfactuur",
+  "entity_naam": "Secure2Go B.V.",
+  "entity_guid": "eeeeeeee-0000-4000-8000-000000000714",
+  "boekdatum": "2026-09-15",
+  "rlz_document_id": "dddddddd-0000-4000-8000-100000000714"
+ }
+]

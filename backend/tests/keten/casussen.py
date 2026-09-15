@@ -42,6 +42,8 @@ M_INCASSO = "m_incasso_factuur"
 # Blok 2 bundel 08-09 (bankmatchmotor): géén document-casus maar een bank-casus — mutaties.json + open_posten.json
 # (productiegevallen C.V. 08-09 + TransIP/NPG); `alle_casussen()` slaat 'm daarom over (geen factuur.xml/pdf_tekst).
 L_BANK_CV = "l_bank_cv_08-09"
+#: Peter 15-09: bankmatch op klantreferentie (Clean Care Arnhem).
+Y_BANK_KLANTREFERENTIE = "y_bank_klantreferentie_15-09"
 # Blok A bundel 10-09 (autoboeken per administratie — leerregel): géén eigen UBL maar varianten van casus h (BDO) met een
 # ander factuurnummer per exemplaar — zie fixtures/q_autoboek_leren/bron.json; `alle_casussen()` slaat de map over.
 Q_AUTOBOEK_LEREN = "q_autoboek_leren"

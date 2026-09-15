@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Bankmatch herkent de klantreferentie op de factuur
+
+<!-- bank-match-klantreferentie-15-09 -->
+
+- Noemt de bank in de omschrijving het factuurnummer zoals het op de factuur staat (bijvoorbeeld 2025689), dan herkent het bankscherm de open post nu ook daarop. Met naam, bedrag en die referentie is het voorstel groen "naam + referentie 2025689 + bedrag" en klaar om af te letteren, waar het eerder oranje "nummer niet gevonden" bleef.
+- De voorstel-kaart toont nu de echte factuurdatum van het document en het factuurnummer zoals de klant het kent, niet de vervaldatum en het interne volgnummer.
+
 ## 2026-09-15 — Minder ruis in de reconciliatie
 
 <!-- reconciliatie-nazorg-15-09 -->

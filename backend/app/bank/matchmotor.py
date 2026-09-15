@@ -116,6 +116,24 @@ def referentie_als_token(referentie: str | None, *mutatie_teksten: str | None) -
     return any(_cijferkern(kandidaat) == kern for kandidaat in kandidaten)
 
 
+def klantreferentie_toetsbaar(referentie: str | None) -> bool:
+    """Peter 15-09 (casus Clean Care Arnhem): de bank noemt niet het RLZ-volgnummer van de open post (`PaymentItem.
+    Reference` "706") maar de KLANTREFERENTIE/het factuurnummer van het document (`Document.Reference`/`InvoiceNumber`
+    2025689). Zo'n referentie telt alleen als ze toetsbaar is: ≥ `_MIN_REFERENTIE_LENGTE` tekens ná normalisatie, geen
+    IBAN en geen plaatsvervanger ("Ingescand document", alleen nullen, < 3 tekens) — hergebruik van de classificatie
+    uit de reconciliatie (`referentie_classificatie.lijkt_op_iban`, `rlz_dubbel.is_placeholder_referentie`)."""
+    if len(_genormaliseerd(referentie)) < _MIN_REFERENTIE_LENGTE:
+        return False
+    # Lokale import: de reconciliatie-modules zijn puur, maar bank hoort ze verder niet te kennen.
+    from app.reconciliatie.referentie_classificatie import lijkt_op_iban
+    from app.reconciliatie.rlz_dubbel import is_placeholder_referentie, normaliseer_referentie
+
+    norm = normaliseer_referentie(str(referentie))
+    if is_placeholder_referentie(norm):
+        return False
+    return not lijkt_op_iban(str(referentie), norm)
+
+
 def referentie_is_kort(referentie: str | None) -> bool:
     """4–5 tekens na normalisatie: telt alleen samen met een exact bedrag."""
     return len(_genormaliseerd(referentie)) < _KORTE_REFERENTIE_GRENS
@@ -252,6 +270,10 @@ class OpenPost:
     boekstuknummer: str | None = None
     factuurdatum: date | None = None
     entity_guid: uuid.UUID | None = None
+    # Peter 15-09 (Clean Care Arnhem): de klantreferentie/het factuurnummer van het DOCUMENT (`Document.Reference`
+    # = `InvoiceNumber`, STAP-0 15-09) — wat de bank in de omschrijving zet; `referentie` is RLZ's volgnummer van
+    # de post.
+    klantreferentie: str | None = None
 
 
 @dataclass(frozen=True)
@@ -343,6 +365,8 @@ class PostScore:
     naam_of_iban: str | None
     nummer: bool
     bedrag: bool
+    #: Waarop het nummer matchte: "nummer" (RLZ-referentie van de post) of "referentie <klantreferentie>" (Peter 15-09).
+    nummer_bron: str | None = None
 
     @property
     def aantal(self) -> int:
@@ -363,7 +387,7 @@ class PostScore:
             deel
             for deel, ok in (
                 (self.naam_of_iban or "naam", self.naam_of_iban is not None),
-                ("nummer", self.nummer),
+                (self.nummer_bron or "nummer", self.nummer),
                 ("bedrag", self.bedrag),
             )
             if ok
@@ -394,12 +418,21 @@ def score_post(
     nummer = referentie_als_token(post.referentie, mutatie.tegenpartij_naam, mutatie.omschrijving)
     if nummer and referentie_is_kort(post.referentie) and not bedrag:
         nummer = False  # korte referentie telt alleen samen met een exact bedrag
+    nummer_bron: str | None = "nummer" if nummer else None
+    if not nummer and klantreferentie_toetsbaar(post.klantreferentie):
+        # Peter 15-09: de bank noemt de klantreferentie van het document (2025689), niet RLZ's volgnummer (706).
+        nummer = referentie_als_token(post.klantreferentie, mutatie.tegenpartij_naam, mutatie.omschrijving)
+        if nummer and referentie_is_kort(post.klantreferentie) and not bedrag:
+            nummer = False
+        if nummer:
+            nummer_bron = f"referentie {str(post.klantreferentie).strip()}"
     return PostScore(
         post=post,
         teken=teken_toets(mutatie, post),
         naam_of_iban=_naam_of_iban(mutatie, post, vaste_regels=vaste_regels, iban_relaties=iban_relaties),
         nummer=nummer,
         bedrag=bedrag,
+        nummer_bron=nummer_bron,
     )
 
 
@@ -460,8 +493,13 @@ def bepaal_voorstel(
             kleur="groen",
             bron=s.label(),
             reden=(
-                f"Open post {s.post.referentie!r}: teken klopt, {s.naam_of_iban} matcht, factuurnummer als heel "
-                "token in de mutatie én bedrag cent-exact gelijk"
+                f"Open post {s.post.referentie!r}: teken klopt, {s.naam_of_iban} matcht, "
+                + (
+                    f"klantreferentie {s.post.klantreferentie} als heel token in de mutatie"
+                    if (s.nummer_bron or "").startswith("referentie ")
+                    else "factuurnummer als heel token in de mutatie"
+                )
+                + " én bedrag cent-exact gelijk"
             ),
             payment_item_id=s.post.id,
             rlz_document_id=s.post.rlz_document_id,

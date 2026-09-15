@@ -59,6 +59,8 @@ export interface OpenPostDto {
   documentsoort?: string | null
   boekstuknummer?: string | null
   factuurdatum?: string | null
+  /** Peter 15-09: klantreferentie/factuurnummer van het document (wat de bank noemt); `referentie` = RLZ-volgnummer. */
+  klantreferentie?: string | null
 }
 
 export interface BoekRegelDto {

@@ -157,6 +157,7 @@ def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.Voorstel
             documentsoort=item.open_post.documentsoort,
             boekstuknummer=item.open_post.boekstuknummer,
             factuurdatum=item.open_post.factuurdatum,
+            klantreferentie=item.open_post.klantreferentie,
         )
     return schemas.VoorstelResponse(
         soort=item.voorstel.soort.value,

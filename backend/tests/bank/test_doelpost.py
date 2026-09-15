@@ -36,7 +36,24 @@ class TestSpecsUitCache:
         assert specs.tegenpartij_naam == "Bouwbedrijf Verhagen B.V."
         assert specs.documentsoort == "Inkoopfactuur"
         assert specs.boekstuknummer == "RLZ-01-00000921"
-        assert specs.factuurdatum is None
+        assert specs.factuurdatum == date(2026, 8, 14)  # sinds 15-09: terugval op de datum in Reference2
+
+    def test_factuurdatum_is_document_date_niet_de_boekdatum_van_de_post(self) -> None:
+        """Peter 15-09 (Clean Care Arnhem, RLZ-01-00000706): de kaart toonde 12-9-2026 = PaymentItem.BookDate
+        (= DueDate), RLZ toont 29-8-2026 = Document.Date. Terugval: de datum in Reference2; nooit de boekdatum van de
+        post."""
+        document = {"DocumentType": 10, "Date": "2026-08-29T00:00:00", "Reference": "2025689", "InvoiceNumber": 2025689}
+        specs = doelpost.specs_uit_cache(
+            entity_naam="Department of Cosmetics", brondata={"Document": document},
+            referentie2="RLZ-2025689 29-8-2026", boekdatum=date(2026, 9, 12),
+        )
+        assert specs.factuurdatum == date(2026, 8, 29) and specs.klantreferentie == "2025689"
+        # zonder Document.Date: de datum uit Reference2; zonder beide: None (geen boekdatum als factuurdatum)
+        assert doelpost.factuurdatum_uit(None, "RLZ-2025689 29-8-2026") == date(2026, 8, 29)
+        assert doelpost.factuurdatum_uit({"DocumentType": 10}, "RLZ-01-00000999") is None
+        assert doelpost.factuurdatum_uit(None, "RLZ-x 31-2-2026") is None  # onmogelijke datum = None, geen crash
+        assert doelpost.klantreferentie_uit({"InvoiceNumber": 2025689}) == "2025689"
+        assert doelpost.klantreferentie_uit({"Reference": "  "}) is None
 
     def test_ontbrekende_velden_blijven_none_nooit_gokken(self) -> None:
         specs = doelpost.specs_uit_cache(entity_naam=None, brondata=None, referentie2=None, boekdatum=None)

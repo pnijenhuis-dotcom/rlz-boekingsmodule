@@ -150,8 +150,10 @@ export function VoorstelKaart({
   const deel = isDeelbetaling(mutatieBedrag, post.bedrag)
   const restant = restantCenten(mutatieBedrag, post.bedrag)
   const chip = compact ? null : matchChip(voorstel, deel)
-  const kop = post.tegenpartij_naam ?? post.referentie ?? 'Open post'
-  const heeftDocumentDeel = Boolean(post.documentsoort || post.referentie)
+  // Peter 15-09 (Clean Care): toon het factuurnummer dat de klant/bank kent (Document.Reference), niet RLZ's volgnummer.
+  const nummer = post.klantreferentie ?? post.referentie
+  const kop = post.tegenpartij_naam ?? nummer ?? 'Open post'
+  const heeftDocumentDeel = Boolean(post.documentsoort || nummer)
   const datum = formatDatum(post.factuurdatum ?? null)
   return (
     <div className={`vk${compact ? ' vk-compact' : ''}`} data-testid="voorstel-kaart">
@@ -159,7 +161,7 @@ export function VoorstelKaart({
       {(heeftDocumentDeel || post.boekstuknummer) && (
         <div className="vk-r">
           {post.documentsoort ? `${post.documentsoort} ` : ''}
-          {post.referentie ? <b>{post.referentie}</b> : null}
+          {nummer ? <b>{nummer}</b> : null}
           {post.boekstuknummer ? `${heeftDocumentDeel ? ' · ' : ''}${post.boekstuknummer}` : ''}
         </div>
       )}

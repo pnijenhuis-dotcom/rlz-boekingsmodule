@@ -74,6 +74,9 @@ class OpenPostResponse(BaseModel):
     documentsoort: str | None = None
     boekstuknummer: str | None = None
     factuurdatum: date | None = None
+    # Peter 15-09: de klantreferentie/het factuurnummer van het document (wat de bank noemt); `referentie` =
+    # RLZ-volgnummer.
+    klantreferentie: str | None = None
 
 
 class BoekRegelResponse(BaseModel):

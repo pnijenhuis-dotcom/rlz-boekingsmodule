@@ -395,6 +395,8 @@ def maak_payment_item(
     documentsoort: str | None = None,
     boekdatum: str | None = None,
     item_id: uuid.UUID | None = None,
+    klantreferentie: str | None = None,
+    factuurdatum: str | None = None,
 ) -> uuid.UUID:
     """`documentsoort` ("Inkoopfactuur" | "Verkoopfactuur", blok 2 bundel 08-09) landt als
     `Document.DocumentType` 1/10 in de brondata — precies wat de sync uit `Document($expand=Entity)`
@@ -404,6 +406,12 @@ def maak_payment_item(
     brondata: dict[str, Any] = {}
     if document_type is not None:
         brondata["Document"] = {"DocumentType": document_type}
+    # Peter 15-09 (Clean Care): `Document.Reference` = klantreferentie/InvoiceNumber, `Document.Date` = factuurdatum —
+    # precies zoals de sync ze uit `Document($expand=Entity)` bewaart (STAP-0 15-09).
+    if klantreferentie is not None:
+        brondata.setdefault("Document", {})["Reference"] = klantreferentie
+    if factuurdatum is not None:
+        brondata.setdefault("Document", {})["Date"] = f"{factuurdatum}T00:00:00"
     with admin_engine.begin() as conn:
         conn.execute(
             text(

@@ -46,11 +46,13 @@ def _post(
     naam: str | None = "Bouwmaat Nederland B.V.",
     soort: str | None = "Inkoopfactuur",
     entity_guid: uuid.UUID | None = None,
+    klantreferentie: str | None = None,
 ) -> OpenPost:
     """RLZ-conventie: inkoop-post NEGATIEF, verkoop-post POSITIEF (api-verkenning H1/replay 09-08)."""
     return OpenPost(
         id=uuid.uuid4(), bedrag=Decimal(bedrag), referentie=referentie, referentie2=None,
         rlz_document_id=uuid.uuid4(), tegenpartij_naam=naam, documentsoort=soort, entity_guid=entity_guid,
+        klantreferentie=klantreferentie,
     )
 
 
@@ -62,6 +64,65 @@ def _regel(*, sleutel: str, iban: str | None = None, taxrate: uuid.UUID | None =
 
 
 # --- stap 1/2: open-post-matching (blok 2 bundel 08-09: teken + naam/IBAN + nummer + bedrag) -------------
+
+
+class TestKlantreferentieAlsNummer:
+    """Peter 15-09, casus Clean Care Arnhem (NL02ABNA0141230487, mutaties 14-09): de bank noemt de KLANTREFERENTIE
+    van de factuur (Document.Reference/InvoiceNumber 2025689), niet RLZ's volgnummer van de open post
+    (PaymentItem.Reference "706"). Met naam + bedrag + referentie + teken = GROEN mét bron "referentie 2025689"."""
+
+    def _clean_care(self, omschrijving: str = "Factuur 2025689 Week 32", klantreferentie: str | None = "2025689"):
+        mutatie = _mutatie(bedrag="1261.43", naam="Department of Cosmetics", omschrijving=omschrijving)
+        post = _post(
+            bedrag="1261.43", referentie="706", naam="Department of Cosmetics B.V.", soort="Verkoopfactuur",
+            klantreferentie=klantreferentie,
+        )
+        return mutatie, post
+
+    def test_naam_bedrag_klantreferentie_is_groen_met_bron_referentie(self) -> None:
+        mutatie, post = self._clean_care()
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.EXACTE_MATCH and v.kleur == "groen"
+        assert v.bron == "naam + referentie 2025689 + bedrag"
+        assert "klantreferentie 2025689" in v.reden and v.payment_item_id == post.id
+
+    def test_zonder_klantreferentie_blijft_het_oranje_nummer_niet_gevonden(self) -> None:
+        mutatie, post = self._clean_care(klantreferentie=None)
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.DEEL_MATCH and v.bron == "naam + bedrag, nummer niet gevonden"
+
+    def test_rlz_volgnummer_van_de_post_wint_als_label_als_dat_matcht(self) -> None:
+        mutatie, post = self._clean_care(omschrijving="betaling 0706 en 2025689")
+        post = _post(bedrag="1261.43", referentie="0706", naam="Department of Cosmetics B.V.", soort="Verkoopfactuur",
+                     klantreferentie="2025689")
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.kleur == "groen" and v.bron == "naam + nummer + bedrag"
+
+    def test_klantreferentie_als_substring_matcht_nooit(self) -> None:
+        mutatie, post = self._clean_care(omschrijving="kenmerk 920256891")
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.DEEL_MATCH and "nummer niet gevonden" in v.bron
+
+    @pytest.mark.parametrize("ref", ["NL02ABNA0141230487", "Ingescand document", "0000", "01", "123"])
+    def test_iban_placeholder_of_korte_klantreferentie_telt_nooit(self, ref: str) -> None:
+        assert not matchmotor.klantreferentie_toetsbaar(ref)
+        mutatie, post = self._clean_care(omschrijving=f"betaling {ref}", klantreferentie=ref)
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.DEEL_MATCH and "nummer niet gevonden" in v.bron
+
+    def test_korte_klantreferentie_telt_alleen_met_exact_bedrag(self) -> None:
+        assert matchmotor.klantreferentie_toetsbaar("20256")
+        mutatie = _mutatie(bedrag="1000.00", naam="Department of Cosmetics", omschrijving="factuur 20256")
+        post = _post(bedrag="1261.43", referentie="706", naam="Department of Cosmetics B.V.", soort="Verkoopfactuur",
+                     klantreferentie="20256")
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.HANDMATIG  # alleen naam → geen open-post-voorstel
+
+    def test_teken_mismatch_blijft_nooit_kandidaat_ook_met_klantreferentie(self) -> None:
+        mutatie = _mutatie(bedrag="-1261.43", naam="Department of Cosmetics", omschrijving="Factuur 2025689")
+        _, post = self._clean_care()
+        v = bepaal_voorstel(mutatie, open_posten=[post], vaste_regels=[])
+        assert v.soort is VoorstelSoort.HANDMATIG
 
 
 def test_exacte_match_teken_naam_nummer_bedrag_is_groen() -> None:
