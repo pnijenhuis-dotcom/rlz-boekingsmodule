@@ -233,3 +233,56 @@ class TestHulpfuncties:
 
     def test_buiten_offerte_teller_dekt_buiten_en_geen_match(self):
         assert set(m.TELT_ALS_BUITEN_OFFERTE) == {m.BUITEN, m.GEEN_MATCH}
+
+
+class TestWachtendeVerplichtingEnTermijn:
+    """Peter 15-09 (casus Olieman 32948: offerte wachtte op één accordeur → stil `geen_verplichting`)."""
+
+    def _wacht(self, code: str = m.WACHT_NIET_GOEDGEKEURD, nummer: str | None = "OFF-2026-085") -> m.Wachtende:
+        reden = (
+            "nog niet goedgekeurd (wacht op accordering)"
+            if code == m.WACHT_NIET_GOEDGEKEURD
+            else "staat op een ander crediteurrecord (Gebr. Olieman) — dubbele crediteur?"
+        )
+        return m.Wachtende(document_id=uuid.uuid4(), reden_code=code, reden=reden, offertenummer=nummer)
+
+    def test_zonder_kandidaat_maar_met_wachtende_is_zichtbaar_niet_toetsbaar(self):
+        w = self._wacht()
+        uitkomst = m.bepaal_match(feiten(bedrag="20000.00", project=None), [], wachtende=[w])
+        assert uitkomst.uitkomst == m.NIET_TOETSBAAR
+        assert uitkomst.verplichting_document_id == w.document_id  # precies één → verwijzing
+        assert "gevonden (OFF-2026-085) maar niet toetsbaar: nog niet goedgekeurd (wacht op accordering)" in (
+            uitkomst.melding
+        )
+        assert uitkomst.details["wachtende_reden_code"] == m.WACHT_NIET_GOEDGEKEURD
+        assert uitkomst.details["wachtende"] == [str(w.document_id)]
+
+    def test_meerdere_wachtende_geen_verwijzing_wel_beide_redenen(self):
+        a, b = self._wacht(), self._wacht(m.WACHT_ANDERE_CREDITEUR, "OFF-2026-090")
+        uitkomst = m.bepaal_match(feiten(project=None), [], wachtende=[a, b])
+        assert uitkomst.uitkomst == m.NIET_TOETSBAAR and uitkomst.verplichting_document_id is None
+        assert "dubbele crediteur" in uitkomst.melding and "wacht op accordering" in uitkomst.melding
+        assert uitkomst.details["wachtende_reden_code"] == "meerdere"
+
+    def test_geldige_kandidaat_wint_van_wachtende(self):
+        k = kandidaat(project=None, totaal="85000.00")
+        uitkomst = m.bepaal_match(feiten(bedrag="20000.00", project=None), [k], wachtende=[self._wacht()])
+        assert uitkomst.uitkomst == m.BINNEN and uitkomst.verplichting_document_id == k.document_id
+
+    def test_zonder_wachtende_blijft_geen_verplichting_stil(self):
+        assert m.bepaal_match(feiten(project=None), []).uitkomst == m.GEEN_VERPLICHTING
+
+    def test_termijnnummer_in_melding_en_details(self):
+        eerste = m.bepaal_match(feiten(bedrag="20000.00", project=None), [kandidaat(project=None, totaal="85000.00")])
+        assert eerste.details["termijn"] == 1 and "(1e termijn, € 20.000,00)" in eerste.melding
+        assert "€ 20.000,00 van € 85.000,00" in eerste.melding
+        basis = kandidaat(project=None, totaal="85000.00", verbruikt="20000.00")
+        k2 = m.Kandidaat(**{**basis.__dict__, "aantal_gematcht": 1})
+        tweede = m.bepaal_match(feiten(bedrag="30000.00", project=None), [k2])
+        assert tweede.details["termijn"] == 2 and "(2e termijn" in tweede.melding
+        assert tweede.verbruik_na == Decimal("50000.00")
+
+    def test_ander_project_noemt_de_bestaande_offertes(self):
+        uitkomst = m.bepaal_match(feiten(project=PROJECT_B), [kandidaat(project=PROJECT_A)])
+        assert uitkomst.uitkomst == m.GEEN_MATCH and "op een ander project (26140-OFF-01)" in uitkomst.melding
+        assert uitkomst.details == {"ander_project": True}

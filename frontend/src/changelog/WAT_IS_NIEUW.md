@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Offerte-melding ook als de offerte nog op akkoord wacht
+
+<!-- offerte-match-wachtend-15-09 -->
+
+- Staat er een offerte van de leverancier in Verplichtingen die nog niet is goedgekeurd (of op een ander crediteurrecord staat), dan zegt het controlescherm dat nu: "Offerte van deze leverancier gevonden maar niet toetsbaar: nog niet goedgekeurd (wacht op accordering)", met een link naar de offerte en "Koppel offerte…". Eerder bleef het scherm stil.
+- Wordt zo'n offerte daarna goedgekeurd, dan worden de facturen van die leverancier automatisch alsnog getoetst, ook facturen die al geboekt zijn. Een geboekte factuur krijgt dan een regel in de tijdlijn "achteraf gekoppeld aan offerte …" en telt mee in het verbruik.
+- Termijnfacturen tonen hun plek op de offerte: "deze factuur (1e termijn) € 20.000 past; verbruik ná deze factuur € 20.000 van € 85.000".
+
 ## 2026-09-15 — Btw verlegd herkend zonder het woord "verlegd"
 
 <!-- btw-verlegd-herkenning-15-09 -->

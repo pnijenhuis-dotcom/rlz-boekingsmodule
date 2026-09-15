@@ -19,10 +19,14 @@ import pytest
 
 from app.db.session import scoped_session
 from app.documenten import boekvoorstel
-from app.documenten.models import CrediteurKenmerk
+from app.documenten.models import CrediteurKenmerk, Document, DocumentBron, DocumentSoort, DocumentStatus
 from app.documenten.regel_prefill import BTW_BRON_FACTUUR_VERLEGD
 from app.geheugen.models import BoekingObservatie
 from app.sync.models import VendorCache
+from app.verplichting import match as match_motor
+from app.verplichting import match_pipeline
+from app.verplichting import service as verplichting_service
+from app.verplichting.models import Verplichting
 from tests.keten import casussen
 from tests.keten.casussen import Casus
 from tests.keten.conftest import GB_INHUUR, TAXRATE_VERLEGD_HOOG, Keten
@@ -143,3 +147,72 @@ class TestVrijgesteldBlijftLeeg:
         assert voorstel.vendor_id == keten.vendors["telecom"]
         (regel,) = voorstel.regels
         assert regel.taxrate_id != TAXRATE_VERLEGD_HOOG and regel.btw_bron != BTW_BRON_FACTUUR_VERLEGD
+
+
+class TestOfferteMatchOpDeTermijnfactuur:
+    """Peter 15-09 (opdracht offerte-match-olieman-stil): dezelfde factuur 32948 mét een Olieman-offerte van € 85.000
+    die nog op één accordeur wacht → zichtbaar "gevonden maar niet toetsbaar", ná goedkeuring "binnen, 1e termijn"."""
+
+    def _offerte(self, keten: Keten, vendor_id: uuid.UUID, *, status: DocumentStatus) -> uuid.UUID:
+        offerte_id = uuid.uuid4()
+        with scoped_session(keten.administratie_id, actor_id=keten.actor) as session:
+            session.add(
+                Document(
+                    id=offerte_id,
+                    administratie_id=keten.administratie_id,
+                    bron=DocumentBron.UPLOAD,
+                    bestandsnaam="offerte-uitweg-30.pdf",
+                    sha256_hash="z" * 64,
+                    opslag_pad="offertes/uitweg-30.pdf",
+                    status=status,
+                    soort=DocumentSoort.VERPLICHTING.value,
+                   
+                )
+            )
+            session.add(
+                Verplichting(
+                    document_id=offerte_id,
+                    administratie_id=keten.administratie_id,
+                    soort_label="offerte",
+                    vendor_id=vendor_id,
+                    project_id=None,
+                    offertenummer="OFF-2026-085",
+                    datum=date(2026, 8, 20),
+                    totaalbedrag_excl=Decimal("85000.00"),
+                    geldig_tot=date(2026, 12, 31),
+                    omschrijving="Werk Uitweg 30 Woerdense Verlaat",
+                )
+            )
+        return offerte_id
+
+    def test_wachtende_offerte_zichtbaar_dan_binnen_eerste_termijn(
+        self, keten: Keten, grondwerk_vendor: uuid.UUID
+    ) -> None:
+        offerte = self._offerte(keten, grondwerk_vendor, status=DocumentStatus.TER_ACCORDERING)
+        document_id = _upload(keten)
+        keten.prefill(document_id)  # autosave → vendor + bedrag bekend
+        match_pipeline.bereken_match(administratie_id=keten.administratie_id, document_id=document_id)
+        data = verplichting_service.haal_match_op(administratie_id=keten.administratie_id, document_id=document_id)
+        assert data.uitkomst == match_motor.NIET_TOETSBAAR
+        assert data.verplichting is not None and data.verplichting.document_id == offerte
+        assert data.niet_toetsbaar_reden == "nog niet goedgekeurd (wacht op accordering)"
+        dto = keten.api.get(
+            f"/administraties/{keten.administratie_id}/documenten/{document_id}/verplichting-match",
+            headers=keten.headers,
+        ).json()
+        assert dto["uitkomst"] == "niet_toetsbaar" and dto["niet_toetsbaar_reden"] == data.niet_toetsbaar_reden
+        assert dto["verplichting"]["offertenummer"] == "OFF-2026-085"
+
+        # Goedkeuring (zoals accordering/service 'm vastlegt) → herberekening → binnen, 1e termijn 20.000 van 85.000.
+        with scoped_session(keten.administratie_id, actor_id=keten.actor) as session:
+            session.get(Document, offerte).status = DocumentStatus.GEACCORDEERD
+            verplichting_service.leg_goedkeuring_vast_in_sessie(
+                session, administratie_id=keten.administratie_id, document_id=offerte, actor_id=keten.actor
+            )
+        match_pipeline.herbereken_na_verplichting_wijziging(
+            administratie_id=keten.administratie_id, verplichting_document_id=offerte
+        )
+        data = verplichting_service.haal_match_op(administratie_id=keten.administratie_id, document_id=document_id)
+        assert data.uitkomst == match_motor.BINNEN and data.termijn == 1 and data.percentage_na == 24
+        assert data.verbruik_na == Decimal("20000.00") and data.verplichting.totaal_excl == Decimal("85000.00")
+        assert "(1e termijn, € 20.000,00)" in data.melding

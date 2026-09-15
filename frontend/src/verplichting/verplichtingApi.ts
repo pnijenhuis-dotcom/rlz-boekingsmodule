@@ -172,6 +172,10 @@ export interface VerplichtingMatchDto {
   /** Server levert dit als `datetime | None` — null zolang er nog niets berekend is. */
   berekend_op: string | null
   melding: string
+  /** Peter 15-09: bij `niet_toetsbaar` mét een gevonden verplichting de reden (bv. "nog niet goedgekeurd (wacht op accordering)"). */
+  niet_toetsbaar_reden?: string | null
+  /** Peter 15-09: het termijnnummer van deze factuur op de gekoppelde offerte (1 = eerste termijn). */
+  termijn?: number | null
 }
 
 /** Korte vorm op de accordeur-wachtrij + de documentenlijst-chip. */

@@ -105,11 +105,35 @@ def _laatste_veldvoorstel(session: Session, document_id: uuid.UUID) -> dict | No
     return laatste
 
 
+def _aantal_gematcht_per_verplichting(
+    session: Session, *, administratie_id: uuid.UUID, behalve_document_id: uuid.UUID | None
+) -> dict[uuid.UUID, int]:
+    """Peter 15-09 (termijnen): per verplichting het aantal ándere facturen dat er al aan gematcht is
+    (binnen/buiten)."""
+    rijen = session.execute(
+        select(VerplichtingMatch.verplichting_document_id, func.count())
+        .where(
+            VerplichtingMatch.administratie_id == administratie_id,
+            VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
+            VerplichtingMatch.verplichting_document_id.is_not(None),
+            *([VerplichtingMatch.document_id != behalve_document_id] if behalve_document_id is not None else []),
+        )
+        .group_by(VerplichtingMatch.verplichting_document_id)
+    ).all()
+    return {vid: int(n) for vid, n in rijen}
+
+
 def lopende_kandidaten(
-    session: Session, *, administratie_id: uuid.UUID, sleutel: str, btw: dict[str, str]
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    sleutel: str,
+    btw: dict[str, str],
+    document_id: uuid.UUID | None = None,
 ) -> list[match_motor.Kandidaat]:
     """Lopende verplichtingen (document GEACCORDEERD, niet vervallen) van dezelfde crediteur-
-    identiteit. De geldigheidstoets t.o.v. de factuurdatum zit in de pure motor."""
+    identiteit. De geldigheidstoets t.o.v. de factuurdatum zit in de pure motor. `document_id` = de factuur zelf
+    (telt niet mee in `aantal_gematcht`)."""
     rijen = session.execute(
         select(Verplichting, Document.status)
         .join(Document, Document.id == Verplichting.document_id)
@@ -122,6 +146,9 @@ def lopende_kandidaten(
     from app.crediteuren.voorkeur import verliezers as verliezers_kaart  # B13 07-09: verliezer telt als voorkeur
 
     kaart = verliezers_kaart(session, administratie_id=administratie_id)
+    gematcht = _aantal_gematcht_per_verplichting(
+        session, administratie_id=administratie_id, behalve_document_id=document_id
+    )
     kandidaten: list[match_motor.Kandidaat] = []
     for rij, _status in rijen:
         if vendor_sleutel(kaart.get(rij.vendor_id, rij.vendor_id), btw) != sleutel:
@@ -135,9 +162,81 @@ def lopende_kandidaten(
                 goedgekeurd_bedrag_excl=rij.goedgekeurd_bedrag_excl,
                 verbruikt_bedrag_excl=Decimal(rij.verbruikt_bedrag_excl or 0),
                 geldig_tot=rij.geldig_tot,
+                aantal_gematcht=gematcht.get(rij.document_id, 0),
             )
         )
     return sorted(kandidaten, key=lambda k: (k.offertenummer or "", str(k.document_id)))
+
+
+#: Statussen van een verplichting-document die "nog niet goedgekeurd" betekenen (concept/controle/accordering);
+#: terminale statussen (afgewezen, verwijderd, …) zijn géén wachtende verplichting.
+_WACHT_STATUS_LABEL = {
+    DocumentStatus.ONTVANGEN: "nog in behandeling",
+    DocumentStatus.EXTRACTIE_WACHTRIJ: "nog in behandeling",
+    DocumentStatus.EXTRACTIE_BEZIG: "nog in behandeling",
+    DocumentStatus.TE_CONTROLEREN: "nog niet goedgekeurd (te controleren)",
+    DocumentStatus.KLAAR_OM_TE_BOEKEN: "nog niet goedgekeurd (klaar, nog niet aangeboden)",
+    DocumentStatus.TER_ACCORDERING: "nog niet goedgekeurd (wacht op accordering)",
+}
+
+
+def wachtende_verplichtingen(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    sleutel: str,
+    vendor_id: uuid.UUID | None,
+    btw: dict[str, str],
+) -> list[match_motor.Wachtende]:
+    """Peter 15-09 (casus Olieman: offerte wachtte op één accordeur → stil `geen_verplichting`): verplichtingen van deze
+    leverancier die NIET als kandidaat tellen — (1) zelfde crediteur-identiteit maar nog niet goedgekeurd (status
+    ≠ geaccordeerd, niet vervallen, niet terminaal), (2) een niet-vervallen verplichting op een ANDER crediteurrecord
+    met dezelfde naam (dubbele crediteur zonder btw-nummer)."""
+    from app.bank.matchmotor import naam_komt_overeen  # puur: dezelfde naam-tokenregel als de bankmatch
+    from app.crediteuren.voorkeur import verliezers as verliezers_kaart
+    from app.sync.models import VendorCache
+
+    kaart = verliezers_kaart(session, administratie_id=administratie_id)
+    rijen = session.execute(
+        select(Verplichting, Document.status)
+        .join(Document, Document.id == Verplichting.document_id)
+        .where(
+            Verplichting.administratie_id == administratie_id,
+            Verplichting.vervallen_op.is_(None),
+            Document.status.notin_(_TERMINALE_STATUSSEN),
+        )
+    ).all()
+    if not rijen:
+        return []
+    namen = {
+        rij.id: rij.naam
+        for rij in session.scalars(select(VendorCache).where(VendorCache.administratie_id == administratie_id))
+    }
+    eigen_naam = namen.get(vendor_id) if vendor_id is not None else None
+    uit: list[match_motor.Wachtende] = []
+    for rij, status in rijen:
+        rij_sleutel = vendor_sleutel(kaart.get(rij.vendor_id, rij.vendor_id), btw)
+        if rij_sleutel == sleutel:
+            if status == DocumentStatus.GEACCORDEERD:
+                continue  # dat is een gewone kandidaat
+            uit.append(
+                match_motor.Wachtende(
+                    document_id=rij.document_id,
+                    reden_code=match_motor.WACHT_NIET_GOEDGEKEURD,
+                    reden=_WACHT_STATUS_LABEL.get(status, f"nog niet goedgekeurd ({status.value.replace('_', ' ')})"),
+                    offertenummer=rij.offertenummer,
+                )
+            )
+        elif eigen_naam and rij.vendor_id is not None and naam_komt_overeen(eigen_naam, namen.get(rij.vendor_id)):
+            uit.append(
+                match_motor.Wachtende(
+                    document_id=rij.document_id,
+                    reden_code=match_motor.WACHT_ANDERE_CREDITEUR,
+                    reden=f"staat op een ander crediteurrecord ({namen.get(rij.vendor_id)}) — dubbele crediteur?",
+                    offertenummer=rij.offertenummer,
+                )
+            )
+    return sorted(uit, key=lambda w: (w.offertenummer or "", str(w.document_id)))
 
 
 def _onthouden_koppeling(
@@ -211,7 +310,16 @@ def bereken_match(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> mat
     with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
         bestaand = session.get(VerplichtingMatch, document_id)
         kandidaten = (
-            lopende_kandidaten(session, administratie_id=administratie_id, sleutel=sleutel, btw=btw)
+            lopende_kandidaten(
+                session, administratie_id=administratie_id, sleutel=sleutel, btw=btw, document_id=document_id
+            )
+            if sleutel
+            else []
+        )
+        wachtende = (
+            wachtende_verplichtingen(
+                session, administratie_id=administratie_id, sleutel=sleutel, vendor_id=voorstel.vendor_id, btw=btw
+            )
             if sleutel
             else []
         )
@@ -242,6 +350,7 @@ def bereken_match(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> mat
             kandidaten,
             handmatig_gekoppeld_id=handmatig,
             onthouden_id=onthouden,
+            wachtende=wachtende,
         )
         _schrijf_match(
             session,
@@ -328,11 +437,78 @@ def herbereken_na_verplichting_wijziging(*, administratie_id: uuid.UUID, verplic
     aantal = 0
     for document_id in kandidaat_documenten:
         try:
-            if bereken_match(administratie_id=administratie_id, document_id=document_id) is not None:
+            uitkomst = bereken_match(administratie_id=administratie_id, document_id=document_id)
+            if uitkomst is not None:
                 aantal += 1
+                # Peter 15-09 (aanvulling: offerte wacht op één accordeur, factuur wordt nu geboekt): een al GEBOEKTE
+                # factuur die ná de goedkeuring alsnog binnen/buiten matcht, wordt achteraf verrekend — verbruik
+                # bijgeschreven, tijdlijnregel + audit. Meerduidig (meerdere_kandidaten) = niet koppelen, melden.
+                if uitkomst.uitkomst in (match_motor.BINNEN, match_motor.BUITEN):
+                    _verreken_achteraf(administratie_id=administratie_id, document_id=document_id, uitkomst=uitkomst)
         except Exception:  # noqa: BLE001 — één document mag de rest niet stoppen
             logger.exception("Verplichting-herberekening mislukt voor document %s", document_id)
     return aantal
+
+
+def _verreken_achteraf(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, uitkomst: match_motor.MatchUitkomst
+) -> bool:
+    """Alleen voor een GEBOEKT document waarvan de match nog niet verrekend is: verbruik bijschrijven
+    (`verreken_in_sessie`, systeem-actor), tijdlijnregel "achteraf gekoppeld aan offerte …" en audit
+    `verplichting_achteraf_gekoppeld`. → True als er verrekend is."""
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        document = session.get(Document, document_id)
+        rij = session.get(VerplichtingMatch, document_id)
+        if document is None or rij is None or document.status != DocumentStatus.GEBOEKT or rij.verrekend_op is not None:
+            return False
+        verreken_in_sessie(
+            session, administratie_id=administratie_id, document_id=document_id, actor_id=SYSTEEM_ACTOR_ID
+        )
+        if rij.verrekend_op is None:
+            return False
+        verplichting = session.get(Verplichting, rij.verplichting_document_id) if rij.verplichting_document_id else None
+        nummer = (verplichting.offertenummer if verplichting is not None else None) or "zonder nummer"
+        termijn = (rij.details or {}).get("termijn")
+        reden = (
+            f"achteraf gekoppeld aan offerte {nummer}"
+            + (f" ({termijn}e termijn)" if termijn else "")
+            + f" — {uitkomst.uitkomst}, verbruik ná deze factuur {rij.verbruik_na} (offerte later goedgekeurd)"
+        )
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    "verplichting_achteraf_gekoppeld": {
+                        "verplichting_document_id": str(rij.verplichting_document_id),
+                        "uitkomst": uitkomst.uitkomst,
+                        "termijn": termijn,
+                    },
+                    "reden": reden,
+                },
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="verplichting_match",
+            record_id=document_id,
+            actie="verplichting_achteraf_gekoppeld",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "verplichting_document_id": str(rij.verplichting_document_id),
+                "uitkomst": uitkomst.uitkomst,
+                "bedrag_excl": str(rij.bedrag_excl),
+                "verbruik_na": str(rij.verbruik_na),
+                "termijn": termijn,
+            },
+            administratie_id=administratie_id,
+        )
+        return True
 
 
 def herbereken_na_verplichting_wijziging_stil(

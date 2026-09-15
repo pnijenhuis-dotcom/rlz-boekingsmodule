@@ -200,6 +200,8 @@ def _match_dto(data: service.MatchData) -> schemas.VerplichtingMatchDto:
         kandidaten=[schemas.MatchKandidaatDto(**k.__dict__) for k in data.kandidaten],
         berekend_op=data.berekend_op,
         melding=data.melding,
+        niet_toetsbaar_reden=data.niet_toetsbaar_reden,
+        termijn=data.termijn,
     )
 
 

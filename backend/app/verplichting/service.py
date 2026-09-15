@@ -789,6 +789,10 @@ class MatchData:
     kandidaten: list[MatchKandidaat]
     berekend_op: datetime | None
     melding: str
+    #: Peter 15-09: bij `niet_toetsbaar` mét een gevonden verplichting de reden ("nog niet goedgekeurd (wacht op
+    #: accordering)"); `termijn` = de (n)e termijn op de gekoppelde offerte bij binnen/buiten.
+    niet_toetsbaar_reden: str | None = None
+    termijn: int | None = None
 
 
 def _verplichting_kort(
@@ -878,6 +882,10 @@ def haal_match_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Mat
             kandidaten=_kandidaten_van_details(session, administratie_id=administratie_id, details=details),
             berekend_op=rij.berekend_op,
             melding=str(details.get("melding") or ""),
+            niet_toetsbaar_reden=(
+                str(details["wachtende_reden"]) if isinstance(details.get("wachtende_reden"), str) else None
+            ),
+            termijn=int(details["termijn"]) if isinstance(details.get("termijn"), int) else None,
         )
 
 

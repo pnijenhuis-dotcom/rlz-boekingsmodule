@@ -5,7 +5,9 @@
 // match blokkeert nooit (⑤). Groen = "binnen de goedgekeurde offerte" mét verbruiksbalk; oranje =
 // "buiten de offerte" mét het bedrag erover, óf "geen goedgekeurde offerte gevonden" — beide mét
 // "Koppel offerte…" en het handelingsperspectief dat meerwerk een eigen verplichting hoort te
-// krijgen. `geen_verplichting` en `niet_toetsbaar` renderen niets: er is niets te melden.
+// krijgen. `geen_verplichting` rendert niets: er is niets te melden. `niet_toetsbaar` rendert sinds 15-09 (Peter,
+// casus Olieman: de offerte wachtte op één accordeur) WÉL als er een verplichting van deze leverancier gevonden is —
+// "gevonden maar niet toetsbaar: <reden>" mét "Open de verplichting →" en "Koppel offerte…"; anders stil.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button } from '../ui/basis'
@@ -18,6 +20,10 @@ import {
   type VerplichtingMatchDto,
 } from '../verplichting/verplichtingApi'
 import { KoppelOfferteDialog } from './KoppelOfferteDialog'
+
+function SOORT_LABEL_TEXT_OF(label: keyof typeof SOORT_LABEL_TEKST): string {
+  return SOORT_LABEL_TEKST[label].toLowerCase()
+}
 
 /** Uitkomsten die iets te melden hebben; de rest blijft stil. */
 const ZICHTBAAR = new Set(['binnen', 'buiten', 'geen_match', 'meerdere_kandidaten'])
@@ -59,11 +65,14 @@ export function OfferteMatchMelding({
     return opruimen
   }, [laad, status, boekvoorstelVersie])
 
-  if (!relevant || match === null || !ZICHTBAAR.has(match.uitkomst)) return null
+  if (!relevant || match === null) return null
+  const wachtend = match.uitkomst === 'niet_toetsbaar' && Boolean(match.verplichting || match.niet_toetsbaar_reden)
+  if (!ZICHTBAAR.has(match.uitkomst) && !wachtend) return null
 
   const v = match.verplichting
   const isBinnen = match.uitkomst === 'binnen'
   const geboekt = TERMINALE_STATUSSEN.includes(status)
+  const termijnTekst = match.termijn ? ` (${match.termijn}e termijn)` : ''
   const akkoordRegel = v
     ? `${v.leverancier_naam ?? 'leverancier'} · ${v.soort_label ? SOORT_LABEL_TEKST[v.soort_label].toLowerCase() : 'offerte'} ${
         v.offertenummer ?? '(zonder nummer)'
@@ -77,6 +86,10 @@ export function OfferteMatchMelding({
         {isBinnen ? (
           <Badge variant="ok" data-testid="offerte-chip-binnen">
             binnen offerte
+          </Badge>
+        ) : wachtend ? (
+          <Badge variant="stil" data-testid="offerte-chip-wachtend">
+            offerte nog niet toetsbaar
           </Badge>
         ) : (
           <Badge variant="warn" data-testid="offerte-chip-buiten">
@@ -94,7 +107,7 @@ export function OfferteMatchMelding({
       {isBinnen && v && (
         <>
           <p style={{ margin: '0 0 10px' }}>
-            ✓ <b>Binnen de goedgekeurde offerte</b> — {akkoordRegel}: deze factuur{' '}
+            ✓ <b>Binnen de goedgekeurde offerte</b> — {akkoordRegel}: deze factuur{termijnTekst}{' '}
             {formatBedrag(match.bedrag_excl)} past; verbruik ná deze factuur {formatBedrag(match.verbruik_na)} van{' '}
             {formatBedrag(v.totaal_excl)}.
           </p>
@@ -107,7 +120,16 @@ export function OfferteMatchMelding({
         </>
       )}
 
-      {!isBinnen && (
+      {wachtend && (
+        <p style={{ margin: '0 0 10px' }} data-testid="offerte-wachtend">
+          ⏳ <b>Offerte van deze leverancier gevonden maar niet toetsbaar</b>
+          {v ? ` — ${v.soort_label ? SOORT_LABEL_TEXT_OF(v.soort_label) : 'offerte'} ${v.offertenummer ?? '(zonder nummer)'}` : ''}
+          {match.niet_toetsbaar_reden ? `: ${match.niet_toetsbaar_reden}` : ''}. Zodra de offerte is goedgekeurd
+          wordt deze factuur automatisch alsnog getoetst; boeken blijft mogelijk.
+        </p>
+      )}
+
+      {!isBinnen && !wachtend && (
         <>
           <p style={{ margin: '0 0 10px' }}>
             ⚠{' '}
@@ -143,7 +165,7 @@ export function OfferteMatchMelding({
         </>
       )}
 
-      {match.melding && (
+      {match.melding && !wachtend && (
         <p className="hint" style={{ marginTop: 0 }} data-testid="offerte-match-toelichting">
           {match.melding}
         </p>

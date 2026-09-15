@@ -140,6 +140,9 @@ class VerplichtingMatchDto(BaseModel):
     kandidaten: list[MatchKandidaatDto] = []
     berekend_op: datetime | None = None
     melding: str = ""
+    #: Peter 15-09: gevonden-maar-niet-toetsbare verplichting (reden) en het termijnnummer op de offerte.
+    niet_toetsbaar_reden: str | None = None
+    termijn: int | None = None
 
 
 class KoppelInput(StrikteInvoer):

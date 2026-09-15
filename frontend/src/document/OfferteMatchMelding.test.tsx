@@ -74,6 +74,43 @@ afterEach(() => {
 })
 
 describe('OfferteMatchMelding', () => {
+  it('niet toetsbaar mét gevonden verplichting (Peter 15-09, Olieman): melding mét reden, link en "Koppel offerte…"', async () => {
+    installFetch(
+      match({
+        uitkomst: 'niet_toetsbaar',
+        verplichting: {
+          document_id: VERPLICHTING,
+          offertenummer: 'OFF-2026-085',
+          soort_label: 'offerte',
+          leverancier_naam: 'Grondwerken Reeuwijk B.V.',
+          project_naam: null,
+          totaal_excl: '85000.00',
+          goedgekeurd_op: null,
+          goedgekeurd_door_naam: null,
+        },
+        bedrag_excl: '20000.00',
+        verbruik_voor: null,
+        verbruik_na: null,
+        percentage_na: null,
+        niet_toetsbaar_reden: 'nog niet goedgekeurd (wacht op accordering)',
+        melding: 'Offerte van deze leverancier gevonden (OFF-2026-085) maar niet toetsbaar: nog niet goedgekeurd.',
+      }),
+    )
+    toon()
+
+    expect(await screen.findByTestId('offerte-chip-wachtend')).toHaveTextContent('offerte nog niet toetsbaar')
+    expect(screen.getByTestId('offerte-wachtend')).toHaveTextContent(/offerte OFF-2026-085: nog niet goedgekeurd \(wacht op accordering\)/)
+    expect(screen.getByRole('link', { name: /Open de verplichting/ })).toHaveAttribute('href', `/verplichting/${ADMIN}/${VERPLICHTING}`)
+    expect(screen.getByRole('button', { name: /Koppel offerte/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('offerte-chip-buiten')).not.toBeInTheDocument()
+  })
+
+  it('binnen: het termijnnummer staat in de zin', async () => {
+    installFetch(match({ termijn: 1, bedrag_excl: '20000.00', verbruik_na: '20000.00', percentage_na: 24 }))
+    toon()
+    expect(await screen.findByText(/deze factuur \(1e termijn\)/)).toBeInTheDocument()
+  })
+
   it('binnen de offerte: groene chip, verbruiksbalk en geen meerwerk-waarschuwing', async () => {
     installFetch(match())
     toon()

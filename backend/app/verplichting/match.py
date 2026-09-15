@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -71,6 +72,27 @@ class Kandidaat:
     goedgekeurd_bedrag_excl: Decimal | None = None
     verbruikt_bedrag_excl: Decimal = Decimal(0)
     geldig_tot: date | None = None
+    #: Peter 15-09 (termijnfacturen): aantal facturen dat al aan deze verplichting gematcht is (binnen/buiten, andere
+    #: documenten) — deze factuur is dan de (n+1)e termijn ("1e termijn 20.000 van 85.000").
+    aantal_gematcht: int = 0
+
+
+#: Reden-codes voor een gevonden-maar-niet-toetsbare verplichting (Peter 15-09, casus Olieman: de offerte wachtte nog
+#: op één accordeur → `geen_verplichting` en het controlescherm zei niets).
+WACHT_NIET_GOEDGEKEURD = "niet_goedgekeurd"
+WACHT_ANDERE_CREDITEUR = "andere_crediteur"
+
+
+@dataclass(frozen=True)
+class Wachtende:
+    """Een verplichting van (waarschijnlijk) deze leverancier die NIET als kandidaat telt — nog niet goedgekeurd
+    (concept/ter controle/ter accordering) of op een ander crediteurrecord met dezelfde naam. De pipeline levert ze
+    aan; de motor maakt er een zichtbare `niet_toetsbaar` van mét de reden, nooit een match."""
+
+    document_id: uuid.UUID
+    reden_code: str
+    reden: str
+    offertenummer: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,16 +151,45 @@ def _geldig(kandidaat: Kandidaat, factuurdatum: date | None) -> bool:
     return kandidaat.geldig_tot >= factuurdatum
 
 
+def _wachtend(feiten: FactuurFeiten, wachtende: Sequence[Wachtende]) -> MatchUitkomst:
+    """Peter 15-09: er is wél een verplichting van deze leverancier, maar die telt niet als kandidaat → zichtbaar
+    `niet_toetsbaar` mét de reden en (bij precies één) de verwijzing, zodat het controlescherm 'm toont met
+    "Open de verplichting →" en "Koppel offerte…". Nooit blokkerend."""
+    redenen = sorted({w.reden for w in wachtende})
+    enige = wachtende[0].document_id if len(wachtende) == 1 else None
+    nummers = ", ".join(w.offertenummer or "zonder nummer" for w in wachtende)
+    return MatchUitkomst(
+        uitkomst=NIET_TOETSBAAR,
+        verplichting_document_id=enige,
+        bedrag_excl=feiten.bedrag_excl,
+        melding=(
+            f"Offerte van deze leverancier gevonden ({nummers}) maar niet toetsbaar: {'; '.join(redenen)}. "
+            "Zodra de offerte is goedgekeurd wordt deze factuur automatisch alsnog getoetst."
+        ),
+        kandidaat_ids=(),
+        details={
+            "wachtende_reden": "; ".join(redenen),
+            "wachtende_reden_code": (
+                wachtende[0].reden_code if len({w.reden_code for w in wachtende}) == 1 else "meerdere"
+            ),
+            "wachtende": [str(w.document_id) for w in wachtende],
+        },
+    )
+
+
 def bepaal_match(
     feiten: FactuurFeiten,
     kandidaten: list[Kandidaat],
     *,
     handmatig_gekoppeld_id: uuid.UUID | None = None,
     onthouden_id: uuid.UUID | None = None,
+    wachtende: Sequence[Wachtende] = (),
 ) -> MatchUitkomst:
     """De volledige beslisboom. `handmatig_gekoppeld_id` = de koppeling op DEZE match-rij (wint
     altijd zolang die verplichting lopend + geldig is); `onthouden_id` = de laatste HANDMATIGE
-    koppeling voor dezelfde crediteur + project (②: "daarna onthouden")."""
+    koppeling voor dezelfde crediteur + project (②: "daarna onthouden"). `wachtende` (Peter 15-09) = verplichtingen
+    van deze leverancier die (nog) niet als kandidaat tellen — zonder geldige kandidaat worden die zichtbaar als
+    `niet_toetsbaar` mét reden in plaats van een stil `geen_verplichting`."""
     if feiten.vendor_sleutel is None:
         return MatchUitkomst(
             uitkomst=NIET_TOETSBAAR,
@@ -164,6 +215,8 @@ def bepaal_match(
                 ),
                 details={"verstreken_kandidaten": verstreken},
             )
+        if wachtende:
+            return _wachtend(feiten, wachtende)
         return MatchUitkomst(
             uitkomst=GEEN_VERPLICHTING,
             bedrag_excl=feiten.bedrag_excl,
@@ -203,14 +256,17 @@ def bepaal_match(
                 ),
                 kandidaat_ids=kandidaat_ids,
             )
+        anders = ", ".join(k.offertenummer or "zonder nummer" for k in geldige)
         return MatchUitkomst(
             uitkomst=GEEN_MATCH,
             bedrag_excl=feiten.bedrag_excl,
             melding=(
                 "Geen goedgekeurde offerte gevonden voor deze leverancier + dit project — "
+                f"wél {len(geldige)} goedgekeurde offerte(s) van deze leverancier op een ander project ({anders}): "
                 "koppel er zelf een of laat het werk als verplichting accorderen."
             ),
             kandidaat_ids=kandidaat_ids,
+            details={"ander_project": True},
         )
 
     # (d) factuur zonder (eenduidig) project.
@@ -254,14 +310,16 @@ def _beoordeel(
     binnen = verbruik_na <= totaal
     over = (verbruik_na - totaal).quantize(Decimal("0.01")) if not binnen else None
     nummer = kandidaat.offertenummer or "zonder nummer"
+    # Peter 15-09 (termijnfacturen): deze factuur is de (aantal al gematcht + 1)e termijn op de offerte.
+    termijn = int(kandidaat.aantal_gematcht) + 1
     if binnen:
         melding = (
-            f"Binnen de goedgekeurde offerte {nummer}: deze factuur {_bedrag(bedrag)} past; verbruik ná deze "
-            f"factuur {_bedrag(verbruik_na)} van {_bedrag(totaal)}."
+            f"Binnen de goedgekeurde offerte {nummer}: deze factuur ({termijn}e termijn, {_bedrag(bedrag)}) past; "
+            f"verbruik ná deze factuur {_bedrag(verbruik_na)} van {_bedrag(totaal)}."
         )
     else:
         melding = (
-            f"Buiten de offerte {nummer} — cumulatief {_bedrag(verbruik_na)} van {_bedrag(totaal)} "
+            f"Buiten de offerte {nummer} — {termijn}e termijn, cumulatief {_bedrag(verbruik_na)} van {_bedrag(totaal)} "
             f"({_bedrag(over)} over). {MEERWERK_HANDELING}"
         )
     return MatchUitkomst(
@@ -274,5 +332,5 @@ def _beoordeel(
         melding=melding,
         kandidaat_ids=kandidaat_ids,
         grond=grond,
-        details={"totaal_excl": str(totaal), "percentage_na": percentage(verbruik_na, totaal)},
+        details={"totaal_excl": str(totaal), "percentage_na": percentage(verbruik_na, totaal), "termijn": termijn},
     )
