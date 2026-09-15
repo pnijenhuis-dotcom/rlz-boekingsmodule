@@ -20,6 +20,7 @@
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "6.00",
      "taxrate_id": null,
@@ -29,12 +30,14 @@
      "omschrijving": "Montage",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "3.25",
      "taxrate_id": null,
@@ -44,12 +47,14 @@
      "omschrijving": "Demontage",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "43.00",
      "taxrate_id": null,
@@ -59,12 +64,14 @@
      "omschrijving": "Regie",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "3.00",
      "taxrate_id": null,
@@ -74,12 +81,14 @@
      "omschrijving": "Montage Grondslag",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "1.25",
      "taxrate_id": null,
@@ -89,12 +98,14 @@
      "omschrijving": "Demontage Grondslag",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "50.00",
      "taxrate_id": null,
@@ -104,12 +115,14 @@
      "omschrijving": "Mon Balkon",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "25.00",
      "taxrate_id": null,
@@ -119,12 +132,14 @@
      "omschrijving": "Demo Balkon",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "50.00",
      "taxrate_id": null,
@@ -134,12 +149,14 @@
      "omschrijving": "Toren",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "25.00",
      "taxrate_id": null,
@@ -149,12 +166,14 @@
      "omschrijving": "Demo trap",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "250.00",
      "taxrate_id": null,
@@ -164,12 +183,14 @@
      "omschrijving": "Post",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": "0.00",
      "stuksprijs": "1.25",
      "taxrate_id": null,
@@ -179,12 +200,14 @@
      "omschrijving": "Net",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "btw_nul"
     },
     {
      "eenheid": null,
      "btw_bron": null,
+     "btw_kolom": null,
      "btw_bedrag": null,
      "stuksprijs": "1.50",
      "taxrate_id": null,
@@ -194,6 +217,7 @@
      "omschrijving": "Binnen leuningen",
      "project_tekst": null,
      "tariefstaffel": true,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": null,
      "btw_afleiding_reden": "onbepaalbaar"
     }
@@ -264,6 +288,7 @@
     "vendor_id": "33333333-0000-0000-0000-000000000003"
    },
    "betaalwijze_tekst": null,
+   "btw_verlegd_kolom": null,
    "zekerheid_drempel": 0.8,
    "btw_factuur_totaal": {
     "reden": "geen_regels_zonder_btw",
@@ -334,6 +359,7 @@
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "6.00",
         "taxrate_id": null,
@@ -343,12 +369,14 @@
         "omschrijving": "Montage",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "3.25",
         "taxrate_id": null,
@@ -358,12 +386,14 @@
         "omschrijving": "Demontage",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "43.00",
         "taxrate_id": null,
@@ -373,12 +403,14 @@
         "omschrijving": "Regie",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "3.00",
         "taxrate_id": null,
@@ -388,12 +420,14 @@
         "omschrijving": "Montage Grondslag",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "1.25",
         "taxrate_id": null,
@@ -403,12 +437,14 @@
         "omschrijving": "Demontage Grondslag",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "50.00",
         "taxrate_id": null,
@@ -418,12 +454,14 @@
         "omschrijving": "Mon Balkon",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "25.00",
         "taxrate_id": null,
@@ -433,12 +471,14 @@
         "omschrijving": "Demo Balkon",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "50.00",
         "taxrate_id": null,
@@ -448,12 +488,14 @@
         "omschrijving": "Toren",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "25.00",
         "taxrate_id": null,
@@ -463,12 +505,14 @@
         "omschrijving": "Demo trap",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "250.00",
         "taxrate_id": null,
@@ -478,12 +522,14 @@
         "omschrijving": "Post",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": "0.00",
         "stuksprijs": "1.25",
         "taxrate_id": null,
@@ -493,12 +539,14 @@
         "omschrijving": "Net",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "btw_nul"
        },
        {
         "eenheid": null,
         "btw_bron": null,
+        "btw_kolom": null,
         "btw_bedrag": null,
         "stuksprijs": "1.50",
         "taxrate_id": null,
@@ -508,6 +556,7 @@
         "omschrijving": "Binnen leuningen",
         "project_tekst": null,
         "tariefstaffel": true,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": null,
         "btw_afleiding_reden": "onbepaalbaar"
        }
@@ -578,6 +627,7 @@
        "vendor_id": "33333333-0000-0000-0000-000000000003"
       },
       "betaalwijze_tekst": null,
+      "btw_verlegd_kolom": null,
       "zekerheid_drempel": 0.8,
       "btw_factuur_totaal": {
        "reden": "geen_regels_zonder_btw",
