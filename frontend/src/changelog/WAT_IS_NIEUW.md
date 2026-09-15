@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Btw verlegd herkend zonder het woord "verlegd"
+
+<!-- btw-verlegd-herkenning-15-09 -->
+
+- Zet een leverancier alleen een "V" (of "VL", "verl.") in de btw-kolom en rekent hij 0 % btw, dan herkent de module dat nu als btw verlegd en zet het verlegd-tarief van de administratie alvast voor (oranje, met de reden erbij). Eerder bleef het btw-veld dan leeg.
+- Ook zonder zo'n code: heb je een leverancier eerder met btw verlegd geboekt, of is het volgens de Kamer van Koophandel een bouwbedrijf, dan wordt een factuur met 0 % btw als verlegd voorgesteld. Een gewone vrijgestelde factuur (verzekering, bank) blijft leeg, zoals het hoort.
+
 ## 2026-09-15 — Bankmatch herkent de klantreferentie op de factuur
 
 <!-- bank-match-klantreferentie-15-09 -->

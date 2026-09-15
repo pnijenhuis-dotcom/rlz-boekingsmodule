@@ -1,0 +1,64 @@
+[
+ [
+  "Grondwerken Reeuwijk B.V.",
+  "Nieuwdorperweg 8",
+  "2811 LB  Reeuwijk",
+  "KvK: 91000073",
+  "BTW: NL100073456B01",
+  "IBAN: NL91KETN1000000073",
+  "",
+  "FACTUUR",
+  "Factuurnummer: 32948",
+  "Factuurdatum: 03-09-2026",
+  "Vervaldatum: 17-09-2026",
+  "",
+  "Universal Steigerbouw B.V.",
+  "Postbus 1",
+  "5531 ZZ Bladel",
+  "",
+  "Betreft: werk Uitweg 30 Woerdense Verlaat",
+  "",
+  [
+   [
+    50,
+    "Omschrijving"
+   ],
+   [
+    330,
+    "Aantal"
+   ],
+   [
+    400,
+    "Bedrag"
+   ],
+   [
+    500,
+    "BTW"
+   ]
+  ],
+  [
+   [
+    50,
+    "1e termijn werkzaamheden"
+   ],
+   [
+    330,
+    "1"
+   ],
+   [
+    400,
+    "20.000,00"
+   ],
+   [
+    500,
+    "V"
+   ]
+  ],
+  "",
+  "Subtotaal 20.000,00",
+  "BTW 0,00 % over 20000,00        0,00",
+  "Te betalen 20.000,00",
+  "",
+  "Gelieve te betalen binnen 14 dagen onder vermelding van het factuurnummer."
+ ]
+]

@@ -107,6 +107,9 @@ def cv_bank(
             entity_guid=uuid.UUID(p["entity_guid"]),
             boekdatum=p["boekdatum"],
             rlz_document_id=uuid.UUID(p["rlz_document_id"]),
+            # 15-09 (klantreferentie-run): de kaart leest de factuurdatum nu uit Document.Date, niet uit BookDate;
+            # de fixture kent alleen één datum → die is óók de documentdatum (export blijft byte-gelijk).
+            factuurdatum=p.get("factuurdatum", p["boekdatum"]),
         )
         for p in CASUS.bank_open_posten()
     }

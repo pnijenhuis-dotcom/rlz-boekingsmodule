@@ -134,7 +134,33 @@ def verwerk_basisprofiel(body: object) -> dict | None:
     if isinstance(registratie, dict) and registratie.get("datumEinde"):
         resultaat["uitgeschreven"] = True
         resultaat["datum_einde"] = _formatteer_datum(registratie["datumEinde"])
+    # Peter 15-09 (verlegd-herkenning c): SBI-codes van onderneming + hoofdvestiging, in volgorde, ontdubbeld —
+    # `is_bouw_sbi` beslist deterministisch of dit een bouw-onderaannemer is (SBI 41/42/43).
+    sbi = _sbi_codes(body) + (_sbi_codes(hoofdvestiging) if isinstance(hoofdvestiging, dict) else [])
+    if sbi:
+        resultaat["sbi_codes"] = list(dict.fromkeys(sbi))
     return resultaat or None
+
+
+#: SBI-hoofdgroepen van de bouwketen (41 algemene bouw/projectontwikkeling, 42 grond-/water-/wegenbouw, 43
+#: gespecialiseerde bouw) — de verleggingsregeling voor onderaanneming geldt hier als norm (CLAUDE.md praktijklessen).
+BOUW_SBI_PREFIXEN = ("41", "42", "43")
+
+
+def _sbi_codes(obj: object) -> list[str]:
+    if not isinstance(obj, dict):
+        return []
+    uit: list[str] = []
+    for act in obj.get("sbiActiviteiten") or []:
+        code = act.get("sbiCode") if isinstance(act, dict) else None
+        if code is not None and str(code).strip():
+            uit.append(str(code).strip())
+    return uit
+
+
+def is_bouw_sbi(sbi_codes: list[str] | tuple[str, ...] | None) -> bool:
+    """Deterministisch: minstens één SBI-code in de bouwketen (41/42/43)."""
+    return any(str(code).strip().startswith(BOUW_SBI_PREFIXEN) for code in (sbi_codes or []))
 
 
 def haal_basisprofiel(kvk_nummer: str) -> dict | None:

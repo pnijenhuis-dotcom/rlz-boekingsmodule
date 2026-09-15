@@ -50,6 +50,8 @@ Q_AUTOBOEK_LEREN = "q_autoboek_leren"
 # Bug-onderzoek 15-09 (LHG/KPN-patroon): regels excl. btw + één btw-totaal — zie
 # fixtures/w_telefonie_btw_totaal/bron.json.
 W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
+#: Peter 15-09: verlegd herkennen op kolomcode "V" zonder het woord verlegd (Olieman-patroon, bouw-onderaannemer).
+Z_VERLEGD_KOLOMCODE = "z_verlegd_kolomcode_v"
 
 AFZENDER_UNIVERSAL = "administratie@universal-steigerbouw.example"
 
@@ -134,6 +136,7 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
     K2_KADER: ("Factuur F212604921.xml", "Projectfactuur F212604921.PDF"),
     M_INCASSO: ("", "Factuur KTD-2026-09-0417.pdf"),
     W_TELEFONIE_BTW_TOTAAL: ("", "Factuur KTD-2026-09-0904.pdf"),
+    Z_VERLEGD_KOLOMCODE: ("", "Factuur 32948.pdf"),
 }
 
 
@@ -153,6 +156,7 @@ def ai_uit_json(data: dict) -> AiFactuurExtractie:
             stuksprijs=r.get("stuksprijs"),
             artikelcode=r.get("artikelcode"),
             project_tekst=r.get("project_tekst"),
+            btw_kolom=r.get("btw_kolom"),
         )
         for r in data.get("regels", [])
     ]

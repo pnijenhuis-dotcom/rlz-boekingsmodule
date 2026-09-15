@@ -243,26 +243,58 @@ def bepaal_verlegd_taxrate(
     return None
 
 
+def verlegd_taxrate_ids(session: Session, *, administratie_id: uuid.UUID) -> set[uuid.UUID]:
+    """Alle `IsRelayed`-tarieven van de administratie (ook uit de sync verdwenen — historie-boekingen dragen ze nog)."""
+    rijen = session.scalars(select(TaxRateCache).where(TaxRateCache.administratie_id == administratie_id))
+    return {rij.id for rij in rijen if taxrate_vlaggen(rij.brondata)[0]}
+
+
+def leverancier_verlegd_boekingen(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID, vandaag: date | None = None
+) -> int:
+    """Peter 15-09 (c): hoeveel boekingen van déze leverancier in het boekingsgeheugen (RLZ-seed + app-bevestigingen,
+    laatste `VERLEGD_HISTORIE_DAGEN`, anders alles) op een verlegd-tarief staan — ≥ 1 = de leverancier is voor deze
+    administratie een verlegd-leverancier (bouw-onderaannemer)."""
+    ids = verlegd_taxrate_ids(session, administratie_id=administratie_id)
+    if not ids:
+        return 0
+    vandaag = vandaag or vandaag_nl()
+    basis = select(func.count()).where(
+        BoekingObservatie.administratie_id == administratie_id,
+        BoekingObservatie.vendor_id == vendor_id,
+        BoekingObservatie.btw_id.in_(ids),
+    )
+    recent = int(
+        session.scalar(basis.where(BoekingObservatie.bron_datum >= vandaag - timedelta(days=VERLEGD_HISTORIE_DAGEN)))
+        or 0
+    )
+    return recent if recent else int(session.scalar(basis) or 0)
+
+
 def verlegd_taxrate_voor(session: Session, *, administratie_id: uuid.UUID) -> uuid.UUID | None:
     """Compat-vorm van `bepaal_verlegd_taxrate` (alleen het tarief-id; None = meerduidig, de mens kiest)."""
     keuze = bepaal_verlegd_taxrate(session, administratie_id=administratie_id)
     return None if keuze is None else keuze.taxrate_id
 
 
-def _met_factuur_verlegd(regel: BoekvoorstelRegelData, *, verlegd: VerlegdKeuze | None) -> BoekvoorstelRegelData:
+def _met_factuur_verlegd(
+    regel: BoekvoorstelRegelData, *, verlegd: VerlegdKeuze | None, basis_detail: str | None = None
+) -> BoekvoorstelRegelData:
     """Stap 4 van de winnaarsvolgorde: alleen een nog leeg btw-veld op een regel zonder regel-btw (0 of niet gelezen),
     alleen als de factuur verlegd is (aanroeper geeft dan de keuze mee) — oranje `factuur_verlegd`, mét de herkomst
-    van de keuze als `btw_bron_detail` (blok 6)."""
+    van de keuze als `btw_bron_detail` (blok 6). `basis_detail` (Peter 15-09): waaróm de factuur verlegd is als dat
+    niet de vermelding is ('kolomcode "V"', 'leverancier eerder verlegd (3×)', 'KvK SBI 43…') — vóór de tariefkeuze."""
     if verlegd is None or regel.taxrate_id is not None:
         return regel
     if regel.btw_bedrag is not None and regel.btw_bedrag != 0:
         return regel  # deze regel draagt wél btw — verlegd geldt niet voor haar
+    detail = f"{basis_detail} · {verlegd.detail}" if basis_detail else verlegd.detail
     return _met_herkomst(
         replace(
             regel,
             taxrate_id=verlegd.taxrate_id,
             btw_bron=BTW_BRON_FACTUUR_VERLEGD,
-            btw_bron_detail=verlegd.detail,
+            btw_bron_detail=detail,
             btw_bewust_leeg=False,
         ),
         **{VELD_BTW: BTW_BRON_FACTUUR_VERLEGD},
@@ -477,6 +509,7 @@ def verrijk_prefill(
     project_verplicht: bool = False,
     kop_project_tekst: str | None = None,
     factuur_verlegd: bool = False,
+    verlegd_basis_detail: str | None = None,
 ) -> tuple[list[BoekvoorstelRegelData], BoekvoorstelRegelData | None]:
     """Geeft (regels, samengevoegde_regel) terug mét regel-GB-voorstel (blok D), project uit de factuur (blok 10),
     leverancier-geheugen (A10), btw verlegd uit de factuur (blok 4c) en btw-default (blok E); élk gevuld veld draagt
@@ -552,7 +585,7 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
-        regel = _met_factuur_verlegd(regel, verlegd=verlegd)
+        regel = _met_factuur_verlegd(regel, verlegd=verlegd, basis_detail=verlegd_basis_detail)
         regel = _met_grootboek_default(
             regel, grootboek_defaults=grootboek_defaults, engine_observaties=engine_observaties, regel_sleutel=sleutel
         )
@@ -585,7 +618,9 @@ def verrijk_prefill(
             project_verplicht=project_verplicht,
             vandaag=vandaag,
         )
-        samengevoegde_regel = _met_factuur_verlegd(samengevoegde_regel, verlegd=verlegd)
+        samengevoegde_regel = _met_factuur_verlegd(
+            samengevoegde_regel, verlegd=verlegd, basis_detail=verlegd_basis_detail
+        )
         samengevoegde_regel = _met_grootboek_default(
             samengevoegde_regel,
             grootboek_defaults=grootboek_defaults,

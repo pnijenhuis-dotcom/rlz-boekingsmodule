@@ -113,9 +113,13 @@ _REGEL_SCHEMA: dict[str, Any] = {
         "a": _TEKST_MET_LEEG_SENTINEL,
         # Blok 10 07-09: project-/werknummer op REGELNIVEAU (regel wint van kop) — sentinel-string, geen union.
         "proj": _TEKST_MET_LEEG_SENTINEL,
+        # Peter 15-09 (Olieman, "V" in de BTW-kolom zonder het woord verlegd): de btw-KOLOMTEKST van de regel zoals
+        # vermeld ("V", "VL", "verl.", "21%", "0%", "vrij") — VOORLEZEN; óf dat verlegd betekent beslist code
+        # (controle.is_verlegd_kolomcode). Sentinel-string, geen union.
+        "bc": _TEKST_MET_LEEG_SENTINEL,
         "z": {"type": "number"},
     },
-    "required": ["o", "n", "b", "h", "e", "p", "a", "proj", "z"],
+    "required": ["o", "n", "b", "h", "e", "p", "a", "proj", "bc", "z"],
     "additionalProperties": False,
 }
 
@@ -187,7 +191,9 @@ Veldsleutels (compact, antwoord bevat NIETS anders dan deze velden):
   (eigen kolom "Art.nr"/"Code" of tussen haakjes; "" als er geen code staat — nooit verzinnen), proj=het
   projectnummer/werknummer van de opdrachtgever als dat óp deze regel staat (bijv. een kolom "Project"/"Werk" of
   een regelgroep-kop "Project 26140"; "" als de regel er geen heeft — het kopveld proj dekt dan het hele
-  document), z=één zekerheidsscore voor de hele regel.
+  document), bc=de tekst in de btw-kolom van deze regel LETTERLIJK zoals vermeld (bijv. "V", "VL", "verl.",
+  "21%", "9%", "0%", "vrij"; "" als de factuur geen btw-kolom of -code per regel heeft — nooit zelf
+  invullen of vertalen), z=één zekerheidsscore voor de hele regel.
   Kortings- en andere NEGATIEVE regels zijn óók factuurregels: een kortingsregel, rabat, creditregel,
   retour of een verrekende aanbetaling die als eigen regel op de factuur staat, neem je op als eigen
   regel met een NEGATIEF nettobedrag (bijv. "Korting 10%" met n="-56.44") en, als de factuur er een
@@ -263,6 +269,8 @@ class AiRegel:
     artikelcode: str | None = None
     # Blok 10 07-09: project-/werknummer van de opdrachtgever op de regel zoals vermeld (ruw; match in code).
     project_tekst: str | None = None
+    # Peter 15-09: de btw-kolomtekst van de regel zoals vermeld ("V", "21%", …) — ruw; controle.is_verlegd_kolomcode.
+    btw_kolom: str | None = None
 
 
 @dataclass(frozen=True)
@@ -368,7 +376,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
         if not isinstance(ruwe_regel, dict):
             continue
         waarden: dict[str, str | None] = {}
-        for key in ("o", "n", "b", "h", "e", "p", "a", "proj"):
+        for key in ("o", "n", "b", "h", "e", "p", "a", "proj", "bc"):
             waarde, bsn = _schoon_tekst(ruwe_regel.get(key), bsn_filter=key in _VRIJE_TEKST_REGEL_KEYS)
             uit.bsn_verwijderd += bsn
             waarden[key] = waarde
@@ -383,6 +391,7 @@ def _normaliseer_regels(ruwe_regels: Any, uit: _Genormaliseerd) -> None:
                 stuksprijs=waarden["p"],
                 artikelcode=waarden["a"],
                 project_tekst=waarden["proj"],
+                btw_kolom=waarden["bc"],
             )
         )
 

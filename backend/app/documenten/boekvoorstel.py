@@ -573,11 +573,14 @@ def _verlegd_vermelding(veldvoorstel: dict | None) -> str | None:
     return waarde if isinstance(waarde, str) and waarde else None
 
 
-def _factuur_is_verlegd(veldvoorstel: dict | None) -> bool:
-    """Blok 4c (08-09, Spot Services): de factuur draagt een verleggings-vermelding (kop/totaalblok, deterministisch
-    getoetst in controle.is_verlegd_vermelding) ÉN de factuur-btw is 0 — gelezen btw-bedrag 0, of (zonder gelezen
-    btw-bedrag) incl. = excl. Onbekend = False: nooit raden."""
-    if veldvoorstel is None or _verlegd_vermelding(veldvoorstel) is None:
+def _verlegd_kolomcode(veldvoorstel: dict | None) -> str | None:
+    waarde = veldvoorstel.get("btw_verlegd_kolom") if veldvoorstel else None
+    return waarde if isinstance(waarde, str) and waarde else None
+
+
+def _factuur_btw_is_nul(veldvoorstel: dict | None) -> bool:
+    """De factuur-btw is 0: gelezen btw-bedrag 0, of (zonder gelezen btw-bedrag) incl. = excl. Onbekend = False."""
+    if veldvoorstel is None:
         return False
     # NB niet via `_gelezen_totalen`: die zet een gelezen btw-bedrag van 0 met `or` op None.
     factuur_btw = _als_decimal(veldvoorstel.get("btw_bedrag"))
@@ -588,6 +591,89 @@ def _factuur_is_verlegd(veldvoorstel: dict | None) -> bool:
     totaal_excl = _als_decimal(veldvoorstel.get("totaal_excl"))
     totaal_incl = _als_decimal(veldvoorstel.get("totaal_incl"))
     return totaal_excl is not None and totaal_incl is not None and totaal_excl == totaal_incl
+
+
+def _factuur_is_verlegd(veldvoorstel: dict | None) -> bool:
+    """Blok 4c (08-09, Spot Services) + Peter 15-09 (b): de factuur draagt een verleggings-VERMELDING (kop/totaalblok,
+    controle.is_verlegd_vermelding) óf een verlegd-KOLOMCODE op álle regels mét bedrag ("V", controle.
+    verlegd_kolomcode_voor_factuur) ÉN de factuur-btw is 0. Onbekend = False: nooit raden. Pure vorm; de volledige
+    basis incl. leverancier-geheugen/KvK (c) staat in `bepaal_verlegd_basis`."""
+    if veldvoorstel is None:
+        return False
+    if _verlegd_vermelding(veldvoorstel) is None and _verlegd_kolomcode(veldvoorstel) is None:
+        return False
+    return _factuur_btw_is_nul(veldvoorstel)
+
+
+@dataclass(frozen=True)
+class VerlegdBasis:
+    """Waaróm de factuur als verlegd geldt (Peter 15-09): 'vermelding' | 'kolomcode' | 'leverancier_geheugen' |
+    'kvk_sbi'; `detail` = de chip-tekst vóór de tariefkeuze (None bij de vermelding — bestaand gedrag)."""
+
+    soort: str
+    detail: str | None
+
+
+VERLEGD_BASIS_VERMELDING = "vermelding"
+VERLEGD_BASIS_KOLOMCODE = "kolomcode"
+VERLEGD_BASIS_GEHEUGEN = "leverancier_geheugen"
+VERLEGD_BASIS_KVK = "kvk_sbi"
+
+
+def _kvk_sbi_codes(kvk_nummer: str) -> list[str] | None:
+    """KvK-SBI-codes van een leverancier via de bestaande lookup (app/integraties/kvk.py) — alleen mét een échte
+    KvK-configuratie (nooit de testomgeving vanuit de prefill), élke fout = None (niets raden, prefill loopt door).
+    Monkeypatch-punt voor tests."""
+    from app.integraties import kvk
+
+    if kvk.is_testomgeving() or kvk.config_probleem() is not None:
+        return None
+    try:
+        profiel = kvk.haal_basisprofiel(kvk_nummer)
+    except Exception:  # noqa: BLE001 — een KvK-storing mag nooit een prefill breken
+        return None
+    codes = (profiel or {}).get("sbi_codes")
+    return [str(c) for c in codes] if isinstance(codes, list) else None
+
+
+def bepaal_verlegd_basis(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None, veldvoorstel: dict | None
+) -> VerlegdBasis | None:
+    """Peter 15-09 ("btw wordt weer niet ingevuld"): verlegd = (a) vermelding "btw verlegd"/"reverse charge" (bestaand),
+    óf (b) verlegd-kolomcode ("V"/"VL"/"verl.") op álle regels mét bedrag, óf (c) leverancier is voor deze administratie
+    een bouw-onderaannemer: eerdere boekingen op een verlegd-tarief in het leverancier-geheugen, anders KvK-SBI 41/42/43
+    via de bestaande KvK-lookup (alleen mét échte configuratie) — telkens ÉN factuur-btw 0. Zonder (a)/(b)/(c)
+        blijft 0 %
+    leeg (vrijgesteld ≠ verlegd, de valkuil blijft bewaakt). Deterministisch; de AI leverde alleen de kolomtekst.
+    NB "administratie is btw-plichtig" heeft geen eigen vlag: zonder verlegd-tarief in de administratie kiest
+    `bepaal_verlegd_taxrate` sowieso niets (beslispunt in het rapport 15-09)."""
+    if veldvoorstel is None or not _factuur_btw_is_nul(veldvoorstel):
+        return None
+    if _verlegd_vermelding(veldvoorstel) is not None:
+        return VerlegdBasis(VERLEGD_BASIS_VERMELDING, None)
+    kolom = _verlegd_kolomcode(veldvoorstel)
+    if kolom is not None:
+        return VerlegdBasis(VERLEGD_BASIS_KOLOMCODE, f'kolomcode "{kolom}" op alle regels')
+    if vendor_id is None:
+        return None
+    from app.documenten import regel_prefill  # lokaal: regel_prefill leest de dataclass hierboven
+
+    aantal = regel_prefill.leverancier_verlegd_boekingen(
+        session, administratie_id=administratie_id, vendor_id=vendor_id
+    )
+    if aantal:
+        return VerlegdBasis(VERLEGD_BASIS_GEHEUGEN, f"leverancier eerder verlegd geboekt ({aantal}×)")
+    from app.documenten import crediteur_kenmerk  # lokaal: crediteur_kenmerk leest de controlelaag
+
+    kenmerk = crediteur_kenmerk.kenmerken_per_vendor(session, administratie_id=administratie_id).get(vendor_id)
+    if kenmerk is not None and kenmerk.kvk_nummer:
+        from app.integraties.kvk import is_bouw_sbi
+
+        codes = _kvk_sbi_codes(kenmerk.kvk_nummer)
+        if codes and is_bouw_sbi(codes):
+            bouw = next(c for c in codes if c.startswith(("41", "42", "43")))
+            return VerlegdBasis(VERLEGD_BASIS_KVK, f"KvK SBI {bouw} (bouw)")
+    return None
 
 
 def _gelezen_totalen(veldvoorstel: dict | None) -> tuple[Decimal | None, Decimal | None]:
@@ -1372,6 +1458,9 @@ def _bereken_prefill(
         project_verplicht=project_verplicht,
         standaard_samenvoegen=standaard_samenvoegen,
     )
+    verlegd_basis = bepaal_verlegd_basis(
+        session, administratie_id=administratie_id, vendor_id=vendor_id, veldvoorstel=veldvoorstel
+    )
     prefill_regels, samenvoeg["samengevoegde_regel"] = regel_prefill.verrijk_prefill(
         session,
         administratie_id=administratie_id,
@@ -1381,8 +1470,10 @@ def _bereken_prefill(
         samengevoegde_regel=samenvoeg["samengevoegde_regel"],
         project_verplicht=project_verplicht,
         kop_project_tekst=veldvoorstel_regels.kop_project_tekst(veldvoorstel),
-        # Blok 4c (08-09): "btw verlegd" op de factuur + btw 0 → verlegd-tarief voorstellen (oranje, vóór de default).
-        factuur_verlegd=_factuur_is_verlegd(veldvoorstel),
+        # Blok 4c (08-09) + Peter 15-09: vermelding / kolomcode "V" / verlegd-leverancier + btw 0 → verlegd-tarief
+        # voorstellen (oranje, vóór de default), mét de basis als chip-detail.
+        factuur_verlegd=verlegd_basis is not None,
+        verlegd_basis_detail=verlegd_basis.detail if verlegd_basis is not None else None,
     )
     data = _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
         document_id=document_id,

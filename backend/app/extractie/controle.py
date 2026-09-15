@@ -192,7 +192,8 @@ def match_vendor_met_waarschuwing(
     if not doel:
         return None, None, None
 
-    def met_guard(kandidaat: VendorKandidaat, match: str) -> tuple[uuid.UUID | None, str | None, VendorWaarschuwing | None]:
+    def met_guard(kandidaat: VendorKandidaat, match: str) -> tuple[uuid.UUID | None, str | None, VendorWaarschuwing
+        | None]:
         conflict = _kenmerk_conflict(kandidaat, btw_nummer=btw_nummer, kvk_nummer=kvk_nummer)
         if conflict is None:
             return kandidaat.id, match, None
@@ -407,6 +408,37 @@ def is_verlegd_vermelding(tekst: str | None) -> bool:
     return "verleg" in genormaliseerd or "verlegd" in genormaliseerd or "reverse charge" in genormaliseerd
 
 
+#: Btw-kolomcodes die op een Nederlandse factuur "verlegd" betekenen (Peter 15-09, casus Olieman: "V" in de BTW-kolom,
+#: nergens het woord verlegd). Genormaliseerd: lowercase, alleen letters. Bewust smal — "0", "0%", "vrij", "nul" zijn
+#: GÉÉN verlegd (0 % ≠ verlegd, de valkuil blijft bewaakt).
+_VERLEGD_KOLOMCODES = frozenset({"v", "vl", "verl", "verlegd", "btwverlegd", "verlegging", "verleggingsregeling", "rc",
+                                 "reversecharge"})
+_ALLEEN_LETTERS = re.compile(r"[^a-z]+")
+
+
+def is_verlegd_kolomcode(tekst: str | None) -> bool:
+    """Deterministisch: is de btw-kolomtekst van een regel een verlegd-code ("V", "VL", "verl.", "BTW verlegd",
+    "reverse charge")? Percentages en vrijgesteld-codes ("0%", "vrij") zijn dat nooit."""
+    if not tekst:
+        return False
+    kern = _ALLEEN_LETTERS.sub("", tekst.lower())
+    return kern in _VERLEGD_KOLOMCODES
+
+
+def verlegd_kolomcode_voor_factuur(kolommen: list[str | None], *, netto: list[Decimal | None]) -> str | None:
+    """Peter 15-09 (b): de factuur is op KOLOMCODE verlegd als élke regel mét een nettobedrag ≠ 0 een verlegd-kolomcode
+    draagt (minstens één zo'n regel). → de gelezen code (bv. "V"), anders None. De aanroeper toetst zelf nog de
+    factuur-btw 0 (boekvoorstel._factuur_is_verlegd)."""
+    if len(kolommen) != len(netto):
+        raise ValueError("kolommen en netto moeten per regel gepaard zijn")
+    dragend = [(k, n) for k, n in zip(kolommen, netto, strict=True) if n is not None and n != 0]
+    if not dragend:
+        return None
+    if all(is_verlegd_kolomcode(k) for k, _ in dragend):
+        return next(k for k, _ in dragend if k).strip()
+    return None
+
+
 def _bedrag_str(bedrag: Decimal | None) -> str | None:
     return str(bedrag) if bedrag is not None else None
 
@@ -543,6 +575,9 @@ def bouw_veldvoorstel(
                 "artikelcode": regel.artikelcode,
                 # Blok 10 07-09: project-/werknummer op de regel (ruw; regel wint van kop bij de prefill).
                 "project_tekst": regel.project_tekst,
+                # Peter 15-09: btw-kolomtekst zoals vermeld ("V") + de deterministische duiding.
+                "btw_kolom": regel.btw_kolom,
+                "btw_kolom_verlegd": is_verlegd_kolomcode(regel.btw_kolom),
                 "taxrate_id": str(afleiding.taxrate_id) if afleiding.taxrate_id else None,
                 # Herkomst van de btw-code (punt 3, 26-08): "factuur" = deterministisch uit
                 # netto/btw afgeleid; None = leeg gelaten (0/onbepaalbaar/meerduidig — reden erbij).
@@ -634,6 +669,11 @@ def bouw_veldvoorstel(
         "totaal_incl": _bedrag_str(totaal_incl),
         "btw_bedrag": _bedrag_str(btw_bedrag),
         "btw_verlegd_vermelding": btw_verlegd_vermelding,
+        # Peter 15-09 (b): álle regels mét bedrag dragen een verlegd-kolomcode ("V") → de code; boekvoorstel toetst
+        # de factuur-btw 0 en zet dan het verlegd-tarief voor (oranje, `factuur_verlegd`).
+        "btw_verlegd_kolom": verlegd_kolomcode_voor_factuur(
+            [regel.btw_kolom for regel in extractie.regels], netto=netto_per_regel
+        ),
         "iban": iban,
         # Punt 14 (28-08): nummers van de leverancier — herkomst-chip op het controlescherm, opslag per
         # crediteur bij het opslaan van het boekvoorstel (documenten/crediteur_kenmerk.py).

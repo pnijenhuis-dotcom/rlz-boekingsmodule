@@ -1,0 +1,90 @@
+{
+ "kop": {
+  "leverancier_naam": {
+   "waarde": "Grondwerken Reeuwijk B.V.",
+   "zekerheid": 0.98
+  },
+  "factuurnummer": {
+   "waarde": "32948",
+   "zekerheid": 0.98
+  },
+  "factuurdatum": {
+   "waarde": "2026-09-03",
+   "zekerheid": 0.95
+  },
+  "vervaldatum": {
+   "waarde": "2026-09-17",
+   "zekerheid": 0.95
+  },
+  "valuta": {
+   "waarde": "EUR",
+   "zekerheid": 0.9
+  },
+  "totaal_excl": {
+   "waarde": "20000.00",
+   "zekerheid": 0.95
+  },
+  "totaal_incl": {
+   "waarde": "20000.00",
+   "zekerheid": 0.95
+  },
+  "btw_bedrag": {
+   "waarde": "0.00",
+   "zekerheid": 0.95
+  },
+  "iban": {
+   "waarde": "NL91KETN1000000073",
+   "zekerheid": 0.95
+  },
+  "btw_nummer": {
+   "waarde": "NL100073456B01",
+   "zekerheid": 0.95
+  },
+  "kvk_nummer": {
+   "waarde": "91000073",
+   "zekerheid": 0.95
+  },
+  "btw_verlegd_vermelding": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betreft": {
+   "waarde": "werk Uitweg 30 Woerdense Verlaat",
+   "zekerheid": 0.9
+  },
+  "project_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "periode": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betalingskenmerk": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "betaalwijze_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  },
+  "incasso_datum_tekst": {
+   "waarde": null,
+   "zekerheid": 0.0
+  }
+ },
+ "regels": [
+  {
+   "omschrijving": "1e termijn werkzaamheden",
+   "netto_bedrag": "20000.00",
+   "btw_bedrag": "0.00",
+   "hoeveelheid": "1",
+   "zekerheid": 0.92,
+   "eenheid": null,
+   "stuksprijs": "20000.00",
+   "artikelcode": null,
+   "project_tekst": null,
+   "btw_kolom": "V"
+  }
+ ]
+}
