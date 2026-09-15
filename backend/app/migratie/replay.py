@@ -39,7 +39,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from app.migratie import rlz_bron, vertaling
+from app.migratie import rekening_mapping, rlz_bron, vertaling
 from app.migratie.rapport import EXPORT_MAAND, EXPORT_TYPES, PEILDATUM_JAAREINDE, ReplayRapport
 from app.migratie.vertaling import (
     IMPLICIET_CREDITEUREN,
@@ -101,6 +101,7 @@ def dry_run(
     rlz_admin_id: str | None = None,
     voortgang: Callable[[str], None] | None = None,
     nu: datetime | None = None,
+    odoo_lezer: rekening_mapping.OdooLezer | None = None,
 ) -> ReplayRapport:
     tot = tot or vandaag_nl()
     let_op: list[str] = []
@@ -141,10 +142,28 @@ def dry_run(
             let_op.append(melding)
     if not doel.compleet:
         let_op.append("doelkoppeling incompleet — één of meer dagboeken (sale/purchase/general/bank) onbekend")
+    outstanding: rekening_mapping.OutstandingUitkomst | None = None
+    if odoo_accounts is None and odoo_lezer is not None and doel.company_id is not None:
+        # Blok 8 15-09: mét doelkoppeling leest de replay de Odoo-rekeningen zelf (lees-only via de doelclient) —
+        # `--odoo-rekeningen` blijft als handmatige overschrijving bestaan.
+        gegevens = odoo_lezer(administratie_id, doel.journal_bank_id, doel.company_id)
+        if gegevens.melding:
+            let_op.append(gegevens.melding)
+        else:
+            odoo_accounts = list(gegevens.odoo_accounts)
+            outstanding = gegevens.outstanding
+            let_op.append(
+                f"Odoo-rekeningen gelezen uit company {doel.company_id} via de doelkoppeling: {len(odoo_accounts)} "
+                "(lees-only; --odoo-rekeningen niet nodig)"
+            )
     if odoo_accounts is None:
         odoo_accounts = []
         let_op.append("geen Odoo-rekeningen meegegeven (--odoo-rekeningen) — élke grootboekregel is ongemapt")
     grootboek = vertaling.laad_grootboek(bron.ledgers, odoo_accounts)
+    ledgers_idx = vertaling.ledgers_index(bron.ledgers)
+    grootboek, expliciet = rekening_mapping.pas_expliciete_mapping_toe(grootboek, ledgers_idx, outstanding=outstanding)
+    if outstanding is not None:
+        let_op.append(f"RLZ 1012 Betalingen onderweg → outstanding payments: {outstanding.melding}")
     if rollen is None:
         rollen = vertaling.laad_rollen(administratie_id)
     if panden is None:
@@ -161,11 +180,13 @@ def dry_run(
         administratie_id=administratie_id,
         doel=doel,
         grootboek=grootboek,
-        ledgers=vertaling.ledgers_index(bron.ledgers),
+        ledgers=ledgers_idx,
         rollen=rollen,
         panden=panden,
         btw_ledgers=vertaling.btw_ledgers_uit(bron.ledgers, bron.taxrates),
         vaste_activa_ledgers=vertaling.vaste_activa_uit(bron.ledgers),
+        odoo_accounts=list(odoo_accounts),
+        outstanding=outstanding,
     )
     rapport = ReplayRapport(
         administratie_id=str(administratie_id),
@@ -178,6 +199,7 @@ def dry_run(
     rapport.fouten = [f.als_dict() for f in bron.fouten]
     rapport.overgeslagen = list(bron.overgeslagen)
     rapport.let_op = let_op
+    rapport.expliciete_mapping = expliciet
     rapport.doel = {
         "company_id": doel.company_id,
         "journal_sale_id": doel.journal_sale_id,
@@ -584,6 +606,10 @@ def afletter_groepen(ctx: Context, sleutel_voor_ledger: Callable[[str | None], s
         "sleutels": set(),
         "rlz_codes": [],
     }
+    for g in groepen:
+        # blok 8 15-09: SCHRIJF-b-markeringen uit de expliciete mappingtabel (nu alleen 1001 in de bankgroep)
+        groepen[g]["modelpunten"] = rekening_mapping.modelpunten_voor_groep(g)
+    expliciet_per_groep = {g: rekening_mapping.expliciete_codes_voor_groep(g) for g in groepen}
     for lid, (code, naam, _t) in ctx.ledgers.items():
         tekst = f"{naam or ''}"
         for g, rx, _r in _GROEP_REGEX:
@@ -593,6 +619,11 @@ def afletter_groepen(ctx: Context, sleutel_voor_ledger: Callable[[str | None], s
         if _BANK_LEDGER_REGEX.search(tekst):
             groepen["bank"]["sleutels"].add(sleutel_voor_ledger(lid))
             groepen["bank"]["rlz_codes"].append(code or lid)
+        for g, codes in expliciet_per_groep.items():
+            # blok 8 15-09: expliciet gemapte afletter-rekeningen (1012 Betalingen onderweg, 1001) horen bij hun groep
+            if code and code in codes and sleutel_voor_ledger(lid) not in groepen[g]["sleutels"]:
+                groepen[g]["sleutels"].add(sleutel_voor_ledger(lid))
+                groepen[g]["rlz_codes"].append(code)
     groepen["crediteuren"]["sleutels"].add(vertaling.IMPLICIET_CREDITEUREN)
     groepen["debiteuren"]["sleutels"].add(vertaling.IMPLICIET_DEBITEUREN)
     groepen["tussenrekening"]["sleutels"].add(vertaling.IMPLICIET_TUSSENREKENING)
@@ -757,6 +788,7 @@ def _saldibalans(
             "odoo_tot": o_tot.quantize(Decimal("0.01")),
             "verschil_tot": (o_tot - r_tot + s_tot).quantize(Decimal("0.01")),
             "stand": None,
+            "modelpunten": list(info.get("modelpunten") or []),
         }
         if rapport.doel_afwezig:
             # blok 7d punt 5: zonder doelkoppeling zijn de impliciete zijden/bank-pseudo's niet aan Odoo-rekeningen te
@@ -1204,6 +1236,11 @@ def _tabellen(ctx: Context, rapport: ReplayRapport, alle: list[Vertaald], bron: 
             )
             o["documenten"] += 1
             o["regels"] += sum(1 for r in v.regels if r.rlz_ledger_id == lid)
+    for o in ongemapt.values():
+        # blok 8 15-09 (1b): per ongemapte rekening de voorgestelde Odoo-tegenhanger — voorstel, mens beslist
+        o["voorstel"] = rekening_mapping.voorstel_tegenhanger(
+            o["rlz_code"], o["rlz_naam"], o["account_type"], ctx.odoo_accounts, outstanding=ctx.outstanding
+        )
     rapport.ongemapt = sorted(ongemapt.values(), key=lambda o: (o["rlz_code"] or "", o["rlz_ledger_id"]))
     partners: dict[tuple[str, str], dict[str, Any]] = {}
     for v in alle:

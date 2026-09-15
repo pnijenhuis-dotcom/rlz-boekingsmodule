@@ -104,6 +104,8 @@ class ReplayRapport:
     resultaatposten: dict[str, Any] = field(default_factory=dict)  # punt 3: DocumentType 0 buiten de toets
     betalingsverschillen: list[dict[str, Any]] = field(default_factory=list)  # punt 4: write-offs
     geblokkeerd: list[dict[str, Any]] = field(default_factory=list)  # punt 6: partner onbekend
+    # ---- blok 8 15-09 ----
+    expliciete_mapping: list[dict[str, Any]] = field(default_factory=list)  # tabel rekening_mapping (1012, 1001)
 
     # ---- oordeel ----
     @property
@@ -212,6 +214,7 @@ class ReplayRapport:
             "resultaatposten": self.resultaatposten,
             "betalingsverschillen": self.betalingsverschillen,
             "geblokkeerd": self.geblokkeerd,
+            "expliciete_mapping": self.expliciete_mapping,
             "export": self.export,
             "export_melding": self.export_melding,
             "beslispunten": list(BESLISPUNTEN),
@@ -577,12 +580,16 @@ def als_markdown(r: ReplayRapport) -> str:
                 _eur(g["rlz_tot"]),
                 _eur(g["odoo_tot"]),
                 _eur(g["verschil_tot"]) if g.get("verschil_tot") is not None else "—",
-                _md(g.get("stand") or g["reden"]),
+                _md((g.get("stand") or g["reden"]) + "".join(f" · {m}" for m in (g.get("modelpunten") or []))),
             ]
             for g in r.afletter_groepen
         ],
         leeg="_geen groepsrekeningen in deze saldibalans_",
     )
+    for g in r.afletter_groepen:
+        # blok 8 15-09: de SCHRIJF-b-markeringen uit de mappingtabel voluit (de tabelcel kapt af)
+        for m in g.get("modelpunten") or []:
+            L.append(f"- Modelpunt {g['groep']}groep: {m}")
     L += ["", "Volledige tabel (kolom Groep = telt alleen op groepsniveau):", ""]
     _tabel(
         L,
@@ -748,12 +755,41 @@ def als_markdown(r: ReplayRapport) -> str:
             for x in r.zonder_pand
         ],
     )
-    L += ["", f"#### Ongemapte RLZ-rekeningen — {len(r.ongemapt)}", ""]
+    L += [
+        "",
+        f"#### Expliciete rekeningmapping (blok 8, `app/migratie/rekening_mapping.py`) — {len(r.expliciete_mapping)}",
+        "",
+    ]
     _tabel(
         L,
-        ["RLZ-code", "Naam", "Type", "Regels", "Documenten"],
+        ["RLZ-code", "Doel", "Groep", "SCHRIJF", "Odoo-rekening", "Stand", "Toelichting"],
         [
-            [_md(x["rlz_code"]), _md(x["rlz_naam"]), _md(x["account_type"]), str(x["regels"]), str(x["documenten"])]
+            [
+                _md(x["rlz_code"]),
+                _md(x["doel"]),
+                _md(x["groep"]),
+                _md(x["schrijf_fase"]),
+                _md(f"{x['odoo_code'] or ''} (id {x['odoo_account_id']})" if x.get("odoo_account_id") else "—"),
+                _md(x.get("stand")),
+                _md(x["toelichting"]),
+            ]
+            for x in r.expliciete_mapping
+        ],
+        leeg="_geen expliciete mapping toegepast_",
+    )
+    L += ["", f"#### Ongemapte RLZ-rekeningen — {len(r.ongemapt)} (voorstel = mens beslist, blok 8 1b)", ""]
+    _tabel(
+        L,
+        ["RLZ-code", "Naam", "Type", "Regels", "Documenten", "Voorgestelde Odoo-tegenhanger"],
+        [
+            [
+                _md(x["rlz_code"]),
+                _md(x["rlz_naam"]),
+                _md(x["account_type"]),
+                str(x["regels"]),
+                str(x["documenten"]),
+                _md(x.get("voorstel") or "—"),
+            ]
             for x in r.ongemapt
         ],
     )

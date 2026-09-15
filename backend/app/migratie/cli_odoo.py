@@ -30,11 +30,14 @@ from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.migratie.cli_cmd import zoek_administratie
 from app.migratie.odoo_doel import (
     PROBE_SLEUTEL_BANKDAGBOEK,
+    PROBE_SLEUTEL_OUTSTANDING,
     CompanyGepindeClient,
     CompanyPinGeschonden,
     GeenMigratieDoel,
+    _lees_migratie_doel_vlag,
 )
 from app.odoo.client import OdooClient, OdooFout
+from app.odoo.ids import odoo_host
 from app.odoo.models import OdooKoppeling
 from app.odoo.probe import kies_memoriaal_dagboek
 from app.security.envelope import unwrap_secret, wrap_secret
@@ -68,6 +71,11 @@ class DagboekProbe:
     journal_bank_id: int | None
     analytic_plan_id: int | None
     rapport: dict[str, str]
+    #: Blok 8 15-09: de 'Outstanding Payments'-rekening van het bankdagboek (RLZ 1012 Betalingen onderweg) — lees-only
+    #: opgezocht in dezelfde probe (`rekening_mapping.los_outstanding_payments_op`); None = niet ingesteld (klikpunt),
+    #: nooit een voorwaarde voor `groen` (de koppeling-rij mag bestaan zonder deze instelling; 1012 blijft dan
+    #: ongemapt).
+    outstanding_payments_account_id: int | None = None
 
     @property
     def groen(self) -> bool:
@@ -119,6 +127,17 @@ def lees_dagboeken(client: OdooClient) -> DagboekProbe:
     bedrijf = client.read_een("res.company", client.company_id, ["name"]) or {}
     naam = bedrijf.get("name") or None
     rapport["company"] = f"ok ({naam})" if naam else "company niet leesbaar"
+    # Blok 8 15-09 (STAP 1a): RLZ 1012 Betalingen onderweg → outstanding payments van het bankdagboek, lees-only en
+    # zichtbaar in de dry-run (plan) — geen voorwaarde voor groen, wél vastgelegd in het probe-rapport.
+    outstanding_id: int | None = None
+    try:
+        from app.migratie.rekening_mapping import los_outstanding_payments_op  # noqa: PLC0415
+
+        uitkomst = los_outstanding_payments_op(client, journal_bank_id=bank, company_id=int(client.company_id))
+        outstanding_id = uitkomst.account_id
+        rapport["outstanding_payments"] = uitkomst.melding
+    except Exception as exc:  # noqa: BLE001 — een leesfout hier mag de dagboek-probe niet omzetten in rood
+        rapport["outstanding_payments"] = f"niet opgezocht: {type(exc).__name__}: {exc}"
     return DagboekProbe(
         company_naam=naam,
         journal_sale_id=sale,
@@ -127,6 +146,7 @@ def lees_dagboeken(client: OdooClient) -> DagboekProbe:
         journal_bank_id=bank,
         analytic_plan_id=plan,
         rapport=rapport,
+        outstanding_payments_account_id=outstanding_id,
     )
 
 
@@ -141,6 +161,9 @@ class MigratiedoelUitkomst:
     probe: DagboekProbe
     geschreven: bool
     bijgewerkt: bool
+    #: Blok 8 15-09: `--schrijf` op een rij die al hetzelfde migratiedoel is (zelfde host + company, migratie_doel=true)
+    #: = idempotent, niets geschreven — een tweede `SCHRIJF a` maakt nooit iets dubbel en faalt niet.
+    ongewijzigd: bool = False
 
     def als_markdown(self) -> str:
         r = [
@@ -156,9 +179,14 @@ class MigratiedoelUitkomst:
         ]
         r.extend(f"| {k} | {v} |" for k, v in sorted(self.probe.rapport.items()))
         r.append("")
-        stand = "GESCHREVEN" if self.geschreven else "DRY-RUN — niets geschreven"
+        if self.ongewijzigd:
+            stand = "AL MIGRATIEDOEL — ongewijzigd (idempotent: zelfde host + company, niets geschreven)"
+        else:
+            stand = "GESCHREVEN" if self.geschreven else "DRY-RUN — niets geschreven"
         if self.geschreven and self.bijgewerkt:
             stand += " (bestaande koppeling bijgewerkt)"
+        elif not self.geschreven and self.bijgewerkt and not self.ongewijzigd:
+            stand += " (er bestaat al een koppeling-rij — --schrijf vervangt die alleen mét --bijwerken)"
         r.append(f"**{stand}** — probe {'groen' if self.probe.groen else 'ROOD (niet opgeslagen)'}")
         return "\n".join(r)
 
@@ -196,14 +224,21 @@ def maak_migratiedoel(
                 "kanteling"
             )
         bestaande = session.get(OdooKoppeling, doel_id)
-        if bestaande is not None and not bijwerken:
-            raise MigratiedoelFout(
-                f"{doel.naam} heeft al een Odoo-koppeling (company {bestaande.company_id}) — gebruik --bijwerken om "
-                "'m te vervangen"
-            )
         doel_naam, bron_naam = doel.naam, bron.naam
         bestaat = bestaande is not None
+        bestaande_host = odoo_host(bestaande.odoo_url) if bestaande is not None else None
+        bestaande_company = int(bestaande.company_id) if bestaande is not None else None
+        bestaande_is_doel = bestaande is not None and _lees_migratie_doel_vlag(session, bestaande)
     api_key, odoo_url, api_gebruiker = _bron_key_en_url(bron_id, unwrap=unwrap)
+    # Blok 8 15-09: idempotent — dezelfde rij (host + company) die al migratiedoel is = ongewijzigd, geen fout.
+    zelfde_doel = (
+        bestaat and bestaande_is_doel and bestaande_host == odoo_host(odoo_url) and bestaande_company == int(company_id)
+    )
+    if bestaat and not bijwerken and not zelfde_doel:
+        raise MigratiedoelFout(
+            f"{doel_naam} heeft al een Odoo-koppeling (company {bestaande_company}"
+            f"{'' if bestaande_is_doel else ', geen migratiedoel'}) — gebruik --bijwerken om 'm te vervangen"
+        )
     # Failsafe dubbele koppeling laag 2 (14-09): de company mag niet al bij een ANDERE administratie horen (ook niet
     # als leesbron of als eerder migratiedoel) — 409-equivalent in de CLI, mét audit op de bezettende administratie.
     from app.odoo import service as odoo_service
@@ -232,11 +267,17 @@ def maak_migratiedoel(
         bijgewerkt=bestaat,
     )
     if dry_run:
-        return uitkomst
+        return replace(uitkomst, ongewijzigd=bool(zelfde_doel))
+    if zelfde_doel and not bijwerken:
+        return replace(uitkomst, ongewijzigd=True)
     if not uitkomst_probe.groen:
         raise MigratiedoelFout(f"dagboek-probe niet groen — niets opgeslagen: {uitkomst_probe.rapport}")
     ciphertext, wrapped = wrap(api_key.encode())
-    probe_rapport = {**uitkomst_probe.rapport, PROBE_SLEUTEL_BANKDAGBOEK: str(uitkomst_probe.journal_bank_id)}
+    probe_rapport = {
+        **uitkomst_probe.rapport,
+        PROBE_SLEUTEL_BANKDAGBOEK: str(uitkomst_probe.journal_bank_id),
+        PROBE_SLEUTEL_OUTSTANDING: str(uitkomst_probe.outstanding_payments_account_id or ""),
+    }
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         rij = session.get(OdooKoppeling, doel_id)
         oud: dict[str, Any] | None = None

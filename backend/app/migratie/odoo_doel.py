@@ -37,6 +37,9 @@ BEWAAKTE_CREATE_MODELLEN = frozenset(
 #: Sleutel in `odoo_koppeling.probe_rapport` waaronder de migratiedoel-CLI het bankdagboek (BNK1) vastlegt —
 #: de koppeling-rij heeft (0101/0138) geen kolom voor een bankdagboek; de waarde is altijd gelezen, nooit hardgecodeerd.
 PROBE_SLEUTEL_BANKDAGBOEK = "migratie:journal_bank_id"
+#: Blok 8 15-09: de lees-only opgezochte 'Outstanding Payments'-rekening van het bankdagboek (RLZ 1012), als tekst-id
+#: ("" = niet ingesteld, klikpunt Peter). Alleen ter documentatie in de rij; de replay zoekt 'm bij elke run opnieuw op.
+PROBE_SLEUTEL_OUTSTANDING = "migratie:outstanding_payments_account_id"
 #: Extra methoden die een read-only client óók weigert (niet in `client.SCHRIJFMETHODEN`, wél muterend).
 EXTRA_SCHRIJFMETHODEN = frozenset({"remove_move_reconcile", "set_line_bank_statement_line", "action_reconcile"})
 

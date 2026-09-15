@@ -270,6 +270,10 @@ class Context:
     #: RLZ-ledger-id's van VASTE ACTIVA (Ledgers.IsFixedAssetAccount, anders AccountType 3 mét rubriek-0-code zoals 0101
     #: Gebouwen en terreinen) — regels daarop koppelen NOOIT aan een pand (blok 7c punt 4, besluit Peter 13-09).
     vaste_activa_ledgers: frozenset[str] = frozenset()
+    #: Blok 8 15-09: de Odoo-rekeningen (account.account-rijen) waartegen vertaald is + de opgezochte outstanding-
+    #: payments-rekening — alleen voor de rapporttabellen (voorstel-kolom bij ongemapte rekeningen).
+    odoo_accounts: list[dict[str, Any]] = field(default_factory=list)
+    outstanding: Any = None
 
 
 def vaste_activa_uit(ledgers: list[dict[str, Any]]) -> frozenset[str]:

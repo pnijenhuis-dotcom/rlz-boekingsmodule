@@ -69,7 +69,9 @@ def _lees_odoo_rekeningen(pad: str | None) -> list[dict[str, Any]] | None:
     return [r for r in rijen if isinstance(r, dict) and r.get("id") is not None]
 
 
-def run_vgg_replay(args: argparse.Namespace, *, zoek: Any = None, client_factory: Any = None) -> int:
+def run_vgg_replay(
+    args: argparse.Namespace, *, zoek: Any = None, client_factory: Any = None, odoo_lezer: Any = None
+) -> int:
     from app.migratie import replay  # noqa: PLC0415
     from app.migratie.cli_cmd import zoek_administratie  # noqa: PLC0415
 
@@ -104,6 +106,13 @@ def run_vgg_replay(args: argparse.Namespace, *, zoek: Any = None, client_factory
         except GeenRlzCredentials as exc:
             print(f"FOUT  geen RLZ-credential voor {naam} ({rlz_admin_id}): {exc}", file=sys.stderr)
             return 2
+    # Blok 8 15-09: zonder --odoo-rekeningen leest de replay de Odoo-rekeningen zelf via de doelkoppeling (lees-only);
+    # in tests (geïnjecteerde client_factory) alleen als de test 'm expliciet meegeeft.
+    lezer = odoo_lezer
+    if lezer is None and client_factory is None and odoo_accounts is None:
+        from app.migratie.rekening_mapping import lees_doelgegevens  # noqa: PLC0415
+
+        lezer = lees_doelgegevens
     try:
         rapport = replay.dry_run(
             administratie_id,
@@ -113,6 +122,7 @@ def run_vgg_replay(args: argparse.Namespace, *, zoek: Any = None, client_factory
             administratie_naam=naam,
             rlz_admin_id=rlz_admin_id,
             voortgang=lambda t: print(f"..    {t}", file=sys.stderr),
+            odoo_lezer=lezer,
         )
     finally:
         if hasattr(client, "close"):

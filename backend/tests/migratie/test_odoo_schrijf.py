@@ -665,12 +665,37 @@ class TestMigratiedoelCli:
         assert doelk.company_id == 6 and doelk.journal_bank_id == 53
         with pytest.raises(GeenOdooKoppeling):
             koppeling_voor(doel)
-        # tweede keer zonder --bijwerken = weigering; mét = bijgewerkt
+        # blok 8 15-09: tweede keer zonder --bijwerken op HETZELFDE doel (host + company) = idempotent, niets
+        # geschreven,
+        # geen tweede audit-rij; een ANDERE company blijft een weigering; mét --bijwerken = bijgewerkt
+        u_idem = maak_migratiedoel(
+            doel_id=doel,
+            bron_id=bron,
+            company_id=6,
+            dry_run=False,
+            probe=_groene_probe,
+            client_factory=_LeesClientStub,
+            wrap=_fake_wrap,
+            unwrap=_fake_unwrap,
+        )
+        assert u_idem.ongewijzigd is True and u_idem.geschreven is False and u_idem.bijgewerkt is True
+        assert "AL MIGRATIEDOEL — ongewijzigd" in u_idem.als_markdown()
+        with admin_engine.begin() as conn:
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM platform.audit_event "
+                        "WHERE actie = 'odoo_koppeling_migratiedoel_aangemaakt' AND record_id = :id"
+                    ),
+                    {"id": doel},
+                ).scalar()
+                == 1
+            )
         with pytest.raises(MigratiedoelFout, match="--bijwerken"):
             maak_migratiedoel(
                 doel_id=doel,
                 bron_id=bron,
-                company_id=6,
+                company_id=7,
                 dry_run=False,
                 probe=_groene_probe,
                 client_factory=_LeesClientStub,
@@ -750,9 +775,15 @@ class TestMigratiedoelCli:
         ]
 
         def handler(model, methode, body):
-            if model == "account.journal":
+            if model == "account.journal" and methode == "search_read":
                 assert body["domain"] == [["company_id", "=", PIN]]
                 return journals
+            if model == "account.journal" and methode == "read":  # blok 8: outstanding payments van het bankdagboek
+                return [{"id": 53, "code": "BNK1", "outbound_payment_method_line_ids": [7]}]
+            if model == "account.payment.method.line":
+                return [{"id": 7, "name": "Manual", "payment_account_id": [2177, "103004 Outstanding Payments"]}]
+            if model == "account.account":
+                return [{"id": 2177, "code": "103004", "name": "Outstanding Payments"}]
             if model == "account.analytic.plan":
                 return [{"id": 1, "name": "Project"}]
             if model == "res.company":
@@ -761,6 +792,8 @@ class TestMigratiedoelCli:
 
         c = FakeClient(handler, read_only=True)
         p = lees_dagboeken(c)
+        assert p.outstanding_payments_account_id == 2177
+        assert "103004 Outstanding Payments" in p.rapport["outstanding_payments"]
         assert (
             p.journal_sale_id,
             p.journal_purchase_id,

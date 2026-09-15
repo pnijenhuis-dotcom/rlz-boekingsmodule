@@ -679,6 +679,7 @@ class TestVarianten:
                 "account_type": 2,
                 "regels": 1,
                 "documenten": 1,
+                "voorstel": "aanmaken als 440000 'Vaste lasten panden' (expense) — code vrij; mens bevestigt",
             }
         ]
         per = {r["rekening"]: r for r in rapport.saldibalans}

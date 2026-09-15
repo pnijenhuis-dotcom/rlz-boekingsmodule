@@ -10,6 +10,9 @@
 # Regels: uitsluitend op de GEDEPLOYDE job-image (rlz-reconciliatie), kill-switch alleen als executie-override
 # (--update-env-vars op `jobs execute` raakt de job-definitie niet), company-pin in de code, elke write terug-gelezen,
 # audit per call. Nooit via nameting.sh (die weigert beide commando's hard). Twijfel = stoppen en vragen.
+# Blok 8 15-09: `SCHRIJF a` is idempotent — een tweede uitvoering geeft "AL MIGRATIEDOEL — ongewijzigd" + alle rollen
+# bestaand/hergebruikt (niets dubbel); de migratiedoel-dry-run in `plan` toont ook de outstanding-payments-rekening van BNK1
+# (RLZ 1012, rapportregel `outstanding_payments`). Terug-lezen ná SCHRIJF a: `nameting.sh vgg-rekeningen …` + `plan` opnieuw.
 # Blok 7b 13-09 (punt 9): SERVICE default rlz-backend (deploy-check service = job-image vóór élke write); een niet-groen
 # dry-run in `plan` is een UITKOMST — het script loopt door en meldt per stap de status.
 set -euo pipefail
