@@ -1747,6 +1747,8 @@ Canonieke code: `backend/app/documenten/duplicaat_afvoer.py` (module-docstring =
 
 ## VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09 (blok B; besluiten Peter 04-09; mockup `offerte-matching.html` ①–⑧ = bouwnorm; migratie 0110; parallelle bouw backend/frontend op één vast API-contract)
 
+> **Aanvulling 15-09 (Peter, casus Olieman):** wachtende verplichting zichtbaar als `niet_toetsbaar` mét reden, termijnnummer, achteraf koppelen bij goedkeuring — zie "OFFERTE-MATCH — WACHTENDE VERPLICHTING ZICHTBAAR, TERMIJNEN, ACHTERAF KOPPELEN (Peter 15-09)".
+
 Pre-feature-check: tweede afnemer van de klant-accorderingsflow ("Klant-accorderingsflow — GEBOUWD + GETEST" + nazorg), vierde afnemer van het
 match-vlag-patroon ("FACTUURMATCH ZZP-/BUREAUFACTUREN" besluit 3), kantoorbreed lijstpatroon ("INZICHT-KANTOORBREED B1"), UX-review: eigen
 werkvoorraad-tab + reviewscherm op het soort-schermpatroon (waarborg/omzet), melding op het controlescherm boven de actiebalk, accordeur-kaart
@@ -9771,4 +9773,27 @@ de administratie kiest `bepaal_verlegd_taxrate` sowieso niets (dat is de poort);
 in de prefill is één externe call per document zónder (a)/(b)/geheugen, alleen bij een leverancier mét KvK-nummer en échte KvK-
 configuratie; uitval = doorlopen zonder KvK (zichtbaar in het rapport? nee — stil leeg btw-veld, zoals vóór 15-09). Wil Peter dat
 zichtbaar, dan een chip "KvK niet bereikbaar" (niet gebouwd).
+
+## OFFERTE-MATCH — WACHTENDE VERPLICHTING ZICHTBAAR, TERMIJNEN, ACHTERAF KOPPELEN (Peter 15-09) — aanvulling op "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09"; casus Olieman 32948 / Bouwadvies Oost Nederland; opdracht via opdrachten/inbox; geen migratie
+
+**Oorzaak (herleid uit de code + Peters aanvulling "offerte wacht nog op één accordeur"):** `match_pipeline.lopende_kandidaten`
+levert uitsluitend verplichtingen met documentstatus GEACCORDEERD; de Olieman-offerte stond TER ACCORDERING → nul kandidaten →
+`geen_verplichting` → `OfferteMatchMelding` rendert daarop niets. Geen crediteur-/project-oorzaak: Bouwadvies heeft 0 projecten in RLZ
+(STAP-0 15-09, executie `2jwlb`) en de match werkt zonder project via het pad "(d) enige kandidaat". Productie-lees-only via de
+routes was in deze run niet mogelijk (geen sessie-token; de nameting-allowlist kent geen verplichtingen-CLI) — de oorzaak volgt
+sluitend uit de code en wordt met het meetrecept ná deploy bevestigd.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **Zichtbare uitkomst "gevonden maar niet toetsbaar".** `match.Wachtende(document_id, reden_code, reden, offertenummer)`; `match_pipeline.wachtende_verplichtingen`: (1) zelfde crediteur-identiteit maar status ≠ geaccordeerd (niet vervallen, niet terminaal) → reden "nog niet goedgekeurd (wacht op accordering / te controleren / klaar, nog niet aangeboden)"; (2) niet-vervallen verplichting op een ANDER crediteurrecord met dezelfde naam (`bank.matchmotor.naam_komt_overeen`) → "staat op een ander crediteurrecord (…) — dubbele crediteur?". Zonder geldige kandidaat → `NIET_TOETSBAAR` mét `verplichting_document_id` (bij precies één), melding "Offerte van deze leverancier gevonden (nr) maar niet toetsbaar: <reden>. Zodra de offerte is goedgekeurd wordt deze factuur automatisch alsnog getoetst", `details.wachtende_reden(_code)`/`wachtende`. Bestaande CHECK op `uitkomst` ongewijzigd (geen migratie: het is een sub-vorm van `niet_toetsbaar`). Een geldige kandidaat wint altijd van wachtende. | GEBOUWD + GETEST | `app/verplichting/match.py`, `match_pipeline.py`; `tests/verplichting/test_match.py::TestWachtendeVerplichtingEnTermijn` |
+| **DTO + controlescherm.** `MatchData/VerplichtingMatchDto.niet_toetsbaar_reden` + `termijn`; `OfferteMatchMelding` rendert `niet_toetsbaar` zodra er een verplichting/reden is: chip "offerte nog niet toetsbaar", zin mét soort + nummer + reden, "Open de verplichting →" en "Koppel offerte…" (nooit blokkerend; `geen_verplichting` blijft stil). | GEBOUWD + GETEST | `app/verplichting/service.py`, `schemas.py`, `router.py`; `frontend/src/document/OfferteMatchMelding.tsx` (+ test), `verplichtingApi.ts` |
+| **Termijnen (cumulatief was al zo).** `Kandidaat.aantal_gematcht` (pipeline: `_aantal_gematcht_per_verplichting`, binnen/buiten van ándere documenten) → `details.termijn` = n + 1, melding "deze factuur (1e termijn, € 20.000,00) past; verbruik ná deze factuur € 20.000,00 van € 85.000,00"; frontend toont "(1e termijn)". `geen_match` op een ander project noemt nu de bestaande goedgekeurde offertes (`details.ander_project`). | GEBOUWD + GETEST | idem |
+| **Achteraf koppelen bij goedkeuring (aanvulling 5).** De bestaande post-commit-hook `herbereken_na_verplichting_wijziging` (accordering/service ná het laatste akkoord) herberekent open én GEBOEKTE facturen van de crediteur; nieuw: een geboekte factuur die daardoor binnen/buiten wordt en nog niet verrekend is → `_verreken_achteraf`: `verreken_in_sessie` (verbruik bijgeschreven, systeem-actor), tijdlijnregel "achteraf gekoppeld aan offerte <nr> (1e termijn) — binnen, verbruik ná deze factuur … (offerte later goedgekeurd)", audit `verplichting_achteraf_gekoppeld`; idempotent (bevroren stand, herhaling verrekent niet dubbel); meerduidig = `meerdere_kandidaten`, niet koppelen, melden. | GEBOUWD + GETEST | `match_pipeline.py`; `tests/verplichting/test_achteraf_koppelen.py` (2) |
+| **Gouden-set-casus** = casus z (factuur 32948) uitgebreid: offerte OFF-2026-085 € 85.000 ter accordering → DTO `niet_toetsbaar` mét reden + verplichting; ná goedkeuring binnen, termijn 1, 24 %. | GEBOUWD + GETEST | `tests/keten/test_z_verlegd_kolomcode.py::TestOfferteMatchOpDeTermijnfactuur` |
+| Docs: CLAUDE.md-verwijsregel, WAT_IS_NIEUW-blok, dit register, rapport + INDEX, opdracht → gedaan | GEDAAN | — |
+
+**Meetrecept ná deploy:** controlescherm factuur 32948 (Bouwadvies Oost Nederland) toont — zolang de offerte op akkoord wacht —
+"Offerte van deze leverancier gevonden maar niet toetsbaar: nog niet goedgekeurd (wacht op accordering)" mét link; ná het akkoord van
+de laatste accordeur zonder handeling "binnen offerte … (1e termijn) € 20.000,00 … van € 85.000,00" en, omdat de factuur al geboekt is,
+de tijdlijnregel "achteraf gekoppeld aan offerte …" + verbruik € 20.000 op de verplichting (Inzicht › Verplichtingen).
 

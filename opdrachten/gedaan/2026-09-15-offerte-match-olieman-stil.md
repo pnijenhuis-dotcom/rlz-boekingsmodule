@@ -1,0 +1,11 @@
+uitgevoerd 2026-09-15, rapport: docs/rapporten/2026-09-15-offerte-match-olieman.md
+
+BUG-ONDERZOEK — offerte-melding ontbreekt op de eerste Olieman-termijnfactuur (Peter 15-09)
+
+Casus: inkoopfactuur Gebr. Olieman 32948 (03-09-2026, € 20.000 verlegd, werk Uitweg 30 Woerdense Verlaat) in administratie Bouwadvies Oost Nederland BV; de offerte van Olieman loopt via Verplichtingen. Op het controlescherm staat GEEN OfferteMatchMelding (uitkomst dus `geen_verplichting` of `niet_toetsbaar` → component rendert niets).
+1. Herleid lees-only (productie via bestaande routes/lees-CLI, geen writes) waarom de match niets meldt: status van de Olieman-verplichting (concept/ter accordering/goedgekeurd), leverancier-koppeling (verplichting-entity vs factuur-crediteur — ander crediteurrecord? dubbele crediteur?), project-koppeling (Uitweg 30 vs RLZ-project), bedrag/termijnlogica (1e termijn van een grotere offerte moet "binnen" geven met verbruiksbalk). Noteer de letterlijke oorzaak.
+2. Fix de wortel. Bovendien: `geen_verplichting` is te stil zodra er WÉL een verplichting van deze leverancier bestaat die niet toetsbaar is (niet goedgekeurd / ander project / andere crediteur) → nieuwe zichtbare uitkomst "offerte van deze leverancier gevonden maar niet toetsbaar: <reden>" mét linkbtn naar de verplichting en "Koppel offerte…". Nooit blokkerend.
+3. Termijnfacturen: match moet cumulatief toetsen (som van alle gekoppelde termijnen t.o.v. offertebedrag); verbruiksbalk toont "1e termijn 20.000 van 85.000".
+4. Gouden-set-casus (geanonimiseerd) + tests op de vier uitkomsten. Rapport docs/rapporten/2026-09-15-offerte-match-olieman.md + INDEX (oorzaak in twee zinnen bovenaan); BESLISSINGEN-aanvulling op "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09"; dit bestand naar gedaan/. Meetrecept: factuur 32948 toont de melding ná deploy.
+
+5. AANVULLING (Peter 15-09: offerte wacht nog op één accordeur, factuur wordt nu geboekt): bij het GOEDKEUREN van een verplichting worden alle reeds geboekte én open inkoopfacturen van dezelfde leverancier binnen de offerteperiode (en/of hetzelfde project) alsnog gematcht (bestaande match-motor, audit + tijdlijnregel "achteraf gekoppeld aan offerte …"); meerduidig = niet koppelen maar melden. Casus: factuur 32948 moet ná goedkeuring van de Olieman-offerte automatisch "binnen, 1e termijn" tonen zonder handeling.

@@ -267,6 +267,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Verplichtingen — offerte-accordering + factuur↔offerte-match** (documenttype `verplichting`, géén RLZ-/Odoo-boeking,
   deterministische match-motor `app/verplichting/match.py`, nooit blokkade; migratie 0110) — zie BESLISSINGEN
   "VERPLICHTINGEN + FACTUUR↔OFFERTE-MATCH 04-09", mockup `offerte-matching.html`.
+- **Offerte-match — wachtende verplichting zichtbaar, termijnen, achteraf koppelen (Peter 15-09, casus Olieman 32948; geen migratie):** een verplichting van de leverancier die nog niet goedgekeurd is (of op een ander crediteurrecord met dezelfde naam staat) geeft geen stil `geen_verplichting` meer maar `niet_toetsbaar` mét reden + verwijzing ("Open de verplichting →", "Koppel offerte…", nooit blokkerend); melding/DTO dragen het termijnnummer ("1e termijn € 20.000 van € 85.000"); bij goedkeuring worden open én GEBOEKTE facturen van de crediteur alsnog gematcht en een geboekte factuur achteraf verrekend (tijdlijn "achteraf gekoppeld aan offerte …", audit `verplichting_achteraf_gekoppeld`) — zie BESLISSINGEN "OFFERTE-MATCH — WACHTENDE VERPLICHTING ZICHTBAAR, TERMIJNEN, ACHTERAF KOPPELEN (Peter 15-09)".
 - **Boekingsgeheugen**: RLZ-historie + app-correcties; correcties wegen zwaarder (recency). Default
   voorstel, nooit blind boeken. Afwijkingen markeren (oranje), niet overnemen. **Seed-only = oranje
   (aangescherpt 2026-07-14): een waarde die uitsluitend op RLZ-historie steunt blijft oranje ("uit
