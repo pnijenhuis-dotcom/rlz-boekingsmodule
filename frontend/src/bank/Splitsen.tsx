@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { VoorstelKaart } from './VoorstelKaart'
 import { SearchableCombobox } from '../document/SearchableCombobox'
+import { bouwGrootboekBtwDefaultMap, btwVolgtRekening, type GrootboekBtwDefault } from '../document/grootboekBtwDefault'
+import { bepaalBtwHerkomstChip } from '../document/regelVoorstelChips'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { Select } from '../ui/basis'
 import { amountKlasse } from '../werkvoorraad/format'
@@ -57,6 +59,10 @@ interface DeelInvoer {
   bedrag: string
   ledgerId: string | null
   taxrateId: string | null
+  // 15-09: herkomst van een gevolgde grootboek-default ('grootboek' | 'grootboek_historie') + of de mens de btw zelf koos.
+  btwBron: GrootboekBtwDefault['bron'] | null
+  btwDetail: string | null
+  btwHandmatig: boolean
   omschrijving: string
   paymentItemId: string | null
   relatie: RelatieKeuze
@@ -69,6 +75,9 @@ function nieuwDeel(key: number, overrides: Partial<DeelInvoer> = {}): DeelInvoer
     bedrag: '',
     ledgerId: null,
     taxrateId: null,
+    btwBron: null,
+    btwDetail: null,
+    btwHandmatig: false,
     omschrijving: '',
     paymentItemId: null,
     relatie: LEGE_RELATIE_KEUZE,
@@ -137,6 +146,15 @@ export function SplitsenForm({
 
   const wijzig = (key: number, patch: Partial<DeelInvoer>) =>
     setDelen((huidig) => huidig.map((d) => (d.key === key ? { ...d, ...patch } : d)))
+  // 15-09: btw volgt de gekozen rekening (zelfde bron als HandmatigBoekenForm en het controlescherm) tot de mens 'm kiest.
+  const grootboekDefaultMap = useMemo(() => bouwGrootboekBtwDefaultMap(grootboek.opties, btwCodes.opties), [grootboek.opties, btwCodes.opties])
+  const kiesGrootboek = (deel: DeelInvoer, ledgerId: string | null) => {
+    if (deel.btwHandmatig) return wijzig(deel.key, { ledgerId })
+    const volgt = btwVolgtRekening(ledgerId, grootboekDefaultMap)
+    wijzig(deel.key, { ledgerId, taxrateId: volgt.taxrateId, btwBron: volgt.bron, btwDetail: volgt.detail })
+  }
+  const kiesBtw = (deel: DeelInvoer, taxrateId: string | null) =>
+    wijzig(deel.key, { taxrateId, btwHandmatig: true, btwBron: null, btwDetail: null })
 
   const verstuur = async () => {
     if (!kanVersturen) return
@@ -255,7 +273,7 @@ export function SplitsenForm({
                 label={`Grootboekrekening deel ${index + 1}`}
                 opties={grootboek.opties}
                 waarde={deel.ledgerId}
-                onWijzig={(id) => wijzig(deel.key, { ledgerId: id })}
+                onWijzig={(id) => kiesGrootboek(deel, id)}
                 placeholder="Zoek grootboekrekening (kruispost = gewoon een grootboekkeuze)…"
                 vereist
               />
@@ -263,9 +281,17 @@ export function SplitsenForm({
                 label={`Btw-code deel ${index + 1}`}
                 opties={btwCodes.opties}
                 waarde={deel.taxrateId}
-                onWijzig={(id) => wijzig(deel.key, { taxrateId: id })}
+                onWijzig={(id) => kiesBtw(deel, id)}
                 placeholder="Geen btw"
               />
+              {(() => {
+                const chip = bepaalBtwHerkomstChip(deel.btwBron, deel.taxrateId, deel.btwHandmatig, deel.btwDetail)
+                return chip ? (
+                  <span className={`chip ${chip.klasse}`} title={chip.titel} data-testid={`splitsen-btw-chip-${index + 1}`} style={{ justifySelf: 'start' }}>
+                    {chip.tekst}
+                  </span>
+                ) : null
+              })()}
             </>
           )}
           {deel.soort === 'open_post' && openPost && (

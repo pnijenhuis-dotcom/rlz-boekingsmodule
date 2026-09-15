@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Btw-code uit het factuurtotaal en in het bankscherm
+
+<!-- btw-uit-factuur-totaal-15-09 -->
+
+- Facturen die de regels zonder btw tonen en één btw-bedrag onderaan (telecom, energie, abonnementen) krijgen nu wél een btw-code: de module rekent na dat het btw-totaal precies bij één tarief past en zet dat tarief op alle regels, met de groene chip "uit factuur". Het btw-bedrag per regel wordt erbij berekend en telt cent-exact op tot het totaal van de factuur. Past het totaal op geen tarief, of is het 0, dan blijft het veld leeg en kies je zelf.
+- Boek je een bankmutatie rechtstreeks op een grootboekrekening (knop "Boeken…" in het bankscherm, ook bij splitsen), dan volgt de btw-code nu de gekozen rekening: de standaard uit Reeleezee of Odoo, anders het tarief dat op die rekening meestal gebruikt wordt, met dezelfde chip als in het controlescherm. Kies je zelf een btw-code, dan blijft die staan.
+- Het "meestal op deze rekening"-tarief telt vanaf nu ook de bankboekingen mee die vanuit het bankscherm zijn gedaan, niet alleen inkoopfacturen. Administraties die vooral via de bank boeken krijgen zo ook een vooringevulde btw-code.
+
 ## 2026-09-15 — Administratienaam aanpassen en automatisch mee met Odoo of Reeleezee
 
 <!-- administratienaam-15-09 -->

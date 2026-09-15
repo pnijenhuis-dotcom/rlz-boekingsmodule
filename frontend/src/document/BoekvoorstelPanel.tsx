@@ -55,6 +55,7 @@ import { aantalTariefstaffels, boekbareAiRegels } from './nulregels'
 import { IbanAanbiedenVorm } from './IbanAccorderingSectie'
 import { NieuweCrediteurDialog, type NieuweCrediteurResultaat } from './NieuweCrediteurDialog'
 import { SearchableCombobox, type ComboboxOptie } from './SearchableCombobox'
+import { bouwGrootboekBtwDefaultMap } from './grootboekBtwDefault'
 import {
   synchroniseerAlleCaches,
   useGrootboekOpties,
@@ -693,22 +694,8 @@ export function BoekvoorstelPanel({
   // 0143 (vervolg 14-09): per rekening de RLZ-default ('grootboek', grijs) óf — als die ontbreekt — de uit de eigen
   // historie afgeleide default ('grootboek_historie', oranje mét "meestal op deze rekening (n×)"); zelfde volgorde als
   // server-side (regel_prefill.py stap 5 → 5b).
-  const grootboekDefaultMap = useMemo(() => {
-    const map: Record<string, { taxrateId: string; bron: 'grootboek' | 'grootboek_historie'; detail: string | null }> = {}
-    const bekendeTarieven = new Set(taxrateOpties.map((t) => t.id))
-    for (const optie of grootboekOpties) {
-      if (optie.standaardTaxrateId && bekendeTarieven.has(optie.standaardTaxrateId)) {
-        map[optie.id] = { taxrateId: optie.standaardTaxrateId, bron: 'grootboek', detail: null }
-      } else if (optie.historieTaxrateId && bekendeTarieven.has(optie.historieTaxrateId)) {
-        map[optie.id] = {
-          taxrateId: optie.historieTaxrateId,
-          bron: 'grootboek_historie',
-          detail: optie.historieTaxrateN ? `meestal op deze rekening (${optie.historieTaxrateN}×)` : null,
-        }
-      }
-    }
-    return map
-  }, [grootboekOpties, taxrateOpties])
+  // 15-09: één bron met de bankschermen (document/grootboekBtwDefault.ts).
+  const grootboekDefaultMap = useMemo(() => bouwGrootboekBtwDefaultMap(grootboekOpties, taxrateOpties), [grootboekOpties, taxrateOpties])
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
   const { opties: projectOpties, laden: projectLaden } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)

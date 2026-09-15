@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { SearchableCombobox } from '../document/SearchableCombobox'
+import { bouwGrootboekBtwDefaultMap, btwVolgtRekening, type GrootboekBtwDefault } from '../document/grootboekBtwDefault'
+import { bepaalBtwHerkomstChip } from '../document/regelVoorstelChips'
 import { AnkerPopup, Checkbox, Select, SkeletonRegels, useToastOptioneel } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
@@ -187,6 +189,28 @@ function HandmatigBoekenForm({
   const btwCodes = useTaxrateOpties(administratieId)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [taxrateId, setTaxrateId] = useState<string | null>(null)
+  // 15-09 (bug-onderzoek L.H.G. Holding "Kosten mobiele telefonie" — een KPN-incasso vanuit dít formulier geboekt, btw
+  // bleef leeg): de btw-code volgt de gekozen grootboekrekening (RLZ-default > historie-default, zelfde bron als het
+  // controlescherm) zolang de mens de btw niet zelf koos; chip zegt waar 'm vandaan komt. Code, geen AI.
+  const [btwBron, setBtwBron] = useState<GrootboekBtwDefault['bron'] | null>(null)
+  const [btwDetail, setBtwDetail] = useState<string | null>(null)
+  const [btwHandmatig, setBtwHandmatig] = useState(false)
+  const grootboekDefaultMap = useMemo(() => bouwGrootboekBtwDefaultMap(grootboek.opties, btwCodes.opties), [grootboek.opties, btwCodes.opties])
+  const kiesGrootboek = (id: string | null) => {
+    setLedgerId(id)
+    if (btwHandmatig) return
+    const volgt = btwVolgtRekening(id, grootboekDefaultMap)
+    setTaxrateId(volgt.taxrateId)
+    setBtwBron(volgt.bron)
+    setBtwDetail(volgt.detail)
+  }
+  const kiesBtw = (id: string | null) => {
+    setTaxrateId(id)
+    setBtwHandmatig(true)
+    setBtwBron(null)
+    setBtwDetail(null)
+  }
+  const btwChip = bepaalBtwHerkomstChip(btwBron, taxrateId, btwHandmatig, btwDetail)
   const [omschrijving, setOmschrijving] = useState(mutatie.omschrijving ?? '')
   const [regelOpslaan, setRegelOpslaan] = useState(false)
   const [bezig, setBezig] = useState(false)
@@ -247,7 +271,7 @@ function HandmatigBoekenForm({
         label="Grootboekrekening"
         opties={grootboek.opties}
         waarde={ledgerId}
-        onWijzig={setLedgerId}
+        onWijzig={kiesGrootboek}
         placeholder="Zoek grootboekrekening…"
         vereist
       />
@@ -255,9 +279,14 @@ function HandmatigBoekenForm({
         label="Btw-code"
         opties={btwCodes.opties}
         waarde={taxrateId}
-        onWijzig={setTaxrateId}
+        onWijzig={kiesBtw}
         placeholder="Geen btw"
       />
+      {btwChip && (
+        <span className={`chip ${btwChip.klasse}`} title={btwChip.titel} data-testid="handmatig-btw-chip" style={{ justifySelf: 'start' }}>
+          {btwChip.tekst}
+        </span>
+      )}
       <label>
         Omschrijving
         <input value={omschrijving} onChange={(e) => setOmschrijving(e.target.value)} />

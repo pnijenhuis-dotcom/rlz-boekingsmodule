@@ -151,13 +151,13 @@ export function bepaalBtwHerkomstChip(
   }
   if (bron === 'grootboek_historie') {
     // Vervolg 14-09 (0143, "geen invulwerk in RLZ"): RLZ draagt in de praktijk geen standaard-tarief op de rekening; de
-    // module leidt 'm af uit de eigen inkoopregels op die rekening (≥ 5 regels, één tarief ≥ 90 %, 24 maanden). Oranje:
+    // module leidt 'm af uit de eigen boekingsregels op die rekening — inkoopfacturen én directe bankboekingen sinds 15-09 (≥ 5 regels, één tarief ≥ 90 %, 24 maanden). Oranje:
     // afgeleid, nog niet door het leverancier-geheugen bevestigd — boeken maakt 'm voortaan groen.
     return {
       klasse: 'afwijking',
       tekst: detail ?? 'meestal op deze rekening',
       titel:
-        "Btw-code afgeleid uit de boekingshistorie van deze grootboekrekening: op minstens vijf inkoopregels in de laatste 24 maanden stond in minstens 90 % van de gevallen dit tarief (code, geen AI). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt 'm voor deze leverancier voortaan groen. Kies je een andere rekening, dan volgt de btw-code die rekening; kies je zelf een btw-code, dan wint die. De harde checks blijven de poort.",
+        "Btw-code afgeleid uit de boekingshistorie van deze grootboekrekening: op minstens vijf boekingsregels (inkoopfacturen én directe bankboekingen) in de laatste 24 maanden stond in minstens 90 % van de gevallen dit tarief (code, geen AI). Nog niet door het leverancier-geheugen bevestigd: controleer; boeken maakt 'm voor deze leverancier voortaan groen. Kies je een andere rekening, dan volgt de btw-code die rekening; kies je zelf een btw-code, dan wint die. De harde checks blijven de poort.",
     }
   }
   if (bron === 'standaard') {
