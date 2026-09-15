@@ -374,6 +374,50 @@
   overflow: auto;
   max-height: 55vh;
 }
+/* Eigen zoomlaag (Peter 15-09): het vak knipt, de inhoud verschuift/schaalt via transform; ingezoomd = touch-action none
+   zodat de rest van het scherm niet meescrolt. Fullscreen = vaste overlay over het hele scherm. */
+.acc-pdf-viewport {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  flex: 1 1 auto;
+}
+.acc-pdf-inhoud {
+  width: 100%;
+  will-change: transform;
+}
+.acc-doc-knoppen {
+  align-self: flex-end;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.acc-pdf-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--acc-viewer-bg);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+}
+.acc-pdf-fullscreen-balk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--acc-viewer-text);
+  font-size: 12px;
+}
+.acc-pdf-fullscreen .acc-docpane-vol {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  border-radius: 0;
+  height: 100%;
+}
 .acc-docpane canvas {
   max-width: 100%;
   height: auto;

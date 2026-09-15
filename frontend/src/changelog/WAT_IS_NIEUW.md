@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Goedkeur-app: inzoomen op de factuur
+
+<!-- accordeur-pdf-zoom-15-09 -->
+
+- Je kunt nu inzoomen op de factuur in de app: knijp met twee vingers (tot 4×), dubbeltik voor 2× op die plek en sleep om te schuiven; de rest van het scherm blijft staan. De knop "⤢ Volledig scherm" opent de factuur over het hele scherm, sluiten met ✕, Escape of de terug-gebaar.
+- Dezelfde weergave geldt voor werkbonnen en offertes in de veld-app; kleine lettertjes blijven scherp bij inzoomen.
+
 ## 2026-09-15 — Planning: urenstatus in het grid en achteraf plannen
 
 <!-- planning-urenstatus-15-09 -->
