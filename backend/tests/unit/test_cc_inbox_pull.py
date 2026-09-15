@@ -145,6 +145,43 @@ def test_untracked_opdracht_in_inbox_houdt_pull_niet_tegen(werkplaats: dict[str,
     assert (mac / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file(), "de opdracht is ná de pull gewoon opgepakt"
 
 
+def test_untracked_buiten_inbox_houdt_pull_niet_tegen(werkplaats: dict[str, Path]) -> None:
+    """Nazorg 15-09: 'schoon' = geen gewijzigde/gestagede TRACKED bestanden. Untracked bestanden búiten inbox/ (een
+    gedaan-opdracht die nog niet gecommit is, een lokale `.claude/`-map met runtime-artefacten) tellen niet — git
+    weigert een ff-pull die zo'n bestand zou overschrijven toch zelf. Zonder werk in inbox/ blijft de tick verder
+    stil."""
+    mac, bot = werkplaats["mac"], werkplaats["bot"]
+    sha = _bot_pusht(bot, "verkenning/nameting-replay-15-09.txt")
+    (mac / "opdrachten" / "gedaan" / "2026-09-14-dummy.md").write_text("uitgevoerd, rapport: geen\n", encoding="utf-8")
+    (mac / ".claude").mkdir()
+    (mac / ".claude" / "scheduled_tasks.lock").write_text("{}\n", encoding="utf-8")
+    assert _git(mac, "status", "--porcelain").count("??") == 2, "opzet: twee untracked paden, niets tracked gewijzigd"
+    uit = _draai_script(mac)
+    assert uit.returncode == 0, uit.stderr
+    assert _git(mac, "rev-parse", "HEAD") == sha, uit.stderr
+    assert (mac / "verkenning" / "nameting-replay-15-09.txt").is_file()
+    assert "pull ff-only 1 commit(s) binnen" in uit.stderr, uit.stderr
+    assert "overgeslagen" not in uit.stderr, uit.stderr
+    # de untracked bestanden staan er nog precies zo (nooit stash/clean)
+    assert (mac / "opdrachten" / "gedaan" / "2026-09-14-dummy.md").is_file()
+    assert (mac / ".claude" / "scheduled_tasks.lock").is_file()
+
+
+def test_gestaged_tracked_bestand_telt_als_vuil(werkplaats: dict[str, Path]) -> None:
+    """Een gestagede (nog niet gecommitte) wijziging aan een tracked bestand is wél vuil — een ff-pull zou daar
+    overheen kunnen lopen; overslaan mét logregel, index blijft staan."""
+    mac, bot = werkplaats["mac"], werkplaats["bot"]
+    voor = _git(mac, "rev-parse", "HEAD")
+    _bot_pusht(bot)
+    (mac / "verkenning" / "README.txt").write_text("gestaged\n", encoding="utf-8")
+    _git(mac, "add", "verkenning/README.txt")
+    uit = _draai_script(mac)
+    assert uit.returncode == 0, uit.stderr
+    assert _git(mac, "rev-parse", "HEAD") == voor
+    assert "pull overgeslagen — werkboom niet schoon (1 gewijzigd bestand(en))" in uit.stderr, uit.stderr
+    assert _git(mac, "diff", "--cached", "--name-only") == "verkenning/README.txt", "index onaangeraakt"
+
+
 def test_pull_overgeslagen_bij_gedivergeerde_stand_nooit_merge(werkplaats: dict[str, Path]) -> None:
     mac, bot = werkplaats["mac"], werkplaats["bot"]
     lokaal = _commit(mac, "docs/lokaal.md", "lokaal werk\n", "lokaal, nog niet gepusht")
@@ -171,5 +208,6 @@ def test_levende_lock_doet_niets_ook_geen_pull(werkplaats: dict[str, Path]) -> N
 def test_script_gebruikt_ff_only_en_nooit_rebase_merge_stash() -> None:
     code = "\n".join(r.split("#", 1)[0] for r in SCRIPT.read_text(encoding="utf-8").splitlines())
     assert "pull --ff-only origin main" in code
+    assert "status --porcelain --untracked-files=no" in code, "schoon = alleen tracked bestanden (nazorg 15-09)"
     for verboden in ("git stash", "git merge", "pull --rebase", "git rebase", "reset --hard", "checkout --"):
         assert verboden not in code, verboden

@@ -16,3 +16,9 @@ frontend/dist/
 # werkloop automatisch 14-09: runtime-artefacten van scripts/cc_inbox.sh
 opdrachten/log/
 opdrachten/.lock
+
+# Claude Code-runtime in de repo-root (nazorg 15-09): lokale settings + lockbestanden zijn nooit repo-inhoud.
+# Op de Mac vangen ~/.config/git/ignore en .git/info/exclude dit al; hier zodat élke kloon/agent dezelfde stand ziet.
+.claude/settings.local.json
+.claude/*.lock
+.claude/scheduled_tasks.json
