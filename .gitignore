@@ -22,3 +22,6 @@ opdrachten/.lock
 .claude/settings.local.json
 .claude/*.lock
 .claude/scheduled_tasks.json
+
+# Echte klantbestanden (PII) voor de omzetbron-verkenning — nooit committen; de gouden set gebruikt geanonimiseerde JSON-grids
+verkenning/voorbeelden/

@@ -394,6 +394,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   2026-08-08 — kasomzet = losse boeking, geen dummy-debiteur); omzet-autoboeken opt-in per administratie (GO Peter
   01-09, migratie 0096). Zie BESLISSINGEN "Omzetmodule — GEBOUWD + GETEST", "OMZET-AUTOBOEKEN"; RLZ-feiten in
   api-verkenning "Omzetmodule STAP 0" + "Receipts-verkenning".
+- **Omzetbronnen spreadsheet — zonnestudio dagstaat + kascheck en pilates betalingsexport (Peter 15-09; migratie 0146):** deterministische parsers (`app/omzet/bronnen/`, xlrd/openpyxl → `Grid`, géén AI, geen AVG-gate) op het bestaande kassarapport-type mét veld `bron`; harde bron-controles als check-rijen, dagstaat + kascheck gebundeld per dag (wederhelft `samengevoegd`), pilates-export gesplitst per uitbetaling mét dedupe-sleutel `Factuurnummer|methode|bedrag|betaaldatum`, intake-routering op "Store Used" via Beheerder-instelling `bron_instellingen.stores` (route `GET/PUT …/omzet/bron-instellingen`, UI open), blok "Bron" in het omzet-controlescherm — zie BESLISSINGEN "OMZETBRON ZONNESTUDIO DAGSTAAT (Peter 15-09)" en "OMZETBRON PILATES BETALINGSEXPORT (Peter 15-09)".
 - **Verkoopfactuur-boekpad (Vastly, §2d)** — GEBOUWD + GETEST (2026-08-09), Entity = de échte huurder, CreditNote 381
   achter `creditnota_381_ingeschakeld` (AAN sinds 2026-08-10); verkoop-autoboeken opt-in per is_vastgoed-administratie
   (migratie 0051). Zie BESLISSINGEN "Vastly-verkoopfactuur-boekpad" + "VERKOOP-AUTOBOEKEN OPT-IN".

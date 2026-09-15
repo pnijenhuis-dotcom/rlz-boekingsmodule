@@ -9822,7 +9822,7 @@ met deep-link; job-uitvoer `planning-meldingen: … push=1`.
 **Bewust niet / beslispunten:** geen project-tijdlijn (bestaat niet; audit is het spoor); geen server-side filter (alles zit al in de
 ene weekrequest); "twee voorgaande weken" als snelle chips — de ‹ ›-navigatie was al vrij.
 
-## ACCORDEUR-APP — INZOOMEN OP DE FACTUUR (Peter 15-09; opdracht via opdrachten/inbox; geen migratie, geen backend)
+## ACCORDEUR-APP — INZOOMEN OP DE FACTUUR (Peter 15-09) — opdracht via opdrachten/inbox; geen migratie, geen backend
 
 **Aanleiding:** `PdfWeergave` rendert pagina's als canvas en vertrouwde op "native paginazoom"; in de native app (Capacitor-WebView,
 viewport niet schaalbaar) en de PWA-standalone werkte knijpen niet of scrolde de hele app mee — kleine lettertjes onleesbaar.
@@ -9840,3 +9840,64 @@ viewport niet schaalbaar) en de PWA-standalone werkte knijpen niet of scrolde de
 knoppen van het goedkeurscherm blijven staan; dubbeltik = 2×; "⤢ Volledig scherm" → hele scherm, ✕/terug-gebaar sluit; tekst blijft
 scherp op 3–4×. Veld-app: werkbon/offerte openen → zelfde gedrag.
 
+## OMZETBRON ZONNESTUDIO DAGSTAAT (Peter 15-09) — opdracht via opdrachten/inbox; migratie 0146 samen met de pilates-bron
+
+**Aanleiding:** twee zonnestudio's mailen dagelijks een POS-export "Daily Sales" (.xls, vaste lay-out) + een "Kascheck" (.xlsx) naar
+facturen@. Patroon = omzetmodule BLOW, maar de cijfers komen NIET uit AI: de lay-out is vast, dus een deterministische parser op
+labels/celposities mét harde controles. Zes echte dagen (8–13-09-2026, store "Elderveld") sluiten cent-exact op één bewuste
+blokkade na (puntenwaarde). Het documenttype is het bestaande `kassarapport` (de opdracht noemt het "omzetstaat" — hetzelfde type),
+mét nieuw veld `bron` op het veldvoorstel.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **Rasterlaag.** `.xls` (xlrd) en `.xlsx` (openpyxl) → één `Grid` (celpositie → tekst/getal, floats naar centen), JSON-vorm voor de fixtures; herkenning op inhoud (`herken_bron`: "Sales Analysis Summary" + "Deposit Analysis" = dagstaat, blad "Kascheck" = kascheck, kopregel Factuurnummer/Bankoverschrijving = pilates). | GEBOUWD + GETEST | `backend/app/omzet/bronnen/{grid,__init__}.py` |
+| **Dagstaat-parser.** Datum uit "For d-m-jjjj", store uit "Store Used:", categorieën = rijen die op "Total" eindigen (QTY/Net/Service VAT/Product VAT/Gross, kolommen < 55), Grand Total, Deposit Analysis (Cash/PIN/Punten, kolommen ≥ 55), Points Redeemed. Controles: Datum gelezen, Store gelezen, Regelsom = Grand Total (netto, btw, bruto), Categorie X sluit (net + btw = gross), Deposit-som = Grand Total gross, **Puntenwaarde bekend** (ROOD blokkerend zodra Points Redeemed > 0 — eenheid/waarde van "921" is een STAP-0-vraag aan de klant). | GEBOUWD + GETEST | `bronnen/zonnestudio.py::parse_dagstaat` |
+| **Kascheck-parser.** Beginsaldo, telling (som kolom C tussen de labels), eindsaldo, storting automaat, eindsaldo ná storting, contante omzet. Controles: Telling = eindsaldo kas, Eindsaldo − storting = eindsaldo ná storting, Kas sluit (begin + contante omzet − storting = eindsaldo ná). | GEBOUWD + GETEST | `zonnestudio.py::parse_kascheck` |
+| **Veldvoorstel (motor-contract).** Soort kassarapport, `periode_start = periode_eind = datum`, regels per categorie mét `omzet_bedrag` = kassabedrag INCL. btw (de motor splitst per taxrate uit de mapping — bestaand gedrag), Points-regel gemarkeerd `balans: true` (verkochte punten = vooruitontvangen, geen omzet — de GB-keuze loopt via de bestaande categorie-mapping, mens stelt één keer een balansrekening in). `bron_detail`: store, datum, betaalwijzen, grand_total, points_redeemed, kas, controles, `wacht_op`, `sluit`. Extra controles bij het bundelen: Datum in bestand = datum in bestandsnaam, Kascheck-datum = dagstaat-datum, **Kasverschil (contante omzet kascheck vs Cash POS)** = ORANJE signaal, niet blokkerend (8-9: 87,80 vs 86,81 = 0,99). | GEBOUWD + GETEST | `zonnestudio.py::bouw_veldvoorstel` |
+| **Bundeling dagstaat + kascheck.** Eén omzetdocument per dag per studio: de tweede helft (in welke volgorde ook) wordt in de eerste gevoegd — de wederhelft gaat op `samengevoegd` mét verwijzing (nooit verwijderd; nieuwe statusovergang `extractie_bezig → samengevoegd`), het hoofddocument krijgt het complete veldvoorstel. Alleen-dagstaat of alleen-kascheck = veldvoorstel mét `wacht_op` + rode controle "Wederhelft ontbreekt", zichtbaar in de werkvoorraad, nooit stil. | GEBOUWD + GETEST | `bronnen/service.py::verwerk_spreadsheet`, `_verwerk_dagstaat/_verwerk_kascheck`, `documenten/service.py::_rond_extractie_af`, `statusmachine.py` |
+| **Intake-routering op store.** Een spreadsheet-bijlage (`.xls/.xlsx`) → `herken_bron`; dagstaat → "Store Used" → administratie via de Beheerder-instelling `stores` (`omzet_instelling.bron_instellingen`, 0146; geen hardcode, hoofdletter-ongevoelig); onbekende store of geen dagstaat-store → verzamelbak mét reden "omzetbron … zonder eenduidige administratie"; geen omzetbron = zichtbaar overgeslagen. Losse upload werkt ook (soort kassarapport). | GEBOUWD + GETEST | `intake/verwerking.py::_verwerk_spreadsheet`, `intake/eml.py::is_spreadsheet` |
+| **Bron-instellingen (Beheerder).** `GET/PUT /administraties/{id}/omzet/bron-instellingen` — `stores`, `product_categorieen`, `psp`, `rekeningen` (kas/kruispost/vooruitontvangen/kasverschil als GB-code, informatief); PUT = Beheerder + scope, audit `omzet_bron_instellingen_gewijzigd` oud→nieuw. **UI-blok op Instellingen › Administraties › ‹studio› › Omzet NIET gebouwd — alleen de route** (Peter vult via de route/CLI of het volgt in een vervolg). | ROUTE GEBOUWD, UI OPEN | `omzet/router.py`, `bronnen/service.py::zet_bron_instellingen` |
+| **Checks.** De bron-controles reizen als check-rijen "Bron: …" mee in `voer_omzet_checks_uit` (blokkerend rood → geblokkeerd; niet-blokkerend → signaal) náást de bestaande duplicaat-/plausibiliteits-/mapping-checks; periode-duplicaat per administratie + dag = de bestaande blokkade. | GEBOUWD + GETEST | `omzet/voorstel.py::_met_bron_controles` |
+| **UX.** Omzet-controlescherm hergebruikt: blok "Bron: dagstaat zonnestudio" (chip wacht op / N blokkerende controles / N signalen / sluit, store + dag, betaalwijzen + Grand Total + Points Redeemed, kascheck-tabel, controle-lijst) boven de bestaande banner; het documentvak toont geen PDF-viewer maar een download van de spreadsheet. UX-review: past in het bestaande scherm, geen mockup nodig. | GEBOUWD + GETEST | `frontend/src/omzet/BronBlok.tsx`, `OmzetReviewScreen.tsx` |
+| **Niet gebouwd (bewust, uit de opdracht).** (a) Tegenzijde per betaalwijze als eigen boeking (Cash → kas, PIN → kruispost, storting → kruispost): de Receipt landt als kasomzet en de bank-aflettering is het bestaande RLZ-pad; de rekeningen per studio zijn een STAP-0-vraag (`rekeningen`) — pas daarna bouwen. (b) Points Redeemed → omzet vanaf de balansrekening: geblokkeerd tot de puntenwaarde bekend is. (c) Autoboeken: de bestaande omzet-autoboek-opt-in geldt ongewijzigd (default UIT, de harde bron-controles blokkeren). | OPEN | rapport |
+| **Gouden set.** Fixtures `tests/keten/fixtures/ab_omzet_zonnestudio/` (dagstaat + kascheck als JSON-grid, medewerkerregels weg, `bron.json`), ketentest `test_ab_ac_omzetbronnen.py`; parser-/hook-/intake-/route-tests `tests/omzet/test_bronnen.py` (alle zes echte dagen + kaschecks sluiten cent-exact als `verkenning/voorbeelden/` lokaal aanwezig is; anders overgeslagen). | GEDAAN | — |
+| **Afsluitroutine 0146** (`omzet_instelling.bron_instellingen JSONB`): dev-upgrade 0145 → 0146, `alembic check` schoon, dump ververst (head 0146), live lokale uvicorn: openapi 200 mét `OmzetBronInstellingenDto`, route zonder token 401. | GEDAAN | `migrations/versions/0146_…` |
+| Dependencies `xlrd>=2.0`, `openpyxl>=3.1` in `pyproject.toml` (guard `test_dependencies_gedeclareerd`). | GEDAAN | — |
+
+**STAP-0-vragen aan de klant (Peter stelt ze):** (1) wat is één punt waard in euro's en zijn "Points Redeemed 921" punten of euro's — tot
+het antwoord blokkeert de dag; (2) hoe heet de tweede store in "Store Used:" (Beheerder zet 'm in `stores` van die administratie);
+(3) welke RLZ-rekeningen per studio: kas, kruispost pin-ontvangsten, vooruitontvangen tegoeden (punten), kasverschillen.
+
+**Meetrecept ná deploy:** Peter stuurt `8-9-26.xls` + `kascheck-2026-09-08.xlsx` naar facturen@ (store "Elderveld" eerst in de
+bron-instellingen van de studio-administratie zetten) → één kassarapport-document in de werkvoorraad van die studio mét drie
+categorie-regels (250,00 / 349,03 / 420,00), betaalwijzen, kascheck, controle "Puntenwaarde bekend" rood en kasverschil 0,99 oranje;
+de kascheck staat als "samengevoegd in …" achter de toggle afgehandeld.
+
+## OMZETBRON PILATES BETALINGSEXPORT (Peter 15-09) — opdracht via opdrachten/inbox; migratie 0146 gedeeld met de zonnestudio-bron
+
+**Aanleiding:** de pilatesstudio levert wekelijks/maandelijks een export van het boekingsplatform (blad "Standaardweergave"; juli 2026:
+159 geslaagde transacties, 23 uitbetalingen, bruto 14.288,98, PSP-kosten 196,35, twee disputes, één contant-batch). De PSP betaalt
+per batch netto uit → één kassarapport per UITBETALING zodat de bank er cent-exact tegen kan. Géén AI voor cijfers; klantnamen/e-mails
+zijn PII en komen nergens buiten het brondocument.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **Parser.** Kopregel-detectie (eerste voorkomen per kolomnaam — "Betaalstatus" staat tweemaal), transacties (Factuurnummer, betaaldatum, bedrag, status, kosten, methode, product, Bankoverschrijving = batch, Transactiedatum = uitbetaaldatum); alleen `Succeeded` telt, de rest staat als `niet_geslaagd` in het detail (tonen, niet boeken). Batches per Bankoverschrijving; Contant → eigen batch `contant-JJJJ-MM` zonder kosten. | GEBOUWD + GETEST | `bronnen/pilates.py::parse_transacties/groepeer_batches` |
+| **Categorie-mapping productnaam → categorie.** Default `DEFAULT_PRODUCT_CATEGORIEEN`: Pilateslessen = Onbeperkt abonnement, 5/10/20 rittenkaart, DROP-IN, Proefles, Losse les Mat Pilates; Yoga = Yoga-rittenkaarten, Losse les Yoga; Kleding & producten en Eten/drinken leeg tot ze voorkomen; **"combi Abonnement" = BESLISPUNT** (default: niet gecategoriseerd → blokkerende controle). Per administratie aanvulbaar via `product_categorieen` in de bron-instellingen (Beheerder, audit; mens wint). Sleutel behoudt cijfers (10 ≠ 20 rittenkaart). | GEBOUWD + GETEST | `pilates.py::categorie_voor`, `service.py::bron_instellingen_voor` |
+| **Veldvoorstel per uitbetaling.** Regels per categorie (som Bedrag, incl. btw; btw-code per categorie uit de bestaande categorie-mapping), disputes = negatieve omzet in de categorie van het oorspronkelijke product (zelfde regel, signaal "Disputes/terugbetalingen"), regel "Transactiekosten PSP" negatief (btw volgens PSP — instelling `psp`, BESLISPUNT), `totaal_omzet` = netto uitbetaling. Controles: **Som regels = netto uitbetaling**, **Alle producten gecategoriseerd**, **Geen transactie al geboekt**, Uitbetaaldatum bekend. | GEBOUWD + GETEST | `pilates.py::bouw_batch_veldvoorstel` |
+| **Splitsing per batch.** Export met meer dan één uitbetaling → ouder op `gesplitst` (EERST, eigen commit) + één kinddocument per batch (zelfde bytes, bestandsnaam "‹stam› — uitbetaling ‹batch›.xlsx", `gesplitst_uit_id`), post-commit in de bestaande kassarapport-hook; idempotent (bestaande kinderen niet opnieuw). Een kind leest zijn batch uit de bestandsnaam. | GEBOUWD + GETEST | `service.py::splits_pilates_export_na_extractie`, `documenten/service.py::_na_extractie_hook` |
+| **Idempotentie over exports heen.** Sleutel = transactie-identiteit `Factuurnummer|methode|bedrag|betaaldatum` — het nummer alléén volstaat NIET: hetzelfde Factuurnummer komt terug bij betaling, dispute (chargeback) én herbetaling (juli: 06ead052 driemaal, 713fd874 tweemaal). Een tweede (overlappende) export → op de kinderen de controle "Geen transactie al geboekt" ROOD mét de overlappende transacties; aanvulling boeken = mens, nooit een stille wijziging. | GEBOUWD + GETEST | `pilates.py::transactie_sleutel`, `service.py::geboekte_factuurnummers` |
+| **Intake.** Zelfde spreadsheet-pad als de zonnestudio; de export draagt geen store → zonder eenduidige administratie naar de verzamelbak mét reden (toewijzen = mens; één studio nu). | GEBOUWD + GETEST | `intake/verwerking.py::_verwerk_spreadsheet` |
+| **UX.** Omzet-controlescherm: blok "Bron: betalingsexport pilates (één uitbetaling)" mét batch-id + uitbetaaldatum, bruto/kosten/netto, disputes, controle-lijst. Matchstatus bank per batch NIET in het blok (zie niet gebouwd). | GEBOUWD + GETEST | `frontend/src/omzet/BronBlok.tsx` |
+| **Niet gebouwd (bewust).** (a) Kruispost "PSP-uitbetaling" + bankmatch die de netto ontvangst GROEN maakt: de Receipt is entity-loos en de aflettering loopt via het bestaande RLZ-pad; bouwen ná het PSP-beslispunt. (b) Contant → kas als eigen tegenzijde (zie zonnestudio (a)). (c) Beheerder-UI voor `product_categorieen`/`psp` — alleen de route. | OPEN | rapport |
+| **Gouden set.** `tests/keten/fixtures/ac_omzet_pilates/` (JSON-grid, PII vervangen, `bron.json`), ketentest `test_ab_ac_omzetbronnen.py` (23 kinderen, elke batch sluit); `tests/omzet/test_bronnen.py` (159/23/14.288,98/196,35, dispute-batch, dedupe, splitsing + tweede export). | GEDAAN | — |
+
+**Beslispunten Peter (defaults gekozen, run loopt door):** btw-tarief sportlessen 9 % of 21 % (default: volgt de categorie-mapping van de
+administratie, dus mens kiest bij de eerste boeking); "combi Abonnement" Pilates/Yoga/verdeelsleutel (default: niet gecategoriseerd →
+rood tot ingesteld); rittenkaarten/abonnementen omzet bij verkoop vs vooruitontvangen (default: omzet bij verkoop); PSP-naam + btw op
+de kosten (default: leeg → kostenregel volgt de categorie-mapping "Transactiekosten PSP").
+
+**Meetrecept ná deploy:** Peter uploadt `pilates-betalingen-2026-07.xlsx` als kassarapport bij de studio-administratie → het document
+staat op "gesplitst" en er verschijnen 23 kassarapporten "… — uitbetaling ‹batch›" in de werkvoorraad; open `2026-7-9-ca834c16`: netto
+637,08, dispute 06ead052 −175,00 als signaal, controle "Alle producten gecategoriseerd" rood tot "combi Abonnement" een categorie
+heeft; upload dezelfde export nogmaals → op de nieuwe kinderen "Geen transactie al geboekt" rood.
