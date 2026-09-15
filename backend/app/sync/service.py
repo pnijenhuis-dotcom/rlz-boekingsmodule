@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -49,6 +51,9 @@ class SyncResultaat:
     taxrates: SyncTelling
     vendors: SyncTelling
     projects: SyncTelling
+    #: Administratienaam volgt de bron (Peter 15-09, 0144): uitkomst van `administratienaam.volg_*` — 'gevolgd' |
+    #: 'gelijk' | 'afwijkend_mens' | 'bezet' | 'onbekend'; None = niet gelezen (los onderdeel, eerste sync).
+    naam: str | None = None
 
 
 def _rlz_admin_id_voor(administratie_id: uuid.UUID) -> str:
@@ -276,7 +281,7 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
         return _odoo_sync(administratie_id)
     client, eigen_client = _open_client_indien_nodig(administratie_id, client)
     try:
-        return SyncResultaat(
+        resultaat = SyncResultaat(
             ledgers=_sync_generiek(
                 administratie_id=administratie_id, client=client, pad=_sync_pad("ledgers"), model=Grootboekrekening,
                 id_kolom="ledger_id", kolom_waarden=_grootboek_waarden, params=_sync_params("ledgers"),
@@ -294,6 +299,11 @@ def sync_alles_voor_administratie(*, administratie_id: uuid.UUID, client: RlzCli
                 id_kolom="id", kolom_waarden=_project_waarden,
             ),
         )
+        # Administratienaam volgt de bron (Peter 15-09, 0144): dezelfde login, root-vorm `Administrations`; een
+        # leesfout maakt de sync nooit rood (uitkomst 'onbekend', zichtbaar in de sync-regel).
+        from app.beheer import administratienaam
+
+        return dataclasses.replace(resultaat, naam=administratienaam.volg_uit_rlz(administratie_id, client))
     finally:
         if eigen_client:
             client.close()

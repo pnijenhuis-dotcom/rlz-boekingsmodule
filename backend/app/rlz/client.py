@@ -210,6 +210,13 @@ class RlzClient:
         """Zelfde login/verbinding, gescoped op een andere administratie-id."""
         return RlzClient(username="", password="", admin_id=admin_id, client=self._client, tempo=self.tempo)
 
+    def root(self) -> RlzClient:
+        """Zelfde login/verbinding ZONDER administratie-prefix — voor routes zonder administratie-context
+        (`Administrations`). Sluit 'm niet apart af: de verbinding is van de aanroeper (zie for_administration)."""
+        if self._admin_id is None:
+            return self
+        return RlzClient(username="", password="", admin_id=None, client=self._client, tempo=self.tempo)
+
     def _path(self, path: str) -> str:
         path = path.lstrip("/")
         return f"/{self._admin_id}/{path}" if self._admin_id else f"/{path}"
@@ -265,7 +272,9 @@ class RlzClient:
     # --- domeinspecifieke helpers (geverifieerde payload-vormen) --------------------------
 
     def list_administrations(self) -> list[dict[str, Any]]:
-        return self.get("Administrations").get("value", [])
+        """`GET Administrations` — altijd via de ROOT-vorm (zonder administratie-prefix), óók op een gescoped client;
+        sinds 15-09 (administratienaam volgt de bron) leest de stamgegevens-sync 'm met de gedeelde gescoped login."""
+        return self.root().get("Administrations").get("value", [])
 
     def put_vendor(self, vendor_id: uuid.UUID, *, name: str, payment_due_days: int | None = None) -> httpx.Response:
         body: dict[str, Any] = {"id": str(vendor_id), "Name": name}

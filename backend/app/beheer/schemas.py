@@ -118,12 +118,37 @@ class IsVastgoedResultaatDto(BaseModel):
     verkoop_autoboeken_uitgezet: bool
 
 
+class AdministratieNaamInvoerDto(BaseModel):
+    """PUT /administraties/{id}/naam (Peter 15-09): de nieuwe naam — leeg/te lang = 422, bezet = 409."""
+
+    naam: str
+
+
+class AdministratieNaamDto(BaseModel):
+    """Naamstand van een administratie (migratie 0144): `naam_bron` 'odoo'|'rlz' = volgt de bron, 'mens' = door een
+    Beheerder gezet; `bron_naam` = laatst gelezen naam in Odoo/RLZ; `bron_afwijkend` = de bron heet anders (chip +
+    "Naam overnemen" alleen zinvol bij naam_bron 'mens')."""
+
+    id: uuid.UUID
+    naam: str
+    naam_bron: str
+    bron_naam: str | None = None
+    bron_naam_gezien_op: datetime | None = None
+    naam_gevolgd_op: datetime | None = None
+    bron_afwijkend: bool = False
+
+
 class AdministratieInstellingenDto(BaseModel):
     """Eén rij in het instellingen-scherm (design-pass taak 3) — dezelfde twee schakelaars als
     de losse per-administratie GET/PUT-endpoints hierboven, nu in één keer voor de hele lijst."""
 
     id: uuid.UUID
     naam: str
+    # Administratienaam volgt de bron (Peter 15-09, migratie 0144) — zie AdministratieNaamDto.
+    naam_bron: str = "mens"
+    bron_naam: str | None = None
+    bron_naam_gezien_op: datetime | None = None
+    naam_gevolgd_op: datetime | None = None
     boeken_ingeschakeld: bool
     project_verplicht: bool
     ai_extractie_ingeschakeld: bool

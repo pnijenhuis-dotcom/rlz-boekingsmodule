@@ -345,7 +345,7 @@ def voer_leesprobe_uit(client: OdooClient) -> ProbeUitkomst:
         return ProbeUitkomst(rapport={"verbinding": f"niet bereikbaar: {vertaal_verbindingsfout(exc)}"})
     company_naam: str | None = None
     try:
-        company = client.read_een("res.company", client.company_id, ["name"])
+        company = lees_company(client)
     except OdooFout as exc:
         company = None
         rapport["company"] = f"company {client.company_id} niet leesbaar ({exc.status} {exc.naam or ''})".strip()
@@ -368,6 +368,22 @@ def voer_leesprobe_uit(client: OdooClient) -> ProbeUitkomst:
         except OdooFout as exc:
             rapport["verkoopfacturen"] = f"niet telbaar ({exc.status})"
     return ProbeUitkomst(rapport=rapport, company_naam=company_naam, versie=versie)
+
+
+def lees_company(client: OdooClient) -> dict[str, Any] | None:
+    """`res.company` van de gebonden company, alleen `name` — DE leesbron voor de companynaam (probe, koppelstand én de
+    stamgegevens-sync die de administratienaam laat volgen, Peter 15-09). None = company onzichtbaar voor de key."""
+    return client.read_een("res.company", client.company_id, ["name"])
+
+
+def lees_company_naam(client: OdooClient) -> str | None:
+    """Companynaam of None (company niet leesbaar / lege naam) — nooit een exception naar de sync."""
+    try:
+        company = lees_company(client)
+    except OdooFout:
+        return None
+    naam = " ".join(str((company or {}).get("name") or "").split())
+    return naam or None
 
 
 def lees_lock_dates(client: OdooClient) -> dict[str, date | None]:

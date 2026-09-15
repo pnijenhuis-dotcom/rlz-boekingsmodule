@@ -567,9 +567,11 @@ def _sync_alles(args: argparse.Namespace) -> int:
             fouten += 1
             print(f"FOUT  {administratie_id}: {resultaat}", file=sys.stderr)
             continue
+        # Administratienaam volgt de bron (15-09, 0144): gevolgd | gelijk | afwijkend_mens | bezet | onbekend —
+        # meetrecept Zilverduynen: grep "naam=gevolgd" in Cloud Logging (job rlz-sync).
         print(
             f"OK    {administratie_id}: ledgers={resultaat.ledgers}, taxrates={resultaat.taxrates}, "
-            f"vendors={resultaat.vendors}, projects={resultaat.projects}"
+            f"vendors={resultaat.vendors}, projects={resultaat.projects}, naam={resultaat.naam or 'niet gelezen'}"
         )
     kern = f"{len(resultaten) - fouten - overgeslagen}/{len(resultaten)} administraties gesynchroniseerd."
     if overgeslagen:
@@ -2458,8 +2460,13 @@ def main(argv: list[str] | None = None) -> int:
 
     register_autoboek_leren(subparsers)  # autoboek-drempel-zetten, autoboek-leren-rapport
     from app.geheugen.btw_default_cli import dispatch as dispatch_btw_default, register as register_btw_default  # 14-09 (0143)
+    from app.beheer.administratienaam_cli import (  # 15-09 (0144)
+        dispatch as dispatch_administratienaam,
+        register as register_administratienaam,
+    )
 
     register_btw_default(subparsers)  # btw-default-rapport (lees-only)
+    register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)
     from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
     from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
 
@@ -3057,6 +3064,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if (uitkomst_autoboek_leren := dispatch_autoboek_leren(args)) is not None:  # blok A 10-09
         return uitkomst_autoboek_leren
+    if (uitkomst_administratienaam := dispatch_administratienaam(args)) is not None:  # 15-09 (0144)
+        return uitkomst_administratienaam
     if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
         return uitkomst_btw_default
     if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09

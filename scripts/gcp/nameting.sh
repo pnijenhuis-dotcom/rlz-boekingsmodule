@@ -18,7 +18,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0; do
@@ -36,7 +36,8 @@ if [[ "$CMD" == "werkvoorraad-tellers-herrekenen" ]]; then
   # Blok 6 11-09: de herberekening schrijft de tellers-cache — als nameting alleen de vergelijking (--dry-run).
   printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: werkvoorraad-tellers-herrekenen alleen mét --dry-run via dit script (de echte herberekening loopt in sync-alles)" >&2; exit 2; }
 fi
-if [[ "$CMD" == "pandenregister-afleiden" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf"; then
+if [[ "$CMD" == "pandenregister-afleiden" || "$CMD" == "administratie-naam-bron-backfill" ]] && printf '%s\n' "$@" | grep -qx -- "--schrijf"; then
+  # administratie-naam-bron-backfill (15-09, 0144): dry-run = nameting; --schrijf = de data-stap, expliciet via gcloud run jobs execute.
   echo "FOUT: --schrijf is geen nameting" >&2; exit 2
 fi
 if [[ "$CMD" == "vgg-rekeningen" ]] && printf '%s\n' "$@" | grep -qx -- "--maak-aan"; then

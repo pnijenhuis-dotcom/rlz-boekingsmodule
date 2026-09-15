@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
-from app.beheer import btw_default, groepen, schemas, service
+from app.beheer import administratienaam, btw_default, groepen, schemas, service
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
@@ -75,10 +75,67 @@ def administratie_instellingen_lijst(
                 groep_naam=r.groep_naam,
                 groep_code=r.groep_code,
                 groep_actief=r.groep_actief,
+                naam_bron=r.naam_bron,
+                bron_naam=r.bron_naam,
+                bron_naam_gezien_op=r.bron_naam_gezien_op,
+                naam_gevolgd_op=r.naam_gevolgd_op,
             )
             for r in overzicht
         ]
     )
+
+
+# --- Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144) -------------------------------------
+
+
+def _naam_dto(stand: administratienaam.NaamStand) -> schemas.AdministratieNaamDto:
+    return schemas.AdministratieNaamDto(
+        id=stand.administratie_id,
+        naam=stand.naam,
+        naam_bron=stand.naam_bron,
+        bron_naam=stand.bron_naam,
+        bron_naam_gezien_op=stand.bron_naam_gezien_op,
+        naam_gevolgd_op=stand.naam_gevolgd_op,
+        bron_afwijkend=stand.bron_afwijkend,
+    )
+
+
+def _naam_fout(exc: Exception) -> HTTPException:
+    if isinstance(exc, administratienaam.NaamOngeldig):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if isinstance(exc, administratienaam.NaamBezet | administratienaam.GeenBronnaam):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.put("/administraties/{administratie_id}/naam", response_model=schemas.AdministratieNaamDto)
+def administratie_naam_wijzigen(
+    administratie_id: uuid.UUID,
+    invoer: schemas.AdministratieNaamInvoerDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AdministratieNaamDto:
+    """Veld "Naam" op Instellingen › Administraties › ‹administratie› › Algemeen — Beheerder-only, inline. Zet
+    `naam_bron='mens'` (de bron overschrijft 'm voortaan niet meer); audit `administratie_naam_gewijzigd` oud→nieuw;
+    naam bezet bij een andere administratie = 409 mét leesbare reden; leeg/te lang = 422."""
+    try:
+        stand = administratienaam.wijzig_naam(actor_id=actor.id, administratie_id=administratie_id, naam=invoer.naam)
+    except service.BeheerFout as exc:
+        raise _naam_fout(exc) from exc
+    return _naam_dto(stand)
+
+
+@router.post("/administraties/{administratie_id}/naam-overnemen", response_model=schemas.AdministratieNaamDto)
+def administratie_bronnaam_overnemen(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.AdministratieNaamDto:
+    """Linkbtn "Naam overnemen" op de chip "in Odoo/Reeleezee heet deze administratie nu ‹naam›": neemt de laatst
+    gelezen bronnaam over en houdt `naam_bron='mens'`. Geen bronnaam bekend = 409."""
+    try:
+        stand = administratienaam.neem_bronnaam_over(actor_id=actor.id, administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise _naam_fout(exc) from exc
+    return _naam_dto(stand)
 
 
 @router.post(

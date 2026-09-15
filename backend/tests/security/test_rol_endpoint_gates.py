@@ -238,6 +238,9 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", "/groepen"),  # beheerder-only
         ("PUT", f"/groepen/{DUMMY_ID}"),  # beheerder-only
         ("PUT", f"/administraties/{aid}/groep"),  # beheerder-only
+        # Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144): naam wijzigen = Beheerder-only.
+        ("PUT", f"/administraties/{aid}/naam"),  # beheerder-only
+        ("POST", f"/administraties/{aid}/naam-overnemen"),  # beheerder-only
     ]
 
 
@@ -381,6 +384,7 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/mini-voorraad")
                 or ("/mini-voorraad/" in pad and pad.endswith(("/archiveren", "/dearchiveren")))
                 or pad.endswith("/groep")  # blok 8 11-09: groep van een administratie zetten = Beheerder-only
+                or pad.endswith(("/naam", "/naam-overnemen"))  # 15-09 (0144): administratienaam = Beheerder-only
                 or (pad.startswith("/groepen") and methode != "GET")  # blok 8 11-09: groepen muteren = Beheerder-only
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only

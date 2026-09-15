@@ -201,6 +201,11 @@ class AdministratieInstellingen:
     groep_naam: str | None = None
     groep_code: str | None = None
     groep_actief: bool | None = None
+    # Administratienaam volgt de bron (Peter 15-09, migratie 0144; app/beheer/administratienaam.py).
+    naam_bron: str = "mens"
+    bron_naam: str | None = None
+    bron_naam_gezien_op: datetime | None = None
+    naam_gevolgd_op: datetime | None = None
 
 
 def administratie_bestaat(administratie_id: uuid.UUID) -> bool:
@@ -344,6 +349,10 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             groep_naam=groepen[r.id].naam if r.id in groepen else None,
             groep_code=groepen[r.id].code if r.id in groepen else None,
             groep_actief=groepen[r.id].actief if r.id in groepen else None,
+            naam_bron=r.naam_bron,
+            bron_naam=r.bron_naam,
+            bron_naam_gezien_op=r.bron_naam_gezien_op,
+            naam_gevolgd_op=r.naam_gevolgd_op,
         )
         for r in rijen
     ]

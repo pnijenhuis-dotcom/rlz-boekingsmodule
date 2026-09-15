@@ -21,6 +21,7 @@ Alles per company; nooit hardcoden (tarief-id's verschillen per company — §1.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import uuid
 from collections.abc import Iterable
@@ -31,13 +32,15 @@ from typing import Any
 from sqlalchemy import select
 
 from app.db.audit import record_audit_event
-from app.db.models import Grootboekrekening
+from app.beheer import administratienaam
+from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.odoo.client import OdooClient
 from app.odoo.credentials import OdooVerbinding, koppeling_voor, odoo_client_voor
 from app.odoo.ids import GEEN_BTW_ODOO_ID, odoo_uuid
-from app.odoo.models import OdooIdKoppeling
+from app.odoo.models import OdooIdKoppeling, OdooKoppeling
+from app.odoo.probe import lees_company_naam
 from app.sync.models import ProjectCache, TaxRateCache, VendorCache
 from app.sync.service import SyncResultaat, SyncTelling, _upsert_en_markeer_verdwenen
 
@@ -344,6 +347,9 @@ def sync_alles_voor_odoo_administratie(
         verrijk_grootboek_met_btw_default(grootboek, btw)
         crediteuren = lees_crediteuren(client, vertaler)
         projecten = lees_projecten(client, vertaler, plan_id=verbinding.analytic_plan_id)
+        # Administratienaam volgt de bron (Peter 15-09, 0144; casus Nieuwenhoven → Zilverduynen): één leesbron
+        # `probe.lees_company_naam` (res.company.name van de gebonden company); None = niet leesbaar → niets gewijzigd.
+        company_naam = lees_company_naam(client)
     finally:
         if eigen:
             client.close()
@@ -389,6 +395,17 @@ def sync_alles_voor_odoo_administratie(
             ),
         )
         _schrijf_id_koppelingen(session, administratie_id=administratie_id, rijen=vertaler.rijen, now=now)
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is not None:
+            resultaat = dataclasses.replace(
+                resultaat,
+                naam=administratienaam.verwerk_bronnaam(
+                    session, administratie, bron="odoo", bronnaam=company_naam, actor_id=actor_id, now=now
+                ),
+            )
+        koppeling = session.get(OdooKoppeling, administratie_id)
+        if koppeling is not None and company_naam and koppeling.company_naam != company_naam:
+            koppeling.company_naam = company_naam  # het label "company N (naam)" in de koppelstand volgt de bron mee
         record_audit_event(
             session,
             actor_id=actor_id,

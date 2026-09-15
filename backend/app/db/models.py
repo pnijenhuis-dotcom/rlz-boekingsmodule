@@ -113,11 +113,25 @@ class Administratie(Base):
     stille default)."""
 
     __tablename__ = "administratie"
-    # Groepskenmerk (blok 8 run 11-09, migratie 0135): het filter op de kantoorbrede overzichten leest op groep_id.
-    __table_args__ = (Index("ix_administratie_groep_id", "groep_id"),)
+    __table_args__ = (
+        # Groepskenmerk (blok 8 run 11-09, migratie 0135): het filter op de kantoorbrede overzichten leest op groep_id.
+        Index("ix_administratie_groep_id", "groep_id"),
+        # Administratienaam volgt de bron (Peter 15-09, migratie 0144): drie toegestane herkomsten.
+        CheckConstraint("naam_bron IN ('odoo', 'rlz', 'mens')", name="ck_administratie_naam_bron"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     naam: Mapped[str]
+    # Administratienaam — bewerkbaar + volgt de bron (opdracht Peter 15-09, migratie 0144; casus Camping Nieuwenhoven →
+    # "Strandpark Zilverduynen" in Odoo ná het koppelen). `naam_bron` 'odoo'|'rlz' = de module neemt bij élke
+    # stamgegevens-sync de bronnaam over (audit `administratie_naam_gevolgd`); 'mens' = een Beheerder zette de naam:
+    # nooit overschrijven, de afwijkende bronnaam blijft zichtbaar (chip + "Naam overnemen"). Default 'mens' =
+    # fail-closed (de data-stap `administratie-naam-bron-backfill` zet de bron waar naam == bronnaam). Eén schrijver:
+    # app/beheer/administratienaam.py.
+    naam_bron: Mapped[str] = mapped_column(Text, default="mens", server_default="mens")
+    bron_naam: Mapped[str | None] = mapped_column(Text, default=None)
+    bron_naam_gezien_op: Mapped[datetime | None] = mapped_column(default=None)
+    naam_gevolgd_op: Mapped[datetime | None] = mapped_column(default=None)
     rlz_admin_id: Mapped[str] = mapped_column(unique=True)
     # Groep (blok 8 run 11-09, opdracht Peter 11-09, migratie 0135): hoogstens één groep per administratie
     # (bv. "Kempen groep"); NULL = geen groep. Een FILTER op kantoorbrede overzichten (Kernprincipe 7), nooit een poort;
