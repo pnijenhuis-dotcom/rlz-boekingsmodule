@@ -51,3 +51,23 @@ def test_mailfout_exit_1_maar_overige_ontvangers_wel(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(mail, "verzend_mail", verzend)
     monkeypatch.setattr(settings, "reconciliatie_beheer_ontvangers", "kapot@x.nl,goed@x.nl")
     assert cli._deploy_mislukt(_args(sha="abc")) == 1 and verzonden == ["goed@x.nl"]
+
+
+def test_lege_beheer_lijst_valt_terug_op_het_bewakingskanaal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nazorg 15-09: de beheer-lijst is default LEEG (systeemmail uit), maar een rode deploy is een alert → de melding
+    gaat naar `bewaking_alert_ontvanger` (het kantoor-/alertkanaal), nooit stil weg."""
+    verzonden: list[dict] = []
+    monkeypatch.setattr(mail, "is_geconfigureerd", lambda: True)
+    monkeypatch.setattr(mail, "verzend_mail", lambda **kw: verzonden.append(kw))
+    monkeypatch.setattr(settings, "reconciliatie_beheer_ontvangers", "")
+    monkeypatch.setattr(settings, "bewaking_alert_ontvanger", "alert@x.nl")
+    assert cli._deploy_mislukt(_args(sha="abc1234")) == 0
+    assert [v["naar"] for v in verzonden] == ["alert@x.nl"]
+
+
+def test_beide_kanalen_leeg_exit_1(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(mail, "is_geconfigureerd", lambda: True)
+    monkeypatch.setattr(settings, "reconciliatie_beheer_ontvangers", "")
+    monkeypatch.setattr(settings, "bewaking_alert_ontvanger", "")
+    assert cli._deploy_mislukt(_args(sha="abc")) == 1
+    assert "geen reconciliatie_beheer_ontvangers én geen bewaking_alert_ontvanger" in capsys.readouterr().err

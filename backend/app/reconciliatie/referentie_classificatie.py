@@ -10,7 +10,9 @@ Deze module is PUUR en deterministisch (geen DB, geen RLZ, geen AI) en zegt per 
 dezelfde genormaliseerde referentie) of die groep als "mogelijk dubbel" toetsbaar is, of om welke reden niet:
 
 - `REDEN_PLACEHOLDER` — de referentie is een plaatsvervanger ("Ingescand document", alleen nullen; blok 7 herstelrun
-  08-09, `rlz_dubbel.is_placeholder_referentie`). Zulke documenten hebben `referentie_norm is None`.
+  08-09, `rlz_dubbel.is_placeholder_referentie`; sinds nazorg 15-09 óók elke genormaliseerde referentie korter dan
+  `rlz_dubbel.MIN_REFERENTIE_LENGTE` = 3 tekens — casus Abbegaa "01"). Zulke documenten hebben
+  `referentie_norm is None`.
 - `REDEN_IBAN` — de referentie lijkt op een IBAN: de Nederlandse vorm `NL\\d{2}[A-Z]{4}\\d{10}` (altijd, ook zonder
   checksum — het formaat is onmiskenbaar) of een ander landformaat (2 letters + 2 cijfers + 11–30 alfanumeriek) MÉT
   geldige mod-97-controle (anders zou een factuurnummer als "FA2026000123456" ten onrechte een IBAN zijn). Getoetst op

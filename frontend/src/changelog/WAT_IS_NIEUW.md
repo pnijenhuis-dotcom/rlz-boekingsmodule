@@ -6,6 +6,15 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Minder ruis in de reconciliatie
+
+<!-- reconciliatie-nazorg-15-09 -->
+
+- Een verschil van hoogstens 5 cent tussen de module en Reeleezee of Odoo op een geboekte factuur is een btw-afronding, geen fout. De module accepteert dat nu zelf, met een regel in het audit-log en een teller in het dagrapport. Grotere verschillen blijven een zaak die om aandacht vraagt.
+- Bij het boeken corrigeert de module zo'n centverschil meteen aan de bron: het totaal in Reeleezee is daardoor cent-exact het factuurtotaal. De regels die je in het controlescherm zag blijven ongewijzigd.
+- Referenties van één of twee tekens (zoals "01") tellen niet meer mee bij het opsporen van dubbel geboekte facturen in Reeleezee.
+- De technische systeemmail over de dagelijkse reconciliatie gaat alleen nog uit als er echt iets aan de hand is, en staat standaard uit. De actiemail voor het kantoor blijft zoals hij was.
+
 ## 2026-09-15 — Btw-code uit het factuurtotaal en in het bankscherm
 
 <!-- btw-uit-factuur-totaal-15-09 -->

@@ -411,7 +411,10 @@ class Settings(BaseSettings):
     # geaccepteerd/hersteld, run-id, exit) gaat als aparte "[systeem]"-mail naar dit adres (komma-gescheiden =
     # meerdere). Het kantoor (`bewaking_alert_ontvanger`) krijgt alleen nog de ACTIEMAIL: bevindingen mét
     # handeling in mensentaal. Leeg = geen systeemmail (kanaal 'systeem' = niet_geconfigureerd, geen storing).
-    reconciliatie_beheer_ontvangers: str = "p.nijenhuis@kempengroep.nl"
+    # Reconciliatie-nazorg 15-09 (Peter "kunnen de mails uit? ik lees dit niet"): code-default LEEG = systeemmail uit;
+    # de kantoor-actiemail (`bewaking_alert_ontvanger`) blijft. Aanzetten = env RECONCILIATIE_BEHEER_ONTVANGERS in
+    # deploy.yml (komma-gescheiden), nooit een handmatige job-update.
+    reconciliatie_beheer_ontvangers: str = ""
     # Blok 1 nametingen-run 10-09 (GCP_UITROL §F7 route A): aanmaakdatum van de key van het nameting-serviceaccount
     # (ISO-datum, env NAMETING_SA_AANGEMAAKT_OP op de job rlz-reconciliatie). Leeg = geen key (org-policy blokkeerde de
     # aanmaak op 10-09) → geen signaal. Gezet = de reconciliatie meldt 30 dagen vóór 12 maanden ná aanmaak

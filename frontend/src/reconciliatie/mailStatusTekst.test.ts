@@ -11,6 +11,8 @@ describe('mailStatusTekst (twee mailkanalen)', () => {
     expect(mailStatusTekst('actie=verzonden;systeem=niet_geconfigureerd')).toBe(
       'actiemail verzonden · systeemmail niet geconfigureerd',
     )
+    // Nazorg 15-09: lege beheer-lijst = bewust uit, leesbaar als zodanig.
+    expect(mailStatusTekst('actie=verzonden;systeem=uitgeschakeld')).toBe('actiemail verzonden · systeemmail uit (geen ontvangers)')
   })
 
   it('kale status (run van vóór 09-09) → het bestaande label', () => {

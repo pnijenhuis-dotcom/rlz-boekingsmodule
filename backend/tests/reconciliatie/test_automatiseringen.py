@@ -530,6 +530,8 @@ def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
         "verzend_mail",
         lambda *, naar, onderwerp, tekst, bijlagen=None: verzonden.append({"onderwerp": onderwerp, "tekst": tekst}),
     )
+    # Nazorg 15-09: code-default beheer-lijst LEEG; hier AAN zodat de systeemmail-tak toetsbaar blijft.
+    monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
     return verzonden
 
 

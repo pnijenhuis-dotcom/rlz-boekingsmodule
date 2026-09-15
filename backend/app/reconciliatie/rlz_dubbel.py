@@ -147,11 +147,18 @@ PLACEHOLDER_REFERENTIES: frozenset[str] = frozenset(
     }
 )
 _ALLEEN_NULLEN = re.compile(r"0+")
+#: Reconciliatie-nazorg 15-09 (casus Abbegaa B.V.: referentie "01" op RLZ-16-00000081 + RLZ-17-00000497 = cluster
+#: "controleer"): een genormaliseerde referentie korter dan 3 tekens is een volgnummer/plaatsvervanger, geen
+#: factuurnummer → telt als LEEG (zelfde placeholder-regel en -teller als "Ingescand document").
+MIN_REFERENTIE_LENGTE = 3
 
 
 def is_placeholder_referentie(referentie_norm: str | None) -> bool:
-    """Deterministisch: leeg, alleen nullen of een generieke plaatsvervanger = geen toetsbare referentie."""
+    """Deterministisch: leeg, korter dan `MIN_REFERENTIE_LENGTE` (nazorg 15-09: "01" → "1"), alleen nullen of een
+    generieke plaatsvervanger = geen toetsbare referentie."""
     if not referentie_norm:
+        return True
+    if len(referentie_norm) < MIN_REFERENTIE_LENGTE:
         return True
     return bool(_ALLEEN_NULLEN.fullmatch(referentie_norm)) or referentie_norm in PLACEHOLDER_REFERENTIES
 

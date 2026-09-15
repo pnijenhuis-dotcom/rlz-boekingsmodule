@@ -336,19 +336,25 @@ class TestHandelingen:
 
         mp = _pt.MonkeyPatch()
         mp.setattr(mail, "verzend_mail", lambda **kw: verzonden.append(kw["onderwerp"]))
+        # Nazorg 15-09: code-default beheer-lijst LEEG; hier AAN zodat de systeemmail bij een nieuwe LET-OP toetsbaar
+        # is.
+        mp.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
         try:
             _draai(
                 ("documenten", _documenten_blok(run_met_bevindingen)), ("doorbelasting", _opruim_blok(administratie_id))
             )
-            # ongewijzigd + gezien = geen ACTIEMAIL aan het kantoor; de run heeft open afwijkingen (exit 1), dus
-            # het beheer krijgt wél de systeemmail (bundel 09-09 blok 1: systeemmail bij delta óf exit ≠ 0).
-            assert [o.startswith("[systeem]") for o in verzonden] == [True]
+            # ongewijzigd + gezien = geen ACTIEMAIL aan het kantoor; en sinds de reconciliatie-nazorg 15-09 is een
+            # exit ≠ 0 door blijvende afwijkingen óók geen reden meer voor de systeemmail (alleen LET-OP/
+            # systeemfout/blok-fout) → helemaal geen mail.
+            assert verzonden == []
             # kandidaat komt met een ANDERE reden terug → telt weer als let-op én zit in de actiemail
             _draai(
                 ("documenten", _documenten_blok(run_met_bevindingen)),
                 ("doorbelasting", _opruim_blok(administratie_id, reden="gestorneerd+vervallen_run")),
             )
-            assert len(verzonden) == 3 and verzonden[1].startswith("Boekhouding: ") and verzonden[2].startswith("[systeem]")
+            # nieuwe LET-OP = actiemail aan het kantoor én (nazorg 15-09) de systeemmail aan het beheer
+            assert len(verzonden) == 2 and verzonden[0].startswith("Boekhouding: ")
+            assert verzonden[1].startswith("[systeem]")
         finally:
             mp.undo()
         assert client.get("/reconciliatie/stand", headers=hb).json()["let_op"] == 1

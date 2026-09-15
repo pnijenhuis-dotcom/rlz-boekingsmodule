@@ -6,7 +6,7 @@ import { apiJson } from '../api/client'
 
 export type RunStatus = 'wachtend' | 'bezig' | 'klaar' | 'fout'
 export type RunBron = 'scheduler' | 'cli' | 'handmatig'
-export type MailStatus = 'niet_nodig' | 'verzonden' | 'mislukt' | 'niet_geconfigureerd'
+export type MailStatus = 'niet_nodig' | 'verzonden' | 'mislukt' | 'niet_geconfigureerd' | 'uitgeschakeld'
 /** Sinds 09-09 (bundel blok 1) draagt de run twee mailkanalen in één samengestelde waarde
  * "actie=<s>;systeem=<s>" (actie = kantoor-actiemail, systeem = beheer-systeemmail); oudere runs één kale status. */
 export type MailStatusWaarde = MailStatus | string
@@ -331,6 +331,8 @@ export const MAIL_LABEL: Record<MailStatus, string> = {
   verzonden: 'verzonden',
   mislukt: 'mislukt',
   niet_geconfigureerd: 'niet geconfigureerd',
+  // Nazorg 15-09: systeemmail bewust uit (lege ontvangerslijst) — geen storing.
+  uitgeschakeld: 'uit (geen ontvangers)',
 }
 
 const KANAAL_LABEL: Record<string, string> = { actie: 'actiemail', systeem: 'systeemmail' }

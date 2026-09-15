@@ -4,8 +4,10 @@
 Guard op de TEKSTKWALITEIT van de actiemail (patroon van de WAT_IS_NIEUW-guard, changelog.test.ts): voor een
 representatieve fixture-set — élke bevinding-soort uit teksten.py, alle blokken, > 10 bevindingen — mag de mail
 geen GUID, vingerafdruk, run-id, blok-sleutel, teller-woord of jargon dragen; élke regel ≤ 140 tekens; er staan
-Nederlandse werkwoorden in. Plus de kanaal-logica: geen bevindingen = geen actiemail; systeemmail volgt de
-drempel (delta óf exit ≠ 0); twee kanalen onafhankelijk bij een mailfout; een regressie-LET-OP → audit
+Nederlandse werkwoorden in. Plus de kanaal-logica: geen bevindingen = geen actiemail; systeemmail ALLEEN bij een
+LET-OP, systeemfout (regressie) of blok-fout (reconciliatie-nazorg 15-09, besluit Peter 14-09 — een blijvende of nieuwe
+afwijking en een exit ≠ 0 zijn géén reden meer); lege beheer-lijst = `uitgeschakeld` (code-default sinds 15-09, geen
+storing, teller in de samenvatting); twee kanalen onafhankelijk bij een mailfout; een regressie-LET-OP → audit
 `automatisering_regressie`, niet in de actiemail, tekst "systeemfout — automatisch gemeld"; bewakingsprobe."""
 
 from __future__ import annotations
@@ -276,6 +278,8 @@ def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
         verzonden.append({"naar": naar, "onderwerp": onderwerp, "tekst": tekst})
 
     monkeypatch.setattr(mail, "verzend_mail", nep)
+    # Nazorg 15-09: code-default beheer-lijst LEEG; hier expliciet AAN zodat de kanaal-logica toetsbaar blijft.
+    monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
     return verzonden
 
 
@@ -308,6 +312,17 @@ def _afwijking_kw(aid: uuid.UUID, vaf: str) -> dict:
     }
 
 
+def _let_op_kw(aid: uuid.UUID, vaf: str) -> dict:
+    """Gewone LET-OP (opruim-kandidaat, geen beheer-signaal): kantoorwerk én reden voor de systeemmail."""
+    return {
+        "soort": "let_op",
+        "administratie_id": aid,
+        "vingerafdruk": vaf,
+        "tekst": f"LET-OP     opruim-kandidaat [vaf:{vaf}]",
+        "detail": {"bron": "doorbelasting", "reden": "gestorneerd"},
+    }
+
+
 def _regressie_kw(aid: uuid.UUID) -> dict:
     b = _auto_let_op(auto.GEEN_EIGENAAR, aid, auto.DUPLICAAT_AFVOER, aantal=6)
     return {"soort": "let_op", "administratie_id": aid, "vingerafdruk": b.vingerafdruk, "tekst": b.tekst,
@@ -315,16 +330,16 @@ def _regressie_kw(aid: uuid.UUID) -> dict:
 
 
 class TestTweeKanalen:
-    def test_systeemmail_gaat_bij_exit_1_ook_zonder_delta(self, administratie_id, mails) -> None:
-        """Drempel systeemmail = delta óf exit ≠ 0. Twee identieke runs met een blijvende afwijking: run 2 heeft een
-        lege delta maar exit 1 → wél een systeemmail, géén actiemail (niets nieuws voor het kantoor)."""
+    def test_blijvende_of_nieuwe_afwijking_geeft_geen_systeemmail_meer(self, administratie_id, mails) -> None:
+        """Nazorg 15-09: een afwijking is kantoorwerk. Run 1 (nieuw) → alleen de actiemail; run 2 (blijvend, exit 1,
+        lege delta) → helemaal geen mail. Vóór 15-09 mailde het beheer hier dagelijks een systeemmail (exit ≠ 0)."""
         blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "blijft")], exit_code=1))]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
-        assert [m["onderwerp"].startswith("[systeem]") for m in mails] == [False, True]
+        assert [m["onderwerp"].startswith("[systeem]") for m in mails] == [False]
+        assert _laatste_run().mail_status == "actie=verzonden;systeem=niet_nodig"
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
-        assert len(mails) == 3 and mails[2]["onderwerp"].startswith("[systeem]")
-        assert mails[2]["naar"] == run_service.settings.reconciliatie_beheer_ontvangers
-        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=verzonden"
+        assert len(mails) == 1
+        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=niet_nodig"
 
     def test_geen_delta_en_exit_0_geen_enkele_mail(self, administratie_id, mails) -> None:
         blokken = [("documenten", _blok([]))]
@@ -333,19 +348,73 @@ class TestTweeKanalen:
         assert mails == []
         assert _laatste_run().mail_status == "actie=niet_nodig;systeem=niet_nodig"
 
-    def test_beheer_ontvangers_leeg_is_niet_geconfigureerd_geen_storing(self, administratie_id, mails, monkeypatch) -> None:
+    @pytest.mark.parametrize(
+        ("kw", "verwacht_actie"),
+        [
+            (_let_op_kw, True),  # gewone LET-OP: kantoor + beheer
+            (_regressie_kw, False),  # regressie = systeemfout: alleen beheer
+        ],
+    )
+    def test_let_op_en_systeemfout_geven_wel_een_systeemmail(self, administratie_id, mails, kw, verwacht_actie) -> None:
+        bev = kw(administratie_id, "l1") if kw is _let_op_kw else kw(administratie_id)
+        run_service.voer_uit(blokken=[("doorbelasting", _blok([bev]))], args=ARGS, bron="cli", stdout=lambda t: None)
+        systeem = [m for m in mails if m["onderwerp"].startswith("[systeem]")]
+        assert len(systeem) == 1 and systeem[0]["naar"] == "beheer@test.local"
+        assert (len(mails) - len(systeem) == 1) is verwacht_actie
+        assert _laatste_run().mail_status.endswith("systeem=verzonden")
+
+    def test_blok_fout_geeft_systeemmail_zonder_actiemail(self, administratie_id, mails) -> None:
+        def crash(args, verzamelaar=None) -> int:  # noqa: ANN001
+            raise RuntimeError("RLZ onbereikbaar (test)")
+
+        run_service.voer_uit(
+            blokken=[("bank", crash)], args=ARGS, bron="cli", stdout=lambda t: None, stderr=lambda t: None
+        )
+        assert len(mails) == 1 and mails[0]["onderwerp"].startswith("[systeem]")
+        assert "Omgevallen blok(ken): bank" in mails[0]["tekst"]
+        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=verzonden"
+
+    def test_code_default_beheer_lijst_is_leeg(self) -> None:
+        """Nazorg 15-09 (Peter "kunnen de mails uit?"): de systeemmail staat standaard UIT — aanzetten is een
+        omgevingsvariabele (RECONCILIATIE_BEHEER_ONTVANGERS in deploy.yml), geen code."""
+        from app.config import Settings
+
+        assert Settings.model_fields["reconciliatie_beheer_ontvangers"].default == ""
+
+    def test_beheer_ontvangers_leeg_is_uitgeschakeld_geen_storing_met_teller(
+        self, administratie_id, mails, monkeypatch
+    ) -> None:
+        """Lege beheer-lijst + een LET-OP (systeemmail zou nodig zijn): niet verstuurd, status `uitgeschakeld`, één
+        leesbare detailregel, teller `mail.systeem_uitgeschakeld` in de samenvatting, bewaking OK. De actiemail gaat."""
         monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "")
-        blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "n1")], exit_code=1))]
+        blokken = [("doorbelasting", _blok([_let_op_kw(administratie_id, "u1")]))]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
         assert len(mails) == 1 and mails[0]["onderwerp"].startswith("Boekhouding: ")
         rij = _laatste_run()
-        assert rij.mail_status == "actie=verzonden;systeem=niet_geconfigureerd"
-        assert "systeem: geen RECONCILIATIE_BEHEER_ONTVANGERS" in (rij.mail_detail or "")
+        assert rij.mail_status == "actie=verzonden;systeem=uitgeschakeld"
+        assert "systeem: RECONCILIATIE_BEHEER_ONTVANGERS leeg — systeemmail uit" in (rij.mail_detail or "")
+        assert rij.samenvatting["mail"] == {
+            "actie": "verzonden", "systeem": "uitgeschakeld", "systeem_uitgeschakeld": 1
+        }
         assert bewaking._probe_reconciliatie_mail().status == "ok"
+        with scoped_session(None) as session:
+            audit = session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.actie == "reconciliatie_mail_mislukt", AuditEvent.record_id == rij.id
+                )
+            ).all()
+        assert audit == []
+
+    def test_actie_kanaal_leeg_blijft_niet_geconfigureerd(self, administratie_id, mails, monkeypatch) -> None:
+        """Het kantoorkanaal is nooit 'bewust uit': leeg = niet geconfigureerd (zichtbaar), niet 'uitgeschakeld'."""
+        monkeypatch.setattr(run_service.settings, "bewaking_alert_ontvanger", "")
+        blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "a1")], exit_code=1))]
+        run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
+        assert mails == [] and _laatste_run().mail_status == "actie=niet_geconfigureerd;systeem=niet_nodig"
 
     def test_meerdere_beheer_ontvangers_komma_gescheiden(self, administratie_id, mails, monkeypatch) -> None:
         monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "a@x.nl, b@x.nl")
-        blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "n2")], exit_code=1))]
+        blokken = [("doorbelasting", _blok([_let_op_kw(administratie_id, "n2")]))]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
         assert mails[1]["naar"] == "a@x.nl, b@x.nl"
 
@@ -360,12 +429,16 @@ class TestTweeKanalen:
             verzonden.append(onderwerp)
 
         monkeypatch.setattr(mail, "verzend_mail", half_kapot)
-        blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "n3")], exit_code=1))]
+        monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
+        blokken = [
+            ("documenten", _blok([_afwijking_kw(administratie_id, "n3")], exit_code=1)),
+            ("doorbelasting", _blok([_let_op_kw(administratie_id, "n3l")])),
+        ]
         assert run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None) == 1
         rij = _laatste_run()
         assert rij.status == "klaar" and rij.mail_status == "actie=verzonden;systeem=mislukt"
         assert rij.mail_verzonden_op is not None and "systeem: " in rij.mail_detail and "535" in rij.mail_detail
-        assert verzonden == ["Boekhouding: 1 zaak vraagt je aandacht"]
+        assert verzonden == ["Boekhouding: 2 zaken vragen je aandacht"]
         with scoped_session(None) as session:
             audit = session.scalars(
                 select(AuditEvent).where(AuditEvent.actie == "reconciliatie_mail_mislukt", AuditEvent.record_id == rij.id)
@@ -376,7 +449,10 @@ class TestTweeKanalen:
         assert uitkomst.status == "fout" and "systeem" in uitkomst.detail and str(rij.id) in uitkomst.detail
 
     def test_actiemail_aan_kantoor_systeemmail_aan_beheer(self, administratie_id, mails) -> None:
-        blokken = [("documenten", _blok([_afwijking_kw(administratie_id, "n4")], exit_code=1))]
+        blokken = [
+            ("documenten", _blok([_afwijking_kw(administratie_id, "n4")], exit_code=1)),
+            ("doorbelasting", _blok([_let_op_kw(administratie_id, "n4l")])),
+        ]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
         actie, systeem = mails
         assert actie["naar"] == run_service.settings.bewaking_alert_ontvanger

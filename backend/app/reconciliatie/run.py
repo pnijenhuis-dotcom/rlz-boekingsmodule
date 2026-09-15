@@ -18,8 +18,9 @@ Wat hier gebeurt — en wat bewust níét:
   * ACTIEMAIL aan het kantoor (`settings.bewaking_alert_ontvanger`): alleen als de delta bevindingen
     mét handeling voor het kantoor draagt — één kopregel, per bevinding één regel in mensentaal
     (`bouw_actiemail`), één link naar /reconciliatie. Geen tellers, geen blok-namen, geen run-id.
-  * SYSTEEMMAIL aan het beheer (`settings.reconciliatie_beheer_ontvangers`): de volledige technische
-    samenvatting (`bouw_mail`, onderwerp "[systeem] …") bij dezelfde delta-drempel én altijd bij exit ≠ 0.
+  * SYSTEEMMAIL aan het beheer (`settings.reconciliatie_beheer_ontvangers`; sinds nazorg 15-09 alleen bij LET-OP,
+    systeemfout of blok-fout — `systeemmail_nodig` — en code-default LEEG = uit, status `uitgeschakeld`): de volledige
+    technische samenvatting (`bouw_mail`, onderwerp "[systeem] …") bij dezelfde delta-drempel én altijd bij exit ≠ 0.
   Een mailfout op één kanaal maakt de job NIET rood en houdt het andere kanaal niet tegen (audit
   `reconciliatie_mail_mislukt` mét kanaal; de bewaking pikt élk kanaal op 'mislukt' op als storing
   'reconciliatie_mail'). Exit 1 blijft exit 1 — de F3.2-policy blijft het vangnet voor "job draait
@@ -121,6 +122,9 @@ class BlokStand:
     let_op: int = 0
     fouten: int = 0
     foutmelding: str | None = None
+    #: Reconciliatie-nazorg 15-09: door het SYSTEEM geaccepteerde afwijkingen in déze run (btw-cent-afronding ≤ € 0,05,
+    #: `app/cli.py::_auto_accepteer_afrondingen`) — dagteller in het systeemrapport; telt óók mee in `geaccepteerd`.
+    auto_geaccepteerd: int = 0
 
 
 class Verzamelaar:
@@ -172,6 +176,11 @@ class Verzamelaar:
             stand.let_op += 1
         elif soort == BevindingSoort.FOUT:
             stand.fouten += 1
+
+    def auto_geaccepteerd(self, aantal: int) -> None:
+        """Dagteller (nazorg 15-09): N afwijkingen in dit blok door het systeem geaccepteerd (afronding ≤ 0,05)."""
+        if self._huidig is not None and aantal:
+            self.blokken[self._huidig].auto_geaccepteerd += int(aantal)
 
     def sluit_blok(self, naam: str, exit_code: int) -> None:
         stand = self.blokken.setdefault(naam, BlokStand())
@@ -292,7 +301,12 @@ def bepaal_delta(
 
 #: Kanaal 'actie' = het kantoor (bewaking_alert_ontvanger), 'systeem' = het beheer (reconciliatie_beheer_ontvangers).
 KANALEN = ("actie", "systeem")
-MAIL_STATUSSEN = ("niet_nodig", "verzonden", "mislukt", "niet_geconfigureerd")
+#: `uitgeschakeld` (nazorg 15-09, Peter "kunnen de mails uit?"): het kanaal was nodig maar de ontvangerslijst is leeg —
+#: bewust, geen storing (één logregel + teller `samenvatting["mail"]`). Alleen op het systeemkanaal; een leeg
+#: kantoorkanaal blijft `niet_geconfigureerd` (de actiemail hoort altijd ergens aan te komen).
+MAIL_STATUSSEN = ("niet_nodig", "verzonden", "mislukt", "niet_geconfigureerd", "uitgeschakeld")
+#: Sleutel in `reconciliatie_run.samenvatting` voor de mail-tellers per run (geen migratie, 0114-JSONB).
+MAIL_SLEUTEL = "mail"
 #: Eén actiemail-regel blijft leesbaar op een telefoon: harde bovengrens, daarna afkappen met "…".
 MAX_ACTIE_REGEL = 140
 #: Meer bevindingen dan dit = "en N andere" mét dezelfde link (de lijst staat op /reconciliatie).
@@ -433,6 +447,17 @@ def automatiseringen_mailregels(samenvatting_automatiseringen: dict) -> list[str
     return [f"Automatiseringen: alles gelopen ({len(aan)} aan)"]
 
 
+def systeemmail_nodig(delta: Delta, verzamelaar_bevindingen: Sequence[Bevinding]) -> bool:
+    """Reconciliatie-nazorg 15-09 (besluit Peter 14-09 "ik kijk niet naar die mails; systeem bepaalt of actie nodig
+    is"): de systeemmail gaat ALLEEN nog bij (1) een omgevallen blok, (2) een nieuwe fout-bevinding (administratie niet
+    gecontroleerd), (3) een nieuwe LET-OP of (4) een regressie-signaal (systeemfout) in deze run. Nieuwe of blijvende
+    afwijkingen zijn kantoorwerk (actiemail) en een exit ≠ 0 op zichzelf is geen reden meer — een schone run mailt
+    niets; het volledige rapport blijft op /reconciliatie en in verkenning/ (nameting-workflow)."""
+    if delta.blokken_fout or delta.nieuwe_fouten or delta.nieuwe_let_op:
+        return True
+    return any(is_regressie(b) for b in verzamelaar_bevindingen)
+
+
 def bouw_mail(
     *,
     run_id: uuid.UUID,
@@ -489,6 +514,11 @@ def bouw_mail(
             f"  {status} {blok:<14} {stand.get('gecontroleerd', 0)} gecontroleerd, "
             f"{stand.get('afwijkingen', 0)} afwijking(en), {stand.get('geaccepteerd', 0)} geaccepteerd, "
             f"{stand.get('let_op', 0)} let-op, {stand.get('fouten', 0)} fout(en)"
+            + (
+                f", {stand['auto_geaccepteerd']} automatisch geaccepteerd (afronding ≤ 0,05)"
+                if stand.get("auto_geaccepteerd")
+                else ""
+            )
             + (f" — {stand['foutmelding']}" if stand.get("foutmelding") else "")
         )
     # Herstelrun 07-09 blok C: het vangnet op "geen stille no-op". Blok 5 (08-09, feedback Peter "wat moet ik
@@ -822,6 +852,12 @@ def _verzend_mail(*, onderwerp: str, tekst: str, kanaal: str = "actie") -> tuple
 
     ontvanger, instelling = _ontvangers(kanaal)
     if not ontvanger:
+        if kanaal == "systeem":
+            # Nazorg 15-09: lege beheer-lijst = bewust uit (code-default sinds 15-09). Geen fout, één logregel.
+            logger.info(
+                "Reconciliatie-systeemmail niet verstuurd: %s is leeg (uitgeschakeld) — onderwerp %r", instelling, onderwerp
+            )
+            return "uitgeschakeld", f"{instelling} leeg — systeemmail uit"
         return "niet_geconfigureerd", f"geen {instelling}"
     try:
         mail.verzend_mail(naar=ontvanger, onderwerp=onderwerp, tekst=tekst)
@@ -932,8 +968,8 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
     if actiemail is not None:
         statussen["actie"], details["actie"] = _verzend_mail(onderwerp=actiemail[0], tekst=actiemail[1], kanaal="actie")
 
-    # SYSTEEMMAIL (beheer): de volledige samenvatting bij dezelfde delta-drempel, én altijd bij exit ≠ 0.
-    if not delta.is_leeg or exit_code != 0:
+    # SYSTEEMMAIL (beheer): sinds nazorg 15-09 alleen bij LET-OP, systeemfout of blok-fout (`systeemmail_nodig`).
+    if systeemmail_nodig(delta, verzamelaar.bevindingen):
         onderwerp, tekst = bouw_mail(
             run_id=run_id,
             bron=bron,
@@ -951,6 +987,15 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
         assert rij is not None
         rij.mail_status = mail_status_samenstellen(statussen)
         rij.mail_detail = "; ".join(f"{k}: {details[k]}" for k in KANALEN if details[k]) or None
+        # Mail-tellers per run (nazorg 15-09): per kanaal de status + expliciet `systeem_uitgeschakeld` (0/1) zodat de
+        # dagelijkse "niet verstuurd, bewust" telbaar is in het systeemrapport en op /reconciliatie.
+        rij.samenvatting = {
+            **(rij.samenvatting or {}),
+            MAIL_SLEUTEL: {
+                **{k: statussen[k] for k in KANALEN},
+                "systeem_uitgeschakeld": int(statussen["systeem"] == "uitgeschakeld"),
+            },
+        }
         if "verzonden" in statussen.values():
             rij.mail_verzonden_op = datetime.now(UTC)
         for kanaal in KANALEN:

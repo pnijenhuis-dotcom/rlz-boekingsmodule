@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
+from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.reconciliatie.models import ReconciliatieAcceptatie, ReconciliatieBron
 
 # 16 hex = 64 bits. Lang genoeg dat een toevallige botsing tussen twee afwijkingen binnen één
@@ -178,6 +179,75 @@ def accepteer(
             administratie_id=administratie_id,
         )
         return acceptatie.id
+
+
+def auto_accepteer(
+    *,
+    administratie_id: uuid.UUID,
+    bron: ReconciliatieBron | str,
+    record_id: uuid.UUID,
+    soort: str,
+    detail: str,
+    reden: str,
+    extra: dict | None = None,
+) -> tuple[uuid.UUID, bool]:
+    """Reconciliatie-nazorg 15-09: het SYSTEEM accepteert een afwijking die volgens een deterministische regel geen
+    handeling vraagt (nu: `bedrag_wijkt_af` ≤ € 0,05 = btw-cent-afronding, `app/documenten/reconciliatie.py::
+    afrondingsverschil`). Zelfde smalle vingerafdruk als een mens-acceptatie (verandert het bedrag, dan is het opnieuw
+    een signaal), zelfde tabel, eigen audit-actie `reconciliatie_auto_geaccepteerd` met de regel als reden en de
+    systeem-actor als acceptant — in Inzicht › Reconciliatie leesbaar als "automatisch (afronding ≤ 0,05)". Idempotent:
+    → (acceptatie-id, nieuw). Een Beheerder kan 'm gewoon intrekken; dan blijft 'm de run daarna een open afwijking
+    (er wordt nooit opnieuw automatisch geaccepteerd zolang er een ingetrokken acceptatie op deze vingerafdruk
+    staat)."""
+    bron_waarde = str(bron)
+    if bron_waarde not in {b.value for b in ReconciliatieBron}:
+        raise AcceptatieFout(f"Onbekende bron: {bron_waarde}")
+    vaf = vingerafdruk(bron=bron_waarde, soort=soort, detail=detail)
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        bestaand = session.scalars(
+            select(ReconciliatieAcceptatie)
+            .where(
+                ReconciliatieAcceptatie.administratie_id == administratie_id,
+                ReconciliatieAcceptatie.bron == bron_waarde,
+                ReconciliatieAcceptatie.vingerafdruk == vaf,
+            )
+            .order_by(ReconciliatieAcceptatie.geaccepteerd_op.desc())
+        ).first()
+        if bestaand is not None:
+            # Actief → hergebruik; ingetrokken door een mens → die wint, nooit stil opnieuw accepteren.
+            return bestaand.id, False
+        acceptatie = ReconciliatieAcceptatie(
+            id=uuid.uuid4(),
+            administratie_id=administratie_id,
+            bron=bron_waarde,
+            record_id=record_id,
+            soort=soort,
+            vingerafdruk=vaf,
+            detail=detail,
+            reden=f"automatisch ({reden})",
+            geaccepteerd_door=SYSTEEM_ACTOR_ID,
+        )
+        session.add(acceptatie)
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="reconciliatie_acceptatie",
+            record_id=acceptatie.id,
+            actie="reconciliatie_auto_geaccepteerd",
+            correlatie_id=uuid.uuid4(),
+            nieuwe_waarde={
+                "bron": bron_waarde,
+                "record_id": str(record_id),
+                "soort": soort,
+                "vingerafdruk": vaf,
+                "detail": detail,
+                "reden": reden,
+                **(extra or {}),
+            },
+            administratie_id=administratie_id,
+        )
+        return acceptatie.id, True
 
 
 def trek_in(

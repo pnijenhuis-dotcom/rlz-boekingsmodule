@@ -9,10 +9,12 @@ from decimal import Decimal
 import pytest
 
 from app.documenten.regelsom import (
+    CENT_TOLERANTIE,
     REDEN_BTW_PER_REGEL_ONTBREEKT,
     REDEN_GEEN_REGELS,
     REDEN_GEEN_TOTAAL,
     REDEN_NETTO_ONTBREEKT,
+    corrigeer_btw_centen,
     toets_regelsom,
 )
 
@@ -88,3 +90,51 @@ class TestBeslisboom:
     def test_ongepaarde_lijsten_zijn_een_programmeerfout(self) -> None:
         with pytest.raises(ValueError):
             toets_regelsom(netto=[Decimal(1)], btw=[], totaal_incl=None, totaal_excl=None, factuur_btw=None)
+
+
+class TestCorrigeerBtwCenten:
+    """Cent-fix aan de bron (reconciliatie-nazorg 15-09, punt 2): het verschil tussen Σ(netto + btw) en het factuur-
+    totaal (1–5 ct) gaat in de LAATSTE btw-dragende regel; alles wat geen afronding is blijft ongemoeid."""
+
+    def _c(self, regels, incl):  # noqa: ANN001
+        return corrigeer_btw_centen(
+            netto=[_d(n) for n, _ in regels], btw=[_d(b) for _, b in regels], totaal_incl=_d(incl)
+        )
+
+    def test_lusso_patroon_twee_regels_een_cent_te_veel(self) -> None:
+        # 2 × 15,55 @ 21 %: per regel 3,27 (3,2655), factuur per totaal 31,10 × 21 % = 6,53 → incl 37,63; Σ regels 37,64
+        c = self._c([("15.55", "3.27"), ("15.55", "3.27")], "37.63")
+        assert c.gecorrigeerd and c.regel == 1 and c.verschil == Decimal("-0.01")
+        assert c.btw == (Decimal("3.27"), Decimal("3.26"))
+
+    def test_drie_cent_te_weinig_op_de_laatste_btw_dragende_regel(self) -> None:
+        # Verlegd-regel achteraan (btw 0) draagt nooit het verschil.
+        c = self._c([("100.00", "21.00"), ("50.00", "10.50"), ("30.00", "0")], "211.53")
+        assert c.regel == 1 and c.verschil == Decimal("0.03")
+        assert c.btw == (Decimal("21.00"), Decimal("10.53"), Decimal("0"))
+
+    def test_grens_vijf_cent_inclusief_zes_niet(self) -> None:
+        assert self._c([("100.00", "21.00")], "121.05").gecorrigeerd
+        c = self._c([("100.00", "21.00")], "121.06")
+        assert not c.gecorrigeerd and c.verschil == Decimal("0.06") and c.btw == (Decimal("21.00"),)
+        assert Decimal("0.05") == CENT_TOLERANTIE
+
+    def test_sluitend_geen_totaal_of_onbekende_bedragen_blijft_ongemoeid(self) -> None:
+        assert not self._c([("100.00", "21.00")], "121.00").gecorrigeerd
+        assert not self._c([("100.00", "21.00")], None).gecorrigeerd
+        assert not self._c([(None, "21.00")], "121.03").gecorrigeerd
+        # een regel zonder btw (None = verlegd) telt als 0, blijft None en is nooit de drager
+        c = self._c([("100.00", None), ("10.00", "2.10")], "112.13")
+        assert c.gecorrigeerd and c.regel == 1 and c.btw == (None, Decimal("2.13"))
+
+    def test_verlegd_factuur_zonder_btw_dragende_regel_niets_te_verschuiven(self) -> None:
+        c = self._c([("100.00", "0"), ("23.23", "0")], "123.25")
+        assert not c.gecorrigeerd and c.verschil == Decimal("0.02")
+
+    def test_negatieve_creditnota_werkt_in_beide_richtingen(self) -> None:
+        c = self._c([("-15.55", "-3.27"), ("-15.55", "-3.27")], "-37.63")
+        assert c.regel == 1 and c.btw == (Decimal("-3.27"), Decimal("-3.26"))
+
+    def test_gepaard(self) -> None:
+        with pytest.raises(ValueError):
+            corrigeer_btw_centen(netto=[Decimal("1")], btw=[], totaal_incl=Decimal("1"))

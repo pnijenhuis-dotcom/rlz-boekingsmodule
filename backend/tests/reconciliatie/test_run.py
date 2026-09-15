@@ -361,6 +361,9 @@ def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
         verzonden.append({"naar": naar, "onderwerp": onderwerp, "tekst": tekst})
 
     monkeypatch.setattr(mail, "verzend_mail", nep)
+    # Nazorg 15-09: de code-default van de beheer-lijst is LEEG (systeemmail uit); deze tests toetsen de kanaal-logica
+    # mét een beheer-ontvanger — de lege default heeft eigen tests (test_actiemail_guard.TestTweeKanalen).
+    monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
     return verzonden
 
 
@@ -414,22 +417,22 @@ class TestVoerUit:
             "let_op": 0,
             "fouten": 0,
             "foutmelding": None,
+            "auto_geaccepteerd": 0,
         }
-        # Bundel 09-09 blok 1: twee kanalen — actiemail (kantoor) + systeemmail (beheer), beide verzonden.
-        assert rij.mail_status == "actie=verzonden;systeem=verzonden" and rij.mail_verzonden_op is not None
-        assert len(mails) == 2
-        actie, systeem = mails
+        # Bundel 09-09 blok 1: twee kanalen. Nazorg 15-09: een nieuwe afwijking is kantoorwerk → alleen de actiemail;
+        # de systeemmail gaat alleen nog bij LET-OP, systeemfout of blok-fout.
+        assert rij.mail_status == "actie=verzonden;systeem=niet_nodig" and rij.mail_verzonden_op is not None
+        assert len(mails) == 1
+        (actie,) = mails
         assert actie["onderwerp"] == "Boekhouding: 1 zaak vraagt je aandacht" and "AFWIJKING" not in actie["tekst"]
         assert actie["naar"] == run_service.settings.bewaking_alert_ontvanger
-        assert systeem["naar"] == run_service.settings.reconciliatie_beheer_ontvangers
-        assert "[systeem] " in systeem["onderwerp"] and "1 afwijking(en) · 1 nieuwe aandachtspunt(en)" in systeem["onderwerp"]
-        assert "AFWIJKING  regel A" in systeem["tekst"]
+        assert rij.samenvatting["mail"] == {"actie": "verzonden", "systeem": "niet_nodig", "systeem_uitgeschakeld": 0}
         bevindingen = run_service.lees_bevindingen(rij.id, administratie_ids=[administratie_id])
         assert [(b.soort, b.vingerafdruk) for b in bevindingen] == [("afwijking", "vafA")]
         # CLI-uitvoer: bestaande regels + de nieuwe RUN-slotregel
         assert "\n=== documenten-reconciliatie ===" in uit and "ACTIE     documenten-reconciliatie (exit 1)" in uit
         assert any(
-            t.startswith(f"RUN        {rij.id} vastgelegd (1 bevinding(en); mail: actie=verzonden;systeem=verzonden")
+            t.startswith(f"RUN        {rij.id} vastgelegd (1 bevinding(en); mail: actie=verzonden;systeem=niet_nodig")
             for t in uit
         )
 
@@ -446,11 +449,21 @@ class TestVoerUit:
         zonder = [("documenten", _blok([]))]
         run_service.voer_uit(blokken=met, args=ARGS, bron="cli", stdout=lambda t: None)
         assert run_service.voer_uit(blokken=zonder, args=ARGS, bron="cli", stdout=lambda t: None) == 0
-        # run 1: actie + systeem; run 2: alleen de systeemmail (hersteld = geen handeling voor het kantoor)
-        assert len(mails) == 3
-        assert "[systeem] " in mails[2]["onderwerp"] and "0 afwijking(en) · 0 nieuwe aandachtspunt(en)" in mails[2]["onderwerp"]
-        assert "Hersteld — 1 afwijking(en)" in mails[2]["tekst"] and "AFWIJKING  tijdelijk" in mails[2]["tekst"]
-        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=verzonden"
+        # run 1: alleen de actiemail; run 2 (hersteld): géén mail meer (nazorg 15-09 — een herstel is geen LET-OP,
+        # systeemfout of blok-fout). De herstelmelding blijft in de mailtekst-bouwer voor de gevallen waarin er wél
+        # gemaild wordt en op /reconciliatie.
+        assert len(mails) == 1 and mails[0]["onderwerp"].startswith("Boekhouding: ")
+        assert _laatste_run().mail_status == "actie=niet_nodig;systeem=niet_nodig"
+        vorige = run_service.laatste_afgeronde_run(behalve=_laatste_run().id)
+        assert vorige is not None
+        delta = run_service.bepaal_delta(
+            huidig=[],
+            vorig=run_service.lees_bevindingen(vorige.run_id, administratie_ids=[administratie_id]),
+            gezien=set(),
+            samenvatting={"documenten": {"status": "ok"}},
+        )
+        assert [b.vingerafdruk for b in delta.verdwenen_afwijkingen] == ["weg"]
+        assert run_service.systeemmail_nodig(delta, []) is False
 
     def test_blokcrash_wordt_vastgelegd_en_stopt_de_rest_niet(self, administratie_id, mails) -> None:
         uit: list[str] = []
@@ -480,6 +493,7 @@ class TestVoerUit:
             raise mail.MailVerzendFout("SMTP 535 auth failed (test)")
 
         monkeypatch.setattr(mail, "verzend_mail", kapot)
+        monkeypatch.setattr(run_service.settings, "reconciliatie_beheer_ontvangers", "beheer@test.local")
         blokken = [("documenten", _blok([("let_op", administratie_id, "c", "LET-OP     x")]))]
         code = run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
         assert code == 0
@@ -505,7 +519,8 @@ class TestVoerUit:
         monkeypatch.setattr(mail, "verzend_mail", niet_geconfigureerd)
         blokken = [("documenten", _blok([("afwijking", administratie_id, "z", "AFWIJKING  z")], exit_code=1))]
         run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None)
-        assert _laatste_run().mail_status == "actie=niet_geconfigureerd;systeem=niet_geconfigureerd"
+        # alleen het actiekanaal was nodig (afwijking = kantoorwerk); het is niet geconfigureerd → geen storing
+        assert _laatste_run().mail_status == "actie=niet_geconfigureerd;systeem=niet_nodig"
         from app.bewaking.service import _probe_reconciliatie_mail
 
         assert _probe_reconciliatie_mail().status == "ok"

@@ -20,6 +20,7 @@ from app.backends.port import (
     ToetsUitkomst,
 )
 from app.documenten.boekvoorstel import BoekvoorstelData
+from app.documenten.regelsom import corrigeer_btw_centen
 from app.documenten.rlz_ids import (
     rlz_herboeking_id,
     rlz_herboeking_upload_id,
@@ -61,10 +62,26 @@ def koptekst_velden(tekst: str | None) -> dict[str, str]:
     return {"Header": kop, "Description": kop}
 
 
+def btw_per_regel_sluitend(voorstel: BoekvoorstelData) -> tuple[Decimal | None, ...]:
+    """Cent-fix aan de bron (reconciliatie-nazorg 15-09): de btw per regel zoals die naar RLZ gaat — gelijk aan de
+    module-regels, behalve dat een verschil van 1–5 cent tussen Σ(netto + btw) en het factuurtotaal in de laatste
+    btw-dragende regel wordt gecorrigeerd (`app/documenten/regelsom.py::corrigeer_btw_centen`). Zo is het RLZ-
+    documenttotaal cent-exact het factuurtotaal en meldt de reconciliatie geen `bedrag_wijkt_af` meer op afronding.
+    Dezelfde reeks voedt de tegenboeking (gespiegeld), zodat storno en boeking elkaar cent-exact opheffen."""
+    regels = voorstel.regels
+    correctie = corrigeer_btw_centen(
+        netto=[r.netto_bedrag for r in regels],
+        btw=[r.btw_bedrag for r in regels],
+        totaal_incl=voorstel.totaalbedrag,
+    )
+    return correctie.btw
+
+
 def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
     gewichten = _projectgewichten(voorstel)
     lines: list[dict] = []
-    for regel in voorstel.regels:
+    btw_sluitend = btw_per_regel_sluitend(voorstel)
+    for regel, btw_bedrag in zip(voorstel.regels, btw_sluitend, strict=True):
         # btw_bedrag mag None zijn (verlegd/vrijgesteld); netto_bedrag is door de harde checks afgedwongen.
         basis: dict = {
             "Account": {"id": str(regel.ledger_id)},
@@ -74,12 +91,12 @@ def regels_naar_rlz_lines(voorstel: BoekvoorstelData) -> list[dict]:
             basis["Description"] = regel.omschrijving
         if regel.project_id is None and gewichten:
             # Regel zonder eigen project → N regels mét Project, netto én btw per deel via grootste-rest (sluitend).
-            for deel in splits_regel(regel.netto_bedrag, regel.btw_bedrag, gewichten):
+            for deel in splits_regel(regel.netto_bedrag, btw_bedrag, gewichten):
                 lines.append(
                     {**basis, "NetAmount": float(deel.netto), "TaxAmount": float(deel.btw), "Project": {"id": str(deel.project_id)}}
                 )
             continue
-        line: dict = {**basis, "NetAmount": float(regel.netto_bedrag), "TaxAmount": float(regel.btw_bedrag or 0)}
+        line: dict = {**basis, "NetAmount": float(regel.netto_bedrag), "TaxAmount": float(btw_bedrag or 0)}
         if regel.project_id is not None:
             line["Project"] = {"id": str(regel.project_id)}
         lines.append(line)
@@ -91,14 +108,15 @@ def tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]
     projectverdeling wordt exact gespiegeld (dezelfde splitsing per project als de boeking)."""
     gewichten = _projectgewichten(voorstel)
     lines: list[dict] = []
-    for regel in voorstel.regels:
+    btw_sluitend = btw_per_regel_sluitend(voorstel)
+    for regel, btw_bedrag in zip(voorstel.regels, btw_sluitend, strict=True):
         basis: dict = {
             "Account": {"id": str(regel.ledger_id)},
             "TaxRate": {"id": str(regel.taxrate_id)},
             "Description": omschrijving,
         }
         if regel.project_id is None and gewichten:
-            for deel in splits_regel(regel.netto_bedrag or Decimal("0"), regel.btw_bedrag, gewichten):
+            for deel in splits_regel(regel.netto_bedrag or Decimal("0"), btw_bedrag, gewichten):
                 lines.append(
                     {**basis, "NetAmount": float(-deel.netto), "TaxAmount": float(-deel.btw), "Project": {"id": str(deel.project_id)}}
                 )
@@ -106,7 +124,7 @@ def tegenboek_lines(voorstel: BoekvoorstelData, omschrijving: str) -> list[dict]
         line: dict = {
             **basis,
             "NetAmount": float(-(regel.netto_bedrag or Decimal("0"))),
-            "TaxAmount": float(-(regel.btw_bedrag or Decimal("0"))),
+            "TaxAmount": float(-(btw_bedrag or Decimal("0"))),
         }
         if regel.project_id is not None:
             line["Project"] = {"id": str(regel.project_id)}

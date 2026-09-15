@@ -238,7 +238,13 @@ class TestVindParen:
 
     @pytest.mark.parametrize(
         "ref",
-        ["Ingescand document", "ingescand  document", "0", "000", "00-00", "Factuur", "invoice", "#", "Scan", "n.v.t."],
+        [
+            "Ingescand document", "ingescand  document", "0", "000", "00-00", "Factuur", "invoice", "#", "Scan",
+            "n.v.t.",
+            # Nazorg 15-09 (casus Abbegaa "01" op RLZ-16-00000081 + RLZ-17-00000497): < 3 tekens ná normalisatie =
+            # volgnummer
+            "01", "1", "12", "A1", "F-1", "0001",
+        ],
     )
     def test_placeholder_referentie_telt_als_leeg_en_matcht_nooit(self, ref: str) -> None:
         assert rlz_dubbel.toetsbare_referentie(ref) is None
@@ -247,6 +253,19 @@ class TestVindParen:
         assert a.referentie == (ref or None) and a.referentie_norm is None  # de ruwe tekst blijft leesbaar
         assert vind_paren([a, b]) == []
 
+    @pytest.mark.parametrize("ref", ["123", "100", "A12", "F-12", "0817725528"])
+    def test_drie_tekens_of_meer_blijft_toetsbaar(self, ref: str) -> None:
+        assert rlz_dubbel.MIN_REFERENTIE_LENGTE == 3
+        assert rlz_dubbel.toetsbare_referentie(ref) is not None
+
+    def test_abbegaa_korte_referentie_is_uitgesloten_placeholder_groep_met_teller(self) -> None:
+        docs = [_doc(V4_A, ref="01", bedrag=100.0), _doc(V4_B, ref="1", bedrag=200.0)]
+        uitkomst = vind_clusters(docs)
+        assert uitkomst.clusters == ()
+        (g,) = uitkomst.uitgesloten
+        assert g.reden == rc.REDEN_PLACEHOLDER and g.aantal_documenten == 2 and g.referentie == "01"
+        assert uitkomst.tellers()[rc.REDEN_PLACEHOLDER] == {"groepen": 1, "documenten": 2}
+
     def test_echte_referentie_met_placeholder_woord_erin_blijft_toetsbaar(self) -> None:
         a = _doc(V4_A, ref="Ingescand document 3")
         b = _doc(V4_B, ref="ingescand document 03")
@@ -254,19 +273,19 @@ class TestVindParen:
         assert paar.regels == (REGEL_REFERENTIE,)
 
     def test_andere_crediteur_of_geen_crediteur_is_nooit_een_paar(self) -> None:
-        assert vind_paren([_doc(V4_A, ref="42"), _doc(V4_B, ref="42", entity=uuid.uuid4(), naam="Ander")]) == []
-        assert vind_paren([_doc(V4_A, ref="42", entity=None), _doc(V4_B, ref="42", entity=None)]) == []
+        assert vind_paren([_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242", entity=uuid.uuid4(), naam="Ander")]) == []
+        assert vind_paren([_doc(V4_A, ref="4242", entity=None), _doc(V4_B, ref="4242", entity=None)]) == []
 
     def test_beide_van_de_module_is_geen_treffer(self) -> None:
         module = {V5_MODULE_A, V5_MODULE_B}
         assert (
-            vind_paren([_doc(V5_MODULE_A, ref="42", module_ids=module), _doc(V5_MODULE_B, ref="42", module_ids=module)])
+            vind_paren([_doc(V5_MODULE_A, ref="4242", module_ids=module), _doc(V5_MODULE_B, ref="4242", module_ids=module)])
             == []
         )
 
     def test_drie_exemplaren_geven_drie_paren_oude_meetlat(self) -> None:
         """De OUDE meetlat telt paren (3 documenten = 3 paren); de bevinding-eenheid is sinds 10-09 het cluster."""
-        docs = [_doc(V4_A, ref="42"), _doc(V4_B, ref="42"), _doc(V4_C, ref="42")]
+        docs = [_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242"), _doc(V4_C, ref="4242")]
         assert len(vind_paren(docs)) == 3
         assert len(vind_clusters(docs).clusters) == 1
 
@@ -301,29 +320,29 @@ class TestKempenCasus:
 class TestVindClusters:
     def test_drie_documenten_is_een_cluster_gesorteerd_op_datum(self) -> None:
         docs = [
-            _doc(V4_B, ref="42", datum="2026-07-01T00:00:00Z", boekstuk="RLZ-04-2"),
-            _doc(V4_C, ref="0042", datum="2026-08-01T00:00:00Z", boekstuk="RLZ-04-3"),
-            _doc(V4_A, ref="Factuur 42", datum="2026-06-01T00:00:00Z", boekstuk="RLZ-04-1"),
+            _doc(V4_B, ref="4242", datum="2026-07-01T00:00:00Z", boekstuk="RLZ-04-2"),
+            _doc(V4_C, ref="004242", datum="2026-08-01T00:00:00Z", boekstuk="RLZ-04-3"),
+            _doc(V4_A, ref="Factuur 4242", datum="2026-06-01T00:00:00Z", boekstuk="RLZ-04-1"),
         ]
         uitkomst = vind_clusters(docs, rlz_admin_id=RLZ_ADMIN)
         assert len(uitkomst.clusters) == 1 and uitkomst.uitgesloten == ()
         (c,) = uitkomst.clusters
         assert [d.boekstuk for d in c.documenten] == ["RLZ-04-1", "RLZ-04-2", "RLZ-04-3"]
-        assert c.referentie_norm == "42" and c.entity_id == BOOT and c.rlz_ids == {V4_A, V4_B, V4_C}
-        assert c.sleutel == f"cluster={RLZ_ADMIN}|{BOOT}|42" and c.detail == c.sleutel
+        assert c.referentie_norm == "4242" and c.entity_id == BOOT and c.rlz_ids == {V4_A, V4_B, V4_C}
+        assert c.sleutel == f"cluster={RLZ_ADMIN}|{BOOT}|4242" and c.detail == c.sleutel
         ctx = c.context(administratie_naam="Kempen Facilities B.V.")
         assert ctx["boekstukken"] == ["RLZ-04-1", "RLZ-04-2", "RLZ-04-3"] and ctx["aantal_exemplaren"] == 3
         assert ctx["boekstuk_a"] == "RLZ-04-1" and ctx["boekstuk_b"] == "RLZ-04-2"  # terugval-velden
         assert len(ctx["exemplaren"]) == 3 and ctx["exemplaren"][2]["rlz_id"] == str(V4_C)
 
     def test_vingerafdruk_en_record_id_stabiel_ongeacht_volgorde_boekstuk_en_extra_exemplaar(self) -> None:
-        a = _doc(V4_A, ref="42", boekstuk="RLZ-04-1")
-        b = _doc(V4_B, ref="42", boekstuk="RLZ-04-2")
+        a = _doc(V4_A, ref="4242", boekstuk="RLZ-04-1")
+        b = _doc(V4_B, ref="4242", boekstuk="RLZ-04-2")
         (c1,) = vind_clusters([a, b], rlz_admin_id=RLZ_ADMIN).clusters
         (c2,) = vind_clusters(
-            [_doc(V4_B, ref="0042", boekstuk="RLZ-04-9", status=1), a], rlz_admin_id=RLZ_ADMIN
+            [_doc(V4_B, ref="004242", boekstuk="RLZ-04-9", status=1), a], rlz_admin_id=RLZ_ADMIN
         ).clusters
-        (c3,) = vind_clusters([a, b, _doc(V4_C, ref="42")], rlz_admin_id=RLZ_ADMIN).clusters
+        (c3,) = vind_clusters([a, b, _doc(V4_C, ref="4242")], rlz_admin_id=RLZ_ADMIN).clusters
         assert c1.detail == c2.detail == c3.detail and c1.record_id == c2.record_id == c3.record_id
         assert _cluster_vaf(c1) == _cluster_vaf(c2) == _cluster_vaf(c3)
         assert c1.record_id.version == 5
@@ -333,9 +352,9 @@ class TestVindClusters:
 
     def test_alle_van_de_module_is_geen_cluster_een_handmatig_exemplaar_wel(self) -> None:
         module = {V5_MODULE_A, V5_MODULE_B}
-        beide = [_doc(V5_MODULE_A, ref="42", module_ids=module), _doc(V5_MODULE_B, ref="42", module_ids=module)]
+        beide = [_doc(V5_MODULE_A, ref="4242", module_ids=module), _doc(V5_MODULE_B, ref="4242", module_ids=module)]
         assert vind_clusters(beide).clusters == () and vind_clusters(beide).uitgesloten == ()
-        (c,) = vind_clusters([*beide, _doc(V4_C, ref="42")]).clusters
+        (c,) = vind_clusters([*beide, _doc(V4_C, ref="4242")]).clusters
         assert len(c.documenten) == 3 and c.aantal_module == 2
 
     def test_six_steps_casus_is_waarschijnlijk_dubbel(self) -> None:
@@ -426,8 +445,8 @@ class TestToetsMetClient:
     def test_rapport_tellers_clusters_paren_en_uitsluitingen(self) -> None:
         client = _NepClient(
             [
-                _rij(V4_A, ref="42"),
-                _rij(V4_B, ref="42"),
+                _rij(V4_A, ref="4242"),
+                _rij(V4_B, ref="4242"),
                 _rij(V5_MODULE_A, ref="99", bedrag=10.0),
                 _rij(V4_C, ref="7", entity=None),
                 *[
@@ -519,9 +538,9 @@ class TestCliBlok:
     ) -> None:
         odoo_id = uuid.uuid4()
         docs = [
-            _doc(V4_A, ref="42"),
-            _doc(V4_B, ref="42", status=1, boekstuk=None),
-            _doc(V4_C, ref="42", boekstuk="RLZ-04-3"),
+            _doc(V4_A, ref="4242"),
+            _doc(V4_B, ref="4242", status=1, boekstuk=None),
+            _doc(V4_C, ref="4242", boekstuk="RLZ-04-3"),
             *_bp_express(),
         ]
         _stub_toets(
@@ -585,7 +604,7 @@ class TestCliBlok:
     def test_geaccepteerd_cluster_telt_niet_mee_via_bestaand_acceptatiepad(
         self, monkeypatch: pytest.MonkeyPatch, administratie_id: uuid.UUID, beheerder_id: uuid.UUID
     ) -> None:
-        docs = [_doc(V4_A, ref="42"), _doc(V4_B, ref="42")]
+        docs = [_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242")]
         (cluster,) = vind_clusters(docs, rlz_admin_id=RLZ_ADMIN).clusters
         acceptatie_service.accepteer(
             administratie_id=administratie_id,
@@ -615,7 +634,7 @@ class TestOvergangPaarNaarCluster:
         """Run 1 (oude vorm): paar-bevinding A+B én paar-bevinding uit een BP-Express-groep. Run 2 (cluster): beide
         oude vingerafdrukken komen terug als `uitgesloten` met reden — de delta ziet geen 'verdwenen', de lijst geen
         open paar meer; het cluster is de enige afwijking."""
-        docs = [_doc(V4_A, ref="42"), _doc(V4_B, ref="42"), *_bp_express()]
+        docs = [_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242"), *_bp_express()]
         (paar_ab,) = vind_paren(docs[:2])
         paar_bp = vind_paren(_bp_express())[0]
         _stub_toets(monkeypatch, administratie_id, [])  # run 1: het blok zelf meldt niets
@@ -678,9 +697,9 @@ class TestOvergangPaarNaarCluster:
         assert soorten3 == ["afwijking"] and "vervangen" not in tekst3
 
     def test_paar_waarvan_een_document_verdween_wordt_niet_vervangen(self) -> None:
-        docs = [_doc(V4_A, ref="42"), _doc(V4_B, ref="42")]
+        docs = [_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242")]
         (paar,) = vind_paren(docs)
-        uitkomst = vind_clusters([docs[0], _doc(V4_C, ref="42")])  # B is weg, C kwam erbij
+        uitkomst = vind_clusters([docs[0], _doc(V4_C, ref="4242")])  # B is weg, C kwam erbij
         vorige = [
             run_service.Bevinding(
                 blok=rlz_dubbel.BLOK,
@@ -701,7 +720,7 @@ class TestOvergangPaarNaarCluster:
     def test_paar_acceptatie_wordt_eenmalig_op_het_cluster_overgedragen_met_audit(
         self, monkeypatch: pytest.MonkeyPatch, administratie_id: uuid.UUID, beheerder_id: uuid.UUID
     ) -> None:
-        docs = [_doc(V4_A, ref="42", boekstuk="RLZ-04-1"), _doc(V4_B, ref="42", boekstuk="RLZ-04-2")]
+        docs = [_doc(V4_A, ref="4242", boekstuk="RLZ-04-1"), _doc(V4_B, ref="4242", boekstuk="RLZ-04-2")]
         (paar,) = vind_paren(docs)
         (cluster,) = vind_clusters(docs, rlz_admin_id=RLZ_ADMIN).clusters
         acceptatie_service.accepteer(
@@ -765,7 +784,7 @@ class TestOvergangPaarNaarCluster:
     def test_ingetrokken_cluster_acceptatie_wordt_niet_opnieuw_overgedragen(
         self, monkeypatch: pytest.MonkeyPatch, administratie_id: uuid.UUID, beheerder_id: uuid.UUID
     ) -> None:
-        docs = [_doc(V4_A, ref="42"), _doc(V4_B, ref="42")]
+        docs = [_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242")]
         (paar,) = vind_paren(docs)
         (cluster,) = vind_clusters(docs, rlz_admin_id=RLZ_ADMIN).clusters
         acceptatie_service.accepteer(
@@ -797,7 +816,7 @@ class TestOvergangPaarNaarCluster:
         """Paar A+B geaccepteerd; nu is er ook C op dezelfde referentie → het cluster blijft OPEN (niets verdwijnt
         stil),
         de tekst noemt het eerder geaccepteerde paar én het nieuwe exemplaar."""
-        docs = [_doc(V4_A, ref="42", boekstuk="RLZ-04-1"), _doc(V4_B, ref="42", boekstuk="RLZ-04-2")]
+        docs = [_doc(V4_A, ref="4242", boekstuk="RLZ-04-1"), _doc(V4_B, ref="4242", boekstuk="RLZ-04-2")]
         (paar,) = vind_paren(docs)
         acceptatie_service.accepteer(
             administratie_id=administratie_id,
@@ -808,7 +827,7 @@ class TestOvergangPaarNaarCluster:
             reden="twee echte facturen",
             beheerder_id=beheerder_id,
         )
-        drie = [*docs, _doc(V4_C, ref="42", boekstuk="RLZ-04-3", datum="2026-09-01T00:00:00Z")]
+        drie = [*docs, _doc(V4_C, ref="4242", boekstuk="RLZ-04-3", datum="2026-09-01T00:00:00Z")]
         _stub_toets(monkeypatch, administratie_id, drie)
         verzamelaar = run_service.Verzamelaar()
         verzamelaar.start_blok(rlz_dubbel.BLOK)
@@ -903,7 +922,7 @@ class TestTekstEnLijst:
 
     def test_geaccepteerd_en_module_variant(self) -> None:
         (cluster,) = vind_clusters(
-            [_doc(V5_MODULE_A, ref="42", module_ids={V5_MODULE_A}), _doc(V4_B, ref="42", status=1, boekstuk=None)]
+            [_doc(V5_MODULE_A, ref="4242", module_ids={V5_MODULE_A}), _doc(V4_B, ref="4242", status=1, boekstuk=None)]
         ).clusters
         lb = teksten.leesbaar(_bevinding(cluster), soort="geaccepteerd")
         assert "dezelfde referentie 42" in lb.wat and "nog concept" in lb.wat and "zonder boekstuknummer" in lb.wat
@@ -934,7 +953,7 @@ class TestTekstEnLijst:
             detail={
                 "bron": "documenten",
                 "afwijking_soort": rlz_dubbel.SOORT,
-                **vind_paren([_doc(V4_A, ref="42"), _doc(V4_B, ref="42")])[0].context(),
+                **vind_paren([_doc(V4_A, ref="4242"), _doc(V4_B, ref="4242")])[0].context(),
             },
         )
         assert teksten.leesbaar(b2).titel.startswith("Zelfde referentie, controleer")
@@ -942,7 +961,7 @@ class TestTekstEnLijst:
     def test_kantoorbrede_lijst_waarschijnlijk_voor_controleer_na_verdwenen_document(
         self, monkeypatch: pytest.MonkeyPatch, administratie_id: uuid.UUID, beheerder_id: uuid.UUID
     ) -> None:
-        docs = [*_six_steps(), _doc(V4_C, ref="42", boekstuk="RLZ-04-C1"), _doc(V4_D, ref="42", boekstuk="RLZ-04-C2")]
+        docs = [*_six_steps(), _doc(V4_C, ref="4242", boekstuk="RLZ-04-C1"), _doc(V4_D, ref="4242", boekstuk="RLZ-04-C2")]
         _stub_toets(monkeypatch, administratie_id, docs)
 
         def documenten_blok(args, verzamelaar=None) -> int:  # noqa: ANN001

@@ -10,19 +10,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import select
 
+from app.accordering.cli_cmd import ACCORDERING_COMMANDOS, register_accordering, run_accordering
 from app.auth import service
 from app.backends.registry import RLZ_ONLY_OVERGESLAGEN
 from app.bank import reconciliatie as bank_reconciliatie
 from app.bank import sync as bank_sync_service
+from app.bank.cli_cmd import BANK_COMMANDOS, register_bank, run_bank
 from app.beheer import service as beheer_service
 from app.berichten import herinneringen, nieuwe_facturen
 from app.credentialstore import service as credentialstore_service
-from app.accordering.cli_cmd import ACCORDERING_COMMANDOS, register_accordering, run_accordering
-from app.bank.cli_cmd import BANK_COMMANDOS, register_bank, run_bank
-from app.migratie.cli_cmd import register_migratie, run_migratie
-from app.migratie.cli_odoo import ODOO_MIGRATIE_COMMANDOS, register_odoo_migratie, run_odoo_migratie  # run 2 VGG blok 5
-from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, run_vgg_replay  # run 2 VGG blok 6
-from app.panden.cli_cmd import register_panden, run_panden
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import reconciliatie, storno_detectie, webhook_afleveraar
 from app.doorbelasting import factuur_herstel as doorbelasting_factuur_herstel
@@ -31,11 +27,15 @@ from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
 from app.intake import verwerking as intake_verwerking
 from app.intake.postvak import ImapPostvakBron, PostvakFout, PostvakNietGeconfigureerd
+from app.migratie.cli_cmd import register_migratie, run_migratie
+from app.migratie.cli_odoo import ODOO_MIGRATIE_COMMANDOS, register_odoo_migratie, run_odoo_migratie  # run 2 VGG blok 5
+from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, run_vgg_replay  # run 2 VGG blok 6
+from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
 from app.omzet import reconciliatie as omzet_reconciliatie
+from app.panden.cli_cmd import register_panden, run_panden
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
 from app.rlz.credentials import GeenRlzCredentials
-from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
 from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
 
@@ -518,7 +518,11 @@ def _deploy_mislukt(args: argparse.Namespace) -> int:
     from app.berichten import mail
     from app.config import settings
 
+    # Nazorg 15-09: de beheer-lijst is default leeg (systeemmail uit), maar een rode deploy is een ALERT, geen
+    # dagrapport → terugval op het bewakingskanaal (`bewaking_alert_ontvanger`), zodat dit vangnet nooit stil wegvalt.
     ontvangers = [o.strip() for o in (settings.reconciliatie_beheer_ontvangers or "").split(",") if o.strip()]
+    if not ontvangers:
+        ontvangers = [o.strip() for o in (settings.bewaking_alert_ontvanger or "").split(",") if o.strip()]
     sha = (args.sha or "?")[:7]
     onderwerp = f"⛔ RLZ-deploy mislukt ({sha})"
     tekst = (
@@ -532,7 +536,9 @@ def _deploy_mislukt(args: argparse.Namespace) -> int:
         "Administratiekantoor Nijenhuis — automatisch bericht (deploy.yml → rlz-bewaking deploy-mislukt)"
     )
     if not ontvangers:
-        print("deploy-mislukt FOUT: geen reconciliatie_beheer_ontvangers", file=sys.stderr)
+        print(
+            "deploy-mislukt FOUT: geen reconciliatie_beheer_ontvangers én geen bewaking_alert_ontvanger", file=sys.stderr
+        )
         return 1
     if not mail.is_geconfigureerd():
         print("deploy-mislukt FOUT: mailkanaal niet geconfigureerd (BERICHTEN_SMTP_*)", file=sys.stderr)
@@ -1166,6 +1172,49 @@ def _regel(kern: str, beoordeeld: acceptatie_service.Beoordeeld) -> str:
     return f"GEACCEPTEERD {kop} — reden: {beoordeeld.acceptatie.reden} (sinds {geaccepteerd_op})"
 
 
+def _auto_accepteer_afrondingen(
+    verzamelaar,  # noqa: ANN001 — Verzamelaar | None
+    *,
+    administratie_id: uuid.UUID,
+    afwijkingen,  # noqa: ANN001 — Sequence[ReconciliatieAfwijking]
+    beoordeeld,  # noqa: ANN001 — Sequence[Beoordeeld]
+) -> int:
+    """Reconciliatie-nazorg 15-09 (besluit Peter 14-09): `bedrag_wijkt_af` ≤ € 0,05 = btw-cent-afronding → systeem-
+    acceptatie mét audit `reconciliatie_auto_geaccepteerd` en dagteller `auto_geaccepteerd` op het blok. Alleen in
+    een vastgelegde run; nooit voor een al (mens-)geaccepteerde of eerder ingetrokken vingerafdruk. → aantal nieuw."""
+    if verzamelaar is None:
+        return 0
+    nieuw = 0
+    for a, b in zip(afwijkingen, beoordeeld, strict=True):
+        if not b.telt_mee:
+            continue
+        verschil = reconciliatie.afrondingsverschil(a)
+        if verschil is None:
+            continue
+        try:
+            _, is_nieuw = acceptatie_service.auto_accepteer(
+                administratie_id=administratie_id,
+                bron=ReconciliatieBron.DOCUMENTEN,
+                record_id=b.record_id,
+                soort=b.soort,
+                detail=b.detail,
+                reden=reconciliatie.AFRONDING_REDEN,
+                extra={"verschil": str(verschil), "regel": "reconciliatie-nazorg 15-09"},
+            )
+        except Exception as exc:  # noqa: BLE001 — een mislukte auto-acceptatie laat de afwijking gewoon open staan
+            print(f"    ! automatisch accepteren mislukt ({reconciliatie.AFRONDING_REDEN}): {exc}", file=sys.stderr)
+            continue
+        if is_nieuw:
+            nieuw += 1
+            print(
+                f"    · automatisch geaccepteerd ({reconciliatie.AFRONDING_REDEN}, verschil € {verschil}) "
+                f"[vaf:{b.vingerafdruk}]"
+            )
+    if nieuw:
+        verzamelaar.auto_geaccepteerd(nieuw)
+    return nieuw
+
+
 def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Boeken-failsafe (b) (CLAUDE.md-taak 2.4): vergelijk elk lokaal GEBOEKT document met de
     werkelijke RLZ-staat en rapporteer afwijkingen. Eén administratie zonder werkende
@@ -1217,6 +1266,18 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
             administratie_id=administratie_id,
             afwijkingen=[(a.document_id, a.soort, a.detail) for a in resultaat.afwijkingen],
         )
+        # Reconciliatie-nazorg 15-09: een bedragverschil ≤ € 0,05 op een geboekt document (btw-cent-afronding) wordt
+        # door het systeem geaccepteerd — alleen binnen een vastgelegde run (verzamelaar); lees-only/losse CLI schrijft
+        # niets en markeert de regel. Daarna opnieuw beoordelen zodat de regel als GEACCEPTEERD landt.
+        afrondingen = _auto_accepteer_afrondingen(
+            verzamelaar, administratie_id=administratie_id, afwijkingen=resultaat.afwijkingen, beoordeeld=beoordeeld
+        )
+        if afrondingen:
+            beoordeeld = acceptatie_service.beoordeel(
+                bron=ReconciliatieBron.DOCUMENTEN,
+                administratie_id=administratie_id,
+                afwijkingen=[(a.document_id, a.soort, a.detail) for a in resultaat.afwijkingen],
+            )
         open_afwijkingen = [b for b in beoordeeld if b.telt_mee]
         if uitsluiting:
             # Zichtbaar blijven, niet meetellen: de bevindingen worden gewoon getoond zodat een
@@ -1250,6 +1311,8 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
         )
         for a, b in zip(resultaat.afwijkingen, beoordeeld, strict=True):
             regel = _regel(f"document={a.document_id} rlz_document={a.rlz_document_id}", b)
+            if verzamelaar is None and b.telt_mee and reconciliatie.is_afrondingsverschil(a):
+                regel += f" — {reconciliatie.AFRONDING_REDEN}: wordt in de dagelijkse run automatisch geaccepteerd"
             print(f"    - {regel}")
             _meld(
                 verzamelaar, soort=_soort_van(b, None), administratie_id=administratie_id, tekst=regel,
@@ -2456,14 +2519,18 @@ def main(argv: list[str] | None = None) -> int:
         "iets te melden, idempotent per ISO-week, opt-out per gebruiker (job rlz-kantoor-digest, ma 07:30).",
     )
 
-    from app.autoboek_kandidaten.cli_cmd import dispatch as dispatch_autoboek_leren, register as register_autoboek_leren  # blok A 10-09
+    from app.autoboek_kandidaten.cli_cmd import dispatch as dispatch_autoboek_leren  # blok A 10-09
+    from app.autoboek_kandidaten.cli_cmd import register as register_autoboek_leren
 
     register_autoboek_leren(subparsers)  # autoboek-drempel-zetten, autoboek-leren-rapport
-    from app.geheugen.btw_default_cli import dispatch as dispatch_btw_default, register as register_btw_default  # 14-09 (0143)
     from app.beheer.administratienaam_cli import (  # 15-09 (0144)
         dispatch as dispatch_administratienaam,
+    )
+    from app.beheer.administratienaam_cli import (
         register as register_administratienaam,
     )
+    from app.geheugen.btw_default_cli import dispatch as dispatch_btw_default  # 14-09 (0143)
+    from app.geheugen.btw_default_cli import register as register_btw_default
 
     register_btw_default(subparsers)  # btw-default-rapport (lees-only)
     register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)

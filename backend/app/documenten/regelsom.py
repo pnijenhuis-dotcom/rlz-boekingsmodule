@@ -117,3 +117,60 @@ def _uitkomst(
         netto_som=netto_som,
         btw_bijgeteld=btw_bijgeteld,
     )
+
+
+# ---- cent-fix aan de bron (reconciliatie-nazorg 15-09) --------------------------------------------
+
+#: Grens waarbinnen een verschil tussen Σ(netto + btw) van de regels en het factuurtotaal een btw-cent-afronding is
+#: (RLZ rekent btw per regel, de factuur per totaal — Kempen Facilities: Lusso/Booking Experts 2–3 ct). Zelfde grens
+#: als de automatische acceptatie in de reconciliatie (`app/documenten/reconciliatie.py::AFRONDING_TOLERANTIE`).
+CENT_TOLERANTIE = Decimal("0.05")
+
+
+@dataclass(frozen=True)
+class CentCorrectie:
+    """Uitkomst van `corrigeer_btw_centen`: `btw` = de btw per regel zoals die naar het pakket gaat; `regel` = de
+    (0-gebaseerde) regel die het centverschil droeg, `verschil` = totaal − Σ regels vóór correctie (getekend). None/0
+    = niets gecorrigeerd."""
+
+    btw: tuple[Decimal | None, ...]
+    regel: int | None
+    verschil: Decimal
+
+    @property
+    def gecorrigeerd(self) -> bool:
+        return self.regel is not None
+
+
+def corrigeer_btw_centen(
+    *,
+    netto: list[Decimal | None],
+    btw: list[Decimal | None],
+    totaal_incl: Decimal | None,
+    tolerantie: Decimal = CENT_TOLERANTIE,
+) -> CentCorrectie:
+    """Cent-fix aan de bron (nazorg 15-09, punt 2): als Σ(netto + btw) van de regels 1–5 cent afwijkt van het
+    factuurtotaal, gaat het verschil in de LAATSTE btw-dragende regel (btw ≠ 0), zodat het documenttotaal in het pakket
+    cent-exact gelijk is aan de factuur. Een regel zonder btw (verlegd/vrijgesteld, None) telt als 0 mee in de som,
+    blijft None en draagt nooit het verschil. Bewust NIET bij: geen totaal, een regel zonder netto, een verschil >
+    tolerantie
+    (echte afwijking — blokkeert al in de checks) of geen enkele btw-dragende regel (verlegd-factuur: niets te
+    verschuiven). Pure functie op Decimals; de aanroeper (RLZ-adapter) verandert de regels in de module níét — alleen
+    wat naar het pakket gaat."""
+    if len(netto) != len(btw):
+        raise ValueError("netto en btw moeten per regel gepaard zijn (zelfde lengte)")
+    ongewijzigd = CentCorrectie(btw=tuple(btw), regel=None, verschil=Decimal("0"))
+    if totaal_incl is None or not netto or any(n is None for n in netto):
+        return ongewijzigd
+    # Een regel zonder btw (None = verlegd/vrijgesteld) telt als 0 in de som, blijft None en is nooit de drager.
+    som = sum((n + (b or Decimal(0)) for n, b in zip(netto, btw, strict=True) if n is not None), Decimal(0))
+    verschil = (totaal_incl - som).quantize(Decimal("0.01"))
+    if verschil == 0 or abs(verschil) > tolerantie:
+        return CentCorrectie(btw=tuple(btw), regel=None, verschil=verschil)
+    dragers = [i for i, b in enumerate(btw) if b is not None and b != 0]
+    if not dragers:
+        return CentCorrectie(btw=tuple(btw), regel=None, verschil=verschil)
+    laatste = dragers[-1]
+    nieuw = list(btw)
+    nieuw[laatste] = (btw[laatste] or Decimal(0)) + verschil  # type: ignore[operator]
+    return CentCorrectie(btw=tuple(nieuw), regel=laatste, verschil=verschil)

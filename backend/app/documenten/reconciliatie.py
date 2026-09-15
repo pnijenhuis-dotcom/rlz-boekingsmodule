@@ -29,7 +29,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import exists, func, select
 
@@ -51,6 +51,15 @@ from app.sync.models import VendorCache
 # Kleine afrondingstolerantie, zelfde als de regeltelling-check (app/documenten/checks.py) —
 # geen 0-tolerantie, wél klein genoeg om een echte afwijking te vangen.
 _ROND_TOLERANTIE = Decimal("0.01")
+
+#: Reconciliatie-nazorg 15-09 (besluit Peter 14-09 "systeem bepaalt of actie nodig is"): een bedragverschil tot en met
+#: € 0,05 tussen de module en RLZ/Odoo op een GEBOEKT document is een btw-cent-afronding (RLZ rekent btw per regel, de
+#: factuur per totaal; Kempen Facilities: Lusso/Booking Experts 2–3 ct) — geen bevinding voor het kantoor maar een
+#: automatische acceptatie mét audit (`reconciliatie_auto_geaccepteerd`) en dagteller. Groter = echte afwijking (Booking
+#: Experts 20260205347 Δ 0,97 = echte wijziging). De afwijking zélf wordt nog steeds aangemaakt (niets verdwijnt stil);
+#: de acceptatie gebeurt in het reconciliatie-alles-blok (`app/cli.py::_reconciliatie`).
+AFRONDING_TOLERANTIE = Decimal("0.05")
+AFRONDING_REDEN = "afronding ≤ 0,05"
 
 #: Soorten die "het externe document is er niet meer" betekenen — de zwaarste categorie én de enige waarop de
 #: actie "Opnieuw boeken (document verdwenen)" bestaat. Per backend een eigen naam (contract A↔A8 punt 2).
@@ -219,6 +228,27 @@ def beoordeel_uitkomst(
             )
         )
     return uit
+
+
+def afrondingsverschil(afwijking: ReconciliatieAfwijking) -> Decimal | None:
+    """Puur: het absolute bedragverschil van een `bedrag_wijkt_af`-afwijking als het binnen `AFRONDING_TOLERANTIE`
+    valt, anders None (ook None voor elke andere soort of als een bedrag ontbreekt/onleesbaar is — fail-closed: dan
+    blijft het een gewone afwijking). Leest de context-bedragen (`bedrag_lokaal`/`bedrag_extern`), niet het detail."""
+    if afwijking.soort != "bedrag_wijkt_af":
+        return None
+    try:
+        lokaal = Decimal(str(afwijking.context.get("bedrag_lokaal")))
+        extern = Decimal(str(afwijking.context.get("bedrag_extern")))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not lokaal.is_finite() or not extern.is_finite():
+        return None
+    verschil = abs(extern - lokaal)
+    return verschil if verschil <= AFRONDING_TOLERANTIE else None
+
+
+def is_afrondingsverschil(afwijking: ReconciliatieAfwijking) -> bool:
+    return afrondingsverschil(afwijking) is not None
 
 
 def _toets_document(
