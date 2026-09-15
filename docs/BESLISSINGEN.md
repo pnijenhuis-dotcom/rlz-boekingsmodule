@@ -9822,3 +9822,21 @@ met deep-link; job-uitvoer `planning-meldingen: … push=1`.
 **Bewust niet / beslispunten:** geen project-tijdlijn (bestaat niet; audit is het spoor); geen server-side filter (alles zit al in de
 ene weekrequest); "twee voorgaande weken" als snelle chips — de ‹ ›-navigatie was al vrij.
 
+## ACCORDEUR-APP — INZOOMEN OP DE FACTUUR (Peter 15-09; opdracht via opdrachten/inbox; geen migratie, geen backend)
+
+**Aanleiding:** `PdfWeergave` rendert pagina's als canvas en vertrouwde op "native paginazoom"; in de native app (Capacitor-WebView,
+viewport niet schaalbaar) en de PWA-standalone werkte knijpen niet of scrolde de hele app mee — kleine lettertjes onleesbaar.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **Eigen zoomlaag, gebaar-wiskunde puur.** `pdfZoom.ts`: `clampSchaal` 1×–4×, `zoomRond` (inhoudspunt onder de vinger blijft staan), `knijp` (vingerafstand t.o.v. begin, rond het middelpunt), `dubbeltik` (1× → 2× op de tikplek, anders terug naar 1×), `pan`, `clampVerschuiving` (inhoud blijft binnen het vak), `renderStap` (hoogst gebruikte hele stap). | GEBOUWD + GETEST | `frontend/src/accordeur/pdfZoom.ts` (+ `pdfZoom.test.ts`, 6) |
+| **Component.** Pointer events (touch/muis/pen één bron) op een klippend `.acc-pdf-viewport`; inhoud via `transform: translate(x,y) scale(s)`; ingezoomd = `touch-action: none` (de rest van het scherm scrolt niet mee), op 1× `pan-y pinch-zoom` (gewoon scrollen); knop "N % · terug"; scherp blijven: pagina's hertekend op de hoogst gebruikte zoomstap × devicePixelRatio (max 3), bij stap > 1 alleen zichtbare pagina's ±1 (geheugen begrensd), rest houdt stap 1. **"⤢ Volledig scherm"**: vaste overlay (`.acc-pdf-fullscreen`, safe-area-insets) met dezelfde component (alle pagina's, zoom + pannen), sluiten met ✕, Escape of de terug-gebaar (history pushState/popstate), body-scroll geblokkeerd. Eén component voor factuur (GoedkeurenFlow) én werkbonnen/offertes (UrenFlow) — geen wijziging bij de aanroepers. Laad-/foutstand en de prefetch-fix van 26-08 ongewijzigd. | GEBOUWD + GETEST | `frontend/src/accordeur/PdfWeergave.tsx`, `accordeur.css`; `PdfWeergave.test.tsx` (3: knop ná render, overlay open/sluit via knop + Escape, dubbeltik 2× → touch-action none → terug 1×; pdf.js gemockt) |
+| **UX-notitie.** Bestaand scherm, één knop erbij (geen mockup); het goedkeurscherm blijft compact (vak max 55 vh), fullscreen is de leeshouding. Geen zoomknoppen (+/−): op een telefoon zijn knijpen en dubbeltik de norm; muisgebruikers hebben de browserzoom. | — | rapport |
+| **Toesteltest.** iOS (Safari/WebView) en Android via de bestaande kliktest-recepten (TESTFLIGHT_DRAAIBOEK / PLAY_DRAAIBOEK): in deze run NIET uitgevoerd (geen toestel/simulator in de inbox-run) — meetrecept in het rapport. | OPEN — Peter/kliktest | `native/TESTFLIGHT_DRAAIBOEK.md`, `native/PLAY_DRAAIBOEK.md` |
+| **App-build.** Marketingversie ongewijzigd (1.1, `appVersie.ts`); de wijziging zit in de web-bundel: de PWA krijgt 'm bij de deploy, de native schil bij de eerstvolgende Xcode Cloud-build (push van main) resp. een nieuwe Android-AAB volgens de draaiboeken — buildnummer volgt daar. | GEDAAN (web) / VOLGT (native) | draaiboeken |
+| Docs: CLAUDE.md-verwijsregel, WAT_IS_NIEUW-blok, dit register, rapport + INDEX, opdracht → gedaan | GEDAAN | — |
+
+**Meetrecept:** app (PWA of native) → factuur openen → knijpen zoomt in tot 4× en de pagina schuift mee onder de vingers, de kop en de
+knoppen van het goedkeurscherm blijven staan; dubbeltik = 2×; "⤢ Volledig scherm" → hele scherm, ✕/terug-gebaar sluit; tekst blijft
+scherp op 3–4×. Veld-app: werkbon/offerte openen → zelfde gedrag.
+
