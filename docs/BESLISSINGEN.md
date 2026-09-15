@@ -9531,6 +9531,89 @@ géén observaties (rapport "0 observaties totaal"), dan is de eerste stap `seed
 job-opdracht — pas daarna kan 4404 een historie-default krijgen; (c) drempels 5/90 % zijn constanten
 (`MIN_REGELS`/`MIN_AANDEEL`), geen instelling — bewust, tot de productiecijfers anders zeggen.
 
+## BTW UIT HET FACTUURTOTAAL + BANKFORMULIER VOLGT DE REKENING (bug-onderzoek 15-09) — casus L.H.G. Holding "Kosten mobiele telefonie" bleek een BANK-direct-boeking; opdracht via opdrachten/inbox; geen migratie
+
+**Aanleiding (Peter 14/15-09):** "de AI leest toch alles" — de btw-code bleef leeg bij LHG op rekening 4404. **Bevinding
+(lees-only: Cloud Logging van de service + `nameting.sh rlz-lezen`, geen productie-writes): er wás geen document.** Op
+14-09 13:46–13:55 stond Peter voor LHG uitsluitend op het BANKSCHERM: twee `POST …/bank/mutaties/…/direct-boeken`
+(13:47:40 en 13:55:32), geen enkele documenten-/boekvoorstel-route. De RLZ-boekingen: **RLZ-07-00002805** (mutatie
+11-09, KPN "Factuur 04-09-2026 … kpn.com/mobielefactuur", −83,99 incl. → 4404 Kosten mobiele telefonie netto −69,41 +
+btw −14,58 = 21 %, door Peter zelf gekozen) en RLZ-07-00002806 (08-09, −202,23 → 4303 Verzekering vervoermiddelen, 0
+btw). Er liep dus geen AI-extractie en `leid_btw_af` kwam niet aan bod: het handmatig-boeken-formulier op het bankscherm
+kende géén enkele btw-voeding (geen grootboek-default, geen historie), en LHG heeft **nul** inkoopregels in het
+boekingsgeheugen (`btw-default-rapport`: 0 observaties, 4404 "geen (geen regels)"), zodat ook de 14-09-defaults (0142/0143)
+niets konden vullen. De opdrachttekst ("geboekt 14-09 op de mobiele-telefonie-rekening") klopte dus wél, alleen niet via
+een inkoopfactuur. **Status: GEBOUWD + GETEST 15-09; werkt in productie: niet gemeten (meetrecept onderaan).**
+
+**Wat er wél mis was in het documentpad (opdracht punt 2, los van de casus — bevestigd door casus u/v die dit gat
+beschreven als "Floor-PDF: drie regels zónder leesbaar btw-bedrag, dus geen factuur-afleiding"):** `leid_btw_af` werkte
+uitsluitend PER REGEL (netto × tarief ≈ regel-btw). Telecom-, energie- en abonnementsfacturen zetten de regels excl. btw
+en één btw-totaal onderaan → per regel "onbepaalbaar" → code leeg, terwijl de factuur het percentage wél bewijst. Dat
+gat is nu dicht.
+
+**Gebouwd (1) — factuur-niveau-afleiding, `app/extractie/controle.py::leid_btw_af_uit_totaal` (puur code):**
+kandidaten = regels mét netto (≠ 0) en ZONDER eigen btw-bedrag; álle netto's gelezen én (als het excl-totaal er is)
+cent-exact sluitend op dat totaal (anders geen bewijs dat het percentage óók voor deze regels geldt); factuur-btw =
+gelezen btw-totaal, anders incl − excl; restant-btw = factuur-btw − Σ btw van regels mét eigen btw; `leid_btw_af(restant-
+netto, restant-btw)` mét één cent speling per kandidaat-regel (afronding per regel op de factuur); 0 %/geen match/
+meerduidig blijft leeg (zelfde harde regels — 0 % is ambigu, LHG heeft twee 21 %-tarieven waarvan één RLZ-favoriet →
+favoriet wint, twee zonder favoriet = leeg). Per kandidaat-regel wordt het btw-bedrag deterministisch berekend (netto ×
+tarief, half-up op de cent; het afrondingsrestant landt op de regel met het grootste |netto| zodat Σ regel-btw exact het
+restant is) — de regelsom-toets sluit daardoor op incl in plaats van "btw per regel ontbreekt". Regel-dict: `btw_bron=
+'factuur'` (GROEN — het is een berekening uit de factuur, geen geheugen), `btw_afleiding_basis` = "regel" | "factuur_
+totaal" | None, `btw_bedrag_berekend: true`; top-level `btw_factuur_totaal` {taxrate_id, percentage, reden, regels,
+rest_netto, rest_btw} (tijdlijn-leesbaar). Regels mét eigen btw houden hun regel-afleiding (mixed 9 %/21 % werkt via het
+restant); een regel met een expliciete 0 heeft "eigen btw" en blijft bewust leeg. `leid_btw_af` kreeg een optionele
+`tolerantie` (default ±1 cent, ongewijzigd). **Eén-regel-terugval** (`boekvoorstel._regel_prefill_uit_ubl`, AI-voorstel
+zónder regels) neemt `btw_factuur_totaal.taxrate_id` over mét `btw_bron='factuur'`; UBL-voorstellen kennen de sleutel
+niet en zijn ongewijzigd. Geen AI-keuze van een code: de AI leverde alleen bedragen.
+
+**Gebouwd (2) — bankformulier volgt de gekozen rekening (frontend, één bron `document/grootboekBtwDefault.ts`):**
+`HandmatigBoekenForm` en `SplitsenForm` (grootboek-delen) vullen bij een rekening-keuze de btw-code met de grootboek-
+default (RLZ `standaard_taxrate_id` > historie `historie_taxrate_id`, dezelfde volgorde en dezelfde chips als het
+controlescherm: grijs "standaard grootboek" / oranje "meestal op deze rekening (n×)"), zolang de mens de btw niet zelf
+koos (dan wint die, ook bij een latere wissel, zonder chip); een rekening zonder default maakt een gevolgde btw weer
+leeg. `BoekvoorstelPanel` gebruikt dezelfde helper (refactor, gedrag gelijk). De bestaande btw-splitsing uit het inclusief-
+bedrag blijft: −83,99 → −69,41 + −14,58, exact de RLZ-boeking van 14-09.
+
+**Gebouwd (3) — historie-default telt ook bank-direct-boekingen (`app/geheugen/grootboek_btw_historie.py`, geen
+migratie):** de tariefverdeling per rekening = inkoopregels uit `boeking_observatie` + regels van GEBOEKTE, niet-
+automatische `bank_boeking`en (mens koos zelf of bevestigde een vaste regel; gestorneerd, automatisch, zonder tarief en
+buiten het venster tellen niet; `geboekt_op` in de 24 maanden). Zelfde drempels (≥ 5, ≥ 90 %), zelfde `btw_bron=
+'grootboek_historie'`. Gevolg voor LHG (vooral bankboekingen): ná ≥ 5 bankboekingen op 4404 met 21 % krijgt élke volgende
+boeking op die rekening — in het bankformulier én in een eventueel controlescherm — de code vooringevuld. Rapport-CLI
+`btw-default-rapport` telt "boekingsregels (inkoop + bank)"; chip-toelichting 0143 aangepast.
+
+**Bewust NIET gedaan:** geen AI-keuze van een btw-code (kernprincipe 2); geen bank-matchmotor-stap "btw uit de
+omschrijving"; geen aanpassing van de 20-cent/1-cent-tolerantie per regel; geen wijziging van de export-fixtures
+(`frontend/src/dev/keten/*.json` byte-gelijk — casus w is niet geëxporteerd, casussen u/v spelen bewust de variant
+"zonder leesbaar btw-/incl-totaal" (`casussen.zonder_btw_totaal`) omdat de Floor-PDF mét totaal nu terecht de factuur-
+afleiding krijgt).
+
+**Af (tests):** `tests/extractie/test_controle.py::TestLeidBtwAfUitTotaal` (11: KPN-patroon, afrondingsrestant, mixed
+9/21 %, expliciete 0 blijft leeg, regelsom sluit niet = geen bewijs, geen match/0 %, twee 21 %-tarieven favoriet/
+meerduidig, incl − excl zonder btw-totaal, zonder regels, creditnota negatief, ongelezen netto); `tests/documenten/
+test_btw_uit_factuur_totaal.py` (3: prefill-regels groen 'factuur' + samengevoegd, één-regel-terugval, UBL ongewijzigd);
+`tests/geheugen/test_grootboek_btw_historie.py` +1 (bankboekingen tellen, automatisch/gestorneerd/oud/zonder tarief niet);
+gouden set: nieuwe casus **(w)** `tests/keten/test_w_btw_uit_factuur_totaal.py` + fixture `w_telefonie_btw_totaal`
+(gereconstrueerd KPN-patroon, bedragen van RLZ-07-00002805; herkomst eerlijk in bron.json) — veldvoorstel, prefill,
+samengevoegd, DTO, checks, heropenen; casussen u/v op de variant zonder totaal; frontend `HandmatigBoekenBtwDefault.
+test.tsx` (3: historie-default mét oranje chip + splitsing −69,41/−14,58, RLZ-default wint + rekening zonder default
+maakt leeg, mens wint).
+
+**Meetrecept ná deploy (werkt in productie: ja/nee):** (a) `nameting.sh btw-default-rapport --administratie "L.H.G.
+Holding"` — kopregel "boekingsregels (inkoop + bank)"; 4404 toont ná de eerstvolgende `sync-alles` (07:00) de bank-
+boekingen in de verdeling (op 15-09: 1× hoog — pas bij ≥ 5 een default); (b) Peter: LHG › Bank › volgende KPN-mutatie ›
+Boeken… › kies 4404 → btw-code vooringevuld zodra 4404 een default draagt, anders leeg (correct); (c) een geüploade
+telecom-/energiefactuur met regels excl. + één btw-totaal → controlescherm toont per regel de btw-code groen "uit
+factuur" en de regelsom-badge sluit op incl. Meetlat (a) loopt dagelijks mee in de nameting-workflow (onderdeel `btw-
+default`).
+
+**Beslispunten Peter:** (1) wil je voor LHG (en andere "bank-administraties") sneller een default dan ≥ 5 boekingen —
+bv. één bevestigde vaste regel per tegenpartij (bestaat al: "Onthoud als vaste regel" in hetzelfde formulier draagt de
+btw mee)? (2) Moet de historie-default óók uit RLZ-JournalEntries van bankdagboeken geseed worden (nu alleen module-
+boekingen) — dan krijgt LHG 'm zonder wachttijd, maar dat is een extra RLZ-leesroute per administratie.
+
 ## ADMINISTRATIENAAM — BEWERKBAAR + VOLGT DE BRON (Peter 15-09) — casus Camping "Nieuwenhoven" → "Strandpark Zilverduynen" in Odoo ná het koppelen; opdracht via opdrachten/inbox; migratie 0144
 
 **Opdracht Peter 15-09:** de administratienaam was in de module nergens te wijzigen en volgde de bron niet — Camping Nieuwenhoven is in Odoo hernoemd naar "Strandpark Zilverduynen", de module bleef de oude naam tonen. Twee regels: (A) de naam is Beheerder-bewerkbaar op Instellingen › Administraties › ‹administratie› › Algemeen; (B) staat er geen menselijke naam, dan volgt de module de bron (Odoo `res.company.name` / RLZ `Administrations.Name`) bij élke stamgegevens-sync; heeft een mens de naam gezet, dan nooit overschrijven maar de afwijkende bronnaam tonen mét "Naam overnemen". KP1 (bron van waarheid), KP4 (niets stil — audit oud→nieuw op élke naamwissel), KP7.6 (een onleesbare bron blokkeert de sync nooit).

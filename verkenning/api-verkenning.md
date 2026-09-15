@@ -2381,3 +2381,23 @@ géén van de vijf gemeten administraties draagt een rekening een waarde; op LHG
 5. `rlz-lezen` matcht de administratie op `ilike '%tekst%'` — "LHG Holding" is 0 treffers, de rij heet "L.H.G. Holding
    B.V."; een niet-eenduidige zoekterm ("Holding") geeft de kandidatenlijst terug (9 treffers), dat is de snelste weg
    naar de exacte naam.
+
+## BankMutationDirectBookings — collectie negeert `$expand`, record-vorm mét regels; casus LHG 14-09 (bug-onderzoek 15-09, lees-only via `nameting.sh rlz-lezen`, administratie L.H.G. Holding B.V.)
+
+**Vraag:** wat boekte Peter op 14-09 op LHG-rekening 4404 "Kosten mobiele telefonie" — een inkoopfactuur (module-document)
+of iets anders? Cloud Logging van de service toonde voor LHG op 14-09 uitsluitend twee `POST …/bank/mutaties/{id}/direct-
+boeken` (13:47:40, 13:55:32) en geen documentroute.
+
+| # | Call (`GET`, 200) | Uitkomst |
+|---|---|---|
+| a | `PurchaseInvoices?$filter=BookDate ge 2026-09-12T22:00:00Z&$expand=Entity,DocumentLineList($expand=Account,TaxRate)&$orderby=BookDate desc&$top=20` | `value: []` — geen module-inkoopfactuur ná 13-09 |
+| b | `PurchaseInvoices?$filter=DocumentLineList/any(l: l/Account/AccountNumber eq '4404')&…&$top=10` | `value: []` — de lambda-vorm geeft leeg (niet bewezen of RLZ 'm toepast of stil negeert; vermijden) |
+| c | `PurchaseInvoices?$expand=Entity,DocumentLineList(…)&$orderby=BookDate desc&$top=30` | 30 records op `Date` desc, **zonder `BookDate` en zonder `DocumentLineList`** in de collectie-vorm (sleutels: BaseInvoiceAmount…Type, id) — bankdagboek-boekingen (RLZ-69/15/04/16-nummers, `Entity` vaak null) staan óók in deze collectie |
+| d | `BankMutationDirectBookings?$orderby=Date desc&$top=5&$expand=DocumentLineList($expand=Account,TaxRate),PaymentTransaction` | 5 records, `DocumentType 19`, **expands stil genegeerd op de collectie** (geen regels, geen transactie); wél `TotalTaxAmount`/`IsVatIncluded`/`BookDate`. Nieuwste: `RLZ-07-00002805` (Date/BookDate 11-09, −83,99, tax −14,58) en `RLZ-07-00002806` (08-09, −202,23, tax 0) = de twee boekingen van 14-09 |
+| e | `BankMutationDirectBookings` `--record-via-filter "ReceiptNumber eq 'RLZ-07-00002805'" --expand …` | record-vorm mét `DocumentLineList` + `Account`: **4404 Kosten mobiele telefonie, NetAmount −69,41, TaxAmount −14,58 (21 %)**, regeltekst "Factuur 04-09-2026, klantnummer …, kpn.com/mobielefactuur"; `TaxRate`-navigatie komt óók in de record-vorm niet mee (null) — het tarief lees je uit TaxAmount/NetAmount. `PaymentTransaction` alleen `{BookDate, Type, id}` |
+| f | idem `RLZ-07-00002806` | 4303 Verzekering vervoermiddelen, −202,23, tax 0, "Prolongatie 08-09-2026 …" |
+
+**Conclusie:** de LHG-casus was een **bank-direct-boeking van een KPN-incasso** (geen document, geen AI-extractie); de
+btw 21 % koos Peter zelf in het bankformulier. Regels van een bankboeking altijd via de record-vorm lezen (collectie
+negeert de expand — zelfde les als de memorialen, STAP-0 13-09). Cloud Logging (nameting-SA heeft `logging.viewer`) is
+een bruikbaar lees-only spoor om te reconstrueren wélke route een mens gebruikte: `textPayload:"<administratie-id>"`.
