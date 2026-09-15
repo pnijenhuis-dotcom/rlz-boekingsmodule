@@ -1,0 +1,573 @@
+LEES-ONLY: geen run-rij, geen bevindingen, geen acceptatie-overdracht, geen mail.
+=== rlz_dubbel-reconciliatie (lees-only) ===
+OVERGESLAGEN 32d162fe-c686-42b0-a8ba-ec07ae80e68c: niet van toepassing — backend odoo (dit blok toetst alleen Reeleezee)
+LEES-ONLY  35d106f2-91a3-4e65-8827-2d329fbfd716 (Rubicon Investments B.V.): 230 inkoopfacturen sinds 2025-08-11 — paren OUD 2 → clusters NIEUW 2 (0 waarschijnlijk dubbel, 2 open, 0 geaccepteerd); uitgesloten: geen
+    - 35d106f2-91a3-4e65-8827-2d329fbfd716 cluster=be5e66b3-b38c-4927-85c1-670490f16e3a|1ea2c241-193a-4c95-a5b7-9c2547c1057b|255050256675 soort=dubbel_in_rlz [vaf:81131b5523032ca7]: RLZ-04-00002041 + RLZ-04-00002085 (referentie, ref 255050256675, 2 exemplaren)
+    - 35d106f2-91a3-4e65-8827-2d329fbfd716 cluster=be5e66b3-b38c-4927-85c1-670490f16e3a|d8a29f45-182f-41fb-a35d-4a3a7d938d74|26010233 soort=dubbel_in_rlz [vaf:7b8acb59582189b4]: RLZ-04-00002274 + RLZ-04-00002339 (referentie, ref 26010233, 2 exemplaren, concept)
+    SNEDE2 tellers 35d106f2-91a3-4e65-8827-2d329fbfd716: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  5a1ba7bb-f47c-4c76-bf9a-1a711b87217d (Stichting Shuto): 15 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 5a1ba7bb-f47c-4c76-bf9a-1a711b87217d: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  005e2bca-41b1-4775-9c55-4e36c961f58b (Administratiekantoor Nijenhuis C.V.): 268 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    - SNEDE2 005e2bca-41b1-4775-9c55-4e36c961f58b RLZ-04-00003012 + RLZ-04-00003011 | L.H.B. | € 7477.80 | 2026-04-01/2026-04-01 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 005e2bca-41b1-4775-9c55-4e36c961f58b: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  14cb089e-06ca-4039-833a-b7a4fbc90a6d (Oirschot Recreatie B.V.): 934 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): K.F.B. € 2286.90 — 20 documenten over 11 maanden, ≥ 3 gelijke bedragen over 11 maanden, 9 paren
+    · uitgesloten (periodiek): K.F.B. € 3049.20 — 6 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 2 paren
+    · uitgesloten (periodiek): G.A. € 500.00 — 15 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 4 paren
+    SNEDE2 tellers 14cb089e-06ca-4039-833a-b7a4fbc90a6d: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 3 groepen/15 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  3b926710-c4ac-4ea3-9a1d-a5e0ec58b6a8 (T&J Hoveniers): 60 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 2 groep(en)/6 doc
+    · uitgesloten (plaatsvervanger-referentie): Hornbach ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): div. tankstation ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    SNEDE2 tellers 3b926710-c4ac-4ea3-9a1d-a5e0ec58b6a8: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  b60d7afc-1d76-4b46-a2ea-aa8202a20d5f (Abbegaa B.V.): 352 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: placeholder 7 groep(en)/49 doc
+    - b60d7afc-1d76-4b46-a2ea-aa8202a20d5f cluster=e29f0837-62f7-4a89-b67c-497c2090d8d5|14bec147-c471-494b-be57-99bd615d7f89|1 soort=dubbel_in_rlz [vaf:43c93ce05553648d]: RLZ-16-00000081 + RLZ-17-00000497 (referentie, ref 1, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Avia ref 'Ingescand document' — 3 documenten, 1 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Gamma ref 'Ingescand document' — 7 documenten, 7 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Hotel Deventer ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Jumbo ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Karwei ref 'Ingescand document' — 12 documenten, 12 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Sligro Food Group Nederland B.V. ref 'Ingescand document' — 14 documenten, 14 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): lebara ref 'Ingescand document' — 7 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): D.B. € 31.46 — 7 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 1 paren
+    · uitgesloten (periodiek): D.B. € 279.51 — 6 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (dag-batch): B.V. € 65.99 — 3 documenten op 2026-04-23 (boekdatum), 3 paren
+    - SNEDE2 b60d7afc-1d76-4b46-a2ea-aa8202a20d5f RLZ-16-00000252 + RLZ-16-00000371 | B.B. | € 18.90 | 2026-04-22/2026-04-22 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers b60d7afc-1d76-4b46-a2ea-aa8202a20d5f: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 1, periodiek uitgesloten 2 groepen/2 paren, dag-batch uitgesloten 1 groepen/3 paren
+LEES-ONLY  96e834cd-bf01-4198-b6d3-20f21d06eed9 (A.Y. Holding 2 B.V.): 6 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 96e834cd-bf01-4198-b6d3-20f21d06eed9: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  5419878c-ca11-4f02-98d7-b14325ff8206 (BLOw B.V): 203 inkoopfacturen sinds 2025-08-11 — paren OUD 2 → clusters NIEUW 2 (0 waarschijnlijk dubbel, 2 open, 0 geaccepteerd); uitgesloten: placeholder 5 groep(en)/36 doc
+    - 5419878c-ca11-4f02-98d7-b14325ff8206 cluster=3d30c36b-f46b-4124-8301-906169c9432b|3e9da5df-ec06-4c12-bd18-7bba95bcb3c6|7 soort=dubbel_in_rlz [vaf:a59abcf70fb09d12]: RLZ-16-00000145 + RLZ-17-00000277 (referentie, ref 7, 2 exemplaren)
+    - 5419878c-ca11-4f02-98d7-b14325ff8206 cluster=3d30c36b-f46b-4124-8301-906169c9432b|f6d82b56-0000-4d4d-b447-974ef040d6ab|81440113122 soort=dubbel_in_rlz [vaf:8fbb9672c990ff54]: RLZ-04-00000043 + RLZ-04-00000131 (referentie, ref 81440113122, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 10 documenten, 9 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Gamma ref 'Ingescand document' — 6 documenten, 6 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Kruidvat ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Margerapport ref 'Ingescand document' — 15 documenten, 15 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Zilver Horeca ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    SNEDE2 tellers 5419878c-ca11-4f02-98d7-b14325ff8206: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  cd973c86-5b06-43b2-9fc9-81ffb8461e08 (Van Boxtel Horeca Exploitatie B.V.): 336 inkoopfacturen sinds 2025-08-11 — paren OUD 7 → clusters NIEUW 4 (0 waarschijnlijk dubbel, 4 open, 0 geaccepteerd); uitgesloten: placeholder 8 groep(en)/33 doc, klantkenmerk 1 groep(en)/3 doc
+    - cd973c86-5b06-43b2-9fc9-81ffb8461e08 cluster=8e1dc3ef-54a6-4abb-a2e7-49224c4e3bb2|bd36cb13-1fdc-4737-b10f-8045acffc212|26900362 soort=dubbel_in_rlz [vaf:8b491cbfb040df61]: RLZ-25-00000093 + RLZ-25-00000235 (referentie, ref 26900362, 2 exemplaren)
+    - cd973c86-5b06-43b2-9fc9-81ffb8461e08 cluster=8e1dc3ef-54a6-4abb-a2e7-49224c4e3bb2|dfe8cb13-6a11-4bab-8281-36faed41e7bb|70362 soort=dubbel_in_rlz [vaf:5be46101113805ce]: RLZ-25-00000010 + RLZ-25-00000634 (referentie, ref 70362, 2 exemplaren, concept)
+    - cd973c86-5b06-43b2-9fc9-81ffb8461e08 cluster=8e1dc3ef-54a6-4abb-a2e7-49224c4e3bb2|eb3a6b3d-7b9a-43db-84a2-c7115d01e961|8822464 soort=dubbel_in_rlz [vaf:bcbf9039392b7a86]: RLZ-25-00000643 + RLZ-25-00000649 (referentie, ref 8822464, 2 exemplaren, concept)
+    - cd973c86-5b06-43b2-9fc9-81ffb8461e08 cluster=8e1dc3ef-54a6-4abb-a2e7-49224c4e3bb2|48080731-64ef-45b0-8bec-781d23f1b924|20267657 soort=dubbel_in_rlz [vaf:399bca93da6f08d8]: RLZ-16-00000568 + RLZ-16-00000599 (referentie, ref 20267657, 2 exemplaren)
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Sligro Food Group Nederland B.V. ref '51793' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Albert Heijn ref 'Ingescand document' — 14 documenten, 14 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Belastingdienst ref 'Ingescand document' — 3 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): De Sleutel- en Slotenspecialist ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Gamma ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Hornbach ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Praxis ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Sligro Food Group Nederland B.V. ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Xenos ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (periodiek): A.N.C. € 907.50 — 8 documenten over 6 maanden, maand-patroon over 6 facturen, 3 paren
+    - SNEDE2 cd973c86-5b06-43b2-9fc9-81ffb8461e08 RLZ-16-00000025 + RLZ-16-00000081 | B. | € 12.30 | 2026-01-26/2026-01-24 | niet-module×niet-module | bank 0/2
+    - SNEDE2 cd973c86-5b06-43b2-9fc9-81ffb8461e08 RLZ-35-00000527 + RLZ-35-00000514 | B. | € 0.00 | 2026-06-17/2026-06-17 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers cd973c86-5b06-43b2-9fc9-81ffb8461e08: paren 2, module×niet-module 0, niet-module×niet-module 2, bank-bevestigd 0, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  876d5515-9f8a-42f8-a33a-0022981342d6 (Beleggingsmaatschappij Meyer BV): 116 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 9.68 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 3 paren
+    SNEDE2 tellers 876d5515-9f8a-42f8-a33a-0022981342d6: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 1, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  a265c010-91ee-4b72-a5d6-48ddb67652f4 (Bouwadvies Oost Nederland B.V.): 387 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): M.B. € 49035.01 — 9 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 2 paren
+    · uitgesloten (periodiek): R.P.B. € 110000.00 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): B.A.B. € 11379.77 — 14 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 12 paren
+    - SNEDE2 a265c010-91ee-4b72-a5d6-48ddb67652f4 RLZ-04-00000241 + RLZ-04-00000200 | J.R.B. | € 59173.54 | 2026-03-13/2026-03-13 | niet-module×niet-module | bank 0/2
+    - SNEDE2 a265c010-91ee-4b72-a5d6-48ddb67652f4 RLZ-04-00000444 + RLZ-04-00000445 | S. | € 54450.00 | 2026-07-06/2026-07-06 | niet-module×niet-module | bank 0/2
+    - SNEDE2 a265c010-91ee-4b72-a5d6-48ddb67652f4 RLZ-04-00000086 + RLZ-04-00000087 | I.B.V.D. | € 7748.84 | 2026-01-21/2026-01-21 | niet-module×niet-module | bank 0/2
+    - SNEDE2 a265c010-91ee-4b72-a5d6-48ddb67652f4 RLZ-04-00000281 + RLZ-04-00000280 | G.B.B. | € 58080.00 | 2026-04-28/2026-04-28 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers a265c010-91ee-4b72-a5d6-48ddb67652f4: paren 4, module×niet-module 0, niet-module×niet-module 4, bank-bevestigd 0, periodiek uitgesloten 3 groepen/15 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  dd529c71-94e2-4c6a-b31f-ac5b93b90adf (Bradwolff Constructie B.V.): 690 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - dd529c71-94e2-4c6a-b31f-ac5b93b90adf cluster=919b8c27-db14-4896-b1a9-ab228c1702ca|efe3f658-a795-4100-afcd-0c3b01bd9346|412648321 soort=dubbel_in_rlz [vaf:45be770f7086d1b4]: RLZ-04-00000832 + RLZ-25-00001451 (referentie, ref 412648321, 2 exemplaren, concept)
+    · uitgesloten (periodiek): J.A. € 2032.80 — 14 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): S. € 15.62 — 6 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): S. € 80.77 — 7 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 1 paren
+    - SNEDE2 dd529c71-94e2-4c6a-b31f-ac5b93b90adf RLZ-16-00000900 + RLZ-16-00000897 | S. | € -9.45 | 2025-12-29/2025-12-29 | niet-module×niet-module | bank 0/2
+    - SNEDE2 dd529c71-94e2-4c6a-b31f-ac5b93b90adf RLZ-25-00001454 + RLZ-25-00001455 | P. | € 2873.75 | 2026-09-01/2026-09-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 dd529c71-94e2-4c6a-b31f-ac5b93b90adf RLZ-20-00001312 + RLZ-20-00001313 | B.H.B. | € 72600.00 | 2026-06-30/2026-06-30 | niet-module×niet-module | bank 0/2
+    - SNEDE2 dd529c71-94e2-4c6a-b31f-ac5b93b90adf RLZ-25-00001439 + RLZ-25-00001451 | G.B.E.S. | € 31183.20 | 2026-08-27/2026-08-28 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers dd529c71-94e2-4c6a-b31f-ac5b93b90adf: paren 4, module×niet-module 0, niet-module×niet-module 4, bank-bevestigd 1, periodiek uitgesloten 3 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  4974dc6e-d215-4106-a6f9-98e654af26c3 (B. van Rooijen / G. Schaalje): 287 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 4974dc6e-d215-4106-a6f9-98e654af26c3: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  ca974721-59c2-4f8c-889b-62c35052c6a6 (Zilver Beheer B.V.): 96 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): D.R. € 3130.88 — 6 documenten over 5 maanden, maand-patroon over 5 facturen, 1 paren
+    - SNEDE2 ca974721-59c2-4f8c-889b-62c35052c6a6 RLZ-04-00000306 + RLZ-04-00000310 | S.G.B. | € 1236.85 | 2026-06-19/2026-06-19 | niet-module×niet-module | bank 0/2
+    - SNEDE2 ca974721-59c2-4f8c-889b-62c35052c6a6 RLZ-04-00000308 + RLZ-04-00000323 | S.G.B. | € 7452.10 | 2026-07-01/2026-07-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 ca974721-59c2-4f8c-889b-62c35052c6a6 RLZ-14-00000314 + RLZ-04-00000311 | S.V.G.B. | € 809.49 | 2026-06-22/2026-06-22 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers ca974721-59c2-4f8c-889b-62c35052c6a6: paren 3, module×niet-module 0, niet-module×niet-module 3, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  66e1e296-6582-41bd-80d2-1be7316f5d52 (Kempen Facilities B.V.): 1791 inkoopfacturen sinds 2025-08-11 — paren OUD 6 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 2 groep(en)/4 doc, klantkenmerk 1 groep(en)/4 doc
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Hornbach Bouwmarkt (Nederland) B.V. ref '01' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Megapraxis ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Tuincentrum Coppelmans ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): S.B. € 217.20 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): S.B. € 260.76 — 5 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): K.A.B. € 1894.99 — 8 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 21 paren
+    · uitgesloten (periodiek): C.C.O.E. € 157.30 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 3 paren
+    · uitgesloten (periodiek): L.I.P.B. € 1564.78 — 20 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 90 paren
+    · uitgesloten (periodiek): L.I.P.B. € 1654.07 — 6 documenten over 3 maanden, kwartaal-patroon over 3 facturen, 4 paren
+    · uitgesloten (periodiek): L.I.P.B. € 2244.55 — 49 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 141 paren
+    · uitgesloten (periodiek): L.I.P.B. € 5998.70 — 10 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 20 paren
+    · uitgesloten (periodiek): L.I.P.B. € 6050.26 — 8 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 12 paren
+    · uitgesloten (periodiek): N. € 11500.00 — 5 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 1 paren
+    · uitgesloten (periodiek): P.I.B. € 2722.50 — 14 documenten over 12 maanden, ≥ 3 gelijke bedragen over 12 maanden, 1 paren
+    · uitgesloten (periodiek): D.C.A.B. € 453.75 — 6 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): D. € 12.61 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): B.S.B. € 431.97 — 17 documenten over 9 maanden, maand-patroon over 9 facturen, 6 paren
+    · uitgesloten (dag-batch): S.B. € -1.21 — 3 documenten op 2025-08-20 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): S.B. € 1.21 — 3 documenten op 2025-08-20 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): K.A.B. € 1795.00 — 10 documenten op 2025-12-15 (boekdatum), 45 paren
+    · uitgesloten (dag-batch): K.A.B. € 1875.50 — 5 documenten op 2025-09-01 (boekdatum), 10 paren
+    · uitgesloten (dag-batch): K.A.B. € 3000.00 — 6 documenten op 2025-09-01 (boekdatum), 15 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 1132.51 — 3 documenten op 2026-07-03 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 1274.68 — 13 documenten op 2026-07-03 (boekdatum), 78 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 1274.68 — 5 documenten op 2026-07-16 (boekdatum), 10 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 5737.25 — 7 documenten op 2026-07-03 (boekdatum), 21 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 5737.25 — 3 documenten op 2026-07-16 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): L.I.P.B. € 5769.67 — 6 documenten op 2026-07-03 (boekdatum), 15 paren
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00002900 + RLZ-04-00002899 | L.I.P.B. | € 4489.11 | 2025-10-13/2025-10-13 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00004242 + RLZ-04-00004245 | L.I.P.B. | € 5769.67 | 2026-07-16/2026-07-16 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003358 + RLZ-04-00003346 | T.B.B. | € 470.05 | 2026-01-22/2026-01-22 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003220 + RLZ-04-00003219 | C.C.S.B. | € 1008.23 | 2025-12-18/2025-12-18 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00004412 + RLZ-04-00004314 | H.K.D.B. | € 12600.00 | 2026-08-10/2026-08-10 | module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00002676 + RLZ-04-00002673 | L.I.P.B. | € 3129.54 | 2025-08-27/2025-08-27 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003085 + RLZ-04-00003086 | L.I.P.B. | € 3177.94 | 2025-12-02/2025-12-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003208 + RLZ-04-00003207 | P.&.P.G. | € 33.88 | 2025-12-22/2025-12-22 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00002889 + RLZ-04-00002890 | W.B. | € 1208.89 | 2025-10-07/2025-10-07 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00004312 + RLZ-04-00004415 | H.K.D.B. | € 16250.00 | 2026-08-10/2026-08-10 | module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-17-00002647 + RLZ-17-00002648 | B. | € 3.50 | 2025-08-17/2025-08-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003367 + RLZ-04-00003368 | L.I.P.B. | € 4537.56 | 2026-01-27/2026-01-27 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003325 + RLZ-04-00003314 | L.I.P.B. | € 4537.56 | 2026-01-22/2026-01-22 | niet-module×niet-module | bank 1/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003923 + RLZ-04-00003922 | L.&.L. | € 59.90 | 2026-05-21/2026-05-21 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003882 + RLZ-04-00003881 | P.&.P.G. | € 125.84 | 2026-05-13/2026-05-13 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00002588 + RLZ-04-00002589 | L.I.P.B. | € 3244.56 | 2025-08-12/2025-08-12 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00004176 + RLZ-04-00004172 | L.I.P.B. | € 5255.61 | 2026-07-03/2026-07-03 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003032 + RLZ-04-00003187 | I. | € 347.89 | 2025-11-08/2025-11-07 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00003477 + RLZ-04-00003472 | S. | € 726.67 | 2026-02-05/2026-02-03 | niet-module×niet-module | bank 0/2
+    - SNEDE2 66e1e296-6582-41bd-80d2-1be7316f5d52 RLZ-04-00002661 + RLZ-04-00002665 | S. | € 493.68 | 2025-08-21/2025-08-22 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 66e1e296-6582-41bd-80d2-1be7316f5d52: paren 20, module×niet-module 2, niet-module×niet-module 18, bank-bevestigd 0, periodiek uitgesloten 14 groepen/303 paren, dag-batch uitgesloten 11 groepen/206 paren
+LEES-ONLY  f13f30c2-bfc8-4e02-bc29-d4dd65dbfecf (Molenhof Beheer B.V.): 192 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): K.F.B. € 165.17 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 3 paren
+    - SNEDE2 f13f30c2-bfc8-4e02-bc29-d4dd65dbfecf RLZ-17-00000997 + RLZ-17-00000929 | B.A. | € 4312.44 | 2025-09-08/2025-09-08 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers f13f30c2-bfc8-4e02-bc29-d4dd65dbfecf: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  d2e7f9f6-c4bb-486b-8085-1137fec4941f (Molenhof Verhuur B.V.): 458 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 23.60 — 6 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): R.B. € 25.41 — 9 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 1 paren
+    · uitgesloten (periodiek): V.R.B. € -4886.32 — 6 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 10 paren
+    · uitgesloten (periodiek): K.F.B. € 1189.13 — 5 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): K.F.B. € 1338.41 — 25 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 97 paren
+    · uitgesloten (periodiek): K.F.B. € 1643.01 — 20 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 90 paren
+    · uitgesloten (periodiek): K.F.B. € 1736.77 — 6 documenten over 3 maanden, kwartaal-patroon over 3 facturen, 4 paren
+    · uitgesloten (periodiek): K.F.B. € 2356.78 — 49 documenten over 10 maanden, ≥ 3 gelijke bedragen over 10 maanden, 139 paren
+    · uitgesloten (periodiek): K.F.B. € 4764.44 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 2 paren
+    · uitgesloten (periodiek): K.F.B. € 6024.14 — 11 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 22 paren
+    · uitgesloten (periodiek): K.F.B. € 6058.17 — 12 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 19 paren
+    · uitgesloten (periodiek): K.F.B. € 6298.68 — 10 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 20 paren
+    · uitgesloten (periodiek): K.F.B. € 6352.78 — 8 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 12 paren
+    · uitgesloten (periodiek): K.F.B. € 14610.75 — 5 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 1 paren
+    · uitgesloten (dag-batch): V.R.B. € 4886.32 — 78 documenten op 2026-01-01 (boekdatum), 3003 paren
+    · uitgesloten (dag-batch): K.F.B. € 1884.74 — 10 documenten op 2025-12-21 (boekdatum), 45 paren
+    · uitgesloten (dag-batch): K.F.B. € 1969.28 — 5 documenten op 2025-09-15 (boekdatum), 10 paren
+    · uitgesloten (dag-batch): K.F.B. € 1989.75 — 7 documenten op 2025-11-04 (boekdatum), 21 paren
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000194 + RLZ-24-00000201 | K.F.B. | € 4713.56 | 2025-10-20/2025-10-23 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000194 + RLZ-24-00000200 | K.F.B. | € 4713.56 | 2025-10-20/2025-10-23 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000194 + RLZ-24-00000193 | K.F.B. | € 4713.56 | 2025-10-20/2025-10-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000195 + RLZ-24-00000196 | K.F.B. | € 1269.33 | 2025-10-20/2025-10-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000201 + RLZ-24-00000200 | K.F.B. | € 4713.56 | 2025-10-23/2025-10-23 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000201 + RLZ-24-00000193 | K.F.B. | € 4713.56 | 2025-10-23/2025-10-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000233 + RLZ-24-00000232 | K.F.B. | € 3336.84 | 2025-12-09/2025-12-09 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-04-00000623 + RLZ-04-00000624 | K.F.B. | € 2676.82 | 2026-08-31/2026-08-31 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000155 + RLZ-24-00000154 | K.F.B. | € 3286.02 | 2025-09-06/2025-09-06 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-04-00000571 + RLZ-04-00000564 | K.F.B. | € 5518.39 | 2026-07-10/2026-07-10 | niet-module×niet-module | bank 0/2
+    - SNEDE2 d2e7f9f6-c4bb-486b-8085-1137fec4941f RLZ-24-00000200 + RLZ-24-00000193 | K.F.B. | € 4713.56 | 2025-10-23/2025-10-20 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers d2e7f9f6-c4bb-486b-8085-1137fec4941f: paren 11, module×niet-module 0, niet-module×niet-module 11, bank-bevestigd 0, periodiek uitgesloten 14 groepen/419 paren, dag-batch uitgesloten 4 groepen/3079 paren
+LEES-ONLY  27c3ff8d-b92f-4daa-877b-a03a81ca2e8e (BWC Steigers B.V.): 54 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (1 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - 27c3ff8d-b92f-4daa-877b-a03a81ca2e8e cluster=a615f080-c2c5-4456-ad75-a392f2af8c8a|0fc2e28d-cbb6-4ab2-bf62-acc3663ea1d1|rlz2026035069 soort=dubbel_in_rlz [vaf:f7877577bc8470d1]: RLZ-16-00000479 + RLZ-16-00000480 (referentie, ref rlz2026035069, 2 exemplaren, waarschijnlijk dubbel, concept)
+    · uitgesloten (periodiek): R.B. € 52.03 — 13 documenten over 9 maanden, ≥ 3 gelijke bedragen over 9 maanden, 2 paren
+    · uitgesloten (periodiek): A.N.C. € 56.81 — 17 documenten over 13 maanden, ≥ 3 gelijke bedragen over 13 maanden, 4 paren
+    SNEDE2 tellers 27c3ff8d-b92f-4daa-877b-a03a81ca2e8e: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 2 groepen/6 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  972f217a-b954-4c38-97a1-58b0376c04da (Oirschot Vastgoed Beheer B.V.): 102 inkoopfacturen sinds 2025-08-11 — paren OUD 3 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: klantkenmerk 1 groep(en)/3 doc
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Oirschot Recreatie B.V. ref 'KB050' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (periodiek): A.N.C. € 87.06 — 9 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 1 paren
+    · uitgesloten (periodiek): O.R.B. € 4886.31 — 8 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 21 paren
+    · uitgesloten (dag-batch): K.F.B. € 3150.01 — 6 documenten op 2025-09-15 (boekdatum), 15 paren
+    - SNEDE2 972f217a-b954-4c38-97a1-58b0376c04da RLZ-24-00000534 + RLZ-24-00000532 | K.F.B. | € 3406.78 | 2025-08-15/2025-08-15 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 972f217a-b954-4c38-97a1-58b0376c04da: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 2 groepen/22 paren, dag-batch uitgesloten 1 groepen/15 paren
+LEES-ONLY  ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 (Clean Care Arnhem B.V.): 291 inkoopfacturen sinds 2025-08-11 — paren OUD 36 → clusters NIEUW 5 (0 waarschijnlijk dubbel, 5 open, 0 geaccepteerd); uitgesloten: placeholder 1 groep(en)/4 doc, klantkenmerk 6 groep(en)/22 doc
+    - ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 cluster=c0e6b913-fad8-4211-aca5-6618679f2d03|9f61ce59-be5f-4d63-98fc-982c9870684e|202625 soort=dubbel_in_rlz [vaf:29483329c88b358e]: RLZ-20-00000478 + RLZ-20-00000479 (referentie, ref 202625, 2 exemplaren)
+    - ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 cluster=c0e6b913-fad8-4211-aca5-6618679f2d03|8b3285a5-e1f1-467d-b22d-2fa8f9f73a82|20258 soort=dubbel_in_rlz [vaf:a21da479db429f75]: RLZ-20-00000497 + RLZ-20-00000499 (referentie, ref 20258, 2 exemplaren)
+    - ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 cluster=c0e6b913-fad8-4211-aca5-6618679f2d03|8b3285a5-e1f1-467d-b22d-2fa8f9f73a82|20262 soort=dubbel_in_rlz [vaf:7da9443cfd2ffdf9]: RLZ-20-00000366 + RLZ-20-00000386 (referentie, ref 20262, 2 exemplaren)
+    - ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 cluster=c0e6b913-fad8-4211-aca5-6618679f2d03|8b3285a5-e1f1-467d-b22d-2fa8f9f73a82|20265 soort=dubbel_in_rlz [vaf:909aa40f21e49992]: RLZ-20-00000442 + RLZ-20-00000462 (referentie, ref 20265, 2 exemplaren)
+    - ccc74ae1-2eec-425f-9a1f-76a9a201d0f5 cluster=c0e6b913-fad8-4211-aca5-6618679f2d03|8b3285a5-e1f1-467d-b22d-2fa8f9f73a82|20267 soort=dubbel_in_rlz [vaf:1d456a224cc0e496]: RLZ-20-00000464 + RLZ-20-00000476 (referentie, ref 20267, 2 exemplaren)
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Okatayie K B ref '101' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Okatayie K B ref '102' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Okatayie K B ref 'CLN-001' — 3 documenten, 2 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Okatayie K B ref 'CLN-002' — 5 documenten, 4 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Okatayie K B ref 'CLN-003' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Thuiszorg en schoonmaakbedrijf A.L Barros ref '2026-06' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): LAviyA ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    SNEDE2 tellers ccc74ae1-2eec-425f-9a1f-76a9a201d0f5: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  55159e49-1114-49eb-942b-8986080e51f5 (Veldhoven Recreatie B.V.): 1655 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - 55159e49-1114-49eb-942b-8986080e51f5 cluster=dc079584-5f7e-462f-9dbd-a9784763ae2a|4ebedde0-615b-4dfd-98d0-e2dec4417016|26042250 soort=dubbel_in_rlz [vaf:a889e1db6e44bd75]: RLZ-97-00004340 + RLZ-97-00003979 (referentie, ref 26042250, 2 exemplaren)
+    · uitgesloten (periodiek): K.F.B. € 86.39 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): K.F.B. € 476.44 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): K.F.B. € 518.36 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): K.F.B. € 2286.90 — 16 documenten over 11 maanden, ≥ 3 gelijke bedragen over 11 maanden, 3 paren
+    · uitgesloten (periodiek): K.F.B. € 2668.05 — 17 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 12 paren
+    · uitgesloten (periodiek): K.F.B. € 2858.63 — 14 documenten over 12 maanden, ≥ 3 gelijke bedragen over 12 maanden, 2 paren
+    · uitgesloten (periodiek): K.F.B. € 3049.20 — 23 documenten over 13 maanden, ≥ 3 gelijke bedragen over 13 maanden, 16 paren
+    · uitgesloten (periodiek): K.F.B. € 6352.50 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): B.W.N. € 8091.00 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (dag-batch): K.F.B. € 89.25 — 4 documenten op 2026-08-24 (boekdatum), 6 paren
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-04-00004093 + RLZ-04-00004092 | K.F.B. | € 102.73 | 2026-05-10/2026-05-11 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-25-00004244 + RLZ-25-00004245 | M.B.B. | € 223850.00 | 2026-06-15/2026-06-15 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-04-00004350 + RLZ-04-00004353 | K.F.B. | € 1138.37 | 2026-07-02/2026-07-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-04-00004181 + RLZ-04-00004183 | K.F.B. | € 69.82 | 2026-05-28/2026-05-28 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-04-00004058 + RLZ-04-00004049 | K.F.B. | € 12839.10 | 2026-05-01/2026-05-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-97-00003477 + RLZ-97-00003490 | B.W.N. | € -2459.00 | 2025-09-09/2025-09-09 | niet-module×niet-module | bank 0/2
+    - SNEDE2 55159e49-1114-49eb-942b-8986080e51f5 RLZ-15-00002969 + RLZ-15-00002970 | Q. | € 54.58 | 2025-09-01/2025-09-01 | niet-module×niet-module | bank 1/2
+    SNEDE2 tellers 55159e49-1114-49eb-942b-8986080e51f5: paren 7, module×niet-module 0, niet-module×niet-module 7, bank-bevestigd 2, periodiek uitgesloten 9 groepen/38 paren, dag-batch uitgesloten 1 groepen/6 paren
+LEES-ONLY  a43fadcd-2ac1-4ee0-b5a9-316ed865bdeb (A.Y. Holding BV): 66 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers a43fadcd-2ac1-4ee0-b5a9-316ed865bdeb: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  270180f2-1e78-4bac-ab3f-78275e88fbf4 (Adda Import-Export): 581 inkoopfacturen sinds 2025-08-11 — paren OUD 103 → clusters NIEUW 4 (1 waarschijnlijk dubbel, 4 open, 0 geaccepteerd); uitgesloten: placeholder 9 groep(en)/41 doc, klantkenmerk 2 groep(en)/20 doc
+    - 270180f2-1e78-4bac-ab3f-78275e88fbf4 cluster=5c71f1b9-c665-4a0c-9564-bb6600c105c2|7d187e13-6dbd-4ffc-a209-cd3b33f871f0|261091181 soort=dubbel_in_rlz [vaf:a61cade11c545439]: RLZ-25-00003261 + RLZ-25-00003470 (referentie, ref 261091181, 2 exemplaren)
+    - 270180f2-1e78-4bac-ab3f-78275e88fbf4 cluster=5c71f1b9-c665-4a0c-9564-bb6600c105c2|05ece659-8389-47d9-8e96-539088c10dd0|5449824372 soort=dubbel_in_rlz [vaf:7941e99db1b701f6]: RLZ-16-00003127 + RLZ-16-00003122 (referentie, ref 5449824372, 2 exemplaren)
+    - 270180f2-1e78-4bac-ab3f-78275e88fbf4 cluster=5c71f1b9-c665-4a0c-9564-bb6600c105c2|05ece659-8389-47d9-8e96-539088c10dd0|5524666011 soort=dubbel_in_rlz [vaf:45d8c25960a2e062]: RLZ-04-00003515 + RLZ-04-00003571 (referentie, ref 5524666011, 2 exemplaren)
+    - 270180f2-1e78-4bac-ab3f-78275e88fbf4 cluster=5c71f1b9-c665-4a0c-9564-bb6600c105c2|44226ce7-ebf5-44b3-b5af-0fc5aa3bf16f|20348186 soort=dubbel_in_rlz [vaf:fb6feee7f977dbfe]: RLZ-25-00003916 + RLZ-25-00003917 (referentie, ref 20348186, 2 exemplaren, waarschijnlijk dubbel, concept)
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): BP Express ref '0817725528' — 7 documenten, 7 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Food service ref 'NL86ING80662462785' — 13 documenten, 8 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Action Nederland B.V. ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Belastingdienst ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Belastingdienst ref 'Ingescand document' — 10 documenten, 6 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): De Haan Minerale Oliën B.V. ref 'Ingescand document' — 9 documenten, 9 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Gamma ref 'Ingescand document' — 4 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Kruidvat ref 'Ingescand document' — 4 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Lebara ref 'Ingescand document' — 4 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Parkmobile Benelux B.V. ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Tintel B.V. ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): G.I. € 8.10 — 11 documenten over 9 maanden, ≥ 3 gelijke bedragen over 9 maanden, 2 paren
+    · uitgesloten (periodiek): G. € 8.25 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): R.B. € 23.60 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (dag-batch): K. € 149.85 — 3 documenten op 2026-01-29 (boekdatum), 3 paren
+    - SNEDE2 270180f2-1e78-4bac-ab3f-78275e88fbf4 RLZ-15-00003165 + RLZ-15-00002999 | D.H.M.O. | € 110.46 | 2025-10-14/2025-10-14 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 270180f2-1e78-4bac-ab3f-78275e88fbf4: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 3 groepen/4 paren, dag-batch uitgesloten 1 groepen/3 paren
+LEES-ONLY  4cc6f427-8a3b-4959-8592-02475022ba88 (Caravanpark "De Visotter" B.V.): 91 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): A.N.C. € 19.97 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    - SNEDE2 4cc6f427-8a3b-4959-8592-02475022ba88 RLZ-04-00000015 + RLZ-04-00000014 | R.B. | € 4.30 | 2025-11-27/2025-11-27 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4cc6f427-8a3b-4959-8592-02475022ba88 RLZ-04-00000106 + RLZ-04-00000104 | V.R.B. | € -2459.68 | 2026-08-20/2026-08-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4cc6f427-8a3b-4959-8592-02475022ba88 RLZ-04-00000107 + RLZ-04-00000105 | V.R.B. | € -7380.89 | 2026-08-20/2026-08-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4cc6f427-8a3b-4959-8592-02475022ba88 RLZ-04-00000114 + RLZ-04-00000115 | S.B. | € 1.21 | 2026-09-07/2026-09-08 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 4cc6f427-8a3b-4959-8592-02475022ba88: paren 4, module×niet-module 0, niet-module×niet-module 4, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  cc07e461-3288-4065-85ed-9005495a22ea (Vastgoedgroep Nederland B.V.): 755 inkoopfacturen sinds 2025-08-11 — paren OUD 4 → clusters NIEUW 4 (0 waarschijnlijk dubbel, 4 open, 0 geaccepteerd); uitgesloten: geen
+    - cc07e461-3288-4065-85ed-9005495a22ea cluster=f6d4770f-53fe-41fa-8b35-b675f406841c|c1b06a0b-a01e-4ee3-b26e-5d00531036bd|gepind soort=dubbel_in_rlz [vaf:90f34e43d82c8982]: RLZ-16-00000060 + RLZ-16-00000197 (referentie, ref gepind, 2 exemplaren)
+    - cc07e461-3288-4065-85ed-9005495a22ea cluster=f6d4770f-53fe-41fa-8b35-b675f406841c|e2f11649-fa14-49b2-9261-87d0c7b2cb1c|202610 soort=dubbel_in_rlz [vaf:11109de5f6ad5566]: RLZ-04-00000660 + RLZ-04-00000728 (referentie, ref 202610, 2 exemplaren)
+    - cc07e461-3288-4065-85ed-9005495a22ea cluster=f6d4770f-53fe-41fa-8b35-b675f406841c|e2f11649-fa14-49b2-9261-87d0c7b2cb1c|20266 soort=dubbel_in_rlz [vaf:037ce7d5447d6552]: RLZ-20-00000474 + RLZ-04-00000589 (referentie, ref 20266, 2 exemplaren)
+    - cc07e461-3288-4065-85ed-9005495a22ea cluster=f6d4770f-53fe-41fa-8b35-b675f406841c|e2f11649-fa14-49b2-9261-87d0c7b2cb1c|20268 soort=dubbel_in_rlz [vaf:b1fc0b5a556b7416]: RLZ-04-00000503 + RLZ-04-00000620 (referentie, ref 20268, 2 exemplaren)
+    · uitgesloten (periodiek): D.M.&.T. € 625.00 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): F.H.M. € 484.00 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): F.H.M. € 299.95 — 29 documenten over 11 maanden, ≥ 3 gelijke bedragen over 11 maanden, 17 paren
+    · uitgesloten (periodiek): F.H.M. € 1495.00 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): F.H.M. € 1595.00 — 27 documenten over 9 maanden, ≥ 3 gelijke bedragen over 9 maanden, 11 paren
+    · uitgesloten (periodiek): V.V.B.B. € 56.18 — 24 documenten over 13 maanden, ≥ 3 gelijke bedragen over 13 maanden, 7 paren
+    · uitgesloten (periodiek): C.V.B. € 749.99 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 3 paren
+    · uitgesloten (periodiek): H.B. € 349.00 — 5 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    SNEDE2 tellers cc07e461-3288-4065-85ed-9005495a22ea: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 1, periodiek uitgesloten 8 groepen/42 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  812bdee9-e360-4299-9be8-7aa93aa58ae7 (ARVUM Holding B.V.): 5 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 812bdee9-e360-4299-9be8-7aa93aa58ae7: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  5db4ea78-f8af-4c2f-b8ad-7d0b5fe22305 (Baard beheer & management B.V.): 28 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 5db4ea78-f8af-4c2f-b8ad-7d0b5fe22305: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  daaf44c6-f21f-47ee-bb76-6532bf5618b0 (6-Steps Projectbeheersing): 41 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (1 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - daaf44c6-f21f-47ee-bb76-6532bf5618b0 cluster=5ed22438-354c-4ecf-af88-565b2aaa58fd|8889996e-fcc7-479c-81e9-68bcaf442844|267520363 soort=dubbel_in_rlz [vaf:656765a00190469f]: RLZ-04-00000069 + RLZ-04-00000072 (referentie, ref 267520363, 2 exemplaren, waarschijnlijk dubbel, concept)
+    SNEDE2 tellers daaf44c6-f21f-47ee-bb76-6532bf5618b0: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  a21a8654-1b34-4a8e-b520-cb69080d756c (Betbellat BV): 139 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 9.68 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 2 paren
+    SNEDE2 tellers a21a8654-1b34-4a8e-b520-cb69080d756c: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/2 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  4e7732c5-8a2d-422b-823d-fd5b9a8a4999 (ARVUM B.V.): 65 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 4e7732c5-8a2d-422b-823d-fd5b9a8a4999: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  22a742c7-ff28-4df4-9e1e-e8a1f7bd53dc (Box Invest B.V.): 0 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 22a742c7-ff28-4df4-9e1e-e8a1f7bd53dc: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  131f9abe-8922-4bfd-8330-b18b56efd3dc (J.G.M. Elissen Holding BV): 94 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 23.60 — 9 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 3 paren
+    SNEDE2 tellers 131f9abe-8922-4bfd-8330-b18b56efd3dc: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  508903a3-4188-4543-aea9-4fbf469f1ce1 (Belastingbutler B.V.): 68 inkoopfacturen sinds 2025-08-11 — paren OUD 3 → clusters NIEUW 1 (1 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - 508903a3-4188-4543-aea9-4fbf469f1ce1 cluster=df90fc4d-79f1-43b7-8226-a2ffdc9c487f|a99bf3a3-1e5f-4c96-bbd3-cac9a1e07d67|rlz2026047485 soort=dubbel_in_rlz [vaf:0efd12e3fca734a2]: RLZ-16-00000594 + RLZ-16-00000600 + RLZ-16-00000602 (referentie, ref rlz2026047485, 3 exemplaren, waarschijnlijk dubbel, concept)
+    · uitgesloten (periodiek): S. € 35.70 — 9 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 1 paren
+    SNEDE2 tellers 508903a3-4188-4543-aea9-4fbf469f1ce1: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 (Universal Steigerbouw B.V.): 1885 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): D.S. € 760.00 — 10 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 2 paren
+    · uitgesloten (periodiek): D.S. € 1140.00 — 5 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): H.H.B. € 927.22 — 11 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): H.H.B. € 1255.86 — 17 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 6 paren
+    · uitgesloten (periodiek): H.H.B. € 2042.36 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): S.S.B. € 344.00 — 11 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 5 paren
+    · uitgesloten (periodiek): S.S.B. € 688.00 — 31 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 18 paren
+    · uitgesloten (periodiek): S.S.B. € 1032.00 — 23 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 14 paren
+    · uitgesloten (periodiek): S.S.B. € 1376.00 — 11 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 7 paren
+    · uitgesloten (periodiek): S.S.B. € 1720.00 — 9 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 2 paren
+    · uitgesloten (periodiek): S.S.B. € 2064.00 — 19 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 8 paren
+    · uitgesloten (periodiek): S.S.B. € 2408.00 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): S.S.B. € 2752.00 — 6 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 1 paren
+    · uitgesloten (periodiek): A.R.B. € 688.00 — 12 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 3 paren
+    · uitgesloten (periodiek): A.R.B. € 720.00 — 12 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 4 paren
+    · uitgesloten (periodiek): A.R.B. € 1376.00 — 9 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 2 paren
+    · uitgesloten (periodiek): A.R.B. € 1440.00 — 13 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 6 paren
+    · uitgesloten (periodiek): A.R.B. € 2160.00 — 12 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 5 paren
+    · uitgesloten (periodiek): F.B. € 687.28 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): F.B. € 692.12 — 17 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 40 paren
+    · uitgesloten (periodiek): F.B. € 771.98 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 2 paren
+    · uitgesloten (periodiek): F.B. € 931.70 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): F.B. € 994.62 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (periodiek): F.B. € 1234.20 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 3 paren
+    · uitgesloten (periodiek): F.B. € 1240.25 — 4 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 1 paren
+    · uitgesloten (dag-batch): A. € 1678.06 — 6 documenten op 2026-07-08 (boekdatum), 15 paren
+    · uitgesloten (dag-batch): F.B. € 473.11 — 4 documenten op 2026-02-02 (boekdatum), 6 paren
+    · uitgesloten (dag-batch): F.B. € 534.82 — 3 documenten op 2026-02-02 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): F.B. € 556.60 — 3 documenten op 2026-03-09 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): F.B. € 629.20 — 3 documenten op 2026-03-09 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): F.B. € 640.09 — 4 documenten op 2025-12-30 (boekdatum), 6 paren
+    · uitgesloten (dag-batch): F.B. € 660.66 — 6 documenten op 2026-06-01 (boekdatum), 15 paren
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00001757 + RLZ-04-00001758 | F.B. | € 1092.87 | 2025-11-18/2025-11-18 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002065 + RLZ-04-00002067 | F.B. | € 1139.82 | 2026-02-02/2026-02-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002550 + RLZ-04-00002551 | F.B. | € 1242.67 | 2026-05-01/2026-05-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002055 + RLZ-04-00002061 | F.B. | € 584.19 | 2026-02-02/2026-02-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00001445 + RLZ-04-00001444 | F.B. | € 546.92 | 2025-09-08/2025-09-08 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002035 + RLZ-04-00002029 | S.S.B. | € 1784.00 | 2026-01-28/2026-01-28 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002405 + RLZ-04-00002410 | F.B. | € 896.61 | 2026-04-02/2026-04-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00003094 + RLZ-04-00003103 | S.S.B. | € 1350.00 | 2026-07-12/2026-07-12 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00001447 + RLZ-04-00001446 | F.B. | € 684.74 | 2025-09-08/2025-09-08 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002869 + RLZ-04-00002862 | F.B. | € 889.35 | 2026-06-01/2026-06-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00002243 + RLZ-04-00002245 | F.B. | € 847.00 | 2026-03-09/2026-03-09 | niet-module×niet-module | bank 0/2
+    - SNEDE2 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873 RLZ-04-00001962 + RLZ-04-00001961 | F.B. | € 790.37 | 2025-12-30/2025-12-30 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873: paren 12, module×niet-module 0, niet-module×niet-module 12, bank-bevestigd 0, periodiek uitgesloten 25 groepen/136 paren, dag-batch uitgesloten 7 groepen/51 paren
+LEES-ONLY  40a37f14-1ee8-4029-ad8f-79e81e706b4c (Mantelzorgwoningen Midden Nederland): 245 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 1 groep(en)/8 doc
+    · uitgesloten (plaatsvervanger-referentie): Diverse tankstation ref 'Ingescand document' — 8 documenten, 8 verschillende bedragen
+    · uitgesloten (periodiek): R.B. € 25.41 — 10 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 2 paren
+    · uitgesloten (periodiek): A.N.C. € 87.06 — 14 documenten over 13 maanden, ≥ 3 gelijke bedragen over 13 maanden, 1 paren
+    - SNEDE2 40a37f14-1ee8-4029-ad8f-79e81e706b4c RLZ-04-00000232 + RLZ-04-00000233 | K.F.B. | € -2541.00 | 2026-04-13/2026-04-13 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 40a37f14-1ee8-4029-ad8f-79e81e706b4c: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 2 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  3f8b7a4c-189c-45a3-976e-fd0e97e21510 (Necol Energie B.V.): 140 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 3f8b7a4c-189c-45a3-976e-fd0e97e21510: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  d6fb8dca-ff8f-404b-8078-28476c90da42 (Recreatiecentrum Dijkstel B.V.): 11 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers d6fb8dca-ff8f-404b-8078-28476c90da42: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  36dade86-a614-4d71-a7d0-fa39572f4bb0 (Universal Nederland B.V.): 2292 inkoopfacturen sinds 2025-08-11 — paren OUD 809 → clusters NIEUW 5 (0 waarschijnlijk dubbel, 5 open, 0 geaccepteerd); uitgesloten: klantkenmerk 9 groep(en)/81 doc
+    - 36dade86-a614-4d71-a7d0-fa39572f4bb0 cluster=aff58a44-1dde-4e3b-b5de-20feea437e72|5f897c38-38cf-4c9f-afde-11779ff523ff|2859098976601010 soort=dubbel_in_rlz [vaf:c043d5d71fade0bd]: RLZ-35-00018063 + RLZ-35-00018360 (referentie, ref 2859098976601010, 2 exemplaren)
+    - 36dade86-a614-4d71-a7d0-fa39572f4bb0 cluster=aff58a44-1dde-4e3b-b5de-20feea437e72|34800449-f3cc-4185-8f4b-4eec98567260|bouwmaat soort=dubbel_in_rlz [vaf:23564131efdf40fd]: RLZ-17-00017720 + RLZ-17-00017721 (referentie, ref bouwmaat, 2 exemplaren)
+    - 36dade86-a614-4d71-a7d0-fa39572f4bb0 cluster=aff58a44-1dde-4e3b-b5de-20feea437e72|f01301e8-672d-491c-b405-c350c6302408|hornbach soort=dubbel_in_rlz [vaf:77b71a82fb4d0b58]: RLZ-17-00017998 + RLZ-17-00019002 (referentie, ref hornbach, 2 exemplaren)
+    - 36dade86-a614-4d71-a7d0-fa39572f4bb0 cluster=aff58a44-1dde-4e3b-b5de-20feea437e72|bac14365-0e49-48e7-a07a-37f92f280371|primera soort=dubbel_in_rlz [vaf:75f377e67d81fe3f]: RLZ-16-00017662 + RLZ-16-00018919 (referentie, ref primera, 2 exemplaren)
+    - 36dade86-a614-4d71-a7d0-fa39572f4bb0 cluster=aff58a44-1dde-4e3b-b5de-20feea437e72|f5996acf-9795-4d34-884a-dad897bdd817|rozer soort=dubbel_in_rlz [vaf:9152367571a1e803]: RLZ-19-00016986 + RLZ-19-00017212 (referentie, ref rozer, 2 exemplaren)
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Action ref 'Action' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Brasserie 't Boshuys ref 'Boshuys' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Café Restaurant De Zwaan B.V. ref 'Zwaan' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Café Restaurant De Zwaan B.V. ref 'de Zwaan' — 12 documenten, 11 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Jumbo supermarkt ref 'Jumbo' — 37 documenten, 36 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Media Markt Eindhoven Ekkersrijt B.V. ref 'Media Markt' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Plus Verhoeven Son ref 'Plus' — 9 documenten, 9 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Praxis ref 'Praxis' — 6 documenten, 6 verschillende bedragen
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Restaria De Smickel Breugel ref 'Restaria de Smickel' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (periodiek): S.S.D.H. € 3.00 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): B. € 26.00 — 4 documenten over 3 maanden, kwartaal-patroon over 3 facturen, 1 paren
+    · uitgesloten (periodiek): B. € 39.00 — 12 documenten over 7 maanden, maand-patroon over 7 facturen, 5 paren
+    · uitgesloten (periodiek): B. € 40.00 — 15 documenten over 10 maanden, ≥ 3 gelijke bedragen over 10 maanden, 6 paren
+    · uitgesloten (periodiek): B. € 65.00 — 8 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 4 paren
+    · uitgesloten (periodiek): B. € 66.00 — 7 documenten over 4 maanden, kwartaal-patroon over 4 facturen, 3 paren
+    · uitgesloten (periodiek): B. € 67.00 — 9 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 6 paren
+    · uitgesloten (periodiek): B. € 68.00 — 8 documenten over 5 maanden, maand-patroon over 5 facturen, 4 paren
+    · uitgesloten (periodiek): B. € 69.00 — 6 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 2 paren
+    · uitgesloten (periodiek): B. € 70.00 — 9 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 5 paren
+    · uitgesloten (periodiek): B. € 71.00 — 6 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 2 paren
+    · uitgesloten (periodiek): B. € 75.00 — 9 documenten over 7 maanden, maand-patroon over 7 facturen, 2 paren
+    · uitgesloten (periodiek): B. € 77.00 — 9 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 4 paren
+    · uitgesloten (periodiek): B.F.S. € 2619.71 — 10 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 2 paren
+    · uitgesloten (periodiek): P.I.B. € 12100.00 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): V.M.M.B. € 301.19 — 32 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 32 paren
+    · uitgesloten (periodiek): V.M.M.B. € 3776.00 — 10 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 4 paren
+    · uitgesloten (periodiek): V.E.B. € 2.42 — 6 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 4 paren
+    · uitgesloten (periodiek): S.N. € 103.09 — 13 documenten over 12 maanden, ≥ 3 gelijke bedragen over 12 maanden, 1 paren
+    · uitgesloten (dag-batch): S.N. € 121.00 — 3 documenten op 2025-09-12 (boekdatum), 3 paren
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-04-00016794 + RLZ-04-00016879 | Q.V.E.R. | € 429.77 | 2025-08-20/2025-08-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-17-00018365 + RLZ-17-00018367 | V.K.B. | € 105.00 | 2026-04-02/2026-04-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-15-00017423 + RLZ-15-00017430 | A.A. | € 31.70 | 2025-11-13/2025-11-12 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-24-00018671 + RLZ-24-00018927 | U.V.B. | € 58.81 | 2026-05-07/2026-05-07 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-04-00018135 + RLZ-04-00018183 | B.I. | € 38.24 | 2026-02-25/2026-02-24 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-04-00016849 + RLZ-04-00016846 | I.D.W.A. | € 55599.50 | 2025-08-15/2025-08-15 | niet-module×niet-module | bank 0/2
+    - SNEDE2 36dade86-a614-4d71-a7d0-fa39572f4bb0 RLZ-15-00018505 + RLZ-15-00018499 | C.J.B. | € 54.00 | 2026-04-16/2026-04-15 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 36dade86-a614-4d71-a7d0-fa39572f4bb0: paren 7, module×niet-module 0, niet-module×niet-module 7, bank-bevestigd 2, periodiek uitgesloten 19 groepen/89 paren, dag-batch uitgesloten 1 groepen/3 paren
+LEES-ONLY  20d65ab2-f026-464d-8cf4-2fe0f086f637 (Box Beheer B.V.): 2 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 20d65ab2-f026-464d-8cf4-2fe0f086f637: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  b5520e80-7dfb-492f-b729-5fba2ce72b9a (Clean Care Holding B.V.): 3 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers b5520e80-7dfb-492f-b729-5fba2ce72b9a: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  45f0e80e-abc7-422f-9f7e-57d460360cb6 (Beauty by Tessa Elst): 276 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: placeholder 4 groep(en)/22 doc
+    - 45f0e80e-abc7-422f-9f7e-57d460360cb6 cluster=c63bf19b-438d-4c56-8c26-e61fdc3e3a9b|fcc96a7d-b495-46b6-9764-1d0a4018c11e|2 soort=dubbel_in_rlz [vaf:eda2fd254b14dfac]: RLZ-04-00001127 + RLZ-04-00001203 (referentie, ref 2, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 15 documenten, 15 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Aldi ref 'Ingescand document' — 3 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Wibra ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Ziggo Services B.V. ref 'Ingescand document' — 2 documenten, 1 verschillende bedragen
+    SNEDE2 tellers 45f0e80e-abc7-422f-9f7e-57d460360cb6: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  6889998d-c47f-4808-8b29-b3216fe31efa (De Wit Beheer Oss B.V.): 5 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 6889998d-c47f-4808-8b29-b3216fe31efa: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  e017ea61-642a-4fc2-b15b-5bf9256525a8 (Hotel Pax): 51 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - e017ea61-642a-4fc2-b15b-5bf9256525a8 cluster=03b5942b-66a8-45cf-92cc-31b3f17145af|ab2ed9cc-d6d3-4109-98ac-f2a69bdeff15|rlz2026049850 soort=dubbel_in_rlz [vaf:c32af7453d81cf47]: RLZ-16-00000261 + RLZ-16-00000262 (referentie, ref rlz2026049850, 2 exemplaren, concept)
+    · uitgesloten (periodiek): A.N.C. € -90.75 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): A.N.C. € 90.75 — 11 documenten over 9 maanden, ≥ 3 gelijke bedragen over 9 maanden, 1 paren
+    SNEDE2 tellers e017ea61-642a-4fc2-b15b-5bf9256525a8: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 2 groepen/2 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  f9f822c2-f38a-41bb-a945-74d21eb476c2 (Inpensas Beheer BV): 107 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers f9f822c2-f38a-41bb-a945-74d21eb476c2: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  59058883-133c-49a2-a5df-ab99363c6312 (Kempen B.V.): 42 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 10.29 — 11 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 2 paren
+    - SNEDE2 59058883-133c-49a2-a5df-ab99363c6312 RLZ-17-00000175 + RLZ-17-00000176 | N.V.B. | € 2716.72 | 2026-02-16/2026-02-16 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 59058883-133c-49a2-a5df-ab99363c6312: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 1 groepen/2 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  e6209f2e-5711-4e9e-87b7-c3cb652c7083 (L.H.G. Admin B.V.): 16 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers e6209f2e-5711-4e9e-87b7-c3cb652c7083: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  8299910f-cc71-4bca-94ef-aacf1b12ca3d (L.H.G. Holding B.V.): 98 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): B. € 40.00 — 5 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    SNEDE2 tellers 8299910f-cc71-4bca-94ef-aacf1b12ca3d: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  e2cf1309-980c-4a5a-8584-86984ae1f65d (Novitas Holding B.V.): 12 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers e2cf1309-980c-4a5a-8584-86984ae1f65d: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  aca04bf3-93a6-4818-87b9-7c01dd0612be (RB Infra B.V.): 15 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - aca04bf3-93a6-4818-87b9-7c01dd0612be cluster=5bbd7b0c-65da-4061-a4e7-8ae5dc1c6d4b|79ee1aa4-7045-4a37-9bca-3ec4b81f42d4|36261 soort=dubbel_in_rlz [vaf:71a8ffc02ba704b8]: RLZ-04-00000003 + RLZ-17-00000005 (referentie, ref 36261, 2 exemplaren, concept)
+    · uitgesloten (periodiek): A.N.C. € 19.97 — 6 documenten over 3 maanden, maand-patroon over 3 facturen, 4 paren
+    SNEDE2 tellers aca04bf3-93a6-4818-87b9-7c01dd0612be: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/4 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  d98856fc-31ca-47ea-a599-6bf358850e94 (SOW Vastgoed B.V.): 15 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers d98856fc-31ca-47ea-a599-6bf358850e94: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  21def513-3e78-4e29-a5e7-104a45903781 (Stephanie Loeffen B.V.): 167 inkoopfacturen sinds 2025-08-11 — paren OUD 2 → clusters NIEUW 2 (0 waarschijnlijk dubbel, 2 open, 0 geaccepteerd); uitgesloten: placeholder 15 groep(en)/47 doc
+    - 21def513-3e78-4e29-a5e7-104a45903781 cluster=37ad5406-683d-41e4-b4a3-1b4e535028e9|4283b8a0-7828-4304-93e0-62b955871ec0|1352759939 soort=dubbel_in_rlz [vaf:0b0daab5e1d65104]: RLZ-16-00000196 + RLZ-16-00000347 (referentie, ref 1352759939, 2 exemplaren)
+    - 21def513-3e78-4e29-a5e7-104a45903781 cluster=37ad5406-683d-41e4-b4a3-1b4e535028e9|4283b8a0-7828-4304-93e0-62b955871ec0|1373822420 soort=dubbel_in_rlz [vaf:aa5545196efb2164]: RLZ-16-00000350 + RLZ-16-00000449 (referentie, ref 1373822420, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 5 documenten, 5 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Aimn ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Apple ref 'Ingescand document' — 2 documenten, 1 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Brass ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Bregje Lent ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Bruna ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Cade Eten en drinken ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Diverse restaurants ref 'Ingescand document' — 11 documenten, 11 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Dries en Co ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Global ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Google ref 'Ingescand document' — 2 documenten, 1 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): H&M ref 'Ingescand document' — 5 documenten, 5 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): McDonald's ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Moeke ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Twin Sport ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    SNEDE2 tellers 21def513-3e78-4e29-a5e7-104a45903781: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  d1fec93e-0636-48a3-b691-aa32e6f347e2 (Sunfactory Beheer B.V.): 17 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 1 groep(en)/2 doc
+    · uitgesloten (plaatsvervanger-referentie): Belastingdienst ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    SNEDE2 tellers d1fec93e-0636-48a3-b691-aa32e6f347e2: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  b87383ae-f0f5-42d6-b35c-57dd82164a7e (Sunset Beheer B.V.): 24 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 10.29 — 10 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 3 paren
+    SNEDE2 tellers b87383ae-f0f5-42d6-b35c-57dd82164a7e: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  5f553b19-4ced-4619-9203-ba77a285addb (Sunshine Island B.V.): 496 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 7 groep(en)/48 doc
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Alberthein ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Hema ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Jumbo ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Kruidvat ref 'Ingescand document' — 32 documenten, 31 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Plus ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Primera ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): J.B. € 133.10 — 8 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 3 paren
+    · uitgesloten (periodiek): L.H.B.B. € 4102.14 — 8 documenten over 4 maanden, kwartaal-patroon over 4 facturen, 6 paren
+    · uitgesloten (periodiek): D. € 119.28 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 2 paren
+    · uitgesloten (dag-batch): J.B. € 13.64 — 3 documenten op 2025-09-30 (boekdatum), 3 paren
+    - SNEDE2 5f553b19-4ced-4619-9203-ba77a285addb RLZ-14-00001361 + RLZ-14-00001360 | A.H.B. | € 4102.14 | 2025-12-01/2025-12-01 | niet-module×niet-module | bank 0/2
+    - SNEDE2 5f553b19-4ced-4619-9203-ba77a285addb RLZ-14-00001609 + RLZ-14-00001610 | L.H.B.B. | € 4217.30 | 2026-06-01/2026-06-01 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 5f553b19-4ced-4619-9203-ba77a285addb: paren 2, module×niet-module 0, niet-module×niet-module 2, bank-bevestigd 0, periodiek uitgesloten 3 groepen/11 paren, dag-batch uitgesloten 1 groepen/3 paren
+LEES-ONLY  af7b6311-a505-428c-88ee-4a25d89abd48 (Tupker Beheer B.V.): 131 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): A.N.C. € 26.56 — 8 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 1 paren
+    SNEDE2 tellers af7b6311-a505-428c-88ee-4a25d89abd48: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  f6da4967-2b2b-485a-a0a8-d3bfa86048ae (Totaal Ontruimingen): 536 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: placeholder 5 groep(en)/18 doc
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 5 documenten, 5 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Albert Heijn ref 'Ingescand document' — 4 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Nama Verf Glas Behang Arnhem ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Plus ref 'Ingescand document' — 4 documenten, 4 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Totaal Ontruimingen B.V. ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): U.S.P.B. € 181.50 — 9 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 1 paren
+    SNEDE2 tellers f6da4967-2b2b-485a-a0a8-d3bfa86048ae: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 1, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  4ec19179-0d1e-4f5c-99d7-db630cb240bd (Zonnestudio Elderveld B.V.): 648 inkoopfacturen sinds 2025-08-11 — paren OUD 4 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: placeholder 8 groep(en)/49 doc, klantkenmerk 1 groep(en)/3 doc
+    - 4ec19179-0d1e-4f5c-99d7-db630cb240bd cluster=cfe3fae1-9d9e-4a5c-962c-48a763bace32|faf1335b-155e-4e21-bcbf-db0e712e9f91|1522 soort=dubbel_in_rlz [vaf:474cc95bf1d99918]: RLZ-25-00007351 + RLZ-25-00007355 (referentie, ref 1522, 2 exemplaren, concept)
+    · uitgesloten (klant-/contractnummer (≥ 3× met verschillende bedragen)): Jumbo ref '03' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 7 documenten, 7 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): DM-Drogerle Markt ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): De verleiding ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Jumbo ref 'Ingescand document' — 20 documenten, 20 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Lidl ref 'Ingescand document' — 5 documenten, 5 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Primera ref 'Ingescand document' — 3 documenten, 1 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Sligro B.V. ref 'Ingescand document' — 7 documenten, 7 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Trends & Trade Venlo ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): V.N. € 23.00 — 6 documenten over 5 maanden, maand-patroon over 5 facturen, 1 paren
+    · uitgesloten (periodiek): J.B. € 133.10 — 9 documenten over 6 maanden, ≥ 3 gelijke bedragen over 6 maanden, 3 paren
+    · uitgesloten (periodiek): J.B. € 1110.42 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    · uitgesloten (periodiek): A.N.C. € 90.75 — 15 documenten over 11 maanden, ≥ 3 gelijke bedragen over 11 maanden, 4 paren
+    · uitgesloten (dag-batch): V.N. € -23.00 — 3 documenten op 2025-11-04 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): R.B. € -23.60 — 6 documenten op 2025-09-24 (boekdatum), 15 paren
+    · uitgesloten (dag-batch): J.B. € 1158.74 — 3 documenten op 2025-09-18 (boekdatum), 3 paren
+    · uitgesloten (dag-batch): A.N.C. € -90.75 — 4 documenten op 2026-09-09 (boekdatum), 6 paren
+    - SNEDE2 4ec19179-0d1e-4f5c-99d7-db630cb240bd RLZ-25-00007908 + RLZ-25-00007909 | J.B. | € 1071.83 | 2026-06-11/2026-06-11 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4ec19179-0d1e-4f5c-99d7-db630cb240bd RLZ-25-00007652 + RLZ-25-00007653 | J.B. | € 1158.75 | 2026-02-25/2026-02-25 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4ec19179-0d1e-4f5c-99d7-db630cb240bd RLZ-25-00007424 + RLZ-25-00007423 | W. | € 437.42 | 2025-10-08/2025-10-07 | niet-module×niet-module | bank 1/2
+    - SNEDE2 4ec19179-0d1e-4f5c-99d7-db630cb240bd RLZ-25-00007971 + RLZ-25-00007973 | J.B. | € 1120.16 | 2026-07-20/2026-07-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 4ec19179-0d1e-4f5c-99d7-db630cb240bd RLZ-16-00008037 + RLZ-16-00008036 | G. | € -8.10 | 2026-09-09/2026-09-09 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 4ec19179-0d1e-4f5c-99d7-db630cb240bd: paren 5, module×niet-module 0, niet-module×niet-module 5, bank-bevestigd 0, periodiek uitgesloten 4 groepen/9 paren, dag-batch uitgesloten 4 groepen/27 paren
+LEES-ONLY  90b710b0-f3a0-45bd-9752-a24092e5efa5 (Ziton Holding B.V.): 3 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 90b710b0-f3a0-45bd-9752-a24092e5efa5: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  e1f75918-1762-4eac-b648-83b35e976c26 (Bradwolff Holding B.V.): 42 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): B. € 1475.00 — 8 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 1 paren
+    SNEDE2 tellers e1f75918-1762-4eac-b648-83b35e976c26: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  36fd6ebb-3184-4664-92df-179afe81aef4 (De Nederlandse Beheer B.V.): 15 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers 36fd6ebb-3184-4664-92df-179afe81aef4: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  27439521-402c-4c76-8d9c-575074c9b0c3 (Delascos BV): 545 inkoopfacturen sinds 2025-08-11 — paren OUD 2 → clusters NIEUW 2 (0 waarschijnlijk dubbel, 2 open, 0 geaccepteerd); uitgesloten: placeholder 3 groep(en)/13 doc
+    - 27439521-402c-4c76-8d9c-575074c9b0c3 cluster=03744e19-7510-4abe-9be6-248bce369494|1d2c5105-5858-4d8d-b9fa-406381148255|omgekeerde soort=dubbel_in_rlz [vaf:4535bafceb96befd]: RLZ-04-00003143 + RLZ-04-00003147 (referentie, ref omgekeerde, 2 exemplaren, concept)
+    - 27439521-402c-4c76-8d9c-575074c9b0c3 cluster=03744e19-7510-4abe-9be6-248bce369494|26fc0894-32e9-4cbf-ae34-332e7a0fe06a|verpakking soort=dubbel_in_rlz [vaf:ea73c2f80e501b76]: RLZ-04-00002706 + RLZ-04-00003023 (referentie, ref verpakking, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Action ref 'Ingescand document' — 3 documenten, 3 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Belastingdienst ref 'Ingescand document' — 8 documenten, 8 verschillende bedragen
+    · uitgesloten (plaatsvervanger-referentie): Metro Cash & Carry Nederland B.V. ref 'Ingescand document' — 2 documenten, 2 verschillende bedragen
+    · uitgesloten (periodiek): G.B. € 0.00 — 4 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 6 paren
+    - SNEDE2 27439521-402c-4c76-8d9c-575074c9b0c3 RLZ-04-00002516 + RLZ-04-00002517 | F.C.B. | € -72.00 | 2025-09-08/2025-09-09 | niet-module×niet-module | bank 0/2
+    - SNEDE2 27439521-402c-4c76-8d9c-575074c9b0c3 RLZ-04-00002516 + RLZ-04-00002515 | F.C.B. | € -72.00 | 2025-09-08/2025-09-08 | niet-module×niet-module | bank 0/2
+    - SNEDE2 27439521-402c-4c76-8d9c-575074c9b0c3 RLZ-04-00002648 + RLZ-04-00002705 | L.H.B. | € 2750.00 | 2025-11-03/2025-11-03 | niet-module×niet-module | bank 1/2
+    - SNEDE2 27439521-402c-4c76-8d9c-575074c9b0c3 RLZ-04-00002517 + RLZ-04-00002515 | F.C.B. | € -72.00 | 2025-09-09/2025-09-08 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 27439521-402c-4c76-8d9c-575074c9b0c3: paren 4, module×niet-module 0, niet-module×niet-module 4, bank-bevestigd 2, periodiek uitgesloten 1 groepen/6 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  eb434606-05fb-41d3-ae91-013bf7a91994 (Dimo Living & Styles): 124 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: placeholder 1 groep(en)/13 doc
+    - eb434606-05fb-41d3-ae91-013bf7a91994 cluster=5681fc09-f149-48a0-8cb7-9d9475fafdb8|b49c8f56-c564-4bcf-98a8-501ef75397d4|194467 soort=dubbel_in_rlz [vaf:a40be3d61711d062]: RLZ-25-00000876 + RLZ-25-00000883 (referentie, ref 194467, 2 exemplaren)
+    · uitgesloten (plaatsvervanger-referentie): Diverse tankstation ref 'Ingescand document' — 13 documenten, 13 verschillende bedragen
+    - SNEDE2 eb434606-05fb-41d3-ae91-013bf7a91994 RLZ-25-00000923 + RLZ-25-00000922 | S.B. | € 740.52 | 2026-07-02/2026-07-02 | niet-module×niet-module | bank 1/2
+    SNEDE2 tellers eb434606-05fb-41d3-ae91-013bf7a91994: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 1, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  64e5d1e4-e283-4087-906c-22cefa5c7e92 (DP Investments B.V.): 48 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 12.10 — 7 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    SNEDE2 tellers 64e5d1e4-e283-4087-906c-22cefa5c7e92: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  315d1ddd-9b1e-4010-b893-8823508152f8 (Fortuna Beheer B.V.): 41 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 25.41 — 9 documenten over 8 maanden, ≥ 3 gelijke bedragen over 8 maanden, 1 paren
+    SNEDE2 tellers 315d1ddd-9b1e-4010-b893-8823508152f8: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  2259dc8a-0057-4bab-b5a2-963830118894 (Frij Beheer BV): 15 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): A.N.C. € 59.90 — 12 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 4 paren
+    SNEDE2 tellers 2259dc8a-0057-4bab-b5a2-963830118894: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/4 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  1aa29326-e25b-4f14-a225-b9629cafd2c6 (Handelsonderneming Kempen B.V.): 30 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): R.B. € 9.68 — 6 documenten over 5 maanden, ≥ 3 gelijke bedragen over 5 maanden, 1 paren
+    · uitgesloten (periodiek): R.B. € 10.29 — 10 documenten over 7 maanden, ≥ 3 gelijke bedragen over 7 maanden, 2 paren
+    SNEDE2 tellers 1aa29326-e25b-4f14-a225-b9629cafd2c6: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 2 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  0d66ff75-07d8-426a-8127-4698c62c2f06 (Universal Verkoop B.V.): 778 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): A. € 1164.02 — 16 documenten over 10 maanden, ≥ 3 gelijke bedragen over 10 maanden, 9 paren
+    · uitgesloten (periodiek): W.B.B. € 75.32 — 14 documenten over 9 maanden, ≥ 3 gelijke bedragen over 9 maanden, 1 paren
+    · uitgesloten (periodiek): W.B.B. € 92.57 — 23 documenten over 10 maanden, ≥ 3 gelijke bedragen over 10 maanden, 4 paren
+    · uitgesloten (periodiek): S.B. € 9801.00 — 8 documenten over 4 maanden, ≥ 3 gelijke bedragen over 4 maanden, 3 paren
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005793 + RLZ-04-00005798 | S.B. | € 9619.50 | 2026-06-01/2026-06-02 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005562 + RLZ-04-00005559 | C.C.B. | € 11.79 | 2026-04-07/2026-04-07 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005686 + RLZ-04-00005681 | L.G.B. | € 1072.06 | 2026-05-29/2026-05-27 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005453 + RLZ-04-00005454 | U.G.&.C. | € 31.00 | 2026-02-20/2026-02-20 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005521 + RLZ-04-00005525 | U.M.B. | € 1306.80 | 2026-03-30/2026-03-31 | niet-module×niet-module | bank 1/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-25-00005504 + RLZ-25-00005503 | E.B. | € 170.97 | 2026-03-12/2026-03-12 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005834 + RLZ-04-00005833 | H.B.E.B. | € 8712.00 | 2026-08-14/2026-08-14 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005092 + RLZ-04-00005100 | S. | € 51.84 | 2025-08-20/2025-08-21 | niet-module×niet-module | bank 0/2
+    - SNEDE2 0d66ff75-07d8-426a-8127-4698c62c2f06 RLZ-04-00005526 + RLZ-04-00005522 | U.M.B. | € 544.50 | 2026-04-02/2026-03-31 | niet-module×niet-module | bank 1/2
+    SNEDE2 tellers 0d66ff75-07d8-426a-8127-4698c62c2f06: paren 9, module×niet-module 0, niet-module×niet-module 9, bank-bevestigd 0, periodiek uitgesloten 4 groepen/17 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  3206a747-45ec-430f-98ec-fe58496679de (Kempen Chalets B.V.): 145 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    · uitgesloten (periodiek): P.I. € 18150.00 — 5 documenten over 3 maanden, ≥ 3 gelijke bedragen over 3 maanden, 3 paren
+    - SNEDE2 3206a747-45ec-430f-98ec-fe58496679de RLZ-04-00000713 + RLZ-04-00000716 | M.V.B. | € 243652.86 | 2026-06-01/2026-06-03 | niet-module×niet-module | bank 0/2
+    SNEDE2 tellers 3206a747-45ec-430f-98ec-fe58496679de: paren 1, module×niet-module 0, niet-module×niet-module 1, bank-bevestigd 0, periodiek uitgesloten 1 groepen/3 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  c62b0a71-66d2-4393-bf02-04837940683e (Mantelzorgwoningen Oost Nederland B.V.): 2 inkoopfacturen sinds 2025-08-11 — paren OUD 0 → clusters NIEUW 0 (0 waarschijnlijk dubbel, 0 open, 0 geaccepteerd); uitgesloten: geen
+    SNEDE2 tellers c62b0a71-66d2-4393-bf02-04837940683e: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  ef6f1ea9-1e66-4e94-8331-a14e02610ab4 (Midden Nederland Beheer BV): 106 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (1 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - ef6f1ea9-1e66-4e94-8331-a14e02610ab4 cluster=08a007c6-6fe0-4737-91c1-033e2b46b5f5|d82b459f-b3ad-4dc7-8efe-0fa0cd308045|37545 soort=dubbel_in_rlz [vaf:306428712cc6d945]: RLZ-04-00000919 + RLZ-04-00000926 (referentie, ref 37545, 2 exemplaren, waarschijnlijk dubbel, concept)
+    · uitgesloten (periodiek): E.S.N.B. € 9.68 — 3 documenten over 2 maanden, ≥ 3 gelijke bedragen over 2 maanden, 1 paren
+    SNEDE2 tellers ef6f1ea9-1e66-4e94-8331-a14e02610ab4: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 1 groepen/1 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY  26d707c8-f4da-4254-aa97-57122be6cc6a (Necol Beheer BV): 40 inkoopfacturen sinds 2025-08-11 — paren OUD 1 → clusters NIEUW 1 (0 waarschijnlijk dubbel, 1 open, 0 geaccepteerd); uitgesloten: geen
+    - 26d707c8-f4da-4254-aa97-57122be6cc6a cluster=730b41bf-0e46-4278-b65c-13786867c59d|5f897c38-38cf-4c9f-afde-11779ff523ff|986062216601010 soort=dubbel_in_rlz [vaf:7fb8eff053da9a73]: RLZ-35-00000174 + RLZ-35-00000173 (referentie, ref 986062216601010, 2 exemplaren)
+    SNEDE2 tellers 26d707c8-f4da-4254-aa97-57122be6cc6a: paren 0, module×niet-module 0, niet-module×niet-module 0, bank-bevestigd 0, periodiek uitgesloten 0 groepen/0 paren, dag-batch uitgesloten 0 groepen/0 paren
+LEES-ONLY: 71 administratie(s) — paren OUD 994 → clusters NIEUW 43; 0 open paar-bevinding(en) in de vorige run, waarvan 0 bij de eerstvolgende run vervangen worden. Niets geschreven, niets gemaild.
+SNEDE2 totaal over 71 administratie(s): paren 103, module×niet-module 2, niet-module×niet-module 101, bank-bevestigd 12, periodiek uitgesloten 145 groepen/1185 paren, dag-batch uitgesloten 32 groepen/3396 paren. Alleen meetlat — de dagelijkse run meldt snede 2 niet (beslispunt Peter).
+LEES-ONLY afgerond — niets vastgelegd.
+Container called exit(0).
+

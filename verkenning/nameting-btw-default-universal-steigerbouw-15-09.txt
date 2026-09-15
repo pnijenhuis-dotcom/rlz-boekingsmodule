@@ -1,0 +1,12 @@
+Btw-default per grootboekrekening — Universal Steigerbouw B.V. (3ee6edf0-5cb8-4f98-bba1-16fb97ae6873)
+boekingsgeheugen: 51 observaties totaal (laatste 2026-09-08), 51 inkoopregels mét tarief in het venster van 744 dagen; regel: ≥ 5 regels én één tarief ≥ 90 %; laatste afleiding: 2026-09-15T05:02+00:00
+code    rekening                                RLZ-default                 historie-default                            verdeling
+4003    Management fee                          geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+4499    Diverse kantoorkosten                   geen                        geen (3 regels, hoogste 67 %)               NL, Hoog Tarief 2×, NL, BTW verlegd (hoog) 1×
+4606    Diverse advieskosten                    geen                        geen (1 regels, hoogste 100 %)              NL, Hoog Tarief 1×
+7005    Inhuur steiger                          geen                        NL, Hoog Tarief (34×, 100 %)                NL, Hoog Tarief 34×
+7006    Inhuur montage / demontage              geen                        geen (9 regels, hoogste 67 %)               NL, Hoog Tarief 6×, NL, BTW verlegd (hoog) 3×
+7008    Inhuur transport                        geen                        geen (3 regels, hoogste 100 %)              NL, Hoog Tarief 3×
+298 rekeningen (6 getoond): 0 mét RLZ-default, 1 mét historie-default, 5 mét regels zonder default, 292 zonder regels.
+Container called exit(0).
+
