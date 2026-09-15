@@ -2401,3 +2401,29 @@ boeken` (13:47:40, 13:55:32) en geen documentroute.
 btw 21 % koos Peter zelf in het bankformulier. Regels van een bankboeking altijd via de record-vorm lezen (collectie
 negeert de expand — zelfde les als de memorialen, STAP-0 13-09). Cloud Logging (nameting-SA heeft `logging.viewer`) is
 een bruikbaar lees-only spoor om te reconstrueren wélke route een mens gebruikte: `textPayload:"<administratie-id>"`.
+
+### PaymentItems — klantreferentie en factuurdatum van de open post (STAP-0 15-09, Clean Care Arnhem B.V.)
+
+Aanleiding (Peter 15-09): drie bijschrijvingen op NL02ABNA0141230487 wezen in module én RLZ naar dezelfde verkoopfactuur,
+maar de module zei "nummer niet gevonden". Lees-only `nameting.sh rlz-lezen --administratie "Clean Care Arnhem" --pad
+PaymentItems --expand Document --filter "Document/ReceiptNumber eq 'RLZ-01-00000706'"` (job-executie `rlz-reconciliatie-wx4fp`,
+200) gaf de open post van RLZ-01-00000706 (€ 1.261,43):
+
+| Veld | Waarde | Betekenis |
+|---|---|---|
+| `PaymentItem.Reference` | `"706"` | RLZ's **volgnummer** van het document (het cijferdeel van ReceiptNumber), NIET het factuurnummer dat de klant kent |
+| `PaymentItem.Reference1` | `"Omschrijving: Schoonmaak per uur"` | begin van de kop |
+| `PaymentItem.Reference2` | `"RLZ-2025689 29-8-2026"` | "RLZ-" + **factuurnummer** + **factuurdatum** (d-m-jjjj) — dus niet, zoals eerder genoteerd, boekstuknummer + datum |
+| `PaymentItem.BookDate` | `2026-09-12` | = `DueDate` (vervaldatum), **niet** de factuurdatum |
+| `Document.Reference` | `"2025689"` | RLZ-veld "Referentie" = het factuurnummer/klantkenmerk dat op de factuur en in de bankomschrijving staat |
+| `Document.InvoiceReference` / `InvoiceNumber` | `"2025689"` / `2025689` | idem (InvoiceNumber als getal) |
+| `Document.Date` / `Document.BookDate` | `2026-08-29` | de échte factuurdatum (RLZ toont die op het document) |
+| `Document.Description` / `Header` | `"Week 32"` / `"Omschrijving: Schoonmaak per uur periode 01-08 t/m 31-08-2026"` | |
+
+Gevolgen in de module (BESLISSINGEN "MATCHMOTOR BANK — KLANTREFERENTIE ALS NUMMER (Peter 15-09)"): het nummer-criterium van
+de matchmotor toetst naast `PaymentItem.Reference` óók `Document.Reference` (→ `InvoiceReference` → `InvoiceNumber`) als heel
+token (label "referentie 2025689"); de voorstel-kaart toont `Document.Date` als factuurdatum (terugval: de datum in Reference2;
+nooit meer `PaymentItem.BookDate`). Een nested `$filter` op de expand (`Document/ReceiptNumber eq …`) werkt op PaymentItems.
+`--record-via-filter "ReceiptNumber eq …"` op `SalesInvoices` gaf 0 treffers voor hetzelfde document (execution `sp47m`) —
+de collectie-vorm mét filter op PaymentItems was hier de werkende route.
+

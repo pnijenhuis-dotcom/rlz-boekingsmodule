@@ -9722,3 +9722,26 @@ Booking Experts Δ 0,97 blijft open; (b) `rlz_dubbel`: Abbegaa "01" niet meer al
 
 **Beslispunt (default gekozen, ter bevestiging):** de 3-tekens-grens sluit óók echte korte volgnummers ("42") uit van de dubbel-toets;
 dat is aanvaard (zulke leveranciers zijn zeldzaam en de toets op bedrag + datum blijft).
+
+## MATCHMOTOR BANK — KLANTREFERENTIE ALS NUMMER (Peter 15-09) — casus Clean Care Arnhem B.V., NL02ABNA0141230487, mutaties 14-09; opdracht via opdrachten/inbox; geen migratie
+
+**Waarneming Peter 15-09:** module en RLZ wijzen naar dezelfde verkoopfactuur (Department of Cosmetics → RLZ-01-00000706
+€ 1.261,43; VA Climate → RLZ-01-00000698 € 91,05; Secure2Go → RLZ-01-00000714 € 1.594,18), maar de module zegt ORANJE "match op
+naam + bedrag, nummer niet gevonden — bevestigen". **STAP-0 (lees-only, api-verkenning "PaymentItems — klantreferentie en
+factuurdatum"):** `PaymentItem.Reference` is RLZ's volgnummer ("706"), het nummer dat de bank noemt staat in `Document.Reference`
+(= `InvoiceReference` = `InvoiceNumber` 2025689); `PaymentItem.BookDate` = `DueDate` (12-9), de factuurdatum is `Document.Date`
+(29-8). De motor toetste alleen `PaymentItem.Reference`; de kaart toonde `BookDate` als factuurdatum.
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **Nummer-criterium óók op de klantreferentie.** `OpenPost.klantreferentie` (uit `Document.Reference` → `InvoiceReference` → `InvoiceNumber` in de bestaande `payment_item_cache.brondata`, geen extra RLZ-call, `doelpost.klantreferentie_uit`); `score_post` toetst eerst RLZ's volgnummer, anders de klantreferentie als HEEL token (zelfde `referentie_als_token`, zelfde korte-referentie-regel 4–5 tekens alleen mét exact bedrag); toetsbaar = ≥ 4 tekens ná normalisatie, geen IBAN (`referentie_classificatie.lijkt_op_iban`), geen placeholder (`rlz_dubbel.is_placeholder_referentie`, incl. < 3 tekens) — `matchmotor.klantreferentie_toetsbaar`. Geen fuzzy, geen substring. `PostScore.nummer_bron` → label `bron` "naam + referentie 2025689 + bedrag" (GROEN = auto-afletteren-kandidaat achter de opt-in), reden noemt "klantreferentie 2025689 als heel token". | GEBOUWD + GETEST | `app/bank/matchmotor.py`, `app/bank/doelpost.py`; `tests/bank/test_matchmotor.py::TestKlantreferentieAlsNummer` (7 + 5 parametrisch) |
+| **Kaart toont de échte factuurdatum + het factuurnummer dat de klant kent.** `doelpost.factuurdatum_uit`: `Document.Date` (→ `Document.BookDate`) → datum in Reference2 ("RLZ-2025689 29-8-2026") → None; nooit meer `PaymentItem.BookDate`. DTO `OpenPostResponse.klantreferentie` + `OpenPostDto.klantreferentie`; `VoorstelKaart` toont klantreferentie ?? referentie in bold. | GEBOUWD + GETEST | `app/bank/schemas.py`, `app/bank/router.py`, `frontend/src/bank/{bankApi.ts,VoorstelKaart.tsx}`; `tests/bank/test_doelpost.py` |
+| **Gouden-set-casus y** `tests/keten/fixtures/y_bank_klantreferentie_15-09/` (drie mutaties + drie open posten, omschrijving = klantreferentie, bedragen/referenties exact, IBAN's fictief) + `tests/keten/test_y_bank_klantreferentie.py` via de servicelaag: alle drie GROEN "naam + referentie … + bedrag", factuurdatum 29-8 (niet 12-9). | GEBOUWD + GETEST | — |
+| Docs: api-verkenning-sectie, CLAUDE.md-verwijsregel, WAT_IS_NIEUW-blok, dit register, rapport + INDEX, opdracht → gedaan | GEDAAN | — |
+
+**Meetrecept (ná deploy, lees-only):** `scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Clean Care Arnhem B.V."`
+→ de drie mutaties van 14-09 GROEN mét bron "naam + referentie 2025689/2025682/2025696 + bedrag" (mits nog open); op het bankscherm
+factuurdatum 29-8-2026 bij RLZ-01-00000706. Bijvangst: Reference2 blijkt "RLZ-<factuurnummer> <datum>", niet boekstuk + datum — de
+boekstuk-terugval in `doelpost.boekstuknummer_uit` (regex `RLZ-\d{2}-\d+`) matcht daar dus terecht niet op; `Document.ReceiptNumber`
+uit de expand blijft de bron.
+
