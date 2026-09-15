@@ -504,6 +504,21 @@ class PlanningKaartDto(BaseModel):
     naam: str | None = None
     rol: str
     dagdeel: str  # 'heel' | 'half' (½-label op het kaartje)
+    # 15-09 (Peter/Haci): urenstatus uit de weekstaat — 'geen' | 'ingevuld' | 'gekeurd' | 'vraag' — mét de dagcijfers,
+    # de tooltip-tekst, de weekstaat (deeplink) en de chip "achteraf gepland".
+    uren_status: str = "geen"
+    uren: Decimal | None = None
+    m2: Decimal | None = None
+    uren_detail: str | None = None
+    weekstaat_id: uuid.UUID | None = None
+    achteraf: bool = False
+
+
+class WeekUrenDto(BaseModel):
+    ingevuld_uren: Decimal = Decimal("0")
+    gekeurd_uren: Decimal = Decimal("0")
+    open_aantal: int = 0
+    zonder_uren_aantal: int = 0
 
 
 class PlanningProjectRijDto(BaseModel):
@@ -523,6 +538,8 @@ class PlanningProjectRijDto(BaseModel):
     # binnen de week (ISO-datum → afwijkende teksten in de dagcel).
     werkopdrachten: list[WerkopdrachtKortDto] = []
     werkopdracht_overrides: dict[str, list[WerkopdrachtDagTekstDto]] = {}
+    # 15-09: weektotaal-chip in de rijkop ("24 u ingevuld · 16 u gekeurd · 2 open").
+    week_uren: WeekUrenDto = WeekUrenDto()
 
 
 class PlanningPoolPersoonDto(BaseModel):

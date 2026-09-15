@@ -5,7 +5,7 @@
  * pool met geplande-dagen-teller (> 5 = zacht signaal, besluit C), controle-meldingen +
  * dubbele-dag-teller (kantoor-only) en de 403-module-recht-melding. Eén request — geen
  * per-rij-calls (Universal = 68 actieve projecten). */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlanningScreen } from './PlanningScreen'
@@ -36,7 +36,12 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
         week_man: 2,
         per_datum: {
           '2026-08-24': [
-            { gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel' },
+            {
+              gebruiker_id: ZZP_ID, naam: 'Milan K.', rol: 'zzper', dagdeel: 'heel',
+              // 15-09: urenstatus uit de weekstaat (stip + tekst + tooltip) — gekeurd, 8 u · 42 m².
+              uren_status: 'gekeurd', uren: '8.00', m2: '42.00', uren_detail: '8 u · 42 m² · gekeurd door Ben v. Dijk op 26-08 17:42',
+              weekstaat_id: 'eeeeeeee-0000-0000-0000-00000000000e', achteraf: true,
+            },
             { gebruiker_id: 'cccccccc-0000-0000-0000-00000000000c', naam: 'Ben v. Dijk', rol: 'uitvoerder', dagdeel: 'half' },
           ],
         },
@@ -47,6 +52,7 @@ function planningWeek(overrides: Record<string, unknown> = {}) {
         werkopdracht_overrides: {
           '2026-08-25': [{ groep_id: 'dddddddd-0000-0000-0000-00000000000d', tekst: 'extra werk — traptoren bijplaatsen', afwijkend: true }],
         },
+        week_uren: { ingevuld_uren: '8', gekeurd_uren: '8', open_aantal: 0, zonder_uren_aantal: 1 },
       },
       // V3: de leesroute levert óók de actieve projecten zónder planning (compacte blok).
       {
@@ -369,3 +375,34 @@ describe('PlanningScreen', () => {
     )
   })
 })
+
+describe('urenstatus in het grid (Peter/Haci 15-09)', () => {
+  it('toont per kaartje een statusstip mét tekst en tooltip, de achteraf-chip en de weektotaal-chip', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    const stippen = screen.getAllByTestId('uren-status')
+    const gekeurd = stippen.find((s) => s.getAttribute('data-status') === 'gekeurd')
+    expect(gekeurd).toBeDefined()
+    expect(gekeurd).toHaveTextContent('8 u · 42 m²')
+    expect(gekeurd).toHaveAttribute('title', '8 u · 42 m² · gekeurd door Ben v. Dijk op 26-08 17:42')
+    // Zonder urenstatus in de DTO (oude rijen) = grijs "geen uren".
+    const geen = stippen.find((s) => s.getAttribute('data-status') === 'geen')
+    expect(geen).toHaveTextContent('geen uren')
+    expect(screen.getByTestId('achteraf-chip')).toBeInTheDocument()
+    const chip = screen.getByTestId('week-uren-chip')
+    expect(chip).toHaveTextContent('8 u ingevuld · 8 u gekeurd · 1 zonder uren')
+    expect(chip.getAttribute('href')).toContain(`/meerwerk?administratie=${ADMINISTRATIE_ID}&project=${PROJECT_ID}&week=`)
+  })
+
+  it('filter "alleen zonder uren" verbergt gekeurde kaartjes en staat in de URL', async () => {
+    installMock()
+    renderScherm(`?administratie=${ADMINISTRATIE_ID}&week=2026-W35&uren=zonder`)
+    await waitFor(() => expect(screen.getByText('144 Breda (Moeskops)')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('uren-filter-zonder')).toHaveAttribute('aria-pressed', 'true'))
+    const cel = await screen.findByTestId(`cel-${PROJECT_ID}|2026-08-24`)
+    expect(within(cel).queryByText('Milan K.')).not.toBeInTheDocument() // gekeurd → verborgen
+    expect(within(cel).getByText('Ben v. Dijk')).toBeInTheDocument() // geen uren → zichtbaar
+  })
+})
+

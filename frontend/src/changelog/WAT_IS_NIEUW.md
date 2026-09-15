@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Planning: urenstatus in het grid en achteraf plannen
+
+<!-- planning-urenstatus-15-09 -->
+
+- In de planningsagenda zie je nu per persoon en dag of de uren zijn ingevuld (blauw, met uren en m²), gekeurd (groen) of afgekeurd (oranje); per project staat een weektotaal met een link naar de weekstaten, en bovenaan filter je op "alleen zonder uren" of "alleen ongekeurd".
+- Plant het kantoor iets in een week die al voorbij is of loopt, dan krijgt de veldwerker één melding "planning week N aangepast" en opent de app die week; in het grid staat "achteraf" bij zo'n kaartje.
+
 ## 2026-09-15 — Klant-accordeurs: nette chips en leesbare vervaltekst
 
 <!-- gebruikers-klantaccordeurs-15-09 -->

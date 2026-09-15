@@ -186,6 +186,9 @@ export function UrenFlow({
     if (new URLSearchParams(location.search).get('dossier') === '1' && veldrol !== 'detacheerder') {
       setScherm((huidig) => (huidig.s === 'dossier' ? huidig : { s: 'dossier', terug: huidig }))
     }
+    // 15-09: deep-link uit de bundelmelding "planning week N aangepast" (/accordeur?planning=JJJJ-Wnn) → de
+    // planningweergave van die week.
+    if (planningWeekUitZoekdeel(location.search)) setScherm({ s: 'planning' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 
@@ -385,6 +388,7 @@ export function UrenFlow({
         )}
         {scherm.s === 'planning' && (
           <MijnPlanningView
+            startWeek={planningWeekUitZoekdeel(location.search)}
             namens={namens}
             namensSuffix={namensSuffix}
             vangFout={vangFout}
@@ -1457,18 +1461,30 @@ function IngediendView({
 
 /* ============ planning (alleen-lezen, besluit B 22-08) ============ */
 
+/** `?planning=2026-W37` (bundelmelding "planning week N aangepast", 15-09): de week uit de deep-link, anders null. */
+export function planningWeekUitZoekdeel(zoekdeel: string): { jaar: number; weeknummer: number } | null {
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(new URLSearchParams(zoekdeel).get('planning') ?? '')
+  if (!m) return null
+  const jaar = Number(m[1])
+  const weeknummer = Number(m[2])
+  return weeknummer >= 1 && weeknummer <= 53 ? { jaar, weeknummer } : null
+}
+
 function MijnPlanningView({
   namens,
   namensSuffix,
   vangFout,
   terug,
+  startWeek = null,
 }: {
   namens: { id: string; naam: string } | null
   namensSuffix: React.ReactNode
   vangFout: (err: unknown) => string
   terug: (() => void) | null
+  /** Deep-link `/accordeur?planning=JJJJ-Wnn` (15-09): open direct die week. */
+  startWeek?: { jaar: number; weeknummer: number } | null
 }) {
-  const [week, setWeek] = useState(() => isoWeekVan(new Date()))
+  const [week, setWeek] = useState(() => startWeek ?? isoWeekVan(new Date()))
   const [dagen, setDagen] = useState<MijnPlanningDagDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
 
@@ -1514,6 +1530,25 @@ function MijnPlanningView({
             ›
           </button>
         </span>
+      </div>
+      {/* 15-09 (Peter/Haci, planning met terugwerkende kracht): de twee voorgaande weken staan één tik weg — het kantoor
+          kan achteraf plannen; gekeurde uren blijven alleen-lezen zoals altijd. */}
+      <div className="acc-chips" data-testid="planning-weekchips" style={{ display: 'flex', gap: 6, margin: '6px 0 8px', flexWrap: 'wrap' }}>
+        {[-2, -1, 0].map((delta) => {
+          const w = schuifWeek(huidige.jaar, huidige.weeknummer, delta)
+          const actief = w.jaar === week.jaar && w.weeknummer === week.weeknummer
+          return (
+            <button
+              key={delta}
+              type="button"
+              className={`acc-chip${actief ? ' actief' : ''}`}
+              aria-pressed={actief}
+              onClick={() => setWeek(w)}
+            >
+              {delta === 0 ? 'deze week' : `week ${w.weeknummer}`}
+            </button>
+          )
+        })}
       </div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {dagen === null && !fout && <Leeg tekst="Laden…" />}

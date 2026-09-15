@@ -1042,3 +1042,33 @@ class PlanningSignaalAfhandeling(Base):
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )
     ingetrokken_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class PlanningWijzigingMelding(Base):
+    """Bundelmelding "planning week N aangepast" aan een veldwerker (Peter/Haci 15-09, planning met terugwerkende kracht;
+    migratie 0145): het kantoor wijzigt de planning in een VERSTREKEN of LOPENDE week → één open rij per
+    (administratie, veldwerker, jaar, week); de 10-min-job `rlz-nieuwe-facturen` (stap `planning_meldingen`) bundelt
+    alle open rijen van een persoon tot één push-anders-mail per week en zet `gemeld_op` + `kanaal`. Nooit een melding
+    per kaartje; nooit voor een toekomstige week (die ziet de veldwerker gewoon in de app). Claim-vóór-verzenden zoals
+    `accordeur_nieuw_gemeld`; `mislukt`/`geen kanaal` blijft open voor de volgende run (zichtbaar in de job-uitvoer)."""
+
+    __tablename__ = "planning_wijziging_melding"
+    __table_args__ = (
+        Index("ix_planning_wijziging_melding_open", "administratie_id", "gebruiker_id", "jaar", "weeknummer"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    jaar: Mapped[int] = mapped_column(SmallInteger)
+    weeknummer: Mapped[int] = mapped_column(SmallInteger)
+    #: Aantal wijzigingen (gepland/verwijderd/verplaatst) dat in deze open rij gebundeld is.
+    aantal_wijzigingen: Mapped[int] = mapped_column(default=1, server_default="1")
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    bijgewerkt_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    gemeld_op: Mapped[datetime | None] = mapped_column(default=None)
+    kanaal: Mapped[str | None] = mapped_column(default=None)
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+

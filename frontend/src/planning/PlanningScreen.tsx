@@ -29,6 +29,13 @@ import {
   type PlanningProjectRijDto,
   type PlanningWeekDto,
   type WerkopdrachtDto,
+  UREN_STATUS_KLEUR,
+  UREN_STATUS_LABEL,
+  kaartPastInFilter,
+  parseUrenFilter,
+  urenKort,
+  weekUrenTekst,
+  type UrenFilter,
 } from './planningApi'
 
 /* Planning-agenda steigerbouw (mockup planning-steigerbouw.html v3, besluit Peter 23-08 —
@@ -442,6 +449,19 @@ export function PlanningScreen() {
   const magVeldwerkerbeheer = toegang?.is_beheerder === true || toegang?.heeft_veldwerkerbeheer_recht === true
   // Steigerbouw-run D1: tweede tab Transport naast Personeel (URL: ?tab=transport).
   const tab: 'personeel' | 'transport' = searchParams.get('tab') === 'transport' ? 'transport' : 'personeel'
+  // 15-09 (Peter/Haci): urenstatus-filter bovenaan (chips, URL-param `uren`): alleen kaartjes zonder uren / ongekeurd.
+  const urenFilter: UrenFilter = parseUrenFilter(searchParams.get('uren'))
+  function zetUrenFilter(f: UrenFilter) {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev)
+        if (f === 'alle') p.delete('uren')
+        else p.set('uren', f)
+        return p
+      },
+      { replace: true },
+    )
+  }
   function zetTab(t: 'personeel' | 'transport') {
     setSearchParams(
       (prev) => {
@@ -660,6 +680,52 @@ export function PlanningScreen() {
         </span>
         <b style={{ fontSize: 12 }}>{kaart.naam ?? '?'}</b>
         {kaart.rol === 'uitvoerder' && <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>uitv.</span>}
+        {/* 15-09 (Peter/Haci): urenstatus uit de weekstaat — stip + korte tekst, details in de tooltip; klik opent de
+            weekstaat van deze persoon × week (bestaande kantoor-leesroute). Groen = status, teal blijft actie. */}
+        <button
+          type="button"
+          className="linkbtn"
+          data-testid="uren-status"
+          data-status={kaart.uren_status ?? 'geen'}
+          title={kaart.uren_detail ?? UREN_STATUS_LABEL[kaart.uren_status ?? 'geen']}
+          aria-label={`Urenstatus ${kaart.naam ?? ''}: ${kaart.uren_detail ?? UREN_STATUS_LABEL[kaart.uren_status ?? 'geen']}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (kaart.weekstaat_id && administratieId) {
+              window.open(`/meerwerk?administratie=${administratieId}&weekstaat=${kaart.weekstaat_id}`, '_self')
+            }
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 10,
+            fontWeight: 600,
+            color: 'var(--muted)',
+            cursor: kaart.weekstaat_id ? 'pointer' : 'default',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 99,
+              background: UREN_STATUS_KLEUR[kaart.uren_status ?? 'geen'],
+              flexShrink: 0,
+            }}
+          />
+          {urenKort(kaart)}
+        </button>
+        {kaart.achteraf && (
+          <span
+            data-testid="achteraf-chip"
+            title="Achteraf gepland: ná de dag zelf in de planning gezet (audit + melding aan de veldwerker)"
+            style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--purple)', border: '1px dashed var(--purple)', borderRadius: 4, padding: '0 4px' }}
+          >
+            achteraf
+          </span>
+        )}
         {naEinddatum && (
           <span aria-label="ná projecteinddatum" style={{ fontSize: 10, color: 'var(--warn)', fontWeight: 700 }}>
             ⚠
@@ -740,6 +806,20 @@ export function PlanningScreen() {
               <Badge variant="info">deze week: {rij.week_man} man</Badge>
             </div>
           )}
+          {/* 15-09: weektotaal van de urenstatus → linkt naar de weekstaten van dit project (bestaande route). */}
+          {!compact && weekUrenTekst(rij.week_uren) && (
+            <div style={{ marginTop: 4 }}>
+              <a
+                className="linkbtn"
+                data-testid="week-uren-chip"
+                href={`/meerwerk?administratie=${administratieId}&project=${rij.project_id}&week=${weekNaarParam(week)}`}
+                style={{ fontSize: 10.5, fontWeight: 600, color: rij.week_uren && rij.week_uren.open_aantal > 0 ? 'var(--warn)' : 'var(--muted)' }}
+                title="Weekstaten en keuring van dit project openen"
+              >
+                {weekUrenTekst(rij.week_uren)} →
+              </a>
+            </div>
+          )}
           {/* Werkopdracht-chip + ⊕ (31-08): chip = uitklappen/wijzigen, ⊕ = toevoegen. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
             {werkopdrachten.length > 0 && (
@@ -793,7 +873,7 @@ export function PlanningScreen() {
         </th>
         {dagen.map((d) => {
           const celKey = `${rij.project_id}|${d.datum}`
-          const kaarten = rij.per_datum[d.datum] ?? []
+          const kaarten = (rij.per_datum[d.datum] ?? []).filter((k) => kaartPastInFilter(k, urenFilter))
           const naEinddatum = rij.looptijd_tot !== null && d.datum > rij.looptijd_tot
           // De persoon-kiezer alleen berekenen voor de éne open cel (68 rijen × 5 dagen).
           const kiesbaar =
@@ -1026,6 +1106,29 @@ export function PlanningScreen() {
         <Button variant={tab === 'transport' ? 'primair' : 'secundair'} maat="klein" role="tab" aria-selected={tab === 'transport'} onClick={() => zetTab('transport')}>
           🚚 Transport
         </Button>
+        {tab === 'personeel' && (
+          /* 15-09 (Peter/Haci): urenstatus-filter — chips, URL-param `uren`; kantoorbreed patroon. */
+          <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, alignItems: 'center' }} role="group" aria-label="Urenstatus-filter">
+            {(
+              [
+                ['alle', 'alle kaartjes'],
+                ['zonder', 'alleen zonder uren'],
+                ['ongekeurd', 'alleen ongekeurd'],
+              ] as const
+            ).map(([f, label]) => (
+              <Button
+                key={f}
+                variant={urenFilter === f ? 'primair' : 'secundair'}
+                maat="klein"
+                aria-pressed={urenFilter === f}
+                data-testid={`uren-filter-${f}`}
+                onClick={() => zetUrenFilter(f)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {tab === 'transport' && administratieId && (

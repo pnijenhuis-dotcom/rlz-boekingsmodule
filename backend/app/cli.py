@@ -2107,6 +2107,19 @@ def _nieuwe_facturen_melden(args: argparse.Namespace) -> int:
     )
     for fout in vraag_rapport.fouten:
         print(f"FOUT       vraag-melding: {fout}", file=sys.stderr)
+    # Planning met terugwerkende kracht (Peter/Haci 15-09): bundelmelding "planning week N aangepast" aan de
+    # veldwerker, zelfde 10-min-cadans en stille uren; open rijen blijven zichtbaar herkansen.
+    from app.uren import planning_meldingen
+
+    planning_rapport = planning_meldingen.verstuur_planning_meldingen()
+    print(
+        f"planning-meldingen: stille_uren={planning_rapport.stille_uren} open={planning_rapport.kandidaten} "
+        f"berichten={planning_rapport.berichten} push={planning_rapport.verzonden_push} "
+        f"mail={planning_rapport.verzonden_mail} geen_kanaal={planning_rapport.overgeslagen_geen_kanaal} "
+        f"mislukt={planning_rapport.mislukt}"
+    )
+    for fout in planning_rapport.fouten:
+        print(f"FOUT       planning-melding: {fout}", file=sys.stderr)
     if rapport.stille_uren:
         print("Stille uren (20:00–08:00 Europe/Amsterdam) — geen meldingen verstuurd.")
         return 0

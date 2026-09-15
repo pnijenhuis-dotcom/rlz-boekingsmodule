@@ -890,6 +890,7 @@ def kantoor_planning(
                     ]
                     for datum, teksten in rij.werkopdracht_overrides.items()
                 },
+                week_uren=schemas.WeekUrenDto(**rij.week_uren.__dict__),
             )
             for rij in data.projecten
         ],

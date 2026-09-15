@@ -3,14 +3,14 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0144
+-- Migratie-head bij deze dump: 0145
 -- =============================================================================
 --
 -- PostgreSQL database dump
 --
 
 
--- Dumped from database version 16.15 (Debian 16.15-1.pgdg13+2)
+-- Dumped from database version 16.14 (Homebrew)
 -- Dumped by pg_dump version 16.14 (Homebrew)
 
 SET statement_timeout = 0;
@@ -2202,6 +2202,28 @@ CREATE TABLE boekhouding.planning_toewijzing (
 );
 
 ALTER TABLE ONLY boekhouding.planning_toewijzing FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: planning_wijziging_melding; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.planning_wijziging_melding (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    jaar smallint NOT NULL,
+    weeknummer smallint NOT NULL,
+    aantal_wijzigingen integer DEFAULT 1 NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    bijgewerkt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gemeld_op timestamp with time zone,
+    kanaal text,
+    detail jsonb
+);
+
+ALTER TABLE ONLY boekhouding.planning_wijziging_melding FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4675,6 +4697,14 @@ ALTER TABLE ONLY boekhouding.planning_toewijzing
 
 
 --
+-- Name: planning_wijziging_melding planning_wijziging_melding_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_wijziging_melding
+    ADD CONSTRAINT planning_wijziging_melding_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: project_cache project_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -6262,6 +6292,13 @@ CREATE INDEX ix_planning_toewijzing_datum ON boekhouding.planning_toewijzing USI
 --
 
 CREATE INDEX ix_planning_toewijzing_gebruiker ON boekhouding.planning_toewijzing USING btree (administratie_id, gebruiker_id, datum);
+
+
+--
+-- Name: ix_planning_wijziging_melding_open; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_wijziging_melding_open ON boekhouding.planning_wijziging_melding USING btree (administratie_id, gebruiker_id, jaar, weeknummer);
 
 
 --
@@ -8798,6 +8835,30 @@ ALTER TABLE ONLY boekhouding.planning_toewijzing
 
 
 --
+-- Name: planning_wijziging_melding planning_wijziging_melding_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_wijziging_melding
+    ADD CONSTRAINT planning_wijziging_melding_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_wijziging_melding planning_wijziging_melding_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_wijziging_melding
+    ADD CONSTRAINT planning_wijziging_melding_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: planning_wijziging_melding planning_wijziging_melding_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_wijziging_melding
+    ADD CONSTRAINT planning_wijziging_melding_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: project_cache project_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -11271,6 +11332,19 @@ ALTER TABLE boekhouding.planning_toewijzing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY planning_toewijzing_scope ON boekhouding.planning_toewijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: planning_wijziging_melding; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.planning_wijziging_melding ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: planning_wijziging_melding planning_wijziging_melding_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY planning_wijziging_melding_scope ON boekhouding.planning_wijziging_melding USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

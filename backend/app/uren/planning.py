@@ -31,13 +31,15 @@ from app.db.audit import record_audit_event
 from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.sync.models import ProjectCache
-from app.tijd import vandaag_nl
+from app.tijd import kalenderdag_nl, vandaag_nl
 from app.uren.models import (
     PlanningDagdeel,
     PlanningToewijzing,
+    PlanningWijzigingMelding,
     ProjectSpecificatie,
     Weekstaat,
     WeekstaatDag,
+    WeekstaatStatus,
 )
 from app.uren.service import (
     MODULE,
@@ -64,12 +66,32 @@ _DAGDEEL_WAARDE = {PlanningDagdeel.HEEL.value: Decimal("1"), PlanningDagdeel.HAL
 
 @dataclass(frozen=True)
 class PlanningKaartData:
-    """Eén gepland kaartje in een grid-cel (persoon × project × dag)."""
+    """Eén gepland kaartje in een grid-cel (persoon × project × dag). Sinds 15-09 (Peter/Haci) mét de urenstatus uit
+    de weekstaat van die persoon × project × week (één leesbron, geen nieuwe berekening): `uren_status` 'geen' (grijs) |
+    'ingevuld' (blauw: dag mét uren, staat concept/ingediend) | 'gekeurd' (groen) | 'vraag' (oranje: afgekeurd/te
+    corrigeren); `uren`/`m2` van die dag, `uren_detail` = tooltip-tekst; `achteraf` = gepland ná de dag zelf (chip
+    "achteraf gepland")."""
 
     gebruiker_id: uuid.UUID
     naam: str | None
     rol: str
     dagdeel: str
+    uren_status: str = "geen"
+    uren: Decimal | None = None
+    m2: Decimal | None = None
+    uren_detail: str | None = None
+    weekstaat_id: uuid.UUID | None = None
+    achteraf: bool = False
+
+
+@dataclass(frozen=True)
+class WeekUrenData:
+    """Weektotaal per projectrij (15-09): "24 u ingevuld · 16 u gekeurd · 2 open" — uit dezelfde weekstaat-rijen."""
+
+    ingevuld_uren: Decimal = Decimal("0")
+    gekeurd_uren: Decimal = Decimal("0")
+    open_aantal: int = 0  # kaartjes mét status 'vraag' (afgekeurd / te corrigeren)
+    zonder_uren_aantal: int = 0  # geplande kaartjes zonder uren (t/m gisteren)
 
 
 @dataclass(frozen=True)
@@ -93,6 +115,8 @@ class ProjectRijData:
     # dag-overrides binnen de week (blok in de dagcel; ISO-datum → afwijkende teksten).
     werkopdrachten: list = field(default_factory=list)
     werkopdracht_overrides: dict[str, list] = field(default_factory=dict)
+    # 15-09: weektotaal van de urenstatus over de kaartjes van deze rij.
+    week_uren: WeekUrenData = field(default_factory=WeekUrenData)
 
 
 @dataclass(frozen=True)
@@ -206,6 +230,156 @@ def _zorg_voor_projectkoppeling(
     )
 
 
+# --- urenstatus in het grid (Peter/Haci 15-09) ------------------------------------------------------
+
+UREN_STATUS_GEEN = "geen"
+UREN_STATUS_INGEVULD = "ingevuld"
+UREN_STATUS_GEKEURD = "gekeurd"
+UREN_STATUS_VRAAG = "vraag"
+
+
+@dataclass(frozen=True)
+class _UrenStand:
+    status: str
+    uren: Decimal | None
+    m2: Decimal | None
+    detail: str | None
+    weekstaat_id: uuid.UUID | None
+
+
+def _fmt_moment(moment) -> str:  # noqa: ANN001 — datetime | None
+    return f"{kalenderdag_nl(moment).strftime('%d-%m')} {moment.astimezone().strftime('%H:%M')}" if moment else "—"
+
+
+def _urenstanden_voor_week(
+    session, *, administratie_id: uuid.UUID, maandag: date, zondag: date, namen: dict[uuid.UUID, str | None]
+) -> dict[tuple[uuid.UUID, uuid.UUID, date], _UrenStand]:
+    """ÉÉN statement over WeekstaatDag × Weekstaat voor de week (set-based; het grid blijft op een constant aantal
+    statements, meetlat `tests/uren/test_planning_urenstatus.py`) → per (persoon, project, dag) de stand. Namen van
+    keurders in één batch. Deterministische afleiding: goedgekeurd → 'gekeurd'; corrigeren → 'vraag'; concept/ingediend
+    mét uren > 0 → 'ingevuld'; anders geen rij → 'geen'."""
+    rijen = session.execute(
+        select(WeekstaatDag, Weekstaat)
+        .join(Weekstaat, Weekstaat.id == WeekstaatDag.weekstaat_id)
+        .where(
+            WeekstaatDag.administratie_id == administratie_id,
+            WeekstaatDag.datum >= maandag,
+            WeekstaatDag.datum <= zondag,
+        )
+    ).all()
+    if not rijen:
+        return {}
+    keurders = {s.goedgekeurd_door for _, s in rijen if s.goedgekeurd_door} | {
+        s.afgekeurd_door for _, s in rijen if s.afgekeurd_door
+    }
+    keurders -= set(namen)
+    if keurders:
+        for g in session.scalars(select(Gebruiker).where(Gebruiker.id.in_(keurders))).all():
+            namen[g.id] = g.naam
+    uit: dict[tuple[uuid.UUID, uuid.UUID, date], _UrenStand] = {}
+    for dag, staat in rijen:
+        uren = Decimal(dag.uren or 0)
+        if staat.status == WeekstaatStatus.GOEDGEKEURD.value:
+            status = UREN_STATUS_GEKEURD
+            keurder = namen.get(staat.goedgekeurd_door) or "uitvoerder"
+            detail = f"gekeurd door {keurder} op {_fmt_moment(staat.goedgekeurd_op)}"
+        elif staat.status == WeekstaatStatus.CORRIGEREN.value:
+            status = UREN_STATUS_VRAAG
+            detail = (
+                f"afgekeurd door {namen.get(staat.afgekeurd_door) or 'uitvoerder'} op {_fmt_moment(staat.afgekeurd_op)}"
+                + (f": {staat.afkeur_reden}" if staat.afkeur_reden else "")
+            )
+        elif uren > 0:
+            status = UREN_STATUS_INGEVULD
+            detail = (
+                f"ingediend {_fmt_moment(staat.ingediend_op)}"
+                if staat.status == WeekstaatStatus.INGEDIEND.value
+                else f"ingevuld (concept) {_fmt_moment(staat.bijgewerkt_op)}"
+            )
+        else:
+            continue  # dagrij zonder uren = alsof er geen uren zijn
+        uit[(staat.gebruiker_id, staat.project_id, dag.datum)] = _UrenStand(
+            status=status, uren=uren, m2=dag.m2, detail=detail, weekstaat_id=staat.id
+        )
+    return uit
+
+
+def _uren_kort(stand: _UrenStand | None) -> str:
+    if stand is None:
+        return "geen uren"
+    delen = [f"{stand.uren.normalize():f} u".replace(".", ",")] if stand.uren is not None else []
+    if stand.m2:
+        delen.append(f"{stand.m2.normalize():f} m²".replace(".", ","))
+    return " · ".join(delen) or stand.status
+
+
+# --- terugwerkende kracht (Peter/Haci 15-09): achteraf-vlag + bundelmelding aan de veldwerker -------------
+
+
+def _is_achteraf(aangemaakt_op, datum: date) -> bool:  # noqa: ANN001 — datetime
+    """Gepland ná de dag zelf (NL-kalenderdag van het planmoment > geplande datum) — chip "achteraf gepland"."""
+    return aangemaakt_op is not None and kalenderdag_nl(aangemaakt_op) > datum
+
+
+def week_is_verstreken_of_lopend(datum: date, vandaag: date) -> bool:
+    """De ISO-week van `datum` ligt vóór of ís de huidige week — een wijziging daar is 'met terugwerkende kracht'
+    (verstreken) of 'in de lopende week' en verdient een melding aan de veldwerker; een toekomstige week niet."""
+    return datum.isocalendar()[:2] <= vandaag.isocalendar()[:2]
+
+
+def _registreer_wijziging_in_week(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    datum: date,
+    actor_id: uuid.UUID,
+    soort: str,
+    vandaag: date | None = None,
+) -> bool:
+    """Bij een planningwijziging in een verstreken/lopende week: één OPEN melding-rij per (administratie, veldwerker,
+    week) bijhouden (aantal_wijzigingen++) — de job bundelt en verstuurt. Toekomstige week = niets (False). Nooit een
+    blokkade (besluit minimale mens); de audit-rij van de mutatie draagt `achteraf`/`week_status`."""
+    vandaag = vandaag or vandaag_nl()
+    if not week_is_verstreken_of_lopend(datum, vandaag):
+        return False
+    jaar, week, _ = datum.isocalendar()
+    open_rij = session.scalars(
+        select(PlanningWijzigingMelding).where(
+            PlanningWijzigingMelding.administratie_id == administratie_id,
+            PlanningWijzigingMelding.gebruiker_id == gebruiker_id,
+            PlanningWijzigingMelding.jaar == jaar,
+            PlanningWijzigingMelding.weeknummer == week,
+            PlanningWijzigingMelding.gemeld_op.is_(None),
+        )
+    ).first()
+    if open_rij is None:
+        session.add(
+            PlanningWijzigingMelding(
+                administratie_id=administratie_id,
+                gebruiker_id=gebruiker_id,
+                jaar=jaar,
+                weeknummer=week,
+                aangemaakt_door=actor_id,
+                detail={"soorten": [soort]},
+            )
+        )
+    else:
+        open_rij.aantal_wijzigingen = int(open_rij.aantal_wijzigingen or 0) + 1
+        soorten = list((open_rij.detail or {}).get("soorten") or [])
+        soorten.append(soort)
+        open_rij.detail = {**(open_rij.detail or {}), "soorten": soorten[-20:]}
+    return True
+
+
+def _week_status(datum: date, vandaag: date) -> str:
+    if datum.isocalendar()[:2] < vandaag.isocalendar()[:2]:
+        return "verstreken"
+    if datum.isocalendar()[:2] == vandaag.isocalendar()[:2]:
+        return "lopend"
+    return "toekomst"
+
+
 def ongeplande_datums(
     session,
     *,
@@ -270,6 +444,11 @@ def plan_toewijzing(
                 toegevoegd_door=actor_id,
             )
         )
+        vandaag = vandaag_nl()
+        gemeld = _registreer_wijziging_in_week(
+            session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=datum, actor_id=actor_id,
+            soort="gepland", vandaag=vandaag,
+        )
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -283,6 +462,10 @@ def plan_toewijzing(
                 "project_id": str(project_id),
                 "datum": datum.isoformat(),
                 "dagdeel": dagdeel,
+                # 15-09: terugwerkende kracht zichtbaar in de audit (geen blokkade).
+                "achteraf": datum < vandaag,
+                "week_status": _week_status(datum, vandaag),
+                "veldwerker_gemeld": gemeld,
             },
             administratie_id=administratie_id,
         )
@@ -311,6 +494,11 @@ def verwijder_toewijzing(
             "dagdeel": rij.dagdeel,
         }
         session.delete(rij)
+        vandaag = vandaag_nl()
+        gemeld = _registreer_wijziging_in_week(
+            session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=datum, actor_id=actor_id,
+            soort="verwijderd", vandaag=vandaag,
+        )
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -320,6 +508,11 @@ def verwijder_toewijzing(
             actie="planning_verwijderd",
             correlatie_id=project_id,
             oude_waarde=oude_waarde,
+            nieuwe_waarde={
+                "achteraf": datum < vandaag,
+                "week_status": _week_status(datum, vandaag),
+                "veldwerker_gemeld": gemeld,
+            },
             administratie_id=administratie_id,
         )
 
@@ -371,6 +564,19 @@ def verplaats_toewijzing(
                 toegevoegd_door=actor_id,
             )
         )
+        vandaag = vandaag_nl()
+        gemeld_van = _registreer_wijziging_in_week(
+            session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=van_datum, actor_id=actor_id,
+            soort="verplaatst", vandaag=vandaag,
+        )
+        gemeld_naar = (
+            _registreer_wijziging_in_week(
+                session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=naar_datum,
+                actor_id=actor_id, soort="verplaatst", vandaag=vandaag,
+            )
+            if naar_datum.isocalendar()[:2] != van_datum.isocalendar()[:2]
+            else gemeld_van
+        )
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -384,6 +590,9 @@ def verplaats_toewijzing(
                 "project_id": str(naar_project_id),
                 "datum": naar_datum.isoformat(),
                 "dagdeel": dagdeel,
+                "achteraf": naar_datum < vandaag or van_datum < vandaag,
+                "week_status": _week_status(naar_datum, vandaag),
+                "veldwerker_gemeld": gemeld_van or gemeld_naar,
             },
             administratie_id=administratie_id,
         )
@@ -603,20 +812,46 @@ def planning_overzicht(
             session, administratie_id=administratie_id, maandag=maandag, zondag=zondag
         )
 
+        # 15-09: urenstatus per kaartje uit de weekstaten van deze week — één statement voor het hele grid.
+        urenstanden = _urenstanden_voor_week(
+            session, administratie_id=administratie_id, maandag=maandag, zondag=zondag, namen=namen
+        )
+
         rijen: list[ProjectRijData] = []
         for project in projecten:
             spec = specs.get(project.id)
             eigen = per_project.get(project.id, [])
             per_datum: dict[str, list[PlanningKaartData]] = {}
+            week_uren = WeekUrenData()
+            ingevuld = gekeurd = Decimal("0")
+            open_aantal = zonder_uren = 0
             for t in sorted(eigen, key=lambda t: (t.datum, namen.get(t.gebruiker_id) or "")):
+                stand = urenstanden.get((t.gebruiker_id, project.id, t.datum))
+                if stand is None and t.datum < vandaag:
+                    zonder_uren += 1
+                if stand is not None:
+                    ingevuld += stand.uren or 0
+                    if stand.status == UREN_STATUS_GEKEURD:
+                        gekeurd += stand.uren or 0
+                    if stand.status == UREN_STATUS_VRAAG:
+                        open_aantal += 1
                 per_datum.setdefault(t.datum.isoformat(), []).append(
                     PlanningKaartData(
                         gebruiker_id=t.gebruiker_id,
                         naam=namen.get(t.gebruiker_id),
                         rol=rollen.get(t.gebruiker_id, "zzper"),
                         dagdeel=t.dagdeel,
+                        uren_status=stand.status if stand else UREN_STATUS_GEEN,
+                        uren=stand.uren if stand else None,
+                        m2=stand.m2 if stand else None,
+                        uren_detail=(f"{_uren_kort(stand)} · {stand.detail}" if stand else "geen uren ingevuld"),
+                        weekstaat_id=stand.weekstaat_id if stand else None,
+                        achteraf=_is_achteraf(t.aangemaakt_op, t.datum),
                     )
                 )
+            week_uren = WeekUrenData(
+                ingevuld_uren=ingevuld, gekeurd_uren=gekeurd, open_aantal=open_aantal, zonder_uren_aantal=zonder_uren
+            )
             rijen.append(
                 ProjectRijData(
                     project_id=project.id,
@@ -633,6 +868,7 @@ def planning_overzicht(
                         for (pid, datum), teksten in wo_per_dag.items()
                         if pid == project.id
                     },
+                    week_uren=week_uren,
                 )
             )
 

@@ -4,11 +4,78 @@
 
 import { apiJson, apiPostJson } from '../api/client'
 
+export type UrenStatus = 'geen' | 'ingevuld' | 'gekeurd' | 'vraag'
+
 export interface PlanningKaartDto {
   gebruiker_id: string
   naam: string | null
   rol: string
   dagdeel: 'heel' | 'half'
+  /** 15-09 (Peter/Haci): urenstatus uit de weekstaat van persoon × project × week — grijs geen, blauw ingevuld,
+   * groen gekeurd, oranje vraag (afgekeurd); `uren_detail` = tooltip; `achteraf` = gepland ná de dag zelf. */
+  uren_status?: UrenStatus
+  uren?: string | null
+  m2?: string | null
+  uren_detail?: string | null
+  weekstaat_id?: string | null
+  achteraf?: boolean
+}
+
+export interface WeekUrenDto {
+  ingevuld_uren: string
+  gekeurd_uren: string
+  open_aantal: number
+  zonder_uren_aantal: number
+}
+
+/** Kleur/label per urenstatus (semantiek-regel designpass v2: groen = status, teal = actie). */
+export const UREN_STATUS_LABEL: Record<UrenStatus, string> = {
+  geen: 'geen uren',
+  ingevuld: 'ingevuld',
+  gekeurd: 'gekeurd',
+  vraag: 'afgekeurd / vraag',
+}
+export const UREN_STATUS_KLEUR: Record<UrenStatus, string> = {
+  geen: 'var(--faint)',
+  ingevuld: 'var(--info)',
+  gekeurd: 'var(--ok)',
+  vraag: 'var(--warn)',
+}
+
+/** Korte kaarttekst: "8 u · 42 m²" bij uren, anders het statuslabel. */
+export function urenKort(k: Pick<PlanningKaartDto, 'uren_status' | 'uren' | 'm2'>): string {
+  const status = k.uren_status ?? 'geen'
+  if (status === 'geen' || !k.uren) return UREN_STATUS_LABEL[status]
+  const uren = `${formatGetal(k.uren)} u`
+  return k.m2 && Number(k.m2) > 0 ? `${uren} · ${formatGetal(k.m2)} m²` : uren
+}
+
+function formatGetal(s: string): string {
+  const n = Number(s)
+  return Number.isFinite(n) ? n.toLocaleString('nl-NL', { maximumFractionDigits: 2 }) : s
+}
+
+/** Weektotaal-chip in de rijkop: "24 u ingevuld · 16 u gekeurd · 2 open" (delen die 0 zijn vallen weg; alles 0 → null). */
+export function weekUrenTekst(w: WeekUrenDto | undefined): string | null {
+  if (!w) return null
+  const delen: string[] = []
+  if (Number(w.ingevuld_uren) > 0) delen.push(`${formatGetal(w.ingevuld_uren)} u ingevuld`)
+  if (Number(w.gekeurd_uren) > 0) delen.push(`${formatGetal(w.gekeurd_uren)} u gekeurd`)
+  if (w.open_aantal > 0) delen.push(`${w.open_aantal} open`)
+  if (w.zonder_uren_aantal > 0) delen.push(`${w.zonder_uren_aantal} zonder uren`)
+  return delen.length ? delen.join(' · ') : null
+}
+
+/** Filter "alleen zonder uren" / "alleen ongekeurd" (URL-param `uren`): welke kaartjes tellen. */
+export type UrenFilter = 'alle' | 'zonder' | 'ongekeurd'
+export function parseUrenFilter(param: string | null): UrenFilter {
+  return param === 'zonder' || param === 'ongekeurd' ? param : 'alle'
+}
+export function kaartPastInFilter(k: PlanningKaartDto, filter: UrenFilter): boolean {
+  const status = k.uren_status ?? 'geen'
+  if (filter === 'zonder') return status === 'geen'
+  if (filter === 'ongekeurd') return status !== 'gekeurd'
+  return true
 }
 
 export interface WerkopdrachtKortDto {
@@ -40,6 +107,8 @@ export interface PlanningProjectRijDto {
   // dag-overrides binnen de week (ISO-datum → afwijkende teksten in de dagcel).
   werkopdrachten: WerkopdrachtKortDto[]
   werkopdracht_overrides: Record<string, WerkopdrachtDagTekstDto[]>
+  /** 15-09: weektotaal van de urenstatus over de kaartjes van deze rij. */
+  week_uren?: WeekUrenDto
 }
 
 export interface PlanningPoolPersoonDto {
