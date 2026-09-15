@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Omzet uit spreadsheets: zonnestudio-dagstaat en pilates-betalingen
+
+<!-- omzetbronnen-15-09 -->
+
+- Een dagstaat van de zonnestudio (het dagelijkse verkooprapport) en de kascheck van dezelfde dag worden samen één omzetdocument bij de juiste studio; het controlescherm toont de categorieën, de betaalwijzen, de kastelling en per controle of het klopt. Een kasverschil is een oranje signaal, een onbekende puntenwaarde blokkeert tot de klant die heeft doorgegeven.
+- De betalingsexport van de pilatesstudio wordt automatisch opgeknipt in één omzetdocument per uitbetaling, met de lessen per soort, de transactiekosten en het netto bedrag dat op de bank moet komen. Dezelfde betaling wordt nooit twee keer geboekt, ook niet als week- en maandexport elkaar overlappen.
+- Onbekende productnamen en categorieën zonder boekingsinstelling blokkeren zichtbaar; namen en e-mailadressen van klanten komen nergens in de boeking terecht.
+
 ## 2026-09-15 — Goedkeur-app: inzoomen op de factuur
 
 <!-- accordeur-pdf-zoom-15-09 -->

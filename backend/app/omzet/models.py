@@ -70,6 +70,11 @@ class OmzetInstelling(Base):
     voorraad_ledger_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     memoriaal_diary_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     verkoop_categorie_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    # Omzetbronnen zonnestudio/pilates (Peter 15-09, migratie 0146): per administratie de bron-instellingen als één
+    # JSON-blok — `stores` (POS-storenamen die naar deze administratie routeren), `product_categorieen` (pilates:
+    # productnaam → categorie), `psp` (naam, kosten-btw), `rekeningen` (kas, kruispost pin/psp, vooruitontvangen,
+    # kasverschil als GB-codes/ids). Leeg = code-defaults (app/omzet/bronnen/service.py). Nooit hardcoden.
+    bron_instellingen: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), default=None)
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 

@@ -52,6 +52,10 @@ Q_AUTOBOEK_LEREN = "q_autoboek_leren"
 W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
 #: Peter 15-09: verlegd herkennen op kolomcode "V" zonder het woord verlegd (Olieman-patroon, bouw-onderaannemer).
 Z_VERLEGD_KOLOMCODE = "z_verlegd_kolomcode_v"
+# Peter 15-09 (omzetbronnen): géén document-casussen maar spreadsheet-rasters als JSON-grid
+# (dagstaat_grid.json / kascheck_grid.json / export_grid.json) — `alle_casussen()` slaat ze over; zie bron.json per map.
+AB_OMZET_ZONNESTUDIO = "ab_omzet_zonnestudio"
+AC_OMZET_PILATES = "ac_omzet_pilates"
 
 AFZENDER_UNIVERSAL = "administratie@universal-steigerbouw.example"
 

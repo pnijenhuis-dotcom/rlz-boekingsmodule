@@ -35,6 +35,23 @@ class OmzetVoorstelResponse(BaseModel):
     opgeslagen: bool
     rapport_titel: str | None = None
     entiteit_naam: str | None = None
+    # Omzetbronnen (Peter 15-09): herkomst + bron-detail (betaalwijzen, kas, controles, batch) voor het controlescherm.
+    bron: str | None = None
+    bron_detail: dict | None = None
+
+
+class OmzetBronInstellingenDto(BaseModel):
+    stores: list[str] = []
+    product_categorieen: dict[str, str] = {}
+    psp: dict = {}
+    rekeningen: dict = {}
+
+
+class OmzetBronInstellingenInput(StrikteInvoer):
+    stores: list[str] = []
+    product_categorieen: dict[str, str] = {}
+    psp: dict = {}
+    rekeningen: dict = {}
 
 
 class OmzetVoorstelMetChecksResponse(BaseModel):

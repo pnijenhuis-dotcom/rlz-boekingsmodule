@@ -246,7 +246,19 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
     detail: dict | None = None
     doel_status = DocumentStatus.TE_CONTROLEREN
     suffix = Path(document.bestandsnaam).suffix.lower()
-    if document.soort == DocumentSoort.KASSARAPPORT.value:
+    if document.soort == DocumentSoort.KASSARAPPORT.value and suffix in (".xls", ".xlsx"):
+        # Omzetbronnen zonnestudio/pilates (Peter 15-09): een spreadsheet is een DETERMINISTISCHE bron — geen AVG-gate,
+        # geen AI; parser + harde controles (app/omzet/bronnen). Een kascheck die bij een al aanwezige dagstaat hoort
+        # wordt daarin gebundeld en gaat zelf op SAMENGEVOEGD (terugvindbaar, nooit verwijderd).
+        from app.omzet.bronnen import service as bronnen_service  # lokaal: houdt de importgraaf klein
+
+        detail = bronnen_service.verwerk_spreadsheet(
+            session, document=document, inhoud=opslag.lezen(pad=document.opslag_pad)
+        )
+        if detail.get("samengevoegd_in_document_id"):
+            doel_status = DocumentStatus.SAMENGEVOEGD
+            document.samengevoegd_in_id = uuid.UUID(detail["samengevoegd_in_document_id"])
+    elif document.soort == DocumentSoort.KASSARAPPORT.value:
         # Omzetmodule (fase 2): kassarapporten krijgen de rapport-extractie
         # (app/extractie/rapport.py) — zelfde AVG-gate, eigen schema/controlelaag; de
         # projectplicht-waarborg is hier niet van toepassing (geen regels met projecttoerekening).
@@ -311,6 +323,18 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
     _herstel_open_vraag_na_extractie(session, document=document, actor_id=actor_id)
 
 
+def _laatste_veldvoorstel_detail(session: Session, document_id: uuid.UUID) -> dict | None:
+    """Het detail van de laatste tijdlijn-rij mét een veldvoorstel (post-commit-hooks omzetbronnen)."""
+    laatste = None
+    for g in session.scalars(
+        select(DocumentGebeurtenis)
+        .where(DocumentGebeurtenis.document_id == document_id, DocumentGebeurtenis.detail.has_key("veldvoorstel"))
+        .order_by(DocumentGebeurtenis.tijdstip)
+    ):
+        laatste = g.detail
+    return laatste
+
+
 def _extractie_reden(detail: dict | None, doel_status: DocumentStatus) -> str:
     """Leesbare reden voor de systeem-eindovergang van een extractie (vangnet 28-08)."""
     d = detail or {}
@@ -324,6 +348,14 @@ def _extractie_reden(detail: dict | None, doel_status: DocumentStatus) -> str:
         return "UBL onleesbaar — handmatig invullen"
     if "waarborg_parse_fout" in d:
         return "waarborgbericht onleesbaar — handmatig beoordelen"
+    if "bron_parse_fout" in d:
+        return f"omzetbron onleesbaar — {d['bron_parse_fout']}"
+    if "samengevoegd_in_document_id" in d:
+        return "kascheck gebundeld bij de dagstaat van dezelfde dag"
+    if d.get("bron_splitsing"):
+        return f"betalingsexport gelezen — wordt gesplitst in {len(d['bron_splitsing'])} uitbetalingen"
+    if (d.get("veldvoorstel") or {}).get("bron"):
+        return "omzetbron deterministisch gelezen (geen AI) — ter controle"
     if doel_status == DocumentStatus.HANDMATIG_AFMAKEN:
         return "extractie afgerond — handmatig afmaken vereist"
     return "extractie afgerond — ter controle"
@@ -996,6 +1028,21 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
             logger.exception("Autoboeken-poging mislukt voor document %s", document_id)
     elif soort == DocumentSoort.KASSARAPPORT.value:
+        # Omzetbron pilates (Peter 15-09): een export mét meerdere uitbetalingen wordt post-commit gesplitst in één
+        # kinddocument per uitbetaling (eigen transacties; de ouder gaat op GESPLITST). Idempotent.
+        from app.omzet.bronnen import service as bronnen_service  # lokaal: houdt de importgraaf klein
+
+        try:
+            with scoped_session(administratie_id) as session:
+                laatste = _laatste_veldvoorstel_detail(session, document_id)
+            if laatste and laatste.get("bron_splitsing"):
+                bronnen_service.splits_pilates_export_na_extractie(
+                    administratie_id=administratie_id, document_id=document_id, opslag=_standaard_opslag()
+                )
+                return
+        except Exception:  # noqa: BLE001 — splitsing is zichtbaar in de tijdlijn; nooit een blokkade van de upload
+            logger.exception("Splitsing betalingsexport mislukt voor document %s", document_id)
+
         # Omzet-autoboeken-opt-in (GO Peter 01-09, migratie 0096): éérst de autoboek-poging (post-commit,
         # systeem-actor; elke uitkomst geauditeerd zodra de opt-in aanstaat), daarná de mapping-autovraag —
         # zelfde volgorde als het verkoop-pad (andersom zou de vraag-status de weigering onzichtbaar maken).

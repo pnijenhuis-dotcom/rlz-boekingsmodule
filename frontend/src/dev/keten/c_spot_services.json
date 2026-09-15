@@ -348,7 +348,7 @@
     "actor_id": "00000000-0000-4000-8000-000000000021",
     "actor_is_systeem": true,
     "detail": {
-     "reden": "extractie afgerond — ter controle",
+     "reden": "omzetbron deterministisch gelezen (geen AI) — ter controle",
      "ai_metriek": {
       "regels": 12
      },

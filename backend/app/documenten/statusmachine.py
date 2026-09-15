@@ -71,6 +71,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             # herstart niet — een document dat in 'bezig' achterbleef gaat bij startup terug de
             # wachtrij in (systeem-actor, zichtbaar in de tijdlijn), nooit stil blijven hangen.
             DocumentStatus.EXTRACTIE_WACHTRIJ,
+            # Omzetbronnen (Peter 15-09): een kascheck/dagstaat die de WEDERHELFT is van een al aanwezig
+            # kassarapport-document van dezelfde dag wordt daarin gebundeld (app/omzet/bronnen/service.py)
+            # en gaat zelf terminaal naar samengevoegd — terugvindbaar, nooit verwijderd.
+            DocumentStatus.SAMENGEVOEGD,
         }
     ),
     DocumentStatus.TE_CONTROLEREN: frozenset(

@@ -20,6 +20,7 @@
     {
      "eenheid": null,
      "btw_bron": "factuur",
+     "btw_kolom": null,
      "btw_bedrag": "18.69",
      "stuksprijs": "89.00",
      "taxrate_id": "55555555-0000-0000-0000-000000000021",
@@ -29,12 +30,14 @@
      "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": "regel",
      "btw_afleiding_reden": null
     },
     {
      "eenheid": null,
      "btw_bron": "factuur",
+     "btw_kolom": null,
      "btw_bedrag": "31.50",
      "stuksprijs": "25.00",
      "taxrate_id": "55555555-0000-0000-0000-000000000021",
@@ -44,6 +47,7 @@
      "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
      "project_tekst": null,
      "tariefstaffel": false,
+     "btw_kolom_verlegd": false,
      "btw_afleiding_basis": "regel",
      "btw_afleiding_reden": null
     }
@@ -109,6 +113,7 @@
     "vendor_id": "33333333-0000-0000-0000-000000000008"
    },
    "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+   "btw_verlegd_kolom": null,
    "zekerheid_drempel": 0.8,
    "btw_factuur_totaal": {
     "reden": "geen_regels_zonder_btw",
@@ -168,7 +173,7 @@
     "actor_id": "00000000-0000-4000-8000-000000000021",
     "actor_is_systeem": true,
     "detail": {
-     "reden": "extractie afgerond — ter controle",
+     "reden": "omzetbron deterministisch gelezen (geen AI) — ter controle",
      "ai_metriek": {
       "regels": 2
      },
@@ -179,6 +184,7 @@
        {
         "eenheid": null,
         "btw_bron": "factuur",
+        "btw_kolom": null,
         "btw_bedrag": "18.69",
         "stuksprijs": "89.00",
         "taxrate_id": "55555555-0000-0000-0000-000000000021",
@@ -188,12 +194,14 @@
         "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": "regel",
         "btw_afleiding_reden": null
        },
        {
         "eenheid": null,
         "btw_bron": "factuur",
+        "btw_kolom": null,
         "btw_bedrag": "31.50",
         "stuksprijs": "25.00",
         "taxrate_id": "55555555-0000-0000-0000-000000000021",
@@ -203,6 +211,7 @@
         "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
         "project_tekst": null,
         "tariefstaffel": false,
+        "btw_kolom_verlegd": false,
         "btw_afleiding_basis": "regel",
         "btw_afleiding_reden": null
        }
@@ -268,6 +277,7 @@
        "vendor_id": "33333333-0000-0000-0000-000000000008"
       },
       "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
+      "btw_verlegd_kolom": null,
       "zekerheid_drempel": 0.8,
       "btw_factuur_totaal": {
        "reden": "geen_regels_zonder_btw",

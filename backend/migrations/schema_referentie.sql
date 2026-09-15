@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0145
+-- Migratie-head bij deze dump: 0146
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2004,7 +2004,8 @@ CREATE TABLE boekhouding.omzet_instelling (
     voorraad_ledger_id uuid,
     memoriaal_diary_id uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
-    verkoop_categorie_id uuid
+    verkoop_categorie_id uuid,
+    bron_instellingen jsonb
 );
 
 ALTER TABLE ONLY boekhouding.omzet_instelling FORCE ROW LEVEL SECURITY;

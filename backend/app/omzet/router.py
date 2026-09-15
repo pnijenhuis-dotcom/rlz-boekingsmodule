@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
+from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
 from app.documenten.boeken import (
     BoekenGeblokkeerdDoorChecks,
     BoekenUitgeschakeld,
@@ -57,7 +57,47 @@ def _naar_voorstel_response(data: voorstel.OmzetVoorstelData) -> schemas.OmzetVo
         opgeslagen=data.opgeslagen,
         rapport_titel=data.rapport_titel,
         entiteit_naam=data.entiteit_naam,
+        bron=data.bron,
+        bron_detail=data.bron_detail,
     )
+
+
+@router.get(
+    "/administraties/{administratie_id}/omzet/bron-instellingen",
+    response_model=schemas.OmzetBronInstellingenDto,
+)
+def omzet_bron_instellingen_ophalen(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.OmzetBronInstellingenDto:
+    """Omzetbronnen (Peter 15-09): stores → administratie, productnaam → categorie, PSP, rekeningen — leeg = defaults."""  # noqa: E501
+    from app.db.session import scoped_session
+    from app.omzet.bronnen import service as bronnen_service
+
+    with scoped_session(administratie_id, actor_id=actor.id) as session:
+        return schemas.OmzetBronInstellingenDto(**bronnen_service.bron_instellingen_voor(session, administratie_id))
+
+
+@router.put(
+    "/administraties/{administratie_id}/omzet/bron-instellingen",
+    response_model=schemas.OmzetBronInstellingenDto,
+)
+def omzet_bron_instellingen_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.OmzetBronInstellingenInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.OmzetBronInstellingenDto:
+    """Beheerder-only (Instellingen › Administraties › ‹studio› › Omzet); audit oud→nieuw."""
+    from app.omzet.bronnen import service as bronnen_service
+
+    try:
+        uit = bronnen_service.zet_bron_instellingen(
+            administratie_id=administratie_id, actor_id=actor.id, waarden=invoer.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return schemas.OmzetBronInstellingenDto(**uit)
 
 
 @router.get(

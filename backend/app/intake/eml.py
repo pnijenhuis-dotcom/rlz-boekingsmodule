@@ -41,6 +41,11 @@ class IntakeBijlage:
     def is_xml(self) -> bool:
         return self.content_type in _XML_TYPES or self.bestandsnaam.lower().endswith(".xml")
 
+    @property
+    def is_spreadsheet(self) -> bool:
+        """Omzetbronnen (Peter 15-09): POS-dagstaat (.xls), kascheck/betalingsexport (.xlsx)."""
+        return self.bestandsnaam.lower().endswith((".xls", ".xlsx"))
+
 
 @dataclass(frozen=True)
 class IntakeMail:

@@ -169,6 +169,54 @@ describe('OmzetReviewScreen', () => {
     expect(screen.getByText(/omzetboeking · kassarapport/)).toBeInTheDocument()
   })
 
+  it('toont bij een spreadsheet-bron het bronblok met betaalwijzen, kascheck en controles (Peter 15-09)', async () => {
+    installFetchMock({
+      voorstelBody: voorstel({
+        rapport_titel: 'Dagstaat Elderveld',
+        entiteit_naam: null,
+        bron: 'zonnestudio_dagstaat',
+        bron_detail: {
+          store: 'Elderveld',
+          datum: '2026-09-08',
+          wacht_op: null,
+          sluit: false,
+          betaalwijzen: { Cash: '86.81', PIN: '932.22', Punten: '0.00' },
+          grand_total: { netto: '885.57', btw: '133.46', bruto: '1019.03' },
+          points_redeemed: '921.00',
+          kas: {
+            beginsaldo: '198.20',
+            telling: '286.00',
+            eindsaldo: '286.00',
+            storting: '80.00',
+            eindsaldo_na_storting: '206.00',
+            contante_omzet: '87.80',
+          },
+          controles: [
+            { naam: 'Regelsom = Grand Total', ok: true, detail: '1019.03', blokkerend: true },
+            { naam: 'Puntenwaarde bekend', ok: false, detail: '921 punten ingewisseld, waarde onbekend', blokkerend: true },
+            {
+              naam: 'Kasverschil (contante omzet kascheck vs Cash POS)',
+              ok: false,
+              detail: '87.80 vs 86.81 = 0.99',
+              blokkerend: false,
+            },
+          ],
+        },
+      }),
+    })
+    renderScherm()
+    const blok = await screen.findByTestId('bronblok')
+    expect(blok.textContent).toContain('Bron: dagstaat zonnestudio')
+    expect(blok.textContent).toContain('1 blokkerende controle')
+    expect(screen.getByLabelText('Betaalwijzen').textContent).toContain('PIN')
+    expect(screen.getByLabelText('Kascheck').textContent).toContain('Contante omzet volgens kascheck')
+    expect(blok.textContent).toContain('Puntenwaarde bekend')
+    expect(blok.textContent).toContain('Kasverschil')
+    // Geen PDF-viewer voor een spreadsheet, wél een download.
+    expect(screen.queryByText(/PDF-weergave niet beschikbaar/)).toBeNull()
+    expect(await screen.findByText('Download het bestand')).toBeTruthy()
+  })
+
   it('markeert nieuwe categorieën zonder mapping als blokkerend signaal', async () => {
     installFetchMock()
     renderScherm()

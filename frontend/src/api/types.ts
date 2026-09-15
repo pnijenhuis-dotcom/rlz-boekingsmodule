@@ -1278,6 +1278,47 @@ export interface OmzetVoorstelDto {
   opgeslagen: boolean
   rapport_titel: string | null
   entiteit_naam: string | null
+  /** Omzetbronnen (Peter 15-09): 'zonnestudio_dagstaat' | 'zonnestudio_kascheck' | 'pilates_betalingsexport' als het
+   * kassarapport een deterministisch geparsete spreadsheet is; null = gewoon (AI-)kassarapport. */
+  bron?: string | null
+  bron_detail?: OmzetBronDetailDto | null
+}
+
+/** Eén harde bron-controle uit de parser (backend `Controle`): blokkerend rood houdt boeken tegen, niet-blokkerend =
+ * oranje signaal (bv. kasverschil). */
+export interface OmzetBronControleDto {
+  naam: string
+  ok: boolean
+  detail: string
+  blokkerend: boolean
+}
+
+export interface OmzetBronDetailDto {
+  controles?: OmzetBronControleDto[]
+  /** Dagstaat: 'kascheck' zolang de kascheck van die dag nog niet binnen is; kascheck: 'dagstaat'. */
+  wacht_op?: string | null
+  sluit?: boolean
+  store?: string | null
+  datum?: string | null
+  betaalwijzen?: Record<string, string>
+  grand_total?: { netto?: string; btw?: string; bruto?: string } | null
+  points_redeemed?: string | null
+  kas?: {
+    beginsaldo?: string
+    telling?: string
+    eindsaldo?: string
+    storting?: string
+    eindsaldo_na_storting?: string
+    contante_omzet?: string
+  } | null
+  /** Pilates: één kassarapport per uitbetaling. */
+  batch_id?: string | null
+  uitbetaaldatum?: string | null
+  bruto?: string | null
+  kosten?: string | null
+  netto?: string | null
+  disputes?: { factuurnummer: string; bedrag: string; categorie: string | null }[]
+  batches?: { batch_id: string; uitbetaaldatum: string | null; netto: string; transacties: number }[]
 }
 
 export interface OmzetVoorstelMetChecksDto {

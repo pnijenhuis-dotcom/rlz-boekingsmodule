@@ -808,6 +808,72 @@ def _routeer_bundel_item(
     ]
 
 
+def _verwerk_spreadsheet(
+    bijlage: IntakeBijlage,
+    *,
+    afzender: str | None,
+    actor_id: uuid.UUID,
+    intake_bericht_id: uuid.UUID | None,
+    opslag: DocumentOpslag | None,
+    body_hint: str | None = None,
+    kanaal: DocumentBron = DocumentBron.EMAIL,
+) -> BijlageResultaat:
+    """Omzetbronnen (Peter 15-09): een .xls/.xlsx van een bekende bron wordt een KASSARAPPORT. Routering: dagstaat →
+    "Store Used" → administratie (Beheerder-instelling `bron_instellingen.stores`, nooit hardcode); kascheck en
+    betalingsexport → de geleerde afzender-regel; niets eenduidig → verzamelbak mét zichtbare reden. Geen AI."""
+    from app.omzet.bronnen import BRON_ZONNESTUDIO_DAGSTAAT, herken_bron, lees_grid
+    from app.omzet.bronnen import service as bronnen_service
+    from app.omzet.bronnen import zonnestudio as zonnestudio_bron
+
+    bron = herken_bron(bijlage.bestandsnaam, bijlage.inhoud)
+    if bron is None:
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="overgeslagen",
+            detail="spreadsheet is geen bekende omzetbron (dagstaat/kascheck/betalingsexport)",
+        )
+    store: str | None = None
+    administratie_id: uuid.UUID | None = None
+    if bron == BRON_ZONNESTUDIO_DAGSTAAT:
+        try:
+            store = zonnestudio_bron.parse_dagstaat(lees_grid(bijlage.bestandsnaam, bijlage.inhoud)).store
+        except Exception:  # noqa: BLE001 — geen store = geen routering op store
+            store = None
+        administratie_id = bronnen_service.administratie_voor_store(store)
+    if administratie_id is not None:
+        resultaat = documenten_service.upload_document(
+            administratie_id=administratie_id,
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            actor_id=actor_id,
+            opslag=opslag,
+            bron=kanaal,
+            soort=DocumentSoort.KASSARAPPORT,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+            tenaamstelling=store,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="toegewezen",
+            document_id=resultaat.document_id,
+            detail=f"omzetbron {bron} · store {store!r} → {administratie_id}",
+        )
+    return _wijs_toe_of_verzamelbak(
+        bijlage_naam=bijlage.bestandsnaam,
+        inhoud=bijlage.inhoud,
+        soort=DocumentSoort.KASSARAPPORT,
+        tenaamstelling=store,
+        afzender=afzender,
+        actor_id=actor_id,
+        intake_bericht_id=intake_bericht_id,
+        opslag=opslag,
+        verzamelbak_reden=f"omzetbron {bron} zonder eenduidige administratie" + (f" (store {store!r} niet ingesteld)" if store else ""),  # noqa: E501
+        body_hint=body_hint,
+        kanaal=kanaal,
+    )
+
+
 def _routeer_bijlage(
     bijlage: IntakeBijlage,
     *,
@@ -828,6 +894,8 @@ def _routeer_bijlage(
         return _verwerk_pdf(bijlage, kanaal=kanaal, **gedeeld)
     if bijlage.is_afbeelding:
         return _verwerk_afbeelding(bijlage, kanaal=kanaal, logo_filter=logo_filter, **gedeeld)
+    if bijlage.is_spreadsheet:
+        return _verwerk_spreadsheet(bijlage, kanaal=kanaal, **gedeeld)
     return BijlageResultaat(
         bestandsnaam=bijlage.bestandsnaam,
         uitkomst="niet_verwerkbaar",
@@ -853,7 +921,7 @@ def verwerk_los_bestand(
     bijlage = IntakeBijlage(
         bestandsnaam=bestandsnaam, inhoud=inhoud, content_type=content_type or content_type_voor(bestandsnaam)
     )
-    if not (bijlage.is_xml or bijlage.is_pdf or is_afbeelding(bestandsnaam, content_type)):
+    if not (bijlage.is_xml or bijlage.is_pdf or bijlage.is_spreadsheet or is_afbeelding(bestandsnaam, content_type)):
         raise BestandstypeNietOndersteund("Alleen PDF, UBL/XML, .eml of een afbeelding (JPEG/PNG/HEIC)")
     return _routeer_bundel_item(
         bundel_bijlagen([bijlage])[0],

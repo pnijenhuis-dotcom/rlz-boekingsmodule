@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
-from app.documenten.checks import CheckRapport
+from app.documenten.checks import CheckRapport, CheckResultaat
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.documenten.service import DocumentNietGevonden
 from app.omzet import checks as omzet_checks
@@ -73,6 +73,10 @@ class OmzetVoorstelData:
     opgeslagen: bool
     rapport_titel: str | None = None
     entiteit_naam: str | None = None
+    # Omzetbronnen (Peter 15-09): 'zonnestudio_dagstaat' | 'pilates_betalingsexport' | None (AI-rapport); `bron_detail`
+    # = betaalwijzen/kas/controles/batch uit de bron — informatief voor het controlescherm én de harde checks.
+    bron: str | None = None
+    bron_detail: dict | None = None
 
 
 def _laad_kassarapport(session: Session, *, document_id: uuid.UUID) -> Document:
@@ -188,6 +192,8 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                 opgeslagen=True,
                 rapport_titel=veldvoorstel.get("rapport_titel"),
                 entiteit_naam=veldvoorstel.get("entiteit_naam"),
+                bron=veldvoorstel.get("bron"),
+                bron_detail=veldvoorstel.get("bron_detail"),
             )
 
         totaal_omzet = _als_decimal(veldvoorstel.get("totaal_omzet"))
@@ -214,6 +220,8 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
             opgeslagen=False,
             rapport_titel=veldvoorstel.get("rapport_titel"),
             entiteit_naam=veldvoorstel.get("entiteit_naam"),
+            bron=veldvoorstel.get("bron"),
+            bron_detail=veldvoorstel.get("bron_detail"),
         )
 
 
@@ -468,7 +476,7 @@ def voer_omzet_checks_uit(
                 client.close()
 
     periode_compleet = bool(voorstel.periode_start and voorstel.periode_eind)
-    return omzet_checks.voer_omzet_checks_uit(
+    rapport = omzet_checks.voer_omzet_checks_uit(
         periode_start=voorstel.periode_start,
         periode_eind=voorstel.periode_eind,
         regels=_naar_check_regels(voorstel.regels),
@@ -482,3 +490,27 @@ def voer_omzet_checks_uit(
         historische_marges=historie,
         bandbreedte_procentpunt=Decimal(str(settings.omzet_marge_bandbreedte_procentpunt)),
     )
+    return _met_bron_controles(rapport, voorstel.bron_detail)
+
+
+def _met_bron_controles(rapport: CheckRapport, bron_detail: dict | None) -> CheckRapport:
+    """Omzetbronnen (Peter 15-09): de deterministische controles van de bron (Grand Total sluit, deposit-som,
+    kascheck-datum, wederhelft ontvangen, puntenwaarde, factuurnummer al geboekt, …) als harde check-rijen —
+    blokkerend rood, niet-blokkerend als oranje SIGNAAL (kasverschil, disputes). Alles wat niet klopt is zichtbaar;
+    niets boekt stil."""
+    controles = (bron_detail or {}).get("controles") or []
+    extra: list[CheckResultaat] = []
+    for c in controles:
+        if not isinstance(c, dict) or "naam" not in c:
+            continue
+        ok = bool(c.get("ok"))
+        blokkerend = bool(c.get("blokkerend", True))
+        extra.append(
+            CheckResultaat(
+                naam=f"Bron: {c['naam']}",
+                ok=ok or not blokkerend,
+                melding=str(c.get("detail") or ""),
+                signaal=(not ok) and not blokkerend,
+            )
+        )
+    return CheckRapport(rapport.resultaten + tuple(extra)) if extra else rapport

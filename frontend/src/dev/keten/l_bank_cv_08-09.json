@@ -185,7 +185,8 @@
        "tegenpartij_naam": "NPG Administratiekantoor B.V.",
        "documentsoort": "Inkoopfactuur",
        "boekstuknummer": null,
-       "factuurdatum": "2026-08-28"
+       "factuurdatum": "2026-08-28",
+       "klantreferentie": null
       },
       "regel_id": null,
       "regels": [],
@@ -225,7 +226,8 @@
        "tegenpartij_naam": "TransIP B.V.",
        "documentsoort": "Inkoopfactuur",
        "boekstuknummer": null,
-       "factuurdatum": "2026-08-20"
+       "factuurdatum": "2026-08-20",
+       "klantreferentie": null
       },
       "regel_id": null,
       "regels": [],

@@ -1,0 +1,11 @@
+{
+ "administratie": "Pilatesstudio — testadministratie in de gouden set",
+ "herkomst": "Opdracht Peter 15-09 'omzet pilates betalingsexport': echte betalingsexport juli 2026 van het boekingsplatform (blad 'Standaardweergave', 159 geslaagde transacties, 23 uitbetalingen incl. één contant-batch). Origineel lokaal in verkenning/voorbeelden/pilates-betalingen-2026-07.xlsx (niet gecommit).",
+ "anonimisering": "JSON-grid (export_grid.json). Persoonsgegevens (naam klant, e-mail, telefoon, adres) zijn vervangen door placeholders; Factuurnummer is de laatste 8 tekens van het transactie-id; bedragen, kosten, methode, product, batch en datums exact.",
+ "verwachting": {
+  "totaal": "bruto 14.288,98, PSP-kosten 196,35, 23 batches; contant-batch 398,48 zonder kosten.",
+  "batch_2026-7-9-ca834c16": "netto 637,08; dispute 06ead052 −175,00 (chargeback) → signaal 'disputes'; Yoga 33,00; 'combi Abonnement' = BESLISPUNT Peter (default niet gecategoriseerd → controle rood) — in de test via product_categorieen ingesteld.",
+  "dedupe": "hetzelfde Factuurnummer komt voor bij betaling, dispute én herbetaling (06ead052 driemaal, 713fd874 tweemaal) → transactie-sleutel nummer|methode|bedrag|betaaldatum, nooit het nummer alleen.",
+  "keten": "export met > 1 batch → ouder GESPLITST + één kinddocument per uitbetaling (bestandsnaam '… — uitbetaling <batch>.xlsx'); tweede overlappende export → controle 'Geen transactie al geboekt' rood op de kinderen."
+ }
+}

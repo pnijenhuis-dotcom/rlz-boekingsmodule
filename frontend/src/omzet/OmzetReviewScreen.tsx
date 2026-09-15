@@ -17,6 +17,7 @@ import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
+import { BronBlok } from './BronBlok'
 import { SkeletonPaneel } from '../ui/basis'
 import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
@@ -281,6 +282,7 @@ export function OmzetReviewScreen() {
         </div>
       </div>
 
+      {voorstel.bron && <BronBlok bron={voorstel.bron} detail={voorstel.bron_detail} />}
       <div className="membanner">
         <div className="icon">🧠</div>
         <div>
@@ -325,7 +327,16 @@ export function OmzetReviewScreen() {
           <div className="panel">
             <div className="bijlage-inhoud">
               {!bijlageUrl && <p className="hint">Bijlage laden…</p>}
-              {bijlageUrl && (
+              {bijlageUrl && voorstel.bron && (
+                <p className="hint">
+                  Spreadsheet-bron — de cijfers hiernaast zijn er in code uit gelezen.{' '}
+                  <a href={bijlageUrl} download={detail.bestandsnaam}>
+                    Download het bestand
+                  </a>
+                  .
+                </p>
+              )}
+              {bijlageUrl && !voorstel.bron && (
                 <object data={metViewerOpties(bijlageUrl)} type="application/pdf">
                   <p className="hint">
                     PDF-weergave niet beschikbaar —{' '}
