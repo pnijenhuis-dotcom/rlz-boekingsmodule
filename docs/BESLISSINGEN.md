@@ -9203,6 +9203,58 @@ id` in de gedeelde aan-de-beurt-bron (wachtrij, teller, meldingen en voorstel le
 
 <!-- run2-vgg:blok7d -->
 
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 8: SCHRIJF a + DERDE METING (Peter 15-09) (15-09-2026; "go" Peter 15-09 op de eerste echte Odoo-writes; STAP 1 = code + tests + docs in deze run, STAP 2–4 = job-executies ná deploy in de vervolg-run via de inbox; geen migratie)
+
+**Aanleiding.** Nameting 15-09 (`verkenning/nameting-vgg-replay-15-09.txt`, image `e4fdce5`): oordeel ROOD door één nieuwe post —
+RLZ 1012 "Betalingen onderweg" € −15.877,22 per 15-09, ongemapt; alle overige toetsen groen, 1096 documenten niet vertaalbaar
+uitsluitend door de ontbrekende doelkoppeling. Peter 15-09: "go" voor SCHRIJF a (koppeling-rij migratiedoel + vijf rekeningen +
+Overhead op company 6) en de derde meting mét doelkoppeling; SCHRIJF c blijft de volgende opdracht (ná de RLZ-opruimpunten
+RLZ-01-00000006 concept, dubbel 135.000 RLZ-28-00000061/062, bankregel "test" en ná het 1001-model). Pre-feature-check: bouwt
+1-op-1 voort op "RUN 2 BLOK 7" t/m "7d" en "ODOO-KOPPELWIZARD NAZORG 14-09" (failsafe dubbele koppeling, migratiedoel =
+reservering); geen scherm-impact.
+
+**Grenzen (ongewijzigd, bindend):** harde company-pin 6 (`CompanyGepindeClient`), kill-switch alleen als executie-override,
+elke write terug-gelezen, audit per call, uitsluitend op de gedeployde job-image ná deploy-check (service = job-image), nooit via
+`nameting.sh`, nooit iets verwijderen; twijfel = stoppen en rapporteren.
+
+**STAP 1 — mapping 1012 vóór de writes (code, geen productie) — GEBOUWD 15-09:**
+
+| # | Punt | Gebouwd | Waar |
+|---|---|---|---|
+| 1a | 1012 → Outstanding Payments | Nieuwe ene bron `app/migratie/rekening_mapping.py`: tabel `EXPLICIETE_MAPPING` (RLZ-code → doel/groep/schrijffase/toelichting). `los_outstanding_payments_op` zoekt lees-only de rekening van het bankdagboek: (1) `account.journal.outbound_payment_method_line_ids → account.payment.method.line.payment_account_id` (precies één onderscheiden rekening = gevonden; meerdere = meerduidig, niet gekozen), (2) company-default `res.company.account_journal_payment_credit_account_id` alleen als `fields_get` dat veld kent, (3) niets → **KLIKPUNT PETER** mét naam-kandidaten uit het rekeningschema (alleen gemeld) — 1012 blijft dan ongemapt, nooit de bankrekening 103001 zelf (dubbel banksaldo). Geen nieuwe RJ-220-rol (`ROLLEN` ongewijzigd, guard-test). `pas_expliciete_mapping_toe` legt de tabel over de generieke vertaling (bron `expliciet`). Dezelfde resolutie draait in de migratiedoel-probe (`lees_dagboeken` → `DagboekProbe.outstanding_payments_account_id`, rapportregel `outstanding_payments`, probe-sleutel `migratie:outstanding_payments_account_id` in de koppeling-rij; geen voorwaarde voor groen) zodat `plan` (dry-run, bron-key op company 6) 'm al toont vóór enige write | `app/migratie/rekening_mapping.py`, `cli_odoo.py::lees_dagboeken`, `odoo_doel.PROBE_SLEUTEL_OUTSTANDING` |
+| 1a | Groepstoets | `afletter_groepen` neemt de tabelcodes van groep "bank" (1012, 1001) op in de bankgroep — óók zonder naam-/IBAN-match; groepsrij draagt `modelpunten` | `replay.py::afletter_groepen` |
+| 1b | Ongemapte rekeningen | Rapport blijft ROOD bij ongemapte rekeningen, maar toont per ongemapte rekening de kolom **"Voorgestelde Odoo-tegenhanger"** (`voorstel_tegenhanger`, deterministisch, mens beslist): tabelregel → haar stand; anders Odoo-rekening met gelijke genormaliseerde naam (klasse mag afwijken) → "kandidaat …"; anders "aanmaken als `<code>00` (`<type uit RLZ AccountType>`) — code vrij / NIET mogelijk — code bezet door …". Nieuwe rapportsectie "Expliciete rekeningmapping (blok 8)" mét stand per tabelregel | `replay.py::_tabellen`, `rapport.py` |
+| 1b | Replay leest Odoo zelf | `vgg-replay` zonder `--odoo-rekeningen` leest — zodra de doelkoppeling er is — de `account.account`-rijen van company 6 én de outstanding-rekening zelf, lees-only via `doelclient_voor(read_only=True)` (`rekening_mapping.lees_doelgegevens`, LET-OP-regel "Odoo-rekeningen gelezen uit company 6 via de doelkoppeling: N"); elke leesfout = LET OP + terugval op "alles ongemapt" (nooit een crash). `--odoo-rekeningen` blijft als handmatige overschrijving. Zo kan de derde meting op de job-image zonder JSON-bestand | `replay.py::dry_run(odoo_lezer=…)`, `cli_replay.py` |
+| 1c | 1001 = SCHRIJF b-markering | Tabelregel `1001` (doel `bank_statement_lines`, fase **b**): generieke vertaling ongewijzigd, wél `modelpunten_voor_groep("bank")` → regel "- Modelpunt bankgroep: RLZ 1001: open modelpunt SCHRIJF b — …" onder de groepstoets (voluit) + in de Stand-kolom; de bankgroep is daardoor in de derde meting **verwacht rood** en wordt als zodanig benoemd, geen fix nu | `rekening_mapping.EXPLICIETE_MAPPING["1001"]`, `rapport.py` |
+| + | SCHRIJF a idempotent | `odoo-koppeling-migratiedoel --schrijf` op een rij die al hetzelfde migratiedoel is (zelfde host via `odoo_host` + company, `migratie_doel=true`) = **ongewijzigd** (`MigratiedoelUitkomst.ongewijzigd`, "AL MIGRATIEDOEL — ongewijzigd", exit 0, geen tweede audit-rij); een andere company/host blijft de weigering "gebruik --bijwerken". Daarmee maakt een herhaalde `SCHRIJF a` niets dubbel (`vgg-rekeningen --maak-aan` was al lookup-vóór-create) | `cli_odoo.py::maak_migratiedoel` |
+
+**Tests:** nieuw `tests/migratie/test_rekening_mapping.py` (20: tabel-guard, resolver dagboek/meerduidig/company/klikpunt/zonder
+dagboek, toepassing, voorstel-kolom, groepstoets, replay mét lezer/melding/zonder lezer, `lees_doelgegevens` zonder
+migratiedoel, CLI-doorgifte), `test_odoo_schrijf.py` (idempotent + andere company = weigering; probe mét outstanding),
+`test_replay.py` (voorstel-kolom); tests/migratie 278 + tests/odoo 282 groen, ruff schoon. Geen migratie, geen schema-wijziging.
+
+**Meetrecept STAP 2–4 (job-executies, ná deploy van déze commit; service = job-image — beide scripts toetsen dat zelf):**
+
+| Stap | Commando | Meetlat / verwachting | Bij afwijking |
+|---|---|---|---|
+| 2 plan | `scripts/gcp/vgg_blok7_odoo_writes.sh plan` → `verkenning/vgg-writes-plan-15-09.txt` | migratiedoel-dry-run: F/LF/MEM/BNK1 + plan Project, company 6 = Vastgoedgroep Nederland B.V., géén bestaande koppeling-rij op host+company 6 (0140), regel `outstanding_payments` gevuld (gevonden óf KLIKPUNT); `vgg-rekeningen` lees-only: vijf rollen 325000/326000/803100/701300 + btw-afwikkeling (159000-reeks, lookup-vóór-create) + Overhead; IBAN op BNK1 (leeg = stap 4/5 van SCHRIJF c straks overgeslagen — melden) | één afwijking = STOP, rapport, geen SCHRIJF |
+| 3 SCHRIJF a | `scripts/gcp/vgg_blok7_odoo_writes.sh SCHRIJF a` → `verkenning/vgg-writes-a-15-09.txt`; daarna herhalen (idempotentiebewijs) + terug-lezen via `nameting.sh vgg-rekeningen --administratie Vastgoedgroep` en `odoo-koppeling-migratiedoel … --dry-run` | koppeling-rij `migratie_doel=true` (wizard toont company 6 grijs "migratiedoel"), zes rekeningen (vijf + Overhead-analytic) op company 6 met juiste code/type/naam, audit `odoo_koppeling_migratiedoel_aangemaakt` + `odoo_rj220_rollen_vastgesteld`; tweede `SCHRIJF a` = "AL MIGRATIEDOEL — ongewijzigd" + alle rollen "bestaand … hergebruikt", niets dubbel | rood = stoppen, in het rapport |
+| 4 meting | `scripts/gcp/vgg_blok7_nameting.sh alles` → `verkenning/nameting-vgg-*-15-09.txt` (tweede exemplaar van de dag: het script overschrijft het ochtendbestand — het ochtendrapport eerst committen of hernoemen) | oordeel GROEN of ROOD mét échte getallen: "niet meetbaar — doelkoppeling ontbreekt" komt nergens meer voor; 1096 "niet vertaalbaar" → 0 óf per document een échte reden (ongemapte rekening mét voorstel-kolom); groepstoets bank/afletter incl. 1001 en 1012 mét getallen — bankgroep verwacht ROOD door het 1001-modelpunt (benoemd, geen fix); per pand mét getallen; top-10 verschillen en groepstoets letterlijk in het rapport | ROOD = uitkomst, geen storing |
+| 5 | GEEN `SCHRIJF c` | — | volgende opdracht |
+
+**Uitvoeringsvorm (constraint, benoemd):** `git push` staat voor de agent in de deny-lijst; de deploy volgt pas op de push van de
+Stop-hook ná deze run. STAP 2–4 kunnen daarom niet in dezelfde run: ze staan als vervolg-opdracht
+`opdrachten/inbox/2026-09-15-vgg-schrijf-a-vervolg.md` (STAP 2–4 letterlijk + wachten op deploy groen en service = job-image),
+die de cc-inbox automatisch oppakt zodra deze run klaar is — Peter start niets. De inbox werkt op mtime: op 15-09 10:20 stonden
+`2026-09-15-reconciliatie-nazorg.md` (08:37) en `2026-09-15-inbox-wacht-op-handmatige-cc.md` (09:36) vóór het vervolg in de rij, dus
+STAP 2–4 lopen ná die twee (bewust niet voorgedrongen; de deploy is dan al lang groen). De uitkomsten landen hieronder.
+
+**Werkt in productie (stand ná deze run, 15-09):** STAP 1 gebouwd + getest — productie nog niet gemeten; rekeningen aangemaakt:
+**nee (nog niet gedraaid)**; migratiedoel: **nee (nog niet gedraaid)**; meting mét doel: **nee (nog niet gedraaid)** — alle drie
+volgen in de vervolg-run en worden hier per stap ingevuld.
+
+<!-- run2-vgg:blok8 -->
+
 ## ODOO-KOPPELWIZARD NAZORG 14-09 — MEMORIAAL OP TYPE, FAILSAFE DUBBELE KOPPELING, PROBE PER COMPANY, URL-NORMALISATIE (14-09-2026; kliktest Peter 14-09 op universal-steigers.odoo.com, 10 companies; besluit Peter 14-09 failsafe drie lagen; migratie 0140; geen Odoo-/RLZ-writes)
 
 **Aanleiding.** Peter koppelde 14-09 nieuwe Odoo-companies via "+ Administratie toevoegen" → Odoo (ingang A). Vier

@@ -997,3 +997,29 @@ Odoo-kant verandert (code, tests groen; uitvoering wacht op deploy + herhaling S
 Stappentabel §12.2 blijft; stap a maakt nu **vijf** rekeningen (+ Overhead). Uitvoeringsvolgorde ongewijzigd: STAP 1 (a–d)
 opnieuw ná deploy → recept SCHRIJF a (incl. Btw-afwikkeling historisch) → GO Peter → SCHRIJF c.
 
+### 12.4 Blok 8 (15-09-2026) — RLZ 1012 "Betalingen onderweg" → Outstanding Payments van BNK1; SCHRIJF a + derde meting
+
+Aanleiding: nameting 15-09 (`verkenning/nameting-vgg-replay-15-09.txt`) ROOD door één nieuwe post RLZ 1012 € −15.877,22 (per 15-09),
+ongemapt. Besluit (opdracht Peter 15-09 STAP 1a): 1012 is een afletter-/tegenzijde-rekening, geen RJ-220-rol — de Odoo-tegenhanger is
+de **Outstanding Payments**-rekening van het bankdagboek, die in Odoo 19 niet aan het rekeningschema maar aan het dagboek hangt.
+
+| Onderdeel | Odoo-19-vorm (uit docs + fields_get-kennis; live-lezing volgt in de vervolg-run) | Hoe de module 'm leest (lees-only, `app/migratie/rekening_mapping.py::los_outstanding_payments_op`) |
+|---|---|---|
+| Dagboek-niveau | `account.journal.outbound_payment_method_line_ids` (o2m `account.payment.method.line`) → `payment_account_id` (m2o `account.account`); leeg = "betaling direct op de bankrekening" (Odoo 17+: outstanding-rekeningen zijn optioneel) | `read account.journal [53] ["code","outbound_payment_method_line_ids"]` → `read account.payment.method.line [ids] ["name","payment_account_id"]`; precies één onderscheiden rekening = gevonden (route `…outbound_payment_method_line_ids.payment_account_id`); meerdere = meerduidig, niet gekozen |
+| Company-niveau | `res.company.account_journal_payment_credit_account_id` (outstanding payments) / `…_debit_…` (receipts) — bestaat niet in elke 17+-versie | `fields_get res.company` → alleen als het veld bestaat `read res.company [6]`; gevuld = route company-default |
+| Niets ingesteld | — | **KLIKPUNT PETER**: instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); rapport noemt naam-kandidaten (`outstanding.*payment`, "payments in transit", "betalingen onderweg" — NL-template kent 135000 "Payments in transit" in de 13xxxx-schuldenreeks, §12.1) alleen als optie; 1012 blijft ongemapt. Nooit 103001 Bank zelf (statement lines voeden die al → dubbel banksaldo) en nooit 103002 Bank Suspense (dat is de tegenzijde van nog niet gereconcilieerde statement lines) |
+
+Waar de uitkomst zichtbaar wordt, vóór enige write: de migratiedoel-dry-run (`vgg_blok7_odoo_writes.sh plan`, bron-key read-only op
+company 6) draagt nu de rapportregel `outstanding_payments: <melding>`; ná SCHRIJF a staat de id ook in `odoo_koppeling.probe_rapport`
+onder `migratie:outstanding_payments_account_id` (documentatie; de replay zoekt 'm bij élke run opnieuw op).
+
+**Replay leest Odoo zelf (1b):** `vgg-replay` zonder `--odoo-rekeningen` leest — zodra de doelkoppeling er is — alle `account.account`
+van company 6 (`rj220.lees_rekeningen`, domain `company_ids in [6]`, gepagineerd) + de outstanding-rekening via
+`doelclient_voor(read_only=True)`; ongemapte RLZ-rekeningen krijgen in het rapport een voorgestelde tegenhanger (naamgelijke Odoo-rekening
+→ kandidaat; anders "aanmaken als `<RLZ-code>00` (<type>)" mét bezet/vrij). **1001 (1c):** SCHRIJF-b-markering in dezelfde tabel —
+memoriaal-1001-regels die tegen een statement line reconciliëren → outstanding/suspense (open modelpunt, dubbeltelling −85.376,31 /
++71.343,31), niet gebouwd; de bankgroep is in de derde meting verwacht rood.
+
+**Live-uitkomsten STAP 2–4 (vervolg-run ná deploy; hier in te vullen):** outstanding-rekening op company 6 = _nog niet gelezen_;
+SCHRIJF a (koppeling-rij + zes rekeningen) = _nog niet gedraaid_; derde meting mét doelkoppeling = _nog niet gedraaid_.
+
