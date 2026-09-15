@@ -1020,6 +1020,45 @@ van company 6 (`rj220.lees_rekeningen`, domain `company_ids in [6]`, gepagineerd
 memoriaal-1001-regels die tegen een statement line reconciliëren → outstanding/suspense (open modelpunt, dubbeltelling −85.376,31 /
 +71.343,31), niet gebouwd; de bankgroep is in de derde meting verwacht rood.
 
-**Live-uitkomsten STAP 2–4 (vervolg-run ná deploy; hier in te vullen):** outstanding-rekening op company 6 = _nog niet gelezen_;
-SCHRIJF a (koppeling-rij + zes rekeningen) = _nog niet gedraaid_; derde meting mét doelkoppeling = _nog niet gedraaid_.
+**Live-uitkomsten STAP 2–4 (vervolg-run 15-09 12:15–13:xx CEST, image `459642d`; volledige uitvoer `verkenning/vgg-writes-plan-15-09.txt` +
+`vgg-writes-a-15-09.txt`):**
+
+- **Outstanding-rekening op company 6 = KLIKPUNT PETER.** Letterlijke probe-regel: "geen 'Outstanding Payments'-rekening ingesteld op
+  dagboek BNK1 (2 uitgaande betaalmethode-regel(s) zonder payment_account_id; veld account_journal_payment_credit_account_id bestaat
+  niet in deze Odoo-versie) — instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); RLZ 1012
+  blijft tot dan ongemapt". Dus: BNK1 (id 53) heeft twee `account.payment.method.line`-regels uitgaand, beide zonder
+  `payment_account_id`; `res.company` kent in deze Odoo 19 géén `account_journal_payment_credit_account_id` (fields_get). Calls
+  (lees-only, geen keys): `read account.journal [53] ["code","outbound_payment_method_line_ids"]` → `read account.payment.method.line
+  [<2 ids>] ["name","payment_account_id"]` → beide False; `fields_get res.company` → veld afwezig. Handeling Peter: outstanding-rekening
+  op BNK1 zetten; daarna toont `plan` de id en mapt de replay 1012 automatisch (geen code nodig).
+- **Bron van de API-key ≠ Universal Steigerbouw.** In productie heeft Universal Steigerbouw B.V. (3ee6edf0) géén Odoo-koppeling (de
+  overstap wacht op Peters GO); de eerste `plan` brak daarop af ("bron-administratie heeft geen Odoo-koppeling mét API-key"). De
+  bestaande koppelingen op `https://universal-steigers.odoo.com` zijn Universal Verkoop B.V. (0d66ff75, leesbron company 3 sinds 04-09),
+  Camping "Nieuwenhoven" B.V. (32d162fe → company 10, wizard 14-09) en Bonte Hoeve B.V. (1bda74d3 → company 9, wizard 15-09 09:41).
+  Gekozen: `ODOO_BRON_ADMINISTRATIE="Universal Verkoop"` (zelfde host, zelfde ene gebruiker/key — besluit Peter 12-09 punt 1 "één
+  gebruiker, tien companies"); company 6 was door geen enkele administratie bezet (0140-failsafe laag 2 in de CLI toetst dat ook zelf).
+- **Migratiedoel-probe company 6 (dry-run én schrijf identiek):** company ok "Vastgoedgroep Nederland B.V."; dagboek sale **F id 48**,
+  purchase **LF id 49**, general **MEM** (op type), bank **BNK1 id 53**; analytic_plan ok — exact de stand van §12 (12-09). Eerste
+  `--schrijf` → "**GESCHREVEN** — probe groen"; tweede `--schrijf` én latere `--dry-run` → "**AL MIGRATIEDOEL — ongewijzigd** (idempotent:
+  zelfde host + company, niets geschreven) — probe groen".
+- **SCHRIJF a — zes writes op company 6, allemaal terug-gelezen (code/type/company_ids):** payload per rekening `account.account.create
+  {"code": …, "name": …, "account_type": …, "reconcile": false, "company_ids": [[6, 0, [6]]]}`:
+
+  | rol | Odoo-id | code | naam | account_type |
+  |---|---|---|---|---|
+  | voorraad_panden | 3606 | 325000 | Voorraad panden | asset_current |
+  | vooruitbetaald_voorraad | 3607 | 326000 | Vooruitbetaald op voorraad panden | asset_current |
+  | opbrengst_panden | 3608 | 803100 | Opbrengst verkoop panden | income |
+  | kostprijs_panden | 3609 | 701300 | Kostprijs verkochte panden | expense_direct_cost |
+  | btw_afwikkeling_historisch | 3610 | **159100** | Btw-afwikkeling historisch | liability_current |
+  | analytic_overhead | 848 | — | Overhead (`account.analytic.account` op plan Project) | — |
+
+  159000 was bezet → lookup-vóór-create koos 159100 (eerste vrije in de reeks, zoals ontworpen). Herhaalde `--maak-aan` (idempotentie-
+  bewijs): alle vijf rollen "bestaat al met deze naam en type … — hergebruik (niets aanmaken)", zelfde id's, niets dubbel; koppeling-rij
+  0138 draagt 3606/3607/3608/3609/3610/848. NL-templaterekeningen in deze database zijn `company_ids` "gedeeld over 10 companies"; de
+  nieuwe zes staan alléén op company 6.
+- **`vgg-odoo-stap0 --dry-run` mét migratiedoel (lees-only):** "replay: 2109 moves, selectie juli 2025: in_invoice 0 · entry 0 ·
+  out_invoice 0 · geen factuur in 2025-07 met gekoppelde bankregel(s) in PaymentReferenceList — niets te posten, stap 4/5 niet
+  uitvoerbaar" → het bewijspaar voor SCHRIJF c moet uit een andere maand komen (open punt volgende opdracht); IBAN op BNK1 daardoor
+  niet opnieuw gemeten (laatste lezing 12-09: leeg).
 

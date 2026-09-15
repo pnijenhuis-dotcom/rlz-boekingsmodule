@@ -1,0 +1,119 @@
+FOUT  bron-administratie heeft geen Odoo-koppeling mét API-key
+Container called exit(2).
+
+FOUT  geen odoo_koppeling-rij voor deze administratie (buiten dev geen terugval)
+Container called exit(2).
+
+# vgg-odoo-stap0 — Vastgoedgroep Nederland B.V. — DRY-RUN — geen Odoo-writes
+- geen migratiedoel: Administratie Vastgoedgroep Nederland B.V. heeft geen Odoo-koppeling — maak het migratiedoel aan met `odoo-koppeling-migratiedoel`
+| # | Stap | Werkt op company ? | Detail |
+|---|---|---|---|
+| 0 | partners: zoek-vóór-create (KvK → btw → IBAN → naam) voor de partijen van stap 1–3 | **niet uitgevoerd** | — |
+| 1 | eerste echte inkoopfactuur juli 2025 mét bankregel(s): concept → GEPOST (de enige geposte boeking) | **niet uitgevoerd** | — |
+| 2 | memoriaal juli 2025 als concept (blijft concept) | **niet uitgevoerd** | — |
+| 3 | eerste echte verkoopfactuur juli 2025 als concept (blijft concept) | **niet uitgevoerd** | — |
+| 4 | statement line(s) voor de bankregel(s) die factuur (1) betalen — klikpunt IBAN op BNK1 | **niet uitgevoerd** | — |
+| 5 | reconcile factuur (1) ↔ bankregel(s): routes i → ii → iii, de eerste werkende = DE route | **niet uitgevoerd** | — |
+| 6 | terugweg: button_cancel → button_draft op concept (2); koppel_los + opnieuw reconcile op (5) | **niet uitgevoerd** | — |
+Container called exit(2).
+
+
+
+# ===== plan, tweede uitvoering 15-09 mét ODOO_BRON_ADMINISTRATIE="Universal Verkoop" (Universal Steigerbouw heeft in productie geen Odoo-koppeling — eerste uitvoering hierboven) =====
+# Migratiedoel Odoo company 6 voor Vastgoedgroep Nederland B.V.
+- doel-administratie: `cc07e461-3288-4065-85ed-9005495a22ea` (Vastgoedgroep Nederland B.V., backend rlz)
+- bron-koppeling: `0d66ff75-07d8-426a-8127-4698c62c2f06` (Universal Verkoop B.V.) — URL `https://universal-steigers.odoo.com`, API-key gekopieerd (unwrap → wrap; nooit getoond)
+- company: 6 (Vastgoedgroep Nederland B.V.)
+| Onderdeel | Uitkomst |
+|---|---|
+| analytic_plan | ok |
+| company | ok (Vastgoedgroep Nederland B.V.) |
+| dagboek:bank | ok (BNK1 id 53) |
+| dagboek:general | ok (memoriaal-dagboek: MEM) |
+| dagboek:purchase | ok (LF id 49) |
+| dagboek:sale | ok (F id 48) |
+| outstanding_payments | KLIKPUNT PETER: geen 'Outstanding Payments'-rekening ingesteld op dagboek BNK1 (2 uitgaande betaalmethode-regel(s) zonder payment_account_id; veld account_journal_payment_credit_account_id bestaat niet in deze Odoo-versie) — instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); RLZ 1012 blijft tot dan ongemapt |
+**DRY-RUN — niets geschreven** — probe groen
+Container called exit(0).
+
+FOUT  geen odoo_koppeling-rij voor deze administratie (buiten dev geen terugval)
+Container called exit(2).
+
+# vgg-odoo-stap0 — Vastgoedgroep Nederland B.V. — DRY-RUN — geen Odoo-writes
+- geen migratiedoel: Administratie Vastgoedgroep Nederland B.V. heeft geen Odoo-koppeling — maak het migratiedoel aan met `odoo-koppeling-migratiedoel`
+| # | Stap | Werkt op company ? | Detail |
+|---|---|---|---|
+| 0 | partners: zoek-vóór-create (KvK → btw → IBAN → naam) voor de partijen van stap 1–3 | **niet uitgevoerd** | — |
+| 1 | eerste echte inkoopfactuur juli 2025 mét bankregel(s): concept → GEPOST (de enige geposte boeking) | **niet uitgevoerd** | — |
+| 2 | memoriaal juli 2025 als concept (blijft concept) | **niet uitgevoerd** | — |
+| 3 | eerste echte verkoopfactuur juli 2025 als concept (blijft concept) | **niet uitgevoerd** | — |
+| 4 | statement line(s) voor de bankregel(s) die factuur (1) betalen — klikpunt IBAN op BNK1 | **niet uitgevoerd** | — |
+| 5 | reconcile factuur (1) ↔ bankregel(s): routes i → ii → iii, de eerste werkende = DE route | **niet uitgevoerd** | — |
+| 6 | terugweg: button_cancel → button_draft op concept (2); koppel_los + opnieuw reconcile op (5) | **niet uitgevoerd** | — |
+Container called exit(2).
+
+
+# ===== vgg-odoo-stap0 --dry-run ná a1 (koppeling-rij aanwezig; lees-only) =====
+## executie rlz-reconciliatie-zps86 — 2026-09-15T10:27:54Z
+# vgg-odoo-stap0 — Vastgoedgroep Nederland B.V. — DRY-RUN — geen Odoo-writes
+- replay: 2109 moves, selectie juli 2025: in_invoice 0 · entry 0 · out_invoice 0 · geen factuur in 2025-07 met gekoppelde bankregel(s) in PaymentReferenceList — niets te posten, stap 4/5 niet uitvoerbaar
+| # | Stap | Werkt op company 6 | Detail |
+|---|---|---|---|
+| 0 | partners: zoek-vóór-create (KvK → btw → IBAN → naam) voor de partijen van stap 1–3 | **niet uitgevoerd** | geen factuur-concepten gekozen — geen partners nodig |
+| 1 | eerste echte inkoopfactuur juli 2025 mét bankregel(s): concept → GEPOST (de enige geposte boeking) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 2 | memoriaal juli 2025 als concept (blijft concept) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 3 | eerste echte verkoopfactuur juli 2025 als concept (blijft concept) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 4 | statement line(s) voor de bankregel(s) die factuur (1) betalen — klikpunt IBAN op BNK1 | **niet uitgevoerd** | overgeslagen: geen bewijspaar (zie melding) |
+| 5 | reconcile factuur (1) ↔ bankregel(s): routes i → ii → iii, de eerste werkende = DE route | **niet uitgevoerd** | overgeslagen: geen bewijspaar |
+| 6 | terugweg: button_cancel → button_draft op concept (2); koppel_los + opnieuw reconcile op (5) | **niet uitgevoerd** | ZOU: button_cancel → button_draft op concept (2) (memoriaal; nooit unlink) + koppel_los op de reconcile-regels en de koppeling opnieuw leggen (bewijs remove_move_reconcile) |
+Container called exit(0).
+
+
+
+# ===== plan, derde uitvoering — NÁ SCHRIJF a (terug-lezen; bron Universal Verkoop) — 2026-09-15T10:34:57Z =====
+# Migratiedoel Odoo company 6 voor Vastgoedgroep Nederland B.V.
+- doel-administratie: `cc07e461-3288-4065-85ed-9005495a22ea` (Vastgoedgroep Nederland B.V., backend rlz)
+- bron-koppeling: `0d66ff75-07d8-426a-8127-4698c62c2f06` (Universal Verkoop B.V.) — URL `https://universal-steigers.odoo.com`, API-key gekopieerd (unwrap → wrap; nooit getoond)
+- company: 6 (Vastgoedgroep Nederland B.V.)
+| Onderdeel | Uitkomst |
+|---|---|
+| analytic_plan | ok |
+| company | ok (Vastgoedgroep Nederland B.V.) |
+| dagboek:bank | ok (BNK1 id 53) |
+| dagboek:general | ok (memoriaal-dagboek: MEM) |
+| dagboek:purchase | ok (LF id 49) |
+| dagboek:sale | ok (F id 48) |
+| outstanding_payments | KLIKPUNT PETER: geen 'Outstanding Payments'-rekening ingesteld op dagboek BNK1 (2 uitgaande betaalmethode-regel(s) zonder payment_account_id; veld account_journal_payment_credit_account_id bestaat niet in deze Odoo-versie) — instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); RLZ 1012 blijft tot dan ongemapt |
+**AL MIGRATIEDOEL — ongewijzigd (idempotent: zelfde host + company, niets geschreven)** — probe groen
+Container called exit(0).
+
+# RJ-220-rollen — Vastgoedgroep Nederland B.V. → Odoo company 6 (lees-only voorstel)
+| rol | bestaand (id · code) | voorstel code | naam | account_type | reden |
+|---|---|---|---|---|---|
+| voorraad_panden | 3606 · 325000 | 325000 | Voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| vooruitbetaald_voorraad | 3607 · 326000 | 326000 | Vooruitbetaald op voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| opbrengst_panden | 3608 · 803100 | 803100 | Opbrengst verkoop panden | income | bestaat al met deze naam en type income — hergebruik (niets aanmaken). |
+| kostprijs_panden | 3609 · 701300 | 701300 | Kostprijs verkochte panden | expense_direct_cost | bestaat al met deze naam en type expense_direct_cost — hergebruik (niets aanmaken). |
+| btw_afwikkeling_historisch | 3610 · 159100 | 159100 | Btw-afwikkeling historisch | liability_current | bestaat al met deze naam en type liability_current — hergebruik (niets aanmaken). |
+Huidige koppeling-rij (0138):
+  voorraad_panden: 3606
+  vooruitbetaald_voorraad: 3607
+  opbrengst_panden: 3608
+  kostprijs_panden: 3609
+  btw_afwikkeling_historisch: 3610
+  analytic_overhead: 848
+Container called exit(0).
+
+# vgg-odoo-stap0 — Vastgoedgroep Nederland B.V. — DRY-RUN — geen Odoo-writes
+- replay: 2109 moves, selectie juli 2025: in_invoice 0 · entry 0 · out_invoice 0 · geen factuur in 2025-07 met gekoppelde bankregel(s) in PaymentReferenceList — niets te posten, stap 4/5 niet uitvoerbaar
+| # | Stap | Werkt op company 6 | Detail |
+|---|---|---|---|
+| 0 | partners: zoek-vóór-create (KvK → btw → IBAN → naam) voor de partijen van stap 1–3 | **niet uitgevoerd** | geen factuur-concepten gekozen — geen partners nodig |
+| 1 | eerste echte inkoopfactuur juli 2025 mét bankregel(s): concept → GEPOST (de enige geposte boeking) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 2 | memoriaal juli 2025 als concept (blijft concept) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 3 | eerste echte verkoopfactuur juli 2025 als concept (blijft concept) | **niet uitgevoerd** | geen vertaalbaar document van dit type in juli 2025 |
+| 4 | statement line(s) voor de bankregel(s) die factuur (1) betalen — klikpunt IBAN op BNK1 | **niet uitgevoerd** | overgeslagen: geen bewijspaar (zie melding) |
+| 5 | reconcile factuur (1) ↔ bankregel(s): routes i → ii → iii, de eerste werkende = DE route | **niet uitgevoerd** | overgeslagen: geen bewijspaar |
+| 6 | terugweg: button_cancel → button_draft op concept (2); koppel_los + opnieuw reconcile op (5) | **niet uitgevoerd** | ZOU: button_cancel → button_draft op concept (2) (memoriaal; nooit unlink) + koppel_los op de reconcile-regels en de koppeling opnieuw leggen (bewijs remove_move_reconcile) |
+Container called exit(0).
+

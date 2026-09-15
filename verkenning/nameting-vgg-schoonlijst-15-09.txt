@@ -1,4 +1,4 @@
-### Schoonlijst Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, gegenereerd 2026-09-15T10:15:18+00:00)
+### Schoonlijst Vastgoedgroep Nederland B.V. (RLZ f6d4770f-53fe-41fa-8b35-b675f406841c, gegenereerd 2026-09-15T10:44:37+00:00)
 | Categorie | Gevonden | Verwacht door Peter | Verschil |
 |---|---|---|---|
 | Concepten in RLZ (Status 1) | 7 | 18 | -11 |

@@ -18,6 +18,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from app.migratie.uitvoer import print_gedoseerd
+
 VGG_REPLAY_COMMANDO = "vgg-replay"
 SCHRIJF_CONCEPT_GEWEIGERD = (
     "--schrijf-concept is run 3 — geweigerd: deze run schrijft niets naar Odoo (dry-run is de enige modus)"
@@ -127,7 +129,9 @@ def run_vgg_replay(
     finally:
         if hasattr(client, "close"):
             client.close()
-    print(rapport.als_markdown())
+    # Blok 8 nazorg 15-09: gedoseerd naar stdout — Cloud Logging liet bij één grote print ~500 regels vallen
+    # (app/migratie/uitvoer.py).
+    print_gedoseerd(rapport.als_markdown())
     if args.json_uit:
         Path(args.json_uit).write_text(rapport.als_json(), encoding="utf-8")
         print(f"JSON geschreven: {args.json_uit}")

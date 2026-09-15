@@ -1,0 +1,129 @@
+# SCHRIJF a — 15-09-2026 — image 459642d — bron-key: Universal Verkoop B.V. (0d66ff75; Universal Steigerbouw heeft in productie geen Odoo-koppeling)
+
+# a1 — odoo-koppeling-migratiedoel --schrijf (DB-rij; Odoo alleen gelezen)
+## executie rlz-reconciliatie-9pfw4 — 2026-09-15T10:19:26Z
+# Migratiedoel Odoo company 6 voor Vastgoedgroep Nederland B.V.
+- doel-administratie: `cc07e461-3288-4065-85ed-9005495a22ea` (Vastgoedgroep Nederland B.V., backend rlz)
+- bron-koppeling: `0d66ff75-07d8-426a-8127-4698c62c2f06` (Universal Verkoop B.V.) — URL `https://universal-steigers.odoo.com`, API-key gekopieerd (unwrap → wrap; nooit getoond)
+- company: 6 (Vastgoedgroep Nederland B.V.)
+| Onderdeel | Uitkomst |
+|---|---|
+| analytic_plan | ok |
+| company | ok (Vastgoedgroep Nederland B.V.) |
+| dagboek:bank | ok (BNK1 id 53) |
+| dagboek:general | ok (memoriaal-dagboek: MEM) |
+| dagboek:purchase | ok (LF id 49) |
+| dagboek:sale | ok (F id 48) |
+| outstanding_payments | KLIKPUNT PETER: geen 'Outstanding Payments'-rekening ingesteld op dagboek BNK1 (2 uitgaande betaalmethode-regel(s) zonder payment_account_id; veld account_journal_payment_credit_account_id bestaat niet in deze Odoo-versie) — instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); RLZ 1012 blijft tot dan ongemapt |
+**GESCHREVEN** — probe groen
+Container called exit(0).
+
+
+# a2 — lees-only rollenplan op company 6 via de eigen koppeling-rij (vóór --maak-aan)
+# RJ-220-rollen — Vastgoedgroep Nederland B.V. → Odoo company 6 (lees-only voorstel)
+| rol | bestaand (id · code) | voorstel code | naam | account_type | reden |
+|---|---|---|---|---|---|
+| voorraad_panden | — | 325000 | Voorraad panden | asset_current | nieuw nummer 325000 (3xxxxx-voorraadreeks náást Stock 1/2, asset_current); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 320000 Stock 1, gedeeld over 10 companies; 321000 Stock 2, gedeeld over 10 companies. |
+| vooruitbetaald_voorraad | — | 326000 | Vooruitbetaald op voorraad panden | asset_current | nieuw nummer 326000 (vooruitbetalingen op voorraden = voorraden, BW 2:369 sub d / RJ 220, asset_current); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 120500 Prepaid expenses, gedeeld over 6 companies; 121000 Deposit [asset_prepayments], gedeeld over 10 companies; 320000 Stock 1, gedeeld over 10 companies; 321000 Stock 2, gedeeld over 10 companies. |
+| opbrengst_panden | — | 803100 | Opbrengst verkoop panden | income | nieuw nummer 803100 (80x100-reeks 'Turnover NL' — eerstvolgende vrije NL-omzetreeks, income); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 800100 Turnover NL trade goods 1, gedeeld over 10 companies; 800500 Turnover NL services 1, gedeeld over 10 companies. |
+| kostprijs_panden | — | 701300 | Kostprijs verkochte panden | expense_direct_cost | nieuw nummer 701300 (70xx00-reeks 'Cost price NL trade goods' — eerstvolgende vrije, expense_direct_cost); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 700100 Cost price NL trade goods 1, gedeeld over 10 companies. |
+| btw_afwikkeling_historisch | — | 159100 | Btw-afwikkeling historisch | liability_current | nieuw nummer 159100 (15xxxx-btw-reeks — afwikkelrekening voor de historische (onterechte) btw-registratie, liability_current, besluit Peter 13-09); nog geen rekening met deze naam. Bezet en overgeslagen: 159000. Bestaand in de buurt (optie, niet gekozen): 150000 Deferred VAT high rate, gedeeld over 10 companies; 151000 Pre-tax other, gedeeld over 10 companies; 152000 Pre-tax high, gedeeld over 10 companies; 153000 Pre-tax carried forward outside EU, gedeeld over 10 companies. |
+Huidige koppeling-rij (0138):
+  voorraad_panden: — (niet vastgesteld)
+  vooruitbetaald_voorraad: — (niet vastgesteld)
+  opbrengst_panden: — (niet vastgesteld)
+  kostprijs_panden: — (niet vastgesteld)
+  btw_afwikkeling_historisch: — (niet vastgesteld)
+  analytic_overhead: — (niet vastgesteld)
+Container called exit(0).
+
+
+# a3 — vgg-rekeningen --maak-aan (Odoo-writes company 6, kill-switch als executie-override)
+## executie rlz-reconciliatie-cndds — 2026-09-15T10:29:51Z
+# RJ-220-rollen — Vastgoedgroep Nederland B.V. → Odoo company 6 (AANMAKEN)
+| rol | bestaand (id · code) | voorstel code | naam | account_type | reden |
+|---|---|---|---|---|---|
+| voorraad_panden | — | 325000 | Voorraad panden | asset_current | nieuw nummer 325000 (3xxxxx-voorraadreeks náást Stock 1/2, asset_current); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 320000 Stock 1, gedeeld over 10 companies; 321000 Stock 2, gedeeld over 10 companies. |
+| vooruitbetaald_voorraad | — | 326000 | Vooruitbetaald op voorraad panden | asset_current | nieuw nummer 326000 (vooruitbetalingen op voorraden = voorraden, BW 2:369 sub d / RJ 220, asset_current); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 120500 Prepaid expenses, gedeeld over 6 companies; 121000 Deposit [asset_prepayments], gedeeld over 10 companies; 320000 Stock 1, gedeeld over 10 companies; 321000 Stock 2, gedeeld over 10 companies. |
+| opbrengst_panden | — | 803100 | Opbrengst verkoop panden | income | nieuw nummer 803100 (80x100-reeks 'Turnover NL' — eerstvolgende vrije NL-omzetreeks, income); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 800100 Turnover NL trade goods 1, gedeeld over 10 companies; 800500 Turnover NL services 1, gedeeld over 10 companies. |
+| kostprijs_panden | — | 701300 | Kostprijs verkochte panden | expense_direct_cost | nieuw nummer 701300 (70xx00-reeks 'Cost price NL trade goods' — eerstvolgende vrije, expense_direct_cost); nog geen rekening met deze naam. Bestaand in de buurt (optie, niet gekozen): 700100 Cost price NL trade goods 1, gedeeld over 10 companies. |
+| btw_afwikkeling_historisch | — | 159100 | Btw-afwikkeling historisch | liability_current | nieuw nummer 159100 (15xxxx-btw-reeks — afwikkelrekening voor de historische (onterechte) btw-registratie, liability_current, besluit Peter 13-09); nog geen rekening met deze naam. Bezet en overgeslagen: 159000. Bestaand in de buurt (optie, niet gekozen): 150000 Deferred VAT high rate, gedeeld over 10 companies; 151000 Pre-tax other, gedeeld over 10 companies; 152000 Pre-tax high, gedeeld over 10 companies; 153000 Pre-tax carried forward outside EU, gedeeld over 10 companies. |
+Huidige koppeling-rij (0138):
+  voorraad_panden: — (niet vastgesteld)
+  vooruitbetaald_voorraad: — (niet vastgesteld)
+  opbrengst_panden: — (niet vastgesteld)
+  kostprijs_panden: — (niet vastgesteld)
+  btw_afwikkeling_historisch: — (niet vastgesteld)
+  analytic_overhead: — (niet vastgesteld)
+Aangemaakt/vastgesteld (koppeling-rij bijgewerkt, audit odoo_rj220_rollen_vastgesteld):
+  voorraad_panden: 3606
+  vooruitbetaald_voorraad: 3607
+  opbrengst_panden: 3608
+  kostprijs_panden: 3609
+  analytic_overhead: 848
+  btw_afwikkeling_historisch: 3610
+Container called exit(0).
+
+
+
+# ===== SCHRIJF a — TWEEDE uitvoering (idempotentiebewijs, volledig script, bron Universal Verkoop) — 2026-09-15T10:30:30Z =====
+# Migratiedoel Odoo company 6 voor Vastgoedgroep Nederland B.V.
+- doel-administratie: `cc07e461-3288-4065-85ed-9005495a22ea` (Vastgoedgroep Nederland B.V., backend rlz)
+- bron-koppeling: `0d66ff75-07d8-426a-8127-4698c62c2f06` (Universal Verkoop B.V.) — URL `https://universal-steigers.odoo.com`, API-key gekopieerd (unwrap → wrap; nooit getoond)
+- company: 6 (Vastgoedgroep Nederland B.V.)
+| Onderdeel | Uitkomst |
+|---|---|
+| analytic_plan | ok |
+| company | ok (Vastgoedgroep Nederland B.V.) |
+| dagboek:bank | ok (BNK1 id 53) |
+| dagboek:general | ok (memoriaal-dagboek: MEM) |
+| dagboek:purchase | ok (LF id 49) |
+| dagboek:sale | ok (F id 48) |
+| outstanding_payments | KLIKPUNT PETER: geen 'Outstanding Payments'-rekening ingesteld op dagboek BNK1 (2 uitgaande betaalmethode-regel(s) zonder payment_account_id; veld account_journal_payment_credit_account_id bestaat niet in deze Odoo-versie) — instellen in Odoo (Boekhouding › Dagboek BNK1 › Uitgaande betalingen › Outstanding-rekening); RLZ 1012 blijft tot dan ongemapt |
+**AL MIGRATIEDOEL — ongewijzigd (idempotent: zelfde host + company, niets geschreven)** — probe groen
+Container called exit(0).
+
+# RJ-220-rollen — Vastgoedgroep Nederland B.V. → Odoo company 6 (AANMAKEN)
+| rol | bestaand (id · code) | voorstel code | naam | account_type | reden |
+|---|---|---|---|---|---|
+| voorraad_panden | 3606 · 325000 | 325000 | Voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| vooruitbetaald_voorraad | 3607 · 326000 | 326000 | Vooruitbetaald op voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| opbrengst_panden | 3608 · 803100 | 803100 | Opbrengst verkoop panden | income | bestaat al met deze naam en type income — hergebruik (niets aanmaken). |
+| kostprijs_panden | 3609 · 701300 | 701300 | Kostprijs verkochte panden | expense_direct_cost | bestaat al met deze naam en type expense_direct_cost — hergebruik (niets aanmaken). |
+| btw_afwikkeling_historisch | 3610 · 159100 | 159100 | Btw-afwikkeling historisch | liability_current | bestaat al met deze naam en type liability_current — hergebruik (niets aanmaken). |
+Huidige koppeling-rij (0138):
+  voorraad_panden: 3606
+  vooruitbetaald_voorraad: 3607
+  opbrengst_panden: 3608
+  kostprijs_panden: 3609
+  btw_afwikkeling_historisch: 3610
+  analytic_overhead: 848
+Aangemaakt/vastgesteld (koppeling-rij bijgewerkt, audit odoo_rj220_rollen_vastgesteld):
+  voorraad_panden: 3606
+  vooruitbetaald_voorraad: 3607
+  opbrengst_panden: 3608
+  kostprijs_panden: 3609
+  analytic_overhead: 848
+  btw_afwikkeling_historisch: 3610
+Container called exit(0).
+
+
+
+# ===== TERUG-LEZEN ná SCHRIJF a — nameting.sh vgg-rekeningen --administratie Vastgoedgroep (lees-only) — 2026-09-15T10:33:32Z =====
+# RJ-220-rollen — Vastgoedgroep Nederland B.V. → Odoo company 6 (lees-only voorstel)
+| rol | bestaand (id · code) | voorstel code | naam | account_type | reden |
+|---|---|---|---|---|---|
+| voorraad_panden | 3606 · 325000 | 325000 | Voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| vooruitbetaald_voorraad | 3607 · 326000 | 326000 | Vooruitbetaald op voorraad panden | asset_current | bestaat al met deze naam en type asset_current — hergebruik (niets aanmaken). |
+| opbrengst_panden | 3608 · 803100 | 803100 | Opbrengst verkoop panden | income | bestaat al met deze naam en type income — hergebruik (niets aanmaken). |
+| kostprijs_panden | 3609 · 701300 | 701300 | Kostprijs verkochte panden | expense_direct_cost | bestaat al met deze naam en type expense_direct_cost — hergebruik (niets aanmaken). |
+| btw_afwikkeling_historisch | 3610 · 159100 | 159100 | Btw-afwikkeling historisch | liability_current | bestaat al met deze naam en type liability_current — hergebruik (niets aanmaken). |
+Huidige koppeling-rij (0138):
+  voorraad_panden: 3606
+  vooruitbetaald_voorraad: 3607
+  opbrengst_panden: 3608
+  kostprijs_panden: 3609
+  btw_afwikkeling_historisch: 3610
+  analytic_overhead: 848
+Container called exit(0).
+

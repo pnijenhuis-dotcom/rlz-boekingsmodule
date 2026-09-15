@@ -36,6 +36,7 @@ from app.migratie.odoo_doel import (
     GeenMigratieDoel,
     _lees_migratie_doel_vlag,
 )
+from app.migratie.uitvoer import print_gedoseerd
 from app.odoo.client import OdooClient, OdooFout
 from app.odoo.ids import odoo_host
 from app.odoo.models import OdooKoppeling
@@ -997,7 +998,7 @@ def _run_stap0(args: argparse.Namespace) -> int:
         audit=audit,
         writes_aan=bool(settings.migratie_odoo_writes_ingeschakeld),
     )
-    print(rapport.als_markdown())
+    print_gedoseerd(rapport.als_markdown())  # blok 8 nazorg 15-09: stap0-rapport groeit mee met --max-per-type
     if not rapport.replay_beschikbaar or rapport.company_id is None:
         return 2
     return 0 if all(s.werkt is not False for s in rapport.stappen.values()) else 1

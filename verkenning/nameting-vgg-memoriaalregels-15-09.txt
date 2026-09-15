@@ -1,20 +1,23 @@
 
 ##### RLZ-06-00000001 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution...................................................................................................................................................................................done
-Running execution...................................................................................................................................................................................done
+Provisioning resources................done
+Starting execution.........................................................................done
+Running execution.....................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-qb95q] has successfully completed.
+Execution [rlz-reconciliatie-5c849] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-qb95q
+gcloud run jobs executions describe rlz-reconciliatie-5c849
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-qb95q?project=652591056217
-rlz-reconciliatie-qb95q
->> uitvoer van rlz-reconciliatie-qb95q (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-5c849?project=652591056217
+rlz-reconciliatie-5c849
+>> uitvoer van rlz-reconciliatie-5c849 (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -131,21 +134,24 @@ Container called exit(0).
 
 
 ##### RLZ-06-00000106 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources..........................done
-Starting execution..............................................................................................................................done
-Running execution.....................................................................................................................................................................................done
+Provisioning resources................done
+Starting execution............................................................................................................................done
+Running execution.................................................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-8sx6h] has successfully completed.
+Execution [rlz-reconciliatie-r42nc] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-8sx6h
+gcloud run jobs executions describe rlz-reconciliatie-r42nc
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-8sx6h?project=652591056217
-rlz-reconciliatie-8sx6h
->> uitvoer van rlz-reconciliatie-8sx6h (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-r42nc?project=652591056217
+rlz-reconciliatie-r42nc
+>> uitvoer van rlz-reconciliatie-r42nc (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -262,21 +268,24 @@ Container called exit(0).
 
 
 ##### RLZ-06-00000038 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.......................done
-Starting execution.....................................................................done
-Running execution...................................................................................................................................................done
+Provisioning resources................done
+Starting execution.............................................................................................................................................................done
+Running execution................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-x4q2z] has successfully completed.
+Execution [rlz-reconciliatie-qcqt7] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-x4q2z
+gcloud run jobs executions describe rlz-reconciliatie-qcqt7
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-x4q2z?project=652591056217
-rlz-reconciliatie-x4q2z
->> uitvoer van rlz-reconciliatie-x4q2z (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-qcqt7?project=652591056217
+rlz-reconciliatie-qcqt7
+>> uitvoer van rlz-reconciliatie-qcqt7 (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -469,21 +478,24 @@ Container called exit(0).
 
 
 ##### RLZ-60-00000003 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution..........................................................................................................................................................done
-Running execution..............................................................................................................................................done
+Provisioning resources...............done
+Starting execution............................................................done
+Running execution............................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-4jvn8] has successfully completed.
+Execution [rlz-reconciliatie-vf8hh] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-4jvn8
+gcloud run jobs executions describe rlz-reconciliatie-vf8hh
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-4jvn8?project=652591056217
-rlz-reconciliatie-4jvn8
->> uitvoer van rlz-reconciliatie-4jvn8 (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-vf8hh?project=652591056217
+rlz-reconciliatie-vf8hh
+>> uitvoer van rlz-reconciliatie-vf8hh (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -600,21 +612,24 @@ Container called exit(0).
 
 
 ##### RLZ-06-00000122 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources..........................done
-Starting execution..............................................................................................................................................done
-Running execution....................................................................................................................................................................................................................................done
+Provisioning resources...............done
+Starting execution...................................................................done
+Running execution.................................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-jmntn] has successfully completed.
+Execution [rlz-reconciliatie-7fpjl] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-jmntn
+gcloud run jobs executions describe rlz-reconciliatie-7fpjl
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-jmntn?project=652591056217
-rlz-reconciliatie-jmntn
->> uitvoer van rlz-reconciliatie-jmntn (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-7fpjl?project=652591056217
+rlz-reconciliatie-7fpjl
+>> uitvoer van rlz-reconciliatie-7fpjl (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -1035,21 +1050,24 @@ Container called exit(0).
 
 
 ##### RLZ-06-00000123 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution................................................................................................................................................done
-Running execution..........................................................................................................................................................................................................................................................................done
+Provisioning resources...............done
+Starting execution................................................................done
+Running execution........................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-xb8nv] has successfully completed.
+Execution [rlz-reconciliatie-gkpmb] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-xb8nv
+gcloud run jobs executions describe rlz-reconciliatie-gkpmb
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-xb8nv?project=652591056217
-rlz-reconciliatie-xb8nv
->> uitvoer van rlz-reconciliatie-xb8nv (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-gkpmb?project=652591056217
+rlz-reconciliatie-gkpmb
+>> uitvoer van rlz-reconciliatie-gkpmb (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
 {
   "rlz_lezen": {
@@ -1472,21 +1490,24 @@ Container called exit(0).
 ##### JournalEntryLines-waarheid per rekening/datum (RLZ-kolom)
 
 ##### JournalEntryLines $filter=Account/AccountNumber eq '0500'
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution..................................................................................................done
-Running execution..........................................................................................................................................................done
+Provisioning resources................done
+Starting execution.............................................................................................done
+Running execution...........................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-v28j2] has successfully completed.
+Execution [rlz-reconciliatie-9264r] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-v28j2
+gcloud run jobs executions describe rlz-reconciliatie-9264r
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-v28j2?project=652591056217
-rlz-reconciliatie-v28j2
->> uitvoer van rlz-reconciliatie-v28j2 (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-9264r?project=652591056217
+rlz-reconciliatie-9264r
+>> uitvoer van rlz-reconciliatie-9264r (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
@@ -1582,21 +1603,24 @@ Container called exit(0).
 
 
 ##### JournalEntryLines $filter=(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2025-12-31T23:00:00Z
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.............................done
-Starting execution.................................................................................done
-Running execution.........................................................................................................................done
+Provisioning resources..............done
+Starting execution...............................................................................done
+Running execution............................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-rgxxp] has successfully completed.
+Execution [rlz-reconciliatie-rz8nl] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-rgxxp
+gcloud run jobs executions describe rlz-reconciliatie-rz8nl
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-rgxxp?project=652591056217
-rlz-reconciliatie-rgxxp
->> uitvoer van rlz-reconciliatie-rgxxp (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-rz8nl?project=652591056217
+rlz-reconciliatie-rz8nl
+>> uitvoer van rlz-reconciliatie-rz8nl (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
@@ -2691,89 +2715,64 @@ rlz-reconciliatie-rgxxp
           "BookDate": "2025-12-31T00:00:00",
           "DocumentType": 11,
           "EventID": 21
-        }
       },
       {
         "id": "3a27b6b6…",
         "CreditAmount": 0.0,
-        "DebitAmount": 112500.0,
         "VatAmount": 0.0,
-        "Description": "Henri Dunantstraat 301 Brunssum",
-        "Account": {
-          "id": "468a81a6…",
-          "IsDepartmentRequired": false,
-          "IsEmployeeCurrentAccount": false,
-          "IsFixedAssetAccount": true,
+      {
           "IsProductRequired": false,
-          "IsProjectRequired": false,
-          "IsTopLevel": false,
-          "IsTotalAccount": false,
-          "UseForBankCashMutationDetails": false,
-          "UseForManualJournalDetails": true,
-          "UseForPaymentAccount": false,
-          "UseForPurchaseInvoiceDetails": true,
-          "UseForSalesInvoiceDetails": false,
-          "IndentLevel": 4,
-          "AccountantNotes": null,
-          "AccountNumber": "1100",
-          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
-          "Description": "Voorraad vastgoed / panden",
-        "id": "90d98aa5…",
-          "IsTotalAccount": false,
-          "DocumentType": 11,
-          "IsTotalAccount": false,
-          "DocumentType": 11,
+        },
           "IsEmployeeRequired": false,
           "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
-          "id": "468a81a6…",
-          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
-          "id": "451b2288…",
-          "IndentLevel": 4,
-        "id": "f03a8a5f…",
-          "UseForSalesInvoiceDetails": false,
-        }
-          "UseForPaymentAccount": false,
-          "EventID": 21
-          "UseForPaymentAccount": false,
-      },
-          "AccountantNotes": null,
-        "VatAmount": 0.0,
-          "AccountNumber": "1100",
-        "Description": "Goudreinetgaard 59 Arnhem",
-          "Description": "N.t.b. vastgoed / panden",
-          "IsEmployeeRequired": false,
-        "JournalEntry": {
-          "IsFixedAssetAccount": false,
-          "AccountType": 4
-          "IsTopLevel": false,
-          "DocumentType": 11,
-          "UseForBankCashMutationDetails": false,
-      },
-          "UseForBankCashMutationDetails": false,
-        "CreditAmount": 155000.0,
-          "UseForPurchaseInvoiceDetails": false,
-        "DebitAmount": 0.0,
+          "IsFixedAssetAccount": true,
           "ExternalGeneralLedgerNumber": "1100",
+          "IsDepartmentRequired": false,
+          "AccountNumber": "1601",
+        "Description": "Burgemeester Norbruislaan 422 Utrecht",
+        }
+          "IsProjectRequired": false,
+          "id": "4fcafacc…",
+      },
+          "UseForManualJournalDetails": true,
+        "JournalEntry": {
+          "IsProductRequired": false,
+          "id": "7aaed2f8…",
+          "IsProjectRequired": false,
+      {
+          "UseForSalesInvoiceDetails": false,
+        "VatAmount": 0.0,
+          "UseForSalesInvoiceDetails": false,
+          "IsProductRequired": false,
+          "Description": "N.t.b. vastgoed / panden",
+          "IsFixedAssetAccount": true,
+          "id": "7154af13…",
           "IsTotalAccount": false,
-    ]
+      },
+          "UseForBankCashMutationDetails": false,
+          "EventID": 21
 Container called exit(0).
 
+
 ##### JournalEntryLines $filter=(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-29T22:00:00Z and JournalEntry/BookDate lt 2025-06-30T22:00:00Z
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution.................................................................done
-Running execution......................................................................................................................................................................................................................................done
+Provisioning resources................done
+Starting execution...................................................................................................done
+Running execution.....................................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-psfh2] has successfully completed.
+Execution [rlz-reconciliatie-2tks7] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-psfh2
+gcloud run jobs executions describe rlz-reconciliatie-2tks7
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-psfh2?project=652591056217
-rlz-reconciliatie-psfh2
->> uitvoer van rlz-reconciliatie-psfh2 (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-2tks7?project=652591056217
+rlz-reconciliatie-2tks7
+>> uitvoer van rlz-reconciliatie-2tks7 (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
@@ -2977,21 +2976,24 @@ Container called exit(0).
 
 
 ##### JournalEntryLines $filter=Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-08T22:00:00Z and JournalEntry/BookDate lt 2025-08-09T22:00:00Z
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.........................done
-Starting execution.....................................................................................................................................................................done
-Running execution........................................................................................................................................................................................done
+Provisioning resources...............done
+Starting execution.............................................................................................................................done
+Running execution............................................................................................done
 Done.
-Execution [rlz-reconciliatie-lcmjn] has successfully completed.
+Execution [rlz-reconciliatie-q6lgg] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-lcmjn
+gcloud run jobs executions describe rlz-reconciliatie-q6lgg
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-lcmjn?project=652591056217
-rlz-reconciliatie-lcmjn
->> uitvoer van rlz-reconciliatie-lcmjn (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-q6lgg?project=652591056217
+rlz-reconciliatie-q6lgg
+>> uitvoer van rlz-reconciliatie-q6lgg (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
@@ -3051,21 +3053,24 @@ Container called exit(0).
 
 
 ##### JournalEntryLines $filter=Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2026-01-01T23:00:00Z
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources..........................done
-Starting execution............................................................................................done
-Running execution...................................................................................................................................................................................................done
+Provisioning resources................done
+Starting execution.....................................................................done
+Running execution..............................................................................................done
 Done.
-Execution [rlz-reconciliatie-8hw4x] has successfully completed.
+Execution [rlz-reconciliatie-qk4f9] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-8hw4x
+gcloud run jobs executions describe rlz-reconciliatie-qk4f9
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-8hw4x?project=652591056217
-rlz-reconciliatie-8hw4x
->> uitvoer van rlz-reconciliatie-8hw4x (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-qk4f9?project=652591056217
+rlz-reconciliatie-qk4f9
+>> uitvoer van rlz-reconciliatie-qk4f9 (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
@@ -3231,22 +3236,26 @@ rlz-reconciliatie-8hw4x
 }
 Container called exit(0).
 
+
 ##### JournalEntryLines $filter=Account/AccountNumber eq '4900'
->> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> nameting: geen SA-key (org-policy) — impersonatie van nameting@rlz-boekhouding.iam.gserviceaccount.com op de gebruikerssessie
 >> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 Creating execution...
-Provisioning resources.....................done
-Starting execution.................................................................................................................................................................................................................................done
-Running execution...........................................................................................................................................................done
+Provisioning resources...............done
+Starting execution.................................................done
+Running execution.......................................................................................................................done
 Done.
-Execution [rlz-reconciliatie-c48h4] has successfully completed.
+Execution [rlz-reconciliatie-mp8bm] has successfully completed.
 
 View details about this execution by running:
-gcloud run jobs executions describe rlz-reconciliatie-c48h4
+gcloud run jobs executions describe rlz-reconciliatie-mp8bm
 
-Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-c48h4?project=652591056217
-rlz-reconciliatie-c48h4
->> uitvoer van rlz-reconciliatie-c48h4 (Cloud Logging, chronologisch):
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-mp8bm?project=652591056217
+rlz-reconciliatie-mp8bm
+>> uitvoer van rlz-reconciliatie-mp8bm (Cloud Logging, chronologisch):
+WARNING: This command is using service account impersonation. All API calls will be executed as [nameting@rlz-boekhouding.iam.gserviceaccount.com].
 {
   "rlz_lezen": {
     "administratie": "Vastgoedgroep Nederland B.V.",
