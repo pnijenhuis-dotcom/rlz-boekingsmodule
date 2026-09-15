@@ -42,6 +42,17 @@
 # stash; een gedivergeerde stand is voor Peter (of de CC-run zelf) om te beoordelen. Een tick zonder werk logt alleen
 # als er iets binnenkwam of overgeslagen is (geen "Already up to date" om de vijf minuten). CC_INBOX_GEEN_PULL=1 slaat
 # de pull over (handmatige start/test).
+# Handmatige CC actief = wachten (nazorg 15-09, Cowork; incident 15-09 ochtend: een handmatige CC-sessie (administratienaam)
+# en de launchd-inbox-run liepen parallel in dezelfde werkboom → pytest-setup-errors op de gedeelde test-DB en het risico op
+# vervlochten commits / een Stop-hook die de commits van de ander pusht). Sinds deze nazorg: vóór het herstel van verweesde
+# opdrachten, vóór de pull en vóór het oppakken van een opdracht kijkt het script of er al een `claude`-proces draait met
+# zijn cwd IN deze repo (repo-root of een submap; `pgrep -x claude` + cwd via `lsof -a -p <pid> -d cwd -Fn`, op macOS
+# altijd aanwezig als /usr/sbin/lsof — geen /proc). Zo ja: NIETS doen (geen herstel, geen pull, geen start), logregel
+# ">> cc_inbox: wacht — handmatige CC actief (pid N, cwd …)", exit 0; de volgende tick (≤ 5 min) kijkt opnieuw. Een claude
+# in een ándere map (ander project) telt niet. Is de cwd van een claude-proces niet te lezen (lsof ontbreekt of faalt), dan
+# telt dat proces WÉL als actief (fail-closed: liever een tick wachten dan twee runs door elkaar) — mét de reden in de
+# logregel. Seam voor de guard-test: CC_INBOX_CLAUDE_NAAM (procesnaam, default `claude`); de test start een symlink naar
+# /bin/sleep onder de naam `claude` mét cwd in de wegwerp-repo — geen echte claude.
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -79,6 +90,33 @@ if [[ -f "$LOCK" ]]; then
   fi
   log ">> cc_inbox: verweesde lock (pid ${pid:-?} leeft niet) opgeruimd"
   rm -f "$LOCK"
+fi
+
+# ---- handmatige CC actief in deze werkboom → wachten (zie kop) ---------------------------------------------------------
+REPO_REAL="$(cd "$REPO" && pwd -P)"
+cwd_van_pid() {  # cwd_van_pid <pid> → echte cwd, of leeg als niet leesbaar
+  local lsof_bin
+  lsof_bin="$(command -v lsof 2>/dev/null || true)"; [[ -z "$lsof_bin" && -x /usr/sbin/lsof ]] && lsof_bin=/usr/sbin/lsof
+  [[ -n "$lsof_bin" ]] || return 0
+  "$lsof_bin" -w -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
+}
+handmatige_cc() {  # → "pid<TAB>cwd-of-reden" van het eerste claude-proces in deze werkboom, anders leeg (rc 1)
+  local naam="${CC_INBOX_CLAUDE_NAAM:-claude}" pid cwd
+  for pid in $(pgrep -x "$naam" 2>/dev/null); do
+    [[ "$pid" == "$$" ]] && continue
+    cwd="$(cwd_van_pid "$pid")"
+    if [[ -z "$cwd" ]]; then
+      printf '%s\t%s\n' "$pid" "cwd niet leesbaar (lsof ontbreekt of faalt) — telt als actief"; return 0
+    fi
+    if [[ "$cwd" == "$REPO_REAL" || "$cwd" == "$REPO_REAL/"* ]]; then
+      printf '%s\t%s\n' "$pid" "$cwd"; return 0
+    fi
+  done
+  return 1
+}
+if actief="$(handmatige_cc)"; then
+  log ">> cc_inbox: wacht — handmatige CC actief (pid ${actief%%$'\t'*}, ${actief#*$'\t'}) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
+  exit 0
 fi
 
 # ---- verweesde lopend-opdrachten (e): geen levende lock → elke .md in lopend/ is gestrand ----------------------------

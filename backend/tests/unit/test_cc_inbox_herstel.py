@@ -4,7 +4,12 @@ pogingen, daarna opdrachten/mislukt/). Aanleiding: de veldwerkers-run van 15:17 
 het log droeg alleen de startregel en de opdracht bleef in lopend/ staan.
 
 Het échte script draait tegen een wegwerp-git-repo mét stubs voor `claude` (gedrag via bestand `claude_gedrag`) en
-`osascript` (registreert élke melding in `meldingen.txt`); de pull staat uit (CC_INBOX_GEEN_PULL=1)."""
+`osascript` (registreert élke melding in `meldingen.txt`); de pull staat uit (CC_INBOX_GEEN_PULL=1).
+
+Nazorg 15-09 (Cowork, incident 15-09 ochtend: handmatige CC-sessie + inbox-run parallel in dezelfde werkboom): een
+`claude`-proces mét cwd in de repo = "wacht — handmatige CC actief" — geen herstel, geen pull, geen start. Gesimuleerd
+met een symlink naar /bin/sleep onder de naam `claude` (pgrep -x ziet de procesnaam, lsof de cwd) — nooit een echte
+claude."""
 
 from __future__ import annotations
 
@@ -259,8 +264,119 @@ def test_script_documenteert_elke_stop_en_kent_geen_stille_paden() -> None:
         "trap 'bij_signaal TERM' TERM",
         "trap bij_exit EXIT",
         "herstel_verweesd",
+        "handmatige_cc",
+        "wacht — handmatige CC actief",
         "loopt nog",
         "LIMIET — claude.ai/admin-settings/usage",
         "opdrachten/mislukt/",
     ):
         assert verwacht in code, verwacht
+
+
+# ---- nazorg 15-09: handmatige CC actief in deze werkboom → wachten ----------------------------------------
+
+
+def _nep_claude(tmp_path: Path, cwd: Path) -> subprocess.Popen[bytes]:
+    """Een proces mét procesnaam `claude` (symlink naar /bin/sleep) en de gegeven cwd — géén echte claude."""
+    nep = tmp_path / "nep"
+    nep.mkdir(exist_ok=True)
+    link = nep / "claude"
+    if not link.exists():
+        link.symlink_to("/bin/sleep")
+    proc = subprocess.Popen([str(link), "60"], cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(50):  # wachten tot pgrep 'm ziet
+        gezien = subprocess.run(["pgrep", "-x", "claude"], capture_output=True, text=True).stdout.split()
+        if str(proc.pid) in gezien:
+            return proc
+        time.sleep(0.1)
+    proc.kill()
+    pytest.fail("nep-claude niet zichtbaar voor pgrep -x claude")
+
+
+def test_handmatige_cc_in_werkboom_geen_herstel_pull_of_start(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    """Een claude-proces mét cwd in de repo (hier: een submap) → logregel 'wacht', niets aangeraakt: de opdracht blijft
+    in inbox/, een verweesde lopend-opdracht blijft in lopend/, geen lock, geen melding, geen pull-poging."""
+    repo = werkplaats["repo"]
+    (repo / "backend").mkdir()
+    _opdracht(werkplaats)
+    (repo / "opdrachten" / "lopend" / "2026-09-14-verweesd.md").write_text("OPDRACHT — verweesd\n", encoding="utf-8")
+    proc = _nep_claude(tmp_path, repo / "backend")
+    try:
+        # pull AAN (geen CC_INBOX_GEEN_PULL) — zonder remote zou een pull-poging een 'pull overgeslagen'-regel geven
+        uit = _draai(werkplaats, CC_INBOX_GEEN_PULL="")
+        assert uit.returncode == 0, uit.stderr
+        assert f"wacht — handmatige CC actief (pid {proc.pid}, {repo.resolve() / 'backend'})" in uit.stderr, uit.stderr
+        assert "geen herstel, geen pull, geen start" in uit.stderr
+        assert "pull" not in uit.stderr.replace("geen pull", ""), uit.stderr
+        assert (repo / "opdrachten" / "inbox" / "2026-09-14-test.md").is_file()
+        assert (repo / "opdrachten" / "lopend" / "2026-09-14-verweesd.md").is_file()
+        assert not (repo / "opdrachten" / ".lock").exists()
+        assert not (repo / "opdrachten" / "log" / "2026-09-14-test.log").exists()
+        assert _meldingen(werkplaats) == ""
+        # tweede tick, proces leeft nog: opnieuw wachten
+        uit2 = _draai(werkplaats)
+        assert uit2.returncode == 0 and "wacht — handmatige CC actief" in uit2.stderr
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+    # proces weg → volgende tick pakt gewoon op (verweesde eerst terug naar inbox, dan de oudste)
+    uit3 = _draai(werkplaats)
+    assert uit3.returncode == 0, uit3.stderr
+    assert "wacht — handmatige CC actief" not in uit3.stderr
+    assert "verweesd in lopend/" in uit3.stderr
+    assert (repo / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file() or (
+        repo / "opdrachten" / "gedaan" / "2026-09-14-verweesd.md"
+    ).is_file()
+
+
+def test_claude_in_andere_map_houdt_de_inbox_niet_op(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    ergens_anders = tmp_path / "ander-project"
+    ergens_anders.mkdir()
+    _opdracht(werkplaats)
+    proc = _nep_claude(tmp_path, ergens_anders)
+    try:
+        uit = _draai(werkplaats)
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+    assert uit.returncode == 0, uit.stderr
+    assert "wacht — handmatige CC actief" not in uit.stderr
+    assert (werkplaats["repo"] / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file()
+
+
+def test_onleesbare_cwd_telt_als_actief_fail_closed(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    """Faalt lsof (stub op PATH die exit 1 geeft), dan is de cwd van een claude-proces niet te lezen → dat proces
+    telt als actief: wachten mét de reden in de logregel, liever een tick te laat dan twee runs door elkaar. Welk
+    claude-proces het eerst gezien wordt (het nep-proces of een echte sessie elders op deze Mac) doet er niet toe —
+    de pid staat erbij. CC_INBOX_CLAUDE_NAAM is de seam voor de procesnaam (default `claude`)."""
+    repo = werkplaats["repo"]
+    (werkplaats["stubs"] / "lsof").write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
+    (werkplaats["stubs"] / "lsof").chmod(0o755)
+    _opdracht(werkplaats)
+    proc = _nep_claude(tmp_path, repo)
+    try:
+        uit = _draai(werkplaats, CC_INBOX_CLAUDE_NAAM="claude")
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+    assert uit.returncode == 0, uit.stderr
+    assert "wacht — handmatige CC actief (pid " in uit.stderr, uit.stderr
+    assert "cwd niet leesbaar (lsof ontbreekt of faalt) — telt als actief" in uit.stderr, uit.stderr
+    assert (repo / "opdrachten" / "inbox" / "2026-09-14-test.md").is_file()
+    assert not (repo / "opdrachten" / ".lock").exists()
+
+
+def test_seam_procesnaam_andere_naam_ziet_de_nep_claude_niet(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    """CC_INBOX_CLAUDE_NAAM stuurt pgrep -x: met een niet-bestaande naam is er per definitie geen handmatige CC en pakt
+    de tick de opdracht gewoon op, ook al leeft het nep-claude-proces in de repo."""
+    repo = werkplaats["repo"]
+    _opdracht(werkplaats)
+    proc = _nep_claude(tmp_path, repo)
+    try:
+        uit = _draai(werkplaats, CC_INBOX_CLAUDE_NAAM="cc-inbox-bestaat-niet")
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+    assert uit.returncode == 0, uit.stderr
+    assert "wacht — handmatige CC actief" not in uit.stderr
+    assert (repo / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file()
