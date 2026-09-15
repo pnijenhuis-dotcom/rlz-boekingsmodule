@@ -9797,3 +9797,28 @@ sluitend uit de code en wordt met het meetrecept ná deploy bevestigd.
 de laatste accordeur zonder handeling "binnen offerte … (1e termijn) € 20.000,00 … van € 85.000,00" en, omdat de factuur al geboekt is,
 de tijdlijnregel "achteraf gekoppeld aan offerte …" + verbruik € 20.000 op de verplichting (Inzicht › Verplichtingen).
 
+## PLANNING — URENSTATUS IN HET GRID + TERUGWERKENDE KRACHT (Peter/Haci 15-09) — Universal Steigerbouw; opdracht via opdrachten/inbox; migratie 0145
+
+**Aanleiding (feedback Peter/Haci 15-09):** het kantoor kon in het planningsgrid niet zien wat Fatih invulde, en planning in een
+verstreken week bereikte de veldwerker niet. UX-review: verrijking van het bestaande grid (geen nieuwe IA, geen mockup); patronen
+gevolgd (chips één regel, linkbtn/btn, groen = status, teal = actie).
+
+| Onderdeel | Status | Vindplaats |
+| --- | --- | --- |
+| **A1 Urenstatus per kaartje.** `planning._urenstanden_voor_week`: ÉÉN statement WeekstaatDag × Weekstaat over de week → per (persoon, project, dag) `_UrenStand`; afleiding deterministisch uit de bestaande weekstaat-/keuringsdata: `goedgekeurd` → 'gekeurd' (groen, tooltip "gekeurd door X op dd-mm hh:mm"), `corrigeren` → 'vraag' (oranje, tooltip afkeurder + reden), concept/ingediend mét uren → 'ingevuld' (blauw, "8 u · 42 m² · ingediend/ingevuld …"), anders 'geen' (grijs). `PlanningKaartData/PlanningKaartDto`: `uren_status`, `uren`, `m2`, `uren_detail`, `weekstaat_id`, `achteraf`. Frontend `PlanningScreen.Kaart`: stip + korte tekst (`urenKort`), tooltip, klik → `/meerwerk?administratie=…&weekstaat=<id>` (bestaande route). | GEBOUWD + GETEST | `app/uren/planning.py`, `schemas.py`, `router.py`; `frontend/src/planning/planningApi.ts` (`UREN_STATUS_*`, `urenKort`), `PlanningScreen.tsx` |
+| **A2 Weektotaal-chip per projectrij.** `WeekUrenData/WeekUrenDto` (ingevuld_uren, gekeurd_uren, open_aantal = 'vraag'-kaartjes, zonder_uren_aantal = geplande kaartjes t/m gisteren zonder uren) → rijkop-chip "24 u ingevuld · 16 u gekeurd · 2 open" (`weekUrenTekst`, oranje bij open) als link naar `/meerwerk?administratie=…&project=…&week=…`. | GEBOUWD + GETEST | idem |
+| **A3 Filter.** Chips "alle kaartjes / alleen zonder uren / alleen ongekeurd" (URL-param `uren=zonder|ongekeurd`, client-side op de al geladen kaartjes; `parseUrenFilter`, `kaartPastInFilter`). | GEBOUWD + GETEST | `PlanningScreen.tsx`, `planningApi.ts` |
+| **A4 Set-based.** Meetlat-test: N = 3 en N = 12 projecten mét planning + uren geven exact hetzelfde aantal statements (`tests/uren/test_planning_urenstatus.py::test_querytelling_constant_in_het_aantal_projecten`). | GETEST | — |
+| **B1 Veld-app.** Vastgesteld: `MijnPlanningView` opent op de huidige week mét vrije ‹ ›-navigatie (elke week, ook eerdere); het ZZP-beginscherm toont weken mét planning + deze week. Nieuw: chips "week N−2 · week N−1 · deze week" (één tik), deep-link `/accordeur?planning=JJJJ-Wnn` opent de planningweergave van die week (`planningWeekUitZoekdeel`). Gekeurde uren blijven alleen-lezen (bestaand: goedgekeurd = onmuteerbaar). **Melding:** `planning._registreer_wijziging_in_week` legt bij plannen/verwijderen/verplaatsen in een verstreken óf lopende week één OPEN rij per (administratie, veldwerker, jaar, week) in `boekhouding.planning_wijziging_melding` (migratie 0145, RLS, `aantal_wijzigingen`++); `app/uren/planning_meldingen.py::verstuur_planning_meldingen` (stap in de bestaande 10-min-job `rlz-nieuwe-facturen`, zelfde stille uren) bundelt per persoon × week tot één push-anders-mail "Planning week N aangepast" (`verzending.verstuur_push_anders_mail`, deep-link), zet `gemeld_op`/`kanaal`, audit `planning_wijziging_gemeld`; niet-actieve veldwerker = afgesloten mét reden; toekomstige week = niets. | GEBOUWD + GETEST | `app/uren/models.py::PlanningWijzigingMelding`, `migrations/versions/0145_…`, `app/uren/planning.py`, `app/uren/planning_meldingen.py`, `app/cli.py::_nieuwe_facturen_melden`; `frontend/src/uren/UrenFlow.tsx` |
+| **B2 Kantoor.** Geen blokkade (minimale mens); audit van élke planningmutatie draagt `achteraf` (datum < vandaag), `week_status` (verstreken/lopend/toekomst) en `veldwerker_gemeld`; kaartje toont chip "achteraf" (`PlanningKaartData.achteraf` = NL-kalenderdag van het planmoment > geplande datum). **Er bestaat geen project-tijdlijn in de module** — de audit-rij is het spoor (beslispunt: wil Peter een tijdlijnregel op het project, dan is dat een nieuwe tabel/weergave). | GEBOUWD + GETEST | `planning.py`; `PlanningScreen.tsx` |
+| **B3 Test.** Planning-mutatie in week N−1 → audit `achteraf`/`verstreken`, één open rij (teller 3 over drie mutaties), job → één push mét `/accordeur?planning=<jaar>-W<week>`, rij gesloten, tweede run stil; toekomstige week = niets; lopende week meldt wél. | GETEST | `tests/uren/test_planning_urenstatus.py` (8) |
+| Afsluitroutine 0145: dev-upgrade 0144 → 0145 gedaan, `alembic check` schoon, dump ververst (head 0145), live-check zie rapport. Docs: CLAUDE.md-verwijsregel, WAT_IS_NIEUW (twee regels), dit register, rapport + INDEX, opdracht → gedaan | GEDAAN | — |
+
+**Meetrecept ná deploy:** Universal week 37, blokje Hakim Lali vr 11-9 toont een statusstip mét tekst (tooltip = weekstaat-stand);
+rijkop toont het weektotaal; filter "alleen zonder uren" in de URL; app Fatih: planningweergave toont chips week 35/36/deze week en
+week 36 opent met één tik; een kantoorwijziging in week 36 → binnen 10 min (buiten stille uren) één push "Planning week 36 aangepast"
+met deep-link; job-uitvoer `planning-meldingen: … push=1`.
+
+**Bewust niet / beslispunten:** geen project-tijdlijn (bestaat niet; audit is het spoor); geen server-side filter (alles zit al in de
+ene weekrequest); "twee voorgaande weken" als snelle chips — de ‹ ›-navigatie was al vrij.
+
