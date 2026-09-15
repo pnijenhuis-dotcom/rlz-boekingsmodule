@@ -324,6 +324,28 @@ export function maakAdministratiesAan(
   })
 }
 
+// --- Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144) ---------------------------------
+
+export interface AdministratieNaamDto {
+  id: string
+  naam: string
+  naam_bron: 'odoo' | 'rlz' | 'mens'
+  bron_naam: string | null
+  bron_naam_gezien_op: string | null
+  naam_gevolgd_op: string | null
+  bron_afwijkend: boolean
+}
+
+/** PUT /administraties/{id}/naam — Beheerder-only; 422 leeg/te lang, 409 naam bezet (leesbare reden in detail). */
+export function wijzigAdministratieNaam(administratieId: string, naam: string): Promise<AdministratieNaamDto> {
+  return apiJson<AdministratieNaamDto>(`/administraties/${administratieId}/naam`, { ...PUT_JSON, body: JSON.stringify({ naam }) })
+}
+
+/** POST /administraties/{id}/naam-overnemen — neemt de laatst gelezen bronnaam over, houdt naam_bron 'mens'. */
+export function neemBronnaamOver(administratieId: string): Promise<AdministratieNaamDto> {
+  return apiJson<AdministratieNaamDto>(`/administraties/${administratieId}/naam-overnemen`, { method: 'POST' })
+}
+
 // --- Groepen (blok 8 run 11-09 middag, migratie 0135) -------------------------------------------------------------
 // Lezen = élke kantoorrol (filter-keuzelijsten); muteren = Beheerder-only; nooit verwijderen (archiveren = actief=false).
 

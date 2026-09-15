@@ -23,6 +23,7 @@ import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './Pro
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
 import { RlzCheck } from './RlzCheck'
 import { GroepRij } from './GroepRij'
+import { NaamRij } from './NaamRij'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
 interface Props {
@@ -257,6 +258,9 @@ export function AdministratieDetailPagina({
             </InstellingRij>
           )}
           <h3 className="inst-groep-kop">Algemeen</h3>
+          {/* Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144): inline bewerken (Beheerder),
+              chip + "Naam overnemen" als de bron anders heet; ná een wijziging herlaadt de lijst (kop, breadcrumb, chips). */}
+          <NaamRij key={`${a.naam}|${a.naam_bron ?? ''}|${a.bron_naam ?? ''}`} administratie={a} onGewijzigd={onHerlaad} />
           <InstellingRij titel="Eigenaar (krijgt vragen)" uitleg="Nieuwe vragen worden standaard aan deze medewerker toegewezen.">
             <EigenaarCell
               administratie={a}

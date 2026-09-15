@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-15 — Administratienaam aanpassen en automatisch mee met Odoo of Reeleezee
+
+<!-- administratienaam-15-09 -->
+
+- De naam van een administratie is nu te wijzigen: Instellingen › Administraties › ‹administratie› › Algemeen, rij "Naam", knop Bewerken (alleen Beheerder). De nieuwe naam staat direct overal — klantenlijst, keuzelijsten, reconciliatie. Een naam die al bij een andere administratie hoort wordt geweigerd met de reden erbij.
+- Wordt een administratie in Odoo of Reeleezee hernoemd (zoals Camping Nieuwenhoven → Strandpark Zilverduynen), dan neemt de module die naam bij de eerstvolgende nachtelijke sync over, met een regel in het audit-log. Dat gebeurt alleen zolang niemand de naam zelf heeft gezet.
+- Heeft een Beheerder de naam zelf gezet, dan blijft die staan. Heet de administratie in Odoo of Reeleezee inmiddels anders, dan zie je dat als oranje chip bij de rij "Naam" met de knop "Naam overnemen".
+
 ## 2026-09-14 — Btw-code volgt de standaard van de grootboekrekening
 
 <!-- btw-default-grootboek-14-09 -->

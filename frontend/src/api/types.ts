@@ -1093,6 +1093,13 @@ export interface EersteSyncRunDto {
 export interface AdministratieInstellingenDto {
   id: string
   naam: string
+  /** Administratienaam volgt de bron (Peter 15-09, migratie 0144): 'odoo' | 'rlz' = de module neemt de naam bij élke
+   * sync uit Odoo/Reeleezee over; 'mens' = door een Beheerder gezet, de bron overschrijft 'm niet. `bron_naam` = de
+   * laatst gelezen naam in de bron (chip "in Odoo heet deze administratie nu …" + "Naam overnemen" bij afwijking). */
+  naam_bron?: 'odoo' | 'rlz' | 'mens'
+  bron_naam?: string | null
+  bron_naam_gezien_op?: string | null
+  naam_gevolgd_op?: string | null
   boeken_ingeschakeld: boolean
   project_verplicht: boolean
   ai_extractie_ingeschakeld: boolean
