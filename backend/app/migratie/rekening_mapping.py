@@ -10,11 +10,13 @@ module is dáár de ene bron voor — een kleine, getoetste tabel per RLZ-code:
   Beide worden lees-only opgezocht (`los_outstanding_payments_op`); staat er niets ingesteld, dan blijft 1012
   ongemapt mét een leesbaar KLIKPUNT voor Peter — nooit gegokt, nooit de bankrekening zelf (dat zou het banksaldo
   dubbel voeden). Geen nieuwe RJ-220-rol: 1012 hoort in de groepstoets bij de bankgroep, net als 1001.
-* **1001 (bankrekening) — SCHRIJF b-markering (open modelpunt, nazorg 7d 14-09).** De bankrekening wordt in Odoo
-  uitsluitend door statement lines gevoed; memoriaal-1001-regels die tegen een statement line reconciliëren horen op
-  de outstanding-/suspense-rekening van het bankdagboek, anders telt 1001 dubbel (−85.376,31 per 31-12 / +71.343,31
-  per 14-09). Dat model wordt in deze run NIET gebouwd; de tabel draagt de markering zodat de groepstoets het
-  modelpunt apart toont en de verwachte rode bankgroep als zodanig benoemd wordt.
+* **1001 (bankrekening) — SCHRIJF b (modelpunt nazorg 7d 14-09; GEBOUWD blok 9 16-09).** De bankrekening wordt in
+  Odoo uitsluitend door statement lines gevoed; memoriaal-1001-regels die tegen een statement line reconciliëren horen
+  op de outstanding-/suspense-rekening van het bankdagboek, anders telt 1001 dubbel (−85.376,31 per 31-12 / +71.343,31
+  per 14-09). Sinds blok 9 (16-09) modelleert `app/migratie/model_1001.py` dat in de replay: gekoppelde regels →
+  outstanding BNK1 (statement line reconcilieert ertegen), regels zonder/meerduidige mutatie → tussenrekening mét
+  reden. De tabelregel blijft fase `b` (de bankrekening krijgt nooit een directe Odoo-mapping) en de groepstoets
+  toont het model als regel.
 
 Alles hier is deterministisch en lees-only; de enige Odoo-calls zijn `read`/`search_read`/`fields_get` op een
 read-only client. Guard: `tests/migratie/test_rekening_mapping.py`.
@@ -73,10 +75,10 @@ EXPLICIETE_MAPPING: dict[str, ExplicieteMapping] = {
         schrijf_fase=FASE_B,
         toelichting=(
             "bankrekening — in Odoo uitsluitend gevoed door statement lines; memoriaal-1001-regels die tegen een "
-            "statement line reconciliëren → outstanding-/suspense-rekening van het bankdagboek (open modelpunt "
-            "SCHRIJF b, "
-            "nazorg 7d 14-09: anders dubbeltelling −85.376,31 per 31-12-2025 / +71.343,31 per 14-09-2026); in deze run "
-            "niet gebouwd — de bankgroep is daardoor verwacht rood"
+            "statement line reconciliëren → outstanding-/suspense-rekening van het bankdagboek (modelpunt SCHRIJF b, "
+            "nazorg 7d 14-09: anders dubbeltelling −85.376,31 per 31-12-2025 / +71.343,31 per 14-09-2026); GEBOUWD "
+            "blok 9 16-09 als 1001-model in de replay (sectie '1001-model' in het rapport): gekoppeld → outstanding, "
+            "zonder/meerduidig → tussenrekening mét reden"
         ),
     ),
 }
@@ -90,7 +92,7 @@ def expliciete_codes_voor_groep(groep: str) -> frozenset[str]:
 def modelpunten_voor_groep(groep: str) -> list[str]:
     """Leesbare SCHRIJF-b-markeringen voor de 'Stand / reden'-kolom van de groepstoets."""
     return [
-        f"RLZ {m.rlz_code}: open modelpunt SCHRIJF {m.schrijf_fase} — {m.toelichting}"
+        f"RLZ {m.rlz_code}: modelpunt SCHRIJF {m.schrijf_fase} — {m.toelichting}"
         for m in EXPLICIETE_MAPPING.values()
         if m.groep == groep and m.schrijf_fase != FASE_A
     ]
@@ -316,7 +318,7 @@ def voorstel_tegenhanger(
     m = EXPLICIETE_MAPPING.get(rlz_code or "")
     if m is not None:
         if m.schrijf_fase != FASE_A:
-            return f"open modelpunt SCHRIJF {m.schrijf_fase} — {m.toelichting}"
+            return f"modelpunt SCHRIJF {m.schrijf_fase} — {m.toelichting}"
         if outstanding is None:
             return "outstanding-rekening niet opgezocht (geen doelkoppeling gelezen)"
         return outstanding.melding

@@ -160,5 +160,16 @@ def statusregel(rapport: Any) -> str:
         f"({rapport.tellers.get('niet_vertaalbaar_overig', 0)} niet door de doelkoppeling), "
         f"{len(rapport.fouten)} leesfout(en), {rapport.tellers.get('regel_fouten', 0)} zonder regels, "
         f"{len(rapport.som_verschillen)} regelsom ≠ totaal, {rapport.memoriaal_uit_balans} memoriaal uit balans, "
-        f"resultaatposten {'sluiten' if rapport.resultaat_sluit else 'sluiten NIET'} — zie rapport"
+        f"resultaatposten {'sluiten' if rapport.resultaat_sluit else 'sluiten NIET'}, "
+        f"1001-model {_1001(rapport)} — zie rapport"
+    )
+
+
+def _1001(rapport: Any) -> str:
+    t = (getattr(rapport, "model_1001", None) or {}).get("tellers") or {}
+    if not t:
+        return "n.v.t."
+    return (
+        f"{t.get('gekoppeld', 0)} gekoppeld / {t.get('geen_bankmutatie', 0)} zonder mutatie / "
+        f"{t.get('meerduidig', 0)} meerduidig"
     )

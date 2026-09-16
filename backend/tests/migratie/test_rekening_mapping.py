@@ -72,7 +72,7 @@ class TestTabelGuard:
         assert rm.expliciete_codes_voor_groep("bank") == frozenset({"1012", "1001"})
         assert rm.expliciete_codes_voor_groep("crediteuren") == frozenset()
         punten = rm.modelpunten_voor_groep("bank")
-        assert len(punten) == 1 and punten[0].startswith("RLZ 1001: open modelpunt SCHRIJF b")
+        assert len(punten) == 1 and punten[0].startswith("RLZ 1001: modelpunt SCHRIJF b")
         assert "statement line" in punten[0] and "85.376,31" in punten[0]
         assert rm.modelpunten_voor_groep("debiteuren") == []
 
@@ -195,7 +195,7 @@ class TestVoorstelTegenhanger:
 
     def test_tabelregels(self) -> None:
         assert rm.voorstel_tegenhanger("1001", "ING", 3, self.ODOO, outstanding=GEVONDEN).startswith(
-            "open modelpunt SCHRIJF b"
+            "modelpunt SCHRIJF b"
         )
         assert rm.voorstel_tegenhanger(
             "1012", "Betalingen onderweg", 3, self.ODOO, outstanding=NIET_GEVONDEN
@@ -253,7 +253,7 @@ class TestReplayLeestOdooZelf:
         md = als_markdown(rapport)
         assert "#### Expliciete rekeningmapping (blok 8" in md and "(voorstel = mens beslist, blok 8 1b)" in md
         bank = next(g for g in rapport.afletter_groepen if g["groep"] == "bank")
-        assert bank["modelpunten"] and "- Modelpunt bankgroep: RLZ 1001: open modelpunt SCHRIJF b" in md
+        assert bank["modelpunten"] and "- Modelpunt bankgroep: RLZ 1001: modelpunt SCHRIJF b" in md
 
     def test_lezer_melding_is_let_op_en_valt_terug_op_ongemapt(self) -> None:
         collecties, regels, statements = mini_vgg()

@@ -106,6 +106,7 @@ class ReplayRapport:
     geblokkeerd: list[dict[str, Any]] = field(default_factory=list)  # punt 6: partner onbekend
     # ---- blok 8 15-09 ----
     expliciete_mapping: list[dict[str, Any]] = field(default_factory=list)  # tabel rekening_mapping (1012, 1001)
+    model_1001: dict[str, Any] = field(default_factory=dict)  # blok 9 16-09: SCHRIJF b — 1001-model per memoriaalregel
 
     # ---- oordeel ----
     @property
@@ -215,6 +216,7 @@ class ReplayRapport:
             "betalingsverschillen": self.betalingsverschillen,
             "geblokkeerd": self.geblokkeerd,
             "expliciete_mapping": self.expliciete_mapping,
+            "model_1001": self.model_1001,
             "export": self.export,
             "export_melding": self.export_melding,
             "beslispunten": list(BESLISPUNTEN),
@@ -267,6 +269,63 @@ def _tabel(regels: list[str], kop: list[str], rijen: list[list[str]], leeg: str 
     regels.append("| " + " | ".join(kop) + " |")
     regels.append("|" + "---|" * len(kop))
     regels.extend("| " + " | ".join(r) + " |" for r in rijen)
+
+
+def _model_1001_sectie(L: list[str], r: ReplayRapport) -> None:
+    """Blok 9 16-09 (SCHRIJF b): per memoriaal-1001-regel boekstuk, bedrag, gekozen bestemming en bewijs."""
+    m = r.model_1001 or {}
+    t = m.get("tellers") or {}
+    L += [
+        "",
+        f"#### 1001-model (blok 9, SCHRIJF b — `app/migratie/model_1001.py`) — {t.get('regels_1001', 0)} "
+        f"memoriaal-1001-regel(s): {t.get('gekoppeld', 0)} gekoppeld → outstanding BNK1 "
+        f"({t.get('via_koppeling', 0)} via PaymentReferenceList, {t.get('via_bedrag_datum', 0)} via bedrag + datum "
+        f"± {m.get('venster_dagen', 3)} d), {t.get('geen_bankmutatie', 0)} zonder bankmutatie → tussenrekening, "
+        f"{t.get('meerduidig', 0)} meerduidig → tussenrekening (niet toegewezen)",
+        "",
+    ]
+    if m:
+        stand = "bekend" if t.get("outstanding_bekend") else "NIET ingesteld — KLIKPUNT PETER"
+        codes = ", ".join(m.get("bank_ledger_codes") or []) or "—"
+        L.append(
+            f"Outstanding-rekening BNK1: {stand} (sleutel {t.get('outstanding_sleutel')}); "
+            f"bankgrootboeken RLZ: {codes}."
+            + (f" Melding: {m.get('outstanding_melding')}" if m.get("outstanding_melding") else "")
+        )
+        L.append("")
+    _tabel(
+        L,
+        [
+            "Boekstuk",
+            "Regel",
+            "Datum",
+            "Bedrag (debet − credit)",
+            "Uitkomst",
+            "Bestemming",
+            "Bewijs",
+            "Mutatie",
+            "Δ dagen",
+            "Kandidaten",
+            "Reden",
+        ],
+        [
+            [
+                _md(x["boekstuk"]),
+                str(x["regel"]),
+                _md(x["datum"]),
+                _eur(x["bedrag"]),
+                _md(x["uitkomst"]),
+                _md(x["bestemming"]),
+                _md(x.get("bewijs")),
+                _md(f"{x['mutatie']} ({x['mutatie_datum']})" if x.get("mutatie") else None),
+                _of(x.get("dagen_verschil")),
+                str(x.get("kandidaten", 0)),
+                _md(x.get("reden")),
+            ]
+            for x in (m.get("regels") or [])
+        ],
+        leeg="_geen memoriaalregels op een bankgrootboek_",
+    )
 
 
 def als_markdown(r: ReplayRapport) -> str:
@@ -590,6 +649,14 @@ def als_markdown(r: ReplayRapport) -> str:
         # blok 8 15-09: de SCHRIJF-b-markeringen uit de mappingtabel voluit (de tabelcel kapt af)
         for m in g.get("modelpunten") or []:
             L.append(f"- Modelpunt {g['groep']}groep: {m}")
+        # blok 9 16-09: élk resterend groepsverschil in benoemde restcategorieën mét regel (nooit 'onverklaard')
+        for rest in g.get("rest") or []:
+            aantal = f" ({rest['aantal']}×)" if rest.get("aantal") else ""
+            L.append(
+                f"- Rest {g['groep']}groep — {rest['categorie']}{aantal}: {_eur(rest['bedrag_jaareinde'])} per "
+                f"{PEILDATUM_JAAREINDE} / {_eur(rest['bedrag_tot'])} per {r.tot} — {rest['regel']}"
+            )
+    _model_1001_sectie(L, r)
     L += ["", "Volledige tabel (kolom Groep = telt alleen op groepsniveau):", ""]
     _tabel(
         L,

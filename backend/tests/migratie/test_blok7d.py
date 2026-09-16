@@ -32,11 +32,13 @@ from tests.migratie.test_replay import (
     L_KOSTEN,
     MJ2,
     ODOO_ACCOUNTS,
+    REK,
     NepClient,
     _doc,
     _jr,
     _regel,
     _run,
+    _tx,
     mini_vgg,
 )
 
@@ -146,13 +148,21 @@ def stap0_administratie(*, resultaatposten: bool = True) -> tuple[dict, dict, di
             _jr_stap0("8999", res_id, "2025-12-31", credit=265262.40),
             _jr_stap0("0509", res_id, "2025-12-31", credit=396266.72),
         ]
+    # Blok 9 16-09 (1001-model): de twee memorialen die rechtstreeks op 1001 boeken staan in RLZ tegenover een
+    # afgeletterde bankmutatie (PaymentReferenceList → het memoriaal); zonder die mutaties zou de 1001-regel terecht op
+    # de tussenrekening landen en de bankgroep rood zijn (Odoo-bank = statement lines).
+    mj_0001 = next(m for m in mjs if m["id"] == MJ_0001)
+    mj_60_3 = next(m for m in mjs if m["id"] == MJ_60_3)
     collecties = {
         "PurchaseInvoices": [],
         "SalesInvoices": [],
         "ManualJournals": mjs,
         "Receipts": [],
-        "PaymentTransactions": [],
-        "PaymentAccounts": [],
+        "PaymentTransactions": [
+            _tx(str(uuid.uuid4()), "00001", "2025-07-15", 70.0, refs=[(mj_0001, 70.0)], naam="Tupker Beheer"),
+            _tx(str(uuid.uuid4()), "00002", "2025-08-09", -1000.0, refs=[(mj_60_3, 1000.0)], naam="Tupker Beheer"),
+        ],
+        "PaymentAccounts": [{"id": REK, "Name": "ING", "IBAN": "NL95INGB0114119295", "Type": 1}],
         "JournalEntryLines": journaal,
         "Ledgers": _ledgers(),
         "TaxRates": [],
@@ -215,11 +225,22 @@ class TestPunt1TekenMemorialen:
         }
         for code, w in verwacht_je.items():
             rij = per[code]
-            assert rij["rlz_jaareinde"] == Decimal(w) == rij["odoo_jaareinde"], (code, rij)
+            assert rij["rlz_jaareinde"] == Decimal(w), (code, rij)
+            if code == "1001":
+                # blok 9 16-09: de bank telt op GROEPSniveau — RLZ 1001 (memoriaal) staat tegenover de Odoo-statement
+                # line; de memoriaalregel zelf gaat via het 1001-model naar outstanding (nettoot binnen de bankgroep)
+                assert rij["groep"] == "bank" and rij["odoo_jaareinde"] == 0
+                continue
+            assert rij["odoo_jaareinde"] == Decimal(w), (code, rij)
             assert rij["verschil_jaareinde_geschoond"] == 0 and rij["verschil_tot_geschoond"] == 0, (code, rij)
+        bank = next(g for g in rapport.afletter_groepen if g["groep"] == "bank")
+        assert bank["verschil_jaareinde"] == 0 and bank["verschil_tot"] == 0 and bank["rest"] == []
+        assert rapport.model_1001["tellers"]["gekoppeld"] == 2 == rapport.model_1001["tellers"]["via_koppeling"]
         assert per["8000"]["rlz_tot"] == 0 == per["8000"]["odoo_tot"]  # ná de terugdraai op 01-01
         assert rapport.tellers["memoriaal_uit_balans"] == 0 and rapport.uit_balans == []
         for m in rapport.moves:
+            if m.move_type != "entry":
+                continue  # blok 9: de fixture draagt nu ook statement lines (geen line_ids)
             regels_m = m.vals["line_ids"]
             som = sum((rv["debit"] - rv["credit"] for _, _, rv in regels_m), NUL)
             assert som == 0, (m.boekstuk, regels_m)
@@ -228,8 +249,12 @@ class TestPunt1TekenMemorialen:
         m0001 = next(m for m in rapport.moves if m.boekstuk == "RLZ-06-00000001")
         kant = {rv["account_id"]: (rv["debit"], rv["credit"]) for _, _, rv in m0001.vals["line_ids"]}
         id_0500 = next(a["id"] for a in ODOO_STAP0 if a["code"] == "0500")
-        id_1001 = next(a["id"] for a in ODOO_STAP0 if a["code"] == "1001")
-        assert kant[id_0500] == (NUL, Decimal("70.00")) and kant[id_1001] == (Decimal("70.00"), NUL)
+        assert kant[id_0500] == (NUL, Decimal("70.00"))
+        # de 1001-regel: debet 70 blijft debet 70, bestemming = outstanding BNK1 (blok 9; rekening in Odoo nog niet
+        # ingesteld → account_id None + KLIKPUNT, nooit de bankrekening zelf)
+        assert kant[None] == (Decimal("70.00"), NUL)
+        rij_1001 = next(r for r in rapport.model_1001["regels"] if r["boekstuk"] == "RLZ-06-00000001")
+        assert rij_1001["uitkomst"] == "gekoppeld" and rij_1001["mutatie"] == "00001"
 
     def test_oude_vertaling_op_netamount_zou_passiva_en_opbrengst_omklappen(self) -> None:
         """Regressiebewijs van de oorzaak: NetAmount 'positief = debet' klapt precies 0500/1601/1602/1710/8199/8000 om

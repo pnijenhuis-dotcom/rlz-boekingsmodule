@@ -39,7 +39,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from app.migratie import rekening_mapping, rlz_bron, vertaling
+from app.migratie import model_1001, rekening_mapping, rlz_bron, vertaling
 from app.migratie.rapport import EXPORT_MAAND, EXPORT_TYPES, PEILDATUM_JAAREINDE, ReplayRapport
 from app.migratie.vertaling import (
     IMPLICIET_CREDITEUREN,
@@ -326,6 +326,17 @@ def _vertaal_en_rapporteer(ctx: Context, bron: rlz_bron.RlzBron, rapport: Replay
             v.move.status = vertaling.STATUS_NIET
             v.move.reden = "bank-directe boeking zonder gekoppelde bankmutatie (PaymentReferenceList); " + v.move.reden
 
+    # Blok 9 16-09 (SCHRIJF b): memoriaal-1001-regels herbestemmen VÓÓR open posten/saldibalans — gekoppeld →
+    # outstanding BNK1 (statement line reconcilieert ertegen), zonder/meerduidig → tussenrekening mét reden.
+    uitkomst_1001 = model_1001.pas_1001_model_toe(ctx, bron, documenten, bankregels)
+    rapport.model_1001 = uitkomst_1001.als_dict()
+    if uitkomst_1001.regels and not uitkomst_1001.outstanding_bekend:
+        rapport.let_op.append(
+            f"1001-model: {uitkomst_1001.gekoppeld} memoriaalregel(s) → outstanding BNK1, maar de outstanding-rekening "
+            f"is in Odoo niet ingesteld (pseudo-sleutel {uitkomst_1001.outstanding_sleutel}) — KLIKPUNT PETER: "
+            f"{uitkomst_1001.outstanding_melding or 'outstanding-rekening onbekend'}"
+        )
+
     alle = documenten + bankregels
     rapport.moves = [v.move for v in alle]
     _tellers(rapport, per_collectie, alle, bron)
@@ -341,7 +352,9 @@ def _vertaal_en_rapporteer(ctx: Context, bron: rlz_bron.RlzBron, rapport: Replay
         return
     _uit_balans(rapport, documenten)
     extra = _open_posten(rapport, documenten, bankregels, ctx=ctx)
-    _saldibalans(ctx, bron, rapport, alle, tot=tot, extra_regels=extra)
+    _saldibalans(
+        ctx, bron, rapport, alle, tot=tot, extra_regels=extra, uitkomst_1001=uitkomst_1001, bankregels=bankregels
+    )
     _per_pand(ctx, rapport, alle, concepten)
     _statements(rapport, bron, bankregels, tot=tot)
     _btw(ctx, rapport, alle, bron, tot=tot)
@@ -633,6 +646,12 @@ def afletter_groepen(ctx: Context, sleutel_voor_ledger: Callable[[str | None], s
         groepen["debiteuren"]["sleutels"].add(str(ctx.doel.rekening_debiteuren_id))
     for oid in ctx.doel.rekening_bank_ids.values():
         groepen["bank"]["sleutels"].add(str(oid))
+    # blok 9 16-09 (1001-model): de outstanding-/suspense-rekening van BNK1 hoort bij de bankgroep — de echte Odoo-id
+    # als de 1012-resolutie 'm vond, altijd óók de pseudo-sleutel (KLIKPUNT-stand); binnen de groep nettoot hij naar 0
+    groepen["bank"]["sleutels"].add(model_1001.IMPLICIET_OUTSTANDING)
+    outstanding_sleutel, bekend, _m = model_1001.outstanding_sleutel_voor(ctx)
+    if bekend:
+        groepen["bank"]["sleutels"].add(outstanding_sleutel)
     return groepen
 
 
@@ -647,6 +666,8 @@ def _saldibalans(
     *,
     tot: date,
     extra_regels: list[BalansRegel] | None = None,
+    uitkomst_1001: model_1001.Uitkomst1001 | None = None,
+    bankregels: list[Vertaald] | None = None,
 ) -> None:
     jaareinde = date.fromisoformat(PEILDATUM_JAAREINDE)
     rlz: dict[str, list[Decimal]] = {}
@@ -794,8 +815,156 @@ def _saldibalans(
             # blok 7d punt 5: zonder doelkoppeling zijn de impliciete zijden/bank-pseudo's niet aan Odoo-rekeningen te
             # leggen → geen verschil-getallen, alleen de stand; telt niet in het oordeel
             rij_g.update({"stand": NIET_MEETBAAR, "verschil_jaareinde": None, "verschil_tot": None})
+            rij_g["rest"] = []
+        else:
+            # blok 9 16-09: élk resterend groepsverschil krijgt een expliciete restcategorie mét regel — nooit
+            # "onverklaard" zonder regel
+            rij_g["rest"] = rest_categorieen(
+                g,
+                rij_g["verschil_jaareinde"],
+                rij_g["verschil_tot"],
+                uitkomst_1001,
+                bankregels or [],
+                jaareinde=jaareinde,
+                tot=tot,
+            )
         groep_rijen.append(rij_g)
     rapport.afletter_groepen = groep_rijen
+
+
+#: RLZ-opruimpunten die Peter zelf afhandelt vóór SCHRIJF c (blok 8 15-09) — benoemd in de restcategorie bankgroep.
+RLZ_OPRUIMPUNTEN = (
+    "RLZ-01-00000006 (concept)",
+    "dubbel € 135.000 RLZ-28-00000061/062",
+    "bankregel 'test'",
+)
+REST_AFLETTERSTAND = "afletterstand — SCHRIJF c"
+REST_1001_GEEN = "1001 zonder bankmutatie (tussenrekening)"
+REST_1001_MEERDUIDIG = "1001 meerduidig (tussenrekening, mens kiest)"
+REST_OPEN_BANK = "open/ongekoppelde bankmutaties"
+REST_OPRUIMPUNT = "restant — RLZ-opruimpunten / afletterstand bank ↔ documenten (SCHRIJF c)"
+
+
+def _som_per_peildatum(
+    items: list[tuple[date | None, Decimal]], *, jaareinde: date, tot: date
+) -> tuple[Decimal, Decimal]:
+    je = sum((b for d, b in items if d is not None and d <= jaareinde), NUL)
+    tt = sum((b for d, b in items if d is not None and d <= tot), NUL)
+    return je.quantize(Decimal("0.01")), tt.quantize(Decimal("0.01"))
+
+
+def rest_categorieen(
+    groep: str,
+    verschil_jaareinde: Decimal | None,
+    verschil_tot: Decimal | None,
+    uitkomst_1001: model_1001.Uitkomst1001 | None,
+    bankregels: list[Vertaald],
+    *,
+    jaareinde: date,
+    tot: date,
+) -> list[dict[str, Any]]:
+    """Blok 9 16-09: het groepsverschil (Odoo − RLZ) opgedeeld in benoemde, regel-gebonden categorieën. De bekende
+    componenten komen uit het 1001-model (regels op de tussenrekening) en de open bankmutaties; wat overblijft krijgt
+    altijd een categorie mét regel (afletterstand = SCHRIJF c, RLZ-opruimpunten) — nooit 'onverklaard'."""
+    v_je = (verschil_jaareinde or NUL).quantize(Decimal("0.01"))
+    v_tot = (verschil_tot or NUL).quantize(Decimal("0.01"))
+    if v_je == 0 and v_tot == 0:
+        return []
+    uit: list[dict[str, Any]] = []
+
+    def voeg(categorie: str, je: Decimal, tt: Decimal, regel: str, aantal: int | None = None) -> None:
+        if je == 0 and tt == 0 and not aantal:
+            return
+        uit.append({"categorie": categorie, "aantal": aantal, "bedrag_jaareinde": je, "bedrag_tot": tt, "regel": regel})
+
+    rest_je, rest_tot = v_je, v_tot
+    if groep in ("crediteuren", "debiteuren"):
+        voeg(
+            REST_AFLETTERSTAND,
+            v_je,
+            v_tot,
+            "RLZ boekt betalingen tegen de post (de sub-administratie daalt), de dry-run simuleert de reconcile niet — "
+            "sluit pas ná SCHRIJF c (reconcile statement line ↔ factuur)",
+        )
+        return uit
+    if groep == "tussenrekening":
+        regels = uitkomst_1001.regels if uitkomst_1001 else []
+        for uitkomst, cat, regel in (
+            (model_1001.UITKOMST_GEEN, REST_1001_GEEN, model_1001.REDEN_GEEN),
+            (model_1001.UITKOMST_MEERDUIDIG, REST_1001_MEERDUIDIG, model_1001.REDEN_MEERDUIDIG),
+        ):
+            items = [
+                (date.fromisoformat(r["datum"]) if r.get("datum") else None, Decimal(str(r["bedrag"])))
+                for r in regels
+                if r["uitkomst"] == uitkomst
+            ]
+            if items:
+                je, tt = _som_per_peildatum(items, jaareinde=jaareinde, tot=tot)
+                voeg(cat, je, tt, regel, aantal=len(items))
+                rest_je, rest_tot = rest_je - je, rest_tot - tt
+        open_items = [
+            (date.fromisoformat(b.move.date) if b.move.date else None, -(b.bedrag or NUL))
+            for b in bankregels
+            if model_1001.is_vrij(b)
+        ]
+        if open_items:
+            je, tt = _som_per_peildatum(open_items, jaareinde=jaareinde, tot=tot)
+            voeg(
+                REST_OPEN_BANK,
+                je,
+                tt,
+                "bankmutatie zonder koppeling → tegenregel op de tussenrekening (Odoo) tot de mens 'm aflettert",
+                aantal=len(open_items),
+            )
+            rest_je, rest_tot = rest_je - je, rest_tot - tt
+        voeg(
+            REST_AFLETTERSTAND,
+            rest_je.quantize(Decimal("0.01")),
+            rest_tot.quantize(Decimal("0.01")),
+            "restant ná de benoemde componenten: koppelingen die RLZ anders verwerkt dan de dry-run simuleert — "
+            "SCHRIJF c",
+        )
+        return uit
+    # bank: ná het 1001-model is de Odoo-bankrekening uitsluitend statement lines. Bekende componenten: open mutaties
+    # (statement line in Odoo, RLZ journaliseert een onverwerkte mutatie niet) en de 1001-regels die op de tussen-
+    # bleven (RLZ-1001 wél, Odoo-bank niet). Wat overblijft = RLZ-opruimpunten / afletterstand bank ↔ documenten.
+    regels = uitkomst_1001.regels if uitkomst_1001 else []
+    rlz_wel = "RLZ boekt 'm op 1001, Odoo houdt 'm op de tussenrekening: "
+    for uitkomst, cat, regel in (
+        (model_1001.UITKOMST_GEEN, REST_1001_GEEN, rlz_wel + model_1001.REDEN_GEEN),
+        (model_1001.UITKOMST_MEERDUIDIG, REST_1001_MEERDUIDIG, rlz_wel + model_1001.REDEN_MEERDUIDIG),
+    ):
+        items = [
+            (date.fromisoformat(r["datum"]) if r.get("datum") else None, -Decimal(str(r["bedrag"])))
+            for r in regels
+            if r["uitkomst"] == uitkomst
+        ]
+        if items:
+            je, tt = _som_per_peildatum(items, jaareinde=jaareinde, tot=tot)
+            voeg(cat, je, tt, regel, aantal=len(items))
+            rest_je, rest_tot = rest_je - je, rest_tot - tt
+    open_items = [
+        (date.fromisoformat(b.move.date) if b.move.date else None, (b.bedrag or NUL))
+        for b in bankregels
+        if model_1001.is_vrij(b)
+    ]
+    if open_items:
+        je, tt = _som_per_peildatum(open_items, jaareinde=jaareinde, tot=tot)
+        voeg(
+            REST_OPEN_BANK,
+            je,
+            tt,
+            "statement line in Odoo; RLZ journaliseert een onverwerkte mutatie pas ná afletteren — SCHRIJF c",
+            aantal=len(open_items),
+        )
+        rest_je, rest_tot = rest_je - je, rest_tot - tt
+    voeg(
+        REST_OPRUIMPUNT,
+        rest_je.quantize(Decimal("0.01")),
+        rest_tot.quantize(Decimal("0.01")),
+        "Odoo-bank = statement lines (1001-model toegepast); RLZ-opruimpunten Peter: " + "; ".join(RLZ_OPRUIMPUNTEN),
+    )
+    return uit
 
 
 NIET_MEETBAAR = "niet meetbaar — doelkoppeling ontbreekt"
