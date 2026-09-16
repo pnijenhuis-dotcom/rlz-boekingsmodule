@@ -51,6 +51,17 @@ grenzen en signaleert:
 - willekeurige afschrijving, KIA, MIA/Vamil = signaal "mogelijk van toepassing" (nooit toepassen; de adviseur beslist);
 - activeringsgrens € 450 excl. btw (instelbaar per administratie, default 450).
 
+**Termijnentabel (defaults per rekeningcategorie — instelling per administratie, bron wint; lineair, restwaarde 0):**
+
+| Rekeningcategorie | Termijn (default) | Herkomst |
+|---|---|---|
+| Inventaris | 5 jr | beslispunt 3 (default) |
+| Vervoermiddelen | 5 jr | beslispunt 3 (default) |
+| Computers / software | 3 jr | beslispunt 3 (default) |
+| Machines | 5 jr (5–10) | beslispunt 3 (default) |
+| Gebouwen | 30–50 jr tot bodemwaarde (WOZ) | beslispunt 3 (default) |
+| **Steigermateriaal** | **5 jr (lineair, restwaarde 0; fiscale ondergrens 20 % = default)** | **besluit Peter 16-09** |
+
 ## 4. Desinvestering
 
 Een verkoopfactuur of bankontvangst met een activum-verwijzing (registerpost in de omschrijving/relatie) → voorstel boekwinst/
@@ -90,8 +101,9 @@ Een verkoopfactuur of bankontvangst met een activum-verwijzing (registerpost in 
 1. Activeringsgrens € 450 excl. btw (default; RLZ-instelling `FixedAssetAlertAmount` als die gevuld is).
 2. Methode default lineair; restwaarde 0.
 3. Termijnen per rekeningcategorie: inventaris 5 jr, vervoermiddelen 5 jr, computers/software 3 jr, machines 5–10 jr (default
-   5), gebouwen 30–50 jr tot bodemwaarde (WOZ), **steigermateriaal: ? (vraag aan Peter/Universal — fiscaal 20 % = 5 jaar; de
-   praktijk bij steigerbouw is vaak 7–10 jaar)**.
+   5), gebouwen 30–50 jr tot bodemwaarde (WOZ), **steigermateriaal: 5 jaar lineair, restwaarde 0 — BESLIST Peter 16-09
+   (avond); de fiscale ondergrens (20 %) is de default, de praktijk van 7–10 jaar is bewust niet gekozen**. Zie de
+   termijnentabel in §3. Dit is één parameter, geen bouw-GO: het ontwerp blijft TER AKKOORD.
 4. Automatisch aanmaken ná boeken = opt-in per administratie (default UIT), zoals elk autoboek-pad.
 5. Bijkomende kosten toevoegen aan een bestaand activum: voorstel + mens bevestigt (testfase), later autoboek-opt-in.
 6. Bouwvolgorde: fase 1 eerst op één administratie mét activa (nulmeting bepaalt welke), RLZ vóór Odoo (Odoo company 3 heeft nul

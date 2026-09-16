@@ -47,7 +47,10 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 1. Activeringsgrens € 450 excl. btw; RLZ-instelling `FixedAssetAlertAmount` (staat op 450) is de bron als die gevuld is.
 2. Methode default lineair, restwaarde 0.
 3. Termijnen per rekeningcategorie: inventaris 5 jr, vervoermiddelen 5 jr, computers/software 3 jr, machines 5 jr (5–10),
-   gebouwen 30–50 jr tot bodemwaarde (WOZ). **Steigermateriaal: vraag — fiscaal minimaal 5 jaar (20 %), praktijk 7–10 jaar.**
+   gebouwen 30–50 jr tot bodemwaarde (WOZ). ~~Steigermateriaal: vraag — fiscaal minimaal 5 jaar (20 %), praktijk 7–10 jaar.~~
+   **BESLIST Peter 16-09 (avond): steigermateriaal 5 jaar, lineair, restwaarde 0 — de fiscale ondergrens is de default.**
+   Vastgelegd in `docs/ONTWERP_ACTIVA_MVA.md` §3 (termijnentabel) + §8; het ontwerp zelf blijft TER AKKOORD (één parameter,
+   geen bouw-GO).
 4. Automatisch aanmaken van het activum ná boeken = opt-in per administratie (default UIT).
 5. Bijkomende kosten toevoegen aan een bestaand activum: voorstel + mens bevestigt in de testfase.
 6. Bouwvolgorde: RLZ eerst, op een administratie mét activa; Odoo (Universal Verkoop) pas als daar asset-modellen zijn ingericht.
@@ -55,7 +58,9 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 
 ## Opdracht 4 — omzetbronnen: besluiten Peter 16-09 verwerkt (`2026-09-16-omzetbronnen-besluiten.md`)
 
-1. **Sunshine Island eigen administratie/BV?** Default: zelfde administratie als Elderveld (beide namen in `stores` via het blok).
+1. **Sunshine Island eigen administratie/BV?** ~~Default: zelfde administratie als Elderveld (beide namen in `stores` via het blok).~~
+   **BESLIST Peter 16-09 (avond): eigen BV, dus een eigen administratie** — verwerkt in opdracht
+   `2026-09-16-omzet-store-naar-administratie-en-vanboxtel-herkenning.md` (store → administratie platformbreed).
 2. **Eten/drinken 9 %** (default laag); alcohol/horeca → `eten_drinken_tarief = hoog` per administratie.
 3. **Rittenkaart/abonnement = omzet bij verkoop** (default; fiscaal btw-correct).
 4. **Tegenzijde in RLZ = AFLETTERING** (Receipt blijft open post; PIN/Stripe via actie 15, storting direct op kas). Het cash-deel
@@ -128,7 +133,8 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 1. **Legacy `beantwoord` niet omgezet** naar open (de opdracht noemt "samenvouwen"): die vragen zijn onder het oude model bewust gesloten en
    hun documenten al vrijgegeven — heropenen zou boeken opnieuw blokkeren. Ze blijven historie, wél heropenbaar via "Heropenen".
 2. **"Afgehandeld namens" = élke kantoorrol binnen de scope** (niet alleen Beheerder), mét expliciete vlag en eigen audit-actie; klant-accordeurs
-   nooit. Alternatief: Beheerder-only.
+   nooit. ~~Alternatief: Beheerder-only.~~ **BESLIST Peter 16-09 (avond): bevestigd — iedere kantoorrol binnen de scope, mét audit
+   `vraag_afgehandeld_namens`.**
 3. **Heropenen alleen vanuit een herstelbare herkomst** (te_controleren / handmatig_afmaken / klaar_om_te_boeken) en nooit als er al een open
    vraag staat; een geboekt document heropent niet (tegenboeken is de route).
 4. **Bundelvenster 10 minuten per beurt**: het eerste bericht van een nieuwe beurt meldt direct (bestaand gedrag), volgende berichten binnen
