@@ -1,7 +1,8 @@
 # Beslispunten voor Peter — run 16-09 (defaults gekozen, werk is doorgegaan)
 
 Per opdracht de keuzes waar de opdracht ruimte liet of waar de bouw van de opdracht afweek. Default = wat nu gebouwd is; een ander
-besluit is een vervolg-opdracht via `opdrachten/inbox/`.
+besluit is een vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispuntenlijst, geen bouw) — per opdracht
+staat de productiestand in het eigen rapport (overal: niet gemeten).
 
 ## Opdracht 1 — duplicaat Zenvoices / dubbele betaling / bewust verwijderd (`2026-09-16-duplicaat-zenvoices.md`)
 
