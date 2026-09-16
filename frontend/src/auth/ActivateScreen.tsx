@@ -19,8 +19,8 @@ import { useAuth } from './AuthContext'
 /** Externe rollen activeren in de app-flow (/accordeur/activeren) mét de link in de URL —
  * een refresh begint de flow gewoon opnieuw, de link blijft geldig tot het toestel gekoppeld is
  * (app-auth zonder passkey, besluit Peter 08-09: activatiecode/link → toegangscode). */
-function accordeurActivatiePad(token: string, herstel: boolean): string {
-  return `/accordeur/activeren?uitnodiging=${encodeURIComponent(token)}${herstel ? '&herstel=1' : ''}`
+function accordeurActivatiePad(token: string, herstel: boolean, webKeuze = false): string {
+  return `/accordeur/activeren?uitnodiging=${encodeURIComponent(token)}${herstel ? '&herstel=1' : ''}${webKeuze ? '&web=1' : ''}`
 }
 
 function formatteerSecret(secret: string): string {
@@ -159,7 +159,24 @@ export function ActivateScreen() {
             </div>
           </div>
           <StoreLinks config={appConfig} variant="stop" />
-          <p className="hint">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd</p>
+          <p className="hint">🔒 De link blijft 72 uur geldig · niets is nog vastgelegd — pas ná uw keuze wordt de uitnodiging gebruikt</p>
+          {/* Peter 16-09 (web vs app): de link koppelt het toestel waarop hij wordt verzilverd. Wie bewust de web-versie op
+              deze computer wil, kiest dat hier expliciet — mét één regel wat dat betekent; de activatie zelf verbruikt de
+              uitnodiging pas bij "Dit toestel activeren" in de app-flow. */}
+          <div className="activatie-webkeuze" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="linkbtn"
+              data-testid="activatie-webkeuze"
+              onClick={() => void navigate(accordeurActivatiePad(token, isHerstel, true), { replace: true })}
+            >
+              Ik gebruik de web-versie op dit apparaat
+            </button>
+            <p className="hint" style={{ margin: '4px 0 0' }}>
+              De app draait dan in deze browser en deze uitnodiging koppelt déze computer. Uw telefoon koppelt u later zelf
+              via Toegang › "Telefoon/app koppelen".
+            </p>
+          </div>
         </div>
       </div>
     )

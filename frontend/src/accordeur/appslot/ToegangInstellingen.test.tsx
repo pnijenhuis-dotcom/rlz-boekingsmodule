@@ -224,6 +224,67 @@ describe('ToegangInstellingen — toegangscode wijzigen + loskoppelen (§5d)', (
     expect(screen.queryByText(/niet gelukt/)).toBeNull()
   })
 
+  // Peter 16-09 (web vs app, blok B): zelfservice tweede toestel — toegangscode opnieuw → POST koppeling → QR + code.
+  it('16-09 "Telefoon/app koppelen" (web) → toegangscode → POST /auth/app/toestel-koppeling → QR + XXXX-XXXX + geldigheid', async () => {
+    const aanroepen: { methode: string; pad: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL, init?: RequestInit) => {
+        aanroepen.push({ methode: init?.method ?? 'GET', pad: String(invoer) })
+        if (String(invoer) === '/auth/app/toestel-koppeling') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                token: 'kop-1',
+                activatiecode: 'ABCDEFGH',
+                link: 'http://localhost:5173/activeren?token=kop-1',
+                verloopt_op: '2026-09-16T21:30:00+02:00',
+                actieve_toestellen: 1,
+                max_toestellen: 3,
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ),
+          )
+        }
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }),
+    )
+    render(<ToegangInstellingen sluit={() => {}} uitloggen={() => Promise.resolve()} />)
+    expect(screen.getByText('Telefoon/app koppelen')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('acc-koppel-rij'))
+    expect(screen.getByText('Voer je toegangscode in')).toBeInTheDocument()
+    expect(aanroepen.some((a) => a.pad === '/auth/app/toestel-koppeling')).toBe(false)
+    await tikCode('13579')
+    expect(await screen.findByTestId('acc-koppeling')).toBeInTheDocument()
+    expect(aanroepen.filter((a) => a.pad === '/auth/app/toestel-koppeling' && a.methode === 'POST')).toHaveLength(1)
+    expect(screen.getByTestId('acc-koppelcode')).toHaveTextContent('ABCD-EFGH')
+    expect(screen.getByLabelText('QR-code met de koppelingslink').querySelector('svg')).toBeInTheDocument()
+    expect(screen.getByText(/Eenmalig, geldig tot \d\d:\d\d/)).toBeInTheDocument()
+    expect(screen.getByText(/2 van 3 ná dit toestel/)).toBeInTheDocument()
+  })
+
+  it('16-09 koppelen: 409 (maximum) → servertekst mét handeling + "Opnieuw proberen", geen QR', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL) =>
+        Promise.resolve(
+          String(invoer) === '/auth/app/toestel-koppeling'
+            ? new Response(JSON.stringify({ detail: 'Je hebt al het maximum aantal toestellen gekoppeld (3) — koppel eerst een toestel los' }), {
+                status: 409,
+                headers: { 'Content-Type': 'application/json' },
+              })
+            : new Response(null, { status: 204 }),
+        ),
+      ),
+    )
+    render(<ToegangInstellingen sluit={() => {}} uitloggen={() => Promise.resolve()} />)
+    await userEvent.click(screen.getByTestId('acc-koppel-rij'))
+    await tikCode('13579')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/maximum aantal toestellen/)
+    expect(screen.queryByTestId('acc-koppelcode')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Opnieuw proberen' })).toBeInTheDocument()
+  })
+
   it('"Dit toestel loskoppelen" → bevestiging → POST /auth/app-lock/ontkoppelen, slot-vlag weg, uitloggen aangeroepen', async () => {
     localStorage.setItem(SLOT_MODUS_SLEUTEL, '1')
     const { aanroepen, uitloggen } = renderMetFetch()

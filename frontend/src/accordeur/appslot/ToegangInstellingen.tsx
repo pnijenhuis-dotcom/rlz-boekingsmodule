@@ -5,6 +5,7 @@
 // PWA — app-auth zonder passkey, besluit Peter 08-09).
 
 import { useEffect, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   biometrieBeschikbaar,
   isBiometrieAan,
@@ -16,10 +17,20 @@ import {
   zetBiometrieUit,
   zetDirectVergrendelen,
 } from '../../api/appSlot'
-import { apiFetch } from '../../api/client'
+import { ApiError, BackendOnbereikbaarError, apiFetch } from '../../api/client'
 import { leesLaatsteSlotfout } from '../../api/slotDiagnose'
 import { zetWebSlotModus } from '../../api/webVeiligeOpslag'
-import { laatsteCodeWijziging, meldToegangscodeGewijzigd, schrijfAppSlotAudit } from '../appAuthApi'
+import {
+  formatteerActivatiecode,
+  GEEN_VERBINDING_MELDING,
+  huidigPlatform,
+  laatsteCodeWijziging,
+  maakToestelKoppeling,
+  meldToegangscodeGewijzigd,
+  normaliseerActivatiecode,
+  schrijfAppSlotAudit,
+  type ToestelKoppelingDto,
+} from '../appAuthApi'
 import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout, nativeAppBuild } from '../koudeStart'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
@@ -31,7 +42,19 @@ interface Props {
   uitloggen: () => Promise<void>
 }
 
-type Fase = 'overzicht' | 'code_huidig' | 'code_nieuw' | 'ontkoppelen'
+type Fase = 'overzicht' | 'code_huidig' | 'code_nieuw' | 'ontkoppelen' | 'koppel_code' | 'koppel_bezig' | 'koppel_klaar'
+
+/** Label van de koppel-rij (16-09): vanuit de web-versie koppel je je telefoon/app, vanuit de app "ook op de computer". */
+export function koppelLabel(native: boolean): string {
+  return native ? 'Ook op de computer gebruiken?' : 'Telefoon/app koppelen'
+}
+
+function tijdKort(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   const [fase, setFase] = useState<Fase>('overzicht')
@@ -53,6 +76,11 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   const [gekopieerd, setGekopieerd] = useState(false)
   // Lokale audit (§5d): "Laatste wijziging: dd-mm HH:MM" onder de rij — uit localStorage, geen code.
   const [laatsteWijziging, setLaatsteWijziging] = useState<string | null>(() => laatsteCodeWijziging())
+  // Zelfservice tweede toestel (Peter 16-09, blok B): eerst de toegangscode opnieuw (lokale verificatie), dan de
+  // koppeling bij de server (15 min, eenmalig) → QR + code op het scherm.
+  const native = huidigPlatform() !== 'web'
+  const [koppeling, setKoppeling] = useState<ToestelKoppelingDto | null>(null)
+  const [koppelFout, setKoppelFout] = useState<string | null>(null)
 
   useEffect(() => {
     void biometrieBeschikbaar().then(setBioKan)
@@ -151,6 +179,40 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
     }
   }
 
+  /** Stap 1 van het koppelen: huidige toegangscode als verificatie (zelfde teller als het slot). */
+  const koppelCijfer = async (c: string) => {
+    if (huidig.length >= 5) return
+    setFout(null)
+    const nieuw = huidig + c
+    setHuidig(nieuw)
+    if (nieuw.length < 5) return
+    const uitkomst = await ontgrendelMetCode(nieuw)
+    setHuidig('')
+    if (uitkomst === 'ok') {
+      await maakKoppeling()
+      return
+    }
+    if (uitkomst === 'uitgesloten') {
+      void naUitgesloten()
+      return
+    }
+    setFout('Die code klopt niet.')
+  }
+
+  const maakKoppeling = async () => {
+    setFase('koppel_bezig')
+    setKoppelFout(null)
+    try {
+      setKoppeling(await maakToestelKoppeling())
+    } catch (err) {
+      setKoppeling(null)
+      if (err instanceof BackendOnbereikbaarError) setKoppelFout(GEEN_VERBINDING_MELDING)
+      else if (err instanceof ApiError) setKoppelFout(err.message)
+      else setKoppelFout('Koppelen is niet gelukt — probeer het opnieuw.')
+    }
+    setFase('koppel_klaar')
+  }
+
   const ontkoppel = async () => {
     setBezig(true)
     try {
@@ -181,6 +243,76 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
 
   if (fase === 'code_nieuw') {
     return <PincodeKiezen onGekozen={(code) => void nieuweCodeGekozen(code)} onTerug={() => setFase('overzicht')} />
+  }
+
+  if (fase === 'koppel_code') {
+    return (
+      <div className="acc-vol">
+        <button className="acc-btn secundair klein" onClick={() => setFase('overzicht')} style={{ alignSelf: 'flex-start' }}>
+          ‹ Toegang
+        </button>
+        <div className="acc-bio">
+          <b>Voer je toegangscode in</b>
+          <div className="acc-sub">Daarna krijg je een code en QR waarmee je een ander toestel aan je account koppelt.</div>
+          {fout && <div className="acc-fout">{fout}</div>}
+        </div>
+        <PincodeInvoer code={huidig} onCijfer={(c) => void koppelCijfer(c)} onWis={() => setHuidig('')} fout={fout !== null} />
+        <div className="acc-pin-hint" />
+      </div>
+    )
+  }
+
+  if (fase === 'koppel_bezig') {
+    return (
+      <div className="acc-vol">
+        <div className="acc-bio">
+          <div className="acc-sub">Koppeling aanmaken…</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (fase === 'koppel_klaar') {
+    return (
+      <div className="acc-vol" data-testid="acc-koppeling">
+        <button className="acc-btn secundair klein" onClick={() => setFase('overzicht')} style={{ alignSelf: 'flex-start' }}>
+          ‹ Toegang
+        </button>
+        <div className="acc-bio">
+          <b>{koppelLabel(native)}</b>
+          {koppeling ? (
+            <div className="acc-sub">
+              {native
+                ? 'Open op de computer de web-versie en voer daar de activatiecode in, of scan de QR.'
+                : 'Scan de QR met de camera van je telefoon (of open de link daar) — de app neemt de activatie over. Zonder camera: voer in de app de activatiecode in.'}
+            </div>
+          ) : (
+            <div className="acc-fout" role="alert">
+              {koppelFout ?? 'Koppelen is niet gelukt.'}
+            </div>
+          )}
+        </div>
+        {koppeling && (
+          <>
+            <div role="img" aria-label="QR-code met de koppelingslink" style={{ background: '#fff', padding: 12, borderRadius: 8 }}>
+              <QRCodeSVG value={koppeling.link} size={180} />
+            </div>
+            <div className="acc-activatiecode" data-testid="acc-koppelcode" style={{ fontSize: 26, letterSpacing: 4 }}>
+              {formatteerActivatiecode(normaliseerActivatiecode(koppeling.activatiecode))}
+            </div>
+            <div className="acc-sub acc-vertrouwen">
+              Eenmalig, geldig tot {tijdKort(koppeling.verloopt_op)}. Je huidige toestellen blijven gekoppeld (
+              {koppeling.actieve_toestellen + 1} van {koppeling.max_toestellen} ná dit toestel).
+            </div>
+          </>
+        )}
+        {!koppeling && (
+          <button className="acc-btn secundair" onClick={() => void maakKoppeling()}>
+            Opnieuw proberen
+          </button>
+        )}
+      </div>
+    )
   }
 
   if (fase === 'ontkoppelen') {
@@ -254,6 +386,27 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
           onClick={() => void wisselDirect()}
         />
       </div>
+      <div className="acc-toegang-kop">Andere toestellen</div>
+      <button
+        type="button"
+        className="acc-toegang-rij"
+        data-testid="acc-koppel-rij"
+        onClick={() => {
+          setFout(null)
+          setHuidig('')
+          setFase('koppel_code')
+        }}
+      >
+        <div>
+          <div className="t">{koppelLabel(native)}</div>
+          <div className="s">
+            {native
+              ? 'Gebruik je account óók in de web-versie op een computer: je krijgt een code en QR (15 minuten geldig).'
+              : 'Koppel je telefoon met de app aan dit account: je krijgt een code en QR (15 minuten geldig). Dit toestel blijft gekoppeld.'}
+          </div>
+        </div>
+        <span aria-hidden>›</span>
+      </button>
       <div className="acc-toegang-kop">Dit toestel</div>
       <button type="button" className="acc-toegang-rij" onClick={() => setFase('ontkoppelen')}>
         <div>

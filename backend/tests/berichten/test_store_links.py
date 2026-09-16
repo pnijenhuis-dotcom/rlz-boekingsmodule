@@ -33,6 +33,7 @@ class TestMail:
     def test_gevuld_alleen_voor_app_rol_en_alleen_gevulde_platformen(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "store_link_ios", "https://apps.apple.com/nl/app/id123")
         monkeypatch.setattr(settings, "store_link_android", "")
+        monkeypatch.setattr(settings, "store_app_versie_ios", "1.1")  # 16-09: store-versie draagt de app-auth
         mails = _vang(monkeypatch)
         uitnodigingsmail.verstuur_uitnodigingsmail(naam="Milan", e_mail="m@x.nl", token="t", verloopt_op=datetime.now(UTC), app_rol=True)
         tekst = mails[0]["tekst"]
@@ -50,6 +51,10 @@ class TestMail:
             ("iPhone/iPad (App Store)", "https://apps.apple.com/x"),
             ("Android (Google Play)", "https://play.google.com/y"),
         ]
+        # 16-09: alleen_geschikt filtert op de store-versie — iOS 1.0 (default) < 1.1, Android leeg = geen listing
+        assert uitnodigingsmail.store_links(alleen_geschikt=True) == []
+        monkeypatch.setattr(settings, "store_app_versie_android", "1.1")
+        assert uitnodigingsmail.store_links(alleen_geschikt=True) == [("Android (Google Play)", "https://play.google.com/y")]
 
 
 class TestConfigRoute:

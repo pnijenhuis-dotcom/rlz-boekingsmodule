@@ -166,6 +166,23 @@ export function haalAppConfig(): Promise<AppConfigDto> {
   return apiJson('/auth/webauthn/config')
 }
 
+/** Zelfservice tweede toestel (Peter 16-09, blok B): link + code van een koppeling voor DEZELFDE gebruiker,
+ * 15 minuten geldig, eenmalig; de activatie op het andere toestel loopt over /auth/app/activeren. */
+export interface ToestelKoppelingDto {
+  token: string
+  activatiecode: string
+  link: string
+  verloopt_op: string
+  actieve_toestellen: number
+  max_toestellen: number
+}
+
+/** `POST /auth/app/toestel-koppeling` — alleen vanuit een levende toestel-sessie (apparaat-claim); de app vraagt
+ * vooraf de toegangscode opnieuw (lokaal). 409 = maximum aantal toestellen (servertekst zegt wat te doen). */
+export function maakToestelKoppeling(): Promise<ToestelKoppelingDto> {
+  return apiJson<ToestelKoppelingDto>('/auth/app/toestel-koppeling', { method: 'POST' })
+}
+
 /** `POST /auth/app/toegangscode-gewijzigd` (§4b): audit-event zonder code; best-effort (offline =
  * stil, de lokale audit-regel in ⚙ Toegang blijft). */
 export async function meldToegangscodeGewijzigd(): Promise<boolean> {

@@ -38,12 +38,15 @@ from app.auth.service import (
     _issue_token_paar,
     _login_metadata,
     _toets_externe_activatie_status,
+    is_zelfservice_koppeling,
     rond_uitnodiging_af,
 )
+from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
     ActivatiecodePoging,
     Gebruiker,
+    GebruikerStatus,
     RefreshToken,
     Uitnodiging,
     UitnodigingSoort,
@@ -72,7 +75,19 @@ TOEGESTANE_PLATFORMS = ("ios", "android", "web")
 
 # Foutteksten — leesbaar Nederlands, en bewust één tekst voor "onbekend/ongeldig/verlopen" (0022).
 FOUT_ONGELDIG = "Deze activatiecode of link is niet (meer) geldig"
-FOUT_AL_GEBRUIKT = "Deze uitnodiging is al op een ander toestel gebruikt — vraag het kantoor om een nieuwe uitnodiging"
+# 16-09 (Peter, web vs app): signaal mét handeling — de gebruiker die de link al in een browser gebruikte kan zélf een
+# tweede toestel koppelen vanuit die web-sessie; het kantoor blijft de terugval.
+FOUT_AL_GEBRUIKT = (
+    "Deze uitnodiging is al op een ander toestel gebruikt — log in op de web-versie en kies daar Toegang › "
+    "'Telefoon/app koppelen', of vraag het kantoor om een nieuwe uitnodiging"
+)
+FOUT_TE_VEEL_TOESTELLEN = (
+    "Je hebt al het maximum aantal toestellen gekoppeld ({max}) — koppel eerst een toestel los (Toegang › "
+    "'Dit toestel loskoppelen') of vraag het kantoor een toestel in te trekken"
+)
+FOUT_KOPPELING_ALLEEN_APP = "Een toestel koppelen kan alleen vanuit een toestel-sessie van de app"
+#: Zelfservice tweede toestel (blok B 16-09): de koppelingscode/-link is kort geldig — 15 minuten.
+KOPPELING_TTL = timedelta(minutes=15)
 FOUT_TE_VEEL_POGINGEN = (
     "Te veel pogingen — probeer het over een uur opnieuw of vraag het kantoor om een nieuwe uitnodiging"
 )
@@ -119,6 +134,10 @@ class ActivatieGeweigerd(AuthError):
 
 class UitnodigingAlGebruikt(AuthError):
     """409: de link/code is al op een (ander) toestel verzilverd."""
+
+
+class TeVeelToestellen(AuthError):
+    """409: het maximum aantal actieve toestellen voor deze gebruiker is bereikt (settings.app_max_toestellen)."""
 
 
 class TeVeelPogingen(AuthError):
@@ -186,6 +205,123 @@ def _tel_poging_op_uitnodiging(uitnodiging: Uitnodiging, *, now: datetime) -> bo
         return False
     uitnodiging.activatiecode_pogingen += 1
     return True
+
+
+def _actieve_toestellen(session: Session, gebruiker_id: uuid.UUID) -> int:
+    """Aantal toestel-rijen zonder kill-switch (`soort='toestel'`, `ingetrokken_op IS NULL`) — de maat voor de
+    N-toestellen-limiet (blok B 16-09). Legacy passkey-rijen tellen niet."""
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(WebauthnCredential)
+            .where(
+                WebauthnCredential.gebruiker_id == gebruiker_id,
+                WebauthnCredential.soort == WebauthnCredentialSoort.TOESTEL.value,
+                WebauthnCredential.ingetrokken_op.is_(None),
+            )
+        )
+        or 0
+    )
+
+
+@dataclass(frozen=True)
+class ToestelKoppeling:
+    """Zelfservice-koppeling (blok B 16-09): het plaintext-token + de code gaan naar de INGELOGDE gebruiker zelf (QR +
+    code op het scherm), nooit per mail; opgeslagen worden alleen de hashes (zelfde patroon als de uitnodiging)."""
+
+    uitnodiging_id: uuid.UUID
+    token: str
+    activatiecode: str
+    verloopt_op: datetime
+    actieve_toestellen: int
+    max_toestellen: int
+
+
+def maak_toestel_koppeling(*, actor_id: uuid.UUID, apparaat_id: uuid.UUID, ip_adres: str | None) -> ToestelKoppeling:
+    """Instellingen › Toegang › "Telefoon/app koppelen" (web) / "Ook op de computer gebruiken?" (native): één transactie
+    — actor = externe app-rol mét ACTIEF account en een levende TOESTEL-sessie (de aanroeper eist `apparaat_id`, de
+    toegangscode is op het toestel opnieuw ingevoerd; de code zelf bereikt de server nooit) → limiet
+    `settings.app_max_toestellen` op de actieve toestel-rijen → oudere nog-open zelfservice-koppelingen van deze
+    gebruiker verlopen per direct (één werkende koppeling tegelijk) → nieuwe `Uitnodiging` (soort uitnodiging,
+    `aangemaakt_door` =
+    de gebruiker zelf = het zelfservice-kenmerk, 15 min, mét activatiecode) → audit `toestel_koppeling_aangemaakt` op de
+    uitnodiging-rij (nooit de code). De activatie ervan loopt over exact dezelfde poort `activeer_toestel`: bestaande
+    toestellen blijven (géén herstel), de limiet wordt dáár opnieuw getoetst."""
+    from app.auth.service import _nieuwe_activatiecode  # noqa: PLC0415
+
+    now = datetime.now(UTC)
+    token = secrets.token_urlsafe(32)
+    verloopt_op = now + KOPPELING_TTL
+    uitnodiging_id = uuid.uuid4()
+    with scoped_session(None, actor_id=actor_id) as session:
+        gebruiker = session.get(Gebruiker, actor_id)
+        if gebruiker is None or gebruiker.gepseudonimiseerd_op is not None:
+            raise AuthError("Onbekende gebruiker")
+        if not is_externe_app_rol(gebruiker.rol):
+            raise ActivatieGeweigerd(FOUT_KANTOORROL)
+        if gebruiker.status != GebruikerStatus.ACTIEF:
+            raise ActivatieGeweigerd("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+        toestel = session.get(WebauthnCredential, apparaat_id)
+        if (
+            toestel is None
+            or toestel.gebruiker_id != gebruiker.id
+            or toestel.soort != WebauthnCredentialSoort.TOESTEL.value
+            or toestel.ingetrokken_op is not None
+        ):
+            raise ActivatieGeweigerd(FOUT_KOPPELING_ALLEEN_APP)
+        actief = _actieve_toestellen(session, gebruiker.id)
+        maximum = int(settings.app_max_toestellen)
+        if actief >= maximum:
+            raise TeVeelToestellen(FOUT_TE_VEEL_TOESTELLEN.format(max=maximum))
+        activatiecode, activatiecode_hash = _nieuwe_activatiecode(gebruiker.rol)
+        assert activatiecode is not None and activatiecode_hash is not None  # externe rol → altijd een code
+        session.execute(
+            update(Uitnodiging)
+            .where(
+                Uitnodiging.gebruiker_id == gebruiker.id,
+                Uitnodiging.aangemaakt_door == gebruiker.id,
+                Uitnodiging.gebruikt_op.is_(None),
+                Uitnodiging.verloopt_op > now,
+            )
+            .values(verloopt_op=now)
+        )
+        session.add(
+            Uitnodiging(
+                id=uitnodiging_id,
+                gebruiker_id=gebruiker.id,
+                token_hash=_hash_token(token),
+                aangemaakt_door=gebruiker.id,
+                verloopt_op=verloopt_op,
+                soort=UitnodigingSoort.UITNODIGING.value,
+                activatiecode_hash=activatiecode_hash,
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=gebruiker.id,
+            module="platform",
+            tabel="uitnodiging",
+            record_id=uitnodiging_id,
+            actie="toestel_koppeling_aangemaakt",
+            correlatie_id=gebruiker.id,
+            nieuwe_waarde={
+                "vanaf_apparaat_id": str(apparaat_id),
+                "vanaf_platform": toestel.platform,
+                "verloopt_op": verloopt_op.isoformat(),
+                "actieve_toestellen": actief,
+                "max_toestellen": maximum,
+                "activatiecode": True,  # bestaan, nooit de code zelf
+                **(_login_metadata(ip_adres) or {}),
+            },
+        )
+    return ToestelKoppeling(
+        uitnodiging_id=uitnodiging_id,
+        token=token,
+        activatiecode=activatiecode,
+        verloopt_op=verloopt_op,
+        actieve_toestellen=actief,
+        max_toestellen=maximum,
+    )
 
 
 def _trek_oude_toestellen_in(
@@ -292,6 +428,11 @@ def activeer_toestel(
                     _toets_externe_activatie_status(uitnodiging, gebruiker)
                 except AuthError as exc:
                     fout = ActivatieGeweigerd(str(exc))
+                if fout is None and is_zelfservice_koppeling(uitnodiging) and not demo:
+                    # Blok B 16-09: de limiet opnieuw op het moment van koppelen (er kan intussen een toestel bij zijn)
+                    maximum = int(settings.app_max_toestellen)
+                    if _actieve_toestellen(session, gebruiker.id) >= maximum:
+                        fout = TeVeelToestellen(FOUT_TE_VEEL_TOESTELLEN.format(max=maximum))
             if fout is not None:
                 record_audit_event(
                     session,
@@ -351,6 +492,7 @@ def activeer_toestel(
                         "platform": platform,
                         "apparaat_naam": toestel_naam,
                         "herstel": herstel,
+                        "zelfservice": is_zelfservice_koppeling(uitnodiging),
                         "oude_toestellen_ingetrokken": oude_toestellen,
                         "demo_herbruikbaar": demo,
                         "uitnodiging_id": str(uitnodiging.id),

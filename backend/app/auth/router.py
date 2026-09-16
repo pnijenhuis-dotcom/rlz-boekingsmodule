@@ -34,6 +34,11 @@ from app.tijd import vandaag_nl
 # een 401/409 zien. Kantoor-routes (/auth/login, /auth/totp/*, /auth/webauthn/kantoor/*) staan niet in de set.
 
 SUNSET_TEKST = "Dit inlogpad bestaat niet meer — activeer de app met de activatiecode uit je uitnodiging"
+#: Legacy wachtwoord-login van de app (1.0) — hint voor accounts zonder wachtwoord (app-auth 0029; Peter 16-09).
+LEGACY_LOGIN_APP_HINT = (
+    "Gebruik je de app zonder wachtwoord (uitnodiging mét activatiecode)? Update de app naar versie 1.1 of gebruik de "
+    "web-versie"
+)
 LEGACY_APP_PADEN = frozenset(
     {
         "/auth/accordeur/login",
@@ -741,7 +746,11 @@ def accordeur_login(payload: schemas.AccordeurLoginRequest, request: Request) ->
             e_mail=payload.e_mail, wachtwoord=payload.wachtwoord, ip_adres=_client_ip(request)
         )
     except service.AuthError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        # 16-09 (Peter, web vs app): een app-1.0-gebruiker met een account ZONDER wachtwoord (app-auth 0029) strandt
+        # hier
+        # op "wachtwoord onjuist" — de hint zegt wat te doen. Dezelfde tekst voor iedereen (0022: geen enumeratie).
+        detail = f"{exc}. {LEGACY_LOGIN_APP_HINT}"
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail) from exc
     return schemas.AccordeurLoginResponse(
         passkey_setup_token=resultaat.passkey_setup_token, heeft_passkeys=resultaat.heeft_passkeys
     )
@@ -1119,7 +1128,8 @@ def app_activeren(
         )
     except app_activatie.TeVeelPogingen as exc:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
-    except app_activatie.UitnodigingAlGebruikt as exc:
+    except (app_activatie.UitnodigingAlGebruikt, app_activatie.TeVeelToestellen) as exc:
+        # 409: al op een ander toestel gebruikt, óf (zelfservice-koppeling 16-09) het maximum aantal toestellen bereikt
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -1130,6 +1140,37 @@ def app_activeren(
         apparaat_credential_id=uitkomst.apparaat_credential_id,
         naam=uitkomst.naam,
         herstel=uitkomst.herstel,
+    )
+
+
+@router.post("/app/toestel-koppeling", response_model=schemas.ToestelKoppelingResponse)
+def app_toestel_koppeling(
+    request: Request, response: Response, actor: CurrentGebruiker = Depends(get_current_gebruiker)
+) -> schemas.ToestelKoppelingResponse:
+    """Zelfservice tweede toestel (Peter 16-09, blok B): vanuit een levende TOESTEL-sessie (apparaat-claim; de app
+    vraagt vooraf de toegangscode opnieuw) een koppelingslink + 8-tekens code voor DEZELFDE gebruiker — 15 minuten
+    geldig, eenmalig, maximaal `app_max_toestellen` actieve toestellen (409). De bestaande toestellen blijven; de
+    activatie loopt over /auth/app/activeren. Sessie zonder apparaatbinding = 400, kantoorrol = 403."""
+    if not is_externe_app_rol(actor.rol):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=app_activatie.FOUT_KANTOORROL)
+    if actor.apparaat_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=app_activatie.FOUT_KOPPELING_ALLEEN_APP)
+    try:
+        koppeling = app_activatie.maak_toestel_koppeling(
+            actor_id=actor.id, apparaat_id=actor.apparaat_id, ip_adres=_client_ip_achter_lb(request)
+        )
+    except app_activatie.TeVeelToestellen as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return schemas.ToestelKoppelingResponse(
+        token=koppeling.token,
+        activatiecode=koppeling.activatiecode,
+        link=uitnodigingsmail.activeerlink(koppeling.token),
+        verloopt_op=koppeling.verloopt_op,
+        actieve_toestellen=koppeling.actieve_toestellen,
+        max_toestellen=koppeling.max_toestellen,
     )
 
 

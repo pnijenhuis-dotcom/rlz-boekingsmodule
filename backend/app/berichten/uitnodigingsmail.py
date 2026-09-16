@@ -18,23 +18,83 @@ def activeerlink(token: str) -> str:
     return f"{settings.app_basis_url.rstrip('/')}/activeren?token={token}"
 
 
-def store_links() -> list[tuple[str, str]]:
-    """(label, url) per platform, alleen gevulde links (blok F: leeg = niets tonen)."""
+def _versie_tuple(versie: str) -> tuple[int, ...]:
+    delen: list[int] = []
+    for deel in versie.strip().split("."):
+        cijfers = "".join(ch for ch in deel if ch.isdigit())
+        delen.append(int(cijfers) if cijfers else 0)
+    return tuple(delen) or (0,)
+
+
+def store_versie_geschikt(platform: str) -> bool:
+    """Peter 16-09 (web vs app, blok C): de store-link hoort alleen in de mail als de GEPUBLICEERDE store-versie de
+    app-auth zonder passkey draagt (≥ `store_min_appauth_versie`). iOS staat op 1.0 (goedgekeurd 09-09, 1.1 nog niet
+    ingediend) → géén App Store-link maar de TestFlight-instructie; leeg = geen listing = niet geschikt."""
+    versie = (settings.store_app_versie_ios if platform == "ios" else settings.store_app_versie_android).strip()
+    if not versie:
+        return False
+    return _versie_tuple(versie) >= _versie_tuple(settings.store_min_appauth_versie)
+
+
+def store_links(*, alleen_geschikt: bool = False) -> list[tuple[str, str]]:
+    """(label, url) per platform, alleen gevulde links (blok F: leeg = niets tonen). `alleen_geschikt` (16-09): ook
+    alleen de platformen waarvan de store-versie de app-auth draagt."""
     uit: list[tuple[str, str]] = []
-    if settings.store_link_ios.strip():
+    if settings.store_link_ios.strip() and (not alleen_geschikt or store_versie_geschikt("ios")):
         uit.append(("iPhone/iPad (App Store)", settings.store_link_ios.strip()))
-    if settings.store_link_android.strip():
+    if settings.store_link_android.strip() and (not alleen_geschikt or store_versie_geschikt("android")):
         uit.append(("Android (Google Play)", settings.store_link_android.strip()))
     return uit
 
 
+#: Terugval-instructie als er wél een store-listing is maar de store-versie de app-auth nog niet draagt (16-09).
+TESTFLIGHT_INSTRUCTIE = (
+    "De versie in de App Store / Google Play werkt nog met een wachtwoord en past niet bij deze uitnodiging. "
+    "Installeer de app via TestFlight (iPhone/iPad) of de interne testversie in Google Play (Android) — vraag het "
+    "kantoor om die uitnodiging als je 'm niet hebt."
+)
+
+
+def installatie_regels() -> str:
+    """Stap 1 van de app-mail (16-09): geschikte store-links, anders de TestFlight-/interne-track-instructie, anders
+    (geen enkele listing) de neutrale regel."""
+    geschikt = store_links(alleen_geschikt=True)
+    if geschikt:
+        return "Download eerst de app op je telefoon:\n" + "\n".join(f"   - {label}: {url}" for label, url in geschikt)
+    if store_links():
+        return f"Installeer de app op je telefoon. {TESTFLIGHT_INSTRUCTIE}"
+    return "Installeer de app op je telefoon (het kantoor stuurt je de installatielink)."
+
+
 def download_blok() -> str:
-    """Blok "Download eerst de app" voor app-rollen — lege string zolang er geen store-link gevuld is."""
-    links = store_links()
+    """Blok "Download eerst de app" (herstelmail) — lege string zolang er geen GESCHIKTE store-link is (16-09: een
+    store-versie die de app-auth nog niet draagt krijgt de TestFlight-instructie in plaats van een misleidende link)."""
+    links = store_links(alleen_geschikt=True)
     if not links:
+        if store_links():
+            return f"{TESTFLIGHT_INSTRUCTIE}\n\n"
         return ""
     regels = "\n".join(f"- {label}: {url}" for label, url in links)
     return f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n\n"
+
+
+def app_activatie_stappen(*, link: str, verloopt_op: datetime, activatiecode: str | None) -> str:
+    """Uitnodigingsmail voor app-rollen (Peter 16-09, blok C): ÉÉN genummerde volgorde — 1 installeer de app (alleen een
+    store-link als die versie geschikt is), 2 open déze link op je telefoon, 3 kies een toegangscode; activatiecode als
+    terugval eronder; plus wat te doen als de link tóch op een computer opende (er wordt niets vastgelegd tot een
+    keuze) en hoe je later een tweede toestel koppelt (zelfservice, blok B)."""
+    geldig = verloopt_op.astimezone().strftime("%d-%m-%Y %H:%M")
+    return (
+        "Zo activeer je de app, in deze volgorde:\n\n"
+        f"1. {installatie_regels()}\n"
+        "2. Open déze link op je telefoon — niet op een computer; de link koppelt het toestel waarop je hem opent "
+        f"(eenmalig, geldig tot {geldig}):\n   {link}\n"
+        "3. Kies in de app een toegangscode van 5 cijfers.\n\n"
+        f"{activatiecode_blok(activatiecode, app_rol=True)}"
+        "Opende je de link per ongeluk op een computer? Kies daar 'Open op je telefoon' — er wordt niets vastgelegd "
+        "tot je een keuze maakt. Wil je de app later óók op een ander toestel gebruiken: in de app onder Toegang › "
+        "'Telefoon/app koppelen'.\n\n"
+    )
 
 
 def activatiecode_blok(activatiecode: str | None, *, app_rol: bool) -> str:
@@ -63,13 +123,18 @@ def verstuur_uitnodigingsmail(
     "Download eerst de app"; zonder links is de mail exact zoals voorheen. `activatiecode` (08-09): het
     codeblok "Activatiecode: XXXX-XXXX" voor app-rollen."""
     link = activeerlink(token)
+    if app_rol:
+        # 16-09: app-rollen krijgen de genummerde volgorde (installeren → link op je telefoon → toegangscode).
+        kern = app_activatie_stappen(link=link, verloopt_op=verloopt_op, activatiecode=activatiecode)
+    else:
+        kern = (
+            f"Activeer je account via deze link (eenmalig, geldig tot "
+            f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
+        )
     tekst = (
         f"Beste {naam},\n\n"
         f"Er staat een account voor je klaar bij Administratiekantoor Nijenhuis.\n\n"
-        f"{download_blok() if app_rol else ''}"
-        f"Activeer je account via deze link (eenmalig, geldig tot "
-        f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
-        f"{activatiecode_blok(activatiecode, app_rol=app_rol)}"
+        f"{kern}"
         f"Werkt de link niet meer? Vraag dan een nieuwe uitnodiging aan bij het kantoor.\n\n"
         f"Administratiekantoor Nijenhuis"
     )

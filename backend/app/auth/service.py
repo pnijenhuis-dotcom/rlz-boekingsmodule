@@ -343,15 +343,31 @@ def _open_uitnodiging(session: Session, *, token_hash: str, now: datetime) -> Ui
     return uitnodiging
 
 
+def is_zelfservice_koppeling(uitnodiging: Uitnodiging) -> bool:
+    """Zelfservice tweede toestel (Peter 16-09, blok B): een uitnodiging die de GEBRUIKER ZELF vanuit een levende
+    toestel-sessie aanmaakte ("Telefoon/app koppelen"). Zelfde tabel, zelfde token-/codemechaniek, soort `uitnodiging`
+    — het onderscheid is `aangemaakt_door == gebruiker_id` (een Beheerder is nooit een app-gebruiker, dus dat is
+    eenduidig; geen migratie nodig). Gedrag: alleen voor een ACTIEF account, verbruikt zonder herstel-semantiek
+    (bestaande toestellen blijven), 15 minuten geldig."""
+    return (
+        uitnodiging.soort == UitnodigingSoort.UITNODIGING.value
+        and uitnodiging.aangemaakt_door == uitnodiging.gebruiker_id
+    )
+
+
 def _toets_externe_activatie_status(uitnodiging: Uitnodiging, gebruiker: Gebruiker) -> None:
     """Status-poort externe activatie/herstel (gedeeld door de wachtwoord- én de pincode-flow):
     herstel eist een account dat mag herstellen (blokkade wint — 0052-lijn), een verse
-    uitnodiging eist status uitgenodigd."""
+    uitnodiging eist status uitgenodigd; een zelfservice-koppeling (16-09) eist juist een ACTIEF account."""
     if uitnodiging.soort == UitnodigingSoort.WACHTWOORD_HERSTEL.value and gebruiker.status not in (
         GebruikerStatus.ACTIEF,
         GebruikerStatus.WACHT_OP_PASSKEY,
     ):
         raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+    if is_zelfservice_koppeling(uitnodiging):
+        if gebruiker.status != GebruikerStatus.ACTIEF:
+            raise AuthError("Account is geblokkeerd of niet geactiveerd — neem contact op met het kantoor")
+        return
     if uitnodiging.soort == UitnodigingSoort.UITNODIGING.value and gebruiker.status != GebruikerStatus.UITGENODIGD:
         raise AuthError("Account is al geactiveerd of geblokkeerd — neem contact op met het kantoor")
 
@@ -440,6 +456,10 @@ def rond_uitnodiging_af(
         if not demo_herbruikbaar:
             _intrek_alle_sessies(session, gebruiker.id, now=now)
         actie = "wachtwoord_hersteld"
+    elif is_zelfservice_koppeling(uitnodiging):
+        # Zelfservice tweede toestel (16-09): het account is al actief en de bestaande toestellen/sessies blijven —
+        # alleen de koppeling wordt verbruikt (eenmalig).
+        actie = "toestel_gekoppeld_zelfservice"
     else:
         gebruiker.status = GebruikerStatus.ACTIEF
         actie = "activatie_afgerond"

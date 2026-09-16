@@ -122,6 +122,17 @@ describe('ActivateScreen — mobiel-first activatie externe rollen (besluit 28-0
     expect(aangeroepen.some((a) => a.includes('/auth/uitnodigingen/accepteren'))).toBe(false)
   })
 
+  it('16-09: stop-scherm heeft de expliciete keuze "web-versie op dit apparaat" → app-flow mét &web=1; tonen verbruikt niets', async () => {
+    const gebruiker = userEvent.setup()
+    const aangeroepen = stubInfoFetch('app')
+    renderActiveren('/activeren?token=abc')
+    expect(await screen.findByTestId('activatie-stopscherm')).toBeInTheDocument()
+    expect(screen.getByText(/pas ná uw keuze wordt de uitnodiging gebruikt/)).toBeInTheDocument()
+    await gebruiker.click(screen.getByTestId('activatie-webkeuze'))
+    expect(await screen.findByTestId('locatie')).toHaveTextContent('/accordeur/activeren?uitnodiging=abc&web=1')
+    expect(aangeroepen.some((a) => a.includes('/auth/app/activeren') || a.includes('/accepteren'))).toBe(false)
+  })
+
   it('blok F: mét gevulde store-links toont het stop-scherm "Download eerst de app" naast de QR — alleen de gevulde platformen', async () => {
     stubInfoFetch('app')
     const basis = globalThis.fetch

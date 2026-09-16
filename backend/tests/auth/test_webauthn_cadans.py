@@ -381,7 +381,7 @@ def test_accordeur_login_weigert_kantoorrol_generiek(beheerder_id: uuid.UUID, ad
         )
     resp = client.post("/auth/accordeur/login", json={"e_mail": e_mail, "wachtwoord": WACHTWOORD})
     assert resp.status_code == 401
-    assert resp.json()["detail"] == "Ongeldige inloggegevens"
+    assert resp.json()["detail"].startswith("Ongeldige inloggegevens")  # 16-09: + update-hint, voor iedereen gelijk
 
 
 # --- ontgrendel-frequentie: hooguit 1× per 24 uur per apparaat (besluit Peter 2026-08-27) -------

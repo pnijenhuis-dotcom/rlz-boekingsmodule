@@ -248,7 +248,7 @@ describe('AppActiveren — activatiecode-scherm', () => {
 describe('AppActiveren — link-pad (universal link)', () => {
   it('toont eerst "Welkom, Jan — Dit toestel activeren" zonder de link te verzilveren; de knop doet de POST mét token', async () => {
     const aanroepen = stubFetch()
-    renderScherm({ token: 'tok-1' })
+    renderScherm({ token: 'tok-1', webKeuze: true })  // 16-09: keuze al gemaakt (desktop &web=1) → direct het Welkom-scherm
     expect(await screen.findByText('Welkom, Jan')).toBeInTheDocument()
     expect(aanroepen.some((a) => a.pad === '/auth/uitnodigingen/info')).toBe(true)
     expect(aanroepen.some((a) => a.pad === '/auth/app/activeren')).toBe(false)
@@ -257,6 +257,28 @@ describe('AppActiveren — link-pad (universal link)', () => {
     expect(aanroepen.find((a) => a.pad === '/auth/app/activeren')!.body).toMatchObject({ token: 'tok-1', activatiecode: null })
     // Door naar de toegangscode (PincodeKiezen, "Welkom, Jan" + 5 cijfers).
     expect(await screen.findByText('Kies een code van 5 cijfers. Hiermee open je voortaan de app.')).toBeInTheDocument()
+  })
+
+  // Peter 16-09 (web vs app): een link die in een BROWSER opende laat eerst kiezen — niets verzilverd tot de knop.
+  it('16-09 web: link → keuzescherm (app op deze telefoon / verder in de browser) vóór "Welkom"; kiezen verbruikt niets', async () => {
+    const aanroepen = stubFetch()
+    renderScherm({ token: 'tok-1' })
+    expect(await screen.findByTestId('acc-keuze')).toBeInTheDocument()
+    expect(screen.getByText('Welkom, Jan')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dit toestel activeren' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'In de app op deze telefoon' }))
+    expect(await screen.findByTestId('acc-keuze-app')).toBeInTheDocument()
+    expect(screen.getByText(/Deze pagina heeft niets vastgelegd/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Toch verder in de browser' }))
+    expect(await screen.findByRole('button', { name: 'Dit toestel activeren' })).toBeInTheDocument()
+    expect(aanroepen.some((a) => a.pad === '/auth/app/activeren')).toBe(false)
+  })
+
+  it('16-09: webKeuze (desktop &web=1) en herstel slaan het keuzescherm over', async () => {
+    stubFetch()
+    renderScherm({ token: 'tok-1', webKeuze: true })
+    expect(await screen.findByRole('button', { name: 'Dit toestel activeren' })).toBeInTheDocument()
+    expect(screen.queryByTestId('acc-keuze')).toBeNull()
   })
 
   it('herstel=1 → titel "Toestel opnieuw koppelen"', async () => {
@@ -284,7 +306,7 @@ describe('AppActiveren — link-pad (universal link)', () => {
         Promise.resolve(jsonResponse({ detail: 'Deze uitnodiging is al op een ander toestel gebruikt.' }, 409)),
       '/auth/uitnodigingen/activatie-probleem': () => Promise.resolve(jsonResponse({ ok: true })),
     })
-    renderScherm({ token: 'tok-1' })
+    renderScherm({ token: 'tok-1', webKeuze: true })
     await userEvent.click(await screen.findByRole('button', { name: 'Dit toestel activeren' }))
     expect(await screen.findByText('Deze uitnodiging is al op een ander toestel gebruikt. Vraag het kantoor om een nieuwe uitnodiging.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Ik kom er niet uit — meld het kantoor' }))

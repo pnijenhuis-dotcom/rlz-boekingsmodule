@@ -228,6 +228,8 @@ describe('AccordeurApp — universal link', () => {
   it('/accordeur/activeren?uitnodiging=…&document=42 → Welkom → activeren → toegangscode → /accordeur?document=42', async () => {
     const aanroepen = stubFetch()
     renderApp('/accordeur/activeren?uitnodiging=tok-1&document=42')
+    // 16-09: in een browser eerst kiezen (app op deze telefoon / verder in de browser) vóór er iets verzilverd wordt
+    await userEvent.click(await screen.findByRole('button', { name: 'Ik heb de app niet — verder in de browser' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Dit toestel activeren' }))
     expect(await screen.findByText('Welkom, Jan')).toBeInTheDocument()
     await tikCode('13579')

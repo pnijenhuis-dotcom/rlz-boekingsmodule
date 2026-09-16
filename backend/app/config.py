@@ -400,6 +400,16 @@ class Settings(BaseSettings):
     # app-rollen, op het desktop-stop-scherm van /activeren en op het web-fallback-scherm van de universal link.
     store_link_ios: str = ""
     store_link_android: str = ""
+    # Accordeur-uitnodiging web vs app (Peter 16-09): de store-link in de uitnodigingsmail alleen als de GEPUBLICEERDE
+    # store-versie de app-auth zonder passkey draagt (≥ `store_min_appauth_versie`, 1.1); anders krijgt de mail de
+    # TestFlight-/interne-track-instructie. `store_app_versie_*` = de versie die nu in de store staat (iOS: 1.0
+    # goedgekeurd 09-09, 1.1 nog niet ingediend; Android: leeg = geen listing). Peter zet 'm bij op deploy.yml zodra
+    # 1.1 live is — de mail volgt dan vanzelf.
+    store_min_appauth_versie: str = "1.1"
+    store_app_versie_ios: str = "1.0"
+    store_app_versie_android: str = ""
+    # Zelfservice tweede toestel (Peter 16-09, blok B): maximaal N actieve toestel-rijen per app-gebruiker.
+    app_max_toestellen: int = 3
 
     # Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee
     # stille productie-incidenten in het weekend van 30/31-08). Job rlz-bewaking, elk kwartier

@@ -103,6 +103,18 @@ class AppActiverenRequest(StrikteInvoer):
         return self
 
 
+class ToestelKoppelingResponse(BaseModel):
+    """Zelfservice tweede toestel (Peter 16-09, blok B): link + code voor de INGELOGDE gebruiker zelf (QR op het
+    scherm) — 15 minuten geldig, eenmalig; activeren loopt over `POST /auth/app/activeren`."""
+
+    token: str
+    activatiecode: str
+    link: str
+    verloopt_op: datetime
+    actieve_toestellen: int
+    max_toestellen: int
+
+
 class AppActiverenResponse(BaseModel):
     """Token-levering ALTIJD in de body (het toestel bewaart het refresh-token in Keychain/Keystore/IndexedDB
     achter het lokale slot) — de route eist daarom de client-aankondiging (X-Native-Client / X-App-Slot).

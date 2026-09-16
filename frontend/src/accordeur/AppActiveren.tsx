@@ -19,7 +19,7 @@ import { slotModus } from '../api/nativeSessie'
 import { zetWebSlotModus } from '../api/webVeiligeOpslag'
 import type { TokenPaarResponseDto } from '../api/types'
 import { StoreLinks } from '../auth/StoreLinks'
-import { ActivatieHulp, activatiePadVanGeplakteLink } from './ActivatieHulp'
+import { ActivatieHulp, activatiePadVanGeplakteLink, mailAppUrl } from './ActivatieHulp'
 import {
   activatieFoutmelding,
   activeerApp,
@@ -44,6 +44,9 @@ interface Props {
   herstel?: boolean
   /** Melding boven het scherm (bv. "Je toegang is verlopen of ingetrokken — …", §5c). */
   melding?: string | null
+  /** Peter 16-09 (web vs app): de keuze "web-versie op dit apparaat" is al gemaakt (desktop-stop-scherm `&web=1`) —
+   * dan geen keuzescherm meer. In de native schil is er niets te kiezen. */
+  webKeuze?: boolean
   /** Slot staat (ontgrendeld) en de sessie is gestart — de app gaat door naar de flow. */
   naGeactiveerd: (paar: TokenPaarResponseDto) => void
 }
@@ -53,10 +56,20 @@ type Fase = 'code' | 'link_laden' | 'link_klaar' | 'link_ongeldig' | 'bezig' | '
 export const TOEGANG_VERLOPEN_MELDING =
   'Je toegang is verlopen of ingetrokken — activeer de app opnieuw met een nieuwe uitnodiging van het kantoor.'
 
-export function AppActiveren({ token = null, herstel = false, melding = null, naGeactiveerd }: Props) {
+export type Keuze = 'open' | 'app' | 'web'
+
+/** Beslisregel keuzescherm (16-09): een link die in een BROWSER opende (geen native schil) laat de gebruiker eerst
+ * kiezen — app op deze telefoon óf verder in de browser — vóór er iets verzilverd wordt. Native, herstel-links en een al
+ * gemaakte keuze (`&web=1`) slaan het scherm over. */
+export function beginKeuze(native: boolean, webKeuze: boolean, herstel: boolean): Keuze {
+  return native || webKeuze || herstel ? 'web' : 'open'
+}
+
+export function AppActiveren({ token = null, herstel = false, melding = null, webKeuze = false, naGeactiveerd }: Props) {
   const navigate = useNavigate()
   const native = huidigPlatform() !== 'web'
   const [fase, setFase] = useState<Fase>(token ? 'link_laden' : 'code')
+  const [keuze, setKeuze] = useState<Keuze>(() => beginKeuze(native, webKeuze, herstel))
   const [code, setCode] = useState('')
   const [fout, setFout] = useState<string | null>(null)
   const [naam, setNaam] = useState<string | null>(null)
@@ -224,6 +237,69 @@ export function AppActiveren({ token = null, herstel = false, melding = null, na
           }}
         >
           Activatiecode invoeren
+        </button>
+      </div>
+    )
+  }
+
+  if (fase === 'link_klaar' && token && keuze === 'open') {
+    // 16-09: eerst kiezen, dan pas koppelen — tonen verbruikt niets.
+    return (
+      <div className="acc-vol" data-testid="acc-keuze">
+        {kop}
+        <div className="acc-bio">
+          <div className="acc-icoon">☉</div>
+          <b>{`Welkom${naam ? `, ${naam}` : ''}`}</b>
+          <div className="acc-sub">
+            Deze uitnodiging koppelt het toestel waarop je hem gebruikt — eenmalig. Waar wil je de Nijenhuis Boekingsmodule
+            gebruiken?
+          </div>
+        </div>
+        <button className="acc-btn primair" onClick={() => setKeuze('app')}>
+          In de app op deze telefoon
+        </button>
+        <button className="acc-btn secundair" onClick={() => setKeuze('web')}>
+          Ik heb de app niet — verder in de browser
+        </button>
+        <div className="acc-sub acc-vertrouwen">Er is nog niets vastgelegd; je kiest zo meteen pas definitief.</div>
+      </div>
+    )
+  }
+
+  if (fase === 'link_klaar' && token && keuze === 'app') {
+    const mailUrl = mailAppUrl(/iPhone|iPad|iPod/.test(navigator.userAgent) ? 'ios' : /Android/.test(navigator.userAgent) ? 'android' : 'web')
+    return (
+      <div className="acc-vol" data-testid="acc-keuze-app">
+        {kop}
+        <div className="acc-bio">
+          <div className="acc-icoon">☉</div>
+          <b>Open de uitnodiging in de app</b>
+          <div className="acc-sub">
+            Tik in je mail-app op de link uit de uitnodiging — de app opent dan vanzelf de activatie. Of open de app en voer de{' '}
+            <b>activatiecode</b> uit dezelfde mail in. Deze pagina heeft niets vastgelegd.
+          </div>
+        </div>
+        {!native && <StoreLinks config={storeConfig} variant="fallback" />}
+        {mailUrl && (
+          <button
+            type="button"
+            className="acc-btn primair"
+            onClick={() => {
+              try {
+                window.location.assign(mailUrl)
+              } catch {
+                // OS weigert het schema — de tekst zegt wat de gebruiker zelf kan doen
+              }
+            }}
+          >
+            Mail-app openen
+          </button>
+        )}
+        <button type="button" className="acc-btn secundair" onClick={() => setKeuze('web')}>
+          Toch verder in de browser
+        </button>
+        <button type="button" className="acc-tekstlink" onClick={() => setKeuze('open')}>
+          ‹ Terug
         </button>
       </div>
     )

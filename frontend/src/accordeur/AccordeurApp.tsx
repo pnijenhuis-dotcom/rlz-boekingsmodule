@@ -202,6 +202,8 @@ export default function AccordeurApp() {
     return new URLSearchParams(location.search).get('uitnodiging')
   }, [location.search, opActiveren])
   const uitnodigingHerstel = new URLSearchParams(location.search).get('herstel') === '1'
+  // 16-09: het desktop-stop-scherm van /activeren zet `web=1` als de gebruiker bewust de web-versie op dit apparaat koos.
+  const uitnodigingWebKeuze = new URLSearchParams(location.search).get('web') === '1'
 
   /** Ná activatie + toegangscode (AppActiveren): sessie starten (AuthContext bewaart het refresh-
    * token versleuteld — het slot staat al open), slot = ontgrendeld en dóór naar de flow. Vanaf
@@ -299,7 +301,9 @@ export default function AccordeurApp() {
   } else if (slotStatus === 'vergrendeld') {
     inhoud = <AppSlotScherm naOntgrendeld={naSlotOntgrendeld} naarLogin={naSlotSessieDood} />
   } else if (uitnodigingToken) {
-    inhoud = <AppActiveren token={uitnodigingToken} herstel={uitnodigingHerstel} naGeactiveerd={naGeactiveerd} />
+    inhoud = (
+      <AppActiveren token={uitnodigingToken} herstel={uitnodigingHerstel} webKeuze={uitnodigingWebKeuze} naGeactiveerd={naGeactiveerd} />
+    )
   } else if (status === 'laden') {
     inhoud = laden
   } else if (slotStatus === 'geen' && status === 'uitgelogd') {
