@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Omzet-controlescherm v2 — kassarapport mét kostprijs (mockup, ter beoordeling Peter)</title>
+<!-- ============================================================
+     MOCKUP omzet-controlescherm v2 (Cowork 16-09-2026) — casus De Bazar Apeldoorn, ProfX Journaal 11-09 + margerapport.
+     KLASSEN: designpass-v2 (paginakop, paneel .kop, knop/knop.stil, status+dot, chip ok|vraag|stil|doc|duplicaat) — omzetting 16-09, inhoud ongewijzigd.
+     STATUS: AKKOORD Peter 16-09 12:20 ("rest akkoord") ná twee correcties: geen tegenwaarde-regel onder de cellen, totaalregel uitgelijnd op de kolom. BOUWNORM voor blok D/F/G van de ProfX-opdracht. Hoort bij opdracht
+     opdrachten/inbox/2026-09-16-omzet-coffeeshop-profx-journaal.md (blok F/G).
+     Kern: ÉÉN tabel, per artikelgroep één rij met omzet ÉN inkoopwaarde (uit het margerapport) ÉN marge;
+     twee compacte kaartjes "wat wordt geboekt" (verkoop-Receipt + kostprijsmemoriaal); één knop "Boeken (2 documenten)".
+     Klikbaar: kopje NETTO/BRUTO wisselt de bedragmodus; cellen bewerkbaar (totalen/marge rekenen live);
+     schakelaar "margerapport ontbreekt"; thema. Tokens = kantoor-designpass-v2 (teal = actie, groen = status).
+     Cijfers = het echte journaal (bruto € 10.998,16); inkoopwaarden zijn FICTIEF ter illustratie.
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f7f8; --panel:#ffffff; --panel-2:#fafbfb; --border:#e6e8ea;
+    --text:#12181f; --muted:#5b6470; --faint:#687180;
+    --primary:#0e7a6e; --primary-hover:#0a635a; --primary-fg:#ffffff;
+    --accent-bg:#e6f4f2; --ring:rgba(14,122,110,.30);
+    --ok:#1c7a54; --ok-bg:#e4f4ec; --warn:#b45309; --warn-bg:#fdf3e3;
+    --danger:#b42318; --danger-bg:#fceceb; --info:#3548a5; --info-bg:#eaeefb;
+    --radius:12px; --shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  html.dark{
+    --bg:#0b0d0e; --panel:#151719; --panel-2:#111314; --border:#242729;
+    --text:#f0f3f2; --muted:#98a0a5; --faint:#7f878d;
+    --primary:#3ec9b8; --primary-hover:#5ad6c7; --primary-fg:#0a1513;
+    --accent-bg:#13231f; --ring:rgba(62,201,184,.35);
+    --ok:#4ecb94; --ok-bg:#132a1f; --warn:#e5a04c; --warn-bg:#2c2214;
+    --danger:#f08579; --danger-bg:#331715; --info:#93a6f5; --info-bg:#191d30;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35); color-scheme:dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13.5px;letter-spacing:-.01em;line-height:1.45;padding:18px 22px}
+  button,input{font-family:inherit}
+  .paginakop{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+  .paginakop h1{font-size:19px;letter-spacing:-.02em}
+  .crumbs{color:var(--muted);font-size:12px}.crumbs b{color:var(--primary);font-weight:600}
+  .paginakop .rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .status{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700}.status .dot{width:7px;height:7px;border-radius:50%}
+  .status.geboekt{color:var(--ok)}.status.geboekt .dot{background:var(--ok)}.status.open{color:var(--warn)}.status.open .dot{background:var(--warn)}
+  .knop{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:9px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-size:13px;font-weight:600;cursor:pointer}
+  .knop:hover{background:var(--primary-hover)}.knop:active{transform:scale(.97)}
+  .knop.stil{background:var(--panel);color:var(--text);border-color:var(--border);box-shadow:none}.knop.stil:hover{background:var(--panel-2);border-color:var(--faint)}
+  .knop.klein{padding:5px 11px;font-size:12px;border-radius:7px}
+  .linkbtn{background:none;border:0;color:var(--primary);font-weight:600;cursor:pointer;font-size:12px;padding:0}
+  .linkbtn:hover{text-decoration:underline}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer}
+  .layout{display:grid;grid-template-columns:minmax(380px,44%) 1fr;gap:16px;align-items:start}
+  .paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .paneel .kop,.paneel h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+  .paneel h2 .r{margin-left:auto;display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-weight:500}
+  .tabs{display:inline-flex;gap:4px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .tabs button{border:0;background:transparent;color:var(--muted);font-weight:600;font-size:12px;padding:5px 11px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
+  .pdf{background:#2b2f33;border-radius:0 0 var(--radius) var(--radius);padding:18px;min-height:560px}
+  .blad{background:#fff;color:#111;border-radius:4px;padding:22px 26px;font-size:11.5px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.35);max-width:520px;margin:0 auto}
+  .blad h3{font-size:14px;margin-bottom:8px}.blad table{width:100%;border-collapse:collapse}.blad td{padding:1px 4px}.blad td.r{text-align:right}
+  .blad .tot{border-top:1px solid #111;font-weight:700}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap;border:1px solid transparent}
+  .chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.info{background:var(--info-bg);color:var(--info)}
+  .chip.stil{background:var(--panel-2);color:var(--muted);border-color:var(--border)}.chip.duplicaat,.chip.danger{background:var(--danger-bg);color:var(--danger)}.chip.doc{background:var(--accent-bg);color:var(--primary)}
+  .chip.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .kopvelden{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}
+  .veld label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:4px}
+  .veld .w{font-weight:600;font-size:13px}.veld .s{color:var(--muted);font-size:11.5px}
+  .bron{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 14px 12px;font-size:12px;color:var(--muted)}
+  table.groepen{width:100%;border-collapse:collapse}
+  .groepen th{background:var(--panel-2);padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+  .groepen th:first-child,.groepen th:nth-child(2),.groepen td:first-child,.groepen td:nth-child(2){text-align:left}
+  .groepen th.klik{cursor:pointer;color:var(--primary)}.groepen th.klik:hover{text-decoration:underline}
+  .groepen th.klik small{display:block;text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+  .groepen td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums}
+  .groepen td.l{text-align:left}
+  .groepen tr:hover td{background:color-mix(in srgb,var(--panel-2) 70%,transparent)}
+  .groepen tfoot td{font-weight:700;background:var(--panel-2);border-bottom:0}
+  .groepen tfoot td .eur{min-width:112px;padding:0 8px}
+  .cel{display:inline-block;min-width:96px;padding:4px 8px;border:1px solid var(--border);border-radius:7px;background:var(--panel);text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+  .cel:focus{outline:2px solid var(--ring);border-color:var(--primary)}
+  .cel.grijs{color:var(--faint);background:var(--panel-2);border-style:dashed}
+  .eur{display:inline-flex;justify-content:space-between;gap:8px;min-width:104px;font-variant-numeric:tabular-nums}
+  .eur i{font-style:normal;color:var(--faint);font-weight:400}
+  .cel{display:inline-flex;justify-content:space-between;gap:8px}
+  .cel::before{content:"€";color:var(--faint);font-weight:400}
+  .cel.grijs::before{content:""}
+  .groepen td,.groepen th{text-align:right}
+  .groepen td.l,.groepen th.l{text-align:left}
+  .sub{display:block;font-size:10.5px;color:var(--faint);font-weight:400;margin-top:2px}
+  .cat{display:flex;flex-direction:column;gap:3px}
+  .cat .naam{font-weight:600}.cat .rek{font-size:11px;color:var(--muted)}
+  .marge{font-weight:700}.marge.ok{color:var(--ok)}.marge.warn{color:var(--warn)}.marge.stil{color:var(--faint)}
+  .strook{display:flex;gap:18px;align-items:center;padding:10px 14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+  .strook b{color:var(--text)}
+  .kaarten{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px}
+  .kaart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel-2)}
+  .kaart .t{display:flex;align-items:center;gap:8px;font-weight:600}
+  .kaart .t .chip{margin-left:auto}
+  .kaart .d{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .kaart details{margin-top:6px;font-size:11.5px}.kaart summary{cursor:pointer;color:var(--primary);font-weight:600}
+  .kaart table{width:100%;font-size:11px;margin-top:6px;font-variant-numeric:tabular-nums}.kaart td{padding:1px 0}.kaart td.r{text-align:right}
+  .checks{padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+  .checks .rij{display:flex;gap:8px;align-items:center}
+  .actie{display:flex;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid var(--border);justify-content:flex-end}
+  .actie .info{margin-right:auto;font-size:12px;color:var(--muted)}
+  .notities{margin-top:18px;padding:14px 16px;border:1px dashed var(--border);border-radius:var(--radius);font-size:12.5px;color:var(--muted)}
+  .notities h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;color:var(--text)}
+  .notities li{margin:4px 0 4px 16px}
+  .schakel{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="paginakop">
+  <div>
+    <div class="crumbs">Werkvoorraad › <b>De Bazar Apeldoorn B.V.</b> › Omzet</div>
+    <h1>Kassarapport — kassadag do 11-09-2026</h1>
+  </div>
+  <span class="status geboekt"><span class="dot"></span>mockup · akkoord Peter 16-09</span>
+  <div class="rechts">
+    <label class="schakel"><input type="checkbox" id="geenMarge"> margerapport ontbreekt (demo)</label>
+    <button class="icon-btn" onclick="document.documentElement.classList.toggle('dark')" title="thema">◐</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- LINKS: bijlagen -->
+  <section class="paneel">
+    <h2 class="kop">Bijlagen
+      <span class="r">
+        <span class="tabs"><button class="on" onclick="tab(this,'j')">Journaal</button><button onclick="tab(this,'m')">Margerapport</button></span>
+        <button class="linkbtn">⤢ vergroot</button>
+      </span>
+    </h2>
+    <div class="pdf">
+      <div class="blad" id="blad-j">
+        <h3>ProfX Journaal <span style="float:right;font-weight:400">Blad 1/4</span></h3>
+        <div>Kassa: Kassa 1, Kassa 2 · Gebruiker: Manager<br>Rapportperiode: 11-09-2026 05:00:00 t/m 12-09-2026 05:00:00<br>Aantal klanten: 604 · Datum uitdraai: 12-09-2026 06:39:44</div>
+        <h3 style="margin-top:12px">Artikelgroepen</h3>
+        <table>
+          <tr><td><i>Omschrijving</i></td><td class="r"><i>Aantal</i></td><td class="r"><i>Bedrag</i></td><td class="r"><i>Retour</i></td><td class="r"><i>Korting</i></td></tr>
+          <tr><td>Dranken</td><td class="r">34</td><td class="r">€ 88,50</td><td></td><td></td></tr>
+          <tr><td>Edible</td><td class="r">22</td><td class="r">€ 285,00</td><td></td><td></td></tr>
+          <tr><td>Hash</td><td class="r">167,39</td><td class="r">€ 1.691,64</td><td class="r">2 · € -22,00</td><td></td></tr>
+          <tr><td>Headshop</td><td class="r">86</td><td class="r">€ 177,55</td><td class="r">87 · € 0,00</td><td></td></tr>
+          <tr><td>Joints</td><td class="r">606</td><td class="r">€ 2.342,00</td><td class="r">1 · € -3,50</td><td></td></tr>
+          <tr><td>Snacks</td><td class="r">5</td><td class="r">€ 7,50</td><td></td><td></td></tr>
+          <tr><td>Wiet</td><td class="r">555,99</td><td class="r">€ 6.431,47</td><td></td><td></td></tr>
+          <tr class="tot"><td>Bruto omzet</td><td></td><td class="r">€ 10.998,16</td><td></td><td></td></tr>
+          <tr><td>Kortingen / Vouchers</td><td></td><td class="r">€ 0,00</td><td></td><td></td></tr>
+          <tr class="tot"><td>Netto omzet</td><td></td><td class="r">€ 10.998,16</td><td></td><td></td></tr>
+        </table>
+      </div>
+      <div class="blad" id="blad-m" style="display:none">
+        <h3>ProfX Margerapport <span style="float:right;font-weight:400">Blad 1/1</span></h3>
+        <div>Rapportperiode: 11-09-2026 05:00 t/m 12-09-2026 05:00</div>
+        <table style="margin-top:10px">
+          <tr><td><i>Groep</i></td><td class="r"><i>Omzet</i></td><td class="r"><i>Inkoopwaarde</i></td><td class="r"><i>Marge</i></td></tr>
+          <tr><td>Hash</td><td class="r">€ 1.669,64</td><td class="r">€ 1.001,80</td><td class="r">40,0 %</td></tr>
+          <tr><td>Joints</td><td class="r">€ 2.338,50</td><td class="r">€ 1.169,25</td><td class="r">50,0 %</td></tr>
+          <tr><td>Wiet</td><td class="r">€ 6.431,47</td><td class="r">€ 3.858,88</td><td class="r">40,0 %</td></tr>
+          <tr><td>Edible</td><td class="r">€ 285,00</td><td class="r">€ 142,50</td><td class="r">50,0 %</td></tr>
+          <tr><td>Dranken</td><td class="r">€ 88,50</td><td class="r">€ 31,00</td><td class="r">65,0 %</td></tr>
+          <tr><td>Headshop</td><td class="r">€ 177,55</td><td class="r">€ 88,80</td><td class="r">50,0 %</td></tr>
+          <tr><td>Snacks</td><td class="r">€ 7,50</td><td class="r">€ 3,00</td><td class="r">60,0 %</td></tr>
+        </table>
+        <p style="margin-top:8px;color:#666">(inkoopwaarden fictief ter illustratie)</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- RECHTS: controle -->
+  <section class="paneel">
+    <div class="kopvelden">
+      <div class="veld"><label>Administratie</label><div class="w">De Bazar Apeldoorn B.V.</div><div class="s">profiel <span class="chip info">Winkel / kassa</span></div></div>
+      <div class="veld"><label>Kassadag · boekdatum</label><div class="w">do 11-09-2026</div><div class="s">periode 05:00 → 05:00 · Kassa 1 + 2</div></div>
+      <div class="veld"><label>Bruto omzet (rapport)</label><div class="w">€ 10.998,16</div><div class="s">604 klanten · kortingen € 0,00</div></div>
+      <div class="veld"><label>Inkoopwaarde (margerapport)</label><div class="w" id="kopInkoop">€ 6.295,23</div><div class="s" id="kopMarge">marge 42,8 % · historie 41–44 %</div></div>
+    </div>
+    <div class="bron">
+      <span class="chip ok dot">ProfX Journaal herkend</span>
+      <span class="chip ok dot" id="chipMarge">Margerapport gekoppeld · zelfde dag</span>
+      <span class="chip stil">bron: mail debazar…@gmail.com · 12-09 06:41</span>
+      <span class="chip stil">dedupe: geen eerder rapport voor 11-09</span>
+    </div>
+
+    <table class="groepen">
+      <thead><tr>
+        <th class="l">Artikelgroep</th>
+        <th class="l">Categorie → rekening · btw</th>
+        <th class="klik" id="thBedrag" onclick="wisselModus()" title="klik: wissel netto/bruto">Omzet netto <small>klik voor bruto</small></th>
+        <th>Btw</th>
+        <th>Inkoopwaarde</th>
+        <th>Marge</th>
+      </tr></thead>
+      <tbody id="rijen"></tbody>
+      <tfoot><tr>
+        <td class="l" colspan="2">Totaal · <span class="sub" style="display:inline">sluit op rapport € 10.998,16 <span class="chip ok" style="vertical-align:middle">✓</span></span></td>
+        <td id="totOmzet"></td><td id="totBtw"></td><td id="totInkoop"></td><td id="totMarge" class="marge"></td>
+      </tr></tfoot>
+    </table>
+
+    <div class="strook">
+      <span>Ontvangen (blad 3): <b>kas <span class="eur" style="min-width:0"><i>€</i><span>6.410,66</span></span></b> · <b>PIN <span class="eur" style="min-width:0"><i>€</i><span>4.587,50</span></span></b></span>
+      <span>→ tegenzijde: 1000 Kas · 1301 Kruispost PIN <button class="linkbtn">wijzig…</button></span>
+      <span style="margin-left:auto"><span class="chip ok dot">sluit op bruto</span></span>
+    </div>
+
+    <div class="kaarten">
+      <div class="kaart">
+        <div class="t">Verkoop → Reeleezee <span class="chip stil" id="k1">7 regels · € 10.998,16 incl.</span></div>
+        <div class="d">Kasomzet-bon (Receipt, geen debiteur), boekdatum 11-09, btw per regel; tegenzijde kas / kruispost PIN.</div>
+        <details><summary>regels tonen</summary><table id="k1t"></table></details>
+      </div>
+      <div class="kaart" id="kaart2">
+        <div class="t">Kostprijs → memoriaal <span class="chip stil" id="k2">5 regels · € 6.295,23</span></div>
+        <div class="d">Per groep: kostprijs verkopen (D) ↔ voorraad softdrugs / inkoop contant (C). Bron: margerapport, mens wint.</div>
+        <details><summary>regels tonen</summary><table id="k2t"></table></details>
+      </div>
+    </div>
+
+    <div class="checks">
+      <div class="rij"><span class="chip ok dot">ok</span> Regelsom omzet = rapporttotaal (cent-exact)</div>
+      <div class="rij"><span class="chip ok dot">ok</span> Memoriaal saldo 0 · beide documenten in één transactie</div>
+      <div class="rij"><span class="chip ok dot">ok</span> Geen dubbel rapport voor deze kassadag (lokaal + RLZ)</div>
+      <div class="rij" id="chkEdible"><span class="chip warn dot">let op</span> Edible: categorie uit default (vrijgesteld) — eerste keer bevestigen</div>
+      <div class="rij" id="chkMarge"><span class="chip ok dot">ok</span> Marge 42,8 % binnen eigen historie (41–44 %)</div>
+    </div>
+
+    <div class="actie">
+      <span class="info" id="actieInfo">Boeken maakt 2 documenten in Reeleezee: verkoop + kostprijsmemoriaal. Mislukt de tweede, dan wordt de eerste gestorneerd.</span>
+      <button class="knop stil">Afwijzen… <kbd>A</kbd></button>
+      <button class="knop stil">Vraag stellen…</button>
+      <button class="knop" id="btnBoek">Boeken (2 documenten) ✓ <kbd>B</kbd></button>
+    </div>
+  </section>
+</div>
+
+<div class="notities">
+  <h3>Ontwerpnotities (onderdeel van het akkoord)</h3>
+  <ol>
+    <li><b>Eén rij per artikelgroep, omzet én kostprijs naast elkaar.</b> De gebruiker denkt in groepen; de module vertaalt dat naar twee RLZ-documenten. Geen apart memoriaalscherm.</li>
+    <li><b>Kopje "Omzet netto / bruto" is klikbaar</b> en wisselt de invoermodus voor de hele tabel (Peter 16-09: géén tegenwaarde onder de cel — kost breedte; wie de andere waarde wil ziet die door te wisselen). Voorkeur per gebruiker onthouden. Zelfde schakelaar komt op de inkoop-boekingsregels.</li>
+    <li><b>Inkoopwaarde uit het margerapport is voorgevuld en bewerkbaar</b> (chip wisselt naar "mens"); marge rekent live en kleurt tegen de eigen historie (bestaande plausibiliteitscheck).</li>
+    <li><b>Margerapport ontbreekt</b> → kolom Inkoopwaarde grijs, chip oranje, knop wordt "Boeken (alleen omzet)"; komt het rapport later, dan koppelt de module het aan dezelfde kassadag en maakt alleen de kostprijsboeking.</li>
+    <li><b>Artikellijst (blad 2) wordt niet geboekt</b>, alleen getoond in de bijlage. Betaalwijzen (blad 3) voeden de tegenzijde-strook.</li>
+    <li><b>Categorie-defaults</b> per groepsnaam (Wiet/Hash/Joints vrijgesteld, Dranken/Snacks laag, Headshop hoog, Edible = beslispunt) — eerste keer oranje bevestigen, daarna groen uit het geheugen.</li>
+    <li><b>Periodes hoeven niet gelijk te lopen:</b> omzet per dag, margerapport per week is toegestaan. De kostprijsboeking volgt dan de periode van het margerapport (één memoriaal per week, boekdatum = laatste dag) en dekt de 7 dagjournalen; elk dagscherm toont "kostprijs: weekrapport 37 verwacht/gekoppeld", de marge wordt op weekniveau getoetst. Periode-dekking (dagen zonder journaal, week zonder margerapport) is een check-rij, geen blokkade.</li>
+    <li><b>Profielchip "Winkel / kassa"</b> in de kop: afgeleid zodra een administratie een herkend kassarapport heeft; bundelt de instellingen (bronnen, kostprijs, tegenzijde, mapping). Geen los label.</li>
+  </ol>
+</div>
+
+<script>
+const groepen=[
+ {n:"Dranken", cat:"Omzet dranken", rek:"8010 · laag 9 %", btw:0.09, bruto:88.50, ink:31.00, hk:"default"},
+ {n:"Edible", cat:"Omzet edibles", rek:"8005 · vrijgesteld", btw:0, bruto:285.00, ink:142.50, hk:"default?"},
+ {n:"Hash", cat:"Omzet softdrugs", rek:"8000 · vrijgesteld", btw:0, bruto:1669.64, ink:1001.80, hk:"geheugen"},
+ {n:"Headshop", cat:"Omzet headshop", rek:"8020 · hoog 21 %", btw:0.21, bruto:177.55, ink:88.80, hk:"geheugen"},
+ {n:"Joints", cat:"Omzet softdrugs", rek:"8000 · vrijgesteld", btw:0, bruto:2338.50, ink:1169.25, hk:"geheugen"},
+ {n:"Snacks", cat:"Omzet snacks", rek:"8011 · laag 9 %", btw:0.09, bruto:7.50, ink:3.00, hk:"default"},
+ {n:"Wiet", cat:"Omzet softdrugs", rek:"8000 · vrijgesteld", btw:0, bruto:6431.47, ink:3858.88, hk:"geheugen"},
+];
+let modus="netto";
+const num=v=>v.toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2});
+const eur=v=>`<span class="eur"><i>€</i><span>${num(v)}</span></span>`;
+const r2=v=>Math.round(v*100)/100;
+function netto(g){return r2(g.bruto/(1+g.btw));}
+function render(){
+  const geen=document.getElementById("geenMarge").checked;
+  const tb=document.getElementById("rijen"); tb.innerHTML="";
+  let tO=0,tB=0,tI=0,tBr=0;
+  groepen.forEach((g,i)=>{
+    const n=netto(g), b=r2(g.bruto-n); tO+=n;tB+=b;tBr+=g.bruto; if(!geen) tI+=g.ink;
+    const m=g.bruto? (n-g.ink)/n*100:0;
+    const mk= geen?"stil": (m<35||m>70?"warn":"ok");
+    const hk = g.hk==="default?"?'<span class="chip warn">bevestig</span>':g.hk==="default"?'<span class="chip stil">default</span>':'<span class="chip ok">geheugen</span>';
+    const toon = modus==="netto"? n : g.bruto;
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td class="l"><b>${g.n}</b></td>
+      <td class="l"><div class="cat"><span class="naam">${g.cat} ${hk}</span><span class="rek">${g.rek}</span></div></td>
+      <td><span class="cel" contenteditable data-i="${i}" onblur="wijzig(this)">${num(toon)}</span></td>
+      <td>${eur(b)}</td>
+      <td>${geen?'<span class="cel grijs">—</span>':`<span class="cel" contenteditable data-ink="${i}" onblur="wijzigInk(this)">${num(g.ink)}</span>`}</td>
+      <td class="marge ${mk}">${geen?"—":m.toFixed(1)+" %"}</td></tr>`);
+  });
+  document.getElementById("totOmzet").innerHTML=eur(modus==="netto"?tO:tBr);
+  document.getElementById("totBtw").innerHTML=eur(tB);
+  document.getElementById("totInkoop").innerHTML=geen?"—":eur(tI);
+  const tm=(tO-tI)/tO*100; const tmEl=document.getElementById("totMarge");
+  tmEl.textContent=geen?"—":tm.toFixed(1)+" %"; tmEl.className="marge "+(geen?"stil":(tm<35||tm>70?"warn":"ok"));
+  document.getElementById("kopInkoop").innerHTML=geen?"—":eur(tI);
+  document.getElementById("kopMarge").textContent=geen?"margerapport ontbreekt — alleen omzet boeken":"marge "+tm.toFixed(1)+" % · historie 41–44 %";
+  document.getElementById("chipMarge").className="chip dot "+(geen?"warn":"ok");
+  document.getElementById("chipMarge").textContent=geen?"Margerapport ontbreekt · kostprijs later":"Margerapport gekoppeld · zelfde dag";
+  document.getElementById("k1").innerHTML=`7 regels · ${eur(tBr)} incl.`;
+  document.getElementById("k2").innerHTML=geen?"wacht op margerapport":`${new Set(groepen.map(g=>g.cat)).size} regels · ${eur(tI)}`;
+  document.getElementById("kaart2").style.opacity=geen?.55:1;
+  document.getElementById("btnBoek").innerHTML=geen?"Boeken (alleen omzet) ✓ <kbd>B</kbd>":"Boeken (2 documenten) ✓ <kbd>B</kbd>";
+  document.getElementById("actieInfo").textContent=geen?"Boeken maakt nu alleen de verkoopboeking; de kostprijs volgt automatisch zodra het margerapport van 11-09 binnenkomt.":"Boeken maakt 2 documenten in Reeleezee: verkoop + kostprijsmemoriaal. Mislukt de tweede, dan wordt de eerste gestorneerd.";
+  document.getElementById("chkMarge").innerHTML=geen?'<span class="chip warn dot">let op</span> Marge niet toetsbaar — margerapport ontbreekt (geen blokkade)':`<span class="chip ${tm<35||tm>70?"warn":"ok"} dot">${tm<35||tm>70?"let op":"ok"}</span> Marge ${tm.toFixed(1)} % ${tm<35||tm>70?"buiten":"binnen"} eigen historie (41–44 %)`;
+  // kaart-tabellen
+  const k1=document.getElementById("k1t"); k1.innerHTML=groepen.map(g=>`<tr><td>${g.rek.split(" ·")[0]} ${g.cat}</td><td class="r">${eur(netto(g))}</td><td class="r">btw ${eur(r2(g.bruto-netto(g)))}</td></tr>`).join("")+`<tr><td>1000 Kas / 1301 Kruispost PIN</td><td class="r" colspan="2">${eur(tBr)}</td></tr>`;
+  const per={}; groepen.forEach(g=>{per[g.cat]=(per[g.cat]||0)+g.ink});
+  document.getElementById("k2t").innerHTML=geen?"":Object.entries(per).map(([c,v])=>`<tr><td>7000 Kostprijs ${c.replace("Omzet ","")}</td><td class="r">D ${eur(v)}</td></tr>`).join("")+`<tr><td>3000 Voorraad softdrugs / 1000 Kas (inkoop contant)</td><td class="r">C ${eur(tI)}</td></tr>`;
+  document.getElementById("thBedrag").innerHTML= modus==="netto"?'Omzet netto <small>klik voor bruto</small>':'Omzet bruto <small>klik voor netto</small>';
+}
+function parse(t){return parseFloat(t.replace(/[€\s.]/g,"").replace(",","."))}
+function wijzig(el){const i=+el.dataset.i,v=parse(el.textContent); if(isNaN(v))return render(); if(modus==="netto") groepen[i].bruto=r2(v*(1+groepen[i].btw)); else groepen[i].bruto=r2(v); groepen[i].hk="mens"; render();}
+function wijzigInk(el){const i=+el.dataset.ink,v=parse(el.textContent); if(!isNaN(v)){groepen[i].ink=r2(v);} render();}
+function wisselModus(){modus=modus==="netto"?"bruto":"netto";render();}
+function tab(b,w){[...b.parentNode.children].forEach(x=>x.classList.remove("on"));b.classList.add("on");document.getElementById("blad-j").style.display=w==="j"?"":"none";document.getElementById("blad-m").style.display=w==="m"?"":"none";}
+document.getElementById("geenMarge").addEventListener("change",render);
+render();
+</script>
+</body>
+</html>

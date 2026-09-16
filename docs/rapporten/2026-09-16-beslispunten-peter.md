@@ -106,3 +106,35 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 2. **Type wijzigen** kiest uit inkoopfactuur / kassarapport / verplichting; verkoopfactuur en waarborg blijven systeemsoorten.
 3. **ter_accordering** blijft selecteerbaar; de server slaat 'm over mét reden (geen dubbele client-poort).
 4. **Verzamelbak** ongewijzigd (had al bulk-toewijzen/hoort-niet-bij-ons, blok B 02-09).
+
+## Opdracht 9 (rij 2, middag) — omzet coffeeshop ProfX Journaal (`2026-09-16-omzet-profx.md`)
+
+1. **Edible-tarief = vrijgesteld** (cannabis-edibles) mét niet-blokkerende controle "eerste keer bevestigen" (oranje chip op de regel);
+   gewone edibles 9 % = mens kiest de btw-code, de mapping onthoudt het daarna.
+2. **Boekdatum = startdag van de rapportperiode** (05:00→05:00 = één kassadag); een periode over meerdere dagen = eerste dag.
+3. **Margerapport zelfde dag = bundelen in het journaal** (kostprijs per groep gevuld, wederhelft `samengevoegd`), nooit apart boeken;
+   afwijkende periode (weekrapport) = eigen document mét één kostprijsmemoriaal per rapportperiode en dekkingscontrole (niet blokkerend).
+4. **Kostprijs-tegenrekening = de bestaande mapping-kolom** (voorraad-tegenrekening in de kaart "Kostprijs → memoriaal"); een aparte
+   instelling "direct kas-inkoop" is niet gebouwd (mens kiest de rekening, mapping onthoudt).
+5. **Marge-kleur in het scherm 35–70 %** (oranje buiten die band) is presentatie; de harde marge-plausibiliteitscheck vs eigen historie blijft
+   de poort.
+6. **Margerapport zonder journaal in dezelfde mail** → afzender-regel of verzamelbak (nooit gokken); een dagelijks los margerapport koppelt
+   ná herclassificatie/toewijzing alsnog live via de periode-dekking.
+7. **Profielchip in het omzetscherm** is afgeleid uit het herkende kassarapport zelf (de Beheerder-route `GET …/kassa-profiel` is
+   Beheerder-only); de override-stand is alleen in Instellingen zichtbaar.
+
+## Opdracht 10 (rij 2, middag) — vragen-dialoog open tot Afgehandeld (`2026-09-16-vragen-dialoog.md`)
+
+1. **Legacy `beantwoord` niet omgezet** naar open (de opdracht noemt "samenvouwen"): die vragen zijn onder het oude model bewust gesloten en
+   hun documenten al vrijgegeven — heropenen zou boeken opnieuw blokkeren. Ze blijven historie, wél heropenbaar via "Heropenen".
+2. **"Afgehandeld namens" = élke kantoorrol binnen de scope** (niet alleen Beheerder), mét expliciete vlag en eigen audit-actie; klant-accordeurs
+   nooit. Alternatief: Beheerder-only.
+3. **Heropenen alleen vanuit een herstelbare herkomst** (te_controleren / handmatig_afmaken / klaar_om_te_boeken) en nooit als er al een open
+   vraag staat; een geboekt document heropent niet (tegenboeken is de route).
+4. **Bundelvenster 10 minuten per beurt**: het eerste bericht van een nieuwe beurt meldt direct (bestaand gedrag), volgende berichten binnen
+   10 min gaan mee in de 10-min-job als "N nieuwe berichten". Alternatief: alles altijd via de job (max 10 min vertraging).
+5. **Werkvoorraad-groep op de afgeleide kant**: een open vraag met de beurt bij kantoor (of zonder toegewezene) telt als kantoorwerk in de
+   standaardlijst — herziet blok 11 08-09 ("open vraag = wachten") conform de opdracht; tellers volgen `Document.toegewezen_aan`.
+6. **Geen push naar kantoor** bij een accordeur-bericht (bestaand: signaal via `toegewezen_aan` + werkvoorraad); een kantoor-melding is een
+   apart vervolg.
+

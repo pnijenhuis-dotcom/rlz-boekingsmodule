@@ -6,6 +6,26 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Vragen-dialoog blijft open: meerdere berichten achter elkaar, van beide kanten
+
+<!-- vragen-dialoog-16-09 -->
+
+- **Je kunt nu meerdere berichten achter elkaar sturen in een vraag.** Ook de klant-accordeur in de app kan na een antwoord direct nog iets toevoegen; het invoerveld sluit niet meer tot de ander heeft gereageerd. De dialoog gaat pas dicht met "Afgehandeld".
+- **Je ziet wie het laatste bericht schreef en wanneer.** Eigen berichten staan rechts. Enter geeft een nieuwe regel, Cmd/Ctrl-Enter verstuurt; een getypt bericht gaat bij een verbindingsfout niet verloren.
+- **Afwezige vraagsteller? Kantoor kan de vraag namens de vraagsteller afhandelen**, en een afgehandelde vraag is te heropenen zolang de factuur nog niet geboekt is.
+- **Minder meldingen aan de klant:** meerdere berichten kort na elkaar worden als één melding gestuurd ("3 nieuwe berichten"), nooit per bericht.
+- **Werkvoorraad telt eerlijker:** een open vraag waarbij het kantoor aan zet is staat in de gewone lijst; alleen als de klant aan zet is staat hij onder "Wachten op anderen".
+
+## 2026-09-16 — Coffeeshop-kassarapporten (ProfX) automatisch als omzet, mét kostprijs uit het margerapport, en netto/bruto kiezen
+
+<!-- omzet-profx-16-09 -->
+
+- **Een ProfX Journaal wordt herkend en meteen als kassarapport verwerkt.** De omzet staat automatisch gesplitst per artikelgroep (Dranken, Edible, Hash, Headshop, Joints, Snacks, Wiet) met een voorgestelde categorie, rekening en btw-code — de artikellijst wordt niet geboekt, alleen de groepen. Geen AI, dus geen invulwerk en geen gok.
+- **Journaal en margerapport in één mail worden één document.** De inkoopwaarde per groep uit het margerapport staat naast de omzet; boeken maakt in één keer de verkoopboeking én de kostprijsboeking. Komt het margerapport per week, dan koppelt het aan alle dagen van die week en zie je per dag "kostprijs: weekrapport N verwacht / gekoppeld / geboekt".
+- **Kopje "Omzet netto" is klikbaar en wisselt naar bruto.** Vul bedragen in zoals ze op het rapport staan (bruto) of exclusief btw (netto); de andere waarde volgt uit de btw-code. Werkt ook in de boekingsregels van het inkoop-controlescherm en wordt per gebruiker onthouden.
+- **Administraties met kassarapporten krijgen het profiel "Winkel / kassa".** Zichtbaar als chip en filter in Instellingen › Administraties; de Beheerder kan het aan- of uitzetten bij Boeken & AI › Omzetbronnen.
+- **Eerder verkeerd binnengekomen rapporten** (als inkoopfactuur) zijn met een rapport terug te vinden en via "Type wijzigen → kassarapport" in bulk om te zetten.
+
 ## 2026-09-16 — Meerdere documenten tegelijk verwijderen, van type wisselen, verplaatsen of afwijzen
 
 <!-- documentenlijst-bulk-16-09 -->
