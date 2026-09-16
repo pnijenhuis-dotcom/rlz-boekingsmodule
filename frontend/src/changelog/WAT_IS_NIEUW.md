@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Dubbele facturen en dubbele betalingen eerder gezien
+
+<!-- duplicaat-zenvoices-16-09 -->
+
+- Een factuur die al in Reeleezee staat (bijvoorbeeld via Zenvoices of handmatig ingevoerd) wordt nu ook herkend als het factuurnummer anders is geschreven, zoals "2 4594 001722" tegenover "24594001722", en ook als de leverancier onder een tweede kaart staat: bij binnenkomst wordt zo'n exemplaar meteen afgevoerd met het bestaande boekstuknummer, en op het moment van boeken blokkeert de controle "Duplicaatcheck" met dat nummer. Staat er alleen een factuur met hetzelfde bedrag rond dezelfde datum maar een ander nummer, dan zie je een oranje waarschuwing.
+- **Dubbele betaling gesignaleerd.** Betaal je binnen twee maanden twee keer hetzelfde bedrag aan dezelfde rekening zonder dat het huur of een abonnement is, dan zie je in het bankscherm een oranje chip "mogelijk dubbel betaald" en krijgt het kantoor een reconciliatie-bevinding "Mogelijk dubbel betaald" — controleer of terugvordering nodig is; klopt het (twee facturen), accepteer met reden.
+- **Reconciliatie — "Bewust verwijderd in RLZ" in één klik.** Meldt de reconciliatie dat een geboekt document niet meer in Reeleezee staat omdat je het daar zélf hebt verwijderd (dubbel of test), dan kies je als Beheerder nu de knop "Bewust verwijderd in RLZ": de melding wordt geaccepteerd met de vaste reden en het document staat in de module niet langer als geboekt maar als afgevoerd (het oude boekstuknummer blijft zichtbaar in de tijdlijn). Vergist? Onder "geaccepteerd" zet "Terugdraaien…" het document weer op geboekt.
+
 ## 2026-09-15 — Omzet uit spreadsheets: zonnestudio-dagstaat en pilates-betalingen
 
 <!-- omzetbronnen-15-09 -->
