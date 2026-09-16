@@ -241,6 +241,8 @@ export function WaarborgReviewScreen() {
               <SearchableCombobox
                 label="Tegenrekening (waartegen het memoriaal sluit)"
                 opties={grootboek.opties}
+                laden={grootboek.laden}
+                laadFout={grootboek.fout}
                 waarde={tegenrekeningId}
                 onWijzig={kiesTegenrekening}
                 placeholder="Kies tegenrekening…"

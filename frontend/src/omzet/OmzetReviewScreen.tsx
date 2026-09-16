@@ -665,6 +665,8 @@ export function OmzetReviewScreen() {
                             label={`Omzet-GB ${regel.categorie}`}
                             toonLabel={false}
                             opties={grootboek.opties}
+                            laden={grootboek.laden}
+                            laadFout={grootboek.fout}
                             waarde={regel.omzetLedgerId}
                             onWijzig={(id) => wijzigRegel(index, { omzetLedgerId: id })}
                             placeholder="Kies omzetrekening…"
@@ -675,6 +677,8 @@ export function OmzetReviewScreen() {
                                 label={`Btw-code ${regel.categorie}`}
                                 toonLabel={false}
                                 opties={btwCodes.opties}
+                                laden={btwCodes.laden}
+                                laadFout={btwCodes.fout}
                                 waarde={regel.taxrateId}
                                 onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
                                 placeholder="Kies btw-code…"
@@ -860,6 +864,8 @@ export function OmzetReviewScreen() {
                                 label={`Kostprijs-GB ${r.categorie}`}
                                 toonLabel={false}
                                 opties={grootboek.opties}
+                                laden={grootboek.laden}
+                                laadFout={grootboek.fout}
                                 waarde={r.kostprijsLedgerId}
                                 onWijzig={(id) => wijzigRegel(i, { kostprijsLedgerId: id })}
                                 placeholder="Kies kostenrekening…"
@@ -877,6 +883,8 @@ export function OmzetReviewScreen() {
                               label="Voorraad-tegenrekening"
                               toonLabel={false}
                               opties={grootboek.opties}
+                              laden={grootboek.laden}
+                              laadFout={grootboek.fout}
                               waarde={voorraadLedgerId}
                               onWijzig={(id) => {
                                 setVoorraadLedgerId(id)

@@ -908,9 +908,22 @@ tr.subrij .eerste-sync-rij ul {
 }
 
 .combobox-leeg {
+  /* Blok A 16-09: eigen blok buiten de gevirtualiseerde hoogte-container, altijd minimaal één rij hoog. */
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
   padding: 8px 10px;
   font-size: 12.5px;
   color: var(--muted);
+}
+
+.combobox-optie-chip {
+  margin-left: auto;
+  font-size: 10.5px;
+  line-height: 1.2;
+  padding: 1px 6px;
+  flex: none;
 }
 
 /* Bevestigingsdialoog (design-pass taak 4, "documenten verwijderen") — 1:1 uit mockup/index.html

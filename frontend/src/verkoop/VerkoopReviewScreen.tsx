@@ -519,6 +519,8 @@ export function VerkoopReviewScreen() {
                         label={`Grootboek regel ${regel.volgnummer}`}
                         toonLabel={false}
                         opties={grootboek.opties}
+                        laden={grootboek.laden}
+                        laadFout={grootboek.fout}
                         waarde={regel.ledgerId}
                         onWijzig={(id) => wijzigRegel(index, { ledgerId: id })}
                         placeholder="Kies grootboekrekening…"
@@ -551,6 +553,8 @@ export function VerkoopReviewScreen() {
                                 ? btwCodes.opties.filter((o) => regel.btwKandidaten.includes(o.id))
                                 : btwCodes.opties
                             }
+                            laden={btwCodes.laden}
+                            laadFout={btwCodes.fout}
                             waarde={regel.taxrateId}
                             onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
                             placeholder="Kies btw-code…"

@@ -12,6 +12,9 @@ import { AccorderingSectie } from '../document/AccorderingSectie'
 import { AfwijsModal } from '../document/AfwijsModal'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useProjectOpties, useProjectVerplicht, useVendorOpties } from '../document/useSyncOpties'
+import { useAuthOptioneel } from '../auth/AuthContext'
+import { magProjectAanmaken } from '../auth/rollen'
+import { NieuwProjectModal } from '../projecten/NieuwProjectModal'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type { DocumentDetailDto } from '../api/types'
 import { DatePicker } from '../ui/DatePicker'
@@ -157,8 +160,17 @@ export function VerplichtingReviewScreen() {
   const [herlaadTeller, setHerlaadTeller] = useState(0)
 
   const vendors = useVendorOpties(administratieId ?? '')
-  const projecten = useProjectOpties(administratieId ?? '')
+  // Blok B 16-09 (feedback Peter: "kan niks selecteren en zie niet welke projecten bestaan"): laden/fout gaan mee naar de
+  // combobox, de lege stand draagt een actie ("Project aanmaken →" / voetoptie "+ Nieuw project…"), en ná aanmaken
+  // herlaadt de lijst (herlaadSleutel) en staat het nieuwe project geselecteerd.
+  const [projectCacheVersie, setProjectCacheVersie] = useState(0)
+  const projecten = useProjectOpties(administratieId ?? '', projectCacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId ?? '')
+  const rol = useAuthOptioneel()?.rol ?? null
+  const magProject = magProjectAanmaken(rol)
+  const [nieuwProjectOpen, setNieuwProjectOpen] = useState(false)
+  const projectenLeeg = !projecten.laden && !projecten.fout && projecten.opties.length === 0
+  const projectenLink = `/projecten?administratie=${administratieId ?? ''}`
 
   const laad = useCallback(() => setHerlaadTeller((t) => t + 1), [])
 
@@ -479,6 +491,8 @@ export function VerplichtingReviewScreen() {
                     label="Leverancier"
                     toonLabel={false}
                     opties={vendors.opties}
+                    laden={vendors.laden}
+                    laadFout={vendors.fout}
                     waarde={velden.vendorId}
                     onWijzig={(id) => wijzig({ vendorId: id })}
                     placeholder="Kies crediteur…"
@@ -565,10 +579,14 @@ export function VerplichtingReviewScreen() {
                     label="Project"
                     toonLabel={false}
                     opties={projecten.opties}
+                    laden={projecten.laden}
+                    laadFout={projecten.fout}
+                    onOpnieuw={() => setProjectCacheVersie((v) => v + 1)}
                     waarde={velden.projectId}
                     onWijzig={(id) => wijzig({ projectId: id })}
                     placeholder={projectVerplicht ? 'Kies project (verplicht)…' : 'Kies project…'}
                     vereist={projectVerplicht}
+                    voetActie={magProject && bewerkbaar ? { label: '+ Nieuw project…', onKies: () => setNieuwProjectOpen(true) } : undefined}
                   />
                 </div>
                 <HerkomstChip
@@ -578,6 +596,22 @@ export function VerplichtingReviewScreen() {
                 />
               </div>
             </FormField>
+            {projectenLeeg && (
+              <p className="hint" data-testid="projecten-leeg">
+                Geen projecten in deze administratie —{' '}
+                <Link to={projectenLink} className="text-primary">
+                  Project aanmaken →
+                </Link>
+              </p>
+            )}
+            {projecten.fout && (
+              <p className="hint" data-testid="projecten-fout">
+                Kon de projectenlijst niet laden — {projecten.fout}{' '}
+                <button type="button" className="linkbtn" onClick={() => setProjectCacheVersie((v) => v + 1)}>
+                  Opnieuw
+                </button>
+              </p>
+            )}
             {voorstel.project_suggestie && velden.projectId !== voorstel.project_suggestie.project_id && (
               <p className="hint" data-testid="project-suggestie">
                 Voorstel uit de extractie: <b>{voorstel.project_suggestie.naam ?? 'onbekend'}</b>
@@ -672,7 +706,17 @@ export function VerplichtingReviewScreen() {
                           <td>
                             <b>{c.naam}</b>
                           </td>
-                          <td>{c.melding}</td>
+                          <td>
+                            {c.melding}
+                            {c.status !== 'ok' && c.naam === 'Verplichte velden' && projectenLeeg && /project/i.test(c.melding) && (
+                              <>
+                                {' '}
+                                <Link to={projectenLink} className="text-primary" data-testid="check-project-aanmaken">
+                                  Project aanmaken →
+                                </Link>
+                              </>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -716,6 +760,17 @@ export function VerplichtingReviewScreen() {
         </div>
       </div>
 
+      {nieuwProjectOpen && administratieId && (
+        <NieuwProjectModal
+          administratieId={administratieId}
+          onKlaar={(projectId) => {
+            setProjectCacheVersie((v) => v + 1)
+            wijzig({ projectId })
+            setNieuwProjectOpen(false)
+          }}
+          onAnnuleren={() => setNieuwProjectOpen(false)}
+        />
+      )}
       {afwijsOpen && (
         <AfwijsModal
           administratieId={administratieId}

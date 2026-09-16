@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Keuzelijsten zeggen waarom ze leeg zijn; projecten mét nummer, en direct aanmaken
+
+<!-- verplichting-projectveld-16-09 -->
+
+- **Een keuzelijst zonder resultaten laat nu duidelijk zien waarom** — "Laden…", "Kon de lijst niet laden" (met Opnieuw) of echt leeg ("Geen projecten in deze administratie") — en biedt bij projecten direct "Project aanmaken". De tekst werd eerder tot een streepje van een paar pixels weggeknipt.
+- **Projecten tonen hun nummer apart** (bijvoorbeeld 26140 · Koningstraat) en je kunt op dat nummer zoeken. Inactieve projecten staan onderaan met het label "inactief" in plaats van verborgen.
+- **In het offerte-/verplichtingscherm** kun je vanuit de projectkeuze een nieuw project aanmaken ("+ Nieuw project…"); het staat daarna meteen geselecteerd.
+
 ## 2026-09-16 — Omzetboekingen landen onder Inkomsten; omzet die als inkoop geboekt is wordt gevonden en hersteld
 
 <!-- omzet-binder-16-09 -->

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { SearchableCombobox } from './SearchableCombobox'
@@ -364,7 +364,7 @@ describe('SearchableCombobox', () => {
       const veld = screen.getByRole('combobox', { name: 'Project' })
       await gebruiker.click(veld)
       await gebruiker.type(veld, 'bestaat niet')
-      await screen.findByText('Geen resultaten')
+      await screen.findByText("Geen resultaten voor 'bestaat niet'")
       const voet = screen.getByRole('button', { name: '+ Nieuw project aanmaken…' })
       fireEvent.mouseDown(voet)
       expect(onKies).toHaveBeenCalledTimes(1)
@@ -375,6 +375,76 @@ describe('SearchableCombobox', () => {
       render(<SearchableCombobox label="Project" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
       await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
       expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('lege stand zichtbaar (blok A 16-09 — projectveld verplichting-scherm was een sliver)', () => {
+    it('rendert de lege stand BUITEN de 0-px-hoogte-container, met minimale rijhoogte', async () => {
+      const gebruiker = userEvent.setup()
+      render(<SearchableCombobox label="Project" opties={[]} waarde={null} onWijzig={() => {}} />)
+      await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+
+      const leeg = screen.getByTestId('combobox-leeg')
+      expect(leeg).toHaveTextContent('Geen projecten in deze administratie')
+      // Niet binnen een voorouder met height 0 (de gevirtualiseerde container) — dáár werd hij weggeknipt.
+      let el: HTMLElement | null = leeg.parentElement
+      while (el && el.getAttribute('role') !== 'listbox') {
+        expect(el.style.height).not.toBe('0px')
+        el = el.parentElement
+      }
+      expect(leeg.style.minHeight).toBe('32px')
+    })
+
+    it('onderscheidt laden, fout (mét Opnieuw) en echt leeg', async () => {
+      const gebruiker = userEvent.setup()
+      const onOpnieuw = vi.fn()
+      const { rerender } = render(<SearchableCombobox label="Project" opties={[]} waarde={null} onWijzig={() => {}} laden />)
+      await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+      expect(screen.getByTestId('combobox-leeg')).toHaveTextContent('Laden…')
+
+      rerender(
+        <SearchableCombobox label="Project" opties={[]} waarde={null} onWijzig={() => {}} laadFout="HTTP 403" onOpnieuw={onOpnieuw} />,
+      )
+      expect(screen.getByTestId('combobox-leeg')).toHaveTextContent('Kon de lijst niet laden — HTTP 403')
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'Opnieuw' }))
+      expect(onOpnieuw).toHaveBeenCalledTimes(1)
+
+      rerender(<SearchableCombobox label="Leverancier" opties={[]} waarde={null} onWijzig={() => {}} />)
+      expect(screen.getByTestId('combobox-leeg')).toHaveTextContent('Geen crediteuren in deze administratie')
+
+      rerender(<SearchableCombobox label="Project" opties={[]} waarde={null} onWijzig={() => {}} leegTekst="Nog geen projecten" />)
+      expect(screen.getByTestId('combobox-leeg')).toHaveTextContent('Nog geen projecten')
+    })
+
+    it("zegt bij een filter zonder treffer 'Geen resultaten voor <term>'", async () => {
+      const gebruiker = userEvent.setup()
+      render(<SearchableCombobox label="Project" opties={OPTIES} waarde={null} onWijzig={() => {}} />)
+      const veld = screen.getByRole('combobox', { name: 'Project' })
+      await gebruiker.click(veld)
+      await gebruiker.type(veld, 'xyz')
+      expect(await screen.findByText("Geen resultaten voor 'xyz'")).toBeInTheDocument()
+    })
+
+    it('toont code links en een chip "inactief" (blok C 16-09)', async () => {
+      const gebruiker = userEvent.setup()
+      render(
+        <SearchableCombobox
+          label="Project"
+          opties={[
+            { id: 'a', code: '26140', label: 'Koningstraat (Kempen)' },
+            { id: 'b', code: '00001', label: 'Oud werk', inactief: true },
+          ]}
+          waarde={null}
+          onWijzig={() => {}}
+        />,
+      )
+      await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+      expect(screen.getByRole('option', { name: /26140.*Koningstraat/ })).toBeInTheDocument()
+      const oud = screen.getByRole('option', { name: /Oud werk/ })
+      expect(oud).toHaveTextContent('inactief')
+      // Zoeken op de code werkt.
+      await gebruiker.type(screen.getByRole('combobox', { name: 'Project' }), '2614')
+      await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     })
   })
 })

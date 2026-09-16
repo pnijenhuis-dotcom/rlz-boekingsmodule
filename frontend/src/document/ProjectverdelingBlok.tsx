@@ -362,6 +362,9 @@ export function ProjectverdelingBlok({ administratieId, documentId, status, soor
                         label="Project (vast)"
                         toonLabel={false}
                         opties={projectOpties}
+                        laden={projecten.laden}
+                        laadFout={projecten.fout}
+                        onOpnieuw={() => setProjectCacheVersie((v) => v + 1)}
                         waarde={rij.projectId}
                         onWijzig={(id) => wijzigRij(rij.sleutel, { projectId: id })}
                         placeholder="— kies project —"

@@ -19,6 +19,9 @@ export interface ComboboxOptie {
   /** Idem, afgeleid uit de historie (0143, `historie_taxrate_id` + `historie_taxrate_n`) — volgt ná de RLZ-default. */
   historieTaxrateId?: string | null
   historieTaxrateN?: number | null
+  /** Blok C 16-09: een project met `is_actief = false` blijft zichtbaar (onderaan, chip "inactief") — de gebruiker
+   * moet zien wat er bestaat; verbergen was precies Peters klacht. */
+  inactief?: boolean
 }
 
 function weergaveTekst(optie: ComboboxOptie): string {
@@ -42,6 +45,38 @@ interface Props {
    * voorbij de laatste optie landt erop, Enter activeert. Géén optie: kiest niets, maar opent
    * een dialoog bij de aanroeper — daarom een knop, geen listbox-optie. */
   voetActie?: { label: string; onKies: () => void }
+  /** Blok A 16-09 (feedback Peter, projectveld verplichting-scherm): leeg ≠ laden ≠ fout. De lijst is nog aan het
+   * laden ("Laden…"), kon niet geladen worden ("Kon de lijst niet laden — <reden>" mét "Opnieuw" als `onOpnieuw`
+   * gezet is), of is écht leeg ("Geen <meervoud van label> in deze administratie", overschrijfbaar via `leegTekst`).
+   * Een filter zonder treffer blijft "Geen resultaten voor '<term>'". De stand rendert BUITEN de gevirtualiseerde
+   * hoogte-container — die is bij nul opties 0 px hoog en knipte de tekst tot een sliver weg. */
+  laden?: boolean
+  laadFout?: string | null
+  onOpnieuw?: () => void
+  leegTekst?: string
+}
+
+/** Meervoud van het veldlabel voor de lege stand — bewust een kleine, expliciete tabel (geen taalregels die stil
+ * misgaan); onbekend label = neutraal "opties". */
+const LABEL_MEERVOUD: Record<string, string> = {
+  project: 'projecten',
+  'project (vast)': 'projecten',
+  leverancier: 'crediteuren',
+  crediteur: 'crediteuren',
+  relatie: 'relaties',
+  grootboek: 'grootboekrekeningen',
+  grootboekrekening: 'grootboekrekeningen',
+  rekening: 'grootboekrekeningen',
+  'btw-code': 'btw-codes',
+  btw: 'btw-codes',
+  administratie: 'administraties',
+  categorie: 'categorieën',
+}
+
+export function legeStandTekst(label: string, leegTekst?: string): string {
+  if (leegTekst) return leegTekst
+  const meervoud = LABEL_MEERVOUD[label.trim().toLowerCase()] ?? 'opties'
+  return `Geen ${meervoud} in deze administratie`
 }
 
 // Sync-caches kunnen honderden tot duizenden opties bevatten (bv. Universal: 145 projecten) —
@@ -98,6 +133,10 @@ export function SearchableCombobox({
   fout,
   toonLabel = true,
   voetActie,
+  laden = false,
+  laadFout = null,
+  onOpnieuw,
+  leegTekst,
 }: Props) {
   const reactId = useId()
   const inputId = `${reactId}-input`
@@ -351,6 +390,37 @@ export function SearchableCombobox({
                 <span>{breedsteOptie.label}</span>
               </div>
             )}
+            {gefilterd.length === 0 && (
+              // Buiten de 0-px-hoogte-container hieronder, mét minimale rijhoogte: nooit meer weggeknipt (blok A 16-09).
+              <div className="combobox-leeg" role="status" data-testid="combobox-leeg" style={{ minHeight: RIJHOOGTE }}>
+                {laden ? (
+                  'Laden…'
+                ) : laadFout ? (
+                  <>
+                    Kon de lijst niet laden — {laadFout}
+                    {onOpnieuw && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="linkbtn"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            onOpnieuw()
+                          }}
+                        >
+                          Opnieuw
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : debouncedZoekterm.trim() ? (
+                  `Geen resultaten voor '${debouncedZoekterm.trim()}'`
+                ) : (
+                  legeStandTekst(label, leegTekst)
+                )}
+              </div>
+            )}
             <div style={{ height: gefilterd.length * RIJHOOGTE, position: 'relative' }}>
               {zichtbareOpties.map((optie, i) => {
                 const echteIndex = eersteIndex + i
@@ -370,10 +440,14 @@ export function SearchableCombobox({
                   >
                     {optie.code && <span className="combobox-optie-code">{optie.code}</span>}
                     <span>{optie.label}</span>
+                    {optie.inactief && (
+                      <span className="chip combobox-optie-chip" title="Staat in Reeleezee op inactief">
+                        inactief
+                      </span>
+                    )}
                   </div>
                 )
               })}
-              {gefilterd.length === 0 && <div className="combobox-leeg">Geen resultaten</div>}
             </div>
             {voetActie && (
               <button

@@ -182,6 +182,8 @@ export function RelatiePicker({
         <SearchableCombobox
           label="Crediteur"
           opties={crediteuren.opties}
+          laden={crediteuren.laden}
+          laadFout={crediteuren.fout}
           waarde={keuze.entityId}
           onWijzig={(id) =>
             onWijzig({

@@ -87,6 +87,9 @@ interface Opties {
   aanbiedAntwoord?: () => Response
   vervalAanroepen?: { body: unknown }[]
   checksBody?: () => Response
+  /** Blok B 16-09: antwoord van GET …/projecten (default: één project). */
+  projectenAntwoord?: () => Response
+  projectVerplicht?: boolean
 }
 
 function installFetch(opties: Opties = {}) {
@@ -137,9 +140,10 @@ function installFetch(opties: Opties = {}) {
         return Promise.resolve(json({ crediteuren: [{ id: VENDOR, naam: 'Confide Bouw B.V.' }] }))
       }
       if (url.endsWith('/projecten')) {
-        return Promise.resolve(json({ projecten: [{ id: PROJECT, naam: '26140 Koningstraat' }] }))
+        if (opties.projectenAntwoord) return Promise.resolve(opties.projectenAntwoord())
+        return Promise.resolve(json({ projecten: [{ id: PROJECT, naam: 'Koningstraat', code: '26140', is_actief: true }] }))
       }
-      if (url.endsWith('/project-instelling')) return Promise.resolve(json({ verplicht: false }))
+      if (url.endsWith('/project-instelling')) return Promise.resolve(json({ verplicht: opties.projectVerplicht ?? false }))
       if (url.includes('/accordering/')) return Promise.resolve(json({ detail: 'geen ronde' }, 404))
       if (url.includes('/accordering')) return Promise.resolve(json({ laatst_herinnerd: {} }))
       if (url.endsWith(`/documenten/${DOC}`)) return Promise.resolve(json(opties.detailBody ?? detail()))
@@ -293,5 +297,77 @@ describe('VerplichtingReviewScreen — controle kantoor', () => {
     await waitFor(() => expect(vervalAanroepen).toHaveLength(1))
     expect(vervalAanroepen[0].body).toEqual({ reden: 'opdracht niet doorgegaan' })
     expect(await screen.findByTestId('vervallen-regel')).toHaveTextContent('opdracht niet doorgegaan')
+  })
+})
+
+describe('VerplichtingReviewScreen — projectveld (blok B 16-09, feedback Peter: lege lijst zonder uitleg)', () => {
+  it('toont bij een administratie zonder projecten de lege stand mét "Project aanmaken →", ook in de open lijst', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch({ projectenAntwoord: () => json({ projecten: [] }), voorstelBody: voorstel({ project_id: null, project_naam: null }) })
+    toonScherm()
+    await screen.findByDisplayValue('26140-OFF-01')
+
+    const leeg = await screen.findByTestId('projecten-leeg')
+    expect(leeg).toHaveTextContent('Geen projecten in deze administratie')
+    expect(within(leeg).getByRole('link', { name: 'Project aanmaken →' })).toHaveAttribute('href', `/projecten?administratie=${ADMIN}`)
+
+    await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+    // De lijst zelf zegt het ook — en is geen sliver meer: de tekst staat in een eigen blok mét rijhoogte.
+    const lijstLeeg = screen.getByTestId('combobox-leeg')
+    expect(lijstLeeg).toHaveTextContent('Geen projecten in deze administratie')
+    expect(lijstLeeg.style.minHeight).toBe('32px')
+  })
+
+  it('onderscheidt een laadfout van een lege lijst en biedt "Opnieuw"', async () => {
+    let pogingen = 0
+    installFetch({
+      projectenAntwoord: () => {
+        pogingen += 1
+        return pogingen === 1 ? json({ detail: 'Not authenticated' }, 401) : json({ projecten: [{ id: PROJECT, naam: 'Koningstraat', code: '26140', is_actief: true }] })
+      },
+    })
+    toonScherm()
+    await screen.findByDisplayValue('26140-OFF-01')
+
+    const fout = await screen.findByTestId('projecten-fout')
+    expect(fout).toHaveTextContent(/Kon de projectenlijst niet laden/)
+    expect(screen.queryByTestId('projecten-leeg')).not.toBeInTheDocument()
+
+    await userEvent.setup().click(within(fout).getByRole('button', { name: 'Opnieuw' }))
+    await waitFor(() => expect(screen.queryByTestId('projecten-fout')).not.toBeInTheDocument())
+    expect(pogingen).toBe(2)
+  })
+
+  it('zet bij projectplicht zonder projecten dezelfde link achter de rode check "Verplichte velden"', async () => {
+    installFetch({
+      projectenAntwoord: () => json({ projecten: [] }),
+      projectVerplicht: true,
+      voorstelBody: voorstel({
+        project_id: null,
+        project_naam: null,
+        checks: [{ naam: 'Verplichte velden', status: 'blokkerend', melding: 'Vul eerst: project' }],
+      }),
+      checksBody: () =>
+        json({
+          checks: [{ naam: 'Verplichte velden', status: 'blokkerend', melding: 'Vul eerst: project' }],
+          geblokkeerd: true,
+        }),
+    })
+    toonScherm()
+    await screen.findByDisplayValue('26140-OFF-01')
+
+    const link = await screen.findByTestId('check-project-aanmaken')
+    expect(link).toHaveAttribute('href', `/projecten?administratie=${ADMIN}`)
+    expect(screen.getByRole('button', { name: /Ter accordering/ })).toBeDisabled()
+  })
+
+  it('toont zonder ingelogde kantoorrol géén voetoptie "+ Nieuw project…" (fail-closed, geen AuthProvider in de test)', async () => {
+    const gebruiker = userEvent.setup()
+    installFetch()
+    toonScherm()
+    await screen.findByDisplayValue('26140-OFF-01')
+    await gebruiker.click(screen.getByRole('combobox', { name: 'Project' }))
+    expect(screen.getByRole('option', { name: /26140.*Koningstraat/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Nieuw project…' })).not.toBeInTheDocument()
   })
 })

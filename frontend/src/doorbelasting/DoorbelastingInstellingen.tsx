@@ -228,6 +228,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         <SearchableCombobox
           label="Btw op doorbelasting (vlak tarief)"
           opties={btwCodes.opties}
+          laden={btwCodes.laden}
+          laadFout={btwCodes.fout}
           waarde={btwTaxrateId}
           onWijzig={setBtwTaxrateId}
           placeholder="Kies btw-code…"
@@ -236,6 +238,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         <SearchableCombobox
           label="Omzet-GB doorbelasting (bron)"
           opties={grootboek.opties}
+          laden={grootboek.laden}
+          laadFout={grootboek.fout}
           waarde={omzetLedgerId}
           onWijzig={setOmzetLedgerId}
           placeholder="Kies omzetrekening…"
@@ -244,6 +248,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         <SearchableCombobox
           label="Omzet-GB provisie (bron)"
           opties={grootboek.opties}
+          laden={grootboek.laden}
+          laadFout={grootboek.fout}
           waarde={provisieOmzetLedgerId}
           onWijzig={setProvisieOmzetLedgerId}
           placeholder="Kies omzetrekening…"

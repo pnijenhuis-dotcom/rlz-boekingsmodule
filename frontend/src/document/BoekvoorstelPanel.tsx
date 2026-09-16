@@ -704,7 +704,7 @@ export function BoekvoorstelPanel({
   // 15-09: één bron met de bankschermen (document/grootboekBtwDefault.ts).
   const grootboekDefaultMap = useMemo(() => bouwGrootboekBtwDefaultMap(grootboekOpties, taxrateOpties), [grootboekOpties, taxrateOpties])
   const { opties: vendorOpties, fout: vendorFout, laden: vendorLaden } = useVendorOpties(administratieId, cacheVersie)
-  const { opties: projectOpties, laden: projectLaden } = useProjectOpties(administratieId, cacheVersie)
+  const { opties: projectOpties, laden: projectLaden, fout: projectFout } = useProjectOpties(administratieId, cacheVersie)
   const projectVerplicht = useProjectVerplicht(administratieId)
   // Blok A 28-08 (mockup afdelingen.html §2): veld alleen zichtbaar als de toggle aan staat.
   const afdelingen = useAfdelingen(administratieId, cacheVersie)
@@ -1556,6 +1556,9 @@ export function BoekvoorstelPanel({
                 <SearchableCombobox
                   label="Crediteur"
                   opties={vendorOpties}
+                  laden={vendorLaden}
+                  laadFout={vendorFout}
+                  onOpnieuw={() => setCacheVersie((v) => v + 1)}
                   waarde={vendorId}
                   onWijzig={wijzigVendorId}
                   vereist
@@ -1995,6 +1998,9 @@ export function BoekvoorstelPanel({
                       <SearchableCombobox
                         label="Grootboek"
                         opties={grootboekOpties}
+                        laden={grootboekLaden}
+                        laadFout={grootboekFout}
+                        onOpnieuw={() => setCacheVersie((v) => v + 1)}
                         waarde={regel.ledgerId}
                         onWijzig={(id) => wijzigRegel(regel.key, 'ledgerId', id)}
                         vereist
@@ -2040,6 +2046,9 @@ export function BoekvoorstelPanel({
                       <SearchableCombobox
                         label="Btw-code"
                         opties={taxrateOpties}
+                        laden={taxrateLaden}
+                        laadFout={taxrateFout}
+                        onOpnieuw={() => setCacheVersie((v) => v + 1)}
                         waarde={regel.taxrateId}
                         onWijzig={(id) => wijzigRegel(regel.key, 'taxrateId', id)}
                         vereist
@@ -2107,6 +2116,9 @@ export function BoekvoorstelPanel({
                         <SearchableCombobox
                           label="Project"
                           opties={projectOpties}
+                          laden={projectLaden}
+                          laadFout={projectFout}
+                          onOpnieuw={() => setCacheVersie((v) => v + 1)}
                           waarde={regel.projectId}
                           onWijzig={(id) => wijzigRegel(regel.key, 'projectId', id)}
                           vereist

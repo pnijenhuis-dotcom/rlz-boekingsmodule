@@ -185,7 +185,11 @@ def project_lijst(
 ) -> schemas.ProjectLijstResponse:
     projecten = service.lijst_projects(administratie_id=administratie_id)
     return schemas.ProjectLijstResponse(
-        projecten=[schemas.ProjectOptieResponse(id=p.id, naam=p.naam) for p in projecten]
+        projecten=[
+            schemas.ProjectOptieResponse(id=p.id, naam=naam, code=code, is_actief=p.is_actief)
+            for p in projecten
+            for code, naam in (service.splits_projectcode(p.naam),)
+        ]
     )
 
 

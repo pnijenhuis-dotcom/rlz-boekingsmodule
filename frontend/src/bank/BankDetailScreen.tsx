@@ -307,6 +307,8 @@ function HandmatigBoekenForm({
       <SearchableCombobox
         label="Grootboekrekening"
         opties={grootboek.opties}
+        laden={grootboek.laden}
+        laadFout={grootboek.fout}
         waarde={ledgerId}
         onWijzig={kiesGrootboek}
         placeholder="Zoek grootboekrekening…"
@@ -315,6 +317,8 @@ function HandmatigBoekenForm({
       <SearchableCombobox
         label="Btw-code"
         opties={btwCodes.opties}
+        laden={btwCodes.laden}
+        laadFout={btwCodes.fout}
         waarde={taxrateId}
         onWijzig={kiesBtw}
         placeholder="Geen btw"

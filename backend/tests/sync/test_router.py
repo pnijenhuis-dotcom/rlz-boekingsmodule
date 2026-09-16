@@ -183,3 +183,39 @@ def test_lege_lijsten_zijn_gewoon_leeg_geen_fout(gescoopte_gebruiker: uuid.UUID,
     assert client.get(f"/administraties/{administratie_id}/btw-codes", headers=headers).json()["btw_codes"] == []
     assert client.get(f"/administraties/{administratie_id}/crediteuren", headers=headers).json()["crediteuren"] == []
     assert client.get(f"/administraties/{administratie_id}/projecten", headers=headers).json()["projecten"] == []
+
+
+def test_projecten_lijst_draagt_code_en_is_actief(gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID) -> None:
+    """Blok C 16-09: code = cijfer-prefix uit de naamconventie (RLZ heeft geen codeveld), inactieve projecten
+    onderaan mét is_actief=false, een naam zonder code krijgt code null en houdt de volledige naam."""
+    from app.db.session import scoped_session
+    from app.sync.models import ProjectCache
+
+    ids = [uuid.uuid4() for _ in range(3)]
+    with scoped_session(administratie_id) as session:
+        for project_id, naam, actief in (
+            (ids[0], "26140 Koningstraat (Kempen)", True),
+            (ids[1], "00001 Oud werk", False),
+            (ids[2], "Overhead", True),
+        ):
+            session.add(
+                ProjectCache(id=project_id, administratie_id=administratie_id, naam=naam, is_actief=actief, brondata={})
+            )
+    rijen = client.get(
+        f"/administraties/{administratie_id}/projecten", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
+    ).json()["projecten"]
+    assert [(r["code"], r["naam"], r["is_actief"]) for r in rijen] == [
+        ("26140", "Koningstraat (Kempen)", True),
+        (None, "Overhead", True),
+        ("00001", "Oud werk", False),
+    ]
+
+
+def test_splits_projectcode_deterministisch() -> None:
+    from app.sync.service import splits_projectcode
+
+    assert splits_projectcode("26140 Koningstraat (Kempen)") == ("26140", "Koningstraat (Kempen)")
+    assert splits_projectcode("144  Breda (Moeskops)") == ("144", "Breda (Moeskops)")
+    assert splits_projectcode("Overhead") == (None, "Overhead")
+    assert splits_projectcode("26140") == (None, "26140")  # alleen een code zonder naam = geen splitsing
+    assert splits_projectcode(None) == (None, None)

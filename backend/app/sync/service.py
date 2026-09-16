@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-
+import re
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -354,13 +354,31 @@ def lijst_vendors(*, administratie_id: uuid.UUID) -> list[VendorCache]:
         )
 
 
+_PROJECTCODE_PREFIX = re.compile(r"^\s*(\d[\w.-]{1,14})\s+(\S.*)$")
+
+
+def splits_projectcode(naam: str | None) -> tuple[str | None, str | None]:
+    """Blok C 16-09: RLZ heeft géén codeveld op Projects (STAP-0 16-09: DTO = id, Name, Description, IsActive,
+    IsBillable, dates, budget); de code zit vóór in de naam volgens de naamconventie
+    ("26140 Koningstraat (Kempen)" → ("26140", "Koningstraat (Kempen)")). Deterministisch: alleen een eerste token
+    dat met een cijfer begint telt als code; anders (None, naam) — nooit raden."""
+    if not naam:
+        return None, naam
+    m = _PROJECTCODE_PREFIX.match(naam)
+    if not m:
+        return None, naam
+    return m.group(1), m.group(2).strip()
+
+
 def lijst_projects(*, administratie_id: uuid.UUID) -> list[ProjectCache]:
+    """Niet-verdwenen projecten; actieve eerst, inactieve (`is_actief = False`) onderaan mét behoud van de
+    naamsortering (blok C 16-09: inactief blijft ZICHTBAAR — de gebruiker moet zien wat er bestaat)."""
     with scoped_session(administratie_id) as session:
         return list(
             session.scalars(
                 select(ProjectCache)
                 .where(ProjectCache.administratie_id == administratie_id, ProjectCache.verdwenen_uit_bron_op.is_(None))
-                .order_by(ProjectCache.naam)
+                .order_by(ProjectCache.is_actief.is_(False), ProjectCache.naam)
             )
         )
 

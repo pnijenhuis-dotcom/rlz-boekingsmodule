@@ -83,7 +83,8 @@ export function useVendorOpties(administratieId: string, herlaadSleutel = 0): Li
 
 export function useProjectOpties(administratieId: string, herlaadSleutel = 0): LijstResultaat {
   return useLijst<ProjectLijstDto>(`/administraties/${administratieId}/projecten`, herlaadSleutel, (d) =>
-    d.projecten.map((p) => ({ id: p.id, label: p.naam ?? p.id })),
+    // Blok C 16-09: code links (uit de naamconventie, server-side afgeleid), inactieve projecten zichtbaar mét chip.
+    d.projecten.map((p) => ({ id: p.id, code: p.code ?? undefined, label: p.naam ?? p.id, inactief: p.is_actief === false })),
   )
 }
 

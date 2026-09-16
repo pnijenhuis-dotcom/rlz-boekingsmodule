@@ -95,6 +95,8 @@ export function BeschadigingDialog({
               label="Project"
               toonLabel={false}
               opties={projecten}
+              laden={projectenLaden}
+              laadFout={projectenFout}
               waarde={projectId}
               onWijzig={setProjectId}
               placeholder={projectenLaden ? 'laden…' : 'Zoek project…'}

@@ -110,6 +110,11 @@ class CrediteurKvkDto(BaseModel):
 class ProjectOptieResponse(BaseModel):
     id: uuid.UUID
     naam: str | None
+    # Blok C 16-09: RLZ kent géén apart codeveld op Projects (DTO = id, Name, Description, IsActive, Customer —
+    # STAP-0 16-09, api-verkenning "Projects — codeveld"). De code is de cijfer-prefix van de naam volgens de
+    # naamconventie ("26140 Plaats (Opdrachtgever)" → "26140"); `naam` is dan de rest. Geen prefix = code None.
+    code: str | None = None
+    is_actief: bool | None = None
 
 
 class ProjectLijstResponse(BaseModel):

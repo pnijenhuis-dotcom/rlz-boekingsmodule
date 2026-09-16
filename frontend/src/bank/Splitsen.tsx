@@ -272,6 +272,8 @@ export function SplitsenForm({
               <SearchableCombobox
                 label={`Grootboekrekening deel ${index + 1}`}
                 opties={grootboek.opties}
+                laden={grootboek.laden}
+                laadFout={grootboek.fout}
                 waarde={deel.ledgerId}
                 onWijzig={(id) => kiesGrootboek(deel, id)}
                 placeholder="Zoek grootboekrekening (kruispost = gewoon een grootboekkeuze)…"
@@ -280,6 +282,8 @@ export function SplitsenForm({
               <SearchableCombobox
                 label={`Btw-code deel ${index + 1}`}
                 opties={btwCodes.opties}
+                laden={btwCodes.laden}
+                laadFout={btwCodes.fout}
                 waarde={deel.taxrateId}
                 onWijzig={(id) => kiesBtw(deel, id)}
                 placeholder="Geen btw"

@@ -2483,3 +2483,23 @@ deterministisch op binder kiezen (`app/omzet/categorie.py`, `DocumentCategories?
 als omzet" (storno 19 achter de aangiftepoort + herclassificatie naar kassarapport). Een categorie-PUT op een GEBOEKTE
 SalesInvoice is niet getest (geen writes in deze run) — herstel loopt via storno + herboeken.
 
+
+## Projects — codeveld (STAP-0 16-09, opdracht "projectveld verplichting-scherm") — LEES-ONLY via `nameting.sh rlz-lezen`
+
+Vraag: draagt een RLZ-project een apart codeveld (`Code`/`Number`/`Reference`) waarop de project-combobox kan tonen en zoeken?
+Twee metingen (Cloud Run-job `rlz-reconciliatie`, uitvoer geanonimiseerd — naamvelden tot initialen):
+
+1. `rlz-lezen --administratie "Universal Steigerbouw" --pad Projects --top 3` → 200. Velden per record: `id`, `IsActive`,
+   `IsBillable`, `TotalAmount`, `BeginDate`, `EndDate`, `Comment`, `Description`, `Name`, `DefaultRate`, `TotalBudgetAmount`,
+   `TotalBudgetHours`. **Géén `Code`, `Number` of `Reference`.** `Description` droeg letterlijk "144  Breda (Moeskops)" en
+   "25011 Zwolle Weeshuispassage (Ben Kuijer)"; `Name` was geanonimiseerd tot "1.B.(." resp. "2.Z.W.(." — de initialen van
+   precies dezelfde woorden, dus Name = Description = "<code> <plaats> (<opdrachtgever>)". De publieke Help-pagina
+   `PUT-adminId-Projects-id` bevestigt het DTO-model: `id`, `Customer`, `Description`, `IsActive`, `Name`.
+2. `rlz-lezen --administratie "Bouwadvies" --pad Projects --top 3 --count` → 200, `@odata.count: 0`, `value: []`
+   (Bouwadvies Oost Nederland B.V., id `a265c010…`).
+
+**Conclusie:** de projectcode is uitsluitend de cijfer-prefix van de naam volgens de naamconventie ("26xxx Plaats
+(Opdrachtgever)"). De module leidt 'm deterministisch af (`app/sync/service.py::splits_projectcode`: eerste token dat met een
+cijfer begint, gevolgd door minstens één woord; anders geen code) — geen migratie, geen eigen kolom. Inactieve projecten
+(`IsActive: false`) blijven in de lijst zichtbaar mét chip; RLZ weigert ze ook niet op documentregels (zie "Projects
+klant-loze schrijfroute" punt 6).

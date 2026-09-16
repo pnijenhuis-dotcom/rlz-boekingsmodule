@@ -837,7 +837,11 @@ export interface VendorLijstDto {
 
 export interface ProjectOptieDto {
   id: string
+  /** Weergavenaam ZONDER de code-prefix als die is afgesplitst (blok C 16-09). */
   naam: string | null
+  /** Projectcode uit de naamconventie ("26140 Plaats (Opdrachtgever)" → "26140"); null als de naam geen code draagt. */
+  code: string | null
+  is_actief: boolean | null
 }
 
 export interface ProjectLijstDto {

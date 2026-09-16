@@ -10341,3 +10341,24 @@ omzet + reconciliatie 507 groen, leesroutes-guard groen; frontend `OmzetReviewSc
 `HerboekenAlsOmzetActie.test` (2), `tsc -b` groen. **Werkt in productie: niet gemeten** — meetrecept in
 `docs/rapporten/2026-09-16-omzet-binder.md`.
 
+
+## VERPLICHTING — PROJECTVELD: LEGE STAND ZICHTBAAR + PROJECTCODE (Peter 16-09) — combobox app-breed leeg ≠ laden ≠ fout, lege stand mét actie, "+ Nieuw project…", code uit de naamconventie; casus Offerte S00642 Energy Matrix / Bouwadvies Oost Nederland; geen migratie
+
+**Feedback Peter 16-09:** "projectveld gaat niet goed, kan niks selecteren en zie niet welke projecten reeds bestaan" —
+screenshot `VerplichtingReviewScreen`, onder "Kies project…" een sliver van een paar pixels met nog net "Geen resultaten".
+
+**Wortel (bevestigd in de code):** (1) `SearchableCombobox` zette de lege-stand-tekst BINNEN de gevirtualiseerde container met
+`height: gefilterd.length × 32px` = 0 px; de listbox (`overflow-y: auto`) knipte 'm weg — app-breed, bij élke combobox met
+nul opties. (2) `useProjectOpties` levert `{opties, laden, fout}` maar het verplichting-scherm (en alle andere aanroepers
+behalve `BoekvoorstelPanel`/`BeschadigingDialog`) gebruikte alleen `opties`: laden, 401/403/500 en "echt leeg" zagen er identiek uit.
+(3) Bij Bouwadvies Oost Nederland is de lijst écht leeg: RLZ heeft daar 0 projecten (STAP-0 16-09, uitkomst (a) van blok D).
+
+| Blok | Besluit / gebouwd |
+|---|---|
+| A — combobox app-breed | Lege/laad-/fout-stand rendert als eigen blok `combobox-leeg` (role status, `minHeight` = rijhoogte) BUITEN de hoogte-container. Nieuwe optionele props `laden`, `laadFout`, `onOpnieuw`, `leegTekst`. Teksten: "Laden…" · "Kon de lijst niet laden — ‹reden›" + linkbtn "Opnieuw" · zonder filter "Geen ‹meervoud van label› in deze administratie" (expliciete tabel `LABEL_MEERVOUD`, onbekend label = "opties") · mét filter "Geen resultaten voor '‹term›'". Optie-rij kent `inactief` → chip "inactief". Tests `SearchableCombobox.test.tsx` (DOM-structuur: geen voorouder met height 0; drie tekstvarianten; code + chip; zoeken op code). |
+| B — aanroepers | Grep-sweep: álle 23 comboboxen op `useProjectOpties`/`useVendorOpties`/`useGrootboekOpties`/`useTaxrateOpties` (verplichting ×2, bank ×5, doorbelasting ×3, omzet ×4, verkoop ×2, waarborg, materiaal, projectverdeling, boekvoorstel ×4) geven `laden` + `laadFout` door; `onOpnieuw` waar al een herlaadsleutel bestond (verplichting, boekvoorstel, projectverdeling). Verplichting-scherm: hint "Geen projecten in deze administratie — Project aanmaken →" (`/projecten?administratie=‹id›`, route A maakt in RLZ aan), aparte fout-hint mét "Opnieuw", rode check "Verplichte velden … project" draagt dezelfde link, voetoptie "+ Nieuw project…" (alleen `magProjectAanmaken(rol)` én bewerkbaar) opent de bestaande `NieuwProjectModal`, ná aanmaken herlaadt de lijst en staat het project geselecteerd. Zonder AuthProvider/rol = geen voetoptie (fail-closed). Tests `VerplichtingReviewScreen.test.tsx` +4. |
+| C — projectcode | STAP-0 (api-verkenning "Projects — codeveld (STAP-0 16-09)"): RLZ heeft géén codeveld; code = cijfer-prefix van `Name`. `ProjectOptieResponse` krijgt `code` + `is_actief` (afgeleid, geen migratie; `service.splits_projectcode`), `naam` = rest; sortering actief eerst, dan naam (`is_actief IS FALSE, naam`); combobox toont code links (zoals grootboek) en zoekt erop; inactief onderaan mét chip, nooit verborgen. Tests `tests/sync/test_router.py` +2, gouden set `tests/keten/test_u_project_opties_code.py`. |
+| D — Bouwadvies lees-only | `rlz-lezen Projects --count` → **0 projecten in RLZ** = uitkomst (a); geen sync-/rechtenprobleem, dus geen reconciliatie-bevinding. `project_cache`-telling en sync-run-status zijn zonder DB-leesinstrument niet gemeten (rapport). Beslispunt Peter: wil Bouwadvies op projecten boeken (projecten-toggle) of hoort het veld daar verborgen? Default gebouwd: veld zichtbaar, niet verplicht, lege stand mét "Project aanmaken →". |
+
+Niet gedaan (bewust): geen eigen kolom voor de code (sortering op naam = sortering op code omdat de code de prefix is);
+`onOpnieuw` niet op schermen zonder herlaadsleutel (fout-tekst wél zichtbaar). Rapport: `docs/rapporten/2026-09-16-verplichting-projectveld.md`.

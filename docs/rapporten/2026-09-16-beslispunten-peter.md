@@ -153,3 +153,15 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
    motor nooit buiten Inkomsten.
 6. **Geen migratie:** herkomst en keuzelijst in `omzet_instelling.bron_instellingen` (JSON), id in de bestaande kolom.
 
+## Opdracht 12 — verplichting-scherm projectveld (`2026-09-16-verplichting-projectveld.md`)
+
+1. **Bouwadvies Oost Nederland heeft in Reeleezee 0 projecten** (lees-only gemeten, blok D uitkomst a). Vraag: wil deze administratie
+   überhaupt op projecten boeken (projecten-toggle/projectplicht per administratie aanzetten en projecten aanmaken via
+   Beheer › Projecten), of hoort het projectveld daar verborgen te zijn? **Default gebouwd:** veld zichtbaar, niet verplicht, lege
+   stand mét "Project aanmaken →" en (voor kantoorrollen) "+ Nieuw project…" in de lijst.
+2. **Projectcode = cijfer-prefix van de RLZ-naam** (RLZ kent geen codeveld). Een projectnaam zonder cijferprefix (bv. "Overhead")
+   krijgt geen code en blijft op naam sorteren; geen eigen kolom, geen migratie. Alternatief: eigen kolom + sortering op code
+   over álle administraties heen — alleen zinvol als er administraties zijn met een andere naamconventie.
+3. **"Opnieuw" bij een laadfout** staat op de schermen die al een herlaadsleutel hadden (verplichting, boekvoorstel,
+   projectverdeling); elders is de fout wél zichtbaar in de lijst maar herlaadt de gebruiker via de pagina.
+
