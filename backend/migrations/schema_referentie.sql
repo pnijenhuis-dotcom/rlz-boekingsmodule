@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0146
+-- Migratie-head bij deze dump: 0148
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -486,6 +486,26 @@ ALTER TABLE ONLY boekhouding.accordering_stap FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: administratie_identiteit; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.administratie_identiteit (
+    administratie_id uuid NOT NULL,
+    kvk text,
+    btw text,
+    naam text,
+    naam_norm text,
+    sbi text,
+    afkortingen jsonb,
+    bron text DEFAULT 'rlz'::text NOT NULL,
+    gelezen_op timestamp with time zone,
+    CONSTRAINT ck_administratie_identiteit_bron CHECK ((bron = ANY (ARRAY['rlz'::text, 'odoo'::text, 'mens'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.administratie_identiteit FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: administratie_sync_run; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -916,6 +936,7 @@ CREATE TABLE boekhouding.boekvoorstel (
     betaalstatus text,
     betaalstatus_herkomst text,
     verwachte_betaaldatum date,
+    referentie_norm text,
     CONSTRAINT ck_boekvoorstel_betaalstatus_herkomst CHECK (((betaalstatus_herkomst IS NULL) OR (betaalstatus_herkomst = ANY (ARRAY['kanaal'::text, 'factuur'::text, 'mens'::text])))),
     CONSTRAINT ck_boekvoorstel_periode_herkomst CHECK (((periode_herkomst IS NULL) OR (periode_herkomst = ANY (ARRAY['factuur'::text, 'factuur_maand'::text, 'afgeleid_van_factuurdatum'::text, 'mens'::text])))),
     CONSTRAINT ck_boekvoorstel_periode_weken CHECK ((((periode_week_van IS NULL) AND (periode_week_tot IS NULL)) OR (((periode_week_van >= 1) AND (periode_week_van <= 53)) AND ((periode_week_tot >= periode_week_van) AND (periode_week_tot <= 53)))))
@@ -1528,6 +1549,33 @@ CREATE TABLE boekhouding.intake_splitsing_uitsluiting (
 );
 
 ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: intercompany_relatie; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.intercompany_relatie (
+    id uuid NOT NULL,
+    administratie_a_id uuid NOT NULL,
+    entity_in_a uuid NOT NULL,
+    entity_naam text,
+    administratie_b_id uuid NOT NULL,
+    richting text NOT NULL,
+    basis text NOT NULL,
+    status text DEFAULT 'afgeleid'::text NOT NULL,
+    bron text DEFAULT 'afgeleid'::text NOT NULL,
+    reden text,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_intercompany_relatie_basis CHECK ((basis = ANY (ARRAY['kvk'::text, 'btw'::text, 'naam'::text, 'doorbelasting'::text]))),
+    CONSTRAINT ck_intercompany_relatie_bron CHECK ((bron = ANY (ARRAY['afgeleid'::text, 'mens'::text]))),
+    CONSTRAINT ck_intercompany_relatie_richting CHECK ((richting = ANY (ARRAY['crediteur'::text, 'debiteur'::text]))),
+    CONSTRAINT ck_intercompany_relatie_status CHECK ((status = ANY (ARRAY['afgeleid'::text, 'bevestigd'::text, 'uitgesloten'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.intercompany_relatie FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2475,6 +2523,51 @@ ALTER TABLE ONLY boekhouding.projectverdeling FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: rc_koppeling; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.rc_koppeling (
+    id uuid NOT NULL,
+    administratie_a_id uuid NOT NULL,
+    rekening_a uuid NOT NULL,
+    rekening_a_code text,
+    rekening_a_naam text,
+    administratie_b_id uuid NOT NULL,
+    rekening_b uuid,
+    rekening_b_code text,
+    rekening_b_naam text,
+    basis text DEFAULT 'naam'::text NOT NULL,
+    status text DEFAULT 'afgeleid'::text NOT NULL,
+    bron text DEFAULT 'afgeleid'::text NOT NULL,
+    reden text,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_rc_koppeling_basis CHECK ((basis = ANY (ARRAY['naam'::text, 'afkorting'::text, 'mens'::text]))),
+    CONSTRAINT ck_rc_koppeling_bron CHECK ((bron = ANY (ARRAY['afgeleid'::text, 'mens'::text]))),
+    CONSTRAINT ck_rc_koppeling_status CHECK ((status = ANY (ARRAY['afgeleid'::text, 'bevestigd'::text, 'uitgesloten'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.rc_koppeling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: rc_stand; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.rc_stand (
+    koppeling_id uuid NOT NULL,
+    datum date NOT NULL,
+    saldo_a numeric(14,2),
+    saldo_b numeric(14,2),
+    sluit boolean DEFAULT false NOT NULL,
+    gemeten_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.rc_stand FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: reconciliatie_acceptatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2491,7 +2584,7 @@ CREATE TABLE boekhouding.reconciliatie_acceptatie (
     geaccepteerd_op timestamp with time zone DEFAULT now() NOT NULL,
     ingetrokken_door uuid,
     ingetrokken_op timestamp with time zone,
-    CONSTRAINT reconciliatie_acceptatie_bron_geldig CHECK ((bron = ANY (ARRAY['documenten'::text, 'bank'::text, 'omzet'::text, 'doorbelasting'::text]))),
+    CONSTRAINT reconciliatie_acceptatie_bron_geldig CHECK ((bron = ANY (ARRAY['documenten'::text, 'bank'::text, 'omzet'::text, 'doorbelasting'::text, 'intercompany'::text, 'rekening_courant'::text]))),
     CONSTRAINT reconciliatie_acceptatie_intrekking_compleet CHECK (((ingetrokken_op IS NULL) = (ingetrokken_door IS NULL))),
     CONSTRAINT reconciliatie_acceptatie_reden_gevuld CHECK ((length(btrim(reden)) >= 5))
 );
@@ -4082,6 +4175,14 @@ ALTER TABLE ONLY boekhouding.accordering_stap
 
 
 --
+-- Name: administratie_identiteit administratie_identiteit_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.administratie_identiteit
+    ADD CONSTRAINT administratie_identiteit_pkey PRIMARY KEY (administratie_id);
+
+
+--
 -- Name: administratie_sync_run administratie_sync_run_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4466,6 +4567,14 @@ ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
 
 
 --
+-- Name: intercompany_relatie intercompany_relatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_relatie
+    ADD CONSTRAINT intercompany_relatie_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: intercompany_tegenpartij intercompany_tegenpartij_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4794,6 +4903,22 @@ ALTER TABLE ONLY boekhouding.projectverdeling
 
 
 --
+-- Name: rc_koppeling rc_koppeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_koppeling
+    ADD CONSTRAINT rc_koppeling_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rc_stand rc_stand_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_stand
+    ADD CONSTRAINT rc_stand_pkey PRIMARY KEY (koppeling_id, datum);
+
+
+--
 -- Name: reconciliatie_acceptatie reconciliatie_acceptatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4946,6 +5071,14 @@ ALTER TABLE ONLY boekhouding.extractie_template
 
 
 --
+-- Name: intercompany_relatie uq_intercompany_relatie; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_relatie
+    ADD CONSTRAINT uq_intercompany_relatie UNIQUE (administratie_a_id, entity_in_a, administratie_b_id);
+
+
+--
 -- Name: leverancier_werknummer uq_leverancier_werknummer; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5023,6 +5156,14 @@ ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
 
 ALTER TABLE ONLY boekhouding.projectverdeling
     ADD CONSTRAINT uq_projectverdeling_document UNIQUE (document_id);
+
+
+--
+-- Name: rc_koppeling uq_rc_koppeling; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_koppeling
+    ADD CONSTRAINT uq_rc_koppeling UNIQUE (administratie_a_id, rekening_a, administratie_b_id);
 
 
 --
@@ -5897,6 +6038,13 @@ CREATE INDEX ix_boeking_observatie_admin_vendor_sleutel ON boekhouding.boeking_o
 
 
 --
+-- Name: ix_boekvoorstel_referentie_norm; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_boekvoorstel_referentie_norm ON boekhouding.boekvoorstel USING btree (referentie_norm);
+
+
+--
 -- Name: ix_boekvoorstel_regel_document_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6076,6 +6224,20 @@ CREATE INDEX ix_factuurmatch_staat_weekstaat_id ON boekhouding.factuurmatch_staa
 --
 
 CREATE INDEX ix_intake_splitsing_uitsluiting_afzender_actief ON boekhouding.intake_splitsing_uitsluiting USING btree (afzender_adres) WHERE actief;
+
+
+--
+-- Name: ix_intercompany_relatie_a; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_intercompany_relatie_a ON boekhouding.intercompany_relatie USING btree (administratie_a_id);
+
+
+--
+-- Name: ix_intercompany_relatie_b; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_intercompany_relatie_b ON boekhouding.intercompany_relatie USING btree (administratie_b_id);
 
 
 --
@@ -6412,6 +6574,13 @@ CREATE INDEX ix_projectverdeling_administratie_id ON boekhouding.projectverdelin
 --
 
 CREATE INDEX ix_projectverdeling_hercontrole_signaal ON boekhouding.projectverdeling USING btree (administratie_id, hercontrole_afwijking_pct) WHERE ((status = 'geboekt'::text) AND (hercontrole_afwijking_pct IS NOT NULL));
+
+
+--
+-- Name: ix_rc_koppeling_a; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_rc_koppeling_a ON boekhouding.rc_koppeling USING btree (administratie_a_id);
 
 
 --
@@ -7225,6 +7394,14 @@ ALTER TABLE ONLY boekhouding.accordering_stap
 
 ALTER TABLE ONLY boekhouding.accordering_stap
     ADD CONSTRAINT accordering_stap_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: administratie_identiteit administratie_identiteit_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.administratie_identiteit
+    ADD CONSTRAINT administratie_identiteit_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -8292,6 +8469,22 @@ ALTER TABLE ONLY boekhouding.intake_splitsing_uitsluiting
 
 
 --
+-- Name: intercompany_relatie intercompany_relatie_administratie_a_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_relatie
+    ADD CONSTRAINT intercompany_relatie_administratie_a_id_fkey FOREIGN KEY (administratie_a_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: intercompany_relatie intercompany_relatie_administratie_b_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.intercompany_relatie
+    ADD CONSTRAINT intercompany_relatie_administratie_b_id_fkey FOREIGN KEY (administratie_b_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: intercompany_tegenpartij intercompany_tegenpartij_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -9017,6 +9210,30 @@ ALTER TABLE ONLY boekhouding.projectverdeling
 
 ALTER TABLE ONLY boekhouding.projectverdeling
     ADD CONSTRAINT projectverdeling_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
+-- Name: rc_koppeling rc_koppeling_administratie_a_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_koppeling
+    ADD CONSTRAINT rc_koppeling_administratie_a_id_fkey FOREIGN KEY (administratie_a_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: rc_koppeling rc_koppeling_administratie_b_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_koppeling
+    ADD CONSTRAINT rc_koppeling_administratie_b_id_fkey FOREIGN KEY (administratie_b_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: rc_stand rc_stand_koppeling_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.rc_stand
+    ADD CONSTRAINT rc_stand_koppeling_id_fkey FOREIGN KEY (koppeling_id) REFERENCES boekhouding.rc_koppeling(id);
 
 
 --
@@ -10313,6 +10530,33 @@ CREATE POLICY accordering_stap_verplaatsing ON boekhouding.accordering_stap USIN
 
 
 --
+-- Name: administratie_identiteit; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.administratie_identiteit ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: administratie_identiteit administratie_identiteit_lees; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY administratie_identiteit_lees ON boekhouding.administratie_identiteit FOR SELECT USING (true);
+
+
+--
+-- Name: administratie_identiteit administratie_identiteit_muteren; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY administratie_identiteit_muteren ON boekhouding.administratie_identiteit FOR UPDATE USING (true) WITH CHECK (true);
+
+
+--
+-- Name: administratie_identiteit administratie_identiteit_toevoegen; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY administratie_identiteit_toevoegen ON boekhouding.administratie_identiteit FOR INSERT WITH CHECK (true);
+
+
+--
 -- Name: administratie_sync_run; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -10957,6 +11201,33 @@ CREATE POLICY intake_splitsing_uitsluiting_scope ON boekhouding.intake_splitsing
 
 
 --
+-- Name: intercompany_relatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.intercompany_relatie ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: intercompany_relatie intercompany_relatie_lees; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intercompany_relatie_lees ON boekhouding.intercompany_relatie FOR SELECT USING (true);
+
+
+--
+-- Name: intercompany_relatie intercompany_relatie_muteren; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intercompany_relatie_muteren ON boekhouding.intercompany_relatie FOR UPDATE USING (true) WITH CHECK (true);
+
+
+--
+-- Name: intercompany_relatie intercompany_relatie_toevoegen; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY intercompany_relatie_toevoegen ON boekhouding.intercompany_relatie FOR INSERT WITH CHECK (true);
+
+
+--
 -- Name: intercompany_tegenpartij; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -11476,6 +11747,60 @@ ALTER TABLE boekhouding.projectverdeling ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY projectverdeling_scope ON boekhouding.projectverdeling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: rc_koppeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.rc_koppeling ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: rc_koppeling rc_koppeling_lees; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_koppeling_lees ON boekhouding.rc_koppeling FOR SELECT USING (true);
+
+
+--
+-- Name: rc_koppeling rc_koppeling_muteren; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_koppeling_muteren ON boekhouding.rc_koppeling FOR UPDATE USING (true) WITH CHECK (true);
+
+
+--
+-- Name: rc_koppeling rc_koppeling_toevoegen; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_koppeling_toevoegen ON boekhouding.rc_koppeling FOR INSERT WITH CHECK (true);
+
+
+--
+-- Name: rc_stand; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.rc_stand ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: rc_stand rc_stand_lees; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_stand_lees ON boekhouding.rc_stand FOR SELECT USING (true);
+
+
+--
+-- Name: rc_stand rc_stand_muteren; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_stand_muteren ON boekhouding.rc_stand FOR UPDATE USING (true) WITH CHECK (true);
+
+
+--
+-- Name: rc_stand rc_stand_toevoegen; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY rc_stand_toevoegen ON boekhouding.rc_stand FOR INSERT WITH CHECK (true);
 
 
 --
