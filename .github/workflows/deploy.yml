@@ -183,6 +183,9 @@ jobs:
       # actieve administratie-rij in de snapshot (zonder deze env laat de snapshot het veld weg).
       # Store-links (BESLISSINGEN "STORE-LINK-NAZORG"): STORE_LINK_IOS gevuld 09-09 (App Store-id
       # 6803862748); STORE_LINK_ANDROID blijft leeg tot Google de listing goedkeurt (leeg = niets tonen).
+      # STORE_APP_VERSIE_IOS (code-default 1.0) PAS op 1.1 zetten NÁ Apple-goedkeuring van 1.1 (build 140, ingediend
+      # 16-09 22:24): zolang de App Store 1.0 (oude login) levert, moet de uitnodigingsmail de TestFlight-instructie
+      # tonen, niet de store-link (TESTFLIGHT_DRAAIBOEK §0f "STAND 16-09"). Idem STORE_APP_VERSIE_ANDROID ná vc5 publiek.
       # Notificatie-config op de service (herzien 17-08): uitnodigingsmail + herinner-knop + het volledige
       # VAPID-paar (webpush per direct vanuit de service) + APNs/FCM (native-registratie is fail-closed 409
       # zolang die config ontbreekt; APNS_SANDBOX=false sinds A6 21-08 = TestFlight/production-build).

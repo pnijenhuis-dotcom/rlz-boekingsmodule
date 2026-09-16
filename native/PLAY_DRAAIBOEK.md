@@ -179,6 +179,14 @@ van 08-09 avond mét de nieuwe activatieflow (activatiecode → toegangscode →
 "Vergrendelen". De eerdere vc4-AAB van 15:36 (§0d TESTFLIGHT, vóór de app-frontend-commit) staat opzij in
 `app/release/vervangen/` — die NIET uploaden. Klikwerk: §4 stap 4 met dít bestand (interne test-track), kliktest, dan §11 + review.
 
+**STAND 16-09 (Play Console, Cowork):** **release 2 (vc2, oude passkey-login) staat LIVE sinds 13-09 19:22** — inzending 2 werd
+níét geannuleerd door de nieuwe inzending (correctie op de aanname van 13-09); **release 4 (vc4, app-auth) "wordt beoordeeld"
+sinds 13-09 19:09**, 0 installaties. **Les:** een nieuwe inzending annuleert de lopende NIET — controleer ná élk indienen de
+*Inzendingsactiviteit* en trek een verouderde inzending zo nodig zelf terug. **Ná goedkeuring vc4:** (1) `STORE_LINK_ANDROID`
+vullen in `deploy.yml` (Play-listing-URL; leeg = niets tonen), (2) vc5 (1.1) bouwen en uploaden (§3 `bouw_android_release.sh 5 1.1`,
+§4 release name `1.1 (5)`), (3) `STORE_APP_VERSIE_ANDROID=1.1` pas als de 1.1-listing publiek is (TESTFLIGHT §0f stap 1). iOS
+loopt vóór: 1.1 (140) ingediend 16-09 22:24 (TESTFLIGHT §0f "STAND 16-09").
+
 - **Elke volgende upload: versionCode +1** (Play weigert een hergebruikt nummer); versionName
   volgt de iOS `MARKETING_VERSION` (STORE_GEREEDHEID §6).
 - **Upload-artefacten náást de AAB (sinds 30-08):** het script legt in `app/release/` óók

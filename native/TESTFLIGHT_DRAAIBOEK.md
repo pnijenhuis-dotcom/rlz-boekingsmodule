@@ -133,6 +133,8 @@ Package.swift zijn 07-09 gecommit; Xcode Cloud `npm ci` faalde anders).
 
 ### 0c. Eerstvolgende build klaarzetten (vervolgrun 07-09, blok 12d) — NIET ingediend
 
+> **Historie (16-09):** de buildnummers 90/99 in deze sectie waren verwachtingen; ingediend is 1.1 (140) — zie §0f "STAND 16-09".
+
 > **Correctie 08-09 (bouwagent BLOK 8):** Xcode Cloud telt het buildnummer per PUSH naar `main`
 > (élke commit-batch die iets in de app-relevante boom raakt, niet alleen een bewust
 > "app-release"-moment) — het is dus geen teller die je met "de eerstvolgende push" op 45 kunt
@@ -235,6 +237,8 @@ PLAY_DRAAIBOEK §3 (versionCode 3).
 
 ### 0e. Nieuwe reviewflow 08-09 (geen passkey): activatiecode (besluit Peter 08-09, platformbesluit 0029)
 
+> **Historie (16-09):** de buildnummers 90/99 in deze sectie waren verwachtingen; ingediend is 1.1 (140) — zie §0f "STAND 16-09".
+
 **Wat er veranderd is:** de app kent sinds de run van 08-09 nog één toegangspad — **activatiecode (of universal link) →
 5-cijferige app-code → wachtrij**. Passkey, wachtwoord en TOTP zijn uit de app; de kantoor-webapp is ongewijzigd. De wortel
 van beide store-afwijzingen (passkey-registratie zonder iCloud-sleutelhanger / Google-account, §0b–§0d) bestaat daarmee
@@ -299,6 +303,19 @@ queue with demonstration invoices appears. On later launches the app asks only f
 
 
 ### 0f. Versie 1.1 — waarom en hoe (mini-run 09-09)
+
+> **STAND 16-09 22:24 — versie 1.1 (build 140) INGEDIEND, "Waiting for Review".** Build 1.1 (140) (Xcode Cloud 21:54, bevat de
+> uitnodigingsfix van 16-09 avond) is aan versie 1.1 gekoppeld, "What's New" NL ingevuld, App Review Information herschreven naar de
+> activatiecode-flow (§1 stap 6; Password = de review-activatiecode, dezelfde als in Play "Demo-account review (7 Sep 2026)"),
+> automatisch vrijgeven ná goedkeuring. Het klikpunt hieronder is daarmee gedaan; wat rest:
+> 1. **Ná goedkeuring:** `STORE_APP_VERSIE_IOS=1.1` in `.github/workflows/deploy.yml` (nu bewust nog 1.0 — eerder zetten laat de
+>    uitnodigingsmail naar een store-versie mét de oude login wijzen) + sleutel in `test_deploy_yml_envset_compleet.py`.
+> 2. **Train-regel:** marketingversie → **1.2** vóór de eerstvolgende push die de app raakt: pbxproj ×2 (`MARKETING_VERSION`),
+>    `build.gradle` (`versionName "1.2"`, `versionCode 6`), `frontend/src/accordeur/appVersie.ts`, guard
+>    `test_app_marketingversie_consistent.py` mee ophogen.
+> 3. Android loopt apart: release 4 (vc4, 1.0 app-auth) in review sinds 13-09; ná goedkeuring vc5 (1.1) bouwen/uploaden — PLAY §3/§4.
+>
+> De buildnummers 90/99 in §0c/§0e/§0f hieronder zijn HISTORIE (verwachtingen van 08/09-09); het ingediende nummer is 140.
 
 > **☐ EERSTE KLIKPUNT (16-09, melding Peter "accordeur krijgt een wachtwoordvraag"): 1.1 indienen.** De App Store staat
 > nog op **1.0 = de oude inlog (wachtwoord + passkey)**. Elke accordeur die de app uit de App Store haalt en een account
