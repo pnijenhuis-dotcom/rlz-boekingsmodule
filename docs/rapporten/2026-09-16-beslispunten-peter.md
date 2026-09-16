@@ -171,3 +171,22 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 3. **"Opnieuw" bij een laadfout** staat op de schermen die al een herlaadsleutel hadden (verplichting, boekvoorstel,
    projectverdeling); elders is de fout wél zichtbaar in de lijst maar herlaadt de gebruiker via de pagina.
 
+## Opdracht 13 (avond) — VGG run 2 blok 9: SCHRIJF b, 1001-model (`2026-09-16-vgg-schrijf-b.md`)
+
+1. **Geen kandidaat én meerduidig gaan allebei naar de TUSSENREKENING**, niet naar de Odoo-bankrekening (Odoo: bank uitsluitend via
+   statement lines). De opdracht zei "meerduidig = niet toewijzen" — dat is zo (geen mutatie geclaimd, eigen teller); de bestemming van
+   de regel is dan de suspense/tussenrekening mét de kandidaat-nummers in de reden. Alternatief: meerduidig op de bank laten staan.
+2. **Bewijs 1 (PaymentReferenceList) zonder datumeis** — de koppeling ís het bewijs; Δ dagen wordt wél gerapporteerd. Bewijs 2 eist
+   ± 3 kalenderdagen (`VENSTER_DAGEN`), zelfde tekenrichting en cent-exact; alleen VRIJE mutaties (zonder enige koppeling) doen mee.
+3. **Eén outstanding-rekening voor in- én uitgaand** (de 1012-resolutie leest alleen de uitgaande betaalmethode-regels). Odoo kent
+   Outstanding Receipts apart; stelt Peter twee verschillende rekeningen in, dan een tweede resolutie op `inbound_…` (kleine uitbreiding).
+4. **Status/blokkades van het memoriaal ongewijzigd** — het model verplaatst alleen de bestemming van de 1001-regel; een memoriaal dat
+   om een andere reden niet vertaalbaar is blijft dat.
+5. **Restcategorie bank/tussenrekening: bekende componenten + één restant mét regel** ("RLZ-opruimpunten / afletterstand — SCHRIJF c")
+   i.p.v. een regel-per-mutatie-verklaring; Σ categorieën = groepsverschil (getest). Fijner uitsplitsen = pas als de vierde meting laat
+   zien dat het restant niet 0 is.
+6. **Bewijspaar SCHRIJF c = RLZ-01-00000082** (verkoopfactuur notaris 2026-03-19, € 400.000) — gekozen uit het 15-09-rapport, zonder
+   pand-code (het rapport toont panden niet op documentniveau); de vierde meting bevestigt pand + statement line vóór SCHRIJF c.
+7. **Vierde meting niet in deze run** (gcloud-sessie verlopen én code vóór deploy) → vervolg-opdracht in de inbox; Peter logt eerst
+   gcloud in.
+

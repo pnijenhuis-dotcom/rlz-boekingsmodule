@@ -9283,6 +9283,56 @@ STAP 2–4 lopen ná die twee (bewust niet voorgedrongen; de deploy is dan al la
 
 <!-- run2-vgg:blok8 -->
 
+## VASTGOEDGROEP NEDERLAND → ODOO — RUN 2 BLOK 9: SCHRIJF b — 1001-MODEL + VIERDE METING (16-09-2026; opdracht Peter 16-09 avond via de inbox; blok A + B gebouwd/vastgelegd, blok C = productie NIET gemeten (gcloud-sessie verlopen) → vervolg-opdracht in de inbox; geen migratie, geen Odoo-/RLZ-writes)
+
+**Aanleiding.** Derde meting 15-09 (`2026-09-15-vgg-schrijf-a-vervolg.md`): ROOD uitsluitend op de vier afletter-groepen (crediteuren
+Δ −5,88 / −11,16 mln, debiteuren Δ 4,64 / 8,81 mln, tussenrekening Δ −214.916,85 / −713.449,59, bank Δ 61.166,85 / 216.201,20), buiten
+die groepen 0,00. Open modelpunt sinds 7d (14-09): memoriaal-1001-regels die tegen een statement line reconciliëren horen op de
+outstanding-/suspense-rekening van het bankdagboek, anders telt 1001 dubbel (−85.376,31 / +71.343,31). Dit is de laatste modelstap vóór
+SCHRIJF c. Pre-feature-check: bouwt 1-op-1 voort op "… BLOK 7d" (modelpunt SCHRIJF b), "… BLOK 8" (`rekening_mapping` 1001 = fase b,
+outstanding-resolutie 1012) en `vgg-replay`; geen scherm-impact.
+
+**Grenzen (ongewijzigd, bindend):** company-pin 6 + kill-switch, géén Odoo-writes (ook geen concepten), RLZ lees-only via de token-bucket,
+webfilter = meting ongeldig, memoriaalregels uitsluitend uit `DebitAmount`/`CreditAmount`, balansguard 7d blijft ROOD-bepalend.
+
+**Blok A — 1001-model in de replay (GEBOUWD 16-09):**
+
+| # | Punt | Gebouwd | Waar |
+|---|---|---|---|
+| A1 | Regel-selectie | Een "1001-regel" = memoriaalregel (`move_type entry`, bron `regel`) op een RLZ-bankgrootboek: de tabelcodes met doel `bank_statement_lines` (1001) én élke Ledgers-rij mét `UseForPaymentAccount`. Bedrag = debet − credit (debet = geld erin ↔ mutatie +). | `model_1001.bank_ledger_ids` |
+| A2 | Bewijs 1 — koppeling | Mutaties waarvan `PaymentReferenceList` naar dít memoriaal wijst, zelfde tekenrichting, cent-exact bedrag (geen datumeis — de koppeling ís het bewijs; Δ dagen wél gerapporteerd). Meerdere gelijke kandidaten: alleen als het memoriaal evenveel gelijke 1001-regels heeft worden ze in datumvolgorde gepaard, anders meerduidig. | `pas_1001_model_toe`, `BEWIJS_KOPPELING` |
+| A3 | Bewijs 2 — bedrag + datum | Alleen als bewijs 1 leeg is: VRIJE mutaties (geen reconcile, geen directe tegenregels = staan nu op de tussenrekening), zelfde richting, cent-exact, \|Δ datum\| ≤ `VENSTER_DAGEN` = 3. Precies één = gekoppeld; een mutatie wordt nooit twee keer geclaimd. | `BEWIJS_BEDRAG_DATUM`, `is_vrij` |
+| A4 | Bestemming gekoppeld | De 1001-regel → outstanding-/suspense-rekening van BNK1: de échte Odoo-id als de 1012-resolutie (`ctx.outstanding`, payment-method-line → company-default) 'm vond, anders pseudo-sleutel `impliciet:outstanding-bnk1` + LET-OP "KLIKPUNT PETER" (vals `account_id` None, nooit de bankrekening zelf). De statement line reconcilieert ertegen: haar tegenregel gaat van `impliciet:bank-tussenrekening` naar dezelfde outstanding-sleutel; `move.bank.reconcile[…]` draagt `via_outstanding` + `model_1001` (bewijs), bij bewijs 2 komt de reconcile-regel erbij en `restant_berekend` → 0. Netto: bank één keer (statement line), outstanding 0. | `_herbestem_regel`, `_herbestem_mutatie`; bankgroep-sleutels in `replay.afletter_groepen` |
+| A5 | Geen kandidaat / meerduidig | Geen kandidaat → regel op de TUSSENREKENING mét reden "geen bankmutatie binnen ± 3 d" (Odoo boekt nooit buiten statement lines op de bank); meerduidig (≥ 2 kandidaten) → NIET toegewezen, aparte teller, óók tussenrekening mét de kandidaat-nummers in de reden (mens kiest). Status/blokkades van het memoriaal veranderen niet (alleen de bestemming van de regel). | `UITKOMST_GEEN`, `UITKOMST_MEERDUIDIG` |
+| A6 | Rapport | Nieuwe sectie "1001-model (blok 9, SCHRIJF b)" — tellers (regels, gekoppeld via koppeling / via bedrag+datum, zonder mutatie, meerduidig, outstanding bekend/KLIKPUNT) + tabel per regel: boekstuk, regel, datum, bedrag, uitkomst, bestemming, bewijs, mutatie (+datum), Δ dagen, kandidaten, reden; JSON `model_1001`; statusregel `UITKOMST: ROOD — … 1001-model n gekoppeld / m zonder mutatie / k meerduidig`. | `rapport.py::_model_1001_sectie`, `cli_replay.statusregel` |
+| A7 | Groepstoets — restcategorieën | Élk resterend groepsverschil krijgt benoemde categorieën mét regel (nooit "onverklaard"): crediteuren/debiteuren = "afletterstand — SCHRIJF c"; tussenrekening = "1001 zonder bankmutatie (n×)", "1001 meerduidig (n×)", "open/ongekoppelde bankmutaties (n×)" + restant "afletterstand — SCHRIJF c"; bank = "open/ongekoppelde bankmutaties" (statement line in Odoo, RLZ journaliseert een onverwerkte mutatie pas ná afletteren), "1001 zonder/meerduidig" (RLZ wél op 1001) + restant "RLZ-opruimpunten / afletterstand" mét de drie opruimpunten (RLZ-01-00000006 concept, dubbel € 135.000 RLZ-28-00000061/062, bankregel "test"). Σ categorieën = groepsverschil (test). Groepsrij `rest[]`, markdown "- Rest ‹groep›groep — …". | `replay.rest_categorieen`, `REST_*` |
+| A8 | Mappingtabel | `EXPLICIETE_MAPPING["1001"]` blijft fase `b` (de bankrekening krijgt nooit een directe Odoo-mapping); toelichting + modelpunt-regel zeggen nu "GEBOUWD blok 9 16-09 als 1001-model"; `voorstel_tegenhanger` idem. | `rekening_mapping.py` |
+
+**Blok B — bewijspaar buiten juli 2025 (lees-only gekozen uit `verkenning/nameting-vgg-replay-15-09.txt`, NIET uitgevoerd):** RLZ-01-00000082
+(out_invoice, 2026-03-19, € 400.000,00, Ouwerkerk Notariaat, grootboek 8000 → RJ-220-rol `opbrengst_panden` 803100 id 3608; partner uit de
+gekoppelde bankmutatie) — verwachte Odoo-vorm en de open punten (pand-code uit Toewijzing, 8000 stond 15-09 nog als "grootboek zonder
+Odoo-rekening" op documentniveau — de rol-herclassificatie moet dat bij SCHRIJF c dekken) staan in het rapport. Recept, geen write.
+
+**Blok C — vierde meting (productie, lees-only): NIET GEMETEN in deze run.** `gcloud auth print-access-token` faalt (sessie verlopen;
+account info@vastly.software) én de code staat vóór de deploy. Vervolg-opdracht `opdrachten/inbox/2026-09-17-vgg-vierde-meting-na-deploy.md`:
+stap 0 deploy-check service = jobs (`scripts/gcp/vgg_blok7_nameting.sh` toetst dat zelf) + gcloud-sessie (Peter logt in), dan
+`vgg_blok7_nameting.sh c` → `verkenning/nameting-vgg-replay-<dd>-09-cc.txt` (suffix `-cc`, nameting-bot schrijft dezelfde namen), rapportregels
+tellen tegen de JSON (eerste echte meting van `print_gedoseerd`). Verwachting: ROOD alleen nog op debiteuren/crediteuren (afletterstand,
+SCHRIJF c); tussenrekening + bank 0,00 of mét benoemde rest; wijkt het af → rapport, geen doorrekenen.
+
+**Beslispunten (default gekozen, zie `docs/rapporten/2026-09-16-beslispunten-peter.md` opdracht 13):** meerduidig én geen-kandidaat allebei
+op de tussenrekening (niet op de bank); bewijs 1 zonder datumeis; venster ± 3 kalenderdagen; outstanding = dezelfde rekening voor in- en
+uitgaand (Odoo kent aparte Outstanding Receipts/Payments — de 1012-resolutie leest alleen de uitgaande regel); memoriaal-status ongewijzigd.
+
+**Tests:** nieuw `tests/migratie/test_model_1001.py` (tellers; bewijs 1; bewijs 2 mét Δ 2 d; geen kandidaat; meerduidig 2 kandidaten +
+niets geclaimd; tekenrichting; balansguard ROOD; groepstoets bank/tussenrekening sluiten als spiegelbeeld mét Σ rest = verschil; pseudo-
+sleutel nettoot; outstanding bekend → echte id op regel én tegenregel; mini-VGG zonder 1001 ongewijzigd + GROEN; markdown/JSON/statusregel);
+`test_blok7d.py` STAP-0-fixture draagt nu de twee bankmutaties tegenover RLZ-06-00000001/RLZ-60-00000003 (bank op groepsniveau, 1001-regel →
+outstanding); `test_rekening_mapping.py` modelpunt-tekst. tests/migratie groen (zie rapport), ruff schoon op de eigen bestanden.
+**Werkt in productie: niet gemeten** (vierde meting = vervolg-opdracht ná deploy).
+
+<!-- run2-vgg:blok9 -->
+
 ## ODOO-KOPPELWIZARD NAZORG 14-09 — MEMORIAAL OP TYPE, FAILSAFE DUBBELE KOPPELING, PROBE PER COMPANY, URL-NORMALISATIE (14-09-2026; kliktest Peter 14-09 op universal-steigers.odoo.com, 10 companies; besluit Peter 14-09 failsafe drie lagen; migratie 0140; geen Odoo-/RLZ-writes)
 
 **Aanleiding.** Peter koppelde 14-09 nieuwe Odoo-companies via "+ Administratie toevoegen" → Odoo (ingang A). Vier

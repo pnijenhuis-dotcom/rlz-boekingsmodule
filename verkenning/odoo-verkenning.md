@@ -1063,6 +1063,28 @@ memoriaal-1001-regels die tegen een statement line reconciliëren → outstandin
   niet opnieuw gemeten (laatste lezing 12-09: leeg).
 
 
+### 12.5 Blok 9 (16-09-2026) — SCHRIJF b: het 1001-model in de replay (lees-only; vierde meting volgt ná deploy)
+
+Waarom: in Odoo wordt de bankrekening uitsluitend door `account.bank.statement.line` gevoed; een RLZ-memoriaal dat rechtstreeks op 1001
+boekt zou als `account.move` (entry) de bank nóg eens raken. Odoo-vorm van het model (geen writes in deze run — alleen de replay-vals):
+
+| Situatie | Odoo-vorm (dry-run-vals) | Reconciliatie |
+|---|---|---|
+| Memoriaal-1001-regel mét bankmutatie (bewijs 1 PaymentReferenceList, of bewijs 2 cent-exact + richting ± 3 d op een vrije mutatie) | de `line_ids`-regel krijgt `account_id` = outstanding-/suspense-rekening van BNK1 (dezelfde resolutie als 1012: `account.journal.outbound_payment_method_line_ids → payment_account_id`, anders company-default, anders KLIKPUNT → `account_id` None + `model_1001`-reden op de regel); debet/credit ongewijzigd | de statement line krijgt in `bank.reconcile` een regel `{anker memoriaal, via_outstanding, model_1001: bewijs}`; haar tegenzijde is de outstanding-rekening i.p.v. de suspense/tussenrekening → in run 3 reconcile statement line ↔ de outstanding-regel van de memoriaal-move |
+| 1001-regel zonder mutatie binnen ± 3 d | `account_id` None (tussenrekening/suspense, KLIKPUNT-tekst in `model_1001`) — nooit de bankrekening | geen; blijft open op de tussenrekening tot de mens 'm aan een statement line koppelt |
+| Meerduidig (≥ 2 kandidaten) | idem tussenrekening, reden noemt de kandidaat-mutaties | mens kiest |
+
+Aanname (beslispunt, default): één outstanding-rekening voor in- én uitgaand. Odoo 17+ kent per betaalmethode-regel een aparte
+Outstanding Receipts (inbound) en Outstanding Payments (outbound); de 1012-resolutie leest alleen `outbound_payment_method_line_ids`.
+Als Peter op BNK1 twee verschillende rekeningen instelt, is een tweede resolutie voor `inbound_payment_method_line_ids` nodig (kleine
+uitbreiding van `rekening_mapping.los_outstanding_payments_op`) — het rapport toont de gekozen sleutel per regel, dus dat valt dan op.
+
+Stand 16-09: KLIKPUNT (15-09: BNK1 heeft twee uitgaande betaalmethode-regels zonder `payment_account_id`; `res.company` kent het
+company-veld niet in deze Odoo 19) — tot Peter 'm instelt draagt de replay de pseudo-sleutel `impliciet:outstanding-bnk1` in de
+bankgroep (nettoot op 0) en de LET-OP "KLIKPUNT PETER". Vierde meting: niet gemeten in de run van 16-09 (gcloud-sessie verlopen) —
+vervolg-opdracht in de inbox; meetlat: bank- en tussenrekeninggroep 0,00 of mét benoemde rest, debiteuren/crediteuren = afletterstand.
+
+
 ## §13 Activa (`account_asset`) — STAP-0 16-09 (opdracht Peter 16-09; company 3 Universal Verkoop, JSON-2, uitsluitend `fields_get`/`search_read`/`search_count`; script `odoo_activa_stap0.py` in de sessie-scratchpad, geen writes)
 
 | # | Vraag | Uitkomst |
