@@ -29,6 +29,7 @@ import { AutoboekKandidaten } from './AutoboekKandidaten'
 // Blok 5 (08-09): tellers per automatisering — verhuisd van Inzicht › Reconciliatie naar deze Beheerder-pagina.
 import { AutomatiseringenInstellingenBlok } from '../reconciliatie/AutomatiseringenBlok'
 import { AiToetsFacturenRij } from './AiToetsFacturenRij'
+import { IntercompanyRelaties } from './IntercompanyRelaties'
 import {
   eersteSectieVoor,
   type InstellingenSectie,
@@ -591,6 +592,9 @@ export function InstellingenScreen() {
             {/* Blok B bundel 10-09: AI-plausibiliteitstoets als poort vóór automatische factuurboekingen (platformbreed, default aan). */}
             <AiToetsFacturenRij />
             <AutomatiseringenInstellingenBlok />
+            {/* Blok A opdracht 16-09: intercompany-relaties (afgeleid, Beheerder corrigeert) + rekening-courant-koppelingen
+                — de bron van de dagelijkse reconciliatieblokken "intercompany" en "rekening_courant". */}
+            <IntercompanyRelaties />
           </div>
         )}
 

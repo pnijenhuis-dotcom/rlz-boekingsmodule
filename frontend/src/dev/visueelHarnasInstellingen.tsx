@@ -123,6 +123,39 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (url === '/instellingen/administraties' || url.startsWith('/instellingen/administraties?'))
     return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
   if (url === '/instellingen/boeken-kill-switch') return Promise.resolve(jsonResponse({ ingeschakeld: true }))
+  // Blok A 16-09: intercompany-relaties + RC-koppelingen op Boeken platformbreed (sweep-geval ?pad=/instellingen/boeken).
+  if (url === '/intercompany/relaties') {
+    const rel = (id: string, a: string, aId: string, naam: string, b: string, bId: string, richting: 'crediteur' | 'debiteur', basis: string, status: string, reden: string | null = null) => ({
+      id, administratie_a_id: aId, administratie_a_naam: a, entity_in_a: `e-${id}`, entity_naam: naam, administratie_b_id: bId, administratie_b_naam: b,
+      richting, basis, status, bron: status === 'afgeleid' ? 'afgeleid' : 'mens', reden, gewijzigd_op: null, actief: status === 'bevestigd' || (status === 'afgeleid' && basis !== 'naam'),
+    })
+    return Promise.resolve(
+      jsonResponse({
+        relaties: [
+          rel('r1', 'Universal Steigerbouw Nederland B.V.', ADMIN_1, 'Universal Verkoop B.V.', 'Universal Verkoop B.V.', ADMIN_2, 'crediteur', 'kvk', 'afgeleid'),
+          rel('r2', 'Universal Verkoop B.V.', ADMIN_2, 'Universal Steigerbouw Nederland', 'Universal Steigerbouw Nederland B.V.', ADMIN_1, 'debiteur', 'doorbelasting', 'bevestigd'),
+          rel('r3', 'BLOW B.V.', ADMIN_3, 'Molenhof Verhuur', 'Molenhof Verhuur B.V.', ADMIN_2, 'crediteur', 'naam', 'afgeleid'),
+          rel('r4', 'Molenhof Verhuur B.V.', ADMIN_2, 'Blow Coffeeshop (extern)', 'BLOW B.V.', ADMIN_3, 'debiteur', 'naam', 'uitgesloten', 'Externe klant met toevallig dezelfde naam — geen groepsmaatschappij.'),
+        ],
+      }),
+    )
+  }
+  if (url === '/intercompany/rc-koppelingen') {
+    return Promise.resolve(
+      jsonResponse({
+        koppelingen: [
+          { id: 'k1', administratie_a_id: ADMIN_1, administratie_a_naam: 'Universal Steigerbouw Nederland B.V.', rekening_a: 'l1', rekening_a_code: '1400', rekening_a_naam: 'RC Universal Verkoop B.V.', administratie_b_id: ADMIN_2, administratie_b_naam: 'Universal Verkoop B.V.', rekening_b: 'l2', rekening_b_code: '1600', rekening_b_naam: 'Rekening-courant Universal Steigerbouw Nederland', basis: 'naam', status: 'afgeleid', bron: 'afgeleid', reden: null, gewijzigd_op: null, actief: true },
+          { id: 'k2', administratie_a_id: ADMIN_2, administratie_a_naam: 'Universal Verkoop B.V.', rekening_a: 'l2', rekening_a_code: '1600', rekening_a_naam: 'Rekening-courant Universal Steigerbouw Nederland', administratie_b_id: ADMIN_1, administratie_b_naam: 'Universal Steigerbouw Nederland B.V.', rekening_b: 'l1', rekening_b_code: '1400', rekening_b_naam: 'RC Universal Verkoop B.V.', basis: 'naam', status: 'bevestigd', bron: 'mens', reden: null, gewijzigd_op: '2026-09-16T09:00:00Z', actief: true },
+          { id: 'k3', administratie_a_id: ADMIN_3, administratie_a_naam: 'BLOW B.V.', rekening_a: 'l3', rekening_a_code: '1410', rekening_a_naam: 'RC MV', administratie_b_id: ADMIN_2, administratie_b_naam: 'Molenhof Verhuur B.V.', rekening_b: null, rekening_b_code: null, rekening_b_naam: null, basis: 'afkorting', status: 'afgeleid', bron: 'afgeleid', reden: null, gewijzigd_op: null, actief: true },
+        ],
+        identiteiten: [
+          { administratie_id: ADMIN_1, administratie_naam: 'Universal Steigerbouw Nederland B.V.', naam: 'Universal Steigerbouw Nederland B.V.', kvk: '12345678', btw: null, bron: 'rlz', afkortingen: ['USN'], gelezen_op: '2026-09-16T05:00:00Z' },
+          { administratie_id: ADMIN_2, administratie_naam: 'Molenhof Verhuur B.V.', naam: 'Molenhof Verhuur B.V.', kvk: '87654321', btw: 'NL001234567B01', bron: 'odoo', afkortingen: ['MV'], gelezen_op: '2026-09-16T05:00:00Z' },
+          { administratie_id: ADMIN_3, administratie_naam: 'BLOW B.V.', naam: null, kvk: null, btw: null, bron: 'rlz', afkortingen: [], gelezen_op: null },
+        ],
+      }),
+    )
+  }
   if (url === '/instellingen/intake-ai') return Promise.resolve(jsonResponse({ ingeschakeld: false }))
   if (url === '/instellingen/ai-kosten') {
     return Promise.resolve(

@@ -192,7 +192,27 @@ def _onderwerp_rlz_dubbel(d: dict) -> Segmenten:
     return [x for x in (_s(d, "leverancier_naam"), ref or None, boekstuk_tekst) if x]
 
 
-_SCHEIDING = {"documenten": " ", "doorbelasting": " ", "bank": " · ", "omzet": " · ", "rlz_dubbel": " · "}
+_SCHEIDING = {
+    "documenten": " ",
+    "doorbelasting": " ",
+    "bank": " · ",
+    "omzet": " · ",
+    "rlz_dubbel": " · ",
+    "intercompany": " · ",
+}
+
+
+def _onderwerp_intercompany(d: dict) -> Segmenten:
+    """Blok B 16-09: 'Universal Verkoop → Universal Nederland · 2026-0123' — verkoper → ontvanger, dan nummer."""
+    v, o = _s(d, "verkoper_naam"), _s(d, "ontvanger_naam")
+    relatie = f"{v} → {o}" if v and o else (v or o or "")
+    return [relatie, _s(d, "nummer") or ""]
+
+
+def _onderwerp_rekening_courant(d: dict) -> Segmenten:
+    """Blok C 16-09: 'Kempen B.V. ↔ Kempen Facilities' — de twee administraties van het RC-paar."""
+    a, b = _s(d, "administratie_a_naam"), _s(d, "administratie_b_naam")
+    return [a or "", f"↔ {b}" if b else ""]
 
 
 def _onderwerp(blok: str, d: dict) -> Segmenten:
@@ -206,6 +226,10 @@ def _onderwerp(blok: str, d: dict) -> Segmenten:
         return _onderwerp_omzet(d)
     if blok == "doorbelasting":
         return _onderwerp_doorbelasting(d)
+    if blok == "rekening_courant":
+        return _onderwerp_rekening_courant(d)
+    if blok == "intercompany":
+        return _onderwerp_intercompany(d)
     return []
 
 
@@ -662,12 +686,158 @@ def _rlz_dubbel(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
+def _rc_lijst(d: dict, sleutel: str) -> list[str]:
+    v = d.get(sleutel)
+    return [str(x) for x in v if x] if isinstance(v, list) else []
+
+
+def _rekening(code: str | None, naam: str | None) -> str:
+    return " ".join(x for x in (code, naam) if x) or "de rekening-courant"
+
+
+def _rekening_courant(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok C 16-09 (opdracht Peter): het eindsaldo van de RC-rekening in A sluit niet aan op de tegenrekening in B.
+    WAT noemt beide saldi en de verklaring (welke mutatie(s) ontbreken aan welke kant — meerdere kandidaten met
+    hetzelfde bedrag allemaal, nooit raden); DOE is "boek de ontbrekende mutatie bij <kant>" of, als de restlijst de
+    Δ niet verklaart, "controleer handmatig op afronding/koers". Het systeem herstelt niets: andermans boekhouding."""
+    onderwerp = _onderwerp_rekening_courant(d)
+    naam_a = _s(d, "administratie_a_naam") or "administratie A"
+    naam_b = _s(d, "administratie_b_naam") or "administratie B"
+    delta = euro(d.get("delta"))
+    saldo_a, saldo_b = euro(d.get("saldo_a")), euro(d.get("saldo_b"))
+    bij_b, bij_a = _rc_lijst(d, "ontbreekt_bij_b"), _rc_lijst(d, "ontbreekt_bij_a")
+    niet_herleidbaar = bool(d.get("niet_herleidbaar"))
+    if soort != "rc_sluit_niet" and soort:
+        return (
+            _titel("Rekening-courant, controleer", onderwerp),
+            _terugval_wat(d.get("detail") or tekst),
+            f"Controleer de rekening-courant in beide administraties; {_DOE_ACCEPTEER}",
+        )
+    # Kort ("RC"): mét Δ én beide namen moet de titel binnen 60 tekens blijven; past het niet, dan valt eerst B weg.
+    kop = f"RC wijkt {delta} af" if delta else "RC wijkt af"
+    stand = (
+        f"Het saldo van {_rekening(_s(d, 'rekening_a_code'), _s(d, 'rekening_a_naam'))} in {naam_a} is "
+        f"{saldo_a or 'onbekend'}; de tegenrekening {_rekening(_s(d, 'rekening_b_code'), _s(d, 'rekening_b_naam'))} "
+        f"in {naam_b} staat op {saldo_b or 'onbekend'}"
+    )
+
+    def _telwoord(n: int, wat: str) -> str:
+        return f"{n} {wat}" if n == 1 else f"{n} {wat}s"
+
+    delen: list[str] = []
+    if bij_b:
+        delen.append(f"{_telwoord(len(bij_b), 'mutatie')} ontbreekt bij {naam_b}: {'; '.join(bij_b)}")
+    if bij_a:
+        delen.append(f"{_telwoord(len(bij_a), 'mutatie')} ontbreekt bij {naam_a}: {'; '.join(bij_a)}")
+    if niet_herleidbaar:
+        delen.append(
+            f"Δ {delta or 'onbekend'} niet herleidbaar tot losse mutaties — vermoedelijk afronding/koers; "
+            "controleer handmatig"
+        )
+    wat = f"{stand} — {' en '.join(delen)}." if delen else f"{stand} (verschil {delta or 'onbekend'})."
+    if niet_herleidbaar:
+        doe = f"Controleer handmatig op afronding/koers in beide administraties; {_DOE_ACCEPTEER}"
+    elif bij_b and bij_a:
+        doe = f"Boek de ontbrekende mutaties bij {naam_b} en {naam_a}, of accepteer met reden."
+    elif bij_a:
+        doe = f"Boek de ontbrekende mutatie bij {naam_a}, of accepteer met reden."
+    elif bij_b:
+        doe = f"Boek de ontbrekende mutatie bij {naam_b}, of accepteer met reden."
+    else:
+        doe = f"Vergelijk de rekening-courant in beide administraties; {_DOE_ACCEPTEER}"
+    return (_titel(kop, onderwerp), wat, doe)
+
+
+def _rc_zonder_tegenrekening(d: dict, administratie_naam: str | None) -> tuple[str, str, str]:
+    """Blok C 16-09 (let_op): een RC-rekening in A verwijst naar B, maar in B is geen tegenrekening gevonden — het
+    saldo kan niet worden aangesloten. Handeling: tegenrekening aanwijzen (Instellingen › Boeken › Rekening-courant)
+    of de koppeling uitsluiten met reden; deeplink op de rij (`doel_pad`)."""
+    naam_a = _s(d, "administratie_a_naam") or administratie_naam or "deze administratie"
+    naam_b = _s(d, "administratie_b_naam") or "de andere administratie"
+    rekening = _rekening(_s(d, "rekening_a_code"), _s(d, "rekening_a_naam"))
+    return (
+        _titel("RC zonder tegenrekening", [naam_a, f"↔ {naam_b}"]),
+        f"{rekening} in {naam_a} verwijst naar {naam_b}, maar daar is geen tegenrekening gevonden — het saldo "
+        "kan niet worden aangesloten.",
+        f"Wijs de tegenrekening in {naam_b} aan op Instellingen › Boeken › Rekening-courant, of sluit de koppeling "
+        "uit met reden.",
+    )
+
+
+#: Blok B 16-09 (beslispunt 4, default): status-verschil telt pas ná 7 dagen — spiegelt `factuurmatch.STATUS_VERSCHIL_NA_DAGEN`.
+_STATUS_VERSCHIL_DAGEN = 7
+
+
+def _intercompany(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok B 16-09 (Peter): factuur tussen twee eigen administraties — verkoop bij de verkoper ↔ inkoop bij de
+    ontvanger. Namen komen uit `verkoper_naam`/`ontvanger_naam`; het woord 'intercompany' staat bewust NIET in de
+    zinnen (blok-sleutel, actiemail-guard) — de mail zegt 'onderlinge factuur'."""
+    onderwerp = _onderwerp_intercompany(d)
+    verkoper = _s(d, "verkoper_naam") or "de verkopende administratie"
+    ontvanger = _s(d, "ontvanger_naam") or "de ontvangende administratie"
+    nummer = _s(d, "nummer") or "zonder nummer"
+    bedrag_v = euro(_s(d, "bedrag_verkoop"))
+    bedrag_i = euro(_s(d, "bedrag_inkoop"))
+    delta = euro(_s(d, "delta"))
+    factuurdatum = datum(_s(d, "datum"))
+    op = f" van {factuurdatum}" if factuurdatum else ""
+    verrekend = " (factuur mét creditnota als één geheel)" if d.get("verrekend") else ""
+    if soort == "ic_ontbreekt_bij_ontvanger":
+        bedrag = f" {bedrag_v}" if bedrag_v else ""
+        return (
+            _titel("Onderlinge factuur ontbreekt bij ontvanger", onderwerp, " · "),
+            f"{verkoper} factureerde {nummer}{bedrag}{op} aan {ontvanger}; bij {ontvanger} staat die inkoop niet"
+            f"{verrekend}.",
+            f"Controleer bij {ontvanger} of de factuur is ontvangen en boek 'm, of accepteer met reden.",
+        )
+    if soort == "ic_ontbreekt_bij_verkoper":
+        bedrag = f" {bedrag_i}" if bedrag_i else ""
+        return (
+            _titel("Onderlinge inkoop zonder verkoopfactuur", onderwerp, " · "),
+            f"{ontvanger} boekte inkoopfactuur {nummer}{bedrag}{op} van {verkoper}; bij {verkoper} staat geen "
+            f"verkoopfactuur met dat nummer{verrekend}.",
+            f"Controleer bij {verkoper} of de factuur wél is aangemaakt (of het nummer klopt), of accepteer met "
+            "reden.",
+        )
+    if soort == "ic_bedrag_verschilt":
+        verschil = f" (verschil {delta})" if delta else ""
+        wat = (
+            f"Factuur {nummer}: {verkoper} boekte {bedrag_v}, {ontvanger} {bedrag_i}{verschil}."
+            if bedrag_v and bedrag_i
+            else f"Factuur {nummer} staat bij {verkoper} en {ontvanger} voor een verschillend bedrag "
+            f"({_terugval_wat(tekst)})."
+        )
+        return (
+            _titel("Onderlinge factuur — bedrag verschilt", onderwerp, " · "),
+            wat,
+            "Vergelijk beide boekingen en corrigeer aan de kant die fout zit; klopt het verschil, accepteer met reden.",
+        )
+    if soort == "ic_status_verschilt":
+        concept_kant = _s(d, "concept_kant")
+        concept = verkoper if concept_kant == "verkoop" else ontvanger if concept_kant == "inkoop" else "één kant"
+        geboekt = ontvanger if concept_kant == "verkoop" else verkoper if concept_kant == "inkoop" else "de andere kant"
+        return (
+            _titel("Onderlinge factuur — concept tegenover geboekt", onderwerp, " · "),
+            f"Factuur {nummer}{op} staat bij {concept} nog als concept en bij {geboekt} geboekt, al langer dan "
+            f"{_STATUS_VERSCHIL_DAGEN} dagen.",
+            f"Boek het concept bij {concept} definitief of laat het dáár corrigeren; klopt het zo, accepteer met "
+            "reden.",
+        )
+    return (
+        _titel("Afwijking in een onderlinge factuur", onderwerp, " · "),
+        _terugval_wat(d.get("detail") or tekst),
+        f"Controleer beide administraties; {_DOE_ACCEPTEER}",
+    )
+
+
 _BLOK_AFWIJKING = {
     "documenten": _documenten,
+    "intercompany": _intercompany,
     "bank": _bank,
     "omzet": _omzet,
     "doorbelasting": _doorbelasting,
     "rlz_dubbel": _rlz_dubbel,
+    "rekening_courant": _rekening_courant,
 }
 
 
@@ -820,6 +990,8 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
 def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:
     if d.get("automatisering"):
         return _automatisering(d, administratie_naam)
+    if d.get("rc_zonder_tegenrekening") or d.get("afwijking_soort") == "rc_zonder_tegenrekening":
+        return _rc_zonder_tegenrekening(d, administratie_naam)
     if d.get("reden") == "opruimlijst_fout" or (not d.get("kant") and "opruimlijst" in (tekst or "").lower()):
         return (
             "Opruimlijst niet compleet",
@@ -918,6 +1090,8 @@ _DETAIL_LABELS: tuple[tuple[str, str], ...] = (
     ("cluster", "cluster-sleutel"),
     ("vervangen_door_vingerafdruk", "vervangen door cluster"),
     ("rlz_admin_id", "RLZ-administratie"),
+    ("koppeling_id", "RC-koppeling"),
+    ("venster_vanaf", "verklaringsvenster vanaf"),
     ("regel", "matchregel"),
     ("payment_transaction_id", "RLZ-mutatie"),
     ("payment_item_id", "RLZ-openstaande post"),

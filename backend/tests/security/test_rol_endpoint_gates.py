@@ -243,6 +243,13 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         # Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144): naam wijzigen = Beheerder-only.
         ("PUT", f"/administraties/{aid}/naam"),  # beheerder-only
         ("POST", f"/administraties/{aid}/naam-overnemen"),  # beheerder-only
+        # Intercompany-relaties + RC-koppelingen (blok A 16-09): router-breed require_beheerder.
+        ("GET", "/intercompany/relaties"),  # beheerder-only
+        ("PUT", f"/intercompany/relaties/{DUMMY_ID}"),  # beheerder-only
+        ("GET", "/intercompany/rc-koppelingen"),  # beheerder-only
+        ("PUT", f"/intercompany/rc-koppelingen/{DUMMY_ID}"),  # beheerder-only
+        ("PUT", f"/intercompany/identiteit/{aid}/afkortingen"),  # beheerder-only
+        ("POST", "/intercompany/afleiden"),  # beheerder-only
     ]
 
 
@@ -389,6 +396,7 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/groep")  # blok 8 11-09: groep van een administratie zetten = Beheerder-only
                 or pad.endswith(("/naam", "/naam-overnemen"))  # 15-09 (0144): administratienaam = Beheerder-only
                 or (pad.startswith("/groepen") and methode != "GET")  # blok 8 11-09: groepen muteren = Beheerder-only
+                or pad.startswith("/intercompany/")  # blok A 16-09: intercompany-relaties/RC = Beheerder-only
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
                 # (materiaalcatalogus schrijven; lezen sinds 06-09 óók mét meerwerk-recht) resp. module-recht

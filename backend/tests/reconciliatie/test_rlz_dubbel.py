@@ -1125,4 +1125,4 @@ class TestCliLeesOnly:
 
         monkeypatch.setattr(run_service, "voer_uit", voer_uit)
         assert cli.main(["reconciliatie-alles"]) == 0
-        assert gezien["blokken"] == ["bank", "documenten", "omzet", "doorbelasting", "rlz_dubbel"]
+        assert gezien["blokken"] == ["bank", "documenten", "intercompany", "rekening_courant", "omzet", "doorbelasting", "rlz_dubbel"]

@@ -20,6 +20,9 @@ class ReconciliatieBron(enum.StrEnum):
     BANK = "bank"
     OMZET = "omzet"
     DOORBELASTING = "doorbelasting"
+    # Peter 16-09 (migratie 0148): intercompany-factuurmatch en rekening-courant-aansluiting.
+    INTERCOMPANY = "intercompany"
+    REKENING_COURANT = "rekening_courant"
 
 
 class ReconciliatieAcceptatie(Base):

@@ -652,6 +652,14 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     # Automatisering-first (opdracht 23-08 punt 3): de dagelijkse sync ververst óók de
     # projectcijfers voor de uren-&-meerwerk-administraties — de knop blijft de handmatige
+    # Intercompany (blok A 16-09): identiteit per administratie (één AdministrationSettings-/res.company-call) →
+    # IC-relaties (crediteuren uit de cache, debiteuren één Customers-leesroute) → RC-koppelingen (puur code). Elke stap
+    # apart gevangen: een fout is een zichtbare regel, nooit een stop van de nachtelijke sync.
+    from app.intercompany import cli_stap as intercompany_cli_stap
+
+    print("\nIntercompany — identiteiten, relaties en rekening-courant-koppelingen (alle actieve administraties):")
+    intercompany_cli_stap.rapporteer_afleiding()
+
     # verversing. Eigen fouten-telling: een kapotte cijfers-sync maakt de job zichtbaar rood.
     from app.projecten.cijfers_run import sync_alle_via_runs
 
@@ -1890,12 +1898,17 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
 
     if alleen and not lees_only:
         print(
+    from app.intercompany import factuurmatch, rekening_courant
             "FOUT: --alleen werkt uitsluitend samen met --lees-only — een deel-run mag niet als laatste run worden "
             "vastgelegd (kantoorbrede lijst + delta-mail lezen die).",
             file=sys.stderr,
         )
         return 2
     if administratie:
+        # Peter 16-09 (blok B): intercompany-factuurmatch — verkoop bij A ↔ inkoop bij B voor élk actief IC-paar.
+        (factuurmatch.BLOK, factuurmatch.cli_blok),
+        # Peter 16-09 (blok C): rekening-courant-aansluiting per actieve rc_koppeling — ná het intercompany-blok.
+        (rekening_courant.BLOK, rekening_courant.cli_blok),
         if not lees_only or any(naam != rlz_dubbel.BLOK for naam, _ in blokken):
             print(
                 "FOUT: --administratie geldt alleen voor `--alleen rlz_dubbel --lees-only` (de andere blokken "
@@ -3034,7 +3047,7 @@ def main(argv: list[str] | None = None) -> int:
         "--alleen",
         action="append",
         default=None,
-        choices=("bank", "documenten", "omzet", "doorbelasting", "rlz_dubbel"),
+        choices=("bank", "documenten", "intercompany", "omzet", "doorbelasting", "rekening_courant", "rlz_dubbel"),
         help="Alleen dit blok (herhaalbaar). Vereist --lees-only: een deel-run mag nooit als 'laatste run' worden "
         "vastgelegd (de kantoorbrede lijst en de delta-mail lezen die).",
     )

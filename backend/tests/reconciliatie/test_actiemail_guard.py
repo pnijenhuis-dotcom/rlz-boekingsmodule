@@ -118,12 +118,37 @@ def _fixture_set() -> Delta:
         _afw("doorbelasting", "controle_mislukt", AID_A, "x5", "geen credentials", doelentiteit_naam="Abbegaa BV"),
         _afw("rlz_dubbel", "dubbel_in_rlz", AID_B, "r1", "paar", leverancier_naam="Kader Consultancy", referentie_a="F1", referentie_b="F1",
              boekstuk_a="RLZ-04-00004037", boekstuk_b="RLZ-04-00004099", datum_a="2026-06-22", bedrag_a="1234.56", status_a="1", van_module_a=True, regel="referentie", concept=True),
+        # Blok B 16-09: intercompany-factuurmatch — één regel per soort (verkoper/ontvanger als namen, nooit id's).
+        _afw("intercompany", "ic_ontbreekt_bij_ontvanger", AID_B, "ic1", "paar=a>b nummer=2026-0123 bedrag=4500.00 datum=2026-08-14",
+             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0123",
+             bedrag_verkoop="4500.00", datum="2026-08-14", boekstuk_a="2026-0123"),
+        _afw("intercompany", "ic_ontbreekt_bij_verkoper", AID_A, "ic2", "paar=a>b nummer=24713300 bedrag=980.10 datum=2026-08-02",
+             verkoper_naam="Universal Steigerbouw B.V.", ontvanger_naam="Kempen Facilities B.V.", nummer="24713300",
+             bedrag_inkoop="980.10", datum="2026-08-02", boekstuk_b="RLZ-04-00004401"),
+        _afw("intercompany", "ic_bedrag_verschilt", AID_B, "ic3", "paar=a>b nummer=2026-0124 verkoop=4500.00 inkoop=4050.00 delta=450.00",
+             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0124",
+             bedrag_verkoop="4500.00", bedrag_inkoop="4050.00", delta="450.00", datum="2026-08-20", regel="nummer"),
+        _afw("intercompany", "ic_status_verschilt", AID_B, "ic4", "paar=a>b nummer=2026-0125 status_verkoop=2 status_inkoop=1",
+             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0125",
+             bedrag_verkoop="120.00", bedrag_inkoop="120.00", datum="2026-07-01", status_a="2", status_b="1", concept_kant="inkoop"),
+        # Blok C 16-09: rekening-courant sluit niet — verklaring (1 mutatie ontbreekt bij B) en niet-herleidbaar.
+        _afw("rekening_courant", "rc_sluit_niet", AID_B, "rc1", "rekening_a=1300 rekening_b=1600 delta=1250.00",
+             administratie_a_naam="Kempen B.V.", administratie_b_naam="Kempen Facilities B.V.", rekening_a_code="1300",
+             rekening_a_naam="Rekening-courant Kempen Facilities", rekening_b_code="1600", rekening_b_naam="Rekening-courant Kempen B.V.",
+             saldo_a="12500.00", saldo_b="-11250.00", delta="1250.00",
+             ontbreekt_bij_b=["12-09 € 1.250,00 'huur september' (RLZ-05-00000412)"], ontbreekt_bij_a=[], niet_herleidbaar=False),
+        _afw("rekening_courant", "rc_sluit_niet", AID_A, "rc2", "rekening_a=1310 rekening_b=1610 delta=0.37",
+             administratie_a_naam="Universal Steigerbouw B.V.", administratie_b_naam="Universal Nederland B.V.", rekening_a_code="1310",
+             rekening_b_code="1610", saldo_a="1000.37", saldo_b="-1000.00", delta="0.37", ontbreekt_bij_b=[], ontbreekt_bij_a=[], niet_herleidbaar=True),
     ]
     let_op = [
         _b("doorbelasting", "let_op", AID_A, "l1", f"LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron {DOC} in administratie {AID_A}",
            kant="verkoop_bron", reden="gestorneerd", referentie="24713188", leverancier_naam="Universal Nederland", factuurnummer="RLZ-2080143037"),
         _b("doorbelasting", "let_op", AID_B, "l2", f"LET-OP     opruimlijst: administratie {AID_B}: HTTP 500", reden="opruimlijst_fout"),
         _b("documenten", "let_op", AID_B, "l3", f"LET-OP     iets onbekends bij {DOC}"),
+        _b("rekening_courant", "let_op", AID_B, "l4", f"LET-OP     Kempen Facilities B.V. 1600 ↔ Kempen B.V. (geen tegenrekening): RC zonder tegenrekening (koppeling {DOC})",
+           afwijking_soort="rc_zonder_tegenrekening", rc_zonder_tegenrekening=True, administratie_a_naam="Kempen Facilities B.V.",
+           administratie_b_naam="Kempen B.V.", rekening_a_code="1600", rekening_a_naam="Rekening-courant Kempen B.V.", doel_pad="/instellingen/boeken"),
         _auto_let_op(auto.CREDENTIAL, AID_A, auto.BANK_SYNC),
         _auto_let_op(auto.API_KEY, None, auto.EXTRACTIE_WACHTRIJ),
         _auto_let_op(auto.GELDPOORT, AID_B),
@@ -154,7 +179,9 @@ def _fixture_set() -> Delta:
 
 GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 #: Kale blok-sleutels (de mail zegt "bankmutatie", nooit "bank" als sleutel) en teller-/jargonwoorden.
-BLOK_SLEUTELS = ("documenten", "bank", "omzet", "doorbelasting", "automatisering", "rlz_dubbel")
+BLOK_SLEUTELS = (
+    "documenten", "bank", "omzet", "doorbelasting", "automatisering", "rlz_dubbel", "rekening_courant", "intercompany",
+)
 TELLER_WOORDEN = ("verwacht", "gedaan", "overgeslagen", "exit")
 JARGON = ("vingerafdruk", "delta", "bevinding-id", "json", "http", "4xx", "5xx", "vaf:", "run-id", "run_id", "let-op", "regressie")
 WERKWOORDEN = ("vraagt", "vragen", "bekijken", "afhandelen", "liep", "verdwenen", "afwijkt", "teruggezet", "mislukt", "wacht")

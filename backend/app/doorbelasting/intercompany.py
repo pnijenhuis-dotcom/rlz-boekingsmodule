@@ -9,51 +9,24 @@ bij mapping-aanmaak/-wijziging, doel-kant = crediteur-GUID zodra de spiegel-inko
 Afnemers: bank-afletteren (`app/bank/voorstellen.py`, IC-open-posten nooit als afletter-doel) en de klant-
 accordering (`app/accordering/service.py`: een IC-document doorloopt exact dezelfde flow maar de stap "ter
 accordering" wordt overgeslagen). Puur lezen, nooit AI, geen schrijfpad. Lege/inactieve tabel = gewone flow
-(kernprincipe 7: geen stille no-op — er gebeurt dan niets bijzonders)."""
+(kernprincipe 7: geen stille no-op — er gebeurt dan niets bijzonders).
+
+Sinds 16-09 (opdracht intercompany-factuurmatch, blok A) leven de drie functies in `app/intercompany/relaties.py` — de
+ENE intercompany-leesbron (afgeleide relaties + doorbelasting-IC-vlag). Dit module her-exporteert ze met identieke
+semantiek zodat alle afnemers en tests ongewijzigd blijven."""
 
 from __future__ import annotations
 
-import uuid
+from app.intercompany.relaties import (
+    OVERGESLAGEN_REDEN_INTERCOMPANY,
+    intercompany_entity_guids,
+    intercompany_tegenpartij,
+    is_intercompany_leverancier,
+)
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.doorbelasting.models import IntercompanyTegenpartij
-
-# Waarde van `accordering_overgeslagen_reden` in de DTO's / het tijdlijn-detail — de enige reden die bestaat.
-OVERGESLAGEN_REDEN_INTERCOMPANY = "intercompany"
-
-
-def intercompany_entity_guids(session: Session, *, administratie_id: uuid.UUID) -> set[uuid.UUID]:
-    """De entity-GUID's die in deze administratie als intercompany gelden (alleen actieve rijen)."""
-    return {
-        rij.entity_guid
-        for rij in session.scalars(
-            select(IntercompanyTegenpartij).where(
-                IntercompanyTegenpartij.administratie_id == administratie_id,
-                IntercompanyTegenpartij.actief.is_(True),
-            )
-        )
-    }
-
-
-def intercompany_tegenpartij(
-    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None
-) -> IntercompanyTegenpartij | None:
-    """De actieve IC-rij voor deze crediteur in deze administratie, of None. `vendor_id` None = None (geen
-    leverancier herkend → nooit intercompany)."""
-    if vendor_id is None:
-        return None
-    return session.scalars(
-        select(IntercompanyTegenpartij).where(
-            IntercompanyTegenpartij.administratie_id == administratie_id,
-            IntercompanyTegenpartij.entity_guid == vendor_id,
-            IntercompanyTegenpartij.actief.is_(True),
-        )
-    ).first()
-
-
-def is_intercompany_leverancier(session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None) -> bool:
-    """True als deze crediteur in déze administratie een actieve IC-rij heeft — dé definitie van
-    "leverancier met IC-vlag" voor alle afnemers."""
-    return intercompany_tegenpartij(session, administratie_id=administratie_id, vendor_id=vendor_id) is not None
+__all__ = [
+    "OVERGESLAGEN_REDEN_INTERCOMPANY",
+    "intercompany_entity_guids",
+    "intercompany_tegenpartij",
+    "is_intercompany_leverancier",
+]

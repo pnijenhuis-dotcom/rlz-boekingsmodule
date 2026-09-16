@@ -409,6 +409,22 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
+  {
+    id: 'intercompany-relaties',
+    naam: 'Intercompany-relaties (afgeleid; bevestigen / uitsluiten)',
+    waar: 'Boeken platformbreed › Intercompany-relaties',
+    synoniemen: ['intercompany', 'ic', 'groepsmaatschappij', 'tussen onze bedrijven', 'gelieerd', 'factuurmatch', 'relaties'],
+    doel: { soort: 'sectie', sectie: 'boeken', anker: 'intercompany' },
+    beheerder: true,
+  },
+  {
+    id: 'rc-koppelingen',
+    naam: 'Rekening-courant-koppelingen + afkortingen per administratie',
+    waar: 'Boeken platformbreed › Rekening-courant',
+    synoniemen: ['rekening-courant', 'rekening courant', 'rc', 'tegenrekening', 'afkorting', 'aansluiting', 'saldo'],
+    doel: { soort: 'sectie', sectie: 'boeken', anker: 'rekening-courant' },
+    beheerder: true,
+  },
     id: 'autoboek-drempel',
     naam: 'Autoboeken: drempel "N identieke boekingen"',
     waar: 'Autoboeken › criteria',
