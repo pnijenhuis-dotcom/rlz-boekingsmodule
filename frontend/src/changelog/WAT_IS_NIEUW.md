@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Meerdere documenten tegelijk verwijderen, van type wisselen, verplaatsen of afwijzen
+
+<!-- documentenlijst-bulk-16-09 -->
+
+- **Selecteer rijen in de documentenlijst en handel ze in één keer af.** Elke rij heeft een vinkje (shift-klik selecteert een reeks, het vinkje in de kop pakt alles in de huidige weergave). Bovenaan verschijnt een balk met "Verwijderen…" en via ⋯ "Type wijzigen…", "Verplaatsen naar administratie…" en "Afwijzen…". Eén reden geldt voor de hele selectie.
+- **Per document zie je wat er gebeurde.** Geboekte documenten of documenten die bij de klant ter accordering liggen, worden overgeslagen met de reden erbij; de rest gaat door. Verwijderen is herstelbaar via "Toon afgehandelde documenten" en raakt Reeleezee of Odoo niet.
+- **Type wijzigen bestaat nu ook los.** Een kassarapport dat per ongeluk als inkoopfactuur binnenkwam, zet je om; de verwerking loopt dan opnieuw via het omzetpad.
+
 ## 2026-09-16 — Bankscherm: zoeken, betaalbatches in één keer afletteren, rustigere rijen
 
 <!-- bank-zoekveld-batch-16-09 -->

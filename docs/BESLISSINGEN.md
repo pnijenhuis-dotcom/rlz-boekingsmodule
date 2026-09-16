@@ -10223,6 +10223,32 @@ Zuilichem-mutaties ongewijzigd. Bank-sync-log: geen regel "RLZ weigert $expand=�
 (ITEMS_EXPAND), `app/bank/afletteren.py::letter_batch_af`, `app/bank/router.py::afletteren_batch`, `frontend/src/bank/bankZoek.ts`,
 `BankDetailScreen.tsx`, `VoorstelKaart.tsx::BatchKaart`; rapport `docs/rapporten/2026-09-16-bank-zoekveld-batch.md`.
 
+## DOCUMENTENLIJST — BULK-ACTIES (Peter 16-09) — verwijderen / type wijzigen / verplaatsen / afwijzen over een selectie; geen migratie
+
+**Aanleiding:** verkeerd geclassificeerde kassarapporten (ProfX Journaal, De Bazar) staan als inkoopfactuur in de werkvoorraad; Peter: "nu moet dat
+1 voor 1". Generalisatie van het bulk-patroon "BULK-AFVOER OP DE MOGELIJK-DUPLICAAT-TAB" (checkbox + alle N + uitkomst per rij) naar de hele
+klant-documentenlijst. De verzamelbak had al bulk-toewijzen/hoort-niet-bij-ons (blok B 02-09) — ongewijzigd.
+
+| # | Onderdeel | Stand |
+|---|---|---|
+| 1 | **Backend `POST /administraties/{id}/documenten/bulk`** (`app/documenten/bulk.py::voer_bulk_uit`): body `document_ids` (≤ 500) + `actie` verwijderen \| afwijzen \| soort_wijzigen \| verplaatsen + `reden` (verplicht bij verwijderen/afwijzen, één reden voor de hele selectie) / `soort` / `doel_administratie_id`; N × de BESTAANDE per-document-route (`service.verwijder_document`, `afwijzen.wijs_af`, `verplaatsen.verplaats_document`), één transactie per document, uitkomst per rij `gelukt` / `overgeslagen` mét reden ("overgeslagen — geboekt: …") / `geen_toegang` (id buiten scope of administratie is onder RLS onzichtbaar); altijd 200, validatie per actie 422. Niets in RLZ/Odoo geraakt (KP3): verwijderen = module-status `verwijderd` (herstelbaar). | GEBOUWD 16-09 |
+| 2 | **Type wijzigen** = nieuw `app/documenten/soort.py::wijzig_documentsoort` (er bestond geen enkelvoudige route; de verzamelbak-soortkeuze gold alleen bij toewijzen): inkoopfactuur ↔ kassarapport ↔ verplichting, zelfde statusset als verplaatsen (`VERPLAATSBARE_STATUSSEN`; geboekt/ter_accordering/extractie-bezig = geweigerd mét uitleg), soort gezet, → ONTVANGEN mét tijdlijnregel `documentsoort_gewijzigd "a -> b"` + audit `documentsoort_gewijzigd` oud→nieuw, extractie opnieuw via het ene pad (`start_extractie_na_toewijzing`: kassarapport-hook, AVG-gate); dezelfde soort = idempotent "overgeslagen — is al een …". | GEBOUWD 16-09 |
+| 3 | **Frontend** `werkvoorraad/DocumentenBulkActies.tsx`: op élke weergave zonder eigen bulk-balk (accordering-bulk op "Klaar om te boeken" en duplicaat-bulk houden hun eigen selectie) een checkbox per niet-eindstatus-rij, kop-checkbox "alle N in deze weergave" (= de zichtbare selecteerbare rijen — de weergave is een client-side filter, dus de id-lijst is exact), shift-klik = bereik (`bereikSelectie`), selectiebalk mét teller, primaire knop "Verwijderen…" + ⋯ (Type wijzigen… / Verplaatsen naar administratie… / Afwijzen…), dialoog mét één reden / soort-keuze / `AdministratieCombobox` (eigen administratie uitgesloten), uitkomst per rij ná afloop (redenen uitklapbaar), lijst herladen, selectie leeg. Kolomminima ongewijzigd (bestaande `selectie`-kolom). | GEBOUWD 16-09 |
+| 4 | **Rolpoorten:** `vereis_administratie_scope` op de route (zelfde als de enkelvoudige routes) + rol-matrix `test_rol_endpoint_gates` uitgebreid (sweep 506 groen); een selectie over administraties heen bestaat op de klantlijst niet — een vreemd id = `geen_toegang`. | GEBOUWD 16-09 |
+| 5 | **Tests:** `tests/documenten/test_bulk.py` (6: mix geboekt/niet-geboekt → deel overgeslagen, één reden in tijdlijn/audit per rij, afwijzen, type wijzigen mét extractie opnieuw + idempotent, document van een andere administratie = geen_toegang voor een echte niet-Beheerder (RLS-les 25-08), verplaatsen doel zonder/met scope, route-validatie); gouden set `tests/keten/test_u_bulk_acties.py` (BDO ×2: type wijzigen → kassarapport zónder echte AI-call — de kassarapport-extractie is gestubd en valt fail-zichtbaar uit, verwijderen slaat geboekt over; keten-guard groen); frontend `DocumentenBulkActies.test.tsx` (4) + werkvoorraad-suite 118, tsc groen. Overflow-sweep mét selectiebalk: zie rapport (de sweep van 16-09 liep nog bij afronding). | GROEN 16-09 |
+
+**Beslispunten (default gekozen):** "alle N in deze weergave" is de client-side weergave (id-lijst), geen server-side selectie zoals op de
+duplicaat-tab (daar is de tab een vaste server-definitie; hier is de weergave zoekterm + statusfilter in de browser); kiesbare soorten =
+inkoopfactuur/kassarapport/verplichting (verkoopfactuur/waarborg blijven systeemsoorten); ter_accordering-rijen zijn selecteerbaar maar de
+server slaat ze over mét reden (geen dubbele client-poort).
+
+**Meetrecept ná deploy:** De Bazar Apeldoorn › documentenlijst › selecteer de ProfX-exemplaren (of kop-checkbox "alle N") › ⋯ › "Type wijzigen →
+Kassarapport (omzetboeking)" → uitkomst per rij, de rijen komen terug als kassarapport en openen het omzet-controlescherm. Werkt in productie:
+niet gemeten.
+
+**Canoniek:** `app/documenten/bulk.py`, `app/documenten/soort.py`, `app/documenten/router.py::documenten_bulk_actie`, `frontend/src/werkvoorraad/
+DocumentenBulkActies.tsx`, `DocumentenDeelscherm.tsx`; rapport `docs/rapporten/2026-09-16-documentenlijst-bulk.md`.
+
 ## Contract-afstemming met X (gelezen uit X's code 16-09 — `contract_afwijkingen_X4.md` was bij afronding van Y nog niet geschreven)
 
 | Punt | Contract | Gebouwd door X | Y verwerkt als |

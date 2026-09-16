@@ -99,3 +99,10 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 4. **Sync-expand `Document($expand=Entity,PaymentTermList)` mét terugval bij 400** — ongeverifieerd op RLZ; blijkt het 400, dan is
    een per-document-leesronde voor batch-mutaties (begrensd) de volgende stap.
 5. **Zoekveld client-side**, geen server-zoekroute; KPI-kaarten tellen over alle mutaties, de teller in de kop over het filter.
+
+## Opdracht 8 (rij 2, middag) — documentenlijst bulk-acties (`2026-09-16-documentenlijst-bulk.md`)
+
+1. **"Alle N in deze weergave" = client-side** (zichtbare rijen als id-lijst, ≤ 500); server-side "alle" alleen op de duplicaat-tab.
+2. **Type wijzigen** kiest uit inkoopfactuur / kassarapport / verplichting; verkoopfactuur en waarborg blijven systeemsoorten.
+3. **ter_accordering** blijft selecteerbaar; de server slaat 'm over mét reden (geen dubbele client-poort).
+4. **Verzamelbak** ongewijzigd (had al bulk-toewijzen/hoort-niet-bij-ons, blok B 02-09).
