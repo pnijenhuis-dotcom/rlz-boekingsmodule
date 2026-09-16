@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0148
+-- Migratie-head bij deze dump: 0149
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -1444,6 +1444,28 @@ CREATE TABLE boekhouding.factuurmatch_staat (
 );
 
 ALTER TABLE ONLY boekhouding.factuurmatch_staat FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: groep_saldo_stand; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.groep_saldo_stand (
+    administratie_id uuid NOT NULL,
+    datum date NOT NULL,
+    status text NOT NULL,
+    detail text,
+    debiteuren numeric(14,2),
+    crediteuren numeric(14,2),
+    ic_debiteuren numeric(14,2),
+    ic_crediteuren numeric(14,2),
+    debiteuren_rekening text,
+    crediteuren_rekening text,
+    gemeten_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_groep_saldo_stand_status CHECK ((status = ANY (ARRAY['ok'::text, 'geen_rekening'::text, 'ongeldig'::text, 'fout'::text, 'overgeslagen'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.groep_saldo_stand FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4524,6 +4546,14 @@ ALTER TABLE ONLY boekhouding.factuurmatch
 
 ALTER TABLE ONLY boekhouding.factuurmatch_staat
     ADD CONSTRAINT factuurmatch_staat_pkey PRIMARY KEY (document_id, weekstaat_id);
+
+
+--
+-- Name: groep_saldo_stand groep_saldo_stand_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.groep_saldo_stand
+    ADD CONSTRAINT groep_saldo_stand_pkey PRIMARY KEY (administratie_id, datum);
 
 
 --
@@ -8373,6 +8403,14 @@ ALTER TABLE ONLY boekhouding.werkopdracht
 
 
 --
+-- Name: groep_saldo_stand groep_saldo_stand_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.groep_saldo_stand
+    ADD CONSTRAINT groep_saldo_stand_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: iban_accordering iban_accordering_aangevraagd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -11126,6 +11164,21 @@ CREATE POLICY factuurmatch_staat_verplaatsing ON boekhouding.factuurmatch_staat 
 --
 
 CREATE POLICY factuurmatch_verplaatsing ON boekhouding.factuurmatch USING (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER))) WITH CHECK (((document_id = platform.verplaatsing_document_id()) AND (CURRENT_USER IS DISTINCT FROM SESSION_USER)));
+
+
+--
+-- Name: groep_saldo_stand; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.groep_saldo_stand ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: groep_saldo_stand groep_saldo_stand_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY groep_saldo_stand_scope ON boekhouding.groep_saldo_stand USING (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder() OR (EXISTS ( SELECT 1
+   FROM platform.gebruiker_administratie ga
+  WHERE ((ga.gebruiker_id = platform.current_actor_id()) AND (ga.administratie_id = groep_saldo_stand.administratie_id)))))) WITH CHECK (((administratie_id = platform.current_administratie_id()) OR platform.current_actor_is_beheerder()));
 
 
 --

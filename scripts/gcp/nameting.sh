@@ -7,6 +7,7 @@
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen intercompany --lees-only        # Peter 16-09: IC-factuurmatch (meetlat)
 #   scripts/gcp/nameting.sh reconciliatie-alles --alleen rekening_courant --lees-only   # Peter 16-09: RC-aansluiting (meetlat)
 #   scripts/gcp/nameting.sh activa-nulmeting [--administratie <naamdeel>]                 # 16-09: STAP-0 activa, lees-only
+#   scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep"                                    # 16-09: groepssaldi deb/cred (lees-only, live)
 #   scripts/gcp/nameting.sh rlz-lezen --administratie "Kempen Facilities" --pad AssetTypes --root   # 16-09: RLZ-brede enumeraties
 #   scripts/gcp/nameting.sh btw-default-rapport --administratie "L.H.G. Holding"   # lees-only, 14-09 (0143)
 #   scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Administratiekantoor Nijenhuis" --met-ai-toets
@@ -22,7 +23,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill activa-nulmeting groep-saldi"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0; do

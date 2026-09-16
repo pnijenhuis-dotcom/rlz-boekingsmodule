@@ -16,6 +16,7 @@ import { DocumentenDeelscherm } from './DocumentenDeelscherm'
 import { FilterWeergave, type WerkvoorraadFilter } from './FilterWeergave'
 import { Klantenlijst } from './Klantenlijst'
 import { GroepFilter } from '../ui/GroepFilter'
+import { GroepSaldiKaart } from './GroepSaldiKaart'
 import { KlantStanden } from './KlantStanden'
 import { KpiRij } from './KpiRij'
 import { UploadZone } from './UploadZone'
@@ -305,6 +306,9 @@ function WerkvoorraadIngang({
       <EmlUploadZone onVerwerkt={() => setVerzamelbakVersie((v) => v + 1)} />
 
       <VerzamelbakPaneel key={verzamelbakVersie} administraties={administraties} onGewijzigd={herlaad} />
+
+      {/* Groepssaldi (Peter 16-09): alleen zodra het Groep-filter actief is — de groep is een filter, dit is de kaart erbij. */}
+      {groepId && <GroepSaldiKaart groepId={groepId} />}
 
       <Klantenlijst
         klanten={klanten}

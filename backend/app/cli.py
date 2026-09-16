@@ -689,6 +689,17 @@ def _sync_alles(args: argparse.Namespace) -> int:
     print("\nIntercompany — identiteiten, relaties en rekening-courant-koppelingen (alle actieve administraties):")
     intercompany_cli_stap.rapporteer_afleiding()
 
+    # Groepssaldi (Peter 16-09): nachtelijke stand debiteuren/crediteuren (bruto + intercompany) per administratie in
+    # een actieve groep → cache `groep_saldo_stand` voor de kaart op de klantenlijst ("stand van vannacht"). Lees-only
+    # richting RLZ/Odoo; per administratie zichtbaar ok/niet-ok, nooit een stop van de sync.
+    from app.groepen import saldi as groep_saldi
+
+    print("\nGroepssaldi debiteuren/crediteuren (administraties in een actieve groep):")
+    try:
+        _rapporteer_groep_saldi_nacht(groep_saldi.meet_en_schrijf_alle())
+    except Exception as exc:  # noqa: BLE001 — zichtbare regel, de sync loopt door
+        print(f"  FOUT groepssaldi-stap: {exc}", file=sys.stderr)
+
     # Vervolg 14-09 (migratie 0143): btw-default per grootboekrekening uit de eigen boekingshistorie — puur code, geen
     # RLZ-calls; direct ná de Ledgers-sync zodat een nieuwe/verdwenen rekening dezelfde nacht meegaat. Eigen telling.
     from app.geheugen import grootboek_btw_historie
@@ -767,6 +778,33 @@ def _sync_alles(args: argparse.Namespace) -> int:
         or tellers_exit
         else 0
     )
+
+
+def _groep_saldi(args: argparse.Namespace) -> int:
+    """Lees-only CLI (nameting-allowlist): live meting van één groep, tabel + totalen. Onbekende groep = leesbare
+    melding + exit 2 (nooit stil leeg); een rode administratie (webfilter/fout/geen rekening) staat in de statuskolom
+    en de exit blijft 0 — het rapport ís de uitkomst."""
+    from datetime import date as _date
+
+    from app.groepen import saldi
+
+    try:
+        groep = saldi.zoek_groep(args.groep)
+    except saldi.GroepOnbekend as exc:
+        print(f"groep-saldi: {exc}", file=sys.stderr)
+        return 2
+    datum = _date.fromisoformat(args.datum) if args.datum else None
+    print(saldi.rapport_tekst(saldi.meet_groep_live(groep, datum=datum)))
+    return 0
+
+
+def _rapporteer_groep_saldi_nacht(rapport) -> None:  # noqa: ANN001 — saldi.NachtRapport
+    print(
+        f"groepssaldi: {rapport.groepen} groep(en), {rapport.administraties} administratie(s) gemeten, "
+        f"{rapport.ok} ok, {len(rapport.niet_ok)} niet ok"
+    )
+    for regel in rapport.niet_ok:
+        print(f"  LET OP {regel}")
 
 
 def _rapporteer_btw_historie(resultaten: dict) -> int:
@@ -3150,6 +3188,19 @@ def main(argv: list[str] | None = None) -> int:
         "--beheerder-id", required=True, dest="beheerder_id", help="UUID van de Beheerder (audit_event-actor)."
     )
 
+    groep_saldi_parser = subparsers.add_parser(
+        "groep-saldi",
+        help="LEES-ONLY (Peter 16-09): saldo debiteuren/crediteuren per administratie in een groep — bruto, "
+        "intercompany (open posten op groepsmaatschappijen) en zonder intercompany; rekeningen uit de bron (RGS/naam, "
+        "Odoo account_type), nooit 1300/1600 hardgecodeerd. Leest LIVE; geen debiteur-/crediteurnamen (geen PII).",
+    )
+    groep_saldi_parser.add_argument(
+        "--groep", required=True, help='Naam, code of id van de groep (bv. "Kempen groep").'
+    )
+    groep_saldi_parser.add_argument(
+        "--datum", default=None, help="Peildatum JJJJ-MM-DD (NL-kalenderdag); leeg = per vandaag zonder datumfilter."
+    )
+
     acceptaties_parser = subparsers.add_parser(
         "reconciliatie-acceptaties",
         help="Toon de actieve acceptaties van één administratie.",
@@ -3414,6 +3465,8 @@ def main(argv: list[str] | None = None) -> int:
         return _reconciliatie_accepteer(args)
     if args.commando == "reconciliatie-intrekken":
         return _reconciliatie_intrekken(args)
+    if args.commando == "groep-saldi":
+        return _groep_saldi(args)
     if args.commando == "reconciliatie-acceptaties":
         return _reconciliatie_acceptaties(args)
     if args.commando == "reconciliatie-uitsluiten":
