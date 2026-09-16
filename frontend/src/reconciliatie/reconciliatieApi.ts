@@ -200,6 +200,65 @@ export function gezienIntrekken(id: string, administratieId: string, reden: stri
   return redenActie(`/reconciliatie/bevindingen/${id}/gezien-intrekken`, administratieId, reden)
 }
 
+/** Vaste acceptatie-reden van "Bewust verwijderd in RLZ" — spiegelt `bewust_verwijderd.VASTE_REDEN`. */
+export const BEWUST_VERWIJDERD_REDEN = 'Bewust verwijderd in Reeleezee (dubbel/test)'
+
+export interface BewustVerwijderdResultaatDto {
+  acceptatie_id: string
+  document_id: string
+  document_status_nieuw: string
+  boekstuknummer: string | null
+  /** false = het document stond niet op geboekt: alleen geaccepteerd, status ongewijzigd (zichtbaar gemeld). */
+  document_status_gewijzigd: boolean
+  reden: string
+}
+
+/** "Bewust verwijderd in RLZ" (blok D 16-09, Beheerder-only): acceptatie mét de vaste reden + het document van geboekt
+ * naar afgevoerd_duplicaat, in één klik; toelichting optioneel (≤ 500 tekens). */
+export function accepteerBewustVerwijderd(
+  bevindingId: string,
+  administratieId: string,
+  toelichting?: string,
+): Promise<BewustVerwijderdResultaatDto> {
+  const t = toelichting?.trim()
+  return apiJson(`/reconciliatie/bevindingen/${bevindingId}/bewust-verwijderd`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ administratie_id: administratieId, ...(t ? { toelichting: t } : {}) }),
+  })
+}
+
+export interface BewustVerwijderdHerstelResultaatDto {
+  document_id: string
+  document_status_nieuw: string
+  acceptatie_ingetrokken_id: string | null
+}
+
+/** Terugweg van "Bewust verwijderd in RLZ": document terug naar geboekt + acceptatie ingetrokken (Beheerder, reden). */
+export function herstelBewustVerwijderd(
+  documentId: string,
+  administratieId: string,
+  reden: string,
+): Promise<BewustVerwijderdHerstelResultaatDto> {
+  return apiJson(`/reconciliatie/documenten/${documentId}/bewust-verwijderd-herstellen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ administratie_id: administratieId, reden }),
+  })
+}
+
+/** Is deze geaccepteerde rij een "bewust verwijderd"-acceptatie mét document (→ terugweg-knop)? */
+export function isBewustVerwijderdAcceptatie(r: BevindingDto): boolean {
+  const documentId = r.detail?.document_id
+  return (
+    r.soort === 'geaccepteerd' &&
+    r.blok === 'documenten' &&
+    typeof documentId === 'string' &&
+    documentId !== '' &&
+    (r.acceptatie?.reden ?? '').startsWith(BEWUST_VERWIJDERD_REDEN)
+  )
+}
+
 /** 202 + status-poll (bank_sync_run-patroon) — Beheerder-only. */
 export function startRun(): Promise<ReconciliatieRunDto> {
   return apiJson('/reconciliatie/run', { method: 'POST' })

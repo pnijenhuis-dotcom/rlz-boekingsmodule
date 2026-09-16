@@ -145,3 +145,34 @@ class OpnieuwBoekenResultaatDto(BaseModel):
     status: str
     boek_cyclus: int
     doel_pad: str
+
+
+class BewustVerwijderdInvoerDto(BaseModel):
+    """Invoer van "Bewust verwijderd in RLZ" (blok D 16-09): geen vrije reden — de reden is vast
+    (`bewust_verwijderd.VASTE_REDEN`), een toelichting is optioneel (≤ 500 tekens)."""
+
+    administratie_id: uuid.UUID
+    toelichting: str | None = Field(default=None, max_length=500)
+
+
+class BewustVerwijderdResultaatDto(BaseModel):
+    """Antwoord: de acceptatie + wat er met het document gebeurde. `document_status_gewijzigd=False` = het document
+    stond niet op geboekt en is alleen geaccepteerd (status ongewijzigd, zichtbaar gemeld)."""
+
+    acceptatie_id: uuid.UUID
+    document_id: uuid.UUID
+    document_status_nieuw: str
+    boekstuknummer: str | None
+    document_status_gewijzigd: bool
+    reden: str
+
+
+class BewustVerwijderdHerstelInvoerDto(RedenInvoerDto):
+    """Terugweg van "Bewust verwijderd in RLZ": document terug naar geboekt + acceptatie ingetrokken (Beheerder,
+    verplichte reden — dezelfde maat als intrekken)."""
+
+
+class BewustVerwijderdHerstelResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    document_status_nieuw: str
+    acceptatie_ingetrokken_id: uuid.UUID | None

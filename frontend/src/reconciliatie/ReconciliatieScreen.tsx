@@ -27,6 +27,7 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
+import { BewustVerwijderdActie } from './BewustVerwijderdActie'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
@@ -37,6 +38,8 @@ import {
   haalInstelling,
   haalLaatsteRun,
   haalRunStatus,
+  herstelBewustVerwijderd,
+  isBewustVerwijderdAcceptatie,
   mailStatusTekst,
   markeerGezien,
   SOORT_FACETTEN,
@@ -275,6 +278,19 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
             onAccepteren={isBeheerder && kanReden ? accepteren : undefined}
             isBeheerder={isBeheerder}
           />{' '}
+          {/* Blok D (16-09): de mens verwijderde het stuk zélf in RLZ (dubbel/test) → één klik: acceptatie mét vaste
+              reden + document naar 'afgevoerd als duplicaat' (Beheerder). */}
+          {isBeheerder && kanReden && (
+            <>
+              <BewustVerwijderdActie
+                bevinding={r}
+                onGelukt={(melding) => {
+                  toast.meld(melding)
+                  herlaad()
+                }}
+              />{' '}
+            </>
+          )}
           {deeplink}
         </>
       )
@@ -312,6 +328,31 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
       )
     }
     if (r.soort === 'geaccepteerd') {
+      // Blok D (16-09): terugweg van "Bewust verwijderd in RLZ" — document terug naar geboekt + acceptatie ingetrokken
+      // (Beheerder, verplichte reden). Het gewone "Intrekken…" zou het document op afgevoerd laten staan.
+      if (isBeheerder && kanReden && isBewustVerwijderdAcceptatie(r)) {
+        const documentId = String(r.detail?.document_id)
+        return (
+          <Button
+            variant="secundair"
+            maat="klein"
+            aria-label={`Bewust verwijderd terugdraaien: ${titelVan(r)}`}
+            onClick={() =>
+              setRedenActie({
+                bevinding: r,
+                titel: 'Bewust verwijderd terugdraaien',
+                beschrijving:
+                  "Het document gaat in de module terug naar 'geboekt' en de acceptatie wordt ingetrokken — de bevinding telt bij de volgende run weer mee. Leg vast waarom.",
+                bevestig: 'Terugdraaien',
+                uitvoeren: (aid, reden) => herstelBewustVerwijderd(documentId, aid, reden),
+                gelukt: 'Teruggedraaid: document staat weer op geboekt, acceptatie ingetrokken.',
+              })
+            }
+          >
+            Terugdraaien…
+          </Button>
+        )
+      }
       return isBeheerder && kanReden ? (
         <Button
           variant="secundair"

@@ -222,6 +222,10 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
             DocumentStatus.HANDMATIG_AFMAKEN,
             DocumentStatus.KLAAR_OM_TE_BOEKEN,
             DocumentStatus.VERWIJDERD,
+            # Terugweg bewust-verwijderd (blok D 16-09): een GEBOEKT document dat via Inzicht › Reconciliatie
+            # "Bewust verwijderd in Reeleezee (dubbel/test)" naar afgevoerd_duplicaat ging, herstelt bij heropenen
+            # (`afwijzen.heropen`, status_voor_afwijzing) naar precies geboekt. Geen ander code-pad gebruikt dit.
+            DocumentStatus.GEBOEKT,
         }
     ),
     # Klant-accordering (migratie 0033): terug naar klaar_om_te_boeken bij het laatste akkoord
@@ -250,7 +254,14 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
     # klaar_om_te_boeken mét boek_cyclus +1 (vers GUID), GEEN tegenboeking (er is niets om tegen te boeken);
     # de harde checks draaien bij het boeken opnieuw. Uitsluitend via app/documenten/herboeken.py, en alleen
     # als de backend het document daadwerkelijk niet meer kent (poort in de service).
-    DocumentStatus.GEBOEKT: frozenset({DocumentStatus.TE_CONTROLEREN, DocumentStatus.KLAAR_OM_TE_BOEKEN}),
+    # Bewust verwijderd in RLZ (blok D 16-09, opdracht Peter; casus Kempen Facilities: twee dubbel geboekt + één
+    # TEST-exemplaar zelf in RLZ verwijderd): de reconciliatie meldt `ontbreekt_in_rlz`, de Beheerder kiest "Bewust
+    # verwijderd in RLZ" — de bevinding wordt geaccepteerd mét vaste reden en het document gaat naar
+    # afgevoerd_duplicaat zodat het niet als geboekt (met dood boekstuknummer) blijft staan. UITSLUITEND via
+    # app/reconciliatie/bewust_verwijderd.py (→ afwijzen.wijs_af); `rlz_boekstuknummer` blijft staan als historie.
+    DocumentStatus.GEBOEKT: frozenset(
+        {DocumentStatus.TE_CONTROLEREN, DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.AFGEVOERD_DUPLICAAT}
+    ),
     DocumentStatus.GESPLITST: frozenset(),
     # Samenvoegen ongedaan maken: een bak-rij gaat terug naar niet_toegewezen (zolang het leidende
     # document nog in de verzamelbak staat of nagebundeld is); een nagebundeld UBL-DOCUMENT (03-09)

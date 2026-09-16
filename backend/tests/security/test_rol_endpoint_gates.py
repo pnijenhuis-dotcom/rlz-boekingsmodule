@@ -165,6 +165,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/accepteren"),  # beheerder-only (06-09)
         ("POST", "/reconciliatie/run"),  # "Nu draaien" — beheerder-only (06-09)
         ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/opnieuw-boeken"),  # opnieuw boeken ná verdwenen document — kantoorrol (A11 07-09)
+        ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/bewust-verwijderd"),  # beheerder-only (blok D 16-09)
+        ("POST", f"/reconciliatie/documenten/{DUMMY_ID}/bewust-verwijderd-herstellen"),  # terugweg (blok D 16-09)
         ("GET", "/reconciliatie/instelling"),  # gezien-dagen lezen (06-09)
         ("GET", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),  # projectverdeling (blok C 04-09)
         ("PUT", f"/administraties/{aid}/documenten/{DUMMY_ID}/projectverdeling"),
@@ -380,6 +382,7 @@ class TestKantoorBlijftWerken:
                 or _is_catalogus_pad(pad)
                 or pad.endswith("/bestellingen")
                 or pad.endswith("/accepteren")
+                or pad.endswith(("/bewust-verwijderd", "/bewust-verwijderd-herstellen"))  # blok D 16-09: Beheerder-only
                 or pad == "/reconciliatie/run"
                 or pad.endswith("/mini-voorraad")
                 or ("/mini-voorraad/" in pad and pad.endswith(("/archiveren", "/dearchiveren")))

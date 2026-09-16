@@ -164,7 +164,22 @@ function stubFetch(rol = 'boekhouding', opties: StubOpties = {}) {
       if (url === '/reconciliatie/instelling') return Promise.resolve(jsonResponse({ gezien_dagen: method === 'PUT' ? 21 : 14 }))
       if (url.startsWith('/reconciliatie/bevindingen/')) {
         if (opties.actieStatus) return Promise.resolve(jsonResponse({ detail: opties.actieDetail ?? 'Mislukt' }, opties.actieStatus))
+        if (url.endsWith('/bewust-verwijderd')) {
+          return Promise.resolve(
+            jsonResponse({
+              acceptatie_id: 'acc-1',
+              document_id: 'doc-9',
+              document_status_nieuw: 'afgevoerd_duplicaat',
+              boekstuknummer: 'RLZ-04-00004038',
+              document_status_gewijzigd: true,
+              reden: 'Bewust verwijderd in Reeleezee (dubbel/test)',
+            }),
+          )
+        }
         return Promise.resolve(jsonResponse({ id: url.split('/')[3] }))
+      }
+      if (url.startsWith('/reconciliatie/documenten/') && url.endsWith('/bewust-verwijderd-herstellen')) {
+        return Promise.resolve(jsonResponse({ document_id: 'doc-9', document_status_nieuw: 'geboekt', acceptatie_ingetrokken_id: 'acc-1' }))
       }
       return Promise.resolve(new Response(null, { status: 404 }))
     }),
@@ -388,5 +403,92 @@ describe('ReconciliatieScreen (kantoorbreed)', () => {
     const leeg = await screen.findByTestId('reconciliatie-leeg')
     expect(leeg).toHaveTextContent('Nog geen run.')
     expect(within(leeg).getByRole('button', { name: 'Nu een run starten' })).toBeInTheDocument()
+  })
+
+  // Blok D (16-09): "Bewust verwijderd in RLZ" op een verdwenen document — Beheerder-only, vaste reden, één klik.
+  const VERDWENEN: BevindingDto = {
+    id: 'r9',
+    run_id: RUN_ID,
+    blok: 'documenten',
+    soort: 'afwijking',
+    administratie_id: ADMIN_A,
+    administratie_naam: 'Kempen Facilities B.V.',
+    vingerafdruk: 'doc:vaf9',
+    tekst: 'document=doc-9 soort=ontbreekt_in_rlz [vaf:doc:vaf9]: 404',
+    titel: 'Factuur 202632704 van BOOT ontbreekt in Reeleezee',
+    wat: 'Wij boekten factuur 202632704 (BOOT) als RLZ-04-00004038; Reeleezee kent het stuk niet meer.',
+    doe: 'Opnieuw boeken, of bewust verwijderd markeren.',
+    details: [],
+    sinds: '2026-09-15T05:00:00Z',
+    nieuw: true,
+    acceptatie: null,
+    gezien: null,
+    detail: {
+      bron: 'documenten',
+      afwijking_soort: 'ontbreekt_in_rlz',
+      document_id: 'doc-9',
+      leverancier_naam: 'BOOT organiserend ingenieursburo B.V.',
+      factuurnummer: '202632704',
+      rlz_boekstuk: 'RLZ-04-00004038',
+      backend: 'rlz',
+    },
+    doel_pad: `/?administratie=${ADMIN_A}&document=doc-9`,
+  }
+
+  it('"Bewust verwijderd in RLZ" (Beheerder) op een verdwenen document: dialoog mét vaste reden, POST zonder verplichte reden, toelichting optioneel', async () => {
+    const aangeroepen = stubFetch('beheerder', { lijstAntwoord: lijst([VERDWENEN], { totaal: 1 }) })
+    renderScherm()
+    const tabel = await screen.findByTestId('reconciliatie-tabel')
+    const [rij] = within(tabel).getAllByTestId('reconciliatie-rij')
+    // Drie handelingen op de rij: opnieuw boeken (primair), accepteren en bewust verwijderd.
+    expect(within(rij).getByRole('button', { name: /^Opnieuw boeken/ })).toBeInTheDocument()
+    expect(within(rij).getByRole('button', { name: /^Afwijking accepteren:/ })).toBeInTheDocument()
+    await userEvent.click(within(rij).getByRole('button', { name: 'Bewust verwijderd in Reeleezee: 202632704' }))
+    const dialoog = await screen.findByTestId('bewust-verwijderd-dialoog')
+    expect(dialoog).toHaveTextContent("'Bewust verwijderd in Reeleezee (dubbel/test)'")
+    expect(dialoog).toHaveTextContent('RLZ-04-00004038')
+    expect(dialoog).toHaveTextContent('BOOT organiserend ingenieursburo B.V.')
+    // Geen verplichte reden: bevestigen kan direct.
+    const bevestig = within(dialoog).getByRole('button', { name: 'Bevestigen' })
+    expect(bevestig).toBeEnabled()
+    await userEvent.type(within(dialoog).getByLabelText('Toelichting (optioneel)'), 'dubbel geboekt')
+    await userEvent.click(bevestig)
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/reconciliatie/bevindingen/r9/bewust-verwijderd')).toBe(true))
+    const post = aangeroepen.find((a) => a.pad === '/reconciliatie/bevindingen/r9/bewust-verwijderd')!
+    expect(post.method).toBe('POST')
+    expect(post.body).toEqual({ administratie_id: ADMIN_A, toelichting: 'dubbel geboekt' })
+    await waitFor(() => expect(screen.queryByTestId('bewust-verwijderd-dialoog')).toBeNull())
+    // Ná succes wordt de lijst opnieuw opgehaald.
+    expect(aangeroepen.filter((a) => a.pad.startsWith('/reconciliatie/bevindingen?')).length).toBeGreaterThan(1)
+  })
+
+  it('Boekhouding ziet "Bewust verwijderd in RLZ" niet (Beheerder-werk)', async () => {
+    stubFetch('boekhouding', { lijstAntwoord: lijst([VERDWENEN], { totaal: 1 }) })
+    renderScherm()
+    const tabel = await screen.findByTestId('reconciliatie-tabel')
+    expect(within(tabel).queryByRole('button', { name: /^Bewust verwijderd in/ })).toBeNull()
+    expect(within(tabel).getByRole('button', { name: /^Opnieuw boeken/ })).toBeInTheDocument()
+  })
+
+  it('geaccepteerd mét de vaste reden → "Terugdraaien…" (document weer geboekt + acceptatie ingetrokken) i.p.v. gewoon intrekken', async () => {
+    const geaccepteerd: BevindingDto = {
+      ...VERDWENEN,
+      id: 'r10',
+      soort: 'geaccepteerd',
+      acceptatie: { reden: 'Bewust verwijderd in Reeleezee (dubbel/test) — dubbel geboekt', geaccepteerd_op: '2026-09-16T08:00:00Z', geaccepteerd_door_naam: 'Peter' },
+    }
+    const aangeroepen = stubFetch('beheerder', { lijstAntwoord: lijst([geaccepteerd], { totaal: 1 }) })
+    renderScherm('/reconciliatie?soort=geaccepteerd')
+    const tabel = await screen.findByTestId('reconciliatie-tabel')
+    expect(within(tabel).queryByRole('button', { name: /^Acceptatie intrekken:/ })).toBeNull()
+    await userEvent.click(within(tabel).getByRole('button', { name: /^Bewust verwijderd terugdraaien:/ }))
+    const dialoog = await screen.findByTestId('reden-dialoog')
+    await userEvent.type(within(dialoog).getByLabelText('Reden'), 'toch niet dubbel — stuk hoort in RLZ')
+    await userEvent.click(within(dialoog).getByRole('button', { name: 'Terugdraaien' }))
+    await waitFor(() => expect(aangeroepen.some((a) => a.pad === '/reconciliatie/documenten/doc-9/bewust-verwijderd-herstellen')).toBe(true))
+    expect(aangeroepen.find((a) => a.pad === '/reconciliatie/documenten/doc-9/bewust-verwijderd-herstellen')!.body).toEqual({
+      administratie_id: ADMIN_A,
+      reden: 'toch niet dubbel — stuk hoort in RLZ',
+    })
   })
 })

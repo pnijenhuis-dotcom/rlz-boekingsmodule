@@ -264,3 +264,84 @@ def bevinding_opnieuw_boeken(
     return schemas.OpnieuwBoekenResultaatDto(
         document_id=r.document_id, status=r.status.value, boek_cyclus=r.boek_cyclus, doel_pad=r.doel_pad
     )
+
+
+def _vertaal_bewust_verwijderd(exc: Exception) -> HTTPException:
+    from app.reconciliatie import bewust_verwijderd
+
+    tekst = str(exc)
+    if isinstance(exc, bewust_verwijderd.BevindingNietGevonden):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=tekst)
+    if isinstance(exc, bewust_verwijderd.GeenToegang):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=tekst)
+    conflict = isinstance(exc, bewust_verwijderd.StatusFout | bewust_verwijderd.NietTerugdraaibaar)
+    if conflict or "al geaccepteerd" in tekst:
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=tekst)
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=tekst)
+
+
+@router.post(
+    "/reconciliatie/bevindingen/{bevinding_id}/bewust-verwijderd", response_model=schemas.BewustVerwijderdResultaatDto
+)
+def bevinding_bewust_verwijderd(
+    bevinding_id: uuid.UUID,
+    invoer: schemas.BewustVerwijderdInvoerDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.BewustVerwijderdResultaatDto:
+    """ "Bewust verwijderd in RLZ" (blok D 16-09, Beheerder) op een documenten-afwijking `ontbreekt_in_rlz`/
+    `ontbreekt_in_odoo`: de mens verwijderde het stuk zélf in Reeleezee (dubbel/test). Eén klik = acceptatie mét
+    de vaste reden via de bestaande schrijver + het document van geboekt naar afgevoerd_duplicaat (boekstuknummer
+    blijft als historie; terugweg = heropenen op het document). 404 onbekende bevinding, 403 buiten scope/rol,
+    422 verkeerde soort, 409 als het document ná de acceptatie niet van status kon wisselen (acceptatie staat)."""
+    from app.reconciliatie import bewust_verwijderd
+
+    try:
+        r = bewust_verwijderd.accepteer_bewust_verwijderd(
+            bevinding_id=bevinding_id,
+            administratie_id=invoer.administratie_id,
+            actor_id=actor.id,
+            rol=actor.rol,
+            toelichting=invoer.toelichting,
+        )
+    except bewust_verwijderd.BewustVerwijderdFout as exc:
+        raise _vertaal_bewust_verwijderd(exc) from exc
+    return schemas.BewustVerwijderdResultaatDto(
+        acceptatie_id=r.acceptatie_id,
+        document_id=r.document_id,
+        document_status_nieuw=r.document_status_nieuw,
+        boekstuknummer=r.boekstuknummer,
+        document_status_gewijzigd=r.document_status_gewijzigd,
+        reden=r.reden,
+    )
+
+
+@router.post(
+    "/reconciliatie/documenten/{document_id}/bewust-verwijderd-herstellen",
+    response_model=schemas.BewustVerwijderdHerstelResultaatDto,
+)
+def document_bewust_verwijderd_herstellen(
+    document_id: uuid.UUID,
+    invoer: schemas.BewustVerwijderdHerstelInvoerDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.BewustVerwijderdHerstelResultaatDto:
+    """Terugweg van "Bewust verwijderd in RLZ" (blok D 16-09, Beheerder, verplichte reden): het document gaat van
+    afgevoerd_duplicaat terug naar geboekt (alleen als de jongste afvoer het bewust-verwijderd-spoor draagt) en de
+    acceptatie wordt ingetrokken — de bevinding telt bij de volgende run weer mee. 409 als het document niet via dit
+    pad is afgevoerd."""
+    from app.reconciliatie import bewust_verwijderd
+
+    try:
+        r = bewust_verwijderd.herstel_bewust_verwijderd(
+            administratie_id=invoer.administratie_id,
+            document_id=document_id,
+            actor_id=actor.id,
+            rol=actor.rol,
+            reden=invoer.reden,
+        )
+    except bewust_verwijderd.BewustVerwijderdFout as exc:
+        raise _vertaal_bewust_verwijderd(exc) from exc
+    return schemas.BewustVerwijderdHerstelResultaatDto(
+        document_id=r.document_id,
+        document_status_nieuw=r.document_status_nieuw,
+        acceptatie_ingetrokken_id=r.acceptatie_ingetrokken_id,
+    )
