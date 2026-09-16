@@ -61,6 +61,8 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 1. **Sunshine Island eigen administratie/BV?** ~~Default: zelfde administratie als Elderveld (beide namen in `stores` via het blok).~~
    **BESLIST Peter 16-09 (avond): eigen BV, dus een eigen administratie** — verwerkt in opdracht
    `2026-09-16-omzet-store-naar-administratie-en-vanboxtel-herkenning.md` (store → administratie platformbreed).
+   **GEBOUWD 16-09 avond** (migratie 0151, rapport `2026-09-16-omzet-store-routering.md`): beide administraties bestaan al in
+   productie (Zonnestudio Elderveld B.V., Sunshine Island B.V.); Peter koppelt de stores op Instellingen › Boeken › Stores.
 2. **Eten/drinken 9 %** (default laag); alcohol/horeca → `eten_drinken_tarief = hoog` per administratie.
 3. **Rittenkaart/abonnement = omzet bij verkoop** (default; fiscaal btw-correct).
 4. **Tegenzijde in RLZ = AFLETTERING** (Receipt blijft open post; PIN/Stripe via actie 15, storting direct op kas). Het cash-deel

@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0150
+-- Migratie-head bij deze dump: 0151
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2079,6 +2079,26 @@ CREATE TABLE boekhouding.omzet_instelling (
 );
 
 ALTER TABLE ONLY boekhouding.omzet_instelling FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: omzet_store_routering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.omzet_store_routering (
+    id uuid NOT NULL,
+    store_norm text NOT NULL,
+    store_naam text NOT NULL,
+    administratie_id uuid NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    bron text DEFAULT 'mens'::text NOT NULL,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_omzet_store_routering_bron CHECK ((bron = ANY (ARRAY['mens'::text, 'migratie'::text])))
+);
+
+ALTER TABLE ONLY boekhouding.omzet_store_routering FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4774,6 +4794,14 @@ ALTER TABLE ONLY boekhouding.omzet_instelling
 
 
 --
+-- Name: omzet_store_routering omzet_store_routering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.omzet_store_routering
+    ADD CONSTRAINT omzet_store_routering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: omzet_voorstel omzet_voorstel_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5179,6 +5207,14 @@ ALTER TABLE ONLY boekhouding.odoo_id_koppeling
 
 ALTER TABLE ONLY boekhouding.odoo_rekening_mapping
     ADD CONSTRAINT uq_odoo_rekening_mapping_versie UNIQUE (administratie_id, soort, rlz_id, versie);
+
+
+--
+-- Name: omzet_store_routering uq_omzet_store_routering_store_norm; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.omzet_store_routering
+    ADD CONSTRAINT uq_omzet_store_routering_store_norm UNIQUE (store_norm);
 
 
 --
@@ -6409,6 +6445,13 @@ CREATE INDEX ix_odoo_rekening_mapping_administratie_id ON boekhouding.odoo_reken
 --
 
 CREATE INDEX ix_omzet_boeking_document_id ON boekhouding.omzet_boeking USING btree (document_id);
+
+
+--
+-- Name: ix_omzet_store_routering_administratie; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_omzet_store_routering_administratie ON boekhouding.omzet_store_routering USING btree (administratie_id);
 
 
 --
@@ -8937,6 +8980,14 @@ ALTER TABLE ONLY boekhouding.omzet_categorie_mapping
 
 ALTER TABLE ONLY boekhouding.omzet_instelling
     ADD CONSTRAINT omzet_instelling_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: omzet_store_routering omzet_store_routering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.omzet_store_routering
+    ADD CONSTRAINT omzet_store_routering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
 
 
 --
@@ -11546,6 +11597,33 @@ ALTER TABLE boekhouding.omzet_instelling ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY omzet_instelling_scope ON boekhouding.omzet_instelling USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: omzet_store_routering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.omzet_store_routering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: omzet_store_routering omzet_store_routering_lees; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY omzet_store_routering_lees ON boekhouding.omzet_store_routering FOR SELECT USING (true);
+
+
+--
+-- Name: omzet_store_routering omzet_store_routering_muteren; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY omzet_store_routering_muteren ON boekhouding.omzet_store_routering FOR UPDATE USING (true) WITH CHECK (true);
+
+
+--
+-- Name: omzet_store_routering omzet_store_routering_toevoegen; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY omzet_store_routering_toevoegen ON boekhouding.omzet_store_routering FOR INSERT WITH CHECK (true);
 
 
 --

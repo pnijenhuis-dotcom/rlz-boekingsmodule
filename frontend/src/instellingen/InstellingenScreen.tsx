@@ -30,6 +30,7 @@ import { AutoboekKandidaten } from './AutoboekKandidaten'
 import { AutomatiseringenInstellingenBlok } from '../reconciliatie/AutomatiseringenBlok'
 import { AiToetsFacturenRij } from './AiToetsFacturenRij'
 import { IntercompanyRelaties } from './IntercompanyRelaties'
+import { StoresBlok } from './StoresBlok'
 import {
   eersteSectieVoor,
   type InstellingenSectie,
@@ -595,6 +596,9 @@ export function InstellingenScreen() {
             {/* Blok A opdracht 16-09: intercompany-relaties (afgeleid, Beheerder corrigeert) + rekening-courant-koppelingen
                 — de bron van de dagelijkse reconciliatieblokken "intercompany" en "rekening_courant". */}
             <IntercompanyRelaties />
+            {/* 0151 (Peter 16-09 avond): store → administratie platformbreed — Sunshine Island is een eigen BV. De
+                verzamelbak-rij "store niet gekoppeld" en de LET-OP linken naar #stores. */}
+            <StoresBlok />
           </div>
         )}
 

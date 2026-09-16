@@ -30,6 +30,19 @@ from app.rlz.client import RlzApiError
 logger = logging.getLogger(__name__)
 
 SOORT = "omzet_in_inkoopstroom"
+#: Blok C 16-09 avond: hetzelfde signaal op ONGEBOEKTE inkoopfactuur-documenten in de werkvoorraad — de handeling is
+#: "Type wijzigen → kassarapport" (bestaande soort-wissel), geen storno.
+SOORT_WERKVOORRAAD = "kassarapport_in_werkvoorraad"
+#: Werkvoorraad-statussen waarin de soort-wissel kan (zelfde set als verplaatsen/soort.py).
+WERKVOORRAAD_STATUSSEN = (
+    DocumentStatus.TE_CONTROLEREN,
+    DocumentStatus.HANDMATIG_AFMAKEN,
+    DocumentStatus.KLAAR_OM_TE_BOEKEN,
+    DocumentStatus.VRAAG_OPEN,
+)
+#: Begrenzing per administratie voor de PDF-tekstlaag-lezing in de dagelijkse run (geen "PDF-lezing van alles": alleen
+#: de werkvoorraad, en die is klein; de geboekte historie leest alleen de CLI met --met-pdf).
+MAX_PDF_LEZINGEN_PER_ADMINISTRATIE = 200
 
 
 @dataclass(frozen=True)
@@ -119,6 +132,143 @@ def geboekte_kassarapporten_in_inkoopstroom(
             )
         )
     return uit
+
+
+@dataclass(frozen=True)
+class WerkvoorraadTreffer:
+    document_id: uuid.UUID
+    bestandsnaam: str
+    status: str
+    signaal: str  # 'omzetrekeningen' | bron van de PDF-herkenning (profx_journaal, …)
+    regels_totaal: int
+    regels_op_omzet: int
+
+
+def ongeboekte_kassarapporten_in_inkoopstroom(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    dagen: int = 400,
+    opslag: DocumentOpslag | None = None,
+    max_pdf_lezingen: int = MAX_PDF_LEZINGEN_PER_ADMINISTRATIE,
+) -> list[WerkvoorraadTreffer]:
+    """Blok C (Peter 16-09 avond): INKOOPFACTUUR-documenten in de werkvoorraad die op inhoud een kassarapport zijn —
+    (a) de PDF is een herkende omzetbron (ProfX/…; herkenning op de tekstlaag, begrensd tot de werkvoorraad) óf (b) alle
+    boekingsregels staan op een omzetrekening. Bevinding mét actie "Type wijzigen → kassarapport"; nooit automatisch
+    herclassificeren (de mens klikt, of kiest bulk in de documentenlijst)."""
+    sinds = datetime.now(UTC) - timedelta(days=dagen)
+    docs = list(
+        session.scalars(
+            select(Document)
+            .where(
+                Document.administratie_id == administratie_id,
+                Document.soort == DocumentSoort.INKOOPFACTUUR.value,
+                Document.status.in_(WERKVOORRAAD_STATUSSEN),
+                Document.aangemaakt_op >= sinds,
+            )
+            .order_by(Document.aangemaakt_op)
+        )
+    )
+    if not docs:
+        return []
+    doc_ids = [d.id for d in docs]
+    regels = session.execute(
+        select(BoekvoorstelRegel.document_id, func.count(), func.count(Grootboekrekening.ledger_id))
+        .select_from(BoekvoorstelRegel)
+        .outerjoin(
+            Grootboekrekening,
+            (Grootboekrekening.ledger_id == BoekvoorstelRegel.ledger_id)
+            & (Grootboekrekening.administratie_id == administratie_id)
+            & Grootboekrekening.naam.ilike("%omzet%"),
+        )
+        .where(BoekvoorstelRegel.document_id.in_(doc_ids))
+        .group_by(BoekvoorstelRegel.document_id)
+    ).all()
+    per_doc = {did: (int(totaal), int(omzet)) for did, totaal, omzet in regels}
+    from app.omzet.bronnen import herkenning
+
+    lezer = opslag or standaard_opslag()
+    gelezen = 0
+    uit: list[WerkvoorraadTreffer] = []
+    for doc in docs:
+        totaal, omzet = per_doc.get(doc.id, (0, 0))
+        signaal: str | None = None
+        if totaal > 0 and omzet == totaal:
+            signaal = "omzetrekeningen"
+        elif doc.bestandsnaam.lower().endswith(".pdf") and gelezen < max_pdf_lezingen:
+            gelezen += 1
+            try:
+                signaal = herkenning.herken_pdf(lezer.lezen(pad=doc.opslag_pad))
+            except Exception:  # noqa: BLE001 — onleesbaar/ontbrekend bestand telt niet
+                signaal = None
+        if signaal is None:
+            continue
+        uit.append(
+            WerkvoorraadTreffer(
+                document_id=doc.id,
+                bestandsnaam=doc.bestandsnaam,
+                status=doc.status.value if hasattr(doc.status, "value") else str(doc.status),
+                signaal=signaal,
+                regels_totaal=totaal,
+                regels_op_omzet=omzet,
+            )
+        )
+    return uit
+
+
+@dataclass(frozen=True)
+class TypeWijzigResultaat:
+    document_id: uuid.UUID
+    status: str
+    van_soort: str
+    naar_soort: str
+    doel_pad: str
+
+
+def type_wijzigen_kassarapport_vanuit_bevinding(
+    *, bevinding_id: uuid.UUID, administratie_id: uuid.UUID, actor_id: uuid.UUID, rol: GebruikerRol
+) -> TypeWijzigResultaat:
+    """"Type wijzigen → kassarapport" vanuit Inzicht › Reconciliatie op `kassarapport_in_werkvoorraad`: exact de
+    bestaande
+    soort-wissel (documenten/soort.py — terug naar ONTVANGEN, extractie opnieuw via het omzetpad, tijdlijn + audit).
+    Alleen binnen de scope van de actor; 422 op een andere bevindingssoort; de poorten van de soort-wissel (geboekt,
+    ter accordering) blijven die van de enkelvoudige route (409)."""
+    from app.auth import service as auth_service
+    from app.documenten import soort as soort_service
+    from app.reconciliatie.models import BevindingSoort, ReconciliatieBevinding
+
+    if administratie_id not in {a.id for a in auth_service.mijn_administraties(actor_id=actor_id, rol=rol)}:
+        raise herboeken.GeenToegang("Geen toegang tot deze administratie")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        b = session.get(ReconciliatieBevinding, bevinding_id)
+        if b is None or b.administratie_id != administratie_id:
+            raise herboeken.BevindingNietGevonden("Bevinding niet gevonden")
+        d = dict(b.detail or {})
+        blok, soort = b.blok, b.soort
+    if blok != "omzet" or soort not in (BevindingSoort.AFWIJKING.value, BevindingSoort.UITGESLOTEN.value):
+        raise herboeken.HerboekenFout("Type wijzigen geldt alleen voor een omzet-afwijking")
+    if d.get("afwijking_soort") != SOORT_WERKVOORRAAD or not d.get("document_id"):
+        raise herboeken.HerboekenFout(
+            "Type wijzigen geldt alleen voor een kassarapport dat als inkoopfactuur in de werkvoorraad staat"
+        )
+    document_id = uuid.UUID(str(d["document_id"]))
+    try:
+        r = soort_service.wijzig_documentsoort(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            soort=DocumentSoort.KASSARAPPORT,
+            actor_id=actor_id,
+        )
+    except soort_service.SoortWisselNietToegestaan as exc:
+        raise herboeken.HerboekenFout(str(exc)) from exc
+    status = r.status.value if hasattr(r.status, "value") else str(r.status)
+    return TypeWijzigResultaat(
+        document_id=document_id,
+        status=status,
+        van_soort=r.van_soort,
+        naar_soort=r.naar_soort,
+        doel_pad=f"/?administratie={administratie_id}&document={document_id}",
+    )
 
 
 @dataclass(frozen=True)

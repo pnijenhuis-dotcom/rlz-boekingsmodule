@@ -49,8 +49,9 @@ _TERMINAAL = (
 )
 
 DEFAULT_BRON_INSTELLINGEN: dict[str, Any] = {
-    # POS-storenamen ("Store Used") die naar deze administratie routeren — Beheerder vult (Elderveld, Sunshine Island).
-    "stores": [],
+    # `stores` staat hier NIET meer (0151, Peter 16-09 avond): de store-routering is platformbreed
+    # (app/omzet/bronnen/stores.py, Instellingen › Boeken › Stores); `bron_instellingen_voor` levert 'm als AFGELEIDE
+    # weergave ("stores die hier landen") — schrijven via deze PUT wordt geweigerd.
     # Pilates: productnaam → categorie (aanvulling op pilates.DEFAULT_PRODUCT_CATEGORIEEN); mens wint, audit.
     "product_categorieen": {},
     # Blok A (16-09): tegenrekening per betaalwijze (ledger_id of None = code-default op naam uit het rekeningschema).
@@ -66,12 +67,22 @@ DEFAULT_BRON_INSTELLINGEN: dict[str, Any] = {
     "eten_drinken_tarief": tegenzijde_bron.BTW_LAAG,
 }
 #: 15-09-sleutel die niet meer bestaat (informatieve GB-codes) — bij lezen genegeerd, bij schrijven geweigerd.
-_VERVALLEN_SLEUTELS = frozenset({"rekeningen"})
+#: `stores` (0146) is sinds 0151 verhuisd naar `omzet_store_routering`; de JSON-lijst blijft als historisch spoor staan
+#: (data-stap `omzet-stores-migreren` leest 'm) maar wordt hier niet meer als instelling gelezen.
+_VERVALLEN_SLEUTELS = frozenset({"rekeningen", "stores"})
+STORES_PLATFORMBREED_MELDING = (
+    "stores worden sinds 16-09 platformbreed beheerd op Instellingen › Boeken › Stores (store → administratie) — "
+    "niet meer per administratie"
+)
 
 
 def bron_instellingen_voor(session: Session, administratie_id: uuid.UUID) -> dict[str, Any]:
+    """Instellingen van déze administratie + `stores` als AFGELEIDE weergave uit de platformbrede routering (0151)."""
+    from app.omzet.bronnen import stores as stores_service
+
     rij = session.get(OmzetInstelling, administratie_id)
     uit = copy.deepcopy(DEFAULT_BRON_INSTELLINGEN)
+    uit["stores"] = stores_service.stores_voor_administratie(session, administratie_id)
     for sleutel, waarde in ((rij.bron_instellingen if rij else None) or {}).items():
         if sleutel in _VERVALLEN_SLEUTELS:
             continue
@@ -193,6 +204,8 @@ def zet_bron_instellingen(
     """PUT door de Beheerder (Instellingen › Administraties › ‹studio› › Omzet › Omzetbronnen): volledig blok
     vervangen ná validatie tegen de caches (ledger-/taxrate-id's van déze administratie), audit oud→nieuw."""
     toegestaan = set(DEFAULT_BRON_INSTELLINGEN)
+    if "stores" in waarden:
+        raise ValueError(STORES_PLATFORMBREED_MELDING)
     onbekend = set(waarden) - toegestaan
     if onbekend:
         raise ValueError(f"Onbekende sleutel(s) in bron-instellingen: {', '.join(sorted(onbekend))}")
@@ -232,20 +245,32 @@ def zet_bron_instellingen(
 
 
 def administratie_voor_store(store: str | None) -> uuid.UUID | None:
-    """Store-naam uit de dagstaat → de administratie die 'm in `bron_instellingen.stores` heeft (hoofdletterongevoelig);
-    geen of meerdere treffers = None (verzamelbak, nooit raden)."""
-    if not store:
+    """Store-naam uit de dagstaat → administratie via de PLATFORMBREDE routering (0151; één bron:
+    app/omzet/bronnen/stores.py). Niet gekoppeld = None (verzamelbak mét reden, nooit raden)."""
+    from app.omzet.bronnen import stores as stores_service
+
+    return stores_service.administratie_voor_store(store)
+
+
+def administratie_voor_kascheck(datum: date | None) -> uuid.UUID | None:
+    """Een kascheck noemt geen store. Deterministische terugval (0151, "bundeling werkt over de routering heen"): precies
+    één actieve administratie heeft een dagstaat van dezelfde dag die nog op zijn kascheck wacht → die administratie.
+    Geen of meerdere kandidaten = None (dan de afzender-regel of de verzamelbak)."""
+    if datum is None:
         return None
-    doel = store.strip().lower()
-    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+    with scoped_session(None) as session:
         administraties = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
-    treffers: list[uuid.UUID] = []
+    kandidaten: list[uuid.UUID] = []
     for aid in administraties:
         with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as session:
-            stores = bron_instellingen_voor(session, aid).get("stores") or []
-        if any(str(s).strip().lower() == doel for s in stores):
-            treffers.append(aid)
-    return treffers[0] if len(treffers) == 1 else None
+            for _doc, vv in _kassarapporten_met_bron(
+                session, administratie_id=aid, bron=BRON_ZONNESTUDIO_DAGSTAAT, behalve=uuid.UUID(int=0)
+            ):
+                detail = vv.get("bron_detail") or {}
+                if detail.get("wacht_op") == "kascheck" and _datum_van(vv) == datum:
+                    kandidaten.append(aid)
+                    break
+    return kandidaten[0] if len(kandidaten) == 1 else None
 
 
 # ---------------------------------------------------------------------------------------- lezen van documenten

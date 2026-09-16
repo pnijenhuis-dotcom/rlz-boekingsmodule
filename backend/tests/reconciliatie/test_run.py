@@ -603,7 +603,7 @@ class TestCliReconciliatieAlles:
         monkeypatch.setattr(
             cli.omzet_reconciliatie,
             "reconcilieer_alle_omzet",
-            lambda: OmzetReconciliatieResultaat(afwijkingen=[], fouten={}),
+            lambda **kw: OmzetReconciliatieResultaat(afwijkingen=[], fouten={}),  # registreer= (blok C 16-09 avond)
         )
         monkeypatch.setattr(
             cli.doorbelasting_reconciliatie,

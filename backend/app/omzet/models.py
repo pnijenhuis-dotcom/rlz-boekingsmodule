@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Numeric, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -76,6 +76,32 @@ class OmzetInstelling(Base):
     # kasverschil als GB-codes/ids). Leeg = code-defaults (app/omzet/bronnen/service.py). Nooit hardcoden.
     bron_instellingen: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), default=None)
     gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class OmzetStoreRoutering(Base):
+    """Store → administratie, PLATFORMBREED (migratie 0151; besluit Peter 16-09 avond: Sunshine Island is een eigen BV
+    en dus een ándere administratie dan Elderveld). Eén rij per genormaliseerde "Store Used"-naam uit de
+    zonnestudio-dagstaat; `actief=False` = ontkoppeld (nooit verwijderd); `bron` mens|migratie. De unieke index op
+    `store_norm` maakt twee administraties voor dezelfde store onmogelijk. Lees-/schrijfpoort: app/omzet/bronnen/stores.py
+    (normalisatie, audit oud→nieuw); RLS = referentietabel (iedereen in de app-rol leest, de Beheerder schrijft)."""
+
+    __tablename__ = "omzet_store_routering"
+    __table_args__ = (
+        UniqueConstraint("store_norm", name="uq_omzet_store_routering_store_norm"),
+        CheckConstraint("bron IN ('mens', 'migratie')", name="ck_omzet_store_routering_bron"),
+        Index("ix_omzet_store_routering_administratie", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_norm: Mapped[str] = mapped_column(Text)
+    store_naam: Mapped[str] = mapped_column(Text)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    actief: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    bron: Mapped[str] = mapped_column(Text, default="mens", server_default="mens")
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class OmzetVoorstel(Base):

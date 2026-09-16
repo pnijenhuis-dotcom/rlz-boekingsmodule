@@ -156,6 +156,20 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  // 0151 (16-09 avond): blok "Stores" op Boeken platformbreed — store → administratie (sweep-geval ?pad=/instellingen/boeken).
+  if (url === '/auth/administraties') return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
+  if (url === '/instellingen/omzet/stores') {
+    return Promise.resolve(
+      jsonResponse({
+        doel_pad: '/instellingen/boeken#stores',
+        stores: [
+          { id: 's1', store_naam: 'Elderveld', store_norm: 'elderveld', administratie_id: ADMIN_3, administratie_naam: 'BLOW B.V.', actief: true, bron: 'migratie', gewijzigd_op: null },
+          { id: 's2', store_naam: 'Sunshine Island', store_norm: 'sunshine island', administratie_id: ADMIN_2, administratie_naam: 'Molenhof Verhuur B.V.', actief: true, bron: 'mens', gewijzigd_op: '2026-09-16T20:00:00Z' },
+          { id: 's3', store_naam: 'Oude store', store_norm: 'oude store', administratie_id: ADMIN_1, administratie_naam: 'Universal Steigerbouw Nederland B.V.', actief: false, bron: 'mens', gewijzigd_op: null },
+        ],
+      }),
+    )
+  }
   if (url === '/instellingen/intake-ai') return Promise.resolve(jsonResponse({ ingeschakeld: false }))
   if (url === '/instellingen/ai-kosten') {
     return Promise.resolve(

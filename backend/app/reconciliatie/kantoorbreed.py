@@ -55,6 +55,9 @@ _URGENTIE_AFWIJKING_SOORT = {
     "boeking_teruggedraaid_in_rlz": 1,
     "aflettering_teruggedraaid_in_rlz": 1,
     "half_geboekt": 2,
+    # Peter 16-09 (Van Boxtel) + blok C 16-09 avond: omzet in de inkoopstroom — boekhoudkundig werk mét één klik.
+    "omzet_in_inkoopstroom": 2,
+    "kassarapport_in_werkvoorraad": 2,
     # Blok 6 (08-09): mogelijk dubbel in RLZ — beoordelen in Reeleezee, geen boekhoudkundig werk in de app.
     # Blok 1 vervolgrun 10-09: "waarschijnlijk dubbel" (twee concepten, zelfde dag, zelfde bedrag) = 3, "zelfde
     # referentie, controleer" = 4 — zie `_urgentie_binnen_soort`.

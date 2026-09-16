@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { KassaProfielStandDto, OmzetBetaalwijze, OmzetBronDefaultsDto, OmzetBronInstellingenDto, OmzetBronInstellingenWaarden, OmzetEtenDrinkenTarief, OmzetPsp } from '../api/types'
 import { SearchableCombobox, type ComboboxOptie } from '../document/SearchableCombobox'
@@ -10,7 +11,8 @@ import { haalKassaProfielOp, zetKassaProfiel } from './instellingenApi'
 /** Blok "Omzetbronnen" op Instellingen › Administraties › ‹administratie› › Boeken & AI (besluiten Peter 16-09, blok B;
  * de omzet-instellingen leven op deze tab — registry-synoniem 'omzet', anker `#omzetbronnen`). Eén bron:
  * `omzet_instelling.bron_instellingen` via GET/PUT `/administraties/{id}/omzet/bron-instellingen` (CONTRACT_4):
- *  (a) stores — de "Store Used"-naam in de dagstaat → deze administratie;
+ *  (a) stores — AFGELEIDE weergave (0151, Peter 16-09 avond): de stores die in déze administratie landen; beheren
+ *      gebeurt platformbreed op Instellingen › Boeken › Stores (Sunshine Island = eigen BV);
  *  (b) tegenrekening per betaalwijze (pin/cash/stripe/kasverschil/storting) — combobox op `rekeningen` uit de DTO,
  *      default uit `defaults` mét chip "standaard (op naam)" zolang de mens niets koos;
  *  (c) categorie-mapping pilates (productnaam → categorie) + btw-tarief per categorie (`tarieven`, default-chip);
@@ -73,7 +75,6 @@ function alsTarief(x: unknown): OmzetEtenDrinkenTarief | null {
 /** De bewerkbare stand uit een DTO: alleen de instelbare sleutels, genormaliseerd. */
 export function waardenUit(dto: OmzetBronInstellingenDto): Waarden {
   return {
-    stores: alsLijst(dto.stores),
     product_categorieen: { ...(dto.product_categorieen ?? {}) },
     tegenrekeningen: { ...(dto.tegenrekeningen ?? {}) },
     categorie_btw: Object.fromEntries(
@@ -89,10 +90,9 @@ export function waardenUit(dto: OmzetBronInstellingenDto): Waarden {
   }
 }
 
-/** Herstel standaard: alles wat de code zelf kan afleiden leeg; stores blijven (die kent de code niet). */
-export function standaardWaarden(huidig: Waarden): Waarden {
+/** Herstel standaard: alles wat de code zelf kan afleiden leeg (stores staan sinds 0151 niet meer in dit blok). */
+export function standaardWaarden(_huidig: Waarden): Waarden {
   return {
-    stores: huidig.stores ?? [],
     product_categorieen: {},
     tegenrekeningen: {},
     categorie_btw: {},
@@ -123,7 +123,7 @@ function foutenPerVeld(err: unknown): Record<string, string> {
   }
   if (typeof detail === 'string') {
     // Een leesbare 422/409 uit de service noemt vaak de sleutel ("… in tegenrekeningen …") — dan bij dat veld.
-    const veld = ['stores', 'tegenrekeningen', 'categorie_btw', 'product_categorieen', 'psp_kosten_ledger_id', 'psp', 'eten_drinken_tarief'].find((k) =>
+    const veld = ['tegenrekeningen', 'categorie_btw', 'product_categorieen', 'psp_kosten_ledger_id', 'psp', 'eten_drinken_tarief'].find((k) =>
       detail.toLowerCase().includes(k),
     )
     return { [veld ?? '_blok']: detail }
@@ -233,7 +233,6 @@ export function OmzetBronnenBlok({
   const [bezig, setBezig] = useState(false)
   const [fouten, setFouten] = useState<Record<string, string>>({})
   const [opgeslagen, setOpgeslagen] = useState(false)
-  const [nieuweStore, setNieuweStore] = useState('')
   const [nieuwProduct, setNieuwProduct] = useState('')
   const [nieuwCategorie, setNieuwCategorie] = useState('')
 
@@ -311,18 +310,6 @@ export function OmzetBronnenBlok({
     }
   }
 
-  const storeToevoegen = () => {
-    const s = nieuweStore.trim()
-    if (!s || !stand) return
-    if ((stand.stores ?? []).some((x) => x.toLowerCase() === s.toLowerCase())) {
-      setFouten({ stores: `"${s}" staat al in de lijst.` })
-      return
-    }
-    setFouten({})
-    wijzig({ stores: [...(stand.stores ?? []), s] })
-    setNieuweStore('')
-  }
-
   const productToevoegen = () => {
     const p = nieuwProduct.trim().toLowerCase()
     const c = nieuwCategorie.trim()
@@ -373,52 +360,29 @@ export function OmzetBronnenBlok({
       </div>
       <Veldfout tekst={fouten._blok} />
 
-      {/* (a) Stores */}
+      {/* (a) Stores — afgeleid uit de platformbrede routering (0151); beheren op Instellingen › Boeken › Stores. */}
       <h4 className="inst-rij-titel" style={{ marginTop: 12 }}>
-        Stores (“Store Used” in de dagstaat)
+        Stores (“Store Used” in de dagstaat) — stores die hier landen
       </h4>
-      {(stand?.stores ?? []).length === 0 ? (
+      {(dto?.stores ?? []).length === 0 ? (
         <p className="hint" data-testid="stores-leeg">
-          Nog geen store gekoppeld — voeg de naam toe zoals hij in de dagstaat staat (bv. “Elderveld”).
+          Nog geen store landt in deze administratie. Stores koppel je platformbreed:{' '}
+          <Link to="/instellingen/boeken#stores" className="linkbtn">
+            Instellingen › Boeken › Stores →
+          </Link>
         </p>
       ) : (
-        <ul className="chip-lijst" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, listStyle: 'none', padding: 0, margin: '4px 0' }}>
-          {(stand?.stores ?? []).map((s) => (
-            <li key={s} className="chip klaar" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <p className="hint" data-testid="stores-afgeleid" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          {(dto?.stores ?? []).map((s) => (
+            <span key={s} className="chip klaar">
               {s}
-              <button
-                type="button"
-                className="linkbtn"
-                aria-label={`Verwijder store ${s}`}
-                disabled={uit}
-                onClick={() => wijzig({ stores: (stand?.stores ?? []).filter((x) => x !== s) })}
-              >
-                ×
-              </button>
-            </li>
+            </span>
           ))}
-        </ul>
+          <Link to="/instellingen/boeken#stores" className="linkbtn">
+            Beheren op Instellingen › Boeken › Stores →
+          </Link>
+        </p>
       )}
-      <form
-        style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}
-        onSubmit={(e) => {
-          e.preventDefault()
-          storeToevoegen()
-        }}
-      >
-        <input
-          aria-label="Naam nieuwe store"
-          placeholder="Store Used, bv. Sunshine Island"
-          value={nieuweStore}
-          disabled={uit}
-          style={{ width: 240 }}
-          onChange={(e) => setNieuweStore(e.target.value)}
-        />
-        <Button type="submit" variant="secundair" maat="klein" disabled={uit || !nieuweStore.trim()}>
-          + Store toevoegen
-        </Button>
-      </form>
-      <Veldfout tekst={fouten.stores} />
 
       {/* (b) Tegenrekening per betaalwijze */}
       <h4 className="inst-rij-titel" style={{ marginTop: 16 }}>

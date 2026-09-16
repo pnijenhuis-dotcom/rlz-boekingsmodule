@@ -809,3 +809,41 @@ class TestExtractieWachtrij:
         assert all(f.administratie_id == administratie_id for f in triggers)
         t = _teller(auto.bereken(feiten, nu=datetime.now(UTC)), auto.EXTRACTIE_WACHTRIJ)
         assert (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (2, 1, {auto.VANGNET_SCHEDULER: 1})
+
+
+class TestOmzetbronTellers:
+    """0151 + blok C (Peter 16-09 avond): omzetbron-herkenning (gedaan / store onbekend = harde voorwaarde mét deeplink naar
+    het Stores-blok) en de dagelijkse toets kassarapport-in-de-inkoopstroom (gedaan = gesignaleerde documenten)."""
+
+    def test_omzetbron_herkenning_en_store_onbekend_let_op(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(
+            aid,
+            audit=[
+                auto.AuditFeit("omzetbron_herkend", _uur(1), aid, {"bron": "zonnestudio_dagstaat", "store": "Elderveld", "routering": "store"}),
+                auto.AuditFeit("omzetbron_herkend", _uur(30), aid, {"bron": "profx_journaal", "routering": "tenaamstelling"}),
+                auto.AuditFeit(
+                    "omzetbron_store_onbekend", _uur(2), None, {"bron": "zonnestudio_dagstaat", "store": "Sunshine Island", "bestandsnaam": "8-9-26.xls"}
+                ),
+            ],
+        )
+        tellers = auto.bereken(f, nu=NU)
+        t = _teller(tellers, auto.OMZETBRON_HERKENNING)
+        assert t.stand == "altijd" and (t.dag.verwacht, t.dag.gedaan, t.dag.overgeslagen) == (2, 1, {auto.STORE_ONBEKEND: 1})
+        assert (t.week.verwacht, t.week.gedaan) == (3, 2)
+        [hv] = t.harde_voorwaarden
+        assert (hv.categorie, hv.aantal, hv.administratie_id) == (auto.STORE_ONBEKEND, 1, None)
+        assert "Sunshine Island" in (hv.voorbeeld or "")
+        [b] = [b for b in auto.bevindingen(tellers) if b["detail"].get("automatisering") == auto.OMZETBRON_HERKENNING]
+        assert b["soort"] == "let_op" and b["detail"]["doel_pad"] == "/instellingen/boeken#stores"
+        assert auto.STORE_ONBEKEND in auto.HARDE_VOORWAARDEN and auto.STORE_ONBEKEND not in auto.REGRESSIE_CATEGORIEEN
+
+    def test_kassarapport_inkoopstroom_telt_gesignaleerde_documenten(self) -> None:
+        aid = uuid.uuid4()
+        f = _feiten(aid, audit=[auto.AuditFeit("kassarapport_inkoopstroom_run", _uur(3), aid, {"geboekt": 9, "ongeboekt": 5, "signalen": ["profx_journaal"]})])
+        t = _teller(auto.bereken(f, nu=NU), auto.KASSARAPPORT_INKOOPSTROOM)
+        assert t.stand == "altijd" and (t.dag.gedaan, t.week.gedaan, t.dag.overgeslagen_totaal) == (14, 14, 0)
+        assert t.harde_voorwaarden == [] and t.stil is False
+        # Zonder enige run-rij in de week: geen 'stil'-LET-OP (verwacht = 0 — de toets levert alleen bij treffers een rij).
+        leeg = _teller(auto.bereken(_feiten(aid), nu=NU), auto.KASSARAPPORT_INKOOPSTROOM)
+        assert leeg.stil is False and leeg.week.verwacht == 0

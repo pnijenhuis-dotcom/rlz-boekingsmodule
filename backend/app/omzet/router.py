@@ -177,6 +177,85 @@ def omzet_bron_instellingen_zetten(
         return _bron_instellingen_dto(session, administratie_id)
 
 
+# ---------------------------------------------------------------------------- store → administratie (0151, 16-09)
+
+
+def _store_dto(info) -> schemas.OmzetStoreDto:  # noqa: ANN001
+    return schemas.OmzetStoreDto(
+        id=info.id,
+        store_naam=info.store_naam,
+        store_norm=info.store_norm,
+        administratie_id=info.administratie_id,
+        administratie_naam=info.administratie_naam,
+        actief=info.actief,
+        bron=info.bron,
+        gewijzigd_op=info.gewijzigd_op,
+    )
+
+
+def _vertaal_store_fout(exc: Exception) -> HTTPException:
+    from app.omzet.bronnen import stores as stores_service
+
+    if isinstance(exc, stores_service.StoreOnbekend):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get("/instellingen/omzet/stores", response_model=schemas.OmzetStoresDto)
+def omzet_stores_lijst(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.OmzetStoresDto:
+    """Platformbrede store-routering (Peter 16-09 avond, migratie 0151): welke "Store Used" uit een zonnestudio-dagstaat
+    landt in welke administratie. Lezen = kantoorrol (de verzamelbak-rij linkt hierheen), schrijven = Beheerder."""
+    from app.omzet.bronnen import stores as stores_service
+
+    return schemas.OmzetStoresDto(
+        stores=[_store_dto(i) for i in stores_service.lijst(actor_id=actor.id)],
+        doel_pad=stores_service.DOEL_PAD_STORES,
+    )
+
+
+@router.post("/instellingen/omzet/stores", response_model=schemas.OmzetStoreDto)
+def omzet_store_koppelen(
+    invoer: schemas.OmzetStoreKoppelInput, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OmzetStoreDto:
+    """Beheerder: store → administratie (upsert op de genormaliseerde naam; verhuizen = dezelfde rij; audit oud→nieuw).
+    Twee administraties voor dezelfde store kan niet — de unieke index en de upsert maken dat structureel onmogelijk."""
+    from app.omzet.bronnen import stores as stores_service
+
+    try:
+        info = stores_service.koppel(store=invoer.store, administratie_id=invoer.administratie_id, actor_id=actor.id)
+    except stores_service.StoreFout as exc:
+        raise _vertaal_store_fout(exc) from exc
+    return _store_dto(info)
+
+
+@router.put("/instellingen/omzet/stores/{routering_id}", response_model=schemas.OmzetStoreDto)
+def omzet_store_wijzigen(
+    routering_id: uuid.UUID, invoer: schemas.OmzetStoreWijzigInput, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OmzetStoreDto:
+    """Beheerder: andere administratie en/of ontkoppelen (actief=false) / opnieuw activeren. Nooit verwijderen."""
+    from app.omzet.bronnen import stores as stores_service
+
+    try:
+        info = None
+        if invoer.administratie_id is not None:
+            huidig = next((s for s in stores_service.lijst(actor_id=actor.id) if s.id == routering_id), None)
+            if huidig is None:
+                raise stores_service.StoreOnbekend(f"Onbekende store-routering {routering_id}")
+            info = stores_service.koppel(
+                store=huidig.store_naam,
+                administratie_id=invoer.administratie_id,
+                actor_id=actor.id,
+                actief=huidig.actief if invoer.actief is None else invoer.actief,
+            )
+        if invoer.actief is not None:
+            info = stores_service.zet_actief(routering_id=routering_id, actief=invoer.actief, actor_id=actor.id)
+        if info is None:
+            raise stores_service.StoreFout("Geef een administratie en/of de actief-stand op")
+    except stores_service.StoreFout as exc:
+        raise _vertaal_store_fout(exc) from exc
+    return _store_dto(info)
+
+
 @router.get(
     "/administraties/{administratie_id}/omzet/documenten/{document_id}/voorstel",
     response_model=schemas.OmzetVoorstelResponse,

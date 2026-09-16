@@ -1459,9 +1459,9 @@ export interface OmzetBronTariefDto {
   is_verlegd?: boolean
 }
 
-/** De instelbare sleutels van `omzet_instelling.bron_instellingen` (alle optioneel; null/ontbrekend = code-default). */
+/** De instelbare sleutels van `omzet_instelling.bron_instellingen` (alle optioneel; null/ontbrekend = code-default).
+ * `stores` staat hier sinds 0151 (16-09 avond) NIET meer in: store → administratie is platformbreed (Instellingen › Boeken › Stores). */
 export interface OmzetBronInstellingenWaarden {
-  stores?: string[]
   /** productnaam (lower) → categorie */
   product_categorieen?: Record<string, string>
   tegenrekeningen?: Partial<Record<OmzetBetaalwijze, string | null>>
@@ -1488,6 +1488,8 @@ export interface OmzetBronDefaultsDto {
 }
 
 export interface OmzetBronInstellingenDto extends OmzetBronInstellingenWaarden {
+  /** Read-only, AFGELEID (0151): de actieve stores uit de platformbrede routering die in déze administratie landen. */
+  stores?: string[]
   /** Read-only: wat de code zou kiezen als de mens niets instelt (defaults op NAAM uit het RLZ-schema; btw = RLZ-tarief). */
   defaults?: OmzetBronDefaultsDto | null
   /** Keuzelijsten zodat de UI zonder extra routes comboboxen kan vullen. */

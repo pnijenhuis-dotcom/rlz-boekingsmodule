@@ -30,6 +30,7 @@ import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { BewustVerwijderdActie } from './BewustVerwijderdActie'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
 import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
+import { isKassarapportInWerkvoorraad, TypeWijzigenKassarapportActie } from './TypeWijzigenKassarapportActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -292,6 +293,21 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
               />{' '}
             </>
           )}
+          {deeplink}
+        </>
+      )
+    }
+    // Blok C (16-09 avond): kassarapport dat als inkoopfactuur in de werkvoorraad staat → één klik "Type wijzigen".
+    if (r.soort === 'afwijking' && isKassarapportInWerkvoorraad(r)) {
+      return (
+        <>
+          <TypeWijzigenKassarapportActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+          />{' '}
           {deeplink}
         </>
       )

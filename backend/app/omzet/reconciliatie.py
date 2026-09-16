@@ -98,15 +98,24 @@ def tussenrekening_open_afwijkingen(
     ]
 
 
-def omzet_in_inkoopstroom_afwijkingen(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
-    """Peter 16-09 (Van Boxtel): GEBOEKTE inkoopfacturen waarvan álle regels op een omzetrekening staan = een
-    kassarapport dat de inkoopstroom nam (verschijnt in RLZ onder Uitgaven). Puur lokaal (geen PDF-lezing in de
-    dagelijkse run — het PDF-signaal zit in de CLI `omzet-binder-rapport --met-pdf`). record_id = document_id."""
+def omzet_in_inkoopstroom_afwijkingen(
+    administratie_id: uuid.UUID, *, registreer: bool = False
+) -> list[OmzetAfwijking]:
+    """Peter 16-09 (Van Boxtel): (1) GEBOEKTE inkoopfacturen waarvan álle regels op een omzetrekening staan = een
+    kassarapport dat de inkoopstroom nam (verschijnt in RLZ onder Uitgaven) → `omzet_in_inkoopstroom` mét "Herboeken als
+    omzet"; (2) blok C 16-09 avond: ONGEBOEKTE inkoopfactuur-documenten in de werkvoorraad die op inhoud een
+    kassarapport zijn (herkende bron op de PDF-tekstlaag — begrensd tot de werkvoorraad — of alle regels op een
+    omzetrekening) → `kassarapport_in_werkvoorraad` mét "Type wijzigen → kassarapport". Puur lokaal, geen RLZ-call.
+    record_id = document_id. `registreer=True` (alleen in de echte run, nooit lees-only) schrijft één audit-rij
+    `kassarapport_inkoopstroom_run` per administratie mét tellers — de bron van de automatiserings-teller."""
+    from app.db.audit import record_audit_event
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
     from app.omzet import inkoopstroom
 
     with scoped_session(administratie_id) as session:
         treffers = inkoopstroom.geboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id)
-    return [
+        ongeboekt = inkoopstroom.ongeboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id)
+    uit = [
         OmzetAfwijking(
             administratie_id=administratie_id,
             boeking_id=t.document_id,
@@ -120,9 +129,45 @@ def omzet_in_inkoopstroom_afwijkingen(administratie_id: uuid.UUID) -> list[Omzet
         )
         for t in treffers
     ]
+    uit.extend(
+        OmzetAfwijking(
+            administratie_id=administratie_id,
+            boeking_id=w.document_id,
+            document_id=w.document_id,
+            soort=inkoopstroom.SOORT_WERKVOORRAAD,
+            detail=(
+                f"Kassarapport {w.bestandsnaam} staat als inkoopfactuur in de werkvoorraad (status {w.status}; "
+                f"signaal {w.signaal}"
+                + (f", {w.regels_op_omzet}/{w.regels_totaal} regels op een omzetrekening" if w.regels_totaal else "")
+                + ") — type wijzigen naar kassarapport"
+            ),
+        )
+        for w in ongeboekt
+    )
+    if registreer and uit:
+        try:
+            with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+                record_audit_event(
+                    session,
+                    actor_id=SYSTEEM_ACTOR_ID,
+                    module="boekhouding",
+                    tabel="document",
+                    record_id=administratie_id,
+                    actie="kassarapport_inkoopstroom_run",
+                    correlatie_id=uuid.uuid4(),
+                    nieuwe_waarde={
+                        "geboekt": len(treffers),
+                        "ongeboekt": len(ongeboekt),
+                        "signalen": sorted({w.signaal for w in ongeboekt} | {t.signaal for t in treffers}),
+                    },
+                    administratie_id=administratie_id,
+                )
+        except Exception:  # noqa: BLE001 — de teller mag de reconciliatie nooit laten omvallen
+            logger.exception("audit kassarapport_inkoopstroom_run mislukt voor %s", administratie_id)
+    return uit
 
 
-def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
+def reconcilieer_omzet(administratie_id: uuid.UUID, *, registreer: bool = False) -> list[OmzetAfwijking]:
     with scoped_session(administratie_id) as session:
         boekingen = session.scalars(
             select(OmzetBoeking).where(
@@ -130,7 +175,7 @@ def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
                 OmzetBoeking.status.in_((OmzetBoekingStatus.GEBOEKT.value, OmzetBoekingStatus.HALF_GEBOEKT.value)),
             )
         ).all()
-    inkoopstroom_afwijkingen = omzet_in_inkoopstroom_afwijkingen(administratie_id)
+    inkoopstroom_afwijkingen = omzet_in_inkoopstroom_afwijkingen(administratie_id, registreer=registreer)
     if not boekingen:
         return inkoopstroom_afwijkingen
 
@@ -187,10 +232,12 @@ class OmzetReconciliatieResultaat:
     overgeslagen: dict[uuid.UUID, str] = field(default_factory=dict)
 
 
-def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
+def reconcilieer_alle_omzet(*, registreer: bool = False) -> OmzetReconciliatieResultaat:
     """Alle administraties; één kapotte administratie (credentials, RLZ-storing) stopt de rest
     niet — zelfde patroon als sync_alle_administraties — maar wordt wél teruggegeven zodat de
-    aanroeper hem zichtbaar maakt en de exit-code op 1 zet."""
+    aanroeper hem zichtbaar maakt en de exit-code op 1 zet. Odoo-administraties: het RLZ-deel wordt zichtbaar
+    overgeslagen (A12), de LOKALE toets "kassarapport in de inkoopstroom" (blok C 16-09 avond) draait wél — die kent
+    geen backend."""
     from app.backends.registry import RLZ_ONLY_OVERGESLAGEN, actieve_administraties_per_backend
 
     administratie_ids, odoo_ids = actieve_administraties_per_backend()
@@ -198,9 +245,15 @@ def reconcilieer_alle_omzet() -> OmzetReconciliatieResultaat:
     fouten: dict[uuid.UUID, str] = {}
     for administratie_id in administratie_ids:
         try:
-            alle.extend(reconcilieer_omzet(administratie_id))
+            alle.extend(reconcilieer_omzet(administratie_id, registreer=registreer))
         except Exception as exc:  # noqa: BLE001 — rapporteren en door, nooit de hele run stoppen
             logger.exception("Omzet-reconciliatie mislukt voor administratie %s", administratie_id)
+            fouten[administratie_id] = str(exc)
+    for administratie_id in odoo_ids:
+        try:
+            alle.extend(omzet_in_inkoopstroom_afwijkingen(administratie_id, registreer=registreer))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Lokale omzet-toets mislukt voor Odoo-administratie %s", administratie_id)
             fouten[administratie_id] = str(exc)
     return OmzetReconciliatieResultaat(
         afwijkingen=alle, fouten=fouten, overgeslagen={aid: RLZ_ONLY_OVERGESLAGEN for aid in odoo_ids}

@@ -255,6 +255,12 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("PUT", f"/intercompany/rc-koppelingen/{DUMMY_ID}"),  # beheerder-only
         ("PUT", f"/intercompany/identiteit/{aid}/afkortingen"),  # beheerder-only
         ("POST", "/intercompany/afleiden"),  # beheerder-only
+        # Store → administratie platformbreed (0151, 16-09 avond): lezen kantoorrol, koppelen/wijzigen Beheerder-only.
+        ("GET", "/instellingen/omzet/stores"),
+        ("POST", "/instellingen/omzet/stores"),  # beheerder-only
+        ("PUT", f"/instellingen/omzet/stores/{DUMMY_ID}"),  # beheerder-only
+        # Blok C 16-09 avond: "Type wijzigen → kassarapport" vanuit Inzicht › Reconciliatie (kantoorrol).
+        ("POST", f"/reconciliatie/bevindingen/{DUMMY_ID}/type-wijzigen-kassarapport"),
     ]
 
 
@@ -403,6 +409,7 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/kassa-profiel")  # blok G ProfX 16-09: profiel-override = Beheerder-only
                 or (pad.startswith("/groepen") and methode != "GET")  # blok 8 11-09: groepen muteren = Beheerder-only
                 or pad.startswith("/intercompany/")  # blok A 16-09: intercompany-relaties/RC = Beheerder-only
+                or (pad.startswith("/instellingen/omzet/stores") and methode != "GET")  # 0151 16-09 avond: koppelen = Beheerder-only
             ):
                 # Beheerder-only (gebruikersbeheer, vastgoed-toggle, Odoo-koppeling), Beheerder/B+P-only
                 # (materiaalcatalogus schrijven; lezen sinds 06-09 óók mét meerwerk-recht) resp. module-recht

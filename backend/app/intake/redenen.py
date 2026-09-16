@@ -93,6 +93,16 @@ def omschrijf_intake_reden(reden: str | None, *, tenaamstelling: str | None) -> 
         if tenaamstelling:
             return "opnieuw gelezen: tenaamstelling matcht geen administratie of geleerde regel"
         return "opnieuw gelezen: geen tenaamstelling gelezen"
+    if reden.startswith("omzetbron_store_onbekend"):
+        # 0151 (Peter 16-09 avond): de dagstaat noemt een store die (nog) niet aan een administratie gekoppeld is —
+        # lege stand = actie: de frontend zet er "Stores koppelen →" (Instellingen › Boeken › Stores) naast.
+        store = reden.split(":", 1)[1].strip() if ":" in reden else ""
+        return (
+            f"store {_kort(store) or '?'!r} niet gekoppeld aan een administratie — "
+            "koppel op Instellingen › Boeken › Stores"
+        )
+    if reden.startswith("omzetbron_store_ontbreekt"):
+        return "dagstaat zonder 'Store Used' — handmatig toewijzen"
     if reden.startswith("waarborg"):
         return f"waarborgbericht: {_kort(reden.split(':', 1)[1]) if ':' in reden else reden}"
     # Onbekende technische reden: liever de ruwe tekst dan een verzonnen label.

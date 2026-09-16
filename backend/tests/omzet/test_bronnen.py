@@ -36,6 +36,7 @@ from app.omzet.bronnen import (
     zonnestudio,
 )
 from app.omzet.bronnen import service as bronnen_service
+from app.omzet.bronnen import stores as stores_service
 from app.omzet.bronnen.grid import grid_uit_json
 from app.security.tokens import create_access_token
 
@@ -356,23 +357,29 @@ class TestInstellingenEnIntake:
         r = client.put(
             f"/administraties/{administratie_id}/omzet/bron-instellingen",
             headers=kop,
-            json={
-                "stores": ["Elderveld", "Sunshine Island"],
-                "product_categorieen": {"combi Abonnement": "Pilateslessen"},
-                "psp": "mollie",
-            },
+            json={"product_categorieen": {"combi Abonnement": "Pilateslessen"}, "psp": "mollie"},
         )
-        assert r.status_code == 200 and r.json()["stores"] == ["Elderveld", "Sunshine Island"]
+        assert r.status_code == 200 and r.json()["stores"] == []
         assert r.json()["psp"] == "mollie" and "defaults" in r.json() and "rekeningen" in r.json()
-        # Tweede store "Sunshine Island" → dezelfde administratie (default tot Peter anders zegt).
-        assert bronnen_service.administratie_voor_store("sunshine island") == administratie_id
+        # Stores zijn sinds 0151 (Peter 16-09 avond: Sunshine Island = eigen BV) PLATFORMBREED — de per-administratie-PUT
+        # weigert de sleutel (422), het Stores-blok koppelt; de per-administratie-DTO toont de AFGELEIDE lijst.
+        assert (
+            client.put(
+                f"/administraties/{administratie_id}/omzet/bron-instellingen", headers=kop, json={"stores": ["X"]}
+            ).status_code
+            == 422
+        )
+        stores_service.koppel(store="Elderveld", administratie_id=administratie_id, actor_id=beheerder_id)
+        r = client.get(f"/administraties/{administratie_id}/omzet/bron-instellingen", headers=kop)
+        assert r.json()["stores"] == ["Elderveld"]
+        assert bronnen_service.administratie_voor_store("sunshine island") is None
         # niet-Beheerder → 403
         kop_boekhouder = {"Authorization": f"Bearer {create_access_token(gescoopte_gebruiker, rol='boekhouding')}"}
         assert (
             client.put(
                 f"/administraties/{administratie_id}/omzet/bron-instellingen",
                 headers=kop_boekhouder,
-                json={"stores": ["X"]},
+                json={"psp": "stripe"},
             ).status_code
             == 403
         )
@@ -392,9 +399,8 @@ class TestInstellingenEnIntake:
         assert res.uitkomst == "toegewezen" and "Elderveld" in (res.detail or "")
         with scoped_session(administratie_id) as session:
             assert session.get(Document, res.document_id).soort == DocumentSoort.KASSARAPPORT.value
-        bronnen_service.zet_bron_instellingen(
-            administratie_id=administratie_id, actor_id=beheerder_id, waarden={"stores": []}
-        )
+        [elderveld] = stores_service.lijst()
+        stores_service.zet_actief(routering_id=elderveld.id, actief=False, actor_id=beheerder_id)
         res2 = verwerking._verwerk_spreadsheet(  # noqa: SLF001
             IntakeBijlage(
                 bestandsnaam="9-9-26.xlsx", inhoud=grid_naar_xlsx(DAGSTAAT), content_type="application/octet-stream"
@@ -404,7 +410,7 @@ class TestInstellingenEnIntake:
             intake_bericht_id=None,
             opslag=opslag,
         )
-        assert res2.uitkomst == "verzamelbak" and "niet ingesteld" in (res2.detail or "")
+        assert res2.uitkomst == "verzamelbak" and "niet gekoppeld" in (res2.detail or "")
         # Geen omzetbron (willekeurige spreadsheet) = zichtbaar overgeslagen, nooit stil.
         wb = openpyxl.Workbook()
         wb.active["A1"] = "hallo"

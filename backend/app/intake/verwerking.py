@@ -501,7 +501,7 @@ def _verwerk_pdf(
             # Blok A3: een margerapport draagt zelf geen bedrijfsnaam — het volgt het journaal uit DEZELFDE mail
             # ("journaal en marge raport" in één bericht). Zonder journaal in de mail: afzender-regel of verzamelbak.
             tenaamstelling = mail_tenaamstelling
-        return _wijs_toe_of_verzamelbak(
+        uitkomst = _wijs_toe_of_verzamelbak(
             bijlage_naam=bijlage.bestandsnaam,
             inhoud=bijlage.inhoud,
             soort=DocumentSoort.KASSARAPPORT,
@@ -517,6 +517,19 @@ def _verwerk_pdf(
             bron_bestand=bron_bestand,
             kanaal=kanaal,
         )
+        if uitkomst.uitkomst == "toegewezen":
+            # Teller `omzetbron_herkenning` (0151): élke herkenning op inhoud vóór de AI telt als gedaan.
+            _audit_omzetbron(
+                actor_id=actor_id,
+                bron=profx_bron,
+                bestandsnaam=bijlage.bestandsnaam,
+                administratie_id=uuid.UUID(uitkomst.detail.rsplit(" ", 1)[-1]) if uitkomst.detail else None,
+                store=None,
+                routering="tenaamstelling",
+                document_id=uitkomst.document_id,
+                intake_bericht_id=intake_bericht_id,
+            )
+        return uitkomst
 
     uitsluiting = splitsing_uitsluiting.vind_uitsluiting(afzender)
     if uitsluiting is not None:
@@ -799,6 +812,7 @@ def _routeer_bundel_item(
     kanaal: DocumentBron,
     logo_filter: bool,
     mail_tenaamstelling: str | None = None,
+    mail_store: str | None = None,
 ) -> list[BijlageResultaat]:
     """Eén bundel-item → één of twee resultaatregels. Een paar (bundeling 02-09): de UBL wordt
     het document (velden + tenaamstelling deterministisch), de PDF gaat mee als beeld
@@ -844,6 +858,7 @@ def _routeer_bundel_item(
             kanaal=kanaal,
             logo_filter=logo_filter,
             mail_tenaamstelling=mail_tenaamstelling,
+            mail_store=mail_store,
         )
     ]
 
@@ -871,6 +886,67 @@ def _profx_mail_tenaamstelling(bijlagen: list[IntakeBijlage]) -> str | None:
     return namen.pop() if len(namen) == 1 else None
 
 
+def _dagstaat_mail_store(bijlagen: list[IntakeBijlage]) -> str | None:
+    """0151 (Peter 16-09 avond): de "Store Used" uit de zonnestudio-DAGSTAAT in dezelfde mail, zodat de kascheck (die
+    zelf geen store noemt) dezelfde administratie volgt. Precies één store → die; meerdere → None (nooit gokken)."""
+    from app.omzet.bronnen import BRON_ZONNESTUDIO_DAGSTAAT, herken_bron, lees_grid
+    from app.omzet.bronnen import zonnestudio as zonnestudio_bron
+
+    stores: set[str] = set()
+    for bijlage in bijlagen:
+        if not bijlage.is_spreadsheet:
+            continue
+        try:
+            if herken_bron(bijlage.bestandsnaam, bijlage.inhoud) != BRON_ZONNESTUDIO_DAGSTAAT:
+                continue
+            store = zonnestudio_bron.parse_dagstaat(lees_grid(bijlage.bestandsnaam, bijlage.inhoud)).store
+        except Exception:  # noqa: BLE001 — onleesbaar raster telt niet mee
+            continue
+        if store:
+            stores.add(store.strip())
+    return stores.pop() if len(stores) == 1 else None
+
+
+def _audit_omzetbron(
+    *,
+    actor_id: uuid.UUID,
+    bron: str,
+    bestandsnaam: str,
+    administratie_id: uuid.UUID | None,
+    store: str | None,
+    routering: str,
+    document_id: uuid.UUID | None,
+    intake_bericht_id: uuid.UUID | None,
+) -> None:
+    """Teller-spoor voor de automatisering `omzetbron_herkenning` (reconciliatie, blok C-tellers): herkend +
+    toegewezen = `omzetbron_herkend`; herkend maar store niet gekoppeld = `omzetbron_store_onbekend` (LET-OP mét
+    deeplink naar het Stores-blok). Nooit een fout richting de intake."""
+    from app.db.audit import record_audit_event
+
+    actie = "omzetbron_herkend" if administratie_id is not None else "omzetbron_store_onbekend"
+    try:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="document",
+                record_id=document_id or intake_bericht_id or uuid.uuid4(),
+                actie=actie,
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={
+                    "bron": bron,
+                    "bestandsnaam": bestandsnaam,
+                    "store": store,
+                    "routering": routering,
+                    "administratie_id": str(administratie_id) if administratie_id else None,
+                },
+                administratie_id=administratie_id,
+            )
+    except Exception:  # noqa: BLE001 — een teller mag de intake nooit laten omvallen
+        logger.exception("audit %s mislukt voor %s", actie, bestandsnaam)
+
+
 def _verwerk_spreadsheet(
     bijlage: IntakeBijlage,
     *,
@@ -880,12 +956,18 @@ def _verwerk_spreadsheet(
     opslag: DocumentOpslag | None,
     body_hint: str | None = None,
     kanaal: DocumentBron = DocumentBron.EMAIL,
+    mail_store: str | None = None,
 ) -> BijlageResultaat:
-    """Omzetbronnen (Peter 15-09): een .xls/.xlsx van een bekende bron wordt een KASSARAPPORT. Routering: dagstaat →
-    "Store Used" → administratie (Beheerder-instelling `bron_instellingen.stores`, nooit hardcode); kascheck en
-    betalingsexport → de geleerde afzender-regel; niets eenduidig → verzamelbak mét zichtbare reden. Geen AI."""
-    from app.omzet.bronnen import BRON_ZONNESTUDIO_DAGSTAAT, herken_bron, lees_grid
+    """Omzetbronnen (Peter 15-09 + 0151 16-09 avond): een .xls/.xlsx van een bekende bron wordt een KASSARAPPORT.
+    Routering: dagstaat → "Store Used" → PLATFORMBREDE store-routering (Instellingen › Boeken › Stores; de store is
+    bij
+    dit brontype leidend, de tenaamstelling/afzender van de mail blijft hint) → onbekende store = verzamelbak mét reden
+    + link naar het Stores-blok; kascheck (noemt geen store) → de dagstaat uit dezelfde mail, anders de enige
+    administratie met een dagstaat van die dag die op zijn kascheck wacht, anders de geleerde afzender-regel;
+    betalingsexport → afzender-regel; niets eenduidig → verzamelbak mét zichtbare reden. Geen AI."""
+    from app.omzet.bronnen import BRON_ZONNESTUDIO_DAGSTAAT, BRON_ZONNESTUDIO_KASCHECK, herken_bron, lees_grid
     from app.omzet.bronnen import service as bronnen_service
+    from app.omzet.bronnen import stores as stores_service
     from app.omzet.bronnen import zonnestudio as zonnestudio_bron
 
     bron = herken_bron(bijlage.bestandsnaam, bijlage.inhoud)
@@ -897,12 +979,29 @@ def _verwerk_spreadsheet(
         )
     store: str | None = None
     administratie_id: uuid.UUID | None = None
+    routering = "afzender_regel"
+    store_ontbreekt = False
     if bron == BRON_ZONNESTUDIO_DAGSTAAT:
         try:
             store = zonnestudio_bron.parse_dagstaat(lees_grid(bijlage.bestandsnaam, bijlage.inhoud)).store
         except Exception:  # noqa: BLE001 — geen store = geen routering op store
             store = None
         administratie_id = bronnen_service.administratie_voor_store(store)
+        routering = "store" if administratie_id is not None else ("store_onbekend" if store else "store_ontbreekt")
+        store_ontbreekt = not store
+    elif bron == BRON_ZONNESTUDIO_KASCHECK:
+        if mail_store:
+            store = mail_store
+            administratie_id = bronnen_service.administratie_voor_store(mail_store)
+            routering = "store_uit_mail" if administratie_id is not None else "store_onbekend"
+        if administratie_id is None and not mail_store:
+            try:
+                datum = zonnestudio_bron.parse_kascheck(lees_grid(bijlage.bestandsnaam, bijlage.inhoud)).datum
+            except Exception:  # noqa: BLE001
+                datum = None
+            administratie_id = bronnen_service.administratie_voor_kascheck(datum)
+            if administratie_id is not None:
+                routering = "open_dagstaat"
     if administratie_id is not None:
         resultaat = documenten_service.upload_document(
             administratie_id=administratie_id,
@@ -916,13 +1015,54 @@ def _verwerk_spreadsheet(
             afzender_hint=afzender,
             tenaamstelling=store,
         )
+        _audit_omzetbron(
+            actor_id=actor_id,
+            bron=bron,
+            bestandsnaam=bijlage.bestandsnaam,
+            administratie_id=administratie_id,
+            store=store,
+            routering=routering,
+            document_id=resultaat.document_id,
+            intake_bericht_id=intake_bericht_id,
+        )
         return BijlageResultaat(
             bestandsnaam=bijlage.bestandsnaam,
             uitkomst="toegewezen",
             document_id=resultaat.document_id,
-            detail=f"omzetbron {bron} · store {store!r} → {administratie_id}",
+            detail=f"omzetbron {bron} · {routering} {store!r} → {administratie_id}",
         )
-    return _wijs_toe_of_verzamelbak(
+    if store and routering == "store_onbekend":
+        # De dagstaat noemt de store zélf: dan is een onbekende store dé reden — niet raden op tenaamstelling/afzender
+        # (die kunnen naar de verkeerde BV wijzen). Lege stand = actie: de reden draagt de link naar het Stores-blok.
+        document_id = documenten_service.registreer_niet_toegewezen_document(
+            bestandsnaam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            actor_id=actor_id,
+            reden=f"{stores_service.REDEN_STORE_ONBEKEND}: {store}",
+            soort=DocumentSoort.KASSARAPPORT,
+            opslag=opslag,
+            intake_bericht_id=intake_bericht_id,
+            afzender_hint=afzender,
+            tenaamstelling=store,
+            bron=kanaal,
+        )
+        _audit_omzetbron(
+            actor_id=actor_id,
+            bron=bron,
+            bestandsnaam=bijlage.bestandsnaam,
+            administratie_id=None,
+            store=store,
+            routering=routering,
+            document_id=document_id,
+            intake_bericht_id=intake_bericht_id,
+        )
+        return BijlageResultaat(
+            bestandsnaam=bijlage.bestandsnaam,
+            uitkomst="verzamelbak",
+            document_id=document_id,
+            detail=f"omzetbron {bron} · store {store!r} niet gekoppeld ({stores_service.DOEL_PAD_STORES})",
+        )
+    uitkomst = _wijs_toe_of_verzamelbak(
         bijlage_naam=bijlage.bestandsnaam,
         inhoud=bijlage.inhoud,
         soort=DocumentSoort.KASSARAPPORT,
@@ -931,10 +1071,26 @@ def _verwerk_spreadsheet(
         actor_id=actor_id,
         intake_bericht_id=intake_bericht_id,
         opslag=opslag,
-        verzamelbak_reden=f"omzetbron {bron} zonder eenduidige administratie" + (f" (store {store!r} niet ingesteld)" if store else ""),  # noqa: E501
+        verzamelbak_reden=(
+            f"{stores_service.REDEN_STORE_ONTBREEKT}: dagstaat zonder 'Store Used'"
+            if store_ontbreekt
+            else f"omzetbron {bron} zonder eenduidige administratie"
+        ),
         body_hint=body_hint,
         kanaal=kanaal,
     )
+    if uitkomst.uitkomst == "toegewezen":
+        _audit_omzetbron(
+            actor_id=actor_id,
+            bron=bron,
+            bestandsnaam=bijlage.bestandsnaam,
+            administratie_id=uuid.UUID(uitkomst.detail.rsplit(" ", 1)[-1]) if uitkomst.detail else None,
+            store=store,
+            routering="afzender_regel",
+            document_id=uitkomst.document_id,
+            intake_bericht_id=intake_bericht_id,
+        )
+    return uitkomst
 
 
 def _routeer_bijlage(
@@ -948,6 +1104,7 @@ def _routeer_bijlage(
     kanaal: DocumentBron,
     logo_filter: bool,
     mail_tenaamstelling: str | None = None,
+    mail_store: str | None = None,
 ) -> BijlageResultaat:
     gedeeld = dict(
         afzender=afzender, actor_id=actor_id, intake_bericht_id=intake_bericht_id, opslag=opslag, body_hint=body_hint
@@ -959,7 +1116,7 @@ def _routeer_bijlage(
     if bijlage.is_afbeelding:
         return _verwerk_afbeelding(bijlage, kanaal=kanaal, logo_filter=logo_filter, **gedeeld)
     if bijlage.is_spreadsheet:
-        return _verwerk_spreadsheet(bijlage, kanaal=kanaal, **gedeeld)
+        return _verwerk_spreadsheet(bijlage, kanaal=kanaal, mail_store=mail_store, **gedeeld)
     return BijlageResultaat(
         bestandsnaam=bijlage.bestandsnaam,
         uitkomst="niet_verwerkbaar",
@@ -1069,6 +1226,7 @@ def verwerk_eml(
     # Bundeling 02-09: UBL+PDF-paren (ingesloten-PDF-hash, anders naamstam) worden één document
     # vóór de routing — zie app/intake/bundeling.py.
     mail_tenaamstelling = _profx_mail_tenaamstelling(mail.bijlagen)
+    mail_store = _dagstaat_mail_store(mail.bijlagen)
     resultaten: list[BijlageResultaat] = [
         r
         for item in bundel_bijlagen(mail.bijlagen)
@@ -1082,6 +1240,7 @@ def verwerk_eml(
             kanaal=DocumentBron.EMAIL,
             logo_filter=True,
             mail_tenaamstelling=mail_tenaamstelling,
+            mail_store=mail_store,
         )
     ]
 

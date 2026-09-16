@@ -147,6 +147,21 @@ class OpnieuwBoekenResultaatDto(BaseModel):
     doel_pad: str
 
 
+class TypeWijzigenKassarapportInvoerDto(BaseModel):
+    """Invoer van "Type wijzigen → kassarapport" (blok C 16-09 avond): alleen de administratie (scope-toets); de soort-wissel
+    zelf vraagt geen reden (zelfde route als de bulk-actie in de documentenlijst)."""
+
+    administratie_id: uuid.UUID
+
+
+class TypeWijzigenKassarapportResultaatDto(BaseModel):
+    document_id: uuid.UUID
+    status: str
+    van_soort: str
+    naar_soort: str
+    doel_pad: str
+
+
 class HerboekenAlsOmzetResultaatDto(BaseModel):
     """Antwoord van "Herboeken als omzet" (Peter 16-09, Van Boxtel): de inkoopfactuur is gestorneerd (of bestond al
     niet meer) en het document is nu een kassarapport in de werkvoorraad; `doel_pad` = waar de mens 'm als omzet boekt."""

@@ -6,14 +6,16 @@ gouden set meebeweegt (fixtures/ab_omzet_zonnestudio, fixtures/ac_omzet_pilates 
 
 Besluiten Peter 16-09 (opdracht 4): punten = omzet zonnebank 21 % bij verkoop (check "Puntenwaarde bekend"
 vervallen), tegenzijde per betaalwijze in het voorstel (PIN → kruispost, cash/storting → kas, kasverschil → signaal),
-tweede store "Sunshine Island" → dezelfde administratie, combi pro rato, Stripe-kosten = EU-dienst verlegd."""
+combi pro rato, Stripe-kosten = EU-dienst verlegd. Besluit Peter 16-09 AVOND (0151): Sunshine Island is een EIGEN BV —
+de store routeert platformbreed naar een ándere administratie dan Elderveld (Instellingen › Boeken › Stores)."""
 
 from __future__ import annotations
 
+import copy
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db.session import scoped_session
 from app.documenten import service as documenten_service
@@ -23,6 +25,7 @@ from app.intake.eml import IntakeBijlage
 from app.omzet import voorstel as voorstel_service
 from app.omzet.bronnen import BRON_PILATES, BRON_ZONNESTUDIO_DAGSTAAT, pilates
 from app.omzet.bronnen import service as bronnen_service
+from app.omzet.bronnen import stores as stores_service
 from tests.omzet.test_bronnen import DAGSTAAT, EXPORT, KASCHECK, grid_naar_xlsx, seed_rekeningschema, seed_tarieven
 
 
@@ -62,16 +65,39 @@ def test_ab_dagstaat_plus_kascheck_wordt_een_gebundeld_kassarapport(
 
 
 def test_ab_tegenzijde_per_betaalwijze_en_tweede_store_sunshine_island(
-    administratie_id, beheerder_id, gescoopte_gebruiker, opslag
+    administratie_id, beheerder_id, gescoopte_gebruiker, opslag, admin_engine
 ) -> None:  # noqa: ANN001
     ids = seed_rekeningschema(administratie_id)
     tarieven = seed_tarieven(administratie_id)
-    bronnen_service.zet_bron_instellingen(
-        administratie_id=administratie_id, actor_id=beheerder_id, waarden={"stores": ["Elderveld", "Sunshine Island"]}
+    # Besluit Peter 16-09 avond (0151): Sunshine Island = eigen BV → eigen administratie; de store-routering is
+    # platformbreed (één tabel, unieke storenaam), de dagstaat volgt de store en niet de mailbox/tenaamstelling.
+    sunshine = uuid.uuid4()
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO platform.administratie (id, naam, rlz_admin_id) VALUES (:id, 'Sunshine Island B.V.', :rlz)"),
+            {"id": sunshine, "rlz": f"rlz-{sunshine}"},
+        )
+    stores_service.koppel(store="Elderveld", administratie_id=administratie_id, actor_id=beheerder_id)
+    stores_service.koppel(store="Sunshine Island", administratie_id=sunshine, actor_id=beheerder_id)
+    assert bronnen_service.administratie_voor_store("Elderveld") == administratie_id
+    assert bronnen_service.administratie_voor_store("Sunshine Island") == sunshine
+    sunshine_grid = copy.deepcopy(DAGSTAAT)
+    for rij in sunshine_grid.rijen:
+        for c, w in list(rij.items()):
+            if isinstance(w, str) and w.strip() == "Elderveld":
+                rij[c] = "Sunshine Island"
+    res_s = verwerking._verwerk_spreadsheet(  # noqa: SLF001
+        IntakeBijlage(
+            bestandsnaam="8-9-26.xlsx", inhoud=grid_naar_xlsx(sunshine_grid), content_type="application/octet-stream"
+        ),
+        afzender="pos@zonnestudio.example",
+        actor_id=gescoopte_gebruiker,
+        intake_bericht_id=None,
+        opslag=opslag,
     )
-    # Intake op store: beide studio's routeren naar dezelfde administratie (default tot Peter anders zegt).
-    for store in ("Elderveld", "Sunshine Island"):
-        assert bronnen_service.administratie_voor_store(store) == administratie_id
+    assert res_s.uitkomst == "toegewezen"
+    with scoped_session(sunshine) as session:
+        assert session.get(Document, res_s.document_id).administratie_id == sunshine
     res = verwerking._verwerk_spreadsheet(  # noqa: SLF001
         IntakeBijlage(
             bestandsnaam="8-9-26.xlsx", inhoud=grid_naar_xlsx(DAGSTAAT), content_type="application/octet-stream"

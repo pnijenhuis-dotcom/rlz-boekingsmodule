@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OmzetBronnenBlok } from './OmzetBronnenBlok'
 
@@ -71,9 +72,9 @@ describe('OmzetBronnenBlok — Beheerder-UI omzetbronnen (besluiten Peter 16-09 
 
   it('rendert lege stores als actie-tekst, de defaults als voorgevulde comboboxen mét chip "standaard (op naam)" en de vaste combi-regel', async () => {
     installFetchMock({})
-    render(<OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio Elderveld B.V." />)
+    render(<MemoryRouter><OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio Elderveld B.V." /></MemoryRouter>)
     const blok = await screen.findByTestId('omzetbronnen-blok')
-    expect(within(blok).getByTestId('stores-leeg').textContent).toContain('Nog geen store gekoppeld — voeg de naam toe zoals hij in de dagstaat staat')
+    expect(within(blok).getByTestId('stores-leeg').textContent).toContain('Stores koppel je platformbreed')
     // Tegenrekeningen: PIN voorgevuld uit defaults (combobox toont code · naam) mét default-chip; storting zonder default = "geen standaard".
     const tegen = within(blok).getByLabelText('Tegenrekeningen per betaalwijze')
     expect(within(tegen).getByLabelText('Tegenrekening PIN')).toHaveValue('1020 · Kruisposten PIN')
@@ -91,31 +92,32 @@ describe('OmzetBronnenBlok — Beheerder-UI omzetbronnen (besluiten Peter 16-09 
     expect(within(blok).getByRole('button', { name: 'Opslaan' })).toBeDisabled()
   })
 
-  it('store toevoegen → PUT-body draagt de stores en de nog-lege instelbare sleutels (defaults blijven bij de code)', async () => {
+  it('stores zijn een afgeleide weergave mét link naar Instellingen › Boeken › Stores; de PUT-body draagt geen stores meer (0151)', async () => {
     const putAanroepen: Record<string, unknown>[] = []
     installFetchMock({ stand: { stores: ['Elderveld'] }, putAanroepen })
-    render(<OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio" />)
+    render(<MemoryRouter><OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio" /></MemoryRouter>)
     await screen.findByTestId('omzetbronnen-blok')
-    await userEvent.type(screen.getByLabelText('Naam nieuwe store'), 'Sunshine Island')
-    await userEvent.click(screen.getByRole('button', { name: '+ Store toevoegen' }))
-    expect(screen.getByText('Sunshine Island')).toBeInTheDocument()
+    expect(screen.getByTestId('stores-afgeleid').textContent).toContain('Elderveld')
+    expect(screen.getByRole('link', { name: /Beheren op Instellingen › Boeken › Stores/ })).toHaveAttribute('href', '/instellingen/boeken#stores')
+    expect(screen.queryByLabelText('Naam nieuwe store')).toBeNull()
+    // Een andere instelling wijzigen → opslaan: de body kent geen `stores` (die sleutel weigert de backend sinds 0151).
+    await userEvent.selectOptions(screen.getByLabelText('Betaalprovider voor Zonnestudio'), 'mollie')
     await userEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
     await waitFor(() => expect(putAanroepen).toHaveLength(1))
     const body = putAanroepen[0]
-    expect(body.stores).toEqual(['Elderveld', 'Sunshine Island'])
+    expect(body).not.toHaveProperty('stores')
+    expect(body.psp).toBe('mollie')
     expect(body.tegenrekeningen).toEqual({ pin: null, cash: null, stripe: null, kasverschil: null, storting: null })
     expect(body.categorie_btw).toEqual({})
-    expect(body.psp).toBe('stripe')
     expect(body.combi_regel).toBe('pro_rato_batch')
     expect(body).not.toHaveProperty('defaults')
     expect(body).not.toHaveProperty('rekeningen')
     expect(await screen.findByText('opgeslagen')).toBeInTheDocument()
   })
-
   it('tarief kiezen voor een categorie → PUT-body `categorie_btw` mét taxrate_id; chip wordt "gekozen"', async () => {
     const putAanroepen: Record<string, unknown>[] = []
     installFetchMock({ putAanroepen })
-    render(<OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Pilates" />)
+    render(<MemoryRouter><OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Pilates" /></MemoryRouter>)
     const blok = await screen.findByTestId('omzetbronnen-blok')
     const btw = within(blok).getByLabelText('Btw-tarief per categorie')
     const input = within(btw).getByLabelText('Btw-tarief kleding producten')
@@ -133,7 +135,7 @@ describe('OmzetBronnenBlok — Beheerder-UI omzetbronnen (besluiten Peter 16-09 
 
   it('422 uit de PUT staat zichtbaar bij het veld (tegenrekeningen) en de wijziging blijft staan', async () => {
     installFetchMock({ putStatus: 422 })
-    render(<OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio" />)
+    render(<MemoryRouter><OmzetBronnenBlok administratieId={ADMINISTRATIE_ID} naam="Zonnestudio" /></MemoryRouter>)
     const blok = await screen.findByTestId('omzetbronnen-blok')
     const tegen = within(blok).getByLabelText('Tegenrekeningen per betaalwijze')
     const input = within(tegen).getByLabelText('Tegenrekening Storting automaat')

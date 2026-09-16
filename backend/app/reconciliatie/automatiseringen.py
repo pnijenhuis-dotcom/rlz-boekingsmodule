@@ -93,6 +93,9 @@ TOETS_UIT = "ai_toets_uit"
 #: deeplink naar Instellingen › Administraties › ‹administratie› (de Beheerder zet het recht in RLZ / RLZ-check).
 RECHTEN_ONDERWEG = "rechten_onderweg"
 RECHTEN_NA_24U = "rechten_na_24u"
+#: 0151 (Peter 16-09 avond): een herkende zonnestudio-dagstaat noemt een store die niet aan een administratie gekoppeld
+#: is — het document ligt in de verzamelbak; harde voorwaarde mét deeplink naar Instellingen › Boeken › Stores.
+STORE_ONBEKEND = "store_onbekend"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -111,6 +114,7 @@ HARDE_VOORWAARDEN = frozenset(
         AVG_GATE,
         KOSTENGRENS,
         RECHTEN_NA_24U,
+        STORE_ONBEKEND,
     }
 )
 
@@ -173,6 +177,7 @@ REDEN_LABEL: dict[str, str] = {
     ZONDER_AI_TOETS: "geboekt zonder AI-toets — controleer steekproefsgewijs",
     AI_FOUT: "AI-fout/timeout",
     TOETS_UIT: "AI-toets facturen staat platformbreed uit (opt-out)",
+    STORE_ONBEKEND: "store uit de dagstaat niet gekoppeld aan een administratie (verzamelbak)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -210,6 +215,13 @@ NABUNDEL = "nabundel"
 TERUGKEREND = "terugkerend"
 MINI_VOORRAAD = "mini_voorraad"
 EXTRACTIE_WACHTRIJ = "extractie_wachtrij"
+#: 0151 (Peter 16-09 avond): omzetbron-herkenning op INHOUD vóór de AI (spreadsheets + ProfX-PDF's) incl. de
+#: store-routering — bron audit `omzetbron_herkend` (gedaan) / `omzetbron_store_onbekend` (overgeslagen, harde
+#: voorwaarde `store_onbekend` mét deeplink naar het Stores-blok).
+OMZETBRON_HERKENNING = "omzetbron_herkenning"
+#: Blok C 16-09 avond: dagelijkse toets "kassarapport in de inkoopstroom" (geboekt = herboeken als omzet, ongeboekt =
+#: type wijzigen) — bron audit `kassarapport_inkoopstroom_run` (één rij per administratie per run mét tellers).
+KASSARAPPORT_INKOOPSTROOM = "kassarapport_inkoopstroom"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -231,9 +243,13 @@ VOLGORDE: tuple[str, ...] = (
     NABUNDEL,
     MINI_VOORRAAD,
     EXTRACTIE_WACHTRIJ,
+    OMZETBRON_HERKENNING,
+    KASSARAPPORT_INKOOPSTROOM,
 )
 
 LABEL: dict[str, str] = {
+    OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
+    KASSARAPPORT_INKOOPSTROOM: "Kassarapporten in de inkoopstroom (dagelijkse toets)",
     EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
     DUPLICAAT_AFVOER: "Duplicaat-afvoer",
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
@@ -269,6 +285,7 @@ DOEL_PAD: dict[str, str] = {
     VANGNET_SCHEDULER: "/reconciliatie",
     GEEN_SYNC_RUN: "/reconciliatie",
     TOETS_UIT: "/instellingen/boeken",
+    STORE_ONBEKEND: "/instellingen/boeken#stores",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -283,6 +300,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     BANK_SYNC: (FOUT,),
     TERUGKEREND: (FOUT,),
     EERSTE_SYNC_HERPROBEREN: (RECHTEN_ONDERWEG,),
+    OMZETBRON_HERKENNING: (STORE_ONBEKEND,),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -304,6 +322,10 @@ _ACTIES: tuple[str, ...] = (
     "extractie_wachtrij_trigger",
     # blok 3 run 11-09: herpogingen eerste sync (gestart = gedaan op de teller `eerste_sync_herproberen`)
     "eerste_sync_herpoging_gestart",
+    # 0151 + blok C (16-09 avond): omzetbron-herkenning + dagelijkse toets kassarapport in de inkoopstroom
+    "omzetbron_herkend",
+    "omzetbron_store_onbekend",
+    "kassarapport_inkoopstroom_run",
 )
 
 
@@ -716,6 +738,20 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "audit extractie_wachtrij_trigger + tijdlijn-overgangen naar extractie_wachtrij",
     )
 
+    omzetbron = maak(
+        OMZETBRON_HERKENNING,
+        "altijd",
+        "intake: spreadsheets (dagstaat/kascheck/betalingsexport) + PDF-tekstlaag (ProfX); "
+        "store → administratie platformbreed",
+        "audit omzetbron_herkend / omzetbron_store_onbekend",
+    )
+    kassa_inkoop = maak(
+        KASSARAPPORT_INKOOPSTROOM,
+        "altijd",
+        "dagelijkse reconciliatie, alle administraties (lokaal, geen RLZ-call)",
+        "audit kassarapport_inkoopstroom_run",
+    )
+
     # --- audit-feiten
     for f in feiten.audit:
         if f.tijdstip < week_vanaf:
@@ -723,7 +759,21 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         nw = _nw(f)
         bron = str(nw.get("bron") or "")
         in_leren = f.administratie_id in feiten.autoboek_leren_aan
-        if f.actie == "automatisch_geboekt":
+        if f.actie == "omzetbron_herkend":
+            for v in vensters(omzetbron, f.tijdstip):
+                v.tel_gedaan()
+        elif f.actie == "omzetbron_store_onbekend":
+            tel_over(
+                omzetbron,
+                f.tijdstip,
+                STORE_ONBEKEND,
+                None,  # platformbreed: de handeling is het Stores-blok, niet een administratie
+                f"store {nw.get('store')!r} ({nw.get('bestandsnaam') or '?'})",
+            )
+        elif f.actie == "kassarapport_inkoopstroom_run":
+            for v in vensters(kassa_inkoop, f.tijdstip):
+                v.tel_gedaan(int(nw.get("geboekt") or 0) + int(nw.get("ongeboekt") or 0))
+        elif f.actie == "automatisch_geboekt":
             t = omzet if bron == "omzet_opt_in" else verkoop if bron == "verkoop_opt_in" else inkoop
             for v in vensters(t, f.tijdstip):
                 v.tel_gedaan()

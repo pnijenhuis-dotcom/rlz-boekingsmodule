@@ -477,6 +477,17 @@ def _omzet_binder_rapport(args: argparse.Namespace) -> int:
     return 0
 
 
+def _omzet_stores_migreren(args: argparse.Namespace) -> int:
+    """Data-stap 0151 (Peter 16-09 avond): `bron_instellingen.stores` per administratie → platformbrede
+    `omzet_store_routering`. Default dry-run (lijst), `--schrijf` maakt de rijen aan; idempotent (bestaat_al), een store
+    die al aan een ÁNDERE administratie hangt = conflict (nooit overschrijven — Beheerder beslist in het Stores-blok)."""
+    from app.omzet.bronnen import stores as stores_service
+
+    regels = stores_service.migreer_uit_bron_instellingen(schrijf=bool(args.schrijf))
+    stores_service.print_migratie(regels, schrijf=bool(args.schrijf))
+    return 0
+
+
 def _kassarapporten_in_inkoopstroom(args: argparse.Namespace) -> int:
     """Blok A2 ProfX (Peter 16-09): LEES-ONLY rapport van inkoopfactuur-documenten die op inhoud een ProfX
     Journaal/Margerapport zijn (verkeerd geclassificeerd vóór de herkenning-op-inhoud). Geen writes."""
@@ -1761,9 +1772,11 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
 def _omzet_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: ANN001
     """Omzet-failsafe: vergelijk elke omzet-boeking (verkoopfactuur + kostprijsmemoriaal) met de
     werkelijke RLZ-staat en rapporteer afwijkingen — incl. alle half_geboekt-rijen."""
-    resultaat = omzet_reconciliatie.reconcilieer_alle_omzet()
+    # registreer = alleen in de echte run (verzamelaar): één audit-rij `kassarapport_inkoopstroom_run` per administratie
+    # mét tellers (blok C 16-09 avond); lees-only/losse CLI schrijft niets.
+    resultaat = omzet_reconciliatie.reconcilieer_alle_omzet(registreer=verzamelaar is not None)
     for administratie_id in getattr(resultaat, "overgeslagen", {}):
-        _print_overgeslagen(administratie_id)  # RLZ-only blok (A12, 07-09)
+        _print_overgeslagen(administratie_id)  # RLZ-only blok (A12, 07-09); de lokale kassarapport-toets liep wél
     uitgesloten = acceptatie_service.uitgesloten_administraties()
     echte_fouten = {aid: fout for aid, fout in resultaat.fouten.items() if aid not in uitgesloten}
     for administratie_id, fout in resultaat.fouten.items():
@@ -3081,6 +3094,14 @@ def main(argv: list[str] | None = None) -> int:
         "--max-per-administratie", type=int, default=200, help="Max Receipts per administratie voor A."
     )
 
+    stores_parser = subparsers.add_parser(
+        "omzet-stores-migreren",
+        help="Data-stap 0151 (16-09 avond): bron_instellingen.stores per administratie → platformbrede store-routering "
+        "(omzet_store_routering). Default dry-run; --schrijf maakt de rijen aan (idempotent; conflict = nooit "
+        "overschrijven).",
+    )
+    stores_parser.add_argument("--schrijf", action="store_true", help="Rijen aanmaken (zonder = dry-run).")
+
     inkoopstroom_parser = subparsers.add_parser(
         "kassarapporten-in-inkoopstroom",
         help="Blok A2 ProfX 16-09: LEES-ONLY rapport van PDF-documenten die als inkoopfactuur in de module staan maar "
@@ -3689,6 +3710,8 @@ def main(argv: list[str] | None = None) -> int:
         return _duplicaat_extern_rapport(args)
     if args.commando == "kassarapporten-in-inkoopstroom":
         return _kassarapporten_in_inkoopstroom(args)
+    if args.commando == "omzet-stores-migreren":
+        return _omzet_stores_migreren(args)
     if args.commando == "omzet-binder-rapport":
         return _omzet_binder_rapport(args)
     if args.commando == "activa-nulmeting":

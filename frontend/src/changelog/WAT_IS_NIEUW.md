@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Kassarapport-stores koppel je nu op één plek aan een administratie; kassarapporten die als inkoopfactuur binnenkwamen worden dagelijks gevonden
+
+<!-- omzet-store-routering-16-09 -->
+
+- **Stores van de zonnestudio's koppel je op één plek** (Instellingen › Boeken platformbreed › Stores) aan de administratie waar de dagstaat en de kascheck van die dag moeten landen. Een dagstaat volgt de store die er zelf in staat, dus Sunshine Island landt in de eigen administratie en Elderveld in de zijne, ongeacht uit welke mailbox het rapport komt. Elke store kan maar aan één administratie hangen; ontkoppelen laat de regel staan.
+- **Een dagstaat met een nog niet gekoppelde store** komt in de verzamelbak met de reden en een knop "Stores koppelen" — hij verdwijnt niet stil in een verkeerde administratie.
+- **Kassarapporten die als inkoopfactuur in de werkvoorraad staan** (bijvoorbeeld een ProfX-journaal) vindt de dagelijkse controle nu ook vóór het boeken. Op Inzicht › Reconciliatie staat dan "Type wijzigen → kassarapport": één klik en het document gaat door de omzet-verwerking. Al geboekte exemplaren houden de bestaande knop "Herboeken als omzet". De tellers op Instellingen › Boeken laten zien hoeveel kassarapporten op inhoud herkend zijn en hoeveel stores nog gekoppeld moeten worden.
+
 ## 2026-09-16 — Keuzelijsten zeggen waarom ze leeg zijn; projecten mét nummer, en direct aanmaken
 
 <!-- verplichting-projectveld-16-09 -->

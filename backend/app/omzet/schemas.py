@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.documenten.schemas import CheckRapportResponse
 from app.schemas_basis import StrikteInvoer
@@ -84,7 +84,9 @@ class TariefKeuzeDto(BaseModel):
 
 class OmzetBronInstellingenDto(BaseModel):
     """Contract opdracht 4 (16-09): `omzet_instelling.bron_instellingen` additief + read-only `defaults` (wat de code
-    zou kiezen) en de keuzelijsten `rekeningen`/`tarieven` voor de comboboxen — geen extra routes nodig."""
+    zou kiezen) en de keuzelijsten `rekeningen`/`tarieven` voor de comboboxen — geen extra routes nodig.
+    `stores` is sinds 0151 (Peter 16-09 avond) een AFGELEIDE weergave uit de platformbrede store-routering
+    ("stores die hier landen") — beheren op Instellingen › Boeken › Stores, niet via de PUT hieronder."""
 
     stores: list[str] = []
     product_categorieen: dict[str, str] = {}
@@ -100,7 +102,8 @@ class OmzetBronInstellingenDto(BaseModel):
 
 
 class OmzetBronInstellingenInput(StrikteInvoer):
-    stores: list[str] = []
+    """Geen `stores` meer (0151): die sleutel wordt door de service geweigerd mét verwijzing naar het Stores-blok."""
+
     product_categorieen: dict[str, str] = {}
     tegenrekeningen: dict[str, uuid.UUID | None] = {}
     categorie_btw: dict[str, uuid.UUID | None] = {}
@@ -156,3 +159,32 @@ class OmzetMappingDto(BaseModel):
 
 class OmzetMappingLijstResponse(BaseModel):
     mappingen: list[OmzetMappingDto]
+
+
+class OmzetStoreDto(BaseModel):
+    """Eén rij van de platformbrede store-routering (0151): store → administratie, actief, herkomst."""
+
+    id: uuid.UUID
+    store_naam: str
+    store_norm: str
+    administratie_id: uuid.UUID
+    administratie_naam: str
+    actief: bool
+    bron: str
+    gewijzigd_op: datetime | None = None
+
+
+class OmzetStoresDto(BaseModel):
+    stores: list[OmzetStoreDto] = []
+    #: Deeplink die de verzamelbak-rij en de LET-OP dragen (één bron voor frontend-teksten).
+    doel_pad: str = "/instellingen/boeken#stores"
+
+
+class OmzetStoreKoppelInput(StrikteInvoer):
+    store: str = Field(min_length=1, max_length=120)
+    administratie_id: uuid.UUID
+
+
+class OmzetStoreWijzigInput(StrikteInvoer):
+    administratie_id: uuid.UUID | None = None
+    actief: bool | None = None

@@ -305,6 +305,39 @@ def bevinding_herboeken_als_omzet(
     )
 
 
+@router.post(
+    "/reconciliatie/bevindingen/{bevinding_id}/type-wijzigen-kassarapport",
+    response_model=schemas.TypeWijzigenKassarapportResultaatDto,
+)
+def bevinding_type_wijzigen_kassarapport(
+    bevinding_id: uuid.UUID,
+    invoer: schemas.TypeWijzigenKassarapportInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.TypeWijzigenKassarapportResultaatDto:
+    """"Type wijzigen → kassarapport" (blok C 16-09 avond) op een omzet-afwijking `kassarapport_in_werkvoorraad`:
+    de bestaande soort-wissel (documenten/soort.py) — terug naar ONTVANGEN, extractie opnieuw via het omzetpad
+    (ProfX/… deterministisch), tijdlijn + audit. 404 onbekende bevinding, 403 buiten scope, 422 verkeerde soort, 409
+    als de status van het document de wissel niet toelaat (geboekt/ter accordering)."""
+    from app.documenten import herboeken
+    from app.omzet import inkoopstroom
+
+    try:
+        r = inkoopstroom.type_wijzigen_kassarapport_vanuit_bevinding(
+            bevinding_id=bevinding_id, administratie_id=invoer.administratie_id, actor_id=actor.id, rol=actor.rol
+        )
+    except herboeken.BevindingNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except herboeken.GeenToegang as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except herboeken.HerboekenFout as exc:
+        conflict = "status" in str(exc).lower() or "geboekt" in str(exc).lower()
+        code = status.HTTP_409_CONFLICT if conflict else status.HTTP_422_UNPROCESSABLE_CONTENT
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    return schemas.TypeWijzigenKassarapportResultaatDto(
+        document_id=r.document_id, status=r.status, van_soort=r.van_soort, naar_soort=r.naar_soort, doel_pad=r.doel_pad
+    )
+
+
 def _vertaal_bewust_verwijderd(exc: Exception) -> HTTPException:
     from app.reconciliatie import bewust_verwijderd
 

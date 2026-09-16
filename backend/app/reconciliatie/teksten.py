@@ -507,6 +507,27 @@ def _omzet(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Klik \"Herboeken als omzet…\": de inkoopfactuur wordt gestorneerd (actie 19, achter de btw-aangiftepoort) en het "
             "document wordt een kassarapport dat je in het omzet-controlescherm als Receipt onder Inkomsten boekt.",
         )
+    if soort == "kassarapport_in_werkvoorraad":
+        m = re.search(
+            r"Kassarapport (?P<bestand>.+?) staat als inkoopfactuur in de werkvoorraad "
+            r"\(status (?P<status>[^;]+); signaal (?P<signaal>[^,)]+)",
+            d.get("detail") or tekst,
+        )
+        bestand = m.group("bestand") if m else "het document"
+        signaal = m.group("signaal") if m else ""
+        if signaal == "omzetrekeningen":
+            signaal_tekst = "alle boekingsregels staan op omzetrekeningen"
+        elif signaal:
+            signaal_tekst = f"de inhoud is een herkend kassarapport ({signaal.replace('_', ' ')})"
+        else:
+            signaal_tekst = "de inhoud is een kassarapport"
+        return (
+            _titel("Kassarapport in de werkvoorraad", [bestand], " · "),
+            f"{bestand} is als inkoopfactuur binnengekomen, maar {signaal_tekst}. Zo geboekt zou het in Reeleezee "
+            "onder Uitgaven landen in plaats van Inkomsten.",
+            'Klik "Type wijzigen → kassarapport": het document gaat opnieuw door de omzet-verwerking en verschijnt '
+            "in het omzet-controlescherm. Is het tóch een inkoopfactuur, accepteer dan met reden.",
+        )
     if soort == "tussenrekening_open":
         m = re.search(
             r"Omzetbatch (?P<label>.+?): (?P<wijze>.+?) € (?P<bedrag>[\d.,-]+) staat al (?P<dagen>\d+) dagen",

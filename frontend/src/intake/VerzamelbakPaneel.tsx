@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, BackendOnbereikbaarError } from '../api/client'
 import type { AdministratieDto } from '../api/types'
@@ -552,6 +553,12 @@ export function VerzamelbakPaneel({
                           <span className="chip vraag" title={item.reden ?? undefined}>
                             {redenLabel}
                           </span>
+                        )}
+                        {/* 0151 (16-09 avond): lege stand = actie — de dagstaat noemt een store die niet gekoppeld is. */}
+                        {item.reden?.startsWith('omzetbron_store_onbekend') && (
+                          <Link to="/instellingen/boeken#stores" className="linkbtn" data-testid="stores-koppelen-link">
+                            Stores koppelen →
+                          </Link>
                         )}
                         {suggestieNaam && (
                           <span className="chip ai" title={`suggestie: ${suggestieNaam}`}>

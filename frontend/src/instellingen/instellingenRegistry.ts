@@ -277,6 +277,14 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
+    id: 'nav-boeken-stores',
+    naam: 'Stores — kassarapport zonnestudio → administratie (platformbreed)',
+    waar: 'Boeken platformbreed › blok Stores',
+    synoniemen: ['stores', 'store', 'store used', 'zonnestudio', 'dagstaat', 'kascheck', 'sunshine island', 'elderveld', 'kassarapport', 'omzetbron'],
+    doel: { soort: 'sectie', sectie: 'boeken', anker: 'stores' },
+    beheerder: true,
+  },
+  {
     id: 'nav-intake-ai',
     naam: 'Intake-AI & kosten',
     waar: 'nav-item Intake-AI & kosten',
