@@ -1,18 +1,20 @@
 """Melding "vraag van het kantoor" aan de klant-accordeur (blok B5 26-08): bij élke beurt-wissel
 naar een accordeur (vraag gesteld / kantoor antwoordt) via de bestaande push-anders-mail-kanalen,
-mét de stille uren van de bundelmelding (20:00–08:00 Europe/Amsterdam). Idempotent per beurt:
-`vraag.accordeur_gemeld_op >= vraag.aan_de_beurt_sinds` = al gemeld. Aanroep direct vanuit de
-dialoog (buiten de transactie) én vanuit de 10-min-job `rlz-nieuwe-facturen` (vangt de stille
-uren en mislukte pogingen op). Deep-link = `/accordeur?vraag=<id>` — antwoorden gebeurt ín de app."""
+mét de stille uren van de bundelmelding (20:00–08:00 Europe/Amsterdam). Gebundeld (Peter 16-09, dialoog open tot
+Afgehandeld): gemeld wordt wat de accordeur nog niet gemeld kreeg — de openingsvraag (eerste keer) of de
+kantoorberichten ná `vraag.accordeur_gemeld_op` ("N nieuwe berichten"); de directe aanroep vanuit de dialoog slaat
+een vraag over die binnen het bundelvenster (10 min) al gemeld is, de 10-min-job `rlz-nieuwe-facturen` bundelt
+die dan als één melding en vangt óók de stille uren en mislukte pogingen op. Nooit een melding aan de schrijver zelf.
+Deep-link = `/accordeur?vraag=<id>` — antwoorden gebeurt ín de app."""
 
 from __future__ import annotations
 
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.berichten import verzending
 from app.berichten.models import HerinneringKanaal, HerinneringStatus
@@ -22,7 +24,7 @@ from app.db.audit import record_audit_event
 from app.db.models import Administratie, Gebruiker, GebruikerRol, GebruikerStatus
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
-from app.documenten.models import Vraag, VraagStatus
+from app.documenten.models import Vraag, VraagBericht, VraagStatus
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +40,21 @@ class VraagMeldingRapport:
     fouten: list[str] = field(default_factory=list)
 
 
-def bericht_teksten(vraag_id: uuid.UUID, *, eerste_keer: bool) -> tuple[str, str, str, str]:
+def bericht_teksten(vraag_id: uuid.UUID, *, eerste_keer: bool, aantal: int = 1) -> tuple[str, str, str, str]:
     pad = f"/accordeur?vraag={vraag_id}"
+    meervoud = aantal > 1
     onderwerp = "Vraag van het kantoor over een factuur" if eerste_keer else "Reactie van het kantoor op uw vraag"
-    pushtekst = (
-        "Het kantoor heeft een vraag over een factuur — u bent aan de beurt."
-        if eerste_keer
-        else "Het kantoor heeft gereageerd in uw vraag-dialoog — u bent aan de beurt."
-    )
+    if eerste_keer:
+        kern = "Het kantoor heeft een vraag over een factuur"
+    elif meervoud:
+        kern = f"Het kantoor heeft {aantal} nieuwe berichten in uw vraag-dialoog"
+    else:
+        kern = "Het kantoor heeft gereageerd in uw vraag-dialoog"
+    pushtekst = f"{kern} — u kunt direct reageren."
     link = f"{settings.app_basis_url.rstrip('/')}{pad}"
     mailtekst = (
         "Beste,\n\n"
-        + ("Het kantoor heeft een vraag over een factuur.\n\n" if eerste_keer else "Het kantoor heeft gereageerd in uw vraag-dialoog.\n\n")
+        + f"{kern}.\n\n"
         + f"Open de app om te antwoorden:\n{link}\n\n"
         "Deze link opent alleen de app — antwoorden gebeurt ín de app, na ontgrendelen.\n\n"
         "Administratiekantoor Nijenhuis"
@@ -58,18 +63,23 @@ def bericht_teksten(vraag_id: uuid.UUID, *, eerste_keer: bool) -> tuple[str, str
 
 
 def _kandidaten(
-    vraag_id: uuid.UUID | None, administratie_id: uuid.UUID | None
-) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, bool]]:
-    """(vraag_id, administratie_id, accordeur_id, eerste_keer) voor open vragen waarvan de beurt bij
-    een actieve klant-accordeur ligt en die voor deze beurt nog niet gemeld zijn. Per administratie
-    gescoopt (RLS-les 25-08: `vraag` heeft RLS, een scope-loze sessie ziet als niet-Beheerder
-    niets) — zelfde patroon als de bundelmelding."""
+    vraag_id: uuid.UUID | None,
+    administratie_id: uuid.UUID | None,
+    *,
+    nu: datetime | None = None,
+    bundelvenster: timedelta | None = None,
+) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, bool, int]]:
+    """(vraag_id, administratie_id, accordeur_id, eerste_keer, aantal) voor open vragen waarvan de beurt bij een
+    actieve klant-accordeur ligt en waarvoor nog iets ongemeld is: de openingsvraag (nooit gemeld) óf ≥ 1 bericht van
+    een ander dan de accordeur ná `accordeur_gemeld_op`. `bundelvenster` (directe aanroep): een vraag die binnen het
+    venster al gemeld is wordt overgeslagen — de job bundelt later. Per administratie gescoopt (RLS-les 25-08)."""
+    moment = nu or datetime.now(UTC)
     if administratie_id is not None:
         administratie_ids = [administratie_id]
     else:
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
             administratie_ids = list(session.scalars(select(Administratie.id).where(Administratie.actief.is_(True))))
-    uit: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, bool]] = []
+    uit: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, bool, int]] = []
     for aid in administratie_ids:
         with scoped_session(aid, actor_id=SYSTEEM_ACTOR_ID) as session:
             query = (
@@ -86,20 +96,47 @@ def _kandidaten(
             if vraag_id is not None:
                 query = query.where(Vraag.id == vraag_id)
             for vraag, gebruiker in session.execute(query):
-                if vraag.accordeur_gemeld_op is not None and vraag.accordeur_gemeld_op >= vraag.aan_de_beurt_sinds:
+                gemeld_op = vraag.accordeur_gemeld_op
+                if gemeld_op is None:
+                    uit.append((vraag.id, aid, gebruiker.id, True, 1))
                     continue
-                uit.append((vraag.id, aid, gebruiker.id, vraag.accordeur_gemeld_op is None))
+                if (
+                    bundelvenster is not None
+                    and gemeld_op > moment - bundelvenster
+                    and vraag.aan_de_beurt_sinds is not None
+                    and gemeld_op >= vraag.aan_de_beurt_sinds
+                ):
+                    continue  # al gemeld in déze beurt, kort geleden: de 10-min-job bundelt de rest als "N berichten"
+                aantal = session.scalar(
+                    select(func.count())
+                    .select_from(VraagBericht)
+                    .where(
+                        VraagBericht.vraag_id == vraag.id,
+                        VraagBericht.auteur_id != gebruiker.id,
+                        VraagBericht.geplaatst_op > gemeld_op,
+                    )
+                )
+                if not aantal:
+                    continue
+                uit.append((vraag.id, aid, gebruiker.id, False, int(aantal)))
     return uit
 
 
+BUNDELVENSTER = timedelta(minutes=10)
+
+
 def verstuur_vraag_meldingen(
-    *, nu: datetime | None = None, vraag_id: uuid.UUID | None = None, administratie_id: uuid.UUID | None = None
+    *,
+    nu: datetime | None = None,
+    vraag_id: uuid.UUID | None = None,
+    administratie_id: uuid.UUID | None = None,
+    bundelvenster: timedelta | None = None,
 ) -> VraagMeldingRapport:
     rapport = VraagMeldingRapport()
     if in_stille_uren(nu):
         rapport.stille_uren = True
         return rapport
-    kandidaten = _kandidaten(vraag_id, administratie_id)
+    kandidaten = _kandidaten(vraag_id, administratie_id, nu=nu, bundelvenster=bundelvenster)
     rapport.kandidaten = len(kandidaten)
     # Badge-count (D4, 01-09): het aantal openstaande accorderingen per accordeur reist mee in de push.
     from app.berichten.herinneringen import open_aantallen_per_accordeur
@@ -108,11 +145,11 @@ def verstuur_vraag_meldingen(
         badges = open_aantallen_per_accordeur()
     except Exception:  # noqa: BLE001 — badge is gemak; een telfout mag de melding niet blokkeren
         badges = {}
-    for v_id, administratie_id, accordeur_id, eerste_keer in kandidaten:
+    for v_id, administratie_id, accordeur_id, eerste_keer, aantal in kandidaten:
         with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
             gebruiker = session.get(Gebruiker, accordeur_id)
             session.expunge(gebruiker)
-        onderwerp, pushtekst, mailtekst, pad = bericht_teksten(v_id, eerste_keer=eerste_keer)
+        onderwerp, pushtekst, mailtekst, pad = bericht_teksten(v_id, eerste_keer=eerste_keer, aantal=aantal)
         try:
             uitkomst = verzending.verstuur_push_anders_mail(
                 gebruiker,
@@ -156,6 +193,7 @@ def verstuur_vraag_meldingen(
                     "status": uitkomst.status.value,
                     "kanaal": uitkomst.kanaal.value if uitkomst.kanaal else None,
                     "eerste_keer": eerste_keer,
+                    "aantal_berichten": aantal,
                 },
                 administratie_id=administratie_id,
             )

@@ -190,9 +190,11 @@ describe('GoedkeurenFlow', () => {
     await userEvent.type(screen.getByLabelText('Uw antwoord'), 'Ja, door mij.')
     await userEvent.click(screen.getByRole('button', { name: 'Verstuur' }))
     await waitFor(() => expect(antwoorden).toEqual([{ tekst: 'Ja, door mij.' }]))
-    expect(thread).toHaveTextContent('Wacht op kantoor')
+    expect(thread).toHaveTextContent('Laatste bericht van u · wacht op kantoor')
     expect(thread).toHaveTextContent('Ja, door mij.')
-    expect(screen.queryByLabelText('Uw antwoord')).not.toBeInTheDocument()
+    // Peter 16-09: de dialoog blijft open — de accordeur kan direct een tweede bericht typen (geen beurt-regel meer)
+    expect(screen.getByLabelText('Uw antwoord')).toBeInTheDocument()
+    expect((screen.getByLabelText('Uw antwoord') as HTMLTextAreaElement).value).toBe('')
     // afgehandeld = nooit een knop voor de accordeur
     expect(screen.queryByRole('button', { name: /fgehandeld/ })).not.toBeInTheDocument()
   })

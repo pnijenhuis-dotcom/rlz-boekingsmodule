@@ -97,6 +97,11 @@ class VraagNietOpen(VraagFout):
     afgehandeld of ingetrokken worden."""
 
 
+class VraagNietHeropenbaar(VraagFout):
+    """Heropenen (Peter 16-09) kan alleen een afgehandelde/legacy-beantwoorde vraag op een document dat nu in een
+    herstelbare herkomst-status staat (te_controleren / handmatig_afmaken / klaar_om_te_boeken)."""
+
+
 class VraagNietAanDezeAccordeur(VraagFout):
     """De accordeur-app ziet en beantwoordt UITSLUITEND vragen die expliciet aan de ingelogde
     accordeur gericht zijn (blok B5 26-08) — intern kantooroverleg lekt nooit."""
@@ -163,6 +168,11 @@ class VraagData:
     afgehandeld_door: uuid.UUID | None
     afgehandeld_op: datetime | None
     berichten: tuple[BerichtData, ...]
+    # Dialoog open tot Afgehandeld (Peter 16-09): de status is AFGELEID uit het laatste bericht — wie het schreef en
+    # wanneer (zonder berichten: de openingsvraag). De UI toont "laatste bericht van ‹naam› · ‹tijd›"; er is geen
+    # beurt-regel meer die een kant het typen belet.
+    laatste_bericht_door: uuid.UUID | None = None
+    laatste_bericht_op: datetime | None = None
 
 
 def _aan_de_beurt(vraag: Vraag) -> uuid.UUID | None:
@@ -200,7 +210,9 @@ def _meld_accordeur_indien_nodig(vraag_id: uuid.UUID, administratie_id: uuid.UUI
     try:
         from app.berichten import vraag_meldingen
 
-        vraag_meldingen.verstuur_vraag_meldingen(vraag_id=vraag_id, administratie_id=administratie_id)
+        vraag_meldingen.verstuur_vraag_meldingen(
+            vraag_id=vraag_id, administratie_id=administratie_id, bundelvenster=vraag_meldingen.BUNDELVENSTER
+        )
     except Exception:  # noqa: BLE001 — melding mag de dialoog nooit breken; job herkanst
         logger.exception("Melding aan accordeur voor vraag %s mislukte — job herkanst", vraag_id)
 
@@ -232,6 +244,7 @@ def _berichten_van(vraag: Vraag, berichten: list[VraagBericht]) -> tuple[Bericht
 def _naar_data(
     vraag: Vraag, document: Document, totaalbedrag: Decimal | None, berichten: list[VraagBericht] | None = None
 ) -> VraagData:
+    thread = _berichten_van(vraag, berichten or [])
     return VraagData(
         id=vraag.id,
         document_id=vraag.document_id,
@@ -253,7 +266,9 @@ def _naar_data(
         aan_de_beurt=_aan_de_beurt(vraag),
         afgehandeld_door=vraag.afgehandeld_door,
         afgehandeld_op=vraag.afgehandeld_op,
-        berichten=_berichten_van(vraag, berichten or []),
+        berichten=thread,
+        laatste_bericht_door=thread[-1].auteur_id if thread else vraag.gesteld_door,
+        laatste_bericht_op=thread[-1].geplaatst_op if thread else vraag.gesteld_op,
     )
 
 
@@ -436,7 +451,9 @@ def plaats_bericht(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id
             vraag.aan_de_beurt_sinds = datetime.now(UTC)
         document.toegewezen_aan = nieuwe_beurt
         session.flush()
-        meld_accordeur = nieuwe_beurt != vorige_beurt and _is_klant_accordeur(session, nieuwe_beurt)
+        # Peter 16-09: ook een tweede/derde kantoorbericht in dezelfde beurt meldt — gebundeld (10-min-venster in
+        # vraag_meldingen; de job vangt de rest als "N nieuwe berichten"). Nooit een melding aan de schrijver zelf.
+        meld_accordeur = nieuwe_beurt != actor_id and _is_klant_accordeur(session, nieuwe_beurt)
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -503,7 +520,12 @@ def mag_afhandelen(
 
 
 def handel_vraag_af(
-    *, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID, slotbericht: str | None = None
+    *,
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    slotbericht: str | None = None,
+    namens: bool = False,
 ) -> VraagData:
     """Sluit de dialoog (status open -> afgehandeld, nooit een delete) en zet het document terug
     naar exact de herkomst-status van vóór de vraag (vraag.status_voor_vraag) — boeken is daarna
@@ -513,8 +535,12 @@ def handel_vraag_af(
     apart pad hier. Document.toegewezen_aan gaat terug naar leeg."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         vraag, document = _open_vraag_met_document(session, administratie_id=administratie_id, vraag_id=vraag_id)
-        if not mag_afhandelen(vraag.gesteld_door, vraag.toegewezen_aan, actor_id):
+        zelf = mag_afhandelen(vraag.gesteld_door, vraag.toegewezen_aan, actor_id)
+        # Peter 16-09: kantoor mag NAMENS een afwezige vraagsteller afhandelen — alleen expliciet (`namens`, de router
+        # geeft dat uitsluitend voor kantoorrollen binnen de scope door), met eigen audit-actie. Nooit stil.
+        if not zelf and not namens:
             raise AlleenVraagstellerMagAfhandelen("Alleen de vraagsteller kan deze vraag als afgehandeld markeren")
+        namens_vraagsteller = None if zelf else vraag.gesteld_door
 
         slot = slotbericht.strip() if slotbericht and slotbericht.strip() else None
         if slot:
@@ -547,12 +573,13 @@ def handel_vraag_af(
             module="boekhouding",
             tabel="vraag",
             record_id=vraag.id,
-            actie="vraag_afgehandeld",
+            actie="vraag_afgehandeld" if namens_vraagsteller is None else "vraag_afgehandeld_namens",
             correlatie_id=uuid.uuid4(),
             oude_waarde={"status": VraagStatus.OPEN.value},
             nieuwe_waarde={
                 "status": VraagStatus.AFGEHANDELD.value,
                 "afgehandeld_door": str(actor_id),
+                "namens_vraagsteller": str(namens_vraagsteller) if namens_vraagsteller is not None else None,
                 "slotbericht": slot,
                 "document_hersteld_naar": vraag.status_voor_vraag,
             },
@@ -687,6 +714,82 @@ def trek_vraag_in(
         session.flush()
         berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
         return _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+
+
+#: Statussen waaruit een vraag heropend kan worden (Peter 16-09): afgehandeld, of het legacy één-antwoord-model.
+_HEROPENBARE_STATUSSEN = frozenset({VraagStatus.AFGEHANDELD.value, VraagStatus.BEANTWOORD.value})
+
+
+def heropen_vraag(*, administratie_id: uuid.UUID, vraag_id: uuid.UUID, actor_id: uuid.UUID) -> VraagData:
+    """Heropenen (Peter 16-09, blok 4): een afgehandelde (of legacy-beantwoorde) vraag gaat terug naar OPEN en het
+    document weer naar vraag_open — alleen als het document nú in een herstelbare herkomst staat (dezelfde poort als
+    stellen) en er geen andere open vraag op staat (één open vraag per document). De beurt ligt bij de andere kant
+    dan de heropener; Document.toegewezen_aan volgt. Audit `vraag_heropend`; nooit een delete."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        vraag = session.get(Vraag, vraag_id)
+        if vraag is None or vraag.administratie_id != administratie_id:
+            raise VraagNietGevonden(f"Onbekende vraag: {vraag_id}")
+        if vraag.status not in _HEROPENBARE_STATUSSEN:
+            raise VraagNietHeropenbaar(f"Alleen een afgehandelde vraag kan heropend worden (nu: {vraag.status})")
+        document = session.get(Document, vraag.document_id)
+        if document is None:
+            raise DocumentNietGevonden(f"Onbekend document: {vraag.document_id}")
+        andere_open = session.scalar(
+            select(Vraag.id).where(
+                Vraag.document_id == document.id, Vraag.status == VraagStatus.OPEN.value, Vraag.id != vraag.id
+            )
+        )
+        if andere_open is not None:
+            raise ErIsAlEenOpenVraag("Er staat al een open vraag op dit document")
+        if document.status not in _HERSTELBARE_HERKOMSTEN:
+            raise VraagNietHeropenbaar(
+                f"Heropenen kan niet: het document staat op {document.status.value} (alleen vanuit te_controleren, "
+                "handmatig_afmaken of klaar_om_te_boeken)"
+            )
+        oude_status = vraag.status
+        if vraag.gesteld_door == SYSTEEM_ACTOR_ID or actor_id == vraag.gesteld_door:
+            beurt = vraag.toegewezen_aan
+        else:
+            beurt = vraag.gesteld_door
+        vraag.status = VraagStatus.OPEN.value
+        vraag.status_voor_vraag = document.status.value
+        vraag.afgehandeld_door = None
+        vraag.afgehandeld_op = None
+        vraag.aan_de_beurt = beurt
+        vraag.aan_de_beurt_sinds = datetime.now(UTC)
+        _schrijf_overgang(
+            session,
+            document=document,
+            naar=DocumentStatus.VRAAG_OPEN,
+            actor_id=actor_id,
+            detail={"vraag_id": str(vraag.id), "vraag_heropend": True},
+        )
+        document.toegewezen_aan = beurt
+        werkvoorraad_tellers.ververs_signalen(session, administratie_id, (werkvoorraad_tellers.VRAGEN,))
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="vraag",
+            record_id=vraag.id,
+            actie="vraag_heropend",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"status": oude_status},
+            nieuwe_waarde={
+                "status": VraagStatus.OPEN.value,
+                "heropend_door": str(actor_id),
+                "aan_de_beurt": str(beurt) if beurt is not None else None,
+                "document_status_voor_vraag": vraag.status_voor_vraag,
+            },
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        meld_accordeur = beurt != actor_id and _is_klant_accordeur(session, beurt)
+        berichten = _berichten_per_vraag(session, [vraag.id])[vraag.id]
+        data = _naar_data(vraag, document, _totaalbedrag_van(session, document.id), berichten)
+    if meld_accordeur:
+        _meld_accordeur_indien_nodig(data.id, administratie_id)
+    return data
 
 
 def lijst_vragen(

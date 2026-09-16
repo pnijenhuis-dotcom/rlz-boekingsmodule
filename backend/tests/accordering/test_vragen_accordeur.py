@@ -21,7 +21,7 @@ from app.berichten.models import HerinneringKanaal, HerinneringStatus
 from app.berichten.verzending import VerzendUitkomst
 from app.db.session import scoped_session
 from app.documenten import vragen
-from app.documenten.models import Vraag
+from app.documenten.models import Vraag, VraagStatus
 from tests.accordering.conftest import document_status, zet_schema
 from tests.accordering.test_service import _laag
 
@@ -223,3 +223,80 @@ class TestVraagMeldingen:
         vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=gescoopte_gebruiker, tekst="dank")
         assert verzonden == [accordeur_1, accordeur_1]
         assert datetime.now(UTC) is not None
+
+
+class TestDialoogOpenVoorDeAccordeur:
+    """Peter 16-09 (casus Sophia): de accordeur kan direct een tweede bericht plaatsen ná haar antwoord (geen
+    beurt-regel), en meldingen aan de accordeur worden gebundeld: kort na een melding in dezelfde beurt meldt de
+    dialoog niet opnieuw — de 10-min-job stuurt dan één melding "N nieuwe berichten"."""
+
+    def test_accordeur_plaatst_twee_berichten_achter_elkaar_en_kantoor_ook(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        geen_meldingen: list[dict],
+    ) -> None:
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
+        )
+        vraag = _stel_vraag_aan(administratie_id, klaar_document, gescoopte_gebruiker, accordeur_1)
+        vragen.plaats_bericht_als_accordeur(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=accordeur_1, tekst="Ja.")
+        na = vragen.plaats_bericht_als_accordeur(
+            administratie_id=administratie_id, vraag_id=vraag.id, actor_id=accordeur_1, tekst="Door mij opgedragen, 12-08."
+        )
+        assert [b.tekst for b in na.berichten] == ["Ja.", "Door mij opgedragen, 12-08."]
+        assert na.status == VraagStatus.OPEN.value and na.laatste_bericht_door == accordeur_1
+        assert na.aan_de_beurt == gescoopte_gebruiker
+        # De accordeur-lijst toont de vraag nog steeds (open, aan haar gericht) — ook al schreef zij het laatste bericht.
+        items = vragen.vragen_aan_accordeur(actor_id=accordeur_1, administratie_ids=[administratie_id])
+        assert [a.vraag.id for a in items] == [vraag.id]
+
+    def test_meldingen_gebundeld_binnen_dezelfde_beurt(
+        self,
+        klaar_document: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        gescoopte_gebruiker: uuid.UUID,
+        accordeur_1: uuid.UUID,
+        geen_meldingen: list[dict],
+    ) -> None:
+        zet_schema(administratie_id=administratie_id, beheerder_id=beheerder_id, lagen=[_laag(1, accordeur_1)])
+        service.bied_ter_accordering_aan(
+            administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker, actor_rol="boekhouding"
+        )
+        vraag = _stel_vraag_aan(administratie_id, klaar_document, gescoopte_gebruiker, accordeur_1)
+        assert len(geen_meldingen) == 1  # eerste keer: de vraag zelf
+        # Kantoor typt direct nog twee berichten in dezelfde beurt → géén melding per bericht (bundelvenster).
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=gescoopte_gebruiker, tekst="PS 1")
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=gescoopte_gebruiker, tekst="PS 2")
+        assert len(geen_meldingen) == 1
+        # De 10-min-job bundelt: precies één melding mét "2 nieuwe berichten".
+        teksten: list[str] = []
+        origineel = vraag_meldingen.bericht_teksten
+
+        def spion(vraag_id, *, eerste_keer, aantal=1):
+            uit = origineel(vraag_id, eerste_keer=eerste_keer, aantal=aantal)
+            teksten.append(uit[1])
+            return uit
+
+        import pytest as _pytest
+
+        mp = _pytest.MonkeyPatch()
+        mp.setattr(vraag_meldingen, "bericht_teksten", spion)
+        try:
+            rapport = vraag_meldingen.verstuur_vraag_meldingen()
+        finally:
+            mp.undo()
+        assert rapport.kandidaten == 1 and len(geen_meldingen) == 2
+        assert teksten == ["Het kantoor heeft 2 nieuwe berichten in uw vraag-dialoog — u kunt direct reageren."]
+        assert vraag_meldingen.verstuur_vraag_meldingen().kandidaten == 0  # idempotent: niets ongemeld meer
+        # Accordeur antwoordt (geen melding aan kantoor via dit kanaal), kantoor reageert → nieuwe beurt = direct één.
+        vragen.plaats_bericht_als_accordeur(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=accordeur_1, tekst="ok")
+        assert len(geen_meldingen) == 2
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=vraag.id, actor_id=gescoopte_gebruiker, tekst="dank")
+        assert len(geen_meldingen) == 3
+

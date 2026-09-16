@@ -857,9 +857,11 @@ class VraagBerichtInput(StrikteInvoer):
 
 
 class VraagAfhandelenInput(StrikteInvoer):
-    """ "Afgehandeld" — alleen de vraagsteller; optioneel slotbericht in de thread."""
+    """ "Afgehandeld" — de vraagsteller; kantoor mag NAMENS een afwezige vraagsteller (Peter 16-09) met expliciete
+    vlag `namens_vraagsteller` (audit-actie `vraag_afgehandeld_namens`). Optioneel slotbericht in de thread."""
 
     slotbericht: str | None = None
+    namens_vraagsteller: bool = False
 
 
 class VraagIntrekkenInput(StrikteInvoer):
@@ -902,6 +904,12 @@ class VraagResponse(BaseModel):
     afgehandeld_op: datetime | None = None
     berichten: list[VraagBerichtResponse] = []
     mag_afhandelen: bool = False
+    # Dialoog open tot Afgehandeld (Peter 16-09): afgeleide stand uit het laatste bericht + UI-hints voor "Afgehandeld
+    # namens vraagsteller" (kantoor, niet-vraagsteller) en "Heropenen" (afgehandeld, document in herkomst-status).
+    laatste_bericht_door: uuid.UUID | None = None
+    laatste_bericht_op: datetime | None = None
+    mag_afhandelen_namens: bool = False
+    mag_heropenen: bool = False
 
 
 class VraagLijstResponse(BaseModel):

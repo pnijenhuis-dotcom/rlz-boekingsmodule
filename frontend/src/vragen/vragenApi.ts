@@ -35,9 +35,23 @@ export function plaatsBericht(administratieId: string, vraagId: string, tekst: s
   return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/berichten`, { tekst })
 }
 
-/** "Afgehandeld" — uitsluitend de vraagsteller (server: 403 voor ieder ander); optioneel slotbericht. */
-export function handelVraagAf(administratieId: string, vraagId: string, slotbericht: string | null): Promise<VraagDto> {
-  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/afhandelen`, { slotbericht })
+/** "Afgehandeld" — de vraagsteller (server: 403 voor ieder ander); kantoor mag NAMENS een afwezige vraagsteller
+ * (Peter 16-09, expliciete vlag, eigen audit-actie). Optioneel slotbericht. */
+export function handelVraagAf(
+  administratieId: string,
+  vraagId: string,
+  slotbericht: string | null,
+  namensVraagsteller = false,
+): Promise<VraagDto> {
+  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/afhandelen`, {
+    slotbericht,
+    namens_vraagsteller: namensVraagsteller,
+  })
+}
+
+/** Heropenen (Peter 16-09): afgehandelde vraag terug naar open, document weer naar vraag_open (kantoor). */
+export function heropenVraag(administratieId: string, vraagId: string): Promise<VraagDto> {
+  return apiPostJson<VraagDto>(`/administraties/${administratieId}/vragen/${vraagId}/heropenen`, {})
 }
 
 export function trekVraagIn(administratieId: string, vraagId: string, reden: string | null): Promise<VraagDto> {

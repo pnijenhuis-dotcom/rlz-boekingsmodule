@@ -376,13 +376,34 @@ interface VraagThreadProps {
   rustig?: boolean
 }
 
-/** Vraag-thread van het kantoor aan de accordeur (mockup accordeur-vragen.html, blok B5):
- * bubbels (kantoor links, "U" rechts), antwoordbalk zolang de accordeur aan de beurt is; ná het
- * versturen "Wacht op kantoor". Afgehandeld verklaren kan alleen de vraagsteller — bewust géén
- * knop hier. */
+/** Concept per vraag (Peter 16-09, koude-start-regel): een getypt antwoord gaat nooit stil verloren — bij een
+ * verbindingsfout blijft het lokaal staan. localStorage kan ontbreken/gooien → alleen in het geheugen. */
+const VRAAG_CONCEPT = (vraagId: string) => `rlz.acc.vraagconcept.${vraagId}`
+function leesVraagConcept(vraagId: string): string {
+  try {
+    return window.localStorage.getItem(VRAAG_CONCEPT(vraagId)) ?? ''
+  } catch {
+    return ''
+  }
+}
+function bewaarVraagConcept(vraagId: string, tekst: string): void {
+  try {
+    if (tekst.trim()) window.localStorage.setItem(VRAAG_CONCEPT(vraagId), tekst)
+    else window.localStorage.removeItem(VRAAG_CONCEPT(vraagId))
+  } catch {
+    // geen opslag beschikbaar
+  }
+}
+
+/** Vraag-thread van het kantoor aan de accordeur (mockup accordeur-vragen.html, blok B5; dialoog open tot
+ * Afgehandeld, Peter 16-09): bubbels (kantoor links, "U" rechts), antwoordbalk ALTIJD zichtbaar zolang de vraag open
+ * is — u kunt meerdere berichten achter elkaar sturen, ook ná uw eigen antwoord (de oude beurt-regel die het veld
+ * sloot tot kantoor reageerde is weg). De chip toont alleen nog wie het laatste bericht schreef. Enter = nieuwe regel,
+ * Cmd/Ctrl-Enter = versturen. Afgehandeld verklaren kan alleen de vraagsteller — bewust géén knop hier. */
 function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadProps) {
-  const [tekst, setTekst] = useState('')
+  const [tekst, setTekst] = useState(() => leesVraagConcept(vraag.id))
   const [bezig, setBezig] = useState(false)
+  const laatsteVanMij = vraag.berichten.length > 0 && vraag.berichten[vraag.berichten.length - 1].van_mij
   const verstuur = async () => {
     const inhoud = tekst.trim()
     if (!inhoud || bezig) return
@@ -390,9 +411,11 @@ function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadP
     try {
       const nieuw = await beantwoordVraag(vraag.administratie_id, vraag.id, inhoud)
       setTekst('')
+      bewaarVraagConcept(vraag.id, '')
       onBeantwoord(nieuw)
     } catch {
-      toon('Antwoord versturen mislukte — probeer het opnieuw')
+      bewaarVraagConcept(vraag.id, tekst)
+      toon('Antwoord versturen mislukte — uw tekst is bewaard, probeer het opnieuw')
     } finally {
       setBezig(false)
     }
@@ -401,10 +424,12 @@ function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadP
     <div className={`acc-thread${rustig || !vraag.ik_ben_aan_de_beurt ? ' rustig' : ''}`} aria-label="Vraag van het kantoor">
       <div className="acc-thread-kop">
         <span>💬 Vraag van het kantoor</span>
-        {vraag.ik_ben_aan_de_beurt ? (
-          <span className="acc-chip beurt">U bent aan de beurt</span>
+        {laatsteVanMij ? (
+          <span className="acc-chip wacht" title="Uw laatste bericht is verstuurd; u kunt gewoon verder typen">
+            Laatste bericht van u · wacht op kantoor
+          </span>
         ) : (
-          <span className="acc-chip wacht">Wacht op kantoor</span>
+          <span className="acc-chip beurt">U bent aan de beurt</span>
         )}
       </div>
       <div className="acc-berichten">
@@ -421,23 +446,27 @@ function VraagThread({ vraag, onBeantwoord, toon, rustig = false }: VraagThreadP
           </div>
         ))}
       </div>
-      {vraag.ik_ben_aan_de_beurt && (
-        <div className="acc-antwoordbalk">
-          <input
-            type="text"
-            placeholder="Uw antwoord…"
-            aria-label="Uw antwoord"
-            value={tekst}
-            onChange={(e) => setTekst(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void verstuur()
-            }}
-          />
-          <button type="button" disabled={bezig || tekst.trim() === ''} onClick={() => void verstuur()}>
-            {bezig ? '…' : 'Verstuur'}
-          </button>
-        </div>
-      )}
+      <div className="acc-antwoordbalk">
+        <textarea
+          placeholder={laatsteVanMij ? 'Nog iets toevoegen…' : 'Uw antwoord…'}
+          aria-label="Uw antwoord"
+          rows={2}
+          value={tekst}
+          onChange={(e) => {
+            setTekst(e.target.value)
+            bewaarVraagConcept(vraag.id, e.target.value)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              void verstuur()
+            }
+          }}
+        />
+        <button type="button" disabled={bezig || tekst.trim() === ''} onClick={() => void verstuur()}>
+          {bezig ? '…' : 'Verstuur'}
+        </button>
+      </div>
       <div className="acc-afgehandeld-voet">
         Alleen de vraagsteller op kantoor kan de vraag <b>afgehandeld</b> verklaren. U ziet uitsluitend vragen die
         aan u gericht zijn — nooit intern kantooroverleg.

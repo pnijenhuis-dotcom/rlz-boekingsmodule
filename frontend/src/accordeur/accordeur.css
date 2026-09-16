@@ -1498,7 +1498,26 @@
   font-size: 16px; /* iOS: geen autozoom */
   font-family: inherit;
 }
+.acc-antwoordbalk textarea {
+  flex: 1;
+  min-width: 0;
+  background: var(--acc-bg);
+  border: 1px solid var(--acc-border);
+  border-radius: 10px;
+  color: var(--acc-text);
+  padding: 10px 12px;
+  font-size: 16px; /* iOS: geen autozoom */
+  font-family: inherit;
+  resize: none;
+  min-height: 44px;
+  font: inherit;
+}
 .acc-antwoordbalk input:focus {
+  outline: none;
+  border-color: var(--acc-accent);
+  box-shadow: 0 0 0 3px var(--acc-focus);
+}
+.acc-antwoordbalk textarea:focus {
   outline: none;
   border-color: var(--acc-accent);
   box-shadow: 0 0 0 3px var(--acc-focus);

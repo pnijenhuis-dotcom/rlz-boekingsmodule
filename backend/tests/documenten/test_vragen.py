@@ -708,3 +708,120 @@ class TestVraagIntrekken:
         )
         vragen.trek_vraag_in(administratie_id=administratie_id, vraag_id=gesteld.id, actor_id=gescoopte_gebruiker)
         assert _vraag_audit_acties(admin_engine, gesteld.id) == ["vraag_gesteld", "vraag_ingetrokken"]
+
+
+class TestDialoogOpenTotAfgehandeld:
+    """Peter 16-09 (casus Barbara → Sophia): geen beurt-regel — beide kanten kunnen meerdere berichten achter elkaar
+    plaatsen; de stand is AFGELEID uit het laatste bericht; kantoor mag NAMENS afhandelen; afgehandeld → Heropenen."""
+
+    @pytest.fixture
+    def open_vraag(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        document_te_controleren: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+    ) -> vragen.VraagData:
+        return vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=document_te_controleren,
+            actor_id=gescoopte_gebruiker,
+            vraag_tekst="Zakelijk of doorbelasten aan huurder?",
+        )
+
+    def test_meerdere_berichten_van_dezelfde_kant_en_afgeleide_stand(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
+    ) -> None:
+        # Zonder berichten: de openingsvraag is het laatste bericht.
+        assert (open_vraag.laatste_bericht_door, open_vraag.laatste_bericht_op) == (
+            gescoopte_gebruiker,
+            open_vraag.gesteld_op,
+        )
+        # De geadresseerde antwoordt … en typt meteen nog twee berichten — geen weigering, thread blijft open.
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Zakelijk.")
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Op 4560.")
+        na = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id, tekst="Btw hoog."
+        )
+        assert na.status == VraagStatus.OPEN.value
+        assert [b.tekst for b in na.berichten] == ["Zakelijk.", "Op 4560.", "Btw hoog."]
+        assert na.laatste_bericht_door == eigenaar_id and na.laatste_bericht_op == na.berichten[-1].geplaatst_op
+        assert na.aan_de_beurt == gescoopte_gebruiker  # afgeleid: de andere kant dan de laatste schrijver
+        # De vraagsteller kan ook twee keer achter elkaar.
+        vragen.plaats_bericht(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker, tekst="Dank.")
+        na2 = vragen.plaats_bericht(
+            administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker, tekst="En het project?"
+        )
+        assert na2.laatste_bericht_door == gescoopte_gebruiker and na2.aan_de_beurt == eigenaar_id
+
+    def test_kantoor_handelt_namens_de_vraagsteller_af_met_eigen_audit_actie(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
+        admin_engine: Engine,
+    ) -> None:
+        # Zonder de vlag blijft de 25-08-regel: alleen de vraagsteller.
+        with pytest.raises(vragen.AlleenVraagstellerMagAfhandelen):
+            vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        data = vragen.handel_vraag_af(
+            administratie_id=administratie_id,
+            vraag_id=open_vraag.id,
+            actor_id=eigenaar_id,
+            slotbericht="Barbara is afwezig, ik sluit 'm namens haar.",
+            namens=True,
+        )
+        assert data.status == VraagStatus.AFGEHANDELD.value and data.afgehandeld_door == eigenaar_id
+        assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.TE_CONTROLEREN.value
+        assert "vraag_afgehandeld_namens" in _vraag_audit_acties(admin_engine, open_vraag.id)
+        with admin_engine.connect() as conn:
+            namens = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde->>'namens_vraagsteller' FROM platform.audit_event "
+                    "WHERE record_id = :id AND actie = 'vraag_afgehandeld_namens'"
+                ),
+                {"id": open_vraag.id},
+            ).scalar_one()
+        assert namens == str(gescoopte_gebruiker)
+
+    def test_heropenen_zet_vraag_en_document_terug_en_weigert_buiten_herkomst(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        eigenaar_id: uuid.UUID,
+        open_vraag: vragen.VraagData,
+        admin_engine: Engine,
+    ) -> None:
+        with pytest.raises(vragen.VraagNietHeropenbaar):
+            vragen.heropen_vraag(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker)
+        assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.TE_CONTROLEREN.value
+        her = vragen.heropen_vraag(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        assert her.status == VraagStatus.OPEN.value and her.afgehandeld_door is None
+        assert her.aan_de_beurt == gescoopte_gebruiker  # heropend door de geadresseerde → vraagsteller aan zet
+        assert _status(admin_engine, open_vraag.document_id) == DocumentStatus.VRAAG_OPEN.value
+        assert _toegewezen_aan(admin_engine, open_vraag.document_id) == gescoopte_gebruiker
+        assert "vraag_heropend" in _vraag_audit_acties(admin_engine, open_vraag.id)
+        with pytest.raises(boeken.OngeldigeBoekpoging):
+            boeken.boek_document(
+                administratie_id=administratie_id, document_id=open_vraag.document_id, actor_id=gescoopte_gebruiker
+            )
+        # Een tweede keer heropenen van een open vraag kan niet; ná afhandelen + nieuwe vraag ook niet (één open vraag).
+        with pytest.raises(vragen.VraagNietHeropenbaar):
+            vragen.heropen_vraag(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        vragen.handel_vraag_af(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=gescoopte_gebruiker)
+        nieuwe = vragen.stel_vraag(
+            administratie_id=administratie_id,
+            document_id=open_vraag.document_id,
+            actor_id=gescoopte_gebruiker,
+            vraag_tekst="Nog één.",
+        )
+        with pytest.raises(vragen.ErIsAlEenOpenVraag):
+            vragen.heropen_vraag(administratie_id=administratie_id, vraag_id=open_vraag.id, actor_id=eigenaar_id)
+        vragen.trek_vraag_in(administratie_id=administratie_id, vraag_id=nieuwe.id, actor_id=gescoopte_gebruiker)
+

@@ -188,7 +188,7 @@ describe('VragenScreen (mockup #vragen)', () => {
     await waitFor(() => expect(screen.getByText('Afgehandeld')).toBeInTheDocument())
     expect(afhandelAanroepen).toHaveLength(1)
     expect(afhandelAanroepen[0].url).toContain(`/vragen/${VRAAG_ID}/afhandelen`)
-    expect(afhandelAanroepen[0].body).toEqual({ slotbericht: 'Dank, ik boek hem.' })
+    expect(afhandelAanroepen[0].body).toEqual({ slotbericht: 'Dank, ik boek hem.', namens_vraagsteller: false })
     expect(screen.getByText(/afgehandeld door P\. Nijenhuis/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reageren' })).not.toBeInTheDocument()
   })

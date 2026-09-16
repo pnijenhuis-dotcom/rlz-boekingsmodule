@@ -20,6 +20,7 @@ from app.auth.deps import (
 )
 from app.config import settings
 from app.db import rls_weigering
+from app.db.models import GebruikerRol
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import (
     afwijzen,
@@ -1454,7 +1455,15 @@ def factuurmatch_mail_verzenden(
     return schemas.MatchMailVerzondenResponse(verzonden_aan=verzonden_aan)
 
 
-def _naar_vraag_response(data: vragen.VraagData, actor_id: uuid.UUID | None = None) -> schemas.VraagResponse:
+_HERKOMSTEN_HEROPENEN = frozenset({"te_controleren", "handmatig_afmaken", "klaar_om_te_boeken"})
+
+
+def _naar_vraag_response(
+    data: vragen.VraagData, actor_id: uuid.UUID | None = None, rol: GebruikerRol | None = None
+) -> schemas.VraagResponse:
+    is_open = data.status == VraagStatus.OPEN.value
+    zelf = is_open and actor_id is not None and vragen.mag_afhandelen(data.gesteld_door, data.toegewezen_aan, actor_id)
+    kantoor = rol is not None and rol != GebruikerRol.KLANT_ACCORDEUR
     return schemas.VraagResponse(
         id=data.id,
         document_id=data.document_id,
@@ -1480,10 +1489,14 @@ def _naar_vraag_response(data: vragen.VraagData, actor_id: uuid.UUID | None = No
             schemas.VraagBerichtResponse(id=b.id, auteur_id=b.auteur_id, tekst=b.tekst, geplaatst_op=b.geplaatst_op)
             for b in data.berichten
         ],
-        mag_afhandelen=(
-            data.status == VraagStatus.OPEN.value
-            and actor_id is not None
-            and vragen.mag_afhandelen(data.gesteld_door, data.toegewezen_aan, actor_id)
+        mag_afhandelen=zelf,
+        laatste_bericht_door=data.laatste_bericht_door,
+        laatste_bericht_op=data.laatste_bericht_op,
+        mag_afhandelen_namens=is_open and not zelf and kantoor,
+        mag_heropenen=(
+            kantoor
+            and data.status in (VraagStatus.AFGEHANDELD.value, VraagStatus.BEANTWOORD.value)
+            and data.document_status.value in _HERKOMSTEN_HEROPENEN
         ),
     )
 
@@ -1518,7 +1531,7 @@ def vraag_stellen(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except (vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data, actor.id)
+    return _naar_vraag_response(data, actor.id, actor.rol)
 
 
 @router.post(
@@ -1545,7 +1558,7 @@ def vraag_bericht_plaatsen(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except vragen.VraagNietOpen as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data, actor.id)
+    return _naar_vraag_response(data, actor.id, actor.rol)
 
 
 @router.post(
@@ -1558,8 +1571,9 @@ def vraag_afhandelen(
     invoer: schemas.VraagAfhandelenInput,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.VraagResponse:
-    """ "Afgehandeld" (besluit Peter 25-08): uitsluitend de oorspronkelijke vraagsteller (403 voor
-    ieder ander; systeem-vraag: de toegewezene). Sluit de thread en zet het document terug naar de
+    """ "Afgehandeld" (besluit Peter 25-08): de oorspronkelijke vraagsteller (403 voor ieder ander; systeem-vraag: de
+    toegewezene). Peter 16-09: kantoor (nooit een klant-accordeur) mag NAMENS een afwezige vraagsteller afhandelen met
+    de expliciete vlag `namens_vraagsteller` — eigen audit-actie. Sluit de thread en zet het document terug naar de
     herkomst-status van vóór de vraag — boeken is daarna weer bereikbaar via de normale route."""
     try:
         data = vragen.handel_vraag_af(
@@ -1567,6 +1581,7 @@ def vraag_afhandelen(
             vraag_id=vraag_id,
             actor_id=actor.id,
             slotbericht=invoer.slotbericht,
+            namens=invoer.namens_vraagsteller and actor.rol != GebruikerRol.KLANT_ACCORDEUR,
         )
     except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -1574,7 +1589,30 @@ def vraag_afhandelen(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data, actor.id)
+    return _naar_vraag_response(data, actor.id, actor.rol)
+
+
+@router.post(
+    "/administraties/{administratie_id}/vragen/{vraag_id}/heropenen",
+    response_model=schemas.VraagResponse,
+)
+def vraag_heropenen(
+    administratie_id: uuid.UUID,
+    vraag_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VraagResponse:
+    """Heropenen (Peter 16-09): een afgehandelde vraag terug naar open + document naar vraag_open — kantoorrollen
+    binnen de scope (een klant-accordeur heropent niet), alleen als het document in een herstelbare herkomst staat en
+    er geen andere open vraag op staat. Audit `vraag_heropend`."""
+    if actor.rol == GebruikerRol.KLANT_ACCORDEUR:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Heropenen is voorbehouden aan het kantoor")
+    try:
+        data = vragen.heropen_vraag(administratie_id=administratie_id, vraag_id=vraag_id, actor_id=actor.id)
+    except (vragen.VraagNietGevonden, service.DocumentNietGevonden) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (vragen.VraagNietHeropenbaar, vragen.ErIsAlEenOpenVraag, OngeldigeStatusovergang) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _naar_vraag_response(data, actor.id, actor.rol)
 
 
 @router.post(
@@ -1598,7 +1636,7 @@ def vraag_intrekken(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (vragen.VraagNietOpen, OngeldigeStatusovergang) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_vraag_response(data, actor.id)
+    return _naar_vraag_response(data, actor.id, actor.rol)
 
 
 @router.get(
@@ -1614,7 +1652,7 @@ def vragen_lijst(
     """Vragen van één administratie, nieuwste eerst (voedt de #vragen-view; optioneel gefilterd
     op status en/of document — het controlescherm haalt zo de open vraag van één document op)."""
     data = vragen.lijst_vragen(administratie_id=administratie_id, status=vraag_status, document_id=document_id)
-    return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v, actor.id) for v in data])
+    return schemas.VraagLijstResponse(vragen=[_naar_vraag_response(v, actor.id, actor.rol) for v in data])
 
 
 def _naar_afwijzing_response(data: afwijzen.AfwijzingData) -> schemas.AfwijzingResponse:
