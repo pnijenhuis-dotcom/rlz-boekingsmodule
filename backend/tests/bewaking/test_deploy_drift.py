@@ -255,3 +255,58 @@ def test_deploy_drift_staat_in_de_kwartierrun(monkeypatch: pytest.MonkeyPatch) -
     statussen = service.voer_probes_uit(nu=datetime.now(UTC) + timedelta(days=3, seconds=uuid.uuid4().int % 3600))
     assert statussen["deploy_drift"] == "overgeslagen"
     assert "deploy_drift" in statussen
+
+
+class TestServiceMailkanaal:
+    """16-09: de smoketest leest de service-template en eist de mailkanaal-config (envs + secret-mount)."""
+
+    def _svc(self, env: list[dict]) -> dict[str, dict]:
+        return {SERVICE: {"name": SERVICE, "template": {"containers": [{"image": BEELD_NIEUW, "env": env}]}}}
+
+    def test_volledige_config_is_geconfigureerd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = [
+            {"name": "BERICHTEN_SMTP_HOST", "value": "smtp.gmail.com"},
+            {"name": "BERICHTEN_SMTP_GEBRUIKER", "value": "facturen@ak-nijenhuis.nl"},
+            {
+                "name": "BERICHTEN_SMTP_WACHTWOORD",
+                "valueSource": {"secretKeyRef": {"secret": "BERICHTEN_SMTP_WACHTWOORD", "version": "latest"}},
+            },
+            {"name": "ENVIRONMENT", "value": "production"},
+        ]
+        _stub_api(monkeypatch, self._svc(env))
+        config = deploy_drift.lees_service_config(service_resource=SERVICE, token="t")
+        assert config.envs == {"BERICHTEN_SMTP_HOST", "BERICHTEN_SMTP_GEBRUIKER", "ENVIRONMENT"}
+        assert config.secrets == {"BERICHTEN_SMTP_WACHTWOORD"}
+        assert deploy_drift.mailkanaal_ontbrekend(config) == []
+
+    def test_revisie_zonder_mailconfig_noemt_wat_ontbreekt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # De stand van 16-09 09:00: alleen de basis-envset uit `gcloud run deploy`, de update-stap was niet gelopen.
+        _stub_api(monkeypatch, self._svc([{"name": "ENVIRONMENT", "value": "production"}]))
+        config = deploy_drift.lees_service_config(service_resource=SERVICE, token="t")
+        assert deploy_drift.mailkanaal_ontbrekend(config) == [
+            "BERICHTEN_SMTP_GEBRUIKER",
+            "BERICHTEN_SMTP_HOST",
+            "secret BERICHTEN_SMTP_WACHTWOORD",
+        ]
+
+    def test_wachtwoord_als_platte_env_telt_niet_als_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = [
+            {"name": "BERICHTEN_SMTP_HOST", "value": "smtp.gmail.com"},
+            {"name": "BERICHTEN_SMTP_GEBRUIKER", "value": "x"},
+            {"name": "BERICHTEN_SMTP_WACHTWOORD", "value": "nooit-plat"},
+        ]
+        _stub_api(monkeypatch, self._svc(env))
+        config = deploy_drift.lees_service_config(service_resource=SERVICE, token="t")
+        assert deploy_drift.mailkanaal_ontbrekend(config) == ["secret BERICHTEN_SMTP_WACHTWOORD"]
+
+    def test_leesfout_blijft_leesfout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _stub_api(monkeypatch, {})
+        with pytest.raises(deploy_drift.DeployDriftLeesfout, match="403"):
+            deploy_drift.lees_service_config(service_resource=SERVICE, token="t")
+
+    def test_smoketest_meldt_ontbrekende_mailconfig_als_fout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app import cli
+
+        _stub_api(monkeypatch, self._svc([{"name": "ENVIRONMENT", "value": "production"}]))
+        fouten = cli._smoketest_service_mailkanaal(SERVICE)
+        assert len(fouten) == 1 and "zonder mailkanaal-config" in fouten[0] and "BERICHTEN_SMTP_HOST" in fouten[0]

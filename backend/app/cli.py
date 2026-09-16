@@ -549,7 +549,10 @@ def _deploy_smoketest(args: argparse.Namespace) -> int:
         for fout in fouten:
             print(f"deploy-smoketest FOUT: {fout}", file=sys.stderr)
         return 1
-    print("deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal, service ↔ jobs zelfde beeld)")
+    print(
+        "deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal job + service, "
+        "service ↔ jobs zelfde beeld)"
+    )
     return 0
 
 
@@ -573,8 +576,34 @@ def _smoketest_deploy_drift() -> list[str]:
         return [f"deploy-drift-toets onmogelijk (leesrecht roles/run.viewer op run-jobs@?): {exc}"]
     oordeel = deploy_drift.beoordeel(stand, nu=datetime.now(UTC), gratie=timedelta(0))
     print(f"deploy-smoketest: {deploy_drift.samenvatting(stand, oordeel)}")
+    fouten: list[str] = []
     if oordeel.achter:
-        return [f"service en jobs niet op hetzelfde beeld: {deploy_drift.samenvatting(stand, oordeel)}"]
+        fouten.append(f"service en jobs niet op hetzelfde beeld: {deploy_drift.samenvatting(stand, oordeel)}")
+    fouten.extend(_smoketest_service_mailkanaal(resource))
+    return fouten
+
+
+def _smoketest_service_mailkanaal(resource: str) -> list[str]:
+    """Peter 16-09 (BESLISSINGEN "DEPLOY — VOLLEDIGE ENVSET IN ÉÉN STAP"): de SERVICE-template hoort ná de deploy de
+    mailconfig te dragen (BERICHTEN_SMTP_HOST/-GEBRUIKER + secret BERICHTEN_SMTP_WACHTWOORD). Tot 16-09 zette een latere
+    `services update`-stap die pas terug → een run die daarvóór strandde liet de service zonder mail achter ("Mailkanaal
+    niet geconfigureerd" bij de herstel-link). Lees-only via de Cloud Run Admin API (zelfde token als de drift-toets);
+    een leesfout is een FOUT (nooit stil groen)."""
+    from app.bewaking import deploy_drift
+
+    try:
+        config = deploy_drift.lees_service_config(service_resource=resource, token=deploy_drift.metadata_token())
+    except Exception as exc:  # noqa: BLE001 — élke leesfout hoort de deploy rood te maken
+        return [f"mailkanaal-toets op de service onmogelijk: {exc}"]
+    ontbrekend = deploy_drift.mailkanaal_ontbrekend(config)
+    if ontbrekend:
+        return [
+            "service-revisie zonder mailkanaal-config (deploy.yml service-stap): ontbreekt " + ", ".join(ontbrekend)
+        ]
+    print(
+        "deploy-smoketest: service-template draagt de mailkanaal-config "
+        f"({len(config.envs)} envs, {len(config.secrets)} secrets)"
+    )
     return []
 
 

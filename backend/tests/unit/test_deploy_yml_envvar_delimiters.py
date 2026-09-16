@@ -12,13 +12,33 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 DEPLOY_YML = REPO / ".github" / "workflows" / "deploy.yml"
 _ENV_FLAG = re.compile(r'--(?:set|update)-env-vars\s+"((?:[^"\\]|\\.)*)"')
+#: Shell-toewijzingen in de jobs-lus (`ENVS="${ENVS}|…"`) — óók een envset, zelfde toets (16-09).
+_ENV_TOEWIJZING = re.compile(r'^\s*ENVS="((?:[^"\\]|\\.)*)"', flags=re.M)
+_WORKFLOW_ENV = re.compile(r'^  ([A-Z][A-Z0-9_]*): "((?:[^"\\]|\\.)*)"$', flags=re.M)
+
+
+def workflow_env(tekst: str) -> dict[str, str]:
+    """Constanten uit het workflow-`env:`-blok (MAIL_ENVS enz., 16-09) — de gedeelde envsets."""
+    return {k: v for k, v in _WORKFLOW_ENV.findall(tekst)}
+
+
+def expandeer(ruw: str, constanten: dict[str, str]) -> str:
+    """`${MAIL_ENVS}` → de waarde uit het env-blok; andere `${…}` (CLOUD_SQL, PROJECT_ID, ENVS, BASIS_ENVS) blijven
+    staan."""
+    for naam, waarde in constanten.items():
+        ruw = ruw.replace("${" + naam + "}", waarde)
+    return ruw
 
 
 def env_var_lijsten(tekst: str) -> list[tuple[str, str]]:
-    """(scheidingsteken, ruwe lijst) per --set/--update-env-vars-vlag; default-scheider ','."""
+    """(scheidingsteken, ruwe lijst) per --set/--update-env-vars-vlag én per ENVS="…"-toewijzing (default-scheider ',';
+    een ENVS-toewijzing in de jobs-lus is per definitie '|'-gescheiden). Gedeelde constanten zijn geëxpandeerd."""
+    constanten = workflow_env(tekst)
     uit: list[tuple[str, str]] = []
+    for m in _ENV_TOEWIJZING.finditer(tekst):
+        uit.append(("|", expandeer(m.group(1), constanten)))
     for m in _ENV_FLAG.finditer(tekst):
-        ruw = m.group(1)
+        ruw = expandeer(m.group(1), constanten)
         d = re.match(r"\^(.)\^(.*)$", ruw, flags=re.S)
         uit.append((d.group(1), d.group(2)) if d else (",", ruw))
     return uit
@@ -32,12 +52,26 @@ def test_deploy_yml_heeft_env_var_vlaggen() -> None:
     assert len(env_var_lijsten(DEPLOY_YML.read_text(encoding="utf-8"))) >= 3
 
 
+def test_gedeelde_envsets_worden_geexpandeerd() -> None:
+    tekst = DEPLOY_YML.read_text(encoding="utf-8")
+    constanten = workflow_env(tekst)
+    assert {"MAIL_ENVS", "MAIL_SECRETS", "PUSH_ENVS", "PUSH_SECRETS"} <= set(constanten)
+    assert "BERICHTEN_SMTP_HOST=" in constanten["MAIL_ENVS"]
+    # Ná expansie blijft nergens een gedeelde-envset-verwijzing over in een envset.
+    for _, lijst in env_var_lijsten(tekst):
+        assert "${MAIL_ENVS}" not in lijst and "${PUSH_ENVS}" not in lijst
+
+
 def test_elk_env_var_paar_heeft_de_vorm_KEY_is_waarde() -> None:
     fouten: list[str] = []
     for scheider, lijst in env_var_lijsten(DEPLOY_YML.read_text(encoding="utf-8")):
         for paar in paren(scheider, lijst):
+            if paar in ("${ENVS}", "${BASIS_ENVS}"):
+                continue  # verwijzing naar de opgebouwde lijst in de jobs-lus (zelf getoetst via de toewijzingen)
             if not re.match(r"^[A-Z][A-Z0-9_]*=", paar):
-                fouten.append(f"scheider {scheider!r}: fragment zonder KEY= → {paar[:80]!r} (waarde bevat het scheidingsteken?)")
+                fouten.append(
+                    f"scheider {scheider!r}: fragment zonder KEY= → {paar[:80]!r} (waarde bevat het scheidingsteken?)"
+                )
     assert fouten == [], "\n".join(fouten)
 
 

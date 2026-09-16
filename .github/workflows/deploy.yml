@@ -50,6 +50,17 @@ env:
   # mét CMEK — de oude rlz-sql is na de groene verificatie opgeruimd) — de app composeert
   # hier samen met het wachtwoord-secret de database-URL uit (app/config.py, F2).
   CLOUD_SQL: rlz-boekhouding:europe-west4:rlz-sql2
+  # ---- GEDEELDE ENVSETS (Peter 16-09, BESLISSINGEN "DEPLOY — VOLLEDIGE ENVSET IN ÉÉN STAP") ----
+  # Eén bron voor de mail-/push-config van service én jobs: `${MAIL_ENVS}` enz. worden in de
+  # `--set-env-vars`/`--set-secrets` van de deploy-stappen geëxpandeerd — service en jobs lopen zo
+  # nooit uit elkaar. Envsets met '|' als scheider (les 10-09: '|' staat in geen enkele waarde;
+  # e-mailadressen dragen '@', JSON-lijsten ',' en '"'). Secrets-lijsten met ',' (geen komma in een naam).
+  # Guard: tests/unit/test_deploy_yml_envset_compleet.py (expandeert deze constanten en eist de volledige
+  # envset in de ENE service-stap; een losse `services update`/`jobs update` op envs is rood).
+  MAIL_ENVS: "BERICHTEN_SMTP_HOST=smtp.gmail.com|BERICHTEN_SMTP_POORT=465|BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl|BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl|BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl|APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl"
+  MAIL_SECRETS: "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest"
+  PUSH_ENVS: "APNS_SANDBOX=false|APPLE_TEAM_ID=VRQP26CX43"
+  PUSH_SECRETS: "PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest,APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest"
 
 permissions:
   contents: read
@@ -116,8 +127,8 @@ jobs:
       # dev-fallback-guards bijten (Secure-cookies, geen dev-stub, geen in-process
       # afleveraar-lus); WebAuthn RP ID = het APEX-domein (F2-bouwvereiste — passkeys
       # blijven geldig op alle subdomeinen), origin = het app-subdomein; CORS leeg
-      # (same-origin, beslispunt 4). ^@^ = gcloud's eigen delimiter-escape zodat
-      # JSON-lijstwaarden veilig zijn. PUBLIEK BEREIKBAAR zonder `--allow-unauthenticated`
+      # (same-origin, beslispunt 4). ^|^ = gcloud's eigen delimiter-escape zodat
+      # JSON-lijstwaarden (met ',') veilig zijn — '|' staat in geen waarde (les 10-09). PUBLIEK BEREIKBAAR zonder `--allow-unauthenticated`
       # (ochtendrun 11-09 blok 2.2): de allUsers-invoker-binding staat éénmalig gezet in
       # f2_services.sh stap 3 (owner) en overleeft elke revisie; de vlag probeerde 'm elke
       # deploy opnieuw te zetten en faalde dagelijks op run.services.setIamPolicy voor deploy@
@@ -157,7 +168,25 @@ jobs:
       # KVK_BASE_URL eindigt bewust op /basisprofielen — de client plakt er /{kvkNummer} achter;
       # de consistentiecheck in kvk.py eist sleutel én URL uit dezelfde omgeving (503 anders).
       # UITSLUITEND op de service (least privilege: geen job raakt de KvK-API).
-      - name: Cloud Run-revisie uitrollen
+      # VOLLEDIGE ENVSET IN ÉÉN STAP (Peter 16-09; BESLISSINGEN "DEPLOY — VOLLEDIGE ENVSET IN ÉÉN STAP"):
+      # `--set-env-vars` VERVANGT de hele envset van de service. Tot 16-09 kwamen INTAKE_POSTVAK_ADRES,
+      # STORE_LINK_IOS, de BERICHTEN_*-mailconfig, VAPID/APNs/FCM pas in latere `services update`-stappen
+      # terug → élke deploy had een venster van minuten zonder mail, en een run die ná de service-stap
+      # rood ging (10-09 tweemaal, 16-09 `a23042e`) liet de service BLIJVEND zonder mailconfig achter
+      # ("Mailkanaal niet geconfigureerd" bij de herstel-link van 16-09 09:00). Nu: álle envs + álle
+      # secrets in déze ene stap — een nieuwe revisie is pas live mét complete config, volgorde-
+      # onafhankelijk. Gedeelde sets (${MAIL_ENVS}, ${MAIL_SECRETS}, ${PUSH_ENVS}, ${PUSH_SECRETS}) staan
+      # bovenin bij `env:` en zijn dezelfde als die van de jobs. Scheider '|' (les 10-09: komt in geen
+      # waarde voor). Geen ||-fallback meer: een ontbrekend secret-slot maakt de deploy zichtbaar rood
+      # (en mailt het beheer via de laatste stap) in plaats van een revisie zonder config uit te rollen.
+      # Registersync §8 inbox_adres (verzoek Vastly 31-08): INTAKE_POSTVAK_ADRES reist mee op élke
+      # actieve administratie-rij in de snapshot (zonder deze env laat de snapshot het veld weg).
+      # Store-links (BESLISSINGEN "STORE-LINK-NAZORG"): STORE_LINK_IOS gevuld 09-09 (App Store-id
+      # 6803862748); STORE_LINK_ANDROID blijft leeg tot Google de listing goedkeurt (leeg = niets tonen).
+      # Notificatie-config op de service (herzien 17-08): uitnodigingsmail + herinner-knop + het volledige
+      # VAPID-paar (webpush per direct vanuit de service) + APNs/FCM (native-registratie is fail-closed 409
+      # zolang die config ontbreekt; APNS_SANDBOX=false sinds A6 21-08 = TestFlight/production-build).
+      - name: Cloud Run-revisie uitrollen (volledige envset + secrets in één stap)
         run: |
           gcloud run deploy rlz-backend \
             --image "${IMAGE}:${GITHUB_SHA}" \
@@ -168,86 +197,42 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
-            --set-env-vars "^@^ENVIRONMENT=production@CLOUD_SQL_VERBINDING=${CLOUD_SQL}@WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl@WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]@ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]@CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]@APPLE_TEAM_ID=VRQP26CX43@DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten@KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey@CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers@BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync@EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij@EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync@TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken@RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie@KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen" \
-            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest,KVK_API_KEY=KVK_API_KEY:latest" \
-            --quiet
-
-      # Registersync §8 inbox_adres (verzoek Vastly 31-08): het centrale intake-adres reist mee
-      # op élke actieve administratie-rij in de snapshot. Eigen update-stap, want de waarde
-      # bevat een '@' en kan dus niet in de ^@^-gescheiden --set-env-vars hierboven; bewust
-      # zónder ||-fallback (geen secrets nodig — deze stap mag nooit stil overgeslagen worden:
-      # zonder deze env laat de snapshot het veld weg = "geen uitspraak" richting Vastly).
-      # Store-links (blok F nachtrun 01/02-09; BESLISSINGEN "STORE-LINK-NAZORG"): env, geen secret.
-      # STORE_LINK_IOS GEVULD 09-09 — Apple keurde versie 1.0 (build 44) op 09-09 goed; App Store-id
-      # 6803862748. Effect: het stop-scherm van /activeren (desktop) en de uitnodigingsmail voor
-      # app-rollen tonen de knop "Download de app" voor iOS. STORE_LINK_ANDROID blijft leeg tot Google
-      # de listing goedkeurt (leeg = niets tonen; NIET vullen vóór de goedkeuring).
-      # ⚠️ DELIMITER-LES 10-09 (deploy-regressie 09-09 06:00 → 10-09 17:56, 13 deploys): commit 8aeed75
-      # koos hier `^@^` als scheidingsteken terwijl de waarde van INTAKE_POSTVAK_ADRES zélf een '@' bevat →
-      # gcloud brak de stap af ("Bad syntax for dict arg") vóór de API-call (geen audit-spoor), de workflow
-      # stopte, en ÁLLE F3-jobs bleven op het beeld van 2990c8b (08-09 22:00) terwijl de service wél elke push
-      # kreeg — én de service verloor INTAKE_POSTVAK_ADRES (--set-env-vars hierboven vervangt de hele envset).
-      # Scheidingsteken is nu '|' (komt in geen van beide waarden voor). Nooit een teken kiezen dat in een
-      # waarde staat; `^<t>^` geldt voor de HELE lijst. Vangnet: tests/unit/test_deploy_yml_envvar_delimiters.py.
-      - name: Registersync inbox_adres + store-links op de service
-        run: |
-          gcloud run services update rlz-backend \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "^|^INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748" \
+            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl|WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]|ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]|CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers|BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync|EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij|EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync|TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken|RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie|KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|FCM_PROJECT_ID=${PROJECT_ID}|${MAIL_ENVS}|${PUSH_ENVS}" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest,KVK_API_KEY=KVK_API_KEY:latest,${MAIL_SECRETS},${PUSH_SECRETS}" \
             --quiet
 
       # F3-jobs (draaiboek §F3): de bestaande CLI-commando's zijn de entrypoints — zelfde
       # beeld als de service, per job een eigen definitie (een hangende sync blokkeert nooit
       # de afleveraar). Config-as-code, zelfde patroon als rlz-migratie hierboven; de
       # Scheduler-cadans + alerting + IAM staan in scripts/gcp/f3_jobs.sh (owner, eenmalig).
-      # rlz-bank-sync is óók ON-DEMAND (feedbackronde 25-08 deel 4 punt 2): het openen van het
-      # bankscherm zet een bank_sync_run klaar en triggert één uitvoering via
-      # BANK_SYNC_JOB_RESOURCE (zelfde metadata-server-auth; run-backend@ heeft roles/run.invoker
-      # op déze job — eenmalig via f3_jobs.sh stap 7). Drempel: < 5 min na de vorige sync
-      # start er geen ronde (BANK_AUTO_VERVERS_DREMPEL_MINUTEN).
-      # rlz-extractie-wachtrij (feedbackronde 26-08 punt 4): ON-DEMAND + scheduler-vangnet
-      # (*/10). Een groot document (scan > 3 MB / > 8 pagina's) ging vóór 26-08 naar een
-      # in-process thread die onder request-based CPU-throttling stilviel → "geüploade factuur
-      # krijgt geen AI-extractie". Nu triggert de service één job-uitvoering via
-      # EXTRACTIE_WACHTRIJ_JOB_RESOURCE (run-backend@ roles/run.invoker, f3_jobs.sh stap 8);
-      # de job werkt álle wachtrij-documenten synchroon af (systeem-actor). Het ANTHROPIC_API_KEY-
-      # secret hangt ná de lus aan déze job (alleen deze job doet AI-calls).
-      # rlz-eerste-sync (feedbackronde 26-08 punt 5, "Administratie toevoegen"-wizard): ON-DEMAND,
-      # géén scheduler — de wizard zet een administratie_sync_run klaar en triggert één
-      # uitvoering via EERSTE_SYNC_JOB_RESOURCE (run-backend@ roles/run.invoker, f3_jobs.sh
-      # stap 9); status per onderdeel via …/eerste-sync/status.
-      # rlz-terugkerend-herbereken (design-ronde 03-09 blok B1, mockup inzicht-kantoorbreed ③): ON-DEMAND,
-      # géén scheduler — "⟳ Herbereken alles" op Inzicht › Terugkerende facturen zet één platformbrede
-      # terugkerend_herbereken_run klaar en triggert één uitvoering via TERUGKEREND_HERBEREKEN_JOB_RESOURCE
-      # (zelfde metadata-server-auth; KLIKPUNT eenmalig: run-backend@ roles/run.invoker op déze job,
-      # f3_jobs.sh-patroon stap 6–9). Puur code (herbereken_alle), geen RLZ-calls; de dagelijkse
-      # herberekening blijft in rlz-sync.
-      # rlz-reconciliatie (opdracht 06-09, BESLISSINGEN "RECONCILIATIE-MELDING + INZICHT"): commando
-      # ongewijzigd (reconciliatie-alles, scheduler 06:30 — alle vier blokken toetsen LIVE tegen RLZ, geen
-      # cache-afhankelijkheid van rlz-sync 07:00), maar de job legt sinds 06-09 élke run vast en mailt de
-      # delta via het bewakingskanaal → hij krijgt ná de lus de BERICHTEN_*-envs + SMTP-secret +
-      # APP_BASIS_URL (link in de mail) en is óók ON-DEMAND ("Nu draaien" op Inzicht › Reconciliatie
-      # via RECONCILIATIE_JOB_RESOURCE; run-backend@ roles/run.invoker = f3_jobs.sh stap 11, KLIKPUNT).
+      # VOLLEDIGE ENVSET PER JOB (16-09): élke job krijgt in zijn ENE `jobs deploy` de complete envset +
+      # secrets (basis + per-job-extra's uit de `case`), geen losse `jobs update --update-env-vars` meer
+      # erachter — dezelfde les als bij de service. Per-job-extra's:
+      # - rlz-intake-imap (F3.4, geactiveerd 15-08 na de Workspace-DPA-check): IMAP-envs + app-wachtwoord
+      #   (INTAKE_IMAP_WACHTWOORD, versie door Peter; de scheduler-pauze is de aan/uit-knop) + ANTHROPIC_API_KEY
+      #   (intake-AI: extractie + splitsing achter de intake_ai-gate + kostengrens).
+      # - rlz-extractie-wachtrij (26-08): ANTHROPIC_API_KEY (least privilege: alleen AI-dragende jobs).
+      # - rlz-accordeur-herinneringen + rlz-nieuwe-facturen (15/16-08, native push fase 3 17-08): mail + VAPID
+      #   + APNs (APNS_KEY_P8/ID uit Secret Manager, apns_afronden.sh) + FCM (ADC van run-jobs@, fcm_afronden.sh).
+      # - rlz-kantoor-digest (16-09 gevonden): mailt de weekdigest maar droeg tot 16-09 GEEN mailconfig →
+      #   nu ${MAIL_ENVS}/${MAIL_SECRETS}.
+      # - rlz-reconciliatie (06-09): mailkanaal voor actie-/systeemmail + APP_BASIS_URL (link in de mail).
+      # - rlz-bewaking (31-08, 11-09): mail-alerts, BEWAKING_RLZ_ADMINISTRATIE_ID = de TEST-administratie
+      #   (lichte leesroute, nooit writes), BEWAKING_SERVICE_RESOURCE voor de deploy-drift-probe (vereist
+      #   roles/run.viewer op run-jobs@ — scripts/gcp/bewaking_deploy_drift_iam.sh), ANTHROPIC_API_KEY (uurlijkse
+      #   minimale AI-probe onder de kostenmeter).
+      # - rlz-webhook-afleveraar (F4, 24-08): alléén deze job draagt WEBHOOK_DOEL_URL + het uitgaande HMAC-secret;
+      #   WEBHOOK_HMAC_SECRET mount cross-project Vastly's slot WEBHOOK_RLZ_SECRET in vastly-504108 (projectNÚMMER
+      #   755625271889 in het pad — het project-id weigert gcloud, les 24-08).
+      # ON-DEMAND-jobs (geen scheduler; getriggerd door de service via *_JOB_RESOURCE + run-backend@ roles/run.invoker,
+      # f3_jobs.sh stap 6–11): rlz-projecten-cijfers, rlz-bank-sync (óók scheduler-vangnet), rlz-extractie-wachtrij
+      # (+ */10-vangnet), rlz-eerste-sync, rlz-terugkerend-herbereken, rlz-reconciliatie ("Nu draaien").
+      # rlz-sync task-timeout 5400 (blok 1 bundel 08-09): sync-alles draait óók de bank-sync voor álle administraties.
       # BEWAKING_ALERT_ONTVANGER blijft de code-default (p.nijenhuis@kempengroep.nl) — geen env nodig.
-      # rlz-projecten-cijfers is ON-DEMAND (géén scheduler): de sync-knop zet een wachtrij-rij
-      # klaar en triggert één uitvoering via CIJFERS_SYNC_JOB_RESOURCE op de service
-      # (achtergrondrun-fix 2026-08-23; run-backend@ heeft roles/run.invoker op déze job —
-      # eenmalig gezet, zie f3_jobs.sh stap 6). De dagelijkse verversing zit in rlz-sync.
-      # run-jobs@ + alléén het app-DB-wachtwoord (least privilege); masterkey-unwrap loopt
-      # via KMS (credential-store), TOTP-secret is hier niet nodig. De rlz-intake-imap-job
-      # krijgt ná de lus zijn INTAKE_IMAP_*-envs + wachtwoord-secret (F3.4, geactiveerd
-      # 2026-08-15 na de Workspace-DPA-check): --set-env-vars in de lus VERVANGT de hele
-      # envset, dus de update-stap moet ná elke deploy opnieuw draaien — vandaar in dezelfde
-      # step, direct erachter.
-      # rlz-sync task-timeout 3600 → 5400 (BLOK 1 bundel 08-09, "bank-sync automatisch"): sync-alles draait sinds
-      # 08-09 óók de bank-sync voor álle actieve administraties (rekeningen + probe, mutaties incrementeel in batches
-      # van 500, open-verversronde, open posten, verificatie, autoflows). De eerste nacht haalt 29 administraties
-      # vanaf leeg binnen (schatting ≈ 15–30 min extra bovenop de bestaande sub-runs); daarna incrementeel (seconden
-      # per administratie). Ruimte i.p.v. een afgebroken job (de teller `bank_sync` in de reconciliatie maakt een
-      # niet-bereikte administratie zichtbaar als LET-OP "geen bank-sync-run").
-      - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints)
+      - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints, volledige envset per job)
         run: |
+          BASIS_ENVS="ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey"
+          BASIS_SECRETS="APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest"
           for JOB in \
             "rlz-sync|sync-alles|5400" \
             "rlz-reconciliatie|reconciliatie-alles|3600" \
@@ -261,168 +246,42 @@ jobs:
             "rlz-eerste-sync|eerste-sync-wachtrij|1800" \
             "rlz-terugkerend-herbereken|terugkerend-herbereken-wachtrij|1800" \
             "rlz-bewaking|bewaking-probe|300" \
+            "rlz-webhook-afleveraar|webhook-afleveren|600" \
           ; do
             NAAM="${JOB%%|*}"; REST="${JOB#*|}"; CLI="${REST%%|*}"; TIMEOUT="${REST##*|}"
+            ENVS="${BASIS_ENVS}"; SECRETS="${BASIS_SECRETS}"
+            case "${NAAM}" in
+              rlz-intake-imap)
+                ENVS="${ENVS}|INTAKE_IMAP_HOST=imap.gmail.com|INTAKE_IMAP_POORT=993|INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl"
+                SECRETS="${SECRETS},INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
+              rlz-extractie-wachtrij)
+                SECRETS="${SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
+              rlz-accordeur-herinneringen|rlz-nieuwe-facturen)
+                ENVS="${ENVS}|${MAIL_ENVS}|${PUSH_ENVS}|FCM_PROJECT_ID=${PROJECT_ID}"
+                SECRETS="${SECRETS},${MAIL_SECRETS},${PUSH_SECRETS}" ;;
+              rlz-kantoor-digest|rlz-reconciliatie)
+                ENVS="${ENVS}|${MAIL_ENVS}"
+                SECRETS="${SECRETS},${MAIL_SECRETS}" ;;
+              rlz-bewaking)
+                ENVS="${ENVS}|${MAIL_ENVS}|BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5|BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend"
+                SECRETS="${SECRETS},${MAIL_SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
+              rlz-webhook-afleveraar)
+                ENVS="${ENVS}|WEBHOOK_DOEL_URL=https://api.vastly.software/webhooks/rlz"
+                SECRETS="${SECRETS},WEBHOOK_HMAC_SECRET=projects/755625271889/secrets/WEBHOOK_RLZ_SECRET:latest" ;;
+            esac
             gcloud run jobs deploy "${NAAM}" \
               --image "${IMAGE}:${GITHUB_SHA}" \
               --region "${REGION}" \
               --project "${PROJECT_ID}" \
               --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
               --set-cloudsql-instances "${CLOUD_SQL}" \
-              --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey" \
-              --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest" \
-              --command python \
+              --set-env-vars "^|^${ENVS}" \
+              --set-secrets "${SECRETS}" \
               --args="-m,app.cli,${CLI}" \
               --max-retries 0 \
               --task-timeout "${TIMEOUT}" \
               --quiet
           done
-          # Extractie-wachtrij-job: als enige job de Claude-API-key (least privilege — de andere
-          # jobs doen geen AI-calls). --update-secrets laat de envset uit de lus intact.
-          gcloud run jobs update rlz-extractie-wachtrij \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-secrets "ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
-            --quiet
-          # F4 — webhook-afleveraar (activatie-editie 2026-08-24, runbook stap 8 + SA-grant-
-          # route): eigen deploy-blok BUITEN de lus — alléén deze job draagt het uitgaande
-          # HMAC-secret en de doel-URL (least privilege). WEBHOOK_HMAC_SECRET mount
-          # cross-project Vastly's slot WEBHOOK_RLZ_SECRET in vastly-504108 (⚠️ naamverschil,
-          # zelfde waarde — runbook "Update vastgoed 21-08"); accessors voor onze
-          # run-jobs@/run-backend@ zijn door vastgoed gezet en 24-08 herbevestigd
-          # (één enabled versie, waardevrij geverifieerd). NB cross-project-secrets
-          # vereisen het projectNÚMMER in het pad (755625271889 = vastly-504108) —
-          # het project-id weigert gcloud ("not a valid secret name", les 24-08).
-          gcloud run jobs deploy rlz-webhook-afleveraar \
-            --image "${IMAGE}:${GITHUB_SHA}" \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
-            --set-cloudsql-instances "${CLOUD_SQL}" \
-            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,WEBHOOK_DOEL_URL=https://api.vastly.software/webhooks/rlz" \
-            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,WEBHOOK_HMAC_SECRET=projects/755625271889/secrets/WEBHOOK_RLZ_SECRET:latest" \
-            --command python \
-            --args="-m,app.cli,webhook-afleveren" \
-            --max-retries 0 \
-            --task-timeout 600 \
-            --quiet
-          # F3.4 — live IMAP-intake (facturen@ak-nijenhuis.nl op Google Workspace, SSL 993).
-          # Het app-wachtwoord leeft uitsluitend in Secret Manager (INTAKE_IMAP_WACHTWOORD,
-          # versie door Peter); de scheduler-pauze is de aan/uit-knop van de fetch.
-          # ANTHROPIC_API_KEY (2026-08-25): dít is de enige job die intake-AI draait
-          # (extractie + multi-factuur-splitsing achter de intake_ai-gate + kostengrens) —
-          # daarom hier en niet in de lus.
-          gcloud run jobs update rlz-intake-imap \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "INTAKE_IMAP_HOST=imap.gmail.com,INTAKE_IMAP_POORT=993,INTAKE_IMAP_GEBRUIKER=facturen@ak-nijenhuis.nl,INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl" \
-            --update-secrets "INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
-            --quiet
-          # Accordeur-notificaties (berichten-bouwsteen 2026-08-15): SMTP-mail (Google
-          # Workspace, app-wachtwoord) + Web Push (VAPID). Secret-slots + accessors komen uit
-          # scripts/gcp/notificaties_infra.sh (owner); zolang die nog niet gedraaid is, faalt
-          # deze update — dan alleen een zichtbare LET-OP, geen rode deploy (de job draait dan
-          # geconfigureerd-loos: mail/push falen fail-zichtbaar, nooit stil). Afzenderadres
-          # (besluit Peter 2026-08-15): facturen@ak-nijenhuis.nl — géén aparte gebruiker/
-          # licentie; Reply-To p.nijenhuis@kempengroep.nl houdt menselijke antwoorden buiten
-          # het intake-postvak, auto-replies dáár zijn geaccepteerde zichtbare ruis.
-          gcloud run jobs update rlz-accordeur-herinneringen \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
-            --quiet \
-          || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — rlz-accordeur-herinneringen draait zonder mail-/pushconfig (fail-zichtbaar)."
-          # Nieuwe-facturen-bundelmelding (besluit Peter 2026-08-16): zelfde notificatie-config
-          # als de dagelijkse herinnering (mail + push + app-basis-url), zelfde LET-OP-terugval.
-          gcloud run jobs update rlz-nieuwe-facturen \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
-            --quiet \
-          || echo "LET OP: notificatie-secrets nog niet klaargezet — rlz-nieuwe-facturen draait zonder mail-/pushconfig (fail-zichtbaar)."
-          # Synthetische bewaking (best-practice-besluit 1, 31-08 — twee stille incidenten
-          # 30/31-08): kwartier-probes + eigen SMTP-alerts (2 op rij = mail, herstelmelding,
-          # idempotent per storing). APP_BASIS_URL = het doel van de synthetische health-check;
-          # BEWAKING_RLZ_ADMINISTRATIE_ID = de TEST-administratie (entiteitenregister,
-          # 'Administratiekantoor Nijenhuis' — lichte leesroute, nooit writes; zonder
-          # store-credentials wordt die probe zichtbaar overgeslagen, geen alert).
-          # ANTHROPIC_API_KEY: derde AI-dragende job — de uurlijkse minimale echte AI-call
-          # (goedkoopste model) valt onder de bestaande kostenmeter. Scheduler-cadans (*/15)
-          # staat in scripts/gcp/f3_jobs.sh (owner, eenmalig).
-          # rlz-reconciliatie (06-09): mailkanaal voor de samenvattingsmail (zelfde envs/secret als de
-          # bewaking; Reply-To p.nijenhuis@kempengroep.nl, afzender facturen@ak-nijenhuis.nl) + APP_BASIS_URL
-          # voor de link naar Inzicht › Reconciliatie in de mail. Mailfout maakt de job niet rood
-          # (mail_status='mislukt' → bewakingsprobe 'reconciliatie_mail').
-          gcloud run jobs update rlz-reconciliatie \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest" \
-            --quiet \
-            || echo "LET OP: reconciliatie-mailconfig niet gezet — de run legt wél vast, de samenvattingsmail staat dan op niet_geconfigureerd (zichtbaar op Inzicht › Reconciliatie)."
-          # BEWAKING_SERVICE_RESOURCE (ochtendrun 11-09 blok 2.1): de deploy-drift-probe vergelijkt het beeld van
-          # de service met dat van élke job in deze locatie (Cloud Run Admin API, lees-only). Vereist
-          # roles/run.viewer op run-jobs@ (owner, eenmalig: scripts/gcp/bewaking_deploy_drift_iam.sh); zonder
-          # dat recht is de probe 'fout' mét de 403-melding (zichtbaar, nooit stil).
-          gcloud run jobs update rlz-bewaking \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl,BEWAKING_RLZ_ADMINISTRATIE_ID=8dbfb856-d75b-4ec3-9124-c8b739fe3bc5,BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
-            --quiet \
-          || echo "LET OP: bewaking-config niet volledig gezet — rlz-bewaking draait, maar alerts/AI-probe kunnen falen (fail-zichtbaar in platform.bewaking_probe_run)."
-          # Native push fase 3 (kliktest-ronde 2026-08-17): APNs op de twee notificatie-jobs.
-          # APNS_KEY_P8 + APNS_KEY_ID zijn Secret Manager-slots (scripts/gcp/apns_afronden.sh
-          # — het Key ID is geen geheim maar leeft dáár zodat deploy.yml waarde-vrij blijft).
-          # APNS_SANDBOX=false sinds A6 (2026-08-21): de TestFlight-build is de doel-build
-          # (aps-environment 'production'); push op de oude dev-signed kabel-build werkt
-          # daarmee bewust niet meer — dit is dezelfde omslag als het provisioning-profiel maakt.
-          # FCM (Android, bouwronde 28-08): Firebase zit in ditzelfde GCP-project, de verzendkant
-          # gebruikt Application Default Credentials van run-jobs@ (IAM
-          # roles/firebasecloudmessaging.admin — scripts/gcp/fcm_afronden.sh, eenmalig owner) —
-          # geen secret; FCM_PROJECT_ID is de enige config en is geen geheim.
-          for NJOB in rlz-accordeur-herinneringen rlz-nieuwe-facturen; do
-            gcloud run jobs update "${NJOB}" \
-              --region "${REGION}" \
-              --project "${PROJECT_ID}" \
-              --update-env-vars "APNS_SANDBOX=false,APPLE_TEAM_ID=VRQP26CX43,FCM_PROJECT_ID=${PROJECT_ID}" \
-              --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
-              --quiet \
-            || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — ${NJOB} verstuurt native push nog niet (webpush/mail ongemoeid)."
-          done
-
-      # Notificatie-config op de service (uitnodigingsmail via de API + het volledige
-      # VAPID-paar). "Private key alléén op de job" (least privilege, notificaties-uitrol
-      # 2026-08-15) is HERZIEN 2026-08-17: de handmatige herinner-knop (migratie 0053)
-      # verstuurt per direct vanuit de service — zonder private key werd webpush daar stil
-      # overgeslagen en strandde de bewijs-push op de mail-terugval. Aparte update-stap:
-      # --update-* raakt de bestaande envset niet, en zolang de secret-slots ontbreken faalt
-      # alleen deze stap zichtbaar terwijl de vorige revisie live blijft —
-      # mail_verzonden=false + mail_fout in de uitnodiging-respons is dan de terugval.
-      - name: Notificatie-config service (mail + VAPID-paar)
-        run: |
-          gcloud run services update rlz-backend \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BERICHTEN_AFZENDER=facturen@ak-nijenhuis.nl,BERICHTEN_REPLY_TO=p.nijenhuis@kempengroep.nl,APP_BASIS_URL=https://app.administratiekantoornijenhuis.nl" \
-            --update-secrets "BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest,PUSH_VAPID_PRIVATE_KEY=PUSH_VAPID_PRIVATE_KEY:latest,PUSH_VAPID_PUBLIC_KEY=PUSH_VAPID_PUBLIC_KEY:latest" \
-            --quiet \
-          || echo "LET OP: notificatie-secrets nog niet klaargezet (scripts/gcp/notificaties_infra.sh) — service draait zonder mail-/pushconfig (fail-zichtbaar: uitnodiging-respons meldt mail_fout, push-config-endpoint geeft null)."
-          # APNs óók op de service: het native-registratie-endpoint is fail-closed 409 zolang
-          # APNs daar niet geconfigureerd is, en de handmatige herinner-knop verstuurt per
-          # direct vanuit de service. Eigen || zodat een ontbrekend APNs-slot de mailconfig
-          # hierboven niet meesleept. APNS_SANDBOX: zie de job-stap (TestFlight = false, A6).
-          # FCM_PROJECT_ID: Android-registratie (POST …/subscripties/native soort=fcm) is
-          # fail-closed 409 zolang FCM hier niet geconfigureerd is; ADC = run-backend@ (zie job-stap).
-          gcloud run services update rlz-backend \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --update-env-vars "APNS_SANDBOX=false,FCM_PROJECT_ID=${PROJECT_ID}" \
-            --update-secrets "APNS_KEY_P8=APNS_KEY_P8:latest,APNS_KEY_ID=APNS_KEY_ID:latest" \
-            --quiet \
-          || echo "LET OP: APNs-secrets nog niet klaargezet (scripts/gcp/apns_afronden.sh) — native-pushregistratie blijft fail-closed 409, web/PWA ongemoeid."
 
       # POST-DEPLOY-SMOKETEST (best-practice-besluit 1, 31-08 punt 4 — aanleiding: de
       # schema-limiet-bug van 30-08 haalde een groene deploy en legde de extractie een dag
@@ -433,7 +292,9 @@ jobs:
       #    SPA-fallback is hier allebei fout);
       # 3. de rlz-smoketest-job (CLI deploy-smoketest, zelfde image): AI-schema-zelftest
       #    (union-limiet, de 30-08-klasse), DB + migratieversie, mailkanaal-config én (ochtendrun
-      #    11-09) service en álle jobs op hetzelfde beeld — zonder gratie, de F3-lus is dan gelopen.
+      #    11-09) service en álle jobs op hetzelfde beeld — zonder gratie, de F3-lus is dan gelopen;
+      #    (16-09) plus lees-only: de SERVICE-template draagt BERICHTEN_SMTP_HOST/-GEBRUIKER én het
+      #    secret BERICHTEN_SMTP_WACHTWOORD (Cloud Run Admin API) — een revisie zonder mailconfig = rood.
       # 0. (11-09) de app is PUBLIEK bereikbaar: een browser-navigatie naar de SPA geeft 200 zonder
       #    token — dit vervangt de `--allow-unauthenticated`-vlag als bewijs dat de IAM-binding staat.
       - name: Post-deploy-smoketest (publiek 200 + health + gepoorte route + schema-zelftest + zelfde beeld)
@@ -454,8 +315,8 @@ jobs:
             --project "${PROJECT_ID}" \
             --service-account "run-jobs@${PROJECT_ID}.iam.gserviceaccount.com" \
             --set-cloudsql-instances "${CLOUD_SQL}" \
-            --set-env-vars "ENVIRONMENT=production,CLOUD_SQL_VERBINDING=${CLOUD_SQL},DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten,KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey,BERICHTEN_SMTP_HOST=smtp.gmail.com,BERICHTEN_SMTP_POORT=465,BERICHTEN_SMTP_GEBRUIKER=facturen@ak-nijenhuis.nl,BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend" \
-            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,BERICHTEN_SMTP_WACHTWOORD=BERICHTEN_SMTP_WACHTWOORD:latest" \
+            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|${MAIL_ENVS}|BEWAKING_SERVICE_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/services/rlz-backend" \
+            --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,${MAIL_SECRETS}" \
             --command python \
             --args="-m,app.cli,deploy-smoketest" \
             --max-retries 0 \

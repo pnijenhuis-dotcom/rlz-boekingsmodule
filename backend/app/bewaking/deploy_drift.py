@@ -131,6 +131,38 @@ def lees_stand(*, service_resource: str, token: str) -> DeployStand:
     )
 
 
+@dataclass(frozen=True)
+class ServiceConfig:
+    """Env-sleutels van de service-template (Cloud Run Admin API v2, lees-only): platte waarden en secret-mounts
+    apart."""
+
+    envs: frozenset[str]
+    secrets: frozenset[str]
+
+
+#: Wat de service minimaal moet dragen om te kunnen mailen (`app.berichten.mail.is_geconfigureerd`).
+MAILKANAAL_ENVS = frozenset({"BERICHTEN_SMTP_HOST", "BERICHTEN_SMTP_GEBRUIKER"})
+MAILKANAAL_SECRETS = frozenset({"BERICHTEN_SMTP_WACHTWOORD"})
+
+
+def lees_service_config(*, service_resource: str, token: str) -> ServiceConfig:
+    """Env-namen van de service-template: `env[].value` = platte env, `env[].valueSource.secretKeyRef` = secret."""
+    svc = _get(service_resource, token=token)
+    try:
+        env = svc["template"]["containers"][0].get("env") or []
+    except (KeyError, IndexError) as exc:
+        raise DeployDriftLeesfout(f"service zonder container in de template: {exc}") from exc
+    envs = {e["name"] for e in env if "name" in e and "valueSource" not in e}
+    secrets = {e["name"] for e in env if "name" in e and "valueSource" in e}
+    return ServiceConfig(envs=frozenset(envs), secrets=frozenset(secrets))
+
+
+def mailkanaal_ontbrekend(config: ServiceConfig) -> list[str]:
+    """Ontbrekende mailkanaal-sleutels op de service (leeg = geconfigureerd). Peter 16-09: "Mailkanaal niet
+    geconfigureerd" bij de herstel-link — de deploy had de mailconfig in een latere stap verloren."""
+    return sorted(MAILKANAAL_ENVS - config.envs) + sorted(f"secret {s}" for s in MAILKANAAL_SECRETS - config.secrets)
+
+
 def beoordeel(stand: DeployStand, *, nu: datetime, gratie: timedelta = GRATIE) -> DriftOordeel:
     """Jobs met een ander beeld dan de service; binnen `gratie` ná de jongste service-revisie is dat een lopende
     deploy (geen storing)."""

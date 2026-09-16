@@ -43,7 +43,8 @@ def _commando_regels(tekst: str) -> list[str]:
 
 def test_elke_image_vlag_is_dezelfde_variabele() -> None:
     beelden = re.findall(r"--image\s+(\S+)", "\n".join(_commando_regels(_tekst())))
-    assert len(beelden) >= 5, beelden
+    # 16-09: service + rlz-migratie + jobs-lus (één aanroep) + rlz-smoketest = 4 beeld-vlaggen, één variabele.
+    assert len(beelden) >= 4, beelden
     assert set(beelden) == {VERPLICHT_BEELD}, f"afwijkend beeld in deploy.yml: {set(beelden) - {VERPLICHT_BEELD}}"
 
 
