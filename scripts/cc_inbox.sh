@@ -53,6 +53,23 @@
 # telt dat proces WÉL als actief (fail-closed: liever een tick wachten dan twee runs door elkaar) — mét de reden in de
 # logregel. Seam voor de guard-test: CC_INBOX_CLAUDE_NAAM (procesnaam, default `claude`); de test start een symlink naar
 # /bin/sleep onder de naam `claude` mét cwd in de wegwerp-repo — geen echte claude.
+# Twee schrijvers in één werkboom (guard 16-09 nacht; incident 16-09 avond: de inbox-run "omzet-store" (20:24–21:39) en een
+# handmatige CC-sessie (gestart ná 20:24, VGG blok 9 / accordeur-uitnodiging) werkten parallel — de een committe het werk
+# van de ander (57ca852, c1df300). De detectie hierboven was niet stuk (om 21:44 zag de tick pid 36860 wél): ze kijkt
+# alleen bij de START van een inbox-run; een mens die daarná `claude` start ziet niets. Sinds 16-09 nacht:
+#   (g1) de lock `opdrachten/.lock` draagt DRIE regels: pid, soort (`inbox` | `handmatig`), starttijd. Een levende lock van
+#        soort `handmatig` (gezet door de terminal-wrapper `rlz cc`, scripts/zsh/rlz.zsh) = logregel ">> cc_inbox: wacht —
+#        handmatige CC (rlz cc) actief (pid N, sinds T)" + exit 0; een levende `inbox`-lock blijft stil (er loopt al een run).
+#        Een lock mét een pid die niet leeft wordt zoals eerder gemeld en opgeruimd. Een lock zonder soort = `inbox` (oud).
+#   (g2) `.git/index.lock` aanwezig = een ander proces zit in git (commit/stage bezig) → wachten mét logregel, óók zonder
+#        claude-proces; ouder dan CC_INBOX_INDEX_LOCK_MAX_S (default 1800 s) = verweesd van een gecrashte git → gemeld en
+#        genegeerd (nooit verwijderd — dat doet een mens).
+#   (g3) is de werkboom bij het oppakken niet schoon (tracked wijzigingen zonder levende lock/claude), dan is dat werk van een
+#        gestopte run: logregel "LET OP — werkboom niet schoon bij start (N bestanden)" zodat het in het opdrachtenlog staat;
+#        de CC-run zelf beslist (committen als eigen commit, zoals 57ca852) — geen blokkade, anders staat de inbox voorgoed stil.
+#   Omgekeerd (mens start terwijl de inbox draait): `rlz cc` weigert bij een levende `inbox`-lock mét "inbox-run actief sinds …,
+#   wacht of `rlz inbox stop`"; `rlz inbox stop` stuurt TERM naar de inbox-run (trap → GESTOPT-regel, opdracht terug via (e)).
+#   Guard: backend/tests/unit/test_cc_inbox_parallel.py.
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -84,11 +101,17 @@ melding() {  # melding <titel> <tekst> — resultaat altijd in het log (d)
 
 # ---- lock --------------------------------------------------------------------------------------------------------
 if [[ -f "$LOCK" ]]; then
-  pid="$(head -1 "$LOCK" 2>/dev/null || true)"
+  pid="$(sed -n 1p "$LOCK" 2>/dev/null || true)"
+  soort="$(sed -n 2p "$LOCK" 2>/dev/null || true)"; soort="${soort:-inbox}"
+  sinds="$(sed -n 3p "$LOCK" 2>/dev/null || true)"
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    exit 0  # er loopt al een run — stil niets doen (launchd probeert over ≤ 5 min opnieuw)
+    if [[ "$soort" == "handmatig" ]]; then  # (g1) rlz cc-wrapper actief → altijd zichtbaar wachten
+      log ">> cc_inbox: wacht — handmatige CC (rlz cc) actief (pid $pid, sinds ${sinds:-?}) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
+      exit 0
+    fi
+    exit 0  # er loopt al een inbox-run — stil niets doen (launchd probeert over ≤ 5 min opnieuw)
   fi
-  log ">> cc_inbox: verweesde lock (pid ${pid:-?} leeft niet) opgeruimd"
+  log ">> cc_inbox: verweesde lock (pid ${pid:-?}, soort $soort, leeft niet) opgeruimd"
   rm -f "$LOCK"
 fi
 
@@ -117,6 +140,18 @@ handmatige_cc() {  # → "pid<TAB>cwd-of-reden" van het eerste claude-proces in 
 if actief="$(handmatige_cc)"; then
   log ">> cc_inbox: wacht — handmatige CC actief (pid ${actief%%$'\t'*}, ${actief#*$'\t'}) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
   exit 0
+fi
+
+# ---- (g2) git bezig in deze werkboom (.git/index.lock) → wachten; verweesd (te oud) = melden en negeren ---------------
+GIT_INDEX_LOCK="$REPO/.git/index.lock"
+INDEX_LOCK_MAX_S="${CC_INBOX_INDEX_LOCK_MAX_S:-1800}"
+if [[ -e "$GIT_INDEX_LOCK" ]]; then
+  leeftijd=$(( $(date +%s) - $(stat -f '%m' "$GIT_INDEX_LOCK" 2>/dev/null || echo 0) ))
+  if (( leeftijd < INDEX_LOCK_MAX_S )); then
+    log ">> cc_inbox: wacht — git bezig in deze werkboom (.git/index.lock, ${leeftijd}s oud, eigenaar onbekend) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
+    exit 0
+  fi
+  log ">> cc_inbox: LET OP — .git/index.lock is ${leeftijd}s oud (> ${INDEX_LOCK_MAX_S}s): verweesd van een gestopte git, genegeerd (niet verwijderd — dat doet een mens; git zelf weigert intussen elke commit)"
 fi
 
 # ---- verweesde lopend-opdrachten (e): geen levende lock → elke .md in lopend/ is gestrand ----------------------------
@@ -170,7 +205,7 @@ pull_ff_only
 # oudste bestand (mtime) — niets in de inbox = niets doen
 OPDRACHT="$(find "$INBOX" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)"
 [[ -n "$OPDRACHT" ]] || exit 0
-echo $$ > "$LOCK"
+printf '%s\ninbox\n%s\n' "$$" "$(date +%FT%T)" > "$LOCK"  # (g1) pid, soort, sinds
 
 SLUG="$(basename "$OPDRACHT" .md)"
 DATUM="$(date +%Y-%m-%d)"
@@ -180,6 +215,10 @@ LOPEND_BESTAND="$LOPEND/$(basename "$OPDRACHT")"
 POGING=$(( $(cat "$TELLER" 2>/dev/null || echo 0) + 1 )); echo "$POGING" > "$TELLER"
 mv "$OPDRACHT" "$LOPEND_BESTAND"
 log ">> cc_inbox: start $SLUG ($(date +%FT%T), poging $POGING/$MAX_POGINGEN) — log $LOG"
+VUIL_N="$(git -C "$REPO" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d ' ')"
+if [[ "${VUIL_N:-0}" != "0" ]]; then  # (g3) werk van een gestopte run — zichtbaar, geen blokkade
+  log ">> cc_inbox: LET OP — werkboom niet schoon bij start ($VUIL_N tracked bestand(en) gewijzigd, geen levende lock/claude): werk van een gestopte run — de CC-run beslist (eigen commit of laten staan), zie opdracht-guard 16-09"
+fi
 
 # ---- elke stop = logregel + melding (b) --------------------------------------------------------------------------
 AFGEROND=0; CLAUDE_PID=""; HARTSLAG_PID=""
