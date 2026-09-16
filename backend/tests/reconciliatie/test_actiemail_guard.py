@@ -86,69 +86,383 @@ def _fixture_set() -> Delta:
     """Élke soort uit teksten.py over álle blokken (+ opruim-kandidaat, opruimlijst-fout, administratie-fout,
     kantoor-instelbare automatisering-LET-OP's): ruim boven de tien regels."""
     afwijkingen = [
-        _afw("documenten", "ontbreekt_in_rlz", AID_A, "d1", "404", leverancier_naam="Labo Derva", factuurnummer="2026-118",
-             bedrag_lokaal="274.89", boekdatum="2026-08-03"),
-        _afw("documenten", "ontbreekt_in_odoo", AID_A, "d2", "404", leverancier_naam="BOOT", factuurnummer="202633199", backend="odoo"),
-        _afw("documenten", "bedrag_wijkt_af", AID_B, "d3", "eigen=€274.89 rlz=€279.51", leverancier_naam="Kader Consultancy",
-             factuurnummer="F212604921", rlz_boekstuk="RLZ-01-00000241", bedrag_lokaal="274.89", bedrag_extern="279.51"),
-        _afw("documenten", "status_wijkt_af", AID_B, "d4", "RLZ-status=1", leverancier_naam="Spot Services", factuurnummer="2026-608"),
-        _afw("documenten", "status_niet_definitief", AID_B, "d4b", "status 1", leverancier_naam="DCTE", factuurnummer="202611050"),
-        _afw("documenten", "boekstuknummer_wijkt_af", AID_A, "d5", "eigen=RLZ-01-1 rlz=RLZ-01-2", leverancier_naam="BDO", factuurnummer="6088744"),
-        _afw("documenten", "controle_mislukt", AID_A, "d6", "HTTP 500", leverancier_naam="Floor", factuurnummer="26219"),
-        _afw("documenten", "controle_mislukt", AID_A, "d6b", "geen bewaarde RLZ-credential", leverancier_naam="Floor", factuurnummer="26008", rlz_verleden=True),
-        _afw("documenten", "niet_geboekt_in_odoo", AID_A, "d7", "draft", leverancier_naam="Universal Nederland", factuurnummer="RLZ-2080143037", backend="odoo", extern_state="draft"),
-        _afw("documenten", "teruggedraaid_in_odoo", AID_A, "d8", "reversal", leverancier_naam="Universal Nederland", factuurnummer="RLZ-2080143038", backend="odoo"),
+        _afw(
+            "documenten",
+            "ontbreekt_in_rlz",
+            AID_A,
+            "d1",
+            "404",
+            leverancier_naam="Labo Derva",
+            factuurnummer="2026-118",
+            bedrag_lokaal="274.89",
+            boekdatum="2026-08-03",
+        ),
+        _afw(
+            "documenten",
+            "ontbreekt_in_odoo",
+            AID_A,
+            "d2",
+            "404",
+            leverancier_naam="BOOT",
+            factuurnummer="202633199",
+            backend="odoo",
+        ),
+        _afw(
+            "documenten",
+            "bedrag_wijkt_af",
+            AID_B,
+            "d3",
+            "eigen=€274.89 rlz=€279.51",
+            leverancier_naam="Kader Consultancy",
+            factuurnummer="F212604921",
+            rlz_boekstuk="RLZ-01-00000241",
+            bedrag_lokaal="274.89",
+            bedrag_extern="279.51",
+        ),
+        _afw(
+            "documenten",
+            "status_wijkt_af",
+            AID_B,
+            "d4",
+            "RLZ-status=1",
+            leverancier_naam="Spot Services",
+            factuurnummer="2026-608",
+        ),
+        _afw(
+            "documenten",
+            "status_niet_definitief",
+            AID_B,
+            "d4b",
+            "status 1",
+            leverancier_naam="DCTE",
+            factuurnummer="202611050",
+        ),
+        _afw(
+            "documenten",
+            "boekstuknummer_wijkt_af",
+            AID_A,
+            "d5",
+            "eigen=RLZ-01-1 rlz=RLZ-01-2",
+            leverancier_naam="BDO",
+            factuurnummer="6088744",
+        ),
+        _afw(
+            "documenten", "controle_mislukt", AID_A, "d6", "HTTP 500", leverancier_naam="Floor", factuurnummer="26219"
+        ),
+        _afw(
+            "documenten",
+            "controle_mislukt",
+            AID_A,
+            "d6b",
+            "geen bewaarde RLZ-credential",
+            leverancier_naam="Floor",
+            factuurnummer="26008",
+            rlz_verleden=True,
+        ),
+        _afw(
+            "documenten",
+            "niet_geboekt_in_odoo",
+            AID_A,
+            "d7",
+            "draft",
+            leverancier_naam="Universal Nederland",
+            factuurnummer="RLZ-2080143037",
+            backend="odoo",
+            extern_state="draft",
+        ),
+        _afw(
+            "documenten",
+            "teruggedraaid_in_odoo",
+            AID_A,
+            "d8",
+            "reversal",
+            leverancier_naam="Universal Nederland",
+            factuurnummer="RLZ-2080143038",
+            backend="odoo",
+        ),
         _afw("documenten", "onbekende_soort_xyz", AID_A, "d9", f"iets met {DOC}"),
-        _afw("bank", "document_ontbreekt_in_rlz", AID_A, "b1", "404", tegenpartij_naam="Bouwmaat", mutatie_bedrag="-1234.5", mutatie_datum="2026-09-01", rekening_naam="ING zakelijk"),
-        _afw("bank", "boeking_teruggedraaid_in_rlz", AID_A, "b2", "Status=1", tegenpartij_naam="Bouwmaat", mutatie_bedrag="-12.5", mutatie_datum="2026-09-02"),
-        _afw("bank", "mutatie_ontbreekt_in_rlz", AID_A, "b3", "404", tegenpartij_naam="Gamma", mutatie_bedrag="-99.99", mutatie_datum="2026-09-03"),
-        _afw("bank", "aflettering_teruggedraaid_in_rlz", AID_A, "b4", "OpenAmount=50.00", tegenpartij_naam="Gamma", mutatie_bedrag="-50", mutatie_datum="2026-09-04", referentie="F-1"),
+        _afw(
+            "bank",
+            "document_ontbreekt_in_rlz",
+            AID_A,
+            "b1",
+            "404",
+            tegenpartij_naam="Bouwmaat",
+            mutatie_bedrag="-1234.5",
+            mutatie_datum="2026-09-01",
+            rekening_naam="ING zakelijk",
+        ),
+        _afw(
+            "bank",
+            "boeking_teruggedraaid_in_rlz",
+            AID_A,
+            "b2",
+            "Status=1",
+            tegenpartij_naam="Bouwmaat",
+            mutatie_bedrag="-12.5",
+            mutatie_datum="2026-09-02",
+        ),
+        _afw(
+            "bank",
+            "mutatie_ontbreekt_in_rlz",
+            AID_A,
+            "b3",
+            "404",
+            tegenpartij_naam="Gamma",
+            mutatie_bedrag="-99.99",
+            mutatie_datum="2026-09-03",
+        ),
+        _afw(
+            "bank",
+            "aflettering_teruggedraaid_in_rlz",
+            AID_A,
+            "b4",
+            "OpenAmount=50.00",
+            tegenpartij_naam="Gamma",
+            mutatie_bedrag="-50",
+            mutatie_datum="2026-09-04",
+            referentie="F-1",
+        ),
         _afw("bank", "controle_mislukt", AID_A, "b5", "HTTP 503", tegenpartij_naam="Praxis"),
-        _afw("bank", "dubbele_betaling_vermoed", AID_A, "b6", "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 03-09) voor wat één factuur lijkt — controleer of terugvordering nodig is. [mutaties: 18-08, 03-09]",
-             tegenpartij_naam="Hello Kitchen Duiven", mutatie_bedrag="-12600.00", mutatie_datum="2026-09-03", tegenrekening_iban="NL91ABNA0417164632",
-             dubbele_betaling_datums=["2026-08-18", "2026-09-03"], dubbele_betaling_aantal=2, dubbele_betaling_bedrag="12600.00"),
-        _afw("omzet", "half_geboekt", AID_B, "o1", "Periode 2026-08-01 t/m 2026-08-31: verkoopfactuur staat geboekt zonder kostprijsmemoriaal", periode_start="2026-08-01", periode_eind="2026-08-31", totaal_omzet="15230.10"),
-        _afw("omzet", "ontbreekt_in_rlz", AID_B, "o2", "kostprijsmemoriaal 404", periode_start="2026-07-01", periode_eind="2026-07-31"),
-        _afw("omzet", "status_niet_definitief", AID_B, "o3", "verkoopfactuur Status=1", periode_start="2026-06-01", periode_eind="2026-06-30"),
+        _afw(
+            "bank",
+            "dubbele_betaling_vermoed",
+            AID_A,
+            "b6",
+            "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 03-09) voor wat één factuur lijkt — controleer of terugvordering nodig is. [mutaties: 18-08, 03-09]",
+            tegenpartij_naam="Hello Kitchen Duiven",
+            mutatie_bedrag="-12600.00",
+            mutatie_datum="2026-09-03",
+            tegenrekening_iban="NL91ABNA0417164632",
+            dubbele_betaling_datums=["2026-08-18", "2026-09-03"],
+            dubbele_betaling_aantal=2,
+            dubbele_betaling_bedrag="12600.00",
+        ),
+        _afw(
+            "omzet",
+            "half_geboekt",
+            AID_B,
+            "o1",
+            "Periode 2026-08-01 t/m 2026-08-31: verkoopfactuur staat geboekt zonder kostprijsmemoriaal",
+            periode_start="2026-08-01",
+            periode_eind="2026-08-31",
+            totaal_omzet="15230.10",
+        ),
+        _afw(
+            "omzet",
+            "ontbreekt_in_rlz",
+            AID_B,
+            "o2",
+            "kostprijsmemoriaal 404",
+            periode_start="2026-07-01",
+            periode_eind="2026-07-31",
+        ),
+        _afw(
+            "omzet",
+            "status_niet_definitief",
+            AID_B,
+            "o3",
+            "verkoopfactuur Status=1",
+            periode_start="2026-06-01",
+            periode_eind="2026-06-30",
+        ),
         _afw("omzet", "controle_mislukt", AID_B, "o4", "HTTP 500"),
-        _afw("doorbelasting", "half_geboekt", AID_A, "x1", "spiegel ontbreekt sinds 2026-08-20", doelentiteit_naam="Kempen Facilities B.V.", bedrag_lokaal="1000", leverancier_naam="Universal Nederland", factuurnummer="RLZ-2080143039"),
-        _afw("doorbelasting", "ontbreekt_in_rlz", AID_A, "x2", "verkoop 404", doelentiteit_naam="Kempen Facilities B.V.", verkoop_referentie="24713188"),
-        _afw("doorbelasting", "status_niet_definitief", AID_A, "x3", "spiegel Status=1", doelentiteit_naam="Kempen Facilities B.V."),
-        _afw("doorbelasting", "spiegel_open_verouderd", AID_A, "x4", "al 40 dagen open", doelentiteit_naam="A.Y. Holding 2 B.V."),
+        _afw(
+            "omzet",
+            "tussenrekening_open",
+            AID_B,
+            "o5",
+            "Omzetbatch 2026-7-9-ca834c16: Stripe/PSP-uitbetaling € 637.08 staat al 21 dagen zonder bankontvangst (grens 14 dagen; verwacht sinds 2026-07-09) — koppel de bankontvangst of accepteer met reden",
+            periode_start="2026-07-01",
+            periode_eind="2026-07-09",
+        ),
+        _afw(
+            "doorbelasting",
+            "half_geboekt",
+            AID_A,
+            "x1",
+            "spiegel ontbreekt sinds 2026-08-20",
+            doelentiteit_naam="Kempen Facilities B.V.",
+            bedrag_lokaal="1000",
+            leverancier_naam="Universal Nederland",
+            factuurnummer="RLZ-2080143039",
+        ),
+        _afw(
+            "doorbelasting",
+            "ontbreekt_in_rlz",
+            AID_A,
+            "x2",
+            "verkoop 404",
+            doelentiteit_naam="Kempen Facilities B.V.",
+            verkoop_referentie="24713188",
+        ),
+        _afw(
+            "doorbelasting",
+            "status_niet_definitief",
+            AID_A,
+            "x3",
+            "spiegel Status=1",
+            doelentiteit_naam="Kempen Facilities B.V.",
+        ),
+        _afw(
+            "doorbelasting",
+            "spiegel_open_verouderd",
+            AID_A,
+            "x4",
+            "al 40 dagen open",
+            doelentiteit_naam="A.Y. Holding 2 B.V.",
+        ),
         _afw("doorbelasting", "controle_mislukt", AID_A, "x5", "geen credentials", doelentiteit_naam="Abbegaa BV"),
-        _afw("rlz_dubbel", "dubbel_in_rlz", AID_B, "r1", "paar", leverancier_naam="Kader Consultancy", referentie_a="F1", referentie_b="F1",
-             boekstuk_a="RLZ-04-00004037", boekstuk_b="RLZ-04-00004099", datum_a="2026-06-22", bedrag_a="1234.56", status_a="1", van_module_a=True, regel="referentie", concept=True),
+        _afw(
+            "rlz_dubbel",
+            "dubbel_in_rlz",
+            AID_B,
+            "r1",
+            "paar",
+            leverancier_naam="Kader Consultancy",
+            referentie_a="F1",
+            referentie_b="F1",
+            boekstuk_a="RLZ-04-00004037",
+            boekstuk_b="RLZ-04-00004099",
+            datum_a="2026-06-22",
+            bedrag_a="1234.56",
+            status_a="1",
+            van_module_a=True,
+            regel="referentie",
+            concept=True,
+        ),
         # Blok B 16-09: intercompany-factuurmatch — één regel per soort (verkoper/ontvanger als namen, nooit id's).
-        _afw("intercompany", "ic_ontbreekt_bij_ontvanger", AID_B, "ic1", "paar=a>b nummer=2026-0123 bedrag=4500.00 datum=2026-08-14",
-             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0123",
-             bedrag_verkoop="4500.00", datum="2026-08-14", boekstuk_a="2026-0123"),
-        _afw("intercompany", "ic_ontbreekt_bij_verkoper", AID_A, "ic2", "paar=a>b nummer=24713300 bedrag=980.10 datum=2026-08-02",
-             verkoper_naam="Universal Steigerbouw B.V.", ontvanger_naam="Kempen Facilities B.V.", nummer="24713300",
-             bedrag_inkoop="980.10", datum="2026-08-02", boekstuk_b="RLZ-04-00004401"),
-        _afw("intercompany", "ic_bedrag_verschilt", AID_B, "ic3", "paar=a>b nummer=2026-0124 verkoop=4500.00 inkoop=4050.00 delta=450.00",
-             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0124",
-             bedrag_verkoop="4500.00", bedrag_inkoop="4050.00", delta="450.00", datum="2026-08-20", regel="nummer"),
-        _afw("intercompany", "ic_status_verschilt", AID_B, "ic4", "paar=a>b nummer=2026-0125 status_verkoop=2 status_inkoop=1",
-             verkoper_naam="Universal Verkoop B.V.", ontvanger_naam="Universal Nederland B.V.", nummer="2026-0125",
-             bedrag_verkoop="120.00", bedrag_inkoop="120.00", datum="2026-07-01", status_a="2", status_b="1", concept_kant="inkoop"),
+        _afw(
+            "intercompany",
+            "ic_ontbreekt_bij_ontvanger",
+            AID_B,
+            "ic1",
+            "paar=a>b nummer=2026-0123 bedrag=4500.00 datum=2026-08-14",
+            verkoper_naam="Universal Verkoop B.V.",
+            ontvanger_naam="Universal Nederland B.V.",
+            nummer="2026-0123",
+            bedrag_verkoop="4500.00",
+            datum="2026-08-14",
+            boekstuk_a="2026-0123",
+        ),
+        _afw(
+            "intercompany",
+            "ic_ontbreekt_bij_verkoper",
+            AID_A,
+            "ic2",
+            "paar=a>b nummer=24713300 bedrag=980.10 datum=2026-08-02",
+            verkoper_naam="Universal Steigerbouw B.V.",
+            ontvanger_naam="Kempen Facilities B.V.",
+            nummer="24713300",
+            bedrag_inkoop="980.10",
+            datum="2026-08-02",
+            boekstuk_b="RLZ-04-00004401",
+        ),
+        _afw(
+            "intercompany",
+            "ic_bedrag_verschilt",
+            AID_B,
+            "ic3",
+            "paar=a>b nummer=2026-0124 verkoop=4500.00 inkoop=4050.00 delta=450.00",
+            verkoper_naam="Universal Verkoop B.V.",
+            ontvanger_naam="Universal Nederland B.V.",
+            nummer="2026-0124",
+            bedrag_verkoop="4500.00",
+            bedrag_inkoop="4050.00",
+            delta="450.00",
+            datum="2026-08-20",
+            regel="nummer",
+        ),
+        _afw(
+            "intercompany",
+            "ic_status_verschilt",
+            AID_B,
+            "ic4",
+            "paar=a>b nummer=2026-0125 status_verkoop=2 status_inkoop=1",
+            verkoper_naam="Universal Verkoop B.V.",
+            ontvanger_naam="Universal Nederland B.V.",
+            nummer="2026-0125",
+            bedrag_verkoop="120.00",
+            bedrag_inkoop="120.00",
+            datum="2026-07-01",
+            status_a="2",
+            status_b="1",
+            concept_kant="inkoop",
+        ),
         # Blok C 16-09: rekening-courant sluit niet — verklaring (1 mutatie ontbreekt bij B) en niet-herleidbaar.
-        _afw("rekening_courant", "rc_sluit_niet", AID_B, "rc1", "rekening_a=1300 rekening_b=1600 delta=1250.00",
-             administratie_a_naam="Kempen B.V.", administratie_b_naam="Kempen Facilities B.V.", rekening_a_code="1300",
-             rekening_a_naam="Rekening-courant Kempen Facilities", rekening_b_code="1600", rekening_b_naam="Rekening-courant Kempen B.V.",
-             saldo_a="12500.00", saldo_b="-11250.00", delta="1250.00",
-             ontbreekt_bij_b=["12-09 € 1.250,00 'huur september' (RLZ-05-00000412)"], ontbreekt_bij_a=[], niet_herleidbaar=False),
-        _afw("rekening_courant", "rc_sluit_niet", AID_A, "rc2", "rekening_a=1310 rekening_b=1610 delta=0.37",
-             administratie_a_naam="Universal Steigerbouw B.V.", administratie_b_naam="Universal Nederland B.V.", rekening_a_code="1310",
-             rekening_b_code="1610", saldo_a="1000.37", saldo_b="-1000.00", delta="0.37", ontbreekt_bij_b=[], ontbreekt_bij_a=[], niet_herleidbaar=True),
+        _afw(
+            "rekening_courant",
+            "rc_sluit_niet",
+            AID_B,
+            "rc1",
+            "rekening_a=1300 rekening_b=1600 delta=1250.00",
+            administratie_a_naam="Kempen B.V.",
+            administratie_b_naam="Kempen Facilities B.V.",
+            rekening_a_code="1300",
+            rekening_a_naam="Rekening-courant Kempen Facilities",
+            rekening_b_code="1600",
+            rekening_b_naam="Rekening-courant Kempen B.V.",
+            saldo_a="12500.00",
+            saldo_b="-11250.00",
+            delta="1250.00",
+            ontbreekt_bij_b=["12-09 € 1.250,00 'huur september' (RLZ-05-00000412)"],
+            ontbreekt_bij_a=[],
+            niet_herleidbaar=False,
+        ),
+        _afw(
+            "rekening_courant",
+            "rc_sluit_niet",
+            AID_A,
+            "rc2",
+            "rekening_a=1310 rekening_b=1610 delta=0.37",
+            administratie_a_naam="Universal Steigerbouw B.V.",
+            administratie_b_naam="Universal Nederland B.V.",
+            rekening_a_code="1310",
+            rekening_b_code="1610",
+            saldo_a="1000.37",
+            saldo_b="-1000.00",
+            delta="0.37",
+            ontbreekt_bij_b=[],
+            ontbreekt_bij_a=[],
+            niet_herleidbaar=True,
+        ),
     ]
     let_op = [
-        _b("doorbelasting", "let_op", AID_A, "l1", f"LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron {DOC} in administratie {AID_A}",
-           kant="verkoop_bron", reden="gestorneerd", referentie="24713188", leverancier_naam="Universal Nederland", factuurnummer="RLZ-2080143037"),
-        _b("doorbelasting", "let_op", AID_B, "l2", f"LET-OP     opruimlijst: administratie {AID_B}: HTTP 500", reden="opruimlijst_fout"),
+        _b(
+            "doorbelasting",
+            "let_op",
+            AID_A,
+            "l1",
+            f"LET-OP     opruim-kandidaat [gestorneerd] verkoop_bron {DOC} in administratie {AID_A}",
+            kant="verkoop_bron",
+            reden="gestorneerd",
+            referentie="24713188",
+            leverancier_naam="Universal Nederland",
+            factuurnummer="RLZ-2080143037",
+        ),
+        _b(
+            "doorbelasting",
+            "let_op",
+            AID_B,
+            "l2",
+            f"LET-OP     opruimlijst: administratie {AID_B}: HTTP 500",
+            reden="opruimlijst_fout",
+        ),
         _b("documenten", "let_op", AID_B, "l3", f"LET-OP     iets onbekends bij {DOC}"),
-        _b("rekening_courant", "let_op", AID_B, "l4", f"LET-OP     Kempen Facilities B.V. 1600 ↔ Kempen B.V. (geen tegenrekening): RC zonder tegenrekening (koppeling {DOC})",
-           afwijking_soort="rc_zonder_tegenrekening", rc_zonder_tegenrekening=True, administratie_a_naam="Kempen Facilities B.V.",
-           administratie_b_naam="Kempen B.V.", rekening_a_code="1600", rekening_a_naam="Rekening-courant Kempen B.V.", doel_pad="/instellingen/boeken"),
+        _b(
+            "rekening_courant",
+            "let_op",
+            AID_B,
+            "l4",
+            f"LET-OP     Kempen Facilities B.V. 1600 ↔ Kempen B.V. (geen tegenrekening): RC zonder tegenrekening (koppeling {DOC})",
+            afwijking_soort="rc_zonder_tegenrekening",
+            rc_zonder_tegenrekening=True,
+            administratie_a_naam="Kempen Facilities B.V.",
+            administratie_b_naam="Kempen B.V.",
+            rekening_a_code="1600",
+            rekening_a_naam="Rekening-courant Kempen B.V.",
+            doel_pad="/instellingen/boeken",
+        ),
         _auto_let_op(auto.CREDENTIAL, AID_A, auto.BANK_SYNC),
         _auto_let_op(auto.API_KEY, None, auto.EXTRACTIE_WACHTRIJ),
         _auto_let_op(auto.GELDPOORT, AID_B),
@@ -158,8 +472,18 @@ def _fixture_set() -> Delta:
         _auto_let_op(auto.GEEN_EIGENAAR, AID_A, auto.DUPLICAAT_AFVOER, aantal=155),
         _auto_let_op(auto.VANGNET_SCHEDULER, None, auto.EXTRACTIE_WACHTRIJ),
         _auto_let_op(auto.GEEN_SYNC_RUN, None, auto.BANK_SYNC),
-        _b(auto.BLOK, "let_op", None, "stil", "LET-OP     automatisering terugkerend: 7 dagen 0 gedaan", automatisering=auto.TERUGKEREND,
-           automatisering_label=auto.LABEL[auto.TERUGKEREND], reden=auto.STIL_7_DAGEN, aantal=9, stand="altijd"),
+        _b(
+            auto.BLOK,
+            "let_op",
+            None,
+            "stil",
+            "LET-OP     automatisering terugkerend: 7 dagen 0 gedaan",
+            automatisering=auto.TERUGKEREND,
+            automatisering_label=auto.LABEL[auto.TERUGKEREND],
+            reden=auto.STIL_7_DAGEN,
+            aantal=9,
+            stand="altijd",
+        ),
     ]
     fouten = [
         _b("documenten", "fout", AID_A, "f1", f"FOUT       {AID_A}: 401 Unauthorized", fout="401 Unauthorized"),
@@ -172,7 +496,9 @@ def _fixture_set() -> Delta:
         nieuwe_let_op=let_op,
         nieuwe_fouten=fouten,
         nieuwe_geaccepteerd=[_afw("documenten", "ontbreekt_in_rlz", AID_A, "g1", "404", leverancier_naam="Oud BV")],
-        verdwenen_afwijkingen=[_afw("documenten", "bedrag_wijkt_af", AID_A, "h1", "eigen=€1 rlz=€2", leverancier_naam="Hersteld BV")],
+        verdwenen_afwijkingen=[
+            _afw("documenten", "bedrag_wijkt_af", AID_A, "h1", "eigen=€1 rlz=€2", leverancier_naam="Hersteld BV")
+        ],
         blokken_fout=["bank"],
     )
 
@@ -180,11 +506,42 @@ def _fixture_set() -> Delta:
 GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 #: Kale blok-sleutels (de mail zegt "bankmutatie", nooit "bank" als sleutel) en teller-/jargonwoorden.
 BLOK_SLEUTELS = (
-    "documenten", "bank", "omzet", "doorbelasting", "automatisering", "rlz_dubbel", "rekening_courant", "intercompany",
+    "documenten",
+    "bank",
+    "omzet",
+    "doorbelasting",
+    "automatisering",
+    "rlz_dubbel",
+    "rekening_courant",
+    "intercompany",
 )
 TELLER_WOORDEN = ("verwacht", "gedaan", "overgeslagen", "exit")
-JARGON = ("vingerafdruk", "delta", "bevinding-id", "json", "http", "4xx", "5xx", "vaf:", "run-id", "run_id", "let-op", "regressie")
-WERKWOORDEN = ("vraagt", "vragen", "bekijken", "afhandelen", "liep", "verdwenen", "afwijkt", "teruggezet", "mislukt", "wacht")
+JARGON = (
+    "vingerafdruk",
+    "delta",
+    "bevinding-id",
+    "json",
+    "http",
+    "4xx",
+    "5xx",
+    "vaf:",
+    "run-id",
+    "run_id",
+    "let-op",
+    "regressie",
+)
+WERKWOORDEN = (
+    "vraagt",
+    "vragen",
+    "bekijken",
+    "afhandelen",
+    "liep",
+    "verdwenen",
+    "afwijkt",
+    "teruggezet",
+    "mislukt",
+    "wacht",
+)
 
 
 class TestActiemailGuard:
@@ -210,13 +567,23 @@ class TestActiemailGuard:
         assert len(linkregels) == 1 and linkregels[0].startswith("Bekijken en afhandelen: http")
         laag = "\n".join(r for r in alles.splitlines() if r not in linkregels).lower()
         for woord in (*TELLER_WOORDEN, *JARGON):
-            assert not re.search(rf"(?<![a-z]){re.escape(woord)}(?![a-z])", laag), f"jargon/teller-woord '{woord}' in:\n{alles}"
+            assert not re.search(rf"(?<![a-z]){re.escape(woord)}(?![a-z])", laag), (
+                f"jargon/teller-woord '{woord}' in:\n{alles}"
+            )
         # Blok-sleutels mogen alleen als gewoon woord in een zin voorkomen ("in de bank" mag niet — de titels zeggen
         # "Bankboeking"/"Bankmutatie"); toets op de kale sleutel als apart token.
         for sleutel in BLOK_SLEUTELS:
             assert not re.search(rf"(?<![a-z]){sleutel}(?![a-z])", laag), f"kale blok-sleutel '{sleutel}' in:\n{alles}"
         # Geen systeemmail-onderdelen.
-        for verboden in ("Per blok", "Automatiseringen", "geaccepteerd", "Hersteld", "technisch", "Run-id", "niet gedraaid"):
+        for verboden in (
+            "Per blok",
+            "Automatiseringen",
+            "geaccepteerd",
+            "Hersteld",
+            "technisch",
+            "Run-id",
+            "niet gedraaid",
+        ):
             assert verboden.lower() not in laag, verboden
 
     def test_regels_kort_leesbaar_en_met_werkwoorden(self) -> None:
@@ -233,7 +600,9 @@ class TestActiemailGuard:
         bevindingsregels = [r for r in regels if r.startswith("- ") and not r.startswith("- en ")]
         assert len(bevindingsregels) == run_service.MAX_ACTIE_REGELS
         assert f"- en {n - run_service.MAX_ACTIE_REGELS} andere" in regels
-        assert sum("/reconciliatie" in r for r in regels) == 1 and any(r.startswith("Bekijken en afhandelen: ") for r in regels)
+        assert sum("/reconciliatie" in r for r in regels) == 1 and any(
+            r.startswith("Bekijken en afhandelen: ") for r in regels
+        )
         # Een omgevallen blok → eerlijke slotregel i.p.v. "Verder liep alles."
         assert "Verder liep alles." not in tekst and "niet gelopen" in tekst
         # Vorm van een regel: administratie vooraan, de afwijking achteraan, de leverancier ertussen.
@@ -249,7 +618,9 @@ class TestActiemailGuard:
             assert "vaf:" not in regel and "[" not in regel
 
     def test_slotregel_verder_liep_alles_zonder_omgevallen_blok(self) -> None:
-        uit = bouw_actiemail(bevindingen=[_afw("documenten", "bedrag_wijkt_af", AID_A, "z", leverancier_naam="X")], namen=NAMEN)
+        uit = bouw_actiemail(
+            bevindingen=[_afw("documenten", "bedrag_wijkt_af", AID_A, "z", leverancier_naam="X")], namen=NAMEN
+        )
         assert uit is not None
         assert uit[0] == "Boekhouding: 1 zaak vraagt je aandacht" and "Verder liep alles." in uit[1]
         assert "- en " not in uit[1]
@@ -276,21 +647,31 @@ class TestActiemailGuard:
         assert not alleen_beheer.is_leeg and actie_bevindingen(alleen_beheer) == []
 
     def test_regressie_tekst_in_systeemmail_en_ui_is_systeemfout_automatisch_gemeld(self) -> None:
-        lees = teksten.leesbaar(_auto_let_op(auto.GEEN_EIGENAAR, AID_A, auto.DUPLICAAT_AFVOER, aantal=155), administratie_naam=NAMEN[AID_A])
+        lees = teksten.leesbaar(
+            _auto_let_op(auto.GEEN_EIGENAAR, AID_A, auto.DUPLICAAT_AFVOER, aantal=155), administratie_naam=NAMEN[AID_A]
+        )
         assert lees.doe == "Systeemfout — automatisch gemeld."
         assert "meld de regressie" not in (lees.titel + lees.wat + lees.doe).lower()
         # De systeemmail draagt dezelfde tekst (één bron met de UI) en géén "meld de regressie".
         _, tekst = run_service.bouw_mail(
-            run_id=uuid.uuid4(), bron="scheduler", afgerond_op=datetime(2026, 9, 9, 4, 31, tzinfo=UTC), exit_code=0,
-            samenvatting={}, delta=Delta(nieuwe_let_op=[_auto_let_op(auto.GEEN_EIGENAAR, AID_A, auto.DUPLICAAT_AFVOER)]),
-            open_afwijkingen=0, namen=NAMEN,
+            run_id=uuid.uuid4(),
+            bron="scheduler",
+            afgerond_op=datetime(2026, 9, 9, 4, 31, tzinfo=UTC),
+            exit_code=0,
+            samenvatting={},
+            delta=Delta(nieuwe_let_op=[_auto_let_op(auto.GEEN_EIGENAAR, AID_A, auto.DUPLICAAT_AFVOER)]),
+            open_afwijkingen=0,
+            namen=NAMEN,
         )
         assert "→ Systeemfout — automatisch gemeld." in tekst and "meld de regressie" not in tekst.lower()
 
 
 class TestMailStatusSamengesteld:
     def test_heen_en_terug_en_legacy(self) -> None:
-        assert mail_status_samenstellen({"actie": "verzonden", "systeem": "niet_nodig"}) == "actie=verzonden;systeem=niet_nodig"
+        assert (
+            mail_status_samenstellen({"actie": "verzonden", "systeem": "niet_nodig"})
+            == "actie=verzonden;systeem=niet_nodig"
+        )
         assert mail_statussen("actie=verzonden;systeem=mislukt") == {"actie": "verzonden", "systeem": "mislukt"}
         assert mail_statussen("mislukt") == {"actie": "mislukt"}  # run van vóór 09-09
         assert mail_statussen(None) == {} and mail_statussen("") == {}
@@ -337,8 +718,13 @@ def _afwijking_kw(aid: uuid.UUID, vaf: str) -> dict:
         "administratie_id": aid,
         "vingerafdruk": vaf,
         "tekst": f"AFWIJKING  document={DOC} soort=bedrag_wijkt_af [vaf:{vaf}]: eigen=€1 rlz=€2",
-        "detail": {"bron": "documenten", "afwijking_soort": "bedrag_wijkt_af", "detail": "eigen=€1 rlz=€2",
-                   "leverancier_naam": "Kader Consultancy", "factuurnummer": "F212604921"},
+        "detail": {
+            "bron": "documenten",
+            "afwijking_soort": "bedrag_wijkt_af",
+            "detail": "eigen=€1 rlz=€2",
+            "leverancier_naam": "Kader Consultancy",
+            "factuurnummer": "F212604921",
+        },
     }
 
 
@@ -355,8 +741,14 @@ def _let_op_kw(aid: uuid.UUID, vaf: str) -> dict:
 
 def _regressie_kw(aid: uuid.UUID) -> dict:
     b = _auto_let_op(auto.GEEN_EIGENAAR, aid, auto.DUPLICAAT_AFVOER, aantal=6)
-    return {"soort": "let_op", "administratie_id": aid, "vingerafdruk": b.vingerafdruk, "tekst": b.tekst,
-            "detail": b.detail, "blok": auto.BLOK}
+    return {
+        "soort": "let_op",
+        "administratie_id": aid,
+        "vingerafdruk": b.vingerafdruk,
+        "tekst": b.tekst,
+        "detail": b.detail,
+        "blok": auto.BLOK,
+    }
 
 
 class TestTweeKanalen:
@@ -424,7 +816,9 @@ class TestTweeKanalen:
         assert rij.mail_status == "actie=verzonden;systeem=uitgeschakeld"
         assert "systeem: RECONCILIATIE_BEHEER_ONTVANGERS leeg — systeemmail uit" in (rij.mail_detail or "")
         assert rij.samenvatting["mail"] == {
-            "actie": "verzonden", "systeem": "uitgeschakeld", "systeem_uitgeschakeld": 1
+            "actie": "verzonden",
+            "systeem": "uitgeschakeld",
+            "systeem_uitgeschakeld": 1,
         }
         assert bewaking._probe_reconciliatie_mail().status == "ok"
         with scoped_session(None) as session:
@@ -471,7 +865,9 @@ class TestTweeKanalen:
         assert verzonden == ["Boekhouding: 2 zaken vragen je aandacht"]
         with scoped_session(None) as session:
             audit = session.scalars(
-                select(AuditEvent).where(AuditEvent.actie == "reconciliatie_mail_mislukt", AuditEvent.record_id == rij.id)
+                select(AuditEvent).where(
+                    AuditEvent.actie == "reconciliatie_mail_mislukt", AuditEvent.record_id == rij.id
+                )
             ).all()
         assert [a.nieuwe_waarde["kanaal"] for a in audit] == ["systeem"]
         # De bewaking herkent een storing op het systeemkanaal.
@@ -492,13 +888,18 @@ class TestTweeKanalen:
 
 
 class TestRegressie:
-    def test_regressie_let_op_geeft_audit_niet_in_actiemail_en_bewaking_alarmeert(self, administratie_id, mails) -> None:
+    def test_regressie_let_op_geeft_audit_niet_in_actiemail_en_bewaking_alarmeert(
+        self, administratie_id, mails
+    ) -> None:
         blokken = [("documenten", _blok([_regressie_kw(administratie_id)]))]
         assert run_service.voer_uit(blokken=blokken, args=ARGS, bron="cli", stdout=lambda t: None) == 0
         rij = _laatste_run()
         # Alleen de systeemmail (regressie = beheer-signaal), mét de tekst "systeemfout — automatisch gemeld".
         assert len(mails) == 1 and mails[0]["onderwerp"].startswith("[systeem]")
-        assert "Systeemfout — automatisch gemeld." in mails[0]["tekst"] and "meld de regressie" not in mails[0]["tekst"].lower()
+        assert (
+            "Systeemfout — automatisch gemeld." in mails[0]["tekst"]
+            and "meld de regressie" not in mails[0]["tekst"].lower()
+        )
         assert rij.mail_status == "actie=niet_nodig;systeem=verzonden"
         with scoped_session(None) as session:
             audit = session.scalars(
@@ -516,7 +917,11 @@ class TestRegressie:
         # Bewakingsprobe: storing binnen 24 u, daarna weer ok.
         nu = datetime.now(UTC)
         uitkomst = bewaking._probe_automatisering_regressie(nu)
-        assert uitkomst.status == "fout" and auto.DUPLICAAT_AFVOER in uitkomst.detail and auto.GEEN_EIGENAAR in uitkomst.detail
+        assert (
+            uitkomst.status == "fout"
+            and auto.DUPLICAAT_AFVOER in uitkomst.detail
+            and auto.GEEN_EIGENAAR in uitkomst.detail
+        )
         assert bewaking._probe_automatisering_regressie(nu + timedelta(hours=25)).status == "ok"
 
     def test_zonder_regressie_geen_audit(self, administratie_id, mails) -> None:

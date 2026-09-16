@@ -18,8 +18,12 @@ class OmzetRegelDto(BaseModel):
     omzet_ledger_id: uuid.UUID | None = None
     taxrate_id: uuid.UUID | None = None
     kostprijs_ledger_id: uuid.UUID | None = None
-    # 'mapping' (onthouden per administratie) | 'nieuw' (blokkerend tot ingesteld) | 'opgeslagen'.
+    # 'mapping' (onthouden per administratie) | 'nieuw' (blokkerend tot ingesteld) | 'default' | 'opgeslagen'.
     herkomst: str = "nieuw"
+    # Blok C/D (16-09): herkomst van de voorgestelde btw — 'mapping' | 'instelling' | 'default_laag' | 'default_hoog' |
+    # 'verlegd' | 'opgeslagen' | None; `btw_herkomst_detail` = chip-tekst ("Stripe · EU-dienst verlegd").
+    btw_herkomst: str | None = None
+    btw_herkomst_detail: str | None = None
 
 
 class OmzetVoorstelResponse(BaseModel):
@@ -40,18 +44,45 @@ class OmzetVoorstelResponse(BaseModel):
     bron_detail: dict | None = None
 
 
+class RekeningKeuzeDto(BaseModel):
+    ledger_id: uuid.UUID
+    code: str
+    naam: str
+
+
+class TariefKeuzeDto(BaseModel):
+    taxrate_id: uuid.UUID
+    naam: str | None = None
+    percentage: Decimal | None = None
+    is_verlegd: bool = False
+
+
 class OmzetBronInstellingenDto(BaseModel):
+    """Contract opdracht 4 (16-09): `omzet_instelling.bron_instellingen` additief + read-only `defaults` (wat de code
+    zou kiezen) en de keuzelijsten `rekeningen`/`tarieven` voor de comboboxen — geen extra routes nodig."""
+
     stores: list[str] = []
     product_categorieen: dict[str, str] = {}
-    psp: dict = {}
-    rekeningen: dict = {}
+    tegenrekeningen: dict[str, uuid.UUID | None] = {}
+    categorie_btw: dict[str, uuid.UUID | None] = {}
+    combi_regel: str = "pro_rato_batch"
+    psp: str | None = "stripe"
+    psp_kosten_ledger_id: uuid.UUID | None = None
+    eten_drinken_tarief: str = "laag"
+    defaults: dict = {}
+    rekeningen: list[RekeningKeuzeDto] = []
+    tarieven: list[TariefKeuzeDto] = []
 
 
 class OmzetBronInstellingenInput(StrikteInvoer):
     stores: list[str] = []
     product_categorieen: dict[str, str] = {}
-    psp: dict = {}
-    rekeningen: dict = {}
+    tegenrekeningen: dict[str, uuid.UUID | None] = {}
+    categorie_btw: dict[str, uuid.UUID | None] = {}
+    combi_regel: str | None = None
+    psp: str | None = None
+    psp_kosten_ledger_id: uuid.UUID | None = None
+    eten_drinken_tarief: str | None = None
 
 
 class OmzetVoorstelMetChecksResponse(BaseModel):

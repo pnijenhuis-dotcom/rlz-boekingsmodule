@@ -18,6 +18,7 @@ import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
+import { OmzetBronnenBlok } from './OmzetBronnenBlok'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
 import { LeverancierProjectverdeling, ProjectverdelingInstellingen } from './ProjectverdelingInstellingen'
 import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
@@ -338,6 +339,9 @@ export function AdministratieDetailPagina({
               wachttijd "inkoop zonder omzet" — Beheerder-only. */}
           <LeverancierProjectverdeling administratieId={a.id} />
           <ProjectverdelingInstellingen administratieId={a.id} naam={a.naam} />
+          {/* Omzetbronnen (besluiten Peter 16-09 blok B): stores, tegenrekening per betaalwijze, categorie/btw, combi, PSP —
+              Beheerder-only PUT; anker `#omzetbronnen` (registry-entry 'omzetbronnen'). */}
+          <OmzetBronnenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
         </div>
       )}
 

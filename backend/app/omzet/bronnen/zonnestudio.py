@@ -5,16 +5,21 @@ labels/celposities, harde controles (regelsom = Grand Total, deposit-som = gross
 ONVOLLEDIG, zichtbaar, niet boeken.
 
 Lezing van het voorbeeld 8-9-26.xls (Elderveld): "Sales Analysis Summary" per categorie QTY/Net/Service VAT/Product
-VAT/Gross — Points Total 250,00 (verkochte punten = vooruitontvangen, mapping naar een BALANSrekening, 0 %), Products
-288,45 + 60,58 = 349,03, Tanning (Walk-ins) 347,12 + 72,88 = 420,00, Grand Total 885,57 / 133,46 / 1.019,03; "Deposit
-Analysis" Cash 86,81, PIN 932,22, Punten 0 → 1.019,03; "Points Redeemed" 921 (eenheid = STAP-0-vraag klant); "Store
-Used: Elderveld". Kascheck: beginsaldo 198,20, telling 286,00, storting automaat 80,00, eindsaldo na storting 206,00,
-contante omzet 87,80 (≠ Cash POS 86,81 → kasverschil 0,99 = oranje signaal).
+VAT/Gross — Points Total 250,00, Products 288,45 + 60,58 = 349,03, Tanning (Walk-ins) 347,12 + 72,88 = 420,00, Grand
+Total 885,57 / 133,46 / 1.019,03; "Deposit Analysis" Cash 86,81, PIN 932,22, Punten 0 → 1.019,03; "Points Redeemed"
+921; "Store Used: Elderveld". Kascheck: beginsaldo 198,20, telling 286,00, storting automaat 80,00, eindsaldo na
+storting 206,00, contante omzet 87,80 (≠ Cash POS 86,81 → kasverschil 0,99 = oranje signaal).
+
+PUNTEN (besluit Peter 16-09, herziet 15-09 "vooruitontvangen"): een zonnebankpunt is een single-purpose voucher (één
+dienst, één btw-tarief) → btw en omzet zijn verschuldigd bij VERKOOP. De categorie Points is dus gewone omzet zonnebank
+21 % (bedrag incl. btw, de motor splitst deterministisch) op de dag van verkoop; "Points Redeemed" wordt genegeerd
+(geen boeking, geen vooruitontvangen-post, geen check) en blijft alleen informatief in `bron_detail`. De vroegere
+blokkerende controle "Puntenwaarde bekend" is VERVALLEN; kascheck en categorie-sluitcontroles blijven.
 
 Boekmodel: één Receipt per dag per studio via de bestaande omzetmotor (regels per categorie, kassabedragen inclusief
-btw); de tegenzijde per betaalwijze is RLZ's eigen afletterpad — PIN-ontvangst en kasboeking letteren de open Receipt
-af (deel- betalingen). `bron_detail.betaalwijzen` draagt de bedragen voor die aflettering; kasverschil boekt nooit
-automatisch."""
+btw). De tegenzijde per betaalwijze (PIN → tegenrekening, Cash → kas, storting automaat = kas → bank, kasverschil →
+kasverschillen) leeft in `bron_detail.tegenzijde` (app/omzet/bronnen/tegenzijde.py) en wordt door de bank-matchmotor
+tegen de echte ontvangst gelegd; kasverschil boekt nooit automatisch."""
 
 from __future__ import annotations
 
@@ -250,15 +255,7 @@ def _controles_dagstaat(s: Dagstaat) -> list[Controle]:
             f"betaalwijzen {dict((k, str(v)) for k, v in s.betaalwijzen.items())} som {dep_som} vs gross {s.grand_bruto}",  # noqa: E501
         )
     )
-    uit.append(
-        Controle(
-            "Puntenwaarde bekend",
-            not ((s.points_redeemed or 0) > 0),
-            f"Points Redeemed {s.points_redeemed}: eenheid/waarde per punt is een STAP-0-vraag aan de klant — tot dan niet boeken"  # noqa: E501
-            if (s.points_redeemed or 0) > 0
-            else "geen punten verbruikt",
-        )
-    )
+    # "Puntenwaarde bekend" (15-09) is VERVALLEN (besluit Peter 16-09): Points Redeemed is informatief, geen check.
     return uit
 
 
@@ -373,7 +370,9 @@ def bouw_veldvoorstel(dagstaat: Dagstaat | None, kascheck: Kascheck | None, *, b
                     "aantal": str(c.aantal) if c.aantal is not None else None,
                     "netto_pos": str(c.netto),
                     "btw_pos": str(c.btw),
-                    "balans": c.naam == CATEGORIE_PUNTEN,
+                    # Besluit Peter 16-09: punten = omzet zonnebank 21 % bij verkoop — geen balanspost meer.
+                    "balans": False,
+                    "btw_klasse_default": "hoog",
                 }
             )
         naamdatum = datum_uit_bestandsnaam(bestandsnaam) if bestandsnaam else None

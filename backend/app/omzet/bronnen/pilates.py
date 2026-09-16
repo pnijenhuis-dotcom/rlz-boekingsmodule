@@ -26,12 +26,20 @@ CATEGORIE_PILATES = "Pilateslessen"
 CATEGORIE_YOGA = "Yoga"
 CATEGORIE_KLEDING = "Kleding & producten"
 CATEGORIE_ETEN = "Eten/drinken"
-CATEGORIE_COMBI_BESLISPUNT = "combi Abonnement"
+#: Besluit Peter 16-09 ("Combi verdelen pro rato"): het product "combi Abonnement" is een pseudo-categorie die bij het
+#: bouwen van het veldvoorstel pro rato over Pilateslessen en Yoga wordt verdeeld (basis: netto-omzet van diezelfde
+#: categorieën in DEZELFDE batch → laatste 30 dagen → 50/50 mét oranje signaal), cent-exact, restcent op de grootste.
+CATEGORIE_COMBI = "combi Abonnement"
+CATEGORIE_COMBI_BESLISPUNT = CATEGORIE_COMBI  # naam uit 15-09 blijft importeerbaar
+COMBI_REGEL_PRO_RATO = "pro_rato_batch"
+COMBI_BASIS_BATCH = "batch"
+COMBI_BASIS_HISTORIE = "historie_30d"
+COMBI_BASIS_50_50 = "50_50"
 _TOL = Decimal("0.01")
 
 #: Default-voorstel productnaam → categorie (per administratie instelbaar; onbekend = blokkerende check).
-#: "combi Abonnement" = BESLISPUNT Peter (Pilates, Yoga of vaste verdeelsleutel) — tot dan blokkerend als onbekend.
 DEFAULT_PRODUCT_CATEGORIEEN: dict[str, str] = {
+    "combi abonnement": CATEGORIE_COMBI,
     "onbeperkt abonnement": CATEGORIE_PILATES,
     "5 rittenkaart": CATEGORIE_PILATES,
     "10 rittenkaart": CATEGORIE_PILATES,
@@ -262,18 +270,46 @@ def bouw_batch_veldvoorstel(
     product_categorieen: dict[str, str] | None = None,
     al_geboekte_factuurnummers: set[str] | None = None,
     bestandsnaam: str | None = None,
+    combi_regel: str = COMBI_REGEL_PRO_RATO,
+    combi_historie_basis: dict[str, Decimal] | None = None,
 ) -> dict:
+    """Veldvoorstel van één uitbetaling. `combi_regel` (besluit Peter 16-09): 'pro_rato_batch' verdeelt het product
+    "combi Abonnement" pro rato over Pilateslessen en Yoga; `combi_historie_basis` = netto-omzet per categorie van de
+    laatste 30 dagen (terugval als de batch zelf geen basis heeft); zonder beide → 50/50 mét oranje controle."""
     per_categorie: dict[str, Decimal] = defaultdict(Decimal)
     onbekend: dict[str, Decimal] = defaultdict(Decimal)
     disputes: list[dict] = []
+    combi_bedrag = Decimal(0)
+    combi_transacties = 0
     for t in batch.transacties:
         cat = categorie_voor(t.product, product_categorieen)
-        if cat is None:
+        if cat == CATEGORIE_COMBI and combi_regel == COMBI_REGEL_PRO_RATO:
+            combi_bedrag += t.bedrag
+            combi_transacties += 1
+            if t.dispute:
+                disputes.append(
+                    {"factuurnummer": t.factuurnummer, "bedrag": str(t.bedrag), "categorie": cat, "fee": str(t.kosten)}
+                )
+            continue
+        if cat is None or cat == CATEGORIE_COMBI:
             onbekend[t.product or "(zonder productnaam)"] += t.bedrag
             cat = t.product or "(zonder productnaam)"
         per_categorie[cat] += t.bedrag
         if t.dispute:
-            disputes.append({"factuurnummer": t.factuurnummer, "bedrag": str(t.bedrag), "categorie": cat})
+            # Blok D: de dispute-fee zit in `kosten` en telt dus al mee in de regel "Transactiekosten PSP".
+            disputes.append(
+                {"factuurnummer": t.factuurnummer, "bedrag": str(t.bedrag), "categorie": cat, "fee": str(t.kosten)}
+            )
+    combi_verdeling: dict | None = None
+    if combi_transacties:
+        combi_verdeling = _verdeel_combi(
+            combi_bedrag.quantize(_TOL),
+            batch_basis={k: per_categorie.get(k, Decimal(0)) for k in (CATEGORIE_PILATES, CATEGORIE_YOGA)},
+            historie_basis=combi_historie_basis,
+        )
+        combi_verdeling["transacties"] = combi_transacties
+        for cat, deel in combi_verdeling["verdeling"].items():
+            per_categorie[cat] += Decimal(deel)
     regels = [
         {
             "categorie": cat,
@@ -340,7 +376,29 @@ def bouw_batch_veldvoorstel(
                 Controle(
                     "Disputes/terugbetalingen",
                     True,
-                    f"{len(disputes)} negatieve transactie(s) in de categorie van het product",
+                    f"{len(disputes)} negatieve transactie(s) in de categorie van het product; de dispute-fee "
+                    "telt mee in de transactiekosten",
+                    blokkerend=False,
+                )
+            )
+        )
+    if combi_verdeling is not None:
+        basis = combi_verdeling["basis"]
+        controles.append(
+            asdict(
+                Controle(
+                    "Combi-verdeling Pilates/Yoga",
+                    basis != COMBI_BASIS_50_50,
+                    (
+                        f"combi Abonnement € {combi_verdeling['bedrag']} pro rato verdeeld op basis van "
+                        + {
+                            COMBI_BASIS_BATCH: "de netto-omzet Pilates/Yoga in deze uitbetaling",
+                            COMBI_BASIS_HISTORIE: "de netto-omzet Pilates/Yoga van de laatste 30 dagen",
+                            COMBI_BASIS_50_50: "50/50 — geen omzetbasis in deze batch of de laatste 30 dagen",
+                        }[basis]
+                        + ": "
+                        + ", ".join(f"{k} € {v}" for k, v in combi_verdeling["verdeling"].items())
+                    ),
                     blokkerend=False,
                 )
             )
@@ -380,11 +438,40 @@ def bouw_batch_veldvoorstel(
             "transactie_ids": sorted(transactie_sleutel(t) for t in batch.transacties),
             "betaalmethoden": dict(sorted(_tel(t.methode for t in batch.transacties).items())),
             "disputes": disputes,
+            "combi_verdeling": combi_verdeling,
             "onbekende_producten": sorted(onbekend),
             "controles": controles,
             "sluit": all(c["ok"] for c in controles if c["blokkerend"]),
             "bestandsnaam": bestandsnaam,
         },
+    }
+
+
+def _verdeel_combi(
+    bedrag: Decimal, *, batch_basis: dict[str, Decimal], historie_basis: dict[str, Decimal] | None
+) -> dict:
+    """Drie takken, deterministisch: batch-basis → historie-basis (30 d) → 50/50. Cent-exact via
+    `tegenzijde.verdeel_pro_rato` (restcent op de grootste basis)."""
+    from app.omzet.bronnen.tegenzijde import verdeel_pro_rato
+
+    for basis_naam, basis in ((COMBI_BASIS_BATCH, batch_basis), (COMBI_BASIS_HISTORIE, historie_basis or {})):
+        verdeling = verdeel_pro_rato(bedrag, {k: basis.get(k, Decimal(0)) for k in (CATEGORIE_PILATES, CATEGORIE_YOGA)})
+        if verdeling:
+            totaal = sum(v for v in basis.values() if v and v > 0)
+            return {
+                "bedrag": str(bedrag),
+                "basis": basis_naam,
+                "aandeel": {
+                    k: str((Decimal(basis.get(k, 0) or 0) / totaal).quantize(Decimal("0.0001"))) for k in verdeling
+                },
+                "verdeling": {k: str(v) for k, v in sorted(verdeling.items())},
+            }
+    verdeling = verdeel_pro_rato(bedrag, {CATEGORIE_PILATES: Decimal(1), CATEGORIE_YOGA: Decimal(1)})
+    return {
+        "bedrag": str(bedrag),
+        "basis": COMBI_BASIS_50_50,
+        "aandeel": {CATEGORIE_PILATES: "0.5000", CATEGORIE_YOGA: "0.5000"},
+        "verdeling": {k: str(v) for k, v in sorted(verdeling.items())},
     }
 
 

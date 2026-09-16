@@ -576,6 +576,28 @@ def historie_naar_boekregels(
     ]
 
 
+def omzetbatch_naar_boekregels(
+    *, voorstel: matchmotor.Voorstel, mutatie: matchmotor.MutatieGegevens
+) -> list[BankBoekRegelInput]:
+    """Omzetbatch-post mét tegenrekening (storting kas → bank, opdracht 4 blok A): één regel op de kas-tegenrekening
+    voor het OPEN bedrag, zonder btw (balansrekening). Een omzetbatch-post mét open post (PIN/Stripe) heeft geen
+    boekregels: die loopt via aflettering."""
+    bedrag = mutatie.te_verwerken_bedrag
+    if voorstel.ledger_id is None or voorstel.payment_item_id is not None or bedrag is None:
+        return []
+    from app.omzet.tegenzijde_posten import bankboeking_omschrijving
+
+    return [
+        BankBoekRegelInput(
+            ledger_id=voorstel.ledger_id,
+            netto_bedrag=bedrag,
+            btw_bedrag=None,
+            taxrate_id=None,
+            omschrijving=bankboeking_omschrijving(voorstel.omzetbatch_post) if voorstel.omzetbatch_post else None,
+        )
+    ]
+
+
 @dataclass
 class AutomatischResultaat:
     """Uitkomst van één automatische verwerkingsronde: geboekt, fouten (boekpad), overgeslagen (AI-poort: alleen nog
@@ -609,6 +631,17 @@ def bouw_ai_invoer(context, mutatie: matchmotor.MutatieGegevens, voorstel: match
         regel = context.regel_per_id[voorstel.regel_id]
         ledger_id, taxrate_id, soort = regel.ledger_id, regel.taxrate_id, SOORT_BANK_VASTE_REGEL
         samenvatting = "vaste regel, door een mens bevestigd voor deze tegenpartij"
+    elif voorstel.soort == matchmotor.VoorstelSoort.OMZETBATCH_POST:
+        # Opdracht 4 blok A (16-09): storting kas → bank uit de kascheck van een geboekte omzetdag — deterministische
+        # regel (bedrag + datumvenster + omschrijvingskern), getoetst als 'vaste regel'-soort.
+        p = voorstel.omzetbatch_post
+        ledger_id, taxrate_id, soort = voorstel.ledger_id, None, SOORT_BANK_VASTE_REGEL
+        samenvatting = (
+            f"tegenzijde van geboekte omzetbatch {p.batch_label} ({p.label}): storting uit de kascheck, bedrag "
+            f"cent-exact, bankdatum binnen het venster"
+            if p is not None
+            else "tegenzijde van een geboekte omzetbatch"
+        )
     else:
         ledger_id, taxrate_id, soort = voorstel.ledger_id, voorstel.taxrate_id, SOORT_BANK_HISTORIE
         samenvatting = historie_regel.historie_samenvatting(
@@ -705,6 +738,16 @@ def verwerk_automatisch(*, administratie_id: uuid.UUID, client: RlzClient) -> Au
                 btw_percentage=context.btw_percentage_per_taxrate.get(voorstel.taxrate_id),
             )
             omschrijving = f"Historie-regel: {mutatie.tegenpartij_naam or ''}".strip()
+        elif (
+            voorstel.soort == matchmotor.VoorstelSoort.OMZETBATCH_POST
+            and voorstel.kleur == "groen"
+            and voorstel.ledger_id is not None
+            and voorstel.payment_item_id is None
+        ):
+            # Opdracht 4 blok A: storting kas → bank op de kas-tegenrekening (PIN/Stripe lopen via aflettering,
+            # `afletteren.verwerk_exacte_matches_automatisch`).
+            regels = omzetbatch_naar_boekregels(voorstel=voorstel, mutatie=mutatie)
+            omschrijving = regels[0].omschrijving if regels else None
         else:
             continue
         if not regels:

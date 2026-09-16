@@ -218,7 +218,12 @@ class TestBank:
                 "Letter opnieuw af",
             ),
             ("controle_mislukt", "502", "Controle mislukt", "credentials"),
-            ("dubbele_betaling_vermoed", "Aan X is € 1,00 twee keer betaald", "Mogelijk dubbel betaald", "terugvordering"),
+            (
+                "dubbele_betaling_vermoed",
+                "Aan X is € 1,00 twee keer betaald",
+                "Mogelijk dubbel betaald",
+                "terugvordering",
+            ),
             ("onbekend", "x", "Afwijking in de bank", "accepteer met reden"),
         ],
     )
@@ -282,6 +287,22 @@ class TestOmzet:
     @pytest.mark.parametrize("soort", ["ontbreekt_in_rlz", "controle_mislukt", "onbekend"])
     def test_overige_omzet_soorten_schoon(self, soort) -> None:
         _schoon(leesbaar(self._omzet(soort, "verkoopfactuur")))
+
+    def test_tussenrekening_open_leesbaar(self) -> None:
+        b = _afwijking(
+            "omzet",
+            "tussenrekening_open",
+            "Omzetbatch 2026-7-9-ca834c16: Stripe/PSP-uitbetaling € 637.08 staat al 21 dagen zonder bankontvangst "
+            "(grens 14 dagen; verwacht sinds 2026-07-09) — koppel de bankontvangst of accepteer met reden",
+        )
+        b.tekst = (
+            f"AFWIJKING  {ADM} boeking={DOC} soort=tussenrekening_open [vaf:0123456789abcdef]: {b.detail['detail']}"
+        )
+        lb = leesbaar(b)
+        _schoon(lb)
+        assert lb.titel.startswith("Omzetontvangst nog niet op de bank — 2026-7-9-ca834c16")
+        assert "€ 637,08" in lb.wat and "21 dagen" in lb.wat
+        assert lb.doe.startswith("Koppel de bankontvangst")
 
 
 class TestDoorbelasting:

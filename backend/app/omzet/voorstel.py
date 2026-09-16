@@ -56,8 +56,13 @@ class OmzetRegelData:
     taxrate_id: uuid.UUID | None
     kostprijs_ledger_id: uuid.UUID | None
     # Herkomst voor de UI-chips: 'mapping' (onthouden), 'nieuw' (geen mapping — blokkerend tot
-    # ingesteld) of 'opgeslagen' (uit een eerder opgeslagen voorstel).
+    # ingesteld), 'default' (PSP-kostenrekening op naam) of 'opgeslagen' (uit een eerder opgeslagen voorstel).
     herkomst: str
+    # Blok C/D (16-09): waar de voorgestelde btw vandaan komt — 'mapping' | 'instelling' (categorie_btw, mens) |
+    # 'default_laag' | 'default_hoog' | 'verlegd' (PSP-kosten Stripe: "Stripe · EU-dienst verlegd") | 'opgeslagen' |
+    # None (mens kiest). Chip-tekst in `btw_herkomst_detail`.
+    btw_herkomst: str | None = None
+    btw_herkomst_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,21 +134,120 @@ def _instelling(session: Session, administratie_id: uuid.UUID) -> OmzetInstellin
     return session.get(OmzetInstelling, administratie_id)
 
 
+@dataclass(frozen=True)
+class BtwDefaults:
+    """Btw-prefill van de omzetbronnen (blok C/D, 16-09): mens-override per categorie (`categorie_btw`) > mapping >
+    klasse-default (laag/hoog uit het RLZ-tarief van de administratie; PSP-kosten verlegd/hoog per `psp`) > leeg."""
+
+    categorie_btw: dict[str, uuid.UUID]
+    per_klasse: dict[str, uuid.UUID | None]
+    instellingen: dict
+    psp_kosten_ledger_id: uuid.UUID | None = None
+    verlegd_detail: str | None = None
+
+    def voor(self, sleutel: str | None, mapping: MappingData | None) -> tuple[uuid.UUID | None, str | None, str | None]:
+        from app.omzet.bronnen import tegenzijde as tz
+
+        if sleutel and sleutel in self.categorie_btw:
+            return self.categorie_btw[sleutel], "instelling", "btw ingesteld per categorie"
+        if mapping is not None:
+            return mapping.taxrate_id, "mapping", None
+        klasse = tz.btw_klasse_voor(sleutel, self.instellingen)
+        if klasse is None:
+            return None, None, None
+        taxrate_id = self.per_klasse.get(klasse)
+        if taxrate_id is None:
+            return None, None, None
+        if klasse == tz.BTW_VERLEGD:
+            return taxrate_id, "verlegd", tz.psp_btw_herkomst(tz.psp_naam(self.instellingen)) or self.verlegd_detail
+        if sleutel == tz.CATEGORIE_PSP_KOSTEN_SLEUTEL:
+            return taxrate_id, f"default_{klasse}", tz.psp_btw_herkomst(tz.psp_naam(self.instellingen))
+        return taxrate_id, f"default_{klasse}", f"standaard {klasse} tarief voor deze categorie"
+
+
+def _btw_defaults(session: Session, administratie_id: uuid.UUID) -> BtwDefaults:
+    from app.omzet.bronnen import service as bronnen_service
+
+    instellingen = bronnen_service.bron_instellingen_voor(session, administratie_id)
+    defaults = bronnen_service.defaults_voor(session, administratie_id, instellingen=instellingen)
+    categorie_btw: dict[str, uuid.UUID] = {}
+    for categorie, taxrate in (instellingen.get("categorie_btw") or {}).items():
+        sleutel = normaliseer_categorie_sleutel(categorie)
+        if sleutel and taxrate:
+            try:
+                categorie_btw[sleutel] = uuid.UUID(str(taxrate))
+            except ValueError:
+                continue
+    pk = instellingen.get("psp_kosten_ledger_id") or defaults.get("psp_kosten_ledger_id")
+    return BtwDefaults(
+        categorie_btw=categorie_btw,
+        per_klasse={k: (uuid.UUID(v) if v else None) for k, v in (defaults.get("btw_per_klasse") or {}).items()},
+        instellingen=instellingen,
+        psp_kosten_ledger_id=uuid.UUID(str(pk)) if pk else None,
+        verlegd_detail=defaults.get("verlegd_herkomst"),
+    )
+
+
 def _regel_uit_mapping(
-    *, categorie: str, omzet: Decimal | None, kostprijs: Decimal | None, mappings: dict[str, MappingData]
+    *,
+    categorie: str,
+    omzet: Decimal | None,
+    kostprijs: Decimal | None,
+    mappings: dict[str, MappingData],
+    btw_defaults: BtwDefaults | None = None,
 ) -> OmzetRegelData:
+    from app.omzet.bronnen import tegenzijde as tz
+
     sleutel = normaliseer_categorie_sleutel(categorie)
     mapping = mappings.get(sleutel) if sleutel else None
+    taxrate_id = mapping.taxrate_id if mapping else None
+    btw_herkomst = "mapping" if mapping else None
+    btw_detail = None
+    omzet_ledger_id = mapping.omzet_ledger_id if mapping else None
+    herkomst = "mapping" if mapping else "nieuw"
+    if btw_defaults is not None:
+        taxrate_id, btw_herkomst, btw_detail = btw_defaults.voor(sleutel, mapping)
+        if (
+            mapping is None
+            and sleutel == tz.CATEGORIE_PSP_KOSTEN_SLEUTEL
+            and btw_defaults.psp_kosten_ledger_id is not None
+        ):
+            omzet_ledger_id = btw_defaults.psp_kosten_ledger_id
+            herkomst = "default"
     return OmzetRegelData(
         categorie=categorie,
         categorie_sleutel=sleutel,
         omzet_bedrag=omzet,
         kostprijs_bedrag=kostprijs,
-        omzet_ledger_id=mapping.omzet_ledger_id if mapping else None,
-        taxrate_id=mapping.taxrate_id if mapping else None,
+        omzet_ledger_id=omzet_ledger_id,
+        taxrate_id=taxrate_id,
         kostprijs_ledger_id=mapping.kostprijs_ledger_id if mapping else None,
-        herkomst="mapping" if mapping else "nieuw",
+        herkomst=herkomst,
+        btw_herkomst=btw_herkomst,
+        btw_herkomst_detail=btw_detail,
     )
+
+
+def _met_tegenzijde(session: Session, administratie_id: uuid.UUID, veldvoorstel: dict) -> dict | None:
+    """`bron_detail` + `tegenzijde` (blok A): per betaalwijze bedrag, datum-anker, tegenrekening + herkomst en de
+    controles "Tegenrekening ‹betaalwijze›" — live berekend uit de actuele instellingen (niet bevroren in het
+    veldvoorstel, zodat een Beheerder-instelling direct doorwerkt op nog niet geboekte documenten)."""
+    from app.omzet.bronnen import service as bronnen_service
+    from app.omzet.bronnen import tegenzijde as tz
+
+    bron = veldvoorstel.get("bron")
+    detail = veldvoorstel.get("bron_detail")
+    if not bron or detail is None:
+        return detail
+    uitkomst = tz.bepaal_tegenzijde(
+        bron=bron,
+        bron_detail={**detail, "periode_eind": veldvoorstel.get("periode_eind")},
+        instellingen=bronnen_service.bron_instellingen_voor(session, administratie_id),
+        rekeningen=bronnen_service.rekeningen_voor(session, administratie_id),
+    )
+    if uitkomst is None:
+        return detail
+    return {**detail, "tegenzijde": uitkomst.als_dict()}
 
 
 def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> OmzetVoorstelData:
@@ -156,6 +260,8 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
         instelling = _instelling(session, administratie_id)
         voorraad_ledger_id = instelling.voorraad_ledger_id if instelling else None
         mappings = actieve_mappings(session, administratie_id=administratie_id)
+        bron_detail = _met_tegenzijde(session, administratie_id, veldvoorstel)
+        btw_defaults = _btw_defaults(session, administratie_id) if veldvoorstel.get("bron") else None
 
         bestaand = session.get(OmzetVoorstel, document_id)
         if bestaand is not None:
@@ -174,6 +280,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                     taxrate_id=r.taxrate_id,
                     kostprijs_ledger_id=r.kostprijs_ledger_id,
                     herkomst="opgeslagen" if r.omzet_ledger_id is not None else "nieuw",
+                    btw_herkomst="opgeslagen" if r.taxrate_id is not None else None,
                 )
                 for r in regels_orm
             ]
@@ -193,7 +300,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                 rapport_titel=veldvoorstel.get("rapport_titel"),
                 entiteit_naam=veldvoorstel.get("entiteit_naam"),
                 bron=veldvoorstel.get("bron"),
-                bron_detail=veldvoorstel.get("bron_detail"),
+                bron_detail=bron_detail,
             )
 
         totaal_omzet = _als_decimal(veldvoorstel.get("totaal_omzet"))
@@ -204,6 +311,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
                 omzet=_als_decimal(r.get("omzet_bedrag")),
                 kostprijs=_als_decimal(r.get("kostprijs_bedrag")),
                 mappings=mappings,
+                btw_defaults=btw_defaults,
             )
             for i, r in enumerate((veldvoorstel.get("regels") or []), start=1)
             if isinstance(r, dict)
@@ -221,7 +329,7 @@ def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUI
             rapport_titel=veldvoorstel.get("rapport_titel"),
             entiteit_naam=veldvoorstel.get("entiteit_naam"),
             bron=veldvoorstel.get("bron"),
-            bron_detail=veldvoorstel.get("bron_detail"),
+            bron_detail=bron_detail,
         )
 
 
@@ -498,7 +606,9 @@ def _met_bron_controles(rapport: CheckRapport, bron_detail: dict | None) -> Chec
     kascheck-datum, wederhelft ontvangen, puntenwaarde, factuurnummer al geboekt, …) als harde check-rijen —
     blokkerend rood, niet-blokkerend als oranje SIGNAAL (kasverschil, disputes). Alles wat niet klopt is zichtbaar;
     niets boekt stil."""
-    controles = (bron_detail or {}).get("controles") or []
+    controles = list((bron_detail or {}).get("controles") or [])
+    # Blok A (16-09): de tegenrekening-controles per betaalwijze reizen als dezelfde check-rijen mee.
+    controles += list(((bron_detail or {}).get("tegenzijde") or {}).get("controles") or [])
     extra: list[CheckResultaat] = []
     for c in controles:
         if not isinstance(c, dict) or "naam" not in c:

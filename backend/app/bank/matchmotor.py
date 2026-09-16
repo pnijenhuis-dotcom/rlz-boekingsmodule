@@ -7,6 +7,13 @@ na de schrijf-PoC):
    (auto-afletteren-kandidaat achter de opt-in);
 2. gedeeltelijke match — geen teken-mismatch en twee van {naam/IBAN, nummer, bedrag}
    (deelbetaling/G-rekening-split, nummer zonder naam, naam+bedrag zonder nummer) → oranje, bevestigen;
+2b. omzetbatch-post (opdracht 4 blok A, 16-09; app/omzet/tegenzijde_posten.py): de tegenzijde per betaalwijze
+   van een GEBOEKTE omzetbron-boeking (zonnestudio-dag: PIN, storting kas → bank; pilates-batch: Stripe-payout) is
+   een matchbare post — bedrag cent-exact + datumvenster (Stripe +1…+7 d ná de uitbetalings-/omzetdatum, nooit
+   ervoor; storting ± 3 d; PIN 0…+5 d) + omschrijvingskern ("STRIPE", "storting"/"sealbag"/"SEPA") → groen
+   (automatisch kandidaat: PIN/Stripe = aflettering tegen de open post van de Receipt, storting = direct op de
+   kas-tegenrekening achter de bank-autoboeken-opt-in mét AI-toets); bedrag + datum zonder kern → oranje. Label
+   `bron` = "omzetbatch 2026-7-9 · Stripe";
 3. vaste regel uit het geheugen (tegenpartij → grootboek/btw) → direct-op-grootboek-voorstel;
 3b. historie-regel (blok B bundel 10-09, app/bank/historie_regel.py): IBAN + omschrijvingskern in de
    historie ≥ 3× op dezelfde rekening/btw → groen (automatisch kandidaat achter de opt-in, mét de
@@ -221,6 +228,8 @@ TEKEN_ONBEKEND = "onbekend"
 class VoorstelSoort(enum.StrEnum):
     EXACTE_MATCH = "exacte_match"
     DEEL_MATCH = "deel_match"
+    # Opdracht 4 blok A (16-09): tegenzijde-post van een geboekte omzetbatch (PIN/Stripe/storting).
+    OMZETBATCH_POST = "omzetbatch_post"
     VASTE_REGEL = "vaste_regel"
     HISTORIE_REGEL = "historie_regel"
     RLZ_VOORSTEL = "rlz_voorstel"
@@ -236,6 +245,9 @@ class MutatieGegevens:
     omschrijving: str | None
     tegenrekening_iban: str | None
     rlz_voorstel_item_id: uuid.UUID | None
+    # Opdracht 4 (16-09): boekdatum van de mutatie — nodig voor het datumvenster van de omzetbatch-stap. Optioneel
+    # (bestaande aanroepers ongewijzigd); None = datum niet toetsbaar → hooguit oranje.
+    boekdatum: date | None = None
 
     @property
     def te_verwerken_bedrag(self) -> Decimal | None:
@@ -288,6 +300,66 @@ class VasteRegelGegevens:
 
 
 @dataclass(frozen=True)
+class OmzetBatchPost:
+    """Tegenzijde-post van één geboekte omzetbron-boeking voor één betaalwijze (opdracht 4 blok A, 16-09). De RLZ-kant:
+    `payment_item_id` = de open post van de Receipt (PIN/Stripe → aflettering, deelbedrag = mutatiebedrag) óf
+    `ledger_id` = de kas-tegenrekening (storting kas → bank → direct-op-grootboek). `venster` = (min, max) dagen van
+    de bankdatum t.o.v. `datum`; `kernen` = omschrijvingskernen (lowercase)."""
+
+    id: uuid.UUID  # document-id van het kassarapport
+    batch_label: str  # "2026-7-9" (pilates-batch) of "08-09-2026 Elderveld" (zonnestudio-dag)
+    betaalwijze: str  # tegenzijde.PIN | STRIPE | STORTING
+    bedrag: Decimal  # positief: wat de bank moet laten zien
+    datum: date | None
+    venster: tuple[int, int]
+    kernen: tuple[str, ...]
+    label: str  # leesbare betaalwijze ("Stripe/PSP-uitbetaling")
+    payment_item_id: uuid.UUID | None = None
+    rlz_document_id: uuid.UUID | None = None
+    ledger_id: uuid.UUID | None = None
+
+    @property
+    def bron_label(self) -> str:
+        return f"omzetbatch {self.batch_label} · {self.label}"
+
+    @property
+    def uitvoerbaar(self) -> bool:
+        """Er is een RLZ-uitvoering: aflettering (open post bekend) of direct-op-grootboek (tegenrekening bekend)."""
+        return self.payment_item_id is not None or self.ledger_id is not None
+
+
+@dataclass(frozen=True)
+class OmzetBatchScore:
+    post: OmzetBatchPost
+    bedrag: bool
+    datum: bool | None  # None = niet toetsbaar (boekdatum of postdatum onbekend)
+    kern: bool
+
+    @property
+    def groen(self) -> bool:
+        return self.bedrag and self.datum is True and self.kern and self.post.uitvoerbaar
+
+    @property
+    def oranje(self) -> bool:
+        return not self.groen and self.bedrag and self.datum is not False
+
+
+def score_omzetbatch(mutatie: MutatieGegevens, post: OmzetBatchPost) -> OmzetBatchScore:
+    """Bedrag cent-exact op het OPEN bedrag (alleen een BIJSCHRIJVING — de tegenzijde is een ontvangst), datum in het
+    venster van de betaalwijze, omschrijvingskern als substring van omschrijving/tegenpartij."""
+    bedrag = mutatie.te_verwerken_bedrag
+    bedrag_ok = bedrag is not None and bedrag > 0 and bedrag == post.bedrag
+    if mutatie.boekdatum is None or post.datum is None:
+        datum_ok: bool | None = None
+    else:
+        verschil = (mutatie.boekdatum - post.datum).days
+        datum_ok = post.venster[0] <= verschil <= post.venster[1]
+    tekst = f"{mutatie.omschrijving or ''} {mutatie.tegenpartij_naam or ''}".lower()
+    kern_ok = any(k in tekst for k in post.kernen)
+    return OmzetBatchScore(post=post, bedrag=bedrag_ok, datum=datum_ok, kern=kern_ok)
+
+
+@dataclass(frozen=True)
 class Voorstel:
     """Eén voorstel per mutatie, mét herkomst (mockup: 'Elke regel toont wélke bron het
     voorstel deed'). `kleur` volgt het vaste patroon: groen = deterministisch zeker, oranje =
@@ -308,6 +380,8 @@ class Voorstel:
     taxrate_id: uuid.UUID | None = None
     historie_k: int | None = None
     historie_n: int | None = None
+    # Opdracht 4 blok A (16-09): de omzetbatch-post waarop dit voorstel rust (soort OMZETBATCH_POST).
+    omzetbatch_post: OmzetBatchPost | None = None
 
 
 def teken_toets(mutatie: MutatieGegevens, post: OpenPost) -> str:
@@ -462,6 +536,60 @@ def _meerdere_kandidaten(scores: list[PostScore], kleur: str) -> Voorstel:
     )
 
 
+def _omzetbatch_voorstel(mutatie: MutatieGegevens, posten: list[OmzetBatchPost]) -> Voorstel | None:
+    scores = [score_omzetbatch(mutatie, p) for p in posten]
+    groen = [sc for sc in scores if sc.groen]
+    if len(groen) == 1:
+        p = groen[0].post
+        return Voorstel(
+            soort=VoorstelSoort.OMZETBATCH_POST,
+            kleur="groen",
+            bron=p.bron_label,
+            reden=(
+                f"Omzetbatch {p.batch_label} ({p.label}): bedrag € {p.bedrag} cent-exact, bankdatum "
+                f"{mutatie.boekdatum} binnen {p.venster[0]:+d}…{p.venster[1]:+d} dagen van {p.datum}, "
+                f"omschrijving bevat {'/'.join(p.kernen[:3])}"
+            ),
+            payment_item_id=p.payment_item_id,
+            rlz_document_id=p.rlz_document_id,
+            ledger_id=p.ledger_id,
+            omzetbatch_post=p,
+        )
+    if len(groen) > 1:
+        labels = ", ".join(sc.post.bron_label for sc in groen[:5])
+        return Voorstel(
+            soort=VoorstelSoort.HANDMATIG,
+            kleur="oranje",
+            bron="handmatig — meerdere omzetbatches",
+            reden=f"{len(groen)} omzetbatch-posten scoren gelijkwaardig ({labels}); geen eenduidige keuze",
+        )
+    oranje = [sc for sc in scores if sc.oranje]
+    if len(oranje) == 1:
+        sc = oranje[0]
+        p = sc.post
+        ontbrekend = []
+        if not sc.kern:
+            ontbrekend.append("omschrijving zonder " + "/".join(p.kernen[:2]))
+        if sc.datum is None:
+            ontbrekend.append("datum niet toetsbaar")
+        if not p.uitvoerbaar:
+            ontbrekend.append("open post van de omzetboeking nog niet gesynchroniseerd")
+        return Voorstel(
+            soort=VoorstelSoort.OMZETBATCH_POST,
+            kleur="oranje",
+            bron=p.bron_label + " — bevestigen",
+            reden=(
+                f"Omzetbatch {p.batch_label} ({p.label}): bedrag € {p.bedrag} cent-exact; "
+                f"{', '.join(ontbrekend) or 'controleer'}"
+            ),
+            payment_item_id=p.payment_item_id,
+            rlz_document_id=p.rlz_document_id,
+            ledger_id=p.ledger_id,
+            omzetbatch_post=p,
+        )
+    return None
+
+
 def bepaal_voorstel(
     mutatie: MutatieGegevens,
     *,
@@ -471,6 +599,7 @@ def bepaal_voorstel(
     historie: list | None = None,
     vandaag: date | None = None,
     rekening_label=None,
+    omzetbatch_posten: list[OmzetBatchPost] | None = None,
 ) -> Voorstel:
     """Het ene voorstel voor deze mutatie, in de vaste volgorde 1–5. Stap 1/2 sinds blok 2 (08-09)
     op de score per open post: GROEN = teken + naam/IBAN + nummer + bedrag (auto-afletteren-
@@ -520,6 +649,12 @@ def bepaal_voorstel(
         )
     if len(oranje) > 1:
         return _meerdere_kandidaten(oranje, "oranje")
+
+    # Stap 2b (opdracht 4 blok A, 16-09): tegenzijde-post van een geboekte omzetbatch.
+    if omzetbatch_posten:
+        omzet_voorstel = _omzetbatch_voorstel(mutatie, omzetbatch_posten)
+        if omzet_voorstel is not None:
+            return omzet_voorstel
 
     # Stap 3: vaste regel uit het geheugen.
     regel = _vaste_regel_voor(mutatie, vaste_regels)

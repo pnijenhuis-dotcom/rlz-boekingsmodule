@@ -217,6 +217,57 @@ describe('OmzetReviewScreen', () => {
     expect(await screen.findByText('Download het bestand')).toBeTruthy()
   })
 
+  it('toont bij een pilates-batch de tegenrekening per betaalwijze mét herkomst en de combi-verdeling mét basis (besluiten Peter 16-09)', async () => {
+    installFetchMock({
+      voorstelBody: voorstel({
+        rapport_titel: 'Uitbetaling po_123',
+        entiteit_naam: null,
+        bron: 'pilates_betalingsexport',
+        bron_detail: {
+          batch_id: 'po_123',
+          uitbetaaldatum: '2026-09-10',
+          bruto: '1250.00',
+          kosten: '18.40',
+          netto: '1231.60',
+          controles: [{ naam: 'Regelsom = netto uitbetaling', ok: true, detail: '1231.60', blokkerend: true }],
+          // X-vorm: `tegenzijde.regels[]` (alleen ledger_id — code · naam komen uit de grootboek-opties van het scherm)
+          // + eigen controles; combi als record categorie → bedrag mét `aandeel`.
+          tegenzijde: {
+            vorm: 'aflettering',
+            regels: [
+              { betaalwijze: 'stripe', bedrag: '1231.60', datum: '2026-09-10', ledger_id: LEDGER_ID, herkomst: 'default', richting: 'ontvangst', label: 'Stripe/PSP', venster_dagen: [1, 7] },
+              { betaalwijze: 'cash', bedrag: '0.00', datum: '2026-09-10', ledger_id: LEDGER_ID, herkomst: 'instelling', richting: 'kas', label: 'Contant', venster_dagen: [0, 0] },
+            ],
+            controles: [{ naam: 'Tegenrekening Stripe/PSP', ok: true, detail: 'default uit het rekeningschema — Stripe/PSP € 1231.60', blokkerend: true }],
+          },
+          combi_verdeling: {
+            bedrag: '120.00',
+            basis: 'batch',
+            aandeel: { Pilateslessen: '0.8000', Yoga: '0.2000' },
+            verdeling: { Pilateslessen: '96.00', Yoga: '24.00' },
+            transacties: 3,
+          },
+        },
+      }),
+    })
+    renderScherm()
+    const blok = await screen.findByTestId('bronblok')
+    const tegen = screen.getByLabelText('Tegenrekeningen')
+    expect(tegen.textContent).toContain('Stripe/PSP')
+    // ledger_id → code · naam via de gesyncte grootboek-opties van het scherm (fetch-mock /grootboek).
+    expect(tegen.textContent).toContain('8001 · Omzet Wiet')
+    expect(tegen.textContent).toContain('standaard (op naam)')
+    expect(tegen.textContent).toContain('ingesteld')
+    expect(tegen.textContent).toContain('bank +1…+7 d')
+    expect(blok.textContent).toContain('Tegenrekening Stripe/PSP')
+    const combi = screen.getByTestId('combi-verdeling')
+    expect(combi.textContent).toContain('netto-omzet batch')
+    expect(screen.getByLabelText('Combi-verdeling').textContent).toContain('Pilateslessen')
+    expect(screen.getByLabelText('Combi-verdeling').textContent).toContain('80 %')
+    expect(screen.getByLabelText('Combi-verdeling').textContent).toContain('24,00')
+    expect(blok.textContent).toContain('sluit')
+  })
+
   it('markeert nieuwe categorieën zonder mapping als blokkerend signaal', async () => {
     installFetchMock()
     renderScherm()

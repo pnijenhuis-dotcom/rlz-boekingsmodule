@@ -272,6 +272,8 @@ def _dubbele_betaling_wat(d: dict, tekst: str) -> str:
     from app.bank.dubbele_betaling import tekst_uit_delen
 
     return tekst_uit_delen(_s(d, "tegenpartij_naam"), bedrag, datums, iban=_s(d, "tegenrekening_iban"))
+
+
 _DOE_CONTROLE_MISLUKT = (
     "Controleer verbinding en credentials van deze administratie; de volgende run controleert opnieuw."
 )
@@ -482,6 +484,22 @@ def _omzet(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             _t("Controle mislukt"),
             f"RLZ gaf een fout bij het ophalen van {kant} over {per}; over de boeking zelf zegt dat niets.",
             _DOE_CONTROLE_MISLUKT,
+        )
+    if soort == "tussenrekening_open":
+        m = re.search(
+            r"Omzetbatch (?P<label>.+?): (?P<wijze>.+?) € (?P<bedrag>[\d.,-]+) staat al (?P<dagen>\d+) dagen",
+            d.get("detail") or tekst,
+        )
+        label = m.group("label") if m else (_periode_kort(d) or "deze omzetbatch")
+        wijze = m.group("wijze") if m else "de ontvangst"
+        bedrag = euro(m.group("bedrag")) if m else (euro(_s(d, "totaal_omzet", "bedrag_lokaal")) or "")
+        dagen = m.group("dagen") if m else None
+        return (
+            _titel("Omzetontvangst nog niet op de bank", [label, wijze], " · "),
+            f"Van omzetbatch {label} is de {wijze.lower()}{f' van {bedrag}' if bedrag else ''} "
+            f"{f'al {dagen} dagen ' if dagen else ''}niet op de bankrekening teruggevonden.",
+            "Koppel de bankontvangst aan deze omzetboeking (bankscherm: voorstel 'omzetbatch …') of accepteer met "
+            "reden als het geld anders is binnengekomen.",
         )
     return (
         _t("Afwijking in de omzet"),
@@ -796,8 +814,7 @@ def _intercompany(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             _titel("Onderlinge inkoop zonder verkoopfactuur", onderwerp, " · "),
             f"{ontvanger} boekte inkoopfactuur {nummer}{bedrag}{op} van {verkoper}; bij {verkoper} staat geen "
             f"verkoopfactuur met dat nummer{verrekend}.",
-            f"Controleer bij {verkoper} of de factuur wél is aangemaakt (of het nummer klopt), of accepteer met "
-            "reden.",
+            f"Controleer bij {verkoper} of de factuur wél is aangemaakt (of het nummer klopt), of accepteer met reden.",
         )
     if soort == "ic_bedrag_verschilt":
         verschil = f" (verschil {delta})" if delta else ""

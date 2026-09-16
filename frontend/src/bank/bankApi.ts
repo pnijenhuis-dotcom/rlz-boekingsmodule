@@ -75,7 +75,7 @@ export interface BoekRegelDto {
 export interface VoorstelDto {
   /** `historie_regel` (blok B bundel 10-09, stap 3b ná vaste regel): deterministische historie-regel op IBAN +
    * omschrijvingskern — groen = 100 % zelfde GB/btw (automatisch-kandidaat), oranje = k van n (bevestigen). */
-  soort: 'exacte_match' | 'deel_match' | 'vaste_regel' | 'historie_regel' | 'rlz_voorstel' | 'handmatig'
+  soort: 'exacte_match' | 'deel_match' | 'omzetbatch_post' | 'vaste_regel' | 'historie_regel' | 'rlz_voorstel' | 'handmatig'
   kleur: 'groen' | 'oranje'
   bron: string
   reden: string

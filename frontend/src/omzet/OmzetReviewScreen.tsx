@@ -282,7 +282,7 @@ export function OmzetReviewScreen() {
         </div>
       </div>
 
-      {voorstel.bron && <BronBlok bron={voorstel.bron} detail={voorstel.bron_detail} />}
+      {voorstel.bron && <BronBlok bron={voorstel.bron} detail={voorstel.bron_detail} rekeningen={grootboek.opties} />}
       <div className="membanner">
         <div className="icon">🧠</div>
         <div>

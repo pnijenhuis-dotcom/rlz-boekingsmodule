@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import select
 
@@ -16,6 +17,7 @@ from app.db.session import scoped_session
 from app.omzet.models import OmzetBoeking, OmzetBoekingStatus
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
+from app.tijd import vandaag_nl
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,33 @@ def _controleer_rlz_document(
     return None
 
 
+def tussenrekening_open_afwijkingen(
+    administratie_id: uuid.UUID, *, vandaag: date | None = None
+) -> list[OmzetAfwijking]:
+    """Opdracht 4 blok A (16-09): een tegenzijde-post van een geboekte omzetbatch (PIN-/Stripe-ontvangst of storting
+    kas → bank) die ná `TUSSENREKENING_OPEN_DAGEN` dagen nog géén bankmatch heeft = bevinding `tussenrekening_open`
+    mét handeling (koppel de bankontvangst of accepteer met reden). Puur lokaal: geen RLZ-call."""
+    from app.omzet.tegenzijde_posten import TUSSENREKENING_OPEN_DAGEN, open_tussenrekening_posten
+
+    vandaag = vandaag or vandaag_nl()
+    with scoped_session(administratie_id) as session:
+        standen = open_tussenrekening_posten(session, administratie_id=administratie_id, vandaag=vandaag)
+    return [
+        OmzetAfwijking(
+            administratie_id=administratie_id,
+            boeking_id=stand.boeking_id,
+            document_id=stand.document_id,
+            soort="tussenrekening_open",
+            detail=(
+                f"Omzetbatch {stand.post.batch_label}: {stand.post.label} € {stand.post.bedrag} staat al "
+                f"{stand.dagen_open(vandaag)} dagen zonder bankontvangst (grens {TUSSENREKENING_OPEN_DAGEN} dagen; "
+                f"verwacht sinds {stand.post.datum}) — koppel de bankontvangst of accepteer met reden"
+            ),
+        )
+        for stand in standen
+    ]
+
+
 def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
     with scoped_session(administratie_id) as session:
         boekingen = session.scalars(
@@ -68,7 +97,7 @@ def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
     if not boekingen:
         return []
 
-    afwijkingen: list[OmzetAfwijking] = []
+    afwijkingen: list[OmzetAfwijking] = tussenrekening_open_afwijkingen(administratie_id)
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
     with client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id) as client:
         for boeking in boekingen:

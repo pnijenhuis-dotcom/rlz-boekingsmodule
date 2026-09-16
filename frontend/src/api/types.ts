@@ -1319,6 +1319,114 @@ export interface OmzetBronDetailDto {
   netto?: string | null
   disputes?: { factuurnummer: string; bedrag: string; categorie: string | null }[]
   batches?: { batch_id: string; uitbetaaldatum: string | null; netto: string; transacties: number }[]
+  /** Besluiten Peter 16-09 blok A: tegenrekening per betaalwijze waar de Receipt-tegenzijde op landt (pin/cash/stripe/
+   * kasverschil/storting), mét herkomst ('instelling' = Beheerder koos, 'standaard' = op naam uit het rekeningschema).
+   * Vorm per CONTRACT_4 (X logt afwijkingen); de UI leest defensief: record óf lijst. */
+  tegenrekeningen?: Record<string, OmzetBronTegenrekeningDto> | OmzetBronTegenrekeningDto[] | null
+  /** Gebouwde vorm (X, `tegenzijde.Tegenzijde.als_dict`): live berekend uit de actuele instellingen — regels per
+   * betaalwijze mét herkomst 'instelling' | 'default' en eigen controles "Tegenrekening ‹betaalwijze›". */
+  tegenzijde?: OmzetTegenzijdeDto | null
+  /** Blok C: "combi Abonnement" pro rato over Pilates en Yoga — verdeling + basis ('batch' = netto-omzet van dezelfde
+   * uitbetalingsbatch, 'historie_30d' = laatste 30 dagen, '50_50' = oranje signaal). */
+  combi_verdeling?: OmzetCombiVerdelingDto | null
+}
+
+export interface OmzetTegenzijdeRegelDto {
+  betaalwijze: string
+  bedrag: string
+  datum?: string | null
+  ledger_id: string | null
+  /** 'instelling' (Beheerder koos) | 'default' (op naam uit het rekeningschema) | null (geen rekening). */
+  herkomst?: string | null
+  /** 'ontvangst' (bank moet 'm nog tonen) | 'kas' | 'signaal' (kasverschil). */
+  richting?: string
+  label?: string
+  venster_dagen?: number[]
+}
+
+export interface OmzetTegenzijdeDto {
+  vorm?: string
+  regels?: OmzetTegenzijdeRegelDto[]
+  controles?: OmzetBronControleDto[]
+}
+
+export interface OmzetBronTegenrekeningDto {
+  betaalwijze?: string
+  ledger_id?: string | null
+  code?: string | null
+  naam?: string | null
+  /** 'instelling' | 'standaard' (op naam) | 'geen' */
+  herkomst?: string | null
+  bedrag?: string | null
+}
+
+export interface OmzetCombiVerdelingDto {
+  bedrag?: string | null
+  /** 'batch' | 'historie_30d' | '50_50' (gebouwd, `pilates.COMBI_BASIS_*`). */
+  basis?: string | null
+  basis_tekst?: string | null
+  signaal?: boolean | null
+  /** Gebouwd: record categorie → bedrag (+ `aandeel` categorie → fractie); contract-vorm lijst blijft leesbaar. */
+  verdeling?: Record<string, string> | { categorie: string; bedrag: string; aandeel?: string | number | null }[] | null
+  aandeel?: Record<string, string | number> | null
+  transacties?: number | null
+}
+
+/* ---------- Omzetbronnen — Beheerder-instellingen (CONTRACT_4, besluiten Peter 16-09) ---------- */
+
+export type OmzetBetaalwijze = 'pin' | 'cash' | 'stripe' | 'kasverschil' | 'storting'
+export type OmzetPsp = 'stripe' | 'mollie' | 'anders'
+export type OmzetEtenDrinkenTarief = 'laag' | 'hoog'
+
+export interface OmzetBronRekeningDto {
+  ledger_id: string
+  code?: string | null
+  naam?: string | null
+}
+
+export interface OmzetBronTariefDto {
+  taxrate_id: string
+  naam?: string | null
+  percentage?: string | number | null
+  is_verlegd?: boolean
+}
+
+/** De instelbare sleutels van `omzet_instelling.bron_instellingen` (alle optioneel; null/ontbrekend = code-default). */
+export interface OmzetBronInstellingenWaarden {
+  stores?: string[]
+  /** productnaam (lower) → categorie */
+  product_categorieen?: Record<string, string>
+  tegenrekeningen?: Partial<Record<OmzetBetaalwijze, string | null>>
+  /** categorie → taxrate_id */
+  categorie_btw?: Record<string, string | null>
+  combi_regel?: string | null
+  psp?: OmzetPsp | null
+  psp_kosten_ledger_id?: string | null
+  eten_drinken_tarief?: OmzetEtenDrinkenTarief | null
+}
+
+/** Read-only `defaults` (X, `service.defaults_voor`): tegenrekeningen op naam, btw per categorie-SLEUTEL (lowercase,
+ * `normaliseer_categorie_sleutel`) als `{klasse, taxrate_id}` óf kaal taxrate_id, btw per klasse, PSP-kostenrekening. */
+export interface OmzetBronDefaultsDto {
+  tegenrekeningen?: Partial<Record<OmzetBetaalwijze, string | null>>
+  categorie_btw?: Record<string, string | { klasse?: string | null; taxrate_id?: string | null } | null>
+  btw_per_klasse?: Record<string, string | null>
+  verlegd_herkomst?: string | null
+  psp_kosten_ledger_id?: string | null
+  psp_btw_herkomst?: string | null
+  product_categorieen?: Record<string, string>
+  psp?: string | null
+  eten_drinken_tarief?: string | null
+}
+
+export interface OmzetBronInstellingenDto extends OmzetBronInstellingenWaarden {
+  /** Read-only: wat de code zou kiezen als de mens niets instelt (defaults op NAAM uit het RLZ-schema; btw = RLZ-tarief). */
+  defaults?: OmzetBronDefaultsDto | null
+  /** Keuzelijsten zodat de UI zonder extra routes comboboxen kan vullen. */
+  rekeningen?: OmzetBronRekeningDto[] | null
+  tarieven?: OmzetBronTariefDto[] | null
+  /** Optioneel: bekende categorieën (anders afgeleid uit mapping + defaults). */
+  categorieen?: string[] | null
 }
 
 export interface OmzetVoorstelMetChecksDto {

@@ -8,14 +8,15 @@ from __future__ import annotations
 import copy
 import logging
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
-from app.db.models import Administratie
+from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
@@ -27,8 +28,10 @@ from app.omzet.bronnen import (
     lees_grid,
 )
 from app.omzet.bronnen import pilates as pilates_bron
+from app.omzet.bronnen import tegenzijde as tegenzijde_bron
 from app.omzet.bronnen import zonnestudio as zonnestudio_bron
 from app.omzet.models import OmzetInstelling
+from app.sync.models import TaxRateCache
 
 logger = logging.getLogger(__name__)
 
@@ -43,44 +46,170 @@ _TERMINAAL = (
 )
 
 DEFAULT_BRON_INSTELLINGEN: dict[str, Any] = {
-    # POS-storenamen ("Store Used") die naar deze administratie routeren — Beheerder vult (2 studio's).
+    # POS-storenamen ("Store Used") die naar deze administratie routeren — Beheerder vult (Elderveld, Sunshine Island).
     "stores": [],
     # Pilates: productnaam → categorie (aanvulling op pilates.DEFAULT_PRODUCT_CATEGORIEEN); mens wint, audit.
     "product_categorieen": {},
-    # PSP van de betalingsexport: naam + btw op de transactiekosten (Mollie 21 %, Stripe verlegd) — BESLISPUNT Peter.
-    "psp": {"naam": None, "kosten_btw": None},
-    # Rekeningen per studio (kas, kruispost pin/psp, vooruitontvangen tegoeden, kasverschil) als GB-code — informatief
-    # voor de aflettering/kasboek; de Receipt-regels zelf lopen via de categorie-mapping.
-    "rekeningen": {},
+    # Blok A (16-09): tegenrekening per betaalwijze (ledger_id of None = code-default op naam uit het rekeningschema).
+    "tegenrekeningen": {sleutel: None for sleutel in tegenzijde_bron.BETAALWIJZEN},
+    # Blok C: mens-override btw per categorie-sleutel (taxrate_id) — geldt vanaf de volgende batch, nooit terugwerkend.
+    "categorie_btw": {},
+    "combi_regel": pilates_bron.COMBI_REGEL_PRO_RATO,
+    # Blok D: PSP van de betalingsexport ('stripe' = EU-dienst verlegd, 'mollie' = NL 21 % voorbelasting, 'anders' =
+    # mens kiest). Besluit Peter 16-09: Stripe.
+    "psp": tegenzijde_bron.PSP_STRIPE,
+    "psp_kosten_ledger_id": None,
+    # Beslispunt (default laag): eten/drinken 9 %; alcohol/horeca-uitzonderingen = 'hoog'.
+    "eten_drinken_tarief": tegenzijde_bron.BTW_LAAG,
 }
+#: 15-09-sleutel die niet meer bestaat (informatieve GB-codes) — bij lezen genegeerd, bij schrijven geweigerd.
+_VERVALLEN_SLEUTELS = frozenset({"rekeningen"})
 
 
 def bron_instellingen_voor(session: Session, administratie_id: uuid.UUID) -> dict[str, Any]:
     rij = session.get(OmzetInstelling, administratie_id)
     uit = copy.deepcopy(DEFAULT_BRON_INSTELLINGEN)
     for sleutel, waarde in ((rij.bron_instellingen if rij else None) or {}).items():
-        if sleutel in uit and isinstance(waarde, dict) and isinstance(uit[sleutel], dict):
+        if sleutel in _VERVALLEN_SLEUTELS:
+            continue
+        if sleutel == "psp":
+            # 15-09-vorm {"naam": "Mollie", "kosten_btw": "21"} → 16-09-string; onbekend = 'anders'.
+            uit["psp"] = tegenzijde_bron.psp_naam({"psp": waarde}) or DEFAULT_BRON_INSTELLINGEN["psp"]
+        elif sleutel in uit and isinstance(waarde, dict) and isinstance(uit[sleutel], dict):
             uit[sleutel] = {**uit[sleutel], **waarde}
         else:
             uit[sleutel] = waarde
     return uit
 
 
+def rekeningen_voor(session: Session, administratie_id: uuid.UUID) -> list[tegenzijde_bron.Rekening]:
+    """Keuzelijst + default-bron: de niet-verdwenen grootboekrekeningen van de administratie (platform-cache)."""
+    rijen = session.scalars(
+        select(Grootboekrekening)
+        .where(
+            Grootboekrekening.administratie_id == administratie_id,
+            Grootboekrekening.verdwenen_uit_bron_op.is_(None),
+        )
+        .order_by(Grootboekrekening.code)
+    )
+    return [
+        tegenzijde_bron.Rekening(ledger_id=r.ledger_id, code=r.code, naam=r.naam, is_totaalrekening=r.is_totaalrekening)
+        for r in rijen
+    ]
+
+
+def tarieven_voor(session: Session, administratie_id: uuid.UUID) -> list[tegenzijde_bron.Tarief]:
+    from app.sync.btw import taxrate_vlaggen
+
+    rijen = session.scalars(
+        select(TaxRateCache).where(
+            TaxRateCache.administratie_id == administratie_id, TaxRateCache.verdwenen_uit_bron_op.is_(None)
+        )
+    )
+    uit = []
+    for t in rijen:
+        verlegd, vrijgesteld = taxrate_vlaggen(t.brondata)
+        uit.append(
+            tegenzijde_bron.Tarief(
+                taxrate_id=t.id, naam=t.naam, percentage=t.percentage, is_verlegd=verlegd, is_vrijgesteld=vrijgesteld
+            )
+        )
+    return sorted(uit, key=lambda t: t.naam or "")
+
+
+def defaults_voor(
+    session: Session, administratie_id: uuid.UUID, *, instellingen: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Wat de code zou kiezen zonder instelling (read-only `defaults` in de DTO): tegenrekeningen op naam, btw per
+    categorie-klasse (laag/hoog/verlegd) uit het RLZ-tarief van de administratie, PSP-kostenrekening op naam."""
+    from app.documenten.regel_prefill import bepaal_verlegd_taxrate
+
+    inst = instellingen or bron_instellingen_voor(session, administratie_id)
+    rekeningen = rekeningen_voor(session, administratie_id)
+    tarieven = tarieven_voor(session, administratie_id)
+    laag = tegenzijde_bron.default_tarief(tegenzijde_bron.BTW_LAAG, tarieven)
+    hoog = tegenzijde_bron.default_tarief(tegenzijde_bron.BTW_HOOG, tarieven)
+    verlegd = bepaal_verlegd_taxrate(session, administratie_id=administratie_id)
+    per_klasse = {
+        tegenzijde_bron.BTW_LAAG: str(laag.taxrate_id) if laag else None,
+        tegenzijde_bron.BTW_HOOG: str(hoog.taxrate_id) if hoog else None,
+        tegenzijde_bron.BTW_VERLEGD: str(verlegd.taxrate_id) if verlegd else None,
+    }
+    categorie_btw: dict[str, dict[str, Any]] = {}
+    for sleutel in (
+        *tegenzijde_bron.BTW_KLASSE_PER_CATEGORIE,
+        tegenzijde_bron.CATEGORIE_ETEN_SLEUTEL,
+        tegenzijde_bron.CATEGORIE_PSP_KOSTEN_SLEUTEL,
+    ):
+        klasse = tegenzijde_bron.btw_klasse_voor(sleutel, inst)
+        categorie_btw[sleutel] = {"klasse": klasse, "taxrate_id": per_klasse.get(klasse) if klasse else None}
+    return {
+        "tegenrekeningen": {
+            k: (str(v) if v else None) for k, v in tegenzijde_bron.default_tegenrekeningen(rekeningen).items()
+        },
+        "categorie_btw": categorie_btw,
+        "btw_per_klasse": per_klasse,
+        "verlegd_herkomst": verlegd.detail if verlegd else None,
+        "psp_kosten_ledger_id": (str(pk) if (pk := tegenzijde_bron.default_psp_kosten_rekening(rekeningen)) else None),
+        "psp_btw_herkomst": tegenzijde_bron.psp_btw_herkomst(tegenzijde_bron.psp_naam(inst)),
+    }
+
+
+def _valideer_bron_instellingen(session: Session, administratie_id: uuid.UUID, waarden: dict[str, Any]) -> None:
+    """Ledger-/taxrate-id's alleen uit de caches van déze administratie; keuzevelden alleen uit de vaste lijsten."""
+    fouten: list[str] = []
+    ledgers = {str(r.ledger_id) for r in rekeningen_voor(session, administratie_id)}
+    tarieven = {str(t.taxrate_id) for t in tarieven_voor(session, administratie_id)}
+    for sleutel, ledger in (waarden.get("tegenrekeningen") or {}).items():
+        if sleutel not in tegenzijde_bron.BETAALWIJZEN:
+            fouten.append(f"onbekende betaalwijze '{sleutel}'")
+        elif ledger and str(ledger) not in ledgers:
+            fouten.append(f"tegenrekening {sleutel}: grootboekrekening {ledger} bestaat niet in deze administratie")
+    for categorie, taxrate in (waarden.get("categorie_btw") or {}).items():
+        if taxrate and str(taxrate) not in tarieven:
+            fouten.append(f"btw {categorie}: tarief {taxrate} bestaat niet in deze administratie")
+    pk = waarden.get("psp_kosten_ledger_id")
+    if pk and str(pk) not in ledgers:
+        fouten.append(f"PSP-kostenrekening {pk} bestaat niet in deze administratie")
+    psp = waarden.get("psp")
+    if psp is not None and str(psp).strip().lower() not in tegenzijde_bron.PSP_KEUZES:
+        fouten.append(f"psp '{psp}' — kies stripe, mollie of anders")
+    if (cr := waarden.get("combi_regel")) not in (None, pilates_bron.COMBI_REGEL_PRO_RATO):
+        fouten.append(f"combi_regel '{cr}' onbekend (alleen '{pilates_bron.COMBI_REGEL_PRO_RATO}')")
+    if (et := waarden.get("eten_drinken_tarief")) not in (None, tegenzijde_bron.BTW_LAAG, tegenzijde_bron.BTW_HOOG):
+        fouten.append(f"eten_drinken_tarief '{et}' onbekend (laag of hoog)")
+    if fouten:
+        raise ValueError("; ".join(sorted(set(fouten))))
+
+
 def zet_bron_instellingen(
     *, administratie_id: uuid.UUID, actor_id: uuid.UUID, waarden: dict[str, Any]
 ) -> dict[str, Any]:
-    """PUT door de Beheerder (Instellingen › Administraties › ‹studio› › Omzet): volledig blok vervangen, audit oud→nieuw."""  # noqa: E501
+    """PUT door de Beheerder (Instellingen › Administraties › ‹studio› › Omzet › Omzetbronnen): volledig blok
+    vervangen ná validatie tegen de caches (ledger-/taxrate-id's van déze administratie), audit oud→nieuw."""
     toegestaan = set(DEFAULT_BRON_INSTELLINGEN)
     onbekend = set(waarden) - toegestaan
     if onbekend:
         raise ValueError(f"Onbekende sleutel(s) in bron-instellingen: {', '.join(sorted(onbekend))}")
     with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _valideer_bron_instellingen(session, administratie_id, waarden)
         rij = session.get(OmzetInstelling, administratie_id)
         if rij is None:
             rij = OmzetInstelling(administratie_id=administratie_id)
             session.add(rij)
         oud = copy.deepcopy(rij.bron_instellingen or {})
-        rij.bron_instellingen = {k: v for k, v in waarden.items() if v not in (None, {}, [])} or None
+        schoon: dict[str, Any] = {}
+        for k, v in waarden.items():
+            if isinstance(v, dict):
+                v = {kk: (str(vv) if isinstance(vv, uuid.UUID) else vv) for kk, vv in v.items() if vv not in (None, "")}
+            elif isinstance(v, uuid.UUID):
+                v = str(v)
+            if v in (None, {}, []):
+                continue
+            if v == DEFAULT_BRON_INSTELLINGEN.get(k):
+                continue  # default niet opslaan — een latere default-wijziging in code werkt dan door
+            schoon[k] = v
+        rij.bron_instellingen = schoon or None
         record_audit_event(
             session,
             actor_id=actor_id,
@@ -155,6 +284,39 @@ def geboekte_factuurnummers(session: Session, *, administratie_id: uuid.UUID, be
     ):
         uit |= set((vv.get("bron_detail") or {}).get("transactie_ids") or [])
     return uit
+
+
+COMBI_HISTORIE_DAGEN = 30
+
+
+def combi_historie_basis(
+    session: Session, *, administratie_id: uuid.UUID, referentiedatum: date | None, behalve: uuid.UUID
+) -> dict[str, Decimal]:
+    """Netto-omzet Pilateslessen/Yoga van de andere pilates-kassarapporten van deze administratie in de 30 dagen vóór
+    de referentiedatum (terugval-basis voor de combi-verdeling, besluit Peter 16-09). Leest de regels van het
+    veldvoorstel (kassabedragen), nooit de combi-delen zelf opnieuw."""
+    if referentiedatum is None:
+        return {}
+    basis: dict[str, Decimal] = {pilates_bron.CATEGORIE_PILATES: Decimal(0), pilates_bron.CATEGORIE_YOGA: Decimal(0)}
+    ondergrens = referentiedatum - timedelta(days=COMBI_HISTORIE_DAGEN)
+    gevonden = False
+    for _doc, vv in _kassarapporten_met_bron(
+        session, administratie_id=administratie_id, bron=BRON_PILATES, behalve=behalve
+    ):
+        detail = vv.get("bron_detail") or {}
+        try:
+            d = date.fromisoformat(detail.get("uitbetaaldatum") or vv.get("periode_eind") or "")
+        except ValueError:
+            continue
+        if not (ondergrens <= d < referentiedatum):
+            continue
+        combi = (detail.get("combi_verdeling") or {}).get("verdeling") or {}
+        for r in vv.get("regels") or []:
+            cat = r.get("categorie")
+            if cat in basis and r.get("omzet_bedrag") not in (None, "None"):
+                basis[cat] += Decimal(str(r["omzet_bedrag"])) - Decimal(str(combi.get(cat, "0")))
+                gevonden = True
+    return basis if gevonden else {}
 
 
 # ---------------------------------------------------------------------------------------- de hook
@@ -344,6 +506,7 @@ def _verwerk_pilates(session: Session, *, document: Document, grid) -> dict:  # 
     al_geboekt = geboekte_factuurnummers(session, administratie_id=document.administratie_id, behalve=document.id)
     niet_geslaagd = [t.factuurnummer for t in transacties if not t.geslaagd]
     eigen_batch = pilates_bron.batch_uit_bestandsnaam(document.bestandsnaam)
+    combi_regel = instellingen.get("combi_regel") or pilates_bron.COMBI_REGEL_PRO_RATO
     if eigen_batch is not None:
         batch = next((b for b in batches if b.batch_id == eigen_batch), None)
         if batch is None:
@@ -353,6 +516,13 @@ def _verwerk_pilates(session: Session, *, document: Document, grid) -> dict:  # 
             product_categorieen=product_categorieen,
             al_geboekte_factuurnummers=al_geboekt,
             bestandsnaam=document.bestandsnaam,
+            combi_regel=combi_regel,
+            combi_historie_basis=combi_historie_basis(
+                session,
+                administratie_id=document.administratie_id,
+                referentiedatum=batch.uitbetaaldatum,
+                behalve=document.id,
+            ),
         )
         return {"veldvoorstel": vv}
     if len(batches) == 1:
@@ -361,6 +531,13 @@ def _verwerk_pilates(session: Session, *, document: Document, grid) -> dict:  # 
             product_categorieen=product_categorieen,
             al_geboekte_factuurnummers=al_geboekt,
             bestandsnaam=document.bestandsnaam,
+            combi_regel=combi_regel,
+            combi_historie_basis=combi_historie_basis(
+                session,
+                administratie_id=document.administratie_id,
+                referentiedatum=batches[0].uitbetaaldatum,
+                behalve=document.id,
+            ),
         )
         vv["bron_detail"]["niet_geslaagd"] = niet_geslaagd
         return {"veldvoorstel": vv}

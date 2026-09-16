@@ -45,6 +45,13 @@ describe('instellingenRegistry — guard (élk nav-item en élke tab heeft een r
     expect(zoekInstellingen('plausibiliteit', { rol: 'beheerder', administraties: [] })[0]?.pad).toBe('/instellingen/boeken#ai-toets')
   })
 
+  it('besluiten Peter 16-09 blok B: het blok "Omzetbronnen" heeft een eigen anker-entry op de tab Boeken & AI', () => {
+    const entry = REGISTRY.find((e) => e.id === 'omzetbronnen')
+    expect(entry?.doel).toEqual({ soort: 'tab', tab: 'boeken-ai', anker: 'omzetbronnen' })
+    expect(entry?.beheerder).toBe(true)
+    expect(entry?.synoniemen).toContain('store used')
+  })
+
   it('blok A bundel 10-09: de schakelaar "Autoboeken (leren en boeken)" heeft een eigen anker-entry op de tab Boeken & AI', () => {
     const entry = REGISTRY.find((e) => e.id === 'autoboeken-leren')
     expect(entry?.doel).toEqual({ soort: 'tab', tab: 'boeken-ai', anker: 'autoboeken-leren' })

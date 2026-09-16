@@ -606,6 +606,13 @@ def boek_omzet_document(
                 "memoriaal_boekstuknummer": memoriaal_boekstuk,
                 "periode": f"{voorstel.periode_start} t/m {voorstel.periode_eind}",
                 "reden": f"geboekt in RLZ — verkoopboekstuk {verkoop_boekstuk or str(verkoop_rlz_id)[:8]}",
+                # Opdracht 4 blok A (16-09): de tegenzijde per betaalwijze zoals die op het boekmoment gold
+                # (tegenrekening + herkomst); matchmotor en reconciliatie rekenen 'm live opnieuw uit.
+                **(
+                    {"tegenzijde": (voorstel.bron_detail or {}).get("tegenzijde", {}).get("regels")}
+                    if (voorstel.bron_detail or {}).get("tegenzijde")
+                    else {}
+                ),
                 # Omzet-autoboeken (GO 01-09): `automatisch_geboekt` + bron reizen mee in de tijdlijn —
                 # zelfde chip/filter als inkoop en verkoop.
                 **(extra_overgang_detail or {}),

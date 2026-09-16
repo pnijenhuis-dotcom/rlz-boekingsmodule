@@ -1,6 +1,8 @@
 import { apiJson, apiPostJson } from '../api/client'
 import type {
   OmzetBoekenResponseDto,
+  OmzetBronInstellingenDto,
+  OmzetBronInstellingenWaarden,
   OmzetVoorstelDto,
   OmzetVoorstelInputDto,
   OmzetVoorstelMetChecksDto,
@@ -37,4 +39,21 @@ export function boekOmzet(administratieId: string, documentId: string): Promise<
     `/administraties/${administratieId}/omzet/documenten/${documentId}/boeken`,
     {},
   )
+}
+
+/** Omzetbronnen (Peter 15/16-09): Beheerder-instellingen per administratie — stores, tegenrekeningen per betaalwijze,
+ * categorie-mapping + btw, combi-regel, PSP. GET voor iedereen mét scope, PUT Beheerder-only (audit oud→nieuw). */
+export function haalOmzetBronInstellingenOp(administratieId: string): Promise<OmzetBronInstellingenDto> {
+  return apiJson<OmzetBronInstellingenDto>(`/administraties/${administratieId}/omzet/bron-instellingen`)
+}
+
+export function zetOmzetBronInstellingen(
+  administratieId: string,
+  waarden: OmzetBronInstellingenWaarden,
+): Promise<OmzetBronInstellingenDto> {
+  return apiJson<OmzetBronInstellingenDto>(`/administraties/${administratieId}/omzet/bron-instellingen`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(waarden),
+  })
 }

@@ -4,8 +4,9 @@
  "anonimisering": "JSON-grid (export_grid.json). Persoonsgegevens (naam klant, e-mail, telefoon, adres) zijn vervangen door placeholders; Factuurnummer is de laatste 8 tekens van het transactie-id; bedragen, kosten, methode, product, batch en datums exact.",
  "verwachting": {
   "totaal": "bruto 14.288,98, PSP-kosten 196,35, 23 batches; contant-batch 398,48 zonder kosten.",
-  "batch_2026-7-9-ca834c16": "netto 637,08; dispute 06ead052 −175,00 (chargeback) → signaal 'disputes'; Yoga 33,00; 'combi Abonnement' = BESLISPUNT Peter (default niet gecategoriseerd → controle rood) — in de test via product_categorieen ingesteld.",
+  "batch_2026-7-9-ca834c16": "netto 637,08; dispute 06ead052 −175,00 (chargeback) → signaal 'disputes' (dispute-fee telt mee in de transactiekosten); Yoga 33,00; 'combi Abonnement' = BESLUIT PETER 16-09 pro rato over Pilates/Yoga (basis: netto-omzet in dezelfde batch → laatste 30 dagen → 50/50 mét oranje signaal), cent-exact, restcent op de grootste — geen blokkade meer.",
   "dedupe": "hetzelfde Factuurnummer komt voor bij betaling, dispute én herbetaling (06ead052 driemaal, 713fd874 tweemaal) → transactie-sleutel nummer|methode|bedrag|betaaldatum, nooit het nummer alleen.",
-  "keten": "export met > 1 batch → ouder GESPLITST + één kinddocument per uitbetaling (bestandsnaam '… — uitbetaling <batch>.xlsx'); tweede overlappende export → controle 'Geen transactie al geboekt' rood op de kinderen."
+  "keten": "export met > 1 batch → ouder GESPLITST + één kinddocument per uitbetaling (bestandsnaam '… — uitbetaling <batch>.xlsx'); tweede overlappende export → controle 'Geen transactie al geboekt' rood op de kinderen.",
+  "btw_en_stripe_16_09": "Pilateslessen/Yoga = laag (9 %), Kleding & producten = hoog (21 %), eten/drinken = laag (beslispunt) — altijd het RLZ-tarief van de administratie, nooit een hardgecodeerd percentage; PSP = Stripe: transactiekosten = EU-dienst btw verlegd (bestaand bepaal_verlegd_taxrate-pad, chip 'Stripe · EU-dienst verlegd'), kostenrekening 'Transactiekosten PSP' op naam; Mollie = NL 21 % voorbelasting. Tegenzijde: netto per batch → 'Stripe onderweg' (bank-matchmotor +1…+7 d ná de uitbetaaldatum, nooit ervoor, omschrijving STRIPE → groen aflettering tegen de open post van de Receipt); contant-batch → Kas."
  }
 }

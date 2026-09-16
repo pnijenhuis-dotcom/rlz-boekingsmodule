@@ -550,7 +550,12 @@ def verwerk_exacte_matches_automatisch(
     gedaan = 0
     fouten: list[str] = []
     for kandidaat in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id):
-        if kandidaat.voorstel.soort != VoorstelSoort.EXACTE_MATCH:
+        # Opdracht 4 blok A (16-09): een GROENE omzetbatch-post mét open post (PIN-/Stripe-ontvangst van een geboekte
+        # omzetbatch) is óók een auto-afletterkandidaat — deelbedrag = het mutatiebedrag (bereken_linked_amount).
+        omzetbatch_groen = (
+            kandidaat.voorstel.soort == VoorstelSoort.OMZETBATCH_POST and kandidaat.voorstel.kleur == "groen"
+        )
+        if kandidaat.voorstel.soort != VoorstelSoort.EXACTE_MATCH and not omzetbatch_groen:
             continue
         if kandidaat.voorstel.payment_item_id is None or kandidaat.afletter_opdracht is not None:
             continue

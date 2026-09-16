@@ -67,6 +67,8 @@ class MatchContext:
     taxrate_naam_per_id: dict[uuid.UUID, str] = field(default_factory=dict)
     ai_toets_per_mutatie: dict[uuid.UUID, AiToetsStand] = field(default_factory=dict)
     administratie_id: uuid.UUID | None = None
+    # Opdracht 4 blok A (16-09): nog niet gematchte tegenzijde-posten van geboekte omzetbatches (stap 2b).
+    omzetbatch_posten: list[matchmotor.OmzetBatchPost] = field(default_factory=list)
 
     def rekening_label(self, ledger_id: uuid.UUID | None, taxrate_id: uuid.UUID | None = None) -> str:
         """"4400 Huur" (+ " · NL, Hoog" als de btw bekend is) — valt terug op het id-begin als de cache leeg is."""
@@ -98,6 +100,7 @@ def _mutatie_gegevens(rij: BankMutatie) -> matchmotor.MutatieGegevens:
         omschrijving=rij.omschrijving,
         tegenrekening_iban=rij.tegenrekening_iban,
         rlz_voorstel_item_id=rij.rlz_voorstel_item_id,
+        boekdatum=rij.boekdatum,
     )
 
 
@@ -182,6 +185,10 @@ def laad_matchcontext(
             )
         }
         taxrate_naam_per_id = {t.id: t.naam for t in taxrates if t.naam}
+        # Opdracht 4 blok A (16-09): omzetbatch-posten (lokale import — omzet importeert de matchmotor).
+        from app.omzet.tegenzijde_posten import omzetbatch_posten_voor
+
+        omzetbatch_posten = omzetbatch_posten_voor(session, administratie_id=administratie_id)
         ai_toets_per_mutatie = {
             rij.id: AiToetsStand(
                 uitkomst=rij.ai_toets_uitkomst, reden=rij.ai_toets_reden, op=rij.ai_toets_op,
@@ -246,6 +253,7 @@ def laad_matchcontext(
         taxrate_naam_per_id=taxrate_naam_per_id,
         ai_toets_per_mutatie=ai_toets_per_mutatie,
         administratie_id=administratie_id,
+        omzetbatch_posten=omzetbatch_posten,
     )
 
 
@@ -259,6 +267,7 @@ def bepaal_voorstel_in_context(context: MatchContext, mutatie: matchmotor.Mutati
         iban_relaties=context.iban_relaties,
         historie=context.historie,
         rekening_label=context.rekening_label,
+        omzetbatch_posten=context.omzetbatch_posten,
     )
 
 
@@ -325,6 +334,10 @@ def open_mutaties_met_voorstellen(
                 mutatie=mutatie,
                 btw_percentage=context.btw_percentage_per_taxrate.get(voorstel.taxrate_id),
             )
+        elif voorstel.soort == matchmotor.VoorstelSoort.OMZETBATCH_POST and te_boeken is not None:
+            from app.bank.boeken import omzetbatch_naar_boekregels
+
+            regel_boekregels = omzetbatch_naar_boekregels(voorstel=voorstel, mutatie=mutatie)
         regel_voorstel = None
         if voorstel.soort in (matchmotor.VoorstelSoort.HANDMATIG, matchmotor.VoorstelSoort.RLZ_VOORSTEL):
             regel_voorstel = matchmotor.stel_regel_voor(

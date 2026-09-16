@@ -50,6 +50,8 @@ def _naar_voorstel_response(data: voorstel.OmzetVoorstelData) -> schemas.OmzetVo
                 taxrate_id=r.taxrate_id,
                 kostprijs_ledger_id=r.kostprijs_ledger_id,
                 herkomst=r.herkomst,
+                btw_herkomst=r.btw_herkomst,
+                btw_herkomst_detail=r.btw_herkomst_detail,
             )
             for r in data.regels
         ],
@@ -70,12 +72,32 @@ def omzet_bron_instellingen_ophalen(
     administratie_id: uuid.UUID,
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.OmzetBronInstellingenDto:
-    """Omzetbronnen (Peter 15-09): stores → administratie, productnaam → categorie, PSP, rekeningen — leeg = defaults."""  # noqa: E501
+    """Omzetbronnen (Peter 15-09 + besluiten 16-09): stores → administratie, productnaam → categorie, tegenrekening per
+    betaalwijze, btw per categorie, combi-regel, PSP — plus read-only `defaults` en de keuzelijsten."""
     from app.db.session import scoped_session
-    from app.omzet.bronnen import service as bronnen_service
 
     with scoped_session(administratie_id, actor_id=actor.id) as session:
-        return schemas.OmzetBronInstellingenDto(**bronnen_service.bron_instellingen_voor(session, administratie_id))
+        return _bron_instellingen_dto(session, administratie_id)
+
+
+def _bron_instellingen_dto(session, administratie_id: uuid.UUID) -> schemas.OmzetBronInstellingenDto:  # noqa: ANN001
+    from app.omzet.bronnen import service as bronnen_service
+
+    inst = bronnen_service.bron_instellingen_voor(session, administratie_id)
+    return schemas.OmzetBronInstellingenDto(
+        **inst,
+        defaults=bronnen_service.defaults_voor(session, administratie_id, instellingen=inst),
+        rekeningen=[
+            schemas.RekeningKeuzeDto(ledger_id=r.ledger_id, code=r.code, naam=r.naam)
+            for r in bronnen_service.rekeningen_voor(session, administratie_id)
+        ],
+        tarieven=[
+            schemas.TariefKeuzeDto(
+                taxrate_id=t.taxrate_id, naam=t.naam, percentage=t.percentage, is_verlegd=t.is_verlegd
+            )
+            for t in bronnen_service.tarieven_voor(session, administratie_id)
+        ],
+    )
 
 
 @router.put(
@@ -89,15 +111,19 @@ def omzet_bron_instellingen_zetten(
     _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.OmzetBronInstellingenDto:
     """Beheerder-only (Instellingen › Administraties › ‹studio› › Omzet); audit oud→nieuw."""
+    from app.db.session import scoped_session
     from app.omzet.bronnen import service as bronnen_service
 
     try:
-        uit = bronnen_service.zet_bron_instellingen(
-            administratie_id=administratie_id, actor_id=actor.id, waarden=invoer.model_dump()
+        bronnen_service.zet_bron_instellingen(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            waarden={k: v for k, v in invoer.model_dump().items() if v is not None},
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return schemas.OmzetBronInstellingenDto(**uit)
+    with scoped_session(administratie_id, actor_id=actor.id) as session:
+        return _bron_instellingen_dto(session, administratie_id)
 
 
 @router.get(
