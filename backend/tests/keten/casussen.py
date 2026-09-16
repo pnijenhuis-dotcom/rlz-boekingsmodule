@@ -52,6 +52,9 @@ Q_AUTOBOEK_LEREN = "q_autoboek_leren"
 W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
 #: Peter 15-09: verlegd herkennen op kolomcode "V" zonder het woord verlegd (Olieman-patroon, bouw-onderaannemer).
 Z_VERLEGD_KOLOMCODE = "z_verlegd_kolomcode_v"
+# Peter 16-09 (ProfX-opdracht): coffeeshop-kassarapport als PDF mét tekstlaag (pdf_tekst.json = journaal 4 pagina's,
+# marge_tekst.json = margerapport) — zie fixtures/ad_omzet_profx_journaal/bron.json.
+AD_OMZET_PROFX = "ad_omzet_profx_journaal"
 # Peter 15-09 (omzetbronnen): géén document-casussen maar spreadsheet-rasters als JSON-grid
 # (dagstaat_grid.json / kascheck_grid.json / export_grid.json) — `alle_casussen()` slaat ze over; zie bron.json per map.
 #: Peter 16-09 (Zenvoices-casus Hello Kitchen / Kempen Facilities): UBL met referentie "2 4594 001722" terwijl RLZ het

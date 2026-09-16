@@ -198,6 +198,10 @@ class AdministratieInstellingen:
     gearchiveerd_door_naam: str | None = None
     # Groepskenmerk (blok 8 run 11-09, migratie 0135): None = geen groep.
     groep_id: uuid.UUID | None = None
+    # Blok G ProfX (16-09): profiel "Winkel / kassa" — effectief (afgeleid of override) + herkomst.
+    kassa_profiel: bool = False
+    kassa_profiel_bron: str = "afgeleid"  # 'afgeleid' | 'override'
+
     groep_naam: str | None = None
     groep_code: str | None = None
     groep_actief: bool | None = None
@@ -251,7 +255,9 @@ def _doorbelasting_doelen(bron_ids: list[uuid.UUID]) -> set[uuid.UUID]:
     return doelen
 
 
-def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False) -> list[AdministratieInstellingen]:
+def overzicht_administratie_instellingen(
+    *, inclusief_gearchiveerd: bool = False, actor_id: uuid.UUID | None = None
+) -> list[AdministratieInstellingen]:
     """Voor het instellingen-scherm (design-pass taak 3): beide schakelaars per administratie in
     één keer, i.p.v. de losse per-administratie GET-endpoints hierboven N keer aan te roepen.
     Los van `overzicht_boeken_status()` (CLI, alleen boeken_ingeschakeld) gehouden — dat commando
@@ -301,6 +307,7 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
     from app.beheer.groepen import groep_per_administratie
 
     groepen = groep_per_administratie([r.id for r in rijen if r.groep_id])
+    kassa = kassa_profiel_per_administratie([r.id for r in rijen])
     return [
         AdministratieInstellingen(
             administratie_id=r.id,
@@ -310,6 +317,8 @@ def overzicht_administratie_instellingen(*, inclusief_gearchiveerd: bool = False
             ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
             eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
             is_vastgoed=r.is_vastgoed,
+            kassa_profiel=kassa.get(r.id, (False, "afgeleid"))[0],
+            kassa_profiel_bron=kassa.get(r.id, (False, "afgeleid"))[1],
             verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
             uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
             uren_dagmax_uren=r.uren_dagmax_uren,
@@ -1253,3 +1262,90 @@ def zet_uren_dagmax(*, actor_id: uuid.UUID, administratie_id: uuid.UUID, dagmax_
             nieuwe_waarde={"uren_dagmax_uren": str(dagmax_uren)},
         )
         return dagmax_uren
+
+
+# --- Profiel "Winkel / kassa" (blok G ProfX-opdracht, Peter 16-09; migratie 0150) -----------------------------------
+
+
+def kassa_profiel_afgeleid(administratie_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Afgeleid (minimale mens): een administratie mét ≥ 1 kassarapport (documentsoort) krijgt het profiel. `document`
+    is puur administratie-gescoopt (RLS zonder Beheerder-bypass), dus per administratie één EXISTS in
+    `scoped_session(aid)` — een lezing in `scoped_session(None)` ziet nul rijen (RLS-les 25-08)."""
+    from app.documenten.models import Document, DocumentSoort
+
+    uit: set[uuid.UUID] = set()
+    for aid in administratie_ids:
+        with scoped_session(aid) as session:
+            heeft = session.scalar(
+                select(Document.id)
+                .where(Document.administratie_id == aid, Document.soort == DocumentSoort.KASSARAPPORT.value)
+                .limit(1)
+            )
+        if heeft is not None:
+            uit.add(aid)
+    return uit
+
+
+def kassa_profiel_per_administratie(administratie_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[bool, str]]:
+    """{administratie_id: (effectief, 'afgeleid' | 'override')} — override wint, anders de afleiding."""
+    if not administratie_ids:
+        return {}
+    with scoped_session(None) as session:
+        overrides = dict(
+            session.execute(
+                select(Administratie.id, Administratie.kassa_profiel).where(Administratie.id.in_(administratie_ids))
+            ).all()
+        )
+    afgeleid = kassa_profiel_afgeleid([aid for aid in administratie_ids if overrides.get(aid) is None])
+    uit: dict[uuid.UUID, tuple[bool, str]] = {}
+    for aid in administratie_ids:
+        override = overrides.get(aid)
+        if override is not None:
+            uit[aid] = (bool(override), "override")
+        else:
+            uit[aid] = (aid in afgeleid, "afgeleid")
+    return uit
+
+
+@dataclass(frozen=True)
+class KassaProfielStand:
+    kassa_profiel: bool
+    bron: str
+    override: bool | None
+
+
+def haal_kassa_profiel_op(*, administratie_id: uuid.UUID) -> KassaProfielStand:
+    stand = kassa_profiel_per_administratie([administratie_id]).get(administratie_id)
+    with scoped_session(None) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        return KassaProfielStand(
+            kassa_profiel=stand[0] if stand else False,
+            bron=stand[1] if stand else "afgeleid",
+            override=administratie.kassa_profiel,
+        )
+
+
+def zet_kassa_profiel(
+    *, actor_id: uuid.UUID, administratie_id: uuid.UUID, kassa_profiel: bool | None
+) -> KassaProfielStand:
+    """Beheerder-override (True/False) of terug naar afgeleid (None); audit oud→nieuw op élke aanroep (toggle-lijn)."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        administratie = session.get(Administratie, administratie_id)
+        if administratie is None:
+            raise BeheerFout(f"Onbekende administratie: {administratie_id}")
+        oud = administratie.kassa_profiel
+        administratie.kassa_profiel = kassa_profiel
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="platform",
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="kassa_profiel_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"kassa_profiel": oud},
+            nieuwe_waarde={"kassa_profiel": kassa_profiel},
+        )
+    return haal_kassa_profiel_op(administratie_id=administratie_id)

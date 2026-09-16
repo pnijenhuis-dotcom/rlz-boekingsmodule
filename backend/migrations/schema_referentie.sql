@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0149
+-- Migratie-head bij deze dump: 0150
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3672,6 +3672,7 @@ CREATE TABLE platform.administratie (
     bron_naam text,
     bron_naam_gezien_op timestamp with time zone,
     naam_gevolgd_op timestamp with time zone,
+    kassa_profiel boolean,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_naam_bron CHECK ((naam_bron = ANY (ARRAY['odoo'::text, 'rlz'::text, 'mens'::text]))),

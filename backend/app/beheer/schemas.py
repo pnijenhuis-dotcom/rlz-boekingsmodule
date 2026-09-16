@@ -105,6 +105,19 @@ class DuplicaatAutoafvoerDto(StrikteInvoer):
     ingeschakeld: bool
 
 
+class KassaProfielDto(StrikteInvoer):
+    """Blok G ProfX (16-09): Beheerder-override van het profiel "Winkel / kassa" — true/false, of null = terug naar
+    afgeleid (≥ 1 herkend kassarapport)."""
+
+    kassa_profiel: bool | None = None
+
+
+class KassaProfielStandDto(BaseModel):
+    kassa_profiel: bool
+    bron: str  # afgeleid | override
+    override: bool | None = None
+
+
 class IsVastgoedDto(StrikteInvoer):
     is_vastgoed: bool
 
@@ -156,6 +169,9 @@ class AdministratieInstellingenDto(BaseModel):
     # Verkoop-autoboeken (migratie 0051): alleen bedienbaar wanneer is_vastgoed — de UI toont
     # de schakelaar uitsluitend voor vastgoed-administraties.
     is_vastgoed: bool = False
+    # Profiel "Winkel / kassa" (blok G ProfX 16-09, migratie 0150): effectief + herkomst ('afgeleid' | 'override').
+    kassa_profiel: bool = False
+    kassa_profiel_bron: str = "afgeleid"
     verkoop_autoboeken_ingeschakeld: bool = False
     # Uren & meerwerk (migratie 0056): steigerbouw-tak, opt-in per administratie.
     uren_meerwerk_ingeschakeld: bool = False

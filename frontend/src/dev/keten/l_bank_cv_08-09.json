@@ -53,7 +53,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -84,7 +85,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -124,7 +126,8 @@
       "ledger_id": "ffffffff-0000-4000-8000-000000004400",
       "taxrate_id": null,
       "historie_k": 3,
-      "historie_n": 3
+      "historie_n": 3,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -155,7 +158,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -197,7 +201,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -239,7 +244,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,
@@ -279,7 +285,8 @@
       "ledger_id": null,
       "taxrate_id": null,
       "historie_k": null,
-      "historie_n": null
+      "historie_n": null,
+      "batch": null
      },
      "afletter_opdracht": null,
      "regel_voorstel": null,

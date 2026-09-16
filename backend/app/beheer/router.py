@@ -36,6 +36,8 @@ def administratie_instellingen_lijst(
                 ai_extractie_ingeschakeld=r.ai_extractie_ingeschakeld,
                 eigenaar_gebruiker_id=r.eigenaar_gebruiker_id,
                 is_vastgoed=r.is_vastgoed,
+                kassa_profiel=r.kassa_profiel,
+                kassa_profiel_bron=r.kassa_profiel_bron,
                 verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
                 uren_meerwerk_ingeschakeld=r.uren_meerwerk_ingeschakeld,
                 uren_dagmax_uren=r.uren_dagmax_uren,
@@ -811,6 +813,34 @@ def is_vastgoed_zetten(
         verkoop_autoboeken_ingeschakeld=r.verkoop_autoboeken_ingeschakeld,
         verkoop_autoboeken_uitgezet=r.verkoop_autoboeken_uitgezet,
     )
+
+
+@router.get("/administraties/{administratie_id}/kassa-profiel", response_model=schemas.KassaProfielStandDto)
+def kassa_profiel_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.KassaProfielStandDto:
+    try:
+        s = service.haal_kassa_profiel_op(administratie_id=administratie_id)
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.KassaProfielStandDto(kassa_profiel=s.kassa_profiel, bron=s.bron, override=s.override)
+
+
+@router.patch("/administraties/{administratie_id}/kassa-profiel", response_model=schemas.KassaProfielStandDto)
+def kassa_profiel_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.KassaProfielDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.KassaProfielStandDto:
+    """Blok G ProfX (Peter 16-09): profiel "Winkel / kassa" — afgeleid (≥ 1 herkend kassarapport) mét Beheerder-override
+    aan/uit of terug naar afgeleid (null). Audit oud→nieuw. Geen poort: het profiel bundelt en toont instellingen."""
+    try:
+        s = service.zet_kassa_profiel(
+            actor_id=actor.id, administratie_id=administratie_id, kassa_profiel=invoer.kassa_profiel
+        )
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.KassaProfielStandDto(kassa_profiel=s.kassa_profiel, bron=s.bron, override=s.override)
 
 
 @router.get(

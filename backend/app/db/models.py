@@ -156,6 +156,9 @@ class Administratie(Base):
     project_verplicht: Mapped[bool] = mapped_column(default=False)
     ai_extractie_ingeschakeld: Mapped[bool] = mapped_column(default=True)
     is_vastgoed: Mapped[bool] = mapped_column(default=False)
+    # Profiel "Winkel / kassa" (blok G ProfX, Peter 16-09; migratie 0150): NULL = afgeleid (≥ 1 herkend kassarapport),
+    # True/False = Beheerder-override. Bundelt de omzetbron-instellingen; nooit een poort.
+    kassa_profiel: Mapped[bool | None] = mapped_column(default=None)
     # Opt-in voor de volautomatische bankstappen (migratie 0026): vaste regels automatisch
     # direct-op-grootboek boeken tijdens de bank-sync — default UIT, werkt bovenop de
     # boeken-failsafes (boeken_ingeschakeld + globale kill switch, die blijven onverkort gelden).

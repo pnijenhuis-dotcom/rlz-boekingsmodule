@@ -479,7 +479,45 @@ def _verwerk_pdf(
     body_hint: str | None = None,
     bron_bestand: BronBestand | None = None,
     kanaal: DocumentBron = DocumentBron.EMAIL,
+    mail_tenaamstelling: str | None = None,
 ) -> BijlageResultaat:
+    # Blok A1 ProfX (Peter 16-09): herkenning op INHOUD vóór de AI-classificatie — een ProfX Journaal/Margerapport is
+    # een KASSARAPPORT (omzetmodule), nooit een inkoopfactuur; geen AVG-gate/AI-call nodig. Routering: tenaamstelling
+    # uit de kop (bedrijf) of de geleerde afzender-regel; niets eenduidig → verzamelbak mét zichtbare reden.
+    from app.omzet.bronnen import herkenning, profx
+
+    try:
+        profx_bron = herkenning.herken_pdf(bijlage.inhoud)
+    except Exception:  # noqa: BLE001 — onleesbare PDF = geen bron
+        profx_bron = None
+    if profx_bron is not None:
+        tenaamstelling = None
+        if profx_bron == profx.BRON_JOURNAAL:
+            from app.extractie.template_terugval import lees_tekstlaag
+
+            laag = lees_tekstlaag(bijlage.inhoud)
+            tenaamstelling = profx.parse_journaal(list(laag.regels)).bedrijf if laag else None
+        elif profx_bron == profx.BRON_MARGE:
+            # Blok A3: een margerapport draagt zelf geen bedrijfsnaam — het volgt het journaal uit DEZELFDE mail
+            # ("journaal en marge raport" in één bericht). Zonder journaal in de mail: afzender-regel of verzamelbak.
+            tenaamstelling = mail_tenaamstelling
+        return _wijs_toe_of_verzamelbak(
+            bijlage_naam=bijlage.bestandsnaam,
+            inhoud=bijlage.inhoud,
+            soort=DocumentSoort.KASSARAPPORT,
+            tenaamstelling=tenaamstelling,
+            afzender=afzender,
+            actor_id=actor_id,
+            intake_bericht_id=intake_bericht_id,
+            opslag=opslag,
+            verzamelbak_reden=(
+                f"omzetbron {profx_bron} zonder eenduidige administratie (afzender/tenaamstelling onbekend)"
+            ),
+            body_hint=body_hint,
+            bron_bestand=bron_bestand,
+            kanaal=kanaal,
+        )
+
     uitsluiting = splitsing_uitsluiting.vind_uitsluiting(afzender)
     if uitsluiting is not None:
         # "Nooit splitsen"-regel voor deze afzender (blok B 04-09, cases Universal Nederland/Delta): de
@@ -760,6 +798,7 @@ def _routeer_bundel_item(
     body_hint: str | None,
     kanaal: DocumentBron,
     logo_filter: bool,
+    mail_tenaamstelling: str | None = None,
 ) -> list[BijlageResultaat]:
     """Eén bundel-item → één of twee resultaatregels. Een paar (bundeling 02-09): de UBL wordt
     het document (velden + tenaamstelling deterministisch), de PDF gaat mee als beeld
@@ -804,8 +843,32 @@ def _routeer_bundel_item(
             body_hint=body_hint,
             kanaal=kanaal,
             logo_filter=logo_filter,
+            mail_tenaamstelling=mail_tenaamstelling,
         )
     ]
+
+
+def _profx_mail_tenaamstelling(bijlagen: list[IntakeBijlage]) -> str | None:
+    """Blok A3 ProfX (Peter 16-09): de bedrijfsnaam uit het ProfX-JOURNAAL in dezelfde mail, zodat het margerapport
+    (zonder eigen tenaamstelling) dezelfde administratie volgt. Precies één bedrijf → die naam; meerdere → None (nooit
+    gokken). Deterministisch op de tekstlaag, geen AI."""
+    from app.extractie.template_terugval import lees_tekstlaag
+    from app.omzet.bronnen import herkenning, profx
+
+    namen: set[str] = set()
+    for bijlage in bijlagen:
+        if not bijlage.is_pdf:
+            continue
+        try:
+            if herkenning.herken_pdf(bijlage.inhoud) != profx.BRON_JOURNAAL:
+                continue
+            laag = lees_tekstlaag(bijlage.inhoud)
+            bedrijf = profx.parse_journaal(list(laag.regels)).bedrijf if laag else None
+        except Exception:  # noqa: BLE001 — onleesbare PDF telt niet mee
+            continue
+        if bedrijf:
+            namen.add(bedrijf)
+    return namen.pop() if len(namen) == 1 else None
 
 
 def _verwerk_spreadsheet(
@@ -884,6 +947,7 @@ def _routeer_bijlage(
     body_hint: str | None,
     kanaal: DocumentBron,
     logo_filter: bool,
+    mail_tenaamstelling: str | None = None,
 ) -> BijlageResultaat:
     gedeeld = dict(
         afzender=afzender, actor_id=actor_id, intake_bericht_id=intake_bericht_id, opslag=opslag, body_hint=body_hint
@@ -891,7 +955,7 @@ def _routeer_bijlage(
     if bijlage.is_xml:
         return _verwerk_xml(bijlage, kanaal=kanaal, **gedeeld)
     if bijlage.is_pdf:
-        return _verwerk_pdf(bijlage, kanaal=kanaal, **gedeeld)
+        return _verwerk_pdf(bijlage, kanaal=kanaal, mail_tenaamstelling=mail_tenaamstelling, **gedeeld)
     if bijlage.is_afbeelding:
         return _verwerk_afbeelding(bijlage, kanaal=kanaal, logo_filter=logo_filter, **gedeeld)
     if bijlage.is_spreadsheet:
@@ -1004,6 +1068,7 @@ def verwerk_eml(
 
     # Bundeling 02-09: UBL+PDF-paren (ingesloten-PDF-hash, anders naamstam) worden één document
     # vóór de routing — zie app/intake/bundeling.py.
+    mail_tenaamstelling = _profx_mail_tenaamstelling(mail.bijlagen)
     resultaten: list[BijlageResultaat] = [
         r
         for item in bundel_bijlagen(mail.bijlagen)
@@ -1016,6 +1081,7 @@ def verwerk_eml(
             body_hint=mail.body_tekst,
             kanaal=DocumentBron.EMAIL,
             logo_filter=True,
+            mail_tenaamstelling=mail_tenaamstelling,
         )
     ]
 

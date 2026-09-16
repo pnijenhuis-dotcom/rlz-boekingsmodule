@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import logging
 import uuid
+from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -25,9 +26,11 @@ from app.omzet.bronnen import (
     BRON_ZONNESTUDIO_DAGSTAAT,
     BRON_ZONNESTUDIO_KASCHECK,
     herken_bron_in_grid,
+    herkenning,
     lees_grid,
 )
 from app.omzet.bronnen import pilates as pilates_bron
+from app.omzet.bronnen import profx as profx_bron
 from app.omzet.bronnen import tegenzijde as tegenzijde_bron
 from app.omzet.bronnen import zonnestudio as zonnestudio_bron
 from app.omzet.models import OmzetInstelling
@@ -130,10 +133,12 @@ def defaults_voor(
     laag = tegenzijde_bron.default_tarief(tegenzijde_bron.BTW_LAAG, tarieven)
     hoog = tegenzijde_bron.default_tarief(tegenzijde_bron.BTW_HOOG, tarieven)
     verlegd = bepaal_verlegd_taxrate(session, administratie_id=administratie_id)
+    vrijgesteld = tegenzijde_bron.default_tarief(tegenzijde_bron.BTW_VRIJGESTELD, tarieven)
     per_klasse = {
         tegenzijde_bron.BTW_LAAG: str(laag.taxrate_id) if laag else None,
         tegenzijde_bron.BTW_HOOG: str(hoog.taxrate_id) if hoog else None,
         tegenzijde_bron.BTW_VERLEGD: str(verlegd.taxrate_id) if verlegd else None,
+        tegenzijde_bron.BTW_VRIJGESTELD: str(vrijgesteld.taxrate_id) if vrijgesteld else None,
     }
     categorie_btw: dict[str, dict[str, Any]] = {}
     for sleutel in (
@@ -640,3 +645,212 @@ def splits_pilates_export_na_extractie(
         )
         nieuw += 1
     return nieuw
+
+
+# ---- ProfX Journaal / Margerapport (PDF-tekstlaag, Peter 16-09) ------------------------------------------------------
+
+
+def _profx_tekst(inhoud: bytes) -> list[str] | None:
+    from app.extractie.template_terugval import lees_tekstlaag
+
+    laag = lees_tekstlaag(inhoud)
+    return list(laag.regels) if laag is not None else None
+
+
+def _profx_journalen(
+    session: Session, *, administratie_id: uuid.UUID, behalve: uuid.UUID
+) -> list[tuple[Document, dict]]:
+    return _kassarapporten_met_bron(
+        session, administratie_id=administratie_id, bron=profx_bron.BRON_JOURNAAL, behalve=behalve
+    )
+
+
+def _profx_margerapporten(
+    session: Session, *, administratie_id: uuid.UUID, behalve: uuid.UUID
+) -> list[tuple[Document, dict]]:
+    return _kassarapporten_met_bron(
+        session, administratie_id=administratie_id, bron=profx_bron.BRON_MARGE, behalve=behalve
+    )
+
+
+def _marge_uit_veldvoorstel(vv: dict) -> profx_bron.Margerapport:
+    from decimal import Decimal
+
+    detail = vv.get("bron_detail") or {}
+    m = detail.get("marge") or {}
+    groepen = {
+        r["categorie"]: Decimal(r["kostprijs_bedrag"]) for r in vv.get("regels") or [] if r.get("kostprijs_bedrag")
+    }
+    rapport = profx_bron.Margerapport(
+        periode_van=date.fromisoformat(m["periode_van"]) if m.get("periode_van") else _datum_van(vv),
+        periode_tot=date.fromisoformat(m["periode_tot"]) if m.get("periode_tot") else None,
+        groepen=groepen,
+        totaal=Decimal(m["totaal"]) if m.get("totaal") else None,
+    )
+    return rapport
+
+
+def verwerk_pdf_tekst(session: Session, *, document: Document, inhoud: bytes) -> dict:
+    """Detail voor de extractie-eindovergang van een KASSARAPPORT-PDF van een deterministische bron (ProfX): zelfde
+    contract als `verwerk_spreadsheet`. Journaal: zoekt een al aanwezig los margerapport dat de kassadag dekt (zelfde
+    dag → gebundeld: het margerapport gaat op SAMENGEVOEGD; week → 'gekoppeld', het margerapport blijft eigen document
+    mét één memoriaal per periode). Margerapport: zelfde dag als een wachtend journaal → in dat journaal gevoegd;
+    anders eigen document (kostprijs per periode)."""
+    regels = _profx_tekst(inhoud)
+    if regels is None:
+        return {"bron_parse_fout": "PDF zonder tekstlaag — ProfX-rapport niet leesbaar zonder AI (scan?)"}
+    bron = herkenning.herken_pdf_tekst(regels)
+    if bron is None:
+        return {"bron_parse_fout": "geen bekende omzetbron in de PDF-tekst (verwacht: ProfX Journaal of Margerapport)"}
+    if document.administratie_id is None:
+        return {"bron_parse_fout": "geen administratie — wijs het document eerst toe"}
+    try:
+        if bron == profx_bron.BRON_JOURNAAL:
+            return _verwerk_profx_journaal(session, document=document, regels=regels)
+        return _verwerk_profx_marge(session, document=document, regels=regels)
+    except Exception as exc:  # noqa: BLE001 — een parserfout is een zichtbare uitkomst
+        logger.exception("Omzetbron %s: verwerking mislukt voor document %s", bron, document.id)
+        return {"bron_parse_fout": f"{bron}: {exc}"}
+
+
+def _verwerk_profx_journaal(session: Session, *, document: Document, regels: list[str]) -> dict:
+    journaal = profx_bron.parse_journaal(regels)
+    marge = None
+    marge_doc: Document | None = None
+    for doc, vv in _profx_margerapporten(session, administratie_id=document.administratie_id, behalve=document.id):
+        kandidaat = _marge_uit_veldvoorstel(vv)
+        if profx_bron.dekt(kandidaat.periode_van, kandidaat.periode_tot, journaal.kassadag):
+            marge, marge_doc = kandidaat, doc
+            break
+    veldvoorstel = profx_bron.bouw_veldvoorstel(
+        journaal, marge, marge_document_id=str(marge_doc.id) if marge_doc else None, bestandsnaam=document.bestandsnaam
+    )
+    if marge_doc is not None and marge is not None and marge.periode_van == (marge.periode_tot or marge.periode_van):
+        # Zelfde dag = één kassarapport, twee boekingen vanuit één scherm (blok F): het margerapport gaat op
+        # samengevoegd.
+        _markeer_samengevoegd(session, bron_document=marge_doc, doel_document=document)
+        veldvoorstel["bron_detail"]["marge"]["stand"] = "gebundeld"
+    elif marge_doc is not None:
+        # Weekrapport: blijft eigen document (één memoriaal per periode) — het dagjournaal boekt alleen omzet.
+        veldvoorstel["bron_detail"]["marge"]["stand"] = "gekoppeld_periode"
+        for r in veldvoorstel["regels"]:
+            r["kostprijs_bedrag"] = None
+        veldvoorstel["totaal_kostprijs"] = None
+        veldvoorstel["regelsom_kostprijs"] = {"vergelijkbaar": False, "reden": "kostprijs op het weekrapport"}
+    return {"veldvoorstel": veldvoorstel}
+
+
+def _verwerk_profx_marge(session: Session, *, document: Document, regels: list[str]) -> dict:
+    marge = profx_bron.parse_margerapport(regels)
+    dag_journaal: Document | None = None
+    dag_vv: dict | None = None
+    if marge.periode_van is not None and marge.periode_van == (marge.periode_tot or marge.periode_van):
+        for doc, vv in _profx_journalen(session, administratie_id=document.administratie_id, behalve=document.id):
+            if (
+                _datum_van(vv) == marge.periode_van
+                and (vv.get("bron_detail") or {}).get("marge", {}).get("stand") == "verwacht"
+            ):
+                dag_journaal, dag_vv = doc, vv
+                break
+    if dag_journaal is not None and dag_vv is not None:
+        # Zelfde dag als een wachtend journaal: kostprijs bij het journaal voegen (één scherm, twee boekingen).
+        journaal_regels = list(dag_vv.get("regels") or [])
+        for r in journaal_regels:
+            w = marge.groepen.get(r["categorie"]) or next(
+                (v for n, v in marge.groepen.items() if n.strip().lower() == r["categorie"].strip().lower()), None
+            )
+            r["kostprijs_bedrag"] = str(w) if w is not None else None
+        nieuw = {**dag_vv, "regels": journaal_regels}
+        nieuw["totaal_kostprijs"] = str(marge.totaal) if marge.totaal is not None else None
+        nieuw["bron_detail"] = {
+            **(dag_vv.get("bron_detail") or {}),
+            "marge": {
+                "periode_van": marge.periode_van.isoformat() if marge.periode_van else None,
+                "periode_tot": marge.periode_tot.isoformat() if marge.periode_tot else None,
+                "totaal": str(marge.totaal) if marge.totaal is not None else None,
+                "document_id": str(document.id),
+                "stand": "gebundeld",
+            },
+        }
+        nieuw["bron_detail"]["controles"] = [
+            c
+            for c in (nieuw["bron_detail"].get("controles") or [])
+            if not c["naam"].startswith("Margerapport (kostprijs)")
+        ] + [asdict(c) for c in marge.controles]
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=dag_journaal.id,
+                van_status=dag_journaal.status,
+                naar_status=dag_journaal.status,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    "veldvoorstel": nieuw,
+                    "reden": "margerapport van dezelfde kassadag gebundeld (kostprijs gevuld)",
+                },
+            )
+        )
+        # De eindovergang (`_rond_extractie_af`) zet dít document op SAMENGEVOEGD mét verwijzing; hier alleen het doel.
+        return {"samengevoegd_in_document_id": str(dag_journaal.id)}
+    # Week- of los dagrapport: eigen document mét kostprijsregels (één memoriaal per periode); dekking als controle.
+    veldvoorstel = profx_bron.bouw_veldvoorstel(None, marge, bestandsnaam=document.bestandsnaam)
+    gedekt = [
+        d
+        for d, vv in _profx_journalen(session, administratie_id=document.administratie_id, behalve=document.id)
+        if profx_bron.dekt(marge.periode_van, marge.periode_tot, _datum_van(vv))
+    ]
+    veldvoorstel["bron_detail"]["gedekte_journalen"] = [str(d.id) for d in gedekt]
+    if marge.periode_van and marge.periode_tot and marge.periode_tot > marge.periode_van:
+        dagen = (marge.periode_tot - marge.periode_van).days + 1
+        veldvoorstel["bron_detail"]["controles"].append(
+            asdict(
+                profx_bron.Controle(
+                    "Periode-dekking: dagjournalen in de margeperiode",
+                    len(gedekt) >= dagen,
+                    f"{len(gedekt)} van {dagen} dagen hebben een journaal",
+                    blokkerend=False,
+                )
+            )
+        )
+    # Los margerapport zonder journaal: 'wacht op journaal' is al een controle in bouw_veldvoorstel.
+    return {"veldvoorstel": veldvoorstel}
+
+
+def profx_marge_stand(session: Session, *, administratie_id: uuid.UUID, veldvoorstel: dict) -> dict | None:
+    """Blok F/notitie 7: de LIVE stand van de kostprijs voor een ProfX-dagjournaal — 'gebundeld' (zelfde dag, in dit
+    document), 'gekoppeld_periode' (weekrapport als eigen document: verwacht/geboekt), 'verwacht' (nog geen
+    margerapport dat deze kassadag dekt). Niet bevroren in het veldvoorstel: komt het weekrapport later, dan verandert
+    de chip zonder herextractie."""
+    if veldvoorstel.get("bron") != profx_bron.BRON_JOURNAAL:
+        return None
+    detail = veldvoorstel.get("bron_detail") or {}
+    marge = dict(detail.get("marge") or {})
+    if marge.get("stand") == "gebundeld":
+        return marge
+    dag = _datum_van(veldvoorstel)
+    for doc in session.scalars(
+        select(Document).where(
+            Document.administratie_id == administratie_id,
+            Document.soort == DocumentSoort.KASSARAPPORT.value,
+            Document.status != DocumentStatus.SAMENGEVOEGD,
+        )
+    ):
+        vv = _laatste_veldvoorstel(session, doc.id)
+        if not vv or vv.get("bron") != profx_bron.BRON_MARGE:
+            continue
+        m = (vv.get("bron_detail") or {}).get("marge") or {}
+        van = date.fromisoformat(m["periode_van"]) if m.get("periode_van") else _datum_van(vv)
+        tot = date.fromisoformat(m["periode_tot"]) if m.get("periode_tot") else van
+        if profx_bron.dekt(van, tot, dag):
+            return {
+                "periode_van": van.isoformat() if van else None,
+                "periode_tot": tot.isoformat() if tot else None,
+                "totaal": m.get("totaal") or vv.get("totaal_kostprijs"),
+                "document_id": str(doc.id),
+                "stand": "geboekt" if doc.status == DocumentStatus.GEBOEKT else "gekoppeld_periode",
+                "week": van.isocalendar()[1] if van else None,
+            }
+    marge["stand"] = "verwacht"
+    if dag:
+        marge["week"] = dag.isocalendar()[1]
+    return marge

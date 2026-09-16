@@ -114,20 +114,43 @@ class TestStandaardlijst:
         assert lijst["afgehandeld"].get("geboekt") == 1
         assert lijst["afgehandeld"]["totaal"] >= 1
 
-    def test_wachten_op_anderen_is_een_aparte_groep(self, keten: Keten, statussen) -> None:
-        """Blok 11 (08-09): `groep=kantoor` = de standaardlijst/"Alle" zonder ter_accordering/vraag_open; `groep=wachten`
-        = precies die twee; de groep-tellers reizen mee in élke lijst-response."""
+    def test_wachten_op_anderen_is_een_aparte_groep(self, keten: Keten, statussen, beheerder_id: uuid.UUID) -> None:
+        """Blok 11 (08-09): `groep=kantoor` = de standaardlijst/"Alle" zonder ter_accordering; `groep=wachten` = wat op
+        anderen wacht; de groep-tellers reizen mee in élke lijst-response. Dialoog open tot Afgehandeld (Peter 16-09):
+        een open vraag telt op de AFGELEIDE kant — beurt bij kantoor/niemand (casus Floor zonder eigenaar) = kantoorwerk,
+        beurt bij een klant-accordeur = wachten op anderen."""
         kantoor = keten.lijst(groep="kantoor")
         kantoor_ids = {d["id"] for d in kantoor["documenten"]}
         assert str(statussen["te_controleren"]) in kantoor_ids
         assert str(statussen["ter_accordering"]) not in kantoor_ids
-        assert str(statussen["vraag_open"]) not in kantoor_ids
+        assert str(statussen["vraag_open"]) in kantoor_ids  # open vraag, kantoor aan zet
         assert str(statussen["geboekt"]) not in kantoor_ids
         wachten = keten.lijst(groep="wachten")
-        assert {d["id"] for d in wachten["documenten"]} == {str(statussen["ter_accordering"]), str(statussen["vraag_open"])}
-        assert kantoor["groepen"]["kantoor"] == 1
-        assert kantoor["groepen"]["wachten"] == 2
+        assert {d["id"] for d in wachten["documenten"]} == {str(statussen["ter_accordering"])}
+        assert kantoor["groepen"]["kantoor"] == 2
+        assert kantoor["groepen"]["wachten"] == 1
         assert kantoor["groepen"]["afgehandeld"] >= 1  # het geboekte document
+        # Dezelfde vraag aan de klant-accordeur gericht → de beurt ligt bij de klant → wachten op anderen.
+        open_vraag = vragen.lijst_vragen(
+            administratie_id=keten.administratie_id, status=vragen.VraagStatus.OPEN, document_id=statussen["vraag_open"]
+        )[0]
+        vragen.trek_vraag_in(administratie_id=keten.administratie_id, vraag_id=open_vraag.id, actor_id=keten.actor)
+        accordeur = maak_accordeur(keten.admin_engine, beheerder_id, keten.administratie_id, "Sophia Accordeur")
+        vragen.stel_vraag(
+            administratie_id=keten.administratie_id,
+            document_id=statussen["vraag_open"],
+            actor_id=keten.actor,
+            vraag_tekst="Is de lift door u opgedragen?",
+            toegewezen_aan=accordeur,
+        )
+        kantoor2 = keten.lijst(groep="kantoor")
+        assert str(statussen["vraag_open"]) not in {d["id"] for d in kantoor2["documenten"]}
+        wachten2 = keten.lijst(groep="wachten")
+        assert {d["id"] for d in wachten2["documenten"]} == {
+            str(statussen["ter_accordering"]),
+            str(statussen["vraag_open"]),
+        }
+        assert (kantoor2["groepen"]["kantoor"], kantoor2["groepen"]["wachten"]) == (1, 2)
 
     def test_ter_accordering_rij_toont_wie_aan_de_beurt_is(self, keten: Keten, statussen) -> None:
         rij = keten.lijst_rij(statussen["ter_accordering"], toon_afgehandeld="true")

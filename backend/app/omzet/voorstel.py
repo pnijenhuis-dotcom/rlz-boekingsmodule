@@ -245,9 +245,14 @@ def _met_tegenzijde(session: Session, administratie_id: uuid.UUID, veldvoorstel:
         instellingen=bronnen_service.bron_instellingen_voor(session, administratie_id),
         rekeningen=bronnen_service.rekeningen_voor(session, administratie_id),
     )
-    if uitkomst is None:
-        return detail
-    return {**detail, "tegenzijde": uitkomst.als_dict()}
+    verrijkt = {**detail, "tegenzijde": uitkomst.als_dict()} if uitkomst is not None else dict(detail)
+    # ProfX (blok F): live kostprijs-stand (verwacht / gekoppeld weekrapport / geboekt / gebundeld) op het dagjournaal.
+    marge_stand = bronnen_service.profx_marge_stand(
+        session, administratie_id=administratie_id, veldvoorstel=veldvoorstel
+    )
+    if marge_stand is not None:
+        verrijkt["marge"] = marge_stand
+    return verrijkt
 
 
 def haal_omzet_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> OmzetVoorstelData:

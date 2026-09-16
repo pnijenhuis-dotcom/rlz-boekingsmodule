@@ -1,0 +1,45 @@
+[
+ [
+  "ProfX Journaal",
+  "Bedrijf: De Bazar Apeldoorn B.V.",
+  "Kassa 1, Kassa 2",
+  "Rapportperiode: 11-09-2026 05:00 t/m 12-09-2026 05:00",
+  "Aantal klanten: 604",
+  "Datum uitdraai: 12-09-2026 06:41",
+  "",
+  "Artikelgroepen",
+  "Omschrijving Aantal Bedrag Retour aantal Retour bedrag Korting",
+  "Dranken 32 88,50 0 0,00 0,00",
+  "Edible 19 285,00 0 0,00 0,00",
+  "Hash 158 1.669,64 0 0,00 0,00",
+  "Headshop 21 177,55 0 0,00 0,00",
+  "Joints 267 2.338,50 0 0,00 0,00",
+  "Snacks 3 7,50 0 0,00 0,00",
+  "Wiet 604 6.431,47 0 0,00 0,00",
+  "Bruto omzet 10.998,16",
+  "Kortingen 0,00",
+  "Vouchers 0,00",
+  "Netto omzet 10.998,16",
+  "Blad 1/4"
+ ],
+ [
+  "ProfX Journaal — Artikellijst",
+  "Omschrijving Aantal Bedrag",
+  "Amnesia Haze 1 gram 120 1.320,00",
+  "Cola 0,33 l 32 88,50",
+  "Blad 2/4"
+ ],
+ [
+  "ProfX Journaal — Betaalwijzen",
+  "Betaalwijze Bedrag",
+  "Kas 6.410,66",
+  "PIN 4.587,50",
+  "Blad 3/4"
+ ],
+ [
+  "ProfX Journaal — Kassa-afsluiting",
+  "Kassa 1 beginsaldo 500,00 eindsaldo 3.705,33",
+  "Kassa 2 beginsaldo 500,00 eindsaldo 3.705,33",
+  "Blad 4/4"
+ ]
+]

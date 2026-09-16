@@ -275,13 +275,22 @@ class TestBlok11LijstGroepen:
             assert service.groep_van_status(status) in service.LIJST_GROEPEN
 
     def _casus_groepen(
-        self, actor: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+        self,
+        actor: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        beheerder_id: uuid.UUID,
     ) -> dict[str, uuid.UUID]:
+        """Vijf documenten. Dialoog open tot Afgehandeld (Peter 16-09): een open vraag telt op de AFGELEIDE kant —
+        `vraag` (beurt bij kantoor/niemand) is kantoorwerk, `vraag_klant` (beurt bij een klant-accordeur) wacht op
+        anderen."""
         ids = {
             "werk": _upload(actor, administratie_id, opslag, "werk.pdf"),
             "geboekt": _upload(actor, administratie_id, opslag, "geboekt.pdf"),
             "bij_klant": _upload(actor, administratie_id, opslag, "bij-klant.pdf"),
             "vraag": _upload(actor, administratie_id, opslag, "vraag.pdf"),
+            "vraag_klant": _upload(actor, administratie_id, opslag, "vraag-klant.pdf"),
         }
         _zet_status(administratie_id, actor, ids["werk"], DocumentStatus.EXTRACTIE_BEZIG, DocumentStatus.TE_CONTROLEREN)
         _zet_status(administratie_id, actor, ids["geboekt"], *NAAR_KLAAR, DocumentStatus.GEBOEKT)
@@ -290,16 +299,32 @@ class TestBlok11LijstGroepen:
             administratie_id, actor, ids["vraag"], DocumentStatus.EXTRACTIE_BEZIG, DocumentStatus.TE_CONTROLEREN,
             DocumentStatus.VRAAG_OPEN,
         )
+        _zet_status(
+            administratie_id, actor, ids["vraag_klant"], DocumentStatus.EXTRACTIE_BEZIG, DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.VRAAG_OPEN,
+        )
+        accordeur = maak_accordeur(admin_engine, beheerder_id, administratie_id, "Sophia Accordeur")
+        with scoped_session(administratie_id, actor_id=actor) as session:
+            document = session.get(Document, ids["vraag_klant"])
+            assert document is not None
+            document.toegewezen_aan = accordeur  # Document.toegewezen_aan volgt de afgeleide beurt van de dialoog
         return ids
 
     def test_geboekt_niet_in_standaardlijst_wel_achter_toggle_en_via_groep(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        beheerder_id: uuid.UUID,
     ) -> None:
-        ids = self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag)
+        ids = self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag, admin_engine, beheerder_id)
 
         standaard = {i.document.id for i in service.lijst_documenten(administratie_id=administratie_id)}
         assert ids["geboekt"] not in standaard
-        assert standaard == {ids["werk"], ids["bij_klant"], ids["vraag"]}, "kantoor + wachten; afgehandeld verborgen"
+        assert standaard == {ids["werk"], ids["bij_klant"], ids["vraag"], ids["vraag_klant"]}, (
+            "kantoor + wachten; afgehandeld verborgen"
+        )
 
         met_toggle = {
             i.document.id for i in service.lijst_documenten(administratie_id=administratie_id, toon_afgehandeld=True)
@@ -311,19 +336,24 @@ class TestBlok11LijstGroepen:
         afgehandeld = {
             i.document.id for i in service.lijst_documenten(administratie_id=administratie_id, groep="afgehandeld")
         }
-        assert kantoor == {ids["werk"]}
-        assert wachten == {ids["bij_klant"], ids["vraag"]}
+        assert kantoor == {ids["werk"], ids["vraag"]}  # open vraag, kantoor aan zet = kantoorwerk (Peter 16-09)
+        assert wachten == {ids["bij_klant"], ids["vraag_klant"]}  # open vraag bij de klant-accordeur = wachten
         assert afgehandeld == {ids["geboekt"]}
         with pytest.raises(ValueError):
             service.lijst_documenten(administratie_id=administratie_id, groep="onzin")
 
     def test_tellers_per_groep_en_afgehandeld_incl_geboekt_uit_een_group_by(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        beheerder_id: uuid.UUID,
     ) -> None:
-        self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag)
+        self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag, admin_engine, beheerder_id)
         per_status = service.tel_per_status(administratie_id=administratie_id)
         assert service.tel_groepen(administratie_id=administratie_id, per_status=per_status) == {
-            "kantoor": 1,
+            "kantoor": 2,
             "wachten": 2,
             "afgehandeld": 1,
         }
@@ -335,20 +365,34 @@ class TestBlok11LijstGroepen:
         assert klant.bij_klant == 1
 
     def test_router_groep_parameter_en_tellers(
-        self, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        opslag: LokaleBestandsopslag,
+        admin_engine: Engine,
+        beheerder_id: uuid.UUID,
     ) -> None:
-        ids = self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag)
+        ids = self._casus_groepen(gescoopte_gebruiker, administratie_id, opslag, admin_engine, beheerder_id)
         headers = _bearer(gescoopte_gebruiker)
         basis = f"/administraties/{administratie_id}/documenten"
 
         standaard = client.get(basis, headers=headers)
         assert standaard.status_code == 200, standaard.text
         body = standaard.json()
-        assert {d["id"] for d in body["documenten"]} == {str(ids["werk"]), str(ids["bij_klant"]), str(ids["vraag"])}
-        assert body["groepen"] == {"kantoor": 1, "wachten": 2, "afgehandeld": 1}
+        assert {d["id"] for d in body["documenten"]} == {
+            str(ids["werk"]),
+            str(ids["bij_klant"]),
+            str(ids["vraag"]),
+            str(ids["vraag_klant"]),
+        }
+        assert body["groepen"] == {"kantoor": 2, "wachten": 2, "afgehandeld": 1}
         assert body["afgehandeld"]["geboekt"] == 1 and body["afgehandeld"]["totaal"] == 1
 
-        per_groep = (("kantoor", {"werk"}), ("wachten", {"bij_klant", "vraag"}), ("afgehandeld", {"geboekt"}))
+        per_groep = (
+            ("kantoor", {"werk", "vraag"}),
+            ("wachten", {"bij_klant", "vraag_klant"}),
+            ("afgehandeld", {"geboekt"}),
+        )
         for groep, verwacht in per_groep:
             resp = client.get(basis, params={"groep": groep}, headers=headers)
             assert resp.status_code == 200, resp.text

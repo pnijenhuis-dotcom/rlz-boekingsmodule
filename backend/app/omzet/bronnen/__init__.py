@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from app.omzet.bronnen import pilates, zonnestudio
+from app.omzet.bronnen import pilates, profx, zonnestudio
 from app.omzet.bronnen.grid import Grid, lees_grid
 
 BRON_ZONNESTUDIO_DAGSTAAT = zonnestudio.BRON_DAGSTAAT
 BRON_ZONNESTUDIO_KASCHECK = zonnestudio.BRON_KASCHECK
 BRON_PILATES = pilates.BRON
+BRON_PROFX_JOURNAAL = profx.BRON_JOURNAAL
+BRON_PROFX_MARGE = profx.BRON_MARGE
 
 SPREADSHEET_SUFFIXEN = frozenset({".xls", ".xlsx"})
 
@@ -48,6 +50,8 @@ def herken_bron_in_grid(grid: Grid) -> str | None:
 
 __all__ = [
     "BRON_PILATES",
+    "BRON_PROFX_JOURNAAL",
+    "BRON_PROFX_MARGE",
     "BRON_ZONNESTUDIO_DAGSTAAT",
     "BRON_ZONNESTUDIO_KASCHECK",
     "Grid",
@@ -56,5 +60,6 @@ __all__ = [
     "is_spreadsheet",
     "lees_grid",
     "pilates",
+    "profx",
     "zonnestudio",
 ]

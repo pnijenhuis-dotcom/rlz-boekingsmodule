@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.aikosten.service import AiKostenLimietBereikt, AiVerbruikReferentie
@@ -240,6 +240,16 @@ def _start_extractie(session: Session, *, document: Document, actor_id: uuid.UUI
     _rond_extractie_af(session, document=document, actor_id=actor_id, opslag=opslag)
 
 
+def _is_profx_pdf(inhoud: bytes) -> bool:
+    """Deterministische herkenning op de tekstlaag (app/omzet/bronnen/herkenning.py) — lokaal geïmporteerd."""
+    from app.omzet.bronnen import herkenning
+
+    try:
+        return herkenning.herken_pdf(inhoud) is not None
+    except Exception:  # noqa: BLE001 — onleesbare PDF = geen bron, de gewone route loopt door
+        return False
+
+
 def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.UUID, opslag: DocumentOpslag) -> None:
     """Tweede helft van elke extractie (synchroon én worker): bepaal het veldvoorstel/detail en
     schrijf de eindovergang vanaf extractie_bezig."""
@@ -253,6 +263,19 @@ def _rond_extractie_af(session: Session, *, document: Document, actor_id: uuid.U
         from app.omzet.bronnen import service as bronnen_service  # lokaal: houdt de importgraaf klein
 
         detail = bronnen_service.verwerk_spreadsheet(
+            session, document=document, inhoud=opslag.lezen(pad=document.opslag_pad)
+        )
+        if detail.get("samengevoegd_in_document_id"):
+            doel_status = DocumentStatus.SAMENGEVOEGD
+            document.samengevoegd_in_id = uuid.UUID(detail["samengevoegd_in_document_id"])
+    elif document.soort == DocumentSoort.KASSARAPPORT.value and suffix == _PDF_SUFFIX and _is_profx_pdf(
+        opslag.lezen(pad=document.opslag_pad)
+    ):
+        # ProfX Journaal/Margerapport (Peter 16-09): PDF-tekstlaag = deterministische bron — geen AVG-gate, geen AI;
+        # zelfde contract als de spreadsheet-bronnen (bundeling journaal + margerapport op periode-dekking).
+        from app.omzet.bronnen import service as bronnen_service
+
+        detail = bronnen_service.verwerk_pdf_tekst(
             session, document=document, inhoud=opslag.lezen(pad=document.opslag_pad)
         )
         if detail.get("samengevoegd_in_document_id"):
@@ -1049,7 +1072,9 @@ def _na_extractie_hook(*, administratie_id: uuid.UUID | None, document_id: uuid.
         from app.omzet import autoboeken as omzet_autoboeken  # lokaal: importcyclus omzet ↔ documenten
 
         try:
-            omzet_autoboeken.probeer_omzet_autoboeken_na_extractie(administratie_id=administratie_id, document_id=document_id)
+            omzet_autoboeken.probeer_omzet_autoboeken_na_extractie(
+                administratie_id=administratie_id, document_id=document_id
+            )
         except Exception:  # noqa: BLE001 — autoboeken is een optimalisatie, nooit een blokkade
             logger.exception("Omzet-autoboeken-poging mislukt voor document %s", document_id)
 
@@ -1471,8 +1496,44 @@ _STATUSSEN_PER_GROEP: dict[str, tuple[DocumentStatus, ...]] = {
 }
 
 
+def _vraag_open_bij_klant():
+    """Dialoog open tot Afgehandeld (Peter 16-09): een open vraag telt in "Wachten op anderen" alleen als de KLANT aan
+    zet is — het laatste bericht kwam van kantoor en de vraag ligt bij een klant-accordeur (Document.toegewezen_aan
+    volgt de afgeleide beurt). Ligt de beurt bij kantoor (of bij niemand), dan is het kantoorwerk in de
+    standaardlijst."""
+    from app.db.models import Gebruiker, GebruikerRol
+
+    accordeurs = select(Gebruiker.id).where(Gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR)
+    return and_(Document.status == DocumentStatus.VRAAG_OPEN, Document.toegewezen_aan.in_(accordeurs))
+
+
+def _vraag_open_bij_kantoor():
+    """Complement van `_vraag_open_bij_klant` — expliciet mét het NULL-geval (geen toegewezene = kantoorbreed werk):
+    `NOT (x IN (…))` is in SQL NULL voor een lege toewijzing en zou die rij stil laten vallen."""
+    from app.db.models import Gebruiker, GebruikerRol
+
+    accordeurs = select(Gebruiker.id).where(Gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR)
+    return and_(
+        Document.status == DocumentStatus.VRAAG_OPEN,
+        or_(Document.toegewezen_aan.is_(None), Document.toegewezen_aan.notin_(accordeurs)),
+    )
+
+
+def _groep_voorwaarde(groep: str):
+    """SQL-voorwaarde per lijst-groep; `vraag_open` splitst op de afgeleide kant (zie `_vraag_open_bij_klant`)."""
+    statussen = list(_STATUSSEN_PER_GROEP[groep])
+    if groep == GROEP_KANTOOR:
+        return or_(Document.status.in_(statussen), _vraag_open_bij_kantoor())
+    if groep == GROEP_WACHTEN:
+        rest = [s for s in statussen if s != DocumentStatus.VRAAG_OPEN]
+        return or_(Document.status.in_(rest), _vraag_open_bij_klant())
+    return Document.status.in_(statussen)
+
+
 def groep_van_status(status: DocumentStatus) -> str:
-    """De lijst-groep van een status (kantoor | wachten | afgehandeld) — één bron voor lijst, tellers en tests."""
+    """De lijst-groep van een status (kantoor | wachten | afgehandeld) — één bron voor lijst, tellers en tests.
+    NB `vraag_open` staat in `wachten` als statusbucket; in de lijst en de groep-tellers splitst die op de afgeleide
+    kant (klant aan zet = wachten, kantoor aan zet = kantoor) — zie `_groep_voorwaarde` (Peter 16-09)."""
     for groep, statussen in _STATUSSEN_PER_GROEP.items():
         if status in statussen:
             return groep
@@ -1579,7 +1640,7 @@ def lijst_documenten(
     with scoped_session(administratie_id) as session:
         voorwaarden = [Document.administratie_id == administratie_id]
         if groep is not None:
-            voorwaarden.append(Document.status.in_(list(_STATUSSEN_PER_GROEP[groep])))
+            voorwaarden.append(_groep_voorwaarde(groep))
         else:
             verborgen = set(AFGEHANDELDE_STATUSSEN)
             if toon_afgehandeld:
@@ -1869,13 +1930,28 @@ def tel_afgehandeld(
 
 
 def tel_groepen(*, administratie_id: uuid.UUID, per_status: dict[DocumentStatus, int] | None = None) -> dict[str, int]:
-    """Tellers per lijst-groep (blok 11): kantoor | wachten | afgehandeld — uit dezelfde ene GROUP BY."""
+    """Tellers per lijst-groep (blok 11): kantoor | wachten | afgehandeld — uit dezelfde ene GROUP BY, plus één
+    telling "open vraag bij de klant" (Peter 16-09: een open vraag waarbij kantoor aan zet is telt als kantoorwerk)."""
     if per_status is None:
         per_status = tel_per_status(administratie_id=administratie_id)
-    return {
+    tellers = {
         groep: sum(per_status.get(status, 0) for status in statussen)
         for groep, statussen in _STATUSSEN_PER_GROEP.items()
     }
+    vraag_open = per_status.get(DocumentStatus.VRAAG_OPEN, 0)
+    if vraag_open:
+        with scoped_session(administratie_id) as session:
+            bij_klant = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(Document)
+                    .where(Document.administratie_id == administratie_id, _vraag_open_bij_klant())
+                )
+                or 0
+            )
+        tellers[GROEP_WACHTEN] -= vraag_open - bij_klant
+        tellers[GROEP_KANTOOR] += vraag_open - bij_klant
+    return tellers
 
 
 # Statusbuckets + terminale statussen voor de werkvoorraad-klantenlijst: één bron sinds blok 6 (11-09) in

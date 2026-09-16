@@ -1,0 +1,6 @@
+{
+ "administratie": "De Bazar Apeldoorn B.V. (coffeeshop; in de gouden set de testadministratie)",
+ "herkomst": "Screenshot Peter 16-09 (controlescherm) + opdracht 2026-09-16-omzet-coffeeshop-profx-journaal.md: mail debazar…@gmail.com 'Facturen - Inboeking journaal en marge raport', bijlage ProfX Journaal 4 pagina's (Kassa 1/Kassa 2, rapportperiode 11-09 05:00 t/m 12-09 05:00, 604 klanten, 7 artikelgroepen, bruto € 10.998,16, kortingen/vouchers 0) + ProfX Margerapport. Het document stond als INKOOPFACTUUR in de werkvoorraad (intake-classificatie) — dát gat dicht deze casus.",
+ "anonimisering": "Groepsbedragen zijn de echte journaalcijfers uit de mockup (bruto € 10.998,16 sluit); de inkoopwaarden in het margerapport zijn FICTIEF (mockup-illustratie). Geen persoonsgegevens; afzenderadres weggelaten. Layout van de tekstlaag is een REPRESENTATIE (geen echte PDF-bytes in de repo) — de parser werkt op labels, niet op posities.",
+ "pdf": "pdf_tekst.json = journaal (4 pagina's); marge_tekst.json = margerapport (1 pagina) van dezelfde kassadag."
+}

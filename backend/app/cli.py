@@ -384,6 +384,27 @@ def _duplicaat_extern_rapport(args: argparse.Namespace) -> int:
     return 0
 
 
+def _kassarapporten_in_inkoopstroom(args: argparse.Namespace) -> int:
+    """Blok A2 ProfX (Peter 16-09): LEES-ONLY rapport van inkoopfactuur-documenten die op inhoud een ProfX
+    Journaal/Margerapport zijn (verkeerd geclassificeerd vóór de herkenning-op-inhoud). Geen writes."""
+    from app.omzet.bronnen import inkoopstroom_rapport
+
+    ids: list[uuid.UUID] | None = None
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist: "
+                + ", ".join(f"{n} ({i})" for i, n in treffers),
+                file=sys.stderr,
+            )
+            return 2
+        ids = [treffers[0][0]]
+    rapporten = inkoopstroom_rapport.rapport(dagen=args.dagen, administratie_ids=ids)
+    inkoopstroom_rapport.print_rapport(rapporten, dagen=args.dagen)
+    return 0
+
+
 def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
     """Blok 3 (fixrun 08-09, feedback Peter): eenmalige data-stap ná migratie 0122 — legacy-rijen die vóór deze
     deploy als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing, exact het
@@ -2950,6 +2971,17 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
     )
 
+    inkoopstroom_parser = subparsers.add_parser(
+        "kassarapporten-in-inkoopstroom",
+        help="Blok A2 ProfX 16-09: LEES-ONLY rapport van PDF-documenten die als inkoopfactuur in de module staan maar "
+        "op inhoud een ProfX Journaal/Margerapport zijn — per administratie + verzamelbak; geboekt = alleen melden, "
+        "de rest via 'Type wijzigen → kassarapport'. Geen writes, geen AI.",
+    )
+    inkoopstroom_parser.add_argument("--dagen", type=int, default=90, help="Venster in dagen (default 90).")
+    inkoopstroom_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+
     status_backfill_parser = subparsers.add_parser(
         "duplicaat-status-backfill",
         help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
@@ -3545,6 +3577,8 @@ def main(argv: list[str] | None = None) -> int:
         return _referentie_norm_backfill(args)
     if args.commando == "duplicaat-extern-rapport":
         return _duplicaat_extern_rapport(args)
+    if args.commando == "kassarapporten-in-inkoopstroom":
+        return _kassarapporten_in_inkoopstroom(args)
     if args.commando == "activa-nulmeting":
         return _activa_nulmeting(args)
     if args.commando == "periode-backfill":

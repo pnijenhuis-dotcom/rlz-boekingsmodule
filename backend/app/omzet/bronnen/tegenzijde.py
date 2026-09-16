@@ -91,6 +91,9 @@ OMSCHRIJVINGSKERNEN: dict[str, tuple[str, ...]] = {
 BTW_LAAG = "laag"
 BTW_HOOG = "hoog"
 BTW_VERLEGD = "verlegd"
+#: ProfX/coffeeshop (Peter 16-09): cannabisomzet = "NL, Geen BTW (Vrijgesteld)" — bewust géén 0 %-tarief (BLOW-besluit,
+#: aangifte-rubriek). Het default-tarief is het ENIGE vrijgestelde NL-tarief van de administratie (`IsExcempt`).
+BTW_VRIJGESTELD = "vrijgesteld"
 #: Canonieke fracties uit de taxrate-cache (app/sync/btw.py: fractie is de eenheid).
 _FRACTIE_PER_KLASSE = {BTW_LAAG: Decimal("0.09"), BTW_HOOG: Decimal("0.21")}
 
@@ -105,6 +108,16 @@ BTW_KLASSE_PER_CATEGORIE: dict[str, str] = {
     "products": BTW_HOOG,
     "tanning walk ins": BTW_HOOG,
     "tanning": BTW_HOOG,
+    # ProfX Journaal (coffeeshop, Peter 16-09): Wiet/Hash/Joints vrijgesteld (BLOW-besluit), Edible = beslispunt →
+    # default vrijgesteld mét oranje "bevestig"-controle (profx.BEVESTIG_GROEPEN), Dranken/Snacks laag, Headshop hoog.
+    "wiet": BTW_VRIJGESTELD,
+    "hash": BTW_VRIJGESTELD,
+    "joints": BTW_VRIJGESTELD,
+    "edible": BTW_VRIJGESTELD,
+    "edibles": BTW_VRIJGESTELD,
+    "dranken": BTW_LAAG,
+    "snacks": BTW_LAAG,
+    "headshop": BTW_HOOG,
 }
 CATEGORIE_ETEN_SLEUTEL = "eten drinken"
 CATEGORIE_PSP_KOSTEN_SLEUTEL = "transactiekosten psp"
@@ -210,7 +223,14 @@ def default_psp_kosten_rekening(rekeningen: list[Rekening]) -> uuid.UUID | None:
 
 def default_tarief(klasse: str, tarieven: list[Tarief]) -> Tarief | None:
     """Het RLZ-tarief van de administratie voor de klasse laag/hoog: fractie exact 0.09/0.21, niet verlegd, niet
-    vrijgesteld, NL (geen EU/buitenland-naam). Precies één = default; anders None."""
+    vrijgesteld, NL (geen EU/buitenland-naam). Precies één = default; anders None. Klasse `vrijgesteld` (ProfX 16-09):
+    het enige vrijgestelde NL-tarief (`IsExcempt`, niet verlegd)."""
+    if klasse == BTW_VRIJGESTELD:
+        vrij = [t for t in tarieven if t.is_vrijgesteld and not t.is_verlegd and not _is_buitenland(t.naam)]
+        if len(vrij) == 1:
+            return vrij[0]
+        nl = [t for t in vrij if (t.naam or "").strip().upper().startswith("NL")]
+        return nl[0] if len(nl) == 1 else None
     fractie = _FRACTIE_PER_KLASSE.get(klasse)
     if fractie is None:
         return None
@@ -312,7 +332,7 @@ def bepaal_tegenzijde(
 ) -> Tegenzijde | None:
     """De tegenzijde-posten van één omzetbron-document (zonnestudio-dag of pilates-batch) + controles. None voor een
     document zonder omzetbron (AI-rapport) of zonder bedragen."""
-    from app.omzet.bronnen import pilates, zonnestudio  # lokale import: geen kring op module-niveau
+    from app.omzet.bronnen import pilates, profx, zonnestudio  # lokale import: geen kring op module-niveau
 
     detail = bron_detail or {}
     defaults = default_tegenrekeningen(rekeningen)
@@ -334,6 +354,20 @@ def bepaal_tegenzijde(
         if contant is not None and cash is not None and contant != cash:
             verschil = (contant - cash).quantize(_TOL)
             regels.append(_regel(KASVERSCHIL, verschil, datum, instellingen, defaults, "signaal"))
+    elif bron == profx.BRON_JOURNAAL:
+        # Blok D ProfX (16-09): kas/PIN uit blad 3 (betaalwijzen); ontbreekt dat blad → alles op kas mét signaal.
+        datum = _datum(detail.get("datum"))
+        betaalwijzen = detail.get("betaalwijzen") or {}
+        pin = _d(betaalwijzen.get("PIN"))
+        cash = _d(betaalwijzen.get("Cash"))
+        if pin:
+            regels.append(_regel(PIN, pin, datum, instellingen, defaults, "ontvangst"))
+        if cash:
+            regels.append(_regel(CASH, cash, datum, instellingen, defaults, "kas"))
+        if not regels:
+            bruto = _d(detail.get("bruto"))
+            if bruto:
+                regels.append(_regel(CASH, bruto, datum, instellingen, defaults, "kas"))
     elif bron == pilates.BRON:
         datum = _datum(detail.get("uitbetaaldatum")) or _datum(detail.get("periode_eind"))
         netto = _d(detail.get("netto"))
