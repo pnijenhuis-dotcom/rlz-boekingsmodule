@@ -1100,6 +1100,95 @@ def groep_wijzigen(
         raise _groep_fout(exc) from exc
 
 
+@router.get("/groepen/{groep_id}/saldi", response_model=schemas.GroepSaldiDto)
+def groep_saldi(groep_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.GroepSaldiDto:
+    """Kaart "Groepssaldi" op de klantenlijst zodra het Groep-filter actief is (Peter 16-09): de NACHTELIJKE stand uit
+    `groep_saldo_stand` (sync-alles), nooit live bij openen. Kantoorrol; RLS op de cache laat alleen de administraties
+    in de scope van de lezer door → "N van M administraties in je scope". Onbekende groep = 404 mét leesbare tekst."""
+    from app.groepen import saldi
+
+    try:
+        stand = saldi.lees_stand_voor_groep(groep_id, actor_id=actor.id)
+    except saldi.GroepOnbekend as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _groep_saldi_dto(stand)
+
+
+def _bedrag(waarde) -> str | None:  # noqa: ANN001 — Decimal | None
+    return None if waarde is None else f"{waarde:.2f}"
+
+
+def _groep_saldi_dto(stand) -> schemas.GroepSaldiDto:  # noqa: ANN001 — saldi.GroepSaldi
+    groep = stand.groep
+    t = stand.totalen
+    return schemas.GroepSaldiDto(
+        groep=schemas.GroepDto(
+            id=groep.id, naam=groep.naam, code=groep.code, actief=groep.actief, aantal_administraties=stand.aantal_leden
+        ),
+        datum=stand.datum,
+        bron=stand.bron,
+        aantal_leden=stand.aantal_leden,
+        aantal_in_scope=stand.aantal_in_scope,
+        zonder_stand=stand.zonder_stand,
+        rijen=[
+            schemas.GroepSaldoRijDto(
+                administratie_id=r.administratie_id,
+                naam=r.naam,
+                status=r.status,
+                detail=r.detail,
+                debiteuren=_bedrag(r.debiteuren),
+                debiteuren_ic=_bedrag(r.ic_debiteuren),
+                debiteuren_zonder_ic=_bedrag(r.debiteuren_zonder_ic),
+                crediteuren=_bedrag(r.crediteuren),
+                crediteuren_ic=_bedrag(r.ic_crediteuren),
+                crediteuren_zonder_ic=_bedrag(r.crediteuren_zonder_ic),
+                debiteuren_rekening=r.debiteuren_rekening,
+                crediteuren_rekening=r.crediteuren_rekening,
+            )
+            for r in stand.rijen
+        ],
+        totalen=schemas.GroepSaldoTotalenDto(
+            debiteuren=f"{t.debiteuren:.2f}",
+            debiteuren_ic=f"{t.ic_debiteuren:.2f}",
+            debiteuren_zonder_ic=f"{t.debiteuren_zonder_ic:.2f}",
+            crediteuren=f"{t.crediteuren:.2f}",
+            crediteuren_ic=f"{t.ic_crediteuren:.2f}",
+            crediteuren_zonder_ic=f"{t.crediteuren_zonder_ic:.2f}",
+            aantal_geldig=sum(1 for r in stand.rijen if r.geldig),
+        ),
+    )
+
+
+@router.put("/groepen/{groep_id}/administraties", response_model=schemas.GroepBulkUitkomstDto)
+def groep_administraties_bulk(
+    groep_id: uuid.UUID, invoer: schemas.GroepBulkDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.GroepBulkUitkomstDto:
+    """Bulk-toewijzing 16-09 (Peter: "nu moet ik 1 voor 1 doen"): dialoog "Administraties toevoegen…" op het blok
+    Groepen én de bulk-actie "Toewijzen aan groep…" op de administratielijst. Beheerder-only; één transactie; per
+    administratie dezelfde audit `administratie_groep_gewijzigd` oud→nieuw als de enkelvoudige route; gearchiveerde
+    groep = 409; onbekende groep/administratie = 404 (niets gewijzigd). Uitkomst per rij (toegevoegd / verhuisd mét
+    oude groep / verwijderd / overgeslagen mét reden) — nooit stil."""
+    try:
+        uitkomst = groepen.zet_groep_bulk(
+            actor_id=actor.id, groep_id=groep_id, toevoegen=invoer.toevoegen, verwijderen=invoer.verwijderen
+        )
+    except groepen.GroepFout as exc:
+        raise _groep_fout(exc) from exc
+    except service.BeheerFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return schemas.GroepBulkUitkomstDto(
+        groep=_groep_dto(uitkomst.groep),
+        toegevoegd=uitkomst.toegevoegd,
+        verwijderd=uitkomst.verwijderd,
+        rijen=[
+            schemas.GroepBulkRijDto(
+                administratie_id=r.administratie_id, naam=r.naam, uitkomst=r.uitkomst, detail=r.detail
+            )
+            for r in uitkomst.rijen
+        ],
+    )
+
+
 @router.put("/administraties/{administratie_id}/groep", response_model=schemas.AdministratieGroepDto)
 def administratie_groep_zetten(
     administratie_id: uuid.UUID,

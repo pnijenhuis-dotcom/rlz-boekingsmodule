@@ -223,6 +223,111 @@ def zet_administratie_groep(
         return _info(nieuw, int(aantal or 0))
 
 
+@dataclass(frozen=True)
+class BulkRij:
+    administratie_id: uuid.UUID
+    naam: str
+    #: "toegevoegd" | "verhuisd" | "verwijderd" | "overgeslagen"
+    uitkomst: str
+    #: Bij "verhuisd": de naam van de groep waar de administratie vandaan kwam; bij "overgeslagen": de reden.
+    detail: str | None = None
+
+
+@dataclass(frozen=True)
+class BulkUitkomst:
+    groep: GroepInfo
+    rijen: list[BulkRij]
+
+    @property
+    def toegevoegd(self) -> int:
+        return sum(1 for r in self.rijen if r.uitkomst in ("toegevoegd", "verhuisd"))
+
+    @property
+    def verwijderd(self) -> int:
+        return sum(1 for r in self.rijen if r.uitkomst == "verwijderd")
+
+
+def zet_groep_bulk(
+    *,
+    actor_id: uuid.UUID,
+    groep_id: uuid.UUID,
+    toevoegen: list[uuid.UUID],
+    verwijderen: list[uuid.UUID],
+) -> BulkUitkomst:
+    """Bulk-toewijzing 16-09 (Peter: "nu moet ik 1 voor 1 doen"): meerdere administraties in ÉÉN transactie aan een
+    groep toevoegen en/of eruit halen — per administratie dezelfde audit `administratie_groep_gewijzigd` oud→nieuw
+    als de enkelvoudige route. Regels: gearchiveerde groep = GroepGearchiveerd (409, niets gewijzigd); onbekende
+    groep = GroepOnbekend (404); onbekende administratie = BeheerFout (404, hele transactie terug — geen half werk);
+    een administratie die al lid is = "overgeslagen: al lid" (geen audit, idempotent); lid van een ANDERE groep =
+    "verhuisd" mét de oude groepsnaam (de UI vraagt daar vooraf bevestiging voor); `verwijderen` haalt alleen leden
+    van DEZE groep eruit — een administratie in een andere groep wordt niet stil losgemaakt ("overgeslagen: zit in
+    groep X")."""
+    with scoped_session(None, actor_id=actor_id) as session:
+        groep = session.get(Groep, groep_id)
+        if groep is None:
+            raise GroepOnbekend(f"Onbekende groep: {groep_id}")
+        if not groep.actief and toevoegen:
+            raise GroepGearchiveerd(f"Groep {groep.naam} is gearchiveerd — heractiveer 'm eerst of kies een andere.")
+        rijen: list[BulkRij] = []
+        gezien: set[uuid.UUID] = set()
+
+        def _administratie(aid: uuid.UUID) -> Administratie:
+            administratie = session.get(Administratie, aid)
+            if administratie is None:
+                raise BeheerFout(f"Onbekende administratie: {aid}")
+            return administratie
+
+        def _audit(administratie: Administratie, oud: Groep | None, nieuw: Groep | None) -> None:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="platform",
+                tabel="administratie",
+                record_id=administratie.id,
+                actie="administratie_groep_gewijzigd",
+                correlatie_id=correlatie,
+                oude_waarde=_groep_waarde(oud),
+                nieuwe_waarde=_groep_waarde(nieuw),
+            )
+
+        correlatie = uuid.uuid4()
+        for aid in toevoegen:
+            if aid in gezien:
+                continue
+            gezien.add(aid)
+            administratie = _administratie(aid)
+            if administratie.groep_id == groep.id:
+                rijen.append(BulkRij(aid, administratie.naam, "overgeslagen", "al lid van deze groep"))
+                continue
+            oud = session.get(Groep, administratie.groep_id) if administratie.groep_id else None
+            administratie.groep_id = groep.id
+            _audit(administratie, oud, groep)
+            if oud is None:
+                rijen.append(BulkRij(aid, administratie.naam, "toegevoegd"))
+            else:
+                rijen.append(BulkRij(aid, administratie.naam, "verhuisd", oud.naam))
+        for aid in verwijderen:
+            if aid in gezien:
+                continue
+            gezien.add(aid)
+            administratie = _administratie(aid)
+            if administratie.groep_id != groep.id:
+                andere = session.get(Groep, administratie.groep_id) if administratie.groep_id else None
+                reden = f"zit in groep {andere.naam}" if andere else "zit niet in een groep"
+                rijen.append(BulkRij(aid, administratie.naam, "overgeslagen", reden))
+                continue
+            administratie.groep_id = None
+            _audit(administratie, groep, None)
+            rijen.append(BulkRij(aid, administratie.naam, "verwijderd"))
+        session.flush()
+        aantal = session.scalar(
+            select(func.count())
+            .select_from(Administratie)
+            .where(Administratie.groep_id == groep.id, Administratie.actief.is_(True))
+        )
+        return BulkUitkomst(groep=_info(groep, int(aantal or 0)), rijen=rijen)
+
+
 def _groep_waarde(groep: Groep | None) -> dict:
     if groep is None:
         return {"groep_id": None, "groep_code": None, "groep_naam": None}

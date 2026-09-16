@@ -149,6 +149,109 @@ class TestService:
             groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=uuid.uuid4(), groep_id=None)
 
 
+class TestBulk:
+    """Bulk-toewijzing 16-09: één transactie, audit per rij, verhuizen mét oude groep, 409 gearchiveerd, 404 rolt
+    terug."""
+
+    def _tweede_administratie(self, admin_engine: Engine, naam: str) -> uuid.UUID:
+        aid = uuid.uuid4()
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO platform.administratie (id, naam, rlz_admin_id, actief) "
+                    "VALUES (:id, :naam, :rlz, true)"
+                ),
+                {"id": aid, "naam": naam, "rlz": f"bulk-{aid.hex[:8]}"},
+            )
+        return aid
+
+    def test_toevoegen_verhuizen_overslaan_verwijderen_met_audit_per_rij(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        vgg = groepen.maak_groep(actor_id=beheerder_id, naam="Vastgoedgroep", code="VGG")
+        b = self._tweede_administratie(admin_engine, "Bulk B")
+        c = self._tweede_administratie(admin_engine, "Bulk C")
+        groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=b, groep_id=vgg.id)
+        groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=c, groep_id=kg.id)
+
+        uit = groepen.zet_groep_bulk(
+            actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id, b, c, b], verwijderen=[]
+        )
+        assert [(r.administratie_id, r.uitkomst, r.detail) for r in uit.rijen] == [
+            (administratie_id, "toegevoegd", None),
+            (b, "verhuisd", "Vastgoedgroep"),
+            (c, "overgeslagen", "al lid van deze groep"),
+        ]
+        assert uit.toegevoegd == 2 and uit.verwijderd == 0 and uit.groep.aantal_administraties == 3
+        sporen = [
+            s for s in _audit(admin_engine, "administratie_groep_gewijzigd") if s["record_id"] in (administratie_id, b)
+        ]
+        assert len(sporen) == 3  # b: eerste toekenning aan VGG + verhuizing; administratie_id: toevoeging
+        verhuis = next(s for s in sporen if s["record_id"] == b and s["nieuwe_waarde"]["groep_code"] == "KEMPENGROEP")
+        assert verhuis["oude_waarde"]["groep_code"] == "VGG"
+
+        # Verwijderen: alleen leden van DEZE groep; een lid van een andere groep wordt niet stil losgemaakt.
+        groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=b, groep_id=vgg.id)
+        uit2 = groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=kg.id, toevoegen=[], verwijderen=[c, b])
+        assert [(r.administratie_id, r.uitkomst, r.detail) for r in uit2.rijen] == [
+            (c, "verwijderd", None),
+            (b, "overgeslagen", "zit in groep Vastgoedgroep"),
+        ]
+        assert uit2.verwijderd == 1 and groepen.administratie_ids_in_groep(kg.id) == {administratie_id}
+        assert groepen.administratie_ids_in_groep(vgg.id) == {b}
+
+    def test_onbekende_administratie_rolt_de_hele_transactie_terug(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID, admin_engine: Engine
+    ) -> None:
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        with pytest.raises(beheer_service.BeheerFout):
+            groepen.zet_groep_bulk(
+                actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id, uuid.uuid4()], verwijderen=[]
+            )
+        assert groepen.administratie_ids_in_groep(kg.id) == set()
+        assert all(s["record_id"] != administratie_id for s in _audit(admin_engine, "administratie_groep_gewijzigd"))
+
+    def test_gearchiveerde_groep_weigert_toevoegen_maar_laat_verwijderen_toe(
+        self, beheerder_id: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        kg = groepen.maak_groep(actor_id=beheerder_id, naam="Kempen groep")
+        groepen.zet_administratie_groep(actor_id=beheerder_id, administratie_id=administratie_id, groep_id=kg.id)
+        groepen.wijzig_groep(actor_id=beheerder_id, groep_id=kg.id, actief=False)
+        with pytest.raises(groepen.GroepGearchiveerd):
+            groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=kg.id, toevoegen=[administratie_id], verwijderen=[])
+        uit = groepen.zet_groep_bulk(
+            actor_id=beheerder_id, groep_id=kg.id, toevoegen=[], verwijderen=[administratie_id]
+        )
+        assert uit.verwijderd == 1
+        with pytest.raises(groepen.GroepOnbekend):
+            groepen.zet_groep_bulk(actor_id=beheerder_id, groep_id=uuid.uuid4(), toevoegen=[], verwijderen=[])
+
+    def test_router_beheerder_only_en_uitkomst_per_rij(
+        self, beheerder_id: uuid.UUID, gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    ) -> None:
+        bh = _bearer(beheerder_id, rol="beheerder")
+        bk = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        g = client.post("/groepen", headers=bh, json={"naam": "Kempen groep"}).json()
+        pad = f"/groepen/{g['id']}/administraties"
+        body = {"toevoegen": [str(administratie_id)], "verwijderen": []}
+        assert client.put(pad, headers=bk, json=body).status_code == 403
+        r = client.put(pad, headers=bh, json=body)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert (d["toegevoegd"], d["verwijderd"], d["groep"]["aantal_administraties"]) == (1, 0, 1)
+        assert d["rijen"][0]["uitkomst"] == "toegevoegd" and d["rijen"][0]["administratie_id"] == str(administratie_id)
+        # Idempotent: nog eens = overgeslagen "al lid".
+        d2 = client.put(pad, headers=bh, json=body).json()
+        assert d2["toegevoegd"] == 0 and d2["rijen"][0]["uitkomst"] == "overgeslagen"
+        assert (
+            client.put(pad, headers=bh, json={"toevoegen": [str(uuid.uuid4())], "verwijderen": []}).status_code == 404
+        )
+        assert client.put(f"/groepen/{uuid.uuid4()}/administraties", headers=bh, json=body).status_code == 404
+        client.put(f"/groepen/{g['id']}", headers=bh, json={"actief": False})
+        assert client.put(pad, headers=bh, json=body).status_code == 409
+
+
 class TestRls:
     """Conventies §RLS punt 6: de app-rol (boekhouding_app, FORCE RLS) — geen owner-test."""
 

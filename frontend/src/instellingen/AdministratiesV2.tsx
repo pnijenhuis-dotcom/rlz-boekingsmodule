@@ -254,6 +254,7 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
         <div style={{ marginBottom: 8 }}>
           <GroepenBeheer
             groepen={groepen}
+            administraties={administraties}
             onGewijzigd={() => {
               herlaadGroepen()
               onHerlaad()

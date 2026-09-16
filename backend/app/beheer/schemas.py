@@ -291,6 +291,69 @@ class AdministratieGroepDto(BaseModel):
     groep_code: str | None = None
 
 
+class GroepBulkDto(BaseModel):
+    """PUT /groepen/{id}/administraties (bulk-toewijzing 16-09): administraties erbij en/of eruit, één transactie."""
+
+    toevoegen: list[uuid.UUID] = Field(default_factory=list, max_length=2000)
+    verwijderen: list[uuid.UUID] = Field(default_factory=list, max_length=2000)
+
+
+class GroepBulkRijDto(BaseModel):
+    administratie_id: uuid.UUID
+    naam: str
+    uitkomst: str  # toegevoegd | verhuisd | verwijderd | overgeslagen
+    detail: str | None = None
+
+
+class GroepBulkUitkomstDto(BaseModel):
+    groep: GroepDto
+    toegevoegd: int
+    verwijderd: int
+    rijen: list[GroepBulkRijDto]
+
+
+class GroepSaldoRijDto(BaseModel):
+    """Eén administratie in de groepssaldi-kaart (Peter 16-09); bedragen als string (cent-exact, geen float)."""
+
+    administratie_id: uuid.UUID
+    naam: str
+    status: str  # ok | geen_rekening | ongeldig | fout | overgeslagen
+    detail: str | None = None
+    debiteuren: str | None = None
+    debiteuren_ic: str | None = None
+    debiteuren_zonder_ic: str | None = None
+    crediteuren: str | None = None
+    crediteuren_ic: str | None = None
+    crediteuren_zonder_ic: str | None = None
+    debiteuren_rekening: str | None = None
+    crediteuren_rekening: str | None = None
+
+
+class GroepSaldoTotalenDto(BaseModel):
+    debiteuren: str
+    debiteuren_ic: str
+    debiteuren_zonder_ic: str
+    crediteuren: str
+    crediteuren_ic: str
+    crediteuren_zonder_ic: str
+    #: Aantal administraties dat in de totalen zit (status ok én in de scope van de lezer).
+    aantal_geldig: int
+
+
+class GroepSaldiDto(BaseModel):
+    groep: GroepDto
+    #: Datum van de (jongste) stand; label in de UI "stand van vannacht (dd-mm)".
+    datum: date
+    bron: str  # stand | live
+    #: Actieve leden van de groep, óók buiten de scope van de lezer ("N van M administraties in je scope").
+    aantal_leden: int
+    aantal_in_scope: int
+    #: Geen stand voor een lid in scope (nachtelijke run nog niet gelopen).
+    zonder_stand: int
+    rijen: list[GroepSaldoRijDto]
+    totalen: GroepSaldoTotalenDto
+
+
 class AangemaakteAdministratieDto(BaseModel):
     id: uuid.UUID
     naam: str

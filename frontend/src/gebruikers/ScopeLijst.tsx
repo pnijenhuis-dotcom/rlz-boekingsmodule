@@ -18,6 +18,9 @@ export interface ScopeLijstItem {
   naam: string
   /** false = gearchiveerd: onderaan, mét chip; nooit via "Alles" aangevinkt. */
   actief: boolean
+  /** Optionele stille chip achter de naam (bulk-toewijzing groepen 16-09: "groep: Vastgoedgroep" bij een lid van een
+   * ANDERE groep — aanvinken = verhuizen, de dialoog vraagt daar bevestiging voor). */
+  notitie?: string
 }
 
 export interface ScopeVerschil {
@@ -239,6 +242,11 @@ export function ScopeLijst({
               <span className="min-w-0 flex-1 truncate" title={it.naam}>
                 {it.naam}
               </span>
+              {it.notitie && (
+                <Badge variant="stil" data-testid="scope-rij-notitie">
+                  {it.notitie}
+                </Badge>
+              )}
               {!it.actief && <Badge variant="stil">gearchiveerd</Badge>}
               {slot && <Badge variant="stil">{vergrendeldLabel}</Badge>}
             </label>

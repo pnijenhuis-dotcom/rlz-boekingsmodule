@@ -239,6 +239,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", "/groepen"),
         ("POST", "/groepen"),  # beheerder-only
         ("PUT", f"/groepen/{DUMMY_ID}"),  # beheerder-only
+        ("PUT", f"/groepen/{DUMMY_ID}/administraties"),  # bulk-toewijzing 16-09: beheerder-only
+        ("GET", f"/groepen/{DUMMY_ID}/saldi"),  # groepssaldi 16-09: kantoorrol (RLS op de cache = scope)
         ("PUT", f"/administraties/{aid}/groep"),  # beheerder-only
         # Administratienaam — bewerkbaar + volgt de bron (Peter 15-09, migratie 0144): naam wijzigen = Beheerder-only.
         ("PUT", f"/administraties/{aid}/naam"),  # beheerder-only

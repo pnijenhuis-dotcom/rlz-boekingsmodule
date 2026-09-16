@@ -1,22 +1,40 @@
 import { useState } from 'react'
 import { ApiError } from '../api/client'
-import type { GroepDto } from '../api/types'
-import { Badge, Button } from '../ui/basis'
+import type { AdministratieInstellingenDto, GroepDto } from '../api/types'
+import { Badge, Button, useToastOptioneel } from '../ui/basis'
 import { codeGeldig, codeVoorstel } from './groepen'
-import { maakGroepAan, wijzigGroep } from './instellingenApi'
+import { GroepLedenDialoog } from './GroepLedenDialoog'
+import { maakGroepAan, wijzigGroep, type GroepBulkUitkomstDto } from './instellingenApi'
 
 /** Klein blok "Groepen" op Instellingen › Administraties (lijstpagina) — blok 8 run 11-09: hernoemen, archiveren
  * (nooit verwijderen), heractiveren en een nieuwe groep aanmaken. Ingeklapt tot een linkbtn "groepen (N)"; leden
- * ken je toe op de detailpagina (tab Algemeen) of in de wizard. Geen nav-item/tab → geen registry-entry nodig. */
+ * ken je toe per groep via "Administraties toevoegen…" (bulk-toewijzing 16-09, dialoog mét vinkjeslijst), op de
+ * detailpagina (tab Algemeen) of in de wizard. Geen nav-item/tab → geen registry-entry nodig. */
 export function GroepenBeheer({
   groepen,
+  administraties = [],
   onGewijzigd,
 }: {
   groepen: GroepDto[]
+  /** Alle administraties (actief + gearchiveerd) voor de leden-dialoog; leeg = knop niet tonen. */
+  administraties?: AdministratieInstellingenDto[]
   /** Ná élke mutatie: de lijst (en de administratie-lijst mét chips) herladen. */
   onGewijzigd: () => void
 }) {
+  const { meld } = useToastOptioneel()
   const [open, setOpen] = useState(false)
+  const [ledenVoor, setLedenVoor] = useState<GroepDto | null>(null)
+  const bulkGereed = (u: GroepBulkUitkomstDto) => {
+    const overgeslagen = u.rijen.filter((r) => r.uitkomst === 'overgeslagen')
+    const verhuisd = u.rijen.filter((r) => r.uitkomst === 'verhuisd').length
+    const delen = [
+      u.toegevoegd > 0 ? `${u.toegevoegd} toegevoegd${verhuisd > 0 ? ` (${verhuisd} verhuisd)` : ''}` : null,
+      u.verwijderd > 0 ? `${u.verwijderd} eruit` : null,
+      overgeslagen.length > 0 ? `${overgeslagen.length} overgeslagen (${overgeslagen.map((r) => `${r.naam}: ${r.detail}`).join('; ')})` : null,
+    ].filter(Boolean)
+    meld(`Groep ${u.groep.naam}: ${delen.join(', ') || 'niets gewijzigd'} — geauditeerd.`, overgeslagen.length > 0 ? 'warn' : 'ok')
+    onGewijzigd()
+  }
   const [hernoem, setHernoem] = useState<{ id: string; naam: string } | null>(null)
   const [nieuwNaam, setNieuwNaam] = useState('')
   const [nieuwCode, setNieuwCode] = useState('')
@@ -54,8 +72,8 @@ export function GroepenBeheer({
         <div className="panel" style={{ marginTop: 8, padding: 12 }}>
           <div className="hint" style={{ marginTop: 0 }}>
             Een groep is een kenmerk om administraties samen te filteren (klantenlijst, Inzicht › Reconciliatie, deze lijst).
-            Leden kies je per administratie op de detailpagina (Algemeen › Groep) of in de wizard. Groepen worden nooit
-            verwijderd — archiveren houdt bestaande leden zichtbaar.
+            Leden kies je per groep via &ldquo;Administraties toevoegen…&rdquo;, per administratie op de detailpagina (Algemeen › Groep)
+            of in de wizard. Groepen worden nooit verwijderd — archiveren houdt bestaande leden zichtbaar.
           </div>
           <div className="tabel-scroll">
           <table style={{ width: 'auto', minWidth: 420 }}>
@@ -114,6 +132,11 @@ export function GroepenBeheer({
                       </>
                     ) : (
                       <>
+                        {g.actief && administraties.length > 0 && (
+                          <Button maat="klein" aria-label={`Administraties toevoegen aan ${g.naam}`} disabled={bezig} onClick={() => setLedenVoor(g)}>
+                            Administraties toevoegen…
+                          </Button>
+                        )}
                         <Button variant="ghost" maat="klein" aria-label={`Hernoem ${g.naam}`} disabled={bezig} onClick={() => setHernoem({ id: g.id, naam: g.naam })}>
                           hernoemen
                         </Button>
@@ -181,6 +204,14 @@ export function GroepenBeheer({
             </div>
           )}
         </div>
+      )}
+      {ledenVoor && (
+        <GroepLedenDialoog
+          groep={ledenVoor}
+          administraties={administraties}
+          onSluiten={() => setLedenVoor(null)}
+          onGewijzigd={bulkGereed}
+        />
       )}
     </div>
   )

@@ -369,6 +369,29 @@ export interface AdministratieGroepDto {
   groep_code: string | null
 }
 
+/** Bulk-toewijzing 16-09 (Peter: "nu moet ik 1 voor 1 doen"): PUT /groepen/{id}/administraties — één transactie,
+ * uitkomst per rij (toegevoegd / verhuisd mét oude groep / verwijderd / overgeslagen mét reden). Beheerder-only. */
+export interface GroepBulkRijDto {
+  administratie_id: string
+  naam: string
+  uitkomst: 'toegevoegd' | 'verhuisd' | 'verwijderd' | 'overgeslagen'
+  detail: string | null
+}
+
+export interface GroepBulkUitkomstDto {
+  groep: GroepDto
+  toegevoegd: number
+  verwijderd: number
+  rijen: GroepBulkRijDto[]
+}
+
+export function zetGroepAdministratiesBulk(
+  groepId: string,
+  wijziging: { toevoegen: string[]; verwijderen: string[] },
+): Promise<GroepBulkUitkomstDto> {
+  return apiJson<GroepBulkUitkomstDto>(`/groepen/${groepId}/administraties`, { ...PUT_JSON, body: JSON.stringify(wijziging) })
+}
+
 export function zetAdministratieGroep(administratieId: string, groepId: string | null): Promise<AdministratieGroepDto> {
   return apiJson<AdministratieGroepDto>(`/administraties/${administratieId}/groep`, {
     ...PUT_JSON,
