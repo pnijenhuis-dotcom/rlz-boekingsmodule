@@ -183,6 +183,47 @@ class DuplicaatBulkAfvoerInput(StrikteInvoer):
         return self
 
 
+class DocumentenBulkInput(StrikteInvoer):
+    """Bulk-acties documentenlijst (Peter 16-09): N × de bestaande per-document-route. `document_ids` = de selectie
+    (max 500; "alle N in deze weergave" = de client stuurt de zichtbare rijen — de weergave is een client-side filter);
+    één `reden` voor de hele selectie (verplicht bij verwijderen/afwijzen); `soort` bij soort_wijzigen;
+    `doel_administratie_id` bij verplaatsen."""
+
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    actie: Literal["verwijderen", "afwijzen", "soort_wijzigen", "verplaatsen"]
+    reden: str | None = None
+    soort: Literal["inkoopfactuur", "kassarapport", "verplichting"] | None = None
+    doel_administratie_id: uuid.UUID | None = None
+    onthoud_tenaamstelling: bool = False
+
+    @model_validator(mode="after")
+    def _verplichte_velden_per_actie(self) -> DocumentenBulkInput:
+        if self.actie in ("verwijderen", "afwijzen") and not (self.reden or "").strip():
+            raise ValueError(f"Reden is verplicht bij {self.actie}")
+        if self.actie == "soort_wijzigen" and self.soort is None:
+            raise ValueError("Kies de nieuwe documentsoort (inkoopfactuur, kassarapport of verplichting)")
+        if self.actie == "verplaatsen" and self.doel_administratie_id is None:
+            raise ValueError("Kies de doeladministratie")
+        return self
+
+
+class DocumentenBulkRijDto(BaseModel):
+    document_id: uuid.UUID
+    bestandsnaam: str | None
+    uitkomst: str  # gelukt | overgeslagen | geen_toegang
+    reden: str | None = None
+    status: str | None = None
+
+
+class DocumentenBulkResponse(BaseModel):
+    actie: str
+    geselecteerd: int
+    gelukt: int
+    overgeslagen: int
+    geen_toegang: int
+    rijen: list[DocumentenBulkRijDto]
+
+
 class DuplicaatBulkAfvoerRijDto(BaseModel):
     document_id: uuid.UUID
     bestandsnaam: str | None

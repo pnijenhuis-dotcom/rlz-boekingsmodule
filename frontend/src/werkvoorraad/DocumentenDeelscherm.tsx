@@ -55,6 +55,7 @@ import { OpenInBoekhouding, geboektInRlzTooltip } from '../document/GeboektInRlz
 import { VerwijderDialog } from './VerwijderDialog'
 import { DuplicaatAfvoerDialog, toonAfvoerenAlsDuplicaat } from '../document/DuplicaatAfvoer'
 import { DuplicaatBulkBalk, isDuplicaatBulkSelecteerbaar, redenNietSelecteerbaar } from './DuplicaatBulkAfvoer'
+import { DocumentenBulkBalk, bereikSelectie, isBulkSelecteerbaar } from './DocumentenBulkActies'
 
 /** Ververs-interval zolang er documenten in extractie_wachtrij/extractie_bezig staan. */
 const EXTRACTIE_POLL_MS = 3000
@@ -153,6 +154,10 @@ export function DocumentenDeelscherm({
   // deze tab" (server-side selectie, GMail-patroon) — de checkboxes staan dan op slot.
   const [dupSelectie, setDupSelectie] = useState<Set<string>>(() => new Set())
   const [dupAlleModus, setDupAlleModus] = useState(false)
+  // Bulk-acties documentenlijst (Peter 16-09): generieke selectie op élke weergave zonder eigen bulk-balk
+  // (accordering-bulk en duplicaat-bulk houden hun eigen selectie); shift-klik = bereik (laatste klik onthouden).
+  const [algSelectie, setAlgSelectie] = useState<Set<string>>(() => new Set())
+  const laatsteAlgKlik = useRef<string | null>(null)
 
   const laadDocumenten = useCallback(() => {
     setLijstFout(null)
@@ -494,6 +499,39 @@ export function DocumentenDeelscherm({
     } finally {
       setBulkBezig(false)
     }
+  }
+
+  // --- Bulk-acties documentenlijst (Peter 16-09) -----------------------------------------------
+  // Op élke weergave waar geen andere bulk-balk staat; "alle N in deze weergave" = de zichtbare selecteerbare rijen (de
+  // weergave is een client-side filter — de server verwerkt de id-lijst per document mét eigen poorten).
+  const algBulkMogelijk = !bulkMogelijk && statusFilter !== STATUSFILTER_DUPLICAAT
+  const algSelecteerbaar = useMemo(
+    () => (algBulkMogelijk ? (gefilterd ?? []).filter(isBulkSelecteerbaar) : []),
+    [algBulkMogelijk, gefilterd],
+  )
+  useEffect(() => {
+    setAlgSelectie((s) => {
+      const ids = new Set(algSelecteerbaar.map((d) => d.id))
+      const nieuw = new Set([...s].filter((id) => ids.has(id)))
+      return nieuw.size === s.size ? s : nieuw
+    })
+  }, [algSelecteerbaar])
+  const wisselAlgSelectie = (id: string, shift: boolean) => {
+    setAlgSelectie((s) => {
+      if (shift && laatsteAlgKlik.current) {
+        return bereikSelectie(
+          algSelecteerbaar.map((d) => d.id),
+          laatsteAlgKlik.current,
+          id,
+          s,
+        )
+      }
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+    laatsteAlgKlik.current = id
   }
 
   // --- Bulk "Afvoeren als duplicaat" (B2 07-09) -----------------------------------------------
@@ -856,6 +894,22 @@ export function DocumentenDeelscherm({
           </div>
         )}
 
+        {/* Bulk-acties documentenlijst (Peter 16-09): verwijderen / type wijzigen / verplaatsen / afwijzen over de selectie. */}
+        {algBulkMogelijk && algSelecteerbaar.length > 0 && (
+          <DocumentenBulkBalk
+            administratieId={administratieId}
+            administratieNaam={administratieNaam}
+            selectie={algSelectie}
+            zichtbaar={algSelecteerbaar}
+            onSelecteerZichtbaar={(aan) => setAlgSelectie(aan ? new Set(algSelecteerbaar.map((d) => d.id)) : new Set())}
+            onWissen={() => setAlgSelectie(new Set())}
+            onAfgerond={() => {
+              laadDocumenten()
+              setMeldingVersie((v) => v + 1)
+            }}
+          />
+        )}
+
         {/* Bulk-afvoer duplicaten (B2 07-09): alleen op de tab "Mogelijk duplicaat" mét afvoerbare rijen. */}
         {dupBulkMogelijk && dupTotaalOpTab > 0 && (
           <DuplicaatBulkBalk
@@ -921,7 +975,7 @@ export function DocumentenDeelscherm({
             <table className={`documenten-tabel${dichtheid === 'compact' ? ' dichtheid-compact' : ''}`} data-dichtheid={dichtheid}>
               <tbody>
                 <tr>
-                  {(bulkMogelijk || dupBulkMogelijk) && <th className="selectie" aria-label="Selectie" />}
+                  {(bulkMogelijk || dupBulkMogelijk || algBulkMogelijk) && <th className="selectie" aria-label="Selectie" />}
                   {sorteerKop('leverancier', 'Leverancier')}
                   {sorteerKop('factuurdatum', 'Factuurdatum')}
                   {sorteerKop('bedrag', 'Bedrag (incl. btw)', 'amount')}
@@ -944,7 +998,8 @@ export function DocumentenDeelscherm({
                   const isWaarborg = d.soort === 'waarborg'
                   const route = documentRoute(administratieId, d, context)
                   const dupSelecteerbaarRij = dupBulkMogelijk && isDuplicaatBulkSelecteerbaar(d)
-                  const geselecteerd = selectie.has(d.id) || dupSelectie.has(d.id) || (dupAlleModus && dupSelecteerbaarRij)
+                  const geselecteerd =
+                    selectie.has(d.id) || dupSelectie.has(d.id) || (dupAlleModus && dupSelecteerbaarRij) || algSelectie.has(d.id)
                   const afgehandeldeRij = isAfgehandeld(d)
                   const origineelVan = d.samengevoegd_in ?? d.duplicaat_van ?? null
                   return (
@@ -966,6 +1021,19 @@ export function DocumentenDeelscherm({
                                   : `Selecteer ${d.leverancier ?? d.bestandsnaam}`
                               }
                               onChange={() => wisselSelectie(d.id)}
+                            />
+                          )}
+                        </td>
+                      )}
+                      {algBulkMogelijk && (
+                        <td className="selectie" onClick={(e) => e.stopPropagation()}>
+                          {isBulkSelecteerbaar(d) && (
+                            <Checkbox
+                              checked={algSelectie.has(d.id)}
+                              aria-label={`Selecteer ${d.leverancier ?? d.bestandsnaam}`}
+                              data-testid="bulk-selectie"
+                              onClick={(e) => wisselAlgSelectie(d.id, e.shiftKey)}
+                              onChange={() => undefined}
                             />
                           )}
                         </td>

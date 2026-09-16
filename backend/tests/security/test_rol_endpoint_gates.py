@@ -151,6 +151,7 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
             f"/administraties/{aid}/documenten/{DUMMY_ID}/afvoeren-als-duplicaat",
         ),  # duplicaat-afvoer één-klik (blok A 04-09)
         ("POST", f"/administraties/{aid}/documenten/duplicaten/afvoeren-bulk"),  # bulk-afvoer duplicaat-tab (B2 07-09)
+        ("POST", f"/administraties/{aid}/documenten/bulk"),  # bulk-acties documentenlijst (Peter 16-09)
         ("POST", f"/administraties/{aid}/documenten/{DUMMY_ID}/duplicaat-afmelden"),  # "geen duplicaat" (blok 1 07-09)
         ("POST", f"/administraties/{aid}/accordering/documenten/bulk-aanbieden"),  # bulk aanbieden (27/28-08 punt 2b)
         ("GET", f"/administraties/{aid}/accordering/vervallen-meldingen"),  # vervallen-melding (27/28-08 punt 2a)

@@ -1737,6 +1737,51 @@ def document_duplicaat_afmelden(
 
 
 @router.post(
+    "/administraties/{administratie_id}/documenten/bulk",
+    response_model=schemas.DocumentenBulkResponse,
+)
+def documenten_bulk_actie(
+    administratie_id: uuid.UUID,
+    invoer: schemas.DocumentenBulkInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.DocumentenBulkResponse:
+    """Bulk-acties documentenlijst (Peter 16-09: "nu moet dat 1 voor 1"): verwijderen / afwijzen / type wijzigen /
+    verplaatsen over de selectie — N × de bestaande per-document-route in één transactie per document, uitkomst per rij
+    (gelukt / overgeslagen mét reden / geen_toegang), altijd 200. Poorten = die van de enkelvoudige routes (geboekt en
+    ter_accordering = overgeslagen); scope per document server-side + RLS. Niets in RLZ/Odoo geraakt."""
+    from app.documenten import bulk
+
+    uitkomst = bulk.voer_bulk_uit(
+        administratie_id=administratie_id,
+        document_ids=list(invoer.document_ids),
+        actie=invoer.actie,
+        actor_id=actor.id,
+        actor_rol=actor.rol,
+        reden=invoer.reden,
+        soort=DocumentSoort(invoer.soort) if invoer.soort else None,
+        doel_administratie_id=invoer.doel_administratie_id,
+        onthoud_tenaamstelling=invoer.onthoud_tenaamstelling,
+    )
+    return schemas.DocumentenBulkResponse(
+        actie=uitkomst.actie,
+        geselecteerd=len(uitkomst.rijen),
+        gelukt=uitkomst.gelukt,
+        overgeslagen=uitkomst.overgeslagen,
+        geen_toegang=uitkomst.geen_toegang,
+        rijen=[
+            schemas.DocumentenBulkRijDto(
+                document_id=r.document_id,
+                bestandsnaam=r.bestandsnaam,
+                uitkomst=r.uitkomst,
+                reden=r.reden,
+                status=r.status,
+            )
+            for r in uitkomst.rijen
+        ],
+    )
+
+
+@router.post(
     "/administraties/{administratie_id}/documenten/duplicaten/afvoeren-bulk",
     response_model=schemas.DuplicaatBulkAfvoerResponse,
 )
