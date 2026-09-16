@@ -19,7 +19,7 @@ import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
-import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
+import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit, zetVerkoopCategorie } from './omzetApi'
 import { BronBlok, bronNaam } from './BronBlok'
 import { SkeletonPaneel } from '../ui/basis'
 import { metViewerOpties } from '../document/pdfWeergaveUrl'
@@ -366,6 +366,25 @@ export function OmzetReviewScreen() {
   const tegenzijdeRegels = bronDetail?.tegenzijde?.regels ?? []
   const kostprijsRegels = regels.map((r, i) => ({ r, i })).filter(({ r }) => bedragAlsGetal(r.kostprijsBedrag))
   const boekLabel = heeftKostprijs ? 'Boeken in RLZ (2 documenten) ✓' : 'Boeken in RLZ (alleen omzet) ✓'
+  // Peter 16-09 (Van Boxtel): hoe de boeking in Reeleezee gelezen wordt — binder · categorie mét herkomst; klikbaar
+  // (keuzelijst gegroepeerd op binder, Uitgaven mét waarschuwing). Mens wint en wordt de default van de administratie.
+  const cat = voorstel.verkoop_categorie ?? null
+  const keuzes = voorstel.verkoop_categorieen ?? []
+  const keuzesPerBinder = keuzes.reduce<Record<string, typeof keuzes>>((acc, k) => {
+    const sleutel = k.binder ?? 'Onbekend'
+    ;(acc[sleutel] ??= []).push(k)
+    return acc
+  }, {})
+  const kiesCategorie = async (id: string) => {
+    if (!administratieId || !documentId || !id) return
+    try {
+      const nieuw = await zetVerkoopCategorie(administratieId, id, documentId)
+      setVoorstel((huidig) => (huidig ? { ...huidig, verkoop_categorie: nieuw } : huidig))
+      markeerGewijzigd()
+    } catch (err) {
+      setOpslaanFout(err instanceof ApiError ? err.message : 'Categorie kiezen mislukt.')
+    }
+  }
 
   return (
     <div>
@@ -519,6 +538,52 @@ export function OmzetReviewScreen() {
                   disabled={isGeboekt}
                 />
               </div>
+            </div>
+            <div className="omzet-categorie" data-testid="omzet-categorie">
+              <span>Boekt in Reeleezee als:</span>{' '}
+              {cat && cat.id ? (
+                <>
+                  <b>{cat.binder ?? '?'}</b> · {cat.naam ?? '?'}{' '}
+                  <span
+                    className={`chip ${cat.bron === 'mens' ? 'geheugen' : cat.is_inkomsten ? 'ok' : 'blokkerend'}`}
+                    title={
+                      cat.bron === 'mens'
+                        ? 'Gekozen door een medewerker — geldt als default voor deze administratie'
+                        : 'Automatisch gekozen op de binder Inkomsten (DocumentType 10)'
+                    }
+                  >
+                    {cat.bron === 'mens' ? 'gekozen' : 'automatisch'}
+                  </span>
+                  {!cat.is_inkomsten && (
+                    <span className="chip blokkerend" title="Deze categorie staat in Reeleezee onder een andere map dan Inkomsten">
+                      verschijnt in RLZ onder {cat.binder ?? 'onbekend'}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="chip vraag" title="De harde check 'Omzetcategorie (Inkomsten)' bepaalt de categorie bij het openen">
+                  nog niet bepaald
+                </span>
+              )}
+              {keuzes.length > 0 && !isGeboekt && (
+                <select
+                  aria-label="Omzetcategorie in Reeleezee"
+                  value={cat?.id ?? ''}
+                  onChange={(e) => void kiesCategorie(e.target.value)}
+                  style={{ width: 'auto', marginLeft: 6 }}
+                >
+                  <option value="">wijzig…</option>
+                  {Object.entries(keuzesPerBinder).map(([binder, lijst]) => (
+                    <optgroup key={binder} label={binder === 'Inkomsten' ? 'Inkomsten' : `${binder} — verschijnt in RLZ onder ${binder}`}>
+                      {lijst.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.naam}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
             </div>
             {(voorstel.bron || marge) && (
               <div className="omzet-bronchips" data-testid="omzet-bronchips">
@@ -752,7 +817,8 @@ export function OmzetReviewScreen() {
                 </div>
                 <div className="d">
                   Kasomzet-bon (Receipt, geen debiteur), boekdatum {periodeStart || '—'}, btw per regel
-                  {tegenzijdeRegels.length > 0 ? '; tegenzijde per betaalwijze' : ''}.
+                  {tegenzijdeRegels.length > 0 ? '; tegenzijde per betaalwijze' : ''}
+                  {cat && cat.id ? `; in Reeleezee onder ${cat.binder ?? '?'} · ${cat.naam ?? '?'}` : ''}.
                 </div>
                 <details>
                   <summary>regels tonen</summary>

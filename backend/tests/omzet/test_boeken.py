@@ -328,18 +328,20 @@ class TestFailsafes:
         boeken_aan: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """De categorie "Verkoopfactuur (Omzet)" hoort in elke administratie te bestaan; ontbreekt
-        (of dubbelt) ze, dan een duidelijke boekfout vóór er iets in RLZ geschreven is — nooit
-        een entity-loze PUT zonder categorie proberen."""
+        """Peter 16-09 (Van Boxtel): de categorie wordt op BINDER Inkomsten gekozen. Zonder verkoopcategorie mét die
+        binder blokkeert de harde check "Omzetcategorie (Inkomsten)" vóór er iets in RLZ geschreven is — nooit een
+        entity-loze PUT zonder (juiste) categorie proberen."""
         client = FakeOmzetClient()
         monkeypatch.setattr(
             FakeOmzetClient, "DOCUMENT_CATEGORIES", [{"id": str(uuid.uuid4()), "Name": "Anders", "DocumentType": 10}]
         )
         _patch_client(monkeypatch, client)
-        with pytest.raises(boeken.RlzBoekingMislukt, match="Verkoopfactuur \\(Omzet\\)"):
+        with pytest.raises(documenten_boeken.BoekenGeblokkeerdDoorChecks) as exc:
             boeken.boek_omzet_document(
                 administratie_id=administratie_id, document_id=boekbaar_document, actor_id=gescoopte_gebruiker
             )
+        rood = [r for r in exc.value.rapport.resultaten if not r.ok]
+        assert [r.naam for r in rood] == ["Omzetcategorie (Inkomsten)"] and "Inkomsten" in rood[0].melding
         assert not client.sales_invoices and not client.manual_journals
 
     def test_dubbel_boeken_geweigerd_na_geboekt(

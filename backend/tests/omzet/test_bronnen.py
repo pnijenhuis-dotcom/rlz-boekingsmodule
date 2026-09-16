@@ -680,6 +680,7 @@ class TestBtwDefaultsEnStripe:
             "laag": str(tarieven["laag"]),
             "hoog": str(tarieven["hoog"]),
             "verlegd": str(tarieven["verlegd"]),
+            "vrijgesteld": None,  # ProfX 16-09: klasse bestaat; deze fixture heeft geen vrijgesteld-tarief
         }
         assert body["defaults"]["categorie_btw"]["transactiekosten psp"]["klasse"] == "verlegd"
         assert {r["naam"] for r in body["rekeningen"]} >= {"Kas", "Kruispost PIN"} and "Kas en bank (totaal)" in {

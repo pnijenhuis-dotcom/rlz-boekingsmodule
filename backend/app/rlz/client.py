@@ -609,8 +609,12 @@ class RlzClient:
         van entity-loze Receipts (Receipts-verkenning; selectie op DocumentType 10 + Name,
         read-only geverifieerd 2026-08-09: 4 type-10-categorieën, naam is daarbinnen uniek;
         ⚠️ HasSystemId is er false — géén bruikbaar selectieveld, anders dan de verkenning
-        eerst aannam). GUID nooit hardcoden: per administratie ophalen en cachen."""
-        return self.get("DocumentCategories").get("value", [])
+        eerst aannam). GUID nooit hardcoden: per administratie ophalen en cachen. Sinds 16-09 (Van Boxtel) mét
+        `$expand=DocumentBinder` — de RLZ-UI groepeert op die binder (Inkomsten/Uitgaven/…); één bron
+        `app/rlz/leesroutes.py::DOCUMENT_CATEGORIES`."""
+        from app.rlz.leesroutes import DOCUMENT_CATEGORIES
+
+        return self.get(DOCUMENT_CATEGORIES.pad, params=dict(DOCUMENT_CATEGORIES.params)).get("value", [])
 
     def find_receipts_by_description_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
         """Duplicaatbewaking-op-afstand voor de verkoop-/omzetmotor: de Receipts-collectie ziet —

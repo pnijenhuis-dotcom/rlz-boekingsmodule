@@ -2851,3 +2851,17 @@ input.omzet-cel.grijs {
   font-size: 11px;
   color: var(--warn);
 }
+
+/* Peter 16-09 (Van Boxtel): "Boekt in Reeleezee als: ‹binder› · ‹categorie›" — regel in de kop van het omzetscherm. */
+.omzet-categorie {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.omzet-categorie b {
+  color: var(--text);
+}

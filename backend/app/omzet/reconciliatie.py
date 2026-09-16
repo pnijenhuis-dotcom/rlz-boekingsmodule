@@ -44,8 +44,9 @@ def _controleer_rlz_document(
     verschillende situaties. Nu apart, omdat de vervolgactie per geval verschilt: een verdwenen
     document is boekhoudkundig werk, een teruggedraaide status is beoordelen-en-navolgen, en een
     mislukte controle zegt alleen dat de verbinding stuk was."""
+    params = {"$expand": "DocumentCategory($expand=DocumentBinder)"} if pad == "SalesInvoices" else None
     try:
-        doc = client.get(f"{pad}/{rlz_id}")
+        doc = client.get(f"{pad}/{rlz_id}", params=params) if params else client.get(f"{pad}/{rlz_id}")
     except RlzApiError as exc:
         if exc.status_code == 404:
             return "ontbreekt_in_rlz", f"{label} {rlz_id} bestaat niet (meer) in RLZ"
@@ -56,6 +57,17 @@ def _controleer_rlz_document(
             "status_niet_definitief",
             f"{label} {rlz_id} staat in RLZ op Status {status} (teruggedraaid naar concept?)",
         )
+    # Peter 16-09 (Van Boxtel): een Receipt hoort onder binder Inkomsten — de RLZ-UI groepeert op de binder van de
+    # categorie. Zonder expand (oude fake/onbekend) geen oordeel; een andere binder = zichtbare afwijking.
+    if pad == "SalesInvoices":
+        categorie = doc.get("DocumentCategory") or {}
+        binder = (categorie.get("DocumentBinder") or {}).get("Description") if isinstance(categorie, dict) else None
+        if binder and binder.casefold() != "inkomsten":
+            return (
+                "verkoop_categorie_afwijkt",
+                f"{label} {rlz_id} staat in RLZ onder '{binder}' (categorie {categorie.get('Name') or '?'}) i.p.v. "
+                "Inkomsten — herboeken met de juiste categorie",
+            )
     return None
 
 
@@ -86,6 +98,30 @@ def tussenrekening_open_afwijkingen(
     ]
 
 
+def omzet_in_inkoopstroom_afwijkingen(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
+    """Peter 16-09 (Van Boxtel): GEBOEKTE inkoopfacturen waarvan álle regels op een omzetrekening staan = een
+    kassarapport dat de inkoopstroom nam (verschijnt in RLZ onder Uitgaven). Puur lokaal (geen PDF-lezing in de
+    dagelijkse run — het PDF-signaal zit in de CLI `omzet-binder-rapport --met-pdf`). record_id = document_id."""
+    from app.omzet import inkoopstroom
+
+    with scoped_session(administratie_id) as session:
+        treffers = inkoopstroom.geboekte_kassarapporten_in_inkoopstroom(session, administratie_id=administratie_id)
+    return [
+        OmzetAfwijking(
+            administratie_id=administratie_id,
+            boeking_id=t.document_id,
+            document_id=t.document_id,
+            soort=inkoopstroom.SOORT,
+            detail=(
+                f"Inkoopfactuur {t.boekstuknummer or str(t.document_id)[:8]} ({t.bestandsnaam}, "
+                f"factuurdatum {t.factuurdatum or '?'}) is omzet: alle {t.regels_totaal} regels staan op een "
+                "omzetrekening — verschijnt in RLZ onder Uitgaven; herboeken als omzet (storno + kassarapport)"
+            ),
+        )
+        for t in treffers
+    ]
+
+
 def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
     with scoped_session(administratie_id) as session:
         boekingen = session.scalars(
@@ -94,10 +130,11 @@ def reconcilieer_omzet(administratie_id: uuid.UUID) -> list[OmzetAfwijking]:
                 OmzetBoeking.status.in_((OmzetBoekingStatus.GEBOEKT.value, OmzetBoekingStatus.HALF_GEBOEKT.value)),
             )
         ).all()
+    inkoopstroom_afwijkingen = omzet_in_inkoopstroom_afwijkingen(administratie_id)
     if not boekingen:
-        return []
+        return inkoopstroom_afwijkingen
 
-    afwijkingen: list[OmzetAfwijking] = tussenrekening_open_afwijkingen(administratie_id)
+    afwijkingen: list[OmzetAfwijking] = tussenrekening_open_afwijkingen(administratie_id) + inkoopstroom_afwijkingen
     rlz_admin_id = rlz_admin_id_voor(administratie_id)
     with client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id) as client:
         for boeking in boekingen:

@@ -103,6 +103,17 @@ PAYMENT_ACCOUNTS = Leesroute(
     afgeleide_paden=("PaymentAccounts/{id}/LastBankImport",),
 )
 
+#: Omzet-Receipts (Peter 16-09, casus Van Boxtel): de DocumentCategory wordt op BINDER gekozen — die binder is een
+#: navigatie op de categorie en alleen zichtbaar mét `$expand=DocumentBinder`. Eén bron voor boekmotor, check en
+#: rapport. Bewust NIET in de probe-set (de wizard-tekst "10 leesroutes" en de rechten-probe blijven ongewijzigd;
+#: de omzet-check meldt een 403 hier zelf als blokkerende check-rij).
+DOCUMENT_CATEGORIES = Leesroute(
+    naam="DocumentCategories",
+    pad="DocumentCategories",
+    params=(("$expand", "DocumentBinder"),),
+    rlz_recht="leesrecht Instellingen › Documentcategorieën (omzetboekingen) voor de webservice-gebruiker",
+)
+
 #: De probe-set (koppel-flow): `Administrations` via de root-client, de rest via de administratie-gescoped client.
 #: Volgorde = weergavevolgorde in het rapport (bestaande DTO-vorm `{naam: 'ok' | '<status>'}` blijft).
 PROBE_LEESROUTES: tuple[Leesroute, ...] = (

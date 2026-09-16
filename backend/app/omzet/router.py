@@ -32,7 +32,29 @@ def _naar_check_rapport(rapport: CheckRapport) -> CheckRapportResponse:
     )
 
 
-def _naar_voorstel_response(data: voorstel.OmzetVoorstelData) -> schemas.OmzetVoorstelResponse:
+def _verkoop_categorie_velden(administratie_id: uuid.UUID) -> dict:
+    """Peter 16-09: stand + keuzelijst uit `omzet_instelling` (de check/boekmotor ververst de cache live)."""
+    from app.db.session import scoped_session
+    from app.omzet import categorie as categorie_service
+
+    with scoped_session(administratie_id) as session:
+        stand = categorie_service.stand_voor(session, administratie_id)
+        keuzes = categorie_service.cache_keuzes(session, administratie_id)
+    return {
+        "verkoop_categorie": schemas.VerkoopCategorieDto(
+            id=stand.id, naam=stand.naam, binder=stand.binder, bron=stand.bron, is_inkomsten=stand.is_inkomsten
+        ),
+        "verkoop_categorieen": [
+            schemas.VerkoopCategorieKeuzeDto(id=uuid.UUID(c.id), naam=c.naam, binder=c.binder, is_inkomsten=c.is_inkomsten)
+            for c in keuzes
+        ],
+    }
+
+
+def _naar_voorstel_response(
+    data: voorstel.OmzetVoorstelData, administratie_id: uuid.UUID | None = None
+) -> schemas.OmzetVoorstelResponse:
+    extra = _verkoop_categorie_velden(administratie_id) if administratie_id is not None else {}
     return schemas.OmzetVoorstelResponse(
         document_id=data.document_id,
         periode_start=data.periode_start,
@@ -61,6 +83,35 @@ def _naar_voorstel_response(data: voorstel.OmzetVoorstelData) -> schemas.OmzetVo
         entiteit_naam=data.entiteit_naam,
         bron=data.bron,
         bron_detail=data.bron_detail,
+        **extra,
+    )
+
+
+@router.put(
+    "/administraties/{administratie_id}/omzet/verkoop-categorie",
+    response_model=schemas.VerkoopCategorieDto,
+)
+def omzet_verkoop_categorie_zetten(
+    administratie_id: uuid.UUID,
+    invoer: schemas.VerkoopCategorieInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.VerkoopCategorieDto:
+    """Blok B2 (Peter 16-09): de medewerker kiest in het omzet-controlescherm de RLZ-categorie (uit de gesynchroniseerde
+    keuzelijst) — mens wint voor dit document én wordt de default van de administratie (bron 'mens'), audit oud→nieuw
+    + tijdlijn. Kantoorrol binnen de scope (de router-poort `vereis_kantoorrol` dekt de hele omzet-router)."""
+    from app.omzet import categorie as categorie_service
+
+    try:
+        stand = categorie_service.zet_verkoop_categorie_mens(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            categorie_id=invoer.categorie_id,
+            document_id=invoer.document_id,
+        )
+    except categorie_service.CategorieOnbekend as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return schemas.VerkoopCategorieDto(
+        id=stand.id, naam=stand.naam, binder=stand.binder, bron=stand.bron, is_inkomsten=stand.is_inkomsten
     )
 
 
@@ -141,7 +192,7 @@ def omzet_voorstel_ophalen(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except voorstel.GeenKassarapport as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_voorstel_response(data)
+    return _naar_voorstel_response(data, administratie_id)
 
 
 @router.put(
@@ -183,7 +234,7 @@ def omzet_voorstel_opslaan(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except voorstel.OmzetVoorstelFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _naar_voorstel_response(data)
+    return _naar_voorstel_response(data, administratie_id)
 
 
 @router.post(
@@ -203,7 +254,7 @@ def omzet_checks_uitvoeren(
     except (voorstel.GeenKassarapport, voorstel.OmzetVoorstelFout) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return schemas.OmzetVoorstelMetChecksResponse(
-        voorstel=_naar_voorstel_response(data), checks=_naar_check_rapport(rapport)
+        voorstel=_naar_voorstel_response(data, administratie_id), checks=_naar_check_rapport(rapport)
     )
 
 

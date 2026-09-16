@@ -485,6 +485,28 @@ def _omzet(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             f"RLZ gaf een fout bij het ophalen van {kant} over {per}; over de boeking zelf zegt dat niets.",
             _DOE_CONTROLE_MISLUKT,
         )
+    if soort == "verkoop_categorie_afwijkt":
+        m = re.search(r"onder '(?P<binder>[^']+)' \(categorie (?P<cat>[^)]+)\)", d.get("detail") or tekst)
+        binder = m.group("binder") if m else "een andere map dan Inkomsten"
+        return (
+            _t("Omzetboeking staat in RLZ niet onder Inkomsten"),
+            f"De verkoopboeking over {per}{f' ({omzet})' if omzet else ''} staat in Reeleezee onder {binder}"
+            f"{f' (categorie {m.group("cat")})' if m else ''} — de categorie hoort binder Inkomsten te dragen.",
+            "Kies in het omzet-controlescherm de juiste categorie (Inkomsten) en herboek via storno + opnieuw boeken; "
+            "of accepteer met reden als dit bewust zo hoort.",
+        )
+    if soort == "omzet_in_inkoopstroom":
+        m = re.search(r"Inkoopfactuur (?P<nr>\S+) \((?P<bestand>[^,]+), factuurdatum (?P<datum>[^)]+)\)", d.get("detail") or tekst)
+        nr = m.group("nr") if m else "—"
+        bestand = m.group("bestand") if m else "het rapport"
+        return (
+            _titel("Omzet als inkoopfactuur geboekt", [bestand, nr], " · "),
+            f"Kassarapport {bestand} is als inkoopfactuur {nr} geboekt{f' (factuurdatum {datum(m.group("datum"))})' if m and m.group('datum') != '?' else ''}: "
+            "alle regels staan op omzetrekeningen, dus verschijnt het in Reeleezee onder Uitgaven in plaats van "
+            "Inkomsten.",
+            "Klik \"Herboeken als omzet…\": de inkoopfactuur wordt gestorneerd (actie 19, achter de btw-aangiftepoort) en het "
+            "document wordt een kassarapport dat je in het omzet-controlescherm als Receipt onder Inkomsten boekt.",
+        )
     if soort == "tussenrekening_open":
         m = re.search(
             r"Omzetbatch (?P<label>.+?): (?P<wijze>.+?) € (?P<bedrag>[\d.,-]+) staat al (?P<dagen>\d+) dagen",

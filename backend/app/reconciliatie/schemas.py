@@ -147,6 +147,16 @@ class OpnieuwBoekenResultaatDto(BaseModel):
     doel_pad: str
 
 
+class HerboekenAlsOmzetResultaatDto(BaseModel):
+    """Antwoord van "Herboeken als omzet" (Peter 16-09, Van Boxtel): de inkoopfactuur is gestorneerd (of bestond al
+    niet meer) en het document is nu een kassarapport in de werkvoorraad; `doel_pad` = waar de mens 'm als omzet boekt."""
+
+    document_id: uuid.UUID
+    status: str
+    gestorneerd: bool
+    doel_pad: str
+
+
 class BewustVerwijderdInvoerDto(BaseModel):
     """Invoer van "Bewust verwijderd in RLZ" (blok D 16-09): geen vrije reden — de reden is vast
     (`bewust_verwijderd.VASTE_REDEN`), een toelichting is optioneel (≤ 500 tekens)."""

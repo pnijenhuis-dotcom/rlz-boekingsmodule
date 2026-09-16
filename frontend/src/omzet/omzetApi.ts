@@ -6,6 +6,7 @@ import type {
   OmzetVoorstelDto,
   OmzetVoorstelInputDto,
   OmzetVoorstelMetChecksDto,
+  VerkoopCategorieDto,
 } from '../api/types'
 
 export function haalOmzetVoorstelOp(administratieId: string, documentId: string): Promise<OmzetVoorstelDto> {
@@ -32,6 +33,20 @@ export function voerOmzetChecksUit(
     `/administraties/${administratieId}/omzet/documenten/${documentId}/checks`,
     {},
   )
+}
+
+/** Peter 16-09 (Van Boxtel): de medewerker kiest de RLZ-categorie (uit de gesynchroniseerde keuzelijst) — mens wint
+ * voor dit document én wordt de default van de administratie (audit oud→nieuw, tijdlijn). */
+export function zetVerkoopCategorie(
+  administratieId: string,
+  categorieId: string,
+  documentId: string | null,
+): Promise<VerkoopCategorieDto> {
+  return apiJson<VerkoopCategorieDto>(`/administraties/${administratieId}/omzet/verkoop-categorie`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ categorie_id: categorieId, document_id: documentId }),
+  })
 }
 
 export function boekOmzet(administratieId: string, documentId: string): Promise<OmzetBoekenResponseDto> {

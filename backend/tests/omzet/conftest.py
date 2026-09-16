@@ -141,11 +141,21 @@ class FakeOmzetClient:
 
     # Read-only geverifieerd 2026-08-09: 4 DocumentType-10-categorieën per administratie,
     # naam "Verkoopfactuur (Omzet)" is daarbinnen uniek.
+    # Zoals RLZ ze levert mét `$expand=DocumentBinder` (STAP-0 16-09, Van Boxtel): de binder hangt aan de categorie.
+    INKOMSTEN = {"id": "a9fc6ad1-0000-0000-0000-000000000001", "Description": "Inkomsten", "Name": "Inkomsten"}
+    UITGAVEN = {"id": "9b587b26-0000-0000-0000-000000000002", "Description": "Uitgaven", "Name": "Uitgaven"}
+    KAS_BANK = {"id": "c203eb48-0000-0000-0000-000000000003", "Description": "Kas & Bank", "Name": "Bank"}
     DOCUMENT_CATEGORIES = [
-        {"id": "1e2fb935-08b3-4547-aee7-07a6c3c160a2", "Name": "Diverse opbrengsten", "DocumentType": 10},
-        {"id": "1b65bc7a-6af1-492a-a8db-f1ae75dbdf2a", "Name": "Door te belasten kosten", "DocumentType": 10},
-        {"id": "9138fa50-d8be-4b6f-9d39-ce5bb2e67f86", "Name": "Verkoopfactuur (Omzet)", "DocumentType": 10},
-        {"id": "f86654c6-bc80-421c-b0ce-2dcae4c0a491", "Name": "Kasomzet", "DocumentType": 19},
+        {"id": "1e2fb935-08b3-4547-aee7-07a6c3c160a2", "Name": "Diverse opbrengsten", "DocumentType": 10, "DocumentBinder": INKOMSTEN},
+        {"id": "1b65bc7a-6af1-492a-a8db-f1ae75dbdf2a", "Name": "Door te belasten kosten", "DocumentType": 10, "DocumentBinder": INKOMSTEN},
+        {"id": "9138fa50-d8be-4b6f-9d39-ce5bb2e67f86", "Name": "Verkoopfactuur (Omzet)", "DocumentType": 10, "DocumentBinder": INKOMSTEN},
+        {"id": "10bc7299-0000-0000-0000-000000000010", "Name": "BTW Prive bijdrage auto", "DocumentType": 10, "DocumentBinder": UITGAVEN},
+        {"id": "f86654c6-bc80-421c-b0ce-2dcae4c0a491", "Name": "Kasomzet", "DocumentType": 19, "DocumentBinder": KAS_BANK},
+    ]
+    #: Blok B guard-test: administratie mét alleen een Uitgaven-verkoopcategorie → blokkerende check, geen boeking.
+    DOCUMENT_CATEGORIES_ALLEEN_UITGAVEN = [
+        {"id": "10bc7299-0000-0000-0000-000000000010", "Name": "Verkoopfactuur (Omzet)", "DocumentType": 10, "DocumentBinder": UITGAVEN},
+        {"id": "f86654c6-bc80-421c-b0ce-2dcae4c0a491", "Name": "Kasomzet", "DocumentType": 19, "DocumentBinder": KAS_BANK},
     ]
 
     def __init__(
@@ -194,7 +204,11 @@ class FakeOmzetClient:
     def list_document_categories(self) -> list[dict[str, Any]]:
         if self.faal_op == "categorieen":
             raise RlzApiError(500, "GET", "DocumentCategories", "Onverwachte fout (simulatie)")
-        return list(self.DOCUMENT_CATEGORIES)
+        return list(getattr(self, "categorieen", None) or self.DOCUMENT_CATEGORIES)
+
+    def correct_purchase_invoice(self, invoice_id: uuid.UUID) -> None:
+        """Storno actie 19 van een inkoopfactuur (herboeken als omzet, 16-09) — registreren voor de asserts."""
+        self.gestorneerde_inkoop = [*getattr(self, "gestorneerde_inkoop", []), str(invoice_id)]
 
     def put_sales_invoice(
         self,

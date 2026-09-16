@@ -266,6 +266,45 @@ def bevinding_opnieuw_boeken(
     )
 
 
+@router.post(
+    "/reconciliatie/bevindingen/{bevinding_id}/herboeken-als-omzet",
+    response_model=schemas.HerboekenAlsOmzetResultaatDto,
+)
+def bevinding_herboeken_als_omzet(
+    bevinding_id: uuid.UUID,
+    invoer: schemas.OpnieuwBoekenInvoerDto,
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.HerboekenAlsOmzetResultaatDto:
+    """ "Herboeken als omzet" (Peter 16-09, casus Van Boxtel) op een omzet-afwijking `omzet_in_inkoopstroom`: storno
+    (actie 19) van de als inkoopfactuur geboekte omzet achter de btw-aangiftepoort (409 `btw_mogelijk_aangegeven`,
+    Beheerder-doorzet mét reden — zelfde invoer als opnieuw boeken), document → kassarapport in de werkvoorraad; de
+    mens boekt daarna als Receipt onder Inkomsten. Nooit een delete in RLZ."""
+    from app.documenten import herboeken
+    from app.omzet import inkoopstroom
+
+    try:
+        r = inkoopstroom.herboek_als_omzet_vanuit_bevinding(
+            bevinding_id=bevinding_id,
+            administratie_id=invoer.administratie_id,
+            reden=invoer.reden,
+            actor_id=actor.id,
+            rol=actor.rol,
+            btw_niet_in_aangifte_bevestigd=invoer.btw_niet_in_aangifte_bevestigd,
+            bevestiging_reden=invoer.bevestiging_reden,
+        )
+    except herboeken.BevindingNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except herboeken.GeenToegang as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except herboeken.BtwMogelijkAangegeven as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
+    except herboeken.HerboekenFout as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return schemas.HerboekenAlsOmzetResultaatDto(
+        document_id=r.document_id, status=r.status.value, gestorneerd=r.gestorneerd, doel_pad=r.doel_pad
+    )
+
+
 def _vertaal_bewust_verwijderd(exc: Exception) -> HTTPException:
     from app.reconciliatie import bewust_verwijderd
 

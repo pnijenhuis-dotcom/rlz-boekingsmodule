@@ -29,6 +29,7 @@ import {
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { BewustVerwijderdActie } from './BewustVerwijderdActie'
 import { isVerdwenenDocument, OpnieuwBoekenActie } from './OpnieuwBoekenActie'
+import { HerboekenAlsOmzetActie, isOmzetInInkoopstroom } from './HerboekenAlsOmzetActie'
 import { isRlzDubbel, RlzDubbelBoekstukken } from './RlzDubbelBoekstukken'
 import {
   accepteerBevinding,
@@ -291,6 +292,22 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
               />{' '}
             </>
           )}
+          {deeplink}
+        </>
+      )
+    }
+    // Peter 16-09 (Van Boxtel): omzet die als inkoopfactuur geboekt is → "Herboeken als omzet…" is de primaire handeling.
+    if (r.soort === 'afwijking' && isOmzetInInkoopstroom(r)) {
+      return (
+        <>
+          <HerboekenAlsOmzetActie
+            bevinding={r}
+            onGelukt={(melding) => {
+              toast.meld(melding)
+              herlaad()
+            }}
+            isBeheerder={isBeheerder}
+          />{' '}
           {deeplink}
         </>
       )

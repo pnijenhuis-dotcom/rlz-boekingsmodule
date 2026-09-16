@@ -547,6 +547,9 @@ def voer_omzet_checks_uit(
 
     rlz_hits: int | None = None
     rlz_verkoop_hits: int | None = None
+    # Peter 16-09 (Van Boxtel): harde check "Omzetcategorie (Inkomsten)" — leest de categorieën mét binder, ververst de
+    # keuzelijst-cache voor het scherm; zonder client = blokkerend "niet gecontroleerd" (fail-closed).
+    categorie_check: CheckResultaat | None = None
     if voorstel.periode_start is not None and voorstel.periode_eind is not None:
         referentie = memoriaal_referentie(voorstel.periode_start, voorstel.periode_eind)
         omschrijving = verkoop_omschrijving(voorstel.periode_start, voorstel.periode_eind)
@@ -580,6 +583,9 @@ def voer_omzet_checks_uit(
             if eigen_verkoop_id:
                 eigen_verkoop_ids.add(eigen_verkoop_id)
             rlz_verkoop_hits = len([r for r in receipts if r.get("id") not in eigen_verkoop_ids])
+            from app.omzet import categorie as categorie_service
+
+            categorie_check = categorie_service.check_resultaat(client, administratie_id)
         except Exception as exc:  # noqa: BLE001 — fail-closed: check wordt blokkerend, crasht nooit
             logger.warning("RLZ-duplicaatcheck omzet kon niet uitgevoerd worden: %s", exc)
             rlz_hits = None
@@ -603,7 +609,16 @@ def voer_omzet_checks_uit(
         historische_marges=historie,
         bandbreedte_procentpunt=Decimal(str(settings.omzet_marge_bandbreedte_procentpunt)),
     )
-    return _met_bron_controles(rapport, voorstel.bron_detail)
+    rapport = _met_bron_controles(rapport, voorstel.bron_detail)
+    from app.omzet import categorie as categorie_service
+
+    if categorie_check is None:
+        categorie_check = CheckResultaat(
+            naam=categorie_service.CHECK_NAAM,
+            ok=False,
+            melding="Omzetcategorie nog niet gecontroleerd (periode ontbreekt of geen RLZ-verbinding)",
+        )
+    return CheckRapport((*rapport.resultaten, categorie_check))
 
 
 def _met_bron_controles(rapport: CheckRapport, bron_detail: dict | None) -> CheckRapport:

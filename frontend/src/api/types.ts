@@ -1304,6 +1304,27 @@ export interface OmzetVoorstelDto {
    * kassarapport een deterministisch geparsete spreadsheet is; null = gewoon (AI-)kassarapport. */
   bron?: string | null
   bron_detail?: OmzetBronDetailDto | null
+  /** Peter 16-09 (Van Boxtel): "Boekt in Reeleezee als: ‹binder› · ‹categorie›" mét herkomst, plus de keuzelijst
+   * (gesynchroniseerde DocumentType-10-categorieën mét binder) voor de klikbare keuze — mens wint en wordt default. */
+  verkoop_categorie?: VerkoopCategorieDto | null
+  verkoop_categorieen?: VerkoopCategorieKeuzeDto[]
+}
+
+export interface VerkoopCategorieDto {
+  id: string | null
+  naam: string | null
+  /** Binder van de categorie (RLZ-UI-map): 'Inkomsten' | 'Uitgaven' | 'Kas & Bank' | … */
+  binder: string | null
+  /** 'mens' (gekozen in het scherm) | 'automatisch' (op binder) | null (nog nooit bepaald). */
+  bron: 'mens' | 'automatisch' | string | null
+  is_inkomsten: boolean
+}
+
+export interface VerkoopCategorieKeuzeDto {
+  id: string
+  naam: string
+  binder: string | null
+  is_inkomsten: boolean
 }
 
 /** Eén harde bron-controle uit de parser (backend `Controle`): blokkerend rood houdt boeken tegen, niet-blokkerend =

@@ -384,6 +384,99 @@ def _duplicaat_extern_rapport(args: argparse.Namespace) -> int:
     return 0
 
 
+def _omzet_binder_rapport(args: argparse.Namespace) -> int:
+    """Blok C (Peter 16-09, Van Boxtel): LEES-ONLY rapport — (a) door de module geboekte Receipts waarvan de
+    RLZ-categorie niet onder binder Inkomsten staat, (b) geboekte inkoopfacturen die omzet zijn (alle regels op
+    omzetrekeningen; mét --met-pdf óók herkende omzetbron-PDF's), beide mét factuurdatum en de stand van de
+    btw-aangiftepoort. Geen writes."""
+    from app.db.models import Administratie
+    from app.db.session import scoped_session
+    from app.omzet import inkoopstroom
+    from app.omzet.models import OmzetBoeking, OmzetBoekingStatus
+    from app.rlz.aangifte import AangiftePoort
+    from app.rlz.client import RlzApiError
+    from app.rlz.credentials import GeenRlzCredentials, client_voor_rlz_admin_id, rlz_admin_id_voor
+
+    ids: list[uuid.UUID] | None = None
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist",
+                file=sys.stderr,
+            )
+            return 2
+        ids = [treffers[0][0]]
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        q = select(Administratie).where(Administratie.actief.is_(True))
+        if ids:
+            q = q.where(Administratie.id.in_(ids))
+        administraties = [(a.id, a.naam) for a in session.scalars(q.order_by(Administratie.naam))]
+    totaal_a = totaal_b = 0
+    print(f"Omzet-binder-rapport — {len(administraties)} administratie(s), venster {args.dagen} dagen. LEES-ONLY.")
+    for aid, naam in administraties:
+        with scoped_session(aid) as session:
+            boekingen = session.scalars(
+                select(OmzetBoeking).where(
+                    OmzetBoeking.administratie_id == aid, OmzetBoeking.status == OmzetBoekingStatus.GEBOEKT.value
+                )
+            ).all()
+            treffers_b = inkoopstroom.geboekte_kassarapporten_in_inkoopstroom(
+                session, administratie_id=aid, dagen=args.dagen, met_pdf=args.met_pdf
+            )
+        if not boekingen and not treffers_b:
+            continue
+        print(f"\n{naam} ({aid})")
+        try:
+            rlz_admin_id = rlz_admin_id_voor(aid)
+            client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+        except (GeenRlzCredentials, Exception) as exc:  # noqa: BLE001
+            print(f"  RLZ niet leesbaar ({exc}) — alleen lokale signalen")
+            client = None
+        poort = AangiftePoort(client) if client is not None else None
+        try:
+            for b in boekingen[: args.max_per_administratie]:
+                if client is None:
+                    break
+                try:
+                    doc = client.get(
+                        f"SalesInvoices/{b.verkoop_rlz_id}",
+                        params={"$expand": "DocumentCategory($expand=DocumentBinder)"},
+                    )
+                except RlzApiError as exc:
+                    print(
+                        f"  ? Receipt {b.verkoop_boekstuknummer or b.verkoop_rlz_id}: niet leesbaar ({exc.status_code})"
+                    )
+                    continue
+                cat = doc.get("DocumentCategory") or {}
+                binder = (cat.get("DocumentBinder") or {}).get("Description") if isinstance(cat, dict) else None
+                if binder and binder.casefold() != "inkomsten":
+                    totaal_a += 1
+                    toets = poort.toets_boekdatum(b.periode_eind, kant="verkoop") if poort else None
+                    stand = "open" if toets and toets.toegestaan else (toets.reden if toets else "onbekend")
+                    print(
+                        f"  A {b.verkoop_boekstuknummer or b.verkoop_rlz_id}  periode "
+                        f"{b.periode_start}..{b.periode_eind}  binder={binder!r} categorie={cat.get('Name')!r}  "
+                        f"aangifte={stand}"
+                    )
+            for t in treffers_b:
+                totaal_b += 1
+                toets = poort.toets_boekdatum(t.factuurdatum, kant="inkoop") if (poort and t.factuurdatum) else None
+                stand = "open" if toets and toets.toegestaan else (toets.reden if toets else "onbekend")
+                print(
+                    f"  B {t.boekstuknummer or str(t.document_id)[:8]}  {t.factuurdatum or '?'}  {t.signaal:<16} "
+                    f"regels {t.regels_op_omzet}/{t.regels_totaal}  aangifte={stand}  {t.document_id}  {t.bestandsnaam}"
+                )
+        finally:
+            if client is not None:
+                client.close()
+    print(
+        f"\nTotaal: A (Receipt niet onder Inkomsten) {totaal_a} · B (omzet als inkoopfactuur) {totaal_b}. "
+        "Herstel B: Inzicht › Reconciliatie › 'Herboeken als omzet…' (storno + kassarapport, aangiftepoort)."
+    )
+    return 0
+
+
 def _kassarapporten_in_inkoopstroom(args: argparse.Namespace) -> int:
     """Blok A2 ProfX (Peter 16-09): LEES-ONLY rapport van inkoopfactuur-documenten die op inhoud een ProfX
     Journaal/Margerapport zijn (verkeerd geclassificeerd vóór de herkenning-op-inhoud). Geen writes."""
@@ -2971,6 +3064,23 @@ def main(argv: list[str] | None = None) -> int:
         "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
     )
 
+    binder_parser = subparsers.add_parser(
+        "omzet-binder-rapport",
+        help="Blok C 16-09 (Van Boxtel): LEES-ONLY — (A) module-Receipts waarvan de RLZ-categorie niet onder binder "
+        "Inkomsten staat, (B) geboekte inkoopfacturen die omzet zijn (alle regels op omzetrekeningen; --met-pdf óók "
+        "herkende omzetbron-PDF's), mét factuurdatum en aangiftepoort-stand. Geen writes.",
+    )
+    binder_parser.add_argument("--dagen", type=int, default=400, help="Venster in dagen voor B (default 400).")
+    binder_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+    binder_parser.add_argument(
+        "--met-pdf", action="store_true", help="Ook PDF-herkenning (ProfX) als signaal voor B (trager)."
+    )
+    binder_parser.add_argument(
+        "--max-per-administratie", type=int, default=200, help="Max Receipts per administratie voor A."
+    )
+
     inkoopstroom_parser = subparsers.add_parser(
         "kassarapporten-in-inkoopstroom",
         help="Blok A2 ProfX 16-09: LEES-ONLY rapport van PDF-documenten die als inkoopfactuur in de module staan maar "
@@ -3579,6 +3689,8 @@ def main(argv: list[str] | None = None) -> int:
         return _duplicaat_extern_rapport(args)
     if args.commando == "kassarapporten-in-inkoopstroom":
         return _kassarapporten_in_inkoopstroom(args)
+    if args.commando == "omzet-binder-rapport":
+        return _omzet_binder_rapport(args)
     if args.commando == "activa-nulmeting":
         return _activa_nulmeting(args)
     if args.commando == "periode-backfill":

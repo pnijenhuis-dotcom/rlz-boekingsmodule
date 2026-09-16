@@ -177,31 +177,23 @@ def _zorg_voor_verkoop_categorie(*, client: RlzClient, administratie_id: uuid.UU
     hardcoden — LastBankImport-les: systeem-GUID's lijken identiek over administraties, maar
     daar bouwen we nooit op) en daarna gecachet in omzet_instelling, zelfde patroon als het
     memoriaal-dagboek."""
-    with scoped_session(administratie_id) as session:
-        instelling = session.get(OmzetInstelling, administratie_id)
-        if instelling is not None and instelling.verkoop_categorie_id is not None:
-            return instelling.verkoop_categorie_id
-
-    kandidaten = [
-        c
-        for c in client.list_document_categories()
-        if c.get("DocumentType") == _VERKOOP_DOCUMENTTYPE and c.get("Name") == VERKOOP_OMZET_CATEGORIE_NAAM
-    ]
-    if len(kandidaten) != 1:
-        raise RlzBoekingMislukt(
-            f'DocumentCategory "{VERKOOP_OMZET_CATEGORIE_NAAM}" (DocumentType {_VERKOOP_DOCUMENTTYPE}) niet '
-            f"eenduidig gevonden in deze administratie ({len(kandidaten)} treffers) — "
-            "de entity-loze verkoopboeking kan niet geboekt worden"
-        )
-    categorie_id = uuid.UUID(kandidaten[0]["id"])
+    # Peter 16-09 (Van Boxtel): selectie op BINDER Inkomsten i.p.v. alleen op naam (`app/omzet/categorie.py`) — een
+    # menselijke keuze wint en blijft; een automatische/legacy-op-naam keuze wordt bij élke boeking opnieuw op binder
+    # getoetst (cache-invalidatie: een categorie zonder Inkomsten-binder wordt vervangen of blokkeert).
+    from app.omzet import categorie as categorie_service
 
     with scoped_session(administratie_id) as session:
-        instelling = session.get(OmzetInstelling, administratie_id)
-        if instelling is None:
-            instelling = OmzetInstelling(administratie_id=administratie_id)
-            session.add(instelling)
-        instelling.verkoop_categorie_id = categorie_id
-    return categorie_id
+        stand = categorie_service.stand_voor(session, administratie_id)
+    if stand.bron == categorie_service.BRON_MENS and stand.id is not None:
+        return stand.id
+    categorieen = categorie_service.lees_categorieen(client.list_document_categories())
+    with scoped_session(administratie_id) as session:
+        try:
+            stand = categorie_service.bepaal_en_bewaar(session, administratie_id, categorieen)
+        except categorie_service.CategorieFout as exc:
+            raise RlzBoekingMislukt(f"{exc} — de entity-loze verkoopboeking kan niet geboekt worden") from exc
+    assert stand.id is not None
+    return stand.id
 
 
 def _zorg_voor_memoriaal_dagboek(*, client: RlzClient, administratie_id: uuid.UUID) -> uuid.UUID:

@@ -458,3 +458,44 @@ describe('OmzetReviewScreen — ProfX Journaal (bouwnorm mockup/omzet-kassarappo
     await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ \(alleen omzet\)/ })).toBeEnabled())
   })
 })
+
+describe('OmzetReviewScreen — "Boekt in Reeleezee als" (Peter 16-09, casus Van Boxtel)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('toont binder · categorie mét herkomst en zet een keuze uit de lijst als default (PUT verkoop-categorie)', async () => {
+    const puts: { url: string; body: unknown }[] = []
+    const basis = voorstel({
+      verkoop_categorie: { id: 'cat-1', naam: 'Verkoopfactuur (Omzet)', binder: 'Inkomsten', bron: 'automatisch', is_inkomsten: true },
+      verkoop_categorieen: [
+        { id: 'cat-1', naam: 'Verkoopfactuur (Omzet)', binder: 'Inkomsten', is_inkomsten: true },
+        { id: 'cat-2', naam: 'Diverse opbrengsten', binder: 'Inkomsten', is_inkomsten: true },
+        { id: 'cat-3', naam: 'BTW Prive bijdrage auto', binder: 'Uitgaven', is_inkomsten: false },
+      ],
+    })
+    installFetchMock({ voorstelBody: basis })
+    const origineel = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      if (url.endsWith('/omzet/verkoop-categorie') && init?.method === 'PUT') {
+        puts.push({ url, body: JSON.parse(String(init.body)) })
+        return Promise.resolve(
+          jsonResponse({ id: 'cat-3', naam: 'BTW Prive bijdrage auto', binder: 'Uitgaven', bron: 'mens', is_inkomsten: false }),
+        )
+      }
+      return origineel(url, init)
+    })
+    renderScherm()
+    await screen.findByText(/Rapport herkend:/)
+    const regel = screen.getByTestId('omzet-categorie')
+    expect(regel).toHaveTextContent('Boekt in Reeleezee als: Inkomsten · Verkoopfactuur (Omzet)')
+    expect(regel).toHaveTextContent('automatisch')
+    const select = screen.getByLabelText('Omzetcategorie in Reeleezee') as HTMLSelectElement
+    expect(select.querySelectorAll('optgroup')).toHaveLength(2)
+    expect(select.querySelector('optgroup[label*="Uitgaven"]')?.getAttribute('label')).toContain('verschijnt in RLZ onder Uitgaven')
+    await userEvent.selectOptions(select, 'cat-3')
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].body).toEqual({ categorie_id: 'cat-3', document_id: DOCUMENT_ID })
+    await waitFor(() => expect(screen.getByTestId('omzet-categorie')).toHaveTextContent('Uitgaven · BTW Prive bijdrage auto'))
+    expect(screen.getByTestId('omzet-categorie')).toHaveTextContent('gekozen')
+    expect(screen.getByTestId('omzet-categorie')).toHaveTextContent('verschijnt in RLZ onder Uitgaven')
+  })
+})

@@ -42,6 +42,31 @@ class OmzetVoorstelResponse(BaseModel):
     # Omzetbronnen (Peter 15-09): herkomst + bron-detail (betaalwijzen, kas, controles, batch) voor het controlescherm.
     bron: str | None = None
     bron_detail: dict | None = None
+    # Peter 16-09 (Van Boxtel): "Boekt in Reeleezee als: ‹binder› · ‹categorie›" mét herkomst, plus de keuzelijst
+    # (gesynchroniseerde DocumentType-10-categorieën mét binder) voor de klikbare keuze in het scherm.
+    verkoop_categorie: VerkoopCategorieDto | None = None
+    verkoop_categorieen: list[VerkoopCategorieKeuzeDto] = []
+
+
+class VerkoopCategorieDto(BaseModel):
+    id: uuid.UUID | None = None
+    naam: str | None = None
+    binder: str | None = None
+    # 'mens' | 'automatisch' | None
+    bron: str | None = None
+    is_inkomsten: bool = False
+
+
+class VerkoopCategorieKeuzeDto(BaseModel):
+    id: uuid.UUID
+    naam: str
+    binder: str | None = None
+    is_inkomsten: bool = False
+
+
+class VerkoopCategorieInput(StrikteInvoer):
+    categorie_id: uuid.UUID
+    document_id: uuid.UUID | None = None
 
 
 class RekeningKeuzeDto(BaseModel):
