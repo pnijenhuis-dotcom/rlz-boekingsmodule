@@ -90,6 +90,12 @@ class LeesOnlyClient(RlzClient):
     def for_administration(self, admin_id: str) -> LeesOnlyClient:
         return LeesOnlyClient(username="", password="", admin_id=admin_id, client=self._client)
 
+    def root(self) -> LeesOnlyClient:
+        """ROOT-vorm (zonder administratie-prefix) — blijft lees-only. Voor de RLZ-brede enumeraties (`AssetTypes`,
+        `AssetMutationTypes`, `DepreciationBaseMethods`, `ActionKinds`, `DocumentStatuses`, …) die onder het
+        administratie-prefix 404 geven (STAP-0 activa 16-09)."""
+        return LeesOnlyClient(username="", password="", admin_id=None, client=self._client)
+
 
 def valideer_pad(pad: str) -> str:
     """Relatief OData-pad zónder query; weigert Actions/Download/$metadata, `..`, absolute URL's en query-tekens."""
@@ -195,6 +201,12 @@ def register_rlz_lezen(subparsers) -> None:  # noqa: ANN001
     p.add_argument(
         "--anonimiseer", action="store_true", help="Expliciete bevestiging; uitvoer is ALTIJD geanonimiseerd."
     )
+    p.add_argument(
+        "--root",
+        action="store_true",
+        help="Lees het pad in de ROOT-vorm (zonder administratie-prefix) met de login van --administratie — voor "
+        "RLZ-brede enumeraties zoals AssetTypes/ActionKinds die onder het prefix 404 geven (16-09).",
+    )
 
 
 def _zoek_administraties(tekst: str) -> list[tuple[uuid.UUID, str, str]]:
@@ -256,6 +268,8 @@ def run_rlz_lezen(args: argparse.Namespace, *, zoek=None, client_factory=None, u
     except GeenRlzCredentials as exc:
         print(f"rlz-lezen: geen Reeleezee-verbinding voor {naam!r}: {exc}", file=sys.stderr)
         return 1
+    if getattr(args, "root", False):
+        client = client.root()  # lees-only blijft: LeesOnlyClient.root() geeft weer een LeesOnlyClient
     record_filter = getattr(args, "record_via_filter", None)
     try:
         try:

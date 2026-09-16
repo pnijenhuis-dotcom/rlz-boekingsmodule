@@ -344,6 +344,25 @@ def _referentie_norm_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def _activa_nulmeting(args: argparse.Namespace) -> int:
+    """16-09 (STAP-0 activa, blok C): LEES-ONLY nulmeting MVA-rekeningen ↔ FixedAssets-register ↔ module-regels."""
+    from app.activa import nulmeting
+
+    ids: list[uuid.UUID] | None = None
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist: "
+                + ", ".join(f"{n} ({i})" for i, n in treffers),
+                file=sys.stderr,
+            )
+            return 2
+        ids = [treffers[0][0]]
+    nulmeting.print_rapport(nulmeting.meet(dagen=args.dagen, administratie_ids=ids), dagen=args.dagen)
+    return 0
+
+
 def _duplicaat_extern_rapport(args: argparse.Namespace) -> int:
     """16-09 (Zenvoices-casus): LEES-ONLY rapport "mogelijk eerder dubbel geboekt" — geboekte module-facturen ↔ alle
     RLZ-inkoopfacturen in het venster, genormaliseerd op crediteur-identiteit + referentie. Geen writes."""
@@ -2843,6 +2862,16 @@ def main(argv: list[str] | None = None) -> int:
     refnorm_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
     refnorm_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
 
+    activa_parser = subparsers.add_parser(
+        "activa-nulmeting",
+        help="16-09 (STAP-0 activa): LEES-ONLY nulmeting per RLZ-administratie — MVA-rekeningen (vlag + AccountType 3 + "
+        "0xxx), saldo, aantal FixedAssets in het register, module-regels op die rekeningen. Geen writes.",
+    )
+    activa_parser.add_argument("--dagen", type=int, default=400, help="Venster module-regels in dagen (default 400).")
+    activa_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+
     extern_rapport_parser = subparsers.add_parser(
         "duplicaat-extern-rapport",
         help="16-09 (Zenvoices-casus): LEES-ONLY rapport 'mogelijk eerder dubbel geboekt' — geboekte module-facturen "
@@ -3434,6 +3463,8 @@ def main(argv: list[str] | None = None) -> int:
         return _referentie_norm_backfill(args)
     if args.commando == "duplicaat-extern-rapport":
         return _duplicaat_extern_rapport(args)
+    if args.commando == "activa-nulmeting":
+        return _activa_nulmeting(args)
     if args.commando == "periode-backfill":
         return _periode_backfill(args)
     if args.commando == "app-passkeys-markeren":

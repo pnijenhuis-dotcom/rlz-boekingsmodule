@@ -1062,3 +1062,17 @@ memoriaal-1001-regels die tegen een statement line reconciliëren → outstandin
   uitvoerbaar" → het bewijspaar voor SCHRIJF c moet uit een andere maand komen (open punt volgende opdracht); IBAN op BNK1 daardoor
   niet opnieuw gemeten (laatste lezing 12-09: leeg).
 
+
+## §13 Activa (`account_asset`) — STAP-0 16-09 (opdracht Peter 16-09; company 3 Universal Verkoop, JSON-2, uitsluitend `fields_get`/`search_read`/`search_count`; script `odoo_activa_stap0.py` in de sessie-scratchpad, geen writes)
+
+| # | Vraag | Uitkomst |
+|---|---|---|
+| 13.1 | `account.asset` velden (84) | Kern: `name` (verplicht), `state` ∈ model/draft/open (Running)/paused/close/cancelled, `acquisition_date`, `original_value`, `salvage_value` ("Not Depreciable Value" = restwaarde), `book_value`, `method` ∈ linear/degressive/degressive_then_linear, `method_number` (Duration), `method_period` ∈ '1' (maanden)/'12' (jaren), `prorata_computation_type` ∈ none/constant_periods/daily_computation (verplicht), `account_asset_id` (activarekening), `account_depreciation_id` (cumulatieve afschrijving), `account_depreciation_expense_id` (afschrijvingskosten), `journal_id`, `original_move_line_ids` (m2m account.move.line — DE koppeling naar de factuurregel), `depreciation_move_ids` (o2m account.move), `model_id` (asset-model), `asset_lifetime_days`, `asset_paused_days`, `disposal_date`, `already_depreciated_amount_import`. Veld `asset_type` bestaat NIET in Odoo 19 (`Invalid field 'asset_type'`). |
+| 13.2 | Aantallen company 3 | `search_count` per state: model 0 · draft 0 · open 0 · paused 0 · close 0 · cancelled 0 — **de activamodule is geïnstalleerd maar ongebruikt**; ook over alle companies 1–10 zijn er 0 asset-modellen. |
+| 13.3 | Activeren via de rekening | `account.account` kent `create_asset` ∈ no / draft ("Create in draft") / validate ("Create and validate"), `asset_model_ids` (m2m), `can_create_asset`, `multiple_assets_per_line`. Over companies 1–10: **0 rekeningen met `create_asset ≠ 'no'`**. Company 3 heeft 53 rekeningen van type `asset_fixed`/`expense_depreciation` (NL-template: 001000 Acquisition value Goodwill … 031900 Depreciation of business equipment, per categorie een aanschaf- en een afschrijvingsrekening), alle `create_asset = 'no'`, geen modellen. Dit is exact het mechanisme dat het ontwerp in RLZ nabouwt: asset-model per rekening → een factuurregel op die rekening maakt automatisch een concept-activum. |
+| 13.4 | Afschrijvingsposten | `account.move` met `asset_id != False`: 0 (geen posten); velden bestaan (`asset_id`, `asset_depreciation_beginning_date`, `auto_post`). Odoo post afschrijvingen automatisch per periode zodra het activum 'open' is — bewaken = laatste geposte `depreciation_move_ids`-datum vergelijken met de periode. |
+
+**Conclusie:** in Odoo is er nu niets te bewaken (0 activa); fase 1 van het ontwerp begint daarom in RLZ. Voor de Odoo-kant volstaat
+later: (a) asset-modellen per `asset_fixed`-rekening + `create_asset='draft'` inrichten (Odoo-configuratie, geen module-code), (b) de
+module leest `account.asset` + `depreciation_move_ids` voor de reconciliatie en koppelt via `original_move_line_ids` aan onze
+geboekte regel.

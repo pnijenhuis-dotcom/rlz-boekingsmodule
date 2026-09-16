@@ -425,3 +425,35 @@ def test_record_via_filter_leest_collectie_dan_record_en_lekt_geen_guid(capsys: 
     finally:
         app_cli.run_rlz_lezen = origineel  # type: ignore[assignment]
     assert gezien[0].record_via_filter == "ReceiptNumber eq 'a'"
+
+
+# --- --root: RLZ-brede enumeraties zonder administratie-prefix (STAP-0 activa 16-09) ---------------------------------
+
+
+def test_root_leest_zonder_administratie_prefix_en_blijft_lees_only() -> None:
+    transport = _Vastlegger(body={"value": [{"id": 1, "Name": "Lineair"}]})
+    code = run_rlz_lezen(
+        _args(pad="AssetTypes", root=True),
+        zoek=_zoek_een,
+        client_factory=lambda _: _client_met(transport),
+        uit=io.StringIO(),
+    )
+    assert code == 0
+    (req,) = transport.requests
+    assert req.method == "GET"
+    assert RLZ_ADMIN not in str(req.url), "root-vorm: geen administratie-prefix"
+    assert str(req.url).startswith("https://rlz.test/api/v1/AssetTypes")
+
+
+def test_zonder_root_blijft_het_administratie_prefix_staan() -> None:
+    transport = _Vastlegger(body={"value": []})
+    run_rlz_lezen(_args(pad="AssetTypes"), zoek=_zoek_een, client_factory=lambda _: _client_met(transport), uit=io.StringIO())
+    (req,) = transport.requests
+    assert f"/{RLZ_ADMIN}/AssetTypes" in str(req.url)
+
+
+def test_root_client_weigert_schrijven() -> None:
+    transport = _Vastlegger()
+    with pytest.raises(SchrijfGeweigerd):
+        _client_met(transport).root().put("AssetTypes/x", {"id": "x"})
+    assert transport.requests == []
