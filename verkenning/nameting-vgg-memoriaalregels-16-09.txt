@@ -1,0 +1,3313 @@
+
+##### RLZ-06-00000001 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution...........................................................................done
+Running execution.............................................................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-hwdt2] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-hwdt2
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-hwdt2?project=652591056217
+rlz-reconciliatie-hwdt2
+>> uitvoer van rlz-reconciliatie-hwdt2 (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/bfae5951…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-06-00000001'"
+  },
+  "antwoord": {
+    "id": "bfae5951…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 70.0,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 70.0,
+    "TotalPaidAmount": 70.0,
+    "TotalPayableAmount": 70.0,
+    "TotalTaxAmount": 70.0,
+    "BookDate": "2025-07-15T00:00:00",
+    "Date": "2025-07-15T00:00:00",
+    "Description": "Aandelenkapitaal 70 procent Vast\ngoedgroep Nederland",
+    "PaymentReference": null,
+    "ReceiptNumber": "RLZ-06-00000001",
+    "Reference": null,
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2025-07-15T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "64b2662b…",
+        "Sequence": 1,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 70.0,
+        "NetAmount": 70.0,
+        "Price": 70.0,
+        "TotalAmount": 70.0,
+        "TaxAmount": 0.0,
+        "Description": "Aandelenkapitaal 70 procent Vast\ngoedgroep Nederland",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 70.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "f5f3ab8b…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "0500",
+          "Comment": "Hier registreert u het geplaatste en volgestorte aandelenkapitaal van uw bedrijf.",
+          "Description": "Geplaatst aandelenkapitaal",
+          "ExternalGeneralLedgerNumber": "0500",
+          "AccountType": 4
+        }
+      },
+      {
+        "id": "19b123f4…",
+        "Sequence": 2,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 70.0,
+        "NetAmount": 70.0,
+        "Price": 70.0,
+        "TotalAmount": 70.0,
+        "TaxAmount": 0.0,
+        "Description": "Aandelenkapitaal 70 procent Vast\ngoedgroep Nederland",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 19,
+        "CreditAmount": null,
+        "DebitAmount": 70.0,
+        "Account": {
+          "id": "70a1cff9…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": true,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1001",
+          "Comment": "Dit is de grootboekrekening waar het saldo van een bankrekening kan worden bijgehouden. Deze grootboekrekening kunt u aan een geregistreerde bankrekening koppelen. Het is aan te bevelen om maar één bankrekening aan deze grootboekrekening te koppelen.",
+          "Description": "ING …9295",
+          "ExternalGeneralLedgerNumber": "1001",
+          "AccountType": 3
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### RLZ-06-00000106 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution................................................................done
+Running execution....................................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-lmvgb] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-lmvgb
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-lmvgb?project=652591056217
+rlz-reconciliatie-lmvgb
+>> uitvoer van rlz-reconciliatie-lmvgb (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/ebbb47e1…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-06-00000106'"
+  },
+  "antwoord": {
+    "id": "ebbb47e1…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 175000.0,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 175000.0,
+    "TotalPaidAmount": 0.0,
+    "TotalPayableAmount": 0.0,
+    "TotalTaxAmount": 175000.0,
+    "BookDate": "2025-12-31T00:00:00",
+    "Date": "2025-12-31T00:00:00",
+    "Description": "Goevernourlaan 310 D",
+    "PaymentReference": "Goevernourlaan 310 D",
+    "ReceiptNumber": "RLZ-06-00000106",
+    "Reference": "Goevernourlaan 310 D",
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2025-12-31T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "1fb783c9…",
+        "Sequence": 1,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 175000.0,
+        "NetAmount": 175000.0,
+        "Price": 175000.0,
+        "TotalAmount": 175000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goevernourlaan 310 D",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 175000.0,
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        }
+      },
+      {
+        "id": "be4ac9b3…",
+        "Sequence": 2,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 175000.0,
+        "NetAmount": 175000.0,
+        "Price": 175000.0,
+        "TotalAmount": 175000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goevernourlaan 310 D",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 175000.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+##### RLZ-06-00000038 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution................................................................................done
+Running execution......................................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-vmt2t] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-vmt2t
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-vmt2t?project=652591056217
+rlz-reconciliatie-vmt2t
+>> uitvoer van rlz-reconciliatie-vmt2t (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/67d5c864…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-06-00000038'"
+  },
+  "antwoord": {
+    "id": "67d5c864…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 4666.67,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 4666.67,
+    "TotalPaidAmount": 0.0,
+    "TotalPayableAmount": 0.0,
+    "TotalTaxAmount": 4666.67,
+    "BookDate": "2025-06-30T00:00:00",
+    "Date": "2025-06-30T00:00:00",
+    "Description": null,
+    "PaymentReference": "JP juni",
+    "ReceiptNumber": "RLZ-06-00000038",
+    "Reference": "JP juni",
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2025-06-30T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "8b0a8256…",
+        "Sequence": 1,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 1434.0,
+        "NetAmount": 1434.0,
+        "Price": 1434.0,
+        "TotalAmount": 1434.0,
+        "TaxAmount": 0.0,
+        "Description": null,
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 1434.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "ea127bd4…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1710",
+          "Comment": "Hier kunt u de af te dragen loonbelasting boeken.",
+          "Description": "Loonbelasting te betalen",
+          "ExternalGeneralLedgerNumber": "1710",
+          "AccountType": 4
+        }
+      },
+      {
+        "id": "d22dacaf…",
+        "Sequence": 2,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 3231.95,
+        "NetAmount": 3231.95,
+        "Price": 3231.95,
+        "TotalAmount": 3231.95,
+        "TaxAmount": 0.0,
+        "Description": null,
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 3231.95,
+        "DebitAmount": null,
+        "Account": {
+          "id": "23ee02ad…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1605",
+          "Comment": "Hier boekt u de nettolonen die u aan uw personeel uitkeert.",
+          "Description": "Nettolonen te betalen",
+          "ExternalGeneralLedgerNumber": "1605",
+          "AccountType": 4
+        }
+      },
+      {
+        "id": "d42b6715…",
+        "Sequence": 3,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 4666.67,
+        "NetAmount": 4666.67,
+        "Price": 4666.67,
+        "TotalAmount": 4666.67,
+        "TaxAmount": 0.0,
+        "Description": null,
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 4666.67,
+        "Account": {
+          "id": "00e88214…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4000",
+          "Comment": "Hier kunt u de brutolonen van uw personeel registreren.",
+          "Description": "Brutosalarissen",
+          "ExternalGeneralLedgerNumber": "4000",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "1d859431…",
+        "Sequence": 4,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 0.72,
+        "NetAmount": 0.72,
+        "Price": 0.72,
+        "TotalAmount": 0.72,
+        "TaxAmount": 0.0,
+        "Description": null,
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 0.72,
+        "DebitAmount": null,
+        "Account": {
+          "id": "ac8dea00…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "8199",
+          "Comment": "Hier kunt u diverse overige opbrengsten registreren. Deze opbrengsten zijn geen omzet, dat wil zeggen dat ze niet het resultaat zijn van de normale bedrijfsvoering. Hieronder vallen ontvangen subsidies, verhuur van roerende- en onroerende zaken, opbrengsten uit deelnemingen, het resultaat van verkoop van vaste activa en de kleine ondernemingsregeling BTW.",
+          "Description": "Diverse opbrengsten",
+          "ExternalGeneralLedgerNumber": "8199",
+          "AccountType": 1
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### RLZ-60-00000003 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution.........................................done
+Running execution......................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-np9lv] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-np9lv
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-np9lv?project=652591056217
+rlz-reconciliatie-np9lv
+>> uitvoer van rlz-reconciliatie-np9lv (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/8483ad72…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-60-00000003'"
+  },
+  "antwoord": {
+    "id": "8483ad72…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 1000.0,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 1000.0,
+    "TotalPaidAmount": 2000.0,
+    "TotalPayableAmount": 2000.0,
+    "TotalTaxAmount": 1000.0,
+    "BookDate": "2025-08-09T00:00:00",
+    "Date": "2025-08-09T00:00:00",
+    "Description": "Rc",
+    "PaymentReference": null,
+    "ReceiptNumber": "RLZ-60-00000003",
+    "Reference": null,
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2025-08-09T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "ff21bc5d…",
+        "Sequence": 1,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -1000.0,
+        "NetAmount": -1000.0,
+        "Price": 1000.0,
+        "TotalAmount": -1000.0,
+        "TaxAmount": 0.0,
+        "Description": "Rc",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 1000.0,
+        "Account": {
+          "id": "413b326f…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": true,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1602",
+          "Comment": "Op deze grootboekrekening kan een rekening-courant verhouding van uw bedrijf worden geregistreerd.",
+          "Description": "RC Tupker Beheer BV",
+          "ExternalGeneralLedgerNumber": "1602",
+          "AccountType": 4
+        }
+      },
+      {
+        "id": "e64fa0c0…",
+        "Sequence": 2,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -1000.0,
+        "NetAmount": -1000.0,
+        "Price": 1000.0,
+        "TotalAmount": -1000.0,
+        "TaxAmount": 0.0,
+        "Description": "Rc",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 19,
+        "CreditAmount": 1000.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "70a1cff9…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": true,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1001",
+          "Comment": "Dit is de grootboekrekening waar het saldo van een bankrekening kan worden bijgehouden. Deze grootboekrekening kunt u aan een geregistreerde bankrekening koppelen. Het is aan te bevelen om maar één bankrekening aan deze grootboekrekening te koppelen.",
+          "Description": "ING …9295",
+          "ExternalGeneralLedgerNumber": "1001",
+          "AccountType": 3
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### RLZ-06-00000122 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.............................done
+Starting execution.....................................................................done
+Running execution............................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-smp7f] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-smp7f
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-smp7f?project=652591056217
+rlz-reconciliatie-smp7f
+>> uitvoer van rlz-reconciliatie-smp7f (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/055dca02…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-06-00000122'"
+  },
+  "antwoord": {
+    "id": "055dca02…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 503179.3,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 503179.3,
+    "TotalPaidAmount": 0.0,
+    "TotalPayableAmount": 0.0,
+    "TotalTaxAmount": 503179.3,
+    "BookDate": "2025-12-31T00:00:00",
+    "Date": "2025-12-31T00:00:00",
+    "Description": "verkocht in 2025",
+    "PaymentReference": "overlopende act",
+    "ReceiptNumber": "RLZ-06-00000122",
+    "Reference": "overlopende act",
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2025-12-31T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "44076153…",
+        "Sequence": 1,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 267000.0,
+        "NetAmount": 267000.0,
+        "Price": 267000.0,
+        "TotalAmount": 267000.0,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 267000.0,
+        "Account": {
+          "id": "2f24eb3d…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "7000",
+          "Comment": "Hier kunt u alle inkoopkosten tegen het 0% BTW tarief registreren.",
+          "Description": "Inkopen vastgoed",
+          "ExternalGeneralLedgerNumber": null,
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "a64c41d6…",
+        "Sequence": 2,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 1862.91,
+        "NetAmount": 1862.91,
+        "Price": 1862.91,
+        "TotalAmount": 1862.91,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 1862.91,
+        "Account": {
+          "id": "0ef5e383…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4601",
+          "Comment": "Hier kunt u alle notariskosten registreren.",
+          "Description": "Notariskosten",
+          "ExternalGeneralLedgerNumber": "4601",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "bc973cd5…",
+        "Sequence": 3,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 5189.02,
+        "NetAmount": 5189.02,
+        "Price": 5189.02,
+        "TotalAmount": 5189.02,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 5189.02,
+        "Account": {
+          "id": "4273a944…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4612",
+          "Comment": "Hier kunt u adviseurkosten registreren.",
+          "Description": "Kosten bemiddeling makelaar",
+          "ExternalGeneralLedgerNumber": "4612",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "ca83c352…",
+        "Sequence": 4,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 287555.0,
+        "NetAmount": 287555.0,
+        "Price": 287555.0,
+        "TotalAmount": 287555.0,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 287555.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        }
+      },
+      {
+        "id": "be92e312…",
+        "Sequence": 5,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 175000.0,
+        "NetAmount": 175000.0,
+        "Price": 175000.0,
+        "TotalAmount": 175000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 175000.0,
+        "Account": {
+          "id": "2f24eb3d…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "7000",
+          "Comment": "Hier kunt u alle inkoopkosten tegen het 0% BTW tarief registreren.",
+          "Description": "Inkopen vastgoed",
+          "ExternalGeneralLedgerNumber": null,
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "5f8bbb5c…",
+        "Sequence": 6,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 1862.91,
+        "NetAmount": 1862.91,
+        "Price": 1862.91,
+        "TotalAmount": 1862.91,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 1862.91,
+        "Account": {
+          "id": "0ef5e383…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4601",
+          "Comment": "Hier kunt u alle notariskosten registreren.",
+          "Description": "Notariskosten",
+          "ExternalGeneralLedgerNumber": "4601",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "d20876fa…",
+        "Sequence": 7,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 3750.0,
+        "NetAmount": 3750.0,
+        "Price": 3750.0,
+        "TotalAmount": 3750.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 3750.0,
+        "Account": {
+          "id": "4273a944…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4612",
+          "Comment": "Hier kunt u adviseurkosten registreren.",
+          "Description": "Kosten bemiddeling makelaar",
+          "ExternalGeneralLedgerNumber": "4612",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "92a71caf…",
+        "Sequence": 8,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -624.3,
+        "NetAmount": -624.3,
+        "Price": 624.3,
+        "TotalAmount": -624.3,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 624.3,
+        "DebitAmount": null,
+        "Account": {
+          "id": "6a358b57…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4106",
+          "Comment": "Hier kunt u alle schoonmaakkosten van uw bedrijf registreren.",
+          "Description": "Schoonmaakkosten",
+          "ExternalGeneralLedgerNumber": "4106",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "bf213086…",
+        "Sequence": 9,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 215000.0,
+        "NetAmount": 215000.0,
+        "Price": 215000.0,
+        "TotalAmount": 215000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 215000.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        }
+      },
+      {
+        "id": "0339740a…",
+        "Sequence": 10,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 48514.46,
+        "NetAmount": 48514.46,
+        "Price": 48514.46,
+        "TotalAmount": 48514.46,
+        "TaxAmount": 0.0,
+        "Description": "verkocht in 2025",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 48514.46,
+        "Account": {
+          "id": "11c22509…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1201",
+          "Comment": "Deze grootboekrekening kunt u gebruiken om diverse vorderingen te registreren.",
+          "Description": "Overige vorderingen",
+          "ExternalGeneralLedgerNumber": "1201",
+          "AccountType": 3
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### RLZ-06-00000123 — document-vorm (DocumentLineList: Account/CreditOrDebit/DebitAmount/CreditAmount/NetAmount)
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution......................................................................................done
+Running execution......................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-rnzvv] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-rnzvv
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-rnzvv?project=652591056217
+rlz-reconciliatie-rnzvv
+>> uitvoer van rlz-reconciliatie-rnzvv (Cloud Logging, chronologisch):
+rlz-lezen: record gevonden via filter — GET ManualJournals/<id> met alleen $expand
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "ManualJournals/d402a83f…",
+    "params": {
+      "$expand": "DocumentLineList($expand=Account)"
+    },
+    "status": 200,
+    "record_via_filter": "ReceiptNumber eq 'RLZ-06-00000123'"
+  },
+  "antwoord": {
+    "id": "d402a83f…",
+    "ExchangeRate": 1.0,
+    "BalanceAmount": 0.0,
+    "BaseInvoiceAmount": 503179.3,
+    "BaseRemainingAmount": 0.0,
+    "TotalNetAmount": 503179.3,
+    "TotalPaidAmount": 0.0,
+    "TotalPayableAmount": 0.0,
+    "TotalTaxAmount": 503179.3,
+    "BookDate": "2026-01-01T00:00:00",
+    "Date": "2026-01-01T00:00:00",
+    "Description": "verkocht in 2025",
+    "PaymentReference": "overlopende act",
+    "ReceiptNumber": "RLZ-06-00000123",
+    "Reference": "overlopende act",
+    "Status": 3,
+    "DocumentType": 11,
+    "DueDate": "2026-01-01T00:00:00",
+    "OverdueDays": null,
+    "DocumentLineList": [
+      {
+        "id": "8714103b…",
+        "Sequence": 1,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -267000.0,
+        "NetAmount": -267000.0,
+        "Price": 267000.0,
+        "TotalAmount": -267000.0,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 267000.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "2f24eb3d…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "7000",
+          "Comment": "Hier kunt u alle inkoopkosten tegen het 0% BTW tarief registreren.",
+          "Description": "Inkopen vastgoed",
+          "ExternalGeneralLedgerNumber": null,
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "116ee26c…",
+        "Sequence": 2,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -1862.91,
+        "NetAmount": -1862.91,
+        "Price": 1862.91,
+        "TotalAmount": -1862.91,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 1862.91,
+        "DebitAmount": null,
+        "Account": {
+          "id": "0ef5e383…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4601",
+          "Comment": "Hier kunt u alle notariskosten registreren.",
+          "Description": "Notariskosten",
+          "ExternalGeneralLedgerNumber": "4601",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "88c61e30…",
+        "Sequence": 3,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -5189.02,
+        "NetAmount": -5189.02,
+        "Price": 5189.02,
+        "TotalAmount": -5189.02,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 5189.02,
+        "DebitAmount": null,
+        "Account": {
+          "id": "4273a944…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4612",
+          "Comment": "Hier kunt u adviseurkosten registreren.",
+          "Description": "Kosten bemiddeling makelaar",
+          "ExternalGeneralLedgerNumber": "4612",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "fce138d0…",
+        "Sequence": 4,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -287555.0,
+        "NetAmount": -287555.0,
+        "Price": 287555.0,
+        "TotalAmount": -287555.0,
+        "TaxAmount": 0.0,
+        "Description": "Azielaan 334",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 287555.0,
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        }
+      },
+      {
+        "id": "ca84a759…",
+        "Sequence": 5,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -175000.0,
+        "NetAmount": -175000.0,
+        "Price": 175000.0,
+        "TotalAmount": -175000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 175000.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "2f24eb3d…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "7000",
+          "Comment": "Hier kunt u alle inkoopkosten tegen het 0% BTW tarief registreren.",
+          "Description": "Inkopen vastgoed",
+          "ExternalGeneralLedgerNumber": null,
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "6a1a50d8…",
+        "Sequence": 6,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -1862.91,
+        "NetAmount": -1862.91,
+        "Price": 1862.91,
+        "TotalAmount": -1862.91,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 1862.91,
+        "DebitAmount": null,
+        "Account": {
+          "id": "0ef5e383…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4601",
+          "Comment": "Hier kunt u alle notariskosten registreren.",
+          "Description": "Notariskosten",
+          "ExternalGeneralLedgerNumber": "4601",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "e5204ea6…",
+        "Sequence": 7,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -3750.0,
+        "NetAmount": -3750.0,
+        "Price": 3750.0,
+        "TotalAmount": -3750.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 3750.0,
+        "DebitAmount": null,
+        "Account": {
+          "id": "4273a944…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4612",
+          "Comment": "Hier kunt u adviseurkosten registreren.",
+          "Description": "Kosten bemiddeling makelaar",
+          "ExternalGeneralLedgerNumber": "4612",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "256dfb83…",
+        "Sequence": 8,
+        "Quantity": 1.0,
+        "LineTotalPayableAmount": 624.3,
+        "NetAmount": 624.3,
+        "Price": 624.3,
+        "TotalAmount": 624.3,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 624.3,
+        "Account": {
+          "id": "6a358b57…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4106",
+          "Comment": "Hier kunt u alle schoonmaakkosten van uw bedrijf registreren.",
+          "Description": "Schoonmaakkosten",
+          "ExternalGeneralLedgerNumber": "4106",
+          "AccountType": 2
+        }
+      },
+      {
+        "id": "ea09bbda…",
+        "Sequence": 9,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -215000.0,
+        "NetAmount": -215000.0,
+        "Price": 215000.0,
+        "TotalAmount": -215000.0,
+        "TaxAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "CreditOrDebit": 2,
+        "InvoiceLineType": 17,
+        "CreditAmount": null,
+        "DebitAmount": 215000.0,
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        }
+      },
+      {
+        "id": "31ae49a6…",
+        "Sequence": 10,
+        "Quantity": -1.0,
+        "LineTotalPayableAmount": -48514.46,
+        "NetAmount": -48514.46,
+        "Price": 48514.46,
+        "TotalAmount": -48514.46,
+        "TaxAmount": 0.0,
+        "Description": "verkocht in 2025",
+        "CreditOrDebit": 1,
+        "InvoiceLineType": 17,
+        "CreditAmount": 48514.46,
+        "DebitAmount": null,
+        "Account": {
+          "id": "11c22509…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1201",
+          "Comment": "Deze grootboekrekening kunt u gebruiken om diverse vorderingen te registreren.",
+          "Description": "Overige vorderingen",
+          "ExternalGeneralLedgerNumber": "1201",
+          "AccountType": 3
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### JournalEntryLines-waarheid per rekening/datum (RLZ-kolom)
+
+##### JournalEntryLines $filter=Account/AccountNumber eq '0500'
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.........................done
+Starting execution...........................................................................................done
+Running execution...........................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-gxb22] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-gxb22
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-gxb22?project=652591056217
+rlz-reconciliatie-gxb22
+>> uitvoer van rlz-reconciliatie-gxb22 (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "Account/AccountNumber eq '0500'",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 2,
+    "value": [
+      {
+        "id": "86c9aea9…",
+        "CreditAmount": 70.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Aandelenkapitaal 70 procent Vast\ngoedgroep Nederla",
+        "Account": {
+          "id": "f5f3ab8b…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "0500",
+          "Comment": "Hier registreert u het geplaatste en volgestorte aandelenkapitaal van uw bedrijf.",
+          "Description": "Geplaatst aandelenkapitaal",
+          "ExternalGeneralLedgerNumber": "0500",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "382dba3b…",
+          "BookDate": "2025-07-15T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "69ee6837…",
+        "CreditAmount": 30.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Aandelenkapitaal 30 procent aan\nVastgoedgroep Nede",
+        "Account": {
+          "id": "f5f3ab8b…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "0500",
+          "Comment": "Hier registreert u het geplaatste en volgestorte aandelenkapitaal van uw bedrijf.",
+          "Description": "Geplaatst aandelenkapitaal",
+          "ExternalGeneralLedgerNumber": "0500",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "f98a8eef…",
+          "BookDate": "2025-07-15T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### JournalEntryLines $filter=(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2025-12-31T23:00:00Z
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources..............done
+Starting execution...............................................done
+Running execution...................................................................................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-dwcxv] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-dwcxv
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-dwcxv?project=652591056217
+rlz-reconciliatie-dwcxv
+>> uitvoer van rlz-reconciliatie-dwcxv (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "(Account/AccountNumber eq '1601' or Account/AccountNumber eq '1100') and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2025-12-31T23:00:00Z",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 52,
+    "value": [
+      {
+        "id": "754eeb3f…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 267000.0,
+        "VatAmount": 0.0,
+        "Description": "Azielaan 334 Utrecht",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "d8a10ca8…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "f7fa5094…",
+        "CreditAmount": 267000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Azielaan 334 Utrecht",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "d8a10ca8…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "36e172c1…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 175000.0,
+        "VatAmount": 0.0,
+        "Description": "Goevernourlaan 310 D",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "42078415…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "f6e53f4e…",
+        "CreditAmount": 175000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Goevernourlaan 310 D",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "42078415…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "c95d76bb…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 100000.0,
+        "VatAmount": 0.0,
+        "Description": "Vlamingstraat 19 Den Helder",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "e4275a38…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "b652d536…",
+        "CreditAmount": 100000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Vlamingstraat 19 Den Helder",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "e4275a38…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "779b03a7…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 227000.0,
+        "VatAmount": 0.0,
+        "Description": "Van Dortmondstraat 1 Arnhem",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "d2c0ed25…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "44412028…",
+        "CreditAmount": 227000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Van Dortmondstraat 1 Arnhem",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "d2c0ed25…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "cf77a865…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 365000.0,
+        "VatAmount": 0.0,
+        "Description": "Schoffelstraat 29 Purmerend",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "250a3282…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "e56fd843…",
+        "CreditAmount": 365000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Schoffelstraat 29 Purmerend",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "250a3282…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "bb69566c…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 290000.0,
+        "VatAmount": 0.0,
+        "Description": "Chevremontstraat 68 Kerkrade",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "57223e92…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "d0993a6b…",
+        "CreditAmount": 290000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Chevremontstraat 68 Kerkrade",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "57223e92…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "f8d66158…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 190000.0,
+        "VatAmount": 0.0,
+        "Description": "Bleijeheiderstraat 123B Kerkrade",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "a61680f9…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "d0368825…",
+        "CreditAmount": 190000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Bleijeheiderstraat 123B Kerkrade",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "a61680f9…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "e11d14fb…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 335000.0,
+        "VatAmount": 0.0,
+        "Description": "Patmosdreef 140 Utrecht",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "84990ae3…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "57f50292…",
+        "CreditAmount": 335000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Patmosdreef 140 Utrecht",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "84990ae3…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "942645d8…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 282000.0,
+        "VatAmount": 0.0,
+        "Description": "Livingstonelaan 144 Utrecht",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "df258cf4…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "aef5e569…",
+        "CreditAmount": 282000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Livingstonelaan 144 Utrecht",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "df258cf4…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "b3f78f04…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 215000.0,
+        "VatAmount": 0.0,
+        "Description": "Meekrapstraat 34A Rotterdam",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "7065775c…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "31952dd9…",
+        "CreditAmount": 215000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Meekrapstraat 34A Rotterdam",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "7065775c…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "81b37b8f…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 440000.0,
+        "VatAmount": 0.0,
+        "Description": "Gustaaf Gelderstraat 60 Almere",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "3e3762ce…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "5c1a7444…",
+        "CreditAmount": 440000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Gustaaf Gelderstraat 60 Almere",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "3e3762ce…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "0ca37304…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 221000.0,
+        "VatAmount": 0.0,
+        "Description": "Kasteel Hillenraedstraat 152",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "272c8e9b…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "7a5b1c7c…",
+        "CreditAmount": 221000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Kasteel Hillenraedstraat 152",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "272c8e9b…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "c2393b91…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 275000.0,
+        "VatAmount": 0.0,
+        "Description": "Knopkruid 45 Venray",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "5f306865…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "d89bef57…",
+        "CreditAmount": 275000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Knopkruid 45 Venray",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "5f306865…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "2c3e9feb…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 180000.0,
+        "VatAmount": 0.0,
+        "Description": "Vondelstraat 14 Roermond",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "03790c1a…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "17608082…",
+        "CreditAmount": 180000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Vondelstraat 14 Roermond",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "03790c1a…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "8bd2e76c…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 370000.0,
+        "VatAmount": 0.0,
+        "Description": "Dwarsweg 22 Zeist",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "19160ddc…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "29bf7de8…",
+        "CreditAmount": 370000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Dwarsweg 22 Zeist",
+        "Account": {
+          "id": "451b2288…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1601",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "Description": "N.t.b. vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1601",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "19160ddc…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "3a27b6b6…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 112500.0,
+        "VatAmount": 0.0,
+        "Description": "Henri Dunantstraat 301 Brunssum",
+        "Account": {
+          "id": "468a81a6…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": true,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1100",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "Description": "Voorraad vastgoed / panden",
+          "ExternalGeneralLedgerNumber": "1100",
+          "AccountType": 3
+        },
+        "JournalEntry": {
+          "id": "4db80531…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "Description": "Henri Dunantstraat 301 Brunssum",
+          "AccountNumber": "1601",
+        "CreditAmount": 0.0,
+          "UseForSalesInvoiceDetails": false,
+        "Description": "Sportlaan 180 Purmerend",
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+          "id": "468a81a6…",
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "IsDepartmentRequired": false,
+          "Comment": "Op deze grootboekrekening kunt u al uw overige korte termijn schulden boeken.",
+        "Account": {
+          "Comment": "Op deze grootboekrekening wordt de waarde van de voorraad aan grondstoffen geregistreerd.",
+          "IsEmployeeRequired": false,
+          "id": "4fcafacc…",
+          "UseForBankCashMutationDetails": false,
+      {
+          "UseForSalesInvoiceDetails": false,
+        "DebitAmount": 260000.0,
+        },
+          "IsTotalAccount": false,
+        "VatAmount": 0.0,
+        "id": "94eeb867…",
+          "AccountantNotes": null,
+        "Description": "Spaakstraat 13 Zevenaar",
+          "ExternalGeneralLedgerNumber": "1100",
+          "IsEmployeeRequired": false,
+          "AccountType": 4
+          "IsTotalAccount": false,
+        "VatAmount": 0.0,
+          "IndentLevel": 4,
+      {
+          "IsEmployeeRequired": false,
+        "JournalEntry": {
+Container called exit(0).
+
+
+##### JournalEntryLines $filter=(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-29T22:00:00Z and JournalEntry/BookDate lt 2025-06-30T22:00:00Z
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution...................................................................................................done
+Running execution.......................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-gpvbz] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-gpvbz
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-gpvbz?project=652591056217
+rlz-reconciliatie-gpvbz
+>> uitvoer van rlz-reconciliatie-gpvbz (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "(Account/AccountNumber eq '1710' or Account/AccountNumber eq '8199' or Account/AccountNumber eq '1605' or Account/AccountNumber eq '4000') and JournalEntry/BookDate ge 2025-06-29T22:00:00Z and JournalEntry/BookDate lt 2025-06-30T22:00:00Z",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 5,
+    "value": [
+      {
+        "id": "a486d106…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 1434.0,
+        "VatAmount": 0.0,
+        "Description": "lh juni",
+        "Account": {
+          "id": "ea127bd4…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1710",
+          "Comment": "Hier kunt u de af te dragen loonbelasting boeken.",
+          "Description": "Loonbelasting te betalen",
+          "ExternalGeneralLedgerNumber": "1710",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "445e146d…",
+          "BookDate": "2025-06-30T00:00:00",
+          "DocumentType": 1,
+          "EventID": 71
+        }
+      },
+      {
+        "id": "a7b721a9…",
+        "CreditAmount": 1434.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "",
+        "Account": {
+          "id": "ea127bd4…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1710",
+          "Comment": "Hier kunt u de af te dragen loonbelasting boeken.",
+          "Description": "Loonbelasting te betalen",
+          "ExternalGeneralLedgerNumber": "1710",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "41c2043d…",
+          "BookDate": "2025-06-30T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "1be2fd49…",
+        "CreditAmount": 3231.95,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "",
+        "Account": {
+          "id": "23ee02ad…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1605",
+          "Comment": "Hier boekt u de nettolonen die u aan uw personeel uitkeert.",
+          "Description": "Nettolonen te betalen",
+          "ExternalGeneralLedgerNumber": "1605",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "41c2043d…",
+          "BookDate": "2025-06-30T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "1345c0ac…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 4666.67,
+        "VatAmount": 0.0,
+        "Description": "",
+        "Account": {
+          "id": "00e88214…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "4000",
+          "Comment": "Hier kunt u de brutolonen van uw personeel registreren.",
+          "Description": "Brutosalarissen",
+          "ExternalGeneralLedgerNumber": "4000",
+          "AccountType": 2
+        },
+        "JournalEntry": {
+          "id": "41c2043d…",
+          "BookDate": "2025-06-30T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "582bfeb3…",
+        "CreditAmount": 0.72,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "",
+        "Account": {
+          "id": "ac8dea00…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": null,
+          "AccountNumber": "8199",
+          "Comment": "Hier kunt u diverse overige opbrengsten registreren. Deze opbrengsten zijn geen omzet, dat wil zeggen dat ze niet het resultaat zijn van de normale bedrijfsvoering. Hieronder vallen ontvangen subsidies, verhuur van roerende- en onroerende zaken, opbrengsten uit deelnemingen, het resultaat van verkoop van vaste activa en de kleine ondernemingsregeling BTW.",
+          "Description": "Diverse opbrengsten",
+          "ExternalGeneralLedgerNumber": "8199",
+          "AccountType": 1
+        },
+        "JournalEntry": {
+          "id": "41c2043d…",
+          "BookDate": "2025-06-30T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### JournalEntryLines $filter=Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-08T22:00:00Z and JournalEntry/BookDate lt 2025-08-09T22:00:00Z
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.........................done
+Starting execution.................................................................................................done
+Running execution...........................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-6bfg7] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-6bfg7
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-6bfg7?project=652591056217
+rlz-reconciliatie-6bfg7
+>> uitvoer van rlz-reconciliatie-6bfg7 (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "Account/AccountNumber eq '1602' and JournalEntry/BookDate ge 2025-08-08T22:00:00Z and JournalEntry/BookDate lt 2025-08-09T22:00:00Z",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 1,
+    "value": [
+      {
+        "id": "5282f16c…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 1000.0,
+        "VatAmount": 0.0,
+        "Description": "Rc",
+        "Account": {
+          "id": "413b326f…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": true,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 4,
+          "AccountantNotes": null,
+          "AccountNumber": "1602",
+          "Comment": "Op deze grootboekrekening kan een rekening-courant verhouding van uw bedrijf worden geregistreerd.",
+          "Description": "RC Tupker Beheer BV",
+          "ExternalGeneralLedgerNumber": "1602",
+          "AccountType": 4
+        },
+        "JournalEntry": {
+          "id": "ee835127…",
+          "BookDate": "2025-08-09T00:00:00",
+          "DocumentType": 11,
+          "EventID": 22
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### JournalEntryLines $filter=Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2026-01-01T23:00:00Z
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources.....................done
+Starting execution.......................................................................................done
+Running execution...........................................................................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-865gl] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-865gl
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-865gl?project=652591056217
+rlz-reconciliatie-865gl
+>> uitvoer van rlz-reconciliatie-865gl (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "Account/AccountNumber eq '8000' and JournalEntry/BookDate ge 2025-12-30T23:00:00Z and JournalEntry/BookDate lt 2026-01-01T23:00:00Z",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 4,
+    "value": [
+      {
+        "id": "06b8efa6…",
+        "CreditAmount": 287555.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Azielaan 334",
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        },
+        "JournalEntry": {
+          "id": "cdfa049b…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "0137e177…",
+        "CreditAmount": 215000.0,
+        "DebitAmount": 0.0,
+        "VatAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        },
+        "JournalEntry": {
+          "id": "cdfa049b…",
+          "BookDate": "2025-12-31T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "4a631d4d…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 287555.0,
+        "VatAmount": 0.0,
+        "Description": "Azielaan 334",
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        },
+        "JournalEntry": {
+          "id": "ee2840a2…",
+          "BookDate": "2026-01-01T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      },
+      {
+        "id": "bb122fa7…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 215000.0,
+        "VatAmount": 0.0,
+        "Description": "Goeverneurlaan 310",
+        "Account": {
+          "id": "ec8a3cde…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": false,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": false,
+          "UseForSalesInvoiceDetails": true,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze systeem gekoppelde rekening wordt standaard de omzet van elke regel op een verkoopfactuur geboekt. U kunt per factuurregel deze omzetrekening wijzigen.",
+          "AccountNumber": "8000",
+          "Comment": "Op deze grootboekrekening kunt u omzet van uw bedrijf registreren.",
+          "Description": "Omzet verkopen",
+          "ExternalGeneralLedgerNumber": "8000",
+          "AccountType": 1
+        },
+        "JournalEntry": {
+          "id": "ee2840a2…",
+          "BookDate": "2026-01-01T00:00:00",
+          "DocumentType": 11,
+          "EventID": 21
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
+
+##### JournalEntryLines $filter=Account/AccountNumber eq '4900'
+>> nameting: GitHub Actions — runner is via WIF al ingelogd als nameting@rlz-boekhouding.iam.gserviceaccount.com (geen impersonatie, geen key)
+>> gcloud run jobs execute rlz-reconciliatie (rlz-lezen) onder nameting@rlz-boekhouding.iam.gserviceaccount.com
+Creating execution...
+Provisioning resources........................done
+Starting execution.............................................................done
+Running execution.............................................................................................................................................................done
+Done.
+Execution [rlz-reconciliatie-f6d9v] has successfully completed.
+
+View details about this execution by running:
+gcloud run jobs executions describe rlz-reconciliatie-f6d9v
+
+Or visit https://console.cloud.google.com/run/jobs/executions/details/europe-west4/rlz-reconciliatie-f6d9v?project=652591056217
+rlz-reconciliatie-f6d9v
+>> uitvoer van rlz-reconciliatie-f6d9v (Cloud Logging, chronologisch):
+{
+  "rlz_lezen": {
+    "administratie": "Vastgoedgroep Nederland B.V.",
+    "administratie_id": "cc07e461…",
+    "pad": "JournalEntryLines",
+    "params": {
+      "$top": "50",
+      "$expand": "Account,JournalEntry",
+      "$filter": "Account/AccountNumber eq '4900'",
+      "$count": "true"
+    },
+    "status": 200
+  },
+  "antwoord": {
+    "@odata.count": 1,
+    "value": [
+      {
+        "id": "ba31be3b…",
+        "CreditAmount": 0.0,
+        "DebitAmount": 0.02,
+        "VatAmount": 0.0,
+        "Description": "Ouwerkerk Notariaat",
+        "Account": {
+          "id": "fb0fcf62…",
+          "IsDepartmentRequired": false,
+          "IsEmployeeCurrentAccount": false,
+          "IsEmployeeRequired": false,
+          "IsFixedAssetAccount": false,
+          "IsProductRequired": false,
+          "IsProjectRequired": false,
+          "IsTopLevel": false,
+          "IsTotalAccount": false,
+          "UseForBankCashMutationDetails": true,
+          "UseForManualJournalDetails": true,
+          "UseForPaymentAccount": false,
+          "UseForPurchaseInvoiceDetails": true,
+          "UseForSalesInvoiceDetails": false,
+          "IndentLevel": 3,
+          "AccountantNotes": "Op deze kostenrekening worden de betalingsverschillen geboekt die in het nadeel vallen van de ondernemer. De gebruiker heeft bij het verwerken van de betalingen aangegeven dat het betalingsverschil moet worden geboekt.",
+          "AccountNumber": "4900",
+          "Comment": "Hier kunt u alle betalingsverschillen die in uw nadeel vallen als kosten registreren.",
+          "Description": "Betalingsverschillen",
+          "ExternalGeneralLedgerNumber": "4900",
+          "AccountType": 2
+        },
+        "JournalEntry": {
+          "id": "26131b55…",
+          "BookDate": "2025-09-02T00:00:00",
+          "DocumentType": 1,
+          "EventID": 73
+        }
+      }
+    ]
+  }
+}
+Container called exit(0).
+
