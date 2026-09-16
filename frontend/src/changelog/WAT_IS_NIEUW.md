@@ -6,6 +6,20 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Omzetbronnen zonnestudio en pilates: tegenzijde, btw-standaarden, combi en Stripe
+
+<!-- omzetbronnen-besluiten-16-09 -->
+
+- **Zonnebankpunten tellen als omzet.** Verkochte punten staan vanaf nu als gewone omzet zonnebank (21 %) op de dag van verkoop in het omzetvoorstel; ingewisselde punten hoef je niets mee te doen. De blokkade "Puntenwaarde bekend" is weg — een dagstaat die cent-exact sluit is direct boekbaar zodra de grootboekrekeningen zijn ingesteld.
+- **Per betaalwijze zie je waar het geld heen gaat.** In het blok Bron van een dagstaat of uitbetaling staat per betaalwijze (PIN, contant, storting, Stripe) het bedrag, de datum en de tegenrekening — ingesteld door de Beheerder of automatisch herkend in het rekeningschema op naam (kruispost/PIN, kas, kasverschillen, Stripe). Ontbreekt een tegenrekening, dan zegt de controle precies welke en waar je 'm instelt.
+- **De bank herkent omzetontvangsten zelf.** Een Stripe-uitbetaling (1 tot 7 dagen ná de uitbetaaldatum, nooit ervoor), een PIN-afrekening of een kasstorting die cent-exact bij een geboekte omzetdag of -batch past, krijgt in het bankscherm het voorstel "omzetbatch … · Stripe" — groen als ook de omschrijving klopt. Met bank-autoboeken aan wordt de ontvangst automatisch afgeletterd (Stripe/PIN) of op de kas geboekt (storting).
+- **Signaal als een ontvangst uitblijft.** Staat een verwachte omzetontvangst na 14 dagen nog niet op de bank, dan meldt de reconciliatie dat mét de handeling: koppel de bankontvangst of accepteer met reden.
+- **Pilates: btw-standaarden en combi-abonnement.** Lessen en yoga krijgen automatisch het lage tarief, kleding en producten het hoge, eten en drinken het lage (instelbaar) — altijd het tarief van de administratie zelf, zichtbaar als chip. Een combi-abonnement wordt naar rato over Pilates en Yoga verdeeld (op basis van dezelfde uitbetaling, anders de laatste 30 dagen, anders 50/50 met een oranje signaal); de verdeling staat in het blok Bron.
+- **Stripe-kosten als EU-dienst.** Transactiekosten van Stripe krijgen het verlegd-tarief ("Stripe · EU-dienst verlegd") en de kostenrekening uit het rekeningschema; kies je Mollie, dan 21 % voorbelasting.
+- **Instellingen › Administraties › Omzet › Omzetbronnen** levert nu de keuzelijsten en standaardwaarden mee (rekeningen, tarieven) zodat de Beheerder alles in één blok kiest; ongeldige keuzes worden geweigerd met een leesbare reden.
+- **Instellingen › Administraties › ‹administratie› › Boeken & AI › Omzetbronnen:** stel per zonnestudio of pilatesstudio in welke store-naam uit de dagstaat bij deze administratie hoort, op welke tegenrekening de omzet per betaalwijze landt (PIN, contant, Stripe, kasverschil, storting — voorgevuld op naam uit het rekeningschema, chip "standaard"), welk btw-tarief elke categorie krijgt, hoe productnamen naar categorieën gaan, en welke betaalprovider u gebruikt (Stripe, Mollie of anders). Eén knop "Opslaan"; via ⋯ zet u alles terug op standaard. Ook vindbaar via de zoeker ("store used", "kruispost", "stripe").
+- **Omzet-controlescherm, blok "Bron":** toont per betaalwijze de tegenrekening mét herkomst en, bij een combi-abonnement, hoe het bedrag over Pilates en Yoga is verdeeld en op welke basis (netto-omzet van de batch, laatste 30 dagen, of 50/50 met oranje signaal).
+
 ## 2026-09-16 — Facturen tussen eigen bedrijven en rekening-courant dagelijks gecontroleerd
 
 <!-- intercompany-rc-16-09 -->

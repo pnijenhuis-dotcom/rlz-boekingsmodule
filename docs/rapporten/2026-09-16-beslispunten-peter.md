@@ -52,3 +52,17 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 5. Bijkomende kosten toevoegen aan een bestaand activum: voorstel + mens bevestigt in de testfase.
 6. Bouwvolgorde: RLZ eerst, op een administratie mét activa; Odoo (Universal Verkoop) pas als daar asset-modellen zijn ingericht.
 7. MVA-rekening = `IsFixedAssetAccount` ÉN AccountType 3 ÉN 0xxx (de vlag alleen is bij Universal te breed).
+
+## Opdracht 4 — omzetbronnen: besluiten Peter 16-09 verwerkt (`2026-09-16-omzetbronnen-besluiten.md`)
+
+1. **Sunshine Island eigen administratie/BV?** Default: zelfde administratie als Elderveld (beide namen in `stores` via het blok).
+2. **Eten/drinken 9 %** (default laag); alcohol/horeca → `eten_drinken_tarief = hoog` per administratie.
+3. **Rittenkaart/abonnement = omzet bij verkoop** (default; fiscaal btw-correct).
+4. **Tegenzijde in RLZ = AFLETTERING** (Receipt blijft open post; PIN/Stripe via actie 15, storting direct op kas). Het cash-deel
+   van een zonnestudio-dag blijft in RLZ open op de Receipt tot de kas een RLZ-vorm heeft; alternatief = STAP-0 lees-only (waar
+   landt een entity-loze Receipt, sluit QuickPaymentSelection "contant" een deel) en daarna een memoriaal-tussenrekening.
+5. **Stripe-kosten in de aangifte:** als negatieve Receipt-regel met verlegd-tarief landen ze in rubriek 1e, niet 4b/5b;
+   rubriek-correct is een maandelijkse inkoopfactuur op crediteur Stripe uit dezelfde export.
+6. **PIN-venster 0…+5 d en PIN-kernen** (ccv/worldline/adyen) zijn aannames — bijstellen op de eerste echte PIN-afrekening.
+7. **Blok Omzetbronnen op tab Boeken & AI**, geen eigen tab Omzet; "Herstel standaard" laat stores staan.
+8. **Puntenwaarde** is geen beslispunt meer (punten = omzet bij verkoop, akkoord Peter 16-09).
