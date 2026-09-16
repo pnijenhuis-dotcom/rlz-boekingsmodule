@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Facturen tussen eigen bedrijven en rekening-courant dagelijks gecontroleerd
+
+<!-- intercompany-rc-16-09 -->
+
+- **Intercompany-relaties en rekening-courant zichtbaar op Instellingen › Boeken.** Het systeem herkent zelf welke crediteuren en debiteuren eigenlijk een ander bedrijf van ons zijn (op KvK-nummer, btw-nummer of naam, en uit de doorbelasting) en welke balansrekeningen een rekening-courant met een ander bedrijf van ons zijn. De Beheerder hoeft niets in te voeren — alleen bevestigen, of uitsluiten met een reden; afkortingen zoals "KF" kun je per administratie opgeven zodat ook "RC KF" herkend wordt.
+- **Facturen tussen eigen bedrijven worden dagelijks vergeleken.** Staat bij het verkopende bedrijf een factuur aan een ander bedrijf uit de groep, maar bij dat bedrijf geen inkoopfactuur (of andersom, of met een ander bedrag, of aan één kant nog als concept), dan staat dat als zaak mét handeling in de dagelijkse aandachtsmail en op Inzicht › Reconciliatie. Een factuur die bij de ontvanger nog in de app ter controle staat, wordt niet gemeld. Creditnota's tellen mee; factuur en creditnota samen gelden als één.
+- **Rekening-courant sluit dagelijks aan.** De reconciliatie controleert nu elke ochtend of het saldo van een rekening-courant tussen twee van onze administraties aan beide kanten gelijk is. Sluit het niet, dan zie je op Inzicht › Reconciliatie én in de actiemail het verschil mét de verklaring: welke mutatie aan welke kant ontbreekt (datum, bedrag, omschrijving). Twijfelgevallen met hetzelfde bedrag worden allemaal genoemd, er wordt nooit geraden. Een rekening-courant zonder tegenrekening in de andere administratie krijgt een let-op met de plek om dat te herstellen. Alles is lezen — er wordt niets in Reeleezee of Odoo gewijzigd.
+
 ## 2026-09-16 — Dubbele facturen en dubbele betalingen eerder gezien
 
 <!-- duplicaat-zenvoices-16-09 -->
