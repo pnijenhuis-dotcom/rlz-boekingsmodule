@@ -375,6 +375,15 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'tab', tab: 'boeken-ai', anker: 'autoboeken-leren' },
     beheerder: true,
   },
+  // Omzetbronnen (besluiten Peter 16-09 blok B): stores, tegenrekening per betaalwijze, categorie/btw, combi, PSP.
+  {
+    id: 'omzetbronnen',
+    naam: 'Omzetbronnen — stores, tegenrekening per betaalwijze, categorie/btw pilates, Stripe',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › Omzetbronnen',
+    synoniemen: ['omzetbronnen', 'omzetbron', 'dagstaat', 'zonnestudio', 'pilates', 'store', 'stores', 'store used', 'tegenrekening', 'kruispost', 'pin onderweg', 'stripe', 'mollie', 'psp', 'combi', 'kasverschil', 'storting'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'omzetbronnen' },
+    beheerder: true,
+  },
   // Losse instellingen bínnen een sectie (deep-link mét anker).
   {
     id: 'bulk-accordering',
@@ -401,15 +410,6 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
-    id: 'ai-kostenlimiet',
-    naam: 'AI-kosten maandlimiet',
-    waar: 'Intake-AI & kosten › AI-kosten',
-    synoniemen: ['limiet', 'maandlimiet', 'kosten', 'euro', 'budget', 'anthropic'],
-    doel: { soort: 'sectie', sectie: 'intake-ai', anker: 'kosten' },
-    beheerder: true,
-  },
-  {
-  {
     id: 'intercompany-relaties',
     naam: 'Intercompany-relaties (afgeleid; bevestigen / uitsluiten)',
     waar: 'Boeken platformbreed › Intercompany-relaties',
@@ -425,6 +425,15 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'sectie', sectie: 'boeken', anker: 'rekening-courant' },
     beheerder: true,
   },
+  {
+    id: 'ai-kostenlimiet',
+    naam: 'AI-kosten maandlimiet',
+    waar: 'Intake-AI & kosten › AI-kosten',
+    synoniemen: ['limiet', 'maandlimiet', 'kosten', 'euro', 'budget', 'anthropic'],
+    doel: { soort: 'sectie', sectie: 'intake-ai', anker: 'kosten' },
+    beheerder: true,
+  },
+  {
     id: 'autoboek-drempel',
     naam: 'Autoboeken: drempel "N identieke boekingen"',
     waar: 'Autoboeken › criteria',
