@@ -131,3 +131,15 @@ describe('chipsVoor — groepskenmerk (blok 8 run 11-09)', () => {
     expect(chips.map((c) => c.tekst)).toContain('groep: Kempen groep (gearchiveerd)')
   })
 })
+
+describe('chipsVoor — profiel "Winkel / kassa" (blok G ProfX, Peter 16-09)', () => {
+  it('toont de chip mét herkomst in de titel; zonder profiel geen chip', () => {
+    const afgeleid = chipsVoor(administratie({ kassa_profiel: true, kassa_profiel_bron: 'afgeleid' }))
+    const chip = afgeleid.find((c) => c.tekst === 'Winkel / kassa')
+    expect(chip?.variant).toBe('info')
+    expect(chip?.titel).toMatch(/afgeleid/)
+    const override = chipsVoor(administratie({ kassa_profiel: true, kassa_profiel_bron: 'override' }))
+    expect(override.find((c) => c.tekst === 'Winkel / kassa')?.titel).toMatch(/Beheerder/)
+    expect(chipsVoor(administratie({ kassa_profiel: false })).some((c) => c.tekst === 'Winkel / kassa')).toBe(false)
+  })
+})

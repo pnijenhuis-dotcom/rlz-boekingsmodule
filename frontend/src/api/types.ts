@@ -1063,6 +1063,14 @@ export interface IsVastgoedResultaatDto {
   verkoop_autoboeken_uitgezet: boolean
 }
 
+/** Profiel "Winkel / kassa" (blok G ProfX, Peter 16-09; migratie 0150): AFGELEID (≥ 1 kassarapport) tenzij de Beheerder
+ * een override zette — `bron` zegt welke van de twee geldt, `override` = de opgeslagen keuze (null = afgeleid). */
+export interface KassaProfielStandDto {
+  kassa_profiel: boolean
+  bron: 'afgeleid' | 'override' | string
+  override: boolean | null
+}
+
 /** Eerste-sync-run (wizard 26-08 punt 5 / rij-status 27-08) — spiegel van beheer/schemas.py. */
 export interface EersteSyncRunDto {
   run_id: string | null
@@ -1159,6 +1167,9 @@ export interface AdministratieInstellingenDto {
   groep_naam?: string | null
   groep_code?: string | null
   groep_actief?: boolean | null
+  /** Profiel "Winkel / kassa" (blok G ProfX 16-09): effectieve stand + herkomst 'afgeleid' | 'override'. */
+  kassa_profiel?: boolean
+  kassa_profiel_bron?: 'afgeleid' | 'override' | string
   /** Boekhoud-backend (Odoo-adapter fase 1, migraties 0101/0102 — Platform-besluit 0016): 'rlz' (default,
    * ook als het veld ontbreekt) of 'odoo' = volledige backend (boeken in Odoo). `odoo_alleen_lezen` =
    * een RLZ-administratie mét Odoo als LEESBRON voor de voorraad-uitstroom vanaf `odoo_voorraad_knip_datum`
@@ -1222,6 +1233,13 @@ export interface VraagDto {
   afgehandeld_op: string | null
   berichten: VraagBerichtDto[]
   mag_afhandelen: boolean
+  /** Dialoog open tot Afgehandeld (Peter 16-09): afgeleide stand uit het laatste bericht (wie/wanneer) en UI-hints
+   * voor "Afgehandeld namens vraagsteller" (kantoor, niet-vraagsteller) en "Heropenen" (afgehandeld, document in een
+   * herkomst-status). De server hertoetst. */
+  laatste_bericht_door?: string | null
+  laatste_bericht_op?: string | null
+  mag_afhandelen_namens?: boolean
+  mag_heropenen?: boolean
 }
 
 export interface VraagBerichtDto {
@@ -1261,8 +1279,12 @@ export interface OmzetRegelDto {
   omzet_ledger_id: string | null
   taxrate_id: string | null
   kostprijs_ledger_id: string | null
-  /** 'mapping' (onthouden) | 'nieuw' (blokkerend tot ingesteld) | 'opgeslagen'. */
+  /** 'mapping' (onthouden) | 'nieuw' (blokkerend tot ingesteld) | 'default' | 'opgeslagen'. */
   herkomst: string
+  /** Blok C/D (16-09): herkomst van de voorgestelde btw — 'mapping' | 'instelling' | 'default_laag' | 'default_hoog' |
+   * 'default_vrijgesteld' | 'verlegd' | 'opgeslagen' | null; `btw_herkomst_detail` = chip-tekst. */
+  btw_herkomst?: string | null
+  btw_herkomst_detail?: string | null
 }
 
 export interface OmzetVoorstelDto {
@@ -1329,6 +1351,27 @@ export interface OmzetBronDetailDto {
   /** Blok C: "combi Abonnement" pro rato over Pilates en Yoga — verdeling + basis ('batch' = netto-omzet van dezelfde
    * uitbetalingsbatch, 'historie_30d' = laatste 30 dagen, '50_50' = oranje signaal). */
   combi_verdeling?: OmzetCombiVerdelingDto | null
+  /** ProfX Journaal (Peter 16-09): kop uit het rapport — kassa's, rapportperiode (05:00→05:00 = één kassadag), klanten,
+   * bruto/netto omzet, betaalwijzen (blad 3, sleutel = naam uit het rapport zoals "Cash"/"PIN"). */
+  kassas?: string[]
+  periode_van?: string | null
+  periode_tot?: string | null
+  klanten?: number | null
+  bruto_omzet?: string | null
+  netto_omzet?: string | null
+  kortingen?: string | null
+  /** ProfX blok F/notitie 7: LIVE stand van de kostprijs (margerapport) voor dit dagjournaal — 'gebundeld' (zelfde dag,
+   * in dit document), 'gekoppeld_periode' (weekrapport = eigen document), 'geboekt', 'verwacht' (nog geen rapport). */
+  marge?: OmzetMargeStandDto | null
+}
+
+export interface OmzetMargeStandDto {
+  stand: 'gebundeld' | 'gekoppeld_periode' | 'geboekt' | 'verwacht' | string
+  week?: number | null
+  periode_van?: string | null
+  periode_tot?: string | null
+  totaal?: string | null
+  document_id?: string | null
 }
 
 export interface OmzetTegenzijdeRegelDto {

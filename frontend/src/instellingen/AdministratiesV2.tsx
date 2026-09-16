@@ -79,6 +79,17 @@ export function chipsVoor(a: AdministratieInstellingenDto): { tekst: string; var
       titel: `Groep ${a.groep_naam}${a.groep_code ? ` (${a.groep_code})` : ''} — filter op klantenlijst en reconciliatie${a.groep_actief === false ? '; de groep is gearchiveerd, deze administratie blijft lid' : ''}`,
     })
   if (a.is_vastgoed) chips.push({ tekst: 'Vastgoed + autoboeken', variant: 'info', titel: 'Vastgoed-koppeling (Vastly) — autoboeken verkoop volgt de koppeling' })
+  // Blok G ProfX (Peter 16-09): profiel "Winkel / kassa" — afgeleid zodra de administratie een kassarapport heeft, of
+  // door de Beheerder gezet (tab Boeken & AI › Omzetbronnen). Geen los label: het bundelt de kassa-instellingen.
+  if (a.kassa_profiel)
+    chips.push({
+      tekst: 'Winkel / kassa',
+      variant: 'info',
+      titel:
+        a.kassa_profiel_bron === 'override'
+          ? 'Profiel Winkel / kassa — door de Beheerder aangezet (Boeken & AI › Omzetbronnen)'
+          : 'Profiel Winkel / kassa — afgeleid: deze administratie heeft kassarapporten (omzetbronnen, kostprijs, tegenzijde, mapping)',
+    })
   if (a.afgeletterd_event_ingeschakeld) chips.push({ tekst: 'afgeletterd-events', variant: 'info' })
   if (a.doorbelasting_ingeschakeld) chips.push({ tekst: 'Doorbelasting', variant: 'info' })
   if (a.uren_meerwerk_ingeschakeld) chips.push({ tekst: `Uren & meerwerk · ${Number(a.uren_dagmax_uren).toLocaleString('nl-NL')}u-max`, variant: 'info' })
@@ -189,12 +200,17 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
   // Groepen (hernoemen/archiveren). De filterwaarde leeft lokaal — dit is een Beheerder-scherm, geen deeplink-doel.
   const { groepen, herlaad: herlaadGroepen } = useGroepen(true)
   const [groepFilter, setGroepFilter] = useState<string>('')
+  // Blok G ProfX (16-09): filter op het profiel "Winkel / kassa" — alleen zichtbaar zodra één administratie het draagt.
+  const [profielFilter, setProfielFilter] = useState<'' | 'kassa' | 'geen_kassa'>('')
 
   const actieve = administraties.filter((a) => !a.gearchiveerd_op)
   const gearchiveerd = administraties.filter((a) => a.gearchiveerd_op)
   const inGroep = (a: AdministratieInstellingenDto) =>
     groepFilter === '' || (groepFilter === '__geen__' ? !a.groep_id : a.groep_id === groepFilter)
-  const rijen = (toonGearchiveerd ? gearchiveerd : actieve).filter(inGroep)
+  const inProfiel = (a: AdministratieInstellingenDto) =>
+    profielFilter === '' || (profielFilter === 'kassa' ? Boolean(a.kassa_profiel) : !a.kassa_profiel)
+  const heeftKassaProfiel = administraties.some((a) => a.kassa_profiel)
+  const rijen = (toonGearchiveerd ? gearchiveerd : actieve).filter(inGroep).filter(inProfiel)
   const dearchiveer = async () => {
     if (!dearchiveerVoor) return
     setBezig(true)
@@ -231,6 +247,19 @@ export function AdministratiesV2({ administraties, selectie, setSelectie, onHerl
           <button type="button" className="linkbtn" onClick={() => setToonGearchiveerd((t) => !t)} aria-pressed={toonGearchiveerd}>
             {toonGearchiveerd ? '← actieve administraties' : `gearchiveerd (${gearchiveerd.length})`}
           </button>
+        )}
+        {heeftKassaProfiel && (
+          <select
+            aria-label="Profiel"
+            data-testid="administraties-profiel-filter"
+            value={profielFilter}
+            onChange={(e) => setProfielFilter(e.target.value as '' | 'kassa' | 'geen_kassa')}
+            style={{ width: 'auto', marginLeft: groepen && groepen.length > 0 ? undefined : 'auto' }}
+          >
+            <option value="">Profiel: alle</option>
+            <option value="kassa">Profiel: Winkel / kassa</option>
+            <option value="geen_kassa">Profiel: zonder Winkel / kassa</option>
+          </select>
         )}
         {groepen && groepen.length > 0 && (
           <select

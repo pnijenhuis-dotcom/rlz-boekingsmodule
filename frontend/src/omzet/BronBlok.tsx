@@ -5,6 +5,8 @@ const BRON_NAMEN: Record<string, string> = {
   zonnestudio_dagstaat: 'dagstaat zonnestudio (POS-rapport + kascheck)',
   zonnestudio_kascheck: 'kascheck zonnestudio',
   pilates_betalingsexport: 'betalingsexport pilates (één uitbetaling)',
+  profx_journaal: 'ProfX Journaal (coffeeshop-kassa, per artikelgroep)',
+  profx_margerapport: 'ProfX Margerapport (inkoopwaarde per artikelgroep)',
 }
 
 export function bronNaam(bron: string): string {

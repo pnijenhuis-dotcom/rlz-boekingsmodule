@@ -12,6 +12,7 @@ import type {
   GroepDto,
   GroepenLijstDto,
   IsVastgoedResultaatDto,
+  KassaProfielStandDto,
   LeverancierAutoboekenDto,
   LeverancierAutoboekenLijstDto,
 } from '../api/types'
@@ -193,6 +194,19 @@ export function zetIsVastgoed(administratieId: string, isVastgoed: boolean): Pro
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ is_vastgoed: isVastgoed }),
+  })
+}
+
+/** Profiel "Winkel / kassa" (blok G ProfX 16-09): GET/PATCH Beheerder-only; `null` = terug naar afgeleid. */
+export function haalKassaProfielOp(administratieId: string): Promise<KassaProfielStandDto> {
+  return apiJson<KassaProfielStandDto>(`/administraties/${administratieId}/kassa-profiel`)
+}
+
+export function zetKassaProfiel(administratieId: string, kassaProfiel: boolean | null): Promise<KassaProfielStandDto> {
+  return apiJson<KassaProfielStandDto>(`/administraties/${administratieId}/kassa-profiel`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kassa_profiel: kassaProfiel }),
   })
 }
 

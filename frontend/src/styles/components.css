@@ -2672,3 +2672,182 @@ tr.geselecteerd td.acties {
 .gebruikers-tabel .apparaat-blok + .apparaat-blok {
   margin-top: 6px;
 }
+
+/* ---- Omzet-controlescherm v2 (bouwnorm mockup/omzet-kassarapport-v2.html, akkoord Peter 16-09) ----
+   Eén tabel per artikelgroep: omzet (netto/bruto-kopje klikbaar) · btw · inkoopwaarde · marge; eurocel = € links,
+   getal rechts, vaste breedte zodat de totaalregel exact op de kolom uitlijnt (correctie Peter 16-09); géén
+   tegenwaarde onder de cel. Teal = actie (kopknop), groen/oranje = status (marge, chips). */
+.omzet-groepen th.amount,
+.omzet-groepen td.amount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.omzet-groepen tfoot td {
+  font-weight: 700;
+  background: var(--panel-2);
+  border-bottom: 0;
+}
+.omzet-kopknop {
+  font-weight: inherit;
+  font-size: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: var(--primary);
+  text-align: right;
+}
+.omzet-kopknop small {
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--muted);
+}
+.omzet-eur {
+  display: inline-flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 104px;
+  font-variant-numeric: tabular-nums;
+}
+.omzet-eur i {
+  font-style: normal;
+  color: var(--faint);
+  font-weight: 400;
+}
+input.omzet-cel {
+  min-width: 96px;
+  width: 112px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+input.omzet-cel.grijs {
+  color: var(--faint);
+  background: var(--panel-2);
+  border-style: dashed;
+}
+.omzet-cat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+.omzet-marge {
+  font-weight: 700;
+}
+.omzet-marge.ok {
+  color: var(--ok);
+}
+.omzet-marge.warn {
+  color: var(--warn);
+}
+.omzet-marge.stil {
+  color: var(--faint);
+}
+.omzet-bronchips {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.omzet-strook {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 0 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.omzet-strook b {
+  color: var(--text);
+}
+.omzet-kaarten {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+@media (max-width: 1024px) {
+  .omzet-kaarten {
+    grid-template-columns: 1fr;
+  }
+}
+.omzet-kaart {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  min-width: 0;
+}
+.omzet-kaart .t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+.omzet-kaart .t .chip {
+  margin-left: auto;
+}
+.omzet-kaart .d {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.omzet-kaart details {
+  margin-top: 6px;
+  font-size: 11.5px;
+}
+.omzet-kaart summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+.omzet-kaart table {
+  width: 100%;
+  font-size: 11px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.omzet-kaart td {
+  padding: 2px 0;
+  vertical-align: middle;
+}
+.omzet-kaart td.r {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ---- Vragen-dialoog open tot Afgehandeld (Peter 16-09) ---- eigen berichten rechts, badge "laatste bericht van …",
+   meerregelig invoerveld (Enter = nieuwe regel, Cmd/Ctrl-Enter = versturen). */
+.q-bericht.van-mij {
+  margin-left: 18%;
+  border-left: 3px solid var(--primary);
+  padding-left: 8px;
+}
+.q-laatste {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.q-laatste b {
+  color: var(--text);
+}
+.q-answer textarea {
+  flex: 1;
+  min-height: 44px;
+  resize: vertical;
+  font: inherit;
+}
+.q-concept {
+  font-size: 11px;
+  color: var(--warn);
+}

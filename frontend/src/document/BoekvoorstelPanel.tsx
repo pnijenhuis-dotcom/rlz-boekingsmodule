@@ -16,6 +16,8 @@ import type {
 import { alsAiVoorstel, alsUblVoorstel, zekerheidPct, type AiVoorstel, type VeldvoorstelBron } from './aiVoorstel'
 import { extractieActief } from '../werkvoorraad/status'
 import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
+import { anderModus, useBedragModus } from './bedragModus'
+import { BedragModusInput } from './BedragModusInput'
 import { crediteurSuggesties } from './crediteurSuggesties'
 import { toetsRegelsom } from './regelsom'
 import {
@@ -689,6 +691,11 @@ export function BoekvoorstelPanel({
     for (const optie of taxrateOpties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
     return map
   }, [taxrateOpties])
+  // Blok E (Peter 16-09): het kolomkopje NETTO is klikbaar en wisselt de invoermodus van de hele regel-tabel naar
+  // BRUTO (incl.); de opgeslagen regelwaarde blijft netto (btw/checks/regelsom ongewijzigd), de omrekening loopt
+  // cent-exact op het percentage van de btw-code van de regel; zonder btw-code blijft het veld netto mét tooltip.
+  // Voorkeur per gebruiker in localStorage (document/bedragModus.ts). Geen tegenwaarde onder het veld (besluit Peter).
+  const [bedragModus, wisselBedragModus] = useBedragModus()
   // 14-09 (btw-default uit de grootboekrekening): {ledgerId: standaard taxrateId} uit de sync-cache, alleen tarieven
   // die in de btw-lijst van deze administratie staan (een verdwenen tarief vult nooit).
   // 0143 (vervolg 14-09): per rekening de RLZ-default ('grootboek', grijs) óf — als die ontbreekt — de uit de eigen
@@ -1951,7 +1958,18 @@ export function BoekvoorstelPanel({
               <th>Grootboek</th>
               <th>Btw-code</th>
               {projectVerplicht && <th>Project</th>}
-              <th className="amount">Netto</th>
+              <th className="amount">
+                <button
+                  type="button"
+                  className="linkbtn"
+                  onClick={wisselBedragModus}
+                  aria-pressed={bedragModus === 'bruto'}
+                  title={`Klik om bedragen ${anderModus(bedragModus)} in te vullen — de andere waarde volgt uit de btw-code van de regel`}
+                  style={{ fontWeight: 'inherit', fontSize: 'inherit', color: 'var(--primary)' }}
+                >
+                  {bedragModus === 'netto' ? 'Netto' : 'Bruto'}
+                </button>
+              </th>
               <th className="amount">Btw-bedrag</th>
               <th>Omschrijving</th>
               <th />
@@ -2132,13 +2150,14 @@ export function BoekvoorstelPanel({
                   {isReadOnly ? (
                     regel.netto || '—'
                   ) : (
-                    <input
-                      aria-label="Netto bedrag"
-                      inputMode="decimal"
+                    <BedragModusInput
+                      ariaLabel="bedrag"
+                      bron="netto"
+                      modus={bedragModus}
+                      percentage={regel.taxrateId ? percentageMap[regel.taxrateId] : undefined}
                       title="Bijvoorbeeld 1234,56 of 1234.56"
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      value={regel.netto}
-                      onChange={(e) => wijzigRegel(regel.key, 'netto', e.target.value)}
+                      waarde={regel.netto}
+                      onWijzig={(w) => wijzigRegel(regel.key, 'netto', w)}
                     />
                   )}
                 </td>

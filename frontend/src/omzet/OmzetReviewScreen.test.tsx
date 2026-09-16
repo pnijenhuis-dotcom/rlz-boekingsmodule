@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { OmzetReviewScreen } from './OmzetReviewScreen'
 
 const ADMINISTRATIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -376,5 +376,85 @@ describe('OmzetReviewScreen', () => {
 
     expect(await screen.findByText(/geboekt in RLZ\. Wijzigen kan alleen via stornering/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Boeken in RLZ/ })).not.toBeInTheDocument()
+  })
+})
+
+// Node 22+/jsdom: geen bruikbare window.localStorage — in-memory vervanger (patroon WerkvoorraadScreen.test.tsx) voor de
+// netto/bruto-voorkeur.
+function installeerLocalStorage() {
+  const opslag = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (sleutel: string) => opslag.get(sleutel) ?? null,
+      setItem: (sleutel: string, waarde: string) => void opslag.set(sleutel, String(waarde)),
+      removeItem: (sleutel: string) => void opslag.delete(sleutel),
+      clear: () => opslag.clear(),
+    },
+  })
+}
+
+describe('OmzetReviewScreen — ProfX Journaal (bouwnorm mockup/omzet-kassarapport-v2.html, Peter 16-09)', () => {
+  beforeAll(() => installeerLocalStorage())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.localStorage.clear()
+  })
+
+  const profx = (marge: Record<string, unknown>, metKostprijs: boolean) => ({
+    rapport_titel: 'ProfX Journaal',
+    entiteit_naam: 'De Bazar Apeldoorn B.V.',
+    periode_start: '2026-09-11',
+    periode_eind: '2026-09-11',
+    rapport_totaal_omzet: '10998.16',
+    rapport_totaal_kostprijs: metKostprijs ? '6295.23' : null,
+    marge_pct: metKostprijs ? '42.8' : null,
+    bron: 'profx_journaal',
+    bron_detail: {
+      kassas: ['Kassa 1', 'Kassa 2'],
+      klanten: 604,
+      betaalwijzen: { Cash: '6410.66', PIN: '4587.50' },
+      controles: [
+        { naam: 'Sluitcontrole: Σ groepen = bruto omzet', ok: true, detail: '€ 10.998,16', blokkerend: true },
+        { naam: 'Edible: categorie bevestigen', ok: false, detail: 'Edible: categorie uit default (vrijgesteld) — eerste keer bevestigen', blokkerend: false },
+      ],
+      marge,
+    },
+    regels: [
+      { categorie: 'Dranken', categorie_sleutel: 'dranken', omzet_bedrag: '88.50', kostprijs_bedrag: metKostprijs ? '31.00' : null, omzet_ledger_id: LEDGER_ID, taxrate_id: TAXRATE_ID, kostprijs_ledger_id: LEDGER_ID, herkomst: 'mapping', btw_herkomst: 'default_laag' },
+      { categorie: 'Edible', categorie_sleutel: 'edible', omzet_bedrag: '285.00', kostprijs_bedrag: metKostprijs ? '142.50' : null, omzet_ledger_id: LEDGER_ID, taxrate_id: TAXRATE_ID, kostprijs_ledger_id: LEDGER_ID, herkomst: 'default', btw_herkomst: 'default_vrijgesteld' },
+      { categorie: 'Wiet', categorie_sleutel: 'wiet', omzet_bedrag: '6431.47', kostprijs_bedrag: metKostprijs ? '3858.88' : null, omzet_ledger_id: LEDGER_ID, taxrate_id: TAXRATE_ID, kostprijs_ledger_id: LEDGER_ID, herkomst: 'mapping', btw_herkomst: 'default_vrijgesteld' },
+    ],
+  })
+
+  it('toont bronchips, de marge-stand "gebundeld", twee kaarten en de knop "2 documenten"; het kopje wisselt netto/bruto', async () => {
+    installFetchMock({ voorstelBody: profx({ stand: 'gebundeld' }, true) })
+    renderScherm()
+    await screen.findByText(/Rapport herkend:/)
+    expect(screen.getByTestId('omzet-bronchips').textContent).toContain('ProfX Journaal')
+    expect(screen.getByTestId('marge-stand').textContent).toBe('Margerapport gekoppeld · zelfde dag')
+    expect(screen.getByTestId('kaart-verkoop').textContent).toContain('3 regels')
+    expect(screen.getByTestId('kaart-kostprijs').textContent).toContain('€ 4.032,38')
+    expect(screen.getByTestId('omzet-strook').textContent).toContain('PIN € 4.587,50')
+    expect(screen.getByText('bevestig')).toBeInTheDocument() // Edible: categorie uit default → oranje chip op die regel
+    await screen.findByText(/Memoriaal sluit/)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ \(2 documenten\)/ })).toBeEnabled())
+    // Netto/bruto: standaard netto; de btw-code in de mock is 0 % → netto = bruto; het kopje wisselt de modus.
+    const kop = screen.getByRole('button', { name: /Omzet netto/ })
+    expect((screen.getByLabelText('Netto omzetbedrag Wiet') as HTMLInputElement).value).toBe('6431,47')
+    await userEvent.click(kop)
+    expect(screen.getByRole('button', { name: /Omzet bruto/ })).toHaveAttribute('aria-pressed', 'true')
+    expect((screen.getByLabelText('Bruto omzetbedrag Wiet') as HTMLInputElement).value).toBe('6431.47')
+    expect(window.localStorage.getItem('rlz.bedragmodus')).toBe('bruto')
+  })
+
+  it('zonder margerapport: oranje stand "verwacht", kostprijskaart wacht en de knop wordt "alleen omzet"', async () => {
+    installFetchMock({ voorstelBody: profx({ stand: 'verwacht', week: 37 }, false) })
+    renderScherm()
+    await screen.findByText(/Rapport herkend:/)
+    expect(screen.getByTestId('marge-stand').textContent).toContain('weekrapport 37 verwacht')
+    expect(screen.getByTestId('kaart-kostprijs').textContent).toContain('wacht op margerapport')
+    await screen.findByText(/Memoriaal sluit/)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Boeken in RLZ \(alleen omzet\)/ })).toBeEnabled())
   })
 })

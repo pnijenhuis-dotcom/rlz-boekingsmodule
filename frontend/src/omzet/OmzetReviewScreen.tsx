@@ -5,23 +5,27 @@ import type {
   CheckRapportDto,
   DocumentDetailDto,
   OmzetBoekenResponseDto,
+  OmzetMargeStandDto,
   OmzetRegelDto,
   OmzetVoorstelDto,
   OmzetVoorstelInputDto,
 } from '../api/types'
 import { GeboektInRlzRegel } from '../document/GeboektInRlz'
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
+import { anderModus, brutoNaarNetto, rondCenten, useBedragModus } from '../document/bedragModus'
+import { BedragModusInput } from '../document/BedragModusInput'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit } from './omzetApi'
-import { BronBlok } from './BronBlok'
+import { BronBlok, bronNaam } from './BronBlok'
 import { SkeletonPaneel } from '../ui/basis'
 import { metViewerOpties } from '../document/pdfWeergaveUrl'
 
-/** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. */
+/** Bewerkbare regel-staat: bedragen als tekst (NL-invoer toegestaan), keuzes als id's. Kassabedragen zijn BRUTO
+ * (incl. btw) — de bron-modus van de omzetkolom; netto/btw worden per regel deterministisch afgeleid. */
 interface RegelStaat {
   categorie: string
   omzetBedrag: string
@@ -30,6 +34,8 @@ interface RegelStaat {
   taxrateId: string | null
   kostprijsLedgerId: string | null
   herkomst: string
+  btwHerkomst: string | null
+  btwHerkomstDetail: string | null
 }
 
 function naarRegelStaat(regel: OmzetRegelDto): RegelStaat {
@@ -41,6 +47,8 @@ function naarRegelStaat(regel: OmzetRegelDto): RegelStaat {
     taxrateId: regel.taxrate_id,
     kostprijsLedgerId: regel.kostprijs_ledger_id,
     herkomst: regel.herkomst,
+    btwHerkomst: regel.btw_herkomst ?? null,
+    btwHerkomstDetail: regel.btw_herkomst_detail ?? null,
   }
 }
 
@@ -48,8 +56,48 @@ function formatBedrag(waarde: number): string {
   return waarde.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+/** Eurocel zoals in de bouwnorm (mockup v2, correctie Peter 16-09): € links, getal rechts, vaste breedte — de
+ * totaalregel lijnt zo exact uit op de cellen erboven. */
+function Eur({ waarde, vet }: { waarde: number | null; vet?: boolean }) {
+  return (
+    <span className="omzet-eur" style={{ fontWeight: vet ? 700 : undefined }}>
+      <i>€</i>
+      <span>{waarde === null ? '—' : formatBedrag(waarde)}</span>
+    </span>
+  )
+}
+
 /** Statussen waaruit de backend een boekpoging accepteert (documenten.boeken-poort). */
 const BOEKBARE_STATUSSEN = new Set(['te_controleren', 'klaar_om_te_boeken', 'boeken_mislukt', 'handmatig_afmaken'])
+
+const PROFX_BRONNEN = new Set(['profx_journaal', 'profx_margerapport'])
+
+function margeChip(marge: OmzetMargeStandDto | null | undefined): { tekst: string; klasse: string; titel: string } | null {
+  if (!marge) return null
+  const week = marge.week != null ? `weekrapport ${marge.week}` : 'margerapport'
+  switch (marge.stand) {
+    case 'gebundeld':
+      return {
+        tekst: 'Margerapport gekoppeld · zelfde dag',
+        klasse: 'ok',
+        titel: 'Het margerapport van deze kassadag is in dit document gebundeld — de inkoopwaarde per groep is voorgevuld',
+      }
+    case 'gekoppeld_periode':
+      return {
+        tekst: `kostprijs: ${week} gekoppeld`,
+        klasse: 'ok',
+        titel: `Het margerapport (${marge.periode_van ?? '?'} t/m ${marge.periode_tot ?? '?'}) is een eigen document: één kostprijsmemoriaal per rapportperiode dekt deze kassadag`,
+      }
+    case 'geboekt':
+      return { tekst: `kostprijs: ${week} geboekt`, klasse: 'ok', titel: 'Het kostprijsmemoriaal van deze periode is al geboekt' }
+    default:
+      return {
+        tekst: `Margerapport ontbreekt · kostprijs later (${week} verwacht)`,
+        klasse: 'vraag',
+        titel: 'Boeken maakt nu alleen de verkoopboeking; de kostprijs volgt automatisch zodra het margerapport binnenkomt',
+      }
+  }
+}
 
 export function OmzetReviewScreen() {
   const { administratieId, documentId } = useParams<{ administratieId: string; documentId: string }>()
@@ -79,6 +127,8 @@ export function OmzetReviewScreen() {
   const [wijzigingsVersie, setWijzigingsVersie] = useState(0)
   const wijzigingsVersieRef = useRef(0)
   const [popupChecks, setPopupChecks] = useState<{ melding: string | null; checks: CheckRapportDto } | null>(null)
+  // Blok E (Peter 16-09): kopje "Omzet netto/bruto" klikbaar — voorkeur per gebruiker, geen tegenwaarde onder de cel.
+  const [bedragModus, wisselBedragModus] = useBedragModus()
 
   const markeerGewijzigd = useCallback(() => {
     setChecksActueel(false)
@@ -88,6 +138,21 @@ export function OmzetReviewScreen() {
 
   const grootboek = useGrootboekOpties(administratieId ?? '')
   const btwCodes = useTaxrateOpties(administratieId ?? '')
+  const percentageMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const optie of btwCodes.opties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
+    return map
+  }, [btwCodes.opties])
+  const rekeningLabel = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const o of grootboek.opties) map[o.id] = o.code ? `${o.code} ${o.label}` : o.label
+    return map
+  }, [grootboek.opties])
+  const btwLabel = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const o of btwCodes.opties) map[o.id] = o.label
+    return map
+  }, [btwCodes.opties])
 
   const neemVoorstelOver = useCallback((data: OmzetVoorstelDto) => {
     setVoorstel(data)
@@ -134,6 +199,22 @@ export function OmzetReviewScreen() {
     }
   }, [administratieId, documentId])
 
+  /** Per regel de afgeleide cijfers: bruto (bron), netto en btw op het percentage van de btw-code (cent-exact,
+   * restcent in de btw), inkoopwaarde en marge (netto − inkoop) / netto. Geen btw-code = netto onbekend (—). */
+  const afgeleid = useMemo(
+    () =>
+      regels.map((regel) => {
+        const bruto = bedragAlsGetal(regel.omzetBedrag)
+        const pct = regel.taxrateId ? percentageMap[regel.taxrateId] : undefined
+        const netto = bruto !== null && pct !== undefined ? brutoNaarNetto(bruto, pct) : null
+        const btw = bruto !== null && netto !== null ? rondCenten(bruto - netto) : null
+        const inkoop = bedragAlsGetal(regel.kostprijsBedrag)
+        const basis = netto ?? bruto
+        const marge = basis !== null && basis !== 0 && inkoop !== null ? ((basis - inkoop) / basis) * 100 : null
+        return { bruto, netto, btw, inkoop, marge, pct }
+      }),
+    [regels, percentageMap],
+  )
   const kostprijsTotaalRegels = useMemo(
     () => regels.reduce((som, regel) => som + (bedragAlsGetal(regel.kostprijsBedrag) ?? 0), 0),
     [regels],
@@ -142,7 +223,12 @@ export function OmzetReviewScreen() {
     () => regels.reduce((som, regel) => som + (bedragAlsGetal(regel.omzetBedrag) ?? 0), 0),
     [regels],
   )
+  const nettoTotaal = afgeleid.reduce((som, a) => som + (a.netto ?? a.bruto ?? 0), 0)
+  const btwTotaal = afgeleid.reduce((som, a) => som + (a.btw ?? 0), 0)
   const heeftKostprijs = kostprijsTotaalRegels !== 0
+  const margeTotaal = heeftKostprijs && nettoTotaal !== 0 ? ((nettoTotaal - kostprijsTotaalRegels) / nettoTotaal) * 100 : null
+  const rapportTotaal = bedragAlsGetal(totaalOmzet)
+  const sluitOpRapport = rapportTotaal !== null && Math.abs(rapportTotaal - omzetTotaalRegels) < 0.005
 
   const wijzigRegel = (index: number, wijziging: Partial<RegelStaat>) => {
     setRegels((huidig) => huidig.map((regel, i) => (i === index ? { ...regel, ...wijziging } : regel)))
@@ -269,6 +355,17 @@ export function OmzetReviewScreen() {
   const isBoekbaar = BOEKBARE_STATUSSEN.has(detail.status)
   const nieuweCategorieen = regels.filter((r) => r.herkomst === 'nieuw')
   const checksGroen = checksActueel && checkRapport !== null && !checkRapport.geblokkeerd
+  const bronDetail = voorstel.bron_detail ?? null
+  const isProfx = Boolean(voorstel.bron && PROFX_BRONNEN.has(voorstel.bron))
+  const isSpreadsheetBron = Boolean(voorstel.bron) && !isProfx
+  const marge = isProfx ? margeChip(bronDetail?.marge) : null
+  // Blok C: "eerste keer bevestigen" (Edible-default) komt als niet-blokkerende bron-controle "‹groep›: categorie uit
+  // default … bevestigen" — de regel van die groep krijgt de oranje chip.
+  const bevestigControles = (bronDetail?.controles ?? []).filter((c) => !c.ok && !c.blokkerend && /bevestig/i.test(c.detail))
+  const betaalwijzen = Object.entries(bronDetail?.betaalwijzen ?? {})
+  const tegenzijdeRegels = bronDetail?.tegenzijde?.regels ?? []
+  const kostprijsRegels = regels.map((r, i) => ({ r, i })).filter(({ r }) => bedragAlsGetal(r.kostprijsBedrag))
+  const boekLabel = heeftKostprijs ? 'Boeken in RLZ (2 documenten) ✓' : 'Boeken in RLZ (alleen omzet) ✓'
 
   return (
     <div>
@@ -279,20 +376,34 @@ export function OmzetReviewScreen() {
         </h1>
         <div className="adm-select">
           <span className="chip klaar">omzetboeking · kassarapport</span>
+          {voorstel.bron && (
+            <span className="chip geheugen" title="Profiel Winkel / kassa: afgeleid uit een herkend kassarapport">
+              Winkel / kassa
+            </span>
+          )}
         </div>
       </div>
 
-      {voorstel.bron && <BronBlok bron={voorstel.bron} detail={voorstel.bron_detail} rekeningen={grootboek.opties} />}
+      {isSpreadsheetBron && voorstel.bron && (
+        <BronBlok bron={voorstel.bron} detail={voorstel.bron_detail} rekeningen={grootboek.opties} />
+      )}
       <div className="membanner">
         <div className="icon">🧠</div>
         <div>
           <b>Rapport herkend:</b>{' '}
-          {voorstel.rapport_titel ?? 'kassarapport'}
+          {voorstel.rapport_titel ?? (voorstel.bron ? bronNaam(voorstel.bron) : 'kassarapport')}
           {voorstel.entiteit_naam ? ` ${voorstel.entiteit_naam}` : ''}, periode{' '}
           {voorstel.periode_start && voorstel.periode_eind
             ? `${voorstel.periode_start} t/m ${voorstel.periode_eind} (uit het rapport zelf gelezen)`
             : 'niet herkend — vul de periode hieronder in'}
           .{' '}
+          {isProfx && bronDetail?.kassas && bronDetail.kassas.length > 0 && (
+            <>
+              {bronDetail.kassas.join(' + ')}
+              {bronDetail.klanten != null ? ` · ${bronDetail.klanten} klanten` : ''} · periode 05:00 → 05:00 = één
+              kassadag, boekdatum = startdag.{' '}
+            </>
+          )}
           {voorstel.marge_pct !== null && (
             <>
               Marge <b>{voorstel.marge_pct}%</b> (in code berekend uit de rapport-totalen).{' '}
@@ -327,7 +438,7 @@ export function OmzetReviewScreen() {
           <div className="panel">
             <div className="bijlage-inhoud">
               {!bijlageUrl && <p className="hint">Bijlage laden…</p>}
-              {bijlageUrl && voorstel.bron && (
+              {bijlageUrl && isSpreadsheetBron && (
                 <p className="hint">
                   Spreadsheet-bron — de cijfers hiernaast zijn er in code uit gelezen.{' '}
                   <a href={bijlageUrl} download={detail.bestandsnaam}>
@@ -336,7 +447,7 @@ export function OmzetReviewScreen() {
                   .
                 </p>
               )}
-              {bijlageUrl && !voorstel.bron && (
+              {bijlageUrl && !isSpreadsheetBron && (
                 <object data={metViewerOpties(bijlageUrl)} type="application/pdf">
                   <p className="hint">
                     PDF-weergave niet beschikbaar —{' '}
@@ -359,7 +470,7 @@ export function OmzetReviewScreen() {
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
               <div>
-                <label htmlFor="periode-start">Periode van</label>
+                <label htmlFor="periode-start">{isProfx ? 'Kassadag · boekdatum' : 'Periode van'}</label>
                 <DatePicker
                   id="periode-start"
                   value={periodeStart || null}
@@ -386,6 +497,7 @@ export function OmzetReviewScreen() {
                 <label htmlFor="totaal-omzet">Rapport-totaal omzet</label>
                 <input
                   id="totaal-omzet"
+                  title="Bruto omzet volgens het rapport (incl. btw)"
                   value={totaalOmzet}
                   onChange={(e) => {
                     setTotaalOmzet(e.target.value)
@@ -398,6 +510,7 @@ export function OmzetReviewScreen() {
                 <label htmlFor="totaal-kostprijs">Rapport-totaal kostprijs</label>
                 <input
                   id="totaal-kostprijs"
+                  title="Inkoopwaarde volgens het margerapport"
                   value={totaalKostprijs}
                   onChange={(e) => {
                     setTotaalKostprijs(e.target.value)
@@ -407,150 +520,316 @@ export function OmzetReviewScreen() {
                 />
               </div>
             </div>
+            {(voorstel.bron || marge) && (
+              <div className="omzet-bronchips" data-testid="omzet-bronchips">
+                {voorstel.bron && (
+                  <span className="chip ok" title="Deterministisch herkend op inhoud — geen AI">
+                    {bronNaam(voorstel.bron)} herkend
+                  </span>
+                )}
+                {marge && (
+                  <span className={`chip ${marge.klasse}`} title={marge.titel} data-testid="marge-stand">
+                    {marge.tekst}
+                  </span>
+                )}
+                {isProfx && bronDetail?.controles && bronDetail.controles.some((c) => !c.ok && c.blokkerend) && (
+                  <span className="chip blokkerend">sluitcontrole rood — zie checks</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="panel">
-            <h2>Verkoopboeking (document 1 van 2)</h2>
-            <table className="lines">
+            <h2>
+              Omzet én kostprijs per artikelgroep{' '}
+              <span className="hint" style={{ display: 'inline', fontWeight: 400 }}>
+                — één rij per groep, twee RLZ-documenten
+              </span>
+            </h2>
+            <table className="lines omzet-groepen">
+              <thead>
+                <tr>
+                  <th>Artikelgroep</th>
+                  <th>Categorie → rekening · btw</th>
+                  <th className="amount">
+                    <button
+                      type="button"
+                      className="linkbtn omzet-kopknop"
+                      onClick={wisselBedragModus}
+                      aria-pressed={bedragModus === 'bruto'}
+                      title={`Klik om bedragen ${anderModus(bedragModus)} in te vullen — de andere waarde volgt uit de btw-code van de regel`}
+                    >
+                      {bedragModus === 'netto' ? 'Omzet netto' : 'Omzet bruto'}
+                      <small>klik voor {anderModus(bedragModus)}</small>
+                    </button>
+                  </th>
+                  <th className="amount">Btw</th>
+                  <th className="amount">Inkoopwaarde</th>
+                  <th className="amount">Marge</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr>
-                  <th>Categorie (rapport)</th>
-                  <th>Omzet-GB (RLZ)</th>
-                  <th>Btw</th>
-                  <th className="amount">Omzet</th>
-                </tr>
-                {regels.map((regel, index) => (
-                  <tr key={regel.categorie + index}>
-                    <td>
-                      {regel.categorie}
-                      {regel.herkomst === 'nieuw' && (
-                        <div>
-                          <span className="chip vraag">nieuw — mapping instellen</span>
-                        </div>
-                      )}
-                      {regel.herkomst === 'mapping' && (
-                        <div>
-                          <span className="chip geheugen">uit mapping</span>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <SearchableCombobox
-                        label={`Omzet-GB ${regel.categorie}`}
-                        toonLabel={false}
-                        opties={grootboek.opties}
-                        waarde={regel.omzetLedgerId}
-                        onWijzig={(id) => wijzigRegel(index, { omzetLedgerId: id })}
-                        placeholder="Kies omzetrekening…"
-                      />
-                    </td>
-                    <td>
-                      <SearchableCombobox
-                        label={`Btw-code ${regel.categorie}`}
-                        toonLabel={false}
-                        opties={btwCodes.opties}
-                        waarde={regel.taxrateId}
-                        onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
-                        placeholder="Kies btw-code…"
-                      />
-                    </td>
-                    <td className="amount">
-                      <input
-                        aria-label={`Omzetbedrag ${regel.categorie}`}
-                        style={{ textAlign: 'right' }}
-                        value={regel.omzetBedrag}
-                        onChange={(e) => wijzigRegel(index, { omzetBedrag: e.target.value })}
-                        disabled={isGeboekt}
-                      />
-                    </td>
-                  </tr>
-                ))}
-                <tr>
-                  <td colSpan={3}>
-                    <b>Losse verkoopboeking — zonder debiteur</b>{' '}
-                    <span className="hint" style={{ display: 'inline' }}>
-                      — boekt in RLZ als &ldquo;Verkopen → Boekingen&rdquo; (geen dummy-debiteur)
-                    </span>
-                  </td>
-                  <td className="amount">
-                    <b>€ {formatBedrag(omzetTotaalRegels)}</b>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div className="hint">
-              Kassabedragen zijn inclusief btw — de btw-splitsing per regel gebeurt deterministisch in de
-              boekmotor op het percentage van de gekozen btw-code (vrijgesteld/0% = geen splitsing).
-            </div>
-          </div>
-
-          {heeftKostprijs && (
-            <div className="panel">
-              <h2>Kostprijsboeking — memoriaal (document 2 van 2, gekoppeld)</h2>
-              <table className="lines">
-                <tbody>
-                  <tr>
-                    <th>Categorie</th>
-                    <th>Kosten-GB (RLZ)</th>
-                    <th className="amount">Debet</th>
-                  </tr>
-                  {regels.map((regel, index) =>
-                    bedragAlsGetal(regel.kostprijsBedrag) ? (
-                      <tr key={regel.categorie + index}>
-                        <td>{regel.categorie}</td>
-                        <td>
+                {regels.map((regel, index) => {
+                  const a = afgeleid[index]
+                  const bevestig = bevestigControles.some(
+                    (c) => c.detail.startsWith(`${regel.categorie}:`) || c.naam.startsWith(`${regel.categorie}:`),
+                  )
+                  return (
+                    <tr key={regel.categorie + index}>
+                      <td>
+                        <b>{regel.categorie}</b>
+                        {regel.herkomst === 'nieuw' && (
+                          <div>
+                            <span className="chip vraag">nieuw — mapping instellen</span>
+                          </div>
+                        )}
+                        {regel.herkomst === 'mapping' && (
+                          <div>
+                            <span className="chip geheugen">uit mapping</span>
+                          </div>
+                        )}
+                        {regel.herkomst === 'default' && (
+                          <div>
+                            <span className="chip" title="Categorie uit de standaard voor deze artikelgroep">default</span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div className="omzet-cat">
                           <SearchableCombobox
-                            label={`Kostprijs-GB ${regel.categorie}`}
+                            label={`Omzet-GB ${regel.categorie}`}
                             toonLabel={false}
                             opties={grootboek.opties}
-                            waarde={regel.kostprijsLedgerId}
-                            onWijzig={(id) => wijzigRegel(index, { kostprijsLedgerId: id })}
-                            placeholder="Kies kostenrekening…"
+                            waarde={regel.omzetLedgerId}
+                            onWijzig={(id) => wijzigRegel(index, { omzetLedgerId: id })}
+                            placeholder="Kies omzetrekening…"
                           />
-                        </td>
-                        <td className="amount">
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <SearchableCombobox
+                                label={`Btw-code ${regel.categorie}`}
+                                toonLabel={false}
+                                opties={btwCodes.opties}
+                                waarde={regel.taxrateId}
+                                onWijzig={(id) => wijzigRegel(index, { taxrateId: id })}
+                                placeholder="Kies btw-code…"
+                              />
+                            </div>
+                            {bevestig ? (
+                              <span className="chip vraag" title="Categorie uit default — eerste keer bevestigen">
+                                bevestig
+                              </span>
+                            ) : regel.btwHerkomst && regel.btwHerkomst.startsWith('default') ? (
+                              <span className="chip" title={regel.btwHerkomstDetail ?? 'btw-default voor deze groep'}>
+                                default
+                              </span>
+                            ) : regel.btwHerkomst === 'mapping' ? (
+                              <span className="chip geheugen" title="btw uit de onthouden mapping">
+                                geheugen
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="amount">
+                        <BedragModusInput
+                          ariaLabel={`omzetbedrag ${regel.categorie}`}
+                          bron="bruto"
+                          modus={bedragModus}
+                          percentage={a.pct}
+                          waarde={regel.omzetBedrag}
+                          onWijzig={(w) => wijzigRegel(index, { omzetBedrag: w })}
+                          disabled={isGeboekt}
+                          className="omzet-cel"
+                        />
+                      </td>
+                      <td className="amount" title={a.pct === undefined ? 'Geen btw-code — btw niet af te leiden' : undefined}>
+                        <Eur waarde={a.btw} />
+                      </td>
+                      <td className="amount">
+                        {heeftKostprijs || isProfx ? (
                           <input
                             aria-label={`Kostprijsbedrag ${regel.categorie}`}
-                            style={{ textAlign: 'right' }}
+                            className={`omzet-cel${a.inkoop === null ? ' grijs' : ''}`}
+                            inputMode="decimal"
+                            placeholder="—"
+                            title={a.inkoop === null ? 'Geen inkoopwaarde — margerapport ontbreekt of deze groep staat er niet in' : 'Inkoopwaarde uit het margerapport; mens wint'}
+                            style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                             value={regel.kostprijsBedrag}
                             onChange={(e) => wijzigRegel(index, { kostprijsBedrag: e.target.value })}
                             disabled={isGeboekt}
                           />
-                        </td>
-                      </tr>
-                    ) : null,
+                        ) : (
+                          <input
+                            aria-label={`Kostprijsbedrag ${regel.categorie}`}
+                            className="omzet-cel grijs"
+                            inputMode="decimal"
+                            placeholder="—"
+                            style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                            value={regel.kostprijsBedrag}
+                            onChange={(e) => wijzigRegel(index, { kostprijsBedrag: e.target.value })}
+                            disabled={isGeboekt}
+                          />
+                        )}
+                      </td>
+                      <td className={`amount omzet-marge ${a.marge === null ? 'stil' : a.marge < 35 || a.marge > 70 ? 'warn' : 'ok'}`}>
+                        {a.marge === null ? '—' : `${a.marge.toFixed(1)} %`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}>
+                    <b>Totaal</b>{' '}
+                    <span className="hint" style={{ display: 'inline' }}>
+                      {rapportTotaal === null
+                        ? '— rapporttotaal ontbreekt'
+                        : sluitOpRapport
+                          ? `· sluit op rapport € ${formatBedrag(rapportTotaal)}`
+                          : `· sluit NIET op rapport € ${formatBedrag(rapportTotaal)} (Σ regels € ${formatBedrag(omzetTotaalRegels)})`}
+                    </span>{' '}
+                    {rapportTotaal !== null && <span className={`chip ${sluitOpRapport ? 'ok' : 'blokkerend'}`}>{sluitOpRapport ? '✓' : '≠'}</span>}
+                  </td>
+                  <td className="amount">
+                    <Eur waarde={bedragModus === 'netto' ? nettoTotaal : omzetTotaalRegels} vet />
+                  </td>
+                  <td className="amount">
+                    <Eur waarde={btwTotaal} vet />
+                  </td>
+                  <td className="amount">
+                    <Eur waarde={heeftKostprijs ? kostprijsTotaalRegels : null} vet />
+                  </td>
+                  <td className={`amount omzet-marge ${margeTotaal === null ? 'stil' : margeTotaal < 35 || margeTotaal > 70 ? 'warn' : 'ok'}`}>
+                    {margeTotaal === null ? '—' : `${margeTotaal.toFixed(1)} %`}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            <div className="hint">
+              Kassabedragen zijn bruto (incl. btw); netto en btw per regel volgen deterministisch uit het percentage van
+              de gekozen btw-code (vrijgesteld/0 % = geen splitsing) — de boekmotor rekent identiek.
+            </div>
+
+            {(betaalwijzen.length > 0 || tegenzijdeRegels.length > 0) && isProfx && (
+              <div className="omzet-strook" data-testid="omzet-strook">
+                <span>
+                  Ontvangen (betaalwijzen):{' '}
+                  {betaalwijzen.length === 0 ? (
+                    <span className="chip vraag" title="Blad 3 (betaalwijzen) ontbreekt — alles op kas mét signaal">
+                      niet in het rapport — alles kas
+                    </span>
+                  ) : (
+                    betaalwijzen.map(([naam, bedrag]) => (
+                      <b key={naam} style={{ marginRight: 10 }}>
+                        {naam} € {formatBedrag(bedragAlsGetal(bedrag) ?? 0)}
+                      </b>
+                    ))
                   )}
-                  <tr>
-                    <td>
-                      <b>aan Voorraad (tegenrekening)</b>
-                    </td>
-                    <td>
-                      <SearchableCombobox
-                        label="Voorraad-tegenrekening"
-                        toonLabel={false}
-                        opties={grootboek.opties}
-                        waarde={voorraadLedgerId}
-                        onWijzig={(id) => {
-                          setVoorraadLedgerId(id)
-                          markeerGewijzigd()
-                        }}
-                        placeholder="Kies voorraadrekening…"
-                      />
-                    </td>
-                    <td className="amount">
-                      <b>€ {formatBedrag(kostprijsTotaalRegels)} credit</b>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="hint">
-                Marge blijft per productgroep zichtbaar in RLZ (omzet én kostprijs per groep) en de voorraad
-                loopt mee. Beide documenten krijgen het PDF-rapport als bijlage en worden als één logische
-                transactie geboekt: faalt document 2, dan wordt document 1 teruggedraaid of zie je een
-                zichtbare half-geboekt-foutstatus — nooit stil een halve boeking.
+                </span>
+                {tegenzijdeRegels.length > 0 && (
+                  <span>
+                    → tegenzijde:{' '}
+                    {tegenzijdeRegels
+                      .map((t) => `${t.betaalwijze} ${t.ledger_id ? rekeningLabel[t.ledger_id] ?? t.ledger_id : '(geen rekening)'}`)
+                      .join(' · ')}{' '}
+                    <Link className="linkbtn" to={`/instellingen/administraties/${administratieId}?tab=boeken-ai#omzetbronnen`}>
+                      wijzig…
+                    </Link>
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="omzet-kaarten">
+              <div className="omzet-kaart" data-testid="kaart-verkoop">
+                <div className="t">
+                  Verkoop → Reeleezee{' '}
+                  <span className="chip">
+                    {regels.length} regels · € {formatBedrag(omzetTotaalRegels)} incl.
+                  </span>
+                </div>
+                <div className="d">
+                  Kasomzet-bon (Receipt, geen debiteur), boekdatum {periodeStart || '—'}, btw per regel
+                  {tegenzijdeRegels.length > 0 ? '; tegenzijde per betaalwijze' : ''}.
+                </div>
+                <details>
+                  <summary>regels tonen</summary>
+                  <table>
+                    <tbody>
+                      {regels.map((regel, index) => (
+                        <tr key={regel.categorie + index}>
+                          <td>{regel.omzetLedgerId ? rekeningLabel[regel.omzetLedgerId] ?? regel.omzetLedgerId : '(geen rekening)'} · {regel.categorie}</td>
+                          <td className="r">netto € {formatBedrag(afgeleid[index].netto ?? afgeleid[index].bruto ?? 0)}</td>
+                          <td className="r">btw € {formatBedrag(afgeleid[index].btw ?? 0)}{regel.taxrateId ? ` (${btwLabel[regel.taxrateId] ?? ''})` : ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              </div>
+              <div className="omzet-kaart" data-testid="kaart-kostprijs" style={{ opacity: heeftKostprijs ? 1 : 0.6 }}>
+                <div className="t">
+                  Kostprijs → memoriaal{' '}
+                  <span className={`chip ${heeftKostprijs ? '' : 'vraag'}`}>
+                    {heeftKostprijs ? `${kostprijsRegels.length} regels · € ${formatBedrag(kostprijsTotaalRegels)}` : 'wacht op margerapport'}
+                  </span>
+                </div>
+                <div className="d">
+                  {heeftKostprijs
+                    ? 'Per groep: kostprijs verkopen (D) ↔ voorraad / inkoop (C). Bron: margerapport, mens wint. Beide documenten als één transactie: faalt document 2, dan wordt document 1 teruggedraaid — nooit stil een halve boeking.'
+                    : 'Boeken maakt nu alleen de verkoopboeking; de kostprijs volgt zodra het margerapport van deze periode binnenkomt (geen blokkade).'}
+                </div>
+                {heeftKostprijs && (
+                  <details>
+                    <summary>regels tonen</summary>
+                    <table>
+                      <tbody>
+                        {kostprijsRegels.map(({ r, i }) => (
+                          <tr key={r.categorie + i}>
+                            <td>{r.categorie}</td>
+                            <td>
+                              <SearchableCombobox
+                                label={`Kostprijs-GB ${r.categorie}`}
+                                toonLabel={false}
+                                opties={grootboek.opties}
+                                waarde={r.kostprijsLedgerId}
+                                onWijzig={(id) => wijzigRegel(i, { kostprijsLedgerId: id })}
+                                placeholder="Kies kostenrekening…"
+                              />
+                            </td>
+                            <td className="r">D € {formatBedrag(bedragAlsGetal(r.kostprijsBedrag) ?? 0)}</td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td>
+                            <b>aan Voorraad (tegenrekening)</b>
+                          </td>
+                          <td>
+                            <SearchableCombobox
+                              label="Voorraad-tegenrekening"
+                              toonLabel={false}
+                              opties={grootboek.opties}
+                              waarde={voorraadLedgerId}
+                              onWijzig={(id) => {
+                                setVoorraadLedgerId(id)
+                                markeerGewijzigd()
+                              }}
+                              placeholder="Kies voorraadrekening…"
+                            />
+                          </td>
+                          <td className="r">
+                            <b>C € {formatBedrag(kostprijsTotaalRegels)}</b>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </details>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           <div className="panel">
             <h2>
@@ -594,6 +873,25 @@ export function OmzetReviewScreen() {
                 </table>
               </>
             )}
+            {isProfx && bronDetail?.controles && bronDetail.controles.length > 0 && (
+              <table className="lines" data-testid="bron-controles" style={{ marginTop: 8 }}>
+                <tbody>
+                  {bronDetail.controles.map((c) => (
+                    <tr key={c.naam}>
+                      <td>
+                        <span className={`chip ${c.ok ? 'ok' : c.blokkerend ? 'blokkerend' : 'vraag'}`}>
+                          {c.ok ? 'OK' : c.blokkerend ? 'Blokkerend' : 'let op'}
+                        </span>
+                      </td>
+                      <td>
+                        <b>{c.naam}</b>
+                      </td>
+                      <td>{c.detail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div className="panel">
@@ -620,6 +918,11 @@ export function OmzetReviewScreen() {
             )}
             {!isGeboekt && (
               <div className="actions">
+                <span className="hint" style={{ marginRight: 'auto', display: 'inline' }}>
+                  {heeftKostprijs
+                    ? 'Boeken maakt 2 documenten in Reeleezee: verkoop + kostprijsmemoriaal. Mislukt de tweede, dan wordt de eerste gestorneerd.'
+                    : 'Boeken maakt nu alleen de verkoopboeking; de kostprijs volgt zodra het margerapport binnenkomt.'}
+                </span>
                 <button
                   type="button"
                   className="btn secondary"
@@ -637,11 +940,13 @@ export function OmzetReviewScreen() {
                       ? `Boeken kan niet vanuit status ${detail.status}`
                       : !checksGroen
                         ? 'De harde checks draaien automatisch — boeken kan zodra alle checks groen zijn'
-                        : 'Verkoopboeking + kostprijsmemoriaal worden als één logische transactie geboekt'
+                        : heeftKostprijs
+                          ? 'Verkoopboeking + kostprijsmemoriaal worden als één logische transactie geboekt'
+                          : 'Alleen de verkoopboeking — de kostprijs volgt met het margerapport'
                   }
                   onClick={() => void boeken()}
                 >
-                  {boekenBezig ? 'Bezig…' : 'Boeken in RLZ ✓'}
+                  {boekenBezig ? 'Bezig…' : boekLabel}
                 </button>
               </div>
             )}
