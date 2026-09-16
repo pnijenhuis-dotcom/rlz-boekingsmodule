@@ -61,6 +61,22 @@ class FakeBoekClient:
             return list(getattr(self, "duplicaten_andere_crediteur", []))
         return self.duplicaten
 
+    def find_purchase_invoices_kandidaten(self, *, vendor_ids, van, tot, **_: Any) -> list[dict[str, Any]]:
+        """Zenvoices-casus 16-09: kandidaten in het datumvenster — de test zet `kandidaten` (RLZ-rijvorm mét
+        `Reference`, `BaseInvoiceAmount`, `Date`, `Status`, `ReceiptNumber`, optioneel `Entity`); zonder `Entity` telt
+        een rij voor élk gevraagd crediteurrecord. Datums worden gefilterd zoals RLZ dat zou doen."""
+        ids = {str(v) for v in vendor_ids}
+        uit = []
+        for rij in getattr(self, "kandidaten", []):
+            entity = (rij.get("Entity") or {}).get("id")
+            if entity is not None and str(entity) not in ids:
+                continue
+            datum = str(rij.get("Date") or "")[:10]
+            if datum and not (van.isoformat() <= datum <= tot.isoformat()):
+                continue
+            uit.append(rij)
+        return uit
+
     def put_purchase_invoice(
         self,
         invoice_id: uuid.UUID,

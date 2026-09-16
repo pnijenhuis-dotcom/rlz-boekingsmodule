@@ -18,7 +18,7 @@ REGION="${REGION:-europe-west4}"
 JOB="${JOB:-rlz-reconciliatie}"
 # rlz-lezen (blok 10 11-09): één OData-GET op de RLZ-API van één administratie — het commando weigert zelf élke
 # niet-GET en elk Actions-/Download-pad (app/rlz/lezen_cli.py), --top ≤ 50, uitvoer altijd geanonimiseerd.
-ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only
+ALLOWLIST="reconciliatie-alles autoboek-leren-rapport btw-default-rapport administratie-naam-bron-backfill bank-voorstellen-lezen bank-historie-backfill boeken-status reconciliatie-acceptaties migratie-schoonlijst pandenregister-afleiden staande-goedkeuring-voorstellen-lezen rlz-lezen werkvoorraad-tellers-herrekenen vgg-rekeningen vgg-replay duplicaat-extern-rapport referentie-norm-backfill"  # run 2 VGG blok 6: vgg-replay = dry-run, lees-only; 16-09: duplicaat-extern-rapport lees-only, referentie-norm-backfill alleen --dry-run
 CMD="${1:-}"; [[ -n "$CMD" ]] || { echo "gebruik: $0 <cli-commando> [args…]" >&2; exit 2; }
 # run 2 VGG blok 5: de Odoo-migratie-commando's SCHRIJVEN (DB-koppeling resp. concepten op company 6) — nooit een nameting.
 for schrijvend in odoo-koppeling-migratiedoel vgg-odoo-stap0; do
@@ -31,6 +31,10 @@ fi
 if [[ "$CMD" == "bank-historie-backfill" ]]; then
   # Ochtendrun 11-09: de backfill schrijft in de eigen cache — als nameting alleen de telling (--dry-run).
   printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: bank-historie-backfill alleen mét --dry-run via dit script (de echte vulling is een expliciete opdracht van Peter)" >&2; exit 2; }
+fi
+if [[ "$CMD" == "referentie-norm-backfill" ]]; then
+  # 16-09 (0147): de backfill schrijft de afgeleide kolom — als nameting alleen de telling (--dry-run).
+  printf '%s\n' "$@" | grep -qx -- "--dry-run" || { echo "FOUT: referentie-norm-backfill alleen mét --dry-run via dit script (de echte vulling is de data-stap via gcloud run jobs execute)" >&2; exit 2; }
 fi
 if [[ "$CMD" == "werkvoorraad-tellers-herrekenen" ]]; then
   # Blok 6 11-09: de herberekening schrijft de tellers-cache — als nameting alleen de vergelijking (--dry-run).

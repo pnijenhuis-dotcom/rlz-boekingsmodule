@@ -44,7 +44,7 @@ client = TestClient(app)
         ("Factuur 2026-0042", "202642"),
         ("FACTUURNR 2026-0042", "202642"),
         ("Factuurnummer: 2026/0042", "202642"),
-        ("factuur nr. 2026 0042", "202642"),
+        ("factuur nr. 2026 0042", "20260042"),  # spatie = cijfergroepering (16-09), geen nummerdeel
         ("F-2026-0042", "f202642"),
         ("f 2026 42", "f202642"),
         ("INV #0042", "42"),
@@ -52,6 +52,13 @@ client = TestClient(app)
         ("#42", "42"),
         ("No 007", "7"),
         ("20260042", "20260042"),  # aaneengesloten: geen scheidingsteken = geen cijfergroep-strip
+        # Zenvoices-casus Hello Kitchen 16-09: spaties uit de factuur-opmaak zijn géén nummerdelen — voorloopnullen
+        # ná een spatie blijven staan, anders mist de bestaanscheck het al geboekte exemplaar.
+        ("2 4594 001722", "24594001722"),
+        ("24594001722", "24594001722"),
+        ("222 0300 505", "2220300505"),
+        ("2 4594 0123", "245940123"),
+        ("Ordernummer: 2 4594 001722", "ordernummer24594001722"),  # ander voorvoegsel blijft (bewust: geen gok)
         ("  F-2026-0042  ", "f202642"),
         ("Factuur", None),
         ("#", None),

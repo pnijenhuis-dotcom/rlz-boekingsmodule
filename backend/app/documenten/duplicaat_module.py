@@ -324,6 +324,19 @@ def _identiteiten(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid
     return resultaat
 
 
+def identiteit_vendor_ids(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None
+) -> frozenset[uuid.UUID]:
+    """Alle crediteurrecords die dezelfde crediteur zijn als `vendor_id` (zelfde vendor/voorkeur-cluster, KvK- óf
+    btw-nummer) — dé set Entity-id's voor de RLZ-/Odoo-bestaanscheck (Zenvoices-casus 16-09, blok B (b): een dubbel
+    crediteurrecord mag een al geboekt exemplaar nooit verbergen). Altijd inclusief `vendor_id` zelf."""
+    if vendor_id is None:
+        return frozenset()
+    identiteiten = _identiteiten(session, administratie_id=administratie_id)
+    eigen = identiteiten.get(vendor_id, frozenset({f"vendor:{vendor_id}"}))
+    return frozenset({vendor_id} | {vid for vid, sleutels in identiteiten.items() if sleutels & eigen})
+
+
 def _afmeldingen(session: Session, *, administratie_id: uuid.UUID) -> set[frozenset[uuid.UUID]]:
     rijen = session.execute(
         select(DocumentGebeurtenis.document_id, DocumentGebeurtenis.detail)

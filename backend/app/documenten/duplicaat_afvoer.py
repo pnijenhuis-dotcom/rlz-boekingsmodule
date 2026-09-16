@@ -49,7 +49,6 @@ Drie ingangen, één motor (`_voer_af`):
 from __future__ import annotations
 
 import logging
-import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time
@@ -75,6 +74,7 @@ from app.documenten.models import (
     DuplicaatSignaal,
     DuplicaatSignaalUitkomst,
 )
+from app.documenten.referentie import normaliseer_referentie  # noqa: F401 — her-export (één bron sinds 16-09)
 from app.documenten.rlz_ids import rlz_herboeking_id
 from app.documenten.statusmachine import OngeldigeStatusovergang
 from app.documenten.vragen import ToegewezeneBuitenScope
@@ -129,24 +129,8 @@ _RANG_OVERIG = 4
 # RLZ kapt Reference op 30 tekens — alleen nog relevant voor de RLZ-leesroute, niet voor de module-match.
 _REFERENTIE_MAX = 30
 
-# Gangbare voorvoegsels die leveranciers vóór hun factuurnummer zetten — verschijnen in de ene extractie wél en in de
-# andere niet ("Factuur 2026-0042" vs "2026-0042"). Langste eerst, zodat "factuurnummer" niet als "factuur" + "nummer"
-# wordt gelezen. Alleen aan het BEGIN van de referentie, alleen als er iets na komt.
-_REFERENTIE_VOORVOEGSELS = (
-    "factuurnummer",
-    "factuurnr",
-    "factuur",
-    "invoice",
-    "inv",
-    "nr",
-    "no",
-)
-_VOORVOEGSEL_PATROON = re.compile(
-    r"^(?:(?:" + "|".join(_REFERENTIE_VOORVOEGSELS) + r")\b\s*[.:#\-]?\s*|#\s*)+",
-    re.IGNORECASE,
-)
-_NIET_ALFANUMERIEK = re.compile(r"[^0-9a-z]+")
-
+# Referentie-normalisatie: sinds 16-09 in app/documenten/referentie.py (één bron voor module-check, RLZ-/Odoo-
+# bestaanscheck, rlz_dubbel, bank-matchmotor en IC-match); hier her-geëxporteerd voor bestaande importeurs.
 
 class DuplicaatAfvoerFout(Exception):
     """Basis voor domeinfouten in de duplicaat-afvoer (router → 409 mét de tekst)."""
@@ -159,36 +143,6 @@ class GeenHardeMatch(DuplicaatAfvoerFout):
 class AfvoerNietMogelijk(DuplicaatAfvoerFout):
     """De status van het document laat afvoeren niet toe (ter accordering, geboekt, open vraag, al
     afgewezen om een andere reden, …)."""
-
-
-def normaliseer_referentie(referentie: str | None) -> str | None:
-    """DE vergelijkingsvorm van een factuurreferentie — één functie voor de harde check "Duplicaat (module)",
-    de auto-afvoer, de bulk-afvoer en de backfill (besluit Peter 07-09: nooit twee normalisaties naast elkaar).
-
-    Stappen (deterministisch, geen AI): (1) hoofdletterongevoelig; (2) gangbare voorvoegsels vooraan weg —
-    factuur / factuurnr / factuurnummer / inv / invoice / nr / no / "#", ook gecombineerd ("Factuur nr. 42");
-    (3) alle leestekens en witruimte weg — alleen letters en cijfers blijven; (4) voorloopnullen weg per
-    cijfergroep zoals die in de oorspronkelijke tekst gescheiden stond ("2026-0042" ≡ "2026-42" ≡ "F 2026 0042"
-    → "202642"; een aaneengesloten "20260042" blijft "20260042" — een scheidingsteken weglaten is géén gangbare
-    variant, cijfers weglaten wel). Leeg ná normalisatie (bv. alleen "#") = None = niet toetsbaar.
-
-    Bewust NIET meer afgekapt op 30 tekens: de match loopt tegen onze eigen database, RLZ's Reference-lengte is
-    daar irrelevant (de RLZ-leesroute kapt zelf, zie `RlzClient.find_purchase_invoices_by_reference`)."""
-    if not referentie:
-        return None
-    tekst = referentie.strip().lower()
-    tekst = _VOORVOEGSEL_PATROON.sub("", tekst)
-    if not tekst:
-        # Alleen een voorvoegsel ("Factuur") is geen referentie; maar een kale "#42" is er wél één.
-        return None
-    tokens = [t for t in _NIET_ALFANUMERIEK.split(tekst) if t]
-    delen: list[str] = []
-    for token in tokens:
-        if token.isdigit():
-            token = token.lstrip("0") or "0"
-        delen.append(token)
-    schoon = "".join(delen)
-    return schoon or None
 
 
 @dataclass(frozen=True)

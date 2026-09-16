@@ -94,8 +94,17 @@ class TestBerekenDuplicaatsignaal:
         assert rij is not None
         assert rij.uitkomst == "mogelijk_duplicaat"
         assert rij.vendor_id == vendor_id and rij.referentie == "F-2026-0042" and rij.totaalbedrag == Decimal("121.00")
+        # 16-09 (Zenvoices-casus): de treffer draagt óók de match-basis en de externe kop (bedrag/datum, hier leeg).
         assert rij.treffers == [
-            {"id": client.duplicaten[0]["id"], "reference": "F-2026-0042", "invoice_number": "INK-77", "status": None}
+            {
+                "id": client.duplicaten[0]["id"],
+                "reference": "F-2026-0042",
+                "invoice_number": "INK-77",
+                "status": None,
+                "basis": "referentie",
+                "bedrag": None,
+                "datum": None,
+            }
         ]
         # Herberekenen = UPDATE van dezelfde rij (geen tweede rij, geen delete).
         duplicaatsignaal.bereken_duplicaatsignaal(

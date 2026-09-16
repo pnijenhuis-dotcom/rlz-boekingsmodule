@@ -1,0 +1,7 @@
+{
+ "administratie": "Kempen Facilities B.V. (productie) — in de gouden set als Universal-casus op de bestaande geanonimiseerde crediteur van casus h (BDO), zodat de crediteurmatch (KvK/btw) ongewijzigd loopt",
+ "casus": "Zenvoices-dubbel 16-09 (Peter): Hello Kitchen Duiven 24594001722 (€ 12.600,00) en 24594001721 (€ 16.250,00), factuurdatum 10-08-2026, stonden al via Zenvoices in RLZ (RLZ-04-00004314 / RLZ-04-00004312, Status 3, betaald 18-08). De module las het nummer als '2 4594 001722' (spaties uit de factuur-opmaak), de bestaanscheck vergeleek letterlijk → geen treffer → tweede boeking RLZ-04-00004412 / 00004415 (11-09) en tweede betaling 14-09.",
+ "document_ids_productie": "e7845955-d5f0-42b7-9e1c-9583794a1cd4 en 9ea6ca98-1572-48e1-b3b9-a50b98f99114 (intake 26/27-08, ter accordering 03-09, drie akkoorden 08/09/11-09, geboekt 11-09; door Peter 15/16-09 in RLZ verwijderd)",
+ "doelgedrag": "UBL bij intake: RLZ-stub kent het Zenvoices-exemplaar mét referentie ZONDER spaties → direct afgevoerd_duplicaat mét boekstuknummer (blok B 16-09). Concept-exemplaar → blijft te_controleren, harde check Duplicaatcheck rood mét boekstuk. Zelfde bedrag + datum met een ander nummer → oranje signaal, geen blokkade.",
+ "anonimisering": "Bedragen en referenties echt; crediteur, adres, KvK, btw en IBAN zijn de al geanonimiseerde waarden van casus h."
+}

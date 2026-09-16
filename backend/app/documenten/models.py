@@ -237,6 +237,8 @@ class Boekvoorstel(Base):
             "betaalstatus_herkomst IS NULL OR betaalstatus_herkomst IN ('kanaal', 'factuur', 'mens')",
             name="ck_boekvoorstel_betaalstatus_herkomst",
         ),
+        # Genormaliseerde referentie (migratie 0147): lookup-index voor duplicaat-/bestaanscheck en IC-match.
+        Index("ix_boekvoorstel_referentie_norm", "referentie_norm"),
         {"schema": "boekhouding"},
     )
 
@@ -245,6 +247,10 @@ class Boekvoorstel(Base):
     )
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
     referentie: Mapped[str | None] = mapped_column(default=None)
+    # Genormaliseerde referentie (migratie 0147, Zenvoices-casus 16-09): `app/documenten/referentie.py::
+    # normaliseer_referentie(referentie)` — de vergelijkingsvorm voor duplicaat-/bestaanscheck, rlz_dubbel, bank en
+    # IC-match; altijd samen met `referentie` geschreven (sla_boekvoorstel_op), backfill-CLI `referentie-norm-backfill`.
+    referentie_norm: Mapped[str | None] = mapped_column(default=None)
     factuurdatum: Mapped[date | None] = mapped_column(default=None)
     # Vervaldatum (C1 26-08, migratie 0078): kopveld uit de scan (zelfde herkomst-chip), gaat als
     # `DueDate` mee naar RLZ (live bewezen — anders leidt RLZ 'm af uit Date + PaymentDueDays).

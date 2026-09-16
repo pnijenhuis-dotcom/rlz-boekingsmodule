@@ -25,3 +25,4 @@ opdrachten/.lock
 
 # Echte klantbestanden (PII) voor de omzetbron-verkenning — nooit committen; de gouden set gebruikt geanonimiseerde JSON-grids
 verkenning/voorbeelden/
+verkenning/prive/

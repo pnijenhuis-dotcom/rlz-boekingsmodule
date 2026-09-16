@@ -229,9 +229,9 @@ class TestDuplicaat:
             eigen_rlz_document_id=uuid.uuid4(),
         )
         assert client.aanroepen[0]["reference"] == lange_referentie  # afkappen zit in RlzClient zelf
-        # Herstelrun 07-09 (1b): het bedrag gaat als Decimal mee — de client vergelijkt cent-exact, geen float-eq.
-        assert client.aanroepen[0]["total_amount"] == Decimal("121.00")
-        assert isinstance(client.aanroepen[0]["total_amount"], Decimal)
+        # Herstelrun 07-09 (1b) → 16-09 (Zenvoices-casus): het bedrag gaat niet meer als filter mee — de vergelijking
+        # gebeurt cent-exact én genormaliseerd in app/documenten/extern_bestaan.py (client-side, nooit OData-float-eq).
+        assert client.aanroepen[0]["total_amount"] is None
 
     def test_rlz_fout_geeft_blokkerend_checkresultaat_geen_exception(self) -> None:
         """Een falende RLZ-aanroep tijdens de duplicaatquery mag nooit als kale 500 bij de

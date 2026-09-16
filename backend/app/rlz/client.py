@@ -5,7 +5,8 @@ import logging
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -684,6 +685,44 @@ class RlzClient:
             return rijen
         doel = bedrag_cent_exact(total_amount)
         return [rij for rij in rijen if bedrag_cent_exact(rij.get("BaseInvoiceAmount")) == doel]
+
+
+    def find_purchase_invoices_kandidaten(
+        self,
+        *,
+        vendor_ids: Iterable[uuid.UUID | str],
+        van: date,
+        tot: date,
+        per_pagina: int = 200,
+        max_paginas: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Kandidaten voor de RLZ-bestaanscheck (Zenvoices-casus 16-09): álle inkoopfacturen (incl. concepten) van de
+        crediteur-identiteit (alle Entity-id's van dezelfde KvK/btw) in een datumvenster — de referentie wordt daarna
+        CLIENT-SIDE genormaliseerd vergeleken (`app/documenten/referentie.py`), want OData kan "2 4594 001722" niet
+        gelijkstellen aan "24594001722". Datumliteral kaal ISO zoals `app/geheugen/seed.py` op PurchaseInvoices
+        (geverifieerd). `$expand=Entity` zodat de aanroeper per treffer weet bij welk crediteurrecord 'm staat.
+        Gepagineerd (`$top/$skip`), begrensd zodat een webfilter-blokkering nooit uit een runaway-lus komt."""
+        ids = [str(v) for v in vendor_ids if v]
+        if not ids:
+            return []
+        entity = " or ".join(f"Entity/id eq {v}" for v in ids)
+        if len(ids) > 1:
+            entity = f"({entity})"
+        filter_ = f"{entity} and Date ge {van.isoformat()} and Date le {tot.isoformat()}"
+        rijen: list[dict[str, Any]] = []
+        for pagina in range(max_paginas):
+            params = {
+                "$filter": filter_,
+                "$expand": "Entity",
+                "$orderby": "Date asc,id asc",
+                "$top": str(per_pagina),
+                "$skip": str(pagina * per_pagina),
+            }
+            deel = self.get("PurchaseInvoices", params=params).get("value", [])
+            rijen.extend(deel)
+            if len(deel) < per_pagina:
+                break
+        return rijen
 
 
 def bedrag_cent_exact(waarde: object) -> Decimal | None:

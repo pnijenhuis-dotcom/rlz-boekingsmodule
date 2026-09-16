@@ -46,6 +46,7 @@ from app.documenten.models import (
     DocumentStatus,
     LeverancierVoorkeur,
 )
+from app.documenten.referentie import normaliseer_referentie
 from app.documenten.rlz_ids import rlz_herboeking_id, rlz_tegenboeking_id
 from app.documenten.service import DocumentNietGevonden
 from app.documenten.ubl import is_ubl_veldvoorstel
@@ -1746,6 +1747,8 @@ def sla_boekvoorstel_op(
         oude_afdeling_id = bestaand.afdeling_id
         bestaand.vendor_id = vendor_id
         bestaand.referentie = referentie
+        # 0147 (Zenvoices-casus 16-09): de vergelijkingsvorm altijd náást de letterlijke referentie.
+        bestaand.referentie_norm = normaliseer_referentie(referentie)
         bestaand.factuurdatum = factuurdatum
         bestaand.vervaldatum = vervaldatum
         bestaand.betalingskenmerk = (" ".join(betalingskenmerk.split()) or None) if betalingskenmerk else None
@@ -2283,6 +2286,12 @@ def voer_checks_uit(
             totaalbedrag=voorstel.totaalbedrag,
         )
     )
+    # Zenvoices-casus 16-09: de RLZ-/Odoo-bestaanscheck toetst over álle crediteurrecords van dezelfde identiteit
+    # (KvK/btw/voorkeur-cluster) — een dubbel crediteurrecord verbergt een al geboekt exemplaar niet meer.
+    with scoped_session(administratie_id) as session:
+        identiteit_vendor_ids = duplicaat_module.identiteit_vendor_ids(
+            session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
+        )
 
     eigen_client = client is None
     eigen_port = None
@@ -2364,6 +2373,7 @@ def voer_checks_uit(
             totaal_excl=gelezen_totalen[0],
             factuur_btw=gelezen_totalen[1],
             historie_treffers=historie_treffers,
+            identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
         )
         # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
         # storings-tak), vóór de RLZ-afhankelijke checks.

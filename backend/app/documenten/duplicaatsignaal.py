@@ -50,7 +50,13 @@ def _treffer_kort(factuur: dict) -> dict:
         "reference": factuur.get("Reference"),
         # RLZ: InvoiceNumber; de Odoo-leesfacade levert het `account.move`-nummer als ReceiptNumber (blok 4a 08-09).
         "invoice_number": factuur.get("InvoiceNumber") or factuur.get("ReceiptNumber"),
-        "status": (factuur.get("Status") or {}).get("id") if isinstance(factuur.get("Status"), dict) else None,
+        "status": (factuur.get("Status") or {}).get("id")
+        if isinstance(factuur.get("Status"), dict)
+        else (factuur.get("Status") if isinstance(factuur.get("Status"), int) else None),
+        # 16-09: waarop de treffer matchte + de externe kop (rapport/UI), zie app/documenten/extern_bestaan.py.
+        "basis": factuur.get("match_basis"),
+        "bedrag": factuur.get("BaseInvoiceAmount"),
+        "datum": str(factuur.get("Date") or "")[:10] or None,
     }
     if factuur.get("bron") == "app_historie":
         kort.update({"bron": "app_historie", "document_id": factuur.get("document_id"), "backend": "rlz"})
@@ -111,11 +117,25 @@ def bereken_duplicaatsignaal(
 
                 eigen_port = inkoop_port_voor(administratie_id, rlz_client_factory=_rlz)
                 client = eigen_port.leesclient()
-            gevonden = client.find_purchase_invoices_by_reference(
-                vendor_id=voorstel.vendor_id,
-                reference=voorstel.referentie,
-                total_amount=float(voorstel.totaalbedrag),
-            )
+            # Zenvoices-casus 16-09: genormaliseerd + over de hele crediteur-identiteit + datumvenster (blok B);
+            # alleen de HARDE basis (zelfde genormaliseerde referentie én bedrag) voedt het signaal/de afvoer.
+            from app.documenten import duplicaat_module, extern_bestaan
+
+            with scoped_session(administratie_id) as session:
+                vendor_ids = duplicaat_module.identiteit_vendor_ids(
+                    session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
+                )
+            gevonden = [
+                rij
+                for rij in extern_bestaan.zoek_extern_bestaand(
+                    client,
+                    vendor_ids=sorted(vendor_ids, key=str),
+                    referentie=voorstel.referentie,
+                    totaalbedrag=voorstel.totaalbedrag,
+                    factuurdatum=voorstel.factuurdatum,
+                )
+                if rij.get("match_basis") in extern_bestaan.HARDE_BASES
+            ]
         except Exception as exc:  # noqa: BLE001 — bewust breed: RLZ-/credentialfout = zichtbaar 'onbekend', nooit een crash
             gevonden = None
             uitkomst = DuplicaatSignaalUitkomst.ONBEKEND

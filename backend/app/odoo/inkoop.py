@@ -225,6 +225,70 @@ class OdooLeesFacade:
             )
         return uit
 
+    def find_purchase_invoices_kandidaten(
+        self,
+        *,
+        vendor_ids,
+        van,
+        tot,
+        per_pagina: int = 200,
+        max_paginas: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Odoo-tegenhanger van `RlzClient.find_purchase_invoices_kandidaten` (Zenvoices-casus 16-09): álle
+        leveranciersfacturen (incl. concepten, `state != cancel`) van de partner(s) in het datumvenster, in RLZ-veldvorm
+        mét `Reference` (= `ref`) en `Date` (= `invoice_date`) zodat `app/documenten/extern_bestaan.py` client-side
+        genormaliseerd kan vergelijken. Een crediteur zónder partner-koppeling wordt overgeslagen (geen 500; de
+        harde check meldt dat al via `CrediteurNietGekoppeld` op het eigen vendor_id)."""
+        client = self._port.client
+        partner_ids: list[int] = []
+        for vendor_id in vendor_ids:
+            try:
+                partner_ids.append(self._partner_id_of_fout(uuid.UUID(str(vendor_id))))
+            except CrediteurNietGekoppeld:
+                continue
+        if not partner_ids:
+            return []
+        domain: list = [
+            ["company_id", "=", client.company_id],
+            ["move_type", "=", "in_invoice"],
+            ["state", "!=", "cancel"],
+            ["partner_id", "in", partner_ids],
+            ["invoice_date", ">=", van.isoformat()],
+            ["invoice_date", "<=", tot.isoformat()],
+        ]
+        rijen = client.search_read(
+            MODEL_MOVE,
+            domain,
+            ["name", "ref", "invoice_date", "partner_id", "amount_total", "state", "payment_state", "invoice_origin"],
+            limit=per_pagina * max_paginas,
+        )
+        uit: list[dict[str, Any]] = []
+        for rij in rijen:
+            partner = rij.get("partner_id")
+            partner_id = _m2o_id(partner)
+            uit.append(
+                {
+                    "id": eigen_id_uit_marker(rij.get("invoice_origin"))
+                    or str(odoo_uuid(client.company_id, MODEL_MOVE, int(rij["id"]))),
+                    "Reference": rij.get("ref") or None,
+                    "Date": rij.get("invoice_date") or None,
+                    "ReceiptNumber": rij.get("name") or None,
+                    "Status": (
+                        1
+                        if rij.get("state") == "draft"
+                        else 3
+                        if rij.get("payment_state") in ("paid", "reversed")
+                        else 2
+                    ),
+                    "BaseInvoiceAmount": float(_cent(rij.get("amount_total"))),
+                    "Entity": {
+                        "id": str(odoo_uuid(client.company_id, "res.partner", partner_id)) if partner_id else None,
+                        "Name": partner[1] if isinstance(partner, list) else None,
+                    },
+                }
+            )
+        return uit
+
     def _partner_id_of_fout(self, vendor_id: uuid.UUID) -> int:
         """Blok D 07-09: een crediteur zónder partner-koppeling gaf uit `…/boekvoorstel/checks` een kale 500
         (`OnbekendeOdooId` uit de compat-`get`). Nu een domeinfout die de checks-orkestratie kent en als leesbare,

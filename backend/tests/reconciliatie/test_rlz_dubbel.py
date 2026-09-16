@@ -399,7 +399,9 @@ class TestVindClusters:
 
     def test_iban_met_en_zonder_spaties_normaliseert_verschillend_en_geeft_nooit_een_cluster(self) -> None:
         """`normaliseer_referentie` haalt voorloopnullen alleen per cijfergroep weg: 'NL86INGB0662462785' (één token)
-        ≠ 'NL86 INGB 0662 4627 85' → twee groepen van één → geen cluster, geen uitsluiting (niets te melden)."""
+        ≠ 'NL86 INGB 0662 4627 85' → twee groepen van één → geen cluster, geen uitsluiting (niets te melden). 16-09:
+        spaties TUSSEN cijfergroepen plakken aaneen ('0662 4627 85' → één groep), maar de groep ná het woord 'INGB'
+        verliest zijn voorloopnul — de twee vormen blijven verschillend."""
         docs = [
             _doc(V4_A, ref="NL86 INGB 0662 4627 85", bedrag=10.0),
             _doc(V4_B, ref="NL86INGB0662462785", bedrag=10.0),

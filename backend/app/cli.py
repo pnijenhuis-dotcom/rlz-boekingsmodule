@@ -316,6 +316,55 @@ def _duplicaten_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def _referentie_norm_backfill(args: argparse.Namespace) -> int:
+    """16-09 (Zenvoices-casus, migratie 0147): vul `boekvoorstel.referentie_norm` voor bestaande rijen. Puur afgeleide
+    kolom, idempotent, geen tijdlijn/audit; --dry-run telt alleen."""
+    from app.documenten import referentie_backfill
+
+    administratie_filter: uuid.UUID | None = None
+    if args.administratie:
+        try:
+            administratie_filter = uuid.UUID(args.administratie)
+        except ValueError:
+            print(f"Ongeldig --administratie-id: {args.administratie!r}", file=sys.stderr)
+            return 2
+    uitkomsten = referentie_backfill.backfill(dry_run=args.dry_run, administratie_id=administratie_filter)
+    label = " [dry-run]" if args.dry_run else ""
+    print(
+        f"referentie-norm-backfill{label}: {len(uitkomsten)} administratie(s), "
+        f"{sum(u.met_referentie for u in uitkomsten)} boekvoorstellen mét referentie, "
+        f"{sum(u.te_vullen for u in uitkomsten)} te vullen, {sum(u.gevuld for u in uitkomsten)} gevuld"
+    )
+    for u in uitkomsten:
+        if not u.te_vullen:
+            continue
+        print(f"  {u.naam}: {u.met_referentie} mét referentie, {u.te_vullen} te vullen, {u.gevuld} gevuld")
+        for v in u.voorbeelden:
+            print(f"    - {v}")
+    return 0
+
+
+def _duplicaat_extern_rapport(args: argparse.Namespace) -> int:
+    """16-09 (Zenvoices-casus): LEES-ONLY rapport "mogelijk eerder dubbel geboekt" — geboekte module-facturen ↔ alle
+    RLZ-inkoopfacturen in het venster, genormaliseerd op crediteur-identiteit + referentie. Geen writes."""
+    from app.documenten import duplicaat_extern_rapport
+
+    ids: list[uuid.UUID] | None = None
+    if args.administratie:
+        treffers = _zoek_administraties(args.administratie)
+        if len(treffers) != 1:
+            print(
+                f"--administratie {args.administratie!r}: {len(treffers)} treffer(s) — precies één vereist: "
+                + ", ".join(f"{n} ({i})" for i, n in treffers),
+                file=sys.stderr,
+            )
+            return 2
+        ids = [treffers[0][0]]
+    rapporten = duplicaat_extern_rapport.rapport(dagen=args.dagen, administratie_ids=ids)
+    duplicaat_extern_rapport.print_rapport(rapporten, dagen=args.dagen)
+    return 0
+
+
 def _duplicaat_status_backfill(args: argparse.Namespace) -> int:
     """Blok 3 (fixrun 08-09, feedback Peter): eenmalige data-stap ná migratie 0122 — legacy-rijen die vóór deze
     deploy als duplicaat naar `afgewezen` zijn afgevoerd (open afwijzing mét kruisverwijzing, exact het
@@ -1148,10 +1197,16 @@ def _verrijk(verzamelaar, functie: str, **kw) -> dict:  # noqa: ANN001
 
 
 def _verrijk_bank(verzamelaar, administratie_id: uuid.UUID, a) -> dict:  # noqa: ANN001
-    return _verrijk(
-        verzamelaar, "bank", administratie_id=administratie_id, record_id=a.record_id,
-        payment_transaction_id=a.payment_transaction_id,
-    )
+    # Blok C 16-09: leesbare extra velden van de afwijking zelf (`BankAfwijking.extra`, bv. de datums van een vermoede
+    # dubbele betaling) reizen altijd mee — ook zonder verzamelaar; een naamlookup gaat er nooit door overheen.
+    extra = dict(getattr(a, "extra", None) or {})
+    return {
+        **extra,
+        **_verrijk(
+            verzamelaar, "bank", administratie_id=administratie_id, record_id=a.record_id,
+            payment_transaction_id=a.payment_transaction_id,
+        ),
+    }
 
 
 def _verrijk_administratie(
@@ -1427,7 +1482,12 @@ def _bank_reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # n
                 detail=_verrijk_administratie(verzamelaar, administratie_id, fout=resultaat),
             )
             continue
-        gecontroleerd = resultaat.boekingen_gecontroleerd + resultaat.afletteringen_gecontroleerd
+        gecontroleerd = (
+            resultaat.boekingen_gecontroleerd
+            + resultaat.afletteringen_gecontroleerd
+            # Blok C 16-09: getoetste sleutels (tegenrekening + bedrag) van de dubbele-betaling-controle tellen mee.
+            + getattr(resultaat, "dubbele_betalingen_gecontroleerd", 0)
+        )
         if verzamelaar is not None:
             verzamelaar.gecontroleerd(gecontroleerd)
         if not resultaat.afwijkingen:
@@ -2762,6 +2822,25 @@ def main(argv: list[str] | None = None) -> int:
     backfill_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
     backfill_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
 
+    refnorm_parser = subparsers.add_parser(
+        "referentie-norm-backfill",
+        help="16-09 (migratie 0147): vul boekvoorstel.referentie_norm (genormaliseerde factuurreferentie) voor "
+        "bestaande rijen — afgeleide kolom, idempotent, geen tijdlijn/audit. --dry-run telt alleen.",
+    )
+    refnorm_parser.add_argument("--dry-run", action="store_true", help="Alleen rapporteren, niets wijzigen.")
+    refnorm_parser.add_argument("--administratie", default=None, metavar="UUID", help="Beperk tot één administratie.")
+
+    extern_rapport_parser = subparsers.add_parser(
+        "duplicaat-extern-rapport",
+        help="16-09 (Zenvoices-casus): LEES-ONLY rapport 'mogelijk eerder dubbel geboekt' — geboekte module-facturen "
+        "van de laatste N dagen genormaliseerd vergeleken met álle RLZ-inkoopfacturen in dat venster (één gepagineerde "
+        "leesroute per administratie). Geen writes; Odoo-administraties zichtbaar overgeslagen.",
+    )
+    extern_rapport_parser.add_argument("--dagen", type=int, default=400, help="Venster in dagen (default 400).")
+    extern_rapport_parser.add_argument(
+        "--administratie", default=None, metavar="UUID|NAAMDEEL", help="Beperk tot één administratie."
+    )
+
     status_backfill_parser = subparsers.add_parser(
         "duplicaat-status-backfill",
         help="Blok 3 08-09: legacy duplicaat-afvoer-rijen (status afgewezen mét een open afwijzing die een "
@@ -3338,6 +3417,10 @@ def main(argv: list[str] | None = None) -> int:
         return _duplicaten_backfill(args)
     if args.commando == "duplicaat-status-backfill":
         return _duplicaat_status_backfill(args)
+    if args.commando == "referentie-norm-backfill":
+        return _referentie_norm_backfill(args)
+    if args.commando == "duplicaat-extern-rapport":
+        return _duplicaat_extern_rapport(args)
     if args.commando == "periode-backfill":
         return _periode_backfill(args)
     if args.commando == "app-passkeys-markeren":

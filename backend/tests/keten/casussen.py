@@ -54,6 +54,9 @@ W_TELEFONIE_BTW_TOTAAL = "w_telefonie_btw_totaal"
 Z_VERLEGD_KOLOMCODE = "z_verlegd_kolomcode_v"
 # Peter 15-09 (omzetbronnen): géén document-casussen maar spreadsheet-rasters als JSON-grid
 # (dagstaat_grid.json / kascheck_grid.json / export_grid.json) — `alle_casussen()` slaat ze over; zie bron.json per map.
+#: Peter 16-09 (Zenvoices-casus Hello Kitchen / Kempen Facilities): UBL met referentie "2 4594 001722" terwijl RLZ het
+#: exemplaar al kent als "24594001722" — de bestaanscheck moet genormaliseerd vergelijken (blok B).
+AA_ZENVOICES_DUBBEL = "aa_zenvoices_dubbel"
 AB_OMZET_ZONNESTUDIO = "ab_omzet_zonnestudio"
 AC_OMZET_PILATES = "ac_omzet_pilates"
 
@@ -140,6 +143,7 @@ BESTANDSNAMEN: dict[str, tuple[str, str]] = {
     K2_KADER: ("Factuur F212604921.xml", "Projectfactuur F212604921.PDF"),
     M_INCASSO: ("", "Factuur KTD-2026-09-0417.pdf"),
     W_TELEFONIE_BTW_TOTAAL: ("", "Factuur KTD-2026-09-0904.pdf"),
+    AA_ZENVOICES_DUBBEL: ("Hello Kitchen Duiven B.V - 2 4594 001722 - 2026-08-10.xml", ""),
     Z_VERLEGD_KOLOMCODE: ("", "Factuur 32948.pdf"),
 }
 

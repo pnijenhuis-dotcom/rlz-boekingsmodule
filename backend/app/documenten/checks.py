@@ -319,6 +319,8 @@ def check_duplicaat(
     eigen_rlz_document_id: uuid.UUID,
     uitgezonderde_rlz_document_ids: frozenset[uuid.UUID] = frozenset(),
     historie_treffers: Sequence[dict] = (),
+    factuurdatum: date | None = None,
+    identiteit_vendor_ids: Sequence[uuid.UUID] = (),
 ) -> CheckResultaat:
     """Eigen duplicaatquery (RLZ's actie 138 geeft geen bruikbaar signaal, besluit 0013): zoekt
     op Entity+Reference(afgekapt op 30 tekens, zie RlzClient.find_purchase_invoices_by_reference)
@@ -343,7 +345,14 @@ def check_duplicaat(
     check NIET faalde — beide tweede exemplaren zijn nooit in RLZ geboekt; de live check kan alleen zien wat al
     in RLZ staat (ook concepten), een tweede exemplaar dat nog in de module wacht is het domein van
     `check_duplicaat_module`. Verharding hier: het bedrag gaat als Decimal mee en wordt in de client cent-exact
-    vergeleken (geen OData-float-`eq` meer), zodat een wankele float-match nooit een treffer verbergt."""
+    vergeleken (geen OData-float-`eq` meer), zodat een wankele float-match nooit een treffer verbergt.
+
+    Zenvoices-casus 16-09 (Hello Kitchen / Kempen Facilities, blok B): de vergelijking loopt sinds 16-09 via
+    `extern_bestaan.zoek_extern_bestaand` — letterlijke `Reference eq` PLUS kandidaten in ± 60 dagen rond de
+    factuurdatum over álle crediteurrecords van dezelfde identiteit (`identiteit_vendor_ids`), client-side
+    GENORMALISEERD vergeleken ("2 4594 001722" ≡ "24594001722"). Zelfde genormaliseerde referentie (met of zonder
+    gelijk bedrag) = BLOKKEREND mét boekstuknummer; zelfde bedrag én datum ± 30 dagen bij een ander nummer = oranje
+    signaal (mens kijkt). Concepten tellen mee (een Zenvoices-concept wordt straks geboekt)."""
     if vendor_id is None or not referentie:
         # Blok 3 herstelrun 08-09: benoem precies wat ontbreekt — een UBL draagt de referentie altijd, dan is
         # alleen de crediteur de open post (kies of maak 'm) en zegt de tekst niet meer "en referentie".
@@ -355,9 +364,17 @@ def check_duplicaat(
     bedrag = totaalbedrag
     uitgezonderd = {str(eigen_rlz_document_id)} | {str(i) for i in uitgezonderde_rlz_document_ids}
     historie = [t for t in historie_treffers if str(t.get("id")) not in uitgezonderd]
+    from app.documenten import extern_bestaan  # lokaal: houdt checks.py puur importeerbaar in tests
+
+    vendor_ids = list(dict.fromkeys([vendor_id, *identiteit_vendor_ids]))
     try:
-        gevonden = client.find_purchase_invoices_by_reference(
-            vendor_id=vendor_id, reference=referentie, total_amount=bedrag
+        gevonden = extern_bestaan.zoek_extern_bestaand(
+            client,
+            vendor_ids=vendor_ids,
+            referentie=referentie,
+            totaalbedrag=bedrag,
+            factuurdatum=factuurdatum,
+            uitgezonderd_ids=uitgezonderd,
         )
     except RlzApiError as exc:
         return CheckResultaat(
@@ -368,16 +385,28 @@ def check_duplicaat(
             "Duplicaatcheck", False, _met_historie(f"Duplicaatcheck kon niet uitgevoerd worden: {exc}", historie)
         )
     historie_ids = {str(t.get("id")) for t in historie}
-    anderen = [f for f in gevonden if f.get("id") not in uitgezonderd and str(f.get("id")) not in historie_ids]
-    if anderen or historie:
+    anderen = [f for f in gevonden if str(f.get("id")) not in historie_ids]
+    blokkerend = [f for f in anderen if f.get("match_basis") in extern_bestaan.BLOKKERENDE_BASES]
+    signalen = [f for f in anderen if f.get("match_basis") == extern_bestaan.BASIS_BEDRAG_DATUM]
+    if blokkerend or historie:
         delen = []
-        if anderen:
+        if blokkerend:
             delen.append(
-                f"{len(anderen)} bestaande factuur/facturen in RLZ met dezelfde crediteur, referentie en bedrag"
+                f"{len(blokkerend)} bestaande factuur/facturen in RLZ met dezelfde crediteur en referentie — "
+                + "; ".join(extern_bestaan.omschrijf_treffer(f) for f in blokkerend[:3])
             )
         if historie:
             delen.append(historie_melding(historie))
         return CheckResultaat("Duplicaatcheck", False, "; ".join(delen))
+    if signalen:
+        return CheckResultaat(
+            "Duplicaatcheck",
+            True,
+            f"Geen factuur met dezelfde referentie, wél {len(signalen)} met hetzelfde bedrag rond dezelfde datum bij "
+            "deze crediteur — controleer op een dubbel exemplaar: "
+            + "; ".join(extern_bestaan.omschrijf_treffer(f) for f in signalen[:3]),
+            signaal=True,
+        )
     return CheckResultaat("Duplicaatcheck", True, "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag")
 
 
@@ -518,6 +547,7 @@ def voer_harde_checks_uit(
     totaal_excl: Decimal | None = None,
     factuur_btw: Decimal | None = None,
     historie_treffers: Sequence[dict] = (),
+    identiteit_vendor_ids: Sequence[uuid.UUID] = (),
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -557,6 +587,8 @@ def voer_harde_checks_uit(
                 vendor_id=vendor_id,
                 referentie=referentie,
                 totaalbedrag=totaalbedrag,
+                factuurdatum=factuurdatum,
+                identiteit_vendor_ids=identiteit_vendor_ids,
                 eigen_rlz_document_id=eigen_rlz_document_id,
                 uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
                 historie_treffers=historie_treffers,
