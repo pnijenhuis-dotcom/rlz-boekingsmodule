@@ -178,6 +178,13 @@ def _onderwerp_doorbelasting(d: dict) -> Segmenten:
     return [x for x in (doel, f"ref {ref}" if ref else None, f"({bron})" if bron else None) if x]
 
 
+def _onderwerp_doorbelasting_aansluiting(d: dict) -> Segmenten:
+    """Blok 2 16-09 nacht: 'Kempen Facilities → Kempen Chalets · 2026-0123' — bron → doelentiteit, dan nummer."""
+    v, o = _s(d, "verkoper_naam", "administratie_naam"), _s(d, "doelentiteit_naam", "ontvanger_naam")
+    relatie = f"{v} → {o}" if v and o else (v or o or "")
+    return [relatie, _s(d, "nummer") or ""]
+
+
 def _onderwerp_rlz_dubbel(d: dict) -> Segmenten:
     """Blok 6 (08-09) / blok 1 10-09: leverancier · referentie · alle boekstuknummers (N ≥ 2)."""
     boekstukken = _rlz_dubbel_boekstukken(d)
@@ -230,6 +237,8 @@ def _onderwerp(blok: str, d: dict) -> Segmenten:
         return _onderwerp_rekening_courant(d)
     if blok == "intercompany":
         return _onderwerp_intercompany(d)
+    if blok == "doorbelasting_aansluiting":
+        return _onderwerp_doorbelasting_aansluiting(d)
     return []
 
 
@@ -890,8 +899,55 @@ def _intercompany(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
     )
 
 
+def _doorbelasting_aansluiting(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok 2 (Peter 12-09/16-09): verkoop bij de bron ↔ inkoop in de doelentiteit, whitelist-volledigheid."""
+    onderwerp = _onderwerp_doorbelasting_aansluiting(d)
+    doel = _s(d, "doelentiteit_naam") or "de doelentiteit"
+    bron = _s(d, "verkoper_naam", "administratie_naam") or "de bron"
+    nummer = _s(d, "nummer")
+    bv, bi = _s(d, "bedrag_verkoop"), _s(d, "bedrag_inkoop")
+    inhaal = _s(d, "spiegel_boeking_id")
+    if soort == "da_ontbreekt_in_doel":
+        doe = (
+            "Boek de inkoop in het doel via de open spiegel-taak (Doorbelasten › 'Boek inkoop in doel')."
+            if inhaal
+            else f"Zet de verkoopfactuur als inkoopfactuur in {doel} (aanleveren via facturen@ of Zenvoices) — of accepteer met reden als er bewust geen inkoop hoort."
+        )
+        return (
+            _titel("Doorbelasting zonder inkoop in doel", onderwerp),
+            f"Verkoopfactuur {nummer or '?'} van {bron} aan {doel}{f' ({bv})' if bv else ''} heeft geen inkoopfactuur in {doel}.",
+            doe,
+        )
+    if soort == "da_bedrag_afwijkt":
+        return (
+            _titel("Doorbelasting — bedrag afwijkt", onderwerp),
+            f"Verkoop {nummer or '?'} bij {bron} is {bv or '?'}, de inkoop in {doel} is {bi or '?'} (verschil {_s(d, 'delta') or '?'}).",
+            "Corrigeer de kant die fout is (verkoop bij de bron of inkoop in het doel) — of accepteer met reden.",
+        )
+    if soort == "da_status_verschilt":
+        return (
+            _titel("Doorbelasting — status verschilt", onderwerp),
+            f"Verkoop {nummer or '?'} en de inkoop in {doel} staan al langer dan 7 dagen in een andere status (concept/open/gesloten).",
+            "Boek het concept definitief of letter de openstaande kant af; klopt het verschil, accepteer met reden.",
+        )
+    if soort == "da_doel_niet_in_module":
+        return (
+            _titel("Doelentiteit zonder administratie", doel),
+            f"{_s(d, 'aantal') or '?'} verkoopfactu(u)r(en) ({_s(d, 'som') or '?'}) van {bron} aan {doel}, maar {doel} heeft geen administratie in de module — de inkoop is niet toetsbaar.",
+            "Koppel de administratie aan de whitelist-rij (Instellingen › Administraties › bron › Doorbelasting › 'Koppel administratie…') of onboard 'm eerst.",
+        )
+    if soort == "da_inkoop_zonder_verkoop":
+        return (
+            _titel("Inkoop in doel zonder verkoop bij de bron", onderwerp),
+            f"In {doel} staat een inkoopfactuur van {bron} ({nummer or '?'}, {bi or '?'}) zonder verkoopfactuur bij {bron}.",
+            "Controleer of de verkoop bij de bron ontbreekt (boek 'm) of de inkoop dubbel/verkeerd is — of accepteer met reden.",
+        )
+    return (_titel("Doorbelasting-aansluiting", onderwerp), tekst, "Beoordeel de afwijking en accepteer met reden als het klopt.")
+
+
 _BLOK_AFWIJKING = {
     "documenten": _documenten,
+    "doorbelasting_aansluiting": _doorbelasting_aansluiting,
     "intercompany": _intercompany,
     "bank": _bank,
     "omzet": _omzet,

@@ -814,6 +814,14 @@ def _sync_alles(args: argparse.Namespace) -> int:
     print("\nIntercompany — identiteiten, relaties en rekening-courant-koppelingen (alle actieve administraties):")
     intercompany_cli_stap.rapporteer_afleiding()
 
+    # Blok 1 doorbelasting-herkoppeling (Peter 12-09/16-09): whitelist-rijen zonder doel-administratie dagelijks op
+    # genormaliseerde naam koppelen (exact) of als LET-OP melden (bijna-match/meerdere) — nooit raden. Uitkomst =
+    # regels + audit `doorbelasting_herkoppeling_run` (teller); een omgevallen administratie = exit 1 van de job.
+    from app.doorbelasting.herkoppeling import rapporteer_herkoppeling
+
+    print("\nDoorbelasting — herkoppeling doelentiteiten (whitelist zonder doel):")
+    herkoppel_exit = rapporteer_herkoppeling()
+
     # Groepssaldi (Peter 16-09): nachtelijke stand debiteuren/crediteuren (bruto + intercompany) per administratie in
     # een actieve groep → cache `groep_saldo_stand` voor de kaart op de klantenlijst ("stand van vannacht"). Lees-only
     # richting RLZ/Odoo; per administratie zichtbaar ok/niet-ok, nooit een stop van de sync.
@@ -900,6 +908,7 @@ def _sync_alles(args: argparse.Namespace) -> int:
         or kandidaten_exit
         or werklijst_exit
         or projectverdeling_exit
+        or herkoppel_exit
         or tellers_exit
         else 0
     )
@@ -2092,6 +2101,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     rlz_dubbel) en `--lees-only`/`--dry-run` (geen run-rij, geen bevindingen, geen mail, geen acceptatie-
     overdracht). `--alleen` vereist `--lees-only`: een deel-run die als 'laatste afgeronde run' zou worden
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
+    from app.doorbelasting import aansluiting as doorbelasting_aansluiting
     from app.intercompany import factuurmatch, rekening_courant
     from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
@@ -2105,6 +2115,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         (rekening_courant.BLOK, rekening_courant.cli_blok),
         ("omzet", _omzet_reconciliatie),
         ("doorbelasting", _doorbelasting_reconciliatie),
+        # Peter 12-09/16-09 (blok 2): aansluiting bron-verkoop ↔ inkoop in álle doelentiteiten (whitelist-volledigheid,
+        # "doel niet in module", ook Zenvoices/handmatig) — ná het doorbelasting-blok.
+        (doorbelasting_aansluiting.BLOK, doorbelasting_aansluiting.cli_blok),
         # Blok 6 (08-09): periodieke toets "mogelijk dubbel geboekt in RLZ" (handmatig ingevoerde paren) —
         # eigen blok, schrappen = deze regel + run.BLOKKEN.
         (rlz_dubbel.BLOK, rlz_dubbel.cli_blok),
@@ -2835,8 +2848,11 @@ def main(argv: list[str] | None = None) -> int:
     register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)
     from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
     from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
+    from app.doorbelasting.aansluiting import dispatch as dispatch_doorbelasting_aansluiting  # blok 2 16-09 nacht
+    from app.doorbelasting.aansluiting import register as register_doorbelasting_aansluiting
 
     register_werkvoorraad_tellers(subparsers)  # werkvoorraad-tellers-herrekenen
+    register_doorbelasting_aansluiting(subparsers)  # doorbelasting-aansluiting (lees-only)
     subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
@@ -3512,6 +3528,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_administratienaam
     if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
         return uitkomst_btw_default
+    if (uitkomst_doorbelasting_aansluiting := dispatch_doorbelasting_aansluiting(args)) is not None:  # 16-09 nacht
+        return uitkomst_doorbelasting_aansluiting
     if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09
         return uitkomst_werkvoorraad_tellers
     if args.commando == "bootstrap-beheerder":

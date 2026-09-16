@@ -209,3 +209,19 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 7. **Toegangscode opnieuw invoeren = lokale verificatie** (de code bereikt de server nooit); de server eist een levende toestel-sessie
    (apparaat-claim, kill-switch bijt). Geen aparte "recent geverifieerd"-claim server-side.
 
+## Opdracht 15 (nacht) — doorbelasting-aansluiting KF ↔ doelentiteiten + herkoppeling (`2026-09-16-doorbelasting-aansluiting-kf-en-herkoppeling.md`)
+
+1. **Bijna-match-drempel** = de bestaande `_is_bijna_match` (prefix ≥ 4 tekens per token, één-op-één, rechtsvorm-tokens genegeerd) —
+   uitkomst is altijd een LET-OP, nooit een automatische koppeling. Alternatief: Levenshtein-drempel — bewust niet (ondoorzichtig).
+2. **KvK als koppelbasis** kan niet: de whitelist-rij draagt geen KvK (alleen naam + Customer-GUID in de bron). Alternatief: de
+   RLZ-Customer in de bron lezen op `ChamberOfCommerceNumber` en tegen `administratie_identiteit.kvk` leggen — extra RLZ-call per rij;
+   pas bouwen als exact-op-naam in productie een rij mist.
+3. **Venster bedrag + datum = ± 7 d** (`factuurmatch.DATUM_TOLERANTIE_DAGEN`, één matchmotor voor IC-blok én aansluiting) i.p.v. de
+   ± 5 d uit de opdracht. Alternatief: eigen tolerantie per blok — twee motoren, bewust niet.
+4. **"Doel niet in module" = één bevinding per whitelist-rij** (aantal + som), niet per verkoopfactuur; de CLI-tabel toont wél elke factuur.
+5. **Actie "Boek inkoop in doel" alleen bij een open spiegel-taak** (het inhaalpad `boek_spiegel_alsnog` werkt op een
+   `DoorbelastingBoeking`); voor Zenvoices-/handmatige verkopen zegt de doe-tekst wat te doen — geen nieuwe boekroute gebouwd.
+6. **Concept-verkoopfacturen tellen mee** (opdracht: "geboekt + concept"); een concept zonder inkoop is dus een afwijking mét status
+   "concept" in de tabel — accepteren met reden als het bewust een concept is.
+7. **Productienameting ná deploy** als vervolg-opdracht in de inbox (regel Peter 08-09: geen code vóór deploy tegen productie).
+

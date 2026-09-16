@@ -87,6 +87,7 @@ function installFetchMock(opties: MockOpties = {}) {
         const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
         return Promise.resolve(jsonResponse({ ...gewijzigd, ...body }))
       }
+      if (url.endsWith('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: [] }))
       if (url.endsWith('/mappings')) return Promise.resolve(jsonResponse(mappingLijst()))
       if (url.endsWith('/grootboek')) {
         return Promise.resolve(
@@ -128,8 +129,11 @@ describe('DoorbelastingInstellingen', () => {
     expect(screen.getByLabelText('Provisie-opslag (%)')).toHaveValue('5')
     expect(screen.getByText('Rubicon Investments B.V.')).toBeInTheDocument()
     expect(screen.getByText('onboarded')).toBeInTheDocument()
-    expect(screen.getByText('niet onboarded')).toBeInTheDocument()
-    // Niet-onboarded doel: provisie-GB pas kiesbaar ná onboarding.
+    // Blok 1 herkoppeling (16-09 nacht): een rij zonder doel toont de chip 'niet gekoppeld' + een koppel-combobox
+    // ('Koppel administratie…') — de Beheerder koppelt zelf bij een bijna-match; exact koppelt het systeem.
+    expect(screen.getByText('niet gekoppeld')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Koppel administratie aan/)).toBeInTheDocument()
+    // Niet-gekoppeld doel: provisie-GB pas kiesbaar ná onboarding.
     expect(screen.getByText('kiesbaar ná onboarding')).toBeInTheDocument()
   })
 

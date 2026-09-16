@@ -358,6 +358,16 @@ def maak_administraties_aan(
                 )
             )
 
+    # Blok 1 herkoppeling (Peter 12-09/16-09): een nieuwe administratie kan het doel zijn van een whitelist-rij
+    # zonder `doel_administratie_id` (casus Kempen Chalets) — direct koppelen op exacte naam, LET-OP bij bijna-match.
+    # Nooit een blokkade op het onboarden zelf.
+    try:
+        from app.doorbelasting.herkoppeling import herkoppel_doelen
+
+        herkoppel_doelen(actor_id=actor_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Herkoppeling doelentiteiten ná onboarding mislukt — zichtbaar in sync-alles/teller")
+
     if not start_sync:
         return resultaten
     from app.beheer import eerste_sync

@@ -12,6 +12,7 @@ import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { Button, Switch, SkeletonPaneel } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
+import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import { FoutMelding } from '../ui/FoutMelding'
 import {
   haalDoorbelastingInstellingOp,
@@ -113,6 +114,9 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
   const [provisieOmzetLedgerId, setProvisieOmzetLedgerId] = useState<string | null>(null)
 
   const [pending, setPending] = useState<PendingWijziging | null>(null)
+  // Blok 1 herkoppeling (Peter 12-09/16-09): een whitelist-rij zonder doel krijgt een koppel-combobox — de
+  // Beheerder ziet álle administraties (GET /auth/administraties), de bron zelf uitgesloten.
+  const { administraties: alleAdministraties } = useAdministraties()
   const [bezig, setBezig] = useState(false)
   const [wijzigenFout, setWijzigenFout] = useState<string | null>(null)
   // "+ Doelentiteit toevoegen" (mockup doorbelasting-doel-toevoegen.html, akkoord 01-09).
@@ -321,12 +325,29 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
                       {m.doel_administratie_id ? (
                         <span className="chip ok">onboarded</span>
                       ) : (
-                        <span
-                          className="chip vraag"
-                          title="Nog geen eigen administratie in het platform — de spiegel-inkoopfactuur wordt een open taak"
-                        >
-                          niet onboarded
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+                          <span
+                            className="chip vraag"
+                            title="Nog geen eigen administratie gekoppeld — de spiegel-inkoopfactuur wordt een open taak. Het systeem koppelt zelf bij een exacte naam (onboarding + dagelijks); bij een bijna-match kies je hier."
+                          >
+                            niet gekoppeld
+                          </span>
+                          <AdministratieCombobox
+                            label={`Koppel administratie aan ${m.doelentiteit_naam}`}
+                            toonLabel={false}
+                            administraties={(alleAdministraties ?? []).filter((a) => a.id !== administratieId)}
+                            waarde={null}
+                            onWijzig={(id) =>
+                              setPending({
+                                type: 'mapping',
+                                mappingId: m.id,
+                                wijziging: { doel_administratie_id: id },
+                                omschrijving: `${m.doelentiteit_naam} wordt gekoppeld aan administratie "${(alleAdministraties ?? []).find((a) => a.id === id)?.naam ?? id}" — open spiegel-taken worden daarmee boekbaar in het doel`,
+                              })
+                            }
+                            placeholder="Koppel administratie…"
+                          />
+                        </div>
                       )}
                     </td>
                     <td>

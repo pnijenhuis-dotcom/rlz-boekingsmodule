@@ -96,6 +96,11 @@ RECHTEN_NA_24U = "rechten_na_24u"
 #: 0151 (Peter 16-09 avond): een herkende zonnestudio-dagstaat noemt een store die niet aan een administratie gekoppeld
 #: is — het document ligt in de verzamelbak; harde voorwaarde mét deeplink naar Instellingen › Boeken › Stores.
 STORE_ONBEKEND = "store_onbekend"
+#: Blok 1 doorbelasting-herkoppeling (Peter 12-09/16-09): een whitelist-rij zonder doel heeft een bijna-match of méér dan
+#: één kandidaat — het systeem raadt niet; harde voorwaarde mét deeplink naar Instellingen › Administraties › ‹bron› ›
+#: Doorbelasting ("Koppel administratie…"). `doel_niet_onboarded` = geen kandidaat: zichtbaar, geen LET-OP.
+DOEL_BIJNA_MATCH = "doel_bijna_match"
+DOEL_NIET_ONBOARDED = "doel_niet_onboarded"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -115,6 +120,7 @@ HARDE_VOORWAARDEN = frozenset(
         KOSTENGRENS,
         RECHTEN_NA_24U,
         STORE_ONBEKEND,
+        DOEL_BIJNA_MATCH,
     }
 )
 
@@ -178,6 +184,8 @@ REDEN_LABEL: dict[str, str] = {
     AI_FOUT: "AI-fout/timeout",
     TOETS_UIT: "AI-toets facturen staat platformbreed uit (opt-out)",
     STORE_ONBEKEND: "store uit de dagstaat niet gekoppeld aan een administratie (verzamelbak)",
+    DOEL_BIJNA_MATCH: "doelentiteit niet eenduidig te koppelen (bijna-match of meerdere kandidaten) — koppel handmatig",
+    DOEL_NIET_ONBOARDED: "doelentiteit nog niet onboarded (geen kandidaat)",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -222,6 +230,9 @@ OMZETBRON_HERKENNING = "omzetbron_herkenning"
 #: Blok C 16-09 avond: dagelijkse toets "kassarapport in de inkoopstroom" (geboekt = herboeken als omzet, ongeboekt =
 #: type wijzigen) — bron audit `kassarapport_inkoopstroom_run` (één rij per administratie per run mét tellers).
 KASSARAPPORT_INKOOPSTROOM = "kassarapport_inkoopstroom"
+#: Blok 1 doorbelasting-herkoppeling (Peter 12-09/16-09): dagelijks (sync-alles) + ná onboarding — bron audit
+#: `doorbelasting_herkoppeling_run` (per bron-administratie: open/gekoppeld/bijna_match/meerdere/geen).
+DOORBELASTING_HERKOPPELING = "doorbelasting_herkoppeling"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -245,11 +256,13 @@ VOLGORDE: tuple[str, ...] = (
     EXTRACTIE_WACHTRIJ,
     OMZETBRON_HERKENNING,
     KASSARAPPORT_INKOOPSTROOM,
+    DOORBELASTING_HERKOPPELING,
 )
 
 LABEL: dict[str, str] = {
     OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
     KASSARAPPORT_INKOOPSTROOM: "Kassarapporten in de inkoopstroom (dagelijkse toets)",
+    DOORBELASTING_HERKOPPELING: "Doorbelasting — herkoppeling doelentiteiten (whitelist zonder doel)",
     EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
     DUPLICAAT_AFVOER: "Duplicaat-afvoer",
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
@@ -286,6 +299,7 @@ DOEL_PAD: dict[str, str] = {
     GEEN_SYNC_RUN: "/reconciliatie",
     TOETS_UIT: "/instellingen/boeken",
     STORE_ONBEKEND: "/instellingen/boeken#stores",
+    DOEL_BIJNA_MATCH: "/instellingen/administraties/{aid}/doorbelasting",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -301,6 +315,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     TERUGKEREND: (FOUT,),
     EERSTE_SYNC_HERPROBEREN: (RECHTEN_ONDERWEG,),
     OMZETBRON_HERKENNING: (STORE_ONBEKEND,),
+    DOORBELASTING_HERKOPPELING: (DOEL_BIJNA_MATCH, DOEL_NIET_ONBOARDED),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -326,6 +341,8 @@ _ACTIES: tuple[str, ...] = (
     "omzetbron_herkend",
     "omzetbron_store_onbekend",
     "kassarapport_inkoopstroom_run",
+    # blok 1 doorbelasting-herkoppeling (16-09 nacht)
+    "doorbelasting_herkoppeling_run",
 )
 
 
@@ -751,6 +768,12 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "dagelijkse reconciliatie, alle administraties (lokaal, geen RLZ-call)",
         "audit kassarapport_inkoopstroom_run",
     )
+    herkoppeling = maak(
+        DOORBELASTING_HERKOPPELING,
+        "altijd",
+        "dagelijks in sync-alles + ná élke onboarding; exacte naam = koppelen, bijna-match/meerdere = LET-OP, nooit raden",
+        "audit doorbelasting_herkoppeling_run (per bron-administratie)",
+    )
 
     # --- audit-feiten
     for f in feiten.audit:
@@ -773,6 +796,19 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "kassarapport_inkoopstroom_run":
             for v in vensters(kassa_inkoop, f.tijdstip):
                 v.tel_gedaan(int(nw.get("geboekt") or 0) + int(nw.get("ongeboekt") or 0))
+        elif f.actie == "doorbelasting_herkoppeling_run":
+            for v in vensters(herkoppeling, f.tijdstip):
+                v.tel_gedaan(int(nw.get("gekoppeld") or 0))
+                v.tel_overgeslagen(DOEL_NIET_ONBOARDED, int(nw.get("geen") or 0))
+            for nk in nw.get("niet_gekoppeld") or []:
+                kandidaten = ", ".join(k.get("naam", "?") for k in nk.get("kandidaten") or [])
+                tel_over(
+                    herkoppeling,
+                    f.tijdstip,
+                    DOEL_BIJNA_MATCH,
+                    f.administratie_id,
+                    f"{nk.get('doelentiteit_naam')!r} ({nk.get('reden')}: {kandidaten})",
+                )
         elif f.actie == "automatisch_geboekt":
             t = omzet if bron == "omzet_opt_in" else verkoop if bron == "verkoop_opt_in" else inkoop
             for v in vensters(t, f.tijdstip):

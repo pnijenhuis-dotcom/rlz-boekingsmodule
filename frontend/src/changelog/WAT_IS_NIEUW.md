@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Doorbelasting: doelentiteiten koppelen zichzelf en de aansluiting verkoop ↔ inkoop wordt dagelijks getoetst
+
+<!-- doorbelasting-aansluiting-16-09 -->
+
+- **Een doelentiteit in de doorbelasting-whitelist die later als administratie is toegevoegd, koppelt het systeem nu zelf** — bij het onboarden en elke nacht, alleen bij een exact gelijke naam. Lijkt de naam er alleen op (enkelvoud/meervoud, meerdere kandidaten), dan raadt het systeem niet: je ziet het als let-op met de knop "Koppel administratie…" op de whitelist-rij in Instellingen › Administraties › Doorbelasting.
+- **Nieuwe dagelijkse controle "Doorbelasting-aansluiting"** op Inzicht › Reconciliatie: per bron-administratie worden álle verkoopfacturen aan de doelentiteiten (ook concepten, ook wat via Zenvoices of handmatig ging) vergeleken met de inkoopfacturen in die doelentiteiten. Je ziet per factuur: sluit, ontbreekt in het doel, bedrag afwijkt, status verschilt, doel heeft geen administratie, of inkoop zonder verkoop — met wat te doen. Waar een open spiegel-taak bestaat, boek je de inkoop met één klik in het doel.
+
 ## 2026-09-16 — Kassarapport-stores koppel je nu op één plek aan een administratie; kassarapporten die als inkoopfactuur binnenkwamen worden dagelijks gevonden
 
 <!-- omzet-store-routering-16-09 -->

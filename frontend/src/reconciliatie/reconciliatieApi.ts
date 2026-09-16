@@ -99,7 +99,7 @@ export type BevindingBlok =
   | 'run'
   | 'automatisering'
   | 'rlz_dubbel'
-  | 'intercompany' | 'rekening_courant'
+  | 'intercompany' | 'rekening_courant' | 'doorbelasting_aansluiting'
 
 export interface BevindingDto {
   id: string
@@ -323,11 +323,14 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   automatisering: 'Automatisering',
   rlz_dubbel: 'Dubbel in RLZ',
   rekening_courant: 'Rekening-courant',
+  doorbelasting_aansluiting: 'Doorbelasting-aansluiting',
   intercompany: 'Intercompany',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */
 export const REDEN_LABEL: Record<string, string> = {
+  doel_bijna_match: 'doelentiteit niet eenduidig te koppelen (bijna-match of meerdere kandidaten) — koppel handmatig',
+  doel_niet_onboarded: 'doelentiteit nog niet onboarded (geen kandidaat)',
   geen_eigenaar: 'geen eigenaar/toewijzing',
   volumerem: 'volumerem bereikt',
   geldpoort: 'boeken staat uit',
