@@ -769,6 +769,35 @@ aanzetten. Dit is het simpelste dat altijd werkt — ook als de WIF-auth in de r
 één variabele), geen `--allow-unauthenticated`, smoketest toetst publiek 200 + zelfde beeld, `if: failure()`-stap aanwezig met run-URL.
 Deploy-check-ritueel blijft (les 10-09): service ÉN jobs (`gcloud run jobs list --format="table(metadata.name,spec.template.spec.template.spec.containers[0].image)"`).
 
+### F3.9 — Volledige envset in één deploy-stap (Peter 16-09; BESLISSINGEN "DEPLOY — VOLLEDIGE ENVSET IN ÉÉN STAP (Peter 16-09)")
+
+**Aanleiding.** 16-09 ~09:00: herstel-link → "Mailkanaal niet geconfigureerd". `gcloud run deploy rlz-backend --set-env-vars …` verving de hele
+envset; mail-, store-link-, inbox-adres- en pushconfig kwamen pas in latere `services update`-stappen terug. Élke deploy = minuten zonder mail;
+een run die daartussen strandde (10-09 ×2, 16-09 `a23042e`) = service blijvend zonder mailconfig. Jobs hadden dezelfde constructie;
+`rlz-kantoor-digest` had zelfs nooit mailconfig.
+
+**Nu.** Eén stap per doel, volledige config, volgorde-onafhankelijk:
+
+| Onderdeel | deploy.yml |
+|---|---|
+| Gedeelde sets | workflow-`env:` `MAIL_ENVS` (6 pairs, `|`-gescheiden), `MAIL_SECRETS`, `PUSH_ENVS`, `PUSH_SECRETS` |
+| Service | stap "Cloud Run-revisie uitrollen (volledige envset + secrets in één stap)": 26 envs (`^|^`) + 12 secrets, geen `services update` meer, geen `||`-fallback |
+| Jobs | stap "F3-jobs bijwerken …": `BASIS_ENVS`/`BASIS_SECRETS` + `case`-extra's per job (intake-imap, extractie-wachtrij, herinneringen/nieuwe-facturen mét push, kantoor-digest/reconciliatie mét mail, bewaking, webhook-afleveraar), één `jobs deploy` per job |
+| Smoketest | `deploy-smoketest` leest lees-only de servicetemplate (Cloud Run Admin API, `roles/run.viewer` op run-jobs@ zoals F3.8) en eist BERICHTEN_SMTP_HOST/-GEBRUIKER + secret BERICHTEN_SMTP_WACHTWOORD → anders rood + mail `deploy-mislukt` |
+| Guards | `tests/unit/test_deploy_yml_envset_compleet.py` (nieuw), `test_deploy_yml_envvar_delimiters.py` (expandeert de constanten), `test_deploy_yml_image_uniform.py` |
+
+**Meetrecept ná de eerste groene run (lees-only):**
+
+```
+gcloud run services describe rlz-backend --region europe-west4 --project rlz-boekhouding \
+  --format='value(spec.template.spec.containers[0].env)'      # bevat BERICHTEN_SMTP_HOST, INTAKE_POSTVAK_ADRES, STORE_LINK_IOS
+gcloud run jobs describe rlz-kantoor-digest --region europe-west4 --project rlz-boekhouding \
+  --format='value(spec.template.spec.template.spec.containers[0].env)'   # bevat BERICHTEN_SMTP_HOST
+```
+
+Smoketest-log: "service-template draagt de mailkanaal-config (N envs, M secrets)". Daarna één herstel-link sturen → mail komt aan. Geen handmatige
+`services update` als tussenoplossing (regel Peter 08-09: productie alleen via de workflow).
+
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
 > **Uitvoering: `docs/F4_ACTIVATIE_RUNBOOK.md` is het cutover-draaiboek (F4-voorbereiding

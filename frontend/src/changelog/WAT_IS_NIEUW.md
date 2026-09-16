@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Mailen werkt direct ná elke update
+
+<!-- deploy-envset-16-09 -->
+
+- **Geen stille uitval van e-mail meer ná een update.** Bij het uitrollen van een nieuwe versie kreeg de app haar mailinstellingen pas in een latere stap terug; brak de uitrol daartussen af, dan kon de app geen uitnodigingen, herstel-links of meldingen meer versturen (u zag dan "Mailkanaal niet geconfigureerd"). Vanaf nu gaat élke nieuwe versie live mét complete instellingen, en de controle ná het uitrollen weigert een versie zonder mailinstellingen.
+- **De wekelijkse kantoor-samenvatting kan nu écht mailen.** De achtergrondtaak die de weekdigest verstuurt had nooit mailinstellingen; die zijn nu meegegeven.
+
 ## 2026-09-16 — Omzetbronnen zonnestudio en pilates: tegenzijde, btw-standaarden, combi en Stripe
 
 <!-- omzetbronnen-besluiten-16-09 -->

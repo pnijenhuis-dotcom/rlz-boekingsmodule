@@ -10119,6 +10119,37 @@ pilates 1/2/4 van 15-09. Rapport: `docs/rapporten/2026-09-16-omzetbronnen-beslui
 | Harnas + sweep | GEBOUWD | `dev/visueelHarnasInstellingen.tsx` mockt GET/PUT `…/omzet/bron-instellingen` (defaults + 6 rekeningen + 3 tarieven; `?omzetbronnen=1` = breedste stand: twee stores, eigen regel mét lange productnaam, lange rekeningnaam); `overflow_sweep.sh` nieuw harnas `…&tab=boeken-ai&omzetbronnen=1` — 16-09 groen 8/8 (licht/donker × 1440/1170/1024/768). |
 | Beslispunten (default gekozen) | OPEN voor Peter | (1) Blok op tab Boeken & AI i.p.v. een eigen tab "Omzet" — een eigen tab pas als er méér omzet-instellingen komen (dan registry-entry + DETAIL_TABS + test). (2) "Herstel standaard" laat stores staan (default: ja — stores zijn geen afleidbare default). (3) Eten/drinken-select toont "(9 %)"/"(21 %)" als leestekst — het echte tarief blijft het RLZ-tarief van de administratie uit `defaults`/`tarieven`. |
 
+## DEPLOY — VOLLEDIGE ENVSET IN ÉÉN STAP (Peter 16-09) — herziet de stapvolgorde van deploy.yml (F2.3/F3); geen migratie, geen productie-writes
+
+**Aanleiding (melding Peter 16-09 ~09:00):** een herstel-link voor een klant-accordeur gaf "Herstel-link aangemaakt …, maar het mailen
+mislukte: Mailkanaal niet geconfigureerd (BERICHTEN_SMTP_HOST/-GEBRUIKER/-WACHTWOORD ontbreekt)". De fallback (link tonen) werkte.
+
+**Wortel:** `gcloud run deploy rlz-backend` gebruikte `--set-env-vars` (VERVANGT de hele envset) met alleen de basis-envset; INTAKE_POSTVAK_ADRES,
+STORE_LINK_IOS, BERICHTEN_*/APP_BASIS_URL, VAPID, APNs en FCM kwamen pas in latere `gcloud run services update`-stappen terug. Gevolg (a): élke
+deploy had een venster van minuten waarin de service niet kon mailen; (b): een run die ná de service-stap rood ging (10-09 tweemaal; 16-09
+`a23042e`) liet de service BLIJVEND zonder mailconfig achter. Dezelfde constructie bij de jobs (`--set-env-vars` in de F3-lus + losse
+`jobs update --update-env-vars`). Bijvangst: de job `rlz-kantoor-digest` mailt de weekdigest (`app/berichten/digest.py`) maar droeg helemaal
+GEEN mailconfig.
+
+**Besluit (default gekozen, opdracht 16-09):**
+
+| # | Onderdeel | Stand |
+|---|---|---|
+| 1 | **Service:** álle envs (incl. INTAKE_POSTVAK_ADRES, STORE_LINK_IOS, mail, APNS_SANDBOX, FCM_PROJECT_ID) én álle secrets (incl. BERICHTEN_SMTP_WACHTWOORD, VAPID-paar, APNs) in de ENE `gcloud run deploy`-stap; scheider `^\|^` (komt in geen waarde voor — e-mailadressen dragen `@`, JSON-lijsten `,`/`"`). De twee `services update`-stappen (inbox_adres + store-links; notificatie-config + APNs) zijn vervallen. Geen `\|\| echo "LET OP …"`-fallback meer: een ontbrekend secret-slot maakt de deploy zichtbaar rood (+ mail via `deploy-mislukt`) in plaats van een revisie zonder config uit te rollen. | GEBOUWD 16-09 |
+| 2 | **Jobs:** de F3-lus bouwt per job de volledige envset + secrets op (`BASIS_ENVS`/`BASIS_SECRETS` + `case "${NAAM}"`-extra's) en doet per job precies één `gcloud run jobs deploy`; álle losse `jobs update`-stappen zijn vervallen; `rlz-webhook-afleveraar` zit nu in dezelfde lus. `rlz-kantoor-digest` krijgt nu wél de mail-envset. | GEBOUWD 16-09 |
+| 3 | **Eén bron voor de gedeelde sets:** workflow-`env:` `MAIL_ENVS`, `MAIL_SECRETS`, `PUSH_ENVS`, `PUSH_SECRETS` — geëxpandeerd in service-stap, jobs-lus én smoketest-job; service en jobs kunnen niet meer uit elkaar lopen. | GEBOUWD 16-09 |
+| 4 | **Guard** `tests/unit/test_deploy_yml_envset_compleet.py`: geen `services update`/`jobs update`/`--update-env-vars`/`--update-secrets` in het bestand (fail-closed), service-stap draagt de volledige sleutel-set (26 envs, 12 secrets) incl. mailkanaal, scheider in geen waarde, mailconfig alleen via `${MAIL_ENVS}`, mailende jobs (reconciliatie, bewaking, herinneringen, nieuwe-facturen, kantoor-digest) dragen de set in hun case-tak, élke `jobs deploy` heeft `--set-env-vars` + `--set-secrets`. `test_deploy_yml_envvar_delimiters.py` expandeert nu de workflow-constanten en toetst óók de `ENVS="…"`-toewijzingen; `test_deploy_yml_image_uniform.py` telt 4 beeld-vlaggen (service, migratie, lus, smoketest). | GEBOUWD 16-09 |
+| 5 | **Smoketest ná deploy** (`deploy-smoketest`): lees-only via de Cloud Run Admin API (zelfde token/recht als de drift-toets) leest de SERVICE-template en eist BERICHTEN_SMTP_HOST + BERICHTEN_SMTP_GEBRUIKER als env én BERICHTEN_SMTP_WACHTWOORD als secret-mount (`deploy_drift.lees_service_config`/`mailkanaal_ontbrekend`); ontbreekt iets → deploy rood mét de ontbrekende sleutels → mail via `deploy-mislukt`. Een platte wachtwoord-env telt niet als secret. | GEBOUWD 16-09 |
+| 6 | **Nazorg productie:** geen handmatige `services update` (regel Peter 08-09) — de eerstvolgende groene deploy van deze commit zet de complete envset. Meetrecept (lees-only, nameting-allowlist): `gcloud run services describe rlz-backend --region europe-west4 --format='value(spec.template.spec.containers[0].env)'` bevat BERICHTEN_SMTP_HOST; smoketest-regel "service-template draagt de mailkanaal-config (N envs, M secrets)"; daarna één herstel-link → mail komt aan. | WACHT OP DEPLOY |
+
+**Wat NIET verandert:** `rlz-migratie` (eigen stap vóór de service, alleen DB-secrets), `rlz-smoketest` (deploy + execute in de smoketest-stap),
+de `if: failure()`-mailstap, de IAM-eis `roles/run.viewer` op run-jobs@ (F3.8). Guard-les blijft: `^<t>^` geldt voor de hele lijst en mag in geen
+waarde staan.
+
+**Canoniek:** `.github/workflows/deploy.yml` (env-blok + stappen "Cloud Run-revisie uitrollen (volledige envset + secrets in één stap)" en
+"F3-jobs bijwerken (… volledige envset per job)"), `app/bewaking/deploy_drift.py`, `app/cli.py::_smoketest_service_mailkanaal`, GCP_UITROL §F3.9,
+rapport `docs/rapporten/2026-09-16-deploy-envset.md`.
+
 ## Contract-afstemming met X (gelezen uit X's code 16-09 — `contract_afwijkingen_X4.md` was bij afronding van Y nog niet geschreven)
 
 | Punt | Contract | Gebouwd door X | Y verwerkt als |
