@@ -229,6 +229,25 @@ def _titel(kop: str, onderwerp: Segmenten | str, scheiding: str = " ") -> str:
 # ---- afwijkingen per blok -------------------------------------------------------------------------
 
 _DOE_ACCEPTEER = "klopt die, accepteer met reden."
+_DOE_DUBBELE_BETALING = (
+    "Controleer de twee betalingen in Reeleezee en of terugvordering bij de leverancier nodig is; "
+    "klopt het (twee facturen), accepteer met reden."
+)
+
+
+def _dubbele_betaling_wat(d: dict, tekst: str) -> str:
+    datums_ruw = d.get("dubbele_betaling_datums") or []
+    bedrag_ruw = _s(d, "dubbele_betaling_bedrag", "mutatie_bedrag")
+    try:
+        datums = [date.fromisoformat(str(x)[:10]) for x in datums_ruw]
+        bedrag = abs(Decimal(str(bedrag_ruw).replace(",", ".")))
+    except (ValueError, InvalidOperation, TypeError):
+        return _terugval_wat(d.get("detail") or tekst)
+    if len(datums) < 2:
+        return _terugval_wat(d.get("detail") or tekst)
+    from app.bank.dubbele_betaling import tekst_uit_delen
+
+    return tekst_uit_delen(_s(d, "tegenpartij_naam"), bedrag, datums, iban=_s(d, "tegenrekening_iban"))
 _DOE_CONTROLE_MISLUKT = (
     "Controleer verbinding en credentials van deze administratie; de volgende run controleert opnieuw."
 )
@@ -389,6 +408,10 @@ def _bank(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             f"RLZ gaf een fout bij het ophalen van {mutatie}; over de boeking zelf zegt dat niets.",
             _DOE_CONTROLE_MISLUKT,
         )
+    if soort == "dubbele_betaling_vermoed":
+        # Blok C 16-09: dezelfde zin als de chip in het bankscherm (app/bank/dubbele_betaling.py::tekst_uit_delen),
+        # opgebouwd uit de detail-velden; ontbreekt een bouwsteen, dan de CLI-regel zonder id's.
+        return (_t("Mogelijk dubbel betaald"), _dubbele_betaling_wat(d, tekst), _DOE_DUBBELE_BETALING)
     return (
         _t("Afwijking in de bank"),
         _terugval_wat(d.get("detail") or tekst),

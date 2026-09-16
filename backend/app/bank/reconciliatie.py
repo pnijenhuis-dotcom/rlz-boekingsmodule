@@ -11,6 +11,11 @@ Twee controles:
 2. elke GEVERIFIEERDE afletter-opdracht ↔ het verse OpenAmount van de mutatie — vangt een
    in RLZ teruggedraaide aflettering.
 
+3. (blok C 16-09) dubbele betaling vermoed — twee uitgaande mutaties aan dezelfde tegenrekening met hetzelfde
+   bedrag binnen 60 dagen, zonder periodiek patroon en zonder aantoonbaar twee verschillende facturen
+   (`app/bank/dubbele_betaling.py`) — eigen DB, géén RLZ-call; draait dus óók zonder boekingen/afletteringen en
+   als de RLZ-client niet op te bouwen is. Niet blokkerend: een mens beoordeelt (terugvordering).
+
 ⚠️ Toetsen gebeurt op OpenAmount/documentstatus, nooit op IsComplete (stale na storno)."""
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from app.bank import dubbele_betaling as dubbele_betaling_motor
 from app.bank.models import AfletterOpdrachtStatus, BankAfletterOpdracht, BankBoeking, BankBoekingStatus
 from app.db.session import scoped_session
 from app.rlz.client import RlzApiError, RlzClient
@@ -36,6 +42,9 @@ class BankAfwijking:
     payment_transaction_id: uuid.UUID
     soort: str
     detail: str
+    #: Extra leesbare velden voor het bevinding-detail (blok C 16-09: `dubbele_betaling_datums`/`_aantal`);
+    #: de CLI voegt ze via `_verrijk_bank` aan het detail-dict toe.
+    extra: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +53,33 @@ class BankReconciliatieRapport:
     boekingen_gecontroleerd: int
     afletteringen_gecontroleerd: int
     afwijkingen: tuple[BankAfwijking, ...]
+    #: Blok C 16-09: aantal getoetste sleutels (tegenrekening + bedrag mét ≥ 2 uitgaande mutaties).
+    dubbele_betalingen_gecontroleerd: int = 0
+
+
+SOORT_DUBBELE_BETALING = "dubbele_betaling_vermoed"
+
+
+def _dubbele_betaling_afwijkingen(administratie_id: uuid.UUID) -> tuple[list[BankAfwijking], int]:
+    analyse = dubbele_betaling_motor.analyseer_voor_administratie(administratie_id)
+    afwijkingen = [
+        BankAfwijking(
+            record_id=d.jongste_mutatie_id,
+            payment_transaction_id=d.jongste_mutatie_id,
+            soort=SOORT_DUBBELE_BETALING,
+            detail=dubbele_betaling_motor.tekst(d)
+            + " [mutaties: "
+            + ", ".join(dag.strftime("%d-%m") for dag in d.datums)
+            + "]",
+            extra={
+                "dubbele_betaling_datums": [dag.isoformat() for dag in d.datums],
+                "dubbele_betaling_aantal": d.aantal,
+                "dubbele_betaling_bedrag": str(d.bedrag),
+            },
+        )
+        for d in analyse.signalen
+    ]
+    return afwijkingen, analyse.sleutels_getoetst
 
 
 def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None = None) -> BankReconciliatieRapport:
@@ -67,20 +103,36 @@ def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None =
             )
         ]
 
+    # Controle 3 eerst: eigen DB, geen RLZ nodig — ook zonder boekingen/afletteringen een uitkomst.
+    afwijkingen, dubbele_getoetst = _dubbele_betaling_afwijkingen(administratie_id)
+
     if not boekingen and not afletteringen:
         return BankReconciliatieRapport(
             administratie_id=administratie_id,
             boekingen_gecontroleerd=0,
             afletteringen_gecontroleerd=0,
-            afwijkingen=(),
+            afwijkingen=tuple(afwijkingen),
+            dubbele_betalingen_gecontroleerd=dubbele_getoetst,
         )
 
     eigen_client = client is None
     if client is None:
-        rlz_admin_id = rlz_admin_id_voor(administratie_id)
-        client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+        try:
+            rlz_admin_id = rlz_admin_id_voor(administratie_id)
+            client = client_voor_rlz_admin_id(rlz_admin_id).for_administration(rlz_admin_id)
+        except Exception as exc:  # noqa: BLE001 — geen client = élke RLZ-controle zichtbaar "mislukt", nooit stil
+            for record_id, _rlz_document_id, payment_transaction_id in boekingen:
+                afwijkingen.append(BankAfwijking(record_id, payment_transaction_id, "controle_mislukt", str(exc)))
+            for record_id, payment_transaction_id in afletteringen:
+                afwijkingen.append(BankAfwijking(record_id, payment_transaction_id, "controle_mislukt", str(exc)))
+            return BankReconciliatieRapport(
+                administratie_id=administratie_id,
+                boekingen_gecontroleerd=len(boekingen),
+                afletteringen_gecontroleerd=len(afletteringen),
+                afwijkingen=tuple(afwijkingen),
+                dubbele_betalingen_gecontroleerd=dubbele_getoetst,
+            )
     try:
-        afwijkingen: list[BankAfwijking] = []
         for boeking_id, rlz_document_id, payment_transaction_id in boekingen:
             try:
                 document = client.get_bank_mutation_direct_booking(rlz_document_id)
@@ -128,6 +180,7 @@ def reconcilieer_bank(*, administratie_id: uuid.UUID, client: RlzClient | None =
         boekingen_gecontroleerd=len(boekingen),
         afletteringen_gecontroleerd=len(afletteringen),
         afwijkingen=tuple(afwijkingen),
+        dubbele_betalingen_gecontroleerd=dubbele_getoetst,
     )
 
 

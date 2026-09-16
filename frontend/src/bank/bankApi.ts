@@ -173,6 +173,17 @@ export interface MutatieDto {
   ai_toets_uitkomst?: 'plausibel' | 'twijfel' | 'overgeslagen' | null
   ai_toets_reden?: string | null
   ai_toets_op?: string | null
+  /** Blok C 16-09 (casus Hello Kitchen Duiven: € 12.600,00 op 18-08 én 14-09 aan dezelfde tegenrekening): vermoeden
+   * "dubbel betaald" — zelfde tegenrekening, zelfde bedrag, binnen 60 dagen, geen periodiek patroon, geen twee
+   * verschillende facturen in RLZ. Oranje signaal op élke betrokken mutatie, nooit blokkerend. `tekst` = de leesbare zin. */
+  dubbele_betaling?: DubbeleBetalingDto | null
+}
+
+export interface DubbeleBetalingDto {
+  tekst: string
+  datums: string[]
+  bedrag: string
+  mutatie_ids: string[]
 }
 
 export interface MutatiesDto {

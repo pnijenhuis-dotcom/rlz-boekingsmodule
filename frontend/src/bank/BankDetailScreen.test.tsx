@@ -667,6 +667,31 @@ describe('BankDetailScreen', () => {
     expect(screen.getByLabelText('Toon verwerkte mutaties ouder dan 30 dagen (1)')).toBeChecked()
   })
 
+  it('blok C (16-09): een vermoede dubbele betaling is een oranje chip "mogelijk dubbel betaald" mét de zin als tooltip; zonder vermoeden geen chip', async () => {
+    const tekst =
+      'Aan Bouwmaat Nederland B.V. is € 1.847,23 twee keer betaald (18-08 en 03-09) voor wat één factuur lijkt — controleer of terugvordering nodig is.'
+    installFetchMock({
+      mutaties: [
+        mutatie({
+          dubbele_betaling: { tekst, datums: ['2026-08-18', '2026-09-03'], bedrag: '1847.23', mutatie_ids: [MUTATIE_ID, OPDRACHT_ID] },
+        }),
+      ],
+    })
+    renderScherm()
+
+    const chip = await screen.findByTestId('chip-dubbele-betaling')
+    expect(chip).toHaveTextContent('mogelijk dubbel betaald')
+    expect(chip).toHaveAttribute('title', tekst)
+    expect(chip.className).toContain('afwijking')
+  })
+
+  it('blok C (16-09): zonder vermoeden geen dubbele-betaling-chip', async () => {
+    installFetchMock()
+    renderScherm()
+    await screen.findByText(/Bouwmaat Nederland B.V./)
+    expect(screen.queryByTestId('chip-dubbele-betaling')).not.toBeInTheDocument()
+  })
+
   it('toont de onboarding-melding zonder bankaanlevering', async () => {
     installFetchMock({
       rekeningenBody: { heeft_bankaanlevering: false },

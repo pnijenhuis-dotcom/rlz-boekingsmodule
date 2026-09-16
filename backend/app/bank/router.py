@@ -185,6 +185,19 @@ def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.Voorstel
     )
 
 
+def _dubbele_betalingen_per_mutatie(administratie_id: uuid.UUID) -> dict[uuid.UUID, schemas.DubbeleBetalingResponse]:
+    from app.bank import dubbele_betaling
+
+    uit: dict[uuid.UUID, schemas.DubbeleBetalingResponse] = {}
+    for d in dubbele_betaling.vind_dubbele_betalingen_voor_administratie(administratie_id):
+        dto = schemas.DubbeleBetalingResponse(
+            tekst=dubbele_betaling.tekst(d), datums=list(d.datums), bedrag=d.bedrag, mutatie_ids=list(d.mutatie_ids)
+        )
+        for mutatie_id in d.mutatie_ids:
+            uit[mutatie_id] = dto
+    return uit
+
+
 @router.get(
     "/administraties/{administratie_id}/bank/rekeningen/{rekening_id}/mutaties",
     response_model=schemas.MutatiesResponse,
@@ -199,9 +212,13 @@ def mutaties(
     items = voorstellen.open_mutaties_met_voorstellen(
         administratie_id=administratie_id, payment_account_id=rekening_id
     )
+    # Blok C 16-09: één set-based analyse per administratie (over álle rekeningen — een dubbele betaling kan van twee
+    # rekeningen komen), daarna een map op mutatie-id; geen N+1.
+    dubbel_per_mutatie = _dubbele_betalingen_per_mutatie(administratie_id)
     return schemas.MutatiesResponse(
         mutaties=[
             schemas.MutatieResponse(
+                dubbele_betaling=dubbel_per_mutatie.get(item.mutatie.id),
                 id=item.mutatie.id,
                 boekdatum=item.boekdatum,
                 bedrag=item.mutatie.bedrag,

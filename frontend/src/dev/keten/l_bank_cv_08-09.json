@@ -59,7 +59,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-00000000000a",
@@ -89,7 +90,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-00000000000e",
@@ -128,7 +130,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-00000000000b",
@@ -158,7 +161,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-00000000000d",
@@ -199,7 +203,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-00000000000c",
@@ -240,7 +245,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     },
     {
      "id": "cccccccc-0000-4000-8000-000000000a01",
@@ -279,7 +285,8 @@
      "regel_voorstel": null,
      "ai_toets_uitkomst": null,
      "ai_toets_reden": null,
-     "ai_toets_op": null
+     "ai_toets_op": null,
+     "dubbele_betaling": null
     }
    ]
   },

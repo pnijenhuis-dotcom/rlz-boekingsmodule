@@ -218,6 +218,7 @@ class TestBank:
                 "Letter opnieuw af",
             ),
             ("controle_mislukt", "502", "Controle mislukt", "credentials"),
+            ("dubbele_betaling_vermoed", "Aan X is € 1,00 twee keer betaald", "Mogelijk dubbel betaald", "terugvordering"),
             ("onbekend", "x", "Afwijking in de bank", "accepteer met reden"),
         ],
     )
@@ -225,6 +226,27 @@ class TestBank:
         lb = leesbaar(self._bank(soort, detail_tekst))
         _schoon(lb)
         assert lb.titel == titel and doe_fragment in lb.doe
+
+    def test_dubbele_betaling_zin_uit_detailvelden(self) -> None:
+        # Blok C 16-09: dezelfde zin als de chip in het bankscherm, uit de detail-velden — nooit een id.
+        lb = leesbaar(
+            self._bank(
+                "dubbele_betaling_vermoed",
+                "… [mutaties: 18-08, 03-09]",
+                tegenpartij_naam="Hello Kitchen Duiven",
+                mutatie_bedrag="-12600.00",
+                mutatie_datum="2026-09-03",
+                dubbele_betaling_datums=["2026-08-18", "2026-09-03"],
+                dubbele_betaling_aantal=2,
+            )
+        )
+        _schoon(lb)
+        assert lb.titel.startswith("Mogelijk dubbel betaald — Hello Kitchen Duiven")
+        assert lb.wat == (
+            "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 03-09) voor wat één factuur lijkt — "
+            "controleer of terugvordering nodig is."
+        )
+        assert lb.doe.startswith("Controleer de twee betalingen in Reeleezee") and "accepteer met reden" in lb.doe
 
     def test_aflettering_open_bedrag_uit_detailtekst(self) -> None:
         lb = leesbaar(

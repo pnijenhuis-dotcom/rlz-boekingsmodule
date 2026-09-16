@@ -101,9 +101,15 @@ def bank(*, administratie_id: uuid.UUID, record_id: uuid.UUID, payment_transacti
             PaymentItemCache,
         )
 
+        # De cache-tabellen (bank_mutatie, payment_account_cache, payment_item_cache) hebben een samengestelde sleutel
+        # (id, administratie_id): een kale `session.get(Model, id)` gooit InvalidRequestError en de hele verrijking viel
+        # dan stil terug op {} — gevonden bij blok C 16-09 (mutatie-velden bleven leeg in élke bank-bevinding).
+        def _cache(model, record_id):  # noqa: ANN001, ANN202
+            return session.get(model, {"id": record_id, "administratie_id": administratie_id})
+
         with scoped_session(administratie_id) as session:
             uit: dict[str, Any] = {"administratie_naam": administratie_naam(administratie_id)}
-            mutatie = session.get(BankMutatie, payment_transaction_id)
+            mutatie = _cache(BankMutatie, payment_transaction_id)
             if mutatie is not None:
                 uit.update(
                     {
@@ -115,10 +121,13 @@ def bank(*, administratie_id: uuid.UUID, record_id: uuid.UUID, payment_transacti
                     }
                 )
                 if mutatie.payment_account_id is not None:
-                    rekening = session.get(PaymentAccountCache, mutatie.payment_account_id)
+                    rekening = _cache(PaymentAccountCache, mutatie.payment_account_id)
                     if rekening is not None:
                         uit.update({"rekening_naam": rekening.naam, "rekening_iban": rekening.iban})
             boeking = session.get(BankBoeking, record_id)
+            if boeking is None and mutatie is not None and record_id == payment_transaction_id:
+                # Blok C 16-09: een afwijking op de mutatie zelf (dubbele betaling vermoed) — geen boeking/opdracht.
+                uit["controle"] = "mutatie"
             if boeking is not None:
                 uit.update(
                     {
@@ -133,7 +142,7 @@ def bank(*, administratie_id: uuid.UUID, record_id: uuid.UUID, payment_transacti
                 if opdracht is not None:
                     uit["controle"] = "aflettering"
                     if opdracht.payment_item_id is not None:
-                        post = session.get(PaymentItemCache, opdracht.payment_item_id)
+                        post = _cache(PaymentItemCache, opdracht.payment_item_id)
                         if post is not None:
                             uit.update(
                                 {

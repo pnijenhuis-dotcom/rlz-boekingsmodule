@@ -171,6 +171,16 @@ class RlzKoppelingResponse(BaseModel):
     omschrijving: str | None = None
 
 
+class DubbeleBetalingResponse(BaseModel):
+    """Blok C 16-09: vermoeden "dubbel betaald" (zelfde tegenrekening, zelfde bedrag, binnen 60 dagen, geen periodiek
+    patroon, geen twee verschillende facturen in RLZ) — oranje signaal, nooit blokkerend. `tekst` = de leesbare zin."""
+
+    tekst: str
+    datums: list[date]
+    bedrag: Decimal
+    mutatie_ids: list[uuid.UUID]
+
+
 class MutatieResponse(BaseModel):
     """`bedrag` = het totaal van de mutatie, `open_bedrag` = wat er in RLZ nog open staat — sinds blok 3 nachtrun
     10/11-09 (bug Zilver Beheer) DE maat voor voorstel, formulier, splitsen en boeken. `deels_afgeletterd` +
@@ -192,6 +202,8 @@ class MutatieResponse(BaseModel):
     ai_toets_uitkomst: str | None = None
     ai_toets_reden: str | None = None
     ai_toets_op: datetime | None = None
+    # Blok C 16-09: gevuld op élke mutatie die in een vermoede dubbele betaling zit (ook de oudste).
+    dubbele_betaling: DubbeleBetalingResponse | None = None
 
 
 class MutatiesResponse(BaseModel):

@@ -146,6 +146,18 @@ export function koppelingTekst(k: RlzKoppelingDto): string {
  * € 5.023,09". Nu: volledig bedrag + secundaire regel "open € …" + chip "deels afgeletterd in RLZ" (info-blauw = stand;
  * één regel) mét de gekoppelde documenten als tooltip én als regel zodra de sync ze kent — anders alleen de bedragen.
  * Volledig afgeletterd (open 0) komt de lijst niet in (backend-filter). */
+/** Blok C 16-09: oranje signaal "mogelijk dubbel betaald" (zie `MutatieDto.dubbele_betaling`); de volledige zin staat als
+ * tooltip. Signaal, geen handeling: de mens controleert in Reeleezee of terugvordering nodig is. */
+export function DubbeleBetalingChip({ mutatie }: { mutatie: Pick<MutatieDto, 'dubbele_betaling'> }) {
+  const d = mutatie.dubbele_betaling
+  if (!d) return null
+  return (
+    <span className="chip afwijking" title={d.tekst} data-testid="chip-dubbele-betaling">
+      mogelijk dubbel betaald
+    </span>
+  )
+}
+
 export function DeelsAfgeletterdChip({ mutatie }: { mutatie: Pick<MutatieDto, 'bedrag' | 'open_bedrag' | 'deels_afgeletterd' | 'rlz_koppelingen'> }) {
   if (!isDeelsAfgeletterd(mutatie)) return null
   const koppelingen = mutatie.rlz_koppelingen ?? []
@@ -396,6 +408,8 @@ function MutatieRij({
             <DeelsAfgeletterdChip mutatie={mutatie} />
           </>
         )}
+        {/* Blok C 16-09: oranje signaal op zijn eigen regel, onafhankelijk van deels-afgeletterd. */}
+        <DubbeleBetalingChip mutatie={mutatie} />
       </td>
       <td>
         {/* Blok E5–E8 (mockup bank-voorstel-kaart.html): kaart mét doel-post-specs + match-chip; vaste regel =
