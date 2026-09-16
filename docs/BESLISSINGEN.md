@@ -8186,6 +8186,22 @@ hooguit één nacht oud; de kantoorbrede lijsten achter die tellers tellen live.
 
 werkt in productie: nog niet gemeten (deploy volgt) — meetrecept hierboven.
 
+### Bulk-toewijzing 16-09 (opdracht Peter 16-09: "nu moet ik 1 voor 1 doen"; geen migratie)
+
+Het beslispunt "bulk-toekennen niet gebouwd" hierboven is hiermee afgehandeld. Peter wil "Kempen groep" aan ~10 administraties koppelen zonder
+per rij naar de detailpagina te gaan.
+
+| # | Onderdeel | Stand |
+|---|---|---|
+| 1 | **Blok "Groepen" › per actieve groep knop "Administraties toevoegen…"** → dialoog `GroepLedenDialoog` op dezelfde vinkjeslijst als de scope-dialoog (`gebruikers/ScopeLijst`, nu mét optionele stille chip `notitie` per rij): alle administraties, al-toegewezen aangevinkt, leden van een ANDERE groep mét chip "groep: X" (aanvinken = verhuizen; de bevestiging zegt "N administraties verhuizen van groep X"), gearchiveerde onderaan, Opslaan toont "+N −M". | GEBOUWD 16-09 |
+| 2 | **Administratielijst › bulkbalk › "Toewijzen aan groep…"**: dezelfde `GroepVeld`-combobox mét inline "+ Nieuwe groep…" als op de detailpagina; groep gekozen = één bulk-PUT, "— geen groep —" = per administratie de bestaande enkelvoudige route (uit hun groep halen). Uitkomst per rij in de bestaande "Niet alles gelukt"-lijst (overgeslagen mét reden), toast bij verhuizingen. | GEBOUWD 16-09 |
+| 3 | **Backend `PUT /groepen/{id}/administraties`** (body `toevoegen[]`/`verwijderen[]`, Beheerder-only, `groepen.zet_groep_bulk`): ÉÉN transactie, per administratie dezelfde audit `administratie_groep_gewijzigd` oud→nieuw als de enkelvoudige route (één correlatie-id per bulk), gearchiveerde groep = 409 (verwijderen uit een gearchiveerde groep mag wél), onbekende groep/administratie = 404 en de hele transactie rolt terug, al lid = "overgeslagen: al lid van deze groep" (idempotent, geen audit), lid van een andere groep = "verhuisd" mét oude groepsnaam, `verwijderen` raakt alleen leden van DEZE groep ("overgeslagen: zit in groep X" anders). Rol-matrix `test_rol_endpoint_gates` uitgebreid (de sweep `startswith("/groepen") and methode != "GET"` dekte 'm al fail-closed). | GEBOUWD 16-09 |
+| 4 | **Tests:** backend `tests/beheer/test_groepen.py::TestBulk` (4: uitkomsten + audit per rij, rollback, 409/404, router); frontend `GroepLedenDialoog.test.tsx` (+N −M, chip, verhuis-bevestiging, PUT-body, 409 blijft zichtbaar) + `BulkBediening.test.tsx` (groep kiezen → bevestiging → één PUT; geen groep → per-administratie-route); registry ongewijzigd, overflow-sweep — zie rapport. | GROEN 16-09 |
+
+**Meetrecept ná deploy (Peter):** Instellingen › Administraties › groepen (N) › Kempen groep › "Administraties toevoegen…" → vink de ~10 leden aan
+→ "Opslaan (+10)" → bevestigen; daarna toont de groepenlijst ledental 10 en bevat `audit_event` tien `administratie_groep_gewijzigd`-rijen mét
+dezelfde correlatie-id. Werkt in productie: niet gemeten.
+
 <!-- run11-09middag:blok10 -->
 ## INCASSO-/BETAALBATCHES UIT RLZ — STAP-0 LEES-ONLY (blok 10 run 11-09 middag)
 
@@ -10149,6 +10165,63 @@ waarde staan.
 **Canoniek:** `.github/workflows/deploy.yml` (env-blok + stappen "Cloud Run-revisie uitrollen (volledige envset + secrets in één stap)" en
 "F3-jobs bijwerken (… volledige envset per job)"), `app/bewaking/deploy_drift.py`, `app/cli.py::_smoketest_service_mailkanaal`, GCP_UITROL §F3.9,
 rapport `docs/rapporten/2026-09-16-deploy-envset.md`.
+
+## GROEPSSALDI DEBITEUREN/CREDITEUREN (Peter 16-09) — lees-only, migratie 0149 (cache-tabel)
+
+**Aanleiding (Peter 16-09 09:20):** "kan jij voor mij van de Kempengroep een huidig saldo van de (cumulatieve) debiteuren en crediteuren geven?"
+Cowork kan niet bij RLZ/productie; de module kan dit wél. Bouwt op het groepskenmerk (0135, bulk-toewijzing 16-09) en de IC/RC-run 16-09
+(`intercompany_relatie`).
+
+| # | Onderdeel | Stand |
+|---|---|---|
+| 1 | **Rekeningen uit de bron, nooit 1300/1600 hardgecodeerd** (`app/groepen/saldi.py::vind_rekeningen_rlz`): RLZ `Ledgers` (balans, geen totaalrekening) mét `$expand=SystemAccountList` → RGS-stam `BVorDeb…` (handelsdebiteuren, AccountType 3) / `BSchCre…` (handelscrediteuren, AccountType 4); zonder RGS de rekeningnaam ("debiteuren"/"crediteuren"). Meerdere treffers = allemaal (subadministratie over meer rekeningen), geen treffer = status `geen_rekening` mét "geen debiteurenrekening gevonden". Odoo: `account.account.account_type` asset_receivable / liability_payable. Afwijking van de opdrachttekst (`UseForSalesInvoiceDetails`/`UseForPurchaseInvoiceDetails`): die vlaggen markeren detailregel-rekeningen (omzet/kosten), niet de subadministratie — RGS/naam is de juiste bron. | GEBOUWD 16-09 |
+| 2 | **Saldo** = Σ Debit − Credit over de journaalregels van die rekening(en) (RLZ `JournalEntryLines`, Odoo `account.move.line` posted); crediteuren getoond als positieve schuld (Credit − Debit). Peildatum `--datum` = NL-kalenderdag → `JournalEntry/BookDate lt <volgende NL-middernacht in UTC>` (`nl_dag_einde_utc`, les 14-09); zonder datum géén filter (alles t/m vandaag). | GEBOUWD 16-09 |
+| 3 | **Drie kolommen, controleerbaar:** BRUTO (Peters "cumulatief" = som over de groep) = ZONDER-IC + IC, cent-exact. IC = Σ open bedrag (RLZ `BaseRemainingAmount` op Status 2, creditnota negatief; Odoo `amount_residual_signed` posted/niet betaald) van verkoop- resp. inkoopfacturen op de IC-entity's van deze administratie waarvan de tegenpartij ZÉLF in de groep zit (`intercompany_relatie` status afgeleid/bevestigd, richting debiteur → debiteuren-IC, crediteur → crediteuren-IC). Geen debiteur-/crediteurnamen in de uitvoer (geen PII). | GEBOUWD 16-09 |
+| 4 | **Statussen per administratie, niets stil:** `ok` · `geen_rekening` · `ongeldig` (RLZ-webfilter — meting ongeldig, geen fout in het totaal) · `fout` (melding) · `overgeslagen` (geen credential/Odoo-koppeling). Totalen tellen alleen `ok`-rijen; het rapport/de kaart zegt "N niet in het totaal". | GEBOUWD 16-09 |
+| 5 | **Lees-only CLI `groep-saldi --groep <naam\|code\|id> [--datum JJJJ-MM-DD]`** (nameting-allowlist): LIVE meting, tabel per administratie + totalen + rekeningen; groep onbekend = "groep 'X' niet gevonden — maak hem aan op Instellingen › Administraties (blok Groepen)" + exit 2; rode administraties in de statuskolom, exit 0 (rapport = uitkomst). | GEBOUWD 16-09 |
+| 6 | **Kaart "Groepssaldi" bovenaan de klantenlijst zodra het Groep-filter actief is** (`werkvoorraad/GroepSaldiKaart.tsx`, `GET /groepen/{id}/saldi`, kantoorrol): bron = de NACHTELIJKE stand (`sync-alles` → `meet_en_schrijf_alle` → cache `groep_saldo_stand`, migratie 0149), label "stand van vannacht (dd-mm)", geen knop verversen (regel 08-09), geen live lezen bij openen (76 administraties). Drie kolommen + uitklap per administratie (rekeningen/status). RLS op de cache = scope-waarheid: Boekhouding-rol ziet "N van M administraties in je scope"; nog geen stand = "nog geen stand — volgt na de nachtelijke run"; 404 = de leesbare groep-onbekend-tekst. | GEBOUWD 16-09 |
+| 7 | **Tests** `tests/groepen/test_saldi.py` (10): RGS/naam/balanszijde, NL-dag-grens CEST/CET, saldo + IC cent-exact (bruto = zonder-IC + IC) mét tegenpartij buiten de groep en uitgesloten relatie, geen_rekening/webfilter/fout/overgeslagen, totalen alleen geldig, gemengd RLZ+Odoo + CLI-tekst + zoeken op naam/code/id, nachtstand upsert + scope N van M + route 200/404, zonder stand; frontend `GroepSaldiKaart.test.tsx` (3); rol-matrix + sweep 471 groen; migratie-routine: `make migrate` (0148 → 0149 op de dev-DB), live 200 op `GET /groepen/{id}/saldi` (uvicorn 8011), `schema_referentie.sql` ververst. | GROEN 16-09 |
+
+**Meetrecept ná deploy (het antwoord voor Peter):** `scripts/gcp/nameting.sh groep-saldi --groep "Kempen groep"` zodra Peter de groep heeft toegewezen
+(bulk-dialoog 16-09) — de uitvoer ís het antwoord (bruto / IC / zonder IC per administratie + totaal). De kaart toont dezelfde cijfers vanaf de
+eerste `sync-alles` ná deploy. Werkt in productie: niet gemeten.
+
+**Beslispunten (default gekozen):** zie `docs/rapporten/2026-09-16-beslispunten-peter.md` opdracht 3 (tweede rij): rekeningdetectie via RGS/naam i.p.v. de
+`UseFor*`-vlaggen; IC = open posten (Status 2) i.p.v. journaalregels per entity; crediteuren als positieve schuld; peildatum-filter alleen op verzoek;
+Odoo-IC alleen via de bestaande partner-vertaling van de IC-run.
+
+**Canoniek:** `app/groepen/saldi.py`, `app/groepen/models.py`, migratie 0149, `app/beheer/router.py::groep_saldi`, `app/cli.py::_groep_saldi` + sync-alles-stap,
+`frontend/src/werkvoorraad/GroepSaldiKaart.tsx` + `groepSaldiApi.ts`, rapport `docs/rapporten/2026-09-16-groepssaldi.md`.
+
+## BANKSCHERM — ZOEKVELD, BATCH-STAP (Peter 16-09) — blok A zoekveld, blok C batch-stap (voorstel 11-09 nu gebouwd), blok D compacte koppelingstekst; blok B (Zuilichem) VERVALLEN; geen migratie
+
+**Aanleiding (Peter 16-09, screenshot Afletteren — Bouwadvies Oost Nederland B.V., NL04INGB0117244236, 17 open):** "in bank graag een zoekveld
+zodat je kan zoeken op alle openstaande betalingen van 1 partij." In dezelfde screenshot: de mutatie −560.925,88 "TOTAAL 14 VZ betaalkenmerk:
+PREF" (deels afgeletterd, open 40.723,85) = een RLZ-betaalbatch — de casus van "INCASSO-/BETAALBATCHES UIT RLZ — STAP-0 LEES-ONLY" waar de
+matchmotor-stap "batch" op akkoord wachtte (akkoord Peter 16-09); en een blok van ~15 regels "gekoppeld: RLZ-04-… · factuur … · € …" in één
+lijstrij. Heren van Zuilichem-mutaties: door Peter expliciet géén gat ("mag je negeren") — niet geanalyseerd.
+
+| Blok | Onderdeel | Stand |
+|---|---|---|
+| A | **Zoekveld** in de kop van "Onverwerkte bankmutaties" (`bank/bankZoek.ts`, puur): client-side over de geladen lijst op tegenpartijnaam (accent-ongevoelig), IBAN (met/zonder spaties), omschrijving, bedrag (punt/komma vrij — "560925,88" ≡ "560.925,88", ook het open bedrag), factuur-/boekstuknummers in omschrijving én voorstel-tekst (open post, batch-posten, RLZ-koppelingen; cijferkern zodat "9295 3490" ≡ "92953490"); AND over termen. Term in `?zoek=` (deeplink, samen met `?rekening=`/`?toon_oud=`), Escape leegt, teller "N van M · € X in N mutaties" (open bedrag, gehele centen), lege stand mét "zoekterm wissen"; klik op een tegenpartijnaam = zoekveld gevuld ("alles van deze partij"). KPI-kaarten blijven over álle mutaties. | GEBOUWD 16-09 |
+| C | **Batch-stap (stap 0 in `matchmotor.bepaal_voorstel`, vóór elke naam-/nummer-heuristiek):** bankregel mét `PaymentBatchId` (uit `bank_mutatie.brondata`, geen migratie) → álle open posten waarvan het document dezelfde sleutel draagt (`PaymentTermList[].PaymentBatchInformation`, sinds 16-09 meegelezen via `PaymentItems?$expand=Document($expand=Entity,PaymentTermList)` mét terugval op de bewezen expand bij een 400 — zichtbaar in het sync-log), tekenpassend; Σ\|posten\| == \|open bedrag\| cent-exact → GROEN "betaalbatch ‹sleutel›, N facturen"; anders ORANJE mét het verschil en de reden (posten al gekoppeld / nog niet in de cache). Nooit bij `ReturnReason` (R-transactie), geen sleutel of geen post met die sleutel = gewoon stap 1–5 (een debiteur-verzamelbetaling draagt de sleutel van de BETALER). Deels-afgeletterde batch toetst het OPEN bedrag (Zilver-les). | GEBOUWD 16-09 |
+| C | **Afletteren = N × actie 15 in één handeling:** `POST …/bank/mutaties/{id}/afletteren-batch` → `afletteren.letter_batch_af` herberekent het voorstel server-side (nooit een client-lijst met item-id's), roept per post de bestaande `zet_klaar_voor_afletteren` (één `LinkedAmount` per call = de bewezen vorm, STAP-0 §5), idempotent: een post waarvan het document al in `rlz_koppelingen` hangt = "overgeslagen"; ná een API-fout ('wacht_op_mens_in_rlz', opdracht blijft klaargezet) stoppen de overige als 'niet_uitgevoerd'. Uitkomst per post in de response — nooit stil. Geen batch-voorstel (meer) = 409. | GEBOUWD 16-09 |
+| C | **Kaart** (`VoorstelKaart.tsx::BatchKaart`): kop "Betaalbatch ‹sleutel›", één regel "N facturen · som € … · open € …", chip groen/oranje (mét verschil), postenlijst pas in de uitklap (monospace boekstuk · factuur · bedrag) — rijhoogte constant (les C9); knop "Afletteren (N) ✓". | GEBOUWD 16-09 |
+| D | **Compacte "gekoppeld"-tekst** (`DeelsAfgeletterdChip`): bij > 1 koppeling één regel "N facturen gekoppeld · open € X" (summary) + de volledige lijst in een `<details>` (monospace tabel); één koppeling blijft de bestaande regel. Chip "deels afgeletterd in RLZ" ongewijzigd. | GEBOUWD 16-09 |
+| — | **Tests:** backend `tests/bank/test_batch.py` (12: motor groen/oranje/R/geen sleutel/tekenmismatch, sleutel uit document, sync-expand mét terugval, servicelaag uit de caches, N × actie 15 + idempotent + stop ná fout, route + DTO), bank-buren 113 groen; gouden set casus l uitgebreid mét `fixtures/l_bank_cv_08-09/batch.json` (deels afgeletterde batch, twee open posten + één post zonder sleutel met hetzelfde bedrag — sleutel wint, geen bedragheuristiek; DTO + afletteren-batch via de TestClient), keten 23 groen; frontend `bankZoek.test.ts` (5) + `BankDetailScreen.test.tsx` (+4: zoekveld/teller/URL/klik-op-naam, batch-kaart + één POST, oranje + mislukking in de rij, compacte koppelingen 14) — bank-suite 73 groen, tsc groen. | GROEN 16-09 |
+
+**Wat NIET vaststaat (lees-only, geen productiebewijs in deze run):** of RLZ `$expand=Document($expand=Entity,PaymentTermList)` op
+`PaymentItems` accepteert (nested expand met twee leden — Entity is bewezen, PaymentTermList op het document is bewezen via `…Invoices/{id}?
+$expand=PaymentTermList`). Weigert RLZ (400), dan logt de sync de terugval en blijft de batch-stap stil (geen sleutels) — meetrecept hieronder
+toont dat. Actie 116 `Koppel batch` blijft ongebruikt (body onbekend); N × actie 15 is de bewezen route.
+
+**Meetrecept ná deploy:** `scripts/gcp/nameting.sh bank-voorstellen-lezen --administratie "Bouwadvies Oost Nederland" --rekening-iban
+NL04INGB0117244236` — verwachting: de mutatie −560.925,88 krijgt soort `batch` (groen bij som = open bedrag, anders oranje mét verschil); de
+Zuilichem-mutaties ongewijzigd. Bank-sync-log: geen regel "RLZ weigert $expand=…PaymentTermList". Werkt in productie: niet gemeten.
+
+**Canoniek:** `app/bank/matchmotor.py` (BatchVoorstel, `_batch_voorstel`, stap 0), `app/bank/doelpost.py::batch_sleutel_uit`, `app/bank/sync.py`
+(ITEMS_EXPAND), `app/bank/afletteren.py::letter_batch_af`, `app/bank/router.py::afletteren_batch`, `frontend/src/bank/bankZoek.ts`,
+`BankDetailScreen.tsx`, `VoorstelKaart.tsx::BatchKaart`; rapport `docs/rapporten/2026-09-16-bank-zoekveld-batch.md`.
 
 ## Contract-afstemming met X (gelezen uit X's code 16-09 — `contract_afwijkingen_X4.md` was bij afronding van Y nog niet geschreven)
 

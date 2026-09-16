@@ -2078,6 +2078,15 @@ niet (hun `PaymentBatchId` is van de betaler) en vallen op factuurnummers-als-to
   leeg op de batch-bankregels hier). Schrijfvorm en semantiek (héle koppeling of één item uit een batch?) ongekraakt —
   DevTools-capture Peter nodig, zelfde vraag als verrekening-vorm 4.
 
+### 4b. Gebouwd 16-09 (blok C, akkoord Peter) — hoe de module de sleutel leest
+
+De bank-sync leest de sleutel op het document mee in de bestaande open-posten-lijst: `PaymentItems?$expand=Document($expand=Entity,
+PaymentTermList)` (`app/bank/sync.py::ITEMS_EXPAND`; weigert RLZ de tweeledige geneste expand met een 400, dan terugval op
+`Document($expand=Entity)` mét logregel — de batch-stap krijgt dan geen sleutels). De bankregel-sleutel komt uit de bewaarde record
+(`bank_mutatie.brondata.PaymentBatchId`, `ReturnReason`). Matchmotor-stap 0 = sleutel-gelijkheid + Σ|open posten| == |open bedrag|
+(groen) / verschil (oranje); afletteren = N × actie 15 (`letter_batch_af`). **Nog te bewijzen in productie:** de tweeledige expand op
+`PaymentItems` — meetrecept in BESLISSINGEN "BANKSCHERM — ZOEKVELD, BATCH-STAP (Peter 16-09)".
+
 ### 5. Wat NIET vast te stellen was (lees-only)
 
 Of één actie 15 méérdere `PaymentItemList`-entries verwerkt (capture 09-08 droeg één item; `LinkedAmount` is één

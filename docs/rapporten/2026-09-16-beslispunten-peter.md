@@ -66,3 +66,36 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 6. **PIN-venster 0…+5 d en PIN-kernen** (ccv/worldline/adyen) zijn aannames — bijstellen op de eerste echte PIN-afrekening.
 7. **Blok Omzetbronnen op tab Boeken & AI**, geen eigen tab Omzet; "Herstel standaard" laat stores staan.
 8. **Puntenwaarde** is geen beslispunt meer (punten = omzet bij verkoop, akkoord Peter 16-09).
+
+## Opdracht 5 (rij 2, middag) — groep bulk-toewijzen (`2026-09-16-groep-bulk.md`)
+
+1. **Verwijderen uit een groep via de dialoog raakt alleen leden van díe groep**; een administratie in een andere groep wordt nooit
+   stil losgemaakt (uitkomst "overgeslagen: zit in groep X").
+2. **"— geen groep —" in de bulkbalk** loopt per administratie over de bestaande enkelvoudige route (N calls); de bulk-route is
+   groep-gebonden.
+3. **Geen groep-veld in de Odoo-wizard** (beslispunt 11-09 blijft open).
+4. **`||`-fallbacks in deploy.yml zijn weg** (opdracht 1): een ontbrekend secret-slot = rode deploy + mail, geen revisie zonder config.
+
+## Opdracht 6 (rij 2, middag) — groepssaldi debiteuren/crediteuren (`2026-09-16-groepssaldi.md`)
+
+1. **Rekeningdetectie via RGS (`BVorDeb…`/`BSchCre…`) met naam-terugval**, niet via `UseForSalesInvoiceDetails`/
+   `UseForPurchaseInvoiceDetails` (die vlaggen markeren detailregel-rekeningen, geen subadministratie). Alternatief bij valse
+   treffers: Beheerder-override per administratie (vervolg-opdracht).
+2. **Intercompany = OPEN POSTEN (Status 2 / niet betaald)** op IC-entity's met tegenpartij in de groep — niet de journaalregels per
+   entity (RLZ-journaalregels dragen geen Entity). Concept-IC-facturen (Status 1) tellen niet mee.
+3. **Crediteuren als positieve schuld** (Credit − Debit); debiteuren Debit − Credit.
+4. **Zonder `--datum` geen datumfilter** (alles t/m vandaag, incl. eventueel vooruitgedateerde boekingen); mét `--datum` de NL-dag
+   als UTC-grens.
+5. **Kaart leest uitsluitend de nachtelijke stand** (07:00 in sync-alles); wil Peter een "nu meten"-knop, dan een Cloud Run-job-
+   trigger zoals bij de reconciliatie (vervolg).
+6. **Odoo-IC alleen via de bestaande partner-vertaling** van de IC-run (vendor_cache → res.partner → uuid5); niet vertaalbaar =
+   IC 0 voor die kant, zichtbaar via de statuskolom alleen als de hele meting faalt (open punt: aparte LET-OP per kant).
+
+## Opdracht 7 (rij 2, middag) — bankscherm zoekveld + batch-stap (`2026-09-16-bank-zoekveld-batch.md`)
+
+1. **Batch-stap vóór stap 1** (sleutel-gelijkheid wint van naam/nummer-heuristiek); tekenmismatch-posten tellen niet mee.
+2. **Oranje batch is afletterbaar** (gevonden posten koppelen, verschil blijft open). Alternatief: alleen groen.
+3. **Idempotentie via `rlz_koppelingen`** (document-id); geen extra RLZ-call vóór de N × actie 15 buiten de bestaande vooraf-toets.
+4. **Sync-expand `Document($expand=Entity,PaymentTermList)` mét terugval bij 400** — ongeverifieerd op RLZ; blijkt het 400, dan is
+   een per-document-leesronde voor batch-mutaties (begrensd) de volgende stap.
+5. **Zoekveld client-side**, geen server-zoekroute; KPI-kaarten tellen over alle mutaties, de teller in de kop over het filter.

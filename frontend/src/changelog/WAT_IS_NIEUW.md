@@ -6,6 +6,29 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Bankscherm: zoeken, betaalbatches in één keer afletteren, rustigere rijen
+
+<!-- bank-zoekveld-batch-16-09 -->
+
+- **Zoekveld boven de onverwerkte bankmutaties.** Typ een (deel van een) tegenpartijnaam, IBAN, omschrijving, bedrag (met of zonder punt en komma) of factuur-/boekstuknummer en je ziet alleen die mutaties, met een teller en het totaalbedrag van wat er staat. Klik op een tegenpartijnaam en je hebt direct alle openstaande betalingen van die partij. De zoekterm staat in de adresbalk, dus een link ernaar werkt.
+- **Betaalbatches uit Reeleezee worden herkend en in één keer afgeletterd.** Een bankregel die het totaal van een eigen betaal- of incassobatch is, krijgt nu het voorstel "betaalbatch …, N facturen" met de facturen erbij: groen als de som precies klopt, oranje met het verschil als er facturen ontbreken. Eén klik op "Afletteren (N)" koppelt alle facturen; wat al gekoppeld was wordt overgeslagen en elke uitkomst staat erbij.
+- **Deels afgeletterde mutaties tonen één regel.** In plaats van een lange lijst "gekoppeld: …" staat er nu "14 facturen gekoppeld · open € …"; klik erop voor de volledige lijst met boekstuk, factuurnummer en bedrag.
+
+## 2026-09-16 — Groepssaldi debiteuren en crediteuren op de klantenlijst
+
+<!-- groepssaldi-16-09 -->
+
+- **Kies een groep en zie direct het saldo.** Zet op de klantenlijst het filter "Groep" aan en bovenaan verschijnt de kaart Groepssaldi: het totaal van de openstaande debiteuren en crediteuren over alle administraties in de groep, per stand van vannacht. Drie kolommen: bruto, het deel tussen de eigen bedrijven (intercompany) en het saldo zonder dat deel — bruto is altijd de som van de andere twee.
+- **Per administratie uitklappen.** Je ziet per bedrijf de bedragen, welke grootboekrekeningen als debiteuren en crediteuren zijn herkend (uit Reeleezee of Odoo, niet vast ingesteld) en waarom een administratie eventueel niet meetelt (geen rekening gevonden, Reeleezee blokkeerde de lezing, geen koppeling).
+- **Alleen wat je mag zien.** Zie je niet alle administraties van een groep, dan staat er "N van M administraties in je scope" en tellen alleen die mee.
+
+## 2026-09-16 — Groep in één keer aan meerdere administraties toewijzen
+
+<!-- groep-bulk-16-09 -->
+
+- **Administraties toevoegen aan een groep in één dialoog.** Op Instellingen › Administraties › groepen staat per groep de knop "Administraties toevoegen…": een doorzoekbare lijst met vinkjes (dezelfde als bij de toegang van medewerkers). Wie al in de groep zit staat aangevinkt; wie in een andere groep zit, zie je mét die groepsnaam en verhuist bij aanvinken ná een bevestiging. Opslaan toont wat er verandert ("+10 −1") en voert alles in één keer door.
+- **Of vanuit de lijst:** selecteer rijen in de administratielijst en kies "Toewijzen aan groep…" — bestaande groep, nieuwe groep of "geen groep". Per administratie zie je of het gelukt is of waarom niet.
+
 ## 2026-09-16 — Mailen werkt direct ná elke update
 
 <!-- deploy-envset-16-09 -->
