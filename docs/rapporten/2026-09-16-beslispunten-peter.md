@@ -192,3 +192,20 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 7. **Vierde meting niet in deze run** (gcloud-sessie verlopen én code vóór deploy) → vervolg-opdracht in de inbox; Peter logt eerst
    gcloud in.
 
+## Opdracht 14 (avond) — accordeur-uitnodiging web vs app (`2026-09-16-accordeur-uitnodiging-web-vs-app.md`)
+
+1. **Zelfservice-koppeling zonder migratie:** kenmerk = een uitnodiging die de gebruiker ZELF aanmaakte (`aangemaakt_door` =
+   `gebruiker_id`), soort blijft `uitnodiging`. Alternatief: eigen soort `toestel_koppeling` (CHECK-constraint verbreden = migratie).
+2. **Maximaal 3 actieve toestellen** per app-gebruiker (`app_max_toestellen`), getoetst bij aanmaken én op het koppelmoment.
+3. **Legacy-login-hint voor iedereen dezelfde tekst** ("Update de app naar 1.1 of gebruik de web-versie") i.p.v. een apart
+   `account_zonder_wachtwoord`-antwoord — dat zou verraden dat een account bestaat (0022). Alternatief: wél onderscheiden, alleen
+   voor adressen mét een actieve toestel-rij.
+4. **Het web-scherm toont de activatiecode niet** (de server bewaart alleen de hash); de tekst verwijst naar de mail. Alternatief:
+   de code ook op de `/uitnodigingen/info`-route teruggeven = geheim lekken op een publieke route — bewust niet.
+5. **Store-versie als setting** (`STORE_APP_VERSIE_IOS` default 1.0, Android leeg) i.p.v. een live store-lezing; Peter zet 'm bij ná
+   goedkeuring (klikpunt in §0f). Gevolg nu: de mail toont géén App Store-link maar de TestFlight-instructie.
+6. **"Open in de app" op een mobiele browser = instructie + Mail-app openen**, geen automatische app-switch: Safari/Chrome openen een
+   universal link naar het eigen domein niet vanuit de pagina zelf; de link uit de mail-app (of de code in de app) wél.
+7. **Toegangscode opnieuw invoeren = lokale verificatie** (de code bereikt de server nooit); de server eist een levende toestel-sessie
+   (apparaat-claim, kill-switch bijt). Geen aparte "recent geverifieerd"-claim server-side.
+

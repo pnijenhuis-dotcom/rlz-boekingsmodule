@@ -14,6 +14,15 @@
 - **Een dagstaat met een nog niet gekoppelde store** komt in de verzamelbak met de reden en een knop "Stores koppelen" — hij verdwijnt niet stil in een verkeerde administratie.
 - **Kassarapporten die als inkoopfactuur in de werkvoorraad staan** (bijvoorbeeld een ProfX-journaal) vindt de dagelijkse controle nu ook vóór het boeken. Op Inzicht › Reconciliatie staat dan "Type wijzigen → kassarapport": één klik en het document gaat door de omzet-verwerking. Al geboekte exemplaren houden de bestaande knop "Herboeken als omzet". De tellers op Instellingen › Boeken laten zien hoeveel kassarapporten op inhoud herkend zijn en hoeveel stores nog gekoppeld moeten worden.
 
+## 2026-09-16 — Uitnodiging voor de app: eerst kiezen waar je 'm gebruikt, en zelf een tweede toestel koppelen
+
+<!-- accordeur-uitnodiging-web-vs-app-16-09 -->
+
+- **Opent de uitnodigingslink in een browser, dan kies je eerst** — in de app op je telefoon, of de web-versie op dit apparaat — vóór de uitnodiging wordt gebruikt. Op een computer staat er nu een duidelijke keuze "Ik gebruik de web-versie op dit apparaat" naast de QR-code; er wordt niets vastgelegd tot je kiest.
+- **Al in de web-versie ingelogd en wil je ook de app op je telefoon?** Ga naar Toegang › "Telefoon/app koppelen": na je toegangscode krijg je een QR-code en een code die een kwartier geldig is. Je bestaande toestel blijft gewoon gekoppeld (maximaal drie toestellen). Vanuit de app werkt het andersom: "Ook op de computer gebruiken?".
+- **De uitnodigingsmail vertelt nu de volgorde** (1 installeer de app, 2 open de link op je telefoon, 3 kies een toegangscode) en toont de App Store-link pas als de versie in de winkel bij deze uitnodiging past; tot die tijd staat er hoe je de testversie krijgt.
+- **Meldingen zeggen wat je kunt doen**: "al op een ander toestel gebruikt" verwijst naar het zelf koppelen, en de oude app-versie die om een wachtwoord vraagt zegt nu dat je moet updaten of de web-versie kunt gebruiken.
+
 ## 2026-09-16 — Keuzelijsten zeggen waarom ze leeg zijn; projecten mét nummer, en direct aanmaken
 
 <!-- verplichting-projectveld-16-09 -->

@@ -10341,6 +10341,45 @@ afgeleid + override, inkoopstroom-rapport). Frontend: `bedragModus.test.ts`, `Be
 startdag; margerapport zelfde dag = bundelen als bijlage (nooit apart boeken), weekrapport = eigen document; marge-plausibiliteit 35–70 % als
 oranje kleur in het scherm (harde check ongewijzigd). Werkt in productie: niet gemeten — meetrecept in `docs/rapporten/2026-09-16-omzet-profx.md`.
 
+## ACCORDEUR-UITNODIGING — WEB VS APP: KIEZEN VÓÓR KOPPELEN + ZELF EEN TWEEDE TOESTEL KOPPELEN (Peter 16-09) — blok A keuzescherm, blok B zelfservice tweede toestel, blok C mail + legacy-hint, blok D draaiboek; geen migratie
+
+**Melding Peter 16-09:** accordeurs krijgen één mail met "download de app" én een link "account aanmaken"; wie de link in een
+browser opent en de code invult zit in de WEB-app zonder wachtwoord — de native app vraagt daarna om een wachtwoord dat er niet is.
+
+**Diagnose (bevestigd in code):** (1) activatie is éénmalig per toestel (`app_activatie.activeer_toestel`, 409 `FOUT_AL_GEBRUIKT`):
+een link die in een browser verzilverd wordt koppelt de PWA op dát apparaat en verbruikt de uitnodiging; de melding zei alleen
+"vraag het kantoor". Het web-`/activeren`-scherm stuurde een telefoon-browser direct de PWA-flow in en toonde een desktop het
+stop-scherm mét QR, maar zonder expliciete keuze. (2) De wachtwoordvraag = de oude auth: App Store = 1.0 (wachtwoord + passkey),
+1.1 (app-auth 0029) is gebouwd en niet ingediend (TESTFLIGHT §0f); de legacy-route `/auth/accordeur/login` gaf "Ongeldige
+inloggegevens" zonder handeling. (3) De mail zette twee acties naast elkaar zonder volgorde en de App Store-link wees naar 1.0.
+Pre-feature-check: bouwt 1-op-1 voort op "APP-AUTH ZONDER PASSKEY — TOESTELBINDING + TOEGANGSCODE (besluit Peter 08-09)"
+(één toegangspad, toestel-rij, kill-switch, `rond_uitnodiging_af`), "BOUWRUN 28-08 AVOND" blok B (tonen ≠ verbruiken: de
+info-route verzilvert niets — dat gold al), "NATIVE APP — EERSTE LOGIN OP EEN NIET-GEACTIVEERD ACCOUNT" (universal links, link
+plakken), "BUGFIX 10-09 (2)" (activatie éénmalig, nooit een tweede server-activatie) en KP7 (signaal zonder handeling is niet af).
+HARD PRINCIPE ongewijzigd: maillinks zijn deep-links, geen one-click; de QR = dezelfde deep-link. UX-review: past in de bestaande
+IA — één keuzescherm vóór "Welkom", één tekstknop op het desktop-stop-scherm, één rij "Andere toestellen" in ⚙ Toegang.
+
+| Blok | Besluit / gebouwd | Vindplaats |
+|---|---|---|
+| **A — kiezen vóór koppelen** | Web-`/activeren` (desktop): het stop-scherm houdt QR + "activeer op uw telefoon" en krijgt de tekstknop **"Ik gebruik de web-versie op dit apparaat"** (één regel wat dat betekent) → `/accordeur/activeren?uitnodiging=…&web=1`; niets wordt vastgelegd tot de keuze (tekst zegt dat). Mobiele browser: de PWA-activatie toont eerst een **keuzescherm** — "In de app op deze telefoon" (instructie: tik de link in je mail-app / voer de activatiecode in de app in; "Mail-app openen" op iOS/Android; store-links als terugval) of "Ik heb de app niet — verder in de browser" → dan pas "Welkom, ‹naam› — Dit toestel activeren" (verbruikt pas bij die knop, bestaand). Native schil, herstel-links en `&web=1` slaan het keuzescherm over (`beginKeuze`). De 8-tekens code kan het web-scherm NIET tonen: de server bewaart alleen de hash — de tekst verwijst naar de mail. | `auth/ActivateScreen.tsx`, `accordeur/AppActiveren.tsx` (prop `webKeuze`, `beginKeuze`), `AccordeurApp.tsx` (`web=1`) |
+| **B — zelfservice tweede toestel** | `POST /auth/app/toestel-koppeling` (get_current_gebruiker; kantoorrol 403, sessie zonder toestel-claim 400): maakt voor DEZELFDE gebruiker een uitnodiging mét activatiecode, **15 minuten**, eenmalig, `aangemaakt_door = de gebruiker zelf` = het zelfservice-kenmerk (`service.is_zelfservice_koppeling`; soort blijft `uitnodiging`, dus **geen migratie**); oudere open koppelingen van de gebruiker verlopen (één tegelijk); limiet `settings.app_max_toestellen` (default 3) op actieve toestel-rijen, getoetst bij aanmaken (409) én opnieuw op het koppelmoment in `activeer_toestel`; audit `toestel_koppeling_aangemaakt` (uitnodiging-rij, nooit de code). Activeren loopt over exact dezelfde poort `/auth/app/activeren`: statuspoort eist ACTIEF, `rond_uitnodiging_af` → actie `toestel_gekoppeld_zelfservice` (status en bestaande toestellen/sessies blijven — géén herstel), `toestel_geactiveerd` draagt `zelfservice: true`. App: ⚙ Toegang › **Andere toestellen** → "Telefoon/app koppelen" (web) / "Ook op de computer gebruiken?" (native) → toegangscode opnieuw (lokale verificatie, zelfde teller) → QR van de koppelingslink + code XXXX-XXXX + "geldig tot HH:MM" + "N van M ná dit toestel"; 409 = servertekst + Opnieuw. De 409 op een verbruikte uitnodiging zegt nu: "log in op de web-versie en kies Toegang › 'Telefoon/app koppelen', of vraag het kantoor …". Kill-switch per toestel en "Herstel-link sturen" ongewijzigd. | `app_activatie.maak_toestel_koppeling`, `router.app_toestel_koppeling`, `schemas.ToestelKoppelingResponse`, `appAuthApi.maakToestelKoppeling`, `appslot/ToegangInstellingen.tsx` |
+| **C — mail + oude app-versie** | Uitnodigingsmail voor app-rollen = één genummerde volgorde: **1** installeer de app — store-link ALLEEN als de gepubliceerde store-versie de app-auth draagt (`store_app_versie_ios` default `1.0`, `_android` leeg vs `store_min_appauth_versie` `1.1`; anders de TestFlight-/interne-track-instructie "werkt nog met een wachtwoord"; geen listing = neutrale regel), **2** open déze link op je telefoon (niet op een computer — de link koppelt het toestel waarop je hem opent), **3** kies een toegangscode; activatiecode als terugval eronder; plus "per ongeluk op een computer? kies daar Open op je telefoon — niets vastgelegd tot je kiest" en "later óók een ander toestel: Toegang › Telefoon/app koppelen". Herstelmail volgt dezelfde store-poort. Kantoor-mail ongewijzigd. Guard `tests/berichten/test_uitnodigingsmail_vorm.py`. Legacy `/auth/accordeur/login` (app 1.0): de 401 draagt voor IEDEREEN dezelfde hint "Gebruik je de app zonder wachtwoord …? Update de app naar versie 1.1 of gebruik de web-versie" (0022: geen enumeratie — dus geen apart `account_zonder_wachtwoord`-antwoord; beslispunt). Legacy-routes blijven tot 2026-10-08. | `berichten/uitnodigingsmail.py` (`store_versie_geschikt`, `installatie_regels`, `app_activatie_stappen`), `config.py`, `router.LEGACY_LOGIN_APP_HINT` |
+| **D — draaiboek + klikpunten** | TESTFLIGHT §0f: checklist "☐ EERSTE KLIKPUNT: 1.1 indienen" bovenaan mét de reden uit deze melding + ná goedkeuring `STORE_APP_VERSIE_IOS=1.1` in deploy.yml (sleutel ook in de envset-guard). Tot 1.1 live is: iOS-accordeurs via TestFlight 1.1 óf de web-versie. | `native/TESTFLIGHT_DRAAIBOEK.md` §0f |
+
+**Tests:** `tests/auth/test_toestel_koppeling.py` (info-route verbruikt niets; 409-tekst mét handeling; koppeling vanuit toestel-
+sessie → link + code + 15 min + audit zonder code → tweede toestel zonder intrekken, eerste sessie leeft, `toestel_gekoppeld_
+zelfservice`; nieuwe koppeling laat de vorige verlopen; verlopen = 400; limiet bij aanmaken én bij koppelen + loskoppelen maakt
+ruimte; zonder toestel-sessie 400, kantoorrol 403; ingetrokken toestel 401; legacy-login-hint identiek voor bestaand/onbekend
+account), `tests/berichten/test_uitnodigingsmail_vorm.py` (volgorde, store-versiepoort 1.0 → TestFlight / 1.1 → link, numerieke
+versievergelijking, herstelmail), `test_store_links.py` aangepast; frontend `ActivateScreen.test` (+1 webkeuze), `AppActiveren.test`
+(+2 keuzescherm / overslaan), `ToegangInstellingen.test` (+2 koppelen / 409); `tsc -b` groen. Rol-gate-sweep: `/auth/`-routes
+dragen eigen authenticatie (prefix-uitzondering, bestaand). **Werkt in productie: niet gemeten** (meetrecept in het rapport).
+
+**Beslispunten (default gekozen, `2026-09-16-beslispunten-peter.md` opdracht 14):** zelfservice-kenmerk zonder migratie; N = 3;
+één hint-tekst op de legacy-login (geen enumeratie); web-scherm toont geen activatiecode (alleen in de mail); store-versie als
+setting (code-default 1.0/leeg), geen store-API-lezing; "Open in de app" op een mobiele browser = instructie + mail-app-knop
+(Safari opent een universal link naar het eigen domein niet vanuit de pagina zelf).
+
 ## VRAGEN-DIALOOG OPEN TOT AFGEHANDELD (Peter 16-09) — aanvulling op "RLZ-FEEDBACKRONDE 25-08" punt B; geen migratie
 
 **Aanleiding (Peter 16-09, casus Barbara → accordeur Sophia):** "Sophia wil daarop nog wat typen, maar dat kan pas als Barbara weer heeft

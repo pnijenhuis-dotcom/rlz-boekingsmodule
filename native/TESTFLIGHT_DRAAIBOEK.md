@@ -300,6 +300,20 @@ queue with demonstration invoices appears. On later launches the app asks only f
 
 ### 0f. Versie 1.1 — waarom en hoe (mini-run 09-09)
 
+> **☐ EERSTE KLIKPUNT (16-09, melding Peter "accordeur krijgt een wachtwoordvraag"): 1.1 indienen.** De App Store staat
+> nog op **1.0 = de oude inlog (wachtwoord + passkey)**. Elke accordeur die de app uit de App Store haalt en een account
+> zónder wachtwoord heeft (app-auth zonder passkey, sinds 08-09 de enige activatie) krijgt een **onbeantwoordbare
+> wachtwoordvraag** — sinds 16-09 zegt die melding wél "Update de app naar versie 1.1 of gebruik de web-versie", maar de
+> oplossing is 1.1 live. Tot dan is de werkbare route voor iOS-accordeurs **TestFlight 1.1 óf de web-versie**; de
+> uitnodigingsmail toont daarom géén App Store-link maar de TestFlight-instructie zolang `STORE_APP_VERSIE_IOS` (default
+> `1.0`) onder `STORE_MIN_APPAUTH_VERSIE` (`1.1`) blijft. Checklist:
+> 1. App Store Connect › **+ Versie 1.1** → build 1.1 (99 of hoger) koppelen → App Review Information (Password = de
+>    ACTIVATIECODE van het demo-account, Notes = §1) → **Indienen** (stappen 2–3 hieronder).
+> 2. Ná goedkeuring: `STORE_APP_VERSIE_IOS=1.1` in `.github/workflows/deploy.yml` (service én jobs, één envset; sleutel
+>    ook in `tests/unit/test_deploy_yml_envset_compleet.py` opnemen) → de uitnodigingsmail toont vanaf die deploy weer de
+>    App Store-link. Android: `STORE_APP_VERSIE_ANDROID` zodra de 1.1-listing publiek is (interne track telt niet).
+> 3. Daarna de marketingversie ophogen vóór de volgende push (train-regel hieronder).
+
 **Feiten 09-09:** Apple heeft **versie 1.0 (build 44, de passkey-app) goedgekeurd**. Daarmee is de train 1.0 in App Store
 Connect gesloten: elke volgende upload moet een hogere `CFBundleShortVersionString` dragen. Xcode Cloud-build 98 (de app-auth
 zonder passkey, §0e) is precies daarop geweigerd — **ITMS-90186** ("version string … has already been used") /

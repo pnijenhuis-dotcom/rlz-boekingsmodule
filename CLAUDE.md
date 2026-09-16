@@ -85,7 +85,12 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   accordeur-passkeys (2026-08-11, migratie 0040), 24-uurs-cadans 27-08 en pincode-activatie 31-08: archief "Auth"
   (aanvulling 08-09).**
   **Toegangscode wijzigen zonder her-verificatie + salt/wrap als één bewezen geschreven sleutel (bugfix 10-09, ZTE) — zie
-  BESLISSINGEN "BUGFIX 10-09 — TOEGANGSCODE WIJZIGEN ANDROID".** Verder (volledige tekst: archief "Auth"): Wachtwoord kwijt = Beheerder-knop "Herstel-link
+  BESLISSINGEN "BUGFIX 10-09 — TOEGANGSCODE WIJZIGEN ANDROID".** **Accordeur-uitnodiging web vs app (Peter 16-09; geen
+  migratie): een link in een browser laat eerst KIEZEN (app op deze telefoon / web-versie op dit apparaat) vóór er iets
+  verbruikt wordt; zelfservice tweede toestel via `POST /auth/app/toestel-koppeling` (15 min, max 3 toestellen, bestaande
+  toestellen blijven; ⚙ Toegang › "Telefoon/app koppelen"); uitnodigingsmail = genummerde volgorde mét store-link alleen als de
+  store-versie ≥ 1.1 (anders TestFlight-instructie); legacy-login-401 mét update-hint; TESTFLIGHT §0f eerste klikpunt "1.1
+  indienen" — zie BESLISSINGEN "ACCORDEUR-UITNODIGING — WEB VS APP: KIEZEN VÓÓR KOPPELEN + ZELF EEN TWEEDE TOESTEL KOPPELEN (Peter 16-09)".** Verder (volledige tekst: archief "Auth"): Wachtwoord kwijt = Beheerder-knop "Herstel-link
   sturen" (app-rollen sinds 08-09 mét activatiecode), bewust géén selfservice "wachtwoord vergeten" ("RLZ-FEEDBACKRONDE
   25-08 DEEL 2" punt 7); E-mail wijzigen zonder carrousel ("OPRUIMRUN 28-08" punt 22); activatie externe rollen
   MOBIEL-FIRST + ATOMAIR ("BOUWRUN 28-08 AVOND" blok B, géén eigen push-login; de telefoonroute mondt sinds 08-09 uit in
