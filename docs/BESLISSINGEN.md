@@ -10317,3 +10317,27 @@ gouden set `tests/keten/test_lijst_standaard_en_wachten.py` (open vraag zonder a
 `VraagThread.test.tsx` (3), `GoedkeurenFlow.test.tsx` (veld blijft ná antwoord), `VragenScreen.test.tsx` groen. Werkt in productie: niet
 gemeten — meetrecept in `docs/rapporten/2026-09-16-vragen-dialoog.md`.
 
+## OMZET-RECEIPTS — BINDER INKOMSTEN, NIET NAAM (Peter 16-09, Van Boxtel) — diagnose lees-only, categorie op binder, herstelroute via storno + herclassificatie; geen migratie
+
+**Melding Peter 16-09:** "omzetrapporten van Van Boxtel komen in RLZ terug onder Uitgaven (wél op de omzet-grootboekrekeningen)".
+
+**Diagnose in twee zinnen (STAP-0 16-09, lees-only, api-verkenning "Receipts — binder Inkomsten/Uitgaven"):** de RLZ-UI-mappen
+Inkomsten/Uitgaven volgen de `DocumentBinder` van de *categorie* (navigatie, alleen mét `$expand`), en bij Van Boxtel draagt
+"Verkoopfactuur (Omzet)" gewoon de binder Inkomsten — de omzetmotor is niet de oorzaak. De "omzetrapporten" zijn PurchaseInvoices
+(DocumentType 1, categorie Overige kosten onder Uitgaven, mét crediteur, referenties "11-09/12-09" …, "Samengevoegd (N regels)",
+€ 10.998,15): kassarapporten die via de INKOOPSTROOM geboekt zijn — dezelfde wortel als de ProfX-opdracht.
+
+| Blok | Besluit / gebouwd | Vindplaats |
+| --- | --- | --- |
+| **A diagnose** | Vijf `rlz-lezen`-metingen (categorieën zonder/mét binder, Receipts, PurchaseInvoices); `DocumentType` is een enum (niet filterbaar met een getal), Receipts sorteren op `Date` (geen `BookDate`). | api-verkenning §"Receipts — binder Inkomsten/Uitgaven (STAP-0 16-09)" |
+| **B categorie op binder** | `app/omzet/categorie.py`: DocumentType 10 + binder Inkomsten (voorkeursnaam "Verkoopfactuur (Omzet)", anders de enige); geen Inkomsten-categorie of meerduidig = blokkerende harde check **"Omzetcategorie (Inkomsten)"** (leest live mét binder, ververst de keuzelijst-cache; RLZ onleesbaar = blokkerend, fail-closed); een legacy-op-naam gecachete categorie zonder Inkomsten-binder wordt bij de volgende check/boeking vervangen (cache-invalidatie); mens-keuze wint en blijft. Eén leesroute `leesroutes.DOCUMENT_CATEGORIES` (`$expand=DocumentBinder`) voor client, check en rapport — bewust NIET in de probe-set (wizard "10 leesroutes" ongewijzigd; beslispunt). Guard-test: alleen-Uitgaven → check rood, geen PUT. | `categorie.py`, `boeken.py::_zorg_voor_verkoop_categorie`, `voorstel.py::voer_omzet_checks_uit`, `tests/omzet/test_categorie_binder.py` |
+| **B2 zichtbaar + corrigeerbaar** | Regel in de kop van het omzet-controlescherm "Boekt in Reeleezee als: **‹binder›** · ‹categorie›" mét herkomst-chip (automatisch / gekozen) en waarschuwing bij een niet-Inkomsten-binder; keuzelijst (`select`, gegroepeerd op binder, Uitgaven-groep mét "verschijnt in RLZ onder Uitgaven") → `PUT …/omzet/verkoop-categorie` = mens wint voor dit document ÉN default van de administratie (`bron_instellingen.verkoop_categorie`, bron 'mens', audit `omzet_verkoop_categorie_gewijzigd` oud→nieuw, tijdlijnregel); kaart "Verkoop → Reeleezee" noemt binder · categorie. Omzet-autoboeken volgt de harde check (geen Inkomsten en geen mens-keuze = geen autoboeking, zichtbaar rood). | `OmzetReviewScreen.tsx`, `omzet/router.py`, `schemas.VerkoopCategorieDto` |
+| **C herstel** | Lees-only CLI `omzet-binder-rapport [--dagen] [--administratie] [--met-pdf]` (nameting-allowlist): (A) module-Receipts waarvan de RLZ-categorie niet onder Inkomsten staat, (B) GEBOEKTE inkoopfacturen die omzet zijn (alle regels op omzetrekeningen; `--met-pdf` óók herkende omzetbron-PDF's) mét factuurdatum + aangiftepoort-stand. Reconciliatie (omzet-blok): soorten `verkoop_categorie_afwijkt` (SalesInvoice-lezing mét `$expand=DocumentCategory($expand=DocumentBinder)`) en `omzet_in_inkoopstroom` (lokaal, regels-op-omzetrekeningen); actie **"Herboeken als omzet…"** (`POST /reconciliatie/bevindingen/{id}/herboeken-als-omzet`, kantoorrol): aangiftepoort op de factuurdatum (409 `btw_mogelijk_aangegeven`, Beheerder-doorzet mét reden — identiek aan opnieuw boeken), storno actie 19 van de PurchaseInvoice (404 = al weg), document geboekt → te_controleren mét boek_cyclus +1 + neveneffecten teruggedraaid + audit `herboekt_als_omzet`, documentsoort → kassarapport (type-wissel, extractie via het omzetpad); de mens boekt daarna als Receipt onder Inkomsten. Geen massale automatische herboeking, nooit een delete in RLZ. | `app/omzet/inkoopstroom.py`, `omzet/reconciliatie.py`, `reconciliatie/router.py`, `teksten.py`, `HerboekenAlsOmzetActie.tsx` |
+
+**Tests:** `tests/omzet/test_categorie_binder.py` (8: keuze, legacy-invalidatie + mens wint + audit, harde check rood/groen, detectie
+alleen bij álle regels op omzetrekeningen, herboek-als-omzet mét 409/403/Beheerder-doorzet + storno + herclassificatie,
+reconciliatie-binder), `test_boeken.py` aangepast (alleen-Uitgaven blokkeert via de check), `test_bronnen.py` (klasse vrijgesteld),
+omzet + reconciliatie 507 groen, leesroutes-guard groen; frontend `OmzetReviewScreen.test` (+1 categorie-regel + PUT),
+`HerboekenAlsOmzetActie.test` (2), `tsc -b` groen. **Werkt in productie: niet gemeten** — meetrecept in
+`docs/rapporten/2026-09-16-omzet-binder.md`.
+

@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — Omzetboekingen landen onder Inkomsten; omzet die als inkoop geboekt is wordt gevonden en hersteld
+
+<!-- omzet-binder-16-09 -->
+
+- **Het omzet-controlescherm toont hoe de boeking in Reeleezee terechtkomt:** "Boekt in Reeleezee als: Inkomsten · Verkoopfactuur (Omzet)". Klopt dat niet, kies dan een andere categorie uit de lijst; je keuze geldt meteen als standaard voor die administratie. Een categorie die in Reeleezee onder Uitgaven valt krijgt een waarschuwing en blokkeert het boeken tot iemand bewust kiest.
+- **Kassarapporten die per ongeluk als inkoopfactuur zijn geboekt** (en daardoor in Reeleezee onder Uitgaven staan) worden door de dagelijkse controle gevonden. Op Inzicht › Reconciliatie staat dan "Herboeken als omzet…": de inkoopboeking wordt teruggedraaid en het document komt als kassarapport terug in de werkvoorraad om als omzet te boeken. Zit de btw-periode al in een ingediende aangifte, dan vraagt het systeem eerst een Beheerder-besluit.
+
 ## 2026-09-16 — Vragen-dialoog blijft open: meerdere berichten achter elkaar, van beide kanten
 
 <!-- vragen-dialoog-16-09 -->

@@ -2461,3 +2461,25 @@ en een eigen koppelrecord; (3) de activeringsdrempel staat al in RLZ (`FixedAsse
 verschillend (403 bij Universal) → probe verplicht; (5) of RLZ periodiek zélf afschrijft of een actie per periode verwacht, is op de
 gelezen administraties (0 activa) niet vast te stellen — eerste bouwstap = STAP-0 op een administratie mét activa (`FixedAssets/{id}
 ?$expand=JournalEntryList,FixedAssetMutationList` + `ActionKinds` via `--root`).
+
+## Receipts — binder Inkomsten/Uitgaven (STAP-0 16-09, casus Van Boxtel) — LEES-ONLY via `rlz-lezen`
+
+Aanleiding: Peter 16-09 "omzetrapporten van Van Boxtel komen in RLZ terug onder Uitgaven (wél op de omzet-grootboekrekeningen)".
+Vijf lees-only metingen op Van Boxtel Horeca Exploitatie B.V. (job `rlz-reconciliatie`, `rlz-lezen`, geanonimiseerd):
+
+| # | Route | Uitkomst |
+| --- | --- | --- |
+| 1 | `DocumentCategories?$top=50` | 45 categorieën; velden `id, Name, DocumentType, HasSystemId, IsHidden, IsTaxAllowed, DocumentNumberPrefix, Multiplier, BankReferenceType` — **géén binder-veld zonder expand**. Vier DocumentType-10-categorieën, alle `IsHidden: true`, `HasSystemId: false`. |
+| 2 | `DocumentCategories?$expand=DocumentBinder` | `DocumentBinder {id, Name, Description}` is een NAVIGATIE op de categorie. Binders bij Van Boxtel: Inkomsten (3× type 10: Diverse opbrengsten, Door te belasten kosten, **Verkoopfactuur (Omzet) `9138fa50…`**), Uitgaven (12× type 1), Kas & Bank (type 19/11), Privé en RC, Salaris, Belastingen (o.a. type 10 "BTW Prive bijdrage auto"), Financieel, Cheques. **De RLZ-UI-mappen Inkomsten/Uitgaven = de binder van de categorie.** |
+| 3 | `Receipts?$top=5&$orderby=Date desc&$expand=DocumentCategory($expand=DocumentBinder)` | De Receipts-collectie bevat óók kas-/bankdocumenten (DocumentType 11/19); op documentniveau is `DocumentBinder` altijd `null` — alleen via de categorie. `$orderby=BookDate` → 400 ("Could not find a property named 'BookDate'"): sorteren op `Date`. |
+| 4 | `Receipts?$filter=DocumentType eq 10` | 400 "A binary operator with incompatible types … 'Reeleezee.DTO.DocumentType' and 'Edm.Int32'" — `DocumentType` is een enum-type, niet filterbaar met een getal (en `'10'` als string is niet geprobeerd). |
+| 5 | `PurchaseInvoices?$top=8&$orderby=Date desc&$expand=DocumentCategory($expand=DocumentBinder),Entity` | **De "omzetrapporten" zijn PurchaseInvoices**: DocumentType 1, categorie "Overige kosten" onder binder **Uitgaven**, mét crediteur (`Entity`), referenties "7-9/14-9", "13-09/14-09", "12-09/13-09", "11-09/12-09", omschrijving "Samengevoegd (N regels)" (= onze inkoop-boekmotor, `boekvoorstel.py`), totalen € 37.109,34 / 10.638,17 / 9.753,09 / **10.998,15** (het ProfX-journaal van 11-09). |
+
+**Conclusie:** de omzetmotor (entity-loze Receipt mét categorie "Verkoopfactuur (Omzet)") zou bij Van Boxtel wél onder Inkomsten
+landen — die categorie draagt de binder Inkomsten. De documenten stonden onder Uitgaven omdat ze via de INKOOPSTROOM geboekt
+zijn (kassarapport als inkoopfactuur geclassificeerd — dezelfde wortel als de ProfX-opdracht van 16-09). Fix: (a) categorie
+deterministisch op binder kiezen (`app/omzet/categorie.py`, `DocumentCategories?$expand=DocumentBinder` als één leesroute
+`leesroutes.DOCUMENT_CATEGORIES`, buiten de probe-set), (b) reconciliatie-bevinding `omzet_in_inkoopstroom` + actie "Herboeken
+als omzet" (storno 19 achter de aangiftepoort + herclassificatie naar kassarapport). Een categorie-PUT op een GEBOEKTE
+SalesInvoice is niet getest (geen writes in deze run) — herstel loopt via storno + herboeken.
+

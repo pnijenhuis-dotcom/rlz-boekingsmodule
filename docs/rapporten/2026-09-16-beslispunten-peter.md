@@ -138,3 +138,18 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 6. **Geen push naar kantoor** bij een accordeur-bericht (bestaand: signaal via `toegewezen_aan` + werkvoorraad); een kantoor-melding is een
    apart vervolg.
 
+## Opdracht 11 (rij 2, middag) — omzet-Receipts onder Uitgaven bij Van Boxtel (`2026-09-16-omzet-binder.md`)
+
+1. **Diagnose wijkt af van de aanname in de opdracht:** niet de binder van de Receipt-categorie was fout (die is Inkomsten), maar de
+   documenten waren als INKOOPFACTUUR geboekt. Blok B is daarom defensief gebouwd (categorie op binder + check + keuze), blok C
+   richt zich op de echte wortel (omzet in de inkoopstroom).
+2. **Leesroute `DocumentCategories?$expand=DocumentBinder` NIET in de rechten-probe-set** (wizard-tekst "10 leesroutes" en de
+   probe blijven ongewijzigd); de omzet-check meldt een 403 zelf als blokkerende check-rij. Alternatief: 11e probe-route.
+3. **Reconciliatie-detectie alleen op "alle regels op een omzetrekening"** (lokaal, goedkoop); PDF-herkenning als tweede signaal
+   alleen in de CLI (`--met-pdf`) — geen dagelijkse PDF-lezing van alle geboekte inkoopfacturen.
+4. **Herstel = storno + herclassificatie, geen categorie-PUT op een geboekte SalesInvoice** (niet getest in STAP-0, geen writes in
+   deze run); de mens boekt daarna zelf als omzet (harde checks opnieuw) — geen automatische massale herboeking.
+5. **Een mens mag bewust een niet-Inkomsten-categorie kiezen** (oranje signaal in de check, geen blokkade); automatisch kiest de
+   motor nooit buiten Inkomsten.
+6. **Geen migratie:** herkomst en keuzelijst in `omzet_instelling.bron_instellingen` (JSON), id in de bestaande kolom.
+
