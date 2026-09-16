@@ -45,6 +45,13 @@ describe('instellingenRegistry — guard (élk nav-item en élke tab heeft een r
     expect(zoekInstellingen('plausibiliteit', { rol: 'beheerder', administraties: [] })[0]?.pad).toBe('/instellingen/boeken#ai-toets')
   })
 
+  it('OTA 16-09: het blok "App-updates" heeft een anker-entry op Boeken platformbreed', () => {
+    const entry = REGISTRY.find((e) => e.id === 'app-updates')
+    expect(entry?.doel).toEqual({ soort: 'sectie', sectie: 'boeken', anker: 'app-updates' })
+    expect(entry?.beheerder).toBe(true)
+    expect(zoekInstellingen('noodrem app', { rol: 'beheerder', administraties: [] })[0]?.pad).toBe('/instellingen/boeken#app-updates')
+  })
+
   it('besluiten Peter 16-09 blok B: het blok "Omzetbronnen" heeft een eigen anker-entry op de tab Boeken & AI', () => {
     const entry = REGISTRY.find((e) => e.id === 'omzetbronnen')
     expect(entry?.doel).toEqual({ soort: 'tab', tab: 'boeken-ai', anker: 'omzetbronnen' })

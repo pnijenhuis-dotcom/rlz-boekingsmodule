@@ -170,6 +170,19 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  // OTA (16-09): blok "App-updates" op Boeken platformbreed (sweep-geval ?pad=/instellingen/boeken).
+  if (url === '/instellingen/app-updates') return Promise.resolve(jsonResponse({ percentage: 100, uitgeschakeld: false, env_uitgeschakeld: false, min_runtime_versie: '1.1' }))
+  if (url === '/instellingen/app-updates/bundels') {
+    return Promise.resolve(
+      jsonResponse([
+        { bundel_id: 'a1b2c3d-20260917-0300', runtime: '1.1', platform: 'alle', sha256: 'ab'.repeat(32), bytes: 2_400_000, verplicht: false, actief: true, aangemaakt_op: '2026-09-17T03:00:00Z' },
+        { bundel_id: '9f8e7d6-20260916-2100', runtime: '1.1', platform: 'alle', sha256: 'cd'.repeat(32), bytes: 2_390_000, verplicht: false, actief: true, aangemaakt_op: '2026-09-16T21:00:00Z' },
+      ]),
+    )
+  }
+  if (url === '/instellingen/app-updates/toestellen') {
+    return Promise.resolve(jsonResponse([{ apparaat_id: 't1', apparaat_naam: 'iPhone Peter', platform: 'ios', app_versie: '1.1', bundel_id: 'a1b2c3d-20260917-0300', bundel_gezien_op: '2026-09-17T06:10:00Z', laatst_gebruikt_op: null }]))
+  }
   if (url === '/instellingen/intake-ai') return Promise.resolve(jsonResponse({ ingeschakeld: false }))
   if (url === '/instellingen/ai-kosten') {
     return Promise.resolve(

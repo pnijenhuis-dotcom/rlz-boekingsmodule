@@ -29,6 +29,7 @@ import { AutoboekKandidaten } from './AutoboekKandidaten'
 // Blok 5 (08-09): tellers per automatisering — verhuisd van Inzicht › Reconciliatie naar deze Beheerder-pagina.
 import { AutomatiseringenInstellingenBlok } from '../reconciliatie/AutomatiseringenBlok'
 import { AiToetsFacturenRij } from './AiToetsFacturenRij'
+import { AppUpdatesBlok } from './AppUpdatesBlok'
 import { IntercompanyRelaties } from './IntercompanyRelaties'
 import { StoresBlok } from './StoresBlok'
 import {
@@ -599,6 +600,9 @@ export function InstellingenScreen() {
             {/* 0151 (Peter 16-09 avond): store → administratie platformbreed — Sunshine Island is een eigen BV. De
                 verzamelbak-rij "store niet gekoppeld" en de LET-OP linken naar #stores. */}
             <StoresBlok />
+            {/* OTA (Peter 16-09): live updates van de web-laag van de native app — bundels per app-versie, cohort, noodrem,
+                laatste toestellen. Deeplink #app-updates. */}
+            <AppUpdatesBlok />
           </div>
         )}
 

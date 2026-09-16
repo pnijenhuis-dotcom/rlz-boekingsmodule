@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0151
+-- Migratie-head bij deze dump: 0152
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -3747,6 +3747,41 @@ CREATE TABLE platform.ai_kosten_maandstatus (
 
 
 --
+-- Name: app_bundel; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.app_bundel (
+    id uuid NOT NULL,
+    bundel_id text NOT NULL,
+    runtime text NOT NULL,
+    platform text DEFAULT 'alle'::text NOT NULL,
+    pad text NOT NULL,
+    sha256 text NOT NULL,
+    bytes bigint NOT NULL,
+    verplicht boolean DEFAULT false NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_app_bundel_platform CHECK ((platform = ANY (ARRAY['ios'::text, 'android'::text, 'alle'::text])))
+);
+
+
+--
+-- Name: app_update_instelling; Type: TABLE; Schema: platform; Owner: -
+--
+
+CREATE TABLE platform.app_update_instelling (
+    singleton boolean NOT NULL,
+    percentage integer DEFAULT 100 NOT NULL,
+    uitgeschakeld boolean DEFAULT false NOT NULL,
+    gewijzigd_door uuid,
+    gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_app_update_instelling_percentage CHECK (((percentage >= 0) AND (percentage <= 100))),
+    CONSTRAINT ck_app_update_instelling_singleton CHECK (singleton)
+);
+
+
+--
 -- Name: audit_event; Type: TABLE; Schema: platform; Owner: -
 --
 
@@ -4175,6 +4210,9 @@ CREATE TABLE platform.webauthn_credential (
     soort text DEFAULT 'passkey'::text NOT NULL,
     platform text,
     niet_meer_gebruikt_op timestamp with time zone,
+    app_versie text,
+    bundel_id text,
+    bundel_gezien_op timestamp with time zone,
     CONSTRAINT ck_webauthn_credential_soort CHECK ((soort = ANY (ARRAY['passkey'::text, 'toestel'::text])))
 );
 
@@ -5642,6 +5680,22 @@ ALTER TABLE ONLY platform.ai_kosten_maandstatus
 
 
 --
+-- Name: app_bundel app_bundel_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.app_bundel
+    ADD CONSTRAINT app_bundel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: app_update_instelling app_update_instelling_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.app_update_instelling
+    ADD CONSTRAINT app_update_instelling_pkey PRIMARY KEY (singleton);
+
+
+--
 -- Name: audit_event audit_event_pkey; Type: CONSTRAINT; Schema: platform; Owner: -
 --
 
@@ -5871,6 +5925,14 @@ ALTER TABLE ONLY platform.accordeur_herinnering
 
 ALTER TABLE ONLY platform.accordeur_nieuw_gemeld
     ADD CONSTRAINT uq_accordeur_nieuw_gemeld UNIQUE (gebruiker_id, document_id);
+
+
+--
+-- Name: app_bundel uq_app_bundel_bundel_id; Type: CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.app_bundel
+    ADD CONSTRAINT uq_app_bundel_bundel_id UNIQUE (bundel_id);
 
 
 --
@@ -7236,6 +7298,13 @@ CREATE INDEX ix_activatiecode_poging_ip_tijdstip ON platform.activatiecode_pogin
 --
 
 CREATE INDEX ix_administratie_groep_id ON platform.administratie USING btree (groep_id);
+
+
+--
+-- Name: ix_app_bundel_runtime_aangemaakt; Type: INDEX; Schema: platform; Owner: -
+--
+
+CREATE INDEX ix_app_bundel_runtime_aangemaakt ON platform.app_bundel USING btree (runtime, aangemaakt_op);
 
 
 --
@@ -10292,6 +10361,22 @@ ALTER TABLE ONLY platform.administratie
 
 ALTER TABLE ONLY platform.ai_kosten_instelling
     ADD CONSTRAINT ai_kosten_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: app_bundel app_bundel_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.app_bundel
+    ADD CONSTRAINT app_bundel_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: app_update_instelling app_update_instelling_gewijzigd_door_fkey; Type: FK CONSTRAINT; Schema: platform; Owner: -
+--
+
+ALTER TABLE ONLY platform.app_update_instelling
+    ADD CONSTRAINT app_update_instelling_gewijzigd_door_fkey FOREIGN KEY (gewijzigd_door) REFERENCES platform.gebruiker(id);
 
 
 --

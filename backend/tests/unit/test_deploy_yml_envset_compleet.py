@@ -45,6 +45,10 @@ SERVICE_ENV_SLEUTELS = {
     "APP_BASIS_URL",
     "APNS_SANDBOX",
     "FCM_PROJECT_ID",
+    # OTA (16-09): bundel-bucket, minimale schilversie en de deploy-zijdige kill-switch
+    "APP_BUNDEL_GCS_BUCKET",
+    "APP_MIN_RUNTIME_VERSIE",
+    "OTA_UITGESCHAKELD",
 }
 SERVICE_SECRET_SLEUTELS = {
     "APP_DB_WACHTWOORD",

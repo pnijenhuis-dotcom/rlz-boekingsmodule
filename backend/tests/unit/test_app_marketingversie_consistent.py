@@ -69,3 +69,23 @@ def test_ci_post_clone_raakt_de_marketingversie_niet() -> None:
             continue
         assert "MARKETING_VERSION" not in regel, f"ci_post_clone.sh zet alleen CURRENT_PROJECT_VERSION: {regel!r}"
     assert "CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${CI_BUILD_NUMBER}" in script
+
+
+def test_ota_minimum_runtime_versie_nooit_boven_de_marketingversie() -> None:
+    """OTA blok C (16-09): de minimale schilversie (426 eronder) mag nooit hoger zijn dan de versie die we zélf bouwen —
+    anders sluit de poort de eigen app uit. Geldt voor de code-default én de waarde in deploy.yml."""
+    import re as _re
+
+    from app.config import Settings
+
+    def _t(v: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in v.split("."))
+
+    web = _t(_web_versie())
+    assert _t(Settings.model_fields["app_min_runtime_versie"].default) <= web
+    deploy = (REPO / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    m = _re.search(r'APP_MIN_RUNTIME_VERSIE: "([0-9.]+)"', deploy)
+    assert m, "deploy.yml draagt APP_MIN_RUNTIME_VERSIE"
+    assert _t(m.group(1)) <= web
+    assert "app-bundel-registreren" in deploy and "APP_MARKETING_VERSIE" in deploy, "de OTA-stap registreert per runtime"
+

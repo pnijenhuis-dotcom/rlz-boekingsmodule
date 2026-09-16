@@ -6,6 +6,9 @@
 // besluit Peter 08-09-2026). De kantoor-web merkt van dat slot-pad niets: zonder slot-opslag is
 // elke request byte-identiek aan vóór 08-09 (guard in client.test.ts).
 import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, slotModus, slotSessieBeschikbaar } from './nativeSessie'
+import { APP_MARKETING_VERSIE } from '../accordeur/appVersie'
+import { huidigPlatform } from '../accordeur/appAuthApi'
+import { bekendeBundelId } from '../accordeur/ota'
 
 let accessToken: string | null = null
 let sessieVerlopenHandler: (() => void) | null = null
@@ -26,6 +29,13 @@ async function metSlotAuthHeaders(pad: string, headers: Headers): Promise<void> 
   const modus = slotModus()
   if (!modus) return
   headers.set(modus === 'native' ? 'X-Native-Client' : 'X-App-Slot', '1')
+  // OTA + minimum-versie-poort (Peter 16-09): de app kondigt zijn marketingversie, platform en actieve webbundel aan —
+  // de server toetst X-App-Versie tegen het minimum (426) en zet versie/bundel op de toestel-rij. Alleen in de slotmodus;
+  // het kantoor-pad blijft byte-identiek (guard client.test.ts).
+  headers.set('X-App-Versie', APP_MARKETING_VERSIE)
+  headers.set('X-App-Platform', huidigPlatform())
+  const bundel = bekendeBundelId()
+  if (bundel) headers.set('X-Bundel-Id', bundel)
   if (pad.startsWith('/auth/token/vernieuwen')) {
     const token = await haalNatiefRefreshToken()
     if (token) headers.set('X-Refresh-Token', token)
@@ -209,9 +219,36 @@ export function verversSessie(): Promise<boolean> {
 const GEEN_RETRY_PADEN = new Set(['/auth/login', '/auth/token/vernieuwen', '/auth/token/vernieuwen/logout'])
 
 /** Eén automatische refresh-poging bij een 401 — daarna geeft de aanroeper het zelf op. */
+/** 426 Upgrade Required (OTA blok C, 16-09): de server weigert een te oude schil op élke call — één event, het
+ * accordeur-scherm toont "Update nodig" mét winkelknop; nooit een kale fout of wachtwoordvraag. */
+export const APP_UPDATE_NODIG_EVENT = 'app-update-nodig'
+export interface AppUpdateNodigDetail {
+  min_versie?: string
+  huidige_versie?: string | null
+  store_url?: string | null
+}
+let updateNodigGemeld = false
+
+async function meldUpdateNodig(resp: Response): Promise<void> {
+  if (updateNodigGemeld) return
+  updateNodigGemeld = true
+  let detail: AppUpdateNodigDetail = {}
+  try {
+    detail = (await resp.clone().json()) as AppUpdateNodigDetail
+  } catch {
+    detail = {}
+  }
+  window.dispatchEvent(new CustomEvent(APP_UPDATE_NODIG_EVENT, { detail }))
+}
+
+export function resetUpdateNodigVoorTests(): void {
+  updateNodigGemeld = false
+}
+
 export async function apiFetch(pad: string, init: RequestInit = {}): Promise<Response> {
   let resp = await ruweFetch(pad, init)
   await gooiAlsBackendOnbereikbaar(resp)
+  if (resp.status === 426) await meldUpdateNodig(resp)
   if (resp.status === 401 && !GEEN_RETRY_PADEN.has(pad)) {
     const ververst = await verversSessie()
     if (ververst) {

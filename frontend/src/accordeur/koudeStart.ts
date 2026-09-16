@@ -280,8 +280,11 @@ export function diagnoseRegel(
   appBuild: string | null = null,
   verbindingsfout: BewaardeVerbindingsfout | null = null,
   slotfout: BewaardeSlotfout | null = null,
+  bundel: string | null = null,
 ): string {
-  const build = `web ${meting?.build ?? WEB_BUILD_ID} · app ${appBuild ?? `${APP_MARKETING_VERSIE} (web)`}`
+  // OTA (16-09): `bundel <id>` = de actieve webbundel in de schil (`builtin` = uit de winkel-build); alleen als bekend.
+  const build =
+    `web ${meting?.build ?? WEB_BUILD_ID} · app ${appBuild ?? `${APP_MARKETING_VERSIE} (web)`}` + (bundel ? ` · bundel ${bundel}` : '')
   // Blok 2b 08-09: de laatste verbindingsfout van het slot als staart — oorzaak, tijdstip en de ruwe melding.
   // Bugfix 10-09: daarachter de laatste opslagfout van het slot (handeling + sleutelnaam + reden, nooit een waarde).
   const staart =

@@ -545,3 +545,14 @@ volledig in App access staan.
 
 > Historische versie van §11 (07-09: "tik Inloggen met wachtwoord", toestelvereisten schermvergrendeling + Google-account,
 > 497 tekens): vervangen op 08-09; niet meer indienen. De emulator-reproductie in §10 blijft de bron voor de oude wortel.
+
+## 12. Wanneer winkel, wanneer OTA + in-app-update (besluit Peter 16-09)
+
+Zelfde tabel als TESTFLIGHT §6: web-laag = OTA (automatisch per deploy, bundel per `versionName` = `APP_MARKETING_VERSIE`), native = winkel
+(`versionCode +1`, `versionName` = marketingversie, `bouw_android_release.sh <vc> <versie>` → interne track → productie). Android kent
+daarnaast **Google In-App Updates** (`@capawesome/capacitor-app-update`, sinds 16-09 in de schil): staat de winkelversie boven de
+geïnstalleerde, dan biedt de app een FLEXIBLE update aan (max 1×/24 u bij terugkeer naar de voorgrond); krijgt de app van de server een
+426 ("Update nodig", schil onder `APP_MIN_RUNTIME_VERSIE`), dan start een IMMEDIATE update — zonder plugin blijft de Play-link over
+(`STORE_LINK_ANDROID`, vullen ná goedkeuring). **Stand 16-09:** vc2 (live) en vc4 (in review) dragen de plugins NIET; vc5 (1.1) is de eerste
+mét OTA + in-app-update — bouwen ná de goedkeuring van vc4 (§3/§4). Interne test-track blijft de plek voor Peters native pre-check.
+

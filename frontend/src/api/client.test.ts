@@ -309,3 +309,28 @@ describe('slot-headers alleen in de slotmodus (§5a) — kantoor-pad byte-identi
     }
   })
 })
+
+// OTA blok C (16-09): een 426 van de server = één event "app-update-nodig" mét de body (min_versie, store_url); de
+// aanroeper krijgt de response gewoon terug (geen retry, geen sessie-verlies).
+describe('426 Upgrade Required → app-update-nodig-event', () => {
+  it('dispatcht één keer het event met de details', async () => {
+    vi.useRealTimers()
+    const { apiFetch, APP_UPDATE_NODIG_EVENT, resetUpdateNodigVoorTests } = await verseClient()
+    resetUpdateNodigVoorTests()
+    const gezien: unknown[] = []
+    const luister = (e: Event) => gezien.push((e as CustomEvent).detail)
+    window.addEventListener(APP_UPDATE_NODIG_EVENT, luister)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ detail: 'Update nodig', code: 'app_update_nodig', min_versie: '1.2', store_url: 'https://apps.apple.com/x' }), { status: 426, headers: { 'Content-Type': 'application/json' } })),
+    )
+    const resp = await apiFetch('/accordering/wachtrij')
+    expect(resp.status).toBe(426)
+    await apiFetch('/accordering/wachtrij')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(gezien).toEqual([{ detail: 'Update nodig', code: 'app_update_nodig', min_versie: '1.2', store_url: 'https://apps.apple.com/x' }])
+    window.removeEventListener(APP_UPDATE_NODIG_EVENT, luister)
+    vi.unstubAllGlobals()
+  })
+})
+

@@ -2848,11 +2848,14 @@ def main(argv: list[str] | None = None) -> int:
     register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)
     from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
     from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
+    from app.appupdate.cli_cmd import dispatch as dispatch_appupdate  # OTA 16-09 nacht
+    from app.appupdate.cli_cmd import register as register_appupdate
     from app.doorbelasting.aansluiting import dispatch as dispatch_doorbelasting_aansluiting  # blok 2 16-09 nacht
     from app.doorbelasting.aansluiting import register as register_doorbelasting_aansluiting
 
     register_werkvoorraad_tellers(subparsers)  # werkvoorraad-tellers-herrekenen
     register_doorbelasting_aansluiting(subparsers)  # doorbelasting-aansluiting (lees-only)
+    register_appupdate(subparsers)  # app-bundel-registreren / app-bundels
     subparsers.add_parser(
         "autoboek-kandidaten-herbereken",
         help="Autoboek-kandidaten-motor los draaien (loopt óók dagelijks mee in sync-alles; puur code, geen RLZ-calls).",
@@ -3528,6 +3531,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_administratienaam
     if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
         return uitkomst_btw_default
+    if (uitkomst_appupdate := dispatch_appupdate(args)) is not None:  # OTA 16-09 nacht
+        return uitkomst_appupdate
     if (uitkomst_doorbelasting_aansluiting := dispatch_doorbelasting_aansluiting(args)) is not None:  # 16-09 nacht
         return uitkomst_doorbelasting_aansluiting
     if (uitkomst_werkvoorraad_tellers := dispatch_werkvoorraad_tellers(args)) is not None:  # blok 6 11-09

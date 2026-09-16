@@ -554,6 +554,55 @@ class WebauthnCredential(Base):
     # "Passkey van een app-gebruiker, niet meer in gebruik" (CLI app-passkeys-markeren) — markering, nooit
     # verwijderen; `ingetrokken_op` blijft ongemoeid zodat bestaande sessies hun TTL uitzitten.
     niet_meer_gebruikt_op: Mapped[datetime | None] = mapped_column(default=None)
+    # OTA (migratie 0152, Peter 16-09): wat het toestel bij zijn laatste request meldde (headers X-App-Versie /
+    # X-Bundel-Id) — bijgewerkt in deps.get_current_gebruiker als de waarde verandert; Beheerder-blok "App-updates".
+    app_versie: Mapped[str | None] = mapped_column(Text, default=None)
+    bundel_id: Mapped[str | None] = mapped_column(Text, default=None)
+    bundel_gezien_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class AppBundel(Base):
+    """OTA-webbundel (migratie 0152): één rij per gebouwde bundel van de accordeur-/veldwerker-app, gekoppeld aan de
+    RUNTIME (marketingversie van de schil). De deploy registreert 'm via de CLI `app-bundel-registreren`; het manifest
+    kiest de nieuwste actieve bundel van de gevraagde runtime + platform. `actief=False` = teruggetrokken (nooit
+    verwijderd)."""
+
+    __tablename__ = "app_bundel"
+    __table_args__ = (
+        Index("ix_app_bundel_runtime_aangemaakt", "runtime", "aangemaakt_op"),
+        CheckConstraint("platform IN ('ios', 'android', 'alle')", name="ck_app_bundel_platform"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bundel_id: Mapped[str] = mapped_column(Text, unique=True)
+    runtime: Mapped[str] = mapped_column(Text)
+    platform: Mapped[str] = mapped_column(Text, default="alle", server_default="alle")
+    pad: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(Text)
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    verplicht: Mapped[bool] = mapped_column(default=False, server_default="false")
+    actief: Mapped[bool] = mapped_column(default=True, server_default="true")
+    aangemaakt_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AppUpdateInstelling(Base):
+    """Singleton (migratie 0152): cohort-percentage en kill-switch van de OTA-updates (Instellingen › Boeken › App-updates,
+    Beheerder-only). De env `OTA_UITGESCHAKELD=true` is de tweede, deploy-zijdige noodrem — één van beide aan = altijd
+    `geen_update` én de app valt terug op de ingebouwde bundel."""
+
+    __tablename__ = "app_update_instelling"
+    __table_args__ = (CheckConstraint("percentage BETWEEN 0 AND 100", name="ck_app_update_instelling_percentage"),)
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
+    percentage: Mapped[int] = mapped_column(default=100, server_default="100")
+    uitgeschakeld: Mapped[bool] = mapped_column(default=False, server_default="false")
+    gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gewijzigd_op: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class ActivatiecodePoging(Base):

@@ -410,6 +410,16 @@ class Settings(BaseSettings):
     store_app_versie_android: str = ""
     # Zelfservice tweede toestel (Peter 16-09, blok B): maximaal N actieve toestel-rijen per app-gebruiker.
     app_max_toestellen: int = 3
+    # Live updates (OTA) van de web-laag van de native app (Peter 16-09, migratie 0152). Bundels staan in een eigen
+    # bucket (leeg = lokale map, dev); het manifest kiest alleen bundels van de RUNTIME (marketingversie van de schil).
+    # `ota_uitgeschakeld` = deploy-zijdige kill-switch náást de Beheerder-schakelaar in de DB (één van beide aan = altijd
+    # `geen_update`). `app_min_runtime_versie` = de minimum-schilversie: een aangekondigde schil (X-App-Versie) eronder
+    # krijgt op élke API-call een 426 mét store-link; schillen die zich niet aankondigen (≤ 1.1 build 140) vallen onder
+    # de legacy-410-/Sunset-route van `app_legacy_auth_sunset_op`.
+    app_bundel_gcs_bucket: str = ""
+    app_bundel_opslag_basismap: str = "app_bundels"
+    ota_uitgeschakeld: bool = False
+    app_min_runtime_versie: str = "1.1"
 
     # Synthetische bewaking + alerting (best-practice-besluit 1, 31-08 — aanleiding: twee
     # stille productie-incidenten in het weekend van 30/31-08). Job rlz-bewaking, elk kwartier

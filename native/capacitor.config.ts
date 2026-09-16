@@ -23,6 +23,19 @@ const config: CapacitorConfig = {
     // De accordeur-PWA is dark-first; de webview mag niet wit flitsen bij het opstarten.
     backgroundColor: '#0b0d0e',
   },
+  /* Live updates (OTA) van de web-laag (besluit Peter 16-09; BESLISSINGEN "NATIVE APP — LIVE UPDATES (OTA)"): de plugin
+   * @capgo/capacitor-updater SELF-HOSTED — geen Capgo-cloud, geen autoUpdate; de webcode (src/accordeur/ota.ts) haalt het
+   * manifest bij onze eigen backend, downloadt de zip (sha256 als checksum) en zet 'm klaar voor de volgende start.
+   * appReadyTimeout 10 s: meldt de nieuwe bundel zich niet met notifyAppReady, dan rolt de plugin zelf terug (audit
+   * `ota_rollback` via de webcode). Apple 3.3.2: alleen web-assets, nooit een andere app-functie. */
+  plugins: {
+    CapacitorUpdater: {
+      autoUpdate: false,
+      appReadyTimeout: 10000,
+      resetWhenUpdate: true,
+      directUpdate: false,
+    },
+  },
   android: {
     backgroundColor: '#0b0d0e',
     /* Alleen voor een LOKALE debug-build (emulator-screenshots PLAY_DRAAIBOEK §6 / kliktest

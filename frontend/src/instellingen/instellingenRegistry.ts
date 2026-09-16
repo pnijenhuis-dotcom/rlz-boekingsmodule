@@ -418,6 +418,14 @@ export const REGISTRY: readonly RegistryEntry[] = [
     beheerder: true,
   },
   {
+    id: 'app-updates',
+    naam: 'App-updates — live updates accordeur-/veldwerker-app (bundels, cohort, noodrem, toestellen)',
+    waar: 'Boeken platformbreed › blok App-updates',
+    synoniemen: ['app-updates', 'app updates', 'ota', 'live updates', 'bundel', 'noodrem app', 'testflight', 'app-versie', 'update nodig'],
+    doel: { soort: 'sectie', sectie: 'boeken', anker: 'app-updates' },
+    beheerder: true,
+  },
+  {
     id: 'intercompany-relaties',
     naam: 'Intercompany-relaties (afgeleid; bevestigen / uitsluiten)',
     waar: 'Boeken platformbreed › Intercompany-relaties',

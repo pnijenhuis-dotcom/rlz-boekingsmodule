@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 
@@ -29,6 +29,7 @@ class CurrentGebruiker:
 
 def get_current_gebruiker(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    request: Request = None,  # type: ignore[assignment]
 ) -> CurrentGebruiker:
     """Decodeert het access-token en haalt de ACTUELE rol/status uit de DB — nooit de claim in
     het token blindelings vertrouwen. Een access-token is kortlevend (15 min), maar een
@@ -65,6 +66,15 @@ def get_current_gebruiker(
     rol_waarde, status_waarde = row
     if status_waarde != GebruikerStatus.ACTIEF.value:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account niet actief")
+    # OTA (Peter 16-09, migratie 0152): wat het toestel over zichzelf meldt (X-App-Versie / X-Bundel-Id) op de toestel-rij
+    # zetten — alleen een UPDATE als de stand verandert, nooit een fout richting de request.
+    if apparaat_claim is not None and request is not None:
+        versie = request.headers.get("X-App-Versie")
+        bundel = request.headers.get("X-Bundel-Id")
+        if versie or bundel:
+            from app.appupdate.service import registreer_toestelstand
+
+            registreer_toestelstand(apparaat_id=uuid.UUID(apparaat_claim), app_versie=versie, bundel_id=bundel)
     return CurrentGebruiker(
         id=gebruiker_id,
         rol=GebruikerRol(rol_waarde),

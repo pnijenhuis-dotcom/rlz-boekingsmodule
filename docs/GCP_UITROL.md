@@ -798,6 +798,21 @@ gcloud run jobs describe rlz-kantoor-digest --region europe-west4 --project rlz-
 Smoketest-log: "service-template draagt de mailkanaal-config (N envs, M secrets)". Daarna één herstel-link sturen → mail komt aan. Geen handmatige
 `services update` als tussenoplossing (regel Peter 08-09: productie alleen via de workflow).
 
+### F3.10 — OTA-webbundels native app (Peter 16-09; migratie 0152)
+
+- **Bucket `rlz-boekhouding-app-bundels`** (europe-west4, uniform access, public-access-prevention, versioning aan, GEEN retentie —
+  bundels zijn reproduceerbare build-artefacten): eenmalig als owner `scripts/gcp/app_bundels_bucket.sh --apply` (bucket + IAM:
+  deploy@ objectCreator/Viewer, run-jobs@ en de service-SA objectViewer). De backend serveert de zip zelf (`GET /app/bundels/{id}.zip`);
+  de bucket blijft privé.
+- **Envs** (service én jobs, in de ene envset): `APP_BUNDEL_GCS_BUCKET` (leeg = lokale map, dev), `APP_MIN_RUNTIME_VERSIE` (nu 1.1;
+  ophogen pas ná een live winkelversie), `OTA_UITGESCHAKELD` (deploy-zijdige noodrem, default false; de Beheerder heeft dezelfde
+  schakelaar in de DB).
+- **Deploy-stap "OTA-webbundel bouwen, uploaden en registreren"** (ná de F3-jobs, vóór de smoketest): frontend `--mode native` → zip →
+  `gcloud storage cp` → `rlz-reconciliatie` mét `app-bundel-registreren` (runtime uit `appVersie.ts`). Faalt de stap (bucket ontbreekt),
+  dan is de deploy rood maar de service draait; het manifest zegt "geen bundel voor deze runtime".
+- **Meetrecept:** `curl "https://app.administratiekantoornijenhuis.nl/app/update-manifest?runtime=1.1&platform=ios"` → `bundel_id` van
+  de laatste deploy; noodrem aan → `{"geen_update": true, "reden": "uitgeschakeld"}`; Instellingen › Boeken › App-updates.
+
 ## F4 — Koppelvlak vastgoed (webhooks, tier-vlaggen)
 
 > **Uitvoering: `docs/F4_ACTIVATIE_RUNBOOK.md` is het cutover-draaiboek (F4-voorbereiding

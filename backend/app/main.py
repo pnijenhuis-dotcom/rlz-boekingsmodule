@@ -13,6 +13,7 @@ from app.auth.privacy_pagina import router as privacy_pagina_router
 from app.auth.router import router as auth_router
 from app.auth.wellknown import router as wellknown_router
 from app.bank.router import router as bank_router
+from app.appupdate.router import router as appupdate_router
 from app.beheer.router import router as beheer_router
 from app.intercompany.router import router as intercompany_router
 from app.odoo.router import router as odoo_router
@@ -150,6 +151,41 @@ class OnverwachteFoutVangnet:
             await response(scope, receive, send)
 
 
+class MinimumAppVersiePoort:
+    """426 Upgrade Required (Peter 16-09, OTA blok C): een native schil die zich aankondigt met `X-App-Versie` onder
+    `settings.app_min_runtime_versie` krijgt op élke API-call één JSON-antwoord `{detail, min_versie, store_url}` — de
+    app toont daarop één scherm "Update nodig" mét winkelknop, geen kale fout, geen wachtwoordvraag. Schillen zonder
+    aankondiging (≤ 1.1 build 140) vallen onder de legacy-Sunset-route in auth/router.py. Puur ASGI, bínnen CORS (het
+    antwoord draagt CORS-headers), vóór de routing. /health en het manifest/bundelpad blijven bereikbaar."""
+
+    VRIJE_PADEN = ("/health", "/app/update-manifest", "/app/bundels/")
+
+    def __init__(self, app) -> None:  # noqa: ANN001 — ASGI-app
+        self._app = app
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001 — ASGI-signatuur
+        if scope["type"] == "http" and not scope["path"].startswith(self.VRIJE_PADEN):
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+            if headers.get("x-native-client"):
+                from app.appupdate.service import schil_te_oud, store_url
+
+                versie = headers.get("x-app-versie")
+                if schil_te_oud(versie):
+                    response = JSONResponse(
+                        status_code=426,
+                        content={
+                            "detail": "Update nodig — deze versie van de app wordt niet meer ondersteund.",
+                            "code": "app_update_nodig",
+                            "min_versie": settings.app_min_runtime_versie,
+                            "huidige_versie": versie,
+                            "store_url": store_url(headers.get("x-app-platform")),
+                        },
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self._app(scope, receive, send)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Migratie-guard (CLAUDE.md-taak "geen raadsel-500 door een gemiste migratie meer"): stopt
@@ -180,6 +216,7 @@ app = FastAPI(title="RLZ Boekingsmodule", lifespan=_lifespan)
 # fout-vangnet eerst toevoegen en CORS daarna, zodat CORS de buitenste laag is en élk antwoord
 # — ook de JSON-500 uit het vangnet — CORS-headers draagt.
 app.add_middleware(OnverwachteFoutVangnet)
+app.add_middleware(MinimumAppVersiePoort)  # OTA blok C (16-09): 426 voor te oude schillen, bínnen CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -230,6 +267,7 @@ app.include_router(credentialstore_router)
 app.include_router(beheer_router)
 app.include_router(odoo_router)
 app.include_router(intercompany_router)
+app.include_router(appupdate_router)  # OTA (Peter 16-09): manifest, bundels, Beheerder-blok App-updates
 
 
 @app.exception_handler(Exception)

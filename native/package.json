@@ -14,7 +14,9 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
-    "@capacitor/push-notifications": "^8.1.2"
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capawesome/capacitor-app-update": "^8.0.5",
+    "@capgo/capacitor-updater": "^8.51.16"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

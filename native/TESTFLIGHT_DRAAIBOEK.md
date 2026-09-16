@@ -533,3 +533,22 @@ plekken) — het is een óf-óf-schakelaar.
 - Android/Firebase-ronde: eigen draaiboek `native/PLAY_DRAAIBOEK.md` (bouwronde 28-08 —
   Firebase-registratie + FCM-verzendkant klaar; keystore, AAB, Play-app onder PDL, assetlinks,
   apk-key-hash-origins, listing/Data safety = klikwerk).
+
+## 6. Wanneer winkel, wanneer OTA (besluit Peter 16-09 — "zsm af van TestFlight")
+
+Sinds 16-09 nacht werkt de app haar **web-laag** zelf bij (OTA, `@capgo/capacitor-updater` self-hosted; BESLISSINGEN "NATIVE APP —
+LIVE UPDATES (OTA) …"). TestFlight is **geen distributiekanaal voor gebruikers meer** — alleen Peters eigen pre-check van een NATIVE
+wijziging vóór de App Store-submissie.
+
+| Wijziging | Route |
+|---|---|
+| Schermen, teksten, flows, API-aanroepen, bugfixes in `frontend/src` | **OTA** — automatisch bij elke deploy (bundel per `APP_MARKETING_VERSIE`); geen klikwerk |
+| Nieuwe/gewijzigde Capacitor-plugin, Swift-/Kotlin-code, permissions/entitlements, AASA-/assetlinks-config in de app, app-auth-schil (VeiligeOpslag/AppSlot), Capacitor-versie, icoon/splash/naam | **Winkel** — `MARKETING_VERSION`/`versionName`/`APP_MARKETING_VERSIE` ophogen (guard `test_app_marketingversie_consistent.py`), push → Xcode Cloud-build → TestFlight-precheck (Peter) → App Store; Android `bouw_android_release.sh` → Play |
+| Minimale schilversie ophogen (`APP_MIN_RUNTIME_VERSIE` in deploy.yml) | **pas ná** de winkelversie live is — anders krijgt iedereen "Update nodig" zonder update |
+
+**Release-checklist native wijziging:** (1) marketingversie ophogen op alle vier de plekken + WAT_IS_NIEUW; (2) push → build; (3) TestFlight-
+precheck: Toegang › Diagnose toont `app <versie> (<build>) · bundel builtin`, daarna ná één herstart `bundel <sha7>` van de laatste deploy;
+(4) indienen; (5) ná goedkeuring `STORE_APP_VERSIE_IOS` en (later) `APP_MIN_RUNTIME_VERSIE` bijzetten. **Noodrem:** Instellingen › Boeken ›
+App-updates › noodrem (DB) óf `OTA_UITGESCHAKELD=true` in deploy.yml (env) — beide geven `geen_update`, de app valt terug op de ingebouwde bundel.
+**Stand 16-09:** de ingediende 1.1 (140) draagt de plugin NIET; de eerste build ná de OTA-commit wél (klikpunt: bucket `app_bundels_bucket.sh`).
+

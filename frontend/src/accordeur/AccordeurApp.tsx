@@ -29,6 +29,10 @@ import {
   vergrendel,
   wisAppSlotLokaal,
 } from '../api/appSlot'
+import { APP_UPDATE_NODIG_EVENT, type AppUpdateNodigDetail } from '../api/client'
+import { androidInAppUpdate, controleerOta, otaBijStart } from './ota'
+import { UpdateNodigScherm } from './UpdateNodigScherm'
+import { useVerversBijVoorgrond } from './verversen'
 import { webSlotOnmogelijkOpAccordeur } from '../api/webVeiligeOpslag'
 import { AppSlotScherm } from './appslot/AppSlotScherm'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
@@ -128,6 +132,19 @@ export default function AccordeurApp() {
   const [legacySlotFout, setLegacySlotFout] = useState(false)
   // Melding op het activatiescherm ná een server-side dode sessie (kill-switch / 7-dagen-TTL).
   const [toegangVerlopen, setToegangVerlopen] = useState(false)
+  // OTA (Peter 16-09): 426 = schil te oud → scherm "Update nodig"; koude start = notifyAppReady + manifest-check; terugkeer
+  // naar de voorgrond = check (max 1× per 15 min, in ota.ts). Buiten de schil allemaal no-ops.
+  const [updateNodig, setUpdateNodig] = useState<AppUpdateNodigDetail | null>(null)
+  useEffect(() => {
+    const op = (e: Event) => setUpdateNodig((e as CustomEvent<AppUpdateNodigDetail>).detail ?? {})
+    window.addEventListener(APP_UPDATE_NODIG_EVENT, op)
+    void otaBijStart()
+    return () => window.removeEventListener(APP_UPDATE_NODIG_EVENT, op)
+  }, [])
+  useVerversBijVoorgrond(() => {
+    void controleerOta()
+    void androidInAppUpdate('flexible')
+  })
 
   useEffect(() => {
     if (!slotKan) return
@@ -277,7 +294,10 @@ export default function AccordeurApp() {
   )
 
   let inhoud: React.ReactNode
-  if (!slotKan && webSlotOnmogelijkOpAccordeur()) {
+  if (updateNodig) {
+    // 426 van de server (OTA blok C): deze schil is te oud — alleen de winkelroute helpt.
+    inhoud = <UpdateNodigScherm detail={updateNodig} />
+  } else if (!slotKan && webSlotOnmogelijkOpAccordeur()) {
     // Web zonder secure context (http-LAN-adres): geen WebCrypto → geen slot → geen app.
     inhoud = (
       <div className="acc-vol">

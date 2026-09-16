@@ -134,6 +134,10 @@ describe('laatste koude start bewaren + diagnoseregel (12a)', () => {
       `web abc1234-20260907-1500 · app ${APP_MARKETING_VERSIE} (web) · boot 300 ms · sessie – · server – · netwerk – · totaal – · 07-09 13:05`,
     )
     expect(diagnoseRegel(null)).toBe(`web ${WEB_BUILD_ID} · app ${APP_MARKETING_VERSIE} (web) · nog geen koude start gemeten`)
+    // OTA (16-09): de actieve webbundel in de schil als vijfde parameter — alleen zichtbaar als bekend.
+    expect(diagnoseRegel(null, '1.2 (150)', null, null, 'abc1234-20260917-0100')).toBe(
+      `web ${WEB_BUILD_ID} · app 1.2 (150) · bundel abc1234-20260917-0100 · nog geen koude start gemeten`,
+    )
   })
 })
 

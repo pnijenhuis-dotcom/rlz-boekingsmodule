@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-16 — De app werkt zichzelf bij
+
+<!-- native-ota-16-09 -->
+
+- **De goedkeur-app (versie 1.1 en hoger, zodra de nieuwe winkelversie er is) haalt nieuwe schermen zelf op**: bij het openen en bij terugkeer controleert de app op een nieuwe versie van de schermen, downloadt die op de achtergrond en gebruikt ze bij de volgende start. Je hoeft geen TestFlight of update uit de winkel meer te installeren voor verbeteringen in de schermen; alleen echte app-wijzigingen (bijvoorbeeld nieuwe toestelfuncties) komen nog via de App Store of Google Play.
+- **Te oude app? Dan zie je één duidelijk scherm "Update nodig"** met een knop naar de App Store of Google Play (op Android start de update direct). Geen onbegrijpelijke foutmelding meer.
+- **Beheerders sturen dit op Instellingen › Boeken › App-updates**: welke versie van de schermen actief is, hoeveel toestellen meedoen (stapsgewijs uitrollen), een noodrem die alles terugzet op de winkelversie, en welke toestellen welke versie draaien.
+
 ## 2026-09-16 — Doorbelasting: doelentiteiten koppelen zichzelf en de aansluiting verkoop ↔ inkoop wordt dagelijks getoetst
 
 <!-- doorbelasting-aansluiting-16-09 -->

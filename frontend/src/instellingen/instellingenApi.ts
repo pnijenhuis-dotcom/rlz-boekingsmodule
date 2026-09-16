@@ -282,6 +282,48 @@ export function zetAiToetsFacturen(ingeschakeld: boolean): Promise<{ ingeschakel
   return apiJson<{ ingeschakeld: boolean }>('/instellingen/boeken/ai-toets', { ...PUT_JSON, body: JSON.stringify({ ingeschakeld }) })
 }
 
+// OTA (Peter 16-09): Beheerder-blok App-updates — instelling (cohort/noodrem), bundels, toestellen.
+export interface AppUpdateInstellingDto {
+  percentage: number
+  uitgeschakeld: boolean
+  env_uitgeschakeld: boolean
+  min_runtime_versie: string
+}
+export interface AppUpdateBundelDto {
+  bundel_id: string
+  runtime: string
+  platform: string
+  sha256: string
+  bytes: number
+  verplicht: boolean
+  actief: boolean
+  aangemaakt_op: string
+}
+export interface AppUpdateToestelDto {
+  apparaat_id: string
+  apparaat_naam: string | null
+  platform: string | null
+  app_versie: string | null
+  bundel_id: string | null
+  bundel_gezien_op: string | null
+  laatst_gebruikt_op: string | null
+}
+export function haalAppUpdateInstelling(): Promise<AppUpdateInstellingDto> {
+  return apiJson<AppUpdateInstellingDto>('/instellingen/app-updates')
+}
+export function zetAppUpdateInstelling(wijziging: { percentage?: number; uitgeschakeld?: boolean }): Promise<AppUpdateInstellingDto> {
+  return apiJson<AppUpdateInstellingDto>('/instellingen/app-updates', { ...PUT_JSON, body: JSON.stringify(wijziging) })
+}
+export function haalAppUpdateBundels(): Promise<AppUpdateBundelDto[]> {
+  return apiJson<AppUpdateBundelDto[]>('/instellingen/app-updates/bundels')
+}
+export function zetAppUpdateBundelActief(bundelId: string, actief: boolean): Promise<AppUpdateBundelDto> {
+  return apiJson<AppUpdateBundelDto>(`/instellingen/app-updates/bundels/${encodeURIComponent(bundelId)}`, { ...PUT_JSON, body: JSON.stringify({ actief }) })
+}
+export function haalAppUpdateToestellen(): Promise<AppUpdateToestelDto[]> {
+  return apiJson<AppUpdateToestelDto[]>('/instellingen/app-updates/toestellen')
+}
+
 export function zetEigenaar(administratieId: string, eigenaarGebruikerId: string | null): Promise<unknown> {
   return apiJson(`/administraties/${administratieId}/eigenaar`, {
     ...PUT_JSON,

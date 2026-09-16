@@ -225,3 +225,20 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
    "concept" in de tabel — accepteren met reden als het bewust een concept is.
 7. **Productienameting ná deploy** als vervolg-opdracht in de inbox (regel Peter 08-09: geen code vóór deploy tegen productie).
 
+## Opdracht 16 (nacht) — native app live updates (OTA) (`2026-09-16-native-app-live-updates-ota.md`)
+
+1. **Plugin = `@capgo/capacitor-updater` self-hosted** (MPL-2.0, Capacitor 8) — geen Capgo-cloud; alternatief Ionic Appflow afgewezen
+   (betaald, geen self-host). Android in-app-update = `@capawesome/capacitor-app-update` (MIT).
+2. **Migratie 0152 wél** (opdracht: "geen migratie verwacht, wél als de toestel-rij een bundel_id-kolom krijgt"): bundelregister +
+   singleton + drie toestel-kolommen. Alternatief JSON-setting in een bestaande singleton — afgewezen (geen generieke settings-tabel).
+3. **Bundel-download via de backend** (`GET /app/bundels/{id}.zip`, bucket privé) i.p.v. een publieke bucket-URL — geen IAM op de
+   bucket voor de wereld, één domein voor de app.
+4. **Geen bundel-signing in fase 1** (sha256 in manifest + HTTPS); capgo's `publicKey`-signing is een latere optie.
+5. **426 alleen voor schillen die zich aankondigen** (X-App-Versie); de reeds geïnstalleerde 1.0/1.1(140)-schillen kunnen het niet en
+   blijven onder de legacy-Sunset-route + uitnodigingsmail-poort. De opdracht sprak van "vervangt de legacy-410-hint" — dat geldt pas
+   vanaf de eerste schil mét deze webcode.
+6. **Cohort-hash op toestel-id** (of de huidige bundel als terugval), deterministisch; percentage-default 100.
+7. **FLEXIBLE in-app-update max 1×/24 u**, IMMEDIATE alleen bij 426.
+8. **Eerste écht effect vereist een winkelrelease mét de plugins** — de ingediende 1.1 (140) heeft ze niet; Xcode Cloud bouwt bij de
+   push 1.1 (141+) mét plugin (train-regel: ná goedkeuring eerst → 1.2). Klikpunten: bucket-script als owner, vc5 bouwen.
+

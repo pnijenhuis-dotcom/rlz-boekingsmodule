@@ -32,6 +32,7 @@ import {
   type ToestelKoppelingDto,
 } from '../appAuthApi'
 import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout, nativeAppBuild } from '../koudeStart'
+import { bekendeBundelId } from '../ota'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
 
@@ -70,9 +71,9 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   // Diagnose (blok 12a 07-09): laatste koude-start-meting uit de lokale opslag + bundelversie(s);
   // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
   const [appBuild, setAppBuild] = useState<string | null>(null)
-  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout()))
+  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()))
   const ververDiagnose = (build: string | null) =>
-    setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), build, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout()))
+    setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), build, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()))
   const [gekopieerd, setGekopieerd] = useState(false)
   // Lokale audit (§5d): "Laatste wijziging: dd-mm HH:MM" onder de rij — uit localStorage, geen code.
   const [laatsteWijziging, setLaatsteWijziging] = useState<string | null>(() => laatsteCodeWijziging())

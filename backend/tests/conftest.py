@@ -166,6 +166,10 @@ def _clean_tables() -> Generator[None, None, None]:
                 "ON CONFLICT (singleton) DO NOTHING"
             )
         )
+        # En voor de OTA-instelling (migratie 0152) — percentage 100, kill-switch uit, zoals de migratie-seed.
+        conn.execute(
+            text("INSERT INTO platform.app_update_instelling (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING")
+        )
         # En voor de duplicaat-afvoer-noodrem (migratie 0109) — default AAN, zoals de migratie-seed.
         conn.execute(
             text(
