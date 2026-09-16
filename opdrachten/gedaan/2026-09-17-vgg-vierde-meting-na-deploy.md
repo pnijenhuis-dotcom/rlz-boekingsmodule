@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-16 (nacht), rapport: docs/rapporten/2026-09-16-vgg-vierde-meting.md
+
 # OPDRACHT 17-09 — VGG run 2 blok 9 vervolg: VIERDE METING ná deploy (lees-only; géén Odoo-writes)
 
 Vervolg op `opdrachten/gedaan/2026-09-16-vgg-schrijf-b-1001-model.md` (rapport `docs/rapporten/2026-09-16-vgg-schrijf-b.md`): het 1001-model

@@ -9334,6 +9334,37 @@ outstanding); `test_rekening_mapping.py` modelpunt-tekst. tests/migratie groen (
 
 <!-- run2-vgg:blok9 -->
 
+### Blok C — VIERDE METING UITGEVOERD 16-09 22:45 (vervolg-opdracht `2026-09-17-vgg-vierde-meting-na-deploy.md`; lees-only, géén writes)
+
+**Werkt in productie: ja** — het 1001-model draait op de gedeployde job-image (deploy-check service = jobs groen; `vgg_blok7_nameting.sh c`
+→ `vgg-replay --dry-run`, executie `rlz-reconciliatie-jszfj`, 1.147 RLZ-calls, webfilter 0 treffers, 241,6 s gewacht). Uitvoer
+`verkenning/nameting-vgg-replay-16-09-cc.txt` (1.692 regels; het `-cc`-suffix omdat de nameting-bot dezelfde datumnaam schrijft — het
+bot-bestand van 05:30 UTC is de stand VÓÓR blok 9, 4 verschillen). Eerste echte meting van `print_gedoseerd` (nazorg blok 8):
+rijen tegen koppen 1001-model 164/164, niet vertaalbaar 888/888, zonder pand 7/7, ongemapte rekeningen 58/58 — **geen regel
+weggevallen**.
+
+| Onderdeel | Verwacht (opdracht) | Gemeten 16-09 | Stand |
+|---|---|---|---|
+| Oordeel | ROOD uitsluitend op debiteuren/crediteuren | **ROOD — 6 verschillen** (15-09: 4): 4 groepen + 2 nieuwe rekeningverschillen buiten de groepen (3606 −100.000,00 / −363.300,00; 3607 −20.000,00 / −20.000,00 per 31-12-2025 / 16-09-2026) | AFWIJKING |
+| 1001-model | sectie mét tellers | 164 memoriaal-1001-regels: **140 gekoppeld → outstanding BNK1** (140 via `PaymentReferenceList`, 0 via bedrag + datum ± 3 d), **24 zonder bankmutatie → tussenrekening**, 0 meerduidig | conform |
+| Outstanding-rekening BNK1 | LET-OP "KLIKPUNT PETER" zolang niet ingesteld | **bekend: 135000 Payments in transit (id 132)** via `outbound_payment_method_line_ids.payment_account_id` (de 1012-resolutie van blok 8) — geen KLIKPUNT meer | beter dan verwacht |
+| Tussenrekeninggroep | 0,00 óf Σ benoemde restcategorieën = groepsverschil | verschil −153.750,00 / −513.125,61 = 1001-zonder-mutatie 122.165,86 / 386.451,35 + open mutaties 0,00 / −37.567,97 + **afletterstand SCHRIJF c −275.915,86 / −862.008,99** — Σ sluit cent-exact | conform, restant is een verzamelcategorie |
+| Bankgroep | idem | verschil 120.000,00 / 399.177,22 = −122.165,86 / −386.451,35 + 0,00 / 37.567,97 + **restant RLZ-opruimpunten/afletterstand 242.165,86 / 748.060,60** — Σ sluit cent-exact (15-09: 61.166,85 / 216.201,20 zónder 1001-model) | conform, restant is een verzamelcategorie |
+| Crediteuren / debiteuren | ROOD tot SCHRIJF c | −5.879.086,77 / −11.161.386,48 en 4.644.333,67 / 8.811.303,25 — ongewijzigd t.o.v. 15-09 | verwacht ROOD |
+| Overig | — | 0 leesfouten, 0 zonder regels, 0 regelsom ≠ totaal, memoriaal uit balans 0, resultaatposten sluiten (Σ 0,00), betalingsverschillen 1, geblokkeerd partner 2 (RLZ-04-00000109, RLZ-25-00000111), volledigheidstoets sluit voor alle vier de typen | ongewijzigd |
+
+**Afwijking — gerapporteerd, niets gebouwd (regel stap 2):** de twee nieuwe verschillen op de RJ-220-rolrekeningen 3606 (vooruitbetaald
+op voorraad) en 3607 vallen exact samen met de herclassificatierijen `ongemapt:1001 → 3606 € 363.300,00 (13 documenten)` en
+`ongemapt:1001 → 3607 € 20.000,00 (1)` — die rijen stonden op 15-09 óók in het rapport, maar toen zonder verschil. Sinds blok 9 gaat
+de 1001-zijde van die 14 aanbetalings-memorialen via het 1001-model naar outstanding BNK1 (132), terwijl de RJ-220-herclassificatie
+en de "geschoond voor RJ 220"-vergelijking dezelfde regel nog als 1001 → rol-rekening rekenen. Hypothese (niet gebouwd, niet
+doorgerekend): de schoning moet de 1001-model-bestemming volgen (regel al op 132 → geen herclassificatie vanuit 1001), óf de
+herclassificatie hoort op de tegenzijde van de aanbetaling en niet op de bankregel. De 24 regels zonder bankmutatie (o.a.
+RLZ-06-00000068 € 75.000, RLZ-06-00000222 € 100.000, reeks RLZ-06-000002xx 2026) staan letterlijk in de 1001-tabel; 0 via bedrag +
+datum betekent dat élke koppeling via `PaymentReferenceList` komt — de terugval op bedrag + datum heeft in deze administratie
+geen werk. **Beslispunt Peter (default: eerst de 3606/3607-schoning corrigeren als lees-only rapportfix vóór een vijfde meting; geen
+SCHRIJF c op basis van dit rapport).** Rapport: `docs/rapporten/2026-09-16-vgg-vierde-meting.md`.
+
 ## ODOO-KOPPELWIZARD NAZORG 14-09 — MEMORIAAL OP TYPE, FAILSAFE DUBBELE KOPPELING, PROBE PER COMPANY, URL-NORMALISATIE (14-09-2026; kliktest Peter 14-09 op universal-steigers.odoo.com, 10 companies; besluit Peter 14-09 failsafe drie lagen; migratie 0140; geen Odoo-/RLZ-writes)
 
 **Aanleiding.** Peter koppelde 14-09 nieuwe Odoo-companies via "+ Administratie toevoegen" → Odoo (ingang A). Vier
