@@ -652,6 +652,14 @@ def _sync_alles(args: argparse.Namespace) -> int:
         kern += f" ({overgeslagen} overgeslagen: geen credential geregistreerd)"
     print(f"\n{kern}")
 
+    # Intercompany (blok A 16-09): identiteit per administratie (één AdministrationSettings-/res.company-call) →
+    # IC-relaties (crediteuren uit de cache, debiteuren één Customers-leesroute) → RC-koppelingen (puur code). Elke stap
+    # apart gevangen: een fout is een zichtbare regel, nooit een stop van de nachtelijke sync.
+    from app.intercompany import cli_stap as intercompany_cli_stap
+
+    print("\nIntercompany — identiteiten, relaties en rekening-courant-koppelingen (alle actieve administraties):")
+    intercompany_cli_stap.rapporteer_afleiding()
+
     # Vervolg 14-09 (migratie 0143): btw-default per grootboekrekening uit de eigen boekingshistorie — puur code, geen
     # RLZ-calls; direct ná de Ledgers-sync zodat een nieuwe/verdwenen rekening dezelfde nacht meegaat. Eigen telling.
     from app.geheugen import grootboek_btw_historie
@@ -671,14 +679,6 @@ def _sync_alles(args: argparse.Namespace) -> int:
 
     # Automatisering-first (opdracht 23-08 punt 3): de dagelijkse sync ververst óók de
     # projectcijfers voor de uren-&-meerwerk-administraties — de knop blijft de handmatige
-    # Intercompany (blok A 16-09): identiteit per administratie (één AdministrationSettings-/res.company-call) →
-    # IC-relaties (crediteuren uit de cache, debiteuren één Customers-leesroute) → RC-koppelingen (puur code). Elke stap
-    # apart gevangen: een fout is een zichtbare regel, nooit een stop van de nachtelijke sync.
-    from app.intercompany import cli_stap as intercompany_cli_stap
-
-    print("\nIntercompany — identiteiten, relaties en rekening-courant-koppelingen (alle actieve administraties):")
-    intercompany_cli_stap.rapporteer_afleiding()
-
     # verversing. Eigen fouten-telling: een kapotte cijfers-sync maakt de job zichtbaar rood.
     from app.projecten.cijfers_run import sync_alle_via_runs
 
@@ -1898,12 +1898,17 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     rlz_dubbel) en `--lees-only`/`--dry-run` (geen run-rij, geen bevindingen, geen mail, geen acceptatie-
     overdracht). `--alleen` vereist `--lees-only`: een deel-run die als 'laatste afgeronde run' zou worden
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
+    from app.intercompany import factuurmatch, rekening_courant
     from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
 
     alle_blokken = (
         ("bank", _bank_reconciliatie),
         ("documenten", _reconciliatie),
+        # Peter 16-09 (blok B): intercompany-factuurmatch — verkoop bij A ↔ inkoop bij B voor élk actief IC-paar.
+        (factuurmatch.BLOK, factuurmatch.cli_blok),
+        # Peter 16-09 (blok C): rekening-courant-aansluiting per actieve rc_koppeling — ná het intercompany-blok.
+        (rekening_courant.BLOK, rekening_courant.cli_blok),
         ("omzet", _omzet_reconciliatie),
         ("doorbelasting", _doorbelasting_reconciliatie),
         # Blok 6 (08-09): periodieke toets "mogelijk dubbel geboekt in RLZ" (handmatig ingevoerde paren) —
@@ -1917,17 +1922,12 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
 
     if alleen and not lees_only:
         print(
-    from app.intercompany import factuurmatch, rekening_courant
             "FOUT: --alleen werkt uitsluitend samen met --lees-only — een deel-run mag niet als laatste run worden "
             "vastgelegd (kantoorbrede lijst + delta-mail lezen die).",
             file=sys.stderr,
         )
         return 2
     if administratie:
-        # Peter 16-09 (blok B): intercompany-factuurmatch — verkoop bij A ↔ inkoop bij B voor élk actief IC-paar.
-        (factuurmatch.BLOK, factuurmatch.cli_blok),
-        # Peter 16-09 (blok C): rekening-courant-aansluiting per actieve rc_koppeling — ná het intercompany-blok.
-        (rekening_courant.BLOK, rekening_courant.cli_blok),
         if not lees_only or any(naam != rlz_dubbel.BLOK for naam, _ in blokken):
             print(
                 "FOUT: --administratie geldt alleen voor `--alleen rlz_dubbel --lees-only` (de andere blokken "
