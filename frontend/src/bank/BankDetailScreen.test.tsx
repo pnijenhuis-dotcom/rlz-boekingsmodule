@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -88,6 +88,9 @@ interface MockOpties {
   intrekkenAanroepen?: string[]
   boekenAanroepen?: { url: string; body: unknown }[]
   verifieerAanroepen?: string[]
+  /** Blok C 16-09: "Afletteren (N)" op een batch-voorstel. */
+  batchAanroepen?: string[]
+  batchResponse?: Record<string, unknown>
   /** Blok E: geforceerde achtergrondronde via het ⟳-icoon; response = klaar-run mét resultaat. */
   syncAchtergrondAanroepen?: string[]
   syncAchtergrondKlaarResultaat?: Record<string, unknown>
@@ -132,6 +135,23 @@ function installFetchMock(opties: MockOpties = {}) {
       if (url.includes('/verifieer-afletteren') && init?.method === 'POST') {
         opties.verifieerAanroepen?.push(url)
         return Promise.resolve(jsonResponse({ geverifieerd: 1 }))
+      }
+      if (url.includes('/afletteren-batch') && init?.method === 'POST') {
+        opties.batchAanroepen?.push(url)
+        return Promise.resolve(
+          jsonResponse(
+            opties.batchResponse ?? {
+              sleutel: 'RLZEE_CT_20260915_101500_4471_0001',
+              gekoppeld: 2,
+              overgeslagen: 0,
+              mislukt: 0,
+              rijen: [
+                { payment_item_id: 'p1', uitkomst: 'afgeletterd_via_api', fout: null, opdracht_id: 'o1' },
+                { payment_item_id: 'p2', uitkomst: 'afgeletterd_via_api', fout: null, opdracht_id: 'o2' },
+              ],
+            },
+          ),
+        )
       }
       if (url.includes('/afletteren-klaarzetten') && init?.method === 'POST') {
         opties.klaarzettenAanroepen?.push({ url, body: init.body ? JSON.parse(String(init.body)) : null })
@@ -700,5 +720,141 @@ describe('BankDetailScreen', () => {
     renderScherm()
 
     expect(await screen.findByText(/Geen bankaanlevering gevonden/)).toBeInTheDocument()
+  })
+})
+
+
+/** Blok A/C/D 16-09 (Peter, screenshot Bouwadvies Oost Nederland): zoekveld op tegenpartij/IBAN/bedrag/nummer mét teller en
+ * totaal, klik op de naam vult het zoekveld, batch-kaart mét "Afletteren (N)" = één POST, compacte "N facturen gekoppeld"-regel
+ * met de volledige lijst in de uitklap. */
+describe('BankDetailScreen — zoekveld, batch en compacte koppelingen (16-09)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const BATCH = {
+    sleutel: 'RLZEE_CT_20260915_101500_4471_0001',
+    aantal: 2,
+    som: '40723.85',
+    open_bedrag: '-40723.85',
+    verschil: '0.00',
+    sluit: true,
+    posten: [
+      { id: 'p1', bedrag: '-40000.00', referentie: '700', referentie2: null, rlz_document_id: null, boekstuknummer: 'RLZ-04-00000497', klantreferentie: '92953485', tegenpartij_naam: 'Leverancier 0' },
+      { id: 'p2', bedrag: '-723.85', referentie: '701', referentie2: null, rlz_document_id: null, boekstuknummer: 'RLZ-04-00000498', klantreferentie: '92953490', tegenpartij_naam: 'Leverancier 1' },
+    ],
+  }
+  const koppelingen = Array.from({ length: 14 }, (_, i) => ({
+    document_id: `d${i}`,
+    boekstuknummer: `RLZ-04-0000${480 + i}`,
+    referentie: `9295${3400 + i}`,
+    bedrag: '1053.71',
+    document_type: 1,
+    omschrijving: null,
+  }))
+  const batchMutatie = mutatie({
+    id: 'm-batch',
+    bedrag: '-560925.88',
+    open_bedrag: '-40723.85',
+    deels_afgeletterd: true,
+    rlz_koppelingen: koppelingen,
+    tegenpartij_naam: 'TOTAAL 14 VZ',
+    omschrijving: 'TOTAAL 14 VZ betaalkenmerk: PREF',
+    tegenrekening_iban: null,
+    voorstel: {
+      soort: 'batch',
+      kleur: 'groen',
+      bron: 'betaalbatch RLZEE_CT_20260915_101500_4471_0001, 2 facturen',
+      reden: 'RLZ-betaalbatch …',
+      payment_item_id: null,
+      open_post: null,
+      regel_id: null,
+      regels: [],
+      batch: BATCH,
+    },
+  })
+  const zuilichem = mutatie({ id: 'm-z', tegenpartij_naam: 'Heren van Zuilichem B.V.', omschrijving: 'huur september', bedrag: '385000.00', open_bedrag: '385000.00', tegenrekening_iban: 'NL39RABO0300065264', voorstel: { soort: 'handmatig', kleur: 'oranje', bron: 'handmatig', reden: '', payment_item_id: null, open_post: null, regel_id: null, regels: [] } })
+
+  it('zoekveld filtert op naam/IBAN/bedrag/nummer mét teller en totaal; klik op de naam vult het veld; Escape leegt', async () => {
+    installFetchMock({ mutaties: [mutatie(), batchMutatie, zuilichem] })
+    const gebruiker = userEvent.setup()
+    renderScherm()
+    const veld = await screen.findByTestId('bank-zoekveld')
+    const rijen = () => document.querySelectorAll('table.bank-tabel > tbody > tr').length
+    expect(rijen()).toBe(3)
+    await gebruiker.type(veld, 'zuilichem')
+    expect(screen.getByTestId('bank-zoek-teller')).toHaveTextContent('1 van 3')
+    expect(screen.getByTestId('bank-zoek-teller')).toHaveTextContent('€ 385.000,00 in 1 mutatie')
+    expect(rijen()).toBe(1)
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, '560.925,88')
+    expect(screen.getByTestId('bank-zoek-teller')).toHaveTextContent('1 van 3')
+    expect(screen.getByText('TOTAAL 14 VZ')).toBeInTheDocument()
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, '92953490') // factuurnummer in de batch-posten
+    expect(screen.getByTestId('bank-zoek-teller')).toHaveTextContent('1 van 3')
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, 'NL39 RABO')
+    expect(screen.getByTestId('bank-zoek-teller')).toHaveTextContent('1 van 3')
+    await gebruiker.clear(veld)
+    await gebruiker.type(veld, 'bestaat-niet')
+    expect(screen.getByTestId('bank-zoek-leeg')).toHaveTextContent('Geen mutatie past bij “bestaat-niet”')
+    await gebruiker.keyboard('{Escape}')
+    expect(rijen()).toBe(3)
+    // Klik op de tegenpartijnaam = zoekveld gevuld met die naam.
+    await gebruiker.click(screen.getByRole('button', { name: 'Heren van Zuilichem B.V.' }))
+    expect(veld).toHaveValue('Heren van Zuilichem B.V.')
+    expect(rijen()).toBe(1)
+  })
+
+  it('batch-voorstel: kaart mét N facturen en som, posten in de uitklap, "Afletteren (2)" = één POST afletteren-batch', async () => {
+    const batchAanroepen: string[] = []
+    installFetchMock({ mutaties: [batchMutatie], batchAanroepen })
+    const gebruiker = userEvent.setup()
+    renderScherm()
+    const kaart = await screen.findByTestId('batch-kaart')
+    expect(kaart).toHaveTextContent('Betaalbatch RLZEE_CT_20260915_101500_4471_0001')
+    expect(kaart).toHaveTextContent('2 facturen · som € 40.723,85 · open € -40.723,85')
+    expect(kaart).toHaveTextContent('betaalbatch — 2 facturen, som cent-exact')
+    expect(screen.queryByTestId('batch-verschil')).not.toBeInTheDocument()
+    expect(within(kaart).getByTestId('batch-posten')).toHaveTextContent('RLZ-04-00000497')
+    await gebruiker.click(screen.getByTestId('batch-afletteren'))
+    await waitFor(() => expect(batchAanroepen).toHaveLength(1))
+    expect(batchAanroepen[0]).toBe(`/administraties/${ADMINISTRATIE_ID}/bank/mutaties/m-batch/afletteren-batch`)
+    expect(await screen.findByText(/Betaalbatch RLZEE_CT_20260915_101500_4471_0001: 2 gekoppeld\./)).toBeInTheDocument()
+  })
+
+  it('oranje batch toont het verschil; mislukte batch-aflettering blijft als fout in de rij staan', async () => {
+    const oranje = mutatie({
+      ...batchMutatie,
+      voorstel: { ...batchMutatie.voorstel, kleur: 'oranje', batch: { ...BATCH, som: '40700.00', verschil: '23.85', sluit: false } },
+    })
+    installFetchMock({
+      mutaties: [oranje],
+      batchResponse: {
+        sleutel: BATCH.sleutel,
+        gekoppeld: 0,
+        overgeslagen: 0,
+        mislukt: 2,
+        rijen: [
+          { payment_item_id: 'p1', uitkomst: 'wacht_op_mens_in_rlz', fout: '_InvalidData (simulatie)', opdracht_id: 'o1' },
+          { payment_item_id: 'p2', uitkomst: 'niet_uitgevoerd', fout: 'niet uitgevoerd ná een eerdere API-fout', opdracht_id: null },
+        ],
+      },
+    })
+    const gebruiker = userEvent.setup()
+    renderScherm()
+    expect(await screen.findByTestId('batch-verschil')).toHaveTextContent('verschil € 23,85')
+    await gebruiker.click(screen.getByTestId('batch-afletteren'))
+    expect(await screen.findByText(/2 niet gelukt\. Eerste fout: _InvalidData/)).toBeInTheDocument()
+  })
+
+  it('deels afgeletterd mét 14 koppelingen: één compacte regel, volledige lijst in de uitklap (monospace)', async () => {
+    installFetchMock({ mutaties: [batchMutatie] })
+    renderScherm()
+    const compact = await screen.findByTestId('deels-afgeletterd-koppelingen')
+    expect(compact.tagName).toBe('DETAILS')
+    expect(compact.querySelector('summary')).toHaveTextContent('14 facturen gekoppeld · open € -40.723,85')
+    expect(compact.querySelectorAll('tbody tr')).toHaveLength(14)
+    expect(compact).toHaveTextContent('RLZ-04-0000480')
+    expect(compact).toHaveTextContent('92953413')
   })
 })

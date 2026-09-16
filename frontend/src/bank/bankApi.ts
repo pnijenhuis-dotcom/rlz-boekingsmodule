@@ -75,7 +75,7 @@ export interface BoekRegelDto {
 export interface VoorstelDto {
   /** `historie_regel` (blok B bundel 10-09, stap 3b ná vaste regel): deterministische historie-regel op IBAN +
    * omschrijvingskern — groen = 100 % zelfde GB/btw (automatisch-kandidaat), oranje = k van n (bevestigen). */
-  soort: 'exacte_match' | 'deel_match' | 'omzetbatch_post' | 'vaste_regel' | 'historie_regel' | 'rlz_voorstel' | 'handmatig'
+  soort: 'batch' | 'exacte_match' | 'deel_match' | 'omzetbatch_post' | 'vaste_regel' | 'historie_regel' | 'rlz_voorstel' | 'handmatig'
   kleur: 'groen' | 'oranje'
   bron: string
   reden: string
@@ -88,6 +88,35 @@ export interface VoorstelDto {
   taxrate_id?: string | null
   historie_k?: number | null
   historie_n?: number | null
+  /** Blok C 16-09 (soort 'batch'): RLZ-betaal-/incassobatch — alle open posten met dezelfde batchsleutel als de bankregel;
+   * `sluit` = som cent-exact gelijk aan het open bedrag (groen), anders oranje mét `verschil`. */
+  batch?: BatchVoorstelDto | null
+}
+
+export interface BatchVoorstelDto {
+  sleutel: string
+  aantal: number
+  som: string
+  open_bedrag: string
+  verschil: string
+  sluit: boolean
+  posten: OpenPostDto[]
+}
+
+export interface BatchAfletterRijDto {
+  payment_item_id: string
+  uitkomst: 'afgeletterd_via_api' | 'al_afgeletterd_in_rlz' | 'overgeslagen' | 'wacht_op_mens_in_rlz' | 'niet_uitgevoerd' | string
+  fout: string | null
+  opdracht_id: string | null
+}
+
+/** Uitkomst van "Afletteren (N)" op een batch-voorstel: per post één rij — nooit stil. */
+export interface BatchAfletterResultaatDto {
+  sleutel: string
+  gekoppeld: number
+  overgeslagen: number
+  mislukt: number
+  rijen: BatchAfletterRijDto[]
 }
 
 export interface AfletterKoppelingDto {
@@ -299,6 +328,11 @@ export function zetAfletterenKlaar(
   return apiPostJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/afletteren-klaarzetten`, {
     payment_item_id: paymentItemId,
   })
+}
+
+/** Blok C 16-09: N × actie 15 in één handeling; de server herberekent het batch-voorstel zelf (409 = geen batch meer). */
+export function letterBatchAf(administratieId: string, mutatieId: string): Promise<BatchAfletterResultaatDto> {
+  return apiJson(`/administraties/${administratieId}/bank/mutaties/${mutatieId}/afletteren-batch`, { method: 'POST' })
 }
 
 export function voerAfletterOpdrachtUit(

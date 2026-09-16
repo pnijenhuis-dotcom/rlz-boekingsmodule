@@ -68,6 +68,10 @@ class IntercompanyPostUitgesloten(AfletterFout):
     afhandeling loopt via de rekening-courant, aflettering is uitgesloten — óók handmatig."""
 
 
+class GeenBatchVoorstel(AfletterFout):
+    """Blok C 16-09: de mutatie heeft (nu) geen batch-voorstel — sleutel weg, posten al gekoppeld of sync verouderd."""
+
+
 class OpdrachtNietGevonden(AfletterFout):
     pass
 
@@ -83,6 +87,103 @@ class AfletterUitvoering:
     uitkomst: str  # "wacht_op_mens_in_rlz" | "afgeletterd_via_api" | "al_afgeletterd_in_rlz"
     opdracht_id: uuid.UUID
     fout: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchAfletterRij:
+    payment_item_id: uuid.UUID
+    uitkomst: str  # afgeletterd_via_api | al_afgeletterd_in_rlz | overgeslagen | wacht_op_mens_in_rlz | niet_uitgevoerd
+    fout: str | None = None
+    opdracht_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class BatchAfletterUitkomst:
+    sleutel: str
+    rijen: list[BatchAfletterRij]
+
+    @property
+    def gekoppeld(self) -> int:
+        return sum(1 for r in self.rijen if r.uitkomst in ("afgeletterd_via_api", "al_afgeletterd_in_rlz"))
+
+    @property
+    def overgeslagen(self) -> int:
+        return sum(1 for r in self.rijen if r.uitkomst == "overgeslagen")
+
+    @property
+    def mislukt(self) -> int:
+        return sum(1 for r in self.rijen if r.uitkomst in ("wacht_op_mens_in_rlz", "niet_uitgevoerd"))
+
+
+def letter_batch_af(
+    *,
+    administratie_id: uuid.UUID,
+    payment_transaction_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    client: RlzClient | None = None,
+) -> BatchAfletterUitkomst:
+    """Blok C 16-09 (Peter, screenshot Bouwadvies Oost Nederland: batch −560.925,88, 14 facturen): álle posten van het
+    batch-voorstel van deze mutatie afletteren = N × de bestaande actie 15 (`zet_klaar_voor_afletteren`, capture-replay
+    09-08 — één `LinkedAmount` per call is de bewezen vorm, STAP-0 11-09 §5). Idempotent per post: een post waarvan het
+    document al aan de mutatie hangt (`rlz_koppelingen`) = 'overgeslagen'; een deels-afgeletterde batch koppelt zo
+    alleen het restant. Ná een API-fout ('wacht_op_mens_in_rlz' — de opdracht blijft klaargezet) stoppen de overige
+    posten als 'niet_uitgevoerd' (de klaargezette opdracht blokkeert een volgende toch). Het voorstel wordt server-side
+    herberekend."""
+    from app.bank import voorstellen
+
+    context = voorstellen.laad_matchcontext(administratie_id=administratie_id)
+    mutatie = next((m for m in context.open_mutaties if m.id == payment_transaction_id), None)
+    if mutatie is None:
+        raise MutatieNietGevonden(f"Onbekende of niet-open bankmutatie: {payment_transaction_id}")
+    voorstel = voorstellen.bepaal_voorstel_in_context(context, mutatie)
+    if voorstel.batch is None:
+        raise GeenBatchVoorstel(
+            "Deze mutatie heeft geen batch-voorstel (meer): geen batchsleutel, geen open posten met dezelfde sleutel "
+            "of de open posten zijn intussen gekoppeld — draai de bank-sync en kijk opnieuw"
+        )
+    batch = voorstel.batch
+    with scoped_session(administratie_id) as session:
+        rij = session.get(BankMutatie, (payment_transaction_id, administratie_id))
+        koppelingen = list(rij.rlz_koppelingen or []) if rij is not None else []
+        al_gekoppeld = {str(k.get("document_id")) for k in koppelingen if isinstance(k, dict) and k.get("document_id")}
+
+    eigen_client = client is None
+    if client is None:
+        client = _open_eigen_client(administratie_id)
+    rijen: list[BatchAfletterRij] = []
+    gestopt = False
+    try:
+        for post in batch.posten:
+            if gestopt:
+                rijen.append(BatchAfletterRij(post.id, "niet_uitgevoerd", "niet uitgevoerd ná een eerdere API-fout"))
+                continue
+            if post.rlz_document_id is not None and str(post.rlz_document_id) in al_gekoppeld:
+                rijen.append(BatchAfletterRij(post.id, "overgeslagen", "document hangt al aan deze mutatie in RLZ"))
+                continue
+            try:
+                uit = zet_klaar_voor_afletteren(
+                    administratie_id=administratie_id,
+                    payment_transaction_id=payment_transaction_id,
+                    payment_item_id=post.id,
+                    actor_id=actor_id,
+                    voorstel_detail={"soort": "batch", "sleutel": batch.sleutel, "aantal": batch.aantal},
+                    client=client,
+                )
+            except MutatieNietOpen:
+                # Alles al gekoppeld (bv. RLZ koppelde intussen zelf) — de resterende posten zijn dan niet nodig.
+                rijen.append(BatchAfletterRij(post.id, "overgeslagen", "mutatie heeft geen open bedrag meer"))
+                continue
+            except AfletterFout as exc:
+                rijen.append(BatchAfletterRij(post.id, "wacht_op_mens_in_rlz", str(exc)))
+                gestopt = True
+                continue
+            rijen.append(BatchAfletterRij(post.id, uit.uitkomst, uit.fout, uit.opdracht_id))
+            if uit.uitkomst == "wacht_op_mens_in_rlz":
+                gestopt = True
+    finally:
+        if eigen_client:
+            client.close()
+    return BatchAfletterUitkomst(sleutel=batch.sleutel, rijen=rijen)
 
 
 def bereken_linked_amount(open_mutatie: Decimal, post_bedrag: Decimal | None) -> Decimal:

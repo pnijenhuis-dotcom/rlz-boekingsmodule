@@ -33,7 +33,7 @@ from app.bank import afletteren, vastly
 from app.bank.models import BankMutatie, BankSyncStand, PaymentAccountCache, PaymentItemCache
 from app.db.models import Administratie
 from app.db.session import scoped_session
-from app.rlz.client import RlzClient
+from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync.service import (
     SyncFout,
@@ -402,8 +402,25 @@ def _item_waarden(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+#: Blok C 16-09: `PaymentTermList` op het document draagt de RLZ-batchsleutel (STAP-0 batches 11-09 §3). Eén lijst-GET,
+#: geen per-document-calls; weigert RLZ de geneste expand (400), dan de bewezen vorm zonder — de batch-stap krijgt dan
+#: geen sleutels (voorstellen vallen terug op stap 1–5, zichtbaar in het bank-sync-log).
+ITEMS_EXPAND = "Document($expand=Entity,PaymentTermList)"
+ITEMS_EXPAND_TERUGVAL = "Document($expand=Entity)"
+
+
+def _lees_payment_items(client: RlzClient) -> list[dict[str, Any]]:
+    try:
+        return client.list_payment_items(params={"$expand": ITEMS_EXPAND})
+    except RlzApiError as exc:
+        if exc.status_code != 400:
+            raise
+        logger.warning("Bank-sync: RLZ weigert $expand=%s (400) — terugval zonder PaymentTermList", ITEMS_EXPAND)
+        return client.list_payment_items(params={"$expand": ITEMS_EXPAND_TERUGVAL})
+
+
 def sync_payment_items(*, administratie_id: uuid.UUID, client: RlzClient) -> SyncTelling:
-    items = client.list_payment_items(params={"$expand": "Document($expand=Entity)"})
+    items = _lees_payment_items(client)
     now = datetime.now(UTC)
     with scoped_session(administratie_id) as session:
         return _upsert_en_markeer_verdwenen(

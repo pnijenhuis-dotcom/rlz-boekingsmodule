@@ -25,12 +25,15 @@ import {
   type RlzKoppelingDto,
   type SplitsingDto,
   type VoorstelDto,
+  letterBatchAf,
+  type BatchAfletterResultaatDto,
 } from './bankApi'
 import { AanbetalingenPaneel, KoppelRelatieForm } from './RelatieKoppeling'
 import { SplitsenForm, SplitsingWeergave, SplitsingenPaneel } from './Splitsen'
 import { useBankAutoVerversing } from './useBankAutoVerversing'
 import { NOG_NIET_GESYNCHRONISEERD } from './BankOverzichtScreen'
-import { AiToetsChip, GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, historieChip, isDeelbetaling } from './VoorstelKaart'
+import { AiToetsChip, BatchKaart, GEEN_MATCH_TEKST, HandmatigChip, VoorstelKaart, historieChip, isDeelbetaling } from './VoorstelKaart'
+import { filterMutaties, totaalCenten } from './bankZoek'
 import { amountKlasse } from '../werkvoorraad/format'
 
 function formatBedrag(bedrag: string | null): string {
@@ -171,10 +174,32 @@ export function DeelsAfgeletterdChip({ mutatie }: { mutatie: Pick<MutatieDto, 'b
       <span className="chip klaar" title={title} data-testid="chip-deels-afgeletterd">
         deels afgeletterd in RLZ
       </span>
-      {koppelingen.length > 0 && (
+      {koppelingen.length === 1 && (
         <div className="bank-oms" style={{ textAlign: 'right', maxWidth: 260 }} data-testid="deels-afgeletterd-koppelingen">
-          gekoppeld: {koppelingen.map(koppelingTekst).join('; ')}
+          gekoppeld: {koppelingTekst(koppelingen[0])}
         </div>
+      )}
+      {/* Blok D 16-09 (Peter, screenshot Bouwadvies: een blok van ~15 regels "gekoppeld: …" in een lijstrij is onleesbaar):
+          één compacte regel + de volledige lijst pas in de uitklap (monospace: boekstuk · factuur · bedrag) — rijhoogte
+          constant (les C9). */}
+      {koppelingen.length > 1 && (
+        <details className="bank-oms" style={{ textAlign: 'right', maxWidth: 300 }} data-testid="deels-afgeletterd-koppelingen">
+          <summary className="linkbtn" style={{ display: 'inline' }}>
+            {koppelingen.length} {koppelingen.every((k) => k.document_type === 1) ? 'facturen' : 'documenten'} gekoppeld · open{' '}
+            {formatBedrag(openBedrag(mutatie))}
+          </summary>
+          <table style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, marginLeft: 'auto' }}>
+            <tbody>
+              {koppelingen.map((k, i) => (
+                <tr key={`${k.document_id ?? 'k'}-${i}`}>
+                  <td>{k.boekstuknummer ?? '—'}</td>
+                  <td>{k.referentie ?? '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{k.bedrag !== null ? formatBedrag(k.bedrag) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
       )}
     </>
   )
@@ -330,12 +355,15 @@ function MutatieRij({
   onVerversen,
   onMelding,
   onGesplitst,
+  onZoekNaam,
 }: {
   administratieId: string
   mutatie: MutatieDto
   onVerversen: () => void
   onMelding: (tekst: string) => void
   onGesplitst: (splitsing: SplitsingDto) => void
+  /** Blok A 16-09: klik op de tegenpartijnaam = zoekveld vullen ("alles van deze partij"). */
+  onZoekNaam?: (naam: string) => void
 }) {
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
@@ -383,6 +411,33 @@ function MutatieRij({
   const isAfletterVoorstel =
     (voorstel.soort === 'exacte_match' || voorstel.soort === 'deel_match' || voorstel.soort === 'rlz_voorstel') &&
     voorstel.payment_item_id !== null
+  // Blok C 16-09: RLZ-betaalbatch — N × actie 15 in één handeling; de server herberekent het voorstel zelf.
+  const batch = voorstel.soort === 'batch' && voorstel.batch ? voorstel.batch : null
+
+  const letterBatch = async () => {
+    setBezig(true)
+    setActieFout(null)
+    try {
+      const r: BatchAfletterResultaatDto = await letterBatchAf(administratieId, mutatie.id)
+      const delen = [
+        r.gekoppeld > 0 ? `${r.gekoppeld} gekoppeld` : null,
+        r.overgeslagen > 0 ? `${r.overgeslagen} al gekoppeld (overgeslagen)` : null,
+        r.mislukt > 0 ? `${r.mislukt} niet gelukt` : null,
+      ].filter(Boolean)
+      const tekst = `Betaalbatch ${r.sleutel}: ${delen.join(', ') || 'niets te doen'}.`
+      if (r.mislukt > 0) {
+        const eerste = r.rijen.find((x) => x.fout)
+        setActieFout(`${tekst}${eerste?.fout ? ` Eerste fout: ${eerste.fout}` : ''} De klaargezette opdracht blijft staan ("Nu afletteren" of Reeleezee).`)
+      } else {
+        onMelding(tekst)
+      }
+      onVerversen()
+    } catch (err) {
+      setActieFout(err instanceof Error ? err.message : 'Afletteren van de batch mislukt')
+    } finally {
+      setBezig(false)
+    }
+  }
 
   const bedragGetal = mutatie.bedrag !== null ? Number(mutatie.bedrag) : 0
   // Blok 3 nachtrun 10/11-09: alles wat boekt/toetst rekent met het OPEN bedrag (één bron: openBedrag).
@@ -393,7 +448,21 @@ function MutatieRij({
     <tr style={opdracht ? { opacity: 0.75 } : undefined}>
       <td>{formatDatumKort(mutatie.boekdatum)}</td>
       <td>
-        <div className="bank-tp">{mutatie.tegenpartij_naam ?? 'Onbekende tegenpartij'}</div>
+        {/* Blok A 16-09: één klik op de naam = alle open mutaties van deze partij (zoekveld gevuld). */}
+        {mutatie.tegenpartij_naam && onZoekNaam ? (
+          <button
+            type="button"
+            className="linkbtn bank-tp"
+            style={{ padding: 0, textAlign: 'left' }}
+            title="Toon alle onverwerkte mutaties van deze tegenpartij"
+            onClick={() => onZoekNaam(mutatie.tegenpartij_naam ?? '')}
+            data-testid="mutatie-tegenpartij"
+          >
+            {mutatie.tegenpartij_naam}
+          </button>
+        ) : (
+          <div className="bank-tp">{mutatie.tegenpartij_naam ?? 'Onbekende tegenpartij'}</div>
+        )}
         {mutatie.omschrijving && <div className="bank-oms">{mutatie.omschrijving}</div>}
       </td>
       <td className="amount" style={{ color: bedragGetal < 0 ? 'var(--red)' : 'var(--green)' }} data-testid="mutatie-bedrag">
@@ -415,7 +484,9 @@ function MutatieRij({
         {/* Blok E5–E8 (mockup bank-voorstel-kaart.html): kaart mét doel-post-specs + match-chip; vaste regel =
             eigen regel mét herkomst-chip; geen match = rustige tekstregel (geen lege kaart). De kaart toetst het
             OPEN bedrag (deelbetaling/restant), niet het volle mutatiebedrag. */}
-        {isAfletterVoorstel ? (
+        {batch ? (
+          <BatchKaart batch={batch} kleur={voorstel.kleur} />
+        ) : isAfletterVoorstel ? (
           <VoorstelKaart voorstel={voorstel} mutatieBedrag={teVerwerken} />
         ) : voorstel.soort === 'vaste_regel' ? (
           <span className={chipKlasse(voorstel)} title="Direct op grootboek volgens een vaste regel (boekingsgeheugen)">
@@ -469,6 +540,10 @@ function MutatieRij({
                   </button>
                 )}
               </>
+            ) : batch ? (
+              <button className="btn" disabled={bezig} onClick={() => void letterBatch()} data-testid="batch-afletteren">
+                {bezig ? 'Afletteren…' : `Afletteren (${batch.aantal}) ✓`}
+              </button>
             ) : isAfletterVoorstel ? (
               <button
                 className="btn"
@@ -633,6 +708,23 @@ export function BankDetailScreen() {
   const toast = useToastOptioneel()
   const [searchParams, setSearchParams] = useSearchParams()
   const rekeningId = searchParams.get('rekening')
+  // Blok A 16-09 (Peter): zoekveld over de geladen lijst; de term leeft in `?zoek=` (deeplink, werkt samen met
+  // ?rekening= en ?toon_oud=). Escape leegt; klik op een tegenpartijnaam vult 'm.
+  const zoek = searchParams.get('zoek') ?? ''
+  const zetZoek = useCallback(
+    (term: string) => {
+      setSearchParams(
+        (huidig) => {
+          const volgende = new URLSearchParams(huidig)
+          if (term.trim()) volgende.set('zoek', term)
+          else volgende.delete('zoek')
+          return volgende
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
 
   const [rekeningen, setRekeningen] = useState<RekeningenDto | null>(null)
   const [mutaties, setMutaties] = useState<MutatieDto[] | null>(null)
@@ -733,6 +825,8 @@ export function BankDetailScreen() {
 
   const huidigeRekening = rekeningen?.rekeningen.find((r) => r.id === rekeningId) ?? null
   const totaalOpen = rekeningen?.rekeningen.reduce((som, r) => som + r.open_mutaties, 0) ?? 0
+  // Blok A 16-09: de getoonde (gefilterde) lijst — de KPI's blijven over álle mutaties, de teller in de kop over de filter.
+  const getoondeMutaties = useMemo(() => filterMutaties(mutaties ?? [], zoek), [mutaties, zoek])
   const aantalVoorstel =
     mutaties?.filter((m) => m.voorstel.soort !== 'handmatig' || m.afletter_opdracht !== null).length ?? 0
   const aantalHandmatig =
@@ -856,6 +950,29 @@ export function BankDetailScreen() {
             Uitkomsten = toast; geen statusregels boven de tabel (layout-shift, diagnose Cowork 01-09). */}
         <div className="p-kop bank-p-kop">
           <h2 style={{ margin: 0 }}>Onverwerkte bankmutaties</h2>
+          {/* Blok A 16-09: zoekveld (plek van Peters rode kader) — zelfde invoer als de documentenlijst-zoek, client-side. */}
+          {mutaties !== null && mutaties.length > 0 && (
+            <div className="bank-zoek" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                type="search"
+                value={zoek}
+                onChange={(e) => zetZoek(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') zetZoek('')
+                }}
+                placeholder="Zoek op tegenpartij, IBAN, omschrijving, bedrag of nummer…"
+                aria-label="Zoek in onverwerkte bankmutaties"
+                style={{ minWidth: 260 }}
+                data-testid="bank-zoekveld"
+              />
+              {zoek.trim() && (
+                <span className="chip klaar" data-testid="bank-zoek-teller">
+                  {getoondeMutaties.length} van {mutaties.length} · {formatBedrag((totaalCenten(getoondeMutaties) / 100).toFixed(2))} in{' '}
+                  {getoondeMutaties.length} {getoondeMutaties.length === 1 ? 'mutatie' : 'mutaties'}
+                </span>
+              )}
+            </div>
+          )}
           {/* Blok 1 (08-09): de versheid is een zichtbare CHIP (niet klein grijs) — info-blauw = stand,
               groen = status "actueel/zojuist ververst" (semantiek-regel: groen = status, teal = actie). */}
           <div className="vers" data-testid="ververs-hint">
@@ -892,6 +1009,13 @@ export function BankDetailScreen() {
           <SkeletonRegels />
         ) : mutaties.length === 0 ? (
           <p className="hint">Geen onverwerkte mutaties op deze rekening.</p>
+        ) : getoondeMutaties.length === 0 ? (
+          <p className="hint" data-testid="bank-zoek-leeg">
+            Geen mutatie past bij &ldquo;{zoek.trim()}&rdquo; —{' '}
+            <button type="button" className="linkbtn" onClick={() => zetZoek('')}>
+              zoekterm wissen
+            </button>
+          </p>
         ) : (
           <table className="bank-tabel">
             <thead>
@@ -909,7 +1033,7 @@ export function BankDetailScreen() {
               </tr>
             </thead>
             <tbody>
-              {mutaties.map((mutatie) => (
+              {getoondeMutaties.map((mutatie) => (
                 <MutatieRij
                   key={mutatie.id}
                   administratieId={administratieId}
@@ -917,6 +1041,7 @@ export function BankDetailScreen() {
                   onVerversen={verversAlles}
                   onMelding={(tekst) => toast.meld(tekst)}
                   onGesplitst={setSplitsResultaat}
+                  onZoekNaam={zetZoek}
                 />
               ))}
             </tbody>

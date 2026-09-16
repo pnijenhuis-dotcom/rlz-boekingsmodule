@@ -111,6 +111,12 @@ class Casus:
         """Open posten zoals de sync ze in `payment_item_cache` zet (RLZ-teken: inkoop negatief, verkoop positief)."""
         return self._json("open_posten.json")
 
+    def bank_batch(self) -> dict:
+        """Blok C 16-09: `{"sleutel", "mutatie", "posten", "post_zonder_sleutel"}` — een deels afgeletterde
+        RLZ-betaalbatch (Bouwadvies-casus) plus de nog open posten met dezelfde batchsleutel. Additief: mutaties.json/open_posten.json
+        ongewijzigd."""
+        return self._json("batch.json")
+
     def bank_historie(self) -> dict:
         """Blok B bundel 10-09: `{"mutatie", "grootboek", "boekingen"}` — een vijfde open mutatie
         (huur, zonder open post) plus de historie-cache-rijen (`bank_historie_boeking`) waaruit de historie-regel 'm

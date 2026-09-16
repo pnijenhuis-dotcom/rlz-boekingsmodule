@@ -226,6 +226,9 @@ TEKEN_ONBEKEND = "onbekend"
 
 
 class VoorstelSoort(enum.StrEnum):
+    # Blok C 16-09 (Peter, screenshot Bouwadvies Oost Nederland; STAP-0 batches 11-09): eigen RLZ-betaal-/incassobatch —
+    # de bankregel en de facturen dragen dezelfde sleutel (PaymentBatchId == PaymentTermList.PaymentBatchInformation).
+    BATCH = "batch"
     EXACTE_MATCH = "exacte_match"
     DEEL_MATCH = "deel_match"
     # Opdracht 4 blok A (16-09): tegenzijde-post van een geboekte omzetbatch (PIN/Stripe/storting).
@@ -248,6 +251,10 @@ class MutatieGegevens:
     # Opdracht 4 (16-09): boekdatum van de mutatie — nodig voor het datumvenster van de omzetbatch-stap. Optioneel
     # (bestaande aanroepers ongewijzigd); None = datum niet toetsbaar → hooguit oranje.
     boekdatum: date | None = None
+    # Blok C 16-09: RLZ-batchsleutel van de bankregel (`PaymentTransaction.PaymentBatchId`, alleen bij een eigen
+    # RLZ-export gelijk aan `Batch.BatchId`) en `ReturnReason` (R-transactie: nooit een batch-voorstel).
+    payment_batch_id: str | None = None
+    return_reason: str | None = None
 
     @property
     def te_verwerken_bedrag(self) -> Decimal | None:
@@ -286,6 +293,34 @@ class OpenPost:
     # = `InvoiceNumber`, STAP-0 15-09) — wat de bank in de omschrijving zet; `referentie` is RLZ's volgnummer van
     # de post.
     klantreferentie: str | None = None
+    # Blok C 16-09: de batchsleutel op het DOCUMENT (`PaymentTermList[].PaymentBatchInformation`, STAP-0 11-09 §3 —
+    # 12/12 gelijk aan de bankregel-sleutel); None = geen batch of nog niet gelezen.
+    batch_sleutel: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchVoorstel:
+    """Blok C 16-09: alle open posten met dezelfde RLZ-batchsleutel als de bankregel. GROEN = Σ|posten| == |open bedrag|
+    cent-exact ("betaalbatch …, 14 facturen"); ORANJE = som ≠ open bedrag mét het verschil (posten van de batch die al
+    gekoppeld/afgevoerd zijn of nog niet in de open-posten-cache staan). Afletteren = N × actie 15 in één handeling."""
+
+    sleutel: str
+    posten: list[OpenPost]
+    som: Decimal
+    open_bedrag: Decimal
+
+    @property
+    def aantal(self) -> int:
+        return len(self.posten)
+
+    @property
+    def verschil(self) -> Decimal:
+        """|open bedrag| − Σ|posten| — 0 = sluit."""
+        return (abs(self.open_bedrag) - self.som).quantize(Decimal("0.01"))
+
+    @property
+    def sluit(self) -> bool:
+        return self.verschil == 0
 
 
 @dataclass(frozen=True)
@@ -382,6 +417,66 @@ class Voorstel:
     historie_n: int | None = None
     # Opdracht 4 blok A (16-09): de omzetbatch-post waarop dit voorstel rust (soort OMZETBATCH_POST).
     omzetbatch_post: OmzetBatchPost | None = None
+    # Blok C 16-09: de RLZ-betaalbatch (soort BATCH) — posten + som + verschil.
+    batch: BatchVoorstel | None = None
+
+
+def _euro_nl(bedrag: Decimal) -> str:
+    return f"€ {bedrag:.2f}".replace(".", ",")
+
+
+def batch_sleutel_van(mutatie: MutatieGegevens) -> str | None:
+    """Alleen een niet-lege sleutel telt; een R-transactie (`ReturnReason` gevuld) krijgt nooit een batch-voorstel."""
+    if mutatie.return_reason:
+        return None
+    sleutel = (mutatie.payment_batch_id or "").strip()
+    return sleutel or None
+
+
+def _batch_voorstel(mutatie: MutatieGegevens, open_posten: list[OpenPost]) -> Voorstel | None:
+    """Stap 0 (blok C 16-09): bankregel mét batchsleutel → álle open posten met dezelfde sleutel (tekenpassend).
+    Geen post met die sleutel = geen voorstel (de bestaande stappen 1–5 lopen door — bv. een debiteur-verzamelbetaling
+    waarvan de sleutel van de BETALER is)."""
+    sleutel = batch_sleutel_van(mutatie)
+    if sleutel is None:
+        return None
+    posten = [
+        p
+        for p in open_posten
+        if p.batch_sleutel and p.batch_sleutel.strip() == sleutel and teken_toets(mutatie, p) != TEKEN_MISMATCH
+    ]
+    if not posten:
+        return None
+    open_bedrag = mutatie.te_verwerken_bedrag
+    if open_bedrag is None:
+        return None
+    posten.sort(key=lambda p: ((p.klantreferentie or p.referentie or ""), str(p.id)))
+    som = sum((abs(p.bedrag) for p in posten if p.bedrag is not None), Decimal("0")).quantize(Decimal("0.01"))
+    batch = BatchVoorstel(sleutel=sleutel, posten=posten, som=som, open_bedrag=open_bedrag)
+    n = batch.aantal
+    facturen = "factuur" if n == 1 else "facturen"
+    if batch.sluit:
+        return Voorstel(
+            soort=VoorstelSoort.BATCH,
+            kleur="groen",
+            bron=f"betaalbatch {sleutel}, {n} {facturen}",
+            reden=(
+                f"RLZ-betaalbatch {sleutel}: {n} open {facturen} dragen dezelfde batchsleutel als de bankregel en "
+                f"de som is cent-exact gelijk aan het open bedrag"
+            ),
+            batch=batch,
+        )
+    return Voorstel(
+        soort=VoorstelSoort.BATCH,
+        kleur="oranje",
+        bron=f"betaalbatch {sleutel}, {n} {facturen} — verschil {_euro_nl(batch.verschil)}",
+        reden=(
+            f"RLZ-betaalbatch {sleutel}: {n} open {facturen} gevonden (som {_euro_nl(som)}), open bedrag "
+            f"{_euro_nl(abs(open_bedrag))} — verschil {_euro_nl(batch.verschil)}; het restant zit in posten die al "
+            f"gekoppeld zijn of nog niet in de open-posten-cache staan"
+        ),
+        batch=batch,
+    )
 
 
 def teken_toets(mutatie: MutatieGegevens, post: OpenPost) -> str:
@@ -612,6 +707,11 @@ def bepaal_voorstel(
     `rekening_label(ledger_id, taxrate_id) -> str` levert de leesbare rekening voor het bron-label
     (default: de eerste 8 tekens van het ledger-id — de servicelaag geeft code + naam mee)."""
     relaties = iban_relaties or []
+    # Stap 0 (blok C 16-09): eigen RLZ-betaal-/incassobatch — deterministisch op sleutel-gelijkheid, vóór elke
+    # naam-/nummer-heuristiek; geen sleutel of geen post met die sleutel = gewoon door naar stap 1.
+    batch_voorstel = _batch_voorstel(mutatie, open_posten)
+    if batch_voorstel is not None:
+        return batch_voorstel
     scores = [score_post(mutatie, post, vaste_regels=vaste_regels, iban_relaties=relaties) for post in open_posten]
 
     groen = [s for s in scores if s.groen]

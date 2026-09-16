@@ -101,7 +101,17 @@ def _mutatie_gegevens(rij: BankMutatie) -> matchmotor.MutatieGegevens:
         tegenrekening_iban=rij.tegenrekening_iban,
         rlz_voorstel_item_id=rij.rlz_voorstel_item_id,
         boekdatum=rij.boekdatum,
+        # Blok C 16-09: batchsleutel + R-transactie-veld rechtstreeks uit de bewaarde RLZ-record (geen migratie).
+        payment_batch_id=_tekst(rij.brondata.get("PaymentBatchId")) if isinstance(rij.brondata, dict) else None,
+        return_reason=_tekst(rij.brondata.get("ReturnReason")) if isinstance(rij.brondata, dict) else None,
     )
+
+
+def _tekst(waarde: object) -> str | None:
+    if waarde is None:
+        return None
+    tekst = str(waarde).strip()
+    return tekst or None
 
 
 def laad_matchcontext(

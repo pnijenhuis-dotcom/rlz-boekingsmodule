@@ -514,3 +514,101 @@ class TestExportBankscherm:
         if FRONTEND_KETEN_DIR.parent.exists():
             geschreven = _exporteer_bank(api, headers, administratie_id, doel=FRONTEND_KETEN_DIR)
             assert geschreven.read_bytes() == eerste.read_bytes()
+
+
+# --- Blok C 16-09: RLZ-betaalbatch (Bouwadvies-casus) --------------------------------------------------------------
+
+
+@pytest.fixture
+def cv_batch(administratie_id: uuid.UUID, admin_engine: Engine, cv_bank: dict) -> dict:
+    """Een deels afgeletterde RLZ-betaalbatch op dezelfde C.V.-rekening (fixtures/l_bank_cv_08-09/batch.json): bankregel
+    −560.925,88 mét `PaymentBatchId` in de brondata en één al gekoppeld document in `rlz_koppelingen`, twee nog open
+    posten met dezelfde batchsleutel (Σ = open bedrag 40.723,85) en één post van een andere leverancier zonder sleutel.
+    De vier 08-09-mutaties en hun posten blijven ongewijzigd."""
+    data = CASUS.bank_batch()
+    m = data["mutatie"]
+    mutatie_id = maak_bank_mutatie(
+        admin_engine,
+        administratie_id=administratie_id,
+        mutatie_id=uuid.UUID(m["id"]),
+        payment_account_id=REKENING_ID,
+        bedrag=m["bedrag"],
+        open_bedrag=m["open_bedrag"],
+        tegenpartij_naam=m["tegenpartij_naam"],
+        omschrijving=m["omschrijving"],
+        tegenrekening_iban=m["tegenrekening_iban"],
+        boekdatum=m["boekdatum"],
+        brondata={"PaymentBatchId": data["sleutel"], "ReturnReason": None, "Batch": {"BatchId": data["sleutel"]}},
+        rlz_koppelingen=m["al_gekoppeld"],
+    )
+    posten = {}
+    for p in [*data["posten"], data["post_zonder_sleutel"]]:
+        posten[p["id"]] = maak_payment_item(
+            admin_engine,
+            administratie_id=administratie_id,
+            item_id=uuid.UUID(p["id"]),
+            bedrag=p["bedrag"],
+            referentie=p["referentie"],
+            klantreferentie=p["klantreferentie"],
+            documentsoort="Inkoopfactuur",
+            entity_naam=p["entity_naam"],
+            entity_guid=uuid.UUID(p["entity_guid"]),
+            boekdatum=p["boekdatum"],
+            factuurdatum=p["boekdatum"],
+            rlz_document_id=uuid.UUID(p["rlz_document_id"]),
+            batch_sleutel=data["sleutel"] if p is not data["post_zonder_sleutel"] else None,
+        )
+    return {"mutatie_id": mutatie_id, "data": data}
+
+
+class TestBetaalbatchOpDeCv:
+    def test_batch_is_groen_op_sleutel_en_som_van_de_nog_open_posten(
+        self, administratie_id: uuid.UUID, cv_bank: dict, cv_batch: dict
+    ) -> None:
+        op_id = {m.mutatie.id: m for m in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id)}
+        rij = op_id[cv_batch["mutatie_id"]]
+        assert rij.deels_afgeletterd and rij.mutatie.te_verwerken_bedrag == Decimal("-40723.85")
+        assert rij.voorstel.soort == VoorstelSoort.BATCH and rij.voorstel.kleur == "groen", rij.voorstel
+        batch = rij.voorstel.batch
+        assert batch is not None and batch.sleutel == cv_batch["data"]["sleutel"]
+        assert [p.klantreferentie for p in batch.posten] == ["92953485", "92953490"]
+        assert batch.som == Decimal("40723.85") and batch.sluit
+        # De post zonder sleutel (zelfde bedrag als post 1!) zit er NIET in — sleutel-gelijkheid, geen bedragheuristiek.
+        assert all(p.klantreferentie != "77777777" for p in batch.posten)
+
+    def test_de_vier_bestaande_cv_mutaties_krijgen_geen_batch_voorstel(
+        self, administratie_id: uuid.UUID, cv_bank: dict, cv_batch: dict
+    ) -> None:
+        for sleutel, rij in _per_sleutel(administratie_id, cv_bank).items():
+            assert rij.voorstel.soort != VoorstelSoort.BATCH, sleutel
+
+    def test_dto_draagt_de_batch_en_afletteren_batch_koppelt_beide_posten(
+        self,
+        administratie_id: uuid.UUID,
+        cv_bank: dict,
+        cv_batch: dict,
+        bank_api: tuple,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from app.bank import afletteren as afletteren_mod
+
+        api, headers, rlz = bank_api
+        data = cv_batch["data"]
+        mutatie_id = str(cv_batch["mutatie_id"])
+        rlz.transacties[mutatie_id] = {"id": mutatie_id, "OpenAmount": -40723.85, "PaymentReferenceList": []}
+        rlz.items.extend({"id": p["id"]} for p in data["posten"])
+        rlz.item_documenten.update({p["id"]: p["rlz_document_id"] for p in data["posten"]})
+        monkeypatch.setattr(afletteren_mod, "_open_eigen_client", lambda aid: rlz)
+
+        dto = next(m for m in _mutaties_dto(api, headers, administratie_id)["mutaties"] if m["id"] == mutatie_id)
+        assert dto["deels_afgeletterd"] is True and len(dto["rlz_koppelingen"]) == 1
+        v = dto["voorstel"]
+        assert v["soort"] == "batch" and v["kleur"] == "groen"
+        assert (v["batch"]["aantal"], v["batch"]["som"], v["batch"]["sluit"]) == (2, "40723.85", True)
+        assert [p["klantreferentie"] for p in v["batch"]["posten"]] == ["92953485", "92953490"]
+
+        r = api.post(f"/administraties/{administratie_id}/bank/mutaties/{mutatie_id}/afletteren-batch", headers=headers)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert (d["gekoppeld"], d["overgeslagen"], d["mislukt"]) == (2, 0, 0)
+        assert sorted(abs(x["linked_amount"]) for x in rlz.links) == [723.85, 40000.0]

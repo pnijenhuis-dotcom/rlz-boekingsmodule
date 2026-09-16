@@ -144,22 +144,37 @@ def _koppeling_response(koppeling: dict) -> schemas.RlzKoppelingResponse:
     )
 
 
+def _open_post_response(post) -> schemas.OpenPostResponse:  # noqa: ANN001 — matchmotor.OpenPost
+    return schemas.OpenPostResponse(
+        id=post.id,
+        bedrag=post.bedrag,
+        referentie=post.referentie,
+        referentie2=post.referentie2,
+        rlz_document_id=post.rlz_document_id,
+        tegenpartij_naam=post.tegenpartij_naam,
+        documentsoort=post.documentsoort,
+        boekstuknummer=post.boekstuknummer,
+        factuurdatum=post.factuurdatum,
+        klantreferentie=post.klantreferentie,
+    )
+
+
 def _voorstel_response(item: voorstellen.MutatieMetVoorstel) -> schemas.VoorstelResponse:
-    open_post = None
-    if item.open_post is not None:
-        open_post = schemas.OpenPostResponse(
-            id=item.open_post.id,
-            bedrag=item.open_post.bedrag,
-            referentie=item.open_post.referentie,
-            referentie2=item.open_post.referentie2,
-            rlz_document_id=item.open_post.rlz_document_id,
-            tegenpartij_naam=item.open_post.tegenpartij_naam,
-            documentsoort=item.open_post.documentsoort,
-            boekstuknummer=item.open_post.boekstuknummer,
-            factuurdatum=item.open_post.factuurdatum,
-            klantreferentie=item.open_post.klantreferentie,
+    open_post = _open_post_response(item.open_post) if item.open_post is not None else None
+    batch = None
+    if item.voorstel.batch is not None:
+        b = item.voorstel.batch
+        batch = schemas.BatchVoorstelResponse(
+            sleutel=b.sleutel,
+            aantal=b.aantal,
+            som=b.som,
+            open_bedrag=b.open_bedrag,
+            verschil=b.verschil,
+            sluit=b.sluit,
+            posten=[_open_post_response(p) for p in b.posten],
         )
     return schemas.VoorstelResponse(
+        batch=batch,
         soort=item.voorstel.soort.value,
         kleur=item.voorstel.kleur,
         bron=item.voorstel.bron,
@@ -334,6 +349,43 @@ def bank_sync_trigger(
         vastly_gemeld=resultaat.vastly_gemeld,
         automatisch_geboekt=resultaat.automatisch_geboekt,
         automatisch_fouten=resultaat.automatisch_fouten,
+    )
+
+
+@router.post(
+    "/administraties/{administratie_id}/bank/mutaties/{mutatie_id}/afletteren-batch",
+    response_model=schemas.BatchAfletterResponse,
+)
+def afletteren_batch(
+    administratie_id: uuid.UUID,
+    mutatie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.BatchAfletterResponse:
+    """Blok C 16-09: "Afletteren (N)" op een batch-voorstel — N × de bestaande actie 15 (`zet_klaar_voor_afletteren`
+    per post, idempotent: een post waarvan het document al aan de mutatie hangt wordt overgeslagen), in één handeling.
+    De server herberekent het voorstel zelf (nooit een client-lijst met item-id's); ná een API-fout stoppen de
+    overige posten als 'niet_uitgevoerd' — zichtbaar, nooit stil. Geen batch-voorstel (meer) = 409."""
+    try:
+        uitkomst = afletteren.letter_batch_af(
+            administratie_id=administratie_id, payment_transaction_id=mutatie_id, actor_id=actor.id
+        )
+    except afletteren.MutatieNietGevonden as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except afletteren.GeenBatchVoorstel as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (GeenRlzCredentials, RlzApiError) as exc:
+        raise _vertaal_rlz_fouten(exc) from exc
+    return schemas.BatchAfletterResponse(
+        sleutel=uitkomst.sleutel,
+        gekoppeld=uitkomst.gekoppeld,
+        overgeslagen=uitkomst.overgeslagen,
+        mislukt=uitkomst.mislukt,
+        rijen=[
+            schemas.BatchAfletterRijResponse(
+                payment_item_id=r.payment_item_id, uitkomst=r.uitkomst, fout=r.fout, opdracht_id=r.opdracht_id
+            )
+            for r in uitkomst.rijen
+        ],
     )
 
 

@@ -351,6 +351,7 @@ def maak_bank_mutatie(
     boekdatum: str | None = None,
     mutatie_id: uuid.UUID | None = None,
     rlz_koppelingen: list[dict[str, Any]] | None = None,
+    brondata: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     """Directe insert van een cache-rij (schema-owner) — de sync-tests dekken het vullen zelf.
     `tegenrekening_iban`/`boekdatum`/`mutatie_id` (blok 2 bundel 08-09): IBAN-been van de matchmotor,
@@ -364,9 +365,11 @@ def maak_bank_mutatie(
                 "(id, administratie_id, payment_account_id, boekdatum, bedrag, open_bedrag, "
                 " tegenpartij_naam, omschrijving, rlz_voorstel_item_id, tegenrekening_iban, brondata, rlz_koppelingen) "
                 "VALUES (:id, :aid, :account, COALESCE(CAST(:boekdatum AS date), CURRENT_DATE), :bedrag, "
-                ":open_bedrag, :naam, :oms, :voorstel, :iban, '{}', CAST(:koppelingen AS jsonb))"
+                ":open_bedrag, :naam, :oms, :voorstel, :iban, CAST(:brondata AS jsonb), CAST(:koppelingen AS jsonb))"
             ),
             {
+                # Blok C 16-09: `brondata` = de bewaarde RLZ-record (PaymentBatchId/ReturnReason voor de batch-stap).
+                "brondata": json.dumps(brondata or {}),
                 "koppelingen": json.dumps(rlz_koppelingen) if rlz_koppelingen is not None else None,
                 "id": mutatie_id,
                 "aid": administratie_id,
@@ -397,6 +400,7 @@ def maak_payment_item(
     item_id: uuid.UUID | None = None,
     klantreferentie: str | None = None,
     factuurdatum: str | None = None,
+    batch_sleutel: str | None = None,
 ) -> uuid.UUID:
     """`documentsoort` ("Inkoopfactuur" | "Verkoopfactuur", blok 2 bundel 08-09) landt als
     `Document.DocumentType` 1/10 in de brondata — precies wat de sync uit `Document($expand=Entity)`
@@ -412,6 +416,10 @@ def maak_payment_item(
         brondata.setdefault("Document", {})["Reference"] = klantreferentie
     if factuurdatum is not None:
         brondata.setdefault("Document", {})["Date"] = f"{factuurdatum}T00:00:00"
+    # Blok C 16-09: de RLZ-batchsleutel op het document (`PaymentTermList[].PaymentBatchInformation`, STAP-0 11-09 §3)
+    # zoals de sync 'm sinds 16-09 uit `Document($expand=Entity,PaymentTermList)` bewaart.
+    if batch_sleutel is not None:
+        brondata.setdefault("Document", {})["PaymentTermList"] = [{"PaymentBatchInformation": batch_sleutel}]
     with admin_engine.begin() as conn:
         conn.execute(
             text(

@@ -1,0 +1,21 @@
+{
+ "_herkomst": "Blok C 16-09 — screenshot Peter 16-09 (Afletteren — Bouwadvies Oost Nederland B.V., NL04INGB0117244236, 17 open): bankregel −560.925,88 'TOTAAL 14 VZ betaalkenmerk: PREF', deels afgeletterd in RLZ (open 40.723,85), een eigen RLZ-betaalbatch (STAP-0 batches 11-09: PaymentBatchId == PaymentTermList.PaymentBatchInformation). Geanonimiseerd: batchsleutel/IBAN/factuurnummers fictief, bedragen exact; twee nog open posten van de batch (som = open bedrag) + één batch-post die al gekoppeld is (rlz_koppelingen). In de gouden set onder de C.V.-testadministratie, zelfde rekening. Additief: mutaties.json/open_posten.json ongewijzigd.",
+ "sleutel": "RLZEE_CT_20260915_101500_4471_0001",
+ "mutatie": {
+  "id": "cccccccc-0000-4000-8000-00000000001b",
+  "boekdatum": "2026-09-15",
+  "bedrag": "-560925.88",
+  "open_bedrag": "-40723.85",
+  "tegenpartij_naam": "TOTAAL 14 VZ",
+  "omschrijving": "TOTAAL 14 VZ betaalkenmerk: PREF",
+  "tegenrekening_iban": null,
+  "al_gekoppeld": [
+   {"document_id": "dddddddd-0000-4000-8000-100000004800", "boekstuknummer": "RLZ-04-00000480", "referentie": "92953400", "bedrag": "520202.03", "document_type": 1}
+  ]
+ },
+ "posten": [
+  {"id": "dddddddd-0000-4000-8000-000000004801", "bedrag": "-40000.00", "referentie": "801", "klantreferentie": "92953485", "entity_naam": "Leverancier A B.V.", "entity_guid": "eeeeeeee-0000-4000-8000-000000004801", "boekdatum": "2026-09-30", "rlz_document_id": "dddddddd-0000-4000-8000-100000004801"},
+  {"id": "dddddddd-0000-4000-8000-000000004802", "bedrag": "-723.85", "referentie": "802", "klantreferentie": "92953490", "entity_naam": "Leverancier B B.V.", "entity_guid": "eeeeeeee-0000-4000-8000-000000004802", "boekdatum": "2026-09-30", "rlz_document_id": "dddddddd-0000-4000-8000-100000004802"}
+ ],
+ "post_zonder_sleutel": {"id": "dddddddd-0000-4000-8000-000000004803", "bedrag": "-40000.00", "referentie": "803", "klantreferentie": "77777777", "entity_naam": "Leverancier C B.V.", "entity_guid": "eeeeeeee-0000-4000-8000-000000004803", "boekdatum": "2026-09-30", "rlz_document_id": "dddddddd-0000-4000-8000-100000004803"}
+}

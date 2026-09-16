@@ -8,7 +8,7 @@
 // Puur presentatie: de matchmotor en de volgorde stap 1–5 zijn ongewijzigd.
 // Blok 2 bundel 08-09: de chip-tekst komt uit `bron` van de motor ("IBAN + nummer + bedrag", "nummer + bedrag, naam
 // onbekend") — de kaart verzint geen "naam + referentie" meer als de naam niet getoetst is.
-import type { MutatieDto, OpenPostDto, VoorstelDto } from './bankApi'
+import type { BatchVoorstelDto, MutatieDto, OpenPostDto, VoorstelDto } from './bankApi'
 
 export function formatBedrag(bedrag: string | number | null | undefined): string {
   if (bedrag === null || bedrag === undefined) return '—'
@@ -131,6 +131,47 @@ export function HandmatigChip() {
     <span className="chip handmatig" title={GEEN_MATCH_TEKST} data-testid="voorstel-handmatig">
       handmatig
     </span>
+  )
+}
+
+/** Blok C 16-09: kaart voor een RLZ-betaal-/incassobatch — kop "Betaalbatch ‹sleutel›", één regel "N facturen · som € …",
+ * chip groen (som cent-exact) of oranje mét het verschil; de volledige postenlijst pas in de uitklap (monospace: boekstuk ·
+ * factuur · bedrag) zodat de rijhoogte constant blijft (les C9, blok D). */
+export function BatchKaart({ batch, kleur }: { batch: BatchVoorstelDto; kleur: 'groen' | 'oranje' }) {
+  const n = batch.aantal
+  const facturen = n === 1 ? 'factuur' : 'facturen'
+  return (
+    <div className="vk" data-testid="batch-kaart">
+      <div className="vk-kop">Betaalbatch {batch.sleutel}</div>
+      <div className="vk-r">
+        <b>
+          {n} {facturen}
+        </b>{' '}
+        · som {formatBedrag(batch.som)} · open {formatBedrag(batch.open_bedrag)}
+      </div>
+      {!batch.sluit && (
+        <div className="vk-verschil" data-testid="batch-verschil">
+          verschil {formatBedrag(batch.verschil)} — niet alle posten van de batch staan (nog) open in de cache
+        </div>
+      )}
+      <span className={`chip ${kleur === 'groen' ? 'geheugen' : 'ai'} vk-chip`}>
+        {kleur === 'groen' ? `betaalbatch — ${n} ${facturen}, som cent-exact` : `betaalbatch — ${n} ${facturen}, verschil ${formatBedrag(batch.verschil)} — bevestigen`}
+      </span>
+      <details className="vk-details" data-testid="batch-posten">
+        <summary className="linkbtn">posten tonen ({n})</summary>
+        <table className="vk-mono" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}>
+          <tbody>
+            {batch.posten.map((p) => (
+              <tr key={p.id}>
+                <td>{p.boekstuknummer ?? '—'}</td>
+                <td>{p.klantreferentie ?? p.referentie ?? '—'}</td>
+                <td style={{ textAlign: 'right' }}>{formatBedrag(p.bedrag)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </div>
   )
 }
 

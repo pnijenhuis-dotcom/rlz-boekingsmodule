@@ -88,6 +88,20 @@ class BoekRegelResponse(BaseModel):
     omschrijving: str | None
 
 
+class BatchVoorstelResponse(BaseModel):
+    """Blok C 16-09: RLZ-betaal-/incassobatch — alle open posten met dezelfde batchsleutel als de bankregel. `som` =
+    Σ|posten|, `verschil` = |open bedrag| − som (0 = sluit → groen), `posten` = de doel-posten (kaart-uitklap:
+    boekstuk · factuur · bedrag). Afletteren = N × actie 15 via `…/afletteren-batch`."""
+
+    sleutel: str
+    aantal: int
+    som: Decimal
+    open_bedrag: Decimal
+    verschil: Decimal
+    sluit: bool
+    posten: list[OpenPostResponse]
+
+
 class VoorstelResponse(BaseModel):
     soort: str
     kleur: str
@@ -102,6 +116,26 @@ class VoorstelResponse(BaseModel):
     taxrate_id: uuid.UUID | None = None
     historie_k: int | None = None
     historie_n: int | None = None
+    # Blok C 16-09 (soort 'batch'): de betaalbatch mét posten, som en verschil.
+    batch: BatchVoorstelResponse | None = None
+
+
+class BatchAfletterRijResponse(BaseModel):
+    payment_item_id: uuid.UUID
+    uitkomst: str  # afgeletterd_via_api | al_afgeletterd_in_rlz | overgeslagen | wacht_op_mens_in_rlz | niet_uitgevoerd
+    fout: str | None = None
+    opdracht_id: uuid.UUID | None = None
+
+
+class BatchAfletterResponse(BaseModel):
+    """Blok C 16-09: uitkomst per post van "Afletteren (N)" op een batch-voorstel — nooit stil: elke post staat erin,
+    ook de overgeslagen (al gekoppeld) en de niet-uitgevoerde ná een API-fout."""
+
+    sleutel: str
+    gekoppeld: int
+    overgeslagen: int
+    mislukt: int
+    rijen: list[BatchAfletterRijResponse]
 
 
 class AfletterKoppelingResponse(BaseModel):

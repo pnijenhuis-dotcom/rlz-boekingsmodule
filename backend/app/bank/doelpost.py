@@ -30,6 +30,8 @@ class DoelPostSpecs:
     #: Peter 15-09 (Clean Care Arnhem): `Document.Reference` (= `InvoiceNumber`) — de referentie die de bank noemt;
     #: de matchmotor toetst 'm als "nummer" naast RLZ's volgnummer van de post.
     klantreferentie: str | None = None
+    #: Blok C 16-09: RLZ-batchsleutel van het document (`PaymentTermList[].PaymentBatchInformation`).
+    batch_sleutel: str | None = None
 
 
 def _iso_datum(waarde: Any) -> date | None:
@@ -56,6 +58,19 @@ def factuurdatum_uit(document: dict[str, Any] | None, referentie2: str | None) -
                 return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
             except ValueError:
                 return None
+    return None
+
+
+def batch_sleutel_uit(document: dict[str, Any] | None) -> str | None:
+    """Blok C 16-09: `Document.PaymentTermList[].PaymentBatchInformation` (STAP-0 batches 11-09 §3: dezelfde sleutel als
+    `PaymentTransaction.PaymentBatchId`, 12/12) — de eerste niet-lege term; None = geen batch / niet geëxpandeerd."""
+    if not document:
+        return None
+    for term in document.get("PaymentTermList") or []:
+        if isinstance(term, dict):
+            waarde = term.get("PaymentBatchInformation")
+            if isinstance(waarde, str) and waarde.strip():
+                return waarde.strip()
     return None
 
 
@@ -106,4 +121,5 @@ def specs_uit_cache(
         boekstuknummer=boekstuknummer_uit(document, referentie2),
         factuurdatum=factuurdatum_uit(document, referentie2),
         klantreferentie=klantreferentie_uit(document),
+        batch_sleutel=batch_sleutel_uit(document),
     )
