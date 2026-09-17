@@ -2503,3 +2503,12 @@ Twee metingen (Cloud Run-job `rlz-reconciliatie`, uitvoer geanonimiseerd — naa
 cijfer begint, gevolgd door minstens één woord; anders geen code) — geen migratie, geen eigen kolom. Inactieve projecten
 (`IsActive: false`) blijven in de lijst zichtbaar mét chip; RLZ weigert ze ook niet op documentregels (zie "Projects
 klant-loze schrijfroute" punt 6).
+
+## Projects op VGG — dekking STAP-0 17-09 (lees-only, `rlz-lezen`, geanonimiseerd)
+
+- `GET Projects` (top-level, Vastgoedgroep): **83 projecten, alle `IsActive: true`**; `Name` = adres in de vorm `<Straat> <nr> te <Plaats>` (anonimisering geeft initialen "B.4.T.A." — de match met RLZ-04-00000887 "Bornholmstraat 49 Almere" bevestigt de conventie). Geen apart codeveld (bevestigt STAP-0 16-09).
+- **Project staat op de DOCUMENTREGEL**: documentvorm `PurchaseInvoices/{id}?$expand=DocumentLineList($expand=Account,Project)` → regel 4200 mét `Project {id, IsActive, IsBillable, TotalAmount, BeginDate, …}`. Op een bank-direct memoriaal (RLZ-28-00000061, regels 1603 + 1001) is `Project` op beide regels `null`.
+- `JournalEntryLines?$expand=Account,Project,JournalEntry` → 200, maar het antwoord draagt géén `Project` (property bestaat niet op de journaalregel; RLZ negeert de expand stil) — een per-project-som moet over de documentregels lopen.
+- `PaymentTransactions` kennen geen `Project`-veld.
+- Collectie-expand `PurchaseInvoices?$expand=Entity,DocumentLineList(…)` en `ManualJournals?$expand=DocumentLineList(…)` → 200 zónder regels (stil genegeerd — zelfde gedrag als STAP-0 13-09). Volledige dekking = één documentvorm-call per document = het werk van `vgg-replay` (token-bucket), niet van `rlz-lezen` (`--top` ≤ 50).
+

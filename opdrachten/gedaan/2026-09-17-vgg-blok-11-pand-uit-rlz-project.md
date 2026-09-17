@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (STAP-0 lees-only: 83 projecten, project op de inkoopregel, niet op bank/journaal; instrument Project-dekking in vgg-replay; pand.rlz_project_id + --bron project, migratie 0155; werkt in productie: samples ja, dekking/CLI niet gemeten), rapport: docs/rapporten/2026-09-17-vgg-blok-11-pand-uit-rlz-project.md
+
 # OPDRACHT 17-09 — VGG → Odoo, run 2 blok 11: pand = RLZ-PROJECT (Peter 17-09: "in RLZ staat alles als project geboekt") — STAP-0 dekking + pandenregister op het projectveld i.p.v. adres-clustering
 
 **Melding Peter 17-09:** in RLZ is bij Vastgoedgroep Nederland alles op project geboekt (project = pand). Het huidige pandenregister

@@ -54,3 +54,12 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
 2. **Bankrekening in memorialen = RGS-groep 10xx** (1001, 1011, 1012, 1000). Alternatief: de grootboekkoppeling van PaymentAccounts lezen.
 3. **Profiel-split ná de kenmerk-split**; een ongelijk profiel wint altijd.
 4. **Klikpunt "bankregel test"** blijft staan als Peters keuze (boeken of terugboeken) — de module doet niets met een € 1-test.
+
+## Opdracht 5 — VGG blok 11 pand = RLZ-project (`2026-09-17-vgg-blok-11-pand-uit-rlz-project.md`)
+
+1. **Default `--bron adres`** tot de replay-meting "Project-dekking" ≥ 90 % toont; dan default omzetten (vervolg-opdracht).
+2. **Per-pand-sluitcontrole op projectbasis** niet gebouwd: `JournalEntryLines` draagt geen Project (STAP-0) → alleen over de
+   documentregels mogelijk, ná de meting.
+3. **Pand-relevante groepen** in de meetlat = 7000 / 8xxx / 1405 / 46xx-70xx; 10xx bank/kas en overig (btw, resultaat) tellen niet.
+4. **Meerdere projecten op één document** → koppeling aan élk project mét zichtbare reden; nooit raden.
+5. **Bankmutaties** hebben geen project → altijd via de adres-terugval (notaris-ontvangsten blijven zo aan het pand hangen).
