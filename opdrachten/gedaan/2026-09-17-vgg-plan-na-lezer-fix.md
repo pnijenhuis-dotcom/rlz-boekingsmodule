@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-vgg-plan-na-lezer-fix.md
+
 # OPDRACHT 17-09 (avond) — VGG → Odoo: `plan` ná deploy van de lezer-fix (blok 12) — SCHRIJF c ALLEEN als het bewijspaar vertaalbaar is
 
 Domeinen: vgg-odoo-migratie
