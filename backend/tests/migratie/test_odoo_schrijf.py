@@ -1056,6 +1056,50 @@ class TestStap0:
         assert "IBAN op dagboek BNK1: NL00BANK0" in md and "DRY-RUN" in md
         assert all(s.oordeel == "niet uitgevoerd" for s in r.stappen.values())
 
+    def test_stap0_geeft_de_odoo_rekeningenlezer_aan_de_replay(self) -> None:
+        """Blok 12 (17-09): `vgg-odoo-stap0` riep de replay zonder lezer aan → 'grootboek zonder Odoo-rekening' op élke regel."""
+        gezien: list[Any] = []
+
+        class _ReplayMetLezer:
+            def dry_run(self, administratie_id: uuid.UUID, *, odoo_lezer: Any = None) -> Any:
+                gezien.append(odoo_lezer)
+                let_op = ["Odoo-rekeningen gelezen uit company 6 via de doelkoppeling: 361"]
+                return type("R", (), {"moves": _moves(), "let_op": let_op})()
+
+        c = FakeClient(lambda m, meth, b: [{"id": 53, "code": "BNK1", "bank_account_id": False}], read_only=True)
+        lezer = object()
+        r = voer_stap0_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=False,
+            stappen=range(0, 7),
+            max_per_type=1,
+            client_factory=lambda aid: c,
+            replay_module=_ReplayMetLezer(),
+            audit=GeheugenAudit(),
+            writes_aan=False,
+            odoo_lezer=lezer,
+        )
+        assert gezien == [lezer]
+        assert any("replay-mapping: Odoo-rekeningen gelezen uit company 6" in m for m in r.meldingen)
+        assert "replay-mapping" in r.als_markdown()
+
+    def test_stap0_cli_runner_geeft_de_standaardlezer_door(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.migratie.rekening_mapping import lees_doelgegevens
+
+        gezien: dict[str, Any] = {}
+        monkeypatch.setattr(cli_odoo, "zoek_administratie", lambda naam: (uuid.uuid4(), "VGG", "rlz"))
+
+        def fake(administratie_id, **kw):  # noqa: ANN001, ANN003
+            gezien.update(kw)
+            return cli_odoo.Stap0Rapport(administratie_naam="VGG", company_id=6, schrijf=False, stappen={})
+
+        monkeypatch.setattr(cli_odoo, "voer_stap0_uit", fake)
+        rc = cli_odoo._run_stap0(
+            argparse.Namespace(administratie="VGG", dry_run=True, stap="0-6", max_per_type=1, boekstuk=None, maand=None)
+        )
+        assert rc == 0 and gezien["odoo_lezer"] is lees_doelgegevens
+
     def test_dry_run_meldt_lege_iban_als_klikpunt(self) -> None:
         c = FakeClient(lambda m, meth, b: [{"id": 53, "code": "BNK1", "bank_account_id": False}], read_only=True)
         r = voer_stap0_uit(

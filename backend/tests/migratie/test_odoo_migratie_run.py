@@ -181,6 +181,51 @@ class TestRun:
         rapport, c = _draai(handler, posten=False)
         assert rapport.oordeel == "GROEN — niet gepost" and "account.move.action_post" not in c.methoden()
 
+    def test_replay_krijgt_de_odoo_rekeningenlezer_en_het_rapport_meldt_de_mapping(self) -> None:
+        """Blok 12 (17-09): zonder lezer vertaalt de replay met een lege rekeningmapping ('élke grootboekregel ongemapt') —
+        het bewijspaar was daardoor per definitie niet vertaalbaar en de pand-eis 94× 'niet meetbaar'."""
+        gezien: list[Any] = []
+
+        class _ReplayMetLezer:
+            def dry_run(self, administratie_id: uuid.UUID, *, odoo_lezer: Any = None) -> Any:
+                gezien.append(odoo_lezer)
+                let_op = ["Odoo-rekeningen gelezen uit company 6 via de doelkoppeling: 361"]
+                return type("R", (), {"moves": _moves(), "let_op": let_op})()
+
+        lezer = object()
+        rapport = run.voer_migratie_uit(
+            uuid.uuid4(),
+            administratie_naam="VGG",
+            schrijf=False,
+            client_factory=lambda aid: FakeClient(lambda *a: []),
+            replay_module=_ReplayMetLezer(),
+            audit=GeheugenAudit(),
+            writes_aan=False,
+            odoo_lezer=lezer,
+        )
+        assert gezien == [lezer]
+        assert any("replay-mapping: Odoo-rekeningen gelezen uit company 6" in m for m in rapport.meldingen)
+
+    def test_replay_zonder_lezer_meldt_dat_zichtbaar(self) -> None:
+        rapport, _ = _draai(lambda *a: [], schrijf=False)
+        assert any("replay zonder Odoo-rekeningen" in m and "ongemapt" in m for m in rapport.meldingen)
+
+    def test_cli_runner_geeft_de_standaardlezer_door(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.migratie import cli_cmd, odoo_doel
+        from app.migratie.rekening_mapping import lees_doelgegevens
+
+        gezien: dict[str, Any] = {}
+        monkeypatch.setattr(cli_cmd, "zoek_administratie", lambda naam: (uuid.uuid4(), "VGG", "rlz"))
+        monkeypatch.setattr(odoo_doel, "doelclient_voor", lambda aid, read_only=True: None)
+
+        def fake(administratie_id, **kw):  # noqa: ANN001, ANN003
+            gezien.update(kw)
+            return run.MigratieRapport(administratie_naam="VGG", company_id=6, schrijf=False, fasen={})
+
+        monkeypatch.setattr(run, "voer_migratie_uit", fake)
+        assert run.run_odoo_migratie_run(argparse.Namespace(administratie="VGG", dry_run=True, geen_posten=False)) == 0
+        assert gezien["odoo_lezer"] is lees_doelgegevens
+
     def test_kill_switch_uit_valt_terug_op_dry_run(self) -> None:
         odoo, handler = _odoo_met_regels()
         c = FakeClient(handler)

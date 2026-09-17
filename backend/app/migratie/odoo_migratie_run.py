@@ -35,6 +35,35 @@ from typing import Any
 from app.migratie.odoo_doel import CompanyGepindeClient, CompanyPinGeschonden, GeenMigratieDoel
 from app.odoo.client import OdooFout
 
+#: Blok 12 (17-09, plan-run ná deploy): beide schrijf-CLI's riepen `replay.dry_run(administratie_id)` aan ZONDER
+#: Odoo-rekeningenlezer → "geen Odoo-rekeningen meegegeven — élke grootboekregel is ongemapt": het bewijspaar was per
+#: definitie niet vertaalbaar en de per-pand-controle stond op "niet meetbaar — doelkoppeling ontbreekt" (94×), zodat de
+#: pand-eis van SCHRIJF d nooit groen kón worden. De replay leest de rekeningen zelf via de doelkoppeling zodra hij een
+#: lezer krijgt (`rekening_mapping.lees_doelgegevens`, lees-only) — precies zoals `vgg-replay` (cli_replay) dat sinds blok 8 doet.
+ODOO_REKENINGEN_MELDING_WOORD = "Odoo-rekeningen"
+
+
+def replay_met_doelrekeningen(replay_module: Any, administratie_id: uuid.UUID, odoo_lezer: Any | None) -> tuple[Any, list[str]]:
+    """`replay.dry_run` mét de Odoo-rekeningenlezer (als die er is) + de replay-meldingen over de rekeningmapping, zodat het
+    schrijfrapport bewijst waarmee vertaald is. Zonder lezer (tests met een kale fake) blijft de oude aanroep."""
+    if odoo_lezer is not None:
+        rapport = replay_module.dry_run(administratie_id, odoo_lezer=odoo_lezer)
+    else:
+        rapport = replay_module.dry_run(administratie_id)
+    let_op = [str(m) for m in (getattr(rapport, "let_op", None) or []) if ODOO_REKENINGEN_MELDING_WOORD in str(m)]
+    if not let_op:
+        let_op = [
+            "replay zonder Odoo-rekeningen (geen lezer meegegeven) — élke grootboekregel is ongemapt; per-pand-controle "
+            "niet meetbaar"
+        ]
+    return rapport, [f"replay-mapping: {m}" for m in let_op]
+
+
+def standaard_odoo_lezer() -> Any:
+    from app.migratie.rekening_mapping import lees_doelgegevens  # noqa: PLC0415
+
+    return lees_doelgegevens
+
 MIGRATIE_COMMANDO = "vgg-odoo-migratie"
 POST_BATCH = 50
 CENT = Decimal("0.01")
@@ -172,6 +201,7 @@ def voer_migratie_uit(
     audit: Any,
     writes_aan: bool,
     posten: bool = True,
+    odoo_lezer: Any | None = None,
 ) -> MigratieRapport:
     from app.migratie import odoo_schrijf  # noqa: PLC0415
 
@@ -194,7 +224,8 @@ def voer_migratie_uit(
         rapport.meldingen.append(f"geen migratiedoel: {exc}")
         return rapport
     rapport.company_id = client.pin
-    replay_rapport = replay_module.dry_run(administratie_id)
+    replay_rapport, mapping_meldingen = replay_met_doelrekeningen(replay_module, administratie_id, odoo_lezer)
+    rapport.meldingen.extend(mapping_meldingen)
     moves = list(getattr(replay_rapport, "moves", []))
     per_pand = list(getattr(replay_rapport, "per_pand", []) or [])
     blokkering = getattr(replay_rapport, "blokkering", None)
@@ -428,6 +459,7 @@ def run_odoo_migratie_run(args: argparse.Namespace) -> int:
         audit=DbAudit(administratie_id) if schrijf else GeheugenAudit(),
         writes_aan=bool(settings.migratie_odoo_writes_ingeschakeld),
         posten=not args.geen_posten,
+        odoo_lezer=standaard_odoo_lezer(),
     )
     print_gedoseerd(rapport.als_markdown())
     if rapport.company_id is None:

@@ -28,7 +28,6 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.migratie.cli_cmd import zoek_administratie
-from app.migratie.odoo_migratie_run import MIGRATIE_COMMANDO, register_odoo_migratie_run, run_odoo_migratie_run
 from app.migratie.odoo_doel import (
     PROBE_SLEUTEL_BANKDAGBOEK,
     PROBE_SLEUTEL_OUTSTANDING,
@@ -36,6 +35,13 @@ from app.migratie.odoo_doel import (
     CompanyPinGeschonden,
     GeenMigratieDoel,
     _lees_migratie_doel_vlag,
+)
+from app.migratie.odoo_migratie_run import (
+    MIGRATIE_COMMANDO,
+    register_odoo_migratie_run,
+    replay_met_doelrekeningen,
+    run_odoo_migratie_run,
+    standaard_odoo_lezer,
 )
 from app.migratie.uitvoer import print_gedoseerd
 from app.odoo.client import OdooClient, OdooFout
@@ -583,6 +589,7 @@ def voer_stap0_uit(
     writes_aan: bool,
     boekstuk: str | None = None,
     jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND,
+    odoo_lezer: Any | None = None,
 ) -> Stap0Rapport:
     """De bewijscyclus (blok 7 run 2, besluiten Peter 12-09 punt 2 + 3). `schrijf=False` = print wat er zou gebeuren.
     Elke stap meldt 'werkt op company 6: ja/nee/niet uitgevoerd'. Volgorde en poorten:
@@ -621,7 +628,8 @@ def voer_stap0_uit(
     rapport.company_id = client.pin
 
     try:
-        replay_rapport = replay_module.dry_run(administratie_id)
+        replay_rapport, mapping_meldingen = replay_met_doelrekeningen(replay_module, administratie_id, odoo_lezer)
+        rapport.meldingen.extend(mapping_meldingen)
         moves = list(getattr(replay_rapport, "moves", []))
     except (AttributeError, TypeError) as exc:
         rapport.replay_beschikbaar = False
@@ -1055,6 +1063,7 @@ def _run_stap0(args: argparse.Namespace) -> int:
         writes_aan=bool(settings.migratie_odoo_writes_ingeschakeld),
         boekstuk=getattr(args, "boekstuk", None) or None,
         jaar_maand=jaar_maand,
+        odoo_lezer=standaard_odoo_lezer(),
     )
     print_gedoseerd(rapport.als_markdown())  # blok 8 nazorg 15-09: stap0-rapport groeit mee met --max-per-type
     if not rapport.replay_beschikbaar or rapport.company_id is None:
