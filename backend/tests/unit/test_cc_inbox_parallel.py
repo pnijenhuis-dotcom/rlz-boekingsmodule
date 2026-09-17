@@ -252,8 +252,24 @@ def test_rlz_inbox_status_en_stop(werkplaats: dict[str, Path]) -> None:
 
 def test_scripts_documenteren_de_guard() -> None:
     code = SCRIPT.read_text(encoding="utf-8")
-    for verwacht in ("wacht — handmatige CC (rlz cc) actief", ".git/index.lock", "werkboom niet schoon bij start", "printf '%s\\ninbox\\n%s\\n'"):
+    # 17-09 (rij h): de wachtregel is samengesteld — "wacht — $omschr" mét omschrijving "handmatige CC (rlz cc) actief (pid …"
+    for verwacht in ("wacht — $omschr", "handmatige CC (rlz cc) actief (pid $pid, sinds", ".git/index.lock", "werkboom niet schoon bij start", "printf '%s\\ninbox\\n%s\\n'"):
         assert verwacht in code, verwacht
     zsh = RLZ_ZSH.read_text(encoding="utf-8")
     for verwacht in ("inbox-run actief sinds", "rlz inbox stop", "handmatig", "RLZ_REPO"):
         assert verwacht in zsh, verwacht
+
+
+def test_rlz_inbox_vrijgeven_schrijft_de_pid_en_status_toont_de_vrijgave(werkplaats: dict[str, Path], vreemd_proces) -> None:
+    """(h3) 17-09: `rlz inbox vrijgeven <pid>` = bewuste keuze van Peter; `rlz inbox status` toont 'm; een dode pid wordt geweigerd."""
+    repo = werkplaats["repo"]
+    uit = _rlz(werkplaats, "inbox", "vrijgeven", str(vreemd_proces.pid))
+    assert uit.returncode == 0, uit.stderr
+    assert f"pid {vreemd_proces.pid} vrijgegeven" in uit.stdout and "twee schrijvers in één werkboom" in uit.stdout
+    vrijgave = (repo / "opdrachten" / ".vrijgave").read_text(encoding="utf-8").splitlines()
+    assert vrijgave[0] == str(vreemd_proces.pid)
+    status = _rlz(werkplaats, "inbox", "status")
+    assert f"vrijgave: handmatige CC pid {vreemd_proces.pid} houdt de inbox niet tegen" in status.stdout
+    dood = _rlz(werkplaats, "inbox", "vrijgeven", "999999")
+    assert dood.returncode == 1 and "leeft niet" in dood.stderr
+    assert "rlz inbox vrijgeven" in RLZ_ZSH.read_text(encoding="utf-8")

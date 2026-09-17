@@ -70,6 +70,20 @@
 #   Omgekeerd (mens start terwijl de inbox draait): `rlz cc` weigert bij een levende `inbox`-lock mét "inbox-run actief sinds …,
 #   wacht of `rlz inbox stop`"; `rlz inbox stop` stuurt TERM naar de inbox-run (trap → GESTOPT-regel, opdracht terug via (e)).
 #   Guard: backend/tests/unit/test_cc_inbox_parallel.py.
+# Wachten is nooit stil (rij (h), 17-09; incident 17-09: van 08:19 tot ná 15:20 startte geen enkele van zes klaarliggende
+# opdrachten — élke tick logde "wacht — handmatige CC actief (pid 82714, …)": een interactieve `claude` in de repo-root, gestart
+# 08:19:00 (tijdens de laatste inbox-run, dus niet via `rlz cc`), bleef zeven uur open terwijl Peter op de inbox wachtte. De
+# regel (f) werkte precies zoals ontworpen; het gat was dat niemand het zag). Sinds 17-09:
+#   (h1) de wachtregel draagt de duur en het werk: "… sinds HH:MM:SS (N min), M opdracht(en) klaar in inbox/";
+#   (h2) ná CC_INBOX_WACHT_MELDING_S (default 1800 s) aaneengesloten wachten op dezelfde pid één macOS-melding "CC-inbox wacht
+#        al N min op handmatige CC (pid …) — M opdrachten klaar; sluit die sessie of `rlz inbox vrijgeven`", daarna hoogstens
+#        elke CC_INBOX_WACHT_HERHAAL_S (default 3600 s) opnieuw; stand in opdrachten/log/.wacht-<pid> (eerste tick, laatste
+#        melding), opgeruimd zodra er niet meer gewacht wordt;
+#   (h3) bewuste vrijgave: `rlz inbox vrijgeven [pid]` schrijft opdrachten/.vrijgave mét de pid van de handmatige sessie —
+#        die pid houdt de inbox dan niet meer tegen (logregel "vrijgegeven door Peter … — twee schrijvers in één werkboom,
+#        risico bewust aanvaard"); het bestand vervalt zodra die pid niet meer leeft. Nooit automatisch: de 16-09-guard
+#        blijft de default, alleen een mens kiest voor parallel.
+#   Guard: backend/tests/unit/test_cc_inbox_herstel.py (h1–h3) + test_cc_inbox_parallel.py (`rlz inbox vrijgeven`).
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -99,20 +113,53 @@ melding() {  # melding <titel> <tekst> — resultaat altijd in het log (d)
   fi
 }
 
+# ---- wachten op een handmatige CC is nooit stil (h1–h3) ---------------------------------------------------------------
+VRIJGAVE="$REPO/opdrachten/.vrijgave"
+WACHT_MELDING_S="${CC_INBOX_WACHT_MELDING_S:-1800}"
+WACHT_HERHAAL_S="${CC_INBOX_WACHT_HERHAAL_S:-3600}"
+klaar_in_inbox() { find "$INBOX" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' '; }
+vrijgegeven() {  # vrijgegeven <pid> → rc 0 als Peter déze pid bewust vrijgaf (rlz inbox vrijgeven); dood = bestand weg
+  [[ -f "$VRIJGAVE" ]] || return 1
+  local vpid; vpid="$(sed -n 1p "$VRIJGAVE" 2>/dev/null || true)"
+  if [[ -z "$vpid" ]] || ! kill -0 "$vpid" 2>/dev/null; then rm -f "$VRIJGAVE"; return 1; fi
+  [[ "$vpid" == "$1" ]]
+}
+wacht_op_handmatig() {  # wacht_op_handmatig <pid> <omschrijving> — logregel mét duur + werk, melding ná de drempel, exit 0
+  local pid="$1" omschr="$2" nu stand eerste laatste_melding duur_s duur_min klaar
+  nu=$(date +%s); stand="$LOGMAP/.wacht-$pid"
+  eerste="$(sed -n 1p "$stand" 2>/dev/null || true)"; laatste_melding="$(sed -n 2p "$stand" 2>/dev/null || true)"
+  [[ "$eerste" =~ ^[0-9]+$ ]] || { eerste=$nu; laatste_melding=0; }
+  [[ "$laatste_melding" =~ ^[0-9]+$ ]] || laatste_melding=0
+  duur_s=$(( nu - eerste )); duur_min=$(( duur_s / 60 )); klaar="$(klaar_in_inbox)"
+  log ">> cc_inbox: wacht — $omschr — geen herstel, geen pull, geen start; sinds $(date -r "$eerste" +%T 2>/dev/null || echo '?') ($duur_min min), $klaar opdracht(en) klaar in inbox/; volgende tick opnieuw ($(date +%FT%T))"
+  if (( duur_s >= WACHT_MELDING_S )) && (( nu - laatste_melding >= WACHT_HERHAAL_S )); then
+    melding "CC-inbox wacht al $duur_min min op handmatige CC (pid $pid)" "$klaar opdracht(en) klaar in inbox/ — sluit die sessie af of \`rlz inbox vrijgeven\` als ze parallel mag"
+    laatste_melding=$nu
+  fi
+  printf '%s\n%s\n' "$eerste" "$laatste_melding" > "$stand"
+  exit 0
+}
+ruim_wachtstand_op() { rm -f "$LOGMAP"/.wacht-* 2>/dev/null || true; }
+
 # ---- lock --------------------------------------------------------------------------------------------------------
 if [[ -f "$LOCK" ]]; then
   pid="$(sed -n 1p "$LOCK" 2>/dev/null || true)"
   soort="$(sed -n 2p "$LOCK" 2>/dev/null || true)"; soort="${soort:-inbox}"
   sinds="$(sed -n 3p "$LOCK" 2>/dev/null || true)"
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    if [[ "$soort" == "handmatig" ]]; then  # (g1) rlz cc-wrapper actief → altijd zichtbaar wachten
-      log ">> cc_inbox: wacht — handmatige CC (rlz cc) actief (pid $pid, sinds ${sinds:-?}) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
-      exit 0
+    if [[ "$soort" == "handmatig" ]]; then  # (g1) rlz cc-wrapper actief → altijd zichtbaar wachten (h1–h3)
+      if vrijgegeven "$pid"; then
+        log ">> cc_inbox: handmatige CC (rlz cc, pid $pid) vrijgegeven door Peter (rlz inbox vrijgeven) — inbox start naast die sessie; twee schrijvers in één werkboom, risico bewust aanvaard ($(date +%FT%T))"
+      else
+        wacht_op_handmatig "$pid" "handmatige CC (rlz cc) actief (pid $pid, sinds ${sinds:-?})"
+      fi
+    else
+      exit 0  # er loopt al een inbox-run — stil niets doen (launchd probeert over ≤ 5 min opnieuw)
     fi
-    exit 0  # er loopt al een inbox-run — stil niets doen (launchd probeert over ≤ 5 min opnieuw)
+  else
+    log ">> cc_inbox: verweesde lock (pid ${pid:-?}, soort $soort, leeft niet) opgeruimd"
+    rm -f "$LOCK"
   fi
-  log ">> cc_inbox: verweesde lock (pid ${pid:-?}, soort $soort, leeft niet) opgeruimd"
-  rm -f "$LOCK"
 fi
 
 # ---- handmatige CC actief in deze werkboom → wachten (zie kop) ---------------------------------------------------------
@@ -138,9 +185,13 @@ handmatige_cc() {  # → "pid<TAB>cwd-of-reden" van het eerste claude-proces in 
   return 1
 }
 if actief="$(handmatige_cc)"; then
-  log ">> cc_inbox: wacht — handmatige CC actief (pid ${actief%%$'\t'*}, ${actief#*$'\t'}) — geen herstel, geen pull, geen start; volgende tick opnieuw ($(date +%FT%T))"
-  exit 0
+  if vrijgegeven "${actief%%$'\t'*}"; then
+    log ">> cc_inbox: handmatige CC (pid ${actief%%$'\t'*}, ${actief#*$'\t'}) vrijgegeven door Peter (rlz inbox vrijgeven) — inbox start naast die sessie; twee schrijvers in één werkboom, risico bewust aanvaard ($(date +%FT%T))"
+  else
+    wacht_op_handmatig "${actief%%$'\t'*}" "handmatige CC actief (pid ${actief%%$'\t'*}, ${actief#*$'\t'})"
+  fi
 fi
+ruim_wachtstand_op  # niet (meer) aan het wachten → stand weg, zodat een volgende wachtperiode opnieuw telt
 
 # ---- (g2) git bezig in deze werkboom (.git/index.lock) → wachten; verweesd (te oud) = melden en negeren ---------------
 GIT_INDEX_LOCK="$REPO/.git/index.lock"
@@ -259,9 +310,33 @@ for tool in claude git; do
   command -v "$tool" >/dev/null || { AFGEROND=1; log "FOUT: $tool niet gevonden op PATH=$PATH"; melding "CC MISLUKT: $SLUG" "$tool niet gevonden op PATH"; exit 1; }
 done
 
+# Regels per domein met LEESPLICHT (Peter 17-09, BESLISSINGEN "CLAUDE.md — REGELS PER DOMEIN MET LEESPLICHT"): een opdracht
+# draagt de kopregel "Domeinen: a, b" (Cowork schrijft die) → de startprompt eist eerst het volledig lezen van
+# docs/regels/a.md, docs/regels/b.md; ontbreekt de kopregel (of noemt hij een onbekend domein) → CC leidt de domeinen af uit
+# de geraakte paden via docs/regels/INDEX.md en noemt dat expliciet. Het eindrapport MOET een sectie "## Gelezen regels" dragen
+# (bestandsnamen + regelaantallen; guard backend/tests/unit/test_rapporten_gelezen_regels.py).
+domeinen_uit_opdracht() {  # → lijst regelsbestanden (bestaand) uit de kopregel "Domeinen: a, b"; leeg = geen/onbekend
+  local regel dom uit=()
+  regel="$(grep -m1 -E '^Domeinen:' "$LOPEND_BESTAND" 2>/dev/null | sed -E 's/^Domeinen:[[:space:]]*//')"
+  [[ -n "$regel" ]] || return 0
+  for dom in $(printf '%s' "$regel" | tr ',' ' '); do
+    dom="${dom//\`/}"; dom="${dom%.md}"; dom="${dom#docs/regels/}"
+    [[ -f "$REPO/docs/regels/$dom.md" ]] && uit+=("docs/regels/$dom.md")
+  done
+  printf '%s\n' ${uit[@]+"${uit[@]}"}
+}
+LEESPLICHT="$(domeinen_uit_opdracht | tr '\n' ' ' | sed 's/ $//')"
+if [[ -n "$LEESPLICHT" ]]; then
+  LEESPLICHT_TEKST="LEESPLICHT (Domeinen-kopregel): lees EERST volledig, vóór je iets anders doet: ${LEESPLICHT// /, } — niet gelezen = niet beginnen."
+  log ">> cc_inbox: leesplicht uit de kopregel Domeinen: ${LEESPLICHT// /, }"
+else
+  LEESPLICHT_TEKST="LEESPLICHT (geen of onbekende Domeinen-kopregel): leid de domeinen af uit de paden die je gaat raken via docs/regels/INDEX.md, lees die docs/regels/<domein>.md volledig VÓÓR je begint en noem in het rapport expliciet dat je ze zo hebt afgeleid."
+  log ">> cc_inbox: geen (geldige) Domeinen-kopregel in de opdracht — CC leidt de domeinen af via docs/regels/INDEX.md"
+fi
 PROMPT="$(cat "$LOPEND_BESTAND")
 ---
-Werkloop automatisch (CLAUDE.md § Werkwijze \"Werkloop automatisch (14-09)\"): deze opdracht komt uit opdrachten/inbox/ en staat nu als opdrachten/lopend/$(basename "$OPDRACHT"). Sluit af met (1) het eindrapport als docs/rapporten/<jjjj-mm-dd>-<blok-slug>.md + regel bovenaan in docs/rapporten/INDEX.md (incl. \"werkt in productie: ja/nee/niet gemeten\"), (2) dit opdrachtbestand naar opdrachten/gedaan/ mét bovenin de kopregel \"uitgevoerd <datum>, rapport: docs/rapporten/<bestand>\", (3) committen zoals gebruikelijk (nooit pushen — de Stop-hook doet dat). Peter kijkt niet mee: vragen stellen kan niet, kies zelf en leg keuzes vast in het rapport."
+$LEESPLICHT_TEKST
+Werkloop automatisch (CLAUDE.md § Werkwijze \"Werkloop automatisch (14-09)\"): deze opdracht komt uit opdrachten/inbox/ en staat nu als opdrachten/lopend/$(basename "$OPDRACHT"). Sluit af met (1) het eindrapport als docs/rapporten/<jjjj-mm-dd>-<blok-slug>.md + regel bovenaan in docs/rapporten/INDEX.md (incl. \"werkt in productie: ja/nee/niet gemeten\" én een sectie \"## Gelezen regels\" mét élk gelezen docs/regels/<domein>.md en zijn regelaantal — verplicht, guard test_rapporten_gelezen_regels.py), (2) dit opdrachtbestand naar opdrachten/gedaan/ mét bovenin de kopregel \"uitgevoerd <datum>, rapport: docs/rapporten/<bestand>\", (3) committen zoals gebruikelijk (nooit pushen — de Stop-hook doet dat). Peter kijkt niet mee: vragen stellen kan niet, kies zelf en leg keuzes vast in het rapport."
 
 RAPPORTEN_VOOR="$(ls -1 "$REPO/docs/rapporten"/*.md 2>/dev/null | sort || true)"
 cd "$REPO"

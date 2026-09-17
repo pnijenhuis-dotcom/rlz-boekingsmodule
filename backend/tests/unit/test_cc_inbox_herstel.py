@@ -380,3 +380,112 @@ def test_seam_procesnaam_andere_naam_ziet_de_nep_claude_niet(werkplaats: dict[st
     assert uit.returncode == 0, uit.stderr
     assert "wacht — handmatige CC actief" not in uit.stderr
     assert (repo / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file()
+
+
+# ---- rij (h) 17-09: wachten op een handmatige CC is nooit stil ---------------------------------------------------------
+
+
+def test_wachtregel_draagt_duur_en_aantal_klare_opdrachten_en_meldt_na_de_drempel(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    """Incident 17-09 (08:19 → 15:20: zes opdrachten klaar, elke tick "wacht — handmatige CC actief (pid 82714, …)", niemand
+    zag het): (h1) de regel noemt sinds/duur en het aantal klare opdrachten, (h2) ná CC_INBOX_WACHT_MELDING_S één macOS-
+    melding mét de handeling, herhaald op z'n vroegst ná CC_INBOX_WACHT_HERHAAL_S; de stand staat in log/.wacht-<pid>."""
+    repo = werkplaats["repo"]
+    _opdracht(werkplaats)
+    _opdracht(werkplaats, "2026-09-14-twee")
+    proc = _nep_claude(tmp_path, repo)
+    try:
+        # drempel 0 s → de eerste tick meldt al; herhaal 3600 s → de tweede tick meldt niet opnieuw
+        uit = _draai(werkplaats, CC_INBOX_WACHT_MELDING_S="0", CC_INBOX_WACHT_HERHAAL_S="3600")
+        assert uit.returncode == 0, uit.stderr
+        assert f"wacht — handmatige CC actief (pid {proc.pid}, {repo.resolve()})" in uit.stderr
+        assert "2 opdracht(en) klaar in inbox/" in uit.stderr and "sinds " in uit.stderr and "(0 min)" in uit.stderr
+        stand = repo / "opdrachten" / "log" / f".wacht-{proc.pid}"
+        assert stand.is_file() and len(stand.read_text().split()) == 2
+        meldingen = _meldingen(werkplaats)
+        assert f"CC-inbox wacht al 0 min op handmatige CC (pid {proc.pid})" in meldingen
+        assert "2 opdracht(en) klaar in inbox/" in meldingen and "rlz inbox vrijgeven" in meldingen
+        uit2 = _draai(werkplaats, CC_INBOX_WACHT_MELDING_S="0", CC_INBOX_WACHT_HERHAAL_S="3600")
+        assert uit2.returncode == 0 and "wacht — handmatige CC actief" in uit2.stderr
+        assert _meldingen(werkplaats).count("CC-inbox wacht al") == 1, "herhaalmelding vóór de herhaaldrempel"
+        # standaarddrempel (1800 s) → géén melding bij een korte wacht, wél de regel
+        (repo / "opdrachten" / "log" / f".wacht-{proc.pid}").unlink()
+        werkplaats["meldingen"].unlink()
+        uit3 = _draai(werkplaats)
+        assert "wacht — handmatige CC actief" in uit3.stderr and _meldingen(werkplaats) == ""
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+    # weg → de tick pakt op én ruimt de wachtstand op
+    uit4 = _draai(werkplaats)
+    assert uit4.returncode == 0 and "wacht — handmatige CC" not in uit4.stderr
+    assert not list((repo / "opdrachten" / "log").glob(".wacht-*"))
+
+
+def test_vrijgave_door_peter_laat_de_inbox_naast_de_handmatige_sessie_starten(werkplaats: dict[str, Path], tmp_path: Path) -> None:
+    """(h3) opdrachten/.vrijgave mét de pid = bewuste keuze van Peter (`rlz inbox vrijgeven`): die pid blokkeert niet meer,
+    de logregel zegt dat het risico aanvaard is; een andere pid blokkeert nog wél; een dode pid = bestand weg."""
+    repo = werkplaats["repo"]
+    _opdracht(werkplaats)
+    proc = _nep_claude(tmp_path, repo)
+    try:
+        (repo / "opdrachten" / ".vrijgave").write_text(f"{proc.pid + 100000}\n2026-09-17T15:00:00\n", encoding="utf-8")
+        uit = _draai(werkplaats)
+        assert "wacht — handmatige CC actief" in uit.stderr, "een andere (dode) pid geeft geen vrijgave"
+        assert not (repo / "opdrachten" / ".vrijgave").exists(), "vrijgave van een dode pid wordt opgeruimd"
+        (repo / "opdrachten" / ".vrijgave").write_text(f"{proc.pid}\n2026-09-17T15:00:00\n", encoding="utf-8")
+        uit2 = _draai(werkplaats)
+        assert uit2.returncode == 0, uit2.stderr
+        assert f"handmatige CC (pid {proc.pid}, {repo.resolve()}) vrijgegeven door Peter (rlz inbox vrijgeven)" in uit2.stderr
+        assert "risico bewust aanvaard" in uit2.stderr
+        assert (repo / "opdrachten" / "gedaan" / "2026-09-14-test.md").is_file()
+        assert (repo / "opdrachten" / ".vrijgave").is_file(), "de vrijgave blijft zolang de sessie leeft"
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def test_script_documenteert_rij_h() -> None:
+    tekst = SCRIPT.read_text(encoding="utf-8")
+    for fragment in ("(h1)", "(h2)", "(h3)", "CC_INBOX_WACHT_MELDING_S", "CC_INBOX_WACHT_HERHAAL_S", "rlz inbox vrijgeven", "opdrachten/.vrijgave", "pid 82714"):
+        assert fragment in tekst, fragment
+
+
+# ---- regels per domein met LEESPLICHT (Peter 17-09) -------------------------------------------------------------------------
+
+PROMPT_STUB = r"""#!/bin/bash
+printf '%s\n' "$@" > "$PROMPT_CAPTURE"
+echo "stub-klaar"; exit 0
+"""
+
+
+def _met_prompt_stub(w: dict[str, Path]) -> Path:
+    (w["stubs"] / "claude").write_text(PROMPT_STUB, encoding="utf-8")
+    (w["stubs"] / "claude").chmod(0o755)
+    (w["repo"] / "docs" / "regels").mkdir(parents=True, exist_ok=True)
+    (w["repo"] / "docs" / "regels" / "bank.md").write_text("# Regels — Bank\n", encoding="utf-8")
+    (w["repo"] / "docs" / "regels" / "omzet.md").write_text("# Regels — Omzet\n", encoding="utf-8")
+    (w["repo"] / "docs" / "regels" / "INDEX.md").write_text("# index\n", encoding="utf-8")
+    return w["repo"].parent / "prompt_capture.txt"
+
+
+def test_domeinen_kopregel_geeft_leesplicht_in_de_startprompt(werkplaats: dict[str, Path]) -> None:
+    capture = _met_prompt_stub(werkplaats)
+    p = _opdracht(werkplaats)
+    p.write_text("# OPDRACHT — test\nDomeinen: bank, `omzet`, onbekend-domein\n\ninhoud\n", encoding="utf-8")
+    uit = _draai(werkplaats, PROMPT_CAPTURE=str(capture))
+    assert uit.returncode == 0, uit.stderr
+    prompt = capture.read_text(encoding="utf-8")
+    assert "LEESPLICHT (Domeinen-kopregel): lees EERST volledig" in prompt
+    assert "docs/regels/bank.md, docs/regels/omzet.md" in prompt and "onbekend-domein" not in prompt.split("LEESPLICHT", 1)[1].split("\n", 1)[0]
+    assert '## Gelezen regels' in prompt and "test_rapporten_gelezen_regels.py" in prompt
+    assert "leesplicht uit de kopregel Domeinen: docs/regels/bank.md, docs/regels/omzet.md" in uit.stderr
+
+
+def test_zonder_domeinen_kopregel_leidt_cc_de_domeinen_af_via_de_index(werkplaats: dict[str, Path]) -> None:
+    capture = _met_prompt_stub(werkplaats)
+    _opdracht(werkplaats)
+    uit = _draai(werkplaats, PROMPT_CAPTURE=str(capture))
+    assert uit.returncode == 0, uit.stderr
+    prompt = capture.read_text(encoding="utf-8")
+    assert "LEESPLICHT (geen of onbekende Domeinen-kopregel): leid de domeinen af" in prompt and "docs/regels/INDEX.md" in prompt
+    assert "geen (geldige) Domeinen-kopregel" in uit.stderr

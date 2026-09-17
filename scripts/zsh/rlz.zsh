@@ -5,6 +5,9 @@
 #   rlz status   → git status + de laatste 5 rapporten uit docs/rapporten/INDEX.md + de stand van de inbox-lock
 #   rlz inbox    → scripts/cc_inbox.sh nu draaien (zonder op launchd te wachten)
 #   rlz inbox status | stop → lock tonen / de lopende inbox-run netjes stoppen (TERM → GESTOPT-regel, opdracht terug via (e))
+#   rlz inbox vrijgeven [pid] → (17-09, rij (h3)) déze handmatige claude-sessie houdt de inbox niet meer tegen: schrijft
+#                             opdrachten/.vrijgave mét de pid (default: de claude met cwd in deze repo); bewust parallel = risico
+#                             van twee schrijvers in één werkboom aanvaard — alleen als de sessie stil staat of eigen paden raakt
 #   rlz cc [claude-args…]   → HANDMATIGE Claude Code in deze repo mét inbox-lock (guard 16-09 nacht, "nooit twee schrijvers"):
 #                             weigert als er een inbox-run loopt ("inbox-run actief sinds …, wacht of `rlz inbox stop`"), zet anders
 #                             opdrachten/.lock = pid / handmatig / starttijd zodat launchd-ticks zichtbaar wachten (ook als de cwd
@@ -23,12 +26,13 @@ rlz() {
     inbox)
       case "${2:-}" in
         "")     "$repo/scripts/cc_inbox.sh" ;;
-        status) _rlz_lock_stand "$lock" ;;
+        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo" ;;
         stop)   _rlz_inbox_stop "$lock" ;;
-        *)      echo "gebruik: rlz inbox [status|stop]" >&2; return 2 ;;
+        vrijgeven) _rlz_inbox_vrijgeven "$repo" "${3:-}" ;;
+        *)      echo "gebruik: rlz inbox [status|stop|vrijgeven [pid]]" >&2; return 2 ;;
       esac ;;
     cc)     shift; _rlz_cc "$repo" "$lock" "$@" ;;
-    *)      echo "gebruik: rlz [plan|meting [alles|a|b|c|d|e|reconciliatie]|status|inbox [status|stop]|cc [claude-args…]]" >&2; return 2 ;;
+    *)      echo "gebruik: rlz [plan|meting [alles|a|b|c|d|e|reconciliatie]|status|inbox [status|stop|vrijgeven [pid]]|cc [claude-args…]]" >&2; return 2 ;;
   esac
 }
 
@@ -93,4 +97,28 @@ _rlz_cc() {
     if [[ "$(sed -n 1p "$lock" 2>/dev/null)" == "$$" ]]; then rm -f "$lock"; echo ">> rlz cc: inbox-lock opgeruimd" >&2; fi
   }
   return $rc
+}
+
+# rij (h3) 17-09: bewuste vrijgave van een handmatige claude-sessie — de inbox-tick behandelt die pid niet meer als blokkade.
+_rlz_vrijgave_stand() {
+  local v="$1/opdrachten/.vrijgave" vpid
+  [[ -f "$v" ]] || return 0
+  vpid="$(sed -n 1p "$v" 2>/dev/null)"
+  if _rlz_leeft "$vpid"; then echo "vrijgave: handmatige CC pid $vpid houdt de inbox niet tegen (rlz inbox vrijgeven, $(sed -n 2p "$v" 2>/dev/null))"
+  else echo "vrijgave: verlopen (pid ${vpid:-?} leeft niet) — de volgende tick ruimt 'm op"; fi
+}
+_rlz_inbox_vrijgeven() {
+  local repo="$1" pid="${2:-}" naam="${CC_INBOX_CLAUDE_NAAM:-claude}" kandidaat cwd echt
+  echt="$(cd "$repo" && pwd -P)"
+  if [[ -z "$pid" ]]; then
+    for kandidaat in $(pgrep -x "$naam" 2>/dev/null); do
+      cwd="$(/usr/sbin/lsof -w -a -p "$kandidaat" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+      if [[ "$cwd" == "$echt" || "$cwd" == "$echt/"* ]]; then pid="$kandidaat"; break; fi
+    done
+  fi
+  [[ -n "$pid" ]] || { echo "geen handmatige claude in deze repo gevonden — geef de pid mee: rlz inbox vrijgeven <pid>" >&2; return 1; }
+  _rlz_leeft "$pid" || { echo "pid $pid leeft niet — niets vrij te geven" >&2; return 1; }
+  mkdir -p "$repo/opdrachten"
+  printf '%s\n%s\n' "$pid" "$(date +%FT%T)" > "$repo/opdrachten/.vrijgave"
+  echo ">> rlz inbox vrijgeven: pid $pid vrijgegeven — de eerstvolgende tick (≤ 5 min) start de oudste inbox-opdracht náást deze sessie; twee schrijvers in één werkboom = alleen eigen paden stagen, geen rebase/stash"
 }
