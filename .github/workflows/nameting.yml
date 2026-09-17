@@ -227,7 +227,13 @@ jobs:
           set -euo pipefail
           git config user.name "nameting-bot"
           git config user.email "nameting@rlz-boekhouding.iam.gserviceaccount.com"
-          git add -- 'verkenning/nameting-*.txt' 'verkenning/lezen-*.txt'
+          # Alleen bestaande bestanden stagen (nullglob): een pathspec zonder treffer ("fatal: pathspec 'verkenning/lezen-*.txt'
+          # did not match any files") maakte de bot-commit rood zodra er geen lezen-rapport lag (runs 35209089568 / 35227253545,
+          # 17-09) — de meting zelf was klaar, het bestand kwam nooit op main.
+          shopt -s nullglob
+          UITKOMSTEN=(verkenning/nameting-*.txt verkenning/lezen-*.txt)
+          shopt -u nullglob
+          [[ -n "${UITKOMSTEN[*]:-}" ]] && git add -- "${UITKOMSTEN[@]}"
           if git diff --cached --quiet; then
             echo "geen wijzigingen in verkenning/nameting-*.txt of verkenning/lezen-*.txt — geen commit"
             exit 0

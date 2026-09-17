@@ -105,13 +105,19 @@ def test_productie_aanroepen_alleen_via_de_nameting_scripts() -> None:
 
 
 def test_commit_stap_raakt_alleen_verkenning_nameting_txt() -> None:
-    adds = [r for r in _code_regels() if re.match(r"git\s+add\b", r)]
+    """De bot staget uitsluitend `verkenning/nameting-*.txt` en (Feiten eerst 17-09) `verkenning/lezen-*.txt` — via een
+    nullglob-array, want een pathspec zonder treffer maakt `git add` fataal (bot-commit rood op 17-09 zodra er geen
+    lezen-rapport lag; de meting was klaar, het bestand kwam nooit op main)."""
+    code = _code_regels()
+    adds = [r for r in code if re.search(r"git\s+add\b", r)]
     assert adds, "geen git add in de workflow"
     for r in adds:
-        assert "verkenning/nameting-*.txt" in r, f"git add buiten verkenning/nameting-*.txt: {r}"
-        # Feiten eerst 17-09 (blok D): óók verkenning/lezen-*.txt (db-lezen-rapporten via onderdeel=query) — niets anders.
-        assert re.fullmatch(r"git\s+add\s+--\s+'verkenning/nameting-\*\.txt'(\s+'verkenning/lezen-\*\.txt')?", r.strip()), r
+        assert re.search(r'git\s+add\s+--\s+"\$\{UITKOMSTEN\[@\]\}"', r.strip()), f"git add hoort de nullglob-array te stagen: {r}"
         assert not re.search(r"git\s+add\s+(-A|--all|\.)(\s|$)", r), f"git add -A/. verboden: {r}"
+    arr = [r for r in code if re.match(r"UITKOMSTEN=\(", r.strip())]
+    assert len(arr) == 1, "precies één UITKOMSTEN-array"
+    assert re.fullmatch(r"UITKOMSTEN=\(verkenning/nameting-\*\.txt verkenning/lezen-\*\.txt\)", arr[0].strip()), arr[0]
+    assert any(r.strip() == "shopt -s nullglob" for r in code), "nullglob ontbreekt — een leeg glob-patroon wordt anders letterlijk gestaged"
     assert re.search(r'user\.name\s+"nameting-bot"', _tekst())
     assert "nameting@rlz-boekhouding.iam.gserviceaccount.com" in _tekst()
     assert "--force" not in _tekst() and "push -f" not in _tekst()

@@ -107,6 +107,11 @@ class TestManifest:
         assert d.status_code == 200 and d.content == inhoud and d.headers["x-bundel-sha256"] == hashlib.sha256(inhoud).hexdigest()
         assert client.get("/app/bundels/onbekend.zip").status_code == 404
         assert client.get("/app/update-manifest", params={"runtime": "9.9", "platform": "ios"}).json()["geen_update"] is True
+        # Nameting 17-09: achter de Cloud Run-proxy gaf het manifest `http://…` (base_url volgt de proxy-hop) — de
+        # downloadlink volgt X-Forwarded-Proto, anders weigert iOS (ATS) de zip en blijft de OTA stil uit.
+        r2 = client.get("/app/update-manifest", params={"runtime": "1.1", "platform": "ios"}, headers={"X-Forwarded-Proto": "https"})
+        assert r2.json()["url"].startswith("https://") and r2.json()["url"].endswith("/app/bundels/b-dl.zip")
+        assert r.json()["url"].startswith("http://")  # zonder header: het schema van de request zelf
 
 
 class TestToestel:

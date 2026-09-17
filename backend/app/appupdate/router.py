@@ -48,6 +48,17 @@ class BundelActiefDto(BaseModel):
     actief: bool
 
 
+def publieke_basis_url(request: Request) -> str:
+    """Nameting OTA 17-09: achter de Cloud Run-proxy is `request.base_url` `http://…` (TLS eindigt bij de proxy) — het
+    manifest gaf daardoor een `http://`-downloadlink, die iOS (ATS) en de updater-plugin weigeren. De proxy zet
+    `X-Forwarded-Proto: https`; die wint. Zonder die header (lokaal, tests) blijft het schema van de request."""
+    basis = str(request.base_url).rstrip("/")
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if proto in ("http", "https") and not basis.startswith(f"{proto}://"):
+        basis = proto + "://" + basis.split("://", 1)[1]
+    return basis
+
+
 @router.get("/app/update-manifest")
 def update_manifest(
     request: Request,
@@ -56,7 +67,7 @@ def update_manifest(
     huidig: str | None = Query(default=None, max_length=120),
     toestel: str | None = Query(default=None, max_length=80),
 ) -> dict:
-    basis = str(request.base_url).rstrip("/")
+    basis = publieke_basis_url(request)
     return service.manifest(runtime=runtime, platform=platform, huidig=huidig, toestel=toestel, basis_url=basis).als_dict()
 
 
