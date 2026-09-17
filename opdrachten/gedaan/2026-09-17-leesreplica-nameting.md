@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-leesreplica-nameting.md
+
 # OPDRACHT 17-09 — Leesreplica: nameting ná deploy (query op de replica, IAM-login nameting@, SELECT-only bewijs)
 
 Domeinen: werkloop-productie
