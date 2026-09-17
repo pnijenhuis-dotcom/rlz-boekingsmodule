@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (dubbel-toets: ± 3 d + profiel richting/tegenrekening uit de regels + bankregels + bank_toets; RLZ-01-00000006 = Receipt-concept € 43.666,14 13-08-2025; bankregel "test" = € −1,00 15-08-2026 Koppe open; werkt in productie: blok A niet gemeten, blok B/C ja), rapport: docs/rapporten/2026-09-17-vgg-schoonlijst-dubbelen-richting-bank.md
+
 # OPDRACHT 17-09 — VGG schoonlijst: "dubbel € 135.000 RLZ-28-00000061/062" was GEEN dubbel (correctie Peter 17-09) — dubbel-toets herzien op richting + tegenrekening + bankbevestiging; RLZ-01-00000006 herleiden
 
 **Correctie Peter 17-09:** "RLZ-28-00000061 en -00000062 zijn niet dubbel: één is een ontvangen betaling van Midden Nederland, de ander

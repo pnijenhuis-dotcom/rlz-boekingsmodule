@@ -46,3 +46,11 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
 4. **Odoo-variant van `rlz-feiten` niet gebouwd** (zichtbaar overgeslagen met reden). Alternatief: `odoo-feiten` via de adapter
    in een volgende opdracht.
 5. **Downgrade 0154 laat de rol staan** (cluster-breed; DROP ROLE = owner-handeling).
+
+## Opdracht 4 — VGG schoonlijst dubbelen richting + bank (`2026-09-17-vgg-schoonlijst-dubbelen-richting-bank.md`)
+
+1. **Snede 2 zonder tegenrekening-toets.** Richting is bij inkoopfacturen per definitie gelijk; regels lezen per paar over álle
+   administraties is een webfilter-risico (blok 7b). Alternatief: alleen voor clusters "waarschijnlijk dubbel" de regels lezen.
+2. **Bankrekening in memorialen = RGS-groep 10xx** (1001, 1011, 1012, 1000). Alternatief: de grootboekkoppeling van PaymentAccounts lezen.
+3. **Profiel-split ná de kenmerk-split**; een ongelijk profiel wint altijd.
+4. **Klikpunt "bankregel test"** blijft staan als Peters keuze (boeken of terugboeken) — de module doet niets met een € 1-test.
