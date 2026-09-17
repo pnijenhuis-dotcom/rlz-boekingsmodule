@@ -476,7 +476,9 @@ class TestCliRegistratie:
         )
         assert gezien[1].dry_run is False and gezien[1].stap == "1-3" and gezien[1].max_per_type == 2
         assert cli.main([STAP0_COMMANDO, "--administratie", "VGG"]) == 0
-        assert gezien[2].dry_run is True
+        assert gezien[2].dry_run is True and gezien[2].boekstuk is None and gezien[2].maand is None
+        assert cli.main([STAP0_COMMANDO, "--administratie", "VGG", "--boekstuk", "RLZ-01-00000082", "--maand", "2026-03"]) == 0
+        assert gezien[3].boekstuk == "RLZ-01-00000082" and gezien[3].maand == "2026-03"
 
     def test_parse_stappen(self) -> None:
         assert parse_stappen("1-6") == {1, 2, 3, 4, 5, 6}
@@ -961,6 +963,48 @@ class TestSelectie:
         moves = [m for m in _moves() if not m.bank]
         sel = selecteer_moves(moves, max_per_type=1)
         assert sel.paar is None and "geen factuur in 2025-07 met gekoppelde bankregel(s)" in sel.paar_reden
+
+    # 17-09 (SCHRIJF c, aanvulling Peter "1 boeking testen"): het bewijspaar als VAST boekstuk buiten juli 2025.
+    def test_boekstuk_kiest_het_bewijspaar_en_de_maand_volgt_het_document(self) -> None:
+        moves = _moves()
+        moves.append(
+            _Move(
+                anker="anker-out_invoice-82",
+                rlz_id="rlz-82",
+                boekstuk="RLZ-01-00000082",
+                move_type="out_invoice",
+                date="2026-03-19",
+                vals={"move_type": "out_invoice", "journal_id": 48, "date": "2026-03-19"},
+                bank=None,
+                status="vertaalbaar",
+            )
+        )
+        moves.append(
+            _Move(
+                anker="anker-bank-83",
+                rlz_id="rlz-83",
+                boekstuk="RLZ-00083",
+                move_type="bank",
+                date="2026-03-20",
+                vals={"date": "2026-03-20", "journal_id": 53, "payment_ref": "Notaris", "amount": 400000.0},
+                bank={"reconcile": [{"anker": "anker-out_invoice-82"}]},
+                status="vertaalbaar",
+            )
+        )
+        sel = selecteer_moves(moves, max_per_type=1, boekstuk="RLZ-01-00000082")
+        assert sel.paar is not None and sel.paar[0].boekstuk == "RLZ-01-00000082"
+        assert [b.boekstuk for b in sel.paar[1]] == ["RLZ-00083"]
+        assert sel["out_invoice"] == [sel.paar[0]] and sel["in_invoice"] == []  # maand = 2026-03, niet juli 2025
+        assert "paar: out_invoice RLZ-01-00000082 ↔ 1 bankregel(s) (2026-03-20)" == sel.paar_reden
+
+    def test_boekstuk_zonder_bankregel_of_niet_vertaalbaar_geeft_geen_paar_met_reden(self) -> None:
+        moves = _moves()
+        sel = selecteer_moves(moves, max_per_type=1, boekstuk="RLZ-00001")  # vertaalbaar, geen bankregel
+        assert sel.paar is None and sel.paar_reden.startswith("bewijspaar RLZ-00001: geen gekoppelde bankregel(s)")
+        sel2 = selecteer_moves(moves, max_per_type=1, boekstuk="RLZ-99999")
+        assert sel2.paar is None and "onbekend boekstuk" in sel2.paar_reden
+        # en er wordt dan NIET stil teruggevallen op de maand-selectie van het paar
+        assert "niets te posten" in sel2.paar_reden
 
 
 class TestStap0:

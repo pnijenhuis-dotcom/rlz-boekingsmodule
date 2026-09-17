@@ -876,7 +876,7 @@ class TestBlok7b:
         assert [prm.get("$expand") for p, prm in client.calls if p == "PurchaseInvoices"] == ["Entity"]
         assert [prm.get("$expand") for p, prm in client.calls if p == "ManualJournals"] == ["JournalEntryDiary"]
         assert all(
-            prm.get("$expand") == "DocumentLineList($expand=Account,TaxRate)"
+            prm.get("$expand") == "DocumentLineList($expand=Account,TaxRate,Project)"  # 17-09: Project mee (blok 11)
             for p, prm in client.calls
             if p.startswith(("ManualJournals/", "PurchaseInvoices/", "SalesInvoices/", "BankMutationDirectBookings/"))
         )

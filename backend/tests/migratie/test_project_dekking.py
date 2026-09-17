@@ -82,3 +82,12 @@ def test_dekking_voldoende_en_markdown_en_dict() -> None:
 def test_lege_bron_niet_meetbaar() -> None:
     d = pd.bereken(RlzBron())
     assert d.dekking_voldoende is None and "niet meetbaar" in d.oordeel and d.bank_project_veld_aanwezig is None
+
+
+def test_documentvorm_expand_leest_project_mee() -> None:
+    """Vijfde meting 17-09: dekking 0,000 op 1125 documenten omdat de document-vorm géén `Project` expandeerde —
+    het instrument leest `regel["Project"]`; de expand die de regels levert MOET 'm dragen (REGEL_EXPAND doet dat al)."""
+    from app.migratie import rlz_bron
+
+    assert "Project" in rlz_bron.DOCUMENTVORM_EXPAND and "Project" in rlz_bron.REGEL_EXPAND
+    assert rlz_bron.DOCUMENTVORM_EXPAND == "DocumentLineList($expand=Account,TaxRate,Project)"

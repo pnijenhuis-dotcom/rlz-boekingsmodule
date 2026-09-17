@@ -92,7 +92,9 @@ DOCUMENT_COLLECTIES: tuple[tuple[str, str | None], ...] = (
     ("SalesInvoices", "Entity"),
     ("ManualJournals", "JournalEntryDiary"),
 )
-DOCUMENTVORM_EXPAND = "DocumentLineList($expand=Account,TaxRate)"
+#: Vijfde meting 17-09: `Project` hoort in de document-vorm-expand — zonder dat las het blok-11-instrument "Project-dekking"
+#: op álle 1125 documenten 0 projecten (aandeel 0,000 terwijl STAP-0 16-09 het project op de inkoopREGEL bewees).
+DOCUMENTVORM_EXPAND = "DocumentLineList($expand=Account,TaxRate,Project)"
 ROUTE_DOCUMENTVORM = "documentvorm"
 ROUTE_LINES = "lines"
 BLOKKERING_TEKST = "RLZ-blokkering — meting ongeldig"

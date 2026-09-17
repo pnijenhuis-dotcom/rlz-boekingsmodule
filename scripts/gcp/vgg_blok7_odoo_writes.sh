@@ -7,6 +7,9 @@
 #     b = (zit in c) partners-stap = stap 0 van vgg-odoo-stap0 (besluit 3)
 #     c = vgg-odoo-stap0 --schrijf (stap 0–6: partners, inkoopfactuur GEPOST, memoriaal/verkoop concept, statement lines,
 #         reconcile, terugweg — besluit 2; IBAN op BNK1 leeg → stap 4/5 overgeslagen en gemeld)
+#     d = vgg-odoo-migratie --schrijf (aanvulling Peter 17-09: VOLLEDIGE replay in één run — álle concepten → cent-exacte toets
+#         → bulk action_post → reconcile; toets rood = niets gepost, concepten blijven zichtbaar; pas ná GO Peter op het
+#         rapport van SCHRIJF c — BESLISSINGEN "VGG — CONCEPT → AUTO-POSTEN NÁ GROENE TOETS (Peter 17-09)")
 # Regels: uitsluitend op de GEDEPLOYDE job-image (rlz-reconciliatie), kill-switch alleen als executie-override
 # (--update-env-vars op `jobs execute` raakt de job-definitie niet), company-pin in de code, elke write terug-gelezen,
 # audit per call. Nooit via nameting.sh (die weigert beide commando's hard). Twijfel = stoppen en vragen.
@@ -23,6 +26,11 @@ SERVICE="${SERVICE:-rlz-backend}"
 ADMIN="${VGG_ADMINISTRATIE:-Vastgoedgroep}"
 BRON="${ODOO_BRON_ADMINISTRATIE:-Universal Steigerbouw}"
 COMPANY="${ODOO_COMPANY:-6}"
+# 17-09 (aanvulling Peter "1 boeking testen"): het bewijspaar van SCHRIJF c is een VAST boekstuk (blok 9: RLZ-01-00000082,
+# verkoopfactuur notaris 2026-03-19, € 400.000) — de dry-run van 17-09 vond in juli 2025 geen vertaalbaar document mét
+# bankregel meer (alle juli-facturen staan op ledgers zonder Odoo-rekening in company 6). Leeg = de oude maand-selectie.
+BEWIJSPAAR="${VGG_BEWIJSPAAR:-RLZ-01-00000082}"
+PAAR_ARGS=(); [[ -n "$BEWIJSPAAR" ]] && PAAR_ARGS=(--boekstuk "$BEWIJSPAAR")
 MODUS="${1:-plan}"; STAP="${2:-}"
 
 deploy_check() {  # service-image moet gelijk zijn aan het job-image — anders draait de write op oud beeld (les 10-09)
@@ -66,7 +74,8 @@ case "$MODUS" in
   plan)
     plan_stap odoo-koppeling-migratiedoel --administratie "$ADMIN" --bron-administratie "$BRON" --company "$COMPANY" --dry-run
     plan_stap vgg-rekeningen --administratie "$ADMIN" --company-id "$COMPANY"
-    plan_stap vgg-odoo-stap0 --administratie "$ADMIN" --dry-run --stap 0-6 --max-per-type 1
+    plan_stap vgg-odoo-stap0 --administratie "$ADMIN" --dry-run --stap 0-6 --max-per-type 1 ${PAAR_ARGS[@]+"${PAAR_ARGS[@]}"}
+    plan_stap vgg-odoo-migratie --administratie "$ADMIN" --dry-run
     ;;
   SCHRIJF)
     case "$STAP" in
@@ -75,10 +84,13 @@ case "$MODUS" in
         execute 1 vgg-rekeningen --administratie "$ADMIN" --company-id "$COMPANY" --maak-aan
         ;;
       b|c)
-        execute 1 vgg-odoo-stap0 --administratie "$ADMIN" --schrijf --stap 0-6 --max-per-type 1
+        execute 1 vgg-odoo-stap0 --administratie "$ADMIN" --schrijf --stap 0-6 --max-per-type 1 ${PAAR_ARGS[@]+"${PAAR_ARGS[@]}"}
         ;;
-      *) echo "gebruik: $0 SCHRIJF a|b|c" >&2; exit 2 ;;
+      d)
+        execute 1 vgg-odoo-migratie --administratie "$ADMIN" --schrijf
+        ;;
+      *) echo "gebruik: $0 SCHRIJF a|b|c|d" >&2; exit 2 ;;
     esac
     ;;
-  *) echo "gebruik: $0 plan | SCHRIJF a|b|c" >&2; exit 2 ;;
+  *) echo "gebruik: $0 plan | SCHRIJF a|b|c|d" >&2; exit 2 ;;
 esac

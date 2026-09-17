@@ -28,6 +28,7 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.migratie.cli_cmd import zoek_administratie
+from app.migratie.odoo_migratie_run import MIGRATIE_COMMANDO, register_odoo_migratie_run, run_odoo_migratie_run
 from app.migratie.odoo_doel import (
     PROBE_SLEUTEL_BANKDAGBOEK,
     PROBE_SLEUTEL_OUTSTANDING,
@@ -45,7 +46,7 @@ from app.security.envelope import unwrap_secret, wrap_secret
 
 MIGRATIEDOEL_COMMANDO = "odoo-koppeling-migratiedoel"
 STAP0_COMMANDO = "vgg-odoo-stap0"
-ODOO_MIGRATIE_COMMANDOS = frozenset({MIGRATIEDOEL_COMMANDO, STAP0_COMMANDO})
+ODOO_MIGRATIE_COMMANDOS = frozenset({MIGRATIEDOEL_COMMANDO, STAP0_COMMANDO, MIGRATIE_COMMANDO})  # 17-09: + vgg-odoo-migratie
 
 #: Maand van de bewijscyclus op echte data (besluit Peter 12-09: de eerste `--max-per-type` vertaalbare documenten
 #: van juli 2025).
@@ -454,14 +455,39 @@ def bankregels_per_anker(moves: Sequence[Any]) -> dict[str, list[Any]]:
 
 
 def selecteer_moves(
-    moves: Sequence[Any], *, max_per_type: int, jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND
+    moves: Sequence[Any],
+    *,
+    max_per_type: int,
+    jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND,
+    boekstuk: str | None = None,
 ) -> Selectie:
     """Per type de eerste `max_per_type` VERTAALBARE documenten uit de opgegeven maand (datum, dan anker) — mét het
     bewijspaar vooraan (besluit Peter 12-09 punt 2): de eerste inkoopfactuur van die maand die volgens
     PaymentReferenceList door ≥ 1 bankregel betaald wordt; geen inkoopfactuur met betaling → de eerste verkoopfactuur
     met ontvangst; ook die niet → geen paar (zichtbaar). Bankregels komen uitsluitend via het paar mee — niet meer
-    'de eerste bankdag'."""
+    'de eerste bankdag'. `boekstuk` (17-09, SCHRIJF c): het bewijspaar is DIT document (blok 9: RLZ-01-00000082,
+    verkoopfactuur notaris 2026-03-19) — de maand volgt dan het document; niet vertaalbaar of zonder bankregel(s) =
+    geen paar mét de reden (dry-run 17-09: juli 2025 heeft geen vertaalbaar document mét bankregel meer)."""
     per_type: dict[str, list[Any]] = {"in_invoice": [], "entry": [], "out_invoice": []}
+    per_anker = bankregels_per_anker(moves)
+    paar: tuple[Any, list[Any]] | None = None
+    paar_fout: str | None = None
+    if boekstuk:
+        gekozen = [m for m in moves if str(getattr(m, "boekstuk", "") or "") == boekstuk and not is_bankregel(m)]
+        if not gekozen:
+            paar_fout = f"bewijspaar {boekstuk}: niet in de replay (onbekend boekstuk)"
+        elif getattr(gekozen[0], "status", None) != "vertaalbaar":
+            paar_fout = f"bewijspaar {boekstuk}: niet vertaalbaar ({getattr(gekozen[0], 'reden', '') or gekozen[0].status})"
+        elif not per_anker.get(str(getattr(gekozen[0], "anker", ""))):
+            paar_fout = f"bewijspaar {boekstuk}: geen gekoppelde bankregel(s) in PaymentReferenceList"
+        else:
+            paar = (gekozen[0], per_anker[str(gekozen[0].anker)])
+            d = getattr(gekozen[0], "date", None)
+            try:
+                dd = date.fromisoformat(str(d)[:10])
+                jaar_maand = (dd.year, dd.month)
+            except ValueError:
+                pass
     kandidaten = [
         m
         for m in moves
@@ -470,16 +496,17 @@ def selecteer_moves(
         and not is_bankregel(m)
     ]
     kandidaten.sort(key=lambda m: (str(getattr(m, "date", "")), str(getattr(m, "anker", ""))))
-    per_anker = bankregels_per_anker(moves)
-    paar: tuple[Any, list[Any]] | None = None
-    for soort in PAAR_TYPES:
-        for m in kandidaten:
-            if getattr(m, "move_type", None) == soort and per_anker.get(str(getattr(m, "anker", ""))):
-                paar = (m, per_anker[str(m.anker)])
+    if paar is None and paar_fout is None:
+        for soort in PAAR_TYPES:
+            for m in kandidaten:
+                if getattr(m, "move_type", None) == soort and per_anker.get(str(getattr(m, "anker", ""))):
+                    paar = (m, per_anker[str(m.anker)])
+                    break
+            if paar is not None:
                 break
-        if paar is not None:
-            break
-    if paar is not None:
+    if paar_fout is not None:
+        paar_reden = f"{paar_fout} — niets te posten, stap 4/5 niet uitvoerbaar"
+    elif paar is not None:
         per_type[paar[0].move_type].append(paar[0])
         paar_reden = (
             f"paar: {paar[0].move_type} {paar[0].boekstuk} ↔ {len(paar[1])} bankregel(s) "
@@ -490,6 +517,8 @@ def selecteer_moves(
             f"geen factuur in {jaar_maand[0]}-{jaar_maand[1]:02d} met gekoppelde bankregel(s) in PaymentReferenceList "
             "— niets te posten, stap 4/5 niet uitvoerbaar"
         )
+    if paar is not None and paar[0] not in kandidaten:
+        kandidaten.insert(0, paar[0])
     for m in kandidaten:
         soort = getattr(m, "move_type", None)
         if soort in per_type and len(per_type[soort]) < max_per_type and m not in per_type[soort]:
@@ -552,6 +581,8 @@ def voer_stap0_uit(
     replay_module: Any | None,
     audit: Any,
     writes_aan: bool,
+    boekstuk: str | None = None,
+    jaar_maand: tuple[int, int] = STAP0_JAAR_MAAND,
 ) -> Stap0Rapport:
     """De bewijscyclus (blok 7 run 2, besluiten Peter 12-09 punt 2 + 3). `schrijf=False` = print wat er zou gebeuren.
     Elke stap meldt 'werkt op company 6: ja/nee/niet uitgevoerd'. Volgorde en poorten:
@@ -598,11 +629,12 @@ def voer_stap0_uit(
             f"replay.dry_run past nog niet op het contract ({exc.__class__.__name__}: {exc}) — E nog niet klaar"
         )
         return rapport
-    selectie = selecteer_moves(moves, max_per_type=max_per_type)
+    selectie = selecteer_moves(moves, max_per_type=max_per_type, jaar_maand=jaar_maand, boekstuk=boekstuk)
     paar_factuur = selectie.paar[0] if selectie.paar else None
     bankregels = selectie.paar[1] if selectie.paar else []
+    maand_tekst = f"{paar_factuur.date[:7]} (maand van bewijspaar {boekstuk})" if boekstuk and paar_factuur and paar_factuur.date else f"{jaar_maand[0]}-{jaar_maand[1]:02d}"
     rapport.meldingen.append(
-        f"replay: {len(moves)} moves, selectie juli 2025: in_invoice {len(selectie['in_invoice'])} · "
+        f"replay: {len(moves)} moves, selectie {maand_tekst}: in_invoice {len(selectie['in_invoice'])} · "
         f"entry {len(selectie['entry'])} · out_invoice {len(selectie['out_invoice'])} · {selectie.paar_reden}"
     )
     schrijf_fouten: tuple[type[Exception], ...] = (
@@ -926,6 +958,19 @@ def register_odoo_migratie(subparsers: argparse._SubParsersAction) -> None:  # t
         default=1,
         help="Documenten per type (default 1 — besluit Peter 12-09: één inkoop, één memoriaal, één verkoop).",
     )
+    b.add_argument(
+        "--boekstuk",
+        default=None,
+        help="SCHRIJF c (17-09): het bewijspaar is DIT boekstuk (bv. RLZ-01-00000082); de maand volgt het document.",
+    )
+    b.add_argument(
+        "--maand",
+        default=None,
+        help="Selectiemaand JJJJ-MM voor stap 1–3 (default 2025-07, besluit Peter 12-09); genegeerd mét --boekstuk.",
+    )
+
+
+    register_odoo_migratie_run(subparsers)  # 17-09 (aanvulling Peter): concepten → toets → posten in één run
 
 
 def parse_stappen(tekst: str) -> set[int]:
@@ -949,6 +994,8 @@ def run_odoo_migratie(args: argparse.Namespace) -> int:
         return _run_migratiedoel(args)
     if args.commando == STAP0_COMMANDO:
         return _run_stap0(args)
+    if args.commando == MIGRATIE_COMMANDO:
+        return run_odoo_migratie_run(args)
     print(f"FOUT  onbekend commando {args.commando!r}", file=sys.stderr)
     return 2
 
@@ -986,6 +1033,15 @@ def _run_stap0(args: argparse.Namespace) -> int:
         print(f"FOUT  {exc}", file=sys.stderr)
         return 2
     schrijf = not args.dry_run
+    jaar_maand = STAP0_JAAR_MAAND
+    maand = getattr(args, "maand", None)
+    if maand:
+        try:
+            jaar_maand = (int(maand[:4]), int(maand[5:7]))
+            assert 1 <= jaar_maand[1] <= 12 and len(maand) == 7 and maand[4] == "-"
+        except (ValueError, AssertionError):
+            print(f"FOUT  --maand moet JJJJ-MM zijn, kreeg {maand!r}", file=sys.stderr)
+            return 2
     audit: Any = DbAudit(administratie_id) if schrijf else GeheugenAudit()
     rapport = voer_stap0_uit(
         administratie_id,
@@ -997,6 +1053,8 @@ def _run_stap0(args: argparse.Namespace) -> int:
         replay_module=_laad_replay(),
         audit=audit,
         writes_aan=bool(settings.migratie_odoo_writes_ingeschakeld),
+        boekstuk=getattr(args, "boekstuk", None) or None,
+        jaar_maand=jaar_maand,
     )
     print_gedoseerd(rapport.als_markdown())  # blok 8 nazorg 15-09: stap0-rapport groeit mee met --max-per-type
     if not rapport.replay_beschikbaar or rapport.company_id is None:
