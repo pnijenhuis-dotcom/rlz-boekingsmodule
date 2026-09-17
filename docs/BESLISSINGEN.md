@@ -10219,6 +10219,11 @@ bundel_id-kolom krijgt").
 - Workflow-onderdeel `app-bundels` (run 35233576305) draaide, maar de bot-commit faalde op de pathspec-bug (zie APPLE-sectie) → geen bot-bestand; de meting hierboven is de eigen curl-meting (zelfde recept). Bug gefixt in deze run.
 - **Bevinding:** manifest-`url` = `http://…` (proxy-hop) → de schil zou de zip via http moeten laden en dat weigert iOS/ATS; gefixt (`publieke_basis_url`, X-Forwarded-Proto). Hierdoor kan de eerste échte OTA pas ná de deploy van deze run slagen — toestelstap (Toegang › Diagnose `bundel <sha7>`) blijft klikpunt Peter mét een 1.2-schil (Xcode Cloud ≥ 145 / Android vc6).
 
+### Nameting 17-09 (4) — opdracht `2026-09-17-herstellink-nameting` (lees-only) — werkt in productie: manifest-`https` JA, toestel niet gemeten
+
+- Ná deploy `ef48eec` (stap 10: "OTA-bundel ef48eec-20260917-1524 (runtime 1.2, 1479192 bytes, sha 7e1eb1583aab) geregistreerd"): manifest 1.2 ios én android geeft `url` = **`https://app.administratiekantoornijenhuis.nl/app/bundels/ef48eec-20260917-1524.zip`** — de http-bevinding van nameting (3) is gefixt (`publieke_basis_url` volgt X-Forwarded-Proto). Zip 200, 1.479.192 bytes, sha = manifest-sha; runtime 1.1/1.0 = "geen bundel voor deze runtime".
+- Toestelstap (1.2-schil, Toegang › Diagnose `bundel 7e1eb15` ná één herstart) blijft klikpunt Peter (Xcode Cloud ≥ 145 / Android vc6 niet vanuit CC). Rapport `docs/rapporten/2026-09-17-herstellink-nameting.md`.
+
 ## DOORBELASTING — AANSLUITING KF ↔ DOELENTITEITEN + HERKOPPELING (Peter 12-09/16-09) — blok 1 herkoppeling doelentiteit, blok 2 lees-only CLI `doorbelasting-aansluiting` + reconciliatieblok `doorbelasting_aansluiting`, blok 3 Kempen Chalets ná deploy; geen migratie, geen RLZ-/Odoo-writes (16-09 nacht)
 
 **Vraag Peter (12-09):** zeker weten dat álle verkoopfacturen van Kempen Facilities 2026 als inkoopfactuur in álle doelentiteiten staan
@@ -10800,6 +10805,12 @@ Conclusies (alleen uit de data): (1) **wortel = `beginKeuze(native, webKeuze, he
 6. **Wat Peter voor Romy concreet moet doen: niets meer** — het toestel is om 11:06:04Z gekoppeld (herstel-link 3, native app 1.1). Voor een volgende accordeur: eerst de app laten updaten (chip in Gebruikers & toegang), dán de herstel-link.
 
 **Werkt in productie: niet gemeten** (fix meetbaar ná deploy: verse herstel-link naar een testaccount → in een mobiele browser eerst het keuzescherm; in de app 1.1 → toegangscode → ingelogd). Nameting als vervolg-opdracht in de inbox.
+
+### Nameting 17-09 avond (opdracht `2026-09-17-herstellink-nameting`, lees-only) — werkt in productie: fix-code live ja, gedrag op toestel niet gemeten
+
+- Stap 0 voldaan: deploy `ef48eec` (run 35239577138, 15:20Z) groen incl. stap 10; service `rlz-backend` én álle 15 jobs op image `ef48eec`.
+- **Fix live bewezen zonder klikpunt:** de geserveerde frontend (index + 20 lazy chunks) draagt "Toestel opnieuw koppelen", "In de app op deze telefoon", "verder in de browser", "deze herstel-link koppelt het toestel" (`AccordeurApp-C79wLmss.js`) en "app-versie onbekend (≤ 1.0?)" (`KantoorApp-DlgPJZ-z.js`); de OTA-bundel `ef48eec-20260917-1524` (uitgepakt) draagt dezelfde herstel-teksten. `GET /auth/webauthn/config` = `store_link_ios` id6803862748 → herstelmail-stap 1 en `legacy_login_app_hint()` dragen de App Store-link. 426-probe (schil 0.9) = 426 mét `min_versie 1.1` + store-url.
+- **Niet gemeten (klikpunt Peter, één keer):** request-log `POST /auth/app/activeren` toont ná 11:06:04Z (casus Romy) géén enkele hit meer en er is sinds de deploy geen herstel-link verstuurd → (a) keuzescherm in een mobiele browser zonder verzilvering vóór de knop, (b) app 1.1 → toegangscode → ingelogd, (c) herstelmail-tekst mét versie-eis + store-link, chip "app 1.1" bij Romy's toestel (kantoor-login nodig) en OTA-toestel `bundel 7e1eb15` blijven open. Meetrecept in het rapport; ná het klikpunt volstaat één lees-only log-check. Bewust géén "bogus" legacy-login tegen productie (schrijvende poging, lees-only opdracht). Rapport `docs/rapporten/2026-09-17-herstellink-nameting.md`.
 
 ## VGG — CONCEPT → AUTO-POSTEN NÁ GROENE TOETS (Peter 17-09) — herziet het besluit 12-09 "alles concept"; geen migratie, geen writes in deze run
 

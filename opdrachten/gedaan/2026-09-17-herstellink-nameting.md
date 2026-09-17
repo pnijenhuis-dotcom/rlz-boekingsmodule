@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-herstellink-nameting.md
+
 # OPDRACHT 17-09 — Herstel-link app-rol: nameting ná deploy (keuzescherm bij herstel, mailvolgorde, app-versie-chip, manifest https)
 
 Domeinen: auth-toegang, accordering-native-app
