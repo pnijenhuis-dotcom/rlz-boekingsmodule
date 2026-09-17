@@ -64,3 +64,9 @@ querynaam; guard-tests blok C); BESLISSINGEN "FEITEN EERST — LEES-ONLY DB-/RLZ
 CLAUDE.md verwijsregel onder Werkwijze; `Platform/registers/verbeteringen.md` les 17-09; rapport + INDEX mét "werkt in productie: ja/nee"
 (meetrecept: `nameting.sh db-lezen document-feiten RLZ-28-00000061` en `feiten bank <VGG> --omschrijving test` geven de echte
 gegevens terug, incl. de Koppe-vraag van Peter).
+
+## Aanvulling Cowork 17-09 (Ponto-sandbox aangemaakt via het dashboard)
+- Ponto-sandbox-integratie "Jarvis betalen (sandbox)" bestaat (org e6bef23f…, integratie e22c10a5…, scopes AI + PI), twee MyTestBank-
+  EUR-rekeningen gekoppeld (NL45GKSU6732225344, NL13YNDT2490282457). Deze integratievorm werkt met client-id + client-secret (OAuth2
+  client-credentials), GEEN mTLS-certificaat → de secrets zijn alleen `PONTO_SANDBOX_CLIENT_ID` + `PONTO_SANDBOX_CLIENT_SECRET`;
+  `PONTO_SANDBOX_CERT`/`_KEY` uit eerdere teksten vervallen. Jarvis-bouwopdracht 02a volgt zodra Peter de secrets heeft gezet.

@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (SPOED-run; herdefinitie + soort-stand meten + explosie-rem + auto-sluiten, migratie 0153; werkt in productie: niet gemeten — eerste run ná deploy), rapport: docs/rapporten/2026-09-17-dubbele-betaling-herdefinitie.md
+
 # SPOEDOPDRACHT 17-09 — Actiemail "Mogelijk dubbel betaald": 1.214 bevindingen in één nacht = valse positieven; bevinding herdefiniëren, bestaande sluiten, nieuwe bevindingssoorten nooit meer op dag één in de actiemail
 
 **Melding Peter 17-09 (actiemail 17-09 ochtend):** tien regels "Mogelijk dubbel betaald" (T&J Hoveniers — Google Cloud, Insify € −40,59,
