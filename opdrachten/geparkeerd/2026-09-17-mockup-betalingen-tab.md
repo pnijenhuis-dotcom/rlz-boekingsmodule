@@ -1,6 +1,7 @@
 # OPDRACHT 17-09 — MOCKUP "Betalingen" (kantoor-tab + accordeur-app), GEEN bouw
 
-> **Stand 17-09 (Cowork):** v1 staat al in `mockup/betalingen-kantoor.html` (kantoor-tab, bulk-detail, accordeur-app, notities ①–⑪
+> **Proces Peter 17-09 (bindend, letterlijk, vervangt de vier punten hierboven):** 1 factuur geboekt door kantoor → 2 geaccordeerd door accordeur(s) → 3 pas dan in de betaallijst → 4 kantoormedewerker zet betalingen klaar → 5 betaling komt als betaling terug in de accordeur-app, accordeur klikt akkoord per betaling/bulk → 6 daarna automatisch naar de bank, zonder inloggen bij de bank. Klaargezet = uit de kantoorlijst. Dubbel-/IBAN-controles zitten in het boeken, niet hier. Intercompany-facturen gewoon betalen. Verder: (b) recht "Betalingen klaarzetten" per medewerker × administratie (Beheerder, patroon veldwerkerbeheer); (c) geen kolom "Betaal van": altijd de standaardbankrekening van de BV; (d) geen kolom "Begunstigde": IBAN zoals op de factuur, gecontroleerd bij boeken. Verwerkt in v3.
+> **Stand 17-09 (Cowork):** v3 staat al in `mockup/betalingen-kantoor.html` (kantoor-tab, bulk-detail, accordeur-app, notities ①–⑪
 > incl. beslispunten A/B/C) — Peter beoordeelt die. CC: NIET opnieuw maken; alleen (a) toetsen tegen designpass V2/tokens.css en
 > KP7, (b) afwijkingen melden, (c) ná Peters feedback aanpassen. `betalingen-accordeur.html` apart is niet nodig (zit in dezelfde file).
 

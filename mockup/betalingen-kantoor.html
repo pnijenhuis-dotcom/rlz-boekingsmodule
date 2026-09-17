@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Betalingen (kantoor + accordeur-app) · v4 Cowork 17-09-2026</title>
+<style>
+:root{--bg:#f6f7f8;--panel:#fff;--border:#e6e8ea;--text:#12181f;--muted:#5b6470;--faint:#687180;--primary:#0e7a6e;--primary-hover:#0a635a;--primary-fg:#fff;--accent-bg:#e6f4f2;--ok:#1c7a54;--ok-bg:#e4f4ec;--warn:#b45309;--warn-bg:#fdf3e3;--danger:#b42318;--danger-bg:#fceceb;--info:#3548a5;--info-bg:#eaeefb;--purple:#6941c6;--purple-bg:#f1ecfb;--rail:#101b19;--rail-text:#c7d2cf;--rail-muted:#7d8c88;--rail-actief:#16332e;--rail-accent:#4fd1c0;--radius:12px;--radius-sm:8px;--shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--text);background:var(--bg);font-size:14px;line-height:1.45}
+.mock-kop{background:#fff;border-bottom:1px solid var(--border);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.mock-kop h1{font-size:15px;margin:0}.mock-kop .sub{color:var(--muted);font-size:12px}
+.mock-tabs{display:flex;gap:6px}.mock-tabs button{border:1px solid var(--border);background:#fff;padding:6px 12px;border-radius:999px;font:inherit;cursor:pointer}
+.mock-tabs button.on{background:var(--rail);color:#fff;border-color:var(--rail)}
+.scherm{display:none}.scherm.on{display:block}
+/* kantoor shell */
+.shell{display:grid;grid-template-columns:224px 1fr;min-height:calc(100vh - 60px)}
+.rail{background:var(--rail);color:var(--rail-text);padding:18px 12px}
+.rail .logo{font-weight:700;color:#fff;padding:6px 10px 18px;letter-spacing:.2px}
+.rail a{display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;color:var(--rail-text);text-decoration:none;font-size:13.5px}
+.rail a.on{background:var(--rail-actief);color:#fff}.rail .tel{background:#1e433e;color:var(--rail-accent);font-size:11px;padding:1px 7px;border-radius:999px;font-weight:600}
+.rail .sectie{color:var(--rail-muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:14px 10px 6px}
+main{padding:22px 28px}
+.crumbs{color:var(--muted);font-size:12.5px;margin-bottom:6px}
+.paginakop{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}
+.paginakop h2{margin:0;font-size:20px}.paginakop p{margin:4px 0 0;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow)}
+.kpi .l{color:var(--muted);font-size:12px}.kpi .v{font-size:20px;font-weight:600;margin-top:2px}.kpi .s{font-size:12px;color:var(--faint)}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.filters select,.filters input{font:inherit;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff}
+.filters input[type=search]{min-width:260px}
+.chipf{border:1px solid var(--border);background:#fff;border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+.chipf.on{background:var(--accent-bg);border-color:var(--primary);color:var(--primary)}
+.paneel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:left;padding:10px 10px;border-bottom:1px solid var(--border);background:#fafbfb;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:#fafcfb}tr.sel td{background:var(--accent-bg)}
+.r{text-align:right}.mono{font-variant-numeric:tabular-nums}
+.sub{color:var(--muted);font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;font-weight:500;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)}.c-warn{background:var(--warn-bg);color:var(--warn)}.c-danger{background:var(--danger-bg);color:var(--danger)}.c-info{background:var(--info-bg);color:var(--info)}.c-grijs{background:#eef0f2;color:var(--muted)}.c-purple{background:var(--purple-bg);color:var(--purple)}
+.btn{font:inherit;font-weight:600;padding:8px 14px;border-radius:var(--radius-sm);border:1px solid var(--primary);background:var(--primary);color:var(--primary-fg);cursor:pointer}
+.btn.secondary{background:#fff;color:var(--text);border-color:var(--border)}
+.btn.small{padding:5px 10px;font-size:12.5px}
+.linkbtn{background:none;border:0;padding:0;color:var(--primary);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.meer{background:#fff;border:1px solid var(--border);border-radius:8px;width:30px;height:30px;cursor:pointer}
+.bulkbalk{position:sticky;bottom:0;background:var(--rail);color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;border-radius:var(--radius);margin-top:12px;box-shadow:0 8px 40px rgba(18,24,31,.25)}
+.bulkbalk .info b{color:var(--rail-accent)}
+.bulkbalk label{font-size:12.5px;color:var(--rail-text);margin-right:6px}.bulkbalk input[type=date]{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #2b4a45;background:#16332e;color:#fff}
+.restant{display:flex;gap:2px;height:8px;border-radius:999px;overflow:hidden;background:#2b4a45;width:220px}
+.restant span{display:block;height:100%}
+.twee{display:grid;grid-template-columns:1fr 380px;gap:14px;margin-top:14px;align-items:start}
+.detail h3{margin:0 0 4px;font-size:15px}.detail .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 10px;font-size:13px;margin:10px 0}
+.detail .kv div:nth-child(odd){color:var(--muted)}
+.tijdlijn{list-style:none;padding:0;margin:8px 0 0}.tijdlijn li{position:relative;padding:0 0 12px 22px;font-size:13px}
+.tijdlijn li:before{content:"";position:absolute;left:5px;top:5px;width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.tijdlijn li.open:before{background:#fff;border:2px solid var(--border);width:6px;height:6px}
+.tijdlijn li.nu:before{background:var(--warn)}
+.tijdlijn li:after{content:"";position:absolute;left:9px;top:16px;bottom:-2px;width:1px;background:var(--border)}
+.tijdlijn li:last-child:after{display:none}.tijdlijn small{display:block;color:var(--muted)}
+.leeg{padding:38px;text-align:center;color:var(--muted)}
+.notities{margin:26px 0 40px;background:#fff;border:1px dashed #c9ced3;border-radius:var(--radius);padding:18px 22px}
+.notities h3{margin:0 0 8px;font-size:14px}.notities ol{margin:0;padding-left:22px}.notities li{margin:6px 0}
+.notities .b{font-weight:600}
+/* mobiel */
+.telefoon{width:390px;margin:26px auto;background:#000;border-radius:44px;padding:12px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.tscherm{background:#f3f4f6;border-radius:34px;overflow:hidden;min-height:800px;position:relative;font-size:15px}
+.tkop{background:#fff;padding:52px 18px 12px;border-bottom:1px solid var(--border)}
+.tkop .t{font-size:20px;font-weight:700}.tkop .s{color:var(--muted);font-size:13px}
+.ttabs{display:flex;gap:18px;padding:0 18px;background:#fff;border-bottom:1px solid var(--border)}
+.ttabs span{padding:10px 0;font-size:14px;color:var(--muted);border-bottom:2px solid transparent}.ttabs span.on{color:var(--primary);border-color:var(--primary);font-weight:600}
+.kaart{background:#fff;margin:12px 14px;border-radius:16px;border:1px solid var(--border);padding:14px;box-shadow:var(--shadow)}
+.kaart .kk{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.kaart .adm{font-weight:700;font-size:16px}.kaart .bedrag{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.kaart .m{color:var(--muted);font-size:13px;margin-top:2px}
+.regel{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px}
+.regel .n{font-weight:500}.regel .sub{font-size:12px}
+.regel .a{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.regel .pdf{font-size:12px;color:var(--primary)}
+.lagen{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);margin-top:10px}
+.lagen .dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.lagen .d-ok{background:var(--ok-bg);color:var(--ok)}.lagen .d-nu{background:var(--warn-bg);color:var(--warn);border:2px solid var(--warn)}.lagen .d-open{background:#eef0f2;color:var(--muted)}
+.knoppen{display:flex;gap:8px;margin-top:14px}.knoppen .btn{flex:1;padding:12px;font-size:15px;border-radius:12px}
+.tbalk{position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:12px 0 26px;font-size:11px;color:var(--muted)}
+.tbalk span.on{color:var(--primary);font-weight:600}
+.tbalk i{display:block;width:22px;height:22px;border-radius:6px;background:#e6e8ea;margin:0 auto 3px}.tbalk span.on i{background:var(--primary)}
+.melding{background:var(--ok-bg);color:var(--ok);margin:12px 14px;padding:12px 14px;border-radius:12px;font-size:14px}
+.melding.warn{background:var(--warn-bg);color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="mock-kop">
+  <div><h1>Mockup · Betalingen — kantoor-tab + accordeur-app</h1><div class="sub">v4 Cowork 17-09-2026 · TER AKKOORD · proces Peter 17-09: 1 kantoor boekt → 2 accordeur(s) keuren de factuur goed → 3 pas dan in de betaallijst → 4 kantoor zet betalingen klaar → 5 accordeur keurt de betaling/bulk goed in de app → 6 automatisch naar de bank, zonder inloggen bij de bank</div></div>
+  <div class="mock-tabs"><button class="on" onclick="toon('k',this)">Kantoor · tab Betalingen</button><button onclick="toon('d',this)">Kantoor · bulk-detail</button><button onclick="toon('m',this)">Accordeur-app · betaling goedkeuren (stap 5)</button><button onclick="toon('r',this)">Beheer · rechten per medewerker</button><button onclick="toon('n',this)">Ontwerpnotities</button></div>
+</div>
+
+<!-- ========== KANTOOR: TAB BETALINGEN ========== -->
+<section id="k" class="scherm on">
+<div class="shell">
+  <nav class="rail">
+    <div class="logo">Nijenhuis</div>
+    <a>Werkvoorraad <span class="tel">184</span></a>
+    <a>Verzamelbak <span class="tel">7</span></a>
+    <a>Bank <span class="tel">312</span></a>
+    <a class="on">Betalingen <span class="tel">63</span></a>
+    <div class="sectie">Inzicht</div>
+    <a>Reconciliatie</a><a>Projecten</a><a>Zoeken</a>
+    <div class="sectie">Beheer</div>
+    <a>Gebruikers</a><a>Instellingen</a>
+  </nav>
+  <main>
+    <div class="crumbs">Betalingen</div>
+    <div class="paginakop">
+      <div><h2>Betalingen</h2><p>Facturen die geboekt zijn én door de accordeur(s) goedgekeurd, over <b>41 administraties</b> waarvoor jij mag betalen · bron: Reeleezee/Odoo open posten · bank leidend</p></div>
+      <div style="display:flex;gap:8px"><button class="btn secondary">Klaargezet (3 bulks)</button><button class="btn secondary">Historie</button></div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">Betaalbaar</div><div class="v mono">63 · € 148.212,40</div><div class="s">over 41 administraties</div></div>
+      <div class="kpi"><div class="l">Vervalt ≤ 7 dagen</div><div class="v mono" style="color:var(--warn)">19 · € 41.870,15</div><div class="s">waarvan 4 al over vervaldatum</div></div>
+      <div class="kpi"><div class="l">Onderweg</div><div class="v mono">3 bulks · € 22.418,90</div><div class="s">klaargezet · wacht op akkoord accordeur of op de bank — niet meer in de lijst</div></div>
+      <div class="kpi"><div class="l">Uitgevoerd (30 d)</div><div class="v mono">87 · € 312.640,10</div><div class="s">bank bevestigd · afgeletterd in RLZ/Odoo</div></div>
+    </div>
+
+    <div class="filters">
+      <input type="search" placeholder="Zoek crediteur, factuurnr, IBAN, bedrag…">
+      <select><option>Groep: alle</option><option>Kempen groep</option></select>
+      <select><option>Administratie: alle (41)</option></select>
+      <select><option>Vervalt vóór: 24-09-2026</option><option>vandaag</option><option>30-09-2026</option></select>
+      <span class="chipf on">Betaalbaar 63</span><span class="chipf">Onderweg 3 bulks</span><span class="chipf">Uitgevoerd (30 d) 87</span><span class="chipf">Geweigerd 1</span>
+    </div>
+
+    <div class="paneel">
+    <table>
+      <colgroup><col style="width:36px"><col style="width:190px"><col style="width:260px"><col style="width:104px"><col style="width:104px"><col style="width:120px"><col style="width:260px"><col style="width:44px"></colgroup>
+      <thead><tr><th><input type="checkbox" checked></th><th>Administratie</th><th>Crediteur · factuur</th><th>Factuurdatum</th><th>Vervalt ▲</th><th class="r">Open</th><th>Status · signaal</th><th></th></tr></thead>
+      <tbody>
+        <tr class="sel"><td><input type="checkbox" checked></td><td>Kempen Facilities B.V.<span class="sub">RLZ · KF</span></td><td>Boels Rental<span class="sub">F-2026-88123 · huur trappentoren wk 35–36</span></td><td class="mono">28-08-2026</td><td class="mono" style="color:var(--danger)">11-09-2026<span class="sub">6 d over</span></td><td class="r mono">€ 3.412,20</td><td><span class="chip c-danger">over vervaldatum</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr class="sel"><td><input type="checkbox" checked></td><td>Universal Steigerbouw B.V.<span class="sub">Odoo · US</span></td><td>Olieman Bouw<span class="sub">32948 · 1e termijn steiger Rijssen</span></td><td class="mono">05-09-2026</td><td class="mono">19-09-2026</td><td class="r mono">€ 20.000,00</td><td><span class="chip c-warn">G-rekening 30 %</span> <span class="chip c-ok">offerte-match</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr class="sel"><td><input type="checkbox" checked></td><td>Universal Steigerbouw B.V.<span class="sub">Odoo · US</span></td><td>Spot Services<span class="sub">2026-608 · transport 4 ritten</span></td><td class="mono">08-09-2026</td><td class="mono">22-09-2026</td><td class="r mono">€ 1.815,00</td><td><span class="chip c-ok">betaalbaar</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox"></td><td>Vastgoedgroep Nederland<span class="sub">Odoo · VGG</span></td><td>Notaris Van Dam<span class="sub">2026-1187 · afrekening Rijswijkseweg 409</span></td><td class="mono">10-09-2026</td><td class="mono">17-09-2026</td><td class="r mono">€ 43.666,14</td><td><span class="chip c-ok">betaalbaar</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox" disabled></td><td>L.H.G. Holding B.V.<span class="sub">RLZ · LHG</span></td><td>KPN Zakelijk<span class="sub">9021 5540 11 · mobiele telefonie sept</span></td><td class="mono">01-09-2026</td><td class="mono">15-09-2026</td><td class="r mono">€ 214,86</td><td><span class="chip c-grijs">wordt geïncasseerd</span><span class="sub">RLZ-betaalstatus · niet selecteerbaar</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox"></td><td>Kempen Facilities B.V.<span class="sub">RLZ · KF</span></td><td>Hello Kitchen<span class="sub">24594001722 · keukenapparatuur</span></td><td class="mono">02-09-2026</td><td class="mono">23-09-2026</td><td class="r mono">€ 6.980,00</td><td><span class="chip c-ok">betaalbaar</span><span class="sub">geaccordeerd 2/2 · geboekt 16-09</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox" disabled></td><td>Baard Beheer B.V.<span class="sub">RLZ · BB</span></td><td>Gemeente Deventer<span class="sub">aanslag OZB 2026</span></td><td class="mono">15-08-2026</td><td class="mono">30-09-2026</td><td class="r mono">€ 2.118,00</td><td><span class="chip c-danger">geen IBAN</span><span class="sub">IBAN begunstigde ontbreekt — aanvullen in RLZ</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox"></td><td>Kempen B.V.<span class="sub">RLZ · KB</span></td><td>BDO Accountants<span class="sub">6088744 · jaarrekening 2025</span></td><td class="mono">12-09-2026</td><td class="mono">12-10-2026</td><td class="r mono">€ 8.470,00</td><td><span class="chip c-ok">betaalbaar</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox"></td><td>Universal Nederland B.V.<span class="sub">RLZ · UN</span></td><td>Universal Steigerbouw B.V.<span class="sub">RLZ-2080143037 · doorbelasting wk 36</span></td><td class="mono">07-09-2026</td><td class="mono">21-09-2026</td><td class="r mono">€ 12.640,00</td><td><span class="chip c-ok">betaalbaar</span><span class="sub">intercompany · gewoon betalen</span></td><td><button class="meer">⋯</button></td></tr>
+        <tr><td><input type="checkbox"></td><td>Box Beheer B.V.<span class="sub">RLZ · BX</span></td><td>Floor Installaties<span class="sub">26219 · onderhoud</span></td><td class="mono">09-09-2026</td><td class="mono">09-10-2026</td><td class="r mono">€ 1.089,00</td><td><span class="chip c-ok">betaalbaar</span></td><td><button class="meer">⋯</button></td></tr>
+      </tbody>
+    </table>
+    <div style="padding:10px 12px;color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between"><span>1–10 van 63 · <button class="linkbtn">alle 63 in deze weergave selecteren</button></span><span>Alleen facturen die geboekt zijn én door alle accordeurs goedgekeurd · betaalt altijd van de standaardbankrekening van de BV · IBAN begunstigde = zoals op de factuur (gecontroleerd bij boeken) · niet selecteerbaar: al betaald/incasso · geen IBAN op de factuur</span></div>
+    </div>
+
+    <div class="bulkbalk">
+      <div class="info"><b>3 facturen · € 25.227,20</b> geselecteerd → <b>2 bulks</b> (Kempen Facilities € 3.412,20 &nbsp;|&nbsp; Universal Steigerbouw € 21.815,00 — elk van de standaardrekening van die BV)<div style="margin-top:6px" class="restant"><span style="width:14%;background:#4fd1c0"></span><span style="width:86%;background:#8fe3d8"></span></div></div>
+      <div><label>Uitvoerdatum</label><input type="date" value="2026-09-18"> <span style="font-size:12px;color:var(--rail-text);margin-left:6px">default = vervaldatum, minimaal morgen</span></div>
+      <div style="display:flex;gap:8px"><button class="btn secondary small" style="background:transparent;color:#fff;border-color:#2b4a45">Selectie wissen</button><button class="btn" onclick="toon('d',document.querySelectorAll('.mock-tabs button')[1])">Klaarzetten (3) · € 25.227,20</button></div>
+    </div>
+  </main>
+</div>
+</section>
+
+<!-- ========== KANTOOR: BULK-DETAIL ========== -->
+<section id="d" class="scherm">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><a>Werkvoorraad <span class="tel">184</span></a><a>Verzamelbak <span class="tel">7</span></a><a>Bank <span class="tel">312</span></a><a class="on">Betalingen <span class="tel">63</span></a><div class="sectie">Inzicht</div><a>Reconciliatie</a><a>Projecten</a><a>Zoeken</a><div class="sectie">Beheer</div><a>Gebruikers</a><a>Instellingen</a></nav>
+  <main>
+    <div class="crumbs">Betalingen › Klaargezet › <b>US-2026-0917-01</b></div>
+    <div class="paginakop"><div><h2>Bulk US-2026-0917-01 · Universal Steigerbouw B.V.</h2><p>Rabobank NL·8820 (standaardrekening) · 3 betalingen · <b>€ 21.815,00</b> · uitvoerdatum 18-09-2026 · klaargezet door Peter Nijenhuis 17-09 14:32</p></div>
+    <div style="display:flex;gap:8px"><button class="btn secondary">Intrekken…</button><button class="meer">⋯</button></div></div>
+
+    <div class="twee">
+      <div class="paneel">
+        <table>
+          <colgroup><col style="width:240px"><col style="width:110px"><col style="width:110px"><col><col style="width:130px"><col style="width:120px"></colgroup>
+          <thead><tr><th>Crediteur · factuur</th><th>Vervalt</th><th class="r">Bedrag</th><th>Begunstigde · omschrijving</th><th>Checks</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Olieman Bouw<span class="sub">32948 · 1e termijn</span></td><td class="mono">19-09</td><td class="r mono">€ 14.000,00</td><td class="mono">NL20 INGB ·7712<span class="sub">"32948 Olieman 1e termijn Rijssen"</span></td><td><span class="chip c-ok">IBAN = factuur</span> <span class="chip c-ok">offerte S00642</span></td><td><button class="linkbtn">Uit bulk halen</button></td></tr>
+            <tr><td>Olieman Bouw — G-rekening<span class="sub">32948 · WKA 30 %</span></td><td class="mono">19-09</td><td class="r mono">€ 6.000,00</td><td class="mono">NL72 RABO ·0991 (G)<span class="sub">"32948 G-rek Olieman loonheffing"</span></td><td><span class="chip c-ok">G-rek bekend</span></td><td><button class="linkbtn">Uit bulk halen</button></td></tr>
+            <tr><td>Spot Services<span class="sub">2026-608</span></td><td class="mono">22-09</td><td class="r mono">€ 1.815,00</td><td class="mono">NL53 RABO ·2210<span class="sub">"2026-608 Spot Services transport"</span></td><td><span class="chip c-ok">IBAN geheugen 14×</span> </td><td><button class="linkbtn">Uit bulk halen</button></td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="2" style="font-weight:600">Totaal bulk</td><td class="r mono" style="font-weight:600">€ 21.815,00</td><td colspan="3" class="sub">3 betalingen · SEPA-overboeking · end-to-end-id per betaling = UUIDv5 (administratie + document + bedrag) → nooit dubbel aangeboden</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="paneel detail" style="padding:16px">
+        <h3>Akkoord &amp; uitvoering</h3>
+        <div class="kv"><div>Facturen</div><div>alle 3 geboekt én goedgekeurd door de accordeurs (stap 1–2)</div><div>Betaal-akkoord</div><div>accordeur(s) van Universal Steigerbouw keuren deze bulk goed in de app (stap 5)</div><div>Uitvoering</div><div>direct ná het akkoord automatisch naar Rabobank (standaardrekening US)</div><div>Status</div><div><span class="chip c-info">wacht op akkoord accordeur</span></div></div>
+        <ul class="tijdlijn">
+          <li>Klaargezet door Peter Nijenhuis<small>17-09-2026 14:32 · 3 facturen · uitvoerdatum 18-09</small></li>
+          <li class="nu">Wacht op akkoord accordeur — H. Yilmaz<small>melding in de app 14:32 · herinnering 18-09 08:00</small></li>
+          <li class="open">Automatisch naar Rabobank<small>direct ná het akkoord · 1 bulk · 3 betalingen</small></li>
+          <li class="open">Uitgevoerd → RLZ/Odoo "Betaald per bank" + afletteren (batch-stap)<small>event van Jarvis</small></li>
+        </ul>
+        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">Intrekken kan tot de bulk naar de bank is. Daarna alleen via de bank. Alle stappen in het audit-spoor.</p>
+      </div>
+    </div>
+  </main>
+</div>
+</section>
+
+<!-- ========== ACCORDEUR-APP ========== -->
+<section id="m" class="scherm">
+<div class="telefoon"><div class="tscherm">
+  <div class="tkop"><div class="t">Betalingen</div><div class="s">Universal Steigerbouw B.V. · 1 betaling wacht op jouw akkoord</div></div>
+  <div class="ttabs"><span>Facturen 4</span><span class="on">Betalingen 1</span><span>Vragen 2</span></div>
+
+  <div class="kaart">
+    <div class="kk"><div><div class="adm">Betaling 18-09 · Rabobank ·8820</div><div class="m">3 facturen · klaargezet door kantoor (Peter) · alle facturen eerder door jou goedgekeurd</div></div><div class="bedrag">€ 21.815,00</div></div>
+    <div style="margin-top:12px">
+      <div class="regel"><div><div class="n">Olieman Bouw</div><div class="sub">32948 · 1e termijn steiger Rijssen · vervalt 19-09</div><div class="pdf">Factuur bekijken ›</div></div><div class="a">€ 14.000,00</div></div>
+      <div class="regel"><div><div class="n">Olieman Bouw — G-rekening</div><div class="sub">32948 · WKA 30 %</div></div><div class="a">€ 6.000,00</div></div>
+      <div class="regel"><div><div class="n">Spot Services</div><div class="sub">2026-608 · transport 4 ritten · vervalt 22-09</div><div class="pdf">Factuur bekijken ›</div></div><div class="a">€ 1.815,00</div></div>
+    </div>
+    <div class="knoppen"><button class="btn secondary">Afkeuren…</button><button class="btn">Akkoord — betalen</button></div>
+    <div style="text-align:center;margin-top:10px"><button class="linkbtn" style="font-size:13px">Eén factuur uit deze betaling halen</button></div>
+    <p class="sub" style="white-space:normal;margin:10px 0 0">Na je akkoord gaat de betaling automatisch naar de bank. Je hoeft nergens meer in te loggen.</p>
+  </div>
+
+  <div class="melding">✓ Betaling 11-09 · € 4.120,00 · door jou akkoord · betaald 12-09</div>
+  <div class="melding warn">Betaling 04-09 · Spot Services € 1.210,00 · geweigerd door bank (saldo) · kantoor zet opnieuw klaar</div>
+
+  <div class="tbalk"><span><i></i>Facturen</span><span class="on"><i></i>Betalingen</span><span><i></i>Vragen</span><span><i></i>Toegang</span></div>
+</div></div>
+<p style="text-align:center;color:var(--muted);font-size:12.5px">≤ 430 px · bestaande accordeur-app · nieuw tabblad "Betalingen" naast Facturen · meerdere lagen = zelfde lagen als bij de factuur, in volgorde</p>
+</section>
+
+<!-- ========== BEHEER: RECHT PER MEDEWERKER ========== -->
+<section id="r" class="scherm">
+<div class="shell">
+  <nav class="rail"><div class="logo">Nijenhuis</div><a>Werkvoorraad <span class="tel">184</span></a><a>Verzamelbak <span class="tel">7</span></a><a>Bank <span class="tel">312</span></a><a>Betalingen <span class="tel">63</span></a><div class="sectie">Inzicht</div><a>Reconciliatie</a><a>Projecten</a><a>Zoeken</a><div class="sectie">Beheer</div><a class="on">Gebruikers</a><a>Instellingen</a></nav>
+  <main>
+    <div class="crumbs">Gebruikers &amp; toegang › <b>Sanne de Boer</b> (Boekhouding)</div>
+    <div class="paginakop"><div><h2>Sanne de Boer</h2><p>Boekhouding · scope 27 administraties · actief sinds 03-06-2026</p></div></div>
+    <div class="twee" style="grid-template-columns:1fr 1fr">
+      <div class="paneel" style="padding:16px">
+        <h3 style="margin:0 0 6px;font-size:15px">Rechten</h3>
+        <p class="sub" style="white-space:normal">Rechten gelden altijd bínnen de scope van de medewerker (RLS). Een recht zonder administraties = niets.</p>
+        <div style="display:grid;gap:8px;margin-top:10px">
+          <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" checked> <span><b>Betalingen klaarzetten</b><span class="sub" style="white-space:normal">Mag in het tabblad Betalingen facturen selecteren en bulks klaarzetten voor de aangevinkte administraties. Goedkeuren blijft bij de accordeur(s) van de klant.</span></span></label>
+          <div style="margin-left:26px"><span class="chip c-info">12 van 27 administraties</span> <button class="linkbtn" style="margin-left:8px">Administraties kiezen…</button></div>
+          <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox"> <span><b>Veldwerkerbeheer</b><span class="sub">bestaand recht (14-09)</span></span></label>
+          <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox"> <span><b>Meerwerk kantoor</b><span class="sub">bestaand recht</span></span></label>
+        </div>
+      </div>
+      <div class="paneel" style="padding:16px">
+        <h3 style="margin:0 0 6px;font-size:15px">Betalingen klaarzetten — administraties</h3>
+        <input type="search" placeholder="Zoek administratie…" style="font:inherit;padding:7px 10px;border:1px solid var(--border);border-radius:8px;width:100%;margin:6px 0 10px">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:6px"><span>12 van 27 aangevinkt</span><span><button class="linkbtn">Alles</button> · <button class="linkbtn">Geen</button></span></div>
+        <div style="max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Baard Beheer B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Box Beheer B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Kempen B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Kempen Facilities B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox"> L.H.G. Holding B.V. <span class="sub" style="margin-left:auto">alleen incasso</span></label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Universal Steigerbouw B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox"> Universal Nederland B.V.</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)"><input type="checkbox" checked> Vastgoedgroep Nederland</label>
+          <label style="display:flex;gap:10px;padding:8px 10px;color:var(--muted)"><input type="checkbox" disabled> Camping Nieuwenhoven <span class="sub" style="margin-left:auto">niet in scope van Sanne</span></label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn secondary">Annuleren</button><button class="btn">Opslaan (+2 −1)</button></div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:12px;white-space:normal">Toekennen: Beheerder-only, audit oud→nieuw, zelfde patroon als 'veldwerkerbeheer' (14-09). Het tabblad Betalingen toont een medewerker alleen de administraties waarvoor het recht aan staat; zonder recht is het tabblad leeg mét uitleg.</p>
+  </main>
+</div>
+</section>
+
+<!-- ========== NOTITIES ========== -->
+<section id="n" class="scherm">
+<main style="max-width:980px;margin:0 auto">
+<div class="notities">
+<h3>Ontwerpnotities — onderdeel van het akkoord</h3>
+<ol>
+<li><span class="b">Bron = de boekhouding, niet een eigen lijst.</span> Rijen komen uit de open posten van RLZ (<code>PaymentItems</code>, open) en Odoo (open <code>account.move</code>), dagelijks + live bij openen. RLZ-betaalstatus "wordt geïncasseerd"/"betaald" en een gevonden bankmutatie maken een rij niet-selecteerbaar. De module blijft de enige schrijver naar RLZ/Odoo (besluit 16-09).</li>
+<li><span class="b">Kantoorbreed, administratie = filter</span> (KP7). Groep-filter hergebruikt het groepskenmerk van 11-09. Default-sortering vervaldatum, over-vervaldatum bovenaan.</li>
+<li><span class="b">Klaarzetten = recht per medewerker per administratie</span> (Peter 17-09; tab Beheer · rechten): Beheerder vinkt per medewerker de administraties aan; Betalingen toont alleen die administraties. Systeem groepeert automatisch per administratie × afzend-bankrekening tot één bulk; uitvoerdatum default = vroegste vervaldatum, minimaal morgen. Intrekken tot "aangeboden", altijd mét reden en audit.</li>
+<li><span class="b">Twee akkoorden, allebei door de accordeur (Peter 17-09):</span> eerst op de factuur (bestaande flow, stap 2), later op de betaling/bulk in de app (stap 5). Alleen geboekte én goedgekeurde facturen komen in de betaallijst. Klaarzetten haalt ze uit de lijst; na het betaal-akkoord gaat de bulk automatisch naar de bank. Bij meerdere lagen: dezelfde lagen als bij de factuur, in volgorde. Afkeuren = factuur terug in de lijst mét reden.</li>
+<li><span class="b">Geen extra controles in dit scherm.</span> Duplicaat-, IBAN- en btw-controles zitten al in het boeken (harde checks). Wat hier staat is gecontroleerd, geaccordeerd en geboekt; het scherm toont dat niet opnieuw.</li>
+<li><span class="b">G-rekening (WKA)</span> = automatisch twee betalingen in dezelfde bulk (regulier + G-rek) uit het leveranciersdossier; ontbrekend G-IBAN = signaal, niet raden.</li>
+<li><span class="b">Uitvoering ná het betaal-akkoord (stap 6): Jarvis → Ponto → bank, niemand logt in bij de bank.</span> <b>Beslispunt B (extern):</b> PSD2 eist per bulk een SCA bij de bank tenzij de bank een zakelijke vrijstelling geeft. Twee varianten in het ontwerp: (a) volautomatisch — alleen als Ponto/bank dit bevestigen (mail 17-09, vraag 1); (b) één bevestiging per bulk door een kantoor-gemachtigde in zijn bank-app — dan toont de tijdlijn een stap "wacht op bankbevestiging (gemachtigde)" mét push. De schermen veranderen daar niet door; alleen die ene tijdlijnregel.</li>
+<li><span class="b">Terugkoppeling:</span> event <code>betaling_uitgevoerd</code> → RLZ <code>QuickPaymentSelection</code> "Betaald per bank" / Odoo payment, daarna afletteren via de batch-stap (16-09) op <code>PaymentBatchInformation</code> = onze bulk-id. Geweigerd → rij terug naar betaalbaar mét reden van de bank + kantoormelding.</li>
+<li><span class="b">Idempotentie:</span> end-to-end-id per betaling = UUIDv5(administratie, document, bedrag); dezelfde bulk twee keer aanbieden kan nooit een tweede betaling geven (bewijs in sandbox-STAP-0 02a).</li>
+<li><span class="b">Intercompany-facturen worden gewoon betaald</span> (Peter 17-09) — geen aparte behandeling in dit scherm.</li>
+<li><span class="b">Schaal:</span> server-side paginering, tellers "N over M administraties", één primaire knop + ⋯, lege stand = actie ("Geen open facturen — naar werkvoorraad").</li>
+</ol>
+</div>
+</main>
+</section>
+
+<script>
+function toon(id,btn){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('.mock-tabs button').forEach(b=>b.classList.remove('on'));if(btn)btn.classList.add('on');window.scrollTo(0,0)}
+</script>
+</body>
+</html>

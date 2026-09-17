@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-native-ota-nameting-3.md
+
 # OPDRACHT 17-09 — Native app OTA: productienameting ná de deploy van de run van 17-09 (bucket bestaat; runtime 1.2) — lees-only
 
 Vervolg op `docs/rapporten/2026-09-17-native-ota-nameting-2.md` (stap 0 niet voldaan: geen deploy sinds de bucket).

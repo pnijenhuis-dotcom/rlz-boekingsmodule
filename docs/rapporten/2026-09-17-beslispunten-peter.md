@@ -92,3 +92,13 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
 1. **Niets gebouwd bij de afwijkingen** (regel "rapporteren, niets bouwen"); structureel: Molenhof Beheer 54× verkoop zonder inkoop,
    166× inkoop zonder gevonden verkoop — twee vragen aan Peter (inkoop niet geboekt? welke debiteur-relatie?) vóór een modelwijziging.
 2. **166 rijen letterlijk in het rapport** (opdracht) — het rapport is daardoor lang; het bot-bestand blijft de bron.
+
+## Run middag/avond 17-09 (handmatige sessie) — opdrachten 1–7
+
+1. **Apple/OTA (1, 4):** manifest-downloadlink volgt `X-Forwarded-Proto` (niet hardgecodeerd `https`) — lokaal blijft http werken; Xcode Cloud-status blijft een mail-klikpunt (geen ASC-API-sleutel in de repo, bewust).
+2. **Herstel-link (2):** het keuzescherm geldt nu óók voor herstel-links (de opdracht: "herstel=1 mag dat nooit omzeilen"); de versie-eis in de mail noemt alleen de geschikte winkel(s); de app-versie-chip toont "onbekend (≤ 1.0?)" als een toestel zich nooit met `X-App-Versie` meldde — géén aparte migratie (kolom bestond al, 0152).
+3. **Leesreplica (3):** compositie via `LEES_CLOUD_SQL_VERBINDING` + app-wachtwoord (geen wachtwoord in deploy.yml); smoketest-toets `SELECT 1` READ ONLY; migratie-job blijft primary-only.
+4. **VGG (5):** "groene vijfde meting" gelezen als groen op de blok-10-criteria (de replay is ROOD tot SCHRIJF c); SCHRIJF c niet geforceerd — de gedeployde CLI kon het bewijspaar niet kiezen → `--boekstuk` gebouwd; `vgg-odoo-migratie` post álles in één run bij groene toets, GO Peter zit vóór `SCHRIJF d`; de 0/164-kolom "RJ-220-tegenzijde → rol" is gerapporteerd, niet gerepareerd.
+5. **CLAUDE.md (6):** 18 domeinen; omvang-waarschuwing > 90k als pytest-warning, > 120k rood; de rapportsectie-guard geldt vanaf 18-09 + de acht rapporten van deze run.
+6. **cc-inbox (7):** wachten blijft de default (16-09-guard); vrijgave is een expliciete mensenhandeling (`rlz inbox vrijgeven`), nooit automatisch; melding ná 30 min, herhaald hoogstens elk uur.
+

@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-apple-1-2-xcode-cloud-nameting.md
+
 # OPDRACHT 17-09 — Nameting ná de SPOED-run Apple 1.1/1.2: Xcode Cloud-build 1.2 groen, deploy groen incl. stap 10, manifest 1.2, uitnodigingsmail App Store-link (lees-only)
 
 Vervolg op `docs/rapporten/2026-09-17-apple-1-1-live-xcode-cloud.md`. Geen writes.

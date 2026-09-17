@@ -1,4 +1,10 @@
-# SPOED 17-09 — Herstel-link accordeur (Romy) landt op de web-app; native inloggen lukt niet. NU repareren.
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-herstellink-app-versie-update-eerst.md
+
+# OPDRACHT 17-09 — Herstel-link/uitnodiging: "update eerst de app" afdwingen (casus Romy, OPGELOST door app-update; geen spoed meer)
+
+> **Uitkomst Peter 17-09 ~14:00:** Romy kon inloggen zodra zij de app uit de store had bijgewerkt (1.1). Oorzaak dus: oude app-versie
+> (1.0, legacy-auth) kende het nieuwe token niet. Blok A hieronder alleen nog als LEES-ONLY bevestiging (audit `X-App-Versie` van haar
+> pogingen vóór/ná), geen diagnose meer. Blok B = structurele fix zodat dit niet nog eens gebeurt.
 
 **Melding Peter 17-09 (letterlijk):** "Romy de accordeur heb ik net een herstel-link gestuurd, die wordt nog steeds naar de web app
 gelinkt en kan native nog steeds niet inloggen."
