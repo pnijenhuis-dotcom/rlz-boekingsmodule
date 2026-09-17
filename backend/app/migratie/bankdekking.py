@@ -48,12 +48,28 @@ _BANK_DAGBOEK = re.compile(r"\b(bank|rabo|rabobank|ing|abn|amro|knab|bunq|triodo
 
 @dataclass(frozen=True)
 class BankMutatie:
-    """Eén PaymentTransaction, platgeslagen: `bedrag` = |Amount| cent-exact, `teken` = −1 af / +1 bij."""
+    """Eén PaymentTransaction, platgeslagen: `bedrag` = |Amount| cent-exact, `teken` = −1 af / +1 bij.
+    `tegenpartij` (17-09) = initialen van `Name` — voor de dubbelen-tabel ("beide bankregels mét datum, tegenpartij,
+    richting"), nooit de volle naam (uitvoer landt in Cloud Logging)."""
 
     rlz_id: str
     bedrag: Decimal
     boekdatum: date
     teken: int
+    tegenpartij: str | None = None
+
+    @property
+    def richting(self) -> str:
+        return "bij" if self.teken > 0 else "af"
+
+    def als_dict(self) -> dict[str, object]:
+        return {
+            "id": self.rlz_id[:8] + "…" if self.rlz_id else "-",
+            "datum": self.boekdatum.isoformat(),
+            "bedrag": str(self.bedrag),
+            "richting": self.richting,
+            "tegenpartij": self.tegenpartij,
+        }
 
 
 @dataclass(frozen=True)
@@ -66,6 +82,73 @@ class Dekking:
     bank_bevestigd: bool
     bank_gelezen: bool
     detail: str
+    #: 17-09: de gematchte bankregels zelf (datum, tegenpartij, richting) — de mens ziet in één oogopslag wát er tegenover staat.
+    mutaties: tuple[BankMutatie, ...] = ()
+
+
+@dataclass(frozen=True)
+class Profiel:
+    """Richting + tegenrekening(en) van één document uit zijn REGELS (correctie Peter 17-09: RLZ-28-00000061/062 waren
+    een ontvangst (1001 D / 1603 C) en een betaling (1602 D / 1001 C) — zelfde bedrag, zelfde dag, tegengesteld).
+    `richting` = teken van de geldstroom (+1 bij, −1 af): memoriaal → uit de bank-/kasregel (Debit op 10xx = bij),
+    inkoop/verkoop → `teken_van`. `tegenrekeningen` = codes van de niet-bankregels mét zijde ("1603/C"). `None` = regels
+    niet gelezen/onbekend → geen uitspraak, nooit stil."""
+
+    richting: int | None
+    tegenrekeningen: frozenset[str] | None
+    regels_gelezen: bool
+
+    @property
+    def tekst(self) -> str:
+        if not self.regels_gelezen:
+            return "regels niet gelezen"
+        r = {1: "bij", -1: "af"}.get(self.richting or 0, "?")
+        return f"{r} · {'/'.join(sorted(self.tegenrekeningen)) if self.tegenrekeningen else 'geen tegenrekening'}"
+
+    def gelijk_aan(self, ander: Profiel) -> bool | None:
+        """True/False als beide gelezen zijn; None = niet toetsbaar (één kant niet gelezen)."""
+        if not self.regels_gelezen or not ander.regels_gelezen:
+            return None
+        return self.richting == ander.richting and self.tegenrekeningen == ander.tegenrekeningen
+
+
+_BANKREKENING_CODE = re.compile(r"^10\d{2}$")  # 1001 bank, 1011/1012 kruisposten/onderweg, 1000 kas — RGS-groep liquide middelen
+
+
+def _regel_code(regel: Mapping[str, object]) -> str | None:
+    account = regel.get("Account")
+    if isinstance(account, Mapping):
+        code = account.get("Code") or account.get("Number") or account.get("AccountNumber")
+        return str(code) if code else None
+    return None
+
+
+def profiel_van_regels(collectie: str, bedrag: Decimal | None, regels: Sequence[Mapping[str, object]] | None) -> Profiel:
+    """Zie `Profiel`. Memoriaalregels UITSLUITEND uit DebitAmount/CreditAmount (nooit `CreditOrDebit`, nooit `NetAmount` —
+    BESLISSINGEN blok 7d)."""
+    if regels is None:
+        return Profiel(richting=None, tegenrekeningen=None, regels_gelezen=False)
+    if collectie in ("PurchaseInvoices", "SalesInvoices"):
+        codes = frozenset(c for c in (_regel_code(r) for r in regels) if c)
+        return Profiel(richting=teken_van(collectie, bedrag), tegenrekeningen=codes, regels_gelezen=True)
+    richting: int | None = None
+    tegen: set[str] = set()
+    for r in regels:
+        code = _regel_code(r)
+        if code is None:
+            continue
+        debet = als_bedrag(r.get("DebitAmount")) or Decimal(0)
+        credit = als_bedrag(r.get("CreditAmount")) or Decimal(0)
+        zijde = "D" if debet > 0 else "C" if credit > 0 else None
+        if zijde is None:
+            continue
+        if _BANKREKENING_CODE.match(code):
+            richting = 1 if zijde == "D" else -1
+        else:
+            tegen.add(f"{code}/{zijde}")
+    if richting is None and bedrag is not None and bedrag != 0:
+        richting = teken_van(collectie, bedrag)  # memoriaal zonder bankregel: het teken van het document
+    return Profiel(richting=richting, tegenrekeningen=frozenset(tegen), regels_gelezen=True)
 
 
 def reeks_van(boekstuk: str | None) -> str | None:
@@ -85,12 +168,14 @@ def bankmutaties_uit_rijen(rijen: Iterable[Mapping[str, object]]) -> list[BankMu
         datum = als_datum(r.get("BookDate")) or als_datum(r.get("Date"))
         if bedrag is None or bedrag == 0 or datum is None:
             continue
+        naam = r.get("Name")
         uit.append(
             BankMutatie(
                 rlz_id=str(r.get("id") or ""),
                 bedrag=abs(bedrag),
                 boekdatum=datum,
                 teken=1 if bedrag > 0 else -1,
+                tegenpartij=_initialen(str(naam)) if naam else None,
             )
         )
     uit.sort(key=lambda m: (m.boekdatum, m.rlz_id))
@@ -130,13 +215,19 @@ def is_bank_direct(
     return bool(dagboek and _BANK_DAGBOEK.search(dagboek))
 
 
+def _initialen(tekst: str) -> str:
+    delen = [d for d in re.split(r"[\s\-]+", tekst.strip()) if d]
+    return "".join(d[0].upper() + "." for d in delen[:4]) or "?"
+
+
 def _match_greedy(
     boekingen: Sequence[tuple[Decimal, date, int]], bank: Sequence[BankMutatie], *, venster_dagen: int
-) -> int:
-    """Aantal boekingen dat een EIGEN bankmutatie vindt (|bedrag| gelijk, teken gelijk, datum binnen het venster);
-    per boeking de dichtstbijzijnde vrije mutatie, boekingen op datumvolgorde."""
+) -> tuple[int, list[BankMutatie]]:
+    """(aantal, gematchte mutaties) — boekingen die een EIGEN bankmutatie vinden (|bedrag| gelijk, teken gelijk, datum
+    binnen het venster); per boeking de dichtstbijzijnde vrije mutatie, boekingen op datumvolgorde."""
     vrij: dict[int, BankMutatie] = dict(enumerate(bank))
     gevonden = 0
+    matches: list[BankMutatie] = []
     for bedrag, datum, teken in sorted(boekingen, key=lambda b: b[1]):
         beste: int | None = None
         beste_afstand: int | None = None
@@ -149,9 +240,10 @@ def _match_greedy(
             if beste_afstand is None or afstand < beste_afstand:
                 beste, beste_afstand = i, afstand
         if beste is not None:
+            matches.append(vrij[beste])
             del vrij[beste]
             gevonden += 1
-    return gevonden
+    return gevonden, matches
 
 
 def dekking_voor(
@@ -176,7 +268,7 @@ def dekking_voor(
             bank_gelezen=True,
             detail="teken onbekend — geen bankfilter",
         )
-    k = _match_greedy(groep, bank, venster_dagen=venster_dagen)
+    k, matches = _match_greedy(groep, bank, venster_dagen=venster_dagen)
     bevestigd = n > 0 and k >= n
     return Dekking(
         boekingen=n,
@@ -184,6 +276,7 @@ def dekking_voor(
         bank_bevestigd=bevestigd,
         bank_gelezen=True,
         detail=f"{n} boekingen, {k} bankmutaties (±{venster_dagen} d)",
+        mutaties=tuple(matches),
     )
 
 
@@ -221,7 +314,7 @@ def leid_bank_reeksen_af(
         n = len(boekingen)
         if n < min_documenten:
             continue
-        k = _match_greedy(boekingen, bank, venster_dagen=venster_dagen)
+        k, _ = _match_greedy(boekingen, bank, venster_dagen=venster_dagen)
         if Decimal(k) / Decimal(n) >= min_dekking:
             uit[reeks] = (n, k)
     return dict(sorted(uit.items()))

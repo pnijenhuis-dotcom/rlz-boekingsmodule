@@ -107,6 +107,14 @@ class NepClient:
             if collectie not in self.collecties:
                 raise RlzApiError(404, "GET", path, "_NotFound")
             return {"value": self.uploads.get(doc_id, [])[: int(params.get("$top", 1))]}
+        if path.count("/") == 1 and path.split("/")[0] in self.collecties:
+            # Documentvorm `{collectie}/{id}` (17-09: regels-lezer voor richting/tegenrekening) — de rij zelf, mét
+            # `DocumentLineList` als de fixture die draagt; onbekend id = 404.
+            collectie, doc_id = path.split("/")
+            for rij in self.collecties[collectie]:
+                if str(rij.get("id")) == doc_id:
+                    return rij
+            raise RlzApiError(404, "GET", path, "_NotFound")
         if path not in self.collecties:
             raise RlzApiError(404, "GET", path, "_NotFound")
         if "$expand" in params and path in self.expand_weigeren:
@@ -187,13 +195,15 @@ class TestCategorieen:
             _doc(boekstuk="RLZ-04-846", bedrag=20000.0),
             _doc(boekstuk="RLZ-04-847", bedrag=20000.0),
             _doc(boekstuk="RLZ-04-848", bedrag=20000.0, status=1),
-            _doc(boekstuk="RLZ-04-900", bedrag=20000.0, datum="2026-08-16T00:00:00"),  # andere datum
+            _doc(boekstuk="RLZ-04-900", bedrag=20000.0, datum="2026-08-16T00:00:00"),  # +1 dag: binnen ±3 d (17-09)
             _doc(boekstuk="RLZ-04-901", bedrag=20000.01),  # cent verschil
+            _doc(boekstuk="RLZ-04-902", bedrag=20000.0, datum="2026-08-21T00:00:00"),  # +5 dagen: buiten het venster
         ]
         uit = dubbelen("PurchaseInvoices", rijen)
-        assert sorted(r.boekstuk for r in uit) == ["RLZ-04-846", "RLZ-04-847", "RLZ-04-848"]
+        # Correctie Peter 17-09: dubbel-kandidaat = zelfde bedrag/relatie binnen ±3 dagen, niet alleen exact dezelfde dag.
+        assert sorted(r.boekstuk for r in uit) == ["RLZ-04-846", "RLZ-04-847", "RLZ-04-848", "RLZ-04-900"]
         assert len({r.extra["groep"] for r in uit}) == 1
-        assert all("3× € 20000.00 op 2026-08-15" in r.bevinding for r in uit)
+        assert all("4× € 20000.00 op 2026-08-15…2026-08-16" in r.bevinding for r in uit)
         concept = next(r for r in uit if r.boekstuk == "RLZ-04-848")
         assert concept.bevinding.endswith("(concept)")
 
@@ -727,11 +737,14 @@ class TestVggNameting:
             "RLZ-46-00000124",
         ]
         per = {r.boekstuk: r for r in lijst.rijen["dubbelen"]}
-        assert per["RLZ-06-00000057"].bevinding == (
-            "2× € 185000.00 op 2025-10-23: RLZ-06-00000057, RLZ-46-00000124 — 2 boekingen, 1 bankmutaties (±3 d)"
+        # 17-09: de bevinding draagt richting/tegenrekening (NepClient kent geen documentvorm → "regels niet gelezen") én
+        # de gematchte bankregel (datum, richting, tegenpartij-initialen) — de mens ziet wát er tegenover staat.
+        assert per["RLZ-06-00000057"].bevinding.startswith(
+            "2× € 185000.00 op 2025-10-23: RLZ-06-00000057, RLZ-46-00000124 · regels niet gelezen — 2 boekingen, 1 bankmutaties (±3 d) [2025-10-23 bij "
         )
-        assert per["RLZ-06-00000033"].bevinding.endswith("— 2 boekingen, 0 bankmutaties (±3 d)")
-        assert per["RLZ-01-00000077"].bevinding.endswith("(concept) — 2 boekingen, 0 bankmutaties (±3 d)")
+        assert per["RLZ-06-00000057"].extra["bank_toets"] == "bevestigd" and len(per["RLZ-06-00000057"].extra["bank_regels"]) == 1
+        assert "— 2 boekingen, 0 bankmutaties (±3 d)" in per["RLZ-06-00000033"].bevinding
+        assert "(concept) · regels niet gelezen — 2 boekingen, 0 bankmutaties (±3 d)" in per["RLZ-01-00000077"].bevinding
         assert (
             per["RLZ-06-00000057"].extra["bank_mutaties"] == 1 and per["RLZ-06-00000057"].extra["bank_boekingen"] == 2
         )
@@ -791,7 +804,7 @@ class TestBankLeidendGuards:
         ]
         lijst = maak_schoonlijst(NepClient(data))
         assert lijst.tellers["dubbelen"] == 1 and lijst.tellers["bank_bevestigd"] == 0
-        assert all(r.bevinding.endswith("— 2 boekingen, 1 bankmutaties (±3 d)") for r in lijst.rijen["dubbelen"])
+        assert all("— 2 boekingen, 1 bankmutaties (±3 d)" in r.bevinding for r in lijst.rijen["dubbelen"])
 
     def test_bank_niet_gelezen_alles_gemeld_met_markering_en_geen_hulzen(self) -> None:
         data = _vgg()
@@ -837,7 +850,7 @@ class TestBankLeidendGuards:
         lijst = maak_schoonlijst(NepClient(data))
         assert lijst.bank_reeksen == {}
         assert lijst.tellers["bank_bevestigd"] == 0 and lijst.tellers["dubbelen"] == 1
-        assert all(r.bevinding.endswith("— 2 boekingen, 1 bankmutaties (±3 d)") for r in lijst.rijen["dubbelen"])
+        assert all("— 2 boekingen, 1 bankmutaties (±3 d)" in r.bevinding for r in lijst.rijen["dubbelen"])
 
     def test_bank_directe_reeks_afgeleid_en_receipts_per_definitie(self) -> None:
         data = _basis()
@@ -960,3 +973,87 @@ class TestKopieZonderOmschrijvingBankLeidend:
         }
         uit = concept_kopieen(docs, bank=None)
         assert [r.categorie for r in uit] == ["concept_kopie_van_geboekt"] and "bank_mutaties" not in uit[0].extra
+
+
+def _memo(boekstuk: str, bedrag: float, datum: str, regels: list[tuple[str, float | None, float | None]], omschrijving: str = "") -> dict:
+    """Memoriaal mét regels (Account-code, DebitAmount, CreditAmount) — richting UITSLUITEND uit Debit/Credit (blok 7d)."""
+    return {
+        "id": str(uuid.uuid4()),
+        "ReceiptNumber": boekstuk,
+        "BaseInvoiceAmount": bedrag,
+        "Date": f"{datum}T00:00:00",
+        "BookDate": f"{datum}T00:00:00",
+        "Entity": None,
+        "Status": 2,
+        "Description": omschrijving,
+        "Reference": None,
+        "DocumentLineList": [
+            {"Account": {"Code": code, "Name": f"rekening {code}"}, "DebitAmount": d, "CreditAmount": c} for code, d, c in regels
+        ],
+    }
+
+
+class TestRichtingEnTegenrekening:
+    """Correctie Peter 17-09: RLZ-28-00000061 (ontvangst Midden Nederland, 1001 D / 1603 C) en -00000062 (betaling Tupker,
+    1602 D / 1001 C) — zelfde dag, zelfde bedrag, TEGENGESTELD: géén dubbel. Dubbel-kandidaat = zelfde richting én dezelfde
+    tegenrekening(en); memoriaal mét bankregel = bankbevestiging verplicht; beide bankregels zichtbaar in de tabel."""
+
+    def _data(self, memorialen: list[dict], bank: list[dict]) -> dict[str, list[dict]]:
+        data = _basis()
+        data["ManualJournals"] = memorialen
+        data["PaymentTransactions"] = bank
+        return data
+
+    def test_casus_00000061_062_tegengestelde_richting_is_geen_kandidaat(self) -> None:
+        memorialen = [
+            _memo("RLZ-28-00000061", 135000.0, "2025-11-07", [("1001", 135000.0, None), ("1603", None, 135000.0)], "ontvangst MN"),
+            _memo("RLZ-28-00000062", 135000.0, "2025-11-07", [("1602", 135000.0, None), ("1001", None, 135000.0)], "betaling TB"),
+        ]
+        bank = [
+            _btx(135000.0, "2025-11-07", "ontvangst", open_=False, tx_id="in", naam="Midden Nederland"),
+            _btx(-135000.0, "2025-11-07", "betaling", open_=False, tx_id="uit", naam="Tupker Beheer"),
+        ]
+        lijst = maak_schoonlijst(NepClient(self._data(memorialen, bank)))
+        assert lijst.tellers["dubbelen"] == 0 and lijst.tellers["bank_bevestigd"] == 0
+        per = {r.boekstuk: r for r in lijst.rijen["zelfde_bedrag_verschillend_kenmerk"]}
+        assert set(per) == {"RLZ-28-00000061", "RLZ-28-00000062"}
+        assert "richting/tegenrekening verschilt (bij · 1603/C vs af · 1602/D) — geen dubbel" in per["RLZ-28-00000061"].bevinding
+        assert per["RLZ-28-00000062"].extra["richting_tegenrekening"] == "af · 1602/D"
+        assert lijst.regels_niet_gelezen == 0
+
+    def test_zelfde_profiel_bank_weerlegt_met_beide_bankregels_of_bevestigt_met_een(self) -> None:
+        memorialen = [
+            _memo("RLZ-28-00000101", 5000.0, "2026-01-10", [("1001", 5000.0, None), ("1603", None, 5000.0)], "aanbetaling A"),
+            _memo("RLZ-28-00000102", 5000.0, "2026-01-12", [("1001", 5000.0, None), ("1603", None, 5000.0)], "aanbetaling A"),
+        ]
+        twee = [
+            _btx(5000.0, "2026-01-10", "aanbetaling", open_=False, tx_id="1", naam="Midden Nederland"),
+            _btx(5000.0, "2026-01-12", "aanbetaling", open_=False, tx_id="2", naam="Midden Nederland"),
+        ]
+        lijst = maak_schoonlijst(NepClient(self._data(memorialen, twee)))
+        assert lijst.tellers["dubbelen"] == 0 and lijst.tellers["bank_bevestigd"] == 1
+        r = lijst.rijen["bank_bevestigd"][0]
+        assert r.extra["bank_toets"] == "weerlegd" and r.extra["richting_tegenrekening"] == "bij · 1603/C"
+        assert [b["datum"] for b in r.extra["bank_regels"]] == ["2026-01-10", "2026-01-12"]
+        assert all(b["richting"] == "bij" and b["tegenpartij"] == "M.N." for b in r.extra["bank_regels"])
+        assert "[2026-01-10 bij M.N., 2026-01-12 bij M.N.]" in r.bevinding
+        # Eén bankmutatie voor twee boekingen: kandidaat blijft, mét de ene bankregel zichtbaar.
+        lijst2 = maak_schoonlijst(NepClient(self._data(memorialen, twee[:1])))
+        assert lijst2.tellers["dubbelen"] == 1
+        d = lijst2.rijen["dubbelen"][0]
+        assert d.extra["bank_toets"] == "bevestigd" and len(d.extra["bank_regels"]) == 1
+        assert "· bij · 1603/C — 2 boekingen, 1 bankmutaties (±3 d) [2026-01-10 bij M.N.]" in d.bevinding
+
+    def test_bank_niet_gelezen_memoriaal_met_bankregel_blijft_kandidaat_met_verplicht_markering(self) -> None:
+        memorialen = [
+            _memo("RLZ-28-00000101", 5000.0, "2026-01-10", [("1001", 5000.0, None), ("1603", None, 5000.0)]),
+            _memo("RLZ-28-00000102", 5000.0, "2026-01-10", [("1001", 5000.0, None), ("1603", None, 5000.0)]),
+        ]
+        data = self._data(memorialen, [])
+        lijst = maak_schoonlijst(
+            NepClient(data, fouten={"PaymentTransactions": RlzApiError(403, "GET", "PaymentTransactions", "geen recht")})
+        )
+        d = lijst.rijen["dubbelen"]
+        assert len(d) == 2 and all(r.extra["bank_toets"] == "geen_mutatie" for r in d)  # één groep, twee documentrijen
+        assert "BANK NIET GELEZEN — niet gefilterd (memoriaal mét bankregel: bankbevestiging verplicht)" in d[0].bevinding
+

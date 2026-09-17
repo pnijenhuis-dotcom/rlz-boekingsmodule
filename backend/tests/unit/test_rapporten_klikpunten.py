@@ -15,7 +15,7 @@ VANAF = "2026-09-17"
 KOPPEN = re.compile(r"^#{1,4}\s.*(klikpunt|opruimpunt|beslispunt)", re.I)
 OBJECT = re.compile(r"RLZ-\d{2}-\d{8}|\bbankregel\b|\bmutatie\b|\bboekstuk\b|\bconcept\b|\bOdoo-(document|boekstuk|factuur|move|id)\b", re.I)
 DATUM = re.compile(r"\b\d{2}-\d{2}(-\d{4})?\b|\b\d{4}-\d{2}-\d{2}\b")
-BEDRAG = re.compile(r"€\s?-?\d")
+BEDRAG = re.compile(r"€\s?[-−]?\d")
 BRON = re.compile(r"https?://|\b[0-9a-f]{8}\b|\bid\b|guid|citaat|letterlijk|rlz-feiten|db-lezen|verkenning/", re.I)
 UITZONDERING = re.compile(r"vervalt|ingetrokken|niet gevonden|bestaat niet|geen mutatie|geen document", re.I)
 

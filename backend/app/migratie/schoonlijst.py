@@ -55,7 +55,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -63,6 +63,7 @@ from typing import Any
 
 from app.migratie import bankdekking
 from app.migratie.bankdekking import BankMutatie, Dekking
+from app.rlz.client import RlzApiError
 from app.rlz.lezen import (
     LeesClient,
     LeesUitkomst,
@@ -184,6 +185,8 @@ class Schoonlijst:
     bank_gelezen: bool = False
     bank_mutaties: int = 0
     bank_reeksen: dict[str, tuple[int, int]] = field(default_factory=dict)
+    #: 17-09: kandidaat-documenten waarvan de regels (richting/tegenrekening) niet gelezen konden worden — nooit stil.
+    regels_niet_gelezen: int = 0
 
     @property
     def tellers(self) -> dict[str, int]:
@@ -529,11 +532,13 @@ def concept_kopieen(
 
 
 def dubbelen(collectie: str, rijen: Iterable[dict[str, Any]], *, uitsluiten: Iterable[str] = ()) -> list[Rij]:
-    """(b) Groepen op (bedrag cent-exact, datum, entity-id of None) met ≥ 2 documenten. Concepten tellen mee
-    (gemarkeerd): een concept náást een geboekt exemplaar is precies de opruimcasus — tenzij het al als huls of
-    kopie is afgevangen (`uitsluiten`). Puur; de kenmerk- en bankpoorten zitten in `beoordeel_dubbelen`."""
+    """(b) Groepen op (bedrag cent-exact, entity-id of None) mét datums die aaneengesloten binnen ±BANK_VENSTER_DAGEN
+    (3 d) liggen — correctie Peter 17-09: dubbel = ± 3 d, niet alleen exact dezelfde dag — met ≥ 2 documenten. Concepten
+    tellen mee (gemarkeerd): een concept náást een geboekt exemplaar is precies de opruimcasus — tenzij het al als huls of
+    kopie is afgevangen (`uitsluiten`). Puur; de kenmerk-, richting-/tegenrekening- en bankpoorten zitten in
+    `beoordeel_dubbelen`."""
     weg = set(uitsluiten)
-    groepen: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    per_sleutel: dict[tuple[str, str], list[tuple[date, dict[str, Any]]]] = {}
     for r in rijen:
         if _doc_id(r) in weg:
             continue
@@ -541,26 +546,38 @@ def dubbelen(collectie: str, rijen: Iterable[dict[str, Any]], *, uitsluiten: Ite
         if bedrag is None or datum is None:
             continue
         entity_id, _ = entity_van(r)
-        groepen.setdefault((str(bedrag), datum.isoformat(), entity_id or ""), []).append(r)
+        per_sleutel.setdefault((str(bedrag), entity_id or ""), []).append((datum, r))
     uit: list[Rij] = []
-    for (bedrag, datum, entity_id), docs in sorted(groepen.items()):
-        if len(docs) < 2:
-            continue
-        groep = f"{collectie}|{datum}|{bedrag}|{entity_id or 'geen-relatie'}"
-        boekstukken = sorted(str(d.get("ReceiptNumber") or d.get("id") or "?") for d in docs)
-        for d in docs:
-            concept = " (concept)" if als_int(d.get("Status")) == STATUS_CONCEPT else ""
-            uit.append(
-                _document_rij(
-                    "dubbelen",
-                    collectie,
-                    d,
-                    f"{len(docs)}× € {bedrag} op {datum}{' zonder relatie' if not entity_id else ''}: "
-                    f"{', '.join(boekstukken)}{concept}",
-                    groep=groep,
-                    groep_grootte=len(docs),
+    for (bedrag, entity_id), items in sorted(per_sleutel.items()):
+        items.sort(key=lambda x: (x[0], str(x[1].get("id") or "")))
+        ketens: list[list[tuple[date, dict[str, Any]]]] = []
+        for datum, r in items:
+            if ketens and (datum - ketens[-1][-1][0]).days <= BANK_VENSTER_DAGEN:
+                ketens[-1].append((datum, r))
+            else:
+                ketens.append([(datum, r)])
+        for keten in ketens:
+            if len(keten) < 2:
+                continue
+            docs = [r for _, r in keten]
+            eerste = keten[0][0].isoformat()
+            groep = f"{collectie}|{eerste}|{bedrag}|{entity_id or 'geen-relatie'}"
+            boekstukken = sorted(str(d.get("ReceiptNumber") or d.get("id") or "?") for d in docs)
+            datums = sorted({dt.isoformat() for dt, _ in keten})
+            wanneer = eerste if len(datums) == 1 else f"{datums[0]}…{datums[-1]}"
+            for d in docs:
+                concept = " (concept)" if als_int(d.get("Status")) == STATUS_CONCEPT else ""
+                uit.append(
+                    _document_rij(
+                        "dubbelen",
+                        collectie,
+                        d,
+                        f"{len(docs)}× € {bedrag} op {wanneer}{' zonder relatie' if not entity_id else ''}: "
+                        f"{', '.join(boekstukken)}{concept}",
+                        groep=groep,
+                        groep_grootte=len(docs),
+                    )
                 )
-            )
     return uit
 
 
@@ -586,12 +603,54 @@ def _componenten(rijen: Sequence[Rij]) -> list[list[Rij]]:
     return [sorted(c, key=lambda r: r.sleutel) for c in sorted(per_wortel.values(), key=lambda c: c[0].sleutel)]
 
 
+RegelsLezer = Callable[[str, str], Sequence[dict[str, Any]] | None]
+
+
+def _profielen(component: Sequence[Rij], regels_lezer: RegelsLezer | None) -> list[bankdekking.Profiel]:
+    if regels_lezer is None:
+        return [bankdekking.Profiel(richting=None, tegenrekeningen=None, regels_gelezen=False) for _ in component]
+    uit = []
+    for r in component:
+        regels = regels_lezer(r.collectie, r.rlz_id or "") if r.rlz_id else None
+        uit.append(bankdekking.profiel_van_regels(r.collectie, r.bedrag, regels))
+    return uit
+
+
+def _profiel_componenten(component: Sequence[Rij], profielen: Sequence[bankdekking.Profiel]) -> list[list[int]]:
+    """Splits een kenmerk-component op richting + tegenrekening(en): alleen documenten met een GELIJK profiel kunnen
+    dezelfde boeking zijn. Niet-toetsbaar (regels niet gelezen) blijft bij elkaar — nooit stil wegfilteren."""
+    ouder = list(range(len(component)))
+
+    def wortel(i: int) -> int:
+        while ouder[i] != i:
+            ouder[i] = ouder[ouder[i]]
+            i = ouder[i]
+        return i
+
+    for i in range(len(component)):
+        for j in range(i + 1, len(component)):
+            if profielen[i].gelijk_aan(profielen[j]) is not False:
+                ouder[wortel(i)] = wortel(j)
+    per: dict[int, list[int]] = {}
+    for i in range(len(component)):
+        per.setdefault(wortel(i), []).append(i)
+    return sorted(per.values(), key=lambda idx: component[idx[0]].sleutel)
+
+
 def beoordeel_dubbelen(
-    rijen: Sequence[Rij], *, bank: Sequence[BankMutatie] | None, bank_reeksen: Iterable[str] = ()
+    rijen: Sequence[Rij],
+    *,
+    bank: Sequence[BankMutatie] | None,
+    bank_reeksen: Iterable[str] = (),
+    regels_lezer: RegelsLezer | None = None,
 ) -> dict[str, list[Rij]]:
-    """(b1)+(b2) over de ruwe dubbelen-rijen: per groep kenmerk-componenten → losse exemplaren = verschillend
-    kenmerk; componenten ≥ 2 → bankdekking: bank-direct of evenveel/meer bankmutaties = `bank_bevestigd`, anders
-    `dubbelen` mét "n boekingen, k bankmutaties"; bank niet gelezen (`bank=None`) = alles gemeld mét markering."""
+    """(b1)+(b2)+(b3) over de ruwe dubbelen-rijen: per groep kenmerk-componenten → losse exemplaren = verschillend
+    kenmerk; (b3, correctie Peter 17-09) binnen een component alleen documenten met DEZELFDE RICHTING én DEZELFDE
+    TEGENREKENING(EN) (uit de regels, `regels_lezer`) blijven kandidaat — de rest = "zelfde bedrag, verschillend kenmerk"
+    mét de reden ("bij · 1603/C vs af · 1602/D"); componenten ≥ 2 → bankdekking mét de richting uit de regels (memoriaal:
+    de bank-/kasregel), bank-direct of evenveel/meer bankmutaties = `bank_bevestigd`, anders `dubbelen` mét "n boekingen,
+    k bankmutaties" én de gematchte bankregels (datum, tegenpartij, richting); memoriaal mét bankregel zonder gelezen bank =
+    bankbevestiging verplicht → blijft kandidaat mét markering. Élke rij draagt `bank_toets`."""
     reeksen = set(bank_reeksen)
     uit: dict[str, list[Rij]] = {"dubbelen": [], "zelfde_bedrag_verschillend_kenmerk": [], "bank_bevestigd": []}
     per_groep: dict[str, list[Rij]] = {}
@@ -600,9 +659,10 @@ def beoordeel_dubbelen(
     for groep, leden in sorted(per_groep.items()):
         alle_boekstukken = sorted(r.boekstuk or r.rlz_id or "?" for r in leden)
         componenten = _componenten(leden)
-        for volgnr, component in enumerate(componenten):
-            if len(component) < 2:
-                (r,) = component
+        volgnr = 0
+        for kenmerk_component in componenten:
+            if len(kenmerk_component) < 2:
+                (r,) = kenmerk_component
                 anderen = [b for b in alle_boekstukken if b != (r.boekstuk or r.rlz_id)]
                 uit["zelfde_bedrag_verschillend_kenmerk"].append(
                     replace(
@@ -617,59 +677,107 @@ def beoordeel_dubbelen(
                     )
                 )
                 continue
-            sub_groep = groep if len(componenten) == 1 else f"{groep}#{volgnr + 1}"
-            boekstukken = sorted(r.boekstuk or r.rlz_id or "?" for r in component)
-            bank_direct = all(
-                bankdekking.is_bank_direct(r.collectie, r.boekstuk, None, bank_reeksen=reeksen) for r in component
-            )
-            if bank_direct:
-                # Per definitie bank-bevestigd: het document IS een bankmutatie-boeking (ook zonder gelezen bank).
-                reeks_tekst = "/".join(sorted({bankdekking.reeks_van(r.boekstuk) or r.collectie for r in component}))
-                dekking = Dekking(
-                    boekingen=len(component),
-                    bankmutaties=len(component),
-                    bank_bevestigd=True,
-                    bank_gelezen=bank is not None,
-                    detail=f"bank-directe boekingen (reeks {reeks_tekst})",
-                )
-            else:
-                dekking = bankdekking.dekking_voor(
-                    [(r.bedrag, r.datum, bankdekking.teken_van(r.collectie, r.bedrag)) for r in component],  # type: ignore[misc]
-                    bank,
-                    venster_dagen=BANK_VENSTER_DAGEN,
-                )
-            kop = f"{len(component)}× € {component[0].bedrag} op {component[0].datum}: {', '.join(boekstukken)}"
-            for r in component:
-                concept = " (concept)" if r.status == STATUS_CONCEPT else ""
-                extra = {
-                    **r.extra,
-                    "groep": sub_groep,
-                    "groep_grootte": len(component),
-                    "bank_boekingen": dekking.boekingen,
-                    "bank_mutaties": dekking.bankmutaties,
-                    "bank_gelezen": dekking.bank_gelezen,
-                    "bank_direct": bank_direct,
-                    # Feiten eerst 17-09 (blok C): élk dubbel-signaal draagt verplicht het bank-toetsresultaat —
-                    # weerlegd = de bank toont voor élk exemplaar een eigen mutatie (geen dubbel), bevestigd = minder
-                    # mutaties dan boekingen (dubbel-kandidaat blijft), geen_mutatie = bank niet gelezen (niet gefilterd).
-                    "bank_toets": (
-                        "weerlegd" if dekking.bank_bevestigd else "bevestigd" if dekking.bank_gelezen else "geen_mutatie"
-                    ),
-                }
-                if dekking.bank_bevestigd:
-                    uit["bank_bevestigd"].append(
+            profielen = _profielen(kenmerk_component, regels_lezer)
+            for idx in _profiel_componenten(kenmerk_component, profielen):
+                component = [kenmerk_component[i] for i in idx]
+                comp_profielen = [profielen[i] for i in idx]
+                if len(component) < 2:
+                    (r,) = component
+                    (pf,) = comp_profielen
+                    anderen = [
+                        (kenmerk_component[j].boekstuk or kenmerk_component[j].rlz_id or "?", profielen[j].tekst)
+                        for j in range(len(kenmerk_component))
+                        if kenmerk_component[j] is not r
+                    ]
+                    uit["zelfde_bedrag_verschillend_kenmerk"].append(
                         replace(
                             r,
-                            categorie="bank_bevestigd",
-                            bevinding=f"{kop}{concept} — bank-bevestigd: {dekking.detail}",
-                            extra=extra,
+                            categorie="zelfde_bedrag_verschillend_kenmerk",
+                            bevinding=(
+                                f"zelfde bedrag als {', '.join(b for b, _ in anderen)} op "
+                                f"{r.datum.isoformat() if r.datum else '?'}, richting/tegenrekening verschilt "
+                                f"({pf.tekst} vs {'; '.join(p for _, p in anderen)}) — geen dubbel (bank/regels leidend)"
+                            ),
+                            extra={**r.extra, "kenmerk": pf.tekst, "richting_tegenrekening": pf.tekst},
                         )
                     )
-                else:
-                    staart = "BANK NIET GELEZEN — niet gefilterd" if not dekking.bank_gelezen else dekking.detail
-                    uit["dubbelen"].append(
-                        replace(r, categorie="dubbelen", bevinding=f"{kop}{concept} — {staart}", extra=extra)
+                    continue
+                volgnr += 1
+                sub_groep = groep if len(componenten) == 1 and volgnr == 1 else f"{groep}#{volgnr}"
+                boekstukken = sorted(r.boekstuk or r.rlz_id or "?" for r in component)
+                bank_direct = all(
+                    bankdekking.is_bank_direct(r.collectie, r.boekstuk, None, bank_reeksen=reeksen) for r in component
+                )
+                profiel_tekst = comp_profielen[0].tekst
+                regels_gelezen = all(pf.regels_gelezen for pf in comp_profielen)
+                bankregel_verplicht = regels_gelezen and any(
+                    r.collectie == "ManualJournals" and pf.richting is not None for r, pf in zip(component, comp_profielen, strict=True)
+                )
+                if bank_direct:
+                    reeks_tekst = "/".join(sorted({bankdekking.reeks_van(r.boekstuk) or r.collectie for r in component}))
+                    dekking = Dekking(
+                        boekingen=len(component),
+                        bankmutaties=len(component),
+                        bank_bevestigd=True,
+                        bank_gelezen=bank is not None,
+                        detail=f"bank-directe boekingen (reeks {reeks_tekst})",
                     )
+                else:
+                    groep_tekens = [
+                        (
+                            r.bedrag,
+                            r.datum,
+                            pf.richting if pf.regels_gelezen and pf.richting is not None else bankdekking.teken_van(r.collectie, r.bedrag),
+                        )
+                        for r, pf in zip(component, comp_profielen, strict=True)
+                    ]
+                    dekking = bankdekking.dekking_voor(groep_tekens, bank, venster_dagen=BANK_VENSTER_DAGEN)  # type: ignore[arg-type]
+                kop = f"{len(component)}× € {component[0].bedrag} op {component[0].datum}: {', '.join(boekstukken)}"
+                bank_regels = [m.als_dict() for m in dekking.mutaties]
+                for r in component:
+                    concept = " (concept)" if r.status == STATUS_CONCEPT else ""
+                    extra = {
+                        **r.extra,
+                        "groep": sub_groep,
+                        "groep_grootte": len(component),
+                        "bank_boekingen": dekking.boekingen,
+                        "bank_mutaties": dekking.bankmutaties,
+                        "bank_gelezen": dekking.bank_gelezen,
+                        "bank_direct": bank_direct,
+                        "richting_tegenrekening": profiel_tekst,
+                        "regels_gelezen": regels_gelezen,
+                        "bank_regels": bank_regels,
+                        # Feiten eerst 17-09 (blok C): élk dubbel-signaal draagt verplicht het bank-toetsresultaat —
+                        # weerlegd = de bank toont voor élk exemplaar een eigen mutatie (geen dubbel), bevestigd = minder
+                        # mutaties dan boekingen (dubbel-kandidaat blijft), geen_mutatie = bank niet gelezen (niet gefilterd).
+                        "bank_toets": (
+                            "weerlegd" if dekking.bank_bevestigd else "bevestigd" if dekking.bank_gelezen else "geen_mutatie"
+                        ),
+                    }
+                    if dekking.bank_bevestigd:
+                        uit["bank_bevestigd"].append(
+                            replace(
+                                r,
+                                categorie="bank_bevestigd",
+                                bevinding=f"{kop}{concept} — bank-bevestigd: {dekking.detail}"
+                                + (f" [{', '.join(f'{b['datum']} {b['richting']} {b['tegenpartij'] or '?'}' for b in bank_regels)}]" if bank_regels else ""),
+                                extra=extra,
+                            )
+                        )
+                    else:
+                        if not dekking.bank_gelezen:
+                            staart = "BANK NIET GELEZEN — niet gefilterd" + (
+                                " (memoriaal mét bankregel: bankbevestiging verplicht)" if bankregel_verplicht else ""
+                            )
+                        else:
+                            staart = dekking.detail + (
+                                f" [{', '.join(f'{b['datum']} {b['richting']} {b['tegenpartij'] or '?'}' for b in bank_regels)}]"
+                                if bank_regels
+                                else ""
+                            )
+                        uit["dubbelen"].append(
+                            replace(r, categorie="dubbelen", bevinding=f"{kop}{concept} · {profiel_tekst} — {staart}", extra=extra)
+                        )
     return uit
 
 
@@ -804,7 +912,7 @@ def maak_schoonlijst(
         lijst.rijen["concepten"].extend(concepten(pad, rijen, uitsluiten=afgevangen))
         ruwe_dubbelen.extend(dubbelen(pad, rijen, uitsluiten=afgevangen))
     for categorie, rijen_uit in beoordeel_dubbelen(
-        ruwe_dubbelen, bank=mutaties, bank_reeksen=lijst.bank_reeksen
+        ruwe_dubbelen, bank=mutaties, bank_reeksen=lijst.bank_reeksen, regels_lezer=_regels_lezer(client, lijst)
     ).items():
         lijst.rijen[categorie].extend(rijen_uit)
 
@@ -817,6 +925,31 @@ def maak_schoonlijst(
     for k in lijst.rijen:
         lijst.rijen[k].sort(key=lambda r: r.sleutel)
     return lijst
+
+
+def _regels_lezer(client: LeesClient, lijst: Schoonlijst) -> RegelsLezer:
+    """Regels van één kandidaat-document via de documentvorm `{collectie}/{id}?$expand=DocumentLineList($expand=Account)`
+    (blok 7c: `…/Lines` bestaat niet) — alleen voor dubbelen-kandidaten, gecachet per id; een leesfout = None (regels niet
+    gelezen → niet-toetsbaar, zichtbaar), geteld in `lijst.regels_niet_gelezen`."""
+    cache: dict[str, Sequence[dict[str, Any]] | None] = {}
+
+    def lees(collectie: str, rlz_id: str) -> Sequence[dict[str, Any]] | None:
+        if not rlz_id or collectie == "Receipts":
+            return None
+        if rlz_id in cache:
+            return cache[rlz_id]
+        try:
+            antwoord = client.get(f"{collectie}/{rlz_id}", params={"$expand": "DocumentLineList($expand=Account)"})
+            regels = antwoord.get("DocumentLineList") if isinstance(antwoord, dict) else None
+            cache[rlz_id] = [r for r in regels if isinstance(r, dict)] if isinstance(regels, list) else None
+        except RlzApiError as exc:
+            logger.warning("schoonlijst: regels van %s/%s niet gelezen (HTTP %s)", collectie, rlz_id[:8], exc.status_code)
+            cache[rlz_id] = None
+        if cache[rlz_id] is None:
+            lijst.regels_niet_gelezen += 1
+        return cache[rlz_id]
+
+    return lees
 
 
 def _bijlagen(
