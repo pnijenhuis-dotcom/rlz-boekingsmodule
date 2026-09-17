@@ -295,3 +295,74 @@ def test_pseudo_sleutel_in_de_bankgroep_zonder_outstanding() -> None:
     groepen = replay.afletter_groepen(ctx, lambda lid: f"ongemapt:{lid}")
     assert model_1001.IMPLICIET_OUTSTANDING in groepen["bank"]["sleutels"]
     assert IMPLICIET_TUSSENREKENING in groepen["tussenrekening"]["sleutels"]
+
+
+# ---- blok 10 (17-09): één regel, één bestemming — RJ-220-rol op de TEGENzijde, nooit op de 1001-regel -----------------
+
+MJ_ONTVANGEN = str(uuid.uuid4())
+TX_ONTVANGEN = str(uuid.uuid4())
+
+
+def scenario_ontvangen_aanbetaling() -> tuple[dict, dict, dict, dict]:
+    """Casus RLZ-28-00000061 (vierde meting 16-09): ontvangen aanbetaling als memoriaal 1001 D 135.000 / 1603 C 135.000
+    mét pand-toewijzing soort aanbetaling (mens). Vóór blok 10 kreeg de 1001-regel de rol 3606 (activa met de grootste debet)
+    én ging hij via het 1001-model naar outstanding → 3606 −363.300 in de saldibalans."""
+    from app.migratie.vertaling import PandToewijzing
+    from tests.migratie.test_replay import PANDEN
+
+    collecties, regels, statements = mini_vgg()
+    _JR_DOCTYPE.update({MJ_ONTVANGEN: 11})
+    collecties["Ledgers"] = [*collecties["Ledgers"], LEDGER_1001]
+    mj = _memoriaal(MJ_ONTVANGEN, "RLZ-28-00000061", "2025-11-07", 135000.0)
+    collecties["ManualJournals"] = [*collecties["ManualJournals"], mj]
+    collecties["PaymentTransactions"] = [
+        *collecties["PaymentTransactions"],
+        _tx(TX_ONTVANGEN, "00061", "2025-11-07", 135000.0, refs=[(mj, 135000.0)], naam="Midden Nederland"),
+    ]
+    collecties["JournalEntryLines"] = [
+        *collecties["JournalEntryLines"],
+        _jr(L_1001, MJ_ONTVANGEN, "2025-11-07", debet=135000.0),
+        _jr(L_NOTARIS, MJ_ONTVANGEN, "2025-11-07", credit=135000.0),
+    ]
+    regels[MJ_ONTVANGEN] = [
+        _regel(L_1001, debet=135000.0, omschrijving="Ontvangst aanbetaling MN"),
+        _regel(L_NOTARIS, credit=135000.0, omschrijving="Aanbetaling 1603"),
+    ]
+    panden = {
+        **PANDEN,
+        uuid.UUID(MJ_ONTVANGEN): PandToewijzing("gelderstraat-60", "Gustaaf Gelderstraat 60, Almere", "aanbetaling", "hoog", "mens"),
+    }
+    return collecties, regels, statements, panden
+
+
+class TestBlok10EenRegelEenBestemming:
+    def test_rol_op_de_tegenzijde_1001_naar_outstanding_geen_overlap(self) -> None:
+        collecties, regels, statements, panden = scenario_ontvangen_aanbetaling()
+        rapport = _run(NepClient(collecties, regels, statements), odoo_accounts=ODOO_MET_1001, panden=panden)
+        mv = _move(rapport, "RLZ-28-00000061")
+        assert "vooruitbetaald_voorraad (3010)" in mv.reden and "regel 2 → vooruitbetaald_voorraad" in mv.reden
+        assert "regel 1 → vooruitbetaald_voorraad" not in mv.reden, "de 1001-regel mag nooit de rol krijgen"
+        # herclassificatie komt van de TEGENzijde (notaris-/1603-ledger), nooit van 1001
+        herc = {(h["van"], h["naar"]): h for h in rapport.herclassificaties}
+        assert all(not van.endswith("1001") for van, _ in herc), herc
+        assert any(naar == "3010" and h["bedrag"] == Decimal("-135000.00") for (_, naar), h in herc.items()), herc
+        r = _rij(rapport, "RLZ-28-00000061")
+        assert r["uitkomst"] == model_1001.UITKOMST_GEKOPPELD and r["bestemming"] == model_1001.BESTEMMING_OUTSTANDING
+        assert r["rj220_tegenzijde"] and "→ 3010" in r["rj220_tegenzijde"]
+        assert rapport.model_1001["tellers"]["overlappen"] == 0 and rapport.model_1001["overlappen"] == []
+        assert rapport.overlappen_1001 == 0
+        md = rapport.als_markdown()
+        assert "RJ-220-tegenzijde → rol" in md and "geen overlap tussen 1001-model en RJ-220-rol" in md
+
+    def test_geforceerde_overlap_is_rood_en_zichtbaar(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.migratie import vertaling
+
+        collecties, regels, statements, panden = scenario_ontvangen_aanbetaling()
+        monkeypatch.setattr(vertaling, "_kies_rolregel", lambda regels, bedragen, ctx, soort: 0)  # de 1001-regel (oud gedrag)
+        rapport = _run(NepClient(collecties, regels, statements), odoo_accounts=ODOO_MET_1001, panden=panden)
+        ov = rapport.model_1001["overlappen"]
+        assert len(ov) >= 1 and any(o["boekstuk"] == "RLZ-28-00000061" and o["regel"] == 1 for o in ov)
+        assert rapport.overlappen_1001 >= 1 and not rapport.groen and not rapport.groen_zonder_doel
+        assert rapport.oordeel.startswith("ROOD")
+        md = rapport.als_markdown()
+        assert "TWEE bestemmingen" in md and "één regel, één bestemming" in md

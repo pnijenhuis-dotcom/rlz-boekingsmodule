@@ -61,6 +61,8 @@ class Uitkomst1001:
     outstanding_bekend: bool = False
     outstanding_melding: str | None = None
     bank_ledger_codes: list[str] = field(default_factory=list)
+    #: Blok 10 (17-09) "één regel, één bestemming": een 1001-regel die óók de RJ-220-rol kreeg — ROOD-bepalend, nooit stil.
+    overlappen: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def gekoppeld(self) -> int:
@@ -92,6 +94,8 @@ class Uitkomst1001:
             "meerduidig": self.meerduidig,
             "outstanding_sleutel": self.outstanding_sleutel,
             "outstanding_bekend": self.outstanding_bekend,
+            "overlappen": len(self.overlappen),
+            "met_rj220_tegenzijde": sum(1 for r in self.regels if r.get("rj220_tegenzijde")),
         }
 
     def als_dict(self) -> dict[str, Any]:
@@ -101,6 +105,7 @@ class Uitkomst1001:
             "bank_ledger_codes": list(self.bank_ledger_codes),
             "venster_dagen": VENSTER_DAGEN,
             "regels": list(self.regels),
+            "overlappen": list(self.overlappen),
         }
 
 
@@ -242,7 +247,25 @@ def pas_1001_model_toe(
                 "dagen_verschil": None,
                 "kandidaten": 0,
                 "reden": None,
+                # Blok 10: de RJ-220-herclassificatie van dit memoriaal (tegenzijde → rol), zichtbaar náást de 1001-regel.
+                "rj220_tegenzijde": (
+                    "; ".join(f"{van} → {naar} ({bed})" for van, naar, bed in v.herclassificaties) if v.herclassificaties else None
+                ),
             }
+            if v.rol_regel_index == i:
+                # Eén regel, twee bestemmingen (rol én outstanding/tussenrekening) — mag niet: melden als overlap; de
+                # herbestemming hieronder gaat gewoon door zodat het rapport beide bestemmingen toont, het oordeel is ROOD.
+                uit.overlappen.append(
+                    {
+                        "boekstuk": v.move.boekstuk,
+                        "rlz_id": v.move.rlz_id,
+                        "regel": i + 1,
+                        "rlz_code": rij["rlz_code"],
+                        "bedrag": bedrag,
+                        "herclassificatie": rij["rj220_tegenzijde"],
+                        "reden": "1001-regel kreeg óók de RJ-220-rol — één regel, één bestemming (blok 10, 17-09)",
+                    }
+                )
             # (1) gekoppelde mutaties van dit memoriaal, zelfde richting + cent-exact
             kandidaten = [
                 tid

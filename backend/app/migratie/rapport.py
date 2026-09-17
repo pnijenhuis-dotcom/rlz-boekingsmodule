@@ -150,7 +150,13 @@ class ReplayRapport:
             and not self.som_verschillen
             and self.memoriaal_uit_balans == 0
             and self.resultaat_sluit
+            and self.overlappen_1001 == 0
         )
+
+    @property
+    def overlappen_1001(self) -> int:
+        """Blok 10 (17-09): 1001-regels die óók een RJ-220-rol kregen — één regel, één bestemming; > 0 = ROOD."""
+        return int((self.model_1001 or {}).get("tellers", {}).get("overlappen", 0)) if isinstance(self.model_1001, dict) else 0
 
     @property
     def groen(self) -> bool:
@@ -308,6 +314,7 @@ def _model_1001_sectie(L: list[str], r: ReplayRapport) -> None:
             "Mutatie",
             "Δ dagen",
             "Kandidaten",
+            "RJ-220-tegenzijde → rol",
             "Reden",
         ],
         [
@@ -322,12 +329,28 @@ def _model_1001_sectie(L: list[str], r: ReplayRapport) -> None:
                 _md(f"{x['mutatie']} ({x['mutatie_datum']})" if x.get("mutatie") else None),
                 _of(x.get("dagen_verschil")),
                 str(x.get("kandidaten", 0)),
+                _md(x.get("rj220_tegenzijde")),
                 _md(x.get("reden")),
             ]
             for x in (m.get("regels") or [])
         ],
         leeg="_geen memoriaalregels op een bankgrootboek_",
     )
+    overlappen = m.get("overlappen") or []
+    if overlappen:
+        L += [
+            "",
+            f"**ROOD — {len(overlappen)} 1001-regel(s) met TWEE bestemmingen (RJ-220-rol én 1001-model) — één regel, één bestemming (blok 10, 17-09):**",
+            "",
+        ]
+        _tabel(
+            L,
+            ["Boekstuk", "Regel", "RLZ-code", "Bedrag", "Herclassificatie", "Reden"],
+            [[_md(o["boekstuk"]), str(o["regel"]), _md(o["rlz_code"]), _eur(o["bedrag"]), _md(o.get("herclassificatie")), _md(o["reden"])] for o in overlappen],
+        )
+    elif m.get("regels"):
+        L.append("")
+        L.append(f"Één regel, één bestemming: geen overlap tussen 1001-model en RJ-220-rol ({t.get('met_rj220_tegenzijde', 0)} memorialen dragen de rol op de tegenzijde).")
 
 
 def als_markdown(r: ReplayRapport) -> str:

@@ -232,6 +232,8 @@ class Vertaald:
     btw_regels: int = 0
     pand: PandToewijzing | None = None
     herclassificaties: list[tuple[str, str, Decimal]] = field(default_factory=list)  # (van, naar, bedrag)
+    #: Blok 10 (17-09): de regel-index die de RJ-220-rol kreeg — voor de guard "één regel, één bestemming" in het 1001-model.
+    rol_regel_index: int | None = None
     ongemapt: list[str] = field(default_factory=list)  # RLZ-ledger-id's zonder Odoo-rekening
     bedrag: Decimal | None = None
     open_bedrag: Decimal | None = None
@@ -576,19 +578,47 @@ def orienteer(regels: list[dict[str, Any]], move_type: str) -> list[tuple[Decima
     return uit
 
 
+#: Blok 10 (17-09): liquide middelen (RGS 10xx: 1000 kas, 1001 bank, 1011/1012 kruisposten/onderweg) zijn NOOIT de
+#: RJ-220-rolregel — de bankzijde van een memoriaal is de betaling/ontvangst (1001-model → outstanding), de rol hoort
+#: op de TEGENzijde (aanbetaling 1405/16xx, koopsom, opbrengst). RLZ-28-00000061/062 e.a. (13 + 1 documenten,
+#: vierde meting 16-09) kregen de rol op 1001 omdat 1001 óók AccountType 3 (activa) is.
+_LIQUIDE_PREFIX = "10"
+
+
+def _is_bankregel(ctx: Context, r: dict[str, Any]) -> bool:
+    from app.migratie import rekening_mapping  # noqa: PLC0415 — geen kringimport op moduleniveau
+
+    lid = rlz_bron.ref_id(r.get("Account")) or ""
+    code = (ctx.ledgers.get(lid) or (None, None, None))[0]
+    if not code:
+        return False
+    bank_codes = {
+        m.rlz_code for m in rekening_mapping.EXPLICIETE_MAPPING.values() if m.doel == rekening_mapping.DOEL_BANK_STATEMENT_LINES
+    }
+    return code in bank_codes or code.startswith(_LIQUIDE_PREFIX)
+
+
 def _kies_rolregel(
     regels: list[dict[str, Any]], bedragen: list[tuple[Decimal, Decimal]], ctx: Context, soort: str
 ) -> int | None:
-    """Index van de regel die de RJ 220-rol krijgt (zie moduledoc) — None als er geen regels zijn."""
+    """Index van de regel die de RJ 220-rol krijgt (zie moduledoc) — None als er geen regels zijn óf als het memoriaal
+    alleen bankregels heeft (geen tegenzijde → geen rol, zichtbaar). Blok 10 (17-09): bankregels (10xx) doen nooit mee;
+    voor een aanbetaling wint de tegenzijde met het grootste |bedrag| (ontvangen aanbetaling = creditzijde 16xx,
+    betaalde aanbetaling = debetzijde 1405), voor aankoop/verkoop blijft de zijde van de rol leidend."""
     if not regels:
+        return None
+    niet_bank = [i for i, r in enumerate(regels) if not _is_bankregel(ctx, r)]
+    if not niet_bank:
         return None
     zoek_type, kant = (LEDGERTYPE_OPBRENGST, 1) if soort == "verkoop" else (LEDGERTYPE_ACTIVA, 0)
     kandidaten = [
         i
-        for i, r in enumerate(regels)
-        if (ctx.ledgers.get(rlz_bron.ref_id(r.get("Account")) or "") or (None, None, None))[2] == zoek_type
+        for i in niet_bank
+        if (ctx.ledgers.get(rlz_bron.ref_id(regels[i].get("Account")) or "") or (None, None, None))[2] == zoek_type
     ]
-    pool = kandidaten or list(range(len(regels)))
+    pool = kandidaten or niet_bank
+    if soort == "aanbetaling":
+        return max(pool, key=lambda i: (max(bedragen[i][0], bedragen[i][1]), -i))
     return max(pool, key=lambda i: (bedragen[i][kant], -i))
 
 
@@ -657,6 +687,9 @@ def vertaal_document(
             rol_naam = ROL_PER_SOORT.get(pand.soort)
             if rol_naam:
                 rol_index = _kies_rolregel(regels, orienteer(regels, move_type), ctx, pand.soort)
+                uit.rol_regel_index = rol_index
+                if rol_index is None and regels:
+                    redenen.append(f"geen tegenzijde voor de rol {rol_naam} (alleen bankregels) — geen herclassificatie")
                 if pand.soort == "aankoop":
                     uit.koopsom_regel = rol_index
                 if getattr(ctx.rollen, rol_naam) is None:
