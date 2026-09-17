@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (db-lezen + querybibliotheek + rol rlz_lezer (0154), vrije SELECT replica-only, rlz-feiten, klikpunt-guard + bank_toets, workflow-onderdeel query, WERKWIJZE v1.17; replica = owner-klikpunt; werkt in productie: niet gemeten), rapport: docs/rapporten/2026-09-17-feiten-eerst-lees-toegang.md
+
 # OPDRACHT 17-09 — "Feiten eerst": lees-only toegang tot ALLE relevante productiedata voor analyses/controles + guard dat elk klikpunt/signaal op data staat, nooit op een aanname (Peter 17-09: "100 % audit is een must")
 
 **Aanleiding (17-09 ochtend, drie keer op één dag):** (1) "dubbel € 135.000 RLZ-28-00000061/062" bleek een ontvangst + een betaling

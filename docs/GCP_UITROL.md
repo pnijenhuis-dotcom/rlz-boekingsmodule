@@ -1066,6 +1066,22 @@ verlichting (24 u) náást A, of als Peter geen extra geheim wil beheren. **Pete
 
 **Rotatie-/intrekrecept.** Roteren: `gcloud iam service-accounts keys create ~/Sleutels/nameting-sa.json --iam-account=nameting@…` → `scripts/gcp/nameting_env.sh` pakt 'm op → oude key `gcloud iam service-accounts keys list/delete` → `NAMETING_SA_AANGEMAAKT_OP` bijwerken. Intrekken (alles ongedaan): `gcloud iam service-accounts keys delete <id> --iam-account=nameting@…`; `gcloud run jobs remove-iam-policy-binding rlz-reconciliatie --member=serviceAccount:nameting@… --role=projects/rlz-boekhouding/roles/nametingUitvoerder`; `gcloud projects remove-iam-policy-binding rlz-boekhouding --member=serviceAccount:nameting@… --role=roles/run.viewer` (idem `roles/logging.viewer`); `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member=user:info@vastly.software --role=roles/iam.serviceAccountTokenCreator`; `gcloud iam roles delete nametingUitvoerder --project=rlz-boekhouding`; `gcloud iam service-accounts delete nameting@…`. Controle: `gcloud auth list` (geen ster bij nameting@), `gcloud projects get-iam-policy rlz-boekhouding --flatten=bindings[].members --filter=bindings.members:nameting@` = leeg.
 
+### F7.4 Leesreplica + IAM-DB-toegang voor analyses (Feiten eerst, besluit Peter 17-09 — VOORBEREID, niets aangemaakt)
+
+Doel: volledige lees-toegang tot productiedata zonder één schrijfmogelijkheid (BESLISSINGEN "FEITEN EERST — …"). Lees-only stand
+17-09: `rlz-sql2` POSTGRES_16 REGIONAL db-custom-1-3840, CMEK `cmek-sql`, 10 GB, géén database-flags, gebruikers alleen
+`boekhouding_app` + `postgres` (BUILT_IN), geen replica. Owner-stappen (script `scripts/gcp/leesreplica.sh`, dry-run default):
+1. Leesreplica `rlz-sql2-lees` (europe-west4, ZONAL, zelfde CMEK-key) mét flags `cloudsql.iam_authentication=on`,
+   `cloudsql.enable_pgaudit=on`, `pgaudit.log=read` → élke leesquery in Cloud Logging (100 % audit).
+2. IAM-databasegebruiker `nameting@rlz-boekhouding.iam` op de primary (repliceert mee) + `roles/cloudsql.client` en
+   `roles/cloudsql.instanceUser` voor `nameting@`.
+3. Ná de deploy van migratie 0154: `GRANT rlz_lezer TO "nameting@rlz-boekhouding.iam"` als postgres.
+4. Env `LEES_DATABASE_URL` (service én jobs, deploy.yml): `postgresql+psycopg://boekhouding_app:…@/boekhouding?host=/cloudsql/rlz-boekhouding:europe-west4:rlz-sql2-lees`
+   (de service leest de replica via de Cloud SQL-connector) — pas dán werken `POST /lezen/sql` en `db-lezen --sql`.
+Gebruik CC: `scripts/gcp/db_lezen.sh "SELECT …" --als <beheerder-uuid> [--administratie <uuid>]` (Auth Proxy `--auto-iam-authn`,
+impersonatie `nameting@`, READ ONLY, rijenplafond). Terugdraaien: replica verwijderen + IAM-gebruiker verwijderen; de rol
+`rlz_lezer` blijft (cluster-breed; DROP ROLE = owner-handeling).
+
 ## Kritieke pad & parallelsporen
 
 ```

@@ -32,3 +32,17 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
    het blokwoord. UI-tekst wijzigt daardoor licht.
 5. **Promotie van `dubbele_betaling_vermoed` naar de actiemail NIET gedaan** — pas ná de productiemeting (Hello Kitchen wél,
    periodieke tegenpartijen niet). Default blijft `meten`.
+
+## Opdracht 3 — Feiten eerst: lees-toegang + klikpunt-guard (`2026-09-17-feiten-eerst-lees-toegang.md`)
+
+1. **`rlz-lezen --alles` niet gebouwd.** `rlz-feiten` leest zelf volledig gepagineerd (bank in een datumvenster); een kaal
+   `--alles` op élk OData-pad is een webfilter-risico (blok 7b) zonder eigen doel. Alternatief: `--alles` mét verplicht
+   `--filter` toevoegen als een analyse dat vraagt.
+2. **Vrije SQL kent een optionele `administratie_id` i.p.v. een RLS-bypass.** Bank-tabellen (`bank_mutatie` e.d.) hebben een
+   strikt administratie-beleid zonder Beheerder-clausule; zonder scope geven ze niets. RLS omzeilen (rol mét BYPASSRLS) is bewust
+   niet gedaan. Alternatief: Beheerder-clausule toevoegen aan die policies (migratie, raakt de hele bankmodule).
+3. **Bibliotheek-queries op de runtime-verbinding, alleen vrije SQL replica-only.** De bibliotheek is gereviewd en heeft dezelfde
+   toegang als élke bestaande lees-only CLI; de replica-eis geldt waar de query vrij is.
+4. **Odoo-variant van `rlz-feiten` niet gebouwd** (zichtbaar overgeslagen met reden). Alternatief: `odoo-feiten` via de adapter
+   in een volgende opdracht.
+5. **Downgrade 0154 laat de rol staan** (cluster-breed; DROP ROLE = owner-handeling).
