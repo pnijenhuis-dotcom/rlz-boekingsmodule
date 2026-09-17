@@ -242,3 +242,12 @@ staat de productiestand in het eigen rapport (overal: niet gemeten).
 8. **Eerste écht effect vereist een winkelrelease mét de plugins** — de ingediende 1.1 (140) heeft ze niet; Xcode Cloud bouwt bij de
    push 1.1 (141+) mét plugin (train-regel: ná goedkeuring eerst → 1.2). Klikpunten: bucket-script als owner, vc5 bouwen.
 
+## Opdracht 17 (ochtend) — doorbelasting-aansluiting nameting (`2026-09-17-doorbelasting-aansluiting-nameting.md`)
+
+1. **Niet gemeten, niet gewacht op een herlogin** (opdracht: stoppen mét melding); in plaats daarvan de meting als dispatch-onderdeel in
+   `nameting.yml` gezet zodat het vervolg via `gh workflow run` loopt (WIF als `nameting@`). Alternatief: wachten tot Peter `gcloud auth login`
+   doet — afgewezen, dat is precies de muur van 16-09 (VGG vierde meting) opnieuw.
+2. **Onderdeel niet in "alles"** — het dagelijkse reconciliatieblok `doorbelasting_aansluiting` doet dezelfde toets; dubbel meten kost RLZ-calls
+   (webfilter-risico). Op verzoek dus.
+3. **OTA-bucketstap blijft hard** (elke deploy rood + smoketest overgeslagen tot `scripts/gcp/app_bundels_bucket.sh --apply` is gedraaid).
+   Beslispunt Peter: `continue-on-error` mét LET-OP zodat de smoketest altijd draait, of de bucket aanmaken (klikpunt). Niet gewijzigd in deze run.

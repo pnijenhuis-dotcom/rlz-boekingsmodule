@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (ochtend; stap 0 rood — gcloud-sessie verlopen, niet gemeten; meting als workflow-onderdeel klaargezet), rapport: docs/rapporten/2026-09-17-doorbelasting-aansluiting-nameting.md
+
 # OPDRACHT 17-09 — Doorbelasting-aansluiting Kempen Facilities: productienameting ná deploy (lees-only; géén writes)
 
 Vervolg op `opdrachten/gedaan/2026-09-16-doorbelasting-aansluiting-kf-en-herkoppeling.md` (rapport
