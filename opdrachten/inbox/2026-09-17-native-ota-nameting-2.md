@@ -26,3 +26,11 @@ dispatch-onderdeel `app-bundels` in `.github/workflows/nameting.yml` (WIF als `n
 
 ## Afronding
 - BESLISSINGEN "NATIVE APP — LIVE UPDATES (OTA) …": alinea "Nameting 17-09" aanvullen + rij klikpunten → uitkomst; rapport + INDEX; opdracht → gedaan.
+
+## Aanvulling Cowork 17-09 ochtend — bucket-script door Peter gedraaid
+- `app_bundels_bucket.sh` toonde `service-sa=?`: `gcloud run services describe rlz-backend … serviceAccountName` gaf niets terug
+  (Peter-sessie), dus de IAM-binding voor de service-SA is NIET gezet → de backend kan de bundel-zip niet lezen. Stap 0 van deze
+  nameting: service-SA achterhalen (of default compute-SA benoemen) en de ontbrekende `objectViewer`-binding als één owner-commando in
+  het rapport zetten (Peter draait 'm); script robuust maken (fallback op de default-SA + duidelijke melding i.p.v. `?`).
+- Bucket-create vroeg gcloud-reauth; Peter heeft mogelijk alleen de create gedaan → script idempotent laten controleren (bestaat →
+  doorgaan met versioning/IAM) en dat in het rapport bevestigen.
