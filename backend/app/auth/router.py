@@ -39,6 +39,15 @@ LEGACY_LOGIN_APP_HINT = (
     "Gebruik je de app zonder wachtwoord (uitnodiging mét activatiecode)? Update de app naar versie 1.1 of gebruik de "
     "web-versie"
 )
+
+
+def legacy_login_app_hint() -> str:
+    """Casus Romy 17-09: de 1.0-app toont deze tekst op zijn 401 — mét de store-link als die er is, zodat de gebruiker
+    de update in één tik vindt ("Update de app via de App Store")."""
+    from app.config import settings  # noqa: PLC0415
+
+    store = settings.store_link_ios.strip()
+    return f"{LEGACY_LOGIN_APP_HINT} — update via de App Store: {store}" if store else LEGACY_LOGIN_APP_HINT
 LEGACY_APP_PADEN = frozenset(
     {
         "/auth/accordeur/login",
@@ -749,7 +758,7 @@ def accordeur_login(payload: schemas.AccordeurLoginRequest, request: Request) ->
         # 16-09 (Peter, web vs app): een app-1.0-gebruiker met een account ZONDER wachtwoord (app-auth 0029) strandt
         # hier
         # op "wachtwoord onjuist" — de hint zegt wat te doen. Dezelfde tekst voor iedereen (0022: geen enumeratie).
-        detail = f"{exc}. {LEGACY_LOGIN_APP_HINT}"
+        detail = f"{exc}. {legacy_login_app_hint()}"
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail) from exc
     return schemas.AccordeurLoginResponse(
         passkey_setup_token=resultaat.passkey_setup_token, heeft_passkeys=resultaat.heeft_passkeys
@@ -963,6 +972,8 @@ def kantoor_registratie_voltooien(
         soort=apparaat.soort,
         platform=apparaat.platform,
         niet_meer_gebruikt_op=apparaat.niet_meer_gebruikt_op,
+        app_versie=getattr(apparaat, "app_versie", None),
+        bundel_gezien_op=getattr(apparaat, "bundel_gezien_op", None),
     )
 
 
@@ -1028,6 +1039,8 @@ def mijn_apparaten(actor: CurrentGebruiker = Depends(get_current_gebruiker)) -> 
                 soort=a.soort,
                 platform=a.platform,
                 niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
+                app_versie=a.app_versie,
+                bundel_gezien_op=a.bundel_gezien_op,
             )
             for a in webauthn_service.apparaten_van(gebruiker_id=actor.id)
         ]
@@ -1054,6 +1067,8 @@ def kantoor_apparaten_overzicht(
                 soort=a.soort,
                 platform=a.platform,
                 niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
+                app_versie=a.app_versie,
+                bundel_gezien_op=a.bundel_gezien_op,
             )
             for a in webauthn_service.kantoor_apparaten()
         ]
@@ -1080,6 +1095,8 @@ def apparaten_van_gebruiker(
                 soort=a.soort,
                 platform=a.platform,
                 niet_meer_gebruikt_op=a.niet_meer_gebruikt_op,
+                app_versie=a.app_versie,
+                bundel_gezien_op=a.bundel_gezien_op,
             )
             for a in webauthn_service.apparaten_van(gebruiker_id=gebruiker_id)
         ]

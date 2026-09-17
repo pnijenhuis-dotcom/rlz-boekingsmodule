@@ -74,6 +74,10 @@ export interface ApparaatDto {
   /** Passkey van een app-gebruiker die niet meer in gebruik is (CLI `app-passkeys-markeren`) — nooit verwijderd,
    * grijs in de lijst; de kill-switch blijft werken. */
   niet_meer_gebruikt_op?: string | null
+  /** Casus Romy 17-09: laatst geziene app-versie van een toestel (header X-App-Versie) + moment — het kantoor ziet zo of
+   * een accordeur nog op een oude schil (1.0) zit vóór het een herstel-link stuurt. Leeg = nog nooit gemeld (schil ≤ 1.0). */
+  app_versie?: string | null
+  bundel_gezien_op?: string | null
 }
 
 /** Weergave van de activatiecode: hoofdletters, alleen het 32-tekens-alfabet, koppelteken na vier tekens. */

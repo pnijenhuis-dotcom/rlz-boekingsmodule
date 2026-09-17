@@ -102,3 +102,37 @@ class TestStoreVersiePoort:
             naam="S", e_mail="s@x.nl", token="t", verloopt_op=datetime.now(UTC), activatiecode="ABCD-EFGH"
         )
         assert "apps.apple.com" not in mails[0]["tekst"] and "TestFlight" in mails[0]["tekst"]
+
+
+class TestHerstelmailVolgorde:
+    """Casus Romy 17-09: de herstelmail = dezelfde genummerde volgorde als de uitnodiging (1 installeer/update mét de
+    versie-eis, 2 link op je telefoon — koppelt het toestel opnieuw, 3 nieuwe toegangscode) + activatiecode-blok."""
+
+    def _herstel(self, monkeypatch: pytest.MonkeyPatch) -> str:
+        monkeypatch.setattr(settings, "store_link_ios", "https://apps.apple.com/nl/app/id123")
+        monkeypatch.setattr(settings, "store_app_versie_ios", "1.1")
+        mails = _vang(monkeypatch)
+        uitnodigingsmail.verstuur_herstelmail(
+            naam="Romy", e_mail="r@x.nl", token="t0k", verloopt_op=datetime.now(UTC), activatiecode="ABCD-EFGH"
+        )
+        return mails[0]["tekst"]
+
+    def test_drie_stappen_store_link_versie_eis_en_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        tekst = self._herstel(monkeypatch)
+        i1, i2, i3 = tekst.index("1. "), tekst.index("2. "), tekst.index("3. ")
+        assert i1 < i2 < i3
+        assert "Zo koppel je de app opnieuw" in tekst
+        assert "https://apps.apple.com/nl/app/id123" in tekst
+        assert "versie 1.1 of hoger nodig" in tekst and "Update 'm dan eerst via de App Store —" in tekst
+        assert "koppelt opnieuw het toestel" in tekst and "/activeren?token=t0k&herstel=1" in tekst
+        assert "nieuwe toegangscode van 5 cijfers" in tekst
+        assert "activatiecode in: ABCD-EFGH" in tekst
+        assert "eerdere toestellen worden uitgelogd" in tekst
+        # volgorde: store-link (stap 1) vóór de link (stap 2) vóór de code
+        assert tekst.index("apps.apple.com") < tekst.index("/activeren?token=") < tekst.index("ABCD-EFGH")
+
+    def test_uitnodiging_draagt_de_versie_eis_ook(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "store_link_ios", "https://apps.apple.com/nl/app/id123")
+        monkeypatch.setattr(settings, "store_app_versie_ios", "1.1")
+        tekst = _app_mail(monkeypatch)
+        assert "1. Download eerst de app op je telefoon" in tekst and "versie 1.1 of hoger nodig" in tekst

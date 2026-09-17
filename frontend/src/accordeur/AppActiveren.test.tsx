@@ -274,19 +274,39 @@ describe('AppActiveren — link-pad (universal link)', () => {
     expect(aanroepen.some((a) => a.pad === '/auth/app/activeren')).toBe(false)
   })
 
-  it('16-09: webKeuze (desktop &web=1) en herstel slaan het keuzescherm over', async () => {
+  it('16-09: webKeuze (desktop &web=1) slaat het keuzescherm over', async () => {
     stubFetch()
     renderScherm({ token: 'tok-1', webKeuze: true })
     expect(await screen.findByRole('button', { name: 'Dit toestel activeren' })).toBeInTheDocument()
     expect(screen.queryByTestId('acc-keuze')).toBeNull()
   })
 
-  it('herstel=1 → titel "Toestel opnieuw koppelen"', async () => {
-    stubFetch({
+  // Casus Romy 17-09: de herstel-link sloeg het keuzescherm over en werd in Chrome-op-iPhone meteen als web-toestel
+  // verzilverd; de native app kreeg daarna 409. herstel=1 omzeilt de keuze nooit meer.
+  it('17-09: herstel=1 → EERST het keuzescherm (herstel-tekst), pas ná "verder in de browser" de knop "Dit toestel activeren"', async () => {
+    const aanroepen = stubFetch({
       '/auth/uitnodigingen/info': () => Promise.resolve(jsonResponse({ flow: 'app', naam: 'Jan', herstel: true, verloopt_op: 'x' })),
     })
     renderScherm({ token: 'tok-1', herstel: true })
-    expect(await screen.findByText('Toestel opnieuw koppelen')).toBeInTheDocument()
+    const keuze = await screen.findByTestId('acc-keuze')
+    expect(keuze).toHaveTextContent('Toestel opnieuw koppelen')
+    expect(keuze).toHaveTextContent(/deze herstel-link koppelt het toestel/)
+    expect(screen.queryByRole('button', { name: 'Dit toestel activeren' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'In de app op deze telefoon' }))
+    expect(await screen.findByText('Open de herstel-link in de app')).toBeInTheDocument()
+    expect(screen.getByTestId('acc-versie-eis')).toHaveTextContent(/versie 1.1 of hoger/)
+    await userEvent.click(screen.getByRole('button', { name: 'Toch verder in de browser' }))
+    expect(await screen.findByRole('button', { name: 'Dit toestel activeren' })).toBeInTheDocument()
+    expect(screen.getByText('Toestel opnieuw koppelen')).toBeInTheDocument()
+    expect(aanroepen.some((a) => a.pad === '/auth/app/activeren')).toBe(false)
+  })
+
+  it('beginKeuze: native/webKeuze = web, browser = open — óók bij herstel', async () => {
+    const { beginKeuze } = await import('./AppActiveren')
+    expect(beginKeuze(true, false, true)).toBe('web')
+    expect(beginKeuze(false, true, true)).toBe('web')
+    expect(beginKeuze(false, false, true)).toBe('open')
+    expect(beginKeuze(false, false, false)).toBe('open')
   })
 
   it('ongeldige/verlopen link → servertekst + "Deze uitnodiging werkt niet meer" + weg naar de code-invoer', async () => {

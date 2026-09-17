@@ -80,6 +80,8 @@ interface ApparaatGroep {
   laatstGebruiktOp: string | null
   /** Gevuld = passkey van een app-gebruiker die niet meer in gebruik is: grijs, kill-switch blijft. */
   nietMeerGebruiktOp: string | null
+  /** 17-09: laatst geziene app-versie van het toestel (X-App-Versie); null = nooit gemeld (schil ≤ 1.0 of PWA). */
+  appVersie: string | null
 }
 
 function formatDag(iso: string | null): string | null {
@@ -109,6 +111,7 @@ function groepeerApparaten(apparaten: ApparaatDto[]): ApparaatGroep[] {
         aangemaaktOp: apparaat.aangemaakt_op,
         laatstGebruiktOp: apparaat.laatst_gebruikt_op,
         nietMeerGebruiktOp: apparaat.niet_meer_gebruikt_op ?? null,
+        appVersie: apparaat.app_versie ?? null,
       })
   }
   return groepen
@@ -129,9 +132,13 @@ function ApparaatChip({ groep, onKillSwitch }: { groep: ApparaatGroep; onKillSwi
   if (groep.soort === 'toestel') {
     const platform = platformLabel(groep.platform)
     const kop = `📱 Toestel · ${groep.naam}${platform ? ` (${platform})` : ''}`
+    // Casus Romy 17-09: de app-versie in de detailregel — "app 1.1", of "app-versie onbekend (≤ 1.0?)" als het toestel
+    // zich nog nooit met X-App-Versie meldde (een 1.0-schil doet dat niet; die kent de app-auth niet).
+    const versie = groep.platform === 'web' ? null : groep.appVersie ? `app ${groep.appVersie}` : 'app-versie onbekend (≤ 1.0?)'
     const detail = [
       formatDag(groep.aangemaaktOp) ? `gekoppeld ${formatDag(groep.aangemaaktOp)}` : null,
       formatDag(groep.laatstGebruiktOp) ? `laatst gebruikt ${formatDag(groep.laatstGebruiktOp)}` : null,
+      versie,
     ].filter((d): d is string => d !== null)
     return (
       <div className="apparaat-blok" data-testid="apparaat-toestel">

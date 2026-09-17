@@ -55,12 +55,27 @@ TESTFLIGHT_INSTRUCTIE = (
 )
 
 
+def versie_eis() -> str:
+    """Casus Romy 17-09 (herstel-link "landt op web"): de 1.0-app kent de app-auth niet en kan met deze link nooit
+    inloggen — de mail zegt de versie-eis daarom letterlijk, mét de weg (updaten via de store)."""
+    winkels = [label.split("(", 1)[1].rstrip(")") for label, _url in store_links(alleen_geschikt=True)]
+    via = " of ".join(("de App Store" if w == "App Store" else w) for w in winkels) or "de app-winkel"
+    return (
+        f"Heb je de app al? Update 'm dan eerst via {via} — je hebt versie "
+        f"{settings.store_min_appauth_versie} of hoger nodig; een oudere versie kent deze link niet."
+    )
+
+
 def installatie_regels() -> str:
     """Stap 1 van de app-mail (16-09): geschikte store-links, anders de TestFlight-/interne-track-instructie, anders
-    (geen enkele listing) de neutrale regel."""
+    (geen enkele listing) de neutrale regel. Sinds 17-09 altijd mét de versie-eis (casus Romy)."""
     geschikt = store_links(alleen_geschikt=True)
     if geschikt:
-        return "Download eerst de app op je telefoon:\n" + "\n".join(f"   - {label}: {url}" for label, url in geschikt)
+        return (
+            "Download eerst de app op je telefoon — of update 'm als je 'm al hebt:\n"
+            + "\n".join(f"   - {label}: {url}" for label, url in geschikt)
+            + f"\n   {versie_eis()}"
+        )
     if store_links():
         return f"Installeer de app op je telefoon. {TESTFLIGHT_INSTRUCTIE}"
     return "Installeer de app op je telefoon (het kantoor stuurt je de installatielink)."
@@ -78,22 +93,29 @@ def download_blok() -> str:
     return f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n\n"
 
 
-def app_activatie_stappen(*, link: str, verloopt_op: datetime, activatiecode: str | None) -> str:
-    """Uitnodigingsmail voor app-rollen (Peter 16-09, blok C): ÉÉN genummerde volgorde — 1 installeer de app (alleen een
-    store-link als die versie geschikt is), 2 open déze link op je telefoon, 3 kies een toegangscode; activatiecode als
-    terugval eronder; plus wat te doen als de link tóch op een computer opende (er wordt niets vastgelegd tot een
-    keuze) en hoe je later een tweede toestel koppelt (zelfservice, blok B)."""
+def app_activatie_stappen(*, link: str, verloopt_op: datetime, activatiecode: str | None, herstel: bool = False) -> str:
+    """Uitnodigingsmail voor app-rollen (Peter 16-09, blok C): ÉÉN genummerde volgorde — 1 installeer/update de app (alleen
+    een store-link als die versie geschikt is; versie-eis letterlijk), 2 open déze link op je telefoon, 3 kies een
+    toegangscode; activatiecode als terugval eronder; plus wat te doen als de link tóch op een computer opende (er wordt
+    niets vastgelegd tot een keuze) en hoe je later een tweede toestel koppelt (zelfservice, blok B). `herstel` (17-09,
+    casus Romy): de herstel-link volgt exact dezelfde volgorde — stap 2 koppelt het toestel opnieuw, stap 3 is een
+    nieuwe toegangscode."""
     geldig = verloopt_op.astimezone().strftime("%d-%m-%Y %H:%M")
+    kop = "Zo koppel je de app opnieuw, in deze volgorde:" if herstel else "Zo activeer je de app, in deze volgorde:"
+    stap2 = (
+        "2. Open déze link op je telefoon — niet op een computer en niet in een browser als je de app hebt; de link "
+        f"koppelt {'opnieuw ' if herstel else ''}het toestel waarop je hem opent (eenmalig, geldig tot {geldig}):\n   {link}\n"
+    )
+    stap3 = "3. Kies in de app een nieuwe toegangscode van 5 cijfers.\n\n" if herstel else "3. Kies in de app een toegangscode van 5 cijfers.\n\n"
     return (
-        "Zo activeer je de app, in deze volgorde:\n\n"
+        f"{kop}\n\n"
         f"1. {installatie_regels()}\n"
-        "2. Open déze link op je telefoon — niet op een computer; de link koppelt het toestel waarop je hem opent "
-        f"(eenmalig, geldig tot {geldig}):\n   {link}\n"
-        "3. Kies in de app een toegangscode van 5 cijfers.\n\n"
+        f"{stap2}"
+        f"{stap3}"
         f"{activatiecode_blok(activatiecode, app_rol=True)}"
-        "Opende je de link per ongeluk op een computer? Kies daar 'Open op je telefoon' — er wordt niets vastgelegd "
-        "tot je een keuze maakt. Wil je de app later óók op een ander toestel gebruiken: in de app onder Toegang › "
-        "'Telefoon/app koppelen'.\n\n"
+        "Opende je de link per ongeluk op een computer of in een browser? Kies daar 'In de app op deze telefoon' of 'Open "
+        "op je telefoon' — er wordt niets vastgelegd tot je een keuze maakt. Wil je de app later óók op een ander toestel "
+        "gebruiken: in de app onder Toegang › 'Telefoon/app koppelen'.\n\n"
     )
 
 
@@ -156,16 +178,14 @@ def verstuur_herstelmail(
     opnieuw een toegangscode; alle oude sessies vervallen). Herstel-links bestaan alleen voor app-rollen, dus
     het codeblok staat er altijd zodra er een code is. Raise-t mail.MailFout bij niet-geconfigureerd/mislukt."""
     link = herstellink(token)
+    # 17-09 (casus Romy): dezelfde genummerde volgorde als de uitnodiging — installeer/update (versie-eis) → link op je
+    # telefoon → nieuwe toegangscode — i.p.v. een los downloadblok boven een kale link.
     tekst = (
         f"Beste {naam},\n\n"
         f"Het kantoor heeft een herstel-link voor je aangemaakt zodat je de app opnieuw kunt koppelen aan je "
         f"account bij Administratiekantoor Nijenhuis.\n\n"
-        f"{download_blok()}"
-        f"Open deze link op je telefoon (eenmalig, geldig tot "
-        f"{verloopt_op.astimezone().strftime('%d-%m-%Y %H:%M')}):\n{link}\n\n"
-        f"{activatiecode_blok(activatiecode, app_rol=True)}"
-        f"Daarna kies je een nieuwe toegangscode voor de app. Je bestaande instellingen blijven bewaard; "
-        f"eerdere toestellen worden uitgelogd.\n\n"
+        f"{app_activatie_stappen(link=link, verloopt_op=verloopt_op, activatiecode=activatiecode, herstel=True)}"
+        f"Je bestaande instellingen blijven bewaard; eerdere toestellen worden uitgelogd.\n\n"
         f"Heb je hier niet om gevraagd? Neem dan contact op met het kantoor — de link vervalt "
         f"vanzelf.\n\n"
         f"Administratiekantoor Nijenhuis"

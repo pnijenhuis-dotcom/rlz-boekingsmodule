@@ -168,7 +168,7 @@ class TestZelfserviceKoppeling:
 
 
 class TestLegacyLoginHint:
-    def test_accordeur_login_401_draagt_de_hint_voor_iedereen(self, beheerder_id: uuid.UUID) -> None:
+    def test_accordeur_login_401_draagt_de_hint_voor_iedereen(self, beheerder_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch) -> None:
         app, _sessie = _geactiveerd(beheerder_id)
         # account zonder wachtwoord (app-auth) én een onbekend adres: identieke tekst (0022)
         with_account = client.post(
@@ -178,3 +178,7 @@ class TestLegacyLoginHint:
         assert with_account.status_code == onbekend.status_code == 401
         assert with_account.json()["detail"] == onbekend.json()["detail"]
         assert LEGACY_LOGIN_APP_HINT in onbekend.json()["detail"] and "versie 1.1" in onbekend.json()["detail"]
+        # Casus Romy 17-09: mét store-link in de 401 zodra die geconfigureerd is ("Update de app via de App Store").
+        monkeypatch.setattr(settings, "store_link_ios", "https://apps.apple.com/nl/app/id123")
+        weer = client.post("/auth/accordeur/login", json={"e_mail": "onbekend@x.nl", "wachtwoord": "x"})
+        assert weer.status_code == 401 and "update via de App Store: https://apps.apple.com/nl/app/id123" in weer.json()["detail"]

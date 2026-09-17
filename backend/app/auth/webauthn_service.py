@@ -968,6 +968,9 @@ class ApparaatData:
     soort: str = "passkey"
     platform: str | None = None
     niet_meer_gebruikt_op: datetime | None = None
+    # 17-09 (casus Romy): laatst gemelde app-versie + moment (X-App-Versie / OTA 0152).
+    app_versie: str | None = None
+    bundel_gezien_op: datetime | None = None
 
 
 def apparaten_van(*, gebruiker_id: uuid.UUID) -> list[ApparaatData]:
@@ -988,6 +991,8 @@ def apparaten_van(*, gebruiker_id: uuid.UUID) -> list[ApparaatData]:
                 soort=r.soort,
                 platform=r.platform,
                 niet_meer_gebruikt_op=r.niet_meer_gebruikt_op,
+                app_versie=r.app_versie,
+                bundel_gezien_op=r.bundel_gezien_op,
             )
             for r in rijen
         ]
@@ -1078,6 +1083,8 @@ def kantoor_apparaten() -> list[KantoorApparaatData]:
                 soort=r.soort,
                 platform=r.platform,
                 niet_meer_gebruikt_op=r.niet_meer_gebruikt_op,
+                app_versie=r.app_versie,
+                bundel_gezien_op=r.bundel_gezien_op,
             )
             for r, naam in rijen
         ]

@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-17 — Herstel-link voor de app: eerst kiezen, en de app moet up-to-date zijn
+
+<!-- herstellink-keuze-versie-eis-17-09 -->
+
+- **Een herstel-link laat nu eerst kiezen** — in de app op je telefoon, of de web-versie in deze browser — vóór de link wordt gebruikt. Zo raakt de link niet meer "op" doordat een browser 'm meteen inneemt.
+- **De herstelmail zegt precies wat je doet, in volgorde**: eerst de app installeren of bijwerken (de link werkt alleen met een recente versie), dan de link op je telefoon openen, dan een nieuwe toegangscode kiezen.
+- **Bij Gebruikers & toegang staat per toestel welke versie van de app iemand gebruikt**, zodat het kantoor ziet wanneer een update nodig is vóór het een herstel-link stuurt.
+
 ## 2026-09-17 — Een accordeur kan nu alleen de facturen van bepaalde leveranciers krijgen
 
 <!-- accordering-leveranciersroute-17-09 -->

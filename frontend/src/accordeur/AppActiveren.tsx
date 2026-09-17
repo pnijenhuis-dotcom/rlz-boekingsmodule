@@ -59,10 +59,12 @@ export const TOEGANG_VERLOPEN_MELDING =
 export type Keuze = 'open' | 'app' | 'web'
 
 /** Beslisregel keuzescherm (16-09): een link die in een BROWSER opende (geen native schil) laat de gebruiker eerst
- * kiezen — app op deze telefoon óf verder in de browser — vóór er iets verzilverd wordt. Native, herstel-links en een al
- * gemaakte keuze (`&web=1`) slaan het scherm over. */
-export function beginKeuze(native: boolean, webKeuze: boolean, herstel: boolean): Keuze {
-  return native || webKeuze || herstel ? 'web' : 'open'
+ * kiezen — app op deze telefoon óf verder in de browser — vóór er iets verzilverd wordt. Native en een al gemaakte
+ * keuze (`&web=1`) slaan het scherm over. Casus Romy 17-09: een HERSTEL-link sloeg het scherm óók over en werd in
+ * Chrome-op-iPhone meteen als web-toestel verzilverd (request-log 17-09 10:46:51 → 10:47:04Z) — de native app kreeg
+ * daarna 409. `herstel=1` mag de keuze nooit meer omzeilen; de parameter blijft alleen presentatie. */
+export function beginKeuze(native: boolean, webKeuze: boolean, _herstel: boolean): Keuze {
+  return native || webKeuze ? 'web' : 'open'
 }
 
 export function AppActiveren({ token = null, herstel = false, melding = null, webKeuze = false, naGeactiveerd }: Props) {
@@ -249,10 +251,11 @@ export function AppActiveren({ token = null, herstel = false, melding = null, we
         {kop}
         <div className="acc-bio">
           <div className="acc-icoon">☉</div>
-          <b>{`Welkom${naam ? `, ${naam}` : ''}`}</b>
+          <b>{herstel ? 'Toestel opnieuw koppelen' : `Welkom${naam ? `, ${naam}` : ''}`}</b>
           <div className="acc-sub">
-            Deze uitnodiging koppelt het toestel waarop je hem gebruikt — eenmalig. Waar wil je de Nijenhuis Boekingsmodule
-            gebruiken?
+            {herstel
+              ? `${naam ? `${naam}, ` : ''}deze herstel-link koppelt het toestel waarop je hem gebruikt — eenmalig. Waar wil je de Nijenhuis Boekingsmodule gebruiken?`
+              : 'Deze uitnodiging koppelt het toestel waarop je hem gebruikt — eenmalig. Waar wil je de Nijenhuis Boekingsmodule gebruiken?'}
           </div>
         </div>
         <button className="acc-btn primair" onClick={() => setKeuze('app')}>
@@ -273,10 +276,15 @@ export function AppActiveren({ token = null, herstel = false, melding = null, we
         {kop}
         <div className="acc-bio">
           <div className="acc-icoon">☉</div>
-          <b>Open de uitnodiging in de app</b>
+          <b>{herstel ? 'Open de herstel-link in de app' : 'Open de uitnodiging in de app'}</b>
           <div className="acc-sub">
-            Tik in je mail-app op de link uit de uitnodiging — de app opent dan vanzelf de activatie. Of open de app en voer de{' '}
+            Tik in je mail-app op de link uit de {herstel ? 'herstelmail' : 'uitnodiging'} — de app opent dan vanzelf de activatie. Of open de app en voer de{' '}
             <b>activatiecode</b> uit dezelfde mail in. Deze pagina heeft niets vastgelegd.
+          </div>
+          {/* Casus Romy 17-09: een oude schil (1.0) kent deze link niet — de versie-eis staat er letterlijk. */}
+          <div className="acc-sub" data-testid="acc-versie-eis">
+            Heb je de app al? Update 'm dan eerst via de App Store / Google Play — je hebt versie 1.1 of hoger nodig; een oudere
+            versie kent deze link niet.
           </div>
         </div>
         {!native && <StoreLinks config={storeConfig} variant="fallback" />}

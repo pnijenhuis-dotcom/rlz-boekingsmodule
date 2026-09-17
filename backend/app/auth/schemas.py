@@ -248,6 +248,10 @@ class ApparaatResponse(BaseModel):
     soort: str = "passkey"
     platform: str | None = None
     niet_meer_gebruikt_op: datetime | None = None
+    # Casus Romy 17-09: laatst geziene app-versie (header X-App-Versie, OTA 0152) — chip in Gebruikers & toegang, zodat
+    # het kantoor ziet of een accordeur nog op een oude schil (1.0) zit vóór het een herstel-link stuurt.
+    app_versie: str | None = None
+    bundel_gezien_op: datetime | None = None
 
 
 class ApparatenResponse(BaseModel):

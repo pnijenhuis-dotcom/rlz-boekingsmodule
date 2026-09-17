@@ -511,6 +511,7 @@ describe('GebruikersScreen', () => {
           soort: 'toestel',
           platform: 'ios',
           niet_meer_gebruikt_op: null,
+          app_versie: '1.1',
         },
         {
           id: 'passkey-oud',
@@ -530,6 +531,7 @@ describe('GebruikersScreen', () => {
     expect(toestel).toHaveTextContent('Toestel · iPhone van Jan (iOS)')
     expect(toestel).toHaveTextContent(/gekoppeld 08-09/)
     expect(toestel).toHaveTextContent(/laatst gebruikt 08-09/)
+    expect(toestel).toHaveTextContent(/app 1\.1/) // 17-09: laatst geziene app-versie (casus Romy)
     const oud = screen.getByTestId('apparaat-passkey-oud')
     expect(oud).toHaveTextContent('iPhone (oud) · passkey — niet meer gebruikt')
     expect(oud).toHaveStyle({ color: 'var(--muted)' })
