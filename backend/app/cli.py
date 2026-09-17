@@ -1424,6 +1424,34 @@ def _verrijk(verzamelaar, functie: str, **kw) -> dict:  # noqa: ANN001
         return {}
 
 
+def _bevindingssoort_stand(args: argparse.Namespace) -> int:
+    """SPOED 17-09 blok C. Lees-only zonder --stand (in de nameting-allowlist); mét --stand + --reden = promotie/
+    degradatie onder de systeem-actor mét audit — een expliciete stap ná een meting, nooit stil."""
+    from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+    from app.reconciliatie import kantoorbreed
+
+    if args.stand is not None:
+        if not args.soort or not args.reden:
+            print("FOUT: --stand vereist <soort> én --reden", file=sys.stderr)
+            return 2
+        try:
+            standen = kantoorbreed.zet_soort_stand(
+                soort=args.soort, stand=args.stand, actor_id=SYSTEEM_ACTOR_ID, reden=args.reden
+            )
+        except kantoorbreed.ReconciliatieFout as exc:
+            print(f"FOUT: {exc}", file=sys.stderr)
+            return 2
+        print(f"bevindingssoort {args.soort} → {args.stand} (reden: {args.reden})")
+    else:
+        standen = kantoorbreed.soort_standen_overzicht()
+    print(f"{'soort':<34} {'blok':<26} {'sinds':<10} {'default':<8} {'override':<9} stand")
+    for s in standen:
+        if args.soort and s["soort"] != args.soort:
+            continue
+        print(f"{s['soort']:<34} {s['blok']:<26} {s['sinds']:<10} {s['default']:<8} {str(s['override'] or '-'):<9} {s['stand']}")
+    return 0
+
+
 def _verrijk_bank(verzamelaar, administratie_id: uuid.UUID, a) -> dict:  # noqa: ANN001
     # Blok C 16-09: leesbare extra velden van de afwijking zelf (`BankAfwijking.extra`, bv. de datums van een vermoede
     # dubbele betaling) reizen altijd mee — ook zonder verzamelaar; een naamlookup gaat er nooit door overheen.
@@ -3389,6 +3417,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     acceptaties_parser.add_argument("--administratie-id", required=True, dest="administratie_id")
 
+    # SPOED 17-09 blok C: stand per bevindingssoort (meten | actie). Zonder --stand = lees-only overzicht (nameting).
+    soort_stand_parser = subparsers.add_parser(
+        "bevindingssoort-stand",
+        help="Toon of zet de stand van een reconciliatie-bevindingssoort: meten (telt, geen actiemail) | actie.",
+    )
+    soort_stand_parser.add_argument("soort", nargs="?", default=None)
+    soort_stand_parser.add_argument("--stand", choices=("meten", "actie"), default=None)
+    soort_stand_parser.add_argument("--reden", default=None, help="Verplicht bij --stand (bv. verwijzing naar de nameting).")
+
     uitsluiten_parser = subparsers.add_parser(
         "reconciliatie-uitsluiten",
         help="Laat een administratie niet meer meetellen in de exit-code van de reconciliaties "
@@ -3655,6 +3692,8 @@ def main(argv: list[str] | None = None) -> int:
         return _groep_saldi(args)
     if args.commando == "reconciliatie-acceptaties":
         return _reconciliatie_acceptaties(args)
+    if args.commando == "bevindingssoort-stand":
+        return _bevindingssoort_stand(args)
     if args.commando == "reconciliatie-uitsluiten":
         return _zet_reconciliatie_uitsluiting(args, uitgesloten=True)
     if args.commando == "reconciliatie-insluiten":

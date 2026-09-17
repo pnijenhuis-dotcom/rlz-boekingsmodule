@@ -327,7 +327,7 @@ const LET_OP_AUTOMATISERING: BevindingDto = {
   administratie_naam: null,
   vingerafdruk: 'auto:noodrem',
   tekst: 'LET-OP     automatisering duplicaat_afvoer: 3 overgeslagen wegens ontbrekende harde voorwaarde [noodrem]',
-  titel: 'Automatisering wacht op voorwaarde — Duplicaat-afvoer',
+  titel: 'Wacht op instelling — Duplicaat-afvoer',
   wat: 'Duplicaat-afvoer sloeg 3 stuk(s) over: noodrem staat uit.',
   doe: 'Zet de noodrem weer aan (Instellingen › Boeken) of voer de gesignaleerde duplicaten handmatig af.',
   details: [{ label: 'vingerafdruk', waarde: 'auto:noodrem' }],
@@ -380,7 +380,7 @@ describe('ReconciliatieScreen — automatiseringen (blok 5, 08-09)', () => {
     expect(screen.queryByText('Autoboeken inkoop')).toBeNull()
     const rij = within(tabel).getByTestId('reconciliatie-rij')
     expect(within(rij).getByText('Automatisering')).toBeInTheDocument()
-    expect(within(rij).getByTestId('bevinding-titel')).toHaveTextContent('Automatisering wacht op voorwaarde — Duplicaat-afvoer')
+    expect(within(rij).getByTestId('bevinding-titel')).toHaveTextContent('Wacht op instelling — Duplicaat-afvoer')
     expect(within(rij).getByTestId('bevinding-doe')).toHaveTextContent('Instellingen › Boeken')
     const link = within(rij).getByRole('link', { name: /Naar de instelling van/ })
     expect(link).toHaveAttribute('href', '/instellingen/boeken')

@@ -87,7 +87,8 @@ export interface ReconciliatieRunDto {
   mail_detail: string | null
 }
 
-export type BevindingSoort = 'afwijking' | 'let_op' | 'fout' | 'geaccepteerd' | 'uitgesloten' | 'gezien'
+/** 'meten' (17-09) = afwijking van een bevindingssoort in stand meten: telt, geen handeling, nooit in de actiemail. */
+export type BevindingSoort = 'afwijking' | 'let_op' | 'fout' | 'geaccepteerd' | 'uitgesloten' | 'gezien' | 'meten'
 /** Facet in de URL: 'aandacht' (default) = afwijking + fout + let-op. */
 export type SoortFacet = 'aandacht' | BevindingSoort | 'alle'
 /** 'rlz_dubbel' (blok 6, 08-09) = periodieke toets "mogelijk dubbel geboekt in RLZ" — handeling ligt in Reeleezee. */
@@ -134,6 +135,7 @@ export interface BevindingenTellersDto {
   uitgesloten: number
   gezien: number
   administraties: number
+  meten?: number
 }
 
 export interface BevindingenLijstDto {
@@ -160,6 +162,7 @@ export interface StandDto {
 
 export interface InstellingDto {
   gezien_dagen: number
+  soort_standen?: { soort: string; blok: string; sinds: string; default: string; override: string | null; stand: string }[]
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
@@ -300,6 +303,7 @@ export const SOORT_FACETTEN: SoortFacet[] = [
   'geaccepteerd',
   'uitgesloten',
   'gezien',
+  'meten',
   'alle',
 ]
 
@@ -311,6 +315,7 @@ export const SOORT_LABEL: Record<SoortFacet, string> = {
   geaccepteerd: 'geaccepteerd',
   uitgesloten: 'uitgesloten',
   gezien: 'gezien',
+  meten: 'in meting',
   alle: 'alle',
 }
 

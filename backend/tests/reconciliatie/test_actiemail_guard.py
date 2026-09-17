@@ -598,8 +598,21 @@ class TestActiemailGuard:
         assert regels[0] == f"{n} zaken vragen je aandacht."
         assert onderwerp == f"Boekhouding: {n} zaken vragen je aandacht"
         bevindingsregels = [r for r in regels if r.startswith("- ") and not r.startswith("- en ")]
-        assert len(bevindingsregels) == run_service.MAX_ACTIE_REGELS
-        assert f"- en {n - run_service.MAX_ACTIE_REGELS} andere" in regels
+        # SPOED 17-09 blok C: hooguit MAX_ACTIE_REGELS totaal én MAX_ACTIE_REGELS_PER_ADMINISTRATIE per administratie;
+        # de afkap draagt per administratie een teller ("en N andere (A 20, B 15)").
+        per_adm: dict[str, int] = {}
+        for b in bev:
+            sleutel = NAMEN.get(b.administratie_id, "platform") if b.administratie_id else "platform"
+            per_adm[sleutel] = per_adm.get(sleutel, 0) + 1
+        verwacht = min(
+            run_service.MAX_ACTIE_REGELS,
+            sum(min(run_service.MAX_ACTIE_REGELS_PER_ADMINISTRATIE, k) for k in per_adm.values()),
+        )
+        assert len(bevindingsregels) == verwacht
+        for naam in NAMEN.values():
+            assert sum(r.startswith(f"- {naam} — ") for r in bevindingsregels) <= run_service.MAX_ACTIE_REGELS_PER_ADMINISTRATIE
+        rest = [r for r in regels if r.startswith(f"- en {n - verwacht} andere (")]
+        assert len(rest) == 1 and all(naam in rest[0] for naam in NAMEN.values()), regels
         assert sum("/reconciliatie" in r for r in regels) == 1 and any(
             r.startswith("Bekijken en afhandelen: ") for r in regels
         )

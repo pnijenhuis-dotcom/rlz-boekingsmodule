@@ -492,6 +492,15 @@ export function ReconciliatieScreen({ pollMs = 1500 }: { pollMs?: number } = {})
               <Badge variant="stil" data-testid="chip-let-op">
                 {data.tellers.let_op} let-op
               </Badge>
+              {(data.tellers.meten ?? 0) > 0 && (
+                <Badge
+                  variant="stil"
+                  data-testid="chip-meten"
+                  title="Bevindingssoorten in meting: tellen wél, vragen geen handeling en staan niet in de actiemail (pas na promotie door een Beheerder)."
+                >
+                  {data.tellers.meten} in meting
+                </Badge>
+              )}
               <Badge variant={data.tellers.fouten > 0 ? 'danger' : 'stil'} data-testid="chip-fouten">
                 {data.tellers.fouten} fouten
               </Badge>

@@ -455,7 +455,7 @@ class TestBankSync:
                 detail=bev[0]["detail"],
             )
         )
-        assert lees.titel.startswith("Automatisering wacht op voorwaarde") and "rlz-sync" in lees.doe
+        assert lees.titel.startswith("Wacht op instelling") and "rlz-sync" in lees.doe
         # Uit-regel bestaat niet voor deze teller (stand altijd) — hij staat vóór bank-autoboeken in de volgorde.
         assert auto.VOLGORDE.index(auto.BANK_SYNC) < auto.VOLGORDE.index(auto.BANK)
 
@@ -496,7 +496,7 @@ class TestTeksten:
             detail=kw["detail"],
         )
         lees = teksten.leesbaar(b, administratie_naam="Kempen Facilities B.V.")
-        assert lees.titel == "Automatisering wacht op voorwaarde — Autoboeken omzet"
+        assert lees.titel == "Wacht op instelling — Autoboeken omzet"
         assert lees.wat.startswith("Autoboeken omzet sloeg 1 stuk(s) over in Kempen Facilities B.V.: boeken staat uit")
         assert "Instellingen › Boeken" in lees.doe
         for zin in (lees.titel, lees.wat, lees.doe):
@@ -515,7 +515,7 @@ class TestTeksten:
             detail=kw["detail"],
         )
         lees = teksten.leesbaar(b)
-        assert lees.titel.startswith("Automatisering stil — Terugkerende facturen")
+        assert lees.titel.startswith("Stil sinds zeven dagen — Terugkerende facturen")
         assert "7 dagen niets bij 5 kandidaat" in lees.wat and "storing" in lees.doe
 
 
@@ -622,21 +622,21 @@ class TestVerzamelEnRun:
         # mensentaal; het volledige tellersblok staat alleen nog in de systeemmail (mails[1]).
         assert len(mails) == 2
         assert mails[0]["onderwerp"] == "Boekhouding: 1 zaak vraagt je aandacht"
-        assert "Duplicaat-afvoer — Automatisering wacht op voorwaarde" in mails[0]["tekst"]
+        assert "Duplicaat-afvoer — Wacht op instelling" in mails[0]["tekst"]
         assert "Automatiseringen (laatste 24 u):" not in mails[0]["tekst"]
         tekst = mails[1]["tekst"]
         assert mails[1]["onderwerp"].startswith("[systeem] ")
         assert "Automatiseringen (laatste 24 u):" in tekst
         assert re.search(r"Duplicaat-afvoer\s+uit \(platformbrede noodrem UIT\)", tekst)
         assert re.search(r"Autoboeken inkoop\s+uit", tekst)
-        assert "Automatisering wacht op voorwaarde — Duplicaat-afvoer" in tekst and "Instellingen › Boeken" in tekst
+        assert "Wacht op instelling — Duplicaat-afvoer" in tekst and "Instellingen › Boeken" in tekst
         # Inzicht › Reconciliatie: rij mét deeplink-handeling (kantoorbreed, Beheerder)
         from app.db.models import GebruikerRol
 
         lijst = kantoorbreed.lijst(actor_id=beheerder_id, rol=GebruikerRol.BEHEERDER)
         rijen = [r for r in lijst.rijen if r.blok == "automatisering"]
         assert len(rijen) == 1 and rijen[0].doel_pad == "/instellingen/boeken" and rijen[0].soort == "let_op"
-        assert rijen[0].titel.startswith("Automatisering wacht op voorwaarde")
+        assert rijen[0].titel.startswith("Wacht op instelling")
         # tweede run met ongewijzigde situatie: zelfde vingerafdruk → geen tweede mail (delta leeg)
         run_service.voer_uit(blokken=[("documenten", _leeg_blok)], args=ARGS, bron="cli", stdout=lambda t: None)
         assert len(mails) == 2
@@ -721,7 +721,7 @@ class TestExtractieWachtrij:
                 detail=bev["detail"],
             )
         )
-        assert lb.titel.startswith("Automatisering wacht op voorwaarde — Extractie-wachtrij")
+        assert lb.titel.startswith("Wacht op instelling — Extractie-wachtrij")
         assert "job-trigger mislukt" in lb.wat and "run.invoker" in lb.doe and "scheduler-vangnet" in lb.doe
         assert not GUID.search(lb.titel)
         # JSON-roundtrip (mail ná opslag) behoudt de nieuwe categorieën

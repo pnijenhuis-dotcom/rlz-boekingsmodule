@@ -263,8 +263,8 @@ def _titel(kop: str, onderwerp: Segmenten | str, scheiding: str = " ") -> str:
 
 _DOE_ACCEPTEER = "klopt die, accepteer met reden."
 _DOE_DUBBELE_BETALING = (
-    "Controleer de twee betalingen in Reeleezee en of terugvordering bij de leverancier nodig is; "
-    "klopt het (twee facturen), accepteer met reden."
+    "Factuur ontbreekt (verwijderd of nooit geboekt): controleer de betalingen in Reeleezee en vorder terug bij de "
+    "leverancier óf boek de factuur alsnog; is het bewust (deelbetaling, creditnota), accepteer met reden."
 )
 
 
@@ -280,7 +280,16 @@ def _dubbele_betaling_wat(d: dict, tekst: str) -> str:
         return _terugval_wat(d.get("detail") or tekst)
     from app.bank.dubbele_betaling import tekst_uit_delen
 
-    return tekst_uit_delen(_s(d, "tegenpartij_naam"), bedrag, datums, iban=_s(d, "tegenrekening_iban"))
+    # Herdefinitie 17-09: mét de factuurtelling als de bevinding die draagt (oudere bevindingen: de zin van 16-09).
+    aantal_facturen = d.get("dubbele_betaling_facturen_aantal") if d.get("dubbele_betaling_factuur_bronnen") else None
+    return tekst_uit_delen(
+        _s(d, "tegenpartij_naam"),
+        bedrag,
+        datums,
+        iban=_s(d, "tegenrekening_iban"),
+        aantal_facturen=int(aantal_facturen) if aantal_facturen is not None else None,
+        sterk=bool(d.get("dubbele_betaling_sterk")),
+    )
 
 
 _DOE_CONTROLE_MISLUKT = (
@@ -990,7 +999,7 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
     waar = _s(d, "administratie_naam") or administratie_naam
     if reden == auto.STIL_7_DAGEN:
         return (
-            _titel("Automatisering stil", label),
+            _titel("Stil sinds zeven dagen", label),
             f"{label} staat aan, maar deed {auto.STIL_DAGEN} dagen niets bij {aantal} kandidaat/kandidaten — "
             "geen boeking en geen geregistreerde reden.",
             "Controleer de instelling en het achtergrondwerk (sync-alles/Cloud Run-jobs); blijft het stil, "
@@ -1082,7 +1091,7 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         # Bundel 09-09 blok 1: een regressie-categorie is een bug, geen handeling voor de gebruiker. De run legt
         # audit `automatisering_regressie` vast en de bewaking alarmeert — hier alleen de constatering.
         doe_regressie = auto.REGRESSIE_TEKST[0].upper() + auto.REGRESSIE_TEKST[1:] + "."
-        return _titel("Automatisering wacht op voorwaarde", label), wat, doe_regressie
+        return _titel("Wacht op instelling", label), wat, doe_regressie
     doe = {
         auto.CREDENTIAL: "Registreer de webservice-login opnieuw (Instellingen › Administraties); "
         "de volgende run loopt door.",
@@ -1100,7 +1109,7 @@ def _automatisering(d: dict, administratie_naam: str | None) -> tuple[str, str, 
         "Controleer in Cloud Logging de regels 'bank-sync' van de laatste run (afgebroken/timeout?) en open desnoods "
         "het bankscherm van de klant — dat start direct een verversing.",
     }.get(reden, "Herstel de voorwaarde via de instelling op deze rij; de volgende run loopt door.")
-    return _titel("Automatisering wacht op voorwaarde", label), wat, doe
+    return _titel("Wacht op instelling", label), wat, doe
 
 
 def _let_op(d: dict, tekst: str, administratie_naam: str | None) -> tuple[str, str, str]:

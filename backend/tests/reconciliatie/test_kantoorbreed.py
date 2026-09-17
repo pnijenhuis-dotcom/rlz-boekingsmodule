@@ -178,6 +178,7 @@ class TestLijstEnScope:
             "uitgesloten": 0,
             "gezien": 0,
             "administraties": 2,
+            "meten": 0,  # SPOED 17-09: bevindingssoorten in stand `meten`
         }
         assert d["facetten"]["soort"]["aandacht"] == 3 and d["facetten"]["soort"]["let_op"] == 1
         assert {f["administratie_id"] for f in d["facetten"]["administraties"]} == {
@@ -364,10 +365,10 @@ class TestHandelingen:
         hbeh = _bearer(beheerder_id, rol="beheerder")
         assert client.put("/reconciliatie/instelling", json={"gezien_dagen": 0}, headers=hbeh).status_code == 422
         assert client.put("/reconciliatie/instelling", json={"gezien_dagen": 1}, headers=hb).status_code == 403
-        assert client.put("/reconciliatie/instelling", json={"gezien_dagen": 1}, headers=hbeh).json() == {
-            "gezien_dagen": 1
-        }
-        assert client.get("/reconciliatie/instelling", headers=hb).json() == {"gezien_dagen": 1}
+        # SPOED 17-09: de DTO draagt óók `soort_standen` (registry per bevindingssoort).
+        put = client.put("/reconciliatie/instelling", json={"gezien_dagen": 1}, headers=hbeh).json()
+        assert put["gezien_dagen"] == 1 and any(s["soort"] == "dubbele_betaling_vermoed" and s["stand"] == "meten" for s in put["soort_standen"])
+        assert client.get("/reconciliatie/instelling", headers=hb).json()["gezien_dagen"] == 1
         nu = datetime.now(UTC)
         assert kantoorbreed.stand(actor_id=gescoopte_gebruiker, rol=GebruikerRol.BOEKHOUDING, nu=nu).let_op == 0
         assert (

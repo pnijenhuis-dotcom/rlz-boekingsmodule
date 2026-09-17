@@ -75,6 +75,23 @@ def _dubbele_betaling_afwijkingen(administratie_id: uuid.UUID) -> tuple[list[Ban
                 "dubbele_betaling_datums": [dag.isoformat() for dag in d.datums],
                 "dubbele_betaling_aantal": d.aantal,
                 "dubbele_betaling_bedrag": str(d.bedrag),
+                # Herdefinitie 17-09: wat er wél tegenover staat + de bank-toets (bank is leidend) + sterk-signaal.
+                "dubbele_betaling_mutaties": [str(m) for m in d.mutatie_ids],
+                "dubbele_betaling_facturen": [
+                    {
+                        "bron": f.bron,
+                        "referentie": f.referentie,
+                        "datum": f.datum.isoformat() if f.datum else None,
+                        "rlz_document_id": f.rlz_document_id,
+                        "document_id": f.document_id,
+                        "boekstuk": f.boekstuk,
+                    }
+                    for f in d.facturen
+                ],
+                "dubbele_betaling_facturen_aantal": len(d.facturen),
+                "dubbele_betaling_factuur_bronnen": list(d.factuur_bronnen),
+                "dubbele_betaling_sterk": d.sterk,
+                "bank_toets": d.bank_toets,
             },
         )
         for d in analyse.signalen

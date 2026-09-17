@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-17 — "Mogelijk dubbel betaald" kijkt nu of er echt een factuur ontbreekt
+
+<!-- dubbele-betaling-herdefinitie-17-09 -->
+
+- **Een betaling telt pas als mogelijk dubbel als er méér betaald is dan er aan facturen van die leverancier tegenover staat.** Maandelijkse en andere periodieke betalingen (energie, abonnementen, incasso's) worden herkend en nooit meer gemeld. De melding zegt precies wat er wel tegenover staat en of een betaling in Reeleezee aan geen factuur hangt.
+- **De melding van vandaag met ruim twaalfhonderd regels wordt automatisch opgeruimd**; je hoeft niets weg te klikken. Op Inzicht › Reconciliatie staan zulke controles voortaan eerst onder "in meting": ze tellen wél, maar komen pas in de dagelijkse actiemail als een beheerder ze na een meting vrijgeeft.
+- **De actiemail toont per administratie hooguit drie regels** en zegt bij "en N andere" hoeveel er per administratie zijn. Een controle die in één nacht meer dan vijftig meldingen geeft, gaat automatisch terug naar "in meting" en wordt als systeemfout aan het beheer gemeld.
+
 ## 2026-09-17 — De app in de App Store heeft nu de nieuwe inlog zonder wachtwoord
 
 <!-- apple-1-1-live-17-09 -->

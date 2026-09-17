@@ -233,6 +233,11 @@ class ReconciliatieInstelling(Base):
 
     singleton: Mapped[bool] = mapped_column(primary_key=True, default=True)
     gezien_dagen: Mapped[int] = mapped_column(default=90, server_default="90")
+    #: SPOED 17-09 (migratie 0153): overrides per afwijkingssoort {"<soort>": "meten" | "actie"} — zie
+    #: `app/reconciliatie/soort_stand.py` (code-default per soort, promotie, explosie-rem).
+    soort_standen: Mapped[dict] = mapped_column(
+        JSONB(none_as_null=False), default=dict, server_default=text("'{}'::jsonb")
+    )
     gewijzigd_door: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
     )

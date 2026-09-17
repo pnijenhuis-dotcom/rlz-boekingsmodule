@@ -320,6 +320,8 @@ MAIL_SLEUTEL = "mail"
 MAX_ACTIE_REGEL = 140
 #: Meer bevindingen dan dit = "en N andere" mét dezelfde link (de lijst staat op /reconciliatie).
 MAX_ACTIE_REGELS = 10
+#: SPOED 17-09 blok C: nooit meer dan drie regels per administratie in de actiemail.
+MAX_ACTIE_REGELS_PER_ADMINISTRATIE = 3
 
 
 def mail_status_samenstellen(statussen: dict[str, str]) -> str:
@@ -370,14 +372,17 @@ def is_beheer_signaal(b: Bevinding) -> bool:
     )
 
 
-def actie_bevindingen(delta: Delta) -> list[Bevinding]:
+def actie_bevindingen(delta: Delta, *, soort_overrides: dict[str, str] | None = None) -> list[Bevinding]:
     """Wat het kantoor uit de delta te DOEN heeft: nieuwe afwijkingen, nieuwe fouten per administratie en nieuwe
     LET-OP's mét handeling — in urgentievolgorde. Geaccepteerd, hersteld, omgevallen blokken en beheer-/regressie-
-    signalen horen in de systeemmail."""
+    signalen horen in de systeemmail. SPOED 17-09: een afwijking van een bevindingssoort in stand `meten`
+    (`app/reconciliatie/soort_stand.py`) telt wél, maar vraagt geen handeling — nooit in de actiemail."""
+    from app.reconciliatie import soort_stand
+
     return [
         b
         for b in (*delta.nieuwe_afwijkingen, *delta.nieuwe_fouten, *delta.nieuwe_let_op)
-        if not is_beheer_signaal(b)
+        if not is_beheer_signaal(b) and not soort_stand.in_meting(b, soort_overrides)
     ]
 
 
@@ -411,12 +416,36 @@ def bouw_actiemail(
     kop = "1 zaak vraagt je aandacht" if n == 1 else f"{n} zaken vragen je aandacht"
     link = f"{settings.app_basis_url.rstrip('/')}/reconciliatie"
     regels = [f"{kop}.", ""]
-    for b in bevindingen[:MAX_ACTIE_REGELS]:
-        naam = namen.get(b.administratie_id, "onbekende administratie") if b.administratie_id else None
-        regels.append(f"- {actie_regel(b, naam)}")
-    rest = n - MAX_ACTIE_REGELS
+
+    def adm_naam(b: Bevinding) -> str | None:
+        return namen.get(b.administratie_id, "onbekende administratie") if b.administratie_id else None
+
+    # SPOED 17-09 (blok C): hooguit MAX_ACTIE_REGELS_PER_ADMINISTRATIE regels per administratie en MAX_ACTIE_REGELS
+    # totaal (urgentievolgorde blijft); de afkap "en N andere" draagt per administratie een teller, zodat "en 1204
+    # andere" nooit meer zonder verdeling in de mail staat.
+    getoond: list[Bevinding] = []
+    per_adm_getoond: dict[str, int] = {}
+    for b in bevindingen:
+        sleutel = adm_naam(b) or "platform"
+        if per_adm_getoond.get(sleutel, 0) >= MAX_ACTIE_REGELS_PER_ADMINISTRATIE or len(getoond) >= MAX_ACTIE_REGELS:
+            continue
+        per_adm_getoond[sleutel] = per_adm_getoond.get(sleutel, 0) + 1
+        getoond.append(b)
+    for b in getoond:
+        regels.append(f"- {actie_regel(b, adm_naam(b))}")
+    rest = n - len(getoond)
     if rest > 0:
-        regels.append(f"- en {rest} andere")
+        overige: dict[str, int] = {}
+        getoond_ids = {id(b) for b in getoond}
+        for b in bevindingen:
+            if id(b) in getoond_ids:
+                continue
+            sleutel = adm_naam(b) or "platform"
+            overige[sleutel] = overige.get(sleutel, 0) + 1
+        verdeling = ", ".join(f"{naam} {aantal}" for naam, aantal in sorted(overige.items(), key=lambda kv: (-kv[1], kv[0])))
+        if len(verdeling) > MAX_ACTIE_REGEL - 20:
+            verdeling = verdeling[: MAX_ACTIE_REGEL - 21].rstrip(", ") + "…"
+        regels.append(f"- en {rest} andere ({verdeling})")
     regels.extend(
         [
             "",
@@ -933,9 +962,101 @@ def _gezien_sleutels(gezien: dict[tuple[uuid.UUID, str], ReconciliatieGezien], h
     return uit
 
 
+def _pas_soort_standen_toe(run_id: uuid.UUID, verzamelaar: Verzamelaar) -> dict[str, str]:
+    """SPOED 17-09 (blok C): (1) explosie-rem — een soort met > EXPLOSIE_DREMPEL afwijkingen in déze run gaat (terug) naar
+    `meten` (DB-override + audit) en krijgt een systeemfout-LET-OP op blok `automatisering` (regressie-categorie → alleen
+    systeemmail + bewaking); (2) élke afwijking van een soort in `meten` krijgt `detail.stand = "meten"` zodat de UI 'm
+    onder het facet "in meting" toont en de KPI/actiemail 'm niet meetelt. → de effectieve overrides."""
+    from app.reconciliatie import automatiseringen as auto
+    from app.reconciliatie import soort_stand
+
+    overrides = soort_stand.lees_overrides()
+    tellers = soort_stand.tel_per_soort(verzamelaar.bevindingen)
+    for soort, aantal in sorted(soort_stand.geexplodeerd(tellers, overrides).items()):
+        try:
+            overrides = soort_stand.zet_stand(
+                soort=soort,
+                stand=soort_stand.METEN,
+                actor_id=SYSTEEM_ACTOR_ID,
+                reden=f"explosie-rem: {aantal} bevindingen in één run (> {soort_stand.EXPLOSIE_DREMPEL}); run {run_id}",
+            )
+        except Exception as exc:  # noqa: BLE001 — de rem faalt nooit stil: de LET-OP hieronder blijft
+            logger.warning("soort_stand: terugzetten naar meten mislukt voor %s: %s", soort, exc)
+            overrides = {**overrides, soort: soort_stand.METEN}
+        verzamelaar.bevinding(
+            blok=auto.BLOK,
+            soort=BevindingSoort.LET_OP.value,
+            administratie_id=None,
+            vingerafdruk=auto.vingerafdruk_automatisering(
+                sleutel="bevindingssoorten", categorie=soort_stand.EXPLOSIE_CATEGORIE, administratie_id=None
+            ),
+            tekst=(
+                f"LET-OP     bevindingssoort {soort} explodeert: {aantal} afwijkingen in één run "
+                f"(> {soort_stand.EXPLOSIE_DREMPEL}) — automatisch terug naar stand 'meten' [{soort_stand.EXPLOSIE_CATEGORIE}]"
+            ),
+            detail={
+                "automatisering": "bevindingssoorten",
+                "automatisering_label": f"bevindingssoort {soort}",
+                "reden": soort_stand.EXPLOSIE_CATEGORIE,
+                "aantal": aantal,
+                "bevindingssoort": soort,
+                "doel_pad": "/reconciliatie?soort=meten",
+            },
+        )
+    # detail.stand voor de UI/lijst — de Bevinding is frozen: vervang in de lijst.
+    for i, b in enumerate(verzamelaar.bevindingen):
+        if soort_stand.in_meting(b, overrides):
+            verzamelaar.bevindingen[i] = Bevinding(
+                blok=b.blok,
+                soort=b.soort,
+                administratie_id=b.administratie_id,
+                vingerafdruk=b.vingerafdruk,
+                tekst=b.tekst,
+                detail={**(b.detail or {}), "stand": soort_stand.METEN},
+            )
+    return overrides
+
+
+def _audit_verdwenen_dubbele_betaling(run_id: uuid.UUID, delta: Delta) -> None:
+    """SPOED 17-09 blok A: bevindingen `dubbele_betaling_vermoed` uit de vorige run die de herdefinitie (betaling zonder
+    factuur) niet meer produceert, worden automatisch gesloten — geen mens-klik; per administratie één audit
+    `reconciliatie_auto_gesloten` mét aantal + reden. Idempotent: alleen wat in de delta als verdwenen staat."""
+    weg = [
+        b
+        for b in delta.verdwenen_afwijkingen
+        if str((b.detail or {}).get("afwijking_soort") or "") == "dubbele_betaling_vermoed"
+    ]
+    if not weg:
+        return
+    per_adm: dict[uuid.UUID | None, list[Bevinding]] = {}
+    for b in weg:
+        per_adm.setdefault(b.administratie_id, []).append(b)
+    with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
+        for aid, items in per_adm.items():
+            record_audit_event(
+                session,
+                actor_id=SYSTEEM_ACTOR_ID,
+                module="boekhouding",
+                tabel="reconciliatie_bevinding",
+                record_id=run_id,
+                actie="reconciliatie_auto_gesloten",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={
+                    "soort": "dubbele_betaling_vermoed",
+                    "administratie_id": str(aid) if aid else None,
+                    "aantal": len(items),
+                    "vingerafdrukken": [b.vingerafdruk for b in items][:200],
+                    "reden": "herdefinitie 17-09 — valse positieven (periodiek / betaling mét factuur)",
+                },
+            )
+
+
 def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzamelaar) -> RunInfo:
     """Ná de blokken: run-rij afronden, bevindingen schrijven, delta bepalen, mailen (hooguit één)."""
     nu = datetime.now(UTC)
+    # SPOED 17-09: stand per bevindingssoort (meten | actie) + explosie-rem VÓÓR het wegschrijven — de LET-OP en de
+    # `stand`-markering staan zo in dezelfde run-rijen als de bevindingen zelf.
+    soort_overrides = _pas_soort_standen_toe(run_id, verzamelaar)
     samenvatting = verzamelaar.samenvatting()
     _schrijf_bevindingen(run_id, verzamelaar.bevindingen)
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
@@ -971,8 +1092,11 @@ def rond_af(*, run_id: uuid.UUID, bron: str, exit_code: int, verzamelaar: Verzam
     statussen: dict[str, str] = {k: "niet_nodig" for k in KANALEN}
     details: dict[str, str | None] = {k: None for k in KANALEN}
 
+    # SPOED 17-09 blok A: verdwenen dubbele-betaling-bevindingen automatisch gesloten mét audit.
+    _audit_verdwenen_dubbele_betaling(run_id, delta)
+
     # ACTIEMAIL (kantoor): alleen bevindingen mét handeling voor het kantoor; geen bevindingen = geen mail.
-    actie = actie_bevindingen(delta)
+    actie = actie_bevindingen(delta, soort_overrides=soort_overrides)
     actiemail = bouw_actiemail(bevindingen=actie, namen=namen, alles_gelopen=not delta.blokken_fout)
     if actiemail is not None:
         statussen["actie"], details["actie"] = _verzend_mail(onderwerp=actiemail[0], tekst=actiemail[1], kanaal="actie")

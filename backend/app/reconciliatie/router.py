@@ -205,9 +205,15 @@ def reconciliatie_run_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+def _instelling_dto(gezien_dagen: int, standen: list[dict]) -> schemas.InstellingDto:
+    return schemas.InstellingDto(
+        gezien_dagen=gezien_dagen, soort_standen=[schemas.SoortStandDto(**s) for s in standen]
+    )
+
+
 @router.get("/reconciliatie/instelling", response_model=schemas.InstellingDto)
 def reconciliatie_instelling(actor: CurrentGebruiker = Depends(vereis_kantoorrol)) -> schemas.InstellingDto:
-    return schemas.InstellingDto(gezien_dagen=kantoorbreed.gezien_dagen())
+    return _instelling_dto(kantoorbreed.gezien_dagen(), kantoorbreed.soort_standen_overzicht())
 
 
 @router.put("/reconciliatie/instelling", response_model=schemas.InstellingDto)
@@ -215,9 +221,21 @@ def reconciliatie_instelling_zetten(
     invoer: schemas.InstellingDto, actor: CurrentGebruiker = Depends(require_beheerder)
 ) -> schemas.InstellingDto:
     try:
-        return schemas.InstellingDto(
-            gezien_dagen=kantoorbreed.zet_gezien_dagen(dagen=invoer.gezien_dagen, actor_id=actor.id)
-        )
+        dagen = kantoorbreed.zet_gezien_dagen(dagen=invoer.gezien_dagen, actor_id=actor.id)
+        return _instelling_dto(dagen, kantoorbreed.soort_standen_overzicht())
+    except kantoorbreed.ReconciliatieFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.put("/reconciliatie/instelling/soort-stand", response_model=schemas.InstellingDto)
+def reconciliatie_soort_stand_zetten(
+    invoer: schemas.SoortStandInvoerDto, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.InstellingDto:
+    """SPOED 17-09 blok C: promotie van een bevindingssoort naar de actiemail (`actie`) of terug naar `meten` —
+    Beheerder-only, mét reden en audit (`bevindingssoort_naar_actie`/`_naar_meten`)."""
+    try:
+        standen = kantoorbreed.zet_soort_stand(soort=invoer.soort, stand=invoer.stand, actor_id=actor.id, reden=invoer.reden)
+        return _instelling_dto(kantoorbreed.gezien_dagen(), standen)
     except kantoorbreed.ReconciliatieFout as exc:
         raise _vertaal(exc) from exc
 

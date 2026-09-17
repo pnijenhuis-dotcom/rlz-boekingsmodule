@@ -222,7 +222,7 @@ class TestBank:
                 "dubbele_betaling_vermoed",
                 "Aan X is € 1,00 twee keer betaald",
                 "Mogelijk dubbel betaald",
-                "terugvordering",
+                "vorder terug",
             ),
             ("onbekend", "x", "Afwijking in de bank", "accepteer met reden"),
         ],
@@ -251,7 +251,28 @@ class TestBank:
             "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 03-09) voor wat één factuur lijkt — "
             "controleer of terugvordering nodig is."
         )
-        assert lb.doe.startswith("Controleer de twee betalingen in Reeleezee") and "accepteer met reden" in lb.doe
+        assert lb.doe.startswith("Factuur ontbreekt") and "accepteer met reden" in lb.doe
+
+    def test_dubbele_betaling_zin_met_factuurtelling_17_09(self) -> None:
+        # Herdefinitie 17-09: mét factuurtelling + sterk-signaal in de zin, nooit een id.
+        lb = leesbaar(
+            self._bank(
+                "dubbele_betaling_vermoed",
+                "…",
+                tegenpartij_naam="Hello Kitchen Duiven",
+                mutatie_bedrag="-12600.00",
+                dubbele_betaling_datums=["2026-08-18", "2026-09-14"],
+                dubbele_betaling_aantal=2,
+                dubbele_betaling_facturen_aantal=1,
+                dubbele_betaling_factuur_bronnen=["module", "rlz_koppeling"],
+                dubbele_betaling_sterk=True,
+            )
+        )
+        _schoon(lb)
+        assert lb.wat == (
+            "Aan Hello Kitchen Duiven is € 12.600,00 twee keer betaald (18-08 en 14-09), terwijl er één factuur van dat "
+            "bedrag tegenover staat — een van de betalingen hangt in Reeleezee aan geen factuur."
+        )
 
     def test_aflettering_open_bedrag_uit_detailtekst(self) -> None:
         lb = leesbaar(

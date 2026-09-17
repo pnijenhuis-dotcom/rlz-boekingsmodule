@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0152
+-- Migratie-head bij deze dump: 0153
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2684,6 +2684,7 @@ CREATE TABLE boekhouding.reconciliatie_instelling (
     gezien_dagen integer DEFAULT 90 NOT NULL,
     gewijzigd_door uuid,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
+    soort_standen jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT ck_reconciliatie_instelling_gezien_dagen CHECK (((gezien_dagen >= 1) AND (gezien_dagen <= 3650))),
     CONSTRAINT reconciliatie_instelling_singleton CHECK (singleton)
 );

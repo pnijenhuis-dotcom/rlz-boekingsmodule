@@ -41,9 +41,11 @@ from app.reconciliatie.models import (
 )
 
 PER_PAGINA = 25
-SOORT_FACETTEN = ("aandacht", "afwijking", "let_op", "fout", "geaccepteerd", "uitgesloten", "gezien", "alle")
+#: `meten` (SPOED 17-09): afwijkingen van een bevindingssoort in stand `meten` (app/reconciliatie/soort_stand.py) —
+#: tellen wél, vragen geen handeling; eigen facet "in meting", nooit in "aandacht".
+SOORT_FACETTEN = ("aandacht", "afwijking", "let_op", "fout", "geaccepteerd", "uitgesloten", "gezien", "meten", "alle")
 AANDACHT = (BevindingSoort.AFWIJKING.value, BevindingSoort.FOUT.value, BevindingSoort.LET_OP.value)
-_URGENTIE = {"afwijking": 0, "fout": 1, "let_op": 2, "geaccepteerd": 3, "uitgesloten": 4, "gezien": 5}
+_URGENTIE = {"afwijking": 0, "fout": 1, "let_op": 2, "geaccepteerd": 3, "uitgesloten": 4, "gezien": 5, "meten": 6}
 #: Binnen soort=afwijking bovenaan (contract A↔A8 punt 5): een verdwenen of teruggedraaid extern document
 #: is de zwaarste categorie — daar is boekhoudkundig werk, niet alleen beoordelen.
 _URGENTIE_AFWIJKING_SOORT = {
@@ -130,6 +132,7 @@ class Tellers:
     uitgesloten: int
     gezien: int
     administraties: int  # administraties mét ≥ 1 aandacht-rij
+    meten: int = 0  # SPOED 17-09: afwijkingen van soorten in stand `meten`
 
 
 @dataclass(frozen=True)
@@ -256,6 +259,9 @@ def _rijen_voor_administratie(
                 soort = BevindingSoort.GEACCEPTEERD.value
             elif soort == BevindingSoort.GEACCEPTEERD.value and acc is None and (b.detail or {}).get("bron"):
                 soort = BevindingSoort.AFWIJKING.value
+            # SPOED 17-09: een afwijking van een soort in stand `meten` (door de run gemarkeerd) → facet "in meting".
+            if soort == BevindingSoort.AFWIJKING.value and (b.detail or {}).get("stand") == "meten":
+                soort = "meten"
             eerste = sinds.get(b.vingerafdruk) or run_afgerond or b.aangemaakt_op
             lees = teksten.leesbaar(b, administratie_naam=naam, soort=soort)
             uit.append(
@@ -376,6 +382,7 @@ def lijst(
         uitgesloten=sum(1 for r in alle if r.soort == "uitgesloten"),
         gezien=sum(1 for r in alle if r.soort == "gezien"),
         administraties=len({r.administratie_id for r in alle if r.soort in AANDACHT and r.administratie_id}),
+        meten=sum(1 for r in alle if r.soort == "meten"),
     )
 
     term = q.strip().lower()
@@ -498,6 +505,24 @@ def trek_acceptatie_in(
 
 def gezien_dagen() -> int:
     return run_service.gezien_dagen()
+
+
+def soort_standen_overzicht() -> list[dict]:
+    """SPOED 17-09: per bevindingssoort blok/sinds/default/override/effectieve stand (DTO + CLI)."""
+    from app.reconciliatie import soort_stand
+
+    return soort_stand.overzicht(soort_stand.lees_overrides())
+
+
+def zet_soort_stand(*, soort: str, stand: str, actor_id: uuid.UUID, reden: str) -> list[dict]:
+    """Promotie (`actie`) of degradatie (`meten`) van één bevindingssoort door een Beheerder — mét audit."""
+    from app.reconciliatie import soort_stand
+
+    try:
+        overrides = soort_stand.zet_stand(soort=soort, stand=stand, actor_id=actor_id, reden=reden)
+    except ValueError as exc:
+        raise ReconciliatieFout(str(exc)) from exc
+    return soort_stand.overzicht(overrides)
 
 
 def zet_gezien_dagen(*, dagen: int, actor_id: uuid.UUID) -> int:

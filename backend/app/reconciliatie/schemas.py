@@ -80,6 +80,7 @@ class TellersDto(BaseModel):
     uitgesloten: int
     gezien: int
     administraties: int
+    meten: int = 0  # SPOED 17-09: afwijkingen van bevindingssoorten in stand `meten`
 
 
 class AdministratieFacetDto(BaseModel):
@@ -123,8 +124,26 @@ class ActieResultaatDto(BaseModel):
     id: uuid.UUID
 
 
+class SoortStandDto(BaseModel):
+    """SPOED 17-09: stand per bevindingssoort — `meten` (telt, geen handeling) of `actie` (actiemail + KPI)."""
+
+    soort: str
+    blok: str
+    sinds: str
+    default: str
+    override: str | None = None
+    stand: str
+
+
 class InstellingDto(BaseModel):
     gezien_dagen: int = Field(ge=1, le=3650)
+    soort_standen: list[SoortStandDto] = []
+
+
+class SoortStandInvoerDto(BaseModel):
+    soort: str = Field(min_length=1, max_length=80)
+    stand: str = Field(pattern="^(meten|actie)$")
+    reden: str = Field(min_length=1, max_length=2000)
 
 
 class OpnieuwBoekenInvoerDto(RedenInvoerDto):

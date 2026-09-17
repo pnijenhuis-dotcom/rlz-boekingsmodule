@@ -131,7 +131,9 @@ HARDE_VOORWAARDEN = frozenset(
 #: - BEHEER: de handeling ligt bij het beheer (Cloud Run/IAM/jobs/storing), niet bij het kantoor → alleen systeemmail.
 #: - de rest (credential, API-key, geldpoort, noodrem, volumerem) = een instelling die het kantoor zelf herstelt →
 #:   actiemail.
-REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR})
+#: SPOED 17-09: een bevindingssoort die in één run > 50 afwijkingen produceert (soort_stand.EXPLOSIE_CATEGORIE) — bug-signaal.
+BEVINDINGSSOORT_EXPLODEERT = "bevindingssoort_explodeert"
+REGRESSIE_CATEGORIEEN = frozenset({GEEN_EIGENAAR, BEVINDINGSSOORT_EXPLODEERT})
 #: Blok 1 nametingen-run 10-09 (§F7 route A): jaarlijkse rotatie van de key van het nameting-serviceaccount — beheer-signaal
 #: (systeemmail), 30 dagen vóór 12 maanden ná `settings.nameting_sa_aangemaakt_op`.
 SA_KEY_ROTATIE = "nameting_sa_key_rotatie"
