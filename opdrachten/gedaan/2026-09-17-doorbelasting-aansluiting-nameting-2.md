@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (via nameting-workflow run 35212801971, bot 08685c6; herkoppeling werkt in productie: ja; aansluiting 928 sluit / 59 ontbreekt / 2 bedrag / 166 inkoop zonder verkoop — beslispunten), rapport: docs/rapporten/2026-09-17-doorbelasting-aansluiting-nameting-2.md
+
 # OPDRACHT 17-09 — Doorbelasting-aansluiting Kempen Facilities: productienameting via de nameting-workflow (lees-only; géén writes)
 
 Vervolg op `opdrachten/gedaan/2026-09-17-doorbelasting-aansluiting-nameting.md` (rapport

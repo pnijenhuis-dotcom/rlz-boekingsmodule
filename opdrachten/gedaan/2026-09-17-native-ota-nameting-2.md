@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (stap 0 niet voldaan: geen deploy sinds de bucket; manifest lees-only vastgelegd; vervolg native-ota-nameting-3 ná de deploy van deze run; werkt in productie: niet gemeten), rapport: docs/rapporten/2026-09-17-native-ota-nameting-2.md
+
 # OPDRACHT 17-09 — Native app OTA: productienameting via de nameting-workflow ná de bucket (lees-only; géén writes)
 
 Vervolg op `opdrachten/gedaan/2026-09-17-native-ota-nameting.md` (rapport `docs/rapporten/2026-09-17-native-ota-nameting.md`): de

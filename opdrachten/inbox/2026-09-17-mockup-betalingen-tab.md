@@ -1,5 +1,9 @@
 # OPDRACHT 17-09 — MOCKUP "Betalingen" (kantoor-tab + accordeur-app), GEEN bouw
 
+> **Stand 17-09 (Cowork):** v1 staat al in `mockup/betalingen-kantoor.html` (kantoor-tab, bulk-detail, accordeur-app, notities ①–⑪
+> incl. beslispunten A/B/C) — Peter beoordeelt die. CC: NIET opnieuw maken; alleen (a) toetsen tegen designpass V2/tokens.css en
+> KP7, (b) afwijkingen melden, (c) ná Peters feedback aanpassen. `betalingen-accordeur.html` apart is niet nodig (zit in dezelfde file).
+
 **Proces Peter 17-09 (bindend, letterlijk):**
 1. "In de Nijenhuis-module een tabje Betalingen. Daar moet ik over alle boekhoudingen kunnen selecteren wie we wanneer gaan betalen
    (volg de openstaande facturen uit de boekhouding). Ik wil hier eerst een mockup van."

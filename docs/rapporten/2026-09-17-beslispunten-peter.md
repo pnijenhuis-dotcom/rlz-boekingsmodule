@@ -81,3 +81,14 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
 4. **Deactiveren zonder administratieroute** laat lopende rondes vervallen mét reden (nooit stil); met administratieroute worden ze herberekend.
 5. **UI = blok in de bestaande Klant-accordering-kaart** (opdracht: "één extra veld in de laag-dialoog" — door de verduidelijking
    "route vervangt" is het een route-niveau instelling met leveranciers + lagen geworden, geen veld per laag).
+
+## Opdracht 8 — OTA nameting-2 (`2026-09-17-native-ota-nameting-2.md`)
+
+1. **Gestopt op stap 0** (geen deploy sinds de bucket) i.p.v. het onderdeel `app-bundels` toch te draaien — conform de opdracht; de
+   manifest-stand is wél lees-only vastgelegd.
+
+## Opdracht 9 — Doorbelasting-aansluiting nameting-2 (`2026-09-17-doorbelasting-aansluiting-nameting-2.md`)
+
+1. **Niets gebouwd bij de afwijkingen** (regel "rapporteren, niets bouwen"); structureel: Molenhof Beheer 54× verkoop zonder inkoop,
+   166× inkoop zonder gevonden verkoop — twee vragen aan Peter (inkoop niet geboekt? welke debiteur-relatie?) vóór een modelwijziging.
+2. **166 rijen letterlijk in het rapport** (opdracht) — het rapport is daardoor lang; het bot-bestand blijft de bron.
