@@ -52,6 +52,7 @@ from app.panden.models import (
     PandBoekingHerkomst,
     PandHerkomst,
     PandStatus,
+    Zekerheid,
     bron_sleutel_voor,
 )
 from app.rlz.client import RlzApiError, RlzClient
@@ -65,7 +66,7 @@ MAX_BIJLAGE_CHECKS_DEFAULT = 200
 #: de afleiding een notaris-aankoopnota (7000) van kosten onderscheidt en een vast actief (0101) overslaat — begrensd,
 #: in tempo (token-bucket van de client).
 MAX_REGEL_CHECKS_DEFAULT = 300
-REGELS_EXPAND = "Account"
+REGELS_EXPAND = "Account,Project"  # blok 11: Project op de regel = pand-sleutel
 OVERHEAD_PROJECTNAAM = "Overhead"
 OVERHEAD_ONTBREEKT = "Overhead-project ontbreekt — aanmaken in run 2 (projectaanmaak = RLZ-write, niet in deze run)"
 #: (collectie, $expand) — Entity is alleen mét expand zichtbaar; het memoriaal-dagboek idem (valt terug zonder expand,
@@ -102,6 +103,9 @@ class RlzBoeking:
     #: Blok 7c: grootboekcodes van de regels (leeg = niet gelezen) en welke daarvan vaste activa zijn.
     grootboeken: frozenset[str] = frozenset()
     vaste_activa: frozenset[str] = frozenset()
+    #: Blok 11: RLZ-project-id's op de regels (leeg = geen project of regels niet gelezen) en of de regels gelezen zijn.
+    projecten: frozenset[str] = frozenset()
+    regels_gelezen: bool = False
 
     def feit(self) -> afleiding.BoekingsFeit:
         return afleiding.BoekingsFeit(
@@ -134,6 +138,9 @@ class PandVoorstel:
     variant_codes: list[str] = field(default_factory=list)  # alle adres-codes in het cluster (upsert-sleutels)
     lijst_gebonden: bool = False
     salesforce_id: str | None = None
+    #: Blok 11: het RLZ-project waarvan dit pand de spiegel is (herkomst 'rlz_project').
+    rlz_project_id: str | None = None
+    rlz_project_naam: str | None = None
 
     def tel(self) -> dict[str, dict[str, int]]:
         uit: dict[str, dict[str, int]] = {}
@@ -197,6 +204,14 @@ class AfleidingRapport:
         default_factory=list
     )  # straat lijkt, zelfde huisnummer + plaats; mens beslist
     huisnummer_signalen: list[str] = field(default_factory=list)  # zelfde straat + plaats, ander huisnummer; signaal
+    # blok 11 (17-09): pand = RLZ-project
+    bron: str = "adres"  # adres | project
+    projecten_gelezen: int | None = None  # None = Projects niet gelezen (bron adres of fout)
+    projecten_gebruikt: int = 0  # projecten mét ≥ 1 gekoppeld document
+    documenten_met_project: int = 0
+    documenten_zonder_project: int = 0  # regels gelezen, geen project → adres-terugval
+    regels_niet_gelezen: int = 0  # buiten het regelbudget → geen uitspraak (zichtbaar)
+    regels_zonder_project_pand_rekening: list[str] = field(default_factory=list)  # "boekstuk: rekening bedrag" — koppel in Toewijzing
 
     @property
     def aantal_koppelingen(self) -> int:
@@ -258,6 +273,13 @@ class AfleidingRapport:
             "dossier_zonder_pand": list(self.dossier_zonder_pand),
             "cluster_kandidaten": list(self.cluster_kandidaten),
             "huisnummer_signalen": list(self.huisnummer_signalen),
+            "bron": self.bron,
+            "projecten_gelezen": self.projecten_gelezen,
+            "projecten_gebruikt": self.projecten_gebruikt,
+            "documenten_met_project": self.documenten_met_project,
+            "documenten_zonder_project": self.documenten_zonder_project,
+            "regels_niet_gelezen": self.regels_niet_gelezen,
+            "regels_zonder_project_pand_rekening": list(self.regels_zonder_project_pand_rekening),
             "geschreven": dict(self.geschreven),
             "fouten": list(self.fouten),
             "overgeslagen": list(self.overgeslagen),
@@ -283,7 +305,7 @@ class AfleidingRapport:
             ],
         }
 
-    def als_json(self) -> str:
+    def als_json(self) -> str:  # noqa: D102
         return json.dumps(self.als_dict(), ensure_ascii=False, indent=2)
 
 
@@ -368,6 +390,16 @@ def grootboeken_uit_regels(regels: list[dict[str, Any]]) -> tuple[frozenset[str]
     return frozenset(codes), frozenset(vast)
 
 
+def projecten_uit_regels(regels: list[dict[str, Any]]) -> frozenset[str]:
+    """RLZ-project-id's op de regels (blok 11): `Project: {id, Name}` per regel; leeg = geen project gecodeerd."""
+    uit: set[str] = set()
+    for r in regels:
+        p = r.get("Project")
+        if isinstance(p, dict) and p.get("id"):
+            uit.add(str(p["id"]))
+    return frozenset(uit)
+
+
 def _lees_regels(client: LeesClient, collectie: str, rlz_id: str) -> list[dict[str, Any]] | None:
     try:
         antwoord = client.get(f"{collectie}/{rlz_id}/Lines", params={"$expand": REGELS_EXPAND})
@@ -383,6 +415,7 @@ def lees_boekingen(
     *,
     max_bijlage_checks: int,
     max_regel_checks: int = MAX_REGEL_CHECKS_DEFAULT,
+    bron: str = "adres",
 ) -> list[RlzBoeking]:
     """Alle documenten van de drie collecties (+ Receipts als leesbaar, ontdubbeld op id); memorialen mét adres/dossier
     krijgen een bijlagecheck (begrensd); inkoopfacturen mét een pand-signaal een regelcheck (blok 7c, begrensd) zodat de
@@ -428,22 +461,41 @@ def lees_boekingen(
         for b in uit
     ]
     regel_budget = max(0, int(max_regel_checks))
-    regel_kandidaten = [
-        b for b in uit if b.collectie == "PurchaseInvoices" and afleiding.classificeer(b.feit()) is not None
-    ]
-    regel_kandidaten.sort(key=lambda b: (-(abs(b.bedrag) if b.bedrag is not None else 0), str(b.rlz_id)))
-    grootboeken: dict[uuid.UUID, tuple[frozenset[str], frozenset[str]]] = {}
+    if bron == "project":
+        # Blok 11: het project staat op de REGEL — alle documenten (inkoop, verkoop, memoriaal), nieuwste eerst, binnen het
+        # budget; buiten het budget = "regels niet gelezen" (zichtbaar, geen uitspraak).
+        regel_kandidaten = [b for b in uit if b.collectie in ("PurchaseInvoices", "SalesInvoices", "ManualJournals")]
+        regel_kandidaten.sort(key=lambda b: (b.datum or date.min, str(b.rlz_id)), reverse=True)
+    else:
+        regel_kandidaten = [
+            b for b in uit if b.collectie == "PurchaseInvoices" and afleiding.classificeer(b.feit()) is not None
+        ]
+        regel_kandidaten.sort(key=lambda b: (-(abs(b.bedrag) if b.bedrag is not None else 0), str(b.rlz_id)))
+    gelezen: dict[uuid.UUID, tuple[frozenset[str], frozenset[str], frozenset[str]]] = {}
     for b in regel_kandidaten:
         if rapport.regel_checks >= regel_budget:
             rapport.regel_niet_gecontroleerd += 1
+            if bron == "project":
+                rapport.regels_niet_gelezen += 1
             continue
         rapport.regel_checks += 1
         regels = _lees_regels(client, b.collectie, str(b.rlz_id))
         if regels is not None:
-            grootboeken[b.rlz_id] = grootboeken_uit_regels(regels)
+            gb, va = grootboeken_uit_regels(regels)
+            gelezen[b.rlz_id] = (gb, va, projecten_uit_regels(regels))
+        elif bron == "project":
+            rapport.regels_niet_gelezen += 1
     return [
-        RlzBoeking(**{**asdict(b), "grootboeken": grootboeken[b.rlz_id][0], "vaste_activa": grootboeken[b.rlz_id][1]})
-        if b.rlz_id in grootboeken
+        RlzBoeking(
+            **{
+                **asdict(b),
+                "grootboeken": gelezen[b.rlz_id][0],
+                "vaste_activa": gelezen[b.rlz_id][1],
+                "projecten": gelezen[b.rlz_id][2],
+                "regels_gelezen": True,
+            }
+        )
+        if b.rlz_id in gelezen
         else b
         for b in uit
     ]
@@ -471,6 +523,133 @@ def _bankmutatie_gedekt(b: RlzBoeking, gedekt: dict[Decimal, list[date]]) -> boo
     if b.bedrag is None or b.datum is None:
         return False
     return any(abs((d - b.datum).days) <= BANK_VENSTER_DAGEN for d in gedekt.get(abs(b.bedrag), ()))
+
+
+@dataclass(frozen=True)
+class RlzProject:
+    rlz_id: str
+    naam: str
+    actief: bool
+
+
+def lees_projecten(client: LeesClient, rapport: AfleidingRapport | None = None) -> list[RlzProject] | None:
+    """`Projects` (top-level GET, api-verkenning "Projects klant-loze schrijfroute") → id/naam/actief; fout = None (zichtbaar)."""
+    uitkomst = lees_collectie(client, "Projects")
+    if uitkomst.fout is not None:
+        if rapport is not None:
+            rapport.fouten.append(f"Projects: {uitkomst.fout.status_code} — niet gelezen ({uitkomst.fout.body[:120]})")
+        return None
+    uit = []
+    for r in uitkomst.rijen:
+        if not r.get("id"):
+            continue
+        actief = r.get("IsActive")
+        if actief is None:
+            actief = r.get("Active", True)
+        uit.append(RlzProject(rlz_id=str(r["id"]), naam=str(r.get("Name") or r.get("Description") or "").strip(), actief=bool(actief)))
+    if rapport is not None:
+        rapport.projecten_gelezen = len(uit)
+    return uit
+
+
+PAND_REKENING_PREFIXES = ("7000", "8", "1405", "46", "70")
+
+
+def _pand_rekeningen(b: RlzBoeking) -> list[str]:
+    return sorted(c for c in b.grootboeken if c.startswith(PAND_REKENING_PREFIXES) and c not in b.vaste_activa)
+
+
+def _project_pand_code(p: RlzProject) -> tuple[str, str, str | None, str | None]:
+    """(code, adres, plaats, postcode): het projectnaam-adres als het parseerbaar is (zelfde code als de adres-afleiding,
+    zodat een bestaand adres-pand samenvalt), anders `project-<id8>`."""
+    adres = afleiding.adres_uit_tekst(p.naam)
+    if adres is not None:
+        return adres.code, p.naam or adres.weergave_kort, adres.plaats, adres.postcode
+    return f"project-{p.rlz_id[:8]}", p.naam or f"project {p.rlz_id[:8]}", None, None
+
+
+def bouw_voorstellen_op_project(
+    boekingen: list[RlzBoeking],
+    projecten: list[RlzProject],
+    rapport: AfleidingRapport | None = None,
+    *,
+    pandenlijst_bron: pandenlijst.PandenlijstBron | None = None,
+) -> dict[str, PandVoorstel]:
+    """Blok 11: pand = RLZ-project. Élk project → één pand (herkomst rlz_project); élk document mét een project op zijn
+    regels → koppeling (soort uit de classificatie, anders `kosten`; zekerheid hoog — het is een deterministische sleutel);
+    Overhead-project = geen pand. Documenten mét gelezen regels ZONDER project → adres-terugval (`bouw_voorstellen` over
+    die deelverzameling, herkomst afgeleid) + signaal per pand-relevante rekening ("koppel in Toewijzing"); regels niet
+    gelezen = geen uitspraak (teller)."""
+    per_project = {p.rlz_id: p for p in projecten}
+    panden: dict[str, PandVoorstel] = {}
+    documenten = [b for b in boekingen if b.collectie != BANKMUTATIES_PAD]
+    bankmutaties = [b for b in boekingen if b.collectie == BANKMUTATIES_PAD]
+    zonder_project: list[RlzBoeking] = []
+    gebruikt: set[str] = set()
+    for b in sorted(documenten, key=lambda x: (x.datum or date.min, str(x.rlz_id))):
+        if not b.regels_gelezen:
+            continue
+        ids = [pid for pid in sorted(b.projecten) if pid in per_project]
+        ids = [pid for pid in ids if per_project[pid].naam.strip().lower() != OVERHEAD_PROJECTNAAM.lower()]
+        if not ids:
+            zonder_project.append(b)
+            continue
+        if rapport is not None:
+            rapport.documenten_met_project += 1
+        # Soort deterministisch uit de grootboekregels (blok 7c-model): 7000 = aankoop, opbrengst 8xxx = verkoop,
+        # 1405 = aanbetaling; anders de tekst-classificatie; anders kosten.
+        if "7000" in b.grootboeken:
+            soort = "aankoop"
+        elif any(g.startswith("8") for g in b.grootboeken):
+            soort = "verkoop"
+        elif any(g.startswith("1405") for g in b.grootboeken):
+            soort = "aanbetaling"
+        else:
+            c = afleiding.classificeer(b.feit())
+            soort = c.soort if c is not None else "kosten"
+        for pid in ids:
+            proj = per_project[pid]
+            code, adres, plaats, postcode = _project_pand_code(proj)
+            p = panden.get(code)
+            if p is None:
+                p = panden[code] = PandVoorstel(
+                    code=code, adres=adres, plaats=plaats, postcode=postcode, rlz_project_id=pid, rlz_project_naam=proj.naam
+                )
+            gebruikt.add(pid)
+            if soort == "aankoop" and b.datum and (p.aankoopdatum is None or b.datum < p.aankoopdatum):
+                p.aankoopdatum = b.datum
+            if soort == "verkoop" and b.datum and (p.verkoopdatum is None or b.datum > p.verkoopdatum):
+                p.verkoopdatum = b.datum
+            p.koppelingen.append(
+                KoppelingVoorstel(
+                    pand_code=code,
+                    boeking=b,
+                    soort=soort,
+                    zekerheid=Zekerheid.HOOG.value,
+                    reden=f"RLZ-project '{proj.naam}' op de regel(s)" + (" · meerdere projecten op één document" if len(ids) > 1 else ""),
+                )
+            )
+    if rapport is not None:
+        rapport.projecten_gebruikt = len(gebruikt)
+        rapport.documenten_zonder_project = len(zonder_project)
+        for b in zonder_project:
+            for code in _pand_rekeningen(b):
+                rapport.regels_zonder_project_pand_rekening.append(
+                    f"{b.boekstuk or b.rlz_id}: rekening {code} € {b.bedrag if b.bedrag is not None else '?'} — geen project op de regel; koppel in Toewijzing of codeer in RLZ"
+                )
+    # Terugval: adres-clustering over de documenten zonder project + de bankmutaties (die dragen nooit een project).
+    terugval = bouw_voorstellen(zonder_project + bankmutaties, rapport, pandenlijst_bron=pandenlijst_bron)
+    for code, p in terugval.items():
+        bestaand = panden.get(code)
+        if bestaand is None:
+            panden[code] = p
+        else:
+            for k in p.koppelingen:
+                bestaand.koppelingen.append(KoppelingVoorstel(pand_code=code, boeking=k.boeking, soort=k.soort, zekerheid=k.zekerheid, reden=k.reden + " · adres-terugval"))
+            for d in p.dossiers:
+                if d not in bestaand.dossiers:
+                    bestaand.dossiers.append(d)
+    return panden
 
 
 def bouw_voorstellen(
@@ -740,6 +919,15 @@ def overhead_project_status(session, administratie_id: uuid.UUID) -> str:  # noq
 def _zoek_pand(session, administratie_id: uuid.UUID, v: PandVoorstel) -> Pand | None:  # noqa: ANN001
     """Bestaande rij op de voorstel-code, anders op een variant-code van hetzelfde cluster (een eerdere run kan een
     andere variant als representant gekozen hebben — de bestaande rij wint, geen tweede pand)."""
+    if v.rlz_project_id:
+        try:
+            pid = uuid.UUID(v.rlz_project_id)
+        except ValueError:
+            pid = None
+        if pid is not None:
+            rij = session.scalars(select(Pand).where(Pand.administratie_id == administratie_id, Pand.rlz_project_id == pid)).first()
+            if rij is not None:
+                return rij
     codes = [v.code] + [c for c in v.variant_codes if c != v.code]
     rijen = session.scalars(select(Pand).where(Pand.administratie_id == administratie_id, Pand.code.in_(codes))).all()
     for code in codes:
@@ -779,6 +967,8 @@ def schrijf_voorstellen(
             "aankoopdatum": v.aankoopdatum.isoformat() if v.aankoopdatum else None,
             "verkoopdatum": v.verkoopdatum.isoformat() if v.verkoopdatum else None,
             "notaris_dossiernummers": list(v.dossiers),
+            "rlz_project_id": v.rlz_project_id,
+            "rlz_project_naam": v.rlz_project_naam,
         }
         if pand is None:
             pand = Pand(
@@ -790,7 +980,9 @@ def schrijf_voorstellen(
                 aankoopdatum=v.aankoopdatum,
                 verkoopdatum=v.verkoopdatum,
                 notaris_dossiernummers=list(v.dossiers),
-                herkomst=PandHerkomst.AFGELEID.value,
+                rlz_project_id=uuid.UUID(v.rlz_project_id) if v.rlz_project_id else None,
+                rlz_project_naam=v.rlz_project_naam,
+                herkomst=PandHerkomst.RLZ_PROJECT.value if v.rlz_project_id else PandHerkomst.AFGELEID.value,
                 status=PandStatus.VOORSTEL.value,
             )
             session.add(pand)
@@ -809,7 +1001,7 @@ def schrijf_voorstellen(
                 nieuwe_waarde={**nieuw, "herkomst": pand.herkomst, "status": pand.status, "varianten": v.varianten},
                 administratie_id=administratie_id,
             )
-        elif pand.herkomst != PandHerkomst.AFGELEID.value or pand.status != PandStatus.VOORSTEL.value:
+        elif pand.herkomst == PandHerkomst.MENS.value or pand.status != PandStatus.VOORSTEL.value:
             stats["pand_beschermd"] += 1
             v.db_status = "mens_beschermd"
         else:
@@ -820,10 +1012,15 @@ def schrijf_voorstellen(
                 "aankoopdatum": pand.aankoopdatum.isoformat() if pand.aankoopdatum else None,
                 "verkoopdatum": pand.verkoopdatum.isoformat() if pand.verkoopdatum else None,
                 "notaris_dossiernummers": list(pand.notaris_dossiernummers or []),
+                "rlz_project_id": str(pand.rlz_project_id) if pand.rlz_project_id else None,
+                "rlz_project_naam": pand.rlz_project_naam,
             }
             samengevoegd = {
                 **nieuw,
                 "notaris_dossiernummers": sorted(set(oud["notaris_dossiernummers"]) | set(v.dossiers)),
+                # De projectsleutel wint van adres-afleiding; een bestaand project-pand verliest zijn sleutel nooit.
+                "rlz_project_id": v.rlz_project_id or oud["rlz_project_id"],
+                "rlz_project_naam": v.rlz_project_naam or oud["rlz_project_naam"],
             }
             if samengevoegd == oud:
                 stats["pand_ongewijzigd"] += 1
@@ -832,6 +1029,10 @@ def schrijf_voorstellen(
                 pand.adres, pand.plaats, pand.postcode = v.adres, v.plaats, v.postcode
                 pand.aankoopdatum, pand.verkoopdatum = v.aankoopdatum, v.verkoopdatum
                 pand.notaris_dossiernummers = samengevoegd["notaris_dossiernummers"]
+                if samengevoegd["rlz_project_id"]:
+                    pand.rlz_project_id = uuid.UUID(samengevoegd["rlz_project_id"])
+                    pand.rlz_project_naam = samengevoegd["rlz_project_naam"]
+                    pand.herkomst = PandHerkomst.RLZ_PROJECT.value
                 stats["pand_bijgewerkt"] += 1
                 v.db_status = "bijgewerkt"
                 record_audit_event(
@@ -953,9 +1154,12 @@ def leid_af(
     pandenlijst_bron: pandenlijst.PandenlijstBron | None = None,
     met_bankmutaties: bool = True,
     max_regel_checks: int = MAX_REGEL_CHECKS_DEFAULT,
+    bron: str = "adres",
 ) -> AfleidingRapport:
     """Default dry-run: leest RLZ + DB, schrijft niets. `dry_run=False` (CLI `--schrijf`) schrijft voorstellen —
-    nooit bevestigingen. Een meegegeven `client` (tests) omzeilt de credential-store."""
+    nooit bevestigingen. Een meegegeven `client` (tests) omzeilt de credential-store. `bron="project"` (blok 11, 17-09):
+    pand = RLZ-project op de regel, adres-clustering alleen als terugval; default blijft `adres` tot de dekkingsmeting
+    (replay "Project-dekking") ≥ 90 % laat zien — beslispunt Peter."""
     from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 
     rlz_admin_id: str | None = None
@@ -966,11 +1170,14 @@ def leid_af(
             raise
         logger.info("rlz_admin_id niet gelezen voor %s: %s", administratie_id, exc)
 
+    if bron not in ("adres", "project"):
+        raise ValueError(f"bron {bron!r} onbekend (adres | project)")
     rapport = AfleidingRapport(
         administratie_id=str(administratie_id),
         rlz_admin_id=rlz_admin_id,
         dry_run=dry_run,
         gegenereerd_op=(nu or datetime.now(UTC)).isoformat(timespec="seconds"),
+        bron=bron,
     )
     eigen_client = client is None
     if client is None:
@@ -979,15 +1186,22 @@ def leid_af(
         client = maak(rlz_admin_id)
     try:
         boekingen = lees_boekingen(
-            client, rapport, max_bijlage_checks=max_bijlage_checks, max_regel_checks=max_regel_checks
+            client, rapport, max_bijlage_checks=max_bijlage_checks, max_regel_checks=max_regel_checks, bron=bron
         )
         if met_bankmutaties:
             boekingen = boekingen + lees_bankmutaties(client, rapport)
+        projecten = lees_projecten(client, rapport) if bron == "project" else None
     finally:
         if eigen_client and hasattr(client, "close"):
             client.close()  # type: ignore[union-attr]
 
-    panden = bouw_voorstellen(boekingen, rapport, pandenlijst_bron=pandenlijst_bron)
+    if bron == "project" and projecten is not None:
+        panden = bouw_voorstellen_op_project(boekingen, projecten, rapport, pandenlijst_bron=pandenlijst_bron)
+    else:
+        if bron == "project":
+            rapport.overgeslagen.append("Projects niet gelezen — teruggevallen op adres-clustering (bron=adres)")
+            rapport.bron = "adres (terugval)"
+        panden = bouw_voorstellen(boekingen, rapport, pandenlijst_bron=pandenlijst_bron)
     rapport.panden = sorted(panden.values(), key=lambda p: p.code)
 
     with scoped_session(administratie_id, actor_id=actor_id) as session:
@@ -1091,7 +1305,17 @@ def als_markdown(rapport: AfleidingRapport, *, administratie_naam: str | None = 
         ),
         f"- Dossier zonder pand (onvolledig / zonder dossier-woord): {len(rapport.dossier_zonder_pand)}",
         f"- {rapport.overhead_project}",
+        f"- Bron pand-sleutel: {rapport.bron}"
+        + (
+            f" · RLZ-projecten gelezen {rapport.projecten_gelezen}, gebruikt {rapport.projecten_gebruikt} · documenten mét project "
+            f"{rapport.documenten_met_project}, zonder project (adres-terugval) {rapport.documenten_zonder_project}, regels niet gelezen "
+            f"{rapport.regels_niet_gelezen} · regels zonder project op pand-rekeningen {len(rapport.regels_zonder_project_pand_rekening)}"
+            if rapport.projecten_gelezen is not None
+            else ""
+        ),
     ]
+    for regel in rapport.regels_zonder_project_pand_rekening[:60]:
+        regels.append(f"- ZONDER PROJECT {regel}")
     if rapport.geschreven:
         regels.append("- Geschreven: " + ", ".join(f"{k} {v}" for k, v in rapport.geschreven.items()))
     for f in rapport.fouten:

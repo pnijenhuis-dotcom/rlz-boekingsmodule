@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,8 @@ from app.db.models import Base
 class PandHerkomst(enum.StrEnum):
     AFGELEID = "afgeleid"
     MENS = "mens"
+    #: Blok 11 (17-09): pand = RLZ-project (`rlz_project_id`), adres-clustering is dan terugval; mens wint onverkort.
+    RLZ_PROJECT = "rlz_project"
 
 
 class PandStatus(enum.StrEnum):
@@ -63,12 +65,19 @@ class Pand(Base):
 
     __tablename__ = "pand"
     __table_args__ = (
-        CheckConstraint("herkomst IN ('afgeleid', 'mens')", name="ck_pand_herkomst"),
+        CheckConstraint("herkomst IN ('afgeleid', 'mens', 'rlz_project')", name="ck_pand_herkomst"),
         CheckConstraint(
             "status IN ('voorstel', 'bevestigd', 'in_handel', 'verkocht', 'vervallen')", name="ck_pand_status"
         ),
         Index("ix_pand_administratie_id", "administratie_id"),
         Index("ux_pand_code", "administratie_id", "code", unique=True),
+        Index(
+            "ux_pand_rlz_project",
+            "administratie_id",
+            "rlz_project_id",
+            unique=True,
+            postgresql_where=text("rlz_project_id IS NOT NULL"),
+        ),
         {"schema": "boekhouding"},
     )
 
@@ -76,6 +85,9 @@ class Pand(Base):
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     code: Mapped[str]
     adres: Mapped[str]
+    #: Blok 11 (migratie 0155): het RLZ-project waarvan dit pand de spiegel is (project = pand); None = adres-afgeleid/mens.
+    rlz_project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    rlz_project_naam: Mapped[str | None] = mapped_column(Text, default=None)
     plaats: Mapped[str | None] = mapped_column(default=None)
     postcode: Mapped[str | None] = mapped_column(default=None)
     aankoopdatum: Mapped[date | None] = mapped_column(default=None)

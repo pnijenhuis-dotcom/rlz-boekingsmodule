@@ -993,7 +993,7 @@ class TestRegelchecksGrootboek:
         assert rapport.regel_checks == 3 and rapport.regel_niet_gecontroleerd == 0
         lines = [p for p, prm in client.calls if p.endswith("/Lines")]
         assert len(lines) == 3 and all(
-            prm.get("$expand") == "Account" for p, prm in client.calls if p.endswith("/Lines")
+            prm.get("$expand") == service.REGELS_EXPAND for p, prm in client.calls if p.endswith("/Lines")
         )
         assert "Regelchecks inkoopfacturen" in service.als_markdown(rapport)
         assert rapport.als_dict()["regel_checks"] == 3
@@ -1018,3 +1018,93 @@ class TestRegelchecksGrootboek:
             ]
         )
         assert codes == frozenset({"0107", "1405", "7000"}) and vast == frozenset({"0107"})
+
+
+class TestBlok11PandUitRlzProject:
+    """Blok 11 (Peter 17-09): pand = RLZ-project op de regel; adres-clustering alleen terugval; mens wint; migratie 0155."""
+
+    def _projecten(self) -> tuple[dict, dict]:
+        return (
+            {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, "proj-koraalerf")), "Name": "Koraalerf 45 te Rotterdam", "IsActive": True},
+            {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, "proj-overhead")), "Name": "Overhead", "IsActive": True},
+        )
+
+    def _client(self, *, project_op_regels: bool = True) -> lezen.LeesClient:
+        p_koraal, p_overhead = self._projecten()
+        d_aankoop = _doc("RLZ-04-00000901", "Notaris afrekening Koraalerf 45", datum="2026-02-01", bedrag=185000.0, entity=NOTARIS, rlz_id=_id("RLZ-04-00000901"))
+        d_kosten = _doc("RLZ-04-00000902", "Schilderwerk", datum="2026-03-01", bedrag=1500.0, entity=HOMEKEUR, rlz_id=_id("RLZ-04-00000902"))
+        d_zonder = _doc("RLZ-04-00000903", "Vaste lasten Heidebeemd 3", datum="2026-03-05", bedrag=250.0, entity=HOMEKEUR, rlz_id=_id("RLZ-04-00000903"))
+        regels = {
+            d_aankoop["id"]: [{"Account": {"AccountNumber": "7000"}, "NetAmount": 185000.0, **({"Project": {"id": p_koraal["id"], "Name": p_koraal["Name"]}} if project_op_regels else {})}],
+            d_kosten["id"]: [{"Account": {"AccountNumber": "4601"}, "NetAmount": 1500.0, "Project": {"id": p_koraal["id"], "Name": p_koraal["Name"]}}],
+            d_zonder["id"]: [{"Account": {"AccountNumber": "4601"}, "NetAmount": 250.0}],  # géén project → adres-terugval + signaal
+        }
+        overhead = _doc("RLZ-04-00000904", "Kantoorkosten", datum="2026-03-06", bedrag=99.0, entity=SAASIT, rlz_id=_id("RLZ-04-00000904"))
+        regels[overhead["id"]] = [{"Account": {"AccountNumber": "4500"}, "NetAmount": 99.0, "Project": {"id": p_overhead["id"], "Name": "Overhead"}}]
+
+        class _Client:
+            def get(self, path: str, *, params=None):  # noqa: ANN001
+                if path == "Projects":
+                    return {"value": [p_koraal, p_overhead]}
+                if path == "PurchaseInvoices":
+                    return {"value": [d_aankoop, d_kosten, d_zonder, overhead]}
+                if path.endswith("/Lines"):
+                    _, doc_id, _ = path.split("/")
+                    return {"value": regels.get(doc_id, [])}
+                if path in ("ManualJournals", "SalesInvoices", "PaymentTransactions", "Receipts"):
+                    return {"value": []}
+                raise RlzApiError(404, "GET", path, "_NotFound")
+
+        return _Client()  # type: ignore[return-value]
+
+    def test_dry_run_project_bron_pand_per_project_en_terugval_met_signaal(self, administratie_id: uuid.UUID) -> None:
+        rapport = service.leid_af(administratie_id, client=self._client(), bron="project", met_bankmutaties=False)
+        assert rapport.bron == "project" and rapport.projecten_gelezen == 2 and rapport.projecten_gebruikt == 1
+        assert rapport.documenten_met_project == 2 and rapport.documenten_zonder_project == 2  # d_zonder + overhead (geen pand)
+        per = {p.code: p for p in rapport.panden}
+        koraal = next(p for p in rapport.panden if p.rlz_project_id)
+        assert koraal.rlz_project_naam == "Koraalerf 45 te Rotterdam" and koraal.aankoopdatum == date(2026, 2, 1)
+        assert sorted(k.boeking.boekstuk for k in koraal.koppelingen) == ["RLZ-04-00000901", "RLZ-04-00000902"]
+        assert all(k.zekerheid == "hoog" and k.reden.startswith("RLZ-project 'Koraalerf 45 te Rotterdam'") for k in koraal.koppelingen)
+        # Terugval: het document zonder project op een pand-rekening staat als signaal én in de adres-afleiding (Heidebeemd).
+        assert any("RLZ-04-00000903: rekening 4601" in s and "koppel in Toewijzing" in s for s in rapport.regels_zonder_project_pand_rekening)
+        assert any("heidebeemd" in code for code in per)
+        md = service.als_markdown(rapport, administratie_naam="VGG")
+        assert "Bron pand-sleutel: project · RLZ-projecten gelezen 2, gebruikt 1" in md and "ZONDER PROJECT RLZ-04-00000903" in md
+        assert rapport.als_dict()["bron"] == "project"
+
+    def test_schrijf_project_pand_herkomst_rlz_project_idempotent_en_mens_wint(self, administratie_id: uuid.UUID) -> None:
+        rapport = service.leid_af(administratie_id, client=self._client(), bron="project", dry_run=False, met_bankmutaties=False)
+        assert rapport.geschreven["pand_nieuw"] >= 1
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            pand = session.scalars(select(Pand).where(Pand.administratie_id == administratie_id, Pand.rlz_project_id.is_not(None))).one()
+            assert pand.herkomst == "rlz_project" and pand.rlz_project_naam == "Koraalerf 45 te Rotterdam"
+            assert session.scalar(select(func.count()).select_from(PandBoeking).where(PandBoeking.pand_id == pand.id)) == 2
+            pand_id = pand.id
+        # Herdraai = ongewijzigd; adres-run erná raakt het project-pand niet (sleutel blijft), mens-status beschermt.
+        r2 = service.leid_af(administratie_id, client=self._client(), bron="project", dry_run=False, met_bankmutaties=False)
+        assert r2.geschreven["pand_nieuw"] == 0 and r2.geschreven["pand_ongewijzigd"] >= 1
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            p = session.get(Pand, pand_id)
+            p.status = "bevestigd"
+        r3 = service.leid_af(administratie_id, client=self._client(), bron="project", dry_run=False, met_bankmutaties=False)
+        assert r3.geschreven["pand_beschermd"] >= 1
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            assert session.get(Pand, pand_id).rlz_project_id is not None
+        # pand_per_document (contract B → E) geeft het project-pand terug voor het aankoopdocument.
+        toewijzing = service.pand_per_document(administratie_id)
+        assert toewijzing[uuid.UUID(_id("RLZ-04-00000901"))].pand_code == pand.code
+
+    def test_onbekende_bron_en_projects_niet_leesbaar(self, administratie_id: uuid.UUID) -> None:
+        with pytest.raises(ValueError):
+            service.leid_af(administratie_id, client=self._client(), bron="onzin")
+
+        class _Kapot:
+            def get(self, path: str, *, params=None):  # noqa: ANN001
+                if path == "Projects":
+                    raise RlzApiError(403, "GET", path, "geen recht")
+                return {"value": []}
+
+        rapport = service.leid_af(administratie_id, client=_Kapot(), bron="project", met_bankmutaties=False)  # type: ignore[arg-type]
+        assert rapport.bron == "adres (terugval)" and any("Projects niet gelezen" in o for o in rapport.overgeslagen)
+        assert any(f.startswith("Projects: 403") for f in rapport.fouten)

@@ -51,6 +51,13 @@ def register_panden(subparsers: argparse._SubParsersAction) -> None:  # type: ig
         ),
     )
     p.add_argument(
+        "--bron",
+        choices=("adres", "project"),
+        default="adres",
+        help="Pand-sleutel (blok 11, 17-09): 'project' = pand = RLZ-project op de regel (adres-clustering alleen terugval); "
+        "default 'adres' tot de dekkingsmeting (vgg-replay 'Project-dekking') ≥ 90 % toont — beslispunt Peter.",
+    )
+    p.add_argument(
         "--zonder-bankmutaties",
         dest="zonder_bankmutaties",
         action="store_true",
@@ -94,6 +101,7 @@ def run_panden(args: argparse.Namespace) -> int:
             max_regel_checks=getattr(args, "max_regel_checks", 300),
             pandenlijst_bron=lijst,
             met_bankmutaties=not getattr(args, "zonder_bankmutaties", False),
+            bron=getattr(args, "bron", "adres"),
         )
     except GeenRlzCredentials as exc:
         print(f"FOUT  geen RLZ-credential voor {naam}: {exc}", file=sys.stderr)

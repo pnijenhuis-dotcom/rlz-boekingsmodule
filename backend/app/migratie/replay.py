@@ -356,6 +356,13 @@ def _vertaal_en_rapporteer(ctx: Context, bron: rlz_bron.RlzBron, rapport: Replay
         ctx, bron, rapport, alle, tot=tot, extra_regels=extra, uitkomst_1001=uitkomst_1001, bankregels=bankregels
     )
     _per_pand(ctx, rapport, alle, concepten)
+    # Blok 11 (Peter 17-09): project-dekking op de regels — puur, geen extra RLZ-call; oordeel = meetlat blok B.
+    try:
+        from app.migratie import project_dekking
+
+        rapport.project_dekking = project_dekking.bereken(bron, panden=ctx.panden).als_dict()
+    except Exception as exc:  # noqa: BLE001 — een tel-fout mag de replay niet laten omvallen; zichtbaar in let_op
+        rapport.let_op.append(f"project-dekking niet berekend: {type(exc).__name__}: {exc}")
     _statements(rapport, bron, bankregels, tot=tot)
     _btw(ctx, rapport, alle, bron, tot=tot)
     _export(rapport)

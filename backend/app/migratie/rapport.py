@@ -106,6 +106,7 @@ class ReplayRapport:
     geblokkeerd: list[dict[str, Any]] = field(default_factory=list)  # punt 6: partner onbekend
     # ---- blok 8 15-09 ----
     expliciete_mapping: list[dict[str, Any]] = field(default_factory=list)  # tabel rekening_mapping (1012, 1001)
+    project_dekking: dict[str, Any] = field(default_factory=dict)  # blok 11 (17-09): pand = RLZ-project, STAP-0-meetlat
     model_1001: dict[str, Any] = field(default_factory=dict)  # blok 9 16-09: SCHRIJF b — 1001-model per memoriaalregel
 
     # ---- oordeel ----
@@ -198,6 +199,7 @@ class ReplayRapport:
             "herclassificaties": self.herclassificaties,
             "journaal": self.journaal,
             "open_posten": self.open_posten,
+            "project_dekking": self.project_dekking,
             "open_bank": self.open_bank,
             "per_pand": self.per_pand,
             "niet_vertaalbaar": self.niet_vertaalbaar,
@@ -795,6 +797,11 @@ def als_markdown(r: ReplayRapport) -> str:
             for p in r.per_pand
         ],
     )
+    if r.project_dekking:
+        from app.migratie import project_dekking as _pd
+
+        L.append("")
+        L.extend(_pd.markdown(_pd_uit_dict(r.project_dekking)))
     n_sig = sum(1 for p in r.per_pand if p.get("signalen"))
     n_midden = sum(int(p.get("midden_wachtend", 0)) for p in r.per_pand)
     L.append("")
@@ -951,3 +958,32 @@ def als_markdown(r: ReplayRapport) -> str:
         L.append("```")
         L.append("")
     return "\n".join(L).rstrip() + "\n"
+
+
+def _pd_uit_dict(d: dict[str, Any]) -> Any:
+    """`project_dekking` reist als dict (JSON) — voor de markdown terug naar het dataclass-object."""
+    from decimal import Decimal as _D
+
+    from app.migratie.project_dekking import ProjectDekking, Teller
+
+    uit = ProjectDekking()
+    uit.documenten_met_regels = int(d.get("documenten_met_regels", 0))
+    uit.regels_totaal = int(d.get("regels_totaal", 0))
+    uit.regels_met_project = int(d.get("regels_met_project", 0))
+    for k, v in (d.get("per_documenttype") or {}).items():
+        uit.per_documenttype[k] = Teller(int(v.get("totaal", 0)), int(v.get("met_project", 0)))
+    for k, v in (d.get("per_grootboekgroep") or {}).items():
+        uit.per_grootboekgroep[k] = Teller(int(v.get("totaal", 0)), int(v.get("met_project", 0)))
+    uit.zonder_project_pand_relevant = list(d.get("zonder_project_pand_relevant") or [])
+    n = d.get("projecten_in_regels")
+    uit.projecten_in_regels = {str(i): "" for i in range(int(n))} if isinstance(n, int) else dict(n or {})
+    uit.bank_project_veld_aanwezig = d.get("bank_project_veld_aanwezig")
+    k = d.get("kruistoets") or {}
+    uit.documenten_met_project_en_cluster = int(k.get("documenten_met_project_en_cluster", 0))
+    uit.clusters_een_project = int(k.get("clusters_een_project", 0))
+    uit.clusters_meer_projecten = int(k.get("clusters_meer_projecten", 0))
+    uit.projecten_een_cluster = int(k.get("projecten_een_cluster", 0))
+    uit.projecten_versnipperd = int(k.get("projecten_versnipperd", 0))
+    _ = _D  # Decimal blijft via de tellers zelf
+    return uit
+

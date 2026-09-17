@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0154
+-- Migratie-head bij deze dump: 0155
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2156,7 +2156,9 @@ CREATE TABLE boekhouding.pand (
     status text NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gewijzigd_op timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_pand_herkomst CHECK ((herkomst = ANY (ARRAY['afgeleid'::text, 'mens'::text]))),
+    rlz_project_id uuid,
+    rlz_project_naam text,
+    CONSTRAINT ck_pand_herkomst CHECK ((herkomst = ANY (ARRAY['afgeleid'::text, 'mens'::text, 'rlz_project'::text]))),
     CONSTRAINT ck_pand_status CHECK ((status = ANY (ARRAY['voorstel'::text, 'bevestigd'::text, 'in_handel'::text, 'verkocht'::text, 'vervallen'::text])))
 );
 
@@ -7166,6 +7168,13 @@ CREATE UNIQUE INDEX ux_pand_boeking_bron_pand ON boekhouding.pand_boeking USING 
 --
 
 CREATE UNIQUE INDEX ux_pand_code ON boekhouding.pand USING btree (administratie_id, code);
+
+
+--
+-- Name: ux_pand_rlz_project; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_pand_rlz_project ON boekhouding.pand USING btree (administratie_id, rlz_project_id) WHERE (rlz_project_id IS NOT NULL);
 
 
 --
