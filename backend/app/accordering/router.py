@@ -177,6 +177,150 @@ def instellingen_opslaan(
     )
 
 
+def _euro(bedrag) -> str:  # noqa: ANN001
+    from app.bank.dubbele_betaling import euro_nl
+
+    return euro_nl(bedrag)
+
+
+def _leverancier_routes_response(administratie_id: uuid.UUID) -> schemas.LeverancierRoutesResponse:
+    standen = service.leverancier_routes_ophalen(administratie_id=administratie_id)
+    routes = []
+    for st in standen:
+        namen = [st.vendor_namen.get(v.vendor_id) or str(v.vendor_id) for v in st.vendors]
+        lagen_tekst = " → ".join(
+            f"laag {laag.volgnummer} {st.accordeur_namen.get(laag.accordeur_gebruiker_id) or '?'}"
+            + (f" · > {_euro(laag.bedrag_drempel)}" if laag.bedrag_drempel is not None else "")
+            for laag in st.lagen
+        )
+        routes.append(
+            schemas.LeverancierRouteDto(
+                id=st.route.id,
+                naam=st.route.naam,
+                actief=st.route.actief,
+                leveranciers=[
+                    schemas.LeverancierRouteVendorDto(vendor_id=v.vendor_id, naam=st.vendor_namen.get(v.vendor_id))
+                    for v in st.vendors
+                ],
+                lagen=[
+                    schemas.LaagDto(
+                        volgnummer=laag.volgnummer,
+                        accordeur_gebruiker_id=laag.accordeur_gebruiker_id,
+                        accordeur_naam=st.accordeur_namen.get(laag.accordeur_gebruiker_id),
+                        bedrag_drempel=laag.bedrag_drempel,
+                    )
+                    for laag in st.lagen
+                ],
+                samenvatting=f"{lagen_tekst} · alleen {', '.join(namen)}",
+            )
+        )
+    return schemas.LeverancierRoutesResponse(routes=routes)
+
+
+@router.get(
+    "/administraties/{administratie_id}/accordering/leverancier-routes",
+    response_model=schemas.LeverancierRoutesResponse,
+)
+def leverancier_routes_ophalen(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.LeverancierRoutesResponse:
+    """Peter 17-09: leveranciersroutes van de administratie (kantoor binnen scope; Beheerder wijzigt)."""
+    return _leverancier_routes_response(administratie_id)
+
+
+def _leverancier_route_input(invoer: schemas.LeverancierRouteInputDto) -> service.LeverancierRouteInput:
+    return service.LeverancierRouteInput(
+        naam=invoer.naam,
+        vendor_ids=list(invoer.vendor_ids),
+        lagen=[
+            service.LaagInput(
+                volgnummer=laag.volgnummer,
+                accordeur_gebruiker_id=laag.accordeur_gebruiker_id,
+                bedrag_drempel=laag.bedrag_drempel,
+            )
+            for laag in invoer.lagen
+        ],
+    )
+
+
+def _vertaal_route_fout(exc: service.AccorderingFout) -> HTTPException:
+    if isinstance(exc, service.LeverancierAlInRoute | service.GeenLagenIngesteld | service.OngeldigeAanbieding):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post(
+    "/administraties/{administratie_id}/accordering/leverancier-routes",
+    response_model=schemas.LeverancierRoutesResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def leverancier_route_aanmaken(
+    administratie_id: uuid.UUID,
+    invoer: schemas.LeverancierRouteInputDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierRoutesResponse:
+    """Beheerder-only. Nieuwe leveranciersroute (naam + leveranciers + lagen); een leverancier die al in een andere
+    route zit = 409 mét de naam van die route; lopende rondes van die leveranciers worden herberekend."""
+    try:
+        _, rondes = service.leverancier_route_opslaan(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+            route_id=None,
+            invoer=_leverancier_route_input(invoer),
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal_route_fout(exc) from exc
+    antwoord = _leverancier_routes_response(administratie_id)
+    return antwoord.model_copy(update={"rondes_herberekend": rondes.herberekend, "rondes_vervallen": rondes.vervallen})
+
+
+@router.put(
+    "/administraties/{administratie_id}/accordering/leverancier-routes/{route_id}",
+    response_model=schemas.LeverancierRoutesResponse,
+)
+def leverancier_route_wijzigen(
+    administratie_id: uuid.UUID,
+    route_id: uuid.UUID,
+    invoer: schemas.LeverancierRouteInputDto,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierRoutesResponse:
+    try:
+        _, rondes = service.leverancier_route_opslaan(
+            administratie_id=administratie_id,
+            actor_id=actor.id,
+            actor_rol=actor.rol.value,
+            route_id=route_id,
+            invoer=_leverancier_route_input(invoer),
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal_route_fout(exc) from exc
+    antwoord = _leverancier_routes_response(administratie_id)
+    return antwoord.model_copy(update={"rondes_herberekend": rondes.herberekend, "rondes_vervallen": rondes.vervallen})
+
+
+@router.delete(
+    "/administraties/{administratie_id}/accordering/leverancier-routes/{route_id}",
+    response_model=schemas.LeverancierRoutesResponse,
+)
+def leverancier_route_deactiveren(
+    administratie_id: uuid.UUID,
+    route_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.LeverancierRoutesResponse:
+    """Deactiveren (nooit verwijderen): lopende rondes van die leveranciers gaan terug naar de administratieroute."""
+    try:
+        rondes = service.leverancier_route_deactiveren(
+            administratie_id=administratie_id, actor_id=actor.id, actor_rol=actor.rol.value, route_id=route_id
+        )
+    except service.AccorderingFout as exc:
+        raise _vertaal_route_fout(exc) from exc
+    antwoord = _leverancier_routes_response(administratie_id)
+    return antwoord.model_copy(update={"rondes_herberekend": rondes.herberekend, "rondes_vervallen": rondes.vervallen})
+
+
 @router.get(
     "/administraties/{administratie_id}/accordering/vervallen-meldingen",
     response_model=list[schemas.VervallenMeldingDto],

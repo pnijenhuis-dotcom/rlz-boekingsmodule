@@ -6,6 +6,13 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-17 — Een accordeur kan nu alleen de facturen van bepaalde leveranciers krijgen
+
+<!-- accordering-leveranciersroute-17-09 -->
+
+- **Leveranciersroute bij Klant-accordering**: een beheerder maakt op Instellingen › Administraties › Klant-accordering een route voor één of meer leveranciers, met eigen accordeur(s) en eventueel een bedragdrempel voor een tweede laag. Facturen van die leveranciers gaan uitsluitend naar die accordeur(s); de andere accordeurs zien ze niet en alle overige facturen volgen de gewone route zonder deze accordeur.
+- **Eén leverancier zit in maar één route**; probeer je een leverancier dubbel toe te voegen, dan zegt het scherm in welke route die al zit. Lopende goedkeuringsrondes verhuizen automatisch mee als je een leverancier aan- of afvinkt of een route uitzet — gegeven akkoorden blijven staan waar ze passen.
+
 ## 2026-09-17 — "Mogelijk dubbel betaald" kijkt nu of er echt een factuur ontbreekt
 
 <!-- dubbele-betaling-herdefinitie-17-09 -->

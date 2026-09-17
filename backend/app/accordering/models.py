@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, func, text
+from sqlalchemy import Text, CheckConstraint, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,6 +91,7 @@ class AccorderingLaag(Base):
     __table_args__ = (
         Index("ix_accordering_laag_administratie_id", "administratie_id"),
         Index("ix_accordering_laag_afdeling_id", "afdeling_id"),
+        Index("ix_accordering_laag_leverancier_route_id", "leverancier_route_id"),
         {"schema": "boekhouding"},
     )
 
@@ -104,6 +105,68 @@ class AccorderingLaag(Base):
     afdeling_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("boekhouding.afdeling.id"), default=None
     )
+    #: Peter 17-09 (migratie 0156): gevuld = laag van een LEVERANCIERSroute (vervangt de administratieroute voor de
+    #: aangevinkte leveranciers); NULL = administratie-/afdelingsroute.
+    leverancier_route_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.accordering_leverancier_route.id"), default=None
+    )
+    actief: Mapped[bool] = mapped_column(default=True)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    gedeactiveerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gedeactiveerd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class AccorderingLeverancierRoute(Base):
+    """Peter 17-09 (migratie 0156): één accorderingsroute voor één of meer LEVERANCIERS — vervangt de
+    administratieroute voor documenten van die leveranciers (zelfde patroon als de afdelingsroute, 0084). Voorrang:
+    afdelingsroute > leveranciersroute > administratieroute (beslispunt). Append-only: deactiveren, nooit verwijderen."""
+
+    __tablename__ = "accordering_leverancier_route"
+    __table_args__ = (
+        Index("ix_accordering_leverancier_route_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    naam: Mapped[str] = mapped_column(Text)
+    actief: Mapped[bool] = mapped_column(default=True)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    gedeactiveerd_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"), default=None
+    )
+    gedeactiveerd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class AccorderingLeverancierRouteVendor(Base):
+    """De aangevinkte leveranciers van een leveranciersroute (crediteurrecords; de match bij het aanbieden loopt over de
+    crediteur-IDENTITEIT via `crediteuren/voorkeur.py`). Eén leverancier in hooguit één ACTIEVE route (partiële unieke
+    index `ux_accordering_leverancier_route_vendor_actief`) — de service vertaalt dat naar een 409 mét reden."""
+
+    __tablename__ = "accordering_leverancier_route_vendor"
+    __table_args__ = (
+        Index("ix_accordering_leverancier_route_vendor_route_id", "route_id"),
+        Index(
+            "ux_accordering_leverancier_route_vendor_actief",
+            "administratie_id",
+            "vendor_id",
+            unique=True,
+            postgresql_where=text("actief"),
+        ),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    route_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.accordering_leverancier_route.id")
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    herkomst: Mapped[str] = mapped_column(Text, default="handmatig")
     actief: Mapped[bool] = mapped_column(default=True)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())

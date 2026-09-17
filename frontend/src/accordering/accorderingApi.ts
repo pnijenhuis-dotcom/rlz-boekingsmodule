@@ -138,6 +138,70 @@ export function zetAccorderingInstellingen(
   })
 }
 
+// --- Leveranciersroute (Peter 17-09, migratie 0156): vervangt de administratieroute voor de aangevinkte leveranciers ---
+
+export interface LeverancierRouteVendorDto {
+  vendor_id: string
+  naam: string | null
+}
+
+export interface LeverancierRouteLaagDto {
+  volgnummer: number
+  accordeur_gebruiker_id: string
+  accordeur_naam: string | null
+  bedrag_drempel: string | null
+}
+
+export interface LeverancierRouteDto {
+  id: string
+  naam: string
+  actief: boolean
+  leveranciers: LeverancierRouteVendorDto[]
+  lagen: LeverancierRouteLaagDto[]
+  /** "laag 1 Sophia → laag 2 D. Directeur · > € 5.000,00 · alleen Firma Q B.V." */
+  samenvatting: string
+}
+
+export interface LeverancierRoutesDto {
+  routes: LeverancierRouteDto[]
+  rondes_herberekend?: number
+  rondes_vervallen?: number
+}
+
+export interface LeverancierRouteInvoerDto {
+  naam: string
+  vendor_ids: string[]
+  lagen: { volgnummer: number; accordeur_gebruiker_id: string; bedrag_drempel: string | null }[]
+}
+
+export function haalLeverancierRoutes(administratieId: string): Promise<LeverancierRoutesDto> {
+  return apiJson(`/administraties/${administratieId}/accordering/leverancier-routes`)
+}
+
+export function maakLeverancierRoute(administratieId: string, payload: LeverancierRouteInvoerDto): Promise<LeverancierRoutesDto> {
+  return apiJson(`/administraties/${administratieId}/accordering/leverancier-routes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function wijzigLeverancierRoute(
+  administratieId: string,
+  routeId: string,
+  payload: LeverancierRouteInvoerDto,
+): Promise<LeverancierRoutesDto> {
+  return apiJson(`/administraties/${administratieId}/accordering/leverancier-routes/${routeId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deactiveerLeverancierRoute(administratieId: string, routeId: string): Promise<LeverancierRoutesDto> {
+  return apiJson(`/administraties/${administratieId}/accordering/leverancier-routes/${routeId}`, { method: 'DELETE' })
+}
+
 export function haalAccorderingKandidaten(administratieId: string): Promise<{ kandidaten: KandidaatDto[] }> {
   return apiJson(`/administraties/${administratieId}/accordering/kandidaten`)
 }

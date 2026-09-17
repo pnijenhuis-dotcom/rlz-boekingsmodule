@@ -20,6 +20,8 @@ import type { VendorLijstDto, VendorOptieDto } from '../api/types'
 import { Select, Switch, SkeletonRegels } from '../ui/basis'
 import { rondesTekst } from '../accordering/rondesTekst'
 import { IntercompanyLeveranciers } from './IntercompanyLeveranciers'
+import { LeverancierRoutes } from './LeverancierRoutes'
+import { useAuthOptioneel } from '../auth/AuthContext'
 
 interface LaagInvoer {
   accordeurId: string
@@ -147,6 +149,7 @@ function AccordeurApparaten({ kandidaten }: { kandidaten: KandidaatDto[] }) {
  * besluit 2026-08-08). Sequentieel: laag 1 eerst, laag 2 alleen als de drempelvoorwaarde
  * geldt. */
 function AdministratieAccordering({ administratieId, naam }: { administratieId: string; naam: string }) {
+  const rol = useAuthOptioneel()?.rol ?? null
   const [geladen, setGeladen] = useState(false)
   const [ingeschakeld, setIngeschakeld] = useState(false)
   const [lagen, setLagen] = useState<LaagInvoer[]>([])
@@ -378,6 +381,12 @@ function AdministratieAccordering({ administratieId, naam }: { administratieId: 
               </div>
             </>
           )}
+          <LeverancierRoutes
+            administratieId={administratieId}
+            kandidaten={kandidaten}
+            crediteuren={crediteuren}
+            isBeheerder={rol === 'beheerder'}
+          />
           <VoorstelUitzonderingen
             uitzonderingen={uitzonderingen}
             crediteuren={crediteuren}

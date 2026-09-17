@@ -45,6 +45,35 @@ class InstellingenInput(StrikteInvoer):
     aanleiding: str | None = None
 
 
+class LeverancierRouteVendorDto(BaseModel):
+    vendor_id: uuid.UUID
+    naam: str | None = None
+
+
+class LeverancierRouteDto(BaseModel):
+    """Peter 17-09 (migratie 0156): één leveranciersroute — vervangt de administratieroute voor deze leveranciers."""
+
+    id: uuid.UUID
+    naam: str
+    actief: bool
+    leveranciers: list[LeverancierRouteVendorDto]
+    lagen: list[LaagDto]
+    #: "laag 2 · > € 5.000 · alleen Firma X" — één regel voor de lagenlijst.
+    samenvatting: str
+
+
+class LeverancierRoutesResponse(BaseModel):
+    routes: list[LeverancierRouteDto]
+    rondes_herberekend: int = 0
+    rondes_vervallen: int = 0
+
+
+class LeverancierRouteInputDto(StrikteInvoer):
+    naam: str
+    vendor_ids: list[uuid.UUID]
+    lagen: list[LaagInputDto]
+
+
 class KandidaatDto(BaseModel):
     id: uuid.UUID
     naam: str

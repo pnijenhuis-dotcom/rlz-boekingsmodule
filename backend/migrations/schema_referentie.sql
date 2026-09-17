@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0155
+-- Migratie-head bij deze dump: 0156
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -457,10 +457,49 @@ CREATE TABLE boekhouding.accordering_laag (
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gedeactiveerd_door uuid,
     gedeactiveerd_op timestamp with time zone,
-    afdeling_id uuid
+    afdeling_id uuid,
+    leverancier_route_id uuid
 );
 
 ALTER TABLE ONLY boekhouding.accordering_laag FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: accordering_leverancier_route; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.accordering_leverancier_route (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    naam text NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gedeactiveerd_door uuid,
+    gedeactiveerd_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: accordering_leverancier_route_vendor; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.accordering_leverancier_route_vendor (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    route_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    herkomst text DEFAULT 'handmatig'::text NOT NULL,
+    actief boolean DEFAULT true NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    gedeactiveerd_door uuid,
+    gedeactiveerd_op timestamp with time zone
+);
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4251,6 +4290,22 @@ ALTER TABLE ONLY boekhouding.accordering_laag
 
 
 --
+-- Name: accordering_leverancier_route accordering_leverancier_route_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route
+    ADD CONSTRAINT accordering_leverancier_route_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor
+    ADD CONSTRAINT accordering_leverancier_route_vendor_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: accordering_stap accordering_stap_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -6044,6 +6099,27 @@ CREATE INDEX ix_accordering_laag_afdeling_id ON boekhouding.accordering_laag USI
 
 
 --
+-- Name: ix_accordering_laag_leverancier_route_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_laag_leverancier_route_id ON boekhouding.accordering_laag USING btree (leverancier_route_id);
+
+
+--
+-- Name: ix_accordering_leverancier_route_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_leverancier_route_administratie_id ON boekhouding.accordering_leverancier_route USING btree (administratie_id);
+
+
+--
+-- Name: ix_accordering_leverancier_route_vendor_route_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_accordering_leverancier_route_vendor_route_id ON boekhouding.accordering_leverancier_route_vendor USING btree (route_id);
+
+
+--
 -- Name: ix_accordering_stap_accordering_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -7073,6 +7149,13 @@ CREATE UNIQUE INDEX uq_document_herinnering_dag ON boekhouding.document_herinner
 
 
 --
+-- Name: ux_accordering_leverancier_route_vendor_actief; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_accordering_leverancier_route_vendor_actief ON boekhouding.accordering_leverancier_route_vendor USING btree (administratie_id, vendor_id) WHERE actief;
+
+
+--
 -- Name: ux_bank_afletter_opdracht_open; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -7523,6 +7606,70 @@ ALTER TABLE ONLY boekhouding.accordering_laag
 
 ALTER TABLE ONLY boekhouding.accordering_laag
     ADD CONSTRAINT accordering_laag_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_laag accordering_laag_leverancier_route_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_laag
+    ADD CONSTRAINT accordering_laag_leverancier_route_id_fkey FOREIGN KEY (leverancier_route_id) REFERENCES boekhouding.accordering_leverancier_route(id);
+
+
+--
+-- Name: accordering_leverancier_route accordering_leverancier_route_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route
+    ADD CONSTRAINT accordering_leverancier_route_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_leverancier_route accordering_leverancier_route_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route
+    ADD CONSTRAINT accordering_leverancier_route_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: accordering_leverancier_route accordering_leverancier_route_gedeactiveerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route
+    ADD CONSTRAINT accordering_leverancier_route_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor
+    ADD CONSTRAINT accordering_leverancier_route_vendor_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor
+    ADD CONSTRAINT accordering_leverancier_route_vendor_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_gedeactiveerd_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor
+    ADD CONSTRAINT accordering_leverancier_route_vendor_gedeactiveerd_door_fkey FOREIGN KEY (gedeactiveerd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_route_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.accordering_leverancier_route_vendor
+    ADD CONSTRAINT accordering_leverancier_route_vendor_route_id_fkey FOREIGN KEY (route_id) REFERENCES boekhouding.accordering_leverancier_route(id);
 
 
 --
@@ -10688,6 +10835,32 @@ ALTER TABLE boekhouding.accordering_laag ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY accordering_laag_scope ON boekhouding.accordering_laag USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: accordering_leverancier_route; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.accordering_leverancier_route ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: accordering_leverancier_route accordering_leverancier_route_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY accordering_leverancier_route_scope ON boekhouding.accordering_leverancier_route USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: accordering_leverancier_route_vendor; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.accordering_leverancier_route_vendor ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: accordering_leverancier_route_vendor accordering_leverancier_route_vendor_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY accordering_leverancier_route_vendor_scope ON boekhouding.accordering_leverancier_route_vendor USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

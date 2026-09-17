@@ -49,6 +49,8 @@ from app.accordering.models import (
     StapBesluit,
     StapBesluitBron,
     VoorstelStilSoort,
+    AccorderingLeverancierRoute,
+    AccorderingLeverancierRouteVendor,
 )
 from app.afdelingen.models import Afdeling
 from app.auth.rollen import is_externe_app_rol
@@ -533,23 +535,391 @@ def instellingen_ophalen(*, administratie_id: uuid.UUID) -> tuple[bool, list[Acc
 
 
 def _actieve_lagen(
-    session: Session, *, administratie_id: uuid.UUID, afdeling_id: uuid.UUID | None
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    afdeling_id: uuid.UUID | None,
+    leverancier_route_id: uuid.UUID | None = None,
 ) -> list[AccorderingLaag]:
-    """De actieve lagen van één route: `afdeling_id=None` = de administratie-route (bestaand),
-    anders de eigen route van die afdeling (blok A 28-08, migratie 0084)."""
+    """De actieve lagen van één route: `afdeling_id=None` én `leverancier_route_id=None` = de administratie-route
+    (bestaand), `afdeling_id` = de eigen route van die afdeling (blok A 28-08, migratie 0084), `leverancier_route_id`
+    = de leveranciersroute (Peter 17-09, migratie 0156)."""
+    if leverancier_route_id is not None:
+        filter_ = AccorderingLaag.leverancier_route_id == leverancier_route_id
+    elif afdeling_id is None:
+        filter_ = AccorderingLaag.afdeling_id.is_(None) & AccorderingLaag.leverancier_route_id.is_(None)
+    else:
+        filter_ = AccorderingLaag.afdeling_id == afdeling_id
     return list(
         session.scalars(
             select(AccorderingLaag)
-            .where(
-                AccorderingLaag.administratie_id == administratie_id,
-                AccorderingLaag.actief.is_(True),
-                AccorderingLaag.afdeling_id.is_(None)
-                if afdeling_id is None
-                else AccorderingLaag.afdeling_id == afdeling_id,
-            )
+            .where(AccorderingLaag.administratie_id == administratie_id, AccorderingLaag.actief.is_(True), filter_)
             .order_by(AccorderingLaag.volgnummer)
         )
     )
+
+
+# ---- leveranciersroute (Peter 17-09, migratie 0156) ------------------------------------------------------
+
+
+class LeverancierAlInRoute(AccorderingFout):
+    """Een leverancier zit al in een andere actieve leveranciersroute (één route per leverancier) — 409 mét reden."""
+
+
+@dataclass(frozen=True)
+class LeverancierRouteInput:
+    naam: str
+    vendor_ids: list[uuid.UUID]
+    lagen: list["LaagInput"]
+
+
+@dataclass(frozen=True)
+class LeverancierRouteStand:
+    route: AccorderingLeverancierRoute
+    vendors: list[AccorderingLeverancierRouteVendor]
+    vendor_namen: dict[uuid.UUID, str]
+    lagen: list[AccorderingLaag]
+    accordeur_namen: dict[uuid.UUID, str]
+
+
+def _vendor_namen(session: Session, vendor_ids: set[uuid.UUID], administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    if not vendor_ids:
+        return {}
+    from app.sync.models import VendorCache
+
+    return {
+        rij.id: rij.naam
+        for rij in session.scalars(
+            select(VendorCache).where(VendorCache.administratie_id == administratie_id, VendorCache.id.in_(vendor_ids))
+        )
+        if rij.naam
+    }
+
+
+def _actieve_route_vendors(session: Session, *, administratie_id: uuid.UUID) -> list[AccorderingLeverancierRouteVendor]:
+    return list(
+        session.scalars(
+            select(AccorderingLeverancierRouteVendor)
+            .join(
+                AccorderingLeverancierRoute,
+                AccorderingLeverancierRoute.id == AccorderingLeverancierRouteVendor.route_id,
+            )
+            .where(
+                AccorderingLeverancierRouteVendor.administratie_id == administratie_id,
+                AccorderingLeverancierRouteVendor.actief.is_(True),
+                AccorderingLeverancierRoute.actief.is_(True),
+            )
+        )
+    )
+
+
+def leverancier_route_voor_vendor(
+    session: Session, *, administratie_id: uuid.UUID, vendor_id: uuid.UUID | None
+) -> AccorderingLeverancierRoute | None:
+    """De actieve leveranciersroute waarin deze crediteur zit — op crediteur-IDENTITEIT: het record zelf óf zijn
+    voorkeursrecord (`crediteuren/voorkeur.py`, dubbelen-clusters), en andersom een route-vendor die naar dezelfde
+    voorkeur wijst. None = geen leveranciersroute → administratieroute."""
+    if vendor_id is None:
+        return None
+    from app.crediteuren import voorkeur
+
+    kaart = voorkeur.verliezers(session, administratie_id=administratie_id)
+    doel = voorkeur.vertaal(vendor_id, kaart)
+    identiteit = {vendor_id, doel} if doel else {vendor_id}
+    for rij in _actieve_route_vendors(session, administratie_id=administratie_id):
+        if rij.vendor_id in identiteit or voorkeur.vertaal(rij.vendor_id, kaart) in identiteit:
+            route = session.get(AccorderingLeverancierRoute, rij.route_id)
+            if route is not None and route.actief:
+                return route
+    return None
+
+
+def leverancier_routes_ophalen(*, administratie_id: uuid.UUID, ook_inactief: bool = False) -> list[LeverancierRouteStand]:
+    with scoped_session(administratie_id) as session:
+        routes = list(
+            session.scalars(
+                select(AccorderingLeverancierRoute)
+                .where(
+                    AccorderingLeverancierRoute.administratie_id == administratie_id,
+                    *(() if ook_inactief else (AccorderingLeverancierRoute.actief.is_(True),)),
+                )
+                .order_by(AccorderingLeverancierRoute.aangemaakt_op, AccorderingLeverancierRoute.id)
+            )
+        )
+        uit: list[LeverancierRouteStand] = []
+        for route in routes:
+            vendors = list(
+                session.scalars(
+                    select(AccorderingLeverancierRouteVendor).where(
+                        AccorderingLeverancierRouteVendor.route_id == route.id,
+                        AccorderingLeverancierRouteVendor.actief.is_(True),
+                    )
+                )
+            )
+            lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=route.id)
+            uit.append(
+                LeverancierRouteStand(
+                    route=route,
+                    vendors=vendors,
+                    vendor_namen=_vendor_namen(session, {v.vendor_id for v in vendors}, administratie_id),
+                    lagen=lagen,
+                    accordeur_namen=_gebruikersnamen(session, {laag.accordeur_gebruiker_id for laag in lagen}),
+                )
+            )
+        session.expunge_all()
+    return uit
+
+
+def _route_vendor_ids(session: Session, route_id: uuid.UUID) -> set[uuid.UUID]:
+    return set(
+        session.scalars(
+            select(AccorderingLeverancierRouteVendor.vendor_id).where(
+                AccorderingLeverancierRouteVendor.route_id == route_id,
+                AccorderingLeverancierRouteVendor.actief.is_(True),
+            )
+        )
+    )
+
+
+def leverancier_route_opslaan(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    actor_rol: str,
+    route_id: uuid.UUID | None,
+    invoer: LeverancierRouteInput,
+) -> tuple[uuid.UUID, RondeUitkomst]:
+    """Beheerder-only: leveranciersroute aanmaken (`route_id=None`) of wijzigen — naam, aangevinkte leveranciers en lagen
+    (append-only: lagen gedeactiveerd + nieuwe set, vendors idem). Minstens één leverancier én één laag (een lege route zou
+    facturen van die leverancier stil laten stranden). Een leverancier die al in een ándere actieve route zit = 409
+    (`LeverancierAlInRoute`) mét de naam van die route. Lopende rondes worden HERBEREKEND (bundel 09-09 blok 2): rondes van
+    deze route tegen de nieuwe lagen; rondes van NIEUW aangevinkte leveranciers die nog op de administratieroute liepen óók
+    tegen deze lagen; rondes van leveranciers die uit de route gaan tegen de administratieroute. Audit oud→nieuw."""
+    _vereis_kantoor(actor_rol)
+    if not invoer.naam.strip():
+        raise OngeldigeAanbieding("Een leveranciersroute heeft een naam nodig")
+    if not invoer.vendor_ids:
+        raise OngeldigeAanbieding("Een leveranciersroute vereist minstens één leverancier")
+    if not invoer.lagen:
+        raise GeenLagenIngesteld("Een leveranciersroute vereist minstens één accorderingslaag")
+    volgnummers = [laag.volgnummer for laag in invoer.lagen]
+    if len(volgnummers) != len(set(volgnummers)):
+        raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
+    vendor_ids = list(dict.fromkeys(invoer.vendor_ids))
+    uitkomst = RondeUitkomst()
+    nu = datetime.now(UTC)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        from app.crediteuren import voorkeur
+
+        kaart = voorkeur.verliezers(session, administratie_id=administratie_id)
+        identiteit_nieuw = {voorkeur.vertaal(v, kaart) or v for v in vendor_ids} | set(vendor_ids)
+        # één route per leverancier (identiteit): een andere actieve route mét (een record van) deze leverancier = 409
+        for rij in _actieve_route_vendors(session, administratie_id=administratie_id):
+            if route_id is not None and rij.route_id == route_id:
+                continue
+            if rij.vendor_id in identiteit_nieuw or (voorkeur.vertaal(rij.vendor_id, kaart) or rij.vendor_id) in identiteit_nieuw:
+                andere = session.get(AccorderingLeverancierRoute, rij.route_id)
+                naam = _vendor_namen(session, {rij.vendor_id}, administratie_id).get(rij.vendor_id, str(rij.vendor_id))
+                raise LeverancierAlInRoute(
+                    f"Leverancier '{naam}' zit al in leveranciersroute '{andere.naam if andere else rij.route_id}' — een "
+                    "leverancier kan in maar één route zitten (haal 'm daar eerst uit)"
+                )
+        if route_id is None:
+            route = AccorderingLeverancierRoute(administratie_id=administratie_id, naam=invoer.naam.strip(), aangemaakt_door=actor_id)
+            session.add(route)
+            session.flush()
+            oude_vendor_ids: set[uuid.UUID] = set()
+            bestaande_lagen: list[AccorderingLaag] = []
+            oude_naam = None
+        else:
+            route = session.get(AccorderingLeverancierRoute, route_id)
+            if route is None or route.administratie_id != administratie_id or not route.actief:
+                raise AccorderingFout(f"Onbekende of gedeactiveerde leveranciersroute: {route_id}")
+            oude_vendor_ids = _route_vendor_ids(session, route.id)
+            bestaande_lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=route.id)
+            oude_naam = route.naam
+            route.naam = invoer.naam.strip()
+        schema_gewijzigd = _schema_gewijzigd(bestaande_lagen, invoer.lagen)
+        for laag in bestaande_lagen:
+            laag.actief = False
+            laag.gedeactiveerd_door = actor_id
+            laag.gedeactiveerd_op = nu
+        # vendors: weg = deactiveren, nieuw = toevoegen
+        for rij in session.scalars(
+            select(AccorderingLeverancierRouteVendor).where(
+                AccorderingLeverancierRouteVendor.route_id == route.id, AccorderingLeverancierRouteVendor.actief.is_(True)
+            )
+        ):
+            if rij.vendor_id not in vendor_ids:
+                rij.actief = False
+                rij.gedeactiveerd_door = actor_id
+                rij.gedeactiveerd_op = nu
+        for vid in vendor_ids:
+            if vid not in oude_vendor_ids:
+                session.add(
+                    AccorderingLeverancierRouteVendor(
+                        administratie_id=administratie_id, route_id=route.id, vendor_id=vid, aangemaakt_door=actor_id
+                    )
+                )
+        session.flush()
+        toegevoegd = set(vendor_ids) - oude_vendor_ids
+        verwijderd = oude_vendor_ids - set(vendor_ids)
+        # herberekening: (a) rondes op deze route bij een schemawijziging, (b) rondes van nieuwe leveranciers op de
+        # administratieroute → deze route, (c) rondes van verwijderde leveranciers op deze route → administratieroute.
+        if schema_gewijzigd or toegevoegd:
+            geraakt = _herbereken_open_rondes(
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                lagen=invoer.lagen,
+                afdeling_ids=None,
+                leverancier_route_ids={route.id} if schema_gewijzigd else set(),
+                vendor_ids_op_administratieroute=_identiteit_set(session, administratie_id, toegevoegd),
+                detail_extra={"leverancier_route": route.naam},
+                zet_leverancier_route=(route.id, route.naam),
+            )
+            uitkomst = RondeUitkomst(herberekend=uitkomst.herberekend + geraakt.herberekend, vervallen=uitkomst.vervallen + geraakt.vervallen)
+        if verwijderd:
+            admin_lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
+            geraakt = _herbereken_open_rondes(
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                lagen=[LaagInput(l.volgnummer, l.accordeur_gebruiker_id, l.bedrag_drempel) for l in admin_lagen],
+                afdeling_ids=None,
+                leverancier_route_ids={route.id},
+                vendor_ids_op_administratieroute=None,
+                alleen_vendor_ids=_identiteit_set(session, administratie_id, verwijderd),
+                detail_extra={"leverancier_route": f"{route.naam} (leverancier uit de route)"},
+                zet_leverancier_route=(None, None),
+            )
+            uitkomst = RondeUitkomst(herberekend=uitkomst.herberekend + geraakt.herberekend, vervallen=uitkomst.vervallen + geraakt.vervallen)
+        for laag in invoer.lagen:
+            session.add(
+                AccorderingLaag(
+                    administratie_id=administratie_id,
+                    volgnummer=laag.volgnummer,
+                    accordeur_gebruiker_id=laag.accordeur_gebruiker_id,
+                    bedrag_drempel=laag.bedrag_drempel,
+                    leverancier_route_id=route.id,
+                    aangemaakt_door=actor_id,
+                )
+            )
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="accordering_leverancier_route",
+            record_id=route.id,
+            actie="accordering_leveranciersroute_gewijzigd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={
+                "naam": oude_naam,
+                "leveranciers": sorted(str(v) for v in oude_vendor_ids),
+                "lagen": [{"volgnummer": b.volgnummer, "accordeur": str(b.accordeur_gebruiker_id)} for b in bestaande_lagen],
+            },
+            nieuwe_waarde={
+                "naam": route.naam,
+                "leveranciers": [str(v) for v in vendor_ids],
+                "lagen": [
+                    {
+                        "volgnummer": laag.volgnummer,
+                        "accordeur": str(laag.accordeur_gebruiker_id),
+                        "bedrag_drempel": str(laag.bedrag_drempel) if laag.bedrag_drempel is not None else None,
+                    }
+                    for laag in invoer.lagen
+                ],
+                "rondes_herberekend": uitkomst.herberekend,
+                "rondes_vervallen": uitkomst.vervallen,
+            },
+            administratie_id=administratie_id,
+        )
+        route_uuid = route.id
+    _rond_herberekende_rondes_af(administratie_id=administratie_id, uitkomst=uitkomst)
+    return route_uuid, uitkomst
+
+
+def leverancier_route_deactiveren(
+    *, administratie_id: uuid.UUID, actor_id: uuid.UUID, actor_rol: str, route_id: uuid.UUID
+) -> RondeUitkomst:
+    """Route uit: route, vendors en lagen gedeactiveerd (nooit verwijderd); lopende rondes van die leveranciers worden
+    herberekend tegen de administratieroute (geen administratieroute = vervallen mét reden — nooit stil)."""
+    _vereis_kantoor(actor_rol)
+    nu = datetime.now(UTC)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        route = session.get(AccorderingLeverancierRoute, route_id)
+        if route is None or route.administratie_id != administratie_id:
+            raise AccorderingFout(f"Onbekende leveranciersroute: {route_id}")
+        if not route.actief:
+            return RondeUitkomst()
+        vendor_ids = _route_vendor_ids(session, route.id)
+        lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=route.id)
+        route.actief = False
+        route.gedeactiveerd_door = actor_id
+        route.gedeactiveerd_op = nu
+        for laag in lagen:
+            laag.actief = False
+            laag.gedeactiveerd_door = actor_id
+            laag.gedeactiveerd_op = nu
+        for rij in session.scalars(
+            select(AccorderingLeverancierRouteVendor).where(
+                AccorderingLeverancierRouteVendor.route_id == route.id, AccorderingLeverancierRouteVendor.actief.is_(True)
+            )
+        ):
+            rij.actief = False
+            rij.gedeactiveerd_door = actor_id
+            rij.gedeactiveerd_op = nu
+        admin_lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
+        if admin_lagen:
+            uitkomst = _herbereken_open_rondes(
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                lagen=[LaagInput(l.volgnummer, l.accordeur_gebruiker_id, l.bedrag_drempel) for l in admin_lagen],
+                afdeling_ids=None,
+                leverancier_route_ids={route.id},
+                detail_extra={"leverancier_route": f"{route.naam} (route gedeactiveerd)"},
+                zet_leverancier_route=(None, None),
+            )
+        else:
+            vervallen = _laat_open_rondes_vervallen(
+                session,
+                administratie_id=administratie_id,
+                actor_id=actor_id,
+                nu=nu,
+                afdeling_ids=None,
+                leverancier_route_ids={route.id},
+                detail_extra={"leverancier_route": f"{route.naam} (route gedeactiveerd, geen administratieroute)"},
+            )
+            uitkomst = RondeUitkomst(herberekend=vervallen, vervallen=vervallen)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module="boekhouding",
+            tabel="accordering_leverancier_route",
+            record_id=route.id,
+            actie="accordering_leveranciersroute_gedeactiveerd",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"naam": route.naam, "leveranciers": sorted(str(v) for v in vendor_ids), "lagen": len(lagen)},
+            nieuwe_waarde={"actief": False, "rondes_herberekend": uitkomst.herberekend, "rondes_vervallen": uitkomst.vervallen},
+            administratie_id=administratie_id,
+        )
+    _rond_herberekende_rondes_af(administratie_id=administratie_id, uitkomst=uitkomst)
+    return uitkomst
+
+
+def _identiteit_set(session: Session, administratie_id: uuid.UUID, vendor_ids: set[uuid.UUID]) -> set[uuid.UUID] | None:
+    """Alle crediteurrecords van dezelfde identiteit als `vendor_ids` (voorkeur + verliezers) — voor het rondefilter."""
+    if not vendor_ids:
+        return None
+    from app.crediteuren import voorkeur
+
+    kaart = voorkeur.verliezers(session, administratie_id=administratie_id)
+    doelen = {voorkeur.vertaal(v, kaart) or v for v in vendor_ids} | set(vendor_ids)
+    return doelen | {v for v, d in kaart.items() if d in doelen}
 
 
 def afdeling_route_ophalen(
@@ -734,6 +1104,7 @@ def instellingen_opslaan(
                     nu=nu,
                     lagen=lagen,
                     afdeling_ids={None, terugval_id(session, administratie_id)},
+                    leverancier_route_ids={None},  # 17-09: leveranciersroute-rondes hebben hun eigen opslag
                     detail_extra=detail_extra,
                 )
         for invoer in lagen:
@@ -824,6 +1195,47 @@ def _ronde_afdeling_id(accordering: DocumentAccordering) -> uuid.UUID | None:
     return uuid.UUID(ruw) if ruw else None
 
 
+def _ronde_leverancier_route_id(accordering: DocumentAccordering) -> uuid.UUID | None:
+    ruw = (accordering.detail or {}).get("leverancier_route_id")
+    return uuid.UUID(ruw) if ruw else None
+
+
+def _ronde_vendor_id(accordering: DocumentAccordering) -> uuid.UUID | None:
+    ruw = (accordering.detail or {}).get("vendor_id")
+    try:
+        return uuid.UUID(ruw) if ruw else None
+    except ValueError:
+        return None
+
+
+def _ronde_in_filter(
+    r: DocumentAccordering,
+    *,
+    afdeling_ids: set[uuid.UUID | None] | None,
+    leverancier_route_ids: set[uuid.UUID | None] | None = None,
+    vendor_ids_op_administratieroute: set[uuid.UUID] | None = None,
+    alleen_vendor_ids: set[uuid.UUID] | None = None,
+) -> bool:
+    """Eén filterregel voor herberekenen én vervallen (Peter 17-09): een ronde telt als (1) haar afdeling in
+    `afdeling_ids` zit (None = geen filter) én (2a) haar leveranciersroute in `leverancier_route_ids` zit (None-lid =
+    rondes zonder leveranciersroute; None = geen filter) óf (2b) ze op de administratieroute loopt voor een leverancier
+    in `vendor_ids_op_administratieroute`; en (3) — als gezet — haar leverancier in `alleen_vendor_ids` zit."""
+    if afdeling_ids is not None and _ronde_afdeling_id(r) not in afdeling_ids:
+        return False
+    route_id = _ronde_leverancier_route_id(r)
+    vendor_id = _ronde_vendor_id(r)
+    if leverancier_route_ids is not None or vendor_ids_op_administratieroute is not None:
+        in_route = leverancier_route_ids is not None and route_id in leverancier_route_ids
+        op_admin = (
+            vendor_ids_op_administratieroute is not None and route_id is None and vendor_id in vendor_ids_op_administratieroute
+        )
+        if not (in_route or op_admin):
+            return False
+    if alleen_vendor_ids is not None and vendor_id not in alleen_vendor_ids:
+        return False
+    return True
+
+
 def _laat_open_rondes_vervallen(
     session: Session,
     *,
@@ -831,6 +1243,7 @@ def _laat_open_rondes_vervallen(
     actor_id: uuid.UUID,
     nu: datetime,
     afdeling_ids: set[uuid.UUID | None] | None = None,
+    leverancier_route_ids: set[uuid.UUID | None] | None = None,
     document_ids: set[uuid.UUID] | None = None,
     reden: str = VERVALLEN_REDEN,
     detail_extra: dict | None = None,
@@ -848,7 +1261,7 @@ def _laat_open_rondes_vervallen(
                 DocumentAccordering.status == AccorderingStatus.OPEN.value,
             )
         )
-        if (afdeling_ids is None or _ronde_afdeling_id(r) in afdeling_ids)
+        if _ronde_in_filter(r, afdeling_ids=afdeling_ids, leverancier_route_ids=leverancier_route_ids)
         and (document_ids is None or r.document_id in document_ids)
     ]
     if not open_rondes:
@@ -940,10 +1353,16 @@ def _laag_specs(lagen: list[LaagInput]) -> list[herberekening_module.LaagSpec]:
 
 
 def _open_rondes_gefilterd(
-    session: Session, *, administratie_id: uuid.UUID, afdeling_ids: set[uuid.UUID | None] | None
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    afdeling_ids: set[uuid.UUID | None] | None,
+    leverancier_route_ids: set[uuid.UUID | None] | None = None,
+    vendor_ids_op_administratieroute: set[uuid.UUID] | None = None,
+    alleen_vendor_ids: set[uuid.UUID] | None = None,
 ) -> list[DocumentAccordering]:
-    """Exact het filter van `_laat_open_rondes_vervallen`: open rondes van de administratie, beperkt tot de
-    gegeven afdelingen (None-lid = rondes zonder afdeling)."""
+    """Exact het filter van `_laat_open_rondes_vervallen` (`_ronde_in_filter`): open rondes van de administratie,
+    beperkt tot afdelingen en — sinds 17-09 — leveranciersroutes/leveranciers."""
     return [
         r
         for r in session.scalars(
@@ -952,7 +1371,13 @@ def _open_rondes_gefilterd(
                 DocumentAccordering.status == AccorderingStatus.OPEN.value,
             )
         )
-        if afdeling_ids is None or _ronde_afdeling_id(r) in afdeling_ids
+        if _ronde_in_filter(
+            r,
+            afdeling_ids=afdeling_ids,
+            leverancier_route_ids=leverancier_route_ids,
+            vendor_ids_op_administratieroute=vendor_ids_op_administratieroute,
+            alleen_vendor_ids=alleen_vendor_ids,
+        )
     ]
 
 
@@ -968,11 +1393,18 @@ def _stap_naar_dict(stap: AccorderingStap) -> dict:
 
 
 def telling_herberekening(
-    session: Session, *, administratie_id: uuid.UUID, lagen: list[LaagInput], afdeling_ids: set[uuid.UUID | None] | None
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    lagen: list[LaagInput],
+    afdeling_ids: set[uuid.UUID | None] | None,
+    leverancier_route_ids: set[uuid.UUID | None] | None = None,
 ) -> RondeUitkomst:
     """Preview-telling (leest alleen): hoeveel lopende rondes deze lagen zouden herberekenen en hoeveel daarvan
     zouden vervallen — met dezelfde pure functie als de echte wijziging, zodat vooraf en achteraf nooit uiteenlopen."""
-    rondes = _open_rondes_gefilterd(session, administratie_id=administratie_id, afdeling_ids=afdeling_ids)
+    rondes = _open_rondes_gefilterd(
+        session, administratie_id=administratie_id, afdeling_ids=afdeling_ids, leverancier_route_ids=leverancier_route_ids
+    )
     specs = _laag_specs(lagen)
     vervallen = 0
     for ronde in rondes:
@@ -994,8 +1426,15 @@ def _herbereken_open_rondes(
     lagen: list[LaagInput],
     afdeling_ids: set[uuid.UUID | None] | None,
     detail_extra: dict | None = None,
+    leverancier_route_ids: set[uuid.UUID | None] | None = None,
+    vendor_ids_op_administratieroute: set[uuid.UUID] | None = None,
+    alleen_vendor_ids: set[uuid.UUID] | None = None,
+    zet_leverancier_route: tuple[uuid.UUID | None, str | None] | None = None,
 ) -> RondeUitkomst:
     """Alle OPEN rondes in het filter herberekenen tegen `lagen` (pure regel: `herberekening.herbereken`).
+    `zet_leverancier_route` (17-09): ná de herberekening draagt de ronde de route waarlangs ze nu loopt
+    ((id, naam) van de leveranciersroute, of (None, None) = terug op de administratieroute) — het filter van een
+    volgende wijziging leest dat veld.
 
     Per ronde die blijft lopen: behouden akkoorden en hergebruikte onbesliste stappen krijgen de nieuwe
     positie/drempel (rij bijgewerkt, besluit onaangeroerd), nieuwe lagen krijgen een verse stap, en oude
@@ -1006,7 +1445,14 @@ def _herbereken_open_rondes(
     opnieuw gemeld (claim heropend). Rondes waarvan géén enkel gegeven akkoord meer past gaan in één batch
     door het bestaande vervallen-pad (`_laat_open_rondes_vervallen`). Afgeronde rondes (compleet klant-akkoord)
     zijn niet OPEN en worden dus nooit geraakt (regel 28-08)."""
-    rondes = _open_rondes_gefilterd(session, administratie_id=administratie_id, afdeling_ids=afdeling_ids)
+    rondes = _open_rondes_gefilterd(
+        session,
+        administratie_id=administratie_id,
+        afdeling_ids=afdeling_ids,
+        leverancier_route_ids=leverancier_route_ids,
+        vendor_ids_op_administratieroute=vendor_ids_op_administratieroute,
+        alleen_vendor_ids=alleen_vendor_ids,
+    )
     if not rondes:
         return RondeUitkomst()
     specs = _laag_specs(lagen)
@@ -1052,8 +1498,15 @@ def _herbereken_open_rondes(
             nieuwe_rijen.append(rij)
         session.flush()
         nieuwe_stand = [_stap_naar_dict(s) for s in sorted(nieuwe_rijen, key=lambda s: s.volgnummer)]
+        route_detail = (
+            {"leverancier_route_id": str(zet_leverancier_route[0]) if zet_leverancier_route[0] else None,
+             "leverancier_route_naam": zet_leverancier_route[1]}
+            if zet_leverancier_route is not None
+            else {}
+        )
         ronde.detail = {
             **(ronde.detail or {}),
+            **route_detail,
             "herberekend": {
                 "aantal": int(((ronde.detail or {}).get("herberekend") or {}).get("aantal", 0)) + 1,
                 "laatste_op": nu.isoformat(),
@@ -1388,6 +1841,7 @@ def _telling_administratie_route(
         administratie_id=administratie_id,
         lagen=lagen,
         afdeling_ids={None, terugval_id(session, administratie_id)},
+        leverancier_route_ids={None},  # 17-09: leveranciersroute-rondes hebben hun eigen opslag
     )
 
 
@@ -1760,12 +2214,29 @@ def bied_ter_accordering_aan(
             if not afdeling_check.ok:
                 raise ChecksNietGroen(CheckRapport((afdeling_check,)))
         route_afdeling_id = afdeling_id if (afdeling is not None and not afdeling.is_terugval) else None
-        lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=route_afdeling_id)
+        # Leveranciersroute (Peter 17-09, migratie 0156): vervángt de administratieroute voor de aangevinkte leveranciers
+        # (crediteur-identiteit). Voorrang afdelingsroute > leveranciersroute > administratieroute (beslispunt, default).
+        leverancier_route = (
+            leverancier_route_voor_vendor(session, administratie_id=administratie_id, vendor_id=vendor_id)
+            if route_afdeling_id is None
+            else None
+        )
+        lagen = _actieve_lagen(
+            session,
+            administratie_id=administratie_id,
+            afdeling_id=route_afdeling_id,
+            leverancier_route_id=leverancier_route.id if leverancier_route is not None else None,
+        )
         if not lagen:
             if route_afdeling_id is not None:
                 raise GeenLagenIngesteld(
                     f"Geen accorderingsroute ingesteld voor afdeling '{afdeling.naam}' — stel die in op "
                     f"Instellingen › Administraties"
+                )
+            if leverancier_route is not None:
+                raise GeenLagenIngesteld(
+                    f"Leveranciersroute '{leverancier_route.naam}' heeft geen accorderingslagen — stel die in op "
+                    f"Instellingen › Administraties › Klant-accordering"
                 )
             raise GeenLagenIngesteld("Geen accorderingslagen ingesteld voor deze administratie")
 
@@ -1781,6 +2252,9 @@ def bied_ter_accordering_aan(
                 "vendor_id": str(vendor_id) if vendor_id else None,
                 "afdeling_id": str(afdeling_id) if afdeling_id else None,
                 "afdeling_naam": afdeling.naam if afdeling is not None else None,
+                # 17-09: de route waarlangs de ronde loopt — filter voor herberekening én zichtbaar in de tijdlijn.
+                "leverancier_route_id": str(leverancier_route.id) if leverancier_route is not None else None,
+                "leverancier_route_naam": leverancier_route.naam if leverancier_route is not None else None,
             },
         )
         session.add(accordering)
@@ -1807,6 +2281,7 @@ def bied_ter_accordering_aan(
             detail={
                 "accordering_id": str(accordering.id),
                 "lagen": len(lagen),
+                **({"leverancier_route": leverancier_route.naam} if leverancier_route is not None else {}),
             },
         )
         record_audit_event(
