@@ -6,6 +6,14 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-17 — De app in de App Store heeft nu de nieuwe inlog zonder wachtwoord
+
+<!-- apple-1-1-live-17-09 -->
+
+- **Versie 1.1 van de goedkeur-app staat in de App Store** (goedgekeurd door Apple in de nacht van 16 op 17 september). Wie de app uit de App Store haalt, activeert met de activatiecode uit de uitnodigingsmail en kiest een eigen 5-cijferige toegangscode — geen wachtwoord, geen TestFlight meer nodig.
+- **De uitnodigingsmail voor accordeurs en veldwerkers toont weer de App Store-knop** in plaats van de TestFlight-instructie. Android volgt zodra Google de nieuwe versie heeft goedgekeurd; tot die tijd blijft de web-versie de route op Android.
+- **Achter de schermen is de volgende versie (versie 1.2) klaargezet** zodat verbeteringen aan de app zonder onderbreking kunnen blijven doorgaan.
+
 ## 2026-09-16 — De app werkt zichzelf bij
 
 <!-- native-ota-16-09 -->

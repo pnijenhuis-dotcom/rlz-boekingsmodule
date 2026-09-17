@@ -8,6 +8,6 @@
  *
  * Train-regel Apple: ná elke goedkeuring van een versie sluit App Store Connect die train;
  * de marketingversie moet dan omhoog vóór de volgende push, anders bouwt Xcode Cloud voor niets
- * (ITMS-90186/ITMS-90062 op build 98, 09-09).
+ * (ITMS-90186/ITMS-90062 op build 98, 09-09). 17-09: Apple keurde 1.1 (build 140) goed → 1.2.
  */
-export const APP_MARKETING_VERSIE = '1.1'
+export const APP_MARKETING_VERSIE = '1.2'

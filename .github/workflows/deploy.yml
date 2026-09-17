@@ -188,9 +188,10 @@ jobs:
       # actieve administratie-rij in de snapshot (zonder deze env laat de snapshot het veld weg).
       # Store-links (BESLISSINGEN "STORE-LINK-NAZORG"): STORE_LINK_IOS gevuld 09-09 (App Store-id
       # 6803862748); STORE_LINK_ANDROID blijft leeg tot Google de listing goedkeurt (leeg = niets tonen).
-      # STORE_APP_VERSIE_IOS (code-default 1.0) PAS op 1.1 zetten NÁ Apple-goedkeuring van 1.1 (build 140, ingediend
-      # 16-09 22:24): zolang de App Store 1.0 (oude login) levert, moet de uitnodigingsmail de TestFlight-instructie
-      # tonen, niet de store-link (TESTFLIGHT_DRAAIBOEK §0f "STAND 16-09"). Idem STORE_APP_VERSIE_ANDROID ná vc5 publiek.
+      # STORE_APP_VERSIE_IOS=1.1 sinds 17-09 (Apple keurde 1.1 (140) goed, App Store-lookup: version 1.1 vrijgegeven
+      # 2026-09-16T23:23Z) — de uitnodigingsmail toont vanaf die deploy weer de App Store-link i.p.v. de TestFlight-
+      # instructie (TESTFLIGHT_DRAAIBOEK §0f "STAND 17-09"); óók in BASIS_ENVS van de jobs (herinneringen mailen).
+      # STORE_APP_VERSIE_ANDROID pas ná een publieke 1.x-listing (vc4 = 1.0 nog in review).
       # Notificatie-config op de service (herzien 17-08): uitnodigingsmail + herinner-knop + het volledige
       # VAPID-paar (webpush per direct vanuit de service) + APNs/FCM (native-registratie is fail-closed 409
       # zolang die config ontbreekt; APNS_SANDBOX=false sinds A6 21-08 = TestFlight/production-build).
@@ -205,7 +206,7 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --min-instances 1 \
-            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl|WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]|ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]|CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers|BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync|EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij|EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync|TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken|RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie|KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|FCM_PROJECT_ID=${PROJECT_ID}|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}|OTA_UITGESCHAKELD=false|${MAIL_ENVS}|${PUSH_ENVS}" \
+            --set-env-vars "^|^ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|WEBAUTHN_RP_ID=administratiekantoornijenhuis.nl|WEBAUTHN_ORIGINS=[\"https://app.administratiekantoornijenhuis.nl\",\"https://administratiekantoornijenhuis.nl\"]|ANDROID_CERT_SHA256_VINGERAFDRUKKEN=[\"2C:EA:32:F9:44:A7:52:F9:DB:1E:87:B4:0F:DF:87:2C:F7:14:09:20:1D:F1:54:C9:16:70:2C:3D:E3:3E:3F:49\",\"4A:B4:3C:F1:E9:86:EA:58:02:D7:3F:7A:78:13:FB:F5:EF:C0:17:0F:E8:35:00:01:2E:2C:45:02:00:E9:8F:A1\"]|CORS_ALLOWED_ORIGINS=[\"capacitor://localhost\",\"https://localhost\"]|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|CIJFERS_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-projecten-cijfers|BANK_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-bank-sync|EXTRACTIE_WACHTRIJ_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-extractie-wachtrij|EERSTE_SYNC_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-eerste-sync|TERUGKEREND_HERBEREKEN_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-terugkerend-herbereken|RECONCILIATIE_JOB_RESOURCE=projects/${PROJECT_ID}/locations/${REGION}/jobs/rlz-reconciliatie|KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen|INTAKE_POSTVAK_ADRES=facturen@ak-nijenhuis.nl|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|FCM_PROJECT_ID=${PROJECT_ID}|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}|OTA_UITGESCHAKELD=false|${MAIL_ENVS}|${PUSH_ENVS}" \
             --set-secrets "APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest,JWT_SECRET=JWT_SECRET:latest,TOTP_MASTER_KEY_B64=TOTP_MASTER_KEY:latest,PROJECTAANVRAAG_HMAC_SECRET=PROJECTAANVRAAG_HMAC_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,REGISTERSYNC_HMAC_SECRET=REGISTERSYNC_HMAC_SECRET:latest,KVK_API_KEY=KVK_API_KEY:latest,${MAIL_SECRETS},${PUSH_SECRETS}" \
             --quiet
 
@@ -239,7 +240,7 @@ jobs:
       # BEWAKING_ALERT_ONTVANGER blijft de code-default (p.nijenhuis@kempengroep.nl) — geen env nodig.
       - name: F3-jobs bijwerken (zelfde beeld, CLI-entrypoints, volledige envset per job)
         run: |
-          BASIS_ENVS="ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}"
+          BASIS_ENVS="ENVIRONMENT=production|CLOUD_SQL_VERBINDING=${CLOUD_SQL}|STORE_LINK_IOS=https://apps.apple.com/app/nijenhuis-boekingsmodule/id6803862748|STORE_APP_VERSIE_IOS=1.1|DOCUMENT_GCS_BUCKET=rlz-boekhouding-documenten|KMS_MASTERKEY_SLEUTEL=projects/${PROJECT_ID}/locations/${REGION}/keyRings/rlz/cryptoKeys/masterkey|APP_BUNDEL_GCS_BUCKET=${APP_BUNDEL_BUCKET}|APP_MIN_RUNTIME_VERSIE=${APP_MIN_RUNTIME_VERSIE}"
           BASIS_SECRETS="APP_DB_WACHTWOORD=APP_DB_PASSWORD:latest"
           for JOB in \
             "rlz-sync|sync-alles|5400" \

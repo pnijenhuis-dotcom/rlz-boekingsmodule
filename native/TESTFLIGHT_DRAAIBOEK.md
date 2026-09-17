@@ -304,6 +304,17 @@ queue with demonstration invoices appears. On later launches the app asks only f
 
 ### 0f. Versie 1.1 — waarom en hoe (mini-run 09-09)
 
+> **STAND 17-09 — versie 1.1 (build 140) GOEDGEKEURD EN LIVE ("eligible for distribution", submission dad3608e…; App Store-lookup
+> id6803862748: version 1.1, vrijgegeven 2026-09-16T23:23Z). Gedaan in de SPOED-run 17-09:** `STORE_APP_VERSIE_IOS=1.1` in deploy.yml
+> (service én jobs; sleutel in `test_deploy_yml_envset_compleet.py`) → de uitnodigingsmail toont vanaf die deploy de App Store-link;
+> train-regel toegepast: marketingversie **1.2** (pbxproj ×2, `build.gradle` versionName 1.2 / versionCode 6, `appVersie.ts`, guard
+> `test_app_marketingversie_consistent.py`); **Xcode Cloud build 144 rood** ("out-of-date resolved file … Package.resolved …
+> dependencies were added: 'version', 'zipfoundation'") gefixt door `xcodebuild -resolvePackageDependencies -project
+> native/ios/App/App.xcodeproj -scheme App` (Package.resolved nu: capacitor-swift-pm 8.5.0, Alamofire 5.12.2, Version 0.8.0,
+> ZIPFoundation 0.9.20) + guard `tests/unit/test_ios_package_resolved_actueel.py` (nieuwe SwiftPM-dep zonder resolved-update =
+> rood). De eerstvolgende Xcode Cloud-build op `main` is de eerste 1.2-build (buildnummer telt door: ≥ 145) mét de OTA-plugins.
+> Android loopt apart (vc4 = 1.0 nog in review; vc6 = 1.2 bouwen ná goedkeuring, PLAY §3/§4). Historie hieronder = stand 16-09.
+
 > **STAND 16-09 22:24 — versie 1.1 (build 140) INGEDIEND, "Waiting for Review".** Build 1.1 (140) (Xcode Cloud 21:54, bevat de
 > uitnodigingsfix van 16-09 avond) is aan versie 1.1 gekoppeld, "What's New" NL ingevuld, App Review Information herschreven naar de
 > activatiecode-flow (§1 stap 6; Password = de review-activatiecode, dezelfde als in Play "Demo-account review (7 Sep 2026)"),

@@ -37,6 +37,7 @@ SERVICE_ENV_SLEUTELS = {
     # tot 16-09 in losse `services update`-stappen:
     "INTAKE_POSTVAK_ADRES",
     "STORE_LINK_IOS",
+    "STORE_APP_VERSIE_IOS",  # 17-09: Apple 1.1 live
     "BERICHTEN_SMTP_HOST",
     "BERICHTEN_SMTP_POORT",
     "BERICHTEN_SMTP_GEBRUIKER",

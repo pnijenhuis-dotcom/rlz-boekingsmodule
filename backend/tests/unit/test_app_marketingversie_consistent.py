@@ -52,10 +52,24 @@ def test_ios_android_en_web_dragen_dezelfde_marketingversie() -> None:
     )
 
 
-def test_marketingversie_is_1_1_sinds_09_09_en_versioncode_5() -> None:
-    # Train-regel: 1.0 is door Apple gesloten ná de goedkeuring van build 44 — terugvallen naar 1.0 is altijd fout.
-    assert _web_versie() == "1.1"
-    assert _android_versioncode() == 5, "vc4 = 1.0 staat al op de interne Play-track; 1.1 begint bij versionCode 5"
+def test_marketingversie_is_1_2_sinds_17_09_en_versioncode_6() -> None:
+    # Train-regel: 1.0 gesloten ná build 44 (09-09), 1.1 gesloten ná de goedkeuring van build 140 (17-09) —
+    # terugvallen naar 1.0 of 1.1 is altijd fout (ITMS-90186/90062).
+    assert _web_versie() == "1.2"
+    assert _android_versioncode() == 6, "vc5 = 1.1 is nooit gebouwd/geüpload; 1.2 begint bij versionCode 6"
+
+
+def test_store_app_versie_ios_in_deploy_yml_is_de_live_store_versie_en_nooit_boven_de_marketingversie() -> None:
+    """SPOED 17-09: Apple 1.1 live (App Store-lookup id6803862748: version 1.1, 2026-09-16T23:23Z) → STORE_APP_VERSIE_IOS=1.1
+    op service én jobs (uitnodigingsmail toont de App Store-link i.p.v. de TestFlight-instructie). De store-versie kan nooit
+    hoger zijn dan wat we zelf bouwen."""
+    import re as _re
+
+    deploy = (REPO / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    waarden = set(_re.findall(r"STORE_APP_VERSIE_IOS=([0-9.]+)", deploy))
+    assert waarden == {"1.1"}, f"STORE_APP_VERSIE_IOS hoort op service én jobs 1.1 te zijn: {waarden}"
+    assert deploy.count("STORE_APP_VERSIE_IOS=") >= 2, "service-envset én BASIS_ENVS van de jobs dragen de store-versie"
+    assert tuple(int(x) for x in "1.1".split(".")) <= tuple(int(x) for x in _web_versie().split("."))
 
 
 def test_wat_is_nieuw_noemt_de_huidige_marketingversie() -> None:
