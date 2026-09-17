@@ -64,7 +64,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     tekst = _tekst()
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
-    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting\]", tekst)
+    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels\]", tekst)
     assert len(_run_stappen()) >= 2, "verwacht minstens de meet- en de commit-stap als run-blok"
 
 
@@ -228,3 +228,31 @@ def test_onderdeel_doorbelasting_aansluiting_alleen_op_verzoek_en_lees_only() ->
     assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "doorbelasting-aansluiting"' not in meet
     # Cloud Logging lezen mag (logging.viewer), schrijven/uitvoeren niet — gedekt door test_productie_aanroepen_alleen_via_de_nameting_scripts
     assert 'resource.labels.job_name="rlz-sync"' in meet
+
+
+# ---- (8) onderdeel app-bundels (OTA-nameting 17-09) ---------------------------------------------------------------------
+
+
+def test_onderdeel_app_bundels_alleen_op_verzoek_en_lees_only(tmp_path: Path) -> None:
+    """OTA-nameting: alleen op verzoek (niet in 'alles'), de bundellijst uitsluitend via nameting.sh (lees-only CLI), het
+    publieke manifest + de 426-poort via curl, uitkomst in verkenning/nameting-app-bundels-<dd-mm>.txt mét eigen oordeelregel
+    die het commitbericht overneemt."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "app-bundels" ]]; then' in meet
+    assert "scripts/gcp/nameting.sh app-bundels" in meet
+    assert 'UIT="verkenning/nameting-app-bundels-$DATUM.txt"' in meet
+    assert '"$ONDERDEEL" != "app-bundels"' in meet, "app-bundels moet buiten de VGG-tak blijven"
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "app-bundels"' not in meet, "niet in 'alles'"
+    assert "/app/update-manifest?runtime=$RUNTIME&platform=ios" in meet
+    assert "-H 'X-Native-Client: 1' -H 'X-App-Versie: 0.9'" in meet
+    assert "frontend/src/accordeur/appVersie.ts" in meet, "runtime uit dezelfde bron als de deploy-stap"
+    assert 'OORDEEL_BRON="verkenning/nameting-app-bundels-$DATUM.txt"' in meet
+    oordeel = _draai_oordeel(
+        tmp_path,
+        "app-bundels",
+        {
+            "nameting-app-bundels-14-09.txt": "kop\nOordeel: geen bundel voor runtime 1.1 — bucket-stap nog niet gelopen\n",
+            "nameting-vgg-replay-14-09.txt": REPLAY,
+        },
+    )
+    assert oordeel.startswith("Oordeel: geen bundel voor runtime 1.1"), oordeel

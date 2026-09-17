@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels]
 
 env:
   PROJECT_ID: rlz-boekhouding
@@ -70,7 +70,7 @@ jobs:
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -132,11 +132,49 @@ jobs:
             } >> "$UIT"
             echo "STATUS doorbelasting-aansluiting: rapport in $UIT (job-exit $rc_da = uitkomst; 3 = webfilter, meting ongeldig)"
           fi
+          if [[ "$ONDERDEEL" == "app-bundels" ]]; then
+            # Native app OTA (Peter 16-09; nameting 17-09 — gcloud-sessie verlopen in de inbox-run): alleen op verzoek (niet in "alles").
+            # Lees-only: (1) publiek manifest per platform voor de huidige runtime (= APP_MARKETING_VERSIE uit appVersie.ts, zelfde
+            # bron als de deploy-stap), (2) de 426-poort mét een te oude aangekondigde schil, (3) de geregistreerde bundels via de
+            # lees-only CLI `app-bundels` op de job-image. Oordeelregel: manifest draagt een bundel_id én die staat actief in de
+            # lijst → "OTA-bundel geserveerd"; anders "geen bundel" (bucket-stap van de deploy nog niet gelopen — klikpunt Peter).
+            UIT="verkenning/nameting-app-bundels-$DATUM.txt"
+            rc_ab=0
+            RUNTIME="$(sed -n "s/^export const APP_MARKETING_VERSIE = '\([0-9.]*\)'.*/\1/p" frontend/src/accordeur/appVersie.ts)"
+            BASIS="https://app.administratiekantoornijenhuis.nl"
+            MANIFEST_IOS="$(curl -sS --max-time 20 "$BASIS/app/update-manifest?runtime=$RUNTIME&platform=ios" || echo '(manifest niet bereikbaar)')"
+            MANIFEST_AND="$(curl -sS --max-time 20 "$BASIS/app/update-manifest?runtime=$RUNTIME&platform=android" || echo '(manifest niet bereikbaar)')"
+            CODE_426="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' -H 'X-Native-Client: 1' -H 'X-App-Versie: 0.9' -H 'X-App-Platform: ios' "$BASIS/accordering/wachtrij" || echo '000')"
+            {
+              echo "== OTA-nameting $DATUM (lees-only) — runtime $RUNTIME =="
+              echo "manifest ios:     $MANIFEST_IOS"
+              echo "manifest android: $MANIFEST_AND"
+              echo "426-poort (schil 0.9, ios): HTTP $CODE_426 (verwacht 426)"
+              echo "== Geregistreerde bundels (CLI app-bundels, job-image) =="
+            } > "$UIT"
+            scripts/gcp/nameting.sh app-bundels >> "$UIT" 2> nameting-ab.stderr || rc_ab=$?
+            cat nameting-ab.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-ab.stderr; then
+              echo "::error::app-bundels kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            BUNDEL_ID="$(printf '%s' "$MANIFEST_IOS" | sed -n 's/.*"bundel_id":"\([^"]*\)".*/\1/p')"
+            if [[ -n "$BUNDEL_ID" ]] && grep -q "actief $BUNDEL_ID " "$UIT"; then
+              echo "Oordeel: OTA-bundel $BUNDEL_ID geserveerd voor runtime $RUNTIME — 426-poort HTTP $CODE_426" >> "$UIT"
+            elif [[ -n "$BUNDEL_ID" ]]; then
+              echo "Oordeel: manifest geeft $BUNDEL_ID maar de bundellijst toont 'm niet actief — controleren" >> "$UIT"
+            else
+              echo "Oordeel: geen bundel voor runtime $RUNTIME — bucket-stap van de deploy nog niet gelopen (klikpunt app_bundels_bucket.sh) — 426-poort HTTP $CODE_426" >> "$UIT"
+            fi
+            echo "STATUS app-bundels: rapport in $UIT (job-exit $rc_ab)"
+          fi
           # Oordeelregel voor het commitbericht: uit het rapport van het GEDRAAIDE onderdeel (werkloop-nazorg 14-09 — run
           # f4c702c droeg de replay-oordeelregel bij een reconciliatie-meting, misleidend): reconciliatie → het
           # reconciliatie-rapport van vandaag, anders het replay-rapport. Geen oordeelregel gevonden = "geen oordeelregel".
           if [[ "$ONDERDEEL" == "reconciliatie" ]]; then
             OORDEEL_BRON="verkenning/nameting-reconciliatie-$DATUM.txt"
+          elif [[ "$ONDERDEEL" == "app-bundels" ]]; then
+            OORDEEL_BRON="verkenning/nameting-app-bundels-$DATUM.txt"
           else
             OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"
           fi
