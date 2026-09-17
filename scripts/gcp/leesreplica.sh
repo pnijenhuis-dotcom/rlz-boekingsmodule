@@ -22,6 +22,11 @@ TIER="${TIER:-db-custom-1-3840}"
 NAMETING_SA="nameting@${PROJECT}.iam.gserviceaccount.com"
 IAM_DB_USER="nameting@${PROJECT}.iam"
 KMS_KEY="projects/${PROJECT}/locations/${REGION}/keyRings/rlz/cryptoKeys/cmek-sql"
+# Les 17-09 (eerste --apply, Peter): zonder --edition kiest gcloud ENTERPRISE_PLUS voor een nieuwe instance en weigert dan
+# db-custom-*-tiers ("Invalid Tier … for (ENTERPRISE_PLUS) Edition") — de primary is ENTERPRISE db-custom-1-3840 REGIONAL,
+# dus de replica krijgt expliciet --edition=enterprise (zelfde editie als de primary, ~zelfde maandprijs als één primary-node).
+# Tweede poging: "Disk encryption config should not be specified for replica that is in the same region of primary" — een replica in
+# dezelfde regio ERFT de CMEK-key van de primary (gcloud waarschuwt dat ook); --disk-encryption-key daarom weggelaten. CMEK blijft actief.
 APPLY=0; [[ "${1:-}" == "--apply" ]] && APPLY=1
 run() { echo "+ $*"; [[ $APPLY -eq 1 ]] && "$@"; return 0; }
 echo "project=$PROJECT primary=$PRIMARY replica=$REPLICA tier=$TIER (dry-run: $((1-APPLY)))"
@@ -31,7 +36,7 @@ if gcloud sql instances describe "$REPLICA" --project "$PROJECT" --format='value
   echo "= replica $REPLICA bestaat al — create overgeslagen; flags worden (opnieuw) gezet"
 else
   run gcloud sql instances create "$REPLICA" --project "$PROJECT" --master-instance-name "$PRIMARY" --region "$REGION" \
-    --tier "$TIER" --availability-type ZONAL --disk-encryption-key "$KMS_KEY" \
+    --tier "$TIER" --edition=enterprise --availability-type ZONAL \
     --database-flags "cloudsql.iam_authentication=on,cloudsql.enable_pgaudit=on,pgaudit.log=read"
 fi
 run gcloud sql instances patch "$REPLICA" --project "$PROJECT" \

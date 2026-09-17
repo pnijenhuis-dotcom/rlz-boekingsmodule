@@ -672,15 +672,41 @@ def _deploy_smoketest(args: argparse.Namespace) -> int:
     if not mail.is_geconfigureerd():
         fouten.append("mailkanaal niet geconfigureerd (BERICHTEN_SMTP_*) — alerts en meldingen liggen plat")
     fouten.extend(_smoketest_deploy_drift())
+    fouten.extend(_smoketest_leesreplica())
     if fouten:
         for fout in fouten:
             print(f"deploy-smoketest FOUT: {fout}", file=sys.stderr)
         return 1
     print(
         "deploy-smoketest: alles groen (schema-zelftest, DB/migratieversie, mailkanaal job + service, "
-        "service ↔ jobs zelfde beeld)"
+        "service ↔ jobs zelfde beeld, leesreplica)"
     )
     return 0
+
+
+def _smoketest_leesreplica() -> list[str]:
+    """Leesreplica afronden 17-09 (Feiten eerst): is LEES_CLOUD_SQL_VERBINDING/LEES_DATABASE_URL gezet, dan hoort `SELECT 1`
+    op de replica te werken in een READ ONLY-transactie — anders geeft `POST /lezen/sql` 503 terwijl de deploy groen lijkt.
+    Niet geconfigureerd = overgeslagen mét melding (lokaal/dev)."""
+    from sqlalchemy import text
+
+    from app.config import settings
+    from app.lezen import service as lees_service
+
+    if not (settings.lees_database_url or "").strip():
+        print("deploy-smoketest: leesreplica-toets overgeslagen (LEES_DATABASE_URL/LEES_CLOUD_SQL_VERBINDING leeg)")
+        return []
+    try:
+        with lees_service.lees_engine().connect() as conn:
+            conn.execute(text("BEGIN READ ONLY"))
+            een = conn.execute(text("SELECT 1")).scalar()
+            conn.execute(text("ROLLBACK"))
+        if een != 1:
+            return [f"leesreplica: SELECT 1 gaf {een!r}"]
+    except Exception as exc:  # noqa: BLE001 — elke replica-fout hoort de deploy rood te maken
+        return [f"leesreplica onbereikbaar (socket/IAM/URL): {exc}"]
+    print("deploy-smoketest: leesreplica antwoordt (SELECT 1, READ ONLY)")
+    return []
 
 
 def _smoketest_deploy_drift() -> list[str]:

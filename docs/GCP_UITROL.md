@@ -1066,18 +1066,27 @@ verlichting (24 u) náást A, of als Peter geen extra geheim wil beheren. **Pete
 
 **Rotatie-/intrekrecept.** Roteren: `gcloud iam service-accounts keys create ~/Sleutels/nameting-sa.json --iam-account=nameting@…` → `scripts/gcp/nameting_env.sh` pakt 'm op → oude key `gcloud iam service-accounts keys list/delete` → `NAMETING_SA_AANGEMAAKT_OP` bijwerken. Intrekken (alles ongedaan): `gcloud iam service-accounts keys delete <id> --iam-account=nameting@…`; `gcloud run jobs remove-iam-policy-binding rlz-reconciliatie --member=serviceAccount:nameting@… --role=projects/rlz-boekhouding/roles/nametingUitvoerder`; `gcloud projects remove-iam-policy-binding rlz-boekhouding --member=serviceAccount:nameting@… --role=roles/run.viewer` (idem `roles/logging.viewer`); `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member=user:info@vastly.software --role=roles/iam.serviceAccountTokenCreator`; `gcloud iam roles delete nametingUitvoerder --project=rlz-boekhouding`; `gcloud iam service-accounts delete nameting@…`. Controle: `gcloud auth list` (geen ster bij nameting@), `gcloud projects get-iam-policy rlz-boekhouding --flatten=bindings[].members --filter=bindings.members:nameting@` = leeg.
 
-### F7.4 Leesreplica + IAM-DB-toegang voor analyses (Feiten eerst, besluit Peter 17-09 — VOORBEREID, niets aangemaakt)
+### F7.4 Leesreplica + IAM-DB-toegang voor analyses (Feiten eerst, besluit Peter 17-09 — AANGEMAAKT 17-09 ~13:50, afronding via deploy)
 
-Doel: volledige lees-toegang tot productiedata zonder één schrijfmogelijkheid (BESLISSINGEN "FEITEN EERST — …"). Lees-only stand
-17-09: `rlz-sql2` POSTGRES_16 REGIONAL db-custom-1-3840, CMEK `cmek-sql`, 10 GB, géén database-flags, gebruikers alleen
-`boekhouding_app` + `postgres` (BUILT_IN), geen replica. Owner-stappen (script `scripts/gcp/leesreplica.sh`, dry-run default):
-1. Leesreplica `rlz-sql2-lees` (europe-west4, ZONAL, zelfde CMEK-key) mét flags `cloudsql.iam_authentication=on`,
-   `cloudsql.enable_pgaudit=on`, `pgaudit.log=read` → élke leesquery in Cloud Logging (100 % audit).
-2. IAM-databasegebruiker `nameting@rlz-boekhouding.iam` op de primary (repliceert mee) + `roles/cloudsql.client` en
-   `roles/cloudsql.instanceUser` voor `nameting@`.
-3. Ná de deploy van migratie 0154: `GRANT rlz_lezer TO "nameting@rlz-boekhouding.iam"` als postgres.
-4. Env `LEES_DATABASE_URL` (service én jobs, deploy.yml): `postgresql+psycopg://boekhouding_app:…@/boekhouding?host=/cloudsql/rlz-boekhouding:europe-west4:rlz-sql2-lees`
-   (de service leest de replica via de Cloud SQL-connector) — pas dán werken `POST /lezen/sql` en `db-lezen --sql`.
+Doel: volledige lees-toegang tot productiedata zonder één schrijfmogelijkheid (BESLISSINGEN "FEITEN EERST — …"). Werkelijke stand
+17-09 ~13:50 (owner-sessie Peter, `scripts/gcp/leesreplica.sh --apply` ná twee scriptfixes door Cowork):
+1. Leesreplica **`rlz-sql2-lees`** RUNNABLE, `europe-west4-c`, POSTGRES_16, tier `db-custom-1-3840`, **edition ENTERPRISE**
+   (zonder `--edition` kiest gcloud ENTERPRISE_PLUS en weigert db-custom-tiers — scriptfix), ZONAL; flags
+   `cloudsql.iam_authentication=on`, `cloudsql.enable_pgaudit=on`, `pgaudit.log=read` gezet (patch gelukt) → élke leesquery in
+   Cloud Logging. **CMEK geërfd van de primary**: `--disk-encryption-key` mag NIET bij een replica in dezelfde regio ("Disk
+   encryption config should not be specified for replica that is in the same region of primary") — scriptfix, CMEK blijft actief.
+   Verbindingsnaam `rlz-boekhouding:europe-west4:rlz-sql2-lees`.
+2. IAM-databasegebruiker `nameting@rlz-boekhouding.iam` aangemaakt op de primary (repliceert mee); projectrollen
+   `roles/cloudsql.client` + `roles/cloudsql.instanceUser` voor `nameting@` toegekend.
+3. `GRANT rlz_lezer TO "nameting@rlz-boekhouding.iam"` = **migratie 0157** (17-09; voorwaardelijk: alleen als de IAM-rol én
+   `rlz_lezer` in het cluster bestaan, anders NOTICE — lokale dev-/test-DB kent die rol niet) — geen owner-terminalwerk meer.
+4. Env: **`LEES_CLOUD_SQL_VERBINDING=rlz-boekhouding:europe-west4:rlz-sql2-lees`** op service, F3-jobs én smoketest-job (deploy.yml,
+   één envset-stap; `--set-cloudsql-instances "${CLOUD_SQL},${CLOUD_SQL_LEES}"` voor de socket) — `app/config.py` composeert daaruit
+   mét het app-wachtwoord `settings.lees_database_url` (`postgresql+psycopg://boekhouding_app:…@/boekhouding?host=/cloudsql/…-lees`);
+   een expliciete `LEES_DATABASE_URL` wint. De migratie-job blijft op de primary alleen. Post-deploy-smoketest doet `SELECT 1`
+   in READ ONLY op de replica (fout = deploy rood). Guard `tests/unit/test_deploy_yml_envset_compleet.py`.
+Nameting ná deploy: `gh workflow run nameting -f onderdeel=query -f query="sync-status"` (bibliotheek) + `scripts/gcp/db_lezen.sh
+"SELECT 1" --als <beheerder-uuid>` (IAM-login als nameting@, READ ONLY; een INSERT hoort te weigeren = bewijs SELECT-only).
 Gebruik CC: `scripts/gcp/db_lezen.sh "SELECT …" --als <beheerder-uuid> [--administratie <uuid>]` (Auth Proxy `--auto-iam-authn`,
 impersonatie `nameting@`, READ ONLY, rijenplafond). Terugdraaien: replica verwijderen + IAM-gebruiker verwijderen; de rol
 `rlz_lezer` blijft (cluster-breed; DROP ROLE = owner-handeling).

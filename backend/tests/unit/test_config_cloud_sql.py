@@ -41,3 +41,22 @@ def test_verbinding_zonder_wachtwoord_faalt_hard() -> None:
 def test_zonder_verbinding_blijven_dev_defaults() -> None:
     s = _settings(app_db_wachtwoord="wordt-genegeerd")
     assert s.app_database_url == Settings(_env_file=None).app_database_url
+
+
+# ---- leesreplica (Feiten eerst, afronding 17-09) ----
+LEES_VERBINDING = "rlz-boekhouding:europe-west4:rlz-sql2-lees"
+
+
+def test_leesreplica_url_gecomposeerd_op_de_replica_socket_met_de_app_rol() -> None:
+    s = _settings(cloud_sql_verbinding=VERBINDING, lees_cloud_sql_verbinding=LEES_VERBINDING, app_db_wachtwoord="a+b")
+    assert s.lees_database_url == f"postgresql+psycopg://boekhouding_app:a%2Bb@/boekhouding?host=/cloudsql/{LEES_VERBINDING}"
+    # de primary-URL blijft op de primary-socket — nooit stil dezelfde instance
+    assert f"/cloudsql/{VERBINDING}" in s.app_database_url and LEES_VERBINDING not in s.app_database_url
+
+
+def test_expliciete_lees_url_wint_en_zonder_verbinding_blijft_leeg() -> None:
+    s = _settings(cloud_sql_verbinding=VERBINDING, lees_cloud_sql_verbinding=LEES_VERBINDING, app_db_wachtwoord="x", lees_database_url="postgresql+psycopg://l@/x")
+    assert s.lees_database_url == "postgresql+psycopg://l@/x"
+    assert _settings(cloud_sql_verbinding=VERBINDING, app_db_wachtwoord="x").lees_database_url == ""
+    # alleen het owner-wachtwoord (migratie-job) → geen replica-URL: de lezer is altijd de app-rol
+    assert _settings(cloud_sql_verbinding=VERBINDING, lees_cloud_sql_verbinding=LEES_VERBINDING, db_owner_wachtwoord="o").lees_database_url == ""

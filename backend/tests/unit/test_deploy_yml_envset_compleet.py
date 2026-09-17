@@ -20,6 +20,7 @@ DEPLOY_YML = REPO / ".github" / "workflows" / "deploy.yml"
 SERVICE_ENV_SLEUTELS = {
     "ENVIRONMENT",
     "CLOUD_SQL_VERBINDING",
+    "LEES_CLOUD_SQL_VERBINDING",  # 17-09: leesreplica rlz-sql2-lees (Feiten eerst)
     "WEBAUTHN_RP_ID",
     "WEBAUTHN_ORIGINS",
     "ANDROID_CERT_SHA256_VINGERAFDRUKKEN",
@@ -175,3 +176,27 @@ def test_elke_job_een_deploy_met_set_env_vars_en_set_secrets() -> None:
         kop = blok.split("\n", 1)[0]
         vlaggen = blok.split("--quiet", 1)[0]
         assert "--set-env-vars" in vlaggen and "--set-secrets" in vlaggen, f"jobs-deploy zonder volledige config: {kop}"
+
+
+def test_leesreplica_socket_en_env_op_service_en_alle_jobs_behalve_de_migratie() -> None:
+    """Leesreplica afronden 17-09: zonder `--set-cloudsql-instances` mét de replica is er geen socket en geeft
+    `POST /lezen/sql` 503 — service, F3-jobs én smoketest dragen beide instanties + LEES_CLOUD_SQL_VERBINDING; de
+    migratie-job (owner-rol) blijft bewust alleen op de primary."""
+    tekst = _tekst()
+    lees = re.search(r"^\s*CLOUD_SQL_LEES:\s*(\S+)\s*$", tekst, flags=re.M)
+    assert lees and lees.group(1) == "rlz-boekhouding:europe-west4:rlz-sql2-lees", "CLOUD_SQL_LEES ontbreekt in het env-blok"
+    primary = re.search(r"^\s*CLOUD_SQL:\s*(\S+)\s*$", tekst, flags=re.M)
+    assert primary
+    env = {**workflow_env(tekst), "CLOUD_SQL_LEES": lees.group(1), "CLOUD_SQL": primary.group(1)}
+    cmd = _commando_regels(tekst)
+    instanties = re.findall(r'--set-cloudsql-instances\s+"([^"]+)"', cmd)
+    assert len(instanties) >= 4, instanties
+    met_lees = [expandeer(i, env) for i in instanties if "CLOUD_SQL_LEES" in i]
+    zonder = [i for i in instanties if "CLOUD_SQL_LEES" not in i]
+    assert len(zonder) == 1, f"alleen de migratie-job blijft op de primary alleen: {zonder}"
+    for i in met_lees:
+        assert i == "rlz-boekhouding:europe-west4:rlz-sql2,rlz-boekhouding:europe-west4:rlz-sql2-lees", i
+    migratie = cmd.split("gcloud run jobs deploy rlz-migratie", 1)[1].split("--quiet", 1)[0]
+    assert "CLOUD_SQL_LEES" not in migratie
+    basis = re.search(r'BASIS_ENVS="([^"]+)"', cmd)
+    assert basis and "LEES_CLOUD_SQL_VERBINDING=${CLOUD_SQL_LEES}" in basis.group(1)

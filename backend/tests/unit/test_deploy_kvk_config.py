@@ -26,7 +26,8 @@ def _deploy_tekst() -> str:
 
 
 def _base_urls_in_deploy() -> list[str]:
-    return re.findall(r"KVK_BASE_URL=([^@\"\s,]+)", _deploy_tekst())
+    # 16-09: de envset staat in één `^|^`-gescheiden string — de waarde stopt óók op '|' (anders plakt de volgende sleutel eraan)
+    return re.findall(r"KVK_BASE_URL=([^@\"\s,|]+)", _deploy_tekst())
 
 
 def test_deploy_yml_zet_precies_een_kvk_base_url_op_productie_met_basisprofielen_pad() -> None:

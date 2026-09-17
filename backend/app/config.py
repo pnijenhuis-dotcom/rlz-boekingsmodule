@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # op de runtime-verbinding zoals élke lees-only CLI. Productie: env LEES_DATABASE_URL op service én jobs (deploy.yml) ná
     # scripts/gcp/leesreplica.sh --apply (owner).
     lees_database_url: str = ""
+    # Leesreplica afronden 17-09: in Cloud Run wordt de replica-URL — net als de primary — GECOMPOSEERD uit het
+    # app-wachtwoord-secret + deze instance-connection-name (`rlz-boekhouding:europe-west4:rlz-sql2-lees`; deploy.yml zet
+    # 'm op service én jobs mét `--set-cloudsql-instances` voor de socket). Een expliciete LEES_DATABASE_URL wint; leeg +
+    # geen verbinding = geen replica (zichtbare weigering in app/lezen/service.py). Nooit het owner-wachtwoord: de replica
+    # is fysiek read-only, maar de lezer blijft de app-rol (least privilege).
+    lees_cloud_sql_verbinding: str | None = None
 
     # Omgeving voor secret-fallback-guards (zie app/security/envelope.py, migraties/0001).
     environment: str = "dev"
@@ -580,6 +586,12 @@ class Settings(BaseSettings):
             self.database_url = (
                 f"postgresql+psycopg://postgres:{quote_plus(self.db_owner_wachtwoord)}"
                 f"@/{self.cloud_sql_database}{socket_query}"
+            )
+        # Leesreplica (17-09): zelfde compositie op de replica-socket, alleen als er geen expliciete URL staat.
+        if self.lees_cloud_sql_verbinding and self.app_db_wachtwoord and not (self.lees_database_url or "").strip():
+            self.lees_database_url = (
+                f"postgresql+psycopg://boekhouding_app:{quote_plus(self.app_db_wachtwoord)}"
+                f"@/{self.cloud_sql_database}?host=/cloudsql/{self.lees_cloud_sql_verbinding}"
             )
         return self
 
