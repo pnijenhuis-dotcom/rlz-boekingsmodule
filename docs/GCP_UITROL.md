@@ -1066,7 +1066,7 @@ verlichting (24 u) náást A, of als Peter geen extra geheim wil beheren. **Pete
 
 **Rotatie-/intrekrecept.** Roteren: `gcloud iam service-accounts keys create ~/Sleutels/nameting-sa.json --iam-account=nameting@…` → `scripts/gcp/nameting_env.sh` pakt 'm op → oude key `gcloud iam service-accounts keys list/delete` → `NAMETING_SA_AANGEMAAKT_OP` bijwerken. Intrekken (alles ongedaan): `gcloud iam service-accounts keys delete <id> --iam-account=nameting@…`; `gcloud run jobs remove-iam-policy-binding rlz-reconciliatie --member=serviceAccount:nameting@… --role=projects/rlz-boekhouding/roles/nametingUitvoerder`; `gcloud projects remove-iam-policy-binding rlz-boekhouding --member=serviceAccount:nameting@… --role=roles/run.viewer` (idem `roles/logging.viewer`); `gcloud iam service-accounts remove-iam-policy-binding nameting@… --member=user:info@vastly.software --role=roles/iam.serviceAccountTokenCreator`; `gcloud iam roles delete nametingUitvoerder --project=rlz-boekhouding`; `gcloud iam service-accounts delete nameting@…`. Controle: `gcloud auth list` (geen ster bij nameting@), `gcloud projects get-iam-policy rlz-boekhouding --flatten=bindings[].members --filter=bindings.members:nameting@` = leeg.
 
-### F7.4 Leesreplica + IAM-DB-toegang voor analyses (Feiten eerst, besluit Peter 17-09 — AANGEMAAKT 17-09 ~13:50, afronding via deploy)
+### F7.4 Leesreplica + IAM-DB-toegang voor analyses (Feiten eerst, besluit Peter 17-09 — AANGEMAAKT 17-09 ~13:50, afronding via deploy `ef48eec`; LIVE, nameting 17-09 ~17:40)
 
 Doel: volledige lees-toegang tot productiedata zonder één schrijfmogelijkheid (BESLISSINGEN "FEITEN EERST — …"). Werkelijke stand
 17-09 ~13:50 (owner-sessie Peter, `scripts/gcp/leesreplica.sh --apply` ná twee scriptfixes door Cowork):
@@ -1085,8 +1085,13 @@ Doel: volledige lees-toegang tot productiedata zonder één schrijfmogelijkheid 
    mét het app-wachtwoord `settings.lees_database_url` (`postgresql+psycopg://boekhouding_app:…@/boekhouding?host=/cloudsql/…-lees`);
    een expliciete `LEES_DATABASE_URL` wint. De migratie-job blijft op de primary alleen. Post-deploy-smoketest doet `SELECT 1`
    in READ ONLY op de replica (fout = deploy rood). Guard `tests/unit/test_deploy_yml_envset_compleet.py`.
-Nameting ná deploy: `gh workflow run nameting -f onderdeel=query -f query="sync-status"` (bibliotheek) + `scripts/gcp/db_lezen.sh
-"SELECT 1" --als <beheerder-uuid>` (IAM-login als nameting@, READ ONLY; een INSERT hoort te weigeren = bewijs SELECT-only).
+**Nameting 17-09 ~17:40 (ná deploy `ef48eec`, `docs/rapporten/2026-09-17-leesreplica-nameting.md`) — werkt in productie: JA:** smoketest-job
+`rlz-smoketest-46zjr` "leesreplica antwoordt (SELECT 1, READ ONLY)"; migratie-job `rlz-migratie-lg5ns` "Running upgrade 0156 -> 0157";
+`gh workflow run nameting -f onderdeel=query -f query=sync-status` → `verkenning/lezen-17-09-sync-status.txt` (289 rijen, 77 administraties,
+bot-commit `c875e07`); `scripts/gcp/db_lezen.sh "SELECT 1" --als 2f2262cd…` → `current_user` nameting@rlz-boekhouding.iam, `pg_has_role rlz_lezer` t,
+`transaction_read_only` on, `pg_is_in_recovery()` t; grants van `rlz_lezer` = uitsluitend SELECT (171 tabellen, `information_schema.role_table_grants`);
+INSERT door de poort geweigerd (exit 2). `POST /lezen/sql` als Beheerder: niet direct gemeten (klikpunt Peter, meetrecept in het rapport).
+Let op: de poort weigert óók een schrijfwoord als string-literal in een SELECT (`has_table_privilege(…,'INSERT')`) — rechten via `information_schema`.
 Gebruik CC: `scripts/gcp/db_lezen.sh "SELECT …" --als <beheerder-uuid> [--administratie <uuid>]` (Auth Proxy `--auto-iam-authn`,
 impersonatie `nameting@`, READ ONLY, rijenplafond). Terugdraaien: replica verwijderen + IAM-gebruiker verwijderen; de rol
 `rlz_lezer` blijft (cluster-breed; DROP ROLE = owner-handeling).
