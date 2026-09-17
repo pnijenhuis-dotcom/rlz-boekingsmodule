@@ -26,6 +26,13 @@ class Settings(BaseSettings):
         "postgresql+psycopg://boekhouding_app:devpassword@localhost:5433/boekhouding_test"
     )
 
+    # Feiten eerst (besluit Peter 17-09, BESLISSINGEN "FEITEN EERST — LEES-ONLY DB-/RLZ-TOEGANG VOOR ANALYSES + KLIKPUNT-GUARD"):
+    # verbinding naar de Cloud SQL-LEESREPLICA `rlz-sql2-lees` (SELECT-only rol `rlz_lezer`, migratie 0154). Leeg = geen
+    # replica geconfigureerd → vrije SQL (`POST /lezen/sql`, `db-lezen --sql`) weigert zichtbaar; bibliotheek-queries draaien
+    # op de runtime-verbinding zoals élke lees-only CLI. Productie: env LEES_DATABASE_URL op service én jobs (deploy.yml) ná
+    # scripts/gcp/leesreplica.sh --apply (owner).
+    lees_database_url: str = ""
+
     # Omgeving voor secret-fallback-guards (zie app/security/envelope.py, migraties/0001).
     environment: str = "dev"
 

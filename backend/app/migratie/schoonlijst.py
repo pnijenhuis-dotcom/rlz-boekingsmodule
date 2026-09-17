@@ -649,6 +649,12 @@ def beoordeel_dubbelen(
                     "bank_mutaties": dekking.bankmutaties,
                     "bank_gelezen": dekking.bank_gelezen,
                     "bank_direct": bank_direct,
+                    # Feiten eerst 17-09 (blok C): élk dubbel-signaal draagt verplicht het bank-toetsresultaat —
+                    # weerlegd = de bank toont voor élk exemplaar een eigen mutatie (geen dubbel), bevestigd = minder
+                    # mutaties dan boekingen (dubbel-kandidaat blijft), geen_mutatie = bank niet gelezen (niet gefilterd).
+                    "bank_toets": (
+                        "weerlegd" if dekking.bank_bevestigd else "bevestigd" if dekking.bank_gelezen else "geen_mutatie"
+                    ),
                 }
                 if dekking.bank_bevestigd:
                     uit["bank_bevestigd"].append(

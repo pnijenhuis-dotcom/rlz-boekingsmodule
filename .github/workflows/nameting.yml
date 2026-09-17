@@ -30,7 +30,12 @@ on:
         description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting | app-bundels)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query]
+      query:
+        description: "Bij onderdeel=query: db-lezen-aanroep, bv. 'document-feiten --param boekstuk=RLZ-28-00000061' of 'bankmutatie-feiten --administratie Vastgoedgroep --param omschrijving=test' (lees-only querybibliotheek; uitkomst → verkenning/lezen-<dd-mm>-<query>.txt)"
+        type: string
+        required: false
+        default: ""
 
 env:
   PROJECT_ID: rlz-boekhouding
@@ -65,12 +70,13 @@ jobs:
         id: meting
         env:
           ONDERDEEL: ${{ inputs.onderdeel || 'alles' }}
+          QUERY: ${{ inputs.query || '' }}
         run: |
           set -uo pipefail
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" && "$ONDERDEEL" != "app-bundels" && "$ONDERDEEL" != "query" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -168,6 +174,29 @@ jobs:
             fi
             echo "STATUS app-bundels: rapport in $UIT (job-exit $rc_ab)"
           fi
+          if [[ "$ONDERDEEL" == "query" ]]; then
+            # Feiten eerst (Peter 17-09 punt 4 / blok D): Cowork laat zonder CC een db-lezen-rapport draaien — lees-only
+            # querybibliotheek (app/lezen/queries, allowlist in nameting.sh), uitkomst als verkenning/lezen-<dd-mm>-<query>.txt.
+            # Alleen de querynaam + --param/--administratie worden doorgegeven; `--sql` is hier bewust niet toegestaan (dat is
+            # de replica-route via POST /lezen/sql of scripts/gcp/db_lezen.sh).
+            [[ -n "$QUERY" ]] || { echo "::error::onderdeel=query vereist input 'query'"; exit 1; }
+            if grep -qE -- '(^|[[:space:]])--(sql|als)([[:space:]]|$)' <<<"$QUERY"; then
+              echo "::error::input 'query' mag geen --sql/--als dragen (vrije SQL loopt uitsluitend via de leesreplica-route)"; exit 1
+            fi
+            QNAAM="$(awk '{print $1}' <<<"$QUERY")"
+            SLUG="$(tr -c 'a-z0-9\n' '-' <<<"$(tr '[:upper:]' '[:lower:]' <<<"$QNAAM")" | tr -s '-' | sed 's/-$//')"
+            UIT="verkenning/lezen-$DATUM-$SLUG.txt"
+            rc_q=0
+            # shellcheck disable=SC2086 — de input is bewust woord-gesplitst (querynaam + parameters)
+            scripts/gcp/nameting.sh db-lezen $QUERY > "$UIT" 2> nameting-query.stderr || rc_q=$?
+            cat nameting-query.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-query.stderr; then
+              echo "::error::db-lezen kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_q)" >> "$UIT"
+            echo "STATUS query ($QNAAM): rapport in $UIT (job-exit $rc_q = uitkomst)"
+          fi
           # Oordeelregel voor het commitbericht: uit het rapport van het GEDRAAIDE onderdeel (werkloop-nazorg 14-09 — run
           # f4c702c droeg de replay-oordeelregel bij een reconciliatie-meting, misleidend): reconciliatie → het
           # reconciliatie-rapport van vandaag, anders het replay-rapport. Geen oordeelregel gevonden = "geen oordeelregel".
@@ -182,11 +211,14 @@ jobs:
           if [[ -f "$OORDEEL_BRON" ]]; then
             OORDEEL="$(grep -m1 -o 'Oordeel: [^*]*' "$OORDEEL_BRON" | cut -c1-140 || true)"
           fi
+          if [[ "$ONDERDEEL" == "query" ]]; then
+            OORDEEL="db-lezen $(awk '{print $1}' <<<"$QUERY") — $(grep -m1 -oE '[0-9]+ rij\(en\)[^|]*' "$UIT" 2>/dev/null | cut -c1-100 || echo 'geen uitkomstregel')"
+          fi
           [[ -n "$OORDEEL" ]] || OORDEEL="geen oordeelregel ($(ls verkenning/nameting-*-"$DATUM".txt 2>/dev/null | wc -l | tr -d ' ') rapport(en) van $DATUM)"
           echo "datum=$DATUM" >> "$GITHUB_OUTPUT"
           echo "oordeel=$OORDEEL" >> "$GITHUB_OUTPUT"
 
-      - name: Uitkomsten committen als nameting-bot (alleen verkenning/nameting-*.txt)
+      - name: Uitkomsten committen als nameting-bot (alleen verkenning/nameting-*.txt en verkenning/lezen-*.txt)
         env:
           ONDERDEEL: ${{ inputs.onderdeel || 'alles' }}
           DATUM: ${{ steps.meting.outputs.datum }}
@@ -195,9 +227,9 @@ jobs:
           set -euo pipefail
           git config user.name "nameting-bot"
           git config user.email "nameting@rlz-boekhouding.iam.gserviceaccount.com"
-          git add -- 'verkenning/nameting-*.txt'
+          git add -- 'verkenning/nameting-*.txt' 'verkenning/lezen-*.txt'
           if git diff --cached --quiet; then
-            echo "geen wijzigingen in verkenning/nameting-*.txt — geen commit"
+            echo "geen wijzigingen in verkenning/nameting-*.txt of verkenning/lezen-*.txt — geen commit"
             exit 0
           fi
           git commit -m "nameting $DATUM $ONDERDEEL — $OORDEEL"

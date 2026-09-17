@@ -64,7 +64,9 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     tekst = _tekst()
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
-    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels\]", tekst)
+    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting, app-bundels, query\]", tekst)
+    # Feiten eerst 17-09 (blok D): onderdeel `query` = db-lezen-rapport (input `query`), nooit --sql/--als via de workflow.
+    assert re.search(r"query:\s*\n\s*description:", tekst) and "--(sql|als)" in tekst
     assert len(_run_stappen()) >= 2, "verwacht minstens de meet- en de commit-stap als run-blok"
 
 
@@ -107,6 +109,8 @@ def test_commit_stap_raakt_alleen_verkenning_nameting_txt() -> None:
     assert adds, "geen git add in de workflow"
     for r in adds:
         assert "verkenning/nameting-*.txt" in r, f"git add buiten verkenning/nameting-*.txt: {r}"
+        # Feiten eerst 17-09 (blok D): óók verkenning/lezen-*.txt (db-lezen-rapporten via onderdeel=query) — niets anders.
+        assert re.fullmatch(r"git\s+add\s+--\s+'verkenning/nameting-\*\.txt'(\s+'verkenning/lezen-\*\.txt')?", r.strip()), r
         assert not re.search(r"git\s+add\s+(-A|--all|\.)(\s|$)", r), f"git add -A/. verboden: {r}"
     assert re.search(r'user\.name\s+"nameting-bot"', _tekst())
     assert "nameting@rlz-boekhouding.iam.gserviceaccount.com" in _tekst()
