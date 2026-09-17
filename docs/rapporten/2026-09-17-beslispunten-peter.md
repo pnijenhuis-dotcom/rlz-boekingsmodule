@@ -63,3 +63,21 @@ vervolg-opdracht via `opdrachten/inbox/`. Werkt in productie: n.v.t. (beslispunt
 3. **Pand-relevante groepen** in de meetlat = 7000 / 8xxx / 1405 / 46xx-70xx; 10xx bank/kas en overig (btw, resultaat) tellen niet.
 4. **Meerdere projecten op één document** → koppeling aan élk project mét zichtbare reden; nooit raden.
 5. **Bankmutaties** hebben geen project → altijd via de adres-terugval (notaris-ontvangsten blijven zo aan het pand hangen).
+
+## Opdracht 6 — VGG blok 10 één regel, één bestemming (`2026-09-17-vgg-blok-10-een-regel-een-bestemming.md`)
+
+1. **Overlap = ROOD-bepalend maar de herbestemming gaat door** (beide bestemmingen zichtbaar in het rapport) i.p.v. de replay te stoppen.
+2. **Liquide middelen = RGS 10xx + de `bank_statement_lines`-codes uit de rekeningmapping**; een administratie met een bank op een ander
+   nummer zou een `UseForPaymentAccount`-toets nodig hebben (niet in `ctx.ledgers`; beslispunt als dat voorkomt).
+3. **Alleen bankregels in een memoriaal (bv. spaar ↔ betaal 1002/1001) = geen RJ-220-rol**, mét reden in de move.
+4. **24 regels zonder bankmutatie**: geen bouw — herleid als kruisposten (1011) en interne overboekingen (1002); controle Peter in RLZ.
+5. **Vijfde meting** pas ná deploy (vervolg-opdracht) — niets doorgerekend op basis van de vierde meting.
+
+## Opdracht 7 — Klant-accordering laag per leverancier (`2026-09-17-accordering-laag-per-leverancier.md`)
+
+1. **Voorrang afdelingsroute > leveranciersroute > administratieroute** (opdracht: default zo).
+2. **Alleen documenten mét crediteur** (inkoopfacturen, verplichtingen) volgen een leveranciersroute; omzet-/verkoopdocumenten niet.
+3. **Casus synthetisch** in `tests/accordering` (gouden set = échte documenten; geen écht document met deze configuratie).
+4. **Deactiveren zonder administratieroute** laat lopende rondes vervallen mét reden (nooit stil); met administratieroute worden ze herberekend.
+5. **UI = blok in de bestaande Klant-accordering-kaart** (opdracht: "één extra veld in de laag-dialoog" — door de verduidelijking
+   "route vervangt" is het een route-niveau instelling met leveranciers + lagen geworden, geen veld per laag).

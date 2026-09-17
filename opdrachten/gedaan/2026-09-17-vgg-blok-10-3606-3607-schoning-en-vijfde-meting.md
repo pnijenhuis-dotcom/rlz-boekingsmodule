@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (modelfix één regel, één bestemming + overlap-guard + kolom RJ-220-tegenzijde; 24 regels lees-only herleid (kruisposten 1011 / spaar 1002, meetbeperking Cloud Logging); vijfde meting ná deploy → vervolg-opdracht vgg-vijfde-meting; werkt in productie: nee), rapport: docs/rapporten/2026-09-17-vgg-blok-10-een-regel-een-bestemming.md
+
 # OPDRACHT 17-09 — VGG → Odoo, run 2 blok 10: 1001-model en RJ-220-herclassificatie claimen dezelfde regel (3606/3607) — modelfix in de replay + vijfde meting (géén writes)
 
 **Aanleiding (vierde meting 16-09 22:45, `docs/rapporten/2026-09-16-vgg-vierde-meting.md`):** ROOD 6 i.p.v. 4. De twee nieuwe

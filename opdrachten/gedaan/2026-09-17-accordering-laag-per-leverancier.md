@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (leveranciersroute vervangt de administratieroute: datamodel 0156, routebepaling op identiteit, herberekening, routes-CRUD, Beheerder-blok LeverancierRoutes; werkt in productie: niet gemeten), rapport: docs/rapporten/2026-09-17-accordering-laag-per-leverancier.md
+
 # OPDRACHT 17-09 — Klant-accordering: accorderingslaag beperkt tot één of meer LEVERANCIERS (vraag Peter 17-09: "kan 1 accordeur facturen van 1 specifieke leverancier zien, de rest niet?")
 
 **Vraag Peter 17-09.** Antwoord Cowork: nog niet gebouwd — een `AccorderingLaag` kent alleen `bedrag_drempel` en optioneel `afdeling_id`
