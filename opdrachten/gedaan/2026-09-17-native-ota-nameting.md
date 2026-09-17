@@ -1,3 +1,5 @@
+> uitgevoerd 2026-09-17 (ochtend; bucket ontbreekt → OTA-bundel niet gemeten, 426-poort werkt in productie: ja; meting als workflow-onderdeel app-bundels klaargezet), rapport: docs/rapporten/2026-09-17-native-ota-nameting.md
+
 # OPDRACHT 17-09 — Native app OTA: productienameting ná deploy + bucket (lees-only; géén writes buiten de meetstappen)
 
 Vervolg op `opdrachten/gedaan/2026-09-16-native-app-live-updates-ota.md` (rapport `docs/rapporten/2026-09-16-native-ota.md`).
