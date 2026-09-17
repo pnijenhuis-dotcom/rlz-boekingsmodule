@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       onderdeel:
-        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default)"
+        description: "Welk onderdeel (alles | a schoonlijst | b panden | c replay | d rlz_dubbel snede 2 | e memoriaalregels | reconciliatie | btw-default | doorbelasting-aansluiting)"
         type: choice
         default: alles
-        options: [alles, a, b, c, d, e, reconciliatie, btw-default]
+        options: [alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting]
 
 env:
   PROJECT_ID: rlz-boekhouding
@@ -70,7 +70,7 @@ jobs:
           DATUM="$(TZ=Europe/Amsterdam date +%d-%m)"
           echo "onderdeel=$ONDERDEEL datum=$DATUM"
           rc_vgg=0
-          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" ]]; then
+          if [[ "$ONDERDEEL" != "reconciliatie" && "$ONDERDEEL" != "btw-default" && "$ONDERDEEL" != "doorbelasting-aansluiting" ]]; then
             # exit 3 = deploy-drift (service ≠ jobs) → workflow rood; een rood rapport geeft het script zelf exit 0.
             scripts/gcp/vgg_blok7_nameting.sh "$ONDERDEEL" || rc_vgg=$?
             if [[ $rc_vgg -ne 0 ]]; then
@@ -108,6 +108,29 @@ jobs:
               [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_btw)" >> "$UIT"
               echo "STATUS btw-default ($adm): rapport in $UIT (job-exit $rc_btw = uitkomst)"
             done
+          fi
+          if [[ "$ONDERDEEL" == "doorbelasting-aansluiting" ]]; then
+            # Doorbelasting-aansluiting KF ↔ doelentiteiten (Peter 12-09/16-09; nameting 17-09): alleen op verzoek (niet in "alles" —
+            # de dagelijkse reconciliatie draait hetzelfde blok al). Lees-only CLI op de job-image; exit 3 = webfilter → het rapport zegt
+            # zelf "meting ongeldig". Daarna de herkoppeling-regel van de laatste sync-alles-runs (job rlz-sync) uit Cloud Logging
+            # (logging.viewer op nameting@) achter het CLI-rapport — verwacht "Kempen Chalets" GEKOPPELD.
+            UIT="verkenning/nameting-doorbelasting-aansluiting-$DATUM.txt"
+            rc_da=0
+            scripts/gcp/nameting.sh doorbelasting-aansluiting --bron "Kempen Facilities" --jaar 2026 > "$UIT" 2> nameting-da.stderr || rc_da=$?
+            cat nameting-da.stderr >&2
+            if grep -q "geen executie-naam gevonden\|PERMISSION_DENIED\|Reauthentication\|does not have permission" nameting-da.stderr; then
+              echo "::error::doorbelasting-aansluiting kon geen job-executie starten (auth/IAM) — zie stderr hierboven"
+              exit 1
+            fi
+            [[ -s "$UIT" ]] || echo "(lege uitvoer — job-executie eindigde met code $rc_da)" >> "$UIT"
+            {
+              echo
+              echo "== Cloud Logging: herkoppeling doelentiteiten (job rlz-sync, laatste 7 dagen, nieuwste eerst) =="
+              gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="rlz-sync" AND (textPayload:"herkoppeling doelentiteiten" OR textPayload:"GEKOPPELD" OR textPayload:"LET-OP")' \
+                --project "$PROJECT_ID" --freshness=7d --limit 60 --order=desc --format="value(timestamp,textPayload)" \
+                || echo "(Cloud Logging niet leesbaar — herkoppeling-regel niet gemeten)"
+            } >> "$UIT"
+            echo "STATUS doorbelasting-aansluiting: rapport in $UIT (job-exit $rc_da = uitkomst; 3 = webfilter, meting ongeldig)"
           fi
           # Oordeelregel voor het commitbericht: uit het rapport van het GEDRAAIDE onderdeel (werkloop-nazorg 14-09 — run
           # f4c702c droeg de replay-oordeelregel bij een reconciliatie-meting, misleidend): reconciliatie → het

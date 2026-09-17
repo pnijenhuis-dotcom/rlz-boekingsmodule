@@ -64,7 +64,7 @@ def test_workflow_bestaat_met_schedule_en_dispatch_onderdeel() -> None:
     tekst = _tekst()
     assert re.search(r'schedule:\s*\n\s*- cron: "30 5 \* \* \*"', tekst), "dagelijks 05:30 UTC ontbreekt"
     assert "workflow_dispatch:" in tekst and "onderdeel:" in tekst
-    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default\]", tekst)
+    assert re.search(r"options: \[alles, a, b, c, d, e, reconciliatie, btw-default, doorbelasting-aansluiting\]", tekst)
     assert len(_run_stappen()) >= 2, "verwacht minstens de meet- en de commit-stap als run-blok"
 
 
@@ -211,3 +211,20 @@ def test_commitbericht_draagt_onderdeel_en_oordeel() -> None:
     assert re.search(r'git commit -m "nameting \$DATUM \$ONDERDEEL — \$OORDEEL"', _tekst())
     assert 'OORDEEL_BRON="verkenning/nameting-reconciliatie-$DATUM.txt"' in _tekst()
     assert 'OORDEEL_BRON="verkenning/nameting-vgg-replay-$DATUM.txt"' in _tekst()
+
+
+# ---- (7) onderdeel doorbelasting-aansluiting (nameting 17-09) -----------------------------------------------------------
+
+
+def test_onderdeel_doorbelasting_aansluiting_alleen_op_verzoek_en_lees_only() -> None:
+    """De KF-aansluiting is een dispatch-onderdeel (niet in "alles": het dagelijkse reconciliatieblok draait hetzelfde), roept
+    uitsluitend nameting.sh aan met de lees-only CLI en schrijft naar verkenning/nameting-doorbelasting-aansluiting-<dd-mm>.txt."""
+    meet = next(r for r in _run_stappen() if "OORDEEL_BRON" in r)
+    assert 'if [[ "$ONDERDEEL" == "doorbelasting-aansluiting" ]]; then' in meet
+    assert 'scripts/gcp/nameting.sh doorbelasting-aansluiting --bron "Kempen Facilities" --jaar 2026' in meet
+    assert 'UIT="verkenning/nameting-doorbelasting-aansluiting-$DATUM.txt"' in meet
+    # "alles" slaat het onderdeel over: de vgg-tak én de reconciliatie-/btw-takken kennen het niet als "alles"-lid
+    assert '"$ONDERDEEL" != "doorbelasting-aansluiting"' in meet
+    assert '"$ONDERDEEL" == "alles" || "$ONDERDEEL" == "doorbelasting-aansluiting"' not in meet
+    # Cloud Logging lezen mag (logging.viewer), schrijven/uitvoeren niet — gedekt door test_productie_aanroepen_alleen_via_de_nameting_scripts
+    assert 'resource.labels.job_name="rlz-sync"' in meet
