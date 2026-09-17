@@ -1,3 +1,5 @@
+uitgevoerd 2026-09-17, rapport: docs/rapporten/2026-09-17-vgg-schrijf-c-na-deploy.md
+
 # OPDRACHT 17-09 — VGG → Odoo: SCHRIJF c ná deploy (bewijspaar RLZ-01-00000082 posten + reconcilieren) en de zesde meting (project-dekking)
 
 Domeinen: vgg-odoo-migratie
