@@ -216,6 +216,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Nooit auto-toewijzen bij twijfel; tenaamstelling leidend, afzender = hint; "hoort niet bij ons" met reden; verzamelbak leert van handmatige toewijzingen.
   2. AI alleen voor extractie/segmentatie, altijd met deterministische checks eroverheen; kostengrens € 100/maand is een harde poort, boven de grens nooit stil; schema's ≤ 16 unions, nieuwe velden sentinel-gebaseerd.
   3. UBL is deterministisch (kop, crediteur, regels, datums uit de XML); template-terugval per bekende leverancier: één rood = volledig verworpen; élke extractie loopt via de wachtrij (201 < 2 s).
+  4. Bulk-upload (Peter 18-09): élke upload-plek neemt honderden bestanden/een map als één batch (wachtrij max 4, uitkomst per bestand, "al aanwezig" = duplicaat-vlag, geen fout); server ongewijzigd — zie BESLISSINGEN "BULK-UPLOAD — MEERDERE BESTANDEN TEGELIJK (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/intake-extractie.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Automatisch boeken, autoboek-kandidaten en de AI-plausibiliteitstoets** — Opt-in per leverancier en per administratie (leren ná drie identieke mens-boekingen), harde checks blijven blokkerend, volumerem, AI-toets als extra poort mét uitval = doorlopen zichtbaar, autonomie-toekomstlijn.

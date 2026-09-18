@@ -63,6 +63,24 @@
   NIET achter de AI-AVG-gate, één rood = VOLLEDIG verworpen; migratie 0094) — zie BESLISSINGEN "EXTRACTIE-TERUGVAL
   TEMPLATES".
 
+<!-- toegevoegd 18-09-2026, opdracht "bulk-upload-meerdere-bestanden" -->
+- **Bulk-upload — meerdere bestanden tegelijk (Peter 18-09 "180 documenten bij BLOW, gaat niet"; geen migratie, geen serverwijziging;
+  BESLISSINGEN "BULK-UPLOAD — MEERDERE BESTANDEN TEGELIJK (Peter 18-09)"):** élke upload-plek (klantpagina, documentenlijst,
+  werkvoorraad-sleepzone/verzamelbak) draait dezelfde `UploadZone` mét `<input multiple>` en neemt álle gesleepte bestanden — óók een
+  gesleepte MAP (`webkitGetAsEntry` recursief) — als één batch; de soort-keuze geldt voor de hele batch. De wachtrij
+  (`werkvoorraad/uploadWachtrij.ts`, puur; `useUploadWachtrij.tsx`) verstuurt maximaal 4 tegelijk over de BESTAANDE per-bestand-routes
+  (`POST /administraties/{id}/documenten`, `/intake/bestand`, `/intake/eml` — server ongewijzigd, extractie via de wachtrij-job, AI-kostengrens
+  blijft de harde poort). Per bestand een status mét leesbare reden: `klaar` · `al_aanwezig` (server-vlag `mogelijk_duplicaat_van` of een al
+  verwerkte .eml — géén fout; de server registreert het exemplaar wél, de duplicaten-motor voert cent-exacte dubbelen af) · `fout` (413 te groot
+  · 415/422 reden — niet herkansbaar; 429/5xx/netwerk — herkansbaar) · `onzeker` (timeout: staat waarschijnlijk al in de lijst, nooit opnieuw
+  aanbieden) · `gestopt`. Voortgang "37 van 180 · 2 fouten", knoppen "Stoppen" (lopende af, rest niet gestart) en "Mislukte opnieuw (N)"
+  (alleen herkansbare), samenvatting "180 aangeboden · 176 nieuw · 3 al aanwezig · 1 fout", de lijst ververst precies één keer ná de batch,
+  pagina verlaten tijdens een batch = browserwaarschuwing (`beforeunload`). Niet-ondersteund type = zichtbare fout-rij; verborgen OS-bestanden
+  (.DS_Store) vallen weg. Server-toets: 20 MB per bestand < 32 MB Cloud Run, concurrency-default 80 per instance, 4 parallel = ruim; élke
+  AI-upload triggert een executie van `rlz-extractie-wachtrij` (geen trigger-dedupe, idempotent via de statusmachine) — doorlooptijd van
+  180 uploads is NIET gemeten (nameting). Guards `uploadWachtrij.test.ts` + `useUploadWachtrij.test.tsx`. Open beslispunt: server-side
+  sha256-kortsluiting (409 `al_aanwezig` op de directe upload-route) — apart besluit, raakt de gouden set.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verzamelbak "Niet toegewezen" (preview, optimistisch toewijzen, verplaatsen, documentenlijst) (CLAUDE.md `ed6d176` r. 494–528)

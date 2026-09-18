@@ -11112,3 +11112,28 @@ project), waarop wij onderdelen, termijnen etc. kunnen selecteren, waarna de fac
 relatie Kempen-doorbelasting = zelfde motor zonder spiegel, accordering) staan letterlijk op de tab Notities van de mockup en zijn
 onderdeel van het akkoord. Nooit dubbel: een termijn/meerwerkregel/item zit in hoogstens één factuuropdracht (DB-uniek per bronrij);
 een factuuropdracht wordt nooit verwijderd (intrekken = status mét reden).
+
+## BULK-UPLOAD — MEERDERE BESTANDEN TEGELIJK (Peter 18-09) — één zone, wachtrij max 4, uitkomst per bestand; geen migratie, geen serverwijziging
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-bulk-upload-meerdere-bestanden.md`, rapport
+`docs/rapporten/2026-09-18-bulk-upload-meerdere-bestanden.md`). Canonieke regeltekst: `docs/regels/intake-extractie.md` alinea
+"Bulk-upload — meerdere bestanden tegelijk". Werkt in productie: niet gemeten — meetrecept: 20 testbestanden in één drop op het testaccount
+→ samenvatting klopt, 20 rijen, X min tot alle extracties klaar.**
+
+**Aanleiding:** Peter sleepte 180 BLOW-bestanden → één ging omhoog (`UploadZone.tsx` las `files?.[0]`, geen `multiple`).
+
+| Punt | Besluit/gedrag | Code |
+|---|---|---|
+| 1 Meerdere bestanden | `<input multiple>` + álle `dataTransfer`-items incl. gesleepte mappen (webkitGetAsEntry recursief); soort-keuze voor de hele batch; accept-lijst ongewijzigd, niet-ondersteund = zichtbare fout-rij | `UploadZone.tsx`, `uploadWachtrij.ts::verzamelBestanden/filterToegestaan` |
+| 2 Wachtrij | max 4 gelijktijdig; status wachten → bezig → klaar / al aanwezig / fout (reden) / onzeker / niet gestart; "Stoppen" = lopende af, rest niet gestart; "Mislukte opnieuw (N)" = alleen herkansbare (netwerk/429/5xx/niet gestart); voortgang "37 van 180 · 2 fouten"; beforeunload-waarschuwing | `uploadWachtrij.ts::voerWachtrijUit/classificeerFout`, `useUploadWachtrij.tsx` |
+| 3 Na afloop | samenvatting "180 aangeboden · 176 nieuw · 3 al aanwezig · 1 fout"; lijst ververst één keer (`onAfgerond`); extractie via de bestaande wachtrij-job; AI-kostengrens blijft de harde poort in de server | `UploadBatchStatus` |
+| 4 Server | ongewijzigd: 20 MB/bestand < 32 MB Cloud Run, concurrency-default 80/instance, upload in threadpool; élke AI-upload = één job-executie `rlz-extractie-wachtrij` (geen trigger-dedupe, idempotent); geen 429 op uploaden in de code (wachtrij toont 'm wél leesbaar) | deploy.yml, `documenten/router.py`, `wachtrij.py` |
+| 5 Eén component | klantpagina + documentenlijst (`KlantUpload`) en werkvoorraad/verzamelbak (`EmlUploadZone`) delen zone + wachtrij; alleen de per-bestand-`uploader` verschilt | `KlantStanden.tsx`, `WerkvoorraadScreen.tsx` |
+
+**Beslispunten (gekozen):** (1) "al aanwezig" = frontend-vertaling van de bestaande `mogelijk_duplicaat_van`-vlag (server registreert het
+exemplaar wél; de opdracht-aanname "409 → 1 document + 179 al aanwezig" klopte niet met de code) — server-side sha256-kortsluiting op de
+directe route = apart vervolgbesluit (raakt de gouden set); (2) timeout = `onzeker`, nooit herkansbaar (blok 1c 08-09); (3) 413/415/422
+niet herkansbaar; (4) lijst-verversing één keer ná de batch, ook ná een herkansingsronde.
+
+**Tests:** `uploadWachtrij.test.ts` 7, `useUploadWachtrij.test.tsx` 3, bestaande upload-/lijst-tests 65 groen; overflow-sweep
+harness-werkvoorraad 40/40 groen.
