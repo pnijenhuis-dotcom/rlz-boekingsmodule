@@ -145,6 +145,8 @@ def boek_document_met_doorbelasting(
     materiaal_afwijking_bevestigd: bool = False,
     bron_client=None,
     doel_client_factory=None,
+    extern_checks: str | None = None,
+    timing=None,  # noqa: ANN001 — checks_extern.StapTiming | None (boeken sneller 18-09)
 ) -> BoekMetDoorbelastingResultaat:
     """Boeken + (indien klaargezet) doorbelasten in één gang. `bron_client`/`doel_client_factory`
     zijn de test-seams van de doorbelastingsmotor (doorgegeven, nooit zelf gebruikt). Alle inkoop-poorten en -fouten van
@@ -159,6 +161,8 @@ def boek_document_met_doorbelasting(
             extra_overgang_detail=extra_overgang_detail,
             match_afwijking_bevestigd=match_afwijking_bevestigd,
             materiaal_afwijking_bevestigd=materiaal_afwijking_bevestigd,
+            extern_checks=extern_checks,
+            timing=timing,
         )
         return BoekMetDoorbelastingResultaat(
             boek=boek, doorbelasting_run_id=None, doorbelasting=None, doorbelasting_fout=None
@@ -168,7 +172,13 @@ def boek_document_met_doorbelasting(
 
     # Punt 23: vóór de inkoopboeking vaststellen of deze gang ná een compleet klant-akkoord loopt —
     # dan reist de hoge noodrem mee naar de doorbelastingsmotor (zelfde gang, zelfde uitzondering).
-    _, na_klant_akkoord = documenten_boeken.volumerem_limiet(administratie_id=administratie_id, document_id=document_id)
+    rem_herkomst = documenten_boeken.volumerem_herkomst(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        extra_overgang_detail=extra_overgang_detail,
+    )
+    na_klant_akkoord = rem_herkomst == documenten_boeken.volumerem.NA_KLANT_AKKOORD
 
     boek = documenten_boeken.boek_document(
         administratie_id=administratie_id,
@@ -177,6 +187,8 @@ def boek_document_met_doorbelasting(
         extra_overgang_detail={**(extra_overgang_detail or {}), "doorbelasting_na_boeken": str(run.id)},
         match_afwijking_bevestigd=match_afwijking_bevestigd,
         materiaal_afwijking_bevestigd=materiaal_afwijking_bevestigd,
+        extern_checks=extern_checks,
+        timing=timing,
     )
 
     # Inkoopfactuur staat in RLZ. Vanaf hier is elke fout een zichtbare doorbelasting-fout op de
@@ -196,6 +208,7 @@ def boek_document_met_doorbelasting(
             bron_client=bron_client,
             doel_client_factory=doel_client_factory,
             na_klant_akkoord=na_klant_akkoord,
+            herkomst=rem_herkomst,
         )
     except doorbelasting_boeken.BoekenGeblokkeerdDoorChecks as exc:
         fout = "Doorbelasting geblokkeerd door harde checks: " + "; ".join(

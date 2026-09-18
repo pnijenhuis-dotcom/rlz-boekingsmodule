@@ -27,10 +27,10 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten import volumerem
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boeken import (
     _KAN_BOEKPOGING_STARTEN_VANUIT,
@@ -39,7 +39,6 @@ from app.documenten.boeken import (
     OngeldigeBoekpoging,
     RlzBoekingMislukt,
     VolumeremBereikt,
-    _boekingen_vandaag,
     _is_boeken_toegestaan,
     _rlz_client_voor,
     _zet_boeken_mislukt,
@@ -227,9 +226,14 @@ def boek_verkoop_document(
         with scoped_session(administratie_id) as session:
             if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
                 raise BoekenUitgeschakeld("Boeken staat uit voor deze administratie of via de globale kill switch")
-            limiet = settings.max_boekingen_per_dag_per_administratie
-            if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
-                raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")
+            # Volumerem (SPOED 18-09): automatisch = 20/dag, mens = 500-noodrem — één helper, herkomst uit
+            # de 'automatisch'-markering of de actor.
+            volumerem.toets_documentboekingen(
+                session,
+                administratie_id,
+                herkomst=volumerem.bepaal_herkomst(actor_id=actor_id, overgang_detail=extra_overgang_detail),
+                fout=VolumeremBereikt,
+            )
 
         voorstel = haal_verkoop_voorstel_op(administratie_id=administratie_id, document_id=document_id)
         assert voorstel.debiteur_naam is not None and voorstel.factuurnummer is not None  # checks draaiden al

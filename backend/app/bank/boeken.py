@@ -53,11 +53,11 @@ from app.bank.models import (
     BankMutatie,
     BankRegel,
 )
-from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import volumerem
 from app.documenten.rlz_ids import rlz_bank_boeking_cyclus_id, rlz_bank_deel_boeking_id
 from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
@@ -78,7 +78,7 @@ class BankBoekenUitgeschakeld(BankBoekenFout):
     """Schrijf-failsafe: boeken staat uit voor deze administratie of via de kill switch."""
 
 
-class BankVolumeremBereikt(BankBoekenFout):
+class BankVolumeremBereikt(BankBoekenFout, volumerem.VolumeremBereikt):
     pass
 
 
@@ -323,11 +323,16 @@ def boek_mutatie_direct(
             raise BankBoekenUitgeschakeld(
                 "Boeken staat uit voor deze administratie of via de globale kill switch"
             )
-        limiet = settings.max_boekingen_per_dag_per_administratie
-        if _bankboekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
-            raise BankVolumeremBereikt(
-                f"Dagelijkse limiet van {limiet} bankboekingen bereikt voor deze administratie"
-            )
+        # Volumerem (SPOED 18-09): automatisch (systeem-actor / bron automatisch) = 20/dag, mens = 500-noodrem —
+        # één helper voor álle boekpaden.
+        volumerem.toets_bankboekingen(
+            session,
+            administratie_id,
+            herkomst=volumerem.bepaal_herkomst(
+                actor_id=actor_id, overgang_detail={"automatisch_geboekt": bron == BankBoekingBron.AUTOMATISCH}
+            ),
+            fout=BankVolumeremBereikt,
+        )
 
         if deel is None:
             bestaande = session.scalars(

@@ -338,7 +338,7 @@ class TestPoorten:
         beheerder_id: uuid.UUID,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "max_boekingen_per_dag_per_administratie", 0)
+        monkeypatch.setattr(settings, "max_handmatige_boekingen_per_dag_per_administratie", 0)  # mens op de knop (18-09)
         bron = FakeDoorbelastingClient()
         with pytest.raises(VolumeremBereikt):
             _boek(onboarded_opzet, beheerder_id, bron=bron, doel=FakeDoorbelastingClient())

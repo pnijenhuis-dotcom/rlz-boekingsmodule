@@ -33,10 +33,10 @@ from typing import Any
 from sqlalchemy import func, select
 
 from app.bank.models import AfletterOpdrachtStatus, BankAfletterOpdracht, BankMutatie, PaymentItemCache
-from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
+from app.documenten import volumerem
 from app.rlz.client import RlzApiError, RlzClient
 from app.tijd import TIJDZONE_NL, vandaag_nl
 
@@ -647,7 +647,7 @@ def verwerk_exacte_matches_automatisch(
     from app.bank import voorstellen
     from app.bank.matchmotor import VoorstelSoort
 
-    limiet = settings.max_boekingen_per_dag_per_administratie
+    limiet = volumerem.limiet_voor(volumerem.AUTOMATISCH)  # SPOED 18-09: auto-afletteren = automatische rem (20/dag)
     gedaan = 0
     fouten: list[str] = []
     for kandidaat in voorstellen.open_mutaties_met_voorstellen(administratie_id=administratie_id):
@@ -661,9 +661,12 @@ def verwerk_exacte_matches_automatisch(
         if kandidaat.voorstel.payment_item_id is None or kandidaat.afletter_opdracht is not None:
             continue
         with scoped_session(administratie_id) as session:
-            if _api_afletteringen_vandaag(session, administratie_id=administratie_id) >= limiet:
+            teller = _api_afletteringen_vandaag(session, administratie_id=administratie_id)
+            if teller >= limiet:
                 fouten.append(
-                    f"volumerem: dagelijkse limiet van {limiet} automatische afletteringen bereikt"
+                    volumerem.melding(
+                        herkomst=volumerem.AUTOMATISCH, teller=teller, limiet=limiet, soort="afletteringen"
+                    ).replace("handmatig boeken", "handmatig afletteren")
                 )
                 break
         try:

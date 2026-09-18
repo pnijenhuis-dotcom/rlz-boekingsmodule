@@ -389,7 +389,7 @@ class TestVerkoopAutoboeken:
         # daarná — het document blijft zichtbaar mensenwerk, niet geboekt.
         assert _status(admin_engine, document_id) == "klaar_om_te_boeken"
         [reden] = _weiger_redenen(admin_engine, document_id)
-        assert "limiet" in reden.lower()
+        assert "volumerem automatisch boeken" in reden.lower()  # SPOED 18-09: melding noemt rem + teller + handeling
 
     def test_boeken_toggle_uit_weigert(
         self,

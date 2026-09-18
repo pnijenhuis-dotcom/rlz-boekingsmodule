@@ -31,11 +31,10 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
-from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, Grootboekrekening
 from app.db.session import scoped_session
-from app.werkvoorraad import tellers as werkvoorraad_tellers
+from app.documenten import volumerem
 from app.documenten.boeken import (
     BoekenUitgeschakeld,
     VolumeremBereikt,
@@ -92,6 +91,7 @@ from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync.models import TaxRateCache, VendorCache
 from app.tijd import vandaag_nl
+from app.werkvoorraad import tellers as werkvoorraad_tellers
 
 logger = logging.getLogger(__name__)
 
@@ -375,6 +375,7 @@ def boek_doorbelasting_run(
     bron_client: RlzClient | None = None,
     doel_client_factory: Callable[[uuid.UUID], RlzClient] | None = None,
     na_klant_akkoord: bool = False,
+    herkomst: volumerem.Herkomst | None = None,
 ) -> dict[str, str]:
     """Boekt de run per doelentiteit (onafhankelijk: één falende doelentiteit stopt de rest
     niet — mockup: "zichtbare status per deelboeking"). Retourneert status per mapping-id.
@@ -462,16 +463,20 @@ def boek_doorbelasting_run(
 
         # volumerem: eigen telling (elke doelentiteit = één tweezijdige boeking); ná een compleet
         # klant-akkoord in dezelfde gang de hoge noodrem (punt 23).
-        limiet = (
-            settings.max_boekingen_na_klant_akkoord_per_dag_per_administratie
-            if na_klant_akkoord
-            else settings.max_boekingen_per_dag_per_administratie
+        # SPOED 18-09: herkomst via de gedeelde helper — een spiegel uit een automatische bron (systeem-actor /
+        # 'automatisch'-markering in dezelfde gang) valt onder de 20/dag-rem, "Boeken + doorbelasten" door een mens en
+        # de gang ná een compleet klant-akkoord onder de 500-noodrem. De doorbelastings-tabel kent geen actor-kolom:
+        # de teller blijft de eigen dagteller over álle doorbelastings-boekingen (bewust conservatief).
+        rem_herkomst = herkomst or volumerem.bepaal_herkomst(actor_id=actor_id, na_klant_akkoord=na_klant_akkoord)
+        volumerem.toets(
+            session,
+            administratie_id,
+            herkomst=rem_herkomst,
+            teller=_eigen_boekingen_vandaag(session, administratie_id=administratie_id),
+            extra=len(te_boeken),
+            soort="doorbelastings-boekingen",
+            fout=VolumeremBereikt,
         )
-        if _eigen_boekingen_vandaag(session, administratie_id=administratie_id) + len(te_boeken) > limiet:
-            raise VolumeremBereikt(
-                f"{'Noodrem: dagelijkse' if na_klant_akkoord else 'Dagelijkse'} limiet van {limiet} "
-                "doorbelastings-boekingen zou overschreden worden"
-            )
 
     if not te_boeken:
         raise DoorbelastingFout("Alle doelentiteiten zijn al geboekt voor dit document")

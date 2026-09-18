@@ -298,7 +298,9 @@ class TestAutoboekPad:
         document_id = _upload(administratie_id, gescoopte_gebruiker, opslag)
         assert _status(admin_engine, document_id) != "geboekt"
         [reden] = _audit_redenen(admin_engine, document_id)
-        assert "limiet" in reden.lower()
+        # SPOED 18-09: de melding noemt rem, teller en handeling — "Volumerem automatisch boeken: 0 van 0 … handmatig boeken kan
+        # gewoon door" (geen kaal "limiet bereikt" meer).
+        assert "volumerem automatisch boeken" in reden.lower() and "handmatig boeken kan gewoon door" in reden
 
     def test_accordering_aan_weigert_direct_autoboeken(
         self,

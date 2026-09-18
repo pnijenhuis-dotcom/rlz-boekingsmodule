@@ -218,9 +218,15 @@ class Settings(BaseSettings):
     # Punt 23 (besluit Peter 28-08, opruimrun): boekingen die volgen op een COMPLEET klant-akkoord
     # (accorderingspad, incl. de herstel-CLI) zijn uitgezonderd van de 20/dag-rem — de mens heeft
     # al per document op de knop gedrukt, de rem is een vangnet tegen ongewenste automatisering.
-    # Eigen hoge vangrail als noodrem (zelfde zichtbare boek_fout-afhandeling). Autoboek-paden
-    # (opt-ins, bank, verkoop) blijven onverkort onder de rem hierboven.
+    # VERVALLEN 18-09 (zie hieronder): dezelfde 500-noodrem als handmatig boeken; veld blijft voor env-compatibiliteit.
     max_boekingen_na_klant_akkoord_per_dag_per_administratie: int = 200
+    # SPOED Peter 18-09 ("Dagelijkse limiet van 20 boekingen bereikt" bij HANDMATIG boeken van 180 BLOW-bonnen): de
+    # 20/dag-rem hierboven geldt sinds 18-09 UITSLUITEND voor automatische boekingen (markering `automatisch_geboekt`).
+    # Handmatig boeken (kantoor-actor op de knop, incl. bulk) én boeken ná een compleet klant-akkoord vallen onder DEZE
+    # hoge noodrem — één mens-teller, één limiet (de 200-setting hierboven is daarmee VERVALLEN: blijft leesbaar voor
+    # oude env-sets, wordt niet meer gelezen). Nog steeds een noodrem tegen een runaway, geen bedrijfsvoeringslimiet.
+    # Eén helper voor álle boekpaden: `app/documenten/volumerem.py`.
+    max_handmatige_boekingen_per_dag_per_administratie: int = 500
     # Duplicaat-auto-afvoer (besluit Peter 04-09, migratie 0105): max. automatisch afgevoerde
     # duplicaten per administratie per kalenderdag — noodrem tegen een runaway (bv. een leverancier
     # die per ongeluk alle facturen hetzelfde nummer geeft), geen bedrijfsvoeringslimiet. Boven de rem
@@ -261,6 +267,21 @@ class Settings(BaseSettings):
     # wachtrij gaat triggert één job-uitvoering i.p.v. een in-process thread (die op Cloud Run
     # met request-based CPU buiten een request stilvalt); leeg = dev-threadpool.
     extractie_wachtrij_job_resource: str | None = None
+    # Boeken sneller (Peter 18-09, BESLISSINGEN "BOEKEN SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER"):
+    # - de achtergrond-schrijver (status wordt_geboekt → RLZ-write in de worker). Cloud: on-demand job
+    #   `rlz-boek-wachtrij` (zelfde trigger-patroon als de extractie-wachtrij) + scheduler-vangnet elke 2 min;
+    #   None (dev/tests) = in-process thread.
+    boek_wachtrij_job_resource: str | None = None
+    # - een document dat langer dan zoveel minuten op wordt_geboekt staat zonder afgeronde claim = gestrande
+    #   verwerker → herstel-vangnet (opnieuw claimen/enqueuen) + reconciliatie-bevinding (start in `meten`).
+    boek_wachtrij_herstel_minuten: int = 10
+    # - het EXTERNE deel van de harde checks (IBAN-seed, RLZ-/Odoo-duplicaatquery, kandidaten ± 60 d) wordt per
+    #   document gecachet op vingerafdruk; geldig zolang de vingerafdruk gelijk is én de run jonger is dan dit.
+    checks_extern_cache_minuten: int = 15
+    # - voorverwarmen: bij het openen van document X vraagt de frontend alvast de externe checks van het volgende
+    #   document aan (`POST …/boekvoorstel/checks?voorverwarm=1`, max 1 tegelijk). Default AAN (kernprincipe 7);
+    #   uitzetten = zichtbaar in de reconciliatiemail (teller verwacht/gedaan/overgeslagen).
+    checks_voorverwarmen: bool = True
     # Eerste-sync-run van de onboarding-wizard (feedbackronde 26-08 punt 5:
     # "projects/…/jobs/rlz-eerste-sync"). Gezet = job-trigger, leeg = dev-thread.
     eerste_sync_job_resource: str | None = None

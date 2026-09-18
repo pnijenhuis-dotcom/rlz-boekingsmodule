@@ -354,7 +354,8 @@ class TestBoekDocumentFailsafes:
     ) -> None:
         from app.config import settings
 
-        monkeypatch.setattr(settings, "max_boekingen_per_dag_per_administratie", 1)
+        # SPOED 18-09: een mens op de knop valt onder de handmatige noodrem, niet onder de 20/dag-automatiseringsrem.
+        monkeypatch.setattr(settings, "max_handmatige_boekingen_per_dag_per_administratie", 1)
         fake_client = FakeBoekClient()
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake_client)
 

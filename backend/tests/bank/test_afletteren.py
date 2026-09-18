@@ -614,7 +614,7 @@ def test_exacte_matches_automatisch_achter_optin_en_volumerem(
         administratie_id=administratie_id, client=fake
     )
     assert gedaan2 == 0
-    assert any("volumerem" in f for f in fouten2)
+    assert any("volumerem" in f.lower() and "handmatig afletteren kan gewoon door" in f for f in fouten2)  # melding 18-09
 
 
 # --------------------------------------------------------------- blok 2 bundel 08-09: IBAN-geheugen

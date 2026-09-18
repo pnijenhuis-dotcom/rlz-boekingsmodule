@@ -43,7 +43,6 @@ from app.bank.boeken import (
     BankMutatieNietGevonden,
     BankVolumeremBereikt,
     MutatieAlAfgeletterd,
-    _bankboekingen_vandaag,
     _is_boeken_toegestaan,
 )
 from app.bank.models import (
@@ -52,10 +51,10 @@ from app.bank.models import (
     BankRelatieBoekingStatus,
     RelatieSoort,
 )
-from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import Grootboekrekening
 from app.db.session import scoped_session
+from app.documenten import volumerem
 from app.documenten.rlz_ids import rlz_bank_aanbetaling_id
 from app.rlz.aangifte import AangiftePoort, blokkeer_bij_ingediende_aangifte
 from app.rlz.client import RlzApiError, RlzClient
@@ -214,12 +213,14 @@ def boek_mutatie_op_relatie(
             raise BankBoekenUitgeschakeld(
                 "Boeken staat uit voor deze administratie of platformbreed — geen wijziging in Reeleezee"
             )
-        if _bankboekingen_vandaag(session, administratie_id=administratie_id) + _relatieboekingen_vandaag(
-            session, administratie_id=administratie_id
-        ) >= settings.max_boekingen_per_dag_per_administratie:
-            raise BankVolumeremBereikt(
-                f"Volumerem: al {settings.max_boekingen_per_dag_per_administratie} bankboekingen vandaag"
-            )
+        # Volumerem (SPOED 18-09): relatieboekingen hebben altijd een mens op de knop → 500-noodrem; de systeem-actor
+        # (als die hier ooit komt) valt onder de 20/dag-rem. Gedeelde teller direct + relatie, één helper.
+        volumerem.toets_bankboekingen(
+            session,
+            administratie_id,
+            herkomst=volumerem.bepaal_herkomst(actor_id=actor_id),
+            fout=BankVolumeremBereikt,
+        )
         if deel_id is None:
             bestaand = session.scalars(
                 select(BankRelatieBoeking).where(

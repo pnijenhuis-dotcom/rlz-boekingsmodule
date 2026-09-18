@@ -235,15 +235,22 @@ class TestPunt23VolumeremVsKlantAkkoord:
         assert resultaat.geboekt and resultaat.boek_fout is None
         assert document_status(admin_engine, klaar_document) == "geboekt" and len(fake.puts) == 1
 
-    def test_autoboekpad_blijft_onder_de_20_rem(
+    def test_handmatig_boeken_valt_niet_onder_de_20_rem(
         self, klaar_document, administratie_id, gescoopte_gebruiker, boeken_aan, admin_engine: Engine, monkeypatch
     ) -> None:
-        """Zonder accordering (het gewone/autoboek-pad) bijt de 20/dag-rem onverkort — de noodrem
-        speelt daar geen rol, ook niet als die ruim staat."""
+        """SPOED 18-09 (herziet 28-08): de 20/dag-rem geldt UITSLUITEND voor automatische boekingen — een mens op de
+        knop boekt gewoon door (de handmatige noodrem van 500 staat hier ruim)."""
         fake = _patch_rlz(monkeypatch)
         monkeypatch.setattr(boeken.settings, "max_boekingen_per_dag_per_administratie", 0)
-        monkeypatch.setattr(boeken.settings, "max_boekingen_na_klant_akkoord_per_dag_per_administratie", 200)
-        with pytest.raises(boeken.VolumeremBereikt, match="Dagelijkse limiet van 0"):
+        boeken.boek_document(administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker)
+        assert len(fake.puts) == 1 and document_status(admin_engine, klaar_document) == "geboekt"
+
+    def test_handmatige_noodrem_bijt_met_leesbare_melding(
+        self, klaar_document, administratie_id, gescoopte_gebruiker, boeken_aan, admin_engine: Engine, monkeypatch
+    ) -> None:
+        fake = _patch_rlz(monkeypatch)
+        monkeypatch.setattr(boeken.settings, "max_handmatige_boekingen_per_dag_per_administratie", 0)
+        with pytest.raises(boeken.VolumeremBereikt, match="Noodrem: 0 van 0 handmatige boekingen"):
             boeken.boek_document(
                 administratie_id=administratie_id, document_id=klaar_document, actor_id=gescoopte_gebruiker
             )

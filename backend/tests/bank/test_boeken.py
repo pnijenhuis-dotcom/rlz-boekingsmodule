@@ -182,7 +182,7 @@ def test_retry_na_halve_mislukking_haalt_lokale_registratie_in(
 def test_volumerem_stopt_bij_daglimiet(
     administratie_id: uuid.UUID, admin_engine: Engine, beheerder_id: uuid.UUID, boeken_aan: None, monkeypatch
 ) -> None:
-    monkeypatch.setattr(settings, "max_boekingen_per_dag_per_administratie", 1)
+    monkeypatch.setattr(settings, "max_handmatige_boekingen_per_dag_per_administratie", 1)  # mens op de knop (18-09)
     eerste = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
     tweede = maak_bank_mutatie(admin_engine, administratie_id=administratie_id)
     client = FakeBankClient(

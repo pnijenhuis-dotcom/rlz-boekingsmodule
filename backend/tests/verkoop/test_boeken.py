@@ -344,7 +344,7 @@ class TestBoekVerkoopDocument:
 
         client = FakeVerkoopClient()
         _patch_client(monkeypatch, client)
-        monkeypatch.setattr(settings, "max_boekingen_per_dag_per_administratie", 0)
+        monkeypatch.setattr(settings, "max_handmatige_boekingen_per_dag_per_administratie", 0)  # mens op de knop (18-09)
         document_id = _upload_en_bevestig(
             administratie_id=administratie_id,
             actor_id=gescoopte_gebruiker,

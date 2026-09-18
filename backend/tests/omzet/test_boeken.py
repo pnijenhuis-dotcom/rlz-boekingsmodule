@@ -314,7 +314,7 @@ class TestFailsafes:
         from app.config import settings
 
         _patch_client(monkeypatch, FakeOmzetClient())
-        monkeypatch.setattr(settings, "max_boekingen_per_dag_per_administratie", 0)
+        monkeypatch.setattr(settings, "max_handmatige_boekingen_per_dag_per_administratie", 0)  # mens op de knop (18-09)
         with pytest.raises(boeken.VolumeremBereikt):
             boeken.boek_omzet_document(
                 administratie_id=administratie_id, document_id=boekbaar_document, actor_id=gescoopte_gebruiker
