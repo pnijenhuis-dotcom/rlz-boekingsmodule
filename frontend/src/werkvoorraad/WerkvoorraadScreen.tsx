@@ -370,7 +370,7 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
         onBestanden={wachtrij.start}
         regel={
           <>
-            Sleep hier één of meer mails (.eml), PDF&apos;s, UBL&apos;s of foto&apos;s (of een map) naartoe, of <b>blader</b> —
+            Sleep hier één of meer mails of facturen (of een map) naartoe, of <b>blader</b> —
             toewijzing op tenaamstelling
           </>
         }

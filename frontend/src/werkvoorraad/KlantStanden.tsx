@@ -657,7 +657,7 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
         onBestanden={wachtrij.start}
         regel={
           <>
-            Sleep hier één of honderden PDF&apos;s, UBL&apos;s, .eml&apos;s of foto&apos;s (of een map) naartoe, of <b>blader</b> —
+            Sleep hier één of honderden bestanden (of een map) naartoe, of <b>blader</b> —
             direct toegewezen aan deze klant
           </>
         }
