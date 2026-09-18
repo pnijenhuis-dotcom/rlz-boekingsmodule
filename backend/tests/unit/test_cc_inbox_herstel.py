@@ -489,3 +489,38 @@ def test_zonder_domeinen_kopregel_leidt_cc_de_domeinen_af_via_de_index(werkplaat
     prompt = capture.read_text(encoding="utf-8")
     assert "LEESPLICHT (geen of onbekende Domeinen-kopregel): leid de domeinen af" in prompt and "docs/regels/INDEX.md" in prompt
     assert "geen (geldige) Domeinen-kopregel" in uit.stderr
+
+
+def test_lopend_kopie_van_afgeronde_opdracht_wordt_opgeruimd_en_nooit_herstart(werkplaats: dict[str, Path]) -> None:
+    """(i) 18-09 avond (inbox-hygiëne): een .md in lopend/ die al in gedaan/ staat mét kopregel 'uitgevoerd …' is werk dat AF
+    is (handmatige/parallelle run kopieerde naar gedaan/ zonder lopend/ op te ruimen). De tick ruimt de kopie op mét
+    logregel en start NIETS opnieuw — vóór de fix ging zo'n bestand terug naar inbox/ en draaide afgerond werk tot drie keer
+    opnieuw."""
+    repo = werkplaats["repo"]
+    lopend = repo / "opdrachten" / "lopend" / "2026-09-18-af.md"
+    lopend.write_text("OPDRACHT — af\n", encoding="utf-8")
+    (repo / "opdrachten" / "gedaan" / "2026-09-18-af.md").write_text(
+        "uitgevoerd 2026-09-18, rapport: docs/rapporten/2026-09-18-af.md\n\nOPDRACHT — af\n", encoding="utf-8"
+    )
+    (repo / "opdrachten" / "log" / "2026-09-18-af.pogingen").write_text("2\n", encoding="utf-8")
+    uit = _draai(werkplaats)
+    assert uit.returncode == 0, uit.stderr
+    assert not lopend.exists(), "kopie in lopend/ moet weg zijn"
+    assert not (repo / "opdrachten" / "inbox" / "2026-09-18-af.md").exists(), "nooit terug naar inbox/"
+    assert not (repo / "opdrachten" / "log" / "2026-09-18-af.pogingen").exists(), "teller weg"
+    assert (repo / "opdrachten" / "gedaan" / "2026-09-18-af.md").is_file()
+    assert "al afgerond (opdrachten/gedaan/ mét kopregel 'uitgevoerd') → kopie in lopend/ opgeruimd, geen herstart" in uit.stderr
+    assert "CC HERSTART" not in _meldingen(werkplaats) and "start 2026-09-18-af" not in uit.stderr
+
+
+def test_lopend_zonder_gedaan_kopregel_blijft_het_herstelpad_volgen(werkplaats: dict[str, Path]) -> None:
+    """Tegenproef (i): een gedaan/-bestand ZONDER de kopregel 'uitgevoerd' (bv. handmatig neergezet) telt niet als af — de
+    verweesde lopend-opdracht gaat gewoon terug naar inbox/ en wordt opgepakt (bestaand gedrag (e))."""
+    repo = werkplaats["repo"]
+    (repo / "opdrachten" / "lopend" / "2026-09-18-niet-af.md").write_text("OPDRACHT — niet af\n", encoding="utf-8")
+    (repo / "opdrachten" / "gedaan" / "2026-09-18-niet-af.md").write_text("OPDRACHT — niet af (zonder kopregel)\n", encoding="utf-8")
+    uit = _draai(werkplaats)
+    assert uit.returncode == 0, uit.stderr
+    assert "verweesd in lopend/ (run gestopt zonder afronding) → terug naar inbox/, poging 1/3" in uit.stderr
+    assert "start 2026-09-18-niet-af" in uit.stderr
+    assert (repo / "opdrachten" / "gedaan" / "2026-09-18-niet-af.md").read_text(encoding="utf-8").startswith("uitgevoerd ")

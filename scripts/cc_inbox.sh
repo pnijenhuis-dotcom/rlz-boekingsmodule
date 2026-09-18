@@ -84,6 +84,10 @@
 #        risico bewust aanvaard"); het bestand vervalt zodra die pid niet meer leeft. Nooit automatisch: de 16-09-guard
 #        blijft de default, alleen een mens kiest voor parallel.
 #   Guard: backend/tests/unit/test_cc_inbox_herstel.py (h1–h3) + test_cc_inbox_parallel.py (`rlz inbox vrijgeven`).
+#   (i) 18-09 avond (inbox-hygiëne): een .md in lopend/ die óók in gedaan/ staat mét kopregel "uitgevoerd …" is AF —
+#       de tick ruimt de lopend-kopie op (logregel, teller weg) en start NIETS opnieuw; `rlz inbox status` somt lopend/ op
+#       als loopt (levende lock) / af (kopie in gedaan/) / gestrand (geen levende lock). Guard: test_cc_inbox_herstel.py
+#       `test_lopend_kopie_van_afgeronde_opdracht_*`.
 # Geen TTY nodig (launchd). PATH wordt door de plist gezet; hier als vangnet ACHTERAAN aangevuld voor een handmatige start
 # (achteraan: een expliciet gezet PATH — plist, test-stubs — wint van het vangnet).
 set -uo pipefail
@@ -219,6 +223,16 @@ herstel_verweesd() {
     teller="$(cat "$tellerbestand" 2>/dev/null || echo 0)"; [[ "$teller" =~ ^[0-9]+$ ]] || teller=0
     laatste="$(laatste_logregel "$slug")"
     LOG="$LOGMAP/$slug.log"
+    # (i) 18-09 avond (inbox-hygiëne): staat dezelfde opdracht al in gedaan/ mét de kopregel "uitgevoerd …" (een handmatige
+    # of parallelle run kopieerde naar gedaan/ zonder lopend/ op te ruimen), dan is dit werk AF — kopie opruimen, teller weg,
+    # NOOIT terug naar inbox/ (dat zou afgerond werk tot drie keer opnieuw laten draaien). `rlz inbox status` toont zo'n kopie
+    # als "af (staat in gedaan/)", nooit als "loopt".
+    if [[ -f "$GEDAAN/$(basename "$bestand")" ]] && head -1 "$GEDAAN/$(basename "$bestand")" | grep -q '^uitgevoerd '; then
+      rm -f "$bestand" "$tellerbestand"
+      log ">> cc_inbox: $slug stond nog in lopend/ maar is al afgerond (opdrachten/gedaan/ mét kopregel 'uitgevoerd') → kopie in lopend/ opgeruimd, geen herstart ($(date +%FT%T))"
+      LOG=""
+      continue
+    fi
     if (( teller >= MAX_POGINGEN )); then
       { echo "MISLUKT ná $teller pogingen ($(date +%FT%T)) — laatste: ${laatste:-geen uitvoer}"; echo; cat "$bestand"; } > "$MISLUKT/$(basename "$bestand")"
       rm -f "$bestand" "$tellerbestand"

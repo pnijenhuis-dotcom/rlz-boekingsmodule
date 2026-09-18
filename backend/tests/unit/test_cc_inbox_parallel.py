@@ -273,3 +273,20 @@ def test_rlz_inbox_vrijgeven_schrijft_de_pid_en_status_toont_de_vrijgave(werkpla
     dood = _rlz(werkplaats, "inbox", "vrijgeven", "999999")
     assert dood.returncode == 1 and "leeft niet" in dood.stderr
     assert "rlz inbox vrijgeven" in RLZ_ZSH.read_text(encoding="utf-8")
+
+
+def test_rlz_inbox_status_toont_lopend_als_af_of_gestrand_nooit_als_loopt_zonder_lock(werkplaats: dict[str, Path]) -> None:
+    """(i) 18-09 avond: `rlz inbox status` somt lopend/ op — een kopie die al in gedaan/ staat (kopregel 'uitgevoerd') = "af",
+    zonder levende lock = "gestrand"; "loopt" verschijnt alleen bij een levende lock. Leeg = "lopend/: leeg"."""
+    repo = werkplaats["repo"]
+    uit = _rlz(werkplaats, "inbox", "status")
+    assert uit.returncode == 0, uit.stderr
+    assert "lopend/: leeg" in uit.stdout
+    (repo / "opdrachten" / "lopend" / "2026-09-18-af.md").write_text("OPDRACHT — af\n", encoding="utf-8")
+    (repo / "opdrachten" / "gedaan" / "2026-09-18-af.md").write_text("uitgevoerd 2026-09-18, rapport: geen\n\nOPDRACHT — af\n", encoding="utf-8")
+    (repo / "opdrachten" / "lopend" / "2026-09-18-gestrand.md").write_text("OPDRACHT — gestrand\n", encoding="utf-8")
+    uit = _rlz(werkplaats, "inbox", "status")
+    assert uit.returncode == 0, uit.stderr
+    assert "lopend/: 2026-09-18-af.md — af (staat in gedaan/" in uit.stdout
+    assert "lopend/: 2026-09-18-gestrand.md — gestrand (geen levende lock" in uit.stdout
+    assert "— loopt (" not in uit.stdout, "zonder levende lock toont geen lopend-bestand 'loopt'"

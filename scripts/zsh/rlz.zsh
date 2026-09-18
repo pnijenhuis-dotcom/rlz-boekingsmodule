@@ -4,7 +4,8 @@
 #   rlz meting [onderdeel]  → nameting-workflow op GitHub starten (gh workflow run nameting.yml; default alles)
 #   rlz status   → git status + de laatste 5 rapporten uit docs/rapporten/INDEX.md + de stand van de inbox-lock
 #   rlz inbox    → scripts/cc_inbox.sh nu draaien (zonder op launchd te wachten)
-#   rlz inbox status | stop → lock tonen / de lopende inbox-run netjes stoppen (TERM → GESTOPT-regel, opdracht terug via (e))
+#   rlz inbox status | stop → lock + lopend/ tonen (loopt / af / gestrand — 18-09) / de lopende inbox-run netjes stoppen (TERM →
+#                             GESTOPT-regel, opdracht terug via (e))
 #   rlz inbox vrijgeven [pid] → (17-09, rij (h3)) déze handmatige claude-sessie houdt de inbox niet meer tegen: schrijft
 #                             opdrachten/.vrijgave mét de pid (default: de claude met cwd in deze repo); bewust parallel = risico
 #                             van twee schrijvers in één werkboom aanvaard — alleen als de sessie stil staat of eigen paden raakt
@@ -26,7 +27,7 @@ rlz() {
     inbox)
       case "${2:-}" in
         "")     "$repo/scripts/cc_inbox.sh" ;;
-        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo" ;;
+        status) _rlz_lock_stand "$lock"; _rlz_vrijgave_stand "$repo"; _rlz_lopend_stand "$repo" "$lock" ;;
         stop)   _rlz_inbox_stop "$lock" ;;
         vrijgeven) _rlz_inbox_vrijgeven "$repo" "${3:-}" ;;
         *)      echo "gebruik: rlz inbox [status|stop|vrijgeven [pid]]" >&2; return 2 ;;
@@ -97,6 +98,28 @@ _rlz_cc() {
     if [[ "$(sed -n 1p "$lock" 2>/dev/null)" == "$$" ]]; then rm -f "$lock"; echo ">> rlz cc: inbox-lock opgeruimd" >&2; fi
   }
   return $rc
+}
+
+# (i) 18-09 avond (inbox-hygiëne): lopend/ per bestand — "loopt" ALLEEN bij een levende lock; een kopie die al in gedaan/ staat
+# (kopregel "uitgevoerd …") is "af" en wordt door de volgende tick opgeruimd; zonder levende lock = "gestrand" (tick zet 'm
+# terug in inbox/). Nooit "loopt" tonen voor werk dat af is.
+_rlz_lopend_stand() {
+  local repo="$1" lock="$2" f naam stand
+  local -a bestanden
+  bestanden=("$repo"/opdrachten/lopend/*.md(N))
+  if (( ${#bestanden} == 0 )); then echo "lopend/: leeg"; return 0; fi
+  local levend=0; _rlz_lock_lees "$lock" && levend=1
+  for f in "${bestanden[@]}"; do
+    naam="$(basename "$f")"
+    if [[ -f "$repo/opdrachten/gedaan/$naam" ]] && head -1 "$repo/opdrachten/gedaan/$naam" | grep -q '^uitgevoerd '; then
+      stand="af (staat in gedaan/ — de volgende tick ruimt de kopie in lopend/ op)"
+    elif (( levend )); then
+      stand="loopt ($RLZ_LOCK_SOORT, pid $RLZ_LOCK_PID, sinds ${RLZ_LOCK_SINDS:-?})"
+    else
+      stand="gestrand (geen levende lock — de volgende tick zet 'm terug in inbox/)"
+    fi
+    echo "lopend/: $naam — $stand"
+  done
 }
 
 # rij (h3) 17-09: bewuste vrijgave van een handmatige claude-sessie — de inbox-tick behandelt die pid niet meer als blokkade.
