@@ -34,8 +34,8 @@ Rol wijzigen kan vanaf nu zonder nieuw account.
 |---|---|
 | Volledige backend-suite (stand feedback-run, start 10:07) | 6487 groen, 1 skipped |
 | `tests/uren` + `tests/security/test_rol_endpoint_gates.py` + `tests/auth/test_rol_wijzigen_veld_18_09.py` (eigen DB, herrun ná de bouw van 2–5) | 749 groen ná 3 fixture-reparaties (scope voor de keurende uitvoerder), zie rapport 4 |
-| Backend run A (bouwagent, eigen DB) | <<RUN_A_BACKEND>> |
-| Volledige frontend-suite (`vitest run`, 11:27, ná opdracht 5) | 217 bestanden / 1732 tests groen; ná run A: <<VITEST_EIND>> |
+| Backend run A (bouwagent, eigen DB `boekhouding_test_a6`): `tests/uren` + gate-matrix + migratie-guard | 764 groen; `alembic check` schoon; migratie 0159 `make migrate` + live 200 + dump volgens de afsluitroutine |
+| Volledige frontend-suite (`vitest run`, 11:27, ná opdracht 5) | 217 bestanden / 1732 tests groen; ná run A (12:2x): 220 bestanden / 1743 tests groen |
 | `tsc -b` | groen |
 | Docs-guards (CLAUDE.md↔BESLISSINGEN, regels-index, rapporten-index/gelezen-regels/klikpunten, cc-inbox) | 24 groen (aparte guards-DB) |
 | Overflow-sweep `?beoordelen=1` | 8 metingen groen |
@@ -47,7 +47,17 @@ niet meer te scheiden — de commits zijn per laag gegroepeerd en noemen alle op
 
 ## Commits
 
-<<COMMITS>>
+Drie lagen (per-opdracht was voor de gedeelde bestanden niet meer te scheiden; elk bericht noemt alle opdrachten):
+
+| Commit | Inhoud |
+|---|---|
+| `9cf8b70` | backend uren/auth/berichten + migraties 0158 + 0159 + tests |
+| `d3857c0` | frontend veld-app, Beoordelen, rol-select, web-toestel-waarborgen, WAT_IS_NIEUW |
+| `f44ede8` | docs (rapporten, BESLISSINGEN, regels, CLAUDE.md), mockups v2/v3, opdrachten-administratie |
+| (deze) | dit slotrapport |
+
+De Stop-hook pusht ná deze run; de deploy-run op de laatste commit moet groen zijn (incl. migratie-job `0157 -> 0158 -> 0159`)
+vóór de nameting-opdracht in de inbox zinvol is — stap 0 daarvan wacht daar expliciet op.
 
 ## Lessen (geheugen bijgewerkt)
 
