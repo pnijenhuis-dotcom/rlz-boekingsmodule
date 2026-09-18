@@ -28,7 +28,11 @@ class TestMail:
         mails = _vang(monkeypatch)
         uitnodigingsmail.verstuur_uitnodigingsmail(naam="Milan", e_mail="m@x.nl", token="t", verloopt_op=datetime.now(UTC), app_rol=True)
         assert "Download" not in mails[0]["tekst"] and "apps.apple.com" not in mails[0]["tekst"]
-        assert uitnodigingsmail.download_blok() == ""
+        # 18-09 (web-toestel SPOED): zolang er geen geschikte Play-versie is draagt het blok alleen de Android-web-regel —
+        # géén store-link, géén "Download".
+        blok = uitnodigingsmail.download_blok()
+        assert "Download" not in blok and "apps.apple.com" not in blok and "play.google.com" not in blok
+        assert blok.strip() in ("", uitnodigingsmail.ANDROID_WEB_INSTRUCTIE)
 
     def test_gevuld_alleen_voor_app_rol_en_alleen_gevulde_platformen(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "store_link_ios", "https://apps.apple.com/nl/app/id123")
@@ -38,7 +42,8 @@ class TestMail:
         uitnodigingsmail.verstuur_uitnodigingsmail(naam="Milan", e_mail="m@x.nl", token="t", verloopt_op=datetime.now(UTC), app_rol=True)
         tekst = mails[0]["tekst"]
         assert "Download eerst de app" in tekst and "https://apps.apple.com/nl/app/id123" in tekst
-        assert "Google Play" not in tekst
+        # Geen Play-LINK zolang er geen geschikte Android-versie is; de Android-web-regel (18-09) noemt "Google Play" wél.
+        assert "play.google.com" not in tekst
         # De activatielink blijft erná staan — het blok gaat ervoor.
         assert tekst.index("Download eerst de app") < tekst.index("/activeren?token=")
         uitnodigingsmail.verstuur_uitnodigingsmail(naam="Demi", e_mail="d@x.nl", token="t2", verloopt_op=datetime.now(UTC), app_rol=False)

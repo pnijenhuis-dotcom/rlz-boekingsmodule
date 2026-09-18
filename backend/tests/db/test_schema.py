@@ -48,6 +48,8 @@ def test_gebruiker_heeft_geen_financiele_kolommen(admin_engine: Engine) -> None:
         "status_voor_archivering",
         # Maandagochtend-digest opt-out (migratie 0097, D2 01-09) — eigen voorkeur, geen financiële data.
         "digest_opt_out",
+        # Run B 18-09 (migratie 0162): opt-out dag-einde herinnering veld-app — geen financiële data.
+        "uren_herinnering_uit",
     }
     assert not (columns & financial_hints)
 

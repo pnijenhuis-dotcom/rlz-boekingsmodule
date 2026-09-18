@@ -1134,4 +1134,5 @@ class TestCliLeesOnly:
             "doorbelasting",
             "doorbelasting_aansluiting",
             "rlz_dubbel",
+            "projecten",  # blok 3 18-09: dubbele projectnummers (soort project_nummer_dubbel, stand meten)
         ]

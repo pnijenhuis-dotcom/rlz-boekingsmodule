@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0159
+-- Migratie-head bij deze dump: 0162
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -2286,6 +2286,22 @@ ALTER TABLE ONLY boekhouding.payment_item_cache FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: planning_reservering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.planning_reservering (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    datum date NOT NULL,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.planning_reservering FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: planning_signaal_afhandeling; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2369,7 +2385,12 @@ CREATE TABLE boekhouding.project_cache (
     is_actief boolean,
     brondata jsonb NOT NULL,
     laatst_gesynchroniseerd timestamp with time zone DEFAULT now() NOT NULL,
-    verdwenen_uit_bron_op timestamp with time zone
+    verdwenen_uit_bron_op timestamp with time zone,
+    status text DEFAULT 'lopend'::text NOT NULL,
+    afgesloten_op timestamp with time zone,
+    afgesloten_door uuid,
+    afsluit_reden text,
+    CONSTRAINT ck_project_cache_status CHECK ((status = ANY (ARRAY['lopend'::text, 'afgesloten'::text])))
 );
 
 ALTER TABLE ONLY boekhouding.project_cache FORCE ROW LEVEL SECURITY;
@@ -2947,6 +2968,23 @@ ALTER TABLE ONLY boekhouding.toewijzing_regel FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: uren_herinnering; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.uren_herinnering (
+    id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    administratie_id uuid,
+    datum date NOT NULL,
+    verzonden_op timestamp with time zone DEFAULT now() NOT NULL,
+    kanaal text NOT NULL,
+    detail text
+);
+
+ALTER TABLE ONLY boekhouding.uren_herinnering FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: uren_project_toewijzing; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -2959,6 +2997,26 @@ CREATE TABLE boekhouding.uren_project_toewijzing (
 );
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: veldwerker_afwezigheid; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.veldwerker_afwezigheid (
+    id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    gebruiker_id uuid NOT NULL,
+    van date NOT NULL,
+    tot date NOT NULL,
+    reden text,
+    aangemaakt_door uuid NOT NULL,
+    aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
+    beeindigd_op timestamp with time zone,
+    CONSTRAINT ck_veldwerker_afwezigheid_periode CHECK ((tot >= van))
+);
+
+ALTER TABLE ONLY boekhouding.veldwerker_afwezigheid FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -3737,6 +3795,7 @@ CREATE TABLE platform.administratie (
     naam_gevolgd_op timestamp with time zone,
     kassa_profiel boolean,
     uren_omschrijving_chips jsonb,
+    uren_herinnering_tijd time without time zone,
     CONSTRAINT administratie_reconciliatie_uitsluiting_reden CHECK (((NOT reconciliatie_uitgesloten) OR ((reconciliatie_uitsluiting_reden IS NOT NULL) AND (length(btrim(reconciliatie_uitsluiting_reden)) >= 5)))),
     CONSTRAINT ck_administratie_boekhoud_backend CHECK (((boekhoud_backend)::text = ANY ((ARRAY['rlz'::character varying, 'odoo'::character varying])::text[]))),
     CONSTRAINT ck_administratie_naam_bron CHECK ((naam_bron = ANY (ARRAY['odoo'::text, 'rlz'::text, 'mens'::text]))),
@@ -3960,6 +4019,7 @@ CREATE TABLE platform.gebruiker (
     gearchiveerd_door uuid,
     status_voor_archivering text,
     digest_opt_out boolean DEFAULT false NOT NULL,
+    uren_herinnering_uit boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_gebruiker_e_mail_lowercase CHECK ((e_mail = lower(e_mail)))
 );
 
@@ -4948,6 +5008,14 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: planning_reservering planning_reservering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_reservering
+    ADD CONSTRAINT planning_reservering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: planning_signaal_afhandeling planning_signaal_afhandeling_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5316,6 +5384,14 @@ ALTER TABLE ONLY boekhouding.omzet_store_routering
 
 
 --
+-- Name: planning_reservering uq_planning_reservering_project_dag; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_reservering
+    ADD CONSTRAINT uq_planning_reservering_project_dag UNIQUE (administratie_id, project_id, datum);
+
+
+--
 -- Name: projectverdeling uq_projectverdeling_document; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -5345,6 +5421,14 @@ ALTER TABLE ONLY boekhouding.regel_gb_classificatie
 
 ALTER TABLE ONLY boekhouding.terugkerend_signaal
     ADD CONSTRAINT uq_terugkerend_signaal_vendor UNIQUE (administratie_id, vendor_id);
+
+
+--
+-- Name: uren_herinnering uq_uren_herinnering_gebruiker_datum; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_herinnering
+    ADD CONSTRAINT uq_uren_herinnering_gebruiker_datum UNIQUE (gebruiker_id, datum);
 
 
 --
@@ -5396,11 +5480,27 @@ ALTER TABLE ONLY boekhouding.werkstempel
 
 
 --
+-- Name: uren_herinnering uren_herinnering_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_herinnering
+    ADD CONSTRAINT uren_herinnering_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: uren_project_toewijzing uren_project_toewijzing_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing
     ADD CONSTRAINT uren_project_toewijzing_pkey PRIMARY KEY (administratie_id, gebruiker_id, project_id);
+
+
+--
+-- Name: veldwerker_afwezigheid veldwerker_afwezigheid_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_afwezigheid
+    ADD CONSTRAINT veldwerker_afwezigheid_pkey PRIMARY KEY (id);
 
 
 --
@@ -6640,6 +6740,13 @@ CREATE INDEX ix_payment_item_cache_administratie_id ON boekhouding.payment_item_
 
 
 --
+-- Name: ix_planning_reservering_datum; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_planning_reservering_datum ON boekhouding.planning_reservering USING btree (administratie_id, datum);
+
+
+--
 -- Name: ix_planning_signaal_afhandeling_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6686,6 +6793,13 @@ CREATE INDEX ix_planning_wijziging_melding_open ON boekhouding.planning_wijzigin
 --
 
 CREATE INDEX ix_project_cache_administratie_id ON boekhouding.project_cache USING btree (administratie_id);
+
+
+--
+-- Name: ix_project_cache_administratie_status; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_project_cache_administratie_status ON boekhouding.project_cache USING btree (administratie_id, status);
 
 
 --
@@ -6903,6 +7017,13 @@ CREATE INDEX ix_terugkerend_signaal_administratie_id ON boekhouding.terugkerend_
 --
 
 CREATE INDEX ix_uren_project_toewijzing_administratie_id ON boekhouding.uren_project_toewijzing USING btree (administratie_id);
+
+
+--
+-- Name: ix_veldwerker_afwezigheid_gebruiker; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_veldwerker_afwezigheid_gebruiker ON boekhouding.veldwerker_afwezigheid USING btree (administratie_id, gebruiker_id, van, tot);
 
 
 --
@@ -8579,6 +8700,14 @@ ALTER TABLE ONLY boekhouding.meerwerk
 
 
 --
+-- Name: planning_reservering fk_planning_reservering_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_reservering
+    ADD CONSTRAINT fk_planning_reservering_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
 -- Name: planning_signaal_afhandeling fk_planning_signaal_afhandeling_project_cache; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -8592,6 +8721,14 @@ ALTER TABLE ONLY boekhouding.planning_signaal_afhandeling
 
 ALTER TABLE ONLY boekhouding.planning_toewijzing
     ADD CONSTRAINT fk_planning_toewijzing_project_cache FOREIGN KEY (project_id, administratie_id) REFERENCES boekhouding.project_cache(id, administratie_id);
+
+
+--
+-- Name: project_cache fk_project_cache_afgesloten_door; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.project_cache
+    ADD CONSTRAINT fk_project_cache_afgesloten_door FOREIGN KEY (afgesloten_door) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -9291,6 +9428,22 @@ ALTER TABLE ONLY boekhouding.payment_item_cache
 
 
 --
+-- Name: planning_reservering planning_reservering_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_reservering
+    ADD CONSTRAINT planning_reservering_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: planning_reservering planning_reservering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.planning_reservering
+    ADD CONSTRAINT planning_reservering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
 -- Name: planning_signaal_afhandeling planning_signaal_afhandeling_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -9811,6 +9964,22 @@ ALTER TABLE ONLY boekhouding.toewijzing_regel
 
 
 --
+-- Name: uren_herinnering uren_herinnering_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_herinnering
+    ADD CONSTRAINT uren_herinnering_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: uren_herinnering uren_herinnering_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.uren_herinnering
+    ADD CONSTRAINT uren_herinnering_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
+
+
+--
 -- Name: uren_project_toewijzing uren_project_toewijzing_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -9832,6 +10001,30 @@ ALTER TABLE ONLY boekhouding.uren_project_toewijzing
 
 ALTER TABLE ONLY boekhouding.uren_project_toewijzing
     ADD CONSTRAINT uren_project_toewijzing_toegevoegd_door_fkey FOREIGN KEY (toegevoegd_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_afwezigheid veldwerker_afwezigheid_aangemaakt_door_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_afwezigheid
+    ADD CONSTRAINT veldwerker_afwezigheid_aangemaakt_door_fkey FOREIGN KEY (aangemaakt_door) REFERENCES platform.gebruiker(id);
+
+
+--
+-- Name: veldwerker_afwezigheid veldwerker_afwezigheid_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_afwezigheid
+    ADD CONSTRAINT veldwerker_afwezigheid_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: veldwerker_afwezigheid veldwerker_afwezigheid_gebruiker_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.veldwerker_afwezigheid
+    ADD CONSTRAINT veldwerker_afwezigheid_gebruiker_id_fkey FOREIGN KEY (gebruiker_id) REFERENCES platform.gebruiker(id);
 
 
 --
@@ -11983,6 +12176,19 @@ CREATE POLICY payment_item_cache_scope ON boekhouding.payment_item_cache USING (
 
 
 --
+-- Name: planning_reservering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.planning_reservering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: planning_reservering planning_reservering_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY planning_reservering_scope ON boekhouding.planning_reservering USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: planning_signaal_afhandeling; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -12343,6 +12549,19 @@ CREATE POLICY toewijzing_regel_scope ON boekhouding.toewijzing_regel USING (true
 
 
 --
+-- Name: uren_herinnering; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.uren_herinnering ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: uren_herinnering uren_herinnering_toegang; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY uren_herinnering_toegang ON boekhouding.uren_herinnering USING ((platform.current_actor_is_beheerder() OR (platform.current_actor_id() = '00000000-0000-0000-0000-000000000001'::uuid) OR (gebruiker_id = platform.current_actor_id()))) WITH CHECK ((platform.current_actor_is_beheerder() OR (platform.current_actor_id() = '00000000-0000-0000-0000-000000000001'::uuid)));
+
+
+--
 -- Name: uren_project_toewijzing; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -12353,6 +12572,19 @@ ALTER TABLE boekhouding.uren_project_toewijzing ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY uren_project_toewijzing_scope ON boekhouding.uren_project_toewijzing USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
+-- Name: veldwerker_afwezigheid; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.veldwerker_afwezigheid ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: veldwerker_afwezigheid veldwerker_afwezigheid_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY veldwerker_afwezigheid_scope ON boekhouding.veldwerker_afwezigheid USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --
