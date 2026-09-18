@@ -20,6 +20,7 @@ VERWACHTE_JOBS = {
     "rlz-intake-imap",
     "rlz-accordeur-herinneringen",
     "rlz-nieuwe-facturen",
+    "rlz-uren-herinneringen",  # run B 18-09: dag-einde herinnering veld-app
     "rlz-kantoor-digest",
     "rlz-projecten-cijfers",
     "rlz-bank-sync",

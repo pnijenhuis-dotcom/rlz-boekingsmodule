@@ -111,6 +111,13 @@ class RedenVerplicht(UrenFout):
 class WeekstaatBevroren(UrenFout):
     """Dagen muteren kan alleen in concept/corrigeren — ingediend/goedgekeurd is bevroren."""
 
+    def __init__(self, bericht: str, *, status: str | None = None, server_regel: dict | None = None) -> None:
+        super().__init__(bericht)
+        #: Run B 18-09 (offline-conflict): de router zet `code`, `status` en `server_regel` in de 409-body zodat de app
+        #: beide standen kan tonen (kantoor/uitvoerder keurde intussen, de lokale regel staat nog in de wachtrij).
+        self.status = status
+        self.server_regel = server_regel
+
 
 class OngeldigeOvergang(UrenFout):
     pass
@@ -478,6 +485,102 @@ def zet_omschrijving_chips(*, administratie_id: uuid.UUID, chips: list[str], act
         return nieuw
 
 
+def _regel_als_dict(dag: WeekstaatDag | None) -> dict | None:
+    if dag is None:
+        return None
+    return {
+        "uren": str(dag.uren),
+        "m2": str(dag.m2) if dag.m2 is not None else None,
+        "opmerking": dag.opmerking,
+        "doorfactureren": bool(dag.doorfactureren),
+    }
+
+
+# --- dag-einde herinnering (run B 18-09, migratie 0162) -------------------------------------------------------------
+
+
+def herinnering_stand(*, gebruiker_id: uuid.UUID) -> tuple[bool, time]:
+    """(uit, tijd) voor de eigen gebruiker: opt-out-vlag + de herinneringstijd van de eerste administratie in scope
+    mét opt-in (alfabetisch op naam), anders de default 16:30. Lees-only, geen audit."""
+    from app.uren.herinnering import STANDAARD_HERINNERING_TIJD, herinneringstijd
+
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        gebruiker = _gebruiker(session, gebruiker_id)
+        administratie = session.scalars(
+            select(Administratie)
+            .join(GebruikerAdministratie, GebruikerAdministratie.administratie_id == Administratie.id)
+            .where(
+                GebruikerAdministratie.gebruiker_id == gebruiker_id,
+                Administratie.uren_meerwerk_ingeschakeld.is_(True),
+                Administratie.actief.is_(True),
+            )
+            .order_by(Administratie.naam)
+            .limit(1)
+        ).first()
+        tijd = herinneringstijd(administratie) if administratie is not None else STANDAARD_HERINNERING_TIJD
+        return bool(gebruiker.uren_herinnering_uit), tijd
+
+
+def zet_herinnering_uit(*, gebruiker_id: uuid.UUID, uit: bool) -> bool:
+    """Opt-out PER GEBRUIKER (beslispunt run B: niet per toestel) — alleen de eigen gebruiker (router), audit
+    oud→nieuw."""
+    with scoped_session(None, actor_id=gebruiker_id) as session:
+        gebruiker = _gebruiker(session, gebruiker_id)
+        oud = bool(gebruiker.uren_herinnering_uit)
+        if oud != uit:
+            gebruiker.uren_herinnering_uit = uit
+            record_audit_event(
+                session,
+                actor_id=gebruiker_id,
+                module=MODULE,
+                tabel="gebruiker",
+                record_id=gebruiker_id,
+                actie="uren_herinnering_optout",
+                correlatie_id=gebruiker_id,
+                oude_waarde={"uit": oud},
+                nieuwe_waarde={"uit": uit},
+            )
+            session.flush()
+        return uit
+
+
+def herinnering_tijd_voor(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> tuple[time, bool]:
+    """(tijd, standaard) — Beheerder-instelling per administratie mét opt-in; standaard = niets ingesteld (16:30
+    geldt)."""
+    from app.uren.herinnering import herinneringstijd
+
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = _administratie_met_opt_in(session, administratie_id)
+        return herinneringstijd(administratie), administratie.uren_herinnering_tijd is None
+
+
+def zet_herinnering_tijd(*, administratie_id: uuid.UUID, tijd: time | None, actor_id: uuid.UUID) -> tuple[time, bool]:
+    """Beheerder-only (router): zet of wist (None = terug naar de default) het herinneringstijdstip; alleen binnen het
+    werkdagvenster 06:00–18:45 (de job stopt om 19:00); audit oud→nieuw."""
+    from app.uren.herinnering import EINDE_VENSTER, herinneringstijd
+
+    if tijd is not None and (tijd < time(6, 0) or tijd >= EINDE_VENSTER):
+        raise OngeldigeInvoer("De herinneringstijd ligt tussen 06:00 en 18:59")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = _administratie_met_opt_in(session, administratie_id)
+        oud = administratie.uren_herinnering_tijd
+        administratie.uren_herinnering_tijd = tijd
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="uren_herinnering_tijd_gewijzigd",
+            correlatie_id=administratie_id,
+            oude_waarde={"tijd": oud.strftime("%H:%M") if oud else None},
+            nieuwe_waarde={"tijd": tijd.strftime("%H:%M") if tijd else None},
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        return herinneringstijd(administratie), tijd is None
+
+
 def heeft_meerwerk_urenstaten_recht(*, gebruiker_id: uuid.UUID, rol: GebruikerRol) -> bool:
     """Module-recht 'Meerwerk & urenstaten' (0019-patroon): Beheerder heeft het altijd, andere
     kantoor-rollen alleen met een gebruiker_module_rol-rij (module 'boekhouding'); externe
@@ -813,7 +916,14 @@ def zet_dag(
             weeknummer=weeknummer,
         )
         if staat.status not in (WeekstaatStatus.CONCEPT.value, WeekstaatStatus.CORRIGEREN.value):
-            raise WeekstaatBevroren("Deze week is al ingediend of goedgekeurd — wijzigen kan alleen na een afkeuring")
+            bestaand = session.scalars(
+                select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id, WeekstaatDag.datum == datum)
+            ).one_or_none()
+            raise WeekstaatBevroren(
+                "Deze week is al ingediend of goedgekeurd — wijzigen kan alleen na een afkeuring",
+                status=staat.status,
+                server_regel=_regel_als_dict(bestaand),
+            )
 
         dag = session.scalars(
             select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id, WeekstaatDag.datum == datum)

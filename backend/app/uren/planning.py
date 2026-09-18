@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.db.audit import record_audit_event
 from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol, GebruikerStatus
@@ -34,9 +34,11 @@ from app.sync.models import ProjectCache
 from app.tijd import kalenderdag_nl, vandaag_nl
 from app.uren.models import (
     PlanningDagdeel,
+    PlanningReservering,
     PlanningToewijzing,
     PlanningWijzigingMelding,
     ProjectSpecificatie,
+    VeldwerkerAfwezigheid,
     Weekstaat,
     WeekstaatDag,
     WeekstaatStatus,
@@ -46,12 +48,19 @@ from app.uren.service import (
     GeenToegang,
     NietGevonden,
     OngeldigeInvoer,
+    OngeldigeOvergang,
     _administratie_met_opt_in,
     _gebruiker,
     _vereis_meerwerk_recht,
+    heeft_meerwerk_urenstaten_recht,
+    heeft_veldwerkerbeheer_recht,
     week_grenzen,
     zorg_voor_projectkoppeling,
 )
+
+#: Bulkroute (v3 18-09): hoogstens zoveel items per aanroep — 5 dagen × 40 man past ruim; erboven 422.
+BULK_MAX_ITEMS = 200
+BULK_BRONNEN = ("vulhandvat", "ploeg", "ongedaan")
 
 DUBBELE_DAG_VENSTER_DAGEN = 30  # teller-venster (mockup: "3× / 30 dgn")
 ZACHT_SIGNAAL_DAGEN = Decimal("5")  # besluit C: > 5 geplande dagen p.p. per week
@@ -128,6 +137,49 @@ class PoolPersoonData:
     naam: str
     rol: str
     geplande_dagen: Decimal
+    # v3 (18-09): einddatum van een afwezigheid die de getoonde week overlapt ("afwezig t/m …"), anders None.
+    afwezig_tot: date | None = None
+
+
+@dataclass(frozen=True)
+class ReserveringData:
+    """Kaart zonder ploeg (v3 18-09): project × dag "gereserveerd"."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    projectnaam: str | None
+    datum: date
+
+
+@dataclass(frozen=True)
+class AfwezigheidData:
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    van: date
+    tot: date
+    reden: str | None
+    beeindigd_op: object = None  # datetime | None
+
+
+@dataclass(frozen=True)
+class BulkItemResultaat:
+    """Uitkomst per bulk-item: gedaan | overgeslagen (idempotent/onbestaand) | conflict (WEL gepland, gemarkeerd)."""
+
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    dagdeel: str
+    uitkomst: str
+    reden: str | None = None
+    conflict: str | None = None  # 'project' | 'afwezig'
+    conflict_projectnaam: str | None = None
+
+
+@dataclass(frozen=True)
+class BulkResultaat:
+    correlatie_id: uuid.UUID
+    aangemaakt: list[BulkItemResultaat]
+    resultaten: list[BulkItemResultaat]
 
 
 @dataclass(frozen=True)
@@ -173,6 +225,9 @@ class PlanningWeekData:
     dubbele_dag_tellers: list[DubbeleDagTeller]
     # Wachtrisico-kruissignaal (steigerbouw-run D5): personeel gepland zonder bevestigde levering.
     wachtrisico: list = field(default_factory=list)
+    # v3 (18-09): reserveringen (kaart zonder ploeg) en afwezigheid die de week overlapt.
+    reserveringen: list[ReserveringData] = field(default_factory=list)
+    afwezigheid: list[AfwezigheidData] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -408,6 +463,82 @@ def ongeplande_datums(
 # --- kantoor: plannen (module-recht, server-side) ----------------------------------------------
 
 
+def _plan_in_sessie(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker: Gebruiker,
+    project_id: uuid.UUID,
+    datum: date,
+    dagdeel: str,
+    actor_id: uuid.UUID,
+    vandaag: date,
+    correlatie_id: uuid.UUID | None = None,
+    bron: str | None = None,
+    extra_audit: dict | None = None,
+    al_getoetst: bool = False,
+    koppeling_al_gedaan: bool = False,
+) -> None:
+    """Eén kaartje in een bestaande sessie (gedeeld door de losse route en de bulkroute 18-09): failsafe op de PK, auto-
+    projectkoppeling (besluit A), melding-rij per veldwerker × week (15-09) en de audit-rij per (persoon, dag). De bulk
+    zet `al_getoetst`/`koppeling_al_gedaan` omdat hij de bestaande toewijzingen in één query heeft gelezen en de
+    koppeling per (persoon, project) één keer doet — zo blijft het leeswerk onafhankelijk van het aantal items."""
+    bestaat = (
+        not al_getoetst
+        and session.get(PlanningToewijzing, (administratie_id, gebruiker.id, project_id, datum)) is not None
+    )
+    if bestaat:
+        raise OngeldigeInvoer(
+            f"{gebruiker.naam} staat op {datum} al op dit project gepland — "
+            "één kaartje per persoon per project per dag"
+        )
+    if not koppeling_al_gedaan:
+        _zorg_voor_projectkoppeling(
+            session, administratie_id=administratie_id, gebruiker=gebruiker, project_id=project_id, actor_id=actor_id
+        )
+    session.add(
+        PlanningToewijzing(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker.id,
+            project_id=project_id,
+            datum=datum,
+            dagdeel=dagdeel,
+            toegevoegd_door=actor_id,
+        )
+    )
+    gemeld = _registreer_wijziging_in_week(
+        session, administratie_id=administratie_id, gebruiker_id=gebruiker.id, datum=datum, actor_id=actor_id,
+        soort="gepland", vandaag=vandaag,
+    )
+    nieuwe_waarde = {
+        "gebruiker_id": str(gebruiker.id),
+        "project_id": str(project_id),
+        "datum": datum.isoformat(),
+        "dagdeel": dagdeel,
+        # 15-09: terugwerkende kracht zichtbaar in de audit (geen blokkade).
+        "achteraf": datum < vandaag,
+        "week_status": _week_status(datum, vandaag),
+        "veldwerker_gemeld": gemeld,
+    }
+    if correlatie_id is not None:
+        nieuwe_waarde["bulk_correlatie_id"] = str(correlatie_id)
+    if bron is not None:
+        nieuwe_waarde["bron"] = bron
+    if extra_audit:
+        nieuwe_waarde.update(extra_audit)
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module=MODULE,
+        tabel="planning_toewijzing",
+        record_id=gebruiker.id,
+        actie="planning_gepland",
+        correlatie_id=project_id,
+        nieuwe_waarde=nieuwe_waarde,
+        administratie_id=administratie_id,
+    )
+
+
 def plan_toewijzing(
     *,
     administratie_id: uuid.UUID,
@@ -426,49 +557,67 @@ def plan_toewijzing(
         _vereis_meerwerk_recht(session, actor_id)
         _vereis_actief_project(session, administratie_id, project_id)
         gebruiker = _vereis_planbare_gebruiker(session, gebruiker_id)
-        if session.get(PlanningToewijzing, (administratie_id, gebruiker_id, project_id, datum)) is not None:
-            raise OngeldigeInvoer(
-                f"{gebruiker.naam} staat op {datum} al op dit project gepland — "
-                "één kaartje per persoon per project per dag"
-            )
-        _zorg_voor_projectkoppeling(
-            session, administratie_id=administratie_id, gebruiker=gebruiker, project_id=project_id, actor_id=actor_id
-        )
-        session.add(
-            PlanningToewijzing(
-                administratie_id=administratie_id,
-                gebruiker_id=gebruiker_id,
-                project_id=project_id,
-                datum=datum,
-                dagdeel=dagdeel,
-                toegevoegd_door=actor_id,
-            )
-        )
-        vandaag = vandaag_nl()
-        gemeld = _registreer_wijziging_in_week(
-            session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=datum, actor_id=actor_id,
-            soort="gepland", vandaag=vandaag,
-        )
-        record_audit_event(
+        _plan_in_sessie(
             session,
-            actor_id=actor_id,
-            module=MODULE,
-            tabel="planning_toewijzing",
-            record_id=gebruiker_id,
-            actie="planning_gepland",
-            correlatie_id=project_id,
-            nieuwe_waarde={
-                "gebruiker_id": str(gebruiker_id),
-                "project_id": str(project_id),
-                "datum": datum.isoformat(),
-                "dagdeel": dagdeel,
-                # 15-09: terugwerkende kracht zichtbaar in de audit (geen blokkade).
-                "achteraf": datum < vandaag,
-                "week_status": _week_status(datum, vandaag),
-                "veldwerker_gemeld": gemeld,
-            },
             administratie_id=administratie_id,
+            gebruiker=gebruiker,
+            project_id=project_id,
+            datum=datum,
+            dagdeel=dagdeel,
+            actor_id=actor_id,
+            vandaag=vandaag_nl(),
         )
+
+
+def _verwijder_in_sessie(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    project_id: uuid.UUID,
+    datum: date,
+    actor_id: uuid.UUID,
+    vandaag: date,
+    correlatie_id: uuid.UUID | None = None,
+    bron: str | None = None,
+) -> bool:
+    """Eén kaartje weghalen in een bestaande sessie (losse route + bulk). False = bestond niet (idempotent)."""
+    rij = session.get(PlanningToewijzing, (administratie_id, gebruiker_id, project_id, datum))
+    if rij is None:
+        return False
+    oude_waarde = {
+        "gebruiker_id": str(gebruiker_id),
+        "project_id": str(project_id),
+        "datum": datum.isoformat(),
+        "dagdeel": rij.dagdeel,
+    }
+    session.delete(rij)
+    gemeld = _registreer_wijziging_in_week(
+        session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=datum, actor_id=actor_id,
+        soort="verwijderd", vandaag=vandaag,
+    )
+    nieuwe_waarde = {
+        "achteraf": datum < vandaag,
+        "week_status": _week_status(datum, vandaag),
+        "veldwerker_gemeld": gemeld,
+    }
+    if correlatie_id is not None:
+        nieuwe_waarde["bulk_correlatie_id"] = str(correlatie_id)
+    if bron is not None:
+        nieuwe_waarde["bron"] = bron
+    record_audit_event(
+        session,
+        actor_id=actor_id,
+        module=MODULE,
+        tabel="planning_toewijzing",
+        record_id=gebruiker_id,
+        actie="planning_verwijderd",
+        correlatie_id=project_id,
+        oude_waarde=oude_waarde,
+        nieuwe_waarde=nieuwe_waarde,
+        administratie_id=administratie_id,
+    )
+    return True
 
 
 def verwijder_toewijzing(
@@ -484,36 +633,14 @@ def verwijder_toewijzing(
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
         _vereis_meerwerk_recht(session, actor_id)
-        rij = session.get(PlanningToewijzing, (administratie_id, gebruiker_id, project_id, datum))
-        if rij is None:
-            return  # idempotent
-        oude_waarde = {
-            "gebruiker_id": str(gebruiker_id),
-            "project_id": str(project_id),
-            "datum": datum.isoformat(),
-            "dagdeel": rij.dagdeel,
-        }
-        session.delete(rij)
-        vandaag = vandaag_nl()
-        gemeld = _registreer_wijziging_in_week(
-            session, administratie_id=administratie_id, gebruiker_id=gebruiker_id, datum=datum, actor_id=actor_id,
-            soort="verwijderd", vandaag=vandaag,
-        )
-        record_audit_event(
+        _verwijder_in_sessie(
             session,
-            actor_id=actor_id,
-            module=MODULE,
-            tabel="planning_toewijzing",
-            record_id=gebruiker_id,
-            actie="planning_verwijderd",
-            correlatie_id=project_id,
-            oude_waarde=oude_waarde,
-            nieuwe_waarde={
-                "achteraf": datum < vandaag,
-                "week_status": _week_status(datum, vandaag),
-                "veldwerker_gemeld": gemeld,
-            },
             administratie_id=administratie_id,
+            gebruiker_id=gebruiker_id,
+            project_id=project_id,
+            datum=datum,
+            actor_id=actor_id,
+            vandaag=vandaag_nl(),
         )
 
 
@@ -631,6 +758,395 @@ def zet_dagdeel(
             nieuwe_waarde={"dagdeel": dagdeel, "datum": datum.isoformat()},
             administratie_id=administratie_id,
         )
+
+
+# --- kantoor: bulk (vulhandvat / ploeg / ongedaan) — planning v3 dag-eerst (Peter 18-09) -----------
+
+
+def _afwezigheid_in_venster(
+    session, *, administratie_id: uuid.UUID, van: date, tot: date, gebruiker_ids: set[uuid.UUID] | None = None
+) -> list[VeldwerkerAfwezigheid]:
+    """Alle afwezigheidsrijen die [van, tot] overlappen — één statement (set-based)."""
+    q = select(VeldwerkerAfwezigheid).where(
+        VeldwerkerAfwezigheid.administratie_id == administratie_id,
+        VeldwerkerAfwezigheid.van <= tot,
+        VeldwerkerAfwezigheid.tot >= van,
+    )
+    if gebruiker_ids is not None:
+        if not gebruiker_ids:
+            return []
+        q = q.where(VeldwerkerAfwezigheid.gebruiker_id.in_(gebruiker_ids))
+    return list(session.scalars(q.order_by(VeldwerkerAfwezigheid.van)))
+
+
+def _is_afwezig(
+    afwezigheid: list[VeldwerkerAfwezigheid], gebruiker_id: uuid.UUID, datum: date
+) -> VeldwerkerAfwezigheid | None:
+    for a in afwezigheid:
+        if a.gebruiker_id == gebruiker_id and a.van <= datum <= a.tot:
+            return a
+    return None
+
+
+def plan_bulk(
+    *,
+    administratie_id: uuid.UUID,
+    items: list[tuple[uuid.UUID, uuid.UUID, date, str]],
+    bron: str,
+    verwijderen: bool = False,
+    correlatie_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID,
+    vandaag: date | None = None,
+) -> BulkResultaat:
+    """Vulhandvat, ploeg-paneel en "Ongedaan maken" (mockup v3 ② + ③, Peter 18-09) in ÉÉN transactie — 16 persoon-dagen
+    in 16 losse requests met tussenstanden was onaanvaardbaar (half gelukt = half-planning zichtbaar).
+
+    Per item `(gebruiker_id, project_id, datum, dagdeel)`:
+    - `gedaan` — geplaatst (of verwijderd bij `verwijderen=True`);
+    - `overgeslagen` — bestond al (idempotent: dezelfde set twee keer indienen = alles overgeslagen) of, bij
+      verwijderen, bestond niet;
+    - `conflict` — WEL geplaatst, maar gemarkeerd: de persoon staat die dag al op een ánder project
+      (`conflict='project'`, mét projectnaam) of is afwezig (`conflict='afwezig'`). Kantoor beslist — nooit blokkerend
+      (mockup-notitie).
+    Een échte fout (onbekend/inactief project, niet-planbare persoon, geen opt-in, geen recht) rolt ALLES terug
+    (UrenFout → 4xx). Limiet `BULK_MAX_ITEMS`; lege lijst = 422. Elke audit-rij per (persoon, dag) draagt
+    `bulk_correlatie_id` + `bron`; één extra audit-rij `planning_bulk` vat de aanroep samen (tellers per uitkomst).
+    Set-based: één query voor de bestaande toewijzingen, één voor afwezigheid, één per uniek project, één per unieke
+    persoon, de projectkoppeling één keer per (persoon, project) — onafhankelijk van het aantal items."""
+    if bron not in BULK_BRONNEN:
+        raise OngeldigeInvoer(f"Onbekende bron {bron!r} (vulhandvat, ploeg of ongedaan)")
+    if not items:
+        raise OngeldigeInvoer("Geen items om te plannen")
+    if len(items) > BULK_MAX_ITEMS:
+        raise OngeldigeInvoer(f"Hoogstens {BULK_MAX_ITEMS} items per aanroep ({len(items)} aangeboden)")
+    for _, _, _, dagdeel in items:
+        _vereis_dagdeel(dagdeel)
+    correlatie_id = correlatie_id or uuid.uuid4()
+    vandaag = vandaag or vandaag_nl()
+    # Dubbele items binnen één aanroep: de eerste telt, de rest is overgeslagen (idempotent binnen de set).
+    gezien: set[tuple[uuid.UUID, uuid.UUID, date]] = set()
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        project_ids = {p for _, p, _, _ in items}
+        gebruiker_ids = {g for g, _, _, _ in items}
+        datums = {d for _, _, d, _ in items}
+        projecten: dict[uuid.UUID, ProjectCache] = {}
+        if not verwijderen:
+            for pid in project_ids:
+                projecten[pid] = _vereis_actief_project(session, administratie_id, pid)
+        gebruikers: dict[uuid.UUID, Gebruiker] = {}
+        for gid in gebruiker_ids:
+            gebruikers[gid] = _vereis_planbare_gebruiker(session, gid) if not verwijderen else _gebruiker(session, gid)
+        # Bestaande toewijzingen van deze personen op deze datums — één statement; voedt idempotentie én de
+        # conflict-toets.
+        bestaand = list(
+            session.scalars(
+                select(PlanningToewijzing).where(
+                    PlanningToewijzing.administratie_id == administratie_id,
+                    PlanningToewijzing.gebruiker_id.in_(gebruiker_ids),
+                    PlanningToewijzing.datum.in_(datums),
+                )
+            )
+        )
+        bestaand_sleutels = {(t.gebruiker_id, t.project_id, t.datum) for t in bestaand}
+        elders: dict[tuple[uuid.UUID, date], list[uuid.UUID]] = {}
+        for t in bestaand:
+            elders.setdefault((t.gebruiker_id, t.datum), []).append(t.project_id)
+        andere_projecten = {pid for lijst in elders.values() for pid in lijst} - set(projecten)
+        projectnamen = {pid: p.naam for pid, p in projecten.items()}
+        if andere_projecten:
+            for p in session.scalars(select(ProjectCache).where(ProjectCache.id.in_(andere_projecten))).all():
+                projectnamen[p.id] = p.naam
+        afwezigheid = (
+            _afwezigheid_in_venster(
+                session,
+                administratie_id=administratie_id,
+                van=min(datums),
+                tot=max(datums),
+                gebruiker_ids=gebruiker_ids,
+            )
+            if not verwijderen
+            else []
+        )
+
+        resultaten: list[BulkItemResultaat] = []
+        aangemaakt: list[BulkItemResultaat] = []
+        gekoppeld: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for gid, pid, datum, dagdeel in items:
+            sleutel = (gid, pid, datum)
+            if sleutel in gezien:
+                resultaten.append(
+                    BulkItemResultaat(gid, pid, datum, dagdeel, "overgeslagen", reden="dubbel in dezelfde aanroep")
+                )
+                continue
+            gezien.add(sleutel)
+            if verwijderen:
+                if sleutel not in bestaand_sleutels:
+                    resultaten.append(
+                        BulkItemResultaat(gid, pid, datum, dagdeel, "overgeslagen", reden="stond niet gepland")
+                    )
+                    continue
+                _verwijder_in_sessie(
+                    session, administratie_id=administratie_id, gebruiker_id=gid, project_id=pid, datum=datum,
+                    actor_id=actor_id, vandaag=vandaag, correlatie_id=correlatie_id, bron=bron,
+                )
+                r = BulkItemResultaat(gid, pid, datum, dagdeel, "gedaan")
+                resultaten.append(r)
+                aangemaakt.append(r)
+                continue
+            if sleutel in bestaand_sleutels:
+                resultaten.append(
+                    BulkItemResultaat(gid, pid, datum, dagdeel, "overgeslagen", reden="stond al op dit project gepland")
+                )
+                continue
+            conflict: str | None = None
+            conflict_naam: str | None = None
+            reden: str | None = None
+            afw = _is_afwezig(afwezigheid, gid, datum)
+            elders_pids = [x for x in elders.get((gid, datum), []) if x != pid]
+            if afw is not None:
+                conflict = "afwezig"
+                reden = f"{gebruikers[gid].naam} is afwezig t/m {afw.tot.isoformat()}"
+                if afw.reden:
+                    reden += f" ({afw.reden})"
+            elif elders_pids:
+                conflict = "project"
+                conflict_naam = projectnamen.get(elders_pids[0])
+                elders_naam = conflict_naam or "een ander project"
+                reden = f"{gebruikers[gid].naam} staat op {datum.isoformat()} al op {elders_naam}"
+            _plan_in_sessie(
+                session,
+                administratie_id=administratie_id,
+                gebruiker=gebruikers[gid],
+                project_id=pid,
+                datum=datum,
+                dagdeel=dagdeel,
+                actor_id=actor_id,
+                vandaag=vandaag,
+                correlatie_id=correlatie_id,
+                bron=bron,
+                extra_audit={"conflict": conflict} if conflict else None,
+                al_getoetst=True,
+                koppeling_al_gedaan=(gid, pid) in gekoppeld,
+            )
+            gekoppeld.add((gid, pid))
+            # Na het plaatsen telt dit kaartje mee als "elders" voor volgende items van dezelfde persoon × dag.
+            elders.setdefault((gid, datum), []).append(pid)
+            bestaand_sleutels.add(sleutel)
+            r = BulkItemResultaat(
+                gid, pid, datum, dagdeel, "conflict" if conflict else "gedaan",
+                reden=reden, conflict=conflict, conflict_projectnaam=conflict_naam,
+            )
+            resultaten.append(r)
+            aangemaakt.append(r)
+
+        tellers = {u: sum(1 for r in resultaten if r.uitkomst == u) for u in ("gedaan", "overgeslagen", "conflict")}
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="planning_toewijzing",
+            record_id=correlatie_id,
+            actie="planning_bulk",
+            correlatie_id=correlatie_id,
+            nieuwe_waarde={
+                "bron": bron,
+                "verwijderen": verwijderen,
+                "aantal_items": len(items),
+                **tellers,
+                "datums": sorted(d.isoformat() for d in datums),
+            },
+            administratie_id=administratie_id,
+        )
+        return BulkResultaat(correlatie_id=correlatie_id, aangemaakt=aangemaakt, resultaten=resultaten)
+
+
+# --- kantoor: reservering (kaart zonder ploeg) — v3 -------------------------------------------------
+
+
+def _reservering_data(r: PlanningReservering, projectnaam: str | None) -> ReserveringData:
+    return ReserveringData(id=r.id, project_id=r.project_id, projectnaam=projectnaam, datum=r.datum)
+
+
+def maak_reservering(
+    *, administratie_id: uuid.UUID, project_id: uuid.UUID, datum: date, actor_id: uuid.UUID
+) -> tuple[ReserveringData, bool]:
+    """Projecttegel → dag = lege kaart "gereserveerd". Idempotent: bestaat al → (rij, False). Geaudit."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        project = _vereis_actief_project(session, administratie_id, project_id)
+        bestaand = session.scalars(
+            select(PlanningReservering).where(
+                PlanningReservering.administratie_id == administratie_id,
+                PlanningReservering.project_id == project_id,
+                PlanningReservering.datum == datum,
+            )
+        ).first()
+        if bestaand is not None:
+            return _reservering_data(bestaand, project.naam), False
+        rij = PlanningReservering(
+            administratie_id=administratie_id, project_id=project_id, datum=datum, aangemaakt_door=actor_id
+        )
+        session.add(rij)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="planning_reservering",
+            record_id=rij.id,
+            actie="planning_gereserveerd",
+            correlatie_id=project_id,
+            nieuwe_waarde={"project_id": str(project_id), "datum": datum.isoformat(), "projectnaam": project.naam},
+            administratie_id=administratie_id,
+        )
+        return _reservering_data(rij, project.naam), True
+
+
+def verwijder_reservering(*, administratie_id: uuid.UUID, reservering_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    """Idempotent; geaudit (oude waarde in de audit — niets verdwijnt stil)."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_meerwerk_recht(session, actor_id)
+        rij = session.get(PlanningReservering, reservering_id)
+        if rij is None or rij.administratie_id != administratie_id:
+            return
+        oude = {"project_id": str(rij.project_id), "datum": rij.datum.isoformat()}
+        session.delete(rij)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="planning_reservering",
+            record_id=reservering_id,
+            actie="planning_reservering_verwijderd",
+            correlatie_id=uuid.UUID(oude["project_id"]),
+            oude_waarde=oude,
+            administratie_id=administratie_id,
+        )
+
+
+# --- kantoor: afwezigheid (minimaal — "op deze dagen niet plannen") — v3 slice 5 -------------------
+
+
+def _vereis_afwezigheid_recht(session, actor_id: uuid.UUID) -> None:
+    """Module-recht 'Meerwerk & urenstaten' ÓF 'veldwerkerbeheer' (spiegel van
+    `require_veldwerkerbeheer_of_meerwerk_recht`)."""
+    actor = _gebruiker(session, actor_id)
+    if heeft_meerwerk_urenstaten_recht(gebruiker_id=actor_id, rol=actor.rol) or heeft_veldwerkerbeheer_recht(
+        gebruiker_id=actor_id, rol=actor.rol
+    ):
+        return
+    raise GeenToegang("Afwezigheid beheren vereist het recht 'Meerwerk & urenstaten' of 'veldwerkerbeheer'")
+
+
+def _afwezigheid_data(a: VeldwerkerAfwezigheid) -> AfwezigheidData:
+    return AfwezigheidData(
+        id=a.id, gebruiker_id=a.gebruiker_id, van=a.van, tot=a.tot, reden=a.reden, beeindigd_op=a.beeindigd_op
+    )
+
+
+def afwezigheid_overzicht(
+    *, administratie_id: uuid.UUID, gebruiker_id: uuid.UUID | None, actor_id: uuid.UUID
+) -> list[AfwezigheidData]:
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_afwezigheid_recht(session, actor_id)
+        q = select(VeldwerkerAfwezigheid).where(VeldwerkerAfwezigheid.administratie_id == administratie_id)
+        if gebruiker_id is not None:
+            q = q.where(VeldwerkerAfwezigheid.gebruiker_id == gebruiker_id)
+        return [_afwezigheid_data(a) for a in session.scalars(q.order_by(VeldwerkerAfwezigheid.van.desc()))]
+
+
+def voeg_afwezigheid_toe(
+    *,
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID,
+    van: date,
+    tot: date,
+    reden: str | None,
+    actor_id: uuid.UUID,
+) -> AfwezigheidData:
+    """Nieuwe periode; overlap met een bestaande periode van dezelfde persoon = OngeldigeOvergang (409, leesbaar)."""
+    if tot < van:
+        raise OngeldigeInvoer("De einddatum ligt vóór de begindatum")
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_afwezigheid_recht(session, actor_id)
+        gebruiker = _vereis_planbare_gebruiker(session, gebruiker_id)
+        overlap = _afwezigheid_in_venster(
+            session, administratie_id=administratie_id, van=van, tot=tot, gebruiker_ids={gebruiker_id}
+        )
+        if overlap:
+            o = overlap[0]
+            raise OngeldigeOvergang(
+                f"{gebruiker.naam} is al afwezig gemeld van {o.van.isoformat()} t/m {o.tot.isoformat()} — "
+                "beëindig of verkort die periode eerst"
+            )
+        rij = VeldwerkerAfwezigheid(
+            administratie_id=administratie_id,
+            gebruiker_id=gebruiker_id,
+            van=van,
+            tot=tot,
+            reden=(reden or "").strip() or None,
+            aangemaakt_door=actor_id,
+        )
+        session.add(rij)
+        session.flush()
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="veldwerker_afwezigheid",
+            record_id=rij.id,
+            actie="afwezigheid_toegevoegd",
+            correlatie_id=gebruiker_id,
+            nieuwe_waarde={
+                "gebruiker_id": str(gebruiker_id),
+                "van": van.isoformat(),
+                "tot": tot.isoformat(),
+                "reden": rij.reden,
+            },
+            administratie_id=administratie_id,
+        )
+        return _afwezigheid_data(rij)
+
+
+def beeindig_afwezigheid(
+    *, administratie_id: uuid.UUID, afwezigheid_id: uuid.UUID, tot: date, actor_id: uuid.UUID
+) -> AfwezigheidData:
+    """Nooit verwijderen: `tot` vervroegen (≥ van) + `beeindigd_op`; audit oud→nieuw. Verlengen hoort hier niet (nieuwe
+    periode)."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        _administratie_met_opt_in(session, administratie_id)
+        _vereis_afwezigheid_recht(session, actor_id)
+        rij = session.get(VeldwerkerAfwezigheid, afwezigheid_id)
+        if rij is None or rij.administratie_id != administratie_id:
+            raise NietGevonden("Deze afwezigheid bestaat niet")
+        if tot < rij.van:
+            raise OngeldigeInvoer("De nieuwe einddatum ligt vóór de begindatum — kies minimaal de begindatum")
+        if tot > rij.tot:
+            raise OngeldigeInvoer("Beëindigen kan alleen vervroegen; een langere afwezigheid = nieuwe periode")
+        oud = rij.tot
+        rij.tot = tot
+        rij.beeindigd_op = func.now()
+        session.flush()
+        session.refresh(rij)
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="veldwerker_afwezigheid",
+            record_id=rij.id,
+            actie="afwezigheid_beeindigd",
+            correlatie_id=rij.gebruiker_id,
+            oude_waarde={"tot": oud.isoformat()},
+            nieuwe_waarde={"tot": tot.isoformat()},
+            administratie_id=administratie_id,
+        )
+        return _afwezigheid_data(rij)
 
 
 # --- kantoor: weekoverzicht + signalen ----------------------------------------------------------
@@ -877,14 +1393,35 @@ def planning_overzicht(
             geplande_dagen[t.gebruiker_id] = geplande_dagen.get(t.gebruiker_id, Decimal("0")) + _DAGDEEL_WAARDE.get(
                 t.dagdeel, Decimal("1")
             )
+        # v3 (18-09): afwezigheid die de week overlapt (één statement) → pool "afwezig t/m …" + lijst voor het paneel.
+        afwezig_rijen = _afwezigheid_in_venster(session, administratie_id=administratie_id, van=maandag, tot=zondag)
+        afwezig_tot: dict[uuid.UUID, date] = {}
+        for a in afwezig_rijen:
+            if a.gebruiker_id not in afwezig_tot or a.tot > afwezig_tot[a.gebruiker_id]:
+                afwezig_tot[a.gebruiker_id] = a.tot
         pool = [
             PoolPersoonData(
                 gebruiker_id=g.id,
                 naam=g.naam,
                 rol=g.rol.value,
                 geplande_dagen=geplande_dagen.get(g.id, Decimal("0")),
+                afwezig_tot=afwezig_tot.get(g.id),
             )
             for g in pool_gebruikers
+        ]
+        # v3 (18-09): reserveringen (kaart zonder ploeg) deze week — één statement; projectnaam uit de al geladen rijen.
+        projectnaam_per_id = {p.id: p.naam for p in projecten}
+        reserveringen = [
+            _reservering_data(r, projectnaam_per_id.get(r.project_id))
+            for r in session.scalars(
+                select(PlanningReservering)
+                .where(
+                    PlanningReservering.administratie_id == administratie_id,
+                    PlanningReservering.datum >= maandag,
+                    PlanningReservering.datum <= zondag,
+                )
+                .order_by(PlanningReservering.datum)
+            )
         ]
 
         buiten, dubbel = _dekking_signalen(session, administratie_id=administratie_id, van=maandag, tot_en_met=zondag)
@@ -928,6 +1465,8 @@ def planning_overzicht(
             dubbele_dagen=dubbel,
             dubbele_dag_tellers=tellers,
             wachtrisico=wachtrisico,
+            reserveringen=reserveringen,
+            afwezigheid=[_afwezigheid_data(a) for a in afwezig_rijen],
         )
 
 

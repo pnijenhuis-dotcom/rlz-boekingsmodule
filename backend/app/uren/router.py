@@ -15,7 +15,7 @@ velden, besluit 21-08); elke mutatie legt "ingevuld door X namens Y" vast."""
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, time
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
@@ -343,6 +343,29 @@ def zzp_ingediend(
     return [schemas.IngediendeWeekDto(**i.__dict__) for i in items]
 
 
+@router.get("/zzp/herinnering", response_model=schemas.HerinneringDto)
+def zzp_herinnering(actor: CurrentGebruiker = Depends(vereis_veldrol)) -> schemas.HerinneringDto:
+    """Dag-einde herinnering (run B 18-09): eigen opt-out-stand + de geldende tijd (⚙ Toegang in de veld-app)."""
+    try:
+        uit, tijd = service.herinnering_stand(gebruiker_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.HerinneringDto(uit=uit, tijd=tijd.strftime("%H:%M"))
+
+
+@router.put("/zzp/herinnering", response_model=schemas.HerinneringDto)
+def zzp_herinnering_zetten(
+    payload: schemas.HerinneringZettenRequest, actor: CurrentGebruiker = Depends(vereis_veldrol)
+) -> schemas.HerinneringDto:
+    """Opt-out per gebruiker (nooit namens een ander; audit oud→nieuw)."""
+    try:
+        service.zet_herinnering_uit(gebruiker_id=actor.id, uit=payload.uit)
+        uit, tijd = service.herinnering_stand(gebruiker_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.HerinneringDto(uit=uit, tijd=tijd.strftime("%H:%M"))
+
+
 @router.put("/zzp/dag", response_model=schemas.WeekstaatDto)
 def zzp_dag_zetten(
     payload: schemas.DagZettenRequest, actor: CurrentGebruiker = Depends(vereis_veldrol)
@@ -362,6 +385,18 @@ def zzp_dag_zetten(
             actor_id=actor.id,
             bron=payload.bron,
         )
+    except service.WeekstaatBevroren as exc:
+        # Run B 18-09 (offline-wachtrij): de app toont bij een conflict beide standen — de body draagt code + status +
+        # de regel zoals de server 'm heeft (null = geen regel op die dag), nooit stil overschrijven.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": str(exc),
+                "code": "weekstaat_bevroren",
+                "status": exc.status,
+                "server_regel": exc.server_regel,
+            },
+        ) from exc
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return _weekstaat_response(data)
@@ -997,7 +1032,138 @@ def kantoor_planning(
         dubbele_dagen=[schemas.DubbeleDagMeldingDto(**m.__dict__) for m in data.dubbele_dagen],
         dubbele_dag_tellers=[schemas.DubbeleDagTellerDto(**t.__dict__) for t in data.dubbele_dag_tellers],
         wachtrisico=[schemas.WachtrisicoKortDto(**w.__dict__) for w in data.wachtrisico],
+        reserveringen=[schemas.PlanningReserveringDto(**r.__dict__) for r in data.reserveringen],
+        afwezigheid=[_afwezigheid_dto(a) for a in data.afwezigheid],
     )
+
+
+def _afwezigheid_dto(a: planning.AfwezigheidData) -> schemas.AfwezigheidDto:
+    return schemas.AfwezigheidDto(
+        id=a.id, gebruiker_id=a.gebruiker_id, van=a.van, tot=a.tot, reden=a.reden, beeindigd_op=a.beeindigd_op
+    )
+
+
+def _bulk_item_dto(r: planning.BulkItemResultaat) -> schemas.PlanningBulkItemDto:
+    return schemas.PlanningBulkItemDto(**r.__dict__)
+
+
+@router.post("/kantoor/planning/bulk", response_model=schemas.PlanningBulkResultaatDto)
+def kantoor_planning_bulk(
+    payload: schemas.PlanningBulkRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.PlanningBulkResultaatDto:
+    """Planning v3 dag-eerst (Peter 18-09): vulhandvat, ploeg-paneel en "Ongedaan maken" in ÉÉN transactie. Per item
+    gedaan | overgeslagen (idempotent) | conflict (WEL gepland, gemarkeerd — kantoor beslist, nooit blokkerend); een
+    echte fout rolt alles terug. Limiet 200 items. `verwijderen=true` haalt exact de opgegeven items weg (ongedaan
+    maken)."""
+    try:
+        data = planning.plan_bulk(
+            administratie_id=payload.administratie_id,
+            items=[(i.gebruiker_id, i.project_id, i.datum, i.dagdeel) for i in payload.items],
+            bron=payload.bron,
+            verwijderen=payload.verwijderen,
+            correlatie_id=payload.correlatie_id,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.PlanningBulkResultaatDto(
+        correlatie_id=data.correlatie_id,
+        aangemaakt=[_bulk_item_dto(r) for r in data.aangemaakt],
+        resultaten=[_bulk_item_dto(r) for r in data.resultaten],
+    )
+
+
+@router.post("/kantoor/planning/reservering", response_model=schemas.PlanningReserveringDto)
+def kantoor_planning_reservering(
+    payload: schemas.PlanningReserveringRequest,
+    response: Response,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.PlanningReserveringDto:
+    """Projecttegel → dag = kaart zonder ploeg ("gereserveerd"). 201 bij aanmaak, 200 als hij al bestond
+    (idempotent)."""
+    try:
+        data, nieuw = planning.maak_reservering(
+            administratie_id=payload.administratie_id,
+            project_id=payload.project_id,
+            datum=payload.datum,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    response.status_code = status.HTTP_201_CREATED if nieuw else status.HTTP_200_OK
+    return schemas.PlanningReserveringDto(**data.__dict__)
+
+
+@router.post("/kantoor/planning/reservering/verwijderen", status_code=status.HTTP_204_NO_CONTENT)
+def kantoor_planning_reservering_verwijderen(
+    payload: schemas.PlanningReserveringVerwijderRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> None:
+    try:
+        planning.verwijder_reservering(
+            administratie_id=payload.administratie_id, reservering_id=payload.id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+
+
+@router.get("/kantoor/afwezigheid", response_model=list[schemas.AfwezigheidDto])
+def kantoor_afwezigheid(
+    administratie_id: uuid.UUID,
+    gebruiker_id: uuid.UUID | None = None,
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> list[schemas.AfwezigheidDto]:
+    """Afwezigheid (v3 slice 5): "op deze dagen niet plannen" — geen verlofadministratie. Recht: meerwerk ÓF
+    veldwerkerbeheer."""
+    try:
+        data = planning.afwezigheid_overzicht(
+            administratie_id=administratie_id, gebruiker_id=gebruiker_id, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return [_afwezigheid_dto(a) for a in data]
+
+
+@router.post("/kantoor/afwezigheid", response_model=schemas.AfwezigheidDto, status_code=status.HTTP_201_CREATED)
+def kantoor_afwezigheid_toevoegen(
+    payload: schemas.AfwezigheidToevoegenRequest,
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfwezigheidDto:
+    """Overlap met een bestaande periode van dezelfde persoon = 409 (leesbaar); audit."""
+    try:
+        data = planning.voeg_afwezigheid_toe(
+            administratie_id=payload.administratie_id,
+            gebruiker_id=payload.gebruiker_id,
+            van=payload.van,
+            tot=payload.tot,
+            reden=payload.reden,
+            actor_id=actor.id,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _afwezigheid_dto(data)
+
+
+@router.post("/kantoor/afwezigheid/beeindigen", response_model=schemas.AfwezigheidDto)
+def kantoor_afwezigheid_beeindigen(
+    payload: schemas.AfwezigheidBeeindigenRequest,
+    actor: CurrentGebruiker = Depends(require_veldwerkerbeheer_of_meerwerk_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.AfwezigheidDto:
+    """Nooit verwijderen: `tot` vervroegen (audit oud→nieuw)."""
+    try:
+        data = planning.beeindig_afwezigheid(
+            administratie_id=payload.administratie_id, afwezigheid_id=payload.id, tot=payload.tot, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _afwezigheid_dto(data)
 
 
 @router.post("/kantoor/planning", status_code=status.HTTP_204_NO_CONTENT)
@@ -1636,6 +1802,38 @@ def beheer_omschrijving_chips_zetten(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return schemas.OmschrijvingChipsDto(chips=chips, is_standaard=False)
+
+
+@router.get("/beheer/herinnering-tijd/{administratie_id}", response_model=schemas.HerinneringTijdDto)
+def beheer_herinnering_tijd(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.HerinneringTijdDto:
+    """Herinneringstijd dag-einde per administratie (run B 18-09, Beheerder-only zoals de omschrijving-chips)."""
+    try:
+        tijd, standaard = service.herinnering_tijd_voor(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.HerinneringTijdDto(tijd=tijd.strftime("%H:%M"), standaard=standaard)
+
+
+@router.put("/beheer/herinnering-tijd/{administratie_id}", response_model=schemas.HerinneringTijdDto)
+def beheer_herinnering_tijd_zetten(
+    administratie_id: uuid.UUID,
+    payload: schemas.HerinneringTijdZettenRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.HerinneringTijdDto:
+    """Zet 'HH:MM' (06:00–18:59) of null = terug naar de default 16:30; audit oud→nieuw."""
+    try:
+        nieuw: time | None = None
+        if payload.tijd is not None:
+            try:
+                nieuw = time.fromisoformat(payload.tijd)
+            except ValueError as exc:
+                raise service.OngeldigeInvoer("Ongeldige tijd — gebruik HH:MM") from exc
+        tijd, standaard = service.zet_herinnering_tijd(administratie_id=administratie_id, tijd=nieuw, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.HerinneringTijdDto(tijd=tijd.strftime("%H:%M"), standaard=standaard)
 
 
 @router.post("/beheer/detacheerderkoppelingen", status_code=status.HTTP_204_NO_CONTENT)

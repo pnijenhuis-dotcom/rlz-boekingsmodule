@@ -228,6 +228,8 @@ jobs:
       # - rlz-extractie-wachtrij (26-08): ANTHROPIC_API_KEY (least privilege: alleen AI-dragende jobs).
       # - rlz-accordeur-herinneringen + rlz-nieuwe-facturen (15/16-08, native push fase 3 17-08): mail + VAPID
       #   + APNs (APNS_KEY_P8/ID uit Secret Manager, apns_afronden.sh) + FCM (ADC van run-jobs@, fcm_afronden.sh).
+      # - rlz-uren-herinneringen (run B 18-09): dag-einde herinnering veld-app — zelfde mail + push-envset als de
+      #   accordeur-herinneringen (push-anders-mail); scheduler elk kwartier 15:00–18:45 ma–vr (f3_jobs.sh).
       # - rlz-kantoor-digest (16-09 gevonden): mailt de weekdigest maar droeg tot 16-09 GEEN mailconfig →
       #   nu ${MAIL_ENVS}/${MAIL_SECRETS}.
       # - rlz-reconciliatie (06-09): mailkanaal voor actie-/systeemmail + APP_BASIS_URL (link in de mail).
@@ -253,6 +255,7 @@ jobs:
             "rlz-intake-imap|intake-postvak-verwerken|900" \
             "rlz-accordeur-herinneringen|accordeur-herinneringen|600" \
             "rlz-nieuwe-facturen|nieuwe-facturen-melden|600" \
+            "rlz-uren-herinneringen|uren-herinneringen|600" \
             "rlz-kantoor-digest|kantoor-digest|600" \
             "rlz-projecten-cijfers|projecten-cijfers-wachtrij|3600" \
             "rlz-bank-sync|bank-sync-wachtrij|900" \
@@ -270,7 +273,7 @@ jobs:
                 SECRETS="${SECRETS},INTAKE_IMAP_WACHTWOORD=INTAKE_IMAP_WACHTWOORD:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
               rlz-extractie-wachtrij)
                 SECRETS="${SECRETS},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" ;;
-              rlz-accordeur-herinneringen|rlz-nieuwe-facturen)
+              rlz-accordeur-herinneringen|rlz-nieuwe-facturen|rlz-uren-herinneringen)
                 ENVS="${ENVS}|${MAIL_ENVS}|${PUSH_ENVS}|FCM_PROJECT_ID=${PROJECT_ID}"
                 SECRETS="${SECRETS},${MAIL_SECRETS},${PUSH_SECRETS}" ;;
               rlz-kantoor-digest|rlz-reconciliatie)

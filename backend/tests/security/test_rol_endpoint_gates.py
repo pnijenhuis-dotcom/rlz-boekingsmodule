@@ -116,6 +116,14 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/uren/kantoor/weekstaten?administratie_id={aid}"),
         ("POST", f"/uren/kantoor/weekstaten/{aid}/{DUMMY_ID}/goedkeuren"),
         ("POST", f"/uren/kantoor/weekstaten/{aid}/{DUMMY_ID}/afkeuren"),
+        # Planning v3 dag-eerst (18-09): bulkroute, reservering en afwezigheid onder module-recht/veldwerkerbeheer
+        # + scope.
+        ("POST", "/uren/kantoor/planning/bulk"),
+        ("POST", "/uren/kantoor/planning/reservering"),
+        ("POST", "/uren/kantoor/planning/reservering/verwijderen"),
+        ("GET", f"/uren/kantoor/afwezigheid?administratie_id={aid}"),
+        ("POST", "/uren/kantoor/afwezigheid"),
+        ("POST", "/uren/kantoor/afwezigheid/beeindigen"),
         # Veldwerkers-run 14-09: veldwerkers-overzicht + koppelingen onder Beheerder ÓF 'veldwerkerbeheer' (A1),
         # rechten toekennen + dossier-documenttypen Beheerder-only (A2), dossier kantoorkant onder veldwerkerbeheer ÓF
         # meerwerk-recht (A3) — de poort-matrix staat in TestVeldwerkerbeheerRolpoort.
@@ -136,6 +144,9 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         # Run A 18-09: omschrijving-chips per administratie = Beheerder-only instelling (A2-patroon).
         ("GET", f"/uren/beheer/omschrijving-chips/{aid}"),
         ("PUT", f"/uren/beheer/omschrijving-chips/{aid}"),
+        # Run B 18-09: herinneringstijd dag-einde per administratie = Beheerder-only instelling (zelfde patroon).
+        ("GET", f"/uren/beheer/herinnering-tijd/{aid}"),
+        ("PUT", f"/uren/beheer/herinnering-tijd/{aid}"),
         ("GET", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}"),
         ("POST", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}/bedrijfsgegevens"),
         ("POST", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}/herinneren"),

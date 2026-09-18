@@ -101,6 +101,15 @@ STORE_ONBEKEND = "store_onbekend"
 #: Doorbelasting ("Koppel administratie…"). `doel_niet_onboarded` = geen kandidaat: zichtbaar, geen LET-OP.
 DOEL_BIJNA_MATCH = "doel_bijna_match"
 DOEL_NIET_ONBOARDED = "doel_niet_onboarded"
+#: Run B 18-09 — dag-einde herinnering: zichtbare overslaan-redenen (géén LET-OP: al uren / opt-out / al verzonden /
+#: stille uren zijn de bedoeling); `geen_kanaal` = de ENIGE harde voorwaarde (geen toestel én geen mailadres) → LET-OP
+#: mét deeplink Beheer › Veldwerkers (administratie-loos: de rij is per gebruiker).
+AL_UREN = "al_uren"
+OPT_OUT = "opt_out"
+AL_VERZONDEN = "al_verzonden"
+STILLE_UREN = "stille_uren"
+GEEN_KANAAL = "geen_kanaal"
+NIET_ACTIEF = "niet_actief"
 
 #: Categorieën die een ONTBREKENDE HARDE VOORWAARDE markeren → LET-OP mét handeling.
 #: "geen eigenaar" hoort hier óók bij: sinds blok B (07-09) is een ontbrekende eigenaar/toewijzing géén poort meer —
@@ -121,6 +130,7 @@ HARDE_VOORWAARDEN = frozenset(
         RECHTEN_NA_24U,
         STORE_ONBEKEND,
         DOEL_BIJNA_MATCH,
+        GEEN_KANAAL,
     }
 )
 
@@ -188,6 +198,12 @@ REDEN_LABEL: dict[str, str] = {
     STORE_ONBEKEND: "store uit de dagstaat niet gekoppeld aan een administratie (verzamelbak)",
     DOEL_BIJNA_MATCH: "doelentiteit niet eenduidig te koppelen (bijna-match of meerdere kandidaten) — koppel handmatig",
     DOEL_NIET_ONBOARDED: "doelentiteit nog niet onboarded (geen kandidaat)",
+    AL_UREN: "vandaag al uren ingevuld",
+    OPT_OUT: "herinnering uitgezet door de veldwerker",
+    AL_VERZONDEN: "vandaag al herinnerd",
+    STILLE_UREN: "stille uren",
+    GEEN_KANAAL: "geen kanaal (geen toestel én geen e-mailadres)",
+    NIET_ACTIEF: "account niet actief",
 }
 
 # --- de automatiseringen ------------------------------------------------------------------------------
@@ -235,6 +251,10 @@ KASSARAPPORT_INKOOPSTROOM = "kassarapport_inkoopstroom"
 #: Blok 1 doorbelasting-herkoppeling (Peter 12-09/16-09): dagelijks (sync-alles) + ná onboarding — bron audit
 #: `doorbelasting_herkoppeling_run` (per bron-administratie: open/gekoppeld/bijna_match/meerdere/geen).
 DOORBELASTING_HERKOPPELING = "doorbelasting_herkoppeling"
+#: Run B 18-09 (migratie 0162): dag-einde herinnering veld-app "Nog geen uren voor vandaag" — bron audit
+#: `uren_herinnering_run` (één administratie-loze rij per job-run mét tellers verwacht/gedaan/overgeslagen per reden;
+#: `app/uren/herinnering.py`).
+UREN_HERINNERING = "uren_herinnering"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
@@ -259,12 +279,14 @@ VOLGORDE: tuple[str, ...] = (
     OMZETBRON_HERKENNING,
     KASSARAPPORT_INKOOPSTROOM,
     DOORBELASTING_HERKOPPELING,
+    UREN_HERINNERING,
 )
 
 LABEL: dict[str, str] = {
     OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
     KASSARAPPORT_INKOOPSTROOM: "Kassarapporten in de inkoopstroom (dagelijkse toets)",
     DOORBELASTING_HERKOPPELING: "Doorbelasting — herkoppeling doelentiteiten (whitelist zonder doel)",
+    UREN_HERINNERING: "Uren-herinnering einde werkdag (veld-app)",
     EXTRACTIE_WACHTRIJ: "Extractie-wachtrij (job-trigger)",
     DUPLICAAT_AFVOER: "Duplicaat-afvoer",
     CREDITEUREN: "Crediteuren-dubbelen (auto)",
@@ -302,6 +324,7 @@ DOEL_PAD: dict[str, str] = {
     TOETS_UIT: "/instellingen/boeken",
     STORE_ONBEKEND: "/instellingen/boeken#stores",
     DOEL_BIJNA_MATCH: "/instellingen/administraties/{aid}/doorbelasting",
+    GEEN_KANAAL: "/veldwerkers",
 }
 
 #: Vaste categorieën die per automatisering ALTIJD zichtbaar zijn (ook als 0) — kernprincipe 7-cross-check.
@@ -318,6 +341,7 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     EERSTE_SYNC_HERPROBEREN: (RECHTEN_ONDERWEG,),
     OMZETBRON_HERKENNING: (STORE_ONBEKEND,),
     DOORBELASTING_HERKOPPELING: (DOEL_BIJNA_MATCH, DOEL_NIET_ONBOARDED),
+    UREN_HERINNERING: (AL_UREN, OPT_OUT, GEEN_KANAAL),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -345,6 +369,8 @@ _ACTIES: tuple[str, ...] = (
     "kassarapport_inkoopstroom_run",
     # blok 1 doorbelasting-herkoppeling (16-09 nacht)
     "doorbelasting_herkoppeling_run",
+    # run B 18-09: dag-einde herinnering veld-app (één rij per job-run, administratie-loos)
+    "uren_herinnering_run",
 )
 
 
@@ -770,6 +796,13 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "dagelijkse reconciliatie, alle administraties (lokaal, geen RLZ-call)",
         "audit kassarapport_inkoopstroom_run",
     )
+    uren_herinnering = maak(
+        UREN_HERINNERING,
+        "altijd",
+        "job rlz-uren-herinneringen elk kwartier 15:00–18:45 ma–vr; tijd per administratie (default 16:30), "
+        "één per veldwerker per dag",
+        "audit uren_herinnering_run",
+    )
     herkoppeling = maak(
         DOORBELASTING_HERKOPPELING,
         "altijd",
@@ -798,6 +831,28 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "kassarapport_inkoopstroom_run":
             for v in vensters(kassa_inkoop, f.tijdstip):
                 v.tel_gedaan(int(nw.get("geboekt") or 0) + int(nw.get("ongeboekt") or 0))
+        elif f.actie == "uren_herinnering_run":
+            for v in vensters(uren_herinnering, f.tijdstip):
+                v.tel_gedaan(int(nw.get("gedaan") or 0))
+                v.tel_overgeslagen(AL_UREN, int(nw.get("overgeslagen_al_uren") or 0))
+                v.tel_overgeslagen(OPT_OUT, int(nw.get("overgeslagen_opt_out") or 0))
+                v.tel_overgeslagen(AL_VERZONDEN, int(nw.get("overgeslagen_al_verzonden") or 0))
+                v.tel_overgeslagen(STILLE_UREN, int(nw.get("overgeslagen_stille_uren") or 0))
+                v.tel_overgeslagen(NIET_ACTIEF, int(nw.get("overgeslagen_niet_actief") or 0))
+                if int(nw.get("mislukt") or 0):
+                    v.tel_overgeslagen(FOUT, int(nw.get("mislukt") or 0))
+            n_geen_kanaal = int(nw.get("overgeslagen_geen_kanaal") or 0)
+            if n_geen_kanaal:
+                tel_over(
+                    uren_herinnering,
+                    f.tijdstip,
+                    GEEN_KANAAL,
+                    None,
+                    f"{n_geen_kanaal} veldwerker(s) zonder toestel én e-mailadres op {nw.get('datum')}",
+                )
+                # tel_over telt per aanroep één; de rest erbij zodat de teller het aantal veldwerkers draagt.
+                for v in vensters(uren_herinnering, f.tijdstip):
+                    v.tel_overgeslagen(GEEN_KANAAL, n_geen_kanaal - 1)
         elif f.actie == "doorbelasting_herkoppeling_run":
             for v in vensters(herkoppeling, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gekoppeld") or 0))

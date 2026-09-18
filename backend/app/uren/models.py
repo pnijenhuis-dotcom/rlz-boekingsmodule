@@ -40,6 +40,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     SmallInteger,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -1077,4 +1078,84 @@ class PlanningWijzigingMelding(Base):
     gemeld_op: Mapped[datetime | None] = mapped_column(default=None)
     kanaal: Mapped[str | None] = mapped_column(default=None)
     detail: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
+
+
+class PlanningReservering(Base):
+    """Planning v3 dag-eerst (mockup planning-v3-dag-eerst.html, AKKOORD Peter 18-09; migratie 0161): een kaart ZONDER
+    ploeg — het kantoor sleept een projecttegel naar een dag en reserveert zo "hier werken we die dag" vóór de ploeg
+    bekend is (grijs, dashed "gereserveerd"). Eén rij per administratie × project × dag (UNIQUE). Zodra er een
+    `planning_toewijzing` op (project, datum) staat toont de UI de reservering niet meer als aparte kaart; de rij blijft
+    als drager staan (nooit stil verdwijnen — verwijderen is een expliciete, geaudite handeling). RLS op administratie
+    zoals planning_toewijzing (FORCE), DELETE-grant zoals daar (een reservering is een planningsintentie, geen
+    boekstuk)."""
+
+    __tablename__ = "planning_reservering"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "administratie_id"],
+            ["boekhouding.project_cache.id", "boekhouding.project_cache.administratie_id"],
+            name="fk_planning_reservering_project_cache",
+        ),
+        UniqueConstraint("administratie_id", "project_id", "datum", name="uq_planning_reservering_project_dag"),
+        Index("ix_planning_reservering_datum", "administratie_id", "datum"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    datum: Mapped[date]
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class VeldwerkerAfwezigheid(Base):
+    """Afwezigheid van een veldwerker (planning v3 slice 5, Peter 18-09; migratie 0161) — MINIMAAL: alleen "op deze
+    dagen niet plannen". Géén verlofadministratie, géén saldo, géén goedkeuring. Periode [van, tot] inclusief; `reden`
+    vrije tekst. Nooit DELETE: beëindigen = `tot` vervroegen + `beeindigd_op` (audit oud→nieuw). In de planning: pool en
+    ploeg-paneel tonen "afwezig t/m …", plannen op zo'n dag = conflict (oranje, NIET blokkerend — kantoor beslist),
+    de conflictenbalk telt het mee. RLS op administratie zoals de andere uren-tabellen (FORCE), geen DELETE-grant."""
+
+    __tablename__ = "veldwerker_afwezigheid"
+    __table_args__ = (
+        CheckConstraint("tot >= van", name="ck_veldwerker_afwezigheid_periode"),
+        Index("ix_veldwerker_afwezigheid_gebruiker", "administratie_id", "gebruiker_id", "van", "tot"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    van: Mapped[date]
+    tot: Mapped[date]
+    reden: Mapped[str | None] = mapped_column(Text, default=None)
+    aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    beeindigd_op: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class UrenHerinnering(Base):
+    """Dagrij-claim van de dag-einde herinnering "Nog geen uren voor vandaag" (veld-app UX run B, Peter 18-09;
+    migratie 0162): hooguit één rij per veldwerker per NL-kalenderdag over álle administraties (UNIQUE gebruiker_id +
+    datum). Claim VÓÓR verzenden (patroon `planning_signaal`/`dossier_herinnering`): een herhaalde job-run stuurt nooit
+    dubbel. `kanaal` = push | e-mail | geen_kanaal (geen kanaal is óók een claim: zichtbaar in de teller, niet elk
+    kwartier opnieuw). `administratie_id` = de administratie waarvan het herinneringstijdstip gold (informatief, mag
+    NULL). Nooit DELETE."""
+
+    __tablename__ = "uren_herinnering"
+    __table_args__ = (
+        UniqueConstraint("gebruiker_id", "datum", name="uq_uren_herinnering_gebruiker_datum"),
+        {"schema": "boekhouding"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    gebruiker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    administratie_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.administratie.id"), default=None
+    )
+    datum: Mapped[date]
+    verzonden_op: Mapped[datetime] = mapped_column(server_default=func.now())
+    kanaal: Mapped[str]
+    detail: Mapped[str | None] = mapped_column(default=None)
 

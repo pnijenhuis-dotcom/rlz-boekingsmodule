@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -16,6 +16,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -248,6 +249,9 @@ class Administratie(Base):
     # weekstaat-regel — tekst-lijst, geen enum. NULL = de standaardlijst `app/uren/service.py::
     # STANDAARD_OMSCHRIJVING_CHIPS`. Beheerder-only zetten (1–10, uniek, ≤ 30 tekens), audit oud→nieuw.
     uren_omschrijving_chips: Mapped[list | None] = mapped_column(JSONB, default=None)
+    #: Run B 18-09 (migratie 0162): tijdstip (Europe/Amsterdam) waarná de dag-einde herinnering "Nog geen uren voor
+    #: vandaag" mag; NULL = code-default 16:30 (`app/uren/herinnering.py::STANDAARD_HERINNERING_TIJD`).
+    uren_herinnering_tijd: Mapped[time | None] = mapped_column(Time(), default=None)
     # Projectverdeling pro rato omzet (migratie 0107, blok C 04-09): hercontrole-drempel in % (default 5) — boven
     # de drempel wijkt een geboekte pro-rato-verdeling zichtbaar af (signaal mét actie "Herverdelen…").
     projectverdeling_drempel_pct: Mapped[Decimal] = mapped_column(
@@ -341,6 +345,8 @@ class Gebruiker(Base):
     status_voor_archivering: Mapped[str | None] = mapped_column(default=None)
     # Maandagochtend-digest kantoor (D2, 01-09, migratie 0097): opt-out per gebruiker (default mee).
     digest_opt_out: Mapped[bool] = mapped_column(default=False, server_default="false")
+    #: Run B 18-09 (migratie 0162): opt-out PER GEBRUIKER voor de dag-einde herinnering van de veld-app (⚙ Toegang).
+    uren_herinnering_uit: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
 class GebruikerAdministratie(Base):

@@ -58,6 +58,10 @@ JOBS=(
   # dwingt de stille uren (20:00–08:00 Europe/Amsterdam) bovendien zelf af. Scheduler start
   # GEPAUZEERD (zie onder) tot de notificatie-live-verificatie rond is.
   "rlz-nieuwe-facturen|nieuwe-facturen-melden|600|*/10 8-19 * * *"
+  # Dag-einde herinnering veld-app "Nog geen uren voor vandaag" (run B 18-09): elk kwartier 15:00–18:45 ma–vr; de job
+  # toetst zélf de administratie-tijd (default 16:30) en stuurt hooguit één herinnering per veldwerker per dag —
+  # een extra tick is dus een snelle no-op. Start NIET gepauzeerd (push-anders-mail via het al geverifieerde kanaal).
+  "rlz-uren-herinneringen|uren-herinneringen|600|0,15,30,45 15-18 * * 1-5"
   # Maandagochtend-digest kantoor (best-practice-punt D2, 01-09): één weekmail per kantoormedewerker
   # mét scope, alleen bij iets te melden, idempotent per ISO-week (herdraai = nooit dubbel). Mail via
   # het bestaande SMTP-kanaal (zelfde secrets als de herinneringen). Start NIET gepauzeerd.

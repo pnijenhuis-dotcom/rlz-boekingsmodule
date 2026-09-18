@@ -2449,6 +2449,20 @@ def _accordeur_herinneringen(args: argparse.Namespace) -> int:
     return 1 if rapport.is_fout else 0
 
 
+def _uren_herinneringen(args: argparse.Namespace) -> int:
+    """Dag-einde herinnering "Nog geen uren voor vandaag" (run B 18-09; Cloud Run-job `rlz-uren-herinneringen`, scheduler
+    elk kwartier 15:00–18:45 ma–vr Europe/Amsterdam — de job toetst zelf de administratie-tijd, default 16:30). Idempotent
+    per veldwerker per dag (claim-tabel); 0 kandidaten / tijd nog niet bereikt = exit 0 mét zichtbare tellers; exit 1 alleen
+    bij een échte verzendfout (F3.2-job-failure-alert)."""
+    from app.uren import herinnering
+
+    rapport = herinnering.verstuur_dag_einde_herinneringen()
+    for fout in rapport.fouten:
+        print(f"FOUT  {fout}", file=sys.stderr)
+    print(herinnering.rapport_regel(rapport))
+    return 1 if rapport.is_fout else 0
+
+
 def _nieuwe_facturen_melden(args: argparse.Namespace) -> int:
     """Nieuwe-facturen-bundelmelding (Cloud Scheduler-job `rlz-nieuwe-facturen`, ~elke 10 min;
     besluit Peter 2026-08-16: geen melding per factuur — bundelen per accordeur). Stille uren
@@ -3318,6 +3332,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subparsers.add_parser(
+        "uren-herinneringen",
+        help="Dag-einde herinnering veld-app 'Nog geen uren voor vandaag' (run B 18-09): push-anders-mail aan ZZP'ers/"
+        "uitvoerders zonder uren vandaag, ná de administratie-tijd (default 16:30), één per dag, opt-out per gebruiker.",
+    )
+
+    subparsers.add_parser(
         "nieuwe-facturen-melden",
         help="Nieuwe-facturen-bundelmelding (~elke 10 min): één bericht per accordeur zodra er "
         "nieuw werk klaarstaat — idempotent per (accordeur, document), stille uren 20:00–08:00, "
@@ -3746,6 +3766,8 @@ def main(argv: list[str] | None = None) -> int:
         return _accordeur_herinneringen(args)
     if args.commando == "nieuwe-facturen-melden":
         return _nieuwe_facturen_melden(args)
+    if args.commando == "uren-herinneringen":
+        return _uren_herinneringen(args)
     if args.commando == "bank-autoboeken-aan":
         return _zet_bank_autoboeken(args, ingeschakeld=True)
     if args.commando == "bank-autoboeken-uit":

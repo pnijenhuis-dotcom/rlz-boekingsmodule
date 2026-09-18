@@ -245,6 +245,30 @@ class OmschrijvingChipsZettenRequest(StrikteInvoer):
     chips: list[str] = Field(min_length=1, max_length=10)
 
 
+class HerinneringDto(BaseModel):
+    """Dag-einde herinnering (run B 18-09): `uit` = opt-out van de eigen gebruiker; `tijd` = 'HH:MM' van de eerste
+    administratie in scope mét opt-in (anders de default 16:30)."""
+
+    uit: bool
+    tijd: str
+
+
+class HerinneringZettenRequest(StrikteInvoer):
+    uit: bool
+
+
+class HerinneringTijdDto(BaseModel):
+    """Beheerder-instelling per administratie: `tijd` 'HH:MM' (Europe/Amsterdam), `standaard` = niets ingesteld."""
+
+    tijd: str
+    standaard: bool
+
+
+class HerinneringTijdZettenRequest(StrikteInvoer):
+    #: 'HH:MM' of null = terug naar de default (16:30).
+    tijd: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+
+
 class ProjectKeuzeDto(BaseModel):
     """Uitwijk "+ ander project" (A1): actieve projecten in de scope, doorzoekbaar in de app."""
 
@@ -606,6 +630,28 @@ class PlanningPoolPersoonDto(BaseModel):
     naam: str
     rol: str
     geplande_dagen: Decimal  # heel = 1, half = 0,5 — besluit C: > 5 kleurt als zacht signaal
+    # v3 (18-09): "afwezig t/m …" — einddatum van de afwezigheid die de getoonde week overlapt; null = beschikbaar.
+    afwezig_tot: date | None = None
+
+
+class PlanningReserveringDto(BaseModel):
+    """Kaart zonder ploeg (v3 18-09, migratie 0161): project × dag "gereserveerd"."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    projectnaam: str | None = None
+    datum: date
+
+
+class AfwezigheidDto(BaseModel):
+    """Afwezigheid (v3 slice 5, migratie 0161): alleen "op deze dagen niet plannen" — geen verlofsaldo/goedkeuring."""
+
+    id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    van: date
+    tot: date
+    reden: str | None = None
+    beeindigd_op: datetime | None = None
 
 
 class BuitenPlanningMeldingDto(BaseModel):
@@ -653,6 +699,69 @@ class PlanningWeekDto(BaseModel):
     dubbele_dagen: list[DubbeleDagMeldingDto]
     dubbele_dag_tellers: list[DubbeleDagTellerDto]
     wachtrisico: list[WachtrisicoKortDto] = []
+    # v3 (18-09): reserveringen deze week + afwezigheid die de week overlapt (voor pool, paneel en conflictenbalk).
+    reserveringen: list[PlanningReserveringDto] = []
+    afwezigheid: list[AfwezigheidDto] = []
+
+
+class PlanningBulkItemRequest(StrikteInvoer):
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    dagdeel: str = "heel"  # 'heel' | 'half' (bestaande enumeratie)
+
+
+class PlanningBulkRequest(StrikteInvoer):
+    """Vulhandvat / ploeg-paneel / ongedaan maken in ÉÉN transactie (v3 18-09). Limiet 200 items (422 erboven)."""
+
+    administratie_id: uuid.UUID
+    bron: str  # 'vulhandvat' | 'ploeg' | 'ongedaan'
+    verwijderen: bool = False
+    correlatie_id: uuid.UUID | None = None
+    items: list[PlanningBulkItemRequest] = Field(min_length=1, max_length=200)
+
+
+class PlanningBulkItemDto(BaseModel):
+    gebruiker_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+    dagdeel: str
+    uitkomst: str  # 'gedaan' | 'overgeslagen' | 'conflict'
+    reden: str | None = None
+    conflict: str | None = None  # 'project' | 'afwezig'
+    conflict_projectnaam: str | None = None
+
+
+class PlanningBulkResultaatDto(BaseModel):
+    correlatie_id: uuid.UUID
+    #: verwijderen=false: de daadwerkelijk geplaatste items (gedaan + conflict); verwijderen=true: de verwijderde items.
+    aangemaakt: list[PlanningBulkItemDto]
+    resultaten: list[PlanningBulkItemDto]
+
+
+class PlanningReserveringRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    project_id: uuid.UUID
+    datum: date
+
+
+class PlanningReserveringVerwijderRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    id: uuid.UUID
+
+
+class AfwezigheidToevoegenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    gebruiker_id: uuid.UUID
+    van: date
+    tot: date
+    reden: str | None = Field(default=None, max_length=200)
+
+
+class AfwezigheidBeeindigenRequest(StrikteInvoer):
+    administratie_id: uuid.UUID
+    id: uuid.UUID
+    tot: date
 
 
 class PlanningToewijzingRequest(StrikteInvoer):

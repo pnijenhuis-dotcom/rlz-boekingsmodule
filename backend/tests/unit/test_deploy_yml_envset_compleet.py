@@ -73,6 +73,7 @@ MAILENDE_JOBS = {
     "rlz-bewaking",
     "rlz-accordeur-herinneringen",
     "rlz-nieuwe-facturen",
+    "rlz-uren-herinneringen",  # run B 18-09: push-anders-mail
     "rlz-kantoor-digest",
 }
 
