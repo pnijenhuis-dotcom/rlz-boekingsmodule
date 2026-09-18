@@ -19,6 +19,7 @@ import {
 } from '../../api/appSlot'
 import { ApiError, BackendOnbereikbaarError, apiFetch } from '../../api/client'
 import { leesLaatsteSlotfout } from '../../api/slotDiagnose'
+import { webDiagnoseStaart } from '../../api/webToestel'
 import { zetWebSlotModus } from '../../api/webVeiligeOpslag'
 import {
   formatteerActivatiecode,
@@ -71,9 +72,14 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   // Diagnose (blok 12a 07-09): laatste koude-start-meting uit de lokale opslag + bundelversie(s);
   // puur lokaal, nooit naar de server — bedoeld voor een screenshot naar het kantoor.
   const [appBuild, setAppBuild] = useState<string | null>(null)
-  const [diagnose, setDiagnose] = useState(() => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()))
+  // 18-09 (web-toestel): staart "modus · opslag persistent · laatste tokenverlenging" — lokaal, nooit naar de server.
+  const [diagnose, setDiagnose] = useState(
+    () => diagnoseRegel(leesLaatsteKoudeStart(), null, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()) + webDiagnoseStaart(),
+  )
   const ververDiagnose = (build: string | null) =>
-    setDiagnose(diagnoseRegel(leesLaatsteKoudeStart(), build, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()))
+    setDiagnose(
+      diagnoseRegel(leesLaatsteKoudeStart(), build, leesLaatsteVerbindingsfout(), leesLaatsteSlotfout(), bekendeBundelId()) + webDiagnoseStaart(),
+    )
   const [gekopieerd, setGekopieerd] = useState(false)
   // Lokale audit (§5d): "Laatste wijziging: dd-mm HH:MM" onder de rij — uit localStorage, geen code.
   const [laatsteWijziging, setLaatsteWijziging] = useState<string | null>(() => laatsteCodeWijziging())

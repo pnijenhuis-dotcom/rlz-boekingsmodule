@@ -6,6 +6,7 @@
 // besluit Peter 08-09-2026). De kantoor-web merkt van dat slot-pad niets: zonder slot-opslag is
 // elke request byte-identiek aan vóór 08-09 (guard in client.test.ts).
 import { bewaarNatiefRefreshToken, haalNatiefRefreshToken, slotModus, slotSessieBeschikbaar } from './nativeSessie'
+import { noteerTokenVerlenging } from './webToestel'
 import { APP_MARKETING_VERSIE } from '../accordeur/appVersie'
 import { huidigPlatform } from '../accordeur/appAuthApi'
 import { bekendeBundelId } from '../accordeur/ota'
@@ -193,6 +194,8 @@ async function voerVerversUit(): Promise<boolean> {
   // Slot-opslag (native fase 4, PWA 08-09): de rotatie levert het nieuwe refresh-token in de body —
   // meteen achter het slot, anders is de sessie na de volgende app-start alsnog weg.
   if (body.refresh_token) await bewaarNatiefRefreshToken(body.refresh_token)
+  // Diagnose web-toestel (18-09): laatste geslaagde verlenging lokaal, alleen voor de slot-sessie (kantoor-web ongewijzigd).
+  if (slotSessieBeschikbaar()) noteerTokenVerlenging()
   return true
 }
 

@@ -14,6 +14,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { bewaarCredentialId, stelCodeIn } from '../api/appSlot'
+import { vraagPersistenteOpslag } from '../api/webToestel'
 import { kaleAuthFetch } from '../api/client'
 import { slotModus } from '../api/nativeSessie'
 import { zetWebSlotModus } from '../api/webVeiligeOpslag'
@@ -158,6 +159,9 @@ export function AppActiveren({ token = null, herstel = false, melding = null, we
       setFase('slot_fout')
       return
     }
+    // SPOED 18-09 (web-toestel): vraag persistente opslag — een browsertab kan de IndexedDB anders bij ruimtegebrek wegruimen;
+    // de uitkomst (ja/nee/onbekend) staat in de diagnose onder ⚙ Toegang. Native/PWA: onschuldig.
+    if (slotModus() === 'web') void vraagPersistenteOpslag()
     try {
       await kaleAuthFetch('/auth/accordeur/voorwaarden-akkoord', {
         method: 'POST',

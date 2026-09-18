@@ -7,6 +7,7 @@ import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, V
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { verwerkEml } from '../intake/intakeApi'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
+import { beoordelenUrl } from '../meerwerk/beoordelenChip'
 import { Badge, Button, Select, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { toegewezeneLabel, useMedewerkers } from '../vragen/useMedewerkers'
@@ -322,8 +323,11 @@ export function KlantStanden({
           <div className="panel">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0 }}>🧱 Meerwerk &amp; urenstaten</h2>
+              {urenStand.urenstaten_wachten_op_keuring > 0 && (
+                <Badge variant="warn">{urenStand.urenstaten_wachten_op_keuring} urenstaten te keuren</Badge>
+              )}
               {urenStand.meerwerk_te_beoordelen > 0 && (
-                <Badge variant="warn">{urenStand.meerwerk_te_beoordelen} te beoordelen</Badge>
+                <Badge variant="warn">{urenStand.meerwerk_te_beoordelen} meerwerk te beoordelen</Badge>
               )}
               {urenStand.meerwerk_te_lang_niet_doorbelast > 0 && (
                 <Badge variant="danger">
@@ -382,8 +386,26 @@ export function KlantStanden({
                     <th className="amount">Aantal</th>
                     <th />
                   </tr>
+                  {/* Bug 18-09: ingediende weekstaten hadden geen rij en geen landingsplek — nu Beoordelen › Urenstaten. */}
+                  {urenStand.urenstaten_wachten_op_keuring > 0 && (
+                    <tr
+                      className="clickable"
+                      data-testid="stand-urenstaten"
+                      onClick={() => navigate(beoordelenUrl(administratieId, 'urenstaten'))}
+                    >
+                      <td>
+                        <b>Urenstaten — ingediend, te keuren</b>
+                      </td>
+                      <td className="amount">{urenStand.urenstaten_wachten_op_keuring}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="text-primary" style={{ fontWeight: 600 }}>
+                          Beoordelen →
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                   {urenStand.meerwerk_te_beoordelen > 0 && (
-                    <tr className="clickable" onClick={() => navigate(`/meerwerk?administratie=${administratieId}`)}>
+                    <tr className="clickable" onClick={() => navigate(beoordelenUrl(administratieId, 'meerwerk'))}>
                       <td>
                         <b>Meerwerk — gemeld, te beoordelen</b>
                       </td>

@@ -21,6 +21,8 @@ import {
   wijzigCode,
   wisAppSlotLokaal,
   zetBiometrieAan,
+  herstelOntgrendeldVenster,
+  zetDirectVergrendelen,
 } from './appSlot'
 import { bewaarNatiefRefreshToken, haalNatiefRefreshToken } from './nativeSessie'
 import { installeerFakeIndexedDb } from './fakeIndexedDb.testhulp'
@@ -320,6 +322,43 @@ describe('web-adapter (PWA-slotmodus)', () => {
   afterEach(() => {
     idb.herstel()
     window.history.pushState({}, '', '/')
+  })
+
+  it('SPOED 18-09: ontgrendeling overleeft een volledige herlaad binnen 5 min via het tabblad-venster — niet ná vergrendelen, niet ná het venster, niet bij "direct vergrendelen"', async () => {
+    if (typeof globalThis.sessionStorage === 'undefined' || typeof globalThis.sessionStorage?.getItem !== 'function') {
+      const kv = new Map<string, string>()
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        configurable: true,
+        value: {
+          getItem: (k: string) => kv.get(k) ?? null,
+          setItem: (k: string, v: string) => void kv.set(k, String(v)),
+          removeItem: (k: string) => void kv.delete(k),
+          clear: () => kv.clear(),
+        },
+      })
+    }
+    sessionStorage.clear()
+    await stelCodeIn('13579')
+    const venster = sessionStorage.getItem('appslot_ontgrendeld_venster')
+    expect(venster).not.toBeNull()
+    expect(JSON.parse(venster!).tot).toBeGreaterThan(Date.now())
+    // "Herlaad": het modulegeheugen is weg, het tabblad-venster niet → het slot gaat weer open zonder code.
+    vergrendel() // wist óók het venster (bewust vergrendelen = dicht)
+    expect(sessionStorage.getItem('appslot_ontgrendeld_venster')).toBeNull()
+    expect(herstelOntgrendeldVenster()).toBe(false)
+    sessionStorage.setItem('appslot_ontgrendeld_venster', venster!)
+    expect(herstelOntgrendeldVenster()).toBe(true)
+    expect(isOntgrendeld()).toBe(true)
+    // Verlopen venster → dicht én opgeruimd.
+    vergrendel()
+    sessionStorage.setItem('appslot_ontgrendeld_venster', JSON.stringify({ ...JSON.parse(venster!), tot: Date.now() - 1 }))
+    expect(herstelOntgrendeldVenster()).toBe(false)
+    expect(sessionStorage.getItem('appslot_ontgrendeld_venster')).toBeNull()
+    // "Direct vergrendelen" aan → geen venster bij ontgrendelen.
+    await zetDirectVergrendelen(true)
+    expect(await ontgrendelMetCode('13579')).toBe('ok')
+    expect(sessionStorage.getItem('appslot_ontgrendeld_venster')).toBeNull()
+    await zetDirectVergrendelen(false)
   })
 
   it('appSlotBeschikbaar: true op /accordeur mét IndexedDB, false op het kantoor-pad', () => {

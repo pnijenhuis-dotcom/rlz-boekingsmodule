@@ -204,6 +204,12 @@ describe('contrast-audit kleurtokens — accordeur-/native-app (donker default +
   })
 
   it('donker: alle tekstparen ≥ 4,5:1', () => toets(accDark, 'acc-donker', ACC_TEKST, 4.5))
+  // Veld-app run A punt 7 (Peter 18-09, leesbaarheid buiten): hulptekst = --acc-muted op wit (licht) én op het donkere vlak
+  // — expliciet als tekst getoetst (≥ 4,5:1), naast de chips/meta die sinds run A ≥ 14 px zijn (veldTekst.test.ts).
+  it('veld-app hulptekst (--acc-muted) ≥ 4,5:1 op bg en panel in beide modi', () => {
+    toets(accDark, 'acc-veld-donker', [['acc-muted', 'acc-bg'], ['acc-muted', 'acc-panel']], 4.5)
+    toets(accLicht, 'acc-veld-licht', [['acc-muted', 'acc-bg'], ['acc-muted', 'acc-panel']], 4.5)
+  })
   it('donker: chip-/icoonparen ≥ 3:1', () => toets(accDark, 'acc-donker', ACC_ICOON, 3))
   it('licht: alle tekstparen ≥ 4,5:1', () => toets(accLicht, 'acc-licht', ACC_TEKST, 4.5))
   it('licht: chip-/icoonparen ≥ 3:1', () => toets(accLicht, 'acc-licht', ACC_ICOON, 3))

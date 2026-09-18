@@ -31,6 +31,11 @@ function opAccordeurPad(): boolean {
   return pad === '/accordeur' || pad.startsWith('/accordeur/')
 }
 
+/** Publiek (18-09): stond dit toestel eerder in de PWA-slotmodus? Samen met een lege IndexedDB = "opslag gewist". */
+export function webSlotVlagStaat(): boolean {
+  return slotVlagStaat()
+}
+
 function slotVlagStaat(): boolean {
   try {
     return localStorage.getItem(SLOT_MODUS_SLEUTEL) === '1'

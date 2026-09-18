@@ -1,6 +1,7 @@
 /** Detacheerder-filters veld-app (opdracht Peter 04-09 blok A): werklijst = alleen handelingen (A3, "✓ Alles is
- * bij" + "Ook zonder werk"), weken-eerst (A2), projecten per week (A1) mét de uitwijk "+ ander project"
- * (doorzoekbaar) en de weekstaat-lookup zónder koppeling (C1). */
+ * bij" + "Ook zonder werk"), weken-eerst (A2), de week als PROJECTKAARTEN (project-eerst, Peter 18-09: gepland ∪ mét regels;
+ * per kaart "+ Uren"; "+ Ander project toevoegen aan mijn week" = alle actieve projecten, doorzoekbaar) en de
+ * weekstaat-lookup zónder koppeling (C1). */
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -64,10 +65,16 @@ const PROJECT_IN_WEEK = {
   afkeur_reden: null,
 }
 
-const KEUZE = [
-  { administratie_id: ADM, administratie_naam: 'Universal Steigerbouw', project_id: EINDHOVEN, project_naam: '26014 Eindhoven (BAM)', soort_werk: 'steigerbouw' },
-  { administratie_id: ADM, administratie_naam: 'Universal Steigerbouw', project_id: TILBURG, project_naam: '26021 Tilburg (Heijmans)', soort_werk: 'demontage' },
-]
+/** 18-09 blok C: de week-projectenlijst draagt óók de niet-geplande actieve projecten (gepland=false, status nieuw). */
+const PROJECT_NIET_GEPLAND = {
+  ...PROJECT_IN_WEEK,
+  project_id: TILBURG,
+  project_naam: '26021 Tilburg (Heijmans)',
+  soort_werk: 'demontage',
+  gepland: false,
+  geplande_dagen: 0,
+  te_doen: false,
+}
 
 function installMock(zzpers: () => unknown[]): string[] {
   const aangeroepen: string[] = []
@@ -87,11 +94,12 @@ function installMock(zzpers: () => unknown[]): string[] {
         case '/uren/zzp/weken-overzicht':
           return Promise.resolve(jsonResponse([WEEK]))
         case '/uren/zzp/week-projecten':
-          return Promise.resolve(jsonResponse([PROJECT_IN_WEEK]))
-        case '/uren/zzp/projecten-keuze':
-          return Promise.resolve(jsonResponse(KEUZE))
+          // Kaarten = gepland ∪ mét regels (Eindhoven); `alles=true` = de keuzelijst mét óók het niet-geplande Tilburg.
+          return Promise.resolve(
+            jsonResponse(url.includes('alles=true') ? [PROJECT_IN_WEEK, PROJECT_NIET_GEPLAND] : [PROJECT_IN_WEEK]),
+          )
         case '/uren/zzp/weekstaat':
-          return Promise.resolve(jsonResponse({ weekstaat: null }))
+          return Promise.resolve(jsonResponse({ weekstaat: null, doorfactureren_standaard: false }))
         default:
           return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
       }
@@ -148,7 +156,7 @@ describe('UrenFlow — detacheerder (planning-gestuurd, 04-09)', () => {
     expect(aangeroepen.filter((u) => u.startsWith('/uren/detacheerder/zzpers')).length).toBe(2)
   })
 
-  it('ZZP\'er → weken (alleen mét planning + deze week) → projecten in die week → "+ ander project" doorzoekbaar → weekstaat zonder koppeling', async () => {
+  it("ZZP'er → weken → projectkaarten (gepland) → + Ander project (alle, doorzoekbaar) → kaart erbij → + Uren mét project al ingevuld", async () => {
     const aangeroepen = installMock(() => [MILAN_KAART])
     renderFlow()
     await waitFor(() => expect(screen.getByText('Milan K.')).toBeInTheDocument())
@@ -161,30 +169,117 @@ describe('UrenFlow — detacheerder (planning-gestuurd, 04-09)', () => {
     expect(screen.getByText('2 projecten gepland · 2 nog invullen')).toBeInTheDocument()
     expect(screen.getByText('2 nog invullen', { selector: '.acc-chip' })).toBeInTheDocument()
 
-    // A1: projecten in de week = alleen waar ingepland
+    // Project-eerst (Peter 18-09): de week = kaarten van geplande projecten (+ mét regels); Tilburg (niet gepland, geen
+    // regels) is GEEN kaart — die komt via "+ Ander project toevoegen aan mijn week".
     await userEvent.click(screen.getByText(/Week 36/))
     await waitFor(() => expect(screen.getByText('26014 Eindhoven (BAM)')).toBeInTheDocument())
     expect(aangeroepen.some((u) => u.startsWith(`/uren/zzp/week-projecten?jaar=2026&weeknummer=36&namens=${MILAN}`))).toBe(true)
-    expect(screen.getByText('gepland 2 dagen · nog niets ingevuld')).toBeInTheDocument()
+    expect(screen.getAllByTestId('projectkaart').length).toBe(1)
+    expect(screen.getByTestId('chip-gepland')).toBeInTheDocument()
     expect(screen.queryByText('26021 Tilburg (Heijmans)')).not.toBeInTheDocument()
+    // Dagbalk: 7 dagen, "+ Uren" per kaart; geen meerwerk-knop voor een detacheerder (alleen een uitvoerder meldt meerwerk).
+    expect(screen.getByTestId('dag-ma')).toBeInTheDocument()
+    expect(screen.getAllByTestId('plus-uren').length).toBe(1)
+    expect(screen.queryByTestId('meerwerk-melden')).not.toBeInTheDocument()
+    // Nog geen indienbare staat (status nieuw) → geen "Week indienen".
+    expect(screen.queryByTestId('week-indienen')).not.toBeInTheDocument()
 
-    // Uitwijk: volledige lijst, doorzoekbaar
+    // "+ Ander project": alle actieve projecten (alles=true), de kaarten die er al staan blijven weg, doorzoekbaar.
     await userEvent.click(screen.getByTestId('ander-project'))
     await waitFor(() => expect(screen.getByText('26021 Tilburg (Heijmans)')).toBeInTheDocument())
-    expect(screen.getByText('26014 Eindhoven (BAM)')).toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Zoek project'), 'tilb')
+    expect(aangeroepen.some((u) => u.startsWith('/uren/zzp/week-projecten?jaar=2026&weeknummer=36&alles=true&namens='))).toBe(true)
     expect(screen.queryByText('26014 Eindhoven (BAM)')).not.toBeInTheDocument()
-    expect(screen.getByText('26021 Tilburg (Heijmans)')).toBeInTheDocument()
-
-    // Weekstaat opent zónder koppeling (lookup geeft null → nieuwe staat, dagen invulbaar)
+    await userEvent.type(screen.getByLabelText('Zoek project'), 'eindh')
+    expect(screen.getByText('Geen project gevonden.')).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText('Zoek project'))
+    await userEvent.type(screen.getByLabelText('Zoek project'), 'tilb')
     await userEvent.click(screen.getByText('26021 Tilburg (Heijmans)'))
-    await waitFor(() => expect(screen.getByText(/26021 Tilburg \(Heijmans\) · week 36/)).toBeInTheDocument())
+
+    // Terug in de week: twee kaarten, Tilburg mét chip "niet gepland".
+    await waitFor(() => expect(screen.getAllByTestId('projectkaart').length).toBe(2))
+    expect(screen.getByTestId('chip-niet-gepland')).toBeInTheDocument()
+    expect(screen.getAllByText(/^260(14|21)/).map((el) => el.textContent)[0]).toContain('26014')
+
+    // "+ Uren" op de Tilburg-kaart, dag ma gekozen → daginvoer mét project én dag al ingevuld (lookup zónder koppeling).
+    await userEvent.click(screen.getByTestId('dag-ma'))
+    await userEvent.click(screen.getAllByTestId('plus-uren')[1])
+    await waitFor(() => expect(screen.getByTestId('doorfactureren-ingeklapt')).toBeInTheDocument())
     expect(
       aangeroepen.some((u) =>
         u.startsWith(`/uren/zzp/weekstaat?administratie_id=${ADM}&project_id=${TILBURG}&jaar=2026&weeknummer=36&namens=${MILAN}`),
       ),
     ).toBe(true)
-    expect(screen.getAllByText('+ invullen').length).toBe(7)
+    expect(screen.getByText(/maandag 31 aug/)).toBeInTheDocument()
+    expect(screen.getByText(/26021 Tilburg \(Heijmans\)/)).toBeInTheDocument()
     expect(screen.getByText(/namens Milan K\./)).toBeInTheDocument()
+    // 18-09 blok A+B + run A punt 11/12: doorfactureren INGEKLAPT op de projectdefault (hier: Niet) — dropdown pas ná
+    // "wijzigen"; m² zit onder "meer" omdat dit geen m²-project is (contract_m2 leeg) en is leeg (null, nooit 0).
+    expect(screen.getByTestId('doorfactureren-ingeklapt')).toHaveTextContent('niet doorfactureren')
+    expect(screen.getByTestId('doorfactureren-ingeklapt')).toHaveTextContent('standaard voor dit project')
+    await userEvent.click(screen.getByTestId('doorfactureren-wijzigen'))
+    expect((screen.getByLabelText('Doorfactureren') as HTMLSelectElement).value).toBe('nee')
+    expect(screen.queryByLabelText('m² gebouwd (optioneel)')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('meer'))
+    expect((screen.getByLabelText('m² gebouwd (optioneel)') as HTMLInputElement).value).toBe('')
+
+    // Terug (‹ Week 36) → de kaart Tilburg staat er nog (per-week-state).
+    await userEvent.click(screen.getByText('‹ Week 36'))
+    await waitFor(() => expect(screen.getAllByTestId('projectkaart').length).toBe(2))
+  })
+
+  it('kaart mét regels toont dagtotaal, weektotaal, laatste omschrijving en "Week indienen"; kaarttitel opent de weekstaat', async () => {
+    const CONCEPT = {
+      ...PROJECT_NIET_GEPLAND,
+      status: 'concept',
+      te_doen: true,
+      weekstaat_id: 'dddddddd-0000-0000-0000-000000000001',
+      dagen_ingevuld: 2,
+      totaal_uren: '10',
+      totaal_m2: '0',
+      dag_uren: { '2026-08-31': '6', '2026-09-01': '4' },
+      laatste_omschrijving: 'meegeholpen afbreken',
+      dagen_niet_doorfactureren: 1,
+      doorfactureren_standaard: false,
+      meerwerk_aantal: 0,
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((invoer: RequestInfo | URL) => {
+        const url = String(invoer)
+        const pad = url.split('?')[0]
+        switch (pad) {
+          case '/auth/token/vernieuwen':
+            return Promise.resolve(jsonResponse({ access_token: fakeToken({ rol: 'detacheerder', sub: 'deta-1' }) }))
+          case '/auth/administraties':
+            return Promise.resolve(jsonResponse({ administraties: [] }))
+          case '/uren/detacheerder/zzpers':
+            return Promise.resolve(jsonResponse([MILAN_KAART]))
+          case '/uren/zzp/weken-overzicht':
+            return Promise.resolve(jsonResponse([WEEK]))
+          case '/uren/zzp/week-projecten':
+            return Promise.resolve(jsonResponse([PROJECT_IN_WEEK, CONCEPT]))
+          case '/uren/zzp/weekstaat':
+            return Promise.resolve(jsonResponse({ weekstaat: null, doorfactureren_standaard: false }))
+          default:
+            return Promise.resolve(jsonResponse({ detail: `onverwacht pad: ${url}` }, 500))
+        }
+      }),
+    )
+    renderFlow()
+    await waitFor(() => expect(screen.getByText('Milan K.')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Milan K.'))
+    await waitFor(() => expect(screen.getByText(/Week 36/)).toBeInTheDocument())
+    await userEvent.click(screen.getByText(/Week 36/))
+    await waitFor(() => expect(screen.getAllByTestId('projectkaart').length).toBe(2))
+    // Dagbalk-teller ma = 6 u; kaartmeta op ma: "ma: 6,0 u · week 10,0 u · meegeholpen afbreken".
+    await userEvent.click(screen.getByTestId('dag-ma'))
+    expect(screen.getByTestId('dag-ma').textContent).toContain('6 u')
+    expect(screen.getByText(/ma: 6,0 u · week 10,0 u · meegeholpen afbreken/)).toBeInTheDocument()
+    expect(screen.getByTestId('chip-niet-doorfactureren').textContent).toBe('1 dag niet doorfactureren')
+    // Week indienen dekt alleen de concept-staat mét uren (1 project, 10 u).
+    expect(screen.getByTestId('week-indienen').textContent).toBe('Week indienen (10 u)')
+    // Kaarttitel → weekstaat van dat project.
+    await userEvent.click(screen.getByLabelText('Weekstaat 26021 Tilburg (Heijmans)'))
+    await waitFor(() => expect(screen.getByText(/26021 Tilburg \(Heijmans\) · week 36/)).toBeInTheDocument())
   })
 })

@@ -1854,3 +1854,200 @@
   -webkit-user-select: all;
   max-width: 100%;
 }
+
+/* ---- Veld-app project-eerst (Peter 18-09, mockup uren-uitvoerder-v2.html scherm ①) ---- */
+/* Dagbalk boven de projectkaarten: 7 tikdoelen, gekozen dag = accent; teller = uren op die dag over alle projecten. */
+.acc-dagbalk {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.acc-dagknop {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--acc-border);
+  border-radius: 10px;
+  background: var(--acc-panel);
+  color: var(--acc-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.acc-dagknop small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+.acc-dagknop.on {
+  background: var(--acc-accent);
+  color: var(--acc-accent-fg);
+  border-color: var(--acc-accent);
+}
+/* Projectkaart: kop (tikbaar → weekstaat) + knoppenrij "+ Uren" / "Meerwerk melden". */
+.acc-projectkaart {
+  display: block;
+}
+.acc-kaartkop {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.acc-kaartchips {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.acc-kaartknoppen {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.acc-kaartknoppen .acc-btn {
+  flex: 1;
+  min-height: 48px;
+}
+
+
+/* ---- Veld-app run A (12 UX-punten, Peter 18-09; mockup uren-uitvoerder-v3.html) ---- */
+/* Leesbaarheid buiten (punt 7): binnen de veld-app geen tekst < 14 px — chips, meta, hulptekst, sectielabels. */
+.acc-veld .acc-meta,
+.acc-veld .acc-chip,
+.acc-veld small,
+.acc-veld .acc-seclabel,
+.acc-veld .acc-qcount,
+.acc-veld .acc-notitie,
+.acc-veld .acc-form label,
+.acc-veld .acc-tekstlink,
+.acc-veld .acc-dagknop small {
+  font-size: 14px;
+}
+/* Tikdoelen ≥ 48 px (punt 6). */
+.acc-veld .acc-btn,
+.acc-veld .acc-plus,
+.acc-veld .acc-functab {
+  min-height: 48px;
+}
+/* Eén primaire knop per kaart; de rest als tekstlinks eronder (KP7). */
+.acc-kaartlinks {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.acc-kaartlinks .acc-tekstlink {
+  color: var(--acc-accent);
+  font-weight: 600;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+}
+.acc-kaartlinks .acc-tekstlink.paars {
+  color: var(--acc-purple);
+}
+/* Vergeten dag (punt 9): oranje rand in de dagbalk. */
+.acc-dagknop.vergeten {
+  border-color: var(--acc-orange);
+  box-shadow: inset 0 0 0 2px var(--acc-orange);
+}
+/* Uren als tikknoppen (punt 2). */
+.acc-tikrij {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.acc-tik {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--acc-border);
+  border-radius: 12px;
+  background: var(--acc-panel);
+  color: var(--acc-text);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.acc-tik.on {
+  background: var(--acc-accent);
+  color: var(--acc-accent-fg);
+  border-color: var(--acc-accent);
+}
+.acc-pm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.acc-pm .acc-tik {
+  flex: none;
+  width: 48px;
+  font-size: 20px;
+}
+.acc-pm b {
+  flex: 1;
+  text-align: center;
+  font-size: 22px;
+}
+/* Omschrijving-chips (punt 3). */
+.acc-chipkeuze {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.acc-chipkeuze .acc-tik {
+  flex: none;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.acc-chipkeuze .acc-tik.on {
+  background: var(--acc-blue-bg);
+  color: var(--acc-accent);
+  border-color: var(--acc-accent);
+  font-weight: 600;
+}
+/* Ingeklapte keuze (punt 11) + "meer" (punt 12). */
+.acc-ingeklapt {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border: 1px solid var(--acc-border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: var(--acc-panel);
+}
+/* Samenvatting vóór indienen (punt 8): vaste sheet onderaan. */
+.acc-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  background: var(--acc-panel);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.3);
+  padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+  font-size: 15px;
+  line-height: 1.7;
+}
+.acc-sheet-achter {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: rgba(0, 0, 0, 0.45);
+}

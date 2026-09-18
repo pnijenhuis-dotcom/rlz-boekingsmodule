@@ -1,29 +1,35 @@
 // Uren & meerwerk — veldkant in de bestaande app (fase 4, mockup/uren-uitvoerder.html 1-op-1,
 // BOUW GO Peter 2026-08-21). Drie rollen, rolafhankelijke functietabs:
 //  - ZZP'er (sinds 04-09 planning-gestuurd, opdracht Peter blok A): mijn weken (alleen weken mét
-//    planning + deze week) → projecten in die week (alleen waar ingepland; uitwijk "+ ander project")
-//    → weekstaat (dagen: uren + optionele m²) → indienen per week; "Ingediend" toont de statussen
+//    planning + deze week) → projecten in die week (sinds 18-09 ÁLLE actieve projecten, gepland bovenaan,
+//    doorzoekbaar — de aparte stap "+ ander project" is vervallen) → weekstaat (dagen: uren + optionele m² +
+//    keuze Doorfactureren/Niet doorfactureren per regel) → indienen per week; "Ingediend" toont de statussen
 //    over alle projecten heen.
-//  - Uitvoerder: projecten (specs, contract/offerte alleen-lezen, meerwerk melden zonder
-//    prijzen) én "Te keuren" — keuring op WEEKNIVEAU: week akkoord óf week afkeuren met
-//    verplichte reden (hele week terug naar de ZZP'er als "corrigeren").
+//  - Uitvoerder: projecten (ÁLLE actieve projecten sinds 18-09, gekoppeld bovenaan; specs, contract/offerte
+//    alleen-lezen, meerwerk melden zonder prijzen), "Mijn uren" (sinds 18-09: eigen weekstaten — "soort
+//    urenstaat achteraf", zelfde flow als de ZZP'er, nooit zelf keuren) én "Te keuren" — keuring op
+//    WEEKNIVEAU: week akkoord óf week afkeuren met verplichte reden (hele week terug als "corrigeren").
+//    Géén planningstab meer (feedback uitvoerder via Peter 18-09 blok D, allowlist auth/rollen.ts).
 //  - Detacheerder: mijn ZZP'ers (werklijst = alleen wie nog iets te doen heeft; niets = "✓ Alles is
 //    bij") → daarna exact dezelfde schermen als de ZZP'er zelf, mét "· namens <ZZP'er>" in de
 //    kopregel; geen projectinhoud.
 // Dit bestand hoort bij de accordeur-chunk: geen kantoor-imports (performance-budget).
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { haalMijnAdministraties, isVoorwaardenVereist } from '../accordeur/accordeurApi'
 import { PdfWeergave } from '../accordeur/PdfWeergave'
 import { VoorwaardenScherm } from '../accordeur/VoorwaardenScherm'
 import { useAuth } from '../auth/AuthContext'
+import { toontPlanningTab } from '../auth/rollen'
+import { ACC_TERUG_EVENT } from '../accordeur/androidTerug'
 import { UitlogIcoon } from '../accordeur/UitlogIcoon'
 import {
   beantwoordMeerwerkVraag,
   datumKort,
   datumMetTijd,
   dienWeekIn,
+  doorfacturerenLabel,
   eenheidLabel,
   EENHEDEN,
   haalIngediend,
@@ -31,7 +37,6 @@ import {
   haalMijnZzpers,
   haalProjectDetail,
   haalProjectDocumentBlob,
-  haalProjectenKeuze,
   haalTeKeuren,
   haalUitvoerderProjecten,
   haalWeekProjecten,
@@ -47,6 +52,17 @@ import {
   voorstelLabel,
   weekDagen,
   weekTotaalLabel,
+  weekKaarten,
+  standaardDag,
+  dagTotaal,
+  haalOmschrijvingChips,
+  STANDAARD_OMSCHRIJVING_CHIPS,
+  OVERIG_CHIP,
+  UREN_TIKKEUZES,
+  stapHalfUur,
+  vergetenDagen,
+  indienSamenvatting,
+  isM2Project,
   zetDag,
   type DagCorrectieInvoer,
   type IngediendeWeekDto,
@@ -54,7 +70,6 @@ import {
   type MijnPlanningDagDto,
   type ProjectDetailDto,
   type ProjectDocumentKaartDto,
-  type ProjectKeuzeDto,
   type TeKeurenItemDto,
   type UitvoerderProjectKaartDto,
   type WeekKaartDto,
@@ -78,6 +93,10 @@ import {
 
 type Veldrol = 'zzper' | 'uitvoerder' | 'detacheerder'
 
+/** Schermen van de uren-flow (weken → projecten → weekstaat → dag) — voor de "Mijn uren"-tab van de uitvoerder. */
+const UREN_SCHERMEN: ReadonlySet<Scherm['s']> = new Set(['zzpWeken', 'weekProjecten', 'projectToevoegen', 'weekstaat', 'daginvoer', 'ingediend'])
+const KEUR_SCHERMEN: ReadonlySet<Scherm['s']> = new Set(['keurlijst', 'keurdetail', 'keurafwijs'])
+
 interface WeekContext {
   administratieId: string
   projectId: string
@@ -91,9 +110,22 @@ interface WeekContext {
 type Scherm =
   | { s: 'zzpWeken' }
   | { s: 'weekProjecten'; week: WeekOverzichtKaartDto }
-  | { s: 'anderProject'; week: WeekOverzichtKaartDto }
+  /** "+ Ander project toevoegen aan mijn week" (project-eerst, Peter 18-09): alle actieve projecten, gepland bovenaan. */
+  | { s: 'projectToevoegen'; week: WeekOverzichtKaartDto }
   | { s: 'weekstaat'; ctx: WeekContext; terug: Scherm }
-  | { s: 'daginvoer'; ctx: WeekContext; datum: string; dagNaam: string; bestaand: WeekstaatDto['dagen'][number] | null; terug: Scherm }
+  | {
+      s: 'daginvoer'
+      ctx: WeekContext
+      datum: string
+      dagNaam: string
+      bestaand: WeekstaatDto['dagen'][number] | null
+      /** Projectdefault voor de doorfactureren-dropdown (18-09 blok B). */
+      doorfacturerenStandaard: boolean
+      /** Run A (18-09): omschrijving-chips van de administratie en het contract-m² van het project (m²-project?). */
+      chips: string[]
+      contractM2: string | null
+      terug: Scherm
+    }
   | { s: 'ingediend' }
   | { s: 'planning' }
   | { s: 'dossier'; terug: Scherm }
@@ -101,11 +133,53 @@ type Scherm =
   | { s: 'uitvProjecten' }
   | { s: 'projectdetail'; kaart: UitvoerderProjectKaartDto }
   | { s: 'contract'; kaart: UitvoerderProjectKaartDto; doc: ProjectDocumentKaartDto }
-  | { s: 'meerwerkMelden'; kaart: UitvoerderProjectKaartDto }
+  | { s: 'meerwerkMelden'; kaart: UitvoerderProjectKaartDto; terug?: undefined }
+  /** Meerwerk melden vanaf een projectkaart in de week (project-eerst): project al ingevuld, terug naar die week. */
+  | { s: 'meerwerkMelden'; kaart: MeerwerkDoel; terug: Scherm }
   | { s: 'meerwerkVraag'; kaart: UitvoerderProjectKaartDto; melding: MeerwerkDto }
   | { s: 'keurlijst' }
   | { s: 'keurdetail'; item: TeKeurenItemDto }
   | { s: 'keurafwijs'; item: TeKeurenItemDto; staat: WeekstaatDto }
+
+/** Het minimum dat "Meerwerk melden" nodig heeft — een projectkaart uit de week óf een uitvoerder-projectkaart. */
+type MeerwerkDoel = Pick<UitvoerderProjectKaartDto, 'administratie_id' | 'project_id' | 'project_naam'>
+
+function weekSleutel(week: { jaar: number; weeknummer: number }): string {
+  return `${week.jaar}-W${week.weeknummer}`
+}
+
+/** Android-terugknop in de web-flow (SPOED 18-09, event `acc-terug`): één scherm terug binnen de flow i.p.v. de app
+ * verlaten. Schermen mét `terug` gebruiken die; de rest volgt de vaste ouder; een beginscherm blijft staan (null). */
+export function terugVan(scherm: Scherm, veldrol: Veldrol): Scherm | null {
+  if ('terug' in scherm && scherm.terug !== undefined) return scherm.terug
+  switch (scherm.s) {
+    case 'weekProjecten':
+      return { s: 'zzpWeken' }
+    case 'projectToevoegen':
+      return { s: 'weekProjecten', week: scherm.week }
+    case 'projectdetail':
+      return { s: 'uitvProjecten' }
+    case 'contract':
+    case 'meerwerkVraag':
+      return { s: 'projectdetail', kaart: scherm.kaart }
+    case 'meerwerkMelden':
+      return { s: 'projectdetail', kaart: scherm.kaart as UitvoerderProjectKaartDto }
+    case 'keurdetail':
+      return { s: 'keurlijst' }
+    case 'keurafwijs':
+      return { s: 'keurdetail', item: scherm.item }
+    case 'ingediend':
+    case 'planning':
+      return { s: 'zzpWeken' }
+    case 'keurlijst':
+      return { s: 'uitvProjecten' }
+    case 'zzpWeken':
+      return veldrol === 'uitvoerder' ? { s: 'uitvProjecten' } : veldrol === 'detacheerder' ? { s: 'detaZzpers' } : null
+    case 'uitvProjecten':
+    case 'detaZzpers':
+      return null
+  }
+}
 
 function chipVoorWeekStatus(status: WeekKaartDto['status']): { klasse: string; label: string } {
   switch (status) {
@@ -117,7 +191,7 @@ function chipVoorWeekStatus(status: WeekKaartDto['status']): { klasse: string; l
     case 'goedgekeurd':
       return { klasse: 'akkoord', label: 'goedgekeurd' }
     case 'corrigeren':
-      return { klasse: 'afgekeurd', label: 'corrigeren' }
+      return { klasse: 'afgekeurd', label: 'afgekeurd — aanpassen' }
   }
 }
 
@@ -152,6 +226,11 @@ export function UrenFlow({
   // Detacheerder-namens-context (besluit 21-08): ná de ZZP'er-keuze exact de ZZP-schermen,
   // elk scherm draagt "· namens <ZZP'er>" en elke invoer wordt als "X namens Y" vastgelegd.
   const [namens, setNamens] = useState<{ id: string; naam: string } | null>(null)
+  // Project-eerst (Peter 18-09): projecten die de gebruiker deze week zelf aan zijn week toevoegde (nog zonder regels);
+  // per week bewaard zolang de app open is — een kaart zonder regels verdwijnt bij weekwissel.
+  const [extraKaarten, setExtraKaarten] = useState<Record<string, WeekProjectKaartDto[]>>({})
+  // Run A punt 3: omschrijving-chips per administratie (één keer ophalen per app-sessie).
+  const chipsCache = useRef<Record<string, string[]>>({})
   const [voorwaardenNodig, setVoorwaardenNodig] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [administratieNamen, setAdministratieNamen] = useState<string[]>([])
@@ -172,6 +251,91 @@ export function UrenFlow({
     return err instanceof Error ? err.message : 'Er ging iets mis — probeer het opnieuw.'
   }, [])
 
+  /** "+ Uren" op een projectkaart: project én dag staan al vast — alleen de bestaande regel van die dag ophalen
+   * (prefill + projectdefault doorfactureren) en direct het invoerscherm openen. */
+  const plusUren = useCallback(
+    async (week: WeekOverzichtKaartDto, project: WeekProjectKaartDto, datum: string, dagNaam: string) => {
+      const ctx: WeekContext = {
+        administratieId: project.administratie_id,
+        projectId: project.project_id,
+        projectNaam: project.project_naam,
+        jaar: week.jaar,
+        weeknummer: week.weeknummer,
+        terugLabel: `Week ${week.weeknummer}`,
+      }
+      try {
+        const gevonden = await zoekWeekstaat({
+          administratieId: ctx.administratieId,
+          projectId: ctx.projectId,
+          jaar: ctx.jaar,
+          weeknummer: ctx.weeknummer,
+          namens: namens?.id ?? null,
+        })
+        const bestaand = gevonden.weekstaat?.dagen.find((d) => d.datum === datum) ?? null
+        const chips = chipsCache.current[project.administratie_id] ?? (await haalOmschrijvingChips(project.administratie_id))
+        chipsCache.current[project.administratie_id] = chips
+        setScherm({
+          s: 'daginvoer',
+          ctx,
+          datum,
+          dagNaam,
+          bestaand,
+          doorfacturerenStandaard: gevonden.doorfactureren_standaard,
+          chips,
+          contractM2: project.contract_m2 ?? null,
+          terug: { s: 'weekProjecten', week },
+        })
+      } catch (err) {
+        const tekst = vangFout(err)
+        if (tekst) toon(tekst)
+      }
+    },
+    [namens, vangFout, toon],
+  )
+
+  /** "Zelfde als gisteren" (run A punt 1): de laatste regel op dit project (ook uit een vorige week) naar de gekozen dag —
+   * uren, m², omschrijving én doorfactureren; één tik, direct opgeslagen, audit bron=kopie. */
+  const kopieerLaatsteRegel = useCallback(
+    async (week: WeekOverzichtKaartDto, project: WeekProjectKaartDto, datum: string): Promise<boolean> => {
+      const bron = project.laatste_regel
+      if (!bron) return false
+      try {
+        await zetDag({
+          bron: 'kopie',
+          administratie_id: project.administratie_id,
+          project_id: project.project_id,
+          jaar: week.jaar,
+          weeknummer: week.weeknummer,
+          datum,
+          uren: bron.uren,
+          m2: bron.m2,
+          doorfactureren: bron.doorfactureren,
+          opmerking: bron.opmerking,
+          namens_zzper_id: namens?.id ?? null,
+        })
+        toon(`Gekopieerd van ${datumKort(bron.datum)}: ${urenLabel(bron.uren, bron.m2)}${bron.opmerking ? ` · ${bron.opmerking}` : ''}.`)
+        return true
+      } catch (err) {
+        const tekst = vangFout(err)
+        if (tekst) toon(tekst)
+        return false
+      }
+    },
+    [namens, vangFout, toon],
+  )
+
+  // Android-terugknop (web, SPOED 18-09): één scherm terug binnen de flow; op een beginscherm gebeurt niets.
+  useEffect(() => {
+    const op = () =>
+      setScherm((huidig) => {
+        const doel = terugVan(huidig, veldrol)
+        if (doel?.s === 'detaZzpers') setNamens(null)
+        return doel ?? huidig
+      })
+    window.addEventListener(ACC_TERUG_EVENT, op)
+    return () => window.removeEventListener(ACC_TERUG_EVENT, op)
+  }, [veldrol])
+
   useEffect(() => {
     haalMijnAdministraties()
       .then((data) => {
@@ -188,7 +352,8 @@ export function UrenFlow({
     }
     // 15-09: deep-link uit de bundelmelding "planning week N aangepast" (/accordeur?planning=JJJJ-Wnn) → de
     // planningweergave van die week.
-    if (planningWeekUitZoekdeel(location.search)) setScherm({ s: 'planning' })
+    // 18-09 blok D: de uitvoerder heeft geen planningstab meer — de melding blijft, de deep-link landt op zijn uren.
+    if (planningWeekUitZoekdeel(location.search)) setScherm(toontPlanningTab(veldrol) ? { s: 'planning' } : { s: 'zzpWeken' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 
@@ -239,12 +404,14 @@ export function UrenFlow({
       >
         ⏱ Mijn weken
       </button>
-      <button
-        className={`acc-functab${scherm.s === 'planning' ? ' actief' : ''}`}
-        onClick={() => setScherm({ s: 'planning' })}
-      >
-        📅 Planning
-      </button>
+      {toontPlanningTab(veldrol) && (
+        <button
+          className={`acc-functab${scherm.s === 'planning' ? ' actief' : ''}`}
+          onClick={() => setScherm({ s: 'planning' })}
+        >
+          📅 Planning
+        </button>
+      )}
       <button
         className={`acc-functab${scherm.s === 'ingediend' ? ' actief' : ''}`}
         onClick={() => setScherm({ s: 'ingediend' })}
@@ -253,22 +420,24 @@ export function UrenFlow({
       </button>
     </div>
   )
+  // Uitvoerder (18-09): Projecten · Mijn uren · Te keuren — géén planningstab (blok D, allowlist toontPlanningTab).
   const uitvTabs = (
     <div className="acc-functabs">
       <button
-        className={`acc-functab${scherm.s !== 'keurlijst' && scherm.s !== 'keurdetail' && scherm.s !== 'keurafwijs' && scherm.s !== 'planning' ? ' actief' : ''}`}
+        className={`acc-functab${!KEUR_SCHERMEN.has(scherm.s) && !UREN_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
         onClick={() => setScherm({ s: 'uitvProjecten' })}
       >
         🏗 Projecten
       </button>
       <button
-        className={`acc-functab${scherm.s === 'planning' ? ' actief' : ''}`}
-        onClick={() => setScherm({ s: 'planning' })}
+        className={`acc-functab${UREN_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
+        onClick={() => setScherm({ s: 'zzpWeken' })}
+        data-testid="tab-mijn-uren"
       >
-        📅 Planning
+        ⏱ Mijn uren
       </button>
       <button
-        className={`acc-functab${scherm.s === 'keurlijst' || scherm.s === 'keurdetail' || scherm.s === 'keurafwijs' ? ' actief' : ''}`}
+        className={`acc-functab${KEUR_SCHERMEN.has(scherm.s) ? ' actief' : ''}`}
         onClick={() => setScherm({ s: 'keurlijst' })}
       >
         ✓ Te keuren{teKeurenTeller !== null && teKeurenTeller > 0 && <span className="acc-badge">{teKeurenTeller}</span>}
@@ -311,7 +480,7 @@ export function UrenFlow({
       {veldrol === 'uitvoerder' && uitvTabs}
       {veldrol === 'detacheerder' && detaTabs}
 
-      <div className="acc-content">
+      <div className="acc-content acc-veld">
         {scherm.s === 'zzpWeken' && (
           <WekenOverzichtView
             namens={namens}
@@ -334,9 +503,10 @@ export function UrenFlow({
             week={scherm.week}
             namens={namens}
             namensSuffix={namensSuffix}
+            extra={extraKaarten[weekSleutel(scherm.week)] ?? []}
             vangFout={vangFout}
+            toon={toon}
             terug={() => setScherm({ s: 'zzpWeken' })}
-            anderProject={() => setScherm({ s: 'anderProject', week: scherm.week })}
             openWeekstaat={(project) =>
               setScherm({
                 s: 'weekstaat',
@@ -351,29 +521,44 @@ export function UrenFlow({
                 terug: scherm,
               })
             }
+            plusUren={(project, datum, dagNaam) => void plusUren(scherm.week, project, datum, dagNaam)}
+            kopieer={(project, datum) => kopieerLaatsteRegel(scherm.week, project, datum)}
+            // Alleen een uitvoerder meldt meerwerk (backend: `meld_meerwerk`); nooit namens.
+            meldMeerwerk={
+              veldrol === 'uitvoerder' && !namens
+                ? (project) =>
+                    setScherm({
+                      s: 'meerwerkMelden',
+                      kaart: { administratie_id: project.administratie_id, project_id: project.project_id, project_naam: project.project_naam },
+                      terug: scherm,
+                    })
+                : null
+            }
+            voegProjectToe={() => setScherm({ s: 'projectToevoegen', week: scherm.week })}
+            naIndienen={(aantal) =>
+              toon(
+                aantal === 1
+                  ? veldrol === 'uitvoerder'
+                    ? 'Week ingediend — een andere uitvoerder op dit project keurt de hele week.'
+                    : 'Week ingediend — de uitvoerder keurt de hele week.'
+                  : `${aantal} weekstaten ingediend — ${veldrol === 'uitvoerder' ? 'een andere uitvoerder' : 'de uitvoerder'} keurt per project de hele week.`,
+              )
+            }
           />
         )}
-        {scherm.s === 'anderProject' && (
-          <AnderProjectView
+        {scherm.s === 'projectToevoegen' && (
+          <ProjectToevoegenView
             week={scherm.week}
             namens={namens}
             namensSuffix={namensSuffix}
+            alInWeek={extraKaarten[weekSleutel(scherm.week)] ?? []}
             vangFout={vangFout}
             terug={() => setScherm({ s: 'weekProjecten', week: scherm.week })}
-            kies={(project) =>
-              setScherm({
-                s: 'weekstaat',
-                ctx: {
-                  administratieId: project.administratie_id,
-                  projectId: project.project_id,
-                  projectNaam: project.project_naam,
-                  jaar: scherm.week.jaar,
-                  weeknummer: scherm.week.weeknummer,
-                  terugLabel: `Week ${scherm.week.weeknummer}`,
-                },
-                terug: { s: 'weekProjecten', week: scherm.week },
-              })
-            }
+            kies={(project) => {
+              const sleutel = weekSleutel(scherm.week)
+              setExtraKaarten((huidig) => ({ ...huidig, [sleutel]: weekKaarten(huidig[sleutel] ?? [], [project]) }))
+              setScherm({ s: 'weekProjecten', week: scherm.week })
+            }}
           />
         )}
         {scherm.s === 'dossier' && (
@@ -402,11 +587,25 @@ export function UrenFlow({
             namensSuffix={namensSuffix}
             vangFout={vangFout}
             terug={() => setScherm(scherm.terug)}
-            openDag={(datum, dagNaam, bestaand) =>
-              setScherm({ s: 'daginvoer', ctx: scherm.ctx, datum, dagNaam, bestaand, terug: scherm })
+            openDag={(datum, dagNaam, bestaand, doorfacturerenStandaard) =>
+              setScherm({
+                s: 'daginvoer',
+                ctx: scherm.ctx,
+                datum,
+                dagNaam,
+                bestaand,
+                doorfacturerenStandaard,
+                chips: chipsCache.current[scherm.ctx.administratieId] ?? STANDAARD_OMSCHRIJVING_CHIPS,
+                contractM2: null,
+                terug: scherm,
+              })
             }
             naIndienen={() => {
-              toon('Week ingediend — de uitvoerder keurt de hele week.')
+              toon(
+                veldrol === 'uitvoerder'
+                  ? 'Week ingediend — een andere uitvoerder op dit project keurt de hele week.'
+                  : 'Week ingediend — de uitvoerder keurt de hele week.',
+              )
               setScherm(veldrol === 'detacheerder' ? scherm.terug : { s: 'ingediend' })
             }}
             openDossier={() => setScherm({ s: 'dossier', terug: scherm })}
@@ -418,6 +617,9 @@ export function UrenFlow({
             datum={scherm.datum}
             dagNaam={scherm.dagNaam}
             bestaand={scherm.bestaand}
+            doorfacturerenStandaard={scherm.doorfacturerenStandaard}
+            chips={scherm.chips}
+            contractM2={scherm.contractM2}
             namens={namens}
             namensSuffix={namensSuffix}
             vangFout={vangFout}
@@ -482,10 +684,10 @@ export function UrenFlow({
           <MeerwerkMeldenView
             kaart={scherm.kaart}
             vangFout={vangFout}
-            terug={() => setScherm({ s: 'projectdetail', kaart: scherm.kaart })}
+            terug={() => setScherm(scherm.terug !== undefined ? scherm.terug : { s: 'projectdetail', kaart: scherm.kaart })}
             naMelden={() => {
               toon('Meerwerk gemeld — het kantoor toetst en prijst de melding.')
-              setScherm({ s: 'projectdetail', kaart: scherm.kaart })
+              setScherm(scherm.terug !== undefined ? scherm.terug : { s: 'projectdetail', kaart: scherm.kaart })
             }}
           />
         )}
@@ -914,7 +1116,8 @@ function WekenOverzichtView({
           <span>📅</span>
           <span>
             Je ziet de weken waarin {namens ? namens.naam.split(' ')[0] : 'je'} <b>ingepland</b> {namens ? 'is' : 'bent'} (plus deze
-            week). Uren op een ander project? Open de week en kies <b>+ ander project</b>.
+            week). Open een week: geplande projecten staan bovenaan, daaronder <b>alle andere projecten</b> — uren schrijven kan
+            op elk project.
           </span>
         </div>
       )}
@@ -922,52 +1125,199 @@ function WekenOverzichtView({
   )
 }
 
-function weekProjectMeta(p: WeekProjectKaartDto): string {
-  const planning = p.gepland ? `gepland ${p.geplande_dagen} ${p.geplande_dagen === 1 ? 'dag' : 'dagen'}` : 'buiten planning'
-  switch (p.status) {
-    case 'nieuw':
-      return `${planning} · nog niets ingevuld`
-    case 'concept':
-      return `${planning} · ${p.dagen_ingevuld} ${p.dagen_ingevuld === 1 ? 'dag' : 'dagen'} ingevuld · ${weekTotaalLabel(p.totaal_uren, p.totaal_m2)}`
-    case 'ingediend':
-      return `${planning} · ingediend ${datumMetTijd(p.ingediend_op)} · wacht op de uitvoerder`
-    case 'goedgekeurd':
-      return `${planning} · goedgekeurd${p.goedgekeurd_door_naam ? ` door ${p.goedgekeurd_door_naam}` : ''} · ${weekTotaalLabel(p.totaal_uren, p.totaal_m2)}`
-    case 'corrigeren':
-      return `${planning} · week afgekeurd${p.afgekeurd_door_naam ? ` door ${p.afgekeurd_door_naam}` : ''} — tik voor toelichting`
-  }
-}
-
-/** Projecten in één week (04-09 A1): alleen waar de ZZP'er die week is ingepland, plus projecten met een
- * bestaande staat; "+ ander project" is de verplichte uitwijk (uren buiten planning blijven invoerbaar). */
+/** Projecten in één week (04-09 A1, herzien 18-09 blok C): ÁLLE actieve projecten — de geplande projecten (en projecten
+ * mét een staat) bovenaan onder "Gepland deze week", de rest doorzoekbaar onder "Andere projecten" mét chip "niet
+ * gepland" (informatief, geen blokkade). De aparte stap "+ ander project" is vervallen. */
+/** Weekweergave PROJECT-EERST (Peter 18-09: "eerst het project selecteren en dan de uren-/meerwerkknop"; bouwnorm
+ * `mockup/uren-uitvoerder-v2.html` scherm ①): een lijst PROJECTKAARTEN — geplande projecten van de week (chip "gepland"),
+ * projecten waar deze week al uren of meerwerk op staan (chip "niet gepland" als ze niet gepland zijn) en de projecten die de
+ * gebruiker zelf toevoegde. Per kaart: dagtotaal van de gekozen dag, weektotaal, laatste omschrijving, doorfactureren-chip en
+ * de knoppen "+ Uren" en "Meerwerk melden" — beide starten mét het project al ingevuld. Onderaan "+ Ander project toevoegen
+ * aan mijn week" en "Week indienen" (alle concept-staten mét uren, per project = per weekstaat). */
 function WeekProjectenView({
   week,
   namens,
   namensSuffix,
+  extra,
   vangFout,
+  toon,
   terug,
   openWeekstaat,
-  anderProject,
+  plusUren,
+  kopieer,
+  meldMeerwerk,
+  voegProjectToe,
+  naIndienen,
 }: {
   week: WeekOverzichtKaartDto
   namens: { id: string; naam: string } | null
   namensSuffix: React.ReactNode
+  /** Door de gebruiker deze week toegevoegde projecten zonder regels (UrenFlow-state per week). */
+  extra: WeekProjectKaartDto[]
   vangFout: (err: unknown) => string
+  toon: (tekst: string) => void
   terug: () => void
   openWeekstaat: (project: WeekProjectKaartDto) => void
-  anderProject: () => void
+  plusUren: (project: WeekProjectKaartDto, datum: string, dagNaam: string) => void
+  /** Run A punt 1: "Zelfde als gisteren" — laatste regel op dit project naar de gekozen dag; true = opgeslagen. */
+  kopieer: (project: WeekProjectKaartDto, datum: string) => Promise<boolean>
+  /** null = deze rol/context meldt geen meerwerk (alleen een uitvoerder, nooit namens). */
+  meldMeerwerk: ((project: WeekProjectKaartDto) => void) | null
+  voegProjectToe: () => void
+  naIndienen: (aantal: number) => void
 }) {
-  const [projecten, setProjecten] = useState<WeekProjectKaartDto[] | null>(null)
+  const [kaarten, setKaarten] = useState<WeekProjectKaartDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [samenvatting, setSamenvatting] = useState(false)
+  const dagen = weekDagen(week.jaar, week.weeknummer)
+  const [dag, setDag] = useState(() => standaardDag(dagen))
+  const vandaag = standaardDag(dagen).datum
   const laad = useCallback(() => {
     setFout(null)
     haalWeekProjecten(week.jaar, week.weeknummer, namens?.id ?? null)
-      .then(setProjecten)
+      .then(setKaarten)
       .catch((err) => setFout(vangFout(err) || null))
   }, [week, namens, vangFout])
   useEffect(() => {
     laad()
   }, [laad])
+
+  const alle = kaarten === null ? null : weekKaarten(kaarten, extra)
+  const muteerbaar = (k: WeekProjectKaartDto) => k.status === 'nieuw' || k.status === 'concept' || k.status === 'corrigeren'
+  const indienbaar = (alle ?? []).filter((k) => (k.status === 'concept' || k.status === 'corrigeren') && Number(k.totaal_uren) > 0)
+  const weekUren = (alle ?? []).reduce((som, k) => som + Number(k.totaal_uren), 0)
+  // Run A punt 9: werkdagen vóór vandaag zonder uren = oranje rand (alleen als vandaag in deze week valt of erna).
+  const vergeten = new Set(alle ? vergetenDagen(alle, dagen, vandaag) : [])
+  const overzicht = alle ? indienSamenvatting(indienbaar, dagen) : null
+
+  async function indienen() {
+    setBezig(true)
+    setFout(null)
+    let gelukt = 0
+    try {
+      for (const k of indienbaar) {
+        await dienWeekIn({
+          administratie_id: k.administratie_id,
+          project_id: k.project_id,
+          jaar: week.jaar,
+          weeknummer: week.weeknummer,
+          namens_zzper_id: namens?.id ?? null,
+        })
+        gelukt += 1
+      }
+      naIndienen(gelukt)
+    } catch (err) {
+      if (isDossierGeblokkeerd(err)) {
+        toon('Indienen is geblokkeerd: dossier incompleet — open Mijn dossier en upload de documenten.')
+      } else {
+        const tekst = vangFout(err)
+        if (tekst) setFout(tekst)
+      }
+      if (gelukt > 0) naIndienen(gelukt)
+    } finally {
+      setBezig(false)
+      laad()
+    }
+  }
+
+  function kaartMeta(k: WeekProjectKaartDto): string {
+    const dagUren = k.dag_uren?.[dag.datum]
+    const delen = [
+      dagUren !== undefined ? `${dag.naam}: ${urenLabel(dagUren, null)}` : `${dag.naam}: nog geen uren`,
+      Number(k.totaal_uren) > 0 ? `week ${weekTotaalLabel(k.totaal_uren, k.totaal_m2)}` : null,
+      k.laatste_omschrijving ?? null,
+    ]
+    return delen.filter(Boolean).join(' · ')
+  }
+
+  function kaart(k: WeekProjectKaartDto) {
+    const chip = chipVoorWeekStatus(k.status)
+    const nietDoorf = k.dagen_niet_doorfactureren ?? 0
+    return (
+      <div key={`${k.administratie_id}-${k.project_id}`} className="acc-card acc-projectkaart" data-testid="projectkaart">
+        <button className="acc-kaartkop" onClick={() => openWeekstaat(k)} aria-label={`Weekstaat ${k.project_naam ?? 'project'}`}>
+          <span className="acc-tt">
+            {k.project_naam ?? 'Project'}{' '}
+            {k.gepland ? (
+              <span className="acc-chip ingediend" data-testid="chip-gepland">
+                gepland
+              </span>
+            ) : (
+              <span className="acc-chip wacht" data-testid="chip-niet-gepland">
+                niet gepland
+              </span>
+            )}
+          </span>
+          <span className="acc-meta" style={{ display: 'block' }}>
+            {kaartMeta(k)}
+            {k.administratie_naam ? ` · ${k.administratie_naam}` : ''}
+          </span>
+          <span className="acc-meta acc-kaartchips" style={{ display: 'block' }}>
+            {k.status !== 'nieuw' && <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>}
+            {nietDoorf > 0 ? (
+              <span className="acc-chip wacht" data-testid="chip-niet-doorfactureren">
+                {nietDoorf} {nietDoorf === 1 ? 'dag' : 'dagen'} niet doorfactureren
+              </span>
+            ) : (
+              <span className="acc-chip">{doorfacturerenLabel(k.doorfactureren_standaard ?? true).toLowerCase()}</span>
+            )}
+            {(k.meerwerk_aantal ?? 0) > 0 && <span className="acc-chip meerwerk">{k.meerwerk_aantal} meerwerk</span>}
+          </span>
+          {/* Run A punt 10: terugkoppeling van kantoor/uitvoerder per week op de kaart. */}
+          {k.status === 'goedgekeurd' && (
+            <span className="acc-meta" style={{ display: 'block', marginTop: 4 }} data-testid="terugkoppeling-goed">
+              ✓ Goedgekeurd{k.goedgekeurd_door_naam ? ` door ${k.goedgekeurd_door_naam}` : ''} — getekende urenstaat.
+            </span>
+          )}
+          {k.status === 'corrigeren' && (
+            <span className="acc-meta" style={{ display: 'block', marginTop: 4, color: 'var(--acc-orange)' }} data-testid="terugkoppeling-afgekeurd">
+              Afgekeurd{k.afgekeurd_door_naam ? ` door ${k.afgekeurd_door_naam}` : ''}
+              {k.afkeur_reden ? `: "${k.afkeur_reden}"` : ''} — tik op Aanpassen, corrigeer en dien de week opnieuw in.
+            </span>
+          )}
+        </button>
+        {/* Run A punt 6 (KP7): één primaire knop per kaart; de rest als tekstlinks eronder. */}
+        <div className="acc-kaartknoppen">
+          {k.status === 'corrigeren' ? (
+            <button className="acc-btn primair" data-testid="aanpassen" onClick={() => openWeekstaat(k)}>
+              Aanpassen
+            </button>
+          ) : (
+            <button
+              className="acc-btn primair"
+              data-testid="plus-uren"
+              disabled={!muteerbaar(k)}
+              title={muteerbaar(k) ? undefined : 'Deze week is ingediend of goedgekeurd — wijzigen kan alleen via een afkeuring.'}
+              onClick={() => plusUren(k, dag.datum, dag.naam)}
+            >
+              + Uren
+            </button>
+          )}
+        </div>
+        <div className="acc-kaartlinks">
+          {k.laatste_regel && muteerbaar(k) ? (
+            <button
+              type="button"
+              className="acc-tekstlink"
+              data-testid="zelfde-als-gisteren"
+              title={`Laatste regel: ${datumKort(k.laatste_regel.datum)} · ${urenLabel(k.laatste_regel.uren, k.laatste_regel.m2)}${k.laatste_regel.opmerking ? ` · ${k.laatste_regel.opmerking}` : ''}`}
+              onClick={() => void kopieer(k, dag.datum).then((ok) => ok && laad())}
+            >
+              ⟲ Zelfde als gisteren
+            </button>
+          ) : (
+            <span />
+          )}
+          {meldMeerwerk && (
+            <button type="button" className="acc-tekstlink paars" data-testid="meerwerk-melden" onClick={() => meldMeerwerk(k)}>
+              Meerwerk melden
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -976,49 +1326,100 @@ function WeekProjectenView({
         Week {week.weeknummer} · {datumKort(week.maandag)} – {datumKort(week.zondag)}
         {namensSuffix}
       </div>
+      {/* Dagbalk: kies de dag waarop "+ Uren" landt; teller = uren op die dag over alle projecten. */}
+      <div className="acc-dagbalk" role="tablist" aria-label="Dag">
+        {dagen.map((d) => {
+          const uren = alle ? dagTotaal(alle, d.datum) : 0
+          return (
+            <button
+              key={d.datum}
+              role="tab"
+              aria-selected={d.datum === dag.datum}
+              className={`acc-dagknop${d.datum === dag.datum ? ' on' : ''}${vergeten.has(d.datum) ? ' vergeten' : ''}`}
+              onClick={() => setDag(d)}
+              data-testid={`dag-${d.naam}`}
+              title={vergeten.has(d.datum) ? 'Nog geen uren op deze werkdag' : undefined}
+            >
+              {d.naam}
+              <small>{uren > 0 ? `${uren.toLocaleString('nl-NL')} u` : '—'}</small>
+            </button>
+          )
+        })}
+      </div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
-      {projecten === null && !fout && <Leeg tekst="Laden…" />}
-      {projecten !== null && projecten.length === 0 && (
-        <Leeg tekst="Geen planning voor deze week — kies hieronder een project om toch uren in te vullen." />
+      {alle === null && !fout && <Leeg tekst="Laden…" />}
+      {alle !== null && alle.length === 0 && (
+        <Leeg tekst="Nog geen projecten in deze week — voeg hieronder een project toe en tik dan op + Uren." />
       )}
-      {(projecten ?? []).map((p) => {
-        const chip = chipVoorWeekStatus(p.status)
-        return (
-          <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => openWeekstaat(p)}>
-            <span>
-              <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
-              <span className="acc-meta" style={{ display: 'block' }}>
-                {weekProjectMeta(p)}
-              </span>
-            </span>
-            <span className={`acc-chip ${chip.klasse}`}>{chip.label}</span>
-          </button>
-        )
-      })}
-      {projecten !== null && (
-        <div className="acc-actionbar" style={{ position: 'static', marginTop: 12 }}>
-          <button className="acc-btn secundair" onClick={anderProject} data-testid="ander-project">
-            + ander project
+      {alle !== null && alle.map(kaart)}
+      <div className="acc-kaartknoppen" style={{ padding: '4px 0 0' }}>
+        <button className="acc-btn secundair" data-testid="ander-project" onClick={voegProjectToe}>
+          + Ander project toevoegen aan mijn week
+        </button>
+      </div>
+      {vergeten.size > 0 && (
+        <div className="acc-notitie waarschuw" data-testid="vergeten-dagen">
+          <span>⚠️</span>
+          <span>
+            Nog geen uren op {Array.from(vergeten).map((d) => dagen.find((x) => x.datum === d)?.naam ?? d).join(', ')} — vergeten? Tik de dag aan en dan + Uren.
+          </span>
+        </div>
+      )}
+      {indienbaar.length > 0 && (
+        <div className="acc-actionbar">
+          <button className="acc-btn primair" disabled={bezig} data-testid="week-indienen" onClick={() => setSamenvatting(true)}>
+            {bezig ? 'Bezig…' : `Week indienen (${weekUren.toLocaleString('nl-NL')} u${indienbaar.length > 1 ? ` · ${indienbaar.length} projecten` : ''})`}
           </button>
         </div>
+      )}
+      {/* Run A punt 8: samenvatting + bevestigen; ontbrekende werkdag = waarschuwing, niet blokkerend. */}
+      {samenvatting && overzicht && (
+        <>
+          <div className="acc-sheet-achter" onClick={() => setSamenvatting(false)} />
+          <div className="acc-sheet" role="dialog" aria-label={`Week ${week.weeknummer} indienen`} data-testid="indien-samenvatting">
+            <b style={{ fontSize: 17 }}>Week {week.weeknummer} indienen?</b>
+            <div data-testid="indien-regel">
+              {overzicht.dagen} {overzicht.dagen === 1 ? 'dag' : 'dagen'} · {overzicht.uren.toLocaleString('nl-NL')} u · {overzicht.projecten}{' '}
+              {overzicht.projecten === 1 ? 'project' : 'projecten'}
+              {overzicht.zonderM2 > 0 ? ` · ${overzicht.zonderM2} ${overzicht.zonderM2 === 1 ? 'regel' : 'regels'} zonder m²` : ''}
+              {overzicht.nietDoorfactureren > 0 ? ` · ${overzicht.nietDoorfactureren} niet doorfactureren` : ''}
+            </div>
+            {overzicht.ontbrekendeWerkdagen.length > 0 && (
+              <div style={{ color: 'var(--acc-orange)' }} data-testid="indien-waarschuwing">
+                ⚠ Geen uren op {overzicht.ontbrekendeWerkdagen.map((d) => `${d.naam} ${datumKort(d.datum)}`).join(', ')} — klopt dat? (waarschuwing, je kunt gewoon indienen)
+              </div>
+            )}
+            <div className="acc-kaartknoppen" style={{ marginTop: 12 }}>
+              <button className="acc-btn primair" disabled={bezig} data-testid="indien-bevestig" onClick={() => { setSamenvatting(false); void indienen() }}>
+                Ja, indienen
+              </button>
+            </div>
+            <div className="acc-kaartknoppen" style={{ marginTop: 8 }}>
+              <button className="acc-btn secundair" onClick={() => setSamenvatting(false)}>
+                Nog even nakijken
+              </button>
+            </div>
+          </div>
+        </>
       )}
       <div className="acc-notitie">
         <span>ℹ️</span>
         <span>
-          Uren buiten de planning blijven invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b> (oranje,
-          geen blokkade).
+          Kies eerst het project, dan <b>+ Uren</b> of <b>Meerwerk melden</b>. Uren op een niet-gepland project mogen — bij de
+          keuring krijgen die dagen de markering <b>buiten planning</b> (oranje, geen blokkade).
         </span>
       </div>
     </div>
   )
 }
 
-/** Uitwijk "+ ander project" (04-09 A1): de volledige lijst actieve projecten, doorzoekbaar; de koppeling
- * ontstaat pas bij de eerste dagregel (addendum C1, bron 'weekstaat'). */
-function AnderProjectView({
+/** "+ Ander project toevoegen aan mijn week" (mockup v2 scherm ③): alle actieve projecten in de scope, gepland bovenaan,
+ * doorzoekbaar; projecten die al als kaart in de week staan blijven weg. Kiezen = kaart erbij (zonder uren). */
+function ProjectToevoegenView({
   week,
   namens,
   namensSuffix,
+  alInWeek,
   vangFout,
   terug,
   kies,
@@ -1026,72 +1427,84 @@ function AnderProjectView({
   week: WeekOverzichtKaartDto
   namens: { id: string; naam: string } | null
   namensSuffix: React.ReactNode
+  alInWeek: WeekProjectKaartDto[]
   vangFout: (err: unknown) => string
   terug: () => void
-  kies: (project: ProjectKeuzeDto) => void
+  kies: (project: WeekProjectKaartDto) => void
 }) {
-  const [projecten, setProjecten] = useState<ProjectKeuzeDto[] | null>(null)
+  const [projecten, setProjecten] = useState<WeekProjectKaartDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [zoek, setZoek] = useState('')
   const laad = useCallback(() => {
     setFout(null)
-    haalProjectenKeuze(namens?.id ?? null)
+    haalWeekProjecten(week.jaar, week.weeknummer, namens?.id ?? null, true)
       .then(setProjecten)
       .catch((err) => setFout(vangFout(err) || null))
-  }, [namens, vangFout])
+  }, [week, namens, vangFout])
   useEffect(() => {
     laad()
   }, [laad])
 
   const term = zoek.trim().toLowerCase()
-  const zichtbaar = (projecten ?? []).filter(
-    (p) =>
-      term === '' ||
-      (p.project_naam ?? '').toLowerCase().includes(term) ||
-      (p.administratie_naam ?? '').toLowerCase().includes(term) ||
-      (p.soort_werk ?? '').toLowerCase().includes(term),
+  const extraSleutels = new Set(alInWeek.map((p) => `${p.administratie_id}-${p.project_id}`))
+  const past = (p: WeekProjectKaartDto) =>
+    term === '' ||
+    (p.project_naam ?? '').toLowerCase().includes(term) ||
+    (p.administratie_naam ?? '').toLowerCase().includes(term) ||
+    (p.soort_werk ?? '').toLowerCase().includes(term)
+  // Al een kaart in de week (gepland, mét regels, mét meerwerk of zelf toegevoegd) = niet nog eens aanbieden.
+  const kandidaten = (projecten ?? []).filter(
+    (p) => !p.gepland && p.weekstaat_id === null && (p.meerwerk_aantal ?? 0) === 0 && !extraSleutels.has(`${p.administratie_id}-${p.project_id}`),
   )
+  const zichtbaar = kandidaten.filter(past)
 
   return (
     <div>
       <Terug label={`Week ${week.weeknummer}`} onClick={terug} />
       <div className="acc-seclabel">
-        Ander project · week {week.weeknummer}
+        Project toevoegen aan week {week.weeknummer}
         {namensSuffix}
-      </div>
-      <div className="acc-card">
-        <label className="acc-form">
-          Zoek project
-          <input
-            type="search"
-            autoFocus
-            placeholder="nummer, plaats of opdrachtgever"
-            value={zoek}
-            onChange={(e) => setZoek(e.target.value)}
-            aria-label="Zoek project"
-          />
-        </label>
+        {projecten ? ` · ${projecten.length} actieve projecten` : ''}
       </div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {projecten === null && !fout && <Leeg tekst="Laden…" />}
-      {projecten !== null && zichtbaar.length === 0 && <Leeg tekst="Geen project gevonden." />}
-      {zichtbaar.map((p) => (
-        <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => kies(p)}>
-          <span>
-            <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
-            <span className="acc-meta" style={{ display: 'block' }}>
-              {p.soort_werk ?? 'steigerbouw'}
-              {p.administratie_naam ? ` · ${p.administratie_naam}` : ''}
-            </span>
-          </span>
-          <span className="acc-arrow">›</span>
-        </button>
-      ))}
+      {projecten !== null && (
+        <>
+          <div className="acc-card">
+            <label className="acc-form">
+              Zoek project
+              <input
+                type="search"
+                placeholder="nummer, plaats of opdrachtgever"
+                value={zoek}
+                onChange={(e) => setZoek(e.target.value)}
+                aria-label="Zoek project"
+                autoFocus
+              />
+            </label>
+          </div>
+          <div className="acc-seclabel">Alle projecten</div>
+          {zichtbaar.length === 0 && (
+            <Leeg tekst={term ? 'Geen project gevonden.' : 'Alle actieve projecten staan al in je week.'} />
+          )}
+          {zichtbaar.map((p) => (
+            <button key={`${p.administratie_id}-${p.project_id}`} className="acc-card klik" onClick={() => kies(p)}>
+              <span>
+                <span className="acc-tt">{p.project_naam ?? 'Project'}</span>
+                <span className="acc-meta" style={{ display: 'block' }}>
+                  {[p.soort_werk, p.administratie_naam].filter(Boolean).join(' · ') || 'projectgegevens volgen'}
+                </span>
+              </span>
+              <span className="acc-arrow">›</span>
+            </button>
+          ))}
+        </>
+      )}
       <div className="acc-notitie">
         <span>ℹ️</span>
         <span>
-          Dit project staat niet in de planning voor week {week.weeknummer}. De uren blijven gewoon invoerbaar; bij de keuring
-          krijgen ze de markering <b>buiten planning</b>.
+          Na kiezen staat het project als kaart in je week; daar kies je <b>+ Uren</b> of <b>Meerwerk melden</b>. Een kaart zonder
+          uren verdwijnt weer bij weekwissel.
         </span>
       </div>
     </div>
@@ -1113,11 +1526,13 @@ function WeekstaatView({
   namensSuffix: React.ReactNode
   vangFout: (err: unknown) => string
   terug: () => void
-  openDag: (datum: string, dagNaam: string, bestaand: WeekstaatDto['dagen'][number] | null) => void
+  openDag: (datum: string, dagNaam: string, bestaand: WeekstaatDto['dagen'][number] | null, doorfacturerenStandaard: boolean) => void
   naIndienen: () => void
   openDossier: () => void
 }) {
   const [staat, setStaat] = useState<WeekstaatDto | null | 'nieuw'>(null)
+  // Projectdefault voor de doorfactureren-dropdown (18-09 blok B) — reist mee met de lookup, ook zonder staat.
+  const [standaard, setStandaard] = useState(true)
   const [fout, setFout] = useState<string | null>(null)
   const [bezig, setBezig] = useState(false)
   // Dossier-handhaving (A2): 423 = indienen geblokkeerd — melding + upload-ingang, uren blijven staan.
@@ -1134,7 +1549,10 @@ function WeekstaatView({
       weeknummer: ctx.weeknummer,
       namens: namens?.id ?? null,
     })
-      .then((gevonden) => setStaat(gevonden ?? 'nieuw'))
+      .then((gevonden) => {
+        setStandaard(gevonden.doorfactureren_standaard)
+        setStaat(gevonden.weekstaat ?? 'nieuw')
+      })
       .catch((err) => setFout(vangFout(err) || null))
   }, [ctx, namens, vangFout])
   useEffect(() => {
@@ -1200,7 +1618,7 @@ function WeekstaatView({
                   <span className="acc-dag">{naam}</span>
                   <span className="acc-leegdag">nog niet ingevuld</span>
                   {muteerbaar && (
-                    <button className="acc-plus" onClick={() => openDag(datum, naam, null)}>
+                    <button className="acc-plus" onClick={() => openDag(datum, naam, null, standaard)}>
                       + invullen
                     </button>
                   )}
@@ -1216,10 +1634,13 @@ function WeekstaatView({
                   {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'}</small>}
                   {toonVoorstel && <small className="acc-voorstel">voorstel keurder: {voorstelLabel(dag)}</small>}
                   {dag.boven_dagmax && <small style={{ color: 'var(--acc-orange)' }}>⚠ {Number(dag.dag_totaal_uren).toLocaleString('nl-NL')} u op deze dag (alle projecten) — boven {Number(dag.dagmax_uren ?? 0).toLocaleString('nl-NL')} u</small>}
+                  {/* 18-09 blok B/C: keuze per regel + planning-dekking, informatief. */}
+                  {dag.doorfactureren === false && <small className="acc-chip wacht" data-testid="chip-niet-doorfactureren">niet doorfactureren</small>}
+                  {dag.buiten_planning && <small className="acc-chip wacht">niet gepland</small>}
                 </span>
                 <span className="acc-u">{urenLabel(dag.uren, dag.m2)}</span>
                 {muteerbaar && (
-                  <button className="acc-plus" onClick={() => openDag(datum, naam, dag)}>
+                  <button className="acc-plus" onClick={() => openDag(datum, naam, dag, standaard)}>
                     wijzig
                   </button>
                 )}
@@ -1230,6 +1651,12 @@ function WeekstaatView({
             <div className="acc-totbalk">
               <span className="acc-k">Totaal week {ctx.weeknummer} op dit project</span>
               <span>{weekTotaalLabel(echteStaat.totaal_uren, echteStaat.totaal_m2)}</span>
+            </div>
+          )}
+          {echteStaat && Number(echteStaat.totaal_uren_niet_doorfactureren ?? 0) > 0 && (
+            <div className="acc-totbalk" data-testid="totaal-niet-doorfactureren">
+              <span className="acc-k">waarvan niet doorfactureren</span>
+              <span>{weekTotaalLabel(echteStaat.totaal_uren_niet_doorfactureren ?? '0', echteStaat.totaal_m2_niet_doorfactureren ?? '0')}</span>
             </div>
           )}
           {echteStaat?.status === 'corrigeren' && echteStaat.afkeur_reden && (
@@ -1286,11 +1713,17 @@ function WeekstaatView({
   )
 }
 
+/** Daginvoer (run A 12 UX-punten, mockup uren-uitvoerder-v3.html scherm ②): uren als tikknoppen 4·6·8·10 + −/+ per half
+ * uur ("ander aantal…" pas een toetsenbord), omschrijving als chips (per administratie instelbaar; "overig" = vrij veld),
+ * doorfactureren ingeklapt (chip + wijzigen), m² en vrije omschrijving onder "meer" als het project geen m²-project is. */
 function DagInvoerView({
   ctx,
   datum,
   dagNaam,
   bestaand,
+  doorfacturerenStandaard,
+  chips,
+  contractM2,
   namens,
   namensSuffix,
   vangFout,
@@ -1301,6 +1734,10 @@ function DagInvoerView({
   datum: string
   dagNaam: string
   bestaand: WeekstaatDto['dagen'][number] | null
+  /** Projectdefault (18-09 blok B): verrekenbaar volgens de contract-ontleding → Doorfactureren, anders Niet. */
+  doorfacturerenStandaard: boolean
+  chips: string[]
+  contractM2: string | null
   namens: { id: string; naam: string } | null
   namensSuffix: React.ReactNode
   vangFout: (err: unknown) => string
@@ -1308,10 +1745,22 @@ function DagInvoerView({
   naOpslaan: () => void
 }) {
   const [uren, setUren] = useState(bestaand?.uren ?? '')
+  const [anderAantal, setAnderAantal] = useState(false)
   const [m2, setM2] = useState(bestaand?.m2 ?? '')
-  const [opmerking, setOpmerking] = useState(bestaand?.opmerking ?? '')
+  const chipLijst = chips.length > 0 ? chips : STANDAARD_OMSCHRIJVING_CHIPS
+  const bestaandeChip = bestaand?.opmerking && chipLijst.includes(bestaand.opmerking) ? bestaand.opmerking : null
+  const [chip, setChip] = useState<string | null>(bestaandeChip ?? (bestaand?.opmerking ? OVERIG_CHIP : null))
+  const [vrijeTekst, setVrijeTekst] = useState(bestaandeChip ? '' : (bestaand?.opmerking ?? ''))
+  // 18-09 blok B: bestaande regel = zijn eigen stand; nieuwe regel = projectdefault (chip "standaard"); mens wint.
+  const [doorfactureren, setDoorfactureren] = useState<boolean>(bestaand?.doorfactureren ?? doorfacturerenStandaard)
+  const [doorfWijzigen, setDoorfWijzigen] = useState(false)
+  const m2Project = isM2Project({ contract_m2: contractM2 })
+  const [meer, setMeer] = useState(m2Project || Boolean(bestaand?.m2))
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
+
+  const omschrijving = chip === OVERIG_CHIP || chip === null ? vrijeTekst.trim() : chip
+  const urenGetal = Number(uren.replace(',', '.'))
 
   async function opslaan() {
     setBezig(true)
@@ -1324,8 +1773,10 @@ function DagInvoerView({
         weeknummer: ctx.weeknummer,
         datum,
         uren: uren.replace(',', '.'),
+        // m² optioneel (18-09 blok A): leeg blijft null — nooit 0 invullen.
         m2: m2.trim() === '' ? null : m2.replace(',', '.'),
-        opmerking: opmerking.trim() === '' ? null : opmerking.trim(),
+        doorfactureren,
+        opmerking: omschrijving === '' ? null : omschrijving,
         namens_zzper_id: namens?.id ?? null,
       })
       naOpslaan()
@@ -1347,20 +1798,127 @@ function DagInvoerView({
         {namensSuffix}
       </div>
       <div className="acc-card">
-        <div className="acc-duo">
-          <label className="acc-form">
-            Uren
-            <input type="number" inputMode="decimal" placeholder="8,0" value={uren} onChange={(e) => setUren(e.target.value)} />
-          </label>
+        {/* Punt 2: uren als tikknoppen; toetsenbord alleen via "ander aantal…". */}
+        <div className="acc-form">
+          <span style={{ fontWeight: 600 }}>Uren</span>
+          <div className="acc-tikrij" role="group" aria-label="Uren">
+            {UREN_TIKKEUZES.map((keuze) => (
+              <button
+                key={keuze}
+                type="button"
+                className={`acc-tik${uren.replace(',', '.') === keuze ? ' on' : ''}`}
+                data-testid={`tik-${keuze}`}
+                onClick={() => {
+                  setUren(keuze)
+                  setAnderAantal(false)
+                }}
+              >
+                {keuze}
+              </button>
+            ))}
+          </div>
+          <div className="acc-pm">
+            <button type="button" className="acc-tik" aria-label="Half uur minder" onClick={() => setUren(stapHalfUur(uren, -1))}>
+              −
+            </button>
+            <b data-testid="uren-stand">{uren === '' ? '—' : `${urenGetal.toLocaleString('nl-NL')} u`}</b>
+            <button type="button" className="acc-tik" aria-label="Half uur meer" onClick={() => setUren(stapHalfUur(uren, 1))}>
+              +
+            </button>
+          </div>
+          {anderAantal ? (
+            <input
+              type="number"
+              inputMode="decimal"
+              step={0.5}
+              min={0}
+              max={24}
+              autoFocus
+              aria-label="Uren (ander aantal)"
+              placeholder="bijv. 7,5"
+              value={uren}
+              onChange={(e) => setUren(e.target.value)}
+            />
+          ) : (
+            <button type="button" className="acc-tekstlink" style={{ alignSelf: 'flex-start' }} onClick={() => setAnderAantal(true)}>
+              ander aantal…
+            </button>
+          )}
+        </div>
+
+        {/* Punt 3: omschrijving als chips (per administratie instelbaar); "overig" opent een tekstveld. */}
+        <div className="acc-form">
+          <span style={{ fontWeight: 600 }}>Wat heb je gedaan?</span>
+          <div className="acc-chipkeuze" role="group" aria-label="Omschrijving">
+            {chipLijst.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`acc-tik${chip === c ? ' on' : ''}`}
+                data-testid={`chip-${c}`}
+                onClick={() => setChip(chip === c ? null : c)}
+              >
+                {c}
+              </button>
+            ))}
+            {!chipLijst.includes(OVERIG_CHIP) && (
+              <button type="button" className={`acc-tik${chip === OVERIG_CHIP ? ' on' : ''}`} data-testid="chip-overig" onClick={() => setChip(OVERIG_CHIP)}>
+                {OVERIG_CHIP}
+              </button>
+            )}
+          </div>
+          {(chip === OVERIG_CHIP || (meer && chip === null)) && (
+            <input
+              type="text"
+              aria-label="Omschrijving (vrij)"
+              placeholder="bijv. wachttijd i.v.m. levering"
+              value={vrijeTekst}
+              onChange={(e) => setVrijeTekst(e.target.value)}
+            />
+          )}
+        </div>
+
+        {/* Punt 11: doorfactureren ingeklapt — chip + wijzigen; dropdown pas ná tikken. */}
+        <div className="acc-form">
+          <span style={{ fontWeight: 600 }}>Doorfactureren</span>
+          {doorfWijzigen ? (
+            <select
+              value={doorfactureren ? 'ja' : 'nee'}
+              onChange={(e) => setDoorfactureren(e.target.value === 'ja')}
+              aria-label="Doorfactureren"
+              data-testid="doorfactureren"
+              autoFocus
+            >
+              <option value="ja">{doorfacturerenLabel(true)}</option>
+              <option value="nee">{doorfacturerenLabel(false)}</option>
+            </select>
+          ) : (
+            <div className="acc-ingeklapt" data-testid="doorfactureren-ingeklapt">
+              <span>
+                <span className={`acc-chip${doorfactureren ? '' : ' wacht'}`}>{doorfacturerenLabel(doorfactureren).toLowerCase()}</span>
+                <small style={{ color: 'var(--acc-muted)', marginLeft: 6 }}>
+                  {doorfactureren === doorfacturerenStandaard ? 'standaard voor dit project' : `standaard: ${doorfacturerenLabel(doorfacturerenStandaard).toLowerCase()}`}
+                </small>
+              </span>
+              <button type="button" className="acc-tekstlink" data-testid="doorfactureren-wijzigen" onClick={() => setDoorfWijzigen(true)}>
+                wijzigen
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Punt 12: m² (en vrije omschrijving zonder chip) alleen direct zichtbaar op een m²-project; anders onder "meer". */}
+        {!meer ? (
+          <button type="button" className="acc-tekstlink" data-testid="meer" style={{ alignSelf: 'flex-start' }} onClick={() => setMeer(true)}>
+            ▸ meer (m², omschrijving)
+          </button>
+        ) : (
           <label className="acc-form">
             m² gebouwd (optioneel)
-            <input type="number" inputMode="decimal" placeholder="0" value={m2 ?? ''} onChange={(e) => setM2(e.target.value)} />
+            <input type="number" inputMode="decimal" placeholder="leeg = niet ingevuld" value={m2 ?? ''} onChange={(e) => setM2(e.target.value)} aria-label="m² gebouwd (optioneel)" />
           </label>
-        </div>
-        <label className="acc-form">
-          Opmerking (optioneel)
-          <input type="text" placeholder="bijv. wachttijd i.v.m. levering" value={opmerking} onChange={(e) => setOpmerking(e.target.value)} />
-        </label>
+        )}
+
         {bestaand && heeftVoorstel(bestaand) && (
           <div className="acc-notitie">
             <span>✏️</span>
@@ -1371,7 +1929,10 @@ function DagInvoerView({
                 className="acc-plus"
                 onClick={() => {
                   if (bestaand.voorstel_uren !== null) setUren(bestaand.voorstel_uren)
-                  if (bestaand.voorstel_m2 !== null) setM2(bestaand.voorstel_m2)
+                  if (bestaand.voorstel_m2 !== null) {
+                    setMeer(true)
+                    setM2(bestaand.voorstel_m2)
+                  }
                 }}
               >
                 overnemen
@@ -1390,7 +1951,7 @@ function DagInvoerView({
         {fout && <FoutRegel tekst={fout} />}
       </div>
       <div className="acc-actionbar">
-        <button className="acc-btn groen" disabled={bezig || uren.trim() === ''} onClick={() => void opslaan()}>
+        <button className="acc-btn primair" disabled={bezig || uren.trim() === '' || Number.isNaN(urenGetal)} onClick={() => void opslaan()}>
           {bezig ? 'Bezig…' : 'Opslaan'}
         </button>
       </div>
@@ -1760,16 +2321,27 @@ function UitvProjectenView({
     return `${Math.round((Number(kaart.gebouwd_m2) / Number(kaart.contract_m2)) * 100)}% gebouwd`
   }
 
+  // 18-09 (feedback uitvoerder punt 3): álle actieve projecten; gekoppeld (planning/uren) bovenaan, chip op de rest.
+  const gekoppeld = (projecten ?? []).filter((k) => k.gekoppeld !== false)
+  const overige = (projecten ?? []).filter((k) => k.gekoppeld === false)
+
   return (
     <div>
       <div className="acc-seclabel">Lopende projecten{projecten ? ` (${projecten.length})` : ''}</div>
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {projecten === null && !fout && <Leeg tekst="Laden…" />}
       {projecten !== null && projecten.length === 0 && (
-        <Leeg tekst="Nog geen projecten gekoppeld — het kantoor koppelt je als uitvoerder aan projecten." />
+        <Leeg tekst="Geen actieve projecten in je administratie(s) — het kantoor maakt projecten aan." />
       )}
-      {(projecten ?? []).map((kaart) => (
-        <button key={`${kaart.administratie_id}-${kaart.project_id}`} className="acc-card klik" onClick={() => openProject(kaart)}>
+      {projecten !== null && overige.length > 0 && gekoppeld.length > 0 && <div className="acc-seclabel">Mijn projecten</div>}
+      {[...gekoppeld, ...overige].map((kaart, i) => (
+        <Fragment key={`${kaart.administratie_id}-${kaart.project_id}`}>
+          {i === gekoppeld.length && gekoppeld.length > 0 && overige.length > 0 && (
+            <div className="acc-seclabel" data-testid="kop-andere-projecten">
+              Andere projecten
+            </div>
+          )}
+        <button className="acc-card klik" onClick={() => openProject(kaart)}>
           <span>
             <span className="acc-tt">{kaart.project_naam ?? 'Project'}</span>
             <span className="acc-meta" style={{ display: 'block' }}>
@@ -1791,6 +2363,7 @@ function UitvProjectenView({
             )}
           </span>
         </button>
+        </Fragment>
       ))}
     </div>
   )
@@ -1975,7 +2548,7 @@ function MeerwerkMeldenView({
   terug,
   naMelden,
 }: {
-  kaart: UitvoerderProjectKaartDto
+  kaart: MeerwerkDoel
   vangFout: (err: unknown) => string
   terug: () => void
   naMelden: () => void
@@ -2264,6 +2837,8 @@ function KeurDetailView({
                     {dag.namens && <small>ingevuld door {dag.ingevuld_door_naam ?? 'detacheerder'} (namens)</small>}
                     {/* Planning-toetsbron (besluit 22-08): oranje signaal, nooit een blokkade. */}
                     {dag.buiten_planning && <small style={{ color: 'var(--acc-warn, #e5a04c)' }}>⚠ buiten planning</small>}
+                    {/* 18-09 blok B: de keurder ziet de doorfactureren-keuze per regel. */}
+                    {dag.doorfactureren === false && <small className="acc-chip wacht">niet doorfactureren</small>}
                     {/* Geofence-stempels (blok C 28-08, mockup §3): gestempelde aanwezigheid + toets —
                         oranje vlag bij > 1,0 u afwijking, "onvolledig paar" gemarkeerd; geen stempels =
                         de toets zwijgt (net als een dag zonder planning). Nooit een korting. */}
@@ -2298,6 +2873,12 @@ function KeurDetailView({
             <span className="acc-k">Totaal</span>
             <span>{weekTotaalLabel(staat.totaal_uren, staat.totaal_m2)}</span>
           </div>
+          {Number(staat.totaal_uren_niet_doorfactureren ?? 0) > 0 && (
+            <div className="acc-totbalk">
+              <span className="acc-k">waarvan niet doorfactureren</span>
+              <span>{weekTotaalLabel(staat.totaal_uren_niet_doorfactureren ?? '0', staat.totaal_m2_niet_doorfactureren ?? '0')}</span>
+            </div>
+          )}
         </div>
       )}
       {staat !== null && staat.meer_gebouwd_dan_geleverd && (

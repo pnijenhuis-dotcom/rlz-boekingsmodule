@@ -20,6 +20,7 @@ import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { aiToetsOorzaakLabel } from '../bank/VoorstelKaart'
 import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { haalUrenStand, type UrenStandDto } from '../meerwerk/meerwerkApi'
+import { beoordelenChip, beoordelenUrl } from '../meerwerk/beoordelenChip'
 import { AnkerPopup, Checkbox, useToastOptioneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { actorLabel, NIET_TOEGEWEZEN, useMedewerkers } from '../vragen/useMedewerkers'
@@ -383,9 +384,9 @@ export function DocumentenDeelscherm({
   const ibanWachtend = alle.filter((d) => d.status === 'wacht_op_iban_accordering').length
   const openVragen = vragen?.length ?? 0
   const openRekeningen = (rekeningen?.rekeningen ?? []).filter((r) => r.open_mutaties > 0)
-  const meerwerkOpen = urenStand
-    ? urenStand.meerwerk_te_beoordelen + urenStand.meerwerk_nog_doorbelasten + urenStand.urenstaten_wachten_op_keuring
-    : 0
+  // Bug 18-09: de oude chip telde meerwerk + nog-doorbelasten + ingediende weekstaten op en linkte naar een pagina
+  // die alleen meerwerk toonde ("14 te beoordelen" → 0/0/0/0). Nu: tekst en link uit precies de twee tab-tellers.
+  const beoordelen = urenStand ? beoordelenChip(urenStand) : null
   const naarTab = (s: string) => navigate(`/?administratie=${administratieId}&soort=${s}`)
   const naarStatus = (status: string) =>
     navigate(`/?administratie=${administratieId}${soortParam ? `&soort=${soortParam}` : ''}&status=${status}`)
@@ -636,13 +637,14 @@ export function DocumentenDeelscherm({
             IBAN-wissel: {ibanWachtend} wacht op accordering
           </button>
         )}
-        {urenStand && meerwerkOpen > 0 && (
+        {beoordelen && (
           <button
             type="button"
             className="chip klaar klikbaar"
-            onClick={() => navigate(`/meerwerk?administratie=${administratieId}`)}
+            data-testid="chip-beoordelen"
+            onClick={() => navigate(beoordelenUrl(administratieId, beoordelen.tab))}
           >
-            🛠 {meerwerkOpen} meerwerk/urenstaten te beoordelen
+            🛠 {beoordelen.tekst}
           </button>
         )}
         {/* Projecten (C5 07-09): vaste, niet teller-afhankelijke ingang naar de projectenlijst van deze klant

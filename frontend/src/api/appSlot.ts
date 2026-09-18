@@ -47,9 +47,61 @@ export const ACHTERGROND_VERGRENDEL_MS = 5 * 60 * 1000
 
 const KDF_ITERATIES = 200_000
 
-/** Het ontgrendelde anker leeft alleen in het geheugen van deze module — nooit in storage
- * zonder wrap (code) of biometrie-poort (plugin). */
+/** Het ontgrendelde anker leeft in het geheugen van deze module. Web-toestel (SPOED 18-09): binnen het documenteerde
+ * 5-minutenvenster ("direct vergrendelen" uit) óók in sessionStorage van dít tabblad, zodat een volledige herlaad
+ * (Android-terugknop uit de app, pull-to-refresh, tabblad-herstel) niet opnieuw de toegangscode vraagt — sessionStorage
+ * is per tabblad en verdwijnt bij sluiten; het is het browser-equivalent van het procesgeheugen van de native app.
+ * Native slaat dit over (de plugin/het proces houdt het anker zelf vast). */
 let ankerInGeheugen: Uint8Array | null = null
+const ONTGRENDELD_VENSTER_SLEUTEL = 'appslot_ontgrendeld_venster'
+
+function isWebSlot(): boolean {
+  return appSlotPlugin() === null
+}
+
+function veiligSessionStorage(): Storage | null {
+  try {
+    return typeof sessionStorage !== 'undefined' ? sessionStorage : null
+  } catch {
+    return null
+  }
+}
+
+async function bewaarOntgrendeldVenster(anker: Uint8Array): Promise<void> {
+  if (!isWebSlot()) return
+  const opslag = veiligSessionStorage()
+  if (!opslag) return
+  if (await isDirectVergrendelen()) {
+    opslag.removeItem(ONTGRENDELD_VENSTER_SLEUTEL)
+    return
+  }
+  opslag.setItem(ONTGRENDELD_VENSTER_SLEUTEL, JSON.stringify({ anker: b64(anker), tot: Date.now() + ACHTERGROND_VERGRENDEL_MS }))
+}
+
+function wisOntgrendeldVenster(): void {
+  veiligSessionStorage()?.removeItem(ONTGRENDELD_VENSTER_SLEUTEL)
+}
+
+/** Web-toestel ná een volledige herlaad: het anker terug uit het tabblad-venster als dat nog loopt (≤ 5 min sinds de laatste
+ * ontgrendeling) — anders blijft het slot dicht en vraagt de app gewoon de toegangscode. */
+export function herstelOntgrendeldVenster(nu: number = Date.now()): boolean {
+  if (!isWebSlot() || ankerInGeheugen !== null) return ankerInGeheugen !== null
+  const opslag = veiligSessionStorage()
+  const ruw = opslag?.getItem(ONTGRENDELD_VENSTER_SLEUTEL)
+  if (!opslag || !ruw) return false
+  try {
+    const { anker, tot } = JSON.parse(ruw) as { anker: string; tot: number }
+    if (typeof tot !== 'number' || tot < nu || typeof anker !== 'string') {
+      opslag.removeItem(ONTGRENDELD_VENSTER_SLEUTEL)
+      return false
+    }
+    ankerInGeheugen = vanB64(anker)
+    return true
+  } catch {
+    opslag.removeItem(ONTGRENDELD_VENSTER_SLEUTEL)
+    return false
+  }
+}
 
 interface AppSlotPlugin {
   beschikbaar(): Promise<{ beschikbaar: boolean; soort: string }>
@@ -281,6 +333,7 @@ export function isOntgrendeld(): boolean {
 
 export function vergrendel(): void {
   ankerInGeheugen = null
+  wisOntgrendeldVenster()
 }
 
 /** Nieuw slot: vers anker + code-wrap; een eventueel al aanwezig (plain) refresh-token gaat
@@ -303,6 +356,7 @@ export async function stelCodeIn(code: string): Promise<boolean> {
   await verwijderLegacySleutels()
   await verwijder(FOUTEN_SLEUTEL)
   ankerInGeheugen = anker
+  await bewaarOntgrendeldVenster(anker)
   // Bestaand plain token (legacy-sessie van vóór het slot) meteen omzetten.
   const bestaand = await lees(REFRESH_SLEUTEL)
   if (bestaand && !bestaand.startsWith(SLOT_PREFIX)) {
@@ -325,6 +379,7 @@ export async function ontgrendelMetCode(code: string): Promise<OntgrendelUitkoms
   const anker = await aesOntsleutel(await kdfSleutel(code, vanB64(slot.saltB64)), slot.wrap)
   if (anker) {
     ankerInGeheugen = anker
+    await bewaarOntgrendeldVenster(anker)
     await verwijder(FOUTEN_SLEUTEL)
     if (slot.legacy && (await schrijfSlotTerugGelezen(maakSlotWaarde(slot.saltB64, slot.wrap), 'schrijf'))) {
       await verwijderLegacySleutels()
@@ -369,6 +424,7 @@ export async function wijzigCode(nieuw: string): Promise<WijzigCodeUitkomst> {
 /** Lokale wissing (5× fout, loskoppelen, dode sessie): slot + sessie weg; het credential_id
  * blijft staan — dat is de sleutel waarmee de uitsluiting/hulpvraag zich bij de server meldt. */
 export async function wisAppSlotLokaal(): Promise<void> {
+  wisOntgrendeldVenster()
   ankerInGeheugen = null
   await verwijder(SLOT_SLEUTEL)
   await verwijderLegacySleutels()

@@ -215,6 +215,27 @@ export function openWerkTekst(werk: OpenWerkDto | null | 'laden'): string {
   return ` LET OP — open werk: ${delen.join(', ')}. Dit werk blijft staan maar niemand handelt het af tot je het opnieuw toewijst (accorderingslagen / keurders).`
 }
 
+/** Bevestigtekst bij een rolwissel. Veldrollen (Peter 18-09): zegt wat er in de app verandert en wat blijft —
+ * toestel(len), toegangscode en scope blijven; lopende weekstaten/keuringen blijven aan de gebruiker hangen. */
+export function rolWijzigingBericht(g: { naam: string; rol: string }, nieuweRol: string): string {
+  const basis = `${g.naam} krijgt de rol ${rolLabel(nieuweRol)} (was ${rolLabel(g.rol)}). De wijziging wordt geauditeerd.`
+  if (!isVeldrol(nieuweRol)) return basis
+  const delen = [
+    'Geen heruitnodiging nodig: gekoppelde toestellen, toegangscode en administraties blijven staan; de app toont bij de volgende verversing de schermen van de nieuwe rol.',
+    'Lopende weekstaten en keuringen blijven aan deze persoon hangen.',
+  ]
+  if (g.rol === 'zzper' && nieuweRol !== 'zzper') {
+    delen.push('Het ZZP-dossier en de crediteurkoppeling blijven bewaard maar zijn als niet-ZZP\'er inactief.')
+  }
+  if (nieuweRol === 'detacheerder') {
+    delen.push("Als detacheerder vult deze persoon uren in namens ZZP'ers — koppel die op Veldwerkers (detacheerder ↔ ZZP'er).")
+  }
+  if (nieuweRol === 'uitvoerder') {
+    delen.push('Als uitvoerder ziet deze persoon alle projecten, schrijft eigen uren en keurt ingediende urenstaten van anderen.')
+  }
+  return `${basis} ${delen.join(' ')}`
+}
+
 export function GebruikersScreen() {
   const { gebruikerId, rol } = useAuth()
   const { administraties, fout: administratiesFout } = useAdministraties()
@@ -928,7 +949,22 @@ export function GebruikersScreen() {
                             </div>
                           </td>
                           <td>
-                            <Badge variant="paars">{rolLabel(g.rol)}</Badge>
+                            {/* Rol wijzigen zonder heruitnodiging (Peter 18-09, casus ZZP'er → uitvoerder): dezelfde
+                                rol-select als op Kantoor, alleen binnen de veldrollen — kantoor ↔ veld weigert de server
+                                (409, ander inlogmodel). Toestellen, toegangscode, scope en weekstaten blijven staan. */}
+                            {g.status === 'gearchiveerd' ? (
+                              <Badge variant="paars">{rolLabel(g.rol)}</Badge>
+                            ) : (
+                              <Select
+                                aria-label={`Rol van ${g.naam}`}
+                                value={g.rol}
+                                onChange={(e) => setRolWijziging({ gebruiker: g, nieuweRol: e.target.value })}
+                              >
+                                <option value="zzper">ZZP'er</option>
+                                <option value="uitvoerder">Uitvoerder</option>
+                                <option value="detacheerder">Detacheerder</option>
+                              </Select>
+                            )}
                           </td>
                           <td>
                             <div className="chips-regel">
@@ -1119,7 +1155,7 @@ export function GebruikersScreen() {
       {rolWijziging && (
         <BevestigDialog
           titel="Rol wijzigen"
-          bericht={`${rolWijziging.gebruiker.naam} krijgt de rol ${rolLabel(rolWijziging.nieuweRol)} (was ${rolLabel(rolWijziging.gebruiker.rol)}). De wijziging wordt geauditeerd.`}
+          bericht={rolWijzigingBericht(rolWijziging.gebruiker, rolWijziging.nieuweRol)}
           bezig={actieBezig}
           fout={actieFout}
           onBevestigen={() => void bevestigRolWijziging()}

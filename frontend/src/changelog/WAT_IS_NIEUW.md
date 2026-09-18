@@ -6,6 +6,45 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-18 — Uren-app: eerst het project, dan "+ Uren" of "Meerwerk melden"; m² niet meer verplicht; doorfactureren per regel
+
+<!-- veldapp-project-eerst-18-09 -->
+
+- **Eerst het project, dan de knop.** Je week is nu een lijst projectkaarten: je geplande projecten en de projecten waar je deze week al uren of meerwerk op hebt. Op elke kaart staan "+ Uren" en "Meerwerk melden" — het project is dan al ingevuld, je hoeft niet meer te zoeken. Werk je op een ander project? Tik onderaan op "+ Ander project toevoegen aan mijn week", kies het uit de lijst en de kaart staat erbij. Met "Week indienen" dien je alle projecten van die week in één keer in.
+
+<!-- veldapp-ux-run-a-18-09 -->
+
+- **Uren-app: "Zelfde als gisteren"** — één tik kopieert je laatste dag op dat project (uren, m², omschrijving en doorfactureren) naar de gekozen dag.
+- **Uren tik je aan**: 4 · 6 · 8 · 10 of een half uur meer of minder; een toetsenbord alleen via "ander aantal…".
+- **Wat heb je gedaan? Kies een chip** (opbouwen, afbreken, ombouwen, transport, overig) — het kantoor kan de chips per administratie aanpassen onder Instellingen › Uren & materiaal.
+- **Grotere knoppen en grotere tekst** in de veld-app: alles is met handschoenen en in de zon te lezen en te raken; per kaart één grote knop "+ Uren".
+- **Week indienen laat eerst een samenvatting zien** (dagen, uren, projecten, regels zonder m², niet doorfactureren) en waarschuwt als een werkdag leeg is.
+- **Een vergeten dag valt op**: een werkdag zonder uren krijgt een oranje rand in de dagbalk.
+- **Je ziet wat kantoor of de uitvoerder van je week vond**: goedgekeurd met een vinkje, afgekeurd met de reden en een knop "Aanpassen".
+- **Doorfactureren staat ingeklapt** als de gebruikelijke keuze; "wijzigen" opent de keuze pas als je 'm nodig hebt.
+- **m² zie je alleen als het project een m²-project is**; anders staat het onder "meer".
+
+<!-- webtoestel-edge-android-18-09 -->
+
+- **Web-versie van de app in een browser: niet meer steeds je toegangscode.** Na een verversing of een terugknop binnen vijf minuten blijft de app open (staat "direct vergrendelen" aan, dan blijft het slot streng). De terugknop van Android gaat nu één scherm terug in plaats van de app te verlaten. Een kaart "Zet deze app op je beginscherm" legt uit hoe je de web-versie als echte app installeert; is de browseropslag gewist, dan zegt de app dat en wat je dan doet.
+
+<!-- beoordelen-urenstaten-meerwerk-18-09 -->
+
+- **Urenstaten en meerwerk beoordeel je op één plek.** De chip "te beoordelen" op de klantpagina zegt nu precies wat er ligt ("14 urenstaten · 2 meerwerk") en opent de pagina Beoordelen met twee tabbladen: Urenstaten (ingediende weken: goedkeuren of afkeuren met reden) en Meerwerk. Geen lege pagina meer terwijl de chip een aantal toont.
+- **Een uitvoerder ziet alle ingediende urenstaten** van zijn administratie in de app — niet alleen van projecten waar hij gepland staat. Zijn eigen urenstaat keurt hij nooit zelf; kantoor kan nu ook keuren als er geen tweede uitvoerder is.
+
+<!-- veldwerker-rol-wijzigen-18-09 -->
+
+- **Kantoor: de rol van een veldwerker wijzig je nu zelf** (Gebruikers & toegang › Veldwerkers): ZZP'er, uitvoerder of detacheerder — zonder nieuwe uitnodiging. Telefoon, toegangscode en administraties blijven staan; de app toont bij de volgende verversing de schermen van de nieuwe rol. Een kantoorrol omzetten naar een veldrol (of andersom) kan niet: dat is een ander inlogmodel, de app legt uit wat je dan wél doet.
+
+<!-- veldapp-uitvoerder-feedback-18-09 -->
+
+- m² is niet meer verplicht bij het invullen van een dag: laat het veld leeg als je het niet weet, dan blijft het leeg (geen 0).
+- Kies per dag of het werk wordt doorgefactureerd of niet; de app zet alvast de gebruikelijke keuze voor het project klaar en jij beslist.
+- Je kunt uren op elk project schrijven: je geplande projecten staan bovenaan, alle andere projecten staan er doorzoekbaar onder. De aparte stap "ander project" is weg.
+- Uitvoerders hebben nu een eigen tab "Mijn uren" en zien alle lopende projecten; de planningstab is voor hen weg. Meldingen over gewijzigde planning blijven komen.
+- Kantoor: vanuit het planningsrooster opent een weekstaat nu in een leesbaar overzicht met de keuze doorfactureren per dag en een filter op "niet doorfactureren".
+
 ## 2026-09-17 — Herstel-link voor de app: eerst kiezen, en de app moet up-to-date zijn
 
 <!-- herstellink-keuze-versie-eis-17-09 -->

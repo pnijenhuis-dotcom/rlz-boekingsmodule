@@ -28,12 +28,16 @@ import {
   stelCodeIn,
   vergrendel,
   wisAppSlotLokaal,
+  herstelOntgrendeldVenster,
 } from '../api/appSlot'
 import { APP_UPDATE_NODIG_EVENT, type AppUpdateNodigDetail } from '../api/client'
 import { androidInAppUpdate, controleerOta, otaBijStart } from './ota'
 import { UpdateNodigScherm } from './UpdateNodigScherm'
 import { useVerversBijVoorgrond } from './verversen'
-import { webSlotOnmogelijkOpAccordeur } from '../api/webVeiligeOpslag'
+import { webSlotOnmogelijkOpAccordeur, webSlotVlagStaat } from '../api/webVeiligeOpslag'
+import { OPSLAG_GEWIST_MELDING, weergaveModus } from '../api/webToestel'
+import { installeerAndroidTerugVal } from './androidTerug'
+import { BeginschermNudge } from './BeginschermNudge'
 import { AppSlotScherm } from './appslot/AppSlotScherm'
 import { PincodeKiezen } from './appslot/PincodeKiezen'
 import { SlotOpslagFout } from './appslot/SlotOpslagFout'
@@ -149,10 +153,31 @@ export default function AccordeurApp() {
   useEffect(() => {
     if (!slotKan) return
     void isAppSlotIngesteld().then((ingesteld) => {
+      // SPOED 18-09 (web-toestel): ná een volledige herlaad het anker terug uit het tabblad-venster (≤ 5 min sinds de
+      // laatste ontgrendeling, "direct vergrendelen" uit) — anders vroeg élke terugknop/verversing opnieuw de code.
+      if (ingesteld && !isOntgrendeld()) herstelOntgrendeldVenster()
       setSlotStatus(ingesteld ? (isOntgrendeld() ? 'ontgrendeld' : 'vergrendeld') : 'geen')
       markeer('slot-status')
     })
   }, [slotKan])
+
+  // SPOED 18-09 (web-toestel in een browsertab): (1) de Android-terugknop verlaat de app niet meer maar gaat één scherm
+  // terug (event `acc-terug`, UrenFlow/GoedkeurenFlow handelen 'm af); (2) geen pull-to-refresh op body-niveau (Edge/
+  // Chrome Android herlaadden de pagina bij naar beneden trekken op een layout waar de body scrolt) — de app heeft zijn
+  // eigen verversing. Native: beide no-op.
+  useEffect(() => {
+    if (weergaveModus() === 'native') return
+    const weg = installeerAndroidTerugVal()
+    const html = document.documentElement
+    const vorige = { html: html.style.overscrollBehaviorY, body: document.body.style.overscrollBehaviorY }
+    html.style.overscrollBehaviorY = 'none'
+    document.body.style.overscrollBehaviorY = 'none'
+    return () => {
+      weg()
+      html.style.overscrollBehaviorY = vorige.html
+      document.body.style.overscrollBehaviorY = vorige.body
+    }
+  }, [])
 
   // Vergrendelen bij achtergrond: "direct vergrendelen" aan = meteen bij het verlaten, uit =
   // pas ná 5 minuten achtergrond (mockup scherm 7). Een koude start is sowieso vergrendeld
@@ -327,7 +352,13 @@ export default function AccordeurApp() {
   } else if (status === 'laden') {
     inhoud = laden
   } else if (slotStatus === 'geen' && status === 'uitgelogd') {
-    inhoud = <AppActiveren melding={toegangVerlopen ? TOEGANG_VERLOPEN_MELDING : null} naGeactiveerd={naGeactiveerd} />
+    // 18-09: slot-vlag staat maar de IndexedDB is leeg = de browseropslag is gewist — géén stil activatiescherm.
+    inhoud = (
+      <AppActiveren
+        melding={toegangVerlopen ? TOEGANG_VERLOPEN_MELDING : webSlotVlagStaat() ? OPSLAG_GEWIST_MELDING : null}
+        naGeactiveerd={naGeactiveerd}
+      />
+    )
   } else if (slotStatus === 'geen') {
     // Legacy toestel (plain token in de Keychain/Keystore van vóór 31-08) mét levende sessie: de
     // toegangscode is verplicht vóór de app verdergaat (het refresh-token gaat erachter).
@@ -363,9 +394,15 @@ export default function AccordeurApp() {
     inhoud = <GoedkeurenFlow wisselThema={wissel} uitloggen={vergrendelApp} openToegang={openToegang} />
   }
 
+  // "Zet op je beginscherm" alleen ín de flow (ingelogd, slot open) van een web-toestel in een browsertab.
+  const nudge = status === 'ingelogd' && slotStatus === 'ontgrendeld' && !toegangOpen ? <BeginschermNudge /> : null
+
   return (
     <div className="acc" data-thema={licht ? 'licht' : undefined}>
-      <div className="acc-phone">{inhoud}</div>
+      <div className="acc-phone">
+        {nudge}
+        {inhoud}
+      </div>
     </div>
   )
 }

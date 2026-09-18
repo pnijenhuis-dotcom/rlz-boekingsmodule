@@ -34,6 +34,8 @@ export interface DagDto {
   stempel_tot?: string | null
   stempel_onvolledig?: boolean
   stempel_afwijking?: boolean
+  // Doorfactureren-keuze per regel (feedback uitvoerder 18-09 blok B): false = "Niet doorfactureren".
+  doorfactureren?: boolean
 }
 
 export interface WeekstaatDto {
@@ -61,6 +63,11 @@ export interface WeekstaatDto {
   m2_geleverd_project: string | null
   m2_gebouwd_project: string | null
   meer_gebouwd_dan_geleverd: boolean
+  // 18-09: projectdefault voor nieuwe regels, totalen "Niet doorfactureren" (apart getoond) en dagen zonder planning.
+  doorfactureren_standaard?: boolean
+  totaal_uren_niet_doorfactureren?: string
+  totaal_m2_niet_doorfactureren?: string
+  dagen_buiten_planning?: number
 }
 
 export interface ProjectKaartDto {
@@ -150,6 +157,40 @@ export interface WeekProjectKaartDto {
   goedgekeurd_door_naam: string | null
   afgekeurd_door_naam: string | null
   afkeur_reden: string | null
+  // Project-eerst (Peter 18-09): kaartinhoud — uren per dag (datum → uren, alleen dagen mét een regel), laatste
+  // omschrijving, aantal dagen "niet doorfactureren", de projectdefault en het aantal eigen meerwerkmeldingen deze week.
+  // Optioneel: een oudere backend zonder deze velden geeft een kale kaart.
+  dag_uren?: Record<string, string>
+  laatste_omschrijving?: string | null
+  dagen_niet_doorfactureren?: number
+  doorfactureren_standaard?: boolean
+  meerwerk_aantal?: number
+  // Run A 12 UX-punten (18-09): de LAATSTE dagregel op dit project (ook uit een vorige week) voor "Zelfde als gisteren",
+  // het aantal regels zonder m² deze week (indien-samenvatting) en het contract-m² (m²-project → m² zichtbaar).
+  laatste_regel?: LaatsteRegelDto | null
+  dagen_zonder_m2?: number
+  contract_m2?: string | null
+}
+
+export interface LaatsteRegelDto {
+  datum: string
+  uren: string
+  m2: string | null
+  opmerking: string | null
+  doorfactureren: boolean
+}
+
+/** Omschrijving-chips (punt 3): default vijf; per administratie door de Beheerder instelbaar; opslag als tekst. */
+export const STANDAARD_OMSCHRIJVING_CHIPS = ['opbouwen', 'afbreken', 'ombouwen', 'transport', 'overig']
+export const OVERIG_CHIP = 'overig'
+
+export async function haalOmschrijvingChips(administratieId: string): Promise<string[]> {
+  try {
+    const data = await apiJson<{ chips: string[] }>(`/uren/zzp/omschrijving-chips?administratie_id=${administratieId}`)
+    return data.chips.length > 0 ? data.chips : STANDAARD_OMSCHRIJVING_CHIPS
+  } catch {
+    return STANDAARD_OMSCHRIJVING_CHIPS
+  }
 }
 
 export interface ProjectKeuzeDto {
@@ -232,6 +273,8 @@ export interface UitvoerderProjectKaartDto {
   huurtijd_omschrijving: string | null
   meerwerk_gemeld: number
   te_keuren: number
+  // 18-09: álle actieve projecten; true = gekoppeld via planning/weekstaat (bovenaan).
+  gekoppeld?: boolean
 }
 
 export const EENHEDEN = [
@@ -257,9 +300,15 @@ export function haalZzpWekenOverzicht(namens: string | null): Promise<WeekOverzi
   return apiJson(`/uren/zzp/weken-overzicht${namensParam(namens)}`)
 }
 
-/** Projecten in één week (A1): ingepland én/of met een bestaande staat. */
-export function haalWeekProjecten(jaar: number, weeknummer: number, namens: string | null): Promise<WeekProjectKaartDto[]> {
-  const basis = `/uren/zzp/week-projecten?jaar=${jaar}&weeknummer=${weeknummer}`
+/** Projectkaarten in één week (project-eerst, Peter 18-09): gepland ∪ mét regels ∪ mét eigen meerwerk deze week;
+ * `alles` = élk actief project in de scope (de keuzelijst achter "+ Ander project toevoegen aan mijn week"). */
+export function haalWeekProjecten(
+  jaar: number,
+  weeknummer: number,
+  namens: string | null,
+  alles = false,
+): Promise<WeekProjectKaartDto[]> {
+  const basis = `/uren/zzp/week-projecten?jaar=${jaar}&weeknummer=${weeknummer}${alles ? '&alles=true' : ''}`
   return apiJson(namens ? `${basis}&namens=${namens}` : basis)
 }
 
@@ -275,10 +324,13 @@ export async function zoekWeekstaat(ctx: {
   jaar: number
   weeknummer: number
   namens: string | null
-}): Promise<WeekstaatDto | null> {
+}): Promise<{ weekstaat: WeekstaatDto | null; doorfactureren_standaard: boolean }> {
   const basis = `/uren/zzp/weekstaat?administratie_id=${ctx.administratieId}&project_id=${ctx.projectId}&jaar=${ctx.jaar}&weeknummer=${ctx.weeknummer}`
-  const data = await apiJson<{ weekstaat: WeekstaatDto | null }>(ctx.namens ? `${basis}&namens=${ctx.namens}` : basis)
-  return data.weekstaat
+  const data = await apiJson<{ weekstaat: WeekstaatDto | null; doorfactureren_standaard?: boolean }>(
+    ctx.namens ? `${basis}&namens=${ctx.namens}` : basis,
+  )
+  // 18-09: de projectdefault reist mee, ook zolang er nog geen staat is; oudere backend zonder veld = true.
+  return { weekstaat: data.weekstaat, doorfactureren_standaard: data.doorfactureren_standaard ?? true }
 }
 
 export function haalIngediend(namens: string | null): Promise<IngediendeWeekDto[]> {
@@ -286,6 +338,8 @@ export function haalIngediend(namens: string | null): Promise<IngediendeWeekDto[
 }
 
 export function zetDag(payload: {
+  /** Run A punt 1: 'kopie' = "Zelfde als gisteren" (audit bron=kopie); default handmatig. */
+  bron?: 'handmatig' | 'kopie'
   administratie_id: string
   project_id: string
   jaar: number
@@ -293,6 +347,8 @@ export function zetDag(payload: {
   datum: string
   uren: string
   m2: string | null
+  // 18-09 blok B: null = projectdefault (nieuwe regel) / bestaande stand; true/false = expliciete keuze.
+  doorfactureren?: boolean | null
   opmerking: string | null
   namens_zzper_id: string | null
 }): Promise<WeekstaatDto> {
@@ -512,10 +568,89 @@ export function schuifWeek(jaar: number, weeknummer: number, delta: number): { j
   return isoWeekVan(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
-export function urenLabel(uren: string, m2: string | null): string {
+/** Dagchip: "8,0 u · 120 m²"; zonder m² alleen de uren ("8,0 u" — feedback uitvoerder 18-09 blok A: geen "· —" en
+ * geen "· 0 m²", m² is optioneel en leeg blijft leeg). */
+/** Kaartsamenstelling van de weekweergave (project-eerst, Peter 18-09): de kaarten van de backend (gepland ∪ mét regels ∪
+ * mét eigen meerwerk) plus de projecten die de gebruiker deze week zelf toevoegde ("+ Ander project") en die nog geen
+ * regels hebben — zonder dubbelen; een kaart zonder regels verdwijnt bij weekwissel (de extra-lijst is per week). */
+export function weekKaarten(kaarten: WeekProjectKaartDto[], extra: WeekProjectKaartDto[]): WeekProjectKaartDto[] {
+  const sleutel = (p: WeekProjectKaartDto) => `${p.administratie_id}-${p.project_id}`
+  const aanwezig = new Set(kaarten.map(sleutel))
+  return [...kaarten, ...extra.filter((p) => !aanwezig.has(sleutel(p)))]
+}
+
+/** De vooraf gekozen dag in de dagbalk: vandaag als die in de week valt, anders maandag. */
+export function standaardDag(dagen: { naam: string; datum: string }[], vandaag: Date = new Date()): { naam: string; datum: string } {
+  const iso = `${vandaag.getFullYear()}-${String(vandaag.getMonth() + 1).padStart(2, '0')}-${String(vandaag.getDate()).padStart(2, '0')}`
+  return dagen.find((d) => d.datum === iso) ?? dagen[0]
+}
+
+/** Som van de uren op één datum over alle kaarten (dagbalk-teller). */
+export function dagTotaal(kaarten: WeekProjectKaartDto[], datum: string): number {
+  return kaarten.reduce((som, k) => som + Number(k.dag_uren?.[datum] ?? 0), 0)
+}
+
+/** Uren-tikknoppen (punt 2): vaste keuzes + stappen van een half uur, altijd binnen 0–24. */
+export const UREN_TIKKEUZES = ['4', '6', '8', '10']
+export function stapHalfUur(huidig: string, richting: 1 | -1): string {
+  const n = Number(huidig.replace(',', '.')) || 0
+  const nieuw = Math.min(24, Math.max(0, Math.round((n + richting * 0.5) * 2) / 2))
+  return String(nieuw)
+}
+
+/** Vergeten dagen (punt 9): werkdagen (ma–vr) vóór vandaag zonder uren op enige kaart. */
+export function vergetenDagen(
+  kaarten: WeekProjectKaartDto[],
+  dagen: { naam: string; datum: string }[],
+  vandaag: string,
+): string[] {
+  return dagen
+    .filter((d) => d.datum < vandaag && !['za', 'zo'].includes(d.naam) && dagTotaal(kaarten, d.datum) === 0)
+    .map((d) => d.datum)
+}
+
+export interface IndienSamenvatting {
+  dagen: number
+  uren: number
+  projecten: number
+  zonderM2: number
+  nietDoorfactureren: number
+  /** Werkdagen (ma–vr) van de week zonder uren — waarschuwing, niet blokkerend. */
+  ontbrekendeWerkdagen: { naam: string; datum: string }[]
+}
+
+/** Samenvatting vóór "Week indienen" (punt 8) over de indienbare kaarten van de week. */
+export function indienSamenvatting(
+  kaarten: WeekProjectKaartDto[],
+  dagen: { naam: string; datum: string }[],
+): IndienSamenvatting {
+  const metUren = kaarten.filter((k) => Number(k.totaal_uren) > 0)
+  const gevuldeDagen = new Set<string>()
+  for (const k of metUren) for (const [datum, uren] of Object.entries(k.dag_uren ?? {})) if (Number(uren) > 0) gevuldeDagen.add(datum)
+  return {
+    dagen: gevuldeDagen.size,
+    uren: metUren.reduce((som, k) => som + Number(k.totaal_uren), 0),
+    projecten: metUren.length,
+    zonderM2: metUren.reduce((som, k) => som + (k.dagen_zonder_m2 ?? 0), 0),
+    nietDoorfactureren: metUren.reduce((som, k) => som + (k.dagen_niet_doorfactureren ?? 0), 0),
+    ontbrekendeWerkdagen: dagen.filter((d) => !['za', 'zo'].includes(d.naam) && !gevuldeDagen.has(d.datum)),
+  }
+}
+
+/** m²-project (punt 12): alleen mét een contract-m² tonen we m² en omschrijving direct; anders onder "meer". */
+export function isM2Project(kaart: Pick<WeekProjectKaartDto, 'contract_m2'>): boolean {
+  return kaart.contract_m2 !== null && kaart.contract_m2 !== undefined && Number(kaart.contract_m2) > 0
+}
+
+export function urenLabel(uren: string, m2: string | null | undefined): string {
   const u = Number(uren).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-  if (m2 === null || Number(m2) === 0) return `${u} u · —`
+  if (m2 === null || m2 === undefined || m2 === '' || Number(m2) === 0) return `${u} u`
   return `${u} u · ${Number(m2).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} m²`
+}
+
+/** Doorfactureren-keuze per regel (18-09 blok B): label voor dropdown en chip. */
+export function doorfacturerenLabel(waarde: boolean): string {
+  return waarde ? 'Doorfactureren' : 'Niet doorfactureren'
 }
 
 /** Compacte weergave van het correctievoorstel van de keurder (hybride keuring, 22-08). */

@@ -54,6 +54,8 @@ function installMock(opties: {
   uitnodigBodies?: Record<string, unknown>[]
   /** Blok 5: alle schrijvende aanroepen (method + url + body) — scope-verwijderen, instellingen, bulk. */
   aanroepen?: { method: string; url: string; body: unknown }[]
+  /** Rol wijzigen (18-09): detail-tekst van een 409 op PATCH …/rol. */
+  rolConflict?: string
   /** Blok 5: lagen die GET …/accordering/instellingen teruggeeft. */
   lagen?: { volgnummer: number; accordeur_gebruiker_id: string; accordeur_naam: string | null; bedrag_drempel: string | null }[]
 }) {
@@ -62,6 +64,12 @@ function installMock(opties: {
     vi.fn((url: string, init?: RequestInit) => {
       if (url === '/auth/token/vernieuwen' && init?.method === 'POST') {
         return Promise.resolve(jsonResponse({ access_token: fakeAccessToken(opties.rol ?? 'beheerder') }))
+      }
+      // Rol wijzigen (18-09): PATCH …/rol → 204; `rolConflict` simuleert de 409 van de server (kantoor ↔ veld).
+      if (url.endsWith('/rol') && init?.method === 'PATCH') {
+        opties.aanroepen?.push({ method: 'PATCH', url, body: JSON.parse(String(init.body)) })
+        if (opties.rolConflict) return Promise.resolve(jsonResponse({ detail: opties.rolConflict }, 409))
+        return Promise.resolve(new Response(null, { status: 204 }))
       }
       if (url.startsWith('/auth/gebruikers?') && (!init || init.method === undefined)) {
         return Promise.resolve(jsonResponse({ gebruikers: opties.gebruikers ?? [] }))
@@ -917,5 +925,42 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['DELETE']))
     expect(aanroepen[0].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${OUDE_ID}`)
+  })
+
+  it("Veldwerkers-tab: rol-select ZZP'er/Uitvoerder/Detacheerder — bevestigen zegt wat verandert en PATCHt de rol (Peter 18-09)", async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [gebruiker({ naam: 'Irfan Ogur', e_mail: 'uitvoerder@universal-steigerbouw.nl', rol: 'zzper', heeft_totp: false })],
+      aanroepen,
+    })
+    renderScherm('/gebruikers?groep=veldwerkers')
+    await waitFor(() => expect(screen.getByText('Irfan Ogur')).toBeInTheDocument())
+    const select = screen.getByRole('combobox', { name: 'Rol van Irfan Ogur' }) as HTMLSelectElement
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['zzper', 'uitvoerder', 'detacheerder'])
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.selectOptions(select, 'uitvoerder')
+    await waitFor(() => expect(screen.getByTestId('bevestig-dialoog')).toBeInTheDocument())
+    expect(screen.getByText(/Irfan Ogur krijgt de rol Uitvoerder \(was ZZP'er\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Geen heruitnodiging nodig: gekoppelde toestellen, toegangscode en administraties blijven staan/)).toBeInTheDocument()
+    expect(screen.getByText(/ZZP-dossier en de crediteurkoppeling blijven bewaard/)).toBeInTheDocument()
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(aanroepen).toEqual([{ method: 'PATCH', url: `/auth/gebruikers/${ANDER_ID}/rol`, body: { rol: 'uitvoerder' } }]))
+    // Ná de PATCH sluit de dialoog en laadt de lijst opnieuw (de toast loopt via de optionele toast-provider).
+    await waitFor(() => expect(screen.queryByTestId('bevestig-dialoog')).not.toBeInTheDocument())
+  })
+
+  it('Veldwerkers-tab: een 409 van de server (ander inlogmodel) blijft leesbaar in de dialoog', async () => {
+    installMock({
+      gebruikers: [gebruiker({ naam: 'Irfan Ogur', rol: 'zzper', heeft_totp: false })],
+      aanroepen: [],
+      rolConflict: 'Rolwissel van zzper (veld) naar boekhouding (kantoor) kan niet: een ander inlogmodel …',
+    })
+    renderScherm('/gebruikers?groep=veldwerkers')
+    await waitFor(() => expect(screen.getByText('Irfan Ogur')).toBeInTheDocument())
+    const gebruikerEvent = userEvent.setup()
+    await gebruikerEvent.selectOptions(screen.getByRole('combobox', { name: 'Rol van Irfan Ogur' }), 'detacheerder')
+    await waitFor(() => expect(screen.getByTestId('bevestig-dialoog')).toBeInTheDocument())
+    await gebruikerEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(screen.getByText(/ander inlogmodel/)).toBeInTheDocument())
   })
 })

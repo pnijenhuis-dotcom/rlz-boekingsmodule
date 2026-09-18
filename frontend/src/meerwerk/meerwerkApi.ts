@@ -69,6 +69,44 @@ export function haalUrenStand(administratieId: string): Promise<UrenStandDto> {
   return apiJson<UrenStandDto>(`/uren/kantoor/stand?administratie_id=${administratieId}`)
 }
 
+/** Beoordelen › Urenstaten (bug 18-09): ingediende weekstaten van één administratie — zelfde definitie als
+ * `UrenStandDto.urenstaten_wachten_op_keuring` (guard backend: chip == tab). */
+export interface KantoorWeekstaatItemDto {
+  weekstaat_id: string
+  administratie_id: string
+  administratie_naam: string | null
+  zzper_id: string
+  zzper_naam: string | null
+  project_id: string
+  project_naam: string | null
+  jaar: number
+  weeknummer: number
+  totaal_uren: string
+  totaal_m2: string
+  ingediend_op: string | null
+  ingediend_namens: boolean
+  ingediend_door_naam: string | null
+}
+
+export interface KantoorWeekstatenDto {
+  items: KantoorWeekstaatItemDto[]
+  /** Laatste goed- of afkeuring in deze administratie — voor de lege stand (KP7: lege stand = actie/context). */
+  laatste_keuring_op: string | null
+}
+
+export function haalKantoorWeekstaten(administratieId: string): Promise<KantoorWeekstatenDto> {
+  return apiJson(`/uren/kantoor/weekstaten?administratie_id=${administratieId}`)
+}
+
+/** Kantoor-keuring (vangnet als er geen tweede uitvoerder is): zelfde statusmachine + audit als de app-route. */
+export function keurWeekstaatGoedKantoor(administratieId: string, weekstaatId: string): Promise<unknown> {
+  return apiPostJson(`/uren/kantoor/weekstaten/${administratieId}/${weekstaatId}/goedkeuren`, {})
+}
+
+export function keurWeekstaatAfKantoor(administratieId: string, weekstaatId: string, reden: string): Promise<unknown> {
+  return apiPostJson(`/uren/kantoor/weekstaten/${administratieId}/${weekstaatId}/afkeuren`, { reden, correcties: [] })
+}
+
 export function haalMeerwerkLijst(administratieId: string): Promise<MeerwerkDto[]> {
   return apiJson<MeerwerkDto[]>(`/uren/kantoor/meerwerk?administratie_id=${administratieId}`)
 }
@@ -303,6 +341,19 @@ export function bevestigBedrijfsgegevens(
   payload: { kvk_nummer: string | null; btw_nummer: string | null; naam: string | null; plaats: string | null; rechtsvorm: string | null },
 ): Promise<DossierDto> {
   return apiPostJson<DossierDto>(`/uren/kantoor/dossier/${administratieId}/${gebruikerId}/bedrijfsgegevens`, payload)
+}
+
+/** Omschrijving-chips per administratie (veld-app run A punt 3, Peter 18-09): Beheerder-only; opslag als tekst. */
+export function haalOmschrijvingChipsBeheer(administratieId: string): Promise<{ chips: string[] }> {
+  return apiJson(`/uren/beheer/omschrijving-chips/${administratieId}`)
+}
+
+export function zetOmschrijvingChipsBeheer(administratieId: string, chips: string[]): Promise<{ chips: string[] }> {
+  return apiJson(`/uren/beheer/omschrijving-chips/${administratieId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chips }),
+  })
 }
 
 export function haalDossierDocumenttypen(

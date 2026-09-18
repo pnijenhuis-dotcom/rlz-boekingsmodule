@@ -25,6 +25,7 @@ import { OdooBackendRijen, OdooLeesbronRij } from './OdooBackend'
 import { RlzCheck } from './RlzCheck'
 import { GroepRij } from './GroepRij'
 import { NaamRij } from './NaamRij'
+import { OmschrijvingChipsRij } from './OmschrijvingChipsRij'
 import { DETAIL_TAB_PADEN, type DetailTab, zichtbareTabs } from './instellingenRegistry'
 
 interface Props {
@@ -385,6 +386,8 @@ export function AdministratieDetailPagina({
               u
             </label>
           </InstellingRij>
+          {/* Run A punt 3 (Peter 18-09): omschrijving-chips van de veld-app per administratie. */}
+          <OmschrijvingChipsRij administratieId={a.id} administratieNaam={a.naam} />
           <InstellingRij titel="Dossier-documenttypen" uitleg="Verplichte documenten per veldwerker (kopie ID, steigerpas, VCA, AVB, KvK-uittreksel …) mét vervaltermijn.">
             <Button variant="secundair" maat="klein" onClick={() => onDossierTypen(a)}>
               📁 Documenttypen…

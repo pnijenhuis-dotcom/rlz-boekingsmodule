@@ -15,6 +15,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { WerkvoorraadScreen } from '../werkvoorraad/WerkvoorraadScreen'
 import { ProjectenKantoorbreedScreen } from '../projecten/ProjectenKantoorbreedScreen'
+import { MeerwerkScreen } from '../meerwerk/MeerwerkScreen'
 import { OverflowBadge } from './overflowBadge'
 import '../index.css'
 
@@ -315,9 +316,43 @@ const PROJECTEN_KANTOORBREED = {
   },
 }
 
+// Bug 18-09: Beoordelen › Urenstaten (?beoordelen=1) — breedste realistische rijen: lange projectnaam, namens-regel,
+// 14 staten zoals de casus Universal; kolomminima uit meerwerk/beoordelenKolommen.ts.
+const BEOORDELEN_WEEKSTATEN = {
+  laatste_keuring_op: null,
+  items: Array.from({ length: 14 }, (_, i) => ({
+    weekstaat_id: `ws-${String(i + 1).padStart(2, '0')}`,
+    administratie_id: ADMIN_1,
+    administratie_naam: 'Universal Steigerbouw B.V.',
+    zzper_id: `zz-${i % 4}`,
+    zzper_naam: ['Mustafa Sanli-Yildirim', 'Raif Yücetaş', 'Hasan Ucan', 'Vladimir Ponchev'][i % 4],
+    project_id: `pr-${i % 3}`,
+    project_naam: ['26129 Hilversum, Larenseweg 125 (Huvanco)', '26030 Scherpenzeel, Orangerie 21 (Davelaar bouw)', '25162 Groesbeek stempels (Janssen-Groesbeek)'][i % 3],
+    jaar: 2026,
+    weeknummer: 37,
+    totaal_uren: '38.5',
+    totaal_m2: i % 2 === 0 ? '142.25' : '0',
+    ingediend_op: '2026-09-15T07:41:00Z',
+    ingediend_namens: i % 5 === 0,
+    ingediend_door_naam: i % 5 === 0 ? 'Detacheerder Personeelsdiensten Oost B.V.' : null,
+  })),
+}
+const BEOORDELEN_STAND = {
+  meerwerk_te_beoordelen: 0,
+  meerwerk_nog_doorbelasten: 0,
+  meerwerk_te_lang_niet_doorbelast: 0,
+  urenstaten_wachten_op_keuring: 14,
+  dossier_veldwerkers_met_signaal: 0,
+  dossier_ter_controle: 0,
+  dossier_geblokkeerd: 0,
+}
+
 const echteFetch = window.fetch.bind(window)
 window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = String(invoer)
+  if (url.includes('/uren/kantoor/weekstaten?')) return Promise.resolve(jsonResponse(BEOORDELEN_WEEKSTATEN))
+  if (url.includes('/uren/kantoor/meerwerk')) return Promise.resolve(jsonResponse([]))
+  if (url.includes('/uren/kantoor/stand')) return Promise.resolve(jsonResponse(BEOORDELEN_STAND))
   if (url.endsWith('/auth/administraties')) return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
   if (url.includes('/projecten/kantoorbreed')) return Promise.resolve(jsonResponse(PROJECTEN_KANTOORBREED))
   if (url.endsWith('/werkvoorraad/overzicht')) return Promise.resolve(jsonResponse(WERKVOORRAAD_OVERZICHT))
@@ -377,7 +412,9 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
 const PARAMS = new URLSearchParams(window.location.search)
 // IA-verbouwing 15-08: ?klant=1 = klantpagina (standen), ?docs=1 = documenten-deelscherm.
 // C5 (07-09): ?projecten=1 = Inzicht › Projecten kantoorbreed.
-const START_URL = PARAMS.has('projecten')
+const START_URL = PARAMS.has('beoordelen')
+  ? `/meerwerk?administratie=${ADMIN_1}&tab=urenstaten`
+  : PARAMS.has('projecten')
   ? '/projecten'
   : PARAMS.has('docs')
     ? `/?administratie=${ADMIN_1}&sectie=documenten`
@@ -419,6 +456,7 @@ createRoot(document.getElementById('root')!).render(
             <Routes>
               <Route path="/" element={<WerkvoorraadScreen />} />
               <Route path="/projecten" element={<ProjectenKantoorbreedScreen />} />
+              <Route path="/meerwerk" element={<MeerwerkScreen />} />
             </Routes>
           </div>
         </div>

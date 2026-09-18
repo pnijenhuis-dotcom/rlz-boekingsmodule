@@ -16,6 +16,9 @@ import {
   useToastOptioneel,
 } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
+import { WeekstaatPaneel } from './WeekstaatPaneel'
+import { UrenstatenTab } from './UrenstatenTab'
+import type { BeoordelenTab } from './beoordelenChip'
 import {
   eenheidLabel,
   haalContractToets,
@@ -75,10 +78,26 @@ function euro(bedrag: string | null): string {
 }
 
 export function MeerwerkScreen() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const administratieId = searchParams.get('administratie')
+  // 18-09 blok B: het planning-grid linkt sinds 15-09 naar `?weekstaat=<id>` — hier het kantoor-weekstaatpaneel.
+  const weekstaatId = searchParams.get('weekstaat')
+  // Bug 18-09: één landingsplek "Beoordelen" mét twee tabs; `?tab=urenstaten|meerwerk` (de chip landt op de tab mét werk).
+  const tab: BeoordelenTab = searchParams.get('tab') === 'meerwerk' ? 'meerwerk' : 'urenstaten'
+  const [urenstatenAantal, setUrenstatenAantal] = useState<number | null>(null)
   const { administraties } = useAdministraties()
   const { meld } = useToastOptioneel()
+
+  const kiesTab = (nieuw: BeoordelenTab) => {
+    const volgende = new URLSearchParams(searchParams)
+    volgende.set('tab', nieuw)
+    setSearchParams(volgende)
+  }
+  const openWeekstaat = (id: string) => {
+    const volgende = new URLSearchParams(searchParams)
+    volgende.set('weekstaat', id)
+    setSearchParams(volgende)
+  }
 
   const [items, setItems] = useState<MeerwerkDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
@@ -109,7 +128,7 @@ export function MeerwerkScreen() {
   }, [laad])
 
   if (!administratieId) {
-    return <p className="hint">Geen administratie gekozen — open meerwerk vanaf de klantpagina.</p>
+    return <p className="hint">Geen administratie gekozen — open Beoordelen vanaf de klantpagina.</p>
   }
   if (geenRecht) {
     return (
@@ -139,18 +158,36 @@ export function MeerwerkScreen() {
               { label: 'Werkvoorraad', naar: '/' },
               { label: administratieNaam, naar: `/?administratie=${administratieId}` },
             ]}
-            huidige="Meerwerk"
+            huidige="Beoordelen"
           />
-          <h1>Meerwerk — {administratieNaam}</h1>
+          <h1>Beoordelen — {administratieNaam}</h1>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>
-            Gemeld door uitvoerders in de app · niets verdwijnt stil: elke melding houdt een status
+            Ingediende urenstaten en gemeld meerwerk uit de app · niets verdwijnt stil: elke staat en melding houdt een status
           </div>
         </div>
       </div>
 
       {fout && <FoutMelding melding="Het meerwerk kon niet geladen worden." detail={fout} onOpnieuw={laad} />}
 
-      <div className="panel">
+      {weekstaatId && <WeekstaatPaneel administratieId={administratieId} weekstaatId={weekstaatId} />}
+
+      {/* Bug 18-09: tabs Urenstaten (N) · Meerwerk (M) — de tellers komen uit dezelfde lijsten als de tabellen. */}
+      <div className="segment" role="tablist" aria-label="Beoordelen" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === 'urenstaten'} className={tab === 'urenstaten' ? 'actief' : undefined} onClick={() => kiesTab('urenstaten')} data-testid="tab-urenstaten">
+          Urenstaten{urenstatenAantal !== null ? ` (${urenstatenAantal})` : ''}
+        </button>
+        <button role="tab" aria-selected={tab === 'meerwerk'} className={tab === 'meerwerk' ? 'actief' : undefined} onClick={() => kiesTab('meerwerk')} data-testid="tab-meerwerk">
+          Meerwerk{items !== null ? ` (${tellers.get('gemeld') ?? 0})` : ''}
+        </button>
+      </div>
+
+      {tab === 'urenstaten' && (
+        <div className="panel" role="tabpanel">
+          <UrenstatenTab administratieId={administratieId} openWeekstaat={openWeekstaat} onAantal={setUrenstatenAantal} meld={meld} />
+        </div>
+      )}
+
+      <div className="panel" role="tabpanel" hidden={tab !== 'meerwerk'}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <div className="segment" role="group" aria-label="Filter op status">
             {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
