@@ -8,6 +8,13 @@
 
 ## 2026-09-18 — Boeken: geen daglimiet meer voor handmatig boeken; btw volgt het tarief; boeken gaat direct door
 
+<!-- toegang-is-geen-laag-18-09 -->
+
+- **Toegang geven aan een accordeur verandert de goedkeuringsroute niet meer.** Bij Gebruikers & toegang › Klant-accordeurs › "Administraties toevoegen…" kreeg een accordeur tot vandaag meteen laag 1, en de bestaande lagen van die administratie werden stil vervangen. Nu kies je per administratie: alleen toegang (standaard), ook als extra laag vóór laag 1 of ná de laatste laag (de bestaande lagen blijven staan), of alleen voor een leveranciersroute. Je ziet vooraf wat er nu staat ("3 lagen: Peter N. → Sophia → Kempen") en wat het wordt.
+- **Verwijderen bij een administratie stelt twee losse vragen.** "Uit de accorderingslagen halen" en "Toegang intrekken" zijn aparte vinkjes; standaard blijft de toegang staan, zodat de accordeur kiesbaar blijft voor een leveranciersroute.
+- **Klant-accordering in bulk vervangt bestaande lagen alleen na je uitdrukkelijke vink per administratie**, met de huidige lagen zichtbaar ("vervangt 3 lagen bij Bouwadvies: …"). Niet aangevinkt = die administratie wordt overgeslagen en houdt haar lagen.
+- **Staat de gewenste accordeur niet in de keuzelijst?** Onder de lagen (en in de leveranciersroute-editor) staat nu altijd "Andere klant-accordeur toegang geven…".
+
 <!-- volumerem-alleen-automatisch-18-09 -->
 
 - **Handmatig boeken loopt niet meer tegen "Dagelijkse limiet van 20 boekingen" aan.** Die limiet is een noodrem voor automatische boekingen en telt sinds vandaag alleen nog die. Boek je zelf een stapel bonnen, dan kun je gewoon door; pas bij 500 handmatige boekingen op één dag in één administratie grijpt een noodrem in, met de vraag contact op te nemen met de Beheerder. Elke melding zegt nu welke rem het is, hoe ver de teller staat en wat je kunt doen.

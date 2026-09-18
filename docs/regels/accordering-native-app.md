@@ -135,6 +135,46 @@
   `LeverancierRoutes.test.tsx` (combobox, bovenop + positie, melding, chip), `GebruikersScreen.test.tsx` (`?uitnodig=`),
   `accorderingRouteTijdlijn.test.ts`; overflow-sweep accordering-harnas × 1440/1385/1280/1170/1024/768.
 
+<!-- toegevoegd 18-09-2026, opdracht "BUG-accordeur-administratie-toevoegen-overschrijft-lagen" -->
+- **Toegang ≠ laag — klant-accordeur toegang geven verandert de goedkeuringsroute niet (BUG Peter 18-09, live bij Bouwadvies
+  Oost Nederland; geen migratie; BESLISSINGEN "TOEGANG IS GEEN LAAG — KLANT-ACCORDEUR TOEGANG GEVEN VERANDERT DE GOEDKEURINGSROUTE NIET (Peter 18-09)"):** Casus: Bouwadvies had drie lagen (Peter N. → Sophia Gerritsen → Kempen);
+  Peter wilde Romy v. Lambalgen ALLEEN voor twee leveranciers (leveranciersroute 'bovenop'), maar Romy stond niet in de
+  accordeur-keuzelijst (geen scope). De enige UI-weg — Gebruikers › Klant-accordeurs › "Administraties toevoegen…" — liep over
+  `POST /accordering/bulk-instellen` mét `lagen = [Romy laag 1]` en VERVING daarmee de drie lagen (én herberekende lopende
+  rondes); "Verwijderen" deed PUT zonder haar + DELETE scope → toegang weg → niet meer kiesbaar (kringetje; Cowork omzeilde het met
+  de kale scope-route). Regels sinds 18-09: (1) **Toegang ≠ laag.** "Administraties toevoegen…" bij een accordeur = ScopeLijst →
+  keuze-stap PER administratie mét de huidige stand zichtbaar ("Nu: klant-accordering aan, 3 lagen: Peter N. → Sophia Gerritsen →
+  Kempen") en "Wordt: …". Default **"Alleen toegang"** = uitsluitend de bestaande scope-route `POST /auth/gebruikers/{id}/scope`
+  (audit `scope_toegevoegd` via de DB-trigger) — geen laag, geen `accordering_schema_gewijzigd`, geen herberekening. **"Ook als
+  laag toevoegen: vóór laag 1 / ná de laatste laag"** = scope + PUT instellingen mét de BESTAANDE lagen plús deze accordeur,
+  hernummerd (nooit vervangen; `ingeschakeld` blijft zoals het was; aanleiding "laag toegevoegd via Klant-accordeurs" in audit +
+  tijdlijn). **"Alleen in een leveranciersroute"** = scope + link "Route-editor openen →" (detailpagina, tab Klant-accordering). De
+  bulk-instelroute wordt vanuit het accordeur-venster niet meer aangeroepen; resultaat per administratie zichtbaar, deelfout per
+  administratie, al doorgevoerde stappen blijven staan. (2) **Verwijderen bij een administratie = twee gescheiden vinkjes:** "Uit
+  de accorderingslagen halen" (default AAN als hij erin staat, mét de herberekend-/vervallen-telling uit het preview-endpoint; uit en
+  vergrendeld als hij er niet in staat) en "Toegang intrekken" (default UIT, mét uitleg: niet meer zichtbaar in de app, niet meer
+  kiesbaar, ook niet voor een leveranciersroute). Toegang intrekken terwijl hij in de lagen staat zet het lagen-vinkje vast aan (een
+  laag zonder toegang kan niet goedkeuren). Laatste laag = de aparte uitschakel-bevestiging (Peter 08-09) blijft; die zegt of de
+  toegang blijft of ook wordt ingetrokken. Gearchiveerde administratie = alleen toegang intrekken (voorgevinkt). (3) **Bulk
+  instellen (Instellingen › Klant-accordering › bulk) blijft "lagen zetten", maar vervangt bestaande lagen alleen ná een expliciete
+  bevestiging PER administratie mét de huidige stand zichtbaar:** de preview draagt `bestaande_lagen` (namen op volgnummer) en de
+  dialoog toont in de overschrijf-waarschuwing per administratie een vinkje "vervangt 3 lagen bij Bouwadvies: Peter N. → Sophia
+  Gerritsen → Kempen"; toepassen stuurt `vervangen_bevestigd: [ids]` mee en de server (`bulk_instellen`, `BulkInstellenInput.
+  vervangen_bevestigd`) slaat een niet-bevestigde administratie mét lagen over mét reden `VERVANGEN_NIET_BEVESTIGD_REDEN` — haar
+  lagen blijven staan (fail-closed in code, niet alleen in de UI; een administratie zonder lagen heeft niets te vervangen). (4)
+  **Accordeur-keuzelijst op de klant-accorderingstab en in de route-editor:** staat de gewenste accordeur er niet, dan staat onder
+  de lagen — óók als er al accordeurs zijn — "Andere klant-accordeur toegang geven…" (`AndereAccordeurKoppelen`, dezelfde
+  koppel-dialoog als bij "Geen klant-accordeurs", scope-only, Beheerder-only), daarna herladen de kandidaten. Guards: backend
+  `tests/accordering/test_toegang_is_geen_laag_18_09.py` (scope-only laat 3 lagen + lopende ronde staan, geen schema-/
+  herberekend-audit, wél `scope_toegevoegd`; bulk zonder bevestiging = overgeslagen mét reden, mét bevestiging = vervangen; preview
+  draagt `bestaande_lagen`), `test_bulk_instellen.py`/`test_herberekenen.py` (bevestiging meegegeven waar vervangen beoogd is);
+  vitest `GebruikersScreen.test.tsx` (toevoegen zonder laag = alleen POST scope, laag ná = PUT mét 4 lagen, vóór/route, verwijderen
+  default = PUT zonder DELETE, toegang intrekken = PUT + DELETE, niet-in-lagen = alleen DELETE, laatste laag = toggle uit zonder
+  DELETE, gearchiveerd), `BulkAccorderingDialog.test.tsx` ("vervangt N lagen" + vink → `vervangen_bevestigd`),
+  `AccorderingInstellingen.test.tsx` + `LeverancierRoutes.test.tsx` (koppelknop mét accordeurs). Bijvangst: BESLISSINGEN blok 5
+  (08-09) beslispunt 2 vroeg dit al ("bestaande lagen behouden en hem eraan toevoegen — nieuw gedrag, niet gebouwd"); nu gebouwd
+  als default-gedrag.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)

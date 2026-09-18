@@ -111,6 +111,17 @@
   replica altijd mét de juiste actor/scope; het request-log + `platform.audit_event` + `platform.refresh_token` samen geven de
   volledige tijdlijn van een toestel.
 
+<!-- toegevoegd 18-09-2026, opdracht "BUG-accordeur-administratie-toevoegen-overschrijft-lagen" -->
+- **Scope van een klant-accordeur = toegang, nooit een laag (BUG Peter 18-09, casus Romy v. Lambalgen bij Bouwadvies Oost
+  Nederland; geen migratie; BESLISSINGEN "TOEGANG IS GEEN LAAG — KLANT-ACCORDEUR TOEGANG GEVEN VERANDERT DE GOEDKEURINGSROUTE NIET (Peter 18-09)"):** Gebruikers › Klant-accordeurs › "Administraties toevoegen…" schrijft de
+  toegang uitsluitend via de bestaande scope-route `POST /auth/gebruikers/{id}/scope` (Beheerder-only, audit `scope_toegevoegd`
+  via de DB-trigger `trg_audit_gebruiker_administratie_insert`) — een accorderingslaag komt er alleen bij als de Beheerder dat per
+  administratie expliciet kiest, en dan náást de bestaande lagen (nooit vervangen). "Verwijderen" bij een administratie stelt twee
+  losse vragen: uit de accorderingslagen (default aan) en/of toegang intrekken (`DELETE …/scope/{administratie}`, default UIT) —
+  toegang en laag zitten niet meer aan elkaar vast. Server-side is scope-only bewezen zonder accordering-neveneffect
+  (`tests/accordering/test_toegang_is_geen_laag_18_09.py`). Volledige regels (keuze-stap, preview, bulk-bevestiging, koppelknop in
+  de keuzelijsten): `docs/regels/accordering-native-app.md` alinea "Toegang ≠ laag".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Auth (TOTP, accordeur-passkeys, herstel-link, e-mail wijzigen, activatie mobiel-first, pincode/app-lock, platformbesluit 0020, kantoor-passkeys) (CLAUDE.md `ed6d176` r. 95–155)

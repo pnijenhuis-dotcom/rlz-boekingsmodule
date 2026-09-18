@@ -11474,3 +11474,46 @@ zonder scheduler én zonder IAM blijft een boeking op "Wordt geboekt…" staan t
 `BoekWachtrij.enqueue(administratie_id, document_id)` is er al op voorbereid.
 
 **Nameting (ná deploy, lees-only):** zie rapport `docs/rapporten/2026-09-18-boeken-sneller.md` §Nameting-recept.
+
+
+## TOEGANG IS GEEN LAAG — KLANT-ACCORDEUR TOEGANG GEVEN VERANDERT DE GOEDKEURINGSROUTE NIET (Peter 18-09) — casus Bouwadvies Oost Nederland / Romy v. Lambalgen; toevoegen = scope-only mét keuze-stap, verwijderen = twee vinkjes, bulk vervangt alleen ná bevestiging per administratie; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09 (inbox-run, opdracht "BUG-accordeur-administratie-toevoegen-overschrijft-lagen"); werkt in
+productie: niet gemeten (deploy ná de run); nameting Romy/Bouwadvies: zie rapport `docs/rapporten/2026-09-18-bug-accordeur-toegang-is-geen-laag.md`.**
+**Aanleiding (Peter 18-09, 19:30 live):** Bouwadvies heeft 3 lagen (Peter N. → Sophia Gerritsen → Kempen); Romy moest ALLEEN voor
+twee leveranciers (route 'bovenop') maar stond niet in de accordeur-keuzelijst (geen scope). "Administraties toevoegen…" bij Romy
+liep via `/accordering/bulk-instellen` mét `lagen = [Romy laag 1]` → verving de drie lagen én herberekende lopende rondes;
+"Verwijderen" deed PUT zonder haar + DELETE scope → toegang weg → niet meer kiesbaar. Kringetje; Cowork omzeilde het via de kale
+scope-route. Pre-feature-check: blok 5 (08-09) beslispunt 2 signaleerde dit gedrag al als open vraag ("bestaande lagen behouden en
+hem eraan toevoegen — nieuw gedrag, niet gebouwd").
+
+**Besluiten/regels (volledige tekst: `docs/regels/accordering-native-app.md` alinea "Toegang ≠ laag" + `auth-toegang.md` alinea
+"Scope van een klant-accordeur = toegang, nooit een laag"):**
+1. **Toegang ≠ laag.** "Administraties toevoegen…" = ScopeLijst → keuze-stap per administratie mét "Nu: … 3 lagen: …" en
+   "Wordt: …"; default "Alleen toegang" = uitsluitend `POST /auth/gebruikers/{id}/scope`; "Ook als laag: vóór laag 1 / ná de
+   laatste laag" = scope + PUT mét de bestaande lagen plús de accordeur (nooit vervangen, aanleiding "laag toegevoegd via
+   Klant-accordeurs"); "Alleen in een leveranciersroute" = scope + link naar de route-editor. Bulk-route niet meer vanuit dit venster.
+2. **Verwijderen = twee vinkjes:** uit de lagen (default aan, herberekend-/vervallen-telling zoals eerder) en/of toegang intrekken
+   (default uit, mét uitleg); intrekken zet uit-de-lagen vast aan; laatste laag = aparte uitschakel-bevestiging blijft; gearchiveerd
+   = alleen toegang.
+3. **Bulk instellen vervangt bestaande lagen alleen ná expliciete bevestiging per administratie** mét de huidige stand zichtbaar:
+   preview-veld `bestaande_lagen` (namen), vinkje "vervangt N lagen bij ‹BV›: …", invoerveld `vervangen_bevestigd` (server-side
+   fail-closed: niet bevestigd = overgeslagen mét reden `VERVANGEN_NIET_BEVESTIGD_REDEN`, lagen blijven).
+4. **Keuzelijst-vangnet:** onder de lagen op de klant-accorderingstab én in de route-editor staat — ook mét accordeurs — "Andere
+   klant-accordeur toegang geven…" (`AndereAccordeurKoppelen`, dezelfde scope-only koppel-dialoog).
+
+| Onderdeel | Bouw | Status | Canonieke vindplaats |
+|---|---|---|---|
+| Keuze-stap toevoegen (preview nu/wordt, 4 keuzes, resultaat per administratie) | `frontend/src/gebruikers/AccordeurAdministraties.tsx` (`huidigeStandTekst`, `lagenNaToevoegen`, `wordtTekst`) | GEBOUWD + GETEST 18-09 | `GebruikersScreen.test.tsx` blok 5 (3 nieuwe + 1 herschreven test) |
+| Verwijderen mét twee vinkjes | idem, dialoog `accordeur-verwijderen-dialoog` | GEBOUWD + GETEST 18-09 | `GebruikersScreen.test.tsx` (default PUT zonder DELETE; intrekken = PUT+DELETE; niet in lagen = alleen DELETE; laatste laag; gearchiveerd) |
+| Bulk: `bestaande_lagen` + `vervangen_bevestigd` | `app/accordering/service.py::bulk_instellen`, `schemas.py`, `router.py`; `BulkAccorderingDialog.tsx` | GEBOUWD + GETEST 18-09 | `tests/accordering/test_toegang_is_geen_laag_18_09.py`, `BulkAccorderingDialog.test.tsx` |
+| Scope-only zonder accordering-neveneffect | bestaande route, geen code — bewijs | GETEST 18-09 | `test_toegang_is_geen_laag_18_09.py::test_scope_only_…` |
+| "Andere klant-accordeur toegang geven…" | `GeenAccordeursMelding.tsx::AndereAccordeurKoppelen`, `AccorderingInstellingen.tsx`, `LeverancierRoutes.tsx` | GEBOUWD + GETEST 18-09 | `AccorderingInstellingen.test.tsx`, `LeverancierRoutes.test.tsx` |
+
+**Keuzes zonder Peter (opdracht: zelf kiezen, in het rapport):** (a) de bulk-bevestiging is server-side afgedwongen (niet alleen
+een UI-vink) — een tweede client of een oude tab kan zo nooit stil vervangen; (b) "Ook als laag" laat `ingeschakeld` ongewijzigd
+(uit blijft uit, mét hint) — aanzetten blijft een bewuste handeling op de klant-accorderingstab; (c) toegang intrekken terwijl de
+accordeur in de lagen staat dwingt "uit de lagen" af (een laag zonder toegang kan niet goedkeuren en zou het aanbieden server-side
+laten weigeren); (d) de vier keuzes staan in één `Select` per administratie (schaalt naar tientallen administraties in één stap;
+`KeuzeKaarten` zou per rij drie kaarten geven). Beslispunt 1 van blok 5 (afdelingsroutes bij verwijderen) blijft open.
+
