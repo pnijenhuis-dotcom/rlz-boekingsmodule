@@ -6,6 +6,7 @@ from collections.abc import Callable
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_kantoorrol
+from app.db.session import scoped_session
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import GeenRlzCredentials
 from app.sync import schemas, service
@@ -115,9 +116,29 @@ def taxrate_lijst(
     administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_administratie_scope)
 ) -> schemas.TaxrateLijstResponse:
     codes = service.lijst_taxrates(administratie_id=administratie_id)
-    return schemas.TaxrateLijstResponse(
-        btw_codes=[schemas.TaxrateOptieResponse(id=t.id, naam=t.naam, percentage=t.percentage) for t in codes]
-    )
+    # 18-09 DEEL B: vlaggen + gebruiksfrequentie (één statement) voor de NL-eerst keuzelijst.
+    from app.documenten.btw_keuzelijst import taxrate_gebruik_12m
+    from app.documenten.checks import is_buitenland_tarief
+    from app.sync.btw import taxrate_vlaggen
+
+    with scoped_session(administratie_id) as session:
+        gebruik = taxrate_gebruik_12m(session, administratie_id=administratie_id)
+    uit = []
+    for t in codes:
+        verlegd, vrijgesteld = taxrate_vlaggen(t.brondata)
+        uit.append(
+            schemas.TaxrateOptieResponse(
+                id=t.id,
+                naam=t.naam,
+                percentage=t.percentage,
+                verlegd=verlegd,
+                vrijgesteld=vrijgesteld,
+                buitenland=is_buitenland_tarief(t.naam),
+                favoriet=bool((t.brondata or {}).get("IsFavorite")),
+                gebruik_12m=gebruik.get(t.id, 0),
+            )
+        )
+    return schemas.TaxrateLijstResponse(btw_codes=uit)
 
 
 @router.post(

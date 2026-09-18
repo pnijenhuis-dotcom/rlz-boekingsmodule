@@ -5,6 +5,7 @@ import { bouwGrootboekBtwDefaultMap, btwVolgtRekening, type GrootboekBtwDefault 
 import { bepaalBtwHerkomstChip } from '../document/regelVoorstelChips'
 import { AnkerPopup, Checkbox, Select, SkeletonRegels, useToastOptioneel } from '../ui/basis'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useTaxrateOptiesGefilterd } from '../document/useTaxrateOptiesGefilterd'
 import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   boekDirect,
@@ -224,6 +225,8 @@ function HandmatigBoekenForm({
 }) {
   const grootboek = useGrootboekOpties(administratieId)
   const btwCodes = useTaxrateOpties(administratieId)
+  // 18-09 DEEL B: gedeelde keuzelijst-sortering (gebruik 12 mnd bovenaan).
+  const btwGefilterd = useTaxrateOptiesGefilterd(btwCodes.opties, null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [taxrateId, setTaxrateId] = useState<string | null>(null)
   // 15-09 (bug-onderzoek L.H.G. Holding "Kosten mobiele telefonie" — een KPN-incasso vanuit dít formulier geboekt, btw
@@ -316,7 +319,7 @@ function HandmatigBoekenForm({
       />
       <SearchableCombobox
         label="Btw-code"
-        opties={btwCodes.opties}
+        opties={btwGefilterd.opties}
         laden={btwCodes.laden}
         laadFout={btwCodes.fout}
         waarde={taxrateId}

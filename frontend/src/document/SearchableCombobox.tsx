@@ -22,6 +22,16 @@ export interface ComboboxOptie {
   /** Blok C 16-09: een project met `is_actief = false` blijft zichtbaar (onderaan, chip "inactief") — de gebruiker
    * moet zien wat er bestaat; verbergen was precies Peters klacht. */
   inactief?: boolean
+  /** 18-09 DEEL B (btw-keuzelijst NL-eerst): groepsnaam van de optie; mét `ingeklapteGroep` op de combobox staat deze
+   * groep zonder zoekterm ingeklapt achter één regel onderaan ("Buitenland-tarieven tonen (N)"). Zoeken doorzoekt
+   * altijd álles; de geselecteerde optie blijft altijd zichtbaar. */
+  groep?: string
+  /** Doorgeefluiken van useTaxrateOpties (18-09): RLZ-vlaggen + gebruik in 12 maanden; de combobox doet er niets mee. */
+  verlegd?: boolean
+  vrijgesteld?: boolean
+  buitenland?: boolean
+  favoriet?: boolean
+  gebruik12m?: number
 }
 
 function weergaveTekst(optie: ComboboxOptie): string {
@@ -54,6 +64,10 @@ interface Props {
   laadFout?: string | null
   onOpnieuw?: () => void
   leegTekst?: string
+  /** 18-09 DEEL B: opties mét `groep === ingeklapteGroep.groep` staan zonder zoekterm ingeklapt achter één toggle-rij
+   * onderaan (label bv. "Buitenland-tarieven tonen (7)"); klik/Enter vouwt ze uit voor déze combobox; een zoekterm
+   * doorzoekt altijd álle opties; de geselecteerde optie blijft zichtbaar. Pijltjes slaan de ingeklapte groep over. */
+  ingeklapteGroep?: { groep: string; label: (aantal: number) => string }
 }
 
 /** Meervoud van het veldlabel voor de lege stand — bewust een kleine, expliciete tabel (geen taalregels die stil
@@ -137,6 +151,7 @@ export function SearchableCombobox({
   laadFout = null,
   onOpnieuw,
   leegTekst,
+  ingeklapteGroep,
 }: Props) {
   const reactId = useId()
   const inputId = `${reactId}-input`
@@ -144,6 +159,7 @@ export function SearchableCombobox({
 
   const [open, setOpen] = useState(false)
   const [zoekterm, setZoekterm] = useState('')
+  const [groepUitgevouwen, setGroepUitgevouwen] = useState(false)
   const [actieveIndex, setActieveIndex] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
   const [positie, setPositie] = useState<Positie | null>(null)
@@ -157,11 +173,21 @@ export function SearchableCombobox({
 
   const gefilterd = useMemo(() => {
     const term = debouncedZoekterm.trim().toLowerCase()
-    if (!term) return opties
+    if (!term) {
+      // 18-09: zonder zoekterm blijft de ingeklapte groep verborgen (behalve de geselecteerde optie) tot uitgevouwen.
+      if (ingeklapteGroep && !groepUitgevouwen) {
+        return opties.filter((o) => o.groep !== ingeklapteGroep.groep || o.id === waarde)
+      }
+      return opties
+    }
     return opties.filter(
       (o) => o.label.toLowerCase().includes(term) || (o.code?.toLowerCase().includes(term) ?? false),
     )
-  }, [opties, debouncedZoekterm])
+  }, [opties, debouncedZoekterm, ingeklapteGroep, groepUitgevouwen, waarde])
+  const ingeklaptAantal = useMemo(() => {
+    if (!ingeklapteGroep || groepUitgevouwen || debouncedZoekterm.trim()) return 0
+    return opties.filter((o) => o.groep === ingeklapteGroep.groep && o.id !== waarde).length
+  }, [opties, ingeklapteGroep, groepUitgevouwen, debouncedZoekterm, waarde])
 
   // Breedte-anker (bugfix 2026-07-11): de gevirtualiseerde optierijen staan position:absolute
   // en dragen daardoor NIET bij aan de max-content-breedte van de listbox — die klapte dicht
@@ -266,8 +292,11 @@ export function SearchableCombobox({
 
   // De voet-actie is een virtuele extra rij áchter de laatste optie: pijl-omlaag landt erop
   // (ook bij nul zoekresultaten — dán is het de enige bereikbare rij) en Enter activeert 'm.
-  const voetIndex = voetActie ? gefilterd.length : -1
-  const hoogsteIndex = voetActie ? gefilterd.length : gefilterd.length - 1
+  // 18-09: de inklap-toggle is een virtuele rij ná de opties (vóór de voet-actie); Enter/klik vouwt uit zonder te
+  // sluiten of te kiezen.
+  const toggleIndex = ingeklaptAantal > 0 ? gefilterd.length : -1
+  const voetIndex = voetActie ? gefilterd.length + (toggleIndex >= 0 ? 1 : 0) : -1
+  const hoogsteIndex = Math.max(gefilterd.length - 1, toggleIndex, voetIndex)
 
   const kiesVoet = useCallback(() => {
     if (!voetActie) return
@@ -275,6 +304,11 @@ export function SearchableCombobox({
     setOpen(false)
     voetActie.onKies()
   }, [voetActie])
+
+  const vouwGroepUit = useCallback(() => {
+    setGroepUitgevouwen(true)
+    setActieveIndex(0)
+  }, [])
 
   const opToetsenbord = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -291,6 +325,7 @@ export function SearchableCombobox({
       e.preventDefault()
       if (!open) return
       if (actieveIndex === voetIndex) kiesVoet()
+      else if (actieveIndex === toggleIndex) vouwGroepUit()
       else if (gefilterd[actieveIndex]) kiesOptie(gefilterd[actieveIndex])
     } else if (e.key === 'Escape') {
       setOpen(false)
@@ -320,9 +355,11 @@ export function SearchableCombobox({
   const actieveOptieId =
     open && actieveIndex === voetIndex
       ? `${listboxId}-voetactie`
-      : open && gefilterd[actieveIndex]
-        ? `${listboxId}-${gefilterd[actieveIndex].id}`
-        : undefined
+      : open && actieveIndex === toggleIndex
+        ? `${listboxId}-inklap`
+        : open && gefilterd[actieveIndex]
+          ? `${listboxId}-${gefilterd[actieveIndex].id}`
+          : undefined
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
@@ -449,6 +486,21 @@ export function SearchableCombobox({
                 )
               })}
             </div>
+            {toggleIndex >= 0 && ingeklapteGroep && (
+              <button
+                type="button"
+                id={`${listboxId}-inklap`}
+                data-testid="combobox-inklap"
+                className={`linkbtn combobox-voet${actieveIndex === toggleIndex ? ' actief' : ''}`}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  vouwGroepUit()
+                }}
+                onMouseEnter={() => setActieveIndex(toggleIndex)}
+              >
+                {ingeklapteGroep.label(ingeklaptAantal)}
+              </button>
+            )}
             {voetActie && (
               <button
                 type="button"

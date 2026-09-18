@@ -392,6 +392,15 @@ export const REGISTRY: readonly RegistryEntry[] = [
     doel: { soort: 'tab', tab: 'boeken-ai', anker: 'omzetbronnen' },
     beheerder: true,
   },
+  // 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening.
+  {
+    id: 'btw-aftrek',
+    naam: 'Btw niet aftrekbaar (BUA) — representatie, relatiegeschenken, kantine',
+    waar: 'Administraties › <administratie> › tab Boeken & AI › Btw niet aftrekbaar',
+    synoniemen: ['bua', 'niet aftrekbaar', 'aftrek uitgesloten', 'representatie', 'relatiegeschenk', 'relatiegeschenken', 'kantine', 'personeelsvoorziening', 'btw in kosten', 'fles wijn'],
+    doel: { soort: 'tab', tab: 'boeken-ai', anker: 'btw-aftrek' },
+    beheerder: true,
+  },
   // Losse instellingen bínnen een sectie (deep-link mét anker).
   {
     id: 'bulk-accordering',

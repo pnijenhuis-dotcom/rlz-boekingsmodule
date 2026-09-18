@@ -17,6 +17,7 @@ import { EersteSyncStatus } from './AdministratieWizard'
 import { AfdelingenBeheer } from './AfdelingenBeheer'
 import { IntakeRegels } from './IntakeRegels'
 import { BtwDefaultRij } from './BtwDefaultRij'
+import { BtwAftrekUitgeslotenBlok } from './BtwAftrekUitgeslotenBlok'
 import { AutoboekenLerenRij } from './AutoboekenLerenRij'
 import { OmzetBronnenBlok } from './OmzetBronnenBlok'
 import { LeverancierAutoboeken } from './LeverancierAutoboeken'
@@ -330,6 +331,10 @@ export function AdministratieDetailPagina({
                 ná een wijziging herlaadt de lijst zodat chip + uitzonderingenlijst dezelfde stand zien. */}
             <AutoboekenLerenRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} onGewijzigd={onHerlaad} />
             <BtwDefaultRij administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
+          </div>
+          {/* 18-09 (Peter, casus Rituals — BUA, migratie 0163): btw niet aftrekbaar per grootboekrekening; anker `btw-aftrek`. */}
+          <BtwAftrekUitgeslotenBlok administratieId={a.id} naam={a.naam} uitgeschakeld={Boolean(a.gearchiveerd_op)} />
+          <div className="panel inst-paneel" style={{ marginTop: 12 }}>
             {a.afdelingen_ingeschakeld && (
               <div style={{ padding: '4px 16px 12px' }}>
                 <AfdelingenBeheer administratieId={a.id} naam={a.naam} />

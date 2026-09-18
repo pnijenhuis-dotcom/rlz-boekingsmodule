@@ -37,6 +37,13 @@ class TaxrateOptieResponse(BaseModel):
     id: uuid.UUID
     naam: str | None
     percentage: Decimal | None
+    # 18-09 DEEL B (NL-eerst keuzelijst): RLZ-vlaggen + buitenland (naam-prefix ≠ NL) + gebruik in de laatste 12 maanden
+    # (boekingsgeheugen) — de frontend sorteert op gebruik en klapt buitenland in bij een NL-leverancier. Additief.
+    verlegd: bool = False
+    vrijgesteld: bool = False
+    buitenland: bool = False
+    favoriet: bool = False
+    gebruik_12m: int = 0
 
 
 class TaxrateLijstResponse(BaseModel):

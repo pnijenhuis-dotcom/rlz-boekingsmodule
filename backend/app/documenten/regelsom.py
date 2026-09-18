@@ -174,3 +174,73 @@ def corrigeer_btw_centen(
     nieuw = list(btw)
     nieuw[laatste] = (btw[laatste] or Decimal(0)) + verschil  # type: ignore[operator]
     return CentCorrectie(btw=tuple(nieuw), regel=laatste, verschil=verschil)
+
+
+# ---- btw volgt het tarief (opdracht Peter 18-09, casus Rituals 88-186308) -----------------------------------------
+#
+# "Nul % btw invullen is auto btw-bedrag op nul zetten" (Peter 18-09): het btw-bedrag van een regel volgt ALTIJD het
+# gekozen tarief. 0 %/geen btw op een regel die uit de factuur wél btw draagt = btw in de kosten (niet aftrekbaar —
+# representatie, relatiegeschenken, BUA): netto := netto + factuur-btw, btw := 0,00; terug naar 21 % splitst het bruto
+# weer. Eén bron voor backend (check "Btw-bedrag past bij tarief", prefill BUA-stap) én frontend (regelsom.ts spiegelt
+# deze functies één-op-één). Pure Decimal-functies, cent-exact, ROUND_HALF_UP — geen DB, geen LLM.
+
+from decimal import ROUND_HALF_UP  # noqa: E402  (bewust ná de moduledocstring-sectie hierboven)
+
+CENT = Decimal("0.01")
+#: Marge voor "btw past bij tarief": 1 cent per samengevoegde factuurregel (RLZ rekent btw per regel, de factuur per
+#: totaal), minimaal 1 en maximaal 5 cent (regel 3, opdracht 18-09).
+MARGE_MIN_REGELS = 1
+MARGE_MAX_REGELS = 5
+
+
+def _cent(bedrag: Decimal) -> Decimal:
+    return bedrag.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def btw_uit_tarief(netto: Decimal, percentage: Decimal) -> Decimal:
+    """netto × percentage (fractie: 0.21), afgerond op de cent (ROUND_HALF_UP)."""
+    return _cent(netto * percentage)
+
+
+def marge_voor(samengevoegd_n: int) -> Decimal:
+    """De toegestane afwijking tussen tarief × netto en het btw-bedrag: 1 cent × het aantal samengevoegde factuur-
+    regels (min 1, max 5)."""
+    n = max(MARGE_MIN_REGELS, min(int(samengevoegd_n or 1), MARGE_MAX_REGELS))
+    return CENT * n
+
+
+def btw_past_bij_tarief(netto: Decimal, btw: Decimal, percentage: Decimal, *, samengevoegd_n: int = 1) -> bool:
+    """|btw − netto × percentage| ≤ marge(samengevoegd_n)."""
+    return abs(btw - btw_uit_tarief(netto, percentage)) <= marge_voor(samengevoegd_n)
+
+
+def zet_btw_in_kosten(netto: Decimal, btw: Decimal) -> tuple[Decimal, Decimal]:
+    """0 %/geen btw op een regel mét factuur-btw: de niet-aftrekbare btw gaat in de kosten → (netto + btw, 0,00)."""
+    return _cent(netto + btw), Decimal("0.00")
+
+
+def splits_bruto(bruto: Decimal, percentage: Decimal) -> tuple[Decimal, Decimal]:
+    """Bruto terug in (netto, btw) bij een tarief: netto = bruto / (1 + p) op de cent, btw = de rest — zo sluit
+    netto + btw altijd cent-exact op het bruto (21 → 0 → 21 geeft de oorspronkelijke splitsing terug)."""
+    if percentage == 0:
+        return _cent(bruto), Decimal("0.00")
+    netto = _cent(bruto / (1 + percentage))
+    return netto, _cent(bruto - netto)
+
+
+def bruto_uit_netto(netto: Decimal, percentage: Decimal) -> Decimal:
+    return _cent(netto + btw_uit_tarief(netto, percentage))
+
+
+def verklarende_percentages(
+    netto: Decimal, btw: Decimal, kandidaten: list[Decimal], *, samengevoegd_n: int = 1
+) -> list[Decimal]:
+    """Welke van de kandidaat-percentages verklaren het btw-bedrag binnen de marge? Voor de actie "Zet N %":
+    precies één treffer = deterministisch, anders geen actie (meerdere/geen kandidaten → alleen 'btw in kosten')."""
+    gezien: list[Decimal] = []
+    for p in kandidaten:
+        if p is None or p in gezien:
+            continue
+        if btw_past_bij_tarief(netto, btw, p, samengevoegd_n=samengevoegd_n):
+            gezien.append(p)
+    return gezien

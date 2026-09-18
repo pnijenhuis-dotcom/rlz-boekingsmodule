@@ -15,6 +15,7 @@ import { formatteerXml } from '../document/DocumentDetailScreen'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useTaxrateOptiesGefilterd } from '../document/useTaxrateOptiesGefilterd'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { RegelOmschrijvingVeld } from '../ui/RegelOmschrijvingVeld'
@@ -142,6 +143,9 @@ export function VerkoopReviewScreen() {
 
   const grootboek = useGrootboekOpties(administratieId ?? '')
   const btwCodes = useTaxrateOpties(administratieId ?? '')
+  // 18-09 DEEL B: één hook voor álle tarief-comboboxen — hier zonder land (verkoop: eigen debiteur), dus alleen de
+  // gebruiksfrequentie-sortering.
+  const btwGefilterd = useTaxrateOptiesGefilterd(btwCodes.opties, null)
 
   const neemVoorstelOver = useCallback((data: VerkoopVoorstelDto) => {
     setVoorstel(data)
@@ -551,7 +555,7 @@ export function VerkoopReviewScreen() {
                             opties={
                               regel.btwKandidaten.length > 0
                                 ? btwCodes.opties.filter((o) => regel.btwKandidaten.includes(o.id))
-                                : btwCodes.opties
+                                : btwGefilterd.opties
                             }
                             laden={btwCodes.laden}
                             laadFout={btwCodes.fout}

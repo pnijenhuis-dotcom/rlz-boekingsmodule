@@ -9,6 +9,7 @@ import type {
 import { bedragAlsGetal, normaliseerBedrag } from '../document/bedrag'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useTaxrateOptiesGefilterd } from '../document/useTaxrateOptiesGefilterd'
 import { BevestigDialog } from '../instellingen/BevestigDialog'
 import { Button, Switch, SkeletonPaneel } from '../ui/basis'
 import { AdministratieCombobox } from '../ui/AdministratieCombobox'
@@ -125,6 +126,8 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
 
   const grootboek = useGrootboekOpties(administratieId)
   const btwCodes = useTaxrateOpties(administratieId)
+  // 18-09 DEEL B: gedeelde keuzelijst-sortering (gebruik 12 mnd bovenaan).
+  const btwGefilterd = useTaxrateOptiesGefilterd(btwCodes.opties, null)
   const doelGrootboek = useDoelGrootboek(
     useMemo(() => (mappings ?? []).map((m) => m.doel_administratie_id), [mappings]),
   )
@@ -231,7 +234,7 @@ function DoorbelastingAdministratie({ administratieId, naam }: { administratieId
         </div>
         <SearchableCombobox
           label="Btw op doorbelasting (vlak tarief)"
-          opties={btwCodes.opties}
+          opties={btwGefilterd.opties}
           laden={btwCodes.laden}
           laadFout={btwCodes.fout}
           waarde={btwTaxrateId}

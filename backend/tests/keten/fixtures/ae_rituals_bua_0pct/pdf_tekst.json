@@ -1,0 +1,33 @@
+[
+ [
+  "Rituals Nieuwegein",
+  "Cityplaza 12",
+  "3431 LZ  - Nieuwegein",
+  "KvK: 91000088",
+  "BTW: NL100088990B01",
+  "IBAN: NL91RITU1000000088",
+  "",
+  "KASSABON / FACTUUR",
+  "Bonnummer: 88-186308",
+  "Datum: 22 december 2025",
+  "",
+  "Universal Steigerbouw B.V.",
+  "Postbus 1",
+  "5531 ZZ Bladel",
+  "",
+  [
+   [50, "Omschrijving"],
+   [300, "Aantal"],
+   [400, "Bedrag excl. btw"]
+  ],
+  [
+   [50, "Relatiegeschenk — cadeauset (representatie)"],
+   [300, "1"],
+   [400, "96,36"]
+  ],
+  "",
+  "Subtotaal excl. btw: 96,36",
+  "BTW 21 %: 20,24",
+  "Totaal: 116,60"
+ ]
+]

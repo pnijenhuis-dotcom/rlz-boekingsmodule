@@ -1,0 +1,35 @@
+{
+ "kop": {
+  "leverancier_naam": {"waarde": "Rituals Nieuwegein", "zekerheid": 0.97},
+  "factuurnummer": {"waarde": "88-186308", "zekerheid": 0.96},
+  "factuurdatum": {"waarde": "2025-12-22", "zekerheid": 0.95},
+  "vervaldatum": {"waarde": null, "zekerheid": 0.0},
+  "valuta": {"waarde": "EUR", "zekerheid": 0.9},
+  "totaal_excl": {"waarde": "96.36", "zekerheid": 0.95},
+  "totaal_incl": {"waarde": "116.60", "zekerheid": 0.95},
+  "btw_bedrag": {"waarde": "20.24", "zekerheid": 0.95},
+  "iban": {"waarde": "NL91RITU1000000088", "zekerheid": 0.9},
+  "btw_nummer": {"waarde": "NL100088990B01", "zekerheid": 0.95},
+  "kvk_nummer": {"waarde": "91000088", "zekerheid": 0.95},
+  "btw_verlegd_vermelding": {"waarde": null, "zekerheid": 0.0},
+  "betreft": {"waarde": "Relatiegeschenk cadeauset", "zekerheid": 0.9},
+  "project_tekst": {"waarde": null, "zekerheid": 0.0},
+  "periode": {"waarde": null, "zekerheid": 0.0},
+  "betalingskenmerk": {"waarde": null, "zekerheid": 0.0},
+  "betaalwijze_tekst": {"waarde": "PIN", "zekerheid": 0.8},
+  "incasso_datum_tekst": {"waarde": null, "zekerheid": 0.0}
+ },
+ "regels": [
+  {
+   "omschrijving": "Relatiegeschenk — cadeauset (representatie)",
+   "netto_bedrag": "96.36",
+   "btw_bedrag": "20.24",
+   "hoeveelheid": "1",
+   "zekerheid": 0.93,
+   "eenheid": null,
+   "stuksprijs": "96.36",
+   "artikelcode": null,
+   "project_tekst": null
+  }
+ ]
+}

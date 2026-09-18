@@ -1,0 +1,6 @@
+{
+ "administratie": "Universal Steigerbouw B.V. (testadministratie in de keten)",
+ "herkomst": "GERECONSTRUEERD (opdracht Peter 18-09, screenshot Rituals Nieuwegein bon 88-186308, 22-12-2025, BLOW): één samengevoegde regel 4510 Representatiekosten mét btw-code '0% · NL, Nul', netto 96,36, btw-bedrag 20,24 — 'Controles 11/11 groen', Boeken actief. Peter: 'nul % btw invullen is auto btw bedrag op nul zetten' en 'representatie (fles wijn): daar mag je de btw niet in aftrek nemen, ook al staat die wel op de factuur'. Bedragen exact (96,36 + 21 % 20,24 = 116,60); leverancier-adres, KvK, btw-nummer en IBAN fictief; artikel geanonimiseerd.",
+ "doel": "Casus (ae): (1) zonder BUA-kenmerk → prefill 21 % 'NL, Hoog Tarief' (factuur berekend) 96,36/20,24, check 'Btw-bedrag past bij tarief' groen; (2) mét kenmerk btw_aftrek_uitgesloten op 4510 → prefill 0 % 'NL, Nul' mét btw in de kosten 116,60/0,00 (bron grootboek_aftrek_uitgesloten, chip 'aftrek uitgesloten (4510)'); (3) de Rituals-stand (0 % mét 20,24 btw) is ROOD mét acties 'Btw in kosten (0 %)' en 'Zet 21 %'; actie toegepast → groen.",
+ "opmerking": "Geen persoonsgegevens; alle nummers fictief."
+}

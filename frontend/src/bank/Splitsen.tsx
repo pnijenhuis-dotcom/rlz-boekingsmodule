@@ -4,6 +4,7 @@ import { SearchableCombobox } from '../document/SearchableCombobox'
 import { bouwGrootboekBtwDefaultMap, btwVolgtRekening, type GrootboekBtwDefault } from '../document/grootboekBtwDefault'
 import { bepaalBtwHerkomstChip } from '../document/regelVoorstelChips'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useTaxrateOptiesGefilterd } from '../document/useTaxrateOptiesGefilterd'
 import { Select } from '../ui/basis'
 import { amountKlasse } from '../werkvoorraad/format'
 import {
@@ -112,6 +113,8 @@ export function SplitsenForm({
 }) {
   const grootboek = useGrootboekOpties(administratieId)
   const btwCodes = useTaxrateOpties(administratieId)
+  // 18-09 DEEL B: gedeelde keuzelijst-sortering (gebruik 12 mnd bovenaan).
+  const btwGefilterd = useTaxrateOptiesGefilterd(btwCodes.opties, null)
   const openPost = mutatie.voorstel.open_post
   // Blok 3 nachtrun 10/11-09: de delen moeten optellen tot het OPEN bedrag van de mutatie (wat in RLZ nog te
   // verdelen valt), niet tot het volle mutatiebedrag — één bron `openBedrag`.
@@ -281,7 +284,7 @@ export function SplitsenForm({
               />
               <SearchableCombobox
                 label={`Btw-code deel ${index + 1}`}
-                opties={btwCodes.opties}
+                opties={btwGefilterd.opties}
                 laden={btwCodes.laden}
                 laadFout={btwCodes.fout}
                 waarde={deel.taxrateId}

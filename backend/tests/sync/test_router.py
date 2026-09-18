@@ -167,7 +167,10 @@ def test_btw_codes_lijst_geeft_percentage_mee(
         f"/administraties/{administratie_id}/btw-codes", headers=_bearer(gescoopte_gebruiker, rol="boekhouding")
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["btw_codes"] == [{"id": taxrate["id"], "naam": "NL Hoog Tarief", "percentage": "0.2100"}]
+    [code] = resp.json()["btw_codes"]
+    # 18-09 (btw-keuzelijst NL-eerst, agent B): de lijst draagt óók verlegd/vrijgesteld/buitenland/favoriet/gebruik_12m — de kern blijft.
+    assert {k: code[k] for k in ("id", "naam", "percentage")} == {"id": taxrate["id"], "naam": "NL Hoog Tarief", "percentage": "0.2100"}
+    assert code["gebruik_12m"] == 0 and code["buitenland"] is False
 
 
 def test_crediteuren_lijst_zonder_scope_faalt(gescoopte_gebruiker: uuid.UUID) -> None:

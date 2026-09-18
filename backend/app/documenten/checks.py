@@ -3,14 +3,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from app.documenten.regelsom import (
     REDEN_BTW_PER_REGEL_ONTBREEKT,
     REDEN_GEEN_REGELS,
     REDEN_NETTO_ONTBREEKT,
+    btw_uit_tarief,
+    marge_voor,
     toets_regelsom,
+    verklarende_percentages,
 )
 from app.extractie.iban import masker_iban
 from app.rlz.client import RlzApiError, RlzClient
@@ -35,6 +38,19 @@ class CheckRegel:
 
 
 @dataclass(frozen=True)
+class CheckActie:
+    """Handeling op een check-rij (opdracht Peter 18-09 "btw volgt tarief"): `code` = "btw_in_kosten" (regel 2:
+    netto := netto + btw, btw := 0, tarief := het 0 %-tarief `taxrate_id`) of "zet_tarief" (het ene RLZ-tarief dat de
+    factuur-btw binnen de marge verklaart). `regel` is 1-gebaseerd (zoals de meldingen). De frontend voert de
+    handeling uit op de regelstate en slaat op — de check draait daarna opnieuw; de server vertrouwt nooit de knop."""
+
+    code: str
+    label: str
+    regel: int
+    taxrate_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
 class CheckResultaat:
     naam: str
     ok: bool
@@ -42,11 +58,20 @@ class CheckResultaat:
     # Punt 14 (28-08): oranje SIGNAAL — ok=True (geen blokkade) maar de controleur moet kijken; het
     # controlescherm toont 'm oranje i.p.v. groen. Alleen gezet door checks die dat bewust doen.
     signaal: bool = False
+    # 18-09: acties op de rij ("signalering zonder handeling is niet af") — alleen bij een blokkerende uitkomst.
+    acties: tuple[CheckActie, ...] = ()
 
 
 @dataclass(frozen=True)
 class CheckRapport:
     resultaten: tuple[CheckResultaat, ...]
+    # Boeken sneller (18-09, checks_extern.py): wanneer het EXTERNE deel (IBAN-seed, duplicaatquery's) voor het laatst
+    # écht bij RLZ/Odoo is opgehaald en of dat uit de cache kwam — de UI toont "gecontroleerd HH:MM" op die rijen.
+    extern_gecontroleerd_op: datetime | None = None
+    extern_uit_cache: bool = False
+    # CACHE-modus zonder geldige cache: de externe rijen staan op "loopt nog" (blokkerend) — de frontend start de
+    # externe run apart. Nooit boeken op zo'n rapport (geblokkeerd is dan al True).
+    extern_nog_niet: bool = False
 
     @property
     def geblokkeerd(self) -> bool:
@@ -272,6 +297,150 @@ def check_buitenland_tarief_crediteurkaart(
         "RLZ een land én btw-nummer draagt (via de API niet controleerbaar); ontbreekt dat, dan "
         f"weigert RLZ het boeken met 'ongeldig belastingtarief'.{hint}",
         signaal=True,
+    )
+
+
+@dataclass(frozen=True)
+class TariefInfo:
+    """Eén gesynct btw-tarief zoals de tarief-check 'm nodig heeft (uit `taxrate_cache`, lokaal — geen RLZ-call):
+    percentage als fractie (0.21), naam, en de RLZ-vlaggen `IsRelayed` (verlegd) / `IsExcempt` (vrijgesteld) /
+    `IsFavorite`; `buitenland` = naam-prefix ≠ NL (`is_buitenland_tarief`)."""
+
+    percentage: Decimal | None
+    naam: str | None = None
+    verlegd: bool = False
+    vrijgesteld: bool = False
+    favoriet: bool = False
+    buitenland: bool = False
+
+    @property
+    def verwacht_nul(self) -> bool:
+        """Verlegd, vrijgesteld en EU-/buitenland-tarieven dragen per definitie géén btw-bedrag op de regel."""
+        nul = self.percentage is not None and self.percentage == 0
+        return self.verlegd or self.vrijgesteld or self.buitenland or nul
+
+
+NAAM_BTW_TARIEF = "Btw-bedrag past bij tarief"
+ACTIE_BTW_IN_KOSTEN = "btw_in_kosten"
+ACTIE_ZET_TARIEF = "zet_tarief"
+
+
+def _pct_tekst(p: Decimal | None) -> str:
+    if p is None:
+        return "?"
+    v = p * 100
+    return f"{int(v)} %" if v == v.to_integral_value() else f"{v.normalize()} %"
+
+
+def nul_tarief_voor(tarieven: Mapping[uuid.UUID, TariefInfo], *, huidig: uuid.UUID | None = None) -> uuid.UUID | None:
+    """Het 0 %-tarief voor "btw in kosten": het huidige tarief als dat al een NL-0 %-tarief is, anders de RLZ-favoriet
+    onder de NL-0 %-tarieven (niet verlegd, niet buitenland, niet vrijgesteld), anders de eerste op naam. None als de
+    administratie geen zo'n tarief heeft (dan alleen de melding, geen knop)."""
+
+    def nl_nul(t: TariefInfo) -> bool:
+        return t.percentage is not None and t.percentage == 0 and not (t.verlegd or t.buitenland or t.vrijgesteld)
+
+    if huidig is not None and huidig in tarieven and nl_nul(tarieven[huidig]):
+        return huidig
+    kandidaten = [(tid, t) for tid, t in tarieven.items() if nl_nul(t)]
+    if not kandidaten:
+        return None
+    kandidaten.sort(key=lambda kt: (not kt[1].favoriet, kt[1].naam or "", str(kt[0])))
+    return kandidaten[0][0]
+
+
+def check_btw_past_bij_tarief(
+    *,
+    regels: list[CheckRegel],
+    tarieven: Mapping[uuid.UUID, TariefInfo],
+    samengevoegd_n: int = 1,
+) -> CheckResultaat:
+    """HARDE check (opdracht Peter 18-09, casus Rituals 88-186308: 0 % · NL, Nul mét € 20,24 btw op € 96,36 — 11/11
+    groen, Boeken actief): per regel |btw − netto × percentage| ≤ marge, marge = 1 cent × aantal samengevoegde
+    factuurregels (min 1, max 5; `regelsom.marge_voor`). Vervangt de grijze hint "tarief geeft € … — factuur leidend"
+    (REGELRIJ-UI 25-08 (b), HERZIEN 18-09) volledig. Buiten de marge = ROOD mét twee acties: "Btw in kosten (0 %)"
+    (regel 2: netto := netto + btw, btw := 0 — de niet-aftrekbare btw zit in de kosten) en "Zet N %" (het ene RLZ-tarief
+    dat de factuur-btw binnen de marge verklaart; géén of meerdere kandidaten → alleen de eerste actie). Verlegd/
+    vrijgesteld/buitenland-tarief = verwacht 0,00 (daar staat immers geen btw op de factuur). Een regel zonder tarief,
+    netto of btw-bedrag telt hier niet (verplichte velden/regeltelling vangen dat); een tarief dat niet in de cache
+    staat is niet toetsbaar en wordt benoemd. Lokaal, geen RLZ-call — draait óók in de storings-tak en op het
+    autoboek-pad (rood = niet boeken)."""
+    marge = marge_voor(samengevoegd_n)
+    marge_ct = int(marge * 100)
+    fouten: list[str] = []
+    acties: list[CheckActie] = []
+    niet_toetsbaar: list[int] = []
+    getoetst = 0
+    for i, regel in enumerate(regels, start=1):
+        if regel.taxrate_id is None or regel.netto_bedrag is None or regel.btw_bedrag is None:
+            continue
+        info = tarieven.get(regel.taxrate_id)
+        if info is None or (info.percentage is None and not info.verwacht_nul):
+            niet_toetsbaar.append(i)
+            continue
+        getoetst += 1
+        verwacht = (
+            Decimal("0.00") if info.verwacht_nul else btw_uit_tarief(regel.netto_bedrag, info.percentage or Decimal(0))
+        )
+        if abs(regel.btw_bedrag - verwacht) <= marge:
+            continue
+        pct_tekst = _pct_tekst(Decimal(0) if info.verwacht_nul else info.percentage)
+        tarief_tekst = f"{pct_tekst} · {info.naam or regel.taxrate_id}"
+        fouten.append(
+            f"regel {i}: {tarief_tekst} met btw € {regel.btw_bedrag} op netto € {regel.netto_bedrag} — "
+            f"verwacht € {verwacht}"
+        )
+        if regel.btw_bedrag != 0:
+            nul = nul_tarief_voor(tarieven, huidig=regel.taxrate_id)
+            acties.append(
+                CheckActie(
+                    ACTIE_BTW_IN_KOSTEN,
+                    f"Btw in kosten (0 %) — regel {i}: netto € {regel.netto_bedrag + regel.btw_bedrag}, btw € 0,00",
+                    i,
+                    nul,
+                )
+            )
+            # "Zet N %": precies één NL-percentage (niet verlegd/buitenland/vrijgesteld) verklaart de btw.
+            kandidaten = {
+                t.percentage
+                for tid, t in tarieven.items()
+                if t.percentage is not None and t.percentage != 0 and not (t.verlegd or t.buitenland or t.vrijgesteld)
+            }
+            treffers = verklarende_percentages(
+                regel.netto_bedrag, regel.btw_bedrag, sorted(kandidaten), samengevoegd_n=samengevoegd_n
+            )
+            if len(treffers) == 1:
+                p = treffers[0]
+                opties = [
+                    (tid, t)
+                    for tid, t in tarieven.items()
+                    if t.percentage == p and not (t.verlegd or t.buitenland or t.vrijgesteld)
+                ]
+                opties.sort(key=lambda kt: (not kt[1].favoriet, kt[1].naam or "", str(kt[0])))
+                acties.append(CheckActie(ACTIE_ZET_TARIEF, f"Zet {_pct_tekst(p)} — regel {i}", i, opties[0][0]))
+    if fouten:
+        return CheckResultaat(
+            NAAM_BTW_TARIEF,
+            False,
+            f"Btw-bedrag past niet bij het tarief (marge {marge_ct} ct): " + "; ".join(fouten)
+            + ". Kies 'Btw in kosten (0 %)' als de btw niet aftrekbaar is (representatie, relatiegeschenken), of zet "
+            "het tarief dat op de factuur staat.",
+            acties=tuple(acties),
+        )
+    if niet_toetsbaar and not getoetst:
+        return CheckResultaat(
+            NAAM_BTW_TARIEF,
+            True,
+            f"Tarief zonder percentage in de gesyncte btw-codes (regel {', '.join(map(str, niet_toetsbaar))}) — "
+            "niet toetsbaar",
+        )
+    if not getoetst:
+        return CheckResultaat(NAAM_BTW_TARIEF, True, "Geen regel met tarief, netto én btw-bedrag om te toetsen")
+    extra = ""
+    if niet_toetsbaar:
+        extra = f"; regel {', '.join(map(str, niet_toetsbaar))} niet toetsbaar (tarief zonder percentage)"
+    return CheckResultaat(
+        NAAM_BTW_TARIEF, True, f"Btw-bedrag volgt het tarief op {getoetst} regel(s) (marge {marge_ct} ct){extra}"
     )
 
 
@@ -557,7 +726,7 @@ def check_iban_wissel(
 
 def voer_harde_checks_uit(
     *,
-    client: RlzClient,
+    client: RlzClient | None,
     vendor_id: uuid.UUID | None,
     referentie: str | None,
     factuurdatum: date | None,
@@ -578,6 +747,10 @@ def voer_harde_checks_uit(
     factuur_btw: Decimal | None = None,
     historie_treffers: Sequence[dict] = (),
     identiteit_vendor_ids: Sequence[uuid.UUID] = (),
+    tarieven: Mapping[uuid.UUID, TariefInfo] | None = None,
+    samengevoegd_n: int = 1,
+    duplicaat_resultaat: CheckResultaat | None = None,
+    duplicaat_over_crediteuren_resultaat: CheckResultaat | None = None,
 ) -> CheckRapport:
     """Alle harde checks (CLAUDE.md: "áltijd blokkerend"), in vaste volgorde zodat de UI
     consistent dezelfde vier rijen toont. Verplichte-velden staat vóórop: als die al faalt, zijn
@@ -586,7 +759,10 @@ def voer_harde_checks_uit(
     `project_verplicht` komt uit de administratie-instelling (design-pass taak 4) — alleen dan
     telt een ontbrekend project per regel als blokkerend. `factuur_iban`/`vertrouwde_ibans`/
     `iban_baseline_vastgelegd` komen uit de orkestratie in app/documenten/boekvoorstel.py
-    (extractie + leverancier_iban-set)."""
+    (extractie + leverancier_iban-set). `duplicaat_resultaat`/`duplicaat_over_crediteuren_resultaat` (boeken
+    sneller 18-09, `checks_extern.py`): de EXTERNE uitkomsten al berekend (parallel of uit de cache) — dan raakt deze
+    functie RLZ/Odoo niet meer aan; zonder die twee draait ze de live queries zelf (bestaand gedrag)."""
+    assert client is not None or (duplicaat_resultaat is not None and duplicaat_over_crediteuren_resultaat is not None)
     return CheckRapport(
         (
             check_verplichte_velden(
@@ -600,6 +776,8 @@ def voer_harde_checks_uit(
             check_regeltelling(
                 totaalbedrag=totaalbedrag, regels=regels, totaal_excl=totaal_excl, factuur_btw=factuur_btw
             ),
+            # 18-09 (Peter, casus Rituals): btw-bedrag volgt het tarief — lokaal, direct ná de regeltelling.
+            check_btw_past_bij_tarief(regels=regels, tarieven=tarieven or {}, samengevoegd_n=samengevoegd_n),
             check_vervaldatum(factuurdatum=factuurdatum, vervaldatum=vervaldatum),
             check_buitenland_tarief_crediteurkaart(
                 regels=regels,
@@ -612,7 +790,9 @@ def voer_harde_checks_uit(
                 baseline_vastgelegd=iban_baseline_vastgelegd,
                 seed_mislukt=iban_seed_mislukt,
             ),
-            check_duplicaat(
+            duplicaat_resultaat
+            if duplicaat_resultaat is not None
+            else check_duplicaat(
                 client=client,
                 vendor_id=vendor_id,
                 referentie=referentie,
@@ -623,7 +803,9 @@ def voer_harde_checks_uit(
                 uitgezonderde_rlz_document_ids=uitgezonderde_rlz_document_ids,
                 historie_treffers=historie_treffers,
             ),
-            check_duplicaat_over_crediteuren(
+            duplicaat_over_crediteuren_resultaat
+            if duplicaat_over_crediteuren_resultaat is not None
+            else check_duplicaat_over_crediteuren(
                 client=client,
                 vendor_id=vendor_id,
                 referentie=referentie,

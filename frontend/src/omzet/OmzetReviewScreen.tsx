@@ -17,6 +17,7 @@ import { BedragModusInput } from '../document/BedragModusInput'
 import { SearchableCombobox } from '../document/SearchableCombobox'
 import { useAutoChecks } from '../document/useAutoChecks'
 import { useGrootboekOpties, useTaxrateOpties } from '../document/useSyncOpties'
+import { useTaxrateOptiesGefilterd } from '../document/useTaxrateOptiesGefilterd'
 import { ChecksPopup } from '../ui/ChecksPopup'
 import { DatePicker } from '../ui/DatePicker'
 import { haalOmzetVoorstelOp, slaOmzetVoorstelOp, voerOmzetChecksUit, zetVerkoopCategorie } from './omzetApi'
@@ -138,6 +139,8 @@ export function OmzetReviewScreen() {
 
   const grootboek = useGrootboekOpties(administratieId ?? '')
   const btwCodes = useTaxrateOpties(administratieId ?? '')
+  // 18-09 DEEL B: gedeelde keuzelijst-sortering (gebruik 12 mnd bovenaan); omzet kent geen leverancier-land.
+  const btwGefilterd = useTaxrateOptiesGefilterd(btwCodes.opties, null)
   const percentageMap = useMemo(() => {
     const map: Record<string, number> = {}
     for (const optie of btwCodes.opties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
@@ -676,7 +679,7 @@ export function OmzetReviewScreen() {
                               <SearchableCombobox
                                 label={`Btw-code ${regel.categorie}`}
                                 toonLabel={false}
-                                opties={btwCodes.opties}
+                                opties={btwGefilterd.opties}
                                 laden={btwCodes.laden}
                                 laadFout={btwCodes.fout}
                                 waarde={regel.taxrateId}

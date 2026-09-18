@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.aikosten import service as aikosten_service
 from app.auth.deps import CurrentGebruiker, require_beheerder, vereis_administratie_scope, vereis_kantoorrol
-from app.beheer import administratienaam, btw_default, groepen, schemas, service
+from app.beheer import administratienaam, btw_aftrek, btw_default, groepen, schemas, service
 
 # Rolniveau-poort router-breed (rollen-gate-fix 2026-08-21): élk endpoint in deze router is
 # kantoor-console — externe app-rollen (accordeur + veldrollen) krijgen 403, óók mét
@@ -1049,6 +1049,41 @@ def btw_default_zetten(
     except btw_default.BtwDefaultOnbekendTarief as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return btw_default.naar_dto(stand)
+
+
+@router.get(
+    "/administraties/{administratie_id}/btw-aftrek-uitgesloten",
+    response_model=btw_aftrek.BtwAftrekDto,
+)
+def btw_aftrek_uitgesloten_ophalen(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> btw_aftrek.BtwAftrekDto:
+    """Aftrek-uitgesloten grootboekrekeningen (BUA, Peter 18-09, migratie 0163): kostenrekeningen mét stand + het
+    deterministische voorstel (representatie/relatiegeschenk/personeelsvoorzien*/kantine, RLZ-default 0 %/geen) —
+    Beheerder-only, tab "Boeken & AI"."""
+    try:
+        return btw_aftrek.haal_op(administratie_id=administratie_id)
+    except btw_aftrek.BtwAftrekFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.put(
+    "/administraties/{administratie_id}/btw-aftrek-uitgesloten",
+    response_model=btw_aftrek.BtwAftrekDto,
+)
+def btw_aftrek_uitgesloten_zetten(
+    administratie_id: uuid.UUID,
+    invoer: btw_aftrek.BtwAftrekInput,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> btw_aftrek.BtwAftrekDto:
+    """De exacte set aftrek-uitgesloten rekeningen zetten (Beheerder bevestigt het voorstel — nooit stil aangezet);
+    onbekende rekening = 422; audit oud→nieuw mét codes. De prefill zet op zo'n rekening 0 % + btw in de kosten."""
+    try:
+        return btw_aftrek.zet(actor_id=actor.id, administratie_id=administratie_id, ledger_ids=invoer.ledger_ids)
+    except btw_aftrek.BtwAftrekFout as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except btw_aftrek.BtwAftrekOnbekendeRekening as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.put(
