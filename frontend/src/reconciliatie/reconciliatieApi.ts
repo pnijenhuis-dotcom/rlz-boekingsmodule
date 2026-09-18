@@ -100,6 +100,7 @@ export type BevindingBlok =
   | 'run'
   | 'automatisering'
   | 'rlz_dubbel'
+  | 'projecten'
   | 'intercompany' | 'rekening_courant' | 'doorbelasting_aansluiting'
 
 export interface BevindingDto {
@@ -330,6 +331,8 @@ export const BLOK_LABEL: Record<BevindingBlok, string> = {
   rekening_courant: 'Rekening-courant',
   doorbelasting_aansluiting: 'Doorbelasting-aansluiting',
   intercompany: 'Intercompany',
+  // Blok 3 18-09: reconciliatie-soort `project_nummer_dubbel` (stand meten) in blok `projecten`.
+  projecten: 'Projecten',
 }
 
 /** Leesbare labels van de reden-categorieën (spiegel van REDEN_LABEL in automatiseringen.py). */

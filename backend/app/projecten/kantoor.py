@@ -25,12 +25,13 @@ from app.db.models import DetacheerderKoppeling, Gebruiker, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.rlz_ids import _NAMESPACE  # type: ignore[attr-defined]
 from app.documenten.storage import standaard_opslag
+from app.projecten import nummer as nummer_module
 from app.projecten.models import LeverancierWerknummer, ProjectOntledingRegel
 from app.projecten.motor import ProjectAanmakenMislukt, ProjectNaamConflict, _upsert_project_cache
 from app.projecten.naamconventie import OngeldigeProjectnaam, vorm_projectnaam
 from app.rlz.client import RlzApiError, RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
-from app.sync.models import ProjectCache, VendorCache
+from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache, VendorCache
 from app.tijd import vandaag_nl
 from app.uren.models import (
     MeerwerkEenheid,
@@ -171,6 +172,10 @@ class ProjectLijstRij:
     contract_m2: Decimal | None
     doorlopende_huur: bool
     heeft_activiteit: bool  # uren-/meerwerk-activiteit (voedt de "zonder specs"-teller)
+    # Blok 3 18-09: module-status + afsluit-spoor (migratie 0160).
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    afsluit_reden: str | None = None
 
 
 def _specs_status(spec: ProjectSpecificatie | None) -> str:
@@ -194,7 +199,9 @@ def projecten_lijst(
             ProjectCache.verdwenen_uit_bron_op.is_(None),
         )
         if alleen_actief:
-            query = query.where(ProjectCache.is_actief.is_(True))
+            # Blok 3 18-09: afgesloten projecten verdwijnen uit de standaardlijst (én uit álle keuzelijsten via
+            # is_actief — afsluiten zet de bron inactief); `alleen_actief=False` = toggle "Toon afgesloten (N)".
+            query = query.where(ProjectCache.is_actief.is_(True), ProjectCache.status != PROJECT_STATUS_AFGESLOTEN)
         projecten = list(session.scalars(query.order_by(ProjectCache.naam)))
         project_ids = [p.id for p in projecten]
 
@@ -264,9 +271,27 @@ def projecten_lijst(
                     contract_m2=spec.contract_m2 if spec else None,
                     doorlopende_huur=bool(spec and spec.doorlopende_huur_omschrijving),
                     heeft_activiteit=project.id in activiteit,
+                    status=project.status,
+                    afgesloten_op=project.afgesloten_op,
+                    afsluit_reden=project.afsluit_reden,
                 )
             )
         return rijen
+
+
+def aantal_afgesloten(*, administratie_id: uuid.UUID) -> int:
+    """Teller voor de toggle "Toon afgesloten (N)" (blok 3 18-09) — niet-verdwenen projecten mét status afgesloten."""
+    with scoped_session(administratie_id) as session:
+        return int(
+            session.scalar(
+                select(func.count()).where(
+                    ProjectCache.administratie_id == administratie_id,
+                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                    ProjectCache.status == PROJECT_STATUS_AFGESLOTEN,
+                )
+            )
+            or 0
+        )
 
 
 # --- detail + schrijfpaden ----------------------------------------------------------------------
@@ -367,6 +392,11 @@ class ProjectDetail:
     gebouwd_m2: Decimal
     prijsafspraken: list[PrijsafspraakInfo] = field(default_factory=list)
     veldwerkers: list[VeldwerkerKeuze] = field(default_factory=list)
+    # Blok 3 18-09: module-status + afsluit-spoor.
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    afgesloten_door: uuid.UUID | None = None
+    afsluit_reden: str | None = None
 
 
 def _standaard_tarief(
@@ -573,6 +603,10 @@ def project_detail(*, administratie_id: uuid.UUID, project_id: uuid.UUID) -> Pro
             prijsafspraken=prijsafspraken,
             veldwerkers=veldwerkers,
             gebouwd_m2=_gebouwd_m2(session, administratie_id, project_id),
+            status=project.status,
+            afgesloten_op=project.afgesloten_op,
+            afgesloten_door=project.afgesloten_door,
+            afsluit_reden=project.afsluit_reden,
         )
 
 
@@ -966,6 +1000,22 @@ def maak_project_aan(
             bestaand = client.get_project(project_id)
         except RlzApiError as exc:
             raise ProjectAanmakenMislukt(f"RLZ-lookup mislukt ({exc.status_code}) — niets aangemaakt") from exc
+        # Blok B 18-09 (Peter: "per abuis 2× hetzelfde projectnummer"): het NUMMER is uniek binnen de administratie over
+        # álle projecten (cache + live RLZ, actief én inactief). Alleen exact dezelfde naam op het eigen
+        # deterministische
+        # GUID mag door (idempotente herhaal-klik); zelfde nummer met een andere plaats/opdrachtgever = 409, nooit stil.
+        try:
+            with scoped_session(administratie_id) as session:
+                nummer_module.vereis_nummer_vrij(
+                    session,
+                    administratie_id=administratie_id,
+                    nummer=nummer,
+                    client=client,
+                    toegestaan_id=project_id,
+                    toegestane_naam=naam,
+                )
+        except RlzApiError as exc:
+            raise ProjectAanmakenMislukt(f"RLZ-nummercheck mislukt ({exc.status_code}) — niets aangemaakt") from exc
         if bestaand is not None:
             # PUT is create-or-update: nooit een herhaal-PUT op een bestaand project (zou de
             # RLZ-staat muteren) — cache verversen, RLZ-naam wint (motor-patroon).

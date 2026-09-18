@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, apiFetch, apiJson } from '../api/client'
 import type { VendorLijstDto } from '../api/types'
-import { Badge, Button, Select, SkeletonPaneel } from '../ui/basis'
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Select, SkeletonPaneel } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { Breadcrumb } from '../werkvoorraad/Breadcrumb'
 import { MateriaalstandPaneel } from '../planning/MateriaalstandPaneel'
@@ -11,6 +11,8 @@ import { useAdministraties } from '../werkvoorraad/useAdministraties'
 import {
   bevestigWerknummer,
   haalProjectDetail,
+  heropenProject,
+  sluitProjectAf,
   ontleedDocument,
   uploadProjectDocument,
   voegStaffelToe,
@@ -98,6 +100,8 @@ export function ProjectDetailScreen() {
   const [fout, setFout] = useState<string | null>(null)
   const [actieFout, setActieFout] = useState<string | null>(null)
   const [melding, setMelding] = useState<string | null>(null)
+  // Blok 3 18-09: dialoog "Project afsluiten…" (reden + datum optioneel); heropenen is één klik.
+  const [afsluitOpen, setAfsluitOpen] = useState(false)
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
@@ -145,15 +149,27 @@ export function ProjectDetailScreen() {
             ]}
             huidige={detail.naam ?? 'Project'}
           />
-          <h1>{detail.naam ?? 'Project'}</h1>
+          <h1>
+            {detail.naam ?? 'Project'}
+            {detail.status === 'afgesloten' && (
+              <>
+                {' '}
+                <Badge data-testid="status-afgesloten" title={detail.afsluit_reden ?? undefined}>
+                  afgesloten
+                  {detail.afgesloten_op ? ` op ${new Date(detail.afgesloten_op).toLocaleDateString('nl-NL')}` : ''}
+                </Badge>
+              </>
+            )}
+          </h1>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>
             RLZ-project
+            {detail.status === 'afgesloten' && detail.afsluit_reden ? ` · reden: ${detail.afsluit_reden}` : ''}
             {detail.specificatie?.werknummer_opdrachtgever
               ? ` · gekoppeld werknummer opdrachtgever: ${detail.specificatie.werknummer_opdrachtgever}`
               : ''}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button
             variant="secundair"
             maat="klein"
@@ -161,8 +177,37 @@ export function ProjectDetailScreen() {
           >
             📈 Resultaat
           </Button>
+          {/* Blok 3 18-09 (Peter): afsluiten = uit álle keuzelijsten (bron eerst inactief, RLZ wint bij conflict); terugweg
+              Heropenen. Rol Beheerder/B+P — de server weigert anders leesbaar (403). */}
+          {detail.status === 'afgesloten' ? (
+            <Button
+              variant="secundair"
+              maat="klein"
+              data-testid="knop-heropenen"
+              onClick={() => void actie(() => heropenProject(administratieId, projectId), 'Project heropend — staat weer in de keuzelijsten.')}
+            >
+              Heropenen
+            </Button>
+          ) : (
+            <Button variant="warn-omlijnd" maat="klein" data-testid="knop-afsluiten" onClick={() => setAfsluitOpen(true)}>
+              Afsluiten…
+            </Button>
+          )}
         </div>
       </div>
+      {afsluitOpen && (
+        <AfsluitDialoog
+          projectnaam={detail.naam ?? 'Project'}
+          onAnnuleren={() => setAfsluitOpen(false)}
+          onBevestig={(reden, datum) => {
+            setAfsluitOpen(false)
+            void actie(
+              () => sluitProjectAf(administratieId, projectId, { reden: reden || null, datum: datum || null }),
+              'Project afgesloten — het staat niet meer in de keuzelijsten van planning, weekstaat en controlescherm.',
+            )
+          }}
+        />
+      )}
 
       {actieFout && <div className="fout">{actieFout}</div>}
       {melding && <p className="hint" style={{ color: 'var(--ok)' }}>{melding}</p>}
@@ -200,6 +245,59 @@ export function ProjectDetailScreen() {
     </div>
   )
 }
+
+function AfsluitDialoog({
+  projectnaam,
+  onBevestig,
+  onAnnuleren,
+}: {
+  projectnaam: string
+  onBevestig: (reden: string, datum: string) => void
+  onAnnuleren: () => void
+}) {
+  const [reden, setReden] = useState('')
+  const [datum, setDatum] = useState('')
+  const veld = {
+    background: 'var(--panel-2)',
+    border: '1px solid var(--border)',
+    borderRadius: 9,
+    color: 'var(--text)',
+    font: 'inherit',
+    padding: '8px 11px',
+    width: '100%',
+  } as const
+  return (
+    <Dialog open onOpenChange={(o) => !o && onAnnuleren()}>
+      <DialogContent aria-label="Project afsluiten">
+        <DialogTitle>Project afsluiten</DialogTitle>
+        <DialogDescription>
+          <b>{projectnaam}</b> gaat op afgesloten: het verdwijnt uit de keuzelijsten (planning, weekstaat, verplichting,
+          controlescherm) en wordt in Reeleezee/Odoo op inactief gezet. Een nagekomen factuur blijft boekbaar met een oranje
+          signaal. Heropenen kan altijd.
+        </DialogDescription>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <label style={{ fontSize: 12, fontWeight: 600 }}>
+            Afgesloten per (optioneel)
+            <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={veld} aria-label="Afgesloten per" />
+          </label>
+          <label style={{ fontSize: 12, fontWeight: 600 }}>
+            Reden (optioneel)
+            <input value={reden} onChange={(e) => setReden(e.target.value)} placeholder="bijv. werk opgeleverd" style={veld} aria-label="Reden" />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="secundair" maat="klein" onClick={onAnnuleren}>
+            Annuleren
+          </Button>
+          <Button variant="warn-omlijnd" maat="klein" data-testid="bevestig-afsluiten" onClick={() => onBevestig(reden.trim(), datum)}>
+            Afsluiten
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 
 function SpecificatiePaneel({
   specificatie,

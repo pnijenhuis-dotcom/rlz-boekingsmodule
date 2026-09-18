@@ -17,11 +17,49 @@ export interface ProjectLijstRijDto {
   contract_m2: string | null
   doorlopende_huur: boolean
   heeft_activiteit: boolean
+  /** Blok 3 18-09: module-status lopend|afgesloten + afsluit-spoor (oudere mocks missen 'm → lopend). */
+  status?: ProjectStatus
+  afgesloten_op?: string | null
+  afsluit_reden?: string | null
 }
+
+/** Blok 3 18-09 (Peter: "als een project afgesloten is kan het uit de lijst"). */
+export type ProjectStatus = 'lopend' | 'afgesloten'
 
 export interface ProjectenLijstDto {
   projecten: ProjectLijstRijDto[]
   zonder_specs: number
+  /** Blok 3 18-09: teller voor de toggle "Toon afgesloten (N)"; ontbreekt bij oudere mocks. */
+  aantal_afgesloten?: number
+}
+
+export interface ProjectStatusDto {
+  project_id: string
+  status: ProjectStatus
+  is_actief: boolean | null
+  afgesloten_op: string | null
+  afgesloten_door: string | null
+  afsluit_reden: string | null
+}
+
+/** 409-detail van `POST /projecten/{aid}` als het projectnummer al bestaat (blok B 18-09). */
+export interface ProjectnummerBestaatAlDetail {
+  code: 'projectnummer_bestaat_al'
+  melding: string
+  nummer: string
+  bestaand_project_id: string
+  bestaand_naam: string
+  status: ProjectStatus
+  bron: 'cache' | 'rlz' | string
+}
+
+export function isProjectnummerBestaatAl(detail: unknown): detail is ProjectnummerBestaatAlDetail {
+  return (
+    typeof detail === 'object' &&
+    detail !== null &&
+    (detail as { code?: unknown }).code === 'projectnummer_bestaat_al' &&
+    typeof (detail as { bestaand_project_id?: unknown }).bestaand_project_id === 'string'
+  )
 }
 
 export interface SpecificatieDto {
@@ -142,6 +180,11 @@ export interface ProjectDetailDto {
   /** Additief (C5 07-09): verplichtingen mét verbruiksstand + weekstaten-/planningstand. */
   verplichtingen?: ProjectVerplichtingDto[]
   weekstaten_stand?: WeekstatenStandDto | null
+  /** Blok 3 18-09: module-status + afsluit-spoor. */
+  status?: ProjectStatus
+  afgesloten_op?: string | null
+  afgesloten_door?: string | null
+  afsluit_reden?: string | null
 }
 
 export interface ProjectWeekDto {
@@ -200,8 +243,24 @@ export interface ProjectenOverzichtDto {
   rijen: OverzichtRijDto[]
 }
 
-export function haalProjecten(administratieId: string, zoek = ''): Promise<ProjectenLijstDto> {
-  return apiJson(`/projecten/${administratieId}?zoek=${encodeURIComponent(zoek)}`)
+export function haalProjecten(administratieId: string, zoek = '', opties: { metAfgesloten?: boolean } = {}): Promise<ProjectenLijstDto> {
+  const p = new URLSearchParams({ zoek })
+  // Blok 3 18-09: toggle "Toon afgesloten (N)" = alleen_actief=false (afgesloten + inactief erbij, grijs).
+  if (opties.metAfgesloten) p.set('alleen_actief', 'false')
+  return apiJson(`/projecten/${administratieId}?${p.toString()}`)
+}
+
+/** Blok 3 18-09: afsluiten (bron eerst inactief, RLZ wint bij conflict → 502 leesbaar) en heropenen. */
+export function sluitProjectAf(
+  administratieId: string,
+  projectId: string,
+  payload: { reden?: string | null; datum?: string | null } = {},
+): Promise<ProjectStatusDto> {
+  return apiPostJson(`/projecten/${administratieId}/${projectId}/afsluiten`, payload)
+}
+
+export function heropenProject(administratieId: string, projectId: string): Promise<ProjectStatusDto> {
+  return apiPostJson(`/projecten/${administratieId}/${projectId}/heropenen`, {})
 }
 
 export function haalProjectDetail(administratieId: string, projectId: string): Promise<ProjectDetailDto> {
@@ -394,7 +453,7 @@ export function euroPrecies(bedrag: string | number | null | undefined): string 
  * de server. */
 
 export type ProjectSignaal = 'verplichting_overschreden' | 'marge_negatief' | 'weekstaat_ontbreekt' | 'te_keuren'
-export type ProjectStatusFacet = 'alle' | 'signaal' | ProjectSignaal | 'op_schema'
+export type ProjectStatusFacet = 'alle' | 'signaal' | ProjectSignaal | 'op_schema' | 'kandidaat_afsluiten' | 'afgesloten'
 
 export interface ResultaatChipDto {
   baten: string
@@ -443,6 +502,11 @@ export interface ProjectKantoorbreedRijDto {
   m2: M2ChipDto
   signalen: ProjectSignaal[]
   urgentie: number
+  /** Blok 3 18-09: status + chip "kandidaat afsluiten" (90 dagen stil én contract-m² bereikt; nooit automatisch). */
+  status?: ProjectStatus
+  afgesloten_op?: string | null
+  kandidaat_afsluiten?: boolean
+  kandidaat_reden?: string | null
 }
 
 export interface ProjectenKantoorbreedTellersDto {
@@ -453,6 +517,9 @@ export interface ProjectenKantoorbreedTellersDto {
   marge_negatief: number
   weekstaat_ontbreekt: number
   te_keuren: number
+  /** Blok 3 18-09 */
+  kandidaat_afsluiten?: number
+  afgesloten?: number
 }
 
 export interface ProjectenKantoorbreedDto {
@@ -476,6 +543,8 @@ export const PROJECT_STATUS_FACETTEN: ProjectStatusFacet[] = [
   'weekstaat_ontbreekt',
   'te_keuren',
   'op_schema',
+  'kandidaat_afsluiten',
+  'afgesloten',
 ]
 
 export const PROJECT_STATUS_LABEL: Record<ProjectStatusFacet, string> = {
@@ -486,6 +555,8 @@ export const PROJECT_STATUS_LABEL: Record<ProjectStatusFacet, string> = {
   weekstaat_ontbreekt: 'weekstaat ontbreekt',
   te_keuren: 'weekstaat te keuren',
   op_schema: 'op schema',
+  kandidaat_afsluiten: 'kandidaat afsluiten',
+  afgesloten: 'afgesloten',
 }
 
 export function haalProjectenKantoorbreed(params: {
@@ -493,12 +564,15 @@ export function haalProjectenKantoorbreed(params: {
   q?: string
   administratieId?: string | null
   status?: ProjectStatusFacet
+  /** Blok 3 18-09: toggle "Toon afgesloten (N)". */
+  toonAfgesloten?: boolean
 }): Promise<ProjectenKantoorbreedDto> {
   const p = new URLSearchParams()
   p.set('pagina', String(params.pagina))
   p.set('status', params.status ?? 'alle')
   if (params.q) p.set('q', params.q)
   if (params.administratieId) p.set('administratie_id', params.administratieId)
+  if (params.toonAfgesloten) p.set('toon_afgesloten', 'true')
   return apiJson(`/projecten/kantoorbreed?${p.toString()}`)
 }
 

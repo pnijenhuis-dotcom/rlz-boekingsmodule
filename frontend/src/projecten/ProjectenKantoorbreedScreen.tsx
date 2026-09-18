@@ -133,13 +133,15 @@ export function ProjectenKantoorbreedScreen() {
   const [data, setData] = useState<ProjectenKantoorbreedDto | null>(null)
   const [laadFout, setLaadFout] = useState<string | null>(null)
   const [versie, setVersie] = useState(0)
+  // Blok 3 18-09: toggle "Toon afgesloten (N)" in de URL (`?afgesloten=1`); het facet 'afgesloten' impliceert 'm.
+  const toonAfgesloten = zoekParams.get('afgesloten') === '1' || status === 'afgesloten'
 
   useEffect(() => {
     let actueel = true
     setLaadFout(null)
     const timer = window.setTimeout(
       () => {
-        haalProjectenKantoorbreed({ pagina, q: zoek.trim(), administratieId: administratieId || null, status })
+        haalProjectenKantoorbreed({ pagina, q: zoek.trim(), administratieId: administratieId || null, status, toonAfgesloten })
           .then((d) => {
             if (actueel) setData(d)
           })
@@ -153,7 +155,7 @@ export function ProjectenKantoorbreedScreen() {
       actueel = false
       window.clearTimeout(timer)
     }
-  }, [pagina, zoek, administratieId, status, versie])
+  }, [pagina, zoek, administratieId, status, versie, toonAfgesloten])
 
   const zetParam = (naam: string, waarde: string | null) => {
     const p = new URLSearchParams(zoekParams)
@@ -199,6 +201,22 @@ export function ProjectenKantoorbreedScreen() {
               <Badge variant={data.tellers.weekstaat_ontbreekt > 0 ? 'danger' : 'stil'} data-testid="chip-ontbreekt">
                 {data.tellers.weekstaat_ontbreekt} weekstaat ontbreekt
               </Badge>
+              {(data.tellers.kandidaat_afsluiten ?? 0) > 0 && (
+                <Badge variant="info" data-testid="chip-kandidaat" title="Geen uren, planning, verplichting of factuur in 90 dagen én contract-m² bereikt — afsluiten blijft een klik van jou">
+                  {data.tellers.kandidaat_afsluiten} kandidaat afsluiten
+                </Badge>
+              )}
+              {(data.tellers.afgesloten ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="linkbtn"
+                  data-testid="toggle-afgesloten"
+                  aria-pressed={toonAfgesloten}
+                  onClick={() => zetParam('afgesloten', toonAfgesloten ? null : '1')}
+                >
+                  {toonAfgesloten ? 'Verberg afgesloten' : `Toon afgesloten (${data.tellers.afgesloten})`}
+                </button>
+              )}
             </>
           )}
           <span style={{ marginLeft: 'auto' }} />
@@ -278,8 +296,24 @@ export function ProjectenKantoorbreedScreen() {
                         {r.administratie_naam}
                       </Link>
                     </td>
-                    <td>
+                    <td style={r.status === 'afgesloten' ? { color: 'var(--muted)' } : undefined}>
                       <b>{r.naam ?? r.project_id}</b>
+                      {r.status === 'afgesloten' && (
+                        <>
+                          {' '}
+                          <Badge data-testid="chip-afgesloten">
+                            afgesloten{r.afgesloten_op ? ` ${new Date(r.afgesloten_op).toLocaleDateString('nl-NL')}` : ''}
+                          </Badge>
+                        </>
+                      )}
+                      {r.status !== 'afgesloten' && r.kandidaat_afsluiten && (
+                        <>
+                          {' '}
+                          <Badge variant="info" data-testid="chip-kandidaat-rij" title={r.kandidaat_reden ?? undefined}>
+                            kandidaat afsluiten
+                          </Badge>
+                        </>
+                      )}
                       <div className="hint" style={{ margin: '2px 0 0', fontSize: 11.5 }}>
                         {r.opdrachtgever ?? 'opdrachtgever onbekend'}
                         {r.werknummer_opdrachtgever ? ` · werknr ${r.werknummer_opdrachtgever}` : ''}

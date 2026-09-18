@@ -52,6 +52,8 @@ export function ProjectenScreen() {
   const [fout, setFout] = useState<string | null>(null)
   const [herlaad, setHerlaad] = useState(0)
   const [nieuwOpen, setNieuwOpen] = useState(false)
+  // Blok 3 18-09: afgesloten projecten staan standaard niet in de lijst; de toggle haalt ze grijs erbij (nooit weg).
+  const [toonAfgesloten, setToonAfgesloten] = useState(false)
 
   const administratieNaam = useMemo(
     () => (administraties ?? []).find((a) => a.id === administratieId)?.naam ?? 'Administratie',
@@ -63,14 +65,14 @@ export function ProjectenScreen() {
     setFout(null)
     const timer = window.setTimeout(
       () => {
-        haalProjecten(administratieId, zoek.trim())
+        haalProjecten(administratieId, zoek.trim(), { metAfgesloten: toonAfgesloten })
           .then(setData)
           .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
       },
       zoek ? 250 : 0,
     )
     return () => window.clearTimeout(timer)
-  }, [administratieId, zoek, herlaad])
+  }, [administratieId, zoek, herlaad, toonAfgesloten])
 
   if (!administratieId) {
     return <p className="hint">Geen administratie gekozen — open de projecten vanaf de klantpagina.</p>
@@ -120,7 +122,18 @@ export function ProjectenScreen() {
             style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text)', font: 'inherit', maxWidth: 340, padding: '8px 12px', width: '100%' }}
           />
           {data !== null && data.zonder_specs > 0 && <Badge variant="warn">{data.zonder_specs} zonder specs</Badge>}
-          <Badge>alleen actieve</Badge>
+          {!toonAfgesloten && <Badge>alleen lopende</Badge>}
+          {data !== null && (data.aantal_afgesloten ?? 0) > 0 && (
+            <button
+              type="button"
+              className="linkbtn"
+              data-testid="toggle-afgesloten"
+              aria-pressed={toonAfgesloten}
+              onClick={() => setToonAfgesloten((t) => !t)}
+            >
+              {toonAfgesloten ? 'Verberg afgesloten' : `Toon afgesloten (${data.aantal_afgesloten})`}
+            </button>
+          )}
         </div>
         {data === null && !fout && (
           <div style={{ padding: 16 }}>
@@ -152,8 +165,16 @@ export function ProjectenScreen() {
                     className="clickable"
                     onClick={() => navigate(`/projecten/${administratieId}/${rij.project_id}`)}
                   >
-                    <td>
+                    <td style={rij.status === 'afgesloten' ? { color: 'var(--muted)' } : undefined}>
                       <b>{rij.naam ?? rij.project_id}</b>
+                      {rij.status === 'afgesloten' && (
+                        <>
+                          {' '}
+                          <Badge title={rij.afsluit_reden ?? undefined}>
+                            afgesloten{rij.afgesloten_op ? ` ${new Date(rij.afgesloten_op).toLocaleDateString('nl-NL')}` : ''}
+                          </Badge>
+                        </>
+                      )}
                       {rij.werknummer_opdrachtgever && (
                         <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 2 }}>
                           werknr {rij.werknummer_opdrachtgever}

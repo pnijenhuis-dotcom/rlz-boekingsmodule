@@ -26,11 +26,17 @@ class ProjectLijstRijDto(BaseModel):
     contract_m2: Decimal | None = None
     doorlopende_huur: bool
     heeft_activiteit: bool
+    # Blok 3 18-09 (migratie 0160): module-status lopend|afgesloten + afsluit-spoor.
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    afsluit_reden: str | None = None
 
 
 class ProjectenLijstResponse(BaseModel):
     projecten: list[ProjectLijstRijDto]
     zonder_specs: int  # alleen projecten mét uren-/meerwerk-activiteit (mockup-keuze 5)
+    # Blok 3 18-09: teller voor de toggle "Toon afgesloten (N)" — ongeacht `alleen_actief`.
+    aantal_afgesloten: int = 0
 
 
 class SpecificatieDto(BaseModel):
@@ -188,6 +194,11 @@ class ProjectDetailResponse(BaseModel):
     gebouwd_m2: Decimal
     prijsafspraken: list[PrijsafspraakDto] = []
     veldwerkers: list[VeldwerkerKeuzeDto] = []
+    # Blok 3 18-09: module-status + afsluit-spoor (knop Afsluiten…/Heropenen op het detail).
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    afgesloten_door: uuid.UUID | None = None
+    afsluit_reden: str | None = None
     # Additief (fixrun 07-09 blok C5): verplichtingen mét verbruiksstand + weekstaten-/planningstand
     # (DTO's onderaan dit bestand; `from __future__ import annotations` maakt de vooruitverwijzing mogelijk).
     verplichtingen: list[ProjectVerplichtingDto] = []
@@ -205,6 +216,22 @@ class NieuwProjectResponse(BaseModel):
     rlz_project_id: uuid.UUID
     projectnaam: str
     bestond_al: bool
+
+
+class ProjectAfsluitInput(StrikteInvoer):
+    """Blok 3 18-09: afsluiten mét optionele datum + reden (audit); leeg = vandaag, geen reden."""
+
+    reden: str | None = None
+    datum: date | None = None
+
+
+class ProjectStatusResponse(BaseModel):
+    project_id: uuid.UUID
+    status: str  # lopend | afgesloten
+    is_actief: bool | None = None
+    afgesloten_op: datetime | None = None
+    afgesloten_door: uuid.UUID | None = None
+    afsluit_reden: str | None = None
 
 
 class VolgendNummerResponse(BaseModel):
@@ -357,6 +384,11 @@ class ProjectKantoorbreedRijDto(BaseModel):
     m2: M2ChipDto
     signalen: list[str]
     urgentie: int
+    # Blok 3 18-09: status + chip "kandidaat afsluiten" (90 dagen stil én contract-m² bereikt; nooit automatisch).
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    kandidaat_afsluiten: bool = False
+    kandidaat_reden: str | None = None
 
 
 class ProjectenKantoorbreedTellersDto(BaseModel):
@@ -367,6 +399,9 @@ class ProjectenKantoorbreedTellersDto(BaseModel):
     marge_negatief: int
     weekstaat_ontbreekt: int
     te_keuren: int
+    # Blok 3 18-09
+    kandidaat_afsluiten: int = 0
+    afgesloten: int = 0
 
 
 class ProjectenAdministratieFacetDto(BaseModel):

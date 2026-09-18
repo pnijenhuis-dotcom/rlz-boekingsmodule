@@ -25,6 +25,7 @@ class FakeProjectClient:
         self.put_project_aanroepen = 0
         self.faal_bij_put_project = False
         self.faal_bij_lookup = False
+        self.negeer_is_active = False
         self.gesloten = False
 
     # --- leesroutes -----------------------------------------------------------------------
@@ -36,6 +37,13 @@ class FakeProjectClient:
     def find_projects_by_name(self, *, name: str) -> list[dict[str, Any]]:
         return [p for p in self.projects.values() if p.get("Name") == name]
 
+    def find_projects_by_name_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
+        """Blok 3 18-09: `startswith(Name,'26127 ')` — actief én inactief."""
+        return [p for p in self.projects.values() if str(p.get("Name") or "").startswith(prefix)]
+
+    def for_administration(self, rlz_admin_id: str) -> FakeProjectClient:
+        return self
+
     # --- schrijfroute ---------------------------------------------------------------------
     def put_project(
         self, project_id: uuid.UUID, *, name: str, is_active: bool = True
@@ -46,6 +54,9 @@ class FakeProjectClient:
             # Hertest: RLZ weigert >50 tekens hard (kolom PRJNAM) — 400.
             raise RlzApiError(400, "PUT", f"/Projects/{project_id}", "PRJNAM te lang")
         self.put_project_aanroepen += 1
+        # Blok 3 18-09: `negeer_is_active` simuleert een bron die de IsActive-wijziging niet overneemt (terugleesverificatie).
+        if self.negeer_is_active and str(project_id) in self.projects:
+            is_active = bool(self.projects[str(project_id)].get("IsActive"))
         self.projects[str(project_id)] = {
             "id": str(project_id),
             "Name": name,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -159,6 +159,36 @@ def check_vervaldatum(*, factuurdatum: date | None, vervaldatum: date | None) ->
         )
     return CheckResultaat(
         naam, True, f"Vervaldatum {vervaldatum.isoformat()} (termijn {(vervaldatum - factuurdatum).days} dagen)"
+    )
+
+
+def check_project_afgesloten(
+    *, regels: Sequence[CheckRegel], afgesloten: Mapping[uuid.UUID, tuple[str | None, date | None]]
+) -> CheckResultaat | None:
+    """Blok 3 18-09 (Peter: "als een project afgesloten is kan het uit de lijst"): een regel op een AFGESLOTEN project =
+    ORANJE SIGNAAL (ok=True, signaal=True) — nagekomen facturen bestaan, dus nooit blokkerend. `afgesloten` =
+    project_id →
+    (naam, afgesloten_op) voor de projecten die de aanroeper als afgesloten kent. Geen treffer = None (geen rij: de
+    check is
+    pas relevant als hij iets te zeggen heeft)."""
+    treffers: list[str] = []
+    gezien: set[uuid.UUID] = set()
+    for regel in regels:
+        pid = regel.project_id
+        if pid is None or pid in gezien or pid not in afgesloten:
+            continue
+        gezien.add(pid)
+        naam, op = afgesloten[pid]
+        treffers.append(f"{naam or pid}" + (f" (afgesloten op {op.strftime('%d-%m-%Y')})" if op else " (afgesloten)"))
+    if not treffers:
+        return None
+    return CheckResultaat(
+        "Project afgesloten",
+        True,
+        "Project afgesloten: "
+        + "; ".join(treffers)
+        + " — nagekomen factuur? Boeken kan; heropen het project als het werk toch doorloopt.",
+        signaal=True,
     )
 
 

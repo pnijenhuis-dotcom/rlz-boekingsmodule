@@ -30,6 +30,7 @@ from app.documenten.checks import (
     check_buitenland_tarief_crediteurkaart,
     check_duplicaat_module,
     check_iban_wissel,
+    check_project_afgesloten,
     check_regeltelling,
     check_verplichte_velden,
     check_vervaldatum,
@@ -54,7 +55,7 @@ from app.intake.models import IntakeBericht
 from app.projectverdeling.data import ProjectverdelingData
 from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
-from app.sync.models import VendorCache
+from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache, VendorCache
 
 logger = logging.getLogger(__name__)
 
@@ -2172,6 +2173,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
             _afdeling_check(administratie_id=administratie_id, voorstel=voorstel),
             check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus),
             _projectverdeling_check(voorstel, project_verplicht=project_verplicht),
+            *([pa] if (pa := _project_afgesloten_check(administratie_id=administratie_id, voorstel=voorstel)) else []),
             check_regeltelling(
                 totaalbedrag=voorstel.totaalbedrag,
                 regels=regels,
@@ -2210,6 +2212,28 @@ def _projectverdeling_check(voorstel: BoekvoorstelData, *, project_verplicht: bo
         regels_zonder_project=_regels_zonder_project(voorstel),
         project_verplicht=project_verplicht,
     )
+
+
+def _project_afgesloten_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> CheckResultaat | None:
+    """Blok 3 18-09: oranje signaal "project afgesloten op <datum>" op een regel naar een afgesloten project — lokaal
+    (geen RLZ), in beide rapport-takken; None als er niets te melden is (geen lege groene rij)."""
+    ids = {r.project_id for r in voorstel.regels if r.project_id is not None}
+    if not ids:
+        return None
+    with scoped_session(administratie_id) as session:
+        afgesloten = {
+            p.id: (p.naam, p.afgesloten_op.date() if p.afgesloten_op else None)
+            for p in session.scalars(
+                select(ProjectCache).where(
+                    ProjectCache.administratie_id == administratie_id,
+                    ProjectCache.id.in_(list(ids)),
+                    ProjectCache.status == PROJECT_STATUS_AFGESLOTEN,
+                )
+            )
+        }
+    if not afgesloten:
+        return None
+    return check_project_afgesloten(regels=_naar_check_regels(voorstel), afgesloten=afgesloten)
 
 
 def _afdeling_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) -> CheckResultaat:
@@ -2386,6 +2410,10 @@ def voer_checks_uit(
         # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
         # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
         resultaten.insert(3, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
+        # Blok 3 18-09: oranje signaal op een afgesloten project (lokaal), direct ná de projectverdeling — alleen als
+        # er iets te melden is.
+        if (pa := _project_afgesloten_check(administratie_id=administratie_id, voorstel=voorstel)) is not None:
+            resultaten.insert(4, pa)
         # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
         resultaten.append(module_check)
         return CheckRapport(tuple(resultaten))

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -39,9 +39,10 @@ from app.auth import service as auth_service
 from app.db.models import Administratie, GebruikerRol
 from app.db.session import scoped_session
 from app.documenten.models import Document, DocumentStatus
+from app.projecten import status as status_service
 from app.projecten.cijfers import _tarief_voor
 from app.projecten.models import ProjectRegelCache, ProjectRegelSoort
-from app.sync.models import ProjectCache, VendorCache
+from app.sync.models import PROJECT_STATUS_AFGESLOTEN, ProjectCache, VendorCache
 from app.tijd import vandaag_nl
 from app.uren.models import (
     Meerwerk,
@@ -70,6 +71,10 @@ STATUS_FACETTEN = (
     "weekstaat_ontbreekt",
     "te_keuren",
     "op_schema",
+    # Blok 3 18-09: chip "kandidaat afsluiten" als facet (filter, nooit poort) en de afgesloten projecten
+    # (alleen zichtbaar mét `toon_afgesloten`, toggle "Toon afgesloten (N)").
+    "kandidaat_afsluiten",
+    "afgesloten",
 )
 #: Aantal weken (huidige + voorgaande) in de detail-stand "Weekstaten & planning".
 WEKEN_IN_DETAIL = 6
@@ -136,6 +141,11 @@ class Rij:
     m2: M2Chip
     signalen: tuple[str, ...]  # subset van STATUS_FACETTEN[2:-1], zwaarste eerst
     urgentie: int  # hoger = urgenter (sorteersleutel)
+    # Blok 3 18-09 (migratie 0160)
+    status: str = "lopend"
+    afgesloten_op: datetime | None = None
+    kandidaat_afsluiten: bool = False
+    kandidaat_reden: str | None = None
 
     @property
     def zoektekst(self) -> str:
@@ -160,6 +170,8 @@ class Tellers:
     marge_negatief: int
     weekstaat_ontbreekt: int
     te_keuren: int
+    kandidaat_afsluiten: int = 0
+    afgesloten: int = 0
 
 
 @dataclass(frozen=True)
@@ -487,18 +499,26 @@ def _signalen(res: ResultaatChip, verp: VerplichtingenChip, ws: WeekstatenChip) 
     return tuple(uit)
 
 
-def _rijen_voor_administratie(*, aid: uuid.UUID, naam: str, actor_id: uuid.UUID, vandaag: date) -> list[Rij]:
+def _rijen_voor_administratie(
+    *, aid: uuid.UUID, naam: str, actor_id: uuid.UUID, vandaag: date, toon_afgesloten: bool = False
+) -> list[Rij]:
     huidige_week = _week_sleutel(vandaag)
     with scoped_session(aid, actor_id=actor_id) as session:
         administratie = session.get(Administratie, aid)
         if administratie is None:
             return []  # RLS: geen scope = geen rijen (Beheerder-bypass leest wél)
+        # Blok 3 18-09: standaard alleen lopende actieve projecten; `toon_afgesloten` voegt de afgesloten rijen toe
+        # (grijs, chip) zodat ze terugvindbaar blijven — nooit weg.
+        lopend_actief = (ProjectCache.is_actief.is_(True)) & (ProjectCache.status != PROJECT_STATUS_AFGESLOTEN)
+        voorwaarde = (
+            (lopend_actief | (ProjectCache.status == PROJECT_STATUS_AFGESLOTEN)) if toon_afgesloten else lopend_actief
+        )
         projecten = list(
             session.scalars(
                 select(ProjectCache)
                 .where(
                     ProjectCache.administratie_id == aid,
-                    ProjectCache.is_actief.is_(True),
+                    voorwaarde,
                     ProjectCache.verdwenen_uit_bron_op.is_(None),
                 )
                 .order_by(ProjectCache.naam)
@@ -522,9 +542,19 @@ def _rijen_voor_administratie(*, aid: uuid.UUID, naam: str, actor_id: uuid.UUID,
         planning = (
             _planning_per_project(session, aid, project_ids, tot_en_met=vandaag + timedelta(days=7)) if uren_aan else {}
         )
+        # Blok 3 18-09: kandidaat afsluiten (set-based, alleen voor lopende projecten) — nooit automatisch afsluiten.
+        kandidaten = status_service.kandidaat_afsluiten_per_project(
+            session,
+            administratie_id=aid,
+            project_ids={p.id for p in projecten if p.status != PROJECT_STATUS_AFGESLOTEN},
+            gebouwd_m2=gebouwd,
+            contract_m2={p.id: (specs[p.id].contract_m2 if p.id in specs else None) for p in projecten},
+            vandaag=vandaag,
+        )
         uit: list[Rij] = []
         for p in projecten:
             spec = specs.get(p.id)
+            kandidaat = kandidaten.get(p.id)
             res = resultaat[p.id]
             verp = verplichtingen[p.id]
             ws = (
@@ -557,16 +587,26 @@ def _rijen_voor_administratie(*, aid: uuid.UUID, naam: str, actor_id: uuid.UUID,
                     ),
                     signalen=signalen,
                     urgentie=sum(_GEWICHT[s] for s in signalen),
+                    status=p.status,
+                    afgesloten_op=p.afgesloten_op,
+                    kandidaat_afsluiten=bool(kandidaat and kandidaat.kandidaat),
+                    kandidaat_reden=kandidaat.reden if kandidaat else None,
                 )
             )
         return uit
 
 
-def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol, vandaag: date) -> list[Rij]:
+def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol, vandaag: date, toon_afgesloten: bool = False) -> list[Rij]:
     uit: list[Rij] = []
     for administratie in auth_service.mijn_administraties(actor_id=actor_id, rol=rol):
         uit.extend(
-            _rijen_voor_administratie(aid=administratie.id, naam=administratie.naam, actor_id=actor_id, vandaag=vandaag)
+            _rijen_voor_administratie(
+                aid=administratie.id,
+                naam=administratie.naam,
+                actor_id=actor_id,
+                vandaag=vandaag,
+                toon_afgesloten=toon_afgesloten,
+            )
         )
     return uit
 
@@ -578,11 +618,24 @@ def _in_facet(rij: Rij, status: str) -> bool:
         return bool(rij.signalen)
     if status == "op_schema":
         return not rij.signalen
+    if status == "kandidaat_afsluiten":
+        return rij.kandidaat_afsluiten
+    if status == "afgesloten":
+        return rij.status == PROJECT_STATUS_AFGESLOTEN
     return status in rij.signalen
 
 
 def _sorteer(rijen: list[Rij]) -> list[Rij]:
-    return sorted(rijen, key=lambda r: (-r.urgentie, r.administratie_naam.lower(), (r.naam or "").lower()))
+    # Afgesloten projecten (toggle) altijd onderaan; daarbinnen dezelfde volgorde.
+    return sorted(
+        rijen,
+        key=lambda r: (
+            r.status == PROJECT_STATUS_AFGESLOTEN,
+            -r.urgentie,
+            r.administratie_naam.lower(),
+            (r.naam or "").lower(),
+        ),
+    )
 
 
 def lijst(
@@ -594,20 +647,29 @@ def lijst(
     administratie_id: uuid.UUID | None = None,
     status: str = "alle",
     vandaag: date | None = None,
+    toon_afgesloten: bool = False,
 ) -> Lijst:
     if status not in STATUS_FACETTEN:
         raise ProjectenKantoorbreedFout(f"Onbekend status-facet: {status}")
     vandaag = vandaag or vandaag_nl()
-    alle = _alle_rijen(actor_id=actor_id, rol=rol, vandaag=vandaag)
+    # Blok 3 18-09: het facet "afgesloten" impliceert de toggle; de teller `afgesloten` telt altijd (ook zonder toggle).
+    toon_afgesloten = toon_afgesloten or status == "afgesloten"
+    alle = _alle_rijen(actor_id=actor_id, rol=rol, vandaag=vandaag, toon_afgesloten=True)
+    lopend = [r for r in alle if r.status != PROJECT_STATUS_AFGESLOTEN]
+    afgesloten_rijen = [r for r in alle if r.status == PROJECT_STATUS_AFGESLOTEN]
+    if not toon_afgesloten:
+        alle = lopend
 
     tellers = Tellers(
-        projecten=len(alle),
-        administraties=len({r.administratie_id for r in alle}),
-        met_signaal=sum(1 for r in alle if r.signalen),
-        verplichting_overschreden=sum(1 for r in alle if "verplichting_overschreden" in r.signalen),
-        marge_negatief=sum(1 for r in alle if "marge_negatief" in r.signalen),
-        weekstaat_ontbreekt=sum(1 for r in alle if "weekstaat_ontbreekt" in r.signalen),
-        te_keuren=sum(1 for r in alle if "te_keuren" in r.signalen),
+        projecten=len(lopend),
+        administraties=len({r.administratie_id for r in lopend}),
+        met_signaal=sum(1 for r in lopend if r.signalen),
+        verplichting_overschreden=sum(1 for r in lopend if "verplichting_overschreden" in r.signalen),
+        marge_negatief=sum(1 for r in lopend if "marge_negatief" in r.signalen),
+        weekstaat_ontbreekt=sum(1 for r in lopend if "weekstaat_ontbreekt" in r.signalen),
+        te_keuren=sum(1 for r in lopend if "te_keuren" in r.signalen),
+        kandidaat_afsluiten=sum(1 for r in lopend if r.kandidaat_afsluiten),
+        afgesloten=len(afgesloten_rijen),
     )
 
     term = q.strip().lower()

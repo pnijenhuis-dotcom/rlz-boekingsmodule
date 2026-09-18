@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../ui/basis'
-import { haalVolgendNummer, maakProject } from './projectenApi'
+import { haalVolgendNummer, isProjectnummerBestaatAl, maakProject, type ProjectnummerBestaatAlDetail } from './projectenApi'
 
 /* "Nieuw project" — één dialoog, sinds 04-09 (fix C3) een eigen bestand omdat er drie ingangen
  * op zitten en géén tweede projectmotor mag ontstaan:
@@ -31,6 +31,8 @@ export function NieuwProjectModal({
   const [startdatum, setStartdatum] = useState('')
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
+  // Blok B 18-09: nummer bestaat al (409 mét het bestaande project) — nooit stil een tweede; "Openen" = dat project kiezen.
+  const [bestaatAl, setBestaatAl] = useState<ProjectnummerBestaatAlDetail | null>(null)
 
   useEffect(() => {
     haalVolgendNummer(administratieId)
@@ -43,6 +45,7 @@ export function NieuwProjectModal({
   const aanmaken = async () => {
     setBezig(true)
     setFout(null)
+    setBestaatAl(null)
     try {
       const resultaat = await maakProject(administratieId, {
         projectnummer: nummer.trim(),
@@ -52,7 +55,11 @@ export function NieuwProjectModal({
       })
       onKlaar(resultaat.rlz_project_id)
     } catch (err) {
-      setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
+      if (err instanceof ApiError && err.status === 409 && isProjectnummerBestaatAl(err.detail)) {
+        setBestaatAl(err.detail)
+      } else {
+        setFout(err instanceof ApiError ? err.message : 'Aanmaken mislukt — probeer het opnieuw.')
+      }
     } finally {
       setBezig(false)
     }
@@ -111,6 +118,17 @@ export function NieuwProjectModal({
           </p>
         )}
         {fout && <div className="fout" style={{ marginTop: 8 }}>{fout}</div>}
+        {bestaatAl && (
+          <div className="fout" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }} data-testid="nummer-bestaat-al" role="alert">
+            <span>
+              Projectnummer <b>{bestaatAl.nummer}</b> bestaat al: <b>{bestaatAl.bestaand_naam}</b> ({bestaatAl.status}). Een nummer kan maar
+              één keer bestaan — kies een ander nummer of open het bestaande project.
+            </span>
+            <Button maat="klein" variant="secundair" onClick={() => onKlaar(bestaatAl.bestaand_project_id)}>
+              Openen
+            </Button>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="secundair" maat="klein" onClick={onAnnuleren} disabled={bezig}>
             Annuleren

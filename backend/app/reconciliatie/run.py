@@ -75,6 +75,8 @@ BLOKKEN = (
     "doorbelasting",
     "doorbelasting_aansluiting",
     "rlz_dubbel",
+    # Blok 3 18-09: dubbele projectnummers per administratie (app/projecten/nummer.py, soort in `meten`).
+    "projecten",
 )
 #: Sleutel in `samenvatting` voor de tellers per automatisering (géén blokstand — de bevindingen ervan
 #: staan onder blok `automatisering`, enkelvoud).

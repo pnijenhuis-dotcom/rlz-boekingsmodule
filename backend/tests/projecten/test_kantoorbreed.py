@@ -230,6 +230,9 @@ class TestLijstEnScope:
             "marge_negatief": 1,
             "weekstaat_ontbreekt": 1,
             "te_keuren": 1,
+            # Blok 3 18-09 (additief): kandidaat afsluiten + afgesloten (toggle-teller).
+            "kandidaat_afsluiten": 0,
+            "afgesloten": 0,
         }
         p1 = d["rijen"][0]
         assert p1["project_id"] == str(scenario["p1"]) and p1["administratie_id"] == str(administratie_id)

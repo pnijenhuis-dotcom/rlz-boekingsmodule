@@ -100,6 +100,8 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("rc_koppeling_gewijzigd", "rekening_courant"),
         # rlz_dubbel
         _oud("dubbel_in_rlz", "rlz_dubbel"),
+        # projecten (blok 3 18-09): dubbel projectnummer in één administratie (ook buiten de module om) — meten.
+        SoortDefinitie(soort="project_nummer_dubbel", blok="projecten", sinds=date(2026, 9, 18), default=METEN),
     )
 }
 

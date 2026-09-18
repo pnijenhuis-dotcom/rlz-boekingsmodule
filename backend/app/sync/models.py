@@ -78,10 +78,22 @@ class VendorCache(Base):
     dubbel_afgehandeld_bron: Mapped[str | None] = mapped_column(default=None)  # 'auto' | 'mens'
 
 
+PROJECT_STATUS_LOPEND = "lopend"
+PROJECT_STATUS_AFGESLOTEN = "afgesloten"
+
+
 class ProjectCache(Base):
+    """Projecten uit de bron (RLZ/Odoo). `is_actief` = spiegel van RLZ `IsActive`/Odoo `active`; `status` (migratie
+    0160,
+    blok 3 18-09) = MODULE-status lopend/afgesloten mét afsluit-spoor — afsluiten zet eerst de bron inactief
+    (klant-loze PUT +
+    terugleesverificatie), pas dan de status (`app/projecten/status.py`)."""
+
     __tablename__ = "project_cache"
     __table_args__ = (
         Index("ix_project_cache_administratie_id", "administratie_id"),
+        Index("ix_project_cache_administratie_status", "administratie_id", "status"),
+        CheckConstraint("status IN ('lopend', 'afgesloten')", name="ck_project_cache_status"),
         {"schema": "boekhouding"},
     )
 
@@ -94,3 +106,9 @@ class ProjectCache(Base):
     brondata: Mapped[dict] = mapped_column(JSONB)
     laatst_gesynchroniseerd: Mapped[datetime] = mapped_column(server_default=func.now())
     verdwenen_uit_bron_op: Mapped[datetime | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(server_default=text("'lopend'"), default=PROJECT_STATUS_LOPEND)
+    afgesloten_op: Mapped[datetime | None] = mapped_column(default=None)
+    afgesloten_door: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform.gebruiker.id", name="fk_project_cache_afgesloten_door"), default=None
+    )
+    afsluit_reden: Mapped[str | None] = mapped_column(default=None)

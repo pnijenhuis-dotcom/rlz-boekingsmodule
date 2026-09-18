@@ -17,7 +17,9 @@ from app.auth.deps import CurrentGebruiker, vereis_administratie_scope, vereis_k
 from app.db.session import scoped_session
 from app.projecten import cijfers, cijfers_run, kantoor, kantoorbreed, ontleding
 from app.projecten import schemas_kantoor as schemas
+from app.projecten import status as status_service
 from app.projecten.motor import ProjectAanmakenMislukt, ProjectNaamConflict
+from app.projecten.nummer import ProjectnummerBestaatAl
 from app.rlz.client import RlzApiError
 from app.rlz.credentials import GeenRlzCredentials
 
@@ -81,6 +83,10 @@ def _kantoorbreed_rij_dto(r: kantoorbreed.Rij) -> schemas.ProjectKantoorbreedRij
         m2=schemas.M2ChipDto(**r.m2.__dict__),
         signalen=list(r.signalen),
         urgentie=r.urgentie,
+        status=r.status,
+        afgesloten_op=r.afgesloten_op,
+        kandidaat_afsluiten=r.kandidaat_afsluiten,
+        kandidaat_reden=r.kandidaat_reden,
     )
 
 
@@ -92,6 +98,7 @@ def projecten_kantoorbreed(
     q: str = Query(""),
     administratie_id: uuid.UUID | None = Query(None),
     status_facet: str = Query("alle", alias="status"),
+    toon_afgesloten: bool = Query(False),
     actor: CurrentGebruiker = Depends(vereis_kantoorrol),
 ) -> schemas.ProjectenKantoorbreedResponse:
     """Inzicht › Projecten (fixrun 07-09 blok C5): alle actieve projecten over de administraties in scope
@@ -106,6 +113,7 @@ def projecten_kantoorbreed(
             q=q,
             administratie_id=administratie_id,
             status=status_facet,
+            toon_afgesloten=toon_afgesloten,
         )
     except kantoorbreed.ProjectenKantoorbreedFout as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -138,6 +146,8 @@ def projecten_lijst(
         projecten=[schemas.ProjectLijstRijDto(**rij.__dict__) for rij in rijen],
         # Mockup-keuze 5: "zonder specs" telt alleen projecten mét uren-/meerwerk-activiteit.
         zonder_specs=sum(1 for rij in rijen if rij.heeft_activiteit and rij.specs_status != "compleet"),
+        # Blok 3 18-09: toggle "Toon afgesloten (N)" — de teller telt altijd, ook in de standaardlijst.
+        aantal_afgesloten=kantoor.aantal_afgesloten(administratie_id=administratie_id),
     )
 
 
@@ -170,6 +180,10 @@ def nieuw_project(
         )
     except kantoor.ProjectenFout as exc:
         raise _vertaal(exc) from exc
+    except ProjectnummerBestaatAl as exc:
+        # Blok B 18-09: nummer bezet — 409 mét het bestaande project ("26127 bestaat al: …, lopend — openen?");
+        # gestructureerd detail zodat de dialoog "Openen" kan aanbieden. Nooit stil een tweede project.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
     except ProjectNaamConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except GeenRlzCredentials as exc:
@@ -179,6 +193,60 @@ def nieuw_project(
     return schemas.NieuwProjectResponse(
         rlz_project_id=resultaat.rlz_project_id, projectnaam=resultaat.projectnaam, bestond_al=resultaat.bestond_al
     )
+
+
+def _status_dto(stand: status_service.ProjectStatusStand) -> schemas.ProjectStatusResponse:
+    return schemas.ProjectStatusResponse(**stand.__dict__)
+
+
+def _vertaal_status(exc: status_service.ProjectStatusFout) -> HTTPException:
+    if isinstance(exc, status_service.StatusOngewijzigd):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, status_service.BronWeigert):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.post("/{administratie_id}/{project_id}/afsluiten", response_model=schemas.ProjectStatusResponse)
+def project_afsluiten(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    invoer: schemas.ProjectAfsluitInput,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.ProjectStatusResponse:
+    """Blok 3 18-09: project afsluiten (Beheerder + Boekhouding+Projecten) — bron eerst inactief (RLZ klant-loze PUT +
+    terugleesverificatie / Odoo archived via de adapter), dán status + audit. Verdwijnt uit álle keuzelijsten; nagekomen
+    facturen blijven boekbaar mét oranje signaal."""
+    try:
+        stand = status_service.sluit_project_af(
+            administratie_id=administratie_id,
+            project_id=project_id,
+            actor_id=actor.id,
+            reden=invoer.reden,
+            datum=invoer.datum,
+        )
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    except status_service.ProjectStatusFout as exc:
+        raise _vertaal_status(exc) from exc
+    return _status_dto(stand)
+
+
+@router.post("/{administratie_id}/{project_id}/heropenen", response_model=schemas.ProjectStatusResponse)
+def project_heropenen(
+    administratie_id: uuid.UUID,
+    project_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.ProjectStatusResponse:
+    """Terugweg van afsluiten: bron weer actief, status lopend, audit."""
+    try:
+        stand = status_service.heropen_project(administratie_id=administratie_id, project_id=project_id,
+        actor_id=actor.id)
+    except kantoor.ProjectenFout as exc:
+        raise _vertaal(exc) from exc
+    except status_service.ProjectStatusFout as exc:
+        raise _vertaal_status(exc) from exc
+    return _status_dto(stand)
 
 
 @router.get("/{administratie_id}/resultaat-overzicht", response_model=schemas.ProjectenOverzichtResponse)
@@ -297,6 +365,10 @@ def project_detail(
         gebouwd_m2=detail.gebouwd_m2,
         prijsafspraken=[schemas.PrijsafspraakDto(**a.__dict__) for a in detail.prijsafspraken],
         veldwerkers=[schemas.VeldwerkerKeuzeDto(**v.__dict__) for v in detail.veldwerkers],
+        status=detail.status,
+        afgesloten_op=detail.afgesloten_op,
+        afgesloten_door=detail.afgesloten_door,
+        afsluit_reden=detail.afsluit_reden,
     )
 
 

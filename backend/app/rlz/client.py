@@ -514,6 +514,13 @@ class RlzClient:
         veilig = name.replace("'", "''")
         return self.get("Projects", params={"$filter": f"Name eq '{veilig}'"}).get("value", [])
 
+    def find_projects_by_name_prefix(self, *, prefix: str) -> list[dict[str, Any]]:
+        """Projectnummer-uniciteit (blok 3 18-09): alle projecten (actief én inactief) waarvan de naam met `prefix`
+        begint — RLZ kent géén codeveld, het nummer is de cijfer-prefix van de naam (STAP-0 16-09). Aanroeper geeft
+        "26127 " mét spatie mee zodat 26127 niet op 261270 treft. OData `startswith(Name,'…')`, lees-only."""
+        veilig = prefix.replace("'", "''")
+        return self.get("Projects", params={"$filter": f"startswith(Name,'{veilig}')"}).get("value", [])
+
     def put_project(self, project_id: uuid.UUID, *, name: str, is_active: bool = True) -> httpx.Response:
         """Project aanmaken/bijwerken — klant-loze TOP-LEVEL route (hertest 2026-08-14 ná
         browsercapture Peter, poc_projects_toplevel.py): `PUT {adminId}/Projects/{id}` werkt

@@ -31,6 +31,7 @@ from app.migratie.cli_cmd import register_migratie, run_migratie
 from app.migratie.cli_odoo import ODOO_MIGRATIE_COMMANDOS, register_odoo_migratie, run_odoo_migratie  # run 2 VGG blok 5
 from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, run_vgg_replay  # run 2 VGG blok 6
 from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
+from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.panden.cli_cmd import register_panden, run_panden
 from app.reconciliatie import service as acceptatie_service
@@ -2159,6 +2160,7 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
     vastgelegd laat de kantoorbrede lijst de andere blokken verliezen en mailt hun afwijkingen als 'hersteld'."""
     from app.doorbelasting import aansluiting as doorbelasting_aansluiting
     from app.intercompany import factuurmatch, rekening_courant
+    from app.projecten import nummer as projecten_nummer
     from app.reconciliatie import rlz_dubbel
     from app.reconciliatie import run as reconciliatie_run
 
@@ -2177,6 +2179,9 @@ def _reconciliatie_alles(args: argparse.Namespace) -> int:
         # Blok 6 (08-09): periodieke toets "mogelijk dubbel geboekt in RLZ" (handmatig ingevoerde paren) —
         # eigen blok, schrappen = deze regel + run.BLOKKEN.
         (rlz_dubbel.BLOK, rlz_dubbel.cli_blok),
+        # Blok 3 18-09: dubbele projectnummers (buiten de module om in RLZ ontstaan) — soort `project_nummer_dubbel`
+        # start in `meten`; schrappen = deze regel + run.BLOKKEN.
+        (projecten_nummer.BLOK, projecten_nummer.cli_blok),
     )
     alleen = set(getattr(args, "alleen", None) or [])
     lees_only = bool(getattr(args, "lees_only", False))
@@ -3279,6 +3284,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     register_bank(subparsers)  # blok B 10-09: bank-voorstellen-lezen + bank-historie-backfill (app/bank/cli_cmd.py)
+    register_projecten(subparsers)  # blok 3 18-09: projecten-afsluit-kandidaten + projecten-dubbele-nummers (lees-only)
     register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
     register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
@@ -3383,7 +3389,7 @@ def main(argv: list[str] | None = None) -> int:
         "--alleen",
         action="append",
         default=None,
-        choices=("bank", "documenten", "intercompany", "omzet", "doorbelasting", "rekening_courant", "rlz_dubbel"),
+        choices=("bank", "documenten", "intercompany", "omzet", "doorbelasting", "rekening_courant", "rlz_dubbel", "projecten"),
         help="Alleen dit blok (herhaalbaar). Vereist --lees-only: een deel-run mag nooit als 'laatste run' worden "
         "vastgelegd (de kantoorbrede lijst en de delta-mail lezen die).",
     )
@@ -3635,6 +3641,8 @@ def main(argv: list[str] | None = None) -> int:
         return _intercompany_leverancier_markeren(args)
     if args.commando in BANK_COMMANDOS:
         return run_bank(args)
+    if args.commando in PROJECTEN_COMMANDOS:
+        return run_projecten(args)
     if args.commando in ACCORDERING_COMMANDOS:
         return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "migratie-schoonlijst":

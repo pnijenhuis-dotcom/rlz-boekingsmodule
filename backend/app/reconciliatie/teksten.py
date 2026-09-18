@@ -171,6 +171,10 @@ def _onderwerp_omzet(d: dict) -> Segmenten:
     return [x for x in (_periode_kort(d), boekstuk) if x]
 
 
+def _onderwerp_projecten(d: dict) -> Segmenten:
+    return [x for x in (_s(d, "nummer"), _s(d, "administratie_naam")) if x]
+
+
 def _onderwerp_doorbelasting(d: dict) -> Segmenten:
     doel = _s(d, "doelentiteit_naam", "doel_administratie_naam")
     ref = _s(d, "verkoop_referentie", "referentie")
@@ -231,6 +235,8 @@ def _onderwerp(blok: str, d: dict) -> Segmenten:
         return _onderwerp_bank(d)
     if blok == "omzet":
         return _onderwerp_omzet(d)
+    if blok == "projecten":
+        return _onderwerp_projecten(d)
     if blok == "doorbelasting":
         return _onderwerp_doorbelasting(d)
     if blok == "rekening_courant":
@@ -954,7 +960,34 @@ def _doorbelasting_aansluiting(soort: str, d: dict, tekst: str) -> tuple[str, st
     return (_titel("Doorbelasting-aansluiting", onderwerp), tekst, "Beoordeel de afwijking en accepteer met reden als het klopt.")
 
 
+def _projecten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
+    """Blok `projecten` (blok 3 18-09): dubbel projectnummer binnen één administratie."""
+    if soort == "project_nummer_dubbel":
+        nummer = _s(d, "nummer") or "?"
+        projecten = d.get("projecten") if isinstance(d.get("projecten"), list) else []
+        namen = "; ".join(
+            f"{p.get('naam')} ({p.get('status', 'lopend')}; {p.get('facturen', 0)} facturen, "
+            f"{p.get('weekstaten', 0)} weekstaten, {p.get('planning', 0)} planningregels)"
+            for p in projecten
+            if isinstance(p, dict)
+        )
+        return (
+            _titel("Projectnummer dubbel", _onderwerp_projecten(d)),
+            f"Projectnummer {nummer} staat op {len(projecten) or 'meerdere'} projecten in deze administratie"
+            + (f": {namen}." if namen else "."),
+            "Kies welk project blijft en verhuis de facturen/uren/planning van de ander (klikpunt, nooit "
+            "automatisch); zet de verliezer daarna op afgesloten (IsActive uit) — een project wordt nooit verwijderd. "
+            "Lees-only rapport: `projecten-dubbele-nummers`.",
+        )
+    return (
+        _titel("Afwijking projecten", _onderwerp_projecten(d)),
+        _terugval_wat(d.get("detail") or tekst),
+        f"Controleer de projecten; {_DOE_ACCEPTEER}",
+    )
+
+
 _BLOK_AFWIJKING = {
+    "projecten": _projecten,
     "documenten": _documenten,
     "doorbelasting_aansluiting": _doorbelasting_aansluiting,
     "intercompany": _intercompany,
