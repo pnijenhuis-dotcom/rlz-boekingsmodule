@@ -244,6 +244,10 @@ class Administratie(Base):
     # per persoon per kalenderdag over álle weekstaten heen boven deze drempel = oranje vlag bij
     # de keuring + zichtbaar voor kantoor. Geen blokkade. Default 12, per administratie instelbaar.
     uren_dagmax_uren: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("12"), server_default="12")
+    # Omschrijving-chips veld-app (run A 18-09, migratie 0159): snelkeuze-lijst voor het omschrijvingsveld van een
+    # weekstaat-regel — tekst-lijst, geen enum. NULL = de standaardlijst `app/uren/service.py::
+    # STANDAARD_OMSCHRIJVING_CHIPS`. Beheerder-only zetten (1–10, uniek, ≤ 30 tekens), audit oud→nieuw.
+    uren_omschrijving_chips: Mapped[list | None] = mapped_column(JSONB, default=None)
     # Projectverdeling pro rato omzet (migratie 0107, blok C 04-09): hercontrole-drempel in % (default 5) — boven
     # de drempel wijkt een geboekte pro-rato-verdeling zichtbaar af (signaal mét actie "Herverdelen…").
     projectverdeling_drempel_pct: Mapped[Decimal] = mapped_column(

@@ -561,6 +561,9 @@ def rol_wijzigen(
 ) -> None:
     try:
         service.wijzig_rol(actor_id=actor.id, doel_gebruiker_id=gebruiker_id, nieuwe_rol=payload.rol)
+    except service.RolWisselNietToegestaan as exc:
+        # Peter 18-09: kantoor ↔ veld/accordeur = ander auth-model — leesbare 409, geen 403 (geen rechtenkwestie).
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except service.AuthError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 

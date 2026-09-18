@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy import Engine, text
 
+from app.auth import service as auth_service
 from app.uren import service as uren_service
 from tests.auth.conftest import beheerder_id  # noqa: F401
 
@@ -103,6 +104,9 @@ def gekoppelde_zzper(
 def gekoppelde_uitvoerder(
     uitvoerder: uuid.UUID, administratie_id: uuid.UUID, project_id: uuid.UUID, beheerder_id: uuid.UUID  # noqa: F811
 ) -> uuid.UUID:
+    # 18-09: keuren vereist scope op de administratie (geen projectkoppeling meer) — zoals élk echt veldaccount die
+    # via de uitnodiging krijgt; de koppeling blijft voor "gepland bovenaan".
+    auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=uitvoerder, administratie_id=administratie_id)
     uren_service.koppel_project(
         administratie_id=administratie_id, gebruiker_id=uitvoerder, project_id=project_id, actor_id=beheerder_id
     )

@@ -102,9 +102,8 @@ class TestWekenFilter:
         self, administratie_id, project_id, zzper_met_scope, uitvoerder, beheerder_id
     ):
         """A2: een corrigeren-staat buiten het venster blijft zichtbaar; ná goedkeuring verdwijnt hij."""
-        service.koppel_project(
-            administratie_id=administratie_id, gebruiker_id=uitvoerder, project_id=project_id, actor_id=beheerder_id
-        )
+        # 18-09: keuren vereist scope op de administratie (geen projectkoppeling meer).
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=uitvoerder, administratie_id=administratie_id)
         staat = _uren(administratie_id, zzper_met_scope, project_id, OUD_MA, jaar=OUD_JAAR, week=OUD_WEEK)
         service.dien_week_in(
             administratie_id=administratie_id,
@@ -154,7 +153,7 @@ class TestWekenFilter:
 
 
 class TestProjectenPerWeek:
-    def test_alleen_ingeplande_projecten_plus_projecten_met_staat(
+    def test_alle_actieve_projecten_gepland_en_met_staat_bovenaan(
         self, admin_engine, administratie_id, project_id, tweede_project_id, zzper_met_scope, beheerder_id
     ):
         derde = maak_project(admin_engine, administratie_id, "26030 Venlo (Dura)")
@@ -163,18 +162,28 @@ class TestProjectenPerWeek:
         # Uren buiten planning op het tweede project (C1: koppeling ontstaat in dezelfde gang).
         _uren(administratie_id, zzper_met_scope, tweede_project_id, MA, uren="4")
 
+        # Project-eerst (18-09): standaard alleen de KAARTEN (gepland ∪ mét staat); `alles=True` = de keuzelijst mét
+        # óók het derde project als "niet gepland" (tests/uren/test_project_eerst_18_09.py dekt de samenstelling).
+        assert {
+            k.project_id
+            for k in overzichten.week_projecten_zzp(
+                zzper_id=zzper_met_scope, actor_id=zzper_met_scope, jaar=JAAR, weeknummer=WEEK
+            )
+        } == {project_id, tweede_project_id}
         kaarten = overzichten.week_projecten_zzp(
-            zzper_id=zzper_met_scope, actor_id=zzper_met_scope, jaar=JAAR, weeknummer=WEEK
+            zzper_id=zzper_met_scope, actor_id=zzper_met_scope, jaar=JAAR, weeknummer=WEEK, alles=True
         )
         per_project = {k.project_id: k for k in kaarten}
-        assert set(per_project) == {project_id, tweede_project_id}  # het derde project niet (A1)
-        assert derde not in per_project
+        assert set(per_project) == {project_id, tweede_project_id, derde}
         gepland = per_project[project_id]
         assert gepland.gepland and gepland.geplande_dagen == 2 and gepland.status == "nieuw" and gepland.te_doen
         buiten = per_project[tweede_project_id]
         assert not buiten.gepland and buiten.status == "concept" and buiten.te_doen and buiten.dagen_ingevuld == 1
-        # Te doen bovenaan, geplande vóór ongeplande.
-        assert [k.project_id for k in kaarten] == [project_id, tweede_project_id]
+        niet_gepland = per_project[derde]
+        assert not niet_gepland.gepland and niet_gepland.status == "nieuw" and not niet_gepland.te_doen
+        assert niet_gepland.weekstaat_id is None
+        # Te doen bovenaan, geplande vóór ongeplande, de niet-geplande rest eronder.
+        assert [k.project_id for k in kaarten] == [project_id, tweede_project_id, derde]
 
     def test_projecten_keuze_alle_actieve_projecten(
         self, admin_engine, administratie_id, project_id, tweede_project_id, zzper_met_scope
@@ -323,8 +332,17 @@ class TestVeldApi:
             "/uren/zzp/week-projecten", params={**namens, "jaar": jaar, "weeknummer": week}, headers=headers
         )
         assert resp.status_code == 200, resp.text
+        # Project-eerst (18-09): standaard alleen de kaart van het geplande project; `alles=true` = de keuzelijst mét
+        # het tweede project als "niet gepland".
         (proj,) = resp.json()
         assert proj["project_id"] == str(project_id) and proj["gepland"] and proj["status"] == "nieuw"
+        resp = client.get(
+            "/uren/zzp/week-projecten",
+            params={**namens, "jaar": jaar, "weeknummer": week, "alles": "true"},
+            headers=headers,
+        )
+        proj, rest = resp.json()
+        assert rest["project_id"] == str(tweede_project_id) and not rest["gepland"] and rest["status"] == "nieuw"
 
         resp = client.get("/uren/zzp/projecten-keuze", params=namens, headers=headers)
         assert resp.status_code == 200

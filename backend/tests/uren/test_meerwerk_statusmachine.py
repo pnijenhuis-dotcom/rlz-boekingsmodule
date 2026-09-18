@@ -47,11 +47,21 @@ class TestMelden:
         with pytest.raises(service.OngeldigeInvoer, match="eenheid"):
             _meld(administratie_id, project_id, gekoppelde_uitvoerder, eenheid="km")
 
-    def test_alleen_gekoppelde_uitvoerder(self, administratie_id, project_id, uitvoerder, gekoppelde_zzper):
-        with pytest.raises(service.GeenToegang, match="niet aan dit project gekoppeld"):
-            _meld(administratie_id, project_id, uitvoerder)
+    def test_alleen_uitvoerder_op_actief_project(
+        self, admin_engine, administratie_id, project_id, uitvoerder, gekoppelde_zzper
+    ):
+        """18-09 (feedback uitvoerder punt 3): de koppeling is een filter, geen poort meer — een uitvoerder meldt
+        meerwerk op élk ACTIEF project in zijn scope; een niet-actief project weigert, een ZZP'er nooit."""
+        melding = _meld(administratie_id, project_id, uitvoerder)  # ongekoppeld, wél actief → mag
+        assert melding.status == "gemeld"
         with pytest.raises(service.GeenToegang, match="Alleen een uitvoerder"):
             _meld(administratie_id, project_id, gekoppelde_zzper)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE boekhouding.project_cache SET is_actief = false WHERE id = :id"), {"id": project_id}
+            )
+        with pytest.raises(service.GeenToegang, match="niet \(meer\) actief"):
+            _meld(administratie_id, project_id, uitvoerder)
 
     def test_foto_wordt_opgeslagen(self, administratie_id, project_id, gekoppelde_uitvoerder, tmp_path, monkeypatch):
         from app.config import settings

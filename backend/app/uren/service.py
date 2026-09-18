@@ -48,6 +48,7 @@ from app.db.models import (
     Administratie,
     DetacheerderKoppeling,
     Gebruiker,
+    GebruikerAdministratie,
     GebruikerModuleRol,
     GebruikerRol,
 )
@@ -150,6 +151,8 @@ class DagData:
     stempel_tot: time | None = None
     stempel_onvolledig: bool = False
     stempel_afwijking: bool = False
+    # Doorfactureren-keuze per regel (feedback uitvoerder 18-09 blok B, migratie 0158): False = "Niet doorfactureren".
+    doorfactureren: bool = True
 
 
 @dataclass(frozen=True)
@@ -190,6 +193,13 @@ class WeekstaatData:
     m2_geleverd_project: Decimal | None = None
     m2_gebouwd_project: Decimal | None = None
     meer_gebouwd_dan_geleverd: bool = False
+    # Feedback uitvoerder 18-09: de afgeleide default voor een nieuwe regel op dit project (chip "standaard"), de
+    # totalen van de regels "Niet doorfactureren" (kantoor toont ze apart; wat aan de klant doorbelast mag worden =
+    # totaal − niet_doorfactureren) en het aantal dagen zonder planning-dekking (chip "niet gepland", kantoor-signaal).
+    doorfactureren_standaard: bool = True
+    totaal_uren_niet_doorfactureren: Decimal = Decimal("0")
+    totaal_m2_niet_doorfactureren: Decimal = Decimal("0")
+    dagen_buiten_planning: int = 0
 
 
 @dataclass(frozen=True)
@@ -326,13 +336,20 @@ def zorg_voor_projectkoppeling(
     return True
 
 
+# Feedback uitvoerder 18-09 blok C: óók een uitvoerder heeft eigen weekstaten ("soort urenstaat achteraf" — hij helpt
+# willekeurig mee op een project en schrijft uren + m²). Alleen voor zichzelf; namens-invoer blijft detacheerder→ZZP'er.
+INVULLER_ROLLEN = (GebruikerRol.ZZPER, GebruikerRol.UITVOERDER)
+
+
 def _vereis_invuller(session, *, zzper: Gebruiker, actor_id: uuid.UUID) -> Gebruiker:
-    """De actor mag de weekstaat van `zzper` bewerken/indienen: de ZZP'er zelf, of een
+    """De actor mag de weekstaat van `zzper` bewerken/indienen: de ZZP'er (of uitvoerder, 18-09) zelf, of een
     detacheerder die door het kantoor aan deze ZZP'er gekoppeld is (besluit 21-08)."""
-    if zzper.rol != GebruikerRol.ZZPER:
-        raise OngeldigeInvoer("Weekstaten horen bij een gebruiker met de rol ZZP'er")
+    if zzper.rol not in INVULLER_ROLLEN:
+        raise OngeldigeInvoer("Weekstaten horen bij een gebruiker met de rol ZZP'er of uitvoerder")
     if actor_id == zzper.id:
         return zzper
+    if zzper.rol != GebruikerRol.ZZPER:
+        raise GeenToegang("Namens-invoer bestaat alleen voor ZZP'ers (detacheerder-koppeling)")
     actor = _gebruiker(session, actor_id)
     if actor.rol != GebruikerRol.DETACHEERDER:
         raise GeenToegang("Alleen de ZZP'er zelf of een gekoppelde detacheerder mag dit")
@@ -342,13 +359,123 @@ def _vereis_invuller(session, *, zzper: Gebruiker, actor_id: uuid.UUID) -> Gebru
     return actor
 
 
-def _vereis_keurrecht(session, *, administratie_id: uuid.UUID, actor_id: uuid.UUID, project_id: uuid.UUID) -> Gebruiker:
+def _vereis_keurrecht(
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    project_id: uuid.UUID,
+    staat_gebruiker_id: uuid.UUID | None = None,
+    kantoor: bool = False,
+) -> Gebruiker:
+    """Wie keurt een weekstaat? (1) Een UITVOERDER in de scope van de administratie — sinds 18-09 (besluit Peter,
+    letterlijk: "uitvoerder moet gewoon alle ingediende urenstaten controleren, los van welk project hij gepland staat")
+    ZONDER projectkoppeling: `uren_project_toewijzing` stuurt alleen nog "gepland bovenaan", nooit de keurbevoegdheid;
+    de eigen staat keurt hij nooit (vier-ogen). (2) Het KANTOOR (`kantoor=True`, tab Beoordelen › Urenstaten, 18-09):
+    kantoorrol mét het module-recht "Meerwerk & urenstaten" — het vangnet als er geen tweede uitvoerder is. De
+    administratie-scope zelf is al door de RLS-sessie + router-poort afgedwongen."""
+    del project_id  # de projectkoppeling is geen keurpoort meer (18-09)
+    if kantoor:
+        return _vereis_meerwerk_recht(session, actor_id)
     actor = _gebruiker(session, actor_id)
     if actor.rol != GebruikerRol.UITVOERDER:
         raise GeenToegang("Alleen een uitvoerder keurt weekstaten")
-    if not _heeft_toewijzing(session, administratie_id, actor_id, project_id):
-        raise GeenToegang("Deze uitvoerder is niet aan dit project gekoppeld")
+    # Scope blijft de poort (server-side, náást RLS): een uitvoerder zonder gebruiker_administratie-rij op déze
+    # administratie keurt niets — de lookup loopt in de op de administratie gescope'de sessie mét actor (RLS-les 25-08).
+    if not session.execute(
+        select(GebruikerAdministratie.gebruiker_id).where(
+            GebruikerAdministratie.gebruiker_id == actor_id,
+            GebruikerAdministratie.administratie_id == administratie_id,
+        )
+    ).first():
+        raise GeenToegang("Deze administratie valt buiten je scope")
+    # 18-09: een uitvoerder schrijft nu ook eigen weekstaten — die keurt hij nooit zelf (vier-ogen-principe).
+    if staat_gebruiker_id is not None and staat_gebruiker_id == actor_id:
+        raise GeenToegang("Je eigen weekstaat keur je niet — een andere uitvoerder of het kantoor doet dat")
     return actor
+
+
+def standaard_doorfactureren(session, administratie_id: uuid.UUID, project_id: uuid.UUID) -> bool:
+    """Default voor de doorfactureren-keuze van een NIEUWE weekstaat-regel (feedback uitvoerder 18-09 blok B,
+    beslispunt "default gekozen"): het project heeft ≥ 1 verrekenbare staffel uit de contract-ontleding
+    (`project_staffel.verrekenbaar`) → Doorfactureren; anders Niet doorfactureren. Deterministisch, geen AI; de mens
+    wint altijd (expliciete keuze op de regel)."""
+    return (
+        session.execute(
+            select(func.count()).where(
+                ProjectStaffel.administratie_id == administratie_id,
+                ProjectStaffel.project_id == project_id,
+                ProjectStaffel.verrekenbaar.is_(True),
+            )
+        ).scalar_one()
+        > 0
+    )
+
+
+# --- omschrijving-chips per administratie (veld-app run A, akkoord Peter 18-09; migratie 0159) -------------------
+
+# De standaardlijst geldt zolang `administratie.uren_omschrijving_chips` NULL is. Tekst-lijst, geen enum: de app toont
+# de chips als snelkeuze boven het vrije omschrijvingsveld; 'overig' mag ontbreken (de app toont altijd het vrije veld).
+STANDAARD_OMSCHRIJVING_CHIPS: list[str] = ["opbouwen", "afbreken", "ombouwen", "transport", "overig"]
+OMSCHRIJVING_CHIPS_MAX = 10
+OMSCHRIJVING_CHIP_MAX_TEKENS = 30
+
+
+def omschrijving_chips(administratie: Administratie) -> list[str]:
+    """De chips van een administratie: de opgeslagen lijst, anders de standaardlijst (nooit leeg)."""
+    opgeslagen = administratie.uren_omschrijving_chips
+    if isinstance(opgeslagen, list) and opgeslagen:
+        return [str(c) for c in opgeslagen]
+    return list(STANDAARD_OMSCHRIJVING_CHIPS)
+
+
+def valideer_omschrijving_chips(chips: list[str]) -> list[str]:
+    """1–10 chips, elk gestript en niet leeg, ≤ 30 tekens, uniek (hoofdletter-ongevoelig). Volgorde blijft."""
+    schoon = [str(c).strip() for c in chips]
+    if not schoon or len(schoon) > OMSCHRIJVING_CHIPS_MAX:
+        raise OngeldigeInvoer(f"Kies 1 tot {OMSCHRIJVING_CHIPS_MAX} omschrijving-chips")
+    gezien: set[str] = set()
+    for chip in schoon:
+        if not chip:
+            raise OngeldigeInvoer("Een omschrijving-chip mag niet leeg zijn")
+        if len(chip) > OMSCHRIJVING_CHIP_MAX_TEKENS:
+            raise OngeldigeInvoer(f"Omschrijving-chip {chip!r} is langer dan {OMSCHRIJVING_CHIP_MAX_TEKENS} tekens")
+        sleutel = chip.casefold()
+        if sleutel in gezien:
+            raise OngeldigeInvoer(f"Omschrijving-chip {chip!r} staat er dubbel in")
+        gezien.add(sleutel)
+    return schoon
+
+
+def omschrijving_chips_voor(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> tuple[list[str], bool]:
+    """(chips, is_standaard) voor één administratie mét opt-in — veld-app (scope via de router) én Beheerder."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = _administratie_met_opt_in(session, administratie_id)
+        return omschrijving_chips(administratie), not administratie.uren_omschrijving_chips
+
+
+def zet_omschrijving_chips(*, administratie_id: uuid.UUID, chips: list[str], actor_id: uuid.UUID) -> list[str]:
+    """Beheerder-only (router): valideert, slaat de lijst op als tekst-lijst en audit oud→nieuw."""
+    nieuw = valideer_omschrijving_chips(chips)
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = _administratie_met_opt_in(session, administratie_id)
+        oud = omschrijving_chips(administratie)
+        was_standaard = not administratie.uren_omschrijving_chips
+        administratie.uren_omschrijving_chips = nieuw
+        record_audit_event(
+            session,
+            actor_id=actor_id,
+            module=MODULE,
+            tabel="administratie",
+            record_id=administratie_id,
+            actie="uren_omschrijving_chips_gewijzigd",
+            correlatie_id=administratie_id,
+            oude_waarde={"chips": oud, "standaard": was_standaard},
+            nieuwe_waarde={"chips": nieuw, "standaard": False},
+            administratie_id=administratie_id,
+        )
+        session.flush()
+        return nieuw
 
 
 def heeft_meerwerk_urenstaten_recht(*, gebruiker_id: uuid.UUID, rol: GebruikerRol) -> bool:
@@ -457,6 +584,7 @@ def _dag_data(
         stempel_tot=aanwezigheid.laatste_uit if aanwezigheid is not None else None,  # type: ignore[attr-defined]
         stempel_onvolledig=bool(aanwezigheid.onvolledig) if aanwezigheid is not None else False,  # type: ignore[attr-defined]
         stempel_afwijking=afwijking_boven_drempel(dag.uren, aanwezigheid),  # type: ignore[arg-type]
+        doorfactureren=dag.doorfactureren,
     )
 
 
@@ -564,6 +692,12 @@ def _weekstaat_data(session, staat: Weekstaat) -> WeekstaatData:
         status=staat.status,
         totaal_uren=sum((d.uren for d in dagen), Decimal("0")),
         totaal_m2=sum((d.m2 for d in dagen if d.m2 is not None), Decimal("0")),
+        doorfactureren_standaard=standaard_doorfactureren(session, staat.administratie_id, staat.project_id),
+        totaal_uren_niet_doorfactureren=sum((d.uren for d in dagen if not d.doorfactureren), Decimal("0")),
+        totaal_m2_niet_doorfactureren=sum(
+            (d.m2 for d in dagen if not d.doorfactureren and d.m2 is not None), Decimal("0")
+        ),
+        dagen_buiten_planning=sum(1 for d in dagen if d.uren > 0 and d.datum not in gepland),
         dagen=[
             _dag_data(
                 d,
@@ -634,10 +768,14 @@ def zet_dag(
     uren: Decimal,
     m2: Decimal | None = None,
     opmerking: str | None = None,
+    doorfactureren: bool | None = None,
     actor_id: uuid.UUID,
+    bron: str = "handmatig",
 ) -> WeekstaatData:
     """Dagregel zetten/bijwerken (upsert op datum). Alleen in concept/corrigeren; de datum
-    moet binnen de ISO-week vallen; uren 0–24, m² ≥ 0 (optioneel)."""
+    moet binnen de ISO-week vallen; uren 0–24, m² ≥ 0 (optioneel — leeg blijft NULL, nooit 0; feedback 18-09 blok A).
+    `doorfactureren` None = de projectdefault (`standaard_doorfactureren`); een expliciete keuze = mens wint.
+    `bron` ('handmatig' | 'kopie' — run A 18-09 "kopieer vorige regel") reist alleen mee in het audit-event."""
     if uren < 0 or uren > 24:
         raise OngeldigeInvoer("Uren moeten tussen 0 en 24 liggen")
     if m2 is not None and m2 < 0:
@@ -681,6 +819,12 @@ def zet_dag(
             select(WeekstaatDag).where(WeekstaatDag.weekstaat_id == staat.id, WeekstaatDag.datum == datum)
         ).one_or_none()
         oude_waarde = None
+        if doorfactureren is None:
+            # Geen expliciete keuze: bestaande regel houdt zijn stand, een nieuwe regel krijgt de projectdefault.
+            if dag is not None:
+                doorfactureren = dag.doorfactureren
+            else:
+                doorfactureren = standaard_doorfactureren(session, administratie_id, project_id)
         if dag is None:
             dag = WeekstaatDag(
                 weekstaat_id=staat.id,
@@ -689,22 +833,30 @@ def zet_dag(
                 uren=uren,
                 m2=m2,
                 opmerking=opmerking,
+                doorfactureren=doorfactureren,
                 ingevuld_door=actor_id,
             )
             session.add(dag)
             session.flush()
         else:
-            oude_waarde = {"uren": str(dag.uren), "m2": str(dag.m2) if dag.m2 is not None else None}
+            oude_waarde = {
+                "uren": str(dag.uren),
+                "m2": str(dag.m2) if dag.m2 is not None else None,
+                "doorfactureren": dag.doorfactureren,
+            }
             dag.uren = uren
             dag.m2 = m2
             dag.opmerking = opmerking
+            dag.doorfactureren = doorfactureren
             dag.ingevuld_door = actor_id
 
         nieuwe_waarde = {
             "datum": datum.isoformat(),
             "uren": str(uren),
             "m2": str(m2) if m2 is not None else None,
+            "doorfactureren": doorfactureren,
             "ingevuld_door": str(actor_id),
+            "bron": bron,
         }
         if actor_id != zzper_id:
             nieuwe_waarde["namens_gebruiker_id"] = str(zzper_id)
@@ -790,13 +942,23 @@ def _weekstaat(session, weekstaat_id: uuid.UUID) -> Weekstaat:
     return staat
 
 
-def keur_week_goed(*, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, actor_id: uuid.UUID) -> WeekstaatData:
-    """ingediend → goedgekeurd (de getekende urenstaat). Alleen een uitvoerder met een
-    toewijzing op het project; idempotent op een al-goedgekeurde week."""
+def keur_week_goed(
+    *, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, actor_id: uuid.UUID, kantoor: bool = False
+) -> WeekstaatData:
+    """ingediend → goedgekeurd (de getekende urenstaat). Keurder = een uitvoerder in de scope (sinds 18-09 zonder
+    projectkoppeling, nooit de eigen staat) óf het kantoor (`kantoor=True`, module-recht — Beoordelen › Urenstaten);
+    idempotent op een al-goedgekeurde week."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
         staat = _weekstaat(session, weekstaat_id)
-        _vereis_keurrecht(session, administratie_id=administratie_id, actor_id=actor_id, project_id=staat.project_id)
+        _vereis_keurrecht(
+            session,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            project_id=staat.project_id,
+            staat_gebruiker_id=staat.gebruiker_id,
+            kantoor=kantoor,
+        )
         if staat.status == WeekstaatStatus.GOEDGEKEURD.value:
             return _weekstaat_data(session, staat)  # herhaald besluit
         if staat.status != WeekstaatStatus.INGEDIEND.value:
@@ -827,7 +989,7 @@ def keur_week_goed(*, administratie_id: uuid.UUID, weekstaat_id: uuid.UUID, acto
             record_id=staat.id,
             actie="weekstaat_goedgekeurd",
             correlatie_id=staat.id,
-            nieuwe_waarde={"status": staat.status},
+            nieuwe_waarde={"status": staat.status, "keurder": "kantoor" if kantoor else "uitvoerder"},
             administratie_id=administratie_id,
         )
         zzper_id = staat.gebruiker_id
@@ -854,6 +1016,7 @@ def keur_week_af(
     actor_id: uuid.UUID,
     reden: str,
     correcties: list[DagCorrectieInvoer] | None = None,
+    kantoor: bool = False,
 ) -> WeekstaatData:
     """ingediend/goedgekeurd → corrigeren, reden VERPLICHT — de hele week gaat terug naar de
     ZZP'er (keuring op weekniveau, besluit 21-08). Afkeuren van een al-goedgekeurde week is de
@@ -881,7 +1044,14 @@ def keur_week_af(
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         _administratie_met_opt_in(session, administratie_id)
         staat = _weekstaat(session, weekstaat_id)
-        _vereis_keurrecht(session, administratie_id=administratie_id, actor_id=actor_id, project_id=staat.project_id)
+        _vereis_keurrecht(
+            session,
+            administratie_id=administratie_id,
+            actor_id=actor_id,
+            project_id=staat.project_id,
+            staat_gebruiker_id=staat.gebruiker_id,
+            kantoor=kantoor,
+        )
         if staat.status == WeekstaatStatus.CORRIGEREN.value and staat.afkeur_reden == reden:
             return _weekstaat_data(session, staat)  # herhaald besluit (dubbeltik/verzendrij)
         if staat.status not in (WeekstaatStatus.INGEDIEND.value, WeekstaatStatus.GOEDGEKEURD.value):
@@ -1046,8 +1216,11 @@ def meld_meerwerk(
         actor = _gebruiker(session, actor_id)
         if actor.rol != GebruikerRol.UITVOERDER:
             raise GeenToegang("Alleen een uitvoerder meldt meerwerk")
-        if not _heeft_toewijzing(session, administratie_id, actor_id, project_id):
-            raise GeenToegang("Deze uitvoerder is niet aan dit project gekoppeld")
+        # 18-09 (feedback uitvoerder punt 3): de uitvoerder ziet en bedient álle actieve projecten van de
+        # administratie(s) in zijn scope — de koppeltabel is een filter (gepland/gekoppeld bovenaan), geen poort meer.
+        project = _project(session, administratie_id, project_id)
+        if project.is_actief is not True or project.verdwenen_uit_bron_op is not None:
+            raise GeenToegang("Dit project is niet (meer) actief — meerwerk kan alleen op een actief project")
 
         melding = Meerwerk(
             administratie_id=administratie_id,

@@ -136,3 +136,32 @@ class TestHerstelmailVolgorde:
         monkeypatch.setattr(settings, "store_app_versie_ios", "1.1")
         tekst = _app_mail(monkeypatch)
         assert "1. Download eerst de app op je telefoon" in tekst and "versie 1.1 of hoger nodig" in tekst
+
+
+class TestAndroidWebRegel:
+    """SPOED 18-09 (casus Edge-tablet): zonder geschikte Play-versie krijgt de app-mail één zin "zet de web-versie op je
+    beginscherm" mét de stappen voor Chrome en Edge; zodra Google Play een geschikte versie heeft, verdwijnt die zin."""
+
+    def test_zonder_play_link_staat_de_beginscherm_zin_in_uitnodiging_en_herstelmail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "store_link_android", "")
+        monkeypatch.setattr(settings, "store_app_versie_android", "")
+        tekst = _app_mail(monkeypatch)
+        assert "zet de web-versie op je beginscherm" in tekst
+        assert "Toevoegen aan startscherm" in tekst and "Toevoegen aan telefoon" in tekst
+        assert tekst.index("web-versie op je beginscherm") < tekst.index("2. Open déze link")
+        mails = _vang(monkeypatch)
+        uitnodigingsmail.verstuur_herstelmail(
+            naam="Irfan", e_mail="i@x.nl", token="t0k", verloopt_op=datetime.now(UTC), activatiecode="ABCD-EFGH"
+        )
+        assert "web-versie op je beginscherm" in mails[0]["tekst"]
+
+    def test_met_geschikte_play_versie_vervalt_de_zin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "store_link_android", "https://play.google.com/store/apps/details?id=nl.x")
+        monkeypatch.setattr(settings, "store_app_versie_android", "1.1")
+        tekst = _app_mail(monkeypatch)
+        assert "Android (Google Play): https://play.google.com" in tekst
+        assert "web-versie op je beginscherm" not in tekst
+        assert uitnodigingsmail.android_web_regel() == ""
+

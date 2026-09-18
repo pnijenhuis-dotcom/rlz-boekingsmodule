@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.auth.normalisatie import normaliseer_e_mail
-from app.auth.rollen import is_externe_app_rol
+from app.auth.rollen import is_externe_app_rol, rolgroep
 from app.config import settings
 from app.db.audit import record_audit_event
 from app.db.models import (
@@ -948,10 +948,23 @@ def _weiger_systeem_actor(doel_gebruiker_id: uuid.UUID) -> None:
         raise AuthError("De systeemgebruiker kan niet gewijzigd worden")
 
 
+class RolWisselNietToegestaan(AuthError):
+    """Rolwissel tussen auth-model-groepen (kantoor ↔ veld ↔ accordeur) — leesbare 409 in de router (18-09)."""
+
+
 def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol: GebruikerRol) -> None:
     """Hard (CLAUDE.md): niemand muteert zijn eigen rol, ook een Beheerder niet. Beheerder-only
     afgedwongen door de router-dependency; hier alleen de self-mutation-check, want die geldt
-    onvoorwaardelijk — ook als een toekomstige aanroeper deze functie ooit los aanroept."""
+    onvoorwaardelijk — ook als een toekomstige aanroeper deze functie ooit los aanroept.
+
+    Rol wijzigen zonder heruitnodiging (Peter 18-09, casus ZZP'er → uitvoerder): een wissel BINNEN de veldrollen
+    (ZZP'er ↔ uitvoerder ↔ detacheerder) of binnen de kantoorrollen is toegestaan — account, toestel(len),
+    toegangscode, scope, weekstaten en keuringen blijven aan de gebruiker hangen; alleen de rechten in de app
+    veranderen (de app leest de rol per request uit de DB via deps.get_current_gebruiker en bij de volgende
+    token-verversing uit `gebruiker.rol`). Een wissel TUSSEN groepen (kantoor ↔ veld/accordeur) is een ander
+    auth-model (wachtwoord + TOTP/passkey vs. toestelbinding + toegangscode) en wordt geweigerd mét leesbare reden
+    (router: 409). Audit: DB-trigger `trg_audit_gebruiker_rol_wijziging` (migratie 0002) legt `rol_wijziging`
+    oud→nieuw vast."""
     if actor_id == doel_gebruiker_id:
         raise AuthError("Kan de eigen rol niet wijzigen")
     _weiger_systeem_actor(doel_gebruiker_id)
@@ -961,6 +974,14 @@ def wijzig_rol(*, actor_id: uuid.UUID, doel_gebruiker_id: uuid.UUID, nieuwe_rol:
             raise AuthError("Onbekende gebruiker")
         if gebruiker.status == GebruikerStatus.GEARCHIVEERD:
             raise AuthError("Gebruiker is gearchiveerd — dearchiveer eerst")
+        oude_groep, nieuwe_groep = rolgroep(gebruiker.rol), rolgroep(nieuwe_rol)
+        if oude_groep != nieuwe_groep:
+            raise RolWisselNietToegestaan(
+                f"Rolwissel van {gebruiker.rol.value} ({oude_groep}) naar {nieuwe_rol.value} ({nieuwe_groep}) "
+                "kan niet: "
+                "een ander inlogmodel (kantoor = wachtwoord + TOTP/passkey; veld/accordeur = toestelbinding + "
+                "toegangscode). Nodig de persoon uit voor de nieuwe rol en archiveer het oude account."
+            )
         gebruiker.rol = nieuwe_rol
 
 

@@ -39,6 +39,7 @@ from app.uren.models import (
     PlanningToewijzing,
     ProjectDocument,
     ProjectSpecificatie,
+    ProjectStaffel,
     UrenProjectToewijzing,
     VeldwerkerCrediteur,
     Weekstaat,
@@ -167,6 +168,8 @@ class UitvoerderProjectKaart:
     huurtijd_omschrijving: str | None
     meerwerk_gemeld: int
     te_keuren: int
+    # 18-09 (feedback uitvoerder punt 3): álle actieve projecten; True = gekoppeld via planning/weekstaat (bovenaan).
+    gekoppeld: bool = True
 
 
 @dataclass(frozen=True)
@@ -270,8 +273,9 @@ def _vereis_namens_of_zelf(actor_id: uuid.UUID, zzper_id: uuid.UUID) -> tuple[Ge
     with scoped_session(None, actor_id=actor_id) as session:
         actor = _gebruiker(session, actor_id)
         if actor_id == zzper_id:
-            if actor.rol != GebruikerRol.ZZPER:
-                raise GeenToegang("Alleen een ZZP'er heeft eigen weekstaten")
+            # 18-09 (feedback uitvoerder blok C): ook een uitvoerder heeft eigen weekstaten.
+            if actor.rol not in service.INVULLER_ROLLEN:
+                raise GeenToegang("Alleen een ZZP'er of uitvoerder heeft eigen weekstaten")
             return actor.rol, actor_id
         if actor.rol != GebruikerRol.DETACHEERDER:
             raise GeenToegang("Alleen de ZZP'er zelf of een gekoppelde detacheerder mag dit")
@@ -502,6 +506,17 @@ class WeekOverzichtKaart:
 
 
 @dataclass(frozen=True)
+class LaatsteRegel:
+    """Run A 18-09 "kopieer vorige regel": de laatste dagregel van deze gebruiker op dit project over álle weken."""
+
+    datum: date
+    uren: Decimal
+    m2: Decimal | None
+    opmerking: str | None
+    doorfactureren: bool
+
+
+@dataclass(frozen=True)
 class WeekProjectKaart:
     administratie_id: uuid.UUID
     administratie_naam: str | None
@@ -520,6 +535,17 @@ class WeekProjectKaart:
     goedgekeurd_door_naam: str | None
     afgekeurd_door_naam: str | None
     afkeur_reden: str | None
+    # Project-eerst (Peter 18-09): kaartinhoud — uren per dag (ISO-datum → uren, alleen dagen mét regel),
+    # laatste omschrijving, aantal dagen "niet doorfactureren", projectdefault, eigen meerwerkmeldingen deze week.
+    dag_uren: dict[str, Decimal] = field(default_factory=dict)
+    laatste_omschrijving: str | None = None
+    dagen_niet_doorfactureren: int = 0
+    doorfactureren_standaard: bool = True
+    meerwerk_aantal: int = 0
+    # Run A 18-09: laatste regel op dit project (over álle weken), regels in DEZE week zonder m², contract-m² (specs).
+    laatste_regel: LaatsteRegel | None = None
+    dagen_zonder_m2: int = 0
+    contract_m2: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -551,6 +577,15 @@ class _WeekItem:
     afkeur_reden: str | None = None
     # Kantoor-signaal blok A 06-09: geplande week buiten het venster waarvoor een herinnering is verzonden.
     herinnerd: bool = False
+    # Project-eerst (Peter 18-09): kaartinhoud, alleen gevuld door week_projecten_zzp.
+    dag_uren: dict[str, Decimal] = field(default_factory=dict)
+    laatste_omschrijving: str | None = None
+    dagen_niet_doorfactureren: int = 0
+    doorfactureren_standaard: bool = True
+    meerwerk_aantal: int = 0
+    laatste_regel: LaatsteRegel | None = None
+    dagen_zonder_m2: int = 0
+    contract_m2: Decimal | None = None
 
     @property
     def gepland(self) -> bool:
@@ -570,20 +605,47 @@ def _planning_stand(
     per (administratie, project) samengevoegd — over de administraties mét opt-in in de scope."""
     stand: dict[tuple[int, int], dict[tuple[uuid.UUID, uuid.UUID], _WeekItem]] = {}
 
+    # Projectnaam + soort werk worden ná het verzamelen in ÉÉN query per administratie ingevuld (set-based; vóór 18-09
+    # twee `session.get`'s per item → het aantal statements groeide mee met het aantal kaarten — querytelling-meetlat
+    # `tests/uren/test_project_eerst_18_09.py`).
+    nieuwe_items: dict[uuid.UUID, list[_WeekItem]] = {}
+
     def item(session, administratie: Administratie, week: tuple[int, int], project_id: uuid.UUID) -> _WeekItem:
         per_week = stand.setdefault(week, {})
         sleutel = (administratie.id, project_id)
         if sleutel not in per_week:
-            project = session.get(ProjectCache, (project_id, administratie.id))
-            spec = session.get(ProjectSpecificatie, (project_id, administratie.id))
             per_week[sleutel] = _WeekItem(
                 administratie_id=administratie.id,
                 administratie_naam=administratie.naam,
                 project_id=project_id,
-                project_naam=project.naam if project else None,
-                soort_werk=spec.soort_werk if spec else None,
+                project_naam=None,
+                soort_werk=None,
             )
+            nieuwe_items.setdefault(administratie.id, []).append(per_week[sleutel])
         return per_week[sleutel]
+
+    def vul_projectgegevens(session, administratie: Administratie) -> None:
+        items = nieuwe_items.pop(administratie.id, [])
+        if not items:
+            return
+        rijen = session.execute(
+            select(ProjectCache.id, ProjectCache.naam, ProjectSpecificatie.soort_werk, ProjectSpecificatie.contract_m2)
+            .outerjoin(
+                ProjectSpecificatie,
+                (ProjectSpecificatie.project_id == ProjectCache.id)
+                & (ProjectSpecificatie.administratie_id == ProjectCache.administratie_id),
+            )
+            .where(
+                ProjectCache.administratie_id == administratie.id,
+                ProjectCache.id.in_({it.project_id for it in items}),
+            )
+        ).all()
+        gegevens = {r[0]: (r[1], r[2], r[3]) for r in rijen}
+        for it in items:
+            naam, soort_werk, contract_m2 = gegevens.get(it.project_id, (None, None, None))
+            it.project_naam = naam
+            it.soort_werk = soort_werk
+            it.contract_m2 = contract_m2
 
     # Kantoor-signaal blok A 06-09: een week buiten het venster waarvoor het kantoor een herinnering
     # heeft VERZONDEN wordt weer geladen (planning + staat) zodat de herinnering "open de app" een
@@ -647,6 +709,7 @@ def _planning_stand(
                 it.goedgekeurd_door_naam = namen.get(staat.goedgekeurd_door) if staat.goedgekeurd_door else None
                 it.afgekeurd_door_naam = namen.get(staat.afgekeurd_door) if staat.afgekeurd_door else None
                 it.afkeur_reden = staat.afkeur_reden if staat.status == WeekstaatStatus.CORRIGEREN.value else None
+            vul_projectgegevens(session, administratie)
     return stand
 
 
@@ -714,14 +777,175 @@ def weken_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID, vandaag: date | None 
 
 
 def week_projecten_zzp(
-    *, zzper_id: uuid.UUID, actor_id: uuid.UUID, jaar: int, weeknummer: int
+    *, zzper_id: uuid.UUID, actor_id: uuid.UUID, jaar: int, weeknummer: int, alles: bool = False
 ) -> list[WeekProjectKaart]:
-    """Eén week: de projecten waar de ZZP'er die week is ingepland (A1) plus de projecten waarop die
-    week al een staat bestaat; te doen bovenaan, dan op naam."""
+    """Eén week als PROJECTKAARTEN (project-eerst, Peter 18-09 — "eerst het project selecteren en dan de
+    uren-/meerwerkknop"; bouwnorm `mockup/uren-uitvoerder-v2.html` scherm ①): standaard de geplande projecten van de
+    week ∪ de projecten waarop die week al een staat (uren) staat ∪ de projecten waarop deze gebruiker die week
+    meerwerk meldde; `alles=True` = ÁLLE actieve projecten van de administraties mét opt-in in de scope (de
+    keuzelijst achter "+ Ander project toevoegen aan mijn week", 18-09 blok C — de rest is "niet gepland",
+    informatief, geen blokkade). Per kaart reizen de kaartvelden mee: uren per dag, laatste omschrijving, aantal
+    dagen "niet doorfactureren", projectdefault doorfactureren en het aantal eigen meerwerkmeldingen. Set-based: per
+    administratie een vast aantal statements (projecten [alleen bij alles], dagregels van de staten in de week,
+    meerwerk in de week, verrekenbare staffels, laatste regel per project [run A 18-09]) — querytelling-meetlat
+    `tests/uren/test_project_eerst_18_09.py`.
+    Volgorde: te doen → gepland → mét staat → naam."""
     rol, scope_actor = _vereis_namens_of_zelf(actor_id, zzper_id)
     maandag, zondag = service.week_grenzen(jaar, weeknummer)
-    stand = _planning_stand(zzper_id, _administraties_met_opt_in(scope_actor, rol), van=maandag, tot=zondag)
-    items = list(stand.get((jaar, weeknummer), {}).values())
+    administraties = _administraties_met_opt_in(scope_actor, rol)
+    stand = _planning_stand(zzper_id, administraties, van=maandag, tot=zondag)
+    per_week = dict(stand.get((jaar, weeknummer), {}))
+    for administratie in administraties:
+        with scoped_session(administratie.id) as session:
+            if alles:
+                rijen = session.execute(
+                    select(
+                        ProjectCache.id,
+                        ProjectCache.naam,
+                        ProjectSpecificatie.soort_werk,
+                        ProjectSpecificatie.contract_m2,
+                    )
+                    .outerjoin(
+                        ProjectSpecificatie,
+                        (ProjectSpecificatie.project_id == ProjectCache.id)
+                        & (ProjectSpecificatie.administratie_id == ProjectCache.administratie_id),
+                    )
+                    .where(
+                        ProjectCache.administratie_id == administratie.id,
+                        ProjectCache.is_actief.is_(True),
+                        ProjectCache.verdwenen_uit_bron_op.is_(None),
+                    )
+                ).all()
+                for project_id, naam, soort_werk, contract_m2 in rijen:
+                    per_week.setdefault(
+                        (administratie.id, project_id),
+                        _WeekItem(
+                            administratie_id=administratie.id,
+                            administratie_naam=administratie.naam,
+                            project_id=project_id,
+                            project_naam=naam,
+                            soort_werk=soort_werk,
+                            contract_m2=contract_m2,
+                        ),
+                    )
+            # Eigen meerwerk deze week → kaart (ook zonder uren), teller per project. Alleen op actieve projecten.
+            meerwerk_rijen = session.execute(
+                select(
+                    Meerwerk.project_id,
+                    func.count(),
+                    ProjectCache.naam,
+                    ProjectSpecificatie.soort_werk,
+                    ProjectSpecificatie.contract_m2,
+                )
+                .join(
+                    ProjectCache,
+                    (ProjectCache.id == Meerwerk.project_id)
+                    & (ProjectCache.administratie_id == Meerwerk.administratie_id),
+                )
+                .outerjoin(
+                    ProjectSpecificatie,
+                    (ProjectSpecificatie.project_id == ProjectCache.id)
+                    & (ProjectSpecificatie.administratie_id == ProjectCache.administratie_id),
+                )
+                .where(
+                    Meerwerk.administratie_id == administratie.id,
+                    Meerwerk.gemeld_door == zzper_id,
+                    Meerwerk.datum_uitgevoerd >= maandag,
+                    Meerwerk.datum_uitgevoerd <= zondag,
+                    ProjectCache.is_actief.is_(True),
+                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                )
+                .group_by(
+                    Meerwerk.project_id,
+                    ProjectCache.naam,
+                    ProjectSpecificatie.soort_werk,
+                    ProjectSpecificatie.contract_m2,
+                )
+            ).all()
+            for project_id, aantal, naam, soort_werk, contract_m2 in meerwerk_rijen:
+                it = per_week.setdefault(
+                    (administratie.id, project_id),
+                    _WeekItem(
+                        administratie_id=administratie.id,
+                        administratie_naam=administratie.naam,
+                        project_id=project_id,
+                        project_naam=naam,
+                        soort_werk=soort_werk,
+                        contract_m2=contract_m2,
+                    ),
+                )
+                it.meerwerk_aantal = int(aantal)
+            # Dagregels van de staten in deze week (kaartinhoud): uren per dag, laatste omschrijving,
+            # niet-doorfactureren, regels zonder m² (run A 18-09: zachte hint, geen signaal).
+            items_hier = [it for (adm_id, _), it in per_week.items() if adm_id == administratie.id]
+            staat_ids = [it.weekstaat_id for it in items_hier if it.weekstaat_id is not None]
+            if staat_ids:
+                per_staat = {it.weekstaat_id: it for it in items_hier if it.weekstaat_id is not None}
+                dagregels = session.execute(
+                    select(
+                        WeekstaatDag.weekstaat_id,
+                        WeekstaatDag.datum,
+                        WeekstaatDag.uren,
+                        WeekstaatDag.m2,
+                        WeekstaatDag.opmerking,
+                        WeekstaatDag.doorfactureren,
+                    )
+                    .where(WeekstaatDag.weekstaat_id.in_(staat_ids))
+                    .order_by(WeekstaatDag.datum)
+                ).all()
+                for staat_id, datum, uren, m2, opmerking, doorfactureren in dagregels:
+                    it = per_staat[staat_id]
+                    it.dag_uren[datum.isoformat()] = Decimal(uren)
+                    if opmerking:
+                        it.laatste_omschrijving = opmerking  # gesorteerd op datum → de laatste wint
+                    if doorfactureren is False:
+                        it.dagen_niet_doorfactureren += 1
+                    if m2 is None:
+                        it.dagen_zonder_m2 += 1
+            # Projectdefault doorfactureren (blok B) voor álle kaarten van deze administratie in één statement.
+            project_ids = [it.project_id for it in items_hier]
+            if project_ids:
+                verrekenbaar = set(
+                    session.scalars(
+                        select(ProjectStaffel.project_id)
+                        .where(
+                            ProjectStaffel.administratie_id == administratie.id,
+                            ProjectStaffel.project_id.in_(project_ids),
+                            ProjectStaffel.verrekenbaar.is_(True),
+                        )
+                        .distinct()
+                    ).all()
+                )
+                for it in items_hier:
+                    it.doorfactureren_standaard = it.project_id in verrekenbaar
+                # Laatste regel per project over ÁLLE weken (run A 18-09 "kopieer vorige regel"): één statement per
+                # administratie — DISTINCT ON (project) gesorteerd op datum aflopend (één staat per project × week en
+                # één regel per datum → de sortering is eenduidig).
+                laatste_rijen = session.execute(
+                    select(
+                        Weekstaat.project_id,
+                        WeekstaatDag.datum,
+                        WeekstaatDag.uren,
+                        WeekstaatDag.m2,
+                        WeekstaatDag.opmerking,
+                        WeekstaatDag.doorfactureren,
+                    )
+                    .join(Weekstaat, Weekstaat.id == WeekstaatDag.weekstaat_id)
+                    .where(
+                        Weekstaat.administratie_id == administratie.id,
+                        Weekstaat.gebruiker_id == zzper_id,
+                        Weekstaat.project_id.in_(project_ids),
+                    )
+                    .distinct(Weekstaat.project_id)
+                    .order_by(Weekstaat.project_id, WeekstaatDag.datum.desc())
+                ).all()
+                laatste_per_project = {
+                    r[0]: LaatsteRegel(datum=r[1], uren=Decimal(r[2]), m2=r[3], opmerking=r[4], doorfactureren=r[5])
+                    for r in laatste_rijen
+                }
+                for it in items_hier:
+                    it.laatste_regel = laatste_per_project.get(it.project_id)
+    items = list(per_week.values())
     kaarten = [
         WeekProjectKaart(
             administratie_id=it.administratie_id,
@@ -741,10 +965,18 @@ def week_projecten_zzp(
             goedgekeurd_door_naam=it.goedgekeurd_door_naam,
             afgekeurd_door_naam=it.afgekeurd_door_naam,
             afkeur_reden=it.afkeur_reden,
+            dag_uren=dict(it.dag_uren),
+            laatste_omschrijving=it.laatste_omschrijving,
+            dagen_niet_doorfactureren=it.dagen_niet_doorfactureren,
+            doorfactureren_standaard=it.doorfactureren_standaard,
+            meerwerk_aantal=it.meerwerk_aantal,
+            laatste_regel=it.laatste_regel,
+            dagen_zonder_m2=it.dagen_zonder_m2,
+            contract_m2=it.contract_m2,
         )
         for it in items
     ]
-    kaarten.sort(key=lambda k: (not k.te_doen, not k.gepland, k.project_naam or ""))
+    kaarten.sort(key=lambda k: (not k.te_doen, not k.gepland, k.weekstaat_id is None, k.project_naam or ""))
     return kaarten
 
 
@@ -775,6 +1007,14 @@ def projecten_keuze_zzp(*, zzper_id: uuid.UUID, actor_id: uuid.UUID) -> list[Pro
                 )
     keuzes.sort(key=lambda k: (k.project_naam or "", k.administratie_naam or ""))
     return keuzes
+
+
+def doorfactureren_standaard_voor(*, administratie_id: uuid.UUID, project_id: uuid.UUID, actor_id: uuid.UUID) -> bool:
+    """Projectdefault voor de doorfactureren-dropdown (18-09 blok B) — óók zolang er nog geen staat is."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        service._administratie_met_opt_in(session, administratie_id)
+        service._project(session, administratie_id, project_id)
+        return service.standaard_doorfactureren(session, administratie_id, project_id)
 
 
 def weekstaat_zoeken(
@@ -877,13 +1117,107 @@ def _vereis_uitvoerder(actor_id: uuid.UUID) -> None:
 
 
 def te_keuren(*, uitvoerder_id: uuid.UUID) -> list[TeKeurenItem]:
-    """Te-keuren-lijst (mockup keurlijst): ingediende weekstaten op de projecten waar deze
-    uitvoerder aan gekoppeld is, oudste indiening eerst."""
+    """Te-keuren-lijst (mockup keurlijst): ÁLLE ingediende weekstaten van de administraties mét opt-in in de scope van
+    deze uitvoerder — behalve zijn eigen staten (vier-ogen) — oudste indiening eerst. Besluit Peter 18-09 (letterlijk):
+    "uitvoerder moet gewoon alle ingediende urenstaten controleren, los van welk project hij gepland staat" — de
+    projectkoppeling (`uren_project_toewijzing`) stuurt alleen nog "gepland bovenaan", nooit de keurbevoegdheid.
+    Guard: een nieuw uitvoerder-account zonder koppelingen ziet direct alles (`tests/uren/test_beoordelen_18_09.py`)."""
     _vereis_uitvoerder(uitvoerder_id)
     items: list[TeKeurenItem] = []
     for administratie in _administraties_met_opt_in(uitvoerder_id, GebruikerRol.UITVOERDER):
         with scoped_session(administratie.id) as session:
-            project_ids = list(
+            items.extend(
+                _ingediende_staten(session, administratie, uitgezonderd_gebruiker_id=uitvoerder_id)
+            )
+    items.sort(key=lambda i: (i.ingediend_op is None, i.ingediend_op))
+    return items
+
+
+def _ingediende_staten(
+    session, administratie: Administratie, *, uitgezonderd_gebruiker_id: uuid.UUID | None = None
+) -> list[TeKeurenItem]:
+    """Ingediende weekstaten van één administratie als keur-items (set-based: staten, sommen, namen, projecten in
+    vier statements) — gedeeld door de uitvoerder-keurlijst en de kantoor-tab Beoordelen › Urenstaten, zodat de
+    chip-teller (`uren_stand.urenstaten_wachten_op_keuring`) en de tab dezelfde definitie dragen."""
+    voorwaarden = [
+        Weekstaat.administratie_id == administratie.id,
+        Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
+    ]
+    if uitgezonderd_gebruiker_id is not None:
+        # 18-09: een uitvoerder schrijft nu ook eigen weekstaten — die keurt hij nooit zelf.
+        voorwaarden.append(Weekstaat.gebruiker_id != uitgezonderd_gebruiker_id)
+    staten = list(session.scalars(select(Weekstaat).where(*voorwaarden)))
+    if not staten:
+        return []
+    sommen = _dag_sommen(session, [s.id for s in staten])
+    namen = service._namen(session, {s.gebruiker_id for s in staten} | {s.ingediend_door for s in staten})
+    projectnamen = dict(
+        session.execute(
+            select(ProjectCache.id, ProjectCache.naam).where(
+                ProjectCache.administratie_id == administratie.id,
+                ProjectCache.id.in_({s.project_id for s in staten}),
+            )
+        ).all()
+    )
+    items: list[TeKeurenItem] = []
+    for staat in staten:
+        aantal, uren, m2, _ = sommen.get(staat.id, (0, Decimal("0"), Decimal("0"), None))
+        items.append(
+            TeKeurenItem(
+                weekstaat_id=staat.id,
+                administratie_id=administratie.id,
+                administratie_naam=administratie.naam,
+                zzper_id=staat.gebruiker_id,
+                zzper_naam=namen.get(staat.gebruiker_id),
+                project_id=staat.project_id,
+                project_naam=projectnamen.get(staat.project_id),
+                jaar=staat.jaar,
+                weeknummer=staat.weeknummer,
+                totaal_uren=uren,
+                totaal_m2=m2,
+                ingediend_op=staat.ingediend_op,
+                ingediend_namens=staat.ingediend_door is not None and staat.ingediend_door != staat.gebruiker_id,
+                ingediend_door_naam=namen.get(staat.ingediend_door) if staat.ingediend_door else None,
+            )
+        )
+    return items
+
+
+@dataclass(frozen=True)
+class KantoorWeekstaten:
+    items: list[TeKeurenItem]
+    #: Laatste keuring (goed- óf afkeuring) in deze administratie — voor de lege stand "Geen urenstaten te beoordelen —
+    #: laatste keuring <datum>" (KP7: lege stand = actie/context, geen kale regel).
+    laatste_keuring_op: object | None
+
+
+def kantoor_weekstaten(*, administratie_id: uuid.UUID, actor_id: uuid.UUID) -> KantoorWeekstaten:
+    """Kantoor-tab Beoordelen › Urenstaten (bug 18-09: chip "N meerwerk/urenstaten te beoordelen" landde op een lege
+    Meerwerk-pagina): álle ingediende weekstaten van de administratie mét dezelfde definitie als de teller
+    `uren_stand.urenstaten_wachten_op_keuring` (guard-test chip == tab). Module-recht + scope: router + service."""
+    with scoped_session(administratie_id, actor_id=actor_id) as session:
+        administratie = service._administratie_met_opt_in(session, administratie_id)
+        service._vereis_meerwerk_recht(session, actor_id)
+        items = _ingediende_staten(session, administratie)
+        laatste = session.execute(
+            select(func.max(func.greatest(Weekstaat.goedgekeurd_op, Weekstaat.afgekeurd_op))).where(
+                Weekstaat.administratie_id == administratie_id
+            )
+        ).scalar_one()
+    items.sort(key=lambda i: (i.ingediend_op is None, i.ingediend_op))
+    return KantoorWeekstaten(items=items, laatste_keuring_op=laatste)
+
+
+def uitvoerder_projecten(*, uitvoerder_id: uuid.UUID) -> list[UitvoerderProjectKaart]:
+    """Projectenlijst (mockup projecten): sinds 18-09 (feedback uitvoerder punt 3) ÁLLE actieve projecten van de
+    administraties mét opt-in in de scope — gekoppelde projecten (planning/weekstaat) bovenaan, de rest eronder —
+    mét spec-samenvatting, m²-voortgang uit de goedgekeurde staten en meerwerk-/keur-tellers (eigen staten tellen
+    niet als te keuren). Set-based per administratie: projecten+specs in één query, tellers gegroepeerd."""
+    _vereis_uitvoerder(uitvoerder_id)
+    kaarten: list[UitvoerderProjectKaart] = []
+    for administratie in _administraties_met_opt_in(uitvoerder_id, GebruikerRol.UITVOERDER):
+        with scoped_session(administratie.id) as session:
+            gekoppeld = set(
                 session.scalars(
                     select(UrenProjectToewijzing.project_id).where(
                         UrenProjectToewijzing.administratie_id == administratie.id,
@@ -891,109 +1225,87 @@ def te_keuren(*, uitvoerder_id: uuid.UUID) -> list[TeKeurenItem]:
                     )
                 )
             )
+            rijen = session.execute(
+                select(ProjectCache.id, ProjectCache.naam, ProjectSpecificatie)
+                .outerjoin(
+                    ProjectSpecificatie,
+                    (ProjectSpecificatie.project_id == ProjectCache.id)
+                    & (ProjectSpecificatie.administratie_id == ProjectCache.administratie_id),
+                )
+                .where(
+                    ProjectCache.administratie_id == administratie.id,
+                    ProjectCache.is_actief.is_(True),
+                    ProjectCache.verdwenen_uit_bron_op.is_(None),
+                )
+            ).all()
+            project_ids = [r[0] for r in rijen]
+            # Gekoppelde projecten die niet (meer) actief zijn blijven zichtbaar zolang de koppeling staat (oud gedrag).
+            for pid in gekoppeld - set(project_ids):
+                project = session.get(ProjectCache, (pid, administratie.id))
+                spec = session.get(ProjectSpecificatie, (pid, administratie.id))
+                rijen.append((pid, project.naam if project else None, spec))
+                project_ids.append(pid)
             if not project_ids:
                 continue
-            staten = list(
-                session.scalars(
-                    select(Weekstaat).where(
+            meerwerk_per_project = dict(
+                session.execute(
+                    select(Meerwerk.project_id, func.count())
+                    .where(
+                        Meerwerk.administratie_id == administratie.id,
+                        Meerwerk.project_id.in_(project_ids),
+                        Meerwerk.status == MeerwerkStatus.GEMELD.value,
+                    )
+                    .group_by(Meerwerk.project_id)
+                ).all()
+            )
+            te_keuren_per_project = dict(
+                session.execute(
+                    select(Weekstaat.project_id, func.count())
+                    .where(
                         Weekstaat.administratie_id == administratie.id,
                         Weekstaat.project_id.in_(project_ids),
                         Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
+                        Weekstaat.gebruiker_id != uitvoerder_id,
                     )
-                )
+                    .group_by(Weekstaat.project_id)
+                ).all()
             )
-            sommen = _dag_sommen(session, [s.id for s in staten])
-            namen = service._namen(session, {s.gebruiker_id for s in staten} | {s.ingediend_door for s in staten})
-            for staat in staten:
-                aantal, uren, m2, _ = sommen.get(staat.id, (0, Decimal("0"), Decimal("0"), None))
-                project = session.get(ProjectCache, (staat.project_id, administratie.id))
-                items.append(
-                    TeKeurenItem(
-                        weekstaat_id=staat.id,
-                        administratie_id=administratie.id,
-                        administratie_naam=administratie.naam,
-                        zzper_id=staat.gebruiker_id,
-                        zzper_naam=namen.get(staat.gebruiker_id),
-                        project_id=staat.project_id,
-                        project_naam=project.naam if project else None,
-                        jaar=staat.jaar,
-                        weeknummer=staat.weeknummer,
-                        totaal_uren=uren,
-                        totaal_m2=m2,
-                        ingediend_op=staat.ingediend_op,
-                        ingediend_namens=staat.ingediend_door is not None
-                        and staat.ingediend_door != staat.gebruiker_id,
-                        ingediend_door_naam=namen.get(staat.ingediend_door) if staat.ingediend_door else None,
-                    )
-                )
-    items.sort(key=lambda i: (i.ingediend_op is None, i.ingediend_op))
-    return items
-
-
-def uitvoerder_projecten(*, uitvoerder_id: uuid.UUID) -> list[UitvoerderProjectKaart]:
-    """Projectenlijst (mockup projecten): toewijzingen mét spec-samenvatting, m²-voortgang uit
-    de goedgekeurde staten en meerwerk-/keur-tellers."""
-    _vereis_uitvoerder(uitvoerder_id)
-    kaarten: list[UitvoerderProjectKaart] = []
-    for administratie in _administraties_met_opt_in(uitvoerder_id, GebruikerRol.UITVOERDER):
-        with scoped_session(administratie.id) as session:
-            toewijzingen = list(
-                session.scalars(
-                    select(UrenProjectToewijzing).where(
-                        UrenProjectToewijzing.administratie_id == administratie.id,
-                        UrenProjectToewijzing.gebruiker_id == uitvoerder_id,
-                    )
-                )
-            )
-            for toewijzing in toewijzingen:
-                project = session.get(ProjectCache, (toewijzing.project_id, administratie.id))
-                spec = session.get(ProjectSpecificatie, (toewijzing.project_id, administratie.id))
-                meerwerk_gemeld = session.execute(
-                    select(func.count()).where(
-                        Meerwerk.administratie_id == administratie.id,
-                        Meerwerk.project_id == toewijzing.project_id,
-                        Meerwerk.status == MeerwerkStatus.GEMELD.value,
-                    )
-                ).scalar_one()
-                te_keuren_aantal = session.execute(
-                    select(func.count()).where(
-                        Weekstaat.administratie_id == administratie.id,
-                        Weekstaat.project_id == toewijzing.project_id,
-                        Weekstaat.status == WeekstaatStatus.INGEDIEND.value,
-                    )
-                ).scalar_one()
+            for project_id, naam, spec in rijen:
                 kaarten.append(
                     UitvoerderProjectKaart(
                         administratie_id=administratie.id,
                         administratie_naam=administratie.naam,
-                        project_id=toewijzing.project_id,
-                        project_naam=project.naam if project else None,
+                        project_id=project_id,
+                        project_naam=naam,
                         soort_werk=spec.soort_werk if spec else None,
                         contract_m2=spec.contract_m2 if spec else None,
-                        gebouwd_m2=_gebouwd_m2(session, administratie.id, toewijzing.project_id),
+                        gebouwd_m2=_gebouwd_m2(session, administratie.id, project_id),
                         looptijd_tot=spec.looptijd_tot if spec else None,
                         huurtijd_omschrijving=spec.huurtijd_omschrijving if spec else None,
-                        meerwerk_gemeld=meerwerk_gemeld,
-                        te_keuren=te_keuren_aantal,
+                        meerwerk_gemeld=int(meerwerk_per_project.get(project_id, 0)),
+                        te_keuren=int(te_keuren_per_project.get(project_id, 0)),
+                        gekoppeld=project_id in gekoppeld,
                     )
                 )
-    kaarten.sort(key=lambda k: k.project_naam or "")
+    kaarten.sort(key=lambda k: (not k.gekoppeld, k.project_naam or ""))
     return kaarten
 
 
 def projectdetail_uitvoerder(
     *, administratie_id: uuid.UUID, project_id: uuid.UUID, actor_id: uuid.UUID
 ) -> ProjectDetail:
-    """Projectdetail (mockup projectdetail): specs + documenten + meerwerklijst — alleen voor
-    een uitvoerder met toewijzing (de detacheerder ziet dit bewust nooit, besluit 21-08)."""
+    """Projectdetail (mockup projectdetail): specs + documenten + meerwerklijst — alleen voor een uitvoerder (de
+    detacheerder ziet dit bewust nooit, besluit 21-08). Sinds 18-09 (feedback uitvoerder punt 3) élk actief project
+    van een administratie in zijn scope, óf een project waaraan hij gekoppeld is — de koppeling is een filter."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         service._administratie_met_opt_in(session, administratie_id)
         actor = _gebruiker(session, actor_id)
-        if actor.rol != GebruikerRol.UITVOERDER or not _heeft_toewijzing(
-            session, administratie_id, actor_id, project_id
-        ):
-            raise GeenToegang("Alleen een uitvoerder van dit project ziet de projectinhoud")
+        if actor.rol != GebruikerRol.UITVOERDER:
+            raise GeenToegang("Alleen een uitvoerder ziet de projectinhoud")
         project = session.get(ProjectCache, (project_id, administratie_id))
+        actief = project is not None and project.is_actief is True and project.verdwenen_uit_bron_op is None
+        if not actief and not _heeft_toewijzing(session, administratie_id, actor_id, project_id):
+            raise GeenToegang("Dit project is niet (meer) actief en je bent er niet aan gekoppeld")
         spec = session.get(ProjectSpecificatie, (project_id, administratie_id))
         documenten = list(
             session.scalars(

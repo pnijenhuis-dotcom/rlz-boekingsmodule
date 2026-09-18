@@ -12,6 +12,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import Engine, text
 
+from app.auth import service as auth_service
 from app.uren import service
 from tests.uren.conftest import maak_gebruiker, maak_project
 
@@ -145,12 +146,15 @@ class TestKeuren:
         )
         assert herhaald.goedgekeurd_op == goed.goedgekeurd_op
 
-    def test_uitvoerder_zonder_toewijzing_keurt_niet(
-        self, admin_engine, administratie_id, project_id, gekoppelde_zzper, uitvoerder
+    def test_uitvoerder_zonder_toewijzing_keurt_wel(
+        self, admin_engine, administratie_id, project_id, gekoppelde_zzper, uitvoerder, beheerder_id
     ):
+        """Besluit Peter 18-09: de uitvoerder keurt álle ingediende urenstaten van de administratie, los van planning —
+        de projectkoppeling is geen keurpoort meer (was: GeenToegang "niet aan dit project gekoppeld"); scope wél."""
+        auth_service.voeg_scope_toe(actor_id=beheerder_id, doel_gebruiker_id=uitvoerder, administratie_id=administratie_id)
         staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)
-        with pytest.raises(service.GeenToegang, match="niet aan dit project gekoppeld"):
-            service.keur_week_goed(administratie_id=administratie_id, weekstaat_id=staat.id, actor_id=uitvoerder)
+        goed = service.keur_week_goed(administratie_id=administratie_id, weekstaat_id=staat.id, actor_id=uitvoerder)
+        assert goed.status == "goedgekeurd"
 
     def test_zzper_keurt_nooit(self, administratie_id, project_id, gekoppelde_zzper):
         staat = _dien_in(administratie_id, gekoppelde_zzper, project_id)

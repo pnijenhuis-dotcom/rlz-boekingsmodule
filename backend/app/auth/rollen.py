@@ -37,3 +37,15 @@ def is_kantoorrol(rol: GebruikerRol) -> bool:
 
 def is_veldrol(rol: GebruikerRol) -> bool:
     return rol in VELD_ROLLEN
+
+
+def rolgroep(rol: GebruikerRol) -> str:
+    """Auth-model-groep van een rol (rol wijzigen, Peter 18-09): `kantoor` (wachtwoord + TOTP / passkey, kantoor-web),
+    `veld` (toestelbinding + toegangscode, veld-app) en `accordeur` (toestelbinding + toegangscode, accordeur-app, eigen
+    scope-semantiek). Een rolwissel BINNEN een groep behoudt account, toestellen, toegangscode en scope; een wissel
+    TUSSEN groepen is een ander auth-model en wordt geweigerd (`service.wijzig_rol` → 409)."""
+    if rol in VELD_ROLLEN:
+        return "veld"
+    if rol == GebruikerRol.KLANT_ACCORDEUR:
+        return "accordeur"
+    return "kantoor"

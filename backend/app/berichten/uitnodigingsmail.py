@@ -66,31 +66,58 @@ def versie_eis() -> str:
     )
 
 
+#: Android zonder geschikte Play-versie (SPOED 18-09, casus Edge-tablet): de web-versie op het beginscherm start
+#: als een echte app, houdt de sessie vast en heeft geen browser-terugknop die de app verlaat.
+ANDROID_WEB_INSTRUCTIE = (
+    "Android zonder app in Google Play? Open de link in Chrome of Edge en zet de web-versie op je beginscherm "
+    "(Chrome: menu ⋮ → 'Toevoegen aan startscherm'; Edge: menu ⋯ → 'Toevoegen aan telefoon') — dan blijft de app "
+    "ingelogd en start hij als een echte app."
+)
+
+
+def _android_geschikt() -> bool:
+    return any(label.startswith("Android") for label, _url in store_links(alleen_geschikt=True))
+
+
+def android_web_regel() -> str:
+    """Eén zin voor Android-gebruikers zolang er géén geschikte Play-versie is (18-09); lege string zodra die er is."""
+    return "" if _android_geschikt() else ANDROID_WEB_INSTRUCTIE
+
+
 def installatie_regels() -> str:
     """Stap 1 van de app-mail (16-09): geschikte store-links, anders de TestFlight-/interne-track-instructie, anders
-    (geen enkele listing) de neutrale regel. Sinds 17-09 altijd mét de versie-eis (casus Romy)."""
+    (geen enkele listing) de neutrale regel. Sinds 17-09 altijd mét de versie-eis (casus Romy); sinds 18-09 mét
+    de Android-web-regel zolang er geen geschikte Play-versie is."""
     geschikt = store_links(alleen_geschikt=True)
+    android = android_web_regel()
     if geschikt:
         return (
             "Download eerst de app op je telefoon — of update 'm als je 'm al hebt:\n"
             + "\n".join(f"   - {label}: {url}" for label, url in geschikt)
             + f"\n   {versie_eis()}"
+            + (f"\n   {android}" if android else "")
         )
     if store_links():
-        return f"Installeer de app op je telefoon. {TESTFLIGHT_INSTRUCTIE}"
-    return "Installeer de app op je telefoon (het kantoor stuurt je de installatielink)."
+        return f"Installeer de app op je telefoon. {TESTFLIGHT_INSTRUCTIE}" + (f" {android}" if android else "")
+    basis = "Installeer de app op je telefoon (het kantoor stuurt je de installatielink)."
+    return basis + (f" {android}" if android else "")
 
 
 def download_blok() -> str:
     """Blok "Download eerst de app" (herstelmail) — lege string zolang er geen GESCHIKTE store-link is (16-09: een
     store-versie die de app-auth nog niet draagt krijgt de TestFlight-instructie in plaats van een misleidende link)."""
     links = store_links(alleen_geschikt=True)
+    android = android_web_regel()
     if not links:
         if store_links():
-            return f"{TESTFLIGHT_INSTRUCTIE}\n\n"
-        return ""
+            return f"{TESTFLIGHT_INSTRUCTIE}" + (f" {android}" if android else "") + "\n\n"
+        return f"{android}\n\n" if android else ""
     regels = "\n".join(f"- {label}: {url}" for label, url in links)
-    return f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n\n"
+    return (
+        f"Download eerst de app op je telefoon en open daarna de link hieronder:\n{regels}\n"
+        + (f"{android}\n" if android else "")
+        + "\n"
+    )
 
 
 def app_activatie_stappen(*, link: str, verloopt_op: datetime, activatiecode: str | None, herstel: bool = False) -> str:

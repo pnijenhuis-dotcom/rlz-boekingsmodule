@@ -151,12 +151,17 @@ def _weekstaat_response(data: service.WeekstaatData) -> schemas.WeekstaatDto:
                 stempel_tot=d.stempel_tot,
                 stempel_onvolledig=d.stempel_onvolledig,
                 stempel_afwijking=d.stempel_afwijking,
+                doorfactureren=d.doorfactureren,
             )
             for d in data.dagen
         ],
         m2_geleverd_project=data.m2_geleverd_project,
         m2_gebouwd_project=data.m2_gebouwd_project,
         meer_gebouwd_dan_geleverd=data.meer_gebouwd_dan_geleverd,
+        doorfactureren_standaard=data.doorfactureren_standaard,
+        totaal_uren_niet_doorfactureren=data.totaal_uren_niet_doorfactureren,
+        totaal_m2_niet_doorfactureren=data.totaal_m2_niet_doorfactureren,
+        dagen_buiten_planning=data.dagen_buiten_planning,
         ingediend_op=data.ingediend_op,
         ingediend_door_naam=data.ingediend_door_naam,
         ingediend_namens=data.ingediend_namens,
@@ -250,16 +255,40 @@ def zzp_week_projecten(
     jaar: int,
     weeknummer: int,
     namens: uuid.UUID | None = None,
+    alles: bool = False,
     actor: CurrentGebruiker = Depends(vereis_veldrol),
 ) -> list[schemas.WeekProjectKaartDto]:
-    """Projecten in één week (A1 04-09): ingepland én/of met een bestaande staat."""
+    """Projectkaarten in één week (project-eerst, Peter 18-09): gepland ∪ mét staat ∪ mét eigen meerwerk;
+    `alles=true` = álle actieve projecten in de scope (keuzelijst "+ Ander project toevoegen aan mijn week")."""
     try:
         kaarten = overzichten.week_projecten_zzp(
-            zzper_id=namens or actor.id, actor_id=actor.id, jaar=jaar, weeknummer=weeknummer
+            zzper_id=namens or actor.id, actor_id=actor.id, jaar=jaar, weeknummer=weeknummer, alles=alles
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
-    return [schemas.WeekProjectKaartDto(**k.__dict__) for k in kaarten]
+    return [_week_project_kaart_response(k) for k in kaarten]
+
+
+def _week_project_kaart_response(k: overzichten.WeekProjectKaart) -> schemas.WeekProjectKaartDto:
+    velden = dict(k.__dict__)
+    laatste = velden.pop("laatste_regel")
+    return schemas.WeekProjectKaartDto(
+        **velden, laatste_regel=schemas.LaatsteRegelDto(**laatste.__dict__) if laatste is not None else None
+    )
+
+
+@router.get("/zzp/omschrijving-chips", response_model=schemas.OmschrijvingChipsDto)
+def zzp_omschrijving_chips(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(vereis_veldrol)
+) -> schemas.OmschrijvingChipsDto:
+    """Snelkeuze-chips voor het omschrijvingsveld (run A 18-09): veldrol + scope op de administratie + opt-in;
+    zonder opgeslagen lijst de standaardlijst uit de code."""
+    vereis_administratie_scope(administratie_id, actor)
+    try:
+        chips, is_standaard = service.omschrijving_chips_voor(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.OmschrijvingChipsDto(chips=chips, is_standaard=is_standaard)
 
 
 @router.get("/zzp/projecten-keuze", response_model=list[schemas.ProjectKeuzeDto])
@@ -293,9 +322,14 @@ def zzp_weekstaat_zoeken(
             weeknummer=weeknummer,
             actor_id=actor.id,
         )
+        standaard = overzichten.doorfactureren_standaard_voor(
+            administratie_id=administratie_id, project_id=project_id, actor_id=actor.id
+        )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
-    return schemas.WeekstaatZoekDto(weekstaat=_weekstaat_response(data) if data is not None else None)
+    return schemas.WeekstaatZoekDto(
+        weekstaat=_weekstaat_response(data) if data is not None else None, doorfactureren_standaard=standaard
+    )
 
 
 @router.get("/zzp/ingediend", response_model=list[schemas.IngediendeWeekDto])
@@ -324,7 +358,9 @@ def zzp_dag_zetten(
             uren=payload.uren,
             m2=payload.m2,
             opmerking=payload.opmerking,
+            doorfactureren=payload.doorfactureren,
             actor_id=actor.id,
+            bron=payload.bron,
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
@@ -727,6 +763,68 @@ def kantoor_stand(
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
     return schemas.UrenStandDto(**stand.__dict__)
+
+
+@router.get("/kantoor/weekstaten", response_model=schemas.KantoorWeekstatenDto)
+def kantoor_weekstaten(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.KantoorWeekstatenDto:
+    """Beoordelen › Urenstaten (bug 18-09): de ingediende weekstaten achter de chip — zelfde definitie als
+    `urenstaten_wachten_op_keuring` in /kantoor/stand."""
+    try:
+        data = overzichten.kantoor_weekstaten(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.KantoorWeekstatenDto(
+        items=[schemas.TeKeurenItemDto(**i.__dict__) for i in data.items],
+        laatste_keuring_op=data.laatste_keuring_op,  # type: ignore[arg-type]
+    )
+
+
+@router.post("/kantoor/weekstaten/{administratie_id}/{weekstaat_id}/goedkeuren", response_model=schemas.WeekstaatDto)
+def kantoor_week_goedkeuren(
+    administratie_id: uuid.UUID,
+    weekstaat_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WeekstaatDto:
+    """Kantoor-keuring (18-09, vangnet als er geen tweede uitvoerder is): zelfde statusmachine + audit als de
+    uitvoerder-route, `keurder: kantoor` in het audit-event."""
+    try:
+        data = service.keur_week_goed(
+            administratie_id=administratie_id, weekstaat_id=weekstaat_id, actor_id=actor.id, kantoor=True
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _weekstaat_response(data)
+
+
+@router.post("/kantoor/weekstaten/{administratie_id}/{weekstaat_id}/afkeuren", response_model=schemas.WeekstaatDto)
+def kantoor_week_afkeuren(
+    administratie_id: uuid.UUID,
+    weekstaat_id: uuid.UUID,
+    payload: schemas.WeekAfkeurenRequest,
+    actor: CurrentGebruiker = Depends(require_meerwerk_urenstaten_recht),
+    _scope: CurrentGebruiker = Depends(vereis_administratie_scope),
+) -> schemas.WeekstaatDto:
+    """Kantoor-afkeuring mét verplichte reden (+ optionele correctievoorstellen per dag, hybride keuring 22-08)."""
+    try:
+        data = service.keur_week_af(
+            administratie_id=administratie_id,
+            weekstaat_id=weekstaat_id,
+            actor_id=actor.id,
+            reden=payload.reden,
+            correcties=[
+                service.DagCorrectieInvoer(datum=c.datum, uren=c.uren, m2=c.m2, opmerking=c.opmerking)
+                for c in payload.correcties
+            ],
+            kantoor=True,
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return _weekstaat_response(data)
 
 
 @router.get("/kantoor/meerwerk", response_model=list[schemas.MeerwerkDto])
@@ -1509,6 +1607,35 @@ def beheer_projectkoppeling_verwijderen(
         )
     except service.UrenFout as exc:
         raise _vertaal(exc) from exc
+
+
+@router.get("/beheer/omschrijving-chips/{administratie_id}", response_model=schemas.OmschrijvingChipsDto)
+def beheer_omschrijving_chips(
+    administratie_id: uuid.UUID, actor: CurrentGebruiker = Depends(require_beheerder)
+) -> schemas.OmschrijvingChipsDto:
+    """Omschrijving-chips als Beheerder-instelling per administratie (run A 18-09); `is_standaard` = nog nooit
+    aangepast (de codelijst geldt)."""
+    try:
+        chips, is_standaard = service.omschrijving_chips_voor(administratie_id=administratie_id, actor_id=actor.id)
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.OmschrijvingChipsDto(chips=chips, is_standaard=is_standaard)
+
+
+@router.put("/beheer/omschrijving-chips/{administratie_id}", response_model=schemas.OmschrijvingChipsDto)
+def beheer_omschrijving_chips_zetten(
+    administratie_id: uuid.UUID,
+    payload: schemas.OmschrijvingChipsZettenRequest,
+    actor: CurrentGebruiker = Depends(require_beheerder),
+) -> schemas.OmschrijvingChipsDto:
+    """Zet de lijst (1–10, uniek, ≤ 30 tekens; 'overig' mag ontbreken) — audit oud→nieuw, antwoord = de nieuwe lijst."""
+    try:
+        chips = service.zet_omschrijving_chips(
+            administratie_id=administratie_id, chips=payload.chips, actor_id=actor.id
+        )
+    except service.UrenFout as exc:
+        raise _vertaal(exc) from exc
+    return schemas.OmschrijvingChipsDto(chips=chips, is_standaard=False)
 
 
 @router.post("/beheer/detacheerderkoppelingen", status_code=status.HTTP_204_NO_CONTENT)

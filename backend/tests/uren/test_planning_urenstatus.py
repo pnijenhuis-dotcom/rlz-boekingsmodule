@@ -16,6 +16,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import Engine, event, select, text
 
+from app.auth import service as auth_service
 from app.berichten import verzending
 from app.berichten.models import HerinneringKanaal, HerinneringStatus
 from app.db import session as db_session
@@ -79,7 +80,10 @@ class TestUrenstatusInHetGrid:
     def test_vier_standen_en_weektotaal(self, administratie_id, project_id, zzper, uitvoerder, beheerder_id) -> None:
         for d in (MA, DI, WO, date(2026, 8, 28)):
             _plan(administratie_id, zzper, project_id, d, beheerder_id)
-        # De uitvoerder keurt alleen projecten waaraan hij gekoppeld is — plannen koppelt automatisch (besluit A).
+        # 18-09: keuren vereist scope op de administratie (koppeling is geen keurpoort meer); plannen koppelt zelf.
+        auth_service.voeg_scope_toe(
+            actor_id=beheerder_id, doel_gebruiker_id=uitvoerder, administratie_id=administratie_id
+        )
         _plan(administratie_id, uitvoerder, project_id, date(2026, 8, 28), beheerder_id)
         # ma: gekeurd (8 u, 42 m²); di: ingevuld (concept, 6 u); wo: niets; vr: nog niet aan de beurt.
         _uren(administratie_id, zzper, project_id, MA, "8", "42")
@@ -111,6 +115,9 @@ class TestUrenstatusInHetGrid:
     def test_ingevuld_en_afgekeurd(self, administratie_id, project_id, zzper, uitvoerder, beheerder_id) -> None:
         _plan(administratie_id, zzper, project_id, MA, beheerder_id)
         _plan(administratie_id, zzper, project_id, DI, beheerder_id)
+        auth_service.voeg_scope_toe(
+            actor_id=beheerder_id, doel_gebruiker_id=uitvoerder, administratie_id=administratie_id
+        )
         _plan(administratie_id, uitvoerder, project_id, DI, beheerder_id)
         _uren(administratie_id, zzper, project_id, MA, "6")
         rij = next(r for r in _grid(administratie_id, beheerder_id).projecten if r.project_id == project_id)

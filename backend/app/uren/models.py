@@ -214,6 +214,12 @@ class WeekstaatDag(Base):
     m2: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)
     opmerking: Mapped[str | None] = mapped_column(default=None)
     ingevuld_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
+    # Doorfactureren-keuze per REGEL (feedback uitvoerder 18-09 blok B, migratie 0158): True = de uren/m² van deze dag
+    # mogen aan de klant doorbelast worden, False = "Niet doorfactureren" (eigen rekening / vaste aanneemsom). Default
+    # voor een nieuwe regel = `service.standaard_doorfactureren` (project mét verrekenbare staffel → True, anders
+    # False); mens wint, audit oud→nieuw. De factuurmatch (ZZP-inkoopkant) telt álle uren — de ZZP'er krijgt betaald
+    # ongeacht deze keuze; alleen de KLANT-kant (doorbelasting/meerwerk-kantoor) splitst erop.
+    doorfactureren: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     # Correctievoorstel van de laatste afkeuring (hybride keuring, migratie 0059).
     voorstel_uren: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
     voorstel_m2: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), default=None)

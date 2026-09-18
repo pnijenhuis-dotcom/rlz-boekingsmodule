@@ -112,6 +112,10 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("POST", f"/auth/gebruikers/{DUMMY_ID}/archiveren"),  # archiveren (26-08 punt 1, beheerder-only)
         ("GET", f"/auth/gebruikers/{DUMMY_ID}/open-werk"),  # open-werk-telling vóór archiveren
         ("GET", f"/uren/kantoor/stand?administratie_id={aid}"),  # uren kantoorkant
+        # Beoordelen › Urenstaten (bug 18-09): lijst + kantoor-keuring onder het module-recht 'Meerwerk & urenstaten'.
+        ("GET", f"/uren/kantoor/weekstaten?administratie_id={aid}"),
+        ("POST", f"/uren/kantoor/weekstaten/{aid}/{DUMMY_ID}/goedkeuren"),
+        ("POST", f"/uren/kantoor/weekstaten/{aid}/{DUMMY_ID}/afkeuren"),
         # Veldwerkers-run 14-09: veldwerkers-overzicht + koppelingen onder Beheerder ÓF 'veldwerkerbeheer' (A1),
         # rechten toekennen + dossier-documenttypen Beheerder-only (A2), dossier kantoorkant onder veldwerkerbeheer ÓF
         # meerwerk-recht (A3) — de poort-matrix staat in TestVeldwerkerbeheerRolpoort.
@@ -129,6 +133,9 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("PUT", "/uren/beheer/veldwerkerbeheer-recht"),
         ("GET", f"/uren/beheer/dossier-documenttypen/{aid}"),
         ("PUT", f"/uren/beheer/dossier-documenttypen/{aid}"),
+        # Run A 18-09: omschrijving-chips per administratie = Beheerder-only instelling (A2-patroon).
+        ("GET", f"/uren/beheer/omschrijving-chips/{aid}"),
+        ("PUT", f"/uren/beheer/omschrijving-chips/{aid}"),
         ("GET", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}"),
         ("POST", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}/bedrijfsgegevens"),
         ("POST", f"/uren/kantoor/dossier/{aid}/{DUMMY_ID}/herinneren"),
@@ -283,7 +290,9 @@ VELDWERKERBEHEER_A1 = re.compile(
     r"^/uren/beheer/(veldgebruikers|detacheerderkoppelingen(/verwijderen|/tarief)?|"
     r"veldwerkercrediteuren(/verwijderen|/autoboeken)?|projectkoppelingen/verwijderen)$"
 )
-VELDWERKERBEHEER_A2 = re.compile(r"^/uren/beheer/(module-recht|veldwerkerbeheer-recht|dossier-documenttypen/[^/]+)$")
+VELDWERKERBEHEER_A2 = re.compile(
+    r"^/uren/beheer/(module-recht|veldwerkerbeheer-recht|dossier-documenttypen/[^/]+|omschrijving-chips/[^/]+)$"
+)
 VELDWERKERBEHEER_A3 = re.compile(r"^/uren/kantoor/dossier/")
 
 
@@ -508,7 +517,7 @@ class TestVeldwerkerbeheerRolpoort:
     """Veldwerkers-run 14-09 (besluiten Peter 14-09 punt 1+2). Drie groepen:
     A1 = veldwerkers-overzicht + koppelingen (detacheerder↔ZZP'er incl. tarief, crediteur incl. autoboeken,
          projectkoppeling verwijderen) → Beheerder ÓF 'veldwerkerbeheer';
-    A2 = rechten toekennen + dossier-documenttypen → Beheerder-only;
+    A2 = rechten toekennen + dossier-documenttypen + omschrijving-chips (run A 18-09) → Beheerder-only;
     A3 = dossier kantoorkant → 'veldwerkerbeheer' ÓF module-recht 'Meerwerk & urenstaten' (+ klantscope).
     Boekhouding zonder recht = 403 op álles; mét 'veldwerkerbeheer' = geen rolweigering op A1/A3 (422/404 uit
     body-validatie of onbekende dummy-veldwerker is prima — dependencies draaien vóór de body), 403 op A2;
@@ -521,7 +530,7 @@ class TestVeldwerkerbeheerRolpoort:
 
     def test_matrix_bevat_alle_drie_de_groepen(self, administratie_id):
         groepen = [_veldwerkerbeheer_groep(pad) for _, pad in _kantoor_endpoints(administratie_id)]
-        assert groepen.count("A1") == 8 and groepen.count("A2") == 6 and groepen.count("A3") == 4
+        assert groepen.count("A1") == 8 and groepen.count("A2") == 8 and groepen.count("A3") == 4
 
     def test_boekhouding_zonder_recht_403_op_alles(self, boekhouder, administratie_id):
         assert not uren_service.heeft_veldwerkerbeheer_recht(gebruiker_id=boekhouder, rol="boekhouding")
@@ -545,7 +554,7 @@ class TestVeldwerkerbeheerRolpoort:
                 assert resp.status_code == 403, f"+veldwerkerbeheer {methode} {pad}: verwacht 403, kreeg {resp.status_code}"
             else:
                 assert resp.status_code not in (401, 403), f"+veldwerkerbeheer {methode} {pad}: onterecht {resp.status_code}"
-        assert gezien == {"A1": 8, "A2": 6, "A3": 4}
+        assert gezien == {"A1": 8, "A2": 8, "A3": 4}
         resp = client.get("/uren/beheer/veldgebruikers", headers=h)
         assert resp.status_code == 200 and resp.json() == []  # geen veldwerkers in de eigen scope = lege lijst, nooit alles
 

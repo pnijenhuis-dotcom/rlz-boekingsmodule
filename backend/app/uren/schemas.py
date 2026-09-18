@@ -43,6 +43,8 @@ class DagDto(BaseModel):
     stempel_tot: time | None = None
     stempel_onvolledig: bool = False
     stempel_afwijking: bool = False
+    # Doorfactureren-keuze per regel (feedback uitvoerder 18-09 blok B): False = "Niet doorfactureren".
+    doorfactureren: bool = True
 
 
 class StempelInvoerDto(StrikteInvoer):
@@ -89,6 +91,12 @@ class WeekstaatDto(BaseModel):
     m2_geleverd_project: Decimal | None = None
     m2_gebouwd_project: Decimal | None = None
     meer_gebouwd_dan_geleverd: bool = False
+    # Feedback uitvoerder 18-09: projectdefault voor nieuwe regels, totalen "Niet doorfactureren" (kantoor toont
+    # ze apart) en het aantal dagen zonder planning-dekking (chip "niet gepland").
+    doorfactureren_standaard: bool = True
+    totaal_uren_niet_doorfactureren: Decimal = Decimal("0")
+    totaal_m2_niet_doorfactureren: Decimal = Decimal("0")
+    dagen_buiten_planning: int = 0
     id: uuid.UUID
     administratie_id: uuid.UUID
     gebruiker_id: uuid.UUID
@@ -180,8 +188,19 @@ class WeekOverzichtKaartDto(BaseModel):
     totaal_m2: Decimal
 
 
+class LaatsteRegelDto(BaseModel):
+    """Run A 18-09 "kopieer vorige regel": de LAATSTE dagregel van deze gebruiker op dit project over álle weken."""
+
+    datum: date
+    uren: Decimal
+    m2: Decimal | None = None
+    opmerking: str | None = None
+    doorfactureren: bool = True
+
+
 class WeekProjectKaartDto(BaseModel):
-    """Projecten in één week (A1, 04-09): ingepland én/of met een bestaande staat."""
+    """Projectkaarten in één week (project-eerst, Peter 18-09): gepland ∪ mét staat ∪ mét eigen meerwerk;
+    `?alles=true` = álle actieve projecten (keuzelijst "+ Ander project toevoegen aan mijn week")."""
 
     administratie_id: uuid.UUID
     administratie_naam: str | None = None
@@ -200,6 +219,30 @@ class WeekProjectKaartDto(BaseModel):
     goedgekeurd_door_naam: str | None = None
     afgekeurd_door_naam: str | None = None
     afkeur_reden: str | None = None
+    # Kaartinhoud (project-eerst 18-09): uren per ISO-datum (alleen dagen mét regel), laatste omschrijving, aantal dagen
+    # "niet doorfactureren", projectdefault doorfactureren, eigen meerwerkmeldingen deze week.
+    dag_uren: dict[str, Decimal] = {}
+    laatste_omschrijving: str | None = None
+    dagen_niet_doorfactureren: int = 0
+    doorfactureren_standaard: bool = True
+    meerwerk_aantal: int = 0
+    # Run A 18-09 (UX veld-app): laatste regel op dit project (kopieer-knop; over álle weken), aantal regels in DEZE
+    # week zonder m² (zachte hint, geen signaal) en de contract-m² uit de projectspecificatie (voortgang).
+    laatste_regel: LaatsteRegelDto | None = None
+    dagen_zonder_m2: int = 0
+    contract_m2: Decimal | None = None
+
+
+class OmschrijvingChipsDto(BaseModel):
+    """Snelkeuze-chips voor het omschrijvingsveld (run A 18-09): tekst-lijst per administratie, `is_standaard` = de
+    codelijst geldt (nog niets opgeslagen)."""
+
+    chips: list[str]
+    is_standaard: bool = False
+
+
+class OmschrijvingChipsZettenRequest(StrikteInvoer):
+    chips: list[str] = Field(min_length=1, max_length=10)
 
 
 class ProjectKeuzeDto(BaseModel):
@@ -216,6 +259,8 @@ class WeekstaatZoekDto(BaseModel):
     """Lookup (ZZP'er, project, week) → de staat of null als die nog niet bestaat."""
 
     weekstaat: WeekstaatDto | None = None
+    # 18-09: de projectdefault voor de doorfactureren-dropdown, óók als er nog geen staat is (chip "standaard").
+    doorfactureren_standaard: bool = True
 
 
 class TeKeurenItemDto(BaseModel):
@@ -301,6 +346,8 @@ class UitvoerderProjectKaartDto(BaseModel):
     huurtijd_omschrijving: str | None = None
     meerwerk_gemeld: int
     te_keuren: int
+    # 18-09: álle actieve projecten; True = gekoppeld via planning/weekstaat (bovenaan, chip).
+    gekoppeld: bool = True
 
 
 # --- requests ---------------------------------------------------------------------------------
@@ -315,9 +362,14 @@ class DagZettenRequest(StrikteInvoer):
     uren: Decimal
     m2: Decimal | None = None
     opmerking: str | None = None
+    # Doorfactureren-keuze per regel (18-09 blok B): weglaten/null = de projectdefault (nieuwe regel) of de
+    # bestaande stand (bijwerken); expliciet true/false = mens wint (audit oud→nieuw).
+    doorfactureren: bool | None = None
     # Detacheerder-namens-flow (besluit 21-08): de ZZP'er van wie de staat is. Weglaten = de
-    # actor zelf (moet dan een ZZP'er zijn).
+    # actor zelf (ZZP'er of, sinds 18-09, uitvoerder).
     namens_zzper_id: uuid.UUID | None = None
+    # Run A 18-09: herkomst van de regel — 'kopie' = via "kopieer vorige regel" in de app. Alleen audit, geen gedrag.
+    bron: Literal["handmatig", "kopie"] = "handmatig"
 
 
 class WeekIndienenRequest(StrikteInvoer):
@@ -348,6 +400,13 @@ class VraagAntwoordRequest(StrikteInvoer):
 
 
 # --- kantoor (fase 3) ---------------------------------------------------------------------------
+
+
+class KantoorWeekstatenDto(BaseModel):
+    """Beoordelen › Urenstaten (18-09): ingediende weekstaten van één administratie + laatste keuring (lege stand)."""
+
+    items: list[TeKeurenItemDto]
+    laatste_keuring_op: datetime | None = None
 
 
 class UrenStandDto(BaseModel):
