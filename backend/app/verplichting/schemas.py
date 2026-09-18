@@ -32,13 +32,21 @@ class GoedgekeurdDto(BaseModel):
 
 
 class VerbruikDto(BaseModel):
+    """Drie getallen (Peter 18-09): geboekt (`verbruikt_excl`) / onderweg (`onderweg_excl`, telt MEE) / restant
+    (`restant_excl`); `percentage`+`over_excl` over geboekt + onderweg, `percentage_geboekt` alleen de boekstand.
+    `open_facturen_*` = oude naam van onderweg, gelijk gehouden."""
+
     verbruikt_excl: Decimal
     totaal_excl: Decimal
     percentage: int
     over_excl: Decimal | None = None
-    #: Voorwaarschuwing 0.1: gematchte, nog niet geboekte facturen — informatief, buiten het verbruik.
     open_facturen_aantal: int = 0
     open_facturen_excl: Decimal = Decimal("0.00")
+    onderweg_excl: Decimal = Decimal("0.00")
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
+    restant_excl: Decimal = Decimal("0.00")
+    percentage_geboekt: int = 0
 
 
 class VervallenDto(BaseModel):
@@ -143,6 +151,12 @@ class VerplichtingMatchDto(BaseModel):
     #: Peter 15-09: gevonden-maar-niet-toetsbare verplichting (reden) en het termijnnummer op de offerte.
     niet_toetsbaar_reden: str | None = None
     termijn: int | None = None
+    #: Peter 18-09: splitsing van `verbruik_na` — geboekt / onderweg (nog niet geboekte facturen op dezelfde offerte,
+    #: dit document uitgezonderd) / aantal onderweg (waarvan ter accordering).
+    verbruik_geboekt: Decimal | None = None
+    verbruik_onderweg: Decimal | None = None
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
 
 
 class KoppelInput(StrikteInvoer):
@@ -163,6 +177,11 @@ class OfferteMatchKortDto(BaseModel):
     totaal_excl: Decimal | None = None
     percentage_na: int | None = None
     overschrijding_excl: Decimal | None = None
+    termijn: int | None = None
+    verbruik_geboekt: Decimal | None = None
+    verbruik_onderweg: Decimal | None = None
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
 
 
 class VerplichtingKortDto(BaseModel):
@@ -205,6 +224,12 @@ class KantoorRijDto(BaseModel):
     status: str
     open_facturen_aantal: int = 0
     open_facturen_excl: Decimal = Decimal("0.00")
+    #: Peter 18-09: dezelfde drie getallen als het reviewscherm — geboekt (`verbruikt_excl`) / onderweg / restant.
+    onderweg_excl: Decimal = Decimal("0.00")
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
+    restant_excl: Decimal | None = None
+    percentage_geboekt: int | None = None
     facturen: list[KantoorFactuurDto] = []
 
 

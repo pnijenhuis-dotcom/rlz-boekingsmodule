@@ -923,6 +923,11 @@ def wachtrij(response: Response, actor: CurrentGebruiker = Depends(get_current_g
                         ),
                         percentage_na=item.offerte_match.percentage_na,
                         overschrijding_excl=item.offerte_match.overschrijding_excl,
+                        termijn=item.offerte_match.termijn,
+                        verbruik_geboekt=item.offerte_match.verbruik_geboekt,
+                        verbruik_onderweg=item.offerte_match.verbruik_onderweg,
+                        onderweg_aantal=item.offerte_match.onderweg_aantal,
+                        onderweg_ter_accordering=item.offerte_match.onderweg_ter_accordering,
                     )
                     if item.offerte_match is not None
                     else None

@@ -15,14 +15,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from app.db.audit import record_audit_event
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten.crediteur_kenmerk import btw_per_vendor
-from app.documenten.models import Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
+from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentSoort, DocumentStatus
 from app.verplichting import match as match_motor
 from app.verplichting.models import Verplichting, VerplichtingMatch
 
@@ -39,6 +39,22 @@ _TERMINALE_STATUSSEN = (
     DocumentStatus.AFGEVOERD_DUPLICAAT,
     DocumentStatus.NIET_TOEGEWEZEN,
 )
+
+#: Peter 18-09 (casus Bouwadvies "hij moet wel doortellen"): een gematchte factuur die NIET geboekt en NIET terminaal
+#: is, is ONDERWEG en telt in het verbruik van de verplichting mee (ter accordering, klaar om te boeken, wordt geboekt,
+#: boeken mislukt, in controle, vraag open, …). Eén definitie voor toets, reviewscherm en Inzicht › Verplichtingen.
+ONDERWEG_UITGESLOTEN_STATUSSEN = (*_TERMINALE_STATUSSEN, DocumentStatus.GEBOEKT)
+
+
+def telt_als_onderweg(status: DocumentStatus) -> bool:
+    return status not in ONDERWEG_UITGESLOTEN_STATUSSEN
+
+
+@dataclass(frozen=True)
+class OnderwegStand:
+    aantal: int = 0
+    bedrag_excl: Decimal = Decimal("0.00")
+    ter_accordering: int = 0
 
 
 def vendor_sleutel(vendor_id: uuid.UUID | None, btw: dict[str, str]) -> str | None:
@@ -109,18 +125,53 @@ def _aantal_gematcht_per_verplichting(
     session: Session, *, administratie_id: uuid.UUID, behalve_document_id: uuid.UUID | None
 ) -> dict[uuid.UUID, int]:
     """Peter 15-09 (termijnen): per verplichting het aantal ándere facturen dat er al aan gematcht is
-    (binnen/buiten)."""
+    (binnen/buiten). Sinds 18-09 tellen alleen geboekte én onderweg-facturen als termijn — een afgewezen/verwijderde
+    factuur is geen termijn meer (zelfde statusdefinitie als het onderweg-verbruik)."""
     rijen = session.execute(
         select(VerplichtingMatch.verplichting_document_id, func.count())
+        .join(Document, Document.id == VerplichtingMatch.document_id)
         .where(
             VerplichtingMatch.administratie_id == administratie_id,
             VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
             VerplichtingMatch.verplichting_document_id.is_not(None),
+            Document.status.notin_(_TERMINALE_STATUSSEN),
             *([VerplichtingMatch.document_id != behalve_document_id] if behalve_document_id is not None else []),
         )
         .group_by(VerplichtingMatch.verplichting_document_id)
     ).all()
     return {vid: int(n) for vid, n in rijen}
+
+
+def onderweg_per_verplichting(
+    session: Session, *, administratie_id: uuid.UUID, behalve_document_id: uuid.UUID | None = None
+) -> dict[uuid.UUID, OnderwegStand]:
+    """Peter 18-09: per verplichting (aantal, Σ bedrag excl., waarvan ter accordering) van de gematchte facturen
+    (binnen/buiten) die nog niet geboekt/verrekend en niet terminaal zijn — het eigen document uitgezonderd. Eén
+    query, nooit opgeslagen: de stand volgt de documentstatussen op het moment van de toets."""
+    rijen = session.execute(
+        select(
+            VerplichtingMatch.verplichting_document_id,
+            func.count(),
+            func.coalesce(func.sum(VerplichtingMatch.bedrag_excl), 0),
+            func.count().filter(Document.status == DocumentStatus.TER_ACCORDERING),
+        )
+        .join(Document, Document.id == VerplichtingMatch.document_id)
+        .where(
+            VerplichtingMatch.administratie_id == administratie_id,
+            VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
+            VerplichtingMatch.verplichting_document_id.is_not(None),
+            VerplichtingMatch.verrekend_op.is_(None),
+            Document.status.notin_(ONDERWEG_UITGESLOTEN_STATUSSEN),
+            *([VerplichtingMatch.document_id != behalve_document_id] if behalve_document_id is not None else []),
+        )
+        .group_by(VerplichtingMatch.verplichting_document_id)
+    ).all()
+    return {
+        vid: OnderwegStand(
+            aantal=int(n), bedrag_excl=Decimal(som or 0).quantize(Decimal("0.01")), ter_accordering=int(ter_acc or 0)
+        )
+        for vid, n, som, ter_acc in rijen
+    }
 
 
 def lopende_kandidaten(
@@ -149,10 +200,12 @@ def lopende_kandidaten(
     gematcht = _aantal_gematcht_per_verplichting(
         session, administratie_id=administratie_id, behalve_document_id=document_id
     )
+    onderweg = onderweg_per_verplichting(session, administratie_id=administratie_id, behalve_document_id=document_id)
     kandidaten: list[match_motor.Kandidaat] = []
     for rij, _status in rijen:
         if vendor_sleutel(kaart.get(rij.vendor_id, rij.vendor_id), btw) != sleutel:
             continue
+        stand = onderweg.get(rij.document_id, OnderwegStand())
         kandidaten.append(
             match_motor.Kandidaat(
                 document_id=rij.document_id,
@@ -163,6 +216,9 @@ def lopende_kandidaten(
                 verbruikt_bedrag_excl=Decimal(rij.verbruikt_bedrag_excl or 0),
                 geldig_tot=rij.geldig_tot,
                 aantal_gematcht=gematcht.get(rij.document_id, 0),
+                onderweg_bedrag_excl=stand.bedrag_excl,
+                onderweg_aantal=stand.aantal,
+                onderweg_ter_accordering=stand.ter_accordering,
             )
         )
     return sorted(kandidaten, key=lambda k: (k.offertenummer or "", str(k.document_id)))
@@ -323,16 +379,10 @@ def bereken_match(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> mat
             if sleutel
             else []
         )
-        handmatig = (
-            bestaand.verplichting_document_id
-            if bestaand is not None and bestaand.handmatig_gekoppeld
-            else None
-        )
+        handmatig = bestaand.verplichting_document_id if bestaand is not None and bestaand.handmatig_gekoppeld else None
         # Al verrekend (geboekt) → het eigen bedrag zit al in verbruikt_bedrag_excl.
         eigen_verrekend = (
-            Decimal(bestaand.bedrag_excl or 0)
-            if bestaand is not None and bestaand.verrekend_op is not None
-            else None
+            Decimal(bestaand.bedrag_excl or 0) if bestaand is not None and bestaand.verrekend_op is not None else None
         )
         onthouden = _onthouden_koppeling(
             session, administratie_id=administratie_id, document_id=document_id, project_id=feiten.project_id
@@ -372,9 +422,7 @@ def _schrijf_match(
 ) -> VerplichtingMatch:
     rij = bestaand
     if rij is None:
-        rij = VerplichtingMatch(
-            document_id=document_id, administratie_id=administratie_id, uitkomst=uitkomst.uitkomst
-        )
+        rij = VerplichtingMatch(document_id=document_id, administratie_id=administratie_id, uitkomst=uitkomst.uitkomst)
         session.add(rij)
     rij.uitkomst = uitkomst.uitkomst
     # Een handmatige koppeling die niet meer lopend is (vervallen/afgewezen) verliest haar
@@ -520,6 +568,154 @@ def herbereken_na_verplichting_wijziging_stil(
         )
     except Exception:  # noqa: BLE001 — signalering, nooit een blokkade
         logger.exception("Verplichting-herberekening mislukt voor verplichting %s", verplichting_document_id)
+
+
+# --------------------------------------------------------------------------- statuswissel → siblings herberekenen
+
+_STATUSWISSEL_SLEUTEL = "verplichting_statuswissels"
+
+
+def registreer_statuswissel(session: Session, *, document: Document, van: DocumentStatus, naar: DocumentStatus) -> bool:
+    """Peter 18-09 (volgorde-effect): aangeroepen vanuit `documenten.service._schrijf_overgang` ÍN de transactie.
+    Verandert deze overgang of het document als ONDERWEG telt (bv. te_controleren → afgewezen, ter_accordering →
+    geboekt, verwijderd → hersteld), en heeft het document een binnen/buiten-match, dan wordt de herberekening van de
+    ándere open documenten op dezelfde verplichting klaargezet voor NÁ de commit (`after_commit` op deze sessie —
+    de herberekening opent eigen transacties en mag nooit de statusovergang zelf blokkeren). → True = geregistreerd."""
+    if document.soort != DocumentSoort.INKOOPFACTUUR.value or telt_als_onderweg(van) == telt_als_onderweg(naar):
+        return False
+    rij = session.get(VerplichtingMatch, document.id)
+    if rij is None or rij.verplichting_document_id is None:
+        return False
+    if rij.uitkomst not in (match_motor.BINNEN, match_motor.BUITEN):
+        return False
+    wachtrij: list[dict] = session.info.setdefault(_STATUSWISSEL_SLEUTEL, [])
+    if not wachtrij:
+        event.listen(session, "after_commit", _na_commit_statuswissels)
+    wachtrij.append(
+        {
+            "administratie_id": document.administratie_id,
+            "document_id": document.id,
+            "verplichting_document_id": rij.verplichting_document_id,
+            "van": van.value,
+            "naar": naar.value,
+        }
+    )
+    return True
+
+
+def _na_commit_statuswissels(session: Session) -> None:
+    wachtrij = session.info.pop(_STATUSWISSEL_SLEUTEL, None) or []
+    for item in wachtrij:
+        try:
+            herbereken_na_statuswissel(
+                administratie_id=item["administratie_id"],
+                document_id=item["document_id"],
+                verplichting_document_id=item["verplichting_document_id"],
+                van=item["van"],
+                naar=item["naar"],
+            )
+        except Exception:  # noqa: BLE001 — signalering, nooit een blokkade
+            logger.exception("Verplichting-herberekening ná statuswissel mislukt voor document %s", item["document_id"])
+
+
+def herbereken_na_statuswissel(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    verplichting_document_id: uuid.UUID,
+    van: str,
+    naar: str,
+) -> int:
+    """Herbereken de match van de ÁNDERE open (niet-terminale, niet-geboekte) inkoopdocumenten op dezelfde
+    verplichting; wijzigt uitkomst of verbruik-ná, dan komt er een tijdlijnregel op dát document ("offerte-toets
+    herberekend: buiten → binnen — … (aanleiding: factuur ‹ref› afgewezen)") mét systeem-actor — nooit stil.
+    Retourneert het aantal documenten waarvan de stand veranderde."""
+    with scoped_session(administratie_id) as session:
+        aanleiding_ref = session.scalar(select(Boekvoorstel.referentie).where(Boekvoorstel.document_id == document_id))
+        siblings = [
+            (rij.document_id, rij.uitkomst, rij.verbruik_na)
+            for rij in session.scalars(
+                select(VerplichtingMatch)
+                .join(Document, Document.id == VerplichtingMatch.document_id)
+                .where(
+                    VerplichtingMatch.administratie_id == administratie_id,
+                    VerplichtingMatch.verplichting_document_id == verplichting_document_id,
+                    VerplichtingMatch.document_id != document_id,
+                    VerplichtingMatch.verrekend_op.is_(None),
+                    Document.status.notin_(ONDERWEG_UITGESLOTEN_STATUSSEN),
+                )
+            )
+        ]
+    gewijzigd = 0
+    aanleiding = f"factuur {aanleiding_ref or document_id} {naar.replace('_', ' ')} (was {van.replace('_', ' ')})"
+    for sibling_id, oud_uitkomst, oud_na in siblings:
+        try:
+            nieuw = bereken_match(administratie_id=administratie_id, document_id=sibling_id)
+        except Exception:  # noqa: BLE001 — één document mag de rest niet stoppen
+            logger.exception("Verplichting-herberekening (statuswissel) mislukt voor document %s", sibling_id)
+            continue
+        if nieuw is None:
+            continue
+        oud_na_dec = Decimal(oud_na).quantize(Decimal("0.01")) if oud_na is not None else None
+        if nieuw.uitkomst == oud_uitkomst and nieuw.verbruik_na == oud_na_dec:
+            continue
+        gewijzigd += 1
+        _schrijf_herberekend_tijdlijn(
+            administratie_id=administratie_id,
+            document_id=sibling_id,
+            oud_uitkomst=oud_uitkomst,
+            nieuw=nieuw,
+            aanleiding=aanleiding,
+        )
+    return gewijzigd
+
+
+def _schrijf_herberekend_tijdlijn(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    oud_uitkomst: str,
+    nieuw: match_motor.MatchUitkomst,
+    aanleiding: str,
+) -> None:
+    with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            return
+        reden = (
+            f"offerte-toets herberekend: {oud_uitkomst.replace('_', ' ')} → {nieuw.uitkomst.replace('_', ' ')} — "
+            f"verbruik ná deze factuur {nieuw.verbruik_na} (aanleiding: {aanleiding})"
+        )
+        session.add(
+            DocumentGebeurtenis(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    "verplichting_match_herberekend": {
+                        "van_uitkomst": oud_uitkomst,
+                        "naar_uitkomst": nieuw.uitkomst,
+                        "verbruik_na": str(nieuw.verbruik_na),
+                        "verplichting_document_id": str(nieuw.verplichting_document_id),
+                    },
+                    "reden": reden,
+                },
+            )
+        )
+        record_audit_event(
+            session,
+            actor_id=SYSTEEM_ACTOR_ID,
+            module="boekhouding",
+            tabel="verplichting_match",
+            record_id=document_id,
+            actie="verplichting_match_herberekend",
+            correlatie_id=uuid.uuid4(),
+            oude_waarde={"uitkomst": oud_uitkomst},
+            nieuwe_waarde={"uitkomst": nieuw.uitkomst, "verbruik_na": str(nieuw.verbruik_na), "aanleiding": aanleiding},
+            administratie_id=administratie_id,
+        )
 
 
 # --------------------------------------------------------------------------- verbruik (geld!)

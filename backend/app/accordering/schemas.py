@@ -370,6 +370,14 @@ class OfferteMatchKortDto(BaseModel):
     totaal_excl: Decimal | None = None
     percentage_na: int | None = None
     overschrijding_excl: Decimal | None = None
+    #: Peter 18-09: termijnnummer + splitsing van `verbruik_na` — geboekt / onderweg (andere facturen op dezelfde
+    #: offerte die nog niet geboekt zijn) / aantal onderweg (waarvan ter accordering). Zelfde DTO-velden als het
+    #: kantoor-controlescherm (`VerplichtingMatchDto`).
+    termijn: int | None = None
+    verbruik_geboekt: Decimal | None = None
+    verbruik_onderweg: Decimal | None = None
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
 
 
 class WachtrijResponse(BaseModel):

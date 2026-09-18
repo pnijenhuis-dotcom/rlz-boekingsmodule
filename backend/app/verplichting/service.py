@@ -63,14 +63,23 @@ class GoedgekeurdStand:
 
 @dataclass(frozen=True)
 class VerbruikStand:
+    """Drie getallen (Peter 18-09): GEBOEKT (`verbruikt_excl`, de boekstand), ONDERWEG (`onderweg_excl`, de gematchte
+    facturen die nog niet geboekt en niet terminaal zijn — sinds 18-09 tellen ze MEE) en RESTANT (`restant_excl` =
+    totaal − geboekt − onderweg, negatief = overschreden). `percentage`/`over_excl` gaan over geboekt + onderweg;
+    `percentage_geboekt` alleen over de boekstand (balk: geboekt vol, onderweg gearceerd). `open_facturen_*` = de
+    oude naam van onderweg (0.1, 04-09), gelijk gehouden voor bestaande lezers."""
+
     verbruikt_excl: Decimal
     totaal_excl: Decimal
     percentage: int
     over_excl: Decimal | None
-    #: Voorwaarschuwing (besluit Peter 04-09, mee-lift-punt 0.1): gematchte facturen die nog NIET
-    #: geboekt zijn — informatief, tellen niet in het verbruik (③ blijft: verbruik = geboekt).
     open_facturen_aantal: int = 0
     open_facturen_excl: Decimal = Decimal("0.00")
+    onderweg_excl: Decimal = Decimal("0.00")
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
+    restant_excl: Decimal = Decimal("0.00")
+    percentage_geboekt: int = 0
 
 
 @dataclass(frozen=True)
@@ -229,70 +238,59 @@ def _gekoppelde_facturen(
     ]
 
 
-#: Een gematchte factuur in één van deze statussen is geen "open factuur" meer: geboekt = verrekend
-#: (telt in het verbruik), de rest is afgevoerd/terminaal zonder verbruik.
-_GEEN_OPEN_FACTUUR = frozenset(
-    {
-        DocumentStatus.GEBOEKT.value,
-        DocumentStatus.AFGEWEZEN.value,
-        # Duplicaten-UI (blok 3, fixrun 08-09): eigen terminale status, hoort erbij zoals afgewezen.
-        DocumentStatus.AFGEVOERD_DUPLICAAT.value,
-        DocumentStatus.VERWIJDERD.value,
-        DocumentStatus.GESPLITST.value,
-        DocumentStatus.SAMENGEVOEGD.value,
-    }
-)
+#: Een gematchte factuur in één van deze statussen is geen "open"/onderweg-factuur: geboekt = verrekend (telt als
+#: boekstand), de rest is afgevoerd/terminaal zonder verbruik. Eén definitie mét de match-pipeline (Peter 18-09).
+_GEEN_OPEN_FACTUUR = frozenset(status.value for status in match_pipeline.ONDERWEG_UITGESLOTEN_STATUSSEN)
 
 
 def is_open_factuur(status: str, *, verrekend: bool) -> bool:
-    """Voorwaarschuwing 0.1 (besluit Peter 04-09): een gematchte (binnen/buiten) factuur die nog niet
-    geboekt/verrekend is en nog in de werkstroom zit. Eén definitie voor het controlescherm, het
-    reviewscherm én Inzicht › Verplichtingen — informatief, telt nooit in het verbruik."""
+    """Een gematchte (binnen/buiten) factuur die nog niet geboekt/verrekend is en nog in de werkstroom zit = ONDERWEG.
+    Sinds 18-09 (Peter, casus Bouwadvies) telt ze MEE in het verbruik (was: voorwaarschuwing 0.1, informatief). Eén
+    definitie voor het controlescherm, het reviewscherm én Inzicht › Verplichtingen."""
     return not verrekend and status not in _GEEN_OPEN_FACTUUR
 
 
 def open_facturen_per_verplichting(
     session: Session, *, administratie_id: uuid.UUID, verplichting_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, tuple[int, Decimal]]:
-    """Bulk: (aantal, Σ bedrag excl.) van de open gematchte facturen per verplichting."""
+    """Bulk: (aantal, Σ bedrag excl.) van de onderweg-facturen per verplichting (zelfde query als de toets)."""
     if not verplichting_ids:
         return {}
-    rijen = session.execute(
-        select(VerplichtingMatch.verplichting_document_id, VerplichtingMatch.bedrag_excl, Document.status)
-        .join(Document, Document.id == VerplichtingMatch.document_id)
-        .where(
-            VerplichtingMatch.administratie_id == administratie_id,
-            VerplichtingMatch.verplichting_document_id.in_(verplichting_ids),
-            VerplichtingMatch.uitkomst.in_([match_motor.BINNEN, match_motor.BUITEN]),
-            VerplichtingMatch.verrekend_op.is_(None),
-        )
-    ).all()
-    per: dict[uuid.UUID, tuple[int, Decimal]] = {}
-    for verplichting_id, bedrag, status in rijen:
-        if not is_open_factuur(status.value if hasattr(status, "value") else str(status), verrekend=False):
-            continue
-        aantal, som = per.get(verplichting_id, (0, Decimal("0.00")))
-        per[verplichting_id] = (aantal + 1, (som + Decimal(bedrag or 0)).quantize(Decimal("0.01")))
-    return per
+    alles = match_pipeline.onderweg_per_verplichting(session, administratie_id=administratie_id)
+    return {vid: (stand.aantal, stand.bedrag_excl) for vid, stand in alles.items() if vid in set(verplichting_ids)}
+
+
+def bereken_verbruik_stand(
+    *, totaal: Decimal, geboekt: Decimal, onderweg: match_pipeline.OnderwegStand
+) -> VerbruikStand:
+    """PUUR (geld in code): de drie getallen geboekt / onderweg / restant + percentages voor balk en rij. Gedeeld door
+    het reviewscherm (`_verbruik_stand`) en Inzicht › Verplichtingen (`kantoorbreed`)."""
+    geboekt = Decimal(geboekt or 0).quantize(Decimal("0.01"))
+    samen = (geboekt + onderweg.bedrag_excl).quantize(Decimal("0.01"))
+    over = (samen - totaal).quantize(Decimal("0.01"))
+    return VerbruikStand(
+        verbruikt_excl=geboekt,
+        totaal_excl=totaal,
+        percentage=match_motor.percentage(samen, totaal) or 0,
+        over_excl=over if over > 0 else None,
+        open_facturen_aantal=onderweg.aantal,
+        open_facturen_excl=onderweg.bedrag_excl,
+        onderweg_excl=onderweg.bedrag_excl,
+        onderweg_aantal=onderweg.aantal,
+        onderweg_ter_accordering=onderweg.ter_accordering,
+        restant_excl=(totaal - samen).quantize(Decimal("0.01")),
+        percentage_geboekt=match_motor.percentage(geboekt, totaal) or 0,
+    )
 
 
 def _verbruik_stand(session: Session, rij: Verplichting) -> VerbruikStand | None:
     totaal = rij.goedgekeurd_bedrag_excl
     if totaal is None:
         return None
-    verbruikt = Decimal(rij.verbruikt_bedrag_excl or 0)
-    over = (verbruikt - totaal).quantize(Decimal("0.01"))
-    aantal, som = open_facturen_per_verplichting(
-        session, administratie_id=rij.administratie_id, verplichting_ids=[rij.document_id]
-    ).get(rij.document_id, (0, Decimal("0.00")))
-    return VerbruikStand(
-        verbruikt_excl=verbruikt,
-        totaal_excl=totaal,
-        percentage=match_motor.percentage(verbruikt, totaal) or 0,
-        over_excl=over if over > 0 else None,
-        open_facturen_aantal=aantal,
-        open_facturen_excl=som,
+    onderweg = match_pipeline.onderweg_per_verplichting(session, administratie_id=rij.administratie_id).get(
+        rij.document_id, match_pipeline.OnderwegStand()
     )
+    return bereken_verbruik_stand(totaal=totaal, geboekt=Decimal(rij.verbruikt_bedrag_excl or 0), onderweg=onderweg)
 
 
 def _bouw_voorstel(
@@ -338,9 +336,7 @@ def _bouw_voorstel(
         "geldig_tot": "geldig_tot",
         "omschrijving": "omschrijving",
     }
-    herkomst = {
-        veld: (bron if waarden.get(veld_naar_dto[veld]) is not None else None) for veld in HERKOMST_VELDEN
-    }
+    herkomst = {veld: (bron if waarden.get(veld_naar_dto[veld]) is not None else None) for veld in HERKOMST_VELDEN}
 
     vendor_suggestie = veldvoorstel.get("vendor_suggestie") or None
     project_suggestie = veldvoorstel.get("project_suggestie") or None
@@ -405,9 +401,7 @@ def _bouw_voorstel(
             if rij is not None and rij.vervallen_op is not None
             else None
         ),
-        gekoppelde_facturen=_gekoppelde_facturen(
-            session, administratie_id=administratie_id, document_id=document.id
-        ),
+        gekoppelde_facturen=_gekoppelde_facturen(session, administratie_id=administratie_id, document_id=document.id),
         ai_overgeslagen_reden=str(ai_overgeslagen) if ai_overgeslagen else None,
     )
     if not met_checks:
@@ -425,9 +419,7 @@ def haal_voorstel_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> 
 # --------------------------------------------------------------------------- checks (hard)
 
 
-def _checks(
-    session: Session, *, administratie_id: uuid.UUID, voorstel: VerplichtingVoorstel
-) -> CheckRapport:
+def _checks(session: Session, *, administratie_id: uuid.UUID, voorstel: VerplichtingVoorstel) -> CheckRapport:
     """De harde checks van een verplichting (CONTRACT_B):
     1. "Verplichte velden" — leverancier, soort-label, totaalbedrag excl. > 0 (+ project zodra de
        administratie projectplicht heeft);
@@ -453,20 +445,14 @@ def _checks(
         CheckResultaat(
             naam="Verplichte velden",
             ok=not ontbrekend,
-            melding=(
-                "Alle verplichte velden zijn gevuld"
-                if not ontbrekend
-                else "Vul eerst: " + ", ".join(ontbrekend)
-            ),
+            melding=("Alle verplichte velden zijn gevuld" if not ontbrekend else "Vul eerst: " + ", ".join(ontbrekend)),
         )
     )
 
     vandaag = vandaag_nl()
     if voorstel.geldig_tot is None:
         resultaten.append(
-            CheckResultaat(
-                naam="Geldigheid", ok=True, melding="Geen geldigheidsdatum vermeld — geen beperking"
-            )
+            CheckResultaat(naam="Geldigheid", ok=True, melding="Geen geldigheidsdatum vermeld — geen beperking")
         )
     elif voorstel.datum is not None and voorstel.geldig_tot < voorstel.datum:
         resultaten.append(
@@ -493,9 +479,7 @@ def _checks(
         )
     else:
         resultaten.append(
-            CheckResultaat(
-                naam="Geldigheid", ok=True, melding=f"Geldig t/m {voorstel.geldig_tot.isoformat()}"
-            )
+            CheckResultaat(naam="Geldigheid", ok=True, melding=f"Geldig t/m {voorstel.geldig_tot.isoformat()}")
         )
 
     resultaten.append(
@@ -536,9 +520,7 @@ def _check_duplicaat_offerte(
             Document.status.in_([DocumentStatus.GEACCORDEERD, DocumentStatus.TER_ACCORDERING]),
         )
     ).all()
-    treffers = [
-        rij for rij, _ in rijen if match_motor.normaliseer_nummer(rij.offertenummer) == genormaliseerd
-    ]
+    treffers = [rij for rij, _ in rijen if match_motor.normaliseer_nummer(rij.offertenummer) == genormaliseerd]
     if treffers:
         return CheckResultaat(
             naam="Duplicaat offerte",
@@ -548,9 +530,7 @@ def _check_duplicaat_offerte(
                 f"({len(treffers)}×) — laat vervallen of gebruik de bestaande verplichting"
             ),
         )
-    return CheckResultaat(
-        naam="Duplicaat offerte", ok=True, melding="Geen andere lopende verplichting met dit nummer"
-    )
+    return CheckResultaat(naam="Duplicaat offerte", ok=True, melding="Geen andere lopende verplichting met dit nummer")
 
 
 def voer_checks_uit(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> CheckRapport:
@@ -793,6 +773,32 @@ class MatchData:
     #: accordering)"); `termijn` = de (n)e termijn op de gekoppelde offerte bij binnen/buiten.
     niet_toetsbaar_reden: str | None = None
     termijn: int | None = None
+    #: Peter 18-09: de splitsing achter `verbruik_na` — geboekt (boekstand) / onderweg (nog niet geboekte gematchte
+    #: facturen, het eigen document uitgezonderd) / aantal onderweg (waarvan ter accordering).
+    verbruik_geboekt: Decimal | None = None
+    verbruik_onderweg: Decimal | None = None
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
+
+
+def _onderweg_uit_details(details: dict) -> dict:
+    def _dec(sleutel: str) -> Decimal | None:
+        waarde = details.get(sleutel)
+        try:
+            return Decimal(str(waarde)).quantize(Decimal("0.01")) if waarde is not None else None
+        except (ArithmeticError, ValueError):
+            return None
+
+    def _int(sleutel: str) -> int:
+        waarde = details.get(sleutel)
+        return int(waarde) if isinstance(waarde, int) else 0
+
+    return {
+        "verbruik_geboekt": _dec("verbruik_geboekt"),
+        "verbruik_onderweg": _dec("verbruik_onderweg"),
+        "onderweg_aantal": _int("onderweg_aantal"),
+        "onderweg_ter_accordering": _int("onderweg_ter_accordering"),
+    }
 
 
 def _verplichting_kort(
@@ -813,9 +819,7 @@ def _verplichting_kort(
     )
 
 
-def _kandidaten_van_details(
-    session: Session, *, administratie_id: uuid.UUID, details: dict
-) -> list[MatchKandidaat]:
+def _kandidaten_van_details(session: Session, *, administratie_id: uuid.UUID, details: dict) -> list[MatchKandidaat]:
     ids = [_als_uuid(k) for k in (details.get("kandidaten") or [])]
     kandidaten: list[MatchKandidaat] = []
     for kandidaat_id in [k for k in ids if k is not None]:
@@ -867,9 +871,7 @@ def haal_match_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Mat
             document_id=document_id,
             uitkomst=rij.uitkomst,
             verplichting=(
-                _verplichting_kort(
-                    session, administratie_id=administratie_id, document_id=rij.verplichting_document_id
-                )
+                _verplichting_kort(session, administratie_id=administratie_id, document_id=rij.verplichting_document_id)
                 if rij.verplichting_document_id is not None
                 else None
             ),
@@ -886,6 +888,7 @@ def haal_match_op(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> Mat
                 str(details["wachtende_reden"]) if isinstance(details.get("wachtende_reden"), str) else None
             ),
             termijn=int(details["termijn"]) if isinstance(details.get("termijn"), int) else None,
+            **_onderweg_uit_details(details),
         )
 
 
@@ -1064,5 +1067,7 @@ def offerte_match_kort_per_document(
             kandidaten=[],
             berekend_op=rij.berekend_op,
             melding=str(details.get("melding") or ""),
+            termijn=int(details["termijn"]) if isinstance(details.get("termijn"), int) else None,
+            **_onderweg_uit_details(details),
         )
     return uitkomst

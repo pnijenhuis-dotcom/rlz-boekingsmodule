@@ -16,7 +16,8 @@ class Verplichting(Base):
     kantoor gecontroleerde kopvelden van een offerte/prijsopgave/opdrachtbevestiging, het bij het
     LAATSTE klant-akkoord vastgelegde `goedgekeurd_bedrag_excl` (+ wie/wanneer — dát is het
     discrepantie-doel: dit bedrag, deze leverancier, dit project, akkoord door die persoon op die
-    datum), de cumulatieve verbruiksstand (③ — uitsluitend GEBOEKTE, verrekende facturen) en het
+    datum), de cumulatieve BOEKSTAND `verbruikt_bedrag_excl` (③ — uitsluitend GEBOEKTE, verrekende facturen; het
+    onderweg-verbruik van Peter 18-09 wordt per toets uit `verplichting_match` berekend en nooit hier opgeslagen) en het
     vervallen-spoor (⑥: vervallen stopt nieuwe matches, gematchte facturen blijven ongemoeid).
 
     Geen RLZ-/Odoo-boeking: een verplichting is een dossierstuk met een verbruiksstand."""
@@ -59,7 +60,10 @@ class Verplichting(Base):
 
 class VerplichtingMatch(Base):
     """Eén rij per INKOOPdocument (herberekening ververst 'm — geen historie-tabel): de actuele
-    matchstand tegen de lopende verplichtingen van dezelfde crediteur (②/③). `verrekend_op` is gezet
+    matchstand tegen de lopende verplichtingen van dezelfde crediteur (②/③). Sinds 18-09 (Peter, casus Bouwadvies)
+    telt in `verbruik_voor`/`verbruik_na` óók het ONDERWEG-verbruik: de andere gematchte facturen op dezelfde
+    verplichting die nog niet geboekt en niet terminaal zijn (per toets berekend, nooit opgeslagen — `details` draagt
+    de splitsing `verbruik_geboekt`/`verbruik_onderweg`/`onderweg_aantal`). `verrekend_op` is gezet
     zodra de factuur GEBOEKT is en het verbruik op de verplichting is bijgeschreven — tegenboeken
     draait dat terug. `handmatig_gekoppeld` = de mens koos zelf ("Koppel offerte…"); die keuze wint
     altijd zolang die verplichting lopend is en wordt onthouden voor dezelfde crediteur + project."""
@@ -75,6 +79,9 @@ class VerplichtingMatch(Base):
             "overschrijding_excl IS NULL OR overschrijding_excl >= 0", name="ck_verplichting_match_overschrijding"
         ),
         Index("ix_verplichting_match_administratie_uitkomst", "administratie_id", "uitkomst"),
+        # Peter 18-09 (migratie 0166): onderweg-verbruik en de herberekening ná een statuswissel zoeken per
+        # verplichting — één index op (administratie, verplichting) i.p.v. een scan over alle matchrijen.
+        Index("ix_verplichting_match_administratie_verplichting", "administratie_id", "verplichting_document_id"),
         {"schema": "boekhouding"},
     )
 

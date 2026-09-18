@@ -419,7 +419,12 @@ export function VerplichtingReviewScreen() {
                   totaal={voorstel.verbruik.totaal_excl}
                   percentage={voorstel.verbruik.percentage}
                   over={voorstel.verbruik.over_excl}
-                  openFacturen={{ aantal: voorstel.verbruik.open_facturen_aantal, bedrag: voorstel.verbruik.open_facturen_excl }}
+                  onderweg={{
+                    aantal: voorstel.verbruik.onderweg_aantal ?? voorstel.verbruik.open_facturen_aantal,
+                    bedrag: voorstel.verbruik.onderweg_excl ?? voorstel.verbruik.open_facturen_excl,
+                    terAccordering: voorstel.verbruik.onderweg_ter_accordering,
+                  }}
+                  restant={voorstel.verbruik.restant_excl}
                 />
               )}
               {vervallen?.op && (

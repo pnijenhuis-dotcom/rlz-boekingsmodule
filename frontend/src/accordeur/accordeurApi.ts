@@ -97,6 +97,13 @@ export interface OfferteMatchKortDto {
   totaal_excl: string | null
   percentage_na: number | null
   overschrijding_excl: string | null
+  /** Peter 18-09: termijnnummer + splitsing geboekt / onderweg (andere facturen op dezelfde offerte die nog niet
+   * geboekt zijn — ze tellen MEE in `verbruik_na`) / aantal onderweg (waarvan ter accordering). */
+  termijn?: number | null
+  verbruik_geboekt?: string | null
+  verbruik_onderweg?: string | null
+  onderweg_aantal?: number
+  onderweg_ter_accordering?: number
 }
 
 export interface AccordeurVraagBerichtDto {

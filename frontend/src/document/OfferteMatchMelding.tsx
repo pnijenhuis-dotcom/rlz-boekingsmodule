@@ -8,6 +8,9 @@
 // krijgen. `geen_verplichting` rendert niets: er is niets te melden. `niet_toetsbaar` rendert sinds 15-09 (Peter,
 // casus Olieman: de offerte wachtte op één accordeur) WÉL als er een verplichting van deze leverancier gevonden is —
 // "gevonden maar niet toetsbaar: <reden>" mét "Open de verplichting →" en "Koppel offerte…"; anders stil.
+// Peter 18-09 (casus Bouwadvies): het verbruik telt óók de facturen mee die nog niet geboekt zijn (onderweg) — de kaart
+// zegt "€ 70.000 van € 1.192.922,50 · waarvan € 20.000 nog niet geboekt (1 factuur ter accordering)" en de balk toont
+// geboekt vol, onderweg gearceerd, deze factuur gemarkeerd (zelfde DTO als de accordeur-app).
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button } from '../ui/basis'
@@ -16,6 +19,7 @@ import { VerbruiksBalk } from '../verplichting/VerbruiksBalk'
 import {
   haalOfferteMatch,
   MEERWERK_PERSPECTIEF,
+  onderwegTekst,
   SOORT_LABEL_TEKST,
   type VerplichtingMatchDto,
 } from '../verplichting/verplichtingApi'
@@ -73,6 +77,19 @@ export function OfferteMatchMelding({
   const isBinnen = match.uitkomst === 'binnen'
   const geboekt = TERMINALE_STATUSSEN.includes(status)
   const termijnTekst = match.termijn ? ` (${match.termijn}e termijn)` : ''
+  // Peter 18-09: verbruik = geboekt + onderweg — de zin "waarvan € X nog niet geboekt (N facturen ter accordering)"
+  // maakt zichtbaar waarom het cumulatief hoger is dan wat er al geboekt staat.
+  const onderwegZin = onderwegTekst(
+    match.verbruik_onderweg,
+    match.onderweg_aantal,
+    match.onderweg_ter_accordering,
+    formatBedrag,
+  )
+  const onderwegProps = {
+    aantal: match.onderweg_aantal ?? 0,
+    bedrag: match.verbruik_onderweg ?? null,
+    terAccordering: match.onderweg_ter_accordering ?? 0,
+  }
   const akkoordRegel = v
     ? `${v.leverancier_naam ?? 'leverancier'} · ${v.soort_label ? SOORT_LABEL_TEKST[v.soort_label].toLowerCase() : 'offerte'} ${
         v.offertenummer ?? '(zonder nummer)'
@@ -109,10 +126,14 @@ export function OfferteMatchMelding({
           <p style={{ margin: '0 0 10px' }}>
             ✓ <b>Binnen de goedgekeurde offerte</b> — {akkoordRegel}: deze factuur{termijnTekst}{' '}
             {formatBedrag(match.bedrag_excl)} past; verbruik ná deze factuur {formatBedrag(match.verbruik_na)} van{' '}
-            {formatBedrag(v.totaal_excl)}.
+            {formatBedrag(v.totaal_excl)}
+            {onderwegZin ? <span data-testid="offerte-onderweg"> · {onderwegZin}</span> : null}.
           </p>
           <VerbruiksBalk
-            verbruikt={match.verbruik_na}
+            verbruikt={match.verbruik_geboekt ?? match.verbruik_voor}
+            labelBedrag={match.verbruik_na}
+            onderweg={onderwegProps}
+            eigen={match.bedrag_excl}
             totaal={v.totaal_excl}
             percentage={match.percentage_na}
             testId="offerte-balk"
@@ -137,7 +158,8 @@ export function OfferteMatchMelding({
               <>
                 <b>Buiten de offerte</b> — cumulatief {formatBedrag(match.verbruik_na)} van{' '}
                 {formatBedrag(v.totaal_excl)}
-                {match.overschrijding_excl ? ` (− ${formatBedrag(match.overschrijding_excl)} over)` : ''}.
+                {match.overschrijding_excl ? ` (− ${formatBedrag(match.overschrijding_excl)} over)` : ''}
+                {onderwegZin ? <span data-testid="offerte-onderweg"> · {onderwegZin}</span> : null}.
               </>
             ) : match.uitkomst === 'meerdere_kandidaten' ? (
               <>
@@ -152,7 +174,10 @@ export function OfferteMatchMelding({
           </p>
           {match.uitkomst === 'buiten' && v && (
             <VerbruiksBalk
-              verbruikt={match.verbruik_na}
+              verbruikt={match.verbruik_geboekt ?? match.verbruik_voor}
+              labelBedrag={match.verbruik_na}
+              onderweg={onderwegProps}
+              eigen={match.bedrag_excl}
               totaal={v.totaal_excl}
               percentage={match.percentage_na}
               over={match.overschrijding_excl}

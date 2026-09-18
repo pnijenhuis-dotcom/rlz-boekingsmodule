@@ -24,8 +24,9 @@ from app.db.session import scoped_session
 from app.documenten.models import Boekvoorstel, Document, DocumentStatus
 from app.sync.models import ProjectCache, VendorCache
 from app.verplichting import match as match_motor
+from app.verplichting import match_pipeline
 from app.verplichting.models import Verplichting, VerplichtingMatch
-from app.verplichting.service import VerplichtingFout, is_open_factuur
+from app.verplichting.service import VerplichtingFout, bereken_verbruik_stand, is_open_factuur
 
 PER_PAGINA = 25
 STATUSSEN = ("lopend", "overschreden", "vervallen", "alle")
@@ -59,9 +60,15 @@ class KantoorRij:
     geldig_tot: date | None
     status: str
     facturen: list[FactuurRij]
-    #: Voorwaarschuwing 0.1: open (nog niet geboekte) gematchte facturen — informatief, buiten het verbruik.
+    #: Peter 18-09: onderweg (nog niet geboekte gematchte facturen) telt MEE — `open_facturen_*` = oude naam ervan;
+    #: `restant_excl` = totaal − geboekt − onderweg; `percentage_geboekt` = alleen de boekstand (balk gearceerd deel).
     open_facturen_aantal: int = 0
     open_facturen_excl: Decimal = Decimal("0.00")
+    onderweg_excl: Decimal = Decimal("0.00")
+    onderweg_aantal: int = 0
+    onderweg_ter_accordering: int = 0
+    restant_excl: Decimal | None = None
+    percentage_geboekt: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,11 +102,12 @@ class KantoorLijst:
     facetten: Facetten
 
 
-def _rij_status(verplichting: Verplichting) -> str:
+def _rij_status(verplichting: Verplichting, *, onderweg_excl: Decimal = Decimal(0)) -> str:
+    """Overschreden = geboekt + onderweg > totaal (Peter 18-09: dezelfde toets als op de factuur)."""
     if verplichting.vervallen_op is not None:
         return "vervallen"
     totaal = verplichting.goedgekeurd_bedrag_excl
-    verbruikt = Decimal(verplichting.verbruikt_bedrag_excl or 0)
+    verbruikt = Decimal(verplichting.verbruikt_bedrag_excl or 0) + Decimal(onderweg_excl or 0)
     if totaal is not None and verbruikt > totaal:
         return "overschreden"
     return "lopend"
@@ -145,9 +153,21 @@ def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[KantoorRij]:
             for v in verplichtingen:
                 totaal = v.goedgekeurd_bedrag_excl
                 verbruikt = Decimal(v.verbruikt_bedrag_excl or 0)
-                over = (verbruikt - totaal).quantize(Decimal("0.01")) if totaal is not None else None
                 facturen = facturen_per_verplichting.get(v.document_id, [])
+                # Peter 18-09: onderweg uit dezelfde facturenlijst als de uitklap — één definitie (`is_open_factuur`).
                 open_facturen = [f for f in facturen if is_open_factuur(f.status, verrekend=f.verrekend)]
+                onderweg = match_pipeline.OnderwegStand(
+                    aantal=len(open_facturen),
+                    bedrag_excl=sum((f.bedrag_excl or Decimal(0) for f in open_facturen), Decimal(0)).quantize(
+                        Decimal("0.01")
+                    ),
+                    ter_accordering=sum(1 for f in open_facturen if f.status == DocumentStatus.TER_ACCORDERING.value),
+                )
+                stand = (
+                    bereken_verbruik_stand(totaal=totaal, geboekt=verbruikt, onderweg=onderweg)
+                    if totaal is not None
+                    else None
+                )
                 rijen.append(
                     KantoorRij(
                         document_id=v.document_id,
@@ -159,17 +179,20 @@ def _alle_rijen(*, actor_id: uuid.UUID, rol: GebruikerRol) -> list[KantoorRij]:
                         project_naam=project_namen.get(v.project_id) if v.project_id else None,
                         totaal_excl=totaal,
                         verbruikt_excl=verbruikt,
-                        percentage=match_motor.percentage(verbruikt, totaal),
-                        over_excl=over if over is not None and over > 0 else None,
+                        percentage=stand.percentage if stand else None,
+                        over_excl=stand.over_excl if stand else None,
                         goedgekeurd_op=v.goedgekeurd_op,
                         goedgekeurd_door_naam=gebruiker_namen.get(v.goedgekeurd_door),
                         geldig_tot=v.geldig_tot,
-                        status=_rij_status(v),
+                        status=_rij_status(v, onderweg_excl=onderweg.bedrag_excl),
                         facturen=facturen,
-                        open_facturen_aantal=len(open_facturen),
-                        open_facturen_excl=sum((f.bedrag_excl or Decimal(0) for f in open_facturen), Decimal(0)).quantize(
-                            Decimal("0.01")
-                        ),
+                        open_facturen_aantal=onderweg.aantal,
+                        open_facturen_excl=onderweg.bedrag_excl,
+                        onderweg_excl=onderweg.bedrag_excl,
+                        onderweg_aantal=onderweg.aantal,
+                        onderweg_ter_accordering=onderweg.ter_accordering,
+                        restant_excl=stand.restant_excl if stand else None,
+                        percentage_geboekt=stand.percentage_geboekt if stand else None,
                     )
                 )
     return rijen
@@ -184,7 +207,10 @@ def _gebruikersnamen(session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:  # n
 
 
 def _facturen_per_verplichting(
-    session, *, administratie_id: uuid.UUID, verplichting_ids: list[uuid.UUID]  # noqa: ANN001
+    session,
+    *,
+    administratie_id: uuid.UUID,
+    verplichting_ids: list[uuid.UUID],  # noqa: ANN001
 ) -> dict[uuid.UUID, list[FactuurRij]]:
     """Bulk (geen N+1): de gematchte facturen per verplichting — de uitklap in het scherm."""
     if not verplichting_ids:
@@ -277,7 +303,5 @@ def lijst(
         per_pagina=per_pagina,
         administraties_in_selectie=len({r.administratie_id for r in selectie}),
         tellers=tellers,
-        facetten=Facetten(
-            status=status_facet, administraties=sorted(per_admin.values(), key=lambda f: f.naam.lower())
-        ),
+        facetten=Facetten(status=status_facet, administraties=sorted(per_admin.values(), key=lambda f: f.naam.lower())),
     )

@@ -286,3 +286,75 @@ class TestWachtendeVerplichtingEnTermijn:
         uitkomst = m.bepaal_match(feiten(project=PROJECT_B), [kandidaat(project=PROJECT_A)])
         assert uitkomst.uitkomst == m.GEEN_MATCH and "op een ander project (26140-OFF-01)" in uitkomst.melding
         assert uitkomst.details == {"ander_project": True}
+
+
+class TestOnderwegTeltMee:
+    """Peter 18-09 (casus Bouwadvies Oost Nederland, offerte zonder nummer € 1.192.922,50; € 20.000 ter accordering
+    + factuur € 50.000 nieuw): verbruik = geboekt + onderweg — "hij moet wel doortellen"."""
+
+    def test_onderweg_telt_op_bij_geboekt_in_verbruik_voor(self):
+        k = m.Kandidaat(
+            document_id=uuid.uuid4(),
+            project_id=PROJECT_A,
+            offertenummer=None,
+            goedgekeurd_bedrag_excl=Decimal("1192922.50"),
+            verbruikt_bedrag_excl=Decimal("0.00"),
+            onderweg_bedrag_excl=Decimal("20000.00"),
+            onderweg_aantal=1,
+            onderweg_ter_accordering=1,
+            aantal_gematcht=1,
+        )
+        uit = m.bepaal_match(feiten(bedrag="50000.00"), [k])
+        assert uit.uitkomst == m.BINNEN
+        assert uit.verbruik_voor == Decimal("20000.00")
+        assert uit.verbruik_na == Decimal("70000.00")
+        assert uit.details["verbruik_geboekt"] == "0.00"
+        assert uit.details["verbruik_onderweg"] == "20000.00"
+        assert uit.details["onderweg_aantal"] == 1
+        assert uit.details["onderweg_ter_accordering"] == 1
+        assert uit.details["termijn"] == 2
+        assert "€ 70.000,00 van € 1.192.922,50" in uit.melding
+        assert "waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)" in uit.melding
+
+    def test_som_van_geboekt_onderweg_en_eigen_bedrag_beslist_binnen_of_buiten(self):
+        # Offerte 60.000: 20.000 onderweg + 50.000 nieuw = 70.000 → buiten, 10.000 over.
+        k = kandidaat(totaal="60000.00", verbruikt="0.00")
+        k = m.Kandidaat(**{**k.__dict__, "onderweg_bedrag_excl": Decimal("20000.00"), "onderweg_aantal": 1})
+        uit = m.bepaal_match(feiten(bedrag="50000.00"), [k])
+        assert uit.uitkomst == m.BUITEN
+        assert uit.overschrijding_excl == Decimal("10000.00")
+        assert "waarvan € 20.000,00 nog niet geboekt (1 factuur in behandeling)" in uit.melding
+        # Zonder die onderweg-factuur (afgewezen) past dezelfde factuur wél.
+        uit2 = m.bepaal_match(feiten(bedrag="50000.00"), [kandidaat(totaal="60000.00")])
+        assert uit2.uitkomst == m.BINNEN
+        assert uit2.details["verbruik_onderweg"] == "0.00"
+        assert "nog niet geboekt" not in uit2.melding
+
+    def test_geboekt_plus_onderweg_nul_is_het_bestaande_gedrag(self):
+        uit = m.bepaal_match(feiten(bedrag="12400.00"), [kandidaat(verbruikt="14750.00")])
+        assert uit.verbruik_voor == Decimal("14750.00")
+        assert uit.verbruik_na == Decimal("27150.00")
+        assert uit.details["verbruik_geboekt"] == "14750.00"
+        assert uit.details["verbruik_onderweg"] == "0.00"
+        assert uit.details["onderweg_aantal"] == 0
+
+    def test_eigen_verrekend_bedrag_wordt_alleen_van_geboekt_afgetrokken(self):
+        k = m.Kandidaat(
+            **{
+                **kandidaat(verbruikt="12400.00").__dict__,
+                "onderweg_bedrag_excl": Decimal("5000.00"),
+                "onderweg_aantal": 1,
+            }
+        )
+        uit = m.bepaal_match(feiten(bedrag="12400.00", eigen_verrekend="12400.00"), [k])
+        assert uit.verbruik_voor == Decimal("5000.00")
+        assert uit.details["verbruik_geboekt"] == "0.00"
+
+    def test_onderweg_tekst(self):
+        assert m.onderweg_tekst(Decimal("0.00"), 0, 0) == ""
+        assert m.onderweg_tekst(Decimal("20000.00"), 1, 1) == (
+            "waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)"
+        )
+        assert m.onderweg_tekst(Decimal("25000.00"), 2, 1) == (
+            "waarvan € 25.000,00 nog niet geboekt (2 facturen in behandeling)"
+        )

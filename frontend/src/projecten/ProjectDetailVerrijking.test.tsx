@@ -61,7 +61,8 @@ describe('VerplichtingenPaneel', () => {
     expect(balk).toHaveClass('te-veel')
     expect(balk).toHaveTextContent('€ 6.000,00 / € 5.000,00')
     expect(balk).toHaveTextContent('€ 1.000,00 over')
-    expect(within(rijen[0]).getByTestId('verbruiks-balk-doc-1-open')).toHaveTextContent('2 open facturen')
+    // Peter 18-09: onderweg telt mee — dezelfde zin als op het controlescherm.
+    expect(within(rijen[0]).getByTestId('verbruiks-balk-doc-1-open')).toHaveTextContent('waarvan € 800,00 nog niet geboekt (2 facturen in behandeling) — telt mee')
     expect(within(rijen[0]).getByText('overschreden')).toBeInTheDocument()
     expect(within(rijen[0]).getByRole('link', { name: 'Open verplichting OFF-1' })).toHaveAttribute('href', `/verplichting/${ADMIN}/doc-1`)
     // Vervallen = historie: eigen status, geen "over".

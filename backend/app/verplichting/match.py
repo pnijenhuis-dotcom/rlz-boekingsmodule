@@ -9,10 +9,16 @@ Cumulatief (③, besluit Peter): verbruik = som van de gematchte facturen; `binn
 ná deze factuur ≤ het goedgekeurde offertebedrag — GEEN tolerantiemarge, de grens ís het bedrag.
 Buiten = oranje vlag mét het bedrag erover (⑤), nooit een blokkade.
 
-Verbruik-definitie (besluit in CONTRACT_B, beslispunt voor Peter): `verbruik_voor` telt UITSLUITEND
-het verrekende (= geboekte) verbruik. Nog open facturen op dezelfde verplichting tellen niet mee —
-anders zou een factuur die nog in de werkvoorraad ligt een tweede factuur ten onrechte "buiten"
-maken en zou intrekken/afwijzen de stand van andere documenten verschuiven.
+Verbruik-definitie (HERZIEN Peter 18-09, casus Bouwadvies Oost Nederland "hij moet wel doortellen" — herziet het
+CONTRACT_B-besluit "alleen geboekt"): verbruik = GEBOEKT + ONDERWEG. Geboekt = `Verplichting.verbruikt_bedrag_excl`
+(de boekstand, bijgeschreven ín de boek-transactie — auditspoor ongewijzigd); onderweg = Σ bedrag van de ándere
+facturen die op dezelfde verplichting binnen/buiten matchen en nog niet geboekt en niet terminaal zijn
+(ter accordering, klaar om te boeken, wordt geboekt, boeken mislukt, in controle). Bij drie accorderingslagen zit
+een factuur dagen tot weken in de accordering — twee facturen tegelijk "binnen offerte" terwijl de som erbuiten
+valt was daardoor de normale situatie, geen randgeval. Onderweg wordt per toets berekend (één query in de
+pipeline), nooit opgeslagen; het eigen document telt nooit dubbel. Gevolg (bewust): wordt een onderweg-factuur
+afgewezen, dan zakt het verbruik en herberekent de pipeline de andere open documenten op dezelfde verplichting
+mét tijdlijnregel — nooit stil.
 """
 
 from __future__ import annotations
@@ -39,9 +45,7 @@ UITKOMSTEN = (BINNEN, BUITEN, GEEN_MATCH, MEERDERE_KANDIDATEN, NIET_TOETSBAAR, G
 TELT_ALS_BUITEN_OFFERTE = (BUITEN, GEEN_MATCH)
 
 #: Handelingsperspectief bij "buiten" (⑤/B6): meerwerk rekt een offerte niet op.
-MEERWERK_HANDELING = (
-    "Meerwerk rekt een offerte niet op: laat aanvullend werk als aparte verplichting accorderen."
-)
+MEERWERK_HANDELING = "Meerwerk rekt een offerte niet op: laat aanvullend werk als aparte verplichting accorderen."
 
 _NIET_ALFANUMERIEK = re.compile(r"[^0-9a-z]+")
 
@@ -73,8 +77,15 @@ class Kandidaat:
     verbruikt_bedrag_excl: Decimal = Decimal(0)
     geldig_tot: date | None = None
     #: Peter 15-09 (termijnfacturen): aantal facturen dat al aan deze verplichting gematcht is (binnen/buiten, andere
-    #: documenten) — deze factuur is dan de (n+1)e termijn ("1e termijn 20.000 van 85.000").
+    #: documenten, geboekt óf onderweg) — deze factuur is dan de (n+1)e termijn ("1e termijn 20.000 van 85.000").
     aantal_gematcht: int = 0
+    #: Peter 18-09: ONDERWEG = Σ bedrag excl. van de ándere facturen op deze verplichting die binnen/buiten matchen
+    #: en nog niet geboekt en niet terminaal zijn (het eigen document uitgezonderd — de pipeline filtert dat).
+    onderweg_bedrag_excl: Decimal = Decimal(0)
+    onderweg_aantal: int = 0
+    #: Hoeveel van die onderweg-facturen ter accordering staan (de kaarttekst zegt dan "ter accordering", anders
+    #: "in behandeling").
+    onderweg_ter_accordering: int = 0
 
 
 #: Reden-codes voor een gevonden-maar-niet-toetsbare verplichting (Peter 15-09, casus Olieman: de offerte wachtte nog
@@ -133,6 +144,15 @@ class MatchUitkomst:
 
 def _bedrag(waarde: Decimal | None) -> str:
     return f"€ {waarde:,.2f}".replace(",", "·").replace(".", ",").replace("·", ".") if waarde is not None else "—"
+
+
+def onderweg_tekst(bedrag: Decimal | None, aantal: int, ter_accordering: int) -> str:
+    """ "waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)" — leeg als er niets onderweg is. Eén bron
+    voor melding, DTO en tests; de frontend toont dezelfde zin."""
+    if not bedrag or aantal <= 0:
+        return ""
+    stand = "ter accordering" if ter_accordering >= aantal else "in behandeling"
+    return f"waarvan {_bedrag(bedrag)} nog niet geboekt ({aantal} {'factuur' if aantal == 1 else 'facturen'} {stand})"
 
 
 def percentage(verbruik: Decimal | None, totaal: Decimal | None) -> int | None:
@@ -227,15 +247,11 @@ def bepaal_match(
 
     # (a) handmatige koppeling op dit document wint altijd.
     if handmatig_gekoppeld_id is not None and handmatig_gekoppeld_id in per_id:
-        return _beoordeel(
-            feiten, per_id[handmatig_gekoppeld_id], kandidaat_ids=kandidaat_ids, grond="handmatig"
-        )
+        return _beoordeel(feiten, per_id[handmatig_gekoppeld_id], kandidaat_ids=kandidaat_ids, grond="handmatig")
 
     # (b) offertenummer van een kandidaat komt letterlijk in de factuurtekst voor.
     tekst = "".join(_normaliseer_tekst(t) for t in feiten.teksten)
-    op_nummer = [
-        k for k in geldige if (nr := normaliseer_nummer(k.offertenummer)) is not None and nr in tekst
-    ]
+    op_nummer = [k for k in geldige if (nr := normaliseer_nummer(k.offertenummer)) is not None and nr in tekst]
     if len(op_nummer) == 1:
         return _beoordeel(feiten, op_nummer[0], kandidaat_ids=kandidaat_ids, grond="offertenummer")
 
@@ -303,24 +319,29 @@ def _beoordeel(
     bedrag = feiten.bedrag_excl or Decimal(0)
     # Herberekening ná boeken: het eigen, al verrekende bedrag zit al in verbruikt_bedrag_excl.
     eigen = feiten.eigen_verrekend or Decimal(0)
-    verbruik_voor = (kandidaat.verbruikt_bedrag_excl - eigen).quantize(Decimal("0.01"))
-    if verbruik_voor < 0:
-        verbruik_voor = Decimal("0.00")
+    geboekt = (kandidaat.verbruikt_bedrag_excl - eigen).quantize(Decimal("0.01"))
+    if geboekt < 0:
+        geboekt = Decimal("0.00")
+    # Peter 18-09: verbruik = geboekt + onderweg (de pipeline levert onderweg zónder het eigen document).
+    onderweg = Decimal(kandidaat.onderweg_bedrag_excl or 0).quantize(Decimal("0.01"))
+    verbruik_voor = (geboekt + onderweg).quantize(Decimal("0.01"))
     verbruik_na = (verbruik_voor + bedrag).quantize(Decimal("0.01"))
     binnen = verbruik_na <= totaal
     over = (verbruik_na - totaal).quantize(Decimal("0.01")) if not binnen else None
     nummer = kandidaat.offertenummer or "zonder nummer"
     # Peter 15-09 (termijnfacturen): deze factuur is de (aantal al gematcht + 1)e termijn op de offerte.
     termijn = int(kandidaat.aantal_gematcht) + 1
+    onderweg_zin = onderweg_tekst(onderweg, kandidaat.onderweg_aantal, kandidaat.onderweg_ter_accordering)
+    onderweg_suffix = f", {onderweg_zin}" if onderweg_zin else ""
     if binnen:
         melding = (
             f"Binnen de goedgekeurde offerte {nummer}: deze factuur ({termijn}e termijn, {_bedrag(bedrag)}) past; "
-            f"verbruik ná deze factuur {_bedrag(verbruik_na)} van {_bedrag(totaal)}."
+            f"verbruik ná deze factuur {_bedrag(verbruik_na)} van {_bedrag(totaal)}{onderweg_suffix}."
         )
     else:
         melding = (
             f"Buiten de offerte {nummer} — {termijn}e termijn, cumulatief {_bedrag(verbruik_na)} van {_bedrag(totaal)} "
-            f"({_bedrag(over)} over). {MEERWERK_HANDELING}"
+            f"({_bedrag(over)} over{onderweg_suffix}). {MEERWERK_HANDELING}"
         )
     return MatchUitkomst(
         uitkomst=BINNEN if binnen else BUITEN,
@@ -332,5 +353,14 @@ def _beoordeel(
         melding=melding,
         kandidaat_ids=kandidaat_ids,
         grond=grond,
-        details={"totaal_excl": str(totaal), "percentage_na": percentage(verbruik_na, totaal), "termijn": termijn},
+        details={
+            "totaal_excl": str(totaal),
+            "percentage_na": percentage(verbruik_na, totaal),
+            "termijn": termijn,
+            # Peter 18-09: de drie getallen achter de toets — geboekt / onderweg / dit document — voor kaart en balk.
+            "verbruik_geboekt": str(geboekt),
+            "verbruik_onderweg": str(onderweg),
+            "onderweg_aantal": int(kandidaat.onderweg_aantal),
+            "onderweg_ter_accordering": int(kandidaat.onderweg_ter_accordering),
+        },
     )

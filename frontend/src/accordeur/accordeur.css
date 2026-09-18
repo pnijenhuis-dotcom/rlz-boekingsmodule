@@ -1776,6 +1776,7 @@
 }
 .acc-offerte .acc-offerte-balk {
   margin-top: 8px;
+  display: flex;
   height: 8px;
   border-radius: 4px;
   background: var(--acc-border);
@@ -1783,12 +1784,23 @@
 }
 .acc-offerte .acc-offerte-balk > span {
   display: block;
+  flex: 0 0 auto;
   height: 100%;
   border-radius: 4px;
-  background: var(--acc-green);
+  background-color: var(--acc-green);
 }
 .acc-offerte.buiten .acc-offerte-balk > span {
-  background: var(--acc-red);
+  background-color: var(--acc-red);
+}
+/* Drie segmenten (Peter 18-09): geboekt vol, onderweg gearceerd (nog niet geboekt, telt mee), deze factuur gemarkeerd. */
+.acc-offerte .acc-offerte-balk > span.onderweg {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 255, 255, 0.55) 3px 6px);
+}
+.acc-offerte .acc-offerte-balk > span.eigen {
+  opacity: 0.6;
+}
+.acc-offerte .acc-offerte-balk > span + span {
+  border-radius: 0 4px 4px 0;
 }
 .acc-offerte .acc-offerte-stand {
   margin-top: 6px;

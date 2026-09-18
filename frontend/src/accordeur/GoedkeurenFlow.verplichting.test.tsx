@@ -152,6 +152,42 @@ describe('GoedkeurenFlow — verplichtingen + offerte-match', () => {
     expect(screen.getByRole('button', { name: 'Akkoord ✓' })).toBeEnabled()
   })
 
+  it('factuur binnen de offerte mét onderweg-facturen (Peter 18-09, casus Bouwadvies): stand telt door en zegt waarom', async () => {
+    stubFetch([
+      {
+        ...FACTUUR,
+        offerte_match: {
+          uitkomst: 'binnen',
+          offertenummer: null,
+          leverancier_naam: 'Bouwadvies Oost Nederland',
+          goedgekeurd_door_naam: 'Systeem (achtergrondverwerking)',
+          goedgekeurd_op: '2026-09-18T10:00:00Z',
+          bedrag_excl: '50000.00',
+          verbruik_na: '70000.00',
+          totaal_excl: '1192922.50',
+          percentage_na: 6,
+          overschrijding_excl: null,
+          termijn: 2,
+          verbruik_geboekt: '0.00',
+          verbruik_onderweg: '20000.00',
+          onderweg_aantal: 1,
+          onderweg_ter_accordering: 1,
+        },
+      },
+    ])
+    renderFlow()
+    await userEvent.click(await screen.findByText('Confide Bouw B.V.'))
+    const melding = await screen.findByTestId('acc-offerte-melding')
+    expect(melding).toHaveTextContent('✓ Binnen de goedgekeurde offerte zonder nummer')
+    expect(melding).toHaveTextContent('Deze factuur van € 50.000,00 (2e termijn) past.')
+    expect(melding).toHaveTextContent('€ 70.000,00 van € 1.192.922,50')
+    expect(within(melding).getByTestId('acc-offerte-onderweg')).toHaveTextContent(
+      'waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)',
+    )
+    expect(within(melding).getByTestId('acc-offerte-seg-onderweg')).toBeInTheDocument()
+    expect(within(melding).getByTestId('acc-offerte-seg-eigen')).toBeInTheDocument()
+  })
+
   it('factuur buiten de offerte: oranje melding mét het bedrag erover — geen blokkade', async () => {
     stubFetch([
       {

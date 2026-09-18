@@ -41,6 +41,7 @@ from app.rlz.credentials import GeenRlzCredentials
 from app.rlz.feiten_cli import RLZ_FEITEN_COMMANDO, register_rlz_feiten, run_rlz_feiten
 from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
+from app.verplichting.cli_cmd import VERPLICHTING_COMMANDOS, register_verplichting, run_verplichting  # 18-09
 
 # Dev-gemak: de RLZ_/UNIVERSAL_/TESTADMIN_/KEMPEN_/RUBICON_-logins staan in verkenning/.env
 # (nooit in backend/.env, zie CLAUDE.md), en niets anders laadt dat bestand als de CLI los
@@ -3347,6 +3348,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_bank(subparsers)  # blok B 10-09: bank-voorstellen-lezen + bank-historie-backfill (app/bank/cli_cmd.py)
     register_projecten(subparsers)  # blok 3 18-09: projecten-afsluit-kandidaten + projecten-dubbele-nummers (lees-only)
+    register_verplichting(subparsers)  # 18-09: verplichting-match-herberekenen (SCHRIJVEND, nazorg onderweg-verbruik)
     register_accordering(subparsers)  # blok 7 11-09: staande-goedkeuring-voorstellen-lezen (app/accordering/cli_cmd.py)
     register_migratie(subparsers)  # blok D1 10-09: migratie-schoonlijst (app/migratie/cli_cmd.py)
     register_panden(subparsers)  # blok D2 10-09: pandenregister-afleiden (app/panden/cli_cmd.py)
@@ -3713,6 +3715,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_bank(args)
     if args.commando in PROJECTEN_COMMANDOS:
         return run_projecten(args)
+    if args.commando in VERPLICHTING_COMMANDOS:
+        return run_verplichting(args)
     if args.commando in ACCORDERING_COMMANDOS:
         return run_accordering(args)  # blok 7 11-09, lees-only
     if args.commando == "migratie-schoonlijst":

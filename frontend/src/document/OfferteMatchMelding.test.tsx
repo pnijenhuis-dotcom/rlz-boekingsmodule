@@ -111,6 +111,34 @@ describe('OfferteMatchMelding', () => {
     expect(await screen.findByText(/deze factuur \(1e termijn\)/)).toBeInTheDocument()
   })
 
+  it('binnen mét onderweg-facturen (Peter 18-09, casus Bouwadvies): de zin "waarvan … nog niet geboekt" en het gearceerde segment', async () => {
+    installFetch(
+      match({
+        verplichting: { ...match().verplichting!, offertenummer: null, totaal_excl: '1192922.50' },
+        bedrag_excl: '50000.00',
+        verbruik_voor: '20000.00',
+        verbruik_na: '70000.00',
+        verbruik_geboekt: '0.00',
+        verbruik_onderweg: '20000.00',
+        onderweg_aantal: 1,
+        onderweg_ter_accordering: 1,
+        percentage_na: 6,
+        termijn: 2,
+      }),
+    )
+    toon()
+    expect(await screen.findByTestId('offerte-chip-binnen')).toBeInTheDocument()
+    expect(screen.getByText(/deze factuur \(2e termijn\)/)).toBeInTheDocument()
+    expect(screen.getByTestId('offerte-onderweg')).toHaveTextContent(
+      'waarvan € 20.000,00 nog niet geboekt (1 factuur ter accordering)',
+    )
+    const balk = screen.getByTestId('offerte-balk')
+    expect(balk).toHaveTextContent('€ 70.000,00 / € 1.192.922,50')
+    expect(screen.getByTestId('offerte-balk-seg-onderweg')).toBeInTheDocument()
+    expect(screen.getByTestId('offerte-balk-seg-eigen')).toBeInTheDocument()
+    expect(screen.getByTestId('offerte-balk-open')).toHaveTextContent('telt mee')
+  })
+
   it('binnen de offerte: groene chip, verbruiksbalk en geen meerwerk-waarschuwing', async () => {
     installFetch(match())
     toon()

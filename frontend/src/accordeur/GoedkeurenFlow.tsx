@@ -72,6 +72,7 @@ import { UitlogIcoon } from './UitlogIcoon'
 import { bewaarStand, leesStand, verversTekst } from './standCache'
 import { laadVerseStand, neemVoorgeladenStand, type VerseStand } from './voorlader'
 import { markeer } from './koudeStart'
+import { onderwegTekst, verbruikSegmenten } from '../verplichting/verplichtingApi'
 
 type Weergave = 'wachtrij' | 'review' | 'beheer' | 'thread'
 
@@ -267,6 +268,37 @@ function offerteBalkBreedte(match: NonNullable<WachtrijItem['offerte_match']>): 
   return Math.min(100, Math.max(0, pct))
 }
 
+/** Peter 18-09: drie segmenten — geboekt vol, onderweg gearceerd (telt mee), deze factuur gemarkeerd. Zonder de
+ * splitsing (oudere server) valt de balk terug op één segment op het server-percentage. */
+function OfferteBalk({ match }: { match: NonNullable<WachtrijItem['offerte_match']> }) {
+  const heeftSplitsing = match.verbruik_geboekt !== undefined && match.verbruik_geboekt !== null
+  const seg = heeftSplitsing
+    ? verbruikSegmenten({
+        geboekt: match.verbruik_geboekt,
+        onderweg: match.verbruik_onderweg,
+        eigen: match.bedrag_excl,
+        totaal: match.totaal_excl,
+      })
+    : null
+  return (
+    <div className="acc-offerte-balk" aria-hidden="true">
+      {seg ? (
+        <>
+          {seg.geboekt > 0 && <span className="geboekt" style={{ width: `${seg.geboekt}%` }} />}
+          {seg.onderweg > 0 && (
+            <span className="onderweg" data-testid="acc-offerte-seg-onderweg" style={{ width: `${seg.onderweg}%` }} />
+          )}
+          {seg.eigen > 0 && (
+            <span className="eigen" data-testid="acc-offerte-seg-eigen" style={{ width: `${seg.eigen}%` }} />
+          )}
+        </>
+      ) : (
+        <span style={{ width: `${offerteBalkBreedte(match)}%` }} />
+      )}
+    </div>
+  )
+}
+
 /** Offerte-melding op de factuur-review (②③) + het VOORINGEVULDE vinkje "Conform offerte ‹nr›"
  * (④, besluit Peter 04-09 optie A). Het vinkje is presentatie: het akkoord komt uitsluitend van
  * de Akkoord-knop, de accordeur tikt zélf. Buiten de offerte = oranje signaal, nooit een blokkade
@@ -277,6 +309,15 @@ function OfferteMelding({ item }: { item: WachtrijItem }) {
   if (!match) return null
   const binnen = match.uitkomst === 'binnen'
   const nummer = match.offertenummer ?? 'zonder nummer'
+  // Peter 18-09 (casus Bouwadvies, € 20.000 ter accordering + € 50.000): verbruik = geboekt + onderweg; de kaart zegt
+  // waarom het cumulatief hoger is dan de boekstand en noemt het termijnnummer.
+  const onderwegZin = onderwegTekst(
+    match.verbruik_onderweg,
+    match.onderweg_aantal,
+    match.onderweg_ter_accordering,
+    eurWeergave,
+  )
+  const termijnTekst = match.termijn ? ` (${match.termijn}e termijn)` : ''
   return (
     <>
       <div className={`acc-offerte ${binnen ? 'binnen' : 'buiten'}`} data-testid="acc-offerte-melding">
@@ -285,16 +326,15 @@ function OfferteMelding({ item }: { item: WachtrijItem }) {
         </div>
         <div>
           {binnen
-            ? `Deze factuur van ${eurWeergave(match.bedrag_excl)} past.`
-            : `Deze factuur van ${eurWeergave(match.bedrag_excl)} komt cumulatief boven het goedgekeurde bedrag${
+            ? `Deze factuur van ${eurWeergave(match.bedrag_excl)}${termijnTekst} past.`
+            : `Deze factuur van ${eurWeergave(match.bedrag_excl)}${termijnTekst} komt cumulatief boven het goedgekeurde bedrag${
                 match.overschrijding_excl ? ` — ${eurWeergave(match.overschrijding_excl)} erover` : ''
               }.`}
         </div>
-        <div className="acc-offerte-balk" aria-hidden="true">
-          <span style={{ width: `${offerteBalkBreedte(match)}%` }} />
-        </div>
+        <OfferteBalk match={match} />
         <div className="acc-offerte-stand">
           {eurWeergave(match.verbruik_na)} van {eurWeergave(match.totaal_excl)}
+          {onderwegZin ? <span data-testid="acc-offerte-onderweg"> · {onderwegZin}</span> : null}
           {match.goedgekeurd_door_naam
             ? ` · akkoord ${match.goedgekeurd_door_naam}${match.goedgekeurd_op ? `, ${datumWeergave(match.goedgekeurd_op)}` : ''}`
             : ''}

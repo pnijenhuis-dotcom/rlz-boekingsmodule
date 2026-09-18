@@ -202,6 +202,10 @@ def _match_dto(data: service.MatchData) -> schemas.VerplichtingMatchDto:
         melding=data.melding,
         niet_toetsbaar_reden=data.niet_toetsbaar_reden,
         termijn=data.termijn,
+        verbruik_geboekt=data.verbruik_geboekt,
+        verbruik_onderweg=data.verbruik_onderweg,
+        onderweg_aantal=data.onderweg_aantal,
+        onderweg_ter_accordering=data.onderweg_ter_accordering,
     )
 
 

@@ -232,6 +232,12 @@ def _schrijf_overgang(
     document.status = naar
     # Werkvoorraad-tellers-cache (blok 6 run 11-09): incrementeel in dezelfde transactie — oude bucket −1, nieuwe +1.
     werkvoorraad_tellers.verwerk_statusovergang(session, document.administratie_id, van, naar)
+    # Offerte-verbruik onderweg (Peter 18-09): telt dit document ná de overgang anders mee in het verbruik van zijn
+    # verplichting (afgewezen/verwijderd/geboekt/hersteld), dan worden de andere open facturen op die verplichting
+    # ná de commit herberekend mét tijdlijnregel — nooit stil, nooit blokkerend voor deze overgang.
+    from app.verplichting import match_pipeline as verplichting_match  # lokaal: geen kring
+
+    verplichting_match.registreer_statuswissel(session, document=document, van=van, naar=naar)
     session.add(
         DocumentGebeurtenis(
             id=uuid.uuid4(),

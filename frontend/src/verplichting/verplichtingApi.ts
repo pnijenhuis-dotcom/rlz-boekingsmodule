@@ -60,15 +60,23 @@ export interface VerplichtingGoedgekeurdDto {
   door_naam: string | null
 }
 
+/** Drie getallen (Peter 18-09): GEBOEKT (`verbruikt_excl`, de boekstand), ONDERWEG (`onderweg_excl` — gematchte
+ * facturen die nog niet geboekt zijn; sinds 18-09 tellen ze MEE) en RESTANT (`restant_excl` = totaal − geboekt −
+ * onderweg, negatief = overschreden). `percentage`/`over_excl` gaan over geboekt + onderweg, `percentage_geboekt`
+ * alleen over de boekstand. `open_facturen_*` = de oude naam van onderweg (0.1, 04-09), gelijk gehouden. */
 export interface VerplichtingVerbruikDto {
   verbruikt_excl: string
   totaal_excl: string | null
-  /** Server rekent; de client toont alleen (③ cumulatief, grens = het offertebedrag). */
+  /** Server rekent; de client toont alleen (③ cumulatief incl. onderweg, grens = het offertebedrag). */
   percentage: number
   over_excl: string | null
-  /** Voorwaarschuwing (0.1, 04-09): gematchte facturen die nog niet geboekt zijn — informatief, buiten het verbruik. */
   open_facturen_aantal?: number
   open_facturen_excl?: string
+  onderweg_excl?: string
+  onderweg_aantal?: number
+  onderweg_ter_accordering?: number
+  restant_excl?: string | null
+  percentage_geboekt?: number
 }
 
 export interface VerplichtingVervallenDto {
@@ -176,6 +184,12 @@ export interface VerplichtingMatchDto {
   niet_toetsbaar_reden?: string | null
   /** Peter 15-09: het termijnnummer van deze factuur op de gekoppelde offerte (1 = eerste termijn). */
   termijn?: number | null
+  /** Peter 18-09: splitsing van `verbruik_na` — geboekt (boekstand) / onderweg (andere facturen op dezelfde offerte
+   * die nog niet geboekt zijn, dit document uitgezonderd) / aantal onderweg (waarvan ter accordering). */
+  verbruik_geboekt?: string | null
+  verbruik_onderweg?: string | null
+  onderweg_aantal?: number
+  onderweg_ter_accordering?: number
 }
 
 /** Korte vorm op de accordeur-wachtrij + de documentenlijst-chip. */
@@ -190,6 +204,11 @@ export interface OfferteMatchKortDto {
   totaal_excl: string | null
   percentage_na: number | null
   overschrijding_excl: string | null
+  termijn?: number | null
+  verbruik_geboekt?: string | null
+  verbruik_onderweg?: string | null
+  onderweg_aantal?: number
+  onderweg_ter_accordering?: number
 }
 
 // --- Inzicht › Verplichtingen (kantoorbreed) ---------------------------------------------------
@@ -219,9 +238,14 @@ export interface VerplichtingKantoorRijDto {
   /** null = niet te bepalen (geen goedgekeurd bedrag) — de balk staat dan op 0. */
   percentage: number | null
   over_excl: string | null
-  /** Voorwaarschuwing (0.1, 04-09): open (nog niet geboekte) gematchte facturen — telt niet in het verbruik. */
+  /** Peter 18-09: onderweg (nog niet geboekte gematchte facturen) telt MEE; `open_facturen_*` = oude naam ervan. */
   open_facturen_aantal?: number
   open_facturen_excl?: string
+  onderweg_excl?: string
+  onderweg_aantal?: number
+  onderweg_ter_accordering?: number
+  restant_excl?: string | null
+  percentage_geboekt?: number | null
   goedgekeurd_op: string | null
   goedgekeurd_door_naam: string | null
   geldig_tot: string | null
@@ -319,6 +343,8 @@ export function balkBreedte(percentage: number | null | undefined): number {
   if (percentage === null || percentage === undefined || !Number.isFinite(percentage)) return 0
   return Math.min(100, Math.max(0, percentage))
 }
+
+export { onderwegTekst, verbruikSegmenten } from './verbruikPresentatie'
 
 export function percentageTekst(percentage: number | null | undefined): string {
   if (percentage === null || percentage === undefined || !Number.isFinite(percentage)) return '—'

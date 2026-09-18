@@ -244,6 +244,11 @@ describe('VerplichtingReviewScreen — controle kantoor', () => {
           over_excl: null,
           open_facturen_aantal: 2,
           open_facturen_excl: '8300.00',
+          onderweg_excl: '8300.00',
+          onderweg_aantal: 2,
+          onderweg_ter_accordering: 0,
+          restant_excl: '13050.00',
+          percentage_geboekt: 56,
         },
         gekoppelde_facturen: [
           {
@@ -262,10 +267,14 @@ describe('VerplichtingReviewScreen — controle kantoor', () => {
     const blok = await screen.findByTestId('goedgekeurd-blok')
     expect(within(blok).getByText(/J. de Groot/)).toBeInTheDocument()
     expect(within(blok).getByTestId('verbruiks-balk')).toHaveTextContent('56%')
-    // 0.1 (04-09): voorwaarschuwing — open facturen staan als informatieve regel onder de balk, niet in de stand.
-    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('2 open facturen op deze offerte')
-    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('8.300,00')
-    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent('telt niet mee')
+    // Peter 18-09: onderweg telt MEE (herziet 0.1 04-09) — zin onder de balk + gearceerd segment + drie getallen.
+    expect(within(blok).getByTestId('verbruiks-balk-open')).toHaveTextContent(
+      'waarvan € 8.300,00 nog niet geboekt (2 facturen in behandeling) — telt mee',
+    )
+    expect(within(blok).getByTestId('verbruiks-balk-seg-onderweg')).toBeInTheDocument()
+    expect(within(blok).getByTestId('verbruiks-balk-drie')).toHaveTextContent(
+      'geboekt € 27.150,00 · onderweg € 8.300,00 · restant € 13.050,00',
+    )
     expect(within(blok).getByTestId('gekoppelde-facturen')).toHaveTextContent('F-2026-118')
     expect(within(blok).getByText('verrekend')).toBeInTheDocument()
     // Geaccordeerd = eindstand: geen aanbied-knop meer.

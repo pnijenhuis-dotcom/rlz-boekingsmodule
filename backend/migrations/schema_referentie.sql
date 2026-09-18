@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0165
+-- Migratie-head bij deze dump: 0166
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -7158,6 +7158,13 @@ CREATE INDEX ix_verplichting_administratie_vendor ON boekhouding.verplichting US
 --
 
 CREATE INDEX ix_verplichting_match_administratie_uitkomst ON boekhouding.verplichting_match USING btree (administratie_id, uitkomst);
+
+
+--
+-- Name: ix_verplichting_match_administratie_verplichting; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_verplichting_match_administratie_verplichting ON boekhouding.verplichting_match USING btree (administratie_id, verplichting_document_id);
 
 
 --

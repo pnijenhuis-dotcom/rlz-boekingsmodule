@@ -30,6 +30,11 @@ const CONFIDE: VerplichtingKantoorRijDto = {
   over_excl: null,
   open_facturen_aantal: 1,
   open_facturen_excl: '12400.00',
+  onderweg_excl: '12400.00',
+  onderweg_aantal: 1,
+  onderweg_ter_accordering: 1,
+  restant_excl: '8950.00',
+  percentage_geboekt: 56,
   goedgekeurd_op: '2026-09-04T10:00:00Z',
   goedgekeurd_door_naam: 'J. de Groot',
   geldig_tot: '2026-12-31',
@@ -144,8 +149,14 @@ describe('VerplichtingenScreen — Inzicht kantoorbreed', () => {
     expect(rijen[0]).toHaveTextContent('€ 1.370,00 over')
     expect(rijen[1]).toHaveTextContent('binnen')
     expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}`)).toHaveTextContent('56%')
-    // 0.1 (04-09): voorwaarschuwing open facturen op de Inzicht-rij — informatief, buiten de balk.
-    expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}-open`)).toHaveTextContent('1 open factuur op deze offerte (€ 12.400,00)')
+    // Peter 18-09: onderweg telt MEE — zin onder de balk, gearceerd segment en de drie getallen geboekt/onderweg/restant.
+    expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}-open`)).toHaveTextContent(
+      'waarvan € 12.400,00 nog niet geboekt (1 factuur ter accordering) — telt mee',
+    )
+    expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}-seg-onderweg`)).toBeInTheDocument()
+    expect(within(rijen[1]).getByTestId(`balk-${CONFIDE.document_id}-drie`)).toHaveTextContent(
+      'geboekt € 27.150,00 · onderweg € 12.400,00 · restant € 8.950,00',
+    )
     expect(within(rijen[0]).queryByTestId(/-open$/)).toBeNull()
     expect(screen.getByTestId('verplichtingen-voet')).toHaveTextContent('2 verplichtingen over 2 administraties')
   })
