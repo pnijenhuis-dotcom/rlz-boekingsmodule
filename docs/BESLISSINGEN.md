@@ -10858,3 +10858,213 @@ Conclusies (alleen uit de data): (1) **wortel = `beginKeuze(native, webKeuze, he
 4. **Bewijs geen tekst verloren:** élke verhuisde alinea is byte-gelijk als substring terug te vinden in het doelbestand; woordtelling vóór = ná − nieuwe blokken + verhuisde tekst (het script print de identiteit); de getallen staan in het rapport `docs/rapporten/2026-09-17-claude-md-regels-per-domein.md`.
 5. WERKWIJZE v1.18: sectie "Regels per domein met leesplicht".
 
+## VELD-APP UITVOERDER — FEEDBACK 18-09 (uitvoerder via Peter 18-09) — m² optioneel, doorfactureren per regel, alle projecten, planning weg; migratie 0158
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldapp-uitvoerder-feedback-m2-doorfactureren-projecten.md`,
+rapport `docs/rapporten/2026-09-18-veldapp-uitvoerder-feedback.md`). Canonieke regeltekst: `docs/regels/uren-planning-veldwerkers.md`
+alinea "Veld-app uitvoerder — feedback 18-09".**
+
+**Feedback (letterlijk):** 1. "m² invullen geen verplicht veld." 2. "wel doorfactureren / niet doorfactureren → dropdown."
+3. "Uitvoerder moet alle projecten zien, niet alleen waar hij op gepland is … altijd willekeurig op een project mee kunnen
+helpen en m² kunnen invullen (soort urenstaat achteraf)." 4. "Planning kan bij uitvoerder af."
+
+**Feiten vooraf (bewezen in code, 18-09):** m² was al optioneel — backend `WeekstaatDag.m2` nullable, `zet_dag(m2=None)`,
+frontend-veld "m² gebouwd (optioneel)" zonder verplichting; de werkelijke kernoorzaak achter punt 1+3: **de rol uitvoerder had in
+de app géén weekstaat-pad** (tabs Projecten · Planning · Te keuren) en de backend weigerde het hard (`_vereis_invuller`:
+"Weekstaten horen bij een gebruiker met de rol ZZP'er"; `_vereis_namens_of_zelf`: "Alleen een ZZP'er heeft eigen weekstaten").
+"+ ander project" stond als aparte knop ónder de weekprojectenlijst (`WeekProjectenView` → `AnderProjectView`); de
+uitvoerder-projectenlijst toonde alleen gekoppelde projecten (`uitvoerder_projecten` via `uren_project_toewijzing`).
+
+| Blok | Besluit | Code |
+|---|---|---|
+| A | m² optioneel blijft; leeg = NULL (placeholder "leeg = niet ingevuld"); chips zonder m² alleen uren (geen "· —"/"· 0 m²"); sommen alleen ingevulde regels; guard indienen zonder m² = 200 | `urenApi.ts::urenLabel`, `UrenFlow.tsx` DagInvoerView, `tests/uren/test_uitvoerder_feedback_18_09.py::TestM2Optioneel` |
+| B | `weekstaat_dag.doorfactureren` bool NOT NULL DEFAULT true (migratie 0158); **beslispunt: regelniveau** (dag × project); default nieuwe regel = project mét verrekenbare staffel → Doorfactureren, anders Niet (`standaard_doorfactureren`); mens wint; audit oud→nieuw; DTO-velden `doorfactureren`, `doorfactureren_standaard`, `totaal_uren/m2_niet_doorfactureren`; keuring-chip; kantoor-weekstaatpaneel mét filter; factuurmatch (ZZP-kant) telt álle uren | `service.py`, `schemas.py`, `router.py`, `meerwerk/WeekstaatPaneel.tsx` (nieuw, hangt aan de bestaande grid-link `?weekstaat=`) |
+| C | weekprojectenlijst = ÁLLE actieve projecten (gepland/met staat bovenaan, chip "gepland"; rest doorzoekbaar, chip "niet gepland"); "+ ander project" vervallen; uitvoerder = invuller van eigen staten (`INVULLER_ROLLEN`), tab "Mijn uren"; nooit zelf keuren (`staat_gebruiker_id`-poort, te-keuren zonder eigen staten); projectenlijst/detail/meerwerk op élk actief project (koppeling = filter) | `overzichten.py::week_projecten_zzp/uitvoerder_projecten/projectdetail_uitvoerder/te_keuren`, `service.py::_vereis_invuller/_vereis_keurrecht/meld_meerwerk` |
+| D | geen planningstab voor de uitvoerder (allowlist `toontPlanningTab` = zzper + detacheerder); deep-link `?planning=` → Mijn uren; meldingen "planning gewijzigd" blijven (default beslispunt) | `frontend/src/auth/rollen.ts`, `UrenFlow.tsx` |
+
+**Open punt (geen blokkade, gemeld in het rapport):** de weekstaat van een uitvoerder kan alleen door een ÁNDERE uitvoerder op dat
+project gekeurd worden; zonder tweede uitvoerder blijft hij op `ingediend`. Voorstel: kantoor-keuring (module-recht) als vangnet —
+besluit Peter.
+
+**Meerwerk "Aantal" is bewust ongewijzigd** (verplicht > 0): dat is de meerwerk-hoeveelheid voor de prijsstelling, niet de
+weekstaat-m²; de uitvoerder hoeft er niet meer langs om uren/m² te schrijven.
+
+## VELD-APP — PROJECT EERST (Peter 18-09) — projectkaarten mét "+ Uren" en "Meerwerk melden"; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldapp-project-eerst-flow.md`, rapport
+`docs/rapporten/2026-09-18-veldapp-project-eerst.md`). Canonieke regeltekst: `docs/regels/uren-planning-veldwerkers.md` alinea
+"Veld-app — PROJECT EERST". Werkt in productie: niet gemeten — nameting ná deploy op het testaccount (inbox-opdracht
+`2026-09-18-veldapp-uitvoerder-nameting.md` is uitgebreid met de kaartenflow).**
+
+**Peter 18-09 (letterlijk):** "Niet beter om eerst het project te selecteren en dan de uren-/meerwerkknop? Anders druk je op een
+knop en moet je eerst gaan zoeken." Akkoord Cowork; bouwnorm `mockup/uren-uitvoerder-v2.html` scherm ① + ③, notitie "Project
+eerst". Vervangt de 18-09-blok-C-weekprojectenlijst (álle actieve projecten in één lijst mét zoekveld) door kaarten.
+
+| Onderdeel | Besluit | Code |
+|---|---|---|
+| Kaartsamenstelling | gepland ∪ mét staat (uren) ∪ mét eigen meerwerk deze week ∪ zelf toegevoegd; niet meer élk actief project | `overzichten.week_projecten_zzp(alles=False)`, `urenApi.ts::weekKaarten` |
+| Kaartinhoud | dagtotaal gekozen dag · weektotaal · laatste omschrijving · chip doorfactureren (N dagen niet, anders default) · meerwerk-teller · status | DTO-velden `dag_uren`, `laatste_omschrijving`, `dagen_niet_doorfactureren`, `doorfactureren_standaard`, `meerwerk_aantal` |
+| Knoppen | "+ Uren" (primair; project + dag uit de dagbalk vooringevuld, bestaande regel als prefill via de weekstaat-lookup) · "Meerwerk melden" (alleen uitvoerder, nooit namens; bestaande meerwerk-flow mét vooringevuld project, terug naar de week) | `UrenFlow.tsx` WeekProjectenView, `plusUren`, `MeerwerkDoel` |
+| "+ Ander project toevoegen aan mijn week" | keuzelijst = `?alles=true` (alle actieve projecten, gepland/mét staat bovenaan, doorzoekbaar, al-aanwezige kaarten weg) → kaart zonder uren in app-state per week; verdwijnt bij weekwissel | `ProjectToevoegenView`, `extraKaarten` |
+| Week indienen | één knop op de kaartenlijst dient alle concept-/corrigeren-staten mét uren in (per weekstaat, bestaande route; 423 dossier zichtbaar) | `dienWeekIn` in een lus |
+| Set-based | vast aantal statements per administratie ongeacht het aantal kaarten; `_planning_stand` vult projectgegevens in één query (was 2 × `session.get` per item) | `tests/uren/test_project_eerst_18_09.py::TestQuerytelling` |
+
+**Tests:** backend `tests/uren` 260 groen (nieuw `test_project_eerst_18_09.py`: samenstelling, inactief/oud meerwerk, kaartvelden,
+API + `alles`, querytelling; aangepast `test_planning_filters.py`, `test_uitvoerder_feedback_18_09.py`); frontend
+`UrenFlow.detacheerder.test.tsx` herschreven op de kaartenflow (+ kaart mét regels/Week indienen/kaarttitel → weekstaat).
+
+**Beslispunten (gekozen, Peter keek niet mee):** (1) dagbalk bovenaan de kaartenlijst kiest de dag waarop "+ Uren" landt
+(vandaag als die in de week valt, anders maandag) — geen datumkeuze in het formulier; (2) "Week indienen" op de kaartenlijst
+gebouwd (mockup ① toont 'm), per project blijft indienen via de kaarttitel mogelijk; (3) een kaart zonder regels leeft alleen
+in app-state (geen server-tabel) — bij weekwissel of app-herstart weg, exact de opdracht ("verdwijnt bij weekwissel");
+(4) ZZP'er/namens krijgen dezelfde kaartenflow (één component), zonder meerwerk-knop.
+
+## ROL WIJZIGEN VELDWERKERS — ZZP'ER ↔ UITVOERDER ↔ DETACHEERDER (Peter 18-09) — zonder heruitnodiging; kantoor ↔ veld = 409
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldwerker-rol-wijzigen.md`, rapport
+`docs/rapporten/2026-09-18-veldwerker-rol-wijzigen.md`). Canonieke regeltekst: `docs/regels/auth-toegang.md` alinea "Rol wijzigen
+zonder heruitnodiging — veldrollen". Geen migratie. Werkt in productie: niet gemeten — klikpunt Peter: Irfan Ogur
+(uitvoerder@universal-steigerbouw.nl, nu ZZP'er) → Uitvoerder via Gebruikers & toegang › Veldwerkers; de app toont bij de
+volgende verversing de uitvoerder-weergave (Projecten · Mijn uren · Te keuren).**
+
+**Peter 18-09:** "Hoe kan ik de rol van Irfan veranderen van ZZP'er naar uitvoerder?" — kon niet: de rol-select stond alleen op
+de tab Kantoor (opties boekhouding/boekhouding_projecten/beheerder); op Veldwerkers was de rol een vaste badge.
+
+| Onderdeel | Besluit | Code |
+|---|---|---|
+| UI | tab Veldwerkers: rol-select ZZP'er / Uitvoerder / Detacheerder (gearchiveerd = badge); bevestigdialoog benoemt wat verandert en wat blijft, per doelrol een extra zin (ZZP-dossier inactief; detacheerder-koppelingen; uitvoerder ziet alles/keurt) | `GebruikersScreen.tsx` (`rolWijzigingBericht`) |
+| Server | `rolgroep()` = kantoor / veld / accordeur; wissel binnen de groep toegestaan; tussen groepen `RolWisselNietToegestaan` → **409** mét leesbare reden ("ander inlogmodel … nodig de persoon uit voor de nieuwe rol en archiveer het oude account") | `app/auth/rollen.py`, `service.wijzig_rol`, `router.rol_wijzigen` |
+| Behoud | toestel(len), toegangscode, scope, weekstaten/keuringen blijven aan de gebruiker hangen (alleen `gebruiker.rol` wijzigt); audit via de bestaande trigger `rol_wijziging` oud→nieuw | test `test_zzper_wordt_uitvoerder_met_behoud_van_scope_en_audit` |
+| App | geen heractivatie: server per request de DB-rol (deps), app-UI bij de volgende token-verversing (refresh zet de DB-rol in het access-token); er is geen `/auth/me`, de rol is een JWT-claim | test `test_volgende_tokenverversing_draagt_de_nieuwe_rol` |
+
+**Tests:** `tests/auth/test_rol_wijzigen_veld_18_09.py` 11 groen (+ bestaande self-mutation/archiveren/veldwerkerbeheer 35);
+frontend `src/gebruikers` 75 groen (+2: select + PATCH, 409 leesbaar).
+
+**Beslispunt (gekozen):** kantoor ↔ veld/accordeur blijft geweigerd (opdracht) — óók beheerder → veld: een kantooraccount
+heeft wachtwoord + TOTP/passkey, een veldaccount toestelbinding; samenvoegen zou een half account geven. Route: nieuwe
+uitnodiging + oude archiveren (zoals de 409-tekst zegt).
+
+## BEOORDELEN — URENSTATEN EN MEERWERK OP ÉÉN PLEK; UITVOERDER KEURT ALLES IN SCOPE (Peter 18-09) — bug chip "14 te beoordelen" → lege pagina; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-BUG-chip-meerwerk-urenstaten-lege-pagina.md`,
+rapport `docs/rapporten/2026-09-18-beoordelen-urenstaten-meerwerk.md`). Canonieke regeltekst:
+`docs/regels/uren-planning-veldwerkers.md` alinea "Beoordelen — urenstaten en meerwerk op één plek". Werkt in productie: niet
+gemeten — nameting ná deploy op Universal Steigerbouw (chip-aantal == tab-aantallen; Irfan ziet de ingediende weekstaten in
+zijn app) staat in de inbox-opdracht `2026-09-18-veldapp-uitvoerder-nameting.md` (punt 9).**
+
+**Melding Peter 18-09 (screenshots):** klantpagina Universal Steigerbouw toont "⚡ 14 meerwerk/urenstaten te beoordelen"; klik →
+`/…/meerwerk` met alle vier de tabs op 0. **Databewijs (lees-only replica 18-09, `db_lezen.sh` als nameting@, actor Beheerder,
+`--administratie 3ee6edf0-5cb8-4f98-bba1-16fb97ae6873`):** 14 weekstaten status `ingediend`, allemaal week 2026-W37 ingediend op
+2026-09-15 (H. Ucan 1, M. Sanli 4, R. Yücetaş 4, V. Ponchev 1, S. Hasturk 4; projecten 26021 Tilburg (Huvanco), 26030
+Scherpenzeel, 26019 Bennekom, 26129 Hilversum, 25162 Groesbeek); 0 meerwerk `gemeld`/`goedgekeurd`. De chip telde
+`meerwerk_te_beoordelen + meerwerk_nog_doorbelasten + urenstaten_wachten_op_keuring` (`DocumentenDeelscherm.tsx`), de pagina
+toonde alleen meerwerk-statussen: de 14 waren ingediende weekstaten zonder landingsplek.
+
+| Onderdeel | Besluit | Code |
+|---|---|---|
+| Landingsplek | `/meerwerk` = **Beoordelen** mét tabs Urenstaten (N) · Meerwerk (M), `?tab=`; `?weekstaat=` (planning-grid) blijft het paneel erboven | `meerwerk/MeerwerkScreen.tsx`, `meerwerk/UrenstatenTab.tsx` |
+| Chip | "N urenstaten · M meerwerk te beoordelen" → tab mét werk; "nog doorbelasten" telt niet (eigen badge/rij); klantpagina-rij "Urenstaten — ingediend, te keuren" | `meerwerk/beoordelenChip.ts` (+test), `DocumentenDeelscherm.tsx`, `KlantStanden.tsx` |
+| Eén definitie | teller `urenstaten_wachten_op_keuring` == `GET /uren/kantoor/weekstaten` == uitvoerder-keurlijst (`_ingediende_staten`) — guard-test chip == som tabs | `overzichten.kantoor_weekstaten`, `tests/uren/test_beoordelen_18_09.py` |
+| Kantoor-keuring | goedkeuren / afkeuren (reden verplicht, correcties optioneel) onder module-recht + scope; audit `keurder: kantoor`; sluit open punt 5 van de feedback-run (geen tweede uitvoerder) | `router.kantoor_week_goedkeuren/afkeuren`, `service.keur_week_goed/af(kantoor=True)` |
+| Uitvoerder keurt alles | Peter 18-09 letterlijk: "uitvoerder moet gewoon alle ingediende urenstaten controleren, los van welk project hij gepland staat" — keurlijst = alle ingediende staten in scope behalve eigen; `_vereis_keurrecht` = rol + scope-rij + niet eigen; koppeling stuurt alleen "gepland bovenaan" | `overzichten.te_keuren`, `service._vereis_keurrecht`; guards nieuw account zonder koppelingen / buiten scope dicht |
+| Lege stand | "Geen urenstaten te beoordelen — laatste keuring <datum>" + "Planning openen →" (KP7) | `UrenstatenTab.tsx`, `laatste_keuring_op` |
+| Tabelpatroon | kolomminima één bron (som 1012 px), één primaire knop + ⋯, harnas `?beoordelen=1` in de overflow-sweep | `meerwerk/beoordelenKolommen.ts` (+test), `dev/visueelHarnasWerkvoorraad.tsx`, `scripts/overflow_sweep.sh` |
+
+**Tests:** backend `tests/uren` + `tests/security/test_rol_endpoint_gates.py` (nieuwe routes in de matrix) groen — zie rapport;
+`test_uitvoerder_zonder_toewijzing_keurt_niet` → `…_keurt_wel` (gedragswijziging Peter 18-09); fixture `gekoppelde_uitvoerder`
+krijgt scope (zoals élk echt veldaccount). Frontend `src/meerwerk` (MeerwerkScreen.test 4, beoordelenChip 3, beoordelenKolommen 2)
++ KlantStanden groen.
+
+**Les (lees-only replica):** `weekstaat`/`meerwerk` hebben geen Beheerder-RLS-clausule — zonder `--administratie` geeft
+`db_lezen.sh` stil 0 rijen; eerst `platform.administratie` op naam, dan de tabel mét scope.
+
+**Beslispunten (gekozen):** (1) de route blijft `/meerwerk` (deep-links planning-grid, chips en KlantStanden blijven werken), alleen
+titel/breadcrumb "Beoordelen"; (2) kantoor-afkeuren zonder correctievoorstellen per dag (die zitten in de app-keuring; de
+kantoor-dialoog vraagt alleen de reden) — uitbreiden kan op het bestaande `correcties`-veld; (3) nav: geen apart menu-item —
+Beoordelen blijft de klantpagina-ingang (registry ongewijzigd, route bestond al).
+
+## WEB-TOESTEL — "LOGT STEEDS UIT" (SPOED 18-09) — Edge op Android-tablet: diagnose op data + acht client-waarborgen; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-SPOED-webapp-edge-android-logt-uit.md`, rapport
+`docs/rapporten/2026-09-18-webtoestel-edge-android.md`). Canonieke regeltekst: `docs/regels/auth-toegang.md` alinea "Web-toestel
+(browsertab/PWA) — 'logt steeds uit'". Werkt in productie: niet gemeten — nameting ná deploy in de inbox-opdracht
+`2026-09-18-veldapp-uitvoerder-nameting.md` (punt 10: het huidige toestel van de uitvoerder ≥ 24 u zonder heractivatie;
+refresh-keten op de replica toont alleen rotaties).**
+
+**Melding Peter 18-09 (letterlijk):** "web app edge logt steeds uit?" **Diagnose op data (lees-only; Cloud Run-request-log,
+`platform.audit_event` en `platform.refresh_token` op de replica):**
+
+| Tijd (NL) | Bron | Feit |
+|---|---|---|
+| 09:11:47 | audit `uitnodiging_opnieuw_gemaild` | kantoor mailt gebruiker `6a6379ce` (Irfan Ogur, rol ZZP'er) opnieuw uit |
+| 09:18:04–09:18:16 | log + audit | Edge-tablet (UA `X11; Linux x86_64 … Edg/139`, IP 92.70.252.226) opent de link, `POST /auth/app/activeren` 200, toestel `5fc655b9` "Onbekend apparaat" (platform web) |
+| 09:22:00 · 09:23:22 · 09:23:33 · 09:23:45 · 09:24:14 | log `GET /accordeur` | vijf VOLLEDIGE paginaherladingen in ~2 minuten |
+| 09:22:21 · 09:23:31 · 09:23:48 · 09:24:41 | log `POST /auth/token/vernieuwen` **200** ×4 + refresh-keten `f9d35971 → bed07d75 → c93d0815 → e5216997 → 8c8bd478` | ná élke herlaad een geslaagde ontgrendeling + rotatie — server zegt nooit nee (0 × 401/410/426 voor dit toestel) |
+| 09:24:41–09:24:55 | log | gewoon gebruik (week-projecten, weekstaat) — laatste request van het Edge-toestel |
+| 09:27:18 / 09:27:21 / 09:27:25 | audit `e_mail_gewijzigd` → `gebruiker_geblokkeerd` → `gebruiker_gearchiveerd` (actor Peter) | **alle vijf refresh-tokens `ingetrokken_op 09:27:21`** = de blokkade; het account is daarna gearchiveerd |
+| 09:27:50 → 09:28:27 | audit | nieuw account `6420642a` "Orfan Ogur" (uitvoerder) uitgenodigd en op de tablet in **Chrome** geactiveerd; 10:06 zelfservice-koppeling van een telefoon |
+
+**Conclusie:** geen server-side oorzaak en geen opslagverlies (het toestel hoefde nooit opnieuw te activeren; IndexedDB gaf
+het token elke keer). Het "uitloggen" dat de gebruiker zag = ná elke volledige herlaad het toegangscode-scherm (anker alleen in
+geheugen); de aanleiding van die herladingen is client-gedrag in een browsertab (Android-terugknop verlaat de SPA, pull-to-refresh
+op een layout waar de body scrolt — de UA staat in desktop-modus — of tabblad-herstel); de definitieve uitlog was het kantoor zelf
+(blok + archief als workaround voor "rol wijzigen" — sinds 18-09 onnodig, zie "ROL WIJZIGEN VELDWERKERS"). Geen datavlies: het
+oude account had 0 weekstaten.
+
+| # | Waarborg (client, lokaal) | Code |
+|---|---|---|
+| 1 | ontgrendel-venster over herladen: sessionStorage per tabblad, 5 min ("direct vergrendelen" uit), weg bij vergrendelen/sluiten/verlopen | `api/appSlot.ts::herstelOntgrendeldVenster`, `AccordeurApp` slot-init |
+| 2 | Android-terugknop = één scherm terug, nooit de app uit | `accordeur/androidTerug.ts`, `UrenFlow.terugVan` |
+| 3 | geen pull-to-refresh op body-niveau | `AccordeurApp` (overscroll-behavior-y none op html/body) |
+| 4 | `navigator.storage.persist()` bij web-activatie, uitkomst lokaal | `api/webToestel.ts`, `AppActiveren` |
+| 5 | opslag gewist ≠ stil uitloggen: melding mét route (koppelcode / herstel-link / beginscherm) | `OPSLAG_GEWIST_MELDING`, `webVeiligeOpslag.webSlotVlagStaat` |
+| 6 | diagnoseregel ⚙ Toegang: modus · opslag persistent · laatste tokenverlenging | `webDiagnoseStaart`, `client.ts` noteert de verlenging |
+| 7 | kaart "Zet deze app op je beginscherm" (Edge/Chrome-stappen) in een browsertab | `accordeur/BeginschermNudge.tsx` |
+| 8 | mail: Android zonder geschikte Play-versie → één zin web-versie op het beginscherm | `uitnodigingsmail.android_web_regel` |
+
+**Tests:** frontend `webToestel.test` 6, `androidTerug.test` 2, `terugVan.test` 2, `appSlot.test` +1 (venster) — 29 groen in die
+bestanden; backend `test_uitnodigingsmail_vorm.py` +2. **Eerlijk over de grens:** geen Playwright in de repo — de
+Edge-Android-emulatie is niet als browsertest gebouwd; de bewijzen zijn de productiedata (tijdlijn hierboven) plus jsdom-tests op
+het mechanisme. Meetrecept in de nameting-opdracht.
+
+**Beslispunten (gekozen):** (1) het venster over herladen volgt het al gedocumenteerde 5-minutenvenster van de native app en
+respecteert "direct vergrendelen"; sessionStorage is per tabblad en verdwijnt bij sluiten — hetzelfde dreigingsmodel als
+procesgeheugen; (2) geen server-wijziging (server was correct); (3) de route blijft: PWA op het beginscherm is de aanbevolen
+web-vorm — de kaart en de mailzin sturen daarheen.
+
+**Eén regel voor Peter (voor de uitvoerder op de tablet):** open de app in Chrome of Edge, tik menu → "Toevoegen aan
+startscherm/telefoon" en start hem vanaf het beginscherm; vraag de nieuwe versie één keer de toegangscode en daarna binnen vijf
+minuten niet meer bij verversen of terug — en gebruik de terugknop gerust, die gaat nu één scherm terug.
+
+## VELD-APP — 12 UX-VERBETERINGEN (Peter 18-09) — run A gebouwd (punten 1–3, 6–12); run B (4, 5) als eigen opdracht; migratie 0159
+
+**Status: run A GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldapp-ux-verbeteringen-12-punten.md`, rapport
+`docs/rapporten/2026-09-18-veldapp-ux-run-a.md`; mockup v3 `mockup/uren-uitvoerder-v3.html` vóór de bouw). Canonieke regeltekst:
+`docs/regels/uren-planning-veldwerkers.md` alinea "Veld-app — 12 UX-verbeteringen, run A". Run B = inbox-opdracht
+`2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`. Werkt in productie: niet gemeten — nameting-opdracht punt 11 (kopie-knop,
+tikknoppen, indienen zonder m²).**
+
+**Aanleiding:** Peter vroeg 18-09 om een kritische UX-blik op de veld-app (bouwplaats: handschoenen, zon, één hand, haast, slecht
+bereik); Cowork stelde twaalf punten voor, Peter: "geef de opdracht voor alle punten".
+
+| # | Punt | Besluit/gedrag | Code |
+|---|---|---|---|
+| 1 | Zelfde als gisteren | laatste regel op het project (óók vorige week) → gekozen dag; audit `bron=kopie` | `laatste_regel` op de kaart, `zetDag(bron)`, `UrenFlow.kopieerLaatsteRegel` |
+| 2 | Uren tikknoppen | 4·6·8·10, −/+ half uur, "ander aantal…" pas toetsenbord | `UREN_TIKKEUZES`, `stapHalfUur`, `DagInvoerView` |
+| 3 | Omschrijving-chips | default 5, per administratie (Beheerder, Instellingen › Uren & materiaal), tekst-opslag; "overig" = vrij veld | migratie 0159, `/uren/zzp/omschrijving-chips`, `/uren/beheer/omschrijving-chips/{aid}`, `OmschrijvingChipsRij` |
+| 6 | Tikdoelen ≥ 48 px, één primaire knop | "+ Uren" primair (afgekeurd: "Aanpassen"), links eronder | `.acc-veld .acc-btn`, `.acc-kaartlinks` |
+| 7 | Leesbaarheid | ≥ 14 px binnen `.acc-veld`; `--acc-muted` ≥ 4,5:1 beide modi | `veldTekst.test.ts`, `contrast.test.ts` |
+| 8 | Indienen met samenvatting | sheet mét tellers + waarschuwing ontbrekende werkdag (niet blokkerend) | `indienSamenvatting`, `acc-sheet` |
+| 9 | Vergeten dag | werkdag vóór vandaag zonder uren = oranje rand + notitie | `vergetenDagen`, `.acc-dagknop.vergeten` |
+| 10 | Terugkoppeling | ✓ goedgekeurd door X / afgekeurd door X: reden + "Aanpassen"; weekchip "afgekeurd — aanpassen" | kaart-meta in `WeekProjectenView` |
+| 11 | Doorfactureren ingeklapt | chip + standaard + "wijzigen" → dropdown | `acc-ingeklapt` |
+| 12 | Velden verbergen | m²/omschrijving onder "meer" zonder `contract_m2`; m²-project toont m² | `isM2Project`, `contract_m2` op de kaart |
+
+**Tests:** frontend `UrenFlow.uxA.test.tsx` 6, `veldTekst.test.ts` 2, `OmschrijvingChipsRij.test.tsx` 2, contrast +1, detacheerder-test
+aangepast (ingeklapt/meer); backend `tests/uren/test_ux_run_a_18_09.py` — zie rapport.
+
+**Beslispunten (gekozen):** (1) "Aanpassen" is geen statusovergang: een afgekeurde week staat al op `corrigeren` en is bewerkbaar —
+de knop opent 'm (audit van de afkeuring is de bron); (2) chips-validatie 1–10 × ≤ 30 tekens, uniek; "overig" mag ontbreken, de app
+biedt dan zelf het vrije veld; (3) kopie overschrijft een al gevulde gekozen dag (één tik = de bedoeling); (4) de weekstaat-route
+(`WeekstaatView` → dag) gebruikt dezelfde daginvoer mét de gecachte chips en zonder contract-m² (dan "meer" ingeklapt).
+

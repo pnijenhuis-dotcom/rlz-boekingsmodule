@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Veld-app v3 (12 UX-punten, run A) · CC 18-09</title>
+<style>
+:root{--bg:#f6f7f8;--panel:#fff;--border:#e6e8ea;--text:#12181f;--muted:#5b6470;--primary:#0e7a6e;--accent-bg:#e6f4f2;--ok:#1c7a54;--ok-bg:#e4f4ec;--warn:#b45309;--warn-bg:#fdf3e3;--info:#3548a5;--info-bg:#eaeefb;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--text);background:#e9ebee;font-size:14px}
+.kop{background:#fff;border-bottom:1px solid var(--border);padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.kop h1{font-size:15px;margin:0}.kop .sub{color:var(--muted);font-size:12px}
+.rij{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;padding:22px}
+.tel{width:390px}.tel .label{text-align:center;font-size:12.5px;color:var(--muted);margin:0 0 8px}
+.frame{background:#000;border-radius:44px;padding:12px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.scherm{background:#f3f4f6;border-radius:34px;overflow:hidden;min-height:780px;position:relative;font-size:15px}
+.tkop{background:#fff;padding:50px 18px 10px;border-bottom:1px solid var(--border)}
+.tkop .t{font-size:20px;font-weight:700}.tkop .s{color:var(--muted);font-size:13px}
+.ttabs{display:flex;gap:18px;padding:0 18px;background:#fff;border-bottom:1px solid var(--border)}
+.ttabs span{padding:10px 0;font-size:14px;color:var(--muted);border-bottom:2px solid transparent}.ttabs span.on{color:var(--primary);border-color:var(--primary);font-weight:600}
+.ttabs span.weg{text-decoration:line-through;opacity:.45}
+.kaart{background:#fff;margin:12px 14px;border-radius:16px;border:1px solid var(--border);padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.kaart h3{margin:0 0 4px;font-size:16px}.m{color:var(--muted);font-size:13px}
+.chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;font-weight:500;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)}.c-warn{background:var(--warn-bg);color:var(--warn)}.c-info{background:var(--info-bg);color:var(--info)}.c-grijs{background:#eef0f2;color:var(--muted)}
+.veld{margin:12px 0 0}.veld label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.veld .in{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;font-size:16px}
+.veld .in.leeg{color:#9aa3ad}.veld .in .eenheid{margin-left:auto;color:var(--muted);font-size:14px}
+.veld .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.select{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;font-size:16px}
+.select .pijl{color:var(--muted)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);padding:14px 16px 28px}
+.sheet .greep{width:40px;height:4px;border-radius:2px;background:#d5d9de;margin:0 auto 12px}
+.opt{display:flex;justify-content:space-between;align-items:center;padding:14px 8px;border-bottom:1px solid var(--border);font-size:16px}
+.opt .s{display:block;font-size:12.5px;color:var(--muted)}.opt.aan{color:var(--primary);font-weight:600}
+.zoek{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px 14px;background:#fff;color:#9aa3ad;margin:12px 14px 0}
+.groep{margin:14px 14px 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.proj{background:#fff;margin:0 14px 8px;border-radius:14px;border:1px solid var(--border);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.proj .n{font-weight:600;font-size:15px}.proj .s{font-size:12.5px;color:var(--muted)}
+.btn{font:inherit;font-weight:600;padding:13px;border-radius:12px;border:1px solid var(--primary);background:var(--primary);color:#fff;width:100%;font-size:15px;margin-top:14px}
+.btn.sec{background:#fff;color:var(--text);border-color:var(--border)}
+.tbalk{position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:12px 0 26px;font-size:11px;color:var(--muted)}
+.tbalk span.on{color:var(--primary);font-weight:600}.tbalk span.weg{text-decoration:line-through;opacity:.4}
+.tbalk i{display:block;width:22px;height:22px;border-radius:6px;background:#e6e8ea;margin:0 auto 3px}.tbalk span.on i{background:var(--primary)}
+.dag{display:flex;gap:6px;padding:12px 14px 0}.dag span{flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#fff;border:1px solid var(--border);font-size:12.5px}
+.dag span.on{background:var(--primary);color:#fff;border-color:var(--primary)}.dag span small{display:block;font-size:10px;opacity:.75}
+.regel{background:#fff;margin:10px 14px 0;border-radius:14px;border:1px solid var(--border);padding:12px 14px}
+.regel .kk{display:flex;justify-content:space-between;gap:8px}.regel .n{font-weight:600}.regel .a{font-variant-numeric:tabular-nums;white-space:nowrap}
+.regel .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.notities{max-width:1200px;margin:0 auto 40px;background:#fff;border:1px dashed #c9ced3;border-radius:12px;padding:16px 22px;font-size:13.5px}
+.notities ol{margin:6px 0 0;padding-left:22px}.notities li{margin:5px 0}
+
+.tik{display:flex;gap:8px;margin-top:6px}.tik span{flex:1;text-align:center;padding:14px 0;border:1px solid var(--border);border-radius:12px;background:#fff;font-size:17px;font-weight:600;min-height:48px}
+.tik span.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.pm{display:flex;gap:8px;align-items:center;margin-top:8px}.pm span{width:48px;height:48px;border:1px solid var(--border);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;background:#fff}
+.pm b{font-size:22px;flex:1;text-align:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.chips span{padding:12px 14px;border:1px solid var(--border);border-radius:999px;background:#fff;font-size:15px;min-height:48px;display:inline-flex;align-items:center}
+.chips span.on{background:var(--accent-bg);border-color:var(--primary);color:var(--primary);font-weight:600}
+.dag span.vergeten{border-color:var(--warn);box-shadow:inset 0 0 0 2px var(--warn)}
+.link{color:var(--primary);font-weight:600;font-size:15px;text-decoration:none}
+.wk{background:#fff;margin:10px 14px 0;border-radius:14px;border:1px solid var(--border);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.groot{font-size:15px}
+</style>
+</head>
+<body>
+<div class="kop"><div><h1>Veld-app uitvoerder/ZZP'er v3 — 12 UX-punten, run A</h1><div class="sub">bouwplaats: handschoenen, zon, één hand, haast · tikdoelen ≥ 48 px · tekst ≥ 14 px · één primaire knop per kaart · akkoord Peter 18-09 "alle punten" · GEBOUWD 18-09 (run A)</div></div><div class="sub">bouwnorm run A = deze mockup + v2 (project-eerst) · designpass v2 / KP7 getoetst</div></div>
+
+<div class="rij">
+
+<!-- ① week: kaarten -->
+<div class="tel"><p class="label">① Mijn week — kaart: één primaire knop, "Zelfde als gisteren", vergeten dag oranje</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren</div><div class="s">Week 38 · 14 – 20 sep · Haci Y. (uitvoerder)</div></div>
+  <div class="dag"><span>ma<small>8 u</small></span><span class="vergeten">di<small>—</small></span><span class="on">wo<small>6 u</small></span><span>do<small>—</small></span><span>vr<small>—</small></span></div>
+  <p class="m groot" style="margin:6px 18px 0;color:var(--warn)">⚠ di 15 sep: nog geen uren (punt 9 — oranje rand, geen blokkade)</p>
+
+  <div class="regel" style="padding:14px">
+    <div class="kk"><div class="n groot">26031 Rijssen (Olieman)</div><span class="chip c-info" style="font-size:14px">gepland</span></div>
+    <div class="s groot">wo: 4 u · 42 m² · opbouwen · <span class="chip c-ok" style="font-size:14px">doorfactureren</span></div>
+    <button class="btn" style="margin-top:10px;min-height:48px">+ Uren</button>
+    <div style="display:flex;justify-content:space-between;margin-top:10px"><a class="link" href="#">⟲ Zelfde als gisteren</a><a class="link" href="#" style="color:#6941c6">Meerwerk melden</a></div>
+  </div>
+
+  <div class="regel" style="padding:14px">
+    <div class="kk"><div class="n groot">26018 Deventer (Kempen Facilities)</div><span class="chip c-grijs" style="font-size:14px">niet gepland</span></div>
+    <div class="s groot">wo: nog geen uren · vorige keer: 2 u · afbreken · niet doorfactureren</div>
+    <button class="btn" style="margin-top:10px;min-height:48px">+ Uren</button>
+    <div style="display:flex;justify-content:space-between;margin-top:10px"><a class="link" href="#">⟲ Zelfde als gisteren</a><a class="link" href="#" style="color:#6941c6">Meerwerk melden</a></div>
+  </div>
+
+  <div style="margin:12px 14px 0"><button class="btn sec" style="min-height:48px">+ Ander project toevoegen aan mijn week</button></div>
+  <div style="margin:10px 14px 0"><button class="btn" style="min-height:48px">Week indienen (14 u)</button></div>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+<!-- ② uren invoer -->
+<div class="tel"><p class="label">② + Uren — tikknoppen, chips, doorfactureren ingeklapt, "meer" voor m²/omschrijving</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren toevoegen</div><div class="s">woensdag 16 sep · 26018 Deventer</div></div>
+  <div class="kaart">
+    <div class="veld"><label style="font-size:14px">Uren</label>
+      <div class="tik"><span>4</span><span>6</span><span class="on">8</span><span>10</span></div>
+      <div class="pm"><span>−</span><b>8,0 u</b><span>+</span></div>
+      <div class="hint" style="font-size:14px">per half uur · <a class="link" href="#">ander aantal…</a> (pas dán een toetsenbord)</div>
+    </div>
+    <div class="veld"><label style="font-size:14px">Wat heb je gedaan?</label>
+      <div class="chips"><span class="on">opbouwen</span><span>afbreken</span><span>ombouwen</span><span>transport</span><span>overig</span></div>
+      <div class="hint" style="font-size:14px">Chips stelt het kantoor in (Instellingen › Uren & materiaal); "overig" opent een tekstveld.</div>
+    </div>
+    <div class="veld"><label style="font-size:14px">Doorfactureren</label>
+      <div class="select" style="padding:12px 14px"><span><span class="chip c-warn" style="font-size:14px">Niet doorfactureren</span> <span class="m" style="font-size:14px">(standaard voor dit project)</span></span><a class="link" href="#">wijzigen</a></div>
+    </div>
+    <div class="veld"><a class="link" href="#">▸ meer (m², omschrijving)</a><div class="hint" style="font-size:14px">Ingeklapt omdat dit project geen m²-project is (contract-ontleding: geen m²). Een m²-project toont m² direct.</div></div>
+    <button class="btn" style="min-height:48px">Opslaan</button>
+  </div>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+<!-- ③ indienen samenvatting -->
+<div class="tel"><p class="label">③ Week indienen — samenvatting + bevestigen; ontbrekende werkdag als waarschuwing</p><div class="frame"><div class="scherm" style="background:#c9ccd1">
+  <div class="tkop" style="opacity:.5"><div class="t">Uren</div><div class="s">Week 38</div></div>
+  <div class="sheet">
+    <div class="greep"></div>
+    <div style="font-weight:700;font-size:17px;margin-bottom:6px">Week 38 indienen?</div>
+    <div class="groot" style="line-height:1.7">4 dagen · 30 u · 2 projecten<br>1 regel zonder m² · 1 dag niet doorfactureren</div>
+    <div class="m groot" style="margin-top:8px;color:var(--warn)">⚠ di 15 sep heeft geen uren — klopt dat? (waarschuwing, niet blokkerend)</div>
+    <button class="btn" style="min-height:48px">Ja, indienen</button>
+    <button class="btn sec" style="min-height:48px;margin-top:8px">Nog even nakijken</button>
+  </div>
+</div></div></div>
+
+<!-- ④ terugkoppeling kantoor -->
+<div class="tel"><p class="label">④ Mijn weken — terugkoppeling van kantoor/uitvoerder per week</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren</div><div class="s">Mijn weken</div></div>
+  <div class="wk"><div><div class="n groot">Week 38 · deze week</div><div class="s groot">2 projecten · 14 u · nog invullen</div></div><span class="chip c-info" style="font-size:14px">open</span></div>
+  <div class="wk"><div><div class="n groot">Week 37</div><div class="s groot">3 projecten · 38 u</div></div><span class="chip c-ok" style="font-size:14px">✓ goedgekeurd</span></div>
+  <div class="wk" style="border-color:var(--warn)"><div><div class="n groot">Week 36 · 26021 Tilburg</div><div class="s groot" style="color:var(--warn)">afgekeurd door R. Yücetaş: "dinsdag was een vrije dag — graag corrigeren"</div><button class="btn" style="margin-top:8px;min-height:48px;padding:10px">Aanpassen</button></div><span class="chip c-warn" style="font-size:14px">afgekeurd</span></div>
+  <p class="m groot" style="margin:10px 18px 0">Bij afkeuring krijg je een melding; "Aanpassen" opent de week weer om te corrigeren en opnieuw in te dienen.</p>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+</div>
+
+<div class="notities">
+<b>Ontwerpnotities run A (onderdeel van het akkoord Peter 18-09 "alle punten")</b>
+<ol>
+<li><b>Zelfde als gisteren</b> (punt 1): op elke kaart; kopieert uren, m², omschrijving én doorfactureren van de LAATSTE dag mét regels op dat project (ook uit een vorige week) naar de gekozen dag; direct opgeslagen; audit <code>bron=kopie</code>. Geen laatste regel = link verborgen.</li>
+<li><b>Tikknoppen</b> (punt 2): 4 · 6 · 8 · 10 en −/+ per half uur; "ander aantal…" opent pas een cijfertoetsenbord.</li>
+<li><b>Omschrijving-chips</b> (punt 3): opbouwen · afbreken · ombouwen · transport · overig (default), per administratie door de Beheerder instelbaar (Instellingen › administratie › Uren & materiaal); opslag als tekst, geen enum; "overig" = vrij tekstveld.</li>
+<li><b>Tikdoelen ≥ 48 px</b>, "+ Uren" primair, "Meerwerk melden" en "Zelfde als gisteren" als tekstlinks (punt 6, KP7: één primaire knop per kaart).</li>
+<li><b>Leesbaarheid buiten</b> (punt 7): in de veld-app geen tekst &lt; 14 px (chips, meta, hulptekst) — CSS-scope <code>.acc-veld</code>; hulptekst = <code>--acc-muted</code> ≥ 4,5:1 op wit én donker (contrast-test uitgebreid).</li>
+<li><b>Week indienen met samenvatting</b> (punt 8): dagen · uren · projecten · regels zonder m² · dagen niet doorfactureren + bevestigen; ma–vr zonder uren = waarschuwing, niet blokkerend.</li>
+<li><b>Vergeten dag</b> (punt 9): dag t/m gisteren zonder uren = oranje rand in de dagbalk (alleen ma–vr).</li>
+<li><b>Terugkoppeling</b> (punt 10): per week goedgekeurd (✓) / afgekeurd mét reden + "Aanpassen" (week staat al op corrigeren; de knop opent 'm) ; melding bij afkeuring via de bestaande push/mail-lijn (kantoor-keuring + app-keuring).</li>
+<li><b>Doorfactureren ingeklapt</b> (punt 11): alleen de chip + "wijzigen"; dropdown pas ná tikken.</li>
+<li><b>Velden verbergen</b> (punt 12): m² en omschrijving onder "▸ meer" als het project geen m²-project is (<code>contract_m2</code> leeg); anders zichtbaar. Omschrijving-chips blijven altijd zichtbaar (die vervangen het vrije veld).</li>
+<li>Run B (aparte inbox-opdracht): dag-einde-herinnering 16:30 (push, opt-out) en offline werken (IndexedDB-wachtrij, conflictmelding, <code>storage.persist()</code>).</li>
+</ol>
+</div>
+</body>
+</html>

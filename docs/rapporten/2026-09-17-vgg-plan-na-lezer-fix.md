@@ -26,7 +26,7 @@ Waarom het bewijspaar nog niet vertaalbaar is (ongewijzigd t.o.v. §2b van het v
 2. Het document draagt **geen pand-toewijzing** met soort `verkoop` → de RJ-220-rol `opbrengst_panden` (803100, id 3608) grijpt niet. Daardoor Verkoop € 0,00 op álle panden en 39× "SIGNAAL: sluit niet" (notaris-ontvangst zonder geboekte verkoop) → de pand-eis van SCHRIJF d is óók rood.
 
 ## 4. Beslispunten Peter (onveranderd open; niets gekozen — geld op company 6)
-1. **Bewijspaar / RLZ 8000 (42 documenten):** (A) Toewijzing pand + soort `verkoop` op RLZ-01-00000082 (advies: één toewijzing, direct toetsbaar via `plan`) en/of (B) expliciete mapping 8000 → 803100 of aanmaken 800000 income. Klikpunt vooraf: RLZ-01-00000082 in RLZ openen (regel op 8000, project/adres) — lees-only niet ophaalbaar (Receipts hebben geen record-route).
+1. **Bewijspaar / RLZ 8000 (42 documenten):** (A) Toewijzing pand + soort `verkoop` op RLZ-01-00000082 (out_invoice 2026-03-19, € 400.000,00, Ouwerkerk Notariaat — bron `verkenning/nameting-vgg-replay-13-09.txt` r. 1274; advies: één toewijzing, direct toetsbaar via `plan`) en/of (B) expliciete mapping 8000 → 803100 of aanmaken 800000 income. Klikpunt vooraf: RLZ-01-00000082 in RLZ openen (regel op 8000, project/adres) — lees-only niet ophaalbaar (Receipts hebben geen record-route).
 2. **IBAN op BNK1 (company 6):** niet gemeten — stap 4 wordt pas bereikt ná beslispunt 1. Blijft KLIKPUNT.
 3. Project-dekking 37,2 % en de 58 ongemapte rekeningen: zie het vorige rapport (§5 punt 2–3), ongewijzigd.
 

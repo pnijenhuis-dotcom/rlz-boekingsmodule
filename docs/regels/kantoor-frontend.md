@@ -26,6 +26,13 @@
   = hand-gecureerd `frontend/src/changelog/WAT_IS_NIEUW.md` (klantleesbaar, nieuwste bovenaan — **VERPLICHT bijvullen
   bij élke feature-commit**, guard-test op vorm/jargon).
 
+<!-- toegevoegd 18-09-2026, opdracht "BUG-chip-meerwerk-urenstaten-lege-pagina" -->
+- **Beoordelen › Urenstaten-tabel (18-09):** tweede afnemer van het Gebruikers & toegang-tabelpatroon — kolomminima uit één
+  bron (`meerwerk/beoordelenKolommen.ts` + test), `<colgroup>`/fixed layout/tabel-min-width = som, één primaire knop + ⋯
+  (`GebruikerRijMenu` is generiek herbruikbaar), harnas `harness-werkvoorraad.html?beoordelen=1` in `overflow_sweep.sh`;
+  een chip die op een pagina landt, leest zijn tellers uit dezelfde bron als de tabs van die pagina (`beoordelenChip.ts`) —
+  zie BESLISSINGEN "BEOORDELEN — URENSTATEN EN MEERWERK OP ÉÉN PLEK; UITVOERDER KEURT ALLES IN SCOPE (Peter 18-09)".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-frontend-modernisering (IA klant-centrisch, Instellingen v3, gebruikersbeheer, blokkeren/archiveren, nazorg controls-review) (CLAUDE.md `ed6d176` r. 295–353)

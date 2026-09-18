@@ -78,6 +78,13 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Staande goedkeuring: voorstel alleen bij een PERIODIEK patroon (blok 7 run 11-09 middag; casus Lusso 12 chalets = 12× de vraag; migratie 0134):** één gedeelde motor `terugkerend/service.py::classificeer_reeks` (periodiek = ≥ 3 gelijke facturen, tussenpozen ≥ 21 d, maand-/kwartaalpatroon; batch = twee gelijke facturen < 21 d óf ≥ 2 binnen 30 d zonder patroon → nooit een voorstel), de vraag één keer per leverancier+patroon (eerste in de wachtrij), "niet nu" = 90 dagen stil, "nooit voor deze leverancier" (accordeur zelf in de app, Beheerder administratiebreed in kantoor-web; tabel `staande_goedkeuring_voorstel_stil`, RLS, opheffen = actief=False), antwoord reist mee in de akkoord-call, DTO-veld `staande_regel_patroon`, lees-only CLI `staande-goedkeuring-voorstellen-lezen` in `nameting.sh`; bestaande staande goedkeuringen ongewijzigd — zie BESLISSINGEN "STAANDE GOEDKEURING — PERIODIEK VS BATCH (blok 7 run 11-09 middag)"
 
+<!-- toegevoegd 18-09-2026, opdracht "SPOED-webapp-edge-android-logt-uit" -->
+- **Web-toestel in een browsertab (SPOED 18-09):** ontgrendel-venster over herladen (sessionStorage, 5 min), Android-terugknop =
+  één scherm terug (`acc-terug`), geen body-pull-to-refresh, `storage.persist()`, eerlijke melding bij gewiste opslag,
+  diagnoseregel modus/opslag/verlenging, beginscherm-kaart en de Android-web-regel in de mail — volledige tekst in
+  `docs/regels/auth-toegang.md` alinea "Web-toestel (browsertab/PWA) — 'logt steeds uit'"; zie BESLISSINGEN "WEB-TOESTEL — 'LOGT
+  STEEDS UIT' (SPOED 18-09)".
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)

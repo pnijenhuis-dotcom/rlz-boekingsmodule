@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Veld-app uitvoerder v2 (feedback 18-09) · Cowork</title>
+<style>
+:root{--bg:#f6f7f8;--panel:#fff;--border:#e6e8ea;--text:#12181f;--muted:#5b6470;--primary:#0e7a6e;--accent-bg:#e6f4f2;--ok:#1c7a54;--ok-bg:#e4f4ec;--warn:#b45309;--warn-bg:#fdf3e3;--info:#3548a5;--info-bg:#eaeefb;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--text);background:#e9ebee;font-size:14px}
+.kop{background:#fff;border-bottom:1px solid var(--border);padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.kop h1{font-size:15px;margin:0}.kop .sub{color:var(--muted);font-size:12px}
+.rij{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;padding:22px}
+.tel{width:390px}.tel .label{text-align:center;font-size:12.5px;color:var(--muted);margin:0 0 8px}
+.frame{background:#000;border-radius:44px;padding:12px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.scherm{background:#f3f4f6;border-radius:34px;overflow:hidden;min-height:780px;position:relative;font-size:15px}
+.tkop{background:#fff;padding:50px 18px 10px;border-bottom:1px solid var(--border)}
+.tkop .t{font-size:20px;font-weight:700}.tkop .s{color:var(--muted);font-size:13px}
+.ttabs{display:flex;gap:18px;padding:0 18px;background:#fff;border-bottom:1px solid var(--border)}
+.ttabs span{padding:10px 0;font-size:14px;color:var(--muted);border-bottom:2px solid transparent}.ttabs span.on{color:var(--primary);border-color:var(--primary);font-weight:600}
+.ttabs span.weg{text-decoration:line-through;opacity:.45}
+.kaart{background:#fff;margin:12px 14px;border-radius:16px;border:1px solid var(--border);padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.kaart h3{margin:0 0 4px;font-size:16px}.m{color:var(--muted);font-size:13px}
+.chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;font-weight:500;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)}.c-warn{background:var(--warn-bg);color:var(--warn)}.c-info{background:var(--info-bg);color:var(--info)}.c-grijs{background:#eef0f2;color:var(--muted)}
+.veld{margin:12px 0 0}.veld label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.veld .in{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;font-size:16px}
+.veld .in.leeg{color:#9aa3ad}.veld .in .eenheid{margin-left:auto;color:var(--muted);font-size:14px}
+.veld .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.select{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff;font-size:16px}
+.select .pijl{color:var(--muted)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);padding:14px 16px 28px}
+.sheet .greep{width:40px;height:4px;border-radius:2px;background:#d5d9de;margin:0 auto 12px}
+.opt{display:flex;justify-content:space-between;align-items:center;padding:14px 8px;border-bottom:1px solid var(--border);font-size:16px}
+.opt .s{display:block;font-size:12.5px;color:var(--muted)}.opt.aan{color:var(--primary);font-weight:600}
+.zoek{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px 14px;background:#fff;color:#9aa3ad;margin:12px 14px 0}
+.groep{margin:14px 14px 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.proj{background:#fff;margin:0 14px 8px;border-radius:14px;border:1px solid var(--border);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.proj .n{font-weight:600;font-size:15px}.proj .s{font-size:12.5px;color:var(--muted)}
+.btn{font:inherit;font-weight:600;padding:13px;border-radius:12px;border:1px solid var(--primary);background:var(--primary);color:#fff;width:100%;font-size:15px;margin-top:14px}
+.btn.sec{background:#fff;color:var(--text);border-color:var(--border)}
+.tbalk{position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:12px 0 26px;font-size:11px;color:var(--muted)}
+.tbalk span.on{color:var(--primary);font-weight:600}.tbalk span.weg{text-decoration:line-through;opacity:.4}
+.tbalk i{display:block;width:22px;height:22px;border-radius:6px;background:#e6e8ea;margin:0 auto 3px}.tbalk span.on i{background:var(--primary)}
+.dag{display:flex;gap:6px;padding:12px 14px 0}.dag span{flex:1;text-align:center;padding:8px 0;border-radius:10px;background:#fff;border:1px solid var(--border);font-size:12.5px}
+.dag span.on{background:var(--primary);color:#fff;border-color:var(--primary)}.dag span small{display:block;font-size:10px;opacity:.75}
+.regel{background:#fff;margin:10px 14px 0;border-radius:14px;border:1px solid var(--border);padding:12px 14px}
+.regel .kk{display:flex;justify-content:space-between;gap:8px}.regel .n{font-weight:600}.regel .a{font-variant-numeric:tabular-nums;white-space:nowrap}
+.regel .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.notities{max-width:1200px;margin:0 auto 40px;background:#fff;border:1px dashed #c9ced3;border-radius:12px;padding:16px 22px;font-size:13.5px}
+.notities ol{margin:6px 0 0;padding-left:22px}.notities li{margin:5px 0}
+</style>
+</head>
+<body>
+<div class="kop"><div><h1>Veld-app uitvoerder v2 — feedback 18-09</h1><div class="sub">m² optioneel · doorfactureren-keuze per regel · project eerst, dan Uren/Meerwerk · alle projecten (gepland bovenaan) · planning-tab weg · AKKOORD Peter 18-09 · scherm ①/②/③ GEBOUWD 18-09 (project-eerst: kaarten mét "+ Uren"/"Meerwerk melden", dagbalk kiest de dag, "Week indienen" per week)</div></div><div class="sub">bestaande veld-app (toestelbinding + toegangscode) · ≤ 430 px</div></div>
+
+<div class="rij">
+
+<!-- 1: weekoverzicht — PROJECT EERST -->
+<div class="tel"><p class="label">① Mijn week — per project, dan pas Uren of Meerwerk</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren</div><div class="s">Week 38 · 14 – 20 sep · Haci Y. (uitvoerder)</div></div>
+  <div class="ttabs"><span class="on">Deze week</span><span>Vorige weken</span><span class="weg">Planning</span></div>
+  <div class="dag"><span>ma<small>8 u</small></span><span>di<small>8 u</small></span><span class="on">wo<small>6 u</small></span><span>do<small>—</small></span><span>vr<small>—</small></span></div>
+
+  <div class="regel" style="padding:14px">
+    <div class="kk"><div class="n">26031 Rijssen (Olieman)</div><span class="chip c-info">gepland</span></div>
+    <div class="s">wo: 4 u · 42 m² · steiger zijgevel · <span class="chip c-ok">doorfactureren</span></div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sec" style="margin-top:0;padding:10px">+ Uren</button><button class="btn sec" style="margin-top:0;padding:10px;color:#6941c6;border-color:#d9cdf5;background:#f1ecfb">Meerwerk melden</button></div>
+  </div>
+
+  <div class="regel" style="padding:14px">
+    <div class="kk"><div class="n">26018 Deventer (Kempen Facilities)</div><span class="chip c-grijs">niet gepland</span></div>
+    <div class="s">wo: 2 u · meegeholpen afbreken · <span class="chip c-warn">niet doorfactureren</span> · m² niet ingevuld</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sec" style="margin-top:0;padding:10px">+ Uren</button><button class="btn sec" style="margin-top:0;padding:10px;color:#6941c6;border-color:#d9cdf5;background:#f1ecfb">Meerwerk melden</button></div>
+  </div>
+
+  <div class="regel" style="padding:14px;opacity:.85">
+    <div class="kk"><div class="n">26040 Apeldoorn (De Bazar)</div><span class="chip c-info">gepland do–vr</span></div>
+    <div class="s">nog geen uren deze week</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sec" style="margin-top:0;padding:10px">+ Uren</button><button class="btn sec" style="margin-top:0;padding:10px;color:#6941c6;border-color:#d9cdf5;background:#f1ecfb">Meerwerk melden</button></div>
+  </div>
+
+  <div style="margin:12px 14px 0"><button class="btn sec">+ Ander project toevoegen aan mijn week</button></div>
+  <div style="margin:10px 14px 0"><button class="btn">Week indienen (14 u)</button></div>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span class="weg"><i></i>Planning</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+<!-- 2: uren toevoegen -->
+<div class="tel"><p class="label">② + Uren op het gekozen project — m² optioneel, doorfactureren-keuze</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren toevoegen</div><div class="s">woensdag 16 sep</div></div>
+  <div class="kaart">
+    <div class="veld"><label>Project</label><div class="in" style="background:#f6f7f8">26018 Deventer (Kempen Facilities) <span class="chip c-grijs" style="margin-left:6px">niet gepland</span></div><div class="hint">Al gekozen op het vorige scherm — niet meer zoeken.</div></div>
+    <div class="veld"><label>Uren</label><div class="in">2<span class="eenheid">uur</span></div></div>
+    <div class="veld"><label>m² <span style="font-weight:400">(optioneel)</span></label><div class="in leeg">— <span class="eenheid">m²</span></div><div class="hint">Leeg laten mag. Alleen invullen als je het weet.</div></div>
+    <div class="veld"><label>Doorfactureren aan de klant?</label><div class="select"><span><span class="chip c-warn" style="font-size:13px">Niet doorfactureren</span></span><span class="pijl">▾</span></div><div class="hint">Vooringevuld vanuit het contract van dit project; jij kunt het omzetten.</div></div>
+    <div class="veld"><label>Omschrijving</label><div class="in">meegeholpen afbreken</div></div>
+    <button class="btn">Opslaan</button>
+  </div>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span class="weg"><i></i>Planning</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+<!-- 3: projectkeuze -->
+<div class="tel"><p class="label">③ "+ Ander project" — alle projecten, gepland bovenaan (alleen als het project nog niet in je week staat)</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Project toevoegen</div><div class="s">Universal Steigerbouw · 83 actieve projecten</div></div>
+  <div class="zoek">🔍 Zoek op nummer, plaats of opdrachtgever</div>
+  <div class="groep">Gepland voor jou deze week</div>
+  <div class="proj"><div><div class="n">26031 Rijssen (Olieman)</div><div class="s">ma–wo · steiger zijgevel</div></div><span class="chip c-info">gepland</span></div>
+  <div class="proj"><div><div class="n">26040 Apeldoorn (De Bazar)</div><div class="s">do–vr · gevelsteiger</div></div><span class="chip c-info">gepland</span></div>
+  <div class="groep">Alle projecten</div>
+  <div class="proj"><div><div class="n">26018 Deventer (Kempen Facilities)</div><div class="s">loopt · 3 collega's deze week</div></div><span></span></div>
+  <div class="proj"><div><div class="n">26022 Zwolle (Bouwadvies Oost)</div><div class="s">loopt</div></div><span></span></div>
+  <div class="proj"><div><div class="n">26027 Enschede (VGG)</div><div class="s">loopt</div></div><span></span></div>
+  <div class="proj"><div><div class="n">26011 Hengelo (Baard)</div><div class="s">bijna klaar</div></div><span></span></div>
+  <p class="m" style="margin:10px 18px 0;font-size:12.5px">Eén lijst, zoeken werkt op alles. Na kiezen staat het project als kaart in je week en kies je daar + Uren of Meerwerk.</p>
+  <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span class="weg"><i></i>Planning</span><span><i></i>Toegang</span></div>
+</div></div></div>
+
+<!-- 4: doorfactureren sheet -->
+<div class="tel"><p class="label">④ Dropdown "Doorfactureren aan de klant?"</p><div class="frame"><div class="scherm" style="background:#c9ccd1">
+  <div class="tkop" style="opacity:.5"><div class="t">Uren toevoegen</div><div class="s">woensdag 16 sep</div></div>
+  <div class="sheet">
+    <div class="greep"></div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">Doorfactureren aan de klant?</div>
+    <div class="opt"><div>Doorfactureren<span class="s">Werk voor de klant, wordt in rekening gebracht</span></div><span></span></div>
+    <div class="opt aan"><div>Niet doorfactureren<span class="s">Eigen rekening: herstel, meehelpen, garantie</span></div><span>✓</span></div>
+    <p class="m" style="margin:12px 4px 0;font-size:12.5px">Standaard: <b>Doorfactureren</b> als het contract van het project dit werk verrekenbaar noemt, anders <b>Niet</b>. Kantoor ziet jouw keuze en de standaard naast elkaar.</p>
+  </div>
+</div></div></div>
+
+</div>
+
+<div class="notities">
+<b>Ontwerpnotities (onderdeel van het akkoord)</b>
+<ol>
+<li>m² is optioneel; leeg blijft leeg (geen 0). Grid en kantoor tonen dan alleen uren. Factuurmatch en m²-voortgang tellen alleen ingevulde regels.</li>
+<li>Doorfactureren-keuze staat per regel (dag × project), vooringevuld uit het contract; mens wint, audit oud→nieuw. "Niet doorfactureren" telt niet mee in wat aan de klant doorbelast mag worden; meerwerk-kantoor toont die regels apart. <b>Beslispunt:</b> per regel (voorstel) of per hele weekstaat?</li>
+<li><b>Project eerst (Peter 18-09):</b> de week is een lijst projectkaarten (gepland + waar al uren op staan); op élke kaart de knoppen "+ Uren" en "Meerwerk melden" — de uitvoerder zoekt nooit een project ná het drukken op een knop. "+ Ander project" voegt een kaart toe.</li>
+<li>Projectlijst = alle actieve projecten van de administratie(s) in scope, gepland bovenaan. Regel op niet-gepland project = label "niet gepland" (geen blokkade); kantoor ziet het in het bestaande planning-afwijkingssignaal.</li>
+<li>Meerwerk melden blijft, nu per projectkaart (eigen tab in de onderbalk blijft als overzicht); alleen de planning-tab verdwijnt.</li>
+<li>Planning-tab verdwijnt voor de rol uitvoerder (ook uit de onderbalk); kantoor-grid ongewijzigd; meldingen "planning gewijzigd" blijven (beslispunt: ook uit? voorstel: blijven).</li>
+<li>Kantoor-weekstaat krijgt kolom/filter "doorfactureren" en chip "niet gepland"; keuring ongewijzigd.</li>
+</ol>
+</div>
+</body>
+</html>

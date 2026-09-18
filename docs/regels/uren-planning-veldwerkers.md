@@ -35,6 +35,112 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Veldwerker-dialogen zonder picker-poort (C3 07-09):** dossier/crediteur-koppelen openen voorgeselecteerd via `gebruikers/standaardAdministratie.ts` (één in scope → recentste planning/koppeling → uren-opt-in), picker = wissel-filter — zie BESLISSINGEN "FIXRUN 07-09 — BLOK C3". **KvK-lookup productie (E7 07-09):** `KVK_BASE_URL=https://api.kvk.nl/api/v1/basisprofielen` + secret `KVK_API_KEY` (Vastly-sleutel, zelfde BV) in deploy.yml; lokaal zonder beide = testomgeving — zie BESLISSINGEN "E7 — KVK-LOOKUP PRODUCTIE".
 
+<!-- toegevoegd 18-09-2026, opdracht "veldapp-uitvoerder-feedback-m2-doorfactureren-projecten" -->
+- **Veld-app uitvoerder — feedback 18-09 (uitvoerder via Peter 18-09; migratie 0158 = `weekstaat_dag.doorfactureren`; BESLISSINGEN
+  "VELD-APP UITVOERDER — FEEDBACK 18-09"):** (A) **m² is optioneel** op élke weekstaat-regel (uren verplicht); leeg blijft NULL,
+  nooit 0; chips tonen dan alleen uren ("8 u" — `urenLabel`/`weekTotaalLabel`/planning-grid `urenKort`); sommen tellen alleen
+  ingevulde regels; een regel zonder m² is geen fout en geen signaal; guard `tests/uren/test_uitvoerder_feedback_18_09.py`
+  (indienen zonder m² = 200). (B) **Doorfactureren-keuze per REGEL** (dag × project — beslispunt regelniveau, niet de hele
+  weekstaat): dropdown "Doorfactureren / Niet doorfactureren"; default = `service.standaard_doorfactureren` (project mét ≥ 1
+  verrekenbare staffel uit de contract-ontleding → Doorfactureren, anders Niet), zichtbaar als chip "standaard voor dit
+  project"; mens wint, audit oud→nieuw op `weekstaat_dag_gezet`; DTO's dragen `doorfactureren` per dag +
+  `totaal_uren/m2_niet_doorfactureren` + `doorfactureren_standaard` (ook op de lookup zonder staat); keuring (app) en het
+  kantoor-weekstaatpaneel (`/meerwerk?administratie=…&weekstaat=<id>`, `meerwerk/WeekstaatPaneel.tsx`, filter "alleen niet
+  doorfactureren", "door te belasten = totaal − niet doorfactureren") tonen de regels apart; de FACTUURMATCH (ZZP-inkoopkant)
+  telt onverkort álle uren — de ZZP'er krijgt betaald ongeacht de keuze. (C) **Alle projecten, gepland bovenaan; "achteraf"-
+  staat:** `week_projecten_zzp` geeft ÁLLE actieve projecten van de administraties mét opt-in in de scope (set-based: één
+  projectquery per administratie), geplande projecten en projecten mét een staat bovenaan (chip "gepland"), de rest doorzoekbaar
+  eronder mét chip "niet gepland" (informatief, geen blokkade — `buiten_planning` per dag + `dagen_buiten_planning` per staat
+  voeden de keuring, het kantoor-paneel en het bestaande planning-signaal "buiten planning"); de aparte stap "+ ander project"
+  is VERVALLEN (`GET /uren/zzp/projecten-keuze` blijft bestaan, ongebruikt door de app). **De uitvoerder heeft nu eigen
+  weekstaten** ("soort urenstaat achteraf"): `INVULLER_ROLLEN` = ZZP'er + uitvoerder (alleen voor zichzelf — namens-invoer
+  blijft detacheerder→ZZP'er), tab "⏱ Mijn uren" mét exact de ZZP-flow; **hij keurt zijn eigen staat nooit** (vier-ogen:
+  `_vereis_keurrecht(staat_gebruiker_id)`, te-keuren-lijst en projecttellers zonder eigen staten) — een andere uitvoerder op
+  het project keurt; is die er niet, dan blijft de staat op `ingediend` (open punt: kantoor-keuring, zie rapport). De
+  uitvoerder-projectenlijst, het projectdetail en meerwerk melden dekken sinds 18-09 élk ACTIEF project in de scope (koppeling =
+  filter "gekoppeld bovenaan", geen poort; niet-actief zonder koppeling = GeenToegang). (D) **Planning uit de uitvoerder-app:**
+  geen planningstab/-route voor de rol uitvoerder (allowlist `frontend/src/auth/rollen.ts::toontPlanningTab` = ZZP'er +
+  detacheerder, fail-closed; deep-link `?planning=` landt voor hem op Mijn uren); planning blijft voor kantoor (grid) en als
+  bron voor "gepland bovenaan"; meldingen "planning gewijzigd" BLIJVEN (beslispunt default). Kantoor-web ongewijzigd behalve het
+  nieuwe weekstaatpaneel. Mockup `uren-uitvoerder.html` 1-op-1 mee bijgewerkt.
+
+<!-- toegevoegd 18-09-2026, opdracht "veldapp-project-eerst-flow" -->
+- **Veld-app — PROJECT EERST (Peter 18-09: "Niet beter om eerst het project te selecteren en dan de uren-/meerwerkknop?
+  Anders druk je op een knop en moet je eerst gaan zoeken."; akkoord Cowork; bouwnorm `mockup/uren-uitvoerder-v2.html`
+  scherm ①, notitie "Project eerst"; geen migratie; BESLISSINGEN "VELD-APP — PROJECT EERST (Peter 18-09)"):** de
+  weekweergave van de uitvoerder én de ZZP-/namens-flow is een lijst PROJECTKAARTEN: de geplande projecten van die week
+  (chip "gepland") ∪ de projecten waar deze week al uren op staan ∪ de projecten waar deze gebruiker deze week meerwerk op
+  meldde (chip "niet gepland" als ze niet gepland zijn) ∪ de projecten die de gebruiker zelf toevoegde. Per kaart: dagtotaal van
+  de in de dagbalk gekozen dag, weektotaal, laatste omschrijving, doorfactureren-chip (N dagen niet doorfactureren, anders de
+  projectdefault), meerwerk-teller, statuschip, en twee knoppen **"+ Uren"** (primair) en **"Meerwerk melden"** (alleen een
+  uitvoerder, nooit namens — backend `meld_meerwerk`) — beide starten mét het project én de dag al ingevuld (geen projectkeuze
+  meer in het formulier; ander project = terug naar de kaartenlijst). Kaarttitel = de weekstaat van dat project (dagen, indienen,
+  correctievoorstellen). Onderaan **"+ Ander project toevoegen aan mijn week"** → `GET /uren/zzp/week-projecten?alles=true`
+  (álle actieve projecten in scope, doorzoekbaar, kaarten die al in de week staan blijven weg) → kaart erbij zonder uren; een
+  kaart zonder regels leeft in app-state per week en verdwijnt bij weekwissel. **"Week indienen (N u)"** op de kaartenlijst dient
+  élke concept-/corrigeren-staat mét uren van die week in (per project = per weekstaat, bestaande route, dossier-blokkade 423
+  zichtbaar). Backend: `overzichten.week_projecten_zzp(alles=False)` = kaartsamenstelling gepland ∪ mét staat ∪ mét meerwerk
+  (eigen meldingen, `datum_uitgevoerd` in de week, alleen actieve projecten); `alles=True` = de keuzelijst; kaartvelden
+  `dag_uren`/`laatste_omschrijving`/`dagen_niet_doorfactureren`/`doorfactureren_standaard`/`meerwerk_aantal` op
+  `WeekProjectKaartDto`; set-based: vast aantal statements per administratie ongeacht het aantal kaarten (`_planning_stand`
+  vult projectnaam/soort werk sinds 18-09 in één query i.p.v. twee `session.get`'s per item) — querytelling-meetlat
+  `tests/uren/test_project_eerst_18_09.py`. `GET /uren/zzp/projecten-keuze` blijft bestaan (ongebruikt). Meerwerk-tab in de
+  onderbalk (uitvoerder-projectenlijst → projectdetail) blijft het overzicht van gemelde meerwerken; werkbonnen ongewijzigd;
+  planning voor de uitvoerder blijft weg (blok D 18-09).
+
+<!-- toegevoegd 18-09-2026, opdracht "BUG-chip-meerwerk-urenstaten-lege-pagina" -->
+- **Beoordelen — urenstaten en meerwerk op één plek + uitvoerder keurt alles in scope (bug Peter 18-09 "chip 14
+  meerwerk/urenstaten te beoordelen → lege Meerwerk-pagina 0/0/0/0"; geen migratie; BESLISSINGEN "BEOORDELEN — URENSTATEN
+  EN MEERWERK OP ÉÉN PLEK; UITVOERDER KEURT ALLES IN SCOPE (Peter 18-09)"):** (1) De kantoorpagina `/meerwerk` heet
+  **Beoordelen** en draagt twee tabs: **Urenstaten (N)** — álle ingediende weekstaten van de administratie (veldwerker, project,
+  week, uren, m², ingediend op; acties Goedkeuren (primair) + ⋯ Afkeuren… mét verplichte reden / Weekstaat openen) en
+  **Meerwerk (M)** — de bestaande vier statussen; `?tab=urenstaten|meerwerk`. De chip op de klantpagina/documentenlijst zegt
+  "N urenstaten · M meerwerk te beoordelen" (`meerwerk/beoordelenChip.ts`; "nog doorbelasten" telt bewust niet mee) en landt
+  op de tab mét werk; de klantpagina-stand krijgt een rij "Urenstaten — ingediend, te keuren". Teller en tab delen de
+  definitie: `uren_stand.urenstaten_wachten_op_keuring` == `GET /uren/kantoor/weekstaten` (`overzichten._ingediende_staten`,
+  gedeeld met de uitvoerder-keurlijst) — guard `tests/uren/test_beoordelen_18_09.py::test_guard_chip_teller_is_som_van_de_tabs`.
+  Lege stand = context + actie (KP7): "Geen urenstaten te beoordelen — laatste keuring <datum>" + "Planning openen →".
+  Tabel volgens het Gebruikers & toegang-patroon: kolomminima uit één bron (`meerwerk/beoordelenKolommen.ts`, som 1012 px
+  < 1094 op 1440), één primaire knop + ⋯ (`GebruikerRijMenu`), harnas `harness-werkvoorraad.html?beoordelen=1` in de
+  overflow-sweep. (2) **Kantoor-keuring** = vangnet: `POST /uren/kantoor/weekstaten/{adm}/{id}/goedkeuren|afkeuren` onder het
+  module-recht "Meerwerk & urenstaten" + scope, zelfde statusmachine/factuurmatch-hook als de app-route, audit
+  `weekstaat_goedgekeurd` mét `keurder: kantoor` (sluit het open punt "geen tweede uitvoerder" van de feedback-run). (3)
+  **Uitvoerder keurt álle ingediende urenstaten van de administratie(s) in zijn scope — besluit Peter 18-09, letterlijk:
+  "uitvoerder moet gewoon alle ingediende urenstaten controleren, los van welk project hij gepland staat."** Geen beperking per
+  project; `uren_project_toewijzing` stuurt alleen nog "gepland bovenaan" in de projectlijst, nooit de keurbevoegdheid
+  (`_vereis_keurrecht`: rol uitvoerder + scope-rij op de administratie + nooit de eigen staat). Guard: nieuw uitvoerder-account
+  zonder koppelingen ziet direct álle ingediende weekstaten van de administratie
+  (`test_guard_nieuw_uitvoerder_account_zonder_koppelingen_ziet_alle_ingediende_staten`); scope blijft de poort
+  (`test_buiten_scope_blijft_dicht`). Databewijs productie 18-09 (lees-only replica, `scripts/gcp/db_lezen.sh`): Universal
+  Steigerbouw B.V. (`3ee6edf0…`) had 14 weekstaten `ingediend` (week 2026-W37, ingediend 2026-09-15, 5 veldwerkers × 4 projecten)
+  en 0 meerwerk `gemeld`/`goedgekeurd` — de "14" waren dus urenstaten. Les: `weekstaat`/`meerwerk` dragen geen
+  Beheerder-RLS-clausule — lees ze op de replica altijd mét `--administratie <uuid>`.
+
+<!-- toegevoegd 18-09-2026, opdracht "veldapp-ux-verbeteringen-12-punten" (run A) -->
+- **Veld-app — 12 UX-verbeteringen, run A (Peter 18-09 "geef de opdracht voor alle punten"; bouwnorm
+  `mockup/uren-uitvoerder-v3.html` + v2; migratie 0159 = `administratie.uren_omschrijving_chips`; BESLISSINGEN "VELD-APP — 12
+  UX-VERBETERINGEN (Peter 18-09)"):** (1) **"Zelfde als gisteren"** op elke projectkaart: de LAATSTE dagregel van deze gebruiker op
+  dat project (ook uit een vorige week — `WeekProjectKaartDto.laatste_regel`) gaat mét uren, m², omschrijving én doorfactureren
+  naar de in de dagbalk gekozen dag; één tik, direct opgeslagen, audit `weekstaat_dag_gezet` mét `bron=kopie`
+  (`DagZettenRequest.bron`, default `handmatig`). (2) **Uren als tikknoppen** 4 · 6 · 8 · 10 en −/+ per half uur (0–24); een
+  toetsenbord alleen via "ander aantal…". (3) **Omschrijving als chips** — default opbouwen · afbreken · ombouwen · transport ·
+  overig; per administratie door de Beheerder instelbaar (Instellingen › administratie › Uren & materiaal, `PUT
+  /uren/beheer/omschrijving-chips/{aid}`, 1–10 chips ≤ 30 tekens uniek, audit `uren_omschrijving_chips_gewijzigd`; app leest
+  `GET /uren/zzp/omschrijving-chips`); "overig" (of geen chip) = vrij tekstveld; opslag als tekst in `weekstaat_dag.opmerking`,
+  GEEN enum. (6) **Tikdoelen ≥ 48 px**, per kaart één primaire knop ("+ Uren", bij een afgekeurde week "Aanpassen"); "Zelfde als
+  gisteren" en "Meerwerk melden" als tekstlinks eronder (KP7). (7) **Leesbaarheid buiten**: binnen `.acc-veld` geen tekst < 14 px
+  (chips, meta, hulptekst, sectielabels — guard `uren/veldTekst.test.ts`), hulptekst `--acc-muted` ≥ 4,5:1 op bg én panel in beide
+  modi (contrast-test). (8) **Week indienen met samenvatting** (sheet): "N dagen · U u · P projecten · R regels zonder m² · D niet
+  doorfactureren" + bevestigen; ma–vr zonder uren = waarschuwing, niet blokkerend (`urenApi.indienSamenvatting`). (9) **Vergeten dag**:
+  werkdag t/m gisteren zonder uren = oranje rand in de dagbalk + notitie (`vergetenDagen`). (10) **Terugkoppeling** op de kaart per
+  week: ✓ goedgekeurd door X / afgekeurd door X mét reden + knop "Aanpassen" (opent de weekstaat die al op `corrigeren` staat; geen
+  extra statusovergang, de bestaande keur-audit blijft de bron); weekchip "afgekeurd — aanpassen". (11) **Doorfactureren ingeklapt**:
+  chip + "standaard voor dit project" + "wijzigen"; de dropdown pas ná tikken. (12) **Velden verbergen**: m² (en het vrije
+  omschrijvingsveld zonder chip) onder "▸ meer" als het project geen m²-project is (`contract_m2` leeg/0 — `isM2Project`); een
+  m²-project toont m² direct; chips altijd zichtbaar. Punten 4 (dag-einde herinnering) en 5 (offline) = **run B**, eigen
+  inbox-opdracht `2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`. Meldingen bij afkeuring lopen via de bestaande
+  keur-lijn (app én kantoor-keuring).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

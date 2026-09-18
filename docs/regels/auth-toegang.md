@@ -69,6 +69,48 @@
 <!-- uit CLAUDE.md § Werkwijze -->
 - **Scope-dialoog: lijst in plaats van chips (nachtrun 10/11-09 blok 2; kliktest Peter 71 administraties; geen backend):** één doorzoekbare lijst mét vinkjes (`gebruikers/ScopeLijst.tsx`, ook de accordeur-variant), teller/filter/Alles-Geen (Geen mét bevestiging), gearchiveerd onderaan, alfabetisch blijft, Opslaan toont "+3 −1" — zie BESLISSINGEN "SCOPE-DIALOOG: LIJST IN PLAATS VAN CHIPS".
 
+<!-- toegevoegd 18-09-2026, opdracht "veldwerker-rol-wijzigen" -->
+- **Rol wijzigen zonder heruitnodiging — veldrollen (Peter 18-09 "Hoe kan ik de rol van Irfan veranderen van ZZP'er naar
+  uitvoerder?"; geen migratie; BESLISSINGEN "ROL WIJZIGEN VELDWERKERS — ZZP'ER ↔ UITVOERDER ↔ DETACHEERDER (Peter 18-09)"):**
+  Gebruikers & toegang › Veldwerkers draagt dezelfde rol-select als Kantoor, mét de opties ZZP'er / Uitvoerder / Detacheerder
+  (gearchiveerd = vaste badge); de bevestigdialoog zegt wat verandert (rechten in de app) en wat blijft (toestel(len),
+  toegangscode, scope, lopende weekstaten en keuringen; ZZP-dossier + crediteurkoppeling blijven bewaard maar zijn als
+  niet-ZZP'er inactief; detacheerder → koppelingen detacheerder ↔ ZZP'er op Veldwerkers). Server-side (`service.wijzig_rol`):
+  een wissel BINNEN een auth-model-groep (`app/auth/rollen.py::rolgroep`: kantoor / veld / accordeur) is toegestaan; een
+  wissel TUSSEN groepen (kantoor ↔ veld/accordeur = wachtwoord + TOTP/passkey vs. toestelbinding + toegangscode) wordt
+  geweigerd mét leesbare reden (`RolWisselNietToegestaan` → HTTP 409, geen 403: het is geen rechtenkwestie). Beheerder-only
+  en "niemand muteert zijn eigen rol" blijven onverkort; audit = de bestaande DB-trigger `trg_audit_gebruiker_rol_wijziging`
+  (actie `rol_wijziging`, oud→nieuw). De app heeft géén heractivatie nodig: server-side geldt de nieuwe rol per request
+  (`deps.get_current_gebruiker` leest rol/status uit de DB), de app-UI volgt bij de eerstvolgende token-verversing (de
+  refresh-rotatie zet `gebruiker.rol` uit de DB in het nieuwe access-token; er is geen `/auth/me` — de rol reist als
+  JWT-claim). Kantoor-veldwerkersoverzicht (`/veldwerkers`) leest de rol uit de DTO en toont de nieuwe rol bij laden. Tests:
+  `tests/auth/test_rol_wijzigen_veld_18_09.py` (wissel + scope + audit, tokenverversing, 5 × geweigerde groepswissel, API 204/409),
+  `gebruikers/GebruikersScreen.test.tsx` (select, dialoogtekst, PATCH, 409 leesbaar).
+
+<!-- toegevoegd 18-09-2026, opdracht "SPOED-webapp-edge-android-logt-uit" -->
+- **Web-toestel (browsertab/PWA) — "logt steeds uit" (SPOED Peter 18-09, Edge op een Android-tablet; geen migratie; BESLISSINGEN
+  "WEB-TOESTEL — 'LOGT STEEDS UIT' (SPOED 18-09)"):** Diagnose op data (Cloud Run-request-log + audit + refresh-keten op de
+  leesreplica): het toestel werd server-side NOOIT afgewezen — élke `POST /auth/token/vernieuwen` gaf 200, geen 401/410/426;
+  wat de gebruiker zag waren vijf volledige paginaherladingen van `/accordeur` in drie minuten, elk gevolgd door het
+  toegangscode-scherm, omdat het ontgrendelde anker alleen in het JS-geheugen leefde (browser-terugknop uit de app,
+  pull-to-refresh, tabblad-herstel). De échte uitlog om 09:27:21 was het blokkeren + archiveren van het account door het
+  kantoor (workaround voor "rol wijzigen", zie de rol-wijzigen-alinea hierboven) — dat trekt álle refresh-tokens in. Regels
+  sinds 18-09: (1) **ontgrendel-venster over herladen**: op een web-toestel leeft het ontgrendelde anker mét het documenteerde
+  5-minutenvenster ("direct vergrendelen" uit) óók in `sessionStorage` van dát tabblad (`appSlot.herstelOntgrendeldVenster`;
+  weg bij vergrendelen, sluiten van het tabblad, verlopen venster of "direct vergrendelen" aan) — het browser-equivalent van
+  het procesgeheugen van de native app; (2) **Android-terugknop** verlaat de web-app niet meer: één history-entry bij binnenkomst,
+  popstate → event `acc-terug` → één scherm terug in de flow (`accordeur/androidTerug.ts`, `UrenFlow.terugVan`); (3) geen
+  pull-to-refresh op body-niveau (`overscroll-behavior-y: none` op html/body binnen de app-oppervlakte); (4)
+  `navigator.storage.persist()` bij web-activatie, uitkomst in de diagnose; (5) **opslag gewist ≠ stil uitloggen**: slot-vlag
+  zonder IndexedDB-inhoud → activatiescherm mét `OPSLAG_GEWIST_MELDING` (wat er gebeurde + koppelcode van een ander toestel of
+  herstel-link); (6) diagnoseregel ⚙ Toegang draagt "modus: browsertab/PWA/app · opslag persistent ja/nee/niet gevraagd ·
+  laatste tokenverlenging" (lokaal, nooit naar de server); (7) kaart "Zet deze app op je beginscherm" in een browsertab
+  (Edge-/Chrome-stappen, weg te klikken); (8) app-uitnodigings-/herstelmail zegt voor Android zonder geschikte Play-versie in één
+  zin hoe je de web-versie op het beginscherm zet (`uitnodigingsmail.android_web_regel`). Server-side blijft alles onverkort
+  (sliding TTL 7 d, rotatie, hergebruik-detectie, kill-switch). Les werkloop: `weekstaat`/`meerwerk`/`refresh_token`-lezen op de
+  replica altijd mét de juiste actor/scope; het request-log + `platform.audit_event` + `platform.refresh_token` samen geven de
+  volledige tijdlijn van een toestel.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Stack & platform — Auth (TOTP, accordeur-passkeys, herstel-link, e-mail wijzigen, activatie mobiel-first, pincode/app-lock, platformbesluit 0020, kantoor-passkeys) (CLAUDE.md `ed6d176` r. 95–155)

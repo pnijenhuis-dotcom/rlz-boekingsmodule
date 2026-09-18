@@ -195,6 +195,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   2. Scope-lookups op `gebruiker_administratie` altijd in `scoped_session(<administratie>, actor_id=actor)`; SECURITY DEFINER omzeilt FORCE RLS niet — expliciete policy-uitzondering + niet-eigenaar-test.
   3. Maillinks zijn deep-links naar de app-flow; goedkeuren-zonder-inloggen bestaat niet; een activatie-/herstel-link laat in een browser EERST kiezen (app op deze telefoon / web) vóór er iets verzilverd wordt; versie-eis (≥ 1.1) letterlijk in de mail.
   4. Wachtwoord kwijt = Beheerder-knop "Herstel-link sturen" (nooit selfservice); legacy-app-routes 410 ná 2026-10-08.
+  5. Rol wijzigen (Peter 18-09): binnen een auth-model-groep (kantoor / veld / accordeur) zonder heruitnodiging, tussen groepen 409 — zie BESLISSINGEN "ROL WIJZIGEN VELDWERKERS — ZZP'ER ↔ UITVOERDER ↔ DETACHEERDER (Peter 18-09)".
+  6. Web-toestel (SPOED 18-09): server wees nooit af; ontgrendel-venster over herladen (5 min, sessionStorage), Android-terugknop = één scherm terug, opslag gewist = eerlijke melding, beginscherm-kaart — zie BESLISSINGEN "WEB-TOESTEL — 'LOGT STEEDS UIT' (SPOED 18-09)".
   **LEESPLICHT: lees `docs/regels/auth-toegang.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Btw: codes, defaults, verlegd, buitenland** — Btw-code uit de scan en het factuurtotaal, defaults uit de RLZ-grootboekrekening en de eigen historie, verlegd-herkenning (vermelding, kolomcode, onderaannemer), buitenland-signaal, verlegd-tarief deterministisch.
@@ -237,6 +239,10 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Nieuwe module-code roept nooit `RlzClient` aan (seam-eis; adapter-grepen in BESLISSINGEN "ODOO-ADAPTER — GREPEN"); geofence-native alleen op `feat/geofence-native`, nooit mergen/releasen.
   2. Recht 'veldwerkerbeheer' dekt overzicht, koppelingen en dossier binnen de eigen scope (server-side + RLS); rechten toekennen blijft Beheerder-only.
   3. Planning in een verstreken/lopende week = audit `achteraf` + één gebundelde melding per veldwerker × week; urenstatus in het grid uit de weekstaat.
+  4. Veld-app uitvoerder 18-09: m² optioneel, doorfactureren-keuze per regel (0158), alle projecten mét gepland bovenaan, uitvoerder schrijft eigen uren (nooit zelf keuren), geen planningstab — zie BESLISSINGEN "VELD-APP UITVOERDER — FEEDBACK 18-09".
+  5. Project eerst (Peter 18-09): de week = projectkaarten (gepland ∪ mét uren ∪ mét meerwerk) mét "+ Uren"/"Meerwerk melden" per kaart, "+ Ander project" = keuzelijst `?alles=true` — zie BESLISSINGEN "VELD-APP — PROJECT EERST (Peter 18-09)".
+  6. Beoordelen (Peter 18-09): `/meerwerk` = tabs Urenstaten (N) · Meerwerk (M) uit dezelfde definitie als de chip; kantoor-keuring als vangnet; uitvoerder keurt álle ingediende urenstaten in scope, koppeling = alleen "gepland bovenaan" — zie BESLISSINGEN "BEOORDELEN — URENSTATEN EN MEERWERK OP ÉÉN PLEK; UITVOERDER KEURT ALLES IN SCOPE (Peter 18-09)".
+  7. Veld-app UX run A (Peter 18-09): zelfde-als-gisteren (bron=kopie), tikknoppen, omschrijving-chips per administratie (0159), ≥ 48 px/≥ 14 px, indien-samenvatting, vergeten dag, terugkoppeling, doorfactureren ingeklapt, m² onder "meer" — zie BESLISSINGEN "VELD-APP — 12 UX-VERBETERINGEN (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/uren-planning-veldwerkers.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Omzetboekingen, omzetbronnen en het verkoopfactuur-boekpad** — Kassarapporten (ProfX, dagstaat/kascheck, pilates-export) als entity-loze Receipts mét binder Inkomsten + kostprijsmemoriaal, stores → administratie platformbreed, tegenzijde per betaalwijze, Vastly-verkoopfacturen (§2d), waarborg.

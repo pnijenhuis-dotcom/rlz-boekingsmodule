@@ -193,13 +193,15 @@
       </div>
     </div>
 
-    <!-- Functietabs: rolafhankelijk. Milan (ZZP) ziet Uren; Ben (uitvoerder) ziet Projecten + Te keuren. -->
+    <!-- Functietabs: rolafhankelijk. Milan (ZZP) ziet Uren (+ Planning in de app); Ben (uitvoerder) ziet sinds 18-09
+         (feedback uitvoerder via Peter, blok C/D) Projecten + Mijn uren + Te keuren — géén planningstab. -->
     <div class="functabs" id="tabsZzp">
       <div class="functab actief" onclick="toon('zzpProjecten', this)">⏱ Mijn weken</div>
       <div class="functab" onclick="toon('historie', this)">✓ Ingediend</div>
     </div>
     <div class="functabs" id="tabsUitv" style="display:none">
       <div class="functab actief" onclick="toon('projecten', this)">🏗 Projecten</div>
+      <div class="functab" onclick="toon('zzpProjecten', this)">⏱ Mijn uren</div>
       <div class="functab" onclick="toon('keurlijst', this)">✓ Te keuren<span class="badge">3</span></div>
     </div>
     <div class="functabs" id="tabsDeta" style="display:none">
@@ -228,42 +230,42 @@
             <div class="meta">1 nog invullen · week afgekeurd door Ben v. Dijk</div></div>
           <span class="chip open">nog invullen</span>
         </div>
-        <div class="notitie"><span>📅</span><span>Je ziet de weken waarin je <b>ingepland</b> bent (plus deze week). Uren op een ander project? Open de week en kies <b>+ ander project</b>.</span></div>
+        <div class="notitie"><span>📅</span><span>Je ziet de weken waarin je <b>ingepland</b> bent (plus deze week). Open een week: geplande projecten staan bovenaan, daaronder <b>alle andere projecten</b> — uren schrijven kan op elk project (18-09).</span></div>
       </div>
 
-      <!-- ============ ZZP · WEEK: PROJECTEN IN DIE WEEK (A1) + uitwijk "+ ander project" ============ -->
+      <!-- ============ ZZP · WEEK: ALLE PROJECTEN IN DIE WEEK (A1, herzien 18-09 blok C) — gepland bovenaan, rest doorzoekbaar;
+           de aparte stap "+ ander project" is vervallen ============ -->
       <div class="view" id="zzpProject">
         <button class="terug" onclick="toon('zzpProjecten')">‹ Mijn weken</button>
         <div class="seclabel">Week 36 · 31 aug – 6 sep<span class="namens"> · namens Milan K.</span></div>
+        <div class="card"><div class="veld"><label>Zoek project</label><input type="search" placeholder="nummer, plaats of opdrachtgever"></div></div>
+        <div class="seclabel">Gepland deze week</div>
         <div class="card klik" onclick="toon('weekstaat')">
-          <div><div class="tt">26014 Eindhoven (BAM)</div>
+          <div><div class="tt">26014 Eindhoven (BAM) <span class="chip ingediend">gepland</span></div>
             <div class="meta">gepland 3 dagen · 2 dagen ingevuld · 16,0 u · 215 m²</div></div>
           <span class="chip open">nog invullen</span>
         </div>
         <div class="card klik" onclick="toon('weekstaat')">
-          <div><div class="tt">26021 Tilburg (Heijmans)</div>
+          <div><div class="tt">26021 Tilburg (Heijmans) <span class="chip ingediend">gepland</span></div>
             <div class="meta">gepland 2 dagen · nog niets ingevuld</div></div>
           <span class="chip open">nog invullen</span>
         </div>
-        <div class="actionbar" style="position:static;margin-top:12px">
-          <button class="btn stil" onclick="toon('anderProject')">+ ander project</button>
+        <div class="seclabel">Andere projecten</div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">26025 Breda (Van Wijnen) <span class="chip wacht">niet gepland</span></div>
+            <div class="meta">buiten planning · nog niets ingevuld</div></div>
+          <span class="chip open">nog invullen</span>
         </div>
-        <div class="notitie"><span>ℹ️</span><span>Uren buiten de planning blijven invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b> (oranje, geen blokkade).</span></div>
+        <div class="card klik" onclick="toon('weekstaat')">
+          <div><div class="tt">26030 Venlo (Dura) <span class="chip wacht">niet gepland</span></div>
+            <div class="meta">buiten planning · nog niets ingevuld</div></div>
+          <span class="chip open">nog invullen</span>
+        </div>
+        <div class="notitie"><span>ℹ️</span><span>Uren schrijven kan op <b>elk</b> project — ook zonder planning ("niet gepland"). Bij de keuring krijgen die dagen de markering <b>buiten planning</b> (oranje, geen blokkade); het kantoor ziet het in de planning.</span></div>
       </div>
 
       <!-- ============ ZZP · "+ ANDER PROJECT": volledige lijst, doorzoekbaar (C1: koppeling ontstaat bij de eerste dagregel) ============ -->
-      <div class="view" id="anderProject">
-        <button class="terug" onclick="toon('zzpProject')">‹ Week 36</button>
-        <div class="seclabel">Ander project · week 36<span class="namens"> · namens Milan K.</span></div>
-        <div class="card">
-          <div class="veld"><label>Zoek project</label><input type="search" placeholder="nummer, plaats of opdrachtgever" value="venlo"></div>
-        </div>
-        <div class="card klik" onclick="toon('weekstaat')">
-          <div><div class="tt">26030 Venlo (Dura Vermeer)</div><div class="meta">steigerbouw · Universal Steigerbouw</div></div>
-          <span class="arrow">›</span>
-        </div>
-        <div class="notitie"><span>ℹ️</span><span>Dit project staat niet in de planning voor week 36. De uren blijven gewoon invoerbaar; bij de keuring krijgen ze de markering <b>buiten planning</b>.</span></div>
-      </div>
+      <!-- 18-09: de aparte view "anderProject" (+ ander project) is VERVALLEN — alle projecten staan in zzpProject. -->
 
       <!-- ============ ZZP · WEEKSTAAT (per project, per week) ============ -->
       <div class="view" id="weekstaat">
@@ -311,8 +313,11 @@
         <div class="card">
           <div class="duo">
             <div class="veld"><label>Uren</label><input type="number" inputmode="decimal" placeholder="8,0"></div>
-            <div class="veld"><label>m² gebouwd (optioneel)</label><input type="number" inputmode="decimal" placeholder="0"></div>
+            <div class="veld"><label>m² gebouwd (optioneel)</label><input type="number" inputmode="decimal" placeholder="leeg = niet ingevuld"></div>
           </div>
+          <!-- 18-09 blok B: keuze per REGEL; default uit het project (verrekenbare staffel → Doorfactureren, anders Niet), mens wint. -->
+          <div class="veld"><label>Doorfactureren <small style="color:var(--muted);font-weight:500">standaard voor dit project: Doorfactureren</small></label>
+            <select><option>Doorfactureren</option><option>Niet doorfactureren</option></select></div>
           <div class="veld"><label>Opmerking (optioneel)</label><input type="text" placeholder="bijv. wachttijd i.v.m. levering"></div>
           <div class="notitie"><span>➕</span><span>Zelfde dag óók op een ander project gewerkt? Vul die uren daar in — elke week hangt aan één project.</span></div>
         </div>
