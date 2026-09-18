@@ -8,6 +8,25 @@
 
 ## 2026-09-18 — Uren-app: eerst het project, dan "+ Uren" of "Meerwerk melden"; m² niet meer verplicht; doorfactureren per regel
 
+<!-- veldapp-ux-run-b-18-09 -->
+
+- **Uren-app werkt ook zonder bereik.** Sla je uren op terwijl je geen netwerk hebt, dan bewaart de app de regel op je telefoon (met een oranje bolletje "nog niet verzonden") en verstuurt 'm vanzelf zodra er weer verbinding is — of tik op "Nu verzenden". Is de week intussen door kantoor ingediend of gekeurd, dan zie je beide standen en kies je zelf; de app overschrijft nooit iets stil. Week indienen kan alleen met verbinding.
+- **Herinnering aan het einde van de werkdag.** Heb je om 16:30 nog geen uren voor vandaag ingevuld, dan krijg je een melding (alleen op werkdagen). Wil je die niet? Zet 'm uit onder ⚙ Toegang › Herinneringen. Het kantoor stelt de tijd per administratie in onder Instellingen › Uren & materiaal.
+
+<!-- planning-v3-dag-eerst-18-09 -->
+
+- **Planning is nu per dag.** Elke werkdag is een kolom met projectkaarten: sleep een project uit de projectbalk naar een dag (of klik project, dan dag) en er staat een kaart "gereserveerd"; sleep mensen uit de lijst rechts op de kaart. Klik op een kaart en kies de ploeg in het paneel rechts — met per persoon "vrij", "al op …" of "afwezig t/m …", "zelfde ploeg als gisteren" en "toepassen op hele week".
+- **Trek een kaart over de week (zoals cellen in Excel).** Selecteer een kaart, pak het bolletje rechts en sleep naar vrijdag: kaart én ploeg worden gekopieerd; je ziet vooraf welke dag een conflict geeft (oranje) en welke dag al bezet is (overgeslagen). Fout gesleept? "Ongedaan maken" of Ctrl/Cmd-Z binnen tien seconden zet alles terug.
+- **Conflicten in één balk boven het grid**: dubbel gepland op één dag, afwezig, meer dan vijf op één kaart. Klik erop en de kaart licht op. Niets blokkeert — kantoor beslist.
+- **"Per project" is de leesweergave**: dezelfde week als tabel per project met aantallen, urenstand en conflicten; klik op een cel en je staat weer in "Per dag" op die kaart.
+- **Afwezigheid**: onder Beheer › Veldwerkers › dossier zet je "afwezig van … t/m …" (bijvoorbeeld verlof). De planning toont het in de lijst en het paneel en waarschuwt als iemand op zo'n dag toch gepland wordt. Geen verlofadministratie, alleen "op deze dagen niet plannen".
+
+<!-- projecten-status-nummer-uniek-18-09 -->
+
+- **Projecten kun je afsluiten.** Op het projectdetail staat "Afsluiten…" (reden en datum optioneel). Een afgesloten project verdwijnt uit alle keuzelijsten (planning, weekstaat, offerte, controlescherm) en wordt in Reeleezee of Odoo op inactief gezet; onder "Toon afgesloten (N)" in de projectenlijst en Inzicht › Projecten blijft het terugvindbaar, en "Heropenen" zet het weer terug. Een nagekomen factuur op een afgesloten project kun je gewoon boeken — je ziet een oranje melding "project afgesloten op …".
+- **Kandidaten om af te sluiten zie je vanzelf.** Inzicht › Projecten toont een chip "kandidaat afsluiten" bij projecten zonder uren, planning, offerte of factuur in de laatste 90 dagen waarvan de contract-m² gehaald zijn. Afsluiten blijft jouw klik.
+- **Een projectnummer kan maar één keer bestaan.** Maak je een project met een nummer dat al bestaat (ook als dat project afgesloten is, of rechtstreeks in Reeleezee is aangemaakt), dan zegt het scherm "26127 bestaat al: 26127 Tilburg (Heijmans), lopend" met een knop "Openen" — er komt nooit stil een tweede project bij. Bestaande dubbele nummers staan in een rapport voor het kantoor.
+
 <!-- bulk-upload-18-09 -->
 
 - **Je kunt nu honderden bestanden tegelijk slepen.** Selecteer in de Verkenner of Finder alle facturen (of sleep een hele map) naar de uploadzone op de klantpagina, de documentenlijst of de werkvoorraad. Er gaan er vier tegelijk omhoog; onder de zone zie je "Bezig: 37 van 180", per bestand de uitkomst (klaar, al aanwezig, te groot, geen verbinding …) en na afloop een samenvatting zoals "180 aangeboden · 176 nieuw · 3 al aanwezig · 1 fout". Met "Stoppen" rond je de lopende uploads af, met "Mislukte opnieuw" gaan alleen de mislukte bestanden alsnog mee. De gekozen documentsoort geldt voor de hele lading; de lijst ververst één keer als alles klaar is.

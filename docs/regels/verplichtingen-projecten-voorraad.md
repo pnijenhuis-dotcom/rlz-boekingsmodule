@@ -62,6 +62,45 @@
   0086–0088/0102) — zie BESLISSINGEN "BOUWRUN 28-08 AVOND" blok D, "OPDRACHT 29-08" blok A/B, "OPDRACHT 30-08",
   "ODOO-ADAPTER FASE 1".
 
+<!-- toegevoegd 18-09-2026, opdracht "projecten-status-afsluiten-en-nummer-uniek" -->
+- **Projecten — status afgesloten + projectnummer uniek (Peter 18-09: "Bij steigerbouw moeten projecten een status krijgen; als
+  een project afgesloten is kan het uit de lijst" en "Per abuis 2× hetzelfde projectnummer aangemaakt — moet geblokkeerd
+  worden"; migratie 0160 = `project_cache.status/afgesloten_op/afgesloten_door/afsluit_reden` + index; BESLISSINGEN
+  "PROJECTEN — STATUS AFGESLOTEN + PROJECTNUMMER UNIEK (Peter 18-09)"):** (A) `project_cache.status` = MODULE-status
+  `lopend`/`afgesloten` náást `is_actief` (spiegel van RLZ `IsActive`/Odoo `active`). Afsluiten (`app/projecten/status.py`,
+  knop "Afsluiten…" op het projectdetail, Beheerder + Boekhouding+Projecten via `_vereis_schrijfrol`, reden + datum
+  optioneel) zet EERST de bron inactief — RLZ: klant-loze `PUT Projects/{id}` mét de bestaande naam + `IsActive:false` en
+  TERUGLEESVERIFICATIE (bevestigt RLZ niet → 502, status ongewijzigd: RLZ wint); Odoo: `active=False` op de analytic account
+  via de company-gebonden client (`odoo_id` uit `odoo_id_koppeling`/brondata, archiveren, nooit unlink) — en pas dán de
+  status + `is_actief=false` + audit `project_afgesloten` oud→nieuw; heropenen (`project_heropend`) is het spiegelbeeld.
+  Gevolg: álle keuzelijsten (planning, weekstaat, verplichting, controlescherm-combobox, betaallijst) filteren al op
+  `is_actief` — één mechanisme, geen tweede waarheid; de combobox toont een afgesloten project onderaan mét chip "inactief"
+  (patroon 16-09) zodat een document dat er al op staat leesbaar blijft. Lijst per administratie: afgesloten standaard weg
+  (`alleen_actief` = ook `status != afgesloten`), toggle "Toon afgesloten (N)" (`alleen_actief=false`, teller
+  `aantal_afgesloten`), rij grijs mét chip; Inzicht › Projecten: toggle `?afgesloten=1`/`toon_afgesloten`, facet
+  `afgesloten`, afgesloten rijen onderaan, tellers `afgesloten`/`kandidaat_afsluiten`. Een factuurregel naar een afgesloten
+  project = ORANJE SIGNAAL "Project afgesloten: ‹naam› (afgesloten op ‹datum›)" (`checks.check_project_afgesloten`, in beide
+  rapport-takken van `boekvoorstel`, alleen als er iets te melden is) — nagekomen facturen bestaan, nooit blokkerend.
+  **Kandidaat afsluiten** (automatisering-first, nooit automatisch): geen weekstaat, planning, verplichting of factuurregel in
+  90 dagen ÉN gebouwd-m² ≥ contract-m² (beslispunt: het model kent geen contractsom; m²-voortgang is de deterministische
+  maat; zonder contract-m² geen kandidaat, wél de reden zichtbaar) → chip "kandidaat afsluiten" + facet; set-based
+  (`status.kandidaat_afsluiten_per_project`, vier statements per administratie). (B) **Projectnummer uniek**
+  (`app/projecten/nummer.py`): het nummer is de cijfer-prefix van de naam (RLZ kent géén codeveld, STAP-0 16-09), uniek
+  BINNEN de administratie over álle projecten (lopend + afgesloten, actief + inactief) — getoetst op de cache én live in RLZ
+  (`RlzClient.find_projects_by_name_prefix`, `startswith(Name,'26127 ')`; "261270" is geen treffer); bezet = 409
+  `projectnummer_bestaat_al` mét het bestaande project ("26127 bestaat al: 26127 Tilburg (Heijmans), lopend — openen?",
+  dialoog toont "Openen"), alleen exact dezelfde naam op het eigen deterministische GUID is de idempotente herhaal-klik
+  (bestond_al). Volgnummer-voorstel = eerstvolgende vrije nummer van het jaar (bestaand `volgende_projectnummer`, voorgevuld).
+  **Herstel bestaande dubbelen** = lees-only CLI `projecten-dubbele-nummers [--administratie]` (beide id's, facturen/
+  weekstaten/planning per kant, voorstel "blijft" = meeste activiteit; samenvoegen = klikpunt Peter, verliezer daarna op
+  afgesloten/IsActive uit, nooit verwijderen) en `projecten-afsluit-kandidaten [--administratie] [--dagen] [--alles]` — beide
+  in de nameting-allowlist (`scripts/gcp/nameting.sh`), nooit vanuit een run tegen productie. **Reconciliatie-soort
+  `project_nummer_dubbel`** (blok `projecten`, `nummer.cli_blok` in `reconciliatie-alles` + `run.BLOKKEN`; vingerafdruk
+  administratie + nummer) start in stand `meten` (registry `soort_stand.py`) voor dubbelen die buiten de module om in RLZ
+  ontstaan. Tests `tests/projecten/test_status_en_nummer.py` (15), `tests/keten/test_v_project_afgesloten_signaal.py` (2),
+  frontend `projecten/ProjectStatus.test.tsx` (4). Uren-/planningcode is NIET geraakt (blok 4 bouwt daar): het filter loopt
+  volledig via `is_actief`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Verplichtingen: offerte-accordering + factuur↔offerte-match (CLAUDE.md `ed6d176` r. 420–432)

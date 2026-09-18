@@ -150,6 +150,116 @@
   schijnen; rij-koppen in de `tbody` zijn door hun rij begrensd en bewegen niet. Guard `planning/stickyDagkop.test.ts` (bron + CSS);
   Playwright staat niet in de repo → kliktest in het rapport. Het patroon is de bouwsteen voor de v3-dagkop (planning dag-eerst).
 
+<!-- toegevoegd 18-09-2026, opdracht "planning-v3-dag-eerst-bouw" — BACKEND-deel (4B); frontend-deel volgt uit 4F -->
+- **Planning v3 "dag-eerst" — datalaag en bulkroute (mockup `planning-v3-dag-eerst.html` AKKOORD Peter 18-09; migratie 0161;
+  BESLISSINGEN "PLANNING V3 — DAG-EERST (Peter 18-09)"):** (1) **`boekhouding.planning_reservering`** = kaart zonder ploeg (project ×
+  dag, UNIQUE per administratie; RLS FORCE zoals planning_toewijzing, DELETE toegestaan): een projecttegel naar een dag slepen
+  reserveert "hier werken we die dag" vóór de ploeg bekend is; komt er een persoon op, dan blijft de rij als drager staan en toont de UI
+  één kaart (ontdubbelen op project × datum); verwijderen is expliciet + geaudit (`planning_gereserveerd` / `planning_reservering_verwijderd`).
+  Routes `POST /uren/kantoor/planning/reservering` (201 nieuw / 200 bestaand) en `…/reservering/verwijderen` (204). (2)
+  **`boekhouding.veldwerker_afwezigheid`** = MINIMAAL "op deze dagen niet plannen" ([van, tot] inclusief, reden vrije tekst; RLS FORCE,
+  géén DELETE-grant): geen verlofadministratie, geen saldo, geen goedkeuring; overlap = 409, beëindigen = `tot` vervroegen +
+  `beeindigd_op` (audit oud→nieuw), verlengen = nieuwe periode; alleen ZZP'er/uitvoerder; recht 'Meerwerk & urenstaten' ÓF
+  'veldwerkerbeheer' + scope (`GET/POST /uren/kantoor/afwezigheid`, `…/afwezigheid/beeindigen`). In de planning: `pool[].afwezig_tot`,
+  `PlanningWeekDto.afwezigheid`, plannen op zo'n dag = conflict `afwezig` (oranje, NIET blokkerend). (3) **Bulkroute**
+  `POST /uren/kantoor/planning/bulk` (`bron` vulhandvat | ploeg | ongedaan; `items` ≤ 200; `verwijderen`; `correlatie_id`) = vulhandvat,
+  ploeg-paneel en "Ongedaan maken" in ÉÉN transactie via de gedeelde helpers `_plan_in_sessie`/`_verwijder_in_sessie` (dezelfde audit per
+  (persoon, dag), `achteraf`-vlag, weekstaat-koppeling en melding-rij per veldwerker × week als de losse routes): per item `gedaan` |
+  `overgeslagen` (bestond al / stond niet gepland / dubbel in de aanroep — idempotent) | `conflict` (`project` = die dag al elders gepland
+  mét projectnaam, `afwezig`) — een conflict wordt WÉL gepland en gemarkeerd (kantoor beslist); een échte fout (onbekend/inactief project,
+  niet-planbare persoon, geen opt-in, geen recht) rolt alles terug. `aangemaakt` = de daadwerkelijk geplaatste (of verwijderde) items —
+  ongedaan maken = exact die set terug met `verwijderen: true`. Audit: `planning_gepland`/`planning_verwijderd` mét `bulk_correlatie_id` +
+  `bron` (+ `conflict`), plus één rij `planning_bulk` mét tellers. Set-based (leeswerk onafhankelijk van het aantal items; guard in
+  `tests/uren/test_planning_v3_18_09.py`). Élke POST onder `/uren/kantoor/…` draagt `?administratie_id=` als query-param (scope-poort,
+  bestaand patroon). Dagdeel blijft `heel`/`half`.
+
+<!-- toegevoegd 18-09-2026, opdracht "planning-v3-dag-eerst-bouw" — FRONTEND-deel (4F); het backend-deel (bulkroute, tabellen, RLS) staat in regels_4B -->
+- **Planning personeel v3 — DAG-EERST, frontend (Peter 18-09 letterlijk: "Projecten mag hier weg, dat moet hetzelfde zijn als
+  transport: dat wij projecten kunnen slepen naar de verschillende dagen in de week", "makkelijke manier om dat project over de hele
+  week te slepen (vergelijkbaar met Excel cellen slepen)", "klik op dat project, dan wil ik de hele lijst met ZZP'ers om te selecteren
+  wie er die dag ingepland worden … slepen de ZZP'ers ook mee"; mockup `mockup/planning-v3-dag-eerst.html` = bouwnorm incl. notities
+  ①–⑨ en de twee beslispunten (kaart zonder ploeg = JA "gereserveerd"; vulhandvat over de weekgrens = NEE); migratie 0161;
+  BESLISSINGEN "PLANNING V3 — DAG-EERST (Peter 18-09)"):** de Personeel-tab is een DAG-EERST-grid (`planning/DagEerstGrid.tsx`,
+  pure transformatie in `planning/dagEerst.ts`): vijf dagkolommen ma–vr (za/zo alleen als er iets op staat, inklapbaar), sticky dagkop
+  mét datum en dagtotaal ("12 man · 3 projecten" — hergebruik `.tabel-scroll.sticky-koppen.plan-scroll`), per dag ÉÉN kaart per
+  project mét ploeg-initialen (uitvoerder = `--ok`-rand, conflict = `--warn`-rand, ½ = halve dag), aantal, urenstatus-stip op
+  kaartniveau = de LAAGSTE status van de ploeg (vraag < geen < ingevuld < gekeurd; tooltip per persoon; klik = weekstaat), geldende
+  werkopdracht-tekst (dag-override wint), chips "achteraf"/"conflict", ⚠ ná einddatum; een kaart zónder ploeg = "gereserveerd"
+  (grijs, dashed; `planning_reservering`) en verdwijnt als aparte kaart zodra er een persoon op staat (frontend ontdubbelt op
+  project × datum, de reserveringsrij blijft drager). **Projectbalk** boven het grid (`ProjectBalk.tsx`): álle actieve projecten,
+  zoekveld diakriet-loos (`normaliseerTekst` uit `bankZoek.ts`), gepland deze week eerst ("ma–wo · 4 man"), rest mét chip "niet
+  gepland", 12 tegels + "+ N" → volledige lijst, horizontaal scrollbaar BINNEN de pagina; tegel slepen naar een dag = reservering,
+  klik-alternatief = tegel selecteren en dag aanklikken (DnD is nooit de enige weg). **Slepen** via de gedeelde hook
+  `planning/useDagDrop.ts` (uit de Transport-tab geëxtraheerd, gedrag daar ongewijzigd): pool → kaart = toevoegen (`planToewijzing`),
+  initiaal → andere kaart = verplaatsen (`verplaatsToewijzing`), mét Alt/Option = kopiëren. **Conflictenbalk** (`ConflictenBalk.tsx`,
+  `conflictenVoorWeek`): dubbel op één dag (uit `per_datum`, dus vóór er uren zijn), afwezig, > 5 op één kaart (besluit C), ZZP'er
+  zonder dossier (optionele pool-vlag `dossier_onvolledig` — nog niet geleverd door de backend); elk item klikbaar → springt naar de
+  kaart en licht 'm op; nooit blokkerend. **Vulhandvat** (mockup ②): kaart selecteren → bolletje rechts (teal = actie) → met de muis
+  over de dagen slepen (pointer-events); ghost-kaarten tonen vooraf "kopie · zelfde ploeg" of "kopie · N conflict" (oranje) en
+  "overgeslagen — staat hier al" (bestaande kaart van hetzelfde project wordt NOOIT dubbel of vervangen); loslaten = ÉÉN
+  `POST /uren/kantoor/planning/bulk` (bron `vulhandvat`), toast onderin "Gekopieerd naar di–vr · 16 persoon-dagen · 1 conflict —
+  Ongedaan maken · Toon conflict" (10 s); Ongedaan maken / Cmd/Ctrl-Z = dezelfde bulkroute mét `verwijderen: true` en exact de door
+  de server teruggegeven `aangemaakt`-set + correlatie-id; het handvat stopt bij vrijdag (beslispunt ⑥ = nee). **Ploeg kiezen**
+  (mockup ③, `PloegPaneel.tsx`): klik op kaart → paneel in de zijkolom (geen modaal; patroon MateriaalstandPaneel), kop project + dag
+  + werkopdracht/starttijd ("wijzigen" = bestaande dag-override), zoekveld, volledige lijst mét vinkjes en beschikbaarheid voor DIE dag
+  ("vrij" groen · "al op ‹project›" oranje, wél kiesbaar · "afwezig t/m …" grijs, uitgeschakeld), uitvoerder-chip, "Zelfde ploeg als
+  ‹vorige werkdag met planning op dit project›", "Toepassen op hele week" (vinkjesstand naar alle werkdagen via de bulkroute, zelfde
+  overslaan-regel); Opslaan (N) = diff → één bulk-call (verwijderen + toevoegen); iemand mét ingevulde uren van de planning halen =
+  bevestiging mét urenstand ("… heeft 8 u ingevuld op deze dag — toch van de planning halen? De uren blijven staan."). **Toggle "Per
+  project"** (mockup ④, `PerProjectWeergave.tsx`): dezelfde respons gedraaid — rij per project mét planning, cel = aantal + status-stip +
+  conflict-chip, weekkolom "N mandagen · uren x/y · conflicten" + de weekstaten-link, regel "N actieve projecten zonder planning ·
+  tonen"; GEEN bewerkacties — klik op een cel = terug naar "Per dag" mét die kaart geselecteerd; stand per gebruiker in localStorage
+  (`planning-weergave`). **Pool**: "N dg" + "· vrij" (0 dagen) of "afwezig t/m …" (niet sleepbaar), filter "alleen vrij", eerste 100 +
+  "… N meer". **Afwezigheid** (slice 5, `veldwerkers/AfwezigKaart.tsx` in het dossier-dialoog): lijst, toevoegen (van/tot/reden),
+  beëindigen = `tot` vervroegen — nooit verwijderen; plannen op zo'n dag = oranje conflict, niet blokkerend. **Deeplink** `?kaart=
+  <project_id>|<datum>` landt op de kaart (selectie + oplichten) — signalen/conflicten linken daarop. Ongewijzigd: `?week=`,
+  `?uren=`-filter (nu als KAARTfilter: alleen passende ploegleden blijven), meldingen per veldwerker × week, werkopdracht-popup +
+  dag-override (📋 op de kaart/in het paneel), "+ Project aanmaken", "+ ZZP'er"/archiveren, controle-meldingen, Transport- en
+  Werkopdrachten-tabs. Guards: `planning/dagEerst.test.ts` (12), `PlanningScreen.test.tsx` (herschreven, 20 — dekking plannen/
+  verwijderen/dagdeel/403/409/urenstatus/filters/één request blijft), `veldwerkers/AfwezigKaart.test.tsx` (2), `stickyDagkop.test.ts`
+  (drie grids), harnas `harness-planning.html` (+ `?perproject=1`, `?kaart=1`) in de overflow-sweep. `mockup/planning-steigerbouw.html`
+  (22-08) = historie ("VERVANGEN door planning-v3-dag-eerst.html (18-09)"; de Transport-tab en werkopdracht-popup erin blijven norm).
+
+<!-- toegevoegd 18-09-2026, opdracht "veldapp-ux-run-b-offline-en-herinnering" (run B, backend) -->
+- **Veld-app — UX run B, punt 4 dag-einde herinnering (backend; akkoord Peter 18-09 "alle punten"; migratie 0162 =
+  `administratie.uren_herinnering_tijd` TIME NULL, `gebruiker.uren_herinnering_uit`, claim-tabel `boekhouding.uren_herinnering`
+  UNIQUE (gebruiker, datum); BESLISSINGEN "VELD-APP — 12 UX-VERBETERINGEN (Peter 18-09)" alinea "Run B"):** motor
+  `app/uren/herinnering.py::verstuur_dag_einde_herinneringen` — Cloud Run-job `rlz-uren-herinneringen` (CLI `uren-herinneringen`,
+  scheduler elk kwartier 15:00–18:45 ma–vr Europe/Amsterdam, `f3_jobs.sh`); de job toetst zélf per administratie mét opt-in de
+  tijd (kolom of default 16:30 `STANDAARD_HERINNERING_TIJD` — geen instelling = default doorlopen, kernprincipe 7) en stopt
+  om 19:00; kandidaten = actieve ZZP'ers/uitvoerders (`INVULLER_ROLLEN`, detacheerder nooit) mét scope op zo'n administratie,
+  per administratie in haar eigen RLS-scope; overslaan altijd geteld: al uren vandaag (som `weekstaat_dag.uren` > 0 over álle
+  opt-in-administraties), opt-out PER GEBRUIKER (beslispunt: niet per toestel), al verzonden (claim vóór verzenden = idempotent),
+  stille uren 20:00–08:00, account niet actief, geen kanaal (= claim `geen_kanaal` + de ENIGE harde voorwaarde → LET-OP mét
+  deeplink `/veldwerkers`); verzending push-anders-mail (`app/berichten/verzending.py`), tekst "Nog geen uren voor vandaag",
+  deep-link `/accordeur?uren=vandaag`, verzendfout = `mislukt` zonder claim (volgende run herkanst, job exit 1). Elke run =
+  audit `uren_herinnering_run` (administratie-loos, tellers) → reconciliatie-teller `uren_herinnering` "Uren-herinnering einde
+  werkdag (veld-app)" met verwacht/gedaan/overgeslagen per reden (`automatiseringen.py`). Routes: `GET/PUT /uren/zzp/herinnering`
+  (eigen opt-out, audit `uren_herinnering_optout`), `GET/PUT /uren/beheer/herinnering-tijd/{aid}` (Beheerder-only, 06:00–18:59 of
+  null = default, audit `uren_herinnering_tijd_gewijzigd`). Offline-contract (punt 5): `PUT /uren/zzp/dag` op een bevroren staat
+  geeft 409 mét `code: weekstaat_bevroren`, `status` en `server_regel` (uren/m2/opmerking/doorfactureren of null) zodat de app
+  beide standen toont. Guards `tests/uren/test_herinnering_18_09.py` (marker `afwezig_pad`), rolpoort-matrix, deploy-guards
+  (`rlz-uren-herinneringen` in VERWACHTE_JOBS + MAILENDE_JOBS). Klikpunt Peter: scheduler aanmaken (`scripts/gcp/f3_jobs.sh`
+  stap 6 herdraaien of het losse `gcloud scheduler jobs create`-commando uit het rapport).
+
+<!-- toegevoegd 18-09-2026, opdracht "veldapp-ux-run-b-offline-en-herinnering" (run B, frontend-deel) -->
+- **Veld-app — run B, frontend (Peter 18-09 "alle punten"; bouwnorm `mockup/uren-uitvoerder-v3.html` schermen ⑤ + ⑥, notities 12–13;
+  BESLISSINGEN "VELD-APP — 12 UX-VERBETERINGEN (Peter 18-09)" alinea "Run B"):** (5) **Offline werkt** — een dagregel die niet
+  verzonden kan worden (fetch-`TypeError` óf `BackendOnbereikbaarError`) gaat in de lokale wachtrij `frontend/src/uren/urenOffline.ts`
+  (IndexedDB `rlz-uren-offline` náást het slot, waarde versleuteld op HETZELFDE anker als het app-slot via
+  `appSlot.versleutelAlsSlotActief`; zonder actief slot `plain:`-fallback — dev), blijft zichtbaar mét chip "● nog niet verzonden" op de
+  kaart, oranje ● in de dagbalk (lokale uren tellen mee) en een banner "N regels nog niet verzonden" mét "Nu verzenden"; verzenden bij het
+  openen van de app, bij `online` en ná elke geslaagde verversing van de weekkaarten (`UrenFlow.syncWachtrij`), geslaagd = weg + toast;
+  409 `weekstaat_bevroren` (week intussen ingediend/gekeurd) = conflict-sheet mét beide standen ("Stand van kantoor houden" = regel weg,
+  "Mijn regel bewaren tot de week weer open is" = blijft) — nooit stil overschrijven; andere serverfout blijft zichtbaar in de banner;
+  **indienen is online-only** en pas als de wachtrij van die week leeg is. "Zelfde als gisteren" loopt door dezelfde `slaDagOp`. Guards
+  `uren/urenOffline.test.ts` (6) + `uren/UrenFlow.offline.test.tsx` (4, netwerk-uit/online/409). (4) **Dag-einde herinnering, app-kant**
+  — ⚙ Toegang › "Herinneringen" › schakelaar "Herinnering einde werkdag" (`GET/PUT /uren/zzp/herinnering`, opt-out PER GEBRUIKER —
+  beslispunt: de herinnering hoort bij de persoon, niet bij één toestel; alleen veldrollen zien de rij, `HerinneringSchakelaar.tsx`);
+  kantoor-web Instellingen › administratie › Uren & materiaal › "Herinnering einde werkdag (veld-app)" = tijdveld (`GET/PUT
+  /uren/beheer/herinnering-tijd/{aid}`, chip "standaard", "terug naar standaard" = null → 16:30, validatie 06:00–18:59 (server 422; 409 zonder uren-opt-in leesbaar),
+  `instellingen/HerinneringTijdRij.tsx`). Motor, job, migratie 0162 en reconciliatie-tellers: blok 5B.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

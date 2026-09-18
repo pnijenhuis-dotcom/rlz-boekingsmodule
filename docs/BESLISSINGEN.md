@@ -11041,8 +11041,7 @@ minuten niet meer bij verversen of terug — en gebruik de terugknop gerust, die
 
 **Status: run A GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldapp-ux-verbeteringen-12-punten.md`, rapport
 `docs/rapporten/2026-09-18-veldapp-ux-run-a.md`; mockup v3 `mockup/uren-uitvoerder-v3.html` vóór de bouw). Canonieke regeltekst:
-`docs/regels/uren-planning-veldwerkers.md` alinea "Veld-app — 12 UX-verbeteringen, run A". Run B = inbox-opdracht
-`2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`. Werkt in productie: niet gemeten — nameting-opdracht punt 11 (kopie-knop,
+`docs/regels/uren-planning-veldwerkers.md` alinea "Veld-app — 12 UX-verbeteringen, run A". Run B = GEBOUWD 18-09 (zie alinea "Run B" onderaan deze sectie). Werkt in productie: niet gemeten — nameting-opdracht punt 11 (kopie-knop,
 tikknoppen, indienen zonder m²).**
 
 **Aanleiding:** Peter vroeg 18-09 om een kritische UX-blik op de veld-app (bouwplaats: handschoenen, zon, één hand, haast, slecht
@@ -11068,6 +11067,46 @@ aangepast (ingeklapt/meer); backend `tests/uren/test_ux_run_a_18_09.py` — zie 
 de knop opent 'm (audit van de afkeuring is de bron); (2) chips-validatie 1–10 × ≤ 30 tekens, uniek; "overig" mag ontbreken, de app
 biedt dan zelf het vrije veld; (3) kopie overschrijft een al gevulde gekozen dag (één tik = de bedoeling); (4) de weekstaat-route
 (`WeekstaatView` → dag) gebruikt dezelfde daginvoer mét de gecachte chips en zonder contract-m² (dan "meer" ingeklapt).
+
+
+### Run B — GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`, rapport `docs/rapporten/2026-09-18-veldapp-ux-run-b.md`; migratie 0162; canonieke regeltekst `docs/regels/uren-planning-veldwerkers.md` alinea's "Veld-app — UX run B"; werkt in productie: niet gemeten — klikpunt Peter: scheduler `rlz-uren-herinneringen` aanmaken)
+
+#### Backend (5B) — Run B (18-09, opdracht `2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`) — punt 4 herinnering (backend) + 409-contract offline
+
+**Status backend: GEBOUWD + GETEST 18-09-2026 (migratie 0162). Werkt in productie: niet gemeten — deploy volgt; scheduler
+`rlz-uren-herinneringen` = klikpunt Peter (bestaat pas ná `f3_jobs.sh` stap 6 of het losse create-commando).**
+
+| # | Punt | Besluit/gedrag | Code |
+|---|---|---|---|
+| 4a | Tijdstip | per administratie `uren_herinnering_tijd` (Beheerder, Instellingen › Uren & materiaal), NULL = 16:30; venster 06:00–18:59; job stopt om 19:00 | 0162, `service.zet_herinnering_tijd`, `GET/PUT /uren/beheer/herinnering-tijd/{aid}` |
+| 4b | Wie | actieve ZZP'ers + uitvoerders mét scope op een opt-in-administratie; detacheerder nooit; alleen ma–vr (NL-kalenderdag) | `herinnering._kandidaten_in` (per administratie in RLS-scope) |
+| 4c | Overslaan zichtbaar | al uren vandaag (Σ > 0 over álle weekstaten/administraties), opt-out per gebruiker, al verzonden (claim), stille uren, niet actief, geen kanaal (claim `geen_kanaal`) | `HerinneringRapport`, claim-tabel `uren_herinnering` UNIQUE (gebruiker, datum) |
+| 4d | Kanaal | push-anders-mail, "Nog geen uren voor vandaag", deep-link `/accordeur?uren=vandaag`; verzendfout = mislukt zonder claim (herkansing, exit 1) | `verzending.verstuur_push_anders_mail` |
+| 4e | Job | `rlz-uren-herinneringen` (CLI `uren-herinneringen`) in de ENE jobs-lus mét MAIL+PUSH-envset; scheduler `0,15,30,45 15-18 * * 1-5` Europe/Amsterdam | `deploy.yml`, `scripts/gcp/f3_jobs.sh`, guards image_uniform/envset_compleet |
+| 4f | Tellers | audit `uren_herinnering_run` per run → reconciliatie-teller `uren_herinnering` (verwacht/gedaan/overgeslagen per reden); `geen_kanaal` = harde voorwaarde → LET-OP mét deeplink `/veldwerkers` | `automatiseringen.py` |
+| 4g | Opt-out | per GEBRUIKER (niet per toestel), `GET/PUT /uren/zzp/herinnering`, audit `uren_herinnering_optout` | `service.zet_herinnering_uit` |
+| 5-server | Offline-conflict | 409 op `PUT /uren/zzp/dag` draagt `code: weekstaat_bevroren`, `status`, `server_regel` (uren/m2/opmerking/doorfactureren of null) | `WeekstaatBevroren(status, server_regel)`, router `zzp_dag_zetten` |
+
+**Beslispunten (gekozen):** herinneringstijd default 16:30; opt-out per gebruiker; één herinnering per veldwerker per dag over
+álle administraties (de eerste administratie waarvan de tijd bereikt is telt als bron); "geen kanaal" claimt de dag (niet elk
+kwartier opnieuw proberen, morgen wél); een 0-uren-regel telt niet als uren; scheduler start NIET gepauzeerd (kanaal is live).
+
+**Tests:** `tests/uren/test_herinnering_18_09.py` 19 groen (default doorlopen mét marker `afwezig_pad`, vóór de tijd, eigen tijd,
+weekend/ná 19:00, al uren, 0 uren, opt-out + audit, idempotent, detacheerder niet/uitvoerder wél, zonder opt-in, geen kanaal =
+claim, verzendfout = mislukt zonder claim, rapportregel + reconciliatie-teller, harde voorwaarde geen_kanaal, routes GET/PUT
+opt-out, kantoorrol 403, Beheerder tijd zetten/wissen + 422 + audit, Beheerder-only + 409 zonder opt-in, 409-body offline);
+gates/guards/uren-suites 640 groen op de eigen test-DB.
+
+#### Frontend (5F) — Run B (18-09, blok 5F; bouwnorm mockup v3 schermen ⑤ + ⑥)
+
+| # | Punt | Besluit/gedrag | Code |
+|---|---|---|---|
+| 4 (app-kant) | Herinnering einde werkdag | schakelaar in ⚙ Toegang › Herinneringen (opt-out PER GEBRUIKER, alleen veldrollen; toont de administratie-tijd); kantoor-web tijdveld op Uren & materiaal (chip "standaard", terug naar standaard = null → 16:30, 06:00–18:59) | `HerinneringSchakelaar.tsx`, `ToegangInstellingen.tsx`, `instellingen/HerinneringTijdRij.tsx`, `urenApi.haalHerinnering/zetHerinnering`, `meerwerkApi.*HerinneringTijdBeheer` |
+| 5 | Offline werkt | wachtrij in IndexedDB náást het slot, versleuteld op het slot-anker; chip "● nog niet verzonden" + dagbal-● + banner "Nu verzenden"; verzenden bij app-opening / `online` / ná verversing; 409 bevroren = sheet mét beide standen (houden/bewaren), andere fout zichtbaar; indienen online-only ná lege wachtrij | `uren/urenOffline.ts`, `UrenFlow.slaDagOp/syncWachtrij/OfflineConflictSheet`, `accordeur.css .acc-offline-*` |
+
+**Tests 5F:** `urenOffline.test.ts` 6, `UrenFlow.offline.test.tsx` 4, `HerinneringSchakelaar.test.tsx` 2, `HerinneringTijdRij.test.tsx` 3; suites
+uren/accordeur/instellingen/styles 75 bestanden / 550 groen; `tsc -b` groen. **Beslispunten (gekozen):** opt-out per gebruiker; geen verbinding =
+TypeError óf BackendOnbereikbaar (ook platte backend); conflict = kiezen, nooit overschrijven; indienen pas ná lege wachtrij; zonder slot plain-opslag (dev).
 
 ## ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09) — twee kleine fixes op screenshots; geen migratie
 
@@ -11137,3 +11176,100 @@ niet herkansbaar; (4) lijst-verversing één keer ná de batch, ook ná een herk
 
 **Tests:** `uploadWachtrij.test.ts` 7, `useUploadWachtrij.test.tsx` 3, bestaande upload-/lijst-tests 65 groen; overflow-sweep
 harness-werkvoorraad 40/40 groen.
+
+## PROJECTEN — STATUS AFGESLOTEN + PROJECTNUMMER UNIEK (Peter 18-09) — afsluiten uit álle keuzelijsten, nummer één keer; migratie 0160
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-projecten-status-afsluiten-en-nummer-uniek.md`,
+rapport `docs/rapporten/2026-09-18-projecten-status-afsluiten-nummer-uniek.md`). Canonieke regeltekst:
+`docs/regels/verplichtingen-projecten-voorraad.md` alinea "Projecten — status afgesloten + projectnummer uniek". Werkt in
+productie: niet gemeten — meetrecept ná deploy: (1) Nieuw project met een bestaand nummer (Universal, TEST-plaats) → 409 "bestaat
+al … — openen?", niets aangemaakt (RLZ-lookup `startswith(Name,'<nr> ')` leeg gebleven van nieuwe rijen); (2) testproject afsluiten
+→ RLZ `IsActive=false` (rlz-lezen Projects/{id}), uit de planning-projectbalk en de weekstaat-projectkeuze, chip "afgesloten";
+heropenen → `IsActive=true`; (3) `nameting -f onderdeel=query`-vrije CLI's `projecten-dubbele-nummers` en
+`projecten-afsluit-kandidaten --administratie "Universal Steigerbouw"` via de nameting-job (lees-only).**
+
+**Peter 18-09 (letterlijk):** "Bij steigerbouw moeten projecten een status krijgen; als een project afgesloten is kan het uit de
+lijst." · "Per abuis 2× hetzelfde projectnummer aangemaakt — moet geblokkeerd worden."
+
+| Punt | Besluit/gedrag | Code |
+|---|---|---|
+| A1 Status | `project_cache.status` lopend/afgesloten (module) náást `is_actief` (bron); afsluit-spoor op de rij + audit oud→nieuw | migratie 0160, `sync/models.py::ProjectCache`, `projecten/status.py` |
+| A2 Bron eerst | RLZ: klant-loze PUT mét bestaande naam + `IsActive:false` + teruglezen (RLZ wint: geen bevestiging = 502, status ongewijzigd); Odoo: `active=False` via company-client + teruglezen; pas dán de status | `status._zet_rlz_actief/_zet_odoo_actief`, routes `POST …/{pid}/afsluiten|heropenen` |
+| A3 Keuzelijsten | alles filtert al op `is_actief` → één mechanisme; combobox toont afgesloten onderaan mét chip "inactief" (16-09) | `sync/service.lijst_projects` ongewijzigd |
+| A4 Zichtbaar | lijst per administratie + Inzicht › Projecten: toggle "Toon afgesloten (N)", grijs mét chip, afgesloten onderaan; facet `afgesloten` | `kantoor.projecten_lijst/aantal_afgesloten`, `kantoorbreed.lijst(toon_afgesloten)`, `ProjectenScreen`, `ProjectenKantoorbreedScreen` |
+| A5 Nagekomen factuur | oranje signaal "Project afgesloten: ‹naam› (afgesloten op ‹datum›)" in beide check-takken, nooit blokkerend, alleen als relevant | `checks.check_project_afgesloten`, `boekvoorstel._project_afgesloten_check` |
+| A6 Kandidaat | 90 d geen weekstaat/planning/verplichting/factuurregel ÉN gebouwd ≥ contract-m² → chip + facet + teller; nooit automatisch | `status.kandidaat_afsluiten_per_project` (set-based), `kantoorbreed.Rij.kandidaat_*` |
+| B1 Nummer uniek | cijfer-prefix uniek per administratie over cache + live RLZ (`startswith`), afgesloten/inactief bezet ook; 409 mét bestaand project + "Openen"; zelfde naam = idempotent | `projecten/nummer.py`, `RlzClient.find_projects_by_name_prefix`, `kantoor.maak_project_aan`, `NieuwProjectModal` |
+| B2 Herstel dubbelen | lees-only CLI `projecten-dubbele-nummers` (beide id's, tellers per kant, voorstel "blijft"); samenvoegen = klikpunt, verliezer op afgesloten, nooit verwijderen | `projecten/cli_cmd.py`, `nummer.dubbele_nummers/rapportregels`, nameting-allowlist |
+| B3 Reconciliatie | soort `project_nummer_dubbel`, blok `projecten`, stand `meten`; vingerafdruk administratie+nummer | `nummer.cli_blok`, `soort_stand.REGISTRY`, `teksten._projecten`, `run.BLOKKEN`, `cli._reconciliatie_alles` |
+| Lees-only rapport kandidaten | `projecten-afsluit-kandidaten [--administratie] [--dagen 90] [--alles]` — Peter's 83 VGG/Universal-projecten ná deploy via nameting | `projecten/cli_cmd.py` |
+
+**Beslispunten (gekozen):** (1) "verkoop = contractsom" bestaat niet in het model → kandidaat-criterium = gebouwd-m² ≥
+contract-m² (deterministisch, uit goedgekeurde weekstaten); zonder contract-m² geen kandidaat, reden zichtbaar. (2) De
+controlescherm-combobox VERBERGT afgesloten projecten niet maar toont ze onderaan mét chip "inactief" (bestaand 16-09-patroon):
+een document dat er al op staat blijft leesbaar en een nagekomen factuur kan er bewust op — het oranje signaal vangt het. (3)
+Uren-/planningcode niet geraakt (blok 4 bouwt daar; `is_actief` filtert al). (4) Odoo-pad gebruikt de company-gebonden
+`OdooClient` rechtstreeks (`write`/`search_read`) — er is geen projecten-port; genoteerd als adapter-seam-grep. (5) Frontend
+`reconciliatieApi.ts::BLOK_LABEL` mist 'projecten' (buiten blokgrenzen) — valt terug op de ruwe bloknaam; één regel voor de
+coördinator.
+
+**Tests:** backend `tests/projecten/test_status_en_nummer.py` 15 (afsluiten/heropenen + audit, RLZ-conflict, rolpoort, Odoo-fake,
+lijst/toggle/teller, kantoorbreed toggle/facet, API 200/409, kandidaat, nummer 409/idempotent/afgesloten/RLZ-extern/prefix,
+dubbele nummers + blok + teksten, signaal), `tests/keten/test_v_project_afgesloten_signaal.py` 2; frontend
+`projecten/ProjectStatus.test.tsx` 4; overflow-sweep harness projecten 8/8.
+
+## PLANNING V3 — DAG-EERST (Peter 18-09) — projecten naar dagen slepen, vulhandvat over de week, ploeg per kaart, Per project = lezen; migratie 0161
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-planning-v3-dag-eerst-bouw.md`, rapport
+`docs/rapporten/2026-09-18-planning-v3-dag-eerst.md`; mockup `mockup/planning-v3-dag-eerst.html` = AKKOORD Peter 18-09 · BOUWNORM incl.
+notities ①–⑨ en de beslispunten kaart zonder ploeg = JA "gereserveerd", vulhandvat over de weekgrens = NEE; `mockup/planning-steigerbouw.html`
+(22-08) is historie). Canonieke regeltekst: `docs/regels/uren-planning-veldwerkers.md` alinea's "Planning v3 \"dag-eerst\" — datalaag en
+bulkroute" + "Planning personeel v3 — DAG-EERST, frontend". Werkt in productie: niet gemeten — meetrecept in het rapport (Universal week 39).**
+
+**Peter 18-09 (letterlijk):** "Projecten mag hier weg, dat moet hetzelfde zijn als transport: dat wij projecten kunnen slepen naar de
+verschillende dagen in de week." · "Als er een project op maandag wordt gesleept: makkelijke manier om dat project over de hele week te
+slepen (vergelijkbaar met Excel cellen slepen)." · "Als ik op maandag een project heb ingevuld en ik klik op dat project, dan wil ik de hele
+lijst met ZZP'ers om te selecteren wie er die dag ingepland worden. Als ik dan sleep zoals in punt 2, slepen de ZZP'ers ook mee."
+
+### Backend (4B)
+
+| Onderdeel (backend) | Besluit/gedrag | Code |
+|---|---|---|
+| Migratie 0161 | `planning_reservering` (project × dag UNIQUE, RLS FORCE, DELETE-grant) + `veldwerker_afwezigheid` (van/tot/reden, RLS FORCE, géén DELETE-grant) | `migrations/versions/0161_planning_reservering_afwezigheid.py`, `app/uren/models.py` |
+| Bulkroute | `POST /uren/kantoor/planning/bulk` één transactie; gedaan / overgeslagen (idempotent) / conflict (WEL gepland + gemarkeerd: project mét naam, afwezig); echte fout = alles terug; ≤ 200; `verwijderen=true` = ongedaan; audit per (persoon, dag) mét `bulk_correlatie_id`+`bron` + samenvattende rij `planning_bulk`; leeswerk onafhankelijk van #items | `planning.plan_bulk`, `_plan_in_sessie`, `_verwijder_in_sessie` |
+| Reservering | projecttegel → dag = lege kaart; 201/200 idempotent; drager blijft als er een persoon op komt; verwijderen 204 + audit | `planning.maak_reservering`, `verwijder_reservering` |
+| Afwezigheid | minimaal "niet plannen"; overlap 409; beëindigen = vervroegen (audit oud→nieuw), nooit DELETE; recht meerwerk ÓF veldwerkerbeheer + scope; pool `afwezig_tot`, week `afwezigheid[]`, conflict `afwezig` in de bulk | `planning.voeg_afwezigheid_toe`, `beeindig_afwezigheid`, `afwezigheid_overzicht`; routes `/uren/kantoor/afwezigheid…` |
+| Leesroute | `PlanningWeekDto.reserveringen`, `.afwezigheid`, `pool[].afwezig_tot` — twee extra statements, constant | `planning.planning_overzicht`, `schemas.PlanningWeekDto` |
+| Guards | rolpoort + scope op alle zes routes (gate-sweep), RLS FORCE + andere scope ziet 0 rijen, geen DELETE-grant afwezigheid, atomiciteit, idempotentie, limiet, querytelling | `tests/uren/test_planning_v3_18_09.py` (13), `tests/security/test_rol_endpoint_gates.py` |
+
+**Beslispunten backend (gekozen):** conflict = wél plannen + markeren (mockup: nooit blokkerend) en telt in `aangemaakt` zodat ongedaan
+maken het meeneemt; reservering blijft als drager staan; afwezigheid alleen voor ZZP'er/uitvoerder, verlengen = nieuwe periode; dubbel item
+in één aanroep = overgeslagen; geen `dag_totalen`-veld (client-side som).
+
+### Frontend (4F) — rijen voor de sectie "PLANNING V3 — DAG-EERST (Peter 18-09)"
+
+| Slice | Besluit/gedrag | Code |
+|---|---|---|
+| 1 Weekgrid dag-eerst | dagkolommen ma–vr (za/zo inklapbaar, alleen mét inhoud), sticky dagkop + dagtotaal, één kaart per project × dag (ploeg-initialen, aantal, laagste urenstatus, werkopdracht, chips), gereserveerd = grijs dashed; `?uren=` = kaartfilter | `planning/DagEerstGrid.tsx`, `planning/dagEerst.ts` (`bouwDagKolommen`, `laagsteStatus`) |
+| 1 Projectbalk | alle actieve projecten, zoek diakriet-loos, gepland eerst, 12 + "+ N", horizontaal binnen de pagina; slepen → reservering, klik-alternatief tegel → dag | `planning/ProjectBalk.tsx`, `projectTegels` |
+| 1 Slepen | gedeelde hook uit de Transport-tab (payload `soort:id`); pool → kaart = toevoegen, initiaal → kaart = verplaatsen, Alt/Option = kopiëren | `planning/useDagDrop.ts`, `TransportTab.tsx` (alleen extractie) |
+| 1 Conflictenbalk | dubbel op één dag, afwezig, > 5 op kaart, dossier (optionele pool-vlag); klik = spring + oplichten; nooit blokkerend | `planning/ConflictenBalk.tsx`, `conflictenVoorWeek` |
+| 1 Pool | "N dg · vrij" / "afwezig t/m …" (niet sleepbaar), filter "alleen vrij", 100 + "… N meer" | `PlanningScreen.tsx` (`poolStand`, `afwezigTot`) |
+| 2 Vulhandvat | selectie → handvat (pointer-events) → ghost-kaarten mét conflict/overgeslagen → één `planBulk` bron `vulhandvat`; toast 10 s; Ongedaan/Cmd-Z = `verwijderen: true` mét de server-`aangemaakt`-set + correlatie-id; stopt bij vrijdag | `DagEerstGrid.tsx`, `vulhandvatVoorbeeld`, `handvatBereik`, `planning/planBulkOngedaan.ts` |
+| 3 Ploeg kiezen | paneel in de zijkolom (geen modaal), beschikbaarheid vrij/al op/afwezig (uitgeschakeld), "Zelfde ploeg als ‹vorige werkdag›", "Toepassen op hele week", Opslaan (N) = diff → één bulk-call; verwijderen mét uren = bevestiging | `planning/PloegPaneel.tsx`, `beschikbaarheid` |
+| 4 Per project | leesweergave, rij per project mét planning, cel = aantal + stip + conflict-chip, weekkolom + weekstaten-link, "N zonder planning · tonen"; klik cel → Per dag mét kaart; localStorage | `planning/PerProjectWeergave.tsx`, `perProjectRijen` |
+| 5 Afwezigheid (UI) | kaartje "Afwezig" in het dossier-dialoog: lijst, toevoegen, beëindigen (nooit verwijderen); planning toont het in pool/paneel/balk | `veldwerkers/AfwezigKaart.tsx`, `gebruikers/DossierModal.tsx` (één regel) |
+| Deeplink | `?kaart=<project>\|<datum>` → selectie + oplichten (signalen/conflicten) | `parseKaartParam` |
+| Mockups | v3 kop "AKKOORD Peter 18-09 · BOUWNORM"; `planning-steigerbouw.html` kop "VERVANGEN door planning-v3-dag-eerst.html (18-09)" | `mockup/*.html` |
+
+**Beslispunten frontend (gekozen):** (a) het ploeg-paneel staat in de rechter zijkolom boven de pool (geen vaste overlay) — geen
+modaal, layout blijft stabiel, sneltoetsen blijven werken; (b) de reserveringsrij blijft bestaan als er een ploeg op komt (server-
+drager), de UI toont dan alleen de ploegkaart; (c) een persoon op de LEGE dagruimte laten vallen doet niets (hint "sleep op een
+kaart") — een dag heeft geen impliciet project; (d) `?uren=`-filter = kaartfilter (alleen passende leden blijven zichtbaar, kaart
+zonder passende leden valt weg; reserveringen alleen bij "alle"); (e) werkopdracht voor een project ZONDER kaart deze week loopt via
+de Werkopdrachten-tab/het paneel ná plannen (de oude ⊕ per projectrij is met het rij-grid weg — gemeld in het rapport);
+(f) "starttijd" bestaat niet als veld — de kaart/het paneel tonen de geldende werkopdracht-tekst, "wijzigen" = dag-override.
+
+**Tests frontend:** `dagEerst.test.ts` 12 · `PlanningScreen.test.tsx` 20 (herschreven) · `AfwezigKaart.test.tsx` 2 · `stickyDagkop.test.ts`
+2 · `TransportTab.test.tsx` 5 ongewijzigd groen (hook-extractie) · contrast-test groen (alleen bestaande tokens) · overflow-sweep
+`harness-planning.html` × 3 varianten × licht/donker × 4 breedtes — zie rapport.
