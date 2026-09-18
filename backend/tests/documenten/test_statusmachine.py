@@ -68,6 +68,10 @@ def test_geboekt_en_gesplitst_zijn_de_terminale_statussen() -> None:
             # terminaal — vervallen is een kolom op de verplichting-rij (⑥), geen statuswissel, en
             # verwijderen zou het goedkeuringsspoor breken.
             DocumentStatus.GEACCORDEERD,
+            # Boeken sneller (18-09, migratie 0165): een document dat onderweg is naar RLZ (de achtergrond-schrijver
+            # is bezig) is bewust niet bewerkbaar én niet verwijderbaar — de uitkomst (geboekt of boeken_mislukt)
+            # komt binnen minuten, daarna gelden de gewone uitgangen weer.
+            DocumentStatus.WORDT_GEBOEKT,
         ):
             continue
         assert DocumentStatus.VERWIJDERD in _TOEGESTANE_OVERGANGEN[van], f"{van} kan niet verwijderd worden"

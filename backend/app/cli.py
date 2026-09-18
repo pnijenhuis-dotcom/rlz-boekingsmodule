@@ -27,17 +27,17 @@ from app.doorbelasting import service as doorbelasting_service
 from app.geheugen import seed as geheugen_seed
 from app.intake import verwerking as intake_verwerking
 from app.intake.postvak import ImapPostvakBron, PostvakFout, PostvakNietGeconfigureerd
+from app.lezen.cli_cmd import DB_LEZEN_COMMANDO, register_db_lezen, run_db_lezen
 from app.migratie.cli_cmd import register_migratie, run_migratie
 from app.migratie.cli_odoo import ODOO_MIGRATIE_COMMANDOS, register_odoo_migratie, run_odoo_migratie  # run 2 VGG blok 5
 from app.migratie.cli_replay import VGG_REPLAY_COMMANDO, register_vgg_replay, run_vgg_replay  # run 2 VGG blok 6
 from app.odoo.cli_rj220 import VGG_REKENINGEN_COMMANDO, register_vgg_rekeningen, run_vgg_rekeningen  # run 2 VGG blok 4
-from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
 from app.omzet import reconciliatie as omzet_reconciliatie
 from app.panden.cli_cmd import register_panden, run_panden
+from app.projecten.cli_cmd import PROJECTEN_COMMANDOS, register_projecten, run_projecten  # blok 3 18-09
 from app.reconciliatie import service as acceptatie_service
 from app.reconciliatie.models import ReconciliatieBron
 from app.rlz.credentials import GeenRlzCredentials
-from app.lezen.cli_cmd import DB_LEZEN_COMMANDO, register_db_lezen, run_db_lezen
 from app.rlz.feiten_cli import RLZ_FEITEN_COMMANDO, register_rlz_feiten, run_rlz_feiten
 from app.rlz.lezen_cli import RLZ_LEZEN_COMMANDO, register_rlz_lezen, run_rlz_lezen
 from app.sync import service as sync_service
@@ -150,6 +150,16 @@ def _extractie_wachtrij_verwerken(args: argparse.Namespace) -> int:
 
     aantal = documenten_service.verwerk_extractie_wachtrij()
     print(f"extractie-wachtrij-verwerken: {aantal} document(en) verwerkt")
+    return 0
+
+
+def _boek_wachtrij_verwerken(args: argparse.Namespace) -> int:
+    """Job-entrypoint achtergrond-schrijver (boeken sneller 18-09): álle documenten op wordt_geboekt afronden — oudste
+    eerst, claim per idempotency-key (overlap trigger/scheduler is veilig), gestrande claims (> herstelgrens) hervat."""
+    from app.documenten import boek_wachtrij
+
+    aantal = boek_wachtrij.verwerk_boek_wachtrij(verwerker="job")
+    print(f"boek-wachtrij-verwerken: {aantal} boeking(en) afgerond (geboekt of zichtbaar mislukt)")
     return 0
 
 
@@ -1661,6 +1671,33 @@ def _reconciliatie(args: argparse.Namespace, verzamelaar=None) -> int:  # noqa: 
                     "documenten", b, None, document_id=a.document_id, **getattr(a, "context", {})
                 ),
             )
+    # Boeken sneller (18-09): een document dat langer dan de herstelgrens op wordt_geboekt staat = gestrande
+    # achtergrond-schrijver → bevinding `wordt_geboekt_verouderd` (start in `meten`) mét actie "Opnieuw proberen" op de
+    # rij (deeplink naar het document). Het herstel-vangnet plant 'm bovendien zelf opnieuw in.
+    from app.documenten import boek_wachtrij
+
+    for aid, doc_id, sinds in boek_wachtrij.verouderde_boekingen():
+        regel = (
+            f"document={doc_id}: staat sinds {sinds.isoformat(timespec='minutes')} op wordt_geboekt "
+            f"(> {_settings().boek_wachtrij_herstel_minuten} min) — achtergrond-schrijver gestrand"
+        )
+        print(f"    - {regel}")
+        afwijkingen_totaal += 1
+        _meld(
+            verzamelaar,
+            soort="afwijking",
+            administratie_id=aid,
+            tekst=regel,
+            detail={
+                "bron": "documenten",
+                "record_id": str(doc_id),
+                "document_id": str(doc_id),
+                "afwijking_soort": boek_wachtrij.BEVINDING_VEROUDERD,
+                "detail": regel,
+                "geaccepteerd": False,
+                "sinds": sinds.isoformat(),
+            },
+        )
     uitgesloten_naschrift = (
         f"; daarnaast {geaccepteerd_uitgesloten} geaccepteerd op uitgesloten administraties — telt niet mee"
         if geaccepteerd_uitgesloten
@@ -2097,8 +2134,8 @@ def _accordering_herstel_boeken(args: argparse.Namespace) -> int:
         print(
             f"DRY-RUN    {len(resultaat.kandidaten)} document(en) met afgerond klant-akkoord maar niet geboekt — "
             f"{groen} groen, {len(resultaat.kandidaten) - groen} geblokkeerd; niets gewijzigd. "
-            f"Noodrem ná klant-akkoord: max {_settings().max_boekingen_na_klant_akkoord_per_dag_per_administratie} "
-            "boekingen/dag/administratie (de 20/dag-automatiseringsrem geldt hier niet — punt 23, 28-08)."
+            f"Noodrem ná klant-akkoord: max {_settings().max_handmatige_boekingen_per_dag_per_administratie} "
+            "handmatige boekingen/dag/administratie (de 20/dag-rem geldt alleen automatisch — punt 23, 28-08 + SPOED 18-09)."
         )
         return 0
     for document_id in resultaat.geboekt:
@@ -2920,13 +2957,17 @@ def main(argv: list[str] | None = None) -> int:
     from app.geheugen.btw_default_cli import register as register_btw_default
 
     register_btw_default(subparsers)  # btw-default-rapport (lees-only)
+    from app.documenten.btw_tarief_cli import dispatch as dispatch_btw_tarief  # 18-09 (lees-only)
+    from app.documenten.btw_tarief_cli import register as register_btw_tarief
+
+    register_btw_tarief(subparsers)  # btw-tarief-afwijking-rapport (lees-only, nameting-allowlist)
     register_administratienaam(subparsers)  # administratie-naam-bron-backfill (data-stap 0144, dry-run default)
-    from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
-    from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
     from app.appupdate.cli_cmd import dispatch as dispatch_appupdate  # OTA 16-09 nacht
     from app.appupdate.cli_cmd import register as register_appupdate
     from app.doorbelasting.aansluiting import dispatch as dispatch_doorbelasting_aansluiting  # blok 2 16-09 nacht
     from app.doorbelasting.aansluiting import register as register_doorbelasting_aansluiting
+    from app.werkvoorraad.cli_cmd import dispatch as dispatch_werkvoorraad_tellers  # blok 6 11-09
+    from app.werkvoorraad.cli_cmd import register as register_werkvoorraad_tellers
 
     register_werkvoorraad_tellers(subparsers)  # werkvoorraad-tellers-herrekenen
     register_doorbelasting_aansluiting(subparsers)  # doorbelasting-aansluiting (lees-only)
@@ -3062,6 +3103,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Werk de AI-extractie-wachtrij af (entrypoint van de on-demand Cloud Run-job "
         "rlz-extractie-wachtrij, feedbackronde 26-08 punt 4 — een groot document triggert de job, "
         "het scheduler-vangnet draait 'm elke 10 min; lege wachtrij = snelle no-op).",
+    )
+
+    subparsers.add_parser(
+        "boek-wachtrij-verwerken",
+        help="Achtergrond-schrijver 'Boeken in RLZ' (boeken sneller 18-09): alle documenten op wordt_geboekt afronden — "
+        "job rlz-boek-wachtrij (on-demand trigger + scheduler-vangnet 2 min); idempotent via een claim per boeking, "
+        "gestrande claims (> 10 min) worden hervat; lege wachtrij = snelle no-op.",
     )
 
     heraanbied_parser = subparsers.add_parser(
@@ -3624,6 +3672,8 @@ def main(argv: list[str] | None = None) -> int:
         return uitkomst_administratienaam
     if (uitkomst_btw_default := dispatch_btw_default(args)) is not None:  # 14-09 (0143), lees-only
         return uitkomst_btw_default
+    if (uitkomst_btw_tarief := dispatch_btw_tarief(args)) is not None:  # 18-09, lees-only
+        return uitkomst_btw_tarief
     if (uitkomst_appupdate := dispatch_appupdate(args)) is not None:  # OTA 16-09 nacht
         return uitkomst_appupdate
     if (uitkomst_doorbelasting_aansluiting := dispatch_doorbelasting_aansluiting(args)) is not None:  # 16-09 nacht
@@ -3714,6 +3764,8 @@ def main(argv: list[str] | None = None) -> int:
         return _deploy_mislukt(args)
     if args.commando == "extractie-wachtrij-verwerken":
         return _extractie_wachtrij_verwerken(args)
+    if args.commando == "boek-wachtrij-verwerken":
+        return _boek_wachtrij_verwerken(args)
     if args.commando == "extractie-heraanbieden":
         return _extractie_heraanbieden(args)
     if args.commando == "intake-herlezen":

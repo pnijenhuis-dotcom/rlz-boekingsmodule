@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import logging
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -126,6 +128,38 @@ class UploadResultaat:
     status: DocumentStatus
     mogelijk_duplicaat_van_id: uuid.UUID | None
     mogelijk_duplicaat_van: DuplicaatReferentie | None
+
+
+class DocumentAlAanwezig(Exception):
+    """Besluit Peter 18-09 (bulk-upload BLOW): een DIRECTE upload (klantpagina/documentenlijst/werkvoorraad-sleepzone)
+    van
+    bytes die in deze administratie al als document bestaan = 409 "al aanwezig" mét verwijzing naar het bestaande
+    document — er komt géén nieuw document bij. Alleen een door een mens VERWIJDERD exemplaar telt niet (bewust
+    weggedaan →
+    opnieuw aanbieden mag); samengevoegd/afgevoerd_duplicaat/afgewezen/geboekt/werkvoorraad tellen wél (het document
+    ís er,
+    terugvindbaar via Archief/toggle). Mail-/IMAP-intake en splitsing blijven de bundel-/nabundelmotor + de
+    mogelijk-duplicaat-vlag volgen (daar kiest geen mens per bestand)."""
+
+    def __init__(self, bestaand: Document, *, referentie: str | None = None) -> None:
+        self.document_id = bestaand.id
+        self.status = bestaand.status
+        self.bestandsnaam = bestaand.bestandsnaam
+        self.aangemaakt_op = bestaand.aangemaakt_op
+        self.administratie_id = bestaand.administratie_id
+        self.referentie = referentie
+        super().__init__(f"Al aanwezig als \"{bestaand.bestandsnaam}\" ({bestaand.status.value})")
+
+    def als_detail(self) -> dict:
+        return {
+            "code": "al_aanwezig",
+            "melding": str(self),
+            "bestaand_document_id": str(self.document_id),
+            "bestaand_administratie_id": str(self.administratie_id) if self.administratie_id else None,
+            "bestaand_status": self.status.value,
+            "bestaand_bestandsnaam": self.bestandsnaam,
+            "bestaand_referentie": self.referentie,
+        }
 
 
 class DocumentNietGevonden(Exception):
@@ -1129,6 +1163,78 @@ def _sla_bronbestand_op(opslag: DocumentOpslag, *, opslag_pad: str, bron: BronBe
     return bron_pad
 
 
+# Besluit Peter 18-09: de 409-poort "al aanwezig" zit op de twee DIRECTE upload-routes (klantpagina/documentenlijst en
+# de
+# werkvoorraad-sleepzone) — dáár drukt een mens per bestand op de knop. `upload_document` zelf blijft de generieke
+# registratie
+# (mail-/IMAP-intake, splitsing, verzamelbak, nazorg-CLI's, tests) mét de bestaande mogelijk-duplicaat-vlag; de routes
+# zetten de
+# poort via deze contextvar (reist mee in `run_in_threadpool`), een aanroeper kan 'm ook expliciet meegeven.
+_DIRECTE_UPLOAD_POORT: contextvars.ContextVar[bool] = contextvars.ContextVar("directe_upload_poort", default=False)
+
+
+@contextmanager
+def directe_upload_poort():
+    """Binnen dit blok weigert `upload_document` byte-identieke bytes in dezelfde administratie met
+    `DocumentAlAanwezig`."""
+    token = _DIRECTE_UPLOAD_POORT.set(True)
+    try:
+        yield
+    finally:
+        _DIRECTE_UPLOAD_POORT.reset(token)
+
+
+def _al_aanwezig_exemplaar(session: Session, *, administratie_id: uuid.UUID, sha256_hash: str) -> Document | None:
+    """Het oudste exemplaar mét dezelfde bytes in deze administratie dat NIET door een mens verwijderd is (besluit Peter
+    18-09). Voorkeur voor een exemplaar dat zelf het échte document is (niet samengevoegd in/afgevoerd voor een ander):
+    dan wijst de melding direct naar het werkstuk."""
+    exemplaren = session.scalars(
+        select(Document)
+        .where(
+            Document.administratie_id == administratie_id,
+            Document.sha256_hash == sha256_hash,
+            Document.status != DocumentStatus.VERWIJDERD,
+        )
+        .order_by(Document.aangemaakt_op)
+    ).all()
+    if not exemplaren:
+        return None
+    echt = [d for d in exemplaren if d.samengevoegd_in_id is None and d.status != DocumentStatus.AFGEVOERD_DUPLICAAT]
+    return (echt or exemplaren)[0]
+
+
+def _referentie_van(session: Session, document_id: uuid.UUID) -> str | None:
+    from app.documenten.models import Boekvoorstel  # lokaal: alleen voor de leesbare verwijzing
+
+    voorstel = session.get(Boekvoorstel, document_id)
+    return voorstel.referentie if voorstel is not None else None
+
+
+def _audit_upload_geweigerd(
+    *,
+    administratie_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    bestandsnaam: str,
+    geweigerd: DocumentAlAanwezig,
+) -> None:
+    """Eigen transactie: de weigering (409) rolt de upload-sessie terug, het audit-spoor moet blijven staan."""
+    try:
+        with scoped_session(administratie_id, actor_id=actor_id) as session:
+            record_audit_event(
+                session,
+                actor_id=actor_id,
+                module="boekhouding",
+                tabel="document",
+                record_id=geweigerd.document_id,
+                actie="upload_geweigerd_al_aanwezig",
+                correlatie_id=uuid.uuid4(),
+                nieuwe_waarde={"bestandsnaam": bestandsnaam, **geweigerd.als_detail()},
+                administratie_id=administratie_id,
+            )
+    except Exception:  # noqa: BLE001 — audit mag de leesbare 409 nooit vervangen door een 500
+        logger.exception("Audit upload_geweigerd_al_aanwezig mislukt voor document %s", geweigerd.document_id)
+
+
 def upload_document(
     *,
     administratie_id: uuid.UUID,
@@ -1145,6 +1251,7 @@ def upload_document(
     tenaamstelling: str | None = None,
     gesplitst_uit_id: uuid.UUID | None = None,
     bron_bestand: BronBestand | None = None,
+    weiger_al_aanwezig: bool | None = None,
 ) -> UploadResultaat:
     """Slaat het bestand op, detecteert mogelijke duplicaten (sha256, binnen dezelfde
     administratie) en start de extractie: klein = synchroon binnen deze request (snelle
@@ -1183,6 +1290,22 @@ def upload_document(
             .where(Document.administratie_id == administratie_id, Document.sha256_hash == sha256_hash)
             .order_by(Document.aangemaakt_op)
         ).first()
+
+        # Besluit Peter 18-09: directe upload (poort van de route) van bytes die hier al bestaan (niet verwijderd) =
+        # 409,
+        # geen nieuw document. Buiten de poort (intake, splitsing, CLI's) blijft de mogelijk-duplicaat-vlag het pad.
+        poort = _DIRECTE_UPLOAD_POORT.get() if weiger_al_aanwezig is None else weiger_al_aanwezig
+        directe_upload = (
+            poort and bron == DocumentBron.UPLOAD and intake_bericht_id is None and gesplitst_uit_id is None
+        )
+        if directe_upload and bestaand is not None:
+            al_aanwezig = _al_aanwezig_exemplaar(session, administratie_id=administratie_id, sha256_hash=sha256_hash)
+            if al_aanwezig is not None:
+                geweigerd = DocumentAlAanwezig(al_aanwezig, referentie=_referentie_van(session, al_aanwezig.id))
+                _audit_upload_geweigerd(
+                    administratie_id=administratie_id, actor_id=actor_id, bestandsnaam=bestandsnaam, geweigerd=geweigerd
+                )
+                raise geweigerd
 
         opslag_pad = f"{administratie_id}/{document_id}{Path(bestandsnaam).suffix.lower()}"
         opslag.opslaan(pad=opslag_pad, inhoud=inhoud)
@@ -1459,6 +1582,9 @@ KANTOOR_STATUSSEN: tuple[DocumentStatus, ...] = (
     DocumentStatus.EXTRACTIE_BEZIG,
     DocumentStatus.TE_CONTROLEREN,
     DocumentStatus.KLAAR_OM_TE_BOEKEN,
+    # Boeken sneller (18-09): "Wordt geboekt…" — de RLZ-write loopt; de rij blijft in de standaardlijst zichtbaar
+    # (grijs, spinner-dot) tot hij Geboekt of Boeken mislukt wordt. Nooit stil in een wachtrij.
+    DocumentStatus.WORDT_GEBOEKT,
     DocumentStatus.HANDMATIG_AFMAKEN,
     DocumentStatus.BOEKEN_MISLUKT,
     DocumentStatus.NIET_TOEGEWEZEN,

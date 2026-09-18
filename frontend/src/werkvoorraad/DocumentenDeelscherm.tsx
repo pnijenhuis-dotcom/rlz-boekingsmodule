@@ -50,7 +50,7 @@ import {
   type LijstContext,
   type SorteerKolom,
 } from './lijstContext'
-import { extractieActief, statusLabel } from './status'
+import { boekenActief, extractieActief, statusLabel } from './status'
 import { StatusChip } from './StatusChip'
 import { OpenInBoekhouding, geboektInRlzTooltip } from '../document/GeboektInRlz'
 import { VerwijderDialog } from './VerwijderDialog'
@@ -239,10 +239,28 @@ export function DocumentenDeelscherm({
   // Live extractiestatus (async extractie): zolang er documenten in de wachtrij of bij de
   // worker staan, ververst de lijst vanzelf.
   useEffect(() => {
-    if (!documenten?.some((d) => extractieActief(d.status))) return
+    if (!documenten?.some((d) => extractieActief(d.status) || boekenActief(d.status))) return
     const timer = setInterval(laadDocumenten, EXTRACTIE_POLL_MS)
     return () => clearInterval(timer)
   }, [documenten, laadDocumenten])
+
+  // Boeken sneller (18-09): een rij die van "Wordt geboekt…" naar Geboekt of Boeken mislukt springt, meldt dat als
+  // toast zolang de gebruiker in deze administratie staat — een mislukte boeking is geen pop-up meer maar een rode rij
+  // (principe 4: niets verdwijnt stil).
+  const vorigeStatussen = useRef<Map<string, string>>(new Map())
+  useEffect(() => {
+    if (!documenten) return
+    const vorige = vorigeStatussen.current
+    for (const d of documenten) {
+      const was = vorige.get(d.id)
+      if (was === 'wordt_geboekt' && d.status === 'boeken_mislukt') {
+        meld(`Boeken mislukt — ${d.leverancier ?? d.bestandsnaam}: zie de rode rij in de lijst (Opnieuw)`, 'warn')
+      } else if (was === 'wordt_geboekt' && d.status === 'geboekt') {
+        meld(`Geboekt — ${d.leverancier ?? d.bestandsnaam}${d.geboekt_in_rlz?.boekstuknummer ? ` · boekstuk ${d.geboekt_in_rlz.boekstuknummer}` : ''}`, 'ok')
+      }
+    }
+    vorigeStatussen.current = new Map(documenten.map((d) => [d.id, d.status]))
+  }, [documenten, meld])
 
   // Punt 5: "/" zet de cursor in het zoekveld (alleen buiten invoervelden/dialogen).
   useSneltoetsen(SNELTOETSEN_LIJST, {

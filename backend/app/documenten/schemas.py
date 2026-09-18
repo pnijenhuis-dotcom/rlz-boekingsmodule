@@ -314,6 +314,9 @@ class BoekenInput(StrikteInvoer):
     match_afwijking_bevestigd: bool = False
     # Steigerbouw-run D6: expliciete "boeken ondanks materiaal-afwijking"-bevestiging.
     materiaal_afwijking_bevestigd: bool = False
+    # Boeken sneller (18-09): de document-id's in de GETOONDE lijstvolgorde (gefilterd + gesorteerd, max 2000) —
+    # de server kiest daarmee het volgende document (statussen vers uit de database). Zonder lijst: backend-volgorde.
+    lijst_volgorde: list[uuid.UUID] | None = Field(default=None, max_length=2000)
 
 
 class MatchMailConceptResponse(BaseModel):
@@ -673,6 +676,9 @@ class BoekvoorstelRegelDto(BaseModel):
     # Blok 6 herstelrun 08-09: bij "factuur_verlegd" de leesbare herkomst van de gekozen verlegd-code ("voorkeur
     # beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — chip-tekst, informatief.
     btw_bron_detail: str | None = None
+    # 18-09 (Peter, casus Rituals — BUA): de factuur-btw zit in de kosten (0 %/geen btw op een regel mét factuur-btw:
+    # netto = bruto, btw 0,00) — chip "btw in kosten (niet aftrekbaar)". Informatief; de server negeert 'm bij opslaan.
+    btw_in_kosten: bool = False
     # Blok D 04-09 (app/geheugen/regel_gb.py): herkomst van het grootboek-voorstel per regel —
     # "geheugen" (groen) | "geheugen_seed" / "geheugen_conflict" (oranje) | "ai" (oranje, bevestigen);
     # None = leeg/mens. `gb_voorstel_detail` = tooltip-tekst. Informatief — de server negeert ze bij opslaan.
@@ -690,6 +696,12 @@ class BoekvoorstelRegelDto(BaseModel):
     # ze bij opslaan; chip weg zodra de mens het veld aanraakt (zelfde regel als gb_bron/btw_bron).
     project_bron: str | None = None
     project_bron_detail: str | None = None
+    # BUG 18-09 (Zilver Horeca): het btw-percentage dat de factuurregel zelf draagt (btw-kolom, fractie "0.0900"); stuurt
+    # de bruto-kolom in het controlescherm (netto × (1 + factuur-tarief), nooit geheugen-tarief). `btw_bron`
+    # "factuur_regel" = de btw-code komt uit die kolom (chip "factuur 0 %").
+    factuur_btw_percentage: DecimalMetKomma | None = None
+    # BUG 18-09 (regel 5): bedrag niet gelezen (afgedekt/onleesbaar) — chip i.p.v. lege cel.
+    bedrag_niet_gelezen: bool = False
 
 
 class BoekvoorstelPeriodeDto(BaseModel):
@@ -755,6 +767,13 @@ class BoekvoorstelResponse(BaseModel):
     regels_samenvoegen: bool = True
     samenvoegen_toegestaan: bool = True
     samengevoegde_regel: BoekvoorstelRegelDto | None = None
+    # BUG 18-09 (Zilver Horeca): True = de voorkeur zei "samenvoegen" maar er staan > 1 regel opgeslagen — de modus volgt
+    # de data (`regels_samenvoegen` is dan False), chip "weergave hersteld" + tijdlijnregel.
+    regels_modus_hersteld: bool = False
+    # BUG 18-09 (regel 4): herkomst van het totaal ("factuur" | "pinbon" | None) + de bon-toets voor de chip.
+    totaal_bron: str | None = None
+    totaal_pinbon: DecimalMetKomma | None = None
+    totaal_pinbon_status: str | None = None
     # Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — hint bij 0%-regels.
     btw_verlegd_vermelding: str | None = None
     # Afdeling (blok A 28-08): de keuze op het document + prefill uit het leverancier-geheugen
@@ -766,6 +785,11 @@ class BoekvoorstelResponse(BaseModel):
     # leveranciersregel ("intercompany" = leverancier met IC-vlag in déze administratie). Alleen gevuld als
     # accordering aanstaat; de kantoor-frontend toont dan "Boeken" i.p.v. "Ter accordering". Additief.
     accordering_overgeslagen_reden: str | None = None
+    # 18-09 DEEL B (Peter: "als leverancier NLD adres heeft dan die hele rits niet tonen"): land van de leverancier
+    # (ISO-2, deterministisch: btw-nummer crediteur → btw-nummer factuur → IBAN → onbekend) + de bron ervan, voor de
+    # NL-eerst btw-keuzelijst (`useTaxrateOptiesGefilterd`). None = onbekend → de lijst toont alles. Additief.
+    leverancier_land: str | None = None
+    leverancier_land_bron: str | None = None
 
 
 class BoekvoorstelInput(StrikteInvoer):
@@ -793,17 +817,48 @@ class BoekvoorstelInput(StrikteInvoer):
     regels_samenvoegen: bool | None = None
 
 
+class CheckActieDto(BaseModel):
+    """18-09 (btw volgt tarief): handeling op een check-rij — `code` btw_in_kosten | zet_tarief, `regel` 1-gebaseerd,
+    `taxrate_id` = het tarief dat de actie zet (None = geen geschikt tarief in de cache → alleen tekst)."""
+
+    code: str
+    label: str
+    regel: int
+    taxrate_id: uuid.UUID | None = None
+
+
 class CheckResultaatDto(BaseModel):
     naam: str
     ok: bool
     melding: str
     # Punt 14 (28-08): oranje signaal — ok maar kijken (controlescherm toont 'm oranje).
     signaal: bool = False
+    # 18-09: acties op de rij (alleen bij blokkerend) — "signalering zonder handeling is niet af".
+    acties: list[CheckActieDto] = []
 
 
 class CheckRapportResponse(BaseModel):
     geblokkeerd: bool
     resultaten: list[CheckResultaatDto]
+    # Boeken sneller (18-09): het EXTERNE deel (IBAN-wissel, Duplicaatcheck, Duplicaat bij andere crediteur) — wanneer
+    # voor het laatst écht bij RLZ/Odoo opgehaald, uit de cache of niet, en of het nog loopt (snelle lokale pad).
+    extern_gecontroleerd_op: datetime | None = None
+    extern_uit_cache: bool = False
+    extern_nog_niet: bool = False
+    #: Alleen bij `?voorverwarm=1`: gedaan | uit_cache | overgeslagen_bezig | uit (setting) — nooit stil.
+    voorverwarm: str | None = None
+
+
+class BoekIngediendResponse(BaseModel):
+    """Boeken sneller (Peter 18-09): antwoord 202 van `POST …/boeken` — het synchrone deel was groen, het document staat
+    op `wordt_geboekt`, de RLZ-write loopt op de achtergrond. `volgende_document_id` = het eerstvolgende verwerkbare
+    document in de getoonde lijstvolgorde (server-side gekozen, zelfde regels als `kiesVolgendDocument`)."""
+
+    document_id: uuid.UUID
+    status: str
+    volgende_document_id: uuid.UUID | None = None
+    volgende_document_soort: str | None = None
+    sleutel: str
 
 
 class BoekvoorstelMetChecksResponse(BaseModel):

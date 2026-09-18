@@ -357,6 +357,7 @@ class TestVoerChecksUit:
             "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: lokale check, óók in de storings-tak
             "Projectverdeling",
             "Regeltelling vs totaal",
+            "Btw-bedrag past bij tarief",  # 18-09 (Peter, casus Rituals): lokaal, óók in de storings-tak
             "Vervaldatum",
             "Btw-tarief buitenland",
             "IBAN-wissel",
@@ -369,6 +370,7 @@ class TestVoerChecksUit:
             betaalstatus,
             projectverdeling,
             regeltelling,
+            _btw_tarief,
             _vervaldatum,
             _buitenland,
             iban_wissel,

@@ -31,8 +31,12 @@
      "project_tekst": null,
      "tariefstaffel": false,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "btw_nul"
+     "btw_afleiding_reden": "btw_nul",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -48,8 +52,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -65,8 +73,12 @@
      "project_tekst": null,
      "tariefstaffel": false,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "btw_nul"
+     "btw_afleiding_reden": "btw_nul",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -82,8 +94,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -99,8 +115,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -116,8 +136,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -133,8 +157,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -150,8 +178,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -167,8 +199,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -184,8 +220,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -201,8 +241,12 @@
      "project_tekst": null,
      "tariefstaffel": false,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "btw_nul"
+     "btw_afleiding_reden": "btw_nul",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -218,8 +262,12 @@
      "project_tekst": null,
      "tariefstaffel": true,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": null,
-     "btw_afleiding_reden": "onbepaalbaar"
+     "btw_afleiding_reden": "onbepaalbaar",
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     }
    ],
    "valuta": "EUR",
@@ -250,6 +298,7 @@
     "factuurdatum": 0.95,
     "factuurnummer": 0.98,
     "project_tekst": 0.95,
+    "totaal_pinbon": 0.0,
     "betalingskenmerk": 0.0,
     "leverancier_naam": 0.98,
     "betaalwijze_tekst": 0.0,
@@ -260,6 +309,7 @@
    "btw_nummer": "NL100023757B01",
    "kvk_nummer": "91000003",
    "regelaantal": 12,
+   "totaal_bron": "factuur",
    "totaal_excl": "2767.00",
    "totaal_incl": "2767.00",
    "vervaldatum": "2026-09-14",
@@ -267,6 +317,7 @@
    "factuurnummer": "2026-608",
    "periode_tekst": "Week 34",
    "project_tekst": "26049",
+   "totaal_pinbon": null,
    "regel_zekerheid": [
     0.9,
     0.85,
@@ -289,6 +340,7 @@
    },
    "betaalwijze_tekst": null,
    "btw_verlegd_kolom": null,
+   "totaal_pinbon_som": null,
    "zekerheid_drempel": 0.8,
    "btw_factuur_totaal": {
     "reden": "geen_regels_zonder_btw",
@@ -301,7 +353,9 @@
    "incasso_datum_tekst": null,
    "vendor_waarschuwing": null,
    "tariefstaffel_aantal": 9,
+   "totaal_pinbon_status": null,
    "btw_verlegd_vermelding": "Verlegd",
+   "totaal_pinbon_verschil": null,
    "btw_nummer_geverifieerd": true
   },
   "afwijzing": null,
@@ -370,8 +424,12 @@
         "project_tekst": null,
         "tariefstaffel": false,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "btw_nul"
+        "btw_afleiding_reden": "btw_nul",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -387,8 +445,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -404,8 +466,12 @@
         "project_tekst": null,
         "tariefstaffel": false,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "btw_nul"
+        "btw_afleiding_reden": "btw_nul",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -421,8 +487,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -438,8 +508,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -455,8 +529,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -472,8 +550,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -489,8 +571,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -506,8 +592,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -523,8 +613,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -540,8 +634,12 @@
         "project_tekst": null,
         "tariefstaffel": false,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "btw_nul"
+        "btw_afleiding_reden": "btw_nul",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -557,8 +655,12 @@
         "project_tekst": null,
         "tariefstaffel": true,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": null,
-        "btw_afleiding_reden": "onbepaalbaar"
+        "btw_afleiding_reden": "onbepaalbaar",
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        }
       ],
       "valuta": "EUR",
@@ -589,6 +691,7 @@
        "factuurdatum": 0.95,
        "factuurnummer": 0.98,
        "project_tekst": 0.95,
+       "totaal_pinbon": 0.0,
        "betalingskenmerk": 0.0,
        "leverancier_naam": 0.98,
        "betaalwijze_tekst": 0.0,
@@ -599,6 +702,7 @@
       "btw_nummer": "NL100023757B01",
       "kvk_nummer": "91000003",
       "regelaantal": 12,
+      "totaal_bron": "factuur",
       "totaal_excl": "2767.00",
       "totaal_incl": "2767.00",
       "vervaldatum": "2026-09-14",
@@ -606,6 +710,7 @@
       "factuurnummer": "2026-608",
       "periode_tekst": "Week 34",
       "project_tekst": "26049",
+      "totaal_pinbon": null,
       "regel_zekerheid": [
        0.9,
        0.85,
@@ -628,6 +733,7 @@
       },
       "betaalwijze_tekst": null,
       "btw_verlegd_kolom": null,
+      "totaal_pinbon_som": null,
       "zekerheid_drempel": 0.8,
       "btw_factuur_totaal": {
        "reden": "geen_regels_zonder_btw",
@@ -640,7 +746,9 @@
       "incasso_datum_tekst": null,
       "vendor_waarschuwing": null,
       "tariefstaffel_aantal": 9,
+      "totaal_pinbon_status": null,
       "btw_verlegd_vermelding": "Verlegd",
+      "totaal_pinbon_verschil": null,
       "btw_nummer_geverifieerd": true
      }
     },
@@ -702,11 +810,14 @@
     "omschrijving": "Montage",
     "btw_bron": "factuur_verlegd",
     "btw_bron_detail": "enige verlegd-code van de administratie",
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": "factuur",
-    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    },
    {
     "id": "00000000-0000-4000-8000-000000000023",
@@ -718,11 +829,14 @@
     "omschrijving": "Regie",
     "btw_bron": "factuur_verlegd",
     "btw_bron_detail": "enige verlegd-code van de administratie",
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": "factuur",
-    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    },
    {
     "id": "00000000-0000-4000-8000-000000000024",
@@ -734,21 +848,30 @@
     "omschrijving": "Net",
     "btw_bron": "factuur_verlegd",
     "btw_bron_detail": "enige verlegd-code van de administratie",
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": "factuur",
-    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)"
+    "project_bron_detail": "Factuur vermeldt \"26049\" = projectcode van 26049 Hoofddorp (Grunsven)",
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    }
   ],
   "regels_samenvoegen": false,
   "samenvoegen_toegestaan": false,
   "samengevoegde_regel": null,
+  "regels_modus_hersteld": false,
+  "totaal_bron": "factuur",
+  "totaal_pinbon": null,
+  "totaal_pinbon_status": null,
   "btw_verlegd_vermelding": "Verlegd",
   "afdeling_id": null,
   "afdeling_prefill_id": null,
   "afdeling_prefill_leverancier": null,
-  "accordering_overgeslagen_reden": null
+  "accordering_overgeslagen_reden": null,
+  "leverancier_land": "NL",
+  "leverancier_land_bron": "uit btw-nummer crediteur"
  },
  "checks": {
   "geblokkeerd": true,
@@ -757,69 +880,91 @@
     "naam": "Verplichte velden",
     "ok": false,
     "melding": "Ontbrekend: grootboekrekening (alle 3 regels)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Afdeling",
     "ok": true,
     "melding": "Afdelingen niet van toepassing voor deze administratie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Betaalstatus (declaraties)",
     "ok": true,
     "melding": "Niet van toepassing — geen declaratie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Projectverdeling",
     "ok": true,
     "melding": "Geen projectverdeling van toepassing",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Regeltelling vs totaal",
     "ok": true,
     "melding": "Som van de regels (netto + btw € 2767.00) komt overeen met het totaal incl. (€ 2767.00)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
+   },
+   {
+    "naam": "Btw-bedrag past bij tarief",
+    "ok": true,
+    "melding": "Btw-bedrag volgt het tarief op 3 regel(s) (marge 1 ct)",
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Vervaldatum",
     "ok": true,
     "melding": "Vervaldatum 2026-09-14 (termijn 7 dagen)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Btw-tarief buitenland",
     "ok": true,
     "melding": "Geen EU-/buitenland-tarief op de regels",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "IBAN-wissel",
     "ok": true,
     "melding": "Eerste IBAN voor deze crediteur (NL09KETN…006) vastgelegd als baseline — controleer het rekeningnummer op de factuur",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaatcheck",
     "ok": true,
     "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat bij andere crediteur",
     "ok": true,
     "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat (module)",
     "ok": true,
     "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    }
-  ]
+  ],
+  "extern_gecontroleerd_op": "2026-09-08T12:00:00Z",
+  "extern_uit_cache": false,
+  "extern_nog_niet": false,
+  "voorverwarm": null
  },
  "lijst": {
   "documenten": [

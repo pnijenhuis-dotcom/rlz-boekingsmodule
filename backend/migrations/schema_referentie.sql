@@ -3,7 +3,7 @@
 -- Alembic (backend/migrations/versions/) is de bron van waarheid voor het schema;
 -- dit bestand is een referentie-dump voor leesbaarheid en code-review.
 -- Regenereren: scripts/dump_schema.sh (pg_dump --schema-only boekhouding_test @ head).
--- Migratie-head bij deze dump: 0162
+-- Migratie-head bij deze dump: 0165
 -- =============================================================================
 --
 -- PostgreSQL database dump
@@ -65,6 +65,7 @@ CREATE TYPE boekhouding.document_status AS ENUM (
     'extractie_bezig',
     'te_controleren',
     'klaar_om_te_boeken',
+    'wordt_geboekt',
     'geboekt',
     'vraag_open',
     'afgewezen',
@@ -476,7 +477,11 @@ CREATE TABLE boekhouding.accordering_leverancier_route (
     aangemaakt_door uuid NOT NULL,
     aangemaakt_op timestamp with time zone DEFAULT now() NOT NULL,
     gedeactiveerd_door uuid,
-    gedeactiveerd_op timestamp with time zone
+    gedeactiveerd_op timestamp with time zone,
+    modus text DEFAULT 'vervangt'::text NOT NULL,
+    positie text,
+    CONSTRAINT ck_accordering_leverancier_route_modus CHECK ((modus = ANY (ARRAY['vervangt'::text, 'bovenop'::text]))),
+    CONSTRAINT ck_accordering_leverancier_route_positie CHECK (((positie IS NULL) OR (positie = ANY (ARRAY['voor'::text, 'na'::text]))))
 );
 
 ALTER TABLE ONLY boekhouding.accordering_leverancier_route FORCE ROW LEVEL SECURITY;
@@ -928,6 +933,24 @@ ALTER TABLE ONLY boekhouding.bank_sync_stand FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: boek_wachtrij_claim; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.boek_wachtrij_claim (
+    sleutel text NOT NULL,
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    boek_cyclus integer NOT NULL,
+    geclaimd_op timestamp with time zone NOT NULL,
+    verwerker text NOT NULL,
+    afgerond_op timestamp with time zone,
+    uitkomst text
+);
+
+ALTER TABLE ONLY boekhouding.boek_wachtrij_claim FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: boeking_observatie; Type: TABLE; Schema: boekhouding; Owner: -
 --
 
@@ -1002,6 +1025,22 @@ CREATE TABLE boekhouding.boekvoorstel_regel (
 );
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: check_extern_cache; Type: TABLE; Schema: boekhouding; Owner: -
+--
+
+CREATE TABLE boekhouding.check_extern_cache (
+    document_id uuid NOT NULL,
+    administratie_id uuid NOT NULL,
+    vingerafdruk text NOT NULL,
+    rapport jsonb NOT NULL,
+    gecontroleerd_op timestamp with time zone NOT NULL,
+    backend text NOT NULL
+);
+
+ALTER TABLE ONLY boekhouding.check_extern_cache FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4104,7 +4143,9 @@ CREATE TABLE platform.grootboekrekening (
     historie_taxrate_id uuid,
     historie_taxrate_n integer,
     historie_taxrate_aandeel numeric(5,4),
-    historie_berekend_op timestamp with time zone
+    historie_berekend_op timestamp with time zone,
+    btw_aftrek_uitgesloten boolean DEFAULT false NOT NULL,
+    btw_aftrek_uitgesloten_op timestamp with time zone
 );
 
 ALTER TABLE ONLY platform.grootboekrekening FORCE ROW LEVEL SECURITY;
@@ -4512,6 +4553,14 @@ ALTER TABLE ONLY boekhouding.bank_sync_stand
 
 
 --
+-- Name: boek_wachtrij_claim boek_wachtrij_claim_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.boek_wachtrij_claim
+    ADD CONSTRAINT boek_wachtrij_claim_pkey PRIMARY KEY (sleutel);
+
+
+--
 -- Name: boeking_observatie boeking_observatie_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -4533,6 +4582,14 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: check_extern_cache check_extern_cache_pkey; Type: CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.check_extern_cache
+    ADD CONSTRAINT check_extern_cache_pkey PRIMARY KEY (document_id);
 
 
 --
@@ -6341,6 +6398,20 @@ CREATE INDEX ix_bank_sync_run_administratie_status ON boekhouding.bank_sync_run 
 
 
 --
+-- Name: ix_boek_wachtrij_claim_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_boek_wachtrij_claim_administratie_id ON boekhouding.boek_wachtrij_claim USING btree (administratie_id);
+
+
+--
+-- Name: ix_boek_wachtrij_claim_document_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_boek_wachtrij_claim_document_id ON boekhouding.boek_wachtrij_claim USING btree (document_id);
+
+
+--
 -- Name: ix_boeking_observatie_admin_vendor_sleutel; Type: INDEX; Schema: boekhouding; Owner: -
 --
 
@@ -6359,6 +6430,13 @@ CREATE INDEX ix_boekvoorstel_referentie_norm ON boekhouding.boekvoorstel USING b
 --
 
 CREATE INDEX ix_boekvoorstel_regel_document_id ON boekhouding.boekvoorstel_regel USING btree (document_id);
+
+
+--
+-- Name: ix_check_extern_cache_administratie_id; Type: INDEX; Schema: boekhouding; Owner: -
+--
+
+CREATE INDEX ix_check_extern_cache_administratie_id ON boekhouding.check_extern_cache USING btree (administratie_id);
 
 
 --
@@ -8116,6 +8194,22 @@ ALTER TABLE ONLY boekhouding.bank_sync_stand
 
 
 --
+-- Name: boek_wachtrij_claim boek_wachtrij_claim_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.boek_wachtrij_claim
+    ADD CONSTRAINT boek_wachtrij_claim_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: boek_wachtrij_claim boek_wachtrij_claim_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.boek_wachtrij_claim
+    ADD CONSTRAINT boek_wachtrij_claim_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
+
+
+--
 -- Name: boeking_observatie boeking_observatie_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
 --
 
@@ -8145,6 +8239,22 @@ ALTER TABLE ONLY boekhouding.boekvoorstel
 
 ALTER TABLE ONLY boekhouding.boekvoorstel_regel
     ADD CONSTRAINT boekvoorstel_regel_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.boekvoorstel(document_id);
+
+
+--
+-- Name: check_extern_cache check_extern_cache_administratie_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.check_extern_cache
+    ADD CONSTRAINT check_extern_cache_administratie_id_fkey FOREIGN KEY (administratie_id) REFERENCES platform.administratie(id);
+
+
+--
+-- Name: check_extern_cache check_extern_cache_document_id_fkey; Type: FK CONSTRAINT; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE ONLY boekhouding.check_extern_cache
+    ADD CONSTRAINT check_extern_cache_document_id_fkey FOREIGN KEY (document_id) REFERENCES boekhouding.document(id);
 
 
 --
@@ -11329,6 +11439,19 @@ CREATE POLICY bank_sync_stand_scope ON boekhouding.bank_sync_stand USING ((admin
 
 
 --
+-- Name: boek_wachtrij_claim; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.boek_wachtrij_claim ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: boek_wachtrij_claim boek_wachtrij_claim_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY boek_wachtrij_claim_scope ON boekhouding.boek_wachtrij_claim USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
+
+
+--
 -- Name: boeking_observatie; Type: ROW SECURITY; Schema: boekhouding; Owner: -
 --
 
@@ -11373,6 +11496,19 @@ CREATE POLICY boekvoorstel_scope ON boekhouding.boekvoorstel USING ((EXISTS ( SE
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id())))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM boekhouding.document d
   WHERE ((d.id = boekvoorstel.document_id) AND ((d.administratie_id IS NULL) OR (d.administratie_id = platform.current_administratie_id()))))));
+
+
+--
+-- Name: check_extern_cache; Type: ROW SECURITY; Schema: boekhouding; Owner: -
+--
+
+ALTER TABLE boekhouding.check_extern_cache ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: check_extern_cache check_extern_cache_scope; Type: POLICY; Schema: boekhouding; Owner: -
+--
+
+CREATE POLICY check_extern_cache_scope ON boekhouding.check_extern_cache USING ((administratie_id = platform.current_administratie_id())) WITH CHECK ((administratie_id = platform.current_administratie_id()));
 
 
 --

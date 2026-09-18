@@ -31,8 +31,12 @@
      "project_tekst": null,
      "tariefstaffel": false,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": "regel",
-     "btw_afleiding_reden": null
+     "btw_afleiding_reden": null,
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     },
     {
      "eenheid": null,
@@ -48,8 +52,12 @@
      "project_tekst": null,
      "tariefstaffel": false,
      "btw_kolom_verlegd": false,
+     "niet_gelezen_reden": null,
+     "bedrag_niet_gelezen": false,
      "btw_afleiding_basis": "regel",
-     "btw_afleiding_reden": null
+     "btw_afleiding_reden": null,
+     "btw_bedrag_berekend": false,
+     "btw_kolom_percentage": null
     }
    ],
    "valuta": "EUR",
@@ -85,6 +93,7 @@
     "factuurdatum": 0.95,
     "factuurnummer": 0.98,
     "project_tekst": 0.0,
+    "totaal_pinbon": 0.0,
     "betalingskenmerk": 0.0,
     "leverancier_naam": 0.98,
     "betaalwijze_tekst": 0.9,
@@ -95,6 +104,7 @@
    "btw_nummer": "NL100067890B01",
    "kvk_nummer": "91000042",
    "regelaantal": 2,
+   "totaal_bron": "factuur",
    "totaal_excl": "239.00",
    "totaal_incl": "289.19",
    "vervaldatum": "2026-09-25",
@@ -102,6 +112,7 @@
    "factuurnummer": "KTD-2026-09-0417",
    "periode_tekst": "01-09-2026 t/m 30-09-2026",
    "project_tekst": null,
+   "totaal_pinbon": null,
    "regel_zekerheid": [
     0.9,
     0.9
@@ -114,6 +125,7 @@
    },
    "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
    "btw_verlegd_kolom": null,
+   "totaal_pinbon_som": null,
    "zekerheid_drempel": 0.8,
    "btw_factuur_totaal": {
     "reden": "geen_regels_zonder_btw",
@@ -126,7 +138,9 @@
    "incasso_datum_tekst": "25-09-2026",
    "vendor_waarschuwing": null,
    "tariefstaffel_aantal": 0,
+   "totaal_pinbon_status": null,
    "btw_verlegd_vermelding": null,
+   "totaal_pinbon_verschil": null,
    "btw_nummer_geverifieerd": false
   },
   "afwijzing": null,
@@ -195,8 +209,12 @@
         "project_tekst": null,
         "tariefstaffel": false,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": "regel",
-        "btw_afleiding_reden": null
+        "btw_afleiding_reden": null,
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        },
        {
         "eenheid": null,
@@ -212,8 +230,12 @@
         "project_tekst": null,
         "tariefstaffel": false,
         "btw_kolom_verlegd": false,
+        "niet_gelezen_reden": null,
+        "bedrag_niet_gelezen": false,
         "btw_afleiding_basis": "regel",
-        "btw_afleiding_reden": null
+        "btw_afleiding_reden": null,
+        "btw_bedrag_berekend": false,
+        "btw_kolom_percentage": null
        }
       ],
       "valuta": "EUR",
@@ -249,6 +271,7 @@
        "factuurdatum": 0.95,
        "factuurnummer": 0.98,
        "project_tekst": 0.0,
+       "totaal_pinbon": 0.0,
        "betalingskenmerk": 0.0,
        "leverancier_naam": 0.98,
        "betaalwijze_tekst": 0.9,
@@ -259,6 +282,7 @@
       "btw_nummer": "NL100067890B01",
       "kvk_nummer": "91000042",
       "regelaantal": 2,
+      "totaal_bron": "factuur",
       "totaal_excl": "239.00",
       "totaal_incl": "289.19",
       "vervaldatum": "2026-09-25",
@@ -266,6 +290,7 @@
       "factuurnummer": "KTD-2026-09-0417",
       "periode_tekst": "01-09-2026 t/m 30-09-2026",
       "project_tekst": null,
+      "totaal_pinbon": null,
       "regel_zekerheid": [
        0.9,
        0.9
@@ -278,6 +303,7 @@
       },
       "betaalwijze_tekst": "Het factuurbedrag van EUR 289,19 wordt automatisch geincasseerd van uw rekening op of rond 25-09-2026.",
       "btw_verlegd_kolom": null,
+      "totaal_pinbon_som": null,
       "zekerheid_drempel": 0.8,
       "btw_factuur_totaal": {
        "reden": "geen_regels_zonder_btw",
@@ -290,7 +316,9 @@
       "incasso_datum_tekst": "25-09-2026",
       "vendor_waarschuwing": null,
       "tariefstaffel_aantal": 0,
+      "totaal_pinbon_status": null,
       "btw_verlegd_vermelding": null,
+      "totaal_pinbon_verschil": null,
       "btw_nummer_geverifieerd": false
      }
     },
@@ -340,9 +368,11 @@
         "netto_bedrag": "89.00",
         "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
         "project_bron": null,
+        "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
-        "project_bron_detail": null
+        "project_bron_detail": null,
+        "factuur_btw_percentage": null
        },
        {
         "gb_bron": null,
@@ -358,9 +388,11 @@
         "netto_bedrag": "150.00",
         "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
         "project_bron": null,
+        "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
-        "project_bron_detail": null
+        "project_bron_detail": null,
+        "factuur_btw_percentage": null
        }
       ],
       "triggers": [
@@ -430,11 +462,14 @@
     "omschrijving": "Zakelijk internet 500/500 - periode 01-09-2026 t/m 30-09-2026",
     "btw_bron": "factuur",
     "btw_bron_detail": null,
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": null,
-    "project_bron_detail": null
+    "project_bron_detail": null,
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    },
    {
     "id": "00000000-0000-4000-8000-000000000023",
@@ -446,21 +481,30 @@
     "omschrijving": "Mobiele abonnementen (6 x Zakelijk Onbeperkt)",
     "btw_bron": "factuur",
     "btw_bron_detail": null,
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": null,
-    "project_bron_detail": null
+    "project_bron_detail": null,
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    }
   ],
   "regels_samenvoegen": false,
   "samenvoegen_toegestaan": false,
   "samengevoegde_regel": null,
+  "regels_modus_hersteld": false,
+  "totaal_bron": "factuur",
+  "totaal_pinbon": null,
+  "totaal_pinbon_status": null,
   "btw_verlegd_vermelding": null,
   "afdeling_id": null,
   "afdeling_prefill_id": null,
   "afdeling_prefill_leverancier": null,
-  "accordering_overgeslagen_reden": null
+  "accordering_overgeslagen_reden": null,
+  "leverancier_land": "NL",
+  "leverancier_land_bron": "uit btw-nummer crediteur"
  },
  "checks": {
   "geblokkeerd": true,
@@ -469,69 +513,91 @@
     "naam": "Verplichte velden",
     "ok": false,
     "melding": "Ontbrekend: grootboekrekening (alle 2 regels), project (alle 2 regels) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Afdeling",
     "ok": true,
     "melding": "Afdelingen niet van toepassing voor deze administratie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Betaalstatus (declaraties)",
     "ok": true,
     "melding": "Betaalstatus 'Wordt automatisch geïncasseerd' gaat mee naar de boekhouding",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Projectverdeling",
     "ok": true,
     "melding": "Geen projectverdeling — 2 regels zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
-    "signaal": true
+    "signaal": true,
+    "acties": []
    },
    {
     "naam": "Regeltelling vs totaal",
     "ok": true,
     "melding": "Som van de regels (netto + btw € 289.19) komt overeen met het totaal incl. (€ 289.19)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
+   },
+   {
+    "naam": "Btw-bedrag past bij tarief",
+    "ok": true,
+    "melding": "Btw-bedrag volgt het tarief op 2 regel(s) (marge 1 ct)",
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Vervaldatum",
     "ok": true,
     "melding": "Vervaldatum 2026-09-25 (termijn 20 dagen)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Btw-tarief buitenland",
     "ok": true,
     "melding": "Geen EU-/buitenland-tarief op de regels",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "IBAN-wissel",
     "ok": true,
     "melding": "Geen (geldig) IBAN op de factuur gelezen — geen wisselcontrole mogelijk",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaatcheck",
     "ok": true,
     "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat bij andere crediteur",
     "ok": true,
     "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat (module)",
     "ok": true,
     "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    }
-  ]
+  ],
+  "extern_gecontroleerd_op": "2026-09-08T12:00:00Z",
+  "extern_uit_cache": false,
+  "extern_nog_niet": false,
+  "voorverwarm": null
  },
  "lijst": {
   "documenten": [

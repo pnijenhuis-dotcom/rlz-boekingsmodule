@@ -766,6 +766,17 @@ export interface UploadResponseDto {
   mogelijk_duplicaat_van: DuplicaatReferentieDto | null
 }
 
+/** 409-detail van een directe upload van bytes die al bestaan (besluit Peter 18-09): geen nieuw document, wél de verwijzing. */
+export interface UploadAlAanwezigDetailDto {
+  code: 'al_aanwezig'
+  melding: string
+  bestaand_document_id: string
+  bestaand_administratie_id: string | null
+  bestaand_status: string
+  bestaand_bestandsnaam: string
+  bestaand_referentie: string | null
+}
+
 export interface DocumentActieResponseDto {
   document_id: string
   status: string
@@ -820,6 +831,13 @@ export interface TaxrateOptieDto {
   /** Fractie als string, bv. "0.2100" voor 21% (Decimal-serialisatie, zie api/client.ts). Null
    * als RLZ geen percentage teruggaf voor deze btw-code. */
   percentage: string | null
+  /** 18-09 DEEL B (NL-eerst keuzelijst): RLZ-vlaggen, buitenland (naam-prefix ≠ NL) en gebruik in de laatste 12
+   * maanden (boekingsgeheugen) — sortering + inklappen in `useTaxrateOptiesGefilterd`. Optioneel voor oudere antwoorden. */
+  verlegd?: boolean
+  vrijgesteld?: boolean
+  buitenland?: boolean
+  favoriet?: boolean
+  gebruik_12m?: number
 }
 
 export interface TaxrateLijstDto {
@@ -866,6 +884,9 @@ export interface BoekvoorstelRegelDto {
    * eigen boekingshistorie van de rekening (0143, ORANJE chip "meestal op deze rekening (n×)" via `btw_bron_detail`,
    * ná 'grootboek', vóór 'standaard'); null = leeg, of van de mens/het geheugen. */
   btw_bron?: string | null
+  /** 18-09 (Peter, casus Rituals — BUA): de factuur-btw zit in de kosten (0 %/geen btw op een regel mét factuur-btw:
+   * netto = bruto, btw 0,00) — chip "btw in kosten (niet aftrekbaar)". Informatief; de server negeert 'm bij opslaan. */
+  btw_in_kosten?: boolean
   /** Blok 6 herstelrun 08-09: bij 'factuur_verlegd' de leesbare herkomst van de gekozen verlegd-code ("voorkeur
    * beheerder" / "meest gebruikt in RLZ-historie (n×)" / "administratie-default" / …) — chip-tekst, informatief. */
   btw_bron_detail?: string | null
@@ -884,6 +905,12 @@ export interface BoekvoorstelRegelDto {
    * passen, `project_bron_detail` noemt ze); null = leeg/mens/geheugen. Informatief — de server negeert ze bij opslaan. */
   project_bron?: string | null
   project_bron_detail?: string | null
+  /** BUG 18-09 (Zilver Horeca): btw-percentage dat de factuurregel zelf draagt (btw-kolom "9%"/"0%", fractie "0.0900") —
+   * stuurt de bruto-kolom (netto × (1 + factuur-tarief), nooit geheugen-tarief); `btw_bron` 'factuur_regel' = de btw-code
+   * komt uit die kolom (chip "factuur 0 %"). */
+  factuur_btw_percentage?: string | null
+  /** BUG 18-09 (regel 5): bedrag niet gelezen (afgedekt/onleesbaar) — chip i.p.v. lege cel. */
+  bedrag_niet_gelezen?: boolean
 }
 
 /** Factuurperiode op weekniveau (blok 11 vervolgrun 07-09, migratie 0120). `tekst` = de letterlijke factuurtekst. */
@@ -925,6 +952,13 @@ export interface BoekvoorstelDto {
   regels_samenvoegen: boolean
   samenvoegen_toegestaan: boolean
   samengevoegde_regel: BoekvoorstelRegelDto | null
+  /** BUG 18-09 (Zilver Horeca): de voorkeur zei "samenvoegen" maar er staan > 1 regel opgeslagen — de server laat de
+   * modus de data volgen (`regels_samenvoegen` false) en meldt dat hier; chip "weergave hersteld" + tijdlijnregel. */
+  regels_modus_hersteld?: boolean
+  /** BUG 18-09 (regel 4): herkomst van het totaal ('factuur' | 'pinbon') + de bon-toets voor de chip. */
+  totaal_bron?: 'factuur' | 'pinbon' | null
+  totaal_pinbon?: string | null
+  totaal_pinbon_status?: 'groen' | 'afwijkend' | 'niet_toetsbaar' | null
   /** Letterlijke "btw verlegd"-vermelding uit de extractie (punt 3, 26-08) — HINT bij een
    * 0%-regel zonder btw-code, nooit een invulling. */
   btw_verlegd_vermelding?: string | null
@@ -949,6 +983,10 @@ export interface BoekvoorstelDto {
    * leveranciersregel ('intercompany' = leverancier met IC-vlag in déze administratie). Alleen gevuld als
    * accordering aanstaat — de knop is dan "Boeken" i.p.v. "Ter accordering". Ontbrekend/null = gewone flow. */
   accordering_overgeslagen_reden?: 'intercompany' | string | null
+  /** 18-09 DEEL B: land van de leverancier (ISO-2; btw-nummer crediteur → btw-nummer factuur → IBAN → onbekend) + de
+   * leesbare bron ("uit btw-nummer factuur") — stuurt de NL-eerst btw-keuzelijst; null = onbekend → alles tonen. */
+  leverancier_land?: string | null
+  leverancier_land_bron?: string | null
 }
 
 export interface GeheugenVeldVoorstelDto {
@@ -977,12 +1015,23 @@ export interface GeheugenVoorstelDto {
   project: GeheugenVeldVoorstelDto
 }
 
+/** 18-09 (btw volgt tarief): handeling op een check-rij — `code` 'btw_in_kosten' | 'zet_tarief', `regel` 1-gebaseerd,
+ * `taxrate_id` = het tarief dat de actie zet (null = geen geschikt tarief in de cache → alleen tekst). */
+export interface CheckActieDto {
+  code: 'btw_in_kosten' | 'zet_tarief' | string
+  label: string
+  regel: number
+  taxrate_id: string | null
+}
+
 export interface CheckResultaatDto {
   naam: string
   ok: boolean
   melding: string
   /** Punt 14 (28-08): oranje signaal — ok (geen blokkade) maar de controleur moet kijken. */
   signaal?: boolean
+  /** 18-09: acties op de rij (alleen bij blokkerend) — "signalering zonder handeling is niet af". */
+  acties?: CheckActieDto[]
 }
 
 /** Punt 14 (28-08): dubbel-signalering bestaande crediteuren (Instellingen › Crediteuren). */
@@ -1015,6 +1064,23 @@ export interface CrediteurKvkDto {
 export interface CheckRapportDto {
   geblokkeerd: boolean
   resultaten: CheckResultaatDto[]
+  /** Boeken sneller (18-09): het EXTERNE deel (IBAN-wissel, Duplicaatcheck, Duplicaat bij andere crediteur) — wanneer
+   * voor het laatst écht bij RLZ/Odoo opgehaald, of het uit de cache kwam, en of het nog loopt (snelle lokale pad). */
+  extern_gecontroleerd_op?: string | null
+  extern_uit_cache?: boolean
+  extern_nog_niet?: boolean
+  /** Alleen bij `?voorverwarm=1`: gedaan | uit_cache | overgeslagen_bezig | overgeslagen_fout | uit. */
+  voorverwarm?: string | null
+}
+
+/** Boeken sneller (18-09): antwoord 202 van POST …/boeken — het synchrone deel was groen, de RLZ-write loopt op de
+ * achtergrond; `volgende_document_id` is server-side gekozen met de `kiesVolgendDocument`-regels. */
+export interface BoekIngediendDto {
+  document_id: string
+  status: 'wordt_geboekt'
+  volgende_document_id: string | null
+  volgende_document_soort: string | null
+  sleutel: string
 }
 
 export interface BoekvoorstelMetChecksDto {

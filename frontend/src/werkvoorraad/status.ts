@@ -6,6 +6,8 @@ export const STATUS_LABELS: Record<string, string> = {
   extractie_bezig: 'Wordt verwerkt…',
   te_controleren: 'Te controleren',
   klaar_om_te_boeken: 'Klaar om te boeken',
+  // Boeken sneller (18-09): de RLZ-write loopt op de achtergrond — grijs mét spinner-dot, ververst live.
+  wordt_geboekt: 'Wordt geboekt…',
   geboekt: 'Geboekt',
   vraag_open: 'Vraag open',
   // Mockup werkvoorraad: de afgewezen-chip draagt de ter-controle-lading expliciet.
@@ -48,6 +50,7 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
   extractie_bezig: 'ai',
   te_controleren: 'ai',
   klaar_om_te_boeken: 'klaar',
+  wordt_geboekt: 'bezig',
   geboekt: 'geboekt',
   vraag_open: 'vraag',
   afgewezen: 'vraag',
@@ -69,6 +72,11 @@ export const STATUS_CHIP_KLASSE: Record<string, string> = {
  * detailscherm pollen dan tot de worker klaar is — nooit een blokkerende spinner. */
 export function extractieActief(status: string): boolean {
   return status === 'extractie_wachtrij' || status === 'extractie_bezig'
+}
+
+/** Boeken sneller (18-09): de achtergrond-schrijver is bezig — de lijst pollt tot de rij Geboekt of Boeken mislukt is. */
+export function boekenActief(status: string): boolean {
+  return status === 'wordt_geboekt'
 }
 
 /** Statuslabel, optioneel soort-bewust (blok B 04-09) — zonder `soort` blijft het gedrag exact

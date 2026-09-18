@@ -7,6 +7,9 @@ from sqlalchemy import Engine, text
 
 from app.auth import service as auth_service
 from app.config import settings
+from app.documenten import service as documenten_service
+from app.documenten.models import DocumentBron
+from app.documenten.storage import LokaleBestandsopslag
 from app.main import app
 from app.security.tokens import create_access_token
 
@@ -49,12 +52,11 @@ def test_upload_met_scope_slaagt(gescoopte_gebruiker: uuid.UUID, administratie_i
     assert body["mogelijk_duplicaat_van"] is None
 
 
-def test_duplicaat_upload_geeft_bestandsnaam_en_datum_geen_kale_uuid(
+def test_duplicaat_upload_geeft_409_al_aanwezig_met_verwijzing_geen_kale_uuid(
     gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
 ) -> None:
-    """Design-pass taak 5: de duplicaat-verwijzing moet genoeg zijn voor een klikbare link
-    (bestandsnaam + uploaddatum van het origineel), niet alleen een UUID die de gebruiker niets
-    zegt."""
+    """Design-pass taak 5 + besluit Peter 18-09: een byte-identieke directe upload maakt geen tweede document meer maar
+    geeft 409 "al aanwezig" mét genoeg voor een klikbare link (document-id, bestandsnaam, status) — geen kale UUID."""
     headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
     origineel = client.post(
         f"/administraties/{administratie_id}/documenten",
@@ -68,12 +70,14 @@ def test_duplicaat_upload_geeft_bestandsnaam_en_datum_geen_kale_uuid(
         files={"bestand": ("kopie.pdf", b"%PDF-1.4 zelfde-inhoud", "application/pdf")},
         headers=headers,
     )
-    assert duplicaat.status_code == 201, duplicaat.text
-    referentie = duplicaat.json()["mogelijk_duplicaat_van"]
-    assert referentie is not None
-    assert referentie["document_id"] == origineel_id
-    assert referentie["bestandsnaam"] == "origineel.pdf"
-    assert "aangemaakt_op" in referentie
+    assert duplicaat.status_code == 409, duplicaat.text
+    detail = duplicaat.json()["detail"]
+    assert detail["code"] == "al_aanwezig"
+    assert detail["bestaand_document_id"] == origineel_id
+    assert detail["bestaand_administratie_id"] == str(administratie_id)
+    assert detail["bestaand_bestandsnaam"] == "origineel.pdf"
+    assert detail["bestaand_status"] in ("te_controleren", "extractie_bezig", "ontvangen", "handmatig_afmaken")
+    assert "origineel.pdf" in detail["melding"]
 
 
 def test_beheerder_kan_altijd_uploaden(beheerder_id: uuid.UUID, administratie_id: uuid.UUID) -> None:
@@ -140,7 +144,7 @@ def test_documenten_lijst_bevat_geuploade_documenten(
 
 
 def test_documenten_lijst_verrijkt_duplicaat_met_bestandsnaam(
-    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID
+    gescoopte_gebruiker: uuid.UUID, administratie_id: uuid.UUID, opslag: LokaleBestandsopslag
 ) -> None:
     headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
     client.post(
@@ -148,12 +152,18 @@ def test_documenten_lijst_verrijkt_duplicaat_met_bestandsnaam(
         files={"bestand": ("lijst-origineel.pdf", b"%PDF-1.4 lijst-dup", "application/pdf")},
         headers=headers,
     )
-    client.post(
-        f"/administraties/{administratie_id}/documenten",
-        files={"bestand": ("lijst-kopie.pdf", b"%PDF-1.4 lijst-dup", "application/pdf")},
-        headers=headers,
+    # Besluit Peter 18-09: een tweede DIRECTE upload van dezelfde bytes is een 409 (geen document) — het byte-identieke
+    # tweede exemplaar komt sinds 18-09 alleen nog via de mail-intake binnen; dáár geldt de duplicaatregel (blok 3 08-09).
+    documenten_service.upload_document(
+        administratie_id=administratie_id,
+        bestandsnaam="lijst-kopie.pdf",
+        inhoud=b"%PDF-1.4 lijst-dup",
+        actor_id=gescoopte_gebruiker,
+        opslag=opslag,
+        bron=DocumentBron.EMAIL,
+        afzender_hint="leverancier@example.com",
     )
-    # Blok 3 (fixrun 08-09): het byte-identieke tweede exemplaar is al bij upload afgevoerd als duplicaat
+    # Blok 3 (fixrun 08-09): het byte-identieke tweede exemplaar is al bij binnenkomst afgevoerd als duplicaat
     # (afgevoerd_duplicaat) en zit dus niet meer in de DEFAULT lijst — "Toon afgevoerde documenten" haalt 'm terug.
     resp = client.get(f"/administraties/{administratie_id}/documenten?toon_afgevoerd=true", headers=headers)
     kopie = next(d for d in resp.json()["documenten"] if d["bestandsnaam"] == "lijst-kopie.pdf")

@@ -14,7 +14,7 @@ import { StatusChip } from '../werkvoorraad/StatusChip'
 import { GeboektInRlzChip } from './GeboektInRlz'
 import { documentRoute, TERMINALE_STATUSSEN } from '../werkvoorraad/format'
 import { kiesVolgendDocument } from '../werkvoorraad/volgendDocument'
-import { lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
+import { filterDocumenten, lijstContextUitParams, lijstPositie, lijstRoute, type LijstContext } from '../werkvoorraad/lijstContext'
 import { SNELTOETSEN_CONTROLESCHERM, useSneltoetsen } from './sneltoetsen'
 import { SneltoetsOverzicht } from './SneltoetsOverzicht'
 import { AnkerPopup, useToastOptioneel, SkeletonPaneel, SkeletonRegels, SkeletonBlok } from '../ui/basis'
@@ -48,8 +48,10 @@ import { ReviewSplitter, ReviewVergrootKnop, useReviewSplitter } from '../ui/Rev
 import { isMiniVoorraadNotitie, miniVoorraadMelding, miniVoorraadTijdlijnTekst } from '../materiaal/miniVoorraadTijdlijn'
 import { isPrefillAutosaveNotitie, prefillAutosaveTijdlijnTekst } from './prefillAutosaveTijdlijn'
 import { isKopOmschrijvingNotitie, kopOmschrijvingTijdlijnTekst } from './kopOmschrijvingTijdlijn'
+import { btwHerrekendTijdlijnTekst, isBtwHerrekendNotitie } from './btwHerrekendTijdlijn'
 import { accorderingHerberekendTekst } from './accorderingHerberekendTijdlijn'
 import { accorderingOvergeslagenTijdlijnTekst, isAccorderingOvergeslagenNotitie } from './accorderingOvergeslagenTijdlijn'
+import { accorderingRouteTijdlijnTekst, isAccorderingRouteNotitie } from './accorderingRouteTijdlijn'
 import { aiToetsUitTijdlijnTekst, isAiToetsUitNotitie, isZonderAiToetsNotitie, zonderAiToetsTijdlijnTekst } from './zonderAiToetsTijdlijn'
 
 /** Statussen waaruit een vraag gesteld kan worden (spiegel van de backend-poort
@@ -66,10 +68,35 @@ type VerwerkingsInfo =
   | GeboektInfo
   | { uitkomst: 'afgewezen'; referentie: string | null; boekstuknummer: null; waarschuwing?: undefined }
 
+/** Boeken sneller (18-09, stap 3): prefetch van het VOLGENDE document — alleen `prefetchDetail` vult de cache, alleen de
+ * eerstvolgende `haalDetailOp` van dát document leest 'm (één keer, ≤ 60 s). Elke andere lezing (openen, `laadDetail` ná
+ * een actie) is altijd vers — statussen veranderen, een cache mag nooit een verouderd document tonen. */
+const DETAIL_CACHE_MS = 60_000
+const detailPrefetch = new Map<string, { op: number; belofte: Promise<DocumentDetailDto> }>()
+export function prefetchDetail(administratieId: string, documentId: string): void {
+  const sleutel = `${administratieId}/${documentId}`
+  if (detailPrefetch.has(sleutel)) return
+  const belofte = apiJson<DocumentDetailDto>(`/administraties/${administratieId}/documenten/${documentId}`)
+  detailPrefetch.set(sleutel, { op: Date.now(), belofte })
+  belofte.catch(() => detailPrefetch.delete(sleutel))
+}
+export function haalDetailOp(administratieId: string, documentId: string): Promise<DocumentDetailDto> {
+  const sleutel = `${administratieId}/${documentId}`
+  const voorgeladen = detailPrefetch.get(sleutel)
+  if (voorgeladen) {
+    detailPrefetch.delete(sleutel)
+    if (Date.now() - voorgeladen.op < DETAIL_CACHE_MS) return voorgeladen.belofte
+  }
+  return apiJson<DocumentDetailDto>(`/administraties/${administratieId}/documenten/${documentId}`)
+}
+
 function toastTekst(info: VerwerkingsInfo, referentie: string): string {
   switch (info.uitkomst) {
     case 'geboekt':
       return `Geboekt — ${referentie}${info.boekstuknummer ? ` · boekstuk ${info.boekstuknummer}` : ''}`
+    case 'wordt_geboekt':
+      // Boeken sneller (18-09): de RLZ-write loopt op de achtergrond; de lijst toont "Wordt geboekt…" → Geboekt/mislukt.
+      return `Wordt geboekt in RLZ — ${referentie}${info.volgendeDocumentId ? ' · je gaat door naar de volgende' : ''}`
     case 'staande_goedkeuring':
       return `Geboekt via staande goedkeuring — ${referentie}`
     case 'ter_accordering':
@@ -377,6 +404,12 @@ export function DocumentDetailScreen() {
     () => (lijst && context && documentId ? lijstPositie(lijst, context, documentId, { naamVoor }) : null),
     [lijst, context, documentId, naamVoor],
   )
+  // Boeken sneller (18-09): de getoonde lijstvolgorde (gefilterd + gesorteerd) reist mee met "Boeken in RLZ" zodat de
+  // server het volgende document kiest met exact de kiesVolgendDocument-regels.
+  const lijstVolgorde = useMemo(
+    () => (lijst ? (context ? filterDocumenten(lijst, context, { naamVoor }) : lijst).map((d) => d.id) : undefined),
+    [lijst, context, naamVoor],
+  )
   // Onopgeslagen wijzigingen in het boekvoorstel (debounce nog niet klaar) → bevestiging vóór
   // ‹ ›/Esc/pijltjes; het doel wacht in `verlaatDoel`.
   const [onopgeslagen, setOnopgeslagen] = useState(false)
@@ -470,10 +503,21 @@ export function DocumentDetailScreen() {
   const laadDetail = useCallback(() => {
     if (!administratieId || !documentId) return
     setFout(null)
-    apiJson<DocumentDetailDto>(`/administraties/${administratieId}/documenten/${documentId}`)
+    haalDetailOp(administratieId, documentId)
       .then(setDetail)
       .catch((err: unknown) => setFout(err instanceof Error ? err.message : 'Onbekende fout'))
   }, [administratieId, documentId])
+
+  // Boeken sneller (18-09, stap 3): het detail van het VOLGENDE document alvast ophalen (één GET, cache 60 s) én de
+  // externe checks ervan voorverwarmen (server cachet; max 1 tegelijk, nooit stil) — zodat de doorloop < 1 s voelt.
+  const volgendeId = positie?.volgende?.id ?? null
+  useEffect(() => {
+    if (!administratieId || !volgendeId) return
+    prefetchDetail(administratieId, volgendeId)
+    void apiJson(`/administraties/${administratieId}/documenten/${volgendeId}/boekvoorstel/checks?voorverwarm=1`, {
+      method: 'POST',
+    }).catch(() => undefined)
+  }, [administratieId, volgendeId])
 
   useEffect(() => {
     setDetail(null)
@@ -666,6 +710,25 @@ export function DocumentDetailScreen() {
     // documentenlijst zonder filter/sortering zelf toont (besluit Peter 07-09: positie in de
     // getoonde lijstvolgorde wint altijd, geen soort-voorkeur meer).
     let doel = lijstRoute(administratieId, context)
+    // Boeken sneller (18-09, stap 3): (1) het server-side gekozen volgende document uit het 202-antwoord — geen
+    // lijst-fetch; (2) anders de al geladen lijst (positie.volgende / kiesVolgendDocument zonder fetch); (3) pas als
+    // beide ontbreken de lijst ophalen. Zonder volgend document → de lijst mét filter.
+    if (info.uitkomst === 'wordt_geboekt' && info.volgendeDocumentId) {
+      const volgendeItem = lijst?.find((d) => d.id === info.volgendeDocumentId)
+      const stub = { id: info.volgendeDocumentId, soort: info.volgendeDocumentSoort ?? 'inkoopfactuur', status: 'te_controleren' }
+      void navigate(documentRoute(administratieId, (volgendeItem ?? stub) as DocumentListResponseDto['documenten'][number], context))
+      return
+    }
+    if (info.uitkomst === 'wordt_geboekt') {
+      // De server koos al (of vond niets verwerkbaars): geen lijst-fetch meer — terug naar de lijst mét filter.
+      void navigate(doel)
+      return
+    }
+    if (lijst) {
+      const volgende = positie?.volgende ?? kiesVolgendDocument(lijst, documentId, context, { naamVoor })
+      void navigate(volgende ? documentRoute(administratieId, volgende, context) : doel)
+      return
+    }
     try {
       const lijst = await apiJson<DocumentListResponseDto>(`/administraties/${administratieId}/documenten`)
       const volgende = kiesVolgendDocument(lijst.documenten, documentId, context, { naamVoor })
@@ -1192,6 +1255,7 @@ export function DocumentDetailScreen() {
               status={detail.status}
               veldvoorstel={detail.veldvoorstel}
               onGeboekt={(info) => void naVerwerking(info)}
+              lijstVolgorde={lijstVolgorde}
               onHersteld={laadDetail}
               onVraagStellen={
                 VRAAG_STELLEN_STATUSSEN.has(detail.status) ? () => setVraagModalOpen(true) : undefined
@@ -1386,6 +1450,12 @@ export function DocumentDetailScreen() {
                           {prefillAutosaveTijdlijnTekst(g.detail)}
                         </div>
                       )}
+                      {/* 18-09 (btw volgt het tarief): tariefwijziging mét herrekend btw-bedrag / btw in de kosten. */}
+                      {g.detail && isBtwHerrekendNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-btw-herrekend">
+                          {btwHerrekendTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
                       {/* Blok 9 (07-09): kop-omschrijving handmatig gezet of terug naar automatisch. */}
                       {g.detail && isKopOmschrijvingNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-kop-omschrijving">
@@ -1396,6 +1466,12 @@ export function DocumentDetailScreen() {
                       {g.detail && isAccorderingOvergeslagenNotitie(g.detail) && (
                         <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-accordering-overgeslagen">
                           {accorderingOvergeslagenTijdlijnTekst(g.detail)}
+                        </div>
+                      )}
+                      {/* Peter 18-09 (0164): leveranciersroute 'bovenop' — welke route deze ronde volgt (gewoon + extra laag …). */}
+                      {g.detail && isAccorderingRouteNotitie(g.detail) && (
+                        <div className="hint" style={{ marginTop: 2 }} data-testid="tijdlijn-accordering-route">
+                          {accorderingRouteTijdlijnTekst(g.detail)}
                         </div>
                       )}
                       {/* Blok 4 vervolgrun 10-09 avond: automatisch geboekt terwijl de AI-plausibiliteitstoets technisch uitviel. */}

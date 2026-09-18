@@ -104,6 +104,9 @@ DOEL_NIET_ONBOARDED = "doel_niet_onboarded"
 #: Run B 18-09 — dag-einde herinnering: zichtbare overslaan-redenen (géén LET-OP: al uren / opt-out / al verzonden /
 #: stille uren zijn de bedoeling); `geen_kanaal` = de ENIGE harde voorwaarde (geen toestel én geen mailadres) → LET-OP
 #: mét deeplink Beheer › Veldwerkers (administratie-loos: de rij is per gebruiker).
+#: Boeken sneller (18-09): categorieën van het voorverwarmen van de externe checks.
+VOORVERWARMEN_UIT = "voorverwarmen_uit"
+VOORVERWARMEN_BEZIG = "voorverwarmen_bezig"
 AL_UREN = "al_uren"
 OPT_OUT = "opt_out"
 AL_VERZONDEN = "al_verzonden"
@@ -168,6 +171,8 @@ REDEN_LABEL: dict[str, str] = {
     RECHTEN_NA_24U: "na 24 uur herproberen weigert RLZ nog steeds (403)",
     GEEN_EIGENAAR: "geen eigenaar/toewijzing",
     VOLUMEREM: "volumerem bereikt",
+    VOORVERWARMEN_UIT: "voorverwarmen staat uit (instelling CHECKS_VOORVERWARMEN)",
+    VOORVERWARMEN_BEZIG: "al een voorverwarming bezig (max 1 tegelijk) of document niet leesbaar",
     GELDPOORT: "boeken staat uit (kill-switch/administratie)",
     CREDENTIAL: "geen werkende credential",
     API_KEY: "geen API-key",
@@ -255,12 +260,19 @@ DOORBELASTING_HERKOPPELING = "doorbelasting_herkoppeling"
 #: `uren_herinnering_run` (één administratie-loze rij per job-run mét tellers verwacht/gedaan/overgeslagen per reden;
 #: `app/uren/herinnering.py`).
 UREN_HERINNERING = "uren_herinnering"
+#: Boeken sneller (18-09): achtergrond-schrijver "Boeken in RLZ" — bron audit `boek_wachtrij_ingediend` (verwacht),
+#: `boek_wachtrij_afgerond` (gedaan = geboekt, overgeslagen FOUT = mislukt), `boek_wachtrij_trigger` mislukt = LET-OP
+#: vangnet scheduler. En het voorverwarmen van de externe checks: audit `checks_voorverwarmd`
+#: (gedaan | uit_cache = gedaan; uit = instelling; overgeslagen_bezig/-fout = overgeslagen).
+BOEK_WACHTRIJ = "boek_wachtrij"
+CHECKS_VOORVERWARMEN = "checks_voorverwarmen"
 
 #: Vaste volgorde in mail en scherm (geldpaden eerst).
 VOLGORDE: tuple[str, ...] = (
     AUTOBOEK_INKOOP,
     AUTOBOEK_OMZET,
     AUTOBOEK_VERKOOP,
+    BOEK_WACHTRIJ,
     BANK_SYNC,
     BANK,
     AI_PLAUSIBILITEIT,
@@ -280,9 +292,12 @@ VOLGORDE: tuple[str, ...] = (
     KASSARAPPORT_INKOOPSTROOM,
     DOORBELASTING_HERKOPPELING,
     UREN_HERINNERING,
+    CHECKS_VOORVERWARMEN,
 )
 
 LABEL: dict[str, str] = {
+    BOEK_WACHTRIJ: "Boeken in RLZ — achtergrond-schrijver (ingediend → geboekt/mislukt)",
+    CHECKS_VOORVERWARMEN: "Externe checks voorverwarmen (volgend document)",
     OMZETBRON_HERKENNING: "Omzetbron-herkenning op inhoud (kassarapporten vóór de AI, store → administratie)",
     KASSARAPPORT_INKOOPSTROOM: "Kassarapporten in de inkoopstroom (dagelijkse toets)",
     DOORBELASTING_HERKOPPELING: "Doorbelasting — herkoppeling doelentiteiten (whitelist zonder doel)",
@@ -342,6 +357,8 @@ VASTE_CATEGORIEEN: dict[str, tuple[str, ...]] = {
     OMZETBRON_HERKENNING: (STORE_ONBEKEND,),
     DOORBELASTING_HERKOPPELING: (DOEL_BIJNA_MATCH, DOEL_NIET_ONBOARDED),
     UREN_HERINNERING: (AL_UREN, OPT_OUT, GEEN_KANAAL),
+    BOEK_WACHTRIJ: (FOUT,),
+    CHECKS_VOORVERWARMEN: (VOORVERWARMEN_UIT, VOORVERWARMEN_BEZIG),
 }
 
 #: Alle audit-acties die deze motor leest — één query per administratie.
@@ -371,6 +388,11 @@ _ACTIES: tuple[str, ...] = (
     "doorbelasting_herkoppeling_run",
     # run B 18-09: dag-einde herinnering veld-app (één rij per job-run, administratie-loos)
     "uren_herinnering_run",
+    # boeken sneller 18-09: achtergrond-schrijver + voorverwarmen externe checks
+    "boek_wachtrij_ingediend",
+    "boek_wachtrij_afgerond",
+    "boek_wachtrij_trigger",
+    "checks_voorverwarmd",
 )
 
 
@@ -469,6 +491,9 @@ class Feiten:
     extractie_wachtrij_overgangen: list[tuple[uuid.UUID, datetime]] = field(default_factory=list)
     # Staat er een Cloud Run-job-resource op de service (productie) of draait de wachtrij lokaal (thread)?
     extractie_job_resource: str | None = None
+    # boeken sneller 18-09
+    boek_wachtrij_job_resource: str | None = None
+    checks_voorverwarmen_aan: bool = True
 
 
 # --- uitkomst ---------------------------------------------------------------------------------------------
@@ -803,6 +828,21 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         "één per veldwerker per dag",
         "audit uren_herinnering_run",
     )
+    boek_job = feiten.boek_wachtrij_job_resource
+    boek_wachtrij = maak(
+        BOEK_WACHTRIJ,
+        "altijd",
+        f"Cloud Run-job {boek_job.rsplit('/', 1)[-1]} per ingediende boeking + scheduler-vangnet 2 min"
+        if boek_job
+        else "geen job-resource — lokaal/thread",
+        "audit boek_wachtrij_ingediend / boek_wachtrij_afgerond / boek_wachtrij_trigger",
+    )
+    voorverwarmen = maak(
+        CHECKS_VOORVERWARMEN,
+        "aan" if feiten.checks_voorverwarmen_aan else "uit",
+        "bij het openen van een document worden de externe checks van het volgende document alvast gecachet",
+        "audit checks_voorverwarmd",
+    )
     herkoppeling = maak(
         DOORBELASTING_HERKOPPELING,
         "altijd",
@@ -831,6 +871,32 @@ def bereken(feiten: Feiten, *, nu: datetime) -> list[Teller]:
         elif f.actie == "kassarapport_inkoopstroom_run":
             for v in vensters(kassa_inkoop, f.tijdstip):
                 v.tel_gedaan(int(nw.get("geboekt") or 0) + int(nw.get("ongeboekt") or 0))
+        elif f.actie == "boek_wachtrij_ingediend":
+            if f.tijdstip >= dag_vanaf:
+                boek_wachtrij.detail = boek_wachtrij.detail or {"ingediend_24u": 0}
+                boek_wachtrij.detail["ingediend_24u"] += 1
+        elif f.actie == "boek_wachtrij_afgerond":
+            if nw.get("uitkomst") == "geboekt":
+                for v in vensters(boek_wachtrij, f.tijdstip):
+                    v.tel_gedaan()
+            elif nw.get("uitkomst") == "mislukt":
+                tel_over(
+                    boek_wachtrij, f.tijdstip, FOUT, f.administratie_id, str(nw.get("fout") or ""), hard_registreren=False
+                )
+        elif f.actie == "boek_wachtrij_trigger":
+            if nw.get("uitkomst") != "geslaagd":
+                tel_over(boek_wachtrij, f.tijdstip, VANGNET_SCHEDULER, None, str(nw.get("fout") or ""))
+        elif f.actie == "checks_voorverwarmd":
+            uitkomst = str(nw.get("uitkomst") or "")
+            if uitkomst in ("gedaan", "uit_cache"):
+                for v in vensters(voorverwarmen, f.tijdstip):
+                    v.tel_gedaan()
+            elif uitkomst == "uit":
+                tel_over(voorverwarmen, f.tijdstip, VOORVERWARMEN_UIT, None, None, hard_registreren=False)
+            else:
+                tel_over(
+                    voorverwarmen, f.tijdstip, VOORVERWARMEN_BEZIG, None, str(nw.get("fout") or ""), hard_registreren=False
+                )
         elif f.actie == "uren_herinnering_run":
             for v in vensters(uren_herinnering, f.tijdstip):
                 v.tel_gedaan(int(nw.get("gedaan") or 0))
@@ -1385,7 +1451,11 @@ def verzamel_feiten(*, nu: datetime, administratie_ids: Sequence[uuid.UUID] | No
     from app.uren.models import VeldwerkerCrediteur
 
     week_vanaf = nu - timedelta(days=STIL_DAGEN)
-    feiten = Feiten(extractie_job_resource=settings.extractie_wachtrij_job_resource or None)
+    feiten = Feiten(
+        extractie_job_resource=settings.extractie_wachtrij_job_resource or None,
+        boek_wachtrij_job_resource=settings.boek_wachtrij_job_resource or None,
+        checks_voorverwarmen_aan=bool(settings.checks_voorverwarmen),
+    )
     with scoped_session(None, actor_id=SYSTEEM_ACTOR_ID) as session:
         q = select(Administratie).where(Administratie.actief.is_(True))
         if administratie_ids is not None:

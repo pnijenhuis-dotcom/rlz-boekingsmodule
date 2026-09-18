@@ -65,6 +65,8 @@ REGISTRY: dict[str, SoortDefinitie] = {
         _oud("niet_geboekt_in_odoo", "documenten"),
         _oud("teruggedraaid_in_odoo", "documenten"),
         _oud("half_geboekt", "documenten"),
+        # boeken sneller (18-09): achtergrond-schrijver gestrand (> herstelgrens op wordt_geboekt) — eerst meten.
+        SoortDefinitie(soort="wordt_geboekt_verouderd", blok="documenten", sinds=date(2026, 9, 18), default=METEN),
         # bank
         _oud("document_ontbreekt_in_rlz", "bank"),
         _oud("boeking_teruggedraaid_in_rlz", "bank"),

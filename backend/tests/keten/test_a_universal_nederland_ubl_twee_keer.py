@@ -105,6 +105,19 @@ class TestPrefill:
         assert checks["Duplicaatcheck"][0] and "Kan niet controleren" not in checks["Duplicaatcheck"][1]
         assert checks["Regeltelling vs totaal"][0]
 
+    def test_externe_checks_uit_de_cache_bij_ongewijzigde_vingerafdruk(self, keten: Keten, deel_8) -> None:
+        """Boeken sneller (Peter 18-09, stap 1): de tweede checks-run op hetzelfde (ongewijzigde) voorstel raakt RLZ niet
+        meer — het externe rapport (IBAN-seed, duplicaatquery's) komt uit `check_extern_cache`; de rijen zijn gelijk."""
+        echt = _echt(deel_8)
+        keten.open_controlescherm(echt)
+        eerste = boekvoorstel.voer_checks_uit(administratie_id=keten.administratie_id, document_id=echt, client=keten.rlz)
+        tweede = boekvoorstel.voer_checks_uit(administratie_id=keten.administratie_id, document_id=echt, client=keten.rlz)
+        assert eerste.extern_uit_cache is False and tweede.extern_uit_cache is True
+        assert eerste.extern_gecontroleerd_op == tweede.extern_gecontroleerd_op
+        assert [(r.naam, r.ok) for r in eerste.resultaten] == [(r.naam, r.ok) for r in tweede.resultaten]
+        dto = keten.checks_dto(echt)
+        assert dto["extern_uit_cache"] is True and dto["extern_gecontroleerd_op"]
+
     def test_ubl_kop_en_regel_rechtstreeks_uit_de_xml(self, keten: Keten, deel_8) -> None:
         echt = _echt(deel_8)
         veldvoorstel = keten.document(echt).veldvoorstel

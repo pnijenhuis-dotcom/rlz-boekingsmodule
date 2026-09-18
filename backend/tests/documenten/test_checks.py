@@ -280,6 +280,7 @@ class TestVoerHardeChecksUit:
         assert [r.naam for r in rapport.resultaten] == [
             "Verplichte velden",
             "Regeltelling vs totaal",
+            "Btw-bedrag past bij tarief",  # 18-09 (Peter, casus Rituals): btw volgt het tarief — lokaal, direct ná de regeltelling
             "Vervaldatum",
             "Btw-tarief buitenland",
             "IBAN-wissel",
@@ -315,7 +316,7 @@ class TestVoerHardeChecksUit:
             regels=[],
             eigen_rlz_document_id=uuid.uuid4(),
         )
-        assert len(rapport.resultaten) == 7  # incl. Vervaldatum (C1 26-08) + buitenland-tarief (31-08) + cross-crediteur (punt 14, 28-08)
+        assert len(rapport.resultaten) == 8  # incl. Vervaldatum (C1 26-08), buitenland-tarief (31-08), cross-crediteur (punt 14, 28-08), btw-tarief (18-09)
 
 
 class TestIbanWissel:

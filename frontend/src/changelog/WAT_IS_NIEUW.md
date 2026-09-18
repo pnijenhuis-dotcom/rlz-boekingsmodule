@@ -6,6 +6,40 @@
   vorm). Geen AI.
 -->
 
+## 2026-09-18 — Boeken: geen daglimiet meer voor handmatig boeken; btw volgt het tarief; boeken gaat direct door
+
+<!-- volumerem-alleen-automatisch-18-09 -->
+
+- **Handmatig boeken loopt niet meer tegen "Dagelijkse limiet van 20 boekingen" aan.** Die limiet is een noodrem voor automatische boekingen en telt sinds vandaag alleen nog die. Boek je zelf een stapel bonnen, dan kun je gewoon door; pas bij 500 handmatige boekingen op één dag in één administratie grijpt een noodrem in, met de vraag contact op te nemen met de Beheerder. Elke melding zegt nu welke rem het is, hoe ver de teller staat en wat je kunt doen.
+
+<!-- btw-volgt-tarief-18-09 -->
+
+- **Het btw-bedrag volgt nu altijd de btw-code.** Kies je op een regel een andere btw-code, dan rekent het scherm het btw-bedrag direct opnieuw uit — ook als je het bedrag eerder zelf had getypt. Kies je 0 % op een regel waar de factuur wél btw op zet (bijvoorbeeld representatie of een relatiegeschenk), dan gaat die btw in de kosten: het nettobedrag wordt het factuurbedrag inclusief btw en het btw-bedrag 0,00, met de tekst "btw in kosten (niet aftrekbaar)". Kies je daarna toch weer 21 %, dan splitst het scherm het bedrag weer precies zoals het was.
+- **Nieuwe controle "Btw-bedrag past bij tarief".** Past het btw-bedrag niet bij de gekozen code (meer dan een cent per samengevoegde factuurregel verschil), dan blokkeert boeken en zie je twee knoppen op de controleregel: "Btw in kosten (0 %)" en "Zet 21 %". De grijze tekst "tarief geeft € … — factuur leidend" is verdwenen.
+- **Btw niet aftrekbaar per grootboekrekening.** Onder Instellingen › administratie › Boeken & AI staat het blok "Btw niet aftrekbaar": vink de rekeningen aan waar de btw nooit aftrekbaar is (representatie, relatiegeschenken, kantine). Het scherm doet een voorstel op basis van de rekeningnaam; je bevestigt zelf. Op zo'n rekening zet het controlescherm de btw-code automatisch op 0 % en de btw in de kosten, met de tekst "aftrek uitgesloten (4510)".
+- **Bij een Nederlandse leverancier zie je alleen de Nederlandse btw-codes.** Buitenland- en EU-codes staan ingeklapt onderaan achter "Buitenland-tarieven tonen (N)"; zoeken in de lijst vindt ze altijd. De codes die je in deze administratie het afgelopen jaar het meest gebruikte staan bovenaan. De crediteurkaart toont waar het land vandaan komt (btw-nummer of IBAN).
+
+<!-- samenvoegen-regelbtw-18-09 -->
+
+- **De regels op het controlescherm kloppen weer met het vinkje "Splitsen per regel".** Stonden er losse regels opgeslagen terwijl de leverancier op "samenvoegen" stond, dan toonde het scherm die regels als samengevoegd. Nu volgt het scherm wat er echt is opgeslagen, met een chip "weergave hersteld" en een regel in de tijdlijn.
+- **De btw-kolom van de factuur is leidend per regel.** Staat op een factuurregel "0%" (bijvoorbeeld emballage of statiegeld) en op een andere "9%", dan krijgt elke regel de bijpassende btw-code en het juiste btw-bedrag — het boekingsgeheugen vult alleen nog het grootboek. Ook het bruto-bedrag volgt de factuur, niet meer het tarief uit het geheugen.
+- **Pinbon op de foto?** Staat het totaal alleen op een meegefotografeerde pinbon, dan neemt de module dat over als factuurtotaal zodra de regels er precies op uitkomen (chip "uit pinbon"). Klopt de som niet of zijn regels niet gelezen, dan zie je een oranje melding en beslis je zelf.
+- **Afgedekt bedrag is zichtbaar.** Ligt er een bon over een bedrag, dan staat er "niet gelezen (afgedekt)" bij die regel in plaats van een lege cel.
+- **Hetzelfde bestand nog eens uploaden maakt geen tweede document meer.** Je ziet "al aanwezig als … — niet opnieuw aangemaakt" met een link naar het bestaande document. Alleen een bestand dat je eerder bewust verwijderde, kun je opnieuw aanbieden.
+
+<!-- boeken-sneller-18-09 -->
+
+- **Boeken gaat nu direct door naar de volgende factuur.** Klik je op "Boeken in RLZ", dan controleert het systeem alleen nog wat het meteen kan controleren en zet het de boeking in de wachtrij; jij staat binnen een seconde op de volgende factuur. De boeking in Reeleezee loopt op de achtergrond — in de documentenlijst zie je "Wordt geboekt…" en daarna "Geboekt" met het boekstuknummer. Gaat er iets mis, dan wordt de rij rood "Boeken mislukt" met de reden en een knop "Opnieuw"; je krijgt dan ook een melding zolang je in dezelfde administratie werkt. Er verschijnt geen pop-up meer op de knop.
+- **De controles worden sneller groen.** Reeleezee wordt alleen nog geraadpleegd als er iets verandert dat Reeleezee raakt: crediteur, factuurnummer, factuurdatum, totaalbedrag of IBAN. Een omschrijving, grootboekrekening, project of btw-code wijzigen levert direct een nieuwe controle op, zonder te wachten. Bij de controles die Reeleezee raken zie je wanneer dat voor het laatst is gebeurd ("gecontroleerd 14:02").
+- **De volgende factuur staat al klaar.** Zodra je een factuur opent, haalt het systeem de volgende alvast op en controleert die in Reeleezee — de overgang voelt daardoor direct.
+
+<!-- accordering-zoekveld-uitnodigen-18-09 -->
+
+- **Klant-accordering: zoeken en filteren.** Bovenaan Instellingen › Klant-accordering staat nu een zoekveld (typ `/` om erin te springen) met een teller, en filters "Accordering aan", "Met leveranciersroute" en "Zonder accordeur". Elke administratie toont rechts in één oogopslag wat er staat — bijvoorbeeld "aan · 3 lagen · 1 route · 4 accordeurs" — zonder open te klappen. Een link naar één administratie klapt die regel direct open.
+- **Direct een accordeur uitnodigen of koppelen.** Heeft een administratie nog geen klant-accordeur, dan staan er twee knoppen bij de melding: "Accordeur uitnodigen →" (het uitnodigingsformulier staat dan al klaar met de juiste rol en administratie) en "Bestaande accordeur koppelen →" (vink een bestaande accordeur aan en die krijgt toegang).
+- **Leveranciersroute bovenop de gewone route.** Bij een leveranciersroute kiest u nu "Vervangt de gewone route" (zoals eerder) of "Bovenop de gewone route": de gewone lagen blijven staan en de extra accordeur kijkt vóór laag 1 of ná de laatste laag. Wijzigt u later de gewone route, dan volgt die extra laag automatisch mee — u hoeft niets meer te kopiëren. In de leverancierskeuze staan leveranciers met open facturen bovenaan.
+- **Knoppen weer in beeld.** Op smallere schermen stonden "+ Laag toevoegen", "Opslaan" en "+ Leveranciersroute" rechts buiten beeld; tabellen scrollen nu binnen hun vak en de knoppen staan links onder het blok.
+
 ## 2026-09-18 — Uren-app: eerst het project, dan "+ Uren" of "Meerwerk melden"; m² niet meer verplicht; doorfactureren per regel
 
 <!-- veldapp-ux-run-b-18-09 -->

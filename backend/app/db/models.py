@@ -5,6 +5,7 @@ import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
 
+import sqlalchemy as sa
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -726,6 +727,12 @@ class Grootboekrekening(Base):
     historie_taxrate_n: Mapped[int | None] = mapped_column(default=None)
     historie_taxrate_aandeel: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), default=None)
     historie_berekend_op: Mapped[datetime | None] = mapped_column(default=None)
+    # Migratie 0163 (opdracht Peter 18-09, casus Rituals — BUA): op deze rekening is de btw NIET aftrekbaar
+    # (representatie, relatiegeschenken, personeelsvoorzieningen, kantine). De prefill zet dan 0 %/geen btw en de
+    # factuur-btw in de kosten (`regel_prefill.py`, bron 'grootboek_aftrek_uitgesloten'); Beheerder bevestigt per
+    # rekening (voorstel-lijst), nooit stil aangezet. De sync raakt deze kolommen niet (`_grootboek_waarden`).
+    btw_aftrek_uitgesloten: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    btw_aftrek_uitgesloten_op: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class RlzCredential(Base):

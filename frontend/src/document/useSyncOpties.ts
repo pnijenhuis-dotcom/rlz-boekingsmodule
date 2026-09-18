@@ -70,6 +70,13 @@ export function useTaxrateOpties(administratieId: string, herlaadSleutel = 0): L
         code: percentage !== undefined ? `${Math.round(percentage * 100)}%` : undefined,
         label: t.naam ?? t.id,
         percentage,
+        // 18-09 DEEL B (NL-eerst keuzelijst): vlaggen + gebruik uit de server, groep 'buitenland' voor het inklappen.
+        verlegd: t.verlegd ?? false,
+        vrijgesteld: t.vrijgesteld ?? false,
+        buitenland: t.buitenland ?? false,
+        favoriet: t.favoriet ?? false,
+        gebruik12m: t.gebruik_12m ?? 0,
+        groep: t.buitenland ? 'buitenland' : undefined,
       }
     }),
   )

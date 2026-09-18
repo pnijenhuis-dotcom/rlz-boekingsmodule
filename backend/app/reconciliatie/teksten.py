@@ -393,6 +393,15 @@ def _documenten(soort: str, d: dict, tekst: str) -> tuple[str, str, str]:
             "Boek de factuur in Odoo definitief of boek opnieuw via de actie op deze rij; "
             "klopt het, accepteer met reden.",
         )
+    if soort == "wordt_geboekt_verouderd":
+        sinds = datum(_s(d, "sinds"))
+        return (
+            _titel("Boeking blijft hangen", onderwerp),
+            "Deze boeking is ingediend" + (f" op {sinds}" if sinds else "") + " maar de verwerking naar "
+            f"{sys_} is niet afgerond; het document staat nog op 'Wordt geboekt…'.",
+            "Open het document en kies 'Opnieuw proberen' (het systeem plant de boeking ook zelf opnieuw in); blijft "
+            "het hangen, meld het als systeemfout.",
+        )
     if soort == "teruggedraaid_in_odoo":
         return (
             _titel("Teruggedraaid in Odoo", onderwerp),

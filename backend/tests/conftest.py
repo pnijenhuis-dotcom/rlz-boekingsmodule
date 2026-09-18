@@ -217,6 +217,21 @@ def _ai_toets_facturen_standaard_uit(request: pytest.FixtureRequest, monkeypatch
 
 
 @pytest.fixture(autouse=True)
+def _boek_wachtrij_direct() -> Generator[None, None, None]:
+    """Boeken sneller (18-09): de achtergrond-schrijver is in de suite een DirecteBoekWachtrij — de worker draait
+    meteen in de aanroepende thread (POST …/boeken antwoordt 202 én het document staat daarna al op geboekt of
+    boeken_mislukt). Een in-process worker-thread zou een test overleven en met de TRUNCATE van de volgende test
+    deadlocken (gezien 18-09 op boek_wachtrij_claim). Tests die het asynchrone gedrag zelf willen zien, zetten
+    hun eigen wachtrij via de `wachtrij`-parameter van `dien_boeking_in`."""
+    from app.documenten import boek_wachtrij
+
+    vorige = boek_wachtrij._wachtrij
+    boek_wachtrij._wachtrij = boek_wachtrij.DirecteBoekWachtrij(taak=boek_wachtrij.verwerk_boek_taak)
+    yield
+    boek_wachtrij._wachtrij = vorige
+
+
+@pytest.fixture(autouse=True)
 def _extractie_wachtrij_direct() -> Generator[None, None, None]:
     """Blok 1c verbreed (08-09): élke AI-extractie gaat via de wachtrij. In de suite is de
     procesbrede default-wachtrij een DirecteExtractieWachtrij (de worker draait meteen, in de

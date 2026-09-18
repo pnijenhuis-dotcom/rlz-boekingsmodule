@@ -195,9 +195,11 @@
         "netto_bedrag": "5500.00",
         "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
         "project_bron": null,
+        "btw_in_kosten": false,
         "btw_bron_detail": null,
         "gb_voorstel_detail": null,
-        "project_bron_detail": null
+        "project_bron_detail": null,
+        "factuur_btw_percentage": null
        }
       ],
       "triggers": [
@@ -266,21 +268,30 @@
     "omschrijving": "Samenstellen jaarrekening en aangifte vennootschapsbelasting 2025",
     "btw_bron": "factuur",
     "btw_bron_detail": null,
+    "btw_in_kosten": false,
     "gb_bron": null,
     "gb_voorstel_detail": null,
     "overstap_vertaling": null,
     "project_bron": null,
-    "project_bron_detail": null
+    "project_bron_detail": null,
+    "factuur_btw_percentage": null,
+    "bedrag_niet_gelezen": false
    }
   ],
   "regels_samenvoegen": false,
   "samenvoegen_toegestaan": false,
   "samengevoegde_regel": null,
+  "regels_modus_hersteld": false,
+  "totaal_bron": null,
+  "totaal_pinbon": null,
+  "totaal_pinbon_status": null,
   "btw_verlegd_vermelding": null,
   "afdeling_id": null,
   "afdeling_prefill_id": null,
   "afdeling_prefill_leverancier": null,
-  "accordering_overgeslagen_reden": null
+  "accordering_overgeslagen_reden": null,
+  "leverancier_land": "NL",
+  "leverancier_land_bron": "uit btw-nummer crediteur"
  },
  "checks": {
   "geblokkeerd": true,
@@ -289,69 +300,91 @@
     "naam": "Verplichte velden",
     "ok": false,
     "melding": "Ontbrekend: grootboekrekening (regel 1), project (regel 1) — kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Afdeling",
     "ok": true,
     "melding": "Afdelingen niet van toepassing voor deze administratie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Betaalstatus (declaraties)",
     "ok": true,
     "melding": "Niet van toepassing — geen declaratie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Projectverdeling",
     "ok": true,
     "melding": "Geen projectverdeling — 1 regel zonder project: kies per regel een project óf gebruik \"Verdelen over projecten…\" onder de boekingsregels",
-    "signaal": true
+    "signaal": true,
+    "acties": []
    },
    {
     "naam": "Regeltelling vs totaal",
     "ok": true,
     "melding": "Som van de regels (netto + btw € 6655.00) komt overeen met het totaal incl. (€ 6655.00)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
+   },
+   {
+    "naam": "Btw-bedrag past bij tarief",
+    "ok": true,
+    "melding": "Btw-bedrag volgt het tarief op 1 regel(s) (marge 1 ct)",
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Vervaldatum",
     "ok": true,
     "melding": "Vervaldatum 2026-07-16 (termijn 14 dagen)",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Btw-tarief buitenland",
     "ok": true,
     "melding": "Geen EU-/buitenland-tarief op de regels",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "IBAN-wissel",
     "ok": true,
     "melding": "Eerste IBAN voor deze crediteur (NL95KETN…010) vastgelegd als baseline — controleer het rekeningnummer op de factuur",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaatcheck",
     "ok": true,
     "melding": "Geen bestaande factuur met dezelfde crediteur/referentie/bedrag",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat bij andere crediteur",
     "ok": true,
     "melding": "Geen factuur met dezelfde referentie en bedrag bij een andere crediteur",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    },
    {
     "naam": "Duplicaat (module)",
     "ok": true,
     "melding": "Geen ander document in deze administratie met hetzelfde bestand, dezelfde referentie + bedrag of dezelfde crediteur + referentie",
-    "signaal": false
+    "signaal": false,
+    "acties": []
    }
-  ]
+  ],
+  "extern_gecontroleerd_op": "2026-09-08T12:00:00Z",
+  "extern_uit_cache": false,
+  "extern_nog_niet": false,
+  "voorverwarm": null
  },
  "lijst": {
   "documenten": [

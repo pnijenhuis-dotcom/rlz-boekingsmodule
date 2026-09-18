@@ -1844,6 +1844,25 @@ tr.geselecteerd td.acties {
   color: var(--muted);
 }
 
+/* Boeken sneller (18-09): "Wordt geboekt…" — grijs mét pulserende dot (spinner-dot), geen actiekleur. */
+.status.bezig {
+  color: var(--muted);
+}
+
+.status.bezig::before {
+  animation: status-bezig-puls 1.2s ease-in-out infinite;
+}
+
+@keyframes status-bezig-puls {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Avatar met initialen + deterministische kleur per administratie/gebruiker (hash op id, vaste
    8-kleuren-set --avatar-0…7 in tokens.css, geen opslag; ui/Avatar.tsx). */
 .avatar {

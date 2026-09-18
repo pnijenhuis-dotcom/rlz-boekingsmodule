@@ -9,14 +9,13 @@ from fastapi.responses import JSONResponse
 
 from app.accordering.router import router as accordering_router
 from app.afdelingen.router import router as afdelingen_router
+from app.appupdate.router import router as appupdate_router
 from app.auth.privacy_pagina import router as privacy_pagina_router
 from app.auth.router import router as auth_router
 from app.auth.wellknown import router as wellknown_router
+from app.autoboek_kandidaten.router import router as autoboek_kandidaten_router
 from app.bank.router import router as bank_router
-from app.appupdate.router import router as appupdate_router
 from app.beheer.router import router as beheer_router
-from app.intercompany.router import router as intercompany_router
-from app.odoo.router import router as odoo_router
 from app.berichten.router import router as berichten_router
 from app.config import settings
 from app.credentialstore.router import router as credentialstore_router
@@ -31,22 +30,23 @@ from app.documenten.router import router as documenten_router
 from app.doorbelasting.router import router as doorbelasting_router
 from app.geheugen.router import router as geheugen_router
 from app.intake.router import router as intake_router
+from app.intercompany.router import router as intercompany_router
+from app.lezen.router import router as lezen_router
+from app.materiaal.router import router as materiaal_router
+from app.mini_voorraad.router import router as mini_voorraad_router
+from app.odoo.router import router as odoo_router
 from app.omzet.router import router as omzet_router
 from app.projecten.kantoor_router import router as projecten_kantoor_router
 from app.projecten.router import router as projecten_koppelvlak_router
+from app.projectverdeling.router import router as projectverdeling_router
+from app.reconciliatie.router import router as reconciliatie_router
 from app.registersync.router import router as registersync_router
 from app.static_frontend import activeer_frontend_serving
 from app.sync.router import router as sync_router
 from app.terugkerend.router import router as terugkerend_router
-from app.lezen.router import router as lezen_router
-from app.reconciliatie.router import router as reconciliatie_router
-from app.projectverdeling.router import router as projectverdeling_router
-from app.verplichting.router import router as verplichting_router
-from app.autoboek_kandidaten.router import router as autoboek_kandidaten_router
 from app.uren.router import router as uren_router
-from app.materiaal.router import router as materiaal_router
-from app.mini_voorraad.router import router as mini_voorraad_router
 from app.verkoop.router import router as verkoop_router
+from app.verplichting.router import router as verplichting_router
 from app.voorraad.router import router as voorraad_router
 from app.vragen.router import router as vragen_router
 from app.waarborg.router import router as waarborg_router
@@ -207,6 +207,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     gecheckt. Productie draait dezelfde verwerk-functie als Cloud Scheduler-job via de CLI."""
     controleer_migratie_versie(db_session.engine, fail_fast=settings.migratie_guard_fail_fast)
     documenten_service.herstel_achtergebleven_extracties()
+    # Boeken sneller (18-09): ingediende boekingen die door een herstart in wordt_geboekt achterbleven (> herstelgrens)
+    # opnieuw inplannen — "niets verdwijnt stil" (in de cloud doet de */2-scheduler dit óók).
+    from app.documenten import boek_wachtrij as _boek_wachtrij
+
+    _boek_wachtrij.herstel_achtergebleven_boekingen()
     webhook_afleveraar.start_in_process_afleveraar()
     yield
     webhook_afleveraar.stop_in_process_afleveraar()

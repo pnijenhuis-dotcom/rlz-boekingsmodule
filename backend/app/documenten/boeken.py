@@ -1,24 +1,25 @@
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.backends import BackendBoekFout, inkoop_port_voor
 from app.backends.port import InkoopPort
-from app.config import settings
+from app.config import settings  # noqa: F401 — re-export: tests en herstel-CLI patchen `boeken.settings`
 from app.db.audit import record_audit_event
 from app.db.models import Administratie, BoekenInstelling, Grootboekrekening
 from app.db.session import scoped_session
-from app.documenten import veldvoorstel_regels
+from app.documenten import checks_extern, veldvoorstel_regels, volumerem
 from app.documenten.beeld import BestandenSnapshot, bepaal_beeld
 from app.documenten.boekstand import volgend_volgnummer
 from app.documenten.boekvoorstel import BoekvoorstelData, _laatste_veldvoorstel, haal_boekvoorstel_op, voer_checks_uit
 from app.documenten.checks import CheckRapport
-from app.documenten.models import Boekvoorstel, Document, DocumentGebeurtenis, DocumentStatus, WebhookUitgaand
+from app.documenten.models import Boekvoorstel, Document, DocumentStatus, WebhookUitgaand
 from app.documenten.rlz_ids import rlz_herboeking_id  # noqa: F401 — re-export (tests, doorbelasting)
 from app.documenten.service import DocumentNietGevonden, _schrijf_overgang, _standaard_opslag
 from app.documenten.webhook import WebhookRegel, bouw_factuur_geboekt_payload
@@ -28,13 +29,16 @@ from app.rlz.client import RlzClient
 from app.rlz.credentials import client_voor_rlz_admin_id, rlz_admin_id_voor
 from app.rlz.fouten import vertaal_rlz_boekfout  # noqa: F401 — re-export (accordering-herstel-CLI, tests)
 from app.sync.models import VendorCache
-from app.tijd import TIJDZONE_NL, vandaag_nl
+from app.tijd import vandaag_nl
 
 _KAN_BOEKPOGING_STARTEN_VANUIT = frozenset(
     {
         DocumentStatus.TE_CONTROLEREN,
         DocumentStatus.KLAAR_OM_TE_BOEKEN,
         DocumentStatus.BOEKEN_MISLUKT,
+        # Boeken sneller (18-09): de achtergrond-schrijver (app/documenten/boek_wachtrij.py) rondt een ingediende
+        # boeking af — het document staat dan al op wordt_geboekt.
+        DocumentStatus.WORDT_GEBOEKT,
         # Handmatig afmaken (migratie 0015): de controleur heeft alles zelf ingevuld — de harde
         # checks (project verplicht per regel, regelsom) blijven onverkort de poort.
         DocumentStatus.HANDMATIG_AFMAKEN,
@@ -72,8 +76,9 @@ class AccorderingVereist(BoekenFout):
     hoort "Ter accordering" te zijn; na het laatste akkoord boekt de flow zelf."""
 
 
-class VolumeremBereikt(BoekenFout):
-    """Failsafe (c): de dagelijkse boekingslimiet voor deze administratie is bereikt."""
+class VolumeremBereikt(BoekenFout, volumerem.VolumeremBereikt):
+    """Failsafe (c): de volumerem voor deze herkomst (automatisch 20/dag, handmatig/ná-klant-akkoord 500/dag —
+    SPOED 18-09) is bereikt; de melding noemt rem, teller en handeling."""
 
 
 class MatchAfwijkingBevestigingVereist(BoekenFout):
@@ -118,55 +123,75 @@ def _is_boeken_toegestaan(session: Session, *, administratie_id: uuid.UUID) -> b
     return instelling is not None and instelling.globaal_ingeschakeld
 
 
-def _boekingen_vandaag(session: Session, *, administratie_id: uuid.UUID) -> int:
-    """Volumerem-teller: alleen ÉCHTE statusovergangen niet-geboekt → geboekt vandaag. Teller-bug
-    (punt 23, opruimrun 28-08): tijdlijn-notities ná het boeken (geboekt → geboekt, bv. webhook-
-    of doorbelastingsnotities) telden mee en lieten de rem te vroeg bijten."""
-    vandaag_begin = datetime.combine(vandaag_nl(), time.min, tzinfo=TIJDZONE_NL)
-    return (
-        session.scalar(
-            select(func.count())
-            .select_from(DocumentGebeurtenis)
-            .join(Document, DocumentGebeurtenis.document_id == Document.id)
-            .where(
-                Document.administratie_id == administratie_id,
-                DocumentGebeurtenis.naar_status == DocumentStatus.GEBOEKT,
-                or_(
-                    DocumentGebeurtenis.van_status.is_(None),
-                    DocumentGebeurtenis.van_status != DocumentStatus.GEBOEKT,
-                ),
-                DocumentGebeurtenis.tijdstip >= vandaag_begin,
-            )
-        )
-        or 0
-    )
+def _boekingen_vandaag(
+    session: Session, *, administratie_id: uuid.UUID, herkomst: volumerem.Herkomst = volumerem.MENS
+) -> int:
+    """Volumerem-teller — sinds 18-09 (SPOED Peter) gesplitst op herkomst via `app/documenten/volumerem.py`:
+    automatisch = alleen overgangen mét de 'automatisch'-markering, mens/ná-klant-akkoord = alle andere. Alleen ÉCHTE
+    statusovergangen niet-geboekt → geboekt vandaag (teller-bug punt 23, 28-08, blijft gefixt). Bestaande aanroepers
+    (herstel-CLI, tests) krijgen zonder `herkomst` de mens-teller."""
+    return volumerem.documentboekingen_vandaag(session, administratie_id=administratie_id, herkomst=herkomst)
 
 
-def volumerem_limiet(*, administratie_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, bool]:
-    """Punt 23 (besluit Peter 28-08): (limiet, na_klant_akkoord). Ná een compleet klant-akkoord
-    geldt de hoge noodrem i.p.v. de 20/dag-automatiseringsrem; overal anders de gewone rem.
+def volumerem_herkomst(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+    extra_overgang_detail: dict | None = None,
+) -> volumerem.Herkomst:
+    """Herkomst van deze boekpoging: compleet klant-akkoord (punt 23) > 'automatisch'-markering/systeem-actor > mens.
     Lazy import: accordering.service gebruikt deze module."""
     from app.accordering import service as accordering_service
 
-    if accordering_service.is_na_compleet_klant_akkoord(administratie_id=administratie_id, document_id=document_id):
-        return settings.max_boekingen_na_klant_akkoord_per_dag_per_administratie, True
-    return settings.max_boekingen_per_dag_per_administratie, False
+    na_akkoord = accordering_service.is_na_compleet_klant_akkoord(
+        administratie_id=administratie_id, document_id=document_id
+    )
+    return volumerem.bepaal_herkomst(
+        actor_id=actor_id, overgang_detail=extra_overgang_detail, na_klant_akkoord=na_akkoord
+    )
 
 
-def toets_volumerem(session: Session, *, administratie_id: uuid.UUID, document_id: uuid.UUID) -> None:
-    """Failsafe (c) mét de akkoord-uitzondering van punt 23 — één toets voor boek_document en de
-    herstel-CLI. Raise-t VolumeremBereikt mét een leesbare melding die de geldende rem benoemt."""
-    limiet, na_akkoord = volumerem_limiet(administratie_id=administratie_id, document_id=document_id)
-    if _boekingen_vandaag(session, administratie_id=administratie_id) >= limiet:
-        if na_akkoord:
-            raise VolumeremBereikt(
-                f"Noodrem: dagelijkse limiet van {limiet} boekingen ná klant-akkoord bereikt voor deze administratie"
-            )
-        raise VolumeremBereikt(f"Dagelijkse limiet van {limiet} boekingen bereikt voor deze administratie")
+def volumerem_limiet(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+    extra_overgang_detail: dict | None = None,
+) -> tuple[int, bool]:
+    """Punt 23 (besluit Peter 28-08) + SPOED 18-09: (limiet, na_klant_akkoord). Ná een compleet klant-akkoord én bij
+    handmatig boeken geldt de hoge noodrem (500), alleen automatische boekingen de 20/dag-rem. Bestaande aanroepers
+    zonder actor krijgen de mens-/akkoord-limiet (zij boeken nooit automatisch)."""
+    herkomst = volumerem_herkomst(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        extra_overgang_detail=extra_overgang_detail,
+    )
+    return volumerem.limiet_voor(herkomst), herkomst == volumerem.NA_KLANT_AKKOORD
+
+
+def toets_volumerem(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+    extra_overgang_detail: dict | None = None,
+) -> volumerem.Stand:
+    """Failsafe (c) — één toets voor boek_document en de herstel-CLI, via de gedeelde helper. Raise-t
+    VolumeremBereikt mét een melding die rem, teller én handeling noemt (regel 4, 18-09)."""
+    herkomst = volumerem_herkomst(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        extra_overgang_detail=extra_overgang_detail,
+    )
+    return volumerem.toets_documentboekingen(session, administratie_id, herkomst=herkomst, fout=VolumeremBereikt)
 
 
 def _zorg_voor_klaar_om_te_boeken(session: Session, *, document: Document, actor_id: uuid.UUID) -> None:
-    if document.status != DocumentStatus.KLAAR_OM_TE_BOEKEN:
+    if document.status not in (DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.WORDT_GEBOEKT):
         _schrijf_overgang(
             session,
             document=document,
@@ -363,21 +388,17 @@ def _project_teksten_per_regel(
     return uit
 
 
-def boek_document(
+def toets_poorten_voor_boekpoging(
     *,
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     actor_id: uuid.UUID,
-    extra_overgang_detail: dict | None = None,
     match_afwijking_bevestigd: bool = False,
     materiaal_afwijking_bevestigd: bool = False,
-) -> BoekResultaat:
-    """De boekactie (CLAUDE.md-taak 2.3): harde checks herhalen (nooit de client-kant vertrouwen),
-    dan de twee resterende failsafes (toggle+kill switch, volumerem), dan pas de echte RLZ-
-    schrijfacties. Een blokkerende check/failsafe laat de status ongewijzigd, bùiten het
-    klaarzetten op klaar_om_te_boeken zodra de checks zelf doorstaan — dat wordt in zijn eigen,
-    los gecommitte transactie gedaan (vóór de failsafe-checks), zodat een falende failsafe die
-    winst niet weer terugdraait: een latere retry hoeft de checks dan niet opnieuw te doorstaan."""
+) -> tuple[BestandenSnapshot, str, DocumentStatus]:
+    """Het deel van een boekpoging VÓÓR de harde checks — status/soort, klant-accorderingspoort, factuurmatch- en
+    materiaalmatch-poort. Gedeeld door `boek_document` (synchroon/worker) en `boek_wachtrij.dien_boeking_in`
+    (het synchrone deel van "Boeken in RLZ", 18-09). Geeft (bestanden-snapshot, rlz_admin_id, status bij start)."""
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
         if document is None:
@@ -393,6 +414,7 @@ def boek_document(
                 f"Document heeft soort {document.soort} — deze boekactie is alleen voor inkoopfacturen"
             )
         bestanden = BestandenSnapshot.van(document)
+        status_bij_start = document.status
         rlz_admin_id = rlz_admin_id_voor(administratie_id)
 
     # Klant-accorderingspoort (migratie 0033, server-side — nooit de client-knop vertrouwen):
@@ -434,9 +456,64 @@ def boek_document(
         actor_id=actor_id,
         bevestigd=materiaal_afwijking_bevestigd,
     )
+    return bestanden, rlz_admin_id, status_bij_start
+
+
+def extern_checks_modus(
+    *, status_bij_start: DocumentStatus, extra_overgang_detail: dict | None, gevraagd: str | None = None
+) -> str:
+    """Boeken sneller (18-09): welke externe-checks-modus geldt voor deze boekpoging. Expliciet gevraagd wint;
+    anders VERS bij een boeken_mislukt-retry en op het autoboek-pad ('automatisch'-markering), AUTO (cache als de
+    vingerafdruk gelijk is en ≤ 15 min) voor een mens die zojuist het controlescherm zag."""
+    if gevraagd:
+        return gevraagd
+    if status_bij_start == DocumentStatus.BOEKEN_MISLUKT:
+        return checks_extern.VERS
+    if (extra_overgang_detail or {}).get(volumerem.AUTOMATISCH_MARKERING):
+        return checks_extern.VERS
+    return checks_extern.AUTO
+
+
+def boek_document(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    extra_overgang_detail: dict | None = None,
+    match_afwijking_bevestigd: bool = False,
+    materiaal_afwijking_bevestigd: bool = False,
+    extern_checks: str | None = None,
+    timing: checks_extern.StapTiming | None = None,
+) -> BoekResultaat:
+    """De boekactie (CLAUDE.md-taak 2.3): harde checks herhalen (nooit de client-kant vertrouwen),
+    dan de twee resterende failsafes (toggle+kill switch, volumerem), dan pas de echte RLZ-
+    schrijfacties. Een blokkerende check/failsafe laat de status ongewijzigd, bùiten het
+    klaarzetten op klaar_om_te_boeken zodra de checks zelf doorstaan — dat wordt in zijn eigen,
+    los gecommitte transactie gedaan (vóór de failsafe-checks), zodat een falende failsafe die
+    winst niet weer terugdraait: een latere retry hoeft de checks dan niet opnieuw te doorstaan.
+
+    Boeken sneller (18-09): `extern_checks` = de externe-checks-modus (zie `extern_checks_modus`); `timing` verzamelt
+    de Server-Timing-stappen (`checks.*`, `boek.rlz`, `boek.db`)."""
+    timing = timing or checks_extern.StapTiming()
+    bestanden, rlz_admin_id, status_bij_start = toets_poorten_voor_boekpoging(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        actor_id=actor_id,
+        match_afwijking_bevestigd=match_afwijking_bevestigd,
+        materiaal_afwijking_bevestigd=materiaal_afwijking_bevestigd,
+    )
+    extern = extern_checks_modus(
+        status_bij_start=status_bij_start, extra_overgang_detail=extra_overgang_detail, gevraagd=extern_checks
+    )
 
     with _port_voor(administratie_id) as port:
-        rapport = voer_checks_uit(administratie_id=administratie_id, document_id=document_id, client=port.leesclient())
+        rapport = voer_checks_uit(
+            administratie_id=administratie_id,
+            document_id=document_id,
+            client=port.leesclient(),
+            extern=extern,
+            timing=timing,
+        )
         if rapport.geblokkeerd:
             raise BoekenGeblokkeerdDoorChecks(rapport)
 
@@ -448,7 +525,13 @@ def boek_document(
         with scoped_session(administratie_id) as session:
             if not _is_boeken_toegestaan(session, administratie_id=administratie_id):
                 raise BoekenUitgeschakeld("Boeken staat uit voor deze administratie of via de globale kill switch")
-            toets_volumerem(session, administratie_id=administratie_id, document_id=document_id)
+            toets_volumerem(
+                session,
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor_id,
+                extra_overgang_detail=extra_overgang_detail,
+            )
 
         try:
             voorstel = haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
@@ -456,12 +539,13 @@ def boek_document(
             # gebundelde of ingesloten factuur-PDF — RLZ toont een PDF, een kale UBL is voor een mens
             # onleesbaar. Zonder beeld gaat het hoofdbestand zelf mee (bestaand gedrag).
             beeld = bepaal_beeld(bestanden, opslag=_standaard_opslag())
-            uitkomst = port.boek_inkoopfactuur(
-                document_id=document_id,
-                voorstel=voorstel,
-                bestand=beeld.inhoud,
-                bestandsnaam=beeld.bestandsnaam,
-            )
+            with timing.met("boek.rlz"):
+                uitkomst = port.boek_inkoopfactuur(
+                    document_id=document_id,
+                    voorstel=voorstel,
+                    bestand=beeld.inhoud,
+                    bestandsnaam=beeld.bestandsnaam,
+                )
             rlz_document_id, rlz_boekstuknummer = uitkomst.extern_document_id, uitkomst.boekstuknummer
         except BackendBoekFout as exc:
             # De adapter heeft de pakket-fout al vertaald (RLZ: vertaal_rlz_boekfout; Odoo: vertaal_odoo_fout).
@@ -485,6 +569,7 @@ def boek_document(
     from app.backends.registry import backend_label
 
     port_label = backend_label(port.backend)
+    t_db = time.perf_counter()
     with scoped_session(administratie_id, actor_id=actor_id) as session:
         document = session.get(Document, document_id)
         assert document is not None
@@ -638,6 +723,8 @@ def boek_document(
             },
             administratie_id=administratie_id,
         )
+
+    timing.tel("boek.db", (time.perf_counter() - t_db) * 1000)
 
     # Deterministische extractie-terugval (best-practice-besluit 2, 31-08): ná de commit het
     # template van deze crediteur toetsen/leren uit de zojuist door een mens bevestigde boeking.

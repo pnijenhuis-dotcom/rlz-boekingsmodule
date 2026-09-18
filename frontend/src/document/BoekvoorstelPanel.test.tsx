@@ -483,7 +483,9 @@ describe('BoekvoorstelPanel', () => {
     expect(screen.queryByText(/Berekend uit tarief/)).not.toBeInTheDocument()
   })
 
-  it('design-pass taak 3: een handmatig ingevoerd btw-bedrag wordt nooit overschreven, maar krijgt een afwijking-hint', async () => {
+  it('18-09 (Peter, casus Rituals): een tariefkeuze herrekent het btw-bedrag ALTIJD — ook een eerder handmatig getypt bedrag', async () => {
+    // HERZIET regelrij-UI 25-08 (b) "factuur-btw leidend": de grijze hint is weg, het tarief wint; de harde check
+    // "Btw-bedrag past bij tarief" (server) is de poort voor wat de mens daarna nog in het btw-veld typt.
     const gebruiker = userEvent.setup()
     installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
     render(
@@ -497,22 +499,26 @@ describe('BoekvoorstelPanel', () => {
     )
     await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
 
+    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
     await gebruiker.type(screen.getByLabelText('Btw bedrag'), '5,00')
 
     const [btwCodeVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
     await gebruiker.click(btwCodeVeld)
     await waitFor(() => expect(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ })).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ }))
-    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
 
-    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('5,00')
-    // Blok 4d (08-09): korte grijze regel mét tooltip i.p.v. de wrappende chip.
-    expect(screen.getByTestId('regel-btw-berekend-hint')).toHaveTextContent('tarief geeft € 21,00 — factuur leidend')
+    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('21,00')
+    expect(screen.queryByTestId('regel-btw-in-kosten-chip')).not.toBeInTheDocument()
   })
 
-  it('regelrij-UI 25-08: een afrondingsverschil van 1 cent tussen netto × tarief en factuur-btw geeft géén berekend-hint', async () => {
+  it('18-09: 0 % kiezen op een regel mét btw = btw in de kosten (netto 121,00 / btw 0,00 + chip); terug naar 21 % splitst weer', async () => {
     const gebruiker = userEvent.setup()
-    installFetchMock({ taxrates: [{ id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' }] })
+    installFetchMock({
+      taxrates: [
+        { id: TAXRATE_ID, naam: 'NL Hoog Tarief', percentage: '0.2100' },
+        { id: 'tttttttt-0000-0000-0000-000000000000', naam: 'NL, Nul tarief', percentage: '0' },
+      ],
+    })
     render(
       <BoekvoorstelPanel
         administratieId={ADMINISTRATIE_ID}
@@ -523,17 +529,23 @@ describe('BoekvoorstelPanel', () => {
       />,
     )
     await waitFor(() => expect(screen.getAllByLabelText('Grootboek', { exact: false })[0]).toBeInTheDocument())
+    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
+    await gebruiker.type(screen.getByLabelText('Btw bedrag'), '21,00')
 
-    // Factuur-btw 20,99 bij 21% over 100,00 (berekend 21,00): afronding, factuur-btw is leidend.
-    await gebruiker.type(screen.getByLabelText('Btw bedrag'), '20,99')
     const [btwCodeVeld] = screen.getAllByLabelText('Btw-code', { exact: false })
     await gebruiker.click(btwCodeVeld)
+    await waitFor(() => expect(screen.getByRole('option', { name: /0%.*NL, Nul tarief/ })).toBeInTheDocument())
+    await gebruiker.click(screen.getByRole('option', { name: /0%.*NL, Nul tarief/ }))
+    expect(screen.getByLabelText('Netto bedrag')).toHaveValue('121,00')
+    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('0,00')
+    expect(screen.getByTestId('regel-btw-in-kosten-chip')).toHaveTextContent('btw in kosten (niet aftrekbaar)')
+
+    await gebruiker.click(screen.getAllByLabelText('Btw-code', { exact: false })[0])
     await waitFor(() => expect(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ })).toBeInTheDocument())
     await gebruiker.click(screen.getByRole('option', { name: /21%.*NL Hoog Tarief/ }))
-    await gebruiker.type(screen.getByLabelText('Netto bedrag'), '100,00')
-
-    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('20,99')
-    expect(screen.queryByText(/Berekend uit tarief/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Netto bedrag')).toHaveValue('100,00')
+    expect(screen.getByLabelText('Btw bedrag')).toHaveValue('21,00')
+    expect(screen.queryByTestId('regel-btw-in-kosten-chip')).not.toBeInTheDocument()
   })
 
   it('design-pass taak 3: lege cache toont een melding met "Nu synchroniseren", die alle vier de caches verversen', async () => {

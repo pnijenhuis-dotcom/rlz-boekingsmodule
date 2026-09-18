@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import delete, func, select
@@ -18,23 +19,28 @@ from app.db.models import Administratie
 from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import betaalstatus as betaalstatus_regels
+from app.documenten import checks_extern, leverancier_iban, veldvoorstel_regels
 from app.documenten import kop_omschrijving as kop_omschrijving_regels
-from app.documenten import leverancier_iban, veldvoorstel_regels
 from app.documenten import periode as periode_regels
 from app.documenten.checks import (
     CheckRapport,
     CheckRegel,
     CheckResultaat,
+    TariefInfo,
     check_afdeling,
     check_betaalstatus_declaraties,
+    check_btw_past_bij_tarief,
     check_buitenland_tarief_crediteurkaart,
+    check_duplicaat,
     check_duplicaat_module,
+    check_duplicaat_over_crediteuren,
     check_iban_wissel,
     check_project_afgesloten,
     check_regeltelling,
     check_verplichte_velden,
     check_vervaldatum,
     historie_melding,
+    is_buitenland_tarief,
     vervaldatum_signaal,
     voer_harde_checks_uit,
 )
@@ -114,6 +120,9 @@ class BoekvoorstelRegelData:
     # scan én geheugen niets hadden. Alleen op prefill-regels; komt uit `btw_afleiding_reden` van de
     # extractie (app/extractie/controle.py::leid_btw_af). Intern veld, niet in de DTO.
     btw_bewust_leeg: bool = False
+    # 18-09 (Peter, casus Rituals — BUA): de factuur-btw van deze regel zit in de kosten (netto = bruto, btw 0,00) —
+    # gezet door de prefill-stap 'grootboek_aftrek_uitgesloten'; in de DTO als chip "btw in kosten (niet aftrekbaar)".
+    btw_in_kosten: bool = False
     # Slotstuk 04-09 (C1, migratie 0112): spoor van de hervertaling van een OPEN voorstel bij een Odoo-overstap
     # (`app/odoo/hervertaling.py`) — per veld van→naar of "geen tegenhanger". Alleen op opgeslagen regels; de
     # eerstvolgende PUT door de mens schrijft de regels opnieuw zonder dit spoor (chip verdwijnt, bewust).
@@ -130,6 +139,14 @@ class BoekvoorstelRegelData:
     # "factuur_meerduidig" (niets ingevuld — meerdere kandidaten, `project_bron_detail` noemt ze); None = leeg/
     # mens/geheugen. `project_bron_detail` = tooltip-tekst. Beide in de DTO (informatief; de server negeert
     # ze bij opslaan), zelfde chip-regel als gb_bron/btw_bron: weg zodra de mens het veld aanraakt.
+    # BUG 18-09 (Zilver Horeca Fac-25-022711): het btw-percentage dat de FACTUURREGEL zelf draagt (btw-kolom "9%"/"0%",
+    # fractie 0.09/0), gelezen door de extractie (`btw_kolom_percentage`). Wint op regelniveau van het geheugen
+    # (`btw_bron='factuur_regel'`, chip "factuur 0 %") en stuurt de bruto-kolom (netto × (1 + factuur-tarief)) — nooit
+    # het geheugen-tarief. Reist in het prefill-snapshot mee en komt op een opgeslagen regel terug.
+    factuur_btw_percentage: Decimal | None = None
+    # BUG 18-09 (regel 5): het regelbedrag is niet gelezen omdat het afgedekt/onleesbaar was — chip "niet gelezen
+    # (afgedekt)" i.p.v. een kale lege cel. Alleen op prefill-regels (uit het veldvoorstel).
+    bedrag_niet_gelezen: bool = False
     project_tekst: str | None = None
     project_bron: str | None = None
     project_bron_detail: str | None = None
@@ -182,6 +199,17 @@ class BoekvoorstelData:
     # dan de AI-zekerheidschips aan (zelfde stand als een nog niet opgeslagen prefill). Altijd False op een
     # niet-opgeslagen voorstel en op een door een mens opgeslagen voorstel.
     prefill_automatisch: bool = False
+    # BUG 18-09 (Zilver Horeca): True als de leverancier-voorkeur "samenvoegen" zegt maar er > 1 regel OPGESLAGEN staat
+    # (er was geen samengevoegde variant te berekenen — geen totalen/regels zonder bedrag — en de autosave persisteerde
+    # de gesplitste set). Dan volgt de modus de data: `regels_samenvoegen` = False, vinkje aan, hint "Losse
+    # factuurregels", tijdlijnregel "weergave hersteld" (router). Nooit stil de data wegdrukken, nooit de modus liegen.
+    regels_modus_hersteld: bool = False
+    # BUG 18-09 (regel 4): herkomst van het totaalbedrag — "factuur" (gelezen factuurtotaal) | "pinbon" (totaal van de
+    # meegefotografeerde bon, alleen als Σ regels binnen 5 ct sluit) | None. `totaal_pinbon`/`_status` = de bon-toets
+    # ("groen" | "afwijkend" | "niet_toetsbaar") voor de chip; bij oranje blijft het totaalveld leeg en beslist de mens.
+    totaal_bron: str | None = None
+    totaal_pinbon: Decimal | None = None
+    totaal_pinbon_status: str | None = None
     # Blok 9 vervolgrun 07-09 (besluit Peter, auto-first): kop-omschrijving van het document — RLZ `Description`
     # op de PurchaseInvoice, Odoo `narration`. Deterministisch afgeleid (app/documenten/kop_omschrijving.py:
     # één regel → regeltekst | `betreft` uit de scan | "‹leverancier› ‹nummer›") tenzij de mens 'm zette
@@ -492,6 +520,9 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
             omschrijving=regel.get("omschrijving"),
             btw_bron=_btw_bron(regel),
             btw_bewust_leeg=_btw_bewust_leeg(regel),
+            # BUG 18-09: factuur-regeltarief uit de btw-kolom + "bedrag niet gelezen (afgedekt)".
+            factuur_btw_percentage=_als_decimal(regel.get("btw_kolom_percentage")),
+            bedrag_niet_gelezen=bool(regel.get("bedrag_niet_gelezen")),
             # Blok 10: regel-`proj` wint van kop-`proj`; de kop is de default voor regels zonder eigen tekst.
             project_tekst=_str_of_none(regel.get("project_tekst") or kop_project or None),
         )
@@ -499,9 +530,16 @@ def _regels_prefill(veldvoorstel: dict) -> list[BoekvoorstelRegelData]:
     ]
 
 
+# BUG 18-09: "factuur_regel" = btw-code uit de btw-KOLOM van de factuurregel
+# (extractie/controle.py::leid_btw_af_uit_kolom).
+BTW_BRON_FACTUUR_REGEL = "factuur_regel"
+_FACTUUR_BTW_BRONNEN = frozenset({"factuur", BTW_BRON_FACTUUR_REGEL})
+
+
 def _btw_bron(regel: dict) -> str | None:
-    """Alleen "factuur" als de regel ook écht een afgeleide btw-code draagt."""
-    return "factuur" if regel.get("btw_bron") == "factuur" and _als_uuid(regel.get("taxrate_id")) else None
+    """Alleen "factuur"/"factuur_regel" als de regel ook écht een afgeleide btw-code draagt."""
+    bron = regel.get("btw_bron")
+    return bron if bron in _FACTUUR_BTW_BRONNEN and _als_uuid(regel.get("taxrate_id")) else None
 
 
 # Redenen uit `leid_btw_af` waarbij de scan het btw-veld BEWUST leeg liet (de scan hád informatie, maar die
@@ -958,9 +996,12 @@ def _regel_snapshot(volgnummer: int, regel: BoekvoorstelRegelData) -> dict:
         "gb_voorstel_detail": regel.gb_voorstel_detail,
         "btw_bron": regel.btw_bron,
         "btw_bron_detail": regel.btw_bron_detail,
+        "btw_in_kosten": regel.btw_in_kosten,
         "project_bron": regel.project_bron,
         "project_bron_detail": regel.project_bron_detail,
         "herkomst": dict(regel.prefill_herkomst or {}),
+        # BUG 18-09: factuur-regeltarief reist mee zodat de bruto-kolom en de chip ná het persisteren terugkomen.
+        "factuur_btw_percentage": _str_of_none(regel.factuur_btw_percentage),
     }
 
 
@@ -1298,13 +1339,31 @@ def _opgeslagen_regel_data(regel: BoekvoorstelRegel, snapshot: dict | None) -> B
         id=regel.id,
         btw_bron=btw_bron,
         btw_bron_detail=btw_detail if btw_bron else None,
+        btw_in_kosten=bool(btw_bron and snap is not None and snap.get("btw_in_kosten")),
         gb_bron=gb_bron,
         gb_voorstel_detail=gb_detail if gb_bron else None,
         overstap_vertaling=regel.overstap_vertaling,
         prefill_herkomst=herkomst or None,
         project_bron=project_bron,
         project_bron_detail=project_detail if project_bron else None,
+        factuur_btw_percentage=_als_decimal(snap.get("factuur_btw_percentage")) if snap is not None else None,
     )
+
+
+def _pinbon_velden(veldvoorstel: dict | None, *, totaalbedrag: Decimal | None) -> dict:
+    """BUG 18-09 (regel 4): herkomst van het totaal + de bon-toets uit het veldvoorstel
+    (controle.py::toets_pinbon_totaal).
+    "pinbon" alleen zolang het (voorgestelde/opgeslagen) totaal nog het bon-totaal is; wijzigt de mens het veld, dan is
+    de herkomst weg (zelfde waarde-gelijkheid als elke herkomst-chip)."""
+    vv = veldvoorstel or {}
+    pinbon = _als_decimal(vv.get("totaal_pinbon"))
+    status = vv.get("totaal_pinbon_status") if pinbon is not None else None
+    bron = vv.get("totaal_bron")
+    if bron == "pinbon" and (totaalbedrag is None or totaalbedrag != pinbon):
+        bron = None
+    if bron == "factuur" and totaalbedrag is None:
+        bron = None
+    return {"totaal_bron": bron, "totaal_pinbon": pinbon, "totaal_pinbon_status": status}
 
 
 def _lees_opgeslagen_voorstel(
@@ -1351,6 +1410,22 @@ def _lees_opgeslagen_voorstel(
         afdeling["afdeling_prefill_id"] = bestaand.afdeling_id
         afdeling["afdeling_prefill_leverancier"] = kop.get("afdeling_prefill_leverancier")
     regel_data = [_opgeslagen_regel_data(r, snapshot) for r in regels]
+    samenvoeg = _samenvoeg_velden(
+        session,
+        administratie_id=administratie_id,
+        vendor_id=vendor_id,
+        veldvoorstel=veldvoorstel,
+        project_verplicht=project_verplicht,
+        standaard_samenvoegen=standaard_samenvoegen,
+    )
+    # BUG 18-09 (Zilver Horeca): één waarheid voor de modus — zegt de voorkeur "samenvoegen" maar staan er > 1 regel
+    # opgeslagen (de autosave persisteerde de gesplitste set omdat er geen samengevoegde variant was), dan volgt de
+    # modus de data. Het scherm toont dan de losse regels mét vinkje aan en de chip "weergave hersteld".
+    modus_hersteld = bool(
+        samenvoeg["regels_samenvoegen"] and samenvoeg["samenvoegen_toegestaan"] and len(regel_data) > 1
+    )
+    if modus_hersteld:
+        samenvoeg["regels_samenvoegen"] = False
     data = _met_projectverdeling(session, administratie_id, project_verplicht, BoekvoorstelData(
         document_id=document_id,
         vendor_id=vendor_id,
@@ -1369,14 +1444,9 @@ def _lees_opgeslagen_voorstel(
         periode=_opgeslagen_periode(bestaand, veldvoorstel),
         intake_kanaal=kanaal,
         **_opgeslagen_betaalstatus(bestaand, veldvoorstel, kanaal=kanaal).als_velden(),
-        **_samenvoeg_velden(
-            session,
-            administratie_id=administratie_id,
-            vendor_id=vendor_id,
-            veldvoorstel=veldvoorstel,
-            project_verplicht=project_verplicht,
-            standaard_samenvoegen=standaard_samenvoegen,
-        ),
+        **samenvoeg,
+        regels_modus_hersteld=modus_hersteld,
+        **_pinbon_velden(veldvoorstel, totaalbedrag=bestaand.totaalbedrag),
         **afdeling,
     ))
     # Blok 9: kop-omschrijving over de OPGESLAGEN regels (= wat de motoren boeken); mens-override uit de tijdlijn wint.
@@ -1499,6 +1569,8 @@ def _bereken_prefill(
         intake_kanaal=kanaal,
         **_automatische_betaalstatus(veldvoorstel, kanaal=kanaal).als_velden(),
         **samenvoeg,
+        # BUG 18-09 (regel 4): totaal uit de pinbon (groen) mét herkomst-chip; oranje = veld leeg, de mens beslist.
+        **_pinbon_velden(veldvoorstel, totaalbedrag=_als_decimal(veldvoorstel.get("totaal_incl"))),
         **_afdeling_velden(session, administratie_id=administratie_id, vendor_id=vendor_id, huidige_afdeling_id=None),
     ))
     # Blok 9: kop-omschrijving over de regels zoals het scherm ze toont (samengevoegd = de ene regel); nog geen
@@ -1667,6 +1739,44 @@ def persisteer_prefill_bij_openen(
     return True
 
 
+WEERGAVE_HERSTELD_SLEUTEL = "weergave_hersteld"
+
+
+def registreer_modus_herstel(*, administratie_id: uuid.UUID, document_id: uuid.UUID, geopend_door: uuid.UUID) -> bool:
+    """BUG 18-09 (Zilver Horeca): tijdlijnregel "weergave hersteld: N opgeslagen regels, modus stond op samengevoegd"
+    zodra de leesroute de modus op de data laat volgen (`BoekvoorstelData.regels_modus_hersteld`). Idempotent per
+    document × regelaantal (één regel per herstel, niet per opening). Systeem-actor (afleiding), de opener in het
+    detail.
+    Nooit een blokkade van het openen: de aanroeper vangt fouten en logt. True = geschreven."""
+    with scoped_session(administratie_id) as session:
+        document = _laad_document(session, document_id=document_id)
+        n = session.scalar(
+            select(func.count()).select_from(BoekvoorstelRegel).where(BoekvoorstelRegel.document_id == document_id)
+        ) or 0
+        if n <= 1:
+            return False
+        al = any(
+            (g.detail or {}).get(WEERGAVE_HERSTELD_SLEUTEL, {}).get("regels") == n
+            for g in _gebeurtenissen_van(session, document_id)
+        )
+        if al:
+            return False
+        session.add(
+            DocumentGebeurtenis(
+                document_id=document_id,
+                van_status=document.status,
+                naar_status=document.status,
+                actor_id=SYSTEEM_ACTOR_ID,
+                detail={
+                    WEERGAVE_HERSTELD_SLEUTEL: {"regels": n, "modus_stond_op": "samengevoegd"},
+                    "reden": f"weergave hersteld: {n} opgeslagen regels, modus stond op samengevoegd",
+                    "geopend_door": str(geopend_door),
+                },
+            )
+        )
+    return True
+
+
 def _gebeurtenissen_van(session: Session, document_id: uuid.UUID) -> list[DocumentGebeurtenis]:
     return list(
         session.scalars(
@@ -1675,6 +1785,41 @@ def _gebeurtenissen_van(session: Session, document_id: uuid.UUID) -> list[Docume
             .order_by(DocumentGebeurtenis.tijdstip)
         )
     )
+
+
+#: 18-09 (btw volgt tarief): tijdlijn-notitie "btw herrekend uit tarief" — per regel van/naar tarief + btw-bedrag.
+BTW_HERREKEND_SLEUTEL = "btw_herrekend"
+
+
+def _btw_herrekend_notities(vorige: list[BoekvoorstelRegel], nieuwe: list) -> list[dict]:
+    """Regels (op volgnummer) waar het TARIEF én het BTW-BEDRAG tegelijk veranderden = de mens (of een check-actie) koos
+    een ander tarief en de btw volgde (regel 1 opdracht 18-09) — incl. "btw in kosten" (nieuw tarief 0 %, btw 0,
+    netto = oude netto + oude btw). Alleen opgeslagen-regel → opgeslagen-regel; een nieuwe/verwijderde regel telt niet."""
+    uit: list[dict] = []
+    for i, (oud, nw) in enumerate(zip(vorige, nieuwe, strict=False), start=1):
+        if oud.taxrate_id is None or nw.taxrate_id is None or oud.taxrate_id == nw.taxrate_id:
+            continue
+        if oud.btw_bedrag is None or nw.btw_bedrag is None or oud.btw_bedrag == nw.btw_bedrag:
+            continue
+        in_kosten = bool(
+            nw.btw_bedrag == 0
+            and oud.netto_bedrag is not None
+            and nw.netto_bedrag is not None
+            and nw.netto_bedrag == oud.netto_bedrag + oud.btw_bedrag
+        )
+        uit.append(
+            {
+                "regel": i,
+                "van_taxrate_id": str(oud.taxrate_id),
+                "naar_taxrate_id": str(nw.taxrate_id),
+                "btw_van": str(oud.btw_bedrag),
+                "btw_naar": str(nw.btw_bedrag),
+                "netto_van": _str_of_none(oud.netto_bedrag),
+                "netto_naar": _str_of_none(nw.netto_bedrag),
+                "in_kosten": in_kosten,
+            }
+        )
+    return uit
 
 
 def sla_boekvoorstel_op(
@@ -1818,13 +1963,17 @@ def sla_boekvoorstel_op(
 
         verdeling_snapshot = doorbelasting_service.neem_klaargezette_verdeling_los(session, document_id=document_id)
         oude_regels_snapshot: dict | None = None
+        # 18-09 (btw volgt tarief): de vorige regels altijd even vasthouden — voor de tijdlijnregel "btw herrekend uit
+        # tarief" (tarief én btw-bedrag gewijzigd op dezelfde regel) en de her-autosave-audit hieronder.
+        vorige_regels = session.scalars(
+            select(BoekvoorstelRegel)
+            .where(BoekvoorstelRegel.document_id == document_id)
+            .order_by(BoekvoorstelRegel.volgnummer)
+        ).all()
+        btw_herrekend = [] if autosave else _btw_herrekend_notities(vorige_regels, regels)
         if prefill_snapshot is not None and not was_nieuw:
             # Her-autosave ná een verse extractie (persisteer_prefill_bij_openen): de vorige stand in het audit-event.
-            oude_regels = session.scalars(
-                select(BoekvoorstelRegel)
-                .where(BoekvoorstelRegel.document_id == document_id)
-                .order_by(BoekvoorstelRegel.volgnummer)
-            ).all()
+            oude_regels = vorige_regels
             if oude_regels:
                 oude_regels_snapshot = {
                     "opgeslagen": True,
@@ -1922,6 +2071,17 @@ def sla_boekvoorstel_op(
                 administratie_id=administratie_id,
             )
         else:
+            if btw_herrekend:
+                # 18-09 (Peter, casus Rituals): tariefwijziging mét herrekend btw-bedrag = zichtbaar in de tijdlijn.
+                session.add(
+                    DocumentGebeurtenis(
+                        document_id=document_id,
+                        van_status=document.status,
+                        naar_status=document.status,
+                        actor_id=actor_id,
+                        detail={BTW_HERREKEND_SLEUTEL: btw_herrekend},
+                    )
+                )
             record_audit_event(
                 session,
                 actor_id=actor_id,
@@ -1934,6 +2094,7 @@ def sla_boekvoorstel_op(
                     "referentie": referentie,
                     "aantal_regels": len(regels),
                     "afdeling_id": str(afdeling_id) if afdeling_id else None,
+                    **({"btw_herrekend": btw_herrekend} if btw_herrekend else {}),
                 },
                 administratie_id=administratie_id,
             )
@@ -2128,6 +2289,41 @@ def _taxrate_namen(administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
     return {r.id: r.naam for r in rijen if r.naam}
 
 
+def _taxrate_info(administratie_id: uuid.UUID) -> dict[uuid.UUID, TariefInfo]:
+    """Tariefgegevens voor de check "Btw-bedrag past bij tarief" (18-09) uit de gesyncte taxrate_cache — lokaal, geen
+    RLZ-call: percentage, naam, RLZ-vlaggen IsRelayed/IsExcempt/IsFavorite en buitenland (naam-prefix ≠ NL)."""
+    from app.sync.btw import taxrate_vlaggen
+    from app.sync.models import TaxRateCache
+
+    with scoped_session(administratie_id) as session:
+        rijen = session.execute(
+            select(TaxRateCache.id, TaxRateCache.naam, TaxRateCache.percentage, TaxRateCache.brondata).where(
+                TaxRateCache.administratie_id == administratie_id, TaxRateCache.verdwenen_uit_bron_op.is_(None)
+            )
+        ).all()
+    uit: dict[uuid.UUID, TariefInfo] = {}
+    for r in rijen:
+        verlegd, vrijgesteld = taxrate_vlaggen(r.brondata)
+        uit[r.id] = TariefInfo(
+            percentage=r.percentage,
+            naam=r.naam,
+            verlegd=verlegd,
+            vrijgesteld=vrijgesteld,
+            favoriet=bool((r.brondata or {}).get("IsFavorite")),
+            buitenland=is_buitenland_tarief(r.naam),
+        )
+    return uit
+
+
+def _samengevoegd_n(voorstel: BoekvoorstelData, veldvoorstel: dict | None) -> int:
+    """Marge-basis voor de tarief-check: toont het scherm de ENE samengevoegde regel, dan telt het aantal gelezen
+    factuurregels (1 cent per regel, max 5 in `regelsom.marge_voor`); gesplitst = 1."""
+    if not (voorstel.regels_samenvoegen and voorstel.samengevoegde_regel is not None and len(voorstel.regels) == 1):
+        return 1
+    gelezen = (veldvoorstel or {}).get("regels") or []
+    return max(1, len(gelezen))
+
+
 def _duplicaatcheck_niet_uitgevoerd_rapport(
     *,
     administratie_id: uuid.UUID,
@@ -2140,6 +2336,7 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
     historie_treffers: list[dict] | None = None,
     module_check: CheckResultaat | None = None,
     crediteur_niet_gekoppeld: str | None = None,
+    samengevoegd_n: int = 1,
 ) -> CheckRapport:
     """Bouwt het rapport voor het geval de RLZ-verbinding zelf al niet tot stand komt (credential-
     fout, netwerkfout) — vóórdat check_duplicaat() de kans krijgt zijn eigen RlzApiError-vangnet te
@@ -2179,6 +2376,10 @@ def _duplicaatcheck_niet_uitgevoerd_rapport(
                 regels=regels,
                 totaal_excl=gelezen_totalen[0],
                 factuur_btw=gelezen_totalen[1],
+            ),
+            # 18-09: btw-bedrag volgt het tarief — lokaal, dus óók in de storings-tak.
+            check_btw_past_bij_tarief(
+                regels=regels, tarieven=_taxrate_info(administratie_id), samengevoegd_n=samengevoegd_n
             ),
             check_vervaldatum(factuurdatum=voorstel.factuurdatum, vervaldatum=voorstel.vervaldatum),
             check_buitenland_tarief_crediteurkaart(
@@ -2262,7 +2463,12 @@ def _afdeling_check(*, administratie_id: uuid.UUID, voorstel: BoekvoorstelData) 
 
 
 def voer_checks_uit(
-    *, administratie_id: uuid.UUID, document_id: uuid.UUID, client: RlzClient | None = None
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    client: RlzClient | None = None,
+    extern: str = checks_extern.AUTO,
+    timing: checks_extern.StapTiming | None = None,
 ) -> CheckRapport:
     """Herleest het OPGESLAGEN boekvoorstel (nooit het niet-opgeslagen UBL-voorstel — de checks
     gelden over wat de controleur daadwerkelijk heeft bevestigd) en toetst de drie harde checks
@@ -2271,7 +2477,17 @@ def voer_checks_uit(
     open verbinding (bv. de boek-actie zelf) geeft 'm door om niet twee keer in te loggen.
 
     Lukt het openen van die eigen verbinding niet (credential-fout, RLZ onbereikbaar), dan wordt
-    dat NOOIT een onafgevangen exception (dus geen kale 500) — zie _duplicaatcheck_niet_uitgevoerd_rapport."""
+    dat NOOIT een onafgevangen exception (dus geen kale 500) — zie _duplicaatcheck_niet_uitgevoerd_rapport.
+
+    Boeken sneller (Peter 18-09, `checks_extern.py`): de checks zijn gesplitst in LOKAAL (verplichte velden,
+    regeltelling, btw, vervaldatum, project, betaalstatus, module-duplicaat — synchroon, < 300 ms) en EXTERN
+    (IBAN-seed, RLZ-/Odoo-duplicaatquery, kandidaten ± 60 d — parallel, gecachet op de externe vingerafdruk).
+    `extern` = AUTO (cache als geldig, anders vers + cachen) | VERS (altijd vers: boeken_mislukt-retry, autoboek-pad,
+    herstel-CLI) | CACHE (nooit RLZ raken: geldige cache of "loopt nog" — het snelle lokale pad). `timing` verzamelt
+    de Server-Timing-stappen (`checks.lokaal`, `checks.extern`, `checks.ibanseed`, `checks.duplicaat`,
+    `checks.kandidaten`)."""
+    timing = timing or checks_extern.StapTiming()
+    t_lokaal = time.perf_counter()
     with scoped_session(administratie_id) as session:
         document = _laad_document(session, document_id=document_id)
         _controleer_niet_bevroren(document)
@@ -2317,6 +2533,159 @@ def voer_checks_uit(
             session, administratie_id=administratie_id, vendor_id=voorstel.vendor_id
         )
 
+    # --- extern: vingerafdruk → cache of (parallelle) verse run ---------------------------------------------------
+    from app.backends.registry import backend_voor
+
+    try:
+        backend_naam = backend_voor(administratie_id).value
+    except Exception:  # noqa: BLE001 — onbekende backend is geen reden om de checks te laten crashen
+        backend_naam = ""
+    vf = checks_extern.vingerafdruk(
+        vendor_id=voorstel.vendor_id,
+        identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
+        referentie=voorstel.referentie,
+        factuurdatum=voorstel.factuurdatum,
+        totaalbedrag=voorstel.totaalbedrag,
+        factuur_iban=factuur_iban,
+        boek_cyclus=voorstel.boek_cyclus,
+        backend=backend_naam,
+    )
+    keten = frozenset(
+        {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
+        | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
+    )
+    timing.tel("checks.lokaal", (time.perf_counter() - t_lokaal) * 1000)
+
+    ext = _extern_rapport(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        voorstel=voorstel,
+        factuur_iban=factuur_iban,
+        factuur_btw_nummer=factuur_btw_nummer,
+        btw_map=btw_map,
+        historie_treffers=historie_treffers,
+        identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
+        keten=keten,
+        vingerafdruk=vf,
+        backend_naam=backend_naam,
+        client=client,
+        extern=extern,
+        timing=timing,
+    )
+
+    t_bouw = time.perf_counter()
+    if ext.storing or ext.crediteur_niet_gekoppeld:
+        rapport = _duplicaatcheck_niet_uitgevoerd_rapport(
+            administratie_id=administratie_id,
+            voorstel=voorstel,
+            project_verplicht=project_verplicht,
+            factuur_iban=factuur_iban,
+            factuur_btw_nummer=factuur_btw_nummer,
+            reden=ext.storing or ext.crediteur_niet_gekoppeld or "",
+            gelezen_totalen=gelezen_totalen,
+            historie_treffers=historie_treffers,
+            module_check=module_check,
+            crediteur_niet_gekoppeld=ext.crediteur_niet_gekoppeld,
+            samengevoegd_n=_samengevoegd_n(voorstel, veldvoorstel),
+        )
+        timing.tel("checks.lokaal", (time.perf_counter() - t_bouw) * 1000)
+        return replace(
+            rapport,
+            extern_gecontroleerd_op=ext.gecontroleerd_op,
+            extern_uit_cache=ext.uit_cache,
+            extern_nog_niet=ext.nog_niet,
+        )
+
+    assert ext.duplicaat is not None and ext.duplicaat_over_crediteuren is not None
+    rapport = voer_harde_checks_uit(
+        client=None,
+        vendor_id=voorstel.vendor_id,
+        referentie=voorstel.referentie,
+        factuurdatum=voorstel.factuurdatum,
+        vervaldatum=voorstel.vervaldatum,
+        totaalbedrag=voorstel.totaalbedrag,
+        regels=_naar_check_regels(voorstel, _taxrate_percentages(administratie_id)),
+        eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
+        uitgezonderde_rlz_document_ids=keten,
+        project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
+        factuur_iban=factuur_iban,
+        vertrouwde_ibans=set(ext.vertrouwde_ibans),
+        iban_baseline_vastgelegd=ext.baseline_vastgelegd,
+        iban_seed_mislukt=ext.seed_mislukt,
+        eigen_btw_nummer=factuur_btw_nummer,
+        btw_per_vendor=btw_map,
+        taxrate_namen=_taxrate_namen(administratie_id),
+        totaal_excl=gelezen_totalen[0],
+        factuur_btw=gelezen_totalen[1],
+        historie_treffers=historie_treffers,
+        identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
+        tarieven=_taxrate_info(administratie_id),
+        samengevoegd_n=_samengevoegd_n(voorstel, veldvoorstel),
+        duplicaat_resultaat=ext.duplicaat,
+        duplicaat_over_crediteuren_resultaat=ext.duplicaat_over_crediteuren,
+    )
+    # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
+    # storings-tak), vóór de RLZ-afhankelijke checks.
+    resultaten = list(rapport.resultaten)
+    resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
+    # Blok 3 bundel 08-09: betaalstatus-check (lokaal) — een declaratie boekt nooit zonder betaalstatus.
+    resultaten.insert(
+        2, check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus)
+    )
+    # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
+    # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
+    resultaten.insert(3, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
+    # Blok 3 18-09: oranje signaal op een afgesloten project (lokaal), direct ná de projectverdeling — alleen als
+    # er iets te melden is.
+    if (pa := _project_afgesloten_check(administratie_id=administratie_id, voorstel=voorstel)) is not None:
+        resultaten.insert(4, pa)
+    # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
+    resultaten.append(module_check)
+    timing.tel("checks.lokaal", (time.perf_counter() - t_bouw) * 1000)
+    return CheckRapport(
+        tuple(resultaten),
+        extern_gecontroleerd_op=ext.gecontroleerd_op,
+        extern_uit_cache=ext.uit_cache,
+        extern_nog_niet=ext.nog_niet,
+    )
+
+
+#: Namen van de check-rijen die uit het EXTERNE deel komen (frontend: "gecontroleerd HH:MM" op precies deze rijen).
+EXTERNE_CHECK_NAMEN: tuple[str, ...] = ("IBAN-wissel", "Duplicaatcheck", "Duplicaat bij andere crediteur")
+
+
+def _extern_rapport(
+    *,
+    administratie_id: uuid.UUID,
+    document_id: uuid.UUID,
+    voorstel: BoekvoorstelData,
+    factuur_iban: str | None,
+    factuur_btw_nummer: str | None,
+    btw_map: dict[str, str],
+    historie_treffers: list[dict],
+    identiteit_vendor_ids: list[uuid.UUID],
+    keten: frozenset[uuid.UUID],
+    vingerafdruk: str,
+    backend_naam: str,
+    client: RlzClient | None,
+    extern: str,
+    timing: checks_extern.StapTiming,
+) -> checks_extern.ExternRapport:
+    """Het externe deel van de checks: cache (AUTO/CACHE) of een verse, PARALLELLE run (AUTO zonder geldige cache,
+    VERS). Sluit een zelf geopende verbinding altijd; een storing bij het openen = storings-tak (nooit gecachet)."""
+    if extern not in checks_extern.MODI:
+        raise ValueError(f"Onbekende extern-modus {extern!r}")
+    nu = datetime.now(UTC)
+    if extern in (checks_extern.AUTO, checks_extern.CACHE):
+        with timing.met("checks.cache"):
+            rij = checks_extern.lees_cache(administratie_id=administratie_id, document_id=document_id)
+        if checks_extern.is_geldig(rij, vingerafdruk=vingerafdruk, nu=nu):
+            assert rij is not None
+            return checks_extern.ExternRapport.uit_json(rij.rapport)
+        if extern == checks_extern.CACHE:
+            return checks_extern.ExternRapport.nog_niet_gecontroleerd(nu)
+
+    t_extern = time.perf_counter()
     eigen_client = client is None
     eigen_port = None
     if client is None:
@@ -2327,21 +2696,17 @@ def voer_checks_uit(
                 administratie_id, rlz_client_factory=lambda: _rlz_leesclient(administratie_id)
             )
             client = eigen_port.leesclient()
-        except Exception as exc:  # noqa: BLE001 — bewust breed, zie de docstring hierboven
-            return _duplicaatcheck_niet_uitgevoerd_rapport(
-                administratie_id=administratie_id,
-                voorstel=voorstel,
-                project_verplicht=project_verplicht,
-                factuur_iban=factuur_iban,
-                factuur_btw_nummer=factuur_btw_nummer,
-                reden=str(exc),
-                gelezen_totalen=gelezen_totalen,
-                historie_treffers=historie_treffers,
-                module_check=module_check,
-            )
+        except Exception as exc:  # noqa: BLE001 — bewust breed, zie de docstring van voer_checks_uit
+            timing.tel("checks.extern", (time.perf_counter() - t_extern) * 1000)
+            return checks_extern.ExternRapport(gecontroleerd_op=nu, storing=str(exc))
+    assert client is not None
+    eigen_rlz_id = rlz_herboeking_id(document_id, voorstel.boek_cyclus)
     try:
+        # Eerst de IBAN-seed (één call; een Odoo-crediteur zonder partner-koppeling meldt zich hier — dan is élke
+        # verdere externe call zinloos, blok D 07-09), daarna de twee duplicaatquery's PARALLEL.
+        t_seed = time.perf_counter()
         try:
-            vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = leverancier_iban.seed_en_baseline_voor_checks(
+            seed: object = leverancier_iban.seed_en_baseline_voor_checks(
                 administratie_id=administratie_id,
                 vendor_id=voorstel.vendor_id,
                 factuur_iban=factuur_iban,
@@ -2351,72 +2716,80 @@ def voer_checks_uit(
                 # wél de echte actor.
                 actor_id=SYSTEEM_ACTOR_ID,
             )
-        except CrediteurNietGekoppeld as exc:
-            # Blok D 07-09: Odoo-administratie, crediteur zonder partner-koppeling — de IBAN-seed én de live
-            # duplicaatquery kunnen niet draaien (dezelfde koppeling). Geen 500: de storings-tak mét een leesbare,
-            # BLOKKERENDE uitkomst op de IBAN-rij (handelingsperspectief in de tekst); lokale checks + module-check
-            # draaien gewoon door. Fail-closed tot de koppeling er is.
-            return _duplicaatcheck_niet_uitgevoerd_rapport(
-                administratie_id=administratie_id,
-                voorstel=voorstel,
-                project_verplicht=project_verplicht,
-                factuur_iban=factuur_iban,
-                factuur_btw_nummer=factuur_btw_nummer,
-                reden=str(exc),
-                gelezen_totalen=gelezen_totalen,
-                historie_treffers=historie_treffers,
-                module_check=module_check,
-                crediteur_niet_gekoppeld=str(exc),
-            )
-        # Tegenboek-pad: het eigen GUID volgt de boek_cyclus (herboeking = nieuw GUID); alle
-        # eerdere (her)boekings- en tegenboekings-GUID's van dit document zijn de gekoppelde
-        # correctieketen en tellen niet als duplicaat (mockup 22-08 — de herboeking heeft
-        # bewust dezelfde Entity+Reference+bedrag als het origineel).
-        keten = frozenset(
-            {rlz_herboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
-            | {rlz_tegenboeking_id(document_id, c) for c in range(voorstel.boek_cyclus + 1)}
-        )
-        rapport = voer_harde_checks_uit(
-            client=client,
-            vendor_id=voorstel.vendor_id,
-            referentie=voorstel.referentie,
-            factuurdatum=voorstel.factuurdatum,
-            vervaldatum=voorstel.vervaldatum,
-            totaalbedrag=voorstel.totaalbedrag,
-            regels=_naar_check_regels(voorstel, _taxrate_percentages(administratie_id)),
-            eigen_rlz_document_id=rlz_herboeking_id(document_id, voorstel.boek_cyclus),
-            uitgezonderde_rlz_document_ids=keten,
-            project_verplicht=_project_verplicht_per_regel(project_verplicht, voorstel),
-            factuur_iban=factuur_iban,
-            vertrouwde_ibans=vertrouwde_ibans,
-            iban_baseline_vastgelegd=baseline_vastgelegd,
-            iban_seed_mislukt=seed_mislukt,
-            eigen_btw_nummer=factuur_btw_nummer,
-            btw_per_vendor=btw_map,
-            taxrate_namen=_taxrate_namen(administratie_id),
-            totaal_excl=gelezen_totalen[0],
-            factuur_btw=gelezen_totalen[1],
-            historie_treffers=historie_treffers,
-            identiteit_vendor_ids=sorted(identiteit_vendor_ids, key=str),
-        )
-        # Blok A 28-08: afdeling-check direct ná de verplichte velden (zelfde plek als in de
-        # storings-tak), vóór de RLZ-afhankelijke checks.
-        resultaten = list(rapport.resultaten)
-        resultaten.insert(1, _afdeling_check(administratie_id=administratie_id, voorstel=voorstel))
-        # Blok 3 bundel 08-09: betaalstatus-check (lokaal) — een declaratie boekt nooit zonder betaalstatus.
-        resultaten.insert(
-            2, check_betaalstatus_declaraties(kanaal=voorstel.intake_kanaal, betaalstatus=voorstel.betaalstatus)
-        )
-        # Blok C 04-09: projectverdeling-check (lokaal, geen RLZ) direct ná de afdeling — zelfde plek als in
-        # de storings-tak; blokkeert zolang een actieve verdeling niet exact op 100 % sluit.
-        resultaten.insert(3, _projectverdeling_check(voorstel, project_verplicht=project_verplicht))
-        # Blok 3 18-09: oranje signaal op een afgesloten project (lokaal), direct ná de projectverdeling — alleen als
-        # er iets te melden is.
-        if (pa := _project_afgesloten_check(administratie_id=administratie_id, voorstel=voorstel)) is not None:
-            resultaten.insert(4, pa)
-        # 07-09: "Duplicaat (module)" als laatste rij, ná de twee live-RLZ-duplicaatchecks.
-        resultaten.append(module_check)
-        return CheckRapport(tuple(resultaten))
+        except Exception as exc:  # noqa: BLE001 — geclassificeerd hieronder (CrediteurNietGekoppeld vs storing)
+            seed = exc
+        duur: dict[str, float] = {"checks.ibanseed": round((time.perf_counter() - t_seed) * 1000, 1)}
+        uitkomsten: dict[str, object] = {}
+        if not isinstance(seed, Exception):
+            taken = {
+                # check_duplicaat = letterlijke Reference-query per crediteurrecord PLUS de kandidaten ± 60 dagen
+                # (extern_bestaan) — één taak, want beide lopen al binnen die functie.
+                "checks.duplicaat": lambda: check_duplicaat(
+                    client=client,
+                    vendor_id=voorstel.vendor_id,
+                    referentie=voorstel.referentie,
+                    totaalbedrag=voorstel.totaalbedrag,
+                    factuurdatum=voorstel.factuurdatum,
+                    identiteit_vendor_ids=identiteit_vendor_ids,
+                    eigen_rlz_document_id=eigen_rlz_id,
+                    uitgezonderde_rlz_document_ids=keten,
+                    historie_treffers=historie_treffers,
+                ),
+                "checks.kandidaten": lambda: check_duplicaat_over_crediteuren(
+                    client=client,
+                    vendor_id=voorstel.vendor_id,
+                    referentie=voorstel.referentie,
+                    totaalbedrag=voorstel.totaalbedrag,
+                    eigen_btw_nummer=factuur_btw_nummer,
+                    btw_per_vendor=btw_map,
+                    eigen_rlz_document_id=eigen_rlz_id,
+                    uitgezonderde_rlz_document_ids=keten,
+                ),
+            }
+            uitkomsten, duur_parallel = checks_extern.voer_parallel_uit(taken=taken)
+            duur.update(duur_parallel)
     finally:
         if eigen_client and eigen_port is not None:
             eigen_port.__exit__(None, None, None)
+    for naam, ms in duur.items():
+        timing.tel(naam, ms)
+    timing.tel("checks.extern", (time.perf_counter() - t_extern) * 1000)
+
+    if isinstance(seed, CrediteurNietGekoppeld):
+        # Blok D 07-09: Odoo-administratie, crediteur zonder partner-koppeling — leesbare, BLOKKERENDE uitkomst
+        # (fail-closed tot de koppeling er is). Stabiele toestand → wél cachebaar.
+        ext = checks_extern.ExternRapport(gecontroleerd_op=nu, crediteur_niet_gekoppeld=str(seed), duur_ms=duur)
+    elif isinstance(seed, Exception):
+        ext = checks_extern.ExternRapport(gecontroleerd_op=nu, storing=str(seed), duur_ms=duur)
+    else:
+        vertrouwde_ibans, baseline_vastgelegd, seed_mislukt = seed
+        dup = uitkomsten["checks.duplicaat"]
+        dup_over = uitkomsten["checks.kandidaten"]
+        if isinstance(dup, Exception):
+            dup = CheckResultaat("Duplicaatcheck", False, f"{checks_extern.STORING_PREFIX}: {dup}")
+        if isinstance(dup_over, Exception):
+            dup_over = CheckResultaat(
+                "Duplicaat bij andere crediteur",
+                True,
+                f"Kon niet over crediteuren heen toetsen: {dup_over}",
+                signaal=True,
+            )
+        ext = checks_extern.ExternRapport(
+            gecontroleerd_op=nu,
+            vertrouwde_ibans=tuple(sorted(vertrouwde_ibans)),
+            baseline_vastgelegd=baseline_vastgelegd,
+            seed_mislukt=seed_mislukt,
+            duplicaat=dup,
+            duplicaat_over_crediteuren=dup_over,
+            duur_ms=duur,
+        )
+    if ext.cachebaar:
+        with timing.met("checks.cache"):
+            checks_extern.schrijf_cache(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                vingerafdruk=vingerafdruk,
+                rapport=ext,
+                backend=backend_naam,
+            )
+    return ext

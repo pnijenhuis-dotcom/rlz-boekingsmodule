@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError, apiFetch, apiJson, apiPostJson } from '../api/client'
 import type {
+  CheckActieDto,
   BoekenResponseDto,
+  BoekIngediendDto,
   BoekvoorstelDto,
   BoekvoorstelMetChecksDto,
   BoekvoorstelPeriodeDto,
@@ -19,7 +21,8 @@ import { bedragAlsGetal, berekenBtwBedrag, normaliseerBedrag } from './bedrag'
 import { anderModus, useBedragModus } from './bedragModus'
 import { BedragModusInput } from './BedragModusInput'
 import { crediteurSuggesties } from './crediteurSuggesties'
-import { toetsRegelsom } from './regelsom'
+import { btwUitTarief, splitsBruto, toetsRegelsom, zetBtwInKosten } from './regelsom'
+import { useTaxrateOptiesGefilterd } from './useTaxrateOptiesGefilterd'
 import {
   eerderOokTekst,
   bepaalGeheugenChip,
@@ -168,12 +171,46 @@ interface RegelState {
   /** True als de voorstel-call voor deze regel mislukte: dat mag niet op een leeg geheugen
    * lijken ("niets verdwijnt stil") — rustige inline-indicatie, nooit blokkerend. */
   geheugenFout: boolean
+  /** BUG 18-09 (Zilver Horeca): het btw-percentage dat de FACTUURREGEL zelf draagt (btw-kolom "9%"/"0%", fractie). De
+   * bruto-kolom rekent hiermee (netto × (1 + factuur-tarief)) zolang de mens de btw-code niet zelf koos — nooit met het
+   * geheugen-tarief. Null = de factuur zegt niets per regel (dan telt de gekozen btw-code). */
+  factuurBtwPercentage: number | null
+  /** BUG 18-09 (regel 5): bedrag niet gelezen (afgedekt/onleesbaar) — chip "niet gelezen (afgedekt)" i.p.v. lege cel. */
+  bedragNietGelezen: boolean
+  /** 18-09 (Peter, casus Rituals): de factuur-btw van deze regel zit in de kosten (0 %/geen btw op een regel mét
+   * factuur-btw: netto = bruto, btw 0,00) — chip "btw in kosten (niet aftrekbaar)". Terug naar een %-tarief splitst
+   * het bruto weer (regelsom.splitsBruto). */
+  btwInKosten: boolean
 }
 
-/** Afrondingsmarge btw-hint (regelrij-UI 25-08): tot en met 1 cent is afronding, geen afwijking. */
-const BTW_AFRONDINGSMARGE = 0.0105
 
 const GEEN_HANDMATIGE_VELDEN: HandmatigeVelden = { ledgerId: false, taxrateId: false, projectId: false }
+
+/** 18-09 (btw volgt het tarief — spiegel van regelsom.py): nieuwe [netto, btw, inKosten] bij een tariefkeuze. */
+export function herrekenBtwBijTarief(
+  regel: { netto: number | null; btw: number | null; inKosten: boolean },
+  optie: ComboboxOptie | undefined,
+): { netto: number | null; btw: number | null; inKosten: boolean } | null {
+  if (!optie || regel.netto === null) return null
+  const pct = optie.percentage
+  const nulNl = pct === 0 && !optie.verlegd && !optie.buitenland && !optie.vrijgesteld
+  const verwachtNul = Boolean(optie.verlegd || optie.buitenland || optie.vrijgesteld) || pct === 0
+  const btw = regel.btw ?? 0
+  if (verwachtNul) {
+    if (nulNl && btw !== 0) {
+      const [netto, nul] = zetBtwInKosten(regel.netto, btw)
+      return { netto, btw: nul, inKosten: true }
+    }
+    // verlegd/vrijgesteld/buitenland: geen btw op de factuur — netto ongewijzigd (of het bruto als het al in kosten zat).
+    return { netto: regel.netto, btw: 0, inKosten: regel.inKosten && nulNl }
+  }
+  if (pct === undefined) return null
+  if (regel.inKosten) {
+    const [netto, nieuwBtw] = splitsBruto(regel.netto, pct)
+    return { netto, btw: nieuwBtw, inKosten: false }
+  }
+  return { netto: regel.netto, btw: btwUitTarief(regel.netto, pct), inKosten: false }
+}
 
 function nieuweRegel(): RegelState {
   return {
@@ -196,6 +233,9 @@ function nieuweRegel(): RegelState {
     geheugen: null,
     handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
     geheugenFout: false,
+    btwInKosten: false,
+    factuurBtwPercentage: null,
+    bedragNietGelezen: false,
   }
 }
 
@@ -209,7 +249,9 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
-    btwDetail: r.btw_bron_detail ?? null,
+    btwDetail:
+      r.btw_bron_detail ??
+      (r.btw_bron === 'factuur_regel' ? factuurRegelPctTekst(percentageUitDto(r.factuur_btw_percentage)) : null),
     gbBron: r.ledger_id ? gbBronUitDto(r.gb_bron) : null,
     gbDetail: r.gb_voorstel_detail ?? null,
     projectBron: projectBronUitDto(r.project_bron),
@@ -220,7 +262,22 @@ function regelUitDtoRegel(r: BoekvoorstelRegelDto, aiZekerheid: number | null = 
     geheugen: null,
     handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
     geheugenFout: false,
+    btwInKosten: false,
+    factuurBtwPercentage: percentageUitDto(r.factuur_btw_percentage),
+    bedragNietGelezen: Boolean(r.bedrag_niet_gelezen) && !r.netto_bedrag,
   }
+}
+
+/** Fractie-string uit de DTO ("0.0900") → getal; leeg/onparsbaar = null. */
+function percentageUitDto(waarde: string | null | undefined): number | null {
+  if (waarde === null || waarde === undefined || waarde === '') return null
+  const n = Number(String(waarde).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+/** Chip-tekst voor btw_bron 'factuur_regel': het kolom-percentage als "0 %" / "9 %". */
+function factuurRegelPctTekst(pct: number | null): string | null {
+  return pct === null ? null : `${Math.round(pct * 100)} %`
 }
 
 function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[] {
@@ -229,7 +286,7 @@ function regelsUitDto(dto: BoekvoorstelDto, ai: AiVoorstel | null): RegelState[]
   // filtert tariefstaffel-regels uit de prefill — uitlijnen op de BOEKBARE regels van het veldvoorstel.
   const boekbaar = ai ? boekbareAiRegels(ai) : null
   const aiScores = boekbaar && boekbaar.length === dto.regels.length ? boekbaar.map((x) => x.zekerheid) : null
-  return dto.regels.map((r, i) => regelUitDtoRegel(r, aiScores ? aiScores[i] : null))
+  return dto.regels.map((r, i) => ({ ...regelUitDtoRegel(r, aiScores ? aiScores[i] : null), btwInKosten: Boolean(r.btw_in_kosten) }))
 }
 
 /** Fix 3: de per-regel-variant rechtstreeks uit het AI-veldvoorstel — nodig als het voorstel in
@@ -248,7 +305,8 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     btw: r.btw_bedrag ?? '',
     btwHandmatig: Boolean(r.btw_bedrag),
     btwBron: btwBronUitDto(r.btw_bron, r.taxrate_id),
-    btwDetail: null, // AI-veldvoorstel-regels kennen geen verlegd-keuze (die reist mee op de server-prefill)
+    // AI-veldvoorstel-regels kennen geen verlegd-keuze (die reist mee op de server-prefill); wél het kolom-percentage.
+    btwDetail: r.btw_bron === 'factuur_regel' ? factuurRegelPctTekst(percentageUitDto(r.btw_kolom_percentage)) : null,
     // Client-side splitsing uit het AI-veldvoorstel kent geen regel-GB-voorstel (dat reist mee op de
     // server-prefill van dto.regels); de kop-niveau-engine vult 'm dan zoals voorheen.
     gbBron: null,
@@ -261,6 +319,9 @@ function regelsUitAi(ai: AiVoorstel): RegelState[] {
     geheugen: null,
     handmatigeVelden: GEEN_HANDMATIGE_VELDEN,
     geheugenFout: false,
+    btwInKosten: false,
+    factuurBtwPercentage: percentageUitDto(r.btw_kolom_percentage),
+    bedragNietGelezen: Boolean(r.bedrag_niet_gelezen) && !r.netto_bedrag,
   }))
 }
 
@@ -556,11 +617,19 @@ function GeheugenChipBlok({ veld, huidig, handmatig, opties }: GeheugenChipBlokP
  * document van dezelfde klant). `staande_goedkeuring` = ter accordering aangeboden én direct
  * geboekt (alles_akkoord + geboekt in de response). `waarschuwing` = iets ging ná de geslaagde
  * hoofdactie (deels) mis en moet zichtbaar blijven (doorbelasting-fout, boek_fout). */
+/** Boeken sneller (18-09): de check-rijen die uit het EXTERNE deel komen (spiegel van backend
+ * `boekvoorstel.EXTERNE_CHECK_NAMEN`) — alleen deze rijen dragen "gecontroleerd HH:MM"/"Loopt…". */
+export const EXTERNE_CHECK_NAMEN = new Set(['IBAN-wissel', 'Duplicaatcheck', 'Duplicaat bij andere crediteur'])
+
 export interface GeboektInfo {
-  uitkomst: 'geboekt' | 'ter_accordering' | 'staande_goedkeuring'
+  uitkomst: 'geboekt' | 'ter_accordering' | 'staande_goedkeuring' | 'wordt_geboekt'
   referentie: string | null
   boekstuknummer: string | null
   waarschuwing?: string
+  /** Boeken sneller (18-09): bij 202 `wordt_geboekt` het server-side gekozen volgende document (id + soort voor de
+   * route) — de frontend navigeert direct, zonder lijst-fetch. */
+  volgendeDocumentId?: string | null
+  volgendeDocumentSoort?: string | null
   /** Mini-voorraad (06-09): instroom uit de boek-response — null/afwezig zonder opt-in. */
   miniVoorraad?: BoekenResponseDto['mini_voorraad']
 }
@@ -618,6 +687,9 @@ interface Props {
   /** Controlescherm v2 (02-09): stand van de harde checks naar buiten (topbar-chip "alle controles
    * groen ✓"); de inklapregel "Controles" en de afwijkingen-banner rendert het paneel zelf. */
   onChecksStand?: (stand: ChecksStand | null) => void
+  /** Boeken sneller (18-09): de document-id's in de GETOONDE lijstvolgorde — reist mee met POST …/boeken zodat de server
+   * het volgende document kiest met exact de `kiesVolgendDocument`-regels (statussen vers uit de database). */
+  lijstVolgorde?: string[]
   /** B1 (04-09): lege stand van de project-kolom = actie "Verdelen over projecten…" — opent het
    * Projectverdeling-blok (vaste regels en/of pro rato omzet) voor de regels zonder project. */
   onVerdelenGevraagd?: () => void
@@ -659,6 +731,7 @@ export function BoekvoorstelPanel({
   onActies,
   onOnopgeslagenWijzigingen,
   onChecksStand,
+  lijstVolgorde,
   inklapDoel,
   onVerdelenGevraagd,
   checksHerrunVersie = 0,
@@ -686,6 +759,10 @@ export function BoekvoorstelPanel({
   const [nieuwProjectVoorRegel, setNieuwProjectVoorRegel] = useState<string | null>(null)
   const { opties: grootboekOpties, fout: grootboekFout, laden: grootboekLaden } = useGrootboekOpties(administratieId, cacheVersie)
   const { opties: taxrateOpties, fout: taxrateFout, laden: taxrateLaden } = useTaxrateOpties(administratieId, cacheVersie)
+  // 18-09 DEEL B: NL-leverancier → alleen NL-tarieven, buitenland ingeklapt; gebruik 12 mnd bovenaan (één hook, alle schermen).
+  // 18-09 DEEL B: land van de leverancier (server: btw-nummer crediteur → btw-nummer factuur → IBAN → onbekend).
+  const [leverancierLand, setLeverancierLand] = useState<{ land: string | null; bron: string | null }>({ land: null, bron: null })
+  const taxrateGefilterd = useTaxrateOptiesGefilterd(taxrateOpties, leverancierLand.land)
   const percentageMap = useMemo(() => {
     const map: Record<string, number> = {}
     for (const optie of taxrateOpties) if (optie.percentage !== undefined) map[optie.id] = optie.percentage
@@ -751,6 +828,12 @@ export function BoekvoorstelPanel({
   // bewaart zijn eigen regels zodat heen-en-weer schakelen geen invoer weggooit. Bij projectplicht
   // is samenvoegen hard uitgesloten (samenvoegen_toegestaan=false van de backend).
   const [regelsSamenvoegen, setRegelsSamenvoegen] = useState(true)
+  // BUG 18-09 (Zilver Horeca): de server liet de modus de data volgen (voorkeur "samenvoegen", > 1 regel opgeslagen) —
+  // chip "weergave hersteld" naast het vinkje; de tijdlijnregel schrijft de server.
+  const [modusHersteld, setModusHersteld] = useState<number | null>(null)
+  // BUG 18-09 (regel 4): totaal uit de pinbon — herkomst + bon-toets voor de chip onder het totaalveld.
+  const [totaalBron, setTotaalBron] = useState<'factuur' | 'pinbon' | null>(null)
+  const [totaalPinbon, setTotaalPinbon] = useState<{ bedrag: string; status: string | null } | null>(null)
   const [samenvoegenToegestaan, setSamenvoegenToegestaan] = useState(true)
   const [samenvoegenBeschikbaar, setSamenvoegenBeschikbaar] = useState(false)
   const [inactieveRegels, setInactieveRegels] = useState<RegelState[]>([])
@@ -816,6 +899,8 @@ export function BoekvoorstelPanel({
         const aiPrefill = (!dto.opgeslagen || dto.prefill_automatisch === true) && ai !== null
         setAiChipsActief(aiPrefill)
         setAccorderingOvergeslagenReden(dto.accordering_overgeslagen_reden ?? null)
+        // 18-09 DEEL B: land van de leverancier voor de NL-eerst btw-keuzelijst + chip in de crediteur-kaart.
+        setLeverancierLand({ land: dto.leverancier_land ?? null, bron: dto.leverancier_land_bron ?? null })
         setVendorId(dto.vendor_id)
         setReferentie(dto.referentie ?? '')
         setOmschrijving(dto.omschrijving ?? '')
@@ -858,8 +943,18 @@ export function BoekvoorstelPanel({
         setBoekstuknummer(dto.rlz_boekstuknummer)
         setVerlegdVermelding(dto.btw_verlegd_vermelding ?? ai?.btw_verlegd_vermelding ?? null)
 
+        setTotaalBron(dto.totaal_bron ?? null)
+        setTotaalPinbon(dto.totaal_pinbon ? { bedrag: dto.totaal_pinbon, status: dto.totaal_pinbon_status ?? null } : null)
+
+        // BUG 18-09 (Zilver Horeca Fac-25-022711): één waarheid voor de modus. De server laat `regels_samenvoegen` al de
+        // data volgen (`regels_modus_hersteld`); dit is de tweede grendel — staan er > 1 opgeslagen regels, dan is
+        // `dto.regels` NOOIT de samengevoegde variant, wat de voorkeur ook zegt (vinkje, hint en tabel uit dezelfde stand).
+        const meerdereOpgeslagen = dto.opgeslagen && dto.regels.length > 1
+        const hersteld = Boolean(dto.regels_modus_hersteld) || (meerdereOpgeslagen && Boolean(dto.regels_samenvoegen))
+        setModusHersteld(hersteld ? dto.regels.length : null)
         // Fix 3: bepaal de gesplitste én de samengevoegde variant, en welke actief start.
-        const opgeslagenSamengevoegd = dto.opgeslagen && dto.regels_samenvoegen && dto.samenvoegen_toegestaan
+        const opgeslagenSamengevoegd =
+          dto.opgeslagen && dto.regels_samenvoegen && dto.samenvoegen_toegestaan && !meerdereOpgeslagen
         const gesplitst = opgeslagenSamengevoegd
           ? ai !== null
             ? regelsUitAi(ai) // dto.regels is hier de opgeslagen samengevoegde regel — splitsen prefillt uit het AI-voorstel
@@ -873,7 +968,8 @@ export function BoekvoorstelPanel({
         // Actieve modus volgt de dto-stand (voorkeur per crediteur, default samengevoegd); het
         // vinkje verschijnt alleen als er echt iets te splitsen valt (meer dan één factuurregel).
         const toegestaan = dto.samenvoegen_toegestaan ?? true
-        const samenvoegenActief = toegestaan && Boolean(dto.regels_samenvoegen) && samengevoegd !== null
+        const samenvoegenActief =
+          toegestaan && Boolean(dto.regels_samenvoegen) && samengevoegd !== null && !meerdereOpgeslagen
         setSamenvoegenToegestaan(toegestaan)
         setSamenvoegenBeschikbaar(toegestaan && samengevoegd !== null && gesplitst.length > 1)
         setRegelsSamenvoegen(samenvoegenActief)
@@ -1075,6 +1171,37 @@ export function BoekvoorstelPanel({
     veranderInvoer()
   }
 
+  /** 18-09: handeling op de check-rij "Btw-bedrag past bij tarief" — btw_in_kosten (netto := netto + btw, btw 0, tarief
+   * := het 0 %-tarief) of zet_tarief (het ene tarief dat de factuur-btw verklaart; de btw volgt via de tarief-handler).
+   * De check draait daarna gewoon opnieuw (autosave + checks); de server blijft de poort. */
+  const voerCheckActieUit = (actie: CheckActieDto) => {
+    const doel = regels[actie.regel - 1]
+    if (!doel) return
+    if (actie.code === 'btw_in_kosten') {
+      setRegels((huidig) =>
+        huidig.map((r) => {
+          if (r.key !== doel.key) return r
+          const netto = bedragAlsGetal(r.netto)
+          const btw = bedragAlsGetal(r.btw) ?? 0
+          const [nieuwNetto, nieuwBtw] = netto !== null ? zetBtwInKosten(netto, btw) : [null, 0]
+          return {
+            ...r,
+            taxrateId: actie.taxrate_id ?? r.taxrateId,
+            netto: nieuwNetto !== null ? formatEuro(nieuwNetto) : r.netto,
+            btw: formatEuro(nieuwBtw),
+            btwInKosten: true,
+            btwHandmatig: false,
+            aiZekerheid: null,
+            handmatigeVelden: { ...r.handmatigeVelden, taxrateId: true },
+          }
+        }),
+      )
+      veranderInvoer()
+    } else if (actie.code === 'zet_tarief' && actie.taxrate_id) {
+      wijzigRegel(doel.key, 'taxrateId', actie.taxrate_id)
+    }
+  }
+
   const wijzigRegel = (key: string, veld: keyof RegelState, waarde: string | null) => {
     setRegels((huidig) =>
       huidig.map((r) => {
@@ -1111,7 +1238,24 @@ export function BoekvoorstelPanel({
           // Rechtstreekse invoer in het btw-veld zelf — vanaf nu is dit veld van de gebruiker;
           // leegmaken laat de automatische afleiding weer meedraaien (design-pass taak 3).
           bijgewerkt.btwHandmatig = waarde !== ''
-        } else if ((veld === 'netto' || veld === 'taxrateId' || btwVolgtRekening) && !bijgewerkt.btwHandmatig) {
+          if (waarde && (bedragAlsGetal(waarde) ?? 0) !== 0) bijgewerkt.btwInKosten = false
+        } else if (veld === 'taxrateId') {
+          // 18-09 (Peter, casus Rituals 88-186308: "nul % btw invullen is auto btw bedrag op nul zetten"): het btw-bedrag
+          // volgt ALTIJD het tarief — élke tariefwijziging (mens, check-actie) herrekent, ook als het btw-veld eerder
+          // van de mens was. 0 %/geen btw op een regel mét btw = btw in de kosten (netto := netto + btw, btw 0);
+          // verlegd/vrijgesteld/buitenland = btw 0, netto ongewijzigd; terug naar een %-tarief vanuit "in kosten" splitst
+          // het bruto weer (cent-exact de oorspronkelijke splitsing). Server: tijdlijnregel "btw herrekend uit tarief".
+          const herrekend = herrekenBtwBijTarief(
+            { netto: bedragAlsGetal(r.netto), btw: bedragAlsGetal(r.btw), inKosten: r.btwInKosten },
+            waarde ? taxrateOpties.find((o) => o.id === waarde) : undefined,
+          )
+          if (herrekend) {
+            bijgewerkt.netto = herrekend.netto !== null ? formatEuro(herrekend.netto) : r.netto
+            bijgewerkt.btw = herrekend.btw !== null ? formatEuro(herrekend.btw) : ''
+            bijgewerkt.btwInKosten = herrekend.inKosten
+            bijgewerkt.btwHandmatig = false
+          }
+        } else if ((veld === 'netto' || btwVolgtRekening) && !bijgewerkt.btwHandmatig) {
           // Nog niet handmatig aangeraakt: btw-bedrag blijft live meebewegen met netto/percentage.
           const percentage = bijgewerkt.taxrateId ? percentageMap[bijgewerkt.taxrateId] : undefined
           const netto = bedragAlsGetal(bijgewerkt.netto)
@@ -1229,11 +1373,13 @@ export function BoekvoorstelPanel({
     setBoekResultaat(null)
     const versieBijStart = wijzigingsVersieRef.current
     try {
+      // Boeken sneller (18-09, stap 1.5): opslaan + LOKALE checks direct; de externe rijen komen uit de cache of staan
+      // op "loopt nog" — de externe run volgt alleen als de externe vingerafdruk veranderde (useAutoChecks.bijExtern).
       const resultaat = await apiJson<BoekvoorstelMetChecksDto>(
         `/administraties/${administratieId}/documenten/${documentId}/boekvoorstel`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Checks': 'lokaal' },
           body: JSON.stringify({
             vendor_id: vendorId,
             referentie: referentie || null,
@@ -1259,6 +1405,7 @@ export function BoekvoorstelPanel({
               project_id: projectVerplicht ? r.projectId : null,
               netto_bedrag: r.netto ? normaliseerBedrag(r.netto) : null,
               btw_bedrag: r.btw ? normaliseerBedrag(r.btw) : null,
+              btw_in_kosten: r.btwInKosten,
               omschrijving: r.omschrijving || null,
             })),
           }),
@@ -1352,16 +1499,35 @@ export function BoekvoorstelPanel({
         method: 'POST',
         // Alleen mét een bewuste bevestiging reist er een body mee — het kale POST-contract
         // blijft ongewijzigd (factuurmatch fase 2).
-        ...(vlaggen.match || vlaggen.materiaal
+        ...(vlaggen.match || vlaggen.materiaal || (!effectiefAccorderingAan && lijstVolgorde)
           ? {
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ match_afwijking_bevestigd: vlaggen.match, materiaal_afwijking_bevestigd: vlaggen.materiaal }),
+              body: JSON.stringify({
+                match_afwijking_bevestigd: vlaggen.match,
+                materiaal_afwijking_bevestigd: vlaggen.materiaal,
+                // Boeken sneller (18-09): alleen de boek-route kent de lijstvolgorde (aanbieden is strikt).
+                ...(!effectiefAccorderingAan && lijstVolgorde ? { lijst_volgorde: lijstVolgorde } : {}),
+              }),
             }
           : {}),
       })
       const body: unknown = await resp.json().catch(() => null)
 
       const referentieVoorMelding = referentie.trim() || null
+      // Boeken sneller (Peter 18-09): 202 = het synchrone deel was groen, de RLZ-write loopt op de achtergrond — direct
+      // door naar het volgende document; een mislukking wordt een rode rij in de lijst (+ toast), geen pop-up.
+      if (resp.status === 202 && !effectiefAccorderingAan) {
+        const ingediend = body as BoekIngediendDto
+        setPopupMatch(null)
+        onGeboekt({
+          uitkomst: 'wordt_geboekt',
+          referentie: referentieVoorMelding,
+          boekstuknummer: null,
+          volgendeDocumentId: ingediend?.volgende_document_id ?? null,
+          volgendeDocumentSoort: ingediend?.volgende_document_soort ?? null,
+        })
+        return
+      }
       if (resp.ok && effectiefAccorderingAan) {
         const resultaat = body as { geboekt: boolean; boek_fout: string | null; alles_akkoord: boolean }
         if (resultaat.boek_fout) setBoekenFout(resultaat.boek_fout)
@@ -1475,11 +1641,15 @@ export function BoekvoorstelPanel({
 
   // Blok B 2026-08-10: checks draaien automatisch — bij openen (read-only) en gedebounced na
   // elke wijziging (opslaan + checks via de bestaande PUT). Geen "Controleren"-knop meer.
-  const { checksBezig } = useAutoChecks({
+  const { checksBezig, externBezig } = useAutoChecks({
     actief: !laden && ladenFout === null && !isReadOnly,
     wijzigingsVersie,
     bijOpenen: checksBijOpenen,
     bijWijziging: controleren,
+    // Boeken sneller (18-09): externe run (IBAN-seed, duplicaatquery's) alleen als de externe vingerafdruk wijzigt —
+    // omschrijving/grootboek/project/btw raken RLZ niet en starten dus geen externe run meer.
+    bijExtern: checksBijOpenen,
+    externeVingerafdruk: [vendorId ?? '', referentie.trim(), factuurdatum, totaalbedrag ? normaliseerBedrag(totaalbedrag) : ''].join('|'),
   })
 
   // A2 (besluit 25-08): mét klaargezette doorbelasting moeten boek-checks én
@@ -1586,6 +1756,18 @@ export function BoekvoorstelPanel({
                 {/* Punt 14 (28-08): btw-/KvK-nummer van de leverancier uit de factuur — herkomst-chip conform
                     de andere kopvelden; wordt per crediteur onthouden zodra het voorstel mét crediteur is
                     opgeslagen (voedt nummer-match + duplicaat over crediteuren heen). */}
+                {leverancierLand.land && (
+                  <div className="hint" style={{ marginTop: 4 }}>
+                    <span
+                      className="chip handmatig"
+                      data-testid="leverancier-land-chip"
+                      title="Land van de leverancier, deterministisch afgeleid (btw-nummer crediteur → btw-nummer factuur → IBAN). Bij NL toont de btw-keuzelijst alleen de Nederlandse codes; buitenland staat ingeklapt onderaan."
+                    >
+                      {leverancierLand.land}
+                      {leverancierLand.bron ? ` · ${leverancierLand.bron}` : ''}
+                    </span>
+                  </div>
+                )}
                 {(gelezenNummers?.btw_nummer || gelezenNummers?.kvk_nummer) && (
                   <div className="hint" style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     {gelezenNummers?.btw_nummer && (
@@ -1903,6 +2085,43 @@ export function BoekvoorstelPanel({
                   <AiChip score={aiKop.totaalbedrag.score} drempel={aiKop.drempel} bron={aiKop.bron} />
                 </div>
               )}
+              {totaalPinbon &&
+                (() => {
+                  // BUG 18-09 (regel 4): totaal uit de meegefotografeerde pinbon — groen als de bon exact Σ regels is (en het
+                  // veld nog die waarde draagt), anders oranje: de bon zegt X, de regels sluiten niet / zijn niet volledig
+                  // gelezen — de mens beslist, nooit stil overgenomen.
+                  const bon = bedragAlsGetal(totaalPinbon.bedrag)
+                  const groen =
+                    totaalBron === 'pinbon' && bon !== null && totaalAlsGetal !== null && Math.abs(bon - totaalAlsGetal) < 0.005
+                  if (groen) {
+                    return (
+                      <div style={{ marginTop: 4 }}>
+                        <span
+                          className="chip ok"
+                          data-testid="totaal-pinbon-chip"
+                          title="Totaal overgenomen van de meegefotografeerde pinbon/kassabon: het bontotaal is gelijk aan de som van de factuurregels (binnen 5 cent) — code, geen gok."
+                        >
+                          uit pinbon
+                        </span>
+                      </div>
+                    )
+                  }
+                  if (totaalBron === 'pinbon') return null // mens heeft het veld gewijzigd — geen chip meer
+                  const reden =
+                    totaalPinbon.status === 'afwijkend' ? 'regels sluiten niet op het bontotaal' : 'regels niet volledig gelezen'
+                  const bonTekst = bon !== null ? formatEuro(bon) : totaalPinbon.bedrag
+                  return (
+                    <div style={{ marginTop: 4 }}>
+                      <span
+                        className="chip afwijking"
+                        data-testid="totaal-pinbon-chip"
+                        title={`De pinbon/kassabon op de foto vermeldt een totaal van € ${bonTekst}, maar dat is niet als factuurtotaal overgenomen: ${reden}. Controleer de regels en vul het totaal zelf in als de bon klopt.`}
+                      >
+                        pinbon zegt € {bonTekst} — {reden}
+                      </span>
+                    </div>
+                  )
+                })()}
             </div>
           </div>
         )}
@@ -1932,6 +2151,26 @@ export function BoekvoorstelPanel({
               {regelsSamenvoegen
                 ? `Samengevoegd tot één boekingsregel (${inactieveRegels.length} factuurregels gelezen${ai && aantalTariefstaffels(ai) > 0 ? `, ${aantalTariefstaffels(ai)} tariefregels zonder bedrag weggelaten` : ''}) — keuze wordt per leverancier onthouden.`
                 : 'Losse factuurregels — keuze wordt per leverancier onthouden.'}
+            </span>
+            {modusHersteld !== null && !regelsSamenvoegen && (
+              <span
+                className="chip afwijking"
+                data-testid="modus-hersteld-chip"
+                title={`De leverancier-voorkeur zegt "samenvoegen", maar er staan ${modusHersteld} losse regels opgeslagen (er was geen samengevoegde variant te berekenen — bijvoorbeeld zonder factuurtotaal of met regels zonder bedrag). De weergave volgt de opgeslagen regels; de tijdlijn vermeldt het herstel. Vink "Splitsen per regel" uit om alsnog samen te voegen.`}
+              >
+                weergave hersteld: {modusHersteld} opgeslagen regels, modus stond op samengevoegd
+              </span>
+            )}
+          </div>
+        )}
+        {!isReadOnly && !samenvoegenBeschikbaar && modusHersteld !== null && (
+          <div style={{ marginBottom: 10 }}>
+            <span
+              className="chip afwijking"
+              data-testid="modus-hersteld-chip"
+              title={`De leverancier-voorkeur zegt "samenvoegen", maar er staan ${modusHersteld} losse regels opgeslagen. De weergave volgt de opgeslagen regels; de tijdlijn vermeldt het herstel.`}
+            >
+              weergave hersteld: {modusHersteld} opgeslagen regels, modus stond op samengevoegd
             </span>
           </div>
         )}
@@ -1978,16 +2217,6 @@ export function BoekvoorstelPanel({
               <th />
             </tr>
             {regels.map((regel) => {
-              const percentage = regel.taxrateId ? percentageMap[regel.taxrateId] : undefined
-              const nettoAlsGetal = bedragAlsGetal(regel.netto)
-              const verwachtBtw =
-                percentage !== undefined && nettoAlsGetal !== null ? berekenBtwBedrag(nettoAlsGetal, percentage) : null
-              const huidigBtw = bedragAlsGetal(regel.btw)
-              // Regelrij-UI 25-08 (screenshot Peter, LUSSO): alleen een RELEVANTE afwijking is een
-              // melding waard — een puur afrondingsverschil (≤ 1 cent tussen netto × tarief en de
-              // factuur-btw) niet; de factuur-btw is leidend (bestaand beleid).
-              const btwWijktAf =
-                verwachtBtw !== null && (huidigBtw === null || Math.abs(huidigBtw - verwachtBtw) > BTW_AFRONDINGSMARGE)
               return (
               <tr key={regel.key}>
                 <td>
@@ -2045,7 +2274,8 @@ export function BoekvoorstelPanel({
                     <>
                       <SearchableCombobox
                         label="Btw-code"
-                        opties={taxrateOpties}
+                        opties={taxrateGefilterd.opties}
+                        ingeklapteGroep={taxrateGefilterd.ingeklapteGroep}
                         laden={taxrateLaden}
                         laadFout={taxrateFout}
                         onOpnieuw={() => setCacheVersie((v) => v + 1)}
@@ -2072,6 +2302,17 @@ export function BoekvoorstelPanel({
                           </div>
                         ) : null
                       })()}
+                      {regel.btwInKosten && (
+                        <div className="regel-herkomst">
+                          <span
+                            className="chip handmatig"
+                            data-testid="regel-btw-in-kosten-chip"
+                            title="De btw van de factuur is niet aftrekbaar en zit in de kosten: netto = factuurbedrag incl. btw, btw-bedrag 0,00. Kies je een %-tarief, dan wordt het bruto weer gesplitst in netto en btw."
+                          >
+                            btw in kosten (niet aftrekbaar)
+                          </span>
+                        </div>
+                      )}
                       <OverstapChip vertaling={regel.overstap?.btw} veld="btw" huidig={regel.taxrateId} handmatig={regel.handmatigeVelden.taxrateId} />
                       {regel.btwBron === 'factuur' && regel.taxrateId && !regel.handmatigeVelden.taxrateId && (
                         <div className="regel-herkomst">
@@ -2162,15 +2403,36 @@ export function BoekvoorstelPanel({
                   {isReadOnly ? (
                     regel.netto || '—'
                   ) : (
-                    <BedragModusInput
-                      ariaLabel="bedrag"
-                      bron="netto"
-                      modus={bedragModus}
-                      percentage={regel.taxrateId ? percentageMap[regel.taxrateId] : undefined}
-                      title="Bijvoorbeeld 1234,56 of 1234.56"
-                      waarde={regel.netto}
-                      onWijzig={(w) => wijzigRegel(regel.key, 'netto', w)}
-                    />
+                    <>
+                      <BedragModusInput
+                        ariaLabel="bedrag"
+                        bron="netto"
+                        modus={bedragModus}
+                        // BUG 18-09 (Zilver Horeca): bruto = netto × (1 + FACTUUR-regeltarief) zolang de mens de btw-code niet
+                        // zelf koos — nooit netto × geheugen-tarief (Emballage 0 % werd 10,80 → 11,77).
+                        percentage={
+                          !regel.handmatigeVelden.taxrateId && regel.factuurBtwPercentage !== null
+                            ? regel.factuurBtwPercentage
+                            : regel.taxrateId
+                              ? percentageMap[regel.taxrateId]
+                              : undefined
+                        }
+                        title="Bijvoorbeeld 1234,56 of 1234.56"
+                        waarde={regel.netto}
+                        onWijzig={(w) => wijzigRegel(regel.key, 'netto', w)}
+                      />
+                      {regel.bedragNietGelezen && !regel.netto && (
+                        <div className="regel-herkomst" style={{ textAlign: 'right' }}>
+                          <span
+                            className="chip afwijking"
+                            data-testid="regel-bedrag-niet-gelezen-chip"
+                            title="Het bedrag van deze factuurregel was op de foto afgedekt of onleesbaar (bijvoorbeeld door een pinbon die op de factuur ligt). De extractie gokt nooit een bedrag — vul het zelf in vanaf het origineel."
+                          >
+                            niet gelezen (afgedekt)
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </td>
                 <td className="amount">
@@ -2186,17 +2448,8 @@ export function BoekvoorstelPanel({
                         value={regel.btw}
                         onChange={(e) => wijzigRegel(regel.key, 'btw', e.target.value)}
                       />
-                      {btwWijktAf && verwachtBtw !== null && (
-                        // Blok 4d (08-09): één korte grijze regel mét tooltip i.p.v. een chip die tot vijf regels wrapte.
-                        <div
-                          className="regel-herkomst muted"
-                          style={{ textAlign: 'right' }}
-                          data-testid="regel-btw-berekend-hint"
-                          title={`Netto × tarief geeft € ${formatEuro(verwachtBtw)}; het ingevulde bedrag wijkt meer dan 1 cent af. De btw van de factuur is leidend — controleer of het tarief klopt.`}
-                        >
-                          tarief geeft € {formatEuro(verwachtBtw)} — factuur leidend
-                        </div>
-                      )}
+                      {/* 18-09: de grijze hint "tarief geeft € … — factuur leidend" (REGELRIJ-UI 25-08 (b)) is vervangen
+                          door de HARDE check "Btw-bedrag past bij tarief" mét acties in de controles-tabel. */}
                     </>
                   )}
                 </td>
@@ -2293,6 +2546,13 @@ export function BoekvoorstelPanel({
           // v2 ① "checks onzichtbaar-tot-relevant": groen/passief = één inklapregel onderaan
           // (mét de volledige lijst); afwijkingen verschijnen als banner boven de actiebalk.
           const groen = checkRapport ? checkRapport.resultaten.filter((r) => r.ok && !r.signaal).length : 0
+          // Boeken sneller (18-09): de externe rijen tonen "Loopt…" zolang de externe run bezig is en daarna wanneer
+          // RLZ/Odoo écht geraadpleegd is ("gecontroleerd 14:02", ongewijzigd = uit de cache).
+          const externLoopt = externBezig || checkRapport?.extern_nog_niet === true
+          const externHint =
+            !externLoopt && checkRapport?.extern_gecontroleerd_op
+              ? ` · gecontroleerd ${new Date(checkRapport.extern_gecontroleerd_op).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}${checkRapport.extern_uit_cache ? ' (ongewijzigd)' : ''}`
+              : ''
           const totaal = checkRapport ? checkRapport.resultaten.length : 0
           const inklap = (
             <details className="inklap-controles" data-testid="controles-inklap">
@@ -2326,14 +2586,35 @@ export function BoekvoorstelPanel({
                           <tr key={r.naam} style={!checksActueel ? { opacity: 0.55 } : undefined}>
                             <td>
                               {/* Punt 14 (28-08): oranje signaal = ok maar kijken (geen blokkade). */}
-                              <span className={`chip ${!r.ok ? 'blokkerend' : r.signaal ? 'afwijking' : 'ok'}`}>
-                                {!r.ok ? 'Blokkerend' : r.signaal ? 'Signaal' : 'OK'}
+                              <span
+                                className={`chip ${EXTERNE_CHECK_NAMEN.has(r.naam) && externLoopt ? 'ai' : !r.ok ? 'blokkerend' : r.signaal ? 'afwijking' : 'ok'}`}
+                              >
+                                {EXTERNE_CHECK_NAMEN.has(r.naam) && externLoopt ? 'Loopt…' : !r.ok ? 'Blokkerend' : r.signaal ? 'Signaal' : 'OK'}
                               </span>
                             </td>
                             <td>
                               <b>{r.naam}</b>
                             </td>
-                            <td>{r.melding}</td>
+                            <td>
+                              {r.melding}
+                              {EXTERNE_CHECK_NAMEN.has(r.naam) && externHint && <span className="hint">{externHint}</span>}
+                              {/* 18-09: acties op de rij ("signalering zonder handeling is niet af") — btw in kosten / zet N %. */}
+                              {!r.ok && r.acties && r.acties.length > 0 && (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }} data-testid={`check-acties-${r.naam}`}>
+                                  {r.acties.map((a) => (
+                                    <button
+                                      key={`${a.code}-${a.regel}-${a.taxrate_id ?? ''}`}
+                                      type="button"
+                                      className="btn secondary"
+                                      disabled={a.code === 'zet_tarief' && !a.taxrate_id}
+                                      onClick={() => voerCheckActieUit(a)}
+                                    >
+                                      {a.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

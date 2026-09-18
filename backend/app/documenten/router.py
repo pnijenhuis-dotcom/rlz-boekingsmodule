@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
 from app.auth import service as auth_service
@@ -21,11 +23,14 @@ from app.auth.deps import (
 from app.config import settings
 from app.db import rls_weigering
 from app.db.models import GebruikerRol
+from app.db.session import scoped_session
 from app.db.systeem_actor import SYSTEEM_ACTOR_ID
 from app.documenten import (
     afwijzen,
+    boek_wachtrij,
     boeken,
     boekvoorstel,
+    checks_extern,
     duplicaat_afvoer,
     iban_accordering,
     leverancier_iban,
@@ -52,6 +57,8 @@ from app.rlz.credentials import GeenRlzCredentials
 # PDF-bestand-endpoint, dat de accordeur-PWA zelf nodig heeft (factuurbeeld centraal).
 _logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)])
 
 # Aparte router zonder de kantoor-poort: alleen /bestand, met de eigen kantoor-óf-accordeur-poort
@@ -59,11 +66,24 @@ router = APIRouter(tags=["documenten"], dependencies=[Depends(vereis_kantoorrol)
 bestand_router = APIRouter(tags=["documenten"])
 
 
-def _naar_check_rapport_response(rapport: CheckRapport) -> schemas.CheckRapportResponse:
+def _naar_check_rapport_response(rapport: CheckRapport, *, voorverwarm: str | None = None) -> schemas.CheckRapportResponse:
     return schemas.CheckRapportResponse(
         geblokkeerd=rapport.geblokkeerd,
+        extern_gecontroleerd_op=rapport.extern_gecontroleerd_op,
+        extern_uit_cache=rapport.extern_uit_cache,
+        extern_nog_niet=rapport.extern_nog_niet,
+        voorverwarm=voorverwarm,
         resultaten=[
-            schemas.CheckResultaatDto(naam=r.naam, ok=r.ok, melding=r.melding, signaal=r.signaal)
+            schemas.CheckResultaatDto(
+                naam=r.naam,
+                ok=r.ok,
+                melding=r.melding,
+                signaal=r.signaal,
+                acties=[
+                    schemas.CheckActieDto(code=a.code, label=a.label, regel=a.regel, taxrate_id=a.taxrate_id)
+                    for a in getattr(r, "acties", ())
+                ],
+            )
             for r in rapport.resultaten
         ],
     )
@@ -234,11 +254,14 @@ def _naar_regel_dto(r: boekvoorstel.BoekvoorstelRegelData) -> schemas.Boekvoorst
         omschrijving=r.omschrijving,
         btw_bron=r.btw_bron,
         btw_bron_detail=r.btw_bron_detail,
+        btw_in_kosten=r.btw_in_kosten,
         gb_bron=r.gb_bron,
         gb_voorstel_detail=r.gb_voorstel_detail,
         overstap_vertaling=r.overstap_vertaling,
         project_bron=r.project_bron,
         project_bron_detail=r.project_bron_detail,
+        factuur_btw_percentage=r.factuur_btw_percentage,
+        bedrag_niet_gelezen=r.bedrag_niet_gelezen,
     )
 
 
@@ -253,6 +276,26 @@ def _met_accordering_overgeslagen(
     resp.accordering_overgeslagen_reden = accordering_service.accordering_overgeslagen_reden_voor_dto(
         administratie_id=administratie_id, document_id=resp.document_id
     )
+    return resp
+
+
+def _met_leverancier_land(
+    resp: schemas.BoekvoorstelResponse, *, administratie_id: uuid.UUID
+) -> schemas.BoekvoorstelResponse:
+    """18-09 DEEL B: additief `leverancier_land` + `_bron` (btw_keuzelijst.py) — leesbaar in één sessie; een fout in
+    deze afleiding mag het controlescherm nooit blokkeren (dan onbekend = alles tonen)."""
+    from app.documenten import btw_keuzelijst
+
+    try:
+        with scoped_session(administratie_id) as session:
+            veldvoorstel = boekvoorstel._laatste_veldvoorstel(session, resp.document_id)  # noqa: SLF001
+            info = btw_keuzelijst.bepaal_leverancier_land(
+                session, administratie_id=administratie_id, vendor_id=resp.vendor_id, veldvoorstel=veldvoorstel
+            )
+    except Exception:  # noqa: BLE001 — weergave-hulp, nooit een 500 op het controlescherm
+        _logger.exception("leverancier_land: afleiding mislukt voor document %s", resp.document_id)
+        return resp
+    resp.leverancier_land, resp.leverancier_land_bron = info.land, info.bron_tekst
     return resp
 
 
@@ -293,6 +336,10 @@ def _naar_boekvoorstel_response(data: boekvoorstel.BoekvoorstelData) -> schemas.
         regels_samenvoegen=data.regels_samenvoegen,
         samenvoegen_toegestaan=data.samenvoegen_toegestaan,
         samengevoegde_regel=_naar_regel_dto(data.samengevoegde_regel) if data.samengevoegde_regel else None,
+        regels_modus_hersteld=data.regels_modus_hersteld,
+        totaal_bron=data.totaal_bron,
+        totaal_pinbon=data.totaal_pinbon,
+        totaal_pinbon_status=data.totaal_pinbon_status,
         btw_verlegd_vermelding=data.btw_verlegd_vermelding,
         afdeling_id=data.afdeling_id,
         afdeling_prefill_id=data.afdeling_prefill_id,
@@ -372,16 +419,21 @@ async def document_uploaden(
                 content_type=content_type or content_type_voor(naam),
             )
             naam, data = omgezet.pdf_bestandsnaam, omgezet.pdf
-        return service.upload_document(
-            administratie_id=administratie_id,
-            bestandsnaam=naam,
-            inhoud=data,
-            actor_id=actor.id,
-            soort=document_soort,
-            bron_bestand=bron_bestand,
-        )
+        with service.directe_upload_poort():  # besluit Peter 18-09: byte-identiek = 409, geen tweede document
+            return service.upload_document(
+                administratie_id=administratie_id,
+                bestandsnaam=naam,
+                inhoud=data,
+                actor_id=actor.id,
+                soort=document_soort,
+                bron_bestand=bron_bestand,
+            )
 
-    resultaat = await run_in_threadpool(_verwerk)
+    try:
+        resultaat = await run_in_threadpool(_verwerk)
+    except service.DocumentAlAanwezig as exc:
+        # Besluit Peter 18-09: byte-identieke directe upload = 409 mét verwijzing naar het bestaande document.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.als_detail()) from exc
     return schemas.DocumentUploadResponse(
         document_id=resultaat.document_id,
         status=resultaat.status.value,
@@ -952,7 +1004,18 @@ def boekvoorstel_ophalen(
         data = boekvoorstel.haal_boekvoorstel_op(administratie_id=administratie_id, document_id=document_id)
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return _met_accordering_overgeslagen(_naar_boekvoorstel_response(data), administratie_id=administratie_id)
+    if data.regels_modus_hersteld:
+        # BUG 18-09 (Zilver Horeca): de modus volgde de data — één tijdlijnregel (idempotent), nooit een blokkade.
+        try:
+            boekvoorstel.registreer_modus_herstel(
+                administratie_id=administratie_id, document_id=document_id, geopend_door=actor.id
+            )
+        except Exception:  # noqa: BLE001 — informatieve tijdlijnregel, het openen gaat altijd door
+            logging.getLogger(__name__).exception("Tijdlijnregel 'weergave hersteld' mislukt voor document %s", document_id)
+    return _met_leverancier_land(
+        _met_accordering_overgeslagen(_naar_boekvoorstel_response(data), administratie_id=administratie_id),
+        administratie_id=administratie_id,
+    )
 
 
 @router.put(
@@ -963,6 +1026,14 @@ def boekvoorstel_opslaan(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
     invoer: schemas.BoekvoorstelInput,
+    response: Response,
+    checks: Literal["volledig", "lokaal"] = Header(
+        "volledig",
+        alias="X-Checks",
+        description="Boeken sneller (18-09): `lokaal` = opslaan + lokale checks direct, externe rijen uit de cache of "
+        "'loopt nog' (de frontend start de externe run apart); `volledig` = bestaand gedrag (cache als geldig). Header "
+        "i.p.v. query zodat de URL van de PUT voor élke client gelijk blijft.",
+    ),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.BoekvoorstelMetChecksResponse:
     try:
@@ -1012,11 +1083,19 @@ def boekvoorstel_opslaan(
 
     # voer_checks_uit() vangt credential-/RLZ-fouten zelf af (app/documenten/boekvoorstel.py) —
     # het resultaat is altijd een CheckRapport, nooit een onafgevangen RlzApiError/GeenRlzCredentials.
-    rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
+    timing = checks_extern.StapTiming()
+    rapport = boekvoorstel.voer_checks_uit(
+        administratie_id=administratie_id,
+        document_id=document_id,
+        extern=checks_extern.CACHE if checks == "lokaal" else checks_extern.AUTO,
+        timing=timing,
+    )
+    _zet_server_timing(response, timing, route="boekvoorstel_opslaan", document_id=document_id)
 
     return schemas.BoekvoorstelMetChecksResponse(
-        boekvoorstel=_met_accordering_overgeslagen(
-            _naar_boekvoorstel_response(data), administratie_id=administratie_id
+        boekvoorstel=_met_leverancier_land(
+            _met_accordering_overgeslagen(_naar_boekvoorstel_response(data), administratie_id=administratie_id),
+            administratie_id=administratie_id,
         ),
         checks=_naar_check_rapport_response(rapport),
         # sla_boekvoorstel_op herberekende de factuurmatch al (post-commit) — hier de verse stand.
@@ -1098,44 +1177,160 @@ def al_betaald_signaal(
 def boekvoorstel_checks_uitvoeren(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
+    response: Response,
+    extern: Literal["auto", "vers", "cache"] = Query(
+        "auto", description="Boeken sneller (18-09): externe checks uit de cache (auto), altijd vers, of nooit RLZ raken."
+    ),
+    voorverwarm: bool = Query(
+        False,
+        description="Voorverwarmen van het VOLGENDE document: alleen de externe checks + cache, max 1 tegelijk, lage "
+        "prioriteit; uitkomst in `voorverwarm` (gedaan | uit_cache | overgeslagen_bezig | uit).",
+    ),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
 ) -> schemas.CheckRapportResponse:
     """Herbereken de harde checks over het al opgeslagen voorstel, zonder het te wijzigen — bv.
     om na boeken_mislukt te zien of een duplicaatcheck of regeltelling inmiddels weer klopt.
     voer_checks_uit() vangt credential-/RLZ-fouten zelf af — altijd een CheckRapport terug."""
+    timing = checks_extern.StapTiming()
+    if voorverwarm:
+        return _voorverwarmen(administratie_id=administratie_id, document_id=document_id, response=response, timing=timing)
     try:
-        rapport = boekvoorstel.voer_checks_uit(administratie_id=administratie_id, document_id=document_id)
+        rapport = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=document_id, extern=extern, timing=timing
+        )
     except service.DocumentNietGevonden as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except boekvoorstel.BoekvoorstelFout as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _zet_server_timing(response, timing, route="boekvoorstel_checks", document_id=document_id)
     return _naar_check_rapport_response(rapport)
+
+
+#: Voorverwarmen: max 1 tegelijk per proces (lage prioriteit — een tweede aanvraag wordt zichtbaar overgeslagen).
+_voorverwarm_slot = threading.Semaphore(1)
+AUDIT_VOORVERWARMD = "checks_voorverwarmd"
+
+
+def _voorverwarmen(
+    *, administratie_id: uuid.UUID, document_id: uuid.UUID, response: Response, timing: checks_extern.StapTiming
+) -> schemas.CheckRapportResponse:
+    """Stap 1.4 boeken sneller: de externe checks van het volgende document alvast draaien en cachen (geen opslaan).
+    Kernprincipe 7 (geen stille no-op): uit = zichtbaar `uit`, bezet = `overgeslagen_bezig`; élke uitkomst als audit
+    `checks_voorverwarmd` voor de teller verwacht/gedaan/overgeslagen in de reconciliatiemail."""
+    leeg = schemas.CheckRapportResponse(geblokkeerd=True, resultaten=[])
+    if not settings.checks_voorverwarmen:
+        _audit_voorverwarmd(administratie_id, document_id, "uit")
+        return leeg.model_copy(update={"voorverwarm": "uit"})
+    if not _voorverwarm_slot.acquire(blocking=False):
+        _audit_voorverwarmd(administratie_id, document_id, "overgeslagen_bezig")
+        return leeg.model_copy(update={"voorverwarm": "overgeslagen_bezig"})
+    try:
+        rapport = boekvoorstel.voer_checks_uit(
+            administratie_id=administratie_id, document_id=document_id, extern=checks_extern.AUTO, timing=timing
+        )
+    except (service.DocumentNietGevonden, boekvoorstel.BoekvoorstelFout) as exc:
+        _audit_voorverwarmd(administratie_id, document_id, "overgeslagen_fout", str(exc))
+        return leeg.model_copy(update={"voorverwarm": "overgeslagen_fout"})
+    finally:
+        _voorverwarm_slot.release()
+    uitkomst = "uit_cache" if rapport.extern_uit_cache else "gedaan"
+    _audit_voorverwarmd(administratie_id, document_id, uitkomst)
+    _zet_server_timing(response, timing, route="boekvoorstel_checks_voorverwarm", document_id=document_id)
+    return _naar_check_rapport_response(rapport, voorverwarm=uitkomst)
+
+
+def _audit_voorverwarmd(administratie_id: uuid.UUID, document_id: uuid.UUID, uitkomst: str, fout: str | None = None) -> None:
+    try:
+        from app.db.audit import record_audit_event
+        from app.db.session import scoped_session
+
+        with scoped_session(administratie_id, actor_id=SYSTEEM_ACTOR_ID) as session:
+            record_audit_event(
+                session,
+                actor_id=SYSTEEM_ACTOR_ID,
+                module="boekhouding",
+                tabel="document",
+                record_id=document_id,
+                actie=AUDIT_VOORVERWARMD,
+                correlatie_id=document_id,
+                nieuwe_waarde={"uitkomst": uitkomst, "fout": fout},
+                administratie_id=administratie_id,
+            )
+    except Exception:  # noqa: BLE001 — een teller mag het voorverwarmen nooit laten falen
+        logger.exception("checks_voorverwarmd niet geaudit voor document %s", document_id)
+
+
+def _zet_server_timing(response: Response, timing: checks_extern.StapTiming, *, route: str, document_id: uuid.UUID) -> None:
+    """Stap 0 boeken sneller: `Server-Timing`-header + gestructureerde logregel per stap (Cloud Logging-filter
+    `jsonPayload.message="server_timing"`)."""
+    if not timing.duur_ms:
+        return
+    response.headers["Server-Timing"] = timing.header()
+    logger.info(
+        "server_timing", extra={"route": route, "document_id": str(document_id), "stappen_ms": timing.als_dict()}
+    )
 
 
 @router.post(
     "/administraties/{administratie_id}/documenten/{document_id}/boeken",
-    response_model=schemas.BoekenResponse,
+    response_model=None,
+    responses={200: {"model": schemas.BoekenResponse}, 202: {"model": schemas.BoekIngediendResponse}},
 )
 def document_boeken(
     administratie_id: uuid.UUID,
     document_id: uuid.UUID,
+    response: Response,
     invoer: schemas.BoekenInput | None = None,
+    direct: bool = Query(
+        False,
+        description="Boeken sneller (18-09): default = 202 `wordt_geboekt` + achtergrond-schrijver; `direct=1` = de "
+        "synchrone boeking (herstel-/testpad, exact het gedrag vóór 18-09).",
+    ),
     actor: CurrentGebruiker = Depends(vereis_administratie_scope),
-) -> schemas.BoekenResponse:
+) -> Response:
     """Body optioneel (factuurmatch fase 2): `match_afwijking_bevestigd` is de expliciete
     "boeken ondanks match-afwijking"-bevestiging; zonder die vlag antwoordt een afwijking
-    met 409 + de match-cijfers in detail.match (client toont de bevestigingspop-up)."""
+    met 409 + de match-cijfers in detail.match (client toont de bevestigingspop-up).
+
+    Boeken sneller (Peter 18-09): standaard doet deze route alleen het SYNCHRONE deel (poorten, harde checks mét het
+    externe rapport uit de cache, toggle, volumerem) en antwoordt 202 mét `volgende_document_id`; de RLZ-write loopt in
+    de achtergrond-schrijver (`app/documenten/boek_wachtrij.py`) — een mislukking is een rode rij `boeken_mislukt` in
+    de lijst, geen pop-up. Alle 409's (checks, match, materiaal, accordering) blijven synchroon."""
     # Orkestratie (besluit 25-08): mét klaargezette doorbelasting = "Boeken + doorbelasten" in
     # één gang, zonder = exact de bestaande boek_document-aanroep. Lazy import: geen kring.
     from app.doorbelasting import orkestratie
 
+    timing = checks_extern.StapTiming()
     try:
+        if not direct:
+            ingediend = boek_wachtrij.dien_boeking_in(
+                administratie_id=administratie_id,
+                document_id=document_id,
+                actor_id=actor.id,
+                match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
+                materiaal_afwijking_bevestigd=invoer.materiaal_afwijking_bevestigd if invoer else False,
+                lijst_volgorde=invoer.lijst_volgorde if invoer else None,
+                timing=timing,
+            )
+            antwoord = JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content=schemas.BoekIngediendResponse(
+                    document_id=ingediend.document_id,
+                    status=ingediend.status.value,
+                    volgende_document_id=ingediend.volgende_document_id,
+                    volgende_document_soort=ingediend.volgende_document_soort,
+                    sleutel=ingediend.sleutel,
+                ).model_dump(mode="json"),
+            )
+            _zet_server_timing(antwoord, timing, route="document_boeken_ingediend", document_id=document_id)
+            return antwoord
         gecombineerd = orkestratie.boek_document_met_doorbelasting(
             administratie_id=administratie_id,
             document_id=document_id,
             actor_id=actor.id,
             match_afwijking_bevestigd=invoer.match_afwijking_bevestigd if invoer else False,
             materiaal_afwijking_bevestigd=invoer.materiaal_afwijking_bevestigd if invoer else False,
+            timing=timing,
         )
         resultaat = gecombineerd.boek
     except service.DocumentNietGevonden as exc:
@@ -1146,7 +1341,7 @@ def document_boeken(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Boeken geblokkeerd door doorbelasting-checks",
-                "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
+                "checks": _naar_check_rapport_response(exc.rapport).model_dump(mode="json"),
             },
         ) from exc
     except boeken.MatchAfwijkingBevestigingVereist as exc:
@@ -1171,7 +1366,7 @@ def document_boeken(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Boeken geblokkeerd door harde checks",
-                "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
+                "checks": _naar_check_rapport_response(exc.rapport).model_dump(mode="json"),
             },
         ) from exc
     except boeken.BoekenUitgeschakeld as exc:
@@ -1183,15 +1378,20 @@ def document_boeken(
     except boeken.RlzBoekingMislukt as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    return schemas.BoekenResponse(
-        document_id=resultaat.document_id,
-        status=resultaat.status.value,
-        rlz_document_id=resultaat.rlz_document_id,
-        rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
-        doorbelasting_run_id=gecombineerd.doorbelasting_run_id,
-        doorbelasting=gecombineerd.doorbelasting,
-        doorbelasting_fout=gecombineerd.doorbelasting_fout,
-        mini_voorraad=_mini_voorraad_dto(resultaat.mini_voorraad),
+    _zet_server_timing(response, timing, route="document_boeken_direct", document_id=document_id)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        headers=dict(response.headers),
+        content=schemas.BoekenResponse(
+            document_id=resultaat.document_id,
+            status=resultaat.status.value,
+            rlz_document_id=resultaat.rlz_document_id,
+            rlz_boekstuknummer=resultaat.rlz_boekstuknummer,
+            doorbelasting_run_id=gecombineerd.doorbelasting_run_id,
+            doorbelasting=gecombineerd.doorbelasting,
+            doorbelasting_fout=gecombineerd.doorbelasting_fout,
+            mini_voorraad=_mini_voorraad_dto(resultaat.mini_voorraad),
+        ).model_dump(mode="json"),
     )
 
 
@@ -1314,7 +1514,7 @@ def document_tegenboeken(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Tegenboeken geblokkeerd door harde checks",
-                "checks": _naar_check_rapport_response(exc.rapport).model_dump(),
+                "checks": _naar_check_rapport_response(exc.rapport).model_dump(mode="json"),
             },
         ) from exc
     except (

@@ -148,8 +148,8 @@ describe('BoekvoorstelPanel — blok 4 Spot Services', () => {
       expect(chip.parentElement?.className).toBe('regel-herkomst')
     }
     expect(screen.queryByText(/kies de verlegd-code/)).not.toBeInTheDocument()
-    // Geen "berekend uit tarief"-hint: verlegd-tarief = 0 % en btw 0 sluiten aan.
-    expect(screen.queryByTestId('regel-btw-berekend-hint')).not.toBeInTheDocument()
+    // 18-09: de grijze hint bestaat niet meer (harde check server-side); verlegd = btw 0, geen 'in kosten'-chip.
+    expect(screen.queryByTestId('regel-btw-in-kosten-chip')).not.toBeInTheDocument()
   })
 
   it('4a: splitsen ná een samengevoegde opslag prefillt uit het veldvoorstel zónder de 9 tariefstaffels', async () => {
@@ -187,13 +187,10 @@ describe('BoekvoorstelPanel — blok 4 Spot Services', () => {
     expect(within(hint).getByRole('button', { name: 'Verdelen over projecten…' })).toBeInTheDocument()
   })
 
-  it('4d: btw wijkt af van het tarief = één korte grijze regel mét tooltip, geen chip-blok', async () => {
+  it('4d HERZIEN 18-09: geen grijze hint meer — de blokkerende check komt van de server, mét acties op de rij', async () => {
     installFetchMock({ regels: [regel({ taxrate_id: TAXRATE_HOOG, netto_bedrag: '100.00', btw_bedrag: '0.00' })] })
     renderPanel()
-    const hint = await screen.findByTestId('regel-btw-berekend-hint')
-    expect(hint).toHaveTextContent('tarief geeft € 21,00 — factuur leidend')
-    expect(hint.className).toContain('regel-herkomst')
-    expect(hint.getAttribute('title')).toContain('De btw van de factuur is leidend')
-    expect(hint.querySelector('.chip')).toBeNull()
+    await screen.findByLabelText('Btw bedrag')
+    expect(screen.queryByText(/factuur leidend/)).not.toBeInTheDocument()
   })
 })

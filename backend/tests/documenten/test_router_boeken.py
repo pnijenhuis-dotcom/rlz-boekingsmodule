@@ -84,6 +84,7 @@ class TestBoekvoorstelEndpoints:
             "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: buiten het declaraties-kanaal informatief
             "Projectverdeling",
             "Regeltelling vs totaal",
+            "Btw-bedrag past bij tarief",  # 18-09 (Peter, casus Rituals): btw volgt het tarief — lokale harde check
             "Vervaldatum",
             "Btw-tarief buitenland",
             "IBAN-wissel",
@@ -144,6 +145,7 @@ class TestBoekvoorstelEndpoints:
             "Betaalstatus (declaraties)",  # blok 3 bundel 08-09: buiten het declaraties-kanaal informatief
             "Projectverdeling",
             "Regeltelling vs totaal",
+            "Btw-bedrag past bij tarief",  # 18-09 (Peter, casus Rituals): btw volgt het tarief — lokale harde check
             "Vervaldatum",
             "Btw-tarief buitenland",
             "IBAN-wissel",
@@ -243,7 +245,10 @@ class TestBoekenEndpoint:
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = self._klaar_document(headers, administratie_id)
 
-        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        # Boeken sneller (18-09): `?direct=1` = het synchrone pad (het gedrag vóór 18-09); default = 202, zie hieronder.
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken?direct=1", headers=headers
+        )
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "geboekt"
@@ -263,7 +268,9 @@ class TestBoekenEndpoint:
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = self._klaar_document(headers, administratie_id)
 
-        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken?direct=1", headers=headers
+        )
         assert resp.status_code == 502
         assert "PUT mislukt" in resp.json()["detail"]
 
@@ -300,7 +307,7 @@ class TestBoekenEndpoint:
         document_id = self._klaar_document(headers, administratie_id)
 
         resp = geen_raise_client.post(
-            f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken?direct=1", headers=headers
         )
 
         assert resp.status_code == 500
@@ -329,7 +336,9 @@ class TestBoekenEndpoint:
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = self._klaar_document(headers, administratie_id)
-        boek_resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        boek_resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken?direct=1", headers=headers
+        )
         assert boek_resp.status_code == 200, boek_resp.text
 
         resp = client.post(
@@ -353,7 +362,9 @@ class TestBoekenEndpoint:
         monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
         headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
         document_id = self._klaar_document(headers, administratie_id)
-        boek_resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        boek_resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boeken?direct=1", headers=headers
+        )
         assert boek_resp.status_code == 200, boek_resp.text
 
         voor_de_poging = client.get(
@@ -383,3 +394,168 @@ class TestBoekenEndpoint:
             f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel", headers=headers
         ).json()
         assert na_de_poging == voor_de_poging
+
+
+class TestBoekenIngediend:
+    """Boeken sneller (Peter 18-09): POST …/boeken antwoordt standaard 202 `wordt_geboekt` + het volgende document; de
+    RLZ-write loopt in de achtergrond-schrijver (in de suite direct, zie conftest `_boek_wachtrij_direct`). Een
+    mislukking is een zichtbare `boeken_mislukt`, geen 502 meer op de knop."""
+
+    def _klaar_document(self, headers: dict[str, str], administratie_id: uuid.UUID, referentie: str) -> str:
+        document_id = _upload(headers, administratie_id)
+        resp = client.put(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
+            headers=headers,
+            json={
+                "vendor_id": str(uuid.uuid4()),
+                "referentie": referentie,
+                "factuurdatum": "2026-07-01",
+                "totaalbedrag": "121.00",
+                "regels": [_REGEL],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        return document_id
+
+    def _status(self, admin_engine: Engine, document_id: str) -> str:
+        with admin_engine.connect() as conn:
+            return conn.execute(
+                text("SELECT status FROM boekhouding.document WHERE id = :id"), {"id": document_id}
+            ).scalar_one()
+
+    def test_default_geeft_202_wordt_geboekt_en_de_worker_boekt(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        fake = FakeBoekClient()
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: fake)
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id, "F-202")
+
+        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["status"] == "wordt_geboekt"
+        assert body["sleutel"] == f"boek-{document_id}-0"
+        assert body["volgende_document_id"] is None  # geen ander verwerkbaar document in deze administratie
+        # Server-Timing (stap 0): de synchrone stappen zijn meetbaar.
+        assert "checks.lokaal" in resp.headers.get("server-timing", "")
+        # De directe wachtrij (suite) heeft de boeking al afgerond: precies één PUT, document geboekt.
+        assert len(fake.puts) == 1
+        assert self._status(admin_engine, document_id) == "geboekt"
+        with admin_engine.connect() as conn:
+            acties = conn.execute(
+                text("SELECT actie FROM platform.audit_event WHERE record_id = :id ORDER BY tijdstip"),
+                {"id": document_id},
+            ).scalars().all()
+        assert "boek_wachtrij_ingediend" in acties and "boek_wachtrij_afgerond" in acties
+        with admin_engine.connect() as conn:
+            claim = conn.execute(
+                text("SELECT uitkomst, afgerond_op FROM boekhouding.boek_wachtrij_claim WHERE sleutel = :s"),
+                {"s": body["sleutel"]},
+            ).one()
+        assert claim.uitkomst == "geboekt" and claim.afgerond_op is not None
+
+    def test_lijst_volgorde_bepaalt_het_volgende_document_positioneel(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        huidig = self._klaar_document(headers, administratie_id, "F-1")
+        b = self._klaar_document(headers, administratie_id, "F-2")  # te_controleren
+        c = _upload(headers, administratie_id)  # ontvangen → niet verwerkbaar
+        resp = client.post(
+            f"/administraties/{administratie_id}/documenten/{huidig}/boeken",
+            headers=headers,
+            json={"lijst_volgorde": [c, huidig, b]},
+        )
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        # Ná `huidig` komt `b` (verwerkbaar); `c` (ontvangen) telt niet — exact de kiesVolgendDocument-regels.
+        assert body["volgende_document_id"] == b
+        assert body["volgende_document_soort"] == "inkoopfactuur"
+
+    def test_rlz_fout_in_de_worker_is_een_zichtbare_boeken_mislukt_geen_502(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        beheerder_id: uuid.UUID,
+        admin_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        beheer_service.zet_boeken_ingeschakeld(actor_id=beheerder_id, administratie_id=administratie_id, ingeschakeld=True)
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient(faal_op="put"))
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id, "F-502")
+
+        resp = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        assert resp.status_code == 202, resp.text
+        assert self._status(admin_engine, document_id) == "boeken_mislukt"
+        with admin_engine.connect() as conn:
+            fout = conn.execute(
+                text(
+                    "SELECT nieuwe_waarde->>'uitkomst', nieuwe_waarde->>'fout' FROM platform.audit_event "
+                    "WHERE record_id = :id AND actie = 'boek_wachtrij_afgerond'"
+                ),
+                {"id": document_id},
+            ).one()
+        assert fout[0] == "mislukt" and "PUT mislukt" in (fout[1] or "")
+        # "Opnieuw" = opnieuw indienen vanuit boeken_mislukt (mét VERSE externe checks) — hier lukt de PUT.
+        monkeypatch.setattr(boeken, "client_voor_rlz_admin_id", lambda rlz_admin_id: FakeBoekClient())
+        resp2 = client.post(f"/administraties/{administratie_id}/documenten/{document_id}/boeken", headers=headers)
+        assert resp2.status_code == 202, resp2.text
+        assert self._status(admin_engine, document_id) == "geboekt"
+
+    def test_checks_route_extern_cache_en_voorverwarm(
+        self,
+        gescoopte_gebruiker: uuid.UUID,
+        administratie_id: uuid.UUID,
+        admin_engine: Engine,
+    ) -> None:
+        headers = _bearer(gescoopte_gebruiker, rol="boekhouding")
+        document_id = self._klaar_document(headers, administratie_id, "F-CACHE")
+        pad = f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel/checks"
+        # De PUT in _klaar_document draaide de checks al (AUTO) → het externe rapport staat in de cache.
+        eerste = client.post(pad, headers=headers)
+        assert eerste.status_code == 200, eerste.text
+        assert eerste.json()["extern_uit_cache"] is True and eerste.json()["extern_gecontroleerd_op"]
+        vers = client.post(pad + "?extern=vers", headers=headers)
+        assert vers.json()["extern_uit_cache"] is False and vers.json()["extern_gecontroleerd_op"]
+        tweede = client.post(pad, headers=headers)
+        assert tweede.json()["extern_uit_cache"] is True  # zelfde vingerafdruk, ≤ 15 min → cache
+        lokaal = client.post(pad + "?extern=cache", headers=headers)
+        assert lokaal.json()["extern_uit_cache"] is True and lokaal.json()["extern_nog_niet"] is False
+        # De PUT mét X-Checks: lokaal = opslaan + lokale checks; externe rijen uit de cache (geen 'loopt nog' hier).
+        put = client.put(
+            f"/administraties/{administratie_id}/documenten/{document_id}/boekvoorstel",
+            headers={**headers, "X-Checks": "lokaal"},
+            json={
+                "vendor_id": str(uuid.uuid4()),
+                "referentie": "F-CACHE-2",
+                "factuurdatum": "2026-07-01",
+                "totaalbedrag": "121.00",
+                "regels": [_REGEL],
+            },
+        )
+        assert put.status_code == 200, put.text
+        # Andere crediteur + referentie = andere vingerafdruk → geen geldige cache → 'loopt nog' (blokkerend, nooit stil).
+        assert put.json()["checks"]["extern_nog_niet"] is True and put.json()["checks"]["geblokkeerd"] is True
+        voorverwarm = client.post(pad + "?voorverwarm=1", headers=headers)
+        assert voorverwarm.status_code == 200
+        assert voorverwarm.json()["voorverwarm"] in ("gedaan", "uit_cache")
+        with admin_engine.connect() as conn:
+            n = conn.execute(
+                text("SELECT count(*) FROM platform.audit_event WHERE record_id = :id AND actie = 'checks_voorverwarmd'"),
+                {"id": document_id},
+            ).scalar_one()
+        assert n == 1

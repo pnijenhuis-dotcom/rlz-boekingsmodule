@@ -25,6 +25,7 @@ VERWACHTE_JOBS = {
     "rlz-projecten-cijfers",
     "rlz-bank-sync",
     "rlz-extractie-wachtrij",
+    "rlz-boek-wachtrij",  # boeken sneller 18-09: achtergrond-schrijver
     "rlz-eerste-sync",
     "rlz-terugkerend-herbereken",
     "rlz-bewaking",

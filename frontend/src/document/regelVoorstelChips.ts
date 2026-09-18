@@ -16,7 +16,7 @@ export type GbBron = 'geheugen' | 'geheugen_seed' | 'geheugen_conflict' | 'ai'
 /** 'grootboek' (14-09) = standaard-tarief van de rekening in RLZ/Odoo (grijs); 'grootboek_historie' (0143) = dezelfde default
  * afgeleid uit de eigen boekingshistorie van de rekening — ORANJE "meestal op deze rekening (n×)" tot het
  * leverancier-geheugen 'm bevestigt (seed-only-regel, geen nieuwe kleurregel). */
-export type BtwBron = 'factuur' | 'standaard' | 'factuur_verlegd' | 'grootboek' | 'grootboek_historie'
+export type BtwBron = 'factuur' | 'factuur_regel' | 'standaard' | 'factuur_verlegd' | 'grootboek' | 'grootboek_historie' | 'grootboek_aftrek_uitgesloten'
 
 /** Blok 10 07-09 (project uit de factuur, casus Spot Services — backend `project_bron`): 'factuur' = groen (exacte
  * projectcode op de factuur, of een bevestigd werknummer van deze leverancier), 'factuur_onbevestigd' = oranje
@@ -81,10 +81,12 @@ export function bepaalProjectFactuurChip(
 export function btwBronUitDto(waarde: string | null | undefined, taxrateId: string | null): BtwBron | null {
   if (!taxrateId) return null
   return waarde === 'factuur' ||
+    waarde === 'factuur_regel' ||
     waarde === 'standaard' ||
     waarde === 'factuur_verlegd' ||
     waarde === 'grootboek' ||
-    waarde === 'grootboek_historie'
+    waarde === 'grootboek_historie' ||
+    waarde === 'grootboek_aftrek_uitgesloten'
     ? waarde
     : null
 }
@@ -139,6 +141,28 @@ export function bepaalBtwHerkomstChip(
   detail: string | null = null,
 ): RegelChip | null {
   if (!bron || !huidigTaxrateId || handmatig) return null
+  if (bron === 'grootboek_aftrek_uitgesloten') {
+    // 18-09 (Peter, casus Rituals — BUA, migratie 0163): de rekening staat op "btw niet aftrekbaar" (representatie,
+    // relatiegeschenken, personeelsvoorzieningen, kantine) → 0 %/geen btw én de factuur-btw in de kosten. Wint van
+    // "factuur berekend"; alleen de mens wint hiervan.
+    return {
+      klasse: 'handmatig',
+      tekst: detail ?? 'aftrek uitgesloten',
+      titel:
+        'Op deze grootboekrekening is de btw niet aftrekbaar (Instellingen › Boeken & AI › Btw niet aftrekbaar): de btw-code is 0 % en de btw van de factuur zit in de kosten (netto = het factuurbedrag incl. btw). Kies je zelf een ander tarief, dan wint dat. De harde checks blijven de poort.',
+    }
+  }
+  if (bron === 'factuur_regel') {
+    // BUG 18-09 (Zilver Horeca Fac-25-022711): de btw-KOLOM van de factuurregel ("9%"/"0%") is de basis — een factuurkolom
+    // 0 % IS een basis (statiegeld/emballage → "NL, Nul tarief"), nooit verlegd of vrijgesteld geraden. Wint op regelniveau
+    // van het geheugen; groen (factuur, geen gok).
+    return {
+      klasse: 'ok',
+      tekst: detail ? `factuur ${detail}` : 'uit factuurkolom',
+      titel:
+        'Btw-code uit de btw-kolom van deze factuurregel (code, geen AI): het percentage dat de leverancier op de regel vermeldt is exact gematcht op de btw-codes van deze administratie; het btw-bedrag en de bruto-kolom volgen dat percentage. Het boekingsgeheugen levert hier alleen het grootboek. De harde checks blijven de poort.',
+    }
+  }
   if (bron === 'grootboek') {
     // 14-09 (opdracht Peter, casus L.H.G. Holding "Kosten mobiele telefonie"): het standaard-btw-tarief dat de
     // grootboekrekening in Reeleezee/Odoo draagt — stap 5 van de winnaarsvolgorde, vóór de administratie-default.

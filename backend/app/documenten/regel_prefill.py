@@ -89,6 +89,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
@@ -96,6 +97,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Administratie, Grootboekrekening
 from app.documenten.checks import is_buitenland_tarief
+from app.documenten.regelsom import zet_btw_in_kosten
 from app.geheugen import regel_gb
 from app.geheugen.engine import Observatie, bepaal_voorstel
 from app.geheugen.models import BoekingObservatie
@@ -122,6 +124,14 @@ def grootboek_historie_detail(n: int) -> str:
     return f"{GROOTBOEK_HISTORIE_DETAIL} ({n}×)"
 # Blok 4c (08-09): btw-code uit de verleggings-vermelding op de factuur — oranje tot het geheugen bevestigt.
 BTW_BRON_FACTUUR_VERLEGD = "factuur_verlegd"
+#: Opdracht Peter 18-09 (casus Rituals 88-186308, BUA — migratie 0163): de grootboekrekening is aftrek-uitgesloten
+#: (representatie, relatiegeschenken, personeelsvoorzieningen, kantine) → tarief 0 %/geen btw én de factuur-btw in de
+#: kosten (netto := netto + btw, btw := 0,00). Wint van "factuur berekend" (stap 0), verliest alleen van de mens.
+BTW_BRON_GROOTBOEK_AFTREK_UITGESLOTEN = "grootboek_aftrek_uitgesloten"
+
+
+def aftrek_uitgesloten_detail(code: str | None) -> str:
+    return f"aftrek uitgesloten ({code})" if code else "aftrek uitgesloten"
 
 
 # Herkomst-labels van de verlegd-keuze (blok 6 herstelrun 08-09) — reizen als `btw_bron_detail` mee naar de UI-chip.
@@ -307,6 +317,10 @@ def _met_factuur_verlegd(
 # HERKOMST_LEVERANCIER_GEHEUGEN.
 HERKOMST_LEVERANCIER_GEHEUGEN = regel_gb.HERKOMST_LEVERANCIER_GEHEUGEN  # één definitie (regel_gb leest 'm ook)
 HERKOMST_FACTUUR = "factuur"
+# BUG 18-09 (Zilver Horeca): btw-code uit de btw-KOLOM van de factuurregel ("9%"/"0%") — regelniveau, wint van het
+# geheugen (dat vult alleen een lege btw). Zelfde herkomst-tag als "factuur" (chip "factuur 0 %", geen autosave-trigger).
+BTW_BRON_FACTUUR_REGEL = "factuur_regel"
+FACTUUR_BTW_BRONNEN = frozenset({HERKOMST_FACTUUR, BTW_BRON_FACTUUR_REGEL})
 VELD_GROOTBOEK = "grootboek"
 VELD_BTW = "btw"
 VELD_PROJECT = "project"
@@ -379,6 +393,83 @@ def _engine_heeft_btw(engine_observaties: list[Observatie], *, regel_sleutel: st
         return False
     voorstel = bepaal_voorstel(engine_observaties, regel_sleutel=regel_sleutel, vandaag=vandaag_nl())
     return voorstel.btw.waarde is not None
+
+
+def aftrek_uitgesloten_voor(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    """{ledger_id: code} van de aftrek-uitgesloten rekeningen van déze administratie (migratie 0163) die nog in de bron
+    staan — de Beheerder zette het kenmerk expliciet (nooit afgeleid)."""
+    rijen = session.execute(
+        select(Grootboekrekening.ledger_id, Grootboekrekening.code).where(
+            Grootboekrekening.administratie_id == administratie_id,
+            Grootboekrekening.btw_aftrek_uitgesloten.is_(True),
+            Grootboekrekening.verdwenen_uit_bron_op.is_(None),
+        )
+    ).all()
+    return {ledger_id: code for ledger_id, code in rijen}
+
+
+def nul_taxrate_voor(
+    session: Session,
+    *,
+    administratie_id: uuid.UUID,
+    grootboek_defaults: dict[uuid.UUID, uuid.UUID],
+    ledger_id: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """Het 0 %-tarief voor "btw in kosten": de RLZ-default van de rekening als dat een NL-0 %-tarief is, anders de
+    RLZ-favoriet onder de NL-0 %-tarieven (niet verlegd/vrijgesteld/buitenland), anders de eerste op naam; None als de
+    administratie er geen heeft (dan blijft het tarief leeg — de mens kiest, de check blijft de poort)."""
+    from app.documenten.checks import TariefInfo, nul_tarief_voor
+
+    rijen = session.execute(
+        select(TaxRateCache.id, TaxRateCache.naam, TaxRateCache.percentage, TaxRateCache.brondata).where(
+            TaxRateCache.administratie_id == administratie_id, TaxRateCache.verdwenen_uit_bron_op.is_(None)
+        )
+    ).all()
+    tarieven = {}
+    for r in rijen:
+        verlegd, vrijgesteld = taxrate_vlaggen(r.brondata)
+        tarieven[r.id] = TariefInfo(
+            percentage=r.percentage,
+            naam=r.naam,
+            verlegd=verlegd,
+            vrijgesteld=vrijgesteld,
+            favoriet=bool((r.brondata or {}).get("IsFavorite")),
+            buitenland=is_buitenland_tarief(r.naam),
+        )
+    huidig = grootboek_defaults.get(ledger_id) if ledger_id is not None else None
+    return nul_tarief_voor(tarieven, huidig=huidig)
+
+
+def _met_aftrek_uitgesloten(
+    regel: BoekvoorstelRegelData,
+    *,
+    uitgesloten: dict[uuid.UUID, str],
+    nul_taxrate_id: uuid.UUID | None,
+) -> BoekvoorstelRegelData:
+    """Stap 0 (Peter 18-09, BUA): staat de (al gevulde) grootboekrekening op aftrek-uitgesloten, dan wint dat van
+    "factuur berekend": tarief := het 0 %-tarief van de administratie, de factuur-btw gaat in de kosten (netto + btw,
+    btw 0,00), chip "aftrek uitgesloten (4510)". Zonder kenmerk gebeurt er niets (bestaande volgorde). Zonder 0 %-tarief
+    in de cache blijft het tarief leeg mét de chip — de mens kiest, de check blijft de poort."""
+    if regel.ledger_id is None or regel.ledger_id not in uitgesloten:
+        return regel
+    netto, btw = regel.netto_bedrag, regel.btw_bedrag
+    if netto is not None and btw is not None and btw != 0:
+        netto, btw = zet_btw_in_kosten(netto, btw)
+    elif netto is not None and btw is None:
+        btw = Decimal("0.00")
+    return _met_herkomst(
+        replace(
+            regel,
+            taxrate_id=nul_taxrate_id,
+            netto_bedrag=netto,
+            btw_bedrag=btw,
+            btw_bron=BTW_BRON_GROOTBOEK_AFTREK_UITGESLOTEN,
+            btw_bron_detail=aftrek_uitgesloten_detail(uitgesloten[regel.ledger_id]),
+            btw_in_kosten=True,
+            btw_bewust_leeg=False,
+        ),
+        **{VELD_BTW: BTW_BRON_GROOTBOEK_AFTREK_UITGESLOTEN},
+    )
 
 
 def grootboek_defaults_voor(session: Session, *, administratie_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
@@ -519,6 +610,17 @@ def verrijk_prefill(
     standaard_taxrate_id = administratie.standaard_taxrate_id if administratie is not None else None
     grootboek_defaults = grootboek_defaults_voor(session, administratie_id=administratie_id)
     historie_defaults = grootboek_historie_defaults_voor(session, administratie_id=administratie_id)
+    # 18-09 (BUA): aftrek-uitgesloten rekeningen + het 0 %-tarief waarmee "btw in kosten" gezet wordt.
+    uitgesloten = aftrek_uitgesloten_voor(session, administratie_id=administratie_id)
+    nul_per_ledger: dict[uuid.UUID | None, uuid.UUID | None] = {}
+
+    def nul_voor(ledger_id: uuid.UUID | None) -> uuid.UUID | None:
+        if ledger_id not in nul_per_ledger:
+            nul_per_ledger[ledger_id] = nul_taxrate_voor(
+                session, administratie_id=administratie_id, grootboek_defaults=grootboek_defaults, ledger_id=ledger_id
+            )
+        return nul_per_ledger[ledger_id]
+
     vandaag = vandaag_nl()
     verlegd = (
         bepaal_verlegd_taxrate(session, administratie_id=administratie_id, vandaag=vandaag) if factuur_verlegd else None
@@ -550,8 +652,8 @@ def verrijk_prefill(
     verrijkt: list[BoekvoorstelRegelData] = []
     for volgnummer, regel in enumerate(regels, start=1):
         sleutel = normaliseer_regel_sleutel(regel.omschrijving)
-        if regel.btw_bron == HERKOMST_FACTUUR and regel.taxrate_id is not None:
-            regel = _met_herkomst(regel, **{VELD_BTW: HERKOMST_FACTUUR})
+        if regel.btw_bron in FACTUUR_BTW_BRONNEN and regel.taxrate_id is not None:
+            regel = _met_herkomst(regel, **{VELD_BTW: regel.btw_bron})
         if regel.ledger_id is None and vendor_id is not None:
             voorstel = regel_gb.bepaal_regel_gb(regel_observaties, regel_sleutel=sleutel)
             if voorstel is not None:
@@ -575,6 +677,8 @@ def verrijk_prefill(
                         ),
                         **{VELD_GROOTBOEK: regel_gb.BRON_AI},
                     )
+        if uitgesloten and regel.ledger_id in uitgesloten:
+            regel = _met_aftrek_uitgesloten(regel, uitgesloten=uitgesloten, nul_taxrate_id=nul_voor(regel.ledger_id))
         regel = _met_factuur_project(
             regel, kandidaten=projectkandidaten, werknummers=werknummers, project_verplicht=project_verplicht
         )
@@ -605,6 +709,10 @@ def verrijk_prefill(
         # redenering als in autoboeken.py).
         if samengevoegde_regel.btw_bron == HERKOMST_FACTUUR and samengevoegde_regel.taxrate_id is not None:
             samengevoegde_regel = _met_herkomst(samengevoegde_regel, **{VELD_BTW: HERKOMST_FACTUUR})
+        if uitgesloten and samengevoegde_regel.ledger_id in uitgesloten:
+            samengevoegde_regel = _met_aftrek_uitgesloten(
+                samengevoegde_regel, uitgesloten=uitgesloten, nul_taxrate_id=nul_voor(samengevoegde_regel.ledger_id)
+            )
         samengevoegde_regel = _met_factuur_project(
             samengevoegde_regel,
             kandidaten=projectkandidaten,

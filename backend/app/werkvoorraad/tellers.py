@@ -110,6 +110,9 @@ _TERMINAAL_SET = frozenset(TERMINAAL_VOOR_TELLERS)
 _BUCKET_PER_STATUS: dict[DocumentStatus, str] = {
     **dict.fromkeys(TE_CONTROLEREN_STATUSSEN, TE_CONTROLEREN),
     DocumentStatus.KLAAR_OM_TE_BOEKEN: KLAAR_OM_TE_BOEKEN,
+    # Boeken sneller (18-09): de RLZ-write loopt nog — het document telt tot de afronding gewoon door in "Klaar om te
+    # boeken" (kantoorwerk in afronding; geboekt haalt 'm er daarna uit, mislukt = eigen bucket-loos zoals nu).
+    DocumentStatus.WORDT_GEBOEKT: KLAAR_OM_TE_BOEKEN,
     DocumentStatus.AFGEWEZEN: AFGEWEZEN,
     # Klant-accordering (migratie 0033): "Bij klant" = documenten die op één of meer accorderingslagen wachten.
     DocumentStatus.TER_ACCORDERING: BIJ_KLANT,

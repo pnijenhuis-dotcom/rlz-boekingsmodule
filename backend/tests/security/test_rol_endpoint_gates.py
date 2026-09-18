@@ -107,6 +107,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", "/verzamelbak"),  # intake
         ("GET", f"/administraties/{aid}/accordering/instellingen"),  # accordering kantoor
         ("GET", f"/administraties/{aid}/accordering/herinneringen"),  # accordering kantoor
+        ("GET", "/accordering/overzicht"),  # accordering kantoorbreed overzicht (Peter 18-09 punt 1)
+        ("GET", f"/administraties/{aid}/accordering/leverancier-kandidaten"),  # route-editor combobox (18-09 punt 3)
         ("POST", f"/administraties/{aid}/omzet/documenten/{DUMMY_ID}/boeken"),  # omzet
         ("GET", "/auth/gebruikers"),  # gebruikersbeheer (beheerder-only)
         ("POST", f"/auth/gebruikers/{DUMMY_ID}/archiveren"),  # archiveren (26-08 punt 1, beheerder-only)
@@ -227,6 +229,8 @@ def _kantoor_endpoints(aid: uuid.UUID) -> list[tuple[str, str]]:
         ("GET", f"/administraties/{aid}/btw-default"),  # btw-default per administratie (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/btw-default"),  # btw-default zetten (blok E 04-09, beheerder-only)
         ("PUT", f"/administraties/{aid}/verlegd-voorkeur"),  # voorkeurs-verlegd-code (blok 6 08-09, beheerder-only)
+        ("GET", f"/administraties/{aid}/btw-aftrek-uitgesloten"),  # BUA-kenmerk (Peter 18-09, migratie 0163, beheerder-only)
+        ("PUT", f"/administraties/{aid}/btw-aftrek-uitgesloten"),
         # Verplichtingen / offerte-matching (04-09) — router-breed vereis_kantoorrol + scope.
         ("GET", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
         ("PUT", f"/administraties/{aid}/verplichtingen/documenten/{DUMMY_ID}/voorstel"),
@@ -410,6 +414,7 @@ class TestKantoorBlijftWerken:
                 or pad.endswith("/is-vastgoed")
                 or pad.endswith("/btw-default")
                 or pad.endswith("/verlegd-voorkeur")
+                or pad.endswith("/btw-aftrek-uitgesloten")
                 or pad.endswith("/duplicaat-autoafvoer")
                 or pad.endswith("/leveranciers-projectverdeling")
                 or pad.endswith("/autoboeken-leren-instelling")  # blok A 10-09: Beheerder-only

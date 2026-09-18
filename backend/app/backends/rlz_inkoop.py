@@ -172,6 +172,22 @@ class RlzInkoopPort:
         rlz_document_id = rlz_herboeking_id(document_id, voorstel.boek_cyclus)
         assert voorstel.vendor_id is not None and voorstel.factuurdatum is not None  # harde checks
         try:
+            # Boeken sneller (18-09, achtergrond-schrijver): idempotent HERVATTEN — is de PUT + actie 17 van een
+            # eerdere (gestrande) verwerker al gelukt, dan staat het document op dit GUID al geboekt in RLZ: niets
+            # opnieuw schrijven, alleen het boekstuknummer teruggeven (zelfde patroon als boek_tegenboeking). Een
+            # concept (Status 1) = de PUT is gelukt maar 17 niet → de PUT is een upsert, de flow loopt gewoon door.
+            try:
+                bestaand = self.client.get(f"PurchaseInvoices/{rlz_document_id}")
+            except RlzApiError as exc:
+                if exc.status_code != 404:
+                    raise
+                bestaand = None
+            if isinstance(bestaand, dict) and bestaand.get("Status") in _RLZ_GEBOEKT:
+                return BoekUitkomst(
+                    extern_document_id=rlz_document_id,
+                    boekstuknummer=bestaand.get("ReceiptNumber"),
+                    detail={"backend": Backend.RLZ.value, "hervat": True},
+                )
             self.client.put_purchase_invoice(
                 rlz_document_id,
                 vendor_id=voorstel.vendor_id,

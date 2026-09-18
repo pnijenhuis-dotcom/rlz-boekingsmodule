@@ -111,6 +111,9 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
         {
             DocumentStatus.ONTVANGEN,  # verplaatsen naar andere administratie (27-08 punt 5)
             DocumentStatus.GEBOEKT,
+            # Boeken sneller (Peter 18-09, migratie 0165): het synchrone deel van "Boeken in RLZ" was groen → de
+            # RLZ-write loopt op de achtergrond; uitsluitend via app/documenten/boek_wachtrij.py::dien_boeking_in.
+            DocumentStatus.WORDT_GEBOEKT,
             DocumentStatus.BOEKEN_MISLUKT,
             DocumentStatus.TE_CONTROLEREN,
             # Klant-accorderingsflow (migratie 0033): administratie met accordering aan —
@@ -159,8 +162,19 @@ _TOEGESTANE_OVERGANGEN: dict[DocumentStatus, frozenset[DocumentStatus]] = {
         }
     ),
     DocumentStatus.BOEKEN_MISLUKT: frozenset(
-        {DocumentStatus.KLAAR_OM_TE_BOEKEN, DocumentStatus.TE_CONTROLEREN, DocumentStatus.VERWIJDERD}
+        {
+            DocumentStatus.KLAAR_OM_TE_BOEKEN,
+            DocumentStatus.TE_CONTROLEREN,
+            DocumentStatus.VERWIJDERD,
+            # Boeken sneller (18-09): "Opnieuw" op een mislukte boeking dient 'm opnieuw in bij de achtergrond-
+            # schrijver (mét VERSE externe checks — de cache wordt op dit pad nooit gelezen).
+            DocumentStatus.WORDT_GEBOEKT,
+        }
     ),
+    # Boeken sneller (Peter 18-09, migratie 0165): de worker rondt af — geboekt, of zichtbaar mislukt mét reden.
+    # Bewust GEEN uitgang naar verwijderd/te_controleren/vraag_open: het document is onderweg naar RLZ, niet
+    # bewerkbaar en niet nog eens te boeken; wie iets wil, wacht op de uitkomst (≤ 10 min, anders herstel-vangnet).
+    DocumentStatus.WORDT_GEBOEKT: frozenset({DocumentStatus.GEBOEKT, DocumentStatus.BOEKEN_MISLUKT}),
     # Handmatig afmaken gedraagt zich verder als te_controleren (de controleur vult álles zelf
     # in; de harde checks — project verplicht per regel, regelsom — blijven de poort naar
     # boeken), plus de weg terug naar extractie_bezig voor een nieuwe extractiepoging.

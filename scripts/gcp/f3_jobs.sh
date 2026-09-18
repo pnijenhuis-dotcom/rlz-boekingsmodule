@@ -70,6 +70,10 @@ JOBS=(
   # elk groot document (stap 8) + dit scheduler-VANGNET elke 10 min voor een gemiste trigger.
   # Lege wachtrij = snelle no-op. Start NIET gepauzeerd: dit is een vangnet, geen notificatie.
   "rlz-extractie-wachtrij|extractie-wachtrij-verwerken|1800|*/10 * * * *"
+  # Achtergrond-schrijver "Boeken in RLZ" (boeken sneller, Peter 18-09): on-demand getriggerd door de service bij élke
+  # ingediende boeking (status wordt_geboekt) + dit scheduler-VANGNET elke 2 min (gemiste trigger, gestrande verwerker
+  # > 10 min = claim hervat). Lege wachtrij = snelle no-op. Start NIET gepauzeerd: dit is een vangnet op geldverkeer.
+  "rlz-boek-wachtrij|boek-wachtrij-verwerken|900|*/2 * * * *"
   # Synthetische bewaking (best-practice-besluit 1, 31-08): kwartier-probes (health/DB/
   # documentopslag/mailkanaal/RLZ-leesroute; 1×/uur AI-call + extractie-foutratio) mét eigen
   # SMTP-alerts. Start NIET gepauzeerd: dit ís het vangnet — een gepauzeerde bewaking bewaakt
@@ -305,6 +309,18 @@ else
   echo "   LET OP: job rlz-extractie-wachtrij bestaat nog niet (eerste deploy-run maakt 'm) —"
   echo "   draai dit script daarna opnieuw voor de IAM-binding; tot dan vangt alleen de"
   echo "   */10-scheduler grote documenten op (zichtbaar 'in wachtrij', nooit stil)."
+fi
+
+echo "== 8b. rlz-boek-wachtrij: on-demand job + vangnet 2 min (boeken sneller, 18-09) =="
+if gcloud run jobs describe rlz-boek-wachtrij --region="${REGION}" --format="value(metadata.name)" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding rlz-boek-wachtrij \
+    --region="${REGION}" \
+    --member="serviceAccount:run-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/run.invoker" >/dev/null
+  echo "   run-backend@ mag rlz-boek-wachtrij uitvoeren (roles/run.invoker, job-niveau)."
+else
+  echo "   LET OP: job rlz-boek-wachtrij bestaat nog niet (eerste deploy-run maakt 'm) —"
+  echo "   draai dit script daarna opnieuw voor de IAM-binding; tot dan vangt de */2-scheduler elke ingediende boeking op."
 fi
 
 echo "== 9. rlz-eerste-sync: on-demand job (wizard Administratie toevoegen, 26-08 punt 5) =="

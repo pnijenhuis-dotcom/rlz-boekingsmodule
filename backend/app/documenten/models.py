@@ -66,6 +66,10 @@ class DocumentStatus(enum.StrEnum):
     EXTRACTIE_BEZIG = "extractie_bezig"
     TE_CONTROLEREN = "te_controleren"
     KLAAR_OM_TE_BOEKEN = "klaar_om_te_boeken"
+    # Boeken sneller (Peter 18-09, migratie 0165): de mens drukte op "Boeken in RLZ", het synchrone deel (poorten,
+    # harde checks, toggle, volumerem) was groen — de RLZ-write loopt op de achtergrond (app/documenten/
+    # boek_wachtrij.py). Niet bewerkbaar, niet nog eens te boeken, wél te bekijken; → geboekt of → boeken_mislukt.
+    WORDT_GEBOEKT = "wordt_geboekt"
     GEBOEKT = "geboekt"
     VRAAG_OPEN = "vraag_open"
     AFGEWEZEN = "afgewezen"
@@ -823,3 +827,50 @@ class DuplicaatSignaal(Base):
 
 
 from app.intake import models as _intake_models  # noqa: E402, F401
+
+
+class CheckExternCache(Base):
+    """Boeken sneller (Peter 18-09, migratie 0165): het EXTERNE deel van de harde checks per document — IBAN-seed
+    (RLZ BankRelations), RLZ-/Odoo-duplicaatquery en de kandidaten ± 60 d — als JSON (`app/documenten/
+    checks_extern.py::ExternRapport`), mét de vingerafdruk van de externe invoer en het controlemoment. Geldig =
+    zelfde vingerafdruk én ≤ `settings.checks_extern_cache_minuten`; een boeken_mislukt-retry en het autoboek-pad
+    lezen 'm nooit (altijd vers). Eén rij per document, overschreven bij elke verse run (geen DELETE-grant)."""
+
+    __tablename__ = "check_extern_cache"
+    __table_args__ = (
+        Index("ix_check_extern_cache_administratie_id", "administratie_id"),
+        {"schema": "boekhouding"},
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("boekhouding.document.id"), primary_key=True
+    )
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    vingerafdruk: Mapped[str] = mapped_column()
+    rapport: Mapped[dict] = mapped_column(JSONB)
+    gecontroleerd_op: Mapped[datetime] = mapped_column()
+    backend: Mapped[str] = mapped_column()
+
+
+class BoekWachtrijClaim(Base):
+    """Boeken sneller (Peter 18-09, migratie 0165): idempotency-key van de achtergrond-schrijver —
+    `boek-{document_id}-{boek_cyclus}`. INSERT = claim (twee verwerkers, bv. on-demand job + scheduler-vangnet,
+    pakken nooit dezelfde boeking); ná de run `afgerond_op` + `uitkomst` (geboekt | mislukt). Een claim zonder
+    afronding ouder dan `settings.boek_wachtrij_herstel_minuten` is een gestrande verwerker en wordt door het
+    herstel-vangnet opnieuw geclaimd (UPDATE geclaimd_op/verwerker). Nooit verwijderd."""
+
+    __tablename__ = "boek_wachtrij_claim"
+    __table_args__ = (
+        Index("ix_boek_wachtrij_claim_administratie_id", "administratie_id"),
+        Index("ix_boek_wachtrij_claim_document_id", "document_id"),
+        {"schema": "boekhouding"},
+    )
+
+    sleutel: Mapped[str] = mapped_column(primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boekhouding.document.id"))
+    administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
+    boek_cyclus: Mapped[int] = mapped_column()
+    geclaimd_op: Mapped[datetime] = mapped_column()
+    verwerker: Mapped[str] = mapped_column()
+    afgerond_op: Mapped[datetime | None] = mapped_column(default=None)
+    uitkomst: Mapped[str | None] = mapped_column(default=None)

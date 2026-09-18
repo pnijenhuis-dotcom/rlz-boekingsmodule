@@ -27,6 +27,9 @@ interface MockOpties {
   /** Antwoord op POST …/boeken. */
   boekenResponse?: unknown
   boekenAanroepen?: string[]
+  /** Boeken sneller (18-09): HTTP-status van het boek-antwoord (202 = wordt_geboekt) + de verstuurde bodies. */
+  boekenStatus?: number
+  boekenBodies?: unknown[]
   /** Override voor GET …/boekvoorstel. */
   boekvoorstel?: unknown
   taxrates?: unknown[]
@@ -46,6 +49,15 @@ function installFetchMock(detail: unknown, opties?: MockOpties) {
       }
       if (url.endsWith('/boeken') && init?.method === 'POST') {
         opties?.boekenAanroepen?.push(url)
+        if (init?.body) opties?.boekenBodies?.push(JSON.parse(String(init.body)))
+        // Boeken sneller (18-09): 202 `wordt_geboekt` als de test dat vraagt.
+        if (opties?.boekenStatus)
+          return Promise.resolve(
+            new Response(JSON.stringify(opties?.boekenResponse ?? {}), {
+              status: opties.boekenStatus,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
         return Promise.resolve(jsonResponse(opties?.boekenResponse ?? {}))
       }
       if (url.endsWith('/documenten')) {
@@ -1499,5 +1511,99 @@ describe('DocumentDetailScreen — mini-voorraad tijdlijnregel (opdracht 06-09)'
     renderScherm()
     const regel = await screen.findByTestId('tijdlijn-mini-voorraad')
     expect(regel).toHaveTextContent('Mini-voorraad bijgewerkt — 3 regels · nieuw — controleer naam: Kanaalplaatvork speciaal')
+  })
+})
+
+
+// ————— Boeken sneller (Peter 18-09): 202 wordt_geboekt → direct door naar het server-gekozen volgende document —————
+
+describe('DocumentDetailScreen — boeken sneller (202 wordt_geboekt)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const VOLGEND_ID = 'dddddddd-0000-0000-0000-000000000004'
+  const lijstItem = (id: string, soort: string, status: string) => ({
+    id,
+    bestandsnaam: `${id}.pdf`,
+    status,
+    bron: 'upload',
+    soort,
+    mogelijk_duplicaat_van: null,
+    toegewezen_aan: null,
+    aangemaakt_op: '2026-08-25T10:00:00Z',
+    laatst_gewijzigd_op: '2026-08-25T10:00:00Z',
+    afwijzing: null,
+    leverancier: null,
+    totaalbedrag: null,
+    factuurdatum: null,
+    automatisch_geboekt: false,
+  })
+  const GROEN = { geblokkeerd: false, resultaten: [{ naam: 'Verplichte velden', ok: true, melding: 'ok' }] }
+  const boekvoorstel = {
+    document_id: DOCUMENT_ID,
+    vendor_id: null,
+    referentie: 'F-1',
+    factuurdatum: null,
+    totaalbedrag: null,
+    rlz_boekstuknummer: null,
+    opgeslagen: true,
+    regels: [],
+  }
+
+  it('202 → toast "Wordt geboekt in RLZ" en direct naar volgende_document_id (soort bepaalt de route) zónder lijst-fetch', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties: MockOpties = {
+      lijst: [lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren'), lijstItem(VOLGEND_ID, 'verkoopfactuur', 'te_controleren')],
+      lijstAanroepen: [],
+      boekenAanroepen: [],
+      boekenBodies: [],
+      checksResponse: GROEN,
+      boekenStatus: 202,
+      boekenResponse: {
+        document_id: DOCUMENT_ID,
+        status: 'wordt_geboekt',
+        volgende_document_id: VOLGEND_ID,
+        volgende_document_soort: 'verkoopfactuur',
+        sleutel: `boek-${DOCUMENT_ID}-0`,
+      },
+      boekvoorstel,
+    }
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), opties)
+    renderScherm()
+
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    const lijstFetchesVoor = opties.lijstAanroepen!.length
+    await gebruiker.click(knop)
+
+    await waitFor(() => expect(opties.boekenAanroepen).toHaveLength(1))
+    expect(await screen.findByText(/Wordt geboekt in RLZ — F-1/)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('locatie')).toHaveTextContent(`/verkoop/${ADMINISTRATIE_ID}/${VOLGEND_ID}`),
+    )
+    // Geen extra lijst-fetch voor de doorloop: het volgende document kwam uit het 202-antwoord.
+    expect(opties.lijstAanroepen).toHaveLength(lijstFetchesVoor)
+  })
+
+  it('202 zonder volgend document → terug naar de documentenlijst, zonder lijst-fetch', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const gebruiker = userEvent.setup()
+    const opties: MockOpties = {
+      lijst: [lijstItem(DOCUMENT_ID, 'inkoopfactuur', 'te_controleren')],
+      lijstAanroepen: [],
+      boekenAanroepen: [],
+      checksResponse: GROEN,
+      boekenStatus: 202,
+      boekenResponse: { document_id: DOCUMENT_ID, status: 'wordt_geboekt', volgende_document_id: null, volgende_document_soort: null, sleutel: 's' },
+      boekvoorstel,
+    }
+    installFetchMock(detailMet({ soort: 'inkoopfactuur', veldvoorstel: null, tijdlijn: [] }), opties)
+    renderScherm()
+    const knop = await screen.findByRole('button', { name: 'Boeken in RLZ ✓' })
+    await waitFor(() => expect(knop).toBeEnabled())
+    const lijstFetchesVoor = opties.lijstAanroepen!.length
+    await gebruiker.click(knop)
+    await waitFor(() => expect(screen.getByTestId('locatie')).toHaveTextContent(`/?administratie=${ADMINISTRATIE_ID}`))
+    expect(opties.lijstAanroepen).toHaveLength(lijstFetchesVoor)
   })
 })

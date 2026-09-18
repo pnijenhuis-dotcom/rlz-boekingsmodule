@@ -60,6 +60,10 @@ UNIVERSAL_NAAM = "Universal Steigerbouw B.V."
 TAXRATE_HOOG = uuid.UUID("55555555-0000-0000-0000-000000000021")
 TAXRATE_VERLEGD_HOOG = uuid.UUID("55555555-0000-0000-0000-000000000009")
 TAXRATE_GEEN_BTW = uuid.UUID("55555555-0000-0000-0000-000000000000")
+# Casus ae (18-09): 9 %-tarief (favoriet) + het 0 %-tarief "NL, Nul tarief" (niet verlegd, niet vrijgesteld) zoals BLOW
+# ze kent.
+TAXRATE_LAAG = uuid.UUID("55555555-0000-0000-0000-000000009009")
+TAXRATE_NUL = uuid.UUID("55555555-0000-0000-0000-000000009000")
 GB_INHUUR = uuid.UUID("44444444-0000-0000-0000-000000004400")
 GB_HUUR_MATERIEEL = uuid.UUID("44444444-0000-0000-0000-000000004600")
 GB_ADVIES = uuid.UUID("44444444-0000-0000-0000-000000004700")
@@ -238,6 +242,18 @@ def stamgegevens(universal: uuid.UUID, admin_engine: Engine) -> dict[str, uuid.U
                 "NL, Geen BTW (Vrijgesteld)",
                 Decimal("0"),
                 {"IsRelayed": False, "IsExcempt": True, "Percentage": 0.0},
+            ),
+            (
+                TAXRATE_LAAG,
+                "NL, Laag tarief",
+                Decimal("0.0900"),
+                {"IsRelayed": False, "IsFavorite": True, "Percentage": 0.09},
+            ),
+            (
+                TAXRATE_NUL,
+                "NL, Nul tarief",
+                Decimal("0"),
+                {"IsRelayed": False, "IsFavorite": False, "Percentage": 0.0},
             ),
         ):
             session.add(
