@@ -1,18 +1,21 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { UPLOAD_ACCEPT } from '../intake/intakeApi'
 import { AnkerPopup } from '../ui/basis'
+import { verzamelBestanden } from './uploadWachtrij'
 
 /** Compacte uploadzone (werkstroom-run 27/28-08, punt 3d): één regel mét ⓘ-uitleg als popover,
  * de zone zelf lager — gedeeld door de werkvoorraad-sleepzone (tenaamstelling-routing) en de
  * klantpagina-upload (direct toegewezen). Gedrag (klik = bladeren, drag & drop, accept-lijst)
- * ongewijzigd; `extra` = optionele inline bediening (documentsoort-select op de klantpagina). */
+ * ongewijzigd; `extra` = optionele inline bediening (documentsoort-select op de klantpagina).
+ * Bulk (Peter 18-09, "180 documenten bij BLOW, gaat niet"): `<input multiple>` + álle gesleepte bestanden — óók een
+ * gesleepte map (webkitGetAsEntry, recursief) — gaan als één lijst naar `onBestanden`; de soort-keuze geldt voor de batch. */
 export function UploadZone({
   regel,
   uitleg,
   bezig,
   bezigTekst,
   extra,
-  onBestand,
+  onBestanden,
 }: {
   /** De ene zichtbare regel ("Sleep hier … of blader"). */
   regel: ReactNode
@@ -21,7 +24,7 @@ export function UploadZone({
   bezig: boolean
   bezigTekst: string
   extra?: ReactNode
-  onBestand: (bestand: File) => void
+  onBestanden: (bestanden: File[]) => void
 }) {
   const bestandInputRef = useRef<HTMLInputElement>(null)
   const [sleepActief, setSleepActief] = useState(false)
@@ -40,8 +43,9 @@ export function UploadZone({
       onDrop={(e) => {
         e.preventDefault()
         setSleepActief(false)
-        const bestand = e.dataTransfer.files?.[0]
-        if (bestand) onBestand(bestand)
+        void verzamelBestanden(e.dataTransfer).then((bestanden) => {
+          if (bestanden.length > 0) onBestanden(bestanden)
+        })
       }}
     >
       {bezig ? (
@@ -85,10 +89,14 @@ export function UploadZone({
         ref={bestandInputRef}
         type="file"
         accept={UPLOAD_ACCEPT}
+        multiple
+        data-testid="upload-input"
         style={{ display: 'none' }}
         onChange={(e) => {
-          const bestand = e.target.files?.[0]
-          if (bestand) onBestand(bestand)
+          const bestanden = Array.from(e.target.files ?? [])
+          if (bestanden.length > 0) onBestanden(bestanden)
+          // Zelfde selectie nog eens kiezen moet opnieuw een change geven.
+          e.target.value = ''
         }}
       />
     </div>

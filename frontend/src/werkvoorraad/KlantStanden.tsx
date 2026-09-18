@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { haalLaatstHerinnerd, herinnerAccordeur } from '../accordering/accorderingApi'
 import { herinnerTijdLabel, isVandaagHerinnerd } from '../accordering/herinnerDag'
-import { apiJson, BackendOnbereikbaarError } from '../api/client'
+import { apiJson } from '../api/client'
 import type { DocumentListItemDto, DocumentListResponseDto, UploadResponseDto, VraagDto } from '../api/types'
 import { haalRekeningen, type RekeningenDto } from '../bank/bankApi'
 import { verwerkEml } from '../intake/intakeApi'
@@ -16,6 +16,8 @@ import { Breadcrumb } from './Breadcrumb'
 import { documentRoute, amountKlasse, formatBedrag, isOpenstaand, ouderdomLabel, soortLabel } from './format'
 import { KpiRij } from './KpiRij'
 import { UploadZone } from './UploadZone'
+import { voortgangTekst, type UploadUitkomst } from './uploadWachtrij'
+import { UploadBatchStatus, useUploadWachtrij } from './useUploadWachtrij'
 
 /* Standen-overzicht per klant (IA-besluit 15-08, mockup #scherm-klant): documenten per soort,
  * bank per rekening — alleen tellers. HERZIEN 25-08 (besluit Peter, feedbackronde punt C): dit is
@@ -606,78 +608,63 @@ export function KlantStanden({
 /** Upload gericht op déze klant (besluit 15-08: sleep-upload blijft óók op de klantpagina —
  * direct toegewezen, geen verzamelbak; .eml volgt de tenaamstelling-route). */
 export function KlantUpload({ administratieId, onGeupload }: { administratieId: string; onGeupload: () => void }) {
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState<string | null>(null)
-  const [bericht, setBericht] = useState<string | null>(null)
   const [uploadSoort, setUploadSoort] = useState<'inkoopfactuur' | 'kassarapport' | 'verplichting'>('inkoopfactuur')
 
-  const uploadBestand = useCallback(
-    async (bestand: File) => {
-      setBezig(true)
-      setFout(null)
-      setBericht(null)
-      try {
-        if (bestand.name.toLowerCase().endsWith('.eml')) {
-          const resultaat = await verwerkEml(bestand)
-          setBericht(
-            resultaat.al_eerder_verwerkt
-              ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
-              : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
-                  .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
-                  .join('; ') || 'geen bijlagen gevonden'}.`,
-          )
-          onGeupload()
-          return
+  // Bulk (18-09): per bestand dezelfde route als voorheen; de wachtrij (max 4 tegelijk) en de statusregels zitten in
+  // useUploadWachtrij, de lijst ververst één keer ná de hele batch. Timeout blijft 'onzeker' (blok 1c 08-09: nooit
+  // uitnodigen tot een tweede upload) — classificeerFout vertaalt BackendOnbereikbaarError('timeout') daarnaar.
+  const uploader = useCallback(
+    async (bestand: File): Promise<UploadUitkomst> => {
+      if (bestand.name.toLowerCase().endsWith('.eml')) {
+        const resultaat = await verwerkEml(bestand)
+        if (resultaat.al_eerder_verwerkt) return { status: 'al_aanwezig', melding: 'was al eerder verwerkt (zelfde Message-ID)' }
+        return {
+          status: 'klaar',
+          melding:
+            resultaat.bijlagen.map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`).join('; ') ||
+            'geen bijlagen gevonden',
         }
-        const formData = new FormData()
-        formData.append('bestand', bestand)
-        formData.append('soort', uploadSoort)
-        const resultaat = await apiJson<UploadResponseDto>(`/administraties/${administratieId}/documenten`, {
-          method: 'POST',
-          body: formData,
-        })
-        setBericht(
-          resultaat.mogelijk_duplicaat_van
-            ? `"${bestand.name}" geüpload — mogelijk duplicaat, gemarkeerd ter controle.`
-            : resultaat.status === 'extractie_wachtrij'
-              ? `"${bestand.name}" geüpload — wordt verwerkt… (achtergrond); de rij staat al in de lijst.`
-              : `"${bestand.name}" geüpload en in verwerking.`,
-        )
-        onGeupload()
-      } catch (err) {
-        // Blok 1c 08-09: een upload-antwoord dat tóch langer dan de request-timeout duurt is géén
-        // "backend niet beschikbaar" — het bestand staat dan meestal al geregistreerd (live 28–51 s
-        // mét 201). Nooit uitnodigen tot een tweede upload (= duplicaat): lijst verversen + kijken.
-        if (err instanceof BackendOnbereikbaarError && err.oorzaak === 'timeout') {
-          setFout(
-            `Upload van "${bestand.name}" duurt lang — controleer de lijst hieronder; het document verschijnt daar met "Wordt verwerkt…". Upload het niet opnieuw.`,
-          )
-          onGeupload()
-        } else {
-          setFout(err instanceof Error ? err.message : 'Upload mislukt')
+      }
+      const formData = new FormData()
+      formData.append('bestand', bestand)
+      formData.append('soort', uploadSoort)
+      const resultaat = await apiJson<UploadResponseDto>(`/administraties/${administratieId}/documenten`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (resultaat.mogelijk_duplicaat_van) {
+        return {
+          status: 'al_aanwezig',
+          melding: `al aanwezig als "${resultaat.mogelijk_duplicaat_van.bestandsnaam}" — gemarkeerd als mogelijk duplicaat, ter controle`,
         }
-      } finally {
-        setBezig(false)
+      }
+      return {
+        status: 'klaar',
+        melding: resultaat.status === 'extractie_wachtrij' ? 'wordt verwerkt (achtergrond)' : 'in verwerking',
       }
     },
-    [administratieId, onGeupload, uploadSoort],
+    [administratieId, uploadSoort],
   )
+  const wachtrij = useUploadWachtrij(uploader, onGeupload)
+  const bezig = wachtrij.bezig
 
   // Punt 3d (27/28-08): één regel + ⓘ-uitleg, documentsoort inline, zone lager — gedeelde UploadZone.
   return (
     <>
       <UploadZone
         bezig={bezig}
-        bezigTekst="Bezig met uploaden…"
-        onBestand={(bestand) => void uploadBestand(bestand)}
+        bezigTekst={`Bezig met uploaden… ${voortgangTekst(wachtrij.items)}`}
+        onBestanden={wachtrij.start}
         regel={
           <>
-            Sleep hier een PDF, UBL, .eml of foto naartoe, of <b>blader</b> — direct toegewezen aan deze klant
+            Sleep hier één of honderden PDF&apos;s, UBL&apos;s, .eml&apos;s of foto&apos;s (of een map) naartoe, of <b>blader</b> —
+            direct toegewezen aan deze klant
           </>
         }
         uitleg={
           <>
-            Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto (JPEG/PNG/HEIC) wordt naar
+            Meerdere bestanden tegelijk kan (ook een hele map): maximaal vier tegelijk, per bestand zie je de uitkomst,
+            de lijst ververst één keer ná de batch. Sha256-duplicaatcheck bij binnenkomst; UBL wordt automatisch geparst; een foto (JPEG/PNG/HEIC) wordt naar
             PDF omgezet (origineel blijft bewaard). Een .eml doorloopt de mail-intake mét tenaamstelling-routing.
             Kies rechts de documentsoort vóór het uploaden: inkoopfactuur (standaard), kassarapport (omzetboeking) of
             verplichting — een offerte, prijsopgave of opdrachtbevestiging die ter accordering gaat en waar latere
@@ -699,12 +686,14 @@ export function KlantUpload({ administratieId, onGeupload }: { administratieId: 
           </label>
         }
       />
-      {fout && <FoutMelding melding={fout} />}
-      {bericht && (
-        <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>
-          {bericht}
-        </div>
-      )}
+      <UploadBatchStatus
+        items={wachtrij.items}
+        bezig={bezig}
+        afgerondSamenvatting={wachtrij.afgerondSamenvatting}
+        onStop={wachtrij.stop}
+        onOpnieuw={wachtrij.opnieuw}
+        onWis={wachtrij.wis}
+      />
     </>
   )
 }

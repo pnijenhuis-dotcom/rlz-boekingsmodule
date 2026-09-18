@@ -8,6 +8,10 @@
 
 ## 2026-09-18 — Uren-app: eerst het project, dan "+ Uren" of "Meerwerk melden"; m² niet meer verplicht; doorfactureren per regel
 
+<!-- bulk-upload-18-09 -->
+
+- **Je kunt nu honderden bestanden tegelijk slepen.** Selecteer in de Verkenner of Finder alle facturen (of sleep een hele map) naar de uploadzone op de klantpagina, de documentenlijst of de werkvoorraad. Er gaan er vier tegelijk omhoog; onder de zone zie je "Bezig: 37 van 180", per bestand de uitkomst (klaar, al aanwezig, te groot, geen verbinding …) en na afloop een samenvatting zoals "180 aangeboden · 176 nieuw · 3 al aanwezig · 1 fout". Met "Stoppen" rond je de lopende uploads af, met "Mislukte opnieuw" gaan alleen de mislukte bestanden alsnog mee. De gekozen documentsoort geldt voor de hele lading; de lijst ververst één keer als alles klaar is.
+
 <!-- zoekveld-klantenlijst-dagkop-sticky-18-09 -->
 
 - **Zoekveld op de klantenlijst.** Typ een deel van de naam (of de groep) in het zoekveld naast "Groep" en de lijst met administraties krimpt direct mee — met een teller "3 van 71". De toets `/` zet de cursor in het zoekveld; de zoekterm blijft staan zolang je tabblad open is en werkt samen met het Groep-filter.

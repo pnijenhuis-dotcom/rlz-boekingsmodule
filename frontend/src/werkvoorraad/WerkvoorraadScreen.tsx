@@ -21,6 +21,8 @@ import { GroepSaldiKaart } from './GroepSaldiKaart'
 import { KlantStanden } from './KlantStanden'
 import { KpiRij } from './KpiRij'
 import { UploadZone } from './UploadZone'
+import { voortgangTekst, type UploadUitkomst } from './uploadWachtrij'
+import { UploadBatchStatus, useUploadWachtrij } from './useUploadWachtrij'
 import { teVerwerken, useWerkvoorraadData, type KlantRij } from './useWerkvoorraadData'
 import { useAdministraties } from './useAdministraties'
 
@@ -338,49 +340,38 @@ function WerkvoorraadIngang({
 }
 
 function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
-  const [uploadFout, setUploadFout] = useState<string | null>(null)
-  const [uploadBericht, setUploadBericht] = useState<string | null>(null)
-  const [bezig, setBezig] = useState(false)
-
   // Werkvoorraad-sleepzone = tenaamstelling-routing (CLAUDE.md): een .eml gaat door de mail-intake,
   // een los bestand (PDF/UBL/foto — punt 2 feedbackronde 25-08 deel 3) door dezelfde routing als een
   // mailbijlage: eenduidige tenaamstelling → klant, twijfel → "Niet toegewezen".
-  const uploadBestand = useCallback(async (bestand: File) => {
-    setBezig(true)
-    setUploadFout(null)
-    setUploadBericht(null)
-    try {
-      if (bestand.name.toLowerCase().endsWith('.eml')) {
-        const resultaat = await verwerkEml(bestand)
-        setUploadBericht(
-          resultaat.al_eerder_verwerkt
-            ? `"${bestand.name}" was al eerder verwerkt (zelfde Message-ID) — niets dubbel gedaan.`
-            : `"${bestand.name}" verwerkt: ${resultaat.bijlagen
-                .map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`)
-                .join('; ') || 'geen bijlagen gevonden'}.`,
-        )
-      } else {
-        const r = await verwerkLosBestand(bestand)
-        setUploadBericht(`"${bestand.name}" → ${r.uitkomst.replaceAll('_', ' ')}${r.detail ? ` (${r.detail})` : ''}.`)
+  // Bulk (18-09): meerdere bestanden/mappen in één keer via dezelfde wachtrij als de klantpagina.
+  const uploader = useCallback(async (bestand: File): Promise<UploadUitkomst> => {
+    if (bestand.name.toLowerCase().endsWith('.eml')) {
+      const resultaat = await verwerkEml(bestand)
+      if (resultaat.al_eerder_verwerkt) return { status: 'al_aanwezig', melding: 'was al eerder verwerkt (zelfde Message-ID)' }
+      return {
+        status: 'klaar',
+        melding:
+          resultaat.bijlagen.map((b) => `${b.bestandsnaam} → ${b.uitkomst.replaceAll('_', ' ')}`).join('; ') ||
+          'geen bijlagen gevonden',
       }
-      onVerwerkt()
-    } catch (err) {
-      setUploadFout(err instanceof Error ? err.message : 'Verwerken van het bestand is mislukt.')
-    } finally {
-      setBezig(false)
     }
-  }, [onVerwerkt])
+    const r = await verwerkLosBestand(bestand)
+    return { status: 'klaar', melding: `${r.uitkomst.replaceAll('_', ' ')}${r.detail ? ` (${r.detail})` : ''}` }
+  }, [])
+  const wachtrij = useUploadWachtrij(uploader, onVerwerkt)
+  const bezig = wachtrij.bezig
 
   // Punt 3d (27/28-08): één regel + ⓘ-uitleg, zone lager — gedeelde UploadZone.
   return (
     <>
       <UploadZone
         bezig={bezig}
-        bezigTekst="Bezig met verwerken…"
-        onBestand={(bestand) => void uploadBestand(bestand)}
+        bezigTekst={`Bezig met verwerken… ${voortgangTekst(wachtrij.items)}`}
+        onBestanden={wachtrij.start}
         regel={
           <>
-            Sleep hier een mail (.eml), PDF, UBL of foto naartoe, of <b>blader</b> — toewijzing op tenaamstelling
+            Sleep hier één of meer mails (.eml), PDF&apos;s, UBL&apos;s of foto&apos;s (of een map) naartoe, of <b>blader</b> —
+            toewijzing op tenaamstelling
           </>
         }
         uitleg={
@@ -391,12 +382,14 @@ function EmlUploadZone({ onVerwerkt }: { onVerwerkt: () => void }) {
           </>
         }
       />
-      {uploadFout && <FoutMelding melding={uploadFout} />}
-      {uploadBericht && (
-        <div className="hint" style={{ marginTop: -10, marginBottom: 16 }}>
-          {uploadBericht}
-        </div>
-      )}
+      <UploadBatchStatus
+        items={wachtrij.items}
+        bezig={bezig}
+        afgerondSamenvatting={wachtrij.afgerondSamenvatting}
+        onStop={wachtrij.stop}
+        onOpnieuw={wachtrij.opnieuw}
+        onWis={wachtrij.wis}
+      />
     </>
   )
 }

@@ -2892,3 +2892,54 @@ input.omzet-cel.grijs {
 .omzet-categorie b {
   color: var(--text);
 }
+
+/* Bulk-upload statusblok (Peter 18-09 "180 documenten bij BLOW"): voortgang + per bestand een regel onder de zone. */
+.upload-batch {
+  margin: -6px 0 16px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+}
+.upload-batch-kop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.upload-batch-knoppen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.upload-batch-balk {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin: 8px 0 4px;
+  accent-color: var(--primary);
+}
+.upload-batch-lijst {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.upload-batch-lijst li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  min-width: 0;
+}
+.upload-batch-naam {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+.upload-batch-melding {
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
