@@ -1517,6 +1517,20 @@ tr.subrij .eerste-sync-rij ul {
 .plan-grid tr.plan-compact td.plan-cel {
   height: 34px;
 }
+/* Sticky dagkop (Peter 18-09, screenshot Personeel-tab: kopregel weg ná verticaal scrollen). Het grid scrolt intern
+ * (.tabel-scroll.sticky-koppen); de thead-cellen krijgen een dekkende achtergrond + onderrand zodat kaartjes er niet
+ * doorheen schijnen. De rij-koppen (project-th in tbody) zijn door hun rij begrensd en bewegen niet. */
+.plan-scroll {
+  max-height: max(420px, calc(100vh - 250px));
+}
+.plan-scroll.sticky-koppen .plan-grid thead th {
+  background: var(--panel);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, var(--muted)), 0 2px 6px -4px rgba(18, 24, 31, 0.35);
+  z-index: 3;
+}
+.plan-scroll.sticky-koppen .plan-grid thead th.plan-vandaag {
+  background: color-mix(in srgb, var(--accent-bg) 55%, var(--panel));
+}
 
 /* Blok "Uit de e-mail" op het controlescherm (feedbackronde 25-08 deel 3 punt 1b). */
 .uit-de-email > summary { list-style: revert; }

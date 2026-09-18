@@ -15,6 +15,7 @@ import { VragenScreen } from '../vragen/VragenScreen'
 import { DocumentenDeelscherm } from './DocumentenDeelscherm'
 import { FilterWeergave, type WerkvoorraadFilter } from './FilterWeergave'
 import { Klantenlijst } from './Klantenlijst'
+import { leesOnthoudenZoek, onthoudZoek } from './klantZoek'
 import { GroepFilter } from '../ui/GroepFilter'
 import { GroepSaldiKaart } from './GroepSaldiKaart'
 import { KlantStanden } from './KlantStanden'
@@ -126,6 +127,18 @@ function WerkvoorraadIngang({
     const p = new URLSearchParams(zoekParams)
     if (id) p.set('groep', id)
     else p.delete('groep')
+    setZoekParams(p, { replace: true })
+  }
+  // Zoekveld klantenlijst (Peter 18-09): `?zoek=` in de URL (deeplink) wint; zonder URL-term de laatste term van deze
+  // browsersessie (sessionStorage) — client-side filter op de tellers-cache-respons, geen server-call.
+  const zoekUitUrl = zoekParams.get('zoek')
+  const [zoekOnthouden] = useState(() => leesOnthoudenZoek())
+  const klantZoek = zoekUitUrl ?? zoekOnthouden
+  const zetKlantZoek = (zoek: string) => {
+    const p = new URLSearchParams(zoekParams)
+    if (zoek) p.set('zoek', zoek)
+    else p.delete('zoek')
+    onthoudZoek(zoek)
     setZoekParams(p, { replace: true })
   }
   const { klanten, openVragen, fout, herlaad } = useWerkvoorraadData(administraties, groepId)
@@ -316,6 +329,9 @@ function WerkvoorraadIngang({
         onHerlaad={herlaad}
         totaalAdministraties={administraties.length}
         groepFilter={<GroepFilter waarde={groepId} onWijzig={zetGroep} />}
+        zoek={klantZoek}
+        onZoek={zetKlantZoek}
+        administraties={administraties}
       />
     </div>
   )

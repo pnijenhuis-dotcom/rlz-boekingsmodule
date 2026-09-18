@@ -1,8 +1,12 @@
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { AdministratieDto } from '../api/types'
+import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
 import { Avatar } from '../ui/Avatar'
 import { SkeletonRijen } from '../ui/basis'
 import { FoutMelding } from '../ui/FoutMelding'
 import { STATUSFILTER_BUITEN_OFFERTE, STATUSFILTER_URENMATCH } from './lijstContext'
+import { filterKlanten } from './klantZoek'
 import { heeftOpenstaandWerk, type KlantRij } from './useWerkvoorraadData'
 
 /** Werkvoorraad-ingang (mockup #werkvoorraad "Overzicht per klant"): alleen klanten mét
@@ -25,6 +29,9 @@ export function Klantenlijst({
   onHerlaad,
   totaalAdministraties,
   groepFilter,
+  zoek = '',
+  onZoek,
+  administraties = [],
 }: {
   klanten: KlantRij[] | null
   fout: string | null
@@ -32,8 +39,16 @@ export function Klantenlijst({
   totaalAdministraties: number
   /** Blok 8 run 11-09: groepskenmerk-filter (GroepFilter) in de kopregel — rendert zelf niets zonder groepen. */
   groepFilter?: React.ReactNode
+  /** Zoekveld (Peter 18-09): client-side op naam/groep (`klantZoek.ts`), de term leeft in `?zoek=` bij de aanroeper. */
+  zoek?: string
+  onZoek?: (zoek: string) => void
+  /** Voor de groepsnaam in de zoektekst (AdministratieDto.groep_naam). */
+  administraties?: Pick<AdministratieDto, 'id' | 'groep_naam'>[]
 }) {
   const navigate = useNavigate()
+  const zoekRef = useRef<HTMLInputElement>(null)
+  // "/" zet de cursor in het zoekveld (zelfde binding als de documentenlijst, `sneltoetsen.ts`), nooit vanuit een invoerveld.
+  useSneltoetsen(SNELTOETSEN_LIJST, { zoeken: () => zoekRef.current?.focus() }, Boolean(onZoek))
   /** Klik op een statuskolom → documentenlijst voorgefilterd op die status (punt 1a); een lege
    * teller ("—") laat de rij-klik (klantlanding zonder filter) gewoon doorgaan. */
   const naarStatus = (k: KlantRij, status: string, teller: number) => (e: React.MouseEvent) => {
@@ -41,8 +56,10 @@ export function Klantenlijst({
     e.stopPropagation()
     navigate(`/?administratie=${k.administratie_id}&status=${status}`)
   }
-  const zichtbaar = (klanten ?? []).filter(heeftOpenstaandWerk)
-  const verborgen = (klanten?.length ?? 0) - zichtbaar.length
+  const metWerk = (klanten ?? []).filter(heeftOpenstaandWerk)
+  const zichtbaar = filterKlanten(metWerk, zoek, administraties)
+  const verborgen = (klanten?.length ?? 0) - metWerk.length
+  const zoektActief = zoek.trim().length > 0
   // Kolom alleen bij data (Kempen-doorbelasting is voor één administratie relevant — de rest
   // van het kantoor moet geen lege kolom zien).
   const toonSpiegel = (klanten ?? []).some((k) => (k.spiegel_taken ?? 0) > 0)
@@ -69,6 +86,25 @@ export function Klantenlijst({
     <div className="panel">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ marginRight: 'auto' }}>Overzicht per klant</h2>
+        {onZoek && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+            <input
+              ref={zoekRef}
+              type="search"
+              value={zoek}
+              onChange={(e) => onZoek(e.target.value)}
+              placeholder="Zoek administratie… ( / )"
+              aria-label="Zoek administratie"
+              data-testid="klant-zoekveld"
+              style={{ width: 220, maxWidth: '60vw', fontSize: 12.5, padding: '6px 10px' }}
+            />
+            {klanten !== null && (
+              <span style={{ color: 'var(--faint)', fontSize: 11.5, whiteSpace: 'nowrap' }} data-testid="klant-zoek-teller">
+                {zichtbaar.length} van {metWerk.length}
+              </span>
+            )}
+          </label>
+        )}
         {groepFilter}
       </div>
       {fout && <FoutMelding melding="De klantenlijst kon niet geladen worden." detail={fout} onOpnieuw={onHerlaad} />}
@@ -231,7 +267,16 @@ export function Klantenlijst({
           </table>
         </div>
       )}
-      {klanten !== null && !fout && zichtbaar.length === 0 && (
+      {klanten !== null && !fout && zichtbaar.length === 0 && zoektActief && metWerk.length > 0 && (
+        <p className="hint" data-testid="klant-zoek-leeg">
+          Geen administratie past bij &quot;{zoek.trim()}&quot; — pas de zoekterm aan of{' '}
+          <button type="button" className="linkbtn" onClick={() => onZoek?.('')}>
+            wis het zoekveld
+          </button>
+          .
+        </p>
+      )}
+      {klanten !== null && !fout && metWerk.length === 0 && (
         <p className="hint">
           Geen openstaand werk — alle {totaalAdministraties}{' '}
           {totaalAdministraties === 1 ? 'administratie is' : 'administraties zijn'} bij. Nieuwe documenten of

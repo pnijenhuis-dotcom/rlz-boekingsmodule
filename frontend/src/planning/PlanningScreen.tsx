@@ -1181,7 +1181,10 @@ export function PlanningScreen() {
                   {aantalActief} actieve projecten · {metPlanning.length} mét planning deze week
                 </span>
               </div>
-              <div className="tabel-scroll">
+              {/* Sticky dagkop (Peter 18-09, screenshot: ná scrollen waren MA 14-9 … VR 18-9 weg): het grid scrolt intern
+                  (.sticky-koppen, zelfde patroon als de klantenlijst/administraties), de kopregel mét projectkolom-kop
+                  blijft staan; achtergrond + onderrand in components.css zodat kaartjes er niet doorheen schijnen. */}
+              <div className="tabel-scroll sticky-koppen plan-scroll" data-testid="plan-grid-scroll">
               <table className="plan-grid" style={{ tableLayout: 'fixed', minWidth: 760 }}>
                 <thead>
                   <tr>

@@ -452,8 +452,9 @@ export function TransportTab({
             )}
           </div>
           {data === null && !fout && <div style={{ padding: 16 }}><SkeletonRegels /></div>}
+          {/* Sticky dagkop (18-09) — zelfde patroon als het Personeel-grid. */}
           {data !== null && (
-            <div className="tabel-scroll">
+            <div className="tabel-scroll sticky-koppen plan-scroll" data-testid="transport-grid-scroll">
               <table className="plan-grid" style={{ tableLayout: 'fixed', minWidth: 760 }}>
                 <thead>
                   <tr>

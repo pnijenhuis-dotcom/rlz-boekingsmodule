@@ -8,6 +8,11 @@
 
 ## 2026-09-18 — Uren-app: eerst het project, dan "+ Uren" of "Meerwerk melden"; m² niet meer verplicht; doorfactureren per regel
 
+<!-- zoekveld-klantenlijst-dagkop-sticky-18-09 -->
+
+- **Zoekveld op de klantenlijst.** Typ een deel van de naam (of de groep) in het zoekveld naast "Groep" en de lijst met administraties krimpt direct mee — met een teller "3 van 71". De toets `/` zet de cursor in het zoekveld; de zoekterm blijft staan zolang je tabblad open is en werkt samen met het Groep-filter.
+- **Planning: de dagkoppen (ma … vr) blijven staan bij scrollen.** Het grid scrolt nu binnen het scherm en de kopregel met de dagen en de projectkolom blijft altijd zichtbaar, ook op de Transport-dagagenda.
+
 <!-- veldapp-project-eerst-18-09 -->
 
 - **Eerst het project, dan de knop.** Je week is nu een lijst projectkaarten: je geplande projecten en de projecten waar je deze week al uren of meerwerk op hebt. Op elke kaart staan "+ Uren" en "Meerwerk melden" — het project is dan al ingevuld, je hoeft niet meer te zoeken. Werk je op een ander project? Tik onderaan op "+ Ander project toevoegen aan mijn week", kies het uit de lijst en de kaart staat erbij. Met "Week indienen" dien je alle projecten van die week in één keer in.
