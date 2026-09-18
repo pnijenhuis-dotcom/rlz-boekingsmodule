@@ -96,6 +96,17 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Beginscherm kantoor-web set-based + tellers-cache (blok 6 run 11-09 middag; kliktest Peter 11-09, 71 administraties; migratie 0136):** `GET /werkvoorraad/overzicht` leest de tellers-cache `werkvoorraad_teller_cache` in ÉÉN statement over de hele scope (`app/werkvoorraad/tellers.py::lees_voor_scope`, RLS-policy met actor-scope; N=5 = N=200 = 3 statements, meetlat `tests/werkvoorraad/test_tellers_querytelling.py`), cache incrementeel via `_schrijf_overgang`/aanmaak/vragen/spiegel-hooks, nachtelijk herrekend in `sync-alles` (CLI `werkvoorraad-tellers-herrekenen`, `--dry-run` in de nameting-allowlist), fail-safe bij ontbreken, reconciliatie-LET-OP `werkvoorraad_tellers`; `spiegel_taken` server-side in de rij (de 71 losse spiegel-taken-calls zijn weg), lijst rendert vóór het bank-overzicht mét skeleton — zie BESLISSINGEN "BEGINSCHERM KANTOOR-WEB — SET-BASED + TELLERS-CACHE (blok 6 run 11-09 middag)".
 
+<!-- toegevoegd 18-09-2026, opdracht "klein-zoekveld-klantenlijst-en-planning-dagkop-sticky" -->
+- **Zoekveld op de klantenlijst (Peter 18-09 "graag zoekveld bij administraties, zodat je niet de hele lijst door hoeft te
+  scrollen"; geen migratie; BESLISSINGEN "ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09)"):** Werkvoorraad ›
+  Overzicht per klant draagt links van het Groep-filter een zoekveld (`werkvoorraad/klantZoek.ts`): client-side over de rijen
+  uit de tellers-cache-respons (géén server-call), op administratienaam én groepsnaam, diakriet-loos en hoofdletter-ongevoelig
+  (dezelfde `normaliseerTekst` als `bankZoek.ts`), elke spatie-gescheiden term moet treffen; teller "N van M" (M = klanten mét
+  werk), `/` focust het veld (binding uit `document/sneltoetsen.ts`, nooit vanuit een invoerveld), leeg = alles; de term staat in
+  de URL (`?zoek=`, deeplink wint) en wordt per browsersessie onthouden (sessionStorage `werkvoorraad-klantzoek`); lege uitkomst =
+  melding mét "wis het zoekveld" (nooit een lege tabel zonder uitleg). Het Groep-filter blijft server-side en werkt eronder samen.
+  Guard `werkvoorraad/klantZoek.test.tsx`; overflow-sweep harness-werkvoorraad groen.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

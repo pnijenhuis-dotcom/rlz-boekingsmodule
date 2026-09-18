@@ -176,6 +176,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   2. Boekingsgeheugen: seed-only = oranje, eerste app-bevestiging = groen, recency wint (drie identieke mens-boekingen); automatische boekingen schrijven geen observatie.
   3. Controlescherm auto-first: kop-omschrijving, projectnummer en prefill deterministisch en direct persistent; mens wint altijd als tijdlijn-override.
   4. Vraag = dialoog die boeken blokkeert tot "Afgehandeld"; afwijzen = verplichte reden; niets verdwijnt stil; datums/dagtellers = NL-kalenderdag via `app/tijd.py`.
+  5. Zoekveld klantenlijst + sticky dagkop planning (Peter 18-09): client-side zoeken op naam/groep mét `?zoek=`, `/` focust; planning-grids scrollen intern mét plakkende dagkop — zie BESLISSINGEN "ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/werkvoorraad-controlescherm.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Kantoor-frontend: IA, designpass, componenten, changelog** — Tailwind v4 + tokens, designpass v2 (teal = actie, groen = status), instellingenRegistry fail-closed, Gebruikers & toegang-tabel, overflow-sweep, "Wat is nieuw".

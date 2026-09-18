@@ -141,6 +141,15 @@
   inbox-opdracht `2026-09-18-veldapp-ux-run-b-offline-en-herinnering.md`. Meldingen bij afkeuring lopen via de bestaande
   keur-lijn (app én kantoor-keuring).
 
+<!-- toegevoegd 18-09-2026, opdracht "klein-zoekveld-klantenlijst-en-planning-dagkop-sticky" -->
+- **Planning — sticky dagkop (Peter 18-09, screenshot: ná verticaal scrollen waren de dagkoppen MA 14-9 … VR 18-9 weg en de
+  kolommen onleesbaar; geen migratie; BESLISSINGEN "ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09)"):** het
+  Personeel-grid én de Transport-dagagenda staan in `.tabel-scroll.sticky-koppen.plan-scroll` — het grid scrolt intern (max-hoogte
+  `max(420px, 100vh − 250px)`, zelfde patroon als de klantenlijst/administraties-lijst), de `thead`-cellen (dagen + projectkolom-kop)
+  plakken bovenaan mét dekkende achtergrond (`--panel`, vandaag-tint blijft) en onderrand/schaduw zodat kaartjes er niet doorheen
+  schijnen; rij-koppen in de `tbody` zijn door hun rij begrensd en bewegen niet. Guard `planning/stickyDagkop.test.ts` (bron + CSS);
+  Playwright staat niet in de repo → kliktest in het rapport. Het patroon is de bouwsteen voor de v3-dagkop (planning dag-eerst).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-signaal "geplande week zonder weekstaat" (CLAUDE.md `ed6d176` r. 675–682)

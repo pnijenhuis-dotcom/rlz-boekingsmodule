@@ -11068,3 +11068,19 @@ de knop opent 'm (audit van de afkeuring is de bron); (2) chips-validatie 1–10
 biedt dan zelf het vrije veld; (3) kopie overschrijft een al gevulde gekozen dag (één tik = de bedoeling); (4) de weekstaat-route
 (`WeekstaatView` → dag) gebruikt dezelfde daginvoer mét de gecachte chips en zonder contract-m² (dan "meer" ingeklapt).
 
+## ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09) — twee kleine fixes op screenshots; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-klein-zoekveld-klantenlijst-en-planning-dagkop-sticky.md`,
+rapport `docs/rapporten/2026-09-18-zoekveld-klantenlijst-dagkop-sticky.md`). Canonieke regeltekst: `docs/regels/werkvoorraad-controlescherm.md`
+alinea "Zoekveld op de klantenlijst" + `docs/regels/uren-planning-veldwerkers.md` alinea "Planning — sticky dagkop". Werkt in productie:
+niet gemeten (deploy volgt via de Stop-hook; meetrecept: zoekveld "Univ" → 3 rijen; planning 800 px gescrold → dagkop zichtbaar).**
+
+| Punt | Besluit/gedrag | Code |
+|---|---|---|
+| A Zoekveld klantenlijst | client-side op naam + groepsnaam (diakriet-loos, AND over termen), teller "N van M", `/` focust, `?zoek=` + sessionStorage, lege uitkomst = melding + wis-knop; geen server-call | `werkvoorraad/klantZoek.ts`, `Klantenlijst.tsx`, `WerkvoorraadScreen.tsx` |
+| B Sticky dagkop planning | Personeel-grid + Transport-dagagenda scrollen intern in `.tabel-scroll.sticky-koppen.plan-scroll`; thead-cellen dekkend + onderrand; vandaag-tint blijft | `PlanningScreen.tsx`, `TransportTab.tsx`, `styles/components.css` |
+
+**Beslispunt (gekozen):** het grid scrolt INTERN (zelfde patroon als de klantenlijst/administraties) in plaats van een paginabrede
+sticky — een `.tabel-scroll` is door `overflow-x: auto` altijd een scrollcontainer, waardoor `position: sticky` op de kop alleen
+binnen die container werkt; de rechter ZZP-kolom (sticky `top: 16`) sluit daar op aan.
+
