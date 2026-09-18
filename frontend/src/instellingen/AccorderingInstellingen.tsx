@@ -24,7 +24,7 @@ import { Select, Switch, SkeletonRegels } from '../ui/basis'
 import { rondesTekst } from '../accordering/rondesTekst'
 import { IntercompanyLeveranciers } from './IntercompanyLeveranciers'
 import { LeverancierRoutes } from './LeverancierRoutes'
-import { GeenAccordeursMelding } from './GeenAccordeursMelding'
+import { AndereAccordeurKoppelen, GeenAccordeursMelding } from './GeenAccordeursMelding'
 import { useAuthOptioneel } from '../auth/AuthContext'
 import { normaliseerTekst } from '../bank/bankZoek'
 import { SNELTOETSEN_LIJST, useSneltoetsen } from '../document/sneltoetsen'
@@ -353,6 +353,10 @@ function AdministratieAccordering({
             <button type="button" className="btn" disabled={bezig} onClick={() => void opslaan()}>
               {bezig ? 'Opslaan…' : 'Opslaan'}
             </button>
+            {/* BUG 18-09 regel 4: staat de gewenste accordeur niet in de keuzelijst, geef hier toegang (scope-only). */}
+            {kandidaten.length > 0 && rol === 'beheerder' && (
+              <AndereAccordeurKoppelen administratieId={administratieId} naam={naam} onGekoppeld={laad} />
+            )}
             {melding && <span className="hint">{melding}</span>}
           </div>
           <div className="hint" style={{ margin: 0 }}>

@@ -407,6 +407,7 @@ def _naar_bulk_uitkomsten(uitkomsten: list[service.BulkInstelUitkomst]) -> list[
             toggle_aangezet=u.toggle_aangezet,
             scope_toegevoegd_voor=u.scope_toegevoegd_voor or [],
             reden=u.reden,
+            bestaande_lagen=u.bestaande_lagen or [],
         )
         for u in uitkomsten
     ]
@@ -470,6 +471,7 @@ def bulk_instellen(
             scope_toevoegen=invoer.scope_toevoegen,
             actor_id=actor.id,
             actor_rol=actor.rol.value,
+            vervangen_bevestigd=list(invoer.vervangen_bevestigd),
         )
     except service.AccorderingFout as exc:
         raise _vertaal(exc) from exc

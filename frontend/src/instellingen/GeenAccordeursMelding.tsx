@@ -67,6 +67,31 @@ export function GeenAccordeursMelding({
   )
 }
 
+/** BUG 18-09 regel 4 (Peter, casus Romy bij Bouwadvies): staat de gewenste accordeur niet in de keuzelijst, dan hoort
+ * onder de lijst — óók als er al accordeurs zijn — "Andere klant-accordeur toegang geven…": dezelfde koppel-dialoog
+ * (scope-only via de bestaande route), daarna herlaadt de aanroeper de kandidaten. Beheerder-only (de scope-route is dat). */
+export function AndereAccordeurKoppelen({
+  administratieId,
+  naam,
+  onGekoppeld,
+}: {
+  administratieId: string
+  naam: string
+  onGekoppeld: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" className="linkbtn" onClick={() => setOpen(true)} data-testid="andere-accordeur-koppelen">
+        Andere klant-accordeur toegang geven…
+      </button>
+      {open && (
+        <KoppelAccordeurDialoog administratieId={administratieId} naam={naam} onSluiten={() => setOpen(false)} onGekoppeld={onGekoppeld} />
+      )}
+    </>
+  )
+}
+
 /** Alle klant-accordeurs van het kantoor mét vinkje "toegang tot ‹naam›"; aanvinken = bestaande scope-route (audit). */
 export function KoppelAccordeurDialoog({
   administratieId,
@@ -126,7 +151,9 @@ export function KoppelAccordeurDialoog({
         <DialogTitle>Bestaande accordeur koppelen — {naam}</DialogTitle>
         <DialogDescription>
           Vink een klant-accordeur aan om die toegang te geven tot deze administratie (scope-wijziging, vastgelegd in het
-          audit log). Toegang intrekken doet u op Gebruikers &amp; toegang — daar ziet u ook welke lopende rondes dat raakt.
+          audit log). Toegang is geen laag: de goedkeuringsroute verandert hier niet — de accordeur is daarna wél kiesbaar
+          in de lagen en leveranciersroutes. Toegang intrekken doet u op Gebruikers &amp; toegang — daar ziet u ook welke
+          lopende rondes dat raakt.
         </DialogDescription>
         {fout && <div className="fout">{fout}</div>}
         {alle === null && !fout ? (

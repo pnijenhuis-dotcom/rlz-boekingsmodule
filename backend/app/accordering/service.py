@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -2031,6 +2032,10 @@ class BulkInstelUitkomst:
     toggle_aangezet: bool = False
     scope_toegevoegd_voor: list[str] | None = None
     reden: str | None = None
+    # BUG 18-09 (Peter, casus Bouwadvies): de huidige lagen van de administratie-route, op volgnummer, als namen
+    # ("Peter N.", "Sophia Gerritsen", "Kempen") — de dialoog toont "vervangt 3 lagen: …" en vraagt per administratie
+    # een expliciete bevestiging vóór de bulk ze vervangt (zie `vervangen_bevestigd`).
+    bestaande_lagen: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -2122,6 +2127,11 @@ def _bulk_evalueer_administratie(
                 [],
             )
         bestaande = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None)
+        namen_bestaand = _gebruikersnamen(session, {b.accordeur_gebruiker_id for b in bestaande})
+        bestaande_lagen = [
+            namen_bestaand.get(b.accordeur_gebruiker_id, str(b.accordeur_gebruiker_id))
+            for b in sorted(bestaande, key=lambda b: b.volgnummer)
+        ]
         was_ingeschakeld = administratie.accordering_ingeschakeld
         heeft_config = was_ingeschakeld or bool(bestaande)
         rondes = (
@@ -2154,6 +2164,7 @@ def _bulk_evalueer_administratie(
             rondes_vervallen=rondes.vervallen,
             toggle_aangezet=not was_ingeschakeld,
             scope_toegevoegd_voor=[accordeur_namen[a] for a in ontbrekend],
+            bestaande_lagen=bestaande_lagen,
         ),
         ontbrekend,
     )
@@ -2198,6 +2209,9 @@ def bulk_instellen_preview(
     return uitkomsten, scope_meldingen
 
 
+VERVANGEN_NIET_BEVESTIGD_REDEN = "bestaande lagen niet bevestigd — vink 'vervangen' aan bij deze administratie"
+
+
 def bulk_instellen(
     *,
     administratie_ids: list[uuid.UUID],
@@ -2205,14 +2219,22 @@ def bulk_instellen(
     scope_toevoegen: bool,
     actor_id: uuid.UUID,
     actor_rol: str,
+    vervangen_bevestigd: Collection[uuid.UUID] = (),
 ) -> list[BulkInstelUitkomst]:
     """Toepassen: per administratie éérst de ontbrekende scopes (Beheerder-exclusief — de router
     poort dit endpoint op require_beheerder; de aanmaak audit via de DB-trigger oud→nieuw),
     dan de bestaande configuratieroute (vervallen-patroon + audits inbegrepen). Elke
     administratie in een eigen transactiegang: een deelfout is per BV zichtbaar in de uitkomst
-    ('fout' mét reden) en raakt de rest niet — nooit stil half."""
+    ('fout' mét reden) en raakt de rest niet — nooit stil half.
+
+    BUG 18-09 (Peter, casus Bouwadvies Oost Nederland — drie lagen stil vervangen door één): een administratie
+    die al lagen heeft wordt alleen vervangen als haar id in `vervangen_bevestigd` staat (de expliciete
+    bevestiging per administratie uit de dialoog, mét de huidige stand zichtbaar); anders 'overgeslagen' mét
+    reden en blijven haar lagen onaangeroerd. Een administratie zonder lagen (alleen de toggle aan) heeft niets
+    te vervangen en vraagt geen bevestiging."""
     _vereis_kantoor(actor_rol)
     accordeur_namen = _valideer_bulk_lagen(lagen)
+    bevestigd = set(vervangen_bevestigd)
     uitkomsten: list[BulkInstelUitkomst] = []
     for administratie_id in administratie_ids:
         evaluatie = _bulk_evalueer_administratie(
@@ -2224,6 +2246,15 @@ def bulk_instellen(
         )
         if evaluatie.uitkomst.uitkomst == "overgeslagen":
             uitkomsten.append(evaluatie.uitkomst)
+            continue
+        if (
+            evaluatie.uitkomst.uitkomst == "vervangen"
+            and evaluatie.uitkomst.bestaande_lagen
+            and administratie_id not in bevestigd
+        ):
+            uitkomsten.append(
+                replace(evaluatie.uitkomst, uitkomst="overgeslagen", reden=VERVANGEN_NIET_BEVESTIGD_REDEN)
+            )
             continue
         try:
             from app.auth import service as auth_service

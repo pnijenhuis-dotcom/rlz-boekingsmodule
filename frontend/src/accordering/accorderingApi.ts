@@ -247,6 +247,9 @@ export interface BulkInstellenInputDto {
   lagen: { volgnummer: number; accordeur_gebruiker_id: string; bedrag_drempel: string | null }[]
   /** De expliciete vink (besluit 1): ontbrekende accordeur-scope aanmaken i.p.v. BV overslaan. */
   scope_toevoegen: boolean
+  /** BUG 18-09 (Peter, casus Bouwadvies): administraties waarvan de Beheerder het vervangen van de BESTAANDE lagen
+   * expliciet bevestigde (mét de huidige stand zichtbaar). Niet bevestigd = server slaat de administratie over mét reden. */
+  vervangen_bevestigd?: string[]
 }
 
 export interface BulkScopeOntbreektDto {
@@ -267,6 +270,8 @@ export interface BulkInstelUitkomstDto {
   toggle_aangezet: boolean
   scope_toegevoegd_voor: string[]
   reden: string | null
+  /** BUG 18-09: de huidige lagen (namen op volgnummer) — "vervangt 3 lagen: Peter N. → Sophia → Kempen". Optioneel voor oude fixtures. */
+  bestaande_lagen?: string[]
 }
 
 export interface BulkInstellenPreviewDto {

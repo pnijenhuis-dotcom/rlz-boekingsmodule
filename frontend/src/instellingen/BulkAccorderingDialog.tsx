@@ -4,6 +4,9 @@
 // uitkomstenlijst) en het resultaat ná toepassen delen dezelfde weergave (mockup-notitie ⑥).
 // Server-side is de bulk een orkestratie over de bestaande per-administratie-configuratieroute;
 // dit scherm is Beheerder-werk (endpoints require_beheerder, scope-aanmaak is Beheerder-exclusief).
+// BUG 18-09 (Peter, casus Bouwadvies Oost Nederland — drie lagen stil vervangen): een administratie mét bestaande lagen
+// wordt alleen vervangen ná een expliciete bevestiging PER administratie, mét de huidige stand zichtbaar ("vervangt 3
+// lagen: Peter N. → Sophia → Kempen"); de server (`vervangen_bevestigd`) slaat een niet-bevestigde administratie over.
 import { useEffect, useMemo, useState } from 'react'
 import {
   bulkAccorderingPreview,
@@ -95,6 +98,8 @@ export function BulkAccorderingDialog({
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
   const [resultaat, setResultaat] = useState<BulkInstelUitkomstDto[] | null>(null)
+  // BUG 18-09: per administratie mét bestaande lagen een expliciete vink vóór de bulk ze vervangt.
+  const [vervangenBevestigd, setVervangenBevestigd] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     haalAlleAccordeurKandidaten()
@@ -146,6 +151,8 @@ export function BulkAccorderingDialog({
   }, [JSON.stringify(invoer), resultaat])
 
   const vervangen = (preview?.uitkomsten ?? []).filter((u) => u.uitkomst === 'vervangen')
+  const teBevestigen = vervangen.filter((u) => (u.bestaande_lagen ?? []).length > 0)
+  const nietBevestigd = teBevestigen.filter((u) => !vervangenBevestigd.has(u.administratie_id))
   const totaalHerberekend = vervangen.reduce((som, u) => som + (u.rondes_herberekend ?? u.rondes_vervallen), 0)
   const totaalVervallen = vervangen.reduce((som, u) => som + u.rondes_vervallen, 0)
 
@@ -153,7 +160,7 @@ export function BulkAccorderingDialog({
     setBezig(true)
     setFout(null)
     try {
-      const r = await bulkAccorderingToepassen(invoer)
+      const r = await bulkAccorderingToepassen({ ...invoer, vervangen_bevestigd: [...vervangenBevestigd] })
       setResultaat(r.uitkomsten)
       const gelukt = r.uitkomsten.filter((u) => u.uitkomst === 'ingesteld' || u.uitkomst === 'vervangen').length
       meld(`Klant-accordering ingesteld op ${gelukt} van ${r.uitkomsten.length} administraties — geauditeerd.`,
@@ -251,6 +258,37 @@ export function BulkAccorderingDialog({
               >
                 ⚠ <b>Overschrijven:</b> {vervangen.map((u) => u.administratie_naam).join(' en ')}{' '}
                 {vervangen.length === 1 ? 'heeft' : 'hebben'} al een accorderingsconfiguratie — die wordt vervangen.
+                {teBevestigen.length > 0 && (
+                  <span style={{ display: 'grid', gap: 6, margin: '8px 0 4px', color: 'var(--text)' }} data-testid="bulk-vervangen-bevestiging">
+                    {teBevestigen.map((u) => {
+                      const n = (u.bestaande_lagen ?? []).length
+                      return (
+                        <label key={u.administratie_id} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', margin: 0 }}>
+                          <Checkbox
+                            aria-label={`Vervang de lagen bij ${u.administratie_naam}`}
+                            checked={vervangenBevestigd.has(u.administratie_id)}
+                            onChange={(e) =>
+                              setVervangenBevestigd((h) => {
+                                const kopie = new Set(h)
+                                if (e.target.checked) kopie.add(u.administratie_id)
+                                else kopie.delete(u.administratie_id)
+                                return kopie
+                              })
+                            }
+                          />
+                          <span>
+                            vervangt {n === 1 ? '1 laag' : `${n} lagen`} bij <b>{u.administratie_naam}</b>: {(u.bestaande_lagen ?? []).join(' → ')}
+                          </span>
+                        </label>
+                      )
+                    })}
+                    {nietBevestigd.length > 0 && (
+                      <span className="hint" style={{ margin: 0 }}>
+                        Niet aangevinkt = die administratie wordt overgeslagen; haar lagen blijven staan.
+                      </span>
+                    )}
+                  </span>
+                )}
                 {totaalHerberekend > 0 && (
                   <>
                     {' '}Daarbij: <b>{rondesPreviewTekst(totaalHerberekend, totaalVervallen)}</b>{' '}

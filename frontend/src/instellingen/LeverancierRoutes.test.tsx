@@ -61,6 +61,15 @@ async function kiesLeverancier(naam: string) {
 }
 
 describe('LeverancierRoutes', () => {
+  it('route-editor toont mét accordeurs "Andere klant-accordeur toegang geven…" (scope-only, BUG 18-09 regel 4); zonder naam niet', async () => {
+    const state = { routes: [] as LeverancierRouteDto[], posts: [] as unknown[] }
+    stub(state)
+    render(<LeverancierRoutes administratieId="a1" naam="Bouwadvies" kandidaten={KANDIDATEN} crediteuren={CREDITEUREN} isBeheerder />)
+    await userEvent.click(await screen.findByRole('button', { name: '+ Leveranciersroute' }))
+    expect(screen.getByTestId('andere-accordeur-koppelen')).toBeInTheDocument()
+    expect(screen.queryByTestId('geen-accordeurs-melding')).not.toBeInTheDocument()
+  })
+
   it('toont de lege stand als actie en de samenvatting per route', async () => {
     stub({ routes: [], posts: [] })
     const eerste = render(<LeverancierRoutes administratieId="a1" kandidaten={KANDIDATEN} crediteuren={CREDITEUREN} isBeheerder />)

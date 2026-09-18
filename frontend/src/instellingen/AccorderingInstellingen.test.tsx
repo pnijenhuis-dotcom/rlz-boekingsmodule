@@ -22,7 +22,7 @@ const ADMINS = [
   { id: 'a-uni', naam: 'Universal Steigerbouw Nederland B.V.' },
 ]
 
-function installMock(state: { scopePosts: string[] }) {
+function installMock(state: { scopePosts: string[]; kandidaten?: { id: string; naam: string }[] }) {
   vi.stubGlobal(
     'fetch',
     vi.fn((invoer: RequestInfo | URL, init?: RequestInit) => {
@@ -38,7 +38,7 @@ function installMock(state: { scopePosts: string[] }) {
           }),
         )
       if (pad.endsWith('/accordering/instellingen')) return Promise.resolve(jsonResponse({ ingeschakeld: true, lagen: [] }))
-      if (pad.endsWith('/accordering/kandidaten')) return Promise.resolve(jsonResponse({ kandidaten: [] }))
+      if (pad.endsWith('/accordering/kandidaten')) return Promise.resolve(jsonResponse({ kandidaten: state.kandidaten ?? [] }))
       if (pad.endsWith('/accordering/staande-regels')) return Promise.resolve(jsonResponse({ regels: [], uitzonderingen: [] }))
       if (pad.endsWith('/accordering/leverancier-routes')) return Promise.resolve(jsonResponse({ routes: [] }))
       if (pad.endsWith('/crediteuren')) return Promise.resolve(jsonResponse({ crediteuren: [] }))
@@ -150,5 +150,23 @@ describe('AccorderingInstellingen — zoekveld, filters, samenvatting, deeplink 
     await userEvent.click(within(dialoog).getByRole('button', { name: 'Sluiten' }))
     await userEvent.click(uitnodigen)
     expect(screen.getByTestId('locatie')).toHaveTextContent('/gebruikers?groep=accordeurs&uitnodig=accordeur&administratie=a-blow')
+  })
+
+  it('zijn er al accordeurs, dan staat onder de lagen "Andere klant-accordeur toegang geven…" — scope-only via dezelfde koppel-dialoog (BUG 18-09 regel 4)', async () => {
+    const state = { scopePosts: [] as string[], kandidaten: [{ id: 'g-sophia', naam: 'Sophia' }] }
+    installMock(state)
+    renderMet('/instellingen/accordering?administratie=a-bouw')
+    // Geen "Geen klant-accordeurs"-melding (er is er één), wél de koppelknop onder de lagen.
+    const knop = await screen.findByTestId('andere-accordeur-koppelen')
+    expect(screen.queryByTestId('geen-accordeurs-melding')).not.toBeInTheDocument()
+    await userEvent.click(knop)
+    const dialoog = await screen.findByTestId('koppel-accordeur-dialoog')
+    expect(dialoog).toHaveTextContent('Toegang is geen laag')
+    // Sophia heeft al toegang → vinkje aan + vergrendeld; D. Directeur is te koppelen — alleen de scope-route.
+    expect(await within(dialoog).findByLabelText('Toegang voor Sophia')).toBeDisabled()
+    await userEvent.click(within(dialoog).getByLabelText('Toegang voor D. Directeur'))
+    await waitFor(() => expect(state.scopePosts).toHaveLength(1))
+    expect(state.scopePosts[0]).toContain('/auth/gebruikers/g-dir/scope')
+    expect(state.scopePosts[0]).toContain('"administratie_id":"a-bouw"')
   })
 })

@@ -25,7 +25,7 @@ import type { VendorOptieDto } from '../api/types'
 import { SearchableCombobox, type ComboboxOptie } from '../document/SearchableCombobox'
 import { Select } from '../ui/basis'
 import { rondesTekst } from '../accordering/rondesTekst'
-import { GeenAccordeursMelding } from './GeenAccordeursMelding'
+import { AndereAccordeurKoppelen, GeenAccordeursMelding } from './GeenAccordeursMelding'
 import { KeuzeKaarten } from './KeuzeKaarten'
 
 interface LaagInvoer {
@@ -325,6 +325,10 @@ export function LeverancierRoutes({
             <button type="button" className="btn secondary" onClick={() => setEditor({ ...editor, lagen: [...editor.lagen, { accordeurId: '', drempel: '' }] })}>
               + Laag toevoegen
             </button>
+            {/* BUG 18-09 regel 4: de gewenste accordeur ontbreekt in de lijst (geen toegang) → scope-only koppelen, dan herladen. */}
+            {kandidaten.length > 0 && isBeheerder && naam && (
+              <AndereAccordeurKoppelen administratieId={administratieId} naam={naam} onGekoppeld={() => onKandidatenHerladen?.()} />
+            )}
             <button type="button" className="btn" disabled={bezig || !editor.naam.trim() || editor.vendorIds.length === 0} onClick={() => void opslaan()}>
               {bezig ? 'Opslaan…' : 'Opslaan'}
             </button>

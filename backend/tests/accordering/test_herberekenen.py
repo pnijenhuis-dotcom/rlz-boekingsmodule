@@ -548,6 +548,7 @@ class TestDrieIngangenEnPreview:
             scope_toevoegen=True,
             actor_id=beheerder_id,
             actor_rol="beheerder",
+            vervangen_bevestigd={administratie_id},  # BUG 18-09: vervangen alleen ná expliciete bevestiging
         )
         assert (resultaat[0].rondes_herberekend, resultaat[0].rondes_vervallen) == (1, 0)
         assert _stappen(administratie_id, doc) == [(1, accordeur_1, "akkoord", False), (2, accordeur_3, None, True)]

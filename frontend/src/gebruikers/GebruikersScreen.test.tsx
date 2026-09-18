@@ -96,6 +96,11 @@ function installMock(opties: {
         opties.aanroepen?.push({ method: 'DELETE', url, body: null })
         return Promise.resolve(new Response(null, { status: 204 }))
       }
+      // BUG 18-09: toegang geven = uitsluitend de bestaande scope-route (toegang ≠ laag).
+      if (url.endsWith('/scope') && init?.method === 'POST') {
+        opties.aanroepen?.push({ method: 'POST', url, body: JSON.parse(String(init.body)) })
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
       if (url === '/accordering/accordeur-kandidaten') {
         return Promise.resolve(jsonResponse({ kandidaten: [{ id: ACCORDEUR_ID, naam: 'R. de Groot' }] }))
       }
@@ -789,16 +794,24 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     expect(screen.getByRole('button', { name: 'Administraties toevoegen…' })).toBeInTheDocument()
   })
 
-  it('"Administraties toevoegen…" = ScopeLijst van álle BV\'s (al-in-scope aangevinkt + vergrendeld "heeft al toegang", gearchiveerd onderaan) → bestaande bulk-dialoog met de accordeur vooringevuld in laag 1 en scope-vink aan', async () => {
+  it('"Administraties toevoegen…" = ScopeLijst → keuze-stap mét de huidige stand; default "Alleen toegang" = alleen de scope-route, lagen blijven (BUG 18-09)', async () => {
     const aanroepen: { method: string; url: string; body: unknown }[] = []
-    installMock({ gebruikers: [accordeurMetTwee], aanroepen })
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      // De drie lagen van Bouwadvies — géén van die lagen mag stil vervangen worden.
+      lagen: [
+        { volgnummer: 1, accordeur_gebruiker_id: EIGEN_ID, accordeur_naam: 'Peter N.', bedrag_drempel: null },
+        { volgnummer: 2, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Sophia Gerritsen', bedrag_drempel: null },
+        { volgnummer: 3, accordeur_gebruiker_id: 'eeeeeeee-0000-0000-0000-00000000000e', accordeur_naam: 'Kempen', bedrag_drempel: '1000.00' },
+      ],
+    })
     renderScherm('/gebruikers?groep=accordeurs')
     await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
     const g = userEvent.setup()
     await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     await g.click(await screen.findByRole('button', { name: 'Administraties toevoegen…' }))
-    // Blok 2 nachtrun 10/11-09: de gedeelde ScopeLijst — geen MultiSelect/chips-wolk meer; wat al in de scope zit is
-    // aangevinkt én vergrendeld (verwijderen loopt via de rij "Verwijderen…"), de gearchiveerde onderaan mét chip.
+    // Blok 2 nachtrun 10/11-09: de gedeelde ScopeLijst — wat al in de scope zit is aangevinkt én vergrendeld.
     const lijst = screen.getByTestId('accordeur-toevoeg-lijst')
     expect(lijst.querySelector('.ms-optie')).toBeNull()
     expect(screen.getByTestId('scope-teller')).toHaveTextContent('0 van 1 geselecteerd · 2 hebben al toegang')
@@ -806,27 +819,93 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     expect(screen.getByRole('checkbox', { name: 'Molenhof Beheer B.V.' })).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'Odoo-testadministratie — gearchiveerd' })).toBeDisabled()
     expect(screen.getAllByTestId('scope-rij').at(-1)).toHaveTextContent('Odoo-testadministratie')
-    expect(screen.getByRole('checkbox', { name: 'Tweede B.V.' })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Verder (0)' })).toBeDisabled()
     await g.click(screen.getByRole('checkbox', { name: 'Tweede B.V.' }))
     await g.click(screen.getByRole('button', { name: 'Verder (1)' }))
 
-    const bulk = await screen.findByTestId('bulk-accordering-dialoog')
-    expect(bulk).toHaveTextContent('Klant-accordering instellen — 1 administratie')
-    // Vooringevulde accordeur → de preview loopt direct via de bestaande route mét scope_toevoegen.
-    await waitFor(() => expect(aanroepen.some((a) => a.url === '/accordering/bulk-instellen/preview')).toBe(true))
-    const preview = aanroepen.find((a) => a.url === '/accordering/bulk-instellen/preview')!.body as {
-      administratie_ids: string[]
-      lagen: { volgnummer: number; accordeur_gebruiker_id: string }[]
-      scope_toevoegen: boolean
-    }
-    expect(preview.administratie_ids).toEqual([TWEEDE_ID])
-    expect(preview.lagen).toEqual([{ volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, bedrag_drempel: null }])
-    expect(preview.scope_toevoegen).toBe(true)
-    await waitFor(() => expect(bulk).toHaveTextContent('Tweede B.V.'))
+    // Keuze-stap: huidige stand zichtbaar, default "Alleen toegang", wordt-regel. Géén bulk-dialoog meer.
+    const keuze = await screen.findByTestId('accordeur-toevoeg-keuze')
+    await waitFor(() => expect(keuze).toHaveTextContent('Nu: klant-accordering aan, 3 lagen: Peter N. → Sophia Gerritsen → Kempen'))
+    expect(screen.queryByTestId('bulk-accordering-dialoog')).not.toBeInTheDocument()
+    expect((screen.getByRole('combobox', { name: 'Keuze voor Tweede B.V.' }) as HTMLSelectElement).value).toBe('toegang')
+    expect(keuze).toHaveTextContent('Wordt: toegang; lagen ongewijzigd')
+    // Nog niets geschreven (alleen de GET van de instellingen).
+    expect(aanroepen).toHaveLength(0)
+    await g.click(screen.getByRole('button', { name: 'Toepassen op 1 administratie' }))
+
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST']))
+    expect(aanroepen[0].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope`)
+    expect(aanroepen[0].body).toEqual({ administratie_id: TWEEDE_ID })
+    expect(await screen.findByTestId('accordeur-toevoeg-resultaat')).toHaveTextContent('Tweede B.V. — toegang gegeven; lagen ongewijzigd')
   })
 
-  it('"Verwijderen…" toont de herberekend-/vervallen-telling en haalt de accordeur uit de lagen (PUT zonder hem) én uit de scope (DELETE) — nooit iets nieuws', async () => {
+  it('keuze "Ook als laag toevoegen: ná de laatste laag" = scope + PUT mét de BESTAANDE lagen plus deze accordeur als laag 4 (nooit vervangen)', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [
+        { volgnummer: 1, accordeur_gebruiker_id: EIGEN_ID, accordeur_naam: 'Peter N.', bedrag_drempel: null },
+        { volgnummer: 2, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Sophia Gerritsen', bedrag_drempel: null },
+        { volgnummer: 3, accordeur_gebruiker_id: 'eeeeeeee-0000-0000-0000-00000000000e', accordeur_naam: 'Kempen', bedrag_drempel: '1000.00' },
+      ],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Administraties toevoegen…' }))
+    await g.click(screen.getByRole('checkbox', { name: 'Tweede B.V.' }))
+    await g.click(screen.getByRole('button', { name: 'Verder (1)' }))
+    const keuze = await screen.findByTestId('accordeur-toevoeg-keuze')
+    await waitFor(() => expect(keuze).toHaveTextContent('3 lagen: Peter N. → Sophia Gerritsen → Kempen'))
+    await g.selectOptions(screen.getByRole('combobox', { name: 'Keuze voor Tweede B.V.' }), 'laag_na')
+    expect(keuze).toHaveTextContent('Wordt: toegang + 4 lagen: Peter N. → Sophia Gerritsen → Kempen → R. de Groot')
+    await g.click(screen.getByRole('button', { name: 'Toepassen op 1 administratie' }))
+
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST', 'PUT']))
+    expect(aanroepen[0].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope`)
+    expect(aanroepen[1].url).toBe(`/administraties/${TWEEDE_ID}/accordering/instellingen`)
+    expect(aanroepen[1].body).toEqual({
+      ingeschakeld: true,
+      lagen: [
+        { volgnummer: 1, accordeur_gebruiker_id: EIGEN_ID, bedrag_drempel: null },
+        { volgnummer: 2, accordeur_gebruiker_id: ANDER_ID, bedrag_drempel: null },
+        { volgnummer: 3, accordeur_gebruiker_id: 'eeeeeeee-0000-0000-0000-00000000000e', bedrag_drempel: '1000.00' },
+        { volgnummer: 4, accordeur_gebruiker_id: ACCORDEUR_ID, bedrag_drempel: null },
+      ],
+      aanleiding: 'laag toegevoegd via Klant-accordeurs',
+    })
+  })
+
+  it('keuze "vóór laag 1" zet de accordeur vooraan; "Alleen in een leveranciersroute" = scope + link naar de route-editor', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Sophia Gerritsen', bedrag_drempel: null }],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Administraties toevoegen…' }))
+    await g.click(screen.getByRole('checkbox', { name: 'Tweede B.V.' }))
+    await g.click(screen.getByRole('button', { name: 'Verder (1)' }))
+    const keuze = await screen.findByTestId('accordeur-toevoeg-keuze')
+    await waitFor(() => expect(keuze).toHaveTextContent('1 laag: Sophia Gerritsen'))
+    await g.selectOptions(screen.getByRole('combobox', { name: 'Keuze voor Tweede B.V.' }), 'laag_voor')
+    expect(keuze).toHaveTextContent('Wordt: toegang + 2 lagen: R. de Groot → Sophia Gerritsen')
+    await g.selectOptions(screen.getByRole('combobox', { name: 'Keuze voor Tweede B.V.' }), 'route')
+    expect(keuze).toHaveTextContent('Wordt: toegang; lagen ongewijzigd — kies daarna de leveranciers in de route-editor')
+    await g.click(screen.getByRole('button', { name: 'Toepassen op 1 administratie' }))
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST']))
+    const resultaat = await screen.findByTestId('accordeur-toevoeg-resultaat')
+    expect(resultaat).toHaveTextContent('kies nu de leveranciers in de route-editor')
+    expect(screen.getByRole('link', { name: 'Route-editor openen →' })).toHaveAttribute('href', `/instellingen/administraties/${TWEEDE_ID}?tab=accordering`)
+  })
+
+  it('"Verwijderen…" = twee gescheiden vinkjes: default uit de lagen (PUT zonder hem, mét herberekend-/vervallen-telling), toegang BLIJFT (geen DELETE) — BUG 18-09', async () => {
     const aanroepen: { method: string; url: string; body: unknown }[] = []
     installMock({
       gebruikers: [accordeurMetTwee],
@@ -842,34 +921,79 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
 
-    const bevestig = await screen.findByTestId('bevestig-dialoog')
-    // Bundel 09-09 blok 2: herberekenen i.p.v. vervallen — mét de vooraf-telling uit het alleen-lezende
-    // preview-endpoint (zelfde pure regel als de PUT): "N rondes worden herberekend, waarvan M vervallen".
-    expect(bevestig).toHaveTextContent(/worden herberekend/)
-    expect(bevestig).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
-    expect(bevestig).toHaveTextContent(/terug naar "Klaar om te boeken"/)
-    await waitFor(() =>
-      expect(bevestig).toHaveTextContent(/2 lopende accorderingsrondes worden herberekend, waarvan 1 vervalt/),
-    )
+    const dialoog = await screen.findByTestId('accordeur-verwijderen-dialoog')
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeEnabled())
+    expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Toegang intrekken' })).not.toBeChecked()
+    // Bundel 09-09 blok 2: herberekenen i.p.v. vervallen — mét de vooraf-telling uit het alleen-lezende preview-endpoint.
+    expect(dialoog).toHaveTextContent(/worden herberekend/)
+    expect(dialoog).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
+    await waitFor(() => expect(dialoog).toHaveTextContent(/2 lopende accorderingsrondes worden herberekend, waarvan 1 vervalt/))
     // Vóór "Bevestigen" is er niets geschreven: alleen de alleen-lezende preview (POST …/preview met de rest-lagen).
     expect(aanroepen.map((a) => a.method)).toEqual(['POST'])
     expect(aanroepen[0].url).toBe('/accordering/bulk-instellen/preview')
-    expect((aanroepen[0].body as { administratie_ids: string[] }).administratie_ids).toEqual([ADMINISTRATIE_ID])
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
 
-    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST', 'PUT', 'DELETE']))
+    // Alleen de PUT zonder hem; géén DELETE — de toegang blijft (default).
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST', 'PUT']))
     expect(aanroepen[1].url).toBe(`/administraties/${ADMINISTRATIE_ID}/accordering/instellingen`)
     expect(aanroepen[1].body).toEqual({
       ingeschakeld: true,
       lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ANDER_ID, bedrag_drempel: '1000.00' }],
       aanleiding: 'verwijderd via Klant-accordeurs',
     })
-    expect(aanroepen[2].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
-    // Geen tweede bevestiging: er blijft een laag over, accordering blijft aan.
+    expect(aanroepen.some((a) => a.method === 'DELETE')).toBe(false)
     expect(screen.queryByText(/wordt hiermee uitgeschakeld/)).not.toBeInTheDocument()
   })
 
-  it('aanvulling Peter 08-09: is de accordeur de laatste laag, dan volgt een APARTE bevestiging "accordering voor ‹BV› wordt hiermee uitgeschakeld" vóór PUT (toggle uit, aanleiding) + DELETE', async () => {
+  it('"Toegang intrekken" aangevinkt = PUT zonder hem én DELETE scope; het lagen-vinkje staat dan vast aan (een laag zonder toegang kan niet goedkeuren)', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [
+        { volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, accordeur_naam: 'R. de Groot', bedrag_drempel: null },
+        { volgnummer: 2, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Demi de Vries', bedrag_drempel: '1000.00' },
+      ],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
+    await screen.findByTestId('accordeur-verwijderen-dialoog')
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeEnabled())
+    await g.click(screen.getByRole('checkbox', { name: 'Toegang intrekken' }))
+    expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeDisabled()
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['POST', 'PUT', 'DELETE']))
+    expect(aanroepen[2].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
+  })
+
+  it('staat de accordeur niet in de lagen, dan is het lagen-vinkje uit en vergrendeld; alleen "Toegang intrekken" schrijft (DELETE, geen PUT)', async () => {
+    const aanroepen: { method: string; url: string; body: unknown }[] = []
+    installMock({
+      gebruikers: [accordeurMetTwee],
+      aanroepen,
+      lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ANDER_ID, accordeur_naam: 'Demi de Vries', bedrag_drempel: null }],
+    })
+    renderScherm('/gebruikers?groep=accordeurs')
+    await waitFor(() => expect(screen.getByText('R. de Groot')).toBeInTheDocument())
+    const g = userEvent.setup()
+    await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
+    await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
+    const dialoog = await screen.findByTestId('accordeur-verwijderen-dialoog')
+    await waitFor(() => expect(dialoog).toHaveTextContent(/staat niet in de accorderingslagen/))
+    expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Bevestigen' })).toBeDisabled()
+    await g.click(screen.getByRole('checkbox', { name: 'Toegang intrekken' }))
+    await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['DELETE']))
+  })
+
+  it('aanvulling Peter 08-09: is de accordeur de laatste laag, dan volgt een APARTE bevestiging "accordering voor ‹BV› wordt hiermee uitgeschakeld" vóór PUT (toggle uit, aanleiding); toegang blijft', async () => {
     const aanroepen: { method: string; url: string; body: unknown }[] = []
     installMock({
       gebruikers: [accordeurMetTwee],
@@ -883,7 +1007,7 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
 
     // Stap 1: de gewone waarschuwing, mét de aankondiging dat er een aparte uitschakel-bevestiging volgt.
-    const stap1 = await screen.findByTestId('bevestig-dialoog')
+    const stap1 = await screen.findByTestId('accordeur-verwijderen-dialoog')
     await waitFor(() => expect(stap1).toHaveTextContent(/laatste accorderingslaag/))
     expect(stap1).toHaveTextContent(/accorderingsconfiguratie gewijzigd — opnieuw aanbieden vereist/)
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
@@ -893,12 +1017,13 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     // Stap 2: de expliciete uitschakel-bevestiging (eigen dialoog, eigen knop).
     const stap2 = await screen.findByTestId('bevestig-dialoog')
     expect(stap2).toHaveTextContent('accordering voor Molenhof Beheer B.V. wordt hiermee uitgeschakeld')
+    expect(stap2).toHaveTextContent('De toegang blijft staan.')
     expect(screen.getByText('Klant-accordering voor Molenhof Beheer B.V. uitschakelen?')).toBeInTheDocument()
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
 
-    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['PUT', 'DELETE']))
+    // BUG 18-09: alleen de PUT (toggle uit) — de toegang blijft, dus géén DELETE.
+    await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['PUT']))
     expect(aanroepen[0].body).toEqual({ ingeschakeld: false, lagen: [], aanleiding: 'verwijderd via Klant-accordeurs' })
-    expect(aanroepen[1].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${ADMINISTRATIE_ID}`)
   })
 
   it('annuleren in de uitschakel-stap schrijft niets', async () => {
@@ -913,11 +1038,12 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     const g = userEvent.setup()
     await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     await g.click(await screen.findByRole('button', { name: 'Molenhof Beheer B.V. verwijderen bij R. de Groot' }))
-    await waitFor(() => expect(screen.getByTestId('bevestig-dialoog')).toHaveTextContent(/laatste accorderingslaag/))
+    await waitFor(() => expect(screen.getByTestId('accordeur-verwijderen-dialoog')).toHaveTextContent(/laatste accorderingslaag/))
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await screen.findByText('Klant-accordering voor Molenhof Beheer B.V. uitschakelen?')
     await g.click(screen.getByRole('button', { name: 'Annuleren' }))
     expect(screen.queryByTestId('bevestig-dialoog')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('accordeur-verwijderen-dialoog')).not.toBeInTheDocument()
     expect(aanroepen).toHaveLength(0)
   })
 
@@ -929,7 +1055,10 @@ describe('GebruikersScreen — blok 5 (herstelrun 08-09): scope van een klant-ac
     const g = userEvent.setup()
     await g.click(screen.getByRole('button', { name: 'Administraties van R. de Groot bekijken' }))
     await g.click(await screen.findByRole('button', { name: 'Odoo-testadministratie verwijderen bij R. de Groot' }))
-    expect(await screen.findByTestId('bevestig-dialoog')).toHaveTextContent(/is gearchiveerd: alleen de toegang/)
+    expect(await screen.findByTestId('accordeur-verwijderen-dialoog')).toHaveTextContent(/is gearchiveerd: er loopt geen accordering meer, alleen de toegang/)
+    // Geen lagen-vinkje; "Toegang intrekken" staat voor een gearchiveerde administratie al aan.
+    expect(screen.queryByRole('checkbox', { name: 'Uit de accorderingslagen halen' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Toegang intrekken' })).toBeChecked()
     await g.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await waitFor(() => expect(aanroepen.map((a) => a.method)).toEqual(['DELETE']))
     expect(aanroepen[0].url).toBe(`/auth/gebruikers/${ACCORDEUR_ID}/scope/${OUDE_ID}`)

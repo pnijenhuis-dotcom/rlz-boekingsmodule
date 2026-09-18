@@ -36,6 +36,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 toggle_aangezet: false,
                 scope_toegevoegd_voor: [],
                 reden: null,
+                bestaande_lagen: ['Peter N.', 'Sophia Gerritsen', 'Kempen'],
               },
               {
                 administratie_id: MOLENHOF,
@@ -73,6 +74,7 @@ function installFetchMock(aanroepen: { url: string; body: unknown }[] = []) {
                 toggle_aangezet: false,
                 scope_toegevoegd_voor: [],
                 reden: null,
+                bestaande_lagen: ['Peter N.', 'Sophia Gerritsen', 'Kempen'],
               },
               {
                 administratie_id: MOLENHOF,
@@ -150,6 +152,32 @@ describe('BulkAccorderingDialog', () => {
     expect(onGereed).not.toHaveBeenCalled()
     await gebruiker.click(screen.getByRole('button', { name: 'Sluiten' }))
     expect(onGereed).toHaveBeenCalledTimes(1)
+  })
+
+  it('vervangen vraagt per administratie een expliciete bevestiging mét de huidige lagen zichtbaar; de vink reist mee als vervangen_bevestigd (BUG 18-09)', async () => {
+    const aanroepen = installFetchMock()
+    render(<BulkAccorderingDialog administraties={ADMINISTRATIES} onSluiten={vi.fn()} onGereed={vi.fn()} />)
+    const gebruiker = userEvent.setup()
+
+    await gebruiker.click(await screen.findByRole('combobox', { name: 'Accordeur laag 1' }))
+    await gebruiker.click(await screen.findByRole('option', { name: 'J.W.F. Gerritsen' }))
+    const bevestiging = await screen.findByTestId('bulk-vervangen-bevestiging')
+    expect(bevestiging).toHaveTextContent('vervangt 3 lagen bij ARVUM B.V.: Peter N. → Sophia Gerritsen → Kempen')
+    expect(bevestiging).toHaveTextContent('Niet aangevinkt = die administratie wordt overgeslagen; haar lagen blijven staan.')
+    const vink = screen.getByRole('checkbox', { name: 'Vervang de lagen bij ARVUM B.V.' })
+    expect(vink).not.toBeChecked()
+
+    // Zonder vink: toepassen mag (de server slaat ARVUM over), maar de body draagt een lege bevestiging.
+    const toepassen = await screen.findByRole('button', { name: 'Toepassen op 2 administraties' })
+    await waitFor(() => expect(toepassen).toBeEnabled())
+    await gebruiker.click(vink)
+    await gebruiker.click(toepassen)
+    await waitFor(() => expect(aanroepen.some((a) => a.url === '/accordering/bulk-instellen')).toBe(true))
+    const body = aanroepen.find((a) => a.url === '/accordering/bulk-instellen')!.body as { vervangen_bevestigd: string[] }
+    expect(body.vervangen_bevestigd).toEqual([ARVUM])
+    // De preview-call draagt de bevestiging niet (die leest alleen).
+    const preview = aanroepen.find((a) => a.url.endsWith('/preview'))!.body as Record<string, unknown>
+    expect(preview).not.toHaveProperty('vervangen_bevestigd')
   })
 
   it('een ongeldige bedragdrempel blokkeert de preview en de toepassen-knop', async () => {

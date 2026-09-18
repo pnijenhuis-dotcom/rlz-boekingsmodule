@@ -200,6 +200,10 @@ class BulkInstellenInput(StrikteInvoer):
     administratie_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
     lagen: list[LaagInputDto] = Field(min_length=1)
     scope_toevoegen: bool = True
+    # BUG 18-09 (Peter, casus Bouwadvies): een administratie mét bestaande lagen wordt alleen vervangen als haar id hier
+    # staat (expliciete bevestiging per administratie, mét de huidige stand zichtbaar in de dialoog); anders overgeslagen
+    # mét reden. Alleen van belang bij toepassen; de preview toont wat er zou gebeuren.
+    vervangen_bevestigd: list[uuid.UUID] = Field(default_factory=list, max_length=100)
 
 
 class BulkScopeOntbreektDto(BaseModel):
@@ -224,6 +228,8 @@ class BulkInstelUitkomstDto(BaseModel):
     toggle_aangezet: bool = False
     scope_toegevoegd_voor: list[str] = Field(default_factory=list)
     reden: str | None = None
+    # BUG 18-09: de huidige lagen (namen op volgnummer) — "vervangt 3 lagen: Peter N. → Sophia → Kempen".
+    bestaande_lagen: list[str] = Field(default_factory=list)
 
 
 class BulkInstellenPreviewResponse(BaseModel):

@@ -193,6 +193,7 @@ class TestToepassen:
             scope_toevoegen=True,
             actor_id=beheerder_id,
             actor_rol="beheerder",
+            vervangen_bevestigd={administratie_id},  # BUG 18-09: vervangen alleen ná expliciete bevestiging
         )
         per_id = {u.administratie_id: u for u in uitkomsten}
         assert per_id[administratie_id].uitkomst == "vervangen"
