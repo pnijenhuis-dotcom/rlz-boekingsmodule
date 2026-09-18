@@ -359,6 +359,24 @@ export function zetDag(payload: {
   })
 }
 
+/** Dag-einde herinnering (run B punt 4, Peter 18-09): opt-out PER GEBRUIKER; `tijd` = de administratie-tijd (default 16:30). */
+export interface HerinneringInstellingDto {
+  uit: boolean
+  tijd: string
+}
+
+export function haalHerinnering(): Promise<HerinneringInstellingDto> {
+  return apiJson('/uren/zzp/herinnering')
+}
+
+export function zetHerinnering(uit: boolean): Promise<HerinneringInstellingDto> {
+  return apiJson('/uren/zzp/herinnering', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uit }),
+  })
+}
+
 export function dienWeekIn(payload: {
   administratie_id: string
   project_id: string

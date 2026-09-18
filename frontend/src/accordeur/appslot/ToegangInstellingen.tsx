@@ -34,6 +34,9 @@ import {
 } from '../appAuthApi'
 import { diagnoseRegel, leesLaatsteKoudeStart, leesLaatsteVerbindingsfout, nativeAppBuild } from '../koudeStart'
 import { bekendeBundelId } from '../ota'
+import { useAuthOptioneel } from '../../auth/AuthContext'
+import { isVeldRol } from '../../auth/rollen'
+import { HerinneringSchakelaar } from './HerinneringSchakelaar'
 import { PincodeInvoer } from './PincodeInvoer'
 import { PincodeKiezen } from './PincodeKiezen'
 
@@ -86,6 +89,9 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
   // Zelfservice tweede toestel (Peter 16-09, blok B): eerst de toegangscode opnieuw (lokale verificatie), dan de
   // koppeling bij de server (15 min, eenmalig) → QR + code op het scherm.
   const native = huidigPlatform() !== 'web'
+  // Run B punt 4 (18-09): de herinnering-schakelaar alleen voor veldrollen (ZZP'er/uitvoerder/detacheerder) — een
+  // klant-accordeur heeft geen uren; buiten een AuthProvider (tests, harnas) blijft de sectie weg.
+  const veldrol = isVeldRol(useAuthOptioneel()?.rol ?? null)
   const [koppeling, setKoppeling] = useState<ToestelKoppelingDto | null>(null)
   const [koppelFout, setKoppelFout] = useState<string | null>(null)
 
@@ -393,6 +399,7 @@ export function ToegangInstellingen({ sluit, uitloggen }: Props) {
           onClick={() => void wisselDirect()}
         />
       </div>
+      {veldrol && <HerinneringSchakelaar />}
       <div className="acc-toegang-kop">Andere toestellen</div>
       <button
         type="button"

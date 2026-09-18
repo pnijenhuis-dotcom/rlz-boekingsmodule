@@ -2051,3 +2051,21 @@
   z-index: 29;
   background: rgba(0, 0, 0, 0.45);
 }
+
+/* Run B punt 5 (18-09) — offline: bolletje "nog niet verzonden" op kaart en dagbalk, banner mét "Nu verzenden". Oranje =
+ * afwijking/aandacht (designpass v2), nooit blokkerend. */
+.acc-offline-chip {
+  color: var(--acc-orange);
+}
+.acc-offline-dot {
+  color: var(--acc-orange);
+  font-weight: 800;
+}
+.acc-offline-banner {
+  align-items: center;
+  gap: 10px;
+}
+.acc-offline-banner .acc-btn.klein {
+  min-height: 48px;
+  white-space: nowrap;
+}

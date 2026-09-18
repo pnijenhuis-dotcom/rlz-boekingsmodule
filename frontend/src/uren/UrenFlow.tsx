@@ -25,6 +25,18 @@ import { toontPlanningTab } from '../auth/rollen'
 import { ACC_TERUG_EVENT } from '../accordeur/androidTerug'
 import { UitlogIcoon } from '../accordeur/UitlogIcoon'
 import {
+  bewaarInWachtrij,
+  isGeenVerbinding,
+  kaartSleutel,
+  leesWachtrij,
+  nogNietVerzondenLabel,
+  pasWachtrijToe,
+  verwijderUitWachtrij,
+  verzendWachtrij,
+  type OfflineRegel,
+  type ZetDagPayload,
+} from './urenOffline'
+import {
   beantwoordMeerwerkVraag,
   datumKort,
   datumMetTijd,
@@ -251,6 +263,63 @@ export function UrenFlow({
     return err instanceof Error ? err.message : 'Er ging iets mis — probeer het opnieuw.'
   }, [])
 
+  // Run B punt 5 (offline): lokale wachtrij van dagregels die niet verzonden konden worden. Verzenden bij het openen van de
+  // app, bij `online` en ná elke geslaagde verversing van de weekkaarten; een conflict (409 bevroren) komt als sheet.
+  const [wachtrij, setWachtrij] = useState<OfflineRegel[]>([])
+  const [conflict, setConflict] = useState<OfflineRegel | null>(null)
+  const [verversSleutel, setVerversSleutel] = useState(0)
+  const syncBezig = useRef(false)
+
+  const syncWachtrij = useCallback(async () => {
+    if (syncBezig.current) return
+    syncBezig.current = true
+    try {
+      const huidig = await leesWachtrij()
+      setWachtrij(huidig)
+      if (huidig.length === 0) return
+      const uitkomst = await verzendWachtrij((payload) => zetDag(payload))
+      setWachtrij(uitkomst.open)
+      if (uitkomst.verzonden.length > 0) {
+        toon(uitkomst.verzonden.length === 1 ? 'Bewaarde regel verzonden.' : `${uitkomst.verzonden.length} bewaarde regels verzonden.`)
+        setVerversSleutel((v) => v + 1)
+      }
+      if (uitkomst.nieuweConflicten.length > 0) setConflict(uitkomst.nieuweConflicten[0])
+    } finally {
+      syncBezig.current = false
+    }
+  }, [toon])
+
+  useEffect(() => {
+    void syncWachtrij()
+    const opOnline = () => void syncWachtrij()
+    window.addEventListener('online', opOnline)
+    return () => window.removeEventListener('online', opOnline)
+  }, [syncWachtrij])
+
+  /** Dagregel opslaan: online = PUT; geen verbinding = in de wachtrij (regel blijft zichtbaar mét bolletje). */
+  const slaDagOp = useCallback(
+    async (payload: ZetDagPayload): Promise<'ok' | 'wachtrij'> => {
+      try {
+        await zetDag(payload)
+        return 'ok'
+      } catch (err) {
+        if (!isGeenVerbinding(err)) throw err
+        setWachtrij(await bewaarInWachtrij(payload))
+        toon('Geen verbinding — je regel is op dit toestel bewaard en wordt verzonden zodra er netwerk is.')
+        return 'wachtrij'
+      }
+    },
+    [toon],
+  )
+
+  const conflictKies = useCallback(
+    async (regel: OfflineRegel, keuze: 'server' | 'bewaren') => {
+      if (keuze === 'server') setWachtrij(await verwijderUitWachtrij(regel.sleutel))
+      setConflict(null)
+    },
+    [],
+  )
+
   /** "+ Uren" op een projectkaart: project én dag staan al vast — alleen de bestaande regel van die dag ophalen
    * (prefill + projectdefault doorfactureren) en direct het invoerscherm openen. */
   const plusUren = useCallback(
@@ -300,7 +369,7 @@ export function UrenFlow({
       const bron = project.laatste_regel
       if (!bron) return false
       try {
-        await zetDag({
+        const uitkomst = await slaDagOp({
           bron: 'kopie',
           administratie_id: project.administratie_id,
           project_id: project.project_id,
@@ -313,7 +382,7 @@ export function UrenFlow({
           opmerking: bron.opmerking,
           namens_zzper_id: namens?.id ?? null,
         })
-        toon(`Gekopieerd van ${datumKort(bron.datum)}: ${urenLabel(bron.uren, bron.m2)}${bron.opmerking ? ` · ${bron.opmerking}` : ''}.`)
+        if (uitkomst === 'ok') toon(`Gekopieerd van ${datumKort(bron.datum)}: ${urenLabel(bron.uren, bron.m2)}${bron.opmerking ? ` · ${bron.opmerking}` : ''}.`)
         return true
       } catch (err) {
         const tekst = vangFout(err)
@@ -321,7 +390,7 @@ export function UrenFlow({
         return false
       }
     },
-    [namens, vangFout, toon],
+    [namens, vangFout, toon, slaDagOp],
   )
 
   // Android-terugknop (web, SPOED 18-09): één scherm terug binnen de flow; op een beginscherm gebeurt niets.
@@ -504,6 +573,12 @@ export function UrenFlow({
             namens={namens}
             namensSuffix={namensSuffix}
             extra={extraKaarten[weekSleutel(scherm.week)] ?? []}
+            wachtrij={wachtrij}
+            verzendNu={() => void syncWachtrij()}
+            verversSleutel={verversSleutel}
+            onVerverst={() => {
+              if (wachtrij.length > 0) void syncWachtrij()
+            }}
             vangFout={vangFout}
             toon={toon}
             terug={() => setScherm({ s: 'zzpWeken' })}
@@ -623,6 +698,7 @@ export function UrenFlow({
             namens={namens}
             namensSuffix={namensSuffix}
             vangFout={vangFout}
+            slaOp={slaDagOp}
             terug={() => setScherm(scherm.terug)}
             naOpslaan={() => setScherm(scherm.terug)}
           />
@@ -733,7 +809,50 @@ export function UrenFlow({
           />
         )}
       </div>
+      {conflict && <OfflineConflictSheet regel={conflict} kies={(keuze) => void conflictKies(conflict, keuze)} />}
       {toast && <div className="acc-toast">{toast}</div>}
+    </>
+  )
+}
+
+/** Run B punt 5: een bewaarde regel botst met de server (week intussen ingediend/gekeurd — 409 bevroren): beide standen
+ * naast elkaar, de gebruiker kiest; nooit stil overschrijven. "Bewaren" laat de regel in de wachtrij tot de week weer
+ * bewerkbaar is (afkeuring → corrigeren), dan gaat hij bij de volgende verzendronde alsnog mee. */
+function OfflineConflictSheet({ regel, kies }: { regel: OfflineRegel; kies: (keuze: 'server' | 'bewaren') => void }) {
+  const c = regel.conflict
+  const p = regel.payload
+  const serverRegel = c?.server_regel
+  const statusLabel = c?.status === 'goedgekeurd' ? 'goedgekeurd' : c?.status === 'ingediend' ? 'ingediend' : (c?.status ?? 'gewijzigd')
+  return (
+    <>
+      <div className="acc-sheet-achter" onClick={() => kies('bewaren')} />
+      <div className="acc-sheet" role="dialog" aria-label="Regel botst met de server" data-testid="offline-conflict">
+        <b style={{ fontSize: 17 }}>Deze dag is intussen gewijzigd</b>
+        <div style={{ lineHeight: 1.7 }}>
+          Week {p.weeknummer} is <b>{statusLabel}</b> terwijl je offline was.
+          <br />
+          Kantoor/server:{' '}
+          <b data-testid="conflict-server">
+            {serverRegel ? `${datumKort(p.datum)} · ${urenLabel(serverRegel.uren, serverRegel.m2)}${serverRegel.opmerking ? ` · ${serverRegel.opmerking}` : ''}` : `${datumKort(p.datum)} · geen regel`}
+          </b>
+          <br />
+          Jouw regel (nog niet verzonden):{' '}
+          <b data-testid="conflict-mijn">
+            {datumKort(p.datum)} · {urenLabel(p.uren, p.m2)}
+            {p.opmerking ? ` · ${p.opmerking}` : ''}
+          </b>
+        </div>
+        <div className="acc-kaartknoppen" style={{ marginTop: 12 }}>
+          <button className="acc-btn primair" data-testid="conflict-server-houden" onClick={() => kies('server')}>
+            Stand van kantoor houden
+          </button>
+        </div>
+        <div className="acc-kaartknoppen" style={{ marginTop: 8 }}>
+          <button className="acc-btn secundair" data-testid="conflict-bewaren" onClick={() => kies('bewaren')}>
+            Mijn regel bewaren tot de week weer open is
+          </button>
+        </div>
+      </div>
     </>
   )
 }
@@ -1139,6 +1258,10 @@ function WeekProjectenView({
   namens,
   namensSuffix,
   extra,
+  wachtrij,
+  verzendNu,
+  verversSleutel,
+  onVerverst,
   vangFout,
   toon,
   terug,
@@ -1154,6 +1277,13 @@ function WeekProjectenView({
   namensSuffix: React.ReactNode
   /** Door de gebruiker deze week toegevoegde projecten zonder regels (UrenFlow-state per week). */
   extra: WeekProjectKaartDto[]
+  /** Run B punt 5: nog niet verzonden dagregels (alle weken); deze view mengt de eigen week in de kaarten. */
+  wachtrij: OfflineRegel[]
+  verzendNu: () => void
+  /** Ophogen = kaarten opnieuw laden (ná een geslaagde verzendronde). */
+  verversSleutel: number
+  /** Ná elke geslaagde verversing: de wachtrij nog eens proberen. */
+  onVerverst: () => void
   vangFout: (err: unknown) => string
   toon: (tekst: string) => void
   terug: () => void
@@ -1176,14 +1306,22 @@ function WeekProjectenView({
   const laad = useCallback(() => {
     setFout(null)
     haalWeekProjecten(week.jaar, week.weeknummer, namens?.id ?? null)
-      .then(setKaarten)
+      .then((k) => {
+        setKaarten(k)
+        onVerverst()
+      })
       .catch((err) => setFout(vangFout(err) || null))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [week, namens, vangFout])
   useEffect(() => {
     laad()
-  }, [laad])
+  }, [laad, verversSleutel])
 
-  const alle = kaarten === null ? null : weekKaarten(kaarten, extra)
+  // Run B punt 5: lokale (nog niet verzonden) regels van deze week mengen — bolletje per kaart, per dag en een banner.
+  const offline = kaarten === null ? null : pasWachtrijToe(weekKaarten(kaarten, extra), wachtrij, week)
+  const alle = offline === null ? null : offline.kaarten
+  const offlineRegels = offline?.regels ?? []
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false
   const muteerbaar = (k: WeekProjectKaartDto) => k.status === 'nieuw' || k.status === 'concept' || k.status === 'corrigeren'
   const indienbaar = (alle ?? []).filter((k) => (k.status === 'concept' || k.status === 'corrigeren') && Number(k.totaal_uren) > 0)
   const weekUren = (alle ?? []).reduce((som, k) => som + Number(k.totaal_uren), 0)
@@ -1192,6 +1330,11 @@ function WeekProjectenView({
   const overzicht = alle ? indienSamenvatting(indienbaar, dagen) : null
 
   async function indienen() {
+    // Indienen blijft online-only (run B): eerst de bewaarde regels weg, anders dien je een onvolledige week in.
+    if (offlineRegels.length > 0) {
+      toon(`Indienen kan pas als de ${offlineRegels.length === 1 ? 'bewaarde regel' : `${offlineRegels.length} bewaarde regels`} verzonden ${offlineRegels.length === 1 ? 'is' : 'zijn'} — tik op "Nu verzenden" zodra je netwerk hebt.`)
+      return
+    }
     setBezig(true)
     setFout(null)
     let gelukt = 0
@@ -1210,6 +1353,8 @@ function WeekProjectenView({
     } catch (err) {
       if (isDossierGeblokkeerd(err)) {
         toon('Indienen is geblokkeerd: dossier incompleet — open Mijn dossier en upload de documenten.')
+      } else if (isGeenVerbinding(err)) {
+        setFout('Indienen kan alleen met verbinding — je uren staan veilig, probeer het zodra je netwerk hebt.')
       } else {
         const tekst = vangFout(err)
         if (tekst) setFout(tekst)
@@ -1263,6 +1408,11 @@ function WeekProjectenView({
               <span className="acc-chip">{doorfacturerenLabel(k.doorfactureren_standaard ?? true).toLowerCase()}</span>
             )}
             {(k.meerwerk_aantal ?? 0) > 0 && <span className="acc-chip meerwerk">{k.meerwerk_aantal} meerwerk</span>}
+            {(offline?.perKaart[kaartSleutel(k)]?.length ?? 0) > 0 && (
+              <span className="acc-chip wacht acc-offline-chip" data-testid="chip-niet-verzonden" title="Bewaard op dit toestel — wordt verzonden zodra er netwerk is">
+                ● nog niet verzonden
+              </span>
+            )}
           </span>
           {/* Run A punt 10: terugkoppeling van kantoor/uitvoerder per week op de kaart. */}
           {k.status === 'goedgekeurd' && (
@@ -1341,11 +1491,31 @@ function WeekProjectenView({
               title={vergeten.has(d.datum) ? 'Nog geen uren op deze werkdag' : undefined}
             >
               {d.naam}
-              <small>{uren > 0 ? `${uren.toLocaleString('nl-NL')} u` : '—'}</small>
+              <small>
+                {uren > 0 ? `${uren.toLocaleString('nl-NL')} u` : '—'}
+                {offline?.datums.has(d.datum) && (
+                  <b className="acc-offline-dot" aria-label="nog niet verzonden" data-testid={`offline-dot-${d.naam}`}>
+                    {' '}●
+                  </b>
+                )}
+              </small>
             </button>
           )
         })}
       </div>
+      {offlineRegels.length > 0 && (
+        <div className="acc-notitie waarschuw acc-offline-banner" data-testid="offline-banner" role="status">
+          <span>●</span>
+          <span style={{ flex: 1 }}>
+            {nogNietVerzondenLabel(offlineRegels.length)} — {online ? 'verzenden lukte nog niet' : 'geen verbinding'}; ze worden verzonden zodra er netwerk is.
+            {offlineRegels.some((r) => r.conflict) && ' Eén of meer regels botsen met de server — kies bij de melding.'}
+            {offlineRegels.some((r) => r.fout) && ` Fout bij verzenden: ${offlineRegels.find((r) => r.fout)?.fout}`}
+          </span>
+          <button type="button" className="acc-btn secundair klein" data-testid="offline-verzenden" onClick={verzendNu}>
+            Nu verzenden
+          </button>
+        </div>
+      )}
       {fout && <FoutRegel tekst={fout} onOpnieuw={laad} />}
       {alle === null && !fout && <Leeg tekst="Laden…" />}
       {alle !== null && alle.length === 0 && (
@@ -1727,6 +1897,7 @@ function DagInvoerView({
   namens,
   namensSuffix,
   vangFout,
+  slaOp,
   terug,
   naOpslaan,
 }: {
@@ -1741,6 +1912,8 @@ function DagInvoerView({
   namens: { id: string; naam: string } | null
   namensSuffix: React.ReactNode
   vangFout: (err: unknown) => string
+  /** Run B: online = PUT, geen verbinding = lokale wachtrij (UrenFlow.slaDagOp). */
+  slaOp: (payload: ZetDagPayload) => Promise<'ok' | 'wachtrij'>
   terug: () => void
   naOpslaan: () => void
 }) {
@@ -1766,7 +1939,7 @@ function DagInvoerView({
     setBezig(true)
     setFout(null)
     try {
-      await zetDag({
+      await slaOp({
         administratie_id: ctx.administratieId,
         project_id: ctx.projectId,
         jaar: ctx.jaar,

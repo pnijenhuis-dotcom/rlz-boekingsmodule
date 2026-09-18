@@ -356,6 +356,19 @@ export function zetOmschrijvingChipsBeheer(administratieId: string, chips: strin
   })
 }
 
+/** Dag-einde herinnering veld-app (run B punt 4, Peter 18-09): tijd per administratie, Beheerder-only; null = default 16:30. */
+export function haalHerinneringTijdBeheer(administratieId: string): Promise<{ tijd: string; standaard: boolean }> {
+  return apiJson(`/uren/beheer/herinnering-tijd/${administratieId}`)
+}
+
+export function zetHerinneringTijdBeheer(administratieId: string, tijd: string | null): Promise<{ tijd: string; standaard: boolean }> {
+  return apiJson(`/uren/beheer/herinnering-tijd/${administratieId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tijd }),
+  })
+}
+
 export function haalDossierDocumenttypen(
   administratieId: string,
 ): Promise<{ typen: DossierDocumenttypeDto[]; is_standaard: boolean }> {

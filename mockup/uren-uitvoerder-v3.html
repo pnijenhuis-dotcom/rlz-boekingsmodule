@@ -62,7 +62,7 @@
 </style>
 </head>
 <body>
-<div class="kop"><div><h1>Veld-app uitvoerder/ZZP'er v3 — 12 UX-punten, run A</h1><div class="sub">bouwplaats: handschoenen, zon, één hand, haast · tikdoelen ≥ 48 px · tekst ≥ 14 px · één primaire knop per kaart · akkoord Peter 18-09 "alle punten" · GEBOUWD 18-09 (run A)</div></div><div class="sub">bouwnorm run A = deze mockup + v2 (project-eerst) · designpass v2 / KP7 getoetst</div></div>
+<div class="kop"><div><h1>Veld-app uitvoerder/ZZP'er v3 — 12 UX-punten, run A + run B</h1><div class="sub">bouwplaats: handschoenen, zon, één hand, haast · tikdoelen ≥ 48 px · tekst ≥ 14 px · één primaire knop per kaart · akkoord Peter 18-09 "alle punten" · GEBOUWD 18-09 (run A) · run B (⑤ offline, ⑥ herinnering) TER BOUW 18-09</div></div><div class="sub">bouwnorm run A + B = deze mockup + v2 (project-eerst) · designpass v2 / KP7 getoetst</div></div>
 
 <div class="rij">
 
@@ -136,6 +136,44 @@
   <div class="tbalk"><span class="on"><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span><i></i>Toegang</span></div>
 </div></div></div>
 
+
+<!-- ⑤ offline (run B punt 5) -->
+<div class="tel"><p class="label">⑤ Offline — regel lokaal bewaard, bolletje per regel en per week, conflict = beide standen</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Uren</div><div class="s">Week 38 · 14 – 20 sep · Haci Y. (uitvoerder)</div></div>
+  <div class="regel" style="margin:10px 14px 0;padding:12px 14px;background:var(--warn-bg,#fff4e5);border:1px solid var(--warn);border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <span class="groot" style="color:var(--warn)"><b>●</b> 2 regels nog niet verzonden — verzenden zodra er netwerk is</span>
+    <button class="btn sec" style="min-height:48px;padding:0 14px;white-space:nowrap">Nu verzenden</button>
+  </div>
+  <div class="dag"><span>ma<small>8 u</small></span><span class="on">di<small>8 u <b style="color:var(--warn)">●</b></small></span><span>wo<small>—</small></span><span>do<small>—</small></span><span>vr<small>—</small></span></div>
+  <div class="regel" style="padding:14px">
+    <div class="kk"><div class="n groot">26031 Rijssen (Olieman)</div><span class="chip c-warn" style="font-size:14px">● nog niet verzonden</span></div>
+    <div class="s groot">di: 8 u · opbouwen · doorfactureren · <span style="color:var(--warn)">bewaard op dit toestel</span></div>
+    <button class="btn" style="margin-top:10px;min-height:48px">+ Uren</button>
+    <div style="display:flex;justify-content:space-between;margin-top:10px"><a class="link" href="#">⟲ Zelfde als gisteren</a><a class="link" href="#" style="color:#6941c6">Meerwerk melden</a></div>
+  </div>
+  <div style="margin:10px 14px 0"><button class="btn" style="min-height:48px;opacity:.55" disabled>Week indienen (16 u)</button><p class="m groot" style="margin:6px 4px 0">Indienen kan alleen met verbinding — eerst de 2 bewaarde regels verzenden.</p></div>
+  <div class="sheet" style="position:absolute;left:0;right:0;bottom:0">
+    <div class="greep"></div>
+    <div style="font-weight:700;font-size:17px;margin-bottom:6px">Deze dag is intussen gewijzigd</div>
+    <div class="groot" style="line-height:1.7">Week 38 is <b>ingediend</b> terwijl je offline was.<br>Kantoor/server: <b>di 15 sep · 6 u · ombouwen</b><br>Jouw regel (nog niet verzonden): <b>di 15 sep · 8 u · opbouwen</b></div>
+    <button class="btn" style="min-height:48px">Stand van kantoor houden</button>
+    <button class="btn sec" style="min-height:48px;margin-top:8px">Mijn regel bewaren tot de week weer open is</button>
+  </div>
+</div></div></div>
+
+<!-- ⑥ herinnering (run B punt 4) -->
+<div class="tel"><p class="label">⑥ Herinnering einde werkdag — schakelaar in ⚙ Toegang (per gebruiker) + tijd per administratie (kantoor)</p><div class="frame"><div class="scherm">
+  <div class="tkop"><div class="t">Toegang tot de app</div><div class="s">⚙ Instellingen</div></div>
+  <p class="label" style="margin:14px 18px 6px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--primary)">Herinneringen</p>
+  <div class="wk"><div><div class="n groot">Herinnering einde werkdag</div><div class="s groot">Om 16:30 een melding "Nog geen uren voor vandaag" — alleen op werkdagen en alleen als je die dag nog niets hebt ingevuld. Het kantoor stelt de tijd in.</div></div><span style="display:inline-block;width:46px;height:27px;border-radius:14px;background:var(--primary);position:relative;flex-shrink:0"><i style="position:absolute;top:2.5px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff"></i></span></div>
+  <div class="regel" style="margin:10px 14px 0;padding:12px 14px;background:#fff;border:1px dashed var(--border);border-radius:12px">
+    <div class="m" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Kantoor-web · Instellingen › administratie › Uren &amp; materiaal</div>
+    <div class="kk" style="margin-top:8px"><div><div class="n">Herinnering einde werkdag (veld-app)</div><div class="s">Push "Nog geen uren voor vandaag" aan veldwerkers zonder uren; alleen ma–vr. Leeg = standaard 16:30.</div></div><span class="select" style="padding:8px 12px;min-width:90px">16:30 ▾</span></div>
+    <div class="s" style="margin-top:6px">Reconciliatiemail telt per dag: verwacht · gestuurd · overgeslagen (al uren / uitgezet / al gestuurd / stille uren / geen kanaal).</div>
+  </div>
+  <div class="tbalk"><span><i></i>Uren</span><span><i></i>Werkbonnen</span><span><i></i>Meerwerk</span><span class="on"><i></i>Toegang</span></div>
+</div></div></div>
+
 </div>
 
 <div class="notities">
@@ -151,7 +189,8 @@
 <li><b>Terugkoppeling</b> (punt 10): per week goedgekeurd (✓) / afgekeurd mét reden + "Aanpassen" (week staat al op corrigeren; de knop opent 'm) ; melding bij afkeuring via de bestaande push/mail-lijn (kantoor-keuring + app-keuring).</li>
 <li><b>Doorfactureren ingeklapt</b> (punt 11): alleen de chip + "wijzigen"; dropdown pas ná tikken.</li>
 <li><b>Velden verbergen</b> (punt 12): m² en omschrijving onder "▸ meer" als het project geen m²-project is (<code>contract_m2</code> leeg); anders zichtbaar. Omschrijving-chips blijven altijd zichtbaar (die vervangen het vrije veld).</li>
-<li>Run B (aparte inbox-opdracht): dag-einde-herinnering 16:30 (push, opt-out) en offline werken (IndexedDB-wachtrij, conflictmelding, <code>storage.persist()</code>).</li>
+<li><b>Run B — dag-einde herinnering</b> (punt 4, scherm ⑥): push om 16:30 (per administratie instelbaar door het kantoor, default 16:30, alleen ma–vr NL-kalenderdag) "Nog geen uren voor vandaag" — alleen als er die dag nog geen regel is (over álle weekstaten), één per dag per veldwerker (claim), push-anders-mail, stille uren gerespecteerd; opt-out PER GEBRUIKER via de schakelaar in ⚙ Toegang (beslispunt: gebruiker, niet toestel — de herinnering hoort bij de persoon, niet bij één telefoon).</li>
+<li><b>Run B — offline werkt</b> (punt 5, scherm ⑤): een dagregel die niet verzonden kan worden (geen netwerk / backend onbereikbaar) blijft lokaal bewaard (IndexedDB naast het slot, versleuteld op hetzelfde anker) en toont een oranje bolletje "nog niet verzonden" op de kaart en in de dagbalk + een banner met "Nu verzenden"; verzenden bij netwerk terug, bij het openen van de app en ná elke geslaagde verversing; conflict (week intussen ingediend/gekeurd → 409) = sheet mét beide standen en een keuze — nooit stil overschrijven; indienen blijft online-only en wacht tot de bewaarde regels weg zijn.</li>
 </ol>
 </div>
 </body>
