@@ -372,6 +372,22 @@ export function GebruikersScreen() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { hash } = useLocation()
   const groep = groepUitUrl(searchParams.get('groep'), hash)
+  // Peter 18-09 (Instellingen › Klant-accordering, "Accordeur uitnodigen →"): `?uitnodig=accordeur&administratie=<id>`
+  // opent het uitnodigingsformulier direct, rol Klant-accordeur + die administratie in scope voorgevuld. Eénmalig: de
+  // parameters gaan uit de URL zodra de dialoog open is (herladen opent 'm niet opnieuw).
+  const uitnodigUitUrl = searchParams.get('uitnodig')
+  const uitnodigScopeUitUrl = searchParams.get('administratie')
+  const [uitnodigStandaardScope, setUitnodigStandaardScope] = useState<string[] | undefined>(undefined)
+  useEffect(() => {
+    if (uitnodigUitUrl !== 'accordeur' && uitnodigUitUrl !== 'veldwerker' && uitnodigUitUrl !== 'medewerker') return
+    setUitnodigStandaardScope(uitnodigScopeUitUrl ? [uitnodigScopeUitUrl] : undefined)
+    setUitnodigSoort(uitnodigUitUrl)
+    const p = new URLSearchParams(searchParams)
+    p.delete('uitnodig')
+    p.delete('administratie')
+    setSearchParams(p, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uitnodigUitUrl, uitnodigScopeUitUrl])
   const [zoekterm, setZoekterm] = useState('')
   const [pagina, setPagina] = useState(1)
   const kiesGroep = (nieuwe: GebruikersGroep) => {
@@ -1088,7 +1104,11 @@ export function GebruikersScreen() {
         soort={uitnodigSoort}
         open
         administraties={administraties ?? []}
-        onSluiten={() => setUitnodigSoort(null)}
+        standaardScope={uitnodigStandaardScope}
+        onSluiten={() => {
+          setUitnodigSoort(null)
+          setUitnodigStandaardScope(undefined)
+        }}
         onUitgenodigd={(resultaat) => {
           const link = uitnodigSoort === 'veldwerker' && resultaat.token ? activeerLinkUrl(resultaat.token) : null
           const code = resultaat.activatiecode ?? null

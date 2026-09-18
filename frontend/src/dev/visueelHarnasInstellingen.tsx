@@ -123,6 +123,34 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (url === '/instellingen/administraties' || url.startsWith('/instellingen/administraties?'))
     return Promise.resolve(jsonResponse({ administraties: ADMINISTRATIES }))
   if (url === '/instellingen/boeken-kill-switch') return Promise.resolve(jsonResponse({ ingeschakeld: true }))
+  // 18-09 (BUA-blok op de tab Boeken & AI): voorstel-lijst mét één aangevinkte rekening — sweep-geval tab=boeken-ai.
+  if (url.endsWith('/btw-aftrek-uitgesloten')) {
+    const rek = (code: string, naam: string, voorstel: boolean, uitgesloten: boolean) => ({
+      ledger_id: `gb-${code}`, code, naam, uitgesloten, voorstel, standaard_percentage: null, standaard_naam: null, gezet_op: uitgesloten ? '2026-09-18T10:00:00Z' : null,
+    })
+    return Promise.resolve(
+      jsonResponse({
+        rekeningen: [rek('4014', 'Kantinekosten', true, false), rek('4508', 'Relatiegeschenken (beperkt aftrekbaar)', true, false), rek('4510', 'Representatiekosten (beperkt aftrekbaar)', true, true), rek('4404', 'Kosten mobiele telefonie', false, false)],
+        aantal_uitgesloten: 1,
+        aantal_voorstel: 2,
+      }),
+    )
+  }
+  // 18-09: laadAlles() van InstellingenScreen wacht op álle vijf instellingen-calls — zonder deze drie mocks toonde élke
+  // sectie mét administraties (accordering, doorbelasting) "backend niet bereikbaar" in het harnas.
+  if (url === '/instellingen/duplicaat-autoafvoer') return Promise.resolve(jsonResponse({ ingeschakeld: true }))
+  if (url === '/groepen') return Promise.resolve(jsonResponse({ groepen: [] }))
+  if (url === '/uren/kantoor/mijn-toegang')
+    return Promise.resolve(
+      jsonResponse({
+        heeft_meerwerk_recht: true,
+        administraties_met_opt_in: [ADMIN_1],
+        aantal_administraties_in_scope: ADMINISTRATIES.length,
+        is_beheerder: true,
+        heeft_veldwerkerbeheer_recht: true,
+        is_beheerder_of_bp: true,
+      }),
+    )
   // Blok A 16-09: intercompany-relaties + RC-koppelingen op Boeken platformbreed (sweep-geval ?pad=/instellingen/boeken).
   if (url === '/intercompany/relaties') {
     const rel = (id: string, a: string, aId: string, naam: string, b: string, bId: string, richting: 'crediteur' | 'debiteur', basis: string, status: string, reden: string | null = null) => ({
@@ -235,6 +263,65 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
+  // Peter 18-09 (klant-accordering: zoekveld/filter/samenvatting, leveranciersroute bovenop, geen-accordeurs-acties):
+  // kantoorbreed overzicht + routes + leverancier-kandidaten, sweep-geval ?pad=/instellingen/accordering&administratie=<ADMIN_1>
+  // (deeplink klapt die regel open — ADMIN_1 heeft géén accordeurs = melding mét twee acties; ADMIN_2 heeft een bovenop-route).
+  if (url === '/accordering/overzicht') {
+    return Promise.resolve(
+      jsonResponse({
+        administraties: ADMINISTRATIES.map((a, i) => ({
+          administratie_id: a.id,
+          naam: a.naam,
+          ingeschakeld: a.id === ADMIN_2 || i % 3 === 0,
+          lagen: a.id === ADMIN_2 ? 3 : i % 3 === 0 ? 1 : 0,
+          leverancier_routes: a.id === ADMIN_2 ? 1 : 0,
+          accordeurs: a.id === ADMIN_1 ? 0 : 2,
+        })),
+      }),
+    )
+  }
+  if (url.endsWith('/accordering/leverancier-routes')) {
+    return Promise.resolve(
+      jsonResponse({
+        routes: url.includes(ADMIN_2)
+          ? [
+              {
+                id: 'route-1',
+                naam: 'Route Bouwadvies extra laag directie (lange naam om de regel te laten wrappen op smalle schermen)',
+                actief: true,
+                modus: 'bovenop',
+                positie: 'na',
+                leveranciers: [
+                  { vendor_id: 'v-1', naam: 'Steigerbouw Van der Meer & Zonen Nederland B.V.' },
+                  { vendor_id: 'v-2', naam: 'Firma Q B.V.' },
+                ],
+                lagen: [{ volgnummer: 1, accordeur_gebruiker_id: ACCORDEUR_ID, accordeur_naam: 'R. de Groot', bedrag_drempel: '5000.00' }],
+                samenvatting:
+                  'bovenop de gewone route (ná de laatste laag): + laag 1 R. de Groot · > € 5.000,00 · alleen Steigerbouw Van der Meer & Zonen Nederland B.V., Firma Q B.V.',
+              },
+            ]
+          : [],
+      }),
+    )
+  }
+  if (url.endsWith('/accordering/leverancier-kandidaten')) {
+    return Promise.resolve(
+      jsonResponse({
+        crediteuren: [
+          { vendor_id: 'v-1', naam: 'Steigerbouw Van der Meer & Zonen Nederland B.V.', open_documenten: 3 },
+          { vendor_id: 'v-2', naam: 'Firma Q B.V.', open_documenten: 0 },
+        ],
+      }),
+    )
+  }
+  if (url === '/accordering/accordeur-kandidaten') {
+    return Promise.resolve(jsonResponse({ kandidaten: [{ id: ACCORDEUR_ID, naam: 'R. de Groot' }] }))
+  }
+  if (url.endsWith('/crediteuren') && url.startsWith('/administraties/')) {
+    return Promise.resolve(
+      jsonResponse({ crediteuren: [{ id: 'v-1', naam: 'Steigerbouw Van der Meer & Zonen Nederland B.V.' }, { id: 'v-2', naam: 'Firma Q B.V.' }] }),
+    )
+  }
   if (url.endsWith('/accordering/instellingen')) {
     return Promise.resolve(
       jsonResponse({
@@ -250,7 +337,26 @@ window.fetch = (invoer: RequestInfo | URL, init?: RequestInit): Promise<Response
       }),
     )
   }
-  if (url.endsWith('/accordering/staande-regels')) return Promise.resolve(jsonResponse({ regels: [] }))
+  if (url.endsWith('/accordering/staande-regels')) {
+    return Promise.resolve(
+      jsonResponse({
+        regels: url.includes(ADMIN_2)
+          ? [
+              {
+                id: 'sr-1',
+                accordeur_gebruiker_id: ACCORDEUR_ID,
+                accordeur_naam: 'R. de Groot',
+                vendor_id: 'v-1',
+                leverancier_naam: 'Steigerbouw Van der Meer & Zonen Nederland B.V.',
+                bedrag: '12.345,67',
+                actief: true,
+              },
+            ]
+          : [],
+        uitzonderingen: [],
+      }),
+    )
+  }
   if (url.includes('/auth/gebruikers/') && url.endsWith('/apparaten')) {
     return Promise.resolve(
       jsonResponse({
@@ -393,7 +499,9 @@ if (new URLSearchParams(window.location.search).has('donker')) {
 // detailpagina) — zo kan de overflow-sweep óók de subpagina's meten zonder klik-automatisering.
 const params = new URLSearchParams(window.location.search)
 const startTab = params.get('tab')
-const startPad = (params.get('pad') ?? '/instellingen') + (startTab ? `?tab=${startTab}` : '')
+const startAdministratie = params.get('administratie')
+const startQuery = [startTab ? `tab=${startTab}` : '', startAdministratie ? `administratie=${startAdministratie}` : ''].filter(Boolean).join('&')
+const startPad = (params.get('pad') ?? '/instellingen') + (startQuery ? `?${startQuery}` : '')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

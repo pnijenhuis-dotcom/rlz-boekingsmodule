@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Text, CheckConstraint, ForeignKey, Index, Numeric, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -133,6 +133,12 @@ class AccorderingLeverancierRoute(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     administratie_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.administratie.id"))
     naam: Mapped[str] = mapped_column(Text)
+    #: Peter 18-09 (migratie 0164): 'vervangt' = de route vervangt de administratieroute (17-09-gedrag); 'bovenop' = de
+    #: gewone lagen van de administratie op het moment van de ronde + de extra lagen van deze route op `positie`
+    #: ('voor' = vóór laag 1, 'na' = ná de laatste gewone laag). Zo hoeft Bouwadvies Oost Nederland haar drie gewone
+    #: lagen niet te kopiëren in een route die stil uit de pas zou lopen.
+    modus: Mapped[str] = mapped_column(Text, default="vervangt", server_default="vervangt")
+    positie: Mapped[str | None] = mapped_column(Text, default=None)
     actief: Mapped[bool] = mapped_column(default=True)
     aangemaakt_door: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform.gebruiker.id"))
     aangemaakt_op: Mapped[datetime] = mapped_column(server_default=func.now())

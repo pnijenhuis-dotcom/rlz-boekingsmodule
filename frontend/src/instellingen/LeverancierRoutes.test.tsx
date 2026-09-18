@@ -52,6 +52,14 @@ const CREDITEUREN = [
 
 afterEach(() => vi.unstubAllGlobals())
 
+/** Leverancierskeuze is sinds 18-09 een zoekbare combobox (open documenten bovenaan): typen → optie kiezen. */
+async function kiesLeverancier(naam: string) {
+  const invoer = screen.getByRole('combobox', { name: 'leverancier' })
+  await userEvent.click(invoer)
+  await userEvent.type(invoer, naam.slice(0, 5))
+  await userEvent.click(await screen.findByRole('option', { name: new RegExp(naam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }))
+}
+
 describe('LeverancierRoutes', () => {
   it('toont de lege stand als actie en de samenvatting per route', async () => {
     stub({ routes: [], posts: [] })
@@ -72,8 +80,7 @@ describe('LeverancierRoutes', () => {
     await screen.findByRole('button', { name: '+ Leveranciersroute' })
     await userEvent.click(screen.getByRole('button', { name: '+ Leveranciersroute' }))
     await userEvent.type(screen.getByLabelText('Naam leveranciersroute'), 'Route Q')
-    await userEvent.selectOptions(screen.getByLabelText('Leverancier toevoegen'), 'v-q')
-    await userEvent.click(screen.getByRole('button', { name: 'Toevoegen' }))
+    await kiesLeverancier('Firma Q B.V.')
     expect(screen.getByTestId('leverancier-chip')).toHaveTextContent('Firma Q B.V.')
     await userEvent.selectOptions(screen.getByLabelText('Accordeur route-laag 1'), 'g-sophia')
     await userEvent.click(screen.getByRole('button', { name: '+ Laag toevoegen' }))
@@ -84,6 +91,8 @@ describe('LeverancierRoutes', () => {
     expect(state.posts[0]).toEqual({
       naam: 'Route Q',
       vendor_ids: ['v-q'],
+      modus: 'vervangt',
+      positie: null,
       lagen: [
         { volgnummer: 1, accordeur_gebruiker_id: 'g-sophia', bedrag_drempel: null },
         { volgnummer: 2, accordeur_gebruiker_id: 'g-dir', bedrag_drempel: '5000' },
@@ -101,8 +110,7 @@ describe('LeverancierRoutes', () => {
     await screen.findByText(/alleen Firma Q B.V./)
     await userEvent.click(screen.getByRole('button', { name: '+ Leveranciersroute' }))
     await userEvent.type(screen.getByLabelText('Naam leveranciersroute'), 'Route 2')
-    await userEvent.selectOptions(screen.getByLabelText('Leverancier toevoegen'), 'v-q')
-    await userEvent.click(screen.getByRole('button', { name: 'Toevoegen' }))
+    await kiesLeverancier('Firma Q B.V.')
     await userEvent.selectOptions(screen.getByLabelText('Accordeur route-laag 1'), 'g-dir')
     await userEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
     await screen.findByText(/zit al in leveranciersroute 'Route Q'/)
@@ -110,5 +118,36 @@ describe('LeverancierRoutes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Route uitzetten' }))
     await screen.findByText('Nog geen leveranciersroute — alle facturen volgen de gewone route.')
     expect(screen.getByText(/Route uitgezet\./)).toBeInTheDocument()
+  })
+
+  it('kiest "Bovenop de gewone route" mét positie, toont de chip en meldt ontbrekende accordeurs mét twee acties (Peter 18-09)', async () => {
+    const state = { routes: [] as LeverancierRouteDto[], posts: [] as unknown[] }
+    stub(state)
+    render(<LeverancierRoutes administratieId="a1" naam="Bouwadvies Oost Nederland B.V." kandidaten={[]} crediteuren={CREDITEUREN} isBeheerder />)
+    await userEvent.click(await screen.findByRole('button', { name: '+ Leveranciersroute' }))
+    // Geen accordeurs in de administratie → dezelfde melding + acties als op de kaart.
+    const melding = screen.getByTestId('geen-accordeurs-melding')
+    expect(melding.querySelector('[data-testid="accordeur-uitnodigen"]')).toHaveAttribute(
+      'href',
+      '/gebruikers?groep=accordeurs&uitnodig=accordeur&administratie=a1',
+    )
+    expect(melding.querySelector('[data-testid="accordeur-koppelen"]')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Naam leveranciersroute'), 'Directie extra')
+    await kiesLeverancier('Firma R B.V.')
+    await userEvent.click(screen.getByLabelText('Bovenop de gewone route'))
+    expect(screen.getByLabelText('Extra laag ná de laatste laag')).toBeChecked()
+    await userEvent.click(screen.getByLabelText('Extra laag vóór laag 1'))
+    expect(screen.getByText('Extra laag 1')).toBeInTheDocument()
+    // Zonder accordeur-keuze blijft opslaan mogelijk qua knop (lagen leeg → server weigert); hier alleen de payload-vorm.
+    await userEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
+    await waitFor(() => expect(state.posts).toHaveLength(1))
+    expect(state.posts[0]).toMatchObject({ naam: 'Directie extra', vendor_ids: ['v-r'], modus: 'bovenop', positie: 'voor' })
+  })
+
+  it('toont bij een bovenop-route de chip "bovenop de gewone route"', async () => {
+    stub({ routes: [{ ...ROUTE, modus: 'bovenop', positie: 'na', samenvatting: 'bovenop de gewone route (ná de laatste laag): + laag 1 Sophia · alleen Firma Q B.V.' }], posts: [] })
+    render(<LeverancierRoutes administratieId="a1" kandidaten={KANDIDATEN} crediteuren={CREDITEUREN} isBeheerder={false} />)
+    expect(await screen.findByTestId('route-modus-chip')).toHaveTextContent('bovenop de gewone route')
+    expect(screen.getByText(/ná de laatste laag/)).toBeInTheDocument()
   })
 })

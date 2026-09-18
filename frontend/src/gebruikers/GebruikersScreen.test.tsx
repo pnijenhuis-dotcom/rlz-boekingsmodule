@@ -220,6 +220,14 @@ afterEach(() => {
 })
 
 describe('GebruikersScreen', () => {
+  it('?uitnodig=accordeur&administratie= opent het uitnodigingsformulier voorgevuld (Instellingen › Klant-accordering, 18-09)', async () => {
+    installMock({ gebruikers: [] })
+    renderScherm(`/gebruikers?groep=accordeurs&uitnodig=accordeur&administratie=${TWEEDE_ID}`)
+    expect(await screen.findByRole('heading', { name: 'Accordeur uitnodigen' })).toBeInTheDocument()
+    // De scope is voorgevuld met precies die administratie (de gebruiker kan 'm nog aanpassen).
+    expect(await screen.findByText('1 van 2 geselecteerd')).toBeInTheDocument()
+  })
+
   it('toont kantoorgebruikers met rol, scope en beveiligingsstatus', async () => {
     installMock({
       gebruikers: [gebruiker({ heeft_totp: true, aantal_passkeys: 2 })],

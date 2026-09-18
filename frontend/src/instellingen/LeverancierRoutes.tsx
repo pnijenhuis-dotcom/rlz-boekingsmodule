@@ -1,22 +1,32 @@
 // Klant-accordering — accorderingsroute per LEVERANCIER (Peter 17-09, migratie 0156): "1 losse accordeur die alleen de
 // aangevinkte leveranciers ziet — dus NIET langs de andere accordeurs". Een leveranciersroute VERVANGT de administratieroute
 // voor de aangevinkte leveranciers (zelfde patroon als de afdelingsroute): binnen de route meerdere lagen mét bedragdrempel.
-// UX (norm: één primaire knop + ⋯, lege stand = actie): lijst mét samenvatting per route ("laag 1 Sophia → laag 2 D. Directeur
-// · > € 5.000,00 · alleen Firma Q"), inline editor (naam, leveranciers als meervoudige keuze mét chips, lagen zoals de
-// administratieroute), Opslaan / Route uitzetten. Een leverancier kan in maar één route zitten: de server geeft 409 mét de naam
-// van de andere route — die tekst tonen we letterlijk.
-import { useCallback, useEffect, useState } from 'react'
+// Peter 18-09 (migratie 0164, casus Bouwadvies Oost Nederland: 3 gewone lagen + een 4e alleen voor 2 leveranciers): keuze
+// "Vervangt de gewone route" (default) of "Bovenop de gewone route" mét positie (vóór laag 1 · ná de laatste laag) — de gewone
+// lagen hoeven dan niet gekopieerd te worden en een wijziging van de gewone route werkt door in lopende rondes.
+// UX (norm: één primaire knop + ⋯, lege stand = actie): lijst mét samenvatting per route, inline editor (naam, leveranciers via
+// zoekbare combobox — crediteuren mét open documenten bovenaan — als chips, lagen zoals de administratieroute), Opslaan /
+// Route uitzetten. Een leverancier kan in maar één route zitten: de server geeft 409 mét de naam van de andere route — die
+// tekst tonen we letterlijk. Geen accordeurs in de administratie = dezelfde melding + acties als op de kaart zelf.
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   deactiveerLeverancierRoute,
+  haalLeverancierKandidaten,
   haalLeverancierRoutes,
   maakLeverancierRoute,
   wijzigLeverancierRoute,
   type KandidaatDto,
+  type LeverancierKandidaatDto,
   type LeverancierRouteDto,
+  type LeverancierRouteModus,
+  type LeverancierRoutePositie,
 } from '../accordering/accorderingApi'
 import type { VendorOptieDto } from '../api/types'
+import { SearchableCombobox, type ComboboxOptie } from '../document/SearchableCombobox'
 import { Select } from '../ui/basis'
 import { rondesTekst } from '../accordering/rondesTekst'
+import { GeenAccordeursMelding } from './GeenAccordeursMelding'
+import { KeuzeKaarten } from './KeuzeKaarten'
 
 interface LaagInvoer {
   accordeurId: string
@@ -28,27 +38,58 @@ interface RouteInvoer {
   naam: string
   vendorIds: string[]
   lagen: LaagInvoer[]
+  modus: LeverancierRouteModus
+  positie: LeverancierRoutePositie
 }
 
-const LEEG: RouteInvoer = { routeId: null, naam: '', vendorIds: [], lagen: [{ accordeurId: '', drempel: '' }] }
+const LEEG: RouteInvoer = {
+  routeId: null,
+  naam: '',
+  vendorIds: [],
+  lagen: [{ accordeurId: '', drempel: '' }],
+  modus: 'vervangt',
+  positie: 'na',
+}
+
+/** Combobox-opties: open documenten bovenaan (server sorteert), label "Naam · 3 open" zodat het verschil zichtbaar is. */
+export function leverancierOpties(
+  kandidaten: LeverancierKandidaatDto[] | null,
+  crediteuren: VendorOptieDto[],
+  uitgesloten: string[],
+): ComboboxOptie[] {
+  const bron: { id: string; naam: string | null; open: number }[] = kandidaten
+    ? kandidaten.map((k) => ({ id: k.vendor_id, naam: k.naam, open: k.open_documenten }))
+    : crediteuren.map((c) => ({ id: c.id, naam: c.naam, open: 0 }))
+  return bron
+    .filter((c) => !uitgesloten.includes(c.id))
+    .map((c) => ({
+      id: c.id,
+      label: `${c.naam ?? c.id}${c.open > 0 ? ` · ${c.open} open` : ''}`,
+    }))
+}
 
 export function LeverancierRoutes({
   administratieId,
+  naam,
   kandidaten,
   crediteuren,
   isBeheerder,
+  onKandidatenHerladen,
 }: {
   administratieId: string
+  naam?: string
   kandidaten: KandidaatDto[]
   crediteuren: VendorOptieDto[]
   isBeheerder: boolean
+  /** Ná "Bestaande accordeur koppelen": de kaart herlaadt de kandidatenlijst. */
+  onKandidatenHerladen?: () => void
 }) {
   const [routes, setRoutes] = useState<LeverancierRouteDto[] | null>(null)
+  const [leverancierKandidaten, setLeverancierKandidaten] = useState<LeverancierKandidaatDto[] | null>(null)
   const [fout, setFout] = useState<string | null>(null)
   const [melding, setMelding] = useState<string | null>(null)
   const [editor, setEditor] = useState<RouteInvoer | null>(null)
   const [bezig, setBezig] = useState(false)
-  const [kiesVendor, setKiesVendor] = useState('')
 
   const laad = useCallback(() => {
     haalLeverancierRoutes(administratieId)
@@ -60,7 +101,21 @@ export function LeverancierRoutes({
     laad()
   }, [laad])
 
-  const naamVan = (vendorId: string) => crediteuren.find((c) => c.id === vendorId)?.naam ?? vendorId
+  // Crediteuren mét open documenten (punt 3, 18-09) — pas laden als de editor opent; mislukt = terugval op de kale lijst.
+  useEffect(() => {
+    if (!editor || leverancierKandidaten !== null) return
+    haalLeverancierKandidaten(administratieId)
+      .then((d) => setLeverancierKandidaten(d.crediteuren))
+      .catch(() => setLeverancierKandidaten([]))
+  }, [editor, leverancierKandidaten, administratieId])
+
+  const naamVan = (vendorId: string) =>
+    leverancierKandidaten?.find((k) => k.vendor_id === vendorId)?.naam ?? crediteuren.find((c) => c.id === vendorId)?.naam ?? vendorId
+
+  const opties = useMemo(
+    () => leverancierOpties(leverancierKandidaten && leverancierKandidaten.length > 0 ? leverancierKandidaten : null, crediteuren, editor?.vendorIds ?? []),
+    [leverancierKandidaten, crediteuren, editor?.vendorIds],
+  )
 
   const opslaan = async () => {
     if (!editor) return
@@ -70,6 +125,8 @@ export function LeverancierRoutes({
     const payload = {
       naam: editor.naam.trim(),
       vendor_ids: editor.vendorIds,
+      modus: editor.modus,
+      positie: editor.modus === 'bovenop' ? editor.positie : null,
       lagen: editor.lagen
         .filter((l) => l.accordeurId)
         .map((l, i) => ({
@@ -110,15 +167,17 @@ export function LeverancierRoutes({
       naam: route.naam,
       vendorIds: route.leveranciers.map((l) => l.vendor_id),
       lagen: route.lagen.map((l) => ({ accordeurId: l.accordeur_gebruiker_id, drempel: l.bedrag_drempel ?? '' })),
+      modus: route.modus ?? 'vervangt',
+      positie: route.positie ?? 'na',
     })
 
   return (
     <div style={{ display: 'grid', gap: 8 }} data-testid="leverancier-routes">
       <h3 style={{ margin: '6px 0 0' }}>Leveranciersroutes</h3>
       <div className="hint" style={{ margin: 0 }}>
-        Een leveranciersroute vervangt de gewone route voor de aangevinkte leveranciers: alleen de accordeur(s) in deze
-        route zien die facturen; alle andere facturen volgen de gewone route zonder deze accordeur. Een leverancier kan in
-        maar één route zitten.
+        Een leveranciersroute geldt alleen voor de aangevinkte leveranciers: óf ze <b>vervangt</b> de gewone route (alleen de
+        accordeur(s) in deze route zien die facturen), óf ze komt er <b>bovenop</b> (de gewone lagen plus een extra laag vóór
+        of ná). Alle andere facturen volgen de gewone route. Een leverancier kan in maar één route zitten.
       </div>
       {fout && <div className="fout">{fout}</div>}
       {melding && <span className="hint">{melding}</span>}
@@ -130,7 +189,13 @@ export function LeverancierRoutes({
         <ul style={{ margin: 0, paddingLeft: 18 }}>
           {routes.map((route) => (
             <li key={route.id} data-testid="leverancier-route">
-              <b>{route.naam}</b> — {route.samenvatting}
+              <b>{route.naam}</b>
+              {route.modus === 'bovenop' && (
+                <span className="chip" style={{ marginLeft: 6 }} data-testid="route-modus-chip">
+                  bovenop de gewone route
+                </span>
+              )}{' '}
+              — {route.samenvatting}
               {isBeheerder && (
                 <>
                   {' '}
@@ -147,14 +212,14 @@ export function LeverancierRoutes({
         </ul>
       )}
       {isBeheerder && !editor && (
-        <div className="actions" style={{ margin: 0 }}>
+        <div className="actions" style={{ margin: 0, justifyContent: 'flex-start' }}>
           <button type="button" className="btn secondary" onClick={() => setEditor({ ...LEEG, lagen: [{ accordeurId: '', drempel: '' }] })}>
             + Leveranciersroute
           </button>
         </div>
       )}
       {editor && (
-        <div className="panel" style={{ display: 'grid', gap: 10, padding: 10 }} data-testid="leverancier-route-editor">
+        <div className="panel" style={{ display: 'grid', gap: 10, padding: 10, minWidth: 0 }} data-testid="leverancier-route-editor">
           <label style={{ display: 'grid', gap: 4 }}>
             Naam van de route
             <input aria-label="Naam leveranciersroute" value={editor.naam} onChange={(e) => setEditor({ ...editor, naam: e.target.value })} placeholder="bv. Route Firma Q" />
@@ -171,38 +236,71 @@ export function LeverancierRoutes({
                 </span>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Select aria-label="Leverancier toevoegen" value={kiesVendor} onChange={(e) => setKiesVendor(e.target.value)}>
-                <option value="">— kies leverancier —</option>
-                {crediteuren
-                  .filter((c) => !editor.vendorIds.includes(c.id))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.naam}
-                    </option>
-                  ))}
-              </Select>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={!kiesVendor}
-                onClick={() => {
-                  if (!kiesVendor) return
-                  setEditor({ ...editor, vendorIds: [...editor.vendorIds, kiesVendor] })
-                  setKiesVendor('')
+            <div style={{ maxWidth: 420 }}>
+              <SearchableCombobox
+                label="leverancier"
+                toonLabel={false}
+                placeholder="Leverancier toevoegen… (open documenten bovenaan)"
+                opties={opties}
+                waarde={null}
+                laden={editor !== null && leverancierKandidaten === null && crediteuren.length === 0}
+                onWijzig={(id) => {
+                  if (!id || editor.vendorIds.includes(id)) return
+                  setEditor({ ...editor, vendorIds: [...editor.vendorIds, id] })
                 }}
-              >
-                Toevoegen
-              </button>
+              />
             </div>
           </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <span>Werking</span>
+            <KeuzeKaarten<LeverancierRouteModus>
+              naam={`route-modus-${editor.routeId ?? 'nieuw'}`}
+              waarde={editor.modus}
+              onKies={(modus) => setEditor({ ...editor, modus })}
+              opties={[
+                {
+                  waarde: 'vervangt',
+                  ariaLabel: 'Vervangt de gewone route',
+                  kop: <b>Vervangt de gewone route</b>,
+                  uitleg: 'Alleen de lagen hieronder — de gewone accordeurs zien deze facturen niet.',
+                },
+                {
+                  waarde: 'bovenop',
+                  ariaLabel: 'Bovenop de gewone route',
+                  kop: <b>Bovenop de gewone route</b>,
+                  uitleg: 'De gewone lagen blijven; de lagen hieronder komen erbij. Wijzigt de gewone route, dan volgt deze route mee.',
+                },
+              ]}
+            />
+            {editor.modus === 'bovenop' && (
+              <KeuzeKaarten<LeverancierRoutePositie>
+                naam={`route-positie-${editor.routeId ?? 'nieuw'}`}
+                waarde={editor.positie}
+                onKies={(positie) => setEditor({ ...editor, positie })}
+                opties={[
+                  { waarde: 'voor', ariaLabel: 'Extra laag vóór laag 1', kop: <b>Vóór laag 1</b>, uitleg: 'De extra accordeur kijkt als eerste.' },
+                  { waarde: 'na', ariaLabel: 'Extra laag ná de laatste laag', kop: <b>Ná de laatste laag</b>, uitleg: 'De extra accordeur kijkt als laatste.' },
+                ]}
+              />
+            )}
+          </div>
+          {kandidaten.length === 0 && naam && (
+            <GeenAccordeursMelding
+              administratieId={administratieId}
+              naam={naam}
+              isBeheerder={isBeheerder}
+              onGekoppeld={() => onKandidatenHerladen?.()}
+              compact
+            />
+          )}
           {editor.lagen.map((laag, index) => (
-            <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ minWidth: 52 }}>Laag {index + 1}</span>
+            <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ minWidth: 52 }}>{editor.modus === 'bovenop' ? `Extra laag ${index + 1}` : `Laag ${index + 1}`}</span>
               <Select
                 aria-label={`Accordeur route-laag ${index + 1}`}
                 value={laag.accordeurId}
                 onChange={(e) => setEditor({ ...editor, lagen: editor.lagen.map((l, i) => (i === index ? { ...l, accordeurId: e.target.value } : l)) })}
+                style={{ width: 'auto', minWidth: 160, maxWidth: 280 }}
               >
                 <option value="">— kies accordeur —</option>
                 {kandidaten.map((k) => (
@@ -214,7 +312,7 @@ export function LeverancierRoutes({
               <input
                 aria-label={`Bedragdrempel route-laag ${index + 1}`}
                 placeholder="drempel (leeg = alle facturen)"
-                style={{ width: 220 }}
+                style={{ width: 220, maxWidth: '100%' }}
                 value={laag.drempel}
                 onChange={(e) => setEditor({ ...editor, lagen: editor.lagen.map((l, i) => (i === index ? { ...l, drempel: e.target.value } : l)) })}
               />
@@ -223,7 +321,7 @@ export function LeverancierRoutes({
               </button>
             </div>
           ))}
-          <div className="actions" style={{ margin: 0 }}>
+          <div className="actions" style={{ margin: 0, justifyContent: 'flex-start', flexWrap: 'wrap' }}>
             <button type="button" className="btn secondary" onClick={() => setEditor({ ...editor, lagen: [...editor.lagen, { accordeurId: '', drempel: '' }] })}>
               + Laag toevoegen
             </button>

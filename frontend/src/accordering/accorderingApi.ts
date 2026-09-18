@@ -160,7 +160,14 @@ export interface LeverancierRouteDto {
   lagen: LeverancierRouteLaagDto[]
   /** "laag 1 Sophia → laag 2 D. Directeur · > € 5.000,00 · alleen Firma Q B.V." */
   samenvatting: string
+  /** Peter 18-09 (migratie 0164): 'vervangt' (default) = de route vervangt de gewone route; 'bovenop' = de gewone lagen van
+   * de administratie + deze extra lagen op `positie` ('voor' = vóór laag 1, 'na' = ná de laatste laag). */
+  modus?: LeverancierRouteModus
+  positie?: LeverancierRoutePositie | null
 }
+
+export type LeverancierRouteModus = 'vervangt' | 'bovenop'
+export type LeverancierRoutePositie = 'voor' | 'na'
 
 export interface LeverancierRoutesDto {
   routes: LeverancierRouteDto[]
@@ -172,6 +179,33 @@ export interface LeverancierRouteInvoerDto {
   naam: string
   vendor_ids: string[]
   lagen: { volgnummer: number; accordeur_gebruiker_id: string; bedrag_drempel: string | null }[]
+  modus?: LeverancierRouteModus
+  positie?: LeverancierRoutePositie | null
+}
+
+/** Peter 18-09 punt 3: crediteuren voor de route-editor, mét open documenten bovenaan (server sorteert). */
+export interface LeverancierKandidaatDto {
+  vendor_id: string
+  naam: string | null
+  open_documenten: number
+}
+
+export function haalLeverancierKandidaten(administratieId: string): Promise<{ crediteuren: LeverancierKandidaatDto[] }> {
+  return apiJson(`/administraties/${administratieId}/accordering/leverancier-kandidaten`)
+}
+
+/** Peter 18-09 punt 1: één regel per administratie in scope — "aan · 2 lagen · 1 route · 3 accordeurs" vóór het openklappen. */
+export interface AccorderingOverzichtRijDto {
+  administratie_id: string
+  naam: string
+  ingeschakeld: boolean
+  lagen: number
+  leverancier_routes: number
+  accordeurs: number
+}
+
+export function haalAccorderingOverzicht(): Promise<{ administraties: AccorderingOverzichtRijDto[] }> {
+  return apiJson('/accordering/overzicht')
 }
 
 export function haalLeverancierRoutes(administratieId: string): Promise<LeverancierRoutesDto> {

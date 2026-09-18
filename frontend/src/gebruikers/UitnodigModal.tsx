@@ -57,12 +57,16 @@ export function UitnodigModal({
   open,
   onSluiten,
   onUitgenodigd,
+  standaardScope,
 }: {
   soort: Soort
   administraties: AdministratieDto[]
   open: boolean
   onSluiten: () => void
   onUitgenodigd: (resultaat: UitnodigingResultaatDto) => void
+  /** Peter 18-09: voorgevulde scope (bv. "Accordeur uitnodigen →" vanuit Instellingen › Klant-accordering,
+   * `?uitnodig=accordeur&administratie=<id>`) — de gebruiker kan 'm nog aanpassen. */
+  standaardScope?: string[]
 }) {
   const [naam, setNaam] = useState('')
   const [eMail, setEMail] = useState('')
@@ -72,7 +76,7 @@ export function UitnodigModal({
   useEffect(() => {
     setRol(ROLGROEPEN[soort].standaard)
   }, [soort])
-  const [scope, setScope] = useState<string[]>([])
+  const [scope, setScope] = useState<string[]>(() => standaardScope ?? [])
   // A4 (25-08): veldwerker aanmaken zónder mail — account op 'uitgenodigd', alsnog mailen via
   // de bestaande "Opnieuw mailen"-knop op Gebruikers & toegang.
   const [uitnodigingLater, setUitnodigingLater] = useState(false)

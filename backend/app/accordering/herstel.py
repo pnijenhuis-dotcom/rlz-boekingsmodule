@@ -165,12 +165,12 @@ def diagnose(kandidaat: HerstelKandidaat) -> list[str]:
             blokkades.append(f"open vraag {open_vraag.id} blokkeert boeken")
         if not boeken_service._is_boeken_toegestaan(session, administratie_id=aid):
             blokkades.append("boeken staat UIT (administratie-toggle of 'Boeken platformbreed')")
-        limiet, na_akkoord = boeken_service.volumerem_limiet(administratie_id=aid, document_id=d_id)
-        vandaag = boeken_service._boekingen_vandaag(session, administratie_id=aid)
+        rem_herkomst = boeken_service.volumerem_herkomst(administratie_id=aid, document_id=d_id, actor_id=None)
+        limiet = boeken_service.volumerem.limiet_voor(rem_herkomst)
+        vandaag = boeken_service._boekingen_vandaag(session, administratie_id=aid, herkomst=rem_herkomst)
         if vandaag >= limiet:
             blokkades.append(
-                f"{'noodrem ná klant-akkoord' if na_akkoord else 'volumerem'}: vandaag al {vandaag} van max {limiet} "
-                "boekingen voor deze administratie"
+                boeken_service.volumerem.melding(herkomst=rem_herkomst, teller=vandaag, limiet=limiet)
             )
     if kandidaat.doorbelasting_klaargezet:
         from app.doorbelasting import orkestratie
@@ -217,18 +217,20 @@ def herstel_boeken(
             continue
         # Punt 23: de herstel-CLI boekt ná een compleet klant-akkoord → dezelfde noodrem als het
         # accorderingspad (20/dag geldt hier niet meer; de env-var-truc van 28-08 is niet meer nodig).
-        limiet, na_akkoord = boeken_service.volumerem_limiet(
-            administratie_id=k.administratie_id, document_id=k.document_id
+        rem_herkomst = boeken_service.volumerem_herkomst(
+            administratie_id=k.administratie_id, document_id=k.document_id, actor_id=None
         )
+        limiet = boeken_service.volumerem.limiet_voor(rem_herkomst)
         with scoped_session(k.administratie_id) as session:
-            vandaag = boeken_service._boekingen_vandaag(session, administratie_id=k.administratie_id)
-        if vandaag >= limiet:
-            rem = "noodrem ná klant-akkoord" if na_akkoord else "volumerem"
-            env = (
-                "MAX_BOEKINGEN_NA_KLANT_AKKOORD_PER_DAG_PER_ADMINISTRATIE"
-                if na_akkoord
-                else "MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE"
+            vandaag = boeken_service._boekingen_vandaag(
+                session, administratie_id=k.administratie_id, herkomst=rem_herkomst
             )
+        if vandaag >= limiet:
+            # SPOED 18-09: ná klant-akkoord = dezelfde 500-noodrem als handmatig (één mens-teller); de melding noemt
+            # rem, teller en handeling (regel 4) plus de env-var voor déze run.
+            na_akkoord = rem_herkomst == boeken_service.volumerem.NA_KLANT_AKKOORD
+            rem = "noodrem ná klant-akkoord" if na_akkoord else "volumerem"
+            env = boeken_service.volumerem.env_naam_voor(rem_herkomst)
             resultaat.overgeslagen[k.document_id] = (
                 f"{rem}: vandaag al {vandaag} van max {limiet} boekingen voor {k.administratie_naam} — "
                 f"rest morgen, of {env} voor déze run verhogen"

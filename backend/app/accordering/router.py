@@ -193,11 +193,17 @@ def _leverancier_routes_response(administratie_id: uuid.UUID) -> schemas.Leveran
             + (f" · > {_euro(laag.bedrag_drempel)}" if laag.bedrag_drempel is not None else "")
             for laag in st.lagen
         )
+        if st.route.modus == service.ROUTE_MODUS_BOVENOP:
+            # 18-09: "bovenop de gewone route (ná de laatste laag): + laag 1 Sophia · alleen Firma Q"
+            waar = "vóór laag 1" if st.route.positie == service.ROUTE_POSITIE_VOOR else "ná de laatste laag"
+            lagen_tekst = f"bovenop de gewone route ({waar}): + {lagen_tekst}"
         routes.append(
             schemas.LeverancierRouteDto(
                 id=st.route.id,
                 naam=st.route.naam,
                 actief=st.route.actief,
+                modus=st.route.modus,  # type: ignore[arg-type]
+                positie=st.route.positie,  # type: ignore[arg-type]
                 leveranciers=[
                     schemas.LeverancierRouteVendorDto(vendor_id=v.vendor_id, naam=st.vendor_namen.get(v.vendor_id))
                     for v in st.vendors
@@ -234,6 +240,8 @@ def _leverancier_route_input(invoer: schemas.LeverancierRouteInputDto) -> servic
     return service.LeverancierRouteInput(
         naam=invoer.naam,
         vendor_ids=list(invoer.vendor_ids),
+        modus=invoer.modus,
+        positie=invoer.positie,
         lagen=[
             service.LaagInput(
                 volgnummer=laag.volgnummer,
@@ -476,6 +484,48 @@ def alle_accordeur_kandidaten(
     scope kan bij een geselecteerde BV immers nog ontbreken (dat lost de scope-vink op)."""
     return schemas.KandidatenResponse(
         kandidaten=[schemas.KandidaatDto(id=k.id, naam=k.naam) for k in service.alle_accordeur_kandidaten()]
+    )
+
+
+@router.get("/accordering/overzicht", response_model=schemas.AccorderingOverzichtResponse)
+def accordering_overzicht(
+    actor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.AccorderingOverzichtResponse:
+    """Peter 18-09 punt 1: één regel per (actieve) administratie in de scope van de actor — aan/uit, gewone lagen,
+    leveranciersroutes, klant-accordeurs mét scope — voor het zoekveld, de filterchips en de samenvatting per regel op
+    Instellingen › Klant-accordering. Kantoorrol binnen de eigen scope (Beheerder = alles); lees-only."""
+    administraties = auth_service.mijn_administraties(actor_id=actor.id, rol=actor.rol)  # actieve, binnen scope
+    rijen = service.overzicht_voor_administraties([a.id for a in administraties])
+    return schemas.AccorderingOverzichtResponse(
+        administraties=[
+            schemas.AccorderingOverzichtRijDto(
+                administratie_id=r.administratie_id,
+                naam=r.naam,
+                ingeschakeld=r.ingeschakeld,
+                lagen=r.lagen,
+                leverancier_routes=r.leverancier_routes,
+                accordeurs=r.accordeurs,
+            )
+            for r in rijen
+        ]
+    )
+
+
+@router.get(
+    "/administraties/{administratie_id}/accordering/leverancier-kandidaten",
+    response_model=schemas.LeverancierKandidatenResponse,
+)
+def leverancier_kandidaten(
+    administratie_id: uuid.UUID,
+    actor: CurrentGebruiker = Depends(vereis_administratie_scope),
+    _kantoor: CurrentGebruiker = Depends(vereis_kantoorrol),
+) -> schemas.LeverancierKandidatenResponse:
+    """Peter 18-09 punt 3: crediteuren voor de leveranciersroute-combobox, mét open documenten bovenaan."""
+    return schemas.LeverancierKandidatenResponse(
+        crediteuren=[
+            schemas.LeverancierKandidaatDto(vendor_id=k.vendor_id, naam=k.naam, open_documenten=k.open_documenten)
+            for k in service.leverancier_kandidaten(administratie_id=administratie_id)
+        ]
     )
 
 

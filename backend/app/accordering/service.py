@@ -41,6 +41,8 @@ from sqlalchemy.orm import Session
 from app.accordering import herberekening as herberekening_module
 from app.accordering.models import (
     AccorderingLaag,
+    AccorderingLeverancierRoute,
+    AccorderingLeverancierRouteVendor,
     AccorderingStap,
     AccorderingStatus,
     DocumentAccordering,
@@ -49,8 +51,6 @@ from app.accordering.models import (
     StapBesluit,
     StapBesluitBron,
     VoorstelStilSoort,
-    AccorderingLeverancierRoute,
-    AccorderingLeverancierRouteVendor,
 )
 from app.afdelingen.models import Afdeling
 from app.auth.rollen import is_externe_app_rol
@@ -566,11 +566,21 @@ class LeverancierAlInRoute(AccorderingFout):
     """Een leverancier zit al in een andere actieve leveranciersroute (één route per leverancier) — 409 mét reden."""
 
 
+#: Peter 18-09 (migratie 0164): modus van een leveranciersroute.
+ROUTE_MODUS_VERVANGT = "vervangt"
+ROUTE_MODUS_BOVENOP = "bovenop"
+ROUTE_POSITIE_VOOR = "voor"
+ROUTE_POSITIE_NA = "na"
+
+
 @dataclass(frozen=True)
 class LeverancierRouteInput:
     naam: str
     vendor_ids: list[uuid.UUID]
-    lagen: list["LaagInput"]
+    lagen: list[LaagInput]
+    #: 'vervangt' (default, 17-09-gedrag) of 'bovenop' (18-09: gewone lagen + deze extra lagen op `positie`).
+    modus: str = ROUTE_MODUS_VERVANGT
+    positie: str | None = None
 
 
 @dataclass(frozen=True)
@@ -580,6 +590,186 @@ class LeverancierRouteStand:
     vendor_namen: dict[uuid.UUID, str]
     lagen: list[AccorderingLaag]
     accordeur_namen: dict[uuid.UUID, str]
+
+
+def _valideer_route_modus(modus: str, positie: str | None) -> None:
+    if modus not in (ROUTE_MODUS_VERVANGT, ROUTE_MODUS_BOVENOP):
+        raise OngeldigeAanbieding(f"Onbekende modus voor een leveranciersroute: {modus!r} (vervangt of bovenop)")
+    if modus == ROUTE_MODUS_BOVENOP and positie not in (ROUTE_POSITIE_VOOR, ROUTE_POSITIE_NA):
+        raise OngeldigeAanbieding(
+            "Een route 'bovenop de gewone route' heeft een positie nodig: 'voor' (vóór laag 1) of 'na' (ná de laatste laag)"
+        )
+
+
+def _hernummer(lagen: list[LaagInput]) -> list[LaagInput]:
+    return [
+        LaagInput(volgnummer=i + 1, accordeur_gebruiker_id=laag.accordeur_gebruiker_id, bedrag_drempel=laag.bedrag_drempel)
+        for i, laag in enumerate(lagen)
+    ]
+
+
+def effectieve_route_lagen(
+    *,
+    modus: str,
+    positie: str | None,
+    gewone_lagen: list[LaagInput],
+    extra_lagen: list[LaagInput],
+) -> list[LaagInput]:
+    """Peter 18-09: de lagen waarlangs een ronde op een leveranciersroute écht loopt. 'vervangt' = uitsluitend de eigen
+    lagen van de route (17-09). 'bovenop' = de GEWONE lagen van de administratie (stand van dit moment) + de extra lagen
+    van de route vóór laag 1 of ná de laatste gewone laag — hernummerd 1..n zodat de drempelregel per laag onverkort
+    werkt. Pure functie: aanbieden én herberekening gebruiken 'm, zodat een wijziging van de gewone route automatisch
+    doorwerkt in lopende rondes op een bovenop-route (nooit een stil uit de pas lopende kopie)."""
+    if modus != ROUTE_MODUS_BOVENOP:
+        return _hernummer(sorted(extra_lagen, key=lambda laag: laag.volgnummer))
+    gewoon = sorted(gewone_lagen, key=lambda laag: laag.volgnummer)
+    extra = sorted(extra_lagen, key=lambda laag: laag.volgnummer)
+    return _hernummer(extra + gewoon if positie == ROUTE_POSITIE_VOOR else gewoon + extra)
+
+
+def route_omschrijving(route: AccorderingLeverancierRoute, extra_lagen_namen: list[str]) -> str:
+    """Tijdlijn-/DTO-tekst: "route: gewoon + extra laag Sophia (leveranciersroute Route Q)" bij 'bovenop', anders
+    "route: leveranciersroute Route Q"."""
+    if route.modus == ROUTE_MODUS_BOVENOP:
+        lagen = ", ".join(extra_lagen_namen) or "—"
+        meervoud = "lagen" if len(extra_lagen_namen) > 1 else "laag"
+        waar = "vóór laag 1" if route.positie == ROUTE_POSITIE_VOOR else "ná de laatste laag"
+        return f"route: gewoon + extra {meervoud} {lagen} {waar} (leveranciersroute {route.naam})"
+    return f"route: leveranciersroute {route.naam}"
+
+
+def _lagen_als_input(lagen: list[AccorderingLaag]) -> list[LaagInput]:
+    return [LaagInput(laag.volgnummer, laag.accordeur_gebruiker_id, laag.bedrag_drempel) for laag in lagen]
+
+
+def _effectieve_lagen_van_route(
+    session: Session, *, administratie_id: uuid.UUID, route: AccorderingLeverancierRoute, extra_lagen: list[LaagInput] | None = None
+) -> list[LaagInput]:
+    """Effectieve lagen van een bestaande route op basis van de DB-stand (extra lagen = de actieve lagen van de route,
+    tenzij `extra_lagen` de nieuwe invoer is die nog niet opgeslagen staat)."""
+    extra = extra_lagen if extra_lagen is not None else _lagen_als_input(
+        _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=route.id)
+    )
+    gewoon = (
+        _lagen_als_input(_actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None))
+        if route.modus == ROUTE_MODUS_BOVENOP
+        else []
+    )
+    return effectieve_route_lagen(modus=route.modus, positie=route.positie, gewone_lagen=gewoon, extra_lagen=extra)
+
+
+@dataclass(frozen=True)
+class LeverancierKandidaat:
+    vendor_id: uuid.UUID
+    naam: str | None
+    open_documenten: int
+
+
+def leverancier_kandidaten(*, administratie_id: uuid.UUID) -> list[LeverancierKandidaat]:
+    """Peter 18-09 punt 3: de crediteuren van een administratie voor de route-editor, mét het aantal OPEN inkoopdocumenten
+    (niet afgehandeld/geboekt) per crediteur — "gepland eerst": mét open documenten bovenaan (meeste eerst), daarna
+    alfabetisch. Set-based (één telling-query + één crediteurenquery), lees-only."""
+    from app.documenten.service import AFGEHANDELDE_STATUSSEN
+
+    with scoped_session(administratie_id) as session:
+        tellingen = dict(
+            session.execute(
+                select(Boekvoorstel.vendor_id, func.count())
+                .join(Document, Document.id == Boekvoorstel.document_id)
+                .where(
+                    Document.administratie_id == administratie_id,
+                    Boekvoorstel.vendor_id.is_not(None),
+                    Document.status.not_in(list(AFGEHANDELDE_STATUSSEN)),
+                )
+                .group_by(Boekvoorstel.vendor_id)
+            ).all()
+        )
+        rijen = session.execute(
+            select(VendorCache.id, VendorCache.naam).where(VendorCache.administratie_id == administratie_id)
+        ).all()
+    kandidaten = [LeverancierKandidaat(vendor_id=r.id, naam=r.naam, open_documenten=int(tellingen.get(r.id, 0))) for r in rijen]
+    return sorted(kandidaten, key=lambda k: (-k.open_documenten, (k.naam or "").lower()))
+
+
+@dataclass(frozen=True)
+class AccorderingOverzichtRij:
+    administratie_id: uuid.UUID
+    naam: str
+    ingeschakeld: bool
+    lagen: int
+    leverancier_routes: int
+    accordeurs: int
+
+
+def overzicht_voor_administraties(administratie_ids: list[uuid.UUID]) -> list[AccorderingOverzichtRij]:
+    """Peter 18-09 punt 1: kantoorbrede samenvatting per administratie (aan/uit · aantal gewone lagen · aantal actieve
+    leveranciersroutes · aantal klant-accordeurs mét scope) zodat Instellingen › Klant-accordering niet 77 regels hoeft
+    open te klappen om te zien wat er staat. De accordering-tabellen dragen alleen een scope-policy (geen Beheerder-bypass),
+    dus per administratie één sessie mét één statement van drie subquery-tellingen (N administraties = N statements —
+    server-side i.p.v. 3 × N calls vanuit de browser). Lees-only."""
+    from app.db.models import GebruikerAdministratie, GebruikerStatus
+
+    uit: list[AccorderingOverzichtRij] = []
+    for administratie_id in administratie_ids:
+        with scoped_session(administratie_id) as session:
+            administratie = session.get(Administratie, administratie_id)
+            if administratie is None:
+                continue
+            lagen_q = (
+                select(func.count())
+                .select_from(AccorderingLaag)
+                .where(
+                    AccorderingLaag.administratie_id == administratie_id,
+                    AccorderingLaag.actief.is_(True),
+                    AccorderingLaag.afdeling_id.is_(None),
+                    AccorderingLaag.leverancier_route_id.is_(None),
+                )
+                .scalar_subquery()
+            )
+            routes_q = (
+                select(func.count())
+                .select_from(AccorderingLeverancierRoute)
+                .where(
+                    AccorderingLeverancierRoute.administratie_id == administratie_id,
+                    AccorderingLeverancierRoute.actief.is_(True),
+                )
+                .scalar_subquery()
+            )
+            accordeurs_q = (
+                select(func.count())
+                .select_from(GebruikerAdministratie)
+                .join(Gebruiker, Gebruiker.id == GebruikerAdministratie.gebruiker_id)
+                .where(
+                    GebruikerAdministratie.administratie_id == administratie_id,
+                    Gebruiker.status == GebruikerStatus.ACTIEF,
+                    Gebruiker.rol == GebruikerRol.KLANT_ACCORDEUR,
+                )
+                .scalar_subquery()
+            )
+            lagen, routes, accordeurs = session.execute(select(lagen_q, routes_q, accordeurs_q)).one()
+            uit.append(
+                AccorderingOverzichtRij(
+                    administratie_id=administratie_id,
+                    naam=administratie.naam,
+                    ingeschakeld=bool(administratie.accordering_ingeschakeld),
+                    lagen=int(lagen or 0),
+                    leverancier_routes=int(routes or 0),
+                    accordeurs=int(accordeurs or 0),
+                )
+            )
+    return uit
+
+
+def _actieve_bovenop_routes(session: Session, *, administratie_id: uuid.UUID) -> list[AccorderingLeverancierRoute]:
+    return list(
+        session.scalars(
+            select(AccorderingLeverancierRoute).where(
+                AccorderingLeverancierRoute.administratie_id == administratie_id,
+                AccorderingLeverancierRoute.actief.is_(True),
+                AccorderingLeverancierRoute.modus == ROUTE_MODUS_BOVENOP,
+            )
+        )
+    )
 
 
 def _vendor_namen(session: Session, vendor_ids: set[uuid.UUID], administratie_id: uuid.UUID) -> dict[uuid.UUID, str]:
@@ -705,6 +895,8 @@ def leverancier_route_opslaan(
     volgnummers = [laag.volgnummer for laag in invoer.lagen]
     if len(volgnummers) != len(set(volgnummers)):
         raise OngeldigeAanbieding("Volgnummers van de lagen moeten uniek zijn")
+    _valideer_route_modus(invoer.modus, invoer.positie)
+    positie = invoer.positie if invoer.modus == ROUTE_MODUS_BOVENOP else None
     vendor_ids = list(dict.fromkeys(invoer.vendor_ids))
     uitkomst = RondeUitkomst()
     nu = datetime.now(UTC)
@@ -725,12 +917,19 @@ def leverancier_route_opslaan(
                     "leverancier kan in maar één route zitten (haal 'm daar eerst uit)"
                 )
         if route_id is None:
-            route = AccorderingLeverancierRoute(administratie_id=administratie_id, naam=invoer.naam.strip(), aangemaakt_door=actor_id)
+            route = AccorderingLeverancierRoute(
+                administratie_id=administratie_id,
+                naam=invoer.naam.strip(),
+                modus=invoer.modus,
+                positie=positie,
+                aangemaakt_door=actor_id,
+            )
             session.add(route)
             session.flush()
             oude_vendor_ids: set[uuid.UUID] = set()
             bestaande_lagen: list[AccorderingLaag] = []
             oude_naam = None
+            oude_modus: tuple[str, str | None] | None = None
         else:
             route = session.get(AccorderingLeverancierRoute, route_id)
             if route is None or route.administratie_id != administratie_id or not route.actief:
@@ -738,8 +937,18 @@ def leverancier_route_opslaan(
             oude_vendor_ids = _route_vendor_ids(session, route.id)
             bestaande_lagen = _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=route.id)
             oude_naam = route.naam
+            oude_modus = (route.modus, route.positie)
             route.naam = invoer.naam.strip()
-        schema_gewijzigd = _schema_gewijzigd(bestaande_lagen, invoer.lagen)
+            route.modus = invoer.modus
+            route.positie = positie
+        # 18-09: modus/positie wisselen = ander effectief schema, dus óók herberekenen.
+        schema_gewijzigd = _schema_gewijzigd(bestaande_lagen, invoer.lagen) or (
+            oude_modus is not None and oude_modus != (invoer.modus, positie)
+        )
+        # De lagen waarlangs rondes op deze route écht lopen (bovenop = gewone lagen + deze extra lagen).
+        effectieve_lagen = _effectieve_lagen_van_route(
+            session, administratie_id=administratie_id, route=route, extra_lagen=list(invoer.lagen)
+        )
         for laag in bestaande_lagen:
             laag.actief = False
             laag.gedeactiveerd_door = actor_id
@@ -772,11 +981,11 @@ def leverancier_route_opslaan(
                 administratie_id=administratie_id,
                 actor_id=actor_id,
                 nu=nu,
-                lagen=invoer.lagen,
+                lagen=effectieve_lagen,
                 afdeling_ids=None,
                 leverancier_route_ids={route.id} if schema_gewijzigd else set(),
                 vendor_ids_op_administratieroute=_identiteit_set(session, administratie_id, toegevoegd),
-                detail_extra={"leverancier_route": route.naam},
+                detail_extra={"leverancier_route": route.naam, "leverancier_route_modus": route.modus},
                 zet_leverancier_route=(route.id, route.naam),
             )
             uitkomst = RondeUitkomst(herberekend=uitkomst.herberekend + geraakt.herberekend, vervallen=uitkomst.vervallen + geraakt.vervallen)
@@ -817,11 +1026,15 @@ def leverancier_route_opslaan(
             correlatie_id=uuid.uuid4(),
             oude_waarde={
                 "naam": oude_naam,
+                "modus": oude_modus[0] if oude_modus else None,
+                "positie": oude_modus[1] if oude_modus else None,
                 "leveranciers": sorted(str(v) for v in oude_vendor_ids),
                 "lagen": [{"volgnummer": b.volgnummer, "accordeur": str(b.accordeur_gebruiker_id)} for b in bestaande_lagen],
             },
             nieuwe_waarde={
                 "naam": route.naam,
+                "modus": route.modus,
+                "positie": route.positie,
                 "leveranciers": [str(v) for v in vendor_ids],
                 "lagen": [
                     {
@@ -1107,6 +1320,35 @@ def instellingen_opslaan(
                     leverancier_route_ids={None},  # 17-09: leveranciersroute-rondes hebben hun eigen opslag
                     detail_extra=detail_extra,
                 )
+                # 18-09: rondes op een 'bovenop'-leveranciersroute lopen over de GEWONE lagen + de extra lagen — een
+                # wijziging van de gewone route werkt dus door in die rondes (nooit een stil uit de pas lopende kopie).
+                # 'vervangt'-routes blijven ongemoeid (eigen opslag).
+                for bovenop in _actieve_bovenop_routes(session, administratie_id=administratie_id):
+                    extra = _lagen_als_input(
+                        _actieve_lagen(session, administratie_id=administratie_id, afdeling_id=None, leverancier_route_id=bovenop.id)
+                    )
+                    geraakt = _herbereken_open_rondes(
+                        session,
+                        administratie_id=administratie_id,
+                        actor_id=actor_id,
+                        nu=nu,
+                        lagen=effectieve_route_lagen(
+                            modus=bovenop.modus, positie=bovenop.positie, gewone_lagen=list(lagen), extra_lagen=extra
+                        ),
+                        afdeling_ids=None,
+                        leverancier_route_ids={bovenop.id},
+                        detail_extra={
+                            **(detail_extra or {}),
+                            "leverancier_route": f"{bovenop.naam} (gewone route gewijzigd, bovenop)",
+                            "leverancier_route_modus": bovenop.modus,
+                        },
+                        zet_leverancier_route=(bovenop.id, bovenop.naam),
+                    )
+                    uitkomst = RondeUitkomst(
+                        herberekend=uitkomst.herberekend + geraakt.herberekend,
+                        vervallen=uitkomst.vervallen + geraakt.vervallen,
+                        af_te_ronden=tuple(uitkomst.af_te_ronden) + tuple(geraakt.af_te_ronden),
+                    )
         for invoer in lagen:
             session.add(
                 AccorderingLaag(
@@ -2221,12 +2463,21 @@ def bied_ter_accordering_aan(
             if route_afdeling_id is None
             else None
         )
-        lagen = _actieve_lagen(
+        lagen: list = _actieve_lagen(
             session,
             administratie_id=administratie_id,
             afdeling_id=route_afdeling_id,
             leverancier_route_id=leverancier_route.id if leverancier_route is not None else None,
         )
+        route_tekst: str | None = None
+        if leverancier_route is not None:
+            # 18-09: 'bovenop' = gewone lagen (stand nu) + de extra lagen van de route op de gekozen positie.
+            namen = _gebruikersnamen(session, {laag.accordeur_gebruiker_id for laag in lagen})
+            extra_namen = [namen.get(laag.accordeur_gebruiker_id) or "?" for laag in lagen]
+            lagen = _effectieve_lagen_van_route(
+                session, administratie_id=administratie_id, route=leverancier_route, extra_lagen=_lagen_als_input(lagen)
+            )
+            route_tekst = route_omschrijving(leverancier_route, extra_namen)
         if not lagen:
             if route_afdeling_id is not None:
                 raise GeenLagenIngesteld(
@@ -2255,6 +2506,9 @@ def bied_ter_accordering_aan(
                 # 17-09: de route waarlangs de ronde loopt — filter voor herberekening én zichtbaar in de tijdlijn.
                 "leverancier_route_id": str(leverancier_route.id) if leverancier_route is not None else None,
                 "leverancier_route_naam": leverancier_route.naam if leverancier_route is not None else None,
+                # 18-09: 'vervangt' | 'bovenop' + leesbare routetekst voor de tijdlijn.
+                "leverancier_route_modus": leverancier_route.modus if leverancier_route is not None else None,
+                "route_omschrijving": route_tekst,
             },
         )
         session.add(accordering)
@@ -2281,7 +2535,15 @@ def bied_ter_accordering_aan(
             detail={
                 "accordering_id": str(accordering.id),
                 "lagen": len(lagen),
-                **({"leverancier_route": leverancier_route.naam} if leverancier_route is not None else {}),
+                **(
+                    {
+                        "leverancier_route": leverancier_route.naam,
+                        "leverancier_route_modus": leverancier_route.modus,
+                        "route_omschrijving": route_tekst,
+                    }
+                    if leverancier_route is not None
+                    else {}
+                ),
             },
         )
         record_audit_event(

@@ -60,6 +60,9 @@ class LeverancierRouteDto(BaseModel):
     lagen: list[LaagDto]
     #: "laag 2 · > € 5.000 · alleen Firma X" — één regel voor de lagenlijst.
     samenvatting: str
+    #: Peter 18-09 (migratie 0164): 'vervangt' (default) | 'bovenop'; positie 'voor' | 'na' alleen bij 'bovenop'.
+    modus: Literal["vervangt", "bovenop"] = "vervangt"
+    positie: Literal["voor", "na"] | None = None
 
 
 class LeverancierRoutesResponse(BaseModel):
@@ -72,6 +75,35 @@ class LeverancierRouteInputDto(StrikteInvoer):
     naam: str
     vendor_ids: list[uuid.UUID]
     lagen: list[LaagInputDto]
+    modus: Literal["vervangt", "bovenop"] = "vervangt"
+    positie: Literal["voor", "na"] | None = None
+
+
+class LeverancierKandidaatDto(BaseModel):
+    """Peter 18-09 punt 3: leverancierskeuze in de route-editor — crediteuren mét open documenten bovenaan."""
+
+    vendor_id: uuid.UUID
+    naam: str | None
+    open_documenten: int
+
+
+class LeverancierKandidatenResponse(BaseModel):
+    crediteuren: list[LeverancierKandidaatDto]
+
+
+class AccorderingOverzichtRijDto(BaseModel):
+    """Peter 18-09 punt 1: één regel per administratie in scope vóór het openklappen — "aan · 2 lagen · 1 route"."""
+
+    administratie_id: uuid.UUID
+    naam: str
+    ingeschakeld: bool
+    lagen: int
+    leverancier_routes: int
+    accordeurs: int
+
+
+class AccorderingOverzichtResponse(BaseModel):
+    administraties: list[AccorderingOverzichtRijDto]
 
 
 class KandidaatDto(BaseModel):
