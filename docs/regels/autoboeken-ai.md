@@ -40,6 +40,39 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Autonomie-toekomstlijn (ontwerpnotitie blok E bundel 10-09, geen bouw; wacht op akkoord Peter):** vijf richtingen (1 boekhouden op uitzondering, 2 AI schrijft deterministische regels + backtest, 3 leren over administraties heen op RGS-niveau, 4 nachtelijke AI-onderzoeker, 5 AI-auditor-steekproef → foutkans) met volgorde-advies 2 → 5 → 3 → 4 → 1, harde grens "AI kiest nooit een rekening zonder deterministische toets; AI-uitval = doorlopen zonder AI, zichtbaar" — canoniek `docs/ONTWERP_AUTONOMIE_TOEKOMST.md`, zie BESLISSINGEN "ONTWERPNOTITIE AUTONOMIE-TOEKOMSTLIJN".
 
+<!-- toegevoegd 18-09-2026, opdracht "SPOED-volumerem-alleen-automatisch" -->
+- **Volumerem — alleen automatisch (SPOED Peter 18-09: "Dagelijkse limiet van 20 boekingen bereikt voor deze administratie" bij het
+  HANDMATIG boeken van 180 BLOW-bonnen; geen migratie; BESLISSINGEN "VOLUMEREM — ALLEEN AUTOMATISCH (Peter 18-09)"; herziet punt 23
+  opruimrun 28-08 voor de ná-klant-akkoord-rem):** (1) de 20/dag-rem `max_boekingen_per_dag_per_administratie` geldt UITSLUITEND voor
+  automatische boekingen (autoboek-opt-ins, autoboek-kandidaten-activering, bank-auto-afletteren/-boeken, verkoop/Vastly-autoboek,
+  omzet-auto, waarborg via systeem-actor, doorbelasting-spiegel die uit een automatische bron volgt); de teller telt alleen
+  overgangen → geboekt mét de bestaande 'automatisch'-markering (`automatisch_geboekt` in het overgangsdetail; bank: `geboekt_door` =
+  systeem-actor); een pad mét systeem-actor zónder markering telt óók als automatisch — nooit als mens. (2) Handmatig boeken
+  (kantoor-actor op de knop, incl. bulk-selectie in de lijst) krijgt een eigen hoge noodrem
+  `max_handmatige_boekingen_per_dag_per_administratie` = 500 (env-overschrijfbaar), tekst "Noodrem: N van 500 handmatige boekingen
+  vandaag in deze administratie — neem contact op met de Beheerder", zichtbaar in het scherm (429) én in de reconciliatiemail
+  (categorie `noodrem` = LET-OP). (3) Ná een compleet klant-akkoord (punt 23) geldt DEZELFDE 500-noodrem — één mens-teller (alle
+  niet-automatische overgangen), één limiet; de setting `max_boekingen_na_klant_akkoord_per_dag_per_administratie` (200) is
+  VERVALLEN (blijft leesbaar voor oude env-sets, stuurt niets meer). (4) Élke melding noemt de rem, de teller én de handeling —
+  "Volumerem automatisch boeken: 20 van 20 automatische boekingen vandaag in deze administratie · handmatig boeken kan gewoon door";
+  nooit alleen "limiet bereikt". (5) Alle remmen lopen via ÉÉN helper `app/documenten/volumerem.py` (`bepaal_herkomst`, `limiet_voor`,
+  `melding`, `toets`, `toets_documentboekingen`, `toets_bankboekingen`): `documenten/boeken.py`, `omzet/boeken.py`, `verkoop/boeken.py`,
+  `waarborg/boeken.py`, `doorbelasting/boeken.py` (herkomst reist mee vanuit de orkestratie; de doorbelastings-teller blijft de eigen
+  dagteller — geen actor-kolom), `bank/boeken.py`, `bank/relatie.py`, `bank/afletteren.py` (altijd automatisch) en de herstel-CLI
+  (`accordering/herstel.py`, env-naam per herkomst in de tekst). Bestaande bugfix "alleen échte overgangen" blijft. Guard
+  `tests/documenten/test_volumerem.py`. De tijdelijke env-var `MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE=500` op de service (klikpunt
+  Peter vóór de deploy) stond op 18-09 ~15:45 NIET op de service en hoort NIET in deploy.yml — de code-fix maakt hem overbodig.
+
+<!-- toegevoegd 18-09-2026, opdracht "boeken-sneller-checks-en-doorloop" -->
+- **Harde checks — cache-regel voor het externe deel (Peter 18-09 "Boeken sneller"; migratie 0165; BESLISSINGEN "BOEKEN
+  SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09)"):** de harde checks blijven server-side en blokkerend — ze worden
+  alleen niet twee keer met DEZELFDE externe invoer gedraaid. Het externe deel (IBAN-seed, RLZ-/Odoo-duplicaatquery, kandidaten
+  ± 60 d) wordt per document gecachet op de externe vingerafdruk (`app/documenten/checks_extern.py`) en bij boeken hergebruikt
+  als de vingerafdruk gelijk is én het rapport ≤ 15 min oud is; een **boeken_mislukt-retry en het autoboek-pad
+  ('automatisch'-markering) draaien ALTIJD vers** (`boeken.extern_checks_modus`); een storing wordt nooit gecachet. Autoboek-
+  pad en accordering-staande-goedkeuring blijven op de synchrone `boek_document` (één schrijfroute, geen 202-shortcut);
+  de menselijke boekknop gaat via de achtergrond-schrijver (`boek_wachtrij.py`) mét dezelfde poorten vóór `wordt_geboekt`.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Automatisch boeken (checks-opsomming, per-leverancier-opt-in, autoboek-kandidaten-motor, automatisering-first) (CLAUDE.md `ed6d176` r. 438–480)

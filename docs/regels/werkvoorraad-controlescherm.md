@@ -107,6 +107,107 @@
   melding mét "wis het zoekveld" (nooit een lege tabel zonder uitleg). Het Groep-filter blijft server-side en werkt eronder samen.
   Guard `werkvoorraad/klantZoek.test.tsx`; overflow-sweep harness-werkvoorraad groen.
 
+<!-- toegevoegd 18-09-2026, opdracht "btw-bedrag-volgt-tarief-harde-check" -->
+- **Controlescherm — check-rij mét acties + btw volgt het tarief (Peter 18-09, casus Rituals 88-186308; migratie 0163; BESLISSINGEN
+  "BTW-BEDRAG VOLGT HET TARIEF + BUA + KEUZELIJST NL-EERST (Peter 18-09)"):** een blokkerende check-rij mag handelingen dragen
+  (`CheckResultaatDto.acties`, `btn secondary` onder de melding in de controles-tabel; "signalering zonder handeling is niet af") — eerste
+  afnemer "Btw-bedrag past bij tarief" mét "Btw in kosten (0 %)" en "Zet N %"; de knop past de regelstate aan, de autosave + checks
+  draaien opnieuw, de server blijft de poort. De tariefkeuze op een regel herrekent het btw-bedrag ALTIJD (ook een handmatig getypt
+  bedrag; 0 % op een regel mét btw = btw in de kosten, chip "btw in kosten (niet aftrekbaar)"); de grijze hint "tarief geeft € … —
+  factuur leidend" (REGELRIJ-UI 25-08 (b)) bestaat niet meer. De crediteur-kaart toont het afgeleide leverancier-land ("NL · uit
+  btw-nummer factuur") en de btw-combobox toont bij NL alleen de NL-codes mét "Buitenland-tarieven tonen (N)" onderaan — volledige
+  tekst in `docs/regels/btw.md`.
+
+<!-- toegevoegd 18-09-2026, opdracht "BUG-samenvoegen-toont-gesplitste-regels-en-geheugen-overschrijft-factuurbtw" -->
+- **Samenvoegen-modus volgt de data + regel-btw uit de factuurkolom + pinbon-totaal (BUG Peter 18-09 "hij splitst nu per
+  regel zonder het vinkje?", casus Zilver Horeca Fac-25-022711, BLOW; geen migratie; BESLISSINGEN "SAMENVOEGEN-BUG, REGEL-BTW
+  UIT DE FACTUURKOLOM EN UPLOAD 409 'AL AANWEZIG' (Peter 18-09)"):** (1) **Eén waarheid voor de modus.** De leesroute
+  (`boekvoorstel._lees_opgeslagen_voorstel`) laat `regels_samenvoegen` de OPGESLAGEN data volgen: zegt de leverancier-voorkeur
+  "samenvoegen" maar staan er > 1 regel opgeslagen (de A10-autosave persisteert de gesplitste set als er geen samengevoegde
+  variant te berekenen is — geen totalen, regels zonder bedrag; of de mens sloeg losse regels op), dan is `regels_samenvoegen`
+  False en `regels_modus_hersteld` True; het openen van het controlescherm schrijft één tijdlijnregel "weergave hersteld: N
+  opgeslagen regels, modus stond op samengevoegd" (`registreer_modus_herstel`, idempotent per document × N, systeem-actor). Het
+  scherm toont vinkje, hint ("Losse factuurregels") en tabel uit dezelfde stand mét chip "weergave hersteld" en heeft een tweede
+  grendel: bij > 1 opgeslagen regels is `dto.regels` nooit de samengevoegde variant. Nooit stil de data wegdrukken, nooit de
+  modus liegen. Productie 18-09: c73e7590 (BLOW) had 21 gesplitste regels gepersisteerd (autosave 12:10, snapshot
+  `regels_samenvoegen: false`) onder voorkeur `true`. (2) **Factuur-btw per regel wint van het geheugen.** De extractie leest de
+  btw-KOLOM van de regel voor (`bc`: "9%", "0%", "V"); `controle.parse_btw_kolom_percentage` + `leid_btw_af_uit_kolom` matchen
+  het percentage exact op de gesyncte tarieven (verlegd/vrijgesteld/gemengd doen niet mee; favoriet wint bij twee codes met
+  hetzelfde percentage) zodra netto × tarief ≈ btw niets oplevert → `btw_bron='factuur_regel'` (chip "factuur 0 %"),
+  `btw_afleiding_basis='kolom'`, regel-btw = netto × p (`btw_bedrag_berekend`). Een factuurkolom **0 % IS de basis**
+  (Emballage/statiegeld → "NL, Nul tarief"), nooit verlegd of vrijgesteld raden; zonder kolom blijft de bestaande regel "0 %
+  zonder basis = leeg". Het leverancier-/regel-geheugen vult uitsluitend een lege btw en levert hier alleen het grootboek. Het
+  kolom-percentage reist als `factuur_btw_percentage` mee (DTO, prefill-snapshot, opgeslagen regel). (3) **Bruto/netto per regel
+  uit de factuur:** de bruto-kolom rekent netto × (1 + factuur-regeltarief) zolang de mens de btw-code niet zelf koos — nooit
+  netto × geheugen-tarief (10,80 → 11,77 was fout). (4) **Totaal uit de pinbon:** kop-veld `pt` (sentinel) = het totaal van een
+  meegefotografeerde pin-/kassabon; code toetst `toets_pinbon_totaal`: bon = Σ(netto + btw) van álle regels binnen 5 ct →
+  `totaal_incl` := bon, `totaal_bron='pinbon'`, chip groen "uit pinbon"; regels zonder bedrag → `niet_toetsbaar`, som sluit niet
+  → `afwijkend`: oranje chip "pinbon zegt € X — …", het totaalveld blijft leeg, de mens beslist. Een gelezen factuurtotaal wint
+  altijd (`totaal_bron='factuur'`). (5) **Afgedekt/onleesbaar bedrag:** regel-veld `ng` ("afgedekt"/"onleesbaar") →
+  `bedrag_niet_gelezen` + chip "niet gelezen (afgedekt)" i.p.v. een kale lege cel; de btw-code uit de kolom staat wél klaar, een
+  bedrag wordt nooit geraden. Guards: `tests/extractie/test_controle_kolom_pinbon_18_09.py`,
+  `tests/documenten/test_regel_prefill_factuur_regel_18_09.py`, gouden-set-casus **ae**
+  (`tests/keten/test_ae_zilver_horeca_regelkolom.py`, fixtures `ae_zilver_horeca_regelkolom`, stamgegevens + "NL, Laag tarief"
+  en "NL, Nul tarief"), vitest `BoekvoorstelPanel.modus18.test.tsx`. Telling productie 18-09 (lees-only, per administratie):
+  werkvoorraad-documenten met > 1 opgeslagen regel onder voorkeur/default "samenvoegen": BLOW 1 (de casus), Camping
+  "Nieuwenhoven" 3 (geen voorkeur, RLZ-default aan) — de leesroute herstelt ze bij het openen; Universal Steigerbouw 7 zijn Odoo
+  (default gesplitst) en dus consistent.
+
+<!-- toegevoegd 18-09-2026, opdracht "boeken-sneller-checks-en-doorloop" -->
+- **Boeken sneller — checks lokaal/extern, `wordt_geboekt` + achtergrond-schrijver, doorloop zonder omweg (Peter 18-09
+  letterlijk: "als ik nu een factuur boek duurt het lang voordat alle controles groen worden (4 à 5 seconden). Als ik daarna
+  druk op Boeken in RLZ duurt het weer 4 à 5 seconden voordat ik bij de volgende boeking terecht kom. Vooral deze stap moet
+  sneller: meteen weg (backend draait rustig door) en mij de volgende boeking binnen een seconde geven."; migratie 0165 =
+  PG-enumwaarde `wordt_geboekt` + `boekhouding.check_extern_cache` + `boekhouding.boek_wachtrij_claim`; BESLISSINGEN "BOEKEN
+  SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09)"):** (1) **Checks in twee delen.** LOKAAL (verplichte velden,
+  afdeling, betaalstatus, projectverdeling, regeltelling, btw-bedrag past bij tarief, vervaldatum, buitenland-tarief, IBAN-wissel
+  tegen de opgeslagen set, module-duplicaat) draait synchroon bij élke opslag; EXTERN (IBAN-seed uit RLZ-BankRelations, RLZ-/Odoo-
+  duplicaatquery mét kandidaten ± 60 d, duplicaat over crediteuren heen — `app/documenten/checks_extern.py`) draait PARALLEL
+  (ThreadPool, één RlzClient) en alleen als de EXTERNE VINGERAFDRUK verandert: crediteur + identiteitscluster, referentie
+  genormaliseerd, factuurdatum, totaalbedrag, factuur-IBAN, boek_cyclus, backend. Omschrijving, grootboek, project en btw-code
+  wijzigen start géén externe run. Het externe rapport is persistent (`check_extern_cache`, één rij per document) en geldig zolang
+  de vingerafdruk gelijk is én de run ≤ `CHECKS_EXTERN_CACHE_MINUTEN` (15) oud is; de check-rijen tonen "gecontroleerd HH:MM"
+  (uit de cache = "(ongewijzigd)") en "Loopt…" zolang de externe run bezig is. Een storing (verbinding, RLZ-fout in de
+  duplicaatquery) wordt NOOIT gecachet. `PUT …/boekvoorstel?checks=lokaal` = het snelle pad (externe rijen uit de cache of
+  "loopt nog", blokkerend); `POST …/boekvoorstel/checks?extern=auto|vers|cache`. Frontend `useAutoChecks`: debounce 400 ms,
+  `checksBezig` gesplitst in lokaal/extern. (2) **Boeken = direct door.** `POST …/boeken` doet standaard alleen het SYNCHRONE deel
+  (statusmachine, klant-accorderingspoort, factuurmatch-/materiaalmatch-bevestiging — alle 409's blijven synchroon —, de harde
+  checks mét het externe rapport uit de cache als de vingerafdruk gelijk is en ≤ 15 min, anders deze ene keer wél synchroon
+  extern; nooit stil overslaan; boeken-toggle, volumerem) en antwoordt **202 `wordt_geboekt`** mét `volgende_document_id` +
+  `volgende_document_soort` — de server kiest het volgende document met exact de `kiesVolgendDocument`-regels (positie in de
+  GETOONDE lijstvolgorde uit `lijst_volgorde` in de body, cyclisch, alleen verwerkbare statussen, statussen vers uit de
+  database; zonder lijst = backend-volgorde nieuwste eerst). `?direct=1` = het synchrone pad van vóór 18-09 (herstel/tests).
+  Nieuwe status **`wordt_geboekt`** (tussen klaar_om_te_boeken en geboekt; uitgangen → geboekt, → boeken_mislukt; óók vanuit
+  boeken_mislukt via "Opnieuw"): niet bewerkbaar, niet verwijderbaar, niet nog eens in te dienen (409), wél te bekijken; telt in de
+  standaardlijst (kantoorwerk) en in de tellers-bucket "klaar om te boeken"; lijstlabel "Wordt geboekt…" (grijs, pulserende dot,
+  lijst pollt elke 3 s) → "Geboekt · boekstuk" of rood "Boeken mislukt — reden" mét toast in dezelfde administratie. (3)
+  **Achtergrond-schrijver** `app/documenten/boek_wachtrij.py`: de worker doet exact het bestaande `boek_document` (client-GUID +
+  eigen duplicaatquery vóór de PUT, PUT + Upload + actie 17 + GET, DB-afwikkeling in één transactie, post-commit-stappen) plús de
+  klaargezette doorbelasting en de webhook (via `orkestratie.boek_document_met_doorbelasting`), mét de bij het indienen
+  vastgelegde actor en bevestigingsvlaggen; élke fout = zichtbaar `boeken_mislukt` mét reden (principe 4: rode rij + toast, geen
+  pop-up). Idempotency-key `boek-{document_id}-{boek_cyclus}` (`boek_wachtrij_claim`): twee verwerkers pakken nooit dezelfde
+  boeking; de RLZ-adapter hervat idempotent (GET op het GUID — al geboekt = niets opnieuw schrijven, alleen het boekstuknummer);
+  een claim mét uitkomst 'mislukt' blokkeert "Opnieuw" niet, 'geboekt' is definitief. Cloud = het bestaande job-triggerpatroon:
+  on-demand job **`rlz-boek-wachtrij`** (CLI `boek-wachtrij-verwerken`, `BOEK_WACHTRIJ_JOB_RESOURCE`) + scheduler-vangnet elke
+  2 min; Cloud Tasks is bewust NIET gekozen (nieuwe dependency + queue/IAM/OIDC-route, in deze run niet live te bewijzen; het
+  job-patroon werkt aantoonbaar sinds 26-08). Dev/tests = in-process thread / directe wachtrij. Vangnetten: startup + job
+  hervatten élk document dat > `BOEK_WACHTRIJ_HERSTEL_MINUTEN` (10) op wordt_geboekt staat; reconciliatie-bevinding
+  `wordt_geboekt_verouderd` (blok documenten, start in `meten`, actie "Opnieuw proberen" = deeplink naar het document);
+  dagtellers in de reconciliatiemail (automatisering `boek_wachtrij`: ingediend/geboekt/mislukt + LET-OP vangnet scheduler bij
+  een mislukte trigger). Het autoboek-pad en de accordering-staande-goedkeuring gebruiken dezelfde schrijfroute
+  (`boek_document`) zonder 202-shortcut — zij draaien al in een achtergrondproces. (4) **Doorloop.** `naVerwerking` gebruikt
+  `volgende_document_id` uit het 202-antwoord (route uit `volgende_document_soort`), anders de al geladen lijst
+  (`positie.volgende`/`kiesVolgendDocument` zonder fetch), pas dán de lijst ophalen; het detail van het volgende document wordt
+  geprefetcht (cache 60 s, één keer gebruikt) én zijn externe checks worden **voorverwarmd**
+  (`POST …/boekvoorstel/checks?voorverwarm=1`: alleen extern + cache, max 1 tegelijk per proces, setting `CHECKS_VOORVERWARMEN`
+  default AAN; uit/bezet = zichtbaar in de reconciliatiemail als automatisering `checks_voorverwarmen`, nooit stil).
+  (5) **Server-Timing** (stap 0): de checks- en boek-routes dragen `Server-Timing` (`checks.lokaal`, `checks.cache`,
+  `checks.extern`, `checks.ibanseed`, `checks.duplicaat`, `checks.kandidaten`, `boek.db`, `boek.volgende`; de worker logt
+  `boek.rlz`/`boek.db` in `boek_wachtrij_afgerond.stappen_ms`) + gestructureerde logregel `server_timing` — het meetrecept
+  voor de nameting. Nulmeting productie 18-09 (request-log vóór de fix): checks p50 0,79 s / p95 2,14 s (n=51); boeken p50 2,65 s /
+  p95 3,42 s (n=24, waarvan 4× 429 volumerem). Doelmeting: klik → volgende document ≤ 1 s (p95), externe rijen ≤ 1,5 s bij
+  voorverwarmd, RLZ-boeking gereed in de lijst ≤ 15 s (p95).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Na boeken direct door, lijstcontext, sneltoetsen, actiebalk, boekingsregels-kolommen (CLAUDE.md `ed6d176` r. 271–294)

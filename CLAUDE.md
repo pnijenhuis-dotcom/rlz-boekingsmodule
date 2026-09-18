@@ -177,12 +177,15 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   3. Controlescherm auto-first: kop-omschrijving, projectnummer en prefill deterministisch en direct persistent; mens wint altijd als tijdlijn-override.
   4. Vraag = dialoog die boeken blokkeert tot "Afgehandeld"; afwijzen = verplichte reden; niets verdwijnt stil; datums/dagtellers = NL-kalenderdag via `app/tijd.py`.
   5. Zoekveld klantenlijst + sticky dagkop planning (Peter 18-09): client-side zoeken op naam/groep mét `?zoek=`, `/` focust; planning-grids scrollen intern mét plakkende dagkop — zie BESLISSINGEN "ZOEKVELD KLANTENLIJST + STICKY DAGKOP PLANNING (Peter 18-09)".
+  6. Samenvoegen-modus volgt de data, regel-btw uit de factuurkolom ("0%" = basis), pinbon-totaal alleen na sluitende som, byte-identieke directe upload = 409 "al aanwezig" (Peter 18-09) — zie BESLISSINGEN "SAMENVOEGEN-BUG, REGEL-BTW UIT DE FACTUURKOLOM EN UPLOAD 409 "AL AANWEZIG" (Peter 18-09)".
+  7. Boeken sneller (Peter 18-09, migratie 0165): checks lokaal direct + extern gecachet op vingerafdruk (15 min), "Boeken in RLZ" = 202 `wordt_geboekt` + direct door naar het server-gekozen volgende document, RLZ-write in de achtergrond-schrijver (`rlz-boek-wachtrij`, claim per boeking, mislukt = rode rij) — zie BESLISSINGEN "BOEKEN SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/werkvoorraad-controlescherm.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Kantoor-frontend: IA, designpass, componenten, changelog** — Tailwind v4 + tokens, designpass v2 (teal = actie, groen = status), instellingenRegistry fail-closed, Gebruikers & toegang-tabel, overflow-sweep, "Wat is nieuw".
   1. Élk nav-item/élke tab heeft een registry-entry; nieuwe module = nav-regel en/of tab, nooit een tegel; geen horizontale pagina-overflow (sweep).
   2. Contrast is een test (beide modi); tekstknop = `linkbtn`, echte knop = `btn`/`btn secondary`; nooit een kale `<button>`; comboboxen i.p.v. kale selects.
   3. "Wat is nieuw" (`WAT_IS_NIEUW.md`) VERPLICHT bijvullen bij élke feature-commit, klantleesbaar, nieuwste bovenaan.
+  4. Overflow-les 18-09: tabellen in een paneel altijd in `.tabel-scroll`, omhullende grid-kolom `minWidth: 0`, actieknoppen links onder het blok; instellingen-harnas meet extra breedtes (1385/1280) — zie BESLISSINGEN "KLANT-ACCORDERING — ZOEKVELD, ACCORDEUR UITNODIGEN, LEVERANCIERSROUTE BOVENOP (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/kantoor-frontend.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Administraties, RLZ-/Odoo-koppelingen, sync en instellingen** — Instellingen › Administraties (archiveren, nooit verwijderen), wizard mét rechten-probe, eerste sync, RLZ-check, groepen, administratienaam volgt de bron, Odoo-koppelwizard, terugkerend-signaal, verplaatsen.
@@ -204,6 +207,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Winnaarsvolgorde btw (`regel_prefill.py`): mens > factuur berekend > geheugen > factuur verlegd > grootboek-default (RLZ) > grootboek-historie > administratie-default > leeg; 0/onbepaalbaar/meerduidig = NOOIT invullen.
   2. Verlegd = (vermelding óf kolomcode óf verlegd-leverancier) ÉN factuur-btw 0; 0 % zonder basis blijft leeg (vrijgesteld ≠ verlegd); verlegd-tarief: voorkeur per administratie → meest gebruikt in historie → bestaand pad → default, mét herkomst-chip.
   3. Cent-fix aan de bron (`regelsom.py::corrigeer_btw_centen`) alleen in wat naar RLZ gaat; foutvertaling `vertaal_rlz_boekfout` voor buitenlandse crediteuren.
+  4. Btw-bedrag volgt het tarief (Peter 18-09): 0 % op een regel mét factuur-btw = btw in de kosten (netto + btw, btw 0), harde check "Btw-bedrag past bij tarief" (marge 1 ct × samengevoegde regels, max 5) mét acties, BUA-kenmerk `btw_aftrek_uitgesloten` (migratie 0163) wint van factuur-berekend, keuzelijst NL-eerst mét "Buitenland-tarieven tonen (N)" — zie BESLISSINGEN "BTW-BEDRAG VOLGT HET TARIEF + BUA + KEUZELIJST NL-EERST (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/btw.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Duplicaten en crediteuren** — Harde check "Duplicaat (module)", auto-afvoer, status `afgevoerd_duplicaat`, RLZ-/Odoo-bestaanscheck, referentie-normalisatie, nabundel-motor, crediteur-dedup en dubbelen-clusters, bulk-afvoer, medewerker-wensen 04-09.
@@ -223,6 +227,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   1. Automatisering-first: mens-op-de-knop is een testfase-drempel; elk deterministisch pad krijgt een autoboek-opt-in volgens het vaste patroon (default UIT, harde checks blokkerend, volumerem, 'automatisch'-markering + audit, storno als terugweg).
   2. Geen LLM in geldberekeningen; AI kiest nooit een rekening zonder deterministische toets; AI-uitval = doorlopen zonder AI, zichtbaar (chip + LET-OP); `twijfel` = niet boeken.
   3. Status per harde check is canoniek in BESLISSINGEN "Harde/blokkerende checks" — gedocumenteerd ≠ gebouwd.
+  4. Volumerem alleen automatisch (SPOED Peter 18-09): 20/dag telt uitsluitend automatische boekingen; handmatig én ná klant-akkoord = 500-noodrem; één helper `app/documenten/volumerem.py`, élke melding noemt rem + teller + handeling — zie BESLISSINGEN "VOLUMEREM — ALLEEN AUTOMATISCH (Peter 18-09)".
+  5. Harde checks — het externe deel (IBAN-seed, duplicaatquery's) wordt per document gecachet op vingerafdruk en bij boeken hergebruikt (≤ 15 min); retry ná boeken_mislukt en het autoboek-pad toetsen altijd vers (Peter 18-09) — zie BESLISSINGEN "BOEKEN SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/autoboeken-ai.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Reconciliatie, bewaking en meldingen** — Dagelijkse reconciliatie-blokken (documenten, bank, omzet, doorbelasting, intercompany, RC, rlz_dubbel, dubbele betaling), tellers per automatisering, actiemail + systeemmail, synthetische bewaking, bevindingssoorten in `meten`.
@@ -273,6 +279,7 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
   2. Voorrang afdelingsroute > leveranciersroute > administratieroute; één route per leverancier (409); herberekenen i.p.v. vervallen.
   3. Train-regel: ná élke store-goedkeuring de marketingversie ophogen vóór de volgende push; OTA registreert per RUNTIME; `APP_MIN_RUNTIME_VERSIE` nooit vóór de winkelversie live is; native dependency = winkelrelease.
   4. App-auth zonder passkey (0029): toestelbinding + 5-cijferige toegangscode, éénmalige activatie per toestel; mislukte opslag eerlijk gemeld, nooit een tweede server-activatie.
+  5. Klant-accordering-beheer (Peter 18-09, migratie 0164): kantoorbreed zoekveld/filterchips/samenvatting per regel + deeplink `?administratie=`; "Geen klant-accordeurs" = uitnodigen (voorgevuld) of bestaande accordeur koppelen (bestaande scope-route); leveranciersroute 'vervangt' | 'bovenop' (gewone lagen + extra laag vóór/ná, wijziging gewone route werkt door) — zie BESLISSINGEN "KLANT-ACCORDERING — ZOEKVELD, ACCORDEUR UITNODIGEN, LEVERANCIERSROUTE BOVENOP (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/accordering-native-app.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Vastgoedgroep Nederland → Odoo (run 1 + run 2) en het pandenregister** — Schoonlijst, pandenregister (`pand`/`pand_boeking`, pand = RLZ-project), replay RLZ → Odoo-move-vorm (lees-only), rekeningmapping, 1001-model, RJ-220-rollen op company 6, bewijscyclus `vgg-odoo-stap0`, `vgg-odoo-migratie` (concepten → toets → auto-posten), metingen via de nameting-workflow.

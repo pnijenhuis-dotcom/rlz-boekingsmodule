@@ -11273,3 +11273,204 @@ de Werkopdrachten-tab/het paneel ná plannen (de oude ⊕ per projectrij is met 
 **Tests frontend:** `dagEerst.test.ts` 12 · `PlanningScreen.test.tsx` 20 (herschreven) · `AfwezigKaart.test.tsx` 2 · `stickyDagkop.test.ts`
 2 · `TransportTab.test.tsx` 5 ongewijzigd groen (hook-extractie) · contrast-test groen (alleen bestaande tokens) · overflow-sweep
 `harness-planning.html` × 3 varianten × licht/donker × 4 breedtes — zie rapport.
+
+## VOLUMEREM — ALLEEN AUTOMATISCH (Peter 18-09) — handmatig boeken 500-noodrem, 20/dag alleen voor automatische boekingen, één helper; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09 (inbox-run 3); werkt in productie: niet gemeten (deploy volgt via de Stop-hook; nameting: BLOW vandaag
+> 20 handmatig geboekt zonder rem).** Aanleiding: Peter boekte 18-09 handmatig een stapel BLOW-bonnen (180 documenten) en kreeg ná 20
+stuks "Dagelijkse limiet van 20 boekingen bereikt voor deze administratie" — de rem telde élke overgang → geboekt, ongeacht wie boekte.
+Zelfde denkfout als punt 23 (28-08) voor klant-akkoord: de rem is een noodrem tegen runaway-automatisering, een mens die 20× bewust op
+Boeken drukt ís de normale bedrijfsvoering.
+
+**Regel (volledige tekst in `docs/regels/autoboeken-ai.md`):** 20/dag = uitsluitend automatisch (teller op de 'automatisch'-markering);
+handmatig = eigen noodrem `max_handmatige_boekingen_per_dag_per_administratie` 500; ná klant-akkoord = dezelfde 500 (één mens-teller —
+eenvoudigste vorm, regel 3 van de opdracht; de 200-setting is vervallen maar blijft leesbaar); élke melding noemt rem + teller +
+handeling; alle acht rem-plekken via `app/documenten/volumerem.py`.
+
+**Gebouwd:** `backend/app/documenten/volumerem.py` (nieuw), `config.py` (nieuwe setting, oude gemarkeerd vervallen), `documenten/boeken.py`
+(`toets_volumerem`/`volumerem_limiet`/`volumerem_herkomst` mét actor + overgangsdetail, `_boekingen_vandaag(…, herkomst=)`),
+`omzet/verkoop/waarborg/boeken.py`, `doorbelasting/boeken.py` (+ `herkomst`-param) en `orkestratie.py`, `bank/boeken.py`, `bank/relatie.py`,
+`bank/afletteren.py`, `accordering/herstel.py`, `cli.py` (dry-run-tekst). Router-statussen ongewijzigd (429). Reconciliatie: de
+automatische melding classificeert als `volumerem` (actiemail), de handmatige noodrem als `noodrem` (LET-OP) — `test_volumerem.py`
+toetst de classificatie. Tests: `tests/documenten/test_volumerem.py` (puur + boekpad: rem vol maar handmatig gaat door; teller splitst en
+telt alleen échte overgangen; noodrem bijt mét leesbare melding; vervallen setting stuurt niets); bestaande rem-tests op mens-paden
+patchen nu de handmatige noodrem, autoboek-tests de 20-rem; `test_opruimrun_28_08::test_autoboekpad_blijft_onder_de_20_rem` is
+vervangen door `test_handmatig_boeken_valt_niet_onder_de_20_rem` + `test_handmatige_noodrem_bijt_met_leesbare_melding`.
+
+**Klikpunt Peter (vóór de deploy, alleen als hij nu door wil):** `gcloud run services update rlz-backend --region europe-west4
+--update-env-vars MAX_BOEKINGEN_PER_DAG_PER_ADMINISTRATIE=500` — tijdelijk; de volgende deploy zet de envset weer volledig. Stand
+18-09 ~15:45: de var stond NIET op de service (lees-only `gcloud run services describe`, 43 env-regels zonder MAX_BOEK…). NIET in
+deploy.yml opnemen.
+
+**Beslispunt gekozen (regel 3):** één teller + één limiet (500) voor handmatig én ná-klant-akkoord; wil Peter ná-klant-akkoord toch
+een aparte lagere rem, dan is dat één regel in `volumerem.limiet_voor`.
+
+## KLANT-ACCORDERING — ZOEKVELD, ACCORDEUR UITNODIGEN, LEVERANCIERSROUTE BOVENOP (Peter 18-09) — overflow-bug 1385 px, kantoorbreed overzicht, geen-accordeurs-acties, route "bovenop de gewone route"; migratie 0164
+
+**Status: GEBOUWD + GETEST 18-09 (inbox-run 3, agent A); werkt in productie: niet gemeten (deploy ná de run).**
+**Aanleiding (Peter 18-09, live meegekeken):** (a) Instellingen › Klant-accordering = 77 ingeklapte regels zonder zoekveld/
+teller/stand; (b) bij BLOW de melding "Geen klant-accordeurs … nodig eerst een gebruiker uit" zónder knop; (c) op 1385 px
+(Bouwadvies Oost Nederland) stonden "+ Laag toevoegen", "Opslaan", "+ Leveranciersroute" en "Toegang intrekken" rechts BUITEN
+beeld — het blok Leveranciersroutes leek te ontbreken; (d) casus Bouwadvies: drie gewone lagen + een vierde laag alleen voor
+twee leveranciers → een leveranciersroute die de hele route vervangt dwong tot kopiëren van de drie lagen (loopt stil uit de pas).
+
+**Besluiten/regels (volledige tekst: `docs/regels/accordering-native-app.md` alinea 18-09 + `kantoor-frontend.md` overflow-les):**
+1. Overflow-oorzaak = kale tabellen als grid-item + `.actions` rechts uitgelijnd; fix: `.tabel-scroll`, `minWidth: 0`, wrap,
+   knoppen links onder het blok; sweep-harnas `?pad=/instellingen/accordering&administratie=<id>` óók op 1385/1280 px.
+2. Kantoorbrede leesroute `GET /accordering/overzicht` (aan/uit · gewone lagen · leveranciersroutes · accordeurs mét scope) →
+   zoekveld (`?zoek=`, `/`), chips Alle/Accordering aan/Met leveranciersroute/Zonder accordeur (`?filter=`), samenvatting per
+   regel, deeplink `?administratie=<id>` (open + scroll).
+3. "Geen klant-accordeurs" draagt "Accordeur uitnodigen →" (Gebruikers & toegang voorgevuld via `?uitnodig=accordeur&
+   administratie=`) en "Bestaande accordeur koppelen →" (Beheerder; bestaande scope-route, audit; loskoppelen blijft op
+   Gebruikers & toegang) — óók in de route-editor.
+4. Leverancierskeuze = `SearchableCombobox` mét open documenten bovenaan (`GET …/accordering/leverancier-kandidaten`).
+5. Leveranciersroute-modus 'vervangt' (default, 17-09) | 'bovenop' + positie 'voor'|'na' (0164). Effectieve lagen = pure functie
+   `effectieve_route_lagen`; gewone-route-wijziging werkt door in bovenop-rondes; voorrang afdelingsroute > leveranciersroute >
+   administratieroute ongewijzigd; tijdlijn "Route: gewoon + extra laag ‹naam› …".
+
+**Bouw:** backend `app/accordering/{models,service,schemas,router}.py`, migratie `0164_accordering_leverancier_route_modus.py`;
+frontend `instellingen/AccorderingInstellingen.tsx` (herbouwd top-level), `instellingen/LeverancierRoutes.tsx`,
+`instellingen/GeenAccordeursMelding.tsx` (nieuw), `gebruikers/{UitnodigModal,GebruikersScreen}.tsx` (`standaardScope`,
+`?uitnodig=`), `document/accorderingRouteTijdlijn.ts` + tijdlijnregel in `DocumentDetailScreen.tsx`, `accordering/accorderingApi.ts`,
+harnas `dev/visueelHarnasInstellingen.tsx` + `scripts/overflow_sweep.sh`.
+**Tests:** `tests/accordering/test_leverancier_route.py` (+6), rolpoort-matrix (+2 routes), `tests/accordering` volledig groen op
+eigen test-DB; vitest `AccorderingInstellingen.test.tsx` (4), `LeverancierRoutes.test.tsx` (5), `GebruikersScreen.test.tsx` (+1),
+`accorderingRouteTijdlijn.test.ts` (2), contrast + registry groen; overflow-sweep accordering-harnas: zie rapport.
+**Beslispunten:** (i) een al gegeven akkoord dat door een modus-/positiewissel of gewone-route-wijziging naar een LATERE positie
+verschuift, vervalt volgens de bestaande herberekeningsregel (bundel 09-09) — bewust niet versoepeld; (ii) "Bestaande accordeur
+koppelen" doet alleen TOEVOEGEN (loskoppelen mét vervallen-rondes-waarschuwing blijft op Gebruikers & toegang); (iii) het
+kantoorbrede overzicht doet één statement per administratie (RLS-scope-policy op de accordering-tabellen) — bij ≫ 200
+administraties een Beheerder-leespolicy overwegen.
+**Klikpunten Peter:** `/instellingen/accordering?zoek=blow` → één regel; `?administratie=<Bouwadvies-id>` op 1385 px → alle knoppen
+in beeld, geen horizontale scroll; bij Bouwadvies een route "bovenop … ná de laatste laag" aanmaken voor de twee leveranciers.
+**Nameting (ná deploy, lees-only):** zie rapport `docs/rapporten/2026-09-18-accordering-zoekveld-uitnodigen-bovenop.md`.
+
+## BTW-BEDRAG VOLGT HET TARIEF + BUA + KEUZELIJST NL-EERST (Peter 18-09) — 0 % mét btw = btw in de kosten, harde check mét acties, aftrek-uitgesloten rekeningen, buitenland-tarieven ingeklapt; migratie 0163
+
+**Status: GEBOUWD + GETEST (backend + frontend, 18-09 inbox-run 3, agent B); werkt in productie: niet gemeten (deploy volgt ná de run).**
+**Aanleiding (Peter 18-09, screenshot Rituals Nieuwegein bon 88-186308, BLOW):** één samengevoegde regel 4510 Representatiekosten mét "0% · NL, Nul",
+netto 96,36, btw-bedrag 20,24, aansluiting groen, Controles 11/11 groen, Boeken actief — een onmogelijke combinatie (€ 20,24 voorbelasting op een
+0 %-code). Peter: "dit kan niet. nul % btw invullen is auto btw bedrag op nul zetten" en "representatie (fles wijn): daar mag je de btw niet in
+aftrek nemen, ook al staat die wel op de factuur". Gewenst: 4510, 0 %, netto 116,60, btw 0,00 — de niet-aftrekbare btw in de kosten.
+**Oorzaak (Feiten 18-09, leesreplica per administratie):** (1) REGELRIJ-UI 25-08 (b) maakte tarief × netto ≠ btw een grijze HINT, geen check;
+(2) het tarief-veld herrekende de btw niet bij een geladen regel mét btw-bedrag (`btwHandmatig` stond dan vast); (3) de winnaarsvolgorde kende
+"aftrek uitgesloten" niet. Herkomst van de 0 % op 88-186308: géén prefill-snapshot, géén geheugen vóór 18-09 (de enige observatie is Peters
+boeking van 11:38, RLZ-04-00000362), 4510 zonder RLZ-/historie-default → de mens koos 0 % en het scherm liet 96,36/20,24 staan. Peter heeft het
+document zelf op 116,60/0,00 gecorrigeerd en geboekt (geboekt 11:38:24, boekstuk RLZ-04-00000362).
+**Regels (bindend, volledige tekst `docs/regels/btw.md`):** (1) btw-bedrag volgt het tarief, altijd (herrekening bij élke tariefwijziging,
+tijdlijnregel "Btw herrekend uit tarief"); (2) 0 %/geen btw op een regel mét factuur-btw = btw in de kosten (netto + btw, btw 0; terug naar
+een %-tarief splitst het bruto weer cent-exact); verlegd blijft verlegd; (3) HARDE check "Btw-bedrag past bij tarief" (marge 1 ct × samengevoegde
+factuurregels, min 1 max 5; lokaal; autoboek-pad rood = niet boeken) mét acties "Btw in kosten (0 %)" en "Zet N %" (deterministisch, één
+kandidaat); de grijze hint is weg (guard); (4) BUA-kenmerk `btw_aftrek_uitgesloten` per administratie × grootboek (migratie 0163, kolom op
+`platform.grootboekrekening`), Beheerder-blok "Btw niet aftrekbaar" op de tab Boeken & AI mét voorstel (4xxx-kosten, naam representatie/
+relatiegeschenk/personeelsvoorzien*/kantine, RLZ-default 0 %/geen) — bevestigen, nooit stil; prefill-stap `grootboek_aftrek_uitgesloten` wint
+van factuur-berekend, chip "aftrek uitgesloten (4510)"; (5) lees-only CLI `btw-tarief-afwijking-rapport` (nameting-allowlist); niets in RLZ
+gecorrigeerd. **Deel B:** leverancier-land deterministisch (btw-nummer crediteur → btw-nummer factuur → IBAN → onbekend; factuuradres-land
+bewust NIET gebouwd — geen adresveld in het inkoopschema, beslispunt) als `leverancier_land`/`_bron` op de boekvoorstel-respons; keuzelijst NL
+→ alleen NL-tarieven, buitenland ingeklapt achter "Buitenland-tarieven tonen (N)" (zoeken doorzoekt alles, gekozen buitenland-tarief blijft),
+≠ NL → alles mét dat land/EU bovenaan, onbekend → alles; volgorde op gebruik 12 maanden (`gebruik_12m` op `GET …/btw-codes`), dan alfabetisch;
+één hook `useTaxrateOptiesGefilterd` op inkoop/verkoop/omzet/doorbelasting/bank. Prefill/autoboek onveranderd.
+**Historie-lijst (regel 5, lees-only leesreplica 18-09, 77 actieve administraties, geboekt sinds 25-08, |btw − netto × p| > 0,05):** alleen
+BLOW: (a) Fac-25-023465, RLZ-04-00000357, regel 1, 7049, NL Laag 9 %, netto 632,52, btw 48,18, verwacht 56,93, verschil −8,75, geboekt
+18-09 11:33; (b) referentie "cb", RLZ-04-00000358, regel 1, 7049, NL Hoog 21 %, netto 37,48, btw 3,37, verwacht 7,87, verschil −4,50, geboekt
+18-09 11:35. Peter beslist per geval (storno 19 → herboeken, achter de aangiftepoort).
+**BUA-voorstellijst (lees-only 18-09):** in álle 77 actieve administraties dezelfde drie rekeningen zonder RLZ-default: 4014 Kantinekosten,
+4508 Relatiegeschenken (beperkt aftrekbaar), 4510 Representatiekosten (beperkt aftrekbaar) — Veldhoven Recreatie alleen 4508. Peter bevestigt per
+administratie in Beheer (klikpunt); niets is aangezet.
+**Beslispunten:** (a) factuuradres-land als 4e bron = AI-veld toevoegen (schema-uitbreiding, sentinel) — niet gebouwd; (b) BUA-voorstel
+bulk over álle administraties tegelijk (Administraties-v2-bulkactie) — nu per administratie; (c) de twee BLOW-afwijkingen: storno/herboeken.
+**Klikpunten Peter:** Beheer › BLOW › Boeken & AI › "Btw niet aftrekbaar" → "Voorstel overnemen (3)" → Opslaan; nameting op de tweede
+Rituals-bon (143-266923, klaar_om_te_boeken, € 59,00 op 4510 NL Nul mét 0,00 btw): check groen, keuzelijst toont NL-codes + "Buitenland-
+tarieven tonen (10)" (BLOW heeft 10 EU/Ex-EU-tarieven).
+**HERZIEN:** "CONTROLESCHERM REGELRIJ-UI 25-08" (b) "factuur-btw leidend / grijze hint" → vervangen door deze harde check (18-09).
+**Rapport:** `docs/rapporten/2026-09-18-btw-volgt-tarief.md`.
+
+## SAMENVOEGEN-BUG, REGEL-BTW UIT DE FACTUURKOLOM EN UPLOAD 409 "AL AANWEZIG" (Peter 18-09) — modus volgt de data, kolom "0%" is een basis, pinbon-totaal alleen na sluitende som; geen migratie
+
+**Status: GEBOUWD + GETEST 18-09 (agent C, inbox-run 3); werkt in productie: niet gemeten (nameting ná deploy op Fac-25-022711).**
+Rapport `docs/rapporten/2026-09-18-samenvoegen-en-regelbtw.md`; regels woordelijk in `docs/regels/werkvoorraad-controlescherm.md`,
+`btw.md` (regel-btw uit de kolom) en `intake-extractie.md` (409-besluit).
+
+**Aanleiding (Peter 18-09, screenshot Zilver Horeca Fac-25-022711, BLOW): "hij splitst nu per regel zonder het vinkje?"** — vinkje uit,
+hint "Samengevoegd tot één boekingsregel (21 factuurregels gelezen)", tabel 21 regels op 9 % geheugen-btw, Emballage 10,80 → bruto 11,77.
+
+**Oorzaak (feiten uit de replica, 18-09 ~14:30):** hypothese 1. Het AI-veldvoorstel (21 regels) droeg géén btw-bedrag per regel maar wél
+de btw-kolom ("9%" / "0%" op de acht Emballage-regels), géén kop-totalen en twee regels zonder bedrag (onder de pinbon). Daardoor was
+er geen samengevoegde variant te berekenen; de A10-autosave (12:10:42) persisteerde 21 GESPLITSTE regels (snapshot
+`regels_samenvoegen: false`) terwijl de leverancier-voorkeur `regels_samenvoegen = true` bleef. De leesroute gaf die voorkeur als
+modus terug en de frontend behandelde `dto.regels` (21 stuks) als de samengevoegde variant. Het regel-GB-geheugen (hypothese 2) vulde
+GB/btw per regel maar zette de modus niet. Andere documenten met dezelfde combinatie (lees-only telling, per administratie): BLOW 1,
+Camping "Nieuwenhoven" 3 (geen voorkeur, RLZ-default samenvoegen); Universal Steigerbouw 7 zijn Odoo (default gesplitst) — consistent.
+
+**Besluiten/regels:** (1) modus volgt de data (`regels_modus_hersteld`, tijdlijnregel, chip, tweede grendel in het scherm); (2) btw-KOLOM
+per regel = bron `factuur_regel`, kolom 0 % = het 0 %-tarief (nooit verlegd/vrijgesteld raden), regel-btw = netto × p; (3) bruto uit
+het factuur-regeltarief; (4) pinbon-totaal (`pt`) alleen als factuurtotaal ná een sluitende som (5 ct), anders oranje + leeg veld;
+(5) afgedekt/onleesbaar bedrag (`ng`) = chip "niet gelezen (afgedekt)"; (6) **extra besluit Peter 18-09:** byte-identieke DIRECTE upload =
+409 "al aanwezig" mét verwijzing, geen nieuw document; alleen een verwijderd exemplaar telt niet; mail/IMAP/splitsing ongewijzigd — sluit
+het open beslispunt van de bulk-upload (BULK-UPLOAD 18-09).
+
+**Gebouwd:** `app/extractie/service.py` (schema `pt`, `ng`, prompt, `AiRegel.niet_gelezen`), `app/extractie/controle.py`
+(`parse_btw_kolom_percentage`, `leid_btw_af_uit_kolom`, `toets_pinbon_totaal`, veldvoorstel-velden), `app/documenten/boekvoorstel.py`
+(`BTW_BRON_FACTUUR_REGEL`, `factuur_btw_percentage`/`bedrag_niet_gelezen`, `regels_modus_hersteld`, `totaal_bron/_pinbon/_status`,
+`_pinbon_velden`, `registreer_modus_herstel`), `regel_prefill.py` (`FACTUUR_BTW_BRONNEN`), `schemas.py`/`router.py` (DTO + tijdlijn +
+409), `app/documenten/service.py` (`DocumentAlAanwezig`, `directe_upload_poort` (contextvar — de poort zit op de twee routes, `upload_document` blijft generiek), `_al_aanwezig_exemplaar`, audit), `app/intake/router.py` (409); frontend
+`api/types.ts`, `document/aiVoorstel.ts`, `regelVoorstelChips.ts` ('factuur_regel'), `BoekvoorstelPanel.tsx` (twee grendels, chips,
+bruto-percentage), `werkvoorraad/uploadWachtrij.ts` + `useUploadWachtrij.tsx` (409-detail, link "→ bestaand document"),
+`KlantStanden.tsx`. Tests: `tests/extractie/test_controle_kolom_pinbon_18_09.py`, `tests/documenten/test_regel_prefill_factuur_regel_18_09.py`,
+`tests/documenten/test_upload_al_aanwezig.py`, gouden-set-casus ae (`tests/keten/test_ae_zilver_horeca_regelkolom.py`, fixtures
+`ae_zilver_horeca_regelkolom`, stamgegevens "NL, Laag tarief"/"NL, Nul tarief"), vitest `BoekvoorstelPanel.modus18.test.tsx`,
+`uploadWachtrij.test.ts`; aangepast: `test_service.py`, `test_router.py` (409-gedrag).
+
+**Beslispunten:** (a) een regel mét kolom "9%" maar afgedekt bedrag krijgt de btw-code wél klaar (kolom = factuurfeit), het bedrag
+nooit — akkoord Cowork, Peter kan anders beslissen; (b) de leesroute herstelt de modus zonder de leverancier-voorkeur te wijzigen
+(de mens kan alsnog samenvoegen); een backfill is niet nodig (herstel gebeurt bij het openen). **Klikpunt Peter:** Fac-25-022711
+openen ná de deploy (nameting in het rapport).
+
+## BOEKEN SNELLER — CHECKS-CACHE + ACHTERGROND-SCHRIJVER (Peter 18-09) — checks lokaal/extern mét cache op vingerafdruk, `wordt_geboekt` + worker, doorloop zonder lijst-fetch; migratie 0165
+
+**Status:** GEBOUWD + GETEST (18-09, agent D inbox-run 3); **werkt in productie: niet gemeten** (deploy volgt ná de run; nul- en
+nameting-recept hieronder). Opdracht `opdrachten/inbox/2026-09-18-boeken-sneller-checks-en-doorloop.md`; rapport
+`docs/rapporten/2026-09-18-boeken-sneller.md`. Volledige regeltekst: `docs/regels/werkvoorraad-controlescherm.md` (alinea
+"Boeken sneller"), `autoboeken-ai.md` (cache-regel harde checks), `duplicaten-crediteuren.md` (externe duplicaatquery cache).
+
+**Aanleiding (Peter 18-09, letterlijk):** "als ik nu een factuur boek duurt het lang voordat alle controles groen worden (4 à 5
+seconden). Als ik daarna druk op Boeken in RLZ duurt het weer 4 à 5 seconden voordat ik bij de volgende boeking terecht kom.
+Vooral deze stap moet sneller: meteen weg (backend draait rustig door) en mij de volgende boeking binnen een seconde geven."
+
+**Nulmeting (Cloud Logging, request-log rlz-backend 18-09 vóór de fix):** `POST …/boekvoorstel/checks` n=51 p50 0,79 s p95 2,14 s
+max 2,55 s; `POST …/boeken` n=24 p50 2,65 s p95 3,42 s max 3,70 s (20× 200, 4× 429 = de volumerem — zie "VOLUMEREM — ALLEEN
+AUTOMATISCH"). De beleving "4–5 s" = checks bij openen + boeken + lijst-fetch + checks van het volgende document in serie.
+
+**Besluiten/keuzes:**
+1. Checks gesplitst in LOKAAL (synchroon) en EXTERN (parallel, gecachet op de externe vingerafdruk; `check_extern_cache`; geldig
+   ≤ 15 min bij gelijke vingerafdruk; storing nooit gecachet; retry/autoboek altijd vers). Omschrijving/grootboek/project/btw-code
+   raken de vingerafdruk niet.
+2. `POST …/boeken` = 202 `wordt_geboekt` + `volgende_document_id`/`_soort` (server-side `kiesVolgendDocument`-spiegel over de
+   meegestuurde `lijst_volgorde`); alle 409's blijven synchroon; `?direct=1` = oude synchrone pad. Nieuwe status `wordt_geboekt`
+   (niet bewerkbaar/verwijderbaar; → geboekt | boeken_mislukt; ook vanuit boeken_mislukt via "Opnieuw").
+3. Achtergrond-schrijver = het bestaande `boek_document` + doorbelasting + webhook in de worker; idempotency-key
+   `boek-{document_id}-{boek_cyclus}` in `boek_wachtrij_claim`; RLZ-adapter hervat idempotent (GET op GUID). **Keuze Cloud
+   Tasks vs job: het bestaande job-triggerpatroon** (`rlz-boek-wachtrij` on-demand + */2-scheduler-vangnet) — Cloud Tasks vergt
+   dependency + queue + IAM + OIDC-route die in deze run niet live te bewijzen zijn; het job-patroon werkt sinds 26-08 (extractie-
+   wachtrij) met dezelfde latency-klasse.
+4. Autoboek-pad en accordering-staande-goedkeuring blijven op de synchrone `boek_document` (één schrijfroute, geen 202-shortcut —
+   zij draaien al in een achtergrondproces). Interpretatie van "dezelfde worker": dezelfde motor, niet dezelfde wachtrij.
+5. Vangnetten: startup + job hervatten > 10 min `wordt_geboekt`; reconciliatie-bevinding `wordt_geboekt_verouderd` start in
+   `meten` (regel nieuwe bevindingssoort); tellers `boek_wachtrij` (ingediend/geboekt/mislukt, LET-OP vangnet scheduler) en
+   `checks_voorverwarmen` (gedaan/uit/bezig — kernprincipe 7, geen stille no-op) in de reconciliatiemail.
+6. Voorverwarmen van het volgende document (`?voorverwarm=1`, max 1 tegelijk, setting `CHECKS_VOORVERWARMEN` default aan) + detail-
+   prefetch (60 s) in de frontend; `useAutoChecks` debounce 400 ms mét lokaal/extern-split.
+7. Server-Timing-header + gestructureerde log `server_timing` op de checks- en boek-routes; de worker logt `stappen_ms`
+   (boek.rlz/boek.db) in het audit `boek_wachtrij_afgerond` — het meetrecept voor de nameting.
+
+**Klikpunten Peter:** (a) ná de deploy `scripts/gcp/f3_jobs.sh` opnieuw draaien (stap 8b: IAM `run.invoker` op `rlz-boek-wachtrij`
+voor run-backend@ + scheduler `*/2 * * * *`); tot dan vangt de scheduler élke ingediende boeking binnen 2 min op zodra hij bestaat —
+zonder scheduler én zonder IAM blijft een boeking op "Wordt geboekt…" staan tot het startup-vangnet (zichtbaar, nooit stil).
+(b) Beoordelen of `wordt_geboekt_verouderd` ná een week meten naar `actie` mag (Instellingen › Reconciliatie › bevindingssoorten).
+
+**Beslispunten (open):** (1) de reconciliatie-bevindingssoort `wordt_geboekt_verouderd` van `meten` naar `actie` ná de eerste week;
+(2) de 15-min-geldigheid van het externe rapport (setting) — bij intensief boeken op één administratie kan 30 min veilig zijn;
+(3) Cloud Tasks alsnog (per boeking één taak, retry met backoff) zodra de IAM/queue-klikpunten zijn gedaan — het contract
+`BoekWachtrij.enqueue(administratie_id, document_id)` is er al op voorbereid.
+
+**Nameting (ná deploy, lees-only):** zie rapport `docs/rapporten/2026-09-18-boeken-sneller.md` §Nameting-recept.

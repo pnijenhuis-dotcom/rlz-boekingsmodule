@@ -33,6 +33,16 @@
   een chip die op een pagina landt, leest zijn tellers uit dezelfde bron als de tabs van die pagina (`beoordelenChip.ts`) —
   zie BESLISSINGEN "BEOORDELEN — URENSTATEN EN MEERWERK OP ÉÉN PLEK; UITVOERDER KEURT ALLES IN SCOPE (Peter 18-09)".
 
+<!-- toegevoegd 18-09-2026, opdracht "klein-klant-accordering-zoekveld-en-accordeur-uitnodigen-knop" -->
+- **Overflow-les Klant-accordering (18-09, Peter op 1385 px):** een kale `<table>` als grid-item rekt zijn grid-kolom en het
+  paneel op (grid-item `min-width:auto`) — de rechts-uitgelijnde `.actions`-knoppen "verdwijnen" dan buiten beeld en de pagina
+  scrolt horizontaal. Regel: élke tabel in een paneel staat in `.tabel-scroll`, de omhullende grid/flex-kolom krijgt
+  `minWidth: 0`, en de actieknoppen van een instellingenblok staan LINKS onder het blok (`justify-content: flex-start`) zodat ze
+  nooit aan een te brede rechterrand hangen. Het instellingen-harnas meet sinds 18-09 per harnas extra breedtes
+  (`EXTRA_BREEDTES_VOOR="/instellingen/accordering"`, `EXTRA_BREEDTES=(1385 1280)`) náást 1440/1170/1024/768; het harnas mockt nu
+  óók `/instellingen/duplicaat-autoafvoer`, `/groepen` en `/uren/kantoor/mijn-toegang` (vóór 18-09 liep élke sectie mét
+  administraties in het harnas stil op "backend niet bereikbaar" — de sweep meette dan een leeg paneel).
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Kantoor-frontend-modernisering (IA klant-centrisch, Instellingen v3, gebruikersbeheer, blokkeren/archiveren, nazorg controls-review) (CLAUDE.md `ed6d176` r. 295–353)

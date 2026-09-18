@@ -54,6 +54,16 @@
 <!-- uit CLAUDE.md § Domeinbeslissingen -->
 - **Nabundel-motor dubbel-exemplaren (blok 2 vervolgrun 07-09; herziet 03-09 "niet bouwen"):** byte-identieke PDF-/UBL-exemplaren uit hetzelfde intake-bericht worden samengevouwen (`samengevoegd` mét verwijzing, nooit verwijderd, terugdraaibaar); AFGEWEZEN telt als terminaal en ontgrendelt het paar; herdraai Universal Steigerbouw live 07-09 (26 paren) — zie BESLISSINGEN "B2 — NABUNDEL-MOTOR".
 
+<!-- toegevoegd 18-09-2026, opdracht "boeken-sneller-checks-en-doorloop" -->
+- **RLZ-/Odoo-bestaanscheck op het boekmoment — cache op vingerafdruk (Peter 18-09 "Boeken sneller"; migratie 0165):** de
+  externe duplicaatquery (`extern_bestaan.zoek_extern_bestaand` over álle crediteurrecords van de identiteit, ± 60 d) en de
+  query over crediteuren heen lopen sinds 18-09 PARALLEL met de IBAN-seed en worden per document gecachet in
+  `boekhouding.check_extern_cache` op de vingerafdruk (crediteur + cluster, referentie genormaliseerd, factuurdatum, totaal,
+  factuur-IBAN, boek_cyclus, backend); geldig ≤ 15 min bij gelijke vingerafdruk. De harde check "Duplicaatcheck" blijft
+  blokkerend; op het boekmoment wordt het gecachete rapport alleen hergebruikt onder dezelfde voorwaarden — een retry ná
+  boeken_mislukt en het autoboek-pad toetsen altijd vers tegen RLZ/Odoo. Een RLZ-fout in de query ("Duplicaatcheck kon niet
+  uitgevoerd worden") blijft blokkerend en wordt nooit gecachet.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Crediteur-dedup + duplicaat over crediteuren heen (CLAUDE.md `ed6d176` r. 374–386)

@@ -85,6 +85,56 @@
   `docs/regels/auth-toegang.md` alinea "Web-toestel (browsertab/PWA) — 'logt steeds uit'"; zie BESLISSINGEN "WEB-TOESTEL — 'LOGT
   STEEDS UIT' (SPOED 18-09)".
 
+<!-- toegevoegd 18-09-2026, opdracht "klein-klant-accordering-zoekveld-en-accordeur-uitnodigen-knop" -->
+- **Klant-accordering — zoekveld, filters, accordeur uitnodigen/koppelen, leveranciersroute "bovenop" (Peter 18-09, live
+  meegekeken bij BLOW en Bouwadvies Oost Nederland; migratie 0164; BESLISSINGEN "KLANT-ACCORDERING — ZOEKVELD, ACCORDEUR
+  UITNODIGEN, LEVERANCIERSROUTE BOVENOP (Peter 18-09)"):** (0) **Overflow-bug 1385 px:** het paneel Klant-accordering was breder
+  dan het venster — "+ Laag toevoegen", "Opslaan", "+ Leveranciersroute" en "Toegang intrekken" stonden rechts buiten beeld
+  (Peter kon "+ Leveranciersroute" niet vinden). Oorzaak: de tabellen (staande goedkeuringen, 7-koloms toestellentabel) stonden
+  kaal in een `display:grid`-kolom (grid-item `min-width:auto`) en rekten het paneel op; de `.actions`-rij (`justify-content:
+  flex-end`) volgde naar de rechterrand. Fix volgens de overflow-regel: tabellen in `.tabel-scroll` (scrollen intern), grid
+  `minWidth: 0`, lagen-rijen mogen wrappen, actieknoppen links onder het blok (`justify-content: flex-start`); het
+  overflow-sweep-harnas `harness-instellingen.html?pad=/instellingen/accordering&administratie=<id>` meet óók op **1385 en 1280 px**
+  (`EXTRA_BREEDTES_VOOR`/`EXTRA_BREEDTES` in `overflow_sweep.sh`). (1) **Zoekveld + filterchips + samenvatting per regel:**
+  Instellingen › Klant-accordering (kantoorbreed) draagt een zoekveld op administratienaam (zelfde normalisatie als de
+  klantenlijst: diakriet-loos, elke term treft; `?zoek=` in de URL, `/` focust, teller "N van M", lege uitkomst = melding mét
+  "wis zoekveld en filter") en de chips **Alle (M) · Accordering aan (N) · Met leveranciersroute (N) · Zonder accordeur (N)**
+  (`?filter=aan|route|zonder`) uit één kantoorbrede leesroute `GET /accordering/overzicht` (kantoorrol binnen scope; per
+  administratie één statement van drie tellingen — de accordering-tabellen dragen alleen een scope-policy). Elke regel toont
+  rechts in de kopregel, zónder openklappen, "aan · 2 lagen · 1 route · 3 accordeurs" of "uit · geen accordeur" (chip "actie
+  nodig" bij 0 accordeurs). **Deeplink `?administratie=<id>`** klapt die regel open, laadt haar direct en scrolt ernaartoe
+  (gebruikt vanuit de klantpagina/nameting); op de detailpagina (één administratie) blijft het gedrag ongewijzigd. (2)
+  **Melding "Geen klant-accordeurs …" = signalering mét handeling:** twee acties op de regel — **"Accordeur uitnodigen →"**
+  (Gebruikers & toegang, uitnodigingsformulier direct open mét rol Klant-accordeur en deze administratie in scope via
+  `/gebruikers?groep=accordeurs&uitnodig=accordeur&administratie=<id>`; de parameters verdwijnen uit de URL zodra de dialoog
+  open is) en **"Bestaande accordeur koppelen →"** (Beheerder-only: lijst van álle klant-accordeurs van het kantoor mét vinkje
+  "toegang tot ‹administratie›"; aanvinken = de BESTAANDE scope-route `POST /auth/gebruikers/{id}/scope` mét audit — geen
+  tweede schrijver; al gekoppeld = vinkje aan + vergrendeld; loskoppelen blijft op Gebruikers & toegang, waar de
+  vervallen-rondes-waarschuwing staat). Dezelfde melding + acties in de leveranciersroute-editor als de accordeurlijst leeg is.
+  (3) **Leverancierskeuze in de route-editor = zoekbare combobox** (`SearchableCombobox`, geen kale select) mét crediteuren
+  mét open documenten bovenaan ("‹naam› · 3 open") uit `GET …/accordering/leverancier-kandidaten` (open = status niet in
+  `AFGEHANDELDE_STATUSSEN`, per crediteur geteld over de boekvoorstellen; terugval = de kale crediteurenlijst). (5)
+  **Leveranciersroute "Bovenop de gewone route" (casus Bouwadvies: drie gewone lagen + een vierde alleen voor twee
+  leveranciers):** kolommen `modus` ('vervangt' = default en 17-09-gedrag | 'bovenop') en `positie` ('voor' = vóór laag 1 |
+  'na' = ná de laatste gewone laag, alleen bij 'bovenop') op `accordering_leverancier_route` (0164, check-constraints,
+  bestaande routes = 'vervangt'). Motor: `service.effectieve_route_lagen` (pure functie) = bij 'bovenop' de GEWONE lagen van de
+  administratie op het moment van de ronde + de extra lagen van de route op de gekozen positie, hernummerd 1..n zodat de
+  drempelregel per laag onverkort geldt; aanbieden én herberekening gebruiken 'm. **Een wijziging van de gewone route werkt
+  door in lopende rondes op een bovenop-route** (`instellingen_opslaan` herberekent per actieve bovenop-route tegen de nieuwe
+  gewone lagen + haar extra lagen; 'vervangt'-routes blijven ongemoeid — eigen opslag); modus/positie wisselen = ander
+  effectief schema = herberekenen zoals nu (herberekenen i.p.v. vervallen; een al gegeven akkoord dat naar een latere
+  positie verschuift vervalt volgens de bestaande regel bundel 09-09). Voorrang afdelingsroute > leveranciersroute >
+  administratieroute blijft. Ronde-detail draagt `leverancier_route_modus` + `route_omschrijving`; tijdlijnregel bij
+  aanbieden: "Route: gewoon + extra laag ‹naam› ná de laatste laag (leveranciersroute ‹naam›)" (frontend
+  `document/accorderingRouteTijdlijn.ts`). UI: keuze via `KeuzeKaarten` "Vervangt de gewone route" / "Bovenop de gewone route"
+  (+ positie), lagen heten dan "Extra laag N", lijst-chip "bovenop de gewone route", DTO-samenvatting "bovenop de gewone route
+  (ná de laatste laag): + laag 1 ‹naam› · alleen ‹leveranciers›". Guards: `tests/accordering/test_leverancier_route.py`
+  (TestLeveranciersrouteBovenop: vóór/ná, doorwerking gewone route, drempels per laag, validatie modus/positie, pure functie;
+  TestOverzichtEnLeverancierKandidaten), rolpoort-matrix (`/accordering/overzicht`, `…/leverancier-kandidaten`), vitest
+  `AccorderingInstellingen.test.tsx` (zoek/teller/`?zoek=`/chips/leeg, deeplink, melding mét beide acties + scope-POST),
+  `LeverancierRoutes.test.tsx` (combobox, bovenop + positie, melding, chip), `GebruikersScreen.test.tsx` (`?uitnodig=`),
+  `accorderingRouteTijdlijn.test.ts`; overflow-sweep accordering-harnas × 1440/1385/1280/1170/1024/768.
+
 ## Historie — op 07-09-2026 uit CLAUDE.md naar BESLISSINGEN verplaatst (kopie; BESLISSINGEN "VERPLAATST UIT CLAUDE.md (07-09-2026)" blijft de historische vindplaats)
 
 ### Domeinbeslissingen — Accordeur-app koude start + niet-geactiveerd account (CLAUDE.md `ed6d176` r. 690–699)
