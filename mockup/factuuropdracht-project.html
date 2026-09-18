@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Factuuropdracht per project (steigerbouw → verkoopfactuur klaarzetten in RLZ/Odoo) · Cowork/CC 18-09-2026 · TER AKKOORD Peter</title>
+<!-- ============================================================
+     PETER 18-09 (letterlijk): "Vanuit onze module moeten wij een factuuropdracht klaar kunnen zetten voor
+     steigerbouw (per project), waarop wij onderdelen, termijnen etc. kunnen selecteren, waarna de factuur in
+     RLZ (en straks Odoo) wordt klaargezet."
+     Status: MOCKUP, TER AKKOORD — geen code, geen migratie. Bouw pas ná akkoord (UX-review-regel 15-08).
+     Bestaat al (pre-feature-ritueel, rapport 2026-09-18-mockup-factuuropdracht.md): SalesInvoice-motor
+     (customer_id optioneel), staffels + kopvelden uit de contract-ontleding (auto-first), meerwerk-statusflow
+     gemeld → goedgekeurd → doorbelast, Kempen-doorbelasting op dezelfde motor, Odoo-adapter alleen INKOOP-port.
+     Nieuw: factuuropdracht-entiteit, termijnschema, verkoop-port, verrekenbare-items-lezer, Inzicht › Facturatie.
+     Designpass v2: teal = actie, groen = status, oranje = signaal; één primaire knop + ⋯; restant-balk; lege stand = actie.
+     ============================================================ -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f7f8;--panel:#fff;--panel-2:#f9fafb;--border:#e6e8ea;--text:#12181f;--muted:#5b6470;--faint:#687180;--primary:#0e7a6e;--primary-fg:#fff;--accent-bg:#e6f4f2;--ok:#1c7a54;--ok-bg:#e4f4ec;--warn:#b45309;--warn-bg:#fdf3e3;--danger:#b42318;--danger-bg:#fceceb;--info:#3548a5;--info-bg:#eaeefb;--purple:#6941c6;--purple-bg:#f1ecfb;--rail:#101b19;--rail-text:#c7d2cf;--rail-actief:#16332e;--rail-accent:#4fd1c0;--radius:12px;--shadow:0 1px 2px rgba(18,24,31,.06),0 4px 14px rgba(18,24,31,.06);--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--text);background:var(--bg);font-size:13.5px;line-height:1.4}
+.mock-kop{background:#fff;border-bottom:1px solid var(--border);padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.mock-kop h1{font-size:15px;margin:0}.mock-kop .sub{color:var(--muted);font-size:12px;max-width:900px}
+.mock-tabs{display:flex;gap:6px;flex-wrap:wrap}.mock-tabs button{border:1px solid var(--border);background:#fff;padding:6px 12px;border-radius:999px;font:inherit;cursor:pointer}
+.mock-tabs button.on{background:var(--rail);color:#fff;border-color:var(--rail)}
+.scherm{display:none;padding:18px 22px 40px;max-width:1240px}.scherm.on{display:block}
+.kop{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.kop h2{margin:0 0 2px;font-size:17px}.kop .sub{color:var(--muted);font-size:12.5px;max-width:860px}
+.crumb{color:var(--faint);font-size:12px;margin-bottom:8px}.crumb b{color:var(--text);font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}
+.panel h3{margin:0 0 10px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.btn{font:inherit;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer}
+.btn.sec{background:#fff;color:var(--text);border-color:var(--border)}
+.btn.klein{padding:4px 9px;font-size:12px}
+.linkbtn{background:none;border:none;color:var(--primary);font:inherit;font-weight:600;cursor:pointer;padding:0}
+.meer{font:inherit;border:1px solid var(--border);background:#fff;border-radius:8px;padding:6px 9px;cursor:pointer}
+.chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;font-weight:500;white-space:nowrap;vertical-align:middle;border:1px solid var(--border);background:#fff;color:var(--muted)}
+.chip.teal{background:var(--accent-bg);color:var(--primary);border-color:transparent}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.info{background:var(--info-bg);color:var(--info);border-color:transparent}
+.chip.purple{background:var(--purple-bg);color:var(--purple);border-color:transparent}
+.chip.danger{background:var(--danger-bg);color:var(--danger);border-color:transparent}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--border)}td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px}.tabs span{padding:8px 12px;font-weight:600;color:var(--muted);font-size:12.5px}.tabs span.on{color:var(--primary);border-bottom:2px solid var(--primary)}
+.grid2{display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi .k{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px}.kpi .k .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.kpi .k .v{font-size:19px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}.kpi .k .s{font-size:11.5px;color:var(--faint)}
+.restant{margin:8px 0 4px}.restant .balk{height:10px;border-radius:5px;background:var(--border);overflow:hidden;display:flex}.restant .balk span{display:block;height:100%}
+.restant .legenda{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:6px;flex-wrap:wrap}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+input,select{font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--primary)}
+.wizard{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
+.regel td{padding:6px 8px}.regel input.n{width:64px;text-align:right}.regel input.p{width:92px;text-align:right}.regel input.o{width:100%}
+.hulp{font-size:11.5px;color:var(--faint)}
+.sticky{position:sticky;top:14px}
+.som td{font-weight:700;border-top:1px solid var(--border)}
+.pdf{background:#fff;border:1px solid var(--border);border-radius:8px;padding:18px 20px;font-size:11.5px;min-height:360px;box-shadow:inset 0 0 0 1px #f0f1f2}
+.pdf h4{margin:0 0 8px;font-size:14px}.pdf .adres{color:var(--muted);line-height:1.5}
+.flow{display:flex;align-items:center;gap:8px;font-size:12.5px;flex-wrap:wrap}.flow .st{padding:5px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}.flow .st.on{background:var(--ok-bg);color:var(--ok);border-color:transparent;font-weight:700}.flow .st.nu{background:var(--accent-bg);color:var(--primary);border-color:transparent;font-weight:700}.flow .pijl{color:var(--faint)}
+.melding{border-radius:10px;padding:10px 14px;font-size:12.5px;margin:10px 0;display:flex;gap:10px;align-items:flex-start}
+.melding.ok{background:var(--ok-bg);border:1px solid #cfe9db}.melding.warn{background:var(--warn-bg);border:1px solid #f3dcb5}.melding.danger{background:var(--danger-bg);border:1px solid #f1c9c5}.melding.info{background:var(--info-bg);border:1px solid #d3dbf5}
+.leeg{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:10px}
+.zoek{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.noot{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;font-size:12.8px;line-height:1.7;color:var(--muted);max-width:980px}
+.noot b{color:var(--text)}.noot h4{color:var(--text);margin:14px 0 4px;font-size:13px}.noot .kies{background:var(--accent-bg);border-left:3px solid var(--primary);padding:8px 12px;border-radius:6px;color:var(--text);margin:6px 0}
+.check{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:5px 0}.check .ok{color:var(--ok);font-weight:800}.check .warn{color:var(--warn);font-weight:800}
+.acties{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="mock-kop">
+  <div><h1>Factuuropdracht per project — steigerbouw → verkoopfactuur klaarzetten in RLZ (straks Odoo)</h1>
+  <div class="sub">Peter 18-09: "Vanuit onze module moeten wij een factuuropdracht klaar kunnen zetten voor steigerbouw (per project), waarop wij onderdelen, termijnen etc. kunnen selecteren, waarna de factuur in RLZ (en straks Odoo) wordt klaargezet." · <b>TER AKKOORD</b> · geen bouw vóór akkoord · beslispunten ④ en ⑥ op de tab Notities</div></div>
+  <div class="mock-tabs"><button class="on" onclick="toon('a',this)">① Projectdetail › Facturatie</button><button onclick="toon('b',this)">② Factuuropdracht maken</button><button onclick="toon('c',this)">③ Resultaat &amp; status</button><button onclick="toon('d',this)">④ Inzicht › Facturatie-kandidaten</button><button onclick="toon('n',this)">Notities ①–⑥</button></div>
+</div>
+
+<!-- ① PROJECTDETAIL › FACTURATIE -->
+<section id="a" class="scherm on">
+  <div class="crumb">Werkvoorraad › Universal Steigerbouw B.V. › Projecten › <b>26127 Tilburg (Heijmans)</b></div>
+  <div class="kop"><div><h2>26127 Tilburg (Heijmans) <span class="chip ok">lopend</span></h2><div class="sub">Opdrachtgever Heijmans Bouw B.V. · contract 28-05-2026 (ontleed <span class="chip teal">uit contract</span>) · soort werk gevelsteiger · 4.200 m² · looptijd wk 24–wk 41</div></div>
+    <div class="acties"><button class="btn">Factuuropdracht maken</button><button class="meer" title="Meer acties">⋯</button></div></div>
+  <div class="tabs"><span>Algemeen</span><span>Specs &amp; contract</span><span>Staffels</span><span>Resultaat</span><span class="on">Facturatie</span><span>Documenten</span></div>
+
+  <div class="kpi">
+    <div class="k"><div class="l">Contractsom</div><div class="v">€ 128.400</div><div class="s">excl. btw · uit contract</div></div>
+    <div class="k"><div class="l">Gefactureerd</div><div class="v">€ 89.880</div><div class="s">2 verkoopfacturen in RLZ · geboekt</div></div>
+    <div class="k"><div class="l">Klaargezet</div><div class="v">€ 0</div><div class="s">geen open factuuropdracht</div></div>
+    <div class="k"><div class="l">Factureerbaar nu</div><div class="v" style="color:var(--primary)">€ 46.085</div><div class="s">termijn 3 + meerwerk + 2 items</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>Restant contract</h3>
+    <div class="restant"><div class="balk"><span style="width:70%;background:var(--ok)"></span><span style="width:0%;background:var(--primary)"></span><span style="width:30%;background:var(--border)"></span></div>
+    <div class="legenda"><span><i class="dot" style="background:var(--ok)"></i>gefactureerd € 89.880 (70 %)</span><span><i class="dot" style="background:var(--primary)"></i>klaargezet € 0</span><span><i class="dot" style="background:var(--border)"></i>restant € 38.520 (30 %)</span><span style="margin-left:auto">meerwerk en verrekenbare items komen bóven de contractsom</span></div></div>
+  </div>
+
+  <div class="grid2">
+  <div>
+  <div class="panel">
+    <h3>Termijnschema <span class="chip teal" style="text-transform:none;letter-spacing:0">uit contract · 30 / 40 / 30</span> <button class="linkbtn" style="margin-left:6px;text-transform:none;letter-spacing:0;font-size:12px">wijzigen</button></h3>
+    <table>
+      <tr><th>Termijn</th><th>Voorwaarde</th><th class="r">Bedrag</th><th>Bereikt</th><th>Status</th><th></th></tr>
+      <tr><td><b>1e termijn</b> 30 %</td><td>bij opbouw gereed</td><td class="r">€ 38.520</td><td>wk 26 · m²-voortgang</td><td><span class="chip ok">geboekt</span> <span class="hulp">RLZ VF-2026-0412 · 26-06</span></td><td><button class="linkbtn">openen ↗</button></td></tr>
+      <tr><td><b>2e termijn</b> 40 %</td><td>halverwege standtijd</td><td class="r">€ 51.360</td><td>wk 33 · planning</td><td><span class="chip ok">geboekt</span> <span class="hulp">RLZ VF-2026-0587 · 14-08</span></td><td><button class="linkbtn">openen ↗</button></td></tr>
+      <tr style="background:var(--accent-bg)"><td><b>3e termijn</b> 30 %</td><td>bij afbouw gereed</td><td class="r">€ 38.520</td><td><span class="chip ok">bereikt wk 38</span> <span class="hulp">weekstaat afbreken 16-09</span></td><td><span class="chip teal">factureerbaar</span></td><td><button class="btn klein">Op factuur →</button></td></tr>
+    </table>
+    <p class="hulp">"Bereikt" volgt uit de m²-voortgang/weekstaten of de planning (notitie ②); het kantoor kan een termijn ook handmatig op bereikt zetten — dat is een mens-besluit mét audit, nooit automatisch factureren.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Meerwerk — goedgekeurd, nog doorbelasten <span class="chip warn" style="text-transform:none;letter-spacing:0">2 · € 4.865 · oudste 21 dagen</span></h3>
+    <table>
+      <tr><th>Gemeld</th><th>Omschrijving</th><th class="r">Aantal</th><th class="r">Prijs</th><th class="r">Bedrag</th><th></th></tr>
+      <tr><td>26-08 · Irfan O.</td><td>Extra trappentoren zijgevel oost, 3 weken</td><td class="r">3 wk</td><td class="r">€ 1.150 <span class="chip teal">staffel</span></td><td class="r">€ 3.450</td><td><span class="chip ok">goedgekeurd 28-08</span></td></tr>
+      <tr><td>05-09 · Irfan O.</td><td>Ombouwen loopbrug t.b.v. kraanhijs</td><td class="r">1 st</td><td class="r">€ 1.415 <span class="chip">handmatig</span></td><td class="r">€ 1.415</td><td><span class="chip ok">goedgekeurd 08-09</span></td></tr>
+    </table>
+    <p class="hulp">Bestaande statusflow gemeld → goedgekeurd → doorbelast; "goedgekeurd + 14 dagen niet op een verkoopfactuur" is al een werkvoorraad-signaal. De factuuropdracht sluit die lus: doorbelast = op een klaargezette/geboekte factuur.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Verrekenbare inhuur-items <span class="chip info" style="text-transform:none;letter-spacing:0">uit inkoopfactuurregels · verrekenbaar volgens contract</span></h3>
+    <table>
+      <tr><th>Item</th><th>Inkoop</th><th>Periode</th><th class="r">Inkoop</th><th class="r">Verkoopprijs</th><th>Status</th></tr>
+      <tr><td>Personenlift 1000 kg</td><td>Boels · 2026-4471</td><td>wk 28–wk 36 (9 wk)</td><td class="r">€ 2.070</td><td class="r">€ 2.700 <span class="chip teal">staffel € 300/wk</span></td><td><span class="chip teal">verrekenbaar</span></td></tr>
+      <tr><td>Gaasdoek 1.200 m²</td><td>Scafom · 88-1023</td><td>eenmalig</td><td class="r">€ 1.320</td><td class="r">€ 1.320 <span class="chip">handmatig</span></td><td><span class="chip warn">prijs ontbreekt in contract</span></td></tr>
+      <tr><td>Trappentoren (meerwerk-item)</td><td>Boels · 2026-4471</td><td>3 wk</td><td class="r">€ 690</td><td class="r">—</td><td><span class="chip">zit al in meerwerk 26-08</span></td></tr>
+    </table>
+    <p class="hulp">Bron: de dagelijkse doorbelastingscontrole op item-niveau (praktijkles: ingehuurde items uit inkoopfactuurregels tegen contract en verkoopfactuurregels per project). Niet gedekt én niet doorbelast = signaal + hier factureerbaar; "eigen rekening" = afvinken met reden (nooit stil weg).</p>
+  </div>
+  </div>
+
+  <div class="sticky">
+  <div class="panel">
+    <h3>Factureerbaar nu</h3>
+    <table>
+      <tr><td>3e termijn</td><td class="r">€ 38.520</td></tr>
+      <tr><td>Meerwerk (2)</td><td class="r">€ 4.865</td></tr>
+      <tr><td>Verrekenbare items (2)</td><td class="r">€ 4.020</td></tr>
+      <tr class="som"><td>Samen excl.</td><td class="r">€ 47.405</td></tr>
+    </table>
+    <p class="hulp" style="margin:8px 0 10px">Gaasdoek mist een contractprijs (oranje) — in de wizard vul je die in of laat je 'm weg. Btw verlegd (opdrachtgever Heijmans = aannemer, art. 12 lid 5) staat voorgekozen uit het debiteur-geheugen.</p>
+    <button class="btn" style="width:100%">Factuuropdracht maken (3 onderdelen)</button>
+  </div>
+  <div class="panel">
+    <h3>Eerdere facturen op dit project</h3>
+    <table>
+      <tr><td>VF-2026-0587</td><td>14-08</td><td class="r">€ 51.360</td><td><span class="chip ok">betaald</span></td></tr>
+      <tr><td>VF-2026-0412</td><td>26-06</td><td class="r">€ 38.520</td><td><span class="chip ok">betaald</span></td></tr>
+    </table>
+    <p class="hulp">Gelezen uit RLZ (SalesInvoices mét projectref) — via de bestaande cijfers-sync, geen tweede waarheid. Bij een Odoo-administratie: geposte out_invoice op de analytic account.</p>
+  </div>
+  </div>
+  </div>
+</section>
+
+<!-- ② WIZARD -->
+<section id="b" class="scherm">
+  <div class="crumb">… › <b>26127 Tilburg (Heijmans)</b> › Facturatie › Factuuropdracht maken</div>
+  <div class="kop"><div><h2>Factuuropdracht maken — 26127 Tilburg (Heijmans)</h2><div class="sub">Eén scherm: vink aan wat op de factuur komt, corrigeer regels waar nodig, kies datum en referentie. "Klaarzetten" maakt een <b>concept</b>-verkoopfactuur in RLZ (nog niet geboekt). Elke termijn/meerwerkregel/item kan maar in één factuuropdracht zitten.</div></div>
+    <div class="acties"><button class="btn sec">Annuleren</button><button class="btn">Klaarzetten in RLZ (concept)</button><button class="meer">⋯</button></div></div>
+
+  <div class="wizard">
+  <div>
+  <div class="panel">
+    <h3>1 · Wat komt op de factuur?</h3>
+    <table class="regel">
+      <tr><th style="width:28px"></th><th>Onderdeel</th><th>Omschrijving op de factuur</th><th class="r">Aantal</th><th>Eenheid</th><th class="r">Prijs</th><th>Herkomst</th><th class="r">Bedrag</th></tr>
+      <tr><td><input type="checkbox" checked></td><td><span class="chip teal">termijn 3/3</span></td><td><input class="o" value="3e termijn (30 %) gevelsteiger Tilburg — afbouw gereed wk 38"></td><td class="r"><input class="n" value="1"></td><td><select><option selected>termijn</option><option>m²</option><option>m¹</option><option>stuks</option><option>uur</option></select></td><td class="r"><input class="p" value="38.520,00"></td><td><span class="chip teal">contract</span></td><td class="r">€ 38.520,00</td></tr>
+      <tr><td><input type="checkbox" checked></td><td><span class="chip warn">meerwerk</span></td><td><input class="o" value="Meerwerk: extra trappentoren zijgevel oost (gemeld 26-08, akkoord 28-08)"></td><td class="r"><input class="n" value="3"></td><td><select><option>termijn</option><option>m²</option><option>m¹</option><option>stuks</option><option selected>week</option></select></td><td class="r"><input class="p" value="1.150,00"></td><td><span class="chip teal">staffel</span></td><td class="r">€ 3.450,00</td></tr>
+      <tr><td><input type="checkbox" checked></td><td><span class="chip warn">meerwerk</span></td><td><input class="o" value="Meerwerk: ombouwen loopbrug t.b.v. kraanhijs (gemeld 05-09, akkoord 08-09)"></td><td class="r"><input class="n" value="1"></td><td><select><option selected>stuks</option></select></td><td class="r"><input class="p" value="1.415,00"></td><td><span class="chip">handmatig</span></td><td class="r">€ 1.415,00</td></tr>
+      <tr><td><input type="checkbox" checked></td><td><span class="chip info">item</span></td><td><input class="o" value="Personenlift 1000 kg, huur wk 28–36 (9 weken), verrekenbaar cf. contract art. 4"></td><td class="r"><input class="n" value="9"></td><td><select><option selected>week</option></select></td><td class="r"><input class="p" value="300,00"></td><td><span class="chip teal">staffel</span></td><td class="r">€ 2.700,00</td></tr>
+      <tr style="background:var(--warn-bg)"><td><input type="checkbox"></td><td><span class="chip info">item</span></td><td><input class="o" value="Gaasdoek 1.200 m² (eenmalig)"></td><td class="r"><input class="n" value="1200"></td><td><select><option selected>m²</option></select></td><td class="r"><input class="p" value="" placeholder="prijs?"></td><td><span class="chip warn">geen contractprijs</span></td><td class="r">—</td></tr>
+      <tr><td><input type="checkbox"></td><td><span class="chip">vrije regel</span></td><td><input class="o" placeholder="Omschrijving…"></td><td class="r"><input class="n" value="1"></td><td><select><option>stuks</option></select></td><td class="r"><input class="p" placeholder="0,00"></td><td><span class="chip">handmatig</span></td><td class="r">—</td></tr>
+    </table>
+    <div class="acties" style="margin-top:8px"><button class="btn sec klein">+ Vrije regel</button><span class="hulp">Prijsvolgorde: contract &gt; staffel &gt; handmatig — de herkomst-chip blijft op de regel én in de audit. Een regel zonder prijs kan niet mee (oranje).</span></div>
+  </div>
+
+  <div class="panel">
+    <h3>2 · Btw per regel</h3>
+    <div class="check"><span class="ok">✓</span> Alle 4 regels: <b>btw verlegd</b> (NL, art. 12 lid 5 — opdrachtgever Heijmans Bouw B.V. is aannemer/onderaannemer-keten) <span class="chip teal">uit debiteur-geheugen · 2 eerdere facturen</span> <button class="linkbtn">per regel wijzigen</button></div>
+    <p class="hulp">Verlegd = tarief zonder btw-bedrag mét de verplichte vermelding op de factuur; bij een particuliere of buitenlandse opdrachtgever kiest het kantoor 21 %/EU-verlegd — nooit 0 % zonder basis (btw-regels). Cijfers in code (regelsom, cent-fix), geen AI.</p>
+  </div>
+  </div>
+
+  <div class="sticky">
+  <div class="panel">
+    <h3>3 · Kop</h3>
+    <table>
+      <tr><td class="hulp">Administratie</td><td>Universal Steigerbouw B.V. <span class="chip">RLZ</span></td></tr>
+      <tr><td class="hulp">Project</td><td>26127 Tilburg (Heijmans) <span class="chip ok">vooringevuld</span></td></tr>
+      <tr><td class="hulp">Debiteur</td><td><input value="Heijmans Bouw B.V. (RLZ Customer 3f9a…)" style="width:100%"><div class="hulp">= opdrachtgever uit de projectspecs; ontbreekt hij in RLZ → "+ Nieuwe debiteur" (idempotent, UUIDv5)</div></td></tr>
+      <tr><td class="hulp">Factuurdatum</td><td><input type="date" value="2026-09-18"> <div class="hulp">= BookDate én Date</div></td></tr>
+      <tr><td class="hulp">Referentie opdrachtgever</td><td><input value="" placeholder="inkoopordernummer Heijmans…" style="width:100%;border-color:var(--warn)"><div class="hulp" style="color:var(--warn)">verplicht: Heijmans eist een PO-nummer (projectspec "referentie verplicht")</div></td></tr>
+      <tr><td class="hulp">Betaaltermijn</td><td>30 dagen <span class="chip">contract</span></td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>Samenvatting</h3>
+    <table>
+      <tr><td>4 regels excl.</td><td class="r">€ 46.085,00</td></tr>
+      <tr><td>btw verlegd</td><td class="r">€ 0,00</td></tr>
+      <tr class="som"><td>Factuurbedrag</td><td class="r">€ 46.085,00</td></tr>
+    </table>
+    <div class="restant" style="margin-top:10px"><div class="balk"><span style="width:70%;background:var(--ok)"></span><span style="width:30%;background:var(--primary)"></span></div><div class="legenda"><span>contract ná deze factuur: 100 % gefactureerd</span></div></div>
+    <div class="melding warn" style="margin:10px 0 0"><span>⚠</span><span>Referentie opdrachtgever ontbreekt — klaarzetten kan pas als het PO-nummer is ingevuld (harde check "Referentie opdrachtgever").</span></div>
+    <button class="btn" style="width:100%;margin-top:10px" disabled>Klaarzetten in RLZ (concept)</button>
+    <p class="hulp" style="margin-top:8px">Klaarzetten = PUT SalesInvoice mét client-GUID (idempotent) in status concept; niets wordt geboekt. Boeken gebeurt in stap ③ met de bestaande boekknop en alle harde checks.</p>
+  </div>
+  </div>
+  </div>
+</section>
+
+<!-- ③ RESULTAAT -->
+<section id="c" class="scherm">
+  <div class="crumb">Werkvoorraad › Universal Steigerbouw B.V. › Verkoopfacturen › <b>Factuuropdracht FO-26127-03</b></div>
+  <div class="kop"><div><h2>Factuuropdracht FO-26127-03 — 26127 Tilburg (Heijmans) <span class="chip teal">klaargezet</span></h2><div class="sub">Concept-verkoopfactuur staat in RLZ (client-GUID 7c1e…, Status 1 concept). Het document leeft in de werkvoorraad als soort <b>verkoopfactuur</b> (bestaand boekpad) mét dit factuuropdracht-blok; boeken = de bestaande boekknop mét de harde checks.</div></div>
+    <div class="acties"><button class="btn">Boeken in RLZ</button><button class="meer">⋯</button></div></div>
+
+  <div class="panel">
+    <div class="flow"><span class="st on">✓ klaargezet · 18-09 10:42 · Barbara</span><span class="pijl">→</span><span class="st nu">geboekt (actie 17)</span><span class="pijl">→</span><span class="st">verzonden aan opdrachtgever</span><span class="pijl">→</span><span class="st">betaald (afgeletterd)</span></div>
+    <p class="hulp" style="margin:8px 0 0">"Verzonden" en "betaald" zijn standen die de module leest (RLZ-mailstatus / OpenAmount), geen eigen handelingen — beslispunt ④ op de tab Notities gaat over wie verzendt.</p>
+  </div>
+
+  <div class="grid2">
+  <div>
+  <div class="panel">
+    <h3>Harde checks (bestaand boekpad verkoop)</h3>
+    <div class="check"><span class="ok">✓</span> Regelsom = factuurtotaal (cent-exact, code)</div>
+    <div class="check"><span class="ok">✓</span> Btw per regel: verlegd, vermelding op de factuur aanwezig</div>
+    <div class="check"><span class="ok">✓</span> Debiteur bestaat in RLZ (Heijmans Bouw B.V.) — geen anker-debiteur</div>
+    <div class="check"><span class="ok">✓</span> Project actief en gelijk aan de bronrijen</div>
+    <div class="check"><span class="ok">✓</span> Referentie opdrachtgever: PO 4500128873</div>
+    <div class="check"><span class="ok">✓</span> Duplicaat (module): geen eerdere factuuropdracht met dezelfde termijn/meerwerkregel/item</div>
+    <div class="check"><span class="ok">✓</span> Boekdatum niet in een ingediende btw-periode</div>
+  </div>
+  <div class="panel">
+    <h3>Bronrijen — worden "gefactureerd" zodra de factuur geboekt is</h3>
+    <table>
+      <tr><th>Bron</th><th>Rij</th><th class="r">Bedrag</th><th>Status ná boeken</th></tr>
+      <tr><td><span class="chip teal">termijn</span></td><td>3e termijn (30 %)</td><td class="r">€ 38.520</td><td><span class="chip ok">gefactureerd · VF-2026-0…</span></td></tr>
+      <tr><td><span class="chip warn">meerwerk</span></td><td>Extra trappentoren zijgevel oost</td><td class="r">€ 3.450</td><td><span class="chip ok">doorbelast</span> <span class="hulp">bestaande meerwerkstatus</span></td></tr>
+      <tr><td><span class="chip warn">meerwerk</span></td><td>Ombouwen loopbrug</td><td class="r">€ 1.415</td><td><span class="chip ok">doorbelast</span></td></tr>
+      <tr><td><span class="chip info">item</span></td><td>Personenlift 1000 kg · 9 wk</td><td class="r">€ 2.700</td><td><span class="chip ok">doorbelast</span> <span class="hulp">item-controle sluit</span></td></tr>
+    </table>
+    <div class="melding danger" style="margin-top:10px"><span>⛔</span><span><b>409 bij dubbel gebruik</b> — probeert iemand de 3e termijn of meerwerk 26-08 in een tweede factuuropdracht te zetten: "zit al in FO-26127-03 (klaargezet, 18-09) — openen?". Nooit stil een tweede factuur.</span></div>
+  </div>
+  <div class="panel">
+    <h3>Tijdlijn</h3>
+    <table>
+      <tr><td class="hulp">18-09 10:42</td><td>Barbara · factuuropdracht klaargezet: 4 regels, € 46.085 excl., debiteur Heijmans, PO 4500128873 → RLZ concept 7c1e…</td></tr>
+      <tr><td class="hulp">18-09 10:41</td><td>Systeem · prijzen: 1× contract, 2× staffel, 1× handmatig (audit per regel oud→nieuw)</td></tr>
+      <tr><td class="hulp">18-09 09:30</td><td>Signaal · Inzicht › Facturatie-kandidaten: termijn 3 bereikt (weekstaat afbreken 16-09), meerwerk 21 dagen goedgekeurd</td></tr>
+    </table>
+  </div>
+  </div>
+  <div class="sticky">
+  <div class="panel">
+    <h3>PDF-preview (RLZ-concept)</h3>
+    <div class="pdf">
+      <h4>Universal Steigerbouw B.V.</h4>
+      <div class="adres">Heijmans Bouw B.V.<br>Graafsebaan 65, 5248 JT Rosmalen<br>Uw referentie: PO 4500128873</div>
+      <p style="margin:12px 0 4px"><b>Factuur</b> · concept · 18-09-2026 · project 26127 Tilburg</p>
+      <table style="font-size:11px">
+        <tr><td>3e termijn (30 %) gevelsteiger Tilburg — afbouw gereed wk 38</td><td class="r">38.520,00</td></tr>
+        <tr><td>Meerwerk: extra trappentoren zijgevel oost, 3 wk × 1.150,00</td><td class="r">3.450,00</td></tr>
+        <tr><td>Meerwerk: ombouwen loopbrug t.b.v. kraanhijs</td><td class="r">1.415,00</td></tr>
+        <tr><td>Personenlift 1000 kg, huur wk 28–36, 9 wk × 300,00</td><td class="r">2.700,00</td></tr>
+        <tr class="som"><td>Totaal excl. btw</td><td class="r">46.085,00</td></tr>
+        <tr><td colspan="2" class="hulp">Btw verlegd — art. 12 lid 5 Wet OB. Betaling binnen 30 dagen o.v.v. factuurnummer.</td></tr>
+      </table>
+    </div>
+    <p class="hulp" style="margin-top:8px">De PDF komt uit RLZ (of Odoo) zelf — de module rendert geen eigen factuur (RLZ = bron van waarheid).</p>
+  </div>
+  <div class="panel">
+    <h3>Odoo-administratie (straks)</h3>
+    <p class="hulp" style="margin:0">Zelfde scherm, andere port: `out_invoice` draft op de partner + analytic account, boeken = `action_post`, nooit `unlink` (annuleren = `button_cancel`). Vereist een nieuwe VERKOOP-port naast de bestaande InkoopPort (notitie ③).</p>
+  </div>
+  </div>
+  </div>
+</section>
+
+<!-- ④ INZICHT › FACTURATIE-KANDIDATEN -->
+<section id="d" class="scherm">
+  <div class="crumb">Inzicht › <b>Facturatie-kandidaten</b></div>
+  <div class="kop"><div><h2>Facturatie-kandidaten <span class="chip teal">7 projecten · € 131.240 factureerbaar · over 3 administraties</span></h2><div class="sub">Kantoorbreed (administratie = filter, nooit een poort): projecten met een factureerbaar restant — termijn bereikt volgens planning/m²-voortgang, meerwerk &gt; 14 dagen goedgekeurd zonder factuur, verrekenbare items niet doorbelast. Elk signaal draagt de actie "Factuuropdracht maken" (KP7). Voedt óók de KPI-kaart op de werkvoorraad (alleen &gt; 0).</div></div>
+    <div class="acties"><button class="btn sec klein">Administratie: alle ▾</button><button class="btn sec klein">Soort: alle ▾</button></div></div>
+  <div class="zoek"><input placeholder="Zoek project, opdrachtgever… ( / )" style="width:280px"><span class="hulp">gesorteerd op urgentie: oudste meerwerk / langst bereikte termijn eerst</span></div>
+  <div class="panel" style="padding:0">
+    <table>
+      <tr><th>Project</th><th>Administratie</th><th>Waarom factureerbaar</th><th class="r">Bedrag</th><th>Wacht</th><th style="text-align:right">Actie</th></tr>
+      <tr><td><b>26127 Tilburg (Heijmans)</b></td><td>Universal Steigerbouw</td><td><span class="chip teal">termijn 3 bereikt wk 38</span> <span class="chip warn">meerwerk 2 · 21 d</span> <span class="chip info">items 2</span></td><td class="r">€ 47.405</td><td><span class="chip warn">21 dagen</span></td><td style="text-align:right"><button class="btn klein">Factuuropdracht maken</button> <button class="meer">⋯</button></td></tr>
+      <tr><td><b>26133 Oirschot (GNM)</b></td><td>Universal Steigerbouw</td><td><span class="chip warn">meerwerk 1 · 16 d</span></td><td class="r">€ 2.280</td><td><span class="chip warn">16 dagen</span></td><td style="text-align:right"><button class="btn klein">Factuuropdracht maken</button> <button class="meer">⋯</button></td></tr>
+      <tr><td><b>26140 Koningstraat (Confide)</b></td><td>Universal Nederland</td><td><span class="chip teal">termijn 2 bereikt wk 37</span></td><td class="r">€ 19.400</td><td><span class="chip">8 dagen</span></td><td style="text-align:right"><button class="btn klein">Factuuropdracht maken</button> <button class="meer">⋯</button></td></tr>
+      <tr><td><b>26118 Eindhoven (BAM)</b></td><td>Universal Steigerbouw</td><td><span class="chip info">items 3 niet doorbelast</span></td><td class="r">€ 6.120</td><td><span class="chip">5 dagen</span></td><td style="text-align:right"><button class="btn klein">Factuuropdracht maken</button> <button class="meer">⋯</button></td></tr>
+      <tr><td><b>26109 Breda (Dura Vermeer)</b></td><td>BWC Steigers</td><td><span class="chip teal">eindtermijn · project afgesloten 12-09</span></td><td class="r">€ 41.200</td><td><span class="chip">6 dagen</span></td><td style="text-align:right"><button class="btn klein">Factuuropdracht maken</button> <button class="meer">⋯</button></td></tr>
+    </table>
+  </div>
+  <p class="hulp">⋯ = "Eigen rekening (reden)…" (meerwerk/item afvinken mét verplichte reden, blijft zichtbaar in historie), "Termijn nog niet bereikt…" (mens-correctie, audit), "Project openen". Lege stand = "Alle projecten zijn bij — laatste factuuropdracht 14-08 · Projecten openen →".</p>
+  <div class="leeg" style="margin-top:14px">Lege stand (ter illustratie): <b>Geen factureerbare posten</b> — alle bereikte termijnen en goedgekeurd meerwerk staan op een factuur. <button class="linkbtn">Projecten openen →</button></div>
+</section>
+
+<!-- NOTITIES -->
+<section id="n" class="scherm">
+  <div class="kop"><div><h2>Ontwerpnotities ①–⑥ (onderdeel van het akkoord)</h2><div class="sub">Letterlijk uit de opdracht van 18-09, mét het voorstel van Cowork/CC per beslispunt. Bouw pas ná akkoord Peter; beslispunten ④ en ⑥ vragen een expliciete keuze.</div></div></div>
+  <div class="noot">
+    <h4>① Bron van prijzen</h4>
+    <b>Opdracht:</b> "bron van prijzen (contract &gt; staffel &gt; handmatig, herkomst zichtbaar)". <b>Uitwerking:</b> termijnbedrag = percentage × contractsom uit de contract-ontleding (kopveld + termijnschema — het termijnschema is NIEUW, de ontleding kent nu alleen staffels/kopvelden); meerwerk = de door een mens goedgekeurde prijs (bestaande regel: staffel is voorstel, mens beslist); items = staffel op eenheid (m²/m¹/stuks/week) anders handmatig mét oranje chip "geen contractprijs". Herkomst-chip op elke regel én in de audit (`herkomst` contract/staffel/mens — zelfde woorden als de specs). Geen LLM in de prijs: de ontleding levert getallen, de wizard rekent in code.
+    <h4>② Termijnen bereikt</h4>
+    <b>Opdracht:</b> "termijnen bereikt = uit m²-voortgang/weekstaten of handmatig". <b>Uitwerking:</b> per termijn een voorwaarde-type: <i>opbouw gereed</i> (eerste goedgekeurde weekstaat "afbreken"/m²-stand ≥ contract-m²), <i>datum/planning</i> (weekplanning bereikt), <i>afbouw gereed</i> (laatste geplande week voorbij + weekstaat afbreken), <i>handmatig</i>. "Bereikt" is een SIGNAAL (kandidatenlijst), nooit automatisch factureren; het kantoor kan een termijn handmatig op bereikt/niet-bereikt zetten mét reden + audit. Hergebruikt het planning-signaal-patroon (`planning_signaal`).
+    <h4>③ Odoo-pad</h4>
+    <b>Opdracht:</b> "Odoo-pad = dezelfde port als inkoop". <b>Feit:</b> de bestaande `InkoopPort` (`app/backends/port.py`) kent alleen `boek_inkoopfactuur`/`boek_tegenboeking`; de Odoo-adapter schrijft nog géén verkoopfacturen. <b>Voorstel:</b> een `VerkoopPort` náást de InkoopPort (zelfde registry, zelfde capability-contract 0016: niet ondersteund = zichtbare fout), RLZ-implementatie = de bestaande SalesInvoice-motor (`verkoop/boeken.py`, customer_id verplicht hier), Odoo-implementatie = `out_invoice` draft → `action_post`, terug-lezen na elke write, nooit `unlink`. Steigerbouw-BV's zijn nu RLZ; Odoo volgt de GO van Peter op de overstap.
+    <div class="kies"><b>④ BESLISPUNT — verzenden van de factuur (mail aan de opdrachtgever): RLZ/Odoo zelf of de module?</b><br>
+    <b>Voorstel: RLZ/Odoo verzendt (optie A), de module leest de stand "verzonden" terug en toont 'm in de statusflow.</b> Argumenten: (1) RLZ = boekhoudkundige bron van waarheid en de PDF/factuurlay-out komt uit RLZ — een tweede mailkanaal voor dezelfde factuur is een tweede waarheid en vraagt eigen lay-out-/e-facturatie-zorg (Peppol/UBL-uitgaand zit in RLZ); (2) de klant is gewend facturen vanuit RLZ te versturen; (3) de module houdt wél de regie via het signaal "geboekt maar ná 3 dagen niet verzonden" in Facturatie-kandidaten (nooit stil). Optie B (module mailt via het bestaande SMTP-kanaal mét de RLZ-PDF als bijlage) blijft mogelijk als Peter één knop wil; dan uitsluitend als opt-in per administratie, mail-first (mailfout = zichtbaar), audit. Odoo: verzenden via Odoo's eigen mailflow (optie A) is daar sowieso de norm.</div>
+    <h4>⑤ Relatie met Kempen-doorbelasting</h4>
+    <b>Opdracht:</b> "zelfde SalesInvoice-motor, andere bron". <b>Uitwerking:</b> de Kempen-doorbelasting maakt een bron-verkoop + spiegel-inkoop uit een inkoopfactuur (whitelist/doelentiteiten); de factuuropdracht maakt een verkoop uit projectbronnen (termijn/meerwerk/items). Beide roepen `verkoop/boeken.py` aan; de factuuropdracht heeft géén spiegel-inkoop en géén IC-vlag. Gedeeld: debiteur-aanmaak (UUIDv5), client-GUID-idempotentie, harde checks, `factuur_geboekt`-webhook (voor vastgoed-administraties niet van toepassing — steigerbouw), tegenboek-pad ná ingediende aangifte. Niet gedeeld: bronrij-terugkoppeling (meerwerk → doorbelast, item → doorbelast, termijn → gefactureerd) is eigen aan de factuuropdracht.
+    <div class="kies"><b>⑥ BESLISPUNT — accordering door de klant (opdrachtgever) vóór verzenden?</b><br>
+    <b>Voorstel: nee (default) — het kantoor boekt; de klant-accorderingsflow is een INKOOP-mechanisme (de klant keurt zijn eigen kosten goed), niet bedoeld voor uitgaande facturen van de klant zelf.</b> Wat wél kan zonder nieuwe flow: (a) een interne vier-ogen-stap "klaargezet" → "boeken" door een tweede kantoormedewerker (dat is de bestaande statusscheiding concept/geboekt); (b) wil Universal (de klant van het kantoor) zélf meekijken vóór het boeken, dan is dat een opt-in per administratie die de bestaande accordeur-app-kaart hergebruikt (soort "verkoopfactuur ter accordering", lagen/drempels op het bedrag) — bouwbaar, maar pas op vraag. Nooit: goedkeuren-zonder-inloggen.</div>
+    <h4>Nooit dubbel / niets stil</h4>
+    Een termijn, meerwerkregel of item zit in hoogstens één factuuropdracht (DB-uniek per bronrij; 409 mét verwijzing "zit al in FO-… — openen?"). Storno van de factuur (actie 19, achter de aangiftepoort) zet de bronrijen terug naar factureerbaar mét tijdlijn + audit. Een factuuropdracht wordt nooit verwijderd: intrekken = status `ingetrokken` mét reden.
+    <h4>Bestaat al vs nieuw (pre-feature-ritueel)</h4>
+    <b>Bestaat:</b> SalesInvoice-motor (`verkoop/boeken.py`, PUT + client-GUID, debiteur idempotent, BookDate, harde checks, storno/tegenboek), contract-ontleding auto-first (kopvelden contractsom/m²/looptijd + staffels met herkomst), meerwerk-statusflow gemeld → goedgekeurd → doorbelast (+ signaal 14 dagen), projectdetail mét tabs, kantoorbreed lijstpatroon (Inzicht › Projecten/Verplichtingen), Kempen-doorbelasting op dezelfde motor, Odoo InkoopPort + adapter. <b>Nieuw:</b> entiteit factuuropdracht + regels (bronverwijzing per regel), termijnschema + bereikt-signaal, verkoopport (RLZ + Odoo), verrekenbare-items-lezer (de item-niveau-doorbelastingscontrole is een praktijkles, nog geen code), tab Facturatie, wizard, Inzicht › Facturatie-kandidaten + KPI-kaart, bronrij-terugkoppeling en 409-poort.
+  </div>
+</section>
+
+<script>function toon(id,btn){document.querySelectorAll('.scherm').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('.mock-tabs button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');window.scrollTo(0,0)}</script>
+</body>
+</html>

@@ -41,6 +41,7 @@
 | Webhook "factuur geboekt" (outbox + vastgoed-scope-filter + afleveraar) | **gebouwd + getest (2026-08-02)** — outbox 2026-07-09, scope 2026-07-13, afleveraar + HMAC-per-verzendpoging 2026-08-02 (OPEN_ITEMS actiepunt 2 afgehandeld): payload ongetekend in de outbox, tekenen per poging (wire-formaat ongewijzigd), status openstaand/afgeleverd/mislukt + retry/backoff/dead-letter + re-drive (mislukt → openstaand als expliciete admin-actie, CLI `webhook-redrive`), audit per poging én per re-drive, toggle default UIT + config-failsafe (geen doel-URL → openstaand, geen fout); aanzetten wacht op de URL/secret-uitwisseling bij de hosting-fase — **de ontvanger zelf bestaat sinds 2026-08-02** (`POST /webhooks/rlz`, vastgoed-migratie 0066; drift-correctie 2026-08-07) | BOUWPLAN fase 1 punt 7; migraties 0018/0025; `app/documenten/webhook_afleveraar.py`; koppelcontract §3 (implementatienotitie 2026-08-02) |
 | Boekingsgeheugen (seed uit RLZ-historie + leerlus + voorstel + UI-chips; correcties > historie; seed-only = oranje tot eerste app-bevestiging) | gebouwd + getest (B1–B6, 2026-07-13/14) | BOUWPLAN fase 1 punt 7b; CLAUDE.md "Boekingsgeheugen"; `backend/app/geheugen/` |
 | — openstaand daarbij: live visuele verificatie groen/oranje chips + voorstel-op-blur voor handmatige regels | goedgekeurd (follow-up) | BOUWPLAN punt 7b follow-ups (2026-07-14) |
+| Factuuropdracht per project (steigerbouw → verkoopfactuur klaarzetten in RLZ/Odoo) | mockup TER AKKOORD (18-09); beslispunten ④ verzenden, ⑥ klant-accordering | BESLISSINGEN "FACTUUROPDRACHT PER PROJECT — MOCKUP (Peter 18-09)"; `mockup/factuuropdracht-project.html`; rapport `docs/rapporten/2026-09-18-mockup-factuuropdracht.md` |
 
 ## Harde/blokkerende checks (checkstatus-audit 2026-07-13 — actueel houden; CLAUDE.md delegeert de canonieke checkstatus hierheen en somt alleen kort op — drift-audit 02-09)
 
@@ -11084,3 +11085,30 @@ niet gemeten (deploy volgt via de Stop-hook; meetrecept: zoekveld "Univ" → 3 r
 sticky — een `.tabel-scroll` is door `overflow-x: auto` altijd een scrollcontainer, waardoor `position: sticky` op de kop alleen
 binnen die container werkt; de rechter ZZP-kolom (sticky `top: 16`) sluit daar op aan.
 
+## FACTUUROPDRACHT PER PROJECT — MOCKUP (Peter 18-09) — TER AKKOORD; geen bouw
+
+**Status: MOCKUP TER AKKOORD 18-09-2026 (opdracht `opdrachten/gedaan/2026-09-18-mockup-factuuropdracht-per-project.md`, rapport
+`docs/rapporten/2026-09-18-mockup-factuuropdracht.md`, mockup `mockup/factuuropdracht-project.html` — vijf tabs ①–④ + Notities).
+Geen code, geen migratie, geen route. Bouw uitsluitend ná akkoord Peter (UX-review-regel 15-08); dan volledige regeltekst in
+`docs/regels/verplichtingen-projecten-voorraad.md`.**
+
+**Aanleiding (Peter 18-09, letterlijk):** "Vanuit onze module moeten wij een factuuropdracht klaar kunnen zetten voor steigerbouw (per
+project), waarop wij onderdelen, termijnen etc. kunnen selecteren, waarna de factuur in RLZ (en straks Odoo) wordt klaargezet."
+
+| Onderdeel | Voorstel in de mockup | Bestaat al / nieuw |
+|---|---|---|
+| Projectdetail › tab Facturatie | contractsom + termijnschema (uit contract), gefactureerd (RLZ/Odoo-verkoopfacturen op het project), meerwerk goedgekeurd-nog-doorbelasten, verrekenbare inhuur-items, restant-balk, "Factureerbaar nu" | tab + termijnschema + items-lezer nieuw; meerwerkflow, contract-ontleding, restant-balk bestaan |
+| Wizard "Factuuropdracht maken" (één scherm) | vinkjes termijn/meerwerk/item/vrije regel; per regel omschrijving, aantal, eenheid, prijs mét herkomst-chip (contract > staffel > handmatig), btw verlegd waar de keten dat eist, project vooringevuld, debiteur = opdrachtgever, factuurdatum = BookDate, PO-referentie verplicht als de projectspec dat eist (harde check) | nieuw; prijzen uit bestaande staffels |
+| Resultaat | concept-SalesInvoice via de bestaande motor (Odoo: `out_invoice` draft via een nieuwe VerkoopPort), PDF uit RLZ/Odoo, status klaargezet → geboekt (17) → verzonden → betaald, boeken = bestaande boekknop + harde checks, bronrijen → gefactureerd/doorbelast, 409 bij dubbel gebruik mét verwijzing, storno zet bronrijen terug | motor + checks bestaan; entiteit, port, terugkoppeling, 409-poort nieuw |
+| Inzicht › Facturatie-kandidaten | kantoorbreed lijstpatroon, administratie = filter, urgentie-sortering, signaal mét actie "Factuuropdracht maken" (KP7), ⋯ eigen rekening mét reden, KPI-kaart alleen > 0, lege stand = actie | nieuw op het bestaande lijstpatroon |
+| Odoo | zelfde scherm, andere port: `VerkoopPort` náást `InkoopPort` (0016: niet ondersteund = zichtbare fout), draft → `action_post`, nooit `unlink` | nieuw (InkoopPort bestaat) |
+
+**Beslispunten Peter (expliciet, ter keuze):**
+- **④ Verzenden:** voorstel **RLZ/Odoo verzendt zelf** (module leest "verzonden" terug + signaal "geboekt, ná 3 dagen niet verzonden");
+  alternatief module-mail via het SMTP-kanaal als opt-in per administratie, mail-first, audit.
+- **⑥ Klant-accordering vóór verzenden:** voorstel **nee (default) — kantoor boekt**; opt-in op de bestaande accordeur-kaart alleen op vraag.
+
+**Ontwerpnotities ①–⑥** (bron van prijzen, termijnen bereikt uit m²/weekstaten/planning of handmatig mét audit, Odoo-pad, verzenden,
+relatie Kempen-doorbelasting = zelfde motor zonder spiegel, accordering) staan letterlijk op de tab Notities van de mockup en zijn
+onderdeel van het akkoord. Nooit dubbel: een termijn/meerwerkregel/item zit in hoogstens één factuuropdracht (DB-uniek per bronrij);
+een factuuropdracht wordt nooit verwijderd (intrekken = status mét reden).

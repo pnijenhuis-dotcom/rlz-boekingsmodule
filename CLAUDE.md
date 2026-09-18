@@ -280,6 +280,8 @@ in Reeleezee (RLZ) voor tientallen klant-administraties. AI-extractie + mens-in-
 - **Activa / MVA** — Ontwerp ter akkoord (Peter 16-09, geen bouw): register in RLZ `FixedAssets`/Odoo, detectie + voorvullen bij boeken, fiscale toetsing zonder zelf rekenen, reconciliatieblok `activa`; lees-only nulmeting `activa-nulmeting`.
   1. MVA = `IsFixedAssetAccount` ÉN AccountType 3 ÉN 0xxx (de vlag alleen is te breed); enumeraties root-only (`rlz-lezen --root`); Universal 403 = probe verplicht.
   2. Geen bouw vóór akkoord Peter op `docs/ONTWERP_ACTIVA_MVA.md`.
+
+- **Factuuropdracht per project (steigerbouw → verkoopfactuur klaarzetten in RLZ/Odoo)** — MOCKUP TER AKKOORD (Peter 18-09, `mockup/factuuropdracht-project.html`, beslispunten ④ verzenden / ⑥ klant-accordering); geen bouw vóór akkoord — zie BESLISSINGEN "FACTUUROPDRACHT PER PROJECT — MOCKUP (Peter 18-09)".
   **LEESPLICHT: lees `docs/regels/activa.md` volledig vóór élke wijziging, opdracht of advies in dit domein — niet gelezen = niet beginnen.**
 
 - **Werkloop, nametingen, deploy en productie-toegang** — Gouden set als poort, cc-inbox (launchd), nameting-workflow + `nameting.sh`, rapporten + INDEX, deploy.yml-lessen, productie alleen via gedeployde jobs, Feiten eerst (querybibliotheek, leesreplica), migratie-guards, database/RLS-lessen.
